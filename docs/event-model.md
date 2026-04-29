@@ -68,13 +68,13 @@ A discrete to-do extracted within a note. Owns its own completion lifecycle.
 
 ### Note
 
-- `NoteCreated { NoteId, CreatedAt }` — title starts empty; the first `NoteRenamed` lands when the user blurs the title field
-- `NoteRenamed { NoteId, RenamedAt, NewTitle }`
-- `ContentEdited { NoteId, EditedAt, Content }` — full snapshot of the captured-notes area at save time
-- `NoteTagged { NoteId, TaggedAt, Tag }`
-- `NoteUntagged { NoteId, UntaggedAt, Tag }`
+- `NoteCreated { NoteId }` — title starts empty; the first `NoteRenamed` lands when the user blurs the title field
+- `NoteRenamed { NoteId, NewTitle }`
+- `ContentEdited { NoteId, Content }` — full snapshot of the captured-notes area at save time
+- `NoteTagged { NoteId, Tag }`
+- `NoteUntagged { NoteId, Tag }`
 - `NoteDateSet { NoteId, Date }` — user-specified `DateOnly`; can be set or changed at any time while the note is active
-- `NoteDeleted { NoteId, DeletedAt }` — soft delete; event remains in the stream, projections filter it out
+- `NoteDeleted { NoteId }` — soft delete; event remains in the stream, projections filter it out
 
 ### ActionItem
 

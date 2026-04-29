@@ -1,26 +1,6 @@
+using Domain;
+
 namespace Specs.Harness;
-
-/// <summary>
-/// Marker interface for domain events carried through the harness.
-/// </summary>
-public interface IDomainEvent { }
-
-/// <summary>
-/// Marker interface for commands passed to aggregates.
-/// </summary>
-public interface ICommand { }
-
-/// <summary>
-/// Minimal aggregate contract the harness drives.
-/// </summary>
-public interface IAggregate
-{
-    /// <summary>Apply prior events to rebuild state before issuing a command.</summary>
-    void Apply(IDomainEvent @event);
-
-    /// <summary>Handle a command and return the resulting events.</summary>
-    IReadOnlyList<IDomainEvent> Handle(ICommand command);
-}
 
 // ---------------------------------------------------------------------------
 // Fluent builder entry point
