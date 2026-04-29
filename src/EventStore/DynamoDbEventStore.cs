@@ -81,6 +81,8 @@ public sealed class DynamoDbEventStore(IAmazonDynamoDB dynamo, string tableName)
         catch (TransactionCanceledException ex)
             when (ex.CancellationReasons.Any(r => r.Code == "ConditionalCheckFailed"))
         {
+            // Version read after conflict may not reflect the exact version at conflict time;
+            // callers should re-read the stream before retrying.
             var actual = await GetCurrentVersionAsync(streamId, ct);
             throw new ConcurrencyException(streamId, expectedVersion, actual);
         }
@@ -88,19 +90,31 @@ public sealed class DynamoDbEventStore(IAmazonDynamoDB dynamo, string tableName)
 
     public async Task<IReadOnlyList<EventEnvelope>> ReadAsync(string streamId, CancellationToken ct = default)
     {
-        var response = await dynamo.QueryAsync(new QueryRequest
-        {
-            TableName = tableName,
-            KeyConditionExpression = "PK = :pk AND begins_with(SK, :v)",
-            ExpressionAttributeValues = new Dictionary<string, AttributeValue>
-            {
-                [":pk"] = new AttributeValue { S = streamId },
-                [":v"] = new AttributeValue { S = "v" }
-            },
-            ScanIndexForward = true
-        }, ct);
+        var items = new List<Dictionary<string, AttributeValue>>();
+        Dictionary<string, AttributeValue>? lastKey = null;
 
-        return response.Items
+        do
+        {
+            var request = new QueryRequest
+            {
+                TableName = tableName,
+                KeyConditionExpression = "PK = :pk AND begins_with(SK, :v)",
+                ExpressionAttributeValues = new Dictionary<string, AttributeValue>
+                {
+                    [":pk"] = new AttributeValue { S = streamId },
+                    [":v"] = new AttributeValue { S = "v" }
+                },
+                ScanIndexForward = true,
+                ExclusiveStartKey = lastKey
+            };
+
+            var response = await dynamo.QueryAsync(request, ct);
+            items.AddRange(response.Items);
+            lastKey = response.LastEvaluatedKey?.Count > 0 ? response.LastEvaluatedKey : null;
+        }
+        while (lastKey is not null);
+
+        return items
             .Select(item => new EventEnvelope(
                 StreamId: streamId,
                 SequenceNumber: long.Parse(item["SK"].S[1..]),
