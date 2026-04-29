@@ -37,9 +37,7 @@ jobs:
 
       - name: Extract API URL
         id: api-url
-        run: |
-          cat outputs.json
-          echo "url=$(jq -r '.NoteTakerStack.ApiUrl' outputs.json)" >> $GITHUB_OUTPUT
+        run: echo "url=$(jq -r '.NoteTakerStack.ApiUrl' outputs.json)" >> $GITHUB_OUTPUT
 
       - name: Acceptance specs
         run: dotnet test tests/Specs/Specs.csproj
