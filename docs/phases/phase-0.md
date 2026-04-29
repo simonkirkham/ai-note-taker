@@ -59,17 +59,17 @@ Status key: `Done` · `In Progress` · `Not Started`
 ---
 
 ## Slice 0-E — Local dev loop documented
-**Status:** Not Started
+**Status:** Done
 
 **Objective:** Fill in the "How to run" section so any developer (or agent) can get up and running from scratch, and enforce local quality gates via a pre-commit hook.
 
 **Acceptance criteria:**
-- [ ] `CLAUDE.md` "How to run" section filled in with: `dotnet build`, `dotnet test`, `dotnet run` (Api), `cdk synth`, `cdk deploy`
-- [ ] README covers: prerequisites (.NET 8, AWS CLI, CDK CLI, `gh`), clone-to-running steps, environment variables required
-- [ ] README includes `cdk bootstrap` note for first-time AWS account setup
-- [ ] Pre-commit hook at `.githooks/pre-commit` runs `dotnet build` (warnings-as-errors) and `dotnet test`; commit is blocked if either fails
-- [ ] Hook is activated via `git config core.hooksPath .githooks` — this command is documented in the README setup steps
-- [ ] `cdk synth` is excluded from the hook (requires a full publish, too slow for pre-commit)
+- [x] `CLAUDE.md` "How to run" section filled in with: `dotnet build`, `dotnet test`, `dotnet run` (Api), `cdk synth`, `cdk deploy`
+- [x] README covers: prerequisites (.NET 8, AWS CLI, CDK CLI, `gh`), clone-to-running steps, environment variables required
+- [x] README includes `cdk bootstrap` note for first-time AWS account setup
+- [x] Pre-commit hook at `.githooks/pre-commit` runs `dotnet build` (warnings-as-errors) and `dotnet test`; commit is blocked if either fails
+- [x] Hook is activated via `git config core.hooksPath .githooks` — this command is documented in the README setup steps
+- [x] `cdk synth` is excluded from the hook (requires a full publish, too slow for pre-commit)
 
 ---
 
