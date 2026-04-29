@@ -1,0 +1,10 @@
+#!/bin/sh
+set -e
+
+echo "→ build (warnings as errors)..."
+dotnet build ai-note-taker.sln -p:TreatWarningsAsErrors=true --nologo -v quiet
+
+echo "→ test..."
+dotnet test tests/Specs/Specs.csproj --nologo -v quiet
+
+echo "✓ pre-commit checks passed"

@@ -29,36 +29,61 @@ Phase 0 — setup.
 
 Coding agents work against this repo using instructions in `CLAUDE.md` and skills in `.claude/skills/`. See `CLAUDE.md` for conventions, guardrails, and the skills catalogue.
 
-## Commands
+## Prerequisites
 
-### Build
+- [.NET 8 SDK](https://dotnet.microsoft.com/download/dotnet/8)
+- [AWS CLI](https://aws.amazon.com/cli/) — configured with credentials (`aws configure`)
+- [AWS CDK CLI](https://docs.aws.amazon.com/cdk/latest/guide/getting_started.html) — `npm install -g aws-cdk`
+- [GitHub CLI](https://cli.github.com/) — `gh`
+
+## Setup
 
 ```bash
-# Build the API Lambda project
-dotnet build src/Api/Api.csproj
+git clone https://github.com/simonkirkham/ai-note-taker.git
+cd ai-note-taker
 
-# Publish the API for Lambda deployment (required before CDK deploy)
-dotnet publish src/Api/Api.csproj -c Release -o src/Api/bin/Release/net8.0/publish
+# Activate the pre-commit hook
+git config core.hooksPath .githooks
+```
 
-# Build the CDK infrastructure project
-dotnet build src/Infrastructure/Infrastructure.csproj
+First-time AWS setup (once per account/region):
+
+```bash
+cdk bootstrap
+```
+
+## Commands
+
+### Build and test
+
+```bash
+# Build entire solution (0 warnings enforced in CI)
+dotnet build ai-note-taker.sln
 
 # Run all BDD specs
 dotnet test tests/Specs/Specs.csproj
+
+# Run the API locally (Kestrel — no Lambda runtime needed)
+dotnet run --project src/Api/Api.csproj
 ```
 
 ### Infrastructure
 
 ```bash
-# Synth the CDK stack (validates infrastructure before any deploy)
-cdk synth --app "dotnet run --project src/Infrastructure/Infrastructure.csproj"
-
-# Show what will change before deploying
-cdk diff --app "dotnet run --project src/Infrastructure/Infrastructure.csproj"
-
-# Deploy to AWS (always publish first)
+# Validate the CDK stack (publish Lambda first — asset path is checked at synth time)
 dotnet publish src/Api/Api.csproj -c Release -o src/Api/bin/Release/net8.0/publish
-cdk deploy --app "dotnet run --project src/Infrastructure/Infrastructure.csproj"
+cdk synth
+
+# Preview changes before deploying
+cdk diff
+
+# Deploy to AWS
+dotnet publish src/Api/Api.csproj -c Release -o src/Api/bin/Release/net8.0/publish
+cdk deploy
 ```
 
-> Prerequisites: AWS credentials configured (`aws configure` or env vars), CDK bootstrapped in the target account/region (`cdk bootstrap`).
+### Environment variables
+
+| Variable | Used by | Description |
+|---|---|---|
+| `API_BASE_URL` | acceptance spec | Live API Gateway URL — set to run the acceptance spec against the deployed Lambda |

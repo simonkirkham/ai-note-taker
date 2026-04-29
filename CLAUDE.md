@@ -28,7 +28,26 @@ See [docs/goals.md](docs/goals.md) for the learning goals.
 
 ## How to run
 
-*Filled in during Phase 0. Until then, ask before guessing.*
+```bash
+# Activate pre-commit hook (once per clone)
+git config core.hooksPath .githooks
+
+# Build entire solution
+dotnet build ai-note-taker.sln
+
+# Run all BDD specs
+dotnet test tests/Specs/Specs.csproj
+
+# Run the API locally (Kestrel, not Lambda)
+dotnet run --project src/Api/Api.csproj
+
+# Validate infrastructure (requires dotnet publish first)
+dotnet publish src/Api/Api.csproj -c Release -o src/Api/bin/Release/net8.0/publish
+cdk synth
+
+# Deploy to AWS
+cdk deploy
+```
 
 ## Conventions
 
