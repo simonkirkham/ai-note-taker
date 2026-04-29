@@ -4,15 +4,9 @@ Sequence is learning-optimised: event sourcing plumbing lands in Phase 1 so ever
 
 ## Phase 0 — Setup
 
-- CDK project skeleton
-- Minimal ASP.NET API in Lambda, hello world endpoint
-- React + TS app, deployed
-- DynamoDB table provisioned
-- Deployment pipeline (GitHub Actions or similar)
-- Local dev loop documented in README
-- BDD spec harness wired up; first Given/When/Then test runs green
-
 **Goal:** every tool is wired up, hello world deployed end-to-end, first spec passes.
+
+Slices and acceptance criteria: [docs/phases/phase-0.md](phases/phase-0.md)
 
 ## Phase 1 — Walking skeleton with event sourcing
 
