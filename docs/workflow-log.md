@@ -31,3 +31,20 @@ Add an entry at the end of each phase. Keep them short and honest.
 - **Change for next phase:**
   - Enforce the gated pipeline explicitly: Scout produces a brief, human reviews it, Breaker writes failing specs, human reviews them before Pip touches any implementation code
   - Scribe and workflow-log updates are part of Pip's definition of done — not a separate prompt required from the human
+
+---
+
+## Phase 1-B — IEventStore OCC Contract
+
+- **Workflow style used:** Gated pipeline — Breaker wrote specs in a prior session; Pip implemented this session with Hawk review before merge.
+- **Skills exercised:** `dynamodb-event-append` (OCC pattern reference), `review` (Hawk verdict).
+- **What worked:**
+  - Hawk caught two real spec gaps (batch append, non-existent stream read) and a subtle test-double bug (`AsReadOnly()` wrapping live list) — all fixed before merge
+  - Automated Pip→Hawk handoff (CI green → review) worked cleanly once the guardrail was corrected
+  - Pipeline-gating guardrail in CLAUDE.md was introduced and refined within the same session based on live feedback
+- **What didn't:**
+  - Pip jumped straight to implementation without being named — had to be stopped mid-edit; the guardrail was added reactively rather than proactively
+  - The guardrail was written too broadly on first attempt (blocking all automatic triggers) and needed a correction pass immediately
+  - Main pipeline had a transient Lambda 500 on first run after deploy; required manual re-run to confirm it was not a code regression
+- **Change for next phase:**
+  - The transient Lambda cold-start failure on deploy is a known pattern — consider adding a retry or warm-up step to the acceptance spec run in the deploy workflow
