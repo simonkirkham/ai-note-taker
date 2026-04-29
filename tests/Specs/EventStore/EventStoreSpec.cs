@@ -68,4 +68,28 @@ public sealed class EventStoreSpec
         Assert.Equal(new[] { 1L, 2L, 3L }, events.Select(e => e.SequenceNumber));
         Assert.Equal(new[] { "NoteCreated", "NoteRenamed", "NoteRenamed" }, events.Select(e => e.EventType));
     }
+
+    [Fact]
+    public async Task AppendsBatchOfEventsWithConsecutiveSequenceNumbers()
+    {
+        var store = new InMemoryEventStore();
+        var streamId = "note#" + Guid.NewGuid();
+
+        await store.AppendAsync(streamId, expectedVersion: 0, [Event("NoteCreated"), Event("NoteRenamed")]);
+
+        var events = await store.ReadAsync(streamId);
+        Assert.Equal(2, events.Count);
+        Assert.Equal(1, events[0].SequenceNumber);
+        Assert.Equal(2, events[1].SequenceNumber);
+    }
+
+    [Fact]
+    public async Task ReadsEmptyListForNonExistentStream()
+    {
+        var store = new InMemoryEventStore();
+
+        var events = await store.ReadAsync("note#" + Guid.NewGuid());
+
+        Assert.Empty(events);
+    }
 }

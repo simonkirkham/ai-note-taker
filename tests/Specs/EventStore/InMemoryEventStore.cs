@@ -25,7 +25,7 @@ internal sealed class InMemoryEventStore : IEventStore
     public Task<IReadOnlyList<EventEnvelope>> ReadAsync(string streamId, CancellationToken ct = default)
     {
         var result = _streams.TryGetValue(streamId, out var stream)
-            ? (IReadOnlyList<EventEnvelope>)stream.AsReadOnly()
+            ? (IReadOnlyList<EventEnvelope>)stream.ToList().AsReadOnly()
             : Array.Empty<EventEnvelope>();
         return Task.FromResult(result);
     }

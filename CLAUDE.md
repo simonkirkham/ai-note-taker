@@ -63,7 +63,7 @@ cdk deploy
 - Never bypass the event store to mutate aggregate state.
 - Never commit without all BDD specs green and `cdk synth` succeeding.
 - Never edit a published event's shape — version it.
-- **Never begin a pipeline role's work without the human explicitly naming that role.** If the next role is obvious, state which role is next and ask for confirmation — do not proceed unilaterally. This applies to all five roles: Scout, Breaker, Pip, Hawk, Scribe.
+- **Never begin a pipeline role's work without authorisation.** For roles triggered by a human brief (Scout, Breaker, Pip at slice start), wait for explicit human go-ahead. For roles triggered by an automated event defined in the workflow, proceed without asking: CI green → Hawk reviews; Hawk approves → Pip merges; Hawk requests changes → Pip fixes and pushes.
 
 ## Skills
 
