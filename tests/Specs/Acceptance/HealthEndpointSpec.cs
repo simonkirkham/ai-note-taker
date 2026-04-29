@@ -15,6 +15,8 @@ public sealed class HealthEndpointSpec
     public async Task Health_endpoint_returns_200_with_status_ok()
     {
         var baseUrl = Environment.GetEnvironmentVariable("API_BASE_URL");
+        console.WriteLine($"API_BASE_URL: {baseUrl}");
+        
         if (string.IsNullOrWhiteSpace(baseUrl))
             return;
 
