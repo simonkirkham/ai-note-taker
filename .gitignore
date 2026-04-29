@@ -17,6 +17,21 @@ node_modules/
 dist/
 .vite/
 
+# CDK
+cdk.out/
+
+# dotnet publish output (Lambda deployment artifact)
+**/publish/
+
+# Test results and coverage
+TestResults/
+coverage/
+
+# Environment / secrets
+.env
+.env.local
+.env*.local
+
 # OS
 .DS_Store
 Thumbs.db
