@@ -39,6 +39,9 @@ jobs:
         id: api-url
         run: echo "url=$(jq -r '.NoteTakerStack.ApiUrl' outputs.json)" >> $GITHUB_OUTPUT
 
+      - name: Warm up Lambda
+        run: sleep 15
+
       - name: Acceptance specs
         run: dotnet test tests/Specs/Specs.csproj
         env:

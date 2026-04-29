@@ -64,3 +64,20 @@ Add an entry at the end of each phase. Keep them short and honest.
   - Two CDK compile errors (Attribute ambiguity, Tags.Of instance reference) added a round-trip that a local synth would have caught
 - **Change for next phase:**
   - Pip should check CDK local availability at the start of any infra slice and note if CI is the only synth gate
+
+---
+
+## Phase 1-C — POST /notes endpoint
+
+- **Workflow style used:** Full pipeline — Breaker wrote acceptance spec on the same branch as Pip implementation; Hawk reviewed before merge.
+- **Skills exercised:** `aggregate-command` pattern (Breaker + Pip), `review`.
+- **What worked:**
+  - First end-to-end slice: aggregate → event store → API → acceptance spec — all wired and green in CI
+  - Breaker spec pattern (API_BASE_URL gate) works cleanly for acceptance tests
+  - Hawk caught `Deserialize` placement issue before it proliferated into 1-D
+- **What didn't:**
+  - Cold-start Lambda 500 on every deploy is now a consistent pattern, adding a manual re-run to every merge — needs a structural fix
+  - `Deserialize` placed in Program.cs needs extraction to `src/EventStore/` before 1-D
+- **Change for next phase:**
+  - Add a 10-second sleep between CDK deploy and acceptance test run in `deploy.yml` to absorb Lambda cold-start
+  - Extract `EventDeserializer` to `src/EventStore/` at the start of 1-D before writing any projection code
