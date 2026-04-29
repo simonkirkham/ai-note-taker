@@ -1,12 +1,12 @@
 # Agent Workflow
 
-This project uses a four-role pipeline for every non-trivial slice of work. Roles map directly to skills — agents load the relevant skill rather than improvising the process.
+This project uses a five-role pipeline for every non-trivial slice of work. Roles map directly to skills — agents load the relevant skill rather than improvising the process.
 
 The pipeline is gated: no role begins until the previous role's output is reviewed by a human.
 
 ---
 
-## The Four Roles
+## The Five Roles
 
 ### Scout — Research & Design
 
@@ -134,6 +134,42 @@ The pipeline is gated: no role begins until the previous role's output is review
 
 ---
 
+### Scribe — Learnings Author
+
+**Remit:** After each slice lands on main, review the full conversation history for the slice and produce a concise learnings doc covering what was inefficient or went wrong in the workflow, and concrete suggestions for improving the process. Does not touch code, specs, or the event model.
+
+**Inputs:** The full prompt/conversation history for the slice, from the initial human brief through to Pip's merge.
+
+**Skills to load:**
+- `agent-skills:documentation-and-adrs` — for structured, decision-quality writing
+
+**Outputs:**
+- `docs/learnings/<slice-name>.md` using the template below
+
+**Learnings doc template:**
+```markdown
+# Learnings: <slice name>
+
+## What was inefficient or went wrong
+- <observation>
+
+## Suggested process improvements
+- <concrete suggestion tied to a specific role or workflow step>
+```
+
+**Rules:**
+- Workflow scope only — do not include technical or implementation observations
+- Observations must be grounded in the actual conversation: quote or paraphrase specific moments where the workflow broke down or caused rework
+- Suggestions must name the role or workflow step they apply to (e.g. "Scout should…", "The Breaker hand-off should require…")
+- Do not make suggestions that contradict a guardrail in CLAUDE.md without flagging the conflict explicitly
+- One file per slice; name it after the slice (e.g. `create-note-command.md`)
+
+**Hand-off:** Post the path to the learnings file. Human reviews and decides whether any suggestions warrant updating `agent-workflow.md` or `CLAUDE.md`.
+
+**Done when:** Learnings file is committed and the human has been notified.
+
+---
+
 ## Pipeline Sequence
 
 ```
@@ -161,26 +197,31 @@ If approved → Pip merges → monitors main pipeline
     ↓
 If main pipeline fails → Pip fixes → repeat until green
     ↓
-Done: Pip appends end-of-phase note to docs/workflow-log.md (if phase complete)
+Pip appends end-of-phase note to docs/workflow-log.md (if phase complete)
+    ↓
+Scribe: reviews conversation history → writes docs/learnings/<slice-name>.md
+    ↓
+Human checkpoint: reviews learnings and decides whether to update agent-workflow.md or CLAUDE.md
 ```
 
 ---
 
 ## Responsibilities at a Glance
 
-|                                | Scout | Breaker | Pip | Hawk |
-|-------------------------------|-------|---------|-----|------|
-| Update event model             | ✓     | ✗       | ✗   | ✗    |
-| Write feature brief            | ✓     | ✗       | ✗   | ✗    |
-| Write BDD spec files           | ✗     | ✓       | ✗   | ✗    |
-| Write implementation code      | ✗     | ✗       | ✓   | ✗    |
-| Modify existing spec files     | ✗     | ✗       | ✗   | ✗    |
-| Open a PR                      | ✗     | ✗       | ✓   | ✗    |
-| Wait for / fix CI pipeline     | ✗     | ✗       | ✓   | ✗    |
-| Post review verdict            | ✗     | ✗       | ✗   | ✓    |
-| Merge a PR                     | ✗     | ✗       | ✓   | ✗    |
-| Update workflow-log.md         | ✗     | ✗       | ✓   | ✗    |
-| Change the task scope          | ✗     | ✗       | ✗   | ✗    |
+|                                | Scout | Breaker | Pip | Hawk | Scribe |
+|-------------------------------|-------|---------|-----|------|--------|
+| Update event model             | ✓     | ✗       | ✗   | ✗    | ✗      |
+| Write feature brief            | ✓     | ✗       | ✗   | ✗    | ✗      |
+| Write BDD spec files           | ✗     | ✓       | ✗   | ✗    | ✗      |
+| Write implementation code      | ✗     | ✗       | ✓   | ✗    | ✗      |
+| Modify existing spec files     | ✗     | ✗       | ✗   | ✗    | ✗      |
+| Open a PR                      | ✗     | ✗       | ✓   | ✗    | ✗      |
+| Wait for / fix CI pipeline     | ✗     | ✗       | ✓   | ✗    | ✗      |
+| Post review verdict            | ✗     | ✗       | ✗   | ✓    | ✗      |
+| Merge a PR                     | ✗     | ✗       | ✓   | ✗    | ✗      |
+| Update workflow-log.md         | ✗     | ✗       | ✓   | ✗    | ✗      |
+| Write slice learnings doc      | ✗     | ✗       | ✗   | ✗    | ✓      |
+| Change the task scope          | ✗     | ✗       | ✗   | ✗    | ✗      |
 
 ---
 
@@ -190,11 +231,11 @@ Some tasks don't need the full pipeline:
 
 | Task type | Roles needed |
 |---|---|
-| Typo / doc fix | Pip only (no spec needed) |
-| CDK infra change (no domain logic) | Scout (brief) → Pip → Hawk |
+| Typo / doc fix | Pip only (no spec needed, no Scribe) |
+| CDK infra change (no domain logic) | Scout → Pip → Hawk → Scribe |
 | New command + events | Full pipeline |
-| New projection | Scout → Breaker → Pip → Hawk |
-| Bug fix | Breaker (reproduce with a failing spec) → Pip → Hawk |
+| New projection | Scout → Breaker → Pip → Hawk → Scribe |
+| Bug fix | Breaker (reproduce with a failing spec) → Pip → Hawk → Scribe |
 
 ---
 
