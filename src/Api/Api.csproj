@@ -8,6 +8,7 @@
 
   <ItemGroup>
     <PackageReference Include="Amazon.Lambda.AspNetCoreServer.Hosting" Version="1.7.2" />
+    <PackageReference Include="AWSSDK.Extensions.NETCore.Setup" Version="4.0.3.35" />
   </ItemGroup>
 
   <ItemGroup>
