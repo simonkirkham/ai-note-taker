@@ -1,11 +1,5 @@
 namespace Specs.Harness;
 
-// ---------------------------------------------------------------------------
-// BDD harness stubs — Pip will replace these with real implementations.
-// Every method throws NotImplementedException so specs fail for the right
-// reason (behaviour not yet wired), not a build error.
-// ---------------------------------------------------------------------------
-
 /// <summary>
 /// Marker interface for domain events carried through the harness.
 /// </summary>
@@ -42,10 +36,6 @@ public static class Spec
         where TAggregate : IAggregate, new()
         => new WhenBuilder<TAggregate>(priorEvents);
 }
-
-// ---------------------------------------------------------------------------
-// Fluent pipeline stages — stubs only
-// ---------------------------------------------------------------------------
 
 public sealed class WhenBuilder<TAggregate>
     where TAggregate : IAggregate, new()

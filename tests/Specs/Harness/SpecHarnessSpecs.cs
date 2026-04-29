@@ -1,5 +1,3 @@
-using Specs.Harness;
-
 namespace Specs.Harness;
 
 // ---------------------------------------------------------------------------
@@ -35,12 +33,6 @@ public sealed class TestAggregate : IAggregate
                 nameof(command), "Unrecognised command.")
         };
 }
-
-// ---------------------------------------------------------------------------
-// BDD specs — two scenarios proving the harness contract.
-// Both will FAIL with NotImplementedException until Pip implements the
-// real harness. That is the expected (correct) failure mode.
-// ---------------------------------------------------------------------------
 
 /// <summary>
 /// Specs for the BDD spec harness itself.

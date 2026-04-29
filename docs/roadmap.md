@@ -4,20 +4,15 @@ Sequence is learning-optimised: event sourcing plumbing lands in Phase 1 so ever
 
 ## Phase 0 — Setup
 
+- CDK project skeleton
+- Minimal ASP.NET API in Lambda, hello world endpoint
+- React + TS app, deployed
+- DynamoDB table provisioned
+- Deployment pipeline (GitHub Actions or similar)
+- Local dev loop documented in README
+- BDD spec harness wired up; first Given/When/Then test runs green
+
 **Goal:** every tool is wired up, hello world deployed end-to-end, first spec passes.
-
-### Slice 0-A — Project scaffold and BDD harness
-
-- .NET solution with all projects wired together (`Api`, `Domain`, `EventStore`, `Infrastructure`, `Specs`)
-- BDD spec harness (`Given/When/Then`) with first spec passing green
-- CDK provisions DynamoDB table + Lambda + API Gateway
-- `GET /health` → 200 as the deployment smoke test
-- Local dev loop documented in `CLAUDE.md` and README
-
-### Slice 0-B — CI/CD pipeline
-
-- GitHub Actions pipeline: build, test, synth on every PR
-- Deploy to AWS on merge to main
 
 ## Phase 1 — Walking skeleton with event sourcing
 

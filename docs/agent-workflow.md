@@ -122,15 +122,25 @@ The pipeline is gated: no role begins until the previous role's output is review
 - No obvious security issues at system boundaries
 - No unnecessary complexity
 
-**Output:** Inline PR comments where relevant. A single summary verdict as a PR comment: `Approved`, `Approved with minor comments`, or `Changes requested`.
+**Output:** Inline PR comments where relevant. A single summary verdict as a PR comment: `Approved`, `Approved with minor comments`, or `Changes requested`. A structured review findings block (see below) appended to `docs/learnings/<slice-name>.md`, creating the file if it does not yet exist.
+
+**Review findings block format** (append to the learnings file under a `## Hawk review findings` heading):
+```markdown
+## Hawk review findings
+
+| Finding | File | How to prevent |
+|---|---|---|
+| <what was wrong> | <file:line> | <which role should catch this, and how> |
+```
 
 **Rules:**
 - Do not review a PR whose CI pipeline has not passed — send it back to Pip
 - Do not comment on style issues already enforced by `dotnet format` — trust the tooling
 - If changes are requested, list them clearly and return to Pip — do not implement them yourself
 - Flag any scope change to a human rather than approving or rejecting it yourself
+- Every finding in the review must appear in the findings block — no finding goes unrecorded
 
-**Done when:** Verdict is posted and Pip is unblocked.
+**Done when:** Verdict is posted, Pip is unblocked, and the findings block is written to the learnings file.
 
 ---
 
@@ -138,7 +148,7 @@ The pipeline is gated: no role begins until the previous role's output is review
 
 **Remit:** After each slice lands on main, review the full conversation history for the slice and produce a concise learnings doc covering what was inefficient or went wrong in the workflow, and concrete suggestions for improving the process. Does not touch code, specs, or the event model.
 
-**Inputs:** The full prompt/conversation history for the slice, from the initial human brief through to Pip's merge.
+**Inputs:** The full prompt/conversation history for the slice, from the initial human brief through to Pip's merge. The `docs/learnings/<slice-name>.md` file started by Hawk (Hawk writes the review findings block; Scribe adds the workflow observations above it).
 
 **Skills to load:**
 - `agent-skills:documentation-and-adrs` — for structured, decision-quality writing
