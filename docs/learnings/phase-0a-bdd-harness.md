@@ -16,6 +16,10 @@
 
 - **Pip's definition of done should include removing scaffolding comments.** Pip's rules should include a pre-PR step: search for and remove any comments that describe the code as stubs, placeholders, or pending implementation, since these become false once the real code lands.
 
+- **`gh` CLI not available in this environment.** Pip's workflow calls for merging via `gh pr merge`, but the `gh` CLI is not installed. Pip had to hand the merge back to the human, breaking the automated hand-off.
+
+- **Verify `gh` is installed as part of environment setup.** Add `gh` CLI installation to the Phase 0 setup checklist. Pip should check for it early and flag if missing rather than failing at the merge step.
+
 ## Hawk review findings
 
 | Finding | File | How to prevent |
