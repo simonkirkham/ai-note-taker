@@ -34,27 +34,27 @@ Status key: `Done` · `In Progress` · `Not Started`
 ---
 
 ## Slice 0-C — BDD acceptance spec for deployed Lambda
-**Status:** Not Started
+**Status:** Done
 
 **Objective:** Prove the deployed Lambda works via a BDD spec that calls the real API Gateway endpoint. This is the quality gate that the pipeline will enforce after every deploy.
 
 **Acceptance criteria:**
-- [ ] A BDD acceptance spec exists: `Given` the Lambda is deployed, `When` `GET /health` is called against the live API Gateway URL, `Then` the response is `200 OK` with `{ "status": "ok" }`
-- [ ] The spec reads the API Gateway URL from an environment variable (`API_BASE_URL`); it is skipped (not failed) when the variable is absent so the suite stays green locally without AWS access
-- [ ] `dotnet test` with `API_BASE_URL` set to the deployed URL passes green
+- [x] A BDD acceptance spec exists: `Given` the Lambda is deployed, `When` `GET /health` is called against the live API Gateway URL, `Then` the response is `200 OK` with `{ "status": "ok" }`
+- [x] The spec reads the API Gateway URL from an environment variable (`API_BASE_URL`); it is skipped (not failed) when the variable is absent so the suite stays green locally without AWS access
+- [x] `dotnet test` with `API_BASE_URL` set to the deployed URL passes green
 
 ---
 
 ## Slice 0-D — CI/CD pipeline
-**Status:** Not Started
+**Status:** Done
 
 **Objective:** Automate build, test, deploy, and acceptance verification on every PR and merge to main.
 
 **Acceptance criteria:**
-- [ ] PR workflow runs: `dotnet build` (0 warnings), `dotnet test` (unit/BDD specs), `cdk synth` — all must pass before merge is allowed
-- [ ] Merge-to-main workflow runs: `dotnet publish`, `cdk deploy`, then `dotnet test` with `API_BASE_URL` set to the live endpoint (acceptance spec must pass)
-- [ ] A failed `dotnet test` or failed acceptance spec blocks the merge / rolls back
-- [ ] Pipeline uses stored AWS credentials (GitHub Actions secrets)
+- [x] PR workflow runs: `dotnet build` (0 warnings), `dotnet test` (unit/BDD specs), `cdk synth` — all must pass before merge is allowed
+- [x] Merge-to-main workflow runs: `dotnet publish`, `cdk deploy`, then `dotnet test` with `API_BASE_URL` set to the live endpoint (acceptance spec must pass)
+- [x] A failed `dotnet test` or failed acceptance spec blocks the merge / rolls back
+- [x] Pipeline uses stored AWS credentials (GitHub Actions secrets)
 
 ---
 
