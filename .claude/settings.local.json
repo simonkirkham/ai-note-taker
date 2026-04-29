@@ -1,0 +1,37 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(dotnet --version)",
+      "Bash(dotnet --list-sdks)",
+      "Bash(dotnet new xunit *)",
+      "Bash(dotnet build *)",
+      "Bash(dotnet test *)",
+      "Bash(git checkout *)",
+      "Bash(git add *)",
+      "Bash(git commit *)",
+      "Bash(git push *)",
+      "Bash(gh auth *)",
+      "Bash(git remote *)",
+      "Bash(dotnet list *)",
+      "Bash(dotnet restore *)",
+      "Bash(git *)",
+      "Bash(gh pr *)",
+      "Bash(apt list *)",
+      "Read(//usr/bin/**)",
+      "Read(//usr/**)",
+      "Read(//home/simon/.local/bin/**)",
+      "Bash(command -v git)",
+      "Bash(curl --version)",
+      "Read(//home/simon/.config/**)",
+      "Read(//root/.config/**)",
+      "Read(//home/simon/.config/gh/**)",
+      "Bash(GH_CONFIG_DIR=\"/mnt/c/Users/simon/AppData/Roaming/GitHub CLI\" /mnt/c/Program Files/GitHub CLI/gh.exe auth *)",
+      "Bash(GH_CONFIG_DIR=\"/mnt/c/Users/simon/AppData/Roaming/GitHub CLI\" /mnt/c/Program Files/GitHub CLI/gh.exe pr *)",
+      "Bash(aws --version)",
+      "Bash(cdk --version)",
+      "Bash(xargs cat *)",
+      "Bash(xargs -I{} sh -c 'dotnet-dump analyze {} 2>/dev/null || true')",
+      "Read(//home/simon/.nuget/packages/amazon.cdk.lib/**)"
+    ]
+  }
+}
