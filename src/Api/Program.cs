@@ -5,18 +5,19 @@ using Domain.Notes;
 using EventStore;
 using Microsoft.AspNetCore.Mvc;
 
+var tableName = Environment.GetEnvironmentVariable("EVENTS_TABLE_NAME")
+    ?? throw new InvalidOperationException("EVENTS_TABLE_NAME is not set.");
+
 var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddAWSService<IAmazonDynamoDB>();
 builder.Services.AddSingleton<IEventStore>(sp =>
-{
-    var dynamo = sp.GetRequiredService<IAmazonDynamoDB>();
-    var tableName = Environment.GetEnvironmentVariable("EVENTS_TABLE_NAME")
-        ?? throw new InvalidOperationException("EVENTS_TABLE_NAME is not set.");
-    return new DynamoDbEventStore(dynamo, tableName);
-});
+    new DynamoDbEventStore(sp.GetRequiredService<IAmazonDynamoDB>(), tableName));
 builder.Services.AddAWSLambdaHosting(LambdaEventSource.HttpApi);
 
 var app = builder.Build();
+
+// Eagerly resolve IEventStore to fail fast on misconfiguration
+app.Services.GetRequiredService<IEventStore>();
 
 app.MapGet("/health", () => Results.Ok(new { status = "ok" }));
 app.MapGet("/secret", () => Results.Ok(new { status = "shhhh...." }));
@@ -44,7 +45,7 @@ app.MapPost("/notes", async ([FromBody] CreateNoteRequest? req, IEventStore stor
         return Results.Conflict();
     }
 
-    var envelopes = newEvents.Select((e, i) => new EventEnvelope(
+    var envelopes = newEvents.Select(e => new EventEnvelope(
         StreamId: streamId,
         SequenceNumber: 0,
         EventType: e.GetType().Name,
