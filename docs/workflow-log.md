@@ -48,3 +48,19 @@ Add an entry at the end of each phase. Keep them short and honest.
   - Main pipeline had a transient Lambda 500 on first run after deploy; required manual re-run to confirm it was not a code regression
 - **Change for next phase:**
   - The transient Lambda cold-start failure on deploy is a known pattern — consider adding a retry or warm-up step to the acceptance spec run in the deploy workflow
+
+---
+
+## Phase 1-B (part 2) — DynamoDbEventStore + CDK table
+
+- **Workflow style used:** Scout → Pip → Hawk → Scribe (Breaker skipped — interface already specced)
+- **Skills exercised:** `dynamodb-event-append` (OCC TransactWrite pattern), `cdk-stack-update` (table + IAM + env var)
+- **What worked:**
+  - Autonomous pipeline ran end-to-end without human input — CI monitoring, Hawk review, Pip fixes, and merge all automated
+  - Hawk correctly identified the pagination gap before it could silently corrupt aggregate rebuilds in 1-D
+  - CDK `RemovalPolicy.RETAIN` applied correctly from the start
+- **What didn't:**
+  - `cdk synth` can't run locally — CDK gate is CI-only, lengthening the feedback loop for infra changes
+  - Two CDK compile errors (Attribute ambiguity, Tags.Of instance reference) added a round-trip that a local synth would have caught
+- **Change for next phase:**
+  - Pip should check CDK local availability at the start of any infra slice and note if CI is the only synth gate
