@@ -22,16 +22,18 @@ The pipeline is gated: no role begins until the previous role's output is review
 **Outputs:**
 - Updated `docs/event-model.md` (new commands, events, projections if any)
 - Updated `docs/event-schemas.md` if new event shapes are introduced
+- `docs/phases/phase-N.md` — phase breakdown file with one section per slice, each containing: objective, status (`Not Started`), and specific acceptance criteria. Follow the format established in `docs/phases/phase-0.md`
 - A feature brief covering: objective, acceptance criteria, commands/events affected, projections affected, open questions
-- Optionally a spec file in `docs/specs/` for larger slices
 
 **Rules:**
 - Do not write code or test files
 - Update the event model before writing any acceptance criteria — the model is the design artefact
+- The phase breakdown file is mandatory, not optional — it is the human's primary review artefact at the Scout hand-off
+- Slice the phase small: each slice should be completable in one Pip session and independently deployable where possible
 - Acceptance criteria must be specific enough for Breaker to turn directly into a BDD spec
 - Flag any dependencies or risks for downstream roles
 
-**Hand-off:** Post the feature brief and confirm the event model is updated. Human reviews before Breaker begins.
+**Hand-off:** Post the path to the phase breakdown file and confirm the event model is updated. Human reviews the slice breakdown and acceptance criteria before Breaker begins. Scout must not proceed to Breaker until the human explicitly approves the breakdown.
 
 ---
 
