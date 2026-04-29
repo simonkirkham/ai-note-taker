@@ -1,62 +1,60 @@
 # Phase 0 — Setup
 
-**Goal:** every tool is wired up, hello world deployed end-to-end, first spec passes.
+**Goal:** one API, fully built, tested with a BDD acceptance spec, and deployed through a pipeline to AWS. Nothing expands until this is solid.
 
 Status key: `Done` · `In Progress` · `Not Started`
 
 ---
 
 ## Slice 0-A — BDD harness and solution scaffold
-**Status:** In Progress (PR #1 open)
+**Status:** Done
 
 **Objective:** Establish the .NET solution structure and prove the BDD spec harness works end-to-end before any domain logic is written.
 
 **Acceptance criteria:**
-- [ ] `dotnet build` succeeds across all 5 projects (`Api`, `Domain`, `EventStore`, `Infrastructure`, `Specs`) with 0 errors and 0 warnings
-- [ ] BDD harness supports `Given(priorEvents).When(command).Then(expectedEvents)` and `.ThenThrows<TException>()`
-- [ ] Two harness specs pass green using a synthetic inline `TestAggregate`
-- [ ] Solution file at root wires all projects together
+- [x] `dotnet build` succeeds across all 5 projects (`Api`, `Domain`, `EventStore`, `Infrastructure`, `Specs`) with 0 errors and 0 warnings
+- [x] BDD harness supports `Given(priorEvents).When(command).Then(expectedEvents)` and `.ThenThrows<TException>()`
+- [x] Two harness specs pass green using a synthetic inline `TestAggregate`
+- [x] Solution file at root wires all projects together
 
 ---
 
 ## Slice 0-B — Lambda health endpoint and CDK stack
-**Status:** Not Started
+**Status:** Done
 
 **Objective:** Provision the core AWS infrastructure and deploy a minimal Lambda with a health endpoint reachable via API Gateway.
 
 **Acceptance criteria:**
-- [ ] `cdk synth` exits 0 with a valid CloudFormation template
-- [ ] Template includes: DynamoDB table (`notetaker-events`, PK `PK` String, SK `SK` String, `PAY_PER_REQUEST`), Lambda (net8.0), API Gateway HTTP API forwarding all routes to the Lambda
-- [ ] `GET /health` returns `200 OK` with body `{ "status": "ok" }` when run locally via `dotnet run`
-- [ ] `cdk deploy` succeeds and `GET <api-gateway-url>/health` returns `200 OK`
-- [ ] No auth, no VPC, no custom domain
+- [x] `GET /health` returns `200 OK` with body `{ "status": "ok" }` when run locally via `dotnet run`
+- [x] `cdk synth` exits 0 with a valid CloudFormation template
+- [x] Template includes: Lambda (net8.0) and API Gateway HTTP API forwarding all routes to the Lambda
+- [x] `cdk deploy` succeeds and `GET <api-gateway-url>/health` returns `200 OK`
+- [x] No auth, no VPC, no custom domain
 
 ---
 
-## Slice 0-C — CI/CD pipeline
+## Slice 0-C — BDD acceptance spec for deployed Lambda
 **Status:** Not Started
 
-**Objective:** Automate build, test, and deployment on every PR and merge.
+**Objective:** Prove the deployed Lambda works via a BDD spec that calls the real API Gateway endpoint. This is the quality gate that the pipeline will enforce after every deploy.
 
 **Acceptance criteria:**
-- [ ] GitHub Actions workflow runs on every PR: `dotnet build`, `dotnet test`, `cdk synth` — all must pass before merge is allowed
-- [ ] GitHub Actions workflow runs on merge to `main`: deploys to AWS via `cdk deploy`
-- [ ] A failed `dotnet test` blocks the PR merge
+- [ ] A BDD acceptance spec exists: `Given` the Lambda is deployed, `When` `GET /health` is called against the live API Gateway URL, `Then` the response is `200 OK` with `{ "status": "ok" }`
+- [ ] The spec reads the API Gateway URL from an environment variable (`API_BASE_URL`); it is skipped (not failed) when the variable is absent so the suite stays green locally without AWS access
+- [ ] `dotnet test` with `API_BASE_URL` set to the deployed URL passes green
+
+---
+
+## Slice 0-D — CI/CD pipeline
+**Status:** Not Started
+
+**Objective:** Automate build, test, deploy, and acceptance verification on every PR and merge to main.
+
+**Acceptance criteria:**
+- [ ] PR workflow runs: `dotnet build` (0 warnings), `dotnet test` (unit/BDD specs), `cdk synth` — all must pass before merge is allowed
+- [ ] Merge-to-main workflow runs: `dotnet publish`, `cdk deploy`, then `dotnet test` with `API_BASE_URL` set to the live endpoint (acceptance spec must pass)
+- [ ] A failed `dotnet test` or failed acceptance spec blocks the merge / rolls back
 - [ ] Pipeline uses stored AWS credentials (GitHub Actions secrets)
-
----
-
-## Slice 0-D — React app scaffold and CDK hosting
-**Status:** Not Started
-
-**Objective:** Scaffold the frontend app and serve it from AWS.
-
-**Acceptance criteria:**
-- [ ] Vite + React + TypeScript app in `web/` with `npm run dev` working locally
-- [ ] `npm run build` produces a `dist/` folder
-- [ ] CDK stack updated to provision S3 bucket + CloudFront distribution serving the built app
-- [ ] Deployed app is reachable at the CloudFront URL
-- [ ] Frontend displays a placeholder page (e.g. "AI Note Taker") — no domain logic yet
 
 ---
 
@@ -66,6 +64,13 @@ Status key: `Done` · `In Progress` · `Not Started`
 **Objective:** Fill in the "How to run" section so any developer (or agent) can get up and running from scratch.
 
 **Acceptance criteria:**
-- [ ] `CLAUDE.md` "How to run" section filled in with: `dotnet build`, `dotnet test`, `dotnet run` (Api), `cdk synth`, `cdk deploy`, `npm run dev` (web)
-- [ ] README covers: prerequisites (Node, .NET 8, AWS CLI, CDK CLI, `gh`), clone-to-running steps, environment variables required
-- [ ] Prerequisites include `cdk bootstrap` note for first-time AWS account setup
+- [ ] `CLAUDE.md` "How to run" section filled in with: `dotnet build`, `dotnet test`, `dotnet run` (Api), `cdk synth`, `cdk deploy`
+- [ ] README covers: prerequisites (.NET 8, AWS CLI, CDK CLI, `gh`), clone-to-running steps, environment variables required
+- [ ] README includes `cdk bootstrap` note for first-time AWS account setup
+
+---
+
+## Deferred — React app scaffold and CDK hosting
+**Status:** Deferred (starts Phase 1 or later)
+
+Frontend work starts only once the API is deployed and the pipeline is green. No frontend scaffolding until 0-A through 0-E are complete.

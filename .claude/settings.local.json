@@ -29,7 +29,9 @@
       "Bash(GH_CONFIG_DIR=\"/mnt/c/Users/simon/AppData/Roaming/GitHub CLI\" /mnt/c/Program Files/GitHub CLI/gh.exe pr *)",
       "Bash(aws --version)",
       "Bash(cdk --version)",
-      "Bash(xargs cat *)"
+      "Bash(xargs cat *)",
+      "Bash(xargs -I{} sh -c 'dotnet-dump analyze {} 2>/dev/null || true')",
+      "Read(//home/simon/.nuget/packages/amazon.cdk.lib/**)"
     ]
   }
 }
