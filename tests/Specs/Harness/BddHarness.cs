@@ -76,14 +76,35 @@ public sealed class ThenBuilder<TAggregate>
     /// in response to the command.
     /// </summary>
     public void Then(params IDomainEvent[] expectedEvents)
-        => throw new NotImplementedException(
-            "BDD harness not yet implemented — Pip's job.");
+    {
+        var aggregate = new TAggregate();
+        foreach (var e in _priorEvents)
+            aggregate.Apply(e);
+
+        IReadOnlyList<IDomainEvent> actual;
+        try
+        {
+            actual = aggregate.Handle(_command);
+        }
+        catch (Exception ex)
+        {
+            throw new Xunit.Sdk.XunitException(
+                $"Expected events but aggregate threw {ex.GetType().Name}: {ex.Message}");
+        }
+
+        Assert.Equal(expectedEvents, actual);
+    }
 
     /// <summary>
     /// Assert that the aggregate throws <typeparamref name="TException"/>
     /// in response to the command.
     /// </summary>
     public void ThenThrows<TException>() where TException : Exception
-        => throw new NotImplementedException(
-            "BDD harness not yet implemented — Pip's job.");
+    {
+        var aggregate = new TAggregate();
+        foreach (var e in _priorEvents)
+            aggregate.Apply(e);
+
+        Assert.Throws<TException>(() => aggregate.Handle(_command));
+    }
 }
