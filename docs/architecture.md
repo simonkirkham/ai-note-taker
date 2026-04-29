@@ -36,6 +36,46 @@ Detailed rationale for each decision lives in `docs/adr/`. This document is the 
 - Plan mode for design review; `/review` or a subagent for code review gating.
 - Reflection captured in [docs/workflow-log.md](workflow-log.md) at the end of each phase.
 
+## Diagram
+
+```mermaid
+flowchart LR
+    User([User])
+
+    subgraph AWS [AWS]
+        CDN["S3 + CloudFront\nReact SPA"]
+        APIGW["API Gateway"]
+
+        subgraph Lambda ["Lambda — ASP.NET Minimal API"]
+            direction TB
+            WR["Write path\nload stream · Decide · append events"]
+            RD["Read path\nread projection"]
+        end
+
+        subgraph DB ["DynamoDB — single table"]
+            direction TB
+            ES[("Event streams\nnote/id · action/id")]
+            RM[("Projections\nNoteCardList · TodoList · …")]
+        end
+    end
+
+    User -- "load app" --> CDN
+    User -- "POST command" --> APIGW
+    User -- "GET query" --> APIGW
+
+    APIGW --> WR
+    APIGW --> RD
+
+    WR -- "1 · load stream" --> ES
+    WR -- "2 · append events" --> ES
+    WR -- "3 · update projection" --> RM
+    RD -- "read" --> RM
+```
+
+**Write path detail:** the Lambda command handler loads the full event stream for the aggregate, folds it into current state, runs `Decide` to validate the command and produce new events, then appends those events with optimistic concurrency. The projection update happens in the same request.
+
+**Infrastructure as code:** all AWS resources (API Gateway, Lambda, DynamoDB table, CloudFront distribution, S3 bucket) are provisioned by the CDK app in `src/Infrastructure/`.
+
 ## Cold start note
 
 .NET on Lambda has a 1–3 second cold start by default. Mitigations (SnapStart, Native AOT) are deliberately deferred until cold start becomes a real annoyance.
