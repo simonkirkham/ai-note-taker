@@ -55,6 +55,7 @@ The pipeline is gated: no role begins until the previous role's output is review
 - Follow the BDD spec pattern: `Given(priorEvents).When(command).Then(expectedEvents)` or `.ThenError(...)`
 - One spec class per command; one `[Fact]` per distinct scenario (happy path + each guard/error case)
 - Name scenarios in plain language: `CreatesNoteWhenItDoesNotExist`, `RejectsCreateWhenNoteAlreadyExists`
+- For interface contracts, enumerate *all* observable behaviours — including batch inputs, empty/missing cases, and boundary conditions. Do not spec only the happy path.
 - Do not stub the implementation to make tests pass — leave the aggregate handler absent or throwing `NotImplementedException`
 - Do not modify any existing spec files
 - Confirm all new specs fail before handing off
