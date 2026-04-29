@@ -57,6 +57,7 @@ public record NoteRenamed(NoteId NoteId, string NewTitle)      : NoteEvent;
 public record ContentEdited(NoteId NoteId, string Content)     : NoteEvent;  // full snapshot
 public record NoteTagged(NoteId NoteId, string Tag)            : NoteEvent;
 public record NoteUntagged(NoteId NoteId, string Tag)          : NoteEvent;
+public record NoteDateSet(NoteId NoteId, DateOnly Date)        : NoteEvent;
 public record NoteDeleted(NoteId NoteId)                       : NoteEvent;
 ```
 
@@ -84,6 +85,13 @@ public record NoteDeleted(NoteId NoteId)                       : NoteEvent;
 ```json
 { "noteId": "7f3a9c2b-1e4d-4a8f-9c0d-2b1f3a4e5c6d", "tag": "1:1s" }
 ```
+
+`NoteDateSet`:
+```json
+{ "noteId": "7f3a9c2b-1e4d-4a8f-9c0d-2b1f3a4e5c6d", "date": "2026-04-29" }
+```
+
+*`date` serialises as an ISO 8601 date string (`yyyy-MM-dd`). No time component, no timezone — `DateOnly` maps directly.*
 
 ---
 

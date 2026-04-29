@@ -21,6 +21,7 @@ Holds title, captured content, tags, and the open/closed state. Action items are
 | `Title` | User-entered name for the note |
 | `Content` | Current text of the captured-notes area (latest snapshot wins) |
 | `Tags` | Set of strings (free text, space-tokenised on input — one tag per token) |
+| `Date` | Optional user-specified date for the note (e.g. the meeting date); `null` until set |
 | `Status` | `Active` / `Deleted` (soft delete) |
 
 ### ActionItem
@@ -46,6 +47,7 @@ A discrete to-do extracted within a note. Owns its own completion lifecycle.
 | `EditContent(noteId, content, editedAt)` | Note exists, not deleted, content differs from current | `ContentEdited` |
 | `TagNote(noteId, tag, taggedAt)` | Note exists, tag not already present (one command per token) | `NoteTagged` |
 | `UntagNote(noteId, tag, untaggedAt)` | Note exists, tag present | `NoteUntagged` |
+| `SetNoteDate(noteId, date, setAt)` | Note exists, not deleted | `NoteDateSet` |
 | `DeleteNote(noteId, deletedAt)` | Note exists, status ≠ Deleted | `NoteDeleted` |
 
 ### ActionItem
@@ -71,6 +73,7 @@ A discrete to-do extracted within a note. Owns its own completion lifecycle.
 - `ContentEdited { NoteId, EditedAt, Content }` — full snapshot of the captured-notes area at save time
 - `NoteTagged { NoteId, TaggedAt, Tag }`
 - `NoteUntagged { NoteId, UntaggedAt, Tag }`
+- `NoteDateSet { NoteId, Date }` — user-specified `DateOnly`; can be set or changed at any time while the note is active
 - `NoteDeleted { NoteId, DeletedAt }` — soft delete; event remains in the stream, projections filter it out
 
 ### ActionItem
@@ -184,6 +187,20 @@ Event: ActionItemCompleted
   ↓ projections updated: NoteActions, TodoList, NoteCardList
 View: TodoList (item moves to completed section / disappears from open list)
 ```
+
+### Flow H — Set or change the note date
+
+```
+View: NoteEdit
+  ↓ user picks a date from the date picker (or clears it — handled client-side, no event for null)
+Command: SetNoteDate(noteId, date, setAt)
+  ↓
+Event: NoteDateSet  (DateOnly — the user-chosen date, not the event timestamp)
+  ↓ projections updated: NoteDetail, NoteCardList
+View: NoteEdit (date field reflects the chosen date)
+```
+
+*The date picker emits `SetNoteDate` on every change (no debounce needed — picking a date is a single discrete action, not continuous typing).*
 
 ### Flow G — Delete a note (soft delete)
 
