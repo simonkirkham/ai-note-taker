@@ -10,7 +10,7 @@ public sealed class NoteTitleListSpec
     private static EventEnvelope Envelope(string streamId, long seq, string type, string payload) =>
         new(streamId, seq, type, 1, DateTimeOffset.UtcNow, payload, new EventMetadata(Guid.NewGuid(), null, null, null));
 
-    [Fact(Skip = "Pip: implement NoteTitleListProjection")]
+    [Fact]
     public void NoteCreated_adds_item_with_empty_title()
     {
         var noteId = Guid.NewGuid();
@@ -25,7 +25,7 @@ public sealed class NoteTitleListSpec
         Assert.Equal(string.Empty, view.Items[0].Title);
     }
 
-    [Fact(Skip = "Pip: implement NoteTitleListProjection")]
+    [Fact]
     public void NoteRenamed_updates_title()
     {
         var noteId = Guid.NewGuid();
@@ -41,7 +41,7 @@ public sealed class NoteTitleListSpec
         Assert.Equal("My Title", view.Items[0].Title);
     }
 
-    [Fact(Skip = "Pip: implement NoteTitleListProjection")]
+    [Fact]
     public void NoteRenamed_noop_leaves_single_item()
     {
         var noteId = Guid.NewGuid();
