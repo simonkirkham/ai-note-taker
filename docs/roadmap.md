@@ -2,13 +2,13 @@
 
 Sequence is learning-optimised: event sourcing plumbing lands in Phase 1 so every subsequent feature is an ES learning moment, not a feature grind.
 
-## Phase 0 — Setup *(Done)*
+## Phase 0 — Setup _(Done)_
 
 **Goal:** every tool is wired up, hello world deployed end-to-end, first spec passes.
 
 Slices and acceptance criteria: [docs/phases/phase-0.md](phases/phase-0.md)
 
-## Phase 1 — Walking skeleton with event sourcing *(Done)*
+## Phase 1 — Walking skeleton with event sourcing _(Done)_
 
 - One aggregate (`Note`), two events (`NoteCreated`, `NoteRenamed`)
 - Append-with-optimistic-concurrency on DynamoDB (`TransactWriteItems` + META row)
@@ -18,6 +18,17 @@ Slices and acceptance criteria: [docs/phases/phase-0.md](phases/phase-0.md)
 **Goal:** event sourcing plumbing works end-to-end and is covered by event-model-driven specs.
 
 Slices and acceptance criteria: [docs/phases/phase-1.md](phases/phase-1.md)
+
+## Phase 1.5 - Testing Foundation — Layers 2–5 _(Next)_
+
+Implement the remaining test layers from [ADR 0008](adr/0008-testing-strategy.md). Layer 1 (domain BDD specs) is already in place; this phase adds the other four.
+
+- **Layer 2** — `tests/EventStoreIntegration/`: spin up DynamoDB Local via Testcontainers; cover append + read, OCC conflict, empty stream, multi-event batch, schema correctness
+- **Layer 3** — `tests/ApiIntegration/`: in-process `WebApplicationFactory` tests; cover all endpoints, status codes, response shapes, error-to-status mapping
+- **Layer 4** — `tests/Acceptance/`: harden existing suite (self-contained arrange per fact, remove cross-test ordering dependencies)
+- **Layer 5** — `tests/InfraAssertions/`: CDK template assertions; cover Lambda env vars, IAM grants, DynamoDB deletion policies, CloudFront SPA routing
+
+**Goal:** every PR is fully validated without an AWS account; the acceptance suite becomes a thin post-deploy smoke check.
 
 ## Phase 2 — Richer note lifecycle
 

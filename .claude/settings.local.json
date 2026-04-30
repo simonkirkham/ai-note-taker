@@ -31,7 +31,32 @@
       "Bash(cdk --version)",
       "Bash(xargs cat *)",
       "Bash(xargs -I{} sh -c 'dotnet-dump analyze {} 2>/dev/null || true')",
-      "Read(//home/simon/.nuget/packages/amazon.cdk.lib/**)"
+      "Read(//home/simon/.nuget/packages/amazon.cdk.lib/**)",
+      "Bash(gh run *)",
+      "Bash(chmod +x *)",
+      "Bash(.githooks/pre-commit)",
+      "Bash(gh api *)",
+      "Bash(python3 -c ' *)",
+      "Bash(curl -s -X POST -H 'Authorization: Bearer __CMDSUB_OUTPUT__' -H 'Accept: application/vnd.github.v3+json' -H 'Content-Type: application/json' --data @/tmp/review_payload.json https://api.github.com/repos/simonkirkham/ai-note-taker/pulls/4/reviews)",
+      "Bash(python3 -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\(d.get\\('id','ERROR'\\), d.get\\('html_url', d.get\\('message','?'\\)\\)\\)\")",
+      "Bash(dotnet clean *)",
+      "Bash(grep -v \"^\\\\-\\\\-$\")",
+      "Bash(dotnet add *)",
+      "Bash(dotnet publish *)",
+      "Bash(cdk synth *)",
+      "Bash(npx cdk *)",
+      "Read(//c/Users/simon/.npm/**)",
+      "Read(//c/Users/simon/**)",
+      "PowerShell(cdk synth *)",
+      "PowerShell(Get-ChildItem *)",
+      "Bash(npm create *)",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "Bash(npm install *)",
+      "PowerShell($env:PATH = \"C:\\\\Program Files\\\\nodejs;\" + $env:PATH; cd C:\\\\code\\\\ai-note-taker\\\\web; & \"C:\\\\Program Files\\\\nodejs\\\\npm.cmd\" install 2>&1 | Select-Object -Last 10)",
+      "Bash(tasklist *)",
+      "Bash(aws logs describe-log-groups *)",
+      "Bash(xargs head *)",
+      "Bash(python3 -c \"import json,sys; t=json.load\\(sys.stdin\\); print\\(json.dumps\\({k:v for k,v in t.get\\('Outputs',{}\\).items\\(\\)}, indent=2\\)\\)\")"
     ]
   }
 }
