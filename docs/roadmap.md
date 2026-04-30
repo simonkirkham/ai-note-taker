@@ -2,20 +2,22 @@
 
 Sequence is learning-optimised: event sourcing plumbing lands in Phase 1 so every subsequent feature is an ES learning moment, not a feature grind.
 
-## Phase 0 — Setup
+## Phase 0 — Setup *(Done)*
 
 **Goal:** every tool is wired up, hello world deployed end-to-end, first spec passes.
 
 Slices and acceptance criteria: [docs/phases/phase-0.md](phases/phase-0.md)
 
-## Phase 1 — Walking skeleton with event sourcing
+## Phase 1 — Walking skeleton with event sourcing *(In Progress — 1-E remaining)*
 
-- One aggregate (`Note`), two events (`NoteCreated`, `ContentAppended`)
-- Append-with-optimistic-concurrency on DynamoDB
-- One read projection (flat list of notes)
-- Frontend creates and lists notes
+- One aggregate (`Note`), two events (`NoteCreated`, `NoteRenamed`)
+- Append-with-optimistic-concurrency on DynamoDB (`TransactWriteItems` + META row)
+- One read projection (`NoteTitleList`) in a dedicated DynamoDB table
+- Frontend creates and lists notes (1-E)
 
 **Goal:** event sourcing plumbing works end-to-end and is covered by event-model-driven specs.
+
+Slices and acceptance criteria: [docs/phases/phase-1.md](phases/phase-1.md)
 
 ## Phase 2 — Richer note lifecycle
 
