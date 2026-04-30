@@ -16,7 +16,7 @@ if (builder.Environment.IsDevelopment())
 builder.Services.AddAWSService<IAmazonDynamoDB>();
 builder.Services.AddSingleton<IEventStore>(sp =>
     new DynamoDbEventStore(sp.GetRequiredService<IAmazonDynamoDB>(), tableName));
-builder.Services.AddSingleton(sp =>
+builder.Services.AddSingleton<INoteTitleListStore>(sp =>
     new NoteTitleListStore(sp.GetRequiredService<IAmazonDynamoDB>(), projTableName));
 builder.Services.AddSingleton<NoteCommandHandler>();
 builder.Services.AddAWSLambdaHosting(LambdaEventSource.HttpApi);
@@ -46,7 +46,7 @@ app.MapPatch("/notes/{noteId}/title", async (Guid noteId, [FromBody] RenameNoteR
     return Results.Ok();
 });
 
-app.MapGet("/notes", async (NoteTitleListStore projStore) =>
+app.MapGet("/notes", async (INoteTitleListStore projStore) =>
 {
     var view = await projStore.QueryAllAsync();
     return Results.Ok(new { items = view.Items.Select(i => new { noteId = i.NoteId.Value, title = i.Title }) });
@@ -56,3 +56,5 @@ app.Run();
 
 record CreateNoteRequest(Guid? NoteId);
 record RenameNoteRequest(string Title);
+
+public partial class Program { }

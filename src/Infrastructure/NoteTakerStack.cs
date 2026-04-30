@@ -7,7 +7,7 @@ using Constructs;
 
 public class NoteTakerStack : Stack
 {
-    internal NoteTakerStack(Construct scope, string id, IStackProps props) : base(scope, id, props)
+    public NoteTakerStack(Construct scope, string id, IStackProps props) : base(scope, id, props)
     {
         // ── Event store ──────────────────────────────────────────────────
         var eventsTable = new Table(this, "EventsTable", new TableProps
@@ -29,11 +29,13 @@ public class NoteTakerStack : Stack
         });
 
         // ── API Lambda ───────────────────────────────────────────────────
+        var lambdaAssetPath = (string?)this.Node.TryGetContext("lambdaAssetPath")
+            ?? "src/Api/bin/Release/net8.0/publish";
         var apiFunction = new Amazon.CDK.AWS.Lambda.Function(this, "ApiFunction", new Amazon.CDK.AWS.Lambda.FunctionProps
         {
             Runtime = Amazon.CDK.AWS.Lambda.Runtime.DOTNET_8,
             Handler = "Api",
-            Code = Amazon.CDK.AWS.Lambda.Code.FromAsset("src/Api/bin/Release/net8.0/publish"),
+            Code = Amazon.CDK.AWS.Lambda.Code.FromAsset(lambdaAssetPath),
             Environment = new Dictionary<string, string>
             {
                 ["EVENTS_TABLE_NAME"] = eventsTable.TableName,

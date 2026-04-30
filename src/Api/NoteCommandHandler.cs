@@ -8,7 +8,7 @@ namespace Api;
 
 public sealed class NoteNotFoundException(NoteId noteId) : Exception($"Note {noteId} not found.");
 
-public sealed class NoteCommandHandler(IEventStore store, NoteTitleListStore projStore)
+public sealed class NoteCommandHandler(IEventStore store, INoteTitleListStore projStore)
 {
     private const int InitialEventVersion = 1;
 

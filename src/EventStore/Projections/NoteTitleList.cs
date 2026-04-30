@@ -23,6 +23,8 @@ public sealed class NoteTitleListProjection
                 if (_items.TryGetValue(e.NoteId, out var existing))
                     _items[e.NoteId] = existing with { Title = e.NewTitle, LastModifiedAt = envelope.OccurredAt };
                 break;
+            default:
+                break;
         }
     }
 
@@ -30,7 +32,13 @@ public sealed class NoteTitleListProjection
         new(new List<NoteTitleListItem>(_items.Values).AsReadOnly());
 }
 
-public sealed class NoteTitleListStore(IAmazonDynamoDB dynamo, string tableName)
+public interface INoteTitleListStore
+{
+    Task UpsertAsync(NoteTitleListItem item, CancellationToken ct = default);
+    Task<NoteTitleListView> QueryAllAsync(CancellationToken ct = default);
+}
+
+public sealed class NoteTitleListStore(IAmazonDynamoDB dynamo, string tableName) : INoteTitleListStore
 {
     public async Task UpsertAsync(NoteTitleListItem item, CancellationToken ct = default)
     {

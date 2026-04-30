@@ -131,3 +131,22 @@ Add an entry at the end of each phase. Keep them short and honest.
   - Nothing broke. Straightforward slice.
 - **Change for next phase:**
   - Layer 3 (`ApiIntegration`) can reuse the `IAsyncLifetime` fixture pattern from this layer for any in-process setup it needs — but ADR 0008 calls for `InMemoryEventStore` there, so no Docker required.
+
+---
+
+## Phase 1.5 — Layers 3, 4, 5: API Integration, Acceptance Hardening, CDK Assertions
+
+- **Workflow style used:** Blanket authorization through all roles for phase 1.5. Layer 3 implemented in main session (required production code changes); Layer 4 delegated to background agent; Layer 5 delegated to background agent in a parallel worktree. Worktree was based on the pre-L2 commit due to batch-spawn timing — Layer 5 files were extracted and applied manually to the main tree.
+- **Skills exercised:** `refactor` (caught missing `default: break` in `NoteTitleListProjection` switch).
+- **What worked:**
+  - `INoteTitleListStore` interface extraction was minimal: 5-line interface, one-line change in `NoteCommandHandler`, one-line change in `Program.cs` — clean separation, no churn.
+  - `WebApplicationFactory<Program>` + `ConfigureTestServices` overrides worked first try once `Microsoft.AspNetCore.TestHost` using was added for `ConfigureTestServices`.
+  - CDK assertions run in-process (~6s) against the synthesised template — no AWS account or `cdk synth` needed in CI.
+  - `lambdaAssetPath` CDK context key elegantly solved the `Code.FromAsset` directory-must-exist constraint without touching the real deploy path.
+  - Layer 4 (acceptance hardening) was a zero-change finding — the acceptance tests were already self-contained. Agent confirmed cleanly in 37s.
+  - Building in Release mode (while the dev server holds Debug DLL locks) is a viable workaround — worth noting for future slices.
+- **What didn't:**
+  - Parallel agent worktrees are created from HEAD at spawn time; if a commit and agent spawn are in the same tool batch, the worktree may be based on the pre-commit HEAD. Extract-and-apply is the recovery path.
+  - The dev API server holds locks on Debug DLLs, blocking `dotnet build` in Debug mode. The solution (`-c Release`) is simple but non-obvious.
+- **Change for next phase:**
+  - Pre-commit hook runs domain specs only. Consider adding a fast build-only check for the new test projects to catch compile errors before push.
