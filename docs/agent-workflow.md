@@ -75,14 +75,20 @@ The pipeline is gated: no role begins until the previous role's output is review
 - `projection` — scaffolding or extending a read projection
 - `dynamodb-event-append` — canonical DynamoDB append with optimistic concurrency
 - `cdk-stack-update` — safe CDK edits with synth + diff gating
+- `refactor` — clean up after specs pass (always run this before opening a PR)
 - `agent-skills:incremental-implementation` — general thin-slice implementation
 
 **Step 1 — Implement:**
 - Pull the branch and confirm specs fail before writing any code
 - Do not modify spec files — if a spec seems wrong, flag to a human rather than changing it
 - Write only what is needed to make the specs pass — no extra features, no speculative code
-- Run the full validation sequence (see `.claude/skills/.agent/generic/validation.md`) before opening a PR
-- Open a PR once all specs are green and validation passes
+
+**Step 1b — Refactor:**
+- Once all specs are green, load the `refactor` skill and scan every file changed in this slice
+- Fix one smell at a time; run `dotnet test` between each fix
+- Do not open a PR until the refactor pass is done and specs are still green
+- Run the full validation sequence (see `.claude/skills/.agent/generic/validation.md`) after refactoring
+- Open a PR once refactoring is complete and validation passes
 
 **Step 2 — Wait for CI:**
 - Monitor the GitHub Actions pipeline until it reaches a terminal state
@@ -158,6 +164,8 @@ The pipeline is gated: no role begins until the previous role's output is review
 
 **Outputs:**
 - `docs/learnings/<slice-name>.md` using the template below
+- Updated `docs/phases/phase-N.md` — mark completed acceptance criteria as `[x]`, update slice status to `Done`
+- Updated `docs/roadmap.md` — update phase status line if the phase is now complete or in progress
 
 **Learnings doc template:**
 ```markdown
@@ -196,7 +204,9 @@ Breaker: writes failing BDD specs → commits → pushes
     ↓
 Human checkpoint: reviews failing specs before any implementation
     ↓
-Pip: implements → validation passes → opens PR
+Pip: implements → specs green
+    ↓
+Pip: refactors (refactor skill) → specs still green → validation passes → opens PR
     ↓
 Pip: waits for CI pipeline (green)
     ↓
@@ -227,6 +237,7 @@ Human checkpoint: reviews learnings and decides whether to update agent-workflow
 | Write feature brief            | ✓     | ✗       | ✗   | ✗    | ✗      |
 | Write BDD spec files           | ✗     | ✓       | ✗   | ✗    | ✗      |
 | Write implementation code      | ✗     | ✗       | ✓   | ✗    | ✗      |
+| Run refactor skill             | ✗     | ✗       | ✓   | ✗    | ✗      |
 | Modify existing spec files     | ✗     | ✗       | ✗   | ✗    | ✗      |
 | Open a PR                      | ✗     | ✗       | ✓   | ✗    | ✗      |
 | Wait for / fix CI pipeline     | ✗     | ✗       | ✓   | ✗    | ✗      |
@@ -234,6 +245,7 @@ Human checkpoint: reviews learnings and decides whether to update agent-workflow
 | Merge a PR                     | ✗     | ✗       | ✓   | ✗    | ✗      |
 | Update workflow-log.md         | ✗     | ✗       | ✓   | ✗    | ✗      |
 | Write slice learnings doc      | ✗     | ✗       | ✗   | ✗    | ✓      |
+| Update phase / roadmap docs    | ✗     | ✗       | ✗   | ✗    | ✓      |
 | Change the task scope          | ✗     | ✗       | ✗   | ✗    | ✗      |
 
 ---
