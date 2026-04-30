@@ -32,12 +32,23 @@ jobs:
       - name: Publish Lambda
         run: dotnet publish src/Api/Api.csproj -c Release -o src/Api/bin/Release/net8.0/publish
 
-      - name: Deploy
+      - name: Deploy infrastructure
         run: cdk deploy --require-approval never --outputs-file outputs.json
 
-      - name: Extract API URL
-        id: api-url
-        run: echo "url=$(jq -r '.NoteTakerStack.ApiUrl' outputs.json)" >> $GITHUB_OUTPUT
+      - name: Extract outputs
+        id: outputs
+        run: |
+          echo "api-url=$(jq -r '.NoteTakerStack.ApiUrl' outputs.json)" >> $GITHUB_OUTPUT
+          echo "bucket=$(jq -r '.NoteTakerStack.WebBucketName' outputs.json)" >> $GITHUB_OUTPUT
+
+      - name: Build frontend
+        working-directory: web
+        run: npm ci && npm run build
+        env:
+          VITE_API_URL: ${{ steps.outputs.outputs.api-url }}
+
+      - name: Deploy frontend
+        run: aws s3 sync web/dist/ s3://${{ steps.outputs.outputs.bucket }}/ --delete
 
       - name: Warm up Lambda
         run: sleep 15
@@ -45,4 +56,4 @@ jobs:
       - name: Acceptance specs
         run: dotnet test tests/Specs/Specs.csproj
         env:
-          API_BASE_URL: ${{ steps.api-url.outputs.url }}
+          API_BASE_URL: ${{ steps.outputs.outputs.api-url }}
