@@ -84,6 +84,24 @@ Add an entry at the end of each phase. Keep them short and honest.
 
 ---
 
+## Phase 1-E — React scaffold + CloudFront + CORS + CI wiring
+
+- **Workflow style used:** Gated pipeline — Breaker n/a (no new BDD specs in this slice); Pip implemented, Hawk reviewed before merge.
+- **Skills exercised:** `cdk-stack-update` (S3 + CloudFront + CORS + outputs), `refactor` (applied retrospectively across 1-C/1-D changes before opening PR).
+- **What worked:**
+  - Hawk review caught CloudFront invalidation gap before merge — documented as a known gap rather than blocking the merge
+  - Refactor skill produced concrete improvements in the same session as implementation: `NoteCommandHandler` extraction, `EventDeserializer` routing, `ConfigureAwait(false)` sweep, `MetaStreamSk`/`SequenceSk` constants — all in one pass
+  - CI-first build verification is sufficient when npm is not installed locally; the workflow file is the truth
+- **What didn't:**
+  - `npm ci` in CI failed because no `package-lock.json` was committed — had to change to `npm install` and push a fix commit; root cause is npm not being installed locally
+  - Re-opening a named note shows a blank title input — projection data is not loaded on note open; this is a walking-skeleton gap
+  - CloudFront cache invalidation is missing from the deploy pipeline; S3 sync + no invalidation means up to 24h before changes are visible
+- **Change for next phase:**
+  - Install Node.js locally so `npm install` can be run to generate and commit a `package-lock.json`, enabling `npm ci` in CI for reproducible builds
+  - Add a CloudFront invalidation step (`aws cloudfront create-invalidation`) to `deploy.yml` after the S3 sync
+
+---
+
 ## Phase 1-D — PATCH /notes/{id}/title + GET /notes + NoteTitleList projection
 
 - **Workflow style used:** Gated pipeline — Breaker wrote specs first (with `[Fact(Skip)]` to satisfy pre-commit hook), Pip implemented, Hawk reviewed before merge.

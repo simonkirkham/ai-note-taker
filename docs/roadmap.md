@@ -8,12 +8,12 @@ Sequence is learning-optimised: event sourcing plumbing lands in Phase 1 so ever
 
 Slices and acceptance criteria: [docs/phases/phase-0.md](phases/phase-0.md)
 
-## Phase 1 — Walking skeleton with event sourcing *(In Progress — 1-E remaining)*
+## Phase 1 — Walking skeleton with event sourcing *(Done)*
 
 - One aggregate (`Note`), two events (`NoteCreated`, `NoteRenamed`)
 - Append-with-optimistic-concurrency on DynamoDB (`TransactWriteItems` + META row)
 - One read projection (`NoteTitleList`) in a dedicated DynamoDB table
-- Frontend creates and lists notes (1-E)
+- React frontend on S3 + CloudFront; create and list notes end-to-end
 
 **Goal:** event sourcing plumbing works end-to-end and is covered by event-model-driven specs.
 

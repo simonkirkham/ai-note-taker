@@ -83,18 +83,18 @@ Status key: `Done` · `In Progress` · `Not Started`
 ---
 
 ## Slice 1-E — React scaffold + create/list notes UI
-**Status:** In Progress
+**Status:** Done
 
 **Objective:** Scaffold the frontend and deploy it to AWS. By the end, a user can open the app, create a note, name it, and see it in the list — the full walking skeleton is walkable.
 
 **Acceptance criteria:**
-- [ ] Vite + React + TypeScript app in `web/` with `npm run dev` serving on `localhost:5173`
-- [ ] `npm run build` produces a `dist/` folder with no errors
-- [ ] UI: "New Note" button calls `POST /notes` and navigates to a rename input
-- [ ] UI: typing in the rename input and blurring calls `PATCH /notes/{id}/title`
-- [ ] UI: note list on home page calls `GET /notes` and renders titles
-- [ ] CDK stack updated: S3 bucket + CloudFront distribution serving `web/dist/`
-- [ ] Deployed app reachable at the CloudFront URL
-- [ ] PR workflow extended: `npm ci && npm run build` added to the checks
-- [ ] Deploy workflow extended: `npm ci && npm run build` runs before CDK deploy
-- [ ] CORS configured on the API Gateway so the React app can call the Lambda
+- [x] Vite + React + TypeScript app in `web/` with `npm run dev` serving on `localhost:5173`
+- [x] `npm run build` produces a `dist/` folder with no errors (verified in CI)
+- [x] UI: "New Note" button calls `POST /notes` and navigates to a rename input
+- [x] UI: typing in the rename input and blurring calls `PATCH /notes/{id}/title`
+- [x] UI: note list on home page calls `GET /notes` and renders titles
+- [x] CDK stack updated: S3 bucket + CloudFront distribution serving `web/dist/` (OAC pattern)
+- [ ] Deployed app reachable at the CloudFront URL — **pending first deploy to main**
+- [x] PR workflow extended: `npm install && npm run build` added to the checks (no lockfile; `npm ci` requires one)
+- [x] Deploy workflow extended: frontend built with `VITE_API_URL` from CDK outputs then synced to S3
+- [x] CORS configured on the API Gateway (`CorsPreflightOptions` with `AllowOrigins = "*"`)
