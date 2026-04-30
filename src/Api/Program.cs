@@ -32,23 +32,16 @@ app.MapPost("/notes", async ([FromBody] CreateNoteRequest? req, IEventStore stor
         ? new NoteId(id)
         : new NoteId(Guid.NewGuid());
 
-    var streamId = $"note#{noteId}";
+    var streamId = noteId.ToStreamId();
     var priorEvents = await store.ReadAsync(streamId);
 
-    var aggregate = new Note();
-    foreach (var e in priorEvents)
-        aggregate.Apply(EventDeserializer.Deserialize(e));
+    var aggregate = RebuildAggregate(priorEvents);
 
     IReadOnlyList<IDomainEvent> newEvents;
     try { newEvents = aggregate.Handle(new CreateNote(noteId)); }
     catch (InvalidOperationException) { return Results.Conflict(); }
 
-    var envelopes = newEvents.Select(e => new EventEnvelope(
-        StreamId: streamId, SequenceNumber: 0, EventType: e.GetType().Name, EventVersion: 1,
-        OccurredAt: DateTimeOffset.UtcNow,
-        Payload: JsonSerializer.Serialize(e, e.GetType()),
-        Metadata: new EventMetadata(Guid.NewGuid(), null, null, null)
-    )).ToList();
+    var envelopes = BuildEnvelopes(streamId, newEvents);
 
     await store.AppendAsync(streamId, priorEvents.Count, envelopes);
 
@@ -63,24 +56,17 @@ app.MapPost("/notes", async ([FromBody] CreateNoteRequest? req, IEventStore stor
 app.MapPatch("/notes/{noteId}/title", async (Guid noteId, [FromBody] RenameNoteRequest req, IEventStore store, NoteTitleListStore projStore) =>
 {
     var id = new NoteId(noteId);
-    var streamId = $"note#{id}";
+    var streamId = id.ToStreamId();
     var priorEvents = await store.ReadAsync(streamId);
     if (priorEvents.Count == 0) return Results.NotFound();
 
-    var aggregate = new Note();
-    foreach (var e in priorEvents)
-        aggregate.Apply(EventDeserializer.Deserialize(e));
+    var aggregate = RebuildAggregate(priorEvents);
 
     IReadOnlyList<IDomainEvent> newEvents = aggregate.Handle(new RenameNote(id, req.Title));
 
     if (newEvents.Count > 0)
     {
-        var envelopes = newEvents.Select(e => new EventEnvelope(
-            StreamId: streamId, SequenceNumber: 0, EventType: e.GetType().Name, EventVersion: 1,
-            OccurredAt: DateTimeOffset.UtcNow,
-            Payload: JsonSerializer.Serialize(e, e.GetType()),
-            Metadata: new EventMetadata(Guid.NewGuid(), null, null, null)
-        )).ToList();
+        var envelopes = BuildEnvelopes(streamId, newEvents);
 
         await store.AppendAsync(streamId, priorEvents.Count, envelopes);
 
@@ -104,6 +90,24 @@ app.MapGet("/notes", async (NoteTitleListStore projStore) =>
 });
 
 app.Run();
+
+const int InitialEventVersion = 1;
+
+static Note RebuildAggregate(IReadOnlyList<EventEnvelope> history)
+{
+    var note = new Note();
+    foreach (var e in history)
+        note.Apply(EventDeserializer.Deserialize(e));
+    return note;
+}
+
+static List<EventEnvelope> BuildEnvelopes(string streamId, IReadOnlyList<IDomainEvent> events) =>
+    events.Select(e => new EventEnvelope(
+        StreamId: streamId, SequenceNumber: 0, EventType: e.GetType().Name, EventVersion: InitialEventVersion,
+        OccurredAt: DateTimeOffset.UtcNow,
+        Payload: JsonSerializer.Serialize(e, e.GetType()),
+        Metadata: new EventMetadata(Guid.NewGuid(), null, null, null)
+    )).ToList();
 
 record CreateNoteRequest(Guid? NoteId);
 record RenameNoteRequest(string Title);

@@ -6,7 +6,11 @@ namespace EventStore;
 
 public sealed class DynamoDbEventStore(IAmazonDynamoDB dynamo, string tableName) : IEventStore
 {
+    private const string MetaStreamSk = "META#stream";
     private static readonly JsonSerializerOptions JsonOpts = new() { PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
+
+    private static string SequenceSk(long seq) => $"v{seq:D8}";
+    private static long ParseSequenceSk(string sk) => long.Parse(sk[1..]);
 
     public async Task AppendAsync(string streamId, long expectedVersion, IReadOnlyList<EventEnvelope> events, CancellationToken ct = default)
     {
@@ -26,7 +30,7 @@ public sealed class DynamoDbEventStore(IAmazonDynamoDB dynamo, string tableName)
                     Item = new Dictionary<string, AttributeValue>
                     {
                         ["PK"] = new AttributeValue { S = streamId },
-                        ["SK"] = new AttributeValue { S = $"v{seq++:D8}" },
+                        ["SK"] = new AttributeValue { S = SequenceSk(seq++) },
                         ["EventType"] = new AttributeValue { S = e.EventType },
                         ["EventVersion"] = new AttributeValue { N = e.EventVersion.ToString() },
                         ["OccurredAt"] = new AttributeValue { S = e.OccurredAt.ToString("O") },
@@ -66,7 +70,7 @@ public sealed class DynamoDbEventStore(IAmazonDynamoDB dynamo, string tableName)
                 Key = new Dictionary<string, AttributeValue>
                 {
                     ["PK"] = new AttributeValue { S = streamId },
-                    ["SK"] = new AttributeValue { S = "META#stream" }
+                    ["SK"] = new AttributeValue { S = MetaStreamSk }
                 },
                 UpdateExpression = "SET currentVersion = :newVersion",
                 ConditionExpression = conditionExpression,
@@ -76,14 +80,14 @@ public sealed class DynamoDbEventStore(IAmazonDynamoDB dynamo, string tableName)
 
         try
         {
-            await dynamo.TransactWriteItemsAsync(new TransactWriteItemsRequest { TransactItems = transactItems }, ct);
+            await dynamo.TransactWriteItemsAsync(new TransactWriteItemsRequest { TransactItems = transactItems }, ct).ConfigureAwait(false);
         }
         catch (TransactionCanceledException ex)
             when (ex.CancellationReasons.Any(r => r.Code == "ConditionalCheckFailed"))
         {
             // Version read after conflict may not reflect the exact version at conflict time;
             // callers should re-read the stream before retrying.
-            var actual = await GetCurrentVersionAsync(streamId, ct);
+            var actual = await GetCurrentVersionAsync(streamId, ct).ConfigureAwait(false);
             throw new ConcurrencyException(streamId, expectedVersion, actual);
         }
     }
@@ -108,7 +112,7 @@ public sealed class DynamoDbEventStore(IAmazonDynamoDB dynamo, string tableName)
                 ExclusiveStartKey = lastKey
             };
 
-            var response = await dynamo.QueryAsync(request, ct);
+            var response = await dynamo.QueryAsync(request, ct).ConfigureAwait(false);
             items.AddRange(response.Items);
             lastKey = response.LastEvaluatedKey?.Count > 0 ? response.LastEvaluatedKey : null;
         }
@@ -117,7 +121,7 @@ public sealed class DynamoDbEventStore(IAmazonDynamoDB dynamo, string tableName)
         return items
             .Select(item => new EventEnvelope(
                 StreamId: streamId,
-                SequenceNumber: long.Parse(item["SK"].S[1..]),
+                SequenceNumber: ParseSequenceSk(item["SK"].S),
                 EventType: item["EventType"].S,
                 EventVersion: int.Parse(item["EventVersion"].N),
                 OccurredAt: DateTimeOffset.Parse(item["OccurredAt"].S),
@@ -136,9 +140,9 @@ public sealed class DynamoDbEventStore(IAmazonDynamoDB dynamo, string tableName)
             Key = new Dictionary<string, AttributeValue>
             {
                 ["PK"] = new AttributeValue { S = streamId },
-                ["SK"] = new AttributeValue { S = "META#stream" }
+                ["SK"] = new AttributeValue { S = MetaStreamSk }
             }
-        }, ct);
+        }, ct).ConfigureAwait(false);
 
         return response.Item.TryGetValue("currentVersion", out var v) ? long.Parse(v.N) : 0;
     }
