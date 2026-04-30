@@ -32,8 +32,11 @@ jobs:
       - name: Build (0 warnings)
         run: dotnet build ai-note-taker.sln -p:TreatWarningsAsErrors=true
 
-      - name: Test
+      - name: Test (domain specs)
         run: dotnet test tests/Specs/Specs.csproj
+
+      - name: Test (EventStore integration)
+        run: dotnet test tests/EventStoreIntegration/EventStoreIntegration.csproj
 
       - name: Publish Lambda
         run: dotnet publish src/Api/Api.csproj -c Release -o src/Api/bin/Release/net8.0/publish

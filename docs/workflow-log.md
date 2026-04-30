@@ -115,3 +115,19 @@ Add an entry at the end of each phase. Keep them short and honest.
   - Full table scan in `QueryAllAsync` is fine now but will need revisiting as data grows
 - **Change for next phase:**
   - If a rebuild path is needed (e.g., for pre-existing data), it belongs in a separate `RebuildProjection` command/script — don't embed it in the API Lambda
+
+---
+
+## Phase 1.5 — Layer 2: EventStore Integration Tests
+
+- **Workflow style used:** Gated pipeline — Plan mode for approach approval; user granted blanket authorization through all roles for phase 1.5. Breaker → Pip → Hawk in one session without mid-phase check-ins.
+- **Skills exercised:** `refactor` (caught a dead `using DotNet.Testcontainers.Builders;` after the build passed cleanly with it present — CS8019 is informational, not a warning, so TreatWarningsAsErrors didn't catch it).
+- **What worked:**
+  - `Testcontainers.DynamoDb` pulled in `AWSSDK.DynamoDBv2` transitively — no separate package reference needed.
+  - `IClassFixture<DynamoDbFixture>` + unique `streamId` per test gives strong isolation without the overhead of a fresh container per test. All 6 tests run in ~500 ms on the second run (image already pulled).
+  - `ubuntu-latest` runners have Docker pre-installed; no CI setup step was needed beyond adding the `dotnet test` line.
+  - Hawk confirmed the `"META#stream"` literal duplication is acceptable: it's testing the on-disk schema from outside the class, not the constant itself.
+- **What didn't:**
+  - Nothing broke. Straightforward slice.
+- **Change for next phase:**
+  - Layer 3 (`ApiIntegration`) can reuse the `IAsyncLifetime` fixture pattern from this layer for any in-process setup it needs — but ADR 0008 calls for `InMemoryEventStore` there, so no Docker required.
