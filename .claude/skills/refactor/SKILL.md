@@ -42,6 +42,7 @@ Run this skill after all BDD specs pass and before opening a PR. Behaviour must 
 
 | Smell | Signal | Fix |
 |---|---|---|
+| Application logic in endpoint | `store.ReadAsync`, `store.AppendAsync`, or aggregate construction inside an endpoint lambda | Move to the `*CommandHandler` for the aggregate — endpoints do HTTP only |
 | Domain logic in handler | `if`/`switch` that *decides* inside an API endpoint or projection | Move decision to the aggregate; handler only orchestrates |
 | Event switch without default | `switch (envelope.EventType)` with no `default` or ignored unknown types | Add `default: break` (silent skip) or `default: throw` (strict) — be explicit |
 | Projection reading its own store | Projection `Handle` method calls DynamoDB to read state before writing | Fold into in-memory state only; persist after fold |

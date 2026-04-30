@@ -56,6 +56,7 @@ cdk deploy
 - **Aggregates are pure.** No side effects, no DB calls, no clock — pass time and IDs in.
 - **Events are immutable.** Once shipped, never edit shape; introduce a new event version instead.
 - **Projections are rebuildable** from the full event stream. No state lives only in a projection.
+- **Command handlers own orchestration.** Each aggregate gets a `*CommandHandler` in `src/Api/`. The handler loads the stream, rebuilds the aggregate, executes the command, persists events, and updates projections. API endpoints do HTTP only — parse request, call handler, return result. Never write `store.ReadAsync` or `store.AppendAsync` inside an endpoint lambda.
 
 ## Guardrails
 
