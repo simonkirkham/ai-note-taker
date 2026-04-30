@@ -40,6 +40,7 @@ jobs:
         run: |
           echo "api-url=$(jq -r '.NoteTakerStack.ApiUrl' outputs.json)" >> $GITHUB_OUTPUT
           echo "bucket=$(jq -r '.NoteTakerStack.WebBucketName' outputs.json)" >> $GITHUB_OUTPUT
+          echo "distribution-id=$(jq -r '.NoteTakerStack.DistributionId' outputs.json)" >> $GITHUB_OUTPUT
 
       - name: Build frontend
         working-directory: web
@@ -49,6 +50,9 @@ jobs:
 
       - name: Deploy frontend
         run: aws s3 sync web/dist/ s3://${{ steps.outputs.outputs.bucket }}/ --delete
+
+      - name: Invalidate CloudFront cache
+        run: aws cloudfront create-invalidation --distribution-id ${{ steps.outputs.outputs.distribution-id }} --paths "/*"
 
       - name: Warm up Lambda
         run: sleep 15

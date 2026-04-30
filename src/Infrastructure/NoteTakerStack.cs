@@ -108,5 +108,11 @@ public class NoteTakerStack : Stack
             Value = $"https://{distribution.DistributionDomainName}",
             Description = "CloudFront distribution URL"
         });
+
+        new CfnOutput(this, "DistributionId", new CfnOutputProps
+        {
+            Value = distribution.DistributionId,
+            Description = "CloudFront distribution ID (used for cache invalidation on deploy)"
+        });
     }
 }
