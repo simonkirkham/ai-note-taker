@@ -15,6 +15,14 @@ public class NoteTakerStack : Stack
             RemovalPolicy = RemovalPolicy.RETAIN
         });
 
+        var projTable = new Table(this, "ProjNoteTitleListTable", new TableProps
+        {
+            TableName = "notetaker-proj-notetitlelist",
+            PartitionKey = new Amazon.CDK.AWS.DynamoDB.Attribute { Name = "PK", Type = AttributeType.STRING },
+            BillingMode = BillingMode.PAY_PER_REQUEST,
+            RemovalPolicy = RemovalPolicy.RETAIN
+        });
+
         var apiFunction = new Amazon.CDK.AWS.Lambda.Function(this, "ApiFunction", new Amazon.CDK.AWS.Lambda.FunctionProps
         {
             Runtime = Amazon.CDK.AWS.Lambda.Runtime.DOTNET_8,
@@ -22,11 +30,13 @@ public class NoteTakerStack : Stack
             Code = Amazon.CDK.AWS.Lambda.Code.FromAsset("src/Api/bin/Release/net8.0/publish"),
             Environment = new Dictionary<string, string>
             {
-                ["EVENTS_TABLE_NAME"] = eventsTable.TableName
+                ["EVENTS_TABLE_NAME"] = eventsTable.TableName,
+                ["PROJ_NOTETITLELIST_TABLE_NAME"] = projTable.TableName
             }
         });
 
         eventsTable.GrantReadWriteData(apiFunction);
+        projTable.GrantReadWriteData(apiFunction);
 
         var httpApi = new Amazon.CDK.AWS.Apigatewayv2.HttpApi(this, "HttpApi", new Amazon.CDK.AWS.Apigatewayv2.HttpApiProps
         {
