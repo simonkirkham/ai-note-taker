@@ -13,6 +13,20 @@ Detailed rationale for each decision lives in `docs/adr/`. This document is the 
 | Testing | xUnit + plain C# Given/When/Then BDD specs |
 | Auth | Skipped initially — single hardcoded user. Multi-user Google Sign-In lands in the final phase. |
 
+## Code layers
+
+Every write request passes through three layers. Each layer has exactly one concern.
+
+| Layer | Location | Concern |
+|---|---|---|
+| **API** | `src/Api/Program.cs` — endpoint lambdas | HTTP only: parse request, call handler, map result to HTTP status |
+| **Command handler** | `src/Api/*CommandHandler.cs` | Orchestration: load stream → rebuild aggregate → execute command → persist events → update projection |
+| **Domain** | `src/Domain/` | Pure business logic: aggregate, commands, events — no I/O, no HTTP, no clock |
+
+**Rule:** if you find yourself writing `store.ReadAsync` or `store.AppendAsync` inside an endpoint lambda, it belongs in the command handler instead. Endpoints catch exceptions and return HTTP results; they do not orchestrate.
+
+---
+
 ## Event sourcing
 
 - Event store is the source of truth.

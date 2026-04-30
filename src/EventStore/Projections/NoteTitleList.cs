@@ -1,4 +1,3 @@
-using System.Text.Json;
 using Amazon.DynamoDBv2;
 using Amazon.DynamoDBv2.Model;
 using Domain.Notes;
@@ -15,16 +14,14 @@ public sealed class NoteTitleListProjection
 
     public void Handle(EventEnvelope envelope)
     {
-        switch (envelope.EventType)
+        switch (EventDeserializer.Deserialize(envelope))
         {
-            case nameof(NoteCreated):
-                var created = JsonSerializer.Deserialize<NoteCreated>(envelope.Payload)!;
-                _items[created.NoteId] = new NoteTitleListItem(created.NoteId, string.Empty, envelope.OccurredAt);
+            case NoteCreated e:
+                _items[e.NoteId] = new NoteTitleListItem(e.NoteId, string.Empty, envelope.OccurredAt);
                 break;
-            case nameof(NoteRenamed):
-                var renamed = JsonSerializer.Deserialize<NoteRenamed>(envelope.Payload)!;
-                if (_items.TryGetValue(renamed.NoteId, out var existing))
-                    _items[renamed.NoteId] = existing with { Title = renamed.NewTitle, LastModifiedAt = envelope.OccurredAt };
+            case NoteRenamed e:
+                if (_items.TryGetValue(e.NoteId, out var existing))
+                    _items[e.NoteId] = existing with { Title = e.NewTitle, LastModifiedAt = envelope.OccurredAt };
                 break;
         }
     }
@@ -42,12 +39,12 @@ public sealed class NoteTitleListStore(IAmazonDynamoDB dynamo, string tableName)
             TableName = tableName,
             Item = new Dictionary<string, AttributeValue>
             {
-                ["PK"] = new AttributeValue { S = $"note#{item.NoteId}" },
+                ["PK"] = new AttributeValue { S = item.NoteId.ToStreamId() },
                 ["NoteId"] = new AttributeValue { S = item.NoteId.Value.ToString() },
                 ["Title"] = new AttributeValue { S = item.Title },
                 ["LastModifiedAt"] = new AttributeValue { S = item.LastModifiedAt.ToString("O") }
             }
-        }, ct);
+        }, ct).ConfigureAwait(false);
     }
 
     public async Task<NoteTitleListView> QueryAllAsync(CancellationToken ct = default)
@@ -57,7 +54,7 @@ public sealed class NoteTitleListStore(IAmazonDynamoDB dynamo, string tableName)
         do
         {
             var request = new ScanRequest { TableName = tableName, ExclusiveStartKey = lastKey };
-            var response = await dynamo.ScanAsync(request, ct);
+            var response = await dynamo.ScanAsync(request, ct).ConfigureAwait(false);
             foreach (var row in response.Items)
             {
                 items.Add(new NoteTitleListItem(

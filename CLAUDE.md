@@ -56,6 +56,7 @@ cdk deploy
 - **Aggregates are pure.** No side effects, no DB calls, no clock — pass time and IDs in.
 - **Events are immutable.** Once shipped, never edit shape; introduce a new event version instead.
 - **Projections are rebuildable** from the full event stream. No state lives only in a projection.
+- **Command handlers own orchestration.** Each aggregate gets a `*CommandHandler` in `src/Api/`. The handler loads the stream, rebuilds the aggregate, executes the command, persists events, and updates projections. API endpoints do HTTP only — parse request, call handler, return result. Never write `store.ReadAsync` or `store.AppendAsync` inside an endpoint lambda.
 
 ## Guardrails
 
@@ -74,6 +75,7 @@ Reach for these instead of writing patterns from scratch:
 - **projection** — scaffold a new read projection with rebuild logic
 - **dynamodb-event-append** — canonical append-with-optimistic-concurrency pattern
 - **cdk-stack-update** — safe edits to CDK with synth + diff gating
+- **refactor** — clean up code after specs pass; see [`.claude/skills/refactor/SKILL.md`](.claude/skills/refactor/SKILL.md)
 
 ## Workflow
 
@@ -81,5 +83,6 @@ Reach for these instead of writing patterns from scratch:
 2. Update event model.
 3. Write BDD spec.
 4. Implement until spec passes green.
-5. Diff review (subagent or `/review`).
-6. Append a short note to [docs/workflow-log.md](docs/workflow-log.md) at the end of each phase.
+5. **Refactor** — run the `refactor` skill against all changed files; re-run specs after each fix.
+6. Diff review (subagent or `/review`).
+7. Append a short note to [docs/workflow-log.md](docs/workflow-log.md) at the end of each phase.

@@ -1,6 +1,5 @@
-using System.Text.Json;
 using Amazon.DynamoDBv2;
-using Domain;
+using Api;
 using Domain.Notes;
 using EventStore;
 using EventStore.Projections;
@@ -17,90 +16,35 @@ builder.Services.AddSingleton<IEventStore>(sp =>
     new DynamoDbEventStore(sp.GetRequiredService<IAmazonDynamoDB>(), tableName));
 builder.Services.AddSingleton(sp =>
     new NoteTitleListStore(sp.GetRequiredService<IAmazonDynamoDB>(), projTableName));
+builder.Services.AddSingleton<NoteCommandHandler>();
 builder.Services.AddAWSLambdaHosting(LambdaEventSource.HttpApi);
 
 var app = builder.Build();
 app.Services.GetRequiredService<IEventStore>();
-app.Services.GetRequiredService<NoteTitleListStore>();
+app.Services.GetRequiredService<NoteCommandHandler>();
 
 app.MapGet("/health", () => Results.Ok(new { status = "ok" }));
 app.MapGet("/secret", () => Results.Ok(new { status = "shhhh...." }));
 
-app.MapPost("/notes", async ([FromBody] CreateNoteRequest? req, IEventStore store, NoteTitleListStore projStore) =>
+app.MapPost("/notes", async ([FromBody] CreateNoteRequest? req, NoteCommandHandler handler) =>
 {
-    var noteId = req?.NoteId is { } id && id != Guid.Empty
-        ? new NoteId(id)
-        : new NoteId(Guid.NewGuid());
-
-    var streamId = $"note#{noteId}";
-    var priorEvents = await store.ReadAsync(streamId);
-
-    var aggregate = new Note();
-    foreach (var e in priorEvents)
-        aggregate.Apply(EventDeserializer.Deserialize(e));
-
-    IReadOnlyList<IDomainEvent> newEvents;
-    try { newEvents = aggregate.Handle(new CreateNote(noteId)); }
+    var noteId = req?.NoteId is { } id && id != Guid.Empty ? new NoteId(id) : new NoteId(Guid.NewGuid());
+    try { await handler.HandleAsync(new CreateNote(noteId)); }
     catch (InvalidOperationException) { return Results.Conflict(); }
-
-    var envelopes = newEvents.Select(e => new EventEnvelope(
-        StreamId: streamId, SequenceNumber: 0, EventType: e.GetType().Name, EventVersion: 1,
-        OccurredAt: DateTimeOffset.UtcNow,
-        Payload: JsonSerializer.Serialize(e, e.GetType()),
-        Metadata: new EventMetadata(Guid.NewGuid(), null, null, null)
-    )).ToList();
-
-    await store.AppendAsync(streamId, priorEvents.Count, envelopes);
-
-    var projection = new NoteTitleListProjection();
-    foreach (var e in envelopes) projection.Handle(e);
-    var item = projection.GetView().Items.First(i => i.NoteId == noteId);
-    await projStore.UpsertAsync(item);
-
     return Results.Created($"/notes/{noteId}", new { noteId = noteId.Value });
 });
 
-app.MapPatch("/notes/{noteId}/title", async (Guid noteId, [FromBody] RenameNoteRequest req, IEventStore store, NoteTitleListStore projStore) =>
+app.MapPatch("/notes/{noteId}/title", async (Guid noteId, [FromBody] RenameNoteRequest req, NoteCommandHandler handler) =>
 {
-    var id = new NoteId(noteId);
-    var streamId = $"note#{id}";
-    var priorEvents = await store.ReadAsync(streamId);
-    if (priorEvents.Count == 0) return Results.NotFound();
-
-    var aggregate = new Note();
-    foreach (var e in priorEvents)
-        aggregate.Apply(EventDeserializer.Deserialize(e));
-
-    IReadOnlyList<IDomainEvent> newEvents = aggregate.Handle(new RenameNote(id, req.Title));
-
-    if (newEvents.Count > 0)
-    {
-        var envelopes = newEvents.Select(e => new EventEnvelope(
-            StreamId: streamId, SequenceNumber: 0, EventType: e.GetType().Name, EventVersion: 1,
-            OccurredAt: DateTimeOffset.UtcNow,
-            Payload: JsonSerializer.Serialize(e, e.GetType()),
-            Metadata: new EventMetadata(Guid.NewGuid(), null, null, null)
-        )).ToList();
-
-        await store.AppendAsync(streamId, priorEvents.Count, envelopes);
-
-        var projection = new NoteTitleListProjection();
-        foreach (var e in priorEvents) projection.Handle(e);
-        foreach (var e in envelopes) projection.Handle(e);
-        var item = projection.GetView().Items.First(i => i.NoteId == id);
-        await projStore.UpsertAsync(item);
-    }
-
+    try { await handler.HandleAsync(new RenameNote(new NoteId(noteId), req.Title)); }
+    catch (NoteNotFoundException) { return Results.NotFound(); }
     return Results.Ok();
 });
 
 app.MapGet("/notes", async (NoteTitleListStore projStore) =>
 {
     var view = await projStore.QueryAllAsync();
-    return Results.Ok(new
-    {
-        items = view.Items.Select(i => new { noteId = i.NoteId.Value, title = i.Title })
-    });
+    return Results.Ok(new { items = view.Items.Select(i => new { noteId = i.NoteId.Value, title = i.Title }) });
 });
 
 app.Run();
