@@ -74,6 +74,7 @@ Reach for these instead of writing patterns from scratch:
 - **projection** — scaffold a new read projection with rebuild logic
 - **dynamodb-event-append** — canonical append-with-optimistic-concurrency pattern
 - **cdk-stack-update** — safe edits to CDK with synth + diff gating
+- **refactor** — clean up code after specs pass; see [`.claude/skills/refactor/SKILL.md`](.claude/skills/refactor/SKILL.md)
 
 ## Workflow
 
@@ -81,5 +82,6 @@ Reach for these instead of writing patterns from scratch:
 2. Update event model.
 3. Write BDD spec.
 4. Implement until spec passes green.
-5. Diff review (subagent or `/review`).
-6. Append a short note to [docs/workflow-log.md](docs/workflow-log.md) at the end of each phase.
+5. **Refactor** — run the `refactor` skill against all changed files; re-run specs after each fix.
+6. Diff review (subagent or `/review`).
+7. Append a short note to [docs/workflow-log.md](docs/workflow-log.md) at the end of each phase.
