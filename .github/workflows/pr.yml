@@ -43,4 +43,4 @@ jobs:
 
       - name: Frontend build
         working-directory: web
-        run: npm install && npm run build
+        run: npm ci && npm run build

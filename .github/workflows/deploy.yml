@@ -43,7 +43,7 @@ jobs:
 
       - name: Build frontend
         working-directory: web
-        run: npm install && npm run build
+        run: npm ci && npm run build
         env:
           VITE_API_URL: ${{ steps.outputs.outputs.api-url }}
 
