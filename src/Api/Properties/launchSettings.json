@@ -1,0 +1,16 @@
+{
+  "profiles": {
+    "Api": {
+      "commandName": "Project",
+      "applicationUrl": "http://localhost:5000",
+      "environmentVariables": {
+        "ASPNETCORE_ENVIRONMENT": "Development",
+        "EVENTS_TABLE_NAME": "notetaker-events",
+        "PROJ_NOTETITLELIST_TABLE_NAME": "notetaker-proj-notetitlelist",
+        "AWS_ACCESS_KEY_ID": "local",
+        "AWS_SECRET_ACCESS_KEY": "local",
+        "AWS_DEFAULT_REGION": "us-east-1"
+      }
+    }
+  }
+}

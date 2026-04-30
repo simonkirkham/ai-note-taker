@@ -11,6 +11,8 @@ var projTableName = Environment.GetEnvironmentVariable("PROJ_NOTETITLELIST_TABLE
     ?? throw new InvalidOperationException("PROJ_NOTETITLELIST_TABLE_NAME is not set.");
 
 var builder = WebApplication.CreateBuilder(args);
+if (builder.Environment.IsDevelopment())
+    builder.Services.AddCors();
 builder.Services.AddAWSService<IAmazonDynamoDB>();
 builder.Services.AddSingleton<IEventStore>(sp =>
     new DynamoDbEventStore(sp.GetRequiredService<IAmazonDynamoDB>(), tableName));
@@ -22,6 +24,9 @@ builder.Services.AddAWSLambdaHosting(LambdaEventSource.HttpApi);
 var app = builder.Build();
 app.Services.GetRequiredService<IEventStore>();
 app.Services.GetRequiredService<NoteCommandHandler>();
+
+if (app.Environment.IsDevelopment())
+    app.UseCors(p => p.AllowAnyOrigin().AllowAnyMethod().AllowAnyHeader());
 
 app.MapGet("/health", () => Results.Ok(new { status = "ok" }));
 app.MapGet("/secret", () => Results.Ok(new { status = "shhhh...." }));

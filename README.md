@@ -14,7 +14,7 @@ A meeting-focused note taking app, built as a learning vehicle for event-sourced
 
 ## Status
 
-Phase 0 — setup.
+Phase 1 complete — walking skeleton deployed. React frontend on CloudFront, event-sourced .NET API on Lambda, DynamoDB event store.
 
 ## Docs
 
@@ -29,7 +29,40 @@ Phase 0 — setup.
 
 Coding agents work against this repo using instructions in `CLAUDE.md` and skills in `.claude/skills/`. See `CLAUDE.md` for conventions, guardrails, and the skills catalogue.
 
-## Prerequisites
+## Running locally
+
+Full local stack: DynamoDB Local in Docker + .NET API on Kestrel + Vite dev server. No AWS account needed.
+
+**Prerequisites:** [Docker Desktop](https://www.docker.com/products/docker-desktop/), [.NET 8 SDK](https://dotnet.microsoft.com/download/dotnet/8), [Node.js 20+](https://nodejs.org/)
+
+**1. Start DynamoDB Local**
+
+```bash
+docker compose up -d
+```
+
+Starts DynamoDB Local on port 8000. A one-shot init container creates the two tables on first run (`notetaker-events`, `notetaker-proj-notetitlelist`). Data persists in a Docker volume between restarts.
+
+**2. Start the API**
+
+```bash
+dotnet run --project src/Api/Api.csproj
+```
+
+`launchSettings.json` sets `ASPNETCORE_ENVIRONMENT=Development`, which causes `appsettings.Development.json` to point the DynamoDB client at `http://localhost:8000`. Runs on `http://localhost:5000`.
+
+**3. Start the frontend**
+
+```bash
+cp web/.env.local.example web/.env.local   # first time only
+cd web && npm run dev
+```
+
+Open `http://localhost:5173`.
+
+---
+
+## Prerequisites (AWS deployment)
 
 - [.NET 8 SDK](https://dotnet.microsoft.com/download/dotnet/8)
 - [AWS CLI](https://aws.amazon.com/cli/) — configured with credentials (`aws configure`)
