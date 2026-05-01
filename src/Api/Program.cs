@@ -93,8 +93,11 @@ static void AddEndpointMapping(WebApplication app)
     });
     app.MapGet("/secret", () => Results.Ok(new { status = "shhhh...." }));
 
-    app.MapPost("/notes", async ([FromBody] CreateNoteRequest? req, NoteCommandHandler handler) =>
+    app.MapPost("/notes", async (HttpRequest request, NoteCommandHandler handler) =>
     {
+        CreateNoteRequest? req = request.HasJsonContentType()
+            ? await request.ReadFromJsonAsync<CreateNoteRequest>()
+            : null;
         var noteId = req?.NoteId is { } id && id != Guid.Empty ? new NoteId(id) : new NoteId(Guid.NewGuid());
         try { await handler.HandleAsync(new CreateNote(noteId)); }
         catch (InvalidOperationException) { return Results.Conflict(); }

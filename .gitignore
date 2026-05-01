@@ -32,6 +32,9 @@ coverage/
 .env.local
 .env*.local
 
+# Claude Code agent worktrees (ephemeral, WSL/Windows path conflicts)
+.claude/worktrees/
+
 # OS
 .DS_Store
 Thumbs.db
