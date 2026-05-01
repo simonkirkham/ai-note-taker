@@ -18,7 +18,8 @@ public sealed class ListNotesSpec(DeployedApiFixture fixture)
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         var body = await response.Content.ReadFromJsonAsync<JsonElement>();
-        var items = body.GetProperty("items").EnumerateArray();
-        Assert.Contains(items, i => i.GetProperty("noteId").GetString() == noteId);
+        var items = body.GetProperty("items").EnumerateArray().ToList();
+        var match = Assert.Single(items, i => i.GetProperty("noteId").GetString() == noteId);
+        Assert.True(match.TryGetProperty("lastModifiedAt", out _), "item should include lastModifiedAt");
     }
 }

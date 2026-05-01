@@ -40,6 +40,7 @@ jobs:
         id: outputs
         run: |
           echo "api-url=$(jq -r '.NoteTakerStack.ApiUrl' outputs.json)" >> $GITHUB_OUTPUT
+          echo "frontend-url=$(jq -r '.NoteTakerStack.WebUrl' outputs.json)" >> $GITHUB_OUTPUT
           echo "bucket=$(jq -r '.NoteTakerStack.WebBucketName' outputs.json)" >> $GITHUB_OUTPUT
           echo "distribution-id=$(jq -r '.NoteTakerStack.DistributionId' outputs.json)" >> $GITHUB_OUTPUT
 
@@ -63,4 +64,5 @@ jobs:
         run: dotnet test tests/Acceptance/Acceptance.csproj
         env:
           API_BASE_URL: ${{ steps.outputs.outputs.api-url }}
+          FRONTEND_URL: ${{ steps.outputs.outputs.frontend-url }}
           DYNAMO_TIMEOUT_SECONDS: "3"

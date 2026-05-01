@@ -114,7 +114,10 @@ static void AddEndpointMapping(WebApplication app)
     app.MapGet("/notes", async (INoteTitleListStore projStore) =>
     {
         var view = await projStore.QueryAllAsync();
-        return Results.Ok(new { items = view.Items.Select(i => new { noteId = i.NoteId.Value, title = i.Title }) });
+        var items = view.Items
+            .OrderByDescending(i => i.LastModifiedAt)
+            .Select(i => new { noteId = i.NoteId.Value, title = i.Title, lastModifiedAt = i.LastModifiedAt });
+        return Results.Ok(new { items });
     });
 }
 

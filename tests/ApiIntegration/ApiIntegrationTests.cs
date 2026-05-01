@@ -76,7 +76,30 @@ public sealed class ApiIntegrationTests(ApiFactory factory) : IClassFixture<ApiF
 
         resp.EnsureSuccessStatusCode();
         var listBody = await resp.Content.ReadFromJsonAsync<JsonElement>();
-        var items = listBody.GetProperty("items").EnumerateArray();
-        Assert.Contains(items, i => i.GetProperty("noteId").GetString() == createdNoteId);
+        var items = listBody.GetProperty("items").EnumerateArray().ToList();
+        var match = Assert.Single(items, i => i.GetProperty("noteId").GetString() == createdNoteId);
+        Assert.True(match.TryGetProperty("lastModifiedAt", out _), "item should include lastModifiedAt");
+    }
+
+    [Fact]
+    public async Task GetNotes_ReturnsItemsOrderedByLastModifiedAtDescending()
+    {
+        var first = await _client.PostAsync("/notes", null);
+        var firstId = (await first.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("noteId").GetString();
+
+        var second = await _client.PostAsync("/notes", null);
+        var secondId = (await second.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("noteId").GetString();
+
+        // Rename the first note so it has a later lastModifiedAt than the second
+        await _client.PatchAsync($"/notes/{firstId}/title",
+            new StringContent("{\"title\":\"updated\"}", System.Text.Encoding.UTF8, "application/json"));
+
+        var resp = await _client.GetAsync("/notes");
+        var items = (await resp.Content.ReadFromJsonAsync<JsonElement>())
+            .GetProperty("items").EnumerateArray().ToList();
+
+        var firstIdx = items.FindIndex(i => i.GetProperty("noteId").GetString() == firstId);
+        var secondIdx = items.FindIndex(i => i.GetProperty("noteId").GetString() == secondId);
+        Assert.True(firstIdx < secondIdx, "renamed note should appear before older note");
     }
 }

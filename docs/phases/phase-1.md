@@ -74,7 +74,7 @@ Status key: `Done` · `In Progress` · `Not Started`
 - [x] `PATCH /notes/{id}/title` for a non-existent note returns `404`
 - [x] `NoteTitleList` projection subscribes to `NoteCreated` and `NoteRenamed` and matches the shape in `view-schemas.md`
 - [x] Projection stored in a dedicated DynamoDB table (`notetaker-proj-notetitlelist`)
-- [ ] `GET /notes` returns `NoteTitleListView` JSON ordered by `lastModifiedAt` descending — **gap: items returned in DynamoDB scan order; `lastModifiedAt` not included in wire response** (carry to 1-E or a follow-up)
+- [x] `GET /notes` returns `NoteTitleListView` JSON ordered by `lastModifiedAt` descending
 - [x] BDD spec for the `NoteTitleList` projection fold (unit — no DynamoDB)
 - [x] BDD acceptance specs for `PATCH /notes/{id}/title` and `GET /notes` (gated by `API_BASE_URL`)
 - [x] CDK stack updated: projection table provisioned
@@ -94,7 +94,7 @@ Status key: `Done` · `In Progress` · `Not Started`
 - [x] UI: typing in the rename input and blurring calls `PATCH /notes/{id}/title`
 - [x] UI: note list on home page calls `GET /notes` and renders titles
 - [x] CDK stack updated: S3 bucket + CloudFront distribution serving `web/dist/` (OAC pattern)
-- [ ] Deployed app reachable at the CloudFront URL — **pending first deploy to main**
+- [x] Deployed app reachable at the CloudFront URL — verified by `FrontendSmokeSpec` in `tests/Acceptance/`
 - [x] PR workflow extended: `npm install && npm run build` added to the checks (no lockfile; `npm ci` requires one)
 - [x] Deploy workflow extended: frontend built with `VITE_API_URL` from CDK outputs then synced to S3
 - [x] CORS configured on the API Gateway (`CorsPreflightOptions` with `AllowOrigins = "*"`)
