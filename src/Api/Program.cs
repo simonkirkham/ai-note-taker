@@ -15,20 +15,20 @@ WebApplicationBuilder builder = BuildServices(args, eventTableName, projTableNam
 
 var app = builder.Build();
 
-  app.UseExceptionHandler(exApp => exApp.Run(async ctx =>                                                                                       
-  {
-      var ex = ctx.Features.Get<Microsoft.AspNetCore.Diagnostics.IExceptionHandlerFeature>()?.Error;                                            
-      var log = ctx.RequestServices.GetRequiredService<ILoggerFactory>().CreateLogger("Api");                                                   
-      log.LogError(ex, "Unhandled exception on {Method} {Path}", ctx.Request.Method, ctx.Request.Path);
-      ctx.Response.StatusCode = 500;                                                                                                            
-      await ctx.Response.WriteAsJsonAsync(new { error = "internal server error" });
-  }));   
-  
-app.Services.GetRequiredService<IEventStore>();
-app.Services.GetRequiredService<NoteCommandHandler>();
-
 if (app.Environment.IsDevelopment())
     app.UseCors(p => p.AllowAnyOrigin().AllowAnyMethod().AllowAnyHeader());
+
+app.UseExceptionHandler(exApp => exApp.Run(async ctx =>
+{
+    var ex = ctx.Features.Get<Microsoft.AspNetCore.Diagnostics.IExceptionHandlerFeature>()?.Error;
+    var log = ctx.RequestServices.GetRequiredService<ILoggerFactory>().CreateLogger("Api");
+    log.LogError(ex, "Unhandled exception on {Method} {Path}", ctx.Request.Method, ctx.Request.Path);
+    ctx.Response.StatusCode = 500;
+    await ctx.Response.WriteAsJsonAsync(new { error = "internal server error" });
+}));
+
+app.Services.GetRequiredService<IEventStore>();
+app.Services.GetRequiredService<NoteCommandHandler>();
 
 AddEndpointMapping(app);
 
