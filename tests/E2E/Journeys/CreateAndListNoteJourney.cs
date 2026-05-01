@@ -8,12 +8,16 @@ public sealed class CreateAndListNoteJourney(BrowserFixture browser) : IAsyncLif
 {
     private IBrowserContext _context = null!;
     private AppPage _app = null!;
+    private IPage _page = null!;
 
     public async Task InitializeAsync()
     {
         _context = await browser.Browser.NewContextAsync();
         await _context.Tracing.StartAsync(new() { Screenshots = true, Snapshots = true, Sources = true });
-        _app = new AppPage(await _context.NewPageAsync(), browser.FrontendUrl);
+        _page = await _context.NewPageAsync();
+        _page.Console += (_, msg) => Console.WriteLine($"[browser {msg.Type}] {msg.Text}");
+        _page.PageError += (_, err) => Console.WriteLine($"[browser error] {err}");
+        _app = new AppPage(_page, browser.FrontendUrl);
     }
 
     public async Task DisposeAsync()

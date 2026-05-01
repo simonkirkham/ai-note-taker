@@ -50,6 +50,11 @@ jobs:
         env:
           VITE_API_URL: ${{ steps.outputs.outputs.api-url }}
 
+      - name: Verify API URL embedded in bundle
+        run: |
+          echo "VITE_API_URL was: ${{ steps.outputs.outputs.api-url }}"
+          grep -o 'execute-api[^"]*' web/dist/assets/*.js | head -5 || echo "WARNING: no execute-api URL found in bundle"
+
       - name: Deploy frontend
         run: aws s3 sync web/dist/ s3://${{ steps.outputs.outputs.bucket }}/ --delete
 
@@ -83,5 +88,5 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: playwright-trace
-          path: trace.zip
+          path: '**/trace.zip'
           if-no-files-found: ignore
