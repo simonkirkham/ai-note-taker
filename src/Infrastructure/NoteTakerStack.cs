@@ -58,12 +58,24 @@ public class NoteTakerStack : Stack
             ApiName = "notetaker-api",
         });
 
+        // HTTP API's ANY method does not include OPTIONS — OPTIONS must be routed
+        // explicitly so that ASP.NET Core's UseCors middleware can handle CORS preflights.
+        var lambdaIntegration = new Amazon.CDK.AwsApigatewayv2Integrations.HttpLambdaIntegration(
+            "LambdaIntegration", apiFunction);
+
         httpApi.AddRoutes(new Amazon.CDK.AWS.Apigatewayv2.AddRoutesOptions
         {
             Path = "/{proxy+}",
             Methods = new[] { Amazon.CDK.AWS.Apigatewayv2.HttpMethod.ANY },
+            Integration = lambdaIntegration
+        });
+
+        httpApi.AddRoutes(new Amazon.CDK.AWS.Apigatewayv2.AddRoutesOptions
+        {
+            Path = "/{proxy+}",
+            Methods = new[] { Amazon.CDK.AWS.Apigatewayv2.HttpMethod.OPTIONS },
             Integration = new Amazon.CDK.AwsApigatewayv2Integrations.HttpLambdaIntegration(
-                "LambdaIntegration", apiFunction)
+                "LambdaOptionsIntegration", apiFunction)
         });
 
         // ── Frontend (S3 + CloudFront) ───────────────────────────────────
