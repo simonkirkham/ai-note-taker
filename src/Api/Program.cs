@@ -15,8 +15,7 @@ WebApplicationBuilder builder = BuildServices(args, eventTableName, projTableNam
 
 var app = builder.Build();
 
-if (app.Environment.IsDevelopment())
-    app.UseCors(p => p.AllowAnyOrigin().AllowAnyMethod().AllowAnyHeader());
+app.UseCors(p => p.AllowAnyOrigin().AllowAnyMethod().AllowAnyHeader());
 
 app.UseExceptionHandler(exApp => exApp.Run(async ctx =>
 {
@@ -37,8 +36,7 @@ app.Run();
 static WebApplicationBuilder BuildServices(string[] args, string eventTableName, string projTableName)
 {
     var builder = WebApplication.CreateBuilder(args);
-    if (builder.Environment.IsDevelopment())
-        builder.Services.AddCors();
+    builder.Services.AddCors();
 
     // Configure AmazonDynamoDB client with reduced timeouts (seconds).
     // Set DYNAMO_TIMEOUT_SECONDS env var to override the default (5s).
