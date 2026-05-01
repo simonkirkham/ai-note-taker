@@ -13,12 +13,15 @@ var projTableName = Environment.GetEnvironmentVariable("PROJ_NOTETITLELIST_TABLE
 var builder = WebApplication.CreateBuilder(args);
 if (builder.Environment.IsDevelopment())
     builder.Services.AddCors();
+    
 builder.Services.AddAWSService<IAmazonDynamoDB>();
 builder.Services.AddSingleton<IEventStore>(sp =>
     new DynamoDbEventStore(sp.GetRequiredService<IAmazonDynamoDB>(), tableName));
 builder.Services.AddSingleton<INoteTitleListStore>(sp =>
     new NoteTitleListStore(sp.GetRequiredService<IAmazonDynamoDB>(), projTableName));
 builder.Services.AddSingleton<NoteCommandHandler>();
+builder.Services.AddSingleton<IDynamoHealthCheck>(sp =>
+    new DynamoDbHealthCheck(sp.GetRequiredService<IAmazonDynamoDB>(), tableName));
 builder.Services.AddAWSLambdaHosting(LambdaEventSource.HttpApi);
 
 var app = builder.Build();
@@ -28,7 +31,15 @@ app.Services.GetRequiredService<NoteCommandHandler>();
 if (app.Environment.IsDevelopment())
     app.UseCors(p => p.AllowAnyOrigin().AllowAnyMethod().AllowAnyHeader());
 
-app.MapGet("/health", () => Results.Ok(new { status = "ok" }));
+app.MapGet("/health", async (IDynamoHealthCheck dynamo) =>
+{
+    var dh = await dynamo.CheckAsync();
+    return Results.Ok(new
+    {
+        status = dh.Reachable ? "ok" : "degraded",
+        dynamo = new { status = dh.Reachable ? "ok" : "error", error = dh.Error }
+    });
+});
 app.MapGet("/secret", () => Results.Ok(new { status = "shhhh...." }));
 
 app.MapPost("/notes", async ([FromBody] CreateNoteRequest? req, NoteCommandHandler handler) =>

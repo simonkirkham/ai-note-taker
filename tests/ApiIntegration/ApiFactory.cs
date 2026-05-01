@@ -1,3 +1,4 @@
+using Api;
 using EventStore;
 using EventStore.Projections;
 using Microsoft.AspNetCore.Hosting;
@@ -22,8 +23,10 @@ public sealed class ApiFactory : WebApplicationFactory<Program>
         {
             services.RemoveAll<IEventStore>();
             services.RemoveAll<INoteTitleListStore>();
+            services.RemoveAll<IDynamoHealthCheck>();
             services.AddSingleton<IEventStore, InMemoryEventStore>();
             services.AddSingleton<INoteTitleListStore, InMemoryNoteTitleListStore>();
+            services.AddSingleton<IDynamoHealthCheck, AlwaysHealthyDynamoCheck>();
         });
     }
 }

@@ -25,5 +25,6 @@ public sealed class HealthEndpointSpec
 
         var body = await response.Content.ReadFromJsonAsync<JsonElement>();
         Assert.Equal("ok", body.GetProperty("status").GetString());
+        Assert.Equal("ok", body.GetProperty("dynamo").GetProperty("status").GetString());
     }
 }

@@ -10,13 +10,14 @@ public sealed class ApiIntegrationTests(ApiFactory factory) : IClassFixture<ApiF
     private readonly HttpClient _client = factory.CreateClient();
 
     [Fact]
-    public async Task GetHealth_Returns200WithStatusOk()
+    public async Task GetHealth_Returns200WithStatusOkAndDynamoOk()
     {
         var resp = await _client.GetAsync("/health");
 
         resp.EnsureSuccessStatusCode();
         var body = await resp.Content.ReadFromJsonAsync<JsonElement>();
         Assert.Equal("ok", body.GetProperty("status").GetString());
+        Assert.Equal("ok", body.GetProperty("dynamo").GetProperty("status").GetString());
     }
 
     [Fact]
