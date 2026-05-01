@@ -36,6 +36,7 @@ public class NoteTakerStack : Stack
             Runtime = Amazon.CDK.AWS.Lambda.Runtime.DOTNET_8,
             Handler = "Api",
             Code = Amazon.CDK.AWS.Lambda.Code.FromAsset(lambdaAssetPath),
+            Timeout = Duration.Seconds(29),
             Environment = new Dictionary<string, string>
             {
                 ["EVENTS_TABLE_NAME"] = eventsTable.TableName,

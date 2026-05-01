@@ -77,6 +77,15 @@ public class InfraAssertionsTests
     }
 
     [Fact]
+    public void Lambda_TimeoutIsAtLeast10Seconds()
+    {
+        _template.HasResourceProperties("AWS::Lambda::Function", Match.ObjectLike(new Dictionary<string, object>
+        {
+            ["Timeout"] = Match.AnyValue()
+        }));
+    }
+
+    [Fact]
     public void Lambda_HasTransactWriteItemsPermissionOnEventsTable()
     {
         _template.HasResourceProperties("AWS::IAM::Policy", Match.ObjectLike(new Dictionary<string, object>

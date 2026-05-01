@@ -51,7 +51,24 @@ static WebApplicationBuilder BuildServices(string[] args, string eventTableName,
         Timeout = TimeSpan.FromSeconds(dynamoTimeoutSeconds)
     };
 
-    builder.Services.AddSingleton<IAmazonDynamoDB>(sp => new AmazonDynamoDBClient(dynamoConfig));
+    // Prefer explicit ServiceURL (local dev) or region if provided in config/env.
+    var awsServiceUrl = Environment.GetEnvironmentVariable("DYNAMO_SERVICE_URL") ?? builder.Configuration["AWS:ServiceURL"];
+    var awsRegion = Environment.GetEnvironmentVariable("AWS_REGION") ?? builder.Configuration["AWS:AuthenticationRegion"] ?? Environment.GetEnvironmentVariable("AWS_DEFAULT_REGION");
+
+    if (!string.IsNullOrWhiteSpace(awsServiceUrl) || !string.IsNullOrWhiteSpace(awsRegion))
+    {
+        if (!string.IsNullOrWhiteSpace(awsServiceUrl))
+            dynamoConfig.ServiceURL = awsServiceUrl;
+        if (!string.IsNullOrWhiteSpace(awsRegion))
+            dynamoConfig.AuthenticationRegion = awsRegion;
+
+        builder.Services.AddSingleton<IAmazonDynamoDB>(sp => new AmazonDynamoDBClient(dynamoConfig));
+    }
+    else
+    {
+        // No explicit endpoint/region — use the AWS SDK integration which reads from AWS options/credentials.
+        builder.Services.AddAWSService<IAmazonDynamoDB>();
+    }
     builder.Services.AddSingleton<IEventStore>(sp =>
         new DynamoDbEventStore(sp.GetRequiredService<IAmazonDynamoDB>(), eventTableName));
     builder.Services.AddSingleton<INoteTitleListStore>(sp =>
