@@ -14,7 +14,7 @@ The sole safety net for layers 2 and 3 today is the post-deploy acceptance suite
 
 ## Decision
 
-Adopt a five-layer testing strategy. Each layer has a single responsibility and a distinct speed/cost profile.
+Adopt a six-layer testing strategy. Each layer has a single responsibility and a distinct speed/cost profile.
 
 | Layer | Type | Tool | Project | Run on |
 |-------|------|------|---------|--------|
@@ -23,6 +23,7 @@ Adopt a five-layer testing strategy. Each layer has a single responsibility and 
 | 3 — API HTTP | Integration (in-process) | WebApplicationFactory + InMemoryEventStore | `tests/ApiIntegration/` | Every PR |
 | 4 — Acceptance | Smoke (deployed) | xUnit + HttpClient | `tests/Acceptance/` | Post-deploy |
 | 5 — Infrastructure | CDK assertions | AWS CDK Assertions (C#) | `tests/InfraAssertions/` | Every PR |
+| 6 — E2E journeys | Browser (deployed) | Playwright for .NET + xUnit | `tests/E2E/` | Post-deploy |
 
 **Layer 1 — Domain BDD specs (existing)**
 Pure in-process tests. Given prior events → When command → Then emitted events or exception. 100 % of aggregate commands and boundary conditions must have a spec. No change to the existing approach.
@@ -39,13 +40,17 @@ Hit the real deployed API via `HttpClient`. Validates that IAM permissions, real
 **Layer 5 — CDK assertions**
 Use the AWS CDK `Template.FromStack()` assertion API to make infrastructure properties testable. Covers: Lambda environment variables wired correctly, IAM grants present, DynamoDB tables have `RETAIN` deletion policy, CloudFront SPA error responses configured. Runs in-process against the synthesised CloudFormation template — no AWS account needed.
 
+**Layer 6 — E2E browser journey tests**
+Use Playwright for .NET to drive a real Chromium browser against the deployed CloudFront frontend. Tests are structured as BDD Given/When/Then journeys in `tests/E2E/Journeys/`. A Page Object (`tests/E2E/Pages/AppPage.cs`) encapsulates all `data-testid` selectors, keeping journey specs declarative. A shared `BrowserFixture` creates one `IBrowser` instance per run; each test gets an isolated `IBrowserContext` (separate cookies and local storage). The fixture reads `FRONTEND_URL` from the environment and **throws in its constructor** if absent, failing the build rather than silently passing. Only run post-deploy.
+
 ## Consequences
 
 - `DynamoDbEventStore` OCC logic is exercised against a real engine on every PR; schema and condition-expression bugs surface before deployment.
 - HTTP routing and serialisation regressions are caught in-process without AWS credentials; the acceptance suite becomes a thin post-deploy smoke check rather than the primary safety net.
 - CDK refactors that accidentally remove environment variables or IAM grants fail fast in CI.
 - CI requires Docker (for Layer 2). This is the only new infrastructure dependency.
-- Three new xUnit projects (`tests/EventStoreIntegration/`, `tests/ApiIntegration/`, `tests/Acceptance/`) and one CDK test project (`tests/InfraAssertions/`) are added to the solution. The acceptance tests are isolated in their own project with no production code references; they are not included in the PR suite.
+- Four new xUnit projects (`tests/EventStoreIntegration/`, `tests/ApiIntegration/`, `tests/Acceptance/`, `tests/E2E/`) and one CDK test project (`tests/InfraAssertions/`) are added to the solution. The acceptance and E2E tests are isolated in their own projects with no production code references; they are not included in the PR suite.
+- Frontend UI elements must carry `data-testid` attributes so Playwright selectors remain stable under style changes.
 
 ## Alternatives considered
 

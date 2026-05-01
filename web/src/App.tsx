@@ -35,13 +35,13 @@ function ListView({ onOpen }: { onOpen: (noteId: string) => void }) {
     <main style={{ maxWidth: 600, margin: '2rem auto', padding: '0 1rem', fontFamily: 'sans-serif' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
         <h1 style={{ margin: 0 }}>Notes</h1>
-        <button onClick={handleNewNote} disabled={creating}>
+        <button data-testid="new-note-button" onClick={handleNewNote} disabled={creating}>
           {creating ? 'Creating…' : 'New Note'}
         </button>
       </div>
       {loading && <p>Loading…</p>}
       {!loading && notes.length === 0 && <p style={{ color: '#888' }}>No notes yet. Create one to get started.</p>}
-      <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
+      <ul data-testid="note-list" style={{ listStyle: 'none', padding: 0, margin: 0 }}>
         {notes.map((n) => (
           <li key={n.noteId} style={{ borderBottom: '1px solid #eee', padding: '0.75rem 0' }}>
             <button
@@ -77,8 +77,9 @@ function NoteView({ noteId, onBack }: { noteId: string; onBack: () => void }) {
 
   return (
     <main style={{ maxWidth: 600, margin: '2rem auto', padding: '0 1rem', fontFamily: 'sans-serif' }}>
-      <button onClick={onBack} style={{ marginBottom: '1rem', cursor: 'pointer' }}>← Back</button>
+      <button data-testid="back-button" onClick={onBack} style={{ marginBottom: '1rem', cursor: 'pointer' }}>← Back</button>
       <input
+        data-testid="note-title-input"
         ref={inputRef}
         type="text"
         value={title}

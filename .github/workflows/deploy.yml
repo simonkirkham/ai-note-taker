@@ -66,3 +66,14 @@ jobs:
           API_BASE_URL: ${{ steps.outputs.outputs.api-url }}
           FRONTEND_URL: ${{ steps.outputs.outputs.frontend-url }}
           DYNAMO_TIMEOUT_SECONDS: "3"
+
+      - name: Build E2E project
+        run: dotnet build tests/E2E/E2E.csproj -c Release
+
+      - name: Install Playwright browsers
+        run: pwsh tests/E2E/bin/Release/net8.0/playwright.ps1 install --with-deps chromium
+
+      - name: E2E journey tests
+        run: dotnet test tests/E2E/E2E.csproj -c Release
+        env:
+          FRONTEND_URL: ${{ steps.outputs.outputs.frontend-url }}

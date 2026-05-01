@@ -27,6 +27,7 @@ See [docs/goals.md](docs/goals.md) for the learning goals.
 - `tests/ApiIntegration/` — in-process HTTP tests (WebApplicationFactory + in-memory stores)
 - `tests/Acceptance/` — post-deploy smoke tests against real API; **fails the build** if `API_BASE_URL` is not set
 - `tests/InfraAssertions/` — CDK template assertions (IAM, env vars, deletion policies)
+- `tests/E2E/` — Playwright browser journey tests (BDD-style); **fails the build** if `FRONTEND_URL` is not set
 - `web/` — React + TypeScript frontend
 - `docs/` — architecture, roadmap, ADRs, event model, workflow log
 
@@ -53,6 +54,9 @@ dotnet test tests/InfraAssertions/InfraAssertions.csproj
 
 # Run post-deploy acceptance tests (requires deployed API)
 API_BASE_URL=<api-gateway-url> dotnet test tests/Acceptance/Acceptance.csproj
+
+# Run E2E browser journey tests (requires deployed frontend + Playwright browsers installed)
+FRONTEND_URL=<cloudfront-url> dotnet test tests/E2E/E2E.csproj
 
 # Run the API locally (Kestrel, not Lambda)
 dotnet run --project src/Api/Api.csproj
