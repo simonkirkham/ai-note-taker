@@ -22,7 +22,11 @@ See [docs/goals.md](docs/goals.md) for the learning goals.
 - `src/Domain/` — aggregates, commands, events
 - `src/EventStore/` — DynamoDB event store and projection plumbing
 - `src/Infrastructure/` — CDK app
-- `tests/Specs/` — BDD-style Given/When/Then specs (one per slice)
+- `tests/Specs/` — BDD-style Given/When/Then specs (one per slice); also event store unit specs
+- `tests/EventStoreIntegration/` — DynamoDB Local integration tests (Testcontainers)
+- `tests/ApiIntegration/` — in-process HTTP tests (WebApplicationFactory + in-memory stores)
+- `tests/Acceptance/` — post-deploy smoke tests against real API; **fails the build** if `API_BASE_URL` is not set
+- `tests/InfraAssertions/` — CDK template assertions (IAM, env vars, deletion policies)
 - `web/` — React + TypeScript frontend
 - `docs/` — architecture, roadmap, ADRs, event model, workflow log
 
@@ -35,8 +39,20 @@ git config core.hooksPath .githooks
 # Build entire solution
 dotnet build ai-note-taker.sln
 
-# Run all BDD specs
+# Run domain BDD specs
 dotnet test tests/Specs/Specs.csproj
+
+# Run in-process API tests (no AWS credentials needed)
+dotnet test tests/ApiIntegration/ApiIntegration.csproj
+
+# Run DynamoDB integration tests (requires Docker)
+dotnet test tests/EventStoreIntegration/EventStoreIntegration.csproj
+
+# Run CDK assertions
+dotnet test tests/InfraAssertions/InfraAssertions.csproj
+
+# Run post-deploy acceptance tests (requires deployed API)
+API_BASE_URL=<api-gateway-url> dotnet test tests/Acceptance/Acceptance.csproj
 
 # Run the API locally (Kestrel, not Lambda)
 dotnet run --project src/Api/Api.csproj

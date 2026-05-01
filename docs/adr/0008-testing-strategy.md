@@ -33,8 +33,8 @@ Spin up `amazon/dynamodb-local` via Testcontainers; create the events table; run
 **Layer 3 — API HTTP integration**
 Use `WebApplicationFactory<Program>` to host the ASP.NET app in-process. Override DI registrations to substitute `InMemoryEventStore` (and an in-memory projection store). Covers: route matching, HTTP verbs, path parameter binding, status codes (201/409/200/404), response body shape, and error-to-status-code mapping. No Docker, no AWS credentials.
 
-**Layer 4 — Acceptance / smoke (existing, expand incrementally)**
-Hit the real deployed API via `HttpClient`. Validates that IAM permissions, real DynamoDB tables, Lambda cold-start, and API Gateway routing all work together. Each fact must be self-contained (arrange its own data; no cross-test ordering dependencies). Gated on `API_BASE_URL` environment variable so the suite is skipped locally.
+**Layer 4 — Acceptance / smoke**
+Hit the real deployed API via `HttpClient`. Validates that IAM permissions, real DynamoDB tables, Lambda cold-start, and API Gateway routing all work together. Each test is self-contained (arranges its own data; no cross-test ordering dependencies). Lives in `tests/Acceptance/` — a standalone project with no reference to production code. A shared `DeployedApiFixture` reads `API_BASE_URL` from the environment and **throws in its constructor** if the variable is absent, so the suite fails the build rather than silently passing. Only run post-deploy.
 
 **Layer 5 — CDK assertions**
 Use the AWS CDK `Template.FromStack()` assertion API to make infrastructure properties testable. Covers: Lambda environment variables wired correctly, IAM grants present, DynamoDB tables have `RETAIN` deletion policy, CloudFront SPA error responses configured. Runs in-process against the synthesised CloudFormation template — no AWS account needed.
@@ -45,7 +45,7 @@ Use the AWS CDK `Template.FromStack()` assertion API to make infrastructure prop
 - HTTP routing and serialisation regressions are caught in-process without AWS credentials; the acceptance suite becomes a thin post-deploy smoke check rather than the primary safety net.
 - CDK refactors that accidentally remove environment variables or IAM grants fail fast in CI.
 - CI requires Docker (for Layer 2). This is the only new infrastructure dependency.
-- Two new xUnit projects (`tests/EventStoreIntegration/`, `tests/ApiIntegration/`) and one CDK test project (`tests/InfraAssertions/`) are added to the solution.
+- Three new xUnit projects (`tests/EventStoreIntegration/`, `tests/ApiIntegration/`, `tests/Acceptance/`) and one CDK test project (`tests/InfraAssertions/`) are added to the solution. The acceptance tests are isolated in their own project with no production code references; they are not included in the PR suite.
 
 ## Alternatives considered
 

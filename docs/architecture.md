@@ -10,7 +10,7 @@ Detailed rationale for each decision lives in `docs/adr/`. This document is the 
 | Event store | DynamoDB + lightweight helper library |
 | Frontend | React + TypeScript (Vite) |
 | Infrastructure | AWS CDK in C# |
-| Testing | xUnit + plain C# Given/When/Then BDD specs |
+| Testing | Five layers: domain BDD specs · DynamoDB Local integration · in-process API (WebApplicationFactory) · post-deploy acceptance · CDK assertions |
 | Auth | Skipped initially — single hardcoded user. Multi-user Google Sign-In lands in the final phase. |
 
 ## Code layers
