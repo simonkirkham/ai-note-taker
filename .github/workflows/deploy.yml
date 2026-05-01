@@ -60,7 +60,7 @@ jobs:
         run: sleep 15
 
       - name: Acceptance specs
-        run: dotnet test tests/Specs/Specs.csproj
+        run: dotnet test tests/Acceptance/Acceptance.csproj
         env:
           API_BASE_URL: ${{ steps.outputs.outputs.api-url }}
           DYNAMO_TIMEOUT_SECONDS: "3"
