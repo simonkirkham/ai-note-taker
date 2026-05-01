@@ -49,15 +49,13 @@ public class NoteTakerStack : Stack
         projTable.GrantReadWriteData(apiFunction);
 
         // ── API Gateway ──────────────────────────────────────────────────
+        // CORS is handled by ASP.NET Core UseCors middleware in the Lambda, not at
+        // the API Gateway level. API Gateway's CorsPreflight + a /{proxy+} ANY catch-all
+        // produces a 405 for OPTIONS preflight because the two conflict; removing it lets
+        // OPTIONS flow through to Lambda where UseCors returns 200 with the right headers.
         var httpApi = new Amazon.CDK.AWS.Apigatewayv2.HttpApi(this, "HttpApi", new Amazon.CDK.AWS.Apigatewayv2.HttpApiProps
         {
             ApiName = "notetaker-api",
-            CorsPreflight = new Amazon.CDK.AWS.Apigatewayv2.CorsPreflightOptions
-            {
-                AllowOrigins = new[] { "*" },
-                AllowMethods = new[] { Amazon.CDK.AWS.Apigatewayv2.CorsHttpMethod.ANY },
-                AllowHeaders = new[] { "content-type" }
-            }
         });
 
         httpApi.AddRoutes(new Amazon.CDK.AWS.Apigatewayv2.AddRoutesOptions
