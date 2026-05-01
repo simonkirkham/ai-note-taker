@@ -72,6 +72,23 @@ jobs:
           FRONTEND_URL: ${{ steps.outputs.outputs.frontend-url }}
           DYNAMO_TIMEOUT_SECONDS: "3"
 
+      - name: Debug CORS preflight
+        run: |
+          API_URL="${{ steps.outputs.outputs.api-url }}"
+          ORIGIN="https://d1spb0hvpsbynd.cloudfront.net"
+          echo "=== OPTIONS preflight ==="
+          curl -v -X OPTIONS \
+            -H "Origin: $ORIGIN" \
+            -H "Access-Control-Request-Method: POST" \
+            -H "Access-Control-Request-Headers: content-type" \
+            "${API_URL}/notes" 2>&1 || true
+          echo "=== POST /notes ==="
+          curl -v -X POST \
+            -H "Origin: $ORIGIN" \
+            -H "content-type: application/json" \
+            -d 'null' \
+            "${API_URL}/notes" 2>&1 || true
+
       - name: Build E2E project
         run: dotnet build tests/E2E/E2E.csproj -c Release
 
