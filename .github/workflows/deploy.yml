@@ -2,7 +2,7 @@ name: Deploy
 
 on:
   push:
-    branches: [main]
+    branches: [ main ]
 
 jobs:
   deploy:
@@ -13,11 +13,11 @@ jobs:
 
       - uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: '8.0.x'
+          dotnet-version: "8.0.x"
 
       - uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: "20"
 
       - name: Install CDK CLI
         run: npm install -g aws-cdk@2
@@ -30,7 +30,8 @@ jobs:
           aws-region: ${{ secrets.AWS_REGION }}
 
       - name: Publish Lambda
-        run: dotnet publish src/Api/Api.csproj -c Release -o src/Api/bin/Release/net8.0/publish
+        run: dotnet publish src/Api/Api.csproj -c Release -o
+          src/Api/bin/Release/net8.0/publish
 
       - name: Deploy infrastructure
         run: cdk deploy --require-approval never --outputs-file outputs.json
@@ -52,7 +53,8 @@ jobs:
         run: aws s3 sync web/dist/ s3://${{ steps.outputs.outputs.bucket }}/ --delete
 
       - name: Invalidate CloudFront cache
-        run: aws cloudfront create-invalidation --distribution-id ${{ steps.outputs.outputs.distribution-id }} --paths "/*"
+        run: aws cloudfront create-invalidation --distribution-id ${{
+          steps.outputs.outputs.distribution-id }} --paths "/*"
 
       - name: Warm up Lambda
         run: sleep 15
@@ -61,3 +63,4 @@ jobs:
         run: dotnet test tests/Specs/Specs.csproj
         env:
           API_BASE_URL: ${{ steps.outputs.outputs.api-url }}
+          DYNAMO_TIMEOUT_SECONDS: "3"

@@ -40,7 +40,18 @@ static WebApplicationBuilder BuildServices(string[] args, string eventTableName,
     if (builder.Environment.IsDevelopment())
         builder.Services.AddCors();
 
-    builder.Services.AddAWSService<IAmazonDynamoDB>();
+    // Configure AmazonDynamoDB client with reduced timeouts (seconds).
+    // Set DYNAMO_TIMEOUT_SECONDS env var to override the default (5s).
+    var dynamoTimeoutSeconds = 5;
+    if (int.TryParse(Environment.GetEnvironmentVariable("DYNAMO_TIMEOUT_SECONDS"), out var t) && t > 0)
+        dynamoTimeoutSeconds = t;
+
+    var dynamoConfig = new AmazonDynamoDBConfig
+    {
+        Timeout = TimeSpan.FromSeconds(dynamoTimeoutSeconds)
+    };
+
+    builder.Services.AddSingleton<IAmazonDynamoDB>(sp => new AmazonDynamoDBClient(dynamoConfig));
     builder.Services.AddSingleton<IEventStore>(sp =>
         new DynamoDbEventStore(sp.GetRequiredService<IAmazonDynamoDB>(), eventTableName));
     builder.Services.AddSingleton<INoteTitleListStore>(sp =>

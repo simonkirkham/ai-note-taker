@@ -57,7 +57,8 @@
       "Bash(aws logs describe-log-groups *)",
       "Bash(xargs head *)",
       "Bash(python3 -c \"import json,sys; t=json.load\\(sys.stdin\\); print\\(json.dumps\\({k:v for k,v in t.get\\('Outputs',{}\\).items\\(\\)}, indent=2\\)\\)\")",
-      "Bash(pkill -f \"dotnet\")"
+      "Bash(pkill -f \"dotnet\")",
+      "Bash(python3 *)"
     ]
   }
 }

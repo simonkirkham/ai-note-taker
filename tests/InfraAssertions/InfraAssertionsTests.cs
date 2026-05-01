@@ -77,6 +77,25 @@ public class InfraAssertionsTests
     }
 
     [Fact]
+    public void Lambda_HasTransactWriteItemsPermissionOnEventsTable()
+    {
+        _template.HasResourceProperties("AWS::IAM::Policy", Match.ObjectLike(new Dictionary<string, object>
+        {
+            ["PolicyDocument"] = Match.ObjectLike(new Dictionary<string, object>
+            {
+                ["Statement"] = Match.ArrayWith(new object[]
+                {
+                    Match.ObjectLike(new Dictionary<string, object>
+                    {
+                        ["Action"] = "dynamodb:TransactWriteItems",
+                        ["Effect"] = "Allow"
+                    })
+                })
+            })
+        }));
+    }
+
+    [Fact]
     public void CloudFront_HasSpaErrorResponses()
     {
         _template.HasResourceProperties("AWS::CloudFront::Distribution", Match.ObjectLike(new Dictionary<string, object>

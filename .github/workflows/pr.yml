@@ -8,6 +8,8 @@ jobs:
   check:
     runs-on: ubuntu-latest
     environment: Test
+    env:
+      DYNAMO_TIMEOUT_SECONDS: '3'
     steps:
       - uses: actions/checkout@v4
 

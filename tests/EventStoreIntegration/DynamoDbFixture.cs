@@ -15,7 +15,11 @@ public sealed class DynamoDbFixture : IAsyncLifetime
     {
         await _container.StartAsync();
 
-        var config = new AmazonDynamoDBConfig { ServiceURL = _container.GetConnectionString() };
+        var dynamoTimeoutSeconds = 5;
+        if (int.TryParse(Environment.GetEnvironmentVariable("DYNAMO_TIMEOUT_SECONDS"), out var t) && t > 0)
+            dynamoTimeoutSeconds = t;
+
+        var config = new AmazonDynamoDBConfig { ServiceURL = _container.GetConnectionString(), Timeout = TimeSpan.FromSeconds(dynamoTimeoutSeconds) };
         DynamoDb = new AmazonDynamoDBClient("local", "local", config);
 
         await DynamoDb.CreateTableAsync(new CreateTableRequest

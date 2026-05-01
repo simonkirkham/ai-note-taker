@@ -117,6 +117,7 @@ cdk deploy
 
 ### Environment variables
 
-| Variable | Used by | Description |
-|---|---|---|
-| `API_BASE_URL` | acceptance spec | Live API Gateway URL — set to run the acceptance spec against the deployed Lambda |
+| Variable                 | Used by                         | Description                                                                                   |
+| ------------------------ | ------------------------------- | --------------------------------------------------------------------------------------------- |
+| `API_BASE_URL`           | acceptance spec                 | Live API Gateway URL — set to run the acceptance spec against the deployed Lambda             |
+| `DYNAMO_TIMEOUT_SECONDS` | local API and integration tests | HTTP timeout (seconds) for the DynamoDB client when running locally or in tests. Default: `5` |

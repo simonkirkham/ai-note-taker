@@ -44,6 +44,7 @@ public class NoteTakerStack : Stack
         });
 
         eventsTable.GrantReadWriteData(apiFunction);
+        eventsTable.Grant(apiFunction, "dynamodb:TransactWriteItems");
         projTable.GrantReadWriteData(apiFunction);
 
         // ── API Gateway ──────────────────────────────────────────────────
