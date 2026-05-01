@@ -16,6 +16,7 @@ function ListView({ onOpen }: { onOpen: (noteId: string) => void }) {
   const [notes, setNotes] = useState<NoteItem[]>([])
   const [loading, setLoading] = useState(true)
   const [creating, setCreating] = useState(false)
+  const [createError, setCreateError] = useState<string | null>(null)
 
   useEffect(() => {
     listNotes().then(setNotes).finally(() => setLoading(false))
@@ -23,9 +24,12 @@ function ListView({ onOpen }: { onOpen: (noteId: string) => void }) {
 
   async function handleNewNote() {
     setCreating(true)
+    setCreateError(null)
     try {
       const { noteId } = await createNote()
       onOpen(noteId)
+    } catch (e) {
+      setCreateError(e instanceof Error ? e.message : 'Failed to create note')
     } finally {
       setCreating(false)
     }
@@ -39,6 +43,7 @@ function ListView({ onOpen }: { onOpen: (noteId: string) => void }) {
           {creating ? 'Creating…' : 'New Note'}
         </button>
       </div>
+      {createError && <p data-testid="create-error" style={{ color: 'red', fontSize: '0.875rem' }}>{createError}</p>}
       {loading && <p>Loading…</p>}
       {!loading && notes.length === 0 && <p style={{ color: '#888' }}>No notes yet. Create one to get started.</p>}
       <ul data-testid="note-list" style={{ listStyle: 'none', padding: 0, margin: 0 }}>

@@ -12,10 +12,15 @@ public sealed class CreateAndListNoteJourney(BrowserFixture browser) : IAsyncLif
     public async Task InitializeAsync()
     {
         _context = await browser.Browser.NewContextAsync();
+        await _context.Tracing.StartAsync(new() { Screenshots = true, Snapshots = true, Sources = true });
         _app = new AppPage(await _context.NewPageAsync(), browser.FrontendUrl);
     }
 
-    public async Task DisposeAsync() => await _context.DisposeAsync();
+    public async Task DisposeAsync()
+    {
+        await _context.Tracing.StopAsync(new() { Path = "trace.zip" });
+        await _context.DisposeAsync();
+    }
 
     [Fact]
     public async Task Create_a_note_name_it_and_see_it_in_the_list()

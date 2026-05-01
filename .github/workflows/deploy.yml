@@ -77,3 +77,11 @@ jobs:
         run: dotnet test tests/E2E/E2E.csproj -c Release
         env:
           FRONTEND_URL: ${{ steps.outputs.outputs.frontend-url }}
+
+      - name: Upload Playwright trace
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-trace
+          path: trace.zip
+          if-no-files-found: ignore
