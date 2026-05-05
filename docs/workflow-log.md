@@ -150,3 +150,21 @@ Add an entry at the end of each phase. Keep them short and honest.
   - The dev API server holds locks on Debug DLLs, blocking `dotnet build` in Debug mode. The solution (`-c Release`) is simple but non-obvious.
 - **Change for next phase:**
   - Pre-commit hook runs domain specs only. Consider adding a fast build-only check for the new test projects to catch compile errors before push.
+
+---
+
+## Phase 1-E (cont.) — E2E reliability + optimistic UI
+
+- **Workflow style used:** Conversational diagnosis — user reported CI failures, agent investigated and fixed iteratively across several commits.
+- **Skills exercised:** None loaded — all fixes were targeted edits to existing files.
+- **What worked:**
+  - Reading the changing error message across CI runs as a diagnostic signal: first "not visible" (note not appearing at all) → then "resolved to 2 elements" (note appearing twice). Each shift pinpointed the next problem.
+  - Registering `WaitForResponseAsync` *before* `BlurAsync()` is the correct Playwright pattern — it guarantees the listener is in place before the action that triggers the network request.
+  - Optimistic UI (lift state to `App`, update immediately, revert on PATCH failure) solved both the timing fragility and the manual-refresh UX bug in one move.
+- **What didn't:**
+  - `WaitForLoadState(NetworkIdle)` is unreliable for this pattern: the PATCH request can start after Playwright begins watching, so NetworkIdle fires before the response arrives. Should have used `WaitForResponseAsync` from the start.
+  - CORS guarded by `IsDevelopment()` was silent in production — no error thrown server-side, just missing headers in responses. Took several commits to isolate.
+  - E2E tests against a persistent shared environment accumulate stale data across runs. "My journey note" built up across CI runs until Playwright's strict-mode locator failed.
+- **Change for next phase:**
+  - E2E tests against a real deployed environment must always generate unique test data (GUID suffix on titles, IDs, etc.) — treat it as a hard rule, not an afterthought.
+  - Any new E2E page interaction that triggers a network request should use `WaitForResponseAsync` rather than `NetworkIdle`.

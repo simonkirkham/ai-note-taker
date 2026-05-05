@@ -90,6 +90,23 @@ flowchart LR
 
 **Infrastructure as code:** all AWS resources (API Gateway, Lambda, DynamoDB table, CloudFront distribution, S3 bucket) are provisioned by the CDK app in `src/Infrastructure/`.
 
+## Frontend state management
+
+The React frontend treats the server as eventually consistent and updates local state optimistically.
+
+**Pattern:**
+1. `App` owns the notes array — single source of truth for both `ListView` and `NoteView`.
+2. On any write (create or rename), the local array is updated immediately before the API call returns.
+3. On failure, the previous value is restored from a snapshot taken before the optimistic update.
+4. `ListView` and `NoteView` are purely presentational — they receive data and callbacks as props, never fetch or mutate directly.
+
+**Why not re-fetch on navigate back?**
+The list re-fetches on mount. When navigating note → list, a re-fetch races with the projection update on the server — if the GET arrives before the PATCH has been committed, the old title is returned. Optimistic state sidesteps this race entirely: the title is already correct in memory when the list renders.
+
+**E2E test implications:**
+- Tests must register `WaitForResponseAsync` *before* the action that triggers the request — not after — so the listener is in place when the response arrives.
+- All test data created against the real deployed environment must be uniquely named (e.g. GUID suffix) to prevent cross-run collisions in Playwright's strict-mode locators.
+
 ## Cold start note
 
 .NET on Lambda has a 1–3 second cold start by default. Mitigations (SnapStart, Native AOT) are deliberately deferred until cold start becomes a real annoyance.
