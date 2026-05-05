@@ -61,7 +61,11 @@
       "Bash(python3 *)",
       "Bash(fuser /mnt/c/code/ai-note-taker/src/Api/bin/Debug/net8.0/EventStore.dll)",
       "Bash(dotnet sln *)",
-      "Bash(API_BASE_URL=http://fake dotnet test /mnt/c/code/ai-note-taker/tests/Acceptance/Acceptance.csproj --filter \"FrontendSmokeSpec\" --logger \"console;verbosity=minimal\")"
+      "Bash(API_BASE_URL=http://fake dotnet test /mnt/c/code/ai-note-taker/tests/Acceptance/Acceptance.csproj --filter \"FrontendSmokeSpec\" --logger \"console;verbosity=minimal\")",
+      "Bash(unzip -l trace.zip)",
+      "Bash(unzip -p trace.zip trace.network)",
+      "Bash(grep -v \"^\\\\s*$\")",
+      "Bash(JSII_SILENCE_WARNING_UNTESTED_NODE_VERSION=1 cdk synth)"
     ]
   }
 }

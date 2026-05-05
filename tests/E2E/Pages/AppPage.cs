@@ -14,6 +14,8 @@ public sealed class AppPage(IPage page, string baseUrl)
         var input = page.GetByTestId("note-title-input");
         await input.FillAsync(title);
         await input.BlurAsync();
+        // Wait for the rename PATCH to complete before the caller navigates away.
+        await page.WaitForLoadStateAsync(LoadState.NetworkIdle);
     }
 
     public Task GoBackAsync() =>
