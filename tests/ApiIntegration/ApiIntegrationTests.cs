@@ -139,6 +139,7 @@ public sealed class ApiIntegrationTests(ApiFactory factory) : IClassFixture<ApiF
     [Fact]
     public async Task WhenMoreThanOneNoteExists_GetNoteDetails_ReturnsTheNoteWithTheTitle()
     {
+        var title = "Second Title";
         var firstCreateResponse = await _client.PostAsync("/notes", null);
         var firstCreateResponseBody = await firstCreateResponse.Content.ReadFromJsonAsync<JsonElement>();
         var firstNoteId = firstCreateResponseBody.GetProperty("noteId").GetString();
@@ -151,7 +152,7 @@ public sealed class ApiIntegrationTests(ApiFactory factory) : IClassFixture<ApiF
             new StringContent("{\"title\":\"First Title\"}", Encoding.UTF8, "application/json"));
 
         await _client.PatchAsync($"/notes/{secondNoteId}/title",
-            new StringContent("{\"title\":\"Second Title\"}", Encoding.UTF8, "application/json"));
+            new StringContent("{\"title\":\"" + title + "\"}", Encoding.UTF8, "application/json"));
 
         var resp = await _client.GetAsync($"/notes/{firstNoteId}");
 
@@ -159,6 +160,6 @@ public sealed class ApiIntegrationTests(ApiFactory factory) : IClassFixture<ApiF
         var listBody = await resp.Content.ReadFromJsonAsync<JsonElement>();
 
         Assert.Equal(secondNoteId, listBody.GetProperty("noteId").GetString());
-        Assert.Equal("Second Title", listBody.GetProperty("title").GetString());
+        Assert.Equal(title, listBody.GetProperty("title").GetString());
     }
 }

@@ -1,0 +1,63 @@
+using System;
+using System.Linq;
+using System.Threading.Tasks;
+using Microsoft.AspNetCore.Http;
+using EventStore;
+using EventStore.Projections;
+using Domain.Notes;
+using Api.Contracts;
+
+namespace Api.Handlers
+{
+    public static class NoteHandlers
+    {
+        public static async Task<IResult> Health(IDynamoHealthCheck dynamo)
+        {
+            var dh = await dynamo.CheckAsync();
+            return Results.Ok(new
+            {
+                status = dh.Reachable ? "ok" : "degraded",
+                dynamo = new { status = dh.Reachable ? "ok" : "error", error = dh.Error }
+            });
+        }
+
+        public static IResult Secret() => Results.Ok(new { status = "shhhh...." });
+
+        public static async Task<IResult> CreateNote(CreateNoteRequest? req, NoteCommandHandler handler)
+        {
+            var noteId = req?.NoteId is { } id && id != Guid.Empty ? new NoteId(id) : new NoteId(Guid.NewGuid());
+            try { await handler.HandleAsync(new CreateNote(noteId)); }
+            catch (InvalidOperationException) { return Results.Conflict(); }
+            return Results.Created($"/notes/{noteId}", new { noteId = noteId.Value });
+        }
+
+        public static async Task<IResult> RenameNote(Guid noteId, RenameNoteRequest req, NoteCommandHandler handler)
+        {
+            try { await handler.HandleAsync(new RenameNote(new NoteId(noteId), req.Title)); }
+            catch (NoteNotFoundException) { return Results.NotFound(); }
+            return Results.Ok();
+        }
+
+        public static async Task<IResult> ListNotes(INoteTitleListStore projStore)
+        {
+            var view = await projStore.QueryAllAsync();
+            var items = view.Items
+                .OrderByDescending(i => i.LastModifiedAt)
+                .Select(i => new { noteId = i.NoteId.Value, title = i.Title, lastModifiedAt = i.LastModifiedAt });
+            return Results.Ok(new { items });
+        }
+
+        public static async Task<IResult> GetNote(Guid noteId, INoteTitleListStore projStore)
+        {
+            var view = await projStore.QueryAllAsync();
+            var items = view.Items
+                .OrderByDescending(i => i.LastModifiedAt)
+                .Select(i => new { noteId = i.NoteId.Value, title = i.Title, lastModifiedAt = i.LastModifiedAt });
+
+            if (!items.Any(i => i.noteId == noteId))
+                return Results.NotFound();
+
+            return Results.Ok(items.First());
+        }
+    }
+}
