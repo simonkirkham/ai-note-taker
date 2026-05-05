@@ -29,15 +29,17 @@ public sealed class CreateAndListNoteJourney(BrowserFixture browser) : IAsyncLif
     [Fact]
     public async Task Create_a_note_name_it_and_see_it_in_the_list()
     {
+        var title = $"Journey note {Guid.NewGuid():N}"[..30];
+
         // Given the note list is open
         await _app.GotoAsync();
 
         // When I create a note and give it a title
         await _app.ClickNewNoteAsync();
-        await _app.EnterTitleAsync("My journey note");
+        await _app.EnterTitleAsync(title);
         await _app.GoBackAsync();
 
         // Then the named note appears in the list
-        await _app.AssertNoteVisibleInListAsync("My journey note");
+        await _app.AssertNoteVisibleInListAsync(title);
     }
 }
