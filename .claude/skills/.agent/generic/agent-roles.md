@@ -12,6 +12,7 @@ Each piece of work is handled by agents in sequence. No agent does another's job
 
 - A feature brief: what to build, why, design notes, and acceptance criteria
 - Criteria must be specific enough for Breaker to turn directly into BDD tests
+- Each slice must open with a one-sentence **value statement** in plain language — what the end user gains, or what project/learning goal it advances. Write it before the technical detail. If you can't state the value clearly, the slice isn't ready to build.
 
 **Rules:**
 
