@@ -92,7 +92,7 @@ public sealed class ApiIntegrationTests(ApiFactory factory) : IClassFixture<ApiF
 
         // Rename the first note so it has a later lastModifiedAt than the second
         await _client.PatchAsync($"/notes/{firstId}/title",
-            new StringContent("{\"title\":\"updated\"}", System.Text.Encoding.UTF8, "application/json"));
+            new StringContent("{\"title\":\"updated\"}", Encoding.UTF8, "application/json"));
 
         var resp = await _client.GetAsync("/notes");
         var items = (await resp.Content.ReadFromJsonAsync<JsonElement>())
@@ -101,5 +101,64 @@ public sealed class ApiIntegrationTests(ApiFactory factory) : IClassFixture<ApiF
         var firstIdx = items.FindIndex(i => i.GetProperty("noteId").GetString() == firstId);
         var secondIdx = items.FindIndex(i => i.GetProperty("noteId").GetString() == secondId);
         Assert.True(firstIdx < secondIdx, "renamed note should appear before older note");
+    }
+
+
+    [Fact]
+    public async Task GetNoteDetails_ReturnsTheNoteWithTheTitle()
+    {
+        var createResponse = await _client.PostAsync("/notes", null);
+        var createResponseBody = await createResponse.Content.ReadFromJsonAsync<JsonElement>();
+        var createdNoteId = createResponseBody.GetProperty("noteId").GetString();
+
+        await _client.PatchAsync($"/notes/{createdNoteId}/title",
+            new StringContent("{\"title\":\"Correct Title\"}", Encoding.UTF8, "application/json"));
+
+        var resp = await _client.GetAsync($"/notes/{createdNoteId}");
+
+        resp.EnsureSuccessStatusCode();
+        var listBody = await resp.Content.ReadFromJsonAsync<JsonElement>();
+
+        Assert.Equal(createdNoteId, listBody.GetProperty("noteId").GetString());
+        Assert.Equal("Correct Title", listBody.GetProperty("title").GetString());
+    }
+
+     [Fact]
+    public async Task WhenNoNoteExists_GetNoteDetails_ReturnsNotFound()
+    {
+        var randomNoteId = Guid.NewGuid().ToString();
+
+        await _client.PatchAsync($"/notes/{randomNoteId}/title",
+            new StringContent("{\"title\":\"Correct Title\"}", Encoding.UTF8, "application/json"));
+
+        var resp = await _client.GetAsync($"/notes/{randomNoteId}");
+
+        Assert.Equal(HttpStatusCode.NotFound, resp.StatusCode);
+    }
+
+    [Fact]
+    public async Task WhenMoreThanOneNoteExists_GetNoteDetails_ReturnsTheNoteWithTheTitle()
+    {
+        var firstCreateResponse = await _client.PostAsync("/notes", null);
+        var firstCreateResponseBody = await firstCreateResponse.Content.ReadFromJsonAsync<JsonElement>();
+        var firstNoteId = firstCreateResponseBody.GetProperty("noteId").GetString();
+
+        var secondCreateResponse = await _client.PostAsync("/notes", null);
+        var secondCreateResponseBody = await secondCreateResponse.Content.ReadFromJsonAsync<JsonElement>();
+        var secondNoteId = secondCreateResponseBody.GetProperty("noteId").GetString();
+
+        await _client.PatchAsync($"/notes/{secondNoteId}/title",
+            new StringContent("{\"title\":\"First Title\"}", Encoding.UTF8, "application/json"));
+
+        await _client.PatchAsync($"/notes/{secondNoteId}/title",
+            new StringContent("{\"title\":\"Second Title\"}", Encoding.UTF8, "application/json"));
+
+        var resp = await _client.GetAsync($"/notes/{firstNoteId}");
+
+        resp.EnsureSuccessStatusCode();
+        var listBody = await resp.Content.ReadFromJsonAsync<JsonElement>();
+
+        Assert.Equal(secondNoteId, listBody.GetProperty("noteId").GetString());
+        Assert.Equal("Second Title", listBody.GetProperty("title").GetString());
     }
 }

@@ -117,6 +117,19 @@ static void AddEndpointMapping(WebApplication app)
             .Select(i => new { noteId = i.NoteId.Value, title = i.Title, lastModifiedAt = i.LastModifiedAt });
         return Results.Ok(new { items });
     });
+
+    app.MapGet("/notes/{noteId}", async (Guid noteId, INoteTitleListStore projStore) =>
+    {
+        var view = await projStore.QueryAllAsync();
+        var items = view.Items
+            .OrderByDescending(i => i.LastModifiedAt)
+            .Select(i => new { noteId = i.NoteId.Value, title = i.Title, lastModifiedAt = i.LastModifiedAt });
+
+        if (!items.Any(i => i.noteId == noteId))
+            return Results.NotFound();
+            
+        return Results.Ok(items.First());
+    });
 }
 
 record CreateNoteRequest(Guid? NoteId);
