@@ -5,14 +5,6 @@ type View = { kind: 'list' } | { kind: 'note'; noteId: string }
 
 export default function App() {
   const [view, setView] = useState<View>({ kind: 'list' })
-
-  if (view.kind === 'note') {
-    return <NoteView noteId={view.noteId} onBack={() => setView({ kind: 'list' })} />
-  }
-  return <ListView onOpen={(noteId) => setView({ kind: 'note', noteId })} />
-}
-
-function ListView({ onOpen }: { onOpen: (noteId: string) => void }) {
   const [notes, setNotes] = useState<NoteItem[]>([])
   const [loading, setLoading] = useState(true)
   const [creating, setCreating] = useState(false)
@@ -27,7 +19,8 @@ function ListView({ onOpen }: { onOpen: (noteId: string) => void }) {
     setCreateError(null)
     try {
       const { noteId } = await createNote()
-      onOpen(noteId)
+      setNotes(prev => [...prev, { noteId, title: '' }])
+      setView({ kind: 'note', noteId })
     } catch (e) {
       setCreateError(e instanceof Error ? e.message : 'Failed to create note')
     } finally {
@@ -35,11 +28,60 @@ function ListView({ onOpen }: { onOpen: (noteId: string) => void }) {
     }
   }
 
+  async function handleRename(noteId: string, title: string) {
+    const previous = notes.find(n => n.noteId === noteId)?.title ?? ''
+    setNotes(prev => prev.map(n => n.noteId === noteId ? { ...n, title } : n))
+    try {
+      await renameNote(noteId, title)
+    } catch {
+      setNotes(prev => prev.map(n => n.noteId === noteId ? { ...n, title: previous } : n))
+    }
+  }
+
+  if (view.kind === 'note') {
+    const currentTitle = notes.find(n => n.noteId === view.noteId)?.title ?? ''
+    return (
+      <NoteView
+        noteId={view.noteId}
+        initialTitle={currentTitle}
+        onRename={handleRename}
+        onBack={() => setView({ kind: 'list' })}
+      />
+    )
+  }
+
+  return (
+    <ListView
+      notes={notes}
+      loading={loading}
+      creating={creating}
+      createError={createError}
+      onNewNote={handleNewNote}
+      onOpen={(noteId) => setView({ kind: 'note', noteId })}
+    />
+  )
+}
+
+function ListView({
+  notes,
+  loading,
+  creating,
+  createError,
+  onNewNote,
+  onOpen,
+}: {
+  notes: NoteItem[]
+  loading: boolean
+  creating: boolean
+  createError: string | null
+  onNewNote: () => void
+  onOpen: (noteId: string) => void
+}) {
   return (
     <main style={{ maxWidth: 600, margin: '2rem auto', padding: '0 1rem', fontFamily: 'sans-serif' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
         <h1 style={{ margin: 0 }}>Notes</h1>
-        <button data-testid="new-note-button" onClick={handleNewNote} disabled={creating}>
+        <button data-testid="new-note-button" onClick={onNewNote} disabled={creating}>
           {creating ? 'Creating…' : 'New Note'}
         </button>
       </div>
@@ -62,23 +104,23 @@ function ListView({ onOpen }: { onOpen: (noteId: string) => void }) {
   )
 }
 
-function NoteView({ noteId, onBack }: { noteId: string; onBack: () => void }) {
-  const [title, setTitle] = useState('')
-  const [saving, setSaving] = useState(false)
+function NoteView({
+  noteId,
+  initialTitle,
+  onRename,
+  onBack,
+}: {
+  noteId: string
+  initialTitle: string
+  onRename: (noteId: string, title: string) => void
+  onBack: () => void
+}) {
+  const [title, setTitle] = useState(initialTitle)
   const inputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     inputRef.current?.focus()
   }, [])
-
-  async function handleBlur() {
-    setSaving(true)
-    try {
-      await renameNote(noteId, title)
-    } finally {
-      setSaving(false)
-    }
-  }
 
   return (
     <main style={{ maxWidth: 600, margin: '2rem auto', padding: '0 1rem', fontFamily: 'sans-serif' }}>
@@ -89,11 +131,10 @@ function NoteView({ noteId, onBack }: { noteId: string; onBack: () => void }) {
         type="text"
         value={title}
         onChange={(e) => setTitle(e.target.value)}
-        onBlur={handleBlur}
+        onBlur={() => onRename(noteId, title)}
         placeholder="Note title…"
         style={{ display: 'block', width: '100%', fontSize: '1.5rem', padding: '0.5rem', boxSizing: 'border-box', border: '1px solid #ccc', borderRadius: 4 }}
       />
-      {saving && <p style={{ color: '#888', fontSize: '0.875rem' }}>Saving…</p>}
     </main>
   )
 }
