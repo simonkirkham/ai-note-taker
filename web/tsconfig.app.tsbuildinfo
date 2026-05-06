@@ -1,0 +1,1 @@
+{"root":["./src/app.tsx","./src/api.ts","./src/main.tsx","./src/types.ts","./src/vite-env.d.ts","./src/components/listview.tsx","./src/components/noteview.tsx","./src/hooks/usenotes.ts"],"version":"5.9.3"}

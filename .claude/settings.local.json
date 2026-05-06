@@ -65,7 +65,14 @@
       "Bash(unzip -l trace.zip)",
       "Bash(unzip -p trace.zip trace.network)",
       "Bash(grep -v \"^\\\\s*$\")",
-      "Bash(JSII_SILENCE_WARNING_UNTESTED_NODE_VERSION=1 cdk synth)"
+      "Bash(JSII_SILENCE_WARNING_UNTESTED_NODE_VERSION=1 cdk synth)",
+      "Bash(Remove-Item -Recurse -Force \"C:\\\\code\\\\ai-note-taker\\\\src\\\\Domain\\\\obj\" -ErrorAction SilentlyContinue)",
+      "Bash(Remove-Item -Recurse -Force \"C:\\\\code\\\\ai-note-taker\\\\tests\\\\Specs\\\\obj\" -ErrorAction SilentlyContinue)",
+      "Bash(Remove-Item -Recurse -Force \"C:\\\\code\\\\ai-note-taker\\\\tests\\\\ApiIntegration\\\\obj\" -ErrorAction SilentlyContinue)",
+      "Bash(Remove-Item -Recurse -Force \"C:\\\\code\\\\ai-note-taker\\\\tests\\\\Acceptance\\\\obj\" -ErrorAction SilentlyContinue)",
+      "Bash(npm run *)",
+      "Bash(npx tsc *)",
+      "WebFetch(domain:github.com)"
     ]
   }
 }
