@@ -5,6 +5,18 @@ export interface NoteItem {
   title: string;
 }
 
+export interface NoteDetail {
+  noteId: string;
+  title: string;
+  content: string;
+}
+
+export async function getNoteDetail(noteId: string): Promise<NoteDetail> {
+  const res = await fetch(`${base}/notes/${noteId}`);
+  if (!res.ok) throw new Error(`GET /notes/${noteId} failed: ${res.status}`);
+  return res.json();
+}
+
 export async function createNote(): Promise<{ noteId: string }> {
   const res = await fetch(`${base}/notes`, {
     method: "POST",

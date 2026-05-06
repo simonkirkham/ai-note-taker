@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { getNoteDetail } from "../api";
 
 export default function NoteView({
   noteId,
@@ -12,15 +13,33 @@ export default function NoteView({
   onBack: () => void;
 }) {
   const [title, setTitle] = useState(initialTitle);
+  const [content, setContent] = useState("");
+  const [loadingDetail, setLoadingDetail] = useState(true);
   const inputRef = useRef<HTMLInputElement>(null);
-
-  useEffect(() => {
-    inputRef.current?.focus();
-  }, []);
 
   useEffect(() => {
     setTitle(initialTitle);
   }, [initialTitle]);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoadingDetail(true);
+    getNoteDetail(noteId)
+      .then((detail) => {
+        if (!cancelled) {
+          setContent(detail.content);
+          setLoadingDetail(false);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setLoadingDetail(false);
+      });
+    return () => { cancelled = true; };
+  }, [noteId]);
+
+  useEffect(() => {
+    if (!loadingDetail) inputRef.current?.focus();
+  }, [loadingDetail]);
 
   return (
     <main className="container">
@@ -41,6 +60,17 @@ export default function NoteView({
         placeholder="Note title…"
         className="title-input"
       />
+      {loadingDetail ? (
+        <p data-testid="note-loading" className="loading">Loading…</p>
+      ) : (
+        <textarea
+          data-testid="note-content"
+          value={content}
+          onChange={(e) => setContent(e.target.value)}
+          placeholder="Start typing your notes…"
+          className="content-input"
+        />
+      )}
     </main>
   );
 }

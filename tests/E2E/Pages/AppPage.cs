@@ -25,4 +25,13 @@ public sealed class AppPage(IPage page, string baseUrl)
         Assertions.Expect(
             page.GetByTestId("note-list").GetByText(title)
         ).ToBeVisibleAsync();
+
+    public Task ClickNoteInListAsync(string title) =>
+        page.GetByTestId("note-list").GetByText(title).ClickAsync();
+
+    public Task AssertContentAreaVisibleAsync() =>
+        Assertions.Expect(page.GetByTestId("note-content")).ToBeVisibleAsync();
+
+    public Task AssertContentValueAsync(string expected) =>
+        Assertions.Expect(page.GetByTestId("note-content")).ToHaveValueAsync(expected);
 }
