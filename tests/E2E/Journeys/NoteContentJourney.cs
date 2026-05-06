@@ -52,14 +52,15 @@ public sealed class NoteContentJourney(BrowserFixture browser) : IAsyncLifetime
     public async Task Content_persists_after_navigating_away_and_returning()
     {
         const string content = "Action items: deploy by Friday, update stakeholders";
+        var title = $"Persist {Guid.NewGuid():N}"[..20];
 
         await _app.GotoAsync();
         await _app.ClickNewNoteAsync();
-        await _app.EnterTitleAsync("Persistence test note");
+        await _app.EnterTitleAsync(title);
         await _app.EnterContentAsync(content);
 
         await _app.GoBackAsync();
-        await _app.ClickNoteInListAsync("Persistence test note");
+        await _app.ClickNoteInListAsync(title);
 
         await _app.AssertContentValueAsync(content);
     }
