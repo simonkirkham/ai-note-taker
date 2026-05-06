@@ -10,9 +10,9 @@ Each piece of work is handled by agents in sequence. No agent does another's job
 
 **Outputs:**
 
-- A phase brief written to `docs/phases/phase-N.md`, following the format of `docs/phases/phase-1.md` exactly:
+- A phase brief written to `docs/phases/phase-N.md`, following the format of `docs/phases/phase-2.md` exactly:
   - Phase goal and scope note at the top
-  - One section per slice, each with: status, value statement, commands/events in scope, and a checkbox acceptance-criteria list
+  - One section per slice, each with: status, value statement, commands/events in scope, and a checkbox acceptance-criteria list split into *Backend* and *Frontend* sub-sections
   - Each slice must open with a one-sentence **value statement** in plain language — what the end user gains, or what project/learning goal it advances. Write it before the technical detail. If you can't state the value clearly, the slice isn't ready to build.
 - Criteria must be specific enough for Breaker to turn directly into BDD tests
 - `docs/roadmap.md` updated to link to the new phase file and mark the phase as `_(In Progress)_`
@@ -20,6 +20,7 @@ Each piece of work is handled by agents in sequence. No agent does another's job
 **Rules:**
 
 - Do **not** write code or test files — only `docs/phases/phase-N.md` and `docs/roadmap.md`
+- **Every slice must be full-stack.** Backend criteria alone are not sufficient — each slice must include frontend acceptance criteria so the user can experience the value in the browser. If a slice genuinely has no user-facing change (e.g. a backend-only learning slice), state this explicitly and add a criterion that confirms the UI is unbroken after deploy.
 - Pick the highest value-to-effort feature if multiple candidates exist
 - Flag dependencies and risks for downstream agents
 
