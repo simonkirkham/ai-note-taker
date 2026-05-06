@@ -3,6 +3,7 @@ namespace Domain.Notes;
 public sealed class Note : IAggregate
 {
     bool _exists;
+    bool _deleted;
     string? _title;
     string? _content;
 
@@ -22,6 +23,9 @@ public sealed class Note : IAggregate
             case ContentEditedV2 e:
                 _content = e.NewContent;
                 break;
+            case NoteDeleted:
+                _deleted = true;
+                break;
         }
     }
 
@@ -31,6 +35,7 @@ public sealed class Note : IAggregate
             CreateNote cmd    => HandleCreate(cmd),
             RenameNote cmd    => HandleRename(cmd),
             EditContent cmd   => HandleEditContent(cmd),
+            DeleteNote cmd    => HandleDelete(cmd),
             _ => throw new ArgumentOutOfRangeException(nameof(command))
         };
 
@@ -43,7 +48,7 @@ public sealed class Note : IAggregate
 
     IReadOnlyList<IDomainEvent> HandleRename(RenameNote cmd)
     {
-        if (!_exists)
+        if (!_exists || _deleted)
             throw new InvalidOperationException($"Note {cmd.NoteId} does not exist.");
         if (cmd.NewTitle == _title)
             return [];
@@ -52,10 +57,17 @@ public sealed class Note : IAggregate
 
     IReadOnlyList<IDomainEvent> HandleEditContent(EditContent cmd)
     {
-        if (!_exists)
+        if (!_exists || _deleted)
             throw new InvalidOperationException($"Note {cmd.NoteId} does not exist.");
         if (cmd.Content == _content)
             return [];
         return [new ContentEdited(cmd.NoteId, cmd.Content)];
+    }
+
+    IReadOnlyList<IDomainEvent> HandleDelete(DeleteNote cmd)
+    {
+        if (!_exists || _deleted)
+            throw new InvalidOperationException($"Note {cmd.NoteId} does not exist.");
+        return [new NoteDeleted(cmd.NoteId)];
     }
 }

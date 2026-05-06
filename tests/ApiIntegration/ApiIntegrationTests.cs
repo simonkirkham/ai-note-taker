@@ -159,4 +159,61 @@ public sealed class ApiIntegrationTests(ApiFactory factory) : IClassFixture<ApiF
         Assert.Equal(firstNoteId, body.GetProperty("noteId").GetString());
         Assert.Equal("First Title", body.GetProperty("title").GetString());
     }
+
+    [Fact]
+    public async Task DeleteNote_ExistingNote_Returns204()
+    {
+        var create = await _client.PostAsync("/notes", null);
+        var noteId = (await create.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("noteId").GetString();
+
+        var resp = await _client.DeleteAsync($"/notes/{noteId}");
+
+        Assert.Equal(HttpStatusCode.NoContent, resp.StatusCode);
+    }
+
+    [Fact]
+    public async Task DeleteNote_NonExistentNote_Returns404()
+    {
+        var resp = await _client.DeleteAsync($"/notes/{Guid.NewGuid()}");
+
+        Assert.Equal(HttpStatusCode.NotFound, resp.StatusCode);
+    }
+
+    [Fact]
+    public async Task DeleteNote_RemovedFromList()
+    {
+        var create = await _client.PostAsync("/notes", null);
+        var noteId = (await create.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("noteId").GetString();
+
+        await _client.DeleteAsync($"/notes/{noteId}");
+
+        var resp = await _client.GetAsync("/notes");
+        var items = (await resp.Content.ReadFromJsonAsync<JsonElement>())
+            .GetProperty("items").EnumerateArray().ToList();
+        Assert.DoesNotContain(items, i => i.GetProperty("noteId").GetString() == noteId);
+    }
+
+    [Fact]
+    public async Task DeleteNote_GetNoteReturns404()
+    {
+        var create = await _client.PostAsync("/notes", null);
+        var noteId = (await create.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("noteId").GetString();
+
+        await _client.DeleteAsync($"/notes/{noteId}");
+
+        var resp = await _client.GetAsync($"/notes/{noteId}");
+        Assert.Equal(HttpStatusCode.NotFound, resp.StatusCode);
+    }
+
+    [Fact]
+    public async Task DeleteNote_AlreadyDeleted_Returns404()
+    {
+        var create = await _client.PostAsync("/notes", null);
+        var noteId = (await create.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("noteId").GetString();
+
+        await _client.DeleteAsync($"/notes/{noteId}");
+        var resp = await _client.DeleteAsync($"/notes/{noteId}");
+
+        Assert.Equal(HttpStatusCode.NotFound, resp.StatusCode);
+    }
 }

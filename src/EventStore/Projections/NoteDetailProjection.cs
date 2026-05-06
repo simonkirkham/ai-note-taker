@@ -14,6 +14,7 @@ public record NoteDetailView(
 public interface INoteDetailStore
 {
     Task UpsertAsync(NoteDetailView detail, CancellationToken ct = default);
+    Task DeleteAsync(NoteId noteId, CancellationToken ct = default);
     Task<NoteDetailView?> GetAsync(NoteId noteId, CancellationToken ct = default);
 }
 
@@ -41,6 +42,9 @@ public sealed class NoteDetailProjection
                 if (_items.TryGetValue(e.NoteId, out var cur2))
                     _items[e.NoteId] = cur2 with { Content = e.NewContent, LastModifiedAt = envelope.OccurredAt };
                 break;
+            case NoteDeleted e:
+                _items.Remove(e.NoteId);
+                break;
             default:
                 break;
         }
@@ -65,6 +69,18 @@ public sealed class DynamoDbNoteDetailStore(IAmazonDynamoDB dynamo, string table
                 ["Content"]        = new() { S = detail.Content },
                 ["CreatedAt"]      = new() { S = detail.CreatedAt.ToString("O") },
                 ["LastModifiedAt"] = new() { S = detail.LastModifiedAt.ToString("O") }
+            }
+        }, ct).ConfigureAwait(false);
+    }
+
+    public async Task DeleteAsync(NoteId noteId, CancellationToken ct = default)
+    {
+        await dynamo.DeleteItemAsync(new DeleteItemRequest
+        {
+            TableName = tableName,
+            Key = new Dictionary<string, AttributeValue>
+            {
+                ["PK"] = new() { S = noteId.ToStreamId() }
             }
         }, ct).ConfigureAwait(false);
     }

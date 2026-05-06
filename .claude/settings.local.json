@@ -76,7 +76,8 @@
       "Bash(python *)",
       "Bash(node_modules/.bin/tsc -b --noEmit)",
       "Bash(node_modules/typescript/bin/tsc -b --noEmit)",
-      "Bash(dir docs\\\\\\\\phases)"
+      "Bash(dir docs\\\\\\\\phases)",
+      "Bash(node node_modules/typescript/bin/tsc -b --noEmit)"
     ]
   }
 }

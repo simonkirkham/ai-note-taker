@@ -23,6 +23,9 @@ public sealed class NoteTitleListProjection
                 if (_items.TryGetValue(e.NoteId, out var existing))
                     _items[e.NoteId] = existing with { Title = e.NewTitle, LastModifiedAt = envelope.OccurredAt };
                 break;
+            case NoteDeleted e:
+                _items.Remove(e.NoteId);
+                break;
             default:
                 break;
         }
@@ -35,6 +38,7 @@ public sealed class NoteTitleListProjection
 public interface INoteTitleListStore
 {
     Task UpsertAsync(NoteTitleListItem item, CancellationToken ct = default);
+    Task DeleteAsync(NoteId noteId, CancellationToken ct = default);
     Task<NoteTitleListView> QueryAllAsync(CancellationToken ct = default);
 }
 
@@ -51,6 +55,18 @@ public sealed class NoteTitleListStore(IAmazonDynamoDB dynamo, string tableName)
                 ["NoteId"] = new AttributeValue { S = item.NoteId.Value.ToString() },
                 ["Title"] = new AttributeValue { S = item.Title },
                 ["LastModifiedAt"] = new AttributeValue { S = item.LastModifiedAt.ToString("O") }
+            }
+        }, ct).ConfigureAwait(false);
+    }
+
+    public async Task DeleteAsync(NoteId noteId, CancellationToken ct = default)
+    {
+        await dynamo.DeleteItemAsync(new DeleteItemRequest
+        {
+            TableName = tableName,
+            Key = new Dictionary<string, AttributeValue>
+            {
+                ["PK"] = new() { S = noteId.ToStreamId() }
             }
         }, ct).ConfigureAwait(false);
     }

@@ -71,5 +71,13 @@ namespace Api.Handlers
                 lastModifiedAt = detail.LastModifiedAt
             });
         }
+
+        public static async Task<IResult> DeleteNote(Guid noteId, NoteCommandHandler handler)
+        {
+            try { await handler.HandleAsync(new Domain.Notes.DeleteNote(new NoteId(noteId))); }
+            catch (NoteNotFoundException) { return Results.NotFound(); }
+            catch (InvalidOperationException) { return Results.NotFound(); }
+            return Results.NoContent();
+        }
     }
 }
