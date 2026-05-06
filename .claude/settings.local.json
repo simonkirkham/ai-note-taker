@@ -72,7 +72,8 @@
       "Bash(Remove-Item -Recurse -Force \"C:\\\\code\\\\ai-note-taker\\\\tests\\\\Acceptance\\\\obj\" -ErrorAction SilentlyContinue)",
       "Bash(npm run *)",
       "Bash(npx tsc *)",
-      "WebFetch(domain:github.com)"
+      "WebFetch(domain:github.com)",
+      "Bash(python *)"
     ]
   }
 }
