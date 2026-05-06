@@ -14,7 +14,7 @@ Each piece of work is handled by agents in sequence. No agent does another's job
   - Phase goal and scope note at the top
   - One section per slice, each with: status, value statement, commands/events in scope, and a checkbox acceptance-criteria list
   - Each slice must open with a one-sentence **value statement** in plain language — what the end user gains, or what project/learning goal it advances. Write it before the technical detail. If you can't state the value clearly, the slice isn't ready to build.
-  - **Acceptance criteria must be written as user behaviour**, not API contracts. Describe what the user does and sees: *"User opens a note — content is displayed"*, not *"GET /notes/{id} returns 200"*. API-level detail belongs in the implementation, not the spec.
+  - **Acceptance criteria must be written as user behaviour**, not API contracts. Describe what the user does and sees: _"User opens a note — content is displayed"_, not _"GET /notes/{id} returns 200"_. API-level detail belongs in the implementation, not the spec.
   - Most slices will involve UI changes and should say so. If a slice has no user-facing change, state the explicit reason. Do not silently omit the UI.
 - Criteria must be specific enough for Breaker to turn directly into E2E or BDD tests
 - `docs/roadmap.md` updated to link to the new phase file and mark the phase as `_(In Progress)_`
@@ -127,6 +127,7 @@ python3 .claude/skills/ui-ux-pro-max/scripts/search.py "state loading accessibil
 **Step 3 — Polish changed components**
 
 Apply improvements to any `web/src/` files changed in this slice. Focus on:
+
 - Accessibility: focus states, aria-labels on icon buttons, label associations
 - Touch targets: interactive elements ≥ 44×44 px
 - Loading/error states: skeleton or spinner, never a blank flash
@@ -137,6 +138,7 @@ Apply improvements to any `web/src/` files changed in this slice. Focus on:
 **Step 4 — Run pre-delivery checklist**
 
 Work through the checklist in the skill's SKILL.md before committing:
+
 - No emoji icons (use SVG)
 - All clickable elements have `cursor-pointer`
 - Hover states don't cause layout shift
@@ -196,7 +198,7 @@ Commit style changes separately from functional changes with a message like `Sty
 - `docs/phases/phase-N.md` — mark completed acceptance criteria as `[x]`, update slice status to `Done`
 - `docs/roadmap.md` — update phase status if the phase is now complete or newly in progress
 - Any `docs/` file that describes something the slice changed (architecture, event schemas, view schemas, ADRs)
-- `docs/learnings/<slice-name>.md` — workflow observations and process improvement suggestions (see `docs/agent-workflow.md` for template and rules)
+- `docs/learnings/phase-<slice-name>.md` — workflow observations and process improvement suggestions (see `docs/agent-workflow.md` for template and rules)
 
 **Rules:**
 

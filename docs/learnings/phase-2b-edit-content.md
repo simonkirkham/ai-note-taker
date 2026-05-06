@@ -30,7 +30,7 @@ date: 2026-05-06
 
 ## Hawk review findings
 
-| Finding | File | How to prevent |
-|---|---|---|
-| `EditContent` method name collides with `Domain.Notes.EditContent` type — compiler error without disambiguation | `src/Api/Handlers/NoteHandlers.cs` | Pip: use a `using` alias (`using EditContentCmd = ...`) whenever a handler method shares a name with a domain type |
-| `PutContent_ThenGetNote_ReturnsUpdatedContentAndBumpsLastModifiedAt` read `lastModifiedAt` only after the PUT, so it was not actually asserting it had changed | `tests/ApiIntegration/EditContentTests.cs` | Breaker: snapshot before-state for any "bumps X" assertion; the test name implies a before/after comparison |
+| Finding                                                                                                                                                        | File                                       | How to prevent                                                                                                     |
+| -------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------ | ------------------------------------------------------------------------------------------------------------------ |
+| `EditContent` method name collides with `Domain.Notes.EditContent` type — compiler error without disambiguation                                                | `src/Api/Handlers/NoteHandlers.cs`         | Pip: use a `using` alias (`using EditContentCmd = ...`) whenever a handler method shares a name with a domain type |
+| `PutContent_ThenGetNote_ReturnsUpdatedContentAndBumpsLastModifiedAt` read `lastModifiedAt` only after the PUT, so it was not actually asserting it had changed | `tests/ApiIntegration/EditContentTests.cs` | Breaker: snapshot before-state for any "bumps X" assertion; the test name implies a before/after comparison        |
