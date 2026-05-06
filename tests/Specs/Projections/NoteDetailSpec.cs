@@ -71,4 +71,23 @@ public sealed class NoteDetailSpec
 
         Assert.Null(detail);
     }
+
+    [Fact(Skip = "Pip 2-B")]
+    public void ContentEdited_updates_content_and_lastModifiedAt()
+    {
+        var noteId = Guid.NewGuid();
+        var createdAt = new DateTimeOffset(2026, 5, 1, 10, 0, 0, TimeSpan.Zero);
+        var editedAt = createdAt.AddMinutes(5);
+        var projection = new NoteDetailProjection();
+        projection.Handle(Envelope($"note#{noteId}", 1, nameof(NoteCreated),
+            JsonSerializer.Serialize(new NoteCreated(new NoteId(noteId))), createdAt));
+
+        projection.Handle(Envelope($"note#{noteId}", 2, nameof(ContentEdited),
+            JsonSerializer.Serialize(new ContentEdited(new NoteId(noteId), "Meeting notes content")), editedAt));
+
+        var detail = projection.GetDetail(new NoteId(noteId));
+        Assert.Equal("Meeting notes content", detail!.Content);
+        Assert.Equal(createdAt, detail.CreatedAt);
+        Assert.Equal(editedAt, detail.LastModifiedAt);
+    }
 }

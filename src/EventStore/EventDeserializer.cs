@@ -10,6 +10,7 @@ public static class EventDeserializer
     {
         nameof(NoteCreated) => JsonSerializer.Deserialize<NoteCreated>(envelope.Payload)!,
         nameof(NoteRenamed) => JsonSerializer.Deserialize<NoteRenamed>(envelope.Payload)!,
+        nameof(ContentEdited) => JsonSerializer.Deserialize<ContentEdited>(envelope.Payload)!,
         _ => throw new InvalidOperationException($"Unknown event type: {envelope.EventType}")
     };
 }
