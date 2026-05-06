@@ -23,8 +23,11 @@ namespace Api.Handlers
 
         public static IResult Secret() => Results.Ok(new { status = "shhhh...." });
 
-        public static async Task<IResult> CreateNote(CreateNoteRequest? req, NoteCommandHandler handler)
+        public static async Task<IResult> CreateNote(HttpRequest request, NoteCommandHandler handler)
         {
+            CreateNoteRequest? req = null;
+            if (request.HasJsonContentType())
+                req = await request.ReadFromJsonAsync<CreateNoteRequest>();
             var noteId = req?.NoteId is { } id && id != Guid.Empty ? new NoteId(id) : new NoteId(Guid.NewGuid());
             try { await handler.HandleAsync(new CreateNote(noteId)); }
             catch (InvalidOperationException) { return Results.Conflict(); }
