@@ -13,6 +13,12 @@ internal sealed class InMemoryNoteDetailStore : INoteDetailStore
         return Task.CompletedTask;
     }
 
+    public Task DeleteAsync(NoteId noteId, CancellationToken ct = default)
+    {
+        _items.Remove(noteId);
+        return Task.CompletedTask;
+    }
+
     public Task<NoteDetailView?> GetAsync(NoteId noteId, CancellationToken ct = default) =>
         Task.FromResult(_items.TryGetValue(noteId, out var detail) ? detail : null);
 }

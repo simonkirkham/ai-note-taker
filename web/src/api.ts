@@ -53,3 +53,8 @@ export async function listNotes(): Promise<NoteItem[]> {
   const body: { items: NoteItem[] } = await res.json();
   return body.items;
 }
+
+export async function deleteNote(noteId: string): Promise<void> {
+  const res = await fetch(`${base}/notes/${noteId}`, { method: "DELETE" });
+  if (!res.ok) throw new Error(`DELETE /notes/${noteId} failed: ${res.status}`);
+}

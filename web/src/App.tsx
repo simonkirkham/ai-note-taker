@@ -8,7 +8,7 @@ type View = { kind: "list" } | { kind: "note"; noteId: string };
 
 export default function App() {
   const [view, setView] = useState<View>({ kind: "list" });
-  const { notes, loading, creating, createError, create, rename } = useNotes();
+  const { notes, loading, creating, createError, create, rename, remove } = useNotes();
 
   async function handleNewNote() {
     try {
@@ -17,6 +17,11 @@ export default function App() {
     } catch {
       // error surfaced by hook via createError
     }
+  }
+
+  async function handleDelete(noteId: string) {
+    await remove(noteId);
+    setView({ kind: "list" });
   }
 
   if (view.kind === "note") {
@@ -29,6 +34,7 @@ export default function App() {
         initialTitle={currentTitle}
         onRename={rename}
         onBack={() => setView({ kind: "list" })}
+        onDelete={handleDelete}
       />
     );
   }

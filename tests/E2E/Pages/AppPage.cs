@@ -44,4 +44,17 @@ public sealed class AppPage(IPage page, string baseUrl)
         await textarea.BlurAsync();
         await putDone;
     }
+
+    public async Task DeleteNoteAsync()
+    {
+        var deleteDone = page.WaitForResponseAsync(r =>
+            r.Url.Contains("/notes/") && r.Request.Method == "DELETE");
+        await page.GetByTestId("delete-note-button").ClickAsync();
+        await deleteDone;
+    }
+
+    public Task AssertNoteAbsentFromListAsync(string title) =>
+        Assertions.Expect(
+            page.GetByTestId("note-list").GetByText(title)
+        ).Not.ToBeVisibleAsync();
 }

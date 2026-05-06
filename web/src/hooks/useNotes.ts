@@ -3,6 +3,7 @@ import {
   createNote as apiCreate,
   listNotes as apiList,
   renameNote as apiRename,
+  deleteNote as apiDelete,
   NoteItem,
 } from "../api";
 
@@ -67,6 +68,11 @@ export function useNotes() {
     }
   }, []);
 
+  const remove = useCallback(async (noteId: string) => {
+    await apiDelete(noteId);
+    setNotes((prev) => prev.filter((n) => n.noteId !== noteId));
+  }, []);
+
   const refresh = useCallback(async () => {
     setLoading(true);
     try {
@@ -84,6 +90,7 @@ export function useNotes() {
     createError,
     create,
     rename,
+    remove,
     refresh,
   };
 }

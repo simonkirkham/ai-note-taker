@@ -41,6 +41,15 @@ public sealed class NoteCommandHandler(IEventStore store, INoteTitleListStore pr
         await PersistAsync(streamId, cmd.NoteId, history, newEvents, ct).ConfigureAwait(false);
     }
 
+    public async Task HandleAsync(DeleteNote cmd, CancellationToken ct = default)
+    {
+        var streamId = cmd.NoteId.ToStreamId();
+        var history = await store.ReadAsync(streamId, ct).ConfigureAwait(false);
+        if (history.Count == 0) throw new NoteNotFoundException(cmd.NoteId);
+        var newEvents = Rebuild(history).Handle(cmd);
+        await PersistAsync(streamId, cmd.NoteId, history, newEvents, ct).ConfigureAwait(false);
+    }
+
     private async Task PersistAsync(string streamId, NoteId noteId, IReadOnlyList<EventEnvelope> history, IReadOnlyList<IDomainEvent> newEvents, CancellationToken ct)
     {
         var envelopes = ToEnvelopes(streamId, newEvents);
@@ -50,6 +59,13 @@ public sealed class NoteCommandHandler(IEventStore store, INoteTitleListStore pr
 
     private async Task UpdateProjectionAsync(NoteId noteId, IReadOnlyList<EventEnvelope> history, List<EventEnvelope> newEnvelopes, CancellationToken ct)
     {
+        if (newEnvelopes.Any(e => e.EventType == nameof(NoteDeleted)))
+        {
+            await projStore.DeleteAsync(noteId, ct).ConfigureAwait(false);
+            await noteDetailStore.DeleteAsync(noteId, ct).ConfigureAwait(false);
+            return;
+        }
+
         var titleList = new NoteTitleListProjection();
         var detail = new NoteDetailProjection();
         foreach (var e in history) { titleList.Handle(e); detail.Handle(e); }

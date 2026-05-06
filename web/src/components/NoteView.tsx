@@ -6,15 +6,18 @@ export default function NoteView({
   initialTitle,
   onRename,
   onBack,
+  onDelete,
 }: {
   noteId: string;
   initialTitle: string;
   onRename: (noteId: string, title: string) => void;
   onBack: () => void;
+  onDelete: (noteId: string) => Promise<void>;
 }) {
   const [title, setTitle] = useState(initialTitle);
   const [content, setContent] = useState("");
   const [loadingDetail, setLoadingDetail] = useState(true);
+  const [notFound, setNotFound] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -26,25 +29,45 @@ export default function NoteView({
           setLoadingDetail(false);
         }
       })
-      .catch(() => {
-        if (!cancelled) setLoadingDetail(false);
+      .catch((err: Error) => {
+        if (!cancelled) {
+          if (err.message.includes("404")) setNotFound(true);
+          setLoadingDetail(false);
+        }
       });
     return () => { cancelled = true; };
   }, [noteId]);
 
   useEffect(() => {
-    if (!loadingDetail) inputRef.current?.focus();
-  }, [loadingDetail]);
+    if (!loadingDetail && !notFound) inputRef.current?.focus();
+  }, [loadingDetail, notFound]);
+
+  if (notFound) {
+    return (
+      <main className="container">
+        <button data-testid="back-button" onClick={onBack} className="back-button">
+          ← Back
+        </button>
+        <p data-testid="note-not-found" className="empty">Note not found.</p>
+      </main>
+    );
+  }
 
   return (
     <main className="container">
-      <button
-        data-testid="back-button"
-        onClick={onBack}
-        className="back-button"
-      >
-        ← Back
-      </button>
+      <div className="note-header">
+        <button data-testid="back-button" onClick={onBack} className="back-button">
+          ← Back
+        </button>
+        <button
+          data-testid="delete-note-button"
+          onClick={() => onDelete(noteId)}
+          className="delete-note-button"
+          aria-label="Delete note"
+        >
+          Delete
+        </button>
+      </div>
       <input
         data-testid="note-title-input"
         ref={inputRef}
