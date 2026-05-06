@@ -49,7 +49,12 @@ The pipeline is gated: no role begins until the previous role's output is review
 **Outputs:**
 - One spec file in `tests/Specs/` per command slice
 - Spec must compile and fail for the right reason (behaviour not yet implemented, not a syntax error)
-- Committed and pushed on a branch before hand-off
+- All work committed and pushed on a feature branch before hand-off — **never commit directly to main**
+
+**Branch convention:** `slice/<phase>-<slice-id>-<short-description>` e.g. `slice/2-b-edit-content`. Create it from main at the start of Breaker's work:
+```bash
+git checkout main && git pull && git checkout -b slice/2-b-edit-content
+```
 
 **Rules:**
 - Follow the BDD spec pattern: `Given(priorEvents).When(command).Then(expectedEvents)` or `.ThenError(...)`
@@ -79,7 +84,8 @@ The pipeline is gated: no role begins until the previous role's output is review
 - `agent-skills:incremental-implementation` — general thin-slice implementation
 
 **Step 1 — Implement:**
-- Pull the branch and confirm specs fail before writing any code
+- Check out the branch Breaker created (`git checkout slice/...`) — do not create a new branch; do not commit to main
+- Confirm specs fail before writing any code
 - Do not modify spec files — if a spec seems wrong, flag to a human rather than changing it
 - Write only what is needed to make the specs pass — no extra features, no speculative code
 
@@ -104,7 +110,8 @@ The pipeline is gated: no role begins until the previous role's output is review
 
 **Step 5 — Merge and monitor:**
 - Merge the PR (squash merge to keep main history clean)
-- Delete the remote branch
+- Delete the remote branch (`git push origin --delete slice/...`)
+- Delete the local branch (`git branch -d slice/...`)
 - Monitor the main pipeline until it reaches a terminal state
 - If the main pipeline fails and your merge caused it, fix it immediately
 - If the main pipeline passes, update `docs/workflow-log.md` with a phase-end note if this completes a phase

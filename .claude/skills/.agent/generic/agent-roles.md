@@ -48,13 +48,14 @@ For a backend-only slice (explicitly justified in the brief), omit E2E and write
 
 **Rules:**
 
+- **Create a feature branch before writing any test** — never commit directly to main. Branch naming: `slice/<phase>-<id>-<short-description>` (e.g. `slice/2-b-edit-content`). Create from main: `git checkout main && git pull && git checkout -b slice/2-b-edit-content`
 - Tests must be runnable and fail before implementation begins — for the right reason (behaviour missing, not compilation error)
 - Do not stub or partially implement to make tests pass — leave implementation absent
 - Name tests as user actions or observable outcomes: `User_opens_note_sees_content`, `Typing_content_and_blurring_saves_it`
 - Prefer one assertion per test
-- Commit and push all failing tests before handing off to Pip
+- Commit and push all failing tests to the feature branch before handing off to Pip
 
-**Hand-off:** List every test written (file, test name, what it asserts), confirm all are failing for the right reason, and pass to Pip.
+**Hand-off:** List every test written (file, test name, what it asserts), the branch name, confirm all are failing for the right reason, and pass to Pip.
 
 ---
 
@@ -66,11 +67,12 @@ For a backend-only slice (explicitly justified in the brief), omit E2E and write
 
 **Step 1 — Implement:**
 
-- Pull the branch from Agent 1 and confirm the tests fail before writing any code
+- Check out the branch Breaker created — never start work on main
+- Confirm the tests fail before writing any code
 - Do not modify test files — if a test seems wrong, flag it to a human rather than changing it
 - Write only what is needed to make the tests pass — no extra features, no speculative code
 - Run the full validation sequence ([validation.md](../validation.md)) before opening a PR
-- Open a PR once all tests are green and validation passes
+- Push the branch and open a PR against main once all tests are green and validation passes
 
 **Step 2 — Wait for PR pipeline:**
 
