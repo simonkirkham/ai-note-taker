@@ -43,7 +43,16 @@ public sealed class RenameNoteSpec(DeployedApiFixture fixture)
     private async Task<string> CreateNoteAsync()
     {
         var response = await fixture.Client.PostAsync("notes", null);
-        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
-        return body.GetProperty("noteId").GetString()!;
+
+        try
+        {
+            var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+            return body.GetProperty("noteId").GetString()!;
+        }
+        catch (JsonException ex)
+        {
+            Console.WriteLine($"Error occurred while creating note: {ex.Message}, Response Code: {response.StatusCode}, Response content: {await response.Content.ReadAsStringAsync()}  ");
+            throw;
+        }
     }
 }
