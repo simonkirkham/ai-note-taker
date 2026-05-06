@@ -27,7 +27,7 @@ Status key: `Done` · `In Progress` · `Not Started`
 ---
 
 ## Slice 2-B — Write and save note content
-**Status:** In Progress
+**Status:** Done
 
 **Value:** Users can type meeting notes and have them saved automatically — the core use case of the app.
 
@@ -38,10 +38,10 @@ Status key: `Done` · `In Progress` · `Not Started`
 
 - [x] *(backend done)* Submitting content for a note persists it and returns it on subsequent fetches
 - [x] User opens a note — a textarea is shown pre-populated with any previously saved content
-- [ ] User types in the textarea and moves focus away — the content is saved without any manual action
-- [ ] User navigates back to the list and re-opens the note — the typed content is still there
-- [ ] User clears the textarea and blurs — the empty content is saved (not an error)
-- [ ] E2E: open a note, type content, blur, navigate away, re-open — content persists across navigation
+- [x] User types in the textarea and moves focus away — the content is saved without any manual action
+- [x] User navigates back to the list and re-opens the note — the typed content is still there
+- [x] User clears the textarea and blurs — the empty content is saved (not an error)
+- [x] E2E: open a note, type content, blur, navigate away, re-open — content persists across navigation
 
 ---
 

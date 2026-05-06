@@ -28,9 +28,17 @@ date: 2026-05-06
 
 - **Role additions (Stylist, Scribe in agent-roles.md) should be a Scout output**, not discovered mid-slice. When Scout identifies a gap in the pipeline definition, it should file a separate doc-only slice rather than leaving it to be fixed ad hoc.
 
-## Hawk review findings
+## Hawk review findings (backend, earlier run)
 
-| Finding                                                                                                                                                        | File                                       | How to prevent                                                                                                     |
-| -------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------ | ------------------------------------------------------------------------------------------------------------------ |
-| `EditContent` method name collides with `Domain.Notes.EditContent` type — compiler error without disambiguation                                                | `src/Api/Handlers/NoteHandlers.cs`         | Pip: use a `using` alias (`using EditContentCmd = ...`) whenever a handler method shares a name with a domain type |
-| `PutContent_ThenGetNote_ReturnsUpdatedContentAndBumpsLastModifiedAt` read `lastModifiedAt` only after the PUT, so it was not actually asserting it had changed | `tests/ApiIntegration/EditContentTests.cs` | Breaker: snapshot before-state for any "bumps X" assertion; the test name implies a before/after comparison        |
+| Finding | File | How to prevent |
+|---|---|---|
+| `EditContent` method name collides with `Domain.Notes.EditContent` type — compiler error without disambiguation | `src/Api/Handlers/NoteHandlers.cs` | Pip: use a `using` alias (`using EditContentCmd = ...`) whenever a handler method shares a name with a domain type |
+| `PutContent_ThenGetNote_ReturnsUpdatedContentAndBumpsLastModifiedAt` read `lastModifiedAt` only after the PUT, so it was not actually asserting it had changed | `tests/ApiIntegration/EditContentTests.cs` | Breaker: snapshot before-state for any "bumps X" assertion; the test name implies a before/after comparison |
+
+## Hawk review findings (frontend, this run)
+
+| Finding | File | How to prevent |
+|---|---|---|
+| `Content_persists_after_navigating_away_and_returning` used hardcoded title — concurrent runs would collide | `tests/E2E/Journeys/NoteContentJourney.cs` | Breaker: every E2E test that creates a note must use a `Guid`-derived title |
+| `editContent` Promise is fire-and-forget on blur — failed saves are silently swallowed | `web/src/components/NoteView.tsx` | Accepted gap for this slice; needs a "save error state" slice to surface failures to the user |
+| `Typing_content_and_blurring_saves_it` is a subset of the persistence test — minimal independent value | `tests/E2E/Journeys/NoteContentJourney.cs` | Breaker: each E2E test should assert a distinct observable outcome not covered by another test |
