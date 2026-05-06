@@ -2,11 +2,12 @@ using System.Net;
 using System.Net.Http.Json;
 using System.Text;
 using System.Text.Json;
+using Xunit.Abstractions;
 
 namespace Acceptance;
 
 [Collection("Deployed API")]
-public sealed class RenameNoteSpec(DeployedApiFixture fixture)
+public sealed class RenameNoteSpec(DeployedApiFixture fixture, ITestOutputHelper outputHelper)
 {
     [Fact]
     public async Task PatchTitle_returns_200()
@@ -46,12 +47,13 @@ public sealed class RenameNoteSpec(DeployedApiFixture fixture)
 
         try
         {
+            outputHelper.WriteLine($"Create note response code: {response.StatusCode}");
             var body = await response.Content.ReadFromJsonAsync<JsonElement>();
             return body.GetProperty("noteId").GetString()!;
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"Error occurred while creating note: {ex.Message}, Response Code: {response.StatusCode}  ");
+            outputHelper.WriteLine($"Error occurred while creating note: {ex.Message}, Response Code: {response.StatusCode}  ");
             throw;
         }
     }
