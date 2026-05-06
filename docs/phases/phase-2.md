@@ -37,7 +37,7 @@ Status key: `Done` · `In Progress` · `Not Started`
 **Acceptance criteria:**
 
 - [x] *(backend done)* Submitting content for a note persists it and returns it on subsequent fetches
-- [ ] User opens a note — a textarea is shown pre-populated with any previously saved content
+- [x] User opens a note — a textarea is shown pre-populated with any previously saved content
 - [ ] User types in the textarea and moves focus away — the content is saved without any manual action
 - [ ] User navigates back to the list and re-opens the note — the typed content is still there
 - [ ] User clears the textarea and blurs — the empty content is saved (not an error)
