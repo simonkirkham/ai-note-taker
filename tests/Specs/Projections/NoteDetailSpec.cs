@@ -72,7 +72,7 @@ public sealed class NoteDetailSpec
         Assert.Null(detail);
     }
 
-    [Fact(Skip = "Pip 2-B")]
+    [Fact]
     public void ContentEdited_updates_content_and_lastModifiedAt()
     {
         var noteId = Guid.NewGuid();

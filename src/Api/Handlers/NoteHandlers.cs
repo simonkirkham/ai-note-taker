@@ -50,6 +50,13 @@ namespace Api.Handlers
             return Results.Ok(new { items });
         }
 
+        public static async Task<IResult> EditContent(Guid noteId, EditContentRequest req, NoteCommandHandler handler)
+        {
+            try { await handler.HandleAsync(new Domain.Notes.EditContent(new NoteId(noteId), req.Content)); }
+            catch (NoteNotFoundException) { return Results.NotFound(); }
+            return Results.NoContent();
+        }
+
         public static async Task<IResult> GetNote(Guid noteId, INoteDetailStore noteDetailStore)
         {
             var detail = await noteDetailStore.GetAsync(new NoteId(noteId));

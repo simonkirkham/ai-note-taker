@@ -4,6 +4,7 @@ public sealed class Note : IAggregate
 {
     bool _exists;
     string? _title;
+    string? _content;
 
     public void Apply(IDomainEvent @event)
     {
@@ -15,14 +16,18 @@ public sealed class Note : IAggregate
             case NoteRenamed e:
                 _title = e.NewTitle;
                 break;
+            case ContentEdited e:
+                _content = e.NewContent;
+                break;
         }
     }
 
     public IReadOnlyList<IDomainEvent> Handle(ICommand command) =>
         command switch
         {
-            CreateNote cmd => HandleCreate(cmd),
-            RenameNote cmd => HandleRename(cmd),
+            CreateNote cmd    => HandleCreate(cmd),
+            RenameNote cmd    => HandleRename(cmd),
+            EditContent cmd   => HandleEditContent(cmd),
             _ => throw new ArgumentOutOfRangeException(nameof(command))
         };
 
@@ -40,5 +45,14 @@ public sealed class Note : IAggregate
         if (cmd.NewTitle == _title)
             return [];
         return [new NoteRenamed(cmd.NoteId, cmd.NewTitle)];
+    }
+
+    IReadOnlyList<IDomainEvent> HandleEditContent(EditContent cmd)
+    {
+        if (!_exists)
+            throw new InvalidOperationException($"Note {cmd.NoteId} does not exist.");
+        if (cmd.Content == _content)
+            return [];
+        return [new ContentEdited(cmd.NoteId, cmd.Content)];
     }
 }

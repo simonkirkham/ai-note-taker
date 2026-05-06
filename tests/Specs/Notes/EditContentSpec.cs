@@ -7,7 +7,7 @@ public sealed class EditContentSpec
 {
     static readonly NoteId Id = new(Guid.Parse("00000000-0000-0000-0000-000000000001"));
 
-    [Fact(Skip = "Pip 2-B")]
+    [Fact]
     public void EditsContentWhenNoteExists()
     {
         Spec
@@ -16,7 +16,7 @@ public sealed class EditContentSpec
             .Then(new ContentEdited(Id, "Today we discussed the roadmap."));
     }
 
-    [Fact(Skip = "Pip 2-B")]
+    [Fact]
     public void RejectsEditWhenNoteDoesNotExist()
     {
         Spec
@@ -25,7 +25,7 @@ public sealed class EditContentSpec
             .ThenThrows<InvalidOperationException>();
     }
 
-    [Fact(Skip = "Pip 2-B")]
+    [Fact]
     public void ProducesNoEventWhenContentIsUnchanged()
     {
         Spec

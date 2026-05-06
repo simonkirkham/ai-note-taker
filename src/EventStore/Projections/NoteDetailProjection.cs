@@ -33,6 +33,10 @@ public sealed class NoteDetailProjection
                 if (_items.TryGetValue(e.NoteId, out var existing))
                     _items[e.NoteId] = existing with { Title = e.NewTitle, LastModifiedAt = envelope.OccurredAt };
                 break;
+            case ContentEdited e:
+                if (_items.TryGetValue(e.NoteId, out var cur))
+                    _items[e.NoteId] = cur with { Content = e.NewContent, LastModifiedAt = envelope.OccurredAt };
+                break;
             default:
                 break;
         }
