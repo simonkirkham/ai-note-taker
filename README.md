@@ -35,30 +35,52 @@ Full local stack: DynamoDB Local in Docker + .NET API on Kestrel + Vite dev serv
 
 **Prerequisites:** [Docker Desktop](https://www.docker.com/products/docker-desktop/), [.NET 8 SDK](https://dotnet.microsoft.com/download/dotnet/8), [Node.js 20+](https://nodejs.org/)
 
-**1. Start DynamoDB Local**
+### Quick start
+
+```bash
+bash dev.sh
+```
+
+Starts all three services, waits for DynamoDB tables to be ready, and prints the URLs. Press Ctrl+C to stop everything cleanly.
+
+| Service  | URL                      |
+| -------- | ------------------------ |
+| Frontend | http://localhost:5173    |
+| API      | http://localhost:5000    |
+| DynamoDB | http://localhost:8000    |
+
+### Manual steps
+
+<details>
+<summary>Run each service individually</summary>
+
+**1. DynamoDB Local**
 
 ```bash
 docker compose up -d
 ```
 
-Starts DynamoDB Local on port 8000. A one-shot init container creates the two tables on first run (`notetaker-events`, `notetaker-proj-notetitlelist`). Data persists in a Docker volume between restarts.
+Starts DynamoDB Local on port 8000. A one-shot init container creates the three tables on first run (`notetaker-events`, `notetaker-proj-notetitlelist`, `notetaker-proj-notedetail`). Data persists in a Docker volume between restarts.
 
-**2. Start the API**
+**2. .NET API**
 
 ```bash
 dotnet run --project src/Api/Api.csproj
 ```
 
-`launchSettings.json` sets `ASPNETCORE_ENVIRONMENT=Development`, which causes `appsettings.Development.json` to point the DynamoDB client at `http://localhost:8000`. Runs on `http://localhost:5000`.
+`launchSettings.json` sets all required env vars and points the DynamoDB client at `http://localhost:8000`. Runs on `http://localhost:5000`.
 
-**3. Start the frontend**
+**3. Frontend**
 
 ```bash
 cp web/.env.local.example web/.env.local   # first time only
-cd web && npm run dev
+npm --prefix web install                   # first time only
+npm --prefix web run dev
 ```
 
 Open `http://localhost:5173`.
+
+</details>
 
 ---
 
@@ -117,7 +139,28 @@ cdk deploy
 
 ### Environment variables
 
-| Variable                 | Used by                         | Description                                                                                   |
-| ------------------------ | ------------------------------- | --------------------------------------------------------------------------------------------- |
-| `API_BASE_URL`           | acceptance spec                 | Live API Gateway URL — set to run the acceptance spec against the deployed Lambda             |
-| `DYNAMO_TIMEOUT_SECONDS` | local API and integration tests | HTTP timeout (seconds) for the DynamoDB client when running locally or in tests. Default: `5` |
+**Backend** — set automatically by `launchSettings.json` when running locally via `dotnet run` or `dev.sh`:
+
+| Variable                          | Local value                       | Description                                                       |
+| --------------------------------- | --------------------------------- | ----------------------------------------------------------------- |
+| `ASPNETCORE_ENVIRONMENT`          | `Development`                     | Activates `appsettings.Development.json` (DynamoDB at localhost)  |
+| `EVENTS_TABLE_NAME`               | `notetaker-events`                | DynamoDB event store table                                        |
+| `PROJ_NOTETITLELIST_TABLE_NAME`   | `notetaker-proj-notetitlelist`    | Note title list projection table                                  |
+| `PROJ_NOTEDETAIL_TABLE_NAME`      | `notetaker-proj-notedetail`       | Note detail projection table                                      |
+| `AWS_ACCESS_KEY_ID`               | `local`                           | Dummy credential accepted by DynamoDB Local                       |
+| `AWS_SECRET_ACCESS_KEY`           | `local`                           | Dummy credential accepted by DynamoDB Local                       |
+| `AWS_DEFAULT_REGION`              | `us-east-1`                       | Region sent to DynamoDB Local                                     |
+| `DYNAMO_TIMEOUT_SECONDS`          | _(not set — uses default of 5)_   | Override DynamoDB HTTP timeout in seconds                         |
+
+**Frontend** — set in `web/.env.local` (copy from `web/.env.local.example` on first run):
+
+| Variable        | Local value               | Description                        |
+| --------------- | ------------------------- | ---------------------------------- |
+| `VITE_API_URL`  | `http://localhost:5000`   | Base URL the frontend calls for API requests |
+
+**Tests** — set in CI or manually before running post-deploy test suites:
+
+| Variable        | Used by          | Description                                                      |
+| --------------- | ---------------- | ---------------------------------------------------------------- |
+| `API_BASE_URL`  | Acceptance tests | Deployed API Gateway URL — required to run `tests/Acceptance/`   |
+| `FRONTEND_URL`  | E2E tests        | Deployed CloudFront URL — required to run `tests/E2E/`           |
