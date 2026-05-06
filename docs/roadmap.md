@@ -40,12 +40,14 @@ Implement the remaining test layers from [ADR 0008](adr/0008-testing-strategy.md
 
 Slices and acceptance criteria: [docs/phases/phase-2.md](phases/phase-2.md)
 
-## Phase 3 — Cross-aggregate projection (todo list)
+## Phase 3 — Cross-aggregate projection (todo list) _(In Progress)_
 
 - `ActionItemAdded`, `ActionItemCompleted`
 - Projection aggregates action items across all notes into a single todo list
 
 **Goal:** the "power of projections" moment — same events, new read model.
+
+Slices and acceptance criteria: [docs/phases/phase-3.md](phases/phase-3.md)
 
 ## Phase 4 — Folders and tags
 
