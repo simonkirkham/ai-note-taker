@@ -2,24 +2,24 @@ name: PR Checks
 
 on:
   pull_request:
-    branches: [main]
+    branches: [ main ]
 
 jobs:
   check:
     runs-on: ubuntu-latest
     environment: Test
     env:
-      DYNAMO_TIMEOUT_SECONDS: '3'
+      DYNAMO_TIMEOUT_SECONDS: "3"
     steps:
       - uses: actions/checkout@v4
 
       - uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: '8.0.x'
+          dotnet-version: "8.0.x"
 
       - uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: "20"
 
       - name: Install CDK CLI
         run: npm install -g aws-cdk@2
@@ -47,11 +47,16 @@ jobs:
         run: dotnet test tests/InfraAssertions/InfraAssertions.csproj
 
       - name: Publish Lambda
-        run: dotnet publish src/Api/Api.csproj -c Release -o src/Api/bin/Release/net8.0/publish
+        run: dotnet publish src/Api/Api.csproj -c Release -o
+          src/Api/bin/Release/net8.0/publish
 
       - name: CDK Synth
         run: cdk synth
 
+      - name: Lint frontend
+        working-directory: web
+        run: npm ci && npm run lint
+
       - name: Frontend build
         working-directory: web
-        run: npm ci && npm run build
+        run: npm run build
