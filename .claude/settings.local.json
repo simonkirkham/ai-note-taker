@@ -73,7 +73,10 @@
       "Bash(npm run *)",
       "Bash(npx tsc *)",
       "WebFetch(domain:github.com)",
-      "Bash(python *)"
+      "Bash(python *)",
+      "Bash(node_modules/.bin/tsc -b --noEmit)",
+      "Bash(node_modules/typescript/bin/tsc -b --noEmit)",
+      "Bash(dir docs\\\\\\\\phases)"
     ]
   }
 }
