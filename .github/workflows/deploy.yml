@@ -106,6 +106,22 @@ jobs:
         env:
           FRONTEND_URL: ${{ steps.outputs.outputs.frontend-url }}
 
+      - name: Clear test data
+        if: always()
+        run: |
+          python3 << 'EOF'
+          import boto3
+          dynamodb = boto3.resource('dynamodb')
+          for name in ['notetaker-events', 'notetaker-proj-notetitlelist']:
+              table = dynamodb.Table(name)
+              scan = table.scan()
+              keys = {k['AttributeName'] for k in table.key_schema}
+              with table.batch_writer() as batch:
+                  for item in scan['Items']:
+                      batch.delete_item(Key={k: v for k, v in item.items() if k in keys})
+              print(f'Deleted {scan["Count"]} items from {name}')
+          EOF
+
       - name: Upload Playwright trace
         if: always()
         uses: actions/upload-artifact@v4
