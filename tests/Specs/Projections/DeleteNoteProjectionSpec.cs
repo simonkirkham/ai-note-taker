@@ -23,7 +23,7 @@ public sealed class DeleteNoteProjectionSpec
         projection.Handle(Envelope(noteId.ToStreamId(), 2, nameof(NoteDeleted),
             JsonSerializer.Serialize(new NoteDeleted(noteId))));
 
-        Assert.Empty(projection.GetView().Items.Where(i => i.NoteId == noteId));
+        Assert.DoesNotContain(projection.GetView().Items, i => i.NoteId == noteId);
     }
 
     [Fact]
