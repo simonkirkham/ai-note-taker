@@ -46,7 +46,7 @@ Status key: `Done` · `In Progress` · `Not Started`
 ---
 
 ## Slice 2-C — Event versioning
-**Status:** Not Started
+**Status:** Done
 
 **Value:** The project survives its first event shape change without losing history — the defining "trust the event log" moment of event sourcing.
 
@@ -57,9 +57,9 @@ Status key: `Done` · `In Progress` · `Not Started`
 **Acceptance criteria:**
 
 *Backend:*
-- [ ] User opens a note that was saved before the versioning change — content still loads and displays correctly
-- [ ] User saves new content after the deploy — it saves and reloads correctly
-- [ ] *(internal)* The event stream contains both v1 and v2 `ContentEdited` events; the system handles both without error
+- [x] User opens a note that was saved before the versioning change — content still loads and displays correctly
+- [x] User saves new content after the deploy — it saves and reloads correctly
+- [x] *(internal)* The event stream contains both v1 and v2 `ContentEdited` events; the system handles both without error
 
 *Note: this is a backend learning slice — no visible UI change. The acceptance criteria confirm the UI is unbroken across the version boundary.*
 
