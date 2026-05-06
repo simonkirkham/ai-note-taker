@@ -71,8 +71,7 @@ public sealed class NoteCommandHandler(IEventStore store, INoteTitleListStore pr
     private static List<EventEnvelope> ToEnvelopes(string streamId, IReadOnlyList<IDomainEvent> events) =>
         events.Select(e =>
         {
-            // ContentEdited v1 events are upgraded to v2 at the infrastructure boundary.
-            // The domain aggregate remains unaware of the wire format.
+            // The domain aggregate emits ContentEdited; the infrastructure layer persists it as ContentEditedV2.
             var (type, version, payload) = e is ContentEdited ce
                 ? (nameof(ContentEdited), 2, JsonSerializer.Serialize(
                     new ContentEditedV2(ce.NoteId, ce.NewContent, ce.NewContent.Length)))
