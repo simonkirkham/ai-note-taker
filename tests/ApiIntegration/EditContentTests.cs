@@ -30,9 +30,12 @@ public sealed class EditContentTests(ApiFactory factory) : IClassFixture<ApiFact
     }
 
     [Fact]
-    public async Task PutContent_ThenGetNote_ReturnsUpdatedContent()
+    public async Task PutContent_ThenGetNote_ReturnsUpdatedContentAndBumpsLastModifiedAt()
     {
         var noteId = await CreateNoteAsync();
+        var before = (await (await _client.GetAsync($"/notes/{noteId}"))
+            .Content.ReadFromJsonAsync<JsonElement>())
+            .GetProperty("lastModifiedAt").GetString();
 
         await _client.PutAsync($"/notes/{noteId}/content",
             new StringContent("{\"content\":\"Sprint retrospective notes.\"}", Encoding.UTF8, "application/json"));
@@ -40,6 +43,8 @@ public sealed class EditContentTests(ApiFactory factory) : IClassFixture<ApiFact
         var resp = await _client.GetAsync($"/notes/{noteId}");
         var body = await resp.Content.ReadFromJsonAsync<JsonElement>();
         Assert.Equal("Sprint retrospective notes.", body.GetProperty("content").GetString());
+        var after = body.GetProperty("lastModifiedAt").GetString();
+        Assert.NotEqual(before, after);
     }
 
     private async Task<string> CreateNoteAsync()

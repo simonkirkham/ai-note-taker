@@ -29,9 +29,12 @@ public sealed class EditContentSpec(DeployedApiFixture fixture)
     }
 
     [Fact]
-    public async Task PutContent_ThenGetNote_ReturnsUpdatedContent()
+    public async Task PutContent_ThenGetNote_ReturnsUpdatedContentAndBumpsLastModifiedAt()
     {
         var noteId = await CreateNoteAsync();
+        var before = (await (await fixture.Client.GetAsync($"notes/{noteId}"))
+            .Content.ReadFromJsonAsync<JsonElement>())
+            .GetProperty("lastModifiedAt").GetString();
 
         await fixture.Client.PutAsync($"notes/{noteId}/content",
             new StringContent("{\"content\":\"Sprint retrospective notes.\"}", Encoding.UTF8, "application/json"));
@@ -39,6 +42,8 @@ public sealed class EditContentSpec(DeployedApiFixture fixture)
         var resp = await fixture.Client.GetAsync($"notes/{noteId}");
         var body = await resp.Content.ReadFromJsonAsync<JsonElement>();
         Assert.Equal("Sprint retrospective notes.", body.GetProperty("content").GetString());
+        var after = body.GetProperty("lastModifiedAt").GetString();
+        Assert.NotEqual(before, after);
     }
 
     private async Task<string> CreateNoteAsync()

@@ -6,6 +6,7 @@ using EventStore;
 using EventStore.Projections;
 using Domain.Notes;
 using Api.Contracts;
+using EditContentCmd = Domain.Notes.EditContent;
 
 namespace Api.Handlers
 {
@@ -52,7 +53,7 @@ namespace Api.Handlers
 
         public static async Task<IResult> EditContent(Guid noteId, EditContentRequest req, NoteCommandHandler handler)
         {
-            try { await handler.HandleAsync(new Domain.Notes.EditContent(new NoteId(noteId), req.Content)); }
+            try { await handler.HandleAsync(new EditContentCmd(new NoteId(noteId), req.Content)); }
             catch (NoteNotFoundException) { return Results.NotFound(); }
             return Results.NoContent();
         }
