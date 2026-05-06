@@ -60,6 +60,7 @@ export default function NoteView({
       ) : (
         <textarea
           data-testid="note-content"
+          aria-label="Note content"
           value={content}
           onChange={(e) => setContent(e.target.value)}
           onBlur={() => editContent(noteId, content)}
