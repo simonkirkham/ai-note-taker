@@ -66,7 +66,7 @@ Status key: `Done` · `In Progress` · `Not Started`
 ---
 
 ## Slice 2-D — Delete a note
-**Status:** Not Started
+**Status:** Done
 
 **Value:** Users can remove notes they no longer need — keeps the list clean and teaches soft delete in an event-sourced system.
 
@@ -77,11 +77,11 @@ Status key: `Done` · `In Progress` · `Not Started`
 
 **Acceptance criteria:**
 
-- [ ] User opens a note and chooses to delete it — the note disappears from the list immediately, no page refresh needed
-- [ ] User navigates back to the list after deleting — the deleted note is not there
-- [ ] User tries to re-open a deleted note's URL directly — a not-found message is shown
-- [ ] *(internal)* Renaming or editing a deleted note is rejected by the backend
-- [ ] E2E: create a note, open it, delete it — gone from list; direct URL shows not-found
+- [x] User opens a note and chooses to delete it — the note disappears from the list immediately, no page refresh needed
+- [x] User navigates back to the list after deleting — the deleted note is not there
+- [x] User tries to re-open a deleted note's URL directly — a not-found message is shown
+- [x] *(internal)* Renaming or editing a deleted note is rejected by the backend
+- [x] E2E: create a note, open it, delete it — gone from list; direct URL shows not-found
 
 ---
 
