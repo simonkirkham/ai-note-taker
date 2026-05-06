@@ -10,17 +10,20 @@ Each piece of work is handled by agents in sequence. No agent does another's job
 
 **Outputs:**
 
-- A feature brief: what to build, why, design notes, and acceptance criteria
+- A phase brief written to `docs/phases/phase-N.md`, following the format of `docs/phases/phase-1.md` exactly:
+  - Phase goal and scope note at the top
+  - One section per slice, each with: status, value statement, commands/events in scope, and a checkbox acceptance-criteria list
+  - Each slice must open with a one-sentence **value statement** in plain language — what the end user gains, or what project/learning goal it advances. Write it before the technical detail. If you can't state the value clearly, the slice isn't ready to build.
 - Criteria must be specific enough for Breaker to turn directly into BDD tests
-- Each slice must open with a one-sentence **value statement** in plain language — what the end user gains, or what project/learning goal it advances. Write it before the technical detail. If you can't state the value clearly, the slice isn't ready to build.
+- `docs/roadmap.md` updated to link to the new phase file and mark the phase as `_(In Progress)_`
 
 **Rules:**
 
-- Do not write code or modify any files
+- Do **not** write code or test files — only `docs/phases/phase-N.md` and `docs/roadmap.md`
 - Pick the highest value-to-effort feature if multiple candidates exist
 - Flag dependencies and risks for downstream agents
 
-**Hand-off:** Output a structured brief. The human reviews it before Breaker begins.
+**Hand-off:** Commit and push `docs/phases/phase-N.md`. The human reviews the file before Breaker begins.
 
 ---
 
