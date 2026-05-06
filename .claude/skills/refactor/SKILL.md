@@ -37,6 +37,7 @@ Run this skill after all BDD specs pass and before opening a PR. Behaviour must 
 | Long parameter list | > 3–4 parameters in a row | Group into a record or use a builder |
 | Primitive obsession | Raw `string` or `Guid` where a domain type exists | Use `NoteId`, `StreamId`, etc. |
 | Unclear name | `e`, `item`, `result`, `tmp` | Name what it *is*, not what it *holds* |
+| File with multiple responsibilities | One file handles concerns that change for different reasons — e.g. wiring, middleware, routing, business logic, and data shapes all together; or a component that owns data fetching, mutations, and multiple distinct views | Split so each file has one reason to change. Group by what changes together: configuration and wiring, routing, handler logic, data contracts, and view components are each their own concern |
 
 ### Event-sourcing specific
 
@@ -60,6 +61,15 @@ Run this skill after all BDD specs pass and before opening a PR. Behaviour must 
 | `ConfigureAwait(false)` absent in library code | In `src/EventStore/` or `src/Domain/` | Add `ConfigureAwait(false)` to every `await` in library projects |
 | Swallowed exception | `catch (Exception) { }` or catch with no rethrow/log | At minimum log; ideally don't catch what you can't handle |
 | Nullable reference not checked at boundary | External input (`req.Title`) used without null guard | Add `ArgumentNullException.ThrowIfNull` or null-coalescing at the entry point |
+| Entry-point file doing too much | `Program.cs` contains service registration, middleware config, route mapping, handler logic, and request/response records | Each concern gets its own file. The entry point becomes an orchestration sequence only — it calls into the other files, it does not define behaviour itself |
+
+### React / TypeScript specific
+
+| Smell | Signal | Fix |
+|---|---|---|
+| State and render mixed in one component | A component owns data fetching, mutation logic, error state, and renders multiple distinct sub-views | Extract a custom hook for all stateful logic — it returns data and named actions; the component calls the hook and handles UI events only. Extract each distinct sub-view as its own component |
+| Inline styles | `style={{ ... }}` scattered across JSX | Move to a co-located CSS file and use class names |
+| Shared types re-declared | The same interface or type defined in multiple files | Move to a shared `types.ts` and import from there |
 
 ## What NOT to do
 

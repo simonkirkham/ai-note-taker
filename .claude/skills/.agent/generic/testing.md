@@ -32,3 +32,37 @@ Integration tests run against a deployed environment, not locally. They exist to
 ## Watch Mode
 
 Use watch mode when iterating on a specific area — run the full suite before pushing.
+
+## Test Diagnostics (xUnit)
+
+When a test calls a real HTTP endpoint, failures are often silent — the assertion fails but you can't see what the API actually returned.
+
+**Use `ITestOutputHelper` instead of `Console.WriteLine`.** xUnit's `Console.WriteLine` output is suppressed by default; `ITestOutputHelper` is always shown for failing tests.
+
+Inject it alongside any fixture:
+
+```csharp
+public sealed class RenameNoteSpec(DeployedApiFixture fixture, ITestOutputHelper output)
+```
+
+Log key HTTP diagnostics in helper methods — at minimum the status code on both the happy path and the error path:
+
+```csharp
+private async Task<string> CreateNoteAsync()
+{
+    var response = await fixture.Client.PostAsync("notes", null);
+    try
+    {
+        output.WriteLine($"POST /notes → {response.StatusCode}");
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>();
+        return body.GetProperty("noteId").GetString()!;
+    }
+    catch (Exception ex)
+    {
+        output.WriteLine($"Failed to parse response: {ex.Message}, status: {response.StatusCode}");
+        throw;
+    }
+}
+```
+
+Catch `Exception` (not a narrow type) when the purpose is diagnostic logging — you want to see the status code regardless of whether the failure is a `JsonException`, `HttpRequestException`, or something else.
