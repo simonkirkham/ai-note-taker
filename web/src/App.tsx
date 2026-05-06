@@ -24,6 +24,7 @@ export default function App() {
       notes.find((n) => n.noteId === view.noteId)?.title ?? "";
     return (
       <NoteView
+        key={view.noteId}
         noteId={view.noteId}
         initialTitle={currentTitle}
         onRename={rename}

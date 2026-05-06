@@ -49,9 +49,13 @@ jobs:
           echo "API URL:      ${{ steps.outputs.outputs.api-url }}"
           echo "Frontend URL: ${{ steps.outputs.outputs.frontend-url }}"
 
+      - name: Lint frontend
+        working-directory: web
+        run: npm ci && npm run lint
+
       - name: Build frontend
         working-directory: web
-        run: npm ci && npm run build
+        run: npm run build
         env:
           VITE_API_URL: ${{ steps.outputs.outputs.api-url }}
 

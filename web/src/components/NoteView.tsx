@@ -18,12 +18,7 @@ export default function NoteView({
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    setTitle(initialTitle);
-  }, [initialTitle]);
-
-  useEffect(() => {
     let cancelled = false;
-    setLoadingDetail(true);
     getNoteDetail(noteId)
       .then((detail) => {
         if (!cancelled) {
