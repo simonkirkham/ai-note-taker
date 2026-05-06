@@ -109,6 +109,7 @@ jobs:
         run: dotnet test tests/E2E/E2E.csproj -c Release
         env:
           FRONTEND_URL: ${{ steps.outputs.outputs.frontend-url }}
+          API_URL: ${{ steps.outputs.outputs.api-url }}
 
       - name: Clear test data
         if: always()
