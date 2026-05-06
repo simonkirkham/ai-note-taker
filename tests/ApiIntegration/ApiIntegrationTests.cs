@@ -121,6 +121,8 @@ public sealed class ApiIntegrationTests(ApiFactory factory) : IClassFixture<ApiF
 
         Assert.Equal(createdNoteId, listBody.GetProperty("noteId").GetString());
         Assert.Equal("Correct Title", listBody.GetProperty("title").GetString());
+        Assert.True(listBody.TryGetProperty("content", out _), "response must include content");
+        Assert.True(listBody.TryGetProperty("createdAt", out _), "response must include createdAt");
     }
 
      [Fact]
