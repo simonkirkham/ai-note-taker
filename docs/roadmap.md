@@ -30,13 +30,15 @@ Implement the remaining test layers from [ADR 0008](adr/0008-testing-strategy.md
 
 **Goal:** every PR is fully validated without an AWS account; the acceptance suite becomes a thin post-deploy smoke check.
 
-## Phase 2 — Richer note lifecycle
+## Phase 2 — Richer note lifecycle _(In Progress)_
 
-- `NoteRenamed`, `NoteDeleted`, `NoteContentReplaced`
+- `ContentEdited` (done), `NoteDeleted`, event versioning, projection rebuild
 - Event versioning learned by needing it
 - Projection rebuild logic exercised
 
 **Goal:** you've changed your mind about an event's shape at least once and survived.
+
+Slices and acceptance criteria: [docs/phases/phase-2.md](phases/phase-2.md)
 
 ## Phase 3 — Cross-aggregate projection (todo list)
 
