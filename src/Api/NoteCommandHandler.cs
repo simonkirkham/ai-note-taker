@@ -69,10 +69,18 @@ public sealed class NoteCommandHandler(IEventStore store, INoteTitleListStore pr
     }
 
     private static List<EventEnvelope> ToEnvelopes(string streamId, IReadOnlyList<IDomainEvent> events) =>
-        events.Select(e => new EventEnvelope(
-            StreamId: streamId, SequenceNumber: 0, EventType: e.GetType().Name, EventVersion: InitialEventVersion,
-            OccurredAt: DateTimeOffset.UtcNow,
-            Payload: JsonSerializer.Serialize(e, e.GetType()),
-            Metadata: new EventMetadata(Guid.NewGuid(), null, null, null)
-        )).ToList();
+        events.Select(e =>
+        {
+            // ContentEdited v1 events are upgraded to v2 at the infrastructure boundary.
+            // The domain aggregate remains unaware of the wire format.
+            var (type, version, payload) = e is ContentEdited ce
+                ? (nameof(ContentEdited), 2, JsonSerializer.Serialize(
+                    new ContentEditedV2(ce.NoteId, ce.NewContent, ce.NewContent.Length)))
+                : (e.GetType().Name, InitialEventVersion, JsonSerializer.Serialize(e, e.GetType()));
+
+            return new EventEnvelope(
+                StreamId: streamId, SequenceNumber: 0, EventType: type, EventVersion: version,
+                OccurredAt: DateTimeOffset.UtcNow, Payload: payload,
+                Metadata: new EventMetadata(Guid.NewGuid(), null, null, null));
+        }).ToList();
 }

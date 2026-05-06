@@ -19,6 +19,9 @@ public sealed class Note : IAggregate
             case ContentEdited e:
                 _content = e.NewContent;
                 break;
+            case ContentEditedV2 e:
+                _content = e.NewContent;
+                break;
         }
     }
 
