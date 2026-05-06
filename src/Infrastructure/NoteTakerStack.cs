@@ -19,10 +19,18 @@ public class NoteTakerStack : Stack
             RemovalPolicy = RemovalPolicy.RETAIN
         });
 
-        // ── Projection table ─────────────────────────────────────────────
+        // ── Projection tables ────────────────────────────────────────────
         var projTable = new Table(this, "ProjNoteTitleListTable", new TableProps
         {
             TableName = "notetaker-proj-notetitlelist",
+            PartitionKey = new Amazon.CDK.AWS.DynamoDB.Attribute { Name = "PK", Type = AttributeType.STRING },
+            BillingMode = BillingMode.PAY_PER_REQUEST,
+            RemovalPolicy = RemovalPolicy.RETAIN
+        });
+
+        var noteDetailTable = new Table(this, "ProjNoteDetailTable", new TableProps
+        {
+            TableName = "notetaker-proj-notedetail",
             PartitionKey = new Amazon.CDK.AWS.DynamoDB.Attribute { Name = "PK", Type = AttributeType.STRING },
             BillingMode = BillingMode.PAY_PER_REQUEST,
             RemovalPolicy = RemovalPolicy.RETAIN
@@ -39,14 +47,16 @@ public class NoteTakerStack : Stack
             Timeout = Duration.Seconds(29),
             Environment = new Dictionary<string, string>
             {
-                ["EVENTS_TABLE_NAME"] = eventsTable.TableName,
-                ["PROJ_NOTETITLELIST_TABLE_NAME"] = projTable.TableName
+                ["EVENTS_TABLE_NAME"]          = eventsTable.TableName,
+                ["PROJ_NOTETITLELIST_TABLE_NAME"] = projTable.TableName,
+                ["PROJ_NOTEDETAIL_TABLE_NAME"] = noteDetailTable.TableName
             }
         });
 
         eventsTable.GrantReadWriteData(apiFunction);
         eventsTable.Grant(apiFunction, "dynamodb:TransactWriteItems");
         projTable.GrantReadWriteData(apiFunction);
+        noteDetailTable.GrantReadWriteData(apiFunction);
 
         // ── API Gateway ──────────────────────────────────────────────────
         // CORS is handled by ASP.NET Core UseCors middleware in the Lambda, not at

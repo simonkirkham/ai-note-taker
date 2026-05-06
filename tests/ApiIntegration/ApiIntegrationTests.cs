@@ -137,29 +137,24 @@ public sealed class ApiIntegrationTests(ApiFactory factory) : IClassFixture<ApiF
     }
 
     [Fact]
-    public async Task WhenMoreThanOneNoteExists_GetNoteDetails_ReturnsTheNoteWithTheTitle()
+    public async Task WhenMoreThanOneNoteExists_GetNoteDetails_ReturnsTheRequestedNote()
     {
-        var title = "Second Title";
-        var firstCreateResponse = await _client.PostAsync("/notes", null);
-        var firstCreateResponseBody = await firstCreateResponse.Content.ReadFromJsonAsync<JsonElement>();
-        var firstNoteId = firstCreateResponseBody.GetProperty("noteId").GetString();
+        var first = await _client.PostAsync("/notes", null);
+        var firstNoteId = (await first.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("noteId").GetString();
 
-        var secondCreateResponse = await _client.PostAsync("/notes", null);
-        var secondCreateResponseBody = await secondCreateResponse.Content.ReadFromJsonAsync<JsonElement>();
-        var secondNoteId = secondCreateResponseBody.GetProperty("noteId").GetString();
+        var second = await _client.PostAsync("/notes", null);
+        var secondNoteId = (await second.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("noteId").GetString();
 
-        await _client.PatchAsync($"/notes/{secondNoteId}/title",
+        await _client.PatchAsync($"/notes/{firstNoteId}/title",
             new StringContent("{\"title\":\"First Title\"}", Encoding.UTF8, "application/json"));
-
         await _client.PatchAsync($"/notes/{secondNoteId}/title",
-            new StringContent("{\"title\":\"" + title + "\"}", Encoding.UTF8, "application/json"));
+            new StringContent("{\"title\":\"Second Title\"}", Encoding.UTF8, "application/json"));
 
         var resp = await _client.GetAsync($"/notes/{firstNoteId}");
 
         resp.EnsureSuccessStatusCode();
-        var listBody = await resp.Content.ReadFromJsonAsync<JsonElement>();
-
-        Assert.Equal(secondNoteId, listBody.GetProperty("noteId").GetString());
-        Assert.Equal(title, listBody.GetProperty("title").GetString());
+        var body = await resp.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal(firstNoteId, body.GetProperty("noteId").GetString());
+        Assert.Equal("First Title", body.GetProperty("title").GetString());
     }
 }

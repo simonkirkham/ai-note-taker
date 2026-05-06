@@ -12,7 +12,7 @@ public sealed class NoteDetailSpec
         new(streamId, seq, type, 1, occurredAt ?? DateTimeOffset.UtcNow, payload,
             new EventMetadata(Guid.NewGuid(), null, null, null));
 
-    [Fact(Skip = "Pip 2-A — NoteDetailProjection not yet implemented")]
+    [Fact]
     public void NoteCreated_adds_detail_with_empty_title_and_content()
     {
         var noteId = Guid.NewGuid();
@@ -28,7 +28,7 @@ public sealed class NoteDetailSpec
         Assert.Equal(string.Empty, detail.Content);
     }
 
-    [Fact(Skip = "Pip 2-A — NoteDetailProjection not yet implemented")]
+    [Fact]
     public void NoteCreated_sets_createdAt_and_lastModifiedAt_from_envelope()
     {
         var noteId = Guid.NewGuid();
@@ -43,7 +43,7 @@ public sealed class NoteDetailSpec
         Assert.Equal(createdAt, detail.LastModifiedAt);
     }
 
-    [Fact(Skip = "Pip 2-A — NoteDetailProjection not yet implemented")]
+    [Fact]
     public void NoteRenamed_updates_title_and_lastModifiedAt()
     {
         var noteId = Guid.NewGuid();
@@ -62,7 +62,7 @@ public sealed class NoteDetailSpec
         Assert.Equal(renamedAt, detail.LastModifiedAt);
     }
 
-    [Fact(Skip = "Pip 2-A — NoteDetailProjection not yet implemented")]
+    [Fact]
     public void GetDetail_unknown_note_returns_null()
     {
         var projection = new NoteDetailProjection();

@@ -8,7 +8,7 @@ namespace Api;
 
 public sealed class NoteNotFoundException(NoteId noteId) : Exception($"Note {noteId} not found.");
 
-public sealed class NoteCommandHandler(IEventStore store, INoteTitleListStore projStore)
+public sealed class NoteCommandHandler(IEventStore store, INoteTitleListStore projStore, INoteDetailStore noteDetailStore)
 {
     private const int InitialEventVersion = 1;
 
@@ -40,11 +40,14 @@ public sealed class NoteCommandHandler(IEventStore store, INoteTitleListStore pr
 
     private async Task UpdateProjectionAsync(NoteId noteId, IReadOnlyList<EventEnvelope> history, List<EventEnvelope> newEnvelopes, CancellationToken ct)
     {
-        var projection = new NoteTitleListProjection();
-        foreach (var e in history) projection.Handle(e);
-        foreach (var e in newEnvelopes) projection.Handle(e);
-        var item = projection.GetView().Items.First(i => i.NoteId == noteId);
+        var titleList = new NoteTitleListProjection();
+        var detail = new NoteDetailProjection();
+        foreach (var e in history) { titleList.Handle(e); detail.Handle(e); }
+        foreach (var e in newEnvelopes) { titleList.Handle(e); detail.Handle(e); }
+
+        var item = titleList.GetView().Items.First(i => i.NoteId == noteId);
         await projStore.UpsertAsync(item, ct).ConfigureAwait(false);
+        await noteDetailStore.UpsertAsync(detail.GetDetail(noteId)!, ct).ConfigureAwait(false);
     }
 
     private static Note Rebuild(IReadOnlyList<EventEnvelope> history)

@@ -50,17 +50,18 @@ namespace Api.Handlers
             return Results.Ok(new { items });
         }
 
-        public static async Task<IResult> GetNote(Guid noteId, INoteTitleListStore projStore)
+        public static async Task<IResult> GetNote(Guid noteId, INoteDetailStore noteDetailStore)
         {
-            var view = await projStore.QueryAllAsync();
-            var items = view.Items
-                .OrderByDescending(i => i.LastModifiedAt)
-                .Select(i => new { noteId = i.NoteId.Value, title = i.Title, lastModifiedAt = i.LastModifiedAt });
-
-            if (!items.Any(i => i.noteId == noteId))
-                return Results.NotFound();
-
-            return Results.Ok(items.First());
+            var detail = await noteDetailStore.GetAsync(new NoteId(noteId));
+            if (detail is null) return Results.NotFound();
+            return Results.Ok(new
+            {
+                noteId         = detail.NoteId.Value,
+                title          = detail.Title,
+                content        = detail.Content,
+                createdAt      = detail.CreatedAt,
+                lastModifiedAt = detail.LastModifiedAt
+            });
         }
     }
 }
