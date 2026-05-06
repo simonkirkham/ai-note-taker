@@ -12,7 +12,7 @@ public sealed class BrowserFixture : IAsyncLifetime
         ?? throw new InvalidOperationException(
             "FRONTEND_URL is not set. E2E journey tests require a deployed frontend.");
 
-    public string? ApiBaseUrl { get; } = Environment.GetEnvironmentVariable("API_BASE_URL");
+    public string? ApiBaseUrl { get; } = Environment.GetEnvironmentVariable("API_URL");
 
     public async Task InitializeAsync()
     {
