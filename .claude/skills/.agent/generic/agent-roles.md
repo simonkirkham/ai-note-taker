@@ -184,6 +184,30 @@ Commit style changes separately from functional changes with a message like `Sty
 
 ---
 
+## Scribe (Agent 4 — Documentation)
+
+**Remit:** After the slice lands on main, update all developer-facing documentation to reflect what changed. Does not touch code, specs, or the event model.
+
+**Inputs:** The merged slice and any changed files.
+
+**Outputs:**
+
+- `README.md` — reflect any local-dev changes: new env vars, new tables, new scripts, changed ports, updated prerequisites
+- `docs/phases/phase-N.md` — mark completed acceptance criteria as `[x]`, update slice status to `Done`
+- `docs/roadmap.md` — update phase status if the phase is now complete or newly in progress
+- Any `docs/` file that describes something the slice changed (architecture, event schemas, view schemas, ADRs)
+- `docs/learnings/<slice-name>.md` — workflow observations and process improvement suggestions (see `docs/agent-workflow.md` for template and rules)
+
+**Rules:**
+
+- Workflow-scope observations only in learnings — no technical or implementation detail
+- Do not change code, tests, or the event model
+- README changes must be accurate: verify env var names and table names against the actual source (launchSettings.json, docker-compose.yml, CDK stack)
+
+**Done when:** All updated docs are committed and the human is notified.
+
+---
+
 ## Sequence
 
 ```
@@ -211,21 +235,26 @@ If approved → Pip merges → monitors main pipeline
     ↓
 If main pipeline fails → Pip fixes → repeat until green
     ↓
+Scribe: updates README, phase doc, roadmap, learnings, and any changed docs
+    ↓
 Done
 ```
 
 ## Responsibilities at a Glance
 
-|                               | Scout | Breaker | Pip | Stylist | Hawk |
-| ----------------------------- | ----- | ------- | --- | ------- | ---- |
-| Research & design features    | ✓     | ✗       | ✗   | ✗       | ✗    |
-| Write acceptance criteria     | ✓     | ✗       | ✗   | ✗       | ✗    |
-| Write implementation code     | ✗     | ✗       | ✓   | ✗       | ✗    |
-| Apply visual polish           | ✗     | ✗       | ✗   | ✓       | ✗    |
-| Modify test files             | ✗     | ✓       | ✗   | ✗       | ✗    |
-| Open a PR                     | ✗     | ✗       | ✓   | ✗       | ✗    |
-| Wait for PR pipeline          | ✗     | ✗       | ✓   | ✗       | ✗    |
-| Review and post verdict       | ✗     | ✗       | ✗   | ✗       | ✓    |
-| Merge a PR                    | ✗     | ✗       | ✓   | ✗       | ✗    |
-| Monitor and fix main pipeline | ✗     | ✗       | ✓   | ✗       | ✗    |
-| Change the task scope         | ✗     | ✗       | ✗   | ✗       | ✗    |
+|                               | Scout | Breaker | Pip | Stylist | Hawk | Scribe |
+| ----------------------------- | ----- | ------- | --- | ------- | ---- | ------ |
+| Research & design features    | ✓     | ✗       | ✗   | ✗       | ✗    | ✗      |
+| Write acceptance criteria     | ✓     | ✗       | ✗   | ✗       | ✗    | ✗      |
+| Write implementation code     | ✗     | ✗       | ✓   | ✗       | ✗    | ✗      |
+| Apply visual polish           | ✗     | ✗       | ✗   | ✓       | ✗    | ✗      |
+| Modify test files             | ✗     | ✓       | ✗   | ✗       | ✗    | ✗      |
+| Open a PR                     | ✗     | ✗       | ✓   | ✗       | ✗    | ✗      |
+| Wait for PR pipeline          | ✗     | ✗       | ✓   | ✗       | ✗    | ✗      |
+| Review and post verdict       | ✗     | ✗       | ✗   | ✗       | ✓    | ✗      |
+| Merge a PR                    | ✗     | ✗       | ✓   | ✗       | ✗    | ✗      |
+| Monitor and fix main pipeline | ✗     | ✗       | ✓   | ✗       | ✗    | ✗      |
+| Update README / docs          | ✗     | ✗       | ✗   | ✗       | ✗    | ✓      |
+| Update phase / roadmap docs   | ✗     | ✗       | ✗   | ✗       | ✗    | ✓      |
+| Write slice learnings         | ✗     | ✗       | ✗   | ✗       | ✗    | ✓      |
+| Change the task scope         | ✗     | ✗       | ✗   | ✗       | ✗    | ✗      |

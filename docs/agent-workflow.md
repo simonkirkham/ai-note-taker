@@ -166,6 +166,8 @@ The pipeline is gated: no role begins until the previous role's output is review
 - `docs/learnings/<slice-name>.md` using the template below
 - Updated `docs/phases/phase-N.md` — mark completed acceptance criteria as `[x]`, update slice status to `Done`
 - Updated `docs/roadmap.md` — update phase status line if the phase is now complete or in progress
+- Updated `README.md` — reflect any changes to local setup: new env vars, new tables, new scripts, changed ports, updated prerequisites
+- Updated developer docs — any file under `docs/` that describes something this slice changed (architecture, event model, ADRs, view schemas)
 
 **Learnings doc template:**
 ```markdown
@@ -246,6 +248,7 @@ Human checkpoint: reviews learnings and decides whether to update agent-workflow
 | Update workflow-log.md         | ✗     | ✗       | ✓   | ✗    | ✗      |
 | Write slice learnings doc      | ✗     | ✗       | ✗   | ✗    | ✓      |
 | Update phase / roadmap docs    | ✗     | ✗       | ✗   | ✗    | ✓      |
+| Update README / developer docs | ✗     | ✗       | ✗   | ✗    | ✓      |
 | Change the task scope          | ✗     | ✗       | ✗   | ✗    | ✗      |
 
 ---
