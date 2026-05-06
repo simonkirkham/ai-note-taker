@@ -49,9 +49,9 @@ public sealed class RenameNoteSpec(DeployedApiFixture fixture)
             var body = await response.Content.ReadFromJsonAsync<JsonElement>();
             return body.GetProperty("noteId").GetString()!;
         }
-        catch (JsonException ex)
+        catch (Exception ex)
         {
-            Console.WriteLine($"Error occurred while creating note: {ex.Message}, Response Code: {response.StatusCode}, Response content: {await response.Content.ReadAsStringAsync()}  ");
+            Console.WriteLine($"Error occurred while creating note: {ex.Message}, Response Code: {response.StatusCode}  ");
             throw;
         }
     }
