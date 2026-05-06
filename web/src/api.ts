@@ -37,6 +37,16 @@ export async function renameNote(noteId: string, title: string): Promise<void> {
     throw new Error(`PATCH /notes/${noteId}/title failed: ${res.status}`);
 }
 
+export async function editContent(noteId: string, content: string): Promise<void> {
+  const res = await fetch(`${base}/notes/${noteId}/content`, {
+    method: "PUT",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ content }),
+  });
+  if (!res.ok)
+    throw new Error(`PUT /notes/${noteId}/content failed: ${res.status}`);
+}
+
 export async function listNotes(): Promise<NoteItem[]> {
   const res = await fetch(`${base}/notes`);
   if (!res.ok) throw new Error(`GET /notes failed: ${res.status}`);

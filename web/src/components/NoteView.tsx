@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { getNoteDetail } from "../api";
+import { editContent, getNoteDetail } from "../api";
 
 export default function NoteView({
   noteId,
@@ -62,6 +62,7 @@ export default function NoteView({
           data-testid="note-content"
           value={content}
           onChange={(e) => setContent(e.target.value)}
+          onBlur={() => editContent(noteId, content)}
           placeholder="Start typing your notes…"
           className="content-input"
         />
