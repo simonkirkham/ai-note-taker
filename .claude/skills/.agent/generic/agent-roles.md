@@ -100,6 +100,63 @@ For a backend-only slice (explicitly justified in the brief), omit E2E and write
 
 ---
 
+## Stylist (Agent 2.5 — UI/UX Polish)
+
+**Remit:** Once Pip's tests are green and the slice is functionally complete, apply visual polish to any changed UI components. Does not change behaviour — only appearance, accessibility, and feel.
+
+**Inputs:** The branch from Pip with all tests passing.
+
+**Applies to:** Any slice marked as user-facing in the phase doc. Skip this role entirely for backend-only slices (those that explicitly state no UI change).
+
+**Step 1 — Load design system**
+
+Check whether `design-system/MASTER.md` exists in the repo root.
+
+- If it does **not** exist yet, generate and persist it first:
+  ```bash
+  python3 .claude/skills/ui-ux-pro-max/scripts/search.py "notes productivity SaaS minimal" --design-system --persist -p "AI Note Taker" -f markdown
+  ```
+- If it **does** exist, read it before touching any component — it is the source of truth for colours, typography, spacing, and style decisions.
+
+**Step 2 — Get React-specific guidance**
+
+```bash
+python3 .claude/skills/ui-ux-pro-max/scripts/search.py "state loading accessibility" --stack react
+```
+
+**Step 3 — Polish changed components**
+
+Apply improvements to any `web/src/` files changed in this slice. Focus on:
+- Accessibility: focus states, aria-labels on icon buttons, label associations
+- Touch targets: interactive elements ≥ 44×44 px
+- Loading/error states: skeleton or spinner, never a blank flash
+- Transitions: 150–300 ms on hover/focus, using `transform`/`opacity` not layout props
+- Spacing and typography consistent with `MASTER.md`
+- `cursor-pointer` on all clickable elements
+
+**Step 4 — Run pre-delivery checklist**
+
+Work through the checklist in the skill's SKILL.md before committing:
+- No emoji icons (use SVG)
+- All clickable elements have `cursor-pointer`
+- Hover states don't cause layout shift
+- Sufficient contrast (4.5:1 minimum)
+- Responsive at 375 px, 768 px, 1024 px
+
+**Step 5 — Commit and hand off to Hawk**
+
+Commit style changes separately from functional changes with a message like `Style: polish NoteView content area (2-A)`. Hand off to Hawk with a summary of what was changed visually.
+
+**Rules:**
+
+- Do not change component behaviour, props, or test IDs — Breaker's tests must still pass after your changes
+- Do not introduce new dependencies without asking — use CSS/inline styles or whatever the project already uses
+- Do not run the design-system generation on every slice — generate once, reference MASTER.md thereafter
+
+**Done when:** Visual changes committed, all existing tests still green, handed to Hawk.
+
+---
+
 ## Hawk (Agent 3 — Reviewer)
 
 **Remit:** Review the PR and return a verdict. Do not implement fixes. Do not merge.
@@ -112,6 +169,7 @@ For a backend-only slice (explicitly justified in the brief), omit E2E and write
 - Implementation does only what the tests require — no scope creep, no dead code
 - No obvious security issues (injection, unvalidated input at system boundaries, exposed secrets)
 - No unnecessary complexity — if something can be simpler, call it out
+- For user-facing slices: UI polish has been applied (Stylist ran) — check for cursor-pointer, visible focus states, loading/error states, and no emoji icons
 
 **Output:** Inline comments on the PR where relevant. A single summary verdict posted as a PR comment: `Approved`, `Approved with minor comments`, or `Changes requested`.
 
@@ -141,6 +199,8 @@ Pip: implements → validation passes → opens PR
     ↓
 Pip: waits for PR pipeline to pass
     ↓
+Stylist: loads/generates design system → polishes UI components → commits style changes (user-facing slices only)
+    ↓
 Pip: requests review from Hawk
     ↓
 Hawk: reviews → posts verdict → returns to Pip
@@ -156,15 +216,16 @@ Done
 
 ## Responsibilities at a Glance
 
-|                               | Scout | Breaker | Pip | Hawk |
-| ----------------------------- | ----- | ------- | --- | ---- |
-| Research & design features    | ✓     | ✗       | ✗   | ✗    |
-| Write acceptance criteria     | ✓     | ✗       | ✗   | ✗    |
-| Write implementation code     | ✗     | ✗       | ✓   | ✗    |
-| Modify test files             | ✗     | ✓       | ✗   | ✗    |
-| Open a PR                     | ✗     | ✗       | ✓   | ✗    |
-| Wait for PR pipeline          | ✗     | ✗       | ✓   | ✗    |
-| Review and post verdict       | ✗     | ✗       | ✗   | ✓    |
-| Merge a PR                    | ✗     | ✗       | ✓   | ✗    |
-| Monitor and fix main pipeline | ✗     | ✗       | ✓   | ✗    |
-| Change the task scope         | ✗     | ✗       | ✗   | ✗    |
+|                               | Scout | Breaker | Pip | Stylist | Hawk |
+| ----------------------------- | ----- | ------- | --- | ------- | ---- |
+| Research & design features    | ✓     | ✗       | ✗   | ✗       | ✗    |
+| Write acceptance criteria     | ✓     | ✗       | ✗   | ✗       | ✗    |
+| Write implementation code     | ✗     | ✗       | ✓   | ✗       | ✗    |
+| Apply visual polish           | ✗     | ✗       | ✗   | ✓       | ✗    |
+| Modify test files             | ✗     | ✓       | ✗   | ✗       | ✗    |
+| Open a PR                     | ✗     | ✗       | ✓   | ✗       | ✗    |
+| Wait for PR pipeline          | ✗     | ✗       | ✓   | ✗       | ✗    |
+| Review and post verdict       | ✗     | ✗       | ✗   | ✗       | ✓    |
+| Merge a PR                    | ✗     | ✗       | ✓   | ✗       | ✗    |
+| Monitor and fix main pipeline | ✗     | ✗       | ✓   | ✗       | ✗    |
+| Change the task scope         | ✗     | ✗       | ✗   | ✗       | ✗    |

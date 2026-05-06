@@ -96,6 +96,7 @@ Reach for these instead of writing patterns from scratch:
 - **dynamodb-event-append** — canonical append-with-optimistic-concurrency pattern
 - **cdk-stack-update** — safe edits to CDK with synth + diff gating
 - **refactor** — clean up code after specs pass; see [`.claude/skills/refactor/SKILL.md`](.claude/skills/refactor/SKILL.md)
+- **ui-ux-pro-max** — design system generator for visual polish; run as Stylist after Pip's tests are green; generates `design-system/MASTER.md` once and references it thereafter
 
 ## Workflow
 
