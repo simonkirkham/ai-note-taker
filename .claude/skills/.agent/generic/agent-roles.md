@@ -12,15 +12,16 @@ Each piece of work is handled by agents in sequence. No agent does another's job
 
 - A phase brief written to `docs/phases/phase-N.md`, following the format of `docs/phases/phase-2.md` exactly:
   - Phase goal and scope note at the top
-  - One section per slice, each with: status, value statement, commands/events in scope, and a checkbox acceptance-criteria list split into *Backend* and *Frontend* sub-sections
+  - One section per slice, each with: status, value statement, commands/events in scope, and a checkbox acceptance-criteria list
   - Each slice must open with a one-sentence **value statement** in plain language — what the end user gains, or what project/learning goal it advances. Write it before the technical detail. If you can't state the value clearly, the slice isn't ready to build.
-- Criteria must be specific enough for Breaker to turn directly into BDD tests
+  - **Acceptance criteria must be written as user behaviour**, not API contracts. Describe what the user does and sees: *"User opens a note — content is displayed"*, not *"GET /notes/{id} returns 200"*. API-level detail belongs in the implementation, not the spec.
+  - Most slices will involve UI changes and should say so. If a slice has no user-facing change, state the explicit reason. Do not silently omit the UI.
+- Criteria must be specific enough for Breaker to turn directly into E2E or BDD tests
 - `docs/roadmap.md` updated to link to the new phase file and mark the phase as `_(In Progress)_`
 
 **Rules:**
 
 - Do **not** write code or test files — only `docs/phases/phase-N.md` and `docs/roadmap.md`
-- **Every slice must be full-stack.** Backend criteria alone are not sufficient — each slice must include frontend acceptance criteria so the user can experience the value in the browser. If a slice genuinely has no user-facing change (e.g. a backend-only learning slice), state this explicitly and add a criterion that confirms the UI is unbroken after deploy.
 - Pick the highest value-to-effort feature if multiple candidates exist
 - Flag dependencies and risks for downstream agents
 
@@ -30,24 +31,30 @@ Each piece of work is handled by agents in sequence. No agent does another's job
 
 ## Breaker (Agent 1 — Test Author)
 
-**Remit:** Write failing BDD-style tests that specify the required behaviour. Do not write any implementation code.
+**Remit:** Write failing tests that specify the required behaviour from the user's perspective. Do not write any implementation code.
 
-**Inputs:** A task description or acceptance criteria from a human.
+**Inputs:** A slice brief with user-behaviour acceptance criteria from Scout.
 
 **Outputs:**
 
-- One or more test files with failing tests
-- Tests must fail for the right reason (the behaviour is not implemented yet, not a syntax error or bad mock)
+For a user-facing slice, produce tests at every relevant layer, with E2E tests as the primary spec:
+
+1. **E2E (Playwright)** — the primary acceptance test. Describes what a user does and sees in the browser. One journey per acceptance criterion: open the note, type content, blur, navigate away, return — content is visible. These run against the deployed app and are the ground truth for "is the slice done?"
+2. **Domain BDD specs** (`tests/Specs/`) — cover aggregate behaviour: happy path, guard conditions, no-op. Use `[Fact(Skip = "Pip <slice-id>")]` so the pre-commit hook stays green until Pip implements.
+3. **API integration tests** (`tests/ApiIntegration/`) — cover HTTP contract: status codes, response shapes. No skip needed (not run by pre-commit hook).
+4. **Acceptance tests** (`tests/Acceptance/`) — cover the deployed API contract end-to-end. No skip needed.
+
+For a backend-only slice (explicitly justified in the brief), omit E2E and write domain + API + acceptance tests only.
 
 **Rules:**
 
-- Tests must be runnable and fail before implementation begins
-- Do not stub out the implementation to make tests pass — leave it absent or minimal
-- Name tests in plain language: `it("returns a 404 when the team does not exist")`
-- Prefer one assertion per test; group related tests under descriptive `describe` blocks
-- Commit and push the failing tests before handing off to Agent 2
+- Tests must be runnable and fail before implementation begins — for the right reason (behaviour missing, not compilation error)
+- Do not stub or partially implement to make tests pass — leave implementation absent
+- Name tests as user actions or observable outcomes: `User_opens_note_sees_content`, `Typing_content_and_blurring_saves_it`
+- Prefer one assertion per test
+- Commit and push all failing tests before handing off to Pip
 
-**Hand-off:** Print a summary of all test scenarios written (test name + one-line description of what it asserts), the branch name, and confirm that all new tests are failing for the right reason. Pass this to Agent 2.
+**Hand-off:** List every test written (file, test name, what it asserts), confirm all are failing for the right reason, and pass to Pip.
 
 ---
 
