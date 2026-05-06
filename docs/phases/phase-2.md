@@ -9,7 +9,7 @@ Status key: `Done` · `In Progress` · `Not Started`
 ---
 
 ## Slice 2-A — Load and display note content
-**Status:** In Progress
+**Status:** Done
 
 **Value:** Users can open a note and see its content — the app graduates from "a list of titles" to "something you can actually read."
 
@@ -19,10 +19,10 @@ Status key: `Done` · `In Progress` · `Not Started`
 **Acceptance criteria:**
 
 - [x] *(backend done)* The note detail (title, content, timestamps) is stored and retrievable by note ID
-- [ ] User opens a note from the list — the note's content is displayed below the title
-- [ ] While the note is loading, a loading indicator is visible
-- [ ] User opens a note that has no content yet — an empty content area is shown (not an error)
-- [ ] E2E: create a note, save content via the API directly, open the note in the browser — the content is visible without a page refresh
+- [x] User opens a note from the list — the note's content is displayed below the title
+- [x] While the note is loading, a loading indicator is visible
+- [x] User opens a note that has no content yet — an empty content area is shown (not an error)
+- [x] E2E: create a note, save content via the API directly, open the note in the browser — the content is visible without a page refresh
 
 ---
 
