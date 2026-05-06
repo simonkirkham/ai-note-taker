@@ -39,6 +39,58 @@ public sealed class NoteContentJourney(BrowserFixture browser) : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Typing_content_and_blurring_saves_it()
+    {
+        await _app.GotoAsync();
+        await _app.ClickNewNoteAsync();
+
+        // EnterContentAsync waits for the PUT /content response — times out if onBlur doesn't fire it
+        await _app.EnterContentAsync("Notes from today's standup");
+    }
+
+    [Fact]
+    public async Task Content_persists_after_navigating_away_and_returning()
+    {
+        const string content = "Action items: deploy by Friday, update stakeholders";
+
+        await _app.GotoAsync();
+        await _app.ClickNewNoteAsync();
+        await _app.EnterTitleAsync("Persistence test note");
+        await _app.EnterContentAsync(content);
+
+        await _app.GoBackAsync();
+        await _app.ClickNoteInListAsync("Persistence test note");
+
+        await _app.AssertContentValueAsync(content);
+    }
+
+    [Fact]
+    public async Task Clearing_content_and_blurring_saves_empty_content()
+    {
+        var apiBase = browser.ApiBaseUrl
+            ?? throw new InvalidOperationException("API_BASE_URL must be set for this journey");
+
+        var title = $"Clear test {Guid.NewGuid():N}"[..20];
+        using var http = new HttpClient();
+        var create = await http.PostAsync($"{apiBase}/notes", null);
+        var noteId = (await create.Content.ReadFromJsonAsync<JsonElement>())
+            .GetProperty("noteId").GetString()!;
+        await http.PatchAsync($"{apiBase}/notes/{noteId}/title",
+            new StringContent($"{{\"title\":\"{title}\"}}", Encoding.UTF8, "application/json"));
+        await http.PutAsync($"{apiBase}/notes/{noteId}/content",
+            new StringContent("{\"content\":\"original content\"}", Encoding.UTF8, "application/json"));
+
+        await _app.GotoAsync();
+        await _app.ClickNoteInListAsync(title);
+        await _app.EnterContentAsync("");  // clear and blur
+
+        await _app.GoBackAsync();
+        await _app.ClickNoteInListAsync(title);
+
+        await _app.AssertContentValueAsync("");
+    }
+
+    [Fact]
     public async Task Opening_a_note_with_saved_content_shows_that_content()
     {
         var apiBase = browser.ApiBaseUrl

@@ -34,4 +34,14 @@ public sealed class AppPage(IPage page, string baseUrl)
 
     public Task AssertContentValueAsync(string expected) =>
         Assertions.Expect(page.GetByTestId("note-content")).ToHaveValueAsync(expected);
+
+    public async Task EnterContentAsync(string content)
+    {
+        var textarea = page.GetByTestId("note-content");
+        var putDone = page.WaitForResponseAsync(r =>
+            r.Url.Contains("/content") && r.Request.Method == "PUT");
+        await textarea.FillAsync(content);
+        await textarea.BlurAsync();
+        await putDone;
+    }
 }
