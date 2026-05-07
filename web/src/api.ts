@@ -93,3 +93,18 @@ export async function reopenAction(noteId: string, actionId: string): Promise<vo
   const res = await fetch(`${base}/notes/${noteId}/actions/${actionId}/reopen`, { method: "POST" });
   if (!res.ok) throw new Error(`POST /notes/${noteId}/actions/${actionId}/reopen failed: ${res.status}`);
 }
+
+export interface TodoItem {
+  actionId: string;
+  noteId: string;
+  noteTitle: string;
+  description: string;
+  addedAt: string;
+}
+
+export async function getTodos(): Promise<TodoItem[]> {
+  const res = await fetch(`${base}/todos`);
+  if (!res.ok) throw new Error(`GET /todos failed: ${res.status}`);
+  const body: { items: TodoItem[] } = await res.json();
+  return body.items;
+}

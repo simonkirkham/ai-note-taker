@@ -12,7 +12,10 @@ var noteDetailTableName = Environment.GetEnvironmentVariable("PROJ_NOTEDETAIL_TA
 var noteActionsTableName = Environment.GetEnvironmentVariable("PROJ_NOTEACTIONS_TABLE_NAME")
     ?? throw new InvalidOperationException("PROJ_NOTEACTIONS_TABLE_NAME is not set.");
 
-var app = Builder.BuildApp(args, eventTableName, projTableName, noteDetailTableName, noteActionsTableName);
+var todoListTableName = Environment.GetEnvironmentVariable("PROJ_TODOLIST_TABLE_NAME")
+    ?? throw new InvalidOperationException("PROJ_TODOLIST_TABLE_NAME is not set.");
+
+var app = Builder.BuildApp(args, eventTableName, projTableName, noteDetailTableName, noteActionsTableName, todoListTableName);
 
 app.UseCors(p => p.AllowAnyOrigin().AllowAnyMethod().AllowAnyHeader());
 

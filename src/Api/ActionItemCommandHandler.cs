@@ -13,7 +13,8 @@ public sealed class ActionItemNotFoundException(ActionId actionId)
 public sealed class ActionItemCommandHandler(
     IEventStore store,
     INoteDetailStore noteDetailStore,
-    INoteActionsStore noteActionsStore)
+    INoteActionsStore noteActionsStore,
+    ITodoListStore todoListStore)
 {
     public async Task<ActionId> HandleAsync(AddActionItem cmd, CancellationToken ct = default)
     {
@@ -34,6 +35,8 @@ public sealed class ActionItemCommandHandler(
             {
                 var action = new NoteAction(e.ActionId, e.Description, false, envelope.OccurredAt, null);
                 await noteActionsStore.UpsertAsync(cmd.NoteId, action, ct).ConfigureAwait(false);
+                await todoListStore.PutAsync(
+                    new TodoItem(e.ActionId, e.NoteId, noteDetail.Title, e.Description, envelope.OccurredAt), ct).ConfigureAwait(false);
             }
         }
 
@@ -45,8 +48,11 @@ public sealed class ActionItemCommandHandler(
         var (addedEvent, addedEnvelope, newEvents) = await ExecuteAndAppendAsync(cmd.ActionId, cmd, ct);
         foreach (var domainEvent in newEvents)
             if (domainEvent is ActionItemCompleted e)
+            {
                 await noteActionsStore.UpsertAsync(addedEvent.NoteId,
                     new NoteAction(e.ActionId, addedEvent.Description, true, addedEnvelope.OccurredAt, e.CompletedAt), ct).ConfigureAwait(false);
+                await todoListStore.DeleteAsync(cmd.ActionId, ct).ConfigureAwait(false);
+            }
     }
 
     public async Task HandleAsync(ReopenActionItem cmd, CancellationToken ct = default)
@@ -54,8 +60,14 @@ public sealed class ActionItemCommandHandler(
         var (addedEvent, addedEnvelope, newEvents) = await ExecuteAndAppendAsync(cmd.ActionId, cmd, ct);
         foreach (var domainEvent in newEvents)
             if (domainEvent is ActionItemReopened)
+            {
                 await noteActionsStore.UpsertAsync(addedEvent.NoteId,
                     new NoteAction(cmd.ActionId, addedEvent.Description, false, addedEnvelope.OccurredAt, null), ct).ConfigureAwait(false);
+                var noteDetail = await noteDetailStore.GetAsync(addedEvent.NoteId, ct).ConfigureAwait(false);
+                await todoListStore.PutAsync(
+                    new TodoItem(cmd.ActionId, addedEvent.NoteId, noteDetail?.Title ?? string.Empty,
+                        addedEvent.Description, addedEnvelope.OccurredAt), ct).ConfigureAwait(false);
+            }
     }
 
     async Task<(ActionItemAdded AddedEvent, EventEnvelope AddedEnvelope, IReadOnlyList<IDomainEvent> NewEvents)>
