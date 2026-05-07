@@ -16,7 +16,7 @@ Status key: `Done` · `In Progress` · `Not Started`
 
 ## Slice 3-A — Add action items on the note screen
 
-**Status:** Not Started
+**Status:** Done
 
 **Value:** Users can capture action items while editing a note — the note editor becomes an active task-capture tool, not just a text area.
 
@@ -56,14 +56,14 @@ Scenario: Reject duplicate action item (API)
 
 **Acceptance criteria:**
 
-- [ ] *(internal)* Adding an action item to an existing note appends `ActionItemAdded` to the event store under the action's own stream
-- [ ] *(internal)* Adding an action item with an `ActionId` that already exists is rejected (duplicate guard)
-- [ ] *(internal)* Adding an action item to a non-existent note is rejected (404)
-- [ ] User opens a note — an actions section is visible below the content area
-- [ ] User types a description and submits — the action item appears in the list immediately, no page refresh
-- [ ] User opens a note that has no action items — an empty state ("No action items yet") is shown, not an error
-- [ ] User navigates away and reopens the note — the action items are still there
-- [ ] E2E: open a note, add two action items, navigate away and back — both items persist
+- [x] *(internal)* Adding an action item to an existing note appends `ActionItemAdded` to the event store under the action's own stream
+- [x] *(internal)* Adding an action item with an `ActionId` that already exists is rejected (duplicate guard)
+- [x] *(internal)* Adding an action item to a non-existent note is rejected (404)
+- [x] User opens a note — an actions section is visible below the content area
+- [x] User types a description and submits — the action item appears in the list immediately, no page refresh
+- [x] User opens a note that has no action items — an empty state ("No action items yet") is shown, not an error
+- [x] User navigates away and reopens the note — the action items are still there
+- [x] E2E: open a note, add two action items, navigate away and back — both items persist
 
 ---
 
