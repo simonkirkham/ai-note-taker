@@ -42,48 +42,37 @@ public sealed class ActionItemCommandHandler(
 
     public async Task HandleAsync(CompleteActionItem cmd, CancellationToken ct = default)
     {
-        var streamId = cmd.ActionId.ToStreamId();
-        var history = await store.ReadAsync(streamId, ct).ConfigureAwait(false);
-        if (history.Count == 0) throw new ActionItemNotFoundException(cmd.ActionId);
-
-        var addedEnvelope = history.First(e => e.EventType == nameof(ActionItemAdded));
-        var addedEvent = (ActionItemAdded)EventDeserializer.Deserialize(addedEnvelope);
-
-        var newEvents = RebuildAggregate(history).Handle(cmd);
-        var envelopes = ToEnvelopes(streamId, newEvents);
-        await store.AppendAsync(streamId, history.Count, envelopes, ct).ConfigureAwait(false);
-
+        var (addedEvent, addedEnvelope, newEvents) = await ExecuteAndAppendAsync(cmd.ActionId, cmd, ct);
         foreach (var domainEvent in newEvents)
-        {
             if (domainEvent is ActionItemCompleted e)
-            {
-                var action = new NoteAction(e.ActionId, addedEvent.Description, true, addedEnvelope.OccurredAt, e.CompletedAt);
-                await noteActionsStore.UpsertAsync(addedEvent.NoteId, action, ct).ConfigureAwait(false);
-            }
-        }
+                await noteActionsStore.UpsertAsync(addedEvent.NoteId,
+                    new NoteAction(e.ActionId, addedEvent.Description, true, addedEnvelope.OccurredAt, e.CompletedAt), ct).ConfigureAwait(false);
     }
 
     public async Task HandleAsync(ReopenActionItem cmd, CancellationToken ct = default)
     {
-        var streamId = cmd.ActionId.ToStreamId();
+        var (addedEvent, addedEnvelope, newEvents) = await ExecuteAndAppendAsync(cmd.ActionId, cmd, ct);
+        foreach (var domainEvent in newEvents)
+            if (domainEvent is ActionItemReopened)
+                await noteActionsStore.UpsertAsync(addedEvent.NoteId,
+                    new NoteAction(cmd.ActionId, addedEvent.Description, false, addedEnvelope.OccurredAt, null), ct).ConfigureAwait(false);
+    }
+
+    async Task<(ActionItemAdded AddedEvent, EventEnvelope AddedEnvelope, IReadOnlyList<IDomainEvent> NewEvents)>
+        ExecuteAndAppendAsync(ActionId actionId, ICommand command, CancellationToken ct)
+    {
+        var streamId = actionId.ToStreamId();
         var history = await store.ReadAsync(streamId, ct).ConfigureAwait(false);
-        if (history.Count == 0) throw new ActionItemNotFoundException(cmd.ActionId);
+        if (history.Count == 0) throw new ActionItemNotFoundException(actionId);
 
         var addedEnvelope = history.First(e => e.EventType == nameof(ActionItemAdded));
         var addedEvent = (ActionItemAdded)EventDeserializer.Deserialize(addedEnvelope);
 
-        var newEvents = RebuildAggregate(history).Handle(cmd);
+        var newEvents = RebuildAggregate(history).Handle(command);
         var envelopes = ToEnvelopes(streamId, newEvents);
         await store.AppendAsync(streamId, history.Count, envelopes, ct).ConfigureAwait(false);
 
-        foreach (var domainEvent in newEvents)
-        {
-            if (domainEvent is ActionItemReopened)
-            {
-                var action = new NoteAction(cmd.ActionId, addedEvent.Description, false, addedEnvelope.OccurredAt, null);
-                await noteActionsStore.UpsertAsync(addedEvent.NoteId, action, ct).ConfigureAwait(false);
-            }
-        }
+        return (addedEvent, addedEnvelope, newEvents);
     }
 
     static ActionItem RebuildAggregate(IReadOnlyList<EventEnvelope> history)

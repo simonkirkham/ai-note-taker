@@ -68,16 +68,13 @@ export default function ActionsSection({ noteId }: { noteId: string }) {
             <li key={item.actionId} className={`action-item${item.completed ? " action-item--done" : ""}`}>
               <input
                 type="checkbox"
+                className="action-checkbox"
                 aria-label={`Mark "${item.description}" ${item.completed ? "open" : "complete"}`}
                 checked={item.completed}
                 disabled={toggling.has(item.actionId)}
                 onChange={() => handleToggle(item)}
-                style={{ cursor: "pointer" }}
               />
-              <span
-                data-testid={`action-description-${item.actionId}`}
-                style={{ textDecoration: item.completed ? "line-through" : "none" }}
-              >
+              <span data-testid={`action-description-${item.actionId}`}>
                 {item.description}
               </span>
             </li>
