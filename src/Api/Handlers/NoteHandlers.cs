@@ -67,9 +67,17 @@ namespace Api.Handlers
                 noteId         = detail.NoteId.Value,
                 title          = detail.Title,
                 content        = detail.Content,
+                date           = detail.Date,
                 createdAt      = detail.CreatedAt,
                 lastModifiedAt = detail.LastModifiedAt
             });
+        }
+
+        public static async Task<IResult> SetNoteDate(Guid noteId, SetNoteDateRequest req, NoteCommandHandler handler)
+        {
+            try { await handler.HandleAsync(new Domain.Notes.SetNoteDate(new NoteId(noteId), req.Date)); }
+            catch (NoteNotFoundException) { return Results.NotFound(); }
+            return Results.Ok();
         }
 
         public static async Task<IResult> DeleteNote(Guid noteId, NoteCommandHandler handler)

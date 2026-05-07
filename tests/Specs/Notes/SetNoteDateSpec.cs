@@ -7,7 +7,7 @@ public sealed class SetNoteDateSpec
 {
     static readonly NoteId Id = new(Guid.Parse("00000000-0000-0000-0000-000000000010"));
 
-    [Fact(Skip = "Pip: implement Note.HandleSetDate")]
+    [Fact]
     public void SetsDateOnExistingNote()
     {
         var date = new DateOnly(2026, 4, 21);
@@ -17,7 +17,7 @@ public sealed class SetNoteDateSpec
             .Then(new NoteDateSet(Id, date));
     }
 
-    [Fact(Skip = "Pip: implement Note.HandleSetDate")]
+    [Fact]
     public void ClearsDateWhenNullPassed()
     {
         var date = new DateOnly(2026, 4, 21);
@@ -27,7 +27,7 @@ public sealed class SetNoteDateSpec
             .Then(new NoteDateSet(Id, null));
     }
 
-    [Fact(Skip = "Pip: implement Note.HandleSetDate")]
+    [Fact]
     public void RejectsSettingDateOnNonExistentNote()
     {
         Spec
@@ -36,7 +36,7 @@ public sealed class SetNoteDateSpec
             .ThenThrows<InvalidOperationException>();
     }
 
-    [Fact(Skip = "Pip: implement Note.HandleSetDate")]
+    [Fact]
     public void RejectsSettingDateOnDeletedNote()
     {
         Spec

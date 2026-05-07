@@ -50,6 +50,15 @@ public sealed class NoteCommandHandler(IEventStore store, INoteTitleListStore pr
         await PersistAsync(streamId, cmd.NoteId, history, newEvents, ct).ConfigureAwait(false);
     }
 
+    public async Task HandleAsync(SetNoteDate cmd, CancellationToken ct = default)
+    {
+        var streamId = cmd.NoteId.ToStreamId();
+        var history = await store.ReadAsync(streamId, ct).ConfigureAwait(false);
+        if (history.Count == 0) throw new NoteNotFoundException(cmd.NoteId);
+        var newEvents = Rebuild(history).Handle(cmd);
+        await PersistAsync(streamId, cmd.NoteId, history, newEvents, ct).ConfigureAwait(false);
+    }
+
     private async Task PersistAsync(string streamId, NoteId noteId, IReadOnlyList<EventEnvelope> history, IReadOnlyList<IDomainEvent> newEvents, CancellationToken ct)
     {
         var envelopes = ToEnvelopes(streamId, newEvents);

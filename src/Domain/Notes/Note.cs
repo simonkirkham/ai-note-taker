@@ -36,6 +36,7 @@ public sealed class Note : IAggregate
             RenameNote cmd    => HandleRename(cmd),
             EditContent cmd   => HandleEditContent(cmd),
             DeleteNote cmd    => HandleDelete(cmd),
+            SetNoteDate cmd   => HandleSetDate(cmd),
             _ => throw new ArgumentOutOfRangeException(nameof(command))
         };
 
@@ -69,5 +70,12 @@ public sealed class Note : IAggregate
         if (!_exists || _deleted)
             throw new InvalidOperationException($"Note {cmd.NoteId} does not exist.");
         return [new NoteDeleted(cmd.NoteId)];
+    }
+
+    IReadOnlyList<IDomainEvent> HandleSetDate(SetNoteDate cmd)
+    {
+        if (!_exists || _deleted)
+            throw new InvalidOperationException($"Note {cmd.NoteId} does not exist.");
+        return [new NoteDateSet(cmd.NoteId, cmd.Date)];
     }
 }

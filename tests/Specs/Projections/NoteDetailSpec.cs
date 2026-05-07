@@ -62,7 +62,7 @@ public sealed class NoteDetailSpec
         Assert.Equal(renamedAt, detail.LastModifiedAt);
     }
 
-    [Fact(Skip = "Pip: implement NoteDetailProjection.Handle(NoteDateSet)")]
+    [Fact]
     public void NoteDateSet_updates_date_in_detail()
     {
         var noteId = Guid.NewGuid();
@@ -78,7 +78,7 @@ public sealed class NoteDetailSpec
         Assert.Equal(date, detail!.Date);
     }
 
-    [Fact(Skip = "Pip: implement NoteDetailProjection.Handle(NoteDateSet)")]
+    [Fact]
     public void NoteDateSet_null_clears_date_in_detail()
     {
         var noteId = Guid.NewGuid();

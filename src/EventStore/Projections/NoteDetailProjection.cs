@@ -44,6 +44,10 @@ public sealed class NoteDetailProjection
                 if (_items.TryGetValue(e.NoteId, out var cur2))
                     _items[e.NoteId] = cur2 with { Content = e.NewContent, LastModifiedAt = envelope.OccurredAt };
                 break;
+            case NoteDateSet e:
+                if (_items.TryGetValue(e.NoteId, out var withDate))
+                    _items[e.NoteId] = withDate with { Date = e.Date };
+                break;
             case NoteDeleted e:
                 _items.Remove(e.NoteId);
                 break;
@@ -63,19 +67,20 @@ public sealed class DynamoDbNoteDetailStore(IAmazonDynamoDB dynamo, string table
 {
     public async Task UpsertAsync(NoteDetailView detail, CancellationToken ct = default)
     {
-        await dynamo.PutItemAsync(new PutItemRequest
+        var item = new Dictionary<string, AttributeValue>
         {
-            TableName = tableName,
-            Item = new Dictionary<string, AttributeValue>
-            {
-                ["PK"]             = new() { S = detail.NoteId.ToStreamId() },
-                ["NoteId"]         = new() { S = detail.NoteId.Value.ToString() },
-                ["Title"]          = new() { S = detail.Title },
-                ["Content"]        = new() { S = detail.Content },
-                ["CreatedAt"]      = new() { S = detail.CreatedAt.ToString("O") },
-                ["LastModifiedAt"] = new() { S = detail.LastModifiedAt.ToString("O") }
-            }
-        }, ct).ConfigureAwait(false);
+            ["PK"]             = new() { S = detail.NoteId.ToStreamId() },
+            ["NoteId"]         = new() { S = detail.NoteId.Value.ToString() },
+            ["Title"]          = new() { S = detail.Title },
+            ["Content"]        = new() { S = detail.Content },
+            ["CreatedAt"]      = new() { S = detail.CreatedAt.ToString("O") },
+            ["LastModifiedAt"] = new() { S = detail.LastModifiedAt.ToString("O") }
+        };
+        if (detail.Date.HasValue)
+            item["Date"] = new AttributeValue { S = detail.Date.Value.ToString("yyyy-MM-dd") };
+
+        await dynamo.PutItemAsync(new PutItemRequest { TableName = tableName, Item = item }, ct)
+            .ConfigureAwait(false);
     }
 
     public async Task DeleteAsync(NoteId noteId, CancellationToken ct = default)
@@ -138,11 +143,13 @@ public sealed class DynamoDbNoteDetailStore(IAmazonDynamoDB dynamo, string table
         if (!response.IsItemSet) return null;
 
         var item = response.Item;
+        var date = item.TryGetValue("Date", out var dateAttr) ? DateOnly.Parse(dateAttr.S) : (DateOnly?)null;
         return new NoteDetailView(
             new NoteId(Guid.Parse(item["NoteId"].S)),
             item["Title"].S,
             item["Content"].S,
             DateTimeOffset.Parse(item["CreatedAt"].S),
-            DateTimeOffset.Parse(item["LastModifiedAt"].S));
+            DateTimeOffset.Parse(item["LastModifiedAt"].S),
+            date);
     }
 }
