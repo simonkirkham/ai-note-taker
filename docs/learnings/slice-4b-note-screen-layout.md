@@ -16,13 +16,11 @@ CSS grid two-column layout in `NoteView`: `.note-content-panel` (bordered, with 
 
 ## Permission approvals
 
-Two commands required manual human approval during this slice:
+Two commands required manual human approval during this slice. Both fixed:
 
-1. **`cd C:\code\ai-note-taker\web; npm run build`** — the `cd` prefix is not in the PowerShell allow-list. Fix: use `npm --prefix <path> run build` so the command starts with `npm`, which is already allowed. Never prefix PowerShell commands with `cd`.
+1. **`cd C:\code\ai-note-taker\web; npm run build`** — `cd` not in allow-list. Fixed by switching to `npm --prefix <path> run build` (starts with `npm`, already allowed). Guardrail added to CLAUDE.md.
 
-2. **`Remove-Item C:\code\ai-note-taker\pr-body-4b.md`** — `Remove-Item` is not in the allow-list (correctly — it's destructive). Root cause: I wrote the `gh pr create` body to a temp file because PowerShell's `&&`/`<<EOF` syntax differs from Bash. Fix: use a PowerShell here-string variable — `$body = @"..."@; gh pr create --body $body` — no temp file, no `Remove-Item` needed.
-
-Neither command should be added to the permanent allow-list. Both are avoidable by using already-allowed patterns.
+2. **`Remove-Item C:\code\ai-note-taker\pr-body-4b.md`** — `Remove-Item` not in allow-list (correctly — destructive). Root cause: wrote `gh pr create` body to a temp file to work around PowerShell's lack of `<<EOF`. Fixed by using a PowerShell here-string variable (`$body = @"..."@; gh pr create --body $body`) — no temp file, no `Remove-Item`.
 
 ## What went wrong
 

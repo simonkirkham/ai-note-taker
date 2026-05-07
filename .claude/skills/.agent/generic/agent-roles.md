@@ -347,11 +347,11 @@ Token counts come from each agent's hand-off summary. If an agent did not report
 
 After recording the counts, **Scribe must analyse the distribution** and write at least one suggestion per agent whose token count was unexpectedly high (more than double the next-highest agent, or higher than the same agent on the previous slice). Suggestions must be specific — name the rule or step that would have changed the outcome, and estimate the saving. "Used too many tokens" is not a valid suggestion. If the slice ran cleanly with no high-cost agents, write `None — slice ran within expected range.`
 
-**Permission-approval check (required):** Diff `.claude/settings.local.json` against main. Any new entries that appeared during the slice represent commands the human had to manually approve. For each one:
-1. Name the command and explain why it was needed.
-2. Decide: is this command safe to add to the permanent allow-list, or should the pattern be avoided instead?
-3. Record the finding in the learnings file under a **Permission approvals** heading.
-4. If the fix is "avoid the pattern", describe the alternative (e.g. use `$var = @"..."@; gh pr create --body $var` instead of a temp file + `Remove-Item`).
+**Permission-approval check (required):** Diff `.claude/settings.local.json` against main. Any new entries that appeared during the slice are commands that required the human's manual approval — find and fix every one:
+- If the command is safe and commonly needed → add it to `.claude/settings.local.json` allow-list.
+- If the command can be replaced with an already-allowed pattern → update the relevant guardrail in `CLAUDE.md` or role rule in this file so future runs use the right pattern instead (e.g. `$body = @"..."@; gh pr create --body $body` instead of a temp file + `Remove-Item`; `npm --prefix <path> run build` instead of `cd <path>; npm run build`).
+- Record what was fixed and why in the learnings file under a **Permission approvals** heading.
+- Goal: zero new approval prompts on the next slice.
 
 **Rules:**
 
