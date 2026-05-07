@@ -1,11 +1,12 @@
 import { useEffect, useState } from "react";
-import { getActions, addAction, completeAction, reopenAction, ActionItem } from "../api";
+import { getActions, addAction, completeAction, reopenAction, deleteAction, ActionItem } from "../api";
 
 export default function ActionsSection({ noteId }: { noteId: string }) {
   const [actions, setActions] = useState<ActionItem[]>([]);
   const [newAction, setNewAction] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [toggling, setToggling] = useState<Set<string>>(new Set());
+  const [deleting, setDeleting] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     let cancelled = false;
@@ -33,6 +34,21 @@ export default function ActionsSection({ noteId }: { noteId: string }) {
       );
     } finally {
       setToggling((prev) => {
+        const next = new Set(prev);
+        next.delete(item.actionId);
+        return next;
+      });
+    }
+  }
+
+  async function handleDelete(item: ActionItem) {
+    if (deleting.has(item.actionId)) return;
+    setDeleting((prev) => new Set(prev).add(item.actionId));
+    try {
+      await deleteAction(noteId, item.actionId);
+      setActions((prev) => prev.filter((a) => a.actionId !== item.actionId));
+    } finally {
+      setDeleting((prev) => {
         const next = new Set(prev);
         next.delete(item.actionId);
         return next;
@@ -71,12 +87,21 @@ export default function ActionsSection({ noteId }: { noteId: string }) {
                 className="action-checkbox"
                 aria-label={`Mark "${item.description}" ${item.completed ? "open" : "complete"}`}
                 checked={item.completed}
-                disabled={toggling.has(item.actionId)}
+                disabled={toggling.has(item.actionId) || deleting.has(item.actionId)}
                 onChange={() => handleToggle(item)}
               />
               <span data-testid={`action-description-${item.actionId}`}>
                 {item.description}
               </span>
+              <button
+                data-testid={`delete-action-${item.actionId}`}
+                className="delete-action-button"
+                aria-label={`Delete "${item.description}"`}
+                disabled={deleting.has(item.actionId) || toggling.has(item.actionId)}
+                onClick={() => handleDelete(item)}
+              >
+                ×
+              </button>
             </li>
           ))}
         </ul>

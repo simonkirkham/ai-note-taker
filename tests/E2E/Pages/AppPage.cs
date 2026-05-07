@@ -125,4 +125,26 @@ public sealed class AppPage(IPage page, string baseUrl)
         Assertions.Expect(
             page.GetByTestId("todo-section").GetByText(description)
         ).Not.ToBeVisibleAsync();
+
+    public async Task DeleteActionItemAsync(string description)
+    {
+        var responseDone = page.WaitForResponseAsync(r =>
+            r.Url.Contains("/actions/") && r.Request.Method == "DELETE");
+        await page.GetByTestId("actions-list")
+            .Locator("li")
+            .Filter(new LocatorFilterOptions { HasText = description })
+            .GetByRole(AriaRole.Button)
+            .ClickAsync();
+        await responseDone;
+    }
+
+    public Task AssertActionItemAbsentAsync(string description) =>
+        Assertions.Expect(
+            page.GetByTestId("actions-list").GetByText(description)
+        ).Not.ToBeVisibleAsync();
+
+    public Task AssertTodoItemAbsentFromHomeAsync(string description) =>
+        Assertions.Expect(
+            page.GetByTestId("todo-section").GetByText(description)
+        ).Not.ToBeVisibleAsync();
 }
