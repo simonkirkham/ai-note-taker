@@ -27,6 +27,28 @@ If no agent ran unexpectedly high: write `None — slice ran within expected ran
 
 -->
 
+## Slice 4-A — Settable note date
+
+| Agent          | ~Tokens    |
+|----------------|------------|
+| Breaker Batch 1| 12 000     |
+| Pip Batch 1    | 25 000     |
+| Breaker Batch 2| 6 000      |
+| Pip Batch 2    | 15 000     |
+| Refactor       | 3 000      |
+| Stylist        | 5 000      |
+| Hawk           | 5 000      |
+| Scribe         | 5 000      |
+| **Total**      | **~76 000** |
+
+**Why:** First Phase 4 slice — doc-fix pass (3 files) before Breaker could start, plus layer-split into two Pip batches. Backend + frontend + E2E in a clean single-event slice kept both batches well under 30k.
+
+**Optimisation suggestions:**
+- **Doc fixes (–2–3k):** Three docs files needed `ActionItemRemoved→ActionItemDeleted` correction before Breaker could write specs. If doc/code divergences were caught at the end of the slice that introduced them (3-E Scribe), this pre-4-A cleanup round would not exist.
+- **Hawk (–1k):** `LastModifiedAt` not updated on `NoteDateSet` was a one-line fix that should have been caught in the Refactor pass. Add "verify all modifying events update `LastModifiedAt`" to the Refactor checklist for projection handlers.
+
+---
+
 ## Slice 3-E — Delete an action item
 
 | Agent     | ~Tokens    |

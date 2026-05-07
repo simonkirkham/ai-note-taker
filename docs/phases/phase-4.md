@@ -1,57 +1,107 @@
 # Phase 4 — UX Redesign (wireframe alignment)
 
-**Goal:** Bring the app's layout and interaction model in line with the wireframes in `docs/wireframes/`. This phase is primarily frontend-driven, with backend additions where the wireframe requires new data the API does not yet expose. No new aggregates are introduced; the learning surface is projection evolution and frontend architecture patterns.
+**Goal:** Bring the app's layout and interaction model in line with the wireframes in `docs/wireframes/`. This phase is primarily frontend-driven, with backend additions where the wireframe requires data the API does not yet expose. No new aggregates are introduced; the primary backend learning surface is **projection evolution** (extending `NoteDetail`, adding `NoteCardList`).
 
 **Wireframe references:**
-- `docs/wireframes/Note Screen.png` — two-column layout, bordered content area, right-panel actions, date top-right
-- `docs/wireframes/Homescreen with note summary.png` — left sidebar note list, To Do section, note summary cards with content snippet + actions + tags + date
+- `docs/wireframes/Note Screen.png` — two-column layout; content area left in a bordered box; tags and actions in right panel; note title + date in header
+- `docs/wireframes/Homescreen with note summary.png` — left sidebar with note names; To Do section; rich note cards showing title, date, content snippet, open actions, tags, "Edit Note" button
 
-**Scope note:** Tags appear prominently in the wireframes but are deferred to Phase 5 (Folders and tags). Each slice below delivers a visible, testable UX improvement. Backend slices (4-A, 4-E, 4-F) follow the standard BDD-first, event-sourced pattern; frontend-only slices (4-B, 4-C, 4-D) have E2E acceptance criteria but no domain BDD specs.
+**Design already done:** `NoteDateSet`, `NoteCardList`, `TagIndex` are all specified in `docs/event-model.md`, `docs/event-schemas.md`, and `docs/view-schemas.md`. Phase 4 implements what those documents already describe. Tags are deferred to Phase 5 — they appear in the wireframe but are not in scope here.
+
+**Scope note (tags):** The wireframe shows a tags panel on the note screen and tag pills on home screen cards. Tags are deferred to Phase 5 (Folders and tags). Tag areas will be rendered as empty placeholders in Phase 4.
+
+**Doc/code divergence to fix before Breaker starts:**
+The event model uses `ActionItemRemoved` / `RemoveActionItem`; the Phase 3 implementation used `ActionItemDeleted` / `DeleteActionItem`. Pip must update `docs/event-model.md` and `docs/event-schemas.md` at the start of the first slice to reconcile this before any new test references the wrong name.
+
+---
+
+## Slice order and dependencies
+
+```
+4-A  Note date  ─────────────────────┐
+4-B  Note screen layout (frontend)   │  (independent)
+4-C  Implicit action add (frontend)  │  (independent)
+4-D  Sidebar (frontend)              │  (independent)
+4-E  Note summary cards  ────────────┘  (depends on 4-A: cards show date)
+4-F  Expandable completed todos         (independent)
+```
+
+4-E must land after 4-A so the `NoteCardList` projection can handle `NoteDateSet` and the card schema includes `Date`.
 
 ---
 
 ## Slice 4-A — Settable note date
 
-**Status:** Not Started
+**Status:** Done
 
-**Value:** Every note can be stamped with a meeting date. The date is visible top-right on the note screen and on the home summary cards — matching the wireframe and making notes temporally navigable.
+**Value:** A note can be stamped with a meeting date — the most natural metadata for a meeting notes tool. The date is visible top-right on the note screen and feeds the summary cards in 4-E.
 
-**Commands in scope:** `SetNoteDate(NoteId, Date)`
-**Events in scope:** `NoteDateSet { NoteId, Date }`
-**Projections in scope:** `NoteDetail` (add `Date?`), `NoteTitleList` (add `Date?` for later use by 4-E cards)
+**Commands in scope:** `SetNoteDate(noteId, date, setAt)`
+**Events in scope:** `NoteDateSet { NoteId, Date }` (type: `DateOnly`)
+**Projections in scope:**
+- `NoteDetail` — add `Date? DateOnly` field; handle `NoteDateSet`
+- `NoteTitleList` — no change needed for 4-A (date will be picked up by `NoteCardList` in 4-E)
+
+**Wire shape:** already defined in `docs/event-schemas.md`. `date` serialises as `yyyy-MM-dd`. Payload: `{ "noteId": "...", "date": "2026-04-21" }`.
+
+**View schema change:** `NoteDetail` needs `Date? DateOnly` added — update `docs/view-schemas.md`.
+
+**API endpoint:** `PATCH /notes/{noteId}/date` — body `{ "date": "2026-04-21" }` (or `{ "date": null }` to clear). Returns 200 on success, 404 if note not found.
+
+**REST note:** `noteId` in `PATCH /notes/{noteId}/date` is consumed by the `Note` aggregate — not a structural-only param.
+
+**Implementation files (Pip):**
+- `src/Domain/Notes/NoteCommands.cs` — add `record SetNoteDate(NoteId NoteId, DateOnly Date)`
+- `src/Domain/Notes/NoteEvents.cs` — add `record NoteDateSet(NoteId NoteId, DateOnly Date)`
+- `src/Domain/Notes/Note.cs` — add `_date` state, `Apply(NoteDateSet)`, `HandleSetDate`
+- `src/EventStore/EventDeserializer.cs` — route `NoteDateSet`
+- `src/EventStore/Projections/NoteDetailProjection.cs` — add `Date?` to `NoteDetail` record, handle `NoteDateSet`
+- `src/Api/NoteCommandHandler.cs` — add `HandleAsync(SetNoteDate cmd)`
+- `src/Api/Handlers/NoteHandlers.cs` — add `SetNoteDate` HTTP handler
+- `src/Api/Endpoints/NoteEndpoints.cs` — register `PATCH /notes/{noteId}/date`
+- `tests/ApiIntegration/InMemoryNoteDetailStore.cs` — may need to extend in-memory store
+- `web/src/api.ts` — add `setNoteDate(noteId, date)` function
+- `web/src/components/NoteView.tsx` — add date input in note header
+- `web/src/App.css` — style the date input field
+
+**Layer split:** Yes — 6 acceptance criteria, new event + backend + E2E. Batch 1: domain BDD + API integration. Batch 2: E2E + frontend.
 
 **Scenarios:**
 
 ```
 Scenario: Set a date on a note
   Given I am viewing a note
-  When  I click the date field and set it to 21/04/2026
-  Then  the date "21/04/2026" is shown in the note header
+  When  I click the date field and select 21/04/2026
+  Then  the date "21/04/2026" is displayed in the note header
 
 Scenario: Date persists across navigation
   Given I have set a date on a note
-  When  I navigate away and return
-  Then  the date is still shown
+  When  I navigate away and return to the note
+  Then  the date "21/04/2026" is still shown
 
-Scenario: Date is empty by default
-  Given a newly created note
-  When  I view it
-  Then  the date field is empty (not today's date)
+Scenario: New note has no date by default
+  Given I create a new note
+  Then  the date field is empty (not prefilled with today)
 
-Scenario: Unset a date (clear it)
-  Given a note has a date set
-  When  I clear the date field
-  Then  the date field becomes empty
+Scenario: Date can be cleared
+  Given a note has date "21/04/2026" set
+  When  I clear the date field and save
+  Then  the date field is empty and persists as empty on navigation
+
+Scenario: Set date on non-existent note (API)
+  Given no note exists with the given noteId
+  When  PATCH /notes/{noteId}/date with a valid date
+  Then  the response is 404 Not Found
 ```
 
 **Acceptance criteria:**
 
-- [ ] *(internal)* Setting a date appends `NoteDateSet` to the event store
-- [ ] *(internal)* A note without a date returns `null` for the date field in `GET /notes/{id}`
-- [ ] User sees a date field (input type="date") top-right of the note header
-- [ ] User sets a date — it is shown formatted (DD/MM/YYYY) and persists on navigation
-- [ ] User clears the date — field returns to empty, persists on navigation
-- [ ] E2E: create a note, set a date, navigate away and back — date still shown
+- [x] *(internal)* Setting a date appends `NoteDateSet` to the event store
+- [x] *(internal)* Setting a date on a non-existent note returns 404
+- [x] User sees a date input field top-right of the note header; it is empty by default
+- [x] User sets a date — it is shown (formatted DD/MM/YYYY) and persists on navigation
+- [x] User clears the date — field returns to empty and persists as empty on navigation
+- [x] E2E: create a note, set a date, navigate away and back — date still shown
 
 ---
 
@@ -59,36 +109,47 @@ Scenario: Unset a date (clear it)
 
 **Status:** Not Started
 
-**Value:** The note screen matches the wireframe: a two-column layout with the content area on the left (in a bordered box) and a right panel containing the actions list. The layout is cleaner and reduces vertical scrolling.
+**Value:** The note screen matches the wireframe: content in a bordered left area, actions in a right panel, a "Captured Notes" label above the content. Reading notes and capturing actions no longer requires scrolling past each other.
 
 **Commands in scope:** none
 **Events in scope:** none
-**Projections in scope:** none (frontend layout change only)
+**New backend:** none — pure frontend layout change
+
+**Implementation files (Pip):**
+- `web/src/components/NoteView.tsx` — restructure to two-column layout; add "Captured Notes" label; wrap textarea in bordered container; move `<ActionsSection>` to right column
+- `web/src/App.css` — new layout classes: `.note-layout` (two-column grid), `.note-content-panel` (left, with border), `.note-right-panel` (right)
+
+**Responsive behaviour:** ≥768px: side-by-side columns. <768px: actions panel stacks below content (no horizontal scroll).
 
 **Scenarios:**
 
 ```
-Scenario: Note content area has a visible border
+Scenario: Content area has a visible border
   Given I open a note
-  Then  the content textarea is visually enclosed in a bordered box
+  Then  the "Captured Notes" label is visible above a bordered text area
 
-Scenario: Actions panel is to the right of the content
-  Given I open a note with action items
-  Then  the actions list appears in a right-side panel, not below the content
+Scenario: Actions panel is to the right of the content on wide screens
+  Given I open a note with an action item on a desktop viewport
+  Then  the actions panel is visible to the right of the content area simultaneously
 
-Scenario: Layout is responsive — stacks vertically on narrow viewports
-  Given I am viewing the note on a narrow screen (< 640px)
-  Then  the actions panel stacks below the content area
+Scenario: Layout stacks vertically on narrow screens
+  Given I am viewing the note on a viewport narrower than 768px
+  Then  the actions panel appears below the content area, with no horizontal scroll
+
+Scenario: All existing note functionality still works
+  Given I am in the new layout
+  When  I add, complete, and delete an action item
+  Then  all three operations work as before
 ```
 
 **Acceptance criteria:**
 
-- [ ] Content textarea has a visible box border (matching wireframe style)
-- [ ] On wide viewports (≥ 768px): actions panel is to the right of content, both visible simultaneously
-- [ ] On narrow viewports (< 768px): actions panel stacks below content (no horizontal scroll)
-- [ ] "Captured Notes" section label appears above the content area
-- [ ] All existing action item functionality (add, complete, delete, reopen) continues to work in the new layout
-- [ ] E2E: open a note, add an action item — it appears in the right panel; complete it — state updates correctly
+- [ ] Content textarea is visually enclosed in a bordered box with "Captured Notes" label above it
+- [ ] On viewports ≥768px: actions panel is to the right of the content, both visible simultaneously
+- [ ] On viewports <768px: actions panel stacks below content; no horizontal scroll
+- [ ] Back button, Delete Note button, and title input remain at the top of the screen
+- [ ] All existing action item operations (add, complete, delete) continue to work
+- [ ] E2E: open a note, add an action item in the new layout — it appears in the right panel
 
 ---
 
@@ -96,34 +157,40 @@ Scenario: Layout is responsive — stacks vertically on narrow viewports
 
 **Status:** Not Started
 
-**Value:** Action items can be added by pressing Enter or clicking away from the input — matching the wireframe which shows no visible "Add" button. This reduces the number of interactions required to capture a thought.
+**Value:** Action items are captured the moment thought meets keyboard — press Enter and the item is captured immediately. No "Add" button to reach for. This matches the wireframe (no button visible in the actions box) and removes friction from the most common interaction.
 
 **Commands in scope:** none (reuses `AddActionItem`)
 **Events in scope:** none
-**Projections in scope:** none (frontend UX change only)
+**New backend:** none — frontend UX change only
+
+**Implementation files (Pip):**
+- `web/src/components/ActionsSection.tsx` — replace `<form onSubmit>` with `onKeyDown` (Enter) and `onBlur` handlers; remove the `<button data-testid="add-action-button">` element
+- `web/src/App.css` — remove `.action-form` / `.add-action-button` styles (or repurpose the input container)
+
+**Risk:** Removing `data-testid="add-action-button"` will break `AppPage.AddActionItemAsync()` in E2E. Pip must update the page object to use keyboard trigger instead. Breaker should write the updated page object helper before Pip implements.
 
 **Scenarios:**
 
 ```
-Scenario: Press Enter to add an action item
-  Given I am in the action input
-  When  I type "Send recap email" and press Enter
+Scenario: Enter key adds an action item
+  Given I have typed "Send recap email" in the action input
+  When  I press the Enter key
   Then  "Send recap email" appears in the actions list
-  And   the input is cleared and focused for the next item
+  And   the input is cleared and ready for the next item
 
-Scenario: Blur (click away) adds a non-empty action item
-  Given I have typed "Book room" in the action input
-  When  I click outside the input (blur)
-  Then  "Book room" is added to the actions list
+Scenario: Clicking away adds a non-empty action item
+  Given I have typed "Book the room" in the action input
+  When  I click outside the input (blur event fires)
+  Then  "Book the room" is added to the actions list
 
-Scenario: Blur on empty input does nothing
+Scenario: Clicking away on an empty input does nothing
   Given the action input is empty
   When  I click outside the input
-  Then  no action item is added and no error appears
+  Then  no action item is added and no error is shown
 
-Scenario: Add button is removed
-  Given I am viewing a note
-  Then  no "Add" button is visible next to the action input
+Scenario: No "Add" button is visible
+  Given I am on the note screen
+  Then  there is no "Add" button next to the action input
 ```
 
 **Acceptance criteria:**
@@ -140,43 +207,58 @@ Scenario: Add button is removed
 
 **Status:** Not Started
 
-**Value:** A narrow left sidebar showing all note names is visible on both the home screen and the note screen, matching the wireframe. Users can jump between notes without going back to a list view.
+**Value:** A left sidebar showing all note names is visible on both the home screen and the note screen, matching the wireframe. Users can jump between notes without going back to a list view.
 
 **Commands in scope:** none
 **Events in scope:** none
-**Projections in scope:** none (reuses existing `GET /notes`)
+**New backend:** none — reuses `GET /notes` via the existing `useNotes` hook
+
+**Implementation files (Pip):**
+- `web/src/components/Sidebar.tsx` — new component: receives `notes`, `activeNoteId?`, `onSelect(noteId)`, `onCreate()`; renders note name list; highlights active entry; "New Note" button at bottom or top
+- `web/src/App.tsx` — restructure to two-column app layout (sidebar always visible); pass `notes` and `onOpen` to `Sidebar`
+- `web/src/components/ListView.tsx` — remove flat note list (sidebar replaces it); keep "Home" heading, To Do section, and note cards section
+- `web/src/App.css` — new layout classes: `.app-layout` (sidebar + main), `.sidebar` (narrow left column), `.sidebar-note-item`, `.sidebar-note-item--active`
+
+**Responsive:** sidebar hidden by default on <640px; a toggle button (hamburger or `›`) reveals it as an overlay.
+
+**Existing E2E compatibility:** `AppPage.ClickNoteInListAsync` uses `page.GetByTestId("note-list").GetByText(title)`. If the sidebar replaces `note-list`, the test ID must be updated or the sidebar must carry `data-testid="note-list"`. Breaker must update `AppPage` before Pip implements.
 
 **Scenarios:**
 
 ```
 Scenario: Note names appear in the left sidebar on the home screen
-  Given I have three notes
+  Given I have two notes titled "Q1 Review" and "1:1 Bill"
   When  I view the home screen
-  Then  a left sidebar shows all three note names
+  Then  both names appear in the left sidebar
 
-Scenario: Clicking a sidebar note name opens that note
-  Given the left sidebar is visible
-  When  I click a note name
-  Then  the note screen opens for that note
+Scenario: Clicking a sidebar entry opens that note
+  Given the sidebar is visible
+  When  I click "Q1 Review" in the sidebar
+  Then  the note screen opens for "Q1 Review"
 
-Scenario: The sidebar is visible on the note screen
-  Given I am viewing a note
-  Then  the note sidebar is still visible on the left
+Scenario: Active note is highlighted in the sidebar on the note screen
+  Given I have opened "Q1 Review"
+  Then  "Q1 Review" appears highlighted in the sidebar
 
-Scenario: Sidebar collapses on narrow viewports
-  Given I am on a narrow screen (< 640px)
-  Then  the sidebar is hidden by default
-  And   a toggle button reveals it
+Scenario: Sidebar note list updates after creating a new note
+  Given I click "New Note"
+  When  the new note is created and its title is set to "Budget 2027"
+  Then  "Budget 2027" appears in the sidebar
+
+Scenario: Sidebar is hidden by default on narrow screens
+  Given I am on a viewport narrower than 640px
+  Then  the sidebar is not visible by default
+  And   a toggle button is present that reveals it
 ```
 
 **Acceptance criteria:**
 
-- [ ] Left sidebar renders note names on the home screen (replaces / supplements the current flat list)
-- [ ] Left sidebar renders note names on the note screen
-- [ ] Clicking a sidebar entry navigates to that note (from any screen)
-- [ ] Active note is visually highlighted in the sidebar
-- [ ] On narrow viewports (< 640px): sidebar is hidden by default with a reveal toggle
-- [ ] E2E: home screen shows note names in sidebar; clicking one opens the note; note screen still shows sidebar
+- [ ] Left sidebar renders note names on both the home screen and note screen
+- [ ] Clicking a sidebar entry navigates to that note from any screen
+- [ ] Active note is visually highlighted in the sidebar when on the note screen
+- [ ] Creating a new note adds it to the sidebar immediately
+- [ ] On viewports <640px: sidebar is hidden with a reveal toggle; no horizontal scroll
+- [ ] E2E: home screen shows note names in sidebar; clicking one opens the note; note screen sidebar still visible
 
 ---
 
@@ -184,49 +266,92 @@ Scenario: Sidebar collapses on narrow viewports
 
 **Status:** Not Started
 
-**Value:** The "Notes" section on the home screen shows rich summary cards (title, date, content snippet, open action count, Edit Note button) instead of a plain list. This matches the wireframe and gives users a quick overview of each note's content without opening it.
+**Value:** The Notes section on the home screen shows rich summary cards — title, meeting date, content snippet, open action items, and an "Edit Note" button — exactly as in the wireframe. Users can assess any note without opening it.
 
 **Commands in scope:** none
-**Events in scope:** none (reads from existing events)
-**Projections in scope:** New `NoteCard` projection — aggregates title, date, content snippet, open action count per note into a single DynamoDB table; handles `NoteCreated`, `NoteRenamed`, `ContentEditedV2`, `NoteDateSet`, `NoteDeleted`, `ActionItemAdded`, `ActionItemCompleted`, `ActionItemReopened`, `ActionItemDeleted`
+**Events in scope:** none (folds over existing events)
+**Projections in scope:** New `NoteCardList` projection — full schema defined in `docs/view-schemas.md`. **Extend that schema to add `Date? DateOnly`** before Breaker writes tests.
 
-**Dependencies:** 4-A must be complete (date field on note)
+**Dependencies:** 4-A must land first (date field in the card).
 
-**Backend changes:** New `GET /notes/cards` endpoint returning card data; new CDK table for `NoteCard` projection.
+**API endpoint:** `GET /notes/cards` — returns `{ "cards": [...] }` as specified in `docs/view-schemas.md`. Ordered by `CreatedAt` descending (newest first). Tags array included in storage and wire shape but rendered as empty until Phase 5 lands.
+
+**CDK changes:** New DynamoDB table `notetaker-proj-notecardlist` (PK: NoteId string, no sort key). New Lambda env var `PROJ_NOTECARDLIST_TABLE_NAME`. New `GrantReadWriteData` call. IAM assertions test needs updating.
+
+**NoteCardList event handlers** (from `docs/view-schemas.md`, also handling `ActionItemDeleted` from Phase 3):
+- `NoteCreated` → upsert row
+- `NoteRenamed` → update Title
+- `ContentEditedV2` → update Content (truncate to 200 chars for storage; trim further at read time for the preview)
+- `NoteDateSet` → update Date
+- `NoteDeleted` → set Deleted = true
+- `ActionItemAdded` → append to ActionItems list
+- `ActionItemCompleted` → mark item completed
+- `ActionItemReopened` → mark item open
+- `ActionItemDeleted` → remove from ActionItems list
+
+**Wire JSON:** as documented in `docs/view-schemas.md`, with `date` added: `"date": "2026-04-21"` or `"date": null`.
+
+**Implementation files (Pip):**
+- `src/EventStore/Projections/NoteCardListProjection.cs` — new file: `NoteCardListProjection`, `INoteCardListStore`, `DynamoDbNoteCardListStore`
+- `src/Api/Builder.cs` or `Program.cs` — wire `INoteCardListStore` → `DynamoDbNoteCardListStore`
+- `src/Api/Handlers/NoteHandlers.cs` — add `GetNoteCards` handler
+- `src/Api/Endpoints/NoteEndpoints.cs` — register `GET /notes/cards`
+- `src/Infrastructure/NoteTakerStack.cs` — new CDK table + env var + IAM grant
+- `tests/ApiIntegration/InMemoryNoteCardListStore.cs` — new in-memory implementation
+- `tests/InfraAssertions/` — update CDK assertion for new table
+- `web/src/api.ts` — add `getNoteCards()` returning `NoteCard[]`
+- `web/src/components/NoteCard.tsx` — new card component (title, date, snippet, actions, Edit button)
+- `web/src/components/ListView.tsx` — replace flat note list with `NoteCard` grid/list
+- `web/src/App.css` — `.note-card`, `.note-card-header`, `.note-card-snippet`, `.note-card-actions`
+
+**Layer split:** Required — new projection + CDK + E2E, ≥6 acceptance criteria.
+- Batch 1: domain projection specs, API integration tests, CDK assertions
+- Batch 2: E2E + frontend component
 
 **Scenarios:**
 
 ```
-Scenario: Home screen shows note summary cards
-  Given I have a note titled "Q1 Review" with content "Lorem ipsum" and one open action
+Scenario: Home screen shows a summary card for each note
+  Given I have a note titled "Q1 Review" with content "Lorem ipsum" and one open action "Send agenda"
   When  I view the home screen
-  Then  a card shows "Q1 Review", a content snippet, "1 action", and an Edit Note button
+  Then  a card shows "Q1 Review", a content snippet, "Send agenda" in the actions, and an Edit Note button
 
-Scenario: Card date matches the note date
+Scenario: Card shows meeting date when set
   Given a note has date set to 21/04/2026
   When  I view the home screen
-  Then  the card shows "21/04/2026"
+  Then  the card shows "21/04/2026" in the top-right corner
 
-Scenario: Card content snippet truncates long content
-  Given a note has 500 words of content
-  When  I view the home screen
-  Then  the snippet shows approximately the first 100 characters followed by "…"
+Scenario: Card shows no date when unset
+  Given a note has no date set
+  Then  the card's date area is empty
 
-Scenario: Completed or deleted action items do not count toward the open action count
+Scenario: Content snippet truncates long content
+  Given a note has content longer than 200 characters
+  Then  the card shows a snippet ending with "…"
+
+Scenario: Only open action items appear on the card
   Given a note has 2 open and 1 completed action item
-  When  I view the home screen card
-  Then  it shows "2 actions"
+  Then  the card shows 2 open actions (not the completed one)
+
+Scenario: Edit Note button opens the note
+  When  I click "Edit Note" on a card
+  Then  the note screen opens for that note
+
+Scenario: Card disappears when note is deleted
+  Given a note card is visible on the home screen
+  When  I open the note and delete it
+  Then  the card is no longer visible on the home screen
 ```
 
 **Acceptance criteria:**
 
-- [ ] *(internal)* `NoteCard` projection handles all relevant events and produces correct card data
-- [ ] `GET /notes/cards` returns title, date, content snippet (≤ 120 chars), open action count per note
-- [ ] Home screen renders note summary cards (not a plain list)
-- [ ] Each card shows: title, formatted date (or blank), content snippet, open action count, "Edit Note" button
-- [ ] "Edit Note" button navigates to the note screen
-- [ ] Cards are ordered by note creation date (newest first)
-- [ ] E2E: create a note with title, content, and an action item; home screen card shows all three
+- [ ] *(internal)* `NoteCardList` projection folds `NoteCreated`, `NoteRenamed`, `ContentEditedV2`, `NoteDateSet`, `NoteDeleted`, `ActionItemAdded`, `ActionItemCompleted`, `ActionItemReopened`, `ActionItemDeleted` correctly
+- [ ] `GET /notes/cards` returns title, date, content snippet (≤120 chars), open action descriptions, for each active note
+- [ ] Home screen renders a card per note (not a plain list)
+- [ ] Each card shows: title, formatted date (or blank), content snippet, open action items, "Edit Note" button
+- [ ] "Edit Note" navigates to the note screen for that note
+- [ ] Cards are ordered newest-first
+- [ ] E2E: create a note with title, content, and an action item — the home screen card shows all three
 
 ---
 
@@ -234,40 +359,70 @@ Scenario: Completed or deleted action items do not count toward the open action 
 
 **Status:** Not Started
 
-**Value:** The To Do list on the home screen has a collapsed "Completed" section that can be expanded to show action items that have been ticked off. Users can review what's been done without completed items cluttering the open list.
+**Value:** Completed action items are one tap away on the home screen — collapsed by default so they don't clutter the open list, but always accessible. Users can review what's been done across all notes without navigating into each one.
 
 **Commands in scope:** none
 **Events in scope:** none
-**Projections in scope:** none new; adds `GET /todos/completed` endpoint that queries `NoteActions` across all notes for completed items (DynamoDB scan with filter expression on `Completed = true`).
+**New projection:** none — reads from the existing `notetaker-proj-noteactions` DynamoDB table (scan with `Completed = true` filter expression, then batch-lookup titles from `notetaker-proj-notetitlelist`)
+
+**API endpoint:** `GET /todos/completed` — returns `{ "items": [{ "actionId", "noteId", "noteTitle", "description", "completedAt" }] }`, ordered by `completedAt` descending.
+
+**Backend implementation note:** `NoteActionsStore` scan with `FilterExpression = "Completed = :true"` returns rows across all notes. NoteId is in each row. A batch `GetItem` against `notetaker-proj-notetitlelist` resolves titles. No new DynamoDB table or CDK change needed.
+
+**Implementation files (Pip):**
+- `src/EventStore/Projections/NoteActionsProjection.cs` — add `QueryCompletedAsync` method to `INoteActionsStore` + `DynamoDbNoteActionsStore`
+- `src/Api/Handlers/TodoHandlers.cs` — add `GetCompletedTodos` handler
+- `src/Api/Endpoints/NoteEndpoints.cs` — register `GET /todos/completed`
+- `tests/ApiIntegration/InMemoryNoteActionsStore.cs` — add `QueryCompletedAsync` to in-memory implementation
+- `web/src/api.ts` — add `getCompletedTodos()` returning `CompletedTodoItem[]`
+- `web/src/components/TodoSection.tsx` — add expand/collapse toggle; fetch completed on expand; render completed list below open list
+
+**Layer split:** Borderline (4 criteria). Single batch acceptable given no new projection or CDK change.
 
 **Scenarios:**
 
 ```
-Scenario: Completed section is collapsed by default
+Scenario: "Show completed" toggle is visible when items exist
   Given I have completed one action item
   When  I view the home screen
-  Then  the "To Do" section shows open items only
-  And   a "Show completed (1)" link/button is visible
+  Then  the To Do section shows a "Show completed (1)" button
 
-Scenario: Expanding shows completed items
-  Given I click "Show completed"
+Scenario: No toggle when nothing is completed
+  Given no action items have been completed
+  Then  no "Show completed" toggle appears
+
+Scenario: Expanding reveals completed items
+  When  I click "Show completed"
   Then  completed action items appear below the open list
-  And   each shows the note title it belongs to
+  And   each item shows its description and the parent note title
 
-Scenario: Collapsing hides completed items again
+Scenario: Collapsing hides completed items
   Given the completed section is expanded
   When  I click "Hide completed"
-  Then  completed items are hidden again
+  Then  the completed items are hidden
 
-Scenario: No completed section if nothing is completed
-  Given no action items have been completed
-  Then  no "Show completed" toggle is visible
+Scenario: Completing a todo from the home screen updates the count
+  Given the completed section shows "Show completed (2)"
+  When  I tick another open todo
+  Then  the toggle updates to "Show completed (3)"
 ```
 
 **Acceptance criteria:**
 
-- [ ] *(internal)* `GET /todos/completed` returns completed action items with `description`, `noteTitle`, `completedAt`, sorted by `completedAt` descending
-- [ ] Home screen To Do section has a "Show completed (N)" toggle (hidden if N = 0)
-- [ ] Expanding the toggle reveals completed action items with their parent note title
-- [ ] Collapsing hides them again (state is not persisted — defaults to collapsed on reload)
-- [ ] E2E: complete an action item, go home, click "Show completed" — item is visible with correct note title; click again — it collapses
+- [ ] *(internal)* `GET /todos/completed` returns completed action items with description, noteTitle, completedAt
+- [ ] Home screen To Do section shows a "Show completed (N)" toggle when N > 0
+- [ ] Expanding the toggle reveals completed items with their parent note title
+- [ ] Collapsing hides them; state resets to collapsed on page reload
+- [ ] E2E: complete an action item; go home; click "Show completed" — item visible with note title; click again — collapses
+
+---
+
+## Deferred to backlog (raised during Scout pass)
+
+The following ideas surfaced during planning and are explicitly deferred. Added to `docs/backlog.md`.
+
+- **Tags on note screen / home cards** — wireframe shows tags but Phase 5 owns this. Placeholder tag areas rendered in Phase 4.
+- **"Close Note" replaces "← Back"** — wireframe uses "Close Note" button at bottom-right rather than a back button at top-left. Deferred to avoid scope creep in 4-B.
+- **Touch target accessibility pass** — checkboxes and delete button below WCAG 44px minimum. Group fix for both across note screen and home screen.
+- **SVG icons for delete and toggle** — currently using `×` and text labels.
+- **Delete action from home screen** — already in backlog from Phase 3 planning.

@@ -188,6 +188,23 @@ Add an entry at the end of each phase. Keep them short and honest.
 
 ---
 
+## Slice 4-A — Settable note date
+
+- **Workflow style used:** Fully autonomous pipeline — doc-fix pass → Breaker (layer-split Batch 1) → Pip Batch 1 → Breaker Batch 2 → Pip Batch 2 → Refactor → Stylist → Hawk → Scribe. No human checkpoints after "Proceed with 4-A".
+- **Skills exercised:** `refactor` (clean pass, no fixes); `ui-ux-pro-max` (Stylist; one hover state added).
+- **What worked:**
+  - Doc/code divergence fix (three files, `ActionItemRemoved→ActionItemDeleted`) landed cleanly before Breaker wrote any specs — no test references to wrong names.
+  - `DateOnly? Date = null` as a default-valued record parameter made `NoteDetailView` backward-compatible — zero construction sites broke, yet the new nullable field compiles and works everywhere.
+  - Breaker's `[Fact(Skip = "Pip: ...")]` pattern let doc-fix + stub types be committed while the suite stayed green, then Pip unskipped all 6 in a single implementation pass.
+- **What didn't:**
+  - `LastModifiedAt` was not updated on `NoteDateSet` in the projection — caught by Hawk but not by Refactor or specs. Neither the BDD spec nor the API integration tests assert `lastModifiedAt` changes on date set, so the gap slipped through automated checks.
+  - `gh pr create` failed — the branch IS main, so there was no feature branch to open a PR from. Direct push to main means no GitHub PR for this slice.
+- **Change for next slice:**
+  - Add "all modifying events must update `LastModifiedAt` in NoteDetail" to the Refactor checklist for projection handlers.
+  - Consider branching from main for each slice to enable proper PR reviews rather than pushing directly; revisit when concurrent multi-slice work starts.
+
+---
+
 ## Slice 3-E — Delete an action item
 
 - **Workflow style used:** Fully autonomous pipeline — Breaker → Pip (layer-split: Batch 1 domain/API, Batch 2 E2E/frontend) → Refactor → Stylist → Hawk → Scribe; no human checkpoints.
