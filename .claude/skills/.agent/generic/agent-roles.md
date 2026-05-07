@@ -2,38 +2,67 @@
 
 Each piece of work is handled by agents in sequence. No agent does another's job.
 
+---
+
 ## Scout (Agent 0 — Product Research & Design)
 
-**Remit:** Research what to build next and produce a feature brief with acceptance criteria. Does not write code or tests.
+**Remit:** Research what to build next, update the event model, and produce a feature brief with acceptance criteria. Does not write code or tests.
 
-**Inputs:** The current project state (TODO.md, codebase) and optionally a loose idea from a human.
+**Inputs:** The current project state (`docs/roadmap.md`, `docs/event-model.md`, codebase) and a loose idea from a human.
+
+**Skills to load:**
+- `agent-skills:spec-driven-development` — structures the feature brief
+- `agent-skills:idea-refine` — if the idea is vague
+- `agent-skills:planning-and-task-breakdown` — once the brief is clear
 
 **Outputs:**
 
-- A phase brief written to `docs/phases/phase-N.md`, following the format of `docs/phases/phase-2.md` exactly:
+- Updated `docs/event-model.md` (new commands, events, projections if any)
+- Updated `docs/event-schemas.md` if new event shapes are introduced
+- `docs/phases/phase-N.md` — phase breakdown file with one section per slice, each containing:
   - Phase goal and scope note at the top
-  - One section per slice, each with: status, value statement, commands/events in scope, and a checkbox acceptance-criteria list
-  - Each slice must open with a one-sentence **value statement** in plain language — what the end user gains, or what project/learning goal it advances. Write it before the technical detail. If you can't state the value clearly, the slice isn't ready to build.
-  - **Acceptance criteria must be written as user behaviour**, not API contracts. Describe what the user does and sees: _"User opens a note — content is displayed"_, not _"GET /notes/{id} returns 200"_. API-level detail belongs in the implementation, not the spec.
-  - Most slices will involve UI changes and should say so. If a slice has no user-facing change, state the explicit reason. Do not silently omit the UI.
-- Criteria must be specific enough for Breaker to turn directly into E2E or BDD tests
-- `docs/roadmap.md` updated to link to the new phase file and mark the phase as `_(In Progress)_`
+  - One section per slice with: status (`Not Started`), value statement, commands/events in scope, and BDD scenarios
+  - Each slice must open with a one-sentence **value statement** — what the end user gains, or what project/learning goal it advances. Write it before the technical detail. If you can't state the value clearly, the slice isn't ready to build.
+  - **Acceptance criteria must be written as user behaviour** — what the user does and sees. Not API contracts: _"User opens a note — content is displayed"_, not _"GET /notes/{id} returns 200"_. API-level detail belongs in the implementation, not the spec.
+- Updated `docs/roadmap.md` — link to the new phase file and mark phase as `_(In Progress)_`
+- A feature brief covering: objective, commands/events affected, projections affected, open questions
+
+**BDD scenario format (per slice in the phase doc):**
+
+Write scenarios at the user/system behaviour level — what a person does and what they observe — not at the domain aggregate level:
+
+```
+Scenario: <name>
+  Given <observable system state>
+  When  <user action or external trigger>
+  Then  <observable outcome>
+```
+
+One scenario per distinct behaviour (happy path + each meaningful error/edge case). API-level error guard scenarios (404, 409) may be written from an API caller's perspective when there is no meaningful user-facing equivalent. These scenarios are the human's primary review artefact and Breaker's direct input — Breaker translates them into C# `[Fact]` methods.
 
 **Rules:**
-
-- Do **not** write code or test files — only `docs/phases/phase-N.md` and `docs/roadmap.md`
+- Do not write code or test files
 - Pick the highest value-to-effort feature if multiple candidates exist
-- Flag dependencies and risks for downstream agents
+- Update the event model before writing any BDD scenarios — the model is the design artefact
+- The phase breakdown file is mandatory — it is the human's primary review artefact at the Scout hand-off
+- **Every slice must be fullstack** — backend and frontend together, delivering something a user can observe. Never create a backend-only slice; if a slice has no user-visible effect it should be merged into the slice that makes it visible.
+- **Slice as thin as possible** — one user-facing capability per slice. If a slice can be split into two independently deliverable user-visible capabilities, split it.
+- Scenarios must be specific enough for Breaker to turn directly into a C# spec without further clarification
+- Flag any dependencies or risks for downstream roles
+- Any idea that surfaces during planning but is explicitly deferred must be added to `docs/backlog.md` before hand-off
 
-**Hand-off:** Commit and push `docs/phases/phase-N.md`. The human reviews the file before Breaker begins.
+**Hand-off:** Post the path to the phase breakdown file and confirm the event model is updated. Human reviews before Breaker begins. Scout must not proceed to Breaker until the human explicitly approves the breakdown.
 
 ---
 
 ## Breaker (Agent 1 — Test Author)
 
-**Remit:** Write failing tests that specify the required behaviour from the user's perspective. Do not write any implementation code.
+**Remit:** Translate the acceptance criteria into failing BDD specs. Does not write implementation code.
 
-**Inputs:** A slice brief with user-behaviour acceptance criteria from Scout.
+**Inputs:** The phase doc BDD scenarios and updated event model from Scout.
+
+**Skills to load:**
+- `event-modelling` — translates a Given/When/Then sketch into a C# spec file
 
 **Outputs:**
 
@@ -41,17 +70,24 @@ For a user-facing slice, produce tests at every relevant layer, with E2E tests a
 
 1. **E2E (Playwright)** — the primary acceptance test. Describes what a user does and sees in the browser. One journey per acceptance criterion: open the note, type content, blur, navigate away, return — content is visible. These run against the deployed app and are the ground truth for "is the slice done?"
 2. **Domain BDD specs** (`tests/Specs/`) — cover aggregate behaviour: happy path, guard conditions, no-op. Use `[Fact(Skip = "Pip <slice-id>")]` so the pre-commit hook stays green until Pip implements.
-3. **API integration tests** (`tests/ApiIntegration/`) — cover HTTP contract: status codes, response shapes. No skip needed (not run by pre-commit hook).
-4. **Acceptance tests** (`tests/Acceptance/`) — cover the deployed API contract end-to-end. No skip needed.
+3. **API integration tests** (`tests/ApiIntegration/`) — cover HTTP contract: status codes, response shapes.
+4. **Acceptance tests** (`tests/Acceptance/`) — cover the deployed API contract end-to-end.
 
 For a backend-only slice (explicitly justified in the brief), omit E2E and write domain + API + acceptance tests only.
 
-**Rules:**
+**Branch convention:** `slice/<phase>-<slice-id>-<short-description>` e.g. `slice/2-b-edit-content`. Create from main at the start of Breaker's work:
+```bash
+git checkout main && git pull && git checkout -b slice/2-b-edit-content
+```
 
-- **Create a feature branch before writing any test** — never commit directly to main. Branch naming: `slice/<phase>-<id>-<short-description>` (e.g. `slice/2-b-edit-content`). Create from main: `git checkout main && git pull && git checkout -b slice/2-b-edit-content`
+**Rules:**
+- **Create a feature branch before writing any test** — never commit directly to main
+- Follow the BDD spec pattern: `Given(priorEvents).When(command).Then(expectedEvents)` or `.ThenError(...)`
+- One spec class per command; one `[Fact]` per distinct scenario (happy path + each guard/error case)
+- Name scenarios in plain language: `CreatesNoteWhenItDoesNotExist`, `RejectsCreateWhenNoteAlreadyExists`
 - Tests must be runnable and fail before implementation begins — for the right reason (behaviour missing, not compilation error)
 - Do not stub or partially implement to make tests pass — leave implementation absent
-- Name tests as user actions or observable outcomes: `User_opens_note_sees_content`, `Typing_content_and_blurring_saves_it`
+- Do not modify any existing spec files
 - Prefer one assertion per test
 - Commit and push all failing tests to the feature branch before handing off to Pip
 
@@ -61,51 +97,61 @@ For a backend-only slice (explicitly justified in the brief), omit E2E and write
 
 ## Pip (Agent 2 — Implementer)
 
-**Remit:** Make the failing tests pass, shepherd the PR through review, and own the branch until the main pipeline is green.
+**Remit:** Make the failing specs pass, shepherd the PR through review, and own the branch until the main pipeline is green.
 
-**Inputs:** The branch and failing test summary from Agent 1.
+**Inputs:** The branch and failing spec summary from Breaker.
+
+**Skills to load (pick by task type):**
+- `aggregate-command` — adding or modifying a command + events on an aggregate
+- `projection` — scaffolding or extending a read projection
+- `dynamodb-event-append` — canonical DynamoDB append with optimistic concurrency
+- `cdk-stack-update` — safe CDK edits with synth + diff gating
+- `refactor` — clean up after specs pass (always run this before opening a PR)
+- `agent-skills:incremental-implementation` — general thin-slice implementation
 
 **Step 1 — Implement:**
 
-- Check out the branch Breaker created — never start work on main
-- Confirm the tests fail before writing any code
-- Do not modify test files — if a test seems wrong, flag it to a human rather than changing it
-- Write only what is needed to make the tests pass — no extra features, no speculative code
+- Check out the branch Breaker created (`git checkout slice/...`) — do not create a new branch; do not commit to main
+- Confirm specs fail before writing any code
+- Do not modify spec files — if a spec seems wrong, flag to a human rather than changing it
+- Write only what is needed to make the specs pass — no extra features, no speculative code
 - **Commit in small, working increments** — each commit should represent a working unit of software:
   - Commit backend changes (domain, API, infra) before touching the frontend
   - Commit frontend changes separately from backend changes
   - Within each layer, commit one working unit at a time: one endpoint, one component, one utility
   - A commit is ready when its tests pass and nothing is half-finished
 - **Include your approximate token count in the commit message or hand-off summary** — Scribe records these per agent
-- Run the full validation sequence ([validation.md](../validation.md)) before opening a PR
-- Push the branch and open a PR against main once all tests are green and validation passes
 
-**Step 2 — Wait for PR pipeline:**
+**Step 1b — Refactor:**
 
-- Monitor the PR pipeline until it reaches a terminal state (`SUCCESSFUL` or `FAILED`)
-- If the PR pipeline fails, fix the issue, push, and wait for it to pass before proceeding
-- Do not request a review until the PR pipeline is `SUCCESSFUL`
+- Once all specs are green, load the `refactor` skill and scan every file changed in this slice
+- Fix one smell at a time; run `dotnet test` between each fix
+- Do not open a PR until the refactor pass is done and specs are still green
+- Run the full validation sequence (see `validation.md` in this directory) after refactoring
+- Open a PR once refactoring is complete and validation passes
 
-**Step 3 — Request review from Agent 3:**
+**Step 2 — Run local validation and signal Hawk:**
 
+- Run the full local validation sequence — see `validation.md` in this directory
 - Ensure all changes are committed — do not hand off to Hawk with uncommitted work
-- Signal Agent 3 with the PR URL and confirm the pipeline is green
+- If local validation passes, signal Hawk immediately with the PR URL — do not wait for CI
+- If local validation fails, fix the issue and re-run before signalling Hawk
 
-**Step 4 — Action review feedback:**
+**Step 3 — Action review feedback:**
 
-- If Agent 3 returns `Changes requested`: make the changes, push, and return to Step 2
-- If Agent 3 returns `Approved` or `Approved with minor comments`: proceed to Step 5
+- `Changes requested` → make the changes, push, return to Step 2
+- `Approved` or `Approved with minor comments` → proceed to Step 4
 
-**Step 5 — Merge and monitor:**
+**Step 4 — Merge and monitor:**
 
-- Merge the PR
-- Delete the remote branch
-- Delete the local branch
+- Merge the PR (squash merge to keep main history clean)
+- Delete the remote branch (`git push origin --delete slice/...`)
+- Delete the local branch (`git branch -d slice/...`)
 - Monitor the main pipeline until it reaches a terminal state
-- If the main pipeline fails and your merge caused it, fix it immediately — treat it as the current task
-- If the main pipeline passes: you are done
+- If the main pipeline fails and your merge caused it, fix it immediately
+- If the main pipeline passes, update `docs/workflow-log.md` with a phase-end note if this completes a phase
 
-**Done when:** The main pipeline is `SUCCESSFUL` after your merge.
+**Done when:** The main pipeline is green after your merge.
 
 ---
 
@@ -115,7 +161,7 @@ For a backend-only slice (explicitly justified in the brief), omit E2E and write
 
 **Inputs:** The branch from Pip with all tests passing.
 
-**Applies to:** Any slice marked as user-facing in the phase doc. Skip this role entirely for backend-only slices (those that explicitly state no UI change).
+**Applies to:** Any slice marked as user-facing in the phase doc. Skip this role entirely for backend-only slices.
 
 **Step 1 — Load design system**
 
@@ -170,36 +216,52 @@ Commit style changes separately from functional changes with a message like `Sty
 
 ## Hawk (Agent 3 — Reviewer)
 
-**Remit:** Review the PR and return a verdict. Do not implement fixes. Do not merge.
+**Remit:** Review the PR and return a verdict. Does not implement fixes. Does not merge.
 
-**Inputs:** PR URL from Agent 2, with confirmation that the PR pipeline is green.
+**Inputs:** PR URL from Pip, with confirmation that the PR pipeline is green.
+
+**Skills to load:**
+- `agent-skills:code-review-and-quality` — five-axis review (correctness, readability, architecture, security, performance)
 
 **Review checklist:**
-
-- Tests actually cover the stated acceptance criteria — no gaps, no redundant tests
-- Implementation does only what the tests require — no scope creep, no dead code
+- Specs actually cover the stated acceptance criteria — no gaps, no redundant scenarios
+- Implementation does only what the specs require — no scope creep, no dead code
+- Aggregates are pure (no I/O, no clock, no DB calls)
+- Events are not mutated — new shapes get new types
+- No direct DynamoDB access outside `src/EventStore/`
 - No obvious security issues (injection, unvalidated input at system boundaries, exposed secrets)
-- No unnecessary complexity — if something can be simpler, call it out
-- For user-facing slices: UI polish has been applied (Stylist ran) — check for cursor-pointer, visible focus states, loading/error states, and no emoji icons
+- No unnecessary complexity
+- For user-facing slices: UI polish has been applied (Stylist ran) — check for `cursor-pointer`, visible focus states, loading/error states, and no emoji icons
 
-**Output:** Inline comments on the PR where relevant. A single summary verdict posted as a PR comment: `Approved`, `Approved with minor comments`, or `Changes requested`.
+**Output:** Inline PR comments where relevant. A single summary verdict as a PR comment: `Approved`, `Approved with minor comments`, or `Changes requested`. A structured review findings block appended to `docs/learnings/<slice-name>.md` (create the file if it does not yet exist):
+
+```markdown
+## Hawk review findings
+
+| Finding | File | How to prevent |
+|---|---|---|
+| <what was wrong> | <file:line> | <which role should catch this, and how> |
+```
 
 **Rules:**
-
-- Do not review a PR whose pipeline has not passed — send it back to Agent 2
-- Do not comment on style issues that the linter/formatter already enforces — trust the tooling
-- If changes are requested, list them clearly and return to Agent 2 — do not implement them yourself
+- Do not review a PR whose pipeline has not passed — send it back to Pip
+- Do not comment on style issues already enforced by `dotnet format` — trust the tooling
+- If changes are requested, list them clearly and return to Pip — do not implement them yourself
 - Flag anything that looks like a scope change to a human rather than approving or rejecting it yourself
+- Every finding in the review must appear in the findings block — no finding goes unrecorded
 
-**Done when:** Verdict is posted, approximate token count included in the verdict summary, and returned to Agent 2.
+**Done when:** Verdict is posted, approximate token count included in the verdict summary, and returned to Pip.
 
 ---
 
 ## Scribe (Agent 4 — Documentation)
 
-**Remit:** After the slice lands on main, update all developer-facing documentation to reflect what changed. Does not touch code, specs, or the event model.
+**Remit:** After the slice lands on main, update all developer-facing documentation and write the workflow learnings. Does not touch code, specs, or the event model.
 
-**Inputs:** The merged slice and any changed files.
+**Inputs:** The merged slice and any changed files. The `docs/learnings/<slice-name>.md` file started by Hawk (Hawk writes the review findings block; Scribe adds the workflow observations above it).
+
+**Skills to load:**
+- `agent-skills:documentation-and-adrs` — for structured, decision-quality writing
 
 **Outputs:**
 
@@ -207,35 +269,53 @@ Commit style changes separately from functional changes with a message like `Sty
 - `docs/phases/phase-N.md` — mark completed acceptance criteria as `[x]`, update slice status to `Done`
 - `docs/roadmap.md` — update phase status if the phase is now complete or newly in progress
 - Any `docs/` file that describes something the slice changed (architecture, event schemas, view schemas, ADRs)
-- `docs/learnings/phase-<slice-name>.md` — workflow observations, process improvement suggestions, and any observations on token usage: which agent consumed the most, why, and concrete suggestions for reducing usage on future slices (see `docs/agent-workflow.md` for template and rules)
-- `docs/token-log.md` — append a row per agent for the completed slice with approximate token counts (see format below)
+- `docs/learnings/phase-<slice-name>.md` — workflow observations, process improvement suggestions, and token usage observations (which agent consumed the most, why, and concrete suggestions for reducing usage on future slices)
+- `docs/token-log.md` — append a row per agent for the completed slice with approximate token counts
 
-**Token log format** — append one section per slice:
+**Learnings doc template:**
+
+```markdown
+# Learnings: <slice name>
+
+## What was inefficient or went wrong
+- <observation>
+
+## Suggested process improvements
+- <concrete suggestion tied to a specific role or workflow step>
+```
+
+Scribe writes the workflow observations above Hawk's review findings block. Observations must be grounded in the actual conversation — quote or paraphrase specific moments where the workflow broke down or caused rework. Suggestions must name the role or workflow step they apply to (e.g. "Scout should…", "The Breaker hand-off should require…").
+
+**Token log format** — append one section per slice to `docs/token-log.md`:
 
 ```markdown
 ## Slice <id> — <name>
 
-| Agent   | ~Tokens |
-|---------|---------|
-| Scout   | 12 000  |
-| Breaker | 8 000   |
-| Pip     | 45 000  |
-| Stylist | 12 000  |
-| Hawk    | 5 000   |
-| Scribe  | 3 000   |
+| Agent     | ~Tokens    |
+|-----------|------------|
+| Scout     | 12 000     |
+| Breaker   | 8 000      |
+| Pip       | 45 000     |
+| Stylist   | 12 000     |
+| Hawk      | 5 000      |
+| Scribe    | 3 000      |
 | **Total** | **85 000** |
 ```
 
 Token counts come from each agent's hand-off summary. If an agent did not report, note `—`. Round to the nearest 1 000.
 
 **Rules:**
-
-- Workflow-scope observations only in learnings — no technical or implementation detail
+- Workflow scope only in learnings — no technical or implementation detail
+- Observations must be grounded in the actual conversation: quote or paraphrase specific moments where the workflow broke down
+- Suggestions must name the role or workflow step they apply to
 - Token efficiency suggestions should be actionable: e.g. "Scout read 6 files that weren't needed — scope the read to X instead", not just "used too many tokens"
 - Do not change code, tests, or the event model
 - README changes must be accurate: verify env var names and table names against the actual source (launchSettings.json, docker-compose.yml, CDK stack)
+- Do not make suggestions that contradict a guardrail in CLAUDE.md without flagging the conflict explicitly
 
-**Done when:** All updated docs are committed and the human is notified.
+**Hand-off:** Post the path to the learnings file. Human reviews and decides whether any suggestions warrant updating this file or `CLAUDE.md`.
+
+**Done when:** All updated docs are committed and the human has been notified.
 
 ---
 
@@ -244,48 +324,71 @@ Token counts come from each agent's hand-off summary. If an agent did not report
 ```
 Human: gives Scout a brief (or just "find something good")
     ↓
-Scout: researches → designs → produces feature brief with acceptance criteria
+Scout: researches → updates event model → produces feature brief
     ↓
-Human checkpoint: reviews brief before any code is written
+Human checkpoint: reviews brief and event model before any code is written
     ↓
 Breaker: writes failing tests → commits → pushes → hands off to Pip
     ↓
-Pip: implements → validation passes → opens PR
-    ↓
-Pip: waits for PR pipeline to pass
+Pip: implements → refactors → validation passes → opens PR
     ↓
 Stylist: loads/generates design system → polishes UI components → commits style changes (user-facing slices only)
     ↓
-Pip: requests review from Hawk
+Pip: signals Hawk immediately with PR URL (does not wait for CI)
     ↓
 Hawk: reviews → posts verdict → returns to Pip
     ↓
-If changes requested → Pip fixes → pushes → waits for PR pipeline → re-requests review
+If changes requested → Pip fixes → pushes → re-requests review
     ↓
 If approved → Pip merges → monitors main pipeline
     ↓
 If main pipeline fails → Pip fixes → repeat until green
     ↓
-Scribe: updates README, phase doc, roadmap, learnings, and any changed docs
+Scribe: updates README, phase doc, roadmap, learnings, token log, and any changed docs
     ↓
-Done
+Human checkpoint: reviews learnings and decides whether to update this file or CLAUDE.md
 ```
+
+---
 
 ## Responsibilities at a Glance
 
-|                               | Scout | Breaker | Pip | Stylist | Hawk | Scribe |
-| ----------------------------- | ----- | ------- | --- | ------- | ---- | ------ |
-| Research & design features    | ✓     | ✗       | ✗   | ✗       | ✗    | ✗      |
-| Write acceptance criteria     | ✓     | ✗       | ✗   | ✗       | ✗    | ✗      |
-| Write implementation code     | ✗     | ✗       | ✓   | ✗       | ✗    | ✗      |
-| Apply visual polish           | ✗     | ✗       | ✗   | ✓       | ✗    | ✗      |
-| Modify test files             | ✗     | ✓       | ✗   | ✗       | ✗    | ✗      |
-| Open a PR                     | ✗     | ✗       | ✓   | ✗       | ✗    | ✗      |
-| Wait for PR pipeline          | ✗     | ✗       | ✓   | ✗       | ✗    | ✗      |
-| Review and post verdict       | ✗     | ✗       | ✗   | ✗       | ✓    | ✗      |
-| Merge a PR                    | ✗     | ✗       | ✓   | ✗       | ✗    | ✗      |
-| Monitor and fix main pipeline | ✗     | ✗       | ✓   | ✗       | ✗    | ✗      |
-| Update README / docs          | ✗     | ✗       | ✗   | ✗       | ✗    | ✓      |
-| Update phase / roadmap docs   | ✗     | ✗       | ✗   | ✗       | ✗    | ✓      |
-| Write slice learnings         | ✗     | ✗       | ✗   | ✗       | ✗    | ✓      |
-| Change the task scope         | ✗     | ✗       | ✗   | ✗       | ✗    | ✗      |
+|                                | Scout | Breaker | Pip | Stylist | Hawk | Scribe |
+|-------------------------------|-------|---------|-----|---------|------|--------|
+| Research & design features     | ✓     | ✗       | ✗   | ✗       | ✗    | ✗      |
+| Update event model             | ✓     | ✗       | ✗   | ✗       | ✗    | ✗      |
+| Write acceptance criteria      | ✓     | ✗       | ✗   | ✗       | ✗    | ✗      |
+| Write BDD spec files           | ✗     | ✓       | ✗   | ✗       | ✗    | ✗      |
+| Write implementation code      | ✗     | ✗       | ✓   | ✗       | ✗    | ✗      |
+| Run refactor skill             | ✗     | ✗       | ✓   | ✗       | ✗    | ✗      |
+| Apply visual polish            | ✗     | ✗       | ✗   | ✓       | ✗    | ✗      |
+| Modify existing spec files     | ✗     | ✗       | ✗   | ✗       | ✗    | ✗      |
+| Open a PR                      | ✗     | ✗       | ✓   | ✗       | ✗    | ✗      |
+| Wait for / fix CI pipeline     | ✗     | ✗       | ✓   | ✗       | ✗    | ✗      |
+| Post review verdict            | ✗     | ✗       | ✗   | ✗       | ✓    | ✗      |
+| Merge a PR                     | ✗     | ✗       | ✓   | ✗       | ✗    | ✗      |
+| Update workflow-log.md         | ✗     | ✗       | ✓   | ✗       | ✗    | ✗      |
+| Write slice learnings doc      | ✗     | ✗       | ✗   | ✗       | ✗    | ✓      |
+| Update phase / roadmap docs    | ✗     | ✗       | ✗   | ✗       | ✗    | ✓      |
+| Update README / developer docs | ✗     | ✗       | ✗   | ✗       | ✗    | ✓      |
+| Change the task scope          | ✗     | ✗       | ✗   | ✗       | ✗    | ✗      |
+
+---
+
+## When to skip roles
+
+Some tasks don't need the full pipeline:
+
+| Task type | Roles needed |
+|---|---|
+| Typo / doc fix | Pip only (no spec needed, no Scribe) |
+| CDK infra change (no domain logic) | Scout → Pip → Hawk → Scribe |
+| New command + events | Full pipeline |
+| New projection | Scout → Breaker → Pip → Hawk → Scribe |
+| Bug fix | Breaker (reproduce with a failing spec) → Pip → Hawk → Scribe |
+
+---
+
+## Blocked states
+
+If any role is blocked for more than 30 minutes (CI stuck, unclear failure, ambiguous requirement), raise a flag to the human rather than waiting or guessing. Never bypass a failing pre-push hook or CI gate.

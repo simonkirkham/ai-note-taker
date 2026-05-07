@@ -11,7 +11,8 @@ These artefacts contain no project-specific content and can be dropped straight 
 | Artefact | Why |
 |---|---|
 | `.claude/skills/` (entire directory) | All domain skills (`aggregate-command`, `cdk-stack-update`, `dynamodb-event-append`, `event-modelling`, `projection`) plus generic agent role docs (`.agent/generic/`) |
-| `docs/agent-workflow.md` | The five-role pipeline (Scout → Breaker → Pip → Hawk → Scribe) with hand-off rules, RACI table, and blocked-state protocol |
+| `.claude/skills/.agent/generic/agent-roles.md` | The full pipeline (Scout → Breaker → Pip → Stylist → Hawk → Scribe) with role remits, hand-off rules, RACI table, and blocked-state protocol |
+| `docs/agent-workflow.md` | Thin pointer to `agent-roles.md` — copy verbatim |
 | `.githooks/pre-commit` | `dotnet build` (warnings-as-errors) + `dotnet test` before every commit |
 | `docs/workflow-log.md` | Template only — delete the Phase 0 entry and keep the header and template block |
 
@@ -142,7 +143,7 @@ docs/
   event-schemas.md    — wire shapes for events
   view-schemas.md     — wire shapes for read projections
   workflow-log.md     — copy template from this repo
-  agent-workflow.md   — copy verbatim from this repo
+  agent-workflow.md   — thin pointer; the real pipeline doc is .claude/skills/.agent/generic/agent-roles.md
   adr/                — one file per architectural decision
   learnings/          — one file per completed slice (Hawk + Scribe write here)
   phases/             — one file per phase (Scout writes here)

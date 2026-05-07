@@ -105,5 +105,6 @@ Reach for these instead of writing patterns from scratch:
 3. Write BDD spec.
 4. Implement until spec passes green.
 5. **Refactor** — run the `refactor` skill against all changed files; re-run specs after each fix.
-6. Diff review (subagent or `/review`).
-7. Append a short note to [docs/workflow-log.md](docs/workflow-log.md) at the end of each phase.
+6. **Stylist** (user-facing slices only) — run the `ui-ux-pro-max` skill to apply visual polish; re-run tests after.
+7. Diff review (subagent or `/review`).
+8. Append a short note to [docs/workflow-log.md](docs/workflow-log.md) at the end of each phase.
