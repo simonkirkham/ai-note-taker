@@ -58,3 +58,28 @@ export async function deleteNote(noteId: string): Promise<void> {
   const res = await fetch(`${base}/notes/${noteId}`, { method: "DELETE" });
   if (!res.ok) throw new Error(`DELETE /notes/${noteId} failed: ${res.status}`);
 }
+
+export interface ActionItem {
+  actionId: string;
+  description: string;
+  completed: boolean;
+  addedAt: string;
+  completedAt: string | null;
+}
+
+export async function getActions(noteId: string): Promise<ActionItem[]> {
+  const res = await fetch(`${base}/notes/${noteId}/actions`);
+  if (!res.ok) throw new Error(`GET /notes/${noteId}/actions failed: ${res.status}`);
+  const body: { actions: ActionItem[] } = await res.json();
+  return body.actions;
+}
+
+export async function addAction(noteId: string, description: string): Promise<{ actionId: string }> {
+  const res = await fetch(`${base}/notes/${noteId}/actions`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ description }),
+  });
+  if (!res.ok) throw new Error(`POST /notes/${noteId}/actions failed: ${res.status}`);
+  return res.json();
+}

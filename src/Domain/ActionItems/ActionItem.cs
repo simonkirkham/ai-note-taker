@@ -21,6 +21,10 @@ public sealed class ActionItem : IAggregate
             _ => throw new ArgumentOutOfRangeException(nameof(command))
         };
 
-    IReadOnlyList<IDomainEvent> HandleAdd(AddActionItem cmd) =>
-        throw new NotImplementedException();
+    IReadOnlyList<IDomainEvent> HandleAdd(AddActionItem cmd)
+    {
+        if (_exists)
+            throw new InvalidOperationException($"Action item {cmd.ActionId} already exists.");
+        return [new ActionItemAdded(cmd.ActionId, cmd.NoteId, cmd.Description)];
+    }
 }

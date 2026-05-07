@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { editContent, getNoteDetail } from "../api";
+import ActionsSection from "./ActionsSection";
 
 export default function NoteView({
   noteId,
@@ -91,6 +92,7 @@ export default function NoteView({
           className="content-input"
         />
       )}
+      <ActionsSection noteId={noteId} />
     </main>
   );
 }
