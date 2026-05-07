@@ -65,7 +65,7 @@ git checkout main && git pull && git checkout -b slice/2-b-edit-content
 - Do not modify any existing spec files
 - Confirm all new specs fail before handing off
 
-**Hand-off:** List each scenario written (class name + fact name + one-line description), the branch name, and confirm all new specs fail for the right reason. Human reviews before Pip begins.
+**Hand-off:** List each scenario written (class name + fact name + one-line description), the branch name, and confirm all new specs fail for the right reason. Pip begins immediately — no human checkpoint.
 
 ---
 
@@ -96,19 +96,16 @@ git checkout main && git pull && git checkout -b slice/2-b-edit-content
 - Run the full validation sequence (see `.claude/skills/.agent/generic/validation.md`) after refactoring
 - Open a PR once refactoring is complete and validation passes
 
-**Step 2 — Wait for CI:**
-- Monitor the GitHub Actions pipeline until it reaches a terminal state
-- If the PR pipeline fails, fix the issue, push, and wait for it to pass before proceeding
-- Do not request review until the pipeline is green
+**Step 2 — Run local validation and signal Hawk:**
+- Run the full local validation sequence (all tests + linting) — see `.claude/skills/.agent/generic/validation.md`
+- If local validation passes, signal Hawk immediately with the PR URL — do not wait for CI
+- If local validation fails, fix the issue and re-run before signalling Hawk
 
-**Step 3 — Request review from Hawk:**
-- Signal Hawk with the PR URL and confirm the pipeline is green
-
-**Step 4 — Action review feedback:**
+**Step 3 — Action review feedback:**
 - `Changes requested` → make the changes, push, return to Step 2
-- `Approved` or `Approved with minor comments` → proceed to Step 5
+- `Approved` or `Approved with minor comments` → proceed to Step 4
 
-**Step 5 — Merge and monitor:**
+**Step 4 — Merge and monitor:**
 - Merge the PR (squash merge to keep main history clean)
 - Delete the remote branch (`git push origin --delete slice/...`)
 - Delete the local branch (`git branch -d slice/...`)
@@ -150,7 +147,6 @@ git checkout main && git pull && git checkout -b slice/2-b-edit-content
 ```
 
 **Rules:**
-- Do not review a PR whose CI pipeline has not passed — send it back to Pip
 - Do not comment on style issues already enforced by `dotnet format` — trust the tooling
 - If changes are requested, list them clearly and return to Pip — do not implement them yourself
 - Flag any scope change to a human rather than approving or rejecting it yourself
@@ -211,19 +207,15 @@ Human checkpoint: reviews brief and event model changes
     ↓
 Breaker: writes failing BDD specs → commits → pushes
     ↓
-Human checkpoint: reviews failing specs before any implementation
+Pip: implements → specs green (no human checkpoint)
     ↓
-Pip: implements → specs green
+Pip: refactors (refactor skill) → specs still green → local validation passes → opens PR
     ↓
-Pip: refactors (refactor skill) → specs still green → validation passes → opens PR
-    ↓
-Pip: waits for CI pipeline (green)
-    ↓
-Pip: requests review from Hawk
+Pip: signals Hawk immediately (does not wait for CI)
     ↓
 Hawk: reviews → posts verdict
     ↓
-If changes requested → Pip fixes → pushes → waits for CI → re-requests review
+If changes requested → Pip fixes → pushes → re-requests review
     ↓
 If approved → Pip merges → monitors main pipeline
     ↓
