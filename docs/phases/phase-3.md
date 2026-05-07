@@ -210,7 +210,7 @@ Scenario: Completing from home screen is reflected in the note
 
 ## Slice 3-E — Delete an action item
 
-**Status:** Not Started
+**Status:** Done
 
 **Value:** Users can remove action items they no longer need — keeps the actions list clean.
 
@@ -239,8 +239,8 @@ Scenario: Reject deleting a non-existent action item (API)
 
 **Acceptance criteria:**
 
-- [ ] *(internal)* Deleting an action item appends `ActionItemDeleted` to the event store
-- [ ] *(internal)* Deleting a non-existent action item returns 404
-- [ ] User clicks delete on an action item — it is removed from the note's actions list immediately
-- [ ] The deleted item also disappears from the home screen todo list
-- [ ] E2E: add an action item, verify it appears in both the note and home screen; delete it — gone from both
+- [x] *(internal)* Deleting an action item appends `ActionItemDeleted` to the event store
+- [x] *(internal)* Deleting a non-existent action item returns 404
+- [x] User clicks delete on an action item — it is removed from the note's actions list immediately
+- [x] The deleted item also disappears from the home screen todo list
+- [x] E2E: add an action item, verify it appears in both the note and home screen; delete it — gone from both

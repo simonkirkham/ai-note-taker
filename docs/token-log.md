@@ -27,6 +27,25 @@ If no agent ran unexpectedly high: write `None — slice ran within expected ran
 
 -->
 
+## Slice 3-E — Delete an action item
+
+| Agent     | ~Tokens    |
+|-----------|------------|
+| Breaker   | 8 000      |
+| Pip       | 28 000     |
+| Refactor  | 4 000      |
+| Stylist   | 5 000      |
+| Hawk      | 5 000      |
+| Scribe    | 5 000      |
+| **Total** | **~55 000** |
+
+**Why:** Extension slice (no new aggregate/projection/CDK). Layer-split kept both Pip batches small. 20 files changed but most were targeted additions — no large re-reads required.
+
+**Optimisation suggestions:**
+None — slice ran within expected range.
+
+---
+
 ## Slice 3-D — Complete todos from the home screen
 
 | Agent     | ~Tokens    |

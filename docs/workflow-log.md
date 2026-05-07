@@ -188,6 +188,21 @@ Add an entry at the end of each phase. Keep them short and honest.
 
 ---
 
+## Slice 3-E — Delete an action item
+
+- **Workflow style used:** Fully autonomous pipeline — Breaker → Pip (layer-split: Batch 1 domain/API, Batch 2 E2E/frontend) → Refactor → Stylist → Hawk → Scribe; no human checkpoints.
+- **Skills exercised:** `refactor` (caught duplicate `AssertTodoItemAbsentFromHomeAsync`); `ui-ux-pro-max` (Stylist; no changes needed).
+- **What worked:**
+  - Layer-split kept both Pip batches under 30k tokens each. Clean commits, no context pressure.
+  - `_deleted` aggregate flag closed an invariant gap before it could manifest: completing a deleted item would have silently succeeded without it. Writing the domain spec first exposed the need.
+  - `ExecuteAndAppendAsync` already captured `addedEvent.NoteId` from history, which `DeleteAsync` on `INoteActionsStore` needed — no extra store read required.
+- **What didn't:**
+  - Nothing significant. Cleanest slice so far in phase 3.
+- **Change for next slice:**
+  - Touch target and SVG icon backlog items are now accumulating across slices (checkboxes, delete button). Consider a dedicated accessibility/polish slice before moving to Phase 4 to clear these as a batch.
+
+---
+
 ## Slice 3-D — Complete todos from the home screen
 
 - **Workflow style used:** Fully autonomous pipeline — no Breaker pass (criteria were in phase doc); Pip → Refactor → Stylist → Hawk → Scribe; user granted blanket authorisation at slice start with no stops for approvals.
