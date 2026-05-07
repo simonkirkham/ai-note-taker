@@ -6,6 +6,7 @@
       "Bash(dotnet *)",
       "Bash(cdk *)",
       "Bash(npm *)",
+      "Bash(npx *)",
       "Bash(node *)",
       "Bash(python *)",
       "Bash(python3 *)",
@@ -22,19 +23,23 @@
       "Bash(command *)",
       "WebFetch(domain:github.com)",
       "WebFetch(domain:raw.githubusercontent.com)",
-      "Read(//usr/bin/**)",
       "Read(//usr/**)",
       "Read(//home/simon/.local/bin/**)",
       "Read(//home/simon/.config/**)",
       "Read(//root/.config/**)",
-      "Read(//home/simon/.config/gh/**)",
       "Read(//home/simon/.nuget/packages/amazon.cdk.lib/**)",
-      "Read(//c/Users/simon/.npm/**)",
       "Read(//c/Users/simon/**)",
-      "Bash(npx tsc *)",
       "PowerShell(dotnet *)",
+      "PowerShell(npm *)",
       "PowerShell(git *)",
-      "PowerShell(npm *)"
+      "PowerShell(gh *)",
+      "PowerShell(cdk *)",
+      "PowerShell(node *)",
+      "PowerShell(python *)",
+      "PowerShell(python3 *)",
+      "PowerShell(aws *)",
+      "PowerShell(ls *)",
+      "PowerShell(cat *)"
     ]
   }
 }
