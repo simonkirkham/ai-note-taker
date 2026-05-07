@@ -284,6 +284,9 @@ body {
 }
 
 .action-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
   padding: 0.5rem 0;
   border-bottom: 1px solid var(--color-border);
   font-size: 0.9375rem;
@@ -293,6 +296,11 @@ body {
 .action-item--done {
   color: var(--color-text-muted);
   text-decoration: line-through;
+}
+
+.action-checkbox {
+  cursor: pointer;
+  flex-shrink: 0;
 }
 
 .action-form {

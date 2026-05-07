@@ -83,3 +83,13 @@ export async function addAction(noteId: string, description: string): Promise<{ 
   if (!res.ok) throw new Error(`POST /notes/${noteId}/actions failed: ${res.status}`);
   return res.json();
 }
+
+export async function completeAction(noteId: string, actionId: string): Promise<void> {
+  const res = await fetch(`${base}/notes/${noteId}/actions/${actionId}/complete`, { method: "POST" });
+  if (!res.ok) throw new Error(`POST /notes/${noteId}/actions/${actionId}/complete failed: ${res.status}`);
+}
+
+export async function reopenAction(noteId: string, actionId: string): Promise<void> {
+  const res = await fetch(`${base}/notes/${noteId}/actions/${actionId}/reopen`, { method: "POST" });
+  if (!res.ok) throw new Error(`POST /notes/${noteId}/actions/${actionId}/reopen failed: ${res.status}`);
+}
