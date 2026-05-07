@@ -9,7 +9,8 @@ public record NoteDetailView(
     string Title,
     string Content,
     DateTimeOffset CreatedAt,
-    DateTimeOffset LastModifiedAt);
+    DateTimeOffset LastModifiedAt,
+    DateOnly? Date = null);
 
 public interface INoteDetailStore
 {

@@ -66,7 +66,7 @@ Items returned ordered by `LastModifiedAt` descending. Soft-deleted notes are fi
 ### 2. `NoteCardList`
 
 **Consumed by:** Home view's Notes section. The richest projection — fully denormalised cards.
-**Source events:** all `Note*` events plus `ActionItemAdded`, `ActionItemCompleted`, `ActionItemReopened`, `ActionItemEdited`, `ActionItemRemoved`.
+**Source events:** all `Note*` events plus `ActionItemAdded`, `ActionItemCompleted`, `ActionItemReopened`, `ActionItemEdited`, `ActionItemDeleted`.
 
 ```csharp
 public record NoteCardActionItem(
@@ -82,6 +82,7 @@ public record NoteCard(
     IReadOnlyList<NoteCardActionItem> ActionItems,
     int OpenActionCount,
     int TotalActionCount,
+    DateOnly? Date,
     DateTimeOffset CreatedAt,
     DateTimeOffset LastModifiedAt);
 
@@ -104,6 +105,7 @@ public record NoteCardListView(
       ],
       "openActionCount": 1,
       "totalActionCount": 2,
+      "date": "2026-04-21",
       "createdAt": "2026-04-23T09:14:22Z",
       "lastModifiedAt": "2026-04-23T09:15:01Z"
     }
@@ -125,12 +127,13 @@ public record NoteCardListView(
 - `ContentEdited` → update `Content`, `LastModifiedAt`
 - `NoteTagged` → add tag to set, update `LastModifiedAt`
 - `NoteUntagged` → remove tag from set, update `LastModifiedAt`
+- `NoteDateSet` → update `Date`, `LastModifiedAt`
 - `NoteDeleted` → set `Deleted = true` (filter in queries)
 - `ActionItemAdded` → append to `ActionItems`, `LastModifiedAt`
 - `ActionItemCompleted` → mark item `completed = true`
 - `ActionItemReopened` → mark item `completed = false`
 - `ActionItemEdited` → update item description
-- `ActionItemRemoved` → remove from `ActionItems`
+- `ActionItemDeleted` → remove from `ActionItems`
 
 ---
 
@@ -145,6 +148,7 @@ public record NoteDetail(
     string Title,
     string Content,
     IReadOnlyList<string> Tags,
+    DateOnly? Date,
     DateTimeOffset CreatedAt,
     DateTimeOffset LastModifiedAt,
     long Version);                  // current stream sequence number
@@ -159,6 +163,7 @@ public record NoteDetail(
   "title": "Bill 1:1",
   "content": "Met with Bill re: API integration. He'll send specs Friday.",
   "tags": ["1:1s", "Bill"],
+  "date": "2026-04-21",
   "createdAt": "2026-04-23T09:14:22Z",
   "lastModifiedAt": "2026-04-23T09:15:01Z",
   "version": 7
@@ -214,7 +219,7 @@ Composite key — `Query(PK = NoteId)` returns all actions for the note in one r
 - `ActionItemCompleted` → set `Completed = true`, `CompletedAt`
 - `ActionItemReopened` → set `Completed = false`, `CompletedAt = null`
 - `ActionItemEdited` → update `Description`
-- `ActionItemRemoved` → delete row
+- `ActionItemDeleted` → delete row
 
 ---
 
@@ -262,7 +267,7 @@ Only **open** action items are stored — `ActionItemCompleted` removes the row,
 - `ActionItemCompleted` → delete row
 - `ActionItemReopened` → put row back (description, addedAt sourced from `NoteActions` projection or by replay)
 - `ActionItemEdited` → update `Description` if row exists
-- `ActionItemRemoved` → delete row
+- `ActionItemDeleted` → delete row
 - `NoteRenamed` → scan for rows with this `NoteId`, update `NoteTitle` (low frequency, scan acceptable; if it grows, add a GSI on `NoteId`)
 - `NoteDeleted` → delete all rows with this `NoteId`
 

@@ -62,6 +62,40 @@ public sealed class NoteDetailSpec
         Assert.Equal(renamedAt, detail.LastModifiedAt);
     }
 
+    [Fact(Skip = "Pip: implement NoteDetailProjection.Handle(NoteDateSet)")]
+    public void NoteDateSet_updates_date_in_detail()
+    {
+        var noteId = Guid.NewGuid();
+        var date = new DateOnly(2026, 4, 21);
+        var projection = new NoteDetailProjection();
+        projection.Handle(Envelope($"note#{noteId}", 1, nameof(NoteCreated),
+            JsonSerializer.Serialize(new NoteCreated(new NoteId(noteId)))));
+
+        projection.Handle(Envelope($"note#{noteId}", 2, nameof(NoteDateSet),
+            JsonSerializer.Serialize(new NoteDateSet(new NoteId(noteId), date))));
+
+        var detail = projection.GetDetail(new NoteId(noteId));
+        Assert.Equal(date, detail!.Date);
+    }
+
+    [Fact(Skip = "Pip: implement NoteDetailProjection.Handle(NoteDateSet)")]
+    public void NoteDateSet_null_clears_date_in_detail()
+    {
+        var noteId = Guid.NewGuid();
+        var date = new DateOnly(2026, 4, 21);
+        var projection = new NoteDetailProjection();
+        projection.Handle(Envelope($"note#{noteId}", 1, nameof(NoteCreated),
+            JsonSerializer.Serialize(new NoteCreated(new NoteId(noteId)))));
+        projection.Handle(Envelope($"note#{noteId}", 2, nameof(NoteDateSet),
+            JsonSerializer.Serialize(new NoteDateSet(new NoteId(noteId), date))));
+
+        projection.Handle(Envelope($"note#{noteId}", 3, nameof(NoteDateSet),
+            JsonSerializer.Serialize(new NoteDateSet(new NoteId(noteId), null))));
+
+        var detail = projection.GetDetail(new NoteId(noteId));
+        Assert.Null(detail!.Date);
+    }
+
     [Fact]
     public void GetDetail_unknown_note_returns_null()
     {

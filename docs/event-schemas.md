@@ -57,7 +57,7 @@ public record NoteRenamed(NoteId NoteId, string NewTitle)      : NoteEvent;
 public record ContentEdited(NoteId NoteId, string Content)     : NoteEvent;  // full snapshot
 public record NoteTagged(NoteId NoteId, string Tag)            : NoteEvent;
 public record NoteUntagged(NoteId NoteId, string Tag)          : NoteEvent;
-public record NoteDateSet(NoteId NoteId, DateOnly Date)        : NoteEvent;
+public record NoteDateSet(NoteId NoteId, DateOnly? Date)       : NoteEvent;  // null = cleared
 public record NoteDeleted(NoteId NoteId)                       : NoteEvent;
 ```
 
@@ -91,7 +91,9 @@ public record NoteDeleted(NoteId NoteId)                       : NoteEvent;
 { "noteId": "7f3a9c2b-1e4d-4a8f-9c0d-2b1f3a4e5c6d", "date": "2026-04-29" }
 ```
 
-*`date` serialises as an ISO 8601 date string (`yyyy-MM-dd`). No time component, no timezone — `DateOnly` maps directly.*
+When clearing: `{ "noteId": "...", "date": null }`.
+
+*`date` serialises as an ISO 8601 date string (`yyyy-MM-dd`). `null` means the date was cleared.*
 
 ---
 
@@ -107,8 +109,8 @@ public record ActionItemAdded(
 
 public record ActionItemCompleted(ActionId ActionId)                       : ActionItemEvent;
 public record ActionItemReopened(ActionId ActionId)                        : ActionItemEvent;
-public record ActionItemEdited(ActionId ActionId, string NewDescription)   : ActionItemEvent;
-public record ActionItemRemoved(ActionId ActionId)                         : ActionItemEvent;
+public record ActionItemEdited(ActionId ActionId, string NewDescription)        : ActionItemEvent;
+public record ActionItemDeleted(ActionId ActionId, DateTimeOffset DeletedAt)    : ActionItemEvent;
 ```
 
 `ActionItemAdded` carries `NoteId` because that's the parent reference the `TodoList` and `NoteCardList` projections need to join on. Subsequent action-item events don't repeat `NoteId` — projections look it up from the `ActionItemAdded` they already saw.

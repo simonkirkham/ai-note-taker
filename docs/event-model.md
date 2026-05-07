@@ -58,7 +58,7 @@ A discrete to-do extracted within a note. Owns its own completion lifecycle.
 | `CompleteActionItem(actionId, completedAt)` | ActionItem exists, status = Open | `ActionItemCompleted` |
 | `ReopenActionItem(actionId, reopenedAt)` | ActionItem exists, status = Completed | `ActionItemReopened` |
 | `EditActionItem(actionId, newDescription, editedAt)` | ActionItem exists, not deleted | `ActionItemEdited` |
-| `RemoveActionItem(actionId, removedAt)` | ActionItem exists | `ActionItemRemoved` |
+| `DeleteActionItem(actionId, deletedAt)` | ActionItem exists | `ActionItemDeleted` |
 
 ---
 
@@ -82,7 +82,7 @@ A discrete to-do extracted within a note. Owns its own completion lifecycle.
 - `ActionItemCompleted { ActionId, CompletedAt }`
 - `ActionItemReopened { ActionId, ReopenedAt }`
 - `ActionItemEdited { ActionId, EditedAt, NewDescription }`
-- `ActionItemRemoved { ActionId, RemovedAt }`
+- `ActionItemDeleted { ActionId, DeletedAt }`
 
 ---
 
@@ -102,7 +102,7 @@ The Home view's richness pushes us toward denormalized read models — `NoteCard
 | Projection | Source events | Used by |
 |---|---|---|
 | `NoteTitleList` | `NoteCreated`, `NoteRenamed`, `NoteDeleted` | Sidebar list of note titles |
-| `NoteCardList` | All Note events + `ActionItemAdded`, `ActionItemCompleted`, `ActionItemRemoved` | Home view's Notes section — denormalized cards with title, date, content preview, tags, action items. Filters out soft-deleted notes. |
+| `NoteCardList` | All Note events + `ActionItemAdded`, `ActionItemCompleted`, `ActionItemReopened`, `ActionItemDeleted` | Home view's Notes section — denormalized cards with title, date, content preview, tags, action items. Filters out soft-deleted notes. |
 | `NoteDetail` | All Note events for a given NoteId | NoteEdit view |
 | `NoteActions` | All ActionItem events filtered by NoteId | Actions panel within a note |
 | `TodoList` | All ActionItem events across all notes (open only) | Home view's TO DO List section. Empty state: "Your ToDo list is clear." |
@@ -192,15 +192,15 @@ View: TodoList (item moves to completed section / disappears from open list)
 
 ```
 View: NoteEdit
-  ↓ user picks a date from the date picker (or clears it — handled client-side, no event for null)
-Command: SetNoteDate(noteId, date, setAt)
+  ↓ user picks a date from the date picker
+Command: SetNoteDate(noteId, date, setAt)  — date is DateOnly? (null = cleared)
   ↓
-Event: NoteDateSet  (DateOnly — the user-chosen date, not the event timestamp)
+Event: NoteDateSet  (DateOnly? — the user-chosen date; null when the user clears the field)
   ↓ projections updated: NoteDetail, NoteCardList
-View: NoteEdit (date field reflects the chosen date)
+View: NoteEdit (date field reflects the chosen date, or is empty if null)
 ```
 
-*The date picker emits `SetNoteDate` on every change (no debounce needed — picking a date is a single discrete action, not continuous typing).*
+*The date picker emits `SetNoteDate` on every change (no debounce needed — picking a date is a single discrete action, not continuous typing). Clearing emits `SetNoteDate(noteId, null, setAt)`.*
 
 ### Flow G — Delete a note (soft delete)
 
