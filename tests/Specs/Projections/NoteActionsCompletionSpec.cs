@@ -15,7 +15,7 @@ public sealed class NoteActionsCompletionSpec
     static EventEnvelope Envelope(string streamId, long seq, string type, string payload) =>
         new(streamId, seq, type, 1, DateTimeOffset.UtcNow, payload, new EventMetadata(Guid.NewGuid(), null, null, null));
 
-    [Fact(Skip = "Pip 3-B")]
+    [Fact]
     public void ActionItemCompleted_marks_item_complete()
     {
         var projection = new NoteActionsProjection();
@@ -29,7 +29,7 @@ public sealed class NoteActionsCompletionSpec
         Assert.Equal(At, view.Actions[0].CompletedAt);
     }
 
-    [Fact(Skip = "Pip 3-B")]
+    [Fact]
     public void ActionItemReopened_marks_item_open()
     {
         var projection = new NoteActionsProjection();

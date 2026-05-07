@@ -10,7 +10,7 @@ public sealed class CompleteReopenActionItemSpec
     static readonly NoteId NoteId = new(Guid.Parse("00000000-0000-0000-0000-000000000002"));
     static readonly DateTimeOffset At = new(2024, 1, 1, 12, 0, 0, TimeSpan.Zero);
 
-    [Fact(Skip = "Pip 3-B")]
+    [Fact]
     public void CompletesOpenActionItem()
     {
         Spec
@@ -19,7 +19,7 @@ public sealed class CompleteReopenActionItemSpec
             .Then(new ActionItemCompleted(ActionId, At));
     }
 
-    [Fact(Skip = "Pip 3-B")]
+    [Fact]
     public void RejectsCompletingAlreadyCompletedItem()
     {
         Spec
@@ -30,7 +30,7 @@ public sealed class CompleteReopenActionItemSpec
             .ThenThrows<InvalidOperationException>();
     }
 
-    [Fact(Skip = "Pip 3-B")]
+    [Fact]
     public void ReopensCompletedActionItem()
     {
         Spec
@@ -41,7 +41,7 @@ public sealed class CompleteReopenActionItemSpec
             .Then(new ActionItemReopened(ActionId, At));
     }
 
-    [Fact(Skip = "Pip 3-B")]
+    [Fact]
     public void RejectsReopeningOpenItem()
     {
         Spec

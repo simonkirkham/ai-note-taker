@@ -4,6 +4,8 @@ using EventStore.Projections;
 using Microsoft.AspNetCore.Http;
 using Api.Contracts;
 using AddActionItemCmd = Domain.ActionItems.AddActionItem;
+using CompleteActionItemCmd = Domain.ActionItems.CompleteActionItem;
+using ReopenActionItemCmd = Domain.ActionItems.ReopenActionItem;
 
 namespace Api.Handlers;
 
@@ -24,6 +26,34 @@ public static class ActionItemHandlers
         catch (NoteNotFoundException) { return Results.NotFound(); }
         catch (InvalidOperationException) { return Results.Conflict(); }
         return Results.Created($"/notes/{noteId}/actions/{actionId}", new { actionId = actionId.Value });
+    }
+
+    public static async Task<IResult> CompleteActionItem(
+        Guid noteId,
+        Guid actionId,
+        ActionItemCommandHandler handler)
+    {
+        try
+        {
+            await handler.HandleAsync(new CompleteActionItemCmd(new ActionId(actionId), DateTimeOffset.UtcNow));
+        }
+        catch (ActionItemNotFoundException) { return Results.NotFound(); }
+        catch (InvalidOperationException) { return Results.Conflict(); }
+        return Results.Ok();
+    }
+
+    public static async Task<IResult> ReopenActionItem(
+        Guid noteId,
+        Guid actionId,
+        ActionItemCommandHandler handler)
+    {
+        try
+        {
+            await handler.HandleAsync(new ReopenActionItemCmd(new ActionId(actionId), DateTimeOffset.UtcNow));
+        }
+        catch (ActionItemNotFoundException) { return Results.NotFound(); }
+        catch (InvalidOperationException) { return Results.Conflict(); }
+        return Results.Ok();
     }
 
     public static async Task<IResult> GetActions(Guid noteId, INoteDetailStore noteDetailStore, INoteActionsStore store)

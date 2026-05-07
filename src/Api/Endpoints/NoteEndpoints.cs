@@ -17,6 +17,8 @@ namespace Api.Endpoints
             app.MapGet("/notes/{noteId}", NoteHandlers.GetNote);
             app.MapDelete("/notes/{noteId}", NoteHandlers.DeleteNote);
             app.MapPost("/notes/{noteId}/actions", ActionItemHandlers.AddActionItem);
+            app.MapPost("/notes/{noteId}/actions/{actionId}/complete", ActionItemHandlers.CompleteActionItem);
+            app.MapPost("/notes/{noteId}/actions/{actionId}/reopen", ActionItemHandlers.ReopenActionItem);
             app.MapGet("/notes/{noteId}/actions", ActionItemHandlers.GetActions);
             app.MapPost("/admin/projections/rebuild", AdminHandlers.RebuildProjections);
             
