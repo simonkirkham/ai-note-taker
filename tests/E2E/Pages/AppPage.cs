@@ -102,4 +102,10 @@ public sealed class AppPage(IPage page, string baseUrl)
                 .Filter(new LocatorFilterOptions { HasText = description })
                 .GetByRole(AriaRole.Checkbox)
         ).Not.ToBeCheckedAsync();
+
+    public Task AssertTodoSectionVisibleAsync() =>
+        Assertions.Expect(page.GetByTestId("todo-section")).ToBeVisibleAsync();
+
+    public Task AssertTodoItemVisibleAsync(string description) =>
+        Assertions.Expect(page.GetByTestId("todo-list").GetByText(description)).ToBeVisibleAsync();
 }

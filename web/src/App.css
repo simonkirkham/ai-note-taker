@@ -370,6 +370,53 @@ body {
   cursor: default;
 }
 
+/* ── Todo section ───────────────────────────────────────────────── */
+.todo-section {
+  margin-top: 2.5rem;
+  border-top: 2px solid var(--color-border);
+  padding-top: 1.5rem;
+}
+
+.todo-heading {
+  margin: 0 0 1rem;
+  font-size: 1rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--color-text-muted);
+}
+
+.todo-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.todo-item {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.625rem 0;
+  border-bottom: 1px solid var(--color-border);
+  font-size: 0.9375rem;
+}
+
+.todo-item:last-child {
+  border-bottom: none;
+}
+
+.todo-description {
+  color: var(--color-text);
+  flex: 1;
+}
+
+.todo-note-title {
+  color: var(--color-text-muted);
+  font-size: 0.8125rem;
+  white-space: nowrap;
+}
+
 /* ── Reduced motion ────────────────────────────────────────────── */
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {

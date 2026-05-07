@@ -1,4 +1,5 @@
 import { NoteItem } from "../api";
+import TodoSection from "./TodoSection";
 
 export default function ListView({
   notes,
@@ -46,6 +47,7 @@ export default function ListView({
           </li>
         ))}
       </ul>
+      <TodoSection />
     </main>
   );
 }
