@@ -233,6 +233,10 @@ body {
   transition: border-color var(--transition);
 }
 
+.date-input:hover {
+  border-color: var(--color-primary);
+}
+
 .date-input:focus-visible {
   outline: 2px solid var(--color-primary);
   outline-offset: 2px;
