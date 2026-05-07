@@ -58,9 +58,4 @@ public class Builder
 
         return builder.Build();
     }
-
-    internal static object BuildApp()
-    {
-        throw new NotImplementedException();
-    }
 }
