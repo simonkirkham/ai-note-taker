@@ -132,6 +132,45 @@ public sealed class DynamoDbEventStore(IAmazonDynamoDB dynamo, string tableName)
             .AsReadOnly();
     }
 
+    public async Task<IReadOnlyList<EventEnvelope>> ReadAllStreamsAsync(CancellationToken ct = default)
+    {
+        var items = new List<Dictionary<string, AttributeValue>>();
+        Dictionary<string, AttributeValue>? lastKey = null;
+
+        do
+        {
+            var request = new ScanRequest
+            {
+                TableName = tableName,
+                FilterExpression = "begins_with(SK, :v)",
+                ExpressionAttributeValues = new Dictionary<string, AttributeValue>
+                {
+                    [":v"] = new AttributeValue { S = "v" }
+                },
+                ExclusiveStartKey = lastKey
+            };
+            var response = await dynamo.ScanAsync(request, ct).ConfigureAwait(false);
+            items.AddRange(response.Items);
+            lastKey = response.LastEvaluatedKey?.Count > 0 ? response.LastEvaluatedKey : null;
+        }
+        while (lastKey is not null);
+
+        return items
+            .Select(item => new EventEnvelope(
+                StreamId: item["PK"].S,
+                SequenceNumber: ParseSequenceSk(item["SK"].S),
+                EventType: item["EventType"].S,
+                EventVersion: int.Parse(item["EventVersion"].N),
+                OccurredAt: DateTimeOffset.Parse(item["OccurredAt"].S),
+                Payload: item["Payload"].S,
+                Metadata: JsonSerializer.Deserialize<EventMetadata>(item["Metadata"].S, JsonOpts)!
+            ))
+            .OrderBy(e => e.StreamId)
+            .ThenBy(e => e.SequenceNumber)
+            .ToList()
+            .AsReadOnly();
+    }
+
     private async Task<long> GetCurrentVersionAsync(string streamId, CancellationToken ct)
     {
         var response = await dynamo.GetItemAsync(new GetItemRequest

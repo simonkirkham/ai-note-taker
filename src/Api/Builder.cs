@@ -46,6 +46,7 @@ public class Builder
         builder.Services.AddSingleton<INoteDetailStore>(sp =>
             new DynamoDbNoteDetailStore(sp.GetRequiredService<IAmazonDynamoDB>(), noteDetailTableName));
         builder.Services.AddSingleton<NoteCommandHandler>();
+        builder.Services.AddSingleton<ProjectionRebuildHandler>();
         builder.Services.AddSingleton<IDynamoHealthCheck>(sp =>
             new DynamoDbHealthCheck(sp.GetRequiredService<IAmazonDynamoDB>(), eventTableName));
         builder.Services.AddAWSLambdaHosting(LambdaEventSource.HttpApi);

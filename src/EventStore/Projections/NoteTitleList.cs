@@ -72,6 +72,40 @@ public sealed class NoteTitleListStore(IAmazonDynamoDB dynamo, string tableName)
         }, ct).ConfigureAwait(false);
     }
 
+    public async Task DeleteAllAsync(CancellationToken ct = default)
+    {
+        Dictionary<string, AttributeValue>? lastKey = null;
+        do
+        {
+            var scan = await dynamo.ScanAsync(new ScanRequest
+            {
+                TableName = tableName,
+                ProjectionExpression = "PK",
+                ExclusiveStartKey = lastKey
+            }, ct).ConfigureAwait(false);
+
+            for (var i = 0; i < scan.Items.Count; i += 25)
+            {
+                var batch = scan.Items.Skip(i).Take(25)
+                    .Select(row => new WriteRequest
+                    {
+                        DeleteRequest = new DeleteRequest
+                        {
+                            Key = new Dictionary<string, AttributeValue> { ["PK"] = row["PK"] }
+                        }
+                    }).ToList();
+
+                await dynamo.BatchWriteItemAsync(new BatchWriteItemRequest
+                {
+                    RequestItems = new Dictionary<string, List<WriteRequest>> { [tableName] = batch }
+                }, ct).ConfigureAwait(false);
+            }
+
+            lastKey = scan.LastEvaluatedKey?.Count > 0 ? scan.LastEvaluatedKey : null;
+        }
+        while (lastKey is not null);
+    }
+
     public async Task<NoteTitleListView> QueryAllAsync(CancellationToken ct = default)
     {
         var items = new List<NoteTitleListItem>();

@@ -29,4 +29,15 @@ internal sealed class InMemoryEventStore : IEventStore
             : Array.Empty<EventEnvelope>();
         return Task.FromResult(result);
     }
+
+    public Task<IReadOnlyList<EventEnvelope>> ReadAllStreamsAsync(CancellationToken ct = default)
+    {
+        IReadOnlyList<EventEnvelope> result = _streams.Values
+            .SelectMany(s => s)
+            .OrderBy(e => e.StreamId)
+            .ThenBy(e => e.SequenceNumber)
+            .ToList()
+            .AsReadOnly();
+        return Task.FromResult(result);
+    }
 }
