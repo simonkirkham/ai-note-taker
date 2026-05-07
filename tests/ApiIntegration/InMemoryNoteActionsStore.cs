@@ -14,6 +14,12 @@ internal sealed class InMemoryNoteActionsStore : INoteActionsStore
         return Task.CompletedTask;
     }
 
+    public Task DeleteAsync(NoteId noteId, ActionId actionId, CancellationToken ct = default)
+    {
+        _items.Remove((noteId, actionId));
+        return Task.CompletedTask;
+    }
+
     public Task<NoteActionsView> QueryByNoteAsync(NoteId noteId, CancellationToken ct = default)
     {
         var actions = _items

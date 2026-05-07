@@ -10,7 +10,7 @@ public sealed class DeleteActionItemSpec
     static readonly NoteId NoteId = new(Guid.Parse("00000000-0000-0000-0000-000000000002"));
     static readonly DateTimeOffset At = new(2024, 1, 1, 12, 0, 0, TimeSpan.Zero);
 
-    [Fact(Skip = "Pip: implement DeleteActionItem")]
+    [Fact]
     public void DeletesExistingActionItem()
     {
         Spec
@@ -19,7 +19,7 @@ public sealed class DeleteActionItemSpec
             .Then(new ActionItemDeleted(ActionId, At));
     }
 
-    [Fact(Skip = "Pip: implement DeleteActionItem")]
+    [Fact]
     public void RejectsDeletingNonExistentItem()
     {
         Spec

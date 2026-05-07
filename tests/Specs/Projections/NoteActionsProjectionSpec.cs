@@ -29,7 +29,7 @@ public sealed class NoteActionsProjectionSpec
         Assert.False(view.Actions[0].Completed);
     }
 
-    [Fact(Skip = "Pip: implement ActionItemDeleted handling")]
+    [Fact]
     public void ActionItemDeleted_RemovesItemFromView()
     {
         var projection = new NoteActionsProjection();

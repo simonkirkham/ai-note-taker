@@ -35,6 +35,10 @@ public sealed class NoteActionsProjection
             case ActionItemReopened e when _noteByAction.TryGetValue(e.ActionId, out var noteId):
                 _items[(noteId, e.ActionId)] = _items[(noteId, e.ActionId)] with { Completed = false, CompletedAt = null };
                 break;
+            case ActionItemDeleted e when _noteByAction.TryGetValue(e.ActionId, out var noteId):
+                _items.Remove((noteId, e.ActionId));
+                _noteByAction.Remove(e.ActionId);
+                break;
         }
     }
 
@@ -53,6 +57,7 @@ public sealed class NoteActionsProjection
 public interface INoteActionsStore
 {
     Task UpsertAsync(NoteId noteId, NoteAction item, CancellationToken ct = default);
+    Task DeleteAsync(NoteId noteId, ActionId actionId, CancellationToken ct = default);
     Task<NoteActionsView> QueryByNoteAsync(NoteId noteId, CancellationToken ct = default);
 }
 
@@ -77,6 +82,19 @@ public sealed class DynamoDbNoteActionsStore(IAmazonDynamoDB dynamo, string tabl
         {
             TableName = tableName,
             Item = attrs
+        }, ct).ConfigureAwait(false);
+    }
+
+    public async Task DeleteAsync(NoteId noteId, ActionId actionId, CancellationToken ct = default)
+    {
+        await dynamo.DeleteItemAsync(new DeleteItemRequest
+        {
+            TableName = tableName,
+            Key = new Dictionary<string, AttributeValue>
+            {
+                ["PK"] = new() { S = noteId.Value.ToString() },
+                ["SK"] = new() { S = actionId.Value.ToString() }
+            }
         }, ct).ConfigureAwait(false);
     }
 

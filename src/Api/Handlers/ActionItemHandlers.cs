@@ -6,6 +6,7 @@ using Api.Contracts;
 using AddActionItemCmd = Domain.ActionItems.AddActionItem;
 using CompleteActionItemCmd = Domain.ActionItems.CompleteActionItem;
 using ReopenActionItemCmd = Domain.ActionItems.ReopenActionItem;
+using DeleteActionItemCmd = Domain.ActionItems.DeleteActionItem;
 
 namespace Api.Handlers;
 
@@ -54,6 +55,20 @@ public static class ActionItemHandlers
         catch (ActionItemNotFoundException) { return Results.NotFound(); }
         catch (InvalidOperationException) { return Results.Conflict(); }
         return Results.Ok();
+    }
+
+    public static async Task<IResult> DeleteActionItem(
+        Guid noteId,
+        Guid actionId,
+        ActionItemCommandHandler handler)
+    {
+        try
+        {
+            await handler.HandleAsync(new DeleteActionItemCmd(new ActionId(actionId), DateTimeOffset.UtcNow));
+        }
+        catch (ActionItemNotFoundException) { return Results.NotFound(); }
+        catch (InvalidOperationException) { return Results.Conflict(); }
+        return Results.NoContent();
     }
 
     public static async Task<IResult> GetActions(Guid noteId, INoteDetailStore noteDetailStore, INoteActionsStore store)

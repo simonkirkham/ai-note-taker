@@ -87,7 +87,7 @@ public sealed class TodoListProjectionSpec
         Assert.Empty(projection.GetOpenItems());
     }
 
-    [Fact(Skip = "Pip: implement ActionItemDeleted handling")]
+    [Fact]
     public void ActionItemDeleted_RemovedFromTodoList()
     {
         var projection = new TodoListProjection();

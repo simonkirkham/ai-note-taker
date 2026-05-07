@@ -70,6 +70,17 @@ public sealed class ActionItemCommandHandler(
             }
     }
 
+    public async Task HandleAsync(DeleteActionItem cmd, CancellationToken ct = default)
+    {
+        var (addedEvent, _, newEvents) = await ExecuteAndAppendAsync(cmd.ActionId, cmd, ct);
+        foreach (var domainEvent in newEvents)
+            if (domainEvent is ActionItemDeleted)
+            {
+                await noteActionsStore.DeleteAsync(addedEvent.NoteId, cmd.ActionId, ct).ConfigureAwait(false);
+                await todoListStore.DeleteAsync(cmd.ActionId, ct).ConfigureAwait(false);
+            }
+    }
+
     async Task<(ActionItemAdded AddedEvent, EventEnvelope AddedEnvelope, IReadOnlyList<IDomainEvent> NewEvents)>
         ExecuteAndAppendAsync(ActionId actionId, ICommand command, CancellationToken ct)
     {
