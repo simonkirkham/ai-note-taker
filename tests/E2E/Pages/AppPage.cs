@@ -172,6 +172,15 @@ public sealed class AppPage(IPage page, string baseUrl)
     public Task AssertNoteDateEmptyAsync() =>
         Assertions.Expect(page.GetByTestId("note-date-input")).ToHaveValueAsync(string.Empty);
 
+    public Task AssertSidebarVisibleAsync() =>
+        Assertions.Expect(page.GetByTestId("sidebar")).ToBeVisibleAsync();
+
+    public Task AssertActiveNoteHighlightedInSidebarAsync(string title) =>
+        Assertions.Expect(
+            page.GetByTestId("sidebar").Locator(".sidebar-note-item--active")
+                .Filter(new LocatorFilterOptions { HasText = title })
+        ).ToBeVisibleAsync();
+
     public Task AssertCapturedNotesLabelVisibleAsync() =>
         Assertions.Expect(page.GetByTestId("captured-notes-label")).ToBeVisibleAsync();
 
