@@ -19,6 +19,12 @@ internal sealed class InMemoryNoteTitleListStore : INoteTitleListStore
         return Task.CompletedTask;
     }
 
+    public Task DeleteAllAsync(CancellationToken ct = default)
+    {
+        _items.Clear();
+        return Task.CompletedTask;
+    }
+
     public Task<NoteTitleListView> QueryAllAsync(CancellationToken ct = default) =>
         Task.FromResult(new NoteTitleListView(new List<NoteTitleListItem>(_items.Values).AsReadOnly()));
 }
