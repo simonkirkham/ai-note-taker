@@ -33,7 +33,8 @@
       "Read(//c/Users/simon/**)",
       "Bash(npx tsc *)",
       "PowerShell(dotnet *)",
-      "PowerShell(git *)"
+      "PowerShell(git *)",
+      "PowerShell(npm *)"
     ]
   }
 }

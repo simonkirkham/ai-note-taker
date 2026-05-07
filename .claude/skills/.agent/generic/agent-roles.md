@@ -433,6 +433,23 @@ Some tasks don't need the full pipeline:
 
 ---
 
+## Shell conventions (minimise permission prompts)
+
+The project runs on Windows with a Linux Bash shell available via the Bash tool. The following conventions prevent unnecessary permission-approval dialogs:
+
+- **Never change directory before a `git` command.** The Bash tool's working directory is always the project root. Run `git add`, `git commit`, `git push` directly — never prefix with `cd ... &&`.
+- **Never change directory before an `npm` command.** Use `npm --prefix web <subcommand>` to run frontend commands from the project root:
+  ```bash
+  npm --prefix web run build
+  npm --prefix web run lint
+  npm --prefix web ci
+  ```
+  This matches the existing `Bash(npm *)` permission rule without needing `cd`.
+- **Avoid compound `pwd && <cmd>` patterns.** If you need to verify the working directory, read the Bash tool's implicit cwd from context rather than running `pwd`.
+- **Prefer `Bash` over `PowerShell` for all project commands** (dotnet, git, npm, gh, python). PowerShell is needed only for Windows-native operations (registry, `$env:`, `Get-ChildItem` on Windows paths).
+
+---
+
 ## Blocked states
 
 If any role is blocked for more than 30 minutes (CI stuck, unclear failure, ambiguous requirement), raise a flag to the human rather than waiting or guessing. Never bypass a failing pre-push hook or CI gate.
