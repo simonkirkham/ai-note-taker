@@ -412,7 +412,7 @@ body {
 }
 
 .todo-note-title {
-  color: var(--color-text-muted);
+  color: #475569;
   font-size: 0.8125rem;
   white-space: nowrap;
 }

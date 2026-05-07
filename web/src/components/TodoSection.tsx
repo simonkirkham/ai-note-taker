@@ -13,12 +13,12 @@ export default function TodoSection() {
     return () => { cancelled = true; };
   }, []);
 
-  if (loading) return null;
-
   return (
-    <section data-testid="todo-section" className="todo-section" aria-label="To-do items">
+    <section data-testid="todo-section" className="todo-section" aria-label="To-do items" aria-live="polite">
       <h2 className="todo-heading">To Do</h2>
-      {items.length === 0 ? (
+      {loading ? (
+        <p className="loading">Loading…</p>
+      ) : items.length === 0 ? (
         <p data-testid="todo-empty" className="empty">Your to-do list is clear.</p>
       ) : (
         <ul data-testid="todo-list" className="todo-list">
