@@ -11,6 +11,7 @@ Each piece of work is handled by agents in sequence. No agent does another's job
 **Inputs:** The current project state (`docs/roadmap.md`, `docs/event-model.md`, codebase) and a loose idea from a human.
 
 **Skills to load:**
+
 - `agent-skills:spec-driven-development` — structures the feature brief
 - `agent-skills:idea-refine` — if the idea is vague
 - `agent-skills:planning-and-task-breakdown` — once the brief is clear
@@ -41,6 +42,7 @@ Scenario: <name>
 One scenario per distinct behaviour (happy path + each meaningful error/edge case). API-level error guard scenarios (404, 409) may be written from an API caller's perspective when there is no meaningful user-facing equivalent. These scenarios are the human's primary review artefact and Breaker's direct input — Breaker translates them into C# `[Fact]` methods.
 
 **Rules:**
+
 - Do not write code or test files
 - Pick the highest value-to-effort feature if multiple candidates exist
 - Update the event model before writing any BDD scenarios — the model is the design artefact
@@ -63,6 +65,7 @@ One scenario per distinct behaviour (happy path + each meaningful error/edge cas
 **Inputs:** The phase doc BDD scenarios and updated event model from Scout.
 
 **Skills to load:**
+
 - `event-modelling` — translates a Given/When/Then sketch into a C# spec file
 
 **Outputs:**
@@ -86,11 +89,13 @@ If a slice has ≥4 acceptance criteria **or** introduces a new aggregate + new 
 Why: Pip's context grows with every file it reads and every test it makes green. A full-stack slice in one batch can exhaust the context window mid-implementation (as happened in 3-A, causing auto-compaction and a 183k token session). The domain layer is also cheapest to rework; catching design errors before the E2E layer is written saves more tokens than the extra hand-off overhead costs. For normal slices (≤3 criteria, no new aggregate), the single-batch approach is still more efficient.
 
 **Branch convention:** `slice/<phase>-<slice-id>-<short-description>` e.g. `slice/2-b-edit-content`. Create from main at the start of Breaker's work:
+
 ```bash
 git checkout main && git pull && git checkout -b slice/2-b-edit-content
 ```
 
 **Rules:**
+
 - **Create a feature branch before writing any test** — never commit directly to main
 - Follow the BDD spec pattern: `Given(priorEvents).When(command).Then(expectedEvents)` or `.ThenError(...)`
 - One spec class per command; one `[Fact]` per distinct scenario (happy path + each guard/error case)
@@ -112,6 +117,7 @@ git checkout main && git pull && git checkout -b slice/2-b-edit-content
 **Inputs:** The branch and failing spec summary from Breaker.
 
 **Skills to load (pick by task type):**
+
 - `aggregate-command` — adding or modifying a command + events on an aggregate
 - `projection` — scaffolding or extending a read projection
 - `dynamodb-event-append` — canonical DynamoDB append with optimistic concurrency
@@ -244,9 +250,11 @@ Commit style changes separately from functional changes with a message like `Sty
 **Inputs:** PR URL from Pip, with confirmation that the PR pipeline is green.
 
 **Skills to load:**
+
 - `agent-skills:code-review-and-quality` — five-axis review (correctness, readability, architecture, security, performance)
 
 **Review checklist:**
+
 - Specs actually cover the stated acceptance criteria — no gaps, no redundant scenarios
 - Implementation does only what the specs require — no scope creep, no dead code
 - Aggregates are pure (no I/O, no clock, no DB calls)
@@ -261,12 +269,13 @@ Commit style changes separately from functional changes with a message like `Sty
 ```markdown
 ## Hawk review findings
 
-| Finding | File | How to prevent |
-|---|---|---|
+| Finding          | File        | How to prevent                          |
+| ---------------- | ----------- | --------------------------------------- |
 | <what was wrong> | <file:line> | <which role should catch this, and how> |
 ```
 
 **Rules:**
+
 - Do not review a PR whose pipeline has not passed — send it back to Pip
 - Do not comment on style issues already enforced by `dotnet format` — trust the tooling
 - If changes are requested, list them clearly and return to Pip — do not implement them yourself
@@ -284,6 +293,7 @@ Commit style changes separately from functional changes with a message like `Sty
 **Inputs:** The merged slice and any changed files. The `docs/learnings/<slice-name>.md` file started by Hawk (Hawk writes the review findings block; Scribe adds the workflow observations above it).
 
 **Skills to load:**
+
 - `agent-skills:documentation-and-adrs` — for structured, decision-quality writing
 
 **Outputs:**
@@ -292,7 +302,7 @@ Commit style changes separately from functional changes with a message like `Sty
 - `docs/phases/phase-N.md` — mark completed acceptance criteria as `[x]`, update slice status to `Done`
 - `docs/roadmap.md` — update phase status if the phase is now complete or newly in progress
 - Any `docs/` file that describes something the slice changed (architecture, event schemas, view schemas, ADRs)
-- `docs/learnings/slice-<id>-<kebab-name>.md` — workflow observations, process improvement suggestions, and token usage observations (which agent consumed the most, why, and concrete suggestions for reducing usage on future slices). **Check existing files in `docs/learnings/` to match the naming convention before creating.**
+- `docs/learnings/phase-<id>-<kebab-name>.md` — workflow observations, process improvement suggestions, and token usage observations (which agent consumed the most, why, and concrete suggestions for reducing usage on future slices). **Check existing files in `docs/learnings/` to match the naming convention before creating.**
 - `docs/token-log.md` — append a row per agent for the completed slice with approximate token counts
 
 **Learnings doc template:**
@@ -301,9 +311,11 @@ Commit style changes separately from functional changes with a message like `Sty
 # Learnings: <slice name>
 
 ## What was inefficient or went wrong
+
 - <observation>
 
 ## Suggested process improvements
+
 - <concrete suggestion tied to a specific role or workflow step>
 ```
 
@@ -315,7 +327,7 @@ Scribe writes the workflow observations above Hawk's review findings block. Obse
 ## Slice <id> — <name>
 
 | Agent     | ~Tokens    |
-|-----------|------------|
+| --------- | ---------- |
 | Scout     | 12 000     |
 | Breaker   | 8 000      |
 | Pip       | 45 000     |
@@ -327,6 +339,7 @@ Scribe writes the workflow observations above Hawk's review findings block. Obse
 **Why:** <one sentence on what drove the total — slice complexity, rework rounds, context size>
 
 **Optimisation suggestions:**
+
 - **<Role> (–<estimated saving>):** <what happened, what rule or step would have prevented it, what to do differently next slice>
 ```
 
@@ -335,6 +348,7 @@ Token counts come from each agent's hand-off summary. If an agent did not report
 After recording the counts, **Scribe must analyse the distribution** and write at least one suggestion per agent whose token count was unexpectedly high (more than double the next-highest agent, or higher than the same agent on the previous slice). Suggestions must be specific — name the rule or step that would have changed the outcome, and estimate the saving. "Used too many tokens" is not a valid suggestion. If the slice ran cleanly with no high-cost agents, write `None — slice ran within expected range.`
 
 **Rules:**
+
 - Workflow scope only in learnings — no technical or implementation detail
 - Observations must be grounded in the actual conversation: quote or paraphrase specific moments where the workflow broke down
 - Suggestions must name the role or workflow step they apply to
@@ -384,7 +398,7 @@ Human checkpoint: reviews learnings and decides whether to update this file or C
 ## Responsibilities at a Glance
 
 |                                | Scout | Breaker | Pip | Stylist | Hawk | Scribe |
-|-------------------------------|-------|---------|-----|---------|------|--------|
+| ------------------------------ | ----- | ------- | --- | ------- | ---- | ------ |
 | Research & design features     | ✓     | ✗       | ✗   | ✗       | ✗    | ✗      |
 | Update event model             | ✓     | ✗       | ✗   | ✗       | ✗    | ✗      |
 | Write acceptance criteria      | ✓     | ✗       | ✗   | ✗       | ✗    | ✗      |
@@ -409,13 +423,13 @@ Human checkpoint: reviews learnings and decides whether to update this file or C
 
 Some tasks don't need the full pipeline:
 
-| Task type | Roles needed |
-|---|---|
-| Typo / doc fix | Pip only (no spec needed, no Scribe) |
-| CDK infra change (no domain logic) | Scout → Pip → Hawk → Scribe |
-| New command + events | Full pipeline |
-| New projection | Scout → Breaker → Pip → Hawk → Scribe |
-| Bug fix | Breaker (reproduce with a failing spec) → Pip → Hawk → Scribe |
+| Task type                          | Roles needed                                                  |
+| ---------------------------------- | ------------------------------------------------------------- |
+| Typo / doc fix                     | Pip only (no spec needed, no Scribe)                          |
+| CDK infra change (no domain logic) | Scout → Pip → Hawk → Scribe                                   |
+| New command + events               | Full pipeline                                                 |
+| New projection                     | Scout → Breaker → Pip → Hawk → Scribe                         |
+| Bug fix                            | Breaker (reproduce with a failing spec) → Pip → Hawk → Scribe |
 
 ---
 
