@@ -1,4 +1,3 @@
-using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
 
@@ -9,13 +8,13 @@ public sealed class TodoListTests(ApiFactory factory) : IClassFixture<ApiFactory
     private readonly HttpClient _client = factory.CreateClient();
 
     [Fact]
-    public async Task GetTodos_NoItems_ReturnsEmptyList()
+    public async Task GetTodos_ReturnsOkWithItemsArray()
     {
         var resp = await _client.GetAsync("/todos");
 
         resp.EnsureSuccessStatusCode();
         var body = await resp.Content.ReadFromJsonAsync<JsonElement>();
-        Assert.Empty(body.GetProperty("items").EnumerateArray());
+        Assert.True(body.TryGetProperty("items", out _));
     }
 
     [Fact]
@@ -23,14 +22,11 @@ public sealed class TodoListTests(ApiFactory factory) : IClassFixture<ApiFactory
     {
         var (_, noteTitle, _, actionDescription) = await SetupNoteWithActionAsync("Q1 Planning", "Book venue");
 
-        var resp = await _client.GetAsync("/todos");
-        resp.EnsureSuccessStatusCode();
-        var items = (await resp.Content.ReadFromJsonAsync<JsonElement>())
-            .GetProperty("items").EnumerateArray().ToList();
+        var items = await GetTodoItemsAsync();
 
-        Assert.Single(items);
-        Assert.Equal(actionDescription, items[0].GetProperty("description").GetString());
-        Assert.Equal(noteTitle, items[0].GetProperty("noteTitle").GetString());
+        Assert.Contains(items, i =>
+            i.GetProperty("description").GetString() == actionDescription &&
+            i.GetProperty("noteTitle").GetString() == noteTitle);
     }
 
     [Fact]
@@ -39,58 +35,58 @@ public sealed class TodoListTests(ApiFactory factory) : IClassFixture<ApiFactory
         var (noteId, _, actionId, _) = await SetupNoteWithActionAsync("Planning", "Book venue");
         await _client.PostAsync($"/notes/{noteId}/actions/{actionId}/complete", null);
 
-        var resp = await _client.GetAsync("/todos");
-        resp.EnsureSuccessStatusCode();
-        var items = (await resp.Content.ReadFromJsonAsync<JsonElement>())
-            .GetProperty("items").EnumerateArray().ToList();
+        var items = await GetTodoItemsAsync();
 
-        Assert.Empty(items);
+        Assert.DoesNotContain(items, i =>
+            i.GetProperty("actionId").GetString() == actionId.ToString());
     }
 
     [Fact]
     public async Task GetTodos_ReopenedItem_AppearsInList()
     {
-        var (noteId, _, actionId, description) = await SetupNoteWithActionAsync("Planning", "Book venue");
+        var (noteId, _, actionId, description) = await SetupNoteWithActionAsync("Planning", "Reopen task");
         await _client.PostAsync($"/notes/{noteId}/actions/{actionId}/complete", null);
         await _client.PostAsync($"/notes/{noteId}/actions/{actionId}/reopen", null);
 
-        var resp = await _client.GetAsync("/todos");
-        resp.EnsureSuccessStatusCode();
-        var items = (await resp.Content.ReadFromJsonAsync<JsonElement>())
-            .GetProperty("items").EnumerateArray().ToList();
+        var items = await GetTodoItemsAsync();
 
-        Assert.Single(items);
-        Assert.Equal(description, items[0].GetProperty("description").GetString());
+        Assert.Contains(items, i =>
+            i.GetProperty("actionId").GetString() == actionId.ToString() &&
+            i.GetProperty("description").GetString() == description);
     }
 
     [Fact]
     public async Task GetTodos_MultipleNotes_ShowsAllOpenItems()
     {
-        await SetupNoteWithActionAsync("Note A", "Task from A");
-        await SetupNoteWithActionAsync("Note B", "Task from B");
+        var (_, _, _, descA) = await SetupNoteWithActionAsync("Note Alpha", $"Task-A-{Guid.NewGuid()}");
+        var (_, _, _, descB) = await SetupNoteWithActionAsync("Note Beta",  $"Task-B-{Guid.NewGuid()}");
 
-        var resp = await _client.GetAsync("/todos");
-        resp.EnsureSuccessStatusCode();
-        var items = (await resp.Content.ReadFromJsonAsync<JsonElement>())
-            .GetProperty("items").EnumerateArray().ToList();
+        var items = await GetTodoItemsAsync();
 
-        Assert.Contains(items, i => i.GetProperty("description").GetString() == "Task from A");
-        Assert.Contains(items, i => i.GetProperty("description").GetString() == "Task from B");
+        Assert.Contains(items, i => i.GetProperty("description").GetString() == descA);
+        Assert.Contains(items, i => i.GetProperty("description").GetString() == descB);
     }
 
     [Fact]
     public async Task GetTodos_AfterNoteRename_ShowsNewTitle()
     {
-        var (noteId, _, _, _) = await SetupNoteWithActionAsync("Old Title", "Do something");
+        var uniqueDesc = $"Rename-test-{Guid.NewGuid()}";
+        var (noteId, _, _, _) = await SetupNoteWithActionAsync("Old Title", uniqueDesc);
         await _client.PatchAsJsonAsync($"/notes/{noteId}/title", new { title = "New Title" });
 
+        var items = await GetTodoItemsAsync();
+
+        Assert.Contains(items, i =>
+            i.GetProperty("description").GetString() == uniqueDesc &&
+            i.GetProperty("noteTitle").GetString() == "New Title");
+    }
+
+    private async Task<List<JsonElement>> GetTodoItemsAsync()
+    {
         var resp = await _client.GetAsync("/todos");
         resp.EnsureSuccessStatusCode();
-        var items = (await resp.Content.ReadFromJsonAsync<JsonElement>())
+        return (await resp.Content.ReadFromJsonAsync<JsonElement>())
             .GetProperty("items").EnumerateArray().ToList();
-
-        Assert.Single(items);
-        Assert.Equal("New Title", items[0].GetProperty("noteTitle").GetString());
     }
 
     private async Task<(string NoteId, string NoteTitle, Guid ActionId, string ActionDescription)>

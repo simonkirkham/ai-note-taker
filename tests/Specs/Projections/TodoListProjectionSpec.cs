@@ -22,7 +22,7 @@ public sealed class TodoListProjectionSpec
         new(actionId.ToStreamId(), seq, e.GetType().Name, 1, DateTimeOffset.UtcNow,
             JsonSerializer.Serialize(e, e.GetType()), new EventMetadata(Guid.NewGuid(), null, null, null));
 
-    [Fact(Skip = "Pip 3-C")]
+    [Fact]
     public void ActionItemAdded_AppearsInTodoListWithNoteTitle()
     {
         var projection = new TodoListProjection();
@@ -37,7 +37,7 @@ public sealed class TodoListProjectionSpec
         Assert.Equal(NoteId1, items[0].NoteId);
     }
 
-    [Fact(Skip = "Pip 3-C")]
+    [Fact]
     public void ActionItemCompleted_RemovedFromTodoList()
     {
         var projection = new TodoListProjection();
@@ -48,7 +48,7 @@ public sealed class TodoListProjectionSpec
         Assert.Empty(projection.GetOpenItems());
     }
 
-    [Fact(Skip = "Pip 3-C")]
+    [Fact]
     public void ActionItemReopened_RestoredToTodoListWithOriginalData()
     {
         var projection = new TodoListProjection();
@@ -64,7 +64,7 @@ public sealed class TodoListProjectionSpec
         Assert.Equal("Q1 Planning", items[0].NoteTitle);
     }
 
-    [Fact(Skip = "Pip 3-C")]
+    [Fact]
     public void NoteRenamed_UpdatesTitleOnExistingOpenItems()
     {
         var projection = new TodoListProjection();
@@ -75,7 +75,7 @@ public sealed class TodoListProjectionSpec
         Assert.Equal("Q2 Planning", projection.GetOpenItems()[0].NoteTitle);
     }
 
-    [Fact(Skip = "Pip 3-C")]
+    [Fact]
     public void NoteDeleted_RemovesAllItemsForThatNote()
     {
         var projection = new TodoListProjection();
@@ -87,7 +87,7 @@ public sealed class TodoListProjectionSpec
         Assert.Empty(projection.GetOpenItems());
     }
 
-    [Fact(Skip = "Pip 3-C")]
+    [Fact]
     public void TodoList_AggregatesItemsFromMultipleNotes()
     {
         var projection = new TodoListProjection();

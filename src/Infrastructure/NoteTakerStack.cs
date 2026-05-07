@@ -45,6 +45,20 @@ public class NoteTakerStack : Stack
             RemovalPolicy = RemovalPolicy.RETAIN
         });
 
+        var todoListTable = new Table(this, "ProjTodoListTable", new TableProps
+        {
+            TableName = "notetaker-proj-todolist",
+            PartitionKey = new Amazon.CDK.AWS.DynamoDB.Attribute { Name = "PK", Type = AttributeType.STRING },
+            BillingMode = BillingMode.PAY_PER_REQUEST,
+            RemovalPolicy = RemovalPolicy.RETAIN
+        });
+        todoListTable.AddGlobalSecondaryIndex(new GlobalSecondaryIndexProps
+        {
+            IndexName = "NoteId-index",
+            PartitionKey = new Amazon.CDK.AWS.DynamoDB.Attribute { Name = "NoteId", Type = AttributeType.STRING },
+            ProjectionType = ProjectionType.ALL
+        });
+
         // ── API Lambda ───────────────────────────────────────────────────
         var lambdaAssetPath = (string?)this.Node.TryGetContext("lambdaAssetPath")
             ?? "src/Api/bin/Release/net8.0/publish";
@@ -59,7 +73,8 @@ public class NoteTakerStack : Stack
                 ["EVENTS_TABLE_NAME"]            = eventsTable.TableName,
                 ["PROJ_NOTETITLELIST_TABLE_NAME"] = projTable.TableName,
                 ["PROJ_NOTEDETAIL_TABLE_NAME"]   = noteDetailTable.TableName,
-                ["PROJ_NOTEACTIONS_TABLE_NAME"]  = noteActionsTable.TableName
+                ["PROJ_NOTEACTIONS_TABLE_NAME"]  = noteActionsTable.TableName,
+                ["PROJ_TODOLIST_TABLE_NAME"]     = todoListTable.TableName
             }
         });
 
@@ -68,6 +83,7 @@ public class NoteTakerStack : Stack
         projTable.GrantReadWriteData(apiFunction);
         noteDetailTable.GrantReadWriteData(apiFunction);
         noteActionsTable.GrantReadWriteData(apiFunction);
+        todoListTable.GrantReadWriteData(apiFunction);
 
         // ── API Gateway ──────────────────────────────────────────────────
         // CORS is handled by ASP.NET Core UseCors middleware in the Lambda, not at
