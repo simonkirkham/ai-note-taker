@@ -121,7 +121,7 @@ Scenario: Reject reopening an already-open item (API)
 
 ## Slice 3-C — View open todos on the home screen
 
-**Status:** Not Started
+**Status:** Done
 
 **Value:** All open action items from every note appear together on the home screen — the same events that drive the per-note panel, projected into a completely different shape. This is the "power of projections" moment: one event stream, two independent read models.
 
@@ -162,12 +162,12 @@ Scenario: Renaming a note updates the title shown in the todo list
 
 **Acceptance criteria:**
 
-- [ ] User lands on the home screen — a "To Do" section is visible above the notes list; if no open items exist it shows "Your ToDo list is clear."
-- [ ] Open action items from notes appear in the todo list with the parent note's title
-- [ ] Completed items do not appear in the todo list
-- [ ] The todo list contains items from multiple different notes — cross-note aggregation works
-- [ ] User renames a note — the updated title is reflected on that note's items in the todo list
-- [ ] E2E: create two notes, add one action item to each — both items appear in the home screen todo list
+- [x] User lands on the home screen — a "To Do" section is visible above the notes list; if no open items exist it shows "Your ToDo list is clear."
+- [x] Open action items from notes appear in the todo list with the parent note's title
+- [x] Completed items do not appear in the todo list
+- [x] The todo list contains items from multiple different notes — cross-note aggregation works
+- [x] User renames a note — the updated title is reflected on that note's items in the todo list
+- [x] E2E: create two notes, add one action item to each — both items appear in the home screen todo list
 
 ---
 

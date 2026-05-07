@@ -292,7 +292,7 @@ Commit style changes separately from functional changes with a message like `Sty
 - `docs/phases/phase-N.md` — mark completed acceptance criteria as `[x]`, update slice status to `Done`
 - `docs/roadmap.md` — update phase status if the phase is now complete or newly in progress
 - Any `docs/` file that describes something the slice changed (architecture, event schemas, view schemas, ADRs)
-- `docs/learnings/phase-<slice-name>.md` — workflow observations, process improvement suggestions, and token usage observations (which agent consumed the most, why, and concrete suggestions for reducing usage on future slices)
+- `docs/learnings/slice-<id>-<kebab-name>.md` — workflow observations, process improvement suggestions, and token usage observations (which agent consumed the most, why, and concrete suggestions for reducing usage on future slices). **Check existing files in `docs/learnings/` to match the naming convention before creating.**
 - `docs/token-log.md` — append a row per agent for the completed slice with approximate token counts
 
 **Learnings doc template:**
