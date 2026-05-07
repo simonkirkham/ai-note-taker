@@ -142,4 +142,20 @@ public sealed class AppPage(IPage page, string baseUrl)
         Assertions.Expect(
             page.GetByTestId("actions-list").GetByText(description)
         ).Not.ToBeVisibleAsync();
+
+    public async Task SetNoteDateAsync(string isoDate)
+    {
+        var input = page.GetByTestId("note-date-input");
+        var patchDone = page.WaitForResponseAsync(r =>
+            r.Url.Contains("/date") && r.Request.Method == "PATCH");
+        await input.FillAsync(isoDate);
+        await input.BlurAsync();
+        await patchDone;
+    }
+
+    public Task AssertNoteDateVisibleAsync(string displayDate) =>
+        Assertions.Expect(page.GetByTestId("note-date-display")).ToHaveTextAsync(displayDate);
+
+    public Task AssertNoteDateEmptyAsync() =>
+        Assertions.Expect(page.GetByTestId("note-date-input")).ToHaveValueAsync(string.Empty);
 }
