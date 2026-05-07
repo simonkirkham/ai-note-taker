@@ -19,7 +19,7 @@ Slices and acceptance criteria: [docs/phases/phase-0.md](phases/phase-0.md)
 
 Slices and acceptance criteria: [docs/phases/phase-1.md](phases/phase-1.md)
 
-## Phase 1.5 - Testing Foundation — Layers 2–5 _(Next)_
+## Phase 1.5 - Testing Foundation — Layers 2–5 _(Done)_
 
 Implement the remaining test layers from [ADR 0008](adr/0008-testing-strategy.md). Layer 1 (domain BDD specs) is already in place; this phase adds the other four.
 
@@ -30,7 +30,7 @@ Implement the remaining test layers from [ADR 0008](adr/0008-testing-strategy.md
 
 **Goal:** every PR is fully validated without an AWS account; the acceptance suite becomes a thin post-deploy smoke check.
 
-## Phase 2 — Richer note lifecycle _(In Progress)_
+## Phase 2 — Richer note lifecycle _(Done)_
 
 - `ContentEdited` (done), `NoteDeleted`, event versioning, projection rebuild
 - Event versioning learned by needing it
@@ -40,35 +40,52 @@ Implement the remaining test layers from [ADR 0008](adr/0008-testing-strategy.md
 
 Slices and acceptance criteria: [docs/phases/phase-2.md](phases/phase-2.md)
 
-## Phase 3 — Cross-aggregate projection (todo list) _(In Progress)_
+## Phase 3 — Cross-aggregate projection (todo list) _(Done)_
 
-- `ActionItemAdded`, `ActionItemCompleted`
+- `ActionItemAdded`, `ActionItemCompleted`, `ActionItemReopened`, `ActionItemDeleted`
 - Projection aggregates action items across all notes into a single todo list
+- Complete and delete todos from the home screen
 
 **Goal:** the "power of projections" moment — same events, new read model.
 
 Slices and acceptance criteria: [docs/phases/phase-3.md](phases/phase-3.md)
 
-## Phase 4 — Folders and tags
+## Phase 4 — UX redesign (wireframe alignment)
+
+Bring the app in line with the wireframes in `docs/wireframes/`.
+
+- **4-A:** Settable note date (`NoteDateSet` event; date shown in note header and cards)
+- **4-B:** Two-column note layout (content left, actions right panel, bordered content area)
+- **4-C:** Implicit action add (Enter or blur submits; no Add button)
+- **4-D:** Persistent note list sidebar (visible on home and note screens)
+- **4-E:** Note summary cards on home screen (new `NoteCard` projection; title, date, snippet, action count)
+- **4-F:** Expandable completed todos (new `GET /todos/completed` endpoint; collapse/expand toggle)
+
+**Goal:** the app matches the design intent; projection evolution is demonstrated by `NoteCard` aggregating across multiple event types.
+
+Slices and acceptance criteria: [docs/phases/phase-4.md](phases/phase-4.md)
+
+## Phase 5 — Folders and tags
 
 - Another projection axis (organisational view)
-- Search built on the projection
+- Tags visible on note cards and note screen
+- Search/filter built on the projection
 
-## Phase 5 — Google Calendar integration + meeting notes
+## Phase 6 — Google Calendar integration + meeting notes
 
 - Personal Google OAuth credentials (single-user refresh token)
 - Calendar read access
 - Notes auto-created from calendar events
 
-## Phase 6 — Transcription
+## Phase 7 — Transcription
 
 - Capture meeting audio
 - Transcribe and merge into the note
 
-## Phase 7 — Multi-user auth (Google Sign-In)
+## Phase 8 — Multi-user auth (Google Sign-In)
 
 - Convert single-user to multi-user
-- Reuse OAuth scaffolding from Phase 5
+- Reuse OAuth scaffolding from Phase 6
 
 **Goal:** auth lands here deliberately so earlier phases stay focused on event sourcing learning.
 
