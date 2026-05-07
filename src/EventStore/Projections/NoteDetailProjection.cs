@@ -15,6 +15,7 @@ public interface INoteDetailStore
 {
     Task UpsertAsync(NoteDetailView detail, CancellationToken ct = default);
     Task DeleteAsync(NoteId noteId, CancellationToken ct = default);
+    Task DeleteAllAsync(CancellationToken ct = default);
     Task<NoteDetailView?> GetAsync(NoteId noteId, CancellationToken ct = default);
 }
 
@@ -52,6 +53,9 @@ public sealed class NoteDetailProjection
 
     public NoteDetailView? GetDetail(NoteId noteId) =>
         _items.TryGetValue(noteId, out var detail) ? detail : null;
+
+    public IReadOnlyList<NoteDetailView> GetAllDetails() =>
+        new List<NoteDetailView>(_items.Values).AsReadOnly();
 }
 
 public sealed class DynamoDbNoteDetailStore(IAmazonDynamoDB dynamo, string tableName) : INoteDetailStore
