@@ -94,6 +94,11 @@ export async function reopenAction(noteId: string, actionId: string): Promise<vo
   if (!res.ok) throw new Error(`POST /notes/${noteId}/actions/${actionId}/reopen failed: ${res.status}`);
 }
 
+export async function deleteAction(noteId: string, actionId: string): Promise<void> {
+  const res = await fetch(`${base}/notes/${noteId}/actions/${actionId}`, { method: "DELETE" });
+  if (!res.ok) throw new Error(`DELETE /notes/${noteId}/actions/${actionId} failed: ${res.status}`);
+}
+
 export interface TodoItem {
   actionId: string;
   noteId: string;

@@ -88,6 +88,17 @@ public sealed class TodoListProjectionSpec
     }
 
     [Fact]
+    public void ActionItemDeleted_RemovedFromTodoList()
+    {
+        var projection = new TodoListProjection();
+        projection.Handle(NoteEnv(NoteId1, 1, new NoteCreated(NoteId1)));
+        projection.Handle(ActionEnv(ActionId1, 1, new ActionItemAdded(ActionId1, NoteId1, "Old task")));
+        projection.Handle(ActionEnv(ActionId1, 2, new ActionItemDeleted(ActionId1, DateTimeOffset.UtcNow)));
+
+        Assert.Empty(projection.GetOpenItems());
+    }
+
+    [Fact]
     public void TodoList_AggregatesItemsFromMultipleNotes()
     {
         var projection = new TodoListProjection();

@@ -4,6 +4,7 @@ public sealed class ActionItem : IAggregate
 {
     bool _exists;
     bool _completed;
+    bool _deleted;
 
     public void Apply(IDomainEvent @event)
     {
@@ -18,6 +19,9 @@ public sealed class ActionItem : IAggregate
             case ActionItemReopened:
                 _completed = false;
                 break;
+            case ActionItemDeleted:
+                _deleted = true;
+                break;
         }
     }
 
@@ -27,6 +31,7 @@ public sealed class ActionItem : IAggregate
             AddActionItem cmd      => HandleAdd(cmd),
             CompleteActionItem cmd => HandleComplete(cmd),
             ReopenActionItem cmd   => HandleReopen(cmd),
+            DeleteActionItem cmd   => HandleDelete(cmd),
             _ => throw new ArgumentOutOfRangeException(nameof(command))
         };
 
@@ -39,15 +44,22 @@ public sealed class ActionItem : IAggregate
 
     IReadOnlyList<IDomainEvent> HandleComplete(CompleteActionItem cmd)
     {
-        if (_completed)
-            throw new InvalidOperationException($"Action item {cmd.ActionId} is already completed.");
+        if (_deleted || _completed)
+            throw new InvalidOperationException($"Action item {cmd.ActionId} cannot be completed.");
         return [new ActionItemCompleted(cmd.ActionId, cmd.CompletedAt)];
     }
 
     IReadOnlyList<IDomainEvent> HandleReopen(ReopenActionItem cmd)
     {
-        if (!_completed)
-            throw new InvalidOperationException($"Action item {cmd.ActionId} is not completed.");
+        if (_deleted || !_completed)
+            throw new InvalidOperationException($"Action item {cmd.ActionId} cannot be reopened.");
         return [new ActionItemReopened(cmd.ActionId, cmd.ReopenedAt)];
+    }
+
+    IReadOnlyList<IDomainEvent> HandleDelete(DeleteActionItem cmd)
+    {
+        if (!_exists || _deleted)
+            throw new InvalidOperationException($"Action item {cmd.ActionId} does not exist.");
+        return [new ActionItemDeleted(cmd.ActionId, cmd.DeletedAt)];
     }
 }

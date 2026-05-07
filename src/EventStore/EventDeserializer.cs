@@ -17,6 +17,7 @@ public static class EventDeserializer
         (nameof(ActionItemAdded),     _) => JsonSerializer.Deserialize<ActionItemAdded>(envelope.Payload)!,
         (nameof(ActionItemCompleted), _) => JsonSerializer.Deserialize<ActionItemCompleted>(envelope.Payload)!,
         (nameof(ActionItemReopened),  _) => JsonSerializer.Deserialize<ActionItemReopened>(envelope.Payload)!,
+        (nameof(ActionItemDeleted),   _) => JsonSerializer.Deserialize<ActionItemDeleted>(envelope.Payload)!,
         _ => throw new InvalidOperationException($"Unknown event type/version: {envelope.EventType} v{envelope.EventVersion}")
     };
 }

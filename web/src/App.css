@@ -370,6 +370,33 @@ body {
   cursor: default;
 }
 
+.delete-action-button {
+  background: none;
+  border: none;
+  padding: 0 0.25rem;
+  font-size: 1.125rem;
+  line-height: 1;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: color var(--transition);
+}
+
+.delete-action-button:hover:not([disabled]) {
+  color: var(--color-error);
+}
+
+.delete-action-button:focus-visible {
+  outline: 2px solid var(--color-error);
+  outline-offset: 2px;
+  border-radius: var(--radius);
+}
+
+.delete-action-button[disabled] {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
 /* ── Todo section ───────────────────────────────────────────────── */
 .todo-section {
   margin-top: 2.5rem;
