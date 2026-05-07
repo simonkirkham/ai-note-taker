@@ -142,9 +142,4 @@ public sealed class AppPage(IPage page, string baseUrl)
         Assertions.Expect(
             page.GetByTestId("actions-list").GetByText(description)
         ).Not.ToBeVisibleAsync();
-
-    public Task AssertTodoItemAbsentFromHomeAsync(string description) =>
-        Assertions.Expect(
-            page.GetByTestId("todo-section").GetByText(description)
-        ).Not.ToBeVisibleAsync();
 }

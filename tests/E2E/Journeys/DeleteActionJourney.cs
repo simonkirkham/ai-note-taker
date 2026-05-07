@@ -42,6 +42,6 @@ public sealed class DeleteActionJourney(BrowserFixture browser) : IAsyncLifetime
         await _app.AssertActionItemAbsentAsync(desc);
 
         await _app.GoBackAsync();
-        await _app.AssertTodoItemAbsentFromHomeAsync(desc);
+        await _app.AssertTodoItemGoneAsync(desc);
     }
 }
