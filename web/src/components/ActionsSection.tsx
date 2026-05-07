@@ -74,7 +74,7 @@ export default function ActionsSection({ noteId }: { noteId: string }) {
   }
 
   return (
-    <section className="actions-section" aria-label="Action items">
+    <section className="actions-section" data-testid="actions-section" aria-label="Action items">
       <h2 className="actions-heading">Actions</h2>
       {actions.length === 0 ? (
         <p data-testid="actions-empty" className="empty">No action items yet</p>

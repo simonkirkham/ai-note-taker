@@ -302,11 +302,47 @@ body {
   color: var(--color-text-muted);
 }
 
+/* ── Note two-column layout ────────────────────────────────────── */
+.note-layout {
+  display: grid;
+  grid-template-columns: 1fr 320px;
+  gap: 1.5rem;
+  align-items: start;
+  margin-top: 1.25rem;
+}
+
+.note-content-panel {
+  display: flex;
+  flex-direction: column;
+  border: 1.5px solid var(--color-border);
+  border-radius: 8px;
+  padding: 1rem;
+}
+
+.captured-notes-label {
+  display: block;
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--color-text-muted);
+  margin-bottom: 0.5rem;
+}
+
+.note-right-panel {
+  min-width: 0;
+}
+
+@media (max-width: 767px) {
+  .note-layout {
+    grid-template-columns: 1fr;
+  }
+}
+
 /* ── Actions section ───────────────────────────────────────────── */
 .actions-section {
-  margin-top: 2.5rem;
-  border-top: 2px solid var(--color-border);
-  padding-top: 1.5rem;
+  border-top: none;
+  padding-top: 0;
 }
 
 .actions-heading {

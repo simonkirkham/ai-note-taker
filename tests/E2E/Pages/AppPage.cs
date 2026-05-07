@@ -158,4 +158,27 @@ public sealed class AppPage(IPage page, string baseUrl)
 
     public Task AssertNoteDateEmptyAsync() =>
         Assertions.Expect(page.GetByTestId("note-date-input")).ToHaveValueAsync(string.Empty);
+
+    public Task AssertCapturedNotesLabelVisibleAsync() =>
+        Assertions.Expect(page.GetByTestId("captured-notes-label")).ToBeVisibleAsync();
+
+    public async Task AssertActionsPanelRightOfContentAsync()
+    {
+        var contentBox = await page.GetByTestId("note-content").BoundingBoxAsync();
+        var actionsBox = await page.GetByTestId("actions-section").BoundingBoxAsync();
+        Assert.NotNull(contentBox);
+        Assert.NotNull(actionsBox);
+        Assert.True(actionsBox.X > contentBox.X,
+            $"Expected actions panel (x={actionsBox.X}) to be to the right of content (x={contentBox.X})");
+    }
+
+    public async Task AssertActionsPanelBelowContentAsync()
+    {
+        var contentBox = await page.GetByTestId("note-content").BoundingBoxAsync();
+        var actionsBox = await page.GetByTestId("actions-section").BoundingBoxAsync();
+        Assert.NotNull(contentBox);
+        Assert.NotNull(actionsBox);
+        Assert.True(actionsBox.Y > contentBox.Y,
+            $"Expected actions panel (y={actionsBox.Y}) to be below content (y={contentBox.Y})");
+    }
 }

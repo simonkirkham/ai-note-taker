@@ -104,20 +104,29 @@ export default function NoteView({
         placeholder="Note title…"
         className="title-input"
       />
-      {loadingDetail ? (
-        <p data-testid="note-loading" className="loading">Loading…</p>
-      ) : (
-        <textarea
-          data-testid="note-content"
-          aria-label="Note content"
-          value={content}
-          onChange={(e) => setContent(e.target.value)}
-          onBlur={() => editContent(noteId, content)}
-          placeholder="Start typing your notes…"
-          className="content-input"
-        />
-      )}
-      <ActionsSection noteId={noteId} />
+      <div className="note-layout">
+        <div className="note-content-panel">
+          <span data-testid="captured-notes-label" className="captured-notes-label">
+            Captured Notes
+          </span>
+          {loadingDetail ? (
+            <p data-testid="note-loading" className="loading">Loading…</p>
+          ) : (
+            <textarea
+              data-testid="note-content"
+              aria-label="Note content"
+              value={content}
+              onChange={(e) => setContent(e.target.value)}
+              onBlur={() => editContent(noteId, content)}
+              placeholder="Start typing your notes…"
+              className="content-input"
+            />
+          )}
+        </div>
+        <div className="note-right-panel">
+          <ActionsSection noteId={noteId} />
+        </div>
+      </div>
     </main>
   );
 }
