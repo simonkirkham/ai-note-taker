@@ -56,10 +56,8 @@ export default function ActionsSection({ noteId }: { noteId: string }) {
     }
   }
 
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    const description = newAction.trim();
-    if (!description) return;
+  async function handleSubmitDescription(description: string) {
+    if (!description || submitting) return;
     setSubmitting(true);
     try {
       const { actionId } = await addAction(noteId, description);
@@ -106,25 +104,22 @@ export default function ActionsSection({ noteId }: { noteId: string }) {
           ))}
         </ul>
       )}
-      <form onSubmit={handleSubmit} className="action-form">
-        <input
-          data-testid="action-input"
-          type="text"
-          value={newAction}
-          onChange={(e) => setNewAction(e.target.value)}
-          placeholder="Add an action item…"
-          className="action-input"
-          disabled={submitting}
-        />
-        <button
-          data-testid="add-action-button"
-          type="submit"
-          className="add-action-button"
-          disabled={submitting || !newAction.trim()}
-        >
-          Add
-        </button>
-      </form>
+      <input
+        data-testid="action-input"
+        type="text"
+        value={newAction}
+        onChange={(e) => setNewAction(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") {
+            e.preventDefault();
+            handleSubmitDescription(newAction.trim());
+          }
+        }}
+        onBlur={() => handleSubmitDescription(newAction.trim())}
+        placeholder="Add an action item…"
+        className="action-input"
+        disabled={submitting}
+      />
     </section>
   );
 }
