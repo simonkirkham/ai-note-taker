@@ -188,6 +188,21 @@ Add an entry at the end of each phase. Keep them short and honest.
 
 ---
 
+## Slice 4-B — Note screen layout redesign
+
+- **Workflow style used:** Fully autonomous pipeline — Breaker → Pip → Refactor → Stylist → Hawk (PR review) → squash-merge → Scribe. First slice to use the feature branch convention correctly: `slice/4-b-note-screen-layout` branched from main, PR #18 opened, Hawk reviewed the PR diff, squash-merged after approval.
+- **Skills exercised:** `refactor` (clean pass, no fixes needed); `ui-ux-pro-max` guidelines applied inline (no Python search — skill already loaded in session).
+- **What worked:**
+  - Pure frontend slice with no backend touch — single Pip batch, total ~19k tokens (lightest slice to date).
+  - CSS grid with `1fr 320px` and `@media (max-width: 767px)` gave correct two-column and stacked layouts with minimal CSS.
+  - Bounding-box E2E assertions are implementation-agnostic — they verify the visual relationship (right of / below) without coupling to class names or computed styles.
+  - Feature branch + PR convention followed correctly for the first time; Hawk reviewed a real GitHub PR diff rather than a conversation snippet.
+- **What didn't:**
+  - CI E2E pipeline failed on a pre-existing flaky test (`TodoCompleteJourney`) unrelated to 4-B; all 4 new NoteLayoutJourney tests passed. The pre-E2E data-clear backlog item remains open.
+- **Change for next slice:** none — process ran cleanly.
+
+---
+
 ## Slice 4-A — Settable note date
 
 - **Workflow style used:** Fully autonomous pipeline — doc-fix pass → Breaker (layer-split Batch 1) → Pip Batch 1 → Breaker Batch 2 → Pip Batch 2 → Refactor → Stylist → Hawk → Scribe. No human checkpoints after "Proceed with 4-A".

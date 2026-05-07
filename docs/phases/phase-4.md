@@ -107,7 +107,7 @@ Scenario: Set date on non-existent note (API)
 
 ## Slice 4-B — Note screen layout redesign
 
-**Status:** Not Started
+**Status:** Done
 
 **Value:** The note screen matches the wireframe: content in a bordered left area, actions in a right panel, a "Captured Notes" label above the content. Reading notes and capturing actions no longer requires scrolling past each other.
 
@@ -144,12 +144,12 @@ Scenario: All existing note functionality still works
 
 **Acceptance criteria:**
 
-- [ ] Content textarea is visually enclosed in a bordered box with "Captured Notes" label above it
-- [ ] On viewports ≥768px: actions panel is to the right of the content, both visible simultaneously
-- [ ] On viewports <768px: actions panel stacks below content; no horizontal scroll
-- [ ] Back button, Delete Note button, and title input remain at the top of the screen
-- [ ] All existing action item operations (add, complete, delete) continue to work
-- [ ] E2E: open a note, add an action item in the new layout — it appears in the right panel
+- [x] Content textarea is visually enclosed in a bordered box with "Captured Notes" label above it
+- [x] On viewports ≥768px: actions panel is to the right of the content, both visible simultaneously
+- [x] On viewports <768px: actions panel stacks below content; no horizontal scroll
+- [x] Back button, Delete Note button, and title input remain at the top of the screen
+- [x] All existing action item operations (add, complete, delete) continue to work
+- [x] E2E: open a note, add an action item in the new layout — it appears in the right panel
 
 ---
 

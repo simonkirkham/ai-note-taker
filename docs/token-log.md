@@ -27,6 +27,25 @@ If no agent ran unexpectedly high: write `None — slice ran within expected ran
 
 -->
 
+## Slice 4-B — Note screen layout redesign
+
+| Agent     | ~Tokens    |
+|-----------|------------|
+| Breaker   | 4 000      |
+| Pip       | 6 000      |
+| Refactor  | 1 000      |
+| Stylist   | 1 000      |
+| Hawk      | 3 000      |
+| Scribe    | 4 000      |
+| **Total** | **~19 000** |
+
+**Why:** Pure frontend slice — no backend changes, no layer split. Three files changed (NoteView.tsx, ActionsSection.tsx, App.css) and a new E2E journey. Entire slice in one Pip batch well under 30k.
+
+**Optimisation suggestions:**
+None — slice ran within expected range.
+
+---
+
 ## Slice 4-A — Settable note date
 
 | Agent          | ~Tokens    |
