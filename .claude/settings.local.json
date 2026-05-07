@@ -30,7 +30,8 @@
       "Read(//home/simon/.config/gh/**)",
       "Read(//home/simon/.nuget/packages/amazon.cdk.lib/**)",
       "Read(//c/Users/simon/.npm/**)",
-      "Read(//c/Users/simon/**)"
+      "Read(//c/Users/simon/**)",
+      "Bash(npx tsc *)"
     ]
   }
 }
