@@ -1,10 +1,11 @@
 import { useEffect, useState } from "react";
-import { getActions, addAction, ActionItem } from "../api";
+import { getActions, addAction, completeAction, reopenAction, ActionItem } from "../api";
 
 export default function ActionsSection({ noteId }: { noteId: string }) {
   const [actions, setActions] = useState<ActionItem[]>([]);
   const [newAction, setNewAction] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [toggling, setToggling] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     let cancelled = false;
@@ -13,6 +14,31 @@ export default function ActionsSection({ noteId }: { noteId: string }) {
     });
     return () => { cancelled = true; };
   }, [noteId]);
+
+  async function handleToggle(item: ActionItem) {
+    if (toggling.has(item.actionId)) return;
+    setToggling((prev) => new Set(prev).add(item.actionId));
+    try {
+      if (item.completed) {
+        await reopenAction(noteId, item.actionId);
+      } else {
+        await completeAction(noteId, item.actionId);
+      }
+      setActions((prev) =>
+        prev.map((a) =>
+          a.actionId === item.actionId
+            ? { ...a, completed: !a.completed, completedAt: item.completed ? null : new Date().toISOString() }
+            : a
+        )
+      );
+    } finally {
+      setToggling((prev) => {
+        const next = new Set(prev);
+        next.delete(item.actionId);
+        return next;
+      });
+    }
+  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -40,7 +66,20 @@ export default function ActionsSection({ noteId }: { noteId: string }) {
         <ul data-testid="actions-list" className="actions-list">
           {actions.map((item) => (
             <li key={item.actionId} className={`action-item${item.completed ? " action-item--done" : ""}`}>
-              <span data-testid={`action-description-${item.actionId}`}>{item.description}</span>
+              <input
+                type="checkbox"
+                aria-label={`Mark "${item.description}" ${item.completed ? "open" : "complete"}`}
+                checked={item.completed}
+                disabled={toggling.has(item.actionId)}
+                onChange={() => handleToggle(item)}
+                style={{ cursor: "pointer" }}
+              />
+              <span
+                data-testid={`action-description-${item.actionId}`}
+                style={{ textDecoration: item.completed ? "line-through" : "none" }}
+              >
+                {item.description}
+              </span>
             </li>
           ))}
         </ul>
