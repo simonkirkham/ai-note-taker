@@ -46,7 +46,7 @@ public sealed class NoteDetailProjection
                 break;
             case NoteDateSet e:
                 if (_items.TryGetValue(e.NoteId, out var withDate))
-                    _items[e.NoteId] = withDate with { Date = e.Date };
+                    _items[e.NoteId] = withDate with { Date = e.Date, LastModifiedAt = envelope.OccurredAt };
                 break;
             case NoteDeleted e:
                 _items.Remove(e.NoteId);
