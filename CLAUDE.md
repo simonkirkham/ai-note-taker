@@ -85,6 +85,7 @@ cdk deploy
 - Never commit without all BDD specs green and `cdk synth` succeeding.
 - Never edit a published event's shape — version it.
 - **Never begin a pipeline role's work without authorisation.** For roles triggered by a human brief (Scout, Breaker, Pip at slice start), wait for explicit human go-ahead. For roles triggered by an automated event defined in the workflow, proceed without asking: CI green → Hawk reviews; Hawk approves → Pip merges; Hawk requests changes → Pip fixes and pushes.
+- **Never commit slice work directly to main.** Breaker creates `slice/<phase>-<id>-<short-description>` (e.g. `slice/4-b-note-layout`) from main before the first test commit. All slice commits (Breaker, Pip, Refactor, Stylist, Hawk fixes) go to that branch. Pip opens a PR; Hawk reviews the PR; Pip squash-merges after approval.
 
 ## Skills
 
