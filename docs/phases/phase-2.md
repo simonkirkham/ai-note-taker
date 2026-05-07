@@ -86,7 +86,7 @@ Status key: `Done` · `In Progress` · `Not Started`
 ---
 
 ## Slice 2-E — Projection rebuild
-**Status:** Not Started
+**Status:** Done
 
 **Value:** The read side can be fully recovered by replaying the event log — proves the durability promise of event sourcing and closes the gap where notes created before a projection existed are invisible.
 
@@ -94,8 +94,8 @@ Status key: `Done` · `In Progress` · `Not Started`
 
 **Acceptance criteria:**
 
-- [ ] After triggering a rebuild, all notes that exist in the event log are visible in the list — including any that were created before the projection table existed
-- [ ] The note list renders correctly after a rebuild — no UI changes required
-- [ ] *(internal)* The rebuild endpoint resets both projections and replays all events from the event store
+- [x] After triggering a rebuild, all notes that exist in the event log are visible in the list — including any that were created before the projection table existed
+- [x] The note list renders correctly after a rebuild — no UI changes required
+- [x] *(internal)* The rebuild endpoint resets both projections and replays all events from the event store
 
 *Note: rebuild is an admin/ops operation with no user-facing UI. The acceptance criteria confirm the list is correct after a rebuild is run externally.*
