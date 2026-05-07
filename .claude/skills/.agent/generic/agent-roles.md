@@ -323,9 +323,16 @@ Scribe writes the workflow observations above Hawk's review findings block. Obse
 | Hawk      | 5 000      |
 | Scribe    | 3 000      |
 | **Total** | **85 000** |
+
+**Why:** <one sentence on what drove the total — slice complexity, rework rounds, context size>
+
+**Optimisation suggestions:**
+- **<Role> (–<estimated saving>):** <what happened, what rule or step would have prevented it, what to do differently next slice>
 ```
 
 Token counts come from each agent's hand-off summary. If an agent did not report, note `—`. Round to the nearest 1 000.
+
+After recording the counts, **Scribe must analyse the distribution** and write at least one suggestion per agent whose token count was unexpectedly high (more than double the next-highest agent, or higher than the same agent on the previous slice). Suggestions must be specific — name the rule or step that would have changed the outcome, and estimate the saving. "Used too many tokens" is not a valid suggestion. If the slice ran cleanly with no high-cost agents, write `None — slice ran within expected range.`
 
 **Rules:**
 - Workflow scope only in learnings — no technical or implementation detail

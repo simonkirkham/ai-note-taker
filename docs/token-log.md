@@ -18,6 +18,13 @@ Approximate tokens consumed per slice, broken down by agent. Recorded by Scribe 
 | Scribe    |            |
 | **Total** |            |
 
+**Why:** <one sentence on what drove the total>
+
+**Optimisation suggestions:**
+- **<Role> (–<estimated saving>):** <what happened and what to do differently>
+
+If no agent ran unexpectedly high: write `None — slice ran within expected range.`
+
 -->
 
 ## Slice 3-B — Complete and reopen action items
@@ -32,7 +39,11 @@ Approximate tokens consumed per slice, broken down by agent. Recorded by Scribe 
 | Scribe    | 5 000      |
 | **Total** | **~86 000** |
 
-**Why smaller than 3-A:** Pure extension slice — no new aggregates, no new CDK tables, no new projections. Breaker and Pip worked entirely within existing infrastructure. No Hawk fix rounds required.
+**Why:** Pure extension slice — no new aggregates, tables, or projections; Breaker and Pip worked entirely within existing infrastructure; no Hawk fix rounds.
+
+**Optimisation suggestions:**
+- **Stylist (–0, but process gap):** Stylist was skipped entirely — Pip moved from refactor directly to PR. Six CSS issues were caught retrospectively (missing focus ring, no accent-color on checkbox, no disabled state, no transition on done toggle, dangling last-child border, missing input glow). Pip's new Step 1c guardrail (invoke `ui-ux-pro-max` before opening a PR for any slice with React changes) closes this gap from 3-C onward.
+- **CI re-runs (~2 wasted pipeline runs):** Two CI failures caused by stale E2E data from prior runs, not by 3-B changes. The "Clear test data" step runs after E2E, so a failed prior run poisons the next. Backlog item raised; adding a pre-E2E clear step would eliminate this class of re-run.
 
 ---
 
@@ -50,4 +61,8 @@ Approximate tokens consumed per slice, broken down by agent. Recorded by Scribe 
 | Scribe    | 10 000  |
 | **Total** | **~183 000** |
 
-**Why so large:** First cross-aggregate slice — introduced `ActionId`, new aggregate, new projection, new DynamoDB table (CDK), new API handler pair, React component extraction, E2E journey. Hawk required two fix rounds (missing E2E test; `GetActions` returning 200 for non-existent notes). Refactor pass also ran within Pip's turn.
+**Why:** First cross-aggregate slice with new aggregate + projection + CDK table + React component + E2E journey; Pip's context was auto-compacted mid-session; Hawk ran two `Changes requested` rounds before approving.
+
+**Optimisation suggestions:**
+- **Pip (–30–40k):** 3-A qualifies for Breaker's large-slice layer-split rule (new aggregate + projection + E2E, ≥4 criteria). Breaker should have written domain/API tests first → Pip implements those → Breaker writes E2E tests → Pip implements those. Two smaller Pip sessions instead of one auto-compacted 95k session; domain design errors caught before the expensive E2E layer is written.
+- **Hawk (–15–25k):** Two `Changes requested` rounds added ~20k to Hawk's total (each round re-reads the full PR). Both findings — missing E2E test and missing GET existence guard — are now covered by Pip's Step 1d pre-PR self-check (criteria-coverage audit catches the missing E2E; guard-symmetry check catches the GET gap). Applying Step 1d before opening the PR would have collapsed Hawk to a single-pass review.
