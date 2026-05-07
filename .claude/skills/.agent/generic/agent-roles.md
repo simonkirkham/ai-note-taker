@@ -50,6 +50,7 @@ One scenario per distinct behaviour (happy path + each meaningful error/edge cas
 - Scenarios must be specific enough for Breaker to turn directly into a C# spec without further clarification
 - Flag any dependencies or risks for downstream roles
 - Any idea that surfaces during planning but is explicitly deferred must be added to `docs/backlog.md` before hand-off
+- **Flag REST structural conventions in the brief** — if a route includes a param that is required by REST convention but unused by the domain command (e.g. `noteId` in `PATCH /notes/{noteId}/actions/{actionId}/complete`), say so explicitly. This prevents Hawk from raising it as a finding and saves a round-trip.
 
 **Hand-off:** Post the path to the phase breakdown file and confirm the event model is updated. Human reviews before Breaker begins. Scout must not proceed to Breaker until the human explicitly approves the breakdown.
 
@@ -74,6 +75,15 @@ For a user-facing slice, produce tests at every relevant layer, with E2E tests a
 4. **Acceptance tests** (`tests/Acceptance/`) — cover the deployed API contract end-to-end.
 
 For a backend-only slice (explicitly justified in the brief), omit E2E and write domain + API + acceptance tests only.
+
+**Large slice rule — layer-split when Pip's context would be unsafe:**
+
+If a slice has ≥4 acceptance criteria **or** introduces a new aggregate + new projection + new E2E journey together, split Breaker's output into two batches rather than one:
+
+- **Batch 1:** Domain BDD specs + API integration tests → hand off to Pip → Pip implements until those pass
+- **Batch 2:** E2E tests (+ any acceptance tests that depend on a deployed build) → hand off to Pip → Pip implements until those pass
+
+Why: Pip's context grows with every file it reads and every test it makes green. A full-stack slice in one batch can exhaust the context window mid-implementation (as happened in 3-A, causing auto-compaction and a 183k token session). The domain layer is also cheapest to rework; catching design errors before the E2E layer is written saves more tokens than the extra hand-off overhead costs. For normal slices (≤3 criteria, no new aggregate), the single-batch approach is still more efficient.
 
 **Branch convention:** `slice/<phase>-<slice-id>-<short-description>` e.g. `slice/2-b-edit-content`. Create from main at the start of Breaker's work:
 ```bash
@@ -134,6 +144,14 @@ git checkout main && git pull && git checkout -b slice/2-b-edit-content
 - Pass the list of changed frontend files explicitly (e.g., `web/src/components/Foo.tsx`, `web/src/App.css`)
 - Commit any style changes Stylist makes before moving to Step 2
 - Skip this step only for backend-only slices (no React files changed)
+
+**Step 1d — Pre-PR self-check (run before every PR, takes <5 minutes):**
+
+Hawk round-trips are expensive (~8–35k tokens each). Catch the common findings yourself first:
+
+1. **Criteria coverage** — list every acceptance criterion from the phase doc. Verify each one maps to at least one test (domain spec, API integration test, or E2E journey). Any criterion with no test is a Hawk `Changes requested` waiting to happen — fix it now.
+2. **Guard symmetry** — for every endpoint pair on the same resource (e.g. `POST /notes/{id}/actions` and `GET /notes/{id}/actions`), confirm both apply the same existence guard on the parent resource. If the write endpoint returns 404 for a missing note, the read endpoint must too.
+3. **Hawk checklist** — scan Hawk's checklist in this file. If any item is obviously violated, fix it before opening the PR.
 
 **Step 2 — Run local validation and signal Hawk:**
 
