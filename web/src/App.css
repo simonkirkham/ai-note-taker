@@ -291,6 +291,11 @@ body {
   border-bottom: 1px solid var(--color-border);
   font-size: 0.9375rem;
   color: var(--color-text);
+  transition: color var(--transition);
+}
+
+.action-item:last-child {
+  border-bottom: none;
 }
 
 .action-item--done {
@@ -301,6 +306,14 @@ body {
 .action-checkbox {
   cursor: pointer;
   flex-shrink: 0;
+  accent-color: var(--color-primary);
+  width: 1rem;
+  height: 1rem;
+}
+
+.action-checkbox:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
 }
 
 .action-form {
@@ -323,6 +336,7 @@ body {
 
 .action-input:focus {
   border-color: var(--color-primary);
+  box-shadow: 0 0 0 3px rgba(13, 148, 136, 0.15);
 }
 
 .action-input::placeholder {
@@ -344,6 +358,11 @@ body {
 
 .add-action-button:hover:not([disabled]) {
   background: var(--color-primary-dark);
+}
+
+.add-action-button:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
 }
 
 .add-action-button[disabled] {

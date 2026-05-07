@@ -127,8 +127,13 @@ git checkout main && git pull && git checkout -b slice/2-b-edit-content
 - Once all specs are green, load the `refactor` skill and scan every file changed in this slice
 - Fix one smell at a time; run `dotnet test` between each fix
 - Do not open a PR until the refactor pass is done and specs are still green
-- Run the full validation sequence (see `validation.md` in this directory) after refactoring
-- Open a PR once refactoring is complete and validation passes
+
+**Step 1c — Stylist (user-facing slices only):**
+
+- If this slice includes any UI changes (React components, CSS), invoke the `ui-ux-pro-max` skill before opening a PR
+- Pass the list of changed frontend files explicitly (e.g., `web/src/components/Foo.tsx`, `web/src/App.css`)
+- Commit any style changes Stylist makes before moving to Step 2
+- Skip this step only for backend-only slices (no React files changed)
 
 **Step 2 — Run local validation and signal Hawk:**
 
