@@ -208,6 +208,43 @@ body {
   outline-offset: 2px;
 }
 
+/* ── Note header date ──────────────────────────────────────────── */
+.note-header-right {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.note-date-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.date-input {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  padding: 0.25rem 0.5rem;
+  font-family: inherit;
+  font-size: 0.875rem;
+  color: var(--color-text);
+  background: var(--color-surface);
+  cursor: pointer;
+  transition: border-color var(--transition);
+}
+
+.date-input:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+  border-color: var(--color-primary);
+}
+
+.date-display {
+  font-size: 0.875rem;
+  color: var(--color-text-muted);
+  white-space: nowrap;
+}
+
 /* ── Note editor ───────────────────────────────────────────────── */
 .title-input {
   display: block;

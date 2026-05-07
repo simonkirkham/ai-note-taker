@@ -1,6 +1,11 @@
 import { useEffect, useRef, useState } from "react";
-import { editContent, getNoteDetail } from "../api";
+import { editContent, getNoteDetail, setNoteDate } from "../api";
 import ActionsSection from "./ActionsSection";
+
+function formatDateDisplay(iso: string): string {
+  const [y, m, d] = iso.split("-");
+  return `${d}/${m}/${y}`;
+}
 
 export default function NoteView({
   noteId,
@@ -17,6 +22,7 @@ export default function NoteView({
 }) {
   const [title, setTitle] = useState(initialTitle);
   const [content, setContent] = useState("");
+  const [date, setDate] = useState("");
   const [loadingDetail, setLoadingDetail] = useState(true);
   const [notFound, setNotFound] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -27,6 +33,7 @@ export default function NoteView({
       .then((detail) => {
         if (!cancelled) {
           setContent(detail.content);
+          setDate(detail.date ?? "");
           setLoadingDetail(false);
         }
       })
@@ -60,14 +67,32 @@ export default function NoteView({
         <button data-testid="back-button" onClick={onBack} className="back-button">
           ← Back
         </button>
-        <button
-          data-testid="delete-note-button"
-          onClick={() => onDelete(noteId)}
-          className="delete-note-button"
-          aria-label="Delete note"
-        >
-          Delete
-        </button>
+        <div className="note-header-right">
+          <div className="note-date-wrapper">
+            <input
+              type="date"
+              data-testid="note-date-input"
+              value={date}
+              onChange={(e) => setDate(e.target.value)}
+              onBlur={() => setNoteDate(noteId, date || null)}
+              className="date-input"
+              aria-label="Meeting date"
+            />
+            {date && (
+              <span data-testid="note-date-display" className="date-display">
+                {formatDateDisplay(date)}
+              </span>
+            )}
+          </div>
+          <button
+            data-testid="delete-note-button"
+            onClick={() => onDelete(noteId)}
+            className="delete-note-button"
+            aria-label="Delete note"
+          >
+            Delete
+          </button>
+        </div>
       </div>
       <input
         data-testid="note-title-input"

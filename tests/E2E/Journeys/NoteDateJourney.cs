@@ -26,7 +26,7 @@ public sealed class NoteDateJourney(BrowserFixture browser) : IAsyncLifetime
         await _context.DisposeAsync();
     }
 
-    [Fact(Skip = "Pip: implement date input on NoteView frontend")]
+    [Fact]
     public async Task Note_date_persists_across_navigation()
     {
         var title = $"Note-{Guid.NewGuid():N}"[..20];
@@ -43,7 +43,7 @@ public sealed class NoteDateJourney(BrowserFixture browser) : IAsyncLifetime
         await _app.AssertNoteDateVisibleAsync("21/04/2026");
     }
 
-    [Fact(Skip = "Pip: implement date input on NoteView frontend")]
+    [Fact]
     public async Task New_note_has_no_date_by_default()
     {
         await _app.GotoAsync();

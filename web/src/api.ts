@@ -9,6 +9,7 @@ export interface NoteDetail {
   noteId: string;
   title: string;
   content: string;
+  date: string | null;
 }
 
 export async function getNoteDetail(noteId: string): Promise<NoteDetail> {
@@ -52,6 +53,15 @@ export async function listNotes(): Promise<NoteItem[]> {
   if (!res.ok) throw new Error(`GET /notes failed: ${res.status}`);
   const body: { items: NoteItem[] } = await res.json();
   return body.items;
+}
+
+export async function setNoteDate(noteId: string, date: string | null): Promise<void> {
+  const res = await fetch(`${base}/notes/${noteId}/date`, {
+    method: "PATCH",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ date }),
+  });
+  if (!res.ok) throw new Error(`PATCH /notes/${noteId}/date failed: ${res.status}`);
 }
 
 export async function deleteNote(noteId: string): Promise<void> {
