@@ -29,6 +29,20 @@ public sealed class NoteActionsProjectionSpec
         Assert.False(view.Actions[0].Completed);
     }
 
+    [Fact(Skip = "Pip: implement ActionItemDeleted handling")]
+    public void ActionItemDeleted_RemovesItemFromView()
+    {
+        var projection = new NoteActionsProjection();
+
+        projection.Handle(Envelope(ActionId.ToStreamId(), 1, nameof(ActionItemAdded),
+            JsonSerializer.Serialize(new ActionItemAdded(ActionId, NoteId, "Old task"))));
+        projection.Handle(Envelope(ActionId.ToStreamId(), 2, nameof(ActionItemDeleted),
+            JsonSerializer.Serialize(new ActionItemDeleted(ActionId, DateTimeOffset.UtcNow))));
+
+        var view = projection.GetView(NoteId);
+        Assert.Empty(view.Actions);
+    }
+
     [Fact]
     public void EmptyProjectionReturnsNoActionsForNote()
     {
