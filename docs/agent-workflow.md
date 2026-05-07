@@ -22,15 +22,27 @@ The pipeline is gated: no role begins until the previous role's output is review
 **Outputs:**
 - Updated `docs/event-model.md` (new commands, events, projections if any)
 - Updated `docs/event-schemas.md` if new event shapes are introduced
-- `docs/phases/phase-N.md` — phase breakdown file with one section per slice, each containing: objective, status (`Not Started`), and specific acceptance criteria. Follow the format established in `docs/phases/phase-0.md`
-- A feature brief covering: objective, acceptance criteria, commands/events affected, projections affected, open questions
+- `docs/phases/phase-N.md` — phase breakdown file with one section per slice, each containing: objective, status (`Not Started`), BDD scenarios (see format below), and any backend-only notes. Follow the format established in `docs/phases/phase-0.md`
+- A feature brief covering: objective, commands/events affected, projections affected, open questions
+
+**BDD scenario format (per slice in the phase doc):**
+Write scenarios at the user/system behaviour level — what a person does and what they observe — not at the domain aggregate level. Use plain-language Given/When/Then:
+
+```
+Scenario: <name>
+  Given <observable system state>
+  When  <user action or external trigger>
+  Then  <observable outcome>
+```
+
+One scenario per distinct behaviour (happy path + each meaningful error/edge case). For backend-only slices where there is no user-facing action, describe the system behaviour from the perspective of an API caller or operator. These scenarios are the human's primary review artefact and Breaker's direct input — Breaker translates them into C# `[Fact]` methods.
 
 **Rules:**
 - Do not write code or test files
-- Update the event model before writing any acceptance criteria — the model is the design artefact
+- Update the event model before writing any BDD scenarios — the model is the design artefact
 - The phase breakdown file is mandatory, not optional — it is the human's primary review artefact at the Scout hand-off
 - Slice the phase small: each slice should be completable in one Pip session and independently deployable where possible
-- Acceptance criteria must be specific enough for Breaker to turn directly into a BDD spec
+- Scenarios must be specific enough for Breaker to turn directly into a C# spec without further clarification
 - Flag any dependencies or risks for downstream roles
 
 **Hand-off:** Post the path to the phase breakdown file and confirm the event model is updated. Human reviews the slice breakdown and acceptance criteria before Breaker begins. Scout must not proceed to Breaker until the human explicitly approves the breakdown.
@@ -41,7 +53,7 @@ The pipeline is gated: no role begins until the previous role's output is review
 
 **Remit:** Translate the acceptance criteria into a failing BDD spec. Does not write implementation code.
 
-**Inputs:** The feature brief and updated event model from Scout.
+**Inputs:** The phase doc BDD scenarios and updated event model from Scout.
 
 **Skills to load:**
 - `event-modelling` — translates a Given/When/Then sketch into a C# spec file
