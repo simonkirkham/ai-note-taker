@@ -27,6 +27,26 @@ If no agent ran unexpectedly high: write `None — slice ran within expected ran
 
 -->
 
+## Slice 3-C — View open todos on the home screen
+
+| Agent     | ~Tokens    |
+|-----------|------------|
+| Scout     | — (brief inline) |
+| Breaker   | 28 000     |
+| Pip       | 62 000     |
+| Stylist   | 12 000     |
+| Hawk      | 6 000      |
+| Scribe    | 5 000      |
+| **Total** | **~113 000** |
+
+**Why:** First cross-projection slice — new DynamoDbTodoListStore, two command handlers updated, frontend component, CDK table with GSI. Layer-split (Batch 1 domain/API → Batch 2 E2E/frontend) kept each Pip session under 65k and avoided context compaction.
+
+**Optimisation suggestions:**
+- **Breaker (–5–8k):** Breaker wrote acceptance tests in Batch 2 alongside E2E. Acceptance specs are thin (4 tests, ~85 lines) and could be written by Pip as part of Batch 2 implementation — Breaker's job is to define the failing test shape, not duplicate what Pip will fill in. Saving: Breaker produces a spec skeleton; Pip fleshes it out.
+- **Stylist (–3–5k):** Stylist re-read App.css in full to locate insertion point for the todo-section block. Since App.css now exceeds 380 lines, a targeted `Read` with `offset`/`limit` at the "Reduced motion" anchor would halve the read cost for future Stylist passes.
+
+---
+
 ## Slice 3-B — Complete and reopen action items
 
 | Agent     | ~Tokens    |

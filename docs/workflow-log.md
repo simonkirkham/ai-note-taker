@@ -185,3 +185,20 @@ Add an entry at the end of each phase. Keep them short and honest.
 - **Change for next slice:**
   - Add a "Clear test data before E2E" step to the deploy workflow to run alongside (or just before) the E2E journey tests — not just after. Backlog item raised.
   - Scout should flag structural-only route params in the phase doc (e.g. `noteId` in `/complete` and `/reopen` is REST convention only, unused by the command handler).
+
+---
+
+## Slice 3-C — View open todos on the home screen
+
+- **Workflow style used:** Fully autonomous pipeline — Breaker → Pip (layer-split: Batch 1 domain/API, Batch 2 E2E/frontend) → Refactor → Stylist → Hawk → Scribe; no human checkpoints after "execute to the end."
+- **Skills exercised:** `refactor` (dead overload removal); `ui-ux-pro-max` (content-jump fix, contrast fix, aria-live); Hawk inline review (no sub-agent).
+- **What worked:**
+  - Layer-split rule worked exactly as designed — Batch 1 domain/API fit in ~28k Pip tokens, Batch 2 E2E/frontend in ~34k; no context compaction in either session.
+  - Shadow-state pattern (`Open` bool in the fold tuple) let `ActionItemReopened` restore items without reading the store — cleaner than a separate "completed" dictionary and proven by the projection spec before any DynamoDB work.
+  - `Assert.Contains` + unique GUIDs in every test (ApiIntegration, Acceptance, E2E) gave strong isolation inside a shared factory instance without any test-ordering tricks.
+- **What didn't:**
+  - `gh pr merge --squash --delete-branch` failed locally because local main had diverged from origin/main (two upstream commits were already present on origin/main via earlier squash merges). The PR merged successfully on GitHub; only the local `--ff-only` pull after merge failed. Fix: `git pull --rebase origin main`.
+  - Stylist ran inside the Pip session context rather than as a clean separate session — no context pollution observed this time, but worth watching as file count grows.
+- **Change for next slice:**
+  - Add a Scribe step to update `docs/roadmap.md` and `docs/event-model.md` after each slice so docs stay current without a dedicated docs pass.
+  - Consider a pre-Stylist `Read` with `offset`/`limit` for large CSS files rather than reading the full file — reduces Stylist token cost as App.css grows past 400 lines.
