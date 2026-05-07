@@ -108,4 +108,21 @@ public sealed class AppPage(IPage page, string baseUrl)
 
     public Task AssertTodoItemVisibleAsync(string description) =>
         Assertions.Expect(page.GetByTestId("todo-list").GetByText(description)).ToBeVisibleAsync();
+
+    public async Task CompleteTodoItemAsync(string description)
+    {
+        var responseDone = page.WaitForResponseAsync(r =>
+            r.Url.Contains("/complete") && r.Request.Method == "POST");
+        await page.GetByTestId("todo-list")
+            .Locator("li")
+            .Filter(new LocatorFilterOptions { HasText = description })
+            .GetByRole(AriaRole.Checkbox)
+            .ClickAsync();
+        await responseDone;
+    }
+
+    public Task AssertTodoItemGoneAsync(string description) =>
+        Assertions.Expect(
+            page.GetByTestId("todo-section").GetByText(description)
+        ).Not.ToBeVisibleAsync();
 }
