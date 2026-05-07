@@ -109,6 +109,27 @@ jobs:
         run: pwsh tests/E2E/bin/Release/net8.0/playwright.ps1 install --with-deps
           chromium
 
+      - name: Clear test data (pre-E2E)
+        run: |
+          python3 << 'EOF'
+          import boto3
+          dynamodb = boto3.resource('dynamodb')
+          for name in ['notetaker-events', 'notetaker-proj-notetitlelist', 'notetaker-proj-noteactions', 'notetaker-proj-todolist']:
+              table = dynamodb.Table(name)
+              keys = {k['AttributeName'] for k in table.key_schema}
+              deleted = 0
+              scan = table.scan()
+              while True:
+                  with table.batch_writer() as batch:
+                      for item in scan['Items']:
+                          batch.delete_item(Key={k: v for k, v in item.items() if k in keys})
+                  deleted += scan['Count']
+                  if 'LastEvaluatedKey' not in scan:
+                      break
+                  scan = table.scan(ExclusiveStartKey=scan['LastEvaluatedKey'])
+              print(f'Deleted {deleted} items from {name}')
+          EOF
+
       - name: E2E journey tests
         run: dotnet test tests/E2E/E2E.csproj -c Release
         env:

@@ -35,6 +35,9 @@ coverage/
 # Claude Code agent worktrees (ephemeral, WSL/Windows path conflicts)
 .claude/worktrees/
 
+# Temp PR body file (written by Write tool, passed to gh pr create --body-file)
+.pr-body.md
+
 # OS
 .DS_Store
 Thumbs.db
