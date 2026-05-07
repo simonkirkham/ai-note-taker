@@ -20,6 +20,22 @@ Approximate tokens consumed per slice, broken down by agent. Recorded by Scribe 
 
 -->
 
+## Slice 3-B — Complete and reopen action items
+
+| Agent     | ~Tokens    |
+|-----------|------------|
+| Scout     | — (brief already in phase doc) |
+| Breaker   | 18 000     |
+| Pip       | 55 000     |
+| Stylist   | —          |
+| Hawk      | 8 000      |
+| Scribe    | 5 000      |
+| **Total** | **~86 000** |
+
+**Why smaller than 3-A:** Pure extension slice — no new aggregates, no new CDK tables, no new projections. Breaker and Pip worked entirely within existing infrastructure. No Hawk fix rounds required.
+
+---
+
 ## Slice 3-A — Add action items on the note screen
 
 > **Note:** Session exhausted context and was auto-compacted. Exact per-agent counts unavailable. Figures below are estimates from the session summary.

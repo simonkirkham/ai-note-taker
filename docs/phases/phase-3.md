@@ -69,7 +69,7 @@ Scenario: Reject duplicate action item (API)
 
 ## Slice 3-B — Complete and reopen action items on the note screen
 
-**Status:** Not Started
+**Status:** Done
 
 **Value:** Users can tick action items off and undo that tick — the checkbox behaves like a real checkbox.
 
@@ -108,14 +108,14 @@ Scenario: Reject reopening an already-open item (API)
 
 **Acceptance criteria:**
 
-- [ ] *(internal)* Completing an open action item appends `ActionItemCompleted`
-- [ ] *(internal)* Completing an already-completed action item is rejected (status guard)
-- [ ] *(internal)* Reopening a completed action item appends `ActionItemReopened`
-- [ ] *(internal)* Reopening an already-open action item is rejected (status guard)
-- [ ] User ticks an action item — it is visually marked complete (checked, struck-through, or moved to a done section)
-- [ ] User unticks a completed action item — it is shown as open again
-- [ ] Completion state persists across navigation
-- [ ] E2E: open a note, add an action item, tick it complete, navigate away and back — completed state persists; untick it, navigate away and back — open state persists
+- [x] *(internal)* Completing an open action item appends `ActionItemCompleted`
+- [x] *(internal)* Completing an already-completed action item is rejected (status guard)
+- [x] *(internal)* Reopening a completed action item appends `ActionItemReopened`
+- [x] *(internal)* Reopening an already-open action item is rejected (status guard)
+- [x] User ticks an action item — it is visually marked complete (checked, struck-through, or moved to a done section)
+- [x] User unticks a completed action item — it is shown as open again
+- [x] Completion state persists across navigation
+- [x] E2E: open a note, add an action item, tick it complete, navigate away and back — completed state persists; untick it, navigate away and back — open state persists
 
 ---
 

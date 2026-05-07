@@ -168,3 +168,20 @@ Add an entry at the end of each phase. Keep them short and honest.
 - **Change for next phase:**
   - E2E tests against a real deployed environment must always generate unique test data (GUID suffix on titles, IDs, etc.) — treat it as a hard rule, not an afterthought.
   - Any new E2E page interaction that triggers a network request should use `WaitForResponseAsync` rather than `NetworkIdle`.
+
+---
+
+## Slice 3-B — Complete and reopen action items
+
+- **Workflow style used:** Full autonomous pipeline — Scout brief already in phase doc; Breaker → Pip → Refactor → Hawk → Scribe with no human checkpoints (user granted blanket authorisation at slice start).
+- **Skills exercised:** `refactor` (duplicate load pattern, inline styles); `event-modelling` (domain guard specs); `aggregate-command` pattern (extend existing aggregate).
+- **What worked:**
+  - Pure extension slice — no new aggregates, tables, or CDK changes. Token cost ~half of 3-A.
+  - `ExecuteAndAppendAsync` extraction in refactor cleanly collapsed two identical 8-line blocks. The duplication was obvious and the fix was safe.
+  - Inline styles moved to CSS in one pass; `.action-item--done` already existed in App.css, making the redundant `textDecoration` span style easy to spot.
+- **What didn't:**
+  - Main pipeline failed twice before passing. Both failures were pre-existing E2E flakiness from shared database state (duplicate note titles, stale notes). Two unnecessary re-run cycles.
+  - The "Clear test data" CI step runs *after* E2E tests. A prior failed run can leave stale notes that corrupt the next run's strict-mode locators.
+- **Change for next slice:**
+  - Add a "Clear test data before E2E" step to the deploy workflow to run alongside (or just before) the E2E journey tests — not just after. Backlog item raised.
+  - Scout should flag structural-only route params in the phase doc (e.g. `noteId` in `/complete` and `/reopen` is REST convention only, unused by the command handler).

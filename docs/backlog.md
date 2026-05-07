@@ -16,6 +16,18 @@ Each entry records what it is, why it was deferred, and what phase or slice it w
 
 ---
 
+---
+
+## Infrastructure / CI
+
+### Clear test data before E2E journey tests
+**What:** Add a "clear test data" CI step that runs *before* the E2E journey tests, not only after. Currently the post-test cleanup step prevents accumulation for future runs but does not protect the current run from stale data left by a prior failed run.
+**Why deferred:** Not blocking — only causes spurious re-runs. Low risk, low effort fix.
+**Raised in:** Slice 3-B (two CI re-run cycles caused by stale note titles and duplicate strict-mode matches)
+**Depends on:** Nothing.
+
+---
+
 ## Notes
 
 _Add entries here whenever an idea is surfaced during Scout planning but explicitly deferred. Format: name, what, why deferred, raised in, any dependencies._
