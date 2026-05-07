@@ -55,7 +55,7 @@ For a backend-only slice (explicitly justified in the brief), omit E2E and write
 - Prefer one assertion per test
 - Commit and push all failing tests to the feature branch before handing off to Pip
 
-**Hand-off:** List every test written (file, test name, what it asserts), the branch name, confirm all are failing for the right reason, and pass to Pip.
+**Hand-off:** List every test written (file, test name, what it asserts), the branch name, confirm all are failing for the right reason, include your approximate token count, and pass to Pip.
 
 ---
 
@@ -71,6 +71,12 @@ For a backend-only slice (explicitly justified in the brief), omit E2E and write
 - Confirm the tests fail before writing any code
 - Do not modify test files — if a test seems wrong, flag it to a human rather than changing it
 - Write only what is needed to make the tests pass — no extra features, no speculative code
+- **Commit in small, working increments** — each commit should represent a working unit of software:
+  - Commit backend changes (domain, API, infra) before touching the frontend
+  - Commit frontend changes separately from backend changes
+  - Within each layer, commit one working unit at a time: one endpoint, one component, one utility
+  - A commit is ready when its tests pass and nothing is half-finished
+- **Include your approximate token count in the commit message or hand-off summary** — Scribe records these per agent
 - Run the full validation sequence ([validation.md](../validation.md)) before opening a PR
 - Push the branch and open a PR against main once all tests are green and validation passes
 
@@ -82,6 +88,7 @@ For a backend-only slice (explicitly justified in the brief), omit E2E and write
 
 **Step 3 — Request review from Agent 3:**
 
+- Ensure all changes are committed — do not hand off to Hawk with uncommitted work
 - Signal Agent 3 with the PR URL and confirm the pipeline is green
 
 **Step 4 — Action review feedback:**
@@ -157,7 +164,7 @@ Commit style changes separately from functional changes with a message like `Sty
 - Do not introduce new dependencies without asking — use CSS/inline styles or whatever the project already uses
 - Do not run the design-system generation on every slice — generate once, reference MASTER.md thereafter
 
-**Done when:** Visual changes committed, all existing tests still green, handed to Hawk.
+**Done when:** Visual changes committed, all existing tests still green, approximate token count included in hand-off to Hawk.
 
 ---
 
@@ -184,7 +191,7 @@ Commit style changes separately from functional changes with a message like `Sty
 - If changes are requested, list them clearly and return to Agent 2 — do not implement them yourself
 - Flag anything that looks like a scope change to a human rather than approving or rejecting it yourself
 
-**Done when:** Verdict is posted and returned to Agent 2.
+**Done when:** Verdict is posted, approximate token count included in the verdict summary, and returned to Agent 2.
 
 ---
 
@@ -200,11 +207,31 @@ Commit style changes separately from functional changes with a message like `Sty
 - `docs/phases/phase-N.md` — mark completed acceptance criteria as `[x]`, update slice status to `Done`
 - `docs/roadmap.md` — update phase status if the phase is now complete or newly in progress
 - Any `docs/` file that describes something the slice changed (architecture, event schemas, view schemas, ADRs)
-- `docs/learnings/phase-<slice-name>.md` — workflow observations and process improvement suggestions (see `docs/agent-workflow.md` for template and rules)
+- `docs/learnings/phase-<slice-name>.md` — workflow observations, process improvement suggestions, and any observations on token usage: which agent consumed the most, why, and concrete suggestions for reducing usage on future slices (see `docs/agent-workflow.md` for template and rules)
+- `docs/token-log.md` — append a row per agent for the completed slice with approximate token counts (see format below)
+
+**Token log format** — append one section per slice:
+
+```markdown
+## Slice <id> — <name>
+
+| Agent   | ~Tokens |
+|---------|---------|
+| Scout   | 12 000  |
+| Breaker | 8 000   |
+| Pip     | 45 000  |
+| Stylist | 12 000  |
+| Hawk    | 5 000   |
+| Scribe  | 3 000   |
+| **Total** | **85 000** |
+```
+
+Token counts come from each agent's hand-off summary. If an agent did not report, note `—`. Round to the nearest 1 000.
 
 **Rules:**
 
 - Workflow-scope observations only in learnings — no technical or implementation detail
+- Token efficiency suggestions should be actionable: e.g. "Scout read 6 files that weren't needed — scope the read to X instead", not just "used too many tokens"
 - Do not change code, tests, or the event model
 - README changes must be accurate: verify env var names and table names against the actual source (launchSettings.json, docker-compose.yml, CDK stack)
 
