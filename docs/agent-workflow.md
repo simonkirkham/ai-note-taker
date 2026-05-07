@@ -35,15 +35,17 @@ Scenario: <name>
   Then  <observable outcome>
 ```
 
-One scenario per distinct behaviour (happy path + each meaningful error/edge case). For backend-only slices where there is no user-facing action, describe the system behaviour from the perspective of an API caller or operator. These scenarios are the human's primary review artefact and Breaker's direct input — Breaker translates them into C# `[Fact]` methods.
+One scenario per distinct behaviour (happy path + each meaningful error/edge case). API-level error guard scenarios (404, 409) may be written from an API caller's perspective when there is no meaningful user-facing equivalent. These scenarios are the human's primary review artefact and Breaker's direct input — Breaker translates them into C# `[Fact]` methods.
 
 **Rules:**
 - Do not write code or test files
 - Update the event model before writing any BDD scenarios — the model is the design artefact
 - The phase breakdown file is mandatory, not optional — it is the human's primary review artefact at the Scout hand-off
-- Slice the phase small: each slice should be completable in one Pip session and independently deployable where possible
+- **Every slice must be fullstack** — backend and frontend together, delivering something a user can observe. Never create a backend-only slice; if a slice has no user-visible effect it should be merged into the slice that makes it visible.
+- **Slice as thin as possible** — one user-facing capability per slice. If a slice can be split into two independently deliverable user-visible capabilities, split it.
 - Scenarios must be specific enough for Breaker to turn directly into a C# spec without further clarification
 - Flag any dependencies or risks for downstream roles
+- Any idea that surfaces during planning but is explicitly deferred must be added to `docs/backlog.md` before hand-off
 
 **Hand-off:** Post the path to the phase breakdown file and confirm the event model is updated. Human reviews the slice breakdown and acceptance criteria before Breaker begins. Scout must not proceed to Breaker until the human explicitly approves the breakdown.
 
