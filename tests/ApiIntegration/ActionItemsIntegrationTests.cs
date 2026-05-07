@@ -69,6 +69,14 @@ public sealed class ActionItemsIntegrationTests(ApiFactory factory) : IClassFixt
         Assert.Empty(body.GetProperty("actions").EnumerateArray());
     }
 
+    [Fact]
+    public async Task GetActions_NonExistentNote_Returns404()
+    {
+        var resp = await _client.GetAsync($"/notes/{Guid.NewGuid()}/actions");
+
+        Assert.Equal(HttpStatusCode.NotFound, resp.StatusCode);
+    }
+
     private async Task<string> CreateNoteAsync()
     {
         var resp = await _client.PostAsync("/notes", null);

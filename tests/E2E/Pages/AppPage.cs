@@ -57,4 +57,20 @@ public sealed class AppPage(IPage page, string baseUrl)
         Assertions.Expect(
             page.GetByTestId("note-list").GetByText(title)
         ).Not.ToBeVisibleAsync();
+
+    public async Task AddActionItemAsync(string description)
+    {
+        var input = page.GetByTestId("action-input");
+        await input.FillAsync(description);
+        var postDone = page.WaitForResponseAsync(r =>
+            r.Url.Contains("/actions") && r.Request.Method == "POST");
+        await page.GetByTestId("add-action-button").ClickAsync();
+        await postDone;
+    }
+
+    public Task AssertActionItemVisibleAsync(string description) =>
+        Assertions.Expect(page.GetByTestId("actions-list").GetByText(description)).ToBeVisibleAsync();
+
+    public Task AssertActionsEmptyAsync() =>
+        Assertions.Expect(page.GetByTestId("actions-empty")).ToBeVisibleAsync();
 }

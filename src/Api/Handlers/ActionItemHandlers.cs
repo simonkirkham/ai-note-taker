@@ -26,8 +26,11 @@ public static class ActionItemHandlers
         return Results.Created($"/notes/{noteId}/actions/{actionId}", new { actionId = actionId.Value });
     }
 
-    public static async Task<IResult> GetActions(Guid noteId, INoteActionsStore store)
+    public static async Task<IResult> GetActions(Guid noteId, INoteDetailStore noteDetailStore, INoteActionsStore store)
     {
+        var detail = await noteDetailStore.GetAsync(new NoteId(noteId));
+        if (detail is null) return Results.NotFound();
+
         var view = await store.QueryByNoteAsync(new NoteId(noteId));
         return Results.Ok(new
         {
