@@ -39,7 +39,17 @@
       "PowerShell(python3 *)",
       "PowerShell(aws *)",
       "PowerShell(ls *)",
-      "PowerShell(cat *)"
+      "PowerShell(cat *)",
+      "PowerShell(Select-Object *)",
+      "PowerShell(Select-String *)",
+      "PowerShell(Where-Object *)",
+      "PowerShell(Sort-Object *)",
+      "PowerShell(Group-Object *)",
+      "PowerShell(Measure-Object *)",
+      "PowerShell(ConvertFrom-Json *)",
+      "PowerShell(Format-Table *)",
+      "PowerShell(Out-String *)",
+      "PowerShell(Write-Output *)"
     ]
   }
 }
