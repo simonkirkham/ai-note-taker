@@ -1,4 +1,3 @@
-using Domain.Notes;
 using EventStore;
 using EventStore.Projections;
 
