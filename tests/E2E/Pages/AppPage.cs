@@ -73,4 +73,33 @@ public sealed class AppPage(IPage page, string baseUrl)
 
     public Task AssertActionsEmptyAsync() =>
         Assertions.Expect(page.GetByTestId("actions-empty")).ToBeVisibleAsync();
+
+    public async Task ToggleActionItemCompleteAsync(string description)
+    {
+        var responseDone = page.WaitForResponseAsync(r =>
+            r.Request.Method == "POST" &&
+            (r.Url.Contains("/complete") || r.Url.Contains("/reopen")));
+        await page.GetByTestId("actions-list")
+            .Locator("li")
+            .Filter(new LocatorFilterOptions { HasText = description })
+            .GetByRole(AriaRole.Checkbox)
+            .ClickAsync();
+        await responseDone;
+    }
+
+    public Task AssertActionItemCompletedAsync(string description) =>
+        Assertions.Expect(
+            page.GetByTestId("actions-list")
+                .Locator("li")
+                .Filter(new LocatorFilterOptions { HasText = description })
+                .GetByRole(AriaRole.Checkbox)
+        ).ToBeCheckedAsync();
+
+    public Task AssertActionItemOpenAsync(string description) =>
+        Assertions.Expect(
+            page.GetByTestId("actions-list")
+                .Locator("li")
+                .Filter(new LocatorFilterOptions { HasText = description })
+                .GetByRole(AriaRole.Checkbox)
+        ).Not.ToBeCheckedAsync();
 }
