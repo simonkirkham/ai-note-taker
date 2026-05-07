@@ -188,6 +188,21 @@ Add an entry at the end of each phase. Keep them short and honest.
 
 ---
 
+## Slice 3-D — Complete todos from the home screen
+
+- **Workflow style used:** Fully autonomous pipeline — no Breaker pass (criteria were in phase doc); Pip → Refactor → Stylist → Hawk → Scribe; user granted blanket authorisation at slice start with no stops for approvals.
+- **Skills exercised:** `ui-ux-pro-max` (Stylist; no changes needed — touch target noted as backlog); `refactor` (quick pass; no significant smells found in a 5-file frontend-only slice).
+- **What worked:**
+  - Zero permission prompts — `npm --prefix web` convention + `PowerShell(npm *)` allow-rule eliminated all mid-session approval gates.
+  - No new backend — the existing `/complete` endpoint and `TodoList` projection handled everything. The slice cost ~40k tokens vs 113k for 3-C.
+  - Optimistic checkbox state was clean: `toggling` set gives immediate visual feedback; `finally` block reverts on failure. Consistent with the note-screen pattern.
+- **What didn't:**
+  - Context compaction hit mid-Stylist verdict — next session re-derived context before continuing to Hawk. No work lost but ~2k overhead.
+- **Change for next slice:**
+  - Touch target accessibility (`.todo-checkbox`, `.action-checkbox` both 1rem) is a known backlog item — needs `<label>` wrapper restructure across both checkbox types. Worth a dedicated accessibility slice rather than slipping it into 3-E.
+
+---
+
 ## Slice 3-C — View open todos on the home screen
 
 - **Workflow style used:** Fully autonomous pipeline — Breaker → Pip (layer-split: Batch 1 domain/API, Batch 2 E2E/frontend) → Refactor → Stylist → Hawk → Scribe; no human checkpoints after "execute to the end."

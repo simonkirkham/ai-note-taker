@@ -173,7 +173,7 @@ Scenario: Renaming a note updates the title shown in the todo list
 
 ## Slice 3-D — Complete and reopen todos from the home screen
 
-**Status:** Not Started
+**Status:** Done
 
 **Value:** Users can tick off todos without leaving the home screen — the most common action (marking something done) requires zero navigation.
 
@@ -202,9 +202,9 @@ Scenario: Completing from home screen is reflected in the note
 
 **Acceptance criteria:**
 
-- [ ] User ticks a todo on the home screen — it disappears from the list immediately
-- [ ] The completion is reflected when the parent note is opened
-- [ ] E2E: add an action item in a note, return to home, tick the todo — it disappears; open the note — the item is shown complete
+- [x] User ticks a todo on the home screen — it disappears from the list immediately
+- [x] The completion is reflected when the parent note is opened
+- [x] E2E: add an action item in a note, return to home, tick the todo — it disappears; open the note — the item is shown complete
 
 ---
 

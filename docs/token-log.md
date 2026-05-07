@@ -27,6 +27,25 @@ If no agent ran unexpectedly high: write `None — slice ran within expected ran
 
 -->
 
+## Slice 3-D — Complete todos from the home screen
+
+| Agent     | ~Tokens    |
+|-----------|------------|
+| Breaker   | — (criteria already in phase doc) |
+| Pip       | 20 000     |
+| Refactor  | 5 000      |
+| Stylist   | 6 000      |
+| Hawk      | 4 000      |
+| Scribe    | 5 000      |
+| **Total** | **~40 000** |
+
+**Why:** No new backend — Pip only touched 5 files (TodoSection.tsx, App.css, two new test files, one extended page object). Single batch, no layer split, no Hawk change rounds.
+
+**Optimisation suggestions:**
+- **Context compaction (–2k):** Session hit the limit mid-Stylist verdict. The Stylist conclusion (no changes) was reached before compaction, but the next session spent ~2k re-orienting from the summary before continuing. Keeping Stylist + Hawk + Scribe in a single tight session after a small Pip pass avoids the cross-session overhead.
+
+---
+
 ## Slice 3-C — View open todos on the home screen
 
 | Agent     | ~Tokens    |
