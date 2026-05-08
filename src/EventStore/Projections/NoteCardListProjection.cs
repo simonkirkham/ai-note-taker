@@ -30,6 +30,8 @@ public interface INoteCardListStore
 
 public sealed class NoteCardListProjection
 {
+    public const int MaxStoredContentLength = 200;
+
     private readonly Dictionary<NoteId, NoteCardView> _cards = new();
     private readonly Dictionary<ActionId, NoteId> _noteByAction = new();
 
@@ -46,7 +48,7 @@ public sealed class NoteCardListProjection
                 _cards[e.NoteId] = c with { Title = e.NewTitle, LastModifiedAt = envelope.OccurredAt };
                 break;
             case ContentEditedV2 e when _cards.TryGetValue(e.NoteId, out var c):
-                var trimmed = e.NewContent.Length > 200 ? e.NewContent[..200] : e.NewContent;
+                var trimmed = e.NewContent.Length > MaxStoredContentLength ? e.NewContent[..MaxStoredContentLength] : e.NewContent;
                 _cards[e.NoteId] = c with { Content = trimmed, LastModifiedAt = envelope.OccurredAt };
                 break;
             case NoteDateSet e when _cards.TryGetValue(e.NoteId, out var c):
@@ -90,6 +92,8 @@ public sealed class NoteCardListProjection
                         .Where(a => a.ActionId != e.ActionId)
                         .ToList().AsReadOnly()
                 };
+                break;
+            default:
                 break;
         }
     }

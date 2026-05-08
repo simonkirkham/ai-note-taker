@@ -12,6 +12,7 @@ namespace Api.Handlers
 {
     public static class NoteHandlers
     {
+        private const int MaxPreviewLength = 120;
         public static async Task<IResult> Health(IDynamoHealthCheck dynamo)
         {
             var dh = await dynamo.CheckAsync();
@@ -95,8 +96,8 @@ namespace Api.Handlers
                 .Where(c => !c.Deleted)
                 .Select(c =>
                 {
-                    var preview = c.Content.Length > 120
-                        ? c.Content[..119] + "…"
+                    var preview = c.Content.Length > MaxPreviewLength
+                        ? c.Content[..(MaxPreviewLength - 1)] + "…"
                         : c.Content;
                     var openActions = c.ActionItems
                         .Where(a => !a.Completed)

@@ -118,7 +118,7 @@ public sealed class NoteCommandHandler(
                     card = card with { Title = e.NewTitle, LastModifiedAt = envelope.OccurredAt };
                     break;
                 case ContentEditedV2 e when card is not null:
-                    var content = e.NewContent.Length > 200 ? e.NewContent[..200] : e.NewContent;
+                    var content = e.NewContent.Length > NoteCardListProjection.MaxStoredContentLength ? e.NewContent[..NoteCardListProjection.MaxStoredContentLength] : e.NewContent;
                     card = card with { Content = content, LastModifiedAt = envelope.OccurredAt };
                     break;
                 case NoteDateSet e when card is not null:
