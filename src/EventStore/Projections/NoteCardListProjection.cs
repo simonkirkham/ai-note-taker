@@ -161,7 +161,7 @@ public sealed class DynamoDbNoteCardListStore(IAmazonDynamoDB dynamo, string tab
     private static NoteCardView ToCard(Dictionary<string, AttributeValue> row)
     {
         var actions = JsonSerializer.Deserialize<List<ActionItemDto>>(row["ActionItems"].S)!
-            .Select(d => new NoteCardActionItem(new ActionId(d.ActionId), d.Description, d.Completed))
+            .Select(d => new NoteCardActionItem(d.ActionId, d.Description, d.Completed))
             .ToList()
             .AsReadOnly();
 
@@ -180,5 +180,5 @@ public sealed class DynamoDbNoteCardListStore(IAmazonDynamoDB dynamo, string tab
             Deleted: row["Deleted"].BOOL ?? false);
     }
 
-    private record ActionItemDto(Guid ActionId, string Description, bool Completed);
+    private record ActionItemDto(ActionId ActionId, string Description, bool Completed);
 }
