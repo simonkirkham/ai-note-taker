@@ -203,4 +203,35 @@ public sealed class AppPage(IPage page, string baseUrl)
         Assert.True(actionsBox.Y > contentBox.Y,
             $"Expected actions panel (y={actionsBox.Y}) to be below content (y={contentBox.Y})");
     }
+
+    public Task AssertNoteCardVisibleAsync(string title) =>
+        Assertions.Expect(page.GetByTestId("note-cards").GetByText(title)).ToBeVisibleAsync();
+
+    public Task AssertNoteCardSnippetVisibleAsync(string cardTitle, string snippetStart) =>
+        Assertions.Expect(
+            page.GetByTestId("note-cards")
+                .Locator(".note-card")
+                .Filter(new LocatorFilterOptions { HasText = cardTitle })
+                .GetByText(snippetStart, new LocatorGetByTextOptions { Exact = false })
+        ).ToBeVisibleAsync();
+
+    public Task AssertNoteCardActionVisibleAsync(string cardTitle, string actionDescription) =>
+        Assertions.Expect(
+            page.GetByTestId("note-cards")
+                .Locator(".note-card")
+                .Filter(new LocatorFilterOptions { HasText = cardTitle })
+                .GetByText(actionDescription)
+        ).ToBeVisibleAsync();
+
+    public Task ClickEditNoteOnCardAsync(string title) =>
+        page.GetByTestId("note-cards")
+            .Locator(".note-card")
+            .Filter(new LocatorFilterOptions { HasText = title })
+            .GetByRole(AriaRole.Button, new LocatorGetByRoleOptions { Name = "Edit Note" })
+            .ClickAsync();
+
+    public Task AssertNoteCardAbsentAsync(string title) =>
+        Assertions.Expect(
+            page.GetByTestId("note-cards").GetByText(title)
+        ).Not.ToBeVisibleAsync();
 }
