@@ -8,7 +8,12 @@ namespace Api;
 
 public sealed class NoteNotFoundException(NoteId noteId) : Exception($"Note {noteId} not found.");
 
-public sealed class NoteCommandHandler(IEventStore store, INoteTitleListStore projStore, INoteDetailStore noteDetailStore, ITodoListStore todoListStore)
+public sealed class NoteCommandHandler(
+    IEventStore store,
+    INoteTitleListStore projStore,
+    INoteDetailStore noteDetailStore,
+    ITodoListStore todoListStore,
+    INoteCardListStore noteCardListStore)
 {
     private const int InitialEventVersion = 1;
 
@@ -73,6 +78,10 @@ public sealed class NoteCommandHandler(IEventStore store, INoteTitleListStore pr
             await projStore.DeleteAsync(noteId, ct).ConfigureAwait(false);
             await noteDetailStore.DeleteAsync(noteId, ct).ConfigureAwait(false);
             await todoListStore.DeleteByNoteAsync(noteId, ct).ConfigureAwait(false);
+            var existingCard = await noteCardListStore.GetByNoteAsync(noteId, ct).ConfigureAwait(false);
+            if (existingCard is not null)
+                await noteCardListStore.UpsertAsync(
+                    existingCard with { Deleted = true, LastModifiedAt = newEnvelopes[0].OccurredAt }, ct).ConfigureAwait(false);
             return;
         }
 
@@ -87,6 +96,37 @@ public sealed class NoteCommandHandler(IEventStore store, INoteTitleListStore pr
 
         if (newEnvelopes.Any(e => e.EventType == nameof(NoteRenamed)))
             await todoListStore.UpdateNoteTitleAsync(noteId, item.Title, ct).ConfigureAwait(false);
+
+        var card = await noteCardListStore.GetByNoteAsync(noteId, ct).ConfigureAwait(false);
+        await noteCardListStore.UpsertAsync(
+            ApplyNoteEventsToCard(card, noteId, newEnvelopes), ct).ConfigureAwait(false);
+    }
+
+    private static NoteCardView ApplyNoteEventsToCard(NoteCardView? existing, NoteId noteId, List<EventEnvelope> envelopes)
+    {
+        var card = existing;
+        foreach (var envelope in envelopes)
+        {
+            switch (EventDeserializer.Deserialize(envelope))
+            {
+                case NoteCreated:
+                    card = new NoteCardView(noteId, string.Empty, string.Empty,
+                        Array.Empty<NoteCardActionItem>(), null,
+                        envelope.OccurredAt, envelope.OccurredAt, false);
+                    break;
+                case NoteRenamed e when card is not null:
+                    card = card with { Title = e.NewTitle, LastModifiedAt = envelope.OccurredAt };
+                    break;
+                case ContentEditedV2 e when card is not null:
+                    var content = e.NewContent.Length > 200 ? e.NewContent[..200] : e.NewContent;
+                    card = card with { Content = content, LastModifiedAt = envelope.OccurredAt };
+                    break;
+                case NoteDateSet e when card is not null:
+                    card = card with { Date = e.Date, LastModifiedAt = envelope.OccurredAt };
+                    break;
+            }
+        }
+        return card!;
     }
 
     private static Note Rebuild(IReadOnlyList<EventEnvelope> history)

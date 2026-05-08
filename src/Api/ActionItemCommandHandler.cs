@@ -14,7 +14,8 @@ public sealed class ActionItemCommandHandler(
     IEventStore store,
     INoteDetailStore noteDetailStore,
     INoteActionsStore noteActionsStore,
-    ITodoListStore todoListStore)
+    ITodoListStore todoListStore,
+    INoteCardListStore noteCardListStore)
 {
     public async Task<ActionId> HandleAsync(AddActionItem cmd, CancellationToken ct = default)
     {
@@ -37,6 +38,15 @@ public sealed class ActionItemCommandHandler(
                 await noteActionsStore.UpsertAsync(cmd.NoteId, action, ct).ConfigureAwait(false);
                 await todoListStore.PutAsync(
                     new TodoItem(e.ActionId, e.NoteId, noteDetail.Title, e.Description, envelope.OccurredAt), ct).ConfigureAwait(false);
+
+                var card = await noteCardListStore.GetByNoteAsync(cmd.NoteId, ct).ConfigureAwait(false);
+                if (card is { Deleted: false })
+                    await noteCardListStore.UpsertAsync(card with
+                    {
+                        ActionItems = card.ActionItems
+                            .Append(new NoteCardActionItem(e.ActionId, e.Description, false))
+                            .ToList().AsReadOnly()
+                    }, ct).ConfigureAwait(false);
             }
         }
 
@@ -52,6 +62,15 @@ public sealed class ActionItemCommandHandler(
                 await noteActionsStore.UpsertAsync(addedEvent.NoteId,
                     new NoteAction(e.ActionId, addedEvent.Description, true, addedEnvelope.OccurredAt, e.CompletedAt), ct).ConfigureAwait(false);
                 await todoListStore.DeleteAsync(cmd.ActionId, ct).ConfigureAwait(false);
+
+                var card = await noteCardListStore.GetByNoteAsync(addedEvent.NoteId, ct).ConfigureAwait(false);
+                if (card is { Deleted: false })
+                    await noteCardListStore.UpsertAsync(card with
+                    {
+                        ActionItems = card.ActionItems
+                            .Select(a => a.ActionId == e.ActionId ? a with { Completed = true } : a)
+                            .ToList().AsReadOnly()
+                    }, ct).ConfigureAwait(false);
             }
     }
 
@@ -67,6 +86,15 @@ public sealed class ActionItemCommandHandler(
                 await todoListStore.PutAsync(
                     new TodoItem(cmd.ActionId, addedEvent.NoteId, noteDetail?.Title ?? string.Empty,
                         addedEvent.Description, addedEnvelope.OccurredAt), ct).ConfigureAwait(false);
+
+                var card = await noteCardListStore.GetByNoteAsync(addedEvent.NoteId, ct).ConfigureAwait(false);
+                if (card is { Deleted: false })
+                    await noteCardListStore.UpsertAsync(card with
+                    {
+                        ActionItems = card.ActionItems
+                            .Select(a => a.ActionId == cmd.ActionId ? a with { Completed = false } : a)
+                            .ToList().AsReadOnly()
+                    }, ct).ConfigureAwait(false);
             }
     }
 
@@ -78,6 +106,15 @@ public sealed class ActionItemCommandHandler(
             {
                 await noteActionsStore.DeleteAsync(addedEvent.NoteId, cmd.ActionId, ct).ConfigureAwait(false);
                 await todoListStore.DeleteAsync(cmd.ActionId, ct).ConfigureAwait(false);
+
+                var card = await noteCardListStore.GetByNoteAsync(addedEvent.NoteId, ct).ConfigureAwait(false);
+                if (card is { Deleted: false })
+                    await noteCardListStore.UpsertAsync(card with
+                    {
+                        ActionItems = card.ActionItems
+                            .Where(a => a.ActionId != cmd.ActionId)
+                            .ToList().AsReadOnly()
+                    }, ct).ConfigureAwait(false);
             }
     }
 

@@ -104,7 +104,7 @@ public class InfraAssertionsTests
         }));
     }
 
-    [Fact(Skip = "Pip: add notetaker-proj-notecardlist table to CDK")]
+    [Fact]
     public void NoteCardListTable_HasRetainDeletionPolicy()
     {
         _template.HasResource("AWS::DynamoDB::Table", Match.ObjectLike(new Dictionary<string, object>
@@ -117,7 +117,7 @@ public class InfraAssertionsTests
         }));
     }
 
-    [Fact(Skip = "Pip: add PROJ_NOTECARDLIST_TABLE_NAME env var to CDK")]
+    [Fact]
     public void Lambda_HasNoteCardListTableEnvVar()
     {
         _template.HasResourceProperties("AWS::Lambda::Function", Match.ObjectLike(new Dictionary<string, object>

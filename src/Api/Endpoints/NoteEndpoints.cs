@@ -22,6 +22,7 @@ namespace Api.Endpoints
             app.MapPost("/notes/{noteId}/actions/{actionId}/reopen", ActionItemHandlers.ReopenActionItem);
             app.MapDelete("/notes/{noteId}/actions/{actionId}", ActionItemHandlers.DeleteActionItem);
             app.MapGet("/notes/{noteId}/actions", ActionItemHandlers.GetActions);
+            app.MapGet("/notes/cards", NoteHandlers.GetNoteCards);
             app.MapGet("/todos", TodoHandlers.GetTodos);
             app.MapPost("/admin/projections/rebuild", AdminHandlers.RebuildProjections);
             

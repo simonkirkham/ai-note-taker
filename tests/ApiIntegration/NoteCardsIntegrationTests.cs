@@ -1,4 +1,4 @@
-using System.Net;
+﻿using System.Net;
 using System.Net.Http.Json;
 using System.Text;
 using System.Text.Json;
@@ -9,7 +9,7 @@ public sealed class NoteCardsIntegrationTests(ApiFactory factory) : IClassFixtur
 {
     private readonly HttpClient _client = factory.CreateClient();
 
-    [Fact(Skip = "Pip: implement GET /notes/cards")]
+    [Fact]
     public async Task GetNoteCards_ReturnsEmptyWhenNoNotes()
     {
         var resp = await _client.GetAsync("/notes/cards");
@@ -18,7 +18,7 @@ public sealed class NoteCardsIntegrationTests(ApiFactory factory) : IClassFixtur
         Assert.Equal(0, body.GetProperty("cards").GetArrayLength());
     }
 
-    [Fact(Skip = "Pip: implement GET /notes/cards")]
+    [Fact]
     public async Task GetNoteCards_ReturnsCardAfterNoteCreated()
     {
         var noteId = await CreateNoteAsync();
@@ -31,7 +31,7 @@ public sealed class NoteCardsIntegrationTests(ApiFactory factory) : IClassFixtur
         Assert.Contains(noteId, ids);
     }
 
-    [Fact(Skip = "Pip: implement GET /notes/cards")]
+    [Fact]
     public async Task GetNoteCards_CardShowsTitle()
     {
         var noteId = await CreateNoteAsync();
@@ -41,7 +41,7 @@ public sealed class NoteCardsIntegrationTests(ApiFactory factory) : IClassFixtur
         Assert.Equal("Budget 2027", card.GetProperty("title").GetString());
     }
 
-    [Fact(Skip = "Pip: implement GET /notes/cards")]
+    [Fact]
     public async Task GetNoteCards_CardShowsDate()
     {
         var noteId = await CreateNoteAsync();
@@ -51,7 +51,7 @@ public sealed class NoteCardsIntegrationTests(ApiFactory factory) : IClassFixtur
         Assert.Equal("2026-04-21", card.GetProperty("date").GetString());
     }
 
-    [Fact(Skip = "Pip: implement GET /notes/cards")]
+    [Fact]
     public async Task GetNoteCards_CardContentPreviewTruncatedAt120Chars()
     {
         var noteId = await CreateNoteAsync();
@@ -64,7 +64,7 @@ public sealed class NoteCardsIntegrationTests(ApiFactory factory) : IClassFixtur
         Assert.EndsWith("…", preview);
     }
 
-    [Fact(Skip = "Pip: implement GET /notes/cards")]
+    [Fact]
     public async Task GetNoteCards_DeletedNoteNotReturned()
     {
         var noteId = await CreateNoteAsync();
@@ -77,7 +77,7 @@ public sealed class NoteCardsIntegrationTests(ApiFactory factory) : IClassFixtur
         Assert.DoesNotContain(noteId, ids);
     }
 
-    [Fact(Skip = "Pip: implement GET /notes/cards")]
+    [Fact]
     public async Task GetNoteCards_OnlyOpenActionsInCard()
     {
         var noteId = await CreateNoteAsync();
@@ -91,7 +91,7 @@ public sealed class NoteCardsIntegrationTests(ApiFactory factory) : IClassFixtur
         Assert.Equal("Open task", openActions[0].GetProperty("description").GetString());
     }
 
-    [Fact(Skip = "Pip: implement GET /notes/cards")]
+    [Fact]
     public async Task GetNoteCards_OrderedNewestFirst()
     {
         var firstNoteId = await CreateNoteAsync();
@@ -135,3 +135,4 @@ public sealed class NoteCardsIntegrationTests(ApiFactory factory) : IClassFixtur
             .First(c => c.GetProperty("noteId").GetString() == noteId);
     }
 }
+

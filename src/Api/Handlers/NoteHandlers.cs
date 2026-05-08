@@ -87,5 +87,31 @@ namespace Api.Handlers
             catch (InvalidOperationException) { return Results.NotFound(); }
             return Results.NoContent();
         }
+
+        public static async Task<IResult> GetNoteCards(INoteCardListStore store)
+        {
+            var all = await store.QueryAllAsync();
+            var cards = all
+                .Where(c => !c.Deleted)
+                .Select(c =>
+                {
+                    var preview = c.Content.Length > 120
+                        ? c.Content[..119] + "…"
+                        : c.Content;
+                    var openActions = c.ActionItems
+                        .Where(a => !a.Completed)
+                        .Select(a => new { actionId = a.ActionId.Value, description = a.Description });
+                    return new
+                    {
+                        noteId         = c.NoteId.Value,
+                        title          = c.Title,
+                        contentPreview = preview,
+                        date           = c.Date,
+                        openActions,
+                        createdAt      = c.CreatedAt
+                    };
+                });
+            return Results.Ok(new { cards });
+        }
     }
 }

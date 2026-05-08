@@ -13,11 +13,8 @@ internal sealed class InMemoryNoteCardListStore : INoteCardListStore
         return Task.CompletedTask;
     }
 
-    public Task DeleteAsync(NoteId noteId, CancellationToken ct = default)
-    {
-        _cards.Remove(noteId);
-        return Task.CompletedTask;
-    }
+    public Task<NoteCardView?> GetByNoteAsync(NoteId noteId, CancellationToken ct = default) =>
+        Task.FromResult(_cards.TryGetValue(noteId, out var card) ? card : null);
 
     public Task<IReadOnlyList<NoteCardView>> QueryAllAsync(CancellationToken ct = default) =>
         Task.FromResult<IReadOnlyList<NoteCardView>>(

@@ -1,4 +1,4 @@
-using System.Text.Json;
+﻿using System.Text.Json;
 using Domain.ActionItems;
 using Domain.Notes;
 using EventStore;
@@ -11,15 +11,15 @@ public sealed class NoteCardListProjectionSpec
     static readonly NoteId NoteId1 = new(Guid.Parse("00000000-0000-0000-0000-000000000001"));
     static readonly ActionId ActionId1 = new(Guid.Parse("00000000-0000-0000-0000-000000000010"));
 
-    static EventEnvelope NoteEnv(long seq, string type, string payload, DateTimeOffset? at = null) =>
-        new($"note#{NoteId1.Value}", seq, type, 1, at ?? DateTimeOffset.UtcNow, payload,
+    static EventEnvelope NoteEnv(long seq, string type, string payload, DateTimeOffset? at = null, int version = 1) =>
+        new($"note#{NoteId1.Value}", seq, type, version, at ?? DateTimeOffset.UtcNow, payload,
             new EventMetadata(Guid.NewGuid(), null, null, null));
 
     static EventEnvelope ActionEnv(ActionId actionId, long seq, string type, string payload) =>
         new(actionId.ToStreamId(), seq, type, 1, DateTimeOffset.UtcNow, payload,
             new EventMetadata(Guid.NewGuid(), null, null, null));
 
-    [Fact(Skip = "Pip: implement NoteCardListProjection")]
+    [Fact]
     public void NoteCreated_adds_card_with_empty_title_and_content()
     {
         var projection = new NoteCardListProjection();
@@ -35,7 +35,7 @@ public sealed class NoteCardListProjectionSpec
         Assert.False(cards[0].Deleted);
     }
 
-    [Fact(Skip = "Pip: implement NoteCardListProjection")]
+    [Fact]
     public void NoteRenamed_updates_title()
     {
         var projection = new NoteCardListProjection();
@@ -48,20 +48,20 @@ public sealed class NoteCardListProjectionSpec
         Assert.Equal("Bill 1:1", projection.GetAll()[0].Title);
     }
 
-    [Fact(Skip = "Pip: implement NoteCardListProjection")]
+    [Fact]
     public void ContentEditedV2_updates_content()
     {
         var projection = new NoteCardListProjection();
         projection.Handle(NoteEnv(1, nameof(NoteCreated),
             JsonSerializer.Serialize(new NoteCreated(NoteId1))));
 
-        projection.Handle(NoteEnv(2, nameof(ContentEditedV2),
-            JsonSerializer.Serialize(new ContentEditedV2(NoteId1, "Meeting notes", 13))));
+        projection.Handle(NoteEnv(2, nameof(ContentEdited),
+            JsonSerializer.Serialize(new ContentEditedV2(NoteId1, "Meeting notes", 13)), version: 2));
 
         Assert.Equal("Meeting notes", projection.GetAll()[0].Content);
     }
 
-    [Fact(Skip = "Pip: implement NoteCardListProjection")]
+    [Fact]
     public void ContentEditedV2_truncates_content_at_200_chars()
     {
         var longContent = new string('x', 250);
@@ -69,13 +69,13 @@ public sealed class NoteCardListProjectionSpec
         projection.Handle(NoteEnv(1, nameof(NoteCreated),
             JsonSerializer.Serialize(new NoteCreated(NoteId1))));
 
-        projection.Handle(NoteEnv(2, nameof(ContentEditedV2),
-            JsonSerializer.Serialize(new ContentEditedV2(NoteId1, longContent, 250))));
+        projection.Handle(NoteEnv(2, nameof(ContentEdited),
+            JsonSerializer.Serialize(new ContentEditedV2(NoteId1, longContent, 250)), version: 2));
 
         Assert.Equal(200, projection.GetAll()[0].Content.Length);
     }
 
-    [Fact(Skip = "Pip: implement NoteCardListProjection")]
+    [Fact]
     public void NoteDateSet_updates_date()
     {
         var date = new DateOnly(2026, 4, 21);
@@ -89,7 +89,7 @@ public sealed class NoteCardListProjectionSpec
         Assert.Equal(date, projection.GetAll()[0].Date);
     }
 
-    [Fact(Skip = "Pip: implement NoteCardListProjection")]
+    [Fact]
     public void NoteDeleted_marks_card_deleted()
     {
         var projection = new NoteCardListProjection();
@@ -102,7 +102,7 @@ public sealed class NoteCardListProjectionSpec
         Assert.True(projection.GetAll()[0].Deleted);
     }
 
-    [Fact(Skip = "Pip: implement NoteCardListProjection")]
+    [Fact]
     public void ActionItemAdded_appends_action_item_as_open()
     {
         var projection = new NoteCardListProjection();
@@ -117,7 +117,7 @@ public sealed class NoteCardListProjectionSpec
         Assert.False(action.Completed);
     }
 
-    [Fact(Skip = "Pip: implement NoteCardListProjection")]
+    [Fact]
     public void ActionItemCompleted_marks_action_completed()
     {
         var projection = new NoteCardListProjection();
@@ -132,7 +132,7 @@ public sealed class NoteCardListProjectionSpec
         Assert.True(projection.GetAll()[0].ActionItems[0].Completed);
     }
 
-    [Fact(Skip = "Pip: implement NoteCardListProjection")]
+    [Fact]
     public void ActionItemReopened_marks_action_open()
     {
         var projection = new NoteCardListProjection();
@@ -149,7 +149,7 @@ public sealed class NoteCardListProjectionSpec
         Assert.False(projection.GetAll()[0].ActionItems[0].Completed);
     }
 
-    [Fact(Skip = "Pip: implement NoteCardListProjection")]
+    [Fact]
     public void ActionItemDeleted_removes_action_item()
     {
         var projection = new NoteCardListProjection();
@@ -164,7 +164,7 @@ public sealed class NoteCardListProjectionSpec
         Assert.Empty(projection.GetAll()[0].ActionItems);
     }
 
-    [Fact(Skip = "Pip: implement NoteCardListProjection")]
+    [Fact]
     public void GetAll_orders_by_createdAt_descending()
     {
         var noteId2 = new NoteId(Guid.Parse("00000000-0000-0000-0000-000000000002"));
@@ -182,3 +182,4 @@ public sealed class NoteCardListProjectionSpec
         Assert.Equal(NoteId1, cards[1].NoteId);
     }
 }
+

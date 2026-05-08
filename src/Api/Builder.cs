@@ -5,7 +5,7 @@ using EventStore.Projections;
 
 public class Builder
 {
-    internal static WebApplication BuildApp(string[] args, string eventTableName, string projTableName, string noteDetailTableName, string noteActionsTableName, string todoListTableName)
+    internal static WebApplication BuildApp(string[] args, string eventTableName, string projTableName, string noteDetailTableName, string noteActionsTableName, string todoListTableName, string noteCardListTableName)
     {
         var builder = WebApplication.CreateBuilder(args);
         builder.Services.AddCors();
@@ -49,6 +49,8 @@ public class Builder
             new DynamoDbNoteActionsStore(sp.GetRequiredService<IAmazonDynamoDB>(), noteActionsTableName));
         builder.Services.AddSingleton<ITodoListStore>(sp =>
             new DynamoDbTodoListStore(sp.GetRequiredService<IAmazonDynamoDB>(), todoListTableName));
+        builder.Services.AddSingleton<INoteCardListStore>(sp =>
+            new DynamoDbNoteCardListStore(sp.GetRequiredService<IAmazonDynamoDB>(), noteCardListTableName));
         builder.Services.AddSingleton<NoteCommandHandler>();
         builder.Services.AddSingleton<ActionItemCommandHandler>();
         builder.Services.AddSingleton<ProjectionRebuildHandler>();
