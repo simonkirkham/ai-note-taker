@@ -1,5 +1,5 @@
 ---
-name: Slice 4-E — Note summary cards
+name: Phase 4-E — Note summary cards
 type: project
 date: 2026-05-08
 ---
