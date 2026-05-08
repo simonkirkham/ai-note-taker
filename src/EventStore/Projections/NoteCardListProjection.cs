@@ -62,7 +62,8 @@ public sealed class NoteCardListProjection
                 _cards[e.NoteId] = c with
                 {
                     ActionItems = c.ActionItems.Append(new NoteCardActionItem(e.ActionId, e.Description, false))
-                        .ToList().AsReadOnly()
+                        .ToList().AsReadOnly(),
+                    LastModifiedAt = envelope.OccurredAt
                 };
                 break;
             case ActionItemCompleted e when _noteByAction.TryGetValue(e.ActionId, out var noteId)
@@ -71,7 +72,8 @@ public sealed class NoteCardListProjection
                 {
                     ActionItems = cc.ActionItems
                         .Select(a => a.ActionId == e.ActionId ? a with { Completed = true } : a)
-                        .ToList().AsReadOnly()
+                        .ToList().AsReadOnly(),
+                    LastModifiedAt = envelope.OccurredAt
                 };
                 break;
             case ActionItemReopened e when _noteByAction.TryGetValue(e.ActionId, out var noteId)
@@ -80,7 +82,8 @@ public sealed class NoteCardListProjection
                 {
                     ActionItems = rc.ActionItems
                         .Select(a => a.ActionId == e.ActionId ? a with { Completed = false } : a)
-                        .ToList().AsReadOnly()
+                        .ToList().AsReadOnly(),
+                    LastModifiedAt = envelope.OccurredAt
                 };
                 break;
             case ActionItemDeleted e when _noteByAction.TryGetValue(e.ActionId, out var noteId)
@@ -90,7 +93,8 @@ public sealed class NoteCardListProjection
                 {
                     ActionItems = dc.ActionItems
                         .Where(a => a.ActionId != e.ActionId)
-                        .ToList().AsReadOnly()
+                        .ToList().AsReadOnly(),
+                    LastModifiedAt = envelope.OccurredAt
                 };
                 break;
             default:

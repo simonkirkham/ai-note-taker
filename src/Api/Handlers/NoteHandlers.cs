@@ -89,9 +89,9 @@ namespace Api.Handlers
             return Results.NoContent();
         }
 
-        public static async Task<IResult> GetNoteCards(INoteCardListStore store)
+        public static async Task<IResult> GetNoteCards(INoteCardListStore store, CancellationToken ct)
         {
-            var all = await store.QueryAllAsync();
+            var all = await store.QueryAllAsync(ct).ConfigureAwait(false);
             var cards = all
                 .Where(c => !c.Deleted)
                 .Select(c =>

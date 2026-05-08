@@ -39,7 +39,8 @@ public sealed class ActionItemCommandHandler(
                 await todoListStore.PutAsync(
                     new TodoItem(e.ActionId, e.NoteId, noteDetail.Title, e.Description, envelope.OccurredAt), ct).ConfigureAwait(false);
                 await UpdateCardActionItemsAsync(cmd.NoteId,
-                    items => items.Append(new NoteCardActionItem(e.ActionId, e.Description, false)).ToList().AsReadOnly(), ct).ConfigureAwait(false);
+                    items => items.Append(new NoteCardActionItem(e.ActionId, e.Description, false)).ToList().AsReadOnly(),
+                    envelope.OccurredAt, ct).ConfigureAwait(false);
             }
         }
 
@@ -48,22 +49,23 @@ public sealed class ActionItemCommandHandler(
 
     public async Task HandleAsync(CompleteActionItem cmd, CancellationToken ct = default)
     {
-        var (addedEvent, addedEnvelope, newEvents) = await ExecuteAndAppendAsync(cmd.ActionId, cmd, ct);
-        foreach (var domainEvent in newEvents)
+        var (addedEvent, addedEnvelope, newEvents, newEnvelopes) = await ExecuteAndAppendAsync(cmd.ActionId, cmd, ct);
+        foreach (var (domainEvent, envelope) in newEvents.Zip(newEnvelopes))
             if (domainEvent is ActionItemCompleted e)
             {
                 await noteActionsStore.UpsertAsync(addedEvent.NoteId,
                     new NoteAction(e.ActionId, addedEvent.Description, true, addedEnvelope.OccurredAt, e.CompletedAt), ct).ConfigureAwait(false);
                 await todoListStore.DeleteAsync(cmd.ActionId, ct).ConfigureAwait(false);
                 await UpdateCardActionItemsAsync(addedEvent.NoteId,
-                    items => items.Select(a => a.ActionId == e.ActionId ? a with { Completed = true } : a).ToList().AsReadOnly(), ct).ConfigureAwait(false);
+                    items => items.Select(a => a.ActionId == e.ActionId ? a with { Completed = true } : a).ToList().AsReadOnly(),
+                    envelope.OccurredAt, ct).ConfigureAwait(false);
             }
     }
 
     public async Task HandleAsync(ReopenActionItem cmd, CancellationToken ct = default)
     {
-        var (addedEvent, addedEnvelope, newEvents) = await ExecuteAndAppendAsync(cmd.ActionId, cmd, ct);
-        foreach (var domainEvent in newEvents)
+        var (addedEvent, addedEnvelope, newEvents, newEnvelopes) = await ExecuteAndAppendAsync(cmd.ActionId, cmd, ct);
+        foreach (var (domainEvent, envelope) in newEvents.Zip(newEnvelopes))
             if (domainEvent is ActionItemReopened)
             {
                 await noteActionsStore.UpsertAsync(addedEvent.NoteId,
@@ -73,33 +75,37 @@ public sealed class ActionItemCommandHandler(
                     new TodoItem(cmd.ActionId, addedEvent.NoteId, noteDetail?.Title ?? string.Empty,
                         addedEvent.Description, addedEnvelope.OccurredAt), ct).ConfigureAwait(false);
                 await UpdateCardActionItemsAsync(addedEvent.NoteId,
-                    items => items.Select(a => a.ActionId == cmd.ActionId ? a with { Completed = false } : a).ToList().AsReadOnly(), ct).ConfigureAwait(false);
+                    items => items.Select(a => a.ActionId == cmd.ActionId ? a with { Completed = false } : a).ToList().AsReadOnly(),
+                    envelope.OccurredAt, ct).ConfigureAwait(false);
             }
     }
 
     public async Task HandleAsync(DeleteActionItem cmd, CancellationToken ct = default)
     {
-        var (addedEvent, _, newEvents) = await ExecuteAndAppendAsync(cmd.ActionId, cmd, ct);
-        foreach (var domainEvent in newEvents)
+        var (addedEvent, _, newEvents, newEnvelopes) = await ExecuteAndAppendAsync(cmd.ActionId, cmd, ct);
+        foreach (var (domainEvent, envelope) in newEvents.Zip(newEnvelopes))
             if (domainEvent is ActionItemDeleted)
             {
                 await noteActionsStore.DeleteAsync(addedEvent.NoteId, cmd.ActionId, ct).ConfigureAwait(false);
                 await todoListStore.DeleteAsync(cmd.ActionId, ct).ConfigureAwait(false);
                 await UpdateCardActionItemsAsync(addedEvent.NoteId,
-                    items => items.Where(a => a.ActionId != cmd.ActionId).ToList().AsReadOnly(), ct).ConfigureAwait(false);
+                    items => items.Where(a => a.ActionId != cmd.ActionId).ToList().AsReadOnly(),
+                    envelope.OccurredAt, ct).ConfigureAwait(false);
             }
     }
 
     async Task UpdateCardActionItemsAsync(NoteId noteId,
         Func<IReadOnlyList<NoteCardActionItem>, IReadOnlyList<NoteCardActionItem>> update,
+        DateTimeOffset occurredAt,
         CancellationToken ct)
     {
         var card = await noteCardListStore.GetByNoteAsync(noteId, ct).ConfigureAwait(false);
         if (card is { Deleted: false })
-            await noteCardListStore.UpsertAsync(card with { ActionItems = update(card.ActionItems) }, ct).ConfigureAwait(false);
+            await noteCardListStore.UpsertAsync(
+                card with { ActionItems = update(card.ActionItems), LastModifiedAt = occurredAt }, ct).ConfigureAwait(false);
     }
 
-    async Task<(ActionItemAdded AddedEvent, EventEnvelope AddedEnvelope, IReadOnlyList<IDomainEvent> NewEvents)>
+    async Task<(ActionItemAdded AddedEvent, EventEnvelope AddedEnvelope, IReadOnlyList<IDomainEvent> NewEvents, List<EventEnvelope> NewEnvelopes)>
         ExecuteAndAppendAsync(ActionId actionId, ICommand command, CancellationToken ct)
     {
         var streamId = actionId.ToStreamId();
@@ -113,7 +119,7 @@ public sealed class ActionItemCommandHandler(
         var envelopes = ToEnvelopes(streamId, newEvents);
         await store.AppendAsync(streamId, history.Count, envelopes, ct).ConfigureAwait(false);
 
-        return (addedEvent, addedEnvelope, newEvents);
+        return (addedEvent, addedEnvelope, newEvents, envelopes);
     }
 
     static ActionItem RebuildAggregate(IReadOnlyList<EventEnvelope> history)

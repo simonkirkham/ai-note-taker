@@ -124,6 +124,8 @@ public sealed class NoteCommandHandler(
                 case NoteDateSet e when card is not null:
                     card = card with { Date = e.Date, LastModifiedAt = envelope.OccurredAt };
                     break;
+                default:
+                    break;
             }
         }
         return card!;
