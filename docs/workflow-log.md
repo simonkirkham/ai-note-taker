@@ -276,6 +276,24 @@ Add an entry at the end of each phase. Keep them short and honest.
 
 ---
 
+## Slice 4-E — Note summary cards on home screen
+
+- **Workflow style used:** Fully autonomous pipeline — Breaker (layer-split) → Pip Batch 1 (projection + API + CDK) → Pip Batch 2 (frontend + E2E) → Refactor → Stylist → Hawk (changes requested) → Pip fixes → squash-merge PR #22 → Scribe.
+- **Skills exercised:** `refactor` (4 smells fixed: content truncation constant, duplicated card update, magic literals, switch default); `ui-ux-pro-max` (Stylist: cursor-pointer on card, touch target on Edit button).
+- **What worked:**
+  - Layer-split worked cleanly — Batch 1 (projection, API, CDK, tests) and Batch 2 (frontend, E2E) were independent; no ordering dependency between them.
+  - Read-modify-write pattern for cross-aggregate card updates: each command handler reads the stored card, applies only the relevant delta, then upserts — no full re-fold, no extra projections.
+  - `NoteCardListProjection.MaxStoredContentLength` constant extracted and referenced from both the projection and the command handler — single source of truth for the 200-char storage cap.
+- **What didn't:**
+  - Hawk caught three systematic omissions missed by Refactor and specs: `LastModifiedAt` not updated on all four action item event types; `CancellationToken` missing from `GetNoteCards`; `default: break` missing from `ApplyNoteEventsToCard` switch. All three required a post-review fix commit.
+  - Branch was created before the 4-C/4-D Scribe landed on main — required `git rebase main` before PR could open with correct docs. Should rebase before Stylist, not after.
+- **Change for next slice:**
+  - Add to Refactor checklist: every `with { ... }` on a projection record must include `LastModifiedAt` if the record has that field and the event is a mutation.
+  - Add to Refactor checklist: grep for all `switch (EventDeserializer.Deserialize(...))` — each must have `default: break`.
+  - Rebase feature branch onto main before running Stylist (not after).
+
+---
+
 ## Slice 3-C — View open todos on the home screen
 
 - **Workflow style used:** Fully autonomous pipeline — Breaker → Pip (layer-split: Batch 1 domain/API, Batch 2 E2E/frontend) → Refactor → Stylist → Hawk → Scribe; no human checkpoints after "execute to the end."

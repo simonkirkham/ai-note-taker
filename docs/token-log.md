@@ -27,6 +27,27 @@ If no agent ran unexpectedly high: write `None — slice ran within expected ran
 
 -->
 
+## Slice 4-E — Note summary cards on home screen
+
+| Agent     | ~Tokens      |
+|-----------|--------------|
+| Breaker   | 8 000        |
+| Pip B1    | 35 000       |
+| Pip B2    | 18 000       |
+| Refactor  | 4 000        |
+| Stylist   | 3 000        |
+| Hawk      | 6 000        |
+| Pip fixes | 5 000        |
+| Scribe    | 3 000        |
+| **Total** | **~82 000**  |
+
+**Why:** Largest slice in Phase 4 — new projection (9 event handlers), DynamoDB store, CDK table, API endpoint, integration tests, CDK assertions, frontend component, E2E tests. Hawk found three must-fix issues requiring a post-review Pip pass.
+
+**Optimisation suggestions:**
+- **Hawk (–3 000):** Three of Hawk's findings (`LastModifiedAt`, `CancellationToken`, `default: break`) could have been caught by adding them to the Refactor checklist — one extra pass during Refactor saves a full Hawk→Pip→push cycle.
+
+---
+
 ## Slice 4-D — Persistent note list sidebar
 
 | Agent     | ~Tokens     |

@@ -264,7 +264,7 @@ Scenario: Sidebar is hidden by default on narrow screens
 
 ## Slice 4-E — Note summary cards on home screen
 
-**Status:** Not Started
+**Status:** Done
 
 **Value:** The Notes section on the home screen shows rich summary cards — title, meeting date, content snippet, open action items, and an "Edit Note" button — exactly as in the wireframe. Users can assess any note without opening it.
 
@@ -345,13 +345,13 @@ Scenario: Card disappears when note is deleted
 
 **Acceptance criteria:**
 
-- [ ] *(internal)* `NoteCardList` projection folds `NoteCreated`, `NoteRenamed`, `ContentEditedV2`, `NoteDateSet`, `NoteDeleted`, `ActionItemAdded`, `ActionItemCompleted`, `ActionItemReopened`, `ActionItemDeleted` correctly
-- [ ] `GET /notes/cards` returns title, date, content snippet (≤120 chars), open action descriptions, for each active note
-- [ ] Home screen renders a card per note (not a plain list)
-- [ ] Each card shows: title, formatted date (or blank), content snippet, open action items, "Edit Note" button
-- [ ] "Edit Note" navigates to the note screen for that note
-- [ ] Cards are ordered newest-first
-- [ ] E2E: create a note with title, content, and an action item — the home screen card shows all three
+- [x] *(internal)* `NoteCardList` projection folds `NoteCreated`, `NoteRenamed`, `ContentEditedV2`, `NoteDateSet`, `NoteDeleted`, `ActionItemAdded`, `ActionItemCompleted`, `ActionItemReopened`, `ActionItemDeleted` correctly
+- [x] `GET /notes/cards` returns title, date, content snippet (≤120 chars), open action descriptions, for each active note
+- [x] Home screen renders a card per note (not a plain list)
+- [x] Each card shows: title, formatted date (or blank), content snippet, open action items, "Edit Note" button
+- [x] "Edit Note" navigates to the note screen for that note
+- [x] Cards are ordered newest-first
+- [x] E2E: create a note with title, content, and an action item — the home screen card shows all three
 
 ---
 
