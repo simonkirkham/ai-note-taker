@@ -195,11 +195,11 @@ Scenario: No "Add" button is visible
 
 **Acceptance criteria:**
 
-- [ ] Pressing Enter in a non-empty action input submits the item and clears the field
-- [ ] Blurring a non-empty action input submits the item
-- [ ] Blurring an empty action input does nothing
-- [ ] The "Add" button is removed from the UI
-- [ ] E2E: open a note, type an action item, press Enter — item appears; type another, click elsewhere — item appears
+- [x] Pressing Enter in a non-empty action input submits the item and clears the field
+- [x] Blurring a non-empty action input submits the item
+- [x] Blurring an empty action input does nothing
+- [x] The "Add" button is removed from the UI
+- [x] E2E: open a note, type an action item, press Enter — item appears; type another, click elsewhere — item appears
 
 ---
 
@@ -253,12 +253,12 @@ Scenario: Sidebar is hidden by default on narrow screens
 
 **Acceptance criteria:**
 
-- [ ] Left sidebar renders note names on both the home screen and note screen
-- [ ] Clicking a sidebar entry navigates to that note from any screen
-- [ ] Active note is visually highlighted in the sidebar when on the note screen
-- [ ] Creating a new note adds it to the sidebar immediately
-- [ ] On viewports <640px: sidebar is hidden with a reveal toggle; no horizontal scroll
-- [ ] E2E: home screen shows note names in sidebar; clicking one opens the note; note screen sidebar still visible
+- [x] Left sidebar renders note names on both the home screen and note screen
+- [x] Clicking a sidebar entry navigates to that note from any screen
+- [x] Active note is visually highlighted in the sidebar when on the note screen
+- [x] Creating a new note adds it to the sidebar immediately
+- [x] On viewports <640px: sidebar is hidden with a reveal toggle; no horizontal scroll
+- [x] E2E: home screen shows note names in sidebar; clicking one opens the note; note screen sidebar still visible
 
 ---
 
