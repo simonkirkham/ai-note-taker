@@ -12,7 +12,7 @@ export default function NoteCard({
     : null;
 
   return (
-    <article className="note-card">
+    <article className="note-card" onClick={() => onEdit(card.noteId)}>
       <div className="note-card-header">
         <h3 className="note-card-title">{card.title || <em>Untitled</em>}</h3>
         {displayDate && <span className="note-card-date">{displayDate}</span>}
@@ -31,7 +31,7 @@ export default function NoteCard({
       )}
       <button
         className="note-card-edit-button"
-        onClick={() => onEdit(card.noteId)}
+        onClick={(e) => { e.stopPropagation(); onEdit(card.noteId); }}
       >
         Edit Note
       </button>
