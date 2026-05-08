@@ -13,6 +13,7 @@ namespace Api.Endpoints
             app.MapPost("/notes", NoteHandlers.CreateNote);
             app.MapPatch("/notes/{noteId}/title", NoteHandlers.RenameNote);
             app.MapGet("/notes", NoteHandlers.ListNotes);
+            app.MapGet("/notes/cards", NoteHandlers.GetNoteCards);
             app.MapPut("/notes/{noteId}/content", NoteHandlers.EditContent);
             app.MapGet("/notes/{noteId}", NoteHandlers.GetNote);
             app.MapDelete("/notes/{noteId}", NoteHandlers.DeleteNote);

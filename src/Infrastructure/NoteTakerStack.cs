@@ -59,6 +59,14 @@ public class NoteTakerStack : Stack
             ProjectionType = ProjectionType.ALL
         });
 
+        var noteCardListTable = new Table(this, "ProjNoteCardListTable", new TableProps
+        {
+            TableName = "notetaker-proj-notecardlist",
+            PartitionKey = new Amazon.CDK.AWS.DynamoDB.Attribute { Name = "PK", Type = AttributeType.STRING },
+            BillingMode = BillingMode.PAY_PER_REQUEST,
+            RemovalPolicy = RemovalPolicy.RETAIN
+        });
+
         // ── API Lambda ───────────────────────────────────────────────────
         var lambdaAssetPath = (string?)this.Node.TryGetContext("lambdaAssetPath")
             ?? "src/Api/bin/Release/net8.0/publish";
@@ -74,7 +82,8 @@ public class NoteTakerStack : Stack
                 ["PROJ_NOTETITLELIST_TABLE_NAME"] = projTable.TableName,
                 ["PROJ_NOTEDETAIL_TABLE_NAME"]   = noteDetailTable.TableName,
                 ["PROJ_NOTEACTIONS_TABLE_NAME"]  = noteActionsTable.TableName,
-                ["PROJ_TODOLIST_TABLE_NAME"]     = todoListTable.TableName
+                ["PROJ_TODOLIST_TABLE_NAME"]     = todoListTable.TableName,
+                ["PROJ_NOTECARDLIST_TABLE_NAME"] = noteCardListTable.TableName
             }
         });
 
@@ -84,6 +93,7 @@ public class NoteTakerStack : Stack
         noteDetailTable.GrantReadWriteData(apiFunction);
         noteActionsTable.GrantReadWriteData(apiFunction);
         todoListTable.GrantReadWriteData(apiFunction);
+        noteCardListTable.GrantReadWriteData(apiFunction);
 
         // ── API Gateway ──────────────────────────────────────────────────
         // CORS is handled by ASP.NET Core UseCors middleware in the Lambda, not at

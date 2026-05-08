@@ -27,6 +27,44 @@ If no agent ran unexpectedly high: write `None — slice ran within expected ran
 
 -->
 
+## Slice 4-D — Persistent note list sidebar
+
+| Agent     | ~Tokens     |
+|-----------|-------------|
+| Breaker   | 3 000       |
+| Pip       | 8 000       |
+| Refactor  | 1 000       |
+| Stylist   | 1 000       |
+| Hawk      | 3 000       |
+| Scribe    | 2 000       |
+| **Total** | **~18 000** |
+
+**Why:** Pure frontend slice — new Sidebar component, App.tsx restructure, ListView.tsx simplification, CSS additions. No backend or CDK changes. Backward-compat testid placement avoided any page object rewrite.
+
+**Optimisation suggestions:**
+None — slice ran within expected range.
+
+---
+
+## Slice 4-C — Implicit action item add
+
+| Agent     | ~Tokens     |
+|-----------|-------------|
+| Breaker   | 2 000       |
+| Pip       | 5 000       |
+| Refactor  | 1 000       |
+| Stylist   | 1 000       |
+| Hawk      | 3 000       |
+| Scribe    | 2 000       |
+| **Total** | **~14 000** |
+
+**Why:** Minimal frontend change — one component edited (ActionsSection.tsx), page object updated. Double-submit guard was the only non-obvious logic. Lightest slice in Phase 4.
+
+**Optimisation suggestions:**
+None — slice ran within expected range.
+
+---
+
 ## Slice 4-B — Note screen layout redesign
 
 | Agent     | ~Tokens    |

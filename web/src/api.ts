@@ -109,6 +109,27 @@ export async function deleteAction(noteId: string, actionId: string): Promise<vo
   if (!res.ok) throw new Error(`DELETE /notes/${noteId}/actions/${actionId} failed: ${res.status}`);
 }
 
+export interface NoteCardAction {
+  actionId: string;
+  description: string;
+}
+
+export interface NoteCard {
+  noteId: string;
+  title: string;
+  contentPreview: string;
+  date: string | null;
+  openActions: NoteCardAction[];
+  createdAt: string;
+}
+
+export async function getNoteCards(): Promise<NoteCard[]> {
+  const res = await fetch(`${base}/notes/cards`);
+  if (!res.ok) throw new Error(`GET /notes/cards failed: ${res.status}`);
+  const body: { cards: NoteCard[] } = await res.json();
+  return body.cards;
+}
+
 export interface TodoItem {
   actionId: string;
   noteId: string;

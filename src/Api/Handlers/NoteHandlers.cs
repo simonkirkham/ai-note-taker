@@ -12,6 +12,7 @@ namespace Api.Handlers
 {
     public static class NoteHandlers
     {
+        private const int MaxPreviewLength = 120;
         public static async Task<IResult> Health(IDynamoHealthCheck dynamo)
         {
             var dh = await dynamo.CheckAsync();
@@ -86,6 +87,32 @@ namespace Api.Handlers
             catch (NoteNotFoundException) { return Results.NotFound(); }
             catch (InvalidOperationException) { return Results.NotFound(); }
             return Results.NoContent();
+        }
+
+        public static async Task<IResult> GetNoteCards(INoteCardListStore store, CancellationToken ct)
+        {
+            var all = await store.QueryAllAsync(ct).ConfigureAwait(false);
+            var cards = all
+                .Where(c => !c.Deleted)
+                .Select(c =>
+                {
+                    var preview = c.Content.Length > MaxPreviewLength
+                        ? c.Content[..(MaxPreviewLength - 1)] + "…"
+                        : c.Content;
+                    var openActions = c.ActionItems
+                        .Where(a => !a.Completed)
+                        .Select(a => new { actionId = a.ActionId.Value, description = a.Description });
+                    return new
+                    {
+                        noteId         = c.NoteId.Value,
+                        title          = c.Title,
+                        contentPreview = preview,
+                        date           = c.Date,
+                        openActions,
+                        createdAt      = c.CreatedAt
+                    };
+                });
+            return Results.Ok(new { cards });
         }
     }
 }
