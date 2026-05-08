@@ -44,6 +44,7 @@ export default function App() {
         creating={creating}
         createError={createError}
         onNewNote={handleNewNote}
+        onEditNote={(noteId) => setView({ kind: "note", noteId })}
       />
     );
 

@@ -1,3 +1,6 @@
+import { useEffect, useState } from "react";
+import { NoteCard as NoteCardData, getNoteCards } from "../api";
+import NoteCard from "./NoteCard";
 import TodoSection from "./TodoSection";
 
 export default function ListView({
@@ -5,12 +8,20 @@ export default function ListView({
   creating,
   createError,
   onNewNote,
+  onEditNote,
 }: {
   loading: boolean;
   creating: boolean;
   createError: string | null;
   onNewNote: () => void;
+  onEditNote: (noteId: string) => void;
 }) {
+  const [cards, setCards] = useState<NoteCardData[]>([]);
+
+  useEffect(() => {
+    getNoteCards().then(setCards).catch(() => {});
+  }, []);
+
   return (
     <main className="container">
       <div className="header">
@@ -31,6 +42,16 @@ export default function ListView({
       )}
       {loading && <p>Loading…</p>}
       <TodoSection />
+      {cards.length > 0 && (
+        <section className="note-cards-section">
+          <h2 className="note-cards-heading">Notes</h2>
+          <div className="note-cards" data-testid="note-cards">
+            {cards.map((card) => (
+              <NoteCard key={card.noteId} card={card} onEdit={onEditNote} />
+            ))}
+          </div>
+        </section>
+      )}
     </main>
   );
 }

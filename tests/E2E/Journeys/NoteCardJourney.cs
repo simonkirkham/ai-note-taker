@@ -26,7 +26,7 @@ public sealed class NoteCardJourney(BrowserFixture browser) : IAsyncLifetime
         await _context.DisposeAsync();
     }
 
-    [Fact(Skip = "Pip Batch 2: implement NoteCard frontend")]
+    [Fact]
     public async Task Home_screen_shows_card_for_each_note()
     {
         var title = $"Card {Guid.NewGuid():N}"[..22];
@@ -38,7 +38,7 @@ public sealed class NoteCardJourney(BrowserFixture browser) : IAsyncLifetime
         await _app.AssertNoteCardVisibleAsync(title);
     }
 
-    [Fact(Skip = "Pip Batch 2: implement NoteCard frontend")]
+    [Fact]
     public async Task Card_shows_content_snippet()
     {
         var title = $"Card {Guid.NewGuid():N}"[..22];
@@ -52,7 +52,7 @@ public sealed class NoteCardJourney(BrowserFixture browser) : IAsyncLifetime
         await _app.AssertNoteCardSnippetVisibleAsync(title, content[..20]);
     }
 
-    [Fact(Skip = "Pip Batch 2: implement NoteCard frontend")]
+    [Fact]
     public async Task Card_shows_open_action_items()
     {
         var title = $"Card {Guid.NewGuid():N}"[..22];
@@ -65,7 +65,7 @@ public sealed class NoteCardJourney(BrowserFixture browser) : IAsyncLifetime
         await _app.AssertNoteCardActionVisibleAsync(title, "Send recap email");
     }
 
-    [Fact(Skip = "Pip Batch 2: implement NoteCard frontend")]
+    [Fact]
     public async Task EditNote_button_opens_the_note()
     {
         var title = $"Card {Guid.NewGuid():N}"[..22];
@@ -79,7 +79,7 @@ public sealed class NoteCardJourney(BrowserFixture browser) : IAsyncLifetime
         await _app.AssertContentAreaVisibleAsync();
     }
 
-    [Fact(Skip = "Pip Batch 2: implement NoteCard frontend")]
+    [Fact]
     public async Task Deleted_note_card_disappears_from_home_screen()
     {
         var title = $"Card {Guid.NewGuid():N}"[..22];
