@@ -155,7 +155,7 @@ Scenario: All existing note functionality still works
 
 ## Slice 4-C — Implicit action item add
 
-**Status:** Not Started
+**Status:** Done
 
 **Value:** Action items are captured the moment thought meets keyboard — press Enter and the item is captured immediately. No "Add" button to reach for. This matches the wireframe (no button visible in the actions box) and removes friction from the most common interaction.
 
@@ -205,7 +205,7 @@ Scenario: No "Add" button is visible
 
 ## Slice 4-D — Persistent note list sidebar
 
-**Status:** Not Started
+**Status:** Done
 
 **Value:** A left sidebar showing all note names is visible on both the home screen and the note screen, matching the wireframe. Users can jump between notes without going back to a list view.
 

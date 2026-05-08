@@ -188,6 +188,32 @@ Add an entry at the end of each phase. Keep them short and honest.
 
 ---
 
+## Slice 4-D — Persistent note list sidebar
+
+- **Workflow style used:** Fully autonomous pipeline — Breaker → Pip → Refactor → Stylist → Hawk (PR review on #21) → squash-merge → Scribe.
+- **Skills exercised:** `ui-ux-pro-max` (Stylist, inline — no Python search needed); `refactor` (clean pass, no fixes required).
+- **What worked:**
+  - Placing `data-testid="note-list"` on the sidebar `<ul>` preserved all existing `AppPage` locator methods with zero modification — backward compat from a single testid placement decision.
+  - Prop-driven open state (`open` boolean + `sidebar--open` class) is more explicit and robust than CSS sibling combinators; switching early avoided a hard-to-debug DOM-order coupling.
+  - Feature branch + PR convention followed correctly; Hawk reviewed GitHub PR #21 diff.
+- **What didn't:** Nothing significant.
+- **Change for next slice:** none.
+
+---
+
+## Slice 4-C — Implicit action item add
+
+- **Workflow style used:** Fully autonomous pipeline — Breaker → Pip → Refactor → Stylist → Hawk (PR review on #20) → squash-merge → Scribe.
+- **Skills exercised:** `refactor` (clean pass); `ui-ux-pro-max` (Stylist; no changes needed).
+- **What worked:**
+  - Double-submit guard (`if (!description || submitting)`) identified and added during Pip — the Enter→blur race condition is non-obvious but the synchronous state clear (`setNewAction("")`) eliminates it without async coordination.
+  - Breaker wrote the updated page object helper (`AddActionItemByBlurAsync`, updated `AddActionItemAsync`) before Pip touched implementation — spec-first discipline caught the page object impact before it could be forgotten.
+  - Zero permission prompts — all commands matched allow-list entries.
+- **What didn't:** Nothing significant.
+- **Change for next slice:** none.
+
+---
+
 ## Slice 4-B — Note screen layout redesign
 
 - **Workflow style used:** Fully autonomous pipeline — Breaker → Pip → Refactor → Stylist → Hawk (PR review) → squash-merge → Scribe. First slice to use the feature branch convention correctly: `slice/4-b-note-screen-layout` branched from main, PR #18 opened, Hawk reviewed the PR diff, squash-merged after approval.
