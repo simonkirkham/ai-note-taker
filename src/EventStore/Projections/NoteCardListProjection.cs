@@ -147,7 +147,8 @@ public sealed class DynamoDbNoteCardListStore(IAmazonDynamoDB dynamo, string tab
             }
         }, ct).ConfigureAwait(false);
 
-        return response.Item.Count == 0 ? null : ToCard(response.Item);
+        if (!response.IsItemSet) return null;
+        return ToCard(response.Item);
     }
 
     public async Task<IReadOnlyList<NoteCardView>> QueryAllAsync(CancellationToken ct = default)
