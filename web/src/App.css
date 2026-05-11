@@ -33,7 +33,7 @@ body {
 /* ── App shell (sidebar + main) ────────────────────────────────── */
 .app-layout {
   display: grid;
-  grid-template-columns: 220px 1fr;
+  grid-template-columns: 220px auto 1fr;
   min-height: 100vh;
 }
 
@@ -48,6 +48,26 @@ body {
   flex-direction: column;
   padding: 1.25rem 0.75rem;
   gap: 0.5rem;
+}
+
+.sidebar-home-button {
+  background: none;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  padding: 0.4rem 0.75rem;
+  font-family: inherit;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  text-align: left;
+  transition: background var(--transition), color var(--transition), border-color var(--transition);
+}
+
+.sidebar-home-button:hover {
+  background: var(--color-primary-bg);
+  color: var(--color-primary);
+  border-color: var(--color-primary);
 }
 
 .sidebar-new-button {
@@ -677,6 +697,15 @@ body {
   box-shadow: 0 2px 8px rgba(13, 148, 136, 0.1);
 }
 
+.note-card[draggable="true"] {
+  cursor: grab;
+}
+
+.note-card[draggable="true"]:active {
+  cursor: grabbing;
+  opacity: 0.75;
+}
+
 .note-card-header {
   display: flex;
   align-items: flex-start;
@@ -757,6 +786,584 @@ body {
 .note-card-edit-button:focus-visible {
   outline: 2px solid var(--color-primary);
   outline-offset: 2px;
+}
+
+/* ── Tags section (note view right panel) ───────────────────────── */
+.tags-section {
+  margin-bottom: 1.5rem;
+  padding-bottom: 1.25rem;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.tags-heading {
+  margin: 0 0 0.75rem;
+  font-size: 1rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--color-text-muted);
+}
+
+.tags-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.375rem;
+  margin-bottom: 0.625rem;
+  min-height: 0;
+}
+
+.tag-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  background: var(--color-primary-bg);
+  color: var(--color-primary);
+  border: 1px solid var(--color-border);
+  border-radius: 9999px;
+  padding: 0.2rem 0.6rem 0.2rem 0.7rem;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  line-height: 1.4;
+}
+
+.tag-pill-remove {
+  background: none;
+  border: none;
+  padding: 0;
+  font-size: 0.9rem;
+  line-height: 1;
+  color: var(--color-primary);
+  cursor: pointer;
+  opacity: 0.6;
+  transition: opacity var(--transition);
+  display: flex;
+  align-items: center;
+}
+
+.tag-pill-remove:hover {
+  opacity: 1;
+}
+
+.tags-input {
+  display: block;
+  width: 100%;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  padding: 0.35rem 0.65rem;
+  font-family: inherit;
+  font-size: 0.875rem;
+  color: var(--color-text);
+  background: var(--color-surface);
+  outline: none;
+  transition: border-color var(--transition);
+}
+
+.tags-input:focus {
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 3px rgba(13, 148, 136, 0.12);
+}
+
+.tags-input::placeholder {
+  color: var(--color-text-muted);
+}
+
+/* ── Note card tags ──────────────────────────────────────────────── */
+.note-card-tags {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.375rem;
+  margin-top: 0.125rem;
+}
+
+.note-card-tags-label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--color-text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  flex-shrink: 0;
+}
+
+.note-card-tag-pill {
+  display: inline-block;
+  background: var(--color-primary-bg);
+  color: var(--color-primary);
+  border: 1px solid var(--color-border);
+  border-radius: 9999px;
+  padding: 0.15rem 0.55rem;
+  font-size: 0.75rem;
+  font-weight: 500;
+  line-height: 1.4;
+}
+
+/* ── Tag filter bar (home screen) ───────────────────────────────── */
+.tag-filter {
+  margin-top: 1.5rem;
+  padding: 0.875rem 1rem;
+  background: var(--color-surface);
+  border: 1.5px solid var(--color-border);
+  border-radius: 8px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.tag-filter-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.375rem;
+  flex: 1;
+}
+
+.tag-filter-pill {
+  background: none;
+  border: 1.5px solid var(--color-border);
+  border-radius: 9999px;
+  padding: 0.25rem 0.75rem;
+  font-family: inherit;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  transition: background var(--transition), color var(--transition), border-color var(--transition);
+}
+
+.tag-filter-pill:hover {
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+}
+
+.tag-filter-pill--active {
+  background: var(--color-primary);
+  border-color: var(--color-primary);
+  color: #fff;
+}
+
+.tag-filter-pill--active:hover {
+  background: var(--color-primary-dark);
+  border-color: var(--color-primary-dark);
+  color: #fff;
+}
+
+.tag-filter-controls {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+}
+
+.tag-filter-mode-toggle {
+  background: none;
+  border: 1.5px solid var(--color-primary);
+  border-radius: var(--radius);
+  padding: 0.2rem 0.6rem;
+  font-family: inherit;
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--color-primary);
+  cursor: pointer;
+  letter-spacing: 0.05em;
+  transition: background var(--transition), color var(--transition);
+}
+
+.tag-filter-mode-toggle:hover {
+  background: var(--color-primary);
+  color: #fff;
+}
+
+.tag-filter-clear {
+  background: none;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  padding: 0.2rem 0.6rem;
+  font-family: inherit;
+  font-size: 0.8125rem;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  transition: color var(--transition), border-color var(--transition);
+}
+
+.tag-filter-clear:hover {
+  color: var(--color-error);
+  border-color: var(--color-error);
+}
+
+/* ── Folder breadcrumb in ListView ──────────────────────────────── */
+.header-title-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.folder-breadcrumb-back {
+  background: none;
+  border: none;
+  padding: 0;
+  font-family: inherit;
+  font-size: 0.8125rem;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  text-align: left;
+  transition: color var(--transition);
+}
+
+.folder-breadcrumb-back:hover {
+  color: var(--color-primary);
+}
+
+/* ── Sidebar folders section ─────────────────────────────────────── */
+.sidebar-folders {
+  margin-top: 1.25rem;
+  border-top: 1px solid var(--color-border);
+  padding-top: 0.75rem;
+}
+
+.sidebar-folders-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 0.1rem 0.375rem;
+}
+
+.sidebar-folders-label {
+  font-size: 0.6875rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-text-muted);
+}
+
+.sidebar-unfiled {
+  display: block;
+  width: 100%;
+  background: none;
+  border: none;
+  border-radius: var(--radius);
+  padding: 0.3rem 0.5rem;
+  font-family: inherit;
+  font-size: 0.8125rem;
+  color: var(--color-text-muted);
+  text-align: left;
+  cursor: pointer;
+  margin-bottom: 0.25rem;
+  transition: background var(--transition), color var(--transition);
+}
+
+.sidebar-unfiled:hover {
+  background: var(--color-primary-bg);
+  color: var(--color-primary);
+}
+
+.sidebar-unfiled--active {
+  background: var(--color-primary-bg);
+  color: var(--color-primary);
+  font-weight: 600;
+}
+
+.sidebar-unfiled--drag-over {
+  outline: 2px solid var(--color-primary);
+  outline-offset: -2px;
+  background: var(--color-primary-bg);
+  color: var(--color-primary);
+}
+
+.folder-new-btn {
+  background: none;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  width: 1.375rem;
+  height: 1.375rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.875rem;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  line-height: 1;
+  transition: color var(--transition), border-color var(--transition);
+}
+
+.folder-new-btn:hover {
+  color: var(--color-primary);
+  border-color: var(--color-primary);
+}
+
+.folder-new-input {
+  display: block;
+  width: 100%;
+  border: 1px solid var(--color-primary);
+  border-radius: var(--radius);
+  padding: 0.3rem 0.5rem;
+  font-family: inherit;
+  font-size: 0.8125rem;
+  color: var(--color-text);
+  background: var(--color-surface);
+  outline: none;
+  margin-top: 0.375rem;
+  box-shadow: 0 0 0 3px rgba(13, 148, 136, 0.12);
+}
+
+.folder-new-input::placeholder {
+  color: var(--color-text-muted);
+}
+
+/* ── Folder tree ─────────────────────────────────────────────────── */
+.folder-tree,
+.folder-tree-children {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.folder-tree-children {
+  padding-left: 0.875rem;
+}
+
+.folder-tree-node {
+  display: flex;
+  flex-direction: column;
+}
+
+.folder-tree-node-row {
+  display: flex;
+  align-items: center;
+  gap: 0.125rem;
+  border-radius: var(--radius);
+  padding: 0.125rem 0;
+  transition: background var(--transition);
+}
+
+.folder-tree-node-row:hover {
+  background: var(--color-primary-bg);
+}
+
+.folder-tree-node-row--active {
+  background: var(--color-primary-bg);
+}
+
+.folder-tree-node-row--drag-over {
+  background: var(--color-primary-bg);
+  outline: 2px solid var(--color-primary);
+  outline-offset: -2px;
+  border-radius: var(--radius);
+}
+
+.folder-tree-expand {
+  background: none;
+  border: none;
+  padding: 0;
+  width: 1.125rem;
+  flex-shrink: 0;
+  font-size: 0.65rem;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  text-align: center;
+  line-height: 1.6;
+}
+
+.folder-tree-name {
+  flex: 1;
+  background: none;
+  border: none;
+  padding: 0.2rem 0.25rem;
+  font-family: inherit;
+  font-size: 0.8125rem;
+  color: var(--color-text);
+  text-align: left;
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+  transition: color var(--transition);
+}
+
+.folder-tree-node-row--active .folder-tree-name {
+  color: var(--color-primary);
+  font-weight: 600;
+}
+
+.folder-tree-rename-input {
+  flex: 1;
+  border: 1px solid var(--color-primary);
+  border-radius: var(--radius);
+  padding: 0.15rem 0.35rem;
+  font-family: inherit;
+  font-size: 0.8125rem;
+  color: var(--color-text);
+  background: var(--color-surface);
+  outline: none;
+  min-width: 0;
+}
+
+.folder-tree-actions {
+  display: none;
+  align-items: center;
+  gap: 0.125rem;
+  flex-shrink: 0;
+}
+
+.folder-tree-node-row:hover .folder-tree-actions,
+.folder-tree-node-row--active .folder-tree-actions {
+  display: flex;
+}
+
+.folder-tree-action-btn {
+  background: none;
+  border: none;
+  padding: 0 0.2rem;
+  font-size: 0.75rem;
+  line-height: 1.6;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  border-radius: 3px;
+  transition: color var(--transition), background var(--transition);
+}
+
+.folder-tree-action-btn:hover {
+  color: var(--color-primary);
+  background: rgba(13, 148, 136, 0.1);
+}
+
+.folder-tree-action-btn--delete:hover {
+  color: var(--color-error);
+  background: rgba(220, 38, 38, 0.08);
+}
+
+/* ── Folder preview panel (slide-out next to sidebar) ───────────── */
+.folder-preview-panel {
+  width: 0;
+  overflow: hidden;
+  background: var(--color-surface);
+  border-right: 1px solid var(--color-border);
+  display: flex;
+  flex-direction: column;
+  transition: width 0.2s ease;
+}
+
+.folder-preview-panel--open {
+  width: 220px;
+}
+
+.folder-preview-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1rem 0.875rem 0.75rem;
+  border-bottom: 1px solid var(--color-border);
+  gap: 0.5rem;
+  min-width: 220px;
+}
+
+.folder-preview-title {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--color-text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.folder-preview-close {
+  background: none;
+  border: none;
+  font-size: 1.1rem;
+  line-height: 1;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  padding: 0 0.125rem;
+  flex-shrink: 0;
+  transition: color var(--transition);
+}
+
+.folder-preview-close:hover {
+  color: var(--color-error);
+}
+
+.folder-preview-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  overflow-y: auto;
+  flex: 1;
+  min-width: 220px;
+}
+
+.folder-preview-empty {
+  padding: 1rem 0.875rem;
+  font-size: 0.8125rem;
+  color: var(--color-text-muted);
+  white-space: nowrap;
+}
+
+.folder-preview-item {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  padding: 0.625rem 0.875rem;
+  border-bottom: 1px solid var(--color-border);
+  cursor: grab;
+  transition: background var(--transition);
+}
+
+.folder-preview-item:active {
+  cursor: grabbing;
+  opacity: 0.75;
+}
+
+.folder-preview-item:hover {
+  background: var(--color-primary-bg);
+}
+
+.folder-preview-note-title {
+  font-size: 0.875rem;
+  color: var(--color-text);
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.folder-preview-note-date {
+  font-size: 0.75rem;
+  color: var(--color-text-muted);
+}
+
+/* ── Folder picker (note view right panel) ──────────────────────── */
+.folder-picker-section {
+  margin-bottom: 1.5rem;
+  padding-bottom: 1.25rem;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.folder-picker-heading {
+  margin: 0 0 0.75rem;
+  font-size: 1rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--color-text-muted);
+}
+
+.folder-picker-select {
+  display: block;
+  width: 100%;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  padding: 0.35rem 0.65rem;
+  font-family: inherit;
+  font-size: 0.875rem;
+  color: var(--color-text);
+  background: var(--color-surface);
+  outline: none;
+  cursor: pointer;
+  transition: border-color var(--transition);
+}
+
+.folder-picker-select:focus {
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 3px rgba(13, 148, 136, 0.12);
 }
 
 /* ── Reduced motion ────────────────────────────────────────────── */

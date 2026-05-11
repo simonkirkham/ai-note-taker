@@ -11,8 +11,18 @@ export default function NoteCard({
     ? new Date(card.date + "T00:00:00").toLocaleDateString("en-GB")
     : null;
 
+  const tags = card.tags ?? [];
+
   return (
-    <article className="note-card" onClick={() => onEdit(card.noteId)}>
+    <article
+      className="note-card"
+      draggable
+      onDragStart={(e) => {
+        e.dataTransfer.effectAllowed = "move";
+        e.dataTransfer.setData("text/plain", card.noteId);
+      }}
+      onClick={() => onEdit(card.noteId)}
+    >
       <div className="note-card-header">
         <h3 className="note-card-title">{card.title || <em>Untitled</em>}</h3>
         {displayDate && <span className="note-card-date">{displayDate}</span>}
@@ -28,6 +38,14 @@ export default function NoteCard({
             </li>
           ))}
         </ul>
+      )}
+      {tags.length > 0 && (
+        <div className="note-card-tags">
+          <span className="note-card-tags-label">Tags</span>
+          {tags.map((tag) => (
+            <span key={tag} className="note-card-tag-pill">{tag}</span>
+          ))}
+        </div>
       )}
       <button
         className="note-card-edit-button"

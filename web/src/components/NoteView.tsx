@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
-import { editContent, getNoteDetail, setNoteDate } from "../api";
+import { editContent, getNoteDetail, setNoteDate, tagNote, untagNote } from "../api";
 import ActionsSection from "./ActionsSection";
+import TagsSection from "./TagsSection";
 
 export default function NoteView({
   noteId,
@@ -8,27 +9,35 @@ export default function NoteView({
   onRename,
   onBack,
   onDelete,
+  onDateSet,
 }: {
   noteId: string;
   initialTitle: string;
   onRename: (noteId: string, title: string) => void;
   onBack: () => void;
   onDelete: (noteId: string) => Promise<void>;
+  onDateSet: (noteId: string, date: string) => void;
 }) {
   const [title, setTitle] = useState(initialTitle);
   const [content, setContent] = useState("");
   const [date, setDate] = useState("");
+  const [tags, setTags] = useState<string[]>([]);
   const [loadingDetail, setLoadingDetail] = useState(true);
   const [notFound, setNotFound] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
+    const today = new Date().toISOString().slice(0, 10);
     let cancelled = false;
     getNoteDetail(noteId)
       .then((detail) => {
         if (!cancelled) {
           setContent(detail.content);
-          setDate(detail.date ?? "");
+          const loadedDate = detail.date ?? today;
+          setDate(loadedDate);
+          onDateSet(noteId, loadedDate);
+          if (!detail.date) setNoteDate(noteId, loadedDate).catch(() => {});
+          setTags(detail.tags ?? []);
           setLoadingDetail(false);
         }
       })
@@ -45,11 +54,24 @@ export default function NoteView({
     if (!loadingDetail && !notFound) inputRef.current?.focus();
   }, [loadingDetail, notFound]);
 
+  function handleAddTags(raw: string) {
+    const tokens = raw.trim().split(/\s+/).filter(Boolean);
+    const newTokens = tokens.filter((t) => !tags.includes(t));
+    if (newTokens.length === 0) return;
+    setTags((prev) => [...prev, ...newTokens]);
+    tagNote(noteId, newTokens.join(" ")).catch(() => {});
+  }
+
+  function handleRemoveTag(tag: string) {
+    setTags((prev) => prev.filter((t) => t !== tag));
+    untagNote(noteId, tag).catch(() => {});
+  }
+
   if (notFound) {
     return (
       <main className="container">
         <button data-testid="back-button" onClick={onBack} className="back-button">
-          ← Back
+          ← Save
         </button>
         <p data-testid="note-not-found" className="empty">Note not found.</p>
       </main>
@@ -60,7 +82,7 @@ export default function NoteView({
     <main className="container">
       <div className="note-header">
         <button data-testid="back-button" onClick={onBack} className="back-button">
-          ← Back
+          ← Save
         </button>
         <div className="note-header-right">
           <div className="note-date-wrapper">
@@ -69,7 +91,7 @@ export default function NoteView({
               data-testid="note-date-input"
               value={date}
               onChange={(e) => setDate(e.target.value)}
-              onBlur={() => setNoteDate(noteId, date || null)}
+              onBlur={() => { setNoteDate(noteId, date || null); if (date) onDateSet(noteId, date); }}
               className="date-input"
               aria-label="Meeting date"
             />
@@ -114,6 +136,7 @@ export default function NoteView({
           )}
         </div>
         <div className="note-right-panel">
+          <TagsSection tags={tags} onAdd={handleAddTags} onRemove={handleRemoveTag} />
           <ActionsSection noteId={noteId} />
         </div>
       </div>

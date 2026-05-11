@@ -294,6 +294,26 @@ Add an entry at the end of each phase. Keep them short and honest.
 
 ---
 
+## Phase 5 — Tags and Folders (prototype)
+
+- **Workflow style used:** Conversational prototype — user drove feature requests one at a time; agent iterated on the live frontend. No pipeline roles, no specs. Full local stack (DynamoDB Local + .NET API + Vite) running throughout.
+- **Skills exercised:** None loaded formally. `prototype` skill retroactively defined from this session's patterns.
+- **What worked:**
+  - Tight feedback loop: user saw each change in the browser within seconds; direction corrections cost one message rather than a wasted spec + impl cycle.
+  - `localStorage` persistence for folders and `noteFolderMap` meant prototype state survived refresh without any backend work — let us validate folder navigation, drag-and-drop assignment, and slide-out panel UX independently of the event model.
+  - HTML5 Drag and Drop API with `relatedTarget` containment check (`e.currentTarget.contains(e.relatedTarget)`) gave reliable drag-over highlights without library overhead.
+  - Keeping API calls as fire-and-forget stubs (`.catch(() => {})`) meant the prototype ran cleanly whether the backend was healthy or not.
+- **What didn't:**
+  - Vite file watching doesn't trigger in WSL2 for Windows-side edits — required adding `usePolling: true` to `vite.config.ts`. Burned several minutes diagnosing before the fix was obvious.
+  - `FolderPreviewPanel` initially fetched `getNoteCards()` from the API, which doesn't know about local `noteFolderMap` — panel always showed empty. Lesson: in a prototype, never mix API-fetched data with locally-tracked state for filtering. Pass everything down from the shared state owner.
+  - Iterating on the folder picker (dropdown → removed entirely in favour of drag-only) required revisiting three files. A single question upfront ("should assignment be drag-only or also have a picker?") would have saved a round trip.
+- **Change for next phase:**
+  - Prototype skill now documented — use it at the start of any UI-heavy slice before touching the event model.
+  - Confirmed UX patterns to implement as real backend slices: folder CRUD, note→folder assignment (event-sourced), tag CRUD, tag→note assignment, folder-filtered note list, folder slide-out panel.
+  - Prototype code (localStorage, fire-and-forget stubs) should be clearly replaced — not left — during real implementation.
+
+---
+
 ## Slice 3-C — View open todos on the home screen
 
 - **Workflow style used:** Fully autonomous pipeline — Breaker → Pip (layer-split: Batch 1 domain/API, Batch 2 E2E/frontend) → Refactor → Stylist → Hawk → Scribe; no human checkpoints after "execute to the end."
