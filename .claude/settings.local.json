@@ -49,7 +49,11 @@
       "PowerShell(ConvertFrom-Json *)",
       "PowerShell(Format-Table *)",
       "PowerShell(Out-String *)",
-      "PowerShell(Write-Output *)"
+      "PowerShell(Write-Output *)",
+      "Skill(update-config)",
+      "PowerShell(dotnet build *)",
+      "PowerShell(*)",
+      "Bash(Get-Command aws *)"
     ]
   }
 }

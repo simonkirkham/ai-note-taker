@@ -89,6 +89,12 @@ Slices and acceptance criteria: [docs/phases/phase-4.md](phases/phase-4.md)
 
 **Goal:** auth lands here deliberately so earlier phases stay focused on event sourcing learning.
 
+## Future Ideas
+
+- Workspaces - Switching between collections of notes
+- Search across notes
+-
+
 ## Reflection cadence
 
 End-of-phase reflection in [workflow-log.md](workflow-log.md) is mandatory, not optional.

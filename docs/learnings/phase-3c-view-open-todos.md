@@ -10,7 +10,7 @@
 
 ## Suggested process improvements
 
-- **Scribe checklist should include per-slice learnings doc and phase status update.** Add to Scribe's role: create `docs/learnings/slice-<id>-<name>.md` and update the slice status + acceptance criteria checkboxes in the relevant `docs/phases/phase-N.md`. These are mandatory outputs, not optional.
+- **Scribe checklist should include per-slice learnings doc and phase status update.** Add to Scribe's role: create `docs/learnings/phase-<id>-<name>.md` and update the slice status + acceptance criteria checkboxes in the relevant `docs/phases/phase-N.md`. These are mandatory outputs, not optional.
 
 - **Pip should write acceptance specs as part of Batch 2.** The acceptance spec for a read-only slice is a direct translation of the acceptance criteria — Pip is already reading those to implement the feature. Having Breaker write them separately adds a hand-off round for a task that costs Pip nothing extra.
 
@@ -18,6 +18,6 @@
 
 ## Hawk review findings
 
-| Finding | File | How to prevent |
-|---|---|---|
-| None — no `Changes requested` rounds | — | Layer-split + Pip Step 1d pre-PR self-check worked as designed |
+| Finding                              | File | How to prevent                                                 |
+| ------------------------------------ | ---- | -------------------------------------------------------------- |
+| None — no `Changes requested` rounds | —    | Layer-split + Pip Step 1d pre-PR self-check worked as designed |
