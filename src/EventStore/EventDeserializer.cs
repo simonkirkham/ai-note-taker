@@ -16,6 +16,8 @@ public static class EventDeserializer
         (nameof(ContentEdited),     2) => JsonSerializer.Deserialize<ContentEditedV2>(envelope.Payload)!,
         (nameof(NoteDeleted),       _) => JsonSerializer.Deserialize<NoteDeleted>(envelope.Payload)!,
         (nameof(NoteDateSet),       _) => JsonSerializer.Deserialize<NoteDateSet>(envelope.Payload)!,
+        (nameof(NoteTagged),        _) => JsonSerializer.Deserialize<NoteTagged>(envelope.Payload)!,
+        (nameof(NoteUntagged),      _) => JsonSerializer.Deserialize<NoteUntagged>(envelope.Payload)!,
         (nameof(ActionItemAdded),     _) => JsonSerializer.Deserialize<ActionItemAdded>(envelope.Payload)!,
         (nameof(ActionItemCompleted), _) => JsonSerializer.Deserialize<ActionItemCompleted>(envelope.Payload)!,
         (nameof(ActionItemReopened),  _) => JsonSerializer.Deserialize<ActionItemReopened>(envelope.Payload)!,

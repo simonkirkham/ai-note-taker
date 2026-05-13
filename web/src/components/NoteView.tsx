@@ -48,7 +48,7 @@ export default function NoteView({
         }
       });
     return () => { cancelled = true; };
-  }, [noteId]);
+  }, [noteId, onDateSet]);
 
   useEffect(() => {
     if (!loadingDetail && !notFound) inputRef.current?.focus();
