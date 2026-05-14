@@ -15,7 +15,7 @@ jobs:
 
       - uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: "8.0.x"
+          dotnet-version: "10.0.x"
 
       - uses: actions/setup-node@v4
         with:
@@ -48,7 +48,7 @@ jobs:
 
       - name: Publish Lambda
         run: dotnet publish src/Api/Api.csproj -c Release -o
-          src/Api/bin/Release/net8.0/publish
+          src/Api/bin/Release/net10.0/publish
 
       - name: CDK Synth
         run: cdk synth
