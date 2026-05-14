@@ -278,3 +278,21 @@ None — slice ran within expected range.
 
 **Optimisation suggestions:**
 - None — slice ran within expected range.
+
+---
+
+## Slice 5-D Batch 2 — Folders Frontend Wire-Up
+
+| Agent     | ~Tokens    |
+|-----------|------------|
+| Breaker   | 4 000      |
+| Pip       | 12 000     |
+| Refactor  | 2 000      |
+| Hawk      | 2 000      |
+| Scribe    | 3 000      |
+| **Total** | **~23 000** |
+
+**Why:** Pure frontend slice wiring completed backend endpoints. Removing localStorage scaffolding, adding data-testids, and updating ListView filtering was straightforward with no new domain logic.
+
+**Optimisation suggestions:**
+- None — slice ran within expected range.
