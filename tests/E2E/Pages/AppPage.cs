@@ -244,13 +244,23 @@ public sealed class AppPage(IPage page, string baseUrl)
         var input = page.GetByTestId("tag-input");
         await input.FillAsync(tagInput);
 
-        var postTasks = Enumerable.Range(0, tagCount)
-            .Select(_ => page.WaitForResponseAsync(r =>
-                r.Url.Contains("/tags") && r.Request.Method == "POST"))
-            .ToArray();
+        // WaitForResponseAsync handlers all fire on the same response event, so
+        // N parallel tasks can resolve to the same single response. Use an atomic
+        // counter instead so we require exactly N distinct POST /tags responses.
+        int received = 0;
+        var allDone = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        page.Response += Handler;
 
         await input.PressAsync("Enter");
-        await Task.WhenAll(postTasks);
+        await allDone.Task;
+        page.Response -= Handler;
+
+        void Handler(object? _, IResponse r)
+        {
+            if (r.Url.Contains("/tags") && r.Request.Method == "POST")
+                if (Interlocked.Increment(ref received) >= tagCount)
+                    allDone.TrySetResult();
+        }
     }
 
     public Task AssertTagPillVisibleAsync(string tag) =>
