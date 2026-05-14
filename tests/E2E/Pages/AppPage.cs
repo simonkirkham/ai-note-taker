@@ -240,4 +240,46 @@ public sealed class AppPage(IPage page, string baseUrl)
         Assertions.Expect(
             page.GetByTestId("note-cards").GetByText(title)
         ).Not.ToBeVisibleAsync();
+
+    public async Task CreateFolderAsync(string name)
+    {
+        var postDone = page.WaitForResponseAsync(r =>
+            r.Url.Contains("/folders") && r.Request.Method == "POST");
+        await page.GetByTestId("new-folder-button").ClickAsync();
+        var input = page.GetByTestId("new-folder-input");
+        await input.FillAsync(name);
+        await input.PressAsync("Enter");
+        await postDone;
+    }
+
+    public async Task CreateSubfolderAsync(string parentFolderName, string childName)
+    {
+        var postDone = page.WaitForResponseAsync(r =>
+            r.Url.Contains("/folders") && r.Request.Method == "POST");
+        var folderItem = page.GetByText(parentFolderName).First;
+        await folderItem.HoverAsync();
+        await page.GetByTestId($"add-subfolder-button").First.ClickAsync();
+        var input = page.GetByTestId("subfolder-input").First;
+        await input.FillAsync(childName);
+        await input.PressAsync("Enter");
+        await postDone;
+    }
+
+    public Task ClickFolderAsync(string folderName) =>
+        page.GetByText(folderName).First.ClickAsync();
+
+    public Task ClickHomeAsync() =>
+        page.GetByTestId("home-button").ClickAsync();
+
+    public Task AssertFolderHeadingAsync(string heading) =>
+        Assertions.Expect(page.GetByRole(AriaRole.Heading, new PageGetByRoleOptions { Name = heading })).ToBeVisibleAsync();
+
+    public Task AssertTodoSectionHiddenAsync() =>
+        Assertions.Expect(page.GetByTestId("todo-section")).Not.ToBeVisibleAsync();
+
+    public Task AssertUnfiledNotesVisibleAsync() =>
+        Assertions.Expect(page.GetByTestId("unfiled-notes-button")).ToBeVisibleAsync();
+
+    public Task AssertFolderVisibleInSidebarAsync(string folderName) =>
+        Assertions.Expect(page.GetByTestId("sidebar").GetByText(folderName)).ToBeVisibleAsync();
 }

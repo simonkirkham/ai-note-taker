@@ -12,7 +12,6 @@ export default function ListView({
   onEditNote,
   folderPath,
   currentFolderId,
-  noteFolderMap,
   onHome,
 }: {
   loading: boolean;
@@ -22,7 +21,6 @@ export default function ListView({
   onEditNote: (noteId: string) => void;
   folderPath?: string[];
   currentFolderId?: string;
-  noteFolderMap?: Record<string, string>;
   onHome?: () => void;
 }) {
   const [cards, setCards] = useState<NoteCardData[]>([]);
@@ -40,12 +38,11 @@ export default function ListView({
   }, [cards]);
 
   const filteredCards = useMemo(() => {
-    const map = noteFolderMap ?? {};
     let result = cards;
     if (currentFolderId === "__unfiled__") {
-      result = result.filter((c) => !map[c.noteId]);
+      result = result.filter((c) => !c.folderId);
     } else if (currentFolderId) {
-      result = result.filter((c) => map[c.noteId] === currentFolderId);
+      result = result.filter((c) => c.folderId === currentFolderId);
     }
     if (selectedTags.length === 0) return result;
     return result.filter((c) => {
@@ -54,7 +51,7 @@ export default function ListView({
         ? selectedTags.every((t) => cardTags.includes(t))
         : selectedTags.some((t) => cardTags.includes(t));
     });
-  }, [cards, selectedTags, filterMode, currentFolderId, noteFolderMap]);
+  }, [cards, selectedTags, filterMode, currentFolderId]);
 
   function toggleTag(tag: string) {
     setSelectedTags((prev) =>
@@ -67,6 +64,7 @@ export default function ListView({
     setFilterMode("AND");
   }
 
+  const isInFolder = !!currentFolderId;
   const heading = folderPath && folderPath.length > 0 ? folderPath.join(" → ") : "Home";
 
   return (
@@ -95,7 +93,7 @@ export default function ListView({
         </p>
       )}
       {loading && <p>Loading…</p>}
-      {!currentFolderId && <TodoSection />}
+      {!isInFolder && <TodoSection />}
       <TagFilter
         tags={availableTags}
         selectedTags={selectedTags}

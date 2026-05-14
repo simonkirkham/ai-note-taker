@@ -8,6 +8,7 @@ import { useNotes } from "./hooks/useNotes";
 import {
   FolderNode,
   setNoteDate,
+  getFolders,
   createFolder as apiCreateFolder,
   renameFolder as apiRenameFolder,
   deleteFolder as apiDeleteFolder,
@@ -20,54 +21,22 @@ type View =
   | { kind: "folder"; folderId: string; folderPath: string[] }
   | { kind: "note"; noteId: string };
 
-function addFolderToTree(nodes: FolderNode[], folder: FolderNode, parentId?: string): FolderNode[] {
-  if (!parentId) return [...nodes, folder];
-  return nodes.map((n) =>
-    n.folderId === parentId
-      ? { ...n, children: [...n.children, folder] }
-      : { ...n, children: addFolderToTree(n.children, folder, parentId) }
-  );
-}
-
-function renameFolderInTree(nodes: FolderNode[], folderId: string, name: string): FolderNode[] {
-  return nodes.map((n) =>
-    n.folderId === folderId
-      ? { ...n, name }
-      : { ...n, children: renameFolderInTree(n.children, folderId, name) }
-  );
-}
-
-function deleteFolderFromTree(nodes: FolderNode[], folderId: string): FolderNode[] {
-  return nodes
-    .filter((n) => n.folderId !== folderId)
-    .map((n) => ({ ...n, children: deleteFolderFromTree(n.children, folderId) }));
-}
-
 const UNFILED_ID = "__unfiled__";
 
 export default function App() {
   const [view, setView] = useState<View>({ kind: "list" });
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const { notes, loading, creating, createError, create, rename, remove } = useNotes();
-  const [folders, setFolders] = useState<FolderNode[]>(() => {
-    try { return JSON.parse(localStorage.getItem("notetaker-folders") ?? "[]"); } catch { return []; }
-  });
+  const [folders, setFolders] = useState<FolderNode[]>([]);
   const [activeFolderId, setActiveFolderId] = useState<string | undefined>();
   const [activeFolderPath, setActiveFolderPath] = useState<string[]>([]);
-  const [noteFolderMap, setNoteFolderMap] = useState<Record<string, string>>(() => {
-    try { return JSON.parse(localStorage.getItem("notetaker-note-folder-map") ?? "{}"); } catch { return {}; }
-  });
   const [noteDateMap, setNoteDateMap] = useState<Record<string, string>>(() => {
     try { return JSON.parse(localStorage.getItem("notetaker-note-date-map") ?? "{}"); } catch { return {}; }
   });
 
   useEffect(() => {
-    localStorage.setItem("notetaker-folders", JSON.stringify(folders));
-  }, [folders]);
-
-  useEffect(() => {
-    localStorage.setItem("notetaker-note-folder-map", JSON.stringify(noteFolderMap));
-  }, [noteFolderMap]);
+    getFolders().then(setFolders).catch(() => {});
+  }, []);
 
   useEffect(() => {
     localStorage.setItem("notetaker-note-date-map", JSON.stringify(noteDateMap));
@@ -129,36 +98,36 @@ export default function App() {
     setView({ kind: "list" });
   }
 
-  function handleCreateFolder(name: string, parentFolderId?: string) {
-    const newFolder: FolderNode = { folderId: crypto.randomUUID(), name, children: [] };
-    setFolders((prev) => addFolderToTree(prev, newFolder, parentFolderId));
-    apiCreateFolder(name, parentFolderId).catch(() => {});
+  async function handleCreateFolder(name: string, parentFolderId?: string) {
+    try {
+      await apiCreateFolder(name, parentFolderId);
+      const updated = await getFolders();
+      setFolders(updated);
+    } catch {
+      // non-fatal: folder will appear on next reload
+    }
   }
 
   function handleRenameFolder(folderId: string, name: string) {
-    setFolders((prev) => renameFolderInTree(prev, folderId, name));
-    apiRenameFolder(folderId, name).catch(() => {});
+    apiRenameFolder(folderId, name)
+      .then(() => getFolders().then(setFolders))
+      .catch(() => {});
   }
 
   function handleMoveNoteToFolder(noteId: string, folderId: string | null) {
-    setNoteFolderMap((prev) => {
-      const next = { ...prev };
-      if (folderId) next[noteId] = folderId;
-      else delete next[noteId];
-      return next;
-    });
     if (folderId) apiMoveNoteToFolder(noteId, folderId).catch(() => {});
     else apiUnfileNote(noteId).catch(() => {});
   }
 
   function handleDeleteFolder(folderId: string) {
-    setFolders((prev) => deleteFolderFromTree(prev, folderId));
     if (activeFolderId === folderId) {
       setActiveFolderId(undefined);
       setActiveFolderPath([]);
       setView({ kind: "list" });
     }
-    apiDeleteFolder(folderId).catch(() => {});
+    apiDeleteFolder(folderId)
+      .then(() => getFolders().then(setFolders))
+      .catch(() => {});
   }
 
   const activeNoteId = view.kind === "note" ? view.noteId : undefined;
@@ -183,7 +152,6 @@ export default function App() {
         onEditNote={(noteId) => setView({ kind: "note", noteId })}
         folderPath={view.kind === "folder" ? view.folderPath : undefined}
         currentFolderId={view.kind === "folder" ? view.folderId : undefined}
-        noteFolderMap={noteFolderMap}
         onHome={handleHome}
       />
     );
@@ -225,7 +193,6 @@ export default function App() {
         folderId={previewFolderId}
         folderName={previewFolderName}
         notes={notes}
-        noteFolderMap={noteFolderMap}
         noteDateMap={noteDateMap}
         onClose={() => setPreviewFolderId(null)}
         onEditNote={(noteId) => { setView({ kind: "note", noteId }); setPreviewFolderId(null); }}
