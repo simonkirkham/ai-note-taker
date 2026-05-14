@@ -160,6 +160,15 @@ public class InfraAssertionsTests
     }
 
     [Fact]
+    public void Lambda_RuntimeIsDotnet10()
+    {
+        _template.HasResourceProperties("AWS::Lambda::Function", Match.ObjectLike(new Dictionary<string, object>
+        {
+            ["Runtime"] = "dotnet10"
+        }));
+    }
+
+    [Fact]
     public void CloudFront_HasSpaErrorResponses()
     {
         _template.HasResourceProperties("AWS::CloudFront::Distribution", Match.ObjectLike(new Dictionary<string, object>
