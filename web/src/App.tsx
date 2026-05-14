@@ -25,8 +25,6 @@ type View =
 const UNFILED_ID = "__unfiled__";
 
 export default function App() {
-  if (window.location.search.includes("proto")) return <PrototypeRoot />;
-
   const [view, setView] = useState<View>({ kind: "list" });
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const { notes, loading, creating, createError, create, rename, remove } = useNotes();
@@ -50,6 +48,8 @@ export default function App() {
   }, []);
   const [previewFolderId, setPreviewFolderId] = useState<string | null>(null);
   const [previewFolderName, setPreviewFolderName] = useState("");
+
+  if (window.location.search.includes("proto")) return <PrototypeRoot />;
 
   async function handleNewNote() {
     try {
