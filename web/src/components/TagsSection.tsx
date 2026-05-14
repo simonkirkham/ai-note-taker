@@ -20,11 +20,11 @@ export default function TagsSection({
   }
 
   return (
-    <div className="tags-section">
+    <div data-testid="tags-section" className="tags-section">
       <h2 className="tags-heading">Tags</h2>
       <div className="tags-pills">
         {tags.map((tag) => (
-          <span key={tag} className="tag-pill">
+          <span key={tag} data-testid={`tag-pill-${tag}`} className="tag-pill">
             {tag}
             <button
               className="tag-pill-remove"
@@ -38,6 +38,7 @@ export default function TagsSection({
       </div>
       <input
         ref={inputRef}
+        data-testid="tag-input"
         className="tags-input"
         type="text"
         placeholder="Add tag…"

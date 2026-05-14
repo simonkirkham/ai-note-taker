@@ -43,7 +43,7 @@ export default function NoteCard({
         <div className="note-card-tags">
           <span className="note-card-tags-label">Tags</span>
           {tags.map((tag) => (
-            <span key={tag} className="note-card-tag-pill">{tag}</span>
+            <span key={tag} data-testid={`card-tag-${tag}`} className="note-card-tag-pill">{tag}</span>
           ))}
         </div>
       )}
