@@ -1,8 +1,8 @@
 # Phase 5 — Tags and Folders
 
-**Goal:** Make tags and folders first-class citizens. Users can add and remove tags on any note, see them as pills on the note screen and home cards, and filter the note list by tag. Users can organise notes into a hierarchical folder tree, assign notes by drag-and-drop, and navigate folders via the sidebar. This phase introduces the `TagIndex` projection, the `Folder` aggregate, the `FolderTree` projection, and wires all of them to the frontend.
+**Goal:** Let users label notes with tags and organise them into folders. Tags give notes searchable metadata; folders give them a home. This phase introduces the `TagIndex` projection, the `Folder` aggregate, the `FolderTree` projection, and wires all of them to the frontend.
 
-**Learning surface:** a second projection axis over the existing event stream (`TagIndex`); a brand-new aggregate (`Folder`) with its own event stream; projection evolution (`NoteCardList` extended with `FolderId?`); client-side filter state against a server projection; hierarchical read models.
+**Learning surface:** A second projection axis over the existing event stream (`TagIndex`); a brand-new aggregate (`Folder`) with its own event stream; projection evolution (`NoteCardList` extended with `Tags` and `FolderId?`); client-side filter state against a server projection; hierarchical read models.
 
 ---
 
@@ -51,57 +51,66 @@ What is **not** yet in place:
 ## Slice order and dependencies
 
 ```
-5-A  Tag a note — full-stack  ───────────────────────────────────┐
-5-B  TagIndex + tag filter bar — full-stack  ────────────────────┘  (depends 5-A)
+5-A  Add tags to a note ─────────────────────────────────────────────────────┐
+5-B  Remove a tag  (depends 5-A) ─────────────────────────────────────────────┤ tags
+5-C  Tag filter bar  (depends 5-A) ───────────────────────────────────────────┘
 
-5-C  Folder structure — full-stack  ─────────────────────────────┐
-5-D  File notes in folders — full-stack  ────────────────────────┤  (depends 5-C)
-5-E  Move and nest folders — full-stack  ────────────────────────┘  (depends 5-C; parallel with 5-D)
+5-D  Create and browse folders ──────────────────────────────────────────────┐
+5-E  Rename a folder  (depends 5-D) ──────────────────────────────────────────┤
+5-F  Delete an empty folder  (depends 5-D) ────────────────────────────────────┤
+5-G  File a note in a folder  (depends 5-D) ───────────────────────────────────┤ folders
+5-H  Unfiled Notes view  (depends 5-G) ────────────────────────────────────────┤
+5-I  Folder preview panel  (depends 5-G) ──────────────────────────────────────┤
+5-J  Auto-assign note to current folder  (depends 5-G) ────────────────────────┤
+5-K  Reparent a folder  (depends 5-D) ─────────────────────────────────────────┤
+5-L  Cascade delete a folder  (depends 5-F, 5-G) ──────────────────────────────┘
 ```
 
-Each slice delivers a complete vertical: domain events, API endpoints, projections, and the frontend wired to those endpoints — all in one branch. No "backend first, frontend later" splits across slices.
+Each slice is a complete vertical: domain events, API endpoints, projections, and the frontend wired to those endpoints. No "backend first, frontend later" splits across slices.
+
+5-B and 5-C are parallel once 5-A lands. 5-E, 5-F, and 5-K are parallel once 5-D lands. 5-H, 5-I, and 5-J are parallel once 5-G lands.
 
 ---
 
-## Slice 5-A — Tag a note (full-stack)
+## Slice 5-A — Add tags to a note
 
 **Status:** Not Started
 
-**Value:** The domain gets its first set-membership command: `TagNote` / `UntagNote`, with the aggregate tracking a set of strings and enforcing uniqueness. The full vertical is delivered in one slice: events appended, projections updated, API endpoints live, and the existing prototype UI (`TagsSection`, `NoteCard` pills) wired to real responses. All subsequent tag slices are blocked on this one.
+**Value:** I can add tags to a note so I can label what it's about — tags appear as pills on the note screen and on the note's home screen card.
 
 **Commands in scope:**
 - `TagNote(NoteId, Tag, TaggedAt)` — note exists, not deleted, tag not already present
-- `UntagNote(NoteId, Tag, UntaggedAt)` — note exists, tag present
 
 **Events in scope:**
 - `NoteTagged { NoteId, Tag }` — already specified in `docs/event-schemas.md`
-- `NoteUntagged { NoteId, Tag }` — already specified in `docs/event-schemas.md`
 
 **Projections in scope:**
-- `NoteDetail` — extend to handle `NoteTagged` (add to Tags list) and `NoteUntagged` (remove from Tags list)
-- `NoteCardList` — same handlers; `tags` array included in card response DTO
+- `NoteDetail` — extend to handle `NoteTagged` (add to Tags list)
+- `NoteCardList` — add `NoteTagged` handler; include `tags: string[]` in card response
 
 **API endpoints:**
-- `POST /notes/{noteId}/tags` — body `{ "tags": "1:1s Bill API" }` (space-tokenised); returns 204; 409 if tag already present
-- `DELETE /notes/{noteId}/tags/{tag}` — returns 204; 404 if tag not present
+- `POST /notes/{noteId}/tags` — body `{ "tag": "1:1s" }` (single tag per call); returns 204; 409 if tag already present
 
 **Key implementation files:**
-- `src/Domain/Notes/NoteCommands.cs` — add `TagNote`, `UntagNote`
-- `src/Domain/Notes/NoteEvents.cs` — add `NoteTagged`, `NoteUntagged`
-- `src/Domain/Notes/Note.cs` — add `_tags` set, `Apply` methods, `HandleTagNote`, `HandleUntagNote`
-- `src/EventStore/EventDeserializer.cs` — route `NoteTagged`, `NoteUntagged`
-- `src/EventStore/Projections/NoteDetailProjection.cs` — add `NoteTagged`/`NoteUntagged` handlers
-- `src/EventStore/Projections/NoteCardListProjection.cs` — add `NoteTagged`/`NoteUntagged` handlers; include `tags` in card response DTO
-- `src/Api/NoteCommandHandler.cs` — add `HandleAsync(TagNote)`, `HandleAsync(UntagNote)`
-- `src/Api/Handlers/NoteHandlers.cs` — tag endpoints + `tags` in `GET /notes/cards` DTO
-- `src/Api/Endpoints/NoteEndpoints.cs` — register `POST /notes/{noteId}/tags`, `DELETE /notes/{noteId}/tags/{tag}`
+- `src/Domain/Notes/NoteCommands.cs` — add `TagNote`
+- `src/Domain/Notes/NoteEvents.cs` — add `NoteTagged`
+- `src/Domain/Notes/Note.cs` — add `_tags` set, `Apply(NoteTagged)`, `HandleTagNote`
+- `src/EventStore/EventDeserializer.cs` — route `NoteTagged`
+- `src/EventStore/Projections/NoteDetailProjection.cs` — add `NoteTagged` handler
+- `src/EventStore/Projections/NoteCardListProjection.cs` — add `NoteTagged` handler; include `tags` in card DTO
+- `src/Api/NoteCommandHandler.cs` — add `HandleAsync(TagNote)`
+- `src/Api/Handlers/NoteHandlers.cs` — tag endpoint + `tags` in `GET /notes/cards` DTO
+- `src/Api/Endpoints/NoteEndpoints.cs` — register `POST /notes/{noteId}/tags`
 - `tests/Specs/Notes/TagNoteSpec.cs` — new BDD spec file
-- `tests/ApiIntegration/` — extend in-memory stores to handle tags
-- `web/src/components/TagsSection.tsx` — build fresh; renders tag pills + input; calls real API
+- `tests/ApiIntegration/` — extend in-memory stores to handle `NoteTagged`
+- `web/src/components/TagsSection.tsx` — build fresh; renders tag pills (no × yet) + input; calls real API
 - `web/src/components/NoteView.tsx` — load tags from `getNoteDetail()`; place `<TagsSection>` above `<ActionsSection>`
-- `web/src/api.ts` — add `tagNote(noteId, tags)`, `untagNote(noteId, tag)`; add `tags: string[]` to `NoteCard` interface
+- `web/src/components/NoteCard.tsx` — render `card.tags` as pills; no pills when `tags` is empty
+- `web/src/api.ts` — add `tagNote(noteId, tag)`; add `tags: string[]` to `NoteCard` and `NoteDetail` interfaces
 
-**Batches:** Batch 1: domain BDD specs + API integration. Batch 2: E2E + frontend wire-up.
+**Note on multi-tag input:** The prototype accepted space-separated tags in a single input (e.g. `"1:1s Bill API"` → three tags). The API takes one tag per call. The frontend should split the input on spaces and fire one `POST` per tag.
+
+**Batches:** Batch 1: domain BDD spec + API integration. Batch 2: E2E + frontend wire-up.
 
 **Scenarios:**
 
@@ -109,74 +118,136 @@ Each slice delivers a complete vertical: domain events, API endpoints, projectio
 Scenario: Add a tag to a note
   Given I have a note open
   When  I type "1:1s" in the tag input and press Enter
-  Then  a "1:1s" pill appears in the Tags section
+  Then  a "1:1s" pill appears in the tags section
   And   the tag is still there when I close and reopen the note
 
 Scenario: Add multiple tags at once by separating with spaces
   Given I have a note open
-  When  I type "1:1s Bill API" in the tag input and press Enter
-  Then  three tag pills appear: "1:1s", "Bill", and "API"
+  When  I type "1:1s Bill" in the tag input and press Enter
+  Then  two tag pills appear: "1:1s" and "Bill"
 
 Scenario: Adding a tag that already exists has no effect
   Given a note already has the tag "1:1s"
   When  I type "1:1s" in the tag input and press Enter
   Then  no second "1:1s" pill appears and no error is shown
 
-Scenario: Remove a tag
-  Given a note has tags "1:1s" and "Bill"
-  When  I click × on the "Bill" pill
-  Then  the "Bill" pill disappears
-  And   only "1:1s" remains when I close and reopen the note
-
 Scenario: Tags appear as pills on the home screen note card
   Given I have added tags "1:1s" and "Bill" to a note
   When  I return to the home screen
   Then  the note card shows pills for "1:1s" and "Bill"
 
-Scenario: A note with no tags shows no tag section on its card
+Scenario: A note with no tags shows no tag pills on its card
   Given I have a note with no tags
-  When  I view it on the home screen
-  Then  no tag pills appear on its card
+  When  I view the home screen
+  Then  no tag pills appear on that note's card
 ```
 
 **Acceptance criteria:**
 
-- [ ] *(internal)* `Note` aggregate tracks `_tags`; `TagNote` on a present tag returns 409; `UntagNote` on missing tag throws
-- [ ] *(internal)* `NoteTagged` and `NoteUntagged` are deserialised and routed
-- [ ] *(internal)* `NoteDetail` and `NoteCardList` projections fold both events
-- [ ] `POST /notes/{noteId}/tags` stores tags; `GET /notes/{noteId}` returns them
-- [ ] `POST` with duplicate tag returns 409; no event appended
-- [ ] `DELETE /notes/{noteId}/tags/{tag}` removes the tag
+- [ ] *(internal)* `Note` aggregate tracks `_tags`; `TagNote` on a present tag returns 409; no event appended on duplicate
+- [ ] *(internal)* `NoteTagged` is deserialised and routed
+- [ ] *(internal)* `NoteDetail` and `NoteCardList` projections fold `NoteTagged`
+- [ ] `POST /notes/{noteId}/tags` stores the tag; `GET /notes/{noteId}` returns it in the tags list
+- [ ] `POST` with duplicate tag returns 409
 - [ ] `GET /notes/cards` response includes `"tags": [...]` for each card
 - [ ] Tags section on the note screen loads from `GET /notes/{noteId}` and renders as pills
-- [ ] Adding tags via input calls real API; removing pills calls real delete endpoint
-- [ ] Duplicate tag from UI handled silently (409 swallowed)
-- [ ] Tag pills visible on home screen note cards; no tag area when no tags
+- [ ] Adding a tag via the input calls the real API
+- [ ] Duplicate tag from the UI is handled silently (409 swallowed)
+- [ ] Tag pills visible on home screen note cards; no tag area when `tags` is empty
 - [ ] E2E: create note, add tags "1:1s Bill" on note screen; navigate home — two pills on card; open note again — pills still there
 
 ---
 
-## Slice 5-B — TagIndex projection and tag filter bar (full-stack)
+## Slice 5-B — Remove a tag from a note
 
 **Status:** Not Started
 
-**Value:** A dedicated `TagIndex` projection captures every tag across all notes with counts. `GET /tags` exposes it. The `TagFilter` component is wired to this endpoint, replacing the prototype's client-side tag derivation from cards. Learning surface: projecting a many-to-many relationship (tags ↔ notes) into DynamoDB with a composite key.
+**Value:** I can remove a tag I added by mistake or no longer need — clicking × on a pill removes it immediately.
+
+**Commands in scope:**
+- `UntagNote(NoteId, Tag, UntaggedAt)` — note exists, tag present
+
+**Events in scope:**
+- `NoteUntagged { NoteId, Tag }` — already specified in `docs/event-schemas.md`
+
+**Projections in scope:**
+- `NoteDetail` — extend to handle `NoteUntagged` (remove from Tags list)
+- `NoteCardList` — add `NoteUntagged` handler
+
+**API endpoints:**
+- `DELETE /notes/{noteId}/tags/{tag}` — returns 204; 404 if tag not present
+
+**Key implementation files:**
+- `src/Domain/Notes/NoteCommands.cs` — add `UntagNote`
+- `src/Domain/Notes/NoteEvents.cs` — add `NoteUntagged`
+- `src/Domain/Notes/Note.cs` — add `Apply(NoteUntagged)`, `HandleUntagNote`
+- `src/EventStore/EventDeserializer.cs` — route `NoteUntagged`
+- `src/EventStore/Projections/NoteDetailProjection.cs` — add `NoteUntagged` handler
+- `src/EventStore/Projections/NoteCardListProjection.cs` — add `NoteUntagged` handler
+- `src/Api/NoteCommandHandler.cs` — add `HandleAsync(UntagNote)`
+- `src/Api/Handlers/NoteHandlers.cs` — delete tag endpoint
+- `src/Api/Endpoints/NoteEndpoints.cs` — register `DELETE /notes/{noteId}/tags/{tag}`
+- `tests/Specs/Notes/UntagNoteSpec.cs` — new BDD spec file
+- `tests/ApiIntegration/` — extend to handle `NoteUntagged`
+- `web/src/components/TagsSection.tsx` — add × button to each pill; call `untagNote()` on click
+- `web/src/api.ts` — add `untagNote(noteId, tag)`
+
+**Scenarios:**
+
+```
+Scenario: Remove a tag using the × button
+  Given a note has tags "1:1s" and "Bill"
+  When  I click × on the "Bill" pill
+  Then  the "Bill" pill disappears
+  And   only "1:1s" is shown when I close and reopen the note
+
+Scenario: The removed tag no longer appears on the home screen card
+  Given I removed "Bill" from a note that had "1:1s" and "Bill"
+  When  I return to the home screen
+  Then  only "1:1s" appears on that note's card
+
+Scenario: Trying to remove a tag that does not exist returns an error
+  Given a note does not have the tag "missing"
+  When  DELETE /notes/{id}/tags/missing is called
+  Then  404 is returned
+```
+
+**Acceptance criteria:**
+
+- [ ] *(internal)* `UntagNote` on a missing tag returns an error; no event appended
+- [ ] *(internal)* `NoteUntagged` is deserialised and routed
+- [ ] *(internal)* `NoteDetail` and `NoteCardList` projections fold `NoteUntagged`
+- [ ] `DELETE /notes/{noteId}/tags/{tag}` removes the tag; `GET /notes/{noteId}` no longer returns it
+- [ ] `DELETE` on a tag that is not present returns 404
+- [ ] Clicking × on a pill calls the real delete endpoint; pill disappears immediately
+- [ ] Home screen card no longer shows the removed tag
+- [ ] E2E: add tags "1:1s Bill" to a note; click × on "Bill"; navigate home — only "1:1s" on card; open note — only "1:1s" pill
+
+---
+
+## Slice 5-C — Tag filter bar
+
+**Status:** Not Started
+
+**Value:** I can see all the tags I've used in a filter bar and click one (or more) to show only the notes that match, then clear the filter to see everything again.
 
 **Commands in scope:** none
+
 **Events in scope:** `NoteTagged`, `NoteUntagged`, `NoteDeleted`
 
-**Projections in scope:** `TagIndex` — fully specified in `docs/view-schemas.md`. Storage: table `notetaker-proj-tagindex` (PK: Tag, SK: NoteId).
+**Projections in scope:** `TagIndex` — fully specified in `docs/view-schemas.md`. Storage: table `notetaker-proj-tagindex` (PK: `Tag`, SK: `NoteId`).
 - `NoteTagged` → put row `(Tag, NoteId, TaggedAt)`
 - `NoteUntagged` → delete row
-- `NoteDeleted` → delete all rows where `NoteId = …` (table scan; tiny dataset)
+- `NoteDeleted` → delete all rows where `NoteId = …`
 
 **API endpoint:** `GET /tags` — returns `{ "tags": [{ "tag": "1:1s", "noteCount": 3, "noteIds": [...] }] }` ordered by `noteCount` descending.
 
 **CDK changes:** new table `notetaker-proj-tagindex` (PK: `Tag`, SK: `NoteId`); env var `PROJ_TAGINDEX_TABLE_NAME`; `GrantReadWriteData`.
 
-**What changes vs prototype in the frontend:**
-- `ListView.tsx` currently derives available tags from card data directly. Replace with `getTags()` call so the filter bar reflects all tags in the index, not just those in the current card list.
-- Filter logic stays client-side (filter `cards` by `card.tags`)
+**Frontend changes:**
+- `TagFilter.tsx` — build fresh; receives `tags: TagIndexEntry[]`, `selectedTags: string[]`, `mode: "AND" | "OR"`, `onToggle`, `onModeChange`, `onClear`; active pills visually distinct; AND/OR toggle visible when ≥2 tags selected
+- `ListView.tsx` — call `getTags()` on mount; hold `selectedTags` + `filterMode` state; filter `cards` before rendering; render `<TagFilter>` above the note grid; hide filter bar when no tags exist
+- `api.ts` — add `getTags()` returning `TagIndexEntry[]`
 
 **Key implementation files:**
 - `src/EventStore/Projections/TagIndexProjection.cs` — new file
@@ -186,11 +257,8 @@ Scenario: A note with no tags shows no tag section on its card
 - `tests/Specs/Projections/TagIndexProjectionSpec.cs` — new spec file
 - `tests/ApiIntegration/InMemoryTagIndexStore.cs` — new in-memory implementation
 - `tests/InfraAssertions/` — update CDK assertion for new table
-- `web/src/components/TagFilter.tsx` — build fresh; receives `tags: TagIndexEntry[]`, `selectedTags: string[]`, `mode: "AND" | "OR"`, `onToggle`, `onModeChange`; active pills visually distinct
-- `web/src/components/ListView.tsx` — build with `getTags()` API call; hold `selectedTags` + `filterMode` state; filter `cards` before rendering; render `<TagFilter>` above grid
-- `web/src/api.ts` — add `getTags()` returning `TagIndexEntry[]`
 
-**Batches:** Batch 1: projection specs + API integration + CDK assertions. Batch 2: E2E + frontend filter wire-up.
+**Batches:** Batch 1: projection spec + API integration + CDK assertions. Batch 2: E2E + frontend filter wire-up.
 
 **Scenarios:**
 
@@ -205,6 +273,11 @@ Scenario: A tag used on multiple notes appears once in the filter bar
   When  I view the home screen
   Then  "1:1s" appears once in the filter bar
 
+Scenario: Tags used on more notes appear first
+  Given "rare" is on 1 note and "common" is on 5 notes
+  When  I view the home screen
+  Then  "common" appears before "rare" in the filter bar
+
 Scenario: Removing a tag from its only note removes it from the filter bar
   Given only one note is tagged "rare"
   When  I remove the tag "rare" from that note
@@ -215,70 +288,64 @@ Scenario: Deleting a note removes its unique tags from the filter bar
   When  I delete that note
   Then  "gone" no longer appears in the filter bar
 
-Scenario: Tags used on more notes appear first in the filter bar
-  Given "rare" is on 1 note and "common" is on 5 notes
-  When  I view the home screen
-  Then  "common" appears before "rare" in the filter bar
-
-Scenario: Clicking a tag pill filters the note cards
+Scenario: Clicking a tag pill filters the note list
   Given two notes: one tagged "1:1s", one tagged "Bill"
   When  I click "1:1s" in the filter bar
   Then  only the note tagged "1:1s" is shown
 
+Scenario: Clicking an active tag pill deselects it and shows all notes
+  Given I have filtered by "1:1s"
+  When  I click "1:1s" again
+  Then  all notes are shown
+
 Scenario: Selecting two tags in AND mode shows notes with both
   Given a note tagged "1:1s" and "Bill", and a note tagged only "1:1s"
-  When  I select "1:1s" and "Bill" in AND mode
+  When  I select "1:1s" and "Bill" with AND mode active
   Then  only the note with both tags is shown
 
 Scenario: Selecting two tags in OR mode shows notes with either
   Given a note tagged "1:1s" and a note tagged "Bill"
-  When  I select both in OR mode
+  When  I select both with OR mode active
   Then  both notes are shown
 
-Scenario: Clearing the filter shows all notes again
+Scenario: Clearing the filter shows all notes and resets the mode to AND
   Given I have filtered by "1:1s" in OR mode
   When  I click Clear
-  Then  all note cards are shown and the toggle resets to AND
+  Then  all notes are shown and the toggle resets to AND
 ```
 
 **Acceptance criteria:**
 
-- [ ] *(internal)* `TagIndex` projection folds `NoteTagged`, `NoteUntagged`, `NoteDeleted` correctly
-- [ ] *(internal)* `NoteDeleted` cleanup removes all tag rows for that note
-- [ ] *(internal)* CDK template includes `notetaker-proj-tagindex` with composite key
+- [ ] *(internal)* `TagIndex` projection folds `NoteTagged` (put), `NoteUntagged` (delete row), `NoteDeleted` (delete all rows for note)
+- [ ] *(internal)* CDK template includes `notetaker-proj-tagindex` with composite key `(Tag, NoteId)`
 - [ ] `GET /tags` returns tags with `noteCount` and `noteIds`; ordered by count descending
-- [ ] Home screen filter bar populated from `GET /tags`; hidden when no tags exist
-- [ ] Clicking a tag pill filters cards to matching notes
-- [ ] AND/OR toggle visible; default AND
-- [ ] Clearing filter resets selected tags and mode
-- [ ] E2E: create two notes tagged differently; activate filter — only matching card shown; clear — both shown
+- [ ] Filter bar appears on home screen when tags exist; hidden when no tags
+- [ ] Filter bar populated from `GET /tags` (not derived from card data)
+- [ ] Clicking a tag pill filters cards to matching notes; clicking again deselects
+- [ ] AND/OR toggle visible when ≥2 tags selected; default AND
+- [ ] AND mode shows only notes with all selected tags; OR mode shows notes with any
+- [ ] Clear button resets selected tags and mode
+- [ ] E2E: tag two notes differently; click one tag — only matching card shown; select both in OR mode — both shown; clear — all shown
 
 ---
 
-## Slice 5-C — Folder structure (full-stack)
+## Slice 5-D — Create and browse folders
 
 **Status:** Not Started
 
-**Value:** Introduces the `Folder` aggregate, `FolderTree` projection, and wires the sidebar (Home button, Unfiled Notes item, folder tree, `»` preview panel) to the real API. Users can create, rename, and delete folders in a sidebar tree. The `»` button on each folder opens a slide-out panel listing that folder's notes with dates. No note assignment yet — just the tree structure.
+**Value:** I can create folders in the sidebar and navigate between them — clicking a folder shows its dedicated view, and clicking Home returns to all my notes.
 
 **Commands in scope:**
 - `CreateFolder(FolderId, Name, ParentFolderId?)` — name must be non-empty
-- `RenameFolder(FolderId, NewName)` — folder exists, name non-empty
-- `DeleteFolder(FolderId)` — folder exists; cascading behaviour confirmed in 5-E (for now, return 409 if children)
 
 **Events in scope:**
 - `FolderCreated { FolderId, Name, ParentFolderId? }`
-- `FolderRenamed { FolderId, NewName }`
-- `FolderDeleted { FolderId }`
 
-**Projections in scope:** `FolderTree` — builds the full hierarchical structure.
-- Storage: table `notetaker-proj-foldertree` (PK: `FolderId`). Each row: `FolderId`, `Name`, `ParentFolderId?`, `CreatedAt`.
-- `FolderCreated` → put row; `FolderRenamed` → update Name; `FolderDeleted` → delete row
+**Projections in scope:** `FolderTree` — builds the full hierarchical structure. Storage: table `notetaker-proj-foldertree` (PK: `FolderId`). Each row: `FolderId`, `Name`, `ParentFolderId?`, `CreatedAt`.
+- `FolderCreated` → put row
 
 **API endpoints:**
 - `POST /folders` — body `{ "name": "People", "parentFolderId": null }`; returns 201 with `{ "folderId": "..." }`
-- `PATCH /folders/{folderId}/name` — body `{ "name": "..." }`; returns 200
-- `DELETE /folders/{folderId}` — returns 204 on empty folder; 409 if folder has children (cascade handled in 5-E)
 - `GET /folders` — returns the full folder tree as nested JSON
 
 **CDK changes:** new table `notetaker-proj-foldertree` (PK: `FolderId`); env var `PROJ_FOLDERTREE_TABLE_NAME`; `GrantReadWriteData`.
@@ -287,29 +354,13 @@ Scenario: Clearing the filter shows all notes again
 - **Home button** at the top — always visible; navigates to the home list view
 - **"+ New Note" button** below Home
 - **Folders section** below, containing:
-  - **"Unfiled Notes"** — always-present special item at the top of the folder list; acts as a drop target (dropping a note on it unfiles it); highlighted when active; no rename/delete
-  - **Folder tree** — recursive list of real folders with expand/collapse, hover actions (+subfolder, rename, delete), `»` preview button
-  - **"New folder" inline input** — appears when + is clicked in the folder section header
+  - **"Unfiled Notes"** — always-present special item; no rename/delete; click navigation only (active filing logic in 5-H)
+  - **Folder tree** — recursive list of real folders with expand/collapse and click-to-navigate; hover shows `+` (add subfolder) only in this slice — rename (✎) and delete (×) come in 5-E and 5-F
+  - **"New folder" inline input** — appears when + in the section header is clicked
 
-**Folder tree interaction (prototype confirmed):**
-- Click folder name → navigate to that folder's note view; preview panel auto-updates
-- Double-click folder name → inline rename input
-- Hover actions: `»` (open preview panel), `+` (add subfolder), `✎` (rename), `×` (delete)
-- Drag-over highlight (teal outline) when a note card is dragged over a folder node
+**Folder navigation:** clicking a folder name sets the active folder view; the main content area shows a folder heading (no notes yet — notes appear in 5-G). Todo section is hidden in all folder views (including empty ones) and visible only on the home view.
 
-**Preview panel UX (prototype confirmed):**
-- Triggered by `»` button or by clicking a folder name when panel is already open
-- Slides in (220px) between sidebar and main content; `×` closes it
-- Header shows folder name; list shows note titles + dates
-- Notes in the panel are draggable (same mechanism as note cards)
-- Panel auto-updates when navigating to a different folder
-
-**"← Save" button:** The back/save button on the note screen reads "← Save" (confirmed in prototype, applies across all notes regardless of folder state).
-
-**What changes vs prototype in this slice:**
-- Replace `localStorage` folder state with real API calls (`POST /folders`, `PATCH`, `DELETE`, `GET /folders` on mount)
-- Remove `notetaker-folders` from localStorage; load from API on mount
-- `FolderPreviewPanel` notes list: use interim `noteFolderMap` local state in this slice; replaced properly in 5-D when `card.folderId` is available
+**"← Save" button:** the back/save button on the note screen reads "← Save" (prototype confirmed, applies regardless of folder state).
 
 **Key implementation files:**
 - `src/Domain/Folders/` — new: `FolderCommands.cs`, `FolderEvents.cs`, `Folder.cs`
@@ -319,20 +370,20 @@ Scenario: Clearing the filter shows all notes again
 - `src/Api/Handlers/FolderHandlers.cs` — new HTTP handlers
 - `src/Api/Endpoints/FolderEndpoints.cs` — register folder endpoints
 - `src/Infrastructure/NoteTakerStack.cs` — new CDK table + env var + IAM grant
-- `tests/Specs/Folders/FolderSpec.cs` — new BDD spec file
+- `tests/Specs/Folders/CreateFolderSpec.cs` — new BDD spec file
 - `tests/ApiIntegration/InMemoryFolderTreeStore.cs` — new in-memory implementation
 - `tests/InfraAssertions/` — update CDK assertion for new table
-- `web/src/App.tsx` — replace `localStorage` folder init with `getFolders()` API call on mount; `handleCreateFolder` calls real API and uses returned `folderId`
-- `web/src/components/Sidebar.tsx` — build fresh per prototype confirmed UX
-- `web/src/components/FolderTree.tsx` — build fresh; recursive component with expand/collapse and hover actions
-- `web/src/components/FolderPreviewPanel.tsx` — build fresh; 220px slide-out panel
+- `web/src/App.tsx` — replace `localStorage` folder init with `getFolders()` on mount; `handleCreateFolder` calls POST and uses returned `folderId`; `currentFolderId` state; pass to sidebar
+- `web/src/components/Sidebar.tsx` — build fresh; Home button, "Unfiled Notes" item, folder tree with + subfolder hover action, new folder inline input
+- `web/src/components/FolderTree.tsx` — build fresh; recursive component with expand/collapse and + subfolder; no rename/delete yet
+- `web/src/components/ListView.tsx` — show folder heading when `currentFolderId` is set; hide `<TodoSection>` when in any folder view
 
-**Batches:** Batch 1: domain BDD specs + API integration + CDK assertions. Batch 2: E2E + frontend wire-up.
+**Batches:** Batch 1: domain BDD spec + API integration + CDK assertions. Batch 2: E2E + frontend wire-up.
 
 **Scenarios:**
 
 ```
-Scenario: Create a folder
+Scenario: Create a root folder
   Given I open the sidebar
   When  I click + in the Folders section, type "People", and confirm
   Then  "People" appears in the sidebar folder list
@@ -342,11 +393,140 @@ Scenario: Create a subfolder
   When  I hover over "People", click + to add a subfolder, type "Bill", and confirm
   Then  "Bill" appears nested under "People" in the sidebar
 
-Scenario: Rename a folder
+Scenario: My folders are shown when I open the app
+  Given I created folders "People" and "Projects" in a previous session
+  When  I open the app
+  Then  "People" and "Projects" appear in the sidebar
+
+Scenario: Clicking a folder navigates to its view
+  Given folder "People" exists in the sidebar
+  When  I click "People"
+  Then  the main area shows "People" as the heading
+
+Scenario: The todo list is hidden when viewing a folder
+  Given I click any folder in the sidebar
+  When  the folder view loads
+  Then  the todo list is not shown
+
+Scenario: Clicking Home returns to the home view with the todo list
+  Given I am viewing a folder
+  When  I click Home in the sidebar
+  Then  all notes are shown and the todo list is visible
+```
+
+**Acceptance criteria:**
+
+- [ ] *(internal)* `Folder` aggregate folds `FolderCreated`; empty name throws
+- [ ] *(internal)* `FolderTree` projection folds `FolderCreated` correctly
+- [ ] *(internal)* CDK template includes `notetaker-proj-foldertree` table
+- [ ] `POST /folders` creates a folder; `GET /folders` returns it in the nested tree
+- [ ] `POST /folders` with `parentFolderId` creates a nested folder under the parent
+- [ ] Sidebar loads folder tree from `GET /folders` on app mount (replaces `localStorage` init)
+- [ ] Home button navigates to home list view
+- [ ] Clicking a folder name navigates to that folder's view; main area shows the folder heading
+- [ ] Todo section hidden in all folder views; visible only on home
+- [ ] "← Save" button on note screen (not "← Back")
+- [ ] E2E: create folders "People" and child "Bill"; sidebar shows tree; click "Bill" — main area shows "Bill"; click Home — home view with todo list
+
+---
+
+## Slice 5-E — Rename a folder
+
+**Status:** Not Started
+
+**Value:** I can fix a folder name I got wrong — double-clicking it lets me type a new name in place.
+
+**Commands in scope:**
+- `RenameFolder(FolderId, NewName)` — folder exists, name non-empty
+
+**Events in scope:**
+- `FolderRenamed { FolderId, NewName }`
+
+**Projections in scope:**
+- `FolderTree` — add `FolderRenamed` handler (update Name)
+
+**API endpoints:**
+- `PATCH /folders/{folderId}/name` — body `{ "name": "..." }`; returns 200
+
+**Key implementation files:**
+- `src/Domain/Folders/FolderCommands.cs` — add `RenameFolder`
+- `src/Domain/Folders/FolderEvents.cs` — add `FolderRenamed`
+- `src/Domain/Folders/Folder.cs` — add `Apply(FolderRenamed)`, `HandleRenameFolder`
+- `src/EventStore/EventDeserializer.cs` — route `FolderRenamed`
+- `src/EventStore/Projections/FolderTreeProjection.cs` — add `FolderRenamed` handler
+- `src/Api/FolderCommandHandler.cs` — add `HandleAsync(RenameFolder)`
+- `src/Api/Handlers/FolderHandlers.cs` — add PATCH handler
+- `src/Api/Endpoints/FolderEndpoints.cs` — register `PATCH /folders/{folderId}/name`
+- `tests/Specs/Folders/RenameFolderSpec.cs` — new BDD spec file
+- `web/src/components/FolderTree.tsx` — add double-click inline rename input; ✎ hover button; call `renameFolder()` on confirm
+- `web/src/api.ts` — add `renameFolder(folderId, name)`
+
+**Scenarios:**
+
+```
+Scenario: Rename a folder by double-clicking
   Given folder "Peopl" exists in the sidebar
-  When  I double-click "Peopl", change the name to "People", and press Enter
+  When  I double-click "Peopl", change the text to "People", and press Enter
   Then  the folder shows the corrected name "People"
 
+Scenario: Rename persists after reopening the app
+  Given I renamed "Peopl" to "People"
+  When  I reload the page
+  Then  "People" still appears in the sidebar
+
+Scenario: Pressing Escape while renaming cancels the change
+  Given I have double-clicked a folder to rename it
+  When  I press Escape
+  Then  the folder name is unchanged
+```
+
+**Acceptance criteria:**
+
+- [ ] *(internal)* `RenameFolder` with empty name throws; `FolderRenamed` appended on success
+- [ ] *(internal)* `FolderTree` projection updates `Name` on `FolderRenamed`
+- [ ] `PATCH /folders/{folderId}/name` renames the folder; `GET /folders` reflects the new name
+- [ ] Double-clicking a folder name opens an inline text input pre-filled with the current name
+- [ ] ✎ hover button also opens the rename input
+- [ ] Confirming with Enter calls `PATCH` and updates the sidebar
+- [ ] Pressing Escape cancels without making a change
+- [ ] E2E: create folder "Peopl"; double-click; rename to "People"; sidebar shows "People"; reload — still "People"
+
+---
+
+## Slice 5-F — Delete an empty folder
+
+**Status:** Not Started
+
+**Value:** I can delete a folder I no longer need — as long as it has no subfolders.
+
+**Commands in scope:**
+- `DeleteFolder(FolderId)` — folder exists; returns 409 if folder has children (cascade handled in 5-L)
+
+**Events in scope:**
+- `FolderDeleted { FolderId }`
+
+**Projections in scope:**
+- `FolderTree` — add `FolderDeleted` handler (delete row)
+
+**API endpoints:**
+- `DELETE /folders/{folderId}` — returns 204 on empty folder; 409 if folder has children
+
+**Key implementation files:**
+- `src/Domain/Folders/FolderCommands.cs` — add `DeleteFolder`
+- `src/Domain/Folders/FolderEvents.cs` — add `FolderDeleted`
+- `src/Domain/Folders/Folder.cs` — add `Apply(FolderDeleted)`, `HandleDeleteFolder`
+- `src/EventStore/EventDeserializer.cs` — route `FolderDeleted`
+- `src/EventStore/Projections/FolderTreeProjection.cs` — add `FolderDeleted` handler
+- `src/Api/FolderCommandHandler.cs` — add `HandleAsync(DeleteFolder)`; check children in projection before deleting
+- `src/Api/Handlers/FolderHandlers.cs` — add DELETE handler
+- `src/Api/Endpoints/FolderEndpoints.cs` — register `DELETE /folders/{folderId}`
+- `tests/Specs/Folders/DeleteFolderSpec.cs` — new BDD spec file
+- `web/src/components/FolderTree.tsx` — add × hover button; call `deleteFolder()` on click; navigate home if active folder is deleted
+- `web/src/api.ts` — add `deleteFolder(folderId)`
+
+**Scenarios:**
+
+```
 Scenario: Delete an empty folder
   Given folder "People" has no subfolders
   When  I click × on "People"
@@ -355,101 +535,70 @@ Scenario: Delete an empty folder
 Scenario: Cannot delete a folder that has subfolders
   Given folder "People" has a subfolder "Bill"
   When  I try to delete "People"
-  Then  the folder is not removed
+  Then  "People" remains in the sidebar
 
-Scenario: My folders are shown when I open the app
-  Given I created folders "People" and "Projects" in a previous session
-  When  I open the app
-  Then  "People" and "Projects" appear in the sidebar
-
-Scenario: Clicking a folder shows its notes and updates the preview panel
-  Given folder "People" has a subfolder "Bill"
-  When  I click "Bill" in the sidebar
-  Then  the main area shows "People → Bill" as the heading
-  And   the preview panel shows "Bill"'s notes
+Scenario: Deleting the active folder navigates home
+  Given I am viewing folder "People" and it has no subfolders
+  When  I delete "People"
+  Then  the home view is shown
 ```
 
 **Acceptance criteria:**
 
-- [ ] *(internal)* `Folder` aggregate folds `FolderCreated`, `FolderRenamed`, `FolderDeleted`; empty name throws; children → 409 from API
-- [ ] *(internal)* `FolderTree` projection folds all folder events correctly
-- [ ] *(internal)* CDK template includes `notetaker-proj-foldertree` table
-- [ ] `POST /folders` creates a folder; `GET /folders` returns it in the nested tree
-- [ ] `PATCH /folders/{folderId}/name` renames the folder
-- [ ] `DELETE /folders/{folderId}` on empty folder deletes; on folder with children returns 409
-- [ ] Sidebar loads folder tree from `GET /folders` on app mount (replaces `localStorage` init)
-- [ ] Home button in sidebar navigates to home list view
-- [ ] "Unfiled Notes" always visible at top of folder list; highlighted when active
-- [ ] `»` button on a folder opens the slide-out preview panel; clicking a different folder updates the panel
-- [ ] Preview panel shows correct note titles and dates for the selected folder
-- [ ] Notes in preview panel are draggable (same drag-and-drop mechanism as note cards)
-- [ ] "← Save" button on note screen (not "← Back")
-- [ ] E2E: create folders "People" and child "Bill"; sidebar shows tree; click "Bill"; main area shows "People → Bill"; `»` panel shows Bill's notes
+- [ ] *(internal)* `FolderDeleted` appended when folder has no children; 409 returned when it does
+- [ ] *(internal)* `FolderTree` projection removes the row on `FolderDeleted`
+- [ ] `DELETE /folders/{folderId}` on empty folder returns 204; folder gone from `GET /folders`
+- [ ] `DELETE /folders/{folderId}` on folder with children returns 409
+- [ ] × hover button calls delete; folder disappears from sidebar on success
+- [ ] If the deleted folder was active, the app navigates home
+- [ ] E2E: create "People"; delete it — gone from sidebar; create "People" with child "Bill"; try to delete "People" — remains
 
 ---
 
-## Slice 5-D — File notes in folders (full-stack)
+## Slice 5-G — File a note in a folder
 
 **Status:** Not Started
 
-**Value:** Notes can be filed into folders by drag-and-drop. The Unfiled Notes view shows only notes not in any folder. Creating a note from within a folder view auto-assigns it. The todo section is hidden in folder views. This wires the drag-and-drop frontend to real backend events and removes all `localStorage` state for folder assignment.
+**Value:** I can drag a note into a folder to organise it — clicking the folder then shows only that folder's notes.
 
 **Commands in scope:**
 - `MoveNoteToFolder(NoteId, FolderId)` → `NoteFiledInFolder { NoteId, FolderId }`
-- `UnfileNote(NoteId)` → `NoteUnfiled { NoteId }`
 
 **Events in scope:**
 - `NoteFiledInFolder { NoteId, FolderId }` — new event on `Note` aggregate
-- `NoteUnfiled { NoteId }` — new event on `Note` aggregate
 
 **Projections in scope:**
-- `NoteCardList` — extend with `FolderId?` field; handlers for `NoteFiledInFolder` (set FolderId) and `NoteUnfiled` (clear FolderId)
+- `NoteCardList` — extend with `FolderId?` field; add `NoteFiledInFolder` handler (set FolderId)
 
 **API endpoints:**
 - `PUT /notes/{noteId}/folder` — body `{ "folderId": "..." }`; returns 204; 404 if note or folder not found
-- `DELETE /notes/{noteId}/folder` — returns 204 (unfiles the note)
-- `GET /notes/cards` — each card now includes `folderId?: string`; client filters by this field
+- `GET /notes/cards` — each card now includes `folderId?: string`
 
-**Folder assignment UX (prototype confirmed):**
-- **Drag-only** — no folder picker dropdown on the note screen. Assignment happens by:
-  1. Dragging a note card from the main list onto a folder in the sidebar tree
-  2. Dragging a note from the `»` preview panel onto a different folder
-  3. Dragging a note onto "Unfiled Notes" to remove folder assignment
-- All drag sources use `dataTransfer.setData("text/plain", noteId)`
+**Drag UX (prototype confirmed):**
+- Note cards use `dataTransfer.setData("text/plain", noteId)`
+- Sidebar folder nodes accept `dragover` and `drop` events
+- Dropping a note card onto a folder calls `PUT /notes/{id}/folder`
+- Drag-over highlights the folder node with a teal outline
 
-**Auto-assign on create (prototype confirmed):**
-- When the user clicks "+ New Note" from within a folder view (not home or Unfiled Notes), the new note is automatically filed in the current folder immediately after creation
-
-**Todo section visibility (prototype confirmed):**
-- `<TodoSection>` is shown **only** on the home view (no `currentFolderId`)
-- Hidden in all folder views including "Unfiled Notes"
-
-**What changes vs prototype in this slice:**
-- Replace fire-and-forget `moveNoteToFolder` / `unfileNote` stubs with real API calls
-- Replace `noteFolderMap` local state + `localStorage` with `card.folderId` from `GET /notes/cards` response
-- Replace `noteDateMap` local state with `card.date` from card response
-- Remove `notetaker-note-folder-map` and `notetaker-note-date-map` from `localStorage`
-- Remove `noteFolderMap` and `noteDateMap` state from `App.tsx`; filter using `card.folderId` directly
-- `FolderPreviewPanel` receives filtered `cards` (already from API) instead of filtering `notes` by local map
-- `ListView` filters cards by `card.folderId === currentFolderId` (server field, not local map)
+**Folder view filtering:** `ListView` filters `cards` by `card.folderId === currentFolderId` when a folder is active.
 
 **Key implementation files:**
-- `src/Domain/Notes/NoteCommands.cs` — add `MoveNoteToFolder`, `UnfileNote`
-- `src/Domain/Notes/NoteEvents.cs` — add `NoteFiledInFolder`, `NoteUnfiled`
-- `src/Domain/Notes/Note.cs` — add `_folderId` state; handlers and Apply methods
-- `src/EventStore/EventDeserializer.cs` — route new events
-- `src/EventStore/Projections/NoteCardListProjection.cs` — add `FolderId?` to `NoteCardView`; add handlers
-- `src/Api/NoteCommandHandler.cs` — add `HandleAsync(MoveNoteToFolder)`, `HandleAsync(UnfileNote)`
-- `src/Api/Handlers/NoteHandlers.cs` — add HTTP handlers; ensure `folderId` included in card response
-- `src/Api/Endpoints/NoteEndpoints.cs` — register `PUT /notes/{noteId}/folder`, `DELETE /notes/{noteId}/folder`
+- `src/Domain/Notes/NoteCommands.cs` — add `MoveNoteToFolder`
+- `src/Domain/Notes/NoteEvents.cs` — add `NoteFiledInFolder`
+- `src/Domain/Notes/Note.cs` — add `_folderId` state; `Apply(NoteFiledInFolder)`; `HandleMoveNoteToFolder`
+- `src/EventStore/EventDeserializer.cs` — route `NoteFiledInFolder`
+- `src/EventStore/Projections/NoteCardListProjection.cs` — add `FolderId?` to `NoteCardView`; add `NoteFiledInFolder` handler
+- `src/Api/NoteCommandHandler.cs` — add `HandleAsync(MoveNoteToFolder)`
+- `src/Api/Handlers/NoteHandlers.cs` — add PUT handler; include `folderId` in card response
+- `src/Api/Endpoints/NoteEndpoints.cs` — register `PUT /notes/{noteId}/folder`
 - `tests/Specs/Notes/MoveNoteToFolderSpec.cs` — new BDD spec file
 - `tests/ApiIntegration/InMemoryNoteCardListStore.cs` — extend with `FolderId?`
-- `web/src/App.tsx` — remove `noteFolderMap`, `noteDateMap`, localStorage keys; pass `cards` to preview panel; filter by `card.folderId`; auto-assign on new note in folder view calls real `PUT /notes/{id}/folder`
-- `web/src/components/ListView.tsx` — filter `cards` by `card.folderId === currentFolderId`; Unfiled filters `!card.folderId`
-- `web/src/components/FolderPreviewPanel.tsx` — accept `cards: NoteCard[]`; use `card.date`; filter by `card.folderId`
-- `web/src/api.ts` — add `moveNoteToFolder(noteId, folderId)`, `unfileNote(noteId)`; add `folderId?: string` to `NoteCard` interface
+- `web/src/App.tsx` — remove `noteFolderMap`, `notetaker-note-folder-map` from localStorage; filter using `card.folderId`
+- `web/src/components/ListView.tsx` — filter `cards` by `card.folderId === currentFolderId`; drag-and-drop handlers on note cards
+- `web/src/components/FolderTree.tsx` — add `dragover`/`drop` handlers; call `moveNoteToFolder()` on drop
+- `web/src/api.ts` — add `moveNoteToFolder(noteId, folderId)`; add `folderId?: string` to `NoteCard`
 
-**Batches:** Batch 1: domain BDD specs + API integration. Batch 2: E2E + frontend wire-up.
+**Batches:** Batch 1: domain BDD spec + API integration. Batch 2: E2E + frontend wire-up.
 
 **Scenarios:**
 
@@ -460,135 +609,314 @@ Scenario: Drag a note into a folder
   Then  the note disappears from the home view
   And   it appears when I click "Projects" in the sidebar
 
-Scenario: Drag a note to a different folder
-  Given a note is filed under "People"
-  When  I open "People"'s preview panel and drag the note onto "Projects"
-  Then  the note appears under "Projects" and is no longer under "People"
-
-Scenario: Drag a note onto "Unfiled Notes" removes its folder
-  Given a note is filed under "People"
-  When  I drag the note onto "Unfiled Notes" in the sidebar
-  Then  the note appears in the Unfiled Notes view and is gone from "People"
-
-Scenario: Unfiled Notes shows only notes not in any folder
-  Given one note is in folder "Projects" and another has no folder
-  When  I click "Unfiled Notes" in the sidebar
-  Then  only the note with no folder is shown
-
 Scenario: Folder view shows only notes filed in that folder
   Given one note is in folder "Bill" and another is unfiled
   When  I click "Bill" in the sidebar
   Then  only the note in "Bill" is shown
 
-Scenario: A new note created from a folder view is auto-filed there
-  Given I am viewing folder "Projects"
-  When  I click "+ New Note"
-  Then  the new note immediately appears under "Projects"
-
-Scenario: The todo list is hidden when viewing a folder
-  Given I click any folder in the sidebar
-  When  the folder view loads
-  Then  the todo list is not shown
-
-Scenario: The todo list is visible on the home view
-  Given I click the Home button
-  When  the home view loads
-  Then  the todo list is shown
+Scenario: Filing a note in a different folder moves it
+  Given a note is already filed under "People"
+  When  I drag it onto "Projects"
+  Then  the note appears under "Projects" and is no longer under "People"
 ```
 
 **Acceptance criteria:**
 
-- [ ] *(internal)* `Note` aggregate handles `MoveNoteToFolder` and `UnfileNote`; fires correct events
-- [ ] *(internal)* `NoteCardList` projection folds `NoteFiledInFolder` (sets `FolderId`) and `NoteUnfiled` (clears `FolderId`)
+- [ ] *(internal)* `Note` aggregate handles `MoveNoteToFolder`; fires `NoteFiledInFolder`
+- [ ] *(internal)* `NoteCardList` projection folds `NoteFiledInFolder` (sets `FolderId`)
 - [ ] `PUT /notes/{noteId}/folder` files a note; `GET /notes/cards` returns it with `folderId` set
-- [ ] `DELETE /notes/{noteId}/folder` unfiles a note; `GET /notes/cards` returns it with `folderId: null`
-- [ ] "Unfiled Notes" view (sidebar) shows only cards where `card.folderId` is null
-- [ ] Folder view shows only cards where `card.folderId === activeFolderId`
+- [ ] `GET /notes/cards` includes `folderId?: string` on every card
 - [ ] Dragging a note card onto a sidebar folder calls `PUT /notes/{id}/folder`
-- [ ] Dragging a note from the `»` preview panel onto a different folder re-files it
-- [ ] Dragging a note onto "Unfiled Notes" calls `DELETE /notes/{id}/folder`
-- [ ] Creating a note from a folder view auto-assigns it to that folder via `PUT /notes/{id}/folder`
-- [ ] Todo section hidden in all folder views (including Unfiled Notes); visible only on home
-- [ ] `noteFolderMap` and `noteDateMap` removed from `localStorage` and `App.tsx` state
-- [ ] E2E: create note and folder; drag note onto folder; verify in folder view; drag to "Unfiled Notes"; verify in unfiled view
+- [ ] Folder view shows only cards where `card.folderId === activeFolderId`
+- [ ] Home view continues to show all notes regardless of `folderId`
+- [ ] `noteFolderMap` removed from `localStorage` and `App.tsx` state
+- [ ] E2E: create note and folder; drag note onto folder; click folder — note appears; click Home — note absent
 
 ---
 
-## Slice 5-E — Move and nest folders + cascade delete (full-stack)
+## Slice 5-H — Unfiled Notes view
 
 **Status:** Not Started
 
-**Value:** The folder tree is fully malleable — users can drag a folder onto another folder to reparent it. Cascade delete is implemented: deleting a folder with children automatically unfiles all notes in the subtree, deletes descendant folders bottom-up, then deletes the target folder. This eliminates the 409 guard from 5-C.
+**Value:** I can see all my unorganised notes in one place, and drag a note there to remove it from its folder.
 
 **Commands in scope:**
-- `MoveFolder(FolderId, NewParentFolderId?)` — move to new parent or to root; must not create a cycle
+- `UnfileNote(NoteId)` → `NoteUnfiled { NoteId }`
+
+**Events in scope:**
+- `NoteUnfiled { NoteId }` — new event on `Note` aggregate
+
+**Projections in scope:**
+- `NoteCardList` — add `NoteUnfiled` handler (clear `FolderId`)
+
+**API endpoints:**
+- `DELETE /notes/{noteId}/folder` — returns 204; unfiles the note
+
+**Unfiled Notes UX (prototype confirmed):**
+- "Unfiled Notes" is always present at the top of the folder list in the sidebar
+- Clicking it filters the main view to `cards` where `card.folderId` is null
+- It acts as a drop target — dropping a note on it calls `DELETE /notes/{id}/folder`
+- It is highlighted when active
+
+**Key implementation files:**
+- `src/Domain/Notes/NoteCommands.cs` — add `UnfileNote`
+- `src/Domain/Notes/NoteEvents.cs` — add `NoteUnfiled`
+- `src/Domain/Notes/Note.cs` — add `Apply(NoteUnfiled)`, `HandleUnfileNote`
+- `src/EventStore/EventDeserializer.cs` — route `NoteUnfiled`
+- `src/EventStore/Projections/NoteCardListProjection.cs` — add `NoteUnfiled` handler (set `FolderId = null`)
+- `src/Api/NoteCommandHandler.cs` — add `HandleAsync(UnfileNote)`
+- `src/Api/Handlers/NoteHandlers.cs` — add DELETE handler
+- `src/Api/Endpoints/NoteEndpoints.cs` — register `DELETE /notes/{noteId}/folder`
+- `tests/Specs/Notes/UnfileNoteSpec.cs` — new BDD spec file
+- `web/src/components/Sidebar.tsx` — "Unfiled Notes" is active navigation target + drop target
+- `web/src/components/ListView.tsx` — when `currentFolderId === UNFILED_ID`, filter `cards` by `!card.folderId`
+- `web/src/api.ts` — add `unfileNote(noteId)`
+
+**Scenarios:**
+
+```
+Scenario: Unfiled Notes shows only notes not in any folder
+  Given one note is in folder "Projects" and another has no folder
+  When  I click "Unfiled Notes" in the sidebar
+  Then  only the note with no folder is shown
+
+Scenario: Drag a note onto "Unfiled Notes" removes its folder
+  Given a note is filed under "People"
+  When  I drag the note onto "Unfiled Notes" in the sidebar
+  Then  the note appears in the Unfiled Notes view
+  And   it is no longer shown when I click "People"
+
+Scenario: All notes appear in Unfiled Notes after losing their folder
+  Given I have two notes, both in folder "People", and I delete "People"
+  When  I click "Unfiled Notes"
+  Then  both notes are shown there
+```
+
+**Acceptance criteria:**
+
+- [ ] *(internal)* `Note` aggregate handles `UnfileNote`; fires `NoteUnfiled`
+- [ ] *(internal)* `NoteCardList` projection folds `NoteUnfiled` (clears `FolderId`)
+- [ ] `DELETE /notes/{noteId}/folder` unfiles the note; `GET /notes/cards` returns it with `folderId: null`
+- [ ] "Unfiled Notes" sidebar item is always visible and clickable; highlights when active
+- [ ] Clicking "Unfiled Notes" shows only cards where `card.folderId` is null
+- [ ] Dragging a note onto "Unfiled Notes" calls `DELETE /notes/{id}/folder`
+- [ ] E2E: file a note in "People"; drag it onto "Unfiled Notes"; click "People" — note absent; click "Unfiled Notes" — note present
+
+---
+
+## Slice 5-I — Folder preview panel
+
+**Status:** Not Started
+
+**Value:** I can peek at a folder's notes with a side panel before deciding to navigate into it.
+
+**Commands in scope:** none
+
+**Events in scope:** none
+
+**Backend changes:** none — preview panel reads from `GET /notes/cards` data already loaded in `App.tsx`.
+
+**Preview panel UX (prototype confirmed):**
+- Triggered by `»` button on any folder node in the sidebar
+- Slides in (220 px) between sidebar and main content; `×` closes it
+- Header shows the folder name; body lists note titles and dates from `cards` filtered by `folderId`
+- Clicking a different folder's `»` updates the panel without closing it
+- Notes in the panel are draggable (same drag mechanism as note cards in 5-G)
+- Panel auto-updates when the folder is navigated to
+
+**Key implementation files:**
+- `web/src/components/FolderPreviewPanel.tsx` — build fresh; 220 px slide-out; receives `cards: NoteCard[]`, `folderName: string`, `onClose`; filters internally by `folderId`; notes draggable
+- `web/src/components/FolderTree.tsx` — add `»` button on hover; call `onPreview(folderId)` handler
+- `web/src/App.tsx` — hold `previewFolderId` state; pass filtered cards to `<FolderPreviewPanel>`
+
+**Scenarios:**
+
+```
+Scenario: Open the preview panel with the » button
+  Given folder "Bill" contains two notes and I can see "Bill" in the sidebar
+  When  I hover over "Bill" and click »
+  Then  a panel slides in showing the two note titles and their dates
+
+Scenario: Switching to a different folder's preview updates the panel
+  Given the preview panel is open for "Bill"
+  When  I click » on "People"
+  Then  the panel header changes to "People" and shows People's notes
+
+Scenario: Closing the panel hides it
+  Given the preview panel is open
+  When  I click × on the panel
+  Then  the panel slides out and the main content expands
+```
+
+**Acceptance criteria:**
+
+- [ ] `»` button visible on hover for each folder node
+- [ ] Clicking `»` opens the panel with the correct folder's notes (titles and dates)
+- [ ] Notes in the panel are draggable (can be dropped onto other folders)
+- [ ] Clicking `»` on a different folder updates the panel header and note list
+- [ ] `×` closes the panel
+- [ ] E2E: file a note in "Bill"; open `»` panel for "Bill"; panel shows the note; drag it onto "People"; note disappears from Bill's panel
+
+---
+
+## Slice 5-J — Auto-assign note to current folder
+
+**Status:** Not Started
+
+**Value:** When I'm working inside a folder, new notes I create are automatically filed there so I don't have to drag them manually.
+
+**Commands in scope:** reuses `MoveNoteToFolder` from 5-G — fired immediately after `CreateNote` when a folder view is active
+
+**Events in scope:** `NoteFiledInFolder` (from 5-G)
+
+**Backend changes:** none — the command already exists; this is a frontend behaviour change.
+
+**Frontend changes:**
+- `App.tsx` — in `handleCreateNote`, after the note is created and the response returns the new `noteId`, if `currentFolderId` is set (and is not `UNFILED_ID`), immediately call `PUT /notes/{noteId}/folder` before navigating to the note screen
+- `ListView.tsx` — newly created note appears in the current folder view when the user returns
+
+**Scenarios:**
+
+```
+Scenario: A new note created from a folder view is auto-filed there
+  Given I am viewing folder "Projects"
+  When  I click "+ New Note"
+  Then  the new note immediately appears under "Projects" when I return to the folder view
+
+Scenario: A new note created from home is not filed anywhere
+  Given I am on the home view
+  When  I click "+ New Note"
+  Then  the new note appears in "Unfiled Notes" and not under any folder
+
+Scenario: A new note created from "Unfiled Notes" is not auto-filed
+  Given I am viewing "Unfiled Notes"
+  When  I click "+ New Note"
+  Then  the new note appears in "Unfiled Notes"
+```
+
+**Acceptance criteria:**
+
+- [ ] Creating a note from a folder view (not home, not Unfiled Notes) fires `PUT /notes/{id}/folder` immediately after creation
+- [ ] The new note appears in the current folder when the user returns to it
+- [ ] Creating a note from home or Unfiled Notes does not file it anywhere
+- [ ] E2E: navigate to "Projects"; create a note; navigate back to "Projects" — the new note is there; open "Unfiled Notes" — the note is absent
+
+---
+
+## Slice 5-K — Reparent a folder
+
+**Status:** Not Started
+
+**Value:** I can reorganise my folder hierarchy by dragging a folder into another — without losing any of the notes inside.
+
+**Commands in scope:**
+- `MoveFolder(FolderId, NewParentFolderId?)` — move to a new parent or to root; must not create a cycle
 
 **Events in scope:**
 - `FolderMoved { FolderId, NewParentFolderId? }`
 
 **Projections in scope:**
-- `FolderTree` — add handler for `FolderMoved` (update `ParentFolderId`); update `DeleteFolder` cascade logic
-
-**Cascade delete (prototype-confirmed behaviour):**
-When `DeleteFolder` is called on a folder with children: automatically unfile all notes in the folder and all descendant folders (`NoteUnfiled` events), then delete all descendant folders bottom-up (`FolderDeleted` events), then delete the target folder. The event log grows proportionally to subtree size but the UX is clean — delete always works. Replaces the 5-C 409 guard.
+- `FolderTree` — add `FolderMoved` handler (update `ParentFolderId`)
 
 **API endpoints:**
 - `PUT /folders/{folderId}/parent` — body `{ "parentFolderId": "..." | null }`; 200 on success; 400 if cycle; 404 if not found
-- `DELETE /folders/{folderId}` — updated to cascade (overrides 5-C 409 behaviour)
 
-**Cycle prevention:** `MoveFolder` handler reads current tree to verify `NewParentFolderId` is not the folder itself or any of its descendants. Check in the command handler (not aggregate) — aggregate receives `isDescendant: bool`.
+**Cycle prevention:** The command handler reads the current tree to verify `NewParentFolderId` is not the folder itself or a descendant. The aggregate receives the result as `isDescendant: bool`.
 
 **Key implementation files:**
 - `src/Domain/Folders/FolderCommands.cs` — add `MoveFolder`
 - `src/Domain/Folders/FolderEvents.cs` — add `FolderMoved`
 - `src/Domain/Folders/Folder.cs` — add `Apply(FolderMoved)`, `HandleMoveFolder`
 - `src/EventStore/EventDeserializer.cs` — route `FolderMoved`
-- `src/EventStore/Projections/FolderTreeProjection.cs` — add `FolderMoved` handler; cascade delete logic
-- `src/Api/FolderCommandHandler.cs` — `MoveFolder` (ancestry check); `DeleteFolder` cascade (unfile notes, delete descendants, delete target)
-- `src/Api/Handlers/FolderHandlers.cs` — add `PUT /folders/{folderId}/parent`; update `DELETE` to cascade
+- `src/EventStore/Projections/FolderTreeProjection.cs` — add `FolderMoved` handler
+- `src/Api/FolderCommandHandler.cs` — ancestry check before dispatching `MoveFolder`
+- `src/Api/Handlers/FolderHandlers.cs` — add PUT handler
 - `src/Api/Endpoints/FolderEndpoints.cs` — register `PUT /folders/{folderId}/parent`
 - `tests/Specs/Folders/MoveFolderSpec.cs` — new BDD spec file (reparenting + cycle detection)
-- `tests/Specs/Folders/DeleteFolderCascadeSpec.cs` — new BDD spec file (cascade delete)
-- `web/src/components/Sidebar.tsx` — drag folder onto folder calls `moveFolder()`; drop onto root area moves to root
+- `web/src/components/Sidebar.tsx` — drag folder onto folder in tree calls `moveFolder()`; drop onto root area moves to root
 - `web/src/api.ts` — add `moveFolder(folderId, parentFolderId | null)`
-
-**Batches:** Batch 1: domain BDD specs + API integration. Batch 2: E2E + frontend drag-folder.
 
 **Scenarios:**
 
 ```
-Scenario: Drag a folder onto another folder to reparent it
-  Given "Bill" is under "People" and "Projects" exists in the sidebar
-  When  I drag "Bill" onto "Projects"
-  Then  "Bill" appears under "Projects" and is no longer under "People"
+Scenario: Drag a folder onto another to reparent it
+  Given "Bill" is at the root level and "People" exists
+  When  I drag "Bill" onto "People"
+  Then  "Bill" appears nested under "People" and is no longer at root
 
 Scenario: Drag a folder to the root level
   Given "Bill" is a subfolder of "People"
-  When  I drag "Bill" to an empty area at the top of the folder list
+  When  I drag "Bill" to the root area of the folder list
   Then  "Bill" appears at the root level alongside "People"
 
-Scenario: Dragging a folder into one of its own subfolders does nothing
+Scenario: Dragging a folder into one of its own descendants does nothing
   Given folder "People" has a subfolder "Bill"
   When  I try to drag "People" onto "Bill"
   Then  the folder tree is unchanged
-
-Scenario: Deleting a folder with subfolders removes everything and unfiles their notes
-  Given folder "People" has subfolder "Bill" and a note is filed in "Bill"
-  When  I delete "People"
-  Then  both "People" and "Bill" disappear from the sidebar
-  And   the note that was in "Bill" appears in Unfiled Notes
 ```
 
 **Acceptance criteria:**
 
-- [ ] *(internal)* `MoveFolder` appends `FolderMoved`; cycle detection rejects moves into own descendants
+- [ ] *(internal)* `MoveFolder` appends `FolderMoved`; cycle detection rejects moves into own descendants (400)
 - [ ] *(internal)* `FolderTree` projection updates `ParentFolderId` on `FolderMoved`
-- [ ] *(internal)* `DeleteFolder` with descendants: unfiles all notes in subtree, deletes descendants bottom-up, deletes target; all correct events appended
 - [ ] `PUT /folders/{folderId}/parent` reparents the folder; `GET /folders` reflects new tree
-- [ ] `PUT /folders/{folderId}/parent` with cycle returns 400
-- [ ] `DELETE /folders/{folderId}` on folder with children cascades cleanly (no more 409)
+- [ ] `PUT /folders/{folderId}/parent` with a cycle returns 400
 - [ ] Drag folder onto folder in sidebar reparents it
-- [ ] E2E: create "People > Bill"; drag "Bill" onto "Projects"; verify tree; delete "People" — "People" gone, "Projects > Bill" intact
+- [ ] Dragging to root (null parent) moves folder to root level
+- [ ] Notes inside moved folders are unaffected
+- [ ] E2E: create "People > Bill"; drag "Bill" to root — "Bill" at root, still contains its notes
+
+---
+
+## Slice 5-L — Cascade delete a folder
+
+**Status:** Not Started
+
+**Value:** I can delete any folder, even one with subfolders and notes inside — everything is cleaned up automatically and the notes appear in Unfiled Notes.
+
+**Commands in scope:** reuses `DeleteFolder` from 5-F — updated to cascade instead of returning 409
+
+**Events produced (by the cascade):**
+- `NoteUnfiled` — one per note in the subtree
+- `FolderDeleted` — one per descendant folder (bottom-up), then one for the target
+
+**Cascade behaviour (prototype confirmed):**
+When `DeleteFolder` is called on a folder with children: the command handler reads the current `FolderTree` projection to find all descendants; fires `UnfileNote` for every note in the subtree; fires `DeleteFolder` for each descendant folder bottom-up; then fires `DeleteFolder` for the target. The event log grows proportionally to subtree size but delete always succeeds.
+
+**API endpoints:**
+- `DELETE /folders/{folderId}` — updated to cascade; no longer returns 409 for folders with children
+
+**Key implementation files:**
+- `src/Api/FolderCommandHandler.cs` — replace 409 guard with cascade logic (unfile notes, delete descendants bottom-up, delete target)
+- `tests/Specs/Folders/DeleteFolderCascadeSpec.cs` — new BDD spec file
+- No frontend changes — delete already calls `DELETE /folders/{folderId}`; the sidebar refreshes from `GET /folders`
+
+**Scenarios:**
+
+```
+Scenario: Delete a folder that has subfolders removes everything
+  Given folder "People" has subfolder "Bill"
+  When  I delete "People"
+  Then  both "People" and "Bill" disappear from the sidebar
+
+Scenario: Notes in a deleted folder's subtree appear in Unfiled Notes
+  Given a note is filed in subfolder "Bill" under "People"
+  When  I delete "People"
+  Then  the note appears in Unfiled Notes
+
+Scenario: Other folders and their notes are not affected
+  Given folders "People" (with "Bill") and "Projects" exist, with notes in both
+  When  I delete "People"
+  Then  "Projects" and its notes are unchanged
+```
+
+**Acceptance criteria:**
+
+- [ ] *(internal)* `DeleteFolder` with descendants: unfiles all notes in subtree (`NoteUnfiled` per note), deletes descendant folders bottom-up (`FolderDeleted`), then deletes target; all correct events appended
+- [ ] `DELETE /folders/{folderId}` on folder with children cascades cleanly (no more 409)
+- [ ] All descendant folders disappear from `GET /folders`
+- [ ] All notes that were in the subtree appear in `GET /notes/cards` with `folderId: null`
+- [ ] E2E: create "People > Bill"; file a note in "Bill"; delete "People" — both folders gone; "Unfiled Notes" shows the note
 
 ---
 

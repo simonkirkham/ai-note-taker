@@ -64,6 +64,7 @@ Full reference: `docs/dotnet-coding-standards.md`
 - [ ] Endpoint lambda does HTTP only — no `store.ReadAsync` or `store.AppendAsync`
 - [ ] Events are immutable — any shape change is a new event type, not an edit
 - [ ] No DynamoDB access outside `src/EventStore/`
+- [ ] Each class and interface is in its own file; filename matches the type name exactly
 - [ ] Names: PascalCase for public types/members, camelCase for params/locals
 - [ ] File-scoped namespace used
 - [ ] `var` only when type is obvious from right-hand side
