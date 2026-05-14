@@ -58,14 +58,14 @@ export default function NoteView({
     if (!loadingDetail && !notFound) inputRef.current?.focus();
   }, [loadingDetail, notFound]);
 
-  function handleAddTags(raw: string) {
+  async function handleAddTags(raw: string) {
     const tokens = raw.trim().split(/\s+/).filter(Boolean);
     const newTokens = tokens.filter((t) => !tags.includes(t));
     if (newTokens.length === 0) return;
     tagsModifiedRef.current = true;
     setTags((prev) => [...prev, ...newTokens]);
     for (const token of newTokens) {
-      tagNote(noteId, token).catch(() => {});
+      await tagNote(noteId, token).catch(() => {});
     }
   }
 
