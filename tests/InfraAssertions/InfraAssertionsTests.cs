@@ -169,6 +169,18 @@ public class InfraAssertionsTests
     }
 
     [Fact]
+    public void Lambda_HasSnapStartOnPublishedVersions()
+    {
+        _template.HasResourceProperties("AWS::Lambda::Function", Match.ObjectLike(new Dictionary<string, object>
+        {
+            ["SnapStart"] = Match.ObjectLike(new Dictionary<string, object>
+            {
+                ["ApplyOn"] = "PublishedVersions"
+            })
+        }));
+    }
+
+    [Fact]
     public void CloudFront_HasSpaErrorResponses()
     {
         _template.HasResourceProperties("AWS::CloudFront::Distribution", Match.ObjectLike(new Dictionary<string, object>
