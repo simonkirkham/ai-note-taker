@@ -1,5 +1,5 @@
 {
-  "framework": "net8.0",
+  "framework": "net10.0",
   "function-handler": "Api",
-  "function-runtime": "dotnet8"
+  "function-runtime": "dotnet10"
 }

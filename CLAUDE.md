@@ -10,7 +10,7 @@ See [docs/goals.md](docs/goals.md) for the learning goals.
 
 ## Stack
 
-- Backend: .NET 8 on AWS Lambda (ASP.NET minimal API behind a single Lambda)
+- Backend: .NET 10 on AWS Lambda (ASP.NET minimal API behind a single Lambda)
 - Event store: DynamoDB with a lightweight helper library
 - Frontend: React + TypeScript (Vite)
 - Infrastructure: AWS CDK in C#
@@ -62,7 +62,7 @@ FRONTEND_URL=<cloudfront-url> dotnet test tests/E2E/E2E.csproj
 dotnet run --project src/Api/Api.csproj
 
 # Validate infrastructure (requires dotnet publish first)
-dotnet publish src/Api/Api.csproj -c Release -o src/Api/bin/Release/net8.0/publish
+dotnet publish src/Api/Api.csproj -c Release -o src/Api/bin/Release/net10.0/publish
 cdk synth
 
 # Deploy to AWS

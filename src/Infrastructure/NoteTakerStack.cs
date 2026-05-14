@@ -69,7 +69,7 @@ public class NoteTakerStack : Stack
 
         // ── API Lambda ───────────────────────────────────────────────────
         var lambdaAssetPath = (string?)this.Node.TryGetContext("lambdaAssetPath")
-            ?? "src/Api/bin/Release/net8.0/publish";
+            ?? "src/Api/bin/Release/net10.0/publish";
         var apiFunction = new Amazon.CDK.AWS.Lambda.Function(this, "ApiFunction", new Amazon.CDK.AWS.Lambda.FunctionProps
         {
             Runtime = Amazon.CDK.AWS.Lambda.Runtime.DOTNET_8,
