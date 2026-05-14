@@ -50,7 +50,7 @@
       "PowerShell(Format-Table *)",
       "PowerShell(Out-String *)",
       "PowerShell(Write-Output *)",
-      "Skill(update-config)",
+      "Skill(*)",
       "PowerShell(dotnet build *)",
       "PowerShell(*)",
       "Bash(Get-Command aws *)",

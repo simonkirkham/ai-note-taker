@@ -29,7 +29,7 @@ See [docs/goals.md](docs/goals.md) for the learning goals.
 - `tests/InfraAssertions/` — CDK template assertions (IAM, env vars, deletion policies)
 - `tests/E2E/` — Playwright browser journey tests (BDD-style); **fails the build** if `FRONTEND_URL` is not set
 - `web/` — React + TypeScript frontend
-- `docs/` — architecture, roadmap, ADRs, event model, workflow log
+- `docs/` — architecture, roadmap, ADRs, event model, learnings
 
 ## How to run
 
@@ -104,6 +104,9 @@ Reach for these instead of writing patterns from scratch:
 - **cdk-stack-update** — safe edits to CDK with synth + diff gating
 - **refactor** — clean up code after specs pass; see [`.claude/skills/refactor/SKILL.md`](.claude/skills/refactor/SKILL.md)
 - **ui-ux-pro-max** — design system generator for visual polish; run as Stylist after Pip's tests are green; generates `design-system/MASTER.md` once and references it thereafter
+- **scribe** — post-deploy orchestrator; sequences token-log, process-improvements, and doc updates after a deploy; see [`.claude/skills/scribe/SKILL.md`](.claude/skills/scribe/SKILL.md)
+- **process-improvements** — surface observations from a slice and write them as actionable learnings; execute all immediately-applicable fixes in the same turn; see [`.claude/skills/process-improvements/SKILL.md`](.claude/skills/process-improvements/SKILL.md)
+- **token-log** — record agent token counts per slice, append to `docs/token-log.md`, flag spikes for process-improvements; see [`.claude/skills/token-log/SKILL.md`](.claude/skills/token-log/SKILL.md)
 
 ## Workflow
 
@@ -119,11 +122,10 @@ Reach for these instead of writing patterns from scratch:
 10. **Hawk approves → Pip merges** — run `gh pr merge --squash --delete-branch` immediately. No user confirmation needed.
 11. **Hawk requests changes → Pip fixes** — fix every finding, push, wait for CI, re-run Hawk.
 12. **Merge to main → monitor deploy** — immediately schedule a monitor on `gh run list --branch main --limit 1`. Poll every 90s until the deploy run completes.
-13. **Deploy succeeds → Scribe** — run all four Scribe steps without being asked:
-    - Append entry to `docs/workflow-log.md`
-    - Create `docs/learnings/phase-<n><id>-<short-description>.md`
-    - Append entry to `docs/token-log.md`
+13. **Deploy succeeds → Scribe** — run all Scribe steps without being asked:
+    - Create `docs/learnings/phase-<n><id>-<short-description>.md`; carry out all Done actions immediately
     - Mark slice/phase status as Done in `docs/phases/phase-N.md`
+    - Update `docs/roadmap.md` if the phase is now complete
 14. **Deploy fails → investigate and fix** — read `gh run view <id> --log-failed`, diagnose, fix, push. Do not stop to report unless genuinely blocked.
 
 ### Human gates (the only steps that require explicit user confirmation)

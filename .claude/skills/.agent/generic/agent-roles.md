@@ -184,7 +184,7 @@ Hawk round-trips are expensive (~8–35k tokens each). Catch the common findings
 - Delete the local branch (`git branch -d slice/...`)
 - Monitor the main pipeline until it reaches a terminal state
 - If the main pipeline fails and your merge caused it, fix it immediately
-- If the main pipeline passes, update `docs/workflow-log.md` with a phase-end note if this completes a phase
+- If the main pipeline passes, the slice is complete
 
 **Done when:** The main pipeline is green after your merge.
 
@@ -310,70 +310,23 @@ Commit style changes separately from functional changes with a message like `Sty
 - `docs/phases/phase-N.md` — mark completed acceptance criteria as `[x]`, update slice status to `Done`
 - `docs/roadmap.md` — update phase status if the phase is now complete or newly in progress
 - Any `docs/` file that describes something the slice changed (architecture, event schemas, view schemas, ADRs)
-- `docs/learnings/phase-<id>-<kebab-name>.md` — workflow observations, process improvement suggestions, and token usage observations (which agent consumed the most, why, and concrete suggestions for reducing usage on future slices). **Check existing files in `docs/learnings/` to match the naming convention before creating.**
-- `docs/token-log.md` — append a row per agent for the completed slice with approximate token counts
+- `docs/learnings/phase-<id>-<kebab-name>.md` — brief improvement-focused observations (workflow, code, project, token usage) with a concrete action per entry. **Check existing files in `docs/learnings/` to match the naming convention before creating.**
+- `docs/token-log.md` — append one row per agent for the completed slice
 
-**Learnings doc template:**
-
-```markdown
-# Learnings: <slice name>
-
-## What was inefficient or went wrong
-
-- <observation>
-
-## Suggested process improvements
-
-- <concrete suggestion tied to a specific role or workflow step>
-```
-
-Scribe writes the workflow observations above Hawk's review findings block. Observations must be grounded in the actual conversation — quote or paraphrase specific moments where the workflow broke down or caused rework. Suggestions must name the role or workflow step they apply to (e.g. "Scout should…", "The Breaker hand-off should require…").
-
-**Token log format** — append one section per slice to `docs/token-log.md`:
-
-```markdown
-## Slice <id> — <name>
-
-| Agent     | ~Tokens    |
-| --------- | ---------- |
-| Scout     | 12 000     |
-| Breaker   | 8 000      |
-| Pip       | 45 000     |
-| Stylist   | 12 000     |
-| Hawk      | 5 000      |
-| Scribe    | 3 000      |
-| **Total** | **85 000** |
-
-**Why:** <one sentence on what drove the total — slice complexity, rework rounds, context size>
-
-**Optimisation suggestions:**
-
-- **<Role> (–<estimated saving>):** <what happened, what rule or step would have prevented it, what to do differently next slice>
-```
-
-Token counts come from each agent's hand-off summary. If an agent did not report, note `—`. Round to the nearest 1 000.
-
-After recording the counts, **Scribe must analyse the distribution** and write at least one suggestion per agent whose token count was unexpectedly high (more than double the next-highest agent, or higher than the same agent on the previous slice). Suggestions must be specific — name the rule or step that would have changed the outcome, and estimate the saving. "Used too many tokens" is not a valid suggestion. If the slice ran cleanly with no high-cost agents, write `None — slice ran within expected range.`
-
-**Permission-approval check (required):** Diff `.claude/settings.local.json` against main. Any new entries that appeared during the slice are commands that required the human's manual approval — find and fix every one:
-- If the command is safe and commonly needed → add it to `.claude/settings.local.json` allow-list.
-- If the command can be replaced with an already-allowed pattern → update the relevant guardrail in `CLAUDE.md` or role rule in this file so future runs use the right pattern instead (e.g. `$body = @"..."@; gh pr create --body $body` instead of a temp file + `Remove-Item`; `npm --prefix <path> run build` instead of `cd <path>; npm run build`).
-- Record what was fixed and why in the learnings file under a **Permission approvals** heading.
-- Goal: zero new approval prompts on the next slice.
+See `.claude/skills/scribe/SKILL.md` for the step-by-step process, templates, and examples.
 
 **Rules:**
 
-- Workflow scope only in learnings — no technical or implementation detail
-- Observations must be grounded in the actual conversation: quote or paraphrase specific moments where the workflow broke down
-- Suggestions must name the role or workflow step they apply to
-- Token efficiency suggestions should be actionable: e.g. "Scout read 6 files that weren't needed — scope the read to X instead", not just "used too many tokens"
-- Do not change code, tests, or the event model
+- Each learning must have a concrete suggested action — observations without actions are not learnings
+- If the action is immediately executable (config, permission, guardrail), execute it; do not leave it as a suggestion
+- Learnings may cover workflow process, code patterns, project structure, token usage, or any other improvement area
+- Do not change feature code, tests, or the event model
 - README changes must be accurate: verify env var names and table names against the actual source (launchSettings.json, docker-compose.yml, CDK stack)
-- Do not make suggestions that contradict a guardrail in CLAUDE.md without flagging the conflict explicitly
+- Do not make suggestions that contradict a guardrail in `CLAUDE.md` without flagging the conflict explicitly
 
-**Hand-off:** Post the path to the learnings file. Human reviews and decides whether any suggestions warrant updating this file or `CLAUDE.md`.
+**Hand-off:** Post the path to the learnings file. Human reviews any TODO items and decides whether any warrant updating this file or `CLAUDE.md`.
 
-**Done when:** All updated docs are committed and the human has been notified.
+**Done when:** All updated docs are committed, all Done actions are applied, and the human has been notified.
 
 ---
 
@@ -403,7 +356,7 @@ If approved → Pip merges → monitors main pipeline
     ↓
 If main pipeline fails → Pip fixes → repeat until green
     ↓
-Scribe: updates README, phase doc, roadmap, learnings, token log, and any changed docs
+Scribe: updates README, phase doc, roadmap, learnings, and any changed docs; executes actionable improvements
     ↓
 Human checkpoint: reviews learnings and decides whether to update this file or CLAUDE.md
 ```
@@ -426,7 +379,6 @@ Human checkpoint: reviews learnings and decides whether to update this file or C
 | Wait for / fix CI pipeline     | ✗     | ✗       | ✓   | ✗       | ✗    | ✗      |
 | Post review verdict            | ✗     | ✗       | ✗   | ✗       | ✓    | ✗      |
 | Merge a PR                     | ✗     | ✗       | ✓   | ✗       | ✗    | ✗      |
-| Update workflow-log.md         | ✗     | ✗       | ✓   | ✗       | ✗    | ✗      |
 | Write slice learnings doc      | ✗     | ✗       | ✗   | ✗       | ✗    | ✓      |
 | Update phase / roadmap docs    | ✗     | ✗       | ✗   | ✗       | ✗    | ✓      |
 | Update README / developer docs | ✗     | ✗       | ✗   | ✗       | ✗    | ✓      |

@@ -132,7 +132,3 @@ Slices and acceptance criteria: [docs/phases/phase-8.md](phases/phase-8.md)
 - Workspaces - Switching between collections of notes
 - Search across notes
 -
-
-## Reflection cadence
-
-End-of-phase reflection in [workflow-log.md](workflow-log.md) is mandatory, not optional.
