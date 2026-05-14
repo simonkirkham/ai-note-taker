@@ -49,6 +49,7 @@ Run this skill after all BDD specs pass and before opening a PR. Behaviour must 
 | Projection reading its own store | Projection `Handle` method calls DynamoDB to read state before writing | Fold into in-memory state only; persist after fold |
 | Inline deserialisation | `JsonSerializer.Deserialize<NoteCreated>(payload)` scattered across files | Route through `EventDeserializer` — single place to version |
 | Append followed immediately by read | `await store.AppendAsync(...)` then `await store.ReadAsync(...)` in the same request | The append already returns the new events; no re-read needed |
+| `LastModifiedAt` missing from projection mutation | A `with { ... }` in a projection handler adds or removes a field but omits `LastModifiedAt = envelope.OccurredAt` | Every event that mutates a projection record must also update `LastModifiedAt`; check all `with { ... }` blocks in `*Projection.cs` and in any `Apply*` helpers in command handlers |
 | Aggregate state mutation outside `Apply` | `_field = value` inside `Handle` instead of `Apply` | All state changes go through `Apply`; `Handle` emits events only |
 | Projection coupled to aggregate namespace | `using Domain.Notes` inside `src/EventStore/Projections/` when only string event types are needed | Check if the coupling is necessary; prefer operating on `EventEnvelope` fields |
 | Command validated by projection | Projection data used to enforce an invariant in a command handler | Invariants belong on the aggregate, built from the event stream |
@@ -70,6 +71,8 @@ Run this skill after all BDD specs pass and before opening a PR. Behaviour must 
 | State and render mixed in one component | A component owns data fetching, mutation logic, error state, and renders multiple distinct sub-views | Extract a custom hook for all stateful logic — it returns data and named actions; the component calls the hook and handles UI events only. Extract each distinct sub-view as its own component |
 | Inline styles | `style={{ ... }}` scattered across JSX | Move to a co-located CSS file and use class names |
 | Shared types re-declared | The same interface or type defined in multiple files | Move to a shared `types.ts` and import from there |
+| Missing `data-testid` attributes | Interactive elements or key display nodes have no testid — impossible to target from E2E tests | Add `data-testid` to every element the E2E page object needs to interact with or assert on; treat testids as part of the component's public API. Pattern: `{noun}-{qualifier}` (e.g. `tag-pill-{tag}`, `folder-item-{id}`, `home-button`) |
+| Testid removed without E2E update | A UI element with a testid is deleted or replaced but the E2E page object still references the old testid | `grep -r 'data-testid="{id}"' tests/E2E/` before removing any element; update page object helpers and journey assertions in the same commit |
 
 ## What NOT to do
 

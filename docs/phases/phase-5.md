@@ -229,7 +229,7 @@ Scenario: Trying to remove a tag that does not exist returns an error
 
 ## Slice 5-C — Tag filter bar
 
-**Status:** In Progress — TagIndex projection + `GET /tags` endpoint in PR #30 (not yet merged); frontend filter bar implemented as an interim using tag data derived from note cards (not the TagIndex projection)
+**Status:** Done
 
 **Value:** I can see all the tags I've used in a filter bar and click one (or more) to show only the notes that match, then clear the filter to see everything again.
 

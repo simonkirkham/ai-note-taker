@@ -43,7 +43,8 @@ public sealed class DynamoDbNoteCardListStore(IAmazonDynamoDB dynamo, string tab
             Key = new Dictionary<string, AttributeValue>
             {
                 ["PK"] = new() { S = noteId.Value.ToString() }
-            }
+            },
+            ConsistentRead = true
         }, ct).ConfigureAwait(false);
 
         if (!response.IsItemSet) return null;
@@ -52,7 +53,7 @@ public sealed class DynamoDbNoteCardListStore(IAmazonDynamoDB dynamo, string tab
 
     public async Task<IReadOnlyList<NoteCardView>> QueryAllAsync(CancellationToken ct = default)
     {
-        var response = await _dynamo.ScanAsync(new ScanRequest { TableName = _tableName }, ct)
+        var response = await _dynamo.ScanAsync(new ScanRequest { TableName = _tableName, ConsistentRead = true }, ct)
             .ConfigureAwait(false);
         return response.Items.Select(ToCard).OrderByDescending(c => c.CreatedAt).ToList().AsReadOnly();
     }

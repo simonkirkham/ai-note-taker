@@ -43,6 +43,22 @@ If no agent ran unexpectedly high: write `None — slice ran within expected ran
 
 ---
 
+## Slice 5-C Batch 2 — Tag filter bar E2E + frontend wire-up
+
+| Agent     | ~Tokens     |
+|-----------|-------------|
+| Pip       | 40 000      |
+| Scribe    | 3 000       |
+| **Total** | **~43 000** |
+
+**Why:** Three deploy failures added substantial overhead — each required root cause analysis, a targeted fix, and a full re-deploy cycle. The failures uncovered two distinct bugs: a Playwright response-event race in `AddTagAsync` (all N handlers resolve to the same single response), and DynamoDB eventual consistency on all projection read paths (reads immediately after writes returning stale data).
+
+**Optimisation suggestions:**
+- **ConsistentRead gaps (–15 000):** Every projection store shipped without `ConsistentRead = true`, causing read-after-write failures only visible in E2E tests against deployed DynamoDB. Adding a checklist item to the projection scaffold skill — "all GetItem/Query/Scan calls must set `ConsistentRead = true` (except GSI queries)" — catches this class of bug before the first deploy.
+- **Playwright WaitForResponseAsync pattern (–5 000):** The N-parallel-task pattern for waiting on N API responses is subtly broken when Playwright fires the `Response` event to all handlers simultaneously. The atomic-counter / single-listener pattern should be documented in the page object base class so future multi-call helpers don't repeat the mistake.
+
+---
+
 ## Slice 5-A/B Batch 2 — Tags frontend
 
 | Agent     | ~Tokens     |

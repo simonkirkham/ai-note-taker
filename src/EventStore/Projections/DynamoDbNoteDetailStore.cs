@@ -80,7 +80,8 @@ public sealed class DynamoDbNoteDetailStore(IAmazonDynamoDB dynamo, string table
             Key = new Dictionary<string, AttributeValue>
             {
                 ["PK"] = new() { S = noteId.ToStreamId() }
-            }
+            },
+            ConsistentRead = true
         }, ct).ConfigureAwait(false);
 
         if (!response.IsItemSet) return null;

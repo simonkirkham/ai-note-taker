@@ -1,6 +1,6 @@
 ---
-slice: 5-C Batch 1
-title: TagIndex projection + GET /tags
+slice: 5-C
+title: Tag filter bar (TagIndex projection + GET /tags + E2E)
 date: 2026-05-14
 author: Scribe
 ---
@@ -34,3 +34,47 @@ The `GetTags_ReturnsEmptyWhenNoTags` test passes in isolation but would fail if 
 ### ProjectionRebuildHandler must include DeleteAllAsync before rebuild
 
 The rebuild path calls `tagIndexStore.DeleteAllAsync` before replaying events, ensuring the tag index is fully rebuilt from the event stream rather than accumulating stale entries.
+
+---
+
+## Batch 2 learnings — E2E + frontend wire-up
+
+### All projection DynamoDB reads must set ConsistentRead = true
+
+DynamoDB's default read consistency is eventual. After a write returns a response, a subsequent read within a short window can return the pre-write value. E2E tests that write (via HTTP) then immediately navigate away and back (triggering a fresh `GET`) expose this regularly. Every `GetItemAsync`, `ScanAsync`, and base-table `QueryAsync` in every projection store must set `ConsistentRead = true`. The one exception is GSI queries — DynamoDB does not support consistent reads on Global Secondary Indexes.
+
+**Affected stores fixed in this slice:** `DynamoDbNoteDetailStore`, `DynamoDbNoteCardListStore`, `DynamoDbNoteActionsStore`, `DynamoDbTodoListStore` (scan only), `DynamoDbFolderTreeStore`, `DynamoDbTagIndexStore`. Left unchanged: `DynamoDbTodoListStore.QueryActionIdsByNoteAsync` (GSI query).
+
+**Prevention:** Add "all GetItem/Query/Scan calls set `ConsistentRead = true` (except GSI queries)" to the projection scaffold skill checklist so this is caught at implementation time, not at deploy time.
+
+### Playwright's WaitForResponseAsync fires all handlers on the same response event
+
+When N `page.WaitForResponseAsync(predicate)` tasks are active simultaneously, Playwright fires the `Response` event once per actual response — but all N registered handlers receive it. If two POST responses arrive for the same URL pattern, two tasks may both resolve to the *first* response, leaving the second unacknowledged. `Task.WhenAll` then completes before the second POST has actually returned.
+
+**The correct pattern** for waiting on N distinct responses to the same URL is an atomic counter over a single `page.Response` event listener:
+
+```csharp
+int received = 0;
+var done = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+page.Response += Handler;
+await TriggerActionAsync();
+await done.Task;
+page.Response -= Handler;
+
+void Handler(object? _, IResponse r)
+{
+    if (r.Url.Contains("/endpoint") && r.Request.Method == "POST")
+        if (Interlocked.Increment(ref received) >= expectedCount)
+            done.TrySetResult();
+}
+```
+
+**Prevention:** Document this pattern in the page object base class so future multi-call helpers don't repeat the N-task mistake.
+
+### Cleanup scripts must be updated alongside CDK table additions
+
+When a new DynamoDB projection table is added to CDK (`notetaker-proj-foldertree`, `notetaker-proj-tagindex`), two local dev scripts must also be updated in the same commit:
+- `docker/init-tables.sh` — creates the table in DynamoDB Local for integration tests
+- `src/Api/Properties/launchSettings.json` — sets the `*_TABLE_NAME` env var for `dotnet run`
+
+Missing these causes silent failures in local development (table not found) and integration tests that skip DynamoDB Local.

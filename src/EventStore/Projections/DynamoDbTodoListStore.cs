@@ -84,7 +84,8 @@ public sealed class DynamoDbTodoListStore(IAmazonDynamoDB dynamo, string tableNa
             var scan = await dynamo.ScanAsync(new ScanRequest
             {
                 TableName = tableName,
-                ExclusiveStartKey = lastKey
+                ExclusiveStartKey = lastKey,
+                ConsistentRead = true
             }, ct).ConfigureAwait(false);
 
             items.AddRange(scan.Items.Select(row => new TodoItem(
