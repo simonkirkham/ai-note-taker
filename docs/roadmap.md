@@ -50,7 +50,7 @@ Slices and acceptance criteria: [docs/phases/phase-2.md](phases/phase-2.md)
 
 Slices and acceptance criteria: [docs/phases/phase-3.md](phases/phase-3.md)
 
-## Phase 4 — UX redesign (wireframe alignment)
+## Phase 4 — UX redesign (wireframe alignment) _(Done)_
 
 Bring the app in line with the wireframes in `docs/wireframes/`.
 
@@ -65,27 +65,45 @@ Bring the app in line with the wireframes in `docs/wireframes/`.
 
 Slices and acceptance criteria: [docs/phases/phase-4.md](phases/phase-4.md)
 
-## Phase 5 — Folders and tags
+## Phase 5 — Tags and folders
 
-- Another projection axis (organisational view)
-- Tags visible on note cards and note screen
-- Search/filter built on the projection
+- Tag notes with free-text labels; tags appear as pills on note cards and the note screen
+- `TagIndex` projection powers a filter bar on the home screen (AND/OR multi-select)
+- `Folder` aggregate with full hierarchy (create, rename, delete, reparent, cascade delete)
+- `FolderTree` projection; drag notes between folders; Unfiled Notes view; folder preview panel
+- Note date defaults to today on creation; date input shown without redundant label
+- Replaces all `localStorage`-backed prototype state with real API calls
 
-## Phase 6 — Google Calendar integration + meeting notes
+**Goal:** second projection axis (`TagIndex`) alongside an entirely new aggregate (`Folder`); client-side filter state wired to a server projection; hierarchical read models.
+
+Slices and acceptance criteria: [docs/phases/phase-5.md](phases/phase-5.md)
+
+## Phase 6 — Upgrade to .NET 10
+
+- LTS → LTS upgrade from .NET 8 to .NET 10 across all 10 projects in the solution
+- Package compatibility audit; fix any BCL or framework-layer breaking changes
+- Update Lambda runtime constant in CDK stack (`Runtime.DOTNET_8` → `Runtime.DOTNET_10`)
+- Redeploy and verify with acceptance tests and E2E browser journeys
+
+**Goal:** stay on a supported Lambda runtime; learn the .NET release cadence, AWS Lambda managed runtime lifecycle, and how to run a framework upgrade safely behind a full test suite.
+
+Slices and acceptance criteria: [docs/phases/phase-6.md](phases/phase-6.md)
+
+## Phase 7 — Google Calendar integration + meeting notes
 
 - Personal Google OAuth credentials (single-user refresh token)
 - Calendar read access
 - Notes auto-created from calendar events
 
-## Phase 7 — Transcription
+## Phase 8 — Transcription
 
 - Capture meeting audio
 - Transcribe and merge into the note
 
-## Phase 8 — Multi-user auth (Google Sign-In)
+## Phase 9 — Multi-user auth (Google Sign-In)
 
 - Convert single-user to multi-user
-- Reuse OAuth scaffolding from Phase 6
+- Reuse OAuth scaffolding from Phase 7
 
 **Goal:** auth lands here deliberately so earlier phases stay focused on event sourcing learning.
 

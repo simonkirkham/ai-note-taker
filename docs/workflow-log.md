@@ -308,3 +308,21 @@ Add an entry at the end of each phase. Keep them short and honest.
 - **Change for next slice:**
   - Add a Scribe step to update `docs/roadmap.md` and `docs/event-model.md` after each slice so docs stay current without a dedicated docs pass.
   - Consider a pre-Stylist `Read` with `offset`/`limit` for large CSS files rather than reading the full file — reduces Stylist token cost as App.css grows past 400 lines.
+
+---
+
+## Phase 6 — Upgrade to .NET 10
+
+- **Workflow style used:** Fully autonomous pipeline — plan mode (2 slices: 6-A local build gate, 6-B CDK runtime + deploy) → Breaker (branch per slice) → Pip (csproj + package bumps, Testcontainers fix, CDK runtime change) → Refactor → Hawk (sub-agent code review) → Pip fixes → squash-merge PRs → Scribe. Human confirmation gated `cdk deploy` only.
+- **Skills exercised:** `refactor` (no smells found beyond csproj version bumps and the Testcontainers constructor fix — kept at zero); Hawk code-review sub-agent caught two issues missed in the main pass.
+- **What worked:**
+  - Splitting 6-A (local build gate, no AWS) from 6-B (CDK runtime constant + deploy) kept each PR reviewable in isolation and gave a clear rollback point if the Lambda runtime change caused issues at deploy time.
+  - LTS-to-LTS framing (skipping .NET 9) meant no non-LTS packages or deprecation surprises — every NuGet bump was a straightforward version number change.
+  - The Testcontainers image string was found by writing a throwaway one-file program that printed `DynamoDbBuilder.DynamoDbImage` — faster than reading source or changelogs, and the exact value (`amazon/dynamodb-local:1.21.0`) was unambiguous.
+- **What didn't:**
+  - NuGet cache corruption (NETSDK1064) hit after the first `dotnet restore` following the version bumps — `dotnet nuget locals all --clear` + fresh restore resolved it, but the ~90s wait was unexpected. Worth noting in the upgrade runbook for next time.
+  - Hawk caught two issues the main pass missed: `aws-lambda-tools-defaults.json` still referenced `dotnet8`/`net8.0`, and the default CDK asset path in `NoteTakerStack.cs` was still `net8.0/publish`. Both were in non-csproj files that don't get flagged by the framework bump checklist.
+  - Using `dotnet publish -q` caused MSBuild diagnostic output to appear on stderr while the exit code was 0 — looked like errors but wasn't. Removed `-q` to get readable output.
+- **Change for next phase:**
+  - Add `aws-lambda-tools-defaults.json` to the upgrade checklist for any framework version change — it is not a csproj file and will not be caught by a grep for `<TargetFramework>`.
+  - Add a grep for hardcoded runtime strings (`net8.0`, `dotnet8`) across all non-csproj files (`.json`, `.cs`, `.sh`, `.yml`) as a final gate before committing a framework upgrade.
