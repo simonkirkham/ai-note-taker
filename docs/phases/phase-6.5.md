@@ -53,7 +53,7 @@ The full E2E suite has 17 journey files. 5 are kept (see ADR 0008); the remainin
 
 ## Slice 6.5-A — Rename test projects
 
-**Status:** Not Started
+**Status:** Done
 
 **Value:** Test project names that make their scope legible at a glance. Any engineer opening the `tests/` directory knows which project to reach for without reading a map.
 
@@ -104,14 +104,14 @@ Scenario: Infrastructure assertions pass under new name
 
 **Acceptance criteria:**
 
-- [ ] All six directories, `.csproj` files, and C# namespaces renamed
-- [ ] `ai-note-taker.sln` references updated
-- [ ] `pr.yml` and `deploy.yml` paths updated
-- [ ] `CLAUDE.md`, `docs/roadmap.md`, `docs/adr/0008-testing-strategy.md` updated
-- [ ] `dotnet build ai-note-taker.sln` exits 0, 0 errors, 0 warnings
-- [ ] `dotnet test tests/Domain.Specs/Domain.Specs.csproj` — all green
-- [ ] `dotnet test tests/Api.Integration/Api.Integration.csproj` — all green
-- [ ] `dotnet test tests/Infrastructure.Assertions/Infrastructure.Assertions.csproj` — all green
+- [x] All six directories, `.csproj` files, and C# namespaces renamed
+- [x] `ai-note-taker.sln` references updated
+- [x] `pr.yml` and `deploy.yml` paths updated
+- [x] `CLAUDE.md`, `docs/roadmap.md`, `docs/adr/0008-testing-strategy.md` updated
+- [x] `dotnet build ai-note-taker.sln` exits 0, 0 errors, 0 warnings
+- [x] `dotnet test tests/Domain.Specs/Domain.Specs.csproj` — all green
+- [x] `dotnet test tests/Api.Integration/Api.Integration.csproj` — all green
+- [x] `dotnet test tests/Infrastructure.Assertions/Infrastructure.Assertions.csproj` — all green
 
 ---
 
