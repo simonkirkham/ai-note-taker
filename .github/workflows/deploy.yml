@@ -42,6 +42,10 @@ jobs:
         working-directory: web
         run: npm exec -- tsc -p tsconfig.app.json --noEmit
 
+      - name: Test (component)
+        working-directory: web
+        run: npm run test
+
       - name: Build .NET solution
         run: dotnet build ai-note-taker.sln -p:TreatWarningsAsErrors=true --nologo -v quiet
 

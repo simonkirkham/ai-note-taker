@@ -82,6 +82,10 @@ jobs:
         working-directory: web
         run: npm run build
 
+      - name: Test (component)
+        working-directory: web
+        run: npm run test
+
   eventstore:
     runs-on: ubuntu-latest
     env:
