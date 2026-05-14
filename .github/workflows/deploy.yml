@@ -9,7 +9,45 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install frontend dependencies
+        working-directory: web
+        run: npm ci
+
+      - name: Lint frontend
+        working-directory: web
+        run: npm run lint
+
+      - name: Typecheck frontend
+        working-directory: web
+        run: npm exec -- tsc -p tsconfig.app.json --noEmit
+
+      - name: Build .NET solution
+        run: dotnet build ai-note-taker.sln -p:TreatWarningsAsErrors=true --nologo -v quiet
+
+      - name: Domain specs
+        run: dotnet test tests/Specs/Specs.csproj --nologo -v quiet
+
+      - name: API integration tests
+        run: dotnet test tests/ApiIntegration/ApiIntegration.csproj --nologo -v quiet
+
+      - name: Infra assertions
+        run: dotnet test tests/InfraAssertions/InfraAssertions.csproj --nologo -v quiet
+
   deploy:
+    needs: validate
     runs-on: ubuntu-latest
     environment: Test
     steps:
@@ -53,13 +91,9 @@ jobs:
           echo "API URL:      ${{ steps.outputs.outputs.api-url }}"
           echo "Frontend URL: ${{ steps.outputs.outputs.frontend-url }}"
 
-      - name: Lint frontend
-        working-directory: web
-        run: npm ci && npm run lint
-
       - name: Build frontend
         working-directory: web
-        run: npm run build
+        run: npm ci && npm run build
         env:
           VITE_API_URL: ${{ steps.outputs.outputs.api-url }}
 
