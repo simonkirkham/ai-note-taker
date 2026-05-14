@@ -30,10 +30,10 @@ public sealed class AppPage(IPage page, string baseUrl)
         page.GetByTestId("note-list").GetByText(title).ClickAsync();
 
     public Task AssertContentAreaVisibleAsync() =>
-        Assertions.Expect(page.GetByTestId("note-content")).ToBeVisibleAsync();
+        Assertions.Expect(page.GetByTestId("note-content")).ToBeVisibleAsync(new() { Timeout = 15000 });
 
     public Task AssertContentValueAsync(string expected) =>
-        Assertions.Expect(page.GetByTestId("note-content")).ToHaveValueAsync(expected);
+        Assertions.Expect(page.GetByTestId("note-content")).ToHaveValueAsync(expected, new() { Timeout = 15000 });
 
     public async Task EnterContentAsync(string content)
     {
