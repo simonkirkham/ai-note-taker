@@ -5,18 +5,22 @@ using System.Text.Json;
 
 namespace Api.Integration;
 
-public sealed class NoteCardsIntegrationTests(ApiFactory factory) : IClassFixture<ApiFactory>
+public sealed class NoteCardsEmptyStateTests(ApiFactory factory) : IClassFixture<ApiFactory>
 {
-    private readonly HttpClient _client = factory.CreateClient();
-
     [Fact]
     public async Task GetNoteCards_ReturnsEmptyWhenNoNotes()
     {
-        var resp = await _client.GetAsync("/notes/cards");
+        var client = factory.CreateClient();
+        var resp = await client.GetAsync("/notes/cards");
         resp.EnsureSuccessStatusCode();
         var body = await resp.Content.ReadFromJsonAsync<JsonElement>();
         Assert.Equal(0, body.GetProperty("cards").GetArrayLength());
     }
+}
+
+public sealed class NoteCardsIntegrationTests(ApiFactory factory) : IClassFixture<ApiFactory>
+{
+    private readonly HttpClient _client = factory.CreateClient();
 
     [Fact]
     public async Task GetNoteCards_ReturnsCardAfterNoteCreated()

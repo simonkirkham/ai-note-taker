@@ -5,20 +5,24 @@ using System.Text.Json;
 
 namespace Api.Integration;
 
-public sealed class TagIndexIntegrationTests(ApiFactory factory) : IClassFixture<ApiFactory>
+public sealed class TagIndexEmptyStateTests(ApiFactory factory) : IClassFixture<ApiFactory>
 {
-    private readonly HttpClient _client = factory.CreateClient();
-
     [Fact]
     public async Task GetTags_ReturnsEmptyWhenNoTags()
     {
-        var resp = await _client.GetAsync("/tags");
+        var client = factory.CreateClient();
+        var resp = await client.GetAsync("/tags");
 
         resp.EnsureSuccessStatusCode();
         var body = await resp.Content.ReadFromJsonAsync<JsonElement>();
         var tags = body.GetProperty("tags").EnumerateArray().ToList();
         Assert.Empty(tags);
     }
+}
+
+public sealed class TagIndexIntegrationTests(ApiFactory factory) : IClassFixture<ApiFactory>
+{
+    private readonly HttpClient _client = factory.CreateClient();
 
     [Fact]
     public async Task GetTags_ReturnsTagAfterAdded()
