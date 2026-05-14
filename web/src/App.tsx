@@ -4,6 +4,7 @@ import ListView from "./components/ListView";
 import NoteView from "./components/NoteView";
 import Sidebar from "./components/Sidebar";
 import { useNotes } from "./hooks/useNotes";
+import { setNoteDate } from "./api";
 
 type View = { kind: "list" } | { kind: "note"; noteId: string };
 
@@ -15,6 +16,12 @@ export default function App() {
   async function handleNewNote() {
     try {
       const noteId = await create();
+      const todayAsISO = new Date().toISOString().slice(0, 10);
+      try {
+        await setNoteDate(noteId, todayAsISO);
+      } catch {
+        // non-fatal: date will default to empty; user can set it manually
+      }
       setView({ kind: "note", noteId });
     } catch {
       // error surfaced by hook via createError

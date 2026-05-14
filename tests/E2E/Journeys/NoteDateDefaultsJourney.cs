@@ -4,7 +4,7 @@ using Microsoft.Playwright;
 namespace E2E.Journeys;
 
 [Collection("E2E Journeys")]
-public sealed class NoteDateJourney(BrowserFixture browser) : IAsyncLifetime
+public sealed class NoteDateDefaultsJourney(BrowserFixture browser) : IAsyncLifetime
 {
     private IBrowserContext _context = null!;
     private AppPage _app = null!;
@@ -27,29 +27,37 @@ public sealed class NoteDateJourney(BrowserFixture browser) : IAsyncLifetime
     }
 
     [Fact]
-    public async Task Note_date_persists_across_navigation()
-    {
-        var title = $"Note-{Guid.NewGuid():N}"[..20];
-
-        await _app.GotoAsync();
-        await _app.ClickNewNoteAsync();
-        await _app.EnterTitleAsync(title);
-
-        await _app.SetNoteDateAsync("2026-04-21");
-
-        await _app.GoBackAsync();
-        await _app.ClickNoteInListAsync(title);
-
-        await _app.AssertDateInputValueAsync("2026-04-21");
-    }
-
-    [Fact]
-    public async Task New_note_defaults_to_today()
+    public async Task NewNote_DateInputShowsToday()
     {
         var today = DateTime.UtcNow.ToString("yyyy-MM-dd");
 
         await _app.GotoAsync();
         await _app.ClickNewNoteAsync();
+
+        await _app.AssertDateInputValueAsync(today);
+    }
+
+    [Fact]
+    public async Task NewNote_NoFormattedDateLabelVisible()
+    {
+        await _app.GotoAsync();
+        await _app.ClickNewNoteAsync();
+
+        await _app.AssertDateDisplayAbsentAsync();
+    }
+
+    [Fact]
+    public async Task NewNote_DatePersistsAfterNavigation()
+    {
+        var title = $"DateDefault-{Guid.NewGuid():N}"[..20];
+        var today = DateTime.UtcNow.ToString("yyyy-MM-dd");
+
+        await _app.GotoAsync();
+        await _app.ClickNewNoteAsync();
+        await _app.EnterTitleAsync(title);
+
+        await _app.GoBackAsync();
+        await _app.ClickNoteInListAsync(title);
 
         await _app.AssertDateInputValueAsync(today);
     }

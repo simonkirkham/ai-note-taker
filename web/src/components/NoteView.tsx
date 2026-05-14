@@ -2,11 +2,6 @@ import { useEffect, useRef, useState } from "react";
 import { editContent, getNoteDetail, setNoteDate } from "../api";
 import ActionsSection from "./ActionsSection";
 
-function formatDateDisplay(iso: string): string {
-  const [y, m, d] = iso.split("-");
-  return `${d}/${m}/${y}`;
-}
-
 export default function NoteView({
   noteId,
   initialTitle,
@@ -78,11 +73,6 @@ export default function NoteView({
               className="date-input"
               aria-label="Meeting date"
             />
-            {date && (
-              <span data-testid="note-date-display" className="date-display">
-                {formatDateDisplay(date)}
-              </span>
-            )}
           </div>
           <button
             data-testid="delete-note-button"
