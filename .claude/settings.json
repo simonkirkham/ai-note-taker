@@ -1,6 +1,7 @@
 {
   "permissions": {
     "allow": [
+      "Write",
       "Bash(dotnet test tests/*)",
       "Bash(dotnet build *)",
       "Bash(git -C * status*)",

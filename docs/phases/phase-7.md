@@ -23,9 +23,10 @@ No new events, no new projections, no CDK changes, no new API endpoints.
 
 ```
 7-A  Base editor (headings, bold, bullets) + markdown storage + stripped preview
-7-B  Task list (checkboxes) support                            (depends 7-A)
-7-C  Mark-as-discussed on headings                             (depends 7-B)
+7-B  Mark-as-discussed on headings                             (depends 7-A)
 ```
+
+> **Dropped:** Task list (checkboxes) removed — heading mark-as-discussed covers the meeting tracking need without the added complexity of a separate checkbox extension.
 
 ---
 
@@ -129,53 +130,7 @@ Scenario: NoteCard snippet shows plain text
 
 ---
 
-## Slice 7-B — Task list (checkboxes)
-
-**Status:** Not Started
-
-**Value:** Users can create checkbox items in the note body using `- [ ]` syntax. Ticking a checkbox fires `ContentEditedV2` with the updated markdown.
-
-**Changes in scope:**
-
-- `web/package.json`: add `@tiptap/extension-task-list` and `@tiptap/extension-task-item`
-- `web/src/components/NoteEditor.tsx`: add `TaskList` and `TaskItem` extensions; configure `TaskItem` with `nested: false`; checkbox toggle fires the `onChange` callback
-
-**Keyboard shortcut:**
-
-| Keys | Effect |
-|------|--------|
-| `- [ ]` + Space | Checkbox item (unchecked) |
-| Click checkbox | Toggle checked/unchecked; triggers onChange → save |
-
-**Scenarios:**
-
-```
-Scenario: Checkbox item shortcut creates an unchecked item
-  Given the editor is focused
-  When  the user types "- [ ] " followed by "Follow up with finance"
-  Then  an unchecked checkbox item "Follow up with finance" appears
-
-Scenario: Ticking a checkbox saves the updated markdown
-  Given the note contains "- [ ] Follow up with finance"
-  When  the user clicks the checkbox
-  Then  ContentEditedV2 is fired with "- [x] Follow up with finance"
-
-Scenario: Checked items persist on reload
-  Given a note with content "- [x] Follow up with finance"
-  When  the note is opened
-  Then  the checkbox item "Follow up with finance" appears checked
-```
-
-**Acceptance criteria:**
-
-- [ ] `- [ ]` shortcut creates a checkbox item
-- [ ] Clicking a checkbox fires `ContentEditedV2` with the updated markdown
-- [ ] Checked state persists after closing and reopening the note
-- [ ] `npm run build` and `npm run lint` pass
-
----
-
-## Slice 7-C — Mark topic as discussed
+## Slice 7-B — Mark topic as discussed
 
 **Status:** Not Started
 
@@ -187,7 +142,7 @@ Scenario: Checked items persist on reload
 
 **Implementation note:**
 
-The ✓ button can be implemented as a React element rendered conditionally based on `editor.isActive('heading')`. A fixed toolbar row appearing when the cursor is in a heading is simpler than a NodeView and avoids absolute positioning complexity.
+The ✓ button is positioned absolutely alongside the active heading using `editor.view.coordsAtPos()` to track its Y coordinate — confirmed in prototype as the preferred UX over a fixed toolbar row. Use `onMouseDown` + `preventDefault()` on the button to prevent the editor losing focus before the toggle fires.
 
 Verify that the markdown extension correctly round-trips `## ~~text~~`. If not, fall back to `## ✓ Topic name` and update `StripMarkdown` to strip the `✓ ` prefix.
 
