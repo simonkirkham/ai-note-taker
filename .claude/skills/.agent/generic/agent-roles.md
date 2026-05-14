@@ -91,15 +91,25 @@ If a slice has ≥4 acceptance criteria **or** introduces a new aggregate + new 
 
 Why: Pip's context grows with every file it reads and every test it makes green. A full-stack slice in one batch can exhaust the context window mid-implementation (as happened in 3-A, causing auto-compaction and a 183k token session). The domain layer is also cheapest to rework; catching design errors before the E2E layer is written saves more tokens than the extra hand-off overhead costs. For normal slices (≤3 criteria, no new aggregate), the single-batch approach is still more efficient.
 
-**Branch convention:** `slice/<phase>-<slice-id>-<short-description>` e.g. `slice/2-b-edit-content`. Create from main at the start of Breaker's work:
+**Worktree convention:** Each slice runs in its own git worktree so multiple slices can run in parallel without interfering. Create from main at the start of Breaker's work:
 
 ```bash
-git checkout main && git pull && git checkout -b slice/2-b-edit-content
+# From the main checkout
+git worktree add ../ai-note-taker-slices/slice-6-5-a-rename-test-projects -b slice/6-5-a-rename-test-projects
+
+# Then restore dependencies inside the worktree
+dotnet restore /path/to/worktree/ai-note-taker.sln
+npm --prefix /path/to/worktree/web install
 ```
+
+Branch naming: `slice/<phase>-<slice-id>-<short-description>` e.g. `slice/2-b-edit-content`.  
+Worktree path: `../ai-note-taker-slices/<slice-name>/` (a sibling of the main checkout).  
+All slice commits — tests, implementation, refactor — go to that branch from inside the worktree.  
+After the PR merges, remove the worktree: `git worktree remove ../ai-note-taker-slices/<slice-name>`.
 
 **Rules:**
 
-- **Create a feature branch before writing any test** — never commit directly to main
+- **Create a worktree and branch before writing any test** — never commit directly to main
 - Follow the BDD spec pattern: `Given(priorEvents).When(command).Then(expectedEvents)` or `.ThenError(...)`
 - One spec class per command; one `[Fact]` per distinct scenario (happy path + each guard/error case)
 - Name scenarios in plain language: `CreatesNoteWhenItDoesNotExist`, `RejectsCreateWhenNoteAlreadyExists`
