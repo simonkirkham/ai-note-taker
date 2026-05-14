@@ -224,3 +224,21 @@ None — slice ran within expected range.
 **Optimisation suggestions:**
 - **Pip (–30–40k):** 3-A qualifies for Breaker's large-slice layer-split rule (new aggregate + projection + E2E, ≥4 criteria). Breaker should have written domain/API tests first → Pip implements those → Breaker writes E2E tests → Pip implements those. Two smaller Pip sessions instead of one auto-compacted 95k session; domain design errors caught before the expensive E2E layer is written.
 - **Hawk (–15–25k):** Two `Changes requested` rounds added ~20k to Hawk's total (each round re-reads the full PR). Both findings — missing E2E test and missing GET existence guard — are now covered by Pip's Step 1d pre-PR self-check (criteria-coverage audit catches the missing E2E; guard-symmetry check catches the GET gap). Applying Step 1d before opening the PR would have collapsed Hawk to a single-pass review.
+
+---
+
+## Slice 5-M — Note date defaults to today
+
+| Agent     | ~Tokens |
+|-----------|---------|
+| Breaker   | 8 000   |
+| Pip       | 12 000  |
+| Refactor  | 3 000   |
+| Hawk      | 4 000   |
+| Scribe    | 4 000   |
+| **Total** | 31 000  |
+
+**Why:** Frontend-only slice with no new aggregates or projections; the backend was pre-built, keeping scope narrow.
+
+**Optimisation suggestions:**
+- None — slice ran within expected range.
