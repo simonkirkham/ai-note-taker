@@ -89,11 +89,13 @@ cdk deploy
 - **Never prefix PowerShell commands with `cd`.** Use `npm --prefix <path> run build` (or equivalent flag) so the command starts with an already-allowed verb. `cd` is not in the allow-list.
 - **Never use PowerShell compound statements starting with a variable assignment to pass multiline strings to CLI tools.** `$body = @"..."@; gh pr create --body $body` starts with `$body`, not `gh` — the permission checker won't match `PowerShell(gh *)` and will prompt for approval. Instead: use the Write tool to write the body to `.pr-body.md` (gitignored), then run `gh pr create --body-file .pr-body.md`. No variable assignment, no `Remove-Item`.
 - **Never commit slice work directly to main.** Breaker creates `slice/<phase>-<id>-<short-description>` (e.g. `slice/4-b-note-layout`) from main before the first test commit. All slice commits (Breaker, Pip, Refactor, Stylist, Hawk fixes) go to that branch. Pip opens a PR; Hawk reviews the PR; Pip squash-merges after approval.
+- **Never merge a `prototype/` branch into main or a `slice/` branch.** Prototype branches are reference material only. The one exception is cherry-picking the updated phase doc commit to main as part of the prototype exit procedure.
 
 ## Skills
 
 Reach for these instead of writing patterns from scratch:
 
+- **prototype** — throwaway frontend-only UX prototype before real implementation; see [`.claude/skills/prototype/SKILL.md`](.claude/skills/prototype/SKILL.md)
 - **event-modelling** — translate a Given/When/Then sketch into a BDD spec file
 - **aggregate-command** — add a new command + events + spec to an aggregate
 - **projection** — scaffold a new read projection with rebuild logic
@@ -105,10 +107,11 @@ Reach for these instead of writing patterns from scratch:
 ## Workflow
 
 1. Plan mode for any non-trivial slice.
-2. Update event model.
-3. Write BDD spec.
+2. **Prototype** *(UI-heavy or UX-uncertain slices only)* — run the `prototype` skill before touching the event model. Skip if the interaction is obvious CRUD. Prototype code is quick-and-dirty scaffolding on a `prototype/<slice-name>` branch pushed to remote — never merged. On approval, the exit procedure updates `docs/phases/phase-X.md` with confirmed GWT scenarios and cherry-picks that doc commit to main. Real implementation starts fresh from the updated phase doc, not from prototype code.
+3. Update event model.
+4. Write BDD spec.
 4. Implement until spec passes green.
-5. **Refactor** — run the `refactor` skill against all changed files; re-run specs after each fix.
-6. **Stylist** (user-facing slices only) — run the `ui-ux-pro-max` skill to apply visual polish; re-run tests after.
-7. Diff review (subagent or `/review`).
-8. Append a short note to [docs/workflow-log.md](docs/workflow-log.md) at the end of each phase.
+6. **Refactor** — run the `refactor` skill against all changed files; re-run specs after each fix.
+7. **Stylist** (user-facing slices only) — run the `ui-ux-pro-max` skill to apply visual polish; re-run tests after.
+8. Diff review (subagent or `/review`).
+9. Append a short note to [docs/workflow-log.md](docs/workflow-log.md) at the end of each phase.
