@@ -57,6 +57,8 @@ One scenario per distinct behaviour (happy path + each meaningful error/edge cas
 
 **Hand-off:** Post the path to the phase breakdown file and confirm the event model is updated. Human reviews before Breaker begins. Scout must not proceed to Breaker until the human explicitly approves the breakdown.
 
+**Exception — confirmed phase doc:** If the phase doc already contains confirmed GWT scenarios (written after prototype approval or explicit human sign-off), the human checkpoint may be skipped and Breaker may start immediately. The signal is a phase doc with fully written `Scenarios:` blocks and populated `Acceptance criteria:` checklists. Scout is still expected to flag any open questions or risks before Breaker begins.
+
 ---
 
 ## Breaker (Agent 1 — Test Author)
@@ -383,6 +385,7 @@ Human: gives Scout a brief (or just "find something good")
 Scout: researches → updates event model → produces feature brief
     ↓
 Human checkpoint: reviews brief and event model before any code is written
+(skipped when phase doc already has confirmed GWT scenarios)
     ↓
 Breaker: writes failing tests → commits → pushes → hands off to Pip
     ↓
