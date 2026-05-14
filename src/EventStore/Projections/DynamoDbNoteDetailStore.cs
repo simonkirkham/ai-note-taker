@@ -19,6 +19,8 @@ public sealed class DynamoDbNoteDetailStore(IAmazonDynamoDB dynamo, string table
         };
         if (detail.Date.HasValue)
             item["Date"] = new AttributeValue { S = detail.Date.Value.ToString("yyyy-MM-dd") };
+        if (detail.Tags is { Count: > 0 })
+            item["Tags"] = new AttributeValue { SS = detail.Tags.ToList() };
 
         await dynamo.PutItemAsync(new PutItemRequest { TableName = tableName, Item = item }, ct)
             .ConfigureAwait(false);
@@ -85,12 +87,16 @@ public sealed class DynamoDbNoteDetailStore(IAmazonDynamoDB dynamo, string table
 
         var item = response.Item;
         var date = item.TryGetValue("Date", out var dateAttr) ? DateOnly.Parse(dateAttr.S) : (DateOnly?)null;
+        IReadOnlyList<string> tags = item.TryGetValue("Tags", out var tagsAttr) && tagsAttr.SS?.Count > 0
+            ? tagsAttr.SS.AsReadOnly()
+            : Array.Empty<string>();
         return new NoteDetailView(
             new NoteId(Guid.Parse(item["NoteId"].S)),
             item["Title"].S,
             item["Content"].S,
             DateTimeOffset.Parse(item["CreatedAt"].S),
             DateTimeOffset.Parse(item["LastModifiedAt"].S),
-            date);
+            date,
+            tags);
     }
 }

@@ -33,6 +33,8 @@ public sealed class Note : IAggregate
             case NoteUntagged e:
                 _tags.Remove(e.Tag);
                 break;
+            default:
+                break;
         }
     }
 

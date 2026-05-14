@@ -3,10 +3,10 @@ import { FolderNode, NoteItem } from "../api";
 import FolderTree from "./FolderTree";
 
 export default function Sidebar({
-  notes,
-  activeNoteId,
+  notes: _notes,
+  activeNoteId: _activeNoteId,
   open,
-  onSelect,
+  onSelect: _onSelect,
   onCreate,
   folders,
   activeFolderId,

@@ -133,11 +133,11 @@ export async function getNoteCards(): Promise<NoteCard[]> {
   return body.cards;
 }
 
-export async function tagNote(noteId: string, tags: string): Promise<void> {
+export async function tagNote(noteId: string, tag: string): Promise<void> {
   const res = await fetch(`${base}/notes/${noteId}/tags`, {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ tags }),
+    body: JSON.stringify({ tag }),
   });
   if (!res.ok && res.status !== 409) throw new Error(`POST /notes/${noteId}/tags failed: ${res.status}`);
 }
