@@ -24,6 +24,8 @@ public sealed class Folder : IAggregate
 
     IReadOnlyList<IDomainEvent> HandleCreate(CreateFolder cmd)
     {
+        if (_exists)
+            throw new InvalidOperationException("Folder already exists.");
         if (string.IsNullOrWhiteSpace(cmd.Name))
             throw new InvalidOperationException("Folder name must not be empty.");
         return [new FolderCreated(cmd.FolderId, cmd.Name, cmd.ParentFolderId)];
