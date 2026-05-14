@@ -264,7 +264,7 @@ Commit style changes separately from functional changes with a message like `Sty
 - No direct DynamoDB access outside `src/EventStore/`
 - No obvious security issues (injection, unvalidated input at system boundaries, exposed secrets)
 - No unnecessary complexity
-- Each class and interface is in its own file; the filename matches the type name exactly (e.g. `NoteCommandHandler.cs` for `class NoteCommandHandler`, `IEventStore.cs` for `interface IEventStore`)
+- Each class and interface is in its own file; the filename matches the type name exactly (e.g. `NoteCommandHandler.cs` for `class NoteCommandHandler`, `IEventStore.cs` for `interface IEventStore`). **Exception:** simple records with no behaviour (commands, events, API request/response contracts) may be grouped into a single logical file per area (e.g. `NoteCommands.cs`, `NoteEvents.cs`, `NoteContracts.cs`) — but only when every type in the file belongs to the same logical group and has no implementation body.
 - For user-facing slices: UI polish has been applied (Stylist ran) — check for `cursor-pointer`, visible focus states, loading/error states, and no emoji icons
 
 **Output:** Inline PR comments where relevant. A single summary verdict as a PR comment: `Approved`, `Approved with minor comments`, or `Changes requested`. A structured review findings block appended to `docs/learnings/<slice-name>.md` (create the file if it does not yet exist):
