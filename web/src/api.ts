@@ -10,6 +10,7 @@ export interface NoteDetail {
   title: string;
   content: string;
   date: string | null;
+  tags: string[];
 }
 
 export async function getNoteDetail(noteId: string): Promise<NoteDetail> {
@@ -121,6 +122,8 @@ export interface NoteCard {
   date: string | null;
   openActions: NoteCardAction[];
   createdAt: string;
+  tags: string[];
+  folderId?: string;
 }
 
 export async function getNoteCards(): Promise<NoteCard[]> {
@@ -128,6 +131,84 @@ export async function getNoteCards(): Promise<NoteCard[]> {
   if (!res.ok) throw new Error(`GET /notes/cards failed: ${res.status}`);
   const body: { cards: NoteCard[] } = await res.json();
   return body.cards;
+}
+
+export async function tagNote(noteId: string, tag: string): Promise<void> {
+  const res = await fetch(`${base}/notes/${noteId}/tags`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ tag }),
+  });
+  if (!res.ok && res.status !== 409) throw new Error(`POST /notes/${noteId}/tags failed: ${res.status}`);
+}
+
+export async function untagNote(noteId: string, tag: string): Promise<void> {
+  const res = await fetch(`${base}/notes/${noteId}/tags/${encodeURIComponent(tag)}`, { method: "DELETE" });
+  if (!res.ok) throw new Error(`DELETE /notes/${noteId}/tags/${tag} failed: ${res.status}`);
+}
+
+export interface TagIndexEntry {
+  tag: string;
+  noteCount: number;
+  noteIds: string[];
+}
+
+export async function getTags(): Promise<TagIndexEntry[]> {
+  const res = await fetch(`${base}/tags`);
+  if (!res.ok) throw new Error(`GET /tags failed: ${res.status}`);
+  const body: { tags: TagIndexEntry[] } = await res.json();
+  return body.tags;
+}
+
+export interface FolderNode {
+  folderId: string;
+  name: string;
+  children: FolderNode[];
+}
+
+export async function getFolders(): Promise<FolderNode[]> {
+  const res = await fetch(`${base}/folders`);
+  if (!res.ok) throw new Error(`GET /folders failed: ${res.status}`);
+  const body: { folders: FolderNode[] } = await res.json();
+  return body.folders;
+}
+
+export async function createFolder(name: string, parentFolderId?: string): Promise<{ folderId: string }> {
+  const res = await fetch(`${base}/folders`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ name, parentFolderId: parentFolderId ?? null }),
+  });
+  if (!res.ok) throw new Error(`POST /folders failed: ${res.status}`);
+  return res.json();
+}
+
+export async function renameFolder(folderId: string, name: string): Promise<void> {
+  const res = await fetch(`${base}/folders/${folderId}/name`, {
+    method: "PATCH",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ name }),
+  });
+  if (!res.ok) throw new Error(`PATCH /folders/${folderId}/name failed: ${res.status}`);
+}
+
+export async function deleteFolder(folderId: string): Promise<void> {
+  const res = await fetch(`${base}/folders/${folderId}`, { method: "DELETE" });
+  if (!res.ok) throw new Error(`DELETE /folders/${folderId} failed: ${res.status}`);
+}
+
+export async function moveNoteToFolder(noteId: string, folderId: string): Promise<void> {
+  const res = await fetch(`${base}/notes/${noteId}/folder`, {
+    method: "PUT",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ folderId }),
+  });
+  if (!res.ok) throw new Error(`PUT /notes/${noteId}/folder failed: ${res.status}`);
+}
+
+export async function unfileNote(noteId: string): Promise<void> {
+  const res = await fetch(`${base}/notes/${noteId}/folder`, { method: "DELETE" });
+  if (!res.ok) throw new Error(`DELETE /notes/${noteId}/folder failed: ${res.status}`);
 }
 
 export interface TodoItem {

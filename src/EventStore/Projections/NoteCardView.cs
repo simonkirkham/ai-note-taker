@@ -14,4 +14,5 @@ public record NoteCardView(
     DateOnly? Date,
     DateTimeOffset CreatedAt,
     DateTimeOffset LastModifiedAt,
-    bool Deleted);
+    bool Deleted,
+    IReadOnlyList<string>? Tags = null);

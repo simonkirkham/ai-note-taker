@@ -53,7 +53,8 @@
       "Skill(update-config)",
       "PowerShell(dotnet build *)",
       "PowerShell(*)",
-      "Bash(Get-Command aws *)"
+      "Bash(Get-Command aws *)",
+      "Bash(*)"
     ]
   }
 }

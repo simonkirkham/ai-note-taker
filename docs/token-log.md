@@ -45,6 +45,24 @@ If no agent ran unexpectedly high: write `None — slice ran within expected ran
 
 ---
 
+## Slice 5-A Batch 1 — Add tags to a note
+
+| Agent     | ~Tokens     |
+|-----------|-------------|
+| Breaker   | 4 000       |
+| Pip       | 18 000      |
+| Refactor  | 3 000       |
+| Hawk      | 4 000       |
+| Scribe    | 3 000       |
+| **Total** | **~32 000** |
+
+**Why:** Domain was partially in-flight from a prior incomplete session; reading all key files plus implementing projection fixes, HTTP handlers, endpoints, and integration tests drove most of the token cost.
+
+**Optimisation suggestions:**
+- **Pip (–4 000):** The three `LastModifiedAt` omissions in `NoteDetailProjection`, `NoteCardListProjection`, and `NoteCommandHandler.ApplyNoteEventsToCard` could be caught mechanically during Refactor with a checklist item: "does every tag/untag `with { ... }` include `LastModifiedAt`?" — avoids Hawk needing a separate review pass for this class of bug.
+
+---
+
 ## Slice 4-E — Note summary cards on home screen
 
 | Agent     | ~Tokens      |

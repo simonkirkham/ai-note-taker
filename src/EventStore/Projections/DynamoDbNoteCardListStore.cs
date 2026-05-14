@@ -25,6 +25,8 @@ public sealed class DynamoDbNoteCardListStore(IAmazonDynamoDB dynamo, string tab
         };
         if (card.Date.HasValue)
             attrs["Date"] = new() { S = card.Date.Value.ToString("O") };
+        if (card.Tags is { Count: > 0 })
+            attrs["Tags"] = new() { SS = card.Tags.ToList() };
 
         await _dynamo.PutItemAsync(new PutItemRequest
         {
@@ -65,6 +67,9 @@ public sealed class DynamoDbNoteCardListStore(IAmazonDynamoDB dynamo, string tab
         DateOnly? date = row.TryGetValue("Date", out var dateAttr)
             ? DateOnly.Parse(dateAttr.S)
             : null;
+        IReadOnlyList<string> tags = row.TryGetValue("Tags", out var tagsAttr) && tagsAttr.SS?.Count > 0
+            ? tagsAttr.SS.AsReadOnly()
+            : Array.Empty<string>();
 
         return new NoteCardView(
             NoteId: new NoteId(Guid.Parse(row["PK"].S)),
@@ -74,7 +79,8 @@ public sealed class DynamoDbNoteCardListStore(IAmazonDynamoDB dynamo, string tab
             Date: date,
             CreatedAt: DateTimeOffset.Parse(row["CreatedAt"].S),
             LastModifiedAt: DateTimeOffset.Parse(row["LastModifiedAt"].S),
-            Deleted: row["Deleted"].BOOL ?? false);
+            Deleted: row["Deleted"].BOOL ?? false,
+            Tags: tags);
     }
 
     private record ActionItemDto(ActionId ActionId, string Description, bool Completed);

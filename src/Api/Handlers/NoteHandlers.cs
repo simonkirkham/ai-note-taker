@@ -69,6 +69,7 @@ public static class NoteHandlers
             title          = detail.Title,
             content        = detail.Content,
             date           = detail.Date,
+            tags           = detail.Tags ?? [],
             createdAt      = detail.CreatedAt,
             lastModifiedAt = detail.LastModifiedAt
         });
@@ -84,6 +85,22 @@ public static class NoteHandlers
     public static async Task<IResult> DeleteNote(Guid noteId, NoteCommandHandler handler)
     {
         try { await handler.HandleAsync(new Domain.Notes.DeleteNote(new NoteId(noteId))); }
+        catch (NoteNotFoundException) { return Results.NotFound(); }
+        catch (InvalidOperationException) { return Results.NotFound(); }
+        return Results.NoContent();
+    }
+
+    public static async Task<IResult> PostTag(Guid noteId, TagNoteRequest req, NoteCommandHandler handler)
+    {
+        try { await handler.HandleAsync(new TagNote(new NoteId(noteId), req.Tag)); }
+        catch (NoteNotFoundException) { return Results.NotFound(); }
+        catch (InvalidOperationException) { return Results.Conflict(); }
+        return Results.NoContent();
+    }
+
+    public static async Task<IResult> DeleteTag(Guid noteId, string tag, NoteCommandHandler handler)
+    {
+        try { await handler.HandleAsync(new UntagNote(new NoteId(noteId), tag)); }
         catch (NoteNotFoundException) { return Results.NotFound(); }
         catch (InvalidOperationException) { return Results.NotFound(); }
         return Results.NoContent();
@@ -108,6 +125,7 @@ public static class NoteHandlers
                     title          = c.Title,
                     contentPreview = preview,
                     date           = c.Date,
+                    tags           = c.Tags ?? [],
                     openActions,
                     createdAt      = c.CreatedAt
                 };

@@ -10,4 +10,5 @@ public record NoteDetailView(
     string Content,
     DateTimeOffset CreatedAt,
     DateTimeOffset LastModifiedAt,
-    DateOnly? Date = null);
+    DateOnly? Date = null,
+    IReadOnlyList<string>? Tags = null);

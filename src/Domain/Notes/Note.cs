@@ -6,6 +6,7 @@ public sealed class Note : IAggregate
     bool _deleted;
     string? _title;
     string? _content;
+    readonly HashSet<string> _tags = [];
 
     public void Apply(IDomainEvent @event)
     {
@@ -26,6 +27,14 @@ public sealed class Note : IAggregate
             case NoteDeleted:
                 _deleted = true;
                 break;
+            case NoteTagged e:
+                _tags.Add(e.Tag);
+                break;
+            case NoteUntagged e:
+                _tags.Remove(e.Tag);
+                break;
+            default:
+                break;
         }
     }
 
@@ -37,6 +46,8 @@ public sealed class Note : IAggregate
             EditContent cmd   => HandleEditContent(cmd),
             DeleteNote cmd    => HandleDelete(cmd),
             SetNoteDate cmd   => HandleSetDate(cmd),
+            TagNote cmd       => HandleTagNote(cmd),
+            UntagNote cmd     => HandleUntagNote(cmd),
             _ => throw new ArgumentOutOfRangeException(nameof(command))
         };
 
@@ -77,5 +88,23 @@ public sealed class Note : IAggregate
         if (!_exists || _deleted)
             throw new InvalidOperationException($"Note {cmd.NoteId} does not exist.");
         return [new NoteDateSet(cmd.NoteId, cmd.Date)];
+    }
+
+    IReadOnlyList<IDomainEvent> HandleTagNote(TagNote cmd)
+    {
+        if (!_exists || _deleted)
+            throw new InvalidOperationException($"Note {cmd.NoteId} does not exist.");
+        if (_tags.Contains(cmd.Tag))
+            throw new InvalidOperationException($"Tag '{cmd.Tag}' is already present on note {cmd.NoteId}.");
+        return [new NoteTagged(cmd.NoteId, cmd.Tag)];
+    }
+
+    IReadOnlyList<IDomainEvent> HandleUntagNote(UntagNote cmd)
+    {
+        if (!_exists || _deleted)
+            throw new InvalidOperationException($"Note {cmd.NoteId} does not exist.");
+        if (!_tags.Contains(cmd.Tag))
+            throw new InvalidOperationException($"Tag '{cmd.Tag}' is not present on note {cmd.NoteId}.");
+        return [new NoteUntagged(cmd.NoteId, cmd.Tag)];
     }
 }
