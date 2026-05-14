@@ -27,6 +27,22 @@ If no agent ran unexpectedly high: write `None — slice ran within expected ran
 
 -->
 
+## Slice 5-C Batch 1 — TagIndex projection + GET /tags
+
+| Agent     | ~Tokens     |
+|-----------|-------------|
+| Breaker   | 5 000       |
+| Pip       | 16 000      |
+| Scribe    | 3 000       |
+| **Total** | **~24 000** |
+
+**Why:** Backend-only slice with no frontend changes. New projection + DynamoDB store + API handler + infra table — well-bounded and followed the FolderTree pattern exactly, keeping read cost low.
+
+**Optimisation suggestions:**
+- **Test isolation (–0, but pattern note):** `GetTags_ReturnsEmptyWhenNoTags` passes today but is fragile in a shared fixture if test ordering changes. Future "starts empty" assertions should be placed in their own isolated test class to be safe.
+
+---
+
 ## Slice 5-A/B Batch 2 — Tags frontend
 
 | Agent     | ~Tokens     |
