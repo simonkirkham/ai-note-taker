@@ -27,6 +27,24 @@ If no agent ran unexpectedly high: write `None — slice ran within expected ran
 
 -->
 
+## Slice 5-D Batch 1 — Create and browse folders
+
+| Agent     | ~Tokens     |
+|-----------|-------------|
+| Breaker   | 5 000       |
+| Pip       | 18 000      |
+| Refactor  | 1 000       |
+| Hawk      | 2 000       |
+| Scribe    | 3 000       |
+| **Total** | **~29 000** |
+
+**Why:** New aggregate with a single command, one projection, one DynamoDB table, and two HTTP endpoints — a well-bounded slice with no frontend in this batch.
+
+**Optimisation suggestions:**
+- **Test isolation (–0, but pattern note):** The "returns empty" scenario requires its own test class because `IClassFixture<ApiFactory>` shares state within a class. Future slices with similar "starts empty" assertions should put them in a dedicated class from the start rather than discovering the failure at test run time.
+
+---
+
 ## Slice 4-E — Note summary cards on home screen
 
 | Agent     | ~Tokens      |

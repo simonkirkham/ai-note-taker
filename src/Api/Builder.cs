@@ -7,7 +7,7 @@ namespace Api;
 
 public class Builder
 {
-    internal static WebApplication BuildApp(string[] args, string eventTableName, string projTableName, string noteDetailTableName, string noteActionsTableName, string todoListTableName, string noteCardListTableName)
+    internal static WebApplication BuildApp(string[] args, string eventTableName, string projTableName, string noteDetailTableName, string noteActionsTableName, string todoListTableName, string noteCardListTableName, string folderTreeTableName)
     {
         var builder = WebApplication.CreateBuilder(args);
         builder.Services.AddCors();
@@ -51,8 +51,11 @@ public class Builder
             new DynamoDbTodoListStore(sp.GetRequiredService<IAmazonDynamoDB>(), todoListTableName));
         builder.Services.AddSingleton<INoteCardListStore>(sp =>
             new DynamoDbNoteCardListStore(sp.GetRequiredService<IAmazonDynamoDB>(), noteCardListTableName));
+        builder.Services.AddSingleton<IFolderTreeStore>(sp =>
+            new DynamoDbFolderTreeStore(sp.GetRequiredService<IAmazonDynamoDB>(), folderTreeTableName));
         builder.Services.AddSingleton<NoteCommandHandler>();
         builder.Services.AddSingleton<ActionItemCommandHandler>();
+        builder.Services.AddSingleton<FolderCommandHandler>();
         builder.Services.AddSingleton<ProjectionRebuildHandler>();
         builder.Services.AddSingleton<IDynamoHealthCheck>(sp =>
             new DynamoDbHealthCheck(sp.GetRequiredService<IAmazonDynamoDB>(), eventTableName));

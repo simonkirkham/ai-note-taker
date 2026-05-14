@@ -19,13 +19,17 @@ var todoListTableName = Environment.GetEnvironmentVariable("PROJ_TODOLIST_TABLE_
 var noteCardListTableName = Environment.GetEnvironmentVariable("PROJ_NOTECARDLIST_TABLE_NAME")
     ?? throw new InvalidOperationException("PROJ_NOTECARDLIST_TABLE_NAME is not set.");
 
-var app = Builder.BuildApp(args, eventTableName, projTableName, noteDetailTableName, noteActionsTableName, todoListTableName, noteCardListTableName);
+var folderTreeTableName = Environment.GetEnvironmentVariable("PROJ_FOLDERTREE_TABLE_NAME")
+    ?? throw new InvalidOperationException("PROJ_FOLDERTREE_TABLE_NAME is not set.");
+
+var app = Builder.BuildApp(args, eventTableName, projTableName, noteDetailTableName, noteActionsTableName, todoListTableName, noteCardListTableName, folderTreeTableName);
 
 app.UseCors(p => p.AllowAnyOrigin().AllowAnyMethod().AllowAnyHeader());
 
 LoggingConfig.AddLogging(app);
 
 NoteEndpoints.MapNoteEndpoints(app);
+app.MapFolderEndpoints();
 
 app.Run();
 
