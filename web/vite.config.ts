@@ -13,6 +13,7 @@ export default defineConfig({
     environment: 'jsdom',
     setupFiles: ['./src/test/polyfills.ts', './src/test/setup.ts'],
     globals: true,
+    // vmThreads: forks/threads pools time out on WSL2+Windows FS (jsdom init ~74s > 60s limit)
     pool: 'vmThreads',
   },
 })

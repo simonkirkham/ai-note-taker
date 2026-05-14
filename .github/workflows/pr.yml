@@ -78,13 +78,17 @@ jobs:
         working-directory: web
         run: npm exec -- tsc -p tsconfig.app.json --noEmit
 
-      - name: Build
+      - name: Typecheck (tests)
         working-directory: web
-        run: npm run build
+        run: npm exec -- tsc -p tsconfig.test.json --noEmit
 
       - name: Test (component)
         working-directory: web
         run: npm run test
+
+      - name: Build
+        working-directory: web
+        run: npm run build
 
   eventstore:
     runs-on: ubuntu-latest
