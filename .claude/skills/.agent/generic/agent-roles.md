@@ -123,6 +123,7 @@ git checkout main && git pull && git checkout -b slice/2-b-edit-content
 - `dynamodb-event-append` — canonical DynamoDB append with optimistic concurrency
 - `cdk-stack-update` — safe CDK edits with synth + diff gating
 - `refactor` — clean up after specs pass (always run this before opening a PR)
+- `dotnet-coding` — project-specific C# conventions (aggregate purity, command handler pattern, event immutability, no-comments rule); load before writing any C# in `src/`
 - `agent-skills:incremental-implementation` — general thin-slice implementation
 
 **Step 1 — Implement:**
