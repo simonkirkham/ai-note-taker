@@ -70,8 +70,8 @@ Testing
 
 Linting & formatting
 
-- Use ESLint with these plugins: `@typescript-eslint`, `eslint-plugin-react`, `eslint-plugin-jsx-a11y`, `eslint-plugin-import`.
-- Use Prettier for formatting and keep ESLint for semantics. Run both in pre-commit hooks via `lint-staged` + `husky`.
+- ESLint flat config (`web/eslint.config.js`) using `typescript-eslint@^8`. Do not add `.eslintrc.*` files.
+- Use Prettier for formatting and keep ESLint for semantics. Run both in pre-commit via `lint-staged` (wired through `.githooks/pre-commit` — no husky).
 
 Performance & bundling
 
@@ -84,28 +84,27 @@ CI & tooling
 - Use `dotfiles`/`.editorconfig` to keep editor behaviour consistent for indentation and trailing whitespace.
 
 Quick config snippets
-ESLint (`.eslintrc.json`) minimal starter:
+ESLint (`eslint.config.js`) flat config starter (ESLint 9+):
 
-```
-{
-  "root": true,
-  "parser": "@typescript-eslint/parser",
-  "extends": [
-    "eslint:recommended",
-    "plugin:react/recommended",
-    "plugin:jsx-a11y/recommended",
-    "plugin:@typescript-eslint/recommended",
-    "prettier"
-  ],
-  "settings": {
-    "react": { "version": "detect" }
-  }
-}
+```js
+import js from '@eslint/js'
+import globals from 'globals'
+import tseslint from 'typescript-eslint'
+import prettier from 'eslint-config-prettier'
+
+export default tseslint.config(
+  { ignores: ['dist'] },
+  {
+    extends: [js.configs.recommended, ...tseslint.configs.recommended, prettier],
+    files: ['**/*.{ts,tsx}'],
+    languageOptions: { ecmaVersion: 2020, globals: globals.browser },
+  },
+)
 ```
 
 Prettier (`.prettierrc`) minimal:
 
-```
+```json
 {
   "singleQuote": true,
   "trailingComma": "es5",
@@ -115,9 +114,10 @@ Prettier (`.prettierrc`) minimal:
 
 How to apply
 
-1. Add or update `.editorconfig`, `.eslintrc.json`, and `.prettierrc` at the repo root.
-2. Add `lint-staged` + `husky` for pre-commit checks and a CI job that runs `npm run lint` and `npm test`.
-3. Review PRs for accessibility, stable hooks usage, and tests that assert behaviour rather than implementation details.
+1. Add or update `.editorconfig` and `.prettierrc` in `web/`.
+2. Wire `lint-staged` in `package.json` and ensure the pre-commit hook runs it (this project uses `.githooks/pre-commit`, not husky).
+3. CI should run `npm --prefix web run lint` and `npm --prefix web run build`.
+4. Review PRs for accessibility, stable hooks usage, and E2E coverage for new journeys.
 
 Links and further reading
 

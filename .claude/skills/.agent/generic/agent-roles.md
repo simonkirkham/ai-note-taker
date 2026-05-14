@@ -125,6 +125,7 @@ git checkout main && git pull && git checkout -b slice/2-b-edit-content
 - `cdk-stack-update` — safe CDK edits with synth + diff gating
 - `refactor` — clean up after specs pass (always run this before opening a PR)
 - `dotnet-coding` — project-specific C# conventions (aggregate purity, command handler pattern, event immutability, no-comments rule); load before writing any C# in `src/`
+- `frontend-react` — project-specific React/TypeScript conventions (hooks rules, accessibility, linting, E2E guidance); load before writing any file in `web/src/`
 - `agent-skills:incremental-implementation` — general thin-slice implementation
 
 **Step 1 — Implement:**
@@ -160,6 +161,7 @@ Hawk round-trips are expensive (~8–35k tokens each). Catch the common findings
 1. **Criteria coverage** — list every acceptance criterion from the phase doc. Verify each one maps to at least one test (domain spec, API integration test, or E2E journey). Any criterion with no test is a Hawk `Changes requested` waiting to happen — fix it now.
 2. **Guard symmetry** — for every endpoint pair on the same resource (e.g. `POST /notes/{id}/actions` and `GET /notes/{id}/actions`), confirm both apply the same existence guard on the parent resource. If the write endpoint returns 404 for a missing note, the read endpoint must too.
 3. **Hawk checklist** — scan Hawk's checklist in this file. If any item is obviously violated, fix it before opening the PR.
+4. **Frontend lint** — if any `web/src/` files were changed, run `npm --prefix web run lint` and `npm --prefix web run build`. Fix all errors before opening the PR.
 
 **Step 2 — Run local validation and signal Hawk:**
 
@@ -266,6 +268,7 @@ Commit style changes separately from functional changes with a message like `Sty
 - No unnecessary complexity
 - Each class and interface is in its own file; the filename matches the type name exactly (e.g. `NoteCommandHandler.cs` for `class NoteCommandHandler`, `IEventStore.cs` for `interface IEventStore`). **Exception:** simple records with no behaviour (commands, events, API request/response contracts) may be grouped into a single logical file per area (e.g. `NoteCommands.cs`, `NoteEvents.cs`, `NoteContracts.cs`) — but only when every type in the file belongs to the same logical group and has no implementation body.
 - For user-facing slices: UI polish has been applied (Stylist ran) — check for `cursor-pointer`, visible focus states, loading/error states, and no emoji icons
+- For slices touching `web/src/`: component filenames match exported names (PascalCase), no `useEffect` dependency suppressions, icon buttons have `aria-label`, `npm --prefix web run lint` passes
 
 **Output:** Inline PR comments where relevant. A single summary verdict as a PR comment: `Approved`, `Approved with minor comments`, or `Changes requested`. A structured review findings block appended to `docs/learnings/<slice-name>.md` (create the file if it does not yet exist):
 

@@ -1,50 +1,68 @@
+---
+name: frontend-react
+description: Project-specific React/TypeScript conventions for the web/ frontend. Covers component structure, hooks rules, accessibility, linting, and E2E test guidance. Load before writing or reviewing any file in web/src/.
+---
+
 # Frontend / React Skill
 
-Purpose
+## When to load
 
-- Provide a concise skill for contributors working on the frontend (React + TypeScript) in this repo.
-- Point to the canonical `docs/react-coding-standards.md` and key external references.
+Load before writing or reviewing any `.tsx` / `.ts` file in `web/src/`. This skill covers code conventions — for visual polish, load `ui-ux-pro-max` instead.
 
-When to use
+## Project-specific rules
 
-- Implementing or changing UI components, hooks, or styling.
-- Reviewing PRs for UI, accessibility, or test coverage.
-- Adding or updating E2E journeys (Playwright) or component tests.
+**Component naming and structure**
+- PascalCase for components; filename must match the exported component name (`NoteCard.tsx` for `export function NoteCard`).
+- Prefer small, focused components over large monoliths — compose from smaller pieces.
+- Function components only; no class components.
 
-What this skill contains
+**Hooks**
+- Follow the Rules of Hooks: call unconditionally and in the same order.
+- Keep `useEffect` dependency arrays complete — do not suppress ESLint warnings with `// eslint-disable`.
+- Encapsulate shared logic in custom hooks.
 
-- Link to the repo standard: `docs/react-coding-standards.md`.
-- Quick PR reviewer checklist and suggested local commands.
+**TypeScript**
+- `"strict": true` is on — no `any` without a documented reason.
+- Use discriminated unions for variant state (e.g. `{ kind: "note"; noteId: string } | { kind: "list" }`).
 
-Quick checklist (use in PR descriptions)
+**Accessibility**
+- Use semantic HTML; prefer native controls over `div` + `onClick`.
+- Add `aria-label` to icon buttons and any interactive element without visible text.
+- Keyboard navigation must work: `Tab` to reach, `Enter`/`Space` to activate.
 
-- [ ] Component names use PascalCase and files match exported names.
-- [ ] Hooks follow the Rules of Hooks and dependency arrays are correct.
-- [ ] Accessibility: semantic HTML, ARIA labels where needed, keyboard navigation.
-- [ ] Unit tests use React Testing Library and assert behaviour.
-- [ ] E2E flows (Playwright) for user journeys are present when required.
-- [ ] Linting and formatting pass: `npm run lint` and `npm run format`.
-- [ ] No large sync/blocking computations on the main thread.
+**Linting and formatting**
+- ESLint flat config is in `web/eslint.config.js` using `typescript-eslint@^8` — do not add `.eslintrc.*` files.
+- Prettier config is in `web/.prettierrc` (`singleQuote`, `trailingComma: "es5"`, `printWidth: 100`).
+- `lint-staged` runs ESLint + Prettier on staged files via the `.githooks/pre-commit` hook.
 
-Commands
+**Testing**
+- This project has no React Testing Library unit tests. Frontend correctness is verified via Playwright E2E in `tests/E2E/`.
+- When adding a new user journey, add or extend an E2E spec in `tests/E2E/`.
 
-- Install deps: `npm install` or `pnpm install` / `yarn install` (follow repo preference).
-- Lint: `npm run lint` (ESLint + TypeScript checks)
-- Format: `npm run format` (Prettier)
-- Unit tests: `npm test` (Jest + React Testing Library)
-- E2E: `npm run e2e` (Playwright)
+**No comments**
+- Same rule as the C# codebase: no comments unless the WHY is non-obvious.
 
-Authoritative references
+## Commands
 
-- React: https://react.dev/
-- TypeScript: https://www.typescriptlang.org/
-- ESLint + React rules: https://github.com/jsx-eslint/eslint-plugin-react
-- Accessibility: https://www.w3.org/WAI/
-- React Testing Library: https://testing-library.com/docs/react-testing-library/intro/
+```bash
+# Run from repo root (CLAUDE.md convention — never cd into web/)
+npm --prefix web run lint      # ESLint check
+npm --prefix web run format    # Prettier write
+npm --prefix web run build     # TypeScript + Vite build
+npm --prefix web run dev       # Dev server (port 5173)
+```
 
-Notes for reviewers
+## Checklist (run before opening a PR)
 
-- Prefer small, behavior-only changes in the same PR; large formatting-only changes should be separate.
-- If a deviation from the style guide is needed, add a short justification in the PR description.
+- [ ] Component filename matches exported name (PascalCase)
+- [ ] No `useEffect` dependency array suppressions
+- [ ] Icon buttons and unlabelled interactive elements have `aria-label`
+- [ ] Keyboard navigation works (Tab + Enter/Space)
+- [ ] `npm --prefix web run lint` passes with zero errors
+- [ ] `npm --prefix web run build` passes
+- [ ] New user journeys have a corresponding E2E spec in `tests/E2E/`
+- [ ] No `.eslintrc.*` files added
 
-File: docs/react-coding-standards.md
+## Reference
+
+Full standards: `docs/react-coding-standards.md`
