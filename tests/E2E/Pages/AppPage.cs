@@ -172,6 +172,15 @@ public sealed class AppPage(IPage page, string baseUrl)
     public Task AssertNoteDateEmptyAsync() =>
         Assertions.Expect(page.GetByTestId("note-date-input")).ToHaveValueAsync(string.Empty);
 
+    public async Task<string> GetDateInputValueAsync() =>
+        await page.GetByTestId("note-date-input").InputValueAsync();
+
+    public Task AssertDateDisplayAbsentAsync() =>
+        Assertions.Expect(page.GetByTestId("note-date-display")).Not.ToBeVisibleAsync();
+
+    public Task AssertDateInputValueAsync(string expected) =>
+        Assertions.Expect(page.GetByTestId("note-date-input")).ToHaveValueAsync(expected);
+
     public Task AssertSidebarVisibleAsync() =>
         Assertions.Expect(page.GetByTestId("sidebar")).ToBeVisibleAsync();
 
