@@ -91,6 +91,7 @@ cdk deploy
 - **Never commit slice work directly to main.** Breaker creates a branch **and a worktree** before the first test commit (see *Worktrees* below). All slice commits (Breaker, Pip, Refactor, Stylist, Hawk fixes) go to that branch. Pip opens a PR; Hawk reviews the PR; Pip squash-merges after approval.
 - **Never merge into main unless main's last deploy is green.** Before merging, Pip must confirm the latest completed deploy workflow run on main succeeded: `gh run list --branch main --workflow deploy.yml --status completed --limit 1 --json conclusion`. If the conclusion is not `success`, stop — do not merge, do not bypass. Fix main first. This is also enforced by the PR check workflow, which will block the merge automatically.
 - **Never merge a `prototype/` branch into main or a `slice/` branch.** Prototype branches are reference material only. The one exception is cherry-picking the updated phase doc commit to main as part of the prototype exit procedure.
+- **When installing new npm packages, confirm the local Node version matches CI (Node 20, per `.github/workflows/`) before committing `package-lock.json`.** Run `node --version` first. A lock file generated with npm 11+/Node 24 omits optional native-binding entries that Node 20's npm expects, causing `npm ci` to fail with "Missing: X from lock file". If versions differ, switch to Node 20 for the install, or verify the lock file includes all expected `node_modules/` entries.
 
 ## Skills
 
