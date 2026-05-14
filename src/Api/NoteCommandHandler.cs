@@ -144,10 +144,10 @@ public sealed class NoteCommandHandler(
                     card = card with { Date = e.Date, LastModifiedAt = envelope.OccurredAt };
                     break;
                 case NoteTagged e when card is not null:
-                    card = card with { Tags = (card.Tags ?? []).Append(e.Tag).ToList().AsReadOnly() };
+                    card = card with { Tags = (card.Tags ?? []).Append(e.Tag).ToList().AsReadOnly(), LastModifiedAt = envelope.OccurredAt };
                     break;
                 case NoteUntagged e when card is not null:
-                    card = card with { Tags = (card.Tags ?? []).Where(t => t != e.Tag).ToList().AsReadOnly() };
+                    card = card with { Tags = (card.Tags ?? []).Where(t => t != e.Tag).ToList().AsReadOnly(), LastModifiedAt = envelope.OccurredAt };
                     break;
                 default:
                     break;

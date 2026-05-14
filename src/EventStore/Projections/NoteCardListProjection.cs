@@ -76,10 +76,10 @@ public sealed class NoteCardListProjection
                 };
                 break;
             case NoteTagged e when _cards.TryGetValue(e.NoteId, out var c):
-                _cards[e.NoteId] = c with { Tags = (c.Tags ?? []).Append(e.Tag).ToList().AsReadOnly() };
+                _cards[e.NoteId] = c with { Tags = (c.Tags ?? []).Append(e.Tag).ToList().AsReadOnly(), LastModifiedAt = envelope.OccurredAt };
                 break;
             case NoteUntagged e when _cards.TryGetValue(e.NoteId, out var c):
-                _cards[e.NoteId] = c with { Tags = (c.Tags ?? []).Where(t => t != e.Tag).ToList().AsReadOnly() };
+                _cards[e.NoteId] = c with { Tags = (c.Tags ?? []).Where(t => t != e.Tag).ToList().AsReadOnly(), LastModifiedAt = envelope.OccurredAt };
                 break;
             default:
                 break;

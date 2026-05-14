@@ -18,6 +18,8 @@ public static class NoteEndpoints
         app.MapGet("/notes/{noteId}", NoteHandlers.GetNote);
         app.MapDelete("/notes/{noteId}", NoteHandlers.DeleteNote);
         app.MapPatch("/notes/{noteId}/date", NoteHandlers.SetNoteDate);
+        app.MapPost("/notes/{noteId}/tags", NoteHandlers.PostTag);
+        app.MapDelete("/notes/{noteId}/tags/{tag}", NoteHandlers.DeleteTag);
         app.MapPost("/notes/{noteId}/actions", ActionItemHandlers.AddActionItem);
         app.MapPost("/notes/{noteId}/actions/{actionId}/complete", ActionItemHandlers.CompleteActionItem);
         app.MapPost("/notes/{noteId}/actions/{actionId}/reopen", ActionItemHandlers.ReopenActionItem);

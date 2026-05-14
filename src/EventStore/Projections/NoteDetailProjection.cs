@@ -34,11 +34,11 @@ public sealed class NoteDetailProjection
                 break;
             case NoteTagged e:
                 if (_items.TryGetValue(e.NoteId, out var tagged))
-                    _items[e.NoteId] = tagged with { Tags = (tagged.Tags ?? []).Append(e.Tag).ToList().AsReadOnly() };
+                    _items[e.NoteId] = tagged with { Tags = (tagged.Tags ?? []).Append(e.Tag).ToList().AsReadOnly(), LastModifiedAt = envelope.OccurredAt };
                 break;
             case NoteUntagged e:
                 if (_items.TryGetValue(e.NoteId, out var untagged))
-                    _items[e.NoteId] = untagged with { Tags = (untagged.Tags ?? []).Where(t => t != e.Tag).ToList().AsReadOnly() };
+                    _items[e.NoteId] = untagged with { Tags = (untagged.Tags ?? []).Where(t => t != e.Tag).ToList().AsReadOnly(), LastModifiedAt = envelope.OccurredAt };
                 break;
             case NoteDeleted e:
                 _items.Remove(e.NoteId);

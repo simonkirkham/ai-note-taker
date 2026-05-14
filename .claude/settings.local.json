@@ -54,10 +54,7 @@
       "PowerShell(dotnet build *)",
       "PowerShell(*)",
       "Bash(Get-Command aws *)",
-      "Read(//mnt/c/code/**)",
-      "Bash(docker compose *)",
-      "Bash(Get-ChildItem -Path \"C:\\\\code\\\\ai-note-taker\\\\tests\" -Recurse -Directory)",
-      "Bash(Select-Object -ExpandProperty FullName)"
+      "Bash(*)"
     ]
   }
 }
