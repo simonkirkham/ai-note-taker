@@ -4,7 +4,19 @@ set -e
 echo "→ build (warnings as errors)..."
 dotnet build ai-note-taker.sln -p:TreatWarningsAsErrors=true --nologo -v quiet
 
-echo "→ test..."
+echo "→ frontend lint..."
+npm --prefix web run lint
+
+echo "→ frontend typecheck..."
+npm --prefix web exec -- tsc -p tsconfig.app.json --noEmit
+
+echo "→ domain specs..."
 dotnet test tests/Specs/Specs.csproj --nologo -v quiet
+
+echo "→ API integration tests..."
+dotnet test tests/ApiIntegration/ApiIntegration.csproj --nologo -v quiet
+
+echo "→ infra assertions..."
+dotnet test tests/InfraAssertions/InfraAssertions.csproj --nologo -v quiet
 
 echo "✓ pre-commit checks passed"
