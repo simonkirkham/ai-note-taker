@@ -9,7 +9,7 @@ runs:
         python3 << 'EOF'
         import boto3
         dynamodb = boto3.resource('dynamodb')
-        for name in ['notetaker-events', 'notetaker-proj-notetitlelist', 'notetaker-proj-notedetail', 'notetaker-proj-noteactions', 'notetaker-proj-todolist', 'notetaker-proj-notecardlist']:
+        for name in ['notetaker-events', 'notetaker-proj-notetitlelist', 'notetaker-proj-notedetail', 'notetaker-proj-noteactions', 'notetaker-proj-todolist', 'notetaker-proj-notecardlist', 'notetaker-proj-tagindex', 'notetaker-proj-foldertree']:
             table = dynamodb.Table(name)
             keys = {k['AttributeName'] for k in table.key_schema}
             deleted = 0
