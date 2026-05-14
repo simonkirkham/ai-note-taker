@@ -84,25 +84,13 @@ Slices and acceptance criteria: [docs/phases/phase-5.md](phases/phase-5.md)
 - Package compatibility audit; fix any BCL or framework-layer breaking changes
 - Update Lambda runtime constant in CDK stack (`Runtime.DOTNET_8` → `Runtime.DOTNET_10`)
 - Redeploy and verify with acceptance tests and E2E browser journeys
+- Measure cold start baseline; enable Lambda SnapStart; verify Init Duration eliminated
 
-**Goal:** stay on a supported Lambda runtime; learn the .NET release cadence, AWS Lambda managed runtime lifecycle, and how to run a framework upgrade safely behind a full test suite.
+**Goal:** stay on a supported Lambda runtime; learn the .NET release cadence, AWS Lambda managed runtime lifecycle, and how to run a framework upgrade safely behind a full test suite. SnapStart teaches the Lambda version/alias deployment model and how AWS eliminates cold starts via execution environment snapshots.
 
 Slices and acceptance criteria: [docs/phases/phase-6.md](phases/phase-6.md)
 
-## Phase 7 — Google Calendar integration + meeting notes
-
-- Today's meetings surfaced on the home screen (Google Calendar pass-through, single-user refresh token)
-- One-click note creation linked to a calendar event (`NoteLinkedToCalendarEvent`)
-- Meeting-time browser reminder via `setTimeout` + Notifications API
-- Recurring meetings: one-click note for the next scheduled occurrence
-- `CalendarLinkIndex` projection keyed by external calendar event ID
-- `EventMetadata.UserId` populated for the first time (groundwork for Phase 9)
-
-**Goal:** first outbound HTTP from Lambda; Google OAuth2 refresh-token flow; SSM Parameter Store for secrets; extending an aggregate with a new event without touching the immutable original; a projection keyed by an external system ID.
-
-Slices and acceptance criteria: [docs/phases/phase-7.md](phases/phase-7.md)
-
-## Phase 8 — Rich note content
+## Phase 7 — Rich note content
 
 - Replace plain textarea with TipTap WYSIWYG editor
 - Headings, bold, bullet lists, and checkboxes via keyboard shortcuts
@@ -111,6 +99,19 @@ Slices and acceptance criteria: [docs/phases/phase-7.md](phases/phase-7.md)
 - Content stored as markdown string in existing `ContentEditedV2` event — no new events
 
 **Goal:** learn how to integrate a ProseMirror-based editor into a React frontend; understand markdown as a storage format and the tradeoffs of serialising structured editor state to plain text.
+
+Slices and acceptance criteria: [docs/phases/phase-7.md](phases/phase-7.md)
+
+## Phase 8 — Google Calendar integration + meeting notes
+
+- Today's meetings surfaced on the home screen (Google Calendar pass-through, single-user refresh token)
+- One-click note creation linked to a calendar event (`NoteLinkedToCalendarEvent`)
+- Meeting-time browser reminder via `setTimeout` + Notifications API
+- Recurring meetings: one-click note for the next scheduled occurrence
+- `CalendarLinkIndex` projection keyed by external calendar event ID
+- `EventMetadata.UserId` populated for the first time (groundwork for Phase 10)
+
+**Goal:** first outbound HTTP from Lambda; Google OAuth2 refresh-token flow; SSM Parameter Store for secrets; extending an aggregate with a new event without touching the immutable original; a projection keyed by an external system ID.
 
 Slices and acceptance criteria: [docs/phases/phase-8.md](phases/phase-8.md)
 
