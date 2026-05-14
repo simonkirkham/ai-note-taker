@@ -59,7 +59,9 @@ export default function NoteView({
     const newTokens = tokens.filter((t) => !tags.includes(t));
     if (newTokens.length === 0) return;
     setTags((prev) => [...prev, ...newTokens]);
-    tagNote(noteId, newTokens.join(" ")).catch(() => {});
+    for (const token of newTokens) {
+      tagNote(noteId, token).catch(() => {});
+    }
   }
 
   function handleRemoveTag(tag: string) {

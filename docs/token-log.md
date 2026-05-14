@@ -27,6 +27,23 @@ If no agent ran unexpectedly high: write `None — slice ran within expected ran
 
 -->
 
+## Slice 5-A/B Batch 2 — Tags frontend
+
+| Agent     | ~Tokens     |
+|-----------|-------------|
+| Breaker   | 4 000       |
+| Pip       | 3 000       |
+| Refactor  | 1 000       |
+| Hawk      | 1 000       |
+| Scribe    | 2 000       |
+| **Total** | **~11 000** |
+
+**Why:** Pure frontend slice with a pre-existing bug fix — most components were already scaffolded, so the work was adding testids and correcting the multi-tag API call pattern.
+
+**Optimisation suggestions:** None — slice ran within expected range.
+
+---
+
 ## Phase 6 — Upgrade to .NET 10
 
 | Agent            | ~Tokens     |

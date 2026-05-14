@@ -241,6 +241,50 @@ public sealed class AppPage(IPage page, string baseUrl)
             page.GetByTestId("note-cards").GetByText(title)
         ).Not.ToBeVisibleAsync();
 
+    public async Task AddTagAsync(string tagInput)
+    {
+        var tagCount = tagInput.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries).Length;
+        var input = page.GetByTestId("tag-input");
+        await input.FillAsync(tagInput);
+
+        var postTasks = Enumerable.Range(0, tagCount)
+            .Select(_ => page.WaitForResponseAsync(r =>
+                r.Url.Contains("/tags") && r.Request.Method == "POST"))
+            .ToArray();
+
+        await input.PressAsync("Enter");
+        await Task.WhenAll(postTasks);
+    }
+
+    public Task AssertTagPillVisibleAsync(string tag) =>
+        Assertions.Expect(
+            page.GetByTestId("tags-section").GetByTestId($"tag-pill-{tag}")
+        ).ToBeVisibleAsync();
+
+    public Task AssertTagPillAbsentAsync(string tag) =>
+        Assertions.Expect(
+            page.GetByTestId("tags-section").GetByTestId($"tag-pill-{tag}")
+        ).Not.ToBeVisibleAsync();
+
+    public async Task RemoveTagAsync(string tag)
+    {
+        var deleteDone = page.WaitForResponseAsync(r =>
+            r.Url.Contains("/tags/") && r.Request.Method == "DELETE");
+        await page.GetByTestId("tags-section")
+            .GetByTestId($"tag-pill-{tag}")
+            .GetByRole(AriaRole.Button)
+            .ClickAsync();
+        await deleteDone;
+    }
+
+    public Task AssertCardTagVisibleAsync(string cardTitle, string tag) =>
+        Assertions.Expect(
+            page.GetByTestId("note-cards")
+                .Locator(".note-card")
+                .Filter(new LocatorFilterOptions { HasText = cardTitle })
+                .GetByTestId($"card-tag-{tag}")
+        ).ToBeVisibleAsync();
+
     public async Task CreateFolderAsync(string name)
     {
         var postDone = page.WaitForResponseAsync(r =>
