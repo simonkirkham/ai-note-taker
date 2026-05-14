@@ -91,16 +91,35 @@ Slices and acceptance criteria: [docs/phases/phase-6.md](phases/phase-6.md)
 
 ## Phase 7 — Google Calendar integration + meeting notes
 
-- Personal Google OAuth credentials (single-user refresh token)
-- Calendar read access
-- Notes auto-created from calendar events
+- Today's meetings surfaced on the home screen (Google Calendar pass-through, single-user refresh token)
+- One-click note creation linked to a calendar event (`NoteLinkedToCalendarEvent`)
+- Meeting-time browser reminder via `setTimeout` + Notifications API
+- Recurring meetings: one-click note for the next scheduled occurrence
+- `CalendarLinkIndex` projection keyed by external calendar event ID
+- `EventMetadata.UserId` populated for the first time (groundwork for Phase 9)
 
-## Phase 8 — Transcription
+**Goal:** first outbound HTTP from Lambda; Google OAuth2 refresh-token flow; SSM Parameter Store for secrets; extending an aggregate with a new event without touching the immutable original; a projection keyed by an external system ID.
+
+Slices and acceptance criteria: [docs/phases/phase-7.md](phases/phase-7.md)
+
+## Phase 8 — Rich note content
+
+- Replace plain textarea with TipTap WYSIWYG editor
+- Headings, bold, bullet lists, and checkboxes via keyboard shortcuts
+- Heading = discussion topic; one click marks it as discussed (strikethrough)
+- Checkboxes for inline agenda items; Action Items panel untouched
+- Content stored as markdown string in existing `ContentEditedV2` event — no new events
+
+**Goal:** learn how to integrate a ProseMirror-based editor into a React frontend; understand markdown as a storage format and the tradeoffs of serialising structured editor state to plain text.
+
+Slices and acceptance criteria: [docs/phases/phase-8.md](phases/phase-8.md)
+
+## Phase 9 — Transcription
 
 - Capture meeting audio
 - Transcribe and merge into the note
 
-## Phase 9 — Multi-user auth (Google Sign-In)
+## Phase 10 — Multi-user auth (Google Sign-In)
 
 - Convert single-user to multi-user
 - Reuse OAuth scaffolding from Phase 7

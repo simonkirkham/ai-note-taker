@@ -11,6 +11,24 @@ jobs:
     env:
       DYNAMO_TIMEOUT_SECONDS: "3"
     steps:
+      - name: Verify main is in a known good state
+        run: |
+          CONCLUSION=$(gh run list \
+            --repo "$GITHUB_REPOSITORY" \
+            --branch main \
+            --workflow deploy.yml \
+            --status completed \
+            --limit 1 \
+            --json conclusion \
+            --jq '.[0].conclusion // "no-deploy-found"')
+          echo "Last deploy conclusion on main: $CONCLUSION"
+          if [ "$CONCLUSION" != "success" ]; then
+            echo "ERROR: main's last deploy is not green ($CONCLUSION). Fix main before merging."
+            exit 1
+          fi
+        env:
+          GH_TOKEN: ${{ github.token }}
+
       - uses: actions/checkout@v4
 
       - uses: actions/setup-dotnet@v4
