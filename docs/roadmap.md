@@ -78,7 +78,7 @@ Slices and acceptance criteria: [docs/phases/phase-4.md](phases/phase-4.md)
 
 Slices and acceptance criteria: [docs/phases/phase-5.md](phases/phase-5.md)
 
-## Phase 6 — Upgrade to .NET 10
+## Phase 6 — Upgrade to .NET 10 _(Done)_
 
 - LTS → LTS upgrade from .NET 8 to .NET 10 across all 10 projects in the solution
 - Package compatibility audit; fix any BCL or framework-layer breaking changes
@@ -131,4 +131,7 @@ Slices and acceptance criteria: [docs/phases/phase-8.md](phases/phase-8.md)
 
 - Workspaces - Switching between collections of notes
 - Search across notes
--
+
+## CI / Dev Experience Backlog
+
+- **Investigate whether CDK synth needs real AWS credentials in `validate.yml`.** If the CDK app does no context lookups (SSM, VPC resolution, etc.), `cdk synth` can run without credentials. If confirmed, remove the `Configure AWS credentials` step and `environment: Test` from `validate.yml` — validate becomes a pure code-quality gate with no AWS dependency.
