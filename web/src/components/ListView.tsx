@@ -79,7 +79,6 @@ export default function ListView({
           <h1 className="title">{heading}</h1>
         </div>
         <button
-          data-testid="new-note-button"
           className="new-note-button"
           onClick={onNewNote}
           disabled={creating}
