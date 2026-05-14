@@ -84,6 +84,7 @@ public class NoteTakerStack : Stack
             Handler = "Api",
             Code = Amazon.CDK.AWS.Lambda.Code.FromAsset(lambdaAssetPath),
             Timeout = Duration.Seconds(29),
+            SnapStart = Amazon.CDK.AWS.Lambda.SnapStartConf.ON_PUBLISHED_VERSIONS,
             Environment = new Dictionary<string, string>
             {
                 ["EVENTS_TABLE_NAME"]            = eventsTable.TableName,
@@ -94,6 +95,12 @@ public class NoteTakerStack : Stack
                 ["PROJ_NOTECARDLIST_TABLE_NAME"] = noteCardListTable.TableName,
                 ["PROJ_FOLDERTREE_TABLE_NAME"]   = folderTreeTable.TableName
             }
+        });
+
+        var apiAlias = new Amazon.CDK.AWS.Lambda.Alias(this, "LiveAlias", new Amazon.CDK.AWS.Lambda.AliasProps
+        {
+            AliasName = "live",
+            Version = apiFunction.CurrentVersion
         });
 
         eventsTable.GrantReadWriteData(apiFunction);
@@ -118,7 +125,7 @@ public class NoteTakerStack : Stack
         // HTTP API's ANY method does not include OPTIONS — OPTIONS must be routed
         // explicitly so that ASP.NET Core's UseCors middleware can handle CORS preflights.
         var lambdaIntegration = new Amazon.CDK.AwsApigatewayv2Integrations.HttpLambdaIntegration(
-            "LambdaIntegration", apiFunction);
+            "LambdaIntegration", apiAlias);
 
         httpApi.AddRoutes(new Amazon.CDK.AWS.Apigatewayv2.AddRoutesOptions
         {
@@ -132,7 +139,7 @@ public class NoteTakerStack : Stack
             Path = "/{proxy+}",
             Methods = new[] { Amazon.CDK.AWS.Apigatewayv2.HttpMethod.OPTIONS },
             Integration = new Amazon.CDK.AwsApigatewayv2Integrations.HttpLambdaIntegration(
-                "LambdaOptionsIntegration", apiFunction)
+                "LambdaOptionsIntegration", apiAlias)
         });
 
         // ── Frontend (S3 + CloudFront) ───────────────────────────────────
