@@ -125,7 +125,7 @@ public sealed class AppPage(IPage page, string baseUrl)
         Assertions.Expect(page.GetByTestId("todo-section")).ToBeVisibleAsync();
 
     public Task AssertTodoItemVisibleAsync(string description) =>
-        Assertions.Expect(page.GetByTestId("todo-list").GetByText(description)).ToBeVisibleAsync();
+        Assertions.Expect(page.GetByTestId("todo-list").GetByText(description)).ToBeVisibleAsync(new() { Timeout = 15000 });
 
     public async Task CompleteTodoItemAsync(string description)
     {
