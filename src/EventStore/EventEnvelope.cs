@@ -8,9 +8,3 @@ public record EventEnvelope(
     DateTimeOffset OccurredAt,
     string Payload,
     EventMetadata Metadata);
-
-public record EventMetadata(
-    Guid CommandId,
-    string? UserId,
-    string? CorrelationId,
-    string? CausationId);

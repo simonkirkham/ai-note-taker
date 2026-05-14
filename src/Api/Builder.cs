@@ -3,6 +3,8 @@ using Api;
 using EventStore;
 using EventStore.Projections;
 
+namespace Api;
+
 public class Builder
 {
     internal static WebApplication BuildApp(string[] args, string eventTableName, string projTableName, string noteDetailTableName, string noteActionsTableName, string todoListTableName, string noteCardListTableName)
@@ -21,7 +23,6 @@ public class Builder
             Timeout = TimeSpan.FromSeconds(dynamoTimeoutSeconds)
         };
 
-        // Prefer explicit ServiceURL (local dev) or region if provided in config/env.
         var awsServiceUrl = Environment.GetEnvironmentVariable("DYNAMO_SERVICE_URL") ?? builder.Configuration["AWS:ServiceURL"];
         var awsRegion = Environment.GetEnvironmentVariable("AWS_REGION") ?? builder.Configuration["AWS:AuthenticationRegion"] ?? Environment.GetEnvironmentVariable("AWS_DEFAULT_REGION");
 
@@ -36,7 +37,6 @@ public class Builder
         }
         else
         {
-            // No explicit endpoint/region — use the AWS SDK integration which reads from AWS options/credentials.
             builder.Services.AddAWSService<IAmazonDynamoDB>();
         }
         builder.Services.AddSingleton<IEventStore>(sp =>

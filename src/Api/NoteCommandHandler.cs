@@ -6,8 +6,6 @@ using EventStore.Projections;
 
 namespace Api;
 
-public sealed class NoteNotFoundException(NoteId noteId) : Exception($"Note {noteId} not found.");
-
 public sealed class NoteCommandHandler(
     IEventStore store,
     INoteTitleListStore projStore,
@@ -90,9 +88,12 @@ public sealed class NoteCommandHandler(
         foreach (var e in history) { titleList.Handle(e); detail.Handle(e); }
         foreach (var e in newEnvelopes) { titleList.Handle(e); detail.Handle(e); }
 
-        var item = titleList.GetView().Items.First(i => i.NoteId == noteId);
+        var item = titleList.GetView().Items.FirstOrDefault(i => i.NoteId == noteId)
+            ?? throw new NoteNotFoundException(noteId);
         await projStore.UpsertAsync(item, ct).ConfigureAwait(false);
-        await noteDetailStore.UpsertAsync(detail.GetDetail(noteId)!, ct).ConfigureAwait(false);
+        var noteDetail = detail.GetDetail(noteId)
+            ?? throw new NoteNotFoundException(noteId);
+        await noteDetailStore.UpsertAsync(noteDetail, ct).ConfigureAwait(false);
 
         if (newEnvelopes.Any(e => e.EventType == nameof(NoteRenamed)))
             await todoListStore.UpdateNoteTitleAsync(noteId, item.Title, ct).ConfigureAwait(false);
@@ -128,7 +129,7 @@ public sealed class NoteCommandHandler(
                     break;
             }
         }
-        return card!;
+        return card ?? throw new NoteNotFoundException(noteId);
     }
 
     private static Note Rebuild(IReadOnlyList<EventEnvelope> history)

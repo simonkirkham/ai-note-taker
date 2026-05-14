@@ -1,3 +1,4 @@
+using Api;
 using Api.Endpoints;
 
 var eventTableName = Environment.GetEnvironmentVariable("EVENTS_TABLE_NAME")
@@ -24,7 +25,6 @@ app.UseCors(p => p.AllowAnyOrigin().AllowAnyMethod().AllowAnyHeader());
 
 LoggingConfig.AddLogging(app);
 
-// Endpoints are mapped in Api.Endpoints.NoteEndpoints
 NoteEndpoints.MapNoteEndpoints(app);
 
 app.Run();
