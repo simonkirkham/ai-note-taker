@@ -16,11 +16,12 @@ export default function TagFilter({
   if (tags.length === 0) return null;
 
   return (
-    <div className="tag-filter">
+    <div className="tag-filter" data-testid="tag-filter">
       <div className="tag-filter-pills">
         {tags.map((tag) => (
           <button
             key={tag}
+            data-testid={`tag-filter-pill-${tag}`}
             className={`tag-filter-pill${selectedTags.includes(tag) ? " tag-filter-pill--active" : ""}`}
             onClick={() => onToggle(tag)}
           >
@@ -31,6 +32,7 @@ export default function TagFilter({
       <div className="tag-filter-controls">
         {selectedTags.length > 1 && (
           <button
+            data-testid="tag-filter-mode-toggle"
             className="tag-filter-mode-toggle"
             onClick={() => onModeChange(mode === "AND" ? "OR" : "AND")}
             title="Toggle AND/OR filter mode"
@@ -39,7 +41,7 @@ export default function TagFilter({
           </button>
         )}
         {selectedTags.length > 0 && (
-          <button className="tag-filter-clear" onClick={onClear}>
+          <button data-testid="tag-filter-clear" className="tag-filter-clear" onClick={onClear}>
             Clear
           </button>
         )}
