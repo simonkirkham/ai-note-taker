@@ -65,15 +65,6 @@ public sealed class FolderIntegrationTests(ApiFactory factory) : IClassFixture<A
         Assert.Equal(HttpStatusCode.BadRequest, resp.StatusCode);
     }
 
-    [Fact]
-    public async Task GetFolders_ReturnsEmptyWhenNoFolders()
-    {
-        var resp = await _client.GetAsync("/folders");
-        resp.EnsureSuccessStatusCode();
-        var body = await resp.Content.ReadFromJsonAsync<JsonElement>();
-        Assert.Equal(0, body.GetProperty("folders").GetArrayLength());
-    }
-
     private Task<HttpResponseMessage> PostFolderAsync(string name, string? parentFolderId)
     {
         var payload = parentFolderId is null
@@ -81,5 +72,19 @@ public sealed class FolderIntegrationTests(ApiFactory factory) : IClassFixture<A
             : $"{{\"name\":\"{name}\",\"parentFolderId\":\"{parentFolderId}\"}}";
         return _client.PostAsync("/folders",
             new StringContent(payload, Encoding.UTF8, "application/json"));
+    }
+}
+
+public sealed class FolderEmptyTests(ApiFactory factory) : IClassFixture<ApiFactory>
+{
+    private readonly HttpClient _client = factory.CreateClient();
+
+    [Fact]
+    public async Task GetFolders_ReturnsEmptyWhenNoFolders()
+    {
+        var resp = await _client.GetAsync("/folders");
+        resp.EnsureSuccessStatusCode();
+        var body = await resp.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal(0, body.GetProperty("folders").GetArrayLength());
     }
 }

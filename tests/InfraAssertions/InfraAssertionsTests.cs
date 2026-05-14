@@ -133,6 +133,33 @@ public class InfraAssertionsTests
     }
 
     [Fact]
+    public void FolderTreeTable_Exists()
+    {
+        _template.HasResource("AWS::DynamoDB::Table", Match.ObjectLike(new Dictionary<string, object>
+        {
+            ["Properties"] = Match.ObjectLike(new Dictionary<string, object>
+            {
+                ["TableName"] = Match.StringLikeRegexp(".*foldertree.*")
+            })
+        }));
+    }
+
+    [Fact]
+    public void Lambda_HasFolderTreeTableEnvVar()
+    {
+        _template.HasResourceProperties("AWS::Lambda::Function", Match.ObjectLike(new Dictionary<string, object>
+        {
+            ["Environment"] = Match.ObjectLike(new Dictionary<string, object>
+            {
+                ["Variables"] = Match.ObjectLike(new Dictionary<string, object>
+                {
+                    ["PROJ_FOLDERTREE_TABLE_NAME"] = Match.AnyValue()
+                })
+            })
+        }));
+    }
+
+    [Fact]
     public void CloudFront_HasSpaErrorResponses()
     {
         _template.HasResourceProperties("AWS::CloudFront::Distribution", Match.ObjectLike(new Dictionary<string, object>

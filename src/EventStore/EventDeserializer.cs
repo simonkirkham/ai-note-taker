@@ -1,6 +1,7 @@
 using System.Text.Json;
 using Domain;
 using Domain.ActionItems;
+using Domain.Folders;
 using Domain.Notes;
 
 namespace EventStore;
@@ -19,6 +20,7 @@ public static class EventDeserializer
         (nameof(ActionItemCompleted), _) => JsonSerializer.Deserialize<ActionItemCompleted>(envelope.Payload)!,
         (nameof(ActionItemReopened),  _) => JsonSerializer.Deserialize<ActionItemReopened>(envelope.Payload)!,
         (nameof(ActionItemDeleted),   _) => JsonSerializer.Deserialize<ActionItemDeleted>(envelope.Payload)!,
+        (nameof(FolderCreated),       _) => JsonSerializer.Deserialize<FolderCreated>(envelope.Payload)!,
         _ => throw new InvalidOperationException($"Unknown event type/version: {envelope.EventType} v{envelope.EventVersion}")
     };
 }

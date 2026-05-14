@@ -19,6 +19,7 @@ public sealed class ApiFactory : WebApplicationFactory<Program>
         Environment.SetEnvironmentVariable("PROJ_NOTEACTIONS_TABLE_NAME", "test-proj-noteactions");
         Environment.SetEnvironmentVariable("PROJ_TODOLIST_TABLE_NAME", "test-proj-todolist");
         Environment.SetEnvironmentVariable("PROJ_NOTECARDLIST_TABLE_NAME", "test-proj-notecardlist");
+        Environment.SetEnvironmentVariable("PROJ_FOLDERTREE_TABLE_NAME", "test-proj-foldertree");
     }
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
@@ -31,6 +32,7 @@ public sealed class ApiFactory : WebApplicationFactory<Program>
             services.RemoveAll<INoteActionsStore>();
             services.RemoveAll<ITodoListStore>();
             services.RemoveAll<INoteCardListStore>();
+            services.RemoveAll<IFolderTreeStore>();
             services.RemoveAll<IDynamoHealthCheck>();
             services.AddSingleton<IEventStore, InMemoryEventStore>();
             services.AddSingleton<INoteTitleListStore, InMemoryNoteTitleListStore>();
@@ -38,6 +40,7 @@ public sealed class ApiFactory : WebApplicationFactory<Program>
             services.AddSingleton<INoteActionsStore, InMemoryNoteActionsStore>();
             services.AddSingleton<ITodoListStore, InMemoryTodoListStore>();
             services.AddSingleton<INoteCardListStore, InMemoryNoteCardListStore>();
+            services.AddSingleton<IFolderTreeStore, InMemoryFolderTreeStore>();
             services.AddSingleton<IDynamoHealthCheck, AlwaysHealthyDynamoCheck>();
         });
     }
