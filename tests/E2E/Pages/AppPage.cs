@@ -8,10 +8,10 @@ public sealed class AppPage(IPage page, string baseUrl)
 
     public async Task ClickNewNoteAsync()
     {
-        var btn = page.GetByTestId("new-note-button");
-        if (!await btn.IsVisibleAsync())
+        var viewport = page.ViewportSize;
+        if (viewport is { Width: < 640 })
             await page.GetByTestId("sidebar-toggle").ClickAsync();
-        await btn.ClickAsync();
+        await page.GetByTestId("new-note-button").ClickAsync();
     }
 
     public async Task EnterTitleAsync(string title)
@@ -307,7 +307,7 @@ public sealed class AppPage(IPage page, string baseUrl)
             r.Url.Contains("/folders") && r.Request.Method == "POST");
         var folderItem = page.GetByText(parentFolderName).First;
         await folderItem.HoverAsync();
-        await page.GetByTestId("add-subfolder-button").First.ClickAsync(new() { Force = true });
+        await page.GetByTestId("add-subfolder-button").First.DispatchEventAsync("click");
         var input = page.GetByTestId("subfolder-input").First;
         await input.FillAsync(childName);
         await input.PressAsync("Enter");

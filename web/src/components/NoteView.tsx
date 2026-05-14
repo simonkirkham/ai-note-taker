@@ -120,7 +120,7 @@ export default function NoteView({
         type="text"
         value={title}
         onChange={(e) => setTitle(e.target.value)}
-        onBlur={() => onRename(noteId, title)}
+        onBlur={(e) => onRename(noteId, e.currentTarget.value)}
         placeholder="Note title…"
         className="title-input"
       />
@@ -136,6 +136,7 @@ export default function NoteView({
               data-testid="note-content"
               aria-label="Note content"
               value={content}
+              onFocus={() => { contentModifiedRef.current = true; }}
               onChange={(e) => { contentModifiedRef.current = true; setContent(e.target.value); }}
               onBlur={(e) => editContent(noteId, e.currentTarget.value)}
               placeholder="Start typing your notes…"
