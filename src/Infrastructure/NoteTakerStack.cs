@@ -75,6 +75,15 @@ public class NoteTakerStack : Stack
             RemovalPolicy = RemovalPolicy.RETAIN
         });
 
+        var tagIndexTable = new Table(this, "ProjTagIndexTable", new TableProps
+        {
+            TableName = "notetaker-proj-tagindex",
+            PartitionKey = new Amazon.CDK.AWS.DynamoDB.Attribute { Name = "Tag", Type = AttributeType.STRING },
+            SortKey = new Amazon.CDK.AWS.DynamoDB.Attribute { Name = "NoteId", Type = AttributeType.STRING },
+            BillingMode = BillingMode.PAY_PER_REQUEST,
+            RemovalPolicy = RemovalPolicy.RETAIN
+        });
+
         // ── API Lambda ───────────────────────────────────────────────────
         var lambdaAssetPath = (string?)this.Node.TryGetContext("lambdaAssetPath")
             ?? "src/Api/bin/Release/net10.0/publish";
@@ -93,7 +102,8 @@ public class NoteTakerStack : Stack
                 ["PROJ_NOTEACTIONS_TABLE_NAME"]  = noteActionsTable.TableName,
                 ["PROJ_TODOLIST_TABLE_NAME"]     = todoListTable.TableName,
                 ["PROJ_NOTECARDLIST_TABLE_NAME"] = noteCardListTable.TableName,
-                ["PROJ_FOLDERTREE_TABLE_NAME"]   = folderTreeTable.TableName
+                ["PROJ_FOLDERTREE_TABLE_NAME"]   = folderTreeTable.TableName,
+                ["PROJ_TAGINDEX_TABLE_NAME"]     = tagIndexTable.TableName
             }
         });
 
@@ -111,6 +121,7 @@ public class NoteTakerStack : Stack
         todoListTable.GrantReadWriteData(apiFunction);
         noteCardListTable.GrantReadWriteData(apiFunction);
         folderTreeTable.GrantReadWriteData(apiFunction);
+        tagIndexTable.GrantReadWriteData(apiFunction);
 
         // ── API Gateway ──────────────────────────────────────────────────
         // CORS is handled by ASP.NET Core UseCors middleware in the Lambda, not at

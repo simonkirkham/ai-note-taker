@@ -11,7 +11,8 @@ public sealed class NoteCommandHandler(
     INoteTitleListStore projStore,
     INoteDetailStore noteDetailStore,
     ITodoListStore todoListStore,
-    INoteCardListStore noteCardListStore)
+    INoteCardListStore noteCardListStore,
+    ITagIndexStore tagIndexStore)
 {
     private const int InitialEventVersion = 1;
 
@@ -94,6 +95,7 @@ public sealed class NoteCommandHandler(
             await projStore.DeleteAsync(noteId, ct).ConfigureAwait(false);
             await noteDetailStore.DeleteAsync(noteId, ct).ConfigureAwait(false);
             await todoListStore.DeleteByNoteAsync(noteId, ct).ConfigureAwait(false);
+            await tagIndexStore.DeleteByNoteAsync(noteId.Value.ToString("N"), ct).ConfigureAwait(false);
             var existingCard = await noteCardListStore.GetByNoteAsync(noteId, ct).ConfigureAwait(false);
             if (existingCard is not null)
                 await noteCardListStore.UpsertAsync(
@@ -119,6 +121,21 @@ public sealed class NoteCommandHandler(
         var card = await noteCardListStore.GetByNoteAsync(noteId, ct).ConfigureAwait(false);
         await noteCardListStore.UpsertAsync(
             ApplyNoteEventsToCard(card, noteId, newEnvelopes), ct).ConfigureAwait(false);
+
+        foreach (var envelope in newEnvelopes)
+        {
+            switch (EventDeserializer.Deserialize(envelope))
+            {
+                case NoteTagged e:
+                    await tagIndexStore.PutAsync(e.Tag, e.NoteId.Value.ToString("N"), ct).ConfigureAwait(false);
+                    break;
+                case NoteUntagged e:
+                    await tagIndexStore.DeleteAsync(e.Tag, e.NoteId.Value.ToString("N"), ct).ConfigureAwait(false);
+                    break;
+                default:
+                    break;
+            }
+        }
     }
 
     private static NoteCardView ApplyNoteEventsToCard(NoteCardView? existing, NoteId noteId, List<EventEnvelope> envelopes)

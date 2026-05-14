@@ -26,6 +26,7 @@ public static class NoteEndpoints
         app.MapDelete("/notes/{noteId}/actions/{actionId}", ActionItemHandlers.DeleteActionItem);
         app.MapGet("/notes/{noteId}/actions", ActionItemHandlers.GetActions);
         app.MapGet("/todos", TodoHandlers.GetTodos);
+        app.MapGet("/tags", TagHandlers.GetTags);
         app.MapPost("/admin/projections/rebuild", AdminHandlers.RebuildProjections);
 
         return app;
