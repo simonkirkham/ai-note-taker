@@ -53,16 +53,16 @@ jobs:
         run: dotnet build ai-note-taker.sln -p:TreatWarningsAsErrors=true
 
       - name: Test (domain specs)
-        run: dotnet test tests/Specs/Specs.csproj
+        run: dotnet test tests/Domain.Specs/Domain.Specs.csproj
 
       - name: Test (EventStore integration)
-        run: dotnet test tests/EventStoreIntegration/EventStoreIntegration.csproj
+        run: dotnet test tests/EventStore.Integration/EventStore.Integration.csproj
 
       - name: Test (API integration)
-        run: dotnet test tests/ApiIntegration/ApiIntegration.csproj
+        run: dotnet test tests/Api.Integration/Api.Integration.csproj
 
       - name: Test (infra assertions)
-        run: dotnet test tests/InfraAssertions/InfraAssertions.csproj
+        run: dotnet test tests/Infrastructure.Assertions/Infrastructure.Assertions.csproj
 
       - name: Publish Lambda
         run: dotnet publish src/Api/Api.csproj -c Release -o

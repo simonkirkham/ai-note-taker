@@ -23,10 +23,10 @@ Slices and acceptance criteria: [docs/phases/phase-1.md](phases/phase-1.md)
 
 Implement the remaining test layers from [ADR 0008](adr/0008-testing-strategy.md). Layer 1 (domain BDD specs) is already in place; this phase adds the other four.
 
-- **Layer 2** — `tests/EventStoreIntegration/`: spin up DynamoDB Local via Testcontainers; cover append + read, OCC conflict, empty stream, multi-event batch, schema correctness
-- **Layer 3** — `tests/ApiIntegration/`: in-process `WebApplicationFactory` tests; cover all endpoints, status codes, response shapes, error-to-status mapping
-- **Layer 4** — `tests/Acceptance/`: harden existing suite (self-contained arrange per fact, remove cross-test ordering dependencies)
-- **Layer 5** — `tests/InfraAssertions/`: CDK template assertions; cover Lambda env vars, IAM grants, DynamoDB deletion policies, CloudFront SPA routing
+- **Layer 2** — `tests/EventStore.Integration/`: spin up DynamoDB Local via Testcontainers; cover append + read, OCC conflict, empty stream, multi-event batch, schema correctness
+- **Layer 3** — `tests/Api.Integration/`: in-process `WebApplicationFactory` tests; cover all endpoints, status codes, response shapes, error-to-status mapping
+- **Layer 4** — `tests/Api.Smoke/`: harden existing suite (self-contained arrange per fact, remove cross-test ordering dependencies)
+- **Layer 5** — `tests/Infrastructure.Assertions/`: CDK template assertions; cover Lambda env vars, IAM grants, DynamoDB deletion policies, CloudFront SPA routing
 
 **Goal:** every PR is fully validated without an AWS account; the acceptance suite becomes a thin post-deploy smoke check.
 

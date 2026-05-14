@@ -22,12 +22,12 @@ See [docs/goals.md](docs/goals.md) for the learning goals.
 - `src/Domain/` — aggregates, commands, events
 - `src/EventStore/` — DynamoDB event store and projection plumbing
 - `src/Infrastructure/` — CDK app
-- `tests/Specs/` — BDD-style Given/When/Then specs (one per slice); also event store unit specs
-- `tests/EventStoreIntegration/` — DynamoDB Local integration tests (Testcontainers)
-- `tests/ApiIntegration/` — in-process HTTP tests (WebApplicationFactory + in-memory stores)
-- `tests/Acceptance/` — post-deploy smoke tests against real API; **fails the build** if `API_BASE_URL` is not set
-- `tests/InfraAssertions/` — CDK template assertions (IAM, env vars, deletion policies)
-- `tests/E2E/` — Playwright browser journey tests (BDD-style); **fails the build** if `FRONTEND_URL` is not set
+- `tests/Domain.Specs/` — BDD-style Given/When/Then specs (one per slice); also event store unit specs
+- `tests/EventStore.Integration/` — DynamoDB Local integration tests (Testcontainers)
+- `tests/Api.Integration/` — in-process HTTP tests (WebApplicationFactory + in-memory stores)
+- `tests/Api.Smoke/` — post-deploy smoke tests against real API; **fails the build** if `API_BASE_URL` is not set
+- `tests/Infrastructure.Assertions/` — CDK template assertions (IAM, env vars, deletion policies)
+- `tests/Browser.E2E/` — Playwright browser journey tests (BDD-style); **fails the build** if `FRONTEND_URL` is not set
 - `web/` — React + TypeScript frontend
 - `docs/` — architecture, roadmap, ADRs, event model, learnings
 
@@ -41,22 +41,22 @@ git config core.hooksPath .githooks
 dotnet build ai-note-taker.sln
 
 # Run domain BDD specs
-dotnet test tests/Specs/Specs.csproj
+dotnet test tests/Domain.Specs/Domain.Specs.csproj
 
 # Run in-process API tests (no AWS credentials needed)
-dotnet test tests/ApiIntegration/ApiIntegration.csproj
+dotnet test tests/Api.Integration/Api.Integration.csproj
 
 # Run DynamoDB integration tests (requires Docker)
-dotnet test tests/EventStoreIntegration/EventStoreIntegration.csproj
+dotnet test tests/EventStore.Integration/EventStore.Integration.csproj
 
 # Run CDK assertions
-dotnet test tests/InfraAssertions/InfraAssertions.csproj
+dotnet test tests/Infrastructure.Assertions/Infrastructure.Assertions.csproj
 
 # Run post-deploy acceptance tests (requires deployed API)
-API_BASE_URL=<api-gateway-url> dotnet test tests/Acceptance/Acceptance.csproj
+API_BASE_URL=<api-gateway-url> dotnet test tests/Api.Smoke/Api.Smoke.csproj
 
 # Run E2E browser journey tests (requires deployed frontend + Playwright browsers installed)
-FRONTEND_URL=<cloudfront-url> dotnet test tests/E2E/E2E.csproj
+FRONTEND_URL=<cloudfront-url> dotnet test tests/Browser.E2E/Browser.E2E.csproj
 
 # Run the API locally (Kestrel, not Lambda)
 dotnet run --project src/Api/Api.csproj
