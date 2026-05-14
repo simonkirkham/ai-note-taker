@@ -240,4 +240,43 @@ public sealed class AppPage(IPage page, string baseUrl)
         Assertions.Expect(
             page.GetByTestId("note-cards").GetByText(title)
         ).Not.ToBeVisibleAsync();
+
+    public async Task AddTagAsync(string tagInput)
+    {
+        var input = page.GetByTestId("tag-input");
+        await input.FillAsync(tagInput);
+        var postDone = page.WaitForResponseAsync(r =>
+            r.Url.Contains("/tags") && r.Request.Method == "POST");
+        await input.PressAsync("Enter");
+        await postDone;
+    }
+
+    public Task AssertTagPillVisibleAsync(string tag) =>
+        Assertions.Expect(
+            page.GetByTestId("tags-section").GetByTestId($"tag-pill-{tag}")
+        ).ToBeVisibleAsync();
+
+    public Task AssertTagPillAbsentAsync(string tag) =>
+        Assertions.Expect(
+            page.GetByTestId("tags-section").GetByTestId($"tag-pill-{tag}")
+        ).Not.ToBeVisibleAsync();
+
+    public async Task RemoveTagAsync(string tag)
+    {
+        var deleteDone = page.WaitForResponseAsync(r =>
+            r.Url.Contains("/tags/") && r.Request.Method == "DELETE");
+        await page.GetByTestId("tags-section")
+            .GetByTestId($"tag-pill-{tag}")
+            .GetByRole(AriaRole.Button)
+            .ClickAsync();
+        await deleteDone;
+    }
+
+    public Task AssertCardTagVisibleAsync(string cardTitle, string tag) =>
+        Assertions.Expect(
+            page.GetByTestId("note-cards")
+                .Locator(".note-card")
+                .Filter(new LocatorFilterOptions { HasText = cardTitle })
+                .GetByTestId($"card-tag-{tag}")
+        ).ToBeVisibleAsync();
 }
