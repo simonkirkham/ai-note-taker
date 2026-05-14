@@ -107,7 +107,7 @@ Reach for these instead of writing patterns from scratch:
 ## Workflow
 
 1. Plan mode for any non-trivial slice.
-2. **Prototype** *(UI-heavy or UX-uncertain slices only)* — run the `prototype` skill before touching the event model. Skip if the interaction is obvious CRUD. Prototype code is quick-and-dirty scaffolding on a `prototype/<slice-name>` branch pushed to remote — never merged. On approval, the exit procedure updates `docs/phases/phase-X.md` with confirmed GWT scenarios and cherry-picks that doc commit to main. Real implementation starts fresh from the updated phase doc, not from prototype code.
+2. **Prototype** *(UI-heavy or UX-uncertain slices only)* — run the `prototype` skill before touching the event model. Skip if the interaction is obvious CRUD. Prototype code is quick-and-dirty scaffolding on a `prototype/<slice-name>` branch pushed to remote — never merged. On approval, the exit procedure rewrites `docs/phases/phase-X.md` on main with confirmed GWT scenarios and UX patterns. Real implementation starts fresh from the updated phase doc, not from prototype code.
 3. Update event model.
 4. Write BDD spec.
 4. Implement until spec passes green.

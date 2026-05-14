@@ -78,13 +78,11 @@ When the user approves the prototype:
    - Key component structure decisions the implementation should match
    - `localStorage` keys used
 
-2. **Update `docs/phases/phase-X.md`** on the prototype branch with confirmed Given/When/Then scenarios derived from what the prototype demonstrated. These GWTs become the spec for real implementation — they replace any placeholder or draft scenarios written before the prototype. Commit this to the prototype branch so it's part of the reference record.
+2. **Update `docs/phases/phase-X.md` on main.** Switch to main and rewrite the phase doc with confirmed Given/When/Then scenarios derived from what the prototype demonstrated. This is the one deliverable that belongs on main — it is not throwaway code. Replace any placeholder or draft scenarios. For each slice, document confirmed UX patterns, "what changes vs prototype" guidance, and user-facing GWT scenarios. Commit this directly on main.
 
-3. **Cherry-pick the phase doc update to main.** The updated `docs/phases/phase-X.md` is the one deliverable from the prototype phase that belongs on main — it's documentation, not throwaway code. Cherry-pick only that doc commit: `git checkout main && git cherry-pick <doc-commit-sha>`.
+3. **Final push.** Push both the prototype branch and main.
 
-4. **Final push.** Push both the prototype branch and main.
-
-5. **Hand off.** The slice branch (`slice/<slice-name>`) is created fresh from main (which now has the updated phase doc). Implementation starts at CI quality using the GWTs in the phase doc as the spec.
+4. **Hand off.** The slice branch (`slice/<slice-name>`) is created fresh from main (which now has the updated phase doc). Implementation starts at CI quality using the GWTs in the phase doc as the spec.
 
 ## Exit checklist
 
