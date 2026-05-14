@@ -65,6 +65,13 @@ public sealed class FolderIntegrationTests(ApiFactory factory) : IClassFixture<A
         Assert.Equal(HttpStatusCode.BadRequest, resp.StatusCode);
     }
 
+    [Fact]
+    public async Task PostFolder_WhitespaceName_ReturnsBadRequest()
+    {
+        var resp = await _client.PostAsJsonAsync("/folders", new { name = "   ", parentFolderId = (string?)null });
+        Assert.Equal(HttpStatusCode.BadRequest, resp.StatusCode);
+    }
+
     private Task<HttpResponseMessage> PostFolderAsync(string name, string? parentFolderId)
     {
         var payload = parentFolderId is null
