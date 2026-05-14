@@ -44,6 +44,29 @@ If no agent ran unexpectedly high: write `None — slice ran within expected ran
 
 ---
 
+## Phase 6 — Upgrade to .NET 10
+
+| Agent            | ~Tokens     |
+|------------------|-------------|
+| Plan             | 8 000       |
+| Pip 6-A          | 18 000      |
+| Refactor 6-A     | 1 000       |
+| Hawk 6-A         | 3 000       |
+| Pip 6-B          | 20 000      |
+| CI monitoring    | 3 000       |
+| Hawk 6-B (×2)    | 7 000       |
+| Pip 6-B fixes    | 3 000       |
+| Scribe           | 5 000       |
+| **Total**        | **~68 000** |
+
+**Why:** Multiple CI failures added overhead beyond the csproj edits themselves — CS0414 on `Folder._exists`, cdk synth asset path mismatch, and three stale `net8.0` references in GitHub Actions workflow files all required separate fix commits. Hawk's initial pass caught two issues (runtime assertion missing, no spec for `_exists` guard) requiring a second review round.
+
+**Optimisation suggestions:**
+- **CI failures (–10 000):** A pre-commit grep for `net8.0`/`dotnet8` in non-csproj files would have caught the workflow file and `aws-lambda-tools-defaults.json` issues before the first push, collapsing three fix commits into zero.
+- **Hawk round 2 (–3 000):** The missing `Lambda_RuntimeIsDotnet10` InfraAssertions test is a mechanical gap — any CDK constant change without a corresponding assertion should be caught by Refactor, not Hawk. Adding "verify CDK constants have InfraAssertions coverage" to the Refactor checklist eliminates this class of Hawk finding.
+
+---
+
 ## Slice 5-D Batch 1 — Create and browse folders
 
 | Agent     | ~Tokens     |
@@ -292,6 +315,24 @@ None — slice ran within expected range.
 | **Total** | 31 000  |
 
 **Why:** Frontend-only slice with no new aggregates or projections; the backend was pre-built, keeping scope narrow.
+
+**Optimisation suggestions:**
+- None — slice ran within expected range.
+
+---
+
+## Slice 5-D Batch 2 — Folders Frontend Wire-Up
+
+| Agent     | ~Tokens    |
+|-----------|------------|
+| Breaker   | 4 000      |
+| Pip       | 12 000     |
+| Refactor  | 2 000      |
+| Hawk      | 2 000      |
+| Scribe    | 3 000      |
+| **Total** | **~23 000** |
+
+**Why:** Pure frontend slice wiring completed backend endpoints. Removing localStorage scaffolding, adding data-testids, and updating ListView filtering was straightforward with no new domain logic.
 
 **Optimisation suggestions:**
 - None — slice ran within expected range.

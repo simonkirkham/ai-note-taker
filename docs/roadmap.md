@@ -50,7 +50,7 @@ Slices and acceptance criteria: [docs/phases/phase-2.md](phases/phase-2.md)
 
 Slices and acceptance criteria: [docs/phases/phase-3.md](phases/phase-3.md)
 
-## Phase 4 — UX redesign (wireframe alignment)
+## Phase 4 — UX redesign (wireframe alignment) _(Done)_
 
 Bring the app in line with the wireframes in `docs/wireframes/`.
 
@@ -65,27 +65,65 @@ Bring the app in line with the wireframes in `docs/wireframes/`.
 
 Slices and acceptance criteria: [docs/phases/phase-4.md](phases/phase-4.md)
 
-## Phase 5 — Folders and tags
+## Phase 5 — Tags and folders
 
-- Another projection axis (organisational view)
-- Tags visible on note cards and note screen
-- Search/filter built on the projection
+- Tag notes with free-text labels; tags appear as pills on note cards and the note screen
+- `TagIndex` projection powers a filter bar on the home screen (AND/OR multi-select)
+- `Folder` aggregate with full hierarchy (create, rename, delete, reparent, cascade delete)
+- `FolderTree` projection; drag notes between folders; Unfiled Notes view; folder preview panel
+- Note date defaults to today on creation; date input shown without redundant label
+- Replaces all `localStorage`-backed prototype state with real API calls
 
-## Phase 6 — Google Calendar integration + meeting notes
+**Goal:** second projection axis (`TagIndex`) alongside an entirely new aggregate (`Folder`); client-side filter state wired to a server projection; hierarchical read models.
 
-- Personal Google OAuth credentials (single-user refresh token)
-- Calendar read access
-- Notes auto-created from calendar events
+Slices and acceptance criteria: [docs/phases/phase-5.md](phases/phase-5.md)
 
-## Phase 7 — Transcription
+## Phase 6 — Upgrade to .NET 10
+
+- LTS → LTS upgrade from .NET 8 to .NET 10 across all 10 projects in the solution
+- Package compatibility audit; fix any BCL or framework-layer breaking changes
+- Update Lambda runtime constant in CDK stack (`Runtime.DOTNET_8` → `Runtime.DOTNET_10`)
+- Redeploy and verify with acceptance tests and E2E browser journeys
+- Measure cold start baseline; enable Lambda SnapStart; verify Init Duration eliminated
+
+**Goal:** stay on a supported Lambda runtime; learn the .NET release cadence, AWS Lambda managed runtime lifecycle, and how to run a framework upgrade safely behind a full test suite. SnapStart teaches the Lambda version/alias deployment model and how AWS eliminates cold starts via execution environment snapshots.
+
+Slices and acceptance criteria: [docs/phases/phase-6.md](phases/phase-6.md)
+
+## Phase 7 — Rich note content
+
+- Replace plain textarea with TipTap WYSIWYG editor
+- Headings, bold, bullet lists, and checkboxes via keyboard shortcuts
+- Heading = discussion topic; one click marks it as discussed (strikethrough)
+- Checkboxes for inline agenda items; Action Items panel untouched
+- Content stored as markdown string in existing `ContentEditedV2` event — no new events
+
+**Goal:** learn how to integrate a ProseMirror-based editor into a React frontend; understand markdown as a storage format and the tradeoffs of serialising structured editor state to plain text.
+
+Slices and acceptance criteria: [docs/phases/phase-7.md](phases/phase-7.md)
+
+## Phase 8 — Google Calendar integration + meeting notes
+
+- Today's meetings surfaced on the home screen (Google Calendar pass-through, single-user refresh token)
+- One-click note creation linked to a calendar event (`NoteLinkedToCalendarEvent`)
+- Meeting-time browser reminder via `setTimeout` + Notifications API
+- Recurring meetings: one-click note for the next scheduled occurrence
+- `CalendarLinkIndex` projection keyed by external calendar event ID
+- `EventMetadata.UserId` populated for the first time (groundwork for Phase 10)
+
+**Goal:** first outbound HTTP from Lambda; Google OAuth2 refresh-token flow; SSM Parameter Store for secrets; extending an aggregate with a new event without touching the immutable original; a projection keyed by an external system ID.
+
+Slices and acceptance criteria: [docs/phases/phase-8.md](phases/phase-8.md)
+
+## Phase 9 — Transcription
 
 - Capture meeting audio
 - Transcribe and merge into the note
 
-## Phase 8 — Multi-user auth (Google Sign-In)
+## Phase 10 — Multi-user auth (Google Sign-In)
 
 - Convert single-user to multi-user
-- Reuse OAuth scaffolding from Phase 6
+- Reuse OAuth scaffolding from Phase 7
 
 **Goal:** auth lands here deliberately so earlier phases stay focused on event sourcing learning.
 
@@ -94,7 +132,3 @@ Slices and acceptance criteria: [docs/phases/phase-4.md](phases/phase-4.md)
 - Workspaces - Switching between collections of notes
 - Search across notes
 -
-
-## Reflection cadence
-
-End-of-phase reflection in [workflow-log.md](workflow-log.md) is mandatory, not optional.

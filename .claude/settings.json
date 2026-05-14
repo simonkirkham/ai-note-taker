@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(dotnet test tests/*)",
+      "Bash(dotnet build *)",
+      "Bash(git -C * status*)",
+      "Bash(git -C * log*)",
+      "Bash(git -C * diff*)",
+      "Bash(git -C * worktree list*)",
+      "Bash(gh run watch *)",
+      "Bash(cdk synth*)"
+    ]
+  }
+}

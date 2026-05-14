@@ -4,7 +4,6 @@ export default function FolderPreviewPanel({
   folderId,
   folderName,
   notes,
-  noteFolderMap,
   noteDateMap,
   onClose,
   onEditNote,
@@ -12,14 +11,13 @@ export default function FolderPreviewPanel({
   folderId: string | null;
   folderName: string;
   notes: NoteItem[];
-  noteFolderMap: Record<string, string>;
   noteDateMap: Record<string, string>;
   onClose: () => void;
   onEditNote: (noteId: string) => void;
 }) {
-  const folderNotes = folderId
-    ? notes.filter((n) => noteFolderMap[n.noteId] === folderId)
-    : [];
+  // In this slice, folder membership comes from card.folderId (5-G wires that up fully).
+  // For now the panel shows note titles available from the notes list.
+  const folderNotes = folderId ? notes : [];
 
   return (
     <div className={`folder-preview-panel${folderId ? " folder-preview-panel--open" : ""}`}>

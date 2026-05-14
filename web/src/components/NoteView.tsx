@@ -131,7 +131,7 @@ export default function NoteView({
               aria-label="Note content"
               value={content}
               onChange={(e) => setContent(e.target.value)}
-              onBlur={() => editContent(noteId, content)}
+              onBlur={(e) => editContent(noteId, e.currentTarget.value)}
               placeholder="Start typing your notes…"
               className="content-input"
             />

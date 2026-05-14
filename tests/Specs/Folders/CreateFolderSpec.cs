@@ -44,4 +44,13 @@ public sealed class CreateFolderSpec
             .When(new CreateFolder(Id, "   ", null, Now))
             .ThenThrows<InvalidOperationException>();
     }
+
+    [Fact]
+    public void RejectsDuplicateCreate()
+    {
+        Spec
+            .Given<Folder>(new FolderCreated(Id, "People", null))
+            .When(new CreateFolder(Id, "People", null, Now))
+            .ThenThrows<InvalidOperationException>();
+    }
 }

@@ -3,10 +3,10 @@ import { FolderNode, NoteItem } from "../api";
 import FolderTree from "./FolderTree";
 
 export default function Sidebar({
-  notes: _notes,
-  activeNoteId: _activeNoteId,
+  notes,
+  activeNoteId,
   open,
-  onSelect: _onSelect,
+  onSelect,
   onCreate,
   folders,
   activeFolderId,
@@ -58,25 +58,50 @@ export default function Sidebar({
       data-testid="sidebar"
       aria-label="Notes"
     >
-      <button className="sidebar-home-button" onClick={onHome}>
+      <button
+        className="sidebar-home-button"
+        data-testid="home-button"
+        onClick={onHome}
+        aria-label="Home"
+      >
         Home
       </button>
-      <button className="sidebar-new-button" onClick={onCreate}>
+      <button
+        className="sidebar-new-button"
+        data-testid="new-note-button"
+        onClick={onCreate}
+        aria-label="New Note"
+      >
         + New Note
       </button>
+      <ul className="sidebar-list" data-testid="note-list">
+        {notes.map((n) => (
+          <li key={n.noteId}>
+            <button
+              className={`sidebar-note-item${n.noteId === activeNoteId ? " sidebar-note-item--active" : ""}`}
+              onClick={() => onSelect(n.noteId)}
+            >
+              {n.title || <em className="untitled">Untitled</em>}
+            </button>
+          </li>
+        ))}
+      </ul>
       <div className="sidebar-folders">
         <div className="sidebar-folders-header">
           <span className="sidebar-folders-label">Folders</span>
           <button
             className="folder-new-btn"
+            data-testid="new-folder-button"
             onClick={() => setAddingFolder(true)}
             title="New folder"
+            aria-label="New folder"
           >
             +
           </button>
         </div>
         <button
           className={`sidebar-unfiled${isUnfiledActive ? " sidebar-unfiled--active" : ""}${isUnfiledDragOver ? " sidebar-unfiled--drag-over" : ""}`}
+          data-testid="unfiled-notes-button"
           onClick={onUnfiledSelect}
           onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = "move"; }}
           onDragEnter={() => setIsUnfiledDragOver(true)}
@@ -87,6 +112,7 @@ export default function Sidebar({
             const noteId = e.dataTransfer.getData("text/plain");
             if (noteId) onDropToUnfiled(noteId);
           }}
+          aria-label="Unfiled Notes"
         >
           Unfiled Notes
         </button>
@@ -103,6 +129,7 @@ export default function Sidebar({
         {addingFolder && (
           <input
             className="folder-new-input"
+            data-testid="new-folder-input"
             autoFocus
             value={newFolderName}
             placeholder="Folder name…"
@@ -112,6 +139,7 @@ export default function Sidebar({
               if (e.key === "Escape") { setNewFolderName(""); setAddingFolder(false); }
             }}
             onBlur={submitNewFolder}
+            aria-label="New folder name"
           />
         )}
       </div>
