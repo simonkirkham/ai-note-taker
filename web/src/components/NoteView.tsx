@@ -25,19 +25,23 @@ export default function NoteView({
   const [loadingDetail, setLoadingDetail] = useState(true);
   const [notFound, setNotFound] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
+  const tagsModifiedRef = useRef(false);
+  const contentModifiedRef = useRef(false);
 
   useEffect(() => {
+    tagsModifiedRef.current = false;
+    contentModifiedRef.current = false;
     const today = new Date().toISOString().slice(0, 10);
     let cancelled = false;
     getNoteDetail(noteId)
       .then((detail) => {
         if (!cancelled) {
-          setContent(detail.content);
+          if (!contentModifiedRef.current) setContent(detail.content);
           const loadedDate = detail.date ?? today;
           setDate(loadedDate);
           onDateSet(noteId, loadedDate);
           if (!detail.date) setNoteDate(noteId, loadedDate).catch(() => {});
-          setTags(detail.tags ?? []);
+          if (!tagsModifiedRef.current) setTags(detail.tags ?? []);
           setLoadingDetail(false);
         }
       })
@@ -58,6 +62,7 @@ export default function NoteView({
     const tokens = raw.trim().split(/\s+/).filter(Boolean);
     const newTokens = tokens.filter((t) => !tags.includes(t));
     if (newTokens.length === 0) return;
+    tagsModifiedRef.current = true;
     setTags((prev) => [...prev, ...newTokens]);
     for (const token of newTokens) {
       tagNote(noteId, token).catch(() => {});
@@ -65,6 +70,7 @@ export default function NoteView({
   }
 
   function handleRemoveTag(tag: string) {
+    tagsModifiedRef.current = true;
     setTags((prev) => prev.filter((t) => t !== tag));
     untagNote(noteId, tag).catch(() => {});
   }
@@ -130,7 +136,7 @@ export default function NoteView({
               data-testid="note-content"
               aria-label="Note content"
               value={content}
-              onChange={(e) => setContent(e.target.value)}
+              onChange={(e) => { contentModifiedRef.current = true; setContent(e.target.value); }}
               onBlur={(e) => editContent(noteId, e.currentTarget.value)}
               placeholder="Start typing your notes…"
               className="content-input"

@@ -1,5 +1,6 @@
 import "./App.css";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
+import { PrototypeRoot } from "./prototype/PrototypeRoot";
 import FolderPreviewPanel from "./components/FolderPreviewPanel";
 import ListView from "./components/ListView";
 import NoteView from "./components/NoteView";
@@ -24,6 +25,8 @@ type View =
 const UNFILED_ID = "__unfiled__";
 
 export default function App() {
+  if (window.location.search.includes("proto")) return <PrototypeRoot />;
+
   const [view, setView] = useState<View>({ kind: "list" });
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const { notes, loading, creating, createError, create, rename, remove } = useNotes();
@@ -42,9 +45,9 @@ export default function App() {
     localStorage.setItem("notetaker-note-date-map", JSON.stringify(noteDateMap));
   }, [noteDateMap]);
 
-  function handleDateSet(noteId: string, date: string) {
+  const handleDateSet = useCallback((noteId: string, date: string) => {
     setNoteDateMap((prev) => ({ ...prev, [noteId]: date }));
-  }
+  }, []);
   const [previewFolderId, setPreviewFolderId] = useState<string | null>(null);
   const [previewFolderName, setPreviewFolderName] = useState("");
 
@@ -159,6 +162,7 @@ export default function App() {
   return (
     <div className="app-layout">
       <button
+        data-testid="sidebar-toggle"
         className="sidebar-toggle"
         aria-label="Toggle sidebar"
         onClick={() => setSidebarOpen((o) => !o)}

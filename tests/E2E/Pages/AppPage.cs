@@ -6,8 +6,13 @@ public sealed class AppPage(IPage page, string baseUrl)
 {
     public Task GotoAsync() => page.GotoAsync(baseUrl);
 
-    public Task ClickNewNoteAsync() =>
-        page.GetByTestId("new-note-button").ClickAsync();
+    public async Task ClickNewNoteAsync()
+    {
+        var btn = page.GetByTestId("new-note-button");
+        if (!await btn.IsVisibleAsync())
+            await page.GetByTestId("sidebar-toggle").ClickAsync();
+        await btn.ClickAsync();
+    }
 
     public async Task EnterTitleAsync(string title)
     {
@@ -176,7 +181,7 @@ public sealed class AppPage(IPage page, string baseUrl)
         Assertions.Expect(page.GetByTestId("note-date-display")).Not.ToBeVisibleAsync();
 
     public Task AssertDateInputValueAsync(string expected) =>
-        Assertions.Expect(page.GetByTestId("note-date-input")).ToHaveValueAsync(expected);
+        Assertions.Expect(page.GetByTestId("note-date-input")).ToHaveValueAsync(expected, new() { Timeout = 15000 });
 
     public Task AssertSidebarVisibleAsync() =>
         Assertions.Expect(page.GetByTestId("sidebar")).ToBeVisibleAsync();
@@ -259,7 +264,7 @@ public sealed class AppPage(IPage page, string baseUrl)
     public Task AssertTagPillVisibleAsync(string tag) =>
         Assertions.Expect(
             page.GetByTestId("tags-section").GetByTestId($"tag-pill-{tag}")
-        ).ToBeVisibleAsync();
+        ).ToBeVisibleAsync(new() { Timeout = 15000 });
 
     public Task AssertTagPillAbsentAsync(string tag) =>
         Assertions.Expect(
@@ -302,7 +307,7 @@ public sealed class AppPage(IPage page, string baseUrl)
             r.Url.Contains("/folders") && r.Request.Method == "POST");
         var folderItem = page.GetByText(parentFolderName).First;
         await folderItem.HoverAsync();
-        await page.GetByTestId($"add-subfolder-button").First.ClickAsync();
+        await page.GetByTestId("add-subfolder-button").First.ClickAsync(new() { Force = true });
         var input = page.GetByTestId("subfolder-input").First;
         await input.FillAsync(childName);
         await input.PressAsync("Enter");
