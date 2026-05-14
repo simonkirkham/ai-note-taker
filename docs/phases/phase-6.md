@@ -141,13 +141,13 @@ Scenario: E2E browser journey passes against the live frontend
 - [x] `cdk deploy` succeeds with the `net10.0` publish output
 - [x] `GET /health` returns 200 on the deployed Lambda
 - [x] `API_BASE_URL=<url> dotnet test tests/Acceptance/Acceptance.csproj` — all green
-- [ ] `FRONTEND_URL=<url> dotnet test tests/E2E/E2E.csproj` — all green (E2E pre-existing failure under investigation)
+- [x] `FRONTEND_URL=<url> dotnet test tests/E2E/E2E.csproj` — all green
 
 ---
 
 ## Slice 6-C — Measure cold starts; enable Lambda SnapStart
 
-**Status:** Not Started
+**Status:** Done
 
 **Value:** Cold start latency for .NET Lambda functions is a known pain point — visible in the workflow log as a `sleep 15` workaround and repeated 500s on first post-deploy invocations. This slice measures the baseline, enables Lambda SnapStart (AWS's snapshot-based cold start elimination for managed runtimes), and verifies the improvement. The CDK change requires introducing a published Lambda version and an alias, which also teaches the version/alias deployment model.
 
@@ -210,12 +210,12 @@ Scenario: Acceptance tests pass with the alias-backed deployment
 
 **Acceptance criteria:**
 
-- [ ] Baseline Init Duration recorded from CloudWatch before the change
-- [ ] `NoteTakerStack.cs` declares `SnapStart = SnapStartConf.ON_PUBLISHED_VERSIONS`
-- [ ] A `Version` and `Alias` construct are defined; API Gateway integration targets the alias
-- [ ] `cdk synth` shows `SnapStart.ApplyOn: PublishedVersions` in the CloudFormation template
-- [ ] InfraAssertions test asserts SnapStart config is present
-- [ ] `cdk deploy` succeeds
-- [ ] Post-deploy invocations show no `Init Duration` in CloudWatch (SnapStart restored from snapshot)
-- [ ] `sleep 15` warm-up step removed from `deploy.yml`
-- [ ] All acceptance tests pass
+- [x] Baseline Init Duration recorded from CloudWatch before the change (~490 ms)
+- [x] `NoteTakerStack.cs` declares `SnapStart = SnapStartConf.ON_PUBLISHED_VERSIONS`
+- [x] A `Version` and `Alias` construct are defined; API Gateway integration targets the alias
+- [x] `cdk synth` shows `SnapStart.ApplyOn: PublishedVersions` in the CloudFormation template
+- [x] InfraAssertions test asserts SnapStart config is present
+- [x] `cdk deploy` succeeds
+- [x] Post-deploy invocations show no `Init Duration` in CloudWatch (SnapStart restored from snapshot)
+- [x] `sleep 15` warm-up step removed from `deploy.yml`
+- [x] All acceptance tests pass
