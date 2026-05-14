@@ -166,9 +166,6 @@ public sealed class AppPage(IPage page, string baseUrl)
         await patchDone;
     }
 
-    public Task AssertNoteDateVisibleAsync(string displayDate) =>
-        Assertions.Expect(page.GetByTestId("note-date-display")).ToHaveTextAsync(displayDate);
-
     public Task AssertNoteDateEmptyAsync() =>
         Assertions.Expect(page.GetByTestId("note-date-input")).ToHaveValueAsync(string.Empty);
 

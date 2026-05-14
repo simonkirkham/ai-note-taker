@@ -40,15 +40,17 @@ public sealed class NoteDateJourney(BrowserFixture browser) : IAsyncLifetime
         await _app.GoBackAsync();
         await _app.ClickNoteInListAsync(title);
 
-        await _app.AssertNoteDateVisibleAsync("21/04/2026");
+        await _app.AssertDateInputValueAsync("2026-04-21");
     }
 
     [Fact]
-    public async Task New_note_has_no_date_by_default()
+    public async Task New_note_defaults_to_today()
     {
+        var today = DateTime.UtcNow.ToString("yyyy-MM-dd");
+
         await _app.GotoAsync();
         await _app.ClickNewNoteAsync();
 
-        await _app.AssertNoteDateEmptyAsync();
+        await _app.AssertDateInputValueAsync(today);
     }
 }
