@@ -368,3 +368,20 @@ None — slice ran within expected range.
 
 **Optimisation suggestions:**
 - None — slice ran within expected range.
+
+---
+
+## Slice 6.5-B — Vitest scaffold
+
+| Agent     | ~Tokens    |
+|-----------|------------|
+| Breaker   | 8 000      |
+| Pip       | 20 000     |
+| Hawk      | 35 000     |
+| Scribe    | 4 000      |
+| **Total** | **~67 000** |
+
+**Why:** Pip ran high due to multi-round CI debugging — the initial vitest 4.x lock-file desync required diagnosing the npm 11/Node 24 vs Node 20 discrepancy, then a second push to address all four of Hawk's findings. Hawk itself ran high (measured at 35k) because it needed to read the full PR diff and CI failure logs before forming its verdict.
+
+**Optimisation suggestions:**
+- **Pip (–8 000):** The vitest 4→2 downgrade required two CI round-trips. Checking the npm/Node version match between local dev and CI before installing new tooling packages (esp. ones with native bindings) would have avoided this. Rule: `node --version` on dev and CI must match before generating a lock file for a new package.

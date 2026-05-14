@@ -117,7 +117,7 @@ Scenario: Infrastructure assertions pass under new name
 
 ## Slice 6.5-B — Vitest scaffold
 
-**Status:** Not Started
+**Status:** Done
 
 **Value:** The test infrastructure that all component tests depend on: Vitest wired to Vite, jsdom, RTL matchers, and an MSW server that intercepts `fetch` at the network boundary. CI gates on `npm run test` from this slice onwards.
 
@@ -155,10 +155,10 @@ Scenario: MSW server intercepts fetch without real network
 
 **Acceptance criteria:**
 
-- [ ] `npm run test` exits 0 from `web/`
-- [ ] `pr.yml` and `deploy.yml` both gate on `npm run test`
-- [ ] Smoke test does not import a real API URL or require a deployed backend
-- [ ] `web/src/test/setup.ts` configures MSW server lifecycle (`beforeAll` / `afterEach` / `afterAll`)
+- [x] `npm run test` exits 0 from `web/`
+- [x] `pr.yml` and `deploy.yml` both gate on `npm run test`
+- [x] Smoke test does not import a real API URL or require a deployed backend
+- [x] `web/src/test/setup.ts` configures MSW server lifecycle (`beforeAll` / `afterEach` / `afterAll`)
 
 ---
 
