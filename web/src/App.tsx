@@ -1,6 +1,5 @@
 import "./App.css";
 import { useCallback, useEffect, useState } from "react";
-import { PrototypeRoot } from "./prototype/PrototypeRoot";
 import FolderPreviewPanel from "./components/FolderPreviewPanel";
 import ListView from "./components/ListView";
 import NoteView from "./components/NoteView";
@@ -48,8 +47,6 @@ export default function App() {
   }, []);
   const [previewFolderId, setPreviewFolderId] = useState<string | null>(null);
   const [previewFolderName, setPreviewFolderName] = useState("");
-
-  if (window.location.search.includes("proto")) return <PrototypeRoot />;
 
   async function handleNewNote() {
     try {
