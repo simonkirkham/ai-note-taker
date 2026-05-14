@@ -14,6 +14,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - uses: actions/cache@v4
+        with:
+          path: ~/.nuget/packages
+          key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj') }}
+          restore-keys: nuget-${{ runner.os }}-
+
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: "10.0.x"
@@ -21,6 +27,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
+          cache: "npm"
+          cache-dependency-path: web/package-lock.json
 
       - name: Install frontend dependencies
         working-directory: web
@@ -53,6 +61,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - uses: actions/cache@v4
+        with:
+          path: ~/.nuget/packages
+          key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj') }}
+          restore-keys: nuget-${{ runner.os }}-
+
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: "10.0.x"
@@ -60,6 +74,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
+          cache: "npm"
+          cache-dependency-path: web/package-lock.json
 
       - name: Install CDK CLI
         run: npm install -g aws-cdk@2
@@ -116,23 +132,6 @@ jobs:
           FRONTEND_URL: ${{ steps.outputs.outputs.frontend-url }}
           DYNAMO_TIMEOUT_SECONDS: "3"
 
-      - name: Debug CORS preflight
-        run: |
-          API_URL="${{ steps.outputs.outputs.api-url }}"
-          ORIGIN="https://d1spb0hvpsbynd.cloudfront.net"
-          echo "=== OPTIONS preflight ==="
-          curl -v -X OPTIONS \
-            -H "Origin: $ORIGIN" \
-            -H "Access-Control-Request-Method: POST" \
-            -H "Access-Control-Request-Headers: content-type" \
-            "${API_URL}/notes" 2>&1 || true
-          echo "=== POST /notes ==="
-          curl -v -X POST \
-            -H "Origin: $ORIGIN" \
-            -H "content-type: application/json" \
-            -d 'null' \
-            "${API_URL}/notes" 2>&1 || true
-
       - name: Build E2E project
         run: dotnet build tests/E2E/E2E.csproj -c Release
 
@@ -141,25 +140,7 @@ jobs:
           chromium
 
       - name: Clear test data (pre-E2E)
-        run: |
-          python3 << 'EOF'
-          import boto3
-          dynamodb = boto3.resource('dynamodb')
-          for name in ['notetaker-events', 'notetaker-proj-notetitlelist', 'notetaker-proj-notedetail', 'notetaker-proj-noteactions', 'notetaker-proj-todolist', 'notetaker-proj-notecardlist']:
-              table = dynamodb.Table(name)
-              keys = {k['AttributeName'] for k in table.key_schema}
-              deleted = 0
-              scan = table.scan()
-              while True:
-                  with table.batch_writer() as batch:
-                      for item in scan['Items']:
-                          batch.delete_item(Key={k: v for k, v in item.items() if k in keys})
-                  deleted += scan['Count']
-                  if 'LastEvaluatedKey' not in scan:
-                      break
-                  scan = table.scan(ExclusiveStartKey=scan['LastEvaluatedKey'])
-              print(f'Deleted {deleted} items from {name}')
-          EOF
+        uses: ./.github/actions/clear-test-data
 
       - name: E2E journey tests
         run: dotnet test tests/E2E/E2E.csproj -c Release
@@ -169,25 +150,7 @@ jobs:
 
       - name: Clear test data
         if: always()
-        run: |
-          python3 << 'EOF'
-          import boto3
-          dynamodb = boto3.resource('dynamodb')
-          for name in ['notetaker-events', 'notetaker-proj-notetitlelist', 'notetaker-proj-notedetail', 'notetaker-proj-noteactions', 'notetaker-proj-todolist', 'notetaker-proj-notecardlist']:
-              table = dynamodb.Table(name)
-              keys = {k['AttributeName'] for k in table.key_schema}
-              deleted = 0
-              scan = table.scan()
-              while True:
-                  with table.batch_writer() as batch:
-                      for item in scan['Items']:
-                          batch.delete_item(Key={k: v for k, v in item.items() if k in keys})
-                  deleted += scan['Count']
-                  if 'LastEvaluatedKey' not in scan:
-                      break
-                  scan = table.scan(ExclusiveStartKey=scan['LastEvaluatedKey'])
-              print(f'Deleted {deleted} items from {name}')
-          EOF
+        uses: ./.github/actions/clear-test-data
 
       - name: Upload Playwright trace
         if: always()

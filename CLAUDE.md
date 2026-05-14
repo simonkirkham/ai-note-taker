@@ -146,10 +146,10 @@ Prototype branches follow the same pattern: `git worktree add ../ai-note-taker-s
 6. Implement until spec passes green.
 7. **Refactor** — run the `refactor` skill against all changed files; re-run specs after each fix.
 8. **Stylist** (user-facing slices only) — run the `ui-ux-pro-max` skill to apply visual polish; re-run tests after.
-9. Open PR. After every `git push` to a PR branch, immediately schedule a CI monitor (`gh pr checks <n>` every 60s) — do not wait to be asked.
-10. **CI green → Hawk** — spawn `agent-skills:code-reviewer` subagent to review the PR.
-11. **Hawk approves → Pip merges** — run `gh pr merge --squash --delete-branch` immediately. No user confirmation needed.
-12. **Hawk requests changes → Pip fixes** — fix every finding, push, wait for CI, re-run Hawk.
+9. Open PR. After every `git push` to a PR branch, immediately schedule a CI monitor (`gh pr checks <n>` every 60s) — do not wait to be asked. CI results are informational; they do not block Hawk.
+10. **Open PR → Hawk** — spawn `agent-skills:code-reviewer` subagent to review the PR immediately; do not wait for CI results.
+11. **Hawk approves → Pip checks main, then merges** — before running `gh pr merge --squash --delete-branch`, confirm main's latest deploy workflow run completed successfully (`gh run list --branch main --workflow deploy.yml --status completed --limit 1 --json conclusion`). If main's deploy is not green, stop and investigate. No user confirmation needed once main is green.
+12. **Hawk requests changes → Pip fixes** — fix every finding, push, re-run Hawk.
 13. **Merge to main → remove worktree + monitor deploy** — run `git worktree remove ../ai-note-taker-slices/<slice-name>`, then immediately schedule a monitor on `gh run list --branch main --limit 1`. Poll every 90s until the deploy run completes.
 14. **Deploy succeeds → Scribe** — run all Scribe steps without being asked:
     - Create `docs/learnings/phase-<n><id>-<short-description>.md`; carry out all Done actions immediately

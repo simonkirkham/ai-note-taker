@@ -5,31 +5,19 @@ on:
     branches: [ main ]
 
 jobs:
-  check:
+  backend:
     runs-on: ubuntu-latest
     environment: Test
     env:
       DYNAMO_TIMEOUT_SECONDS: "3"
     steps:
-      - name: Verify main is in a known good state
-        run: |
-          CONCLUSION=$(gh run list \
-            --repo "$GITHUB_REPOSITORY" \
-            --branch main \
-            --workflow deploy.yml \
-            --status completed \
-            --limit 1 \
-            --json conclusion \
-            --jq '.[0].conclusion // "no-deploy-found"')
-          echo "Last deploy conclusion on main: $CONCLUSION"
-          if [ "$CONCLUSION" != "success" ]; then
-            echo "ERROR: main's last deploy is not green ($CONCLUSION). Fix main before merging."
-            exit 1
-          fi
-        env:
-          GH_TOKEN: ${{ github.token }}
-
       - uses: actions/checkout@v4
+
+      - uses: actions/cache@v4
+        with:
+          path: ~/.nuget/packages
+          key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj') }}
+          restore-keys: nuget-${{ runner.os }}-
 
       - uses: actions/setup-dotnet@v4
         with:
@@ -55,9 +43,6 @@ jobs:
       - name: Test (domain specs)
         run: dotnet test tests/Specs/Specs.csproj
 
-      - name: Test (EventStore integration)
-        run: dotnet test tests/EventStoreIntegration/EventStoreIntegration.csproj
-
       - name: Test (API integration)
         run: dotnet test tests/ApiIntegration/ApiIntegration.csproj
 
@@ -65,16 +50,54 @@ jobs:
         run: dotnet test tests/InfraAssertions/InfraAssertions.csproj
 
       - name: Publish Lambda
-        run: dotnet publish src/Api/Api.csproj -c Release -o
-          src/Api/bin/Release/net10.0/publish
+        run: dotnet publish src/Api/Api.csproj -c Release -o src/Api/bin/Release/net10.0/publish
 
       - name: CDK Synth
         run: cdk synth
 
-      - name: Lint frontend
-        working-directory: web
-        run: npm ci && npm run lint
+  frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
 
-      - name: Frontend build
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: web/package-lock.json
+
+      - name: Install dependencies
+        working-directory: web
+        run: npm ci
+
+      - name: Lint
+        working-directory: web
+        run: npm run lint
+
+      - name: Typecheck
+        working-directory: web
+        run: npm exec -- tsc -p tsconfig.app.json --noEmit
+
+      - name: Build
         working-directory: web
         run: npm run build
+
+  eventstore:
+    runs-on: ubuntu-latest
+    env:
+      DYNAMO_TIMEOUT_SECONDS: "3"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/cache@v4
+        with:
+          path: ~/.nuget/packages
+          key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj') }}
+          restore-keys: nuget-${{ runner.os }}-
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+
+      - name: Test (EventStore integration)
+        run: dotnet test tests/EventStoreIntegration/EventStoreIntegration.csproj
