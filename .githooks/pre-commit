@@ -8,7 +8,7 @@ echo "→ frontend lint..."
 npm --prefix web run lint
 
 echo "→ frontend typecheck..."
-npm --prefix web exec -- tsc -p tsconfig.app.json --noEmit
+npm --prefix web exec -- tsc -p web/tsconfig.app.json --noEmit
 
 echo "→ domain specs..."
 dotnet test tests/Specs/Specs.csproj --nologo -v quiet

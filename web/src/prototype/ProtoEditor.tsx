@@ -1,7 +1,18 @@
-import { useEditor, EditorContent, useEditorState } from "@tiptap/react";
+import { useEditor, EditorContent, useEditorState, Extension } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import { Markdown } from "tiptap-markdown";
 import { useState, useRef } from "react";
+
+const HeadingShortcuts = Extension.create({
+  name: "headingShortcuts",
+  addKeyboardShortcuts() {
+    return {
+      "Mod-1": () => this.editor.chain().focus().toggleHeading({ level: 1 }).run(),
+      "Mod-2": () => this.editor.chain().focus().toggleHeading({ level: 2 }).run(),
+      "Mod-3": () => this.editor.chain().focus().toggleHeading({ level: 3 }).run(),
+    };
+  },
+});
 
 const SAMPLE = `## Budget review
 
@@ -23,7 +34,7 @@ export function ProtoEditor() {
   const containerRef = useRef<HTMLDivElement>(null);
 
   const editor = useEditor({
-    extensions: [StarterKit, Markdown],
+    extensions: [StarterKit, Markdown, HeadingShortcuts],
     content: SAMPLE,
     onBlur({ editor }) {
       try {
@@ -89,9 +100,25 @@ export function ProtoEditor() {
       <p style={{ fontSize: 12, color: "#64748B", letterSpacing: "0.04em", textTransform: "uppercase", marginBottom: 8 }}>
         Phase 7 prototype · focus: mark-as-discussed button
       </p>
-      <p style={{ fontSize: 13, color: "#94A3B8", marginBottom: 24 }}>
-        Click into a heading. Type <code>## </code> for a heading, <code>- </code> for bullets, Ctrl+B for bold.
-      </p>
+      <table style={{ fontSize: 12, color: "#64748B", marginBottom: 24, borderCollapse: "collapse", width: "100%" }}>
+        <tbody>
+          {[
+            ["Ctrl+1 / # + Space",   "H1 heading"],
+            ["Ctrl+2 / ## + Space",  "H2 heading (agenda topic)"],
+            ["Ctrl+3 / ### + Space", "H3 heading"],
+            ["Ctrl+B / **text**",    "Bold"],
+            ["Ctrl+I / *text*",      "Italic"],
+            ["- + Space",            "Bullet list item"],
+          ].map(([keys, effect]) => (
+            <tr key={keys}>
+              <td style={{ padding: "2px 16px 2px 0", whiteSpace: "nowrap" }}>
+                <code style={{ background: "#F1F5F9", padding: "1px 5px", borderRadius: 3 }}>{keys}</code>
+              </td>
+              <td style={{ padding: "2px 0", color: "#94A3B8" }}>{effect}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
 
       <style>{`
         .proto-editor h1::before { content: "# ";   color: #94A3B8; font-weight: 400; }
