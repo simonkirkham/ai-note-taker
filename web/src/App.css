@@ -1205,7 +1205,8 @@ body {
 }
 
 .folder-tree-node-row:hover .folder-tree-actions,
-.folder-tree-node-row--active .folder-tree-actions {
+.folder-tree-node-row--active .folder-tree-actions,
+.folder-tree-node-row--hovered .folder-tree-actions {
   display: flex;
 }
 

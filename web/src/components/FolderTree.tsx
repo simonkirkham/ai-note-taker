@@ -20,6 +20,7 @@ function FolderTreeNode({ node, activeFolderId, path, onSelect, onRename, onDele
   const [addingChild, setAddingChild] = useState(false);
   const [childName, setChildName] = useState("");
   const [isDragOver, setIsDragOver] = useState(false);
+  const [hovered, setHovered] = useState(false);
 
   const currentPath = [...path, node.name];
   const isActive = node.folderId === activeFolderId;
@@ -44,7 +45,9 @@ function FolderTreeNode({ node, activeFolderId, path, onSelect, onRename, onDele
       data-testid={`folder-item-${node.folderId}`}
     >
       <div
-        className={`folder-tree-node-row${isActive ? " folder-tree-node-row--active" : ""}${isDragOver ? " folder-tree-node-row--drag-over" : ""}`}
+        className={`folder-tree-node-row${isActive ? " folder-tree-node-row--active" : ""}${isDragOver ? " folder-tree-node-row--drag-over" : ""}${hovered ? " folder-tree-node-row--hovered" : ""}`}
+        onMouseEnter={() => setHovered(true)}
+        onMouseLeave={() => setHovered(false)}
         onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = "move"; }}
         onDragEnter={() => setIsDragOver(true)}
         onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget as Node)) setIsDragOver(false); }}
