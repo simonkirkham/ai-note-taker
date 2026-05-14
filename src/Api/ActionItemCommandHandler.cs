@@ -7,9 +7,6 @@ using EventStore.Projections;
 
 namespace Api;
 
-public sealed class ActionItemNotFoundException(ActionId actionId)
-    : Exception($"Action item {actionId} not found.");
-
 public sealed class ActionItemCommandHandler(
     IEventStore store,
     INoteDetailStore noteDetailStore,

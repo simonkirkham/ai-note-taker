@@ -2,13 +2,6 @@ using Amazon.DynamoDBv2;
 
 namespace Api;
 
-public interface IDynamoHealthCheck
-{
-    Task<DynamoHealth> CheckAsync(CancellationToken ct = default);
-}
-
-public record DynamoHealth(bool Reachable, string? Error = null);
-
 public sealed class DynamoDbHealthCheck(IAmazonDynamoDB dynamo, string tableName) : IDynamoHealthCheck
 {
     public async Task<DynamoHealth> CheckAsync(CancellationToken ct = default)
