@@ -51,7 +51,8 @@ public sealed class DynamoDbNoteActionsStore(IAmazonDynamoDB dynamo, string tabl
             ExpressionAttributeValues = new Dictionary<string, AttributeValue>
             {
                 [":noteId"] = new() { S = noteId.Value.ToString() }
-            }
+            },
+            ConsistentRead = true
         }, ct).ConfigureAwait(false);
 
         var actions = response.Items

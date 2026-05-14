@@ -36,7 +36,8 @@ public sealed class DynamoDbFolderTreeStore(IAmazonDynamoDB dynamo, string table
             var response = await _dynamo.ScanAsync(new ScanRequest
             {
                 TableName = _tableName,
-                ExclusiveStartKey = lastKey
+                ExclusiveStartKey = lastKey,
+                ConsistentRead = true
             }, ct).ConfigureAwait(false);
             foreach (var row in response.Items)
                 items.Add(ToView(row));
