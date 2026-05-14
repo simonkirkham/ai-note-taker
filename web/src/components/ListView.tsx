@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { NoteCard as NoteCardData, getNoteCards } from "../api";
+import { NoteCard as NoteCardData, TagIndexEntry, getNoteCards, getTags } from "../api";
 import NoteCard from "./NoteCard";
 import TodoSection from "./TodoSection";
 import TagFilter from "./TagFilter";
@@ -24,18 +24,16 @@ export default function ListView({
   onHome?: () => void;
 }) {
   const [cards, setCards] = useState<NoteCardData[]>([]);
+  const [tagEntries, setTagEntries] = useState<TagIndexEntry[]>([]);
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [filterMode, setFilterMode] = useState<"AND" | "OR">("AND");
 
   useEffect(() => {
     getNoteCards().then(setCards).catch(() => {});
+    getTags().then(setTagEntries).catch(() => {});
   }, []);
 
-  const availableTags = useMemo(() => {
-    const tagSet = new Set<string>();
-    cards.forEach((c) => (c.tags ?? []).forEach((t) => tagSet.add(t)));
-    return Array.from(tagSet).sort();
-  }, [cards]);
+  const availableTags = useMemo(() => tagEntries.map((e) => e.tag), [tagEntries]);
 
   const filteredCards = useMemo(() => {
     let result = cards;

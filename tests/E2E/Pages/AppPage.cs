@@ -215,9 +215,6 @@ public sealed class AppPage(IPage page, string baseUrl)
             $"Expected actions panel (y={actionsBox.Y}) to be below content (y={contentBox.Y})");
     }
 
-    public Task AssertNoteCardVisibleAsync(string title) =>
-        Assertions.Expect(page.GetByTestId("note-cards").GetByText(title)).ToBeVisibleAsync();
-
     public Task AssertNoteCardSnippetVisibleAsync(string cardTitle, string snippetStart) =>
         Assertions.Expect(
             page.GetByTestId("note-cards")
@@ -240,11 +237,6 @@ public sealed class AppPage(IPage page, string baseUrl)
             .Filter(new LocatorFilterOptions { HasText = title })
             .GetByRole(AriaRole.Button, new LocatorGetByRoleOptions { Name = "Edit Note" })
             .ClickAsync();
-
-    public Task AssertNoteCardAbsentAsync(string title) =>
-        Assertions.Expect(
-            page.GetByTestId("note-cards").GetByText(title)
-        ).Not.ToBeVisibleAsync();
 
     public async Task AddTagAsync(string tagInput)
     {
@@ -331,4 +323,22 @@ public sealed class AppPage(IPage page, string baseUrl)
 
     public Task AssertFolderVisibleInSidebarAsync(string folderName) =>
         Assertions.Expect(page.GetByTestId("sidebar").GetByText(folderName)).ToBeVisibleAsync();
+
+    public Task AssertTagFilterPillVisibleAsync(string tag) =>
+        Assertions.Expect(page.GetByTestId($"tag-filter-pill-{tag}")).ToBeVisibleAsync(new() { Timeout = 10000 });
+
+    public Task ClickTagFilterPillAsync(string tag) =>
+        page.GetByTestId($"tag-filter-pill-{tag}").ClickAsync();
+
+    public Task ClickTagFilterModeToggleAsync() =>
+        page.GetByTestId("tag-filter-mode-toggle").ClickAsync();
+
+    public Task ClickTagFilterClearAsync() =>
+        page.GetByTestId("tag-filter-clear").ClickAsync();
+
+    public Task AssertNoteCardVisibleAsync(string title) =>
+        Assertions.Expect(page.GetByTestId("note-cards").GetByText(title)).ToBeVisibleAsync(new() { Timeout = 10000 });
+
+    public Task AssertNoteCardAbsentAsync(string title) =>
+        Assertions.Expect(page.GetByTestId("note-cards").GetByText(title)).Not.ToBeVisibleAsync(new() { Timeout = 5000 });
 }
