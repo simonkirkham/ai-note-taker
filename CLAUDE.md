@@ -88,7 +88,7 @@ cdk deploy
 - **Never begin a pipeline role's work without authorisation.** For roles triggered by a human brief (Scout, Breaker, Pip at slice start), wait for explicit human go-ahead. For roles triggered by an automated event defined in the workflow, proceed without asking — see the full automation chain below.
 - **Never prefix PowerShell commands with `cd`.** Use `npm --prefix <path> run build` (or equivalent flag) so the command starts with an already-allowed verb. `cd` is not in the allow-list.
 - **Never use PowerShell compound statements starting with a variable assignment to pass multiline strings to CLI tools.** `$body = @"..."@; gh pr create --body $body` starts with `$body`, not `gh` — the permission checker won't match `PowerShell(gh *)` and will prompt for approval. Instead: use the Write tool to write the body to `.pr-body.md` (gitignored), then run `gh pr create --body-file .pr-body.md`. No variable assignment, no `Remove-Item`.
-- **Never commit slice work directly to main.** Breaker creates `slice/<phase>-<id>-<short-description>` (e.g. `slice/4-b-note-layout`) from main before the first test commit. All slice commits (Breaker, Pip, Refactor, Stylist, Hawk fixes) go to that branch. Pip opens a PR; Hawk reviews the PR; Pip squash-merges after approval.
+- **Never commit slice work directly to main.** Breaker creates a branch **and a worktree** before the first test commit (see *Worktrees* below). All slice commits (Breaker, Pip, Refactor, Stylist, Hawk fixes) go to that branch. Pip opens a PR; Hawk reviews the PR; Pip squash-merges after approval.
 - **Never merge into main unless main's last deploy is green.** Before merging, Pip must confirm the latest completed deploy workflow run on main succeeded: `gh run list --branch main --workflow deploy.yml --status completed --limit 1 --json conclusion`. If the conclusion is not `success`, stop — do not merge, do not bypass. Fix main first. This is also enforced by the PR check workflow, which will block the merge automatically.
 - **Never merge a `prototype/` branch into main or a `slice/` branch.** Prototype branches are reference material only. The one exception is cherry-picking the updated phase doc commit to main as part of the prototype exit procedure.
 
@@ -108,25 +108,54 @@ Reach for these instead of writing patterns from scratch:
 - **process-improvements** — surface observations from a slice and write them as actionable learnings; execute all immediately-applicable fixes in the same turn; see [`.claude/skills/process-improvements/SKILL.md`](.claude/skills/process-improvements/SKILL.md)
 - **token-log** — record agent token counts per slice, append to `docs/token-log.md`, flag spikes for process-improvements; see [`.claude/skills/token-log/SKILL.md`](.claude/skills/token-log/SKILL.md)
 
+## Worktrees
+
+Each slice runs in its own git worktree so multiple slices can run in parallel without interfering with each other.
+
+**Breaker sets up the worktree** at the start of every slice:
+
+```bash
+# From the main checkout
+git worktree add ../ai-note-taker-slices/slice-5e-my-feature -b slice/5-e-my-feature
+```
+
+The worktree lands at `../ai-note-taker-slices/<slice-name>/` (a sibling of the main checkout, outside this repo). All slice work — tests, builds, `npm install` — runs from inside that directory. The main checkout stays on `main` and is never touched during a slice.
+
+**After the slice branch is merged and deleted**, remove the worktree:
+
+```bash
+git worktree remove ../ai-note-taker-slices/slice-5e-my-feature
+```
+
+**First-time setup in a fresh worktree** (Breaker does this immediately after `git worktree add`):
+
+```bash
+dotnet restore ai-note-taker.sln
+npm --prefix web install
+```
+
+Prototype branches follow the same pattern: `git worktree add ../ai-note-taker-slices/prototype-<name> -b prototype/<name>`.
+
 ## Workflow
 
 1. Plan mode for any non-trivial slice.
-2. **Prototype** *(UI-heavy or UX-uncertain slices only)* — run the `prototype` skill before touching the event model. Skip if the interaction is obvious CRUD. Prototype code is quick-and-dirty scaffolding on a `prototype/<slice-name>` branch pushed to remote — never merged. On approval, the exit procedure rewrites `docs/phases/phase-X.md` on main with confirmed GWT scenarios and UX patterns. Real implementation starts fresh from the updated phase doc, not from prototype code.
-3. Update event model.
-4. Write BDD spec.
-5. Implement until spec passes green.
-6. **Refactor** — run the `refactor` skill against all changed files; re-run specs after each fix.
-7. **Stylist** (user-facing slices only) — run the `ui-ux-pro-max` skill to apply visual polish; re-run tests after.
-8. Open PR. After every `git push` to a PR branch, immediately schedule a CI monitor (`gh pr checks <n>` every 60s) — do not wait to be asked.
-9. **CI green → Hawk** — spawn `agent-skills:code-reviewer` subagent to review the PR.
-10. **Hawk approves → Pip merges** — run `gh pr merge --squash --delete-branch` immediately. No user confirmation needed.
-11. **Hawk requests changes → Pip fixes** — fix every finding, push, wait for CI, re-run Hawk.
-12. **Merge to main → monitor deploy** — immediately schedule a monitor on `gh run list --branch main --limit 1`. Poll every 90s until the deploy run completes.
-13. **Deploy succeeds → Scribe** — run all Scribe steps without being asked:
+2. **Breaker creates the worktree** — `git worktree add ../ai-note-taker-slices/<slice-name> -b slice/<phase>-<id>-<short-description>`, then `dotnet restore` + `npm --prefix web install` inside it. All subsequent work happens from that directory.
+3. **Prototype** *(UI-heavy or UX-uncertain slices only)* — run the `prototype` skill before touching the event model. Skip if the interaction is obvious CRUD. Prototype code is quick-and-dirty scaffolding on a `prototype/<slice-name>` branch/worktree pushed to remote — never merged. On approval, the exit procedure rewrites `docs/phases/phase-X.md` on main with confirmed GWT scenarios and UX patterns. Real implementation starts fresh from the updated phase doc, not from prototype code.
+4. Update event model.
+5. Write BDD spec.
+6. Implement until spec passes green.
+7. **Refactor** — run the `refactor` skill against all changed files; re-run specs after each fix.
+8. **Stylist** (user-facing slices only) — run the `ui-ux-pro-max` skill to apply visual polish; re-run tests after.
+9. Open PR. After every `git push` to a PR branch, immediately schedule a CI monitor (`gh pr checks <n>` every 60s) — do not wait to be asked.
+10. **CI green → Hawk** — spawn `agent-skills:code-reviewer` subagent to review the PR.
+11. **Hawk approves → Pip merges** — run `gh pr merge --squash --delete-branch` immediately. No user confirmation needed.
+12. **Hawk requests changes → Pip fixes** — fix every finding, push, wait for CI, re-run Hawk.
+13. **Merge to main → remove worktree + monitor deploy** — run `git worktree remove ../ai-note-taker-slices/<slice-name>`, then immediately schedule a monitor on `gh run list --branch main --limit 1`. Poll every 90s until the deploy run completes.
+14. **Deploy succeeds → Scribe** — run all Scribe steps without being asked:
     - Create `docs/learnings/phase-<n><id>-<short-description>.md`; carry out all Done actions immediately
     - Mark slice/phase status as Done in `docs/phases/phase-N.md`
     - Update `docs/roadmap.md` if the phase is now complete
-14. **Deploy fails → investigate and fix** — read `gh run view <id> --log-failed`, diagnose, fix, push. Do not stop to report unless genuinely blocked.
+15. **Deploy fails → investigate and fix** — read `gh run view <id> --log-failed`, diagnose, fix, push. Do not stop to report unless genuinely blocked.
 
 ### Human gates (the only steps that require explicit user confirmation)
 - Slice start: Scout brief, Breaker spec writing, Pip implementation start

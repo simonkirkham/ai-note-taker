@@ -2,8 +2,14 @@
   "permissions": {
     "allow": [
       "Write",
+      "Read",
+      "Read(/mnt/c/code/ai-note-taker-slices/**)",
+      "Write(/mnt/c/code/ai-note-taker-slices/**)",
+      "Edit(/mnt/c/code/ai-note-taker-slices/**)",
       "Bash(dotnet test tests/*)",
       "Bash(dotnet build *)",
+      "Bash(dotnet restore *)",
+      "Bash(npm --prefix /mnt/c/code/ai-note-taker-slices/*)",
       "Bash(git -C * status*)",
       "Bash(git -C * log*)",
       "Bash(git -C * diff*)",

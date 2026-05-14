@@ -76,7 +76,7 @@ Each slice is a complete vertical: domain events, API endpoints, projections, an
 
 ## Slice 5-A — Add tags to a note
 
-**Status:** Not Started
+**Status:** Done
 
 **Value:** I can add tags to a note so I can label what it's about — tags appear as pills on the note screen and on the note's home screen card.
 
@@ -162,7 +162,7 @@ Scenario: A note with no tags shows no tag pills on its card
 
 ## Slice 5-B — Remove a tag from a note
 
-**Status:** Not Started
+**Status:** Done
 
 **Value:** I can remove a tag I added by mistake or no longer need — clicking × on a pill removes it immediately.
 
@@ -229,7 +229,7 @@ Scenario: Trying to remove a tag that does not exist returns an error
 
 ## Slice 5-C — Tag filter bar
 
-**Status:** Not Started
+**Status:** In Progress — TagIndex projection + `GET /tags` endpoint in PR #30 (not yet merged); frontend filter bar implemented as an interim using tag data derived from note cards (not the TagIndex projection)
 
 **Value:** I can see all the tags I've used in a filter bar and click one (or more) to show only the notes that match, then clear the filter to see everything again.
 
@@ -333,7 +333,7 @@ Scenario: Clearing the filter shows all notes and resets the mode to AND
 
 ## Slice 5-D — Create and browse folders
 
-**Status:** Not Started
+**Status:** Done
 
 **Value:** I can create folders in the sidebar and navigate between them — clicking a folder shows its dedicated view, and clicking Home returns to all my notes.
 
@@ -924,7 +924,7 @@ Scenario: Other folders and their notes are not affected
 
 ## Slice 5-M — Note date defaults to today
 
-**Status:** Not Started
+**Status:** Done
 
 **Value:** When I create a note, the date is already set to today so I don't have to pick it manually; the note screen shows a clean date input without a redundant formatted label beside it.
 
