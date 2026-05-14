@@ -30,7 +30,7 @@ AWS SDK packages (`AWSSDK.DynamoDBv2`, `AWSSDK.Extensions.NETCore.Setup`), CDK p
 
 ## Slice 6-A — Bump framework and packages; green build and tests locally
 
-**Status:** Not Started
+**Status:** Done
 
 **Value:** All projects compile and all tests pass against .NET 10 on the local machine. No AWS changes yet — this slice is purely a local build gate.
 
@@ -94,7 +94,7 @@ Scenario: CDK assertions are green
 
 ## Slice 6-B — Update Lambda runtime in CDK; redeploy; smoke test
 
-**Status:** Not Started
+**Status:** Done
 
 **Value:** The deployed Lambda runs on the .NET 10 managed runtime. Post-deploy acceptance tests and the E2E browser journey confirm the upgrade is live and nothing regressed.
 
