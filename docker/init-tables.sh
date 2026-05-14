@@ -47,6 +47,24 @@ create \
     AttributeName=SK,KeyType=RANGE \
   --billing-mode PAY_PER_REQUEST
 
+# Folder tree (simple PK)
+create \
+  --table-name notetaker-proj-foldertree \
+  --attribute-definitions AttributeName=PK,AttributeType=S \
+  --key-schema AttributeName=PK,KeyType=HASH \
+  --billing-mode PAY_PER_REQUEST
+
+# Tag index (composite key: Tag + NoteId)
+create \
+  --table-name notetaker-proj-tagindex \
+  --attribute-definitions \
+    AttributeName=Tag,AttributeType=S \
+    AttributeName=NoteId,AttributeType=S \
+  --key-schema \
+    AttributeName=Tag,KeyType=HASH \
+    AttributeName=NoteId,KeyType=RANGE \
+  --billing-mode PAY_PER_REQUEST
+
 # Todo list (simple PK + GSI on NoteId)
 create \
   --table-name notetaker-proj-todolist \

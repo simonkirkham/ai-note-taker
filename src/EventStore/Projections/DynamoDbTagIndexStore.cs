@@ -86,7 +86,8 @@ public sealed class DynamoDbTagIndexStore(IAmazonDynamoDB dynamo, string tableNa
             var response = await _dynamo.ScanAsync(new ScanRequest
             {
                 TableName = _tableName,
-                ExclusiveStartKey = lastKey
+                ExclusiveStartKey = lastKey,
+                ConsistentRead = true
             }, ct).ConfigureAwait(false);
             foreach (var row in response.Items)
                 items.Add(new TagIndexView(row["Tag"].S, row["NoteId"].S));

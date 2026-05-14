@@ -336,6 +336,9 @@ public sealed class AppPage(IPage page, string baseUrl)
     public Task ClickTagFilterClearAsync() =>
         page.GetByTestId("tag-filter-clear").ClickAsync();
 
+    public Task AssertTagFilterModeAsync(string expected) =>
+        Assertions.Expect(page.GetByTestId("tag-filter-mode-toggle")).ToHaveTextAsync(expected);
+
     public Task AssertNoteCardVisibleAsync(string title) =>
         Assertions.Expect(page.GetByTestId("note-cards").GetByText(title)).ToBeVisibleAsync(new() { Timeout = 10000 });
 

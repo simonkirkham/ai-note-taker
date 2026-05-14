@@ -111,6 +111,8 @@ public sealed class TagFilterJourney(BrowserFixture browser) : IAsyncLifetime
         await _app.ClickTagFilterPillAsync(tagA);
         await _app.ClickTagFilterPillAsync(tagB);
 
+        await _app.AssertTagFilterModeAsync("AND");
         await _app.ClickTagFilterModeToggleAsync();
+        await _app.AssertTagFilterModeAsync("OR");
     }
 }
