@@ -85,10 +85,11 @@ cdk deploy
 - Never bypass the event store to mutate aggregate state.
 - Never commit without all BDD specs green and `cdk synth` succeeding.
 - Never edit a published event's shape — version it.
-- **Never begin a pipeline role's work without authorisation.** For roles triggered by a human brief (Scout, Breaker, Pip at slice start), wait for explicit human go-ahead. For roles triggered by an automated event defined in the workflow, proceed without asking: CI green → Hawk reviews; Hawk approves → Pip merges; Hawk requests changes → Pip fixes and pushes.
+- **Never begin a pipeline role's work without authorisation.** For roles triggered by a human brief (Scout, Breaker, Pip at slice start), wait for explicit human go-ahead. For roles triggered by an automated event defined in the workflow, proceed without asking — see the full automation chain below.
 - **Never prefix PowerShell commands with `cd`.** Use `npm --prefix <path> run build` (or equivalent flag) so the command starts with an already-allowed verb. `cd` is not in the allow-list.
 - **Never use PowerShell compound statements starting with a variable assignment to pass multiline strings to CLI tools.** `$body = @"..."@; gh pr create --body $body` starts with `$body`, not `gh` — the permission checker won't match `PowerShell(gh *)` and will prompt for approval. Instead: use the Write tool to write the body to `.pr-body.md` (gitignored), then run `gh pr create --body-file .pr-body.md`. No variable assignment, no `Remove-Item`.
 - **Never commit slice work directly to main.** Breaker creates `slice/<phase>-<id>-<short-description>` (e.g. `slice/4-b-note-layout`) from main before the first test commit. All slice commits (Breaker, Pip, Refactor, Stylist, Hawk fixes) go to that branch. Pip opens a PR; Hawk reviews the PR; Pip squash-merges after approval.
+- **Never merge into main unless main's last deploy is green.** Before merging, Pip must confirm the latest completed deploy workflow run on main succeeded: `gh run list --branch main --workflow deploy.yml --status completed --limit 1 --json conclusion`. If the conclusion is not `success`, stop — do not merge, do not bypass. Fix main first. This is also enforced by the PR check workflow, which will block the merge automatically.
 - **Never merge a `prototype/` branch into main or a `slice/` branch.** Prototype branches are reference material only. The one exception is cherry-picking the updated phase doc commit to main as part of the prototype exit procedure.
 
 ## Skills
@@ -110,8 +111,23 @@ Reach for these instead of writing patterns from scratch:
 2. **Prototype** *(UI-heavy or UX-uncertain slices only)* — run the `prototype` skill before touching the event model. Skip if the interaction is obvious CRUD. Prototype code is quick-and-dirty scaffolding on a `prototype/<slice-name>` branch pushed to remote — never merged. On approval, the exit procedure rewrites `docs/phases/phase-X.md` on main with confirmed GWT scenarios and UX patterns. Real implementation starts fresh from the updated phase doc, not from prototype code.
 3. Update event model.
 4. Write BDD spec.
-4. Implement until spec passes green.
+5. Implement until spec passes green.
 6. **Refactor** — run the `refactor` skill against all changed files; re-run specs after each fix.
 7. **Stylist** (user-facing slices only) — run the `ui-ux-pro-max` skill to apply visual polish; re-run tests after.
-8. Diff review (subagent or `/review`).
-9. Append a short note to [docs/workflow-log.md](docs/workflow-log.md) at the end of each phase.
+8. Open PR. After every `git push` to a PR branch, immediately schedule a CI monitor (`gh pr checks <n>` every 60s) — do not wait to be asked.
+9. **CI green → Hawk** — spawn `agent-skills:code-reviewer` subagent to review the PR.
+10. **Hawk approves → Pip merges** — run `gh pr merge --squash --delete-branch` immediately. No user confirmation needed.
+11. **Hawk requests changes → Pip fixes** — fix every finding, push, wait for CI, re-run Hawk.
+12. **Merge to main → monitor deploy** — immediately schedule a monitor on `gh run list --branch main --limit 1`. Poll every 90s until the deploy run completes.
+13. **Deploy succeeds → Scribe** — run all four Scribe steps without being asked:
+    - Append entry to `docs/workflow-log.md`
+    - Create `docs/learnings/phase-<n><id>-<short-description>.md`
+    - Append entry to `docs/token-log.md`
+    - Mark slice/phase status as Done in `docs/phases/phase-N.md`
+14. **Deploy fails → investigate and fix** — read `gh run view <id> --log-failed`, diagnose, fix, push. Do not stop to report unless genuinely blocked.
+
+### Human gates (the only steps that require explicit user confirmation)
+- Slice start: Scout brief, Breaker spec writing, Pip implementation start
+- `cdk deploy` when run manually (not when triggered automatically by a merge to main)
+
+If you find yourself asking the user to approve any other step, check this list. If it is not a defined human gate, proceed autonomously.
