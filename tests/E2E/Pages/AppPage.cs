@@ -243,12 +243,17 @@ public sealed class AppPage(IPage page, string baseUrl)
 
     public async Task AddTagAsync(string tagInput)
     {
+        var tagCount = tagInput.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries).Length;
         var input = page.GetByTestId("tag-input");
         await input.FillAsync(tagInput);
-        var postDone = page.WaitForResponseAsync(r =>
-            r.Url.Contains("/tags") && r.Request.Method == "POST");
+
+        var postTasks = Enumerable.Range(0, tagCount)
+            .Select(_ => page.WaitForResponseAsync(r =>
+                r.Url.Contains("/tags") && r.Request.Method == "POST"))
+            .ToArray();
+
         await input.PressAsync("Enter");
-        await postDone;
+        await Task.WhenAll(postTasks);
     }
 
     public Task AssertTagPillVisibleAsync(string tag) =>
