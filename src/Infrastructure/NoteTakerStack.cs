@@ -80,7 +80,7 @@ public class NoteTakerStack : Stack
             ?? "src/Api/bin/Release/net10.0/publish";
         var apiFunction = new Amazon.CDK.AWS.Lambda.Function(this, "ApiFunction", new Amazon.CDK.AWS.Lambda.FunctionProps
         {
-            Runtime = Amazon.CDK.AWS.Lambda.Runtime.DOTNET_8,
+            Runtime = Amazon.CDK.AWS.Lambda.Runtime.DOTNET_10,
             Handler = "Api",
             Code = Amazon.CDK.AWS.Lambda.Code.FromAsset(lambdaAssetPath),
             Timeout = Duration.Seconds(29),
