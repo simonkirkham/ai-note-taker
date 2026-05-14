@@ -64,6 +64,8 @@ What is **not** yet in place:
 5-J  Auto-assign note to current folder  (depends 5-G) ────────────────────────┤
 5-K  Reparent a folder  (depends 5-D) ─────────────────────────────────────────┤
 5-L  Cascade delete a folder  (depends 5-F, 5-G) ──────────────────────────────┘
+
+5-M  Note date defaults to today  (no dependencies — backend already shipped) ── standalone
 ```
 
 Each slice is a complete vertical: domain events, API endpoints, projections, and the frontend wired to those endpoints. No "backend first, frontend later" splits across slices.
@@ -917,6 +919,55 @@ Scenario: Other folders and their notes are not affected
 - [ ] All descendant folders disappear from `GET /folders`
 - [ ] All notes that were in the subtree appear in `GET /notes/cards` with `folderId: null`
 - [ ] E2E: create "People > Bill"; file a note in "Bill"; delete "People" — both folders gone; "Unfiled Notes" shows the note
+
+---
+
+## Slice 5-M — Note date defaults to today
+
+**Status:** Not Started
+
+**Value:** When I create a note, the date is already set to today so I don't have to pick it manually; the note screen shows a clean date input without a redundant formatted label beside it.
+
+**Backend status:** Complete. `SetNoteDate` command handler, `NoteDateSet` event, `NoteDetail` and `NoteCardList` projection handlers, and `PATCH /notes/{noteId}/date` endpoint are all shipped. BDD spec, API integration tests, and acceptance tests exist.
+
+**Commands in scope:** `SetNoteDate` — already implemented; called by the frontend immediately on note creation.
+
+**Frontend changes only:**
+- `App.tsx` — in `handleCreateNote`, after `create()` returns `noteId`, call `setNoteDate(noteId, todayAsISO)` before `setView({ kind: "note", noteId })`; derive `todayAsISO` as `new Date().toISOString().slice(0, 10)`
+- `NoteView.tsx` — remove the `formatDateDisplay` helper and the `{date && <span data-testid="note-date-display">…</span>}` block; the native `<input type="date">` already shows the selected value
+
+**Scenarios:**
+
+```
+Scenario: A new note is pre-dated to today
+  Given I click "+ New Note"
+  When  the note screen opens
+  Then  the date input shows today's date
+
+Scenario: The date input has no formatted label beside it
+  Given I am on any note screen
+  When  I look at the date area
+  Then  I see only the date input — no "dd/mm/yyyy" text label alongside it
+
+Scenario: The pre-set date persists after navigating away and back
+  Given I created a note (date defaulted to today)
+  When  I go back to the home screen and open the note again
+  Then  the date input still shows today's date
+
+Scenario: I can change the date and it persists
+  Given I am on a note screen with today's date pre-filled
+  When  I change the date to a different day
+  Then  the note screen shows the new date after I leave and return
+```
+
+**Acceptance criteria:**
+
+- [ ] Creating a note fires `PATCH /notes/{noteId}/date` with today's ISO date immediately after creation; `GET /notes/{noteId}` returns `date = today`
+- [ ] `NoteView` renders only `<input type="date">` in the date area — no `<span>` showing a formatted label
+- [ ] `formatDateDisplay` is removed from `NoteView.tsx`
+- [ ] Date input is pre-filled with today on a freshly created note
+- [ ] Changing the date calls `PATCH /notes/{noteId}/date`; the updated date survives a page reload
+- [ ] E2E: create a note — date input shows today; navigate home; reopen — date still shows today; change date — new date persists
 
 ---
 
