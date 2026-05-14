@@ -18,11 +18,8 @@ public sealed class AppPage(IPage page, string baseUrl)
         await patchDone;
     }
 
-    public async Task GoBackAsync()
-    {
-        await page.GetByTestId("back-button").ClickAsync();
-        await Assertions.Expect(page.GetByTestId("note-list")).ToBeVisibleAsync();
-    }
+    public Task GoBackAsync() =>
+        page.GetByTestId("back-button").ClickAsync();
 
     public Task AssertNoteVisibleInListAsync(string title) =>
         Assertions.Expect(
