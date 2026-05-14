@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useState } from "react";
 
 export default function TagsSection({
   tags,
@@ -10,7 +10,6 @@ export default function TagsSection({
   onRemove: (tag: string) => void;
 }) {
   const [input, setInput] = useState("");
-  const inputRef = useRef<HTMLInputElement>(null);
 
   function submit() {
     const trimmed = input.trim();
@@ -37,7 +36,6 @@ export default function TagsSection({
         ))}
       </div>
       <input
-        ref={inputRef}
         data-testid="tag-input"
         className="tags-input"
         type="text"

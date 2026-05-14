@@ -46,6 +46,14 @@ Projections must be rebuildable. Steps:
 3. Call `Handle(event)` for each.
 4. Mark rebuild complete.
 
+## DynamoDB store checklist
+
+When implementing a `DynamoDb*Store`:
+
+- Every `GetItemAsync`, `ScanAsync`, and base-table `QueryAsync` call **must** set `ConsistentRead = true`. DynamoDB's default is eventually consistent; a read immediately after a write (e.g. triggered by a page navigation in an E2E test) can return the pre-write value.
+- GSI `QueryAsync` calls **cannot** set `ConsistentRead = true` — DynamoDB does not support it on Global Secondary Indexes. This is the one explicit exception.
+- When adding a new table to CDK, also update `docker/init-tables.sh` (for DynamoDB Local in integration tests) and `src/Api/Properties/launchSettings.json` (env var for `dotnet run`) in the same commit.
+
 ## Don't
 
 - Don't put validation or domain rules in a projection. They belong on the aggregate.
