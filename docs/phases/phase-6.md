@@ -83,13 +83,13 @@ Scenario: CDK assertions are green
 
 **Acceptance criteria:**
 
-- [ ] Every `.csproj` targets `net10.0`
-- [ ] `dotnet build ai-note-taker.sln` exits 0 with 0 errors and 0 warnings
-- [ ] `dotnet test tests/Specs/Specs.csproj` — all green
-- [ ] `dotnet test tests/ApiIntegration/ApiIntegration.csproj` — all green
-- [ ] `dotnet test tests/EventStoreIntegration/EventStoreIntegration.csproj` — all green (Docker required)
-- [ ] `dotnet test tests/InfraAssertions/InfraAssertions.csproj` — all green
-- [ ] `cdk synth` exits 0 (Lambda runtime line may still reference `DOTNET_8` at this point — that is fixed in 6-B)
+- [x] Every `.csproj` targets `net10.0`
+- [x] `dotnet build ai-note-taker.sln` exits 0 with 0 errors and 0 warnings
+- [x] `dotnet test tests/Specs/Specs.csproj` — all green
+- [x] `dotnet test tests/ApiIntegration/ApiIntegration.csproj` — all green
+- [x] `dotnet test tests/EventStoreIntegration/EventStoreIntegration.csproj` — all green (Docker required)
+- [x] `dotnet test tests/InfraAssertions/InfraAssertions.csproj` — all green
+- [x] `cdk synth` exits 0 (Lambda runtime line may still reference `DOTNET_8` at this point — that is fixed in 6-B)
 
 ---
 
@@ -135,13 +135,13 @@ Scenario: E2E browser journey passes against the live frontend
 
 **Acceptance criteria:**
 
-- [ ] `src/Infrastructure/NoteTakerStack.cs` uses `Runtime.DOTNET_10`
-- [ ] CDK template assertion updated; `dotnet test tests/InfraAssertions/` green
-- [ ] `cdk synth` exits 0 with `runtime: dotnet10` in the generated template
-- [ ] `cdk deploy` succeeds with the `net10.0` publish output
-- [ ] `GET /health` returns 200 on the deployed Lambda
-- [ ] `API_BASE_URL=<url> dotnet test tests/Acceptance/Acceptance.csproj` — all green
-- [ ] `FRONTEND_URL=<url> dotnet test tests/E2E/E2E.csproj` — all green
+- [x] `src/Infrastructure/NoteTakerStack.cs` uses `Runtime.DOTNET_10`
+- [x] CDK template assertion updated; `dotnet test tests/InfraAssertions/` green
+- [x] `cdk synth` exits 0 with `runtime: dotnet10` in the generated template
+- [x] `cdk deploy` succeeds with the `net10.0` publish output
+- [x] `GET /health` returns 200 on the deployed Lambda
+- [x] `API_BASE_URL=<url> dotnet test tests/Acceptance/Acceptance.csproj` — all green
+- [ ] `FRONTEND_URL=<url> dotnet test tests/E2E/E2E.csproj` — all green (E2E pre-existing failure under investigation)
 
 ---
 
