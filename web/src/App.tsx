@@ -118,8 +118,8 @@ export default function App() {
       setFolders((prev) => [...prev, tempFolder]);
     }
     try {
-      const { folderId: realId } = await apiCreateFolder(name, parentFolderId);
-      setFolders((prev) => mapTree(prev, tempId, () => ({ folderId: realId, name, children: [] })));
+      await apiCreateFolder(name, parentFolderId);
+      getFolders().then(setFolders).catch(() => {});
     } catch {
       setFolders((prev) => removeFromTree(prev, tempId));
     }

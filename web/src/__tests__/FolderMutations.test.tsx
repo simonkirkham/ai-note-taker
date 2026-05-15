@@ -24,9 +24,15 @@ describe('FolderMutations', () => {
     await userEvent.keyboard('{Enter}')
     // Folder should appear in sidebar before API responds
     expect(within(screen.getByTestId('sidebar')).getByText('People')).toBeInTheDocument()
-    // Resolve the API and verify the folder persists (temp ID replaced by real ID)
+    // Override GET /folders to return the real folder so the refetch after POST is correct
+    server.use(
+      http.get('/folders', () =>
+        HttpResponse.json({ folders: [{ folderId: 'f-real', name: 'People', children: [] }] }),
+      ),
+    )
+    // Resolve the POST; the app then refetches folders and folder should persist
     await act(async () => { resolveCreate() })
-    expect(within(screen.getByTestId('sidebar')).getByText('People')).toBeInTheDocument()
+    expect(await within(screen.getByTestId('sidebar')).findByText('People')).toBeInTheDocument()
   })
 
   it('renamed folder shows the new name in the sidebar immediately', async () => {
