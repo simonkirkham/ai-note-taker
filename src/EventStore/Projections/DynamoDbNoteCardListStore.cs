@@ -2,6 +2,7 @@ using System.Text.Json;
 using Amazon.DynamoDBv2;
 using Amazon.DynamoDBv2.Model;
 using Domain.ActionItems;
+using Domain.Folders;
 using Domain.Notes;
 
 namespace EventStore.Projections;
@@ -27,6 +28,8 @@ public sealed class DynamoDbNoteCardListStore(IAmazonDynamoDB dynamo, string tab
             attrs["Date"] = new() { S = card.Date.Value.ToString("O") };
         if (card.Tags is { Count: > 0 })
             attrs["Tags"] = new() { SS = card.Tags.ToList() };
+        if (card.FolderId.HasValue)
+            attrs["FolderId"] = new() { S = card.FolderId.Value.Value.ToString() };
 
         await _dynamo.PutItemAsync(new PutItemRequest
         {
@@ -71,6 +74,9 @@ public sealed class DynamoDbNoteCardListStore(IAmazonDynamoDB dynamo, string tab
         IReadOnlyList<string> tags = row.TryGetValue("Tags", out var tagsAttr) && tagsAttr.SS?.Count > 0
             ? tagsAttr.SS.AsReadOnly()
             : Array.Empty<string>();
+        FolderId? folderId = row.TryGetValue("FolderId", out var folderAttr)
+            ? new FolderId(Guid.Parse(folderAttr.S))
+            : null;
 
         return new NoteCardView(
             NoteId: new NoteId(Guid.Parse(row["PK"].S)),
@@ -81,7 +87,8 @@ public sealed class DynamoDbNoteCardListStore(IAmazonDynamoDB dynamo, string tab
             CreatedAt: DateTimeOffset.Parse(row["CreatedAt"].S),
             LastModifiedAt: DateTimeOffset.Parse(row["LastModifiedAt"].S),
             Deleted: row["Deleted"].BOOL ?? false,
-            Tags: tags);
+            Tags: tags,
+            FolderId: folderId);
     }
 
     private record ActionItemDto(ActionId ActionId, string Description, bool Completed);

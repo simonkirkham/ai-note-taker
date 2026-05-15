@@ -13,6 +13,15 @@ public sealed class FolderTreeProjection
             case FolderCreated e:
                 _folders[e.FolderId] = new FolderTreeView(e.FolderId, e.Name, e.ParentFolderId, envelope.OccurredAt);
                 break;
+            case FolderRenamed e when _folders.TryGetValue(e.FolderId, out var f):
+                _folders[e.FolderId] = f with { Name = e.NewName };
+                break;
+            case FolderDeleted e:
+                _folders.Remove(e.FolderId);
+                break;
+            case FolderMoved e when _folders.TryGetValue(e.FolderId, out var f):
+                _folders[e.FolderId] = f with { ParentFolderId = e.NewParentFolderId };
+                break;
             default:
                 break;
         }

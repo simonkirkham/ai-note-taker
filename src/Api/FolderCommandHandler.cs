@@ -1,12 +1,16 @@
 using System.Text.Json;
 using Domain;
 using Domain.Folders;
+using Domain.Notes;
 using EventStore;
 using EventStore.Projections;
 
 namespace Api;
 
-public sealed class FolderCommandHandler(IEventStore store, IFolderTreeStore folderTreeStore)
+public sealed class FolderCommandHandler(
+    IEventStore store,
+    IFolderTreeStore folderTreeStore,
+    INoteCardListStore noteCardListStore)
 {
     private const int InitialEventVersion = 1;
 
@@ -14,37 +18,159 @@ public sealed class FolderCommandHandler(IEventStore store, IFolderTreeStore fol
     {
         var streamId = cmd.FolderId.ToStreamId();
         var history = await store.ReadAsync(streamId, ct).ConfigureAwait(false);
-        var newEvents = Rebuild(history).Handle(cmd);
-        await PersistAsync(streamId, history, newEvents, ct).ConfigureAwait(false);
+        var newEvents = RebuildFolder(history).Handle(cmd);
+        await PersistFolderAsync(streamId, history, newEvents, ct).ConfigureAwait(false);
         return cmd.FolderId;
     }
 
-    private async Task PersistAsync(string streamId, IReadOnlyList<EventEnvelope> history, IReadOnlyList<IDomainEvent> newEvents, CancellationToken ct)
+    public async Task HandleAsync(RenameFolder cmd, CancellationToken ct = default)
+    {
+        var streamId = cmd.FolderId.ToStreamId();
+        var history = await store.ReadAsync(streamId, ct).ConfigureAwait(false);
+        if (history.Count == 0) throw new InvalidOperationException("Folder does not exist.");
+        var newEvents = RebuildFolder(history).Handle(cmd);
+        if (newEvents.Count == 0) return;
+        await PersistFolderAsync(streamId, history, newEvents, ct).ConfigureAwait(false);
+    }
+
+    public async Task HandleAsync(DeleteFolder cmd, CancellationToken ct = default)
+    {
+        var streamId = cmd.FolderId.ToStreamId();
+        var history = await store.ReadAsync(streamId, ct).ConfigureAwait(false);
+        if (history.Count == 0) throw new InvalidOperationException("Folder does not exist.");
+
+        var allFolders = await folderTreeStore.GetAllAsync(ct).ConfigureAwait(false);
+        var subtreeIds = GetSubtreeIds(cmd.FolderId, allFolders);
+
+        // Unfile notes in descendants + root folder (order doesn't matter for unfiling)
+        foreach (var folderId in subtreeIds.Concat([cmd.FolderId]))
+            await UnfileNotesInFolderAsync(folderId, ct).ConfigureAwait(false);
+
+        // Delete descendant folders bottom-up (subtreeIds already in bottom-up order)
+        foreach (var folderId in subtreeIds)
+            await DeleteOneFolderAsync(folderId, ct).ConfigureAwait(false);
+
+        // Delete the target folder
+        var newEvents = RebuildFolder(history).Handle(cmd);
+        var envelopes = ToEnvelopes(streamId, newEvents);
+        await store.AppendAsync(streamId, history.Count, envelopes, ct).ConfigureAwait(false);
+        await folderTreeStore.DeleteAsync(cmd.FolderId, ct).ConfigureAwait(false);
+    }
+
+    public async Task HandleAsync(MoveFolder cmd, CancellationToken ct = default)
+    {
+        var streamId = cmd.FolderId.ToStreamId();
+        var history = await store.ReadAsync(streamId, ct).ConfigureAwait(false);
+        if (history.Count == 0) throw new InvalidOperationException("Folder does not exist.");
+
+        if (cmd.NewParentFolderId.HasValue)
+        {
+            var allFolders = await folderTreeStore.GetAllAsync(ct).ConfigureAwait(false);
+            var subtreeIds = GetSubtreeIds(cmd.FolderId, allFolders);
+            subtreeIds.Add(cmd.FolderId);
+            if (subtreeIds.Contains(cmd.NewParentFolderId.Value))
+                throw new CycleDetectedException("Cannot move a folder into itself or one of its descendants.");
+        }
+
+        var newEvents = RebuildFolder(history).Handle(cmd);
+        await PersistFolderAsync(streamId, history, newEvents, ct).ConfigureAwait(false);
+    }
+
+    private async Task UnfileNotesInFolderAsync(FolderId folderId, CancellationToken ct)
+    {
+        var allCards = await noteCardListStore.QueryAllAsync(ct).ConfigureAwait(false);
+        var notesInFolder = allCards.Where(c => c.FolderId == folderId && !c.Deleted).ToList();
+        foreach (var card in notesInFolder)
+        {
+            var noteStreamId = card.NoteId.ToStreamId();
+            var noteHistory = await store.ReadAsync(noteStreamId, ct).ConfigureAwait(false);
+            if (noteHistory.Count == 0) continue;
+            var note = RebuildNote(noteHistory);
+            var noteEvents = note.Handle(new UnfileNote(card.NoteId));
+            if (noteEvents.Count == 0) continue;
+            var noteEnvelopes = ToEnvelopes(noteStreamId, noteEvents);
+            await store.AppendAsync(noteStreamId, noteHistory.Count, noteEnvelopes, ct).ConfigureAwait(false);
+            await noteCardListStore.UpsertAsync(card with { FolderId = null }, ct).ConfigureAwait(false);
+        }
+    }
+
+    private async Task DeleteOneFolderAsync(FolderId folderId, CancellationToken ct)
+    {
+        var streamId = folderId.ToStreamId();
+        var history = await store.ReadAsync(streamId, ct).ConfigureAwait(false);
+        if (history.Count == 0) return;
+        var newEvents = RebuildFolder(history).Handle(new DeleteFolder(folderId));
+        var envelopes = ToEnvelopes(streamId, newEvents);
+        await store.AppendAsync(streamId, history.Count, envelopes, ct).ConfigureAwait(false);
+        await folderTreeStore.DeleteAsync(folderId, ct).ConfigureAwait(false);
+    }
+
+    private async Task PersistFolderAsync(string streamId, IReadOnlyList<EventEnvelope> history, IReadOnlyList<IDomainEvent> newEvents, CancellationToken ct)
     {
         var envelopes = ToEnvelopes(streamId, newEvents);
         await store.AppendAsync(streamId, history.Count, envelopes, ct).ConfigureAwait(false);
-        await UpdateProjectionAsync(envelopes, ct).ConfigureAwait(false);
+        await UpdateFolderProjectionAsync(envelopes, ct).ConfigureAwait(false);
     }
 
-    private async Task UpdateProjectionAsync(List<EventEnvelope> envelopes, CancellationToken ct)
+    private async Task UpdateFolderProjectionAsync(List<EventEnvelope> envelopes, CancellationToken ct)
     {
         foreach (var envelope in envelopes)
         {
-            if (EventDeserializer.Deserialize(envelope) is FolderCreated e)
+            switch (EventDeserializer.Deserialize(envelope))
             {
-                await folderTreeStore.UpsertAsync(
-                    new FolderTreeView(e.FolderId, e.Name, e.ParentFolderId, envelope.OccurredAt), ct)
-                    .ConfigureAwait(false);
+                case FolderCreated e:
+                    await folderTreeStore.UpsertAsync(
+                        new FolderTreeView(e.FolderId, e.Name, e.ParentFolderId, envelope.OccurredAt), ct)
+                        .ConfigureAwait(false);
+                    break;
+                case FolderRenamed e:
+                    var allFolders = await folderTreeStore.GetAllAsync(ct).ConfigureAwait(false);
+                    var existing = allFolders.FirstOrDefault(f => f.FolderId == e.FolderId);
+                    if (existing is not null)
+                        await folderTreeStore.UpsertAsync(existing with { Name = e.NewName }, ct).ConfigureAwait(false);
+                    break;
+                case FolderMoved e:
+                    var allFolders2 = await folderTreeStore.GetAllAsync(ct).ConfigureAwait(false);
+                    var existingMoved = allFolders2.FirstOrDefault(f => f.FolderId == e.FolderId);
+                    if (existingMoved is not null)
+                        await folderTreeStore.UpsertAsync(existingMoved with { ParentFolderId = e.NewParentFolderId }, ct).ConfigureAwait(false);
+                    break;
             }
         }
     }
 
-    private static Folder Rebuild(IReadOnlyList<EventEnvelope> history)
+    private static HashSet<FolderId> GetSubtreeIds(FolderId rootId, IReadOnlyList<FolderTreeView> allFolders)
+    {
+        var result = new List<FolderId>();
+        var queue = new Queue<FolderId>();
+        queue.Enqueue(rootId);
+        while (queue.Count > 0)
+        {
+            var current = queue.Dequeue();
+            foreach (var child in allFolders.Where(f => f.ParentFolderId == current))
+            {
+                result.Add(child.FolderId);
+                queue.Enqueue(child.FolderId);
+            }
+        }
+        result.Reverse(); // bottom-up order for deletion
+        return [.. result];
+    }
+
+    private static Folder RebuildFolder(IReadOnlyList<EventEnvelope> history)
     {
         var folder = new Folder();
         foreach (var e in history)
             folder.Apply(EventDeserializer.Deserialize(e));
         return folder;
+    }
+
+    private static Note RebuildNote(IReadOnlyList<EventEnvelope> history)
+    {
+        var note = new Note();
+        foreach (var e in history)
+            note.Apply(EventDeserializer.Deserialize(e));
+        return note;
     }
 
     private static List<EventEnvelope> ToEnvelopes(string streamId, IReadOnlyList<IDomainEvent> events) =>
@@ -53,3 +179,5 @@ public sealed class FolderCommandHandler(IEventStore store, IFolderTreeStore fol
             OccurredAt: DateTimeOffset.UtcNow, Payload: JsonSerializer.Serialize(e, e.GetType()),
             Metadata: new EventMetadata(Guid.NewGuid(), null, null, null))).ToList();
 }
+
+public sealed class CycleDetectedException(string message) : InvalidOperationException(message);

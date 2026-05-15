@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Domain;
+using Domain.Folders;
 using Domain.Notes;
 using EventStore;
 using EventStore.Projections;
@@ -78,6 +79,25 @@ public sealed class NoteCommandHandler(
         var history = await store.ReadAsync(streamId, ct).ConfigureAwait(false);
         if (history.Count == 0) throw new NoteNotFoundException(cmd.NoteId);
         var newEvents = Rebuild(history).Handle(cmd);
+        await PersistAsync(streamId, cmd.NoteId, history, newEvents, ct).ConfigureAwait(false);
+    }
+
+    public async Task HandleAsync(MoveNoteToFolder cmd, CancellationToken ct = default)
+    {
+        var streamId = cmd.NoteId.ToStreamId();
+        var history = await store.ReadAsync(streamId, ct).ConfigureAwait(false);
+        if (history.Count == 0) throw new NoteNotFoundException(cmd.NoteId);
+        var newEvents = Rebuild(history).Handle(cmd);
+        await PersistAsync(streamId, cmd.NoteId, history, newEvents, ct).ConfigureAwait(false);
+    }
+
+    public async Task HandleAsync(UnfileNote cmd, CancellationToken ct = default)
+    {
+        var streamId = cmd.NoteId.ToStreamId();
+        var history = await store.ReadAsync(streamId, ct).ConfigureAwait(false);
+        if (history.Count == 0) throw new NoteNotFoundException(cmd.NoteId);
+        var newEvents = Rebuild(history).Handle(cmd);
+        if (newEvents.Count == 0) return;
         await PersistAsync(streamId, cmd.NoteId, history, newEvents, ct).ConfigureAwait(false);
     }
 
@@ -165,6 +185,12 @@ public sealed class NoteCommandHandler(
                     break;
                 case NoteUntagged e when card is not null:
                     card = card with { Tags = (card.Tags ?? []).Where(t => t != e.Tag).ToList().AsReadOnly(), LastModifiedAt = envelope.OccurredAt };
+                    break;
+                case NoteFiledInFolder e when card is not null:
+                    card = card with { FolderId = e.FolderId, LastModifiedAt = envelope.OccurredAt };
+                    break;
+                case NoteUnfiled when card is not null:
+                    card = card with { FolderId = null, LastModifiedAt = envelope.OccurredAt };
                     break;
                 default:
                     break;

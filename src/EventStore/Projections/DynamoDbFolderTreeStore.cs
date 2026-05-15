@@ -47,6 +47,15 @@ public sealed class DynamoDbFolderTreeStore(IAmazonDynamoDB dynamo, string table
         return items.OrderBy(f => f.CreatedAt).ToList().AsReadOnly();
     }
 
+    public async Task DeleteAsync(FolderId folderId, CancellationToken ct = default)
+    {
+        await _dynamo.DeleteItemAsync(new DeleteItemRequest
+        {
+            TableName = _tableName,
+            Key = new Dictionary<string, AttributeValue> { ["PK"] = new() { S = folderId.Value.ToString() } }
+        }, ct).ConfigureAwait(false);
+    }
+
     public async Task DeleteAllAsync(CancellationToken ct = default)
     {
         Dictionary<string, AttributeValue>? lastKey = null;

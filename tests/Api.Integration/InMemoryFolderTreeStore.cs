@@ -17,6 +17,12 @@ internal sealed class InMemoryFolderTreeStore : IFolderTreeStore
         Task.FromResult<IReadOnlyList<FolderTreeView>>(
             _folders.Values.OrderBy(f => f.CreatedAt).ToList().AsReadOnly());
 
+    public Task DeleteAsync(FolderId folderId, CancellationToken ct = default)
+    {
+        _folders.Remove(folderId);
+        return Task.CompletedTask;
+    }
+
     public Task DeleteAllAsync(CancellationToken ct = default)
     {
         _folders.Clear();
