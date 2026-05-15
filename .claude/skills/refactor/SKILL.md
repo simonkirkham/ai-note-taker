@@ -74,6 +74,14 @@ Run this skill after all BDD specs pass and before opening a PR. Behaviour must 
 | Missing `data-testid` attributes | Interactive elements or key display nodes have no testid — impossible to target from E2E tests | Add `data-testid` to every element the E2E page object needs to interact with or assert on; treat testids as part of the component's public API. Pattern: `{noun}-{qualifier}` (e.g. `tag-pill-{tag}`, `folder-item-{id}`, `home-button`) |
 | Testid removed without E2E update | A UI element with a testid is deleted or replaced but the E2E page object still references the old testid | `grep -r 'data-testid="{id}"' tests/E2E/` before removing any element; update page object helpers and journey assertions in the same commit |
 
+### Component test specific (Vitest + RTL + MSW)
+
+| Smell | Signal | Fix |
+|---|---|---|
+| Test asserts DOM outcome but not the API call | A test checks that an item disappears/appears after a user action, but doesn't verify the network call fired — the same DOM outcome is achievable without the call if the component has optimistic update logic | Add a `let callMade = false` closure in the test, set it inside the MSW handler, and `await waitFor(() => expect(callMade).toBe(true))` before the DOM assertion |
+| No negative test for conditional render | A `{condition && <element>}` pattern has a positive test ("element visible when condition true") but no negative test — a regression that always renders would still pass | Add `expect(container.querySelector('.element-class')).toBeNull()` when the condition is false |
+| Presentational component tested only in isolation | A component has non-trivial parent-interaction behaviour (e.g. filter changes which sibling cards render) that is invisible in isolation — isolation tests alone can't catch it | Keep isolated tests for all single-component behaviour; add one integration test through the real parent component for each non-trivial cross-component interaction |
+
 ## What NOT to do
 
 - Don't rename things "just because" — a rename is only worth it if the current name is actively confusing.
