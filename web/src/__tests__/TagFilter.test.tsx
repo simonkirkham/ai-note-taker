@@ -4,6 +4,7 @@ import { http, HttpResponse } from 'msw'
 import { server } from '../test/setup'
 import ListView from '../components/ListView'
 import TagFilter from '../components/TagFilter'
+import type { NoteCard } from '../api'
 
 describe('TagFilter — isolated', () => {
   it('renders a pill for each tag', () => {
@@ -87,28 +88,17 @@ describe('TagFilter — isolated', () => {
 })
 
 describe('TagFilter — filtering cards via ListView', () => {
-  const alphaCard = {
-    noteId: 'n-1',
-    title: 'Alpha',
-    contentPreview: '',
-    date: null,
-    openActions: [],
-    createdAt: '2026-01-01T00:00:00Z',
-    tags: ['meeting'],
+  const alphaCard: NoteCard = {
+    noteId: 'n-1', title: 'Alpha', contentPreview: '', date: null,
+    openActions: [], createdAt: '2026-01-01T00:00:00Z', tags: ['meeting'], folderId: null,
   }
-  const betaCard = {
-    noteId: 'n-2',
-    title: 'Beta',
-    contentPreview: '',
-    date: null,
-    openActions: [],
-    createdAt: '2026-01-01T00:00:00Z',
-    tags: [],
+  const betaCard: NoteCard = {
+    noteId: 'n-2', title: 'Beta', contentPreview: '', date: null,
+    openActions: [], createdAt: '2026-01-01T00:00:00Z', tags: [], folderId: null,
   }
 
   beforeEach(() => {
     server.use(
-      http.get('/notes/cards', () => HttpResponse.json({ cards: [alphaCard, betaCard] })),
       http.get('/tags', () =>
         HttpResponse.json({ tags: [{ tag: 'meeting', noteCount: 1, noteIds: ['n-1'] }] }),
       ),
@@ -118,6 +108,7 @@ describe('TagFilter — filtering cards via ListView', () => {
   it('clicking a tag pill hides cards that do not match', async () => {
     render(
       <ListView
+        cards={[alphaCard, betaCard]}
         loading={false}
         creating={false}
         createError={null}
@@ -134,6 +125,7 @@ describe('TagFilter — filtering cards via ListView', () => {
   it('clear button restores all cards after filtering', async () => {
     render(
       <ListView
+        cards={[alphaCard, betaCard]}
         loading={false}
         creating={false}
         createError={null}

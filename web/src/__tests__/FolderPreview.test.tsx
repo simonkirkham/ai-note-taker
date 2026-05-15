@@ -1,6 +1,4 @@
 import { render, screen } from '@testing-library/react'
-import { http, HttpResponse } from 'msw'
-import { server } from '../test/setup'
 import FolderPreviewPanel from '../components/FolderPreviewPanel'
 import type { NoteCard } from '../api'
 
@@ -20,54 +18,44 @@ const cardUnfiled: NoteCard = {
 }
 
 describe('FolderPreviewPanel', () => {
-  it('shows notes that belong to the opened folder', async () => {
-    server.use(
-      http.get('/notes/cards', () =>
-        HttpResponse.json({ cards: [cardInFolder, cardOtherFolder] }),
-      ),
-    )
+  it('shows notes that belong to the opened folder', () => {
     render(
       <FolderPreviewPanel
         folderId="f-1"
         folderName="People"
+        cards={[cardInFolder, cardOtherFolder]}
         onClose={noop}
         onEditNote={noop}
       />,
     )
-    expect(await screen.findByText('1:1 with Bill')).toBeInTheDocument()
+    expect(screen.getByText('1:1 with Bill')).toBeInTheDocument()
     expect(screen.queryByText('Team standup')).not.toBeInTheDocument()
   })
 
-  it('shows empty state when no notes match the folder', async () => {
-    server.use(
-      http.get('/notes/cards', () => HttpResponse.json({ cards: [cardOtherFolder] })),
-    )
+  it('shows empty state when no notes match the folder', () => {
     render(
       <FolderPreviewPanel
         folderId="f-1"
         folderName="People"
+        cards={[cardOtherFolder]}
         onClose={noop}
         onEditNote={noop}
       />,
     )
-    expect(await screen.findByText('No notes in this folder')).toBeInTheDocument()
+    expect(screen.getByText('No notes in this folder')).toBeInTheDocument()
   })
 
-  it('shows only unfiled notes when opened with UNFILED_ID', async () => {
-    server.use(
-      http.get('/notes/cards', () =>
-        HttpResponse.json({ cards: [cardInFolder, cardUnfiled] }),
-      ),
-    )
+  it('shows only unfiled notes when opened with UNFILED_ID', () => {
     render(
       <FolderPreviewPanel
         folderId="__unfiled__"
         folderName="Unfiled Notes"
+        cards={[cardInFolder, cardUnfiled]}
         onClose={noop}
         onEditNote={noop}
       />,
     )
-    expect(await screen.findByText('Random note')).toBeInTheDocument()
+    expect(screen.getByText('Random note')).toBeInTheDocument()
     expect(screen.queryByText('1:1 with Bill')).not.toBeInTheDocument()
   })
 
@@ -76,6 +64,7 @@ describe('FolderPreviewPanel', () => {
       <FolderPreviewPanel
         folderId={null}
         folderName=""
+        cards={[]}
         onClose={noop}
         onEditNote={noop}
       />,

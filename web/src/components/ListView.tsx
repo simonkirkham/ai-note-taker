@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
-import { NoteCard as NoteCardData, TagIndexEntry, getNoteCards, getTags } from "../api";
+import { NoteCard as NoteCardData, TagIndexEntry, getTags } from "../api";
 import NoteCard from "./NoteCard";
 import TodoSection from "./TodoSection";
 import TagFilter from "./TagFilter";
 
 export default function ListView({
+  cards,
   loading,
   creating,
   createError,
@@ -14,6 +15,7 @@ export default function ListView({
   currentFolderId,
   onHome,
 }: {
+  cards: NoteCardData[];
   loading: boolean;
   creating: boolean;
   createError: string | null;
@@ -23,13 +25,11 @@ export default function ListView({
   currentFolderId?: string;
   onHome?: () => void;
 }) {
-  const [cards, setCards] = useState<NoteCardData[]>([]);
   const [tagEntries, setTagEntries] = useState<TagIndexEntry[]>([]);
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [filterMode, setFilterMode] = useState<"AND" | "OR">("AND");
 
   useEffect(() => {
-    getNoteCards().then(setCards).catch(() => {});
     getTags().then(setTagEntries).catch(() => {});
   }, []);
 
