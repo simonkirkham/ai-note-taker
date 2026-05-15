@@ -2,6 +2,8 @@ import { useState } from "react";
 import { FolderNode } from "../api";
 import FolderTree from "./FolderTree";
 
+const UNFILED_ID = "__unfiled__";
+
 export default function Sidebar({
   open,
   onCreate,
@@ -83,23 +85,34 @@ export default function Sidebar({
             +
           </button>
         </div>
-        <button
-          className={`sidebar-unfiled${isUnfiledActive ? " sidebar-unfiled--active" : ""}${isUnfiledDragOver ? " sidebar-unfiled--drag-over" : ""}`}
-          data-testid="unfiled-notes-button"
-          onClick={onUnfiledSelect}
-          onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = "move"; }}
-          onDragEnter={() => setIsUnfiledDragOver(true)}
-          onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget as Node)) setIsUnfiledDragOver(false); }}
-          onDrop={(e) => {
-            e.preventDefault();
-            setIsUnfiledDragOver(false);
-            const noteId = e.dataTransfer.getData("text/plain");
-            if (noteId) onDropToUnfiled(noteId);
-          }}
-          aria-label="Unfiled Notes"
-        >
-          Unfiled Notes
-        </button>
+        <div className="sidebar-unfiled-row">
+          <button
+            className={`sidebar-unfiled${isUnfiledActive ? " sidebar-unfiled--active" : ""}${isUnfiledDragOver ? " sidebar-unfiled--drag-over" : ""}`}
+            data-testid="unfiled-notes-button"
+            onClick={onUnfiledSelect}
+            onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = "move"; }}
+            onDragEnter={() => setIsUnfiledDragOver(true)}
+            onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget as Node)) setIsUnfiledDragOver(false); }}
+            onDrop={(e) => {
+              e.preventDefault();
+              setIsUnfiledDragOver(false);
+              const noteId = e.dataTransfer.getData("text/plain");
+              if (noteId) onDropToUnfiled(noteId);
+            }}
+            aria-label="Unfiled Notes"
+          >
+            Unfiled Notes
+          </button>
+          <button
+            className="folder-tree-action-btn"
+            data-testid="unfiled-preview-button"
+            onClick={(e) => { e.stopPropagation(); onPreview(UNFILED_ID, "Unfiled Notes"); }}
+            title="Preview unfiled notes"
+            aria-label="Preview unfiled notes"
+          >
+            »
+          </button>
+        </div>
         <FolderTree
           nodes={folders}
           activeFolderId={activeFolderId}

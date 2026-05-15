@@ -66,4 +66,29 @@ describe('Sidebar', () => {
     await userEvent.click(screen.getByText('People'))
     expect(onFolderSelect).toHaveBeenCalledWith('f-1', expect.any(Array))
   })
+
+  it('calls onPreview with unfiled sentinel when » is clicked', async () => {
+    const onPreview = vi.fn()
+    render(
+      <Sidebar
+        open={true}
+        onCreate={noop}
+        folders={[]}
+        activeFolderId={undefined}
+        onFolderSelect={noop}
+        onCreateFolder={noop}
+        onRenameFolder={noop}
+        onDeleteFolder={noop}
+        onCreateChildFolder={noop}
+        onDropNote={noop}
+        onHome={noop}
+        onUnfiledSelect={noop}
+        isUnfiledActive={false}
+        onDropToUnfiled={noop}
+        onPreview={onPreview}
+      />,
+    )
+    await userEvent.click(screen.getByTestId('unfiled-preview-button'))
+    expect(onPreview).toHaveBeenCalledWith('__unfiled__', 'Unfiled Notes')
+  })
 })
