@@ -24,12 +24,21 @@ export default function NoteView({
   const [content, setContent] = useState("");
   const [date, setDate] = useState("");
   const [tags, setTags] = useState<string[]>([]);
+  const [actionCount, setActionCount] = useState(0);
   const [loadingDetail, setLoadingDetail] = useState(true);
   const [notFound, setNotFound] = useState(false);
+  const [showCancelDialog, setShowCancelDialog] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
+  const confirmButtonRef = useRef<HTMLButtonElement>(null);
   const tagsModifiedRef = useRef(false);
   const contentModifiedRef = useRef(false);
   const contentRef = useRef("");
+
+  const isSaveEnabled =
+    title.trim().length > 0 ||
+    content.trim().length > 0 ||
+    tags.length > 0 ||
+    actionCount > 0;
 
   useEffect(() => {
     tagsModifiedRef.current = false;
@@ -61,6 +70,10 @@ export default function NoteView({
     if (!loadingDetail && !notFound) inputRef.current?.focus();
   }, [loadingDetail, notFound]);
 
+  useEffect(() => {
+    if (showCancelDialog) confirmButtonRef.current?.focus();
+  }, [showCancelDialog]);
+
   async function handleAddTags(raw: string) {
     const tokens = raw.trim().split(/\s+/).filter(Boolean);
     const newTokens = tokens.filter((t) => !tags.includes(t));
@@ -78,11 +91,19 @@ export default function NoteView({
     untagNote(noteId, tag).catch(() => {});
   }
 
+  function handleCancel() {
+    if (!isSaveEnabled) {
+      onBack();
+    } else {
+      setShowCancelDialog(true);
+    }
+  }
+
   if (notFound) {
     return (
       <main className="container">
         <button data-testid="back-button" onClick={onBack} className="back-button">
-          ← Save
+          ← Back
         </button>
         <p data-testid="note-not-found" className="empty">Note not found.</p>
       </main>
@@ -91,10 +112,48 @@ export default function NoteView({
 
   return (
     <main className="container">
+      {showCancelDialog && (
+        <div className="cancel-dialog-overlay" data-testid="cancel-dialog">
+          <div className="cancel-dialog" role="dialog" aria-modal="true" aria-labelledby="cancel-dialog-title">
+            <p id="cancel-dialog-title" className="cancel-dialog-message">Discard this note?</p>
+            <div className="cancel-dialog-buttons">
+              <button
+                ref={confirmButtonRef}
+                data-testid="cancel-confirm-button"
+                className="cancel-confirm-button"
+                onClick={onBack}
+              >
+                Confirm
+              </button>
+              <button
+                data-testid="cancel-keep-button"
+                className="cancel-keep-button"
+                onClick={() => setShowCancelDialog(false)}
+              >
+                Keep Editing
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       <div className="note-header">
-        <button data-testid="back-button" onClick={onBack} className="back-button">
-          ← Save
-        </button>
+        <div className="note-header-actions">
+          <button
+            data-testid="cancel-button"
+            onClick={handleCancel}
+            className="back-button"
+          >
+            Cancel
+          </button>
+          <button
+            data-testid="save-button"
+            onClick={onBack}
+            disabled={!isSaveEnabled || loadingDetail}
+            className="save-button"
+          >
+            Save
+          </button>
+        </div>
         <div className="note-header-right">
           <div className="note-date-wrapper">
             <input
@@ -149,7 +208,7 @@ export default function NoteView({
         </div>
         <div className="note-right-panel">
           <TagsSection tags={tags} onAdd={handleAddTags} onRemove={handleRemoveTag} />
-          <ActionsSection noteId={noteId} />
+          <ActionsSection noteId={noteId} onCountChange={setActionCount} />
         </div>
       </div>
     </main>
