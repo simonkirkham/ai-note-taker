@@ -126,6 +126,17 @@ Slices and acceptance criteria: [docs/phases/phase-7.md](phases/phase-7.md)
 
 Slices and acceptance criteria: [docs/phases/phase-7.5.md](phases/phase-7.5.md)
 
+## Phase 7.8 — Production Pipeline and Note Screen UX
+
+- Production deployment pipeline: `deploy-production` job promotes automatically after Test; smoke tests only against production; no E2E data mutation
+- Note screen keyboard focus: cursor lands in title on open; single Tab moves to content
+- Note screen save/cancel: Save disabled on empty note; Cancel prompts confirmation once any field is populated
+- Drag-and-drop notes into folder slide-out panel; optimistic move with revert on failure
+
+**Goal:** Ship a production deployment target and harden the note-screen interaction model with explicit lifecycle controls, keyboard-first focus, and drag-and-drop note filing.
+
+Slices and acceptance criteria: [docs/phases/phase-7.8.md](phases/phase-7.8.md)
+
 ## Phase 8 — Google Calendar integration + meeting notes
 
 - Today's meetings surfaced on the home screen (Google Calendar pass-through, single-user refresh token)

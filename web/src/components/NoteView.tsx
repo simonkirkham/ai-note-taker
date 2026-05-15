@@ -126,6 +126,7 @@ export default function NoteView({
         onBlur={(e) => onRename(noteId, e.currentTarget.value)}
         placeholder="Note title…"
         className="title-input"
+        aria-label="Note title"
       />
       <div className="note-layout">
         <div className="note-content-panel">
