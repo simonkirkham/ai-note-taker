@@ -4,6 +4,18 @@ import { http, HttpResponse } from 'msw'
 import { server } from '../test/setup'
 import NoteView from '../components/NoteView'
 
+vi.mock('../components/NoteEditor', () => ({
+  default: ({ value, onChange, onBlur }: { value: string; onChange: (md: string) => void; onBlur: () => void }) => (
+    <textarea
+      aria-label="Note content"
+      data-testid="note-content"
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      onBlur={onBlur}
+    />
+  ),
+}))
+
 const noop = () => {}
 const asyncNoop = async () => {}
 

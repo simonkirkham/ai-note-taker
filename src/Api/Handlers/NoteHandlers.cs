@@ -1,5 +1,6 @@
 using System;
 using System.Linq;
+using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Http;
 using EventStore;
@@ -126,6 +127,18 @@ public static class NoteHandlers
         return Results.NoContent();
     }
 
+    private static string StripMarkdown(string content)
+    {
+        var s = content;
+        s = Regex.Replace(s, @"^#{1,6}\s*", "", RegexOptions.Multiline);
+        s = Regex.Replace(s, @"~~(.+?)~~", "$1");
+        s = Regex.Replace(s, @"\*\*(.+?)\*\*", "$1");
+        s = Regex.Replace(s, @"\*(.+?)\*", "$1");
+        s = Regex.Replace(s, @"^\s*-\s+\[[ x]\]\s*", "", RegexOptions.Multiline);
+        s = Regex.Replace(s, @"^\s*[-*]\s+", "", RegexOptions.Multiline);
+        return s.Trim();
+    }
+
     public static async Task<IResult> GetNoteCards(INoteCardListStore store, CancellationToken ct)
     {
         var all = await store.QueryAllAsync(ct).ConfigureAwait(false);
@@ -133,9 +146,10 @@ public static class NoteHandlers
             .Where(c => !c.Deleted)
             .Select(c =>
             {
-                var preview = c.Content.Length > MaxPreviewLength
-                    ? c.Content[..(MaxPreviewLength - 1)] + "…"
-                    : c.Content;
+                var stripped = StripMarkdown(c.Content);
+                var preview = stripped.Length > MaxPreviewLength
+                    ? stripped[..(MaxPreviewLength - 1)] + "…"
+                    : stripped;
                 var openActions = c.ActionItems
                     .Where(a => !a.Completed)
                     .Select(a => new { actionId = a.ActionId.Value, description = a.Description });
