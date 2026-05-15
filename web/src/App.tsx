@@ -99,7 +99,6 @@ export default function App() {
     setCards((prev) => prev.map((c) => c.noteId === noteId ? { ...c, title } : c));
     rename(noteId, title).catch(() => {
       setCards((prev) => prev.map((c) => c.noteId === noteId ? { ...c, title: prevTitle } : c));
-      throw new Error("rename failed");
     });
   }
 
