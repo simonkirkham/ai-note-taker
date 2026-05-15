@@ -493,3 +493,22 @@ If no agent ran unexpectedly high: write `None — slice ran within expected ran
 
 **Optimisation suggestions:**
 - **Hawk 7.5-F round 2 (–25 000):** The deferred-Promise pattern for optimistic tests was established in 7.5-D but not applied to the subfolder success test in 7.5-F. Applying it upfront would have collapsed two Hawk rounds into one. Add to Breaker checklist.
+
+---
+
+## Phase 7.8 — Production Pipeline and Note Screen UX (5 active slices: B–F)
+
+> **Note:** Phase 7.8 ran across two sessions with context compaction. Per-agent counts are estimates from session summaries. 7.8-A (production pipeline) deferred — manual AWS/GitHub setup, no code slice.
+
+| Agent     | ~Tokens      |
+|-----------|--------------|
+| Pip       | 215 000      |
+| Hawk      | 95 000       |
+| Scribe    | 10 000       |
+| **Total** | **~320 000** |
+
+**Why:** Five independent slices in one session drove Pip high (7.8-F alone refactored three files plus tests; 7.8-C added a hotfix PR after E2E failures post-deploy). Hawk ran high due to multiple two-round reviews: 7.8-C (save-button loading guard + dialog accessibility + two missing tests), 7.8-D (dragLeave flicker + alreadyHere guard + optimistic/revert tests), and 7.8-E (4 flex chain issues). The 7.8-C E2E hotfix (PR #56) added an extra deploy cycle — AppPage.GoBackAsync was not updated in the same PR as the navigation model change.
+
+**Optimisation suggestions:**
+- **7.8-C hotfix deploy cycle (–20 000):** The E2E page object method `GoBackAsync` referenced the old `back-button` testid. Updating AppPage.cs in the same PR as the navigation model change would have prevented the separate hotfix PR and extra deploy round.
+- **Hawk multi-round (–30 000):** Most findings across 7.8-C, 7.8-D, and 7.8-E are pre-emptable in Refactor: dialog ARIA attributes, dragLeave child guard, `flex:` on grid vs flex children, `min-height: 0` pairing. Adding these to the Refactor CSS/DnD checklist collapses two-round reviews into one.

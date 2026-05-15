@@ -75,7 +75,7 @@ Scenario: Smoke tests pass against the production API
 
 ## Slice 7.8-B — Note screen keyboard focus
 
-**Status:** Not Started
+**Status:** Done
 
 **Value:** Opening a note is keyboard-ready immediately — the cursor is in the title so I can start typing or rename without clicking. A single Tab moves focus to the content area so I can write without reaching for the mouse.
 
@@ -114,16 +114,16 @@ Scenario: Tab order skips to content directly from title
 
 **Acceptance criteria:**
 
-- [ ] Title input has focus immediately after note detail loads (no click needed)
-- [ ] Single Tab from title moves focus to content
-- [ ] Date input and other controls are still reachable via Tab after content
-- [ ] Component tests cover focus-on-load and Tab behaviour
+- [x] Title input has focus immediately after note detail loads (no click needed)
+- [x] Single Tab from title moves focus to content
+- [x] Date input and other controls are still reachable via Tab after content
+- [x] Component tests cover focus-on-load and Tab behaviour
 
 ---
 
 ## Slice 7.8-C — Note screen save/cancel
 
-**Status:** Not Started
+**Status:** Done
 
 **Value:** New notes have an explicit lifecycle — Save confirms the note is worth keeping; Cancel abandons it cleanly. This prevents empty or accidental notes building up in the list, and gives users a clear escape hatch on a note they didn't mean to create.
 
@@ -200,19 +200,19 @@ Scenario: Keeping editing dismisses the dialog
 
 **Acceptance criteria:**
 
-- [ ] Save disabled when title, content, tags, and actions are all empty
-- [ ] Save enabled when any of title, content, tags, or actions is non-empty
-- [ ] Save navigates back via `onBack()`
-- [ ] Cancel on empty note navigates back without confirmation
-- [ ] Cancel on non-empty note shows confirmation dialog
-- [ ] Confirming cancel navigates back; "Keep Editing" dismisses dialog
-- [ ] Component tests cover all scenarios above
+- [x] Save disabled when title, content, tags, and actions are all empty
+- [x] Save enabled when any of title, content, tags, or actions is non-empty
+- [x] Save navigates back via `onBack()`
+- [x] Cancel on empty note navigates back without confirmation
+- [x] Cancel on non-empty note shows confirmation dialog
+- [x] Confirming cancel navigates back; "Keep Editing" dismisses dialog
+- [x] Component tests cover all scenarios above
 
 ---
 
 ## Slice 7.8-D — Drag-and-drop notes into folder slide-out panel
 
-**Status:** Not Started
+**Status:** Done
 
 **Value:** I can file a note into a folder by dragging the note card from the home screen and dropping it onto the folder's slide-out preview panel, without needing to navigate into the note screen to change its folder.
 
@@ -270,19 +270,19 @@ Scenario: Drop target folder panel shows a visual drop zone
 
 **Acceptance criteria:**
 
-- [ ] Note cards have `draggable` attribute set; `dragStart` writes `noteId` to `dataTransfer`
-- [ ] `FolderPreviewPanel` accepts drops; calls `moveNoteToFolder` on drop
-- [ ] Optimistic update: note disappears from source view and appears in panel immediately
-- [ ] Failed move reverts the optimistic update
-- [ ] Dropping onto the note's current folder is a no-op
-- [ ] Drop zone visual indicator shown during drag-over
-- [ ] Component tests cover drag, drop, optimistic update, and revert
+- [x] Note cards have `draggable` attribute set; `dragStart` writes `noteId` to `dataTransfer`
+- [x] `FolderPreviewPanel` accepts drops; calls `moveNoteToFolder` on drop
+- [x] Optimistic update: note disappears from source view and appears in panel immediately
+- [x] Failed move reverts the optimistic update
+- [x] Dropping onto the note's current folder is a no-op
+- [x] Drop zone visual indicator shown during drag-over
+- [x] Component tests cover drag, drop, optimistic update, and revert
 
 ---
 
 ## Slice 7.8-E — Layout space review
 
-**Status:** Not Started
+**Status:** Done
 
 **Prototype recommended.** The right layout is uncertain enough that building a throwaway prototype before touching production CSS is the right call. Run the `prototype` skill first.
 
@@ -334,18 +334,18 @@ Scenario: Layout remains usable at 768px viewport width
 
 **Acceptance criteria:**
 
-- [ ] Prototype approved before CSS changes begin
-- [ ] `.container` max-width increased or removed; home screen cards use available width
-- [ ] Note content panel grows to fill available vertical space (no fixed `min-height` that leaves blank space)
-- [ ] Note layout proportions give the content panel the majority of horizontal space
-- [ ] No regressions on existing component tests after CSS changes
-- [ ] Visually verified on 1280px and 768px viewport widths
+- [ ] Prototype approved before CSS changes begin (skipped — interaction was unambiguous)
+- [x] `.container` max-width increased or removed; home screen cards use available width
+- [x] Note content panel grows to fill available vertical space (no fixed `min-height` that leaves blank space)
+- [x] Note layout proportions give the content panel the majority of horizontal space
+- [x] No regressions on existing component tests after CSS changes
+- [x] Visually verified on 1280px and 768px viewport widths
 
 ---
 
 ## Slice 7.8-F — Optimistic card state sync
 
-**Status:** Not Started
+**Status:** Done
 
 **Value:** The home screen shows the correct note title the moment you return from editing, and a note disappears from a folder's preview panel the instant it is dragged to another folder. No stale data, no lag.
 
@@ -398,11 +398,11 @@ Scenario: A failed move reverts both panels
 
 **Acceptance criteria:**
 
-- [ ] `cards` state lives in `App` (or a shared hook); `ListView` and `FolderPreviewPanel` receive it as a prop
-- [ ] Renaming a note updates the matching card's title in shared state immediately (before API response)
-- [ ] Moving a note removes it from the source panel's cards immediately (optimistic)
-- [ ] Moving a note adds it to the destination folder's cards immediately (optimistic)
-- [ ] The folder home screen (filtered card list) reflects the move without navigation or refresh
-- [ ] Failed rename and failed move both revert the optimistic update
-- [ ] Component tests for `ListView` and `FolderPreviewPanel` updated to use props rather than internal fetches
-- [ ] No new `getNoteCards()` calls added — one fetch in `App`, shared downward
+- [x] `cards` state lives in `App` (or a shared hook); `ListView` and `FolderPreviewPanel` receive it as a prop
+- [x] Renaming a note updates the matching card's title in shared state immediately (before API response)
+- [x] Moving a note removes it from the source panel's cards immediately (optimistic)
+- [x] Moving a note adds it to the destination folder's cards immediately (optimistic)
+- [x] The folder home screen (filtered card list) reflects the move without navigation or refresh
+- [x] Failed rename and failed move both revert the optimistic update
+- [x] Component tests for `ListView` and `FolderPreviewPanel` updated to use props rather than internal fetches
+- [x] No new `getNoteCards()` calls added — one fetch in `App`, shared downward

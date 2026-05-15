@@ -126,7 +126,7 @@ Slices and acceptance criteria: [docs/phases/phase-7.md](phases/phase-7.md)
 
 Slices and acceptance criteria: [docs/phases/phase-7.5.md](phases/phase-7.5.md)
 
-## Phase 7.8 — Production Pipeline and Note Screen UX
+## Phase 7.8 — Production Pipeline and Note Screen UX _(In Progress)_
 
 - Production deployment pipeline: `deploy-production` job promotes automatically after Test; smoke tests only against production; no E2E data mutation
 - Note screen keyboard focus: cursor lands in title on open; single Tab moves to content
