@@ -416,6 +416,24 @@ None — slice ran within expected range.
 
 ---
 
+## Slice 7-A — Base editor, markdown storage, stripped preview
+
+| Agent     | ~Tokens     |
+|-----------|-------------|
+| Breaker   | 15 000      |
+| Pip       | 45 000      |
+| Hawk 1    | 40 000      |
+| Hawk 2    | 37 000      |
+| Scribe    | 10 000      |
+| **Total** | **~147 000** |
+
+**Why:** Two Hawk rounds drove the total above the frontend-slice baseline (~20–50k). The first Hawk pass surfaced a critical stale-closure bug (React 18 batching + closure capture) plus five important issues (null guard, ordered-list regex gap, `immediatelyRender`, type augmentation, dropped placeholder). The fix pass then triggered a second Hawk round for final approval. No CI failures.
+
+**Optimisation suggestions:**
+- **Hawk round 1 (–37 000):** Five of the seven findings are pre-emptable before opening a PR: (1) stale-closure risk when replacing DOM event value reads with React state — add a `contentRef` pattern to the Refactor checklist whenever a `onChange`/`onBlur` pair is introduced; (2) `immediatelyRender: false` and type augmentation are TipTap-specific setup items that should be in a TipTap onboarding checklist; (3) null/empty guard and compiled-regex in hot paths are Refactor checklist items for any method called per-request; (4) ordered-list regex gap — any bullet-stripping regex must include an ordered-list variant.
+
+---
+
 <!-- Scribe: append one section per completed slice using this template:
 
 ## Slice <id> — <name>

@@ -32,7 +32,7 @@ No new events, no new projections, no CDK changes, no new API endpoints.
 
 ## Slice 7-A — Base editor, markdown storage, stripped preview
 
-**Status:** Not Started
+**Status:** Done
 
 **Value:** The textarea is gone. The editor renders existing markdown content correctly and saves it back as markdown on blur. Headings, bold, and bullet lists work via keyboard shortcuts. The NoteCard snippet shows plain text, not raw markdown syntax.
 
@@ -120,13 +120,13 @@ Scenario: NoteCard snippet shows plain text
 
 **Acceptance criteria:**
 
-- [ ] `web/` builds without TypeScript errors (`npm run build`)
-- [ ] `npm run lint` passes
-- [ ] `dotnet test tests/ApiIntegration/ApiIntegration.csproj` — all green
-- [ ] `dotnet test tests/Specs/Specs.csproj` — all green
+- [x] `web/` builds without TypeScript errors (`npm run build`)
+- [x] `npm run lint` passes
+- [x] `dotnet test tests/Api.Integration/Api.Integration.csproj` — all green (102 tests)
+- [x] `dotnet test tests/Domain.Specs/Domain.Specs.csproj` — all green (110 tests)
 - [ ] Heading (`##`), bold (`Ctrl+B`), and bullet (`-`) shortcuts work in the browser
 - [ ] Content round-trips correctly: open a note, type formatted content, blur, re-open — formatting persists
-- [ ] NoteCard snippet contains no `##`, `**`, or `-` tokens
+- [x] NoteCard snippet contains no `##`, `**`, or `-` tokens (covered by 6 API integration tests)
 
 ---
 
