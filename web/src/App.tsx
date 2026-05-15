@@ -131,6 +131,9 @@ export default function App() {
   }
 
   function handleRenameFolder(folderId: string, name: string) {
+    const prevFolders = folders;
+    const prevActiveFolderPath = activeFolderPath;
+    const prevView = view;
     setFolders((prev) => mapTree(prev, folderId, (n) => ({ ...n, name })));
     if (folderId === activeFolderId) {
       const updatePath = (prev: string[]) =>
@@ -144,7 +147,11 @@ export default function App() {
     }
     apiRenameFolder(folderId, name)
       .then(() => getFolders().then(setFolders))
-      .catch(() => { getFolders().then(setFolders).catch(() => {}); });
+      .catch(() => {
+        setFolders(prevFolders);
+        setActiveFolderPath(prevActiveFolderPath);
+        setView(prevView);
+      });
   }
 
   function handleMoveNoteToFolder(noteId: string, folderId: string | null) {

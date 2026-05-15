@@ -1,4 +1,4 @@
-import { render, screen, within } from '@testing-library/react'
+import { render, screen, within, act } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { http, HttpResponse } from 'msw'
 import { server } from '../test/setup'
@@ -9,8 +9,8 @@ beforeEach(() => {
 })
 
 describe('FolderMutations', () => {
-  it('created folder appears in the sidebar immediately after user submits the name', async () => {
-    let resolveCreate: (value: Response) => void
+  it('created folder appears in the sidebar immediately and persists after API resolves', async () => {
+    let resolveCreate!: () => void
     server.use(
       http.post('/folders', () =>
         new Promise<Response>((res) => {
@@ -24,8 +24,9 @@ describe('FolderMutations', () => {
     await userEvent.keyboard('{Enter}')
     // Folder should appear in sidebar before API responds
     expect(within(screen.getByTestId('sidebar')).getByText('People')).toBeInTheDocument()
-    // Unblock the API so cleanup doesn't hang
-    resolveCreate!(new Response())
+    // Resolve the API and verify the folder persists (temp ID replaced by real ID)
+    await act(async () => { resolveCreate() })
+    expect(within(screen.getByTestId('sidebar')).getByText('People')).toBeInTheDocument()
   })
 
   it('renamed folder shows the new name in the sidebar immediately', async () => {
@@ -52,7 +53,7 @@ describe('FolderMutations', () => {
     await userEvent.keyboard('{Enter}')
     // Name should update immediately (before API responds)
     expect(within(screen.getByTestId('sidebar')).getByText('People')).toBeInTheDocument()
-    resolveRename!()
+    await act(async () => { resolveRename!() })
   })
 
   it('renaming the active folder updates the main heading immediately', async () => {
