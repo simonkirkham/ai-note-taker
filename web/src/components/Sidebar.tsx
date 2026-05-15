@@ -1,8 +1,7 @@
 import { useState } from "react";
 import { FolderNode } from "../api";
+import { UNFILED_ID } from "../constants";
 import FolderTree from "./FolderTree";
-
-const UNFILED_ID = "__unfiled__";
 
 export default function Sidebar({
   open,

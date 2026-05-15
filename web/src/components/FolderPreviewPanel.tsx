@@ -1,7 +1,6 @@
 import { useEffect, useState } from "react";
 import { getNoteCards, NoteCard } from "../api";
-
-const UNFILED_ID = "__unfiled__";
+import { UNFILED_ID } from "../constants";
 
 export default function FolderPreviewPanel({
   folderId,
