@@ -24,6 +24,24 @@ type View =
 
 const UNFILED_ID = "__unfiled__";
 
+function mapTree(
+  nodes: FolderNode[],
+  folderId: string,
+  update: (n: FolderNode) => FolderNode,
+): FolderNode[] {
+  return nodes.map((n) =>
+    n.folderId === folderId
+      ? update(n)
+      : { ...n, children: mapTree(n.children ?? [], folderId, update) },
+  );
+}
+
+function removeFromTree(nodes: FolderNode[], folderId: string): FolderNode[] {
+  return nodes
+    .filter((n) => n.folderId !== folderId)
+    .map((n) => ({ ...n, children: removeFromTree(n.children ?? [], folderId) }));
+}
+
 export default function App() {
   const [view, setView] = useState<View>({ kind: "list" });
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -93,19 +111,43 @@ export default function App() {
   }
 
   async function handleCreateFolder(name: string, parentFolderId?: string) {
+    const tempId = `temp-${crypto.randomUUID()}`;
+    const tempFolder: FolderNode = { folderId: tempId, name, children: [] };
+    if (parentFolderId) {
+      setFolders((prev) => mapTree(prev, parentFolderId, (n) => ({ ...n, children: [...(n.children ?? []), tempFolder] })));
+    } else {
+      setFolders((prev) => [...prev, tempFolder]);
+    }
     try {
-      await apiCreateFolder(name, parentFolderId);
-      const updated = await getFolders();
-      setFolders(updated);
+      const { folderId: realId } = await apiCreateFolder(name, parentFolderId);
+      setFolders((prev) => mapTree(prev, tempId, () => ({ folderId: realId, name, children: [] })));
     } catch {
-      // non-fatal: folder will appear on next reload
+      setFolders((prev) => removeFromTree(prev, tempId));
     }
   }
 
   function handleRenameFolder(folderId: string, name: string) {
+    const prevFolders = folders;
+    const prevActiveFolderPath = activeFolderPath;
+    const prevView = view;
+    setFolders((prev) => mapTree(prev, folderId, (n) => ({ ...n, name })));
+    if (folderId === activeFolderId) {
+      const updatePath = (prev: string[]) =>
+        prev.map((seg, i) => (i === prev.length - 1 ? name : seg));
+      setActiveFolderPath(updatePath);
+      setView((prev) =>
+        prev.kind === "folder" && prev.folderId === folderId
+          ? { ...prev, folderPath: updatePath(prev.folderPath) }
+          : prev,
+      );
+    }
     apiRenameFolder(folderId, name)
       .then(() => getFolders().then(setFolders))
-      .catch(() => {});
+      .catch(() => {
+        setFolders(prevFolders);
+        setActiveFolderPath(prevActiveFolderPath);
+        setView(prevView);
+      });
   }
 
   function handleMoveNoteToFolder(noteId: string, folderId: string | null) {
