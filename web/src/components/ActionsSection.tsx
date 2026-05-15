@@ -1,7 +1,13 @@
 import { useEffect, useState } from "react";
 import { getActions, addAction, completeAction, reopenAction, deleteAction, ActionItem } from "../api";
 
-export default function ActionsSection({ noteId }: { noteId: string }) {
+export default function ActionsSection({
+  noteId,
+  onCountChange,
+}: {
+  noteId: string;
+  onCountChange?: (count: number) => void;
+}) {
   const [actions, setActions] = useState<ActionItem[]>([]);
   const [newAction, setNewAction] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -15,6 +21,10 @@ export default function ActionsSection({ noteId }: { noteId: string }) {
     });
     return () => { cancelled = true; };
   }, [noteId]);
+
+  useEffect(() => {
+    onCountChange?.(actions.length);
+  }, [actions.length, onCountChange]);
 
   async function handleToggle(item: ActionItem) {
     if (toggling.has(item.actionId)) return;

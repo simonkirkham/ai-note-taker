@@ -293,6 +293,120 @@ body {
   margin-bottom: 0;
 }
 
+.note-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.save-button {
+  display: inline-flex;
+  align-items: center;
+  background: var(--color-primary);
+  color: #fff;
+  border: 1px solid var(--color-primary);
+  border-radius: var(--radius);
+  padding: 0.375rem 0.875rem;
+  font-family: inherit;
+  font-size: 0.875rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background var(--transition), border-color var(--transition);
+}
+
+.save-button:hover:not([disabled]) {
+  background: var(--color-primary-dark);
+  border-color: var(--color-primary-dark);
+}
+
+.save-button:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
+.save-button[disabled] {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.cancel-dialog-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.4);
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.cancel-dialog {
+  background: var(--color-surface);
+  border: 1.5px solid var(--color-border);
+  border-radius: 10px;
+  padding: 1.5rem 2rem;
+  max-width: 340px;
+  width: 90%;
+  text-align: center;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.18);
+}
+
+.cancel-dialog-message {
+  margin: 0 0 1.25rem;
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.cancel-dialog-buttons {
+  display: flex;
+  gap: 0.75rem;
+  justify-content: center;
+}
+
+.cancel-confirm-button {
+  background: var(--color-error);
+  color: #fff;
+  border: none;
+  border-radius: var(--radius);
+  padding: 0.5rem 1.25rem;
+  font-family: inherit;
+  font-size: 0.875rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background var(--transition);
+}
+
+.cancel-confirm-button:hover {
+  background: #b91c1c;
+}
+
+.cancel-confirm-button:focus-visible {
+  outline: 2px solid var(--color-error);
+  outline-offset: 2px;
+}
+
+.cancel-keep-button {
+  background: none;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  padding: 0.5rem 1.25rem;
+  font-family: inherit;
+  font-size: 0.875rem;
+  color: var(--color-text);
+  cursor: pointer;
+  transition: border-color var(--transition), color var(--transition);
+}
+
+.cancel-keep-button:hover {
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+}
+
+.cancel-keep-button:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
 .delete-note-button {
   background: none;
   border: 1px solid var(--color-error);
