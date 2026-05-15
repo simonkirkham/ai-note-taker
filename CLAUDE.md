@@ -140,7 +140,7 @@ Prototype branches follow the same pattern: `git worktree add ../ai-note-taker-s
 ## Workflow
 
 1. Plan mode for any non-trivial slice.
-2. **Breaker creates the worktree** — `git worktree add ../ai-note-taker-slices/<slice-name> -b slice/<phase>-<id>-<short-description>`, then `dotnet restore` + `npm --prefix web install` inside it. All subsequent work happens from that directory.
+2. **Breaker creates the worktree** — `git worktree add ../ai-note-taker-slices/<slice-name> -b slice/<phase>-<id>-<short-description>`, then `dotnet restore` + `npm --prefix web install` inside it. All subsequent work happens from that directory. Set the session name to the slice name using `/rename <slice-name>`.
 3. **Prototype** *(UI-heavy or UX-uncertain slices only)* — run the `prototype` skill before touching the event model. Skip if the interaction is obvious CRUD. Prototype code is quick-and-dirty scaffolding on a `prototype/<slice-name>` branch/worktree pushed to remote — never merged. On approval, the exit procedure rewrites `docs/phases/phase-X.md` on main with confirmed GWT scenarios and UX patterns. Real implementation starts fresh from the updated phase doc, not from prototype code.
 4. Update event model.
 5. Write BDD spec.

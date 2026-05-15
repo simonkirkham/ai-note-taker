@@ -4,6 +4,7 @@ using System.Threading.Tasks;
 using Microsoft.AspNetCore.Http;
 using EventStore;
 using EventStore.Projections;
+using Domain.Folders;
 using Domain.Notes;
 using Api.Contracts;
 using EditContentCmd = Domain.Notes.EditContent;
@@ -106,6 +107,25 @@ public static class NoteHandlers
         return Results.NoContent();
     }
 
+    public static async Task<IResult> MoveNoteToFolder(Guid noteId, MoveNoteToFolderRequest req, NoteCommandHandler handler, IFolderTreeStore folderTreeStore, CancellationToken ct)
+    {
+        var targetId = new FolderId(req.FolderId);
+        var allFolders = await folderTreeStore.GetAllAsync(ct).ConfigureAwait(false);
+        if (!allFolders.Any(f => f.FolderId == targetId))
+            return Results.NotFound();
+
+        try { await handler.HandleAsync(new Domain.Notes.MoveNoteToFolder(new NoteId(noteId), targetId), ct); }
+        catch (NoteNotFoundException) { return Results.NotFound(); }
+        return Results.NoContent();
+    }
+
+    public static async Task<IResult> UnfileNote(Guid noteId, NoteCommandHandler handler, CancellationToken ct)
+    {
+        try { await handler.HandleAsync(new Domain.Notes.UnfileNote(new NoteId(noteId)), ct); }
+        catch (NoteNotFoundException) { return Results.NotFound(); }
+        return Results.NoContent();
+    }
+
     public static async Task<IResult> GetNoteCards(INoteCardListStore store, CancellationToken ct)
     {
         var all = await store.QueryAllAsync(ct).ConfigureAwait(false);
@@ -127,7 +147,8 @@ public static class NoteHandlers
                     date           = c.Date,
                     tags           = c.Tags ?? [],
                     openActions,
-                    createdAt      = c.CreatedAt
+                    createdAt      = c.CreatedAt,
+                    folderId       = c.FolderId?.Value
                 };
             });
         return Results.Ok(new { cards });

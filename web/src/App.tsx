@@ -7,13 +7,16 @@ import Sidebar from "./components/Sidebar";
 import { useNotes } from "./hooks/useNotes";
 import {
   FolderNode,
+  NoteCard,
   setNoteDate,
   getFolders,
+  getNoteCards,
   createFolder as apiCreateFolder,
   renameFolder as apiRenameFolder,
   deleteFolder as apiDeleteFolder,
   moveNoteToFolder as apiMoveNoteToFolder,
   unfileNote as apiUnfileNote,
+  moveFolder as apiMoveFolder,
 } from "./api";
 
 type View =
@@ -28,22 +31,17 @@ export default function App() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const { notes, loading, creating, createError, create, rename, remove } = useNotes();
   const [folders, setFolders] = useState<FolderNode[]>([]);
+  const [cards, setCards] = useState<NoteCard[]>([]);
   const [activeFolderId, setActiveFolderId] = useState<string | undefined>();
   const [activeFolderPath, setActiveFolderPath] = useState<string[]>([]);
-  const [noteDateMap, setNoteDateMap] = useState<Record<string, string>>(() => {
-    try { return JSON.parse(localStorage.getItem("notetaker-note-date-map") ?? "{}"); } catch { return {}; }
-  });
 
   useEffect(() => {
     getFolders().then(setFolders).catch(() => {});
+    getNoteCards().then(setCards).catch(() => {});
   }, []);
 
-  useEffect(() => {
-    localStorage.setItem("notetaker-note-date-map", JSON.stringify(noteDateMap));
-  }, [noteDateMap]);
-
-  const handleDateSet = useCallback((noteId: string, date: string) => {
-    setNoteDateMap((prev) => ({ ...prev, [noteId]: date }));
+  const handleDateSet = useCallback((_noteId: string, _date: string) => {
+    // date persisted by NoteView via API; cards refreshed on next mount
   }, []);
   const [previewFolderId, setPreviewFolderId] = useState<string | null>(null);
   const [previewFolderName, setPreviewFolderName] = useState("");
@@ -126,6 +124,12 @@ export default function App() {
       setView({ kind: "list" });
     }
     apiDeleteFolder(folderId)
+      .then(() => Promise.all([getFolders().then(setFolders), getNoteCards().then(setCards)]))
+      .catch(() => {});
+  }
+
+  function handleMoveFolder(folderId: string, parentFolderId: string | null) {
+    apiMoveFolder(folderId, parentFolderId)
       .then(() => getFolders().then(setFolders))
       .catch(() => {});
   }
@@ -184,6 +188,7 @@ export default function App() {
         onDeleteFolder={handleDeleteFolder}
         onCreateChildFolder={(parentId, name) => handleCreateFolder(name, parentId)}
         onDropNote={handleMoveNoteToFolder}
+        onMoveFolder={handleMoveFolder}
         onHome={handleHome}
         onUnfiledSelect={handleUnfiledSelect}
         isUnfiledActive={activeFolderId === UNFILED_ID}
@@ -193,8 +198,7 @@ export default function App() {
       <FolderPreviewPanel
         folderId={previewFolderId}
         folderName={previewFolderName}
-        notes={notes}
-        noteDateMap={noteDateMap}
+        cards={cards}
         onClose={() => setPreviewFolderId(null)}
         onEditNote={(noteId) => { setView({ kind: "note", noteId }); setPreviewFolderId(null); }}
       />

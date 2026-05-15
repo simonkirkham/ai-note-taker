@@ -2,6 +2,7 @@ using System.Text.Json;
 using Amazon.DynamoDBv2;
 using Amazon.DynamoDBv2.Model;
 using Domain.ActionItems;
+using Domain.Folders;
 using Domain.Notes;
 
 namespace EventStore.Projections;
@@ -80,6 +81,12 @@ public sealed class NoteCardListProjection
                 break;
             case NoteUntagged e when _cards.TryGetValue(e.NoteId, out var c):
                 _cards[e.NoteId] = c with { Tags = (c.Tags ?? []).Where(t => t != e.Tag).ToList().AsReadOnly(), LastModifiedAt = envelope.OccurredAt };
+                break;
+            case NoteFiledInFolder e when _cards.TryGetValue(e.NoteId, out var c):
+                _cards[e.NoteId] = c with { FolderId = e.FolderId, LastModifiedAt = envelope.OccurredAt };
+                break;
+            case NoteUnfiled e when _cards.TryGetValue(e.NoteId, out var c):
+                _cards[e.NoteId] = c with { FolderId = null, LastModifiedAt = envelope.OccurredAt };
                 break;
             default:
                 break;

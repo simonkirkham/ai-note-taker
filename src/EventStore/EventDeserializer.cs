@@ -23,6 +23,11 @@ public static class EventDeserializer
         (nameof(ActionItemReopened),  _) => JsonSerializer.Deserialize<ActionItemReopened>(envelope.Payload)!,
         (nameof(ActionItemDeleted),   _) => JsonSerializer.Deserialize<ActionItemDeleted>(envelope.Payload)!,
         (nameof(FolderCreated),       _) => JsonSerializer.Deserialize<FolderCreated>(envelope.Payload)!,
+        (nameof(FolderRenamed),       _) => JsonSerializer.Deserialize<FolderRenamed>(envelope.Payload)!,
+        (nameof(FolderDeleted),       _) => JsonSerializer.Deserialize<FolderDeleted>(envelope.Payload)!,
+        (nameof(FolderMoved),         _) => JsonSerializer.Deserialize<FolderMoved>(envelope.Payload)!,
+        (nameof(NoteFiledInFolder),   _) => JsonSerializer.Deserialize<NoteFiledInFolder>(envelope.Payload)!,
+        (nameof(NoteUnfiled),         _) => JsonSerializer.Deserialize<NoteUnfiled>(envelope.Payload)!,
         _ => throw new InvalidOperationException($"Unknown event type/version: {envelope.EventType} v{envelope.EventVersion}")
     };
 }

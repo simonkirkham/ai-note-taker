@@ -26,6 +26,60 @@ public static class FolderHandlers
         return Results.Created($"/folders/{folderId.Value}", new { folderId = folderId.Value });
     }
 
+    public static async Task<IResult> RenameFolder(Guid folderId, RenameFolderRequest req, FolderCommandHandler handler, CancellationToken ct)
+    {
+        try
+        {
+            await handler.HandleAsync(new Domain.Folders.RenameFolder(new FolderId(folderId), req.Name), ct);
+        }
+        catch (FolderNotFoundException)
+        {
+            return Results.NotFound();
+        }
+        catch (InvalidOperationException)
+        {
+            return Results.BadRequest();
+        }
+
+        return Results.Ok();
+    }
+
+    public static async Task<IResult> DeleteFolder(Guid folderId, FolderCommandHandler handler, CancellationToken ct)
+    {
+        try
+        {
+            await handler.HandleAsync(new Domain.Folders.DeleteFolder(new FolderId(folderId)), ct);
+        }
+        catch (InvalidOperationException)
+        {
+            return Results.NotFound();
+        }
+
+        return Results.NoContent();
+    }
+
+    public static async Task<IResult> MoveFolder(Guid folderId, MoveFolderRequest req, FolderCommandHandler handler, CancellationToken ct)
+    {
+        FolderId? newParentFolderId = req.ParentFolderId.HasValue
+            ? new FolderId(req.ParentFolderId.Value)
+            : null;
+
+        try
+        {
+            await handler.HandleAsync(new Domain.Folders.MoveFolder(new FolderId(folderId), newParentFolderId), ct);
+        }
+        catch (CycleDetectedException ex)
+        {
+            return Results.BadRequest(new { error = ex.Message });
+        }
+        catch (InvalidOperationException)
+        {
+            return Results.NotFound();
+        }
+
+        return Results.Ok();
+    }
+
     public static async Task<IResult> GetFolders(IFolderTreeStore store, CancellationToken ct)
     {
         var all = await store.GetAllAsync(ct).ConfigureAwait(false);

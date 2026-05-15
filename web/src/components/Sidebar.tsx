@@ -16,6 +16,7 @@ export default function Sidebar({
   onDeleteFolder,
   onCreateChildFolder,
   onDropNote,
+  onMoveFolder,
   onHome,
   onUnfiledSelect,
   isUnfiledActive,
@@ -35,6 +36,7 @@ export default function Sidebar({
   onDeleteFolder: (folderId: string) => void;
   onCreateChildFolder: (parentFolderId: string, name: string) => void;
   onDropNote: (noteId: string, folderId: string) => void;
+  onMoveFolder?: (folderId: string, parentFolderId: string | null) => void;
   onHome: () => void;
   onUnfiledSelect: () => void;
   isUnfiledActive: boolean;
@@ -124,6 +126,7 @@ export default function Sidebar({
           onDelete={onDeleteFolder}
           onCreateChild={onCreateChildFolder}
           onDropNote={onDropNote}
+          onMoveFolder={onMoveFolder}
           onPreview={onPreview}
         />
         {addingFolder && (

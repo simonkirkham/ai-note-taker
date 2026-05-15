@@ -1,3 +1,5 @@
+using Domain.Folders;
+
 namespace Domain.Notes;
 
 public sealed class Note : IAggregate
@@ -6,6 +8,7 @@ public sealed class Note : IAggregate
     bool _deleted;
     string? _title;
     string? _content;
+    FolderId? _folderId;
     readonly HashSet<string> _tags = [];
 
     public void Apply(IDomainEvent @event)
@@ -33,6 +36,12 @@ public sealed class Note : IAggregate
             case NoteUntagged e:
                 _tags.Remove(e.Tag);
                 break;
+            case NoteFiledInFolder e:
+                _folderId = e.FolderId;
+                break;
+            case NoteUnfiled:
+                _folderId = null;
+                break;
             default:
                 break;
         }
@@ -41,13 +50,15 @@ public sealed class Note : IAggregate
     public IReadOnlyList<IDomainEvent> Handle(ICommand command) =>
         command switch
         {
-            CreateNote cmd    => HandleCreate(cmd),
-            RenameNote cmd    => HandleRename(cmd),
-            EditContent cmd   => HandleEditContent(cmd),
-            DeleteNote cmd    => HandleDelete(cmd),
-            SetNoteDate cmd   => HandleSetDate(cmd),
-            TagNote cmd       => HandleTagNote(cmd),
-            UntagNote cmd     => HandleUntagNote(cmd),
+            CreateNote cmd         => HandleCreate(cmd),
+            RenameNote cmd         => HandleRename(cmd),
+            EditContent cmd        => HandleEditContent(cmd),
+            DeleteNote cmd         => HandleDelete(cmd),
+            SetNoteDate cmd        => HandleSetDate(cmd),
+            TagNote cmd            => HandleTagNote(cmd),
+            UntagNote cmd          => HandleUntagNote(cmd),
+            MoveNoteToFolder cmd   => HandleMoveToFolder(cmd),
+            UnfileNote cmd         => HandleUnfile(cmd),
             _ => throw new ArgumentOutOfRangeException(nameof(command))
         };
 
@@ -106,5 +117,23 @@ public sealed class Note : IAggregate
         if (!_tags.Contains(cmd.Tag))
             throw new InvalidOperationException($"Tag '{cmd.Tag}' is not present on note {cmd.NoteId}.");
         return [new NoteUntagged(cmd.NoteId, cmd.Tag)];
+    }
+
+    IReadOnlyList<IDomainEvent> HandleMoveToFolder(MoveNoteToFolder cmd)
+    {
+        if (!_exists || _deleted)
+            throw new InvalidOperationException($"Note {cmd.NoteId} does not exist.");
+        if (cmd.FolderId == _folderId)
+            return [];
+        return [new NoteFiledInFolder(cmd.NoteId, cmd.FolderId)];
+    }
+
+    IReadOnlyList<IDomainEvent> HandleUnfile(UnfileNote cmd)
+    {
+        if (!_exists || _deleted)
+            throw new InvalidOperationException($"Note {cmd.NoteId} does not exist.");
+        if (_folderId is null)
+            return [];
+        return [new NoteUnfiled(cmd.NoteId)];
     }
 }

@@ -1,23 +1,19 @@
-import { NoteItem } from "../api";
+import { NoteCard } from "../api";
 
 export default function FolderPreviewPanel({
   folderId,
   folderName,
-  notes,
-  noteDateMap,
+  cards,
   onClose,
   onEditNote,
 }: {
   folderId: string | null;
   folderName: string;
-  notes: NoteItem[];
-  noteDateMap: Record<string, string>;
+  cards: NoteCard[];
   onClose: () => void;
   onEditNote: (noteId: string) => void;
 }) {
-  // In this slice, folder membership comes from card.folderId (5-G wires that up fully).
-  // For now the panel shows note titles available from the notes list.
-  const folderNotes = folderId ? notes : [];
+  const folderCards = folderId ? cards.filter((c) => c.folderId === folderId) : [];
 
   return (
     <div className={`folder-preview-panel${folderId ? " folder-preview-panel--open" : ""}`}>
@@ -26,24 +22,24 @@ export default function FolderPreviewPanel({
         <button className="folder-preview-close" onClick={onClose} aria-label="Close">×</button>
       </div>
       <ul className="folder-preview-list">
-        {folderNotes.length === 0 ? (
+        {folderCards.length === 0 ? (
           <li className="folder-preview-empty">No notes in this folder</li>
         ) : (
-          folderNotes.map((n) => (
+          folderCards.map((c) => (
             <li
-              key={n.noteId}
+              key={c.noteId}
               className="folder-preview-item"
               draggable
               onDragStart={(e) => {
                 e.dataTransfer.effectAllowed = "move";
-                e.dataTransfer.setData("text/plain", n.noteId);
+                e.dataTransfer.setData("text/plain", c.noteId);
               }}
-              onClick={() => onEditNote(n.noteId)}
+              onClick={() => onEditNote(c.noteId)}
             >
-              <span className="folder-preview-note-title">{n.title || <em>Untitled</em>}</span>
-              {noteDateMap[n.noteId] && (
+              <span className="folder-preview-note-title">{c.title || <em>Untitled</em>}</span>
+              {c.date && (
                 <span className="folder-preview-note-date">
-                  {new Date(noteDateMap[n.noteId] + "T00:00:00").toLocaleDateString("en-GB")}
+                  {new Date(c.date + "T00:00:00").toLocaleDateString("en-GB")}
                 </span>
               )}
             </li>

@@ -123,7 +123,7 @@ export interface NoteCard {
   openActions: NoteCardAction[];
   createdAt: string;
   tags: string[];
-  folderId?: string;
+  folderId: string | null;
 }
 
 export async function getNoteCards(): Promise<NoteCard[]> {
@@ -209,6 +209,15 @@ export async function moveNoteToFolder(noteId: string, folderId: string): Promis
 export async function unfileNote(noteId: string): Promise<void> {
   const res = await fetch(`${base}/notes/${noteId}/folder`, { method: "DELETE" });
   if (!res.ok) throw new Error(`DELETE /notes/${noteId}/folder failed: ${res.status}`);
+}
+
+export async function moveFolder(folderId: string, parentFolderId: string | null): Promise<void> {
+  const res = await fetch(`${base}/folders/${folderId}/parent`, {
+    method: "PUT",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ parentFolderId }),
+  });
+  if (!res.ok) throw new Error(`PUT /folders/${folderId}/parent failed: ${res.status}`);
 }
 
 export interface TodoItem {

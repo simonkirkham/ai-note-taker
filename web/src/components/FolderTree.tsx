@@ -10,10 +10,11 @@ interface NodeProps {
   onDelete: (folderId: string) => void;
   onCreateChild: (parentFolderId: string, name: string) => void;
   onDropNote: (noteId: string, folderId: string) => void;
+  onMoveFolder?: (folderId: string, parentFolderId: string | null) => void;
   onPreview: (folderId: string, name: string) => void;
 }
 
-function FolderTreeNode({ node, activeFolderId, path, onSelect, onRename, onDelete, onCreateChild, onDropNote, onPreview }: NodeProps) {
+function FolderTreeNode({ node, activeFolderId, path, onSelect, onRename, onDelete, onCreateChild, onDropNote, onMoveFolder, onPreview }: NodeProps) {
   const [expanded, setExpanded] = useState(false);
   const [editing, setEditing] = useState(false);
   const [editName, setEditName] = useState(node.name);
@@ -46,6 +47,12 @@ function FolderTreeNode({ node, activeFolderId, path, onSelect, onRename, onDele
     >
       <div
         className={`folder-tree-node-row${isActive ? " folder-tree-node-row--active" : ""}${isDragOver ? " folder-tree-node-row--drag-over" : ""}${hovered ? " folder-tree-node-row--hovered" : ""}`}
+        draggable={!!onMoveFolder}
+        onDragStart={(e) => {
+          e.stopPropagation();
+          e.dataTransfer.effectAllowed = "move";
+          e.dataTransfer.setData("application/folder-id", node.folderId);
+        }}
         onMouseEnter={() => setHovered(true)}
         onMouseLeave={() => setHovered(false)}
         onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = "move"; }}
@@ -53,7 +60,13 @@ function FolderTreeNode({ node, activeFolderId, path, onSelect, onRename, onDele
         onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget as Node)) setIsDragOver(false); }}
         onDrop={(e) => {
           e.preventDefault();
+          e.stopPropagation();
           setIsDragOver(false);
+          const droppedFolderId = e.dataTransfer.getData("application/folder-id");
+          if (droppedFolderId && onMoveFolder) {
+            onMoveFolder(droppedFolderId, node.folderId);
+            return;
+          }
           const noteId = e.dataTransfer.getData("text/plain");
           if (noteId) onDropNote(noteId, node.folderId);
         }}
@@ -137,6 +150,7 @@ function FolderTreeNode({ node, activeFolderId, path, onSelect, onRename, onDele
               onDelete={onDelete}
               onCreateChild={onCreateChild}
               onDropNote={onDropNote}
+              onMoveFolder={onMoveFolder}
               onPreview={onPreview}
             />
           ))}
@@ -175,6 +189,7 @@ export default function FolderTree({
   onDelete,
   onCreateChild,
   onDropNote,
+  onMoveFolder,
   onPreview,
 }: {
   nodes: FolderNode[];
@@ -184,6 +199,7 @@ export default function FolderTree({
   onDelete: (folderId: string) => void;
   onCreateChild: (parentFolderId: string, name: string) => void;
   onDropNote: (noteId: string, folderId: string) => void;
+  onMoveFolder?: (folderId: string, parentFolderId: string | null) => void;
   onPreview: (folderId: string, name: string) => void;
 }) {
   if (nodes.length === 0) return null;
@@ -201,6 +217,7 @@ export default function FolderTree({
           onDelete={onDelete}
           onCreateChild={onCreateChild}
           onDropNote={onDropNote}
+          onMoveFolder={onMoveFolder}
           onPreview={onPreview}
         />
       ))}
