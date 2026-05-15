@@ -1,12 +1,9 @@
 import { useState } from "react";
-import { FolderNode, NoteItem } from "../api";
+import { FolderNode } from "../api";
 import FolderTree from "./FolderTree";
 
 export default function Sidebar({
-  notes,
-  activeNoteId,
   open,
-  onSelect,
   onCreate,
   folders,
   activeFolderId,
@@ -23,10 +20,7 @@ export default function Sidebar({
   onDropToUnfiled,
   onPreview,
 }: {
-  notes: NoteItem[];
-  activeNoteId?: string;
   open?: boolean;
-  onSelect: (noteId: string) => void;
   onCreate: () => void;
   folders: FolderNode[];
   activeFolderId?: string;
@@ -76,18 +70,6 @@ export default function Sidebar({
       >
         + New Note
       </button>
-      <ul className="sidebar-list" data-testid="note-list">
-        {notes.map((n) => (
-          <li key={n.noteId}>
-            <button
-              className={`sidebar-note-item${n.noteId === activeNoteId ? " sidebar-note-item--active" : ""}`}
-              onClick={() => onSelect(n.noteId)}
-            >
-              {n.title || <em className="untitled">Untitled</em>}
-            </button>
-          </li>
-        ))}
-      </ul>
       <div className="sidebar-folders">
         <div className="sidebar-folders-header">
           <span className="sidebar-folders-label">Folders</span>
