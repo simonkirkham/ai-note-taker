@@ -263,7 +263,7 @@ Scenario: Completing a todo removes it from the list
 
 ## Slice 6.5-D — Note view component tests
 
-**Status:** Not Started
+**Status:** Done
 
 **Value:** Component tests for every piece of UI visible when editing a note: content editing, date defaults, action item interactions, and sidebar state. Eight E2E journeys are deleted after this slice, leaving the Playwright suite with exactly 5 kept journeys. `AppPage.cs` is fully cleaned of now-unused selectors.
 
@@ -374,11 +374,11 @@ Scenario: Browser.E2E contains exactly 5 journeys after all deletions
 
 **Acceptance criteria:**
 
-- [ ] `npm run test` exits 0 with all 3 new test files passing
-- [ ] No test imports a real API URL or requires a deployed backend
-- [ ] MSW handlers cover every fetch call made by the tested components
-- [ ] `vi.setSystemTime` used for date-default tests; no `Date.now()` calls left uncontrolled
-- [ ] All 8 journey files deleted; `dotnet build tests/Browser.E2E/Browser.E2E.csproj` exits 0
-- [ ] `AppPage.cs` contains no selectors used only by the deleted journeys
-- [ ] `ls tests/Browser.E2E/Journeys/` shows exactly 5 files
-- [ ] Each test asserts on visible output, not component state or CSS class names
+- [x] `npm run test` exits 0 with all 3 new test files passing
+- [x] No test imports a real API URL or requires a deployed backend
+- [x] MSW handlers cover every fetch call made by the tested components
+- [x] `vi.setSystemTime` used for date-default tests; no `Date.now()` calls left uncontrolled
+- [x] All 8 journey files deleted; `dotnet build tests/Browser.E2E/Browser.E2E.csproj` exits 0
+- [x] `AppPage.cs` contains no selectors used only by the deleted journeys
+- [x] `ls tests/Browser.E2E/Journeys/` shows exactly 5 files
+- [x] Each test asserts on visible output, not component state or CSS class names

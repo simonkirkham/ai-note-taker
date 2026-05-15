@@ -371,6 +371,22 @@ None — slice ran within expected range.
 
 ---
 
+## Slice 6.5-D — Note view component tests
+
+| Agent     | ~Tokens    |
+|-----------|------------|
+| Pip       | 35 000     |
+| Hawk      | 10 000     |
+| Scribe    | 5 000      |
+| **Total** | **~50 000** |
+
+**Why:** Two Hawk rounds added overhead — first pass caught missing call-verification in "renders content" and "date defaults to today" tests; fixes were targeted and clean. Scribe was delayed ~2h by a stuck GitHub Actions runner (infrastructure issue, not code).
+
+**Optimisation suggestions:**
+- **Hawk round 2 (–3 000):** Both findings (GET-call verification, PATCH auto-call verification) are extensions of the POST-capture pattern codified in 6.5-C. Adding "verify ALL fetches in component tests, not just user-triggered mutations — include load-triggered side effects" to the Refactor skill's component-test section would pre-empt this Hawk round.
+
+---
+
 ## Slice 6.5-C — Home screen component tests
 
 | Agent     | ~Tokens    |

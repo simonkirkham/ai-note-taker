@@ -90,14 +90,14 @@ Slices and acceptance criteria: [docs/phases/phase-5.md](phases/phase-5.md)
 
 Slices and acceptance criteria: [docs/phases/phase-6.md](phases/phase-6.md)
 
-## Phase 6.5 — Frontend Component Tests
+## Phase 6.5 — Frontend Component Tests _(Done)_
 
 - Rename all six test projects to scope-descriptive names (`Domain.Specs`, `EventStore.Integration`, `Api.Integration`, `Infrastructure.Assertions`, `Api.Smoke`, `Browser.E2E`)
 - Scaffold Vitest + React Testing Library + MSW as Layer 7 of the testing strategy
 - Write component tests for every home screen UI behaviour; delete 4 redundant E2E journeys
 - Write component tests for every note view UI behaviour; delete 8 redundant E2E journeys; trim Browser.E2E to exactly 5 kept journeys
 
-**Goal:** replace slow Playwright tests as the primary UI regression net with fast, deterministic component tests; learn Vitest, RTL, MSW, and where in the pyramid each test layer earns its cost. 6.5-A done; 6.5-B, C, D in progress.
+**Goal:** replace slow Playwright tests as the primary UI regression net with fast, deterministic component tests; learn Vitest, RTL, MSW, and where in the pyramid each test layer earns its cost.
 
 Slices and acceptance criteria: [docs/phases/phase-6.5.md](phases/phase-6.5.md)
 
