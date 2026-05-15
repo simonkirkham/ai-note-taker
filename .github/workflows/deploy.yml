@@ -4,25 +4,11 @@ on:
   push:
     branches: [ main ]
 
-concurrency:
-  group: deploy
-  cancel-in-progress: false
-
 jobs:
-  validate:
+  validate-frontend:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
-      - uses: actions/cache@v4
-        with:
-          path: ~/.nuget/packages
-          key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj') }}
-          restore-keys: nuget-${{ runner.os }}-
-
-      - uses: actions/setup-dotnet@v4
-        with:
-          dotnet-version: "10.0.x"
 
       - uses: actions/setup-node@v4
         with:
@@ -50,6 +36,23 @@ jobs:
         working-directory: web
         run: npm run test
 
+  validate-backend:
+    runs-on: ubuntu-latest
+    env:
+      DYNAMO_TIMEOUT_SECONDS: "3"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/cache@v4
+        with:
+          path: ~/.nuget/packages
+          key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj') }}
+          restore-keys: nuget-${{ runner.os }}-
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+
       - name: Build .NET solution
         run: dotnet build ai-note-taker.sln -p:TreatWarningsAsErrors=true --nologo -v quiet
 
@@ -63,9 +66,12 @@ jobs:
         run: dotnet test tests/Infrastructure.Assertions/Infrastructure.Assertions.csproj --nologo -v quiet
 
   deploy:
-    needs: validate
+    needs: [validate-frontend, validate-backend]
     runs-on: ubuntu-latest
     environment: Test
+    concurrency:
+      group: deploy
+      cancel-in-progress: false
     steps:
       - uses: actions/checkout@v4
 
