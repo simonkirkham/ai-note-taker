@@ -187,3 +187,5 @@ Scenario: NoteCard snippet strips strikethrough from discussed topics
 - [x] Shortcuts panel is collapsed by default; `?` button expands it to show all shortcuts
 - [x] Panel lists: `##`/`###` headings, `**bold**`, `- bullet`, `Ctrl+B` toggle, ✓ mark discussed
 - [x] `npm run build` and `npm run lint` pass
+
+**Follow-up (deferred):** Add a `Browser.E2E` journey (`RichEditorJourney.cs`) covering: ✓ button appears on heading cursor, toggle applies strikethrough, toggle again removes it, discussed state persists after close/reopen. NoteEditor is mocked in unit tests so the discussed-button logic has no automated coverage today — E2E is the right layer.
