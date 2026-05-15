@@ -124,21 +124,6 @@ public sealed class AppPage(IPage page, string baseUrl)
     public Task AssertTodoSectionVisibleAsync() =>
         Assertions.Expect(page.GetByTestId("todo-section")).ToBeVisibleAsync();
 
-    public Task AssertTodoItemVisibleAsync(string description) =>
-        Assertions.Expect(page.GetByTestId("todo-list").GetByText(description)).ToBeVisibleAsync(new() { Timeout = 15000 });
-
-    public async Task CompleteTodoItemAsync(string description)
-    {
-        var responseDone = page.WaitForResponseAsync(r =>
-            r.Url.Contains("/complete") && r.Request.Method == "POST");
-        await page.GetByTestId("todo-list")
-            .Locator("li")
-            .Filter(new LocatorFilterOptions { HasText = description })
-            .GetByRole(AriaRole.Checkbox)
-            .ClickAsync();
-        await responseDone;
-    }
-
     public Task AssertTodoItemGoneAsync(string description) =>
         Assertions.Expect(
             page.GetByTestId("todo-section").GetByText(description)
@@ -214,29 +199,6 @@ public sealed class AppPage(IPage page, string baseUrl)
         Assert.True(actionsBox.Y > contentBox.Y,
             $"Expected actions panel (y={actionsBox.Y}) to be below content (y={contentBox.Y})");
     }
-
-    public Task AssertNoteCardSnippetVisibleAsync(string cardTitle, string snippetStart) =>
-        Assertions.Expect(
-            page.GetByTestId("note-cards")
-                .Locator(".note-card")
-                .Filter(new LocatorFilterOptions { HasText = cardTitle })
-                .GetByText(snippetStart, new LocatorGetByTextOptions { Exact = false })
-        ).ToBeVisibleAsync();
-
-    public Task AssertNoteCardActionVisibleAsync(string cardTitle, string actionDescription) =>
-        Assertions.Expect(
-            page.GetByTestId("note-cards")
-                .Locator(".note-card")
-                .Filter(new LocatorFilterOptions { HasText = cardTitle })
-                .GetByText(actionDescription)
-        ).ToBeVisibleAsync();
-
-    public Task ClickEditNoteOnCardAsync(string title) =>
-        page.GetByTestId("note-cards")
-            .Locator(".note-card")
-            .Filter(new LocatorFilterOptions { HasText = title })
-            .GetByRole(AriaRole.Button, new LocatorGetByRoleOptions { Name = "Edit Note" })
-            .ClickAsync();
 
     public async Task AddTagAsync(string tagInput)
     {
@@ -333,25 +295,4 @@ public sealed class AppPage(IPage page, string baseUrl)
 
     public Task AssertFolderVisibleInSidebarAsync(string folderName) =>
         Assertions.Expect(page.GetByTestId("sidebar").GetByText(folderName)).ToBeVisibleAsync();
-
-    public Task AssertTagFilterPillVisibleAsync(string tag) =>
-        Assertions.Expect(page.GetByTestId($"tag-filter-pill-{tag}")).ToBeVisibleAsync(new() { Timeout = 10000 });
-
-    public Task ClickTagFilterPillAsync(string tag) =>
-        page.GetByTestId($"tag-filter-pill-{tag}").ClickAsync();
-
-    public Task ClickTagFilterModeToggleAsync() =>
-        page.GetByTestId("tag-filter-mode-toggle").ClickAsync();
-
-    public Task ClickTagFilterClearAsync() =>
-        page.GetByTestId("tag-filter-clear").ClickAsync();
-
-    public Task AssertTagFilterModeAsync(string expected) =>
-        Assertions.Expect(page.GetByTestId("tag-filter-mode-toggle")).ToHaveTextAsync(expected);
-
-    public Task AssertNoteCardVisibleAsync(string title) =>
-        Assertions.Expect(page.GetByTestId("note-cards").GetByText(title)).ToBeVisibleAsync(new() { Timeout = 10000 });
-
-    public Task AssertNoteCardAbsentAsync(string title) =>
-        Assertions.Expect(page.GetByTestId("note-cards").GetByText(title)).Not.ToBeVisibleAsync(new() { Timeout = 5000 });
 }
