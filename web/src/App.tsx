@@ -119,6 +119,7 @@ export default function App() {
       setActiveFolderPath([]);
       setView({ kind: "list" });
     }
+    if (previewFolderId === folderId) setPreviewFolderId(null);
     apiDeleteFolder(folderId)
       .then(() => getFolders().then(setFolders))
       .catch(() => {});

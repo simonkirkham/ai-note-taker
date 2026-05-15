@@ -18,6 +18,7 @@ export default function FolderPreviewPanel({
 
   useEffect(() => {
     if (!folderId) return;
+    setCards([]);
     getNoteCards().then(setCards).catch(() => {});
   }, [folderId]);
 
