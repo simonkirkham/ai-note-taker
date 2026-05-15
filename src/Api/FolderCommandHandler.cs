@@ -67,8 +67,8 @@ public sealed class FolderCommandHandler(
         {
             var allFolders = await folderTreeStore.GetAllAsync(ct).ConfigureAwait(false);
             var subtreeIds = GetSubtreeIds(cmd.FolderId, allFolders);
-            subtreeIds.Add(cmd.FolderId);
-            if (subtreeIds.Contains(cmd.NewParentFolderId.Value))
+            var subtreeSet = new HashSet<FolderId>(subtreeIds) { cmd.FolderId };
+            if (subtreeSet.Contains(cmd.NewParentFolderId.Value))
                 throw new CycleDetectedException("Cannot move a folder into itself or one of its descendants.");
         }
 
@@ -139,7 +139,7 @@ public sealed class FolderCommandHandler(
         }
     }
 
-    private static HashSet<FolderId> GetSubtreeIds(FolderId rootId, IReadOnlyList<FolderTreeView> allFolders)
+    private static IReadOnlyList<FolderId> GetSubtreeIds(FolderId rootId, IReadOnlyList<FolderTreeView> allFolders)
     {
         var result = new List<FolderId>();
         var queue = new Queue<FolderId>();
@@ -154,7 +154,7 @@ public sealed class FolderCommandHandler(
             }
         }
         result.Reverse(); // bottom-up order for deletion
-        return [.. result];
+        return result;
     }
 
     private static Folder RebuildFolder(IReadOnlyList<EventEnvelope> history)

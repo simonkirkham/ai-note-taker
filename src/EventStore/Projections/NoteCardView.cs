@@ -1,6 +1,3 @@
-using System.Text.Json;
-using Amazon.DynamoDBv2;
-using Amazon.DynamoDBv2.Model;
 using Domain.ActionItems;
 using Domain.Folders;
 using Domain.Notes;
