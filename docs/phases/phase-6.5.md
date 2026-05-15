@@ -164,7 +164,7 @@ Scenario: MSW server intercepts fetch without real network
 
 ## Slice 6.5-C — Home screen component tests
 
-**Status:** Not Started
+**Status:** Done
 
 **Value:** Component tests for every piece of UI visible on the home/list screen. Four E2E journeys are deleted once their behaviours are covered here, making the Playwright suite faster and cheaper to run.
 
@@ -251,13 +251,13 @@ Scenario: Completing a todo removes it from the list
 
 **Acceptance criteria:**
 
-- [ ] `npm run test` exits 0 with all 3 new test files passing
-- [ ] No test imports a real API URL or uses `API_BASE_URL`
-- [ ] MSW handlers cover every fetch call made by the tested components
-- [ ] Each test asserts on visible output, not component state or CSS class names
-- [ ] `NoteCardJourney.cs`, `TagFilterJourney.cs`, `TodoListJourney.cs`, `TodoCompleteJourney.cs` are deleted
-- [ ] `AppPage.cs` compiles with no references to the removed selectors
-- [ ] `dotnet build tests/Browser.E2E/Browser.E2E.csproj` exits 0 after deletions
+- [x] `npm run test` exits 0 with all 3 new test files passing
+- [x] No test imports a real API URL or uses `API_BASE_URL`
+- [x] MSW handlers cover every fetch call made by the tested components
+- [x] Each test asserts on visible output, not component state or CSS class names
+- [x] `NoteCardJourney.cs`, `TagFilterJourney.cs`, `TodoListJourney.cs`, `TodoCompleteJourney.cs` are deleted
+- [x] `AppPage.cs` compiles with no references to the removed selectors
+- [x] `dotnet build tests/Browser.E2E/Browser.E2E.csproj` exits 0 after deletions
 
 ---
 

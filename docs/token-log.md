@@ -371,6 +371,23 @@ None — slice ran within expected range.
 
 ---
 
+## Slice 6.5-C — Home screen component tests
+
+| Agent     | ~Tokens    |
+|-----------|------------|
+| Pip       | 55 000     |
+| Hawk      | 10 000     |
+| Scribe    | 5 000      |
+| **Total** | **~70 000** |
+
+**Why:** Two blocking main-deploy failures (ConsistentRead on event store, DynamoDB empty-string rejection) required separate fix PRs before 6.5-C could merge, adding substantial root-cause and deploy-cycle overhead. Hawk caught 2 findings (missing POST-capture assertion, missing negative test) requiring a fix+re-push round.
+
+**Optimisation suggestions:**
+- **Deploy failures (–15 000):** The ConsistentRead and DynamoDB empty-string bugs were pre-existing in production. A pre-merge checklist item — "does any path write then immediately read the same stream or projection without ConsistentRead?" — would have surfaced these during 5-C Batch 2 instead of re-surfacing as deploy failures during 6.5-C. The DynamoDB S attribute guard (`string.IsNullOrEmpty → NULL = true`) should be part of the projection scaffold template.
+- **Hawk findings (–3 000):** Both findings (POST-capture closure and negative-space assertion) are now documented patterns in learnings. Adding them to the component-test review checklist in Refactor would pre-empt the round-trip.
+
+---
+
 ## Slice 6.5-B — Vitest scaffold
 
 | Agent     | ~Tokens    |
