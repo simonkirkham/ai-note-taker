@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react'
+import { render, screen, fireEvent } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import ShortcutsPanel from '../components/ShortcutsPanel'
 
@@ -34,5 +34,26 @@ describe('ShortcutsPanel', () => {
     expect(table).toHaveTextContent('## + Space')
     expect(table).toHaveTextContent('Ctrl+B')
     expect(table).toHaveTextContent('✓ button')
+  })
+
+  it('pressing Escape hides the table', async () => {
+    render(<ShortcutsPanel />)
+    await userEvent.click(screen.getByTestId('shortcuts-toggle'))
+    expect(screen.getByTestId('shortcuts-table')).toBeInTheDocument()
+    fireEvent.keyDown(document, { key: 'Escape' })
+    expect(screen.queryByTestId('shortcuts-table')).toBeNull()
+  })
+
+  it('clicking outside the panel hides the table', async () => {
+    render(
+      <div>
+        <ShortcutsPanel />
+        <button data-testid="outside">outside</button>
+      </div>,
+    )
+    await userEvent.click(screen.getByTestId('shortcuts-toggle'))
+    expect(screen.getByTestId('shortcuts-table')).toBeInTheDocument()
+    fireEvent.mouseDown(screen.getByTestId('outside'))
+    expect(screen.queryByTestId('shortcuts-table')).toBeNull()
   })
 })

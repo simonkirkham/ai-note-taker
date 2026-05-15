@@ -22,7 +22,7 @@ export default function NoteEditor({ value, onChange, onBlur }: NoteEditorProps)
     const { from } = ed.state.selection;
     const coords = ed.view.coordsAtPos(from);
     const rect = containerRef.current.getBoundingClientRect();
-    setButtonY(coords.top - rect.top);
+    setButtonY((coords.top + coords.bottom) / 2 - rect.top);
   }, []);
 
   const editor = useEditor({
@@ -41,6 +41,7 @@ export default function NoteEditor({ value, onChange, onBlur }: NoteEditorProps)
       updateButton(ed);
     },
     onSelectionUpdate: ({ editor: ed }) => updateButton(ed),
+    onFocus: ({ editor: ed }) => updateButton(ed),
     onBlur: () => {
       setButtonY(null);
       onBlur();
