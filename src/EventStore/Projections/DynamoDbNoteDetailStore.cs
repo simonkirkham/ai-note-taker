@@ -12,8 +12,8 @@ public sealed class DynamoDbNoteDetailStore(IAmazonDynamoDB dynamo, string table
         {
             ["PK"]             = new() { S = detail.NoteId.ToStreamId() },
             ["NoteId"]         = new() { S = detail.NoteId.Value.ToString() },
-            ["Title"]          = new() { S = detail.Title },
-            ["Content"]        = new() { S = detail.Content },
+            ["Title"]          = string.IsNullOrEmpty(detail.Title)   ? new() { NULL = true } : new() { S = detail.Title },
+            ["Content"]        = string.IsNullOrEmpty(detail.Content) ? new() { NULL = true } : new() { S = detail.Content },
             ["CreatedAt"]      = new() { S = detail.CreatedAt.ToString("O") },
             ["LastModifiedAt"] = new() { S = detail.LastModifiedAt.ToString("O") }
         };
@@ -91,10 +91,12 @@ public sealed class DynamoDbNoteDetailStore(IAmazonDynamoDB dynamo, string table
         IReadOnlyList<string> tags = item.TryGetValue("Tags", out var tagsAttr) && tagsAttr.SS?.Count > 0
             ? tagsAttr.SS.AsReadOnly()
             : Array.Empty<string>();
+        static string ReadStr(Dictionary<string, AttributeValue> i, string key) =>
+            i.TryGetValue(key, out var a) && a.NULL != true ? (a.S ?? "") : "";
         return new NoteDetailView(
             new NoteId(Guid.Parse(item["NoteId"].S)),
-            item["Title"].S,
-            item["Content"].S,
+            ReadStr(item, "Title"),
+            ReadStr(item, "Content"),
             DateTimeOffset.Parse(item["CreatedAt"].S),
             DateTimeOffset.Parse(item["LastModifiedAt"].S),
             date,

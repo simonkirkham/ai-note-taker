@@ -109,6 +109,7 @@ public sealed class DynamoDbEventStore(IAmazonDynamoDB dynamo, string tableName)
                     [":v"] = new AttributeValue { S = "v" }
                 },
                 ScanIndexForward = true,
+                ConsistentRead = true,
                 ExclusiveStartKey = lastKey
             };
 
