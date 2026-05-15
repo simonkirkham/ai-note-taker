@@ -150,10 +150,12 @@ body {
 
 /* ── Layout ────────────────────────────────────────────────────── */
 .container {
-  max-width: 640px;
+  max-width: 1200px;
   margin: 0 auto;
   padding: 2.5rem 1.25rem;
   min-height: 100vh;
+  display: flex;
+  flex-direction: column;
 }
 
 .header {
@@ -501,7 +503,8 @@ body {
 .content-input {
   display: block;
   width: 100%;
-  min-height: 60vh;
+  flex: 1 1 0;
+  min-height: 200px;
   background: transparent;
   border: none;
   border-top: 2px solid transparent;
@@ -528,8 +531,10 @@ body {
   display: grid;
   grid-template-columns: 1fr 320px;
   gap: 1.5rem;
-  align-items: start;
+  align-items: stretch;
   margin-top: 1.25rem;
+  flex: 1 1 0;
+  min-height: 0;
 }
 
 .note-content-panel {
@@ -538,6 +543,8 @@ body {
   border: 1.5px solid var(--color-border);
   border-radius: 8px;
   padding: 1rem;
+  flex: 1 1 0;
+  min-height: 0;
 }
 
 .captured-notes-header {
