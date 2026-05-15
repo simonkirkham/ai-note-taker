@@ -56,6 +56,23 @@ describe('FolderMutations', () => {
     await act(async () => { resolveRename!() })
   })
 
+  it('created subfolder appears nested under parent in sidebar', async () => {
+    server.use(
+      http.get('/folders', () =>
+        HttpResponse.json({ folders: [{ folderId: 'f-1', name: 'People', children: [] }] }),
+      ),
+      http.post('/folders', () =>
+        HttpResponse.json({ folderId: 'f-child' }, { status: 201 }),
+      ),
+    )
+    render(<App />)
+    const folderItem = await screen.findByTestId('folder-item-f-1')
+    await userEvent.click(within(folderItem).getByTestId('add-subfolder-button'))
+    await userEvent.type(screen.getByTestId('subfolder-input'), 'Simon')
+    await userEvent.keyboard('{Enter}')
+    expect(within(screen.getByTestId('sidebar')).getByText('Simon')).toBeInTheDocument()
+  })
+
   it('renaming the active folder updates the main heading immediately', async () => {
     server.use(
       http.get('/folders', () =>
