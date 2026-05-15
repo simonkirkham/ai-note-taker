@@ -2,6 +2,7 @@ import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import Sidebar from '../components/Sidebar'
 import type { FolderNode } from '../api'
+import { UNFILED_ID } from '../constants'
 
 const folder: FolderNode = { folderId: 'f-1', name: 'People', children: [] }
 
@@ -89,6 +90,6 @@ describe('Sidebar', () => {
       />,
     )
     await userEvent.click(screen.getByTestId('unfiled-preview-button'))
-    expect(onPreview).toHaveBeenCalledWith('__unfiled__', 'Unfiled Notes')
+    expect(onPreview).toHaveBeenCalledWith(UNFILED_ID, 'Unfiled Notes')
   })
 })
