@@ -1421,6 +1421,12 @@ body {
   width: 220px;
 }
 
+.folder-preview-panel--drag-over {
+  background: var(--color-primary-bg);
+  outline: 2px dashed var(--color-primary);
+  outline-offset: -2px;
+}
+
 .folder-preview-header {
   display: flex;
   align-items: center;

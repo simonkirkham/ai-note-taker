@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react'
+import { render, screen, fireEvent } from '@testing-library/react'
 import FolderPreviewPanel from '../components/FolderPreviewPanel'
 import type { NoteCard } from '../api'
 
@@ -70,5 +70,55 @@ describe('FolderPreviewPanel', () => {
       />,
     )
     expect(screen.queryByText('No notes in this folder')).not.toBeInTheDocument()
+  })
+
+  it('shows a drag-over indicator when a note is dragged over the panel', () => {
+    render(
+      <FolderPreviewPanel
+        folderId="f-1"
+        folderName="People"
+        cards={[cardOtherFolder]}
+        onClose={noop}
+        onEditNote={noop}
+        onDropNote={noop}
+      />,
+    )
+    const panel = screen.getByTestId('folder-preview-panel')
+    fireEvent.dragOver(panel, { dataTransfer: { dropEffect: '' } })
+    expect(panel).toHaveClass('folder-preview-panel--drag-over')
+  })
+
+  it('drop calls onDropNote with the dragged noteId', () => {
+    const onDropNote = vi.fn()
+    render(
+      <FolderPreviewPanel
+        folderId="f-1"
+        folderName="People"
+        cards={[cardOtherFolder]}
+        onClose={noop}
+        onEditNote={noop}
+        onDropNote={onDropNote}
+      />,
+    )
+    const panel = screen.getByTestId('folder-preview-panel')
+    fireEvent.drop(panel, { dataTransfer: { getData: () => 'n-2' } })
+    expect(onDropNote).toHaveBeenCalledWith('n-2')
+  })
+
+  it('drop does nothing if note is already in the target folder', () => {
+    const onDropNote = vi.fn()
+    render(
+      <FolderPreviewPanel
+        folderId="f-1"
+        folderName="People"
+        cards={[cardInFolder]}
+        onClose={noop}
+        onEditNote={noop}
+        onDropNote={onDropNote}
+      />,
+    )
+    const panel = screen.getByTestId('folder-preview-panel')
+    fireEvent.drop(panel, { dataTransfer: { getData: () => 'n-1' } })
+    expect(onDropNote).not.toHaveBeenCalled()
   })
 })
