@@ -1,25 +1,19 @@
-import { useEffect, useState } from "react";
-import { getNoteCards, NoteCard } from "../api";
+import { NoteCard } from "../api";
 import { UNFILED_ID } from "../constants";
 
 export default function FolderPreviewPanel({
   folderId,
   folderName,
+  cards,
   onClose,
   onEditNote,
 }: {
   folderId: string | null;
   folderName: string;
+  cards: NoteCard[];
   onClose: () => void;
   onEditNote: (noteId: string) => void;
 }) {
-  const [cards, setCards] = useState<NoteCard[]>([]);
-
-  useEffect(() => {
-    if (!folderId) return;
-    getNoteCards().then(setCards).catch(() => {});
-  }, [folderId]);
-
   const folderCards = folderId
     ? cards.filter((c) => folderId === UNFILED_ID ? !c.folderId : c.folderId === folderId)
     : [];

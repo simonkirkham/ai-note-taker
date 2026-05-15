@@ -1,5 +1,5 @@
 import "./App.css";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import FolderPreviewPanel from "./components/FolderPreviewPanel";
 import ListView from "./components/ListView";
 import NoteView from "./components/NoteView";
@@ -8,8 +8,10 @@ import { UNFILED_ID } from "./constants";
 import { useNotes } from "./hooks/useNotes";
 import {
   FolderNode,
+  NoteCard,
   setNoteDate,
   getFolders,
+  getNoteCards,
   createFolder as apiCreateFolder,
   renameFolder as apiRenameFolder,
   deleteFolder as apiDeleteFolder,
@@ -48,14 +50,16 @@ export default function App() {
   const [folders, setFolders] = useState<FolderNode[]>([]);
   const [activeFolderId, setActiveFolderId] = useState<string | undefined>();
   const [activeFolderPath, setActiveFolderPath] = useState<string[]>([]);
+  const [cards, setCards] = useState<NoteCard[]>([]);
+  const cardsRef = useRef<NoteCard[]>([]);
+  useEffect(() => { cardsRef.current = cards; }, [cards]);
 
   useEffect(() => {
     getFolders().then(setFolders).catch(() => {});
+    getNoteCards().then(setCards).catch(() => {});
   }, []);
 
-  const handleDateSet = useCallback((_noteId: string, _date: string) => {
-    // date persisted by NoteView via API; cards refreshed on next mount
-  }, []);
+  const handleDateSet = useCallback((_noteId: string, _date: string) => {}, []);
   const [previewFolderId, setPreviewFolderId] = useState<string | null>(null);
   const [previewFolderName, setPreviewFolderName] = useState("");
 
@@ -68,8 +72,15 @@ export default function App() {
       } catch {
         // non-fatal: date will default to empty; user can set it manually
       }
-      if (activeFolderId && activeFolderId !== UNFILED_ID) {
-        handleMoveNoteToFolder(noteId, activeFolderId);
+      const newFolderId = activeFolderId && activeFolderId !== UNFILED_ID ? activeFolderId : null;
+      setCards((prev) => [{
+        noteId, title: '', contentPreview: '', date: todayAsISO,
+        openActions: [], createdAt: new Date().toISOString(), tags: [], folderId: newFolderId,
+      }, ...prev]);
+      if (newFolderId) {
+        apiMoveNoteToFolder(noteId, newFolderId).catch(() => {
+          setCards((prev) => prev.map((c) => c.noteId === noteId ? { ...c, folderId: null } : c));
+        });
       }
       setView({ kind: "note", noteId });
     } catch {
@@ -79,7 +90,16 @@ export default function App() {
 
   async function handleDelete(noteId: string) {
     await remove(noteId);
+    setCards((prev) => prev.filter((c) => c.noteId !== noteId));
     setView(backDestination());
+  }
+
+  function handleRename(noteId: string, title: string) {
+    const prevTitle = cardsRef.current.find((c) => c.noteId === noteId)?.title ?? '';
+    setCards((prev) => prev.map((c) => c.noteId === noteId ? { ...c, title } : c));
+    rename(noteId, title).catch(() => {
+      setCards((prev) => prev.map((c) => c.noteId === noteId ? { ...c, title: prevTitle } : c));
+    });
   }
 
   function backDestination(): View {
@@ -150,8 +170,12 @@ export default function App() {
   }
 
   function handleMoveNoteToFolder(noteId: string, folderId: string | null) {
-    if (folderId) apiMoveNoteToFolder(noteId, folderId).catch(() => {});
-    else apiUnfileNote(noteId).catch(() => {});
+    const prevFolderId = cardsRef.current.find((c) => c.noteId === noteId)?.folderId ?? null;
+    setCards((prev) => prev.map((c) => c.noteId === noteId ? { ...c, folderId } : c));
+    const apiCall = folderId ? apiMoveNoteToFolder(noteId, folderId) : apiUnfileNote(noteId);
+    apiCall.catch(() => {
+      setCards((prev) => prev.map((c) => c.noteId === noteId ? { ...c, folderId: prevFolderId } : c));
+    });
   }
 
   function handleDeleteFolder(folderId: string) {
@@ -178,13 +202,14 @@ export default function App() {
         key={view.noteId}
         noteId={view.noteId}
         initialTitle={notes.find((n) => n.noteId === view.noteId)?.title ?? ""}
-        onRename={rename}
+        onRename={handleRename}
         onBack={() => setView(backDestination())}
         onDelete={handleDelete}
         onDateSet={handleDateSet}
       />
     ) : (
       <ListView
+        cards={cards}
         loading={loading}
         creating={creating}
         createError={createError}
@@ -231,6 +256,7 @@ export default function App() {
       <FolderPreviewPanel
         folderId={previewFolderId}
         folderName={previewFolderName}
+        cards={cards}
         onClose={() => setPreviewFolderId(null)}
         onEditNote={(noteId) => { setView({ kind: "note", noteId }); setPreviewFolderId(null); }}
       />
