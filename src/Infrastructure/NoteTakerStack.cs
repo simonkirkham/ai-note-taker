@@ -93,6 +93,7 @@ public class NoteTakerStack : Stack
             Handler = "Api",
             Code = Amazon.CDK.AWS.Lambda.Code.FromAsset(lambdaAssetPath),
             Timeout = Duration.Seconds(29),
+            MemorySize = 512,
             SnapStart = Amazon.CDK.AWS.Lambda.SnapStartConf.ON_PUBLISHED_VERSIONS,
             Environment = new Dictionary<string, string>
             {
