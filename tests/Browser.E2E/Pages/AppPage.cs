@@ -23,7 +23,7 @@ public sealed class AppPage(IPage page, string baseUrl)
         await patchDone;
     }
 
-    public Task GoBackAsync() =>
+    public Task SaveAndReturnAsync() =>
         page.GetByTestId("save-button").ClickAsync();
 
     public Task AssertNoteVisibleInListAsync(string title) =>

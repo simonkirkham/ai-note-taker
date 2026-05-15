@@ -47,7 +47,7 @@ public sealed class NoteDeleteJourney(BrowserFixture browser) : IAsyncLifetime
         await _app.GotoAsync();
         await _app.ClickNewNoteAsync();
         await _app.EnterTitleAsync(title);
-        await _app.GoBackAsync();
+        await _app.SaveAndReturnAsync();
 
         await _app.AssertNoteVisibleInListAsync(title);
 

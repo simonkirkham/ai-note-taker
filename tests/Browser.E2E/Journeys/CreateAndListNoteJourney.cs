@@ -37,7 +37,7 @@ public sealed class CreateAndListNoteJourney(BrowserFixture browser) : IAsyncLif
         // When I create a note and give it a title
         await _app.ClickNewNoteAsync();
         await _app.EnterTitleAsync(title);
-        await _app.GoBackAsync();
+        await _app.SaveAndReturnAsync();
 
         // Then the named note appears in the list
         await _app.AssertNoteVisibleInListAsync(title);
