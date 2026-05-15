@@ -101,7 +101,7 @@ Slices and acceptance criteria: [docs/phases/phase-6.md](phases/phase-6.md)
 
 Slices and acceptance criteria: [docs/phases/phase-6.5.md](phases/phase-6.5.md)
 
-## Phase 7 — Rich note content _(In Progress)_
+## Phase 7 — Rich note content _(Done)_
 
 - Replace plain textarea with TipTap WYSIWYG editor
 - Headings, bold, bullet lists, and checkboxes via keyboard shortcuts

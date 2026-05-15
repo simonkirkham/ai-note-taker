@@ -132,13 +132,14 @@ Scenario: NoteCard snippet shows plain text
 
 ## Slice 7-B — Mark topic as discussed
 
-**Status:** Not Started
+**Status:** Done
 
-**Value:** Users can mark a heading (agenda topic) as discussed during a meeting. A ✓ button appears when the cursor is inside a heading; clicking it applies strikethrough to the heading text and saves the updated markdown (`## ~~Topic~~`). Clicking again removes it.
+**Value:** Users can mark a heading (agenda topic) as discussed during a meeting. A ✓ button appears when the cursor is inside a heading; clicking it applies strikethrough to the heading text and saves the updated markdown (`## ~~Topic~~`). Clicking again removes it. A collapsible shortcuts panel below the editor lets users discover all keyboard shortcuts without leaving the screen.
 
 **Changes in scope:**
 
 - `web/src/components/NoteEditor.tsx`: extend with `Strike` extension (from StarterKit or standalone); add a ✓ button that appears when the current selection is inside a heading node; toggle calls `editor.commands.toggleStrike()` and triggers `onChange`
+- `web/src/components/ShortcutsPanel.tsx`: new collapsible component showing all editor keyboard shortcuts; collapsed by default, toggled by a `?` button near the editor label
 
 **Implementation note:**
 
@@ -179,8 +180,10 @@ Scenario: NoteCard snippet strips strikethrough from discussed topics
 
 **Acceptance criteria:**
 
-- [ ] ✓ button appears only when cursor is inside a heading
-- [ ] Toggle applies/removes strikethrough on heading text
-- [ ] Discussed heading persists correctly after close/reopen
-- [ ] `StripMarkdown` in `NoteHandlers.cs` strips `~~` tokens from the preview
-- [ ] `npm run build` and `npm run lint` pass
+- [x] ✓ button appears only when cursor is inside a heading
+- [x] Toggle applies/removes strikethrough on heading text
+- [x] Discussed heading persists correctly after close/reopen
+- [x] `StripMarkdown` in `NoteHandlers.cs` strips `~~` tokens from the preview
+- [x] Shortcuts panel is collapsed by default; `?` button expands it to show all shortcuts
+- [x] Panel lists: `##`/`###` headings, `**bold**`, `- bullet`, `Ctrl+B` toggle, ✓ mark discussed
+- [x] `npm run build` and `npm run lint` pass

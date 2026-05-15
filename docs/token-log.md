@@ -434,6 +434,24 @@ None — slice ran within expected range.
 
 ---
 
+## Slice 7-B — Mark heading as discussed + shortcuts panel
+
+| Agent     | ~Tokens      |
+|-----------|--------------|
+| Breaker   | 12 000       |
+| Pip       | 45 000       |
+| Hawk 1    | 30 000       |
+| Hawk 2    | 20 000       |
+| Scribe    | 10 000       |
+| **Total** | **~117 000** |
+
+**Why:** Two Hawk rounds drove the total above the frontend-slice baseline — first pass found three issues (Y-position off by half line-height, missing `onFocus` handler, ShortcutsPanel lacking Escape/click-outside dismissal); each required targeted fixes before the second-pass approval.
+
+**Optimisation suggestions:**
+- **Hawk round 1 (–20 000):** All three findings are pre-emptable: floating button Y should use midpoint `(top+bottom)/2` (add to TipTap checklist); cursor-tracking UI must wire `onFocus` alongside `onSelectionUpdate` (add to NoteEditor extension pattern); collapsible panels must include Escape + mousedown-outside dismissal (add to Refactor UI checklist). Catching these in Refactor would have collapsed two Hawk rounds into one.
+
+---
+
 <!-- Scribe: append one section per completed slice using this template:
 
 ## Slice <id> — <name>

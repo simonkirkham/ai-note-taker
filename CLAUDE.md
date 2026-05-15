@@ -77,6 +77,7 @@ cdk deploy
 - **Events are immutable.** Once shipped, never edit shape; introduce a new event version instead.
 - **Projections are rebuildable** from the full event stream. No state lives only in a projection.
 - **Command handlers own orchestration.** Each aggregate gets a `*CommandHandler` in `src/Api/`. The handler loads the stream, rebuilds the aggregate, executes the command, persists events, and updates projections. API endpoints do HTTP only — parse request, call handler, return result. Never write `store.ReadAsync` or `store.AppendAsync` inside an endpoint lambda.
+- **Optimistic UI updates.** The UI must reflect the user's action immediately — do not wait for the API response before updating local state. Apply the expected state optimistically; reconcile on error. Breaker must include this as an explicit acceptance criterion in the BDD spec for every slice with frontend changes.
 - **Learnings docs are named `phase-<phase><id>-<short-description>.md`** (e.g. `phase-4e-note-summary-cards.md`) and live in `docs/learnings/`. Never use `slice-` as a prefix.
 
 ## Guardrails
