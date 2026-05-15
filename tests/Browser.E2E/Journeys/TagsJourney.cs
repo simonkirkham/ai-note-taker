@@ -50,7 +50,7 @@ public sealed class TagsJourney(BrowserFixture browser) : IAsyncLifetime
         await _app.EnterTitleAsync(title);
         await _app.AddTagAsync("1:1s");
 
-        await _app.GoBackAsync();
+        await _app.SaveAndReturnAsync();
 
         await _app.AssertCardTagVisibleAsync(title, "1:1s");
     }
@@ -65,7 +65,7 @@ public sealed class TagsJourney(BrowserFixture browser) : IAsyncLifetime
         await _app.EnterTitleAsync(title);
         await _app.AddTagAsync("1:1s");
 
-        await _app.GoBackAsync();
+        await _app.SaveAndReturnAsync();
         await _app.ClickNoteInListAsync(title);
 
         await _app.AssertTagPillVisibleAsync("1:1s");
@@ -113,7 +113,7 @@ public sealed class TagsJourney(BrowserFixture browser) : IAsyncLifetime
         await _app.AddTagAsync("1:1s Bill");
         await _app.RemoveTagAsync("Bill");
 
-        await _app.GoBackAsync();
+        await _app.SaveAndReturnAsync();
         await _app.ClickNoteInListAsync(title);
 
         await _app.AssertTagPillVisibleAsync("1:1s");

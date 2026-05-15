@@ -38,7 +38,7 @@ public sealed class ActionItemJourney(BrowserFixture browser) : IAsyncLifetime
         await _app.AddActionItemAsync("Book meeting room");
         await _app.AddActionItemAsync("Send recap email");
 
-        await _app.GoBackAsync();
+        await _app.SaveAndReturnAsync();
         await _app.ClickNoteInListAsync(title);
 
         await _app.AssertActionItemVisibleAsync("Book meeting room");
