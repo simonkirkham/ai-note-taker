@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, fireEvent } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { http, HttpResponse } from 'msw'
 import { server } from '../test/setup'
@@ -95,9 +95,11 @@ describe('NoteView', () => {
     )
     renderNoteView()
     const dateInput = await screen.findByLabelText('Meeting date')
-    await userEvent.clear(dateInput)
-    await userEvent.type(dateInput, '2026-04-21')
-    await userEvent.tab()
+    // Wait for API to settle before interacting — date inputs cannot use userEvent.type
+    // because partial values (e.g. "2026-0") are sanitized to "" by the browser spec
+    await waitFor(() => expect((dateInput as HTMLInputElement).value).not.toBe(''))
+    fireEvent.change(dateInput, { target: { value: '2026-04-21' } })
+    fireEvent.blur(dateInput)
     await waitFor(() => expect(savedDate).toBe('2026-04-21'))
   })
 
