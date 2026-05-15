@@ -32,6 +32,12 @@ A deploy job started at 07:42 UTC became unresponsive — no job progress, `upda
 
 The default `handlers.ts` for `GET /notes/:noteId` returns `content: ""`. If a test overrides the handler to return `content: "Meeting notes"` but the override is somehow not matched, the component still renders the textarea (with empty content from state initialisation), and the test passes silently. Adding `let fetchCalled = false` inside the override handler and asserting it was called proves the override actually fired.
 
+### 5. `userEvent.type` on `<input type="date">` silently sets nothing
+
+The HTML spec's sanitization algorithm for date inputs rejects partial values (e.g. `"2026-0"`) and sets the value to `""`. `userEvent.type` fires `onChange` per character, so each intermediate value is sanitized away and the final state is always empty. The blur fires with `date === ""`, sending `null` to the API rather than the intended date.
+
+Fix: use `fireEvent.change(input, { target: { value: 'YYYY-MM-DD' } })` to set the full value atomically. Always `await waitFor(() => expect(value).not.toBe(''))` first so any auto-populated value from the API has landed before the change fires — otherwise the auto-PATCH races the test's PATCH and `savedDate` ends up as the API-defaulted value, not the user's input.
+
 ---
 
 ## Applied status
@@ -42,3 +48,4 @@ The default `handlers.ts` for `GET /notes/:noteId` returns `content: ""`. If a t
 | 2. Load-triggered auto-mutations need closure-variable verification | Applied — `patchCalled` closure added to "date defaults to today" test |
 | 3. Stale GitHub Actions runners block deploy queue | Documented — fix requires manual UI cancel; no code change possible |
 | 4. GET-call verification when overriding the default handler | Applied — `fetchCalled` closure added to "renders content" test |
+| 5. `userEvent.type` on date inputs; use `fireEvent.change` with full value | Applied — "blurring date input" test fixed in `NoteView.test.tsx`; pattern codified in Refactor skill |
