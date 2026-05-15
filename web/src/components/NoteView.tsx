@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { editContent, getNoteDetail, setNoteDate, tagNote, untagNote } from "../api";
 import ActionsSection from "./ActionsSection";
 import NoteEditor from "./NoteEditor";
+import ShortcutsPanel from "./ShortcutsPanel";
 import TagsSection from "./TagsSection";
 
 export default function NoteView({
@@ -128,9 +129,12 @@ export default function NoteView({
       />
       <div className="note-layout">
         <div className="note-content-panel">
-          <span data-testid="captured-notes-label" className="captured-notes-label">
-            Captured Notes
-          </span>
+          <div className="captured-notes-header">
+            <span data-testid="captured-notes-label" className="captured-notes-label">
+              Captured Notes
+            </span>
+            <ShortcutsPanel />
+          </div>
           {loadingDetail ? (
             <p data-testid="note-loading" className="loading">Loading…</p>
           ) : (

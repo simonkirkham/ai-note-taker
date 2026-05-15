@@ -474,6 +474,13 @@ body {
   padding: 1rem;
 }
 
+.captured-notes-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.5rem;
+}
+
 .captured-notes-label {
   display: block;
   font-size: 0.75rem;
@@ -481,7 +488,93 @@ body {
   letter-spacing: 0.06em;
   text-transform: uppercase;
   color: var(--color-text-muted);
-  margin-bottom: 0.5rem;
+  margin-bottom: 0;
+}
+
+/* ── Shortcuts panel ───────────────────────────────────────────── */
+.shortcuts-panel {
+  position: relative;
+}
+
+.shortcuts-toggle {
+  width: 1.5rem;
+  height: 1.5rem;
+  border-radius: 50%;
+  border: 1.5px solid var(--color-border);
+  background: transparent;
+  color: var(--color-text-muted);
+  font-size: 0.75rem;
+  font-weight: 700;
+  cursor: pointer;
+  line-height: 1;
+  padding: 0;
+  transition: border-color var(--transition), color var(--transition);
+}
+
+.shortcuts-toggle:hover {
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+}
+
+.shortcuts-table {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 0.25rem);
+  z-index: 10;
+  background: var(--color-surface);
+  border: 1.5px solid var(--color-border);
+  border-radius: 6px;
+  padding: 0.5rem 0.75rem;
+  font-size: 0.8rem;
+  white-space: nowrap;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
+}
+
+.shortcuts-table td {
+  padding: 0.2rem 0.5rem 0.2rem 0;
+  color: var(--color-text-muted);
+}
+
+.shortcuts-table td:first-child {
+  padding-right: 1rem;
+}
+
+.shortcuts-table kbd {
+  background: var(--color-bg);
+  border: 1px solid var(--color-border);
+  border-radius: 3px;
+  padding: 0.1em 0.35em;
+  font-family: monospace;
+  font-size: 0.75rem;
+  color: var(--color-text);
+}
+
+/* ── Editor container + discussed button ───────────────────────── */
+.note-editor-container {
+  position: relative;
+}
+
+.discussed-button {
+  position: absolute;
+  right: 4px;
+  width: 1.4rem;
+  height: 1.4rem;
+  border-radius: 50%;
+  border: 1.5px solid var(--color-primary);
+  background: transparent;
+  color: var(--color-primary);
+  font-size: 0.7rem;
+  font-weight: 700;
+  cursor: pointer;
+  padding: 0;
+  line-height: 1;
+  transition: background var(--transition), color var(--transition);
+  transform: translateY(-50%);
+}
+
+.discussed-button:hover {
+  background: var(--color-primary);
+  color: #fff;
 }
 
 .note-right-panel {
