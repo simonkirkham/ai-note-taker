@@ -1,8 +1,8 @@
 # Phase 7.8 — Production Pipeline and Note Screen UX
 
-**Goal:** Establish a production deployment target and sharpen the note-screen interaction model with explicit lifecycle controls, keyboard-first focus, and drag-and-drop note filing.
+**Goal:** Establish a production deployment target and sharpen the note-screen interaction model with explicit lifecycle controls, keyboard-first focus, drag-and-drop note filing, and a layout that uses available screen space effectively.
 
-**Learning surface:** Multi-environment GitHub Actions pipeline with environment-scoped secrets and sequential promotion; React controlled form patterns and dirty-state detection across multiple fields; focus management with `useRef` and `tabIndex`; HTML5 drag-and-drop API in React; optimistic UI for move operations.
+**Learning surface:** Multi-environment GitHub Actions pipeline with environment-scoped secrets and sequential promotion; React controlled form patterns and dirty-state detection across multiple fields; focus management with `useRef` and `tabIndex`; HTML5 drag-and-drop API in React; optimistic UI for move operations; responsive CSS layout with fluid containers and viewport-aware sizing.
 
 ---
 
@@ -13,6 +13,8 @@
 7.8-B  Note screen focus ────────────────────── frontend only; independent
 7.8-C  Note screen save/cancel ──────────────── frontend only; independent of 7.8-B
 7.8-D  Drag-and-drop into folder panel ─────── frontend only; independent
+7.8-E  Layout space review ──────────────────── frontend only; prototype recommended
+7.8-F  Optimistic card state sync ───────────── frontend only; independent
 ```
 
 All slices are independent and can run in any order. 7.8-B and 7.8-C both touch `NoteView.tsx` so should not run in parallel.
@@ -275,3 +277,132 @@ Scenario: Drop target folder panel shows a visual drop zone
 - [ ] Dropping onto the note's current folder is a no-op
 - [ ] Drop zone visual indicator shown during drag-over
 - [ ] Component tests cover drag, drop, optimistic update, and revert
+
+---
+
+## Slice 7.8-E — Layout space review
+
+**Status:** Not Started
+
+**Prototype recommended.** The right layout is uncertain enough that building a throwaway prototype before touching production CSS is the right call. Run the `prototype` skill first.
+
+**Problem:** Both the home screen and note screen leave large blank margins on typical laptop and desktop viewports. The root causes identified from the CSS:
+
+| Issue | Root cause |
+|-------|-----------|
+| Home screen constrained to a narrow column | `.container` has `max-width: 640px; margin: 0 auto` — on wide viewports this wastes the majority of the viewport width |
+| Note content area feels small | `.note-layout` is `grid-template-columns: 1fr 320px` but the whole screen sits inside the narrow `.container`, so `1fr` resolves to a small absolute value |
+| Right panel fixed at 320px | Fine on a 1280px+ screen; too wide relative to content on 900–1100px viewports |
+
+**Design intent (to validate via prototype):**
+
+- Home screen: note cards should expand to fill available width; consider a wider max-width (e.g. `1200px`) or removing the cap and using a responsive card grid instead of a single-column list
+- Note screen: content panel should grow to fill the available viewport height and most of the horizontal space; right panel (actions/tags) should remain comfortably wide but not dominate
+- Both screens should feel "full" on a 1280px laptop — no prominent blank gutters
+
+**Changes in scope (post-prototype):**
+
+- `web/src/App.css` — increase or remove `.container` max-width; adjust `.note-layout` column proportions; ensure `.content-input` `min-height` grows to fill available vertical space (e.g. use `flex-grow: 1` in a flex column rather than a fixed `60vh`)
+- `web/src/__tests__/` — layout is visual; no new component tests required beyond confirming existing tests still pass after CSS changes
+
+**Scenarios:**
+
+```
+Scenario: Home screen uses the full available width on a wide viewport
+  Given the viewport is 1280px wide
+  When  I view the home screen
+  Then  note cards extend across the majority of the viewport
+  And   there are no large blank margins on either side
+
+Scenario: Note content panel fills available height
+  Given I am on the note screen
+  When  I look at the content editor
+  Then  the editor extends to fill the available vertical space
+  And   I do not need to scroll to find an empty area to type in
+
+Scenario: Note right panel does not dominate the layout
+  Given I am on the note screen on a 1280px viewport
+  When  I look at the note layout
+  Then  the content panel is visually larger than the right panel
+  And   the right panel remains readable and usable
+
+Scenario: Layout remains usable at 768px viewport width
+  Given the viewport is 768px wide
+  When  I view either screen
+  Then  no content is cut off or inaccessible
+```
+
+**Acceptance criteria:**
+
+- [ ] Prototype approved before CSS changes begin
+- [ ] `.container` max-width increased or removed; home screen cards use available width
+- [ ] Note content panel grows to fill available vertical space (no fixed `min-height` that leaves blank space)
+- [ ] Note layout proportions give the content panel the majority of horizontal space
+- [ ] No regressions on existing component tests after CSS changes
+- [ ] Visually verified on 1280px and 768px viewport widths
+
+---
+
+## Slice 7.8-F — Optimistic card state sync
+
+**Status:** Not Started
+
+**Value:** The home screen shows the correct note title the moment you return from editing, and a note disappears from a folder's preview panel the instant it is dragged to another folder. No stale data, no lag.
+
+**Root cause:** Note card state is siloed in individual components. `ListView` and `FolderPreviewPanel` each fetch their own `cards` in a local `useState` on mount. `useNotes.rename` updates the sidebar's `notes` list but has no way to reach the `cards` in `ListView`. Similarly, when a note is moved out of a folder panel, only the destination panel updates; the source panel's local state is untouched until it remounts.
+
+**Two bugs, one fix:** Lift `cards` state out of `ListView` and `FolderPreviewPanel` and into `App` (or a shared hook). All card-mutating operations — rename, move — update this shared state optimistically.
+
+**Changes in scope:**
+
+- `web/src/App.tsx` — add `cards` state (replacing `ListView`'s local state); fetch `getNoteCards()` on mount; expose `onRename` that updates both `notes` (sidebar) and `cards` (home screen) optimistically; pass updated `cards` to `ListView`
+- `web/src/components/ListView.tsx` — remove local `cards` state and `getNoteCards()` fetch; accept `cards` as a prop
+- `web/src/components/FolderPreviewPanel.tsx` — remove local `cards` state; accept `cards` as a prop filtered to the folder; the move handler in App removes the note from `cards` optimistically (removing it from every panel that renders from shared state)
+- `web/src/__tests__/ListView.test.tsx` — update to pass `cards` as a prop instead of mocking `getNoteCards`
+- `web/src/__tests__/FolderPreviewPanel.test.tsx` — update similarly
+
+**Scenarios:**
+
+```
+Scenario: Note title updates on the home screen immediately after renaming
+  Given I am on the note screen and rename a note to "Q3 Planning"
+  When  I navigate back to the home screen
+  Then  the note card shows "Q3 Planning" immediately
+  And   no refetch is needed before the correct title appears
+
+Scenario: Note disappears from source folder panel immediately on move
+  Given folder A's preview panel is open showing note "Meeting Notes"
+  And   I drag "Meeting Notes" to folder B's preview panel
+  When  the drop completes
+  Then  "Meeting Notes" is removed from folder A's panel immediately
+  And   "Meeting Notes" appears in folder B's panel immediately
+
+Scenario: A failed rename reverts the card title
+  Given I rename a note to "New Title" and the API call fails
+  When  the rename request returns an error
+  Then  the note card reverts to the original title on the home screen
+
+Scenario: Note appears in destination folder home screen immediately on move
+  Given I am viewing folder B's home screen (notes filtered to folder B)
+  And   I move note "Meeting Notes" into folder B
+  When  the move completes
+  Then  "Meeting Notes" appears in folder B's home screen immediately
+  And   no navigation or refresh is needed
+
+Scenario: A failed move reverts both panels
+  Given a note was dragged from folder A to folder B and the API call fails
+  When  the move request returns an error
+  Then  the note reappears in folder A's panel
+  And   the note is removed from folder B's panel
+```
+
+**Acceptance criteria:**
+
+- [ ] `cards` state lives in `App` (or a shared hook); `ListView` and `FolderPreviewPanel` receive it as a prop
+- [ ] Renaming a note updates the matching card's title in shared state immediately (before API response)
+- [ ] Moving a note removes it from the source panel's cards immediately (optimistic)
+- [ ] Moving a note adds it to the destination folder's cards immediately (optimistic)
+- [ ] The folder home screen (filtered card list) reflects the move without navigation or refresh
+- [ ] Failed rename and failed move both revert the optimistic update
+- [ ] Component tests for `ListView` and `FolderPreviewPanel` updated to use props rather than internal fetches
+- [ ] No new `getNoteCards()` calls added — one fetch in `App`, shared downward

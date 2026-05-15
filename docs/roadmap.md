@@ -132,6 +132,8 @@ Slices and acceptance criteria: [docs/phases/phase-7.5.md](phases/phase-7.5.md)
 - Note screen keyboard focus: cursor lands in title on open; single Tab moves to content
 - Note screen save/cancel: Save disabled on empty note; Cancel prompts confirmation once any field is populated
 - Drag-and-drop notes into folder slide-out panel; optimistic move with revert on failure
+- Layout space review: remove 640px container cap on home screen; note content panel grows to fill available height and width
+- Optimistic card state sync: lift `cards` state to `App` so title renames and folder moves update all views immediately
 
 **Goal:** Ship a production deployment target and harden the note-screen interaction model with explicit lifecycle controls, keyboard-first focus, and drag-and-drop note filing.
 
