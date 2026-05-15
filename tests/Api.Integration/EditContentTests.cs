@@ -47,6 +47,21 @@ public sealed class EditContentTests(ApiFactory factory) : IClassFixture<ApiFact
         Assert.NotEqual(before, after);
     }
 
+    [Fact]
+    public async Task PutContent_ClearingToEmpty_PersistsEmptyAndReturnsItOnGet()
+    {
+        var noteId = await CreateNoteAsync();
+        await _client.PutAsync($"/notes/{noteId}/content",
+            new StringContent("{\"content\":\"original content\"}", Encoding.UTF8, "application/json"));
+
+        await _client.PutAsync($"/notes/{noteId}/content",
+            new StringContent("{\"content\":\"\"}", Encoding.UTF8, "application/json"));
+
+        var resp = await _client.GetAsync($"/notes/{noteId}");
+        var body = await resp.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("", body.GetProperty("content").GetString());
+    }
+
     private async Task<string> CreateNoteAsync()
     {
         var create = await _client.PostAsync("/notes", null);
