@@ -72,7 +72,7 @@ describe('FolderPreviewPanel', () => {
     expect(screen.queryByText('No notes in this folder')).not.toBeInTheDocument()
   })
 
-  it('shows a drag-over indicator when a note is dragged over the panel', () => {
+  it('shows a drag-over indicator when dragging over the panel and clears it on leave', () => {
     render(
       <FolderPreviewPanel
         folderId="f-1"
@@ -86,6 +86,8 @@ describe('FolderPreviewPanel', () => {
     const panel = screen.getByTestId('folder-preview-panel')
     fireEvent.dragOver(panel, { dataTransfer: { dropEffect: '' } })
     expect(panel).toHaveClass('folder-preview-panel--drag-over')
+    fireEvent.dragLeave(panel)
+    expect(panel).not.toHaveClass('folder-preview-panel--drag-over')
   })
 
   it('drop calls onDropNote with the dragged noteId', () => {
@@ -103,6 +105,53 @@ describe('FolderPreviewPanel', () => {
     const panel = screen.getByTestId('folder-preview-panel')
     fireEvent.drop(panel, { dataTransfer: { getData: () => 'n-2' } })
     expect(onDropNote).toHaveBeenCalledWith('n-2')
+  })
+
+  it('panel no longer shows the note when parent removes it from cards (optimistic update)', () => {
+    const { rerender } = render(
+      <FolderPreviewPanel
+        folderId="f-1"
+        folderName="People"
+        cards={[cardInFolder]}
+        onClose={noop}
+        onEditNote={noop}
+      />,
+    )
+    expect(screen.getByText('1:1 with Bill')).toBeInTheDocument()
+    rerender(
+      <FolderPreviewPanel
+        folderId="f-1"
+        folderName="People"
+        cards={[]}
+        onClose={noop}
+        onEditNote={noop}
+      />,
+    )
+    expect(screen.queryByText('1:1 with Bill')).not.toBeInTheDocument()
+    expect(screen.getByText('No notes in this folder')).toBeInTheDocument()
+  })
+
+  it('panel shows the note again when parent restores it in cards (failed-move revert)', () => {
+    const { rerender } = render(
+      <FolderPreviewPanel
+        folderId="f-1"
+        folderName="People"
+        cards={[]}
+        onClose={noop}
+        onEditNote={noop}
+      />,
+    )
+    expect(screen.getByText('No notes in this folder')).toBeInTheDocument()
+    rerender(
+      <FolderPreviewPanel
+        folderId="f-1"
+        folderName="People"
+        cards={[cardInFolder]}
+        onClose={noop}
+        onEditNote={noop}
+      />,
+    )
+    expect(screen.getByText('1:1 with Bill')).toBeInTheDocument()
   })
 
   it('drop does nothing if note is already in the target folder', () => {

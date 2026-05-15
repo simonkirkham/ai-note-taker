@@ -25,10 +25,11 @@ export default function FolderPreviewPanel({
   function handleDragOver(e: React.DragEvent) {
     e.preventDefault();
     e.dataTransfer.dropEffect = "move";
-    setIsDragOver(true);
+    if (folderId) setIsDragOver(true);
   }
 
-  function handleDragLeave() {
+  function handleDragLeave(e: React.DragEvent) {
+    if (e.currentTarget.contains(e.relatedTarget as Node)) return;
     setIsDragOver(false);
   }
 
@@ -38,7 +39,9 @@ export default function FolderPreviewPanel({
     const noteId = e.dataTransfer.getData("text/plain");
     if (!noteId || !folderId) return;
     const card = cards.find((c) => c.noteId === noteId);
-    const alreadyHere = folderId === UNFILED_ID ? card && !card.folderId : card?.folderId === folderId;
+    const alreadyHere = folderId === UNFILED_ID
+      ? card !== undefined && !card.folderId
+      : card?.folderId === folderId;
     if (alreadyHere) return;
     onDropNote?.(noteId);
   }
