@@ -40,8 +40,13 @@ The `NoteDateJourney` was failing with a 30 s timeout because `RenameNote` was c
 
 ---
 
-## Immediately-applied fixes
+## Applied status
 
-- `ConsistentRead = true` added to `DynamoDbEventStore.ReadAsync` (PR #39, merged before 6.5-C)
-- `DynamoDbNoteDetailStore` null-guards for empty Title/Content (PR #39)
-- Integration test added: `PutContent_ClearingToEmpty_PersistsEmptyAndReturnsItOnGet`
+| Learning | Status |
+|---|---|
+| 1. POST-capture closure pattern for API-call verification | Applied — added to Refactor skill's component-test section |
+| 2. Negative-space test for `{condition && <element>}` | Applied — added to Refactor skill |
+| 3. Layered tests: isolated first, integration through parent second | Applied — added to Refactor skill |
+| 4. `FillAsync("")` flakiness in Playwright | Documented — fix (`TriplClickAsync` + Delete) codified; not applied until it recurs |
+| 5. `ConsistentRead = true` on event store reads | Applied — `DynamoDbEventStore.ReadAsync` fixed in PR #39 |
+| 6. DynamoDB `{NULL: true}` for empty strings | Applied — `DynamoDbNoteDetailStore` null-guards + integration test added in PR #39 |

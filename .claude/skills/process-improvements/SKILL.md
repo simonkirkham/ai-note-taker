@@ -78,6 +78,26 @@ Before committing, apply every action marked Done:
 
 Re-read the learnings doc after applying to confirm every Done label is accurate.
 
+## Step 5 — Append an applied-status table to the learnings doc
+
+After all Done actions are applied, add an `## Applied status` section at the bottom of the learnings doc. One row per learning:
+
+```markdown
+## Applied status
+
+| Learning | Status |
+|---|---|
+| 1. <learning title> | Applied — <where/how> |
+| 2. <learning title> | Applied — <where/how> |
+| 3. <learning title> | Documented — <why not applied yet> |
+```
+
+- **Applied** = change was made in this session (with pointer to where)
+- **Documented** = captured for future reference; not executable now (explain why)
+- **TODO** = requires human decision; not applied yet
+
+This table is the audit trail that answers "were the learnings from this slice acted on?" in the next session.
+
 ## Rules
 
 - Observations without a concrete action are not learnings — omit them
