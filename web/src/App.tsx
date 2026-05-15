@@ -259,6 +259,7 @@ export default function App() {
         cards={cards}
         onClose={() => setPreviewFolderId(null)}
         onEditNote={(noteId) => { setView({ kind: "note", noteId }); setPreviewFolderId(null); }}
+        onDropNote={(noteId) => handleMoveNoteToFolder(noteId, previewFolderId === UNFILED_ID ? null : previewFolderId)}
       />
       <div className="app-main">{main}</div>
     </div>

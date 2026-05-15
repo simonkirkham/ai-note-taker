@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react'
+import { render, screen, fireEvent } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import NoteCard from '../components/NoteCard'
 import type { NoteCard as NoteCardData } from '../api'
@@ -40,5 +40,17 @@ describe('NoteCard', () => {
     render(<NoteCard card={base} onEdit={onEdit} />)
     await userEvent.click(screen.getByRole('button', { name: 'Edit Note' }))
     expect(onEdit).toHaveBeenCalledWith('note-1')
+  })
+
+  it('note card has the draggable attribute', () => {
+    render(<NoteCard card={base} onEdit={() => {}} />)
+    expect(screen.getByRole('article')).toHaveAttribute('draggable', 'true')
+  })
+
+  it('dragStart stores the noteId in dataTransfer', () => {
+    render(<NoteCard card={base} onEdit={() => {}} />)
+    const dataTransfer = { setData: vi.fn(), effectAllowed: '' }
+    fireEvent.dragStart(screen.getByRole('article'), { dataTransfer })
+    expect(dataTransfer.setData).toHaveBeenCalledWith('text/plain', 'note-1')
   })
 })
