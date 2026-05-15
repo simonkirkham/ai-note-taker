@@ -27,14 +27,19 @@ describe('TodoSection', () => {
     expect(screen.getByText('Send recap')).toBeInTheDocument()
   })
 
-  it('completing a todo removes it from the list', async () => {
+  it('completing a todo POSTs to the API and removes it from the list', async () => {
+    let completeCalled = false
     server.use(
       http.get('/todos', () => HttpResponse.json({ items: [item1] })),
-      http.post('/notes/:noteId/actions/:actionId/complete', () => new HttpResponse(null, { status: 200 })),
+      http.post('/notes/:noteId/actions/:actionId/complete', () => {
+        completeCalled = true
+        return new HttpResponse(null, { status: 200 })
+      }),
     )
     render(<TodoSection />)
     const checkbox = await screen.findByRole('checkbox', { name: /Chase invoice/i })
     await userEvent.click(checkbox)
+    await waitFor(() => expect(completeCalled).toBe(true))
     await waitFor(() => expect(screen.queryByText('Chase invoice')).not.toBeInTheDocument())
   })
 })

@@ -29,6 +29,11 @@ describe('NoteCard', () => {
     expect(screen.getByText('Send recap email')).toBeInTheDocument()
   })
 
+  it('does not render a snippet when contentPreview is empty', () => {
+    const { container } = render(<NoteCard card={base} onEdit={() => {}} />)
+    expect(container.querySelector('.note-card-snippet')).toBeNull()
+  })
+
   it('calls onEdit when Edit button is clicked', async () => {
     const onEdit = vi.fn()
     render(<NoteCard card={base} onEdit={onEdit} />)
