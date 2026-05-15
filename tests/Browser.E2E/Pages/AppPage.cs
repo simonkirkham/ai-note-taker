@@ -24,7 +24,7 @@ public sealed class AppPage(IPage page, string baseUrl)
     }
 
     public Task GoBackAsync() =>
-        page.GetByTestId("back-button").ClickAsync();
+        page.GetByTestId("save-button").ClickAsync();
 
     public Task AssertNoteVisibleInListAsync(string title) =>
         Assertions.Expect(
