@@ -43,6 +43,7 @@ export default function ShortcutsPanel() {
         aria-controls="shortcuts-table"
         aria-label="Toggle keyboard shortcuts"
         data-testid="shortcuts-toggle"
+        tabIndex={-1}
       >
         ?
       </button>

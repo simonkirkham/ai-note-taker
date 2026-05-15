@@ -127,4 +127,18 @@ describe('NoteView', () => {
     renderNoteView()
     expect(await screen.findByTestId('note-not-found')).toBeInTheDocument()
   })
+
+  it('title input receives focus after note detail loads', async () => {
+    renderNoteView()
+    await screen.findByLabelText('Note content')
+    expect(document.activeElement).toBe(screen.getByLabelText('Note title'))
+  })
+
+  it('Tab from title input moves focus to the content area', async () => {
+    renderNoteView()
+    await screen.findByLabelText('Note content')
+    screen.getByLabelText('Note title').focus()
+    await userEvent.tab()
+    expect(document.activeElement).toBe(screen.getByLabelText('Note content'))
+  })
 })
