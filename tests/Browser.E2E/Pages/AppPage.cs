@@ -123,31 +123,4 @@ public sealed class AppPage(IPage page, string baseUrl)
                 .Filter(new LocatorFilterOptions { HasText = cardTitle })
                 .GetByTestId($"card-tag-{tag}")
         ).ToBeVisibleAsync();
-
-    public async Task CreateFolderAsync(string name)
-    {
-        var postDone = page.WaitForResponseAsync(r =>
-            r.Url.Contains("/folders") && r.Request.Method == "POST");
-        await page.GetByTestId("new-folder-button").ClickAsync();
-        var input = page.GetByTestId("new-folder-input");
-        await input.FillAsync(name);
-        await input.PressAsync("Enter");
-        await postDone;
-    }
-
-    public async Task CreateSubfolderAsync(string parentFolderName, string childName)
-    {
-        var postDone = page.WaitForResponseAsync(r =>
-            r.Url.Contains("/folders") && r.Request.Method == "POST");
-        var folderItem = page.GetByText(parentFolderName).First;
-        await folderItem.HoverAsync();
-        await page.GetByTestId("add-subfolder-button").First.DispatchEventAsync("click");
-        var input = page.GetByTestId("subfolder-input").First;
-        await input.FillAsync(childName);
-        await input.PressAsync("Enter");
-        await postDone;
-    }
-
-    public Task AssertFolderVisibleInSidebarAsync(string folderName) =>
-        Assertions.Expect(page.GetByTestId("sidebar").GetByText(folderName)).ToBeVisibleAsync();
 }
