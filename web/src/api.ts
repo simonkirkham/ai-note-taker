@@ -123,7 +123,7 @@ export interface NoteCard {
   openActions: NoteCardAction[];
   createdAt: string;
   tags: string[];
-  folderId?: string;
+  folderId: string | null;
 }
 
 export async function getNoteCards(): Promise<NoteCard[]> {

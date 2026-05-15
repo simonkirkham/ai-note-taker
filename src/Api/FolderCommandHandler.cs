@@ -10,7 +10,8 @@ namespace Api;
 public sealed class FolderCommandHandler(
     IEventStore store,
     IFolderTreeStore folderTreeStore,
-    INoteCardListStore noteCardListStore)
+    INoteCardListStore noteCardListStore,
+    NoteCommandHandler noteCommandHandler)
 {
     private const int InitialEventVersion = 1;
 
@@ -27,7 +28,7 @@ public sealed class FolderCommandHandler(
     {
         var streamId = cmd.FolderId.ToStreamId();
         var history = await store.ReadAsync(streamId, ct).ConfigureAwait(false);
-        if (history.Count == 0) throw new InvalidOperationException("Folder does not exist.");
+        if (history.Count == 0) throw new FolderNotFoundException(cmd.FolderId);
         var newEvents = RebuildFolder(history).Handle(cmd);
         if (newEvents.Count == 0) return;
         await PersistFolderAsync(streamId, history, newEvents, ct).ConfigureAwait(false);
@@ -81,17 +82,7 @@ public sealed class FolderCommandHandler(
         var allCards = await noteCardListStore.QueryAllAsync(ct).ConfigureAwait(false);
         var notesInFolder = allCards.Where(c => c.FolderId == folderId && !c.Deleted).ToList();
         foreach (var card in notesInFolder)
-        {
-            var noteStreamId = card.NoteId.ToStreamId();
-            var noteHistory = await store.ReadAsync(noteStreamId, ct).ConfigureAwait(false);
-            if (noteHistory.Count == 0) continue;
-            var note = RebuildNote(noteHistory);
-            var noteEvents = note.Handle(new UnfileNote(card.NoteId));
-            if (noteEvents.Count == 0) continue;
-            var noteEnvelopes = ToEnvelopes(noteStreamId, noteEvents);
-            await store.AppendAsync(noteStreamId, noteHistory.Count, noteEnvelopes, ct).ConfigureAwait(false);
-            await noteCardListStore.UpsertAsync(card with { FolderId = null }, ct).ConfigureAwait(false);
-        }
+            await noteCommandHandler.HandleAsync(new UnfileNote(card.NoteId), ct).ConfigureAwait(false);
     }
 
     private async Task DeleteOneFolderAsync(FolderId folderId, CancellationToken ct)
@@ -165,19 +156,9 @@ public sealed class FolderCommandHandler(
         return folder;
     }
 
-    private static Note RebuildNote(IReadOnlyList<EventEnvelope> history)
-    {
-        var note = new Note();
-        foreach (var e in history)
-            note.Apply(EventDeserializer.Deserialize(e));
-        return note;
-    }
-
     private static List<EventEnvelope> ToEnvelopes(string streamId, IReadOnlyList<IDomainEvent> events) =>
         events.Select(e => new EventEnvelope(
             StreamId: streamId, SequenceNumber: 0, EventType: e.GetType().Name, EventVersion: InitialEventVersion,
             OccurredAt: DateTimeOffset.UtcNow, Payload: JsonSerializer.Serialize(e, e.GetType()),
             Metadata: new EventMetadata(Guid.NewGuid(), null, null, null))).ToList();
 }
-
-public sealed class CycleDetectedException(string message) : InvalidOperationException(message);

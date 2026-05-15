@@ -123,6 +123,8 @@ public sealed class Note : IAggregate
     {
         if (!_exists || _deleted)
             throw new InvalidOperationException($"Note {cmd.NoteId} does not exist.");
+        if (cmd.FolderId == _folderId)
+            return [];
         return [new NoteFiledInFolder(cmd.NoteId, cmd.FolderId)];
     }
 

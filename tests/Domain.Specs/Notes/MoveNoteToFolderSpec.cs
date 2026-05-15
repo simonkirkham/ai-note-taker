@@ -45,4 +45,13 @@ public sealed class MoveNoteToFolderSpec
             .When(new MoveNoteToFolder(NoteId, otherFolderId))
             .Then(new NoteFiledInFolder(NoteId, otherFolderId));
     }
+
+    [Fact]
+    public void NoOpWhenAlreadyInSameFolder()
+    {
+        Spec
+            .Given<Note>(new NoteCreated(NoteId), new NoteFiledInFolder(NoteId, FolderId))
+            .When(new MoveNoteToFolder(NoteId, FolderId))
+            .Then();
+    }
 }

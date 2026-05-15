@@ -32,6 +32,10 @@ public static class FolderHandlers
         {
             await handler.HandleAsync(new Domain.Folders.RenameFolder(new FolderId(folderId), req.Name), ct);
         }
+        catch (FolderNotFoundException)
+        {
+            return Results.NotFound();
+        }
         catch (InvalidOperationException)
         {
             return Results.BadRequest();

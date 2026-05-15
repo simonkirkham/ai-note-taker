@@ -30,10 +30,10 @@ public sealed class RenameFolderTests(ApiFactory factory) : IClassFixture<ApiFac
     }
 
     [Fact]
-    public async Task PatchFolderName_NonExistentFolder_ReturnsBadRequest()
+    public async Task PatchFolderName_NonExistentFolder_ReturnsNotFound()
     {
         var resp = await PatchNameAsync(Guid.NewGuid().ToString(), "NewName");
-        Assert.Equal(HttpStatusCode.BadRequest, resp.StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, resp.StatusCode);
     }
 
     private async Task<string> CreateFolderAsync(string name)

@@ -107,9 +107,14 @@ public static class NoteHandlers
         return Results.NoContent();
     }
 
-    public static async Task<IResult> MoveNoteToFolder(Guid noteId, MoveNoteToFolderRequest req, NoteCommandHandler handler, CancellationToken ct)
+    public static async Task<IResult> MoveNoteToFolder(Guid noteId, MoveNoteToFolderRequest req, NoteCommandHandler handler, IFolderTreeStore folderTreeStore, CancellationToken ct)
     {
-        try { await handler.HandleAsync(new Domain.Notes.MoveNoteToFolder(new NoteId(noteId), new FolderId(req.FolderId)), ct); }
+        var targetId = new FolderId(req.FolderId);
+        var allFolders = await folderTreeStore.GetAllAsync(ct).ConfigureAwait(false);
+        if (!allFolders.Any(f => f.FolderId == targetId))
+            return Results.NotFound();
+
+        try { await handler.HandleAsync(new Domain.Notes.MoveNoteToFolder(new NoteId(noteId), targetId), ct); }
         catch (NoteNotFoundException) { return Results.NotFound(); }
         return Results.NoContent();
     }
