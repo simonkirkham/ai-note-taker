@@ -113,6 +113,19 @@ Slices and acceptance criteria: [docs/phases/phase-6.5.md](phases/phase-6.5.md)
 
 Slices and acceptance criteria: [docs/phases/phase-7.md](phases/phase-7.md)
 
+## Phase 7.5 — Folder UX fixes and Lambda performance _(Planned)_
+
+- Remove vestigial sidebar note list (sidebar is folder-navigation only post-Phase 5)
+- Add Unfiled Notes preview pull-out (`»` button parity with folder items)
+- Fix folder preview panel — cards not showing due to stale App-level state
+- Optimistic folder create/rename (eliminate disappear-then-reappear flicker)
+- Fix heading sync — renaming the active folder now updates the main heading immediately
+- Increase Lambda memory from 128 MB default to 512 MB — eliminates 10+ second warm latency
+
+**Goal:** close the gap between the Phase 5 spec and its implementation; learn that optimistic UI and prop-threading decisions that aren't paired with component tests at time of writing will silently regress. Demonstrate that Lambda memory is the primary warm-latency lever once cold starts are solved by SnapStart.
+
+Slices and acceptance criteria: [docs/phases/phase-7.5.md](phases/phase-7.5.md)
+
 ## Phase 8 — Google Calendar integration + meeting notes
 
 - Today's meetings surfaced on the home screen (Google Calendar pass-through, single-user refresh token)
