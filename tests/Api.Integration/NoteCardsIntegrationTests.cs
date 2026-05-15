@@ -140,3 +140,101 @@ public sealed class NoteCardsIntegrationTests(ApiFactory factory) : IClassFixtur
     }
 }
 
+public sealed class NoteCardMarkdownPreviewTests(ApiFactory factory) : IClassFixture<ApiFactory>
+{
+    private readonly HttpClient _client = factory.CreateClient();
+
+    [Fact]
+    public async Task GetNoteCards_HeadingTokensStrippedFromPreview()
+    {
+        var noteId = await CreateNoteAsync();
+        await PutAsync($"/notes/{noteId}/content", "{\"content\":\"## Budget review\\nSome notes\"}");
+
+        var card = await GetCardAsync(noteId);
+        var preview = card.GetProperty("contentPreview").GetString()!;
+        Assert.DoesNotContain("##", preview);
+        Assert.Contains("Budget review", preview);
+    }
+
+    [Fact]
+    public async Task GetNoteCards_BoldTokensStrippedFromPreview()
+    {
+        var noteId = await CreateNoteAsync();
+        await PutAsync($"/notes/{noteId}/content", "{\"content\":\"**agreed** £50k cap\"}");
+
+        var card = await GetCardAsync(noteId);
+        var preview = card.GetProperty("contentPreview").GetString()!;
+        Assert.DoesNotContain("**", preview);
+        Assert.Contains("agreed", preview);
+    }
+
+    [Fact]
+    public async Task GetNoteCards_BulletTokensStrippedFromPreview()
+    {
+        var noteId = await CreateNoteAsync();
+        await PutAsync($"/notes/{noteId}/content", "{\"content\":\"- First item\\n- Second item\"}");
+
+        var card = await GetCardAsync(noteId);
+        var preview = card.GetProperty("contentPreview").GetString()!;
+        Assert.DoesNotContain("- First", preview);
+        Assert.Contains("First item", preview);
+    }
+
+    [Fact]
+    public async Task GetNoteCards_OrderedListTokensStrippedFromPreview()
+    {
+        var noteId = await CreateNoteAsync();
+        await PutAsync($"/notes/{noteId}/content", "{\"content\":\"1. First item\\n2. Second item\"}");
+
+        var card = await GetCardAsync(noteId);
+        var preview = card.GetProperty("contentPreview").GetString()!;
+        Assert.DoesNotContain("1.", preview);
+        Assert.Contains("First item", preview);
+    }
+
+    [Fact]
+    public async Task GetNoteCards_StrikethroughStrippedFromPreview()
+    {
+        var noteId = await CreateNoteAsync();
+        await PutAsync($"/notes/{noteId}/content", "{\"content\":\"## ~~Budget review~~\"}");
+
+        var card = await GetCardAsync(noteId);
+        var preview = card.GetProperty("contentPreview").GetString()!;
+        Assert.DoesNotContain("~~", preview);
+        Assert.DoesNotContain("##", preview);
+        Assert.Contains("Budget review", preview);
+    }
+
+    [Fact]
+    public async Task GetNoteCards_PreviewTruncatedAfterStripping()
+    {
+        var noteId = await CreateNoteAsync();
+        var longText = new string('x', 150);
+        await PutAsync($"/notes/{noteId}/content", $"{{\"content\":\"## {longText}\"}}");
+
+        var card = await GetCardAsync(noteId);
+        var preview = card.GetProperty("contentPreview").GetString()!;
+        Assert.DoesNotContain("##", preview);
+        Assert.True(preview.Length <= 120, $"Preview length {preview.Length} exceeds 120");
+        Assert.EndsWith("…", preview);
+    }
+
+    private async Task<string> CreateNoteAsync()
+    {
+        var resp = await _client.PostAsync("/notes", null);
+        var body = await resp.Content.ReadFromJsonAsync<JsonElement>();
+        return body.GetProperty("noteId").GetString()!;
+    }
+
+    private Task<HttpResponseMessage> PutAsync(string url, string json) =>
+        _client.PutAsync(url, new StringContent(json, Encoding.UTF8, "application/json"));
+
+    private async Task<JsonElement> GetCardAsync(string noteId)
+    {
+        var resp = await _client.GetAsync("/notes/cards");
+        var body = await resp.Content.ReadFromJsonAsync<JsonElement>();
+        return body.GetProperty("cards").EnumerateArray()
+            .First(c => c.GetProperty("noteId").GetString() == noteId);
+    }
+}
+

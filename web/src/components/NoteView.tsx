@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { editContent, getNoteDetail, setNoteDate, tagNote, untagNote } from "../api";
 import ActionsSection from "./ActionsSection";
+import NoteEditor from "./NoteEditor";
 import TagsSection from "./TagsSection";
 
 export default function NoteView({
@@ -27,6 +28,7 @@ export default function NoteView({
   const inputRef = useRef<HTMLInputElement>(null);
   const tagsModifiedRef = useRef(false);
   const contentModifiedRef = useRef(false);
+  const contentRef = useRef("");
 
   useEffect(() => {
     tagsModifiedRef.current = false;
@@ -132,15 +134,11 @@ export default function NoteView({
           {loadingDetail ? (
             <p data-testid="note-loading" className="loading">Loading…</p>
           ) : (
-            <textarea
-              data-testid="note-content"
-              aria-label="Note content"
+            <NoteEditor
+              key={noteId}
               value={content}
-              onFocus={() => { contentModifiedRef.current = true; }}
-              onChange={(e) => { contentModifiedRef.current = true; setContent(e.target.value); }}
-              onBlur={(e) => editContent(noteId, e.currentTarget.value)}
-              placeholder="Start typing your notes…"
-              className="content-input"
+              onChange={(md) => { contentModifiedRef.current = true; contentRef.current = md; setContent(md); }}
+              onBlur={() => editContent(noteId, contentRef.current)}
             />
           )}
         </div>
