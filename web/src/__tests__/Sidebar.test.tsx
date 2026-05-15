@@ -1,4 +1,5 @@
 import { render, screen } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import Sidebar from '../components/Sidebar'
 import type { FolderNode } from '../api'
 
@@ -39,5 +40,30 @@ describe('Sidebar', () => {
     expect(screen.getByTestId('home-button')).toBeInTheDocument()
     expect(screen.getByTestId('unfiled-notes-button')).toBeInTheDocument()
     expect(screen.getByText('People')).toBeInTheDocument()
+  })
+
+  it('calls onFolderSelect when a folder is clicked', async () => {
+    const onFolderSelect = vi.fn()
+    render(
+      <Sidebar
+        open={true}
+        onCreate={noop}
+        folders={[folder]}
+        activeFolderId={undefined}
+        onFolderSelect={onFolderSelect}
+        onCreateFolder={noop}
+        onRenameFolder={noop}
+        onDeleteFolder={noop}
+        onCreateChildFolder={noop}
+        onDropNote={noop}
+        onHome={noop}
+        onUnfiledSelect={noop}
+        isUnfiledActive={false}
+        onDropToUnfiled={noop}
+        onPreview={noop}
+      />,
+    )
+    await userEvent.click(screen.getByText('People'))
+    expect(onFolderSelect).toHaveBeenCalledWith('f-1', expect.any(Array))
   })
 })

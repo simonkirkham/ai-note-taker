@@ -28,11 +28,16 @@ public sealed class AppPage(IPage page, string baseUrl)
 
     public Task AssertNoteVisibleInListAsync(string title) =>
         Assertions.Expect(
-            page.GetByTestId("note-list").GetByText(title)
+            page.GetByTestId("note-cards")
+                .Locator(".note-card")
+                .Filter(new LocatorFilterOptions { HasText = title })
         ).ToBeVisibleAsync();
 
     public Task ClickNoteInListAsync(string title) =>
-        page.GetByTestId("note-list").GetByText(title).ClickAsync();
+        page.GetByTestId("note-cards")
+            .Locator(".note-card")
+            .Filter(new LocatorFilterOptions { HasText = title })
+            .ClickAsync();
 
     public async Task DeleteNoteAsync()
     {
@@ -44,7 +49,9 @@ public sealed class AppPage(IPage page, string baseUrl)
 
     public Task AssertNoteAbsentFromListAsync(string title) =>
         Assertions.Expect(
-            page.GetByTestId("note-list").GetByText(title)
+            page.GetByTestId("note-cards")
+                .Locator(".note-card")
+                .Filter(new LocatorFilterOptions { HasText = title })
         ).Not.ToBeVisibleAsync();
 
     public async Task AddActionItemAsync(string description)
