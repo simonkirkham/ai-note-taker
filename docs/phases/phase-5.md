@@ -66,6 +66,8 @@ What is **not** yet in place:
 5-L  Cascade delete a folder  (depends 5-F, 5-G) ──────────────────────────────┘
 
 5-M  Note date defaults to today  (no dependencies — backend already shipped) ── standalone
+
+5-N  Folder navigation component tests  (depends 5-D — App and Sidebar must exist) ─── test refactor
 ```
 
 Each slice is a complete vertical: domain events, API endpoints, projections, and the frontend wired to those endpoints. No "backend first, frontend later" splits across slices.
@@ -968,6 +970,84 @@ Scenario: I can change the date and it persists
 - [ ] Date input is pre-filled with today on a freshly created note
 - [ ] Changing the date calls `PATCH /notes/{noteId}/date`; the updated date survives a page reload
 - [ ] E2E: create a note — date input shows today; navigate home; reopen — date still shows today; change date — new date persists
+
+---
+
+## Slice 5-N — Folder navigation component tests
+
+**Status:** Done
+
+**Value:** Five of the seven tests in `FolderNavigationJourney.cs` test React state transitions and conditional rendering, not full-stack wiring. Moving them to component tests removes Playwright cold-start overhead for checks that do not need a deployed backend, and makes `FolderNavigationJourney.cs` a true boundary-to-boundary smoke test.
+
+**Learning surface:** Testing App-level state machines with RTL — rendering `<App>` with MSW rather than isolating a single component; the rule that an E2E test earns its cost only when the behaviour under test cannot be verified without a real network boundary.
+
+---
+
+**What changes**
+
+Five behaviours move from `FolderNavigationJourney.cs` to a new `web/src/__tests__/FolderNavigation.test.tsx`:
+
+| E2E test removed | Component test equivalent |
+|------------------|--------------------------|
+| `ClickFolder_ShowsFolderHeading` | MSW `GET /folders` returns one folder; click folder name in sidebar → `<h1>` with folder name is visible |
+| `ClickHome_ShowsAllNotes` | Same setup; click folder then click Home button → heading changes to "Home" |
+| `FolderView_HidesTodoList` | Click folder → `data-testid="todo-section"` is absent from DOM |
+| `HomeView_ShowsTodoList` | App renders at home view → `data-testid="todo-section"` is present |
+| `UnfiledNotes_ShowsInSidebar` | App renders → `data-testid="unfiled-notes-button"` is present without any interaction |
+
+Two tests stay in `FolderNavigationJourney.cs` because they verify API round-trips that only exist in the real stack:
+- `CreateFolder_AppearsInSidebar` — verifies POST `/folders` response triggers sidebar refresh
+- `CreateSubfolder_AppearsNested` — verifies `parentFolderId` wiring through the real API
+
+---
+
+**Key implementation files**
+
+- `web/src/__tests__/FolderNavigation.test.tsx` — new file; renders `<App>`; uses MSW for `GET /folders`, `GET /notes`, `GET /notes/cards`
+- `web/src/test/handlers.ts` — extend with `GET /folders` handler returning a minimal folder tree
+- `tests/Browser.E2E/Journeys/FolderNavigationJourney.cs` — remove the 5 tests listed above; keep `CreateFolder_AppearsInSidebar` and `CreateSubfolder_AppearsNested`
+- `tests/Browser.E2E/Pages/AppPage.cs` — remove any selectors used only by the deleted tests (verify none are shared with the 2 kept tests before deleting)
+
+---
+
+**Scenarios**
+
+```
+Scenario: Clicking a folder shows its heading
+  Given GET /folders returns folder { folderId: "f-1", name: "People" }
+  When  the user clicks "People" in the sidebar
+  Then  a heading "People" is visible in the main content area
+
+Scenario: Clicking Home after a folder returns to the home heading
+  Given the user has navigated into folder "People"
+  When  the user clicks the Home button
+  Then  the heading shows "Home"
+
+Scenario: The todo list is hidden in folder view
+  Given the user has clicked into folder "People"
+  When  the folder view renders
+  Then  data-testid="todo-section" is absent from the document
+
+Scenario: The todo list is visible on the home view
+  Given the App renders at the default home view
+  When  the home view is shown
+  Then  data-testid="todo-section" is present in the document
+
+Scenario: Unfiled Notes is always visible in the sidebar
+  Given the App renders with no folders
+  When  the sidebar is shown
+  Then  data-testid="unfiled-notes-button" is present in the document
+```
+
+**Acceptance criteria**
+
+- [ ] `web/src/__tests__/FolderNavigation.test.tsx` contains all 5 component tests; `npm run test` exits 0
+- [ ] No test imports a real API URL or requires a deployed backend
+- [ ] MSW handlers cover `GET /folders`, `GET /notes`, `GET /notes/cards` for every test
+- [ ] Each test asserts on visible output or DOM presence, not component state
+- [ ] The 5 tests are deleted from `FolderNavigationJourney.cs`; `CreateFolder_AppearsInSidebar` and `CreateSubfolder_AppearsNested` remain
+- [ ] `dotnet build tests/Browser.E2E/Browser.E2E.csproj` exits 0 after deletions
+- [ ] `AppPage.cs` compiles with no references to selectors used only by the removed tests
 
 ---
 
