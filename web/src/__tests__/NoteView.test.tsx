@@ -69,7 +69,7 @@ describe('NoteView', () => {
     vi.setSystemTime(new Date('2026-01-15'))
     renderNoteView()
     const dateInput = await screen.findByLabelText('Meeting date')
-    expect((dateInput as HTMLInputElement).value).toBe('2026-01-15')
+    await waitFor(() => expect((dateInput as HTMLInputElement).value).toBe('2026-01-15'))
     await waitFor(() => expect(patchCalled).toBe(true))
   })
 
@@ -81,7 +81,7 @@ describe('NoteView', () => {
     )
     renderNoteView()
     const dateInput = await screen.findByLabelText('Meeting date')
-    expect((dateInput as HTMLInputElement).value).toBe('2026-04-21')
+    await waitFor(() => expect((dateInput as HTMLInputElement).value).toBe('2026-04-21'))
   })
 
   it('blurring the date input triggers a PATCH to save the date', async () => {
