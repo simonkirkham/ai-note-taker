@@ -115,7 +115,7 @@ export default function App() {
   }
 
   async function handleCreateFolder(name: string, parentFolderId?: string) {
-    const tempId = `temp-${Date.now()}`;
+    const tempId = `temp-${crypto.randomUUID()}`;
     const tempFolder: FolderNode = { folderId: tempId, name, children: [] };
     if (parentFolderId) {
       setFolders((prev) => mapTree(prev, parentFolderId, (n) => ({ ...n, children: [...(n.children ?? []), tempFolder] })));
@@ -144,7 +144,7 @@ export default function App() {
     }
     apiRenameFolder(folderId, name)
       .then(() => getFolders().then(setFolders))
-      .catch(() => {});
+      .catch(() => { getFolders().then(setFolders).catch(() => {}); });
   }
 
   function handleMoveNoteToFolder(noteId: string, folderId: string | null) {
