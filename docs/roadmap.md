@@ -65,7 +65,7 @@ Bring the app in line with the wireframes in `docs/wireframes/`.
 
 Slices and acceptance criteria: [docs/phases/phase-4.md](phases/phase-4.md)
 
-## Phase 5 — Tags and folders
+## Phase 5 — Tags and folders _(Done)_
 
 - Tag notes with free-text labels; tags appear as pills on note cards and the note screen
 - `TagIndex` projection powers a filter bar on the home screen (AND/OR multi-select)

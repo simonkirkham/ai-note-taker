@@ -4,6 +4,24 @@ Approximate tokens consumed per slice, broken down by agent. Recorded by Scribe 
 
 ---
 
+## Slice 5-EFGHIJKL — Folder rename/delete/move/cascade + note filing
+
+| Agent     | ~Tokens     |
+|-----------|-------------|
+| Pip       | 200 000     |
+| Hawk 1    | 78 000      |
+| Hawk 2    | 62 000      |
+| Scribe    | 10 000      |
+| **Total** | **~350 000** |
+
+**Why:** Pip ran high due to the scale of combining 8 sub-slices into one PR, a workflow correction (started implementation on main instead of a worktree requiring stash/re-apply), and two full Hawk review rounds (six findings in pass 1: UnfileNotesInFolderAsync projection bypass, RenameFolder 404/400 mismatch, no-op guard missing, CycleDetectedException placement, MoveNoteToFolder folder-existence check, TypeScript null vs optional type).
+
+**Optimisation suggestions:**
+- **Hawk double-round (–62 000):** Six of the eight findings were pre-empt-able with a pre-PR checklist pass: cross-aggregate handlers must delegate to the target handler (not bypass), each aggregate needs its own `XNotFoundException`, and type changes from optional to required must grep test fixtures. Embedding these as a pre-PR checklist in the refactor skill would catch them before Hawk.
+- **Workflow correction (–10 000):** Pip started on main instead of the worktree despite the guardrail. The recovery was fast but the extra turns added context overhead. No guardrail change — the rule exists and was read; purely execution discipline.
+
+---
+
 <!-- Scribe: append one section per completed slice using this template:
 
 ## Slice <id> — <name>

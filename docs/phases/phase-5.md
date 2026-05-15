@@ -434,7 +434,7 @@ Scenario: Clicking Home returns to the home view with the todo list
 
 ## Slice 5-E — Rename a folder
 
-**Status:** Not Started
+**Status:** Done
 
 **Value:** I can fix a folder name I got wrong — double-clicking it lets me type a new name in place.
 
@@ -484,20 +484,20 @@ Scenario: Pressing Escape while renaming cancels the change
 
 **Acceptance criteria:**
 
-- [ ] *(internal)* `RenameFolder` with empty name throws; `FolderRenamed` appended on success
-- [ ] *(internal)* `FolderTree` projection updates `Name` on `FolderRenamed`
-- [ ] `PATCH /folders/{folderId}/name` renames the folder; `GET /folders` reflects the new name
-- [ ] Double-clicking a folder name opens an inline text input pre-filled with the current name
-- [ ] ✎ hover button also opens the rename input
-- [ ] Confirming with Enter calls `PATCH` and updates the sidebar
-- [ ] Pressing Escape cancels without making a change
-- [ ] E2E: create folder "Peopl"; double-click; rename to "People"; sidebar shows "People"; reload — still "People"
+- [x] *(internal)* `RenameFolder` with empty name throws; `FolderRenamed` appended on success
+- [x] *(internal)* `FolderTree` projection updates `Name` on `FolderRenamed`
+- [x] `PATCH /folders/{folderId}/name` renames the folder; `GET /folders` reflects the new name
+- [x] Double-clicking a folder name opens an inline text input pre-filled with the current name
+- [x] ✎ hover button also opens the rename input
+- [x] Confirming with Enter calls `PATCH` and updates the sidebar
+- [x] Pressing Escape cancels without making a change
+- [ ] E2E: create folder "Peopl"; double-click; rename to "People"; sidebar shows "People"; reload — still "People" _(E2E tests superseded by component tests in Phase 6.5)_
 
 ---
 
 ## Slice 5-F — Delete an empty folder
 
-**Status:** Not Started
+**Status:** Done (superseded by 5-L cascade delete — `DeleteFolder` cascades rather than returning 409)
 
 **Value:** I can delete a folder I no longer need — as long as it has no subfolders.
 
@@ -547,19 +547,19 @@ Scenario: Deleting the active folder navigates home
 
 **Acceptance criteria:**
 
-- [ ] *(internal)* `FolderDeleted` appended when folder has no children; 409 returned when it does
-- [ ] *(internal)* `FolderTree` projection removes the row on `FolderDeleted`
-- [ ] `DELETE /folders/{folderId}` on empty folder returns 204; folder gone from `GET /folders`
-- [ ] `DELETE /folders/{folderId}` on folder with children returns 409
-- [ ] × hover button calls delete; folder disappears from sidebar on success
-- [ ] If the deleted folder was active, the app navigates home
-- [ ] E2E: create "People"; delete it — gone from sidebar; create "People" with child "Bill"; try to delete "People" — remains
+- [x] *(internal)* `FolderDeleted` appended; `FolderTree` projection removes the row
+- [x] *(internal)* `FolderTree` projection removes the row on `FolderDeleted`
+- [x] `DELETE /folders/{folderId}` returns 204; folder gone from `GET /folders`
+- [x] × hover button calls delete; folder disappears from sidebar on success
+- [x] If the deleted folder was active, the app navigates home
+- [ ] `DELETE /folders/{folderId}` on folder with children returns 409 _(changed: now cascades — see 5-L)_
+- [ ] E2E _(superseded by component tests in Phase 6.5)_
 
 ---
 
 ## Slice 5-G — File a note in a folder
 
-**Status:** Not Started
+**Status:** Done
 
 **Value:** I can drag a note into a folder to organise it — clicking the folder then shows only that folder's notes.
 
@@ -624,21 +624,21 @@ Scenario: Filing a note in a different folder moves it
 
 **Acceptance criteria:**
 
-- [ ] *(internal)* `Note` aggregate handles `MoveNoteToFolder`; fires `NoteFiledInFolder`
-- [ ] *(internal)* `NoteCardList` projection folds `NoteFiledInFolder` (sets `FolderId`)
-- [ ] `PUT /notes/{noteId}/folder` files a note; `GET /notes/cards` returns it with `folderId` set
-- [ ] `GET /notes/cards` includes `folderId?: string` on every card
-- [ ] Dragging a note card onto a sidebar folder calls `PUT /notes/{id}/folder`
-- [ ] Folder view shows only cards where `card.folderId === activeFolderId`
-- [ ] Home view continues to show all notes regardless of `folderId`
-- [ ] `noteFolderMap` removed from `localStorage` and `App.tsx` state
-- [ ] E2E: create note and folder; drag note onto folder; click folder — note appears; click Home — note absent
+- [x] *(internal)* `Note` aggregate handles `MoveNoteToFolder`; fires `NoteFiledInFolder`
+- [x] *(internal)* `NoteCardList` projection folds `NoteFiledInFolder` (sets `FolderId`)
+- [x] `PUT /notes/{noteId}/folder` files a note; `GET /notes/cards` returns it with `folderId` set
+- [x] `GET /notes/cards` includes `folderId: string | null` on every card
+- [x] Dragging a note card onto a sidebar folder calls `PUT /notes/{id}/folder`
+- [x] Folder view shows only cards where `card.folderId === activeFolderId`
+- [x] Home view continues to show all notes regardless of `folderId`
+- [x] `noteFolderMap` removed from `localStorage` and `App.tsx` state
+- [ ] E2E _(superseded by component tests in Phase 6.5)_
 
 ---
 
 ## Slice 5-H — Unfiled Notes view
 
-**Status:** Not Started
+**Status:** Done
 
 **Value:** I can see all my unorganised notes in one place, and drag a note there to remove it from its folder.
 
@@ -696,19 +696,19 @@ Scenario: All notes appear in Unfiled Notes after losing their folder
 
 **Acceptance criteria:**
 
-- [ ] *(internal)* `Note` aggregate handles `UnfileNote`; fires `NoteUnfiled`
-- [ ] *(internal)* `NoteCardList` projection folds `NoteUnfiled` (clears `FolderId`)
-- [ ] `DELETE /notes/{noteId}/folder` unfiles the note; `GET /notes/cards` returns it with `folderId: null`
-- [ ] "Unfiled Notes" sidebar item is always visible and clickable; highlights when active
-- [ ] Clicking "Unfiled Notes" shows only cards where `card.folderId` is null
-- [ ] Dragging a note onto "Unfiled Notes" calls `DELETE /notes/{id}/folder`
-- [ ] E2E: file a note in "People"; drag it onto "Unfiled Notes"; click "People" — note absent; click "Unfiled Notes" — note present
+- [x] *(internal)* `Note` aggregate handles `UnfileNote`; fires `NoteUnfiled`
+- [x] *(internal)* `NoteCardList` projection folds `NoteUnfiled` (clears `FolderId`)
+- [x] `DELETE /notes/{noteId}/folder` unfiles the note; `GET /notes/cards` returns it with `folderId: null`
+- [x] "Unfiled Notes" sidebar item is always visible and clickable; highlights when active
+- [x] Clicking "Unfiled Notes" shows only cards where `card.folderId` is null
+- [x] Dragging a note onto "Unfiled Notes" calls `DELETE /notes/{id}/folder`
+- [ ] E2E _(superseded by component tests in Phase 6.5)_
 
 ---
 
 ## Slice 5-I — Folder preview panel
 
-**Status:** Not Started
+**Status:** Done
 
 **Value:** I can peek at a folder's notes with a side panel before deciding to navigate into it.
 
@@ -752,18 +752,18 @@ Scenario: Closing the panel hides it
 
 **Acceptance criteria:**
 
-- [ ] `»` button visible on hover for each folder node
-- [ ] Clicking `»` opens the panel with the correct folder's notes (titles and dates)
-- [ ] Notes in the panel are draggable (can be dropped onto other folders)
-- [ ] Clicking `»` on a different folder updates the panel header and note list
-- [ ] `×` closes the panel
-- [ ] E2E: file a note in "Bill"; open `»` panel for "Bill"; panel shows the note; drag it onto "People"; note disappears from Bill's panel
+- [x] `»` button visible on hover for each folder node
+- [x] Clicking `»` opens the panel with the correct folder's notes (titles and dates)
+- [x] Notes in the panel are draggable (can be dropped onto other folders)
+- [x] Clicking `»` on a different folder updates the panel header and note list
+- [x] `×` closes the panel
+- [ ] E2E _(superseded by component tests in Phase 6.5)_
 
 ---
 
 ## Slice 5-J — Auto-assign note to current folder
 
-**Status:** Not Started
+**Status:** Done
 
 **Value:** When I'm working inside a folder, new notes I create are automatically filed there so I don't have to drag them manually.
 
@@ -798,16 +798,16 @@ Scenario: A new note created from "Unfiled Notes" is not auto-filed
 
 **Acceptance criteria:**
 
-- [ ] Creating a note from a folder view (not home, not Unfiled Notes) fires `PUT /notes/{id}/folder` immediately after creation
-- [ ] The new note appears in the current folder when the user returns to it
-- [ ] Creating a note from home or Unfiled Notes does not file it anywhere
-- [ ] E2E: navigate to "Projects"; create a note; navigate back to "Projects" — the new note is there; open "Unfiled Notes" — the note is absent
+- [x] Creating a note from a folder view (not home, not Unfiled Notes) fires `PUT /notes/{id}/folder` immediately after creation
+- [x] The new note appears in the current folder when the user returns to it
+- [x] Creating a note from home or Unfiled Notes does not file it anywhere
+- [ ] E2E _(superseded by component tests in Phase 6.5)_
 
 ---
 
 ## Slice 5-K — Reparent a folder
 
-**Status:** Not Started
+**Status:** Done
 
 **Value:** I can reorganise my folder hierarchy by dragging a folder into another — without losing any of the notes inside.
 
@@ -859,20 +859,20 @@ Scenario: Dragging a folder into one of its own descendants does nothing
 
 **Acceptance criteria:**
 
-- [ ] *(internal)* `MoveFolder` appends `FolderMoved`; cycle detection rejects moves into own descendants (400)
-- [ ] *(internal)* `FolderTree` projection updates `ParentFolderId` on `FolderMoved`
-- [ ] `PUT /folders/{folderId}/parent` reparents the folder; `GET /folders` reflects new tree
-- [ ] `PUT /folders/{folderId}/parent` with a cycle returns 400
-- [ ] Drag folder onto folder in sidebar reparents it
-- [ ] Dragging to root (null parent) moves folder to root level
-- [ ] Notes inside moved folders are unaffected
-- [ ] E2E: create "People > Bill"; drag "Bill" to root — "Bill" at root, still contains its notes
+- [x] *(internal)* `MoveFolder` appends `FolderMoved`; cycle detection rejects moves into own descendants (400)
+- [x] *(internal)* `FolderTree` projection updates `ParentFolderId` on `FolderMoved`
+- [x] `PUT /folders/{folderId}/parent` reparents the folder; `GET /folders` reflects new tree
+- [x] `PUT /folders/{folderId}/parent` with a cycle returns 400
+- [x] Drag folder onto folder in sidebar reparents it
+- [x] Dragging to root (null parent) moves folder to root level
+- [x] Notes inside moved folders are unaffected
+- [ ] E2E _(superseded by component tests in Phase 6.5)_
 
 ---
 
 ## Slice 5-L — Cascade delete a folder
 
-**Status:** Not Started
+**Status:** Done
 
 **Value:** I can delete any folder, even one with subfolders and notes inside — everything is cleaned up automatically and the notes appear in Unfiled Notes.
 
@@ -914,11 +914,11 @@ Scenario: Other folders and their notes are not affected
 
 **Acceptance criteria:**
 
-- [ ] *(internal)* `DeleteFolder` with descendants: unfiles all notes in subtree (`NoteUnfiled` per note), deletes descendant folders bottom-up (`FolderDeleted`), then deletes target; all correct events appended
-- [ ] `DELETE /folders/{folderId}` on folder with children cascades cleanly (no more 409)
-- [ ] All descendant folders disappear from `GET /folders`
-- [ ] All notes that were in the subtree appear in `GET /notes/cards` with `folderId: null`
-- [ ] E2E: create "People > Bill"; file a note in "Bill"; delete "People" — both folders gone; "Unfiled Notes" shows the note
+- [x] *(internal)* `DeleteFolder` with descendants: unfiles all notes in subtree (`NoteUnfiled` per note), deletes descendant folders bottom-up (`FolderDeleted`), then deletes target; all correct events appended
+- [x] `DELETE /folders/{folderId}` on folder with children cascades cleanly (no more 409)
+- [x] All descendant folders disappear from `GET /folders`
+- [x] All notes that were in the subtree appear in `GET /notes/cards` with `folderId: null`
+- [ ] E2E _(superseded by component tests in Phase 6.5)_
 
 ---
 
