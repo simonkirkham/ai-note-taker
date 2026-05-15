@@ -70,7 +70,32 @@ describe('FolderMutations', () => {
     await userEvent.click(within(folderItem).getByTestId('add-subfolder-button'))
     await userEvent.type(screen.getByTestId('subfolder-input'), 'Simon')
     await userEvent.keyboard('{Enter}')
-    expect(within(screen.getByTestId('sidebar')).getByText('Simon')).toBeInTheDocument()
+    // Child should appear nested inside the parent folder item, not just anywhere in the sidebar
+    expect(within(screen.getByTestId('folder-item-f-1')).getByText('Simon')).toBeInTheDocument()
+  })
+
+  it('failed subfolder creation is rolled back from the parent', async () => {
+    let resolveWithError!: () => void
+    server.use(
+      http.get('/folders', () =>
+        HttpResponse.json({ folders: [{ folderId: 'f-1', name: 'People', children: [] }] }),
+      ),
+      http.post('/folders', () =>
+        new Promise<Response>((res) => {
+          resolveWithError = () => res(new HttpResponse(null, { status: 500 }) as unknown as Response)
+        }),
+      ),
+    )
+    render(<App />)
+    const folderItem = await screen.findByTestId('folder-item-f-1')
+    await userEvent.click(within(folderItem).getByTestId('add-subfolder-button'))
+    await userEvent.type(screen.getByTestId('subfolder-input'), 'Simon')
+    await userEvent.keyboard('{Enter}')
+    // Appears optimistically before API responds
+    expect(within(screen.getByTestId('folder-item-f-1')).getByText('Simon')).toBeInTheDocument()
+    // Resolve with error → catch block removes Simon
+    await act(async () => { resolveWithError() })
+    expect(within(screen.getByTestId('folder-item-f-1')).queryByText('Simon')).not.toBeInTheDocument()
   })
 
   it('renaming the active folder updates the main heading immediately', async () => {
