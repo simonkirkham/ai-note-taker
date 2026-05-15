@@ -41,4 +41,9 @@ describe('FolderNavigation', () => {
     render(<App />)
     expect(await screen.findByTestId('unfiled-notes-button')).toBeInTheDocument()
   })
+
+  it('» button is visible next to Unfiled Notes', async () => {
+    render(<App />)
+    expect(await screen.findByTestId('unfiled-preview-button')).toBeInTheDocument()
+  })
 })

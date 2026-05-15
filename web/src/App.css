@@ -1089,9 +1089,14 @@ body {
   color: var(--color-text-muted);
 }
 
+.sidebar-unfiled-row {
+  display: flex;
+  align-items: center;
+}
+
 .sidebar-unfiled {
   display: block;
-  width: 100%;
+  flex: 1;
   background: none;
   border: none;
   border-radius: var(--radius);

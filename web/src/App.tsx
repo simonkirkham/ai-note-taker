@@ -4,6 +4,7 @@ import FolderPreviewPanel from "./components/FolderPreviewPanel";
 import ListView from "./components/ListView";
 import NoteView from "./components/NoteView";
 import Sidebar from "./components/Sidebar";
+import { UNFILED_ID } from "./constants";
 import { useNotes } from "./hooks/useNotes";
 import {
   FolderNode,
@@ -21,8 +22,6 @@ type View =
   | { kind: "list" }
   | { kind: "folder"; folderId: string; folderPath: string[] }
   | { kind: "note"; noteId: string };
-
-const UNFILED_ID = "__unfiled__";
 
 function mapTree(
   nodes: FolderNode[],

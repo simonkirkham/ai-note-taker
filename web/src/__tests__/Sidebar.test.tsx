@@ -2,6 +2,7 @@ import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import Sidebar from '../components/Sidebar'
 import type { FolderNode } from '../api'
+import { UNFILED_ID } from '../constants'
 
 const folder: FolderNode = { folderId: 'f-1', name: 'People', children: [] }
 
@@ -65,5 +66,30 @@ describe('Sidebar', () => {
     )
     await userEvent.click(screen.getByText('People'))
     expect(onFolderSelect).toHaveBeenCalledWith('f-1', expect.any(Array))
+  })
+
+  it('calls onPreview with unfiled sentinel when » is clicked', async () => {
+    const onPreview = vi.fn()
+    render(
+      <Sidebar
+        open={true}
+        onCreate={noop}
+        folders={[]}
+        activeFolderId={undefined}
+        onFolderSelect={noop}
+        onCreateFolder={noop}
+        onRenameFolder={noop}
+        onDeleteFolder={noop}
+        onCreateChildFolder={noop}
+        onDropNote={noop}
+        onHome={noop}
+        onUnfiledSelect={noop}
+        isUnfiledActive={false}
+        onDropToUnfiled={noop}
+        onPreview={onPreview}
+      />,
+    )
+    await userEvent.click(screen.getByTestId('unfiled-preview-button'))
+    expect(onPreview).toHaveBeenCalledWith(UNFILED_ID, 'Unfiled Notes')
   })
 })
