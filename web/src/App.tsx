@@ -203,7 +203,7 @@ export default function App() {
         noteId={view.noteId}
         initialTitle={notes.find((n) => n.noteId === view.noteId)?.title ?? ""}
         onRename={handleRename}
-        onBack={() => setView(backDestination())}
+        onBack={() => { setView(backDestination()); getNoteCards().then(setCards).catch(() => {}); }}
         onDelete={handleDelete}
         onDateSet={handleDateSet}
       />
