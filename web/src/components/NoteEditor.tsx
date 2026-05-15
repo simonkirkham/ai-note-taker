@@ -10,6 +10,7 @@ interface NoteEditorProps {
 
 export default function NoteEditor({ value, onChange, onBlur }: NoteEditorProps) {
   const editor = useEditor({
+    immediatelyRender: false,
     extensions: [StarterKit, Markdown],
     content: value,
     editorProps: {
@@ -20,10 +21,9 @@ export default function NoteEditor({ value, onChange, onBlur }: NoteEditorProps)
       },
     },
     onUpdate: ({ editor }) => {
-      const md = (editor.storage as unknown as { markdown: { getMarkdown: () => string } }).markdown.getMarkdown();
-      onChange(md);
+      onChange(editor.storage.markdown.getMarkdown());
     },
-    onBlur: () => onBlur(),
+    onBlur,
   });
 
   return <EditorContent editor={editor} />;

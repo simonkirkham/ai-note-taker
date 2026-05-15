@@ -127,15 +127,25 @@ public static class NoteHandlers
         return Results.NoContent();
     }
 
+    private static readonly Regex HeadingRe      = new(@"^#{1,6}\s*",            RegexOptions.Multiline | RegexOptions.Compiled);
+    private static readonly Regex StrikeRe        = new(@"~~(.+?)~~",              RegexOptions.Compiled);
+    private static readonly Regex BoldRe          = new(@"\*\*(.+?)\*\*",          RegexOptions.Compiled);
+    private static readonly Regex ItalicRe        = new(@"\*(.+?)\*",              RegexOptions.Compiled);
+    private static readonly Regex TaskItemRe      = new(@"^\s*-\s+\[[ x]\]\s*",   RegexOptions.Multiline | RegexOptions.Compiled);
+    private static readonly Regex BulletRe        = new(@"^\s*[-*]\s+",            RegexOptions.Multiline | RegexOptions.Compiled);
+    private static readonly Regex OrderedListRe   = new(@"^\s*\d+\.\s+",          RegexOptions.Multiline | RegexOptions.Compiled);
+
     private static string StripMarkdown(string content)
     {
+        if (string.IsNullOrEmpty(content)) return content;
         var s = content;
-        s = Regex.Replace(s, @"^#{1,6}\s*", "", RegexOptions.Multiline);
-        s = Regex.Replace(s, @"~~(.+?)~~", "$1");
-        s = Regex.Replace(s, @"\*\*(.+?)\*\*", "$1");
-        s = Regex.Replace(s, @"\*(.+?)\*", "$1");
-        s = Regex.Replace(s, @"^\s*-\s+\[[ x]\]\s*", "", RegexOptions.Multiline);
-        s = Regex.Replace(s, @"^\s*[-*]\s+", "", RegexOptions.Multiline);
+        s = HeadingRe.Replace(s, "");
+        s = StrikeRe.Replace(s, "$1");
+        s = BoldRe.Replace(s, "$1");
+        s = ItalicRe.Replace(s, "$1");
+        s = TaskItemRe.Replace(s, "");
+        s = BulletRe.Replace(s, "");
+        s = OrderedListRe.Replace(s, "");
         return s.Trim();
     }
 

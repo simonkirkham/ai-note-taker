@@ -181,6 +181,18 @@ public sealed class NoteCardMarkdownPreviewTests(ApiFactory factory) : IClassFix
     }
 
     [Fact]
+    public async Task GetNoteCards_OrderedListTokensStrippedFromPreview()
+    {
+        var noteId = await CreateNoteAsync();
+        await PutAsync($"/notes/{noteId}/content", "{\"content\":\"1. First item\\n2. Second item\"}");
+
+        var card = await GetCardAsync(noteId);
+        var preview = card.GetProperty("contentPreview").GetString()!;
+        Assert.DoesNotContain("1.", preview);
+        Assert.Contains("First item", preview);
+    }
+
+    [Fact]
     public async Task GetNoteCards_StrikethroughStrippedFromPreview()
     {
         var noteId = await CreateNoteAsync();

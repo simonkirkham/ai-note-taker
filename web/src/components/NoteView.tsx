@@ -28,6 +28,7 @@ export default function NoteView({
   const inputRef = useRef<HTMLInputElement>(null);
   const tagsModifiedRef = useRef(false);
   const contentModifiedRef = useRef(false);
+  const contentRef = useRef("");
 
   useEffect(() => {
     tagsModifiedRef.current = false;
@@ -136,8 +137,8 @@ export default function NoteView({
             <NoteEditor
               key={noteId}
               value={content}
-              onChange={(md) => { contentModifiedRef.current = true; setContent(md); }}
-              onBlur={() => editContent(noteId, content)}
+              onChange={(md) => { contentModifiedRef.current = true; contentRef.current = md; setContent(md); }}
+              onBlur={() => editContent(noteId, contentRef.current)}
             />
           )}
         </div>
