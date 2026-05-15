@@ -26,14 +26,18 @@ function renderNoteView(noteId = 'note-1') {
 
 describe('NoteView', () => {
   it('renders content returned by the API', async () => {
+    let fetchCalled = false
     server.use(
-      http.get('/notes/:noteId', () =>
-        HttpResponse.json({ noteId: 'note-1', title: 'T', content: 'Meeting notes', date: null, tags: [] }),
-      ),
+      http.get('/notes/:noteId', () => {
+        fetchCalled = true
+        return HttpResponse.json({ noteId: 'note-1', title: 'T', content: 'Meeting notes', date: null, tags: [] })
+      }),
     )
     renderNoteView()
     const textarea = await screen.findByLabelText('Note content')
     expect(textarea).toHaveValue('Meeting notes')
+    await waitFor(() => expect(fetchCalled).toBe(true))
+    expect(screen.queryByTestId('note-loading')).toBeNull()
   })
 
   it('blurring the textarea triggers a PUT to save content', async () => {
@@ -53,12 +57,20 @@ describe('NoteView', () => {
     await waitFor(() => expect(savedContent).toBe('New content'))
   })
 
-  it('date defaults to today when API returns no date', async () => {
+  it('date defaults to today when API returns no date and auto-PATCHes the default date', async () => {
+    let patchCalled = false
+    server.use(
+      http.patch('/notes/:noteId/date', () => {
+        patchCalled = true
+        return new HttpResponse(null, { status: 204 })
+      }),
+    )
     vi.useFakeTimers({ shouldAdvanceTime: true })
     vi.setSystemTime(new Date('2026-01-15'))
     renderNoteView()
     const dateInput = await screen.findByLabelText('Meeting date')
     expect((dateInput as HTMLInputElement).value).toBe('2026-01-15')
+    await waitFor(() => expect(patchCalled).toBe(true))
   })
 
   it('date input shows the value returned by the API', async () => {
