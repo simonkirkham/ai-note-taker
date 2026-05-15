@@ -57,12 +57,15 @@ describe('FolderMutations', () => {
   })
 
   it('created subfolder appears nested under parent in sidebar', async () => {
+    let resolveCreate!: () => void
     server.use(
       http.get('/folders', () =>
         HttpResponse.json({ folders: [{ folderId: 'f-1', name: 'People', children: [] }] }),
       ),
       http.post('/folders', () =>
-        HttpResponse.json({ folderId: 'f-child' }, { status: 201 }),
+        new Promise<Response>((res) => {
+          resolveCreate = () => res(HttpResponse.json({ folderId: 'f-child' }, { status: 201 }) as unknown as Response)
+        }),
       ),
     )
     render(<App />)
@@ -70,7 +73,15 @@ describe('FolderMutations', () => {
     await userEvent.click(within(folderItem).getByTestId('add-subfolder-button'))
     await userEvent.type(screen.getByTestId('subfolder-input'), 'Simon')
     await userEvent.keyboard('{Enter}')
-    // Child should appear nested inside the parent folder item, not just anywhere in the sidebar
+    // Child appears optimistically while POST is still pending
+    expect(within(screen.getByTestId('folder-item-f-1')).getByText('Simon')).toBeInTheDocument()
+    // Override GET to return the real child, then resolve POST so refetch lands correctly
+    server.use(
+      http.get('/folders', () =>
+        HttpResponse.json({ folders: [{ folderId: 'f-1', name: 'People', children: [{ folderId: 'f-child', name: 'Simon', children: [] }] }] }),
+      ),
+    )
+    await act(async () => { resolveCreate() })
     expect(within(screen.getByTestId('folder-item-f-1')).getByText('Simon')).toBeInTheDocument()
   })
 
