@@ -77,7 +77,11 @@ export default function App() {
         noteId, title: '', contentPreview: '', date: todayAsISO,
         openActions: [], createdAt: new Date().toISOString(), tags: [], folderId: newFolderId,
       }, ...prev]);
-      if (newFolderId) handleMoveNoteToFolder(noteId, newFolderId);
+      if (newFolderId) {
+        apiMoveNoteToFolder(noteId, newFolderId).catch(() => {
+          setCards((prev) => prev.map((c) => c.noteId === noteId ? { ...c, folderId: null } : c));
+        });
+      }
       setView({ kind: "note", noteId });
     } catch {
       // error surfaced by hook via createError
@@ -95,6 +99,7 @@ export default function App() {
     setCards((prev) => prev.map((c) => c.noteId === noteId ? { ...c, title } : c));
     rename(noteId, title).catch(() => {
       setCards((prev) => prev.map((c) => c.noteId === noteId ? { ...c, title: prevTitle } : c));
+      throw new Error("rename failed");
     });
   }
 
