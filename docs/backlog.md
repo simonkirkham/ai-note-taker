@@ -20,6 +20,14 @@ Each entry records what it is, why it was deferred, and what phase or slice it w
 
 ## Infrastructure / CI
 
+### Upgrade GitHub Actions to Node.js 24
+**What:** Update `actions/checkout`, `actions/setup-node`, `actions/cache`, `actions/upload-artifact`, `aws-actions/configure-aws-credentials` to versions that run on Node.js 24. Alternatively, set `FORCE_JAVASCRIPT_ACTIONS_TO_NODE24=true` in workflows as a quick opt-in to verify nothing breaks, then pin updated action versions.
+**Why deferred:** Node.js 20 actions are deprecated; GitHub will force Node.js 24 by default from 2026-06-02 and remove Node 20 from runners on 2026-09-16. Not urgent today but will break CI if ignored.
+**Raised in:** Phase 6 / adhoc CI observation
+**Depends on:** Nothing blocking. Check updated major versions exist for each action before upgrading.
+
+---
+
 ### CloudFront proxy for API (remove VITE_API_URL build-time coupling)
 **What:** Add a CloudFront behaviour that routes `/api/*` → API Gateway, with a CloudFront Function stripping the `/api` prefix. The frontend calls `/api/notes` as a relative path — no environment variable needed at build time. The frontend build moves into the `validate` CI job and runs once, decoupled from deployment order.
 **Why deferred:** Correct solution but requires CDK behaviour + CloudFront Function + route changes in api.ts + acceptance test URL update. Non-trivial slice; pipeline was the immediate priority.
