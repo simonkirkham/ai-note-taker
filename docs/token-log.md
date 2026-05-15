@@ -474,3 +474,22 @@ None — slice ran within expected range.
 If no agent ran unexpectedly high: write `None — slice ran within expected range.`
 
 -->
+
+## Phase 7.5 — Folder UX fixes and Lambda performance (6 slices: A–F)
+
+> **Note:** Phase 7.5 ran across two sessions with context compaction. Per-agent counts are estimates from session summaries.
+
+| Agent     | ~Tokens |
+|-----------|---------|
+| Scout     | — |
+| Breaker   | 15 000 |
+| Pip       | 180 000 |
+| Stylist   | — |
+| Hawk      | 75 000 |
+| Scribe    | 8 000 |
+| **Total** | **~278 000** |
+
+**Why:** Six independent slices × two Hawk rounds on 7.5-F (subfolder test timing bug) drove the total above a typical single-slice phase; Pip's count reflects 6 distinct worktree implementations plus fixes across two sessions.
+
+**Optimisation suggestions:**
+- **Hawk 7.5-F round 2 (–25 000):** The deferred-Promise pattern for optimistic tests was established in 7.5-D but not applied to the subfolder success test in 7.5-F. Applying it upfront would have collapsed two Hawk rounds into one. Add to Breaker checklist.

@@ -113,7 +113,7 @@ Slices and acceptance criteria: [docs/phases/phase-6.5.md](phases/phase-6.5.md)
 
 Slices and acceptance criteria: [docs/phases/phase-7.md](phases/phase-7.md)
 
-## Phase 7.5 — Folder UX fixes and Lambda performance _(Planned)_
+## Phase 7.5 — Folder UX fixes and Lambda performance _(Done)_
 
 - Remove vestigial sidebar note list (sidebar is folder-navigation only post-Phase 5)
 - Add Unfiled Notes preview pull-out (`»` button parity with folder items)
