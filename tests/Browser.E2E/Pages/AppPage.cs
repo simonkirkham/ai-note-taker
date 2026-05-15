@@ -34,22 +34,6 @@ public sealed class AppPage(IPage page, string baseUrl)
     public Task ClickNoteInListAsync(string title) =>
         page.GetByTestId("note-list").GetByText(title).ClickAsync();
 
-    public Task AssertContentAreaVisibleAsync() =>
-        Assertions.Expect(page.GetByTestId("note-content")).ToBeVisibleAsync(new() { Timeout = 15000 });
-
-    public Task AssertContentValueAsync(string expected) =>
-        Assertions.Expect(page.GetByTestId("note-content")).ToHaveValueAsync(expected, new() { Timeout = 15000 });
-
-    public async Task EnterContentAsync(string content)
-    {
-        var textarea = page.GetByTestId("note-content");
-        var putDone = page.WaitForResponseAsync(r =>
-            r.Url.Contains("/content") && r.Request.Method == "PUT");
-        await textarea.FillAsync(content);
-        await textarea.BlurAsync();
-        await putDone;
-    }
-
     public async Task DeleteNoteAsync()
     {
         var deleteDone = page.WaitForResponseAsync(r =>
@@ -73,132 +57,17 @@ public sealed class AppPage(IPage page, string baseUrl)
         await postDone;
     }
 
-    public async Task AddActionItemByBlurAsync(string description)
-    {
-        var input = page.GetByTestId("action-input");
-        await input.FillAsync(description);
-        var postDone = page.WaitForResponseAsync(r =>
-            r.Url.Contains("/actions") && r.Request.Method == "POST");
-        await input.BlurAsync();
-        await postDone;
-    }
-
-    public Task AssertNoAddButtonAsync() =>
-        Assertions.Expect(page.GetByTestId("add-action-button")).Not.ToBeVisibleAsync();
-
     public Task AssertActionItemVisibleAsync(string description) =>
         Assertions.Expect(page.GetByTestId("actions-list").GetByText(description)).ToBeVisibleAsync();
 
     public Task AssertActionsEmptyAsync() =>
         Assertions.Expect(page.GetByTestId("actions-empty")).ToBeVisibleAsync();
 
-    public async Task ToggleActionItemCompleteAsync(string description)
-    {
-        var responseDone = page.WaitForResponseAsync(r =>
-            r.Request.Method == "POST" &&
-            (r.Url.Contains("/complete") || r.Url.Contains("/reopen")));
-        await page.GetByTestId("actions-list")
-            .Locator("li")
-            .Filter(new LocatorFilterOptions { HasText = description })
-            .GetByRole(AriaRole.Checkbox)
-            .ClickAsync();
-        await responseDone;
-    }
-
-    public Task AssertActionItemCompletedAsync(string description) =>
-        Assertions.Expect(
-            page.GetByTestId("actions-list")
-                .Locator("li")
-                .Filter(new LocatorFilterOptions { HasText = description })
-                .GetByRole(AriaRole.Checkbox)
-        ).ToBeCheckedAsync();
-
-    public Task AssertActionItemOpenAsync(string description) =>
-        Assertions.Expect(
-            page.GetByTestId("actions-list")
-                .Locator("li")
-                .Filter(new LocatorFilterOptions { HasText = description })
-                .GetByRole(AriaRole.Checkbox)
-        ).Not.ToBeCheckedAsync();
-
     public Task AssertTodoSectionVisibleAsync() =>
         Assertions.Expect(page.GetByTestId("todo-section")).ToBeVisibleAsync();
 
-    public Task AssertTodoItemGoneAsync(string description) =>
-        Assertions.Expect(
-            page.GetByTestId("todo-section").GetByText(description)
-        ).Not.ToBeVisibleAsync();
-
-    public async Task DeleteActionItemAsync(string description)
-    {
-        var responseDone = page.WaitForResponseAsync(r =>
-            r.Url.Contains("/actions/") && r.Request.Method == "DELETE");
-        await page.GetByTestId("actions-list")
-            .Locator("li")
-            .Filter(new LocatorFilterOptions { HasText = description })
-            .GetByRole(AriaRole.Button)
-            .ClickAsync();
-        await responseDone;
-    }
-
-    public Task AssertActionItemAbsentAsync(string description) =>
-        Assertions.Expect(
-            page.GetByTestId("actions-list").GetByText(description)
-        ).Not.ToBeVisibleAsync();
-
-    public async Task SetNoteDateAsync(string isoDate)
-    {
-        var input = page.GetByTestId("note-date-input");
-        var patchDone = page.WaitForResponseAsync(r =>
-            r.Url.Contains("/date") && r.Request.Method == "PATCH");
-        await input.FillAsync(isoDate);
-        await input.BlurAsync();
-        await patchDone;
-    }
-
-    public Task AssertNoteDateEmptyAsync() =>
-        Assertions.Expect(page.GetByTestId("note-date-input")).ToHaveValueAsync(string.Empty);
-
-    public async Task<string> GetDateInputValueAsync() =>
-        await page.GetByTestId("note-date-input").InputValueAsync();
-
-    public Task AssertDateDisplayAbsentAsync() =>
-        Assertions.Expect(page.GetByTestId("note-date-display")).Not.ToBeVisibleAsync();
-
-    public Task AssertDateInputValueAsync(string expected) =>
-        Assertions.Expect(page.GetByTestId("note-date-input")).ToHaveValueAsync(expected, new() { Timeout = 15000 });
-
-    public Task AssertSidebarVisibleAsync() =>
-        Assertions.Expect(page.GetByTestId("sidebar")).ToBeVisibleAsync();
-
-    public Task AssertActiveNoteHighlightedInSidebarAsync(string title) =>
-        Assertions.Expect(
-            page.GetByTestId("sidebar").Locator(".sidebar-note-item--active")
-                .Filter(new LocatorFilterOptions { HasText = title })
-        ).ToBeVisibleAsync();
-
-    public Task AssertCapturedNotesLabelVisibleAsync() =>
-        Assertions.Expect(page.GetByTestId("captured-notes-label")).ToBeVisibleAsync();
-
-    public async Task AssertActionsPanelRightOfContentAsync()
-    {
-        var contentBox = await page.GetByTestId("note-content").BoundingBoxAsync();
-        var actionsBox = await page.GetByTestId("actions-section").BoundingBoxAsync();
-        Assert.NotNull(contentBox);
-        Assert.NotNull(actionsBox);
-        Assert.True(actionsBox.X > contentBox.X,
-            $"Expected actions panel (x={actionsBox.X}) to be to the right of content (x={contentBox.X})");
-    }
-
-    public async Task AssertActionsPanelBelowContentAsync()
-    {
-        var contentBox = await page.GetByTestId("note-content").BoundingBoxAsync();
-        var actionsBox = await page.GetByTestId("actions-section").BoundingBoxAsync();
-        Assert.NotNull(contentBox);
-        Assert.NotNull(actionsBox);
-        Assert.True(actionsBox.Y > contentBox.Y,
-            $"Expected actions panel (y={actionsBox.Y}) to be below content (y={contentBox.Y})");
-    }
+    public Task AssertTodoSectionHiddenAsync() =>
+        Assertions.Expect(page.GetByTestId("todo-section")).Not.ToBeVisibleAsync();
 
     public async Task AddTagAsync(string tagInput)
     {
@@ -286,9 +155,6 @@ public sealed class AppPage(IPage page, string baseUrl)
 
     public Task AssertFolderHeadingAsync(string heading) =>
         Assertions.Expect(page.GetByRole(AriaRole.Heading, new PageGetByRoleOptions { Name = heading })).ToBeVisibleAsync();
-
-    public Task AssertTodoSectionHiddenAsync() =>
-        Assertions.Expect(page.GetByTestId("todo-section")).Not.ToBeVisibleAsync();
 
     public Task AssertUnfiledNotesVisibleAsync() =>
         Assertions.Expect(page.GetByTestId("unfiled-notes-button")).ToBeVisibleAsync();
