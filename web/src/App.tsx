@@ -134,8 +134,6 @@ export default function App() {
       .catch(() => {});
   }
 
-  const activeNoteId = view.kind === "note" ? view.noteId : undefined;
-
   const main =
     view.kind === "note" ? (
       <NoteView
@@ -175,10 +173,7 @@ export default function App() {
         onClick={() => setSidebarOpen(false)}
       />
       <Sidebar
-        notes={notes}
-        activeNoteId={activeNoteId}
         open={sidebarOpen}
-        onSelect={(noteId) => { setView({ kind: "note", noteId }); setSidebarOpen(false); }}
         onCreate={handleNewNote}
         folders={folders}
         activeFolderId={activeFolderId}
