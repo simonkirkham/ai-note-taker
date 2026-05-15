@@ -211,6 +211,15 @@ export async function unfileNote(noteId: string): Promise<void> {
   if (!res.ok) throw new Error(`DELETE /notes/${noteId}/folder failed: ${res.status}`);
 }
 
+export async function moveFolder(folderId: string, parentFolderId: string | null): Promise<void> {
+  const res = await fetch(`${base}/folders/${folderId}/parent`, {
+    method: "PUT",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ parentFolderId }),
+  });
+  if (!res.ok) throw new Error(`PUT /folders/${folderId}/parent failed: ${res.status}`);
+}
+
 export interface TodoItem {
   actionId: string;
   noteId: string;
