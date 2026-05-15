@@ -29,6 +29,7 @@ export default function NoteView({
   const [notFound, setNotFound] = useState(false);
   const [showCancelDialog, setShowCancelDialog] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
+  const confirmButtonRef = useRef<HTMLButtonElement>(null);
   const tagsModifiedRef = useRef(false);
   const contentModifiedRef = useRef(false);
   const contentRef = useRef("");
@@ -68,6 +69,10 @@ export default function NoteView({
   useEffect(() => {
     if (!loadingDetail && !notFound) inputRef.current?.focus();
   }, [loadingDetail, notFound]);
+
+  useEffect(() => {
+    if (showCancelDialog) confirmButtonRef.current?.focus();
+  }, [showCancelDialog]);
 
   async function handleAddTags(raw: string) {
     const tokens = raw.trim().split(/\s+/).filter(Boolean);
@@ -109,10 +114,11 @@ export default function NoteView({
     <main className="container">
       {showCancelDialog && (
         <div className="cancel-dialog-overlay" data-testid="cancel-dialog">
-          <div className="cancel-dialog">
-            <p className="cancel-dialog-message">Discard this note?</p>
+          <div className="cancel-dialog" role="dialog" aria-modal="true" aria-labelledby="cancel-dialog-title">
+            <p id="cancel-dialog-title" className="cancel-dialog-message">Discard this note?</p>
             <div className="cancel-dialog-buttons">
               <button
+                ref={confirmButtonRef}
                 data-testid="cancel-confirm-button"
                 className="cancel-confirm-button"
                 onClick={onBack}
@@ -142,7 +148,7 @@ export default function NoteView({
           <button
             data-testid="save-button"
             onClick={onBack}
-            disabled={!isSaveEnabled}
+            disabled={!isSaveEnabled || loadingDetail}
             className="save-button"
           >
             Save

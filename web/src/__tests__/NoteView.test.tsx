@@ -159,6 +159,25 @@ describe('NoteView', () => {
       expect(screen.getByTestId('save-button')).toBeEnabled()
     })
 
+    it('Save button is enabled when a tag is added', async () => {
+      renderEmptyNoteView()
+      await screen.findByLabelText('Note content')
+      const tagInput = screen.getByTestId('tag-input')
+      await userEvent.type(tagInput, 'planning')
+      fireEvent.blur(tagInput)
+      await waitFor(() => expect(screen.getByTestId('save-button')).toBeEnabled())
+    })
+
+    it('Save button is enabled when an action is added', async () => {
+      server.use(
+        http.get('/notes/:noteId/actions', () =>
+          HttpResponse.json({ actions: [{ actionId: 'a-1', description: 'Follow up', completed: false, addedAt: new Date().toISOString(), completedAt: null }] }),
+        ),
+      )
+      renderEmptyNoteView()
+      await waitFor(() => expect(screen.getByTestId('save-button')).toBeEnabled())
+    })
+
     it('Save button calls onBack', async () => {
       const onBack = vi.fn()
       renderNoteView({ onBack })

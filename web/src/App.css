@@ -377,7 +377,7 @@ body {
 }
 
 .cancel-confirm-button:hover {
-  background: #b91c1c;
+  background: color-mix(in srgb, var(--color-error) 80%, black);
 }
 
 .cancel-confirm-button:focus-visible {

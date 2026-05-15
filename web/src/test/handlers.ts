@@ -25,4 +25,6 @@ export const handlers = [
   http.post('/notes/:noteId/actions/:actionId/complete', () => new HttpResponse(null, { status: 200 })),
   http.post('/notes/:noteId/actions/:actionId/reopen', () => new HttpResponse(null, { status: 200 })),
   http.delete('/notes/:noteId/actions/:actionId', () => new HttpResponse(null, { status: 204 })),
+  http.post('/notes/:noteId/tags', () => new HttpResponse(null, { status: 204 })),
+  http.delete('/notes/:noteId/tags/:tag', () => new HttpResponse(null, { status: 204 })),
 ]
