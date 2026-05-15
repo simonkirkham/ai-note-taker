@@ -63,12 +63,6 @@ public sealed class AppPage(IPage page, string baseUrl)
     public Task AssertActionsEmptyAsync() =>
         Assertions.Expect(page.GetByTestId("actions-empty")).ToBeVisibleAsync();
 
-    public Task AssertTodoSectionVisibleAsync() =>
-        Assertions.Expect(page.GetByTestId("todo-section")).ToBeVisibleAsync();
-
-    public Task AssertTodoSectionHiddenAsync() =>
-        Assertions.Expect(page.GetByTestId("todo-section")).Not.ToBeVisibleAsync();
-
     public async Task AddTagAsync(string tagInput)
     {
         var tagCount = tagInput.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries).Length;
@@ -146,18 +140,6 @@ public sealed class AppPage(IPage page, string baseUrl)
         await input.PressAsync("Enter");
         await postDone;
     }
-
-    public Task ClickFolderAsync(string folderName) =>
-        page.GetByText(folderName).First.ClickAsync();
-
-    public Task ClickHomeAsync() =>
-        page.GetByTestId("home-button").ClickAsync();
-
-    public Task AssertFolderHeadingAsync(string heading) =>
-        Assertions.Expect(page.GetByRole(AriaRole.Heading, new PageGetByRoleOptions { Name = heading })).ToBeVisibleAsync();
-
-    public Task AssertUnfiledNotesVisibleAsync() =>
-        Assertions.Expect(page.GetByTestId("unfiled-notes-button")).ToBeVisibleAsync();
 
     public Task AssertFolderVisibleInSidebarAsync(string folderName) =>
         Assertions.Expect(page.GetByTestId("sidebar").GetByText(folderName)).ToBeVisibleAsync();
