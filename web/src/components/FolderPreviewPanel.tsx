@@ -1,19 +1,29 @@
-import { NoteCard } from "../api";
+import { useEffect, useState } from "react";
+import { getNoteCards, NoteCard } from "../api";
+
+const UNFILED_ID = "__unfiled__";
 
 export default function FolderPreviewPanel({
   folderId,
   folderName,
-  cards,
   onClose,
   onEditNote,
 }: {
   folderId: string | null;
   folderName: string;
-  cards: NoteCard[];
   onClose: () => void;
   onEditNote: (noteId: string) => void;
 }) {
-  const folderCards = folderId ? cards.filter((c) => c.folderId === folderId) : [];
+  const [cards, setCards] = useState<NoteCard[]>([]);
+
+  useEffect(() => {
+    if (!folderId) return;
+    getNoteCards().then(setCards).catch(() => {});
+  }, [folderId]);
+
+  const folderCards = folderId
+    ? cards.filter((c) => folderId === UNFILED_ID ? !c.folderId : c.folderId === folderId)
+    : [];
 
   return (
     <div className={`folder-preview-panel${folderId ? " folder-preview-panel--open" : ""}`}>
@@ -21,7 +31,7 @@ export default function FolderPreviewPanel({
         <span className="folder-preview-title">{folderName}</span>
         <button className="folder-preview-close" onClick={onClose} aria-label="Close">×</button>
       </div>
-      <ul className="folder-preview-list">
+      {folderId && <ul className="folder-preview-list">
         {folderCards.length === 0 ? (
           <li className="folder-preview-empty">No notes in this folder</li>
         ) : (
@@ -45,7 +55,7 @@ export default function FolderPreviewPanel({
             </li>
           ))
         )}
-      </ul>
+      </ul>}
     </div>
   );
 }

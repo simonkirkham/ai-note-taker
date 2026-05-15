@@ -7,10 +7,8 @@ import Sidebar from "./components/Sidebar";
 import { useNotes } from "./hooks/useNotes";
 import {
   FolderNode,
-  NoteCard,
   setNoteDate,
   getFolders,
-  getNoteCards,
   createFolder as apiCreateFolder,
   renameFolder as apiRenameFolder,
   deleteFolder as apiDeleteFolder,
@@ -31,13 +29,11 @@ export default function App() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const { notes, loading, creating, createError, create, rename, remove } = useNotes();
   const [folders, setFolders] = useState<FolderNode[]>([]);
-  const [cards, setCards] = useState<NoteCard[]>([]);
   const [activeFolderId, setActiveFolderId] = useState<string | undefined>();
   const [activeFolderPath, setActiveFolderPath] = useState<string[]>([]);
 
   useEffect(() => {
     getFolders().then(setFolders).catch(() => {});
-    getNoteCards().then(setCards).catch(() => {});
   }, []);
 
   const handleDateSet = useCallback((_noteId: string, _date: string) => {
@@ -123,8 +119,9 @@ export default function App() {
       setActiveFolderPath([]);
       setView({ kind: "list" });
     }
+    if (previewFolderId === folderId) setPreviewFolderId(null);
     apiDeleteFolder(folderId)
-      .then(() => Promise.all([getFolders().then(setFolders), getNoteCards().then(setCards)]))
+      .then(() => getFolders().then(setFolders))
       .catch(() => {});
   }
 
@@ -193,7 +190,6 @@ export default function App() {
       <FolderPreviewPanel
         folderId={previewFolderId}
         folderName={previewFolderName}
-        cards={cards}
         onClose={() => setPreviewFolderId(null)}
         onEditNote={(noteId) => { setView({ kind: "note", noteId }); setPreviewFolderId(null); }}
       />
