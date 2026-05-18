@@ -25,7 +25,7 @@ All slices are independent and can run in any order. 7.8-B and 7.8-C both touch 
 
 ## Slice 7.8-A — Production deployment pipeline
 
-**Status:** In Progress (smoke tests pending first successful deploy)
+**Status:** Done
 
 **Value:** Every merge to main automatically promotes through Test and then deploys to a production environment, giving confidence that what works in Test ships to users.
 
@@ -64,7 +64,7 @@ Scenario: Smoke tests pass against the production API
 - [x] `Production` GitHub environment exists with `AWS_*` secrets configured
 - [x] `deploy-production` job runs after `deploy` (Test) succeeds
 - [x] `deploy-production` job does not run when `deploy` fails
-- [ ] Acceptance specs pass against the production API URL post-deploy
+- [x] Acceptance specs pass against the production API URL post-deploy
 - [x] No E2E tests run against production
 
 ---
