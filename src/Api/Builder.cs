@@ -55,6 +55,12 @@ public class Builder
             new DynamoDbFolderTreeStore(sp.GetRequiredService<IAmazonDynamoDB>(), folderTreeTableName));
         builder.Services.AddSingleton<ITagIndexStore>(sp =>
             new DynamoDbTagIndexStore(sp.GetRequiredService<IAmazonDynamoDB>(), tagIndexTableName));
+        builder.Services.AddSingleton<IDomainEventHandler, NoteTitleListEventHandler>();
+        builder.Services.AddSingleton<IDomainEventHandler, NoteDetailEventHandler>();
+        builder.Services.AddSingleton<IDomainEventHandler, NoteCardListEventHandler>();
+        builder.Services.AddSingleton<IDomainEventHandler, TodoListEventHandler>();
+        builder.Services.AddSingleton<IDomainEventHandler, TagIndexEventHandler>();
+        builder.Services.AddSingleton<IDomainEventDispatcher, DomainEventDispatcher>();
         builder.Services.AddSingleton<NoteCommandHandler>();
         builder.Services.AddSingleton<ActionItemCommandHandler>();
         builder.Services.AddSingleton<FolderCommandHandler>();
