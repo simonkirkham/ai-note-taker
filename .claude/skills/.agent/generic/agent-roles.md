@@ -23,7 +23,7 @@ Each piece of work is handled by agents in sequence. No agent does another's job
 - `docs/phases/phase-N.md` — phase breakdown file with one section per slice, each containing:
   - Phase goal and scope note at the top
   - One section per slice with: status (`Not Started`), value statement, commands/events in scope, and BDD scenarios
-  - Each slice must open with a one-sentence **value statement** written from the user's perspective. Write it before any technical detail. It must not mention aggregates, projections, events, or endpoints — if it does, rewrite it. Bad: *"Introduces the TagIndex projection and wires the filter bar."* Good: *"I can click a tag to see only the notes that have it."* If you can't state the value in plain user terms, the slice isn't ready to build.
+  - Each slice must open with a one-sentence **value statement** written from the user's perspective. Write it before any technical detail. It must not mention aggregates, projections, events, or endpoints — if it does, rewrite it. Bad: _"Introduces the TagIndex projection and wires the filter bar."_ Good: _"I can click a tag to see only the notes that have it."_ If you can't state the value in plain user terms, the slice isn't ready to build.
   - **Acceptance criteria must be written as user behaviour** — what the user does and sees. Not API contracts: _"User opens a note — content is displayed"_, not _"GET /notes/{id} returns 200"_. API-level detail belongs in the implementation, not the spec.
 - Updated `docs/roadmap.md` — link to the new phase file and mark phase as `_(In Progress)_`
 - A feature brief covering: objective, commands/events affected, projections affected, open questions
@@ -48,8 +48,8 @@ One scenario per distinct behaviour (happy path + each meaningful error/edge cas
 - Update the event model before writing any BDD scenarios — the model is the design artefact
 - The phase breakdown file is mandatory — it is the human's primary review artefact at the Scout hand-off
 - **Every slice must be fullstack** — backend and frontend together, delivering something a user can observe. Never create a backend-only slice; if a slice has no user-visible effect it should be merged into the slice that makes it visible.
-- **Slice as thin as possible** — one user-facing capability per slice. Apply this splitting test to every slice before finalising: *"Could the first half ship and have user value without the second half?"* If yes, they are two slices. Examples: 'add tag' ships before 'remove tag'; 'create folder' ships before 'rename folder'; 'single-tag filter' ships before 'AND/OR multi-tag filter'. Keep splitting until no further cut passes the test.
-- **Value statements must be user-focused** — reject any value statement that names a technical artefact (aggregate, projection, event, endpoint). Rewrite it until a non-technical user would immediately understand why the slice matters. Bad: *"The domain gets its first set-membership command."* Good: *"I can add tags to my notes so I can label what each one is about."*
+- **Slice as thin as possible** — one user-facing capability per slice. Apply this splitting test to every slice before finalising: _"Could the first half ship and have user value without the second half?"_ If yes, they are two slices. Examples: 'add tag' ships before 'remove tag'; 'create folder' ships before 'rename folder'; 'single-tag filter' ships before 'AND/OR multi-tag filter'. Keep splitting until no further cut passes the test.
+- **Value statements must be user-focused** — reject any value statement that names a technical artefact (aggregate, projection, event, endpoint). Rewrite it until a non-technical user would immediately understand why the slice matters. Bad: _"The domain gets its first set-membership command."_ Good: _"I can add tags to my notes so I can label what each one is about."_
 - Scenarios must be specific enough for Breaker to turn directly into a C# spec without further clarification
 - Flag any dependencies or risks for downstream roles
 - Any idea that surfaces during planning but is explicitly deferred must be added to `docs/backlog.md` before hand-off
@@ -304,7 +304,7 @@ Commit style changes separately from functional changes with a message like `Sty
 
 ---
 
-## Scribe (Agent 4 — Documentation)
+## Scribe (Angent 4 — Documentation)
 
 **Remit:** After the slice lands on main, update all developer-facing documentation and write the workflow learnings. Does not touch code, specs, or the event model.
 

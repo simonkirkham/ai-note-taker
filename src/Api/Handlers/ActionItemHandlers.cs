@@ -1,7 +1,6 @@
 using Domain.ActionItems;
 using Domain.Notes;
 using EventStore.Projections;
-using Microsoft.AspNetCore.Http;
 using Api.Contracts;
 using AddActionItemCmd = Domain.ActionItems.AddActionItem;
 using CompleteActionItemCmd = Domain.ActionItems.CompleteActionItem;

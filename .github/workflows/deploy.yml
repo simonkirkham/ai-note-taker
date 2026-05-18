@@ -2,7 +2,7 @@ name: Deploy
 
 on:
   push:
-    branches: [ main ]
+    branches: [main]
 
 jobs:
   validate-frontend:
@@ -65,7 +65,7 @@ jobs:
       - name: Infra assertions
         run: dotnet test tests/Infrastructure.Assertions/Infrastructure.Assertions.csproj --nologo -v quiet
 
-  deploy:
+  deploy-test:
     needs: [validate-frontend, validate-backend]
     runs-on: ubuntu-latest
     environment: Test
@@ -150,7 +150,8 @@ jobs:
         run: dotnet build tests/Browser.E2E/Browser.E2E.csproj -c Release
 
       - name: Install Playwright browsers
-        run: pwsh tests/Browser.E2E/bin/Release/net10.0/playwright.ps1 install --with-deps
+        run:
+          pwsh tests/Browser.E2E/bin/Release/net10.0/playwright.ps1 install --with-deps
           chromium
 
       - name: Clear test data (pre-E2E)
