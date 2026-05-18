@@ -15,16 +15,19 @@ public sealed class NoteCardListEventHandler(INoteCardListStore store) : IDomain
         {
             var existing = await store.GetByNoteAsync(noteId, ct).ConfigureAwait(false);
             if (existing is not null)
+            {
+                var deleted = events.First(e => e.EventType == nameof(NoteDeleted));
                 await store.UpsertAsync(
-                    existing with { Deleted = true, LastModifiedAt = events[0].OccurredAt }, ct).ConfigureAwait(false);
+                    existing with { Deleted = true, LastModifiedAt = deleted.OccurredAt }, ct).ConfigureAwait(false);
+            }
             return;
         }
 
         var card = await store.GetByNoteAsync(noteId, ct).ConfigureAwait(false);
-        await store.UpsertAsync(ApplyEventsToCard(card, noteId, events), ct).ConfigureAwait(false);
+        await store.UpsertAsync(ApplyNoteEventsToCard(card, noteId, events), ct).ConfigureAwait(false);
     }
 
-    private static NoteCardView ApplyEventsToCard(NoteCardView? existing, NoteId noteId, IReadOnlyList<EventEnvelope> envelopes)
+    private static NoteCardView ApplyNoteEventsToCard(NoteCardView? existing, NoteId noteId, IReadOnlyList<EventEnvelope> envelopes)
     {
         var card = existing;
         foreach (var envelope in envelopes)

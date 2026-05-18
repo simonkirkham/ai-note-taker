@@ -9,10 +9,10 @@ public sealed class TagIndexEventHandler(ITagIndexStore store) : IDomainEventHan
     public async Task HandleAsync(IReadOnlyList<EventEnvelope> events, CancellationToken ct = default)
     {
         if (events.Count == 0) return;
-        var noteId = NoteIdFromStreamId(events[0].StreamId);
 
         if (events.Any(e => e.EventType == nameof(NoteDeleted)))
         {
+            var noteId = NoteIdFromStreamId(events[0].StreamId);
             await store.DeleteByNoteAsync(noteId.Value.ToString("N"), ct).ConfigureAwait(false);
             return;
         }
