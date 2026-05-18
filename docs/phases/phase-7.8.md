@@ -429,7 +429,7 @@ Scenario: A failed move reverts both panels
 
 ## Slice 7.8-G — Domain event dispatcher
 
-**Status:** Not Started
+**Status:** Done
 
 **Value:** Projection updates are decoupled from command handlers. Adding a new projection is a new class; it does not require touching an existing command handler. The command handler shrinks to two dependencies (`IEventStore` and `IDomainEventDispatcher`) and knows nothing about which projections exist.
 
@@ -526,13 +526,13 @@ Scenario: Projection updates remain synchronous — read-after-write is consiste
 
 **Acceptance criteria:**
 
-- [ ] `IDomainEventDispatcher` and `IDomainEventHandler` interfaces exist in `src/Api/`
-- [ ] Five event handler classes extracted; each handles only its own projection's stores
-- [ ] `NoteCommandHandler` constructor takes only `IEventStore` and `IDomainEventDispatcher`
-- [ ] `UpdateProjectionAsync` and `ApplyNoteEventsToCard` removed from `NoteCommandHandler`
-- [ ] All existing `Api.Integration` tests pass unchanged (behaviour is identical)
-- [ ] `Domain.Specs` tests pass unchanged
-- [ ] `cdk synth` exits 0
+- [x] `IDomainEventDispatcher` and `IDomainEventHandler` interfaces exist in `src/Api/`
+- [x] Five event handler classes extracted; each handles only its own projection's stores
+- [x] `NoteCommandHandler` constructor takes only `IEventStore` and `IDomainEventDispatcher`
+- [x] `UpdateProjectionAsync` and `ApplyNoteEventsToCard` removed from `NoteCommandHandler`
+- [x] All existing `Api.Integration` tests pass unchanged (behaviour is identical)
+- [x] `Domain.Specs` tests pass unchanged
+- [x] `cdk synth` exits 0
 
 ---
 

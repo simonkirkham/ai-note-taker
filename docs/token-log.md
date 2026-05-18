@@ -512,6 +512,23 @@ If no agent ran unexpectedly high: write `None — slice ran within expected ran
 
 ---
 
+## Slice 7.8-G — Domain event dispatcher
+
+| Agent     | ~Tokens      |
+|-----------|--------------|
+| Pip       | 20 000       |
+| Hawk 1    | 58 000       |
+| Hawk 2    | 46 000       |
+| Scribe    | 5 000        |
+| **Total** | **~129 000** |
+
+**Why:** Two Hawk rounds drove the total — Hawk 1 flagged a correctness bug (wrong soft-delete timestamp using `events[0]` instead of the actual `NoteDeleted` envelope) plus a namespace concern (assessed as a false alarm). Hawk 2 approved after fixes.
+
+**Optimisation suggestions:**
+- **Hawk round 1 (–46 000):** The soft-delete timestamp bug (`events[0]` vs the actual `NoteDeleted` envelope) is a direct analogue of the "wrong index in a batch" class of error. Adding a Refactor checklist item — "when reading a timestamp from an event batch, always locate the specific event by type rather than assuming its position" — would catch this before Hawk.
+
+---
+
 ## Phase 7.8 — Production Pipeline and Note Screen UX (5 active slices: B–F)
 
 > **Note:** Phase 7.8 ran across two sessions with context compaction. Per-agent counts are estimates from session summaries. 7.8-A (production pipeline) deferred — manual AWS/GitHub setup, no code slice.

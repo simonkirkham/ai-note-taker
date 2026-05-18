@@ -21,6 +21,12 @@
 
 - **Lifting shared state to App (`cards`) eliminated two classes of stale-UI bugs in one slice.** 7.8-F moved `cards` from `ListView`'s local state to `App`, so every rename and move now reflects immediately in all consumers without navigation. The lift also simplified test setup — components receive props rather than calling internal fetches. **Action:** None needed beyond the implementation itself; the pattern is already documented in CLAUDE.md as standard for shared read-model state.
 
+- **When reading a timestamp from an event batch, always locate the specific event by type rather than assuming its position.** The first implementation used `events[0].OccurredAt` for the `NoteDeleted` soft-delete timestamp. If `NoteDeleted` is ever not the first event in a batch, this silently records the wrong time. The correct pattern is `events.First(e => e.EventType == nameof(NoteDeleted)).OccurredAt`. **Action:** Add to Refactor checklist: "any timestamp read from a batch must use `.First(e => e.EventType == ...)` not a positional index." — Done.
+
+- **`NoteTitleListEventHandler` and `NoteDetailEventHandler` re-read the full stream after appending.** Because `DispatchAsync` is called after `AppendAsync`, the event store already contains the new events when the handlers read. This is correct and avoids passing both `history` and `newEnvelopes` through the dispatcher interface, but it adds 2 extra DynamoDB reads per command. The trade-off is: simpler handler contract and correct-by-construction vs. one extra read per write. For this project scale the reads are negligible. **Action:** Noted as a deliberate trade-off — no process change needed. — Done.
+
+- **`NoteIdFromStreamId` is duplicated across all five handlers.** Each handler has an identical `private static NoteId NoteIdFromStreamId(string streamId)` helper. A shared internal static class in `src/Api/` would eliminate this. **Action:** Backlog item — low priority until a sixth handler is added. — TODO.
+
 ## Applied status
 
 | Learning | Status |
@@ -33,3 +39,6 @@
 | 6. Dead flex on grid children | Documented — add to Refactor CSS checklist when next edited |
 | 7. flex-chain min-height: 0 discipline | Documented — add to Refactor CSS checklist when next edited |
 | 8. Shared App-level cards state for optimistic sync | Applied — implementation in codebase; no additional process change needed |
+| 9. Batch timestamp: locate event by type, not position | Applied — added to Refactor checklist |
+| 10. Re-read full stream in NoteTitleList/NoteDetail handlers | Documented — deliberate trade-off; no process change |
+| 11. NoteIdFromStreamId duplication across handlers | TODO — extract when a sixth handler is added |
