@@ -21,15 +21,15 @@ Every write request passes through four layers. Each layer has exactly one conce
 |---|---|---|
 | **API** | `src/Api/Program.cs` — endpoint lambdas | HTTP only: parse request, call handler, map result to HTTP status |
 | **Command handler** | `src/Api/*CommandHandler.cs` | Orchestration: load stream → rebuild aggregate → execute command → persist events → dispatch events |
-| **Event dispatcher** | `src/Api/DomainEventDispatcher.cs` | Route new events to every registered `IProjectionHandler` in order |
-| **Projection handlers** | `src/Api/Projections/*ProjectionHandler.cs` | Update one projection's read store in response to events |
+| **Event dispatcher** | `src/Api/DomainEventDispatcher.cs` | Route new events to every registered `IDomainEventHandler` in order |
+| **Event handlers** | `src/Api/EventHandlers/*EventHandler.cs` | React to domain events — update a projection, send a notification, trigger a process |
 | **Domain** | `src/Domain/` | Pure business logic: aggregate, commands, events — no I/O, no HTTP, no clock |
 
 **Rules:**
 - If you find yourself writing `store.ReadAsync` or `store.AppendAsync` inside an endpoint lambda, it belongs in the command handler instead.
-- If you find yourself updating a projection store inside a command handler, it belongs in an `IProjectionHandler` instead.
+- If you find yourself updating a projection store inside a command handler, it belongs in an `IDomainEventHandler` instead.
 - Command handlers know only `IEventStore` and `IDomainEventDispatcher` — they do not reference projection stores.
-- Adding a new projection means adding a new `IProjectionHandler` class and registering it in `Builder.cs`. No existing file changes required.
+- Adding a new projection means adding a new `IDomainEventHandler` class and registering it in `Builder.cs`. No existing file changes required.
 
 ---
 
@@ -69,7 +69,7 @@ flowchart LR
         subgraph Lambda ["Lambda — ASP.NET Minimal API"]
             direction TB
             WR["Write path\nload stream · Decide · append events · dispatch"]
-            PH["Projection handlers\n*ProjectionHandler : IProjectionHandler"]
+            PH["Event handlers\n*EventHandler : IDomainEventHandler"]
             RD["Read path\nread projection"]
         end
 
@@ -94,7 +94,7 @@ flowchart LR
     RD -- "read" --> RM
 ```
 
-**Write path detail:** the Lambda command handler loads the full event stream for the aggregate, folds it into current state, runs `Decide` to validate the command and produce new events, then appends those events with optimistic concurrency. It then calls `IDomainEventDispatcher.DispatchAsync`, which fans the new events out to each registered `IProjectionHandler` in sequence. All projection updates complete before the HTTP response is returned — there is no eventual consistency delay.
+**Write path detail:** the Lambda command handler loads the full event stream for the aggregate, folds it into current state, runs `Decide` to validate the command and produce new events, then appends those events with optimistic concurrency. It then calls `IDomainEventDispatcher.DispatchAsync`, which fans the new events out to each registered `IDomainEventHandler` in sequence. All projection updates complete before the HTTP response is returned — there is no eventual consistency delay.
 
 **Infrastructure as code:** all AWS resources (API Gateway, Lambda, DynamoDB table, CloudFront distribution, S3 bucket) are provisioned by the CDK app in `src/Infrastructure/`.
 

@@ -450,14 +450,14 @@ public interface IDomainEventDispatcher
     Task DispatchAsync(IReadOnlyList<EventEnvelope> events, CancellationToken ct = default);
 }
 
-// src/Api/IProjectionHandler.cs
-public interface IProjectionHandler
+// src/Api/IDomainEventHandler.cs
+public interface IDomainEventHandler
 {
     Task HandleAsync(IReadOnlyList<EventEnvelope> events, CancellationToken ct = default);
 }
 
 // src/Api/DomainEventDispatcher.cs
-public sealed class DomainEventDispatcher(IEnumerable<IProjectionHandler> handlers) : IDomainEventDispatcher
+public sealed class DomainEventDispatcher(IEnumerable<IDomainEventHandler> handlers) : IDomainEventDispatcher
 {
     public async Task DispatchAsync(IReadOnlyList<EventEnvelope> events, CancellationToken ct)
     {
@@ -467,15 +467,15 @@ public sealed class DomainEventDispatcher(IEnumerable<IProjectionHandler> handle
 }
 ```
 
-Each existing projection becomes a dedicated `IProjectionHandler` class:
+Each existing projection becomes a dedicated `IDomainEventHandler` class:
 
 | Handler class | Replaces |
 |---|---|
-| `NoteTitleListProjectionHandler` | `projStore` logic in `UpdateProjectionAsync` |
-| `NoteDetailProjectionHandler` | `noteDetailStore` logic |
-| `NoteCardListProjectionHandler` | `noteCardListStore` logic + `ApplyNoteEventsToCard` |
-| `TodoListProjectionHandler` | `todoListStore` logic |
-| `TagIndexProjectionHandler` | `tagIndexStore` logic |
+| `NoteTitleListEventHandler` | `projStore` logic in `UpdateProjectionAsync` |
+| `NoteDetailEventHandler` | `noteDetailStore` logic |
+| `NoteCardListEventHandler` | `noteCardListStore` logic + `ApplyNoteEventsToCard` |
+| `TodoListEventHandler` | `todoListStore` logic |
+| `TagIndexEventHandler` | `tagIndexStore` logic |
 
 `NoteCommandHandler` after the refactor:
 
@@ -494,15 +494,15 @@ public sealed class NoteCommandHandler(IEventStore store, IDomainEventDispatcher
 **Changes in scope:**
 
 - `src/Api/IDomainEventDispatcher.cs` — new interface
-- `src/Api/IProjectionHandler.cs` — new interface
+- `src/Api/IDomainEventHandler.cs` — new interface
 - `src/Api/DomainEventDispatcher.cs` — new: iterates registered handlers in registration order
-- `src/Api/Projections/NoteTitleListProjectionHandler.cs` — new: extracted from `UpdateProjectionAsync`
-- `src/Api/Projections/NoteDetailProjectionHandler.cs` — new: extracted from `UpdateProjectionAsync`
-- `src/Api/Projections/NoteCardListProjectionHandler.cs` — new: extracted from `UpdateProjectionAsync` + `ApplyNoteEventsToCard`
-- `src/Api/Projections/TodoListProjectionHandler.cs` — new: extracted from `UpdateProjectionAsync`
-- `src/Api/Projections/TagIndexProjectionHandler.cs` — new: extracted from `UpdateProjectionAsync`
+- `src/Api/Projections/NoteTitleListEventHandler.cs` — new: extracted from `UpdateProjectionAsync`
+- `src/Api/Projections/NoteDetailEventHandler.cs` — new: extracted from `UpdateProjectionAsync`
+- `src/Api/Projections/NoteCardListEventHandler.cs` — new: extracted from `UpdateProjectionAsync` + `ApplyNoteEventsToCard`
+- `src/Api/Projections/TodoListEventHandler.cs` — new: extracted from `UpdateProjectionAsync`
+- `src/Api/Projections/TagIndexEventHandler.cs` — new: extracted from `UpdateProjectionAsync`
 - `src/Api/NoteCommandHandler.cs` — remove all projection store dependencies and `UpdateProjectionAsync`; add `IDomainEventDispatcher`; call `dispatcher.DispatchAsync` in `PersistAsync`
-- `src/Api/Builder.cs` — register `DomainEventDispatcher` as `IDomainEventDispatcher`; register each handler as `IProjectionHandler` (order preserved)
+- `src/Api/Builder.cs` — register `DomainEventDispatcher` as `IDomainEventDispatcher`; register each handler as `IDomainEventHandler` (order preserved)
 - `tests/Api.Integration/` — no behaviour changes; all existing tests must pass unchanged
 
 **Scenarios:**
@@ -516,7 +516,7 @@ Scenario: All projections are updated after a command is handled
   And   the NoteCardList projection reflects the new title
 
 Scenario: A new projection handler can be added without changing NoteCommandHandler
-  Given a new IProjectionHandler is registered in Builder.cs
+  Given a new IDomainEventHandler is registered in Builder.cs
   When  any command is handled
   Then  the new handler receives the events
   And   NoteCommandHandler has not been modified
@@ -530,7 +530,7 @@ Scenario: Projection updates remain synchronous — read-after-write is consiste
 
 **Acceptance criteria:**
 
-- [ ] `IDomainEventDispatcher` and `IProjectionHandler` interfaces exist in `src/Api/`
+- [ ] `IDomainEventDispatcher` and `IDomainEventHandler` interfaces exist in `src/Api/`
 - [ ] Five projection handler classes extracted; each handles only its own projection's stores
 - [ ] `NoteCommandHandler` constructor takes only `IEventStore` and `IDomainEventDispatcher`
 - [ ] `UpdateProjectionAsync` and `ApplyNoteEventsToCard` removed from `NoteCommandHandler`
