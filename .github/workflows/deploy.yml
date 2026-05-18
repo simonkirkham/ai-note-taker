@@ -150,9 +150,7 @@ jobs:
         run: dotnet build tests/Browser.E2E/Browser.E2E.csproj -c Release
 
       - name: Install Playwright browsers
-        run:
-          pwsh tests/Browser.E2E/bin/Release/net10.0/playwright.ps1 install --with-deps
-          chromium
+        run: pwsh tests/Browser.E2E/bin/Release/net10.0/playwright.ps1 install --with-deps chromium
 
       - name: Clear test data (pre-E2E)
         uses: ./.github/actions/clear-test-data
