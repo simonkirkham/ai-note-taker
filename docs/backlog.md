@@ -28,12 +28,6 @@ Each entry records what it is, why it was deferred, and what phase or slice it w
 
 ---
 
-### CloudFront proxy for API (remove VITE_API_URL build-time coupling)
-**What:** Add a CloudFront behaviour that routes `/api/*` → API Gateway, with a CloudFront Function stripping the `/api` prefix. The frontend calls `/api/notes` as a relative path — no environment variable needed at build time. The frontend build moves into the `validate` CI job and runs once, decoupled from deployment order.
-**Why deferred:** Correct solution but requires CDK behaviour + CloudFront Function + route changes in api.ts + acceptance test URL update. Non-trivial slice; pipeline was the immediate priority.
-**Raised in:** Phase 5/6 CI hardening work
-**Depends on:** Nothing blocking.
-
 ---
 
 ## Notes

@@ -16,6 +16,7 @@
 7.8-E  Layout space review ──────────────────── frontend only; prototype recommended
 7.8-F  Optimistic card state sync ───────────── frontend only; independent
 7.8-G  Domain event dispatcher ──────────────── backend refactor; independent
+7.8-H  Human-readable URLs ─────────────────── CDK + CI; depends on 7.8-A (prod env exists)
 ```
 
 All slices are independent and can run in any order. 7.8-B and 7.8-C both touch `NoteView.tsx` so should not run in parallel.
@@ -531,9 +532,83 @@ Scenario: Projection updates remain synchronous — read-after-write is consiste
 **Acceptance criteria:**
 
 - [ ] `IDomainEventDispatcher` and `IDomainEventHandler` interfaces exist in `src/Api/`
-- [ ] Five projection handler classes extracted; each handles only its own projection's stores
+- [ ] Five event handler classes extracted; each handles only its own projection's stores
 - [ ] `NoteCommandHandler` constructor takes only `IEventStore` and `IDomainEventDispatcher`
 - [ ] `UpdateProjectionAsync` and `ApplyNoteEventsToCard` removed from `NoteCommandHandler`
 - [ ] All existing `Api.Integration` tests pass unchanged (behaviour is identical)
 - [ ] `Domain.Specs` tests pass unchanged
 - [ ] `cdk synth` exits 0
+
+---
+
+## Slice 7.8-H — Human-readable URLs
+
+**Status:** Not Started
+
+**Value:** The app is reachable at a memorable URL for both environments (`test.` subdomain for test, apex or `www.` for production) rather than opaque CloudFront and API Gateway hostnames. This also removes the `VITE_API_URL` build-time coupling — the frontend calls relative `/api/*` paths and CloudFront proxies them to API Gateway.
+
+**Addresses backlog item:** *CloudFront proxy for API (remove VITE_API_URL build-time coupling)* — once a custom domain is on CloudFront, adding the `/api` behaviour is a natural part of the same CDK change.
+
+**Prerequisites (manual — not code):**
+1. Own a domain (e.g. `example.com`) with DNS manageable via Route 53 or an external provider.
+2. Create a Route 53 hosted zone for the domain (if not already in place).
+3. Decide on the subdomain convention — e.g. `notes-test.example.com` / `notes.example.com`.
+4. Add `DOMAIN_NAME` (e.g. `notes.example.com`) and `HOSTED_ZONE_ID` as environment secrets in both GitHub environments (`Test` and `Production`). The Test environment uses a subdomain prefix; Production uses the bare domain.
+
+**CDK changes:**
+
+The CDK stack accepts two new optional context/env values: `DomainName` and `HostedZoneId`. When present:
+
+1. **ACM certificate** — request a `DnsValidatedCertificate` in `us-east-1` (required for CloudFront). Validated automatically via Route 53 if the hosted zone is in the same account; otherwise output the CNAME record for manual DNS entry.
+2. **CloudFront custom domain** — add `domainNames: [domainName]` and `certificate` to the existing `Distribution`.
+3. **CloudFront `/api` behaviour** — add a second `CacheBehavior` for path pattern `/api/*` pointing to the API Gateway origin; add a `CloudFront Function` that strips the `/api` prefix before forwarding to API Gateway.
+4. **Route 53 alias record** — create an `ARecord` pointing the domain to the CloudFront distribution.
+5. **CDK outputs** — `WebUrl` output switches from the CloudFront default domain to the custom domain when configured; `ApiUrl` output is removed (the API is now accessed via CloudFront `/api`).
+6. **`VITE_API_URL` removed** — the deploy workflow no longer passes `VITE_API_URL` to the frontend build; `web/src/api.ts` switches to relative `/api` paths.
+
+When `DomainName` is not set (local `cdk synth`, PR checks) the stack deploys as before with the CloudFront default URL — no breakage.
+
+**Key implementation files:**
+
+- `src/Infrastructure/NoteTakerStack.cs` — add optional `DomainName`/`HostedZoneId` props; ACM cert; CloudFront custom domain + `/api` behaviour + CloudFront Function; Route 53 alias record
+- `web/src/api.ts` — replace `import.meta.env.VITE_API_URL` base URL with `""` (empty string = relative paths)
+- `.github/workflows/deploy.yml` — remove `VITE_API_URL` env var from "Build frontend" steps in both `deploy` and `deploy-production` jobs; add `DOMAIN_NAME` / `HOSTED_ZONE_ID` as CDK context or env vars
+- `tests/Infrastructure.Assertions/` — add assertions: ACM cert present when domain configured; CloudFront has custom domain alias; `/api` behaviour present; Route 53 record present
+
+**Scenarios:**
+
+```
+Scenario: The app is reachable at the custom domain in Test
+  Given the Test environment is deployed with DOMAIN_NAME=notes-test.example.com
+  When  I navigate to https://notes-test.example.com
+  Then  the app loads correctly
+
+Scenario: The app is reachable at the custom domain in Production
+  Given the Production environment is deployed with DOMAIN_NAME=notes.example.com
+  When  I navigate to https://notes.example.com
+  Then  the app loads correctly
+
+Scenario: API calls use relative paths — no VITE_API_URL needed at build time
+  Given the frontend bundle is built without VITE_API_URL
+  When  the app makes an API call
+  Then  the request goes to /api/notes (relative)
+  And   CloudFront proxies it to API Gateway
+
+Scenario: CDK synth without a domain name produces no certificate or alias record
+  Given DomainName is not set in the CDK context
+  When  cdk synth runs
+  Then  no ACM certificate resource is in the template
+  And   the CloudFront distribution uses only its default domain
+```
+
+**Acceptance criteria:**
+
+- [ ] Prerequisites met: domain owned, Route 53 hosted zone created, `DOMAIN_NAME` + `HOSTED_ZONE_ID` secrets added to both GitHub environments
+- [ ] CDK stack creates ACM certificate and CloudFront alias when `DomainName` is set; skips both when unset
+- [ ] CloudFront `/api/*` behaviour strips prefix and forwards to API Gateway
+- [ ] `web/src/api.ts` uses relative `/api` base path; `VITE_API_URL` removed from codebase
+- [ ] `deploy.yml` no longer passes `VITE_API_URL` to the frontend build
+- [ ] App reachable at `DOMAIN_NAME` for both Test and Production after deploy
+- [ ] `InfraAssertions` tests cover cert, alias, and `/api` behaviour presence
+- [ ] `cdk synth` (no domain) exits 0 with no cert or alias record in template
+- [ ] CloudFront proxy backlog item closed
