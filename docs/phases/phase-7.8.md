@@ -25,25 +25,19 @@ All slices are independent and can run in any order. 7.8-B and 7.8-C both touch 
 
 ## Slice 7.8-A — Production deployment pipeline
 
-**Status:** Not Started
+**Status:** In Progress (smoke tests pending first successful deploy)
 
 **Value:** Every merge to main automatically promotes through Test and then deploys to a production environment, giving confidence that what works in Test ships to users.
 
-**What is already in place:**
-- `deploy.yml` has a `deploy-production` job that `needs: deploy` (Test) and uses `environment: Production`
-- The job uses the same CDK stack with production-scoped `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, and `AWS_REGION` secrets
-- Smoke tests run against production; E2E tests are excluded (no data mutation in production)
-
-**What is not yet in place:**
-- `Production` GitHub environment has not been created in repo Settings → Environments
-- Production AWS account credentials have not been added as environment secrets
-- A production AWS account or IAM user for deployment has not been provisioned
-
 **Manual setup steps (not a code slice — done by the developer):**
-1. Create a GCP-free production AWS account (or use a separate IAM user with least-privilege deploy permissions in a dedicated region).
-2. In GitHub repo Settings → Environments → New environment: name it `Production`.
-3. Add `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_REGION` as environment secrets for `Production`.
-4. Optionally add a required reviewer to the `Production` environment for a manual approval gate before production deploys.
+1. Create a production AWS account via AWS Organizations.
+   - New member accounts have **password recovery disabled** — do not try to reset the root password via the standard flow.
+   - Access the new account via Switch Role: add an inline `sts:AssumeRole` policy on your management account IAM user (resource: `arn:aws:iam::<NEW_ACCOUNT_ID>:role/OrganizationAccountAccessRole`), then use `https://signin.aws.amazon.com/switchrole` with role `OrganizationAccountAccessRole`.
+2. In the production account, create a `github-deploy` IAM user with `AdministratorAccess` and generate an access key.
+3. Bootstrap CDK in the production account (one-time per account/region): `AWS_ACCESS_KEY_ID=<key> AWS_SECRET_ACCESS_KEY=<secret> AWS_REGION=<region> cdk bootstrap`
+4. In GitHub repo Settings → Environments → New environment: name it `Production`.
+5. Add `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_REGION` as environment secrets for `Production`.
+6. Optionally add a required reviewer to the `Production` environment for a manual approval gate before production deploys.
 
 **Scenarios:**
 
@@ -67,11 +61,11 @@ Scenario: Smoke tests pass against the production API
 
 **Acceptance criteria:**
 
-- [ ] `Production` GitHub environment exists with `AWS_*` secrets configured
-- [ ] `deploy-production` job runs after `deploy` (Test) succeeds
-- [ ] `deploy-production` job does not run when `deploy` fails
+- [x] `Production` GitHub environment exists with `AWS_*` secrets configured
+- [x] `deploy-production` job runs after `deploy` (Test) succeeds
+- [x] `deploy-production` job does not run when `deploy` fails
 - [ ] Acceptance specs pass against the production API URL post-deploy
-- [ ] No E2E tests run against production
+- [x] No E2E tests run against production
 
 ---
 

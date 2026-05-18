@@ -1,9 +1,15 @@
 # Learnings: Phase 7.8 — Production Pipeline and Note Screen UX
 
 ## Slices covered
-7.8-B (note screen focus), 7.8-C (save/cancel), 7.8-D (drag-and-drop), 7.8-E (layout space), 7.8-F (optimistic card sync). 7.8-A (production pipeline) is deferred pending manual AWS account setup.
+7.8-A (production pipeline), 7.8-B (note screen focus), 7.8-C (save/cancel), 7.8-D (drag-and-drop), 7.8-E (layout space), 7.8-F (optimistic card sync).
 
 ---
+
+- **"Already in place" spec claims must be verified against actual files.** The 7.8-A spec stated `deploy-production` was already in `deploy.yml` — it was not. Spec authors should grep before writing "already in place". **Action:** Add to the Breaker checklist: "for any claim that something is already implemented, verify it with a grep or file read before writing the spec." — TODO.
+
+- **New AWS Organizations member accounts have password recovery disabled; access requires Switch Role from the management account.** The default flow (reset root password) silently fails. The correct path is: (1) add an inline `sts:AssumeRole` policy to the management account IAM user; (2) use the `OrganizationAccountAccessRole` via the Switch Role console or `https://signin.aws.amazon.com/switchrole`. **Action:** Add to the 7.8-A setup notes in `phase-7.8.md` so future accounts are set up without trial-and-error. — Done.
+
+- **CDK bootstrap must be run explicitly in each new AWS account before the first deploy.** The GitHub Actions deploy job will fail with "CDK bootstrap stack not found" if the target account has never been bootstrapped. This is a one-time per-account step. **Action:** Noted in phase doc. — Done.
 
 - **Changing a UI navigation model without updating the E2E page object caused a deploy-failure hotfix.** 7.8-C replaced `back-button` with `save-button` as the exit interaction, but `AppPage.GoBackAsync` (in `Browser.E2E/Pages/AppPage.cs`) still referenced `back-button`. All five E2E journeys that called `GoBackAsync` failed in CI after deploy. **Action:** Breaker spec step must include "grep AppPage.cs for any testid or method that references the changed interaction; update all callers in the same PR." — Done (added below to process).
 
@@ -19,8 +25,11 @@
 
 | Learning | Status |
 |---|---|
-| 1. E2E page object atomicity on navigation model change | Applied — added as a Breaker checklist note in this doc; the pattern (grep AppPage.cs) should be added to CLAUDE.md or Breaker role |
-| 2. dragLeave child-boundary guard | Documented — add to Refactor UI checklist when next edited |
-| 3. Dead flex on grid children | Documented — add to Refactor CSS checklist when next edited |
-| 4. flex-chain min-height: 0 discipline | Documented — add to Refactor CSS checklist when next edited |
-| 5. Shared App-level cards state for optimistic sync | Applied — implementation in codebase; no additional process change needed |
+| 1. "Already in place" spec claims must be verified | TODO — add to Breaker checklist |
+| 2. AWS Organizations Switch Role setup path | Applied — notes added to phase-7.8.md setup steps |
+| 3. CDK bootstrap required per new account | Applied — noted in phase-7.8.md |
+| 4. E2E page object atomicity on navigation model change | Applied — added as a Breaker checklist note in this doc; the pattern (grep AppPage.cs) should be added to CLAUDE.md or Breaker role |
+| 5. dragLeave child-boundary guard | Documented — add to Refactor UI checklist when next edited |
+| 6. Dead flex on grid children | Documented — add to Refactor CSS checklist when next edited |
+| 7. flex-chain min-height: 0 discipline | Documented — add to Refactor CSS checklist when next edited |
+| 8. Shared App-level cards state for optimistic sync | Applied — implementation in codebase; no additional process change needed |

@@ -496,6 +496,22 @@ If no agent ran unexpectedly high: write `None — slice ran within expected ran
 
 ---
 
+## Slice 7.8-A — Production deployment pipeline
+
+> **Note:** Manual setup slice — no agents ran. Token cost reflects one guided conversation session with the developer.
+
+| Agent     | ~Tokens    |
+|-----------|------------|
+| Scribe    | 5 000      |
+| **Total** | **~5 000** |
+
+**Why:** Pure infrastructure setup (AWS account, IAM, CDK bootstrap, GitHub environment). The only code change was adding the `deploy-production` job to `deploy.yml`.
+
+**Optimisation suggestions:**
+- **Setup friction (–0, but doc gap):** The spec stated `deploy-production` was "already in place" but it was not in `deploy.yml`. Verifying "already in place" claims against actual files before starting a slice would save a discovery round.
+
+---
+
 ## Phase 7.8 — Production Pipeline and Note Screen UX (5 active slices: B–F)
 
 > **Note:** Phase 7.8 ran across two sessions with context compaction. Per-agent counts are estimates from session summaries. 7.8-A (production pipeline) deferred — manual AWS/GitHub setup, no code slice.
