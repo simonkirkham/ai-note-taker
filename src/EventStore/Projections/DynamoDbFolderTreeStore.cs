@@ -6,9 +6,6 @@ namespace EventStore.Projections;
 
 public sealed class DynamoDbFolderTreeStore(IAmazonDynamoDB dynamo, string tableName) : IFolderTreeStore
 {
-    private readonly IAmazonDynamoDB _dynamo = dynamo;
-    private readonly string _tableName = tableName;
-
     public async Task UpsertAsync(FolderTreeView folder, CancellationToken ct = default)
     {
         var attrs = new Dictionary<string, AttributeValue>
@@ -20,11 +17,8 @@ public sealed class DynamoDbFolderTreeStore(IAmazonDynamoDB dynamo, string table
         if (folder.ParentFolderId.HasValue)
             attrs["ParentFolderId"] = new() { S = folder.ParentFolderId.Value.Value.ToString() };
 
-        await _dynamo.PutItemAsync(new PutItemRequest
-        {
-            TableName = _tableName,
-            Item = attrs
-        }, ct).ConfigureAwait(false);
+        await dynamo.PutItemAsync(new PutItemRequest { TableName = tableName, Item = attrs }, ct)
+            .ConfigureAwait(false);
     }
 
     public async Task<IReadOnlyList<FolderTreeView>> GetAllAsync(CancellationToken ct = default)
@@ -33,9 +27,9 @@ public sealed class DynamoDbFolderTreeStore(IAmazonDynamoDB dynamo, string table
         Dictionary<string, AttributeValue>? lastKey = null;
         do
         {
-            var response = await _dynamo.ScanAsync(new ScanRequest
+            var response = await dynamo.ScanAsync(new ScanRequest
             {
-                TableName = _tableName,
+                TableName = tableName,
                 ExclusiveStartKey = lastKey,
                 ConsistentRead = true
             }, ct).ConfigureAwait(false);
@@ -49,9 +43,9 @@ public sealed class DynamoDbFolderTreeStore(IAmazonDynamoDB dynamo, string table
 
     public async Task DeleteAsync(FolderId folderId, CancellationToken ct = default)
     {
-        await _dynamo.DeleteItemAsync(new DeleteItemRequest
+        await dynamo.DeleteItemAsync(new DeleteItemRequest
         {
-            TableName = _tableName,
+            TableName = tableName,
             Key = new Dictionary<string, AttributeValue> { ["PK"] = new() { S = folderId.Value.ToString() } }
         }, ct).ConfigureAwait(false);
     }
@@ -61,33 +55,38 @@ public sealed class DynamoDbFolderTreeStore(IAmazonDynamoDB dynamo, string table
         Dictionary<string, AttributeValue>? lastKey = null;
         do
         {
-            var scan = await _dynamo.ScanAsync(new ScanRequest
+            var scan = await dynamo.ScanAsync(new ScanRequest
             {
-                TableName = _tableName,
+                TableName = tableName,
                 ProjectionExpression = "PK",
                 ExclusiveStartKey = lastKey
             }, ct).ConfigureAwait(false);
 
-            for (var i = 0; i < scan.Items.Count; i += 25)
-            {
-                var batch = scan.Items.Skip(i).Take(25)
-                    .Select(row => new WriteRequest
-                    {
-                        DeleteRequest = new DeleteRequest
-                        {
-                            Key = new Dictionary<string, AttributeValue> { ["PK"] = row["PK"] }
-                        }
-                    }).ToList();
-
-                await _dynamo.BatchWriteItemAsync(new BatchWriteItemRequest
-                {
-                    RequestItems = new Dictionary<string, List<WriteRequest>> { [_tableName] = batch }
-                }, ct).ConfigureAwait(false);
-            }
+            await BatchDeleteByPrimaryKeyAsync(scan.Items, ct).ConfigureAwait(false);
 
             lastKey = scan.LastEvaluatedKey?.Count > 0 ? scan.LastEvaluatedKey : null;
         }
         while (lastKey is not null);
+    }
+
+    private async Task BatchDeleteByPrimaryKeyAsync(List<Dictionary<string, AttributeValue>> items, CancellationToken ct)
+    {
+        for (var i = 0; i < items.Count; i += 25)
+        {
+            var batch = items.Skip(i).Take(25)
+                .Select(row => new WriteRequest
+                {
+                    DeleteRequest = new DeleteRequest
+                    {
+                        Key = new Dictionary<string, AttributeValue> { ["PK"] = row["PK"] }
+                    }
+                }).ToList();
+
+            await dynamo.BatchWriteItemAsync(new BatchWriteItemRequest
+            {
+                RequestItems = new Dictionary<string, List<WriteRequest>> { [tableName] = batch }
+            }, ct).ConfigureAwait(false);
+        }
     }
 
     private static FolderTreeView ToView(Dictionary<string, AttributeValue> row)

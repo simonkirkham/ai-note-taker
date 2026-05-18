@@ -5,14 +5,11 @@ namespace EventStore.Projections;
 
 public sealed class DynamoDbTagIndexStore(IAmazonDynamoDB dynamo, string tableName) : ITagIndexStore
 {
-    private readonly IAmazonDynamoDB _dynamo = dynamo;
-    private readonly string _tableName = tableName;
-
     public async Task PutAsync(string tag, string noteId, CancellationToken ct = default)
     {
-        await _dynamo.PutItemAsync(new PutItemRequest
+        await dynamo.PutItemAsync(new PutItemRequest
         {
-            TableName = _tableName,
+            TableName = tableName,
             Item = new Dictionary<string, AttributeValue>
             {
                 ["Tag"] = new() { S = tag },
@@ -23,9 +20,9 @@ public sealed class DynamoDbTagIndexStore(IAmazonDynamoDB dynamo, string tableNa
 
     public async Task DeleteAsync(string tag, string noteId, CancellationToken ct = default)
     {
-        await _dynamo.DeleteItemAsync(new DeleteItemRequest
+        await dynamo.DeleteItemAsync(new DeleteItemRequest
         {
-            TableName = _tableName,
+            TableName = tableName,
             Key = new Dictionary<string, AttributeValue>
             {
                 ["Tag"] = new() { S = tag },
@@ -39,9 +36,9 @@ public sealed class DynamoDbTagIndexStore(IAmazonDynamoDB dynamo, string tableNa
         Dictionary<string, AttributeValue>? lastKey = null;
         do
         {
-            var scan = await _dynamo.ScanAsync(new ScanRequest
+            var scan = await dynamo.ScanAsync(new ScanRequest
             {
-                TableName = _tableName,
+                TableName = tableName,
                 FilterExpression = "NoteId = :noteId",
                 ExpressionAttributeValues = new Dictionary<string, AttributeValue>
                 {
@@ -51,26 +48,7 @@ public sealed class DynamoDbTagIndexStore(IAmazonDynamoDB dynamo, string tableNa
                 ExclusiveStartKey = lastKey
             }, ct).ConfigureAwait(false);
 
-            for (var i = 0; i < scan.Items.Count; i += 25)
-            {
-                var batch = scan.Items.Skip(i).Take(25)
-                    .Select(row => new WriteRequest
-                    {
-                        DeleteRequest = new DeleteRequest
-                        {
-                            Key = new Dictionary<string, AttributeValue>
-                            {
-                                ["Tag"] = row["Tag"],
-                                ["NoteId"] = row["NoteId"]
-                            }
-                        }
-                    }).ToList();
-
-                await _dynamo.BatchWriteItemAsync(new BatchWriteItemRequest
-                {
-                    RequestItems = new Dictionary<string, List<WriteRequest>> { [_tableName] = batch }
-                }, ct).ConfigureAwait(false);
-            }
+            await BatchDeleteByCompositeKeyAsync(scan.Items, ct).ConfigureAwait(false);
 
             lastKey = scan.LastEvaluatedKey?.Count > 0 ? scan.LastEvaluatedKey : null;
         }
@@ -83,9 +61,9 @@ public sealed class DynamoDbTagIndexStore(IAmazonDynamoDB dynamo, string tableNa
         Dictionary<string, AttributeValue>? lastKey = null;
         do
         {
-            var response = await _dynamo.ScanAsync(new ScanRequest
+            var response = await dynamo.ScanAsync(new ScanRequest
             {
-                TableName = _tableName,
+                TableName = tableName,
                 ExclusiveStartKey = lastKey,
                 ConsistentRead = true
             }, ct).ConfigureAwait(false);
@@ -102,36 +80,41 @@ public sealed class DynamoDbTagIndexStore(IAmazonDynamoDB dynamo, string tableNa
         Dictionary<string, AttributeValue>? lastKey = null;
         do
         {
-            var scan = await _dynamo.ScanAsync(new ScanRequest
+            var scan = await dynamo.ScanAsync(new ScanRequest
             {
-                TableName = _tableName,
+                TableName = tableName,
                 ProjectionExpression = "Tag, NoteId",
                 ExclusiveStartKey = lastKey
             }, ct).ConfigureAwait(false);
 
-            for (var i = 0; i < scan.Items.Count; i += 25)
-            {
-                var batch = scan.Items.Skip(i).Take(25)
-                    .Select(row => new WriteRequest
-                    {
-                        DeleteRequest = new DeleteRequest
-                        {
-                            Key = new Dictionary<string, AttributeValue>
-                            {
-                                ["Tag"] = row["Tag"],
-                                ["NoteId"] = row["NoteId"]
-                            }
-                        }
-                    }).ToList();
-
-                await _dynamo.BatchWriteItemAsync(new BatchWriteItemRequest
-                {
-                    RequestItems = new Dictionary<string, List<WriteRequest>> { [_tableName] = batch }
-                }, ct).ConfigureAwait(false);
-            }
+            await BatchDeleteByCompositeKeyAsync(scan.Items, ct).ConfigureAwait(false);
 
             lastKey = scan.LastEvaluatedKey?.Count > 0 ? scan.LastEvaluatedKey : null;
         }
         while (lastKey is not null);
+    }
+
+    private async Task BatchDeleteByCompositeKeyAsync(List<Dictionary<string, AttributeValue>> items, CancellationToken ct)
+    {
+        for (var i = 0; i < items.Count; i += 25)
+        {
+            var batch = items.Skip(i).Take(25)
+                .Select(row => new WriteRequest
+                {
+                    DeleteRequest = new DeleteRequest
+                    {
+                        Key = new Dictionary<string, AttributeValue>
+                        {
+                            ["Tag"] = row["Tag"],
+                            ["NoteId"] = row["NoteId"]
+                        }
+                    }
+                }).ToList();
+
+            await dynamo.BatchWriteItemAsync(new BatchWriteItemRequest
+            {
+                RequestItems = new Dictionary<string, List<WriteRequest>> { [tableName] = batch }
+            }, ct).ConfigureAwait(false);
+        }
     }
 }

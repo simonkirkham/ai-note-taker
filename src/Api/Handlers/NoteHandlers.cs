@@ -1,4 +1,3 @@
-using System.Text.RegularExpressions;
 using EventStore.Projections;
 using Domain.Folders;
 using Domain.Notes;
@@ -74,7 +73,7 @@ public static class NoteHandlers
 
     public static async Task<IResult> SetNoteDate(Guid noteId, SetNoteDateRequest req, NoteCommandHandler handler)
     {
-        try { await handler.HandleAsync(new Domain.Notes.SetNoteDate(new NoteId(noteId), req.Date)); }
+        try { await handler.HandleAsync(new SetNoteDate(new NoteId(noteId), req.Date)); }
         catch (NoteNotFoundException) { return Results.NotFound(); }
         return Results.Ok();
     }
@@ -122,54 +121,39 @@ public static class NoteHandlers
         return Results.NoContent();
     }
 
-    private static readonly Regex HeadingRe = new(@"^#{1,6}\s*", RegexOptions.Multiline | RegexOptions.Compiled);
-    private static readonly Regex StrikeRe = new(@"~~(.+?)~~", RegexOptions.Compiled);
-    private static readonly Regex BoldRe = new(@"\*\*(.+?)\*\*", RegexOptions.Compiled);
-    private static readonly Regex ItalicRe = new(@"\*(.+?)\*", RegexOptions.Compiled);
-    private static readonly Regex TaskItemRe = new(@"^\s*-\s+\[[ x]\]\s*", RegexOptions.Multiline | RegexOptions.Compiled);
-    private static readonly Regex BulletRe = new(@"^\s*[-*]\s+", RegexOptions.Multiline | RegexOptions.Compiled);
-    private static readonly Regex OrderedListRe = new(@"^\s*\d+\.\s+", RegexOptions.Multiline | RegexOptions.Compiled);
-
-    private static string StripMarkdown(string content)
-    {
-        if (string.IsNullOrEmpty(content)) return content;
-        var s = content;
-        s = HeadingRe.Replace(s, "");
-        s = StrikeRe.Replace(s, "$1");
-        s = BoldRe.Replace(s, "$1");
-        s = ItalicRe.Replace(s, "$1");
-        s = TaskItemRe.Replace(s, "");
-        s = BulletRe.Replace(s, "");
-        s = OrderedListRe.Replace(s, "");
-        return s.Trim();
-    }
-
     public static async Task<IResult> GetNoteCards(INoteCardListStore store, CancellationToken ct)
     {
         var all = await store.QueryAllAsync(ct).ConfigureAwait(false);
         var cards = all
             .Where(c => !c.Deleted)
-            .Select(c =>
-            {
-                var stripped = StripMarkdown(c.Content);
-                var preview = stripped.Length > MaxPreviewLength
-                    ? stripped[..(MaxPreviewLength - 1)] + "…"
-                    : stripped;
-                var openActions = c.ActionItems
-                    .Where(a => !a.Completed)
-                    .Select(a => new { actionId = a.ActionId.Value, description = a.Description });
-                return new
-                {
-                    noteId = c.NoteId.Value,
-                    title = c.Title,
-                    contentPreview = preview,
-                    date = c.Date,
-                    tags = c.Tags ?? [],
-                    openActions,
-                    createdAt = c.CreatedAt,
-                    folderId = c.FolderId?.Value
-                };
-            });
+            .Select(MapCardToResponse);
         return Results.Ok(new { cards });
+    }
+
+    private static object MapCardToResponse(NoteCardView c)
+    {
+        var preview = BuildContentPreview(c.Content);
+        var openActions = c.ActionItems
+            .Where(a => !a.Completed)
+            .Select(a => new { actionId = a.ActionId.Value, description = a.Description });
+        return new
+        {
+            noteId = c.NoteId.Value,
+            title = c.Title,
+            contentPreview = preview,
+            date = c.Date,
+            tags = c.Tags ?? [],
+            openActions,
+            createdAt = c.CreatedAt,
+            folderId = c.FolderId?.Value
+        };
+    }
+
+    private static string BuildContentPreview(string content)
+    {
+        var stripped = MarkdownStripper.Strip(content);
+        return stripped.Length > MaxPreviewLength
+            ? stripped[..(MaxPreviewLength - 1)] + "…"
+            : stripped;
     }
 }

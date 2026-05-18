@@ -8,7 +8,7 @@ namespace Api;
 
 public sealed class NoteCommandHandler(
     IEventStore store,
-    INoteTitleListStore projStore,
+    INoteTitleListStore noteTitleStore,
     INoteDetailStore noteDetailStore,
     ITodoListStore todoListStore,
     INoteCardListStore noteCardListStore,
@@ -44,10 +44,7 @@ public sealed class NoteCommandHandler(
     {
         if (newEnvelopes.Any(e => e.EventType == nameof(NoteDeleted)))
         {
-            await projStore.DeleteAsync(noteId, ct).ConfigureAwait(false);
-            await noteDetailStore.DeleteAsync(noteId, ct).ConfigureAwait(false);
-            await todoListStore.DeleteByNoteAsync(noteId, ct).ConfigureAwait(false);
-            await tagIndexStore.DeleteByNoteAsync(noteId.Value.ToString("N"), ct).ConfigureAwait(false);
+            await DeleteAllProjections(noteId, ct).ConfigureAwait(false);
             var existingCard = await noteCardListStore.GetByNoteAsync(noteId, ct).ConfigureAwait(false);
             if (existingCard is not null)
                 await noteCardListStore.UpsertAsync(
@@ -55,16 +52,8 @@ public sealed class NoteCommandHandler(
             return;
         }
 
-        var titleList = new NoteTitleListProjection();
-        var detail = new NoteDetailProjection();
-        foreach (var e in history) { titleList.Handle(e); detail.Handle(e); }
-        foreach (var e in newEnvelopes) { titleList.Handle(e); detail.Handle(e); }
-
-        var item = titleList.GetView().Items.FirstOrDefault(i => i.NoteId == noteId)
-            ?? throw new NoteNotFoundException(noteId);
-        await projStore.UpsertAsync(item, ct).ConfigureAwait(false);
-        var noteDetail = detail.GetDetail(noteId)
-            ?? throw new NoteNotFoundException(noteId);
+        var (item, noteDetail) = RebuildTitleAndDetailProjections(noteId, history, newEnvelopes);
+        await noteTitleStore.UpsertAsync(item, ct).ConfigureAwait(false);
         await noteDetailStore.UpsertAsync(noteDetail, ct).ConfigureAwait(false);
 
         if (newEnvelopes.Any(e => e.EventType == nameof(NoteRenamed)))
@@ -74,6 +63,26 @@ public sealed class NoteCommandHandler(
         await noteCardListStore.UpsertAsync(
             ApplyNoteEventsToCard(card, noteId, newEnvelopes), ct).ConfigureAwait(false);
 
+        await UpdateTagIndexForNewEventsAsync(newEnvelopes, ct).ConfigureAwait(false);
+    }
+
+    private static (NoteTitleListItem TitleItem, NoteDetailView Detail) RebuildTitleAndDetailProjections(
+        NoteId noteId, IReadOnlyList<EventEnvelope> history, List<EventEnvelope> newEnvelopes)
+    {
+        var titleList = new NoteTitleListProjection();
+        var detail = new NoteDetailProjection();
+        foreach (var e in history) { titleList.Handle(e); detail.Handle(e); }
+        foreach (var e in newEnvelopes) { titleList.Handle(e); detail.Handle(e); }
+
+        var item = titleList.GetView().Items.FirstOrDefault(i => i.NoteId == noteId)
+            ?? throw new NoteNotFoundException(noteId);
+        var noteDetail = detail.GetDetail(noteId)
+            ?? throw new NoteNotFoundException(noteId);
+        return (item, noteDetail);
+    }
+
+    private async Task UpdateTagIndexForNewEventsAsync(List<EventEnvelope> newEnvelopes, CancellationToken ct)
+    {
         foreach (var envelope in newEnvelopes)
         {
             switch (EventDeserializer.Deserialize(envelope))
@@ -88,6 +97,14 @@ public sealed class NoteCommandHandler(
                     break;
             }
         }
+    }
+
+    private async Task DeleteAllProjections(NoteId noteId, CancellationToken ct)
+    {
+        await noteTitleStore.DeleteAsync(noteId, ct).ConfigureAwait(false);
+        await noteDetailStore.DeleteAsync(noteId, ct).ConfigureAwait(false);
+        await todoListStore.DeleteByNoteAsync(noteId, ct).ConfigureAwait(false);
+        await tagIndexStore.DeleteByNoteAsync(noteId.Value.ToString("N"), ct).ConfigureAwait(false);
     }
 
     private static NoteCardView ApplyNoteEventsToCard(NoteCardView? existing, NoteId noteId, List<EventEnvelope> envelopes)

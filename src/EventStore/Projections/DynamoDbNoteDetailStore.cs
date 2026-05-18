@@ -50,22 +50,7 @@ public sealed class DynamoDbNoteDetailStore(IAmazonDynamoDB dynamo, string table
                 ExclusiveStartKey = lastKey
             }, ct).ConfigureAwait(false);
 
-            for (var i = 0; i < scan.Items.Count; i += 25)
-            {
-                var batch = scan.Items.Skip(i).Take(25)
-                    .Select(row => new WriteRequest
-                    {
-                        DeleteRequest = new DeleteRequest
-                        {
-                            Key = new Dictionary<string, AttributeValue> { ["PK"] = row["PK"] }
-                        }
-                    }).ToList();
-
-                await dynamo.BatchWriteItemAsync(new BatchWriteItemRequest
-                {
-                    RequestItems = new Dictionary<string, List<WriteRequest>> { [tableName] = batch }
-                }, ct).ConfigureAwait(false);
-            }
+            await BatchDeleteByPrimaryKeyAsync(scan.Items, ct).ConfigureAwait(false);
 
             lastKey = scan.LastEvaluatedKey?.Count > 0 ? scan.LastEvaluatedKey : null;
         }
@@ -77,29 +62,51 @@ public sealed class DynamoDbNoteDetailStore(IAmazonDynamoDB dynamo, string table
         var response = await dynamo.GetItemAsync(new GetItemRequest
         {
             TableName = tableName,
-            Key = new Dictionary<string, AttributeValue>
-            {
-                ["PK"] = new() { S = noteId.ToStreamId() }
-            },
+            Key = new Dictionary<string, AttributeValue> { ["PK"] = new() { S = noteId.ToStreamId() } },
             ConsistentRead = true
         }, ct).ConfigureAwait(false);
 
         if (!response.IsItemSet) return null;
 
-        var item = response.Item;
+        return MapItemToNoteDetailView(response.Item);
+    }
+
+    private static NoteDetailView MapItemToNoteDetailView(Dictionary<string, AttributeValue> item)
+    {
         var date = item.TryGetValue("Date", out var dateAttr) ? DateOnly.Parse(dateAttr.S) : (DateOnly?)null;
         IReadOnlyList<string> tags = item.TryGetValue("Tags", out var tagsAttr) && tagsAttr.SS?.Count > 0
             ? tagsAttr.SS.AsReadOnly()
             : Array.Empty<string>();
-        static string ReadStr(Dictionary<string, AttributeValue> i, string key) =>
-            i.TryGetValue(key, out var a) && a.NULL != true ? (a.S ?? "") : "";
         return new NoteDetailView(
             new NoteId(Guid.Parse(item["NoteId"].S)),
-            ReadStr(item, "Title"),
-            ReadStr(item, "Content"),
+            ReadStringAttribute(item, "Title"),
+            ReadStringAttribute(item, "Content"),
             DateTimeOffset.Parse(item["CreatedAt"].S),
             DateTimeOffset.Parse(item["LastModifiedAt"].S),
             date,
             tags);
     }
+
+    private async Task BatchDeleteByPrimaryKeyAsync(List<Dictionary<string, AttributeValue>> items, CancellationToken ct)
+    {
+        for (var i = 0; i < items.Count; i += 25)
+        {
+            var batch = items.Skip(i).Take(25)
+                .Select(row => new WriteRequest
+                {
+                    DeleteRequest = new DeleteRequest
+                    {
+                        Key = new Dictionary<string, AttributeValue> { ["PK"] = row["PK"] }
+                    }
+                }).ToList();
+
+            await dynamo.BatchWriteItemAsync(new BatchWriteItemRequest
+            {
+                RequestItems = new Dictionary<string, List<WriteRequest>> { [tableName] = batch }
+            }, ct).ConfigureAwait(false);
+        }
+    }
+
+    private static string ReadStringAttribute(Dictionary<string, AttributeValue> item, string key) =>
+        item.TryGetValue(key, out var attr) && attr.NULL != true ? (attr.S ?? "") : "";
 }

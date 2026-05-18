@@ -17,12 +17,30 @@ public sealed class DynamoDbEventStore(IAmazonDynamoDB dynamo, string tableName)
         if (events.Count == 0) return;
 
         var newVersion = expectedVersion + events.Count;
-        var transactItems = new List<TransactWriteItem>(events.Count + 1);
+        var transactItems = BuildEventWriteItems(streamId, expectedVersion, events);
+        transactItems.Add(BuildVersionMetaUpdate(streamId, expectedVersion, newVersion));
 
+        try
+        {
+            await dynamo.TransactWriteItemsAsync(new TransactWriteItemsRequest { TransactItems = transactItems }, ct).ConfigureAwait(false);
+        }
+        catch (TransactionCanceledException ex)
+            when (ex.CancellationReasons.Any(r => r.Code == "ConditionalCheckFailed"))
+        {
+            // Version read after conflict may not reflect the exact version at conflict time;
+            // callers should re-read the stream before retrying.
+            var actual = await GetCurrentVersionAsync(streamId, ct).ConfigureAwait(false);
+            throw new ConcurrencyException(streamId, expectedVersion, actual);
+        }
+    }
+
+    private List<TransactWriteItem> BuildEventWriteItems(string streamId, long expectedVersion, IReadOnlyList<EventEnvelope> events)
+    {
+        var items = new List<TransactWriteItem>(events.Count + 1);
         var seq = expectedVersion + 1;
         foreach (var e in events)
         {
-            transactItems.Add(new TransactWriteItem
+            items.Add(new TransactWriteItem
             {
                 Put = new Put
                 {
@@ -40,29 +58,23 @@ public sealed class DynamoDbEventStore(IAmazonDynamoDB dynamo, string tableName)
                 }
             });
         }
+        return items;
+    }
 
-        string conditionExpression;
-        Dictionary<string, AttributeValue> exprValues;
-
-        if (expectedVersion == 0)
-        {
-            conditionExpression = "attribute_not_exists(PK)";
-            exprValues = new Dictionary<string, AttributeValue>
+    private TransactWriteItem BuildVersionMetaUpdate(string streamId, long expectedVersion, long newVersion)
+    {
+        var (conditionExpression, exprValues) = expectedVersion == 0
+            ? ("attribute_not_exists(PK)", new Dictionary<string, AttributeValue>
             {
                 [":newVersion"] = new AttributeValue { N = newVersion.ToString() }
-            };
-        }
-        else
-        {
-            conditionExpression = "currentVersion = :expected";
-            exprValues = new Dictionary<string, AttributeValue>
+            })
+            : ("currentVersion = :expected", new Dictionary<string, AttributeValue>
             {
                 [":expected"] = new AttributeValue { N = expectedVersion.ToString() },
                 [":newVersion"] = new AttributeValue { N = newVersion.ToString() }
-            };
-        }
+            });
 
-        transactItems.Add(new TransactWriteItem
+        return new TransactWriteItem
         {
             Update = new Update
             {
@@ -76,20 +88,7 @@ public sealed class DynamoDbEventStore(IAmazonDynamoDB dynamo, string tableName)
                 ConditionExpression = conditionExpression,
                 ExpressionAttributeValues = exprValues
             }
-        });
-
-        try
-        {
-            await dynamo.TransactWriteItemsAsync(new TransactWriteItemsRequest { TransactItems = transactItems }, ct).ConfigureAwait(false);
-        }
-        catch (TransactionCanceledException ex)
-            when (ex.CancellationReasons.Any(r => r.Code == "ConditionalCheckFailed"))
-        {
-            // Version read after conflict may not reflect the exact version at conflict time;
-            // callers should re-read the stream before retrying.
-            var actual = await GetCurrentVersionAsync(streamId, ct).ConfigureAwait(false);
-            throw new ConcurrencyException(streamId, expectedVersion, actual);
-        }
+        };
     }
 
     public async Task<IReadOnlyList<EventEnvelope>> ReadAsync(string streamId, CancellationToken ct = default)
@@ -120,15 +119,7 @@ public sealed class DynamoDbEventStore(IAmazonDynamoDB dynamo, string tableName)
         while (lastKey is not null);
 
         return items
-            .Select(item => new EventEnvelope(
-                StreamId: streamId,
-                SequenceNumber: ParseSequenceSk(item["SK"].S),
-                EventType: item["EventType"].S,
-                EventVersion: int.Parse(item["EventVersion"].N),
-                OccurredAt: DateTimeOffset.Parse(item["OccurredAt"].S),
-                Payload: item["Payload"].S,
-                Metadata: JsonSerializer.Deserialize<EventMetadata>(item["Metadata"].S, JsonOpts)!
-            ))
+            .Select(item => MapItemToEnvelope(streamId, item))
             .ToList()
             .AsReadOnly();
     }
@@ -157,20 +148,21 @@ public sealed class DynamoDbEventStore(IAmazonDynamoDB dynamo, string tableName)
         while (lastKey is not null);
 
         return items
-            .Select(item => new EventEnvelope(
-                StreamId: item["PK"].S,
-                SequenceNumber: ParseSequenceSk(item["SK"].S),
-                EventType: item["EventType"].S,
-                EventVersion: int.Parse(item["EventVersion"].N),
-                OccurredAt: DateTimeOffset.Parse(item["OccurredAt"].S),
-                Payload: item["Payload"].S,
-                Metadata: JsonSerializer.Deserialize<EventMetadata>(item["Metadata"].S, JsonOpts)!
-            ))
+            .Select(item => MapItemToEnvelope(item["PK"].S, item))
             .OrderBy(e => e.StreamId)
             .ThenBy(e => e.SequenceNumber)
             .ToList()
             .AsReadOnly();
     }
+
+    private EventEnvelope MapItemToEnvelope(string streamId, Dictionary<string, AttributeValue> item) =>
+        new(StreamId: streamId,
+            SequenceNumber: ParseSequenceSk(item["SK"].S),
+            EventType: item["EventType"].S,
+            EventVersion: int.Parse(item["EventVersion"].N),
+            OccurredAt: DateTimeOffset.Parse(item["OccurredAt"].S),
+            Payload: item["Payload"].S,
+            Metadata: JsonSerializer.Deserialize<EventMetadata>(item["Metadata"].S, JsonOpts)!);
 
     private async Task<long> GetCurrentVersionAsync(string streamId, CancellationToken ct)
     {

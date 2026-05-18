@@ -1,4 +1,3 @@
-using System.Text.Json;
 using Domain;
 using Domain.Folders;
 using Domain.Notes;
@@ -13,8 +12,6 @@ public sealed class FolderCommandHandler(
     INoteCardListStore noteCardListStore,
     NoteCommandHandler noteCommandHandler)
 {
-    private const int InitialEventVersion = 1;
-
     public async Task<FolderId> HandleAsync(CreateFolder cmd, CancellationToken ct = default)
     {
         var streamId = cmd.FolderId.ToStreamId();
@@ -115,19 +112,29 @@ public sealed class FolderCommandHandler(
                         .ConfigureAwait(false);
                     break;
                 case FolderRenamed e:
-                    var allFolders = await folderTreeStore.GetAllAsync(ct).ConfigureAwait(false);
-                    var existing = allFolders.FirstOrDefault(f => f.FolderId == e.FolderId);
-                    if (existing is not null)
-                        await folderTreeStore.UpsertAsync(existing with { Name = e.NewName }, ct).ConfigureAwait(false);
+                    await ApplyFolderRenamedToProjectionAsync(e, ct).ConfigureAwait(false);
                     break;
                 case FolderMoved e:
-                    var allFolders2 = await folderTreeStore.GetAllAsync(ct).ConfigureAwait(false);
-                    var existingMoved = allFolders2.FirstOrDefault(f => f.FolderId == e.FolderId);
-                    if (existingMoved is not null)
-                        await folderTreeStore.UpsertAsync(existingMoved with { ParentFolderId = e.NewParentFolderId }, ct).ConfigureAwait(false);
+                    await ApplyFolderMovedToProjectionAsync(e, ct).ConfigureAwait(false);
                     break;
             }
         }
+    }
+
+    private async Task ApplyFolderRenamedToProjectionAsync(FolderRenamed e, CancellationToken ct)
+    {
+        var allFolders = await folderTreeStore.GetAllAsync(ct).ConfigureAwait(false);
+        var existing = allFolders.FirstOrDefault(f => f.FolderId == e.FolderId);
+        if (existing is not null)
+            await folderTreeStore.UpsertAsync(existing with { Name = e.NewName }, ct).ConfigureAwait(false);
+    }
+
+    private async Task ApplyFolderMovedToProjectionAsync(FolderMoved e, CancellationToken ct)
+    {
+        var allFolders = await folderTreeStore.GetAllAsync(ct).ConfigureAwait(false);
+        var existing = allFolders.FirstOrDefault(f => f.FolderId == e.FolderId);
+        if (existing is not null)
+            await folderTreeStore.UpsertAsync(existing with { ParentFolderId = e.NewParentFolderId }, ct).ConfigureAwait(false);
     }
 
     private static IReadOnlyList<FolderId> GetSubtreeIds(FolderId rootId, IReadOnlyList<FolderTreeView> allFolders)
@@ -157,8 +164,5 @@ public sealed class FolderCommandHandler(
     }
 
     private static List<EventEnvelope> ToEnvelopes(string streamId, IReadOnlyList<IDomainEvent> events) =>
-        events.Select(e => new EventEnvelope(
-            StreamId: streamId, SequenceNumber: 0, EventType: e.GetType().Name, EventVersion: InitialEventVersion,
-            OccurredAt: DateTimeOffset.UtcNow, Payload: JsonSerializer.Serialize(e, e.GetType()),
-            Metadata: new EventMetadata(Guid.NewGuid(), null, null, null))).ToList();
+        EventEnvelopeFactory.CreateEnvelopes(streamId, events);
 }

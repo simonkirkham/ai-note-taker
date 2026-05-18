@@ -1,4 +1,3 @@
-using System.Text.Json;
 using Domain;
 using Domain.ActionItems;
 using Domain.Notes;
@@ -128,11 +127,5 @@ public sealed class ActionItemCommandHandler(
     }
 
     static List<EventEnvelope> ToEnvelopes(string streamId, IReadOnlyList<IDomainEvent> events) =>
-        events.Select(e => new EventEnvelope(
-            StreamId: streamId, SequenceNumber: 0,
-            EventType: e.GetType().Name, EventVersion: 1,
-            OccurredAt: DateTimeOffset.UtcNow,
-            Payload: JsonSerializer.Serialize(e, e.GetType()),
-            Metadata: new EventMetadata(Guid.NewGuid(), null, null, null)))
-        .ToList();
+        EventEnvelopeFactory.CreateEnvelopes(streamId, events);
 }
