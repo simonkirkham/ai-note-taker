@@ -1,5 +1,4 @@
 using Amazon.DynamoDBv2;
-using Api;
 using EventStore;
 using EventStore.Projections;
 

@@ -1,5 +1,4 @@
 using EventStore.Projections;
-using Microsoft.AspNetCore.Http;
 
 namespace Api.Handlers;
 
@@ -12,9 +11,9 @@ public static class TagHandlers
             .GroupBy(x => x.Tag)
             .Select(g => new
             {
-                tag       = g.Key,
+                tag = g.Key,
                 noteCount = g.Count(),
-                noteIds   = g.Select(x => x.NoteId).ToList()
+                noteIds = g.Select(x => x.NoteId).ToList()
             })
             .OrderByDescending(x => x.noteCount)
             .ToList();

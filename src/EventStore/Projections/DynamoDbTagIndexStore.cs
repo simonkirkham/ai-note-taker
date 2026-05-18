@@ -15,7 +15,7 @@ public sealed class DynamoDbTagIndexStore(IAmazonDynamoDB dynamo, string tableNa
             TableName = _tableName,
             Item = new Dictionary<string, AttributeValue>
             {
-                ["Tag"]    = new() { S = tag },
+                ["Tag"] = new() { S = tag },
                 ["NoteId"] = new() { S = noteId }
             }
         }, ct).ConfigureAwait(false);
@@ -28,7 +28,7 @@ public sealed class DynamoDbTagIndexStore(IAmazonDynamoDB dynamo, string tableNa
             TableName = _tableName,
             Key = new Dictionary<string, AttributeValue>
             {
-                ["Tag"]    = new() { S = tag },
+                ["Tag"] = new() { S = tag },
                 ["NoteId"] = new() { S = noteId }
             }
         }, ct).ConfigureAwait(false);
@@ -60,7 +60,7 @@ public sealed class DynamoDbTagIndexStore(IAmazonDynamoDB dynamo, string tableNa
                         {
                             Key = new Dictionary<string, AttributeValue>
                             {
-                                ["Tag"]    = row["Tag"],
+                                ["Tag"] = row["Tag"],
                                 ["NoteId"] = row["NoteId"]
                             }
                         }
@@ -118,7 +118,7 @@ public sealed class DynamoDbTagIndexStore(IAmazonDynamoDB dynamo, string tableNa
                         {
                             Key = new Dictionary<string, AttributeValue>
                             {
-                                ["Tag"]    = row["Tag"],
+                                ["Tag"] = row["Tag"],
                                 ["NoteId"] = row["NoteId"]
                             }
                         }

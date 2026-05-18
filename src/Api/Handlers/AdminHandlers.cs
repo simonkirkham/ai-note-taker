@@ -1,5 +1,3 @@
-using Microsoft.AspNetCore.Http;
-
 namespace Api.Handlers;
 
 public static class AdminHandlers

@@ -97,14 +97,14 @@ public class NoteTakerStack : Stack
             SnapStart = Amazon.CDK.AWS.Lambda.SnapStartConf.ON_PUBLISHED_VERSIONS,
             Environment = new Dictionary<string, string>
             {
-                ["EVENTS_TABLE_NAME"]            = eventsTable.TableName,
+                ["EVENTS_TABLE_NAME"] = eventsTable.TableName,
                 ["PROJ_NOTETITLELIST_TABLE_NAME"] = projTable.TableName,
-                ["PROJ_NOTEDETAIL_TABLE_NAME"]   = noteDetailTable.TableName,
-                ["PROJ_NOTEACTIONS_TABLE_NAME"]  = noteActionsTable.TableName,
-                ["PROJ_TODOLIST_TABLE_NAME"]     = todoListTable.TableName,
+                ["PROJ_NOTEDETAIL_TABLE_NAME"] = noteDetailTable.TableName,
+                ["PROJ_NOTEACTIONS_TABLE_NAME"] = noteActionsTable.TableName,
+                ["PROJ_TODOLIST_TABLE_NAME"] = todoListTable.TableName,
                 ["PROJ_NOTECARDLIST_TABLE_NAME"] = noteCardListTable.TableName,
-                ["PROJ_FOLDERTREE_TABLE_NAME"]   = folderTreeTable.TableName,
-                ["PROJ_TAGINDEX_TABLE_NAME"]     = tagIndexTable.TableName
+                ["PROJ_FOLDERTREE_TABLE_NAME"] = folderTreeTable.TableName,
+                ["PROJ_TAGINDEX_TABLE_NAME"] = tagIndexTable.TableName
             }
         });
 

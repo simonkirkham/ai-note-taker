@@ -1,7 +1,6 @@
 using Api.Contracts;
 using Domain.Folders;
 using EventStore.Projections;
-using Microsoft.AspNetCore.Http;
 
 namespace Api.Handlers;
 

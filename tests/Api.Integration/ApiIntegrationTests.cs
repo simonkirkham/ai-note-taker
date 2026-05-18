@@ -125,7 +125,7 @@ public sealed class ApiIntegrationTests(ApiFactory factory) : IClassFixture<ApiF
         Assert.True(listBody.TryGetProperty("createdAt", out _), "response must include createdAt");
     }
 
-     [Fact]
+    [Fact]
     public async Task WhenNoNoteExists_GetNoteDetails_ReturnsNotFound()
     {
         var randomNoteId = Guid.NewGuid().ToString();

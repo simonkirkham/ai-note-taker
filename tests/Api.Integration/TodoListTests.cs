@@ -59,7 +59,7 @@ public sealed class TodoListTests(ApiFactory factory) : IClassFixture<ApiFactory
     public async Task GetTodos_MultipleNotes_ShowsAllOpenItems()
     {
         var (_, _, _, descA) = await SetupNoteWithActionAsync("Note Alpha", $"Task-A-{Guid.NewGuid()}");
-        var (_, _, _, descB) = await SetupNoteWithActionAsync("Note Beta",  $"Task-B-{Guid.NewGuid()}");
+        var (_, _, _, descB) = await SetupNoteWithActionAsync("Note Beta", $"Task-B-{Guid.NewGuid()}");
 
         var items = await GetTodoItemsAsync();
 

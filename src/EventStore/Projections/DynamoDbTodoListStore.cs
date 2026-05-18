@@ -16,11 +16,11 @@ public sealed class DynamoDbTodoListStore(IAmazonDynamoDB dynamo, string tableNa
             TableName = tableName,
             Item = new Dictionary<string, AttributeValue>
             {
-                ["PK"]          = new() { S = item.ActionId.Value.ToString() },
-                ["NoteId"]      = new() { S = item.NoteId.Value.ToString() },
-                ["NoteTitle"]   = new() { S = item.NoteTitle },
+                ["PK"] = new() { S = item.ActionId.Value.ToString() },
+                ["NoteId"] = new() { S = item.NoteId.Value.ToString() },
+                ["NoteTitle"] = new() { S = item.NoteTitle },
                 ["Description"] = new() { S = item.Description },
-                ["AddedAt"]     = new() { S = item.AddedAt.ToString("O") }
+                ["AddedAt"] = new() { S = item.AddedAt.ToString("O") }
             }
         }, ct).ConfigureAwait(false);
     }

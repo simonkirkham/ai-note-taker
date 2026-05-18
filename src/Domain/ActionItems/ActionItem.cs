@@ -28,10 +28,10 @@ public sealed class ActionItem : IAggregate
     public IReadOnlyList<IDomainEvent> Handle(ICommand command) =>
         command switch
         {
-            AddActionItem cmd      => HandleAdd(cmd),
+            AddActionItem cmd => HandleAdd(cmd),
             CompleteActionItem cmd => HandleComplete(cmd),
-            ReopenActionItem cmd   => HandleReopen(cmd),
-            DeleteActionItem cmd   => HandleDelete(cmd),
+            ReopenActionItem cmd => HandleReopen(cmd),
+            DeleteActionItem cmd => HandleDelete(cmd),
             _ => throw new ArgumentOutOfRangeException(nameof(command))
         };
 

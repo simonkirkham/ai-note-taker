@@ -78,13 +78,13 @@ public static class ActionItemHandlers
         var view = await store.QueryByNoteAsync(new NoteId(noteId));
         return Results.Ok(new
         {
-            noteId  = noteId,
+            noteId = noteId,
             actions = view.Actions.Select(a => new
             {
-                actionId    = a.ActionId.Value,
+                actionId = a.ActionId.Value,
                 description = a.Description,
-                completed   = a.Completed,
-                addedAt     = a.AddedAt,
+                completed = a.Completed,
+                addedAt = a.AddedAt,
                 completedAt = a.CompletedAt
             })
         });

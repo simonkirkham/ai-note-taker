@@ -10,11 +10,11 @@ public sealed class DynamoDbNoteDetailStore(IAmazonDynamoDB dynamo, string table
     {
         var item = new Dictionary<string, AttributeValue>
         {
-            ["PK"]             = new() { S = detail.NoteId.ToStreamId() },
-            ["NoteId"]         = new() { S = detail.NoteId.Value.ToString() },
-            ["Title"]          = string.IsNullOrEmpty(detail.Title)   ? new() { NULL = true } : new() { S = detail.Title },
-            ["Content"]        = string.IsNullOrEmpty(detail.Content) ? new() { NULL = true } : new() { S = detail.Content },
-            ["CreatedAt"]      = new() { S = detail.CreatedAt.ToString("O") },
+            ["PK"] = new() { S = detail.NoteId.ToStreamId() },
+            ["NoteId"] = new() { S = detail.NoteId.Value.ToString() },
+            ["Title"] = string.IsNullOrEmpty(detail.Title) ? new() { NULL = true } : new() { S = detail.Title },
+            ["Content"] = string.IsNullOrEmpty(detail.Content) ? new() { NULL = true } : new() { S = detail.Content },
+            ["CreatedAt"] = new() { S = detail.CreatedAt.ToString("O") },
             ["LastModifiedAt"] = new() { S = detail.LastModifiedAt.ToString("O") }
         };
         if (detail.Date.HasValue)

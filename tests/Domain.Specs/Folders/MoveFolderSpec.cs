@@ -5,7 +5,7 @@ namespace Domain.Specs.Folders;
 
 public sealed class MoveFolderSpec
 {
-    static readonly FolderId Id       = new(Guid.Parse("00000000-0000-0000-0000-000000000030"));
+    static readonly FolderId Id = new(Guid.Parse("00000000-0000-0000-0000-000000000030"));
     static readonly FolderId ParentId = new(Guid.Parse("00000000-0000-0000-0000-000000000031"));
 
     [Fact]

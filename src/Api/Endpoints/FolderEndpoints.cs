@@ -1,5 +1,4 @@
 using Api.Handlers;
-using Microsoft.AspNetCore.Builder;
 
 namespace Api.Endpoints;
 

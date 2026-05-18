@@ -29,10 +29,10 @@ public sealed class Folder : IAggregate
 
     public IReadOnlyList<IDomainEvent> Handle(ICommand command) => command switch
     {
-        CreateFolder cmd  => HandleCreate(cmd),
-        RenameFolder cmd  => HandleRename(cmd),
-        DeleteFolder cmd  => HandleDelete(cmd),
-        MoveFolder cmd    => HandleMove(cmd),
+        CreateFolder cmd => HandleCreate(cmd),
+        RenameFolder cmd => HandleRename(cmd),
+        DeleteFolder cmd => HandleDelete(cmd),
+        MoveFolder cmd => HandleMove(cmd),
         _ => throw new ArgumentOutOfRangeException(nameof(command))
     };
 

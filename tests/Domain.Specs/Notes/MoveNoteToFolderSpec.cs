@@ -6,7 +6,7 @@ namespace Domain.Specs.Notes;
 
 public sealed class MoveNoteToFolderSpec
 {
-    static readonly NoteId   NoteId   = new(Guid.Parse("00000000-0000-0000-0000-000000000001"));
+    static readonly NoteId NoteId = new(Guid.Parse("00000000-0000-0000-0000-000000000001"));
     static readonly FolderId FolderId = new(Guid.Parse("00000000-0000-0000-0000-000000000010"));
 
     [Fact]

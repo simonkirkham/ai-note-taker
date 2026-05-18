@@ -16,13 +16,13 @@ public sealed class DynamoDbNoteCardListStore(IAmazonDynamoDB dynamo, string tab
     {
         var attrs = new Dictionary<string, AttributeValue>
         {
-            ["PK"]             = new() { S = card.NoteId.Value.ToString() },
-            ["Title"]          = new() { S = card.Title },
-            ["Content"]        = new() { S = card.Content },
-            ["ActionItems"]    = new() { S = JsonSerializer.Serialize(card.ActionItems) },
-            ["CreatedAt"]      = new() { S = card.CreatedAt.ToString("O") },
+            ["PK"] = new() { S = card.NoteId.Value.ToString() },
+            ["Title"] = new() { S = card.Title },
+            ["Content"] = new() { S = card.Content },
+            ["ActionItems"] = new() { S = JsonSerializer.Serialize(card.ActionItems) },
+            ["CreatedAt"] = new() { S = card.CreatedAt.ToString("O") },
             ["LastModifiedAt"] = new() { S = card.LastModifiedAt.ToString("O") },
-            ["Deleted"]        = new() { BOOL = card.Deleted }
+            ["Deleted"] = new() { BOOL = card.Deleted }
         };
         if (card.Date.HasValue)
             attrs["Date"] = new() { S = card.Date.Value.ToString("O") };

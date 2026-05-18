@@ -1,5 +1,3 @@
-using Api;
-
 namespace Api.Integration;
 
 public sealed class AlwaysHealthyDynamoCheck : IDynamoHealthCheck

@@ -13,9 +13,9 @@ public sealed class DynamoDbFolderTreeStore(IAmazonDynamoDB dynamo, string table
     {
         var attrs = new Dictionary<string, AttributeValue>
         {
-            ["PK"]           = new() { S = folder.FolderId.Value.ToString() },
-            ["Name"]         = new() { S = folder.Name },
-            ["CreatedAt"]    = new() { S = folder.CreatedAt.ToString("O") }
+            ["PK"] = new() { S = folder.FolderId.Value.ToString() },
+            ["Name"] = new() { S = folder.Name },
+            ["CreatedAt"] = new() { S = folder.CreatedAt.ToString("O") }
         };
         if (folder.ParentFolderId.HasValue)
             attrs["ParentFolderId"] = new() { S = folder.ParentFolderId.Value.Value.ToString() };

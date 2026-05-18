@@ -1,4 +1,3 @@
-using Api;
 using EventStore;
 using EventStore.Projections;
 using Microsoft.AspNetCore.Hosting;

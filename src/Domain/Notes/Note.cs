@@ -50,15 +50,15 @@ public sealed class Note : IAggregate
     public IReadOnlyList<IDomainEvent> Handle(ICommand command) =>
         command switch
         {
-            CreateNote cmd         => HandleCreate(cmd),
-            RenameNote cmd         => HandleRename(cmd),
-            EditContent cmd        => HandleEditContent(cmd),
-            DeleteNote cmd         => HandleDelete(cmd),
-            SetNoteDate cmd        => HandleSetDate(cmd),
-            TagNote cmd            => HandleTagNote(cmd),
-            UntagNote cmd          => HandleUntagNote(cmd),
-            MoveNoteToFolder cmd   => HandleMoveToFolder(cmd),
-            UnfileNote cmd         => HandleUnfile(cmd),
+            CreateNote cmd => HandleCreate(cmd),
+            RenameNote cmd => HandleRename(cmd),
+            EditContent cmd => HandleEditContent(cmd),
+            DeleteNote cmd => HandleDelete(cmd),
+            SetNoteDate cmd => HandleSetDate(cmd),
+            TagNote cmd => HandleTagNote(cmd),
+            UntagNote cmd => HandleUntagNote(cmd),
+            MoveNoteToFolder cmd => HandleMoveToFolder(cmd),
+            UnfileNote cmd => HandleUnfile(cmd),
             _ => throw new ArgumentOutOfRangeException(nameof(command))
         };
 

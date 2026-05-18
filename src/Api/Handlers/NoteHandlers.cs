@@ -1,9 +1,4 @@
-using System;
-using System.Linq;
 using System.Text.RegularExpressions;
-using System.Threading.Tasks;
-using Microsoft.AspNetCore.Http;
-using EventStore;
 using EventStore.Projections;
 using Domain.Folders;
 using Domain.Notes;
@@ -67,12 +62,12 @@ public static class NoteHandlers
         if (detail is null) return Results.NotFound();
         return Results.Ok(new
         {
-            noteId         = detail.NoteId.Value,
-            title          = detail.Title,
-            content        = detail.Content,
-            date           = detail.Date,
-            tags           = detail.Tags ?? [],
-            createdAt      = detail.CreatedAt,
+            noteId = detail.NoteId.Value,
+            title = detail.Title,
+            content = detail.Content,
+            date = detail.Date,
+            tags = detail.Tags ?? [],
+            createdAt = detail.CreatedAt,
             lastModifiedAt = detail.LastModifiedAt
         });
     }
@@ -127,13 +122,13 @@ public static class NoteHandlers
         return Results.NoContent();
     }
 
-    private static readonly Regex HeadingRe      = new(@"^#{1,6}\s*",            RegexOptions.Multiline | RegexOptions.Compiled);
-    private static readonly Regex StrikeRe        = new(@"~~(.+?)~~",              RegexOptions.Compiled);
-    private static readonly Regex BoldRe          = new(@"\*\*(.+?)\*\*",          RegexOptions.Compiled);
-    private static readonly Regex ItalicRe        = new(@"\*(.+?)\*",              RegexOptions.Compiled);
-    private static readonly Regex TaskItemRe      = new(@"^\s*-\s+\[[ x]\]\s*",   RegexOptions.Multiline | RegexOptions.Compiled);
-    private static readonly Regex BulletRe        = new(@"^\s*[-*]\s+",            RegexOptions.Multiline | RegexOptions.Compiled);
-    private static readonly Regex OrderedListRe   = new(@"^\s*\d+\.\s+",          RegexOptions.Multiline | RegexOptions.Compiled);
+    private static readonly Regex HeadingRe = new(@"^#{1,6}\s*", RegexOptions.Multiline | RegexOptions.Compiled);
+    private static readonly Regex StrikeRe = new(@"~~(.+?)~~", RegexOptions.Compiled);
+    private static readonly Regex BoldRe = new(@"\*\*(.+?)\*\*", RegexOptions.Compiled);
+    private static readonly Regex ItalicRe = new(@"\*(.+?)\*", RegexOptions.Compiled);
+    private static readonly Regex TaskItemRe = new(@"^\s*-\s+\[[ x]\]\s*", RegexOptions.Multiline | RegexOptions.Compiled);
+    private static readonly Regex BulletRe = new(@"^\s*[-*]\s+", RegexOptions.Multiline | RegexOptions.Compiled);
+    private static readonly Regex OrderedListRe = new(@"^\s*\d+\.\s+", RegexOptions.Multiline | RegexOptions.Compiled);
 
     private static string StripMarkdown(string content)
     {
@@ -165,14 +160,14 @@ public static class NoteHandlers
                     .Select(a => new { actionId = a.ActionId.Value, description = a.Description });
                 return new
                 {
-                    noteId         = c.NoteId.Value,
-                    title          = c.Title,
+                    noteId = c.NoteId.Value,
+                    title = c.Title,
                     contentPreview = preview,
-                    date           = c.Date,
-                    tags           = c.Tags ?? [],
+                    date = c.Date,
+                    tags = c.Tags ?? [],
                     openActions,
-                    createdAt      = c.CreatedAt,
-                    folderId       = c.FolderId?.Value
+                    createdAt = c.CreatedAt,
+                    folderId = c.FolderId?.Value
                 };
             });
         return Results.Ok(new { cards });

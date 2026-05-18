@@ -11,13 +11,13 @@ public sealed class DynamoDbNoteActionsStore(IAmazonDynamoDB dynamo, string tabl
     {
         var attrs = new Dictionary<string, AttributeValue>
         {
-            ["PK"]          = new() { S = noteId.Value.ToString() },
-            ["SK"]          = new() { S = item.ActionId.Value.ToString() },
-            ["ActionId"]    = new() { S = item.ActionId.Value.ToString() },
-            ["NoteId"]      = new() { S = noteId.Value.ToString() },
+            ["PK"] = new() { S = noteId.Value.ToString() },
+            ["SK"] = new() { S = item.ActionId.Value.ToString() },
+            ["ActionId"] = new() { S = item.ActionId.Value.ToString() },
+            ["NoteId"] = new() { S = noteId.Value.ToString() },
             ["Description"] = new() { S = item.Description },
-            ["Completed"]   = new() { BOOL = item.Completed },
-            ["AddedAt"]     = new() { S = item.AddedAt.ToString("O") }
+            ["Completed"] = new() { BOOL = item.Completed },
+            ["AddedAt"] = new() { S = item.AddedAt.ToString("O") }
         };
         if (item.CompletedAt.HasValue)
             attrs["CompletedAt"] = new() { S = item.CompletedAt.Value.ToString("O") };
