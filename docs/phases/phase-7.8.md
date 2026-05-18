@@ -17,6 +17,7 @@
 7.8-F  Optimistic card state sync ───────────── frontend only; independent
 7.8-G  Domain event dispatcher ──────────────── backend refactor; independent
 7.8-H  Human-readable URLs ─────────────────── CDK + CI; depends on 7.8-A (prod env exists)
+7.8-I  Read-only smoke suite ───────────────── test-only; independent
 ```
 
 All slices are independent and can run in any order. 7.8-B and 7.8-C both touch `NoteView.tsx` so should not run in parallel.
@@ -606,3 +607,55 @@ Scenario: CDK synth without a domain name produces no certificate or alias recor
 - [ ] `InfraAssertions` tests cover cert, alias, and `/api` behaviour presence
 - [ ] `cdk synth` (no domain) exits 0 with no cert or alias record in template
 - [ ] CloudFront proxy backlog item closed
+
+---
+
+## Slice 7.8-I — Read-only smoke suite
+
+**Status:** Not Started
+
+**Value:** The smoke suite no longer pollutes production (or Test) with leftover notes and action items. Post-deploy confidence comes from health checks, read-endpoint shape assertions, and 404-path verification — none of which require creating data.
+
+**Root cause:** Every spec in `Api.Smoke` creates one or more notes and leaves them behind — there is no cleanup step and no delete-note endpoint called in teardown. Running the suite after every deploy to production means production accumulates test notes on every CI run.
+
+**Fix approach:** Strip `Api.Smoke` to three concerns only:
+1. **Health** — `GET /health` returns 200 with DynamoDB status (already clean).
+2. **Read endpoints** — `GET /notes`, `GET /notes/cards`, `GET /todos`, `GET /tags`, `GET /folders` each return 200 with the expected top-level array property. These prove projections are reachable and returning the right shape against real deployed state.
+3. **Error paths** — `PATCH /notes/{random-guid}/title` etc. return 404. These prove routing and Lambda execution work without creating anything.
+
+All write-path correctness coverage (create note, rename, edit content, add/complete/delete actions) moves permanently to `Api.Integration` (in-process `WebApplicationFactory`), where it already has near-complete coverage and runs against an in-memory store.
+
+**Changes in scope:**
+
+- `tests/Api.Smoke/ReadEndpointsSpec.cs` (new) — GET /notes, GET /notes/cards, GET /todos, GET /tags, GET /folders shape assertions
+- `tests/Api.Smoke/ErrorResponsesSpec.cs` (new) — 404 assertions for PATCH title, PUT content, PATCH date, DELETE action item using random GUIDs
+- Delete: `CreateNoteSpec.cs`, `ListNotesSpec.cs`, `GetNoteSpec.cs`, `RenameNoteSpec.cs`, `EditContentSpec.cs`, `SetNoteDateSpec.cs`, `ActionItemCompleteSpec.cs`, `DeleteActionItemSpec.cs`, `TodoListSpec.cs`, `TodoCompleteSpec.cs`
+- Keep unchanged: `HealthEndpointSpec.cs`, `FrontendSmokeSpec.cs`, `DeployedApiFixture.cs`, `DeployedFrontendFixture.cs`
+
+**Note:** `Api.Integration` already covers all the write paths being removed from smoke. No coverage gap is introduced.
+
+**Scenarios:**
+
+```
+Scenario: Smoke suite makes no write calls
+  Given the smoke suite runs against a deployed environment
+  When  all specs complete
+  Then  no notes, folders, or action items have been created in the database
+
+Scenario: Read endpoints return correct shapes
+  Given the deployed API has real data
+  When  GET /notes is called
+  Then  the response is 200 with an "items" array
+
+Scenario: 404 path works for non-existent note
+  Given a random note ID that does not exist
+  When  PATCH /notes/{id}/title is called
+  Then  the response is 404
+```
+
+**Acceptance criteria:**
+
+- [ ] `ReadEndpointsSpec.cs` and `ErrorResponsesSpec.cs` added; no `PostAsync("notes", ...)` anywhere in the suite
+- [ ] All 10 write-heavy spec files deleted
+- [ ] `dotnet test tests/Api.Smoke/Api.Smoke.csproj` exits 0 (against deployed Test environment)
+- [ ] No new notes appear in the deployed database after the suite runs
