@@ -2,7 +2,7 @@
 
 **Goal:** Establish a production deployment target and sharpen the note-screen interaction model with explicit lifecycle controls, keyboard-first focus, drag-and-drop note filing, and a layout that uses available screen space effectively.
 
-**Learning surface:** Multi-environment GitHub Actions pipeline with environment-scoped secrets and sequential promotion; React controlled form patterns and dirty-state detection across multiple fields; focus management with `useRef` and `tabIndex`; HTML5 drag-and-drop API in React; optimistic UI for move operations; responsive CSS layout with fluid containers and viewport-aware sizing.
+**Learning surface:** Multi-environment GitHub Actions pipeline with environment-scoped secrets and sequential promotion; React controlled form patterns and dirty-state detection across multiple fields; focus management with `useRef` and `tabIndex`; HTML5 drag-and-drop API in React; `useReducer` as a client-side projection — discriminated union action types as frontend events, pure reducer as state machine, compensating actions as reverts; responsive CSS layout with fluid containers and viewport-aware sizing.
 
 ---
 
@@ -15,6 +15,7 @@
 7.8-D  Drag-and-drop into folder panel ─────── frontend only; independent
 7.8-E  Layout space review ──────────────────── frontend only; prototype recommended
 7.8-F  Optimistic card state sync ───────────── frontend only; independent
+7.8-G  Domain event dispatcher ──────────────── backend refactor; independent
 ```
 
 All slices are independent and can run in any order. 7.8-B and 7.8-C both touch `NoteView.tsx` so should not run in parallel.
@@ -351,14 +352,35 @@ Scenario: Layout remains usable at 768px viewport width
 
 **Root cause:** Note card state is siloed in individual components. `ListView` and `FolderPreviewPanel` each fetch their own `cards` in a local `useState` on mount. `useNotes.rename` updates the sidebar's `notes` list but has no way to reach the `cards` in `ListView`. Similarly, when a note is moved out of a folder panel, only the destination panel updates; the source panel's local state is untouched until it remounts.
 
-**Two bugs, one fix:** Lift `cards` state out of `ListView` and `FolderPreviewPanel` and into `App` (or a shared hook). All card-mutating operations — rename, move — update this shared state optimistically.
+**Two bugs, one fix:** Lift `cards` state out of `ListView` and `FolderPreviewPanel` and into `App` via a `useReducer`-backed hook. Each card-mutating operation dispatches an explicit action (client-side event); the reducer applies it. Optimistic reverts are compensating actions — the same pattern the backend uses.
+
+**Architectural approach — explicit event handlers with `useReducer`:**
+
+Because this is an event-sourced system, frontend state transitions should mirror that model. Rather than scattering ad-hoc `setState` calls across handlers, shared card state is managed by a `useReducer` with explicit action types. Each card-mutating operation dispatches an action; the reducer applies it to produce the next state. Reverts are compensating actions dispatched on failure.
+
+```ts
+type CardAction =
+  | { type: 'CARDS_LOADED';        cards: NoteCard[] }
+  | { type: 'CARD_TITLE_UPDATED';  noteId: string; title: string }
+  | { type: 'CARD_TITLE_REVERTED'; noteId: string; title: string }
+  | { type: 'CARD_MOVED';          noteId: string; folderId: string | null }
+  | { type: 'CARD_MOVE_REVERTED';  noteId: string; folderId: string | null }
+  | { type: 'CARD_ADDED';          card: NoteCard }
+  | { type: 'CARD_REMOVED';        noteId: string }
+```
+
+The reducer is a pure function — no side effects, no API calls — exactly like a backend aggregate. API calls live in the handlers that dispatch actions before and after the async call.
+
+**Learning surface:** `useReducer` as a client-side projection; discriminated union action types as frontend events; pure reducer as the state machine — the same conceptual model as the backend aggregate applied to UI state.
 
 **Changes in scope:**
 
-- `web/src/App.tsx` — add `cards` state (replacing `ListView`'s local state); fetch `getNoteCards()` on mount; expose `onRename` that updates both `notes` (sidebar) and `cards` (home screen) optimistically; pass updated `cards` to `ListView`
+- `web/src/hooks/useCardState.ts` — new hook: `useReducer` with the `CardAction` discriminated union; exposes `cards` and `dispatch`; initial load dispatches `CARDS_LOADED`
+- `web/src/App.tsx` — use `useCardState`; rename handler dispatches `CARD_TITLE_UPDATED` optimistically then `CARD_TITLE_REVERTED` on failure; move handler dispatches `CARD_MOVED` optimistically then `CARD_MOVE_REVERTED` on failure; passes `cards` down to `ListView` and `FolderPreviewPanel`
 - `web/src/components/ListView.tsx` — remove local `cards` state and `getNoteCards()` fetch; accept `cards` as a prop
-- `web/src/components/FolderPreviewPanel.tsx` — remove local `cards` state; accept `cards` as a prop filtered to the folder; the move handler in App removes the note from `cards` optimistically (removing it from every panel that renders from shared state)
-- `web/src/__tests__/ListView.test.tsx` — update to pass `cards` as a prop instead of mocking `getNoteCards`
+- `web/src/components/FolderPreviewPanel.tsx` — remove local `cards` state; accept `cards` as a prop filtered to the folder
+- `web/src/__tests__/useCardState.test.ts` — unit-test the reducer directly: each action type produces the correct next state; revert actions restore previous state
+- `web/src/__tests__/ListView.test.tsx` — update to pass `cards` as a prop
 - `web/src/__tests__/FolderPreviewPanel.test.tsx` — update similarly
 
 **Scenarios:**
@@ -406,3 +428,112 @@ Scenario: A failed move reverts both panels
 - [x] Failed rename and failed move both revert the optimistic update
 - [x] Component tests for `ListView` and `FolderPreviewPanel` updated to use props rather than internal fetches
 - [x] No new `getNoteCards()` calls added — one fetch in `App`, shared downward
+
+---
+
+## Slice 7.8-G — Domain event dispatcher
+
+**Status:** Not Started
+
+**Value:** Projection updates are decoupled from command handlers. Adding a new projection is a new class; it does not require touching an existing command handler. The command handler shrinks to two dependencies (`IEventStore` and `IDomainEventDispatcher`) and knows nothing about which projections exist.
+
+**Problem with the current design:** `NoteCommandHandler` takes five projection store dependencies and owns a 50-line `UpdateProjectionAsync` method that hard-codes every projection update. Every new projection requires modifying both the constructor and that method. This is the opposite of the Open/Closed Principle and makes the command handler a bottleneck for all projection work.
+
+**Design — in-process synchronous dispatcher:**
+
+Keep the update synchronous and in-process so read-after-write consistency is preserved (projection is updated before the HTTP response returns). The dispatcher is not a message bus — it is a structured way to route events to projection handlers within the same request.
+
+```csharp
+// src/Api/IDomainEventDispatcher.cs
+public interface IDomainEventDispatcher
+{
+    Task DispatchAsync(IReadOnlyList<EventEnvelope> events, CancellationToken ct = default);
+}
+
+// src/Api/IProjectionHandler.cs
+public interface IProjectionHandler
+{
+    Task HandleAsync(IReadOnlyList<EventEnvelope> events, CancellationToken ct = default);
+}
+
+// src/Api/DomainEventDispatcher.cs
+public sealed class DomainEventDispatcher(IEnumerable<IProjectionHandler> handlers) : IDomainEventDispatcher
+{
+    public async Task DispatchAsync(IReadOnlyList<EventEnvelope> events, CancellationToken ct)
+    {
+        foreach (var handler in handlers)
+            await handler.HandleAsync(events, ct).ConfigureAwait(false);
+    }
+}
+```
+
+Each existing projection becomes a dedicated `IProjectionHandler` class:
+
+| Handler class | Replaces |
+|---|---|
+| `NoteTitleListProjectionHandler` | `projStore` logic in `UpdateProjectionAsync` |
+| `NoteDetailProjectionHandler` | `noteDetailStore` logic |
+| `NoteCardListProjectionHandler` | `noteCardListStore` logic + `ApplyNoteEventsToCard` |
+| `TodoListProjectionHandler` | `todoListStore` logic |
+| `TagIndexProjectionHandler` | `tagIndexStore` logic |
+
+`NoteCommandHandler` after the refactor:
+
+```csharp
+public sealed class NoteCommandHandler(IEventStore store, IDomainEventDispatcher dispatcher)
+{
+    private async Task PersistAsync(...)
+    {
+        var envelopes = ToEnvelopes(streamId, newEvents);
+        await store.AppendAsync(streamId, history.Count, envelopes, ct).ConfigureAwait(false);
+        await dispatcher.DispatchAsync(envelopes, ct).ConfigureAwait(false);
+    }
+}
+```
+
+**Changes in scope:**
+
+- `src/Api/IDomainEventDispatcher.cs` — new interface
+- `src/Api/IProjectionHandler.cs` — new interface
+- `src/Api/DomainEventDispatcher.cs` — new: iterates registered handlers in registration order
+- `src/Api/Projections/NoteTitleListProjectionHandler.cs` — new: extracted from `UpdateProjectionAsync`
+- `src/Api/Projections/NoteDetailProjectionHandler.cs` — new: extracted from `UpdateProjectionAsync`
+- `src/Api/Projections/NoteCardListProjectionHandler.cs` — new: extracted from `UpdateProjectionAsync` + `ApplyNoteEventsToCard`
+- `src/Api/Projections/TodoListProjectionHandler.cs` — new: extracted from `UpdateProjectionAsync`
+- `src/Api/Projections/TagIndexProjectionHandler.cs` — new: extracted from `UpdateProjectionAsync`
+- `src/Api/NoteCommandHandler.cs` — remove all projection store dependencies and `UpdateProjectionAsync`; add `IDomainEventDispatcher`; call `dispatcher.DispatchAsync` in `PersistAsync`
+- `src/Api/Builder.cs` — register `DomainEventDispatcher` as `IDomainEventDispatcher`; register each handler as `IProjectionHandler` (order preserved)
+- `tests/Api.Integration/` — no behaviour changes; all existing tests must pass unchanged
+
+**Scenarios:**
+
+```
+Scenario: All projections are updated after a command is handled
+  Given a note exists
+  When  RenameNote is handled
+  Then  the NoteTitleList projection reflects the new title
+  And   the NoteDetail projection reflects the new title
+  And   the NoteCardList projection reflects the new title
+
+Scenario: A new projection handler can be added without changing NoteCommandHandler
+  Given a new IProjectionHandler is registered in Builder.cs
+  When  any command is handled
+  Then  the new handler receives the events
+  And   NoteCommandHandler has not been modified
+
+Scenario: Projection updates remain synchronous — read-after-write is consistent
+  Given RenameNote is handled
+  When  the HTTP response is returned
+  Then  GET /notes/{id} already reflects the new title
+  And   no eventual-consistency delay is observable
+```
+
+**Acceptance criteria:**
+
+- [ ] `IDomainEventDispatcher` and `IProjectionHandler` interfaces exist in `src/Api/`
+- [ ] Five projection handler classes extracted; each handles only its own projection's stores
+- [ ] `NoteCommandHandler` constructor takes only `IEventStore` and `IDomainEventDispatcher`
+- [ ] `UpdateProjectionAsync` and `ApplyNoteEventsToCard` removed from `NoteCommandHandler`
+- [ ] All existing `Api.Integration` tests pass unchanged (behaviour is identical)
+- [ ] `Domain.Specs` tests pass unchanged
+- [ ] `cdk synth` exits 0
