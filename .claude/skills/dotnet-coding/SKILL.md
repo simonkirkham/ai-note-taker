@@ -55,6 +55,20 @@ These apply when the project-specific rules above don't say otherwise.
 - `async`/`await` for all I/O-bound work; never `.Result` or `.Wait()`.
 - Only catch exceptions you can handle — no broad `catch (Exception)` without justification.
 
+**DRY — avoid duplication**
+- Extract shared logic rather than copy-pasting. If you find yourself writing the same pattern twice, it belongs in a helper or base method.
+
+**Size limits (smells, not hard rules)**
+- Classes over ~100 lines are a signal to look for a seam to split on. Ask: does this class have more than one reason to change?
+- Methods over ~15 lines should be broken into smaller, well-named private methods. Prefer many short methods that read like prose over one long method that requires comments.
+- Classes with more than 2–3 constructor dependencies are a smell. Consider splitting responsibilities or introducing a facade.
+
+**Naming**
+- Prefer longer, fully descriptive names over short or abbreviated ones. A name should read as a sentence fragment that explains intent — never sacrifice clarity for brevity.
+
+**Unused `using` directives**
+- Remove all unused `using` directives before committing. `dotnet format` will flag them; treat them as errors.
+
 Full reference: `docs/dotnet-coding-standards.md`
 
 ## Checklist (run before opening a PR)
@@ -65,11 +79,16 @@ Full reference: `docs/dotnet-coding-standards.md`
 - [ ] Events are immutable — any shape change is a new event type, not an edit
 - [ ] No DynamoDB access outside `src/EventStore/`
 - [ ] Each class and interface is in its own file; filename matches the type name exactly. Exception: simple records with no behaviour (commands, events, API request/response contracts) may be grouped into one logical file per area (e.g. `NoteCommands.cs`, `NoteEvents.cs`) — only when every type in the file is a pure record with no implementation body.
-- [ ] Names: PascalCase for public types/members, camelCase for params/locals
+- [ ] Names: PascalCase for public types/members, camelCase for params/locals; descriptive over brief
 - [ ] File-scoped namespace used
 - [ ] `var` only when type is obvious from right-hand side
 - [ ] No comments added unless the WHY is non-obvious
 - [ ] No broad `catch (Exception)` blocks without justification
+- [ ] No duplicated logic — shared code extracted to a helper or method
+- [ ] No class longer than ~100 lines without a clear reason
+- [ ] No method longer than ~15 lines — extract and name sub-steps
+- [ ] No class with more than 2–3 constructor dependencies — split responsibilities if so
+- [ ] No unused `using` directives
 - [ ] `dotnet format` passes
 
 ## Commands
