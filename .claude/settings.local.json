@@ -54,7 +54,8 @@
       "PowerShell(dotnet build *)",
       "PowerShell(*)",
       "Bash(Get-Command aws *)",
-      "Bash(*)"
+      "Bash(*)",
+      "WebSearch"
     ]
   }
 }

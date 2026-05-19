@@ -9,7 +9,7 @@ public sealed class ProjectionRebuildHandler(
     INoteDetailStore detailStore,
     INoteCardListStore noteCardListStore,
     IFolderTreeStore folderTreeStore,
-    ITagIndexStore tagIndexStore)
+    ITagIndexStore tagIndexStore) : IProjectionRebuildHandler
 {
     public async Task<int> RebuildAsync(CancellationToken ct = default)
     {

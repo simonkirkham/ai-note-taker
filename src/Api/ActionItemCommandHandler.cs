@@ -11,7 +11,7 @@ public sealed class ActionItemCommandHandler(
     INoteDetailStore noteDetailStore,
     INoteActionsStore noteActionsStore,
     ITodoListStore todoListStore,
-    INoteCardListStore noteCardListStore)
+    INoteCardListStore noteCardListStore) : IActionItemCommandHandler
 {
     public async Task<ActionId> HandleAsync(AddActionItem cmd, CancellationToken ct = default)
     {

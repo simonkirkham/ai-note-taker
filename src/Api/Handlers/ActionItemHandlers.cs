@@ -14,7 +14,7 @@ public static class ActionItemHandlers
     public static async Task<IResult> AddActionItem(
         Guid noteId,
         AddActionItemRequest req,
-        ActionItemCommandHandler handler)
+        IActionItemCommandHandler handler)
     {
         var actionId = req.ActionId is { } id && id != Guid.Empty
             ? new ActionId(id)
@@ -31,7 +31,7 @@ public static class ActionItemHandlers
     public static async Task<IResult> CompleteActionItem(
         Guid noteId,
         Guid actionId,
-        ActionItemCommandHandler handler)
+        IActionItemCommandHandler handler)
     {
         try
         {
@@ -45,7 +45,7 @@ public static class ActionItemHandlers
     public static async Task<IResult> ReopenActionItem(
         Guid noteId,
         Guid actionId,
-        ActionItemCommandHandler handler)
+        IActionItemCommandHandler handler)
     {
         try
         {
@@ -59,7 +59,7 @@ public static class ActionItemHandlers
     public static async Task<IResult> DeleteActionItem(
         Guid noteId,
         Guid actionId,
-        ActionItemCommandHandler handler)
+        IActionItemCommandHandler handler)
     {
         try
         {

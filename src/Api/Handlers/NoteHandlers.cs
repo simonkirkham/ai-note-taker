@@ -21,7 +21,7 @@ public static class NoteHandlers
 
     public static IResult Secret() => Results.Ok(new { status = "shhhh...." });
 
-    public static async Task<IResult> CreateNote(HttpRequest request, NoteCommandHandler handler)
+    public static async Task<IResult> CreateNote(HttpRequest request, INoteCommandHandler handler)
     {
         CreateNoteRequest? req = null;
         if (request.HasJsonContentType())
@@ -32,7 +32,7 @@ public static class NoteHandlers
         return Results.Created($"/notes/{noteId}", new { noteId = noteId.Value });
     }
 
-    public static async Task<IResult> RenameNote(Guid noteId, RenameNoteRequest req, NoteCommandHandler handler)
+    public static async Task<IResult> RenameNote(Guid noteId, RenameNoteRequest req, INoteCommandHandler handler)
     {
         try { await handler.HandleAsync(new RenameNote(new NoteId(noteId), req.Title)); }
         catch (NoteNotFoundException) { return Results.NotFound(); }
@@ -48,7 +48,7 @@ public static class NoteHandlers
         return Results.Ok(new { items });
     }
 
-    public static async Task<IResult> EditContent(Guid noteId, EditContentRequest req, NoteCommandHandler handler)
+    public static async Task<IResult> EditContent(Guid noteId, EditContentRequest req, INoteCommandHandler handler)
     {
         try { await handler.HandleAsync(new EditContentCmd(new NoteId(noteId), req.Content)); }
         catch (NoteNotFoundException) { return Results.NotFound(); }
@@ -71,14 +71,14 @@ public static class NoteHandlers
         });
     }
 
-    public static async Task<IResult> SetNoteDate(Guid noteId, SetNoteDateRequest req, NoteCommandHandler handler)
+    public static async Task<IResult> SetNoteDate(Guid noteId, SetNoteDateRequest req, INoteCommandHandler handler)
     {
         try { await handler.HandleAsync(new SetNoteDate(new NoteId(noteId), req.Date)); }
         catch (NoteNotFoundException) { return Results.NotFound(); }
         return Results.Ok();
     }
 
-    public static async Task<IResult> DeleteNote(Guid noteId, NoteCommandHandler handler)
+    public static async Task<IResult> DeleteNote(Guid noteId, INoteCommandHandler handler)
     {
         try { await handler.HandleAsync(new Domain.Notes.DeleteNote(new NoteId(noteId))); }
         catch (NoteNotFoundException) { return Results.NotFound(); }
@@ -86,7 +86,7 @@ public static class NoteHandlers
         return Results.NoContent();
     }
 
-    public static async Task<IResult> PostTag(Guid noteId, TagNoteRequest req, NoteCommandHandler handler)
+    public static async Task<IResult> PostTag(Guid noteId, TagNoteRequest req, INoteCommandHandler handler)
     {
         try { await handler.HandleAsync(new TagNote(new NoteId(noteId), req.Tag)); }
         catch (NoteNotFoundException) { return Results.NotFound(); }
@@ -94,7 +94,7 @@ public static class NoteHandlers
         return Results.NoContent();
     }
 
-    public static async Task<IResult> DeleteTag(Guid noteId, string tag, NoteCommandHandler handler)
+    public static async Task<IResult> DeleteTag(Guid noteId, string tag, INoteCommandHandler handler)
     {
         try { await handler.HandleAsync(new UntagNote(new NoteId(noteId), tag)); }
         catch (NoteNotFoundException) { return Results.NotFound(); }
@@ -102,7 +102,7 @@ public static class NoteHandlers
         return Results.NoContent();
     }
 
-    public static async Task<IResult> MoveNoteToFolder(Guid noteId, MoveNoteToFolderRequest req, NoteCommandHandler handler, IFolderTreeStore folderTreeStore, CancellationToken ct)
+    public static async Task<IResult> MoveNoteToFolder(Guid noteId, MoveNoteToFolderRequest req, INoteCommandHandler handler, IFolderTreeStore folderTreeStore, CancellationToken ct)
     {
         var targetId = new FolderId(req.FolderId);
         var allFolders = await folderTreeStore.GetAllAsync(ct).ConfigureAwait(false);
@@ -114,7 +114,7 @@ public static class NoteHandlers
         return Results.NoContent();
     }
 
-    public static async Task<IResult> UnfileNote(Guid noteId, NoteCommandHandler handler, CancellationToken ct)
+    public static async Task<IResult> UnfileNote(Guid noteId, INoteCommandHandler handler, CancellationToken ct)
     {
         try { await handler.HandleAsync(new Domain.Notes.UnfileNote(new NoteId(noteId)), ct); }
         catch (NoteNotFoundException) { return Results.NotFound(); }

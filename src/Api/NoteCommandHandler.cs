@@ -12,7 +12,7 @@ public sealed class NoteCommandHandler(
     INoteDetailStore noteDetailStore,
     ITodoListStore todoListStore,
     INoteCardListStore noteCardListStore,
-    ITagIndexStore tagIndexStore)
+    ITagIndexStore tagIndexStore) : INoteCommandHandler
 {
     private const int InitialEventVersion = 1;
 
@@ -46,9 +46,9 @@ public sealed class NoteCommandHandler(
         {
             await DeleteAllProjections(noteId, ct).ConfigureAwait(false);
             var existingCard = await noteCardListStore.GetByNoteAsync(noteId, ct).ConfigureAwait(false);
-            if (existingCard is not null)
-                await noteCardListStore.UpsertAsync(
-                    existingCard with { Deleted = true, LastModifiedAt = newEnvelopes[0].OccurredAt }, ct).ConfigureAwait(false);
+            if (existingCard is null) return;
+            await noteCardListStore.UpsertAsync(
+                existingCard with { Deleted = true, LastModifiedAt = newEnvelopes[0].OccurredAt }, ct).ConfigureAwait(false);
             return;
         }
 

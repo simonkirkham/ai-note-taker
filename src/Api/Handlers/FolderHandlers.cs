@@ -6,7 +6,7 @@ namespace Api.Handlers;
 
 public static class FolderHandlers
 {
-    public static async Task<IResult> CreateFolder(CreateFolderRequest req, FolderCommandHandler handler, CancellationToken ct)
+    public static async Task<IResult> CreateFolder(CreateFolderRequest req, IFolderCommandHandler handler, CancellationToken ct)
     {
         var folderId = new FolderId(Guid.NewGuid());
         FolderId? parentFolderId = req.ParentFolderId.HasValue
@@ -25,7 +25,7 @@ public static class FolderHandlers
         return Results.Created($"/folders/{folderId.Value}", new { folderId = folderId.Value });
     }
 
-    public static async Task<IResult> RenameFolder(Guid folderId, RenameFolderRequest req, FolderCommandHandler handler, CancellationToken ct)
+    public static async Task<IResult> RenameFolder(Guid folderId, RenameFolderRequest req, IFolderCommandHandler handler, CancellationToken ct)
     {
         try
         {
@@ -43,7 +43,7 @@ public static class FolderHandlers
         return Results.Ok();
     }
 
-    public static async Task<IResult> DeleteFolder(Guid folderId, FolderCommandHandler handler, CancellationToken ct)
+    public static async Task<IResult> DeleteFolder(Guid folderId, IFolderCommandHandler handler, CancellationToken ct)
     {
         try
         {
@@ -57,7 +57,7 @@ public static class FolderHandlers
         return Results.NoContent();
     }
 
-    public static async Task<IResult> MoveFolder(Guid folderId, MoveFolderRequest req, FolderCommandHandler handler, CancellationToken ct)
+    public static async Task<IResult> MoveFolder(Guid folderId, MoveFolderRequest req, IFolderCommandHandler handler, CancellationToken ct)
     {
         FolderId? newParentFolderId = req.ParentFolderId.HasValue
             ? new FolderId(req.ParentFolderId.Value)

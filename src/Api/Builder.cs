@@ -4,7 +4,7 @@ using EventStore.Projections;
 
 namespace Api;
 
-public class Builder
+public static class Builder
 {
     internal static WebApplication BuildApp(string[] args, string eventTableName, string projTableName, string noteDetailTableName, string noteActionsTableName, string todoListTableName, string noteCardListTableName, string folderTreeTableName, string tagIndexTableName)
     {
@@ -60,10 +60,10 @@ public class Builder
         builder.Services.AddSingleton<IDomainEventHandler, TodoListEventHandler>();
         builder.Services.AddSingleton<IDomainEventHandler, TagIndexEventHandler>();
         builder.Services.AddSingleton<IDomainEventDispatcher, DomainEventDispatcher>();
-        builder.Services.AddSingleton<NoteCommandHandler>();
-        builder.Services.AddSingleton<ActionItemCommandHandler>();
-        builder.Services.AddSingleton<FolderCommandHandler>();
-        builder.Services.AddSingleton<ProjectionRebuildHandler>();
+        builder.Services.AddSingleton<INoteCommandHandler, NoteCommandHandler>();
+        builder.Services.AddSingleton<IActionItemCommandHandler, ActionItemCommandHandler>();
+        builder.Services.AddSingleton<IFolderCommandHandler, FolderCommandHandler>();
+        builder.Services.AddSingleton<IProjectionRebuildHandler, ProjectionRebuildHandler>();
         builder.Services.AddSingleton<IDynamoHealthCheck>(sp =>
             new DynamoDbHealthCheck(sp.GetRequiredService<IAmazonDynamoDB>(), eventTableName));
         builder.Services.AddAWSLambdaHosting(LambdaEventSource.HttpApi);

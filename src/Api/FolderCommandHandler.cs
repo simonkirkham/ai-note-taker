@@ -10,7 +10,7 @@ public sealed class FolderCommandHandler(
     IEventStore store,
     IFolderTreeStore folderTreeStore,
     INoteCardListStore noteCardListStore,
-    NoteCommandHandler noteCommandHandler)
+    INoteCommandHandler noteCommandHandler) : IFolderCommandHandler
 {
     public async Task<FolderId> HandleAsync(CreateFolder cmd, CancellationToken ct = default)
     {
@@ -125,16 +125,16 @@ public sealed class FolderCommandHandler(
     {
         var allFolders = await folderTreeStore.GetAllAsync(ct).ConfigureAwait(false);
         var existing = allFolders.FirstOrDefault(f => f.FolderId == e.FolderId);
-        if (existing is not null)
-            await folderTreeStore.UpsertAsync(existing with { Name = e.NewName }, ct).ConfigureAwait(false);
+        if (existing is null) return;
+        await folderTreeStore.UpsertAsync(existing with { Name = e.NewName }, ct).ConfigureAwait(false);
     }
 
     private async Task ApplyFolderMovedToProjectionAsync(FolderMoved e, CancellationToken ct)
     {
         var allFolders = await folderTreeStore.GetAllAsync(ct).ConfigureAwait(false);
         var existing = allFolders.FirstOrDefault(f => f.FolderId == e.FolderId);
-        if (existing is not null)
-            await folderTreeStore.UpsertAsync(existing with { ParentFolderId = e.NewParentFolderId }, ct).ConfigureAwait(false);
+        if (existing is null) return;
+        await folderTreeStore.UpsertAsync(existing with { ParentFolderId = e.NewParentFolderId }, ct).ConfigureAwait(false);
     }
 
     private static IReadOnlyList<FolderId> GetSubtreeIds(FolderId rootId, IReadOnlyList<FolderTreeView> allFolders)

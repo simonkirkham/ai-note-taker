@@ -1,6 +1,6 @@
 namespace Api;
 
-public class LoggingConfig
+public static class LoggingConfig
 {
     internal static void AddLogging(WebApplication app)
     {

@@ -14,12 +14,10 @@ public sealed class NoteCardListEventHandler(INoteCardListStore store) : IDomain
         if (events.Any(e => e.EventType == nameof(NoteDeleted)))
         {
             var existing = await store.GetByNoteAsync(noteId, ct).ConfigureAwait(false);
-            if (existing is not null)
-            {
-                var deleted = events.First(e => e.EventType == nameof(NoteDeleted));
-                await store.UpsertAsync(
-                    existing with { Deleted = true, LastModifiedAt = deleted.OccurredAt }, ct).ConfigureAwait(false);
-            }
+            if (existing is null) return;
+            var deleted = events.First(e => e.EventType == nameof(NoteDeleted));
+            await store.UpsertAsync(
+                existing with { Deleted = true, LastModifiedAt = deleted.OccurredAt }, ct).ConfigureAwait(false);
             return;
         }
 
