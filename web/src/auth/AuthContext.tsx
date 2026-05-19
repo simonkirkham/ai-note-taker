@@ -70,7 +70,7 @@ export function AuthProvider({
 
   function signOut() {
     clearToken()
-    setIdToken(null)
+    setIdToken(clientId ? null : 'no-auth')
   }
 
   return (
