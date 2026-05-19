@@ -22,6 +22,8 @@ public sealed class ActionItem : IAggregate
             case ActionItemDeleted:
                 _deleted = true;
                 break;
+            default:
+                break;
         }
     }
 

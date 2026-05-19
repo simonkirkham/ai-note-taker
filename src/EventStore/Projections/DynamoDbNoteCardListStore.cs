@@ -9,9 +9,6 @@ namespace EventStore.Projections;
 
 public sealed class DynamoDbNoteCardListStore(IAmazonDynamoDB dynamo, string tableName) : INoteCardListStore
 {
-    private readonly IAmazonDynamoDB _dynamo = dynamo;
-    private readonly string _tableName = tableName;
-
     public async Task UpsertAsync(NoteCardView card, CancellationToken ct = default)
     {
         var attrs = new Dictionary<string, AttributeValue>
@@ -31,18 +28,18 @@ public sealed class DynamoDbNoteCardListStore(IAmazonDynamoDB dynamo, string tab
         if (card.FolderId.HasValue)
             attrs["FolderId"] = new() { S = card.FolderId.Value.Value.ToString() };
 
-        await _dynamo.PutItemAsync(new PutItemRequest
+        await dynamo.PutItemAsync(new PutItemRequest
         {
-            TableName = _tableName,
+            TableName = tableName,
             Item = attrs
         }, ct).ConfigureAwait(false);
     }
 
     public async Task<NoteCardView?> GetByNoteAsync(NoteId noteId, CancellationToken ct = default)
     {
-        var response = await _dynamo.GetItemAsync(new GetItemRequest
+        var response = await dynamo.GetItemAsync(new GetItemRequest
         {
-            TableName = _tableName,
+            TableName = tableName,
             Key = new Dictionary<string, AttributeValue>
             {
                 ["PK"] = new() { S = noteId.Value.ToString() }
@@ -56,7 +53,7 @@ public sealed class DynamoDbNoteCardListStore(IAmazonDynamoDB dynamo, string tab
 
     public async Task<IReadOnlyList<NoteCardView>> QueryAllAsync(CancellationToken ct = default)
     {
-        var response = await _dynamo.ScanAsync(new ScanRequest { TableName = _tableName, ConsistentRead = true }, ct)
+        var response = await dynamo.ScanAsync(new ScanRequest { TableName = tableName, ConsistentRead = true }, ct)
             .ConfigureAwait(false);
         return response.Items.Select(ToCard).OrderByDescending(c => c.CreatedAt).ToList().AsReadOnly();
     }
