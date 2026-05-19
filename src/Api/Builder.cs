@@ -23,7 +23,8 @@ public static class Builder
             .AddJwtBearer(options =>
             {
                 options.Authority = "https://accounts.google.com";
-                options.Audience = googleClientId;
+                if (!string.IsNullOrEmpty(googleClientId))
+                    options.Audience = googleClientId;
                 options.TokenValidationParameters.ValidIssuers =
                 [
                     "https://accounts.google.com",

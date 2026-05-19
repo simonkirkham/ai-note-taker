@@ -37,8 +37,10 @@ public static class NoteHandlers
         return Results.Created($"/notes/{noteId}", new { noteId = noteId.Value });
     }
 
-    public static async Task<IResult> RenameNote(Guid noteId, RenameNoteRequest req, INoteCommandHandler handler)
+    public static async Task<IResult> RenameNote(Guid noteId, RenameNoteRequest req, INoteCommandHandler handler, INoteDetailStore noteDetailStore, ICurrentUser currentUser)
     {
+        var detail = await noteDetailStore.GetAsync(new NoteId(noteId));
+        if (detail is null || detail.UserId != currentUser.UserId) return Results.NotFound();
         try { await handler.HandleAsync(new RenameNote(new NoteId(noteId), req.Title)); }
         catch (NoteNotFoundException) { return Results.NotFound(); }
         return Results.Ok();
@@ -54,8 +56,10 @@ public static class NoteHandlers
         return Results.Ok(new { items });
     }
 
-    public static async Task<IResult> EditContent(Guid noteId, EditContentRequest req, INoteCommandHandler handler)
+    public static async Task<IResult> EditContent(Guid noteId, EditContentRequest req, INoteCommandHandler handler, INoteDetailStore noteDetailStore, ICurrentUser currentUser)
     {
+        var detail = await noteDetailStore.GetAsync(new NoteId(noteId));
+        if (detail is null || detail.UserId != currentUser.UserId) return Results.NotFound();
         try { await handler.HandleAsync(new EditContentCmd(new NoteId(noteId), req.Content)); }
         catch (NoteNotFoundException) { return Results.NotFound(); }
         return Results.NoContent();
@@ -77,51 +81,62 @@ public static class NoteHandlers
         });
     }
 
-    public static async Task<IResult> SetNoteDate(Guid noteId, SetNoteDateRequest req, INoteCommandHandler handler)
+    public static async Task<IResult> SetNoteDate(Guid noteId, SetNoteDateRequest req, INoteCommandHandler handler, INoteDetailStore noteDetailStore, ICurrentUser currentUser)
     {
+        var detail = await noteDetailStore.GetAsync(new NoteId(noteId));
+        if (detail is null || detail.UserId != currentUser.UserId) return Results.NotFound();
         try { await handler.HandleAsync(new SetNoteDate(new NoteId(noteId), req.Date)); }
         catch (NoteNotFoundException) { return Results.NotFound(); }
         return Results.Ok();
     }
 
-    public static async Task<IResult> DeleteNote(Guid noteId, INoteCommandHandler handler)
+    public static async Task<IResult> DeleteNote(Guid noteId, INoteCommandHandler handler, INoteDetailStore noteDetailStore, ICurrentUser currentUser)
     {
+        var detail = await noteDetailStore.GetAsync(new NoteId(noteId));
+        if (detail is null || detail.UserId != currentUser.UserId) return Results.NotFound();
         try { await handler.HandleAsync(new Domain.Notes.DeleteNote(new NoteId(noteId))); }
         catch (NoteNotFoundException) { return Results.NotFound(); }
         catch (InvalidOperationException) { return Results.NotFound(); }
         return Results.NoContent();
     }
 
-    public static async Task<IResult> PostTag(Guid noteId, TagNoteRequest req, INoteCommandHandler handler)
+    public static async Task<IResult> PostTag(Guid noteId, TagNoteRequest req, INoteCommandHandler handler, INoteDetailStore noteDetailStore, ICurrentUser currentUser)
     {
+        var detail = await noteDetailStore.GetAsync(new NoteId(noteId));
+        if (detail is null || detail.UserId != currentUser.UserId) return Results.NotFound();
         try { await handler.HandleAsync(new TagNote(new NoteId(noteId), req.Tag)); }
         catch (NoteNotFoundException) { return Results.NotFound(); }
         catch (InvalidOperationException) { return Results.Conflict(); }
         return Results.NoContent();
     }
 
-    public static async Task<IResult> DeleteTag(Guid noteId, string tag, INoteCommandHandler handler)
+    public static async Task<IResult> DeleteTag(Guid noteId, string tag, INoteCommandHandler handler, INoteDetailStore noteDetailStore, ICurrentUser currentUser)
     {
+        var detail = await noteDetailStore.GetAsync(new NoteId(noteId));
+        if (detail is null || detail.UserId != currentUser.UserId) return Results.NotFound();
         try { await handler.HandleAsync(new UntagNote(new NoteId(noteId), tag)); }
         catch (NoteNotFoundException) { return Results.NotFound(); }
         catch (InvalidOperationException) { return Results.NotFound(); }
         return Results.NoContent();
     }
 
-    public static async Task<IResult> MoveNoteToFolder(Guid noteId, MoveNoteToFolderRequest req, INoteCommandHandler handler, IFolderTreeStore folderTreeStore, ICurrentUser currentUser, CancellationToken ct)
+    public static async Task<IResult> MoveNoteToFolder(Guid noteId, MoveNoteToFolderRequest req, INoteCommandHandler handler, INoteDetailStore noteDetailStore, IFolderTreeStore folderTreeStore, ICurrentUser currentUser, CancellationToken ct)
     {
+        var detail = await noteDetailStore.GetAsync(new NoteId(noteId));
+        if (detail is null || detail.UserId != currentUser.UserId) return Results.NotFound();
         var targetId = new FolderId(req.FolderId);
         var allFolders = await folderTreeStore.GetAllAsync(ct).ConfigureAwait(false);
         if (!allFolders.Any(f => f.FolderId == targetId && f.UserId == currentUser.UserId))
             return Results.NotFound();
-
         try { await handler.HandleAsync(new Domain.Notes.MoveNoteToFolder(new NoteId(noteId), targetId), ct); }
         catch (NoteNotFoundException) { return Results.NotFound(); }
         return Results.NoContent();
     }
 
-    public static async Task<IResult> UnfileNote(Guid noteId, INoteCommandHandler handler, CancellationToken ct)
+    public static async Task<IResult> UnfileNote(Guid noteId, INoteCommandHandler handler, INoteDetailStore noteDetailStore, ICurrentUser currentUser, CancellationToken ct)
     {
+        var detail = await noteDetailStore.GetAsync(new NoteId(noteId));
+        if (detail is null || detail.UserId != currentUser.UserId) return Results.NotFound();
         try { await handler.HandleAsync(new Domain.Notes.UnfileNote(new NoteId(noteId)), ct); }
         catch (NoteNotFoundException) { return Results.NotFound(); }
         return Results.NoContent();

@@ -15,7 +15,7 @@ public sealed class TestAuthHandler(
     {
         var userId = Context.Request.Headers["X-Test-User-Id"].FirstOrDefault();
         if (userId is null)
-            return Task.FromResult(AuthenticateResult.NoResult());
+            return Task.FromResult(AuthenticateResult.Fail("No X-Test-User-Id header"));
 
         var claims = new[] { new Claim(ClaimTypes.NameIdentifier, userId) };
         var identity = new ClaimsIdentity(claims, Scheme.Name);

@@ -23,7 +23,7 @@ public sealed class ApiFactory : WebApplicationFactory<Program>
         Environment.SetEnvironmentVariable("PROJ_NOTECARDLIST_TABLE_NAME", "test-proj-notecardlist");
         Environment.SetEnvironmentVariable("PROJ_FOLDERTREE_TABLE_NAME", "test-proj-foldertree");
         Environment.SetEnvironmentVariable("PROJ_TAGINDEX_TABLE_NAME", "test-proj-tagindex");
-        Environment.SetEnvironmentVariable("ALLOWED_USER_SUBS", "test-user-123");
+        Environment.SetEnvironmentVariable("ALLOWED_USER_SUBS", "test-user-123,other-user-456");
     }
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
@@ -67,4 +67,13 @@ public sealed class ApiFactory : WebApplicationFactory<Program>
     }
 
     public HttpClient CreateUnauthenticatedClient() => base.CreateClient();
+
+    public HttpClient CreateClientAsOtherUser()
+    {
+        var client = base.CreateClient();
+        client.DefaultRequestHeaders.Add("X-Test-User-Id", OtherTestUserId);
+        return client;
+    }
+
+    public const string OtherTestUserId = "other-user-456";
 }
