@@ -16,7 +16,12 @@ export async function generateCodeChallenge(verifier: string): Promise<string> {
     .replace(/=/g, '')
 }
 
-export function buildAuthUrl(clientId: string, redirectUri: string, codeChallenge: string): string {
+export function buildAuthUrl(
+  clientId: string,
+  redirectUri: string,
+  codeChallenge: string,
+  state: string,
+): string {
   const params = new URLSearchParams({
     client_id: clientId,
     redirect_uri: redirectUri,
@@ -24,7 +29,7 @@ export function buildAuthUrl(clientId: string, redirectUri: string, codeChalleng
     scope: 'openid email profile',
     code_challenge: codeChallenge,
     code_challenge_method: 'S256',
-    access_type: 'offline',
+    state,
   })
   return `https://accounts.google.com/o/oauth2/v2/auth?${params}`
 }

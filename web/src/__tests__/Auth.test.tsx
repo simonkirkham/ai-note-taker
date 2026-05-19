@@ -6,6 +6,7 @@ import { clearToken, setToken } from '../auth/tokenStore'
 import { AuthProvider } from '../auth/AuthContext'
 import App from '../App'
 
+beforeEach(() => clearToken())
 afterEach(() => clearToken())
 
 describe('unauthenticated state', () => {

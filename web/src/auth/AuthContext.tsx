@@ -35,11 +35,14 @@ export function AuthProvider({
 
     const params = new URLSearchParams(window.location.search)
     const code = params.get('code')
+    const returnedState = params.get('state')
     const verifier = sessionStorage.getItem('pkce_code_verifier')
+    const storedState = sessionStorage.getItem('pkce_state')
 
-    if (!code || !verifier) return
+    if (!code || !verifier || !returnedState || returnedState !== storedState) return
 
     sessionStorage.removeItem('pkce_code_verifier')
+    sessionStorage.removeItem('pkce_state')
     window.history.replaceState({}, '', window.location.pathname)
 
     const clientId = import.meta.env.VITE_GOOGLE_CLIENT_ID ?? ''
@@ -48,15 +51,17 @@ export function AuthProvider({
         setToken(id_token)
         setIdToken(id_token)
       })
-      .catch(() => {})
+      .catch(() => { setIdToken(null) })
   }, [])
 
   async function signIn() {
     const clientId = import.meta.env.VITE_GOOGLE_CLIENT_ID ?? ''
     const verifier = generateCodeVerifier()
     const challenge = await generateCodeChallenge(verifier)
+    const state = generateCodeVerifier()
     sessionStorage.setItem('pkce_code_verifier', verifier)
-    window.location.href = buildAuthUrl(clientId, window.location.origin, challenge)
+    sessionStorage.setItem('pkce_state', state)
+    window.location.href = buildAuthUrl(clientId, window.location.origin, challenge, state)
   }
 
   function signOut() {
