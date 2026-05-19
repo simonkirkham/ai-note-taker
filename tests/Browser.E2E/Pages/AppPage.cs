@@ -2,9 +2,14 @@ using Microsoft.Playwright;
 
 namespace Browser.E2E.Pages;
 
-public sealed class AppPage(IPage page, string baseUrl)
+public sealed class AppPage(IPage page, string baseUrl, string? authToken = null)
 {
-    public Task GotoAsync() => page.GotoAsync(baseUrl);
+    public async Task GotoAsync()
+    {
+        if (!string.IsNullOrEmpty(authToken))
+            await page.AddInitScriptAsync($"window.__E2E_AUTH_TOKEN = '{authToken}';");
+        await page.GotoAsync(baseUrl);
+    }
 
     public async Task ClickNewNoteAsync()
     {

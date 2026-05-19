@@ -17,7 +17,7 @@ public sealed class TagsJourney(BrowserFixture browser) : IAsyncLifetime
         _page = await _context.NewPageAsync();
         _page.Console += (_, msg) => Console.WriteLine($"[browser {msg.Type}] {msg.Text}");
         _page.PageError += (_, err) => Console.WriteLine($"[browser error] {err}");
-        _app = new AppPage(_page, browser.FrontendUrl);
+        _app = new AppPage(_page, browser.FrontendUrl, browser.E2EAuthToken);
     }
 
     public async Task DisposeAsync()

@@ -182,6 +182,7 @@ jobs:
         env:
           FRONTEND_URL: ${{ steps.outputs.outputs.frontend-url }}
           API_URL: ${{ steps.outputs.outputs.api-url }}
+          E2E_GOOGLE_ID_TOKEN: ${{ steps.smoke-token.outputs.id_token }}
 
       - name: Clear test data
         if: always()

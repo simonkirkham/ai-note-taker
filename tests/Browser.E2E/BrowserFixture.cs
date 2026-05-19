@@ -14,6 +14,8 @@ public sealed class BrowserFixture : IAsyncLifetime
 
     public string? ApiBaseUrl { get; } = Environment.GetEnvironmentVariable("API_URL");
 
+    public string? E2EAuthToken { get; } = Environment.GetEnvironmentVariable("E2E_GOOGLE_ID_TOKEN");
+
     public async Task InitializeAsync()
     {
         _playwright = await Playwright.CreateAsync();
