@@ -107,7 +107,9 @@ public sealed class NoteTakerStack : Stack
                 ["PROJ_TODOLIST_TABLE_NAME"] = todoListTable.TableName,
                 ["PROJ_NOTECARDLIST_TABLE_NAME"] = noteCardListTable.TableName,
                 ["PROJ_FOLDERTREE_TABLE_NAME"] = folderTreeTable.TableName,
-                ["PROJ_TAGINDEX_TABLE_NAME"] = tagIndexTable.TableName
+                ["PROJ_TAGINDEX_TABLE_NAME"] = tagIndexTable.TableName,
+                ["GOOGLE_CLIENT_ID"] = props.GoogleClientId ?? "",
+                ["ALLOWED_USER_SUBS"] = props.AllowedUserSubs ?? ""
             }
         });
 
