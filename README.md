@@ -156,8 +156,9 @@ cdk deploy
 
 | Secret                | Description                                                              |
 | --------------------- | ------------------------------------------------------------------------ |
-| `GOOGLE_CLIENT_ID`    | Google OAuth2 client ID; injected into Lambda and Vite build             |
-| `ALLOWED_USER_SUBS`   | Comma-separated Google `sub` values allowed to sign in (empty = no auth) |
+| `GOOGLE_CLIENT_ID`     | Google OAuth2 client ID; injected into Lambda and Vite build              |
+| `GOOGLE_CLIENT_SECRET` | Google OAuth2 client secret; used by `POST /auth/token` to exchange codes |
+| `ALLOWED_USER_SUBS`    | Comma-separated Google `sub` values allowed to sign in (empty = no auth)  |
 
 **Frontend** — set in `web/.env.local` (copy from `web/.env.local.example` on first run):
 

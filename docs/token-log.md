@@ -615,3 +615,17 @@ If no agent ran unexpectedly high: write `None — slice ran within expected ran
 - **Hawk (–25 000):** The missing `state` parameter and the E2E bypass are both standard PKCE/test-environment checklist items. Adding them to Breaker's auth spec template would catch both before the PR opens and collapse three Hawk rounds to one.
 - **Pip (–10 000):** FolderNavigation and FolderMutations tests failed because `render(<App />)` without an `AuthProvider` returned the sign-in screen. Breaker's spec should explicitly list "wrap all existing `render(<App />)` calls in an `AuthProvider initialToken=...`" when a slice adds an auth gate to App.
 - **Pip (–8 000):** The E2E bypass (no-auth when `VITE_GOOGLE_CLIENT_ID` is empty) should be in the 8-B spec, not discovered at deploy time. A "test environment compatibility" section in the spec prevents the post-merge hotfix cycle.
+
+---
+
+## Slice 8-B fixes — backend token exchange and layout hotfix
+
+| Agent     | ~Tokens     |
+| --------- | ----------- |
+| Scout     | —           |
+| Pip       | 40 000      |
+| Hawk      | 79 000      |
+| Scribe    | 5 000       |
+| **Total** | **~124 000** |
+
+**Why:** Two post-merge production bugs required fix PRs. (1) Sign-out button placed as a direct grid child of `.app-layout` broke the CSS column layout — fixed via PR #67 (Hawk approved, 14k). (2) Google's token endpoint requires `client_secret` for Web Application OAuth clients even with PKCE; browser-side code exchange was not possible — fixed by adding `POST /auth/token` backend endpoint via PR #68 (two Hawk rounds: 52k + 27k).
