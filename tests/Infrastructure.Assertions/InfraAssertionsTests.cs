@@ -278,4 +278,34 @@ public class InfraAssertionsTests
             ["Type"] = "A"
         }));
     }
+
+    [Fact]
+    public void Lambda_HasGoogleClientIdEnvVar()
+    {
+        _template.HasResourceProperties("AWS::Lambda::Function", Match.ObjectLike(new Dictionary<string, object>
+        {
+            ["Environment"] = Match.ObjectLike(new Dictionary<string, object>
+            {
+                ["Variables"] = Match.ObjectLike(new Dictionary<string, object>
+                {
+                    ["GOOGLE_CLIENT_ID"] = Match.AnyValue()
+                })
+            })
+        }));
+    }
+
+    [Fact]
+    public void Lambda_HasAllowedUserSubsEnvVar()
+    {
+        _template.HasResourceProperties("AWS::Lambda::Function", Match.ObjectLike(new Dictionary<string, object>
+        {
+            ["Environment"] = Match.ObjectLike(new Dictionary<string, object>
+            {
+                ["Variables"] = Match.ObjectLike(new Dictionary<string, object>
+                {
+                    ["ALLOWED_USER_SUBS"] = Match.AnyValue()
+                })
+            })
+        }));
+    }
 }

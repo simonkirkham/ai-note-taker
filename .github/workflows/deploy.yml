@@ -112,6 +112,8 @@ jobs:
         env:
           DOMAIN_NAME: ${{ secrets.DOMAIN_NAME }}
           HOSTED_ZONE_ID: ${{ secrets.HOSTED_ZONE_ID }}
+          GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
+          ALLOWED_USER_SUBS: ${{ secrets.ALLOWED_USER_SUBS }}
 
       - name: Extract outputs
         id: outputs
@@ -218,6 +220,8 @@ jobs:
         env:
           DOMAIN_NAME: ${{ secrets.DOMAIN_NAME }}
           HOSTED_ZONE_ID: ${{ secrets.HOSTED_ZONE_ID }}
+          GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
+          ALLOWED_USER_SUBS: ${{ secrets.ALLOWED_USER_SUBS }}
 
       - name: Extract outputs
         id: outputs
