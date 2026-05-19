@@ -1,5 +1,7 @@
 import "./App.css";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useAuth } from "./auth/AuthContext";
+import SignInPage from "./components/SignInPage";
 import FolderPreviewPanel from "./components/FolderPreviewPanel";
 import ListView from "./components/ListView";
 import NoteView from "./components/NoteView";
@@ -44,6 +46,13 @@ function removeFromTree(nodes: FolderNode[], folderId: string): FolderNode[] {
 }
 
 export default function App() {
+  const { idToken, signOut } = useAuth();
+  if (!idToken) return <SignInPage />;
+
+  return <AppContent signOut={signOut} />;
+}
+
+function AppContent({ signOut }: { signOut: () => void }) {
   const [view, setView] = useState<View>({ kind: "list" });
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const { notes, loading, creating, createError, create, rename, remove } = useNotes();
@@ -223,6 +232,12 @@ export default function App() {
 
   return (
     <div className="app-layout">
+      <button
+        className="sign-out-btn"
+        onClick={signOut}
+      >
+        Sign out
+      </button>
       <button
         data-testid="sidebar-toggle"
         className="sidebar-toggle"

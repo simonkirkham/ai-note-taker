@@ -1,4 +1,13 @@
+import { getToken } from './auth/tokenStore'
+
 const base = "/api";
+
+function apiFetch(url: string, init?: RequestInit): Promise<Response> {
+  const token = getToken()
+  const headers = new Headers(init?.headers)
+  if (token) headers.set('Authorization', `Bearer ${token}`)
+  return fetch(url, { ...init, headers })
+}
 
 export interface NoteItem {
   noteId: string;
@@ -14,13 +23,13 @@ export interface NoteDetail {
 }
 
 export async function getNoteDetail(noteId: string): Promise<NoteDetail> {
-  const res = await fetch(`${base}/notes/${noteId}`);
+  const res = await apiFetch(`${base}/notes/${noteId}`);
   if (!res.ok) throw new Error(`GET /notes/${noteId} failed: ${res.status}`);
   return res.json();
 }
 
 export async function createNote(): Promise<{ noteId: string }> {
-  const res = await fetch(`${base}/notes`, {
+  const res = await apiFetch(`${base}/notes`, {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: "null",
@@ -30,7 +39,7 @@ export async function createNote(): Promise<{ noteId: string }> {
 }
 
 export async function renameNote(noteId: string, title: string): Promise<void> {
-  const res = await fetch(`${base}/notes/${noteId}/title`, {
+  const res = await apiFetch(`${base}/notes/${noteId}/title`, {
     method: "PATCH",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ title }),
@@ -40,7 +49,7 @@ export async function renameNote(noteId: string, title: string): Promise<void> {
 }
 
 export async function editContent(noteId: string, content: string): Promise<void> {
-  const res = await fetch(`${base}/notes/${noteId}/content`, {
+  const res = await apiFetch(`${base}/notes/${noteId}/content`, {
     method: "PUT",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ content }),
@@ -50,14 +59,14 @@ export async function editContent(noteId: string, content: string): Promise<void
 }
 
 export async function listNotes(): Promise<NoteItem[]> {
-  const res = await fetch(`${base}/notes`);
+  const res = await apiFetch(`${base}/notes`);
   if (!res.ok) throw new Error(`GET /notes failed: ${res.status}`);
   const body: { items: NoteItem[] } = await res.json();
   return body.items;
 }
 
 export async function setNoteDate(noteId: string, date: string | null): Promise<void> {
-  const res = await fetch(`${base}/notes/${noteId}/date`, {
+  const res = await apiFetch(`${base}/notes/${noteId}/date`, {
     method: "PATCH",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ date }),
@@ -66,7 +75,7 @@ export async function setNoteDate(noteId: string, date: string | null): Promise<
 }
 
 export async function deleteNote(noteId: string): Promise<void> {
-  const res = await fetch(`${base}/notes/${noteId}`, { method: "DELETE" });
+  const res = await apiFetch(`${base}/notes/${noteId}`, { method: "DELETE" });
   if (!res.ok) throw new Error(`DELETE /notes/${noteId} failed: ${res.status}`);
 }
 
@@ -79,14 +88,14 @@ export interface ActionItem {
 }
 
 export async function getActions(noteId: string): Promise<ActionItem[]> {
-  const res = await fetch(`${base}/notes/${noteId}/actions`);
+  const res = await apiFetch(`${base}/notes/${noteId}/actions`);
   if (!res.ok) throw new Error(`GET /notes/${noteId}/actions failed: ${res.status}`);
   const body: { actions: ActionItem[] } = await res.json();
   return body.actions;
 }
 
 export async function addAction(noteId: string, description: string): Promise<{ actionId: string }> {
-  const res = await fetch(`${base}/notes/${noteId}/actions`, {
+  const res = await apiFetch(`${base}/notes/${noteId}/actions`, {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ description }),
@@ -96,17 +105,17 @@ export async function addAction(noteId: string, description: string): Promise<{ 
 }
 
 export async function completeAction(noteId: string, actionId: string): Promise<void> {
-  const res = await fetch(`${base}/notes/${noteId}/actions/${actionId}/complete`, { method: "POST" });
+  const res = await apiFetch(`${base}/notes/${noteId}/actions/${actionId}/complete`, { method: "POST" });
   if (!res.ok) throw new Error(`POST /notes/${noteId}/actions/${actionId}/complete failed: ${res.status}`);
 }
 
 export async function reopenAction(noteId: string, actionId: string): Promise<void> {
-  const res = await fetch(`${base}/notes/${noteId}/actions/${actionId}/reopen`, { method: "POST" });
+  const res = await apiFetch(`${base}/notes/${noteId}/actions/${actionId}/reopen`, { method: "POST" });
   if (!res.ok) throw new Error(`POST /notes/${noteId}/actions/${actionId}/reopen failed: ${res.status}`);
 }
 
 export async function deleteAction(noteId: string, actionId: string): Promise<void> {
-  const res = await fetch(`${base}/notes/${noteId}/actions/${actionId}`, { method: "DELETE" });
+  const res = await apiFetch(`${base}/notes/${noteId}/actions/${actionId}`, { method: "DELETE" });
   if (!res.ok) throw new Error(`DELETE /notes/${noteId}/actions/${actionId} failed: ${res.status}`);
 }
 
@@ -127,14 +136,14 @@ export interface NoteCard {
 }
 
 export async function getNoteCards(): Promise<NoteCard[]> {
-  const res = await fetch(`${base}/notes/cards`);
+  const res = await apiFetch(`${base}/notes/cards`);
   if (!res.ok) throw new Error(`GET /notes/cards failed: ${res.status}`);
   const body: { cards: NoteCard[] } = await res.json();
   return body.cards;
 }
 
 export async function tagNote(noteId: string, tag: string): Promise<void> {
-  const res = await fetch(`${base}/notes/${noteId}/tags`, {
+  const res = await apiFetch(`${base}/notes/${noteId}/tags`, {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ tag }),
@@ -143,7 +152,7 @@ export async function tagNote(noteId: string, tag: string): Promise<void> {
 }
 
 export async function untagNote(noteId: string, tag: string): Promise<void> {
-  const res = await fetch(`${base}/notes/${noteId}/tags/${encodeURIComponent(tag)}`, { method: "DELETE" });
+  const res = await apiFetch(`${base}/notes/${noteId}/tags/${encodeURIComponent(tag)}`, { method: "DELETE" });
   if (!res.ok) throw new Error(`DELETE /notes/${noteId}/tags/${tag} failed: ${res.status}`);
 }
 
@@ -154,7 +163,7 @@ export interface TagIndexEntry {
 }
 
 export async function getTags(): Promise<TagIndexEntry[]> {
-  const res = await fetch(`${base}/tags`);
+  const res = await apiFetch(`${base}/tags`);
   if (!res.ok) throw new Error(`GET /tags failed: ${res.status}`);
   const body: { tags: TagIndexEntry[] } = await res.json();
   return body.tags;
@@ -167,14 +176,14 @@ export interface FolderNode {
 }
 
 export async function getFolders(): Promise<FolderNode[]> {
-  const res = await fetch(`${base}/folders`);
+  const res = await apiFetch(`${base}/folders`);
   if (!res.ok) throw new Error(`GET /folders failed: ${res.status}`);
   const body: { folders: FolderNode[] } = await res.json();
   return body.folders;
 }
 
 export async function createFolder(name: string, parentFolderId?: string): Promise<{ folderId: string }> {
-  const res = await fetch(`${base}/folders`, {
+  const res = await apiFetch(`${base}/folders`, {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ name, parentFolderId: parentFolderId ?? null }),
@@ -184,7 +193,7 @@ export async function createFolder(name: string, parentFolderId?: string): Promi
 }
 
 export async function renameFolder(folderId: string, name: string): Promise<void> {
-  const res = await fetch(`${base}/folders/${folderId}/name`, {
+  const res = await apiFetch(`${base}/folders/${folderId}/name`, {
     method: "PATCH",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ name }),
@@ -193,12 +202,12 @@ export async function renameFolder(folderId: string, name: string): Promise<void
 }
 
 export async function deleteFolder(folderId: string): Promise<void> {
-  const res = await fetch(`${base}/folders/${folderId}`, { method: "DELETE" });
+  const res = await apiFetch(`${base}/folders/${folderId}`, { method: "DELETE" });
   if (!res.ok) throw new Error(`DELETE /folders/${folderId} failed: ${res.status}`);
 }
 
 export async function moveNoteToFolder(noteId: string, folderId: string): Promise<void> {
-  const res = await fetch(`${base}/notes/${noteId}/folder`, {
+  const res = await apiFetch(`${base}/notes/${noteId}/folder`, {
     method: "PUT",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ folderId }),
@@ -207,12 +216,12 @@ export async function moveNoteToFolder(noteId: string, folderId: string): Promis
 }
 
 export async function unfileNote(noteId: string): Promise<void> {
-  const res = await fetch(`${base}/notes/${noteId}/folder`, { method: "DELETE" });
+  const res = await apiFetch(`${base}/notes/${noteId}/folder`, { method: "DELETE" });
   if (!res.ok) throw new Error(`DELETE /notes/${noteId}/folder failed: ${res.status}`);
 }
 
 export async function moveFolder(folderId: string, parentFolderId: string | null): Promise<void> {
-  const res = await fetch(`${base}/folders/${folderId}/parent`, {
+  const res = await apiFetch(`${base}/folders/${folderId}/parent`, {
     method: "PUT",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ parentFolderId }),
@@ -229,7 +238,7 @@ export interface TodoItem {
 }
 
 export async function getTodos(): Promise<TodoItem[]> {
-  const res = await fetch(`${base}/todos`);
+  const res = await apiFetch(`${base}/todos`);
   if (!res.ok) throw new Error(`GET /todos failed: ${res.status}`);
   const body: { items: TodoItem[] } = await res.json();
   return body.items;
