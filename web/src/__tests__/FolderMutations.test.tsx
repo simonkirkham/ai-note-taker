@@ -5,14 +5,14 @@ import { server } from '../test/setup'
 import App from '../App'
 
 beforeEach(() => {
-  server.use(http.get('/folders', () => HttpResponse.json({ folders: [] })))
+  server.use(http.get('/api/folders', () => HttpResponse.json({ folders: [] })))
 })
 
 describe('FolderMutations', () => {
   it('created folder appears in the sidebar immediately and persists after API resolves', async () => {
     let resolveCreate!: () => void
     server.use(
-      http.post('/folders', () =>
+      http.post('/api/folders', () =>
         new Promise<Response>((res) => {
           resolveCreate = () => res(HttpResponse.json({ folderId: 'f-real' }, { status: 201 }) as unknown as Response)
         }),
@@ -26,7 +26,7 @@ describe('FolderMutations', () => {
     expect(within(screen.getByTestId('sidebar')).getByText('People')).toBeInTheDocument()
     // Override GET /folders to return the real folder so the refetch after POST is correct
     server.use(
-      http.get('/folders', () =>
+      http.get('/api/folders', () =>
         HttpResponse.json({ folders: [{ folderId: 'f-real', name: 'People', children: [] }] }),
       ),
     )
@@ -37,13 +37,13 @@ describe('FolderMutations', () => {
 
   it('renamed folder shows the new name in the sidebar immediately', async () => {
     server.use(
-      http.get('/folders', () =>
+      http.get('/api/folders', () =>
         HttpResponse.json({ folders: [{ folderId: 'f-1', name: 'Peopl', children: [] }] }),
       ),
     )
     let resolveRename: () => void
     server.use(
-      http.patch('/folders/f-1/name', () =>
+      http.patch('/api/folders/f-1/name', () =>
         new Promise<Response>((res) => {
           resolveRename = () => res(new HttpResponse(null, { status: 204 }) as unknown as Response)
         }),
@@ -65,10 +65,10 @@ describe('FolderMutations', () => {
   it('created subfolder appears nested under parent in sidebar', async () => {
     let resolveCreate!: () => void
     server.use(
-      http.get('/folders', () =>
+      http.get('/api/folders', () =>
         HttpResponse.json({ folders: [{ folderId: 'f-1', name: 'People', children: [] }] }),
       ),
-      http.post('/folders', () =>
+      http.post('/api/folders', () =>
         new Promise<Response>((res) => {
           resolveCreate = () => res(HttpResponse.json({ folderId: 'f-child' }, { status: 201 }) as unknown as Response)
         }),
@@ -83,7 +83,7 @@ describe('FolderMutations', () => {
     expect(within(screen.getByTestId('folder-item-f-1')).getByText('Simon')).toBeInTheDocument()
     // Override GET to return the real child, then resolve POST so refetch lands correctly
     server.use(
-      http.get('/folders', () =>
+      http.get('/api/folders', () =>
         HttpResponse.json({ folders: [{ folderId: 'f-1', name: 'People', children: [{ folderId: 'f-child', name: 'Simon', children: [] }] }] }),
       ),
     )
@@ -94,10 +94,10 @@ describe('FolderMutations', () => {
   it('failed subfolder creation is rolled back from the parent', async () => {
     let resolveWithError!: () => void
     server.use(
-      http.get('/folders', () =>
+      http.get('/api/folders', () =>
         HttpResponse.json({ folders: [{ folderId: 'f-1', name: 'People', children: [] }] }),
       ),
-      http.post('/folders', () =>
+      http.post('/api/folders', () =>
         new Promise<Response>((res) => {
           resolveWithError = () => res(new HttpResponse(null, { status: 500 }) as unknown as Response)
         }),
@@ -117,10 +117,10 @@ describe('FolderMutations', () => {
 
   it('renaming the active folder updates the main heading immediately', async () => {
     server.use(
-      http.get('/folders', () =>
+      http.get('/api/folders', () =>
         HttpResponse.json({ folders: [{ folderId: 'f-1', name: 'Peopl', children: [] }] }),
       ),
-      http.patch('/folders/f-1/name', () => new HttpResponse(null, { status: 204 })),
+      http.patch('/api/folders/f-1/name', () => new HttpResponse(null, { status: 204 })),
     )
     render(<App />)
     // Navigate into the folder first

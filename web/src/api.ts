@@ -1,4 +1,4 @@
-const base = (import.meta.env.VITE_API_URL ?? "").replace(/\/$/, "");
+const base = "/api";
 
 export interface NoteItem {
   noteId: string;

@@ -11,8 +11,8 @@ describe('scaffold', () => {
   })
 
   it('MSW intercepts fetch without a real network call', async () => {
-    const res = await fetch('/ping')
+    const res = await fetch('/api/notes')
     const data = await res.json()
-    expect(data).toEqual({ ok: true })
+    expect(data).toHaveProperty('items')
   })
 })

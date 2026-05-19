@@ -4,11 +4,10 @@ using Amazon.CDK.Assertions;
 public class InfraAssertionsTests
 {
     private static readonly Template _template = BuildTemplate();
+    private static readonly Template _domainTemplate = BuildDomainTemplate();
 
     private static Template BuildTemplate()
     {
-        // CDK.FromAsset requires a directory that exists at synth time.
-        // We pass the test output directory as a stand-in for the Lambda asset.
         var lambdaAssetPath = AppContext.BaseDirectory;
         var app = new App(new AppProps
         {
@@ -17,7 +16,25 @@ public class InfraAssertionsTests
                 ["lambdaAssetPath"] = lambdaAssetPath
             }
         });
-        return Template.FromStack(new NoteTakerStack(app, "TestStack", new StackProps()));
+        return Template.FromStack(new NoteTakerStack(app, "TestStack", new NoteTakerStackProps()));
+    }
+
+    private static Template BuildDomainTemplate()
+    {
+        var lambdaAssetPath = AppContext.BaseDirectory;
+        var app = new App(new AppProps
+        {
+            Context = new Dictionary<string, object>
+            {
+                ["lambdaAssetPath"] = lambdaAssetPath
+            }
+        });
+        return Template.FromStack(new NoteTakerStack(app, "TestStack", new NoteTakerStackProps
+        {
+            CertificateArn = "arn:aws:acm:us-east-1:123456789012:certificate/fake-cert-id",
+            DomainName = "test.note-taker-ai.com",
+            HostedZoneId = "ZFAKE123456789"
+        }));
     }
 
     [Fact]
@@ -239,6 +256,58 @@ public class InfraAssertionsTests
                     })
                 })
             })
+        }));
+    }
+
+    [Fact]
+    public void CloudFront_HasNoApiFunction_WhenDomainNotConfigured()
+    {
+        _template.ResourceCountIs("AWS::CloudFront::Function", 0);
+    }
+
+    [Fact]
+    public void CloudFront_HasCustomDomainAlias_WhenDomainConfigured()
+    {
+        _domainTemplate.HasResourceProperties("AWS::CloudFront::Distribution", Match.ObjectLike(new Dictionary<string, object>
+        {
+            ["DistributionConfig"] = Match.ObjectLike(new Dictionary<string, object>
+            {
+                ["Aliases"] = Match.ArrayWith(new object[] { "test.note-taker-ai.com" })
+            })
+        }));
+    }
+
+    [Fact]
+    public void CloudFront_HasApiBehavior_WhenDomainConfigured()
+    {
+        _domainTemplate.HasResourceProperties("AWS::CloudFront::Distribution", Match.ObjectLike(new Dictionary<string, object>
+        {
+            ["DistributionConfig"] = Match.ObjectLike(new Dictionary<string, object>
+            {
+                ["CacheBehaviors"] = Match.ArrayWith(new object[]
+                {
+                    Match.ObjectLike(new Dictionary<string, object>
+                    {
+                        ["PathPattern"] = "/api/*"
+                    })
+                })
+            })
+        }));
+    }
+
+    [Fact]
+    public void CloudFront_HasApiStripFunction_WhenDomainConfigured()
+    {
+        _domainTemplate.ResourceCountIs("AWS::CloudFront::Function", 1);
+    }
+
+    [Fact]
+    public void Route53_HasAliasRecord_WhenDomainConfigured()
+    {
+        _domainTemplate.HasResourceProperties("AWS::Route53::RecordSet", Match.ObjectLike(new Dictionary<string, object>
+        {
+            ["Name"] = "test.note-taker-ai.com.",
+            ["Type"] = "A"
         }));
     }
 }

@@ -39,7 +39,7 @@ function renderNoteView(props: { noteId?: string; initialTitle?: string; onBack?
 
 function renderEmptyNoteView(onBack: () => void = noop) {
   server.use(
-    http.get('/notes/:noteId', () =>
+    http.get('/api/notes/:noteId', () =>
       HttpResponse.json({ noteId: 'note-1', title: '', content: '', date: null, tags: [] }),
     ),
   )
@@ -50,7 +50,7 @@ describe('NoteView', () => {
   it('renders content returned by the API', async () => {
     let fetchCalled = false
     server.use(
-      http.get('/notes/:noteId', () => {
+      http.get('/api/notes/:noteId', () => {
         fetchCalled = true
         return HttpResponse.json({ noteId: 'note-1', title: 'T', content: 'Meeting notes', date: null, tags: [] })
       }),
@@ -65,7 +65,7 @@ describe('NoteView', () => {
   it('blurring the textarea triggers a PUT to save content', async () => {
     let savedContent: string | undefined
     server.use(
-      http.put('/notes/:noteId/content', async ({ request }) => {
+      http.put('/api/notes/:noteId/content', async ({ request }) => {
         const body = await request.json() as { content: string }
         savedContent = body.content
         return new HttpResponse(null, { status: 204 })
@@ -82,7 +82,7 @@ describe('NoteView', () => {
   it('date defaults to today when API returns no date and auto-PATCHes the default date', async () => {
     let patchCalled = false
     server.use(
-      http.patch('/notes/:noteId/date', () => {
+      http.patch('/api/notes/:noteId/date', () => {
         patchCalled = true
         return new HttpResponse(null, { status: 204 })
       }),
@@ -97,7 +97,7 @@ describe('NoteView', () => {
 
   it('date input shows the value returned by the API', async () => {
     server.use(
-      http.get('/notes/:noteId', () =>
+      http.get('/api/notes/:noteId', () =>
         HttpResponse.json({ noteId: 'note-1', title: 'T', content: '', date: '2026-04-21', tags: [] }),
       ),
     )
@@ -109,7 +109,7 @@ describe('NoteView', () => {
   it('blurring the date input triggers a PATCH to save the date', async () => {
     let savedDate: string | undefined
     server.use(
-      http.patch('/notes/:noteId/date', async ({ request }) => {
+      http.patch('/api/notes/:noteId/date', async ({ request }) => {
         const body = await request.json() as { date: string }
         savedDate = body.date
         return new HttpResponse(null, { status: 204 })
@@ -132,7 +132,7 @@ describe('NoteView', () => {
 
   it('shows note-not-found message when API returns 404', async () => {
     server.use(
-      http.get('/notes/:noteId', () => new HttpResponse(null, { status: 404 })),
+      http.get('/api/notes/:noteId', () => new HttpResponse(null, { status: 404 })),
     )
     renderNoteView()
     expect(await screen.findByTestId('note-not-found')).toBeInTheDocument()
@@ -184,7 +184,7 @@ describe('NoteView', () => {
 
     it('Save button is enabled when an action is added', async () => {
       server.use(
-        http.get('/notes/:noteId/actions', () =>
+        http.get('/api/notes/:noteId/actions', () =>
           HttpResponse.json({ actions: [{ actionId: 'a-1', description: 'Follow up', completed: false, addedAt: new Date().toISOString(), completedAt: null }] }),
         ),
       )

@@ -1,16 +1,37 @@
-// CDK entry point. The CDK stack will be implemented here.
 using Amazon.CDK;
 
 var app = new App();
 
-new NoteTakerStack(app, "NoteTakerStack", new StackProps
+var domainName = System.Environment.GetEnvironmentVariable("DOMAIN_NAME");
+var hostedZoneId = System.Environment.GetEnvironmentVariable("HOSTED_ZONE_ID");
+
+string? certificateArn = null;
+
+if (!string.IsNullOrEmpty(domainName) && !string.IsNullOrEmpty(hostedZoneId))
+{
+    var certStack = new CertificateStack(app, "NoteTakerCertStack", domainName, hostedZoneId, new StackProps
+    {
+        Env = new Amazon.CDK.Environment
+        {
+            Account = System.Environment.GetEnvironmentVariable("CDK_DEFAULT_ACCOUNT"),
+            Region = "us-east-1"
+        },
+        CrossRegionReferences = true
+    });
+    certificateArn = certStack.Certificate.CertificateArn;
+}
+
+new NoteTakerStack(app, "NoteTakerStack", new NoteTakerStackProps
 {
     Env = new Amazon.CDK.Environment
     {
         Account = System.Environment.GetEnvironmentVariable("CDK_DEFAULT_ACCOUNT"),
         Region = System.Environment.GetEnvironmentVariable("CDK_DEFAULT_REGION")
-    }
+    },
+    CrossRegionReferences = !string.IsNullOrEmpty(domainName),
+    CertificateArn = certificateArn,
+    DomainName = domainName,
+    HostedZoneId = hostedZoneId
 });
-
 
 app.Synth();
