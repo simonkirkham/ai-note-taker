@@ -257,6 +257,7 @@ public sealed class NoteTakerStack : Stack
             ["/api/*"] = new BehaviorOptions
             {
                 Origin = new HttpOrigin(apiHostname),
+                AllowedMethods = AllowedMethods.ALLOW_ALL,
                 CachePolicy = CachePolicy.CACHING_DISABLED,
                 OriginRequestPolicy = OriginRequestPolicy.ALL_VIEWER_EXCEPT_HOST_HEADER,
                 FunctionAssociations = new[]
