@@ -147,6 +147,8 @@ jobs:
         id: smoke-token
         env:
           REFRESH_TOKEN: ${{ secrets.SMOKE_TEST_GOOGLE_REFRESH_TOKEN }}
+          CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
+          CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
         run: |
           if [ -z "$REFRESH_TOKEN" ]; then
             echo "::warning::SMOKE_TEST_GOOGLE_REFRESH_TOKEN not configured — smoke tests requiring auth will be skipped."
@@ -154,8 +156,8 @@ jobs:
             exit 0
           fi
           RESPONSE=$(curl -s -X POST "https://oauth2.googleapis.com/token" \
-            -d "client_id=${{ secrets.GOOGLE_CLIENT_ID }}" \
-            -d "client_secret=${{ secrets.GOOGLE_CLIENT_SECRET }}" \
+            -d "client_id=$CLIENT_ID" \
+            -d "client_secret=$CLIENT_SECRET" \
             -d "refresh_token=$REFRESH_TOKEN" \
             -d "grant_type=refresh_token")
           ID_TOKEN=$(echo "$RESPONSE" | jq -r '.id_token // empty')
@@ -285,6 +287,8 @@ jobs:
         id: smoke-token
         env:
           REFRESH_TOKEN: ${{ secrets.SMOKE_TEST_GOOGLE_REFRESH_TOKEN }}
+          CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
+          CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
         run: |
           if [ -z "$REFRESH_TOKEN" ]; then
             echo "::warning::SMOKE_TEST_GOOGLE_REFRESH_TOKEN not configured — smoke tests requiring auth will be skipped."
@@ -292,8 +296,8 @@ jobs:
             exit 0
           fi
           RESPONSE=$(curl -s -X POST "https://oauth2.googleapis.com/token" \
-            -d "client_id=${{ secrets.GOOGLE_CLIENT_ID }}" \
-            -d "client_secret=${{ secrets.GOOGLE_CLIENT_SECRET }}" \
+            -d "client_id=$CLIENT_ID" \
+            -d "client_secret=$CLIENT_SECRET" \
             -d "refresh_token=$REFRESH_TOKEN" \
             -d "grant_type=refresh_token")
           ID_TOKEN=$(echo "$RESPONSE" | jq -r '.id_token // empty')
