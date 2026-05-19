@@ -1,13 +1,16 @@
 using Amazon.CDK;
+using Amazon.CDK.AWS.CertificateManager;
 using Amazon.CDK.AWS.CloudFront;
 using Amazon.CDK.AWS.CloudFront.Origins;
 using Amazon.CDK.AWS.DynamoDB;
+using Amazon.CDK.AWS.Route53;
+using Amazon.CDK.AWS.Route53.Targets;
 using Amazon.CDK.AWS.S3;
 using Constructs;
 
 public class NoteTakerStack : Stack
 {
-    public NoteTakerStack(Construct scope, string id, IStackProps props) : base(scope, id, props)
+    public NoteTakerStack(Construct scope, string id, NoteTakerStackProps props) : base(scope, id, props)
     {
         // ── Event store ──────────────────────────────────────────────────
         var eventsTable = new Table(this, "EventsTable", new TableProps
@@ -162,20 +165,24 @@ public class NoteTakerStack : Stack
             AutoDeleteObjects = false
         });
 
-        var distribution = new Distribution(this, "WebDistribution", new DistributionProps
+        var distribution = new Distribution(this, "WebDistribution", BuildDistributionProps(props, httpApi, webBucket));
+
+        // ── Route 53 alias (custom domain only) ─────────────────────────
+        if (props.DomainName != null && props.HostedZoneId != null)
         {
-            DefaultBehavior = new BehaviorOptions
+            var hostedZone = HostedZone.FromHostedZoneAttributes(this, "HostedZone", new HostedZoneAttributes
             {
-                Origin = S3BucketOrigin.WithOriginAccessControl(webBucket)
-            },
-            DefaultRootObject = "index.html",
-            ErrorResponses = new[]
+                HostedZoneId = props.HostedZoneId,
+                ZoneName = ApexDomain(props.DomainName)
+            });
+
+            new ARecord(this, "AliasRecord", new ARecordProps
             {
-                // Return index.html for 403/404 so React handles client-side routing
-                new ErrorResponse { HttpStatus = 403, ResponseHttpStatus = 200, ResponsePagePath = "/index.html" },
-                new ErrorResponse { HttpStatus = 404, ResponseHttpStatus = 200, ResponsePagePath = "/index.html" }
-            }
-        });
+                Zone = hostedZone,
+                RecordName = props.DomainName,
+                Target = RecordTarget.FromAlias(new CloudFrontTarget(distribution))
+            });
+        }
 
         // ── Tags ─────────────────────────────────────────────────────────
         Amazon.CDK.Tags.Of(this).Add("Project", "note-taker");
@@ -183,8 +190,10 @@ public class NoteTakerStack : Stack
         // ── Outputs ──────────────────────────────────────────────────────
         new CfnOutput(this, "ApiUrl", new CfnOutputProps
         {
-            Value = httpApi.ApiEndpoint,
-            Description = "API Gateway endpoint URL"
+            Value = props.DomainName != null
+                ? $"https://{props.DomainName}/api"
+                : httpApi.ApiEndpoint,
+            Description = "API endpoint URL"
         });
 
         new CfnOutput(this, "WebBucketName", new CfnOutputProps
@@ -195,8 +204,10 @@ public class NoteTakerStack : Stack
 
         new CfnOutput(this, "WebUrl", new CfnOutputProps
         {
-            Value = $"https://{distribution.DistributionDomainName}",
-            Description = "CloudFront distribution URL"
+            Value = props.DomainName != null
+                ? $"https://{props.DomainName}"
+                : $"https://{distribution.DistributionDomainName}",
+            Description = "Frontend URL"
         });
 
         new CfnOutput(this, "DistributionId", new CfnOutputProps
@@ -204,5 +215,82 @@ public class NoteTakerStack : Stack
             Value = distribution.DistributionId,
             Description = "CloudFront distribution ID (used for cache invalidation on deploy)"
         });
+    }
+
+    private DistributionProps BuildDistributionProps(
+        NoteTakerStackProps props,
+        Amazon.CDK.AWS.Apigatewayv2.HttpApi httpApi,
+        Bucket webBucket)
+    {
+        var errorResponses = new[]
+        {
+            // Return index.html for 403/404 so React handles client-side routing
+            new ErrorResponse { HttpStatus = 403, ResponseHttpStatus = 200, ResponsePagePath = "/index.html" },
+            new ErrorResponse { HttpStatus = 404, ResponseHttpStatus = 200, ResponsePagePath = "/index.html" }
+        };
+
+        var defaultBehavior = new BehaviorOptions
+        {
+            Origin = S3BucketOrigin.WithOriginAccessControl(webBucket)
+        };
+
+        if (props.CertificateArn == null || props.DomainName == null)
+        {
+            return new DistributionProps
+            {
+                DefaultBehavior = defaultBehavior,
+                DefaultRootObject = "index.html",
+                ErrorResponses = errorResponses
+            };
+        }
+
+        // Strip /api prefix before forwarding to API Gateway
+        var apiStripFunction = new Amazon.CDK.AWS.CloudFront.Function(this, "ApiStripFunction",
+            new Amazon.CDK.AWS.CloudFront.FunctionProps
+            {
+                Code = FunctionCode.FromInline("""
+                    function handler(event) {
+                        var request = event.request;
+                        request.uri = request.uri.slice(4) || '/';
+                        return request;
+                    }
+                    """),
+                Runtime = FunctionRuntime.JS_2_0
+            });
+
+        // API Gateway hostname extracted from its endpoint URL (https://id.execute-api.region.amazonaws.com)
+        var apiHostname = Fn.Select(2, Fn.Split("/", httpApi.ApiEndpoint));
+
+        return new DistributionProps
+        {
+            DefaultBehavior = defaultBehavior,
+            DefaultRootObject = "index.html",
+            ErrorResponses = errorResponses,
+            DomainNames = new[] { props.DomainName },
+            Certificate = Certificate.FromCertificateArn(this, "Certificate", props.CertificateArn),
+            AdditionalBehaviors = new Dictionary<string, IBehaviorOptions>
+            {
+                ["/api/*"] = new BehaviorOptions
+                {
+                    Origin = new HttpOrigin(apiHostname),
+                    CachePolicy = CachePolicy.CACHING_DISABLED,
+                    OriginRequestPolicy = OriginRequestPolicy.ALL_VIEWER_EXCEPT_HOST_HEADER,
+                    FunctionAssociations = new[]
+                    {
+                        new FunctionAssociation
+                        {
+                            Function = apiStripFunction,
+                            EventType = FunctionEventType.VIEWER_REQUEST
+                        }
+                    }
+                }
+            }
+        };
+    }
+
+    private static string ApexDomain(string domain)
+    {
+        var parts = domain.Split('.');
+        return parts.Length > 2 ? string.Join('.', parts[^2..]) : domain;
     }
 }

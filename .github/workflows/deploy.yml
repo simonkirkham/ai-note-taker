@@ -106,7 +106,10 @@ jobs:
           src/Api/bin/Release/net10.0/publish
 
       - name: Deploy infrastructure
-        run: cdk deploy --require-approval never --outputs-file outputs.json
+        run: cdk deploy --all --require-approval never --outputs-file outputs.json
+        env:
+          DOMAIN_NAME: ${{ secrets.DOMAIN_NAME }}
+          HOSTED_ZONE_ID: ${{ secrets.HOSTED_ZONE_ID }}
 
       - name: Extract outputs
         id: outputs
@@ -124,13 +127,6 @@ jobs:
       - name: Build frontend
         working-directory: web
         run: npm ci && npm run build
-        env:
-          VITE_API_URL: ${{ steps.outputs.outputs.api-url }}
-
-      - name: Verify API URL embedded in bundle
-        run: |
-          echo "VITE_API_URL was: ${{ steps.outputs.outputs.api-url }}"
-          grep -o 'execute-api[^"]*' web/dist/assets/*.js | head -5 || echo "WARNING: no execute-api URL found in bundle"
 
       - name: Deploy frontend
         run: aws s3 sync web/dist/ s3://${{ steps.outputs.outputs.bucket }}/ --delete
@@ -214,7 +210,10 @@ jobs:
           src/Api/bin/Release/net10.0/publish
 
       - name: Deploy infrastructure
-        run: cdk deploy --require-approval never --outputs-file outputs.json
+        run: cdk deploy --all --require-approval never --outputs-file outputs.json
+        env:
+          DOMAIN_NAME: ${{ secrets.DOMAIN_NAME }}
+          HOSTED_ZONE_ID: ${{ secrets.HOSTED_ZONE_ID }}
 
       - name: Extract outputs
         id: outputs
@@ -232,8 +231,6 @@ jobs:
       - name: Build frontend
         working-directory: web
         run: npm ci && npm run build
-        env:
-          VITE_API_URL: ${{ steps.outputs.outputs.api-url }}
 
       - name: Deploy frontend
         run: aws s3 sync web/dist/ s3://${{ steps.outputs.outputs.bucket }}/ --delete

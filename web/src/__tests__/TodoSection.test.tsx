@@ -21,7 +21,7 @@ const item2 = {
 
 describe('TodoSection', () => {
   it('renders open todo items from the API', async () => {
-    server.use(http.get('/todos', () => HttpResponse.json({ items: [item1, item2] })))
+    server.use(http.get('/api/todos', () => HttpResponse.json({ items: [item1, item2] })))
     render(<TodoSection />)
     expect(await screen.findByText('Chase invoice')).toBeInTheDocument()
     expect(screen.getByText('Send recap')).toBeInTheDocument()
@@ -30,8 +30,8 @@ describe('TodoSection', () => {
   it('completing a todo POSTs to the API and removes it from the list', async () => {
     let completeCalled = false
     server.use(
-      http.get('/todos', () => HttpResponse.json({ items: [item1] })),
-      http.post('/notes/:noteId/actions/:actionId/complete', () => {
+      http.get('/api/todos', () => HttpResponse.json({ items: [item1] })),
+      http.post('/api/notes/:noteId/actions/:actionId/complete', () => {
         completeCalled = true
         return new HttpResponse(null, { status: 200 })
       }),

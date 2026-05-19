@@ -8,7 +8,7 @@ const folder = { folderId: 'f-1', name: 'People', children: [] }
 
 beforeEach(() => {
   // Persistent override (not one-shot); reset happens in global afterEach via server.resetHandlers()
-  server.use(http.get('/folders', () => HttpResponse.json({ folders: [folder] })))
+  server.use(http.get('/api/folders', () => HttpResponse.json({ folders: [folder] })))
 })
 
 describe('FolderNavigation', () => {

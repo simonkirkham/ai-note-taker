@@ -99,7 +99,7 @@ describe('TagFilter — filtering cards via ListView', () => {
 
   beforeEach(() => {
     server.use(
-      http.get('/tags', () =>
+      http.get('/api/tags', () =>
         HttpResponse.json({ tags: [{ tag: 'meeting', noteCount: 1, noteIds: ['n-1'] }] }),
       ),
     )

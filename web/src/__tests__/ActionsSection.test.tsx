@@ -27,7 +27,7 @@ describe('ActionsSection', () => {
   it('Enter key adds item and clears the input', async () => {
     let postCalled = false
     server.use(
-      http.post(`/notes/${NOTE_ID}/actions`, async () => {
+      http.post(`/api/notes/${NOTE_ID}/actions`, async () => {
         postCalled = true
         return HttpResponse.json({ actionId: 'new-1' }, { status: 201 })
       }),
@@ -44,7 +44,7 @@ describe('ActionsSection', () => {
   it('blur on non-empty input adds the item', async () => {
     let postCalled = false
     server.use(
-      http.post(`/notes/${NOTE_ID}/actions`, async () => {
+      http.post(`/api/notes/${NOTE_ID}/actions`, async () => {
         postCalled = true
         return HttpResponse.json({ actionId: 'new-2' }, { status: 201 })
       }),
@@ -61,7 +61,7 @@ describe('ActionsSection', () => {
   it('blur on empty input does not call POST', async () => {
     let postCalled = false
     server.use(
-      http.post(`/notes/${NOTE_ID}/actions`, () => {
+      http.post(`/api/notes/${NOTE_ID}/actions`, () => {
         postCalled = true
         return HttpResponse.json({ actionId: 'x' }, { status: 201 })
       }),
@@ -78,8 +78,8 @@ describe('ActionsSection', () => {
   it('completing an action calls POST /complete and marks checkbox checked', async () => {
     let completeCalled = false
     server.use(
-      http.get(`/notes/${NOTE_ID}/actions`, () => HttpResponse.json({ actions: [action1] })),
-      http.post(`/notes/${NOTE_ID}/actions/:actionId/complete`, () => {
+      http.get(`/api/notes/${NOTE_ID}/actions`, () => HttpResponse.json({ actions: [action1] })),
+      http.post(`/api/notes/${NOTE_ID}/actions/:actionId/complete`, () => {
         completeCalled = true
         return new HttpResponse(null, { status: 200 })
       }),
@@ -95,8 +95,8 @@ describe('ActionsSection', () => {
   it('reopening a completed action calls POST /reopen and unchecks the checkbox', async () => {
     let reopenCalled = false
     server.use(
-      http.get(`/notes/${NOTE_ID}/actions`, () => HttpResponse.json({ actions: [action1done] })),
-      http.post(`/notes/${NOTE_ID}/actions/:actionId/reopen`, () => {
+      http.get(`/api/notes/${NOTE_ID}/actions`, () => HttpResponse.json({ actions: [action1done] })),
+      http.post(`/api/notes/${NOTE_ID}/actions/:actionId/reopen`, () => {
         reopenCalled = true
         return new HttpResponse(null, { status: 200 })
       }),
@@ -112,8 +112,8 @@ describe('ActionsSection', () => {
   it('deleting an action calls DELETE and removes it from the list', async () => {
     let deleteCalled = false
     server.use(
-      http.get(`/notes/${NOTE_ID}/actions`, () => HttpResponse.json({ actions: [action1] })),
-      http.delete(`/notes/${NOTE_ID}/actions/:actionId`, () => {
+      http.get(`/api/notes/${NOTE_ID}/actions`, () => HttpResponse.json({ actions: [action1] })),
+      http.delete(`/api/notes/${NOTE_ID}/actions/:actionId`, () => {
         deleteCalled = true
         return new HttpResponse(null, { status: 204 })
       }),
