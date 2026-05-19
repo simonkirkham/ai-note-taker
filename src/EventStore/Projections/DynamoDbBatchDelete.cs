@@ -6,7 +6,7 @@ namespace EventStore.Projections;
 internal static class DynamoDbBatchDelete
 {
     internal static async Task ByPrimaryKeyAsync(IAmazonDynamoDB dynamo, string tableName,
-        List<Dictionary<string, AttributeValue>> items, CancellationToken ct)
+        IReadOnlyList<Dictionary<string, AttributeValue>> items, CancellationToken ct)
     {
         for (var i = 0; i < items.Count; i += 25)
         {
