@@ -123,6 +123,22 @@ using var stream = File.OpenRead(path);   // disposes when method exits
 **Interfaces and abstract classes each get their own file**
 - Interfaces (`I*.cs`) and abstract classes must never be grouped with other types. Pure data records may be grouped (see checklist item above); interfaces and abstracts may not.
 
+**Group classes by type into folders**
+- Classes of the same kind live together in a named subfolder, not scattered at the project root. This makes it immediately obvious where to find or add a given type.
+- Canonical folder names for this project:
+
+| Folder | What goes there |
+|---|---|
+| `CommandHandlers/` | `*CommandHandler` classes and their interfaces |
+| `Endpoints/` | Minimal API endpoint mapping classes |
+| `Handlers/` | HTTP-level request handlers (static methods called from endpoints) |
+| `Projections/` | `IDomainEventHandler` implementations that update read models |
+| `EventHandlers/` | Other domain event handler infrastructure |
+| `Contracts/` | API request/response record types |
+| `Exceptions/` | Custom exception classes |
+
+- Do not place implementation classes directly in the project root. If a new type doesn't fit an existing folder, create a descriptively named one rather than dropping it at root level.
+
 Full reference: `docs/dotnet-coding-standards.md`
 
 ## Checklist (run before opening a PR)
@@ -152,6 +168,7 @@ Full reference: `docs/dotnet-coding-standards.md`
 - [ ] All concrete classes are `sealed` unless inheritance is explicitly intended
 - [ ] No `async void` outside of framework event handlers
 - [ ] Each interface and abstract class is in its own file
+- [ ] Classes are grouped by type in named subfolders — no implementation classes at project root
 - [ ] `dotnet format` passes
 
 ## Commands
