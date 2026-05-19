@@ -5,6 +5,7 @@ public class InfraAssertionsTests
 {
     private static readonly Template _template = BuildTemplate();
     private static readonly Template _domainTemplate = BuildDomainTemplate();
+    private static readonly Template _calendarTemplate = BuildCalendarTemplate();
 
     private static Template BuildTemplate()
     {
@@ -34,6 +35,22 @@ public class InfraAssertionsTests
             CertificateArn = "arn:aws:acm:us-east-1:123456789012:certificate/fake-cert-id",
             DomainName = "test.note-taker-ai.com",
             HostedZoneId = "ZFAKE123456789"
+        }));
+    }
+
+    private static Template BuildCalendarTemplate()
+    {
+        var lambdaAssetPath = AppContext.BaseDirectory;
+        var app = new App(new AppProps
+        {
+            Context = new Dictionary<string, object>
+            {
+                ["lambdaAssetPath"] = lambdaAssetPath
+            }
+        });
+        return Template.FromStack(new NoteTakerStack(app, "TestStack", new NoteTakerStackProps
+        {
+            GoogleRefreshTokenSsmPath = "/test/google-refresh-token"
         }));
     }
 
@@ -322,5 +339,134 @@ public class InfraAssertionsTests
                 })
             })
         }));
+    }
+
+    [Fact]
+    public void Lambda_HasGoogleRefreshTokenSsmPathEnvVar()
+    {
+        _template.HasResourceProperties("AWS::Lambda::Function", Match.ObjectLike(new Dictionary<string, object>
+        {
+            ["Environment"] = Match.ObjectLike(new Dictionary<string, object>
+            {
+                ["Variables"] = Match.ObjectLike(new Dictionary<string, object>
+                {
+                    ["GOOGLE_REFRESH_TOKEN_SSM_PATH"] = Match.AnyValue()
+                })
+            })
+        }));
+    }
+
+    [Fact]
+    public void Lambda_HasCalendarLinkIndexTableEnvVar()
+    {
+        _template.HasResourceProperties("AWS::Lambda::Function", Match.ObjectLike(new Dictionary<string, object>
+        {
+            ["Environment"] = Match.ObjectLike(new Dictionary<string, object>
+            {
+                ["Variables"] = Match.ObjectLike(new Dictionary<string, object>
+                {
+                    ["PROJ_CALENDARLINKINDEX_TABLE_NAME"] = Match.AnyValue()
+                })
+            })
+        }));
+    }
+
+    [Fact]
+    public void CalendarLinkIndex_HasRetainDeletionPolicy()
+    {
+        _template.HasResource("AWS::DynamoDB::Table", Match.ObjectLike(new Dictionary<string, object>
+        {
+            ["DeletionPolicy"] = "Retain",
+            ["Properties"] = Match.ObjectLike(new Dictionary<string, object>
+            {
+                ["TableName"] = "notetaker-proj-calendarlinkindex"
+            })
+        }));
+    }
+
+    [Fact]
+    public void CalendarLinkIndex_HasPointInTimeRecovery()
+    {
+        _template.HasResource("AWS::DynamoDB::Table", Match.ObjectLike(new Dictionary<string, object>
+        {
+            ["Properties"] = Match.ObjectLike(new Dictionary<string, object>
+            {
+                ["TableName"] = "notetaker-proj-calendarlinkindex",
+                ["PointInTimeRecoverySpecification"] = Match.ObjectLike(new Dictionary<string, object>
+                {
+                    ["PointInTimeRecoveryEnabled"] = true
+                })
+            })
+        }));
+    }
+
+    [Fact]
+    public void CalendarLinkIndex_HasRecurringSeriesIdGsi()
+    {
+        _template.HasResource("AWS::DynamoDB::Table", Match.ObjectLike(new Dictionary<string, object>
+        {
+            ["Properties"] = Match.ObjectLike(new Dictionary<string, object>
+            {
+                ["TableName"] = "notetaker-proj-calendarlinkindex",
+                ["GlobalSecondaryIndexes"] = Match.ArrayWith(new object[]
+                {
+                    Match.ObjectLike(new Dictionary<string, object>
+                    {
+                        ["IndexName"] = "RecurringSeriesId-index"
+                    })
+                })
+            })
+        }));
+    }
+
+    [Fact]
+    public void Lambda_HasSsmGetParameterPermission_WhenRefreshTokenPathConfigured()
+    {
+        // Resource is a Fn::Join intrinsic; assert the specific parameter path is embedded in it
+        _calendarTemplate.HasResourceProperties("AWS::IAM::Policy", Match.ObjectLike(new Dictionary<string, object>
+        {
+            ["PolicyDocument"] = Match.ObjectLike(new Dictionary<string, object>
+            {
+                ["Statement"] = Match.ArrayWith(new object[]
+                {
+                    Match.ObjectLike(new Dictionary<string, object>
+                    {
+                        ["Action"] = "ssm:GetParameter",
+                        ["Effect"] = "Allow",
+                        ["Resource"] = Match.ObjectLike(new Dictionary<string, object>
+                        {
+                            ["Fn::Join"] = Match.ArrayWith(new object[]
+                            {
+                                Match.ArrayWith(new object[]
+                                {
+                                    Match.StringLikeRegexp(".*parameter/test/google-refresh-token$")
+                                })
+                            })
+                        })
+                    })
+                })
+            })
+        }));
+    }
+
+    [Fact]
+    public void Lambda_HasNoSsmPermission_WhenRefreshTokenPathNotConfigured()
+    {
+        // _template has no GoogleRefreshTokenSsmPath — the conditional grant must not fire
+        var thrown = Record.Exception(() =>
+            _template.HasResourceProperties("AWS::IAM::Policy", Match.ObjectLike(new Dictionary<string, object>
+            {
+                ["PolicyDocument"] = Match.ObjectLike(new Dictionary<string, object>
+                {
+                    ["Statement"] = Match.ArrayWith(new object[]
+                    {
+                        Match.ObjectLike(new Dictionary<string, object>
+                        {
+                            ["Action"] = "ssm:GetParameter"
+                        })
+                    })
+                })
+            })));
+        Assert.NotNull(thrown);
     }
 }

@@ -3,6 +3,7 @@ using Amazon.CDK.AWS.CertificateManager;
 using Amazon.CDK.AWS.CloudFront;
 using Amazon.CDK.AWS.CloudFront.Origins;
 using Amazon.CDK.AWS.DynamoDB;
+using Amazon.CDK.AWS.IAM;
 using Amazon.CDK.AWS.Route53;
 using Amazon.CDK.AWS.Route53.Targets;
 using Amazon.CDK.AWS.S3;
@@ -87,6 +88,21 @@ public sealed class NoteTakerStack : Stack
             RemovalPolicy = RemovalPolicy.RETAIN
         });
 
+        var calendarLinkIndexTable = new Table(this, "ProjCalendarLinkIndexTable", new TableProps
+        {
+            TableName = "notetaker-proj-calendarlinkindex",
+            PartitionKey = new Amazon.CDK.AWS.DynamoDB.Attribute { Name = "CalendarEventId", Type = AttributeType.STRING },
+            BillingMode = BillingMode.PAY_PER_REQUEST,
+            PointInTimeRecoverySpecification = new PointInTimeRecoverySpecification { PointInTimeRecoveryEnabled = true },
+            RemovalPolicy = RemovalPolicy.RETAIN
+        });
+        calendarLinkIndexTable.AddGlobalSecondaryIndex(new GlobalSecondaryIndexProps
+        {
+            IndexName = "RecurringSeriesId-index",
+            PartitionKey = new Amazon.CDK.AWS.DynamoDB.Attribute { Name = "RecurringSeriesId", Type = AttributeType.STRING },
+            ProjectionType = ProjectionType.ALL
+        });
+
         // ── API Lambda ───────────────────────────────────────────────────
         var lambdaAssetPath = (string?)this.Node.TryGetContext("lambdaAssetPath")
             ?? "src/Api/bin/Release/net10.0/publish";
@@ -112,7 +128,9 @@ public sealed class NoteTakerStack : Stack
                 // Use string.IsNullOrEmpty() on the consumer side; the key itself is always there.
                 ["GOOGLE_CLIENT_ID"] = props.GoogleClientId ?? "",
                 ["GOOGLE_CLIENT_SECRET"] = props.GoogleClientSecret ?? "",
-                ["ALLOWED_USER_SUBS"] = props.AllowedUserSubs ?? ""
+                ["ALLOWED_USER_SUBS"] = props.AllowedUserSubs ?? "",
+                ["GOOGLE_REFRESH_TOKEN_SSM_PATH"] = props.GoogleRefreshTokenSsmPath ?? "",
+                ["PROJ_CALENDARLINKINDEX_TABLE_NAME"] = calendarLinkIndexTable.TableName
             }
         });
 
@@ -131,6 +149,22 @@ public sealed class NoteTakerStack : Stack
         noteCardListTable.GrantReadWriteData(apiFunction);
         folderTreeTable.GrantReadWriteData(apiFunction);
         tagIndexTable.GrantReadWriteData(apiFunction);
+        calendarLinkIndexTable.GrantReadWriteData(apiFunction);
+
+        if (!string.IsNullOrEmpty(props.GoogleRefreshTokenSsmPath))
+        {
+            var ssmArn = Arn.Format(new ArnComponents
+            {
+                Service = "ssm",
+                Resource = "parameter",
+                ResourceName = props.GoogleRefreshTokenSsmPath.TrimStart('/')
+            }, this);
+            apiFunction.AddToRolePolicy(new PolicyStatement(new PolicyStatementProps
+            {
+                Actions = new[] { "ssm:GetParameter" },
+                Resources = new[] { ssmArn }
+            }));
+        }
 
         // ── API Gateway ──────────────────────────────────────────────────
         // CORS is handled by ASP.NET Core UseCors middleware in the Lambda, not at
