@@ -11,9 +11,12 @@ afterEach(() => clearToken())
 
 describe('unauthenticated state', () => {
   it('shows sign-in screen and hides the note list', () => {
+    // Stub a client ID so the auth gate is active (without one, auth is bypassed)
+    vi.stubEnv('VITE_GOOGLE_CLIENT_ID', 'test-client-id')
     render(<AuthProvider><App /></AuthProvider>)
     expect(screen.getByRole('button', { name: /sign in with google/i })).toBeInTheDocument()
     expect(screen.queryByTestId('sidebar-toggle')).not.toBeInTheDocument()
+    vi.unstubAllEnvs()
   })
 })
 
