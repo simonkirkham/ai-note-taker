@@ -50,7 +50,7 @@ What is **not** yet in place:
 
 ## Slice 8-A — CDK and CORS wiring
 
-**Status:** Not Started
+**Status:** Done
 
 **Value:** The deployed Lambda accepts the `Authorization` header from the CloudFront origin. `GOOGLE_CLIENT_ID` is available to both the Lambda (for token audience validation) and the frontend build.
 
@@ -59,14 +59,18 @@ What is **not** yet in place:
 **Changes in scope:**
 
 - Lambda env vars: `GOOGLE_CLIENT_ID` (OAuth2 client ID from GCP) and `ALLOWED_USER_SUBS` (comma-separated list of permitted Google `sub` values)
-- API Gateway CORS: add `Authorization` to `allowHeaders`; confirm `allowOrigins` includes the CloudFront distribution URL
-- Frontend env var: `VITE_GOOGLE_CLIENT_ID` set in the CDK-generated `env.js` or passed via the build step
-- `Infrastructure.Assertions` tests updated for both env vars on the Lambda and the `Authorization` CORS header
+- CORS: `Authorization` is already accepted — CORS is handled by ASP.NET Core's `AllowAnyHeader()` (not at API Gateway). No CDK change needed; this is not testable via a CloudFormation template assertion.
+- Frontend env var: `VITE_GOOGLE_CLIENT_ID` passed via the `npm run build` step in CI (added in 8-B)
+- `Infrastructure.Assertions` tests updated for both Lambda env vars
+- Both secrets wired into `cdk deploy` in CI for both `deploy` and `deploy-production` jobs
 
 **Key implementation files:**
 
-- `src/Infrastructure/NoteTakerStack.cs` — add `GOOGLE_CLIENT_ID` and `ALLOWED_USER_SUBS` env vars; add `Authorization` to CORS allow-headers
-- `tests/Infrastructure.Assertions/` — new assertions for both env vars and `Authorization` CORS header
+- `src/Infrastructure/NoteTakerStackProps.cs` — add `GoogleClientId` and `AllowedUserSubs` optional props
+- `src/Infrastructure/Program.cs` — read `GOOGLE_CLIENT_ID` and `ALLOWED_USER_SUBS` from env, pass to stack props
+- `src/Infrastructure/NoteTakerStack.cs` — add both to Lambda `Environment` dictionary (always present, defaults to `""` when unset so the runtime can distinguish "not configured" without a key-missing exception)
+- `.github/workflows/deploy.yml` — add both secrets to CDK deploy steps
+- `tests/Infrastructure.Assertions/` — two new assertions for both env vars
 
 **Scenarios:**
 
@@ -80,20 +84,15 @@ Scenario: Lambda has ALLOWED_USER_SUBS env var
   Given the CDK stack is synthesised
   When  the CloudFormation template is examined
   Then  the Lambda has an ALLOWED_USER_SUBS environment variable
-
-Scenario: API Gateway CORS allows the Authorization header
-  Given the CDK stack is synthesised
-  When  the CloudFormation template is examined
-  Then  the CORS configuration includes Authorization in allowHeaders
 ```
 
 **Acceptance criteria:**
 
-- [ ] `GOOGLE_CLIENT_ID` env var present on the Lambda in `cdk synth` output
-- [ ] `ALLOWED_USER_SUBS` env var present on the Lambda in `cdk synth` output
-- [ ] `Authorization` in CORS `allowHeaders` in `cdk synth` output
-- [ ] `dotnet test tests/Infrastructure.Assertions/` — all green
-- [ ] `cdk synth` exits 0
+- [x] `GOOGLE_CLIENT_ID` env var present on the Lambda in `cdk synth` output
+- [x] `ALLOWED_USER_SUBS` env var present on the Lambda in `cdk synth` output
+- [x] `Authorization` already accepted by CORS — covered by `AllowAnyHeader()` in ASP.NET; no CDK assertion needed
+- [x] `dotnet test tests/Infrastructure.Assertions/` — all green
+- [x] `cdk synth` exits 0
 
 ---
 
