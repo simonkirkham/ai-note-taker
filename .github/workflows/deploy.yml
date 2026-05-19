@@ -145,9 +145,15 @@ jobs:
 
       - name: Get smoke test token
         id: smoke-token
+        env:
+          SSM_PATH: ${{ secrets.GOOGLE_REFRESH_TOKEN_SSM_PATH }}
         run: |
+          if [ -z "$SSM_PATH" ]; then
+            echo "::error::GOOGLE_REFRESH_TOKEN_SSM_PATH secret is not set. Add it in GitHub → Settings → Secrets so the pipeline can fetch a bearer token for smoke tests."
+            exit 1
+          fi
           REFRESH_TOKEN=$(aws ssm get-parameter \
-            --name "${{ secrets.GOOGLE_REFRESH_TOKEN_SSM_PATH }}" \
+            --name "$SSM_PATH" \
             --with-decryption --query 'Parameter.Value' --output text)
           RESPONSE=$(curl -s -X POST "https://oauth2.googleapis.com/token" \
             -d "client_id=${{ secrets.GOOGLE_CLIENT_ID }}" \
@@ -271,9 +277,15 @@ jobs:
 
       - name: Get smoke test token
         id: smoke-token
+        env:
+          SSM_PATH: ${{ secrets.GOOGLE_REFRESH_TOKEN_SSM_PATH }}
         run: |
+          if [ -z "$SSM_PATH" ]; then
+            echo "::error::GOOGLE_REFRESH_TOKEN_SSM_PATH secret is not set. Add it in GitHub → Settings → Secrets so the pipeline can fetch a bearer token for smoke tests."
+            exit 1
+          fi
           REFRESH_TOKEN=$(aws ssm get-parameter \
-            --name "${{ secrets.GOOGLE_REFRESH_TOKEN_SSM_PATH }}" \
+            --name "$SSM_PATH" \
             --with-decryption --query 'Parameter.Value' --output text)
           RESPONSE=$(curl -s -X POST "https://oauth2.googleapis.com/token" \
             -d "client_id=${{ secrets.GOOGLE_CLIENT_ID }}" \
