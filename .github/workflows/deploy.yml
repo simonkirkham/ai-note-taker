@@ -131,6 +131,8 @@ jobs:
       - name: Build frontend
         working-directory: web
         run: npm ci && npm run build
+        env:
+          VITE_GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
 
       - name: Deploy frontend
         run: aws s3 sync web/dist/ s3://${{ steps.outputs.outputs.bucket }}/ --delete
@@ -239,6 +241,8 @@ jobs:
       - name: Build frontend
         working-directory: web
         run: npm ci && npm run build
+        env:
+          VITE_GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
 
       - name: Deploy frontend
         run: aws s3 sync web/dist/ s3://${{ steps.outputs.outputs.bucket }}/ --delete

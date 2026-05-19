@@ -2,7 +2,13 @@ import { render, screen, within, act } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { http, HttpResponse } from 'msw'
 import { server } from '../test/setup'
+import { AuthProvider } from '../auth/AuthContext'
+import { clearToken } from '../auth/tokenStore'
 import App from '../App'
+
+const renderApp = () => render(<AuthProvider initialToken="test-token"><App /></AuthProvider>)
+
+afterEach(() => clearToken())
 
 beforeEach(() => {
   server.use(http.get('/api/folders', () => HttpResponse.json({ folders: [] })))
@@ -18,7 +24,7 @@ describe('FolderMutations', () => {
         }),
       ),
     )
-    render(<App />)
+    renderApp()
     await userEvent.click(await screen.findByTestId('new-folder-button'))
     await userEvent.type(screen.getByTestId('new-folder-input'), 'People')
     await userEvent.keyboard('{Enter}')
@@ -49,7 +55,7 @@ describe('FolderMutations', () => {
         }),
       ),
     )
-    render(<App />)
+    renderApp()
     // Double-click the folder name to enter edit mode
     const folderNameBtn = await screen.findByTestId('folder-name-f-1')
     await userEvent.dblClick(folderNameBtn)
@@ -74,7 +80,7 @@ describe('FolderMutations', () => {
         }),
       ),
     )
-    render(<App />)
+    renderApp()
     const folderItem = await screen.findByTestId('folder-item-f-1')
     await userEvent.click(within(folderItem).getByTestId('add-subfolder-button'))
     await userEvent.type(screen.getByTestId('subfolder-input'), 'Simon')
@@ -103,7 +109,7 @@ describe('FolderMutations', () => {
         }),
       ),
     )
-    render(<App />)
+    renderApp()
     const folderItem = await screen.findByTestId('folder-item-f-1')
     await userEvent.click(within(folderItem).getByTestId('add-subfolder-button'))
     await userEvent.type(screen.getByTestId('subfolder-input'), 'Simon')
@@ -122,7 +128,7 @@ describe('FolderMutations', () => {
       ),
       http.patch('/api/folders/f-1/name', () => new HttpResponse(null, { status: 204 })),
     )
-    render(<App />)
+    renderApp()
     // Navigate into the folder first
     await userEvent.click(await screen.findByTestId('folder-name-f-1'))
     expect(screen.getByRole('heading', { name: 'Peopl' })).toBeInTheDocument()
