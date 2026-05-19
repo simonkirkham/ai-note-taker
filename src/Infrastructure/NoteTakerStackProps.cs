@@ -8,4 +8,5 @@ public sealed class NoteTakerStackProps : StackProps
     public string? GoogleClientId { get; init; }
     public string? GoogleClientSecret { get; init; }
     public string? AllowedUserSubs { get; init; }
+    public string? GoogleRefreshTokenSsmPath { get; init; }
 }
