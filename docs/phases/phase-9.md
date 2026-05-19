@@ -612,7 +612,7 @@ Scenario: hasNextOccurrenceNote reflects a note already created for next week
 
 ## Slice 9-G — CDK wiring
 
-**Status:** Not Started
+**Status:** Done
 
 **Value:** The deployed Lambda can reach Google Calendar and the `CalendarLinkIndex` DynamoDB table. Infrastructure changes are tested via CDK template assertions.
 
@@ -660,12 +660,12 @@ Scenario: Lambda has read-write access to the CalendarLinkIndex table
 
 **Acceptance criteria:**
 
-- [ ] All env vars present on the Lambda in `cdk synth` output
-- [ ] `ssm:GetParameter` IAM grant present in CDK template
-- [ ] `notetaker-proj-calendarlinkindex` table with `RecurringSeriesId-index` GSI present
-- [ ] `GrantReadWriteData` on the new table present
-- [ ] `dotnet test tests/Infrastructure.Assertions/Infrastructure.Assertions.csproj` — all green
-- [ ] `cdk synth` exits 0 with no errors or warnings
+- [x] All env vars present on the Lambda in `cdk synth` output
+- [x] `ssm:GetParameter` IAM grant present in CDK template
+- [x] `notetaker-proj-calendarlinkindex` table with `RecurringSeriesId-index` GSI present
+- [x] `GrantReadWriteData` on the new table present
+- [x] `dotnet test tests/Infrastructure.Assertions/Infrastructure.Assertions.csproj` — all green
+- [x] `cdk synth` exits 0 with no errors or warnings
 - [ ] After `cdk deploy`: `GET /calendar/today` returns live Google Calendar data
 
 ---

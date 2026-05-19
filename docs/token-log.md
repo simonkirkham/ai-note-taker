@@ -629,3 +629,21 @@ If no agent ran unexpectedly high: write `None — slice ran within expected ran
 | **Total** | **~124 000** |
 
 **Why:** Two post-merge production bugs required fix PRs. (1) Sign-out button placed as a direct grid child of `.app-layout` broke the CSS column layout — fixed via PR #67 (Hawk approved, 14k). (2) Google's token endpoint requires `client_secret` for Web Application OAuth clients even with PKCE; browser-side code exchange was not possible — fixed by adding `POST /auth/token` backend endpoint via PR #68 (two Hawk rounds: 52k + 27k).
+
+---
+
+## Slice 9-G — CDK wiring (CalendarLinkIndex table + SSM grant)
+
+| Agent     | ~Tokens    |
+| --------- | ---------- |
+| Scout     | —          |
+| Breaker   | 12 000     |
+| Pip       | 12 000     |
+| Hawk      | 44 000     |
+| Scribe    | 5 000      |
+| **Total** | **~73 000** |
+
+**Why:** Hawk dominated at 44 k (60% of total). Root cause: initial SSM IAM test asserted only Action+Effect and lacked a negative test for the conditional guard. Both findings required a fix commit and a second review pass (~22 k). The assertions are a non-obvious CDK pattern (Fn::Join resource matching + `Record.Exception` negative guard) not covered by existing skill guidance.
+
+**Optimisation suggestions:**
+- **Hawk (–20 000):** Both findings are now documented in cdk-stack-update SKILL.md. Breaker should apply both patterns when writing any conditional IAM grant test, collapsing Hawk to a single-pass review.

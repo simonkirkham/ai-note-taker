@@ -40,6 +40,34 @@ Each Lambda gets only the permissions it needs:
 
 Never grant `dynamodb:*` or `*:*`.
 
+## DynamoDB PITR
+
+Use `PointInTimeRecoverySpecification = new PointInTimeRecoverySpecification { PointInTimeRecoveryEnabled = true }` — the `PointInTimeRecovery = true` (bool) property is deprecated and emits CS0618 + a CDK synth warning.
+
+## Testing conditional IAM grants
+
+When a grant is gated on a prop being non-empty, write two tests:
+
+**Positive** (prop set) — verify action, effect, and resource ARN. SSM grants have a `Fn::Join` ARN — match with:
+```csharp
+["Resource"] = Match.ObjectLike(new Dictionary<string, object>
+{
+    ["Fn::Join"] = Match.ArrayWith(new object[]
+    {
+        Match.ArrayWith(new object[]
+        {
+            Match.StringLikeRegexp(".*parameter/test/my-path$")
+        })
+    })
+})
+```
+
+**Negative** (no prop set) — confirm the grant is absent from the base template:
+```csharp
+var thrown = Record.Exception(() => _template.HasResourceProperties("AWS::IAM::Policy", ...));
+Assert.NotNull(thrown);
+```
+
 ## Don't
 
 - Don't deploy without reading the `cdk diff` output.
