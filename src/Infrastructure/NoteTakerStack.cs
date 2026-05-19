@@ -234,16 +234,6 @@ public sealed class NoteTakerStack : Stack
             Origin = S3BucketOrigin.WithOriginAccessControl(webBucket)
         };
 
-        if (string.IsNullOrEmpty(props.CertificateArn) || string.IsNullOrEmpty(props.DomainName))
-        {
-            return new DistributionProps
-            {
-                DefaultBehavior = defaultBehavior,
-                DefaultRootObject = "index.html",
-                ErrorResponses = errorResponses
-            };
-        }
-
         // Strip /api prefix before forwarding to API Gateway
         var apiStripFunction = new Amazon.CDK.AWS.CloudFront.Function(this, "ApiStripFunction",
             new Amazon.CDK.AWS.CloudFront.FunctionProps
@@ -262,6 +252,35 @@ public sealed class NoteTakerStack : Stack
         // API Gateway hostname extracted from its endpoint URL (https://id.execute-api.region.amazonaws.com)
         var apiHostname = Fn.Select(2, Fn.Split("/", httpApi.ApiEndpoint));
 
+        var additionalBehaviors = new Dictionary<string, IBehaviorOptions>
+        {
+            ["/api/*"] = new BehaviorOptions
+            {
+                Origin = new HttpOrigin(apiHostname),
+                CachePolicy = CachePolicy.CACHING_DISABLED,
+                OriginRequestPolicy = OriginRequestPolicy.ALL_VIEWER_EXCEPT_HOST_HEADER,
+                FunctionAssociations = new[]
+                {
+                    new FunctionAssociation
+                    {
+                        Function = apiStripFunction,
+                        EventType = FunctionEventType.VIEWER_REQUEST
+                    }
+                }
+            }
+        };
+
+        if (string.IsNullOrEmpty(props.CertificateArn) || string.IsNullOrEmpty(props.DomainName))
+        {
+            return new DistributionProps
+            {
+                DefaultBehavior = defaultBehavior,
+                DefaultRootObject = "index.html",
+                ErrorResponses = errorResponses,
+                AdditionalBehaviors = additionalBehaviors
+            };
+        }
+
         return new DistributionProps
         {
             DefaultBehavior = defaultBehavior,
@@ -269,23 +288,7 @@ public sealed class NoteTakerStack : Stack
             ErrorResponses = errorResponses,
             DomainNames = new[] { props.DomainName },
             Certificate = Certificate.FromCertificateArn(this, "Certificate", props.CertificateArn),
-            AdditionalBehaviors = new Dictionary<string, IBehaviorOptions>
-            {
-                ["/api/*"] = new BehaviorOptions
-                {
-                    Origin = new HttpOrigin(apiHostname),
-                    CachePolicy = CachePolicy.CACHING_DISABLED,
-                    OriginRequestPolicy = OriginRequestPolicy.ALL_VIEWER_EXCEPT_HOST_HEADER,
-                    FunctionAssociations = new[]
-                    {
-                        new FunctionAssociation
-                        {
-                            Function = apiStripFunction,
-                            EventType = FunctionEventType.VIEWER_REQUEST
-                        }
-                    }
-                }
-            }
+            AdditionalBehaviors = additionalBehaviors
         };
     }
 

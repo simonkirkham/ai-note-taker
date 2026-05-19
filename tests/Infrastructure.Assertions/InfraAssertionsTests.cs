@@ -260,27 +260,9 @@ public class InfraAssertionsTests
     }
 
     [Fact]
-    public void CloudFront_HasNoApiFunction_WhenDomainNotConfigured()
+    public void CloudFront_HasApiBehavior_Always()
     {
-        _template.ResourceCountIs("AWS::CloudFront::Function", 0);
-    }
-
-    [Fact]
-    public void CloudFront_HasCustomDomainAlias_WhenDomainConfigured()
-    {
-        _domainTemplate.HasResourceProperties("AWS::CloudFront::Distribution", Match.ObjectLike(new Dictionary<string, object>
-        {
-            ["DistributionConfig"] = Match.ObjectLike(new Dictionary<string, object>
-            {
-                ["Aliases"] = Match.ArrayWith(new object[] { "test.note-taker-ai.com" })
-            })
-        }));
-    }
-
-    [Fact]
-    public void CloudFront_HasApiBehavior_WhenDomainConfigured()
-    {
-        _domainTemplate.HasResourceProperties("AWS::CloudFront::Distribution", Match.ObjectLike(new Dictionary<string, object>
+        _template.HasResourceProperties("AWS::CloudFront::Distribution", Match.ObjectLike(new Dictionary<string, object>
         {
             ["DistributionConfig"] = Match.ObjectLike(new Dictionary<string, object>
             {
@@ -296,9 +278,21 @@ public class InfraAssertionsTests
     }
 
     [Fact]
-    public void CloudFront_HasApiStripFunction_WhenDomainConfigured()
+    public void CloudFront_HasApiStripFunction_Always()
     {
-        _domainTemplate.ResourceCountIs("AWS::CloudFront::Function", 1);
+        _template.ResourceCountIs("AWS::CloudFront::Function", 1);
+    }
+
+    [Fact]
+    public void CloudFront_HasCustomDomainAlias_WhenDomainConfigured()
+    {
+        _domainTemplate.HasResourceProperties("AWS::CloudFront::Distribution", Match.ObjectLike(new Dictionary<string, object>
+        {
+            ["DistributionConfig"] = Match.ObjectLike(new Dictionary<string, object>
+            {
+                ["Aliases"] = Match.ArrayWith(new object[] { "test.note-taker-ai.com" })
+            })
+        }));
     }
 
     [Fact]
