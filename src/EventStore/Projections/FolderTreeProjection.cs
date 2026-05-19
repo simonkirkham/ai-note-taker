@@ -11,7 +11,7 @@ public sealed class FolderTreeProjection
         switch (EventDeserializer.Deserialize(envelope))
         {
             case FolderCreated e:
-                _folders[e.FolderId] = new FolderTreeView(e.FolderId, e.Name, e.ParentFolderId, envelope.OccurredAt);
+                _folders[e.FolderId] = new FolderTreeView(e.FolderId, e.Name, e.ParentFolderId, envelope.OccurredAt, envelope.Metadata.UserId ?? "");
                 break;
             case FolderRenamed e when _folders.TryGetValue(e.FolderId, out var f):
                 _folders[e.FolderId] = f with { Name = e.NewName };

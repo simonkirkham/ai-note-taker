@@ -1,13 +1,15 @@
+using Api.Auth;
 using EventStore.Projections;
 
 namespace Api.Handlers;
 
 public static class TagHandlers
 {
-    public static async Task<IResult> GetTags(ITagIndexStore tagIndexStore, CancellationToken ct)
+    public static async Task<IResult> GetTags(ITagIndexStore tagIndexStore, ICurrentUser currentUser, CancellationToken ct)
     {
         var all = await tagIndexStore.GetAllAsync(ct).ConfigureAwait(false);
         var tags = all
+            .Where(x => x.UserId == currentUser.UserId)
             .GroupBy(x => x.Tag)
             .Select(g => new
             {

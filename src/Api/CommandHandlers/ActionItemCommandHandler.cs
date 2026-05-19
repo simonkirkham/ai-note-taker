@@ -3,6 +3,7 @@ using Domain.ActionItems;
 using Domain.Notes;
 using EventStore;
 using EventStore.Projections;
+using Api.Auth;
 using Api.Exceptions;
 using Api.Utilities;
 
@@ -13,7 +14,8 @@ public sealed class ActionItemCommandHandler(
     INoteDetailStore noteDetailStore,
     INoteActionsStore noteActionsStore,
     ITodoListStore todoListStore,
-    INoteCardListStore noteCardListStore) : IActionItemCommandHandler
+    INoteCardListStore noteCardListStore,
+    ICurrentUser currentUser) : IActionItemCommandHandler
 {
     public async Task<ActionId> HandleAsync(AddActionItem cmd, CancellationToken ct = default)
     {
@@ -35,7 +37,7 @@ public sealed class ActionItemCommandHandler(
                 var action = new NoteAction(e.ActionId, e.Description, false, envelope.OccurredAt, null);
                 await noteActionsStore.UpsertAsync(cmd.NoteId, action, ct).ConfigureAwait(false);
                 await todoListStore.PutAsync(
-                    new TodoItem(e.ActionId, e.NoteId, noteDetail.Title, e.Description, envelope.OccurredAt), ct).ConfigureAwait(false);
+                    new TodoItem(e.ActionId, e.NoteId, noteDetail.Title, e.Description, envelope.OccurredAt, currentUser.UserId), ct).ConfigureAwait(false);
                 await UpdateCardActionItemsAsync(cmd.NoteId,
                     items => items.Append(new NoteCardActionItem(e.ActionId, e.Description, false)).ToList().AsReadOnly(),
                     envelope.OccurredAt, ct).ConfigureAwait(false);
@@ -71,7 +73,7 @@ public sealed class ActionItemCommandHandler(
                 var noteDetail = await noteDetailStore.GetAsync(addedEvent.NoteId, ct).ConfigureAwait(false);
                 await todoListStore.PutAsync(
                     new TodoItem(cmd.ActionId, addedEvent.NoteId, noteDetail?.Title ?? string.Empty,
-                        addedEvent.Description, addedEnvelope.OccurredAt), ct).ConfigureAwait(false);
+                        addedEvent.Description, addedEnvelope.OccurredAt, currentUser.UserId), ct).ConfigureAwait(false);
                 await UpdateCardActionItemsAsync(addedEvent.NoteId,
                     items => items.Select(a => a.ActionId == cmd.ActionId ? a with { Completed = false } : a).ToList().AsReadOnly(),
                     envelope.OccurredAt, ct).ConfigureAwait(false);
@@ -128,6 +130,6 @@ public sealed class ActionItemCommandHandler(
         return aggregate;
     }
 
-    static List<EventEnvelope> ToEnvelopes(string streamId, IReadOnlyList<IDomainEvent> events) =>
-        EventEnvelopeFactory.CreateEnvelopes(streamId, events);
+    List<EventEnvelope> ToEnvelopes(string streamId, IReadOnlyList<IDomainEvent> events) =>
+        EventEnvelopeFactory.CreateEnvelopes(streamId, events, currentUser.UserId);
 }

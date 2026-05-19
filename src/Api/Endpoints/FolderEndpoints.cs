@@ -6,11 +6,11 @@ public static class FolderEndpoints
 {
     public static WebApplication MapFolderEndpoints(this WebApplication app)
     {
-        app.MapPost("/folders", FolderHandlers.CreateFolder);
-        app.MapGet("/folders", FolderHandlers.GetFolders);
-        app.MapPatch("/folders/{folderId}/name", FolderHandlers.RenameFolder);
-        app.MapDelete("/folders/{folderId}", FolderHandlers.DeleteFolder);
-        app.MapPut("/folders/{folderId}/parent", FolderHandlers.MoveFolder);
+        app.MapPost("/folders", FolderHandlers.CreateFolder).RequireAuthorization();
+        app.MapGet("/folders", FolderHandlers.GetFolders).RequireAuthorization();
+        app.MapPatch("/folders/{folderId}/name", FolderHandlers.RenameFolder).RequireAuthorization();
+        app.MapDelete("/folders/{folderId}", FolderHandlers.DeleteFolder).RequireAuthorization();
+        app.MapPut("/folders/{folderId}/parent", FolderHandlers.MoveFolder).RequireAuthorization();
 
         return app;
     }

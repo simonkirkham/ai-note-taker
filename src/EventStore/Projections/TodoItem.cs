@@ -8,4 +8,5 @@ public record TodoItem(
     NoteId NoteId,
     string NoteTitle,
     string Description,
-    DateTimeOffset AddedAt);
+    DateTimeOffset AddedAt,
+    string UserId = "");

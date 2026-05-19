@@ -115,6 +115,7 @@ jobs:
           GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
           GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
           ALLOWED_USER_SUBS: ${{ secrets.ALLOWED_USER_SUBS }}
+          GOOGLE_REFRESH_TOKEN_SSM_PATH: ${{ secrets.GOOGLE_REFRESH_TOKEN_SSM_PATH }}
 
       - name: Extract outputs
         id: outputs
@@ -226,6 +227,7 @@ jobs:
           GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
           GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
           ALLOWED_USER_SUBS: ${{ secrets.ALLOWED_USER_SUBS }}
+          GOOGLE_REFRESH_TOKEN_SSM_PATH: ${{ secrets.GOOGLE_REFRESH_TOKEN_SSM_PATH }}
 
       - name: Extract outputs
         id: outputs

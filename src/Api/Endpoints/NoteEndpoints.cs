@@ -7,27 +7,27 @@ public static class NoteEndpoints
     public static WebApplication MapNoteEndpoints(this WebApplication app)
     {
         app.MapGet("/health", NoteHandlers.Health);
-        app.MapGet("/secret", NoteHandlers.Secret);
-        app.MapPost("/notes", NoteHandlers.CreateNote);
-        app.MapPatch("/notes/{noteId}/title", NoteHandlers.RenameNote);
-        app.MapGet("/notes", NoteHandlers.ListNotes);
-        app.MapGet("/notes/cards", NoteHandlers.GetNoteCards);
-        app.MapPut("/notes/{noteId}/content", NoteHandlers.EditContent);
-        app.MapGet("/notes/{noteId}", NoteHandlers.GetNote);
-        app.MapDelete("/notes/{noteId}", NoteHandlers.DeleteNote);
-        app.MapPatch("/notes/{noteId}/date", NoteHandlers.SetNoteDate);
-        app.MapPost("/notes/{noteId}/tags", NoteHandlers.PostTag);
-        app.MapDelete("/notes/{noteId}/tags/{tag}", NoteHandlers.DeleteTag);
-        app.MapPut("/notes/{noteId}/folder", NoteHandlers.MoveNoteToFolder);
-        app.MapDelete("/notes/{noteId}/folder", NoteHandlers.UnfileNote);
-        app.MapPost("/notes/{noteId}/actions", ActionItemHandlers.AddActionItem);
-        app.MapPost("/notes/{noteId}/actions/{actionId}/complete", ActionItemHandlers.CompleteActionItem);
-        app.MapPost("/notes/{noteId}/actions/{actionId}/reopen", ActionItemHandlers.ReopenActionItem);
-        app.MapDelete("/notes/{noteId}/actions/{actionId}", ActionItemHandlers.DeleteActionItem);
-        app.MapGet("/notes/{noteId}/actions", ActionItemHandlers.GetActions);
-        app.MapGet("/todos", TodoHandlers.GetTodos);
-        app.MapGet("/tags", TagHandlers.GetTags);
-        app.MapPost("/admin/projections/rebuild", AdminHandlers.RebuildProjections);
+        app.MapGet("/secret", NoteHandlers.Secret).RequireAuthorization();
+        app.MapPost("/notes", NoteHandlers.CreateNote).RequireAuthorization();
+        app.MapPatch("/notes/{noteId}/title", NoteHandlers.RenameNote).RequireAuthorization();
+        app.MapGet("/notes", NoteHandlers.ListNotes).RequireAuthorization();
+        app.MapGet("/notes/cards", NoteHandlers.GetNoteCards).RequireAuthorization();
+        app.MapPut("/notes/{noteId}/content", NoteHandlers.EditContent).RequireAuthorization();
+        app.MapGet("/notes/{noteId}", NoteHandlers.GetNote).RequireAuthorization();
+        app.MapDelete("/notes/{noteId}", NoteHandlers.DeleteNote).RequireAuthorization();
+        app.MapPatch("/notes/{noteId}/date", NoteHandlers.SetNoteDate).RequireAuthorization();
+        app.MapPost("/notes/{noteId}/tags", NoteHandlers.PostTag).RequireAuthorization();
+        app.MapDelete("/notes/{noteId}/tags/{tag}", NoteHandlers.DeleteTag).RequireAuthorization();
+        app.MapPut("/notes/{noteId}/folder", NoteHandlers.MoveNoteToFolder).RequireAuthorization();
+        app.MapDelete("/notes/{noteId}/folder", NoteHandlers.UnfileNote).RequireAuthorization();
+        app.MapPost("/notes/{noteId}/actions", ActionItemHandlers.AddActionItem).RequireAuthorization();
+        app.MapPost("/notes/{noteId}/actions/{actionId}/complete", ActionItemHandlers.CompleteActionItem).RequireAuthorization();
+        app.MapPost("/notes/{noteId}/actions/{actionId}/reopen", ActionItemHandlers.ReopenActionItem).RequireAuthorization();
+        app.MapDelete("/notes/{noteId}/actions/{actionId}", ActionItemHandlers.DeleteActionItem).RequireAuthorization();
+        app.MapGet("/notes/{noteId}/actions", ActionItemHandlers.GetActions).RequireAuthorization();
+        app.MapGet("/todos", TodoHandlers.GetTodos).RequireAuthorization();
+        app.MapGet("/tags", TagHandlers.GetTags).RequireAuthorization();
+        app.MapPost("/admin/projections/rebuild", AdminHandlers.RebuildProjections).RequireAuthorization();
 
         return app;
     }

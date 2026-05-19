@@ -23,7 +23,7 @@ public sealed class TagIndexEventHandler(ITagIndexStore store) : IDomainEventHan
             switch (EventDeserializer.Deserialize(envelope))
             {
                 case NoteTagged e:
-                    await store.PutAsync(e.Tag, e.NoteId.Value.ToString("N"), ct).ConfigureAwait(false);
+                    await store.PutAsync(e.Tag, e.NoteId.Value.ToString("N"), envelope.Metadata.UserId ?? "", ct).ConfigureAwait(false);
                     break;
                 case NoteUntagged e:
                     await store.DeleteAsync(e.Tag, e.NoteId.Value.ToString("N"), ct).ConfigureAwait(false);

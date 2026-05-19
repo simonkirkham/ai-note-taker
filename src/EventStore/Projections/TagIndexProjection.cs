@@ -11,7 +11,7 @@ public sealed class TagIndexProjection
         switch (EventDeserializer.Deserialize(envelope))
         {
             case NoteTagged e:
-                _entries.Add(new TagIndexView(e.Tag, e.NoteId.Value.ToString("N")));
+                _entries.Add(new TagIndexView(e.Tag, e.NoteId.Value.ToString("N"), envelope.Metadata.UserId ?? ""));
                 break;
             case NoteUntagged e:
                 _entries.RemoveAll(x => x.Tag == e.Tag && x.NoteId == e.NoteId.Value.ToString("N"));

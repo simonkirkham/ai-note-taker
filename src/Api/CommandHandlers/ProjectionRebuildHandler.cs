@@ -39,7 +39,7 @@ public sealed class ProjectionRebuildHandler(
             .Concat(detail.GetAllDetails().Select(d => detailStore.UpsertAsync(d, ct)))
             .Concat(noteCards.GetAll().Select(c => noteCardListStore.UpsertAsync(c, ct)))
             .Concat(folderProjection.GetAll().Select(f => folderTreeStore.UpsertAsync(f, ct)))
-            .Concat(tagIndex.GetAll().Select(v => tagIndexStore.PutAsync(v.Tag, v.NoteId, ct)));
+            .Concat(tagIndex.GetAll().Select(v => tagIndexStore.PutAsync(v.Tag, v.NoteId, v.UserId, ct)));
 
         await Task.WhenAll(upsertTasks).ConfigureAwait(false);
 

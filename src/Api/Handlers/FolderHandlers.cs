@@ -1,3 +1,4 @@
+using Api.Auth;
 using Api.Contracts;
 using Api.CommandHandlers;
 using Api.Exceptions;
@@ -27,8 +28,11 @@ public static class FolderHandlers
         return Results.Created($"/folders/{folderId.Value}", new { folderId = folderId.Value });
     }
 
-    public static async Task<IResult> RenameFolder(Guid folderId, RenameFolderRequest req, IFolderCommandHandler handler, CancellationToken ct)
+    public static async Task<IResult> RenameFolder(Guid folderId, RenameFolderRequest req, IFolderCommandHandler handler, IFolderTreeStore folderTreeStore, ICurrentUser currentUser, CancellationToken ct)
     {
+        var all = await folderTreeStore.GetAllAsync(ct).ConfigureAwait(false);
+        if (!all.Any(f => f.FolderId == new FolderId(folderId) && f.UserId == currentUser.UserId))
+            return Results.NotFound();
         try
         {
             await handler.HandleAsync(new Domain.Folders.RenameFolder(new FolderId(folderId), req.Name), ct);
@@ -45,8 +49,11 @@ public static class FolderHandlers
         return Results.Ok();
     }
 
-    public static async Task<IResult> DeleteFolder(Guid folderId, IFolderCommandHandler handler, CancellationToken ct)
+    public static async Task<IResult> DeleteFolder(Guid folderId, IFolderCommandHandler handler, IFolderTreeStore folderTreeStore, ICurrentUser currentUser, CancellationToken ct)
     {
+        var all = await folderTreeStore.GetAllAsync(ct).ConfigureAwait(false);
+        if (!all.Any(f => f.FolderId == new FolderId(folderId) && f.UserId == currentUser.UserId))
+            return Results.NotFound();
         try
         {
             await handler.HandleAsync(new Domain.Folders.DeleteFolder(new FolderId(folderId)), ct);
@@ -59,15 +66,23 @@ public static class FolderHandlers
         return Results.NoContent();
     }
 
-    public static async Task<IResult> MoveFolder(Guid folderId, MoveFolderRequest req, IFolderCommandHandler handler, CancellationToken ct)
+    public static async Task<IResult> MoveFolder(Guid folderId, MoveFolderRequest req, IFolderCommandHandler handler, IFolderTreeStore folderTreeStore, ICurrentUser currentUser, CancellationToken ct)
     {
+        var all = await folderTreeStore.GetAllAsync(ct).ConfigureAwait(false);
+        var sourceFolderId = new FolderId(folderId);
+        if (!all.Any(f => f.FolderId == sourceFolderId && f.UserId == currentUser.UserId))
+            return Results.NotFound();
+
         FolderId? newParentFolderId = req.ParentFolderId.HasValue
             ? new FolderId(req.ParentFolderId.Value)
             : null;
 
+        if (newParentFolderId.HasValue && !all.Any(f => f.FolderId == newParentFolderId && f.UserId == currentUser.UserId))
+            return Results.NotFound();
+
         try
         {
-            await handler.HandleAsync(new Domain.Folders.MoveFolder(new FolderId(folderId), newParentFolderId), ct);
+            await handler.HandleAsync(new Domain.Folders.MoveFolder(sourceFolderId, newParentFolderId), ct);
         }
         catch (CycleDetectedException ex)
         {
@@ -81,10 +96,11 @@ public static class FolderHandlers
         return Results.Ok();
     }
 
-    public static async Task<IResult> GetFolders(IFolderTreeStore store, CancellationToken ct)
+    public static async Task<IResult> GetFolders(IFolderTreeStore store, ICurrentUser currentUser, CancellationToken ct)
     {
         var all = await store.GetAllAsync(ct).ConfigureAwait(false);
-        var tree = BuildTree(all, null);
+        var userFolders = all.Where(f => f.UserId == currentUser.UserId).ToList();
+        var tree = BuildTree(userFolders, null);
         return Results.Ok(new { folders = tree });
     }
 

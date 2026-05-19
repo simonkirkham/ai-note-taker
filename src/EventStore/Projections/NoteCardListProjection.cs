@@ -17,7 +17,8 @@ public sealed class NoteCardListProjection
             case NoteCreated e:
                 _cards[e.NoteId] = new NoteCardView(e.NoteId, string.Empty, string.Empty,
                     Array.Empty<NoteCardActionItem>(), null,
-                    envelope.OccurredAt, envelope.OccurredAt, false);
+                    envelope.OccurredAt, envelope.OccurredAt, false,
+                    UserId: envelope.Metadata.UserId ?? "");
                 break;
             case NoteRenamed e when _cards.TryGetValue(e.NoteId, out var c):
                 _cards[e.NoteId] = c with { Title = e.NewTitle, LastModifiedAt = envelope.OccurredAt };

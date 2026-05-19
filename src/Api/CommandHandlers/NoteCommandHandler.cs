@@ -3,6 +3,7 @@ using Domain;
 using Domain.Notes;
 using EventStore;
 using EventStore.Projections;
+using Api.Auth;
 using Api.Exceptions;
 
 namespace Api.CommandHandlers;
@@ -13,7 +14,8 @@ public sealed class NoteCommandHandler(
     INoteDetailStore noteDetailStore,
     ITodoListStore todoListStore,
     INoteCardListStore noteCardListStore,
-    ITagIndexStore tagIndexStore) : INoteCommandHandler
+    ITagIndexStore tagIndexStore,
+    ICurrentUser currentUser) : INoteCommandHandler
 {
     private const int InitialEventVersion = 1;
 
@@ -36,7 +38,7 @@ public sealed class NoteCommandHandler(
 
     private async Task PersistAsync(string streamId, NoteId noteId, IReadOnlyList<EventEnvelope> history, IReadOnlyList<IDomainEvent> newEvents, CancellationToken ct)
     {
-        var envelopes = ToEnvelopes(streamId, newEvents);
+        var envelopes = ToEnvelopes(streamId, newEvents, currentUser.UserId);
         await store.AppendAsync(streamId, history.Count, envelopes, ct).ConfigureAwait(false);
         await UpdateProjectionAsync(noteId, history, envelopes, ct).ConfigureAwait(false);
     }
@@ -89,7 +91,7 @@ public sealed class NoteCommandHandler(
             switch (EventDeserializer.Deserialize(envelope))
             {
                 case NoteTagged e:
-                    await tagIndexStore.PutAsync(e.Tag, e.NoteId.Value.ToString("N"), ct).ConfigureAwait(false);
+                    await tagIndexStore.PutAsync(e.Tag, e.NoteId.Value.ToString("N"), currentUser.UserId, ct).ConfigureAwait(false);
                     break;
                 case NoteUntagged e:
                     await tagIndexStore.DeleteAsync(e.Tag, e.NoteId.Value.ToString("N"), ct).ConfigureAwait(false);
@@ -118,7 +120,8 @@ public sealed class NoteCommandHandler(
                 case NoteCreated:
                     card = new NoteCardView(noteId, string.Empty, string.Empty,
                         Array.Empty<NoteCardActionItem>(), null,
-                        envelope.OccurredAt, envelope.OccurredAt, false);
+                        envelope.OccurredAt, envelope.OccurredAt, false,
+                        UserId: envelope.Metadata.UserId ?? "");
                     break;
                 case NoteRenamed e when card is not null:
                     card = card with { Title = e.NewTitle, LastModifiedAt = envelope.OccurredAt };
@@ -157,7 +160,7 @@ public sealed class NoteCommandHandler(
         return note;
     }
 
-    private static List<EventEnvelope> ToEnvelopes(string streamId, IReadOnlyList<IDomainEvent> events) =>
+    private static List<EventEnvelope> ToEnvelopes(string streamId, IReadOnlyList<IDomainEvent> events, string userId) =>
         events.Select(e =>
         {
             // The domain aggregate emits ContentEdited; the infrastructure layer persists it as ContentEditedV2.
@@ -169,6 +172,6 @@ public sealed class NoteCommandHandler(
             return new EventEnvelope(
                 StreamId: streamId, SequenceNumber: 0, EventType: type, EventVersion: version,
                 OccurredAt: DateTimeOffset.UtcNow, Payload: payload,
-                Metadata: new EventMetadata(Guid.NewGuid(), null, null, null));
+                Metadata: new EventMetadata(Guid.NewGuid(), userId, null, null));
         }).ToList();
 }

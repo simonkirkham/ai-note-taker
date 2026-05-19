@@ -1,6 +1,7 @@
 using Domain.ActionItems;
 using Domain.Notes;
 using EventStore.Projections;
+using Api.Auth;
 using Api.Contracts;
 using Api.CommandHandlers;
 using Api.Exceptions;
@@ -16,8 +17,12 @@ public static class ActionItemHandlers
     public static async Task<IResult> AddActionItem(
         Guid noteId,
         AddActionItemRequest req,
-        IActionItemCommandHandler handler)
+        IActionItemCommandHandler handler,
+        INoteDetailStore noteDetailStore,
+        ICurrentUser currentUser)
     {
+        var detail = await noteDetailStore.GetAsync(new NoteId(noteId));
+        if (detail is null || detail.UserId != currentUser.UserId) return Results.NotFound();
         var actionId = req.ActionId is { } id && id != Guid.Empty
             ? new ActionId(id)
             : new ActionId(Guid.NewGuid());
@@ -33,8 +38,12 @@ public static class ActionItemHandlers
     public static async Task<IResult> CompleteActionItem(
         Guid noteId,
         Guid actionId,
-        IActionItemCommandHandler handler)
+        IActionItemCommandHandler handler,
+        INoteDetailStore noteDetailStore,
+        ICurrentUser currentUser)
     {
+        var detail = await noteDetailStore.GetAsync(new NoteId(noteId));
+        if (detail is null || detail.UserId != currentUser.UserId) return Results.NotFound();
         try
         {
             await handler.HandleAsync(new CompleteActionItemCmd(new ActionId(actionId), DateTimeOffset.UtcNow));
@@ -47,8 +56,12 @@ public static class ActionItemHandlers
     public static async Task<IResult> ReopenActionItem(
         Guid noteId,
         Guid actionId,
-        IActionItemCommandHandler handler)
+        IActionItemCommandHandler handler,
+        INoteDetailStore noteDetailStore,
+        ICurrentUser currentUser)
     {
+        var detail = await noteDetailStore.GetAsync(new NoteId(noteId));
+        if (detail is null || detail.UserId != currentUser.UserId) return Results.NotFound();
         try
         {
             await handler.HandleAsync(new ReopenActionItemCmd(new ActionId(actionId), DateTimeOffset.UtcNow));
@@ -61,8 +74,12 @@ public static class ActionItemHandlers
     public static async Task<IResult> DeleteActionItem(
         Guid noteId,
         Guid actionId,
-        IActionItemCommandHandler handler)
+        IActionItemCommandHandler handler,
+        INoteDetailStore noteDetailStore,
+        ICurrentUser currentUser)
     {
+        var detail = await noteDetailStore.GetAsync(new NoteId(noteId));
+        if (detail is null || detail.UserId != currentUser.UserId) return Results.NotFound();
         try
         {
             await handler.HandleAsync(new DeleteActionItemCmd(new ActionId(actionId), DateTimeOffset.UtcNow));
@@ -72,10 +89,10 @@ public static class ActionItemHandlers
         return Results.NoContent();
     }
 
-    public static async Task<IResult> GetActions(Guid noteId, INoteDetailStore noteDetailStore, INoteActionsStore store)
+    public static async Task<IResult> GetActions(Guid noteId, INoteDetailStore noteDetailStore, INoteActionsStore store, ICurrentUser currentUser)
     {
         var detail = await noteDetailStore.GetAsync(new NoteId(noteId));
-        if (detail is null) return Results.NotFound();
+        if (detail is null || detail.UserId != currentUser.UserId) return Results.NotFound();
 
         var view = await store.QueryByNoteAsync(new NoteId(noteId));
         return Results.Ok(new
