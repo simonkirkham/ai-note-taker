@@ -1,3 +1,5 @@
+using System.Net.Http.Headers;
+
 namespace Api.Smoke;
 
 public sealed class DeployedApiFixture : IDisposable
@@ -11,6 +13,11 @@ public sealed class DeployedApiFixture : IDisposable
                 "API_BASE_URL is not set. This suite requires a deployed API.");
 
         Client = new HttpClient { BaseAddress = new Uri(baseUrl.TrimEnd('/') + "/") };
+
+        var token = Environment.GetEnvironmentVariable("SMOKE_TEST_TOKEN");
+        if (!string.IsNullOrEmpty(token))
+            Client.DefaultRequestHeaders.Authorization =
+                new AuthenticationHeaderValue("Bearer", token);
     }
 
     public void Dispose() => Client.Dispose();

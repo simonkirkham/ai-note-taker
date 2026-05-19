@@ -143,12 +143,26 @@ jobs:
         run: aws cloudfront create-invalidation --distribution-id ${{
           steps.outputs.outputs.distribution-id }} --paths "/*"
 
+      - name: Get smoke test token
+        id: smoke-token
+        run: |
+          REFRESH_TOKEN=$(aws ssm get-parameter \
+            --name "${{ secrets.GOOGLE_REFRESH_TOKEN_SSM_PATH }}" \
+            --with-decryption --query 'Parameter.Value' --output text)
+          RESPONSE=$(curl -s -X POST "https://oauth2.googleapis.com/token" \
+            -d "client_id=${{ secrets.GOOGLE_CLIENT_ID }}" \
+            -d "client_secret=${{ secrets.GOOGLE_CLIENT_SECRET }}" \
+            -d "refresh_token=$REFRESH_TOKEN" \
+            -d "grant_type=refresh_token")
+          echo "id_token=$(echo "$RESPONSE" | jq -r '.id_token')" >> "$GITHUB_OUTPUT"
+
       - name: Acceptance specs
         run: dotnet test tests/Api.Smoke/Api.Smoke.csproj
         env:
           API_BASE_URL: ${{ steps.outputs.outputs.api-url }}
           FRONTEND_URL: ${{ steps.outputs.outputs.frontend-url }}
           DYNAMO_TIMEOUT_SECONDS: "3"
+          SMOKE_TEST_TOKEN: ${{ steps.smoke-token.outputs.id_token }}
 
       - name: Build E2E project
         run: dotnet build tests/Browser.E2E/Browser.E2E.csproj -c Release
@@ -255,9 +269,23 @@ jobs:
         run: aws cloudfront create-invalidation --distribution-id ${{
           steps.outputs.outputs.distribution-id }} --paths "/*"
 
+      - name: Get smoke test token
+        id: smoke-token
+        run: |
+          REFRESH_TOKEN=$(aws ssm get-parameter \
+            --name "${{ secrets.GOOGLE_REFRESH_TOKEN_SSM_PATH }}" \
+            --with-decryption --query 'Parameter.Value' --output text)
+          RESPONSE=$(curl -s -X POST "https://oauth2.googleapis.com/token" \
+            -d "client_id=${{ secrets.GOOGLE_CLIENT_ID }}" \
+            -d "client_secret=${{ secrets.GOOGLE_CLIENT_SECRET }}" \
+            -d "refresh_token=$REFRESH_TOKEN" \
+            -d "grant_type=refresh_token")
+          echo "id_token=$(echo "$RESPONSE" | jq -r '.id_token')" >> "$GITHUB_OUTPUT"
+
       - name: Acceptance specs
         run: dotnet test tests/Api.Smoke/Api.Smoke.csproj
         env:
           API_BASE_URL: ${{ steps.outputs.outputs.api-url }}
           FRONTEND_URL: ${{ steps.outputs.outputs.frontend-url }}
           DYNAMO_TIMEOUT_SECONDS: "3"
+          SMOKE_TEST_TOKEN: ${{ steps.smoke-token.outputs.id_token }}
