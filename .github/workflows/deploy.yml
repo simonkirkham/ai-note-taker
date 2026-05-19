@@ -158,7 +158,14 @@ jobs:
             -d "client_secret=${{ secrets.GOOGLE_CLIENT_SECRET }}" \
             -d "refresh_token=$REFRESH_TOKEN" \
             -d "grant_type=refresh_token")
-          echo "id_token=$(echo "$RESPONSE" | jq -r '.id_token')" >> "$GITHUB_OUTPUT"
+          ID_TOKEN=$(echo "$RESPONSE" | jq -r '.id_token // empty')
+          if [ -z "$ID_TOKEN" ]; then
+            ERROR=$(echo "$RESPONSE" | jq -r '.error // "unknown"')
+            echo "::warning::Google token exchange failed (error: $ERROR) — smoke tests requiring auth will be skipped."
+            echo "id_token=" >> "$GITHUB_OUTPUT"
+          else
+            echo "id_token=$ID_TOKEN" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Acceptance specs
         run: dotnet test tests/Api.Smoke/Api.Smoke.csproj
@@ -289,7 +296,14 @@ jobs:
             -d "client_secret=${{ secrets.GOOGLE_CLIENT_SECRET }}" \
             -d "refresh_token=$REFRESH_TOKEN" \
             -d "grant_type=refresh_token")
-          echo "id_token=$(echo "$RESPONSE" | jq -r '.id_token')" >> "$GITHUB_OUTPUT"
+          ID_TOKEN=$(echo "$RESPONSE" | jq -r '.id_token // empty')
+          if [ -z "$ID_TOKEN" ]; then
+            ERROR=$(echo "$RESPONSE" | jq -r '.error // "unknown"')
+            echo "::warning::Google token exchange failed (error: $ERROR) — smoke tests requiring auth will be skipped."
+            echo "id_token=" >> "$GITHUB_OUTPUT"
+          else
+            echo "id_token=$ID_TOKEN" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Acceptance specs
         run: dotnet test tests/Api.Smoke/Api.Smoke.csproj
