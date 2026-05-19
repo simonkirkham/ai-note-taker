@@ -580,3 +580,18 @@ If no agent ran unexpectedly high: write `None — slice ran within expected ran
 **Optimisation suggestions:**
 - **Pip (–60 000):** Three of the seven failures (empty-string guards, AllowedMethods, SPA error responses) are pre-emptable by Breaker: the CDK skill checklist and infra-assertions spec could mandate `string.IsNullOrEmpty()` on all optional props, `AllowedMethods.ALLOW_ALL` on API behaviors, and a SPA-routing function rather than error responses. Catching these before the first deploy would eliminate 3–4 fix cycles.
 - **Pip (–20 000):** The `SaveAndReturnAsync` race condition was a pre-existing gap in the page object, not introduced by this slice. A page-object review checklist (every click that triggers an API call must await a `WaitForResponseAsync`) would surface this class of issue at Breaker time rather than during E2E debugging.
+
+---
+
+## Slice 8-A — CDK + CORS wiring
+
+| Agent     | ~Tokens    |
+| --------- | ---------- |
+| Scout     | —          |
+| Breaker   | 10 000     |
+| Pip       | 20 000     |
+| Hawk      | 65 000     |
+| Scribe    | 4 000      |
+| **Total** | **~99 000** |
+
+**Why:** Two Hawk review rounds — the spec contained a CDK template assertion for CORS that assumed API Gateway manages CORS, but the stack delegates CORS to ASP.NET Core middleware. Hawk caught the mismatch on the first review; a fix commit and second review added ~25k tokens.
