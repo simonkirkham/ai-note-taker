@@ -28,7 +28,7 @@ public sealed class ErrorResponsesSpec(DeployedApiFixture fixture)
     [Fact]
     public async Task PatchDate_nonexistent_note_returns_404()
     {
-        var body = new StringContent("{\"date\":null}", Encoding.UTF8, "application/json");
+        var body = new StringContent("{\"date\":\"2099-01-01\"}", Encoding.UTF8, "application/json");
         var response = await fixture.Client.PatchAsync($"notes/{Guid.NewGuid()}/date", body);
 
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
