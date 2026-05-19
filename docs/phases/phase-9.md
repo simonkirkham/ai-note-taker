@@ -63,29 +63,121 @@ Each slice is a complete vertical: domain, API, projections, and frontend wired 
 
 ## Slice 9-A — UX prototype
 
-**Status:** Not Started
+**Status:** Done — prototype approved. See `web/src/prototype/REFERENCE.md` on branch `prototype/9-meetings`.
 
-**Value:** Validate the `<MeetingsSection />` layout on the home screen before writing any production code. The home screen already has three sections (TodoSection, tag filter, NoteCards); adding a fourth is a genuine UX uncertainty.
+**Prototype branch:** `prototype/9-meetings` (never merged)
 
-**This is a prototype slice.** Work happens on branch `prototype/9-meetings`. No real backend — hardcode a fake `getTodaysMeetings()` response in `api.ts`. Code is quick-and-dirty; it will be thrown away. On human approval the exit procedure updates this doc with confirmed GWT scenarios and UX patterns. Real implementation (9-B onward) starts from scratch.
+---
 
-**What the prototype must demonstrate:**
+### Confirmed UX patterns
 
-- `<MeetingsSection />` sits on the home screen alongside `<TodoSection />` and the note card grid. Validate position and layout (panel, list, row?).
-- Meeting card shows: title, start/end time.
-- "Create Note" button on a meeting with no linked note (fake `linkedNoteId: null`).
-- "Open Note" button on a meeting that has a linked note (fake a non-null `linkedNoteId`).
-- "Note for next occurrence" button on a recurring meeting (fake `isRecurring: true`, `hasNextOccurrenceNote: false`).
-- "Open next occurrence note" when `hasNextOccurrenceNote: true`.
-- "Cannot connect to calendar" error state when fake data returns null.
-- Notification permission request banner (mock — no actual `Notification` call needed).
+**Layout:** Home screen gains a right panel (320px). Left column holds tag filter + note cards. Right panel holds `<MeetingsSection />` (top) and `<TodoSection />` (bottom). Right panel is hidden when navigating into a folder. `<TodoSection />` moves out of the main flow entirely.
 
-**Prototype confirmed items (filled in after approval):**
+**Notification banner (N1):** Full-width blue bar above the entire app shell — outside `app-layout`, spanning sidebar + main + panel. Shown only when `Notification.permission === 'default'`. Contains "Enable" button (triggers `requestPermission()`) and "✕" dismiss.
 
-- *Component layout — TBD*
-- *Meeting card design — TBD*
-- *Recurring meeting button placement — TBD*
-- *Error state treatment — TBD*
+**Meeting card (Style 3):** Bordered card per meeting. Title prominent top-left. Time badge top-right (muted, small). One or two action rows in the footer.
+
+**Action rows (R2):** Non-recurring meetings: single "Today" row with one action button. Recurring meetings: two rows separated by a hairline — "Today" on row 1, "↻ Next · [date]" on row 2. Next row hidden for non-recurring or when `nextOccurrenceDate` is null.
+
+**Button states:**
+- `linkedNoteId === null` → primary "Create Note" (optimistically flips to "Open Note ↗" on click)
+- `linkedNoteId !== null` → "Open Note ↗" (navigates to note)
+- `hasNextOccurrenceNote === false` → "Create Note" on next row
+- `hasNextOccurrenceNote === true` → "Open Note ↗" on next row
+
+**Error state (E1):** Muted centred column — faint calendar icon + "Cannot connect to calendar" + small "Retry" link. No red/amber — intentionally low noise.
+
+**Empty state (M1):** Centred column — faint calendar icon + "No meetings today".
+
+---
+
+### Given/When/Then scenarios (confirmed by prototype)
+
+```
+Scenario: Meetings panel appears to the right of the note grid on Home
+  Given I am on the home screen
+  When  the page loads
+  Then  a right panel appears beside the note card grid
+  And   the panel contains a "Today's Meetings" section above "To Do"
+  And   the note card grid fills the remaining width
+
+Scenario: Meetings panel is hidden inside a folder
+  Given I have navigated into a folder
+  When  I view the folder contents
+  Then  the right panel is not visible
+  And   the note card grid fills the full main area
+
+Scenario: Meeting card shows title, time, and Create Note button
+  Given today's meetings include "1:1 with Sam" at 09:00–09:30
+  And   that meeting has no linked note
+  When  I view the home screen
+  Then  a card shows the title "1:1 with Sam" and time "09:00–09:30"
+  And   a "Create Note" button appears in the card footer
+
+Scenario: Meeting card with a linked note shows Open Note
+  Given a meeting has a linked note
+  When  I view the home screen
+  Then  the meeting card shows "Open Note ↗" instead of "Create Note"
+
+Scenario: Clicking Create Note optimistically updates the card
+  Given a meeting has no linked note
+  When  I click "Create Note"
+  Then  the button immediately changes to "Open Note ↗" without waiting for the API
+
+Scenario: Recurring meeting shows a next-occurrence row
+  Given a recurring meeting "Design Review" with nextOccurrenceDate "Tue 27 May"
+  And   hasNextOccurrenceNote is false
+  When  I view the home screen
+  Then  the card footer has two rows separated by a hairline
+  And   row 1 shows "Today" with a "Create Note" button
+  And   row 2 shows "↻ Next · Tue 27 May" with a "Create Note" button
+
+Scenario: Recurring meeting with both notes shows Open Note on both rows
+  Given a recurring meeting where linkedNoteId is set and hasNextOccurrenceNote is true
+  When  I view the home screen
+  Then  row 1 shows "Open Note ↗"
+  And   row 2 shows "Open Note ↗"
+
+Scenario: Non-recurring meeting has no next-occurrence row
+  Given a non-recurring meeting
+  When  I view the home screen
+  Then  the card footer has only one row with no hairline separator
+
+Scenario: Calendar unavailable shows muted error state
+  Given the calendar API returns an error
+  When  I view the home screen
+  Then  the meetings section shows a faint calendar icon and "Cannot connect to calendar"
+  And   a small "Retry" link is visible
+  And   the rest of the home screen loads normally
+
+Scenario: No meetings today shows empty state
+  Given today's meetings list is empty
+  When  I view the home screen
+  Then  the meetings section shows a faint calendar icon and "No meetings today"
+  And   the To Do section below is unaffected
+
+Scenario: Notification permission banner shown when permission is default
+  Given the browser notification permission is "default"
+  When  I open the home screen
+  Then  a full-width blue bar appears above the app header
+  And   it contains an "Enable" button and a "✕" dismiss button
+
+Scenario: Banner disappears after clicking Enable
+  Given the notification banner is visible
+  When  I click "Enable"
+  Then  the browser permission prompt fires
+  And   the banner is dismissed regardless of the user's permission choice
+
+Scenario: Banner disappears after clicking dismiss
+  Given the notification banner is visible
+  When  I click "✕"
+  Then  the banner disappears without requesting notification permission
+
+Scenario: Banner is not shown when permission is already granted or denied
+  Given the browser notification permission is "granted" or "denied"
+  When  I open the home screen
+  Then  no notification banner is shown
+```
 
 ---
 
