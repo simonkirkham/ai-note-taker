@@ -50,7 +50,7 @@ export function AuthProvider({
     sessionStorage.removeItem('pkce_state')
     window.history.replaceState({}, '', window.location.pathname)
 
-    exchangeCode(clientId, window.location.origin, code, verifier)
+    exchangeCode(window.location.origin, code, verifier)
       .then(({ id_token }) => {
         setToken(id_token)
         setIdToken(id_token)

@@ -111,6 +111,7 @@ public sealed class NoteTakerStack : Stack
                 // Always present even when unset so runtime code reads "" rather than throwing on missing key.
                 // Use string.IsNullOrEmpty() on the consumer side; the key itself is always there.
                 ["GOOGLE_CLIENT_ID"] = props.GoogleClientId ?? "",
+                ["GOOGLE_CLIENT_SECRET"] = props.GoogleClientSecret ?? "",
                 ["ALLOWED_USER_SUBS"] = props.AllowedUserSubs ?? ""
             }
         });
