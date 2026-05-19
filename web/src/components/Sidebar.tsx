@@ -143,7 +143,12 @@ export default function Sidebar({
         )}
       </div>
       {onSignOut && (
-        <button className="sidebar-sign-out" onClick={onSignOut}>Sign out</button>
+        <button
+          className="sidebar-sign-out"
+          data-testid="sign-out-button"
+          aria-label="Sign out"
+          onClick={onSignOut}
+        >Sign out</button>
       )}
     </nav>
   );

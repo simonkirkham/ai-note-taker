@@ -68,6 +68,37 @@ describe('Sidebar', () => {
     expect(onFolderSelect).toHaveBeenCalledWith('f-1', expect.any(Array))
   })
 
+  it('does not render sign-out button when onSignOut is not provided', () => {
+    renderSidebar()
+    expect(screen.queryByTestId('sign-out-button')).not.toBeInTheDocument()
+  })
+
+  it('renders sign-out button and calls onSignOut when clicked', async () => {
+    const onSignOut = vi.fn()
+    render(
+      <Sidebar
+        open={true}
+        onCreate={noop}
+        folders={[]}
+        activeFolderId={undefined}
+        onFolderSelect={noop}
+        onCreateFolder={noop}
+        onRenameFolder={noop}
+        onDeleteFolder={noop}
+        onCreateChildFolder={noop}
+        onDropNote={noop}
+        onHome={noop}
+        onUnfiledSelect={noop}
+        isUnfiledActive={false}
+        onDropToUnfiled={noop}
+        onPreview={noop}
+        onSignOut={onSignOut}
+      />,
+    )
+    await userEvent.click(screen.getByTestId('sign-out-button'))
+    expect(onSignOut).toHaveBeenCalledOnce()
+  })
+
   it('calls onPreview with unfiled sentinel when » is clicked', async () => {
     const onPreview = vi.fn()
     render(
