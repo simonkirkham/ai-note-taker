@@ -595,3 +595,23 @@ If no agent ran unexpectedly high: write `None — slice ran within expected ran
 | **Total** | **~99 000** |
 
 **Why:** Two Hawk review rounds — the spec contained a CDK template assertion for CORS that assumed API Gateway manages CORS, but the stack delegates CORS to ASP.NET Core middleware. Hawk caught the mismatch on the first review; a fix commit and second review added ~25k tokens.
+
+---
+
+## Slice 8-B — Google Sign-In on the frontend
+
+| Agent     | ~Tokens     |
+| --------- | ----------- |
+| Scout     | —           |
+| Breaker   | 12 000      |
+| Pip       | 65 000      |
+| Hawk      | 70 000      |
+| Scribe    | 8 000       |
+| **Total** | **~155 000** |
+
+**Why:** Two Hawk review rounds (~40k + ~29k). Round 1 found a missing OAuth `state` CSRF parameter and a silent `.catch(() => {})` leaving users stuck after a failed token exchange. Both are subtle security/UX gaps not covered by the spec scenarios; Pip fixed in a single commit and Hawk approved on round 2. A post-merge E2E deploy failure required a third hotfix PR (#66) — the frontend auth gate blocked all E2E journeys because `VITE_GOOGLE_CLIENT_ID` is unset in the test environment. Three Hawk reviews total.
+
+**Optimisation suggestions:**
+- **Hawk (–25 000):** The missing `state` parameter and the E2E bypass are both standard PKCE/test-environment checklist items. Adding them to Breaker's auth spec template would catch both before the PR opens and collapse three Hawk rounds to one.
+- **Pip (–10 000):** FolderNavigation and FolderMutations tests failed because `render(<App />)` without an `AuthProvider` returned the sign-in screen. Breaker's spec should explicitly list "wrap all existing `render(<App />)` calls in an `AuthProvider initialToken=...`" when a slice adds an auth gate to App.
+- **Pip (–8 000):** The E2E bypass (no-auth when `VITE_GOOGLE_CLIENT_ID` is empty) should be in the 8-B spec, not discovered at deploy time. A "test environment compatibility" section in the spec prevents the post-merge hotfix cycle.

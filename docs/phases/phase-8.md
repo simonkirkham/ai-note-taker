@@ -98,7 +98,7 @@ Scenario: Lambda has ALLOWED_USER_SUBS env var
 
 ## Slice 8-B — Google Sign-In on the frontend
 
-**Status:** Not Started
+**Status:** Done
 
 **Value:** The user can sign in with their Google account. The ID token is stored in memory and forwarded as a bearer token on every API request. An unauthenticated user sees only the sign-in screen.
 
@@ -148,11 +148,11 @@ Scenario: Sign out clears the session
 
 **Acceptance criteria:**
 
-- [ ] Unauthenticated users see only the sign-in screen
-- [ ] Sign-in completes via PKCE; ID token stored in memory only
-- [ ] All API calls include `Authorization: Bearer <idToken>`
-- [ ] Sign-out clears the token and returns to the sign-in screen
-- [ ] Token never written to `localStorage` or `sessionStorage`
+- [x] Unauthenticated users see only the sign-in screen
+- [x] Sign-in completes via PKCE; ID token stored in memory only
+- [x] All API calls include `Authorization: Bearer <idToken>`
+- [x] Sign-out clears the token and returns to the sign-in screen
+- [x] Token never written to `localStorage` or `sessionStorage`
 
 ---
 
