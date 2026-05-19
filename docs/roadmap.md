@@ -147,7 +147,7 @@ Slices and acceptance criteria: [docs/phases/phase-7.8.md](phases/phase-7.8.md)
 
 Slices and acceptance criteria: [docs/phases/phase-7.9.md](phases/phase-7.9.md)
 
-## Phase 8 — Google Sign-In (multi-user auth)
+## Phase 8 — Google Sign-In (multi-user auth) _(In Progress)_
 
 - Google Sign-In on the frontend (PKCE flow; ID token stored in memory)
 - JWT Bearer verification in the API (Google OIDC; reject unauthenticated requests)

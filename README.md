@@ -152,11 +152,19 @@ cdk deploy
 | `AWS_DEFAULT_REGION`              | `us-east-1`                       | Region sent to DynamoDB Local                                     |
 | `DYNAMO_TIMEOUT_SECONDS`          | _(not set — uses default of 5)_   | Override DynamoDB HTTP timeout in seconds                         |
 
+**Deployment secrets** — set as GitHub Actions secrets (optional; Lambda env vars default to `""` when unset):
+
+| Secret                | Description                                                              |
+| --------------------- | ------------------------------------------------------------------------ |
+| `GOOGLE_CLIENT_ID`    | Google OAuth2 client ID; injected into Lambda and Vite build             |
+| `ALLOWED_USER_SUBS`   | Comma-separated Google `sub` values allowed to sign in (empty = no auth) |
+
 **Frontend** — set in `web/.env.local` (copy from `web/.env.local.example` on first run):
 
-| Variable        | Local value               | Description                        |
-| --------------- | ------------------------- | ---------------------------------- |
-| `VITE_API_URL`  | `http://localhost:5000`   | Base URL the frontend calls for API requests |
+| Variable                | Local value               | Description                                        |
+| ----------------------- | ------------------------- | -------------------------------------------------- |
+| `VITE_API_URL`          | `http://localhost:5000`   | Base URL the frontend calls for API requests       |
+| `VITE_GOOGLE_CLIENT_ID` | _(empty)_                 | Google OAuth2 client ID for PKCE sign-in flow      |
 
 **Tests** — set in CI or manually before running post-deploy test suites:
 
