@@ -3,6 +3,7 @@ using Domain.Folders;
 using Domain.Notes;
 using EventStore;
 using EventStore.Projections;
+using Api.Auth;
 using Api.Exceptions;
 using Api.Utilities;
 
@@ -12,7 +13,8 @@ public sealed class FolderCommandHandler(
     IEventStore store,
     IFolderTreeStore folderTreeStore,
     INoteCardListStore noteCardListStore,
-    INoteCommandHandler noteCommandHandler) : IFolderCommandHandler
+    INoteCommandHandler noteCommandHandler,
+    ICurrentUser currentUser) : IFolderCommandHandler
 {
     public async Task<FolderId> HandleAsync(CreateFolder cmd, CancellationToken ct = default)
     {
@@ -79,7 +81,7 @@ public sealed class FolderCommandHandler(
     private async Task UnfileNotesInFolderAsync(FolderId folderId, CancellationToken ct)
     {
         var allCards = await noteCardListStore.QueryAllAsync(ct).ConfigureAwait(false);
-        var notesInFolder = allCards.Where(c => c.FolderId == folderId && !c.Deleted).ToList();
+        var notesInFolder = allCards.Where(c => c.FolderId == folderId && !c.Deleted && c.UserId == currentUser.UserId).ToList();
         foreach (var card in notesInFolder)
             await noteCommandHandler.HandleAsync(new UnfileNote(card.NoteId), ct).ConfigureAwait(false);
     }
@@ -110,7 +112,7 @@ public sealed class FolderCommandHandler(
             {
                 case FolderCreated e:
                     await folderTreeStore.UpsertAsync(
-                        new FolderTreeView(e.FolderId, e.Name, e.ParentFolderId, envelope.OccurredAt), ct)
+                        new FolderTreeView(e.FolderId, e.Name, e.ParentFolderId, envelope.OccurredAt, envelope.Metadata.UserId ?? ""), ct)
                         .ConfigureAwait(false);
                     break;
                 case FolderRenamed e:
@@ -165,6 +167,6 @@ public sealed class FolderCommandHandler(
         return folder;
     }
 
-    private static List<EventEnvelope> ToEnvelopes(string streamId, IReadOnlyList<IDomainEvent> events) =>
-        EventEnvelopeFactory.CreateEnvelopes(streamId, events);
+    private List<EventEnvelope> ToEnvelopes(string streamId, IReadOnlyList<IDomainEvent> events) =>
+        EventEnvelopeFactory.CreateEnvelopes(streamId, events, currentUser.UserId);
 }

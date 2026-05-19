@@ -1,6 +1,7 @@
 using Domain.ActionItems;
 using Domain.Notes;
 using EventStore.Projections;
+using Api.Auth;
 using Api.Contracts;
 using Api.CommandHandlers;
 using Api.Exceptions;
@@ -72,10 +73,10 @@ public static class ActionItemHandlers
         return Results.NoContent();
     }
 
-    public static async Task<IResult> GetActions(Guid noteId, INoteDetailStore noteDetailStore, INoteActionsStore store)
+    public static async Task<IResult> GetActions(Guid noteId, INoteDetailStore noteDetailStore, INoteActionsStore store, ICurrentUser currentUser)
     {
         var detail = await noteDetailStore.GetAsync(new NoteId(noteId));
-        if (detail is null) return Results.NotFound();
+        if (detail is null || detail.UserId != currentUser.UserId) return Results.NotFound();
 
         var view = await store.QueryByNoteAsync(new NoteId(noteId));
         return Results.Ok(new

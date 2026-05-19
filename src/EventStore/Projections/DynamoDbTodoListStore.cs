@@ -20,7 +20,8 @@ public sealed class DynamoDbTodoListStore(IAmazonDynamoDB dynamo, string tableNa
                 ["NoteId"] = new() { S = item.NoteId.Value.ToString() },
                 ["NoteTitle"] = new() { S = item.NoteTitle },
                 ["Description"] = new() { S = item.Description },
-                ["AddedAt"] = new() { S = item.AddedAt.ToString("O") }
+                ["AddedAt"] = new() { S = item.AddedAt.ToString("O") },
+                ["UserId"] = new() { S = item.UserId }
             }
         }, ct).ConfigureAwait(false);
     }
@@ -93,7 +94,8 @@ public sealed class DynamoDbTodoListStore(IAmazonDynamoDB dynamo, string tableNa
                 new NoteId(Guid.Parse(row["NoteId"].S)),
                 row["NoteTitle"].S,
                 row["Description"].S,
-                DateTimeOffset.Parse(row["AddedAt"].S))));
+                DateTimeOffset.Parse(row["AddedAt"].S),
+                row.TryGetValue("UserId", out var uidAttr) ? uidAttr.S : "")));
 
             lastKey = scan.LastEvaluatedKey?.Count > 0 ? scan.LastEvaluatedKey : null;
         }

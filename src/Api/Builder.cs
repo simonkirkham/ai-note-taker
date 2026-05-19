@@ -1,10 +1,12 @@
 using Amazon.DynamoDBv2;
 using EventStore;
 using EventStore.Projections;
+using Api.Auth;
 using Api.CommandHandlers;
 using Api.EventHandlers;
 using Api.HealthChecks;
 using Api.Projections;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
 
 namespace Api;
 
@@ -14,6 +16,22 @@ public static class Builder
     {
         var builder = WebApplication.CreateBuilder(args);
         builder.Services.AddCors();
+        builder.Services.AddHttpContextAccessor();
+
+        var googleClientId = Environment.GetEnvironmentVariable("GOOGLE_CLIENT_ID") ?? "";
+        builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+            .AddJwtBearer(options =>
+            {
+                options.Authority = "https://accounts.google.com";
+                options.Audience = googleClientId;
+                options.TokenValidationParameters.ValidIssuers =
+                [
+                    "https://accounts.google.com",
+                    "accounts.google.com"
+                ];
+            });
+        builder.Services.AddAuthorization();
+        builder.Services.AddScoped<ICurrentUser, CurrentUser>();
 
         // Configure AmazonDynamoDB client with reduced timeouts (seconds).
         // Set DYNAMO_TIMEOUT_SECONDS env var to override the default (5s).
@@ -64,10 +82,10 @@ public static class Builder
         builder.Services.AddSingleton<IDomainEventHandler, TodoListEventHandler>();
         builder.Services.AddSingleton<IDomainEventHandler, TagIndexEventHandler>();
         builder.Services.AddSingleton<IDomainEventDispatcher, DomainEventDispatcher>();
-        builder.Services.AddSingleton<INoteCommandHandler, NoteCommandHandler>();
-        builder.Services.AddSingleton<IActionItemCommandHandler, ActionItemCommandHandler>();
-        builder.Services.AddSingleton<IFolderCommandHandler, FolderCommandHandler>();
-        builder.Services.AddSingleton<IProjectionRebuildHandler, ProjectionRebuildHandler>();
+        builder.Services.AddScoped<INoteCommandHandler, NoteCommandHandler>();
+        builder.Services.AddScoped<IActionItemCommandHandler, ActionItemCommandHandler>();
+        builder.Services.AddScoped<IFolderCommandHandler, FolderCommandHandler>();
+        builder.Services.AddScoped<IProjectionRebuildHandler, ProjectionRebuildHandler>();
         builder.Services.AddSingleton<IDynamoHealthCheck>(sp =>
             new DynamoDbHealthCheck(sp.GetRequiredService<IAmazonDynamoDB>(), eventTableName));
         builder.Services.AddAWSLambdaHosting(LambdaEventSource.HttpApi);

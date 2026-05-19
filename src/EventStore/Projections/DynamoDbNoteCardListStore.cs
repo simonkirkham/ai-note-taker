@@ -19,7 +19,8 @@ public sealed class DynamoDbNoteCardListStore(IAmazonDynamoDB dynamo, string tab
             ["ActionItems"] = new() { S = JsonSerializer.Serialize(card.ActionItems) },
             ["CreatedAt"] = new() { S = card.CreatedAt.ToString("O") },
             ["LastModifiedAt"] = new() { S = card.LastModifiedAt.ToString("O") },
-            ["Deleted"] = new() { BOOL = card.Deleted }
+            ["Deleted"] = new() { BOOL = card.Deleted },
+            ["UserId"] = new() { S = card.UserId }
         };
         if (card.Date.HasValue)
             attrs["Date"] = new() { S = card.Date.Value.ToString("O") };
@@ -85,7 +86,8 @@ public sealed class DynamoDbNoteCardListStore(IAmazonDynamoDB dynamo, string tab
             LastModifiedAt: DateTimeOffset.Parse(row["LastModifiedAt"].S),
             Deleted: row["Deleted"].BOOL ?? false,
             Tags: tags,
-            FolderId: folderId);
+            FolderId: folderId,
+            UserId: row.TryGetValue("UserId", out var uidAttr) ? uidAttr.S : "");
     }
 
     private record ActionItemDto(ActionId ActionId, string Description, bool Completed);

@@ -52,7 +52,7 @@ public static class AuthEndpoints
             {
                 return Results.StatusCode(502);
             }
-        });
+        }).AllowAnonymous();
     }
 }
 

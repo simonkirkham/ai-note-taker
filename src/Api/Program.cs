@@ -28,6 +28,9 @@ var tagIndexTableName = Environment.GetEnvironmentVariable("PROJ_TAGINDEX_TABLE_
 var app = Builder.BuildApp(args, eventTableName, projTableName, noteDetailTableName, noteActionsTableName, todoListTableName, noteCardListTableName, folderTreeTableName, tagIndexTableName);
 
 app.UseCors(p => p.AllowAnyOrigin().AllowAnyMethod().AllowAnyHeader());
+app.UseAuthentication();
+app.UseMiddleware<Api.Auth.AllowlistMiddleware>();
+app.UseAuthorization();
 
 LoggingConfig.AddLogging(app);
 

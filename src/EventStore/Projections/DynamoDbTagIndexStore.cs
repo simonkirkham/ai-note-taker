@@ -5,7 +5,7 @@ namespace EventStore.Projections;
 
 public sealed class DynamoDbTagIndexStore(IAmazonDynamoDB dynamo, string tableName) : ITagIndexStore
 {
-    public async Task PutAsync(string tag, string noteId, CancellationToken ct = default)
+    public async Task PutAsync(string tag, string noteId, string userId, CancellationToken ct = default)
     {
         await dynamo.PutItemAsync(new PutItemRequest
         {
@@ -13,7 +13,8 @@ public sealed class DynamoDbTagIndexStore(IAmazonDynamoDB dynamo, string tableNa
             Item = new Dictionary<string, AttributeValue>
             {
                 ["Tag"] = new() { S = tag },
-                ["NoteId"] = new() { S = noteId }
+                ["NoteId"] = new() { S = noteId },
+                ["UserId"] = new() { S = userId }
             }
         }, ct).ConfigureAwait(false);
     }
@@ -68,7 +69,7 @@ public sealed class DynamoDbTagIndexStore(IAmazonDynamoDB dynamo, string tableNa
                 ConsistentRead = true
             }, ct).ConfigureAwait(false);
             foreach (var row in response.Items)
-                items.Add(new TagIndexView(row["Tag"].S, row["NoteId"].S));
+                items.Add(new TagIndexView(row["Tag"].S, row["NoteId"].S, row.TryGetValue("UserId", out var uidAttr) ? uidAttr.S : ""));
             lastKey = response.LastEvaluatedKey?.Count > 0 ? response.LastEvaluatedKey : null;
         }
         while (lastKey is not null);

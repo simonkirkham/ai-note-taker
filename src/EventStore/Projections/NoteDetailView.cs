@@ -9,4 +9,5 @@ public record NoteDetailView(
     DateTimeOffset CreatedAt,
     DateTimeOffset LastModifiedAt,
     DateOnly? Date = null,
-    IReadOnlyList<string>? Tags = null);
+    IReadOnlyList<string>? Tags = null,
+    string UserId = "");

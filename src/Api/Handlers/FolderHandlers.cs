@@ -1,3 +1,4 @@
+using Api.Auth;
 using Api.Contracts;
 using Api.CommandHandlers;
 using Api.Exceptions;
@@ -81,10 +82,11 @@ public static class FolderHandlers
         return Results.Ok();
     }
 
-    public static async Task<IResult> GetFolders(IFolderTreeStore store, CancellationToken ct)
+    public static async Task<IResult> GetFolders(IFolderTreeStore store, ICurrentUser currentUser, CancellationToken ct)
     {
         var all = await store.GetAllAsync(ct).ConfigureAwait(false);
-        var tree = BuildTree(all, null);
+        var userFolders = all.Where(f => f.UserId == currentUser.UserId).ToList();
+        var tree = BuildTree(userFolders, null);
         return Results.Ok(new { folders = tree });
     }
 

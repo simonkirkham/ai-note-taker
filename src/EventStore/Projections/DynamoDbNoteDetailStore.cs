@@ -15,7 +15,8 @@ public sealed class DynamoDbNoteDetailStore(IAmazonDynamoDB dynamo, string table
             ["Title"] = string.IsNullOrEmpty(detail.Title) ? new() { NULL = true } : new() { S = detail.Title },
             ["Content"] = string.IsNullOrEmpty(detail.Content) ? new() { NULL = true } : new() { S = detail.Content },
             ["CreatedAt"] = new() { S = detail.CreatedAt.ToString("O") },
-            ["LastModifiedAt"] = new() { S = detail.LastModifiedAt.ToString("O") }
+            ["LastModifiedAt"] = new() { S = detail.LastModifiedAt.ToString("O") },
+            ["UserId"] = new() { S = detail.UserId }
         };
         if (detail.Date.HasValue)
             item["Date"] = new AttributeValue { S = detail.Date.Value.ToString("yyyy-MM-dd") };
@@ -84,7 +85,8 @@ public sealed class DynamoDbNoteDetailStore(IAmazonDynamoDB dynamo, string table
             DateTimeOffset.Parse(item["CreatedAt"].S),
             DateTimeOffset.Parse(item["LastModifiedAt"].S),
             date,
-            tags);
+            tags,
+            UserId: item.TryGetValue("UserId", out var uidAttr) ? uidAttr.S : "");
     }
 
     private static string ReadStringAttribute(Dictionary<string, AttributeValue> item, string key) =>

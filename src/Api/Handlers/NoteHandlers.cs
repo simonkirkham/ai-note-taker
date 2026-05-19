@@ -1,6 +1,7 @@
 using EventStore.Projections;
 using Domain.Folders;
 using Domain.Notes;
+using Api.Auth;
 using Api.Contracts;
 using Api.CommandHandlers;
 using Api.Exceptions;
@@ -43,10 +44,11 @@ public static class NoteHandlers
         return Results.Ok();
     }
 
-    public static async Task<IResult> ListNotes(INoteTitleListStore projStore)
+    public static async Task<IResult> ListNotes(INoteTitleListStore projStore, ICurrentUser currentUser)
     {
         var view = await projStore.QueryAllAsync();
         var items = view.Items
+            .Where(i => i.UserId == currentUser.UserId)
             .OrderByDescending(i => i.LastModifiedAt)
             .Select(i => new { noteId = i.NoteId.Value, title = i.Title, lastModifiedAt = i.LastModifiedAt });
         return Results.Ok(new { items });
@@ -59,10 +61,10 @@ public static class NoteHandlers
         return Results.NoContent();
     }
 
-    public static async Task<IResult> GetNote(Guid noteId, INoteDetailStore noteDetailStore)
+    public static async Task<IResult> GetNote(Guid noteId, INoteDetailStore noteDetailStore, ICurrentUser currentUser)
     {
         var detail = await noteDetailStore.GetAsync(new NoteId(noteId));
-        if (detail is null) return Results.NotFound();
+        if (detail is null || detail.UserId != currentUser.UserId) return Results.NotFound();
         return Results.Ok(new
         {
             noteId = detail.NoteId.Value,
@@ -106,11 +108,11 @@ public static class NoteHandlers
         return Results.NoContent();
     }
 
-    public static async Task<IResult> MoveNoteToFolder(Guid noteId, MoveNoteToFolderRequest req, INoteCommandHandler handler, IFolderTreeStore folderTreeStore, CancellationToken ct)
+    public static async Task<IResult> MoveNoteToFolder(Guid noteId, MoveNoteToFolderRequest req, INoteCommandHandler handler, IFolderTreeStore folderTreeStore, ICurrentUser currentUser, CancellationToken ct)
     {
         var targetId = new FolderId(req.FolderId);
         var allFolders = await folderTreeStore.GetAllAsync(ct).ConfigureAwait(false);
-        if (!allFolders.Any(f => f.FolderId == targetId))
+        if (!allFolders.Any(f => f.FolderId == targetId && f.UserId == currentUser.UserId))
             return Results.NotFound();
 
         try { await handler.HandleAsync(new Domain.Notes.MoveNoteToFolder(new NoteId(noteId), targetId), ct); }
@@ -125,11 +127,11 @@ public static class NoteHandlers
         return Results.NoContent();
     }
 
-    public static async Task<IResult> GetNoteCards(INoteCardListStore store, CancellationToken ct)
+    public static async Task<IResult> GetNoteCards(INoteCardListStore store, ICurrentUser currentUser, CancellationToken ct)
     {
         var all = await store.QueryAllAsync(ct).ConfigureAwait(false);
         var cards = all
-            .Where(c => !c.Deleted)
+            .Where(c => !c.Deleted && c.UserId == currentUser.UserId)
             .Select(MapCardToResponse);
         return Results.Ok(new { cards });
     }

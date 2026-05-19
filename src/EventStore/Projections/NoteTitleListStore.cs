@@ -16,7 +16,8 @@ public sealed class NoteTitleListStore(IAmazonDynamoDB dynamo, string tableName)
                 ["PK"] = new AttributeValue { S = item.NoteId.ToStreamId() },
                 ["NoteId"] = new AttributeValue { S = item.NoteId.Value.ToString() },
                 ["Title"] = new AttributeValue { S = item.Title },
-                ["LastModifiedAt"] = new AttributeValue { S = item.LastModifiedAt.ToString("O") }
+                ["LastModifiedAt"] = new AttributeValue { S = item.LastModifiedAt.ToString("O") },
+                ["UserId"] = new AttributeValue { S = item.UserId }
             }
         }, ct).ConfigureAwait(false);
     }
@@ -65,7 +66,8 @@ public sealed class NoteTitleListStore(IAmazonDynamoDB dynamo, string tableName)
                 items.Add(new NoteTitleListItem(
                     new NoteId(Guid.Parse(row["NoteId"].S)),
                     row["Title"].S,
-                    DateTimeOffset.Parse(row["LastModifiedAt"].S)));
+                    DateTimeOffset.Parse(row["LastModifiedAt"].S),
+                    row.TryGetValue("UserId", out var uidAttr) ? uidAttr.S : ""));
             }
             lastKey = response.LastEvaluatedKey?.Count > 0 ? response.LastEvaluatedKey : null;
         } while (lastKey is not null);

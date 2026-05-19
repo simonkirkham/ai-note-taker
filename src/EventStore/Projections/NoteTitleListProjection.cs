@@ -11,7 +11,7 @@ public sealed class NoteTitleListProjection
         switch (EventDeserializer.Deserialize(envelope))
         {
             case NoteCreated e:
-                _items[e.NoteId] = new NoteTitleListItem(e.NoteId, string.Empty, envelope.OccurredAt);
+                _items[e.NoteId] = new NoteTitleListItem(e.NoteId, string.Empty, envelope.OccurredAt, envelope.Metadata.UserId ?? "");
                 break;
             case NoteRenamed e:
                 if (_items.TryGetValue(e.NoteId, out var existing))

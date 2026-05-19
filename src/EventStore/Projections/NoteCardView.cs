@@ -13,4 +13,5 @@ public record NoteCardView(
     DateTimeOffset LastModifiedAt,
     bool Deleted,
     IReadOnlyList<string>? Tags = null,
-    FolderId? FolderId = null);
+    FolderId? FolderId = null,
+    string UserId = "");
