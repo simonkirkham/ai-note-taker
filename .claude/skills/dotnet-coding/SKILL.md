@@ -69,6 +69,60 @@ These apply when the project-specific rules above don't say otherwise.
 **Unused `using` directives**
 - Remove all unused `using` directives before committing. `dotnet format` will flag them; treat them as errors.
 
+**Guard clauses — exit early, reduce nesting**
+- Return or throw at the top of a method for invalid/edge-case inputs. The happy path should be the un-indented path.
+- Never wrap the main body of a method in an `if` block when an early return would serve.
+```csharp
+// smell
+if (user != null) { if (user.IsActive) { /* main logic */ } }
+
+// better
+if (user is null) return;
+if (!user.IsActive) return;
+// main logic here, un-indented
+```
+
+**Rethrowing exceptions — use `throw;` not `throw ex;`**
+- `throw ex;` resets the stack trace, losing the original call site. `throw;` preserves it.
+- Only rethrow via `throw;` (bare) inside a `catch` block.
+
+**`nameof()` for parameter references in exceptions**
+- Never hard-code parameter names as string literals. `nameof()` is refactor-safe and caught by the compiler.
+```csharp
+ArgumentNullException.ThrowIfNull(input, nameof(input));   // good
+throw new ArgumentNullException("input");                   // smell — string will go stale on rename
+```
+
+**Switch expressions over switch statements when returning a value**
+- Use a switch expression (`x switch { ... }`) wherever a switch is computing a result. Eliminates `break`, reduces duplication, reads as a table.
+```csharp
+// statement (verbose)
+string label;
+switch (status) { case 1: label = "Active"; break; default: label = "Unknown"; break; }
+
+// expression (clean)
+var label = status switch { 1 => "Active", _ => "Unknown" };
+```
+
+**`using` declarations for `IDisposable`**
+- Prefer `using var x = ...;` over `using (var x = ...) { }` blocks. The resource disposes at end of enclosing scope — less nesting, same safety.
+```csharp
+using var stream = File.OpenRead(path);   // disposes when method exits
+```
+
+**Interfaces on all injectable services**
+- Every class registered with DI should have a corresponding interface, even when there is only one implementation today. The interface is the seam for testing and future swapping.
+
+**`sealed` on all concrete classes not designed for inheritance**
+- Explicitly mark concrete classes `sealed` unless inheritance is an intentional part of the design. Makes intent clear; prevents accidental subclassing.
+
+**`async void` only for event handlers — never otherwise**
+- `async void` methods cannot be awaited. Any exception they throw is unobservable and will crash the process. Always return `async Task` instead.
+- The sole exception is framework event handlers (e.g. button click handlers) where the signature is imposed.
+
+**Interfaces and abstract classes each get their own file**
+- Interfaces (`I*.cs`) and abstract classes must never be grouped with other types. Pure data records may be grouped (see checklist item above); interfaces and abstracts may not.
+
 Full reference: `docs/dotnet-coding-standards.md`
 
 ## Checklist (run before opening a PR)
@@ -89,6 +143,15 @@ Full reference: `docs/dotnet-coding-standards.md`
 - [ ] No method longer than ~15 lines — extract and name sub-steps
 - [ ] No class with more than 2–3 constructor dependencies — split responsibilities if so
 - [ ] No unused `using` directives
+- [ ] Guard clauses used at method entry — no main logic wrapped in an `if` when an early return would do
+- [ ] Rethrowing uses bare `throw;` not `throw ex;`
+- [ ] Parameter names in exceptions use `nameof()` not string literals
+- [ ] Switch that returns a value uses a switch expression, not a switch statement
+- [ ] `IDisposable` resources use `using var` declarations, not `using (...)` blocks
+- [ ] Every DI-injectable class has a corresponding interface
+- [ ] All concrete classes are `sealed` unless inheritance is explicitly intended
+- [ ] No `async void` outside of framework event handlers
+- [ ] Each interface and abstract class is in its own file
 - [ ] `dotnet format` passes
 
 ## Commands
