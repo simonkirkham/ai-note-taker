@@ -7,9 +7,12 @@ namespace Api.Smoke;
 [Collection("Deployed API")]
 public sealed class ReadEndpointsSpec(DeployedApiFixture fixture)
 {
-    [Fact]
+    private const string AuthRequired = "SMOKE_TEST_TOKEN not configured — add GOOGLE_REFRESH_TOKEN_SSM_PATH secret to the GitHub environment to enable auth smoke tests";
+
+    [SkippableFact]
     public async Task GetNotes_returns_200_with_items_array()
     {
+        Skip.IfNot(fixture.IsAuthenticated, AuthRequired);
         var response = await fixture.Client.GetAsync("notes");
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
@@ -18,9 +21,10 @@ public sealed class ReadEndpointsSpec(DeployedApiFixture fixture)
         Assert.Equal(JsonValueKind.Array, items.ValueKind);
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task GetNoteCards_returns_200_with_cards_array()
     {
+        Skip.IfNot(fixture.IsAuthenticated, AuthRequired);
         var response = await fixture.Client.GetAsync("notes/cards");
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
@@ -29,9 +33,10 @@ public sealed class ReadEndpointsSpec(DeployedApiFixture fixture)
         Assert.Equal(JsonValueKind.Array, cards.ValueKind);
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task GetTodos_returns_200_with_items_array()
     {
+        Skip.IfNot(fixture.IsAuthenticated, AuthRequired);
         var response = await fixture.Client.GetAsync("todos");
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
@@ -40,9 +45,10 @@ public sealed class ReadEndpointsSpec(DeployedApiFixture fixture)
         Assert.Equal(JsonValueKind.Array, items.ValueKind);
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task GetTags_returns_200_with_tags_array()
     {
+        Skip.IfNot(fixture.IsAuthenticated, AuthRequired);
         var response = await fixture.Client.GetAsync("tags");
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
@@ -51,9 +57,10 @@ public sealed class ReadEndpointsSpec(DeployedApiFixture fixture)
         Assert.Equal(JsonValueKind.Array, tags.ValueKind);
     }
 
-    [Fact]
+    [SkippableFact]
     public async Task GetFolders_returns_200_with_folders_array()
     {
+        Skip.IfNot(fixture.IsAuthenticated, AuthRequired);
         var response = await fixture.Client.GetAsync("folders");
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);

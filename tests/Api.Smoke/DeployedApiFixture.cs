@@ -5,6 +5,7 @@ namespace Api.Smoke;
 public sealed class DeployedApiFixture : IDisposable
 {
     public HttpClient Client { get; }
+    public bool IsAuthenticated { get; }
 
     public DeployedApiFixture()
     {
@@ -16,8 +17,11 @@ public sealed class DeployedApiFixture : IDisposable
 
         var token = Environment.GetEnvironmentVariable("SMOKE_TEST_TOKEN");
         if (!string.IsNullOrEmpty(token))
+        {
             Client.DefaultRequestHeaders.Authorization =
                 new AuthenticationHeaderValue("Bearer", token);
+            IsAuthenticated = true;
+        }
     }
 
     public void Dispose() => Client.Dispose();
