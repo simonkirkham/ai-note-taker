@@ -15,6 +15,7 @@ Each piece of work is handled by agents in sequence. No agent does another's job
 - `agent-skills:spec-driven-development` — structures the feature brief
 - `agent-skills:idea-refine` — if the idea is vague
 - `agent-skills:planning-and-task-breakdown` — once the brief is clear
+- `observability-brief` — after GWT scenarios are finalised, identify silent failure modes per slice and add the Observability section to the phase doc
 
 **Outputs:**
 
@@ -139,6 +140,7 @@ After the PR merges, remove the worktree: `git worktree remove ../ai-note-taker-
 - `dotnet-coding` — project-specific C# conventions (aggregate purity, command handler pattern, event immutability, no-comments rule); load before writing any C# in `src/`
 - `frontend-react` — project-specific React/TypeScript conventions (hooks rules, accessibility, linting, E2E guidance); load before writing any file in `web/src/`
 - `agent-skills:incremental-implementation` — general thin-slice implementation
+- `observability` — wire up the instrumentation gaps flagged in the phase doc's Observability section
 
 **Step 1 — Implement:**
 
