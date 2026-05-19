@@ -234,32 +234,6 @@ public class InfraAssertionsTests
     }
 
     [Fact]
-    public void CloudFront_HasSpaErrorResponses()
-    {
-        _template.HasResourceProperties("AWS::CloudFront::Distribution", Match.ObjectLike(new Dictionary<string, object>
-        {
-            ["DistributionConfig"] = Match.ObjectLike(new Dictionary<string, object>
-            {
-                ["CustomErrorResponses"] = Match.ArrayWith(new object[]
-                {
-                    Match.ObjectLike(new Dictionary<string, object>
-                    {
-                        ["ErrorCode"] = 403,
-                        ["ResponseCode"] = 200,
-                        ["ResponsePagePath"] = "/index.html"
-                    }),
-                    Match.ObjectLike(new Dictionary<string, object>
-                    {
-                        ["ErrorCode"] = 404,
-                        ["ResponseCode"] = 200,
-                        ["ResponsePagePath"] = "/index.html"
-                    })
-                })
-            })
-        }));
-    }
-
-    [Fact]
     public void CloudFront_HasApiBehavior_Always()
     {
         _template.HasResourceProperties("AWS::CloudFront::Distribution", Match.ObjectLike(new Dictionary<string, object>
@@ -278,9 +252,9 @@ public class InfraAssertionsTests
     }
 
     [Fact]
-    public void CloudFront_HasApiStripFunction_Always()
+    public void CloudFront_HasTwoFunctions_SpaRoutingAndApiStrip()
     {
-        _template.ResourceCountIs("AWS::CloudFront::Function", 1);
+        _template.ResourceCountIs("AWS::CloudFront::Function", 2);
     }
 
     [Fact]

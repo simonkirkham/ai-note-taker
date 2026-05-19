@@ -222,16 +222,35 @@ public sealed class NoteTakerStack : Stack
         Amazon.CDK.AWS.Apigatewayv2.HttpApi httpApi,
         Bucket webBucket)
     {
-        var errorResponses = new[]
-        {
-            // Return index.html for 403/404 so React handles client-side routing
-            new ErrorResponse { HttpStatus = 403, ResponseHttpStatus = 200, ResponsePagePath = "/index.html" },
-            new ErrorResponse { HttpStatus = 404, ResponseHttpStatus = 200, ResponsePagePath = "/index.html" }
-        };
+        // Rewrite SPA paths (no file extension in last segment) to /index.html at the edge.
+        // Scoped to the default S3 behavior so API 404s pass through to the caller unchanged.
+        var spaRoutingFunction = new Amazon.CDK.AWS.CloudFront.Function(this, "SpaRoutingFunction",
+            new Amazon.CDK.AWS.CloudFront.FunctionProps
+            {
+                Code = FunctionCode.FromInline("""
+                    function handler(event) {
+                        var request = event.request;
+                        var uri = request.uri;
+                        if (uri.lastIndexOf('.') < uri.lastIndexOf('/')) {
+                            request.uri = '/index.html';
+                        }
+                        return request;
+                    }
+                    """),
+                Runtime = FunctionRuntime.JS_2_0
+            });
 
         var defaultBehavior = new BehaviorOptions
         {
-            Origin = S3BucketOrigin.WithOriginAccessControl(webBucket)
+            Origin = S3BucketOrigin.WithOriginAccessControl(webBucket),
+            FunctionAssociations = new[]
+            {
+                new FunctionAssociation
+                {
+                    Function = spaRoutingFunction,
+                    EventType = FunctionEventType.VIEWER_REQUEST
+                }
+            }
         };
 
         // Strip /api prefix before forwarding to API Gateway
@@ -277,7 +296,6 @@ public sealed class NoteTakerStack : Stack
             {
                 DefaultBehavior = defaultBehavior,
                 DefaultRootObject = "index.html",
-                ErrorResponses = errorResponses,
                 AdditionalBehaviors = additionalBehaviors
             };
         }
@@ -286,7 +304,6 @@ public sealed class NoteTakerStack : Stack
         {
             DefaultBehavior = defaultBehavior,
             DefaultRootObject = "index.html",
-            ErrorResponses = errorResponses,
             DomainNames = new[] { props.DomainName },
             Certificate = Certificate.FromCertificateArn(this, "Certificate", props.CertificateArn),
             AdditionalBehaviors = additionalBehaviors
