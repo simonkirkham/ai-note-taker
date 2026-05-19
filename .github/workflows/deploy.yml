@@ -68,7 +68,9 @@ jobs:
   deploy-test:
     needs: [validate-frontend, validate-backend]
     runs-on: ubuntu-latest
-    environment: Test
+    environment:
+      name: Test
+      url: ${{ steps.outputs.outputs.frontend-url }}
     concurrency:
       group: deploy
       cancel-in-progress: false
@@ -172,7 +174,9 @@ jobs:
   deploy-production:
     needs: deploy-test
     runs-on: ubuntu-latest
-    environment: Production
+    environment:
+      name: Production
+      url: ${{ steps.outputs.outputs.frontend-url }}
     concurrency:
       group: deploy-production
       cancel-in-progress: false
