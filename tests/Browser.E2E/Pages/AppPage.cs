@@ -11,7 +11,9 @@ public sealed class AppPage(IPage page, string baseUrl)
         var viewport = page.ViewportSize;
         if (viewport is { Width: < 640 })
             await page.GetByTestId("sidebar-toggle").ClickAsync();
+        var noteDone = page.WaitForResponseAsync(r => r.Url.Contains("/notes") && r.Request.Method == "POST");
         await page.GetByTestId("new-note-button").ClickAsync();
+        await noteDone;
     }
 
     public async Task EnterTitleAsync(string title)
