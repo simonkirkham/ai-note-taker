@@ -422,6 +422,7 @@ public class InfraAssertionsTests
     [Fact]
     public void Lambda_HasSsmGetParameterPermission_WhenRefreshTokenPathConfigured()
     {
+        // Resource is a Fn::Join intrinsic; assert the specific parameter path is embedded in it
         _calendarTemplate.HasResourceProperties("AWS::IAM::Policy", Match.ObjectLike(new Dictionary<string, object>
         {
             ["PolicyDocument"] = Match.ObjectLike(new Dictionary<string, object>
@@ -431,10 +432,41 @@ public class InfraAssertionsTests
                     Match.ObjectLike(new Dictionary<string, object>
                     {
                         ["Action"] = "ssm:GetParameter",
-                        ["Effect"] = "Allow"
+                        ["Effect"] = "Allow",
+                        ["Resource"] = Match.ObjectLike(new Dictionary<string, object>
+                        {
+                            ["Fn::Join"] = Match.ArrayWith(new object[]
+                            {
+                                Match.ArrayWith(new object[]
+                                {
+                                    Match.StringLikeRegexp(".*parameter/test/google-refresh-token$")
+                                })
+                            })
+                        })
                     })
                 })
             })
         }));
+    }
+
+    [Fact]
+    public void Lambda_HasNoSsmPermission_WhenRefreshTokenPathNotConfigured()
+    {
+        // _template has no GoogleRefreshTokenSsmPath — the conditional grant must not fire
+        var thrown = Record.Exception(() =>
+            _template.HasResourceProperties("AWS::IAM::Policy", Match.ObjectLike(new Dictionary<string, object>
+            {
+                ["PolicyDocument"] = Match.ObjectLike(new Dictionary<string, object>
+                {
+                    ["Statement"] = Match.ArrayWith(new object[]
+                    {
+                        Match.ObjectLike(new Dictionary<string, object>
+                        {
+                            ["Action"] = "ssm:GetParameter"
+                        })
+                    })
+                })
+            })));
+        Assert.NotNull(thrown);
     }
 }
