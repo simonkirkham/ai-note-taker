@@ -561,3 +561,22 @@ If no agent ran unexpectedly high: write `None — slice ran within expected ran
 
 **Optimisation suggestions:**
 - **Hawk (–20 000):** For test-only PRs where assertions are self-evidently correct (status code + top-level property name), Hawk could scope reads to only the handler files called by the new specs rather than all five handlers. A targeted read saves ~20k with equivalent confidence.
+
+---
+
+## Slice 7.8-H — Human-readable URLs
+
+> **Note:** Slice ran across two sessions with context compaction due to an extended CI debugging cycle (7 successive deploy failures). Per-agent counts are estimates.
+
+| Agent     | ~Tokens      |
+|-----------|--------------|
+| Pip       | 185 000      |
+| Hawk      | 12 000       |
+| Scribe    | 7 000        |
+| **Total** | **~204 000** |
+
+**Why:** Seven successive deploy failures required reading CI logs, diagnosing root causes, and pushing a fix for each — each cycle burning 15–25k tokens. Root causes included CDK bootstrap gap, cross-account DNS limitations, GitHub empty-string secrets, missing `AllowedMethods`, `SaveAndReturnAsync` race condition, and CloudFront error-response / API-code conflict.
+
+**Optimisation suggestions:**
+- **Pip (–60 000):** Three of the seven failures (empty-string guards, AllowedMethods, SPA error responses) are pre-emptable by Breaker: the CDK skill checklist and infra-assertions spec could mandate `string.IsNullOrEmpty()` on all optional props, `AllowedMethods.ALLOW_ALL` on API behaviors, and a SPA-routing function rather than error responses. Catching these before the first deploy would eliminate 3–4 fix cycles.
+- **Pip (–20 000):** The `SaveAndReturnAsync` race condition was a pre-existing gap in the page object, not introduced by this slice. A page-object review checklist (every click that triggers an API call must await a `WaitForResponseAsync`) would surface this class of issue at Breaker time rather than during E2E debugging.

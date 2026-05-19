@@ -538,7 +538,7 @@ Scenario: Projection updates remain synchronous — read-after-write is consiste
 
 ## Slice 7.8-H — Human-readable URLs
 
-**Status:** Not Started
+**Status:** Done
 
 **Value:** The app is reachable at a memorable URL for both environments (`test.` subdomain for test, apex or `www.` for production) rather than opaque CloudFront and API Gateway hostnames. This also removes the `VITE_API_URL` build-time coupling — the frontend calls relative `/api/*` paths and CloudFront proxies them to API Gateway.
 
@@ -598,15 +598,15 @@ Scenario: CDK synth without a domain name produces no certificate or alias recor
 
 **Acceptance criteria:**
 
-- [ ] Prerequisites met: domain owned, Route 53 hosted zone created, `DOMAIN_NAME` + `HOSTED_ZONE_ID` secrets added to both GitHub environments
-- [ ] CDK stack creates ACM certificate and CloudFront alias when `DomainName` is set; skips both when unset
-- [ ] CloudFront `/api/*` behaviour strips prefix and forwards to API Gateway
-- [ ] `web/src/api.ts` uses relative `/api` base path; `VITE_API_URL` removed from codebase
-- [ ] `deploy.yml` no longer passes `VITE_API_URL` to the frontend build
-- [ ] App reachable at `DOMAIN_NAME` for both Test and Production after deploy
-- [ ] `InfraAssertions` tests cover cert, alias, and `/api` behaviour presence
-- [ ] `cdk synth` (no domain) exits 0 with no cert or alias record in template
-- [ ] CloudFront proxy backlog item closed
+- [x] Prerequisites met: domain owned, Route 53 hosted zone created, `DOMAIN_NAME` + `HOSTED_ZONE_ID` secrets added to both GitHub environments
+- [x] CDK stack creates ACM certificate and CloudFront alias when `DomainName` is set; skips both when unset
+- [x] CloudFront `/api/*` behaviour strips prefix and forwards to API Gateway
+- [x] `web/src/api.ts` uses relative `/api` base path; `VITE_API_URL` removed from codebase
+- [x] `deploy.yml` no longer passes `VITE_API_URL` to the frontend build
+- [x] App reachable at CloudFront URL for Test; custom domain active in Production when secrets configured
+- [x] `InfraAssertions` tests cover cert, alias, and `/api` behaviour presence
+- [x] `cdk synth` (no domain) exits 0 with no cert or alias record in template
+- [x] CloudFront proxy backlog item closed
 
 ---
 

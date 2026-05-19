@@ -126,7 +126,7 @@ Slices and acceptance criteria: [docs/phases/phase-7.md](phases/phase-7.md)
 
 Slices and acceptance criteria: [docs/phases/phase-7.5.md](phases/phase-7.5.md)
 
-## Phase 7.8 — Production Pipeline and Note Screen UX _(In Progress)_
+## Phase 7.8 — Production Pipeline and Note Screen UX _(Done)_
 
 - Production deployment pipeline: `deploy-production` job promotes automatically after Test; smoke tests only against production; no E2E data mutation
 - Note screen keyboard focus: cursor lands in title on open; single Tab moves to content
@@ -139,30 +139,35 @@ Slices and acceptance criteria: [docs/phases/phase-7.5.md](phases/phase-7.5.md)
 
 Slices and acceptance criteria: [docs/phases/phase-7.8.md](phases/phase-7.8.md)
 
-## Phase 8 — Google Calendar integration + meeting notes
+## Phase 8 — Google Sign-In (multi-user auth)
+
+- Google Sign-In on the frontend (PKCE flow; ID token stored in memory)
+- JWT Bearer verification in the API (Google OIDC; reject unauthenticated requests)
+- `ICurrentUser` abstraction; `sub` claim replaces the hardcoded user ID throughout
+- `EventMetadata.UserId` populated from the authenticated user for the first time
+- CDK: `GOOGLE_CLIENT_ID` env var; `Authorization` header added to CORS allow-list
+
+**Goal:** real authentication before Calendar integration arrives; learn Google OIDC, JWT Bearer middleware, PKCE, and multi-user data isolation while the system is still small enough to retrofit cleanly.
+
+Slices and acceptance criteria: [docs/phases/phase-8.md](phases/phase-8.md)
+
+## Phase 9 — Google Calendar integration + meeting notes
 
 - Today's meetings surfaced on the home screen (Google Calendar pass-through, single-user refresh token)
 - One-click note creation linked to a calendar event (`NoteLinkedToCalendarEvent`)
 - Meeting-time browser reminder via `setTimeout` + Notifications API
 - Recurring meetings: one-click note for the next scheduled occurrence
 - `CalendarLinkIndex` projection keyed by external calendar event ID
-- `EventMetadata.UserId` populated for the first time (groundwork for Phase 10)
+- Builds on Phase 8 auth: `EventMetadata.UserId` already populated from JWT
 
 **Goal:** first outbound HTTP from Lambda; Google OAuth2 refresh-token flow; SSM Parameter Store for secrets; extending an aggregate with a new event without touching the immutable original; a projection keyed by an external system ID.
 
-Slices and acceptance criteria: [docs/phases/phase-8.md](phases/phase-8.md)
+Slices and acceptance criteria: [docs/phases/phase-9.md](phases/phase-9.md)
 
-## Phase 9 — Transcription
+## Phase 10 — Transcription
 
 - Capture meeting audio
 - Transcribe and merge into the note
-
-## Phase 10 — Multi-user auth (Google Sign-In)
-
-- Convert single-user to multi-user
-- Reuse OAuth scaffolding from Phase 7
-
-**Goal:** auth lands here deliberately so earlier phases stay focused on event sourcing learning.
 
 ## Future Ideas
 
