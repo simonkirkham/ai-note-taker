@@ -174,8 +174,15 @@ Slices and acceptance criteria: [docs/phases/phase-9.md](phases/phase-9.md)
 
 ## Phase 10 — Transcription
 
-- Capture meeting audio
-- Transcribe and merge into the note
+- Record audio during a meeting via MediaRecorder API; words appear live in a scrolling transcript panel on the note screen (AWS Transcribe Streaming; browser streams directly with STS-issued temporary credentials)
+- `TranscriptionCompleted` event persists the full transcript on the Note aggregate
+- Amazon Bedrock (Claude Haiku) analyses the transcript against existing note content and auto-applies gap-filling content, new tags, and new action items — **action items scoped to the current user only**; other team tasks go into the note content
+- Auto-analyse switch (default ON) fires analysis when recording stops; switch OFF reveals a manual "Save & Analyse" button
+- Model configurable via `BEDROCK_MODEL_ID` env var without code change
+
+**Goal:** first real-time streaming feature; first LLM integration; STS AssumeRole credential delegation; first outbound AWS service call from Lambda beyond DynamoDB. The event model stays clean — `TranscriptionCompleted` records what happened; analysis output reuses existing event types so the domain never knows whether content came from a human or a model.
+
+Slices and acceptance criteria: [docs/phases/phase-10.md](phases/phase-10.md)
 
 ## Future Ideas
 
