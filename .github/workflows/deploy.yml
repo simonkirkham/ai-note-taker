@@ -146,16 +146,13 @@ jobs:
       - name: Get smoke test token
         id: smoke-token
         env:
-          SSM_PATH: ${{ secrets.GOOGLE_REFRESH_TOKEN_SSM_PATH }}
+          REFRESH_TOKEN: ${{ secrets.SMOKE_TEST_GOOGLE_REFRESH_TOKEN }}
         run: |
-          if [ -z "$SSM_PATH" ]; then
-            echo "::warning::GOOGLE_REFRESH_TOKEN_SSM_PATH not configured — smoke tests requiring auth will be skipped. Add the secret to the GitHub environment to run them."
+          if [ -z "$REFRESH_TOKEN" ]; then
+            echo "::warning::SMOKE_TEST_GOOGLE_REFRESH_TOKEN not configured — smoke tests requiring auth will be skipped."
             echo "id_token=" >> "$GITHUB_OUTPUT"
             exit 0
           fi
-          REFRESH_TOKEN=$(aws ssm get-parameter \
-            --name "$SSM_PATH" \
-            --with-decryption --query 'Parameter.Value' --output text)
           RESPONSE=$(curl -s -X POST "https://oauth2.googleapis.com/token" \
             -d "client_id=${{ secrets.GOOGLE_CLIENT_ID }}" \
             -d "client_secret=${{ secrets.GOOGLE_CLIENT_SECRET }}" \
@@ -279,16 +276,13 @@ jobs:
       - name: Get smoke test token
         id: smoke-token
         env:
-          SSM_PATH: ${{ secrets.GOOGLE_REFRESH_TOKEN_SSM_PATH }}
+          REFRESH_TOKEN: ${{ secrets.SMOKE_TEST_GOOGLE_REFRESH_TOKEN }}
         run: |
-          if [ -z "$SSM_PATH" ]; then
-            echo "::warning::GOOGLE_REFRESH_TOKEN_SSM_PATH not configured — smoke tests requiring auth will be skipped. Add the secret to the GitHub environment to run them."
+          if [ -z "$REFRESH_TOKEN" ]; then
+            echo "::warning::SMOKE_TEST_GOOGLE_REFRESH_TOKEN not configured — smoke tests requiring auth will be skipped."
             echo "id_token=" >> "$GITHUB_OUTPUT"
             exit 0
           fi
-          REFRESH_TOKEN=$(aws ssm get-parameter \
-            --name "$SSM_PATH" \
-            --with-decryption --query 'Parameter.Value' --output text)
           RESPONSE=$(curl -s -X POST "https://oauth2.googleapis.com/token" \
             -d "client_id=${{ secrets.GOOGLE_CLIENT_ID }}" \
             -d "client_secret=${{ secrets.GOOGLE_CLIENT_SECRET }}" \
