@@ -545,3 +545,19 @@ If no agent ran unexpectedly high: write `None — slice ran within expected ran
 **Optimisation suggestions:**
 - **7.8-C hotfix deploy cycle (–20 000):** The E2E page object method `GoBackAsync` referenced the old `back-button` testid. Updating AppPage.cs in the same PR as the navigation model change would have prevented the separate hotfix PR and extra deploy round.
 - **Hawk multi-round (–30 000):** Most findings across 7.8-C, 7.8-D, and 7.8-E are pre-emptable in Refactor: dialog ARIA attributes, dragLeave child guard, `flex:` on grid vs flex children, `min-height: 0` pairing. Adding these to the Refactor CSS/DnD checklist collapses two-round reviews into one.
+
+---
+
+## Slice 7.8-I — Read-only smoke suite
+
+| Agent     | ~Tokens    |
+|-----------|------------|
+| Pip       | 25 000     |
+| Hawk      | 46 000     |
+| Scribe    | 5 000      |
+| **Total** | **~76 000** |
+
+**Why:** Hawk's single-pass review of a 2-file PR drove the total above the typical test-only slice baseline; loading all five handler files to verify assertion shapes was thorough but expensive for the change size.
+
+**Optimisation suggestions:**
+- **Hawk (–20 000):** For test-only PRs where assertions are self-evidently correct (status code + top-level property name), Hawk could scope reads to only the handler files called by the new specs rather than all five handlers. A targeted read saves ~20k with equivalent confidence.

@@ -612,7 +612,7 @@ Scenario: CDK synth without a domain name produces no certificate or alias recor
 
 ## Slice 7.8-I — Read-only smoke suite
 
-**Status:** Not Started
+**Status:** Done
 
 **Value:** The smoke suite no longer pollutes production (or Test) with leftover notes and action items. Post-deploy confidence comes from health checks, read-endpoint shape assertions, and 404-path verification — none of which require creating data.
 
@@ -655,7 +655,7 @@ Scenario: 404 path works for non-existent note
 
 **Acceptance criteria:**
 
-- [ ] `ReadEndpointsSpec.cs` and `ErrorResponsesSpec.cs` added; no `PostAsync("notes", ...)` anywhere in the suite
-- [ ] All 10 write-heavy spec files deleted
-- [ ] `dotnet test tests/Api.Smoke/Api.Smoke.csproj` exits 0 (against deployed Test environment)
-- [ ] No new notes appear in the deployed database after the suite runs
+- [x] `ReadEndpointsSpec.cs` and `ErrorResponsesSpec.cs` added; no `PostAsync("notes", ...)` anywhere in the suite
+- [x] All 10 write-heavy spec files deleted
+- [x] `dotnet test tests/Api.Smoke/Api.Smoke.csproj` exits 0 (against deployed Test environment)
+- [x] No new notes appear in the deployed database after the suite runs
