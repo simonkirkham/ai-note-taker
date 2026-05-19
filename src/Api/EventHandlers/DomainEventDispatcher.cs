@@ -1,6 +1,6 @@
 using EventStore;
 
-namespace Api;
+namespace Api.EventHandlers;
 
 public sealed class DomainEventDispatcher(IEnumerable<IDomainEventHandler> handlers) : IDomainEventDispatcher
 {

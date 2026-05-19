@@ -1,6 +1,6 @@
 using EventStore;
 
-namespace Api;
+namespace Api.EventHandlers;
 
 public interface IDomainEventHandler
 {

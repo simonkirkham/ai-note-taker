@@ -1,5 +1,6 @@
 using EventStore;
 using EventStore.Projections;
+using Api.HealthChecks;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;

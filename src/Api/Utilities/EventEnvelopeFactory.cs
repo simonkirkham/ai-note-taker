@@ -2,7 +2,7 @@ using System.Text.Json;
 using Domain;
 using EventStore;
 
-namespace Api;
+namespace Api.Utilities;
 
 internal static class EventEnvelopeFactory
 {

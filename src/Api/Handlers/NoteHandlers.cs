@@ -2,6 +2,10 @@ using EventStore.Projections;
 using Domain.Folders;
 using Domain.Notes;
 using Api.Contracts;
+using Api.CommandHandlers;
+using Api.Exceptions;
+using Api.HealthChecks;
+using Api.Utilities;
 using EditContentCmd = Domain.Notes.EditContent;
 
 namespace Api.Handlers;

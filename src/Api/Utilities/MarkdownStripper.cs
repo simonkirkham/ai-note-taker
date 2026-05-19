@@ -1,6 +1,6 @@
 using System.Text.RegularExpressions;
 
-namespace Api;
+namespace Api.Utilities;
 
 internal static class MarkdownStripper
 {

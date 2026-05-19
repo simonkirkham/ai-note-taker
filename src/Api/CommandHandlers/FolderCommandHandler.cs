@@ -3,8 +3,10 @@ using Domain.Folders;
 using Domain.Notes;
 using EventStore;
 using EventStore.Projections;
+using Api.Exceptions;
+using Api.Utilities;
 
-namespace Api;
+namespace Api.CommandHandlers;
 
 public sealed class FolderCommandHandler(
     IEventStore store,

@@ -2,7 +2,8 @@ using Domain.Notes;
 using EventStore;
 using EventStore.Projections;
 
-namespace Api;
+using Api.EventHandlers;
+namespace Api.Projections;
 
 public sealed class TagIndexEventHandler(ITagIndexStore store) : IDomainEventHandler
 {

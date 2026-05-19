@@ -1,6 +1,6 @@
 using Domain.Folders;
 
-namespace Api;
+namespace Api.CommandHandlers;
 
 public interface IFolderCommandHandler
 {

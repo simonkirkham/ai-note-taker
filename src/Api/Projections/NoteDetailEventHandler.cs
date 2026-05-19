@@ -2,7 +2,9 @@ using Domain.Notes;
 using EventStore;
 using EventStore.Projections;
 
-namespace Api;
+using Api.EventHandlers;
+using Api.Exceptions;
+namespace Api.Projections;
 
 public sealed class NoteDetailEventHandler(IEventStore eventStore, INoteDetailStore store) : IDomainEventHandler
 {

@@ -1,6 +1,6 @@
 using Amazon.DynamoDBv2;
 
-namespace Api;
+namespace Api.HealthChecks;
 
 public sealed class DynamoDbHealthCheck(IAmazonDynamoDB dynamo, string tableName) : IDynamoHealthCheck
 {

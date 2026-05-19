@@ -3,8 +3,9 @@ using Domain;
 using Domain.Notes;
 using EventStore;
 using EventStore.Projections;
+using Api.Exceptions;
 
-namespace Api;
+namespace Api.CommandHandlers;
 
 public sealed class NoteCommandHandler(
     IEventStore store,

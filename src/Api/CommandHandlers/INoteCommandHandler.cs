@@ -1,6 +1,6 @@
 using Domain.Notes;
 
-namespace Api;
+namespace Api.CommandHandlers;
 
 public interface INoteCommandHandler
 {

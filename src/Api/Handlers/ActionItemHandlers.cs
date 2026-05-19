@@ -2,6 +2,8 @@ using Domain.ActionItems;
 using Domain.Notes;
 using EventStore.Projections;
 using Api.Contracts;
+using Api.CommandHandlers;
+using Api.Exceptions;
 using AddActionItemCmd = Domain.ActionItems.AddActionItem;
 using CompleteActionItemCmd = Domain.ActionItems.CompleteActionItem;
 using ReopenActionItemCmd = Domain.ActionItems.ReopenActionItem;

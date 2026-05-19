@@ -1,4 +1,4 @@
-namespace Api;
+namespace Api.CommandHandlers;
 
 public interface IProjectionRebuildHandler
 {

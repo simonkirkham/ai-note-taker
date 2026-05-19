@@ -1,3 +1,5 @@
+using Api.CommandHandlers;
+
 namespace Api.Handlers;
 
 public static class AdminHandlers

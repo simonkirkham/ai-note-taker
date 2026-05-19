@@ -1,6 +1,6 @@
 using Domain.ActionItems;
 
-namespace Api;
+namespace Api.CommandHandlers;
 
 public interface IActionItemCommandHandler
 {

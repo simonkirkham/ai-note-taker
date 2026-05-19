@@ -3,8 +3,10 @@ using Domain.ActionItems;
 using Domain.Notes;
 using EventStore;
 using EventStore.Projections;
+using Api.Exceptions;
+using Api.Utilities;
 
-namespace Api;
+namespace Api.CommandHandlers;
 
 public sealed class ActionItemCommandHandler(
     IEventStore store,

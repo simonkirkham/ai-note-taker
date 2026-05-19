@@ -1,4 +1,6 @@
 using Api.Contracts;
+using Api.CommandHandlers;
+using Api.Exceptions;
 using Domain.Folders;
 using EventStore.Projections;
 

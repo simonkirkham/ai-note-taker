@@ -1,7 +1,7 @@
 using EventStore;
 using EventStore.Projections;
 
-namespace Api;
+namespace Api.CommandHandlers;
 
 public sealed class ProjectionRebuildHandler(
     IEventStore store,

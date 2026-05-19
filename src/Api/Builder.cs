@@ -1,6 +1,10 @@
 using Amazon.DynamoDBv2;
 using EventStore;
 using EventStore.Projections;
+using Api.CommandHandlers;
+using Api.EventHandlers;
+using Api.HealthChecks;
+using Api.Projections;
 
 namespace Api;
 
