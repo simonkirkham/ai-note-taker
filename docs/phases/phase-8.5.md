@@ -1,4 +1,4 @@
-# Phase 7.9 — UI Polish
+# Phase 8.5 — UI Polish
 
 **Goal:** A collection of targeted UX improvements that make the app feel faster and more intentional to use. No new events, no new aggregates — these are pure-frontend slices that build on what already exists.
 

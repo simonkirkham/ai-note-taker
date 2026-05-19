@@ -139,14 +139,6 @@ Slices and acceptance criteria: [docs/phases/phase-7.5.md](phases/phase-7.5.md)
 
 Slices and acceptance criteria: [docs/phases/phase-7.8.md](phases/phase-7.8.md)
 
-## Phase 7.9 — UI Polish
-
-- Tag autocomplete: prefix and substring matching against existing tags, Tab to complete, common tags by usage frequency, related tags by co-occurrence on shared notes
-
-**Goal:** Make everyday interactions feel faster and more intentional without touching the backend. Pure-frontend slices.
-
-Slices and acceptance criteria: [docs/phases/phase-7.9.md](phases/phase-7.9.md)
-
 ## Phase 8 — Google Sign-In (multi-user auth)
 
 - Google Sign-In on the frontend (PKCE flow; ID token stored in memory)
@@ -158,6 +150,14 @@ Slices and acceptance criteria: [docs/phases/phase-7.9.md](phases/phase-7.9.md)
 **Goal:** real authentication before Calendar integration arrives; learn Google OIDC, JWT Bearer middleware, PKCE, and multi-user data isolation while the system is still small enough to retrofit cleanly.
 
 Slices and acceptance criteria: [docs/phases/phase-8.md](phases/phase-8.md)
+
+## Phase 8.5 — UI Polish
+
+- Tag autocomplete: prefix and substring matching against existing tags, Tab to complete, common tags by usage frequency, related tags by co-occurrence on shared notes
+
+**Goal:** Make everyday interactions feel faster and more intentional without touching the backend. Pure-frontend slices.
+
+Slices and acceptance criteria: [docs/phases/phase-8.5.md](phases/phase-8.5.md)
 
 ## Phase 9 — Google Calendar integration + meeting notes
 
