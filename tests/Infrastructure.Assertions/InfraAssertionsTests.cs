@@ -260,6 +260,12 @@ public class InfraAssertionsTests
     }
 
     [Fact]
+    public void CloudFront_HasNoApiFunction_WhenDomainNotConfigured()
+    {
+        _template.ResourceCountIs("AWS::CloudFront::Function", 0);
+    }
+
+    [Fact]
     public void CloudFront_HasCustomDomainAlias_WhenDomainConfigured()
     {
         _domainTemplate.HasResourceProperties("AWS::CloudFront::Distribution", Match.ObjectLike(new Dictionary<string, object>

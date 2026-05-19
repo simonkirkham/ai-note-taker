@@ -13,7 +13,7 @@ public sealed class CertificateStack : Stack
         var hostedZone = HostedZone.FromHostedZoneAttributes(this, "HostedZone", new HostedZoneAttributes
         {
             HostedZoneId = hostedZoneId,
-            ZoneName = ApexDomain(domainName)
+            ZoneName = DomainHelpers.ApexDomain(domainName)
         });
 
         Certificate = new Certificate(this, "Certificate", new CertificateProps
@@ -21,13 +21,5 @@ public sealed class CertificateStack : Stack
             DomainName = domainName,
             Validation = CertificateValidation.FromDns(hostedZone)
         });
-    }
-
-    // "test.note-taker-ai.com" -> "note-taker-ai.com"
-    // "note-taker-ai.com" -> "note-taker-ai.com"
-    private static string ApexDomain(string domain)
-    {
-        var parts = domain.Split('.');
-        return parts.Length > 2 ? string.Join('.', parts[^2..]) : domain;
     }
 }

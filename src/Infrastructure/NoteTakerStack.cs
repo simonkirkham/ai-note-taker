@@ -8,7 +8,7 @@ using Amazon.CDK.AWS.Route53.Targets;
 using Amazon.CDK.AWS.S3;
 using Constructs;
 
-public class NoteTakerStack : Stack
+public sealed class NoteTakerStack : Stack
 {
     public NoteTakerStack(Construct scope, string id, NoteTakerStackProps props) : base(scope, id, props)
     {
@@ -173,7 +173,7 @@ public class NoteTakerStack : Stack
             var hostedZone = HostedZone.FromHostedZoneAttributes(this, "HostedZone", new HostedZoneAttributes
             {
                 HostedZoneId = props.HostedZoneId,
-                ZoneName = ApexDomain(props.DomainName)
+                ZoneName = DomainHelpers.ApexDomain(props.DomainName)
             });
 
             new ARecord(this, "AliasRecord", new ARecordProps
@@ -251,7 +251,8 @@ public class NoteTakerStack : Stack
                 Code = FunctionCode.FromInline("""
                     function handler(event) {
                         var request = event.request;
-                        request.uri = request.uri.slice(4) || '/';
+                        var prefix = '/api'; // strip CloudFront behaviour prefix before forwarding
+                        request.uri = request.uri.slice(prefix.length) || '/';
                         return request;
                     }
                     """),
@@ -288,9 +289,4 @@ public class NoteTakerStack : Stack
         };
     }
 
-    private static string ApexDomain(string domain)
-    {
-        var parts = domain.Split('.');
-        return parts.Length > 2 ? string.Join('.', parts[^2..]) : domain;
-    }
 }
