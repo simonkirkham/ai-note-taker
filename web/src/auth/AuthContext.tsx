@@ -21,7 +21,10 @@ export function AuthProvider({
   children: ReactNode
   initialToken?: string
 }) {
-  const [idToken, setIdToken] = useState<string | null>(initialToken ?? null)
+  // When no client ID is configured (unset GitHub secret resolves to ""), bypass the sign-in
+  // gate so local dev and E2E tests work without real Google credentials.
+  const clientId = import.meta.env.VITE_GOOGLE_CLIENT_ID ?? ''
+  const [idToken, setIdToken] = useState<string | null>(initialToken ?? (clientId ? null : 'no-auth'))
   const mounted = useRef(false)
 
   useEffect(() => {
@@ -32,6 +35,8 @@ export function AuthProvider({
       setToken(initialToken)
       return
     }
+
+    if (!clientId) return
 
     const params = new URLSearchParams(window.location.search)
     const code = params.get('code')
@@ -45,7 +50,6 @@ export function AuthProvider({
     sessionStorage.removeItem('pkce_state')
     window.history.replaceState({}, '', window.location.pathname)
 
-    const clientId = import.meta.env.VITE_GOOGLE_CLIENT_ID ?? ''
     exchangeCode(clientId, window.location.origin, code, verifier)
       .then(({ id_token }) => {
         setToken(id_token)
@@ -55,7 +59,7 @@ export function AuthProvider({
   }, [])
 
   async function signIn() {
-    const clientId = import.meta.env.VITE_GOOGLE_CLIENT_ID ?? ''
+    if (!clientId) return
     const verifier = generateCodeVerifier()
     const challenge = await generateCodeChallenge(verifier)
     const state = generateCodeVerifier()
@@ -66,7 +70,7 @@ export function AuthProvider({
 
   function signOut() {
     clearToken()
-    setIdToken(null)
+    setIdToken(clientId ? null : 'no-auth')
   }
 
   return (

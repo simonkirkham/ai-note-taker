@@ -10,10 +10,21 @@ beforeEach(() => clearToken())
 afterEach(() => clearToken())
 
 describe('unauthenticated state', () => {
+  beforeEach(() => vi.stubEnv('VITE_GOOGLE_CLIENT_ID', 'test-client-id'))
+  afterEach(() => vi.unstubAllEnvs())
+
   it('shows sign-in screen and hides the note list', () => {
     render(<AuthProvider><App /></AuthProvider>)
     expect(screen.getByRole('button', { name: /sign in with google/i })).toBeInTheDocument()
     expect(screen.queryByTestId('sidebar-toggle')).not.toBeInTheDocument()
+  })
+})
+
+describe('no-auth bypass', () => {
+  it('shows home screen without a token when VITE_GOOGLE_CLIENT_ID is absent', () => {
+    render(<AuthProvider><App /></AuthProvider>)
+    expect(screen.queryByRole('button', { name: /sign in with google/i })).not.toBeInTheDocument()
+    expect(screen.getByTestId('sidebar-toggle')).toBeInTheDocument()
   })
 })
 
@@ -55,6 +66,9 @@ describe('API calls', () => {
 })
 
 describe('sign-out', () => {
+  beforeEach(() => vi.stubEnv('VITE_GOOGLE_CLIENT_ID', 'test-client-id'))
+  afterEach(() => vi.unstubAllEnvs())
+
   it('clears the token and shows the sign-in screen', async () => {
     render(<AuthProvider initialToken="fake-id-token"><App /></AuthProvider>)
     await userEvent.click(screen.getByRole('button', { name: /sign out/i }))
