@@ -192,7 +192,7 @@ public sealed class NoteTakerStack : Stack
         {
             Value = !string.IsNullOrEmpty(props.DomainName)
                 ? $"https://{props.DomainName}/api"
-                : httpApi.ApiEndpoint,
+                : $"https://{distribution.DistributionDomainName}/api",
             Description = "API endpoint URL"
         });
 

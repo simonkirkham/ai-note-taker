@@ -23,8 +23,12 @@ public sealed class AppPage(IPage page, string baseUrl)
         await patchDone;
     }
 
-    public Task SaveAndReturnAsync() =>
-        page.GetByTestId("save-button").ClickAsync();
+    public async Task SaveAndReturnAsync()
+    {
+        var cardsRefreshed = page.WaitForResponseAsync(r => r.Url.Contains("/notes/cards"));
+        await page.GetByTestId("save-button").ClickAsync();
+        await cardsRefreshed;
+    }
 
     public Task AssertNoteVisibleInListAsync(string title) =>
         Assertions.Expect(
