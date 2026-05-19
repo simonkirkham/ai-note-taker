@@ -168,7 +168,7 @@ public sealed class NoteTakerStack : Stack
         var distribution = new Distribution(this, "WebDistribution", BuildDistributionProps(props, httpApi, webBucket));
 
         // ── Route 53 alias (custom domain only) ─────────────────────────
-        if (props.DomainName != null && props.HostedZoneId != null)
+        if (!string.IsNullOrEmpty(props.DomainName) && !string.IsNullOrEmpty(props.HostedZoneId))
         {
             var hostedZone = HostedZone.FromHostedZoneAttributes(this, "HostedZone", new HostedZoneAttributes
             {
@@ -190,7 +190,7 @@ public sealed class NoteTakerStack : Stack
         // ── Outputs ──────────────────────────────────────────────────────
         new CfnOutput(this, "ApiUrl", new CfnOutputProps
         {
-            Value = props.DomainName != null
+            Value = !string.IsNullOrEmpty(props.DomainName)
                 ? $"https://{props.DomainName}/api"
                 : httpApi.ApiEndpoint,
             Description = "API endpoint URL"
@@ -204,7 +204,7 @@ public sealed class NoteTakerStack : Stack
 
         new CfnOutput(this, "WebUrl", new CfnOutputProps
         {
-            Value = props.DomainName != null
+            Value = !string.IsNullOrEmpty(props.DomainName)
                 ? $"https://{props.DomainName}"
                 : $"https://{distribution.DistributionDomainName}",
             Description = "Frontend URL"
@@ -234,7 +234,7 @@ public sealed class NoteTakerStack : Stack
             Origin = S3BucketOrigin.WithOriginAccessControl(webBucket)
         };
 
-        if (props.CertificateArn == null || props.DomainName == null)
+        if (string.IsNullOrEmpty(props.CertificateArn) || string.IsNullOrEmpty(props.DomainName))
         {
             return new DistributionProps
             {
