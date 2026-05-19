@@ -50,7 +50,7 @@ public sealed class DynamoDbNoteDetailStore(IAmazonDynamoDB dynamo, string table
                 ExclusiveStartKey = lastKey
             }, ct).ConfigureAwait(false);
 
-            await BatchDeleteByPrimaryKeyAsync(scan.Items, ct).ConfigureAwait(false);
+            await DynamoDbBatchDelete.ByPrimaryKeyAsync(dynamo, tableName, scan.Items, ct).ConfigureAwait(false);
 
             lastKey = scan.LastEvaluatedKey?.Count > 0 ? scan.LastEvaluatedKey : null;
         }
@@ -85,26 +85,6 @@ public sealed class DynamoDbNoteDetailStore(IAmazonDynamoDB dynamo, string table
             DateTimeOffset.Parse(item["LastModifiedAt"].S),
             date,
             tags);
-    }
-
-    private async Task BatchDeleteByPrimaryKeyAsync(List<Dictionary<string, AttributeValue>> items, CancellationToken ct)
-    {
-        for (var i = 0; i < items.Count; i += 25)
-        {
-            var batch = items.Skip(i).Take(25)
-                .Select(row => new WriteRequest
-                {
-                    DeleteRequest = new DeleteRequest
-                    {
-                        Key = new Dictionary<string, AttributeValue> { ["PK"] = row["PK"] }
-                    }
-                }).ToList();
-
-            await dynamo.BatchWriteItemAsync(new BatchWriteItemRequest
-            {
-                RequestItems = new Dictionary<string, List<WriteRequest>> { [tableName] = batch }
-            }, ct).ConfigureAwait(false);
-        }
     }
 
     private static string ReadStringAttribute(Dictionary<string, AttributeValue> item, string key) =>

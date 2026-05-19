@@ -45,22 +45,7 @@ public sealed class NoteTitleListStore(IAmazonDynamoDB dynamo, string tableName)
                 ExclusiveStartKey = lastKey
             }, ct).ConfigureAwait(false);
 
-            for (var i = 0; i < scan.Items.Count; i += 25)
-            {
-                var batch = scan.Items.Skip(i).Take(25)
-                    .Select(row => new WriteRequest
-                    {
-                        DeleteRequest = new DeleteRequest
-                        {
-                            Key = new Dictionary<string, AttributeValue> { ["PK"] = row["PK"] }
-                        }
-                    }).ToList();
-
-                await dynamo.BatchWriteItemAsync(new BatchWriteItemRequest
-                {
-                    RequestItems = new Dictionary<string, List<WriteRequest>> { [tableName] = batch }
-                }, ct).ConfigureAwait(false);
-            }
+            await DynamoDbBatchDelete.ByPrimaryKeyAsync(dynamo, tableName, scan.Items, ct).ConfigureAwait(false);
 
             lastKey = scan.LastEvaluatedKey?.Count > 0 ? scan.LastEvaluatedKey : null;
         }
