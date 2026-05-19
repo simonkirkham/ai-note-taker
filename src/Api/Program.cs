@@ -33,6 +33,7 @@ LoggingConfig.AddLogging(app);
 
 NoteEndpoints.MapNoteEndpoints(app);
 app.MapFolderEndpoints();
+app.MapAuthEndpoints();
 
 app.Run();
 

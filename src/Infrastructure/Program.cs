@@ -5,6 +5,7 @@ var app = new App();
 var domainName = System.Environment.GetEnvironmentVariable("DOMAIN_NAME");
 var hostedZoneId = System.Environment.GetEnvironmentVariable("HOSTED_ZONE_ID");
 var googleClientId = System.Environment.GetEnvironmentVariable("GOOGLE_CLIENT_ID");
+var googleClientSecret = System.Environment.GetEnvironmentVariable("GOOGLE_CLIENT_SECRET");
 var allowedUserSubs = System.Environment.GetEnvironmentVariable("ALLOWED_USER_SUBS");
 
 string? certificateArn = null;
@@ -35,6 +36,7 @@ new NoteTakerStack(app, "NoteTakerStack", new NoteTakerStackProps
     DomainName = domainName,
     HostedZoneId = hostedZoneId,
     GoogleClientId = googleClientId,
+    GoogleClientSecret = googleClientSecret,
     AllowedUserSubs = allowedUserSubs
 });
 

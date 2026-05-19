@@ -295,6 +295,21 @@ public class InfraAssertionsTests
     }
 
     [Fact]
+    public void Lambda_HasGoogleClientSecretEnvVar()
+    {
+        _template.HasResourceProperties("AWS::Lambda::Function", Match.ObjectLike(new Dictionary<string, object>
+        {
+            ["Environment"] = Match.ObjectLike(new Dictionary<string, object>
+            {
+                ["Variables"] = Match.ObjectLike(new Dictionary<string, object>
+                {
+                    ["GOOGLE_CLIENT_SECRET"] = Match.AnyValue()
+                })
+            })
+        }));
+    }
+
+    [Fact]
     public void Lambda_HasAllowedUserSubsEnvVar()
     {
         _template.HasResourceProperties("AWS::Lambda::Function", Match.ObjectLike(new Dictionary<string, object>

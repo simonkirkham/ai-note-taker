@@ -34,22 +34,16 @@ export function buildAuthUrl(
   return `https://accounts.google.com/o/oauth2/v2/auth?${params}`
 }
 
+// Token exchange goes through our backend so the client_secret never touches the browser.
 export async function exchangeCode(
-  clientId: string,
   redirectUri: string,
   code: string,
   codeVerifier: string,
 ): Promise<{ id_token: string }> {
-  const res = await fetch('https://oauth2.googleapis.com/token', {
+  const res = await fetch('/api/auth/token', {
     method: 'POST',
-    headers: { 'content-type': 'application/x-www-form-urlencoded' },
-    body: new URLSearchParams({
-      code,
-      client_id: clientId,
-      redirect_uri: redirectUri,
-      code_verifier: codeVerifier,
-      grant_type: 'authorization_code',
-    }).toString(),
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ code, codeVerifier, redirectUri }),
   })
   if (!res.ok) throw new Error('Token exchange failed')
   return res.json()
