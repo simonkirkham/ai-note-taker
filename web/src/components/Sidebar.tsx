@@ -20,6 +20,7 @@ export default function Sidebar({
   isUnfiledActive,
   onDropToUnfiled,
   onPreview,
+  onSignOut,
 }: {
   open?: boolean;
   onCreate: () => void;
@@ -37,6 +38,7 @@ export default function Sidebar({
   isUnfiledActive: boolean;
   onDropToUnfiled: (noteId: string) => void;
   onPreview: (folderId: string, name: string) => void;
+  onSignOut?: () => void;
 }) {
   const [addingFolder, setAddingFolder] = useState(false);
   const [newFolderName, setNewFolderName] = useState("");
@@ -140,6 +142,9 @@ export default function Sidebar({
           />
         )}
       </div>
+      {onSignOut && (
+        <button className="sidebar-sign-out" onClick={onSignOut}>Sign out</button>
+      )}
     </nav>
   );
 }

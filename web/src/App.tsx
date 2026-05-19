@@ -233,12 +233,6 @@ function AppContent({ signOut }: { signOut: () => void }) {
   return (
     <div className="app-layout">
       <button
-        className="sign-out-btn"
-        onClick={signOut}
-      >
-        Sign out
-      </button>
-      <button
         data-testid="sidebar-toggle"
         className="sidebar-toggle"
         aria-label="Toggle sidebar"
@@ -267,6 +261,7 @@ function AppContent({ signOut }: { signOut: () => void }) {
         isUnfiledActive={activeFolderId === UNFILED_ID}
         onDropToUnfiled={(noteId) => handleMoveNoteToFolder(noteId, null)}
         onPreview={(folderId, name) => { setPreviewFolderId(folderId); setPreviewFolderName(name); }}
+        onSignOut={signOut}
       />
       <FolderPreviewPanel
         folderId={previewFolderId}
