@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { CalendarMeeting, getTodaysMeetings } from "../api";
+import { CalendarMeeting, createNoteFromMeeting, getTodaysMeetings } from "../api";
 import { MeetingReminder, useMeetingReminders } from "../hooks/useMeetingReminders";
 
 const NO_MEETINGS: MeetingReminder[] = [];
@@ -18,9 +18,11 @@ type State =
   | { status: "unavailable" }
   | { status: "loaded"; meetings: CalendarMeeting[] };
 
-export function MeetingsSection() {
+export function MeetingsSection({ onOpenNote }: { onOpenNote: (noteId: string) => void }) {
   const [state, setState] = useState<State>({ status: "loading" });
   const [bannerDismissed, setBannerDismissed] = useState(false);
+  // tracks calendarEventIds currently being created, for pending button state
+  const [creating, setCreating] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     let cancelled = false;
@@ -52,6 +54,28 @@ export function MeetingsSection() {
   async function handleEnable() {
     try { await Notification.requestPermission(); } catch { /* unavailable */ }
     setBannerDismissed(true);
+  }
+
+  async function handleCreateNote(meeting: CalendarMeeting) {
+    setCreating((prev) => new Set(prev).add(meeting.calendarEventId));
+    try {
+      const { noteId } = await createNoteFromMeeting(meeting);
+      setState((prev) =>
+        prev.status === "loaded"
+          ? {
+              ...prev,
+              meetings: prev.meetings.map((m) =>
+                m.calendarEventId === meeting.calendarEventId
+                  ? { ...m, linkedNoteId: noteId }
+                  : m
+              ),
+            }
+          : prev
+      );
+      onOpenNote(noteId);
+    } finally {
+      setCreating((prev) => { const next = new Set(prev); next.delete(meeting.calendarEventId); return next; });
+    }
   }
 
   function handleRetry() {
@@ -128,9 +152,22 @@ export function MeetingsSection() {
                   </div>
                   <footer className="meeting-card-footer">
                     <div className="meeting-card-row">
-                      <button className="meeting-action-btn">
-                        {m.linkedNoteId ? "Open Note ↗" : "Create Note"}
-                      </button>
+                      {m.linkedNoteId ? (
+                        <button
+                          className="meeting-action-btn"
+                          onClick={() => onOpenNote(m.linkedNoteId!)}
+                        >
+                          Open Note ↗
+                        </button>
+                      ) : (
+                        <button
+                          className="meeting-action-btn"
+                          disabled={creating.has(m.calendarEventId)}
+                          onClick={() => handleCreateNote(m)}
+                        >
+                          {creating.has(m.calendarEventId) ? "Creating…" : "Create Note"}
+                        </button>
+                      )}
                     </div>
                     {m.isRecurring && (
                       <>

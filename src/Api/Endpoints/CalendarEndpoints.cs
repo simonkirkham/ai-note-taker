@@ -8,5 +8,7 @@ public static class CalendarEndpoints
     {
         app.MapGet("/calendar/today", CalendarHandlers.GetTodaysMeetings)
            .RequireAuthorization();
+        app.MapPost("/notes/from-meeting", CalendarHandlers.CreateNoteFromMeeting)
+           .RequireAuthorization();
     }
 }

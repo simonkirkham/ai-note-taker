@@ -269,6 +269,23 @@ export async function getTodaysMeetings(tz: string): Promise<TodaysMeetingsResul
   return res.json();
 }
 
+export async function createNoteFromMeeting(meeting: CalendarMeeting): Promise<{ noteId: string }> {
+  const res = await apiFetch(`${base}/notes/from-meeting`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      calendarEventId: meeting.calendarEventId,
+      title: meeting.title,
+      startTime: meeting.startTime,
+      endTime: meeting.endTime,
+      isRecurring: meeting.isRecurring,
+      recurringSeriesId: meeting.recurringSeriesId,
+    }),
+  });
+  if (!res.ok) throw new Error(`POST /notes/from-meeting failed: ${res.status}`);
+  return res.json();
+}
+
 export interface TranscriptionCredentials {
   accessKeyId: string;
   secretAccessKey: string;

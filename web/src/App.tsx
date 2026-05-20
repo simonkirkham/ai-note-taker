@@ -233,6 +233,7 @@ function AppContent({ signOut }: { signOut: () => void }) {
         createError={createError}
         onNewNote={handleNewNote}
         onEditNote={(noteId) => setView({ kind: "note", noteId })}
+        onOpenNote={(noteId) => setView({ kind: "note", noteId })}
         folderPath={view.kind === "folder" ? view.folderPath : undefined}
         currentFolderId={view.kind === "folder" ? view.folderId : undefined}
         onHome={handleHome}

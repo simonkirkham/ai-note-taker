@@ -1,4 +1,8 @@
+using Api.CommandHandlers;
+using Api.Contracts;
+using Api.Auth;
 using Api.Services;
+using Domain.Notes;
 using EventStore.Projections;
 
 namespace Api.Handlers;
@@ -40,5 +44,25 @@ public static class CalendarHandlers
         });
 
         return Results.Ok(new { meetings });
+    }
+
+    public static async Task<IResult> CreateNoteFromMeeting(
+        CreateNoteFromMeetingRequest req,
+        INoteCommandHandler handler,
+        ICalendarLinkIndexStore calendarLinkStore,
+        ICurrentUser currentUser,
+        CancellationToken ct)
+    {
+        var existing = await calendarLinkStore.GetByCalendarEventIdAsync(req.CalendarEventId, ct);
+        if (existing is not null) return Results.Conflict();
+
+        var noteId = new NoteId(Guid.NewGuid());
+        await handler.HandleAsync(new CreateNote(noteId), ct);
+        await handler.HandleAsync(new RenameNote(noteId, req.Title), ct);
+        await handler.HandleAsync(new SetNoteDate(noteId, DateOnly.FromDateTime(req.StartTime.LocalDateTime)), ct);
+        await handler.HandleAsync(new LinkNoteToCalendarEvent(noteId, req.CalendarEventId, req.Title,
+            req.StartTime, req.EndTime, req.IsRecurring, req.RecurringSeriesId), ct);
+
+        return Results.Created($"/notes/{noteId.Value}", new { noteId = noteId.Value });
     }
 }
