@@ -543,7 +543,7 @@ Scenario: No reminder is scheduled for a meeting that has already started
 
 ## Slice 9-F — Recurring meetings: create note for next occurrence
 
-**Status:** Not Started
+**Status:** Done
 
 **Value:** For a recurring meeting shown today, I can create a note for next week's occurrence in one click so I can start adding agenda items before the meeting.
 
@@ -619,14 +619,14 @@ Scenario: hasNextOccurrenceNote reflects a note already created for next week
 
 **Acceptance criteria:**
 
-- [ ] `GetNextOccurrenceAsync` returns the next calendar instance after `now`
-- [ ] `POST /notes/from-next-occurrence` creates and links a note to the next instance
-- [ ] `POST /notes/from-next-occurrence` returns 404 when no future occurrences exist
-- [ ] `POST /notes/from-next-occurrence` returns `alreadyExists: true` when a note already exists; frontend navigates to it
-- [ ] `GET /calendar/today` populates `hasNextOccurrenceNote` correctly via GSI lookup
-- [ ] "Note for next occurrence" button visible on recurring meetings with `!hasNextOccurrenceNote`
-- [ ] "Open next occurrence note" button visible when `hasNextOccurrenceNote` is true
-- [ ] Both buttons hidden for non-recurring meetings and when series has ended
+- [x] `GetNextOccurrenceAsync` returns the next calendar instance after `now`
+- [x] `POST /notes/from-next-occurrence` creates and links a note to the next instance
+- [x] `POST /notes/from-next-occurrence` returns 404 when no future occurrences exist
+- [x] `POST /notes/from-next-occurrence` returns `alreadyExists: true` when a note already exists; frontend navigates to it
+- [x] `GET /calendar/today` populates `hasNextOccurrenceNote` correctly via GSI lookup
+- [x] "Note for next occurrence" button visible on recurring meetings with `!hasNextOccurrenceNote`
+- [x] "Open next occurrence note" button visible when `hasNextOccurrenceNote` is true
+- [x] Both buttons hidden for non-recurring meetings and when series has ended
 - [ ] E2E: click "Note for next occurrence" on a recurring meeting; button changes to "Open next occurrence note"; click it — note screen opens
 
 ---

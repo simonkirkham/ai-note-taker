@@ -151,7 +151,7 @@ Slices and acceptance criteria: [docs/phases/phase-7.8.md](phases/phase-7.8.md)
 
 Slices and acceptance criteria: [docs/phases/phase-8.md](phases/phase-8.md)
 
-## Phase 9 — Google Calendar integration + meeting notes
+## Phase 9 — Google Calendar integration + meeting notes _(Done)_
 
 - Today's meetings surfaced on the home screen (Google Calendar pass-through, single-user refresh token)
 - One-click note creation linked to a calendar event (`NoteLinkedToCalendarEvent`)

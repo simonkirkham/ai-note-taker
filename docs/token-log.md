@@ -4,6 +4,23 @@ Approximate tokens consumed per slice, broken down by agent. Recorded by Scribe 
 
 ---
 
+## Slice 9-F — Recurring meetings: create note for next occurrence
+
+| Agent     | ~Tokens      |
+|-----------|--------------|
+| Scout     | —            |
+| Breaker   | —            |
+| Pip       | 50 000       |
+| Stylist   | —            |
+| Hawk 1    | 49 000       |
+| Hawk 2    | 31 000       |
+| Scribe    | 5 000        |
+| **Total** | **~135 000** |
+
+**Why:** Two Hawk passes (80k combined) dominated cost. First pass found six blocking issues: `MaxResults=1` + cancelled-filter bug, missing input validation, dead `TodayCalendarEventId` field, non-optimistic UI update, Open-Note navigating to empty string on page reload, and sequential GSI queries. All fixed in one round; Hawk 2 approved cleanly.
+
+---
+
 ## Hotfix — TRANSCRIBE_ROLE_ARN production 503
 
 | Agent     | ~Tokens      |
