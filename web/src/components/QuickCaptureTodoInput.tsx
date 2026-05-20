@@ -3,10 +3,11 @@ import { addTodo, TodoItem } from "../api";
 
 interface Props {
   onAdded: (item: TodoItem) => void;
+  onConfirmed: (tempId: string, realId: string) => void;
   onFailed: (tempId: string) => void;
 }
 
-export default function QuickCaptureTodoInput({ onAdded, onFailed }: Props) {
+export default function QuickCaptureTodoInput({ onAdded, onConfirmed, onFailed }: Props) {
   const [value, setValue] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -31,8 +32,8 @@ export default function QuickCaptureTodoInput({ onAdded, onFailed }: Props) {
     setValue("");
     inputRef.current?.focus();
     try {
-      await addTodo(trimmed);
-      // tempId stays in the list — real ID differences don't matter for display
+      const { todoId } = await addTodo(trimmed);
+      onConfirmed(tempId, todoId.toString());
     } catch {
       onFailed(tempId);
       setError("Failed to add to-do. Please try again.");

@@ -94,19 +94,16 @@ public sealed class DynamoDbTodoListStore(IAmazonDynamoDB dynamo, string tableNa
     public async Task UpdateNoteTitleAsync(NoteId noteId, string newTitle, CancellationToken ct = default)
     {
         var itemIds = await QueryItemIdsByNoteAsync(noteId, ct).ConfigureAwait(false);
-        foreach (var id in itemIds)
+        await Task.WhenAll(itemIds.Select(id => dynamo.UpdateItemAsync(new UpdateItemRequest
         {
-            await dynamo.UpdateItemAsync(new UpdateItemRequest
+            TableName = tableName,
+            Key = new Dictionary<string, AttributeValue> { ["PK"] = new() { S = id } },
+            UpdateExpression = "SET NoteTitle = :title",
+            ExpressionAttributeValues = new Dictionary<string, AttributeValue>
             {
-                TableName = tableName,
-                Key = new Dictionary<string, AttributeValue> { ["PK"] = new() { S = id } },
-                UpdateExpression = "SET NoteTitle = :title",
-                ExpressionAttributeValues = new Dictionary<string, AttributeValue>
-                {
-                    [":title"] = new() { S = newTitle }
-                }
-            }, ct).ConfigureAwait(false);
-        }
+                [":title"] = new() { S = newTitle }
+            }
+        }, ct))).ConfigureAwait(false);
     }
 
     public async Task<TodoListView> QueryAllAsync(CancellationToken ct = default)

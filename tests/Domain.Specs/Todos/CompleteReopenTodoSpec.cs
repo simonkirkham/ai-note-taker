@@ -57,4 +57,16 @@ public sealed class CompleteReopenTodoSpec
             .When(new ReopenTodo(TodoId, At))
             .ThenThrows<InvalidOperationException>();
     }
+
+    [Fact]
+    public void RejectsReopeningDeletedTodo()
+    {
+        Spec
+            .Given<Todo>(
+                new TodoAdded(TodoId, UserId, "Buy milk", null),
+                new TodoCompleted(TodoId, At),
+                new TodoDeleted(TodoId, At))
+            .When(new ReopenTodo(TodoId, At))
+            .ThenThrows<InvalidOperationException>();
+    }
 }

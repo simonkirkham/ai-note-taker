@@ -5,19 +5,20 @@ using EventStore.Projections;
 
 namespace Api.Handlers;
 
-
 public static class TodoHandlers
 {
     public static async Task<IResult> GetTodos(ITodoListStore store, ICurrentUser currentUser, CancellationToken ct)
     {
         var view = await store.QueryAllAsync(ct).ConfigureAwait(false);
-        var todayUtc = DateTimeOffset.UtcNow.Date;
+        // Extend cutoff to 2 days back so any UTC-offset "today" is covered;
+        // the frontend applies its own local-calendar-day filter.
+        var cutoff = DateTimeOffset.UtcNow.Date.AddDays(-1);
 
         return Results.Ok(new
         {
             items = view.Items
                 .Where(i => i.UserId == currentUser.UserId)
-                .Where(i => i.CompletedAt is null || i.CompletedAt.Value.UtcDateTime.Date >= todayUtc)
+                .Where(i => i.CompletedAt is null || i.CompletedAt.Value.UtcDateTime.Date >= cutoff)
                 .Select(i => new
                 {
                     itemId = i.ItemId,
@@ -37,36 +38,73 @@ public static class TodoHandlers
         ICurrentUser currentUser,
         CancellationToken ct)
     {
+        if (string.IsNullOrWhiteSpace(body.Description))
+            return Results.BadRequest(new { error = "Description is required." });
+
         var todoId = new TodoId(Guid.NewGuid());
-        await handler.HandleAsync(new AddTodo(todoId, currentUser.UserId, body.Description, body.Priority), ct).ConfigureAwait(false);
+        await handler.HandleAsync(new AddTodo(todoId, currentUser.UserId, body.Description.Trim(), body.Priority), ct).ConfigureAwait(false);
         return Results.Ok(new { todoId = todoId.Value });
     }
 
     public static async Task<IResult> CompleteTodo(
         Guid todoId,
         ITodoCommandHandler handler,
+        ITodoListStore store,
+        ICurrentUser currentUser,
         CancellationToken ct)
     {
-        await handler.HandleAsync(new CompleteTodo(new TodoId(todoId), DateTimeOffset.UtcNow), ct).ConfigureAwait(false);
-        return Results.NoContent();
+        if (!await OwnsTodoAsync(store, todoId, currentUser, ct).ConfigureAwait(false))
+            return Results.NotFound();
+
+        try
+        {
+            await handler.HandleAsync(new CompleteTodo(new TodoId(todoId), DateTimeOffset.UtcNow), ct).ConfigureAwait(false);
+            return Results.NoContent();
+        }
+        catch (InvalidOperationException) { return Results.Conflict(); }
     }
 
     public static async Task<IResult> ReopenTodo(
         Guid todoId,
         ITodoCommandHandler handler,
+        ITodoListStore store,
+        ICurrentUser currentUser,
         CancellationToken ct)
     {
-        await handler.HandleAsync(new ReopenTodo(new TodoId(todoId), DateTimeOffset.UtcNow), ct).ConfigureAwait(false);
-        return Results.NoContent();
+        if (!await OwnsTodoAsync(store, todoId, currentUser, ct).ConfigureAwait(false))
+            return Results.NotFound();
+
+        try
+        {
+            await handler.HandleAsync(new ReopenTodo(new TodoId(todoId), DateTimeOffset.UtcNow), ct).ConfigureAwait(false);
+            return Results.NoContent();
+        }
+        catch (InvalidOperationException) { return Results.Conflict(); }
     }
 
     public static async Task<IResult> DeleteTodo(
         Guid todoId,
         ITodoCommandHandler handler,
+        ITodoListStore store,
+        ICurrentUser currentUser,
         CancellationToken ct)
     {
-        await handler.HandleAsync(new DeleteTodo(new TodoId(todoId), DateTimeOffset.UtcNow), ct).ConfigureAwait(false);
-        return Results.NoContent();
+        if (!await OwnsTodoAsync(store, todoId, currentUser, ct).ConfigureAwait(false))
+            return Results.NotFound();
+
+        try
+        {
+            await handler.HandleAsync(new DeleteTodo(new TodoId(todoId), DateTimeOffset.UtcNow), ct).ConfigureAwait(false);
+            return Results.NoContent();
+        }
+        catch (InvalidOperationException) { return Results.Conflict(); }
+    }
+
+    static async Task<bool> OwnsTodoAsync(ITodoListStore store, Guid todoId, ICurrentUser currentUser, CancellationToken ct)
+    {
+        var view = await store.QueryAllAsync(ct).ConfigureAwait(false);
+        var item = view.Items.FirstOrDefault(i => i.ItemId == todoId.ToString());
+        return item is not null && item.UserId == currentUser.UserId;
     }
 }
 

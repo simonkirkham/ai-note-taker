@@ -34,4 +34,13 @@ public sealed class AddTodoSpec
             .When(new AddTodo(TodoId, UserId, "Buy milk", null))
             .ThenThrows<InvalidOperationException>();
     }
+
+    [Fact]
+    public void RejectsAddWithEmptyDescription()
+    {
+        Spec
+            .Given<Todo>()
+            .When(new AddTodo(TodoId, UserId, "   ", null))
+            .ThenThrows<ArgumentException>();
+    }
 }

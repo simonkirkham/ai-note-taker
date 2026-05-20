@@ -39,6 +39,8 @@ public sealed class Todo : IAggregate
     {
         if (_exists)
             throw new InvalidOperationException($"Todo {cmd.TodoId} already exists.");
+        if (string.IsNullOrWhiteSpace(cmd.Description))
+            throw new ArgumentException("Description must not be empty.", nameof(cmd));
         return [new TodoAdded(cmd.TodoId, cmd.UserId, cmd.Description, cmd.Priority)];
     }
 

@@ -52,6 +52,10 @@ export default function TodoSection() {
     });
   }
 
+  function handleAddConfirmed(tempId: string, realId: string) {
+    setItems((prev) => prev.map((i) => i.itemId === tempId ? { ...i, itemId: realId } : i));
+  }
+
   function handleAddFailed(tempId: string) {
     setItems((prev) => prev.filter((i) => i.itemId !== tempId));
   }
@@ -74,12 +78,13 @@ export default function TodoSection() {
   async function handleReopen(item: TodoItem) {
     if (busy.has(item.itemId)) return;
     addBusy(item.itemId);
+    const originalCompletedAt = item.completedAt;
     setItems((prev) => prev.map((i) => i.itemId === item.itemId ? { ...i, completedAt: null } : i));
     try {
       if (item.type === "action") await reopenAction(item.noteId!, item.itemId);
       else await reopenTodo(item.itemId);
     } catch {
-      setItems((prev) => prev.map((i) => i.itemId === item.itemId ? { ...i, completedAt: new Date().toISOString() } : i));
+      setItems((prev) => prev.map((i) => i.itemId === item.itemId ? { ...i, completedAt: originalCompletedAt } : i));
     } finally {
       removeBusy(item.itemId);
     }
@@ -102,7 +107,11 @@ export default function TodoSection() {
   return (
     <section data-testid="todo-section" className="todo-section" aria-label="To-do items" aria-live="polite">
       <h2 className="todo-heading">To Do</h2>
-      <QuickCaptureTodoInput onAdded={handleOptimisticAdd} onFailed={handleAddFailed} />
+      <QuickCaptureTodoInput
+        onAdded={handleOptimisticAdd}
+        onConfirmed={handleAddConfirmed}
+        onFailed={handleAddFailed}
+      />
       {loading ? (
         <p className="loading">Loading…</p>
       ) : openItems.length === 0 && doneItems.length === 0 ? (
@@ -141,11 +150,12 @@ export default function TodoSection() {
                 className="todo-done-toggle"
                 onClick={() => setDoneOpen((o) => !o)}
                 aria-expanded={doneOpen}
+                aria-controls="todo-done-list"
               >
                 Done ({doneItems.length})
               </button>
               {doneOpen && (
-                <ul className="todo-done-list">
+                <ul id="todo-done-list" className="todo-done-list">
                   {doneItems.map((item) => (
                     <li key={item.itemId} className="todo-item todo-item--done">
                       <span className="todo-description">{item.description}</span>
