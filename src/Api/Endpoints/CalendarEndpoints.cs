@@ -10,5 +10,7 @@ public static class CalendarEndpoints
            .RequireAuthorization();
         app.MapPost("/notes/from-meeting", CalendarHandlers.CreateNoteFromMeeting)
            .RequireAuthorization();
+        app.MapPost("/notes/from-next-occurrence", CalendarHandlers.CreateNoteFromNextOccurrence)
+           .RequireAuthorization();
     }
 }

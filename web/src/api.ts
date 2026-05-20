@@ -258,6 +258,7 @@ export interface CalendarMeeting {
   recurringSeriesId: string | null;
   linkedNoteId: string | null;
   hasNextOccurrenceNote: boolean;
+  nextOccurrenceNoteId: string | null;
 }
 
 export type TodaysMeetingsResult =
@@ -284,6 +285,23 @@ export async function createNoteFromMeeting(meeting: CalendarMeeting): Promise<{
     }),
   });
   if (!res.ok) throw new Error(`POST /notes/from-meeting failed: ${res.status}`);
+  return res.json();
+}
+
+export type CreateNoteFromNextOccurrenceResult =
+  | { noteId: string; alreadyExists: true }
+  | { noteId: string; nextOccurrence: { calendarEventId: string; startTime: string; endTime: string } };
+
+export async function createNoteFromNextOccurrence(
+  recurringSeriesId: string
+): Promise<CreateNoteFromNextOccurrenceResult> {
+  const res = await apiFetch(`${base}/notes/from-next-occurrence`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ recurringSeriesId }),
+  });
+  if (res.status === 404) throw new Error("no_future_occurrences");
+  if (!res.ok) throw new Error(`POST /notes/from-next-occurrence failed: ${res.status}`);
   return res.json();
 }
 

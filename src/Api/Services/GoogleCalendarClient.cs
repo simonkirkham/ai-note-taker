@@ -98,6 +98,58 @@ public sealed class GoogleCalendarClient : IGoogleCalendarClient
         }
     }
 
+    public async Task<CalendarEvent?> GetNextOccurrenceAsync(string recurringSeriesId, DateTimeOffset after)
+    {
+        try
+        {
+            var refreshToken = await GetRefreshTokenAsync();
+            if (refreshToken is null)
+                return null;
+
+            using var flow = new GoogleAuthorizationCodeFlow(new GoogleAuthorizationCodeFlow.Initializer
+            {
+                ClientSecrets = new ClientSecrets { ClientId = _clientId, ClientSecret = _clientSecret },
+                Scopes = new[] { CalendarService.Scope.CalendarReadonly }
+            });
+
+            var credential = new UserCredential(flow, "user", new TokenResponse { RefreshToken = refreshToken });
+
+            using var service = new CalendarService(new BaseClientService.Initializer
+            {
+                HttpClientInitializer = credential,
+                ApplicationName = "ai-note-taker"
+            });
+
+            var request = service.Events.Instances("primary", recurringSeriesId);
+            request.TimeMinDateTimeOffset = after;
+            request.MaxResults = 5;
+            request.ShowDeleted = false;
+
+            var result = await request.ExecuteAsync();
+            var next = result.Items?.FirstOrDefault(e => e.Status != "cancelled");
+            if (next is null) return null;
+
+            var start = next.Start.DateTimeDateTimeOffset
+                ?? new DateTimeOffset(DateTime.Parse(next.Start.Date!), TimeSpan.Zero);
+            var end = next.End.DateTimeDateTimeOffset
+                ?? new DateTimeOffset(DateTime.Parse(next.End.Date!), TimeSpan.Zero);
+
+            return new CalendarEvent(
+                CalendarEventId: next.Id,
+                Title: next.Summary ?? "(No title)",
+                StartTime: start,
+                EndTime: end,
+                IsRecurring: true,
+                RecurringSeriesId: recurringSeriesId
+            );
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "GetNextOccurrenceAsync failed for series {SeriesId}", recurringSeriesId);
+            return null;
+        }
+    }
+
     private async Task<string?> GetRefreshTokenAsync()
     {
         if (_refreshToken is not null)

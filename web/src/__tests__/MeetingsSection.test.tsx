@@ -13,6 +13,7 @@ const meeting1 = {
   recurringSeriesId: 'series1',
   linkedNoteId: null,
   hasNextOccurrenceNote: false,
+  nextOccurrenceNoteId: null,
 }
 
 const meeting2 = {
@@ -24,6 +25,7 @@ const meeting2 = {
   recurringSeriesId: null,
   linkedNoteId: null,
   hasNextOccurrenceNote: false,
+  nextOccurrenceNoteId: null,
 }
 
 function stubNotificationPermission(permission: NotificationPermission) {

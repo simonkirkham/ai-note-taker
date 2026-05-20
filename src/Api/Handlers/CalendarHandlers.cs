@@ -31,6 +31,32 @@ public static class CalendarHandlers
             .Where(l => l is not null && l.UserId == currentUser.UserId)
             .ToDictionary(l => l!.CalendarEventId, l => l!.NoteId);
 
+        var seriesIds = events
+            .Where(e => e.IsRecurring && e.RecurringSeriesId is not null)
+            .Select(e => e.RecurringSeriesId!)
+            .Distinct()
+            .ToList();
+
+        var seriesTasks = seriesIds.ToDictionary(
+            id => id,
+            id => calendarLinkStore.GetByRecurringSeriesIdAsync(id));
+        await Task.WhenAll(seriesTasks.Values);
+
+        var nextOccurrenceNoteMap = seriesTasks.ToDictionary(
+            kvp => kvp.Key,
+            kvp =>
+            {
+                try
+                {
+                    var futureLink = kvp.Value.Result.FirstOrDefault(l =>
+                        l.UserId == currentUser.UserId &&
+                        !linkMap.ContainsKey(l.CalendarEventId) &&
+                        l.StartTime > DateTimeOffset.UtcNow);
+                    return (HasNote: futureLink is not null, NoteId: futureLink?.NoteId);
+                }
+                catch { return (HasNote: false, NoteId: (string?)null); }
+            });
+
         var meetings = events.OrderBy(e => e.StartTime).Select(e => new
         {
             calendarEventId = e.CalendarEventId,
@@ -40,7 +66,11 @@ public static class CalendarHandlers
             isRecurring = e.IsRecurring,
             recurringSeriesId = e.RecurringSeriesId,
             linkedNoteId = linkMap.GetValueOrDefault(e.CalendarEventId),
-            hasNextOccurrenceNote = false
+            hasNextOccurrenceNote = e.RecurringSeriesId is not null &&
+                nextOccurrenceNoteMap.GetValueOrDefault(e.RecurringSeriesId).HasNote,
+            nextOccurrenceNoteId = e.RecurringSeriesId is not null
+                ? nextOccurrenceNoteMap.GetValueOrDefault(e.RecurringSeriesId).NoteId
+                : null
         });
 
         return Results.Ok(new { meetings });
@@ -64,5 +94,43 @@ public static class CalendarHandlers
             req.StartTime, req.EndTime, req.IsRecurring, req.RecurringSeriesId), ct);
 
         return Results.Created($"/notes/{noteId.Value}", new { noteId = noteId.Value });
+    }
+
+    public static async Task<IResult> CreateNoteFromNextOccurrence(
+        CreateNoteFromNextOccurrenceRequest req,
+        IGoogleCalendarClient calendar,
+        INoteCommandHandler handler,
+        ICalendarLinkIndexStore calendarLinkStore,
+        ICurrentUser currentUser,
+        CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(req.RecurringSeriesId))
+            return Results.BadRequest(new { error = "recurring_series_id_required" });
+
+        var next = await calendar.GetNextOccurrenceAsync(req.RecurringSeriesId, DateTimeOffset.UtcNow);
+        if (next is null)
+            return Results.NotFound(new { error = "no_future_occurrences" });
+
+        var existing = await calendarLinkStore.GetByCalendarEventIdAsync(next.CalendarEventId, ct);
+        if (existing is not null && existing.UserId == currentUser.UserId)
+            return Results.Ok(new { noteId = existing.NoteId, alreadyExists = true });
+
+        var noteId = new NoteId(Guid.NewGuid());
+        await handler.HandleAsync(new CreateNote(noteId), ct);
+        await handler.HandleAsync(new RenameNote(noteId, next.Title), ct);
+        await handler.HandleAsync(new SetNoteDate(noteId, DateOnly.FromDateTime(next.StartTime.LocalDateTime)), ct);
+        await handler.HandleAsync(new LinkNoteToCalendarEvent(noteId, next.CalendarEventId, next.Title,
+            next.StartTime, next.EndTime, next.IsRecurring, next.RecurringSeriesId), ct);
+
+        return Results.Created($"/notes/{noteId.Value}", new
+        {
+            noteId = noteId.Value,
+            nextOccurrence = new
+            {
+                calendarEventId = next.CalendarEventId,
+                startTime = next.StartTime,
+                endTime = next.EndTime
+            }
+        });
     }
 }
