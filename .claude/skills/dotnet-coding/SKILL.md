@@ -153,7 +153,7 @@ Full reference: `docs/dotnet-coding-standards.md`
 - [ ] File-scoped namespace used
 - [ ] `var` only when type is obvious from right-hand side
 - [ ] No comments added unless the WHY is non-obvious
-- [ ] No broad `catch (Exception)` blocks without justification
+- [ ] No broad `catch (Exception)` blocks without justification — but for every new AWS SDK service call, add a targeted catch for the service-specific exception type (e.g. `AmazonSecurityTokenServiceException`, `AmazonBedrockRuntimeException`) and map it to a 503 `Results.Problem`; do not let raw AWS exceptions propagate as 500s
 - [ ] No duplicated logic — shared code extracted to a helper or method
 - [ ] No class longer than ~100 lines without a clear reason
 - [ ] No method longer than ~15 lines — extract and name sub-steps

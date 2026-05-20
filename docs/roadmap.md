@@ -164,7 +164,7 @@ Slices and acceptance criteria: [docs/phases/phase-8.md](phases/phase-8.md)
 
 Slices and acceptance criteria: [docs/phases/phase-9.md](phases/phase-9.md)
 
-## Phase 10 — Transcription
+## Phase 10 — Transcription _(In Progress)_
 
 - Record audio during a meeting via MediaRecorder API; words appear live in a scrolling transcript panel on the note screen (AWS Transcribe Streaming; browser streams directly with STS-issued temporary credentials)
 - `TranscriptionCompleted` event persists the full transcript on the Note aggregate

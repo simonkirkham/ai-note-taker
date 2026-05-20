@@ -52,14 +52,20 @@ npm --prefix web run build     # TypeScript + Vite build
 npm --prefix web run dev       # Dev server (port 5173)
 ```
 
+## Audio in the browser
+
+- Do **not** use `AudioContext.createScriptProcessor` — it is deprecated. Use `AudioWorkletNode` with a data-URL worklet module (`data:application/javascript,...`) or a static file in `public/`.
+- Every new CSS selector must have a matching `className` prop in the rendered JSX. Verify with grep: `grep -n "className=\"my-selector\"" web/src/` — if no match, the selector is dead.
+
 ## Checklist (run before opening a PR)
 
 - [ ] Component filename matches exported name (PascalCase)
 - [ ] No `useEffect` dependency array suppressions
 - [ ] Icon buttons and unlabelled interactive elements have `aria-label`
 - [ ] Keyboard navigation works (Tab + Enter/Space)
-- [ ] `npm --prefix web run lint` passes with zero errors
+- [ ] `npm --prefix web run lint` passes with zero errors (re-run after every fix commit, not just after the initial implementation pass)
 - [ ] `npm --prefix web run build` passes
+- [ ] Every new CSS class selector has a matching `className` prop in the JSX
 - [ ] New user journeys have a corresponding E2E spec in `tests/E2E/`
 - [ ] No `.eslintrc.*` files added
 

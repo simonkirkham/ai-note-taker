@@ -21,6 +21,7 @@ Place test files next to the source file they test (e.g. `index.test.ts` alongsi
 - Mock at the boundary of your code (external APIs, databases, file system)
 - Assert on what was called and with what arguments — not just that no error was thrown
 - Keep mocks minimal; only stub what the test actually exercises
+- **Far-future dates in fakes**: credential/token fixtures that carry an expiration date must use a far-future literal (e.g. `new DateTimeOffset(2099, 1, 1, 0, 0, 0, TimeSpan.Zero)`) — never `DateTimeOffset.UtcNow + offset`. A static readonly field is evaluated once at type-initialisation time; a time-relative value makes the fake fragile and can cause assertions to fail hours after the fact.
 
 ## Integration Tests
 

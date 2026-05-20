@@ -160,6 +160,7 @@ cdk deploy
 | `GOOGLE_CLIENT_SECRET`          | Google OAuth2 client secret; used by `POST /auth/token` to exchange codes |
 | `ALLOWED_USER_SUBS`             | Comma-separated Google `sub` values allowed to sign in (empty = no auth)  |
 | `GOOGLE_REFRESH_TOKEN_SSM_PATH` | SSM Parameter Store path for the Google Calendar refresh token (e.g. `/ai-note-taker/google-refresh-token`); Lambda reads it at cold start |
+| `BEDROCK_MODEL_ID`              | Amazon Bedrock model ID for transcript analysis (e.g. `us.anthropic.claude-haiku-4-5-20251001-v1:0`); required from 10-D onward |
 
 **Frontend** — set in `web/.env.local` (copy from `web/.env.local.example` on first run):
 

@@ -55,7 +55,7 @@ What is **not** yet in place:
 - No `TranscriptionPanel` component or `useTranscription` hook.
 - No `TRANSCRIBE_ROLE_ARN` or `BEDROCK_MODEL_ID` env vars in the CDK stack.
 
-**Out-of-band prerequisite (not a slice):** Create a scoped IAM role in AWS with `transcribe:StartStreamTranscription` only, trust policy allowing the Lambda execution role to assume it. The ARN is stored as `TRANSCRIBE_ROLE_ARN` in the CDK stack. This must exist before 10-B can be deployed.
+**CDK manages the IAM role:** `TranscribeBrowserRole` is created by CDK (`NoteTakerStack`) with a trust policy scoped to the Lambda execution role and a single-action inline policy (`transcribe:StartStreamTranscription`). No out-of-band IAM work is required; the ARN is injected as `TRANSCRIBE_ROLE_ARN` automatically.
 
 ---
 
@@ -127,7 +127,7 @@ Each slice from 10-B onward is independently demoable. CDK wiring is bundled int
 
 ## Slice 10-B — Live transcript
 
-**Status:** Not Started
+**Status:** Done
 
 **Value:** Open any note, press Record, speak, and see your words appear in real time in the transcript panel.
 
