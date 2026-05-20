@@ -269,7 +269,7 @@ Scenario: Re-recording overwrites the previous transcript
 
 ## Slice 10-D — Manual analysis
 
-**Status:** Not Started
+**Status:** Done
 
 **Value:** Click "Save & Analyse" and watch the note content fill in, tags appear, and action items populate — all from the transcript.
 

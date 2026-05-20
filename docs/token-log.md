@@ -23,6 +23,25 @@ Approximate tokens consumed per slice, broken down by agent. Recorded by Scribe 
 
 ---
 
+## Slice 10-D — Manual analysis via Bedrock
+
+> **Note:** Session exhausted context and was auto-compacted mid-implementation. Figures below are estimates; Hawk 1 count is exact from the agent hand-off summary.
+
+| Agent     | ~Tokens      |
+|-----------|--------------|
+| Scout     | —            |
+| Breaker   | 20 000       |
+| Pip       | 250 000      |
+| Stylist   | —            |
+| Hawk 1    | 51 000       |
+| Hawk 2    | 35 000       |
+| Scribe    | 15 000       |
+| **Total** | **~371 000** |
+
+**Why:** Pip spanned two sessions (context compaction mid-slice) and carried two Hawk passes — Hawk 1 returned REQUEST CHANGES on five issues (missing constructor-read for `BEDROCK_MODEL_ID`, `AmazonBedrockRuntimeException` not caught, no action-item dedup, error not surfaced in UI, `FakeBedrockAnalysisService` state not reset in constructor), all requiring rework before Hawk 2 approved.
+
+---
+
 ## Slice 9-D — One-click create note from a meeting
 
 > **Note:** Session exhausted context and was auto-compacted. Exact per-agent counts unavailable. Figures below are estimates from the session summary.
