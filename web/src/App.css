@@ -1705,11 +1705,6 @@ body {
   outline-offset: 2px;
 }
 
-.meeting-card-divider {
-  height: 1px;
-  background: var(--color-border);
-}
-
 /* ── Meetings status states (empty, error) ─────────────────────── */
 .meetings-status-state {
   display: flex;

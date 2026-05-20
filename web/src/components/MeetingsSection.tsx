@@ -128,21 +128,17 @@ export function MeetingsSection() {
                   </div>
                   <footer className="meeting-card-footer">
                     <div className="meeting-card-row">
-                      <span className="meeting-card-row-label">Today</span>
                       <button className="meeting-action-btn">
                         {m.linkedNoteId ? "Open Note ↗" : "Create Note"}
                       </button>
                     </div>
                     {m.isRecurring && (
-                      <>
-                        <div className="meeting-card-divider" />
-                        <div className="meeting-card-row">
-                          <span className="meeting-card-row-label">↻ Next</span>
-                          <button className="meeting-action-btn">
-                            {m.hasNextOccurrenceNote ? "Open Note ↗" : "Create Note"}
-                          </button>
-                        </div>
-                      </>
+                      <div className="meeting-card-row">
+                        <span className="meeting-card-row-label">↻ Next</span>
+                        <button className="meeting-action-btn">
+                          {m.hasNextOccurrenceNote ? "Open Note ↗" : "Create Note"}
+                        </button>
+                      </div>
                     )}
                   </footer>
                 </article>
