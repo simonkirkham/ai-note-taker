@@ -132,7 +132,9 @@ public sealed class NoteTakerStack : Stack
                 ["ALLOWED_USER_SUBS"] = props.AllowedUserSubs ?? "",
                 ["GOOGLE_REFRESH_TOKEN_SSM_PATH"] = props.GoogleRefreshTokenSsmPath ?? "",
                 ["PROJ_CALENDARLINKINDEX_TABLE_NAME"] = calendarLinkIndexTable.TableName,
-                ["BEDROCK_MODEL_ID"] = props.BedrockModelId ?? ""
+                ["BEDROCK_MODEL_ID"] = string.IsNullOrEmpty(props.BedrockModelId)
+                    ? "anthropic.claude-3-5-haiku-20241022"
+                    : props.BedrockModelId
             }
         });
 
@@ -174,20 +176,20 @@ public sealed class NoteTakerStack : Stack
         }));
         apiFunction.AddEnvironment("TRANSCRIBE_ROLE_ARN", transcribeRole.RoleArn);
 
-        if (!string.IsNullOrEmpty(props.BedrockModelId))
+        var bedrockModelId = string.IsNullOrEmpty(props.BedrockModelId)
+            ? "anthropic.claude-3-5-haiku-20241022"
+            : props.BedrockModelId;
+        var bedrockArn = Arn.Format(new ArnComponents
         {
-            var bedrockArn = Arn.Format(new ArnComponents
-            {
-                Service = "bedrock",
-                Resource = "foundation-model",
-                ResourceName = props.BedrockModelId
-            }, this);
-            apiFunction.AddToRolePolicy(new PolicyStatement(new PolicyStatementProps
-            {
-                Actions = new[] { "bedrock:InvokeModel" },
-                Resources = new[] { bedrockArn }
-            }));
-        }
+            Service = "bedrock",
+            Resource = "foundation-model",
+            ResourceName = bedrockModelId
+        }, this);
+        apiFunction.AddToRolePolicy(new PolicyStatement(new PolicyStatementProps
+        {
+            Actions = new[] { "bedrock:InvokeModel" },
+            Resources = new[] { bedrockArn }
+        }));
 
         var apiAlias = new Amazon.CDK.AWS.Lambda.Alias(this, "LiveAlias", new Amazon.CDK.AWS.Lambda.AliasProps
         {
