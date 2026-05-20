@@ -503,6 +503,7 @@ public class InfraAssertionsTests
     [Fact]
     public void TranscribeBrowserRole_ExistsWithStartStreamTranscriptionPermission()
     {
+        // Both HTTP/2 and WebSocket variants are required; CDK renders multiple actions as an array.
         _template.HasResourceProperties("AWS::IAM::Role", Match.ObjectLike(new Dictionary<string, object>
         {
             ["Policies"] = Match.ArrayWith(new object[]
@@ -515,7 +516,11 @@ public class InfraAssertionsTests
                         {
                             Match.ObjectLike(new Dictionary<string, object>
                             {
-                                ["Action"] = "transcribe:StartStreamTranscription",
+                                ["Action"] = Match.ArrayWith(new object[]
+                                {
+                                    "transcribe:StartStreamTranscription",
+                                    "transcribe:StartStreamTranscriptionWebSocket"
+                                }),
                                 ["Effect"] = "Allow"
                             })
                         })

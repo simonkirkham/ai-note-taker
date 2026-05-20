@@ -184,7 +184,13 @@ public sealed class NoteTakerStack : Stack
                     {
                         new PolicyStatement(new PolicyStatementProps
                         {
-                            Actions = new[] { "transcribe:StartStreamTranscription" },
+                            // Both actions are required: the HTTP/2 variant and the WebSocket
+                            // variant used by @aws-sdk/client-transcribe-streaming in browsers.
+                            Actions = new[]
+                            {
+                                "transcribe:StartStreamTranscription",
+                                "transcribe:StartStreamTranscriptionWebSocket"
+                            },
                             Resources = new[] { "*" }
                         })
                     }
