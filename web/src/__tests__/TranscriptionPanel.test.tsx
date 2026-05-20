@@ -179,6 +179,42 @@ it('shows error state when credentials fetch fails', async () => {
   expect(screen.getByTestId('transcription-reset-button')).toBeInTheDocument()
 })
 
+// Scenario: Saved transcript shown on load
+//   Given a note has a previously saved transcript
+//   When the TranscriptionPanel mounts with initialTranscript
+//   Then the saved transcript is displayed instead of the placeholder
+it('shows saved transcript when initialTranscript is provided', () => {
+  render(<TranscriptionPanel noteId="note-1" initialTranscript="Prior meeting notes here." />)
+  expect(screen.getByTestId('transcription-text')).toHaveTextContent('Prior meeting notes here.')
+  expect(screen.queryByText('Press Record to start transcribing')).toBeNull()
+})
+
+// Scenario: Stop button calls completeTranscription API
+//   Given I am recording and have spoken some words
+//   When I click Stop
+//   Then POST /notes/{id}/transcription is called with the transcript text
+it('clicking Stop calls completeTranscription with transcript text', async () => {
+  stubBrowserApis()
+  let completionBody: unknown = null
+  server.use(
+    http.post('/api/notes/note-1/transcription', async ({ request }) => {
+      completionBody = await request.json()
+      return new HttpResponse(null, { status: 204 })
+    }),
+  )
+
+  render(<TranscriptionPanel noteId="note-1" />)
+  await userEvent.click(screen.getByTestId('transcription-record-button'))
+  await waitFor(() => expect(screen.getByTestId('transcription-stop-button')).toBeInTheDocument())
+
+  emitTranscriptResult('Test transcript')
+  await waitFor(() => expect(screen.getByTestId('transcription-text')).toHaveTextContent('Test transcript'))
+
+  await userEvent.click(screen.getByTestId('transcription-stop-button'))
+
+  await waitFor(() => expect(completionBody).toMatchObject({ transcriptText: 'Test transcript' }))
+})
+
 // Reset button returns to idle
 it('Reset button returns to idle state', async () => {
   stubBrowserApis()

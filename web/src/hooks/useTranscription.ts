@@ -3,7 +3,7 @@ import {
   TranscribeStreamingClient,
   StartStreamTranscriptionCommand,
 } from '@aws-sdk/client-transcribe-streaming';
-import { getTranscriptionCredentials } from '../api';
+import { completeTranscription, getTranscriptionCredentials } from '../api';
 
 const LANGUAGE_CODE = 'en-GB' as const;
 
@@ -36,7 +36,7 @@ export interface UseTranscriptionResult {
   reset: () => void;
 }
 
-export function useTranscription(): UseTranscriptionResult {
+export function useTranscription(noteId: string): UseTranscriptionResult {
   const [status, setStatus] = useState<TranscriptionStatus>('idle');
   const [transcript, setTranscript] = useState('');
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
@@ -169,8 +169,11 @@ export function useTranscription(): UseTranscriptionResult {
         }
 
         if (!stoppedRef.current) {
+          const text = finalizedRef.current;
+          const elapsed = Math.floor((Date.now() - startTimeRef.current) / 1000);
           cleanup();
           setStatus('stopped');
+          if (text) void completeTranscription(noteId, text, elapsed).catch(() => {});
         }
       } catch (err) {
         if (stoppedRef.current) return;
@@ -179,12 +182,15 @@ export function useTranscription(): UseTranscriptionResult {
         setStatus('error');
       }
     })();
-  }, [cleanup]);
+  }, [cleanup, noteId]);
 
   const stopRecording = useCallback(() => {
+    const text = finalizedRef.current;
+    const elapsed = Math.floor((Date.now() - startTimeRef.current) / 1000);
     cleanup();
     setStatus('stopped');
-  }, [cleanup]);
+    if (text) void completeTranscription(noteId, text, elapsed).catch(() => {});
+  }, [cleanup, noteId]);
 
   const reset = useCallback(() => {
     cleanup();
