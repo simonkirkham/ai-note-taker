@@ -142,6 +142,22 @@ public static class NoteHandlers
         return Results.NoContent();
     }
 
+    public static async Task<IResult> LinkNoteToCalendar(Guid noteId, LinkNoteToCalendarRequest req, INoteCommandHandler handler, INoteCardListStore noteCardListStore, ICurrentUser currentUser, CancellationToken ct)
+    {
+        var card = await noteCardListStore.GetByNoteAsync(new NoteId(noteId), ct);
+        if (card is null || card.UserId != currentUser.UserId) return Results.NotFound();
+        if (card.Deleted) return Results.Conflict();
+        try
+        {
+            await handler.HandleAsync(new LinkNoteToCalendarEvent(new NoteId(noteId),
+                req.CalendarEventId, req.CalendarEventTitle, req.StartTime, req.EndTime,
+                req.IsRecurring, req.RecurringSeriesId), ct);
+        }
+        catch (NoteNotFoundException) { return Results.NotFound(); }
+        catch (InvalidOperationException) { return Results.Conflict(); }
+        return Results.NoContent();
+    }
+
     public static async Task<IResult> GetNoteCards(INoteCardListStore store, ICurrentUser currentUser, CancellationToken ct)
     {
         var all = await store.QueryAllAsync(ct).ConfigureAwait(false);

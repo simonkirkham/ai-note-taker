@@ -15,6 +15,7 @@ public sealed class NoteCommandHandler(
     ITodoListStore todoListStore,
     INoteCardListStore noteCardListStore,
     ITagIndexStore tagIndexStore,
+    ICalendarLinkIndexStore calendarLinkIndexStore,
     ICurrentUser currentUser) : INoteCommandHandler
 {
     private const int InitialEventVersion = 1;
@@ -67,6 +68,7 @@ public sealed class NoteCommandHandler(
             ApplyNoteEventsToCard(card, noteId, newEnvelopes), ct).ConfigureAwait(false);
 
         await UpdateTagIndexForNewEventsAsync(newEnvelopes, ct).ConfigureAwait(false);
+        await UpdateCalendarLinkIndexForNewEventsAsync(noteId, newEnvelopes, ct).ConfigureAwait(false);
     }
 
     private static (NoteTitleListItem TitleItem, NoteDetailView Detail) RebuildTitleAndDetailProjections(
@@ -102,12 +104,24 @@ public sealed class NoteCommandHandler(
         }
     }
 
+    private async Task UpdateCalendarLinkIndexForNewEventsAsync(NoteId noteId, List<EventEnvelope> newEnvelopes, CancellationToken ct)
+    {
+        foreach (var envelope in newEnvelopes)
+        {
+            if (EventDeserializer.Deserialize(envelope) is NoteLinkedToCalendarEvent e)
+                await calendarLinkIndexStore.UpsertAsync(
+                    new CalendarLinkView(e.CalendarEventId, noteId.Value.ToString(), e.RecurringSeriesId, e.StartTime), ct)
+                    .ConfigureAwait(false);
+        }
+    }
+
     private async Task DeleteAllProjections(NoteId noteId, CancellationToken ct)
     {
         await noteTitleStore.DeleteAsync(noteId, ct).ConfigureAwait(false);
         await noteDetailStore.DeleteAsync(noteId, ct).ConfigureAwait(false);
         await todoListStore.DeleteByNoteAsync(noteId, ct).ConfigureAwait(false);
         await tagIndexStore.DeleteByNoteAsync(noteId.Value.ToString("N"), ct).ConfigureAwait(false);
+        await calendarLinkIndexStore.DeleteByNoteIdAsync(noteId.Value.ToString(), ct).ConfigureAwait(false);
     }
 
     private static NoteCardView ApplyNoteEventsToCard(NoteCardView? existing, NoteId noteId, List<EventEnvelope> envelopes)

@@ -24,6 +24,7 @@ public sealed class ApiFactory : WebApplicationFactory<Program>
         Environment.SetEnvironmentVariable("PROJ_NOTECARDLIST_TABLE_NAME", "test-proj-notecardlist");
         Environment.SetEnvironmentVariable("PROJ_FOLDERTREE_TABLE_NAME", "test-proj-foldertree");
         Environment.SetEnvironmentVariable("PROJ_TAGINDEX_TABLE_NAME", "test-proj-tagindex");
+        Environment.SetEnvironmentVariable("PROJ_CALENDARLINKINDEX_TABLE_NAME", "test-proj-calendarlinkindex");
         Environment.SetEnvironmentVariable("ALLOWED_USER_SUBS", "test-user-123,other-user-456");
     }
 
@@ -42,6 +43,7 @@ public sealed class ApiFactory : WebApplicationFactory<Program>
             services.RemoveAll<INoteCardListStore>();
             services.RemoveAll<IFolderTreeStore>();
             services.RemoveAll<ITagIndexStore>();
+            services.RemoveAll<ICalendarLinkIndexStore>();
             services.RemoveAll<IDynamoHealthCheck>();
             services.AddSingleton<IEventStore, InMemoryEventStore>();
             services.AddSingleton<INoteTitleListStore, InMemoryNoteTitleListStore>();
@@ -51,6 +53,7 @@ public sealed class ApiFactory : WebApplicationFactory<Program>
             services.AddSingleton<INoteCardListStore, InMemoryNoteCardListStore>();
             services.AddSingleton<IFolderTreeStore, InMemoryFolderTreeStore>();
             services.AddSingleton<ITagIndexStore, InMemoryTagIndexStore>();
+            services.AddSingleton<ICalendarLinkIndexStore, InMemoryCalendarLinkIndexStore>();
             services.AddSingleton<IDynamoHealthCheck, AlwaysHealthyDynamoCheck>();
             services.AddAuthentication(options =>
             {

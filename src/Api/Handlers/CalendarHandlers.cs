@@ -1,10 +1,11 @@
 using Api.Services;
+using EventStore.Projections;
 
 namespace Api.Handlers;
 
 public static class CalendarHandlers
 {
-    public static async Task<IResult> GetTodaysMeetings(string? tz, IGoogleCalendarClient calendar)
+    public static async Task<IResult> GetTodaysMeetings(string? tz, IGoogleCalendarClient calendar, ICalendarLinkIndexStore calendarLinkStore)
     {
         if (string.IsNullOrWhiteSpace(tz))
             return Results.BadRequest(new { error = "tz parameter is required" });
@@ -16,6 +17,16 @@ public static class CalendarHandlers
         if (events is null)
             return Results.Ok(new { error = "calendar_unavailable" });
 
+        var links = await Task.WhenAll(
+            events.Select(async e =>
+            {
+                try { return await calendarLinkStore.GetByCalendarEventIdAsync(e.CalendarEventId); }
+                catch { return null; }
+            }));
+        var linkMap = links
+            .Where(l => l is not null)
+            .ToDictionary(l => l!.CalendarEventId, l => l!.NoteId);
+
         var meetings = events.OrderBy(e => e.StartTime).Select(e => new
         {
             calendarEventId = e.CalendarEventId,
@@ -24,7 +35,7 @@ public static class CalendarHandlers
             endTime = e.EndTime,
             isRecurring = e.IsRecurring,
             recurringSeriesId = e.RecurringSeriesId,
-            linkedNoteId = (string?)null,
+            linkedNoteId = linkMap.GetValueOrDefault(e.CalendarEventId),
             hasNextOccurrenceNote = false
         });
 
