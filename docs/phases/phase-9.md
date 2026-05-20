@@ -394,11 +394,11 @@ Scenario: Deleting a note removes it from the CalendarLinkIndex
 
 **Status:** Not Started
 
-**Value:** I can create a note for a meeting in one click. The note is pre-titled from the meeting title and immediately linked to the calendar event. The meeting card updates to show "Open Note".
+**Value:** I can create a note for a meeting in one click. The note is pre-titled from the meeting title, dated to the meeting's date, and immediately linked to the calendar event. The meeting card updates to show "Open Note".
 
 **Note:** The "Create Note" and "Open Note ↗" buttons are currently rendered in `MeetingsSection.tsx` without `onClick` handlers — they were wired up visually by the Stylist pass but have no backing implementation until this slice lands. Clicking them does nothing.
 
-**Commands in scope:** `CreateNote` + `RenameNote` + `LinkNoteToCalendarEvent` — issued in sequence by the handler; no new commands needed.
+**Commands in scope:** `CreateNote` + `RenameNote` + `SetNoteDate` + `LinkNoteToCalendarEvent` — issued in sequence by the handler; no new commands needed.
 
 **API endpoint:**
 
@@ -419,7 +419,8 @@ Handler sequence:
 1. Check `CalendarLinkIndex` for `calendarEventId` — return 409 if a note already exists.
 2. Issue `CreateNote` (new `NoteId`).
 3. Issue `RenameNote` with the meeting title.
-4. Issue `LinkNoteToCalendarEvent`.
+4. Issue `SetNoteDate` with `DateOnly.FromDateTime(startTime.ToLocalTime())` — so a today meeting gets today's date and a future meeting gets its own date.
+5. Issue `LinkNoteToCalendarEvent`.
 
 **Key implementation files:**
 
@@ -436,7 +437,18 @@ Scenario: Create a note from a meeting with one click
   Given a meeting "1:1 with Bill" has no linked note
   When  I click "Create Note"
   Then  a new note is created with the title "1:1 with Bill"
+  And   the note's date is set to the meeting's start date (local timezone)
   And   the meeting card changes to show "Open Note"
+
+Scenario: Note date matches today for a today meeting
+  Given a meeting today at 09:00 local time
+  When  I click "Create Note"
+  Then  the note's date is set to today
+
+Scenario: Note date matches the meeting date for a future meeting
+  Given a meeting on 2026-05-27 at 14:00 local time
+  When  I click "Create Note"
+  Then  the note's date is set to 2026-05-27
 
 Scenario: The created note is linked to the calendar event
   Given I clicked "Create Note" on a meeting
@@ -462,6 +474,7 @@ Scenario: Creating a note when one already exists returns 409
 - [ ] "Create Note" button calls the endpoint; on success becomes "Open Note"
 - [ ] "Open Note" navigates to the note screen for the linked note
 - [ ] Note title is pre-populated from the meeting title
+- [ ] Note date is set to the meeting's `startTime` local date (`DateOnly.FromDateTime(startTime.ToLocalTime())`)
 - [ ] E2E: click "Create Note" on a meeting; card shows "Open Note"; click it — note screen opens with meeting title
 
 ---
