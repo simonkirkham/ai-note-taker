@@ -28,6 +28,7 @@ public static class EventDeserializer
         (nameof(FolderMoved), _) => JsonSerializer.Deserialize<FolderMoved>(envelope.Payload)!,
         (nameof(NoteFiledInFolder), _) => JsonSerializer.Deserialize<NoteFiledInFolder>(envelope.Payload)!,
         (nameof(NoteUnfiled), _) => JsonSerializer.Deserialize<NoteUnfiled>(envelope.Payload)!,
+        (nameof(NoteLinkedToCalendarEvent), _) => JsonSerializer.Deserialize<NoteLinkedToCalendarEvent>(envelope.Payload)!,
         _ => throw new InvalidOperationException($"Unknown event type/version: {envelope.EventType} v{envelope.EventVersion}")
     };
 }

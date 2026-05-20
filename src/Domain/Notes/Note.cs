@@ -9,6 +9,7 @@ public sealed class Note : IAggregate
     string? _title;
     string? _content;
     FolderId? _folderId;
+    string? _calendarEventId;
     readonly HashSet<string> _tags = [];
 
     public void Apply(IDomainEvent @event)
@@ -42,6 +43,9 @@ public sealed class Note : IAggregate
             case NoteUnfiled:
                 _folderId = null;
                 break;
+            case NoteLinkedToCalendarEvent e:
+                _calendarEventId = e.CalendarEventId;
+                break;
             default:
                 break;
         }
@@ -59,6 +63,7 @@ public sealed class Note : IAggregate
             UntagNote cmd => HandleUntagNote(cmd),
             MoveNoteToFolder cmd => HandleMoveToFolder(cmd),
             UnfileNote cmd => HandleUnfile(cmd),
+            LinkNoteToCalendarEvent cmd => HandleLinkToCalendarEvent(cmd),
             _ => throw new ArgumentOutOfRangeException(nameof(command))
         };
 
@@ -135,5 +140,15 @@ public sealed class Note : IAggregate
         if (_folderId is null)
             return [];
         return [new NoteUnfiled(cmd.NoteId)];
+    }
+
+    IReadOnlyList<IDomainEvent> HandleLinkToCalendarEvent(LinkNoteToCalendarEvent cmd)
+    {
+        if (!_exists || _deleted)
+            throw new InvalidOperationException($"Note {cmd.NoteId} does not exist.");
+        if (_calendarEventId is not null)
+            throw new InvalidOperationException($"Note {cmd.NoteId} is already linked to a calendar event.");
+        return [new NoteLinkedToCalendarEvent(cmd.NoteId, cmd.CalendarEventId, cmd.CalendarEventTitle,
+            cmd.StartTime, cmd.EndTime, cmd.IsRecurring, cmd.RecurringSeriesId)];
     }
 }

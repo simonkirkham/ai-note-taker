@@ -1,0 +1,159 @@
+using System.Net;
+using System.Net.Http.Json;
+using System.Text.Json;
+using Api.Services;
+using Microsoft.Extensions.DependencyInjection;
+
+namespace Api.Integration;
+
+public sealed class CalendarLinkIntegrationTests : IClassFixture<ApiFactory>
+{
+    private readonly HttpClient _client;
+    private readonly FakeGoogleCalendarClient _fakeCalendar;
+
+    public CalendarLinkIntegrationTests(ApiFactory factory)
+    {
+        _client = factory.CreateClient();
+        _fakeCalendar = factory.Services.GetRequiredService<FakeGoogleCalendarClient>();
+        _fakeCalendar.Reset();
+    }
+
+    [Fact]
+    public async Task PostCalendarLink_LinksNote_Returns204()
+    {
+        var noteId = await CreateNoteAsync();
+
+        var resp = await _client.PostAsJsonAsync($"/notes/{noteId}/calendar-link", new
+        {
+            calendarEventId = "evt_abc123",
+            calendarEventTitle = "1:1 with Bill",
+            startTime = "2026-05-14T09:00:00Z",
+            endTime = "2026-05-14T09:30:00Z",
+            isRecurring = false,
+            recurringSeriesId = (string?)null
+        });
+
+        Assert.Equal(HttpStatusCode.NoContent, resp.StatusCode);
+    }
+
+    [Fact]
+    public async Task PostCalendarLink_AlreadyLinked_Returns409()
+    {
+        var noteId = await CreateNoteAsync();
+        await LinkNoteAsync(noteId, "evt_abc123");
+
+        var resp = await _client.PostAsJsonAsync($"/notes/{noteId}/calendar-link", new
+        {
+            calendarEventId = "evt_other",
+            calendarEventTitle = "Another Meeting",
+            startTime = "2026-05-14T10:00:00Z",
+            endTime = "2026-05-14T10:30:00Z",
+            isRecurring = false,
+            recurringSeriesId = (string?)null
+        });
+
+        Assert.Equal(HttpStatusCode.Conflict, resp.StatusCode);
+    }
+
+    [Fact]
+    public async Task PostCalendarLink_DeletedNote_Returns409()
+    {
+        var noteId = await CreateNoteAsync();
+        await _client.DeleteAsync($"/notes/{noteId}");
+
+        var resp = await _client.PostAsJsonAsync($"/notes/{noteId}/calendar-link", new
+        {
+            calendarEventId = "evt_abc123",
+            calendarEventTitle = "1:1 with Bill",
+            startTime = "2026-05-14T09:00:00Z",
+            endTime = "2026-05-14T09:30:00Z",
+            isRecurring = false,
+            recurringSeriesId = (string?)null
+        });
+
+        Assert.Equal(HttpStatusCode.Conflict, resp.StatusCode);
+    }
+
+    [Fact]
+    public async Task PostCalendarLink_UnknownNote_Returns404()
+    {
+        var resp = await _client.PostAsJsonAsync($"/notes/{Guid.NewGuid()}/calendar-link", new
+        {
+            calendarEventId = "evt_abc123",
+            calendarEventTitle = "1:1 with Bill",
+            startTime = "2026-05-14T09:00:00Z",
+            endTime = "2026-05-14T09:30:00Z",
+            isRecurring = false,
+            recurringSeriesId = (string?)null
+        });
+
+        Assert.Equal(HttpStatusCode.NotFound, resp.StatusCode);
+    }
+
+    [Fact]
+    public async Task GetTodaysMeetings_ReturnsLinkedNoteId()
+    {
+        var noteId = await CreateNoteAsync();
+        await LinkNoteAsync(noteId, "evt_linked");
+
+        _fakeCalendar.SetEvents(new[]
+        {
+            new CalendarEvent("evt_linked", "Linked Meeting", DateTimeOffset.UtcNow, DateTimeOffset.UtcNow.AddMinutes(30), false, null),
+            new CalendarEvent("evt_unlinked", "Unlinked Meeting", DateTimeOffset.UtcNow.AddHours(1), DateTimeOffset.UtcNow.AddHours(2), false, null)
+        });
+
+        var resp = await _client.GetAsync("/calendar/today?tz=UTC");
+
+        resp.EnsureSuccessStatusCode();
+        var body = await resp.Content.ReadFromJsonAsync<JsonElement>();
+        var meetings = body.GetProperty("meetings");
+
+        var linked = meetings.EnumerateArray().First(m => m.GetProperty("calendarEventId").GetString() == "evt_linked");
+        var unlinked = meetings.EnumerateArray().First(m => m.GetProperty("calendarEventId").GetString() == "evt_unlinked");
+
+        Assert.Equal(noteId.ToString(), linked.GetProperty("linkedNoteId").GetString());
+        Assert.Equal(JsonValueKind.Null, unlinked.GetProperty("linkedNoteId").ValueKind);
+    }
+
+    [Fact]
+    public async Task DeleteNote_RemovesFromCalendarLinkIndex()
+    {
+        var noteId = await CreateNoteAsync();
+        await LinkNoteAsync(noteId, "evt_to_delete");
+
+        await _client.DeleteAsync($"/notes/{noteId}");
+
+        _fakeCalendar.SetEvents(new[]
+        {
+            new CalendarEvent("evt_to_delete", "Will Be Gone", DateTimeOffset.UtcNow, DateTimeOffset.UtcNow.AddMinutes(30), false, null)
+        });
+
+        var resp = await _client.GetAsync("/calendar/today?tz=UTC");
+        var body = await resp.Content.ReadFromJsonAsync<JsonElement>();
+        var meeting = body.GetProperty("meetings")[0];
+
+        Assert.Equal(JsonValueKind.Null, meeting.GetProperty("linkedNoteId").ValueKind);
+    }
+
+    private async Task<Guid> CreateNoteAsync()
+    {
+        var resp = await _client.PostAsync("/notes", null);
+        resp.EnsureSuccessStatusCode();
+        var body = await resp.Content.ReadFromJsonAsync<JsonElement>();
+        return Guid.Parse(body.GetProperty("noteId").GetString()!);
+    }
+
+    private async Task LinkNoteAsync(Guid noteId, string calendarEventId)
+    {
+        var resp = await _client.PostAsJsonAsync($"/notes/{noteId}/calendar-link", new
+        {
+            calendarEventId,
+            calendarEventTitle = "Test Meeting",
+            startTime = "2026-05-14T09:00:00Z",
+            endTime = "2026-05-14T09:30:00Z",
+            isRecurring = false,
+            recurringSeriesId = (string?)null
+        });
+        resp.EnsureSuccessStatusCode();
+    }
+}
