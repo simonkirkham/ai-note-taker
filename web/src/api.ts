@@ -4,7 +4,7 @@ const base = "/api";
 
 function apiFetch(url: string, init?: RequestInit): Promise<Response> {
   const token = getToken()
-  if (token && jwtExpired(token)) {
+  if (token && token.split('.').length === 3 && jwtExpired(token)) {
     triggerUnauthorized()
     return Promise.resolve(new Response(null, { status: 401 }))
   }

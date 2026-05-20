@@ -217,6 +217,19 @@ describe('tab visibility change', () => {
     expect(silentRefreshMod.attemptSilentRefresh).toHaveBeenCalledOnce()
   })
 
+  it('does nothing when tab wakes with a token that has no exp claim', async () => {
+    // A token without exp (e.g. a service account token) should not trigger refresh or banner
+    const header = btoa(JSON.stringify({ alg: 'RS256', typ: 'JWT' }))
+    const payload = btoa(JSON.stringify({ sub: 'user-1' })) // no exp
+    const noExpToken = `${header}.${payload}.fake-sig`
+    render(<AuthProvider initialToken={noExpToken}><App /></AuthProvider>)
+
+    await act(async () => { fireVisibilityChange() })
+
+    expect(silentRefreshMod.attemptSilentRefresh).not.toHaveBeenCalled()
+    expect(screen.queryByRole('button', { name: /sign in again/i })).not.toBeInTheDocument()
+  })
+
   it('does nothing when tab wakes with a token with plenty of time remaining', async () => {
     const token = makeToken(60) // expires in 60 min — well outside the 5-min window
     render(<AuthProvider initialToken={token}><App /></AuthProvider>)

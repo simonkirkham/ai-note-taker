@@ -35,6 +35,9 @@ export function AuthProvider({
   const [forbidden, setForbidden] = useState(false)
   const [sessionExpired, setSessionExpired] = useState(false)
   const mounted = useRef(false)
+  // Forward ref so handleRefreshFailure can call cancelRefresh without a circular dep:
+  // handleRefreshFailure is declared before useGoogleAuth returns cancelRefresh.
+  const cancelRefreshRef = useRef<() => void>(() => {})
 
   const handleRefreshSuccess = useCallback((token: string) => {
     setToken(token)
@@ -43,6 +46,7 @@ export function AuthProvider({
   }, [])
 
   const handleRefreshFailure = useCallback(() => {
+    cancelRefreshRef.current()
     clearToken()
     setIdToken(null)
     setSessionExpired(true)
@@ -53,6 +57,10 @@ export function AuthProvider({
     onRefreshSuccess: handleRefreshSuccess,
     onRefreshFailure: handleRefreshFailure,
   })
+
+  // cancelRefresh is a stable useCallback (no deps), but we populate the ref after
+  // useGoogleAuth so handleRefreshFailure can call it without a circular initialisation.
+  useEffect(() => { cancelRefreshRef.current = cancelRefresh }, [cancelRefresh])
 
   useEffect(() => {
     if (persisted) setToken(persisted)
@@ -82,7 +90,7 @@ export function AuthProvider({
 
     function onVisibilityChange() {
       if (document.visibilityState !== 'visible') return
-      const exp = getExp(idToken!)
+      const exp = getExp(idToken!) // safe: effect guard above ensures idToken is a non-null string
       if (!exp) return
       const remaining = exp * 1000 - Date.now()
       if (remaining <= 0) {
