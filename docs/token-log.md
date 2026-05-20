@@ -740,3 +740,23 @@ If no agent ran unexpectedly high: write `None — slice ran within expected ran
 - **Hawk (–30 000):** Five of the six findings were preventable: (1) missing try/catch for AWS SDK exceptions is a standard pattern for any new AWS service call — add to Pip's pre-PR self-check; (2) deprecated `ScriptProcessorNode` could be caught by a "deprecated browser API" note in the frontend-ui-engineering skill; (3) CSS class not wired to component — Pip should verify every new CSS selector has a corresponding JSX className; (4) time-dependent fake credentials — add "use far-future dates in fakes" to the test-driven-development skill; (5) CDK assertion scope — covered by existing cdk-stack-update skill but not checked by Breaker.
 - **Post-merge lint hotfix (–10 000):** Re-run `npm run lint` after every fix commit, not just after the full implementation pass. The `done` variable issue was introduced in the second fix commit and would have been caught immediately.
 
+---
+
+## Slice 11-C — Delete blank note on cancel
+
+| Agent     | ~Tokens    |
+|-----------|------------|
+| Scout     | —          |
+| Breaker   | —          |
+| Pip       | 25 000     |
+| Stylist   | —          |
+| Hawk      | 75 000     |
+| Scribe    | 3 000      |
+| **Total** | **~103 000** |
+
+**Why:** Two Hawk passes dominated cost — the first pass found a real unawaited-Promise bug and a missing test assertion, requiring a fix commit and a full re-review at ~35k tokens each.
+
+**Optimisation suggestions:**
+- **Hawk (–35 000):** The unawaited-Promise finding is a mechanical check: any `void`-returning event handler that calls an `async` prop should await it. Adding an "async prop calls must be awaited in event handlers" item to Pip's pre-PR checklist would have caught this before opening the PR, collapsing Hawk to a single pass.
+- **Pip (–5 000):** A pre-staged unrelated CDK file (`NoteTakerStack.cs`) slipped into a commit because `git add` was run without listing explicit paths; the commit had to be reset and redone. Using `git add <explicit paths>` (already the project default) and running `git diff --cached` before every commit would catch stray staged files.
+
