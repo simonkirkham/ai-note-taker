@@ -114,6 +114,7 @@ describe('TagFilter — filtering cards via ListView', () => {
         createError={null}
         onNewNote={() => {}}
         onEditNote={() => {}}
+        onOpenNote={() => {}}
       />,
     )
     const pill = await screen.findByTestId('tag-filter-pill-meeting')
@@ -131,6 +132,7 @@ describe('TagFilter — filtering cards via ListView', () => {
         createError={null}
         onNewNote={() => {}}
         onEditNote={() => {}}
+        onOpenNote={() => {}}
       />,
     )
     const pill = await screen.findByTestId('tag-filter-pill-meeting')
