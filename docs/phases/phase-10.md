@@ -379,3 +379,51 @@ Scenario: Switch resets to ON on page reload
   When I reload the note screen
   Then the switch is ON again
 ```
+
+---
+
+## Slice 10-F — Capture remote participants (system audio mix)
+
+**Status:** Not Started
+
+**Value:** Capture the full conversation — not just the local microphone — so that remote participants dialled in via video call (Zoom, Teams, Meet) are also transcribed.
+
+**Frontend only — no backend changes.**
+
+**Problem:** `getUserMedia({ audio: true })` captures only the local microphone. Remote participants' speech arrives through the speakers and is not captured.
+
+**Approach:** `getDisplayMedia({ audio: true })` can capture system audio on supported browsers (Chrome/Edge). The user shares their screen and ticks "share audio" (or selects the tab/window audio). The resulting audio track is then streamed to Transcribe alongside (or instead of) the microphone track.
+
+**Audio strategy:** Mix mic + system audio into a single PCM stream using the Web Audio API:
+1. `getUserMedia` → local mic track
+2. `getDisplayMedia({ audio: true, video: false })` → system audio track (requires browser permission; falls back gracefully if denied or unsupported)
+3. Both tracks fed into the same `AudioContext` via `createMediaStreamSource`; a `ChannelMergerNode` (or `GainNode` sum) produces a single mono mix at 16 kHz
+4. Existing `PcmProcessor` worklet sends the mix to Transcribe unchanged
+
+**UX:**
+- Add a "Include call audio" toggle in `<TranscriptionPanel>` (default ON, ephemeral).
+- When ON: prompt for screen-share on Record press; if the user cancels the screen-share prompt, fall back to mic-only silently.
+- When OFF: mic-only (current behaviour).
+- Browser compatibility note shown below the toggle: "Requires Chrome or Edge; shares audio from your screen or tab."
+
+**Scenarios:**
+
+```
+Scenario: System audio is mixed with mic when toggle is on
+  Given the "Include call audio" toggle is ON
+  When I press Record and grant screen-share permission
+  Then getDisplayMedia is called with { audio: true, video: false }
+  And the resulting audio track is mixed with the microphone track
+
+Scenario: Falls back to mic-only if screen-share is cancelled
+  Given the "Include call audio" toggle is ON
+  When I press Record and cancel the screen-share prompt
+  Then recording continues with microphone audio only
+  And no error is shown
+
+Scenario: Mic-only when toggle is off
+  Given the "Include call audio" toggle is OFF
+  When I press Record
+  Then getDisplayMedia is not called
+  And recording uses the microphone only
+```
