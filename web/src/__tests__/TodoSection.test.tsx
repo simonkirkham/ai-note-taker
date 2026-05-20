@@ -234,7 +234,6 @@ describe('TodoSection — Done section', () => {
   })
 
   it('rolls back reopen to original completedAt on API failure', async () => {
-    const originalCompletedAt = completedTodayAction.completedAt
     server.use(
       http.get('/api/todos', () => HttpResponse.json({ items: [completedTodayAction] })),
       http.post('/api/notes/:noteId/actions/:actionId/reopen', async () => {

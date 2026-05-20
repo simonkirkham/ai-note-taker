@@ -91,6 +91,14 @@ public sealed class StandaloneTodoTests(ApiFactory factory) : IClassFixture<ApiF
     }
 
     [Fact]
+    public async Task ReopenTodo_UnknownId_Returns404()
+    {
+        var resp = await _client.PostAsync($"/todos/{Guid.NewGuid()}/reopen", null);
+
+        Assert.Equal(System.Net.HttpStatusCode.NotFound, resp.StatusCode);
+    }
+
+    [Fact]
     public async Task DeleteTodo_UnknownId_Returns404()
     {
         var resp = await _client.DeleteAsync($"/todos/{Guid.NewGuid()}");
