@@ -632,6 +632,25 @@ If no agent ran unexpectedly high: write `None — slice ran within expected ran
 
 ---
 
+## Slice 9-E — Browser reminder hook and notification permission banner
+
+| Agent     | ~Tokens    |
+| --------- | ---------- |
+| Scout     | —          |
+| Breaker   | —          |
+| Pip       | 52 000     |
+| Hawk      | 35 000     |
+| Scribe    | 5 000      |
+| **Total** | **~92 000** |
+
+**Why:** Two Hawk passes. First pass found: array-identity timer churn (critical), alert-for-"default" UX bug (important), missing handleEnable exception safety, and banner test isolation gap. All four fixed cleanly with no rework. Second pass approved immediately (34 k). The slice also required a rebase onto main after 9-B landed, with a MeetingsSection conflict resolution that combined both components.
+
+**Optimisation suggestions:**
+- **Pip (–10 000):** The array-identity bug and the "default" vs "denied" distinction are both predictable hooks-with-dependency-array gotchas. A `useMeetingReminders` spec comment ("pass a stable reference") would have caught the former before Hawk; the three-way permission split should be in the phase doc spec to catch the latter.
+- **Hawk (–15 000):** Second pass was light (34 k). If Breaker's spec explicitly covers the stable-reference contract and permission states, first-pass findings collapse from 4 to 1–2, making a single-pass review achievable.
+
+---
+
 ## Slice 9-B — Google Calendar API pass-through
 
 | Agent     | ~Tokens     |

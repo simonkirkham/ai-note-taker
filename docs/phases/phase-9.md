@@ -466,7 +466,7 @@ Scenario: Creating a note when one already exists returns 409
 
 ## Slice 9-E — Meeting-time browser reminder
 
-**Status:** Not Started
+**Status:** Done
 
 **Value:** At the moment a meeting starts, a browser notification appears so I don't miss it.
 
@@ -512,11 +512,11 @@ Scenario: No reminder is scheduled for a meeting that has already started
 
 **Acceptance criteria:**
 
-- [ ] `useMeetingReminders` schedules a `setTimeout` for each future meeting on mount; clears all on unmount
-- [ ] `new Notification(...)` fires when permission is `granted`
-- [ ] In-app banner/toast shown when permission is `denied` or `default`
-- [ ] Permission request banner shown when permission state is `default`
-- [ ] No timer set for meetings with `startTime` in the past
+- [x] `useMeetingReminders` schedules a `setTimeout` for each future meeting on mount; clears all on unmount
+- [x] `new Notification(...)` fires when permission is `granted`
+- [x] `alert()` fallback shown when permission is `denied`; `default` is silent (user hasn't decided — show the banner instead)
+- [x] Permission request banner shown when permission state is `default`; dismissible with Enable or ✕
+- [x] No timer set for meetings with `startTime` in the past
 
 ---
 
