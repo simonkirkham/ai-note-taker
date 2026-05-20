@@ -174,6 +174,21 @@ public sealed class NoteTakerStack : Stack
         }));
         apiFunction.AddEnvironment("TRANSCRIBE_ROLE_ARN", transcribeRole.RoleArn);
 
+        if (!string.IsNullOrEmpty(props.BedrockModelId))
+        {
+            var bedrockArn = Arn.Format(new ArnComponents
+            {
+                Service = "bedrock",
+                Resource = "foundation-model",
+                ResourceName = props.BedrockModelId
+            }, this);
+            apiFunction.AddToRolePolicy(new PolicyStatement(new PolicyStatementProps
+            {
+                Actions = new[] { "bedrock:InvokeModel" },
+                Resources = new[] { bedrockArn }
+            }));
+        }
+
         var apiAlias = new Amazon.CDK.AWS.Lambda.Alias(this, "LiveAlias", new Amazon.CDK.AWS.Lambda.AliasProps
         {
             AliasName = "live",

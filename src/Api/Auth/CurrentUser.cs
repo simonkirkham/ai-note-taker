@@ -7,4 +7,8 @@ public sealed class CurrentUser(IHttpContextAccessor httpContextAccessor) : ICur
     public string UserId =>
         httpContextAccessor.HttpContext?.User.FindFirst(ClaimTypes.NameIdentifier)?.Value
         ?? throw new InvalidOperationException("No authenticated user.");
+
+    public string Name =>
+        httpContextAccessor.HttpContext?.User.FindFirst(ClaimTypes.Name)?.Value
+        ?? UserId;
 }

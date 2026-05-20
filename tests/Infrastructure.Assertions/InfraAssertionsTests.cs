@@ -6,6 +6,7 @@ public class InfraAssertionsTests
     private static readonly Template _template = BuildTemplate();
     private static readonly Template _domainTemplate = BuildDomainTemplate();
     private static readonly Template _calendarTemplate = BuildCalendarTemplate();
+    private static readonly Template _bedrockTemplate = BuildBedrockTemplate();
 
     private static Template BuildTemplate()
     {
@@ -51,6 +52,22 @@ public class InfraAssertionsTests
         return Template.FromStack(new NoteTakerStack(app, "TestStack", new NoteTakerStackProps
         {
             GoogleRefreshTokenSsmPath = "/test/google-refresh-token"
+        }));
+    }
+
+    private static Template BuildBedrockTemplate()
+    {
+        var lambdaAssetPath = AppContext.BaseDirectory;
+        var app = new App(new AppProps
+        {
+            Context = new Dictionary<string, object>
+            {
+                ["lambdaAssetPath"] = lambdaAssetPath
+            }
+        });
+        return Template.FromStack(new NoteTakerStack(app, "TestStack", new NoteTakerStackProps
+        {
+            BedrockModelId = "anthropic.claude-haiku-20240307-v1:0"
         }));
     }
 
@@ -572,5 +589,45 @@ public class InfraAssertionsTests
                 })
             })
         }));
+    }
+
+    [Fact]
+    public void Lambda_HasBedrockInvokeModelPermission_WhenBedrockModelIdConfigured()
+    {
+        _bedrockTemplate.HasResourceProperties("AWS::IAM::Policy", Match.ObjectLike(new Dictionary<string, object>
+        {
+            ["PolicyDocument"] = Match.ObjectLike(new Dictionary<string, object>
+            {
+                ["Statement"] = Match.ArrayWith(new object[]
+                {
+                    Match.ObjectLike(new Dictionary<string, object>
+                    {
+                        ["Action"] = "bedrock:InvokeModel",
+                        ["Effect"] = "Allow"
+                    })
+                })
+            })
+        }));
+    }
+
+    [Fact]
+    public void Lambda_HasNoBedrockPermission_WhenBedrockModelIdNotConfigured()
+    {
+        // _template has no BedrockModelId — the conditional IAM grant must not fire
+        var thrown = Record.Exception(() =>
+            _template.HasResourceProperties("AWS::IAM::Policy", Match.ObjectLike(new Dictionary<string, object>
+            {
+                ["PolicyDocument"] = Match.ObjectLike(new Dictionary<string, object>
+                {
+                    ["Statement"] = Match.ArrayWith(new object[]
+                    {
+                        Match.ObjectLike(new Dictionary<string, object>
+                        {
+                            ["Action"] = "bedrock:InvokeModel"
+                        })
+                    })
+                })
+            })));
+        Assert.NotNull(thrown);
     }
 }

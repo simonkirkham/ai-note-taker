@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { analyseNote } from '../api';
 import { useTranscription } from '../hooks/useTranscription';
 
 function formatTime(seconds: number): string {
@@ -10,15 +11,19 @@ function formatTime(seconds: number): string {
 export default function TranscriptionPanel({
   noteId,
   initialTranscript,
+  onAnalysisComplete,
 }: {
   noteId: string;
   initialTranscript?: string | null;
+  onAnalysisComplete?: () => void;
 }) {
   const { status, transcript, elapsedSeconds, error, startRecording, stopRecording, reset } =
     useTranscription(noteId);
 
   const transcriptRef = useRef<HTMLDivElement>(null);
   const [hasRecordedThisSession, setHasRecordedThisSession] = useState(false);
+  const [isAnalysing, setIsAnalysing] = useState(false);
+  const [analyseError, setAnalyseError] = useState<string | null>(null);
 
   useEffect(() => {
     if (transcriptRef.current) {
@@ -29,6 +34,20 @@ export default function TranscriptionPanel({
   const isRecording = status === 'recording';
   const isRequesting = status === 'requestingCredentials';
   const showInitialTranscript = status === 'idle' && !!initialTranscript && !hasRecordedThisSession;
+  const canAnalyse = (status === 'stopped' || showInitialTranscript) && !isAnalysing;
+
+  async function handleAnalyse() {
+    setIsAnalysing(true);
+    setAnalyseError(null);
+    try {
+      await analyseNote(noteId);
+      onAnalysisComplete?.();
+    } catch {
+      setAnalyseError('Analysis failed. Please try again.');
+    } finally {
+      setIsAnalysing(false);
+    }
+  }
 
   return (
     <div className="transcription-panel" data-testid="transcription-panel">
@@ -94,7 +113,22 @@ export default function TranscriptionPanel({
             Stop
           </button>
         )}
+        {canAnalyse && (
+          <button
+            className="transcription-analyse-button"
+            data-testid="transcription-analyse-button"
+            onClick={handleAnalyse}
+            disabled={isAnalysing}
+          >
+            {isAnalysing ? 'Analysing…' : 'Save & Analyse'}
+          </button>
+        )}
       </div>
+      {analyseError && (
+        <p className="transcription-analyse-error" data-testid="transcription-analyse-error">
+          {analyseError}
+        </p>
+      )}
     </div>
   );
 }
