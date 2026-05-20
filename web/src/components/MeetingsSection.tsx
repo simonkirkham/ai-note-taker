@@ -100,7 +100,7 @@ export function MeetingsSection({ onOpenNote }: { onOpenNote: (noteId: string, t
       const result = await createNoteFromNextOccurrence(seriesId);
       const noteId = result.noteId;
       setNextNoteIds((prev) => new Map(prev).set(seriesId, noteId));
-      onOpenNote(noteId);
+      onOpenNote(noteId, meeting.title);
     } catch {
       // Revert optimistic update on failure
       setState((prev) =>

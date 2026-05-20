@@ -249,3 +249,26 @@ describe('MeetingsSection — Create Note button', () => {
     expect(screen.getByRole('button', { name: 'Create Note' })).toBeEnabled()
   })
 })
+
+describe('MeetingsSection — next occurrence Create Note button', () => {
+  beforeEach(() => stubNotificationPermission('granted'))
+
+  it('clicking Create Note on next-occurrence row opens the note with the meeting title', async () => {
+    server.use(
+      http.get('/api/calendar/today', () =>
+        HttpResponse.json({ meetings: [meeting1] }),
+      ),
+      http.post('/api/notes/from-next-occurrence', () =>
+        HttpResponse.json({ noteId: 'next-note-456', nextOccurrence: { calendarEventId: 's1_next', startTime: '2026-05-27T09:00:00Z', endTime: '2026-05-27T09:30:00Z' } }, { status: 201 }),
+      ),
+    )
+    const { onOpenNote } = renderSection()
+    await screen.findByText('1:1 with Bill')
+
+    const createBtns = screen.getAllByRole('button', { name: 'Create Note' })
+    // meeting1 is recurring — second Create Note button is the next-occurrence row
+    await userEvent.click(createBtns[1])
+
+    await waitFor(() => expect(onOpenNote).toHaveBeenCalledWith('next-note-456', '1:1 with Bill'))
+  })
+})
