@@ -133,12 +133,15 @@ export function MeetingsSection() {
                       </button>
                     </div>
                     {m.isRecurring && (
-                      <div className="meeting-card-row">
-                        <span className="meeting-card-row-label">↻ Next</span>
-                        <button className="meeting-action-btn">
-                          {m.hasNextOccurrenceNote ? "Open Note ↗" : "Create Note"}
-                        </button>
-                      </div>
+                      <>
+                        <div className="meeting-card-divider" />
+                        <div className="meeting-card-row">
+                          <span className="meeting-card-row-label">↻ Next</span>
+                          <button className="meeting-action-btn">
+                            {m.hasNextOccurrenceNote ? "Open Note ↗" : "Create Note"}
+                          </button>
+                        </div>
+                      </>
                     )}
                   </footer>
                 </article>
