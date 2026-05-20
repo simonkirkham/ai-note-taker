@@ -2,6 +2,8 @@ import { useState, type KeyboardEvent } from "react";
 import type { TagIndexEntry } from "../api";
 import { useTagSuggestions } from "../hooks/useTagSuggestions";
 
+const LISTBOX_ID = "tag-suggestions-listbox";
+
 export default function TagsSection({
   tags,
   allTags,
@@ -71,6 +73,10 @@ export default function TagsSection({
   }
 
   const showDropdown = isOpen && suggestions.length > 0;
+  const activeDescendant =
+    showDropdown && highlightedIndex >= 0
+      ? `tag-suggestion-${suggestions[highlightedIndex].tag}`
+      : undefined;
 
   return (
     <div data-testid="tags-section" className="tags-section">
@@ -97,6 +103,12 @@ export default function TagsSection({
           placeholder="Add tag…"
           value={input}
           autoComplete="off"
+          role="combobox"
+          aria-autocomplete="list"
+          aria-expanded={showDropdown}
+          aria-haspopup="listbox"
+          aria-controls={LISTBOX_ID}
+          aria-activedescendant={activeDescendant}
           onChange={(e) => {
             setInput(e.target.value);
             setIsOpen(true);
@@ -109,34 +121,50 @@ export default function TagsSection({
             submitTag(input);
           }}
           onKeyDown={handleKeyDown}
-          aria-autocomplete="list"
-          aria-expanded={showDropdown}
-          aria-haspopup="listbox"
         />
         {showDropdown && (
           <ul
+            id={LISTBOX_ID}
             data-testid="tag-suggestions"
             className="tag-suggestions"
             role="listbox"
+            aria-label="Tag suggestions"
           >
-            {suggestions.map((item, idx) => (
-              <li
-                key={item.tag}
-                role="option"
-                aria-selected={idx === highlightedIndex}
-                data-testid={`suggestion-${item.tag}`}
-                className={`tag-suggestion-item${idx === highlightedIndex ? " highlighted" : ""}`}
-                onMouseDown={(e) => e.preventDefault()}
-                onClick={() => submitTag(item.tag)}
-              >
-                {item.heading && (
-                  <span className="suggestion-group-heading" data-testid={`heading-${item.heading}`}>
-                    {item.heading}
-                  </span>
-                )}
-                {item.tag}
-              </li>
-            ))}
+            {suggestions.flatMap((item, idx) => {
+              const optionId = `tag-suggestion-${item.tag}`;
+              const elements = [];
+              if (item.heading) {
+                elements.push(
+                  <li
+                    key={`heading-${item.heading}`}
+                    role="presentation"
+                    className="suggestion-group-item"
+                  >
+                    <span
+                      className="suggestion-group-heading"
+                      data-testid={`heading-${item.heading}`}
+                    >
+                      {item.heading}
+                    </span>
+                  </li>,
+                );
+              }
+              elements.push(
+                <li
+                  key={item.tag}
+                  id={optionId}
+                  role="option"
+                  aria-selected={idx === highlightedIndex}
+                  data-testid={`suggestion-${item.tag}`}
+                  className={`tag-suggestion-item${idx === highlightedIndex ? " highlighted" : ""}`}
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => submitTag(item.tag)}
+                >
+                  {item.tag}
+                </li>,
+              );
+              return elements;
+            })}
           </ul>
         )}
       </div>

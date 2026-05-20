@@ -71,7 +71,7 @@ export default function NoteView({
   }, [noteId, onDateSet]);
 
   useEffect(() => {
-    getTags().then((tags) => setAllTags(tags)).catch(() => {});
+    getTags().then(setAllTags).catch((err) => { console.error('getTags failed:', err) });
   }, []);
 
   useEffect(() => {

@@ -29,6 +29,8 @@ export function useTagSuggestions(
 
     const result: SuggestionItem[] = []
 
+    const relatedTags = new Set<string>()
+
     if (appliedTags.length > 0) {
       const appliedNoteIds = new Set(
         appliedTags.flatMap((tag) => allTags.find((e) => e.tag === tag)?.noteIds ?? []),
@@ -43,10 +45,12 @@ export function useTagSuggestions(
       if (related.length > 0) {
         result.push({ tag: related[0].tag, heading: 'Related' })
         result.push(...related.slice(1).map((e) => ({ tag: e.tag })))
+        related.forEach((e) => relatedTags.add(e.tag))
       }
     }
 
     const common = available
+      .filter((e) => !relatedTags.has(e.tag))
       .sort((a, b) => b.noteCount - a.noteCount)
       .slice(0, 8)
 

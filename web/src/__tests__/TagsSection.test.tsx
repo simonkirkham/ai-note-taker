@@ -175,6 +175,18 @@ describe('TagsSection — empty focus state', () => {
     await userEvent.click(input)
     expect(screen.queryByTestId('tag-suggestions')).toBeNull()
   })
+
+  it('a tag that qualifies for both Related and Common appears exactly once', async () => {
+    // HighOverlap has high noteCount (10) AND overlaps Applied's noteIds
+    const allTags = [
+      mkTag('Applied', 3, ['n1', 'n2', 'n3']),
+      mkTag('HighOverlap', 10, ['n1', 'n2', 'n3']),
+      mkTag('Other', 5, ['n99']),
+    ]
+    const { input } = renderTags({ tags: ['Applied'], allTags })
+    await userEvent.click(input)
+    expect(screen.getAllByTestId('suggestion-HighOverlap')).toHaveLength(1)
+  })
 })
 
 describe('TagsSection — keyboard navigation', () => {
@@ -226,6 +238,18 @@ describe('TagsSection — keyboard navigation', () => {
     fireEvent.change(input, { target: { value: 'MyTag' } })
     fireEvent.keyDown(input, { key: 'Enter' })
     expect(onAdd).toHaveBeenCalledWith('MyTag')
+  })
+
+  it('Enter with dropdown open and no highlight submits the raw input', async () => {
+    const onAdd = vi.fn()
+    const allTags = [mkTag('Work', 5), mkTag('Weekend', 3)]
+    const { input } = renderTags({ allTags, onAdd })
+    await userEvent.click(input)
+    expect(screen.getByTestId('tag-suggestions')).toBeInTheDocument()
+    // highlightedIndex is -1 (nothing highlighted)
+    fireEvent.change(input, { target: { value: 'my-custom' } })
+    fireEvent.keyDown(input, { key: 'Enter' })
+    expect(onAdd).toHaveBeenCalledWith('my-custom')
   })
 
   it('Escape closes the dropdown without submitting or clearing input', async () => {
