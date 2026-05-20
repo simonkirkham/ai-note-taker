@@ -82,6 +82,16 @@ public sealed class CalendarIntegrationTests : IClassFixture<ApiFactory>
     }
 
     [Fact]
+    public async Task GetTodaysMeetings_InvalidTimezone_Returns400()
+    {
+        var resp = await _client.GetAsync("/calendar/today?tz=Not%2FATimezone");
+
+        Assert.Equal(HttpStatusCode.BadRequest, resp.StatusCode);
+        var body = await resp.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("invalid_timezone", body.GetProperty("error").GetString());
+    }
+
+    [Fact]
     public async Task GetTodaysMeetings_Unauthenticated_Returns401()
     {
         var resp = await _unauthClient.GetAsync("/calendar/today?tz=UTC");

@@ -93,4 +93,10 @@ describe('MeetingsSection', () => {
     const title = await screen.findByText('1:1 with Bill')
     expect(title).toBeInTheDocument()
   })
+
+  it('shows loading state on initial render before fetch resolves', () => {
+    // useState initialises with { status: 'loading' } before the useEffect fetch fires
+    renderSection()
+    expect(screen.getByText('Loading…')).toBeInTheDocument()
+  })
 })

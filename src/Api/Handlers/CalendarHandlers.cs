@@ -9,6 +9,9 @@ public static class CalendarHandlers
         if (string.IsNullOrWhiteSpace(tz))
             return Results.BadRequest(new { error = "tz parameter is required" });
 
+        try { TimeZoneInfo.FindSystemTimeZoneById(tz); }
+        catch (TimeZoneNotFoundException) { return Results.BadRequest(new { error = "invalid_timezone" }); }
+
         var events = await calendar.GetTodaysEventsAsync(tz);
         if (events is null)
             return Results.Ok(new { error = "calendar_unavailable" });
