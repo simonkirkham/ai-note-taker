@@ -8,7 +8,7 @@ public sealed class FakeStsCredentialService : IStsCredentialService
         AccessKeyId: "ASIATESTFAKEKEY",
         SecretAccessKey: "fakeSecretAccessKey",
         SessionToken: "fakeSessionToken",
-        Expiration: DateTimeOffset.UtcNow.AddMinutes(15)
+        Expiration: new DateTimeOffset(2099, 1, 1, 0, 0, 0, TimeSpan.Zero)
     );
 
     public bool WasCalled { get; private set; }

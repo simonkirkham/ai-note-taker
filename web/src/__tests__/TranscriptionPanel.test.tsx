@@ -12,18 +12,16 @@ vi.mock('@aws-sdk/client-transcribe-streaming', () => {
   return {
     TranscribeStreamingClient: vi.fn().mockImplementation(() => ({
       send: vi.fn().mockImplementation(async () => {
-        let _emitResult: (text: string) => void
-        let _endStream: () => void
         const resultQueue: string[] = []
         let wakeup: (() => void) | null = null
         let done = false
 
-        _emitResult = (text: string) => {
+        const _emitResult = (text: string) => {
           resultQueue.push(text)
           wakeup?.()
           wakeup = null
         }
-        _endStream = () => {
+        const _endStream = () => {
           done = true
           wakeup?.()
           wakeup = null
@@ -65,10 +63,9 @@ function stubBrowserApis() {
     getTracks: () => [{ stop: vi.fn() }],
   } as unknown as MediaStream
 
-  const mockProcessor = {
+  const mockWorkletNode = {
     connect: vi.fn(),
-    disconnect: vi.fn(),
-    onaudioprocess: null as ((e: AudioProcessingEvent) => void) | null,
+    port: { onmessage: null as ((e: MessageEvent) => void) | null },
   }
 
   const mockSource = { connect: vi.fn() }
@@ -76,7 +73,7 @@ function stubBrowserApis() {
   const mockAudioContext = {
     sampleRate: 16000,
     createMediaStreamSource: vi.fn().mockReturnValue(mockSource),
-    createScriptProcessor: vi.fn().mockReturnValue(mockProcessor),
+    audioWorklet: { addModule: vi.fn().mockResolvedValue(undefined) },
     destination: {},
     close: vi.fn().mockResolvedValue(undefined),
   }
@@ -87,8 +84,9 @@ function stubBrowserApis() {
   })
 
   vi.stubGlobal('AudioContext', vi.fn().mockImplementation(() => mockAudioContext))
+  vi.stubGlobal('AudioWorkletNode', vi.fn().mockImplementation(() => mockWorkletNode))
 
-  return { mockStream, mockProcessor, mockAudioContext }
+  return { mockStream, mockWorkletNode, mockAudioContext }
 }
 
 beforeEach(() => {

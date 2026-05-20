@@ -5,6 +5,20 @@ import {
 } from '@aws-sdk/client-transcribe-streaming';
 import { getTranscriptionCredentials } from '../api';
 
+const LANGUAGE_CODE = 'en-GB' as const;
+
+const WORKLET_CODE = `
+class PcmProcessor extends AudioWorkletProcessor {
+  process(inputs) {
+    const ch = inputs[0]?.[0];
+    if (ch) this.port.postMessage(ch);
+    return true;
+  }
+}
+registerProcessor('pcm-processor', PcmProcessor);
+`;
+const WORKLET_DATA_URL = `data:application/javascript,${encodeURIComponent(WORKLET_CODE)}`;
+
 export type TranscriptionStatus =
   | 'idle'
   | 'requestingCredentials'
@@ -77,15 +91,15 @@ export function useTranscription(): UseTranscriptionResult {
         const audioContext = new AudioContext({ sampleRate: 16000 });
         audioContextRef.current = audioContext;
         const source = audioContext.createMediaStreamSource(stream);
-        const processor = audioContext.createScriptProcessor(1024, 1, 1);
-        source.connect(processor);
-        processor.connect(audioContext.destination);
+        await audioContext.audioWorklet.addModule(WORKLET_DATA_URL);
+        const workletNode = new AudioWorkletNode(audioContext, 'pcm-processor');
+        source.connect(workletNode);
 
         const audioQueue: Uint8Array[] = [];
 
-        processor.onaudioprocess = (e) => {
+        workletNode.port.onmessage = (e: MessageEvent) => {
           if (stoppedRef.current) return;
-          const input = e.inputBuffer.getChannelData(0);
+          const input = e.data as Float32Array;
           const pcm = new Int16Array(input.length);
           for (let i = 0; i < input.length; i++) {
             pcm[i] = Math.max(-32768, Math.min(32767, Math.round(input[i] * 32767)));
@@ -118,7 +132,7 @@ export function useTranscription(): UseTranscriptionResult {
         });
 
         const command = new StartStreamTranscriptionCommand({
-          LanguageCode: 'en-GB',
+          LanguageCode: LANGUAGE_CODE,
           MediaEncoding: 'pcm',
           MediaSampleRateHertz: audioContext.sampleRate,
           AudioStream: audioStream(),

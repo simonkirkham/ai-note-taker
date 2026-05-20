@@ -543,4 +543,29 @@ public class InfraAssertionsTests
             })
         }));
     }
+
+    [Fact]
+    public void TranscribeBrowserRole_TrustPolicyAllowsOnlyLambdaExecRole()
+    {
+        // Trust policy must use a scoped AWS principal (the Lambda exec role ARN),
+        // not a wildcard "*". Asserting Principal.AWS exists proves it is not "*".
+        _template.HasResourceProperties("AWS::IAM::Role", Match.ObjectLike(new Dictionary<string, object>
+        {
+            ["AssumeRolePolicyDocument"] = Match.ObjectLike(new Dictionary<string, object>
+            {
+                ["Statement"] = Match.ArrayWith(new object[]
+                {
+                    Match.ObjectLike(new Dictionary<string, object>
+                    {
+                        ["Action"] = "sts:AssumeRole",
+                        ["Effect"] = "Allow",
+                        ["Principal"] = Match.ObjectLike(new Dictionary<string, object>
+                        {
+                            ["AWS"] = Match.AnyValue()
+                        })
+                    })
+                })
+            })
+        }));
+    }
 }
