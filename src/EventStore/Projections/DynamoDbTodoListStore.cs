@@ -106,6 +106,17 @@ public sealed class DynamoDbTodoListStore(IAmazonDynamoDB dynamo, string tableNa
         }, ct))).ConfigureAwait(false);
     }
 
+    public async Task<TodoItem?> GetByIdAsync(string itemId, CancellationToken ct = default)
+    {
+        var resp = await dynamo.GetItemAsync(new GetItemRequest
+        {
+            TableName = tableName,
+            Key = new Dictionary<string, AttributeValue> { ["PK"] = new() { S = itemId } },
+            ConsistentRead = true
+        }, ct).ConfigureAwait(false);
+        return resp.Item?.Count > 0 ? ToTodoItem(resp.Item) : null;
+    }
+
     public async Task<TodoListView> QueryAllAsync(CancellationToken ct = default)
     {
         var items = new List<TodoItem>();

@@ -1,4 +1,4 @@
-import { render, screen, waitFor, within } from '@testing-library/react'
+import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { delay, http, HttpResponse } from 'msw'
 import { server } from '../test/setup'
@@ -98,6 +98,20 @@ describe('TodoSection — quick add', () => {
     await userEvent.type(input, 'Call dentist{Enter}')
     await screen.findByText('Call dentist')
     await waitFor(() => expect(screen.queryByText('Call dentist')).not.toBeInTheDocument())
+  })
+
+  it('replaces temp id with server id on successful add', async () => {
+    server.use(
+      http.get('/api/todos', () => HttpResponse.json({ items: [] })),
+      http.post('/api/todos', () => HttpResponse.json({ todoId: 'server-real-id' })),
+    )
+    render(<TodoSection />)
+    const input = await screen.findByPlaceholderText(/add a to-do/i)
+    await userEvent.type(input, 'My task{Enter}')
+    await waitFor(() => {
+      const checkboxes = screen.queryAllByRole('checkbox')
+      expect(checkboxes.length).toBe(1)
+    })
   })
 })
 
@@ -217,5 +231,24 @@ describe('TodoSection — Done section', () => {
     await userEvent.click(screen.getByRole('button', { name: /delete "Send recap"/i }))
     await waitFor(() => expect(called).toBe(true))
     expect(screen.queryByText('Send recap')).not.toBeInTheDocument()
+  })
+
+  it('rolls back reopen to original completedAt on API failure', async () => {
+    const originalCompletedAt = completedTodayAction.completedAt
+    server.use(
+      http.get('/api/todos', () => HttpResponse.json({ items: [completedTodayAction] })),
+      http.post('/api/notes/:noteId/actions/:actionId/reopen', async () => {
+        await delay(20)
+        return new HttpResponse(null, { status: 500 })
+      }),
+    )
+    render(<TodoSection />)
+    await userEvent.click(await screen.findByRole('button', { name: /done \(1\)/i }))
+    await userEvent.click(screen.getByRole('button', { name: /reopen "Send recap"/i }))
+    // item moves to open list optimistically
+    await screen.findByRole('checkbox', { name: /Send recap/i })
+    // then rolls back to done list
+    await waitFor(() => expect(screen.queryByRole('checkbox', { name: /Send recap/i })).not.toBeInTheDocument())
+    expect(screen.getByRole('button', { name: /done \(1\)/i })).toBeInTheDocument()
   })
 })

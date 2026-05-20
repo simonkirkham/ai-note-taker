@@ -102,8 +102,7 @@ public static class TodoHandlers
 
     static async Task<bool> OwnsTodoAsync(ITodoListStore store, Guid todoId, ICurrentUser currentUser, CancellationToken ct)
     {
-        var view = await store.QueryAllAsync(ct).ConfigureAwait(false);
-        var item = view.Items.FirstOrDefault(i => i.ItemId == todoId.ToString());
+        var item = await store.GetByIdAsync(todoId.ToString(), ct).ConfigureAwait(false);
         return item is not null && item.UserId == currentUser.UserId;
     }
 }

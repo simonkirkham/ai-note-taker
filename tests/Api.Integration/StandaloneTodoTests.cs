@@ -74,6 +74,30 @@ public sealed class StandaloneTodoTests(ApiFactory factory) : IClassFixture<ApiF
         Assert.DoesNotContain(items, i => i.GetProperty("itemId").GetString() == todoId.ToString());
     }
 
+    [Fact]
+    public async Task PostTodos_EmptyDescription_Returns400()
+    {
+        var resp = await _client.PostAsJsonAsync("/todos", new { description = "   " });
+
+        Assert.Equal(System.Net.HttpStatusCode.BadRequest, resp.StatusCode);
+    }
+
+    [Fact]
+    public async Task CompleteTodo_UnknownId_Returns404()
+    {
+        var resp = await _client.PostAsync($"/todos/{Guid.NewGuid()}/complete", null);
+
+        Assert.Equal(System.Net.HttpStatusCode.NotFound, resp.StatusCode);
+    }
+
+    [Fact]
+    public async Task DeleteTodo_UnknownId_Returns404()
+    {
+        var resp = await _client.DeleteAsync($"/todos/{Guid.NewGuid()}");
+
+        Assert.Equal(System.Net.HttpStatusCode.NotFound, resp.StatusCode);
+    }
+
     private async Task<Guid> CreateStandaloneTodoAsync(string description)
     {
         var resp = await _client.PostAsJsonAsync("/todos", new { description });
