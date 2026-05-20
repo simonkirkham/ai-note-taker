@@ -22,6 +22,8 @@ public sealed class DynamoDbNoteDetailStore(IAmazonDynamoDB dynamo, string table
             item["Date"] = new AttributeValue { S = detail.Date.Value.ToString("yyyy-MM-dd") };
         if (detail.Tags is { Count: > 0 })
             item["Tags"] = new AttributeValue { SS = detail.Tags.ToList() };
+        if (!string.IsNullOrEmpty(detail.TranscriptText))
+            item["TranscriptText"] = new AttributeValue { S = detail.TranscriptText };
 
         await dynamo.PutItemAsync(new PutItemRequest { TableName = tableName, Item = item }, ct)
             .ConfigureAwait(false);
@@ -78,6 +80,7 @@ public sealed class DynamoDbNoteDetailStore(IAmazonDynamoDB dynamo, string table
         IReadOnlyList<string> tags = item.TryGetValue("Tags", out var tagsAttr) && tagsAttr.SS?.Count > 0
             ? tagsAttr.SS.AsReadOnly()
             : Array.Empty<string>();
+        var transcriptText = item.TryGetValue("TranscriptText", out var txAttr) ? txAttr.S : null;
         return new NoteDetailView(
             new NoteId(Guid.Parse(item["NoteId"].S)),
             ReadStringAttribute(item, "Title"),
@@ -86,7 +89,8 @@ public sealed class DynamoDbNoteDetailStore(IAmazonDynamoDB dynamo, string table
             DateTimeOffset.Parse(item["LastModifiedAt"].S),
             date,
             tags,
-            UserId: item.TryGetValue("UserId", out var uidAttr) ? uidAttr.S : "");
+            UserId: item.TryGetValue("UserId", out var uidAttr) ? uidAttr.S : "",
+            TranscriptText: transcriptText);
     }
 
     private static string ReadStringAttribute(Dictionary<string, AttributeValue> item, string key) =>
