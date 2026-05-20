@@ -9,7 +9,7 @@ namespace Api.Handlers;
 
 public static class CalendarHandlers
 {
-    public static async Task<IResult> GetTodaysMeetings(string? tz, IGoogleCalendarClient calendar, ICalendarLinkIndexStore calendarLinkStore)
+    public static async Task<IResult> GetTodaysMeetings(string? tz, IGoogleCalendarClient calendar, ICalendarLinkIndexStore calendarLinkStore, ICurrentUser currentUser)
     {
         if (string.IsNullOrWhiteSpace(tz))
             return Results.BadRequest(new { error = "tz parameter is required" });
@@ -28,7 +28,7 @@ public static class CalendarHandlers
                 catch { return null; }
             }));
         var linkMap = links
-            .Where(l => l is not null)
+            .Where(l => l is not null && l.UserId == currentUser.UserId)
             .ToDictionary(l => l!.CalendarEventId, l => l!.NoteId);
 
         var meetings = events.OrderBy(e => e.StartTime).Select(e => new

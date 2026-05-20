@@ -9,12 +9,14 @@ namespace Api.Integration;
 public sealed class CreateNoteFromMeetingIntegrationTests : IClassFixture<ApiFactory>
 {
     private readonly HttpClient _client;
+    private readonly HttpClient _otherClient;
     private readonly HttpClient _unauthClient;
     private readonly FakeGoogleCalendarClient _fakeCalendar;
 
     public CreateNoteFromMeetingIntegrationTests(ApiFactory factory)
     {
         _client = factory.CreateClient();
+        _otherClient = factory.CreateClientAsOtherUser();
         _unauthClient = factory.CreateUnauthenticatedClient();
         _fakeCalendar = factory.Services.GetRequiredService<FakeGoogleCalendarClient>();
         _fakeCalendar.Reset();
@@ -83,6 +85,36 @@ public sealed class CreateNoteFromMeetingIntegrationTests : IClassFixture<ApiFac
         var meeting = body.GetProperty("meetings")[0];
 
         Assert.Equal(noteId, meeting.GetProperty("linkedNoteId").GetString());
+    }
+
+    [Fact]
+    public async Task PostNotesFromMeeting_DifferentUser_SameEventId_Returns201()
+    {
+        // User A links an event — User B must still be able to create their own note for it
+        await _client.PostAsJsonAsync("/notes/from-meeting", MeetingRequest("evt_9d_shared"));
+
+        var resp = await _otherClient.PostAsJsonAsync("/notes/from-meeting", MeetingRequest("evt_9d_shared"));
+        Assert.Equal(HttpStatusCode.Created, resp.StatusCode);
+    }
+
+    [Fact]
+    public async Task GetTodaysMeetings_DoesNotReturnOtherUsersLinkedNoteId()
+    {
+        // User A creates a note linked to evt_9d_leak
+        await _client.PostAsJsonAsync("/notes/from-meeting", MeetingRequest("evt_9d_leak"));
+
+        _fakeCalendar.SetEvents(new[]
+        {
+            new CalendarEvent("evt_9d_leak", "Shared Meeting", DateTimeOffset.UtcNow, DateTimeOffset.UtcNow.AddMinutes(30), false, null)
+        });
+
+        // User B's /calendar/today must show linkedNoteId: null (not User A's note)
+        var resp = await _otherClient.GetAsync("/calendar/today?tz=UTC");
+        resp.EnsureSuccessStatusCode();
+        var body = await resp.Content.ReadFromJsonAsync<JsonElement>();
+        var meeting = body.GetProperty("meetings")[0];
+
+        Assert.Equal(JsonValueKind.Null, meeting.GetProperty("linkedNoteId").ValueKind);
     }
 
     [Fact]
