@@ -21,14 +21,8 @@ vi.mock('@aws-sdk/client-transcribe-streaming', () => {
           wakeup?.()
           wakeup = null
         }
-        const _endStream = () => {
-          done = true
-          wakeup?.()
-          wakeup = null
-        }
 
         emitTranscriptResult = _emitResult
-        void _endStream
 
         async function* stream() {
           while (!done) {

@@ -209,7 +209,9 @@ export default function NoteView({
         </div>
         <div className="note-right-panel">
           <TagsSection tags={tags} onAdd={handleAddTags} onRemove={handleRemoveTag} />
-          <ActionsSection noteId={noteId} onCountChange={setActionCount} />
+          <div className="actions-section">
+            <ActionsSection noteId={noteId} onCountChange={setActionCount} />
+          </div>
           <TranscriptionPanel noteId={noteId} />
         </div>
       </div>

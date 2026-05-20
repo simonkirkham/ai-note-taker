@@ -23,7 +23,7 @@ public static class TranscriptionHandlers
                 region
             });
         }
-        catch (AmazonSecurityTokenServiceException)
+        catch (Exception ex) when (ex is AmazonSecurityTokenServiceException or InvalidOperationException)
         {
             return Results.Problem(statusCode: 503, title: "Transcription service unavailable");
         }
