@@ -37,6 +37,7 @@ LoggingConfig.AddLogging(app);
 NoteEndpoints.MapNoteEndpoints(app);
 app.MapFolderEndpoints();
 app.MapAuthEndpoints();
+app.MapCalendarEndpoints();
 
 app.Run();
 

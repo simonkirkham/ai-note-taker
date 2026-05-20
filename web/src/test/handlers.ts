@@ -6,6 +6,7 @@ export const handlers = [
   http.get('/api/notes/cards', () => HttpResponse.json({ cards: [] })),
   http.get('/api/tags', () => HttpResponse.json({ tags: [] })),
   http.get('/api/todos', () => HttpResponse.json({ items: [] })),
+  http.get('/api/calendar/today', () => HttpResponse.json({ meetings: [] })),
   http.get('/api/notes/:noteId', () =>
     HttpResponse.json({
       noteId: 'note-1',

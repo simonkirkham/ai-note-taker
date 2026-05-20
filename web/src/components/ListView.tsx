@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { NoteCard as NoteCardData, TagIndexEntry, getTags } from "../api";
+import MeetingsSection from "./MeetingsSection";
 import NoteCard from "./NoteCard";
 import TodoSection from "./TodoSection";
 import TagFilter from "./TagFilter";
@@ -90,6 +91,7 @@ export default function ListView({
         </p>
       )}
       {loading && <p>Loading…</p>}
+      {!isInFolder && <MeetingsSection />}
       {!isInFolder && <TodoSection />}
       <TagFilter
         tags={availableTags}
