@@ -139,14 +139,6 @@ Slices and acceptance criteria: [docs/phases/phase-7.5.md](phases/phase-7.5.md)
 
 Slices and acceptance criteria: [docs/phases/phase-7.8.md](phases/phase-7.8.md)
 
-## Phase 7.9 — UI Polish
-
-- Tag autocomplete: prefix and substring matching against existing tags, Tab to complete, common tags by usage frequency, related tags by co-occurrence on shared notes
-
-**Goal:** Make everyday interactions feel faster and more intentional without touching the backend. Pure-frontend slices.
-
-Slices and acceptance criteria: [docs/phases/phase-7.9.md](phases/phase-7.9.md)
-
 ## Phase 8 — Google Sign-In (multi-user auth) _(Done)_
 
 - Google Sign-In on the frontend (PKCE flow; ID token stored in memory)
@@ -183,6 +175,15 @@ Slices and acceptance criteria: [docs/phases/phase-9.md](phases/phase-9.md)
 **Goal:** first real-time streaming feature; first LLM integration; STS AssumeRole credential delegation; first outbound AWS service call from Lambda beyond DynamoDB. The event model stays clean — `TranscriptionCompleted` records what happened; analysis output reuses existing event types so the domain never knows whether content came from a human or a model.
 
 Slices and acceptance criteria: [docs/phases/phase-10.md](phases/phase-10.md)
+
+## Phase 11 — UI Polish
+
+- Tag autocomplete: prefix and substring matching against existing tags, Tab to complete, common tags by usage frequency, related tags by co-occurrence on shared notes
+- Add to-do items from the home screen: quick-capture input in the To Do panel; optimistic add; auto-creates a "Quick Capture" note on first use
+
+**Goal:** Make everyday interactions feel faster and more intentional. Pure-frontend slices with no new aggregates.
+
+Slices and acceptance criteria: [docs/phases/phase-11.md](phases/phase-11.md)
 
 ## Future Ideas
 

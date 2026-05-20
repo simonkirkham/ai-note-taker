@@ -14,7 +14,6 @@ vi.mock('@aws-sdk/client-transcribe-streaming', () => {
       send: vi.fn().mockImplementation(async () => {
         const resultQueue: string[] = []
         let wakeup: (() => void) | null = null
-        let done = false
 
         const _emitResult = (text: string) => {
           resultQueue.push(text)
@@ -25,7 +24,7 @@ vi.mock('@aws-sdk/client-transcribe-streaming', () => {
         emitTranscriptResult = _emitResult
 
         async function* stream() {
-          while (!done) {
+          for (;;) {
             if (resultQueue.length === 0) {
               await new Promise<void>((r) => { wakeup = r })
             }
