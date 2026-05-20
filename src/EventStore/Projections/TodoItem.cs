@@ -1,12 +1,11 @@
-using Domain.ActionItems;
-using Domain.Notes;
-
 namespace EventStore.Projections;
 
 public record TodoItem(
-    ActionId ActionId,
-    NoteId NoteId,
-    string NoteTitle,
+    string ItemId,
+    string? NoteId,
+    string? NoteTitle,
+    string Type,
     string Description,
     DateTimeOffset AddedAt,
-    string UserId = "");
+    DateTimeOffset? CompletedAt,
+    string UserId);

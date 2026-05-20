@@ -10,7 +10,7 @@ The flows below are derived from the initial wireframes and represent the Phase 
 
 ## Aggregates
 
-Two aggregates are proposed. The split lets `ActionItem` have its own lifecycle (added, completed, reopened) independent of the parent `Note`, which produces the cross-aggregate todo projection — a deliberate event-sourcing learning moment.
+Three aggregates exist. `ActionItem` and `Todo` both feed the unified `TodoList` projection via a `type` discriminator — a deliberate event-sourcing learning moment showing how heterogeneous streams merge into a single read model.
 
 ### Note
 
@@ -33,6 +33,16 @@ A discrete to-do extracted within a note. Owns its own completion lifecycle.
 | `NoteId` | Parent note (for projection joins; aggregates do not reach across) |
 | `Description` | Free text |
 | `Status` | `Open` / `Completed` |
+
+### Todo
+
+A standalone to-do not attached to any note. Created from the home screen quick-add input.
+
+| State | Description |
+|---|---|
+| `Description` | Free text |
+| `Priority` | Optional — `null` until priority UI lands; future values: `Today` / `Next` / `Later` |
+| `Status` | `Open` / `Completed` / `Deleted` |
 
 ---
 
@@ -60,6 +70,15 @@ A discrete to-do extracted within a note. Owns its own completion lifecycle.
 | `EditActionItem(actionId, newDescription, editedAt)` | ActionItem exists, not deleted | `ActionItemEdited` |
 | `DeleteActionItem(actionId, deletedAt)` | ActionItem exists | `ActionItemDeleted` |
 
+### Todo
+
+| Command | Pre-conditions | Events emitted |
+|---|---|---|
+| `AddTodo(todoId, description, priority?, addedAt)` | TodoId does not exist | `TodoAdded` |
+| `CompleteTodo(todoId, completedAt)` | Todo exists, status = Open | `TodoCompleted` |
+| `ReopenTodo(todoId, reopenedAt)` | Todo exists, status = Completed | `TodoReopened` |
+| `DeleteTodo(todoId, deletedAt)` | Todo exists, not already deleted | `TodoDeleted` |
+
 ---
 
 ## Events
@@ -84,6 +103,13 @@ A discrete to-do extracted within a note. Owns its own completion lifecycle.
 - `ActionItemEdited { ActionId, EditedAt, NewDescription }`
 - `ActionItemDeleted { ActionId, DeletedAt }`
 
+### Todo
+
+- `TodoAdded { TodoId, UserId, Description, Priority? }` — `Priority` nullable; reserved for future prioritisation UI
+- `TodoCompleted { TodoId, CompletedAt }`
+- `TodoReopened { TodoId, ReopenedAt }`
+- `TodoDeleted { TodoId, DeletedAt }`
+
 ---
 
 ## Views
@@ -105,7 +131,7 @@ The Home view's richness pushes us toward denormalized read models — `NoteCard
 | `NoteCardList` | All Note events + `ActionItemAdded`, `ActionItemCompleted`, `ActionItemReopened`, `ActionItemDeleted` | Home view's Notes section — denormalized cards with title, date, content preview, tags, action items. Filters out soft-deleted notes. |
 | `NoteDetail` | All Note events for a given NoteId | NoteEdit view |
 | `NoteActions` | All ActionItem events filtered by NoteId | Actions panel within a note |
-| `TodoList` | All ActionItem events across all notes (open only) | Home view's TO DO List section. Empty state: "Your ToDo list is clear." |
+| `TodoList` | All ActionItem events (all notes) + all Todo events | Home view's TO DO List section. Returns open items plus items completed today. Each row carries a `type` discriminator (`"action"` / `"todo"`), a plain-string `ItemId`, nullable `NoteId`/`NoteTitle`, and nullable `CompletedAt`. Empty state: "Your ToDo list is clear." |
 | `TagIndex` | `NoteTagged`, `NoteUntagged`, `NoteDeleted` | Tag-based filtering (Phase 4) |
 
 **Implication for milestones:** the `TodoList` projection is now visible in the Home view from day one (empty state initially), so the projection scaffold lands in Phase 1 even though the action-item events that populate it land in Phase 3. Easier to scaffold an empty projection early than to retrofit the Home view later.

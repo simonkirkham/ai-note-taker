@@ -37,7 +37,8 @@ public sealed class ActionItemCommandHandler(
                 var action = new NoteAction(e.ActionId, e.Description, false, envelope.OccurredAt, null);
                 await noteActionsStore.UpsertAsync(cmd.NoteId, action, ct).ConfigureAwait(false);
                 await todoListStore.PutAsync(
-                    new TodoItem(e.ActionId, e.NoteId, noteDetail.Title, e.Description, envelope.OccurredAt, currentUser.UserId), ct).ConfigureAwait(false);
+                    new TodoItem(e.ActionId.Value.ToString(), e.NoteId.Value.ToString(), noteDetail.Title,
+                        "action", e.Description, envelope.OccurredAt, null, currentUser.UserId), ct).ConfigureAwait(false);
                 await UpdateCardActionItemsAsync(cmd.NoteId,
                     items => items.Append(new NoteCardActionItem(e.ActionId, e.Description, false)).ToList().AsReadOnly(),
                     envelope.OccurredAt, ct).ConfigureAwait(false);
@@ -55,7 +56,7 @@ public sealed class ActionItemCommandHandler(
             {
                 await noteActionsStore.UpsertAsync(addedEvent.NoteId,
                     new NoteAction(e.ActionId, addedEvent.Description, true, addedEnvelope.OccurredAt, e.CompletedAt), ct).ConfigureAwait(false);
-                await todoListStore.DeleteAsync(cmd.ActionId, ct).ConfigureAwait(false);
+                await todoListStore.UpdateCompletedAtAsync(cmd.ActionId.Value.ToString(), e.CompletedAt, ct).ConfigureAwait(false);
                 await UpdateCardActionItemsAsync(addedEvent.NoteId,
                     items => items.Select(a => a.ActionId == e.ActionId ? a with { Completed = true } : a).ToList().AsReadOnly(),
                     envelope.OccurredAt, ct).ConfigureAwait(false);
@@ -70,10 +71,7 @@ public sealed class ActionItemCommandHandler(
             {
                 await noteActionsStore.UpsertAsync(addedEvent.NoteId,
                     new NoteAction(cmd.ActionId, addedEvent.Description, false, addedEnvelope.OccurredAt, null), ct).ConfigureAwait(false);
-                var noteDetail = await noteDetailStore.GetAsync(addedEvent.NoteId, ct).ConfigureAwait(false);
-                await todoListStore.PutAsync(
-                    new TodoItem(cmd.ActionId, addedEvent.NoteId, noteDetail?.Title ?? string.Empty,
-                        addedEvent.Description, addedEnvelope.OccurredAt, currentUser.UserId), ct).ConfigureAwait(false);
+                await todoListStore.UpdateCompletedAtAsync(cmd.ActionId.Value.ToString(), null, ct).ConfigureAwait(false);
                 await UpdateCardActionItemsAsync(addedEvent.NoteId,
                     items => items.Select(a => a.ActionId == cmd.ActionId ? a with { Completed = false } : a).ToList().AsReadOnly(),
                     envelope.OccurredAt, ct).ConfigureAwait(false);
@@ -87,7 +85,7 @@ public sealed class ActionItemCommandHandler(
             if (domainEvent is ActionItemDeleted)
             {
                 await noteActionsStore.DeleteAsync(addedEvent.NoteId, cmd.ActionId, ct).ConfigureAwait(false);
-                await todoListStore.DeleteAsync(cmd.ActionId, ct).ConfigureAwait(false);
+                await todoListStore.DeleteAsync(cmd.ActionId.Value.ToString(), ct).ConfigureAwait(false);
                 await UpdateCardActionItemsAsync(addedEvent.NoteId,
                     items => items.Where(a => a.ActionId != cmd.ActionId).ToList().AsReadOnly(),
                     envelope.OccurredAt, ct).ConfigureAwait(false);

@@ -30,29 +30,30 @@ public sealed class TodoListTests(ApiFactory factory) : IClassFixture<ApiFactory
     }
 
     [Fact]
-    public async Task GetTodos_CompletedItem_NotInList()
+    public async Task GetTodos_CompletedItem_RetainedWithCompletedAt()
     {
-        var (noteId, _, actionId, _) = await SetupNoteWithActionAsync("Planning", "Book venue");
+        var (noteId, _, actionId, description) = await SetupNoteWithActionAsync("Planning", $"Complete-test-{Guid.NewGuid()}");
         await _client.PostAsync($"/notes/{noteId}/actions/{actionId}/complete", null);
 
         var items = await GetTodoItemsAsync();
 
-        Assert.DoesNotContain(items, i =>
-            i.GetProperty("actionId").GetString() == actionId.ToString());
+        var item = items.Single(i => i.GetProperty("itemId").GetString() == actionId.ToString());
+        Assert.Equal(description, item.GetProperty("description").GetString());
+        Assert.NotEqual(JsonValueKind.Null, item.GetProperty("completedAt").ValueKind);
     }
 
     [Fact]
-    public async Task GetTodos_ReopenedItem_AppearsInList()
+    public async Task GetTodos_ReopenedItem_HasNullCompletedAt()
     {
-        var (noteId, _, actionId, description) = await SetupNoteWithActionAsync("Planning", "Reopen task");
+        var (noteId, _, actionId, description) = await SetupNoteWithActionAsync("Planning", $"Reopen-test-{Guid.NewGuid()}");
         await _client.PostAsync($"/notes/{noteId}/actions/{actionId}/complete", null);
         await _client.PostAsync($"/notes/{noteId}/actions/{actionId}/reopen", null);
 
         var items = await GetTodoItemsAsync();
 
-        Assert.Contains(items, i =>
-            i.GetProperty("actionId").GetString() == actionId.ToString() &&
-            i.GetProperty("description").GetString() == description);
+        var item = items.Single(i => i.GetProperty("itemId").GetString() == actionId.ToString());
+        Assert.Equal(description, item.GetProperty("description").GetString());
+        Assert.Equal(JsonValueKind.Null, item.GetProperty("completedAt").ValueKind);
     }
 
     [Fact]

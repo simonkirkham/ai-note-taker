@@ -6,6 +6,10 @@ export const handlers = [
   http.get('/api/notes/cards', () => HttpResponse.json({ cards: [] })),
   http.get('/api/tags', () => HttpResponse.json({ tags: [] })),
   http.get('/api/todos', () => HttpResponse.json({ items: [] })),
+  http.post('/api/todos', () => HttpResponse.json({ todoId: 'new-todo-id' })),
+  http.post('/api/todos/:todoId/complete', () => new HttpResponse(null, { status: 204 })),
+  http.post('/api/todos/:todoId/reopen', () => new HttpResponse(null, { status: 204 })),
+  http.delete('/api/todos/:todoId', () => new HttpResponse(null, { status: 204 })),
   http.get('/api/calendar/today', () => HttpResponse.json({ meetings: [] })),
   http.get('/api/notes/:noteId', () =>
     HttpResponse.json({

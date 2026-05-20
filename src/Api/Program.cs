@@ -42,6 +42,7 @@ app.MapFolderEndpoints();
 app.MapAuthEndpoints();
 app.MapCalendarEndpoints();
 app.MapTranscriptionEndpoints();
+app.MapTodoEndpoints();
 
 app.Run();
 
