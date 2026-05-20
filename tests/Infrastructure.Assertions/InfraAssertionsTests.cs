@@ -469,4 +469,78 @@ public class InfraAssertionsTests
             })));
         Assert.NotNull(thrown);
     }
+
+    [Fact]
+    public void Lambda_HasBedrockModelIdEnvVar()
+    {
+        _template.HasResourceProperties("AWS::Lambda::Function", Match.ObjectLike(new Dictionary<string, object>
+        {
+            ["Environment"] = Match.ObjectLike(new Dictionary<string, object>
+            {
+                ["Variables"] = Match.ObjectLike(new Dictionary<string, object>
+                {
+                    ["BEDROCK_MODEL_ID"] = Match.AnyValue()
+                })
+            })
+        }));
+    }
+
+    [Fact]
+    public void Lambda_HasTranscribeRoleArnEnvVar()
+    {
+        _template.HasResourceProperties("AWS::Lambda::Function", Match.ObjectLike(new Dictionary<string, object>
+        {
+            ["Environment"] = Match.ObjectLike(new Dictionary<string, object>
+            {
+                ["Variables"] = Match.ObjectLike(new Dictionary<string, object>
+                {
+                    ["TRANSCRIBE_ROLE_ARN"] = Match.AnyValue()
+                })
+            })
+        }));
+    }
+
+    [Fact]
+    public void TranscribeBrowserRole_ExistsWithStartStreamTranscriptionPermission()
+    {
+        _template.HasResourceProperties("AWS::IAM::Role", Match.ObjectLike(new Dictionary<string, object>
+        {
+            ["Policies"] = Match.ArrayWith(new object[]
+            {
+                Match.ObjectLike(new Dictionary<string, object>
+                {
+                    ["PolicyDocument"] = Match.ObjectLike(new Dictionary<string, object>
+                    {
+                        ["Statement"] = Match.ArrayWith(new object[]
+                        {
+                            Match.ObjectLike(new Dictionary<string, object>
+                            {
+                                ["Action"] = "transcribe:StartStreamTranscription",
+                                ["Effect"] = "Allow"
+                            })
+                        })
+                    })
+                })
+            })
+        }));
+    }
+
+    [Fact]
+    public void Lambda_HasStsAssumeRolePermissionOnTranscribeRole()
+    {
+        _template.HasResourceProperties("AWS::IAM::Policy", Match.ObjectLike(new Dictionary<string, object>
+        {
+            ["PolicyDocument"] = Match.ObjectLike(new Dictionary<string, object>
+            {
+                ["Statement"] = Match.ArrayWith(new object[]
+                {
+                    Match.ObjectLike(new Dictionary<string, object>
+                    {
+                        ["Action"] = "sts:AssumeRole",
+                        ["Effect"] = "Allow"
+                    })
+                })
+            })
+        }));
+    }
 }

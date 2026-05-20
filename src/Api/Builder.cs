@@ -1,4 +1,5 @@
 using Amazon.DynamoDBv2;
+using Amazon.SecurityToken;
 using EventStore;
 using EventStore.Projections;
 using Api.Auth;
@@ -91,6 +92,8 @@ public static class Builder
         builder.Services.AddSingleton<IDynamoHealthCheck>(sp =>
             new DynamoDbHealthCheck(sp.GetRequiredService<IAmazonDynamoDB>(), eventTableName));
         builder.Services.AddSingleton<IGoogleCalendarClient, GoogleCalendarClient>();
+        builder.Services.AddAWSService<IAmazonSecurityTokenService>();
+        builder.Services.AddSingleton<IStsCredentialService, StsCredentialService>();
         builder.Services.AddAWSLambdaHosting(LambdaEventSource.HttpApi);
 
         return builder.Build();

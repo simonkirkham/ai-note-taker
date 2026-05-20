@@ -8,6 +8,7 @@ var googleClientId = System.Environment.GetEnvironmentVariable("GOOGLE_CLIENT_ID
 var googleClientSecret = System.Environment.GetEnvironmentVariable("GOOGLE_CLIENT_SECRET");
 var allowedUserSubs = System.Environment.GetEnvironmentVariable("ALLOWED_USER_SUBS");
 var googleRefreshTokenSsmPath = System.Environment.GetEnvironmentVariable("GOOGLE_REFRESH_TOKEN_SSM_PATH");
+var bedrockModelId = System.Environment.GetEnvironmentVariable("BEDROCK_MODEL_ID");
 
 string? certificateArn = null;
 
@@ -39,7 +40,8 @@ new NoteTakerStack(app, "NoteTakerStack", new NoteTakerStackProps
     GoogleClientId = googleClientId,
     GoogleClientSecret = googleClientSecret,
     AllowedUserSubs = allowedUserSubs,
-    GoogleRefreshTokenSsmPath = googleRefreshTokenSsmPath
+    GoogleRefreshTokenSsmPath = googleRefreshTokenSsmPath,
+    BedrockModelId = bedrockModelId
 });
 
 app.Synth();

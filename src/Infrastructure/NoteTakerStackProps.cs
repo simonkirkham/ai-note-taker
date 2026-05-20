@@ -9,4 +9,5 @@ public sealed class NoteTakerStackProps : StackProps
     public string? GoogleClientSecret { get; init; }
     public string? AllowedUserSubs { get; init; }
     public string? GoogleRefreshTokenSsmPath { get; init; }
+    public string? BedrockModelId { get; init; }
 }

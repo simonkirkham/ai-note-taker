@@ -38,6 +38,7 @@ NoteEndpoints.MapNoteEndpoints(app);
 app.MapFolderEndpoints();
 app.MapAuthEndpoints();
 app.MapCalendarEndpoints();
+app.MapTranscriptionEndpoints();
 
 app.Run();
 
