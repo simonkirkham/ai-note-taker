@@ -798,3 +798,23 @@ If no agent ran unexpectedly high: write `None — slice ran within expected ran
 - **Hawk (–35 000):** The unawaited-Promise finding is a mechanical check: any `void`-returning event handler that calls an `async` prop should await it. Adding an "async prop calls must be awaited in event handlers" item to Pip's pre-PR checklist would have caught this before opening the PR, collapsing Hawk to a single pass.
 - **Pip (–5 000):** A pre-staged unrelated CDK file (`NoteTakerStack.cs`) slipped into a commit because `git add` was run without listing explicit paths; the commit had to be reset and redone. Using `git add <explicit paths>` (already the project default) and running `git diff --cached` before every commit would catch stray staged files.
 
+---
+
+## Slice 11-D — Token expiry and silent refresh
+
+| Agent     | ~Tokens    |
+|-----------|------------|
+| Scout     | —          |
+| Breaker   | —          |
+| Pip       | 88 000     |
+| Stylist   | —          |
+| Hawk      | 47 000     |
+| Scribe    | 5 000      |
+| **Total** | **~140 000** |
+
+**Why:** Pip dominated (88k) because this slice required multiple rounds of test iteration — `vi.useFakeTimers()` interacts poorly with `findByRole`'s internal polling, which required diagnosing timing failures, redesigning the test structure (per-describe fake timer setup, synchronous queries after `act`), and fixing a test factory bug (tokens created before fake-clock advance had 0 remaining delay). Hawk (47k) caught a double-scheduling pattern and an unhandled Promise rejection in one pass; both were clean fixes with no re-review needed.
+
+**Optimisation suggestions:**
+- **Pip (–15 000):** The fake-timer + `findByRole` interaction is a known RTL pitfall. A project-level note (or a short section in the test setup file) documenting "use synchronous queries after `act(advanceTimers)`, not `findByRole`" would have short-circuited the diagnosis loop.
+- **Hawk (–0):** Single pass, both findings were genuine and caught early. No optimisation needed here.
+

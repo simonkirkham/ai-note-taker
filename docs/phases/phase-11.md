@@ -308,7 +308,7 @@ Scenario: Canceling an existing note does not delete it
 
 ## Slice 11-D — Token expiry and silent refresh
 
-**Status:** Not Started
+**Status:** Done
 
 **Value:** Google ID tokens expire after 1 hour. Without a refresh mechanism, users are silently logged out mid-session: API calls start returning 401s, the UI stops working, and there is no clear feedback. This slice makes expiry invisible when the browser allows silent refresh, and shows a clear re-sign-in prompt as the fallback when it cannot.
 
@@ -382,13 +382,13 @@ Scenario: Token scheduled for refresh on sign-in
 
 ### Acceptance criteria
 
-- [ ] A refresh timer is scheduled on every successful sign-in (initial and after silent refresh), set to fire 5 minutes before the token's `exp`
-- [ ] Silent refresh via hidden iframe is attempted when the timer fires; on success the token is replaced and the timer rescheduled — no user interruption
-- [ ] When silent refresh fails, `sessionExpired` is set to `true` and the re-sign-in banner is shown
-- [ ] Any 401 response from the API sets `sessionExpired` and shows the banner, regardless of the timer
-- [ ] The banner is non-dismissable; the only exit is completing a fresh sign-in
-- [ ] Completing sign-in from the banner clears `sessionExpired` and resumes the session
-- [ ] The refresh timer is cleared on sign-out
-- [ ] Component tests cover: timer scheduling on sign-in, silent refresh success path, silent refresh failure path, 401 triggering banner, re-sign-in from banner
+- [x] A refresh timer is scheduled on every successful sign-in (initial and after silent refresh), set to fire 5 minutes before the token's `exp`
+- [x] Silent refresh via hidden iframe is attempted when the timer fires; on success the token is replaced and the timer rescheduled — no user interruption
+- [x] When silent refresh fails, `sessionExpired` is set to `true` and the re-sign-in banner is shown
+- [x] Any 401 response from the API sets `sessionExpired` and shows the banner, regardless of the timer
+- [x] The banner is non-dismissable; the only exit is completing a fresh sign-in
+- [x] Completing sign-in from the banner clears `sessionExpired` and resumes the session
+- [x] The refresh timer is cleared on sign-out
+- [x] Component tests cover: timer scheduling on sign-in, silent refresh success path, silent refresh failure path, 401 triggering banner, re-sign-in from banner
 
 ---
