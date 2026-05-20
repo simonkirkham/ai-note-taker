@@ -60,6 +60,8 @@ public sealed class ApiFactory : WebApplicationFactory<Program>
             .AddScheme<AuthenticationSchemeOptions, TestAuthHandler>("Test", _ => { });
             services.RemoveAll<ICurrentUser>();
             services.AddScoped<ICurrentUser, FakeCurrentUser>();
+            services.RemoveAll<IStsCredentialService>();
+            services.AddSingleton<IStsCredentialService, FakeStsCredentialService>();
         });
     }
 
