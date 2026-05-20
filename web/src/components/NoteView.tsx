@@ -4,6 +4,7 @@ import ActionsSection from "./ActionsSection";
 import NoteEditor from "./NoteEditor";
 import ShortcutsPanel from "./ShortcutsPanel";
 import TagsSection from "./TagsSection";
+import TranscriptionPanel from "./TranscriptionPanel";
 
 export default function NoteView({
   noteId,
@@ -209,6 +210,7 @@ export default function NoteView({
         <div className="note-right-panel">
           <TagsSection tags={tags} onAdd={handleAddTags} onRemove={handleRemoveTag} />
           <ActionsSection noteId={noteId} onCountChange={setActionCount} />
+          <TranscriptionPanel noteId={noteId} />
         </div>
       </div>
     </main>
