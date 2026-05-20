@@ -147,6 +147,7 @@ cdk deploy
 | `EVENTS_TABLE_NAME`               | `notetaker-events`                | DynamoDB event store table                                        |
 | `PROJ_NOTETITLELIST_TABLE_NAME`   | `notetaker-proj-notetitlelist`    | Note title list projection table                                  |
 | `PROJ_NOTEDETAIL_TABLE_NAME`      | `notetaker-proj-notedetail`       | Note detail projection table                                      |
+| `PROJ_CALENDARLINKINDEX_TABLE_NAME` | `notetaker-proj-calendarlinkindex` | CalendarLinkIndex projection table (calendarEventId → noteId)   |
 | `AWS_ACCESS_KEY_ID`               | `local`                           | Dummy credential accepted by DynamoDB Local                       |
 | `AWS_SECRET_ACCESS_KEY`           | `local`                           | Dummy credential accepted by DynamoDB Local                       |
 | `AWS_DEFAULT_REGION`              | `us-east-1`                       | Region sent to DynamoDB Local                                     |

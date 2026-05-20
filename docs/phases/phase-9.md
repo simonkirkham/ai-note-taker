@@ -305,7 +305,7 @@ Scenario: GET /calendar/today without tz returns 400
 
 ## Slice 9-C — NoteLinkedToCalendarEvent event + CalendarLinkIndex projection
 
-**Status:** Not Started
+**Status:** Done
 
 **Value:** A note can be associated with a calendar event in the domain. `GET /calendar/today` starts returning `linkedNoteId` for meetings that have a note. The domain event carries all calendar metadata so the note is self-contained in the event stream even if the calendar event is later deleted or rescheduled.
 
@@ -381,12 +381,12 @@ Scenario: Deleting a note removes it from the CalendarLinkIndex
 
 **Acceptance criteria:**
 
-- [ ] *(internal)* `Note` aggregate handles `LinkNoteToCalendarEvent`; rejects if deleted or already linked
-- [ ] *(internal)* `NoteLinkedToCalendarEvent` is deserialised and routed
-- [ ] *(internal)* `CalendarLinkIndex` projection folds `NoteLinkedToCalendarEvent` (put) and `NoteDeleted` (delete by NoteId)
-- [ ] `POST /notes/{noteId}/calendar-link` appends the event; `CalendarLinkIndex` is updated
-- [ ] `POST /notes/{noteId}/calendar-link` returns 404 for unknown note; 409 for deleted or already-linked note
-- [ ] `GET /calendar/today` returns correct `linkedNoteId` (non-null when linked, null otherwise)
+- [x] *(internal)* `Note` aggregate handles `LinkNoteToCalendarEvent`; rejects if deleted or already linked
+- [x] *(internal)* `NoteLinkedToCalendarEvent` is deserialised and routed
+- [x] *(internal)* `CalendarLinkIndex` projection folds `NoteLinkedToCalendarEvent` (put) and `NoteDeleted` (delete by NoteId)
+- [x] `POST /notes/{noteId}/calendar-link` appends the event; `CalendarLinkIndex` is updated
+- [x] `POST /notes/{noteId}/calendar-link` returns 404 for unknown note; 409 for deleted or already-linked note
+- [x] `GET /calendar/today` returns correct `linkedNoteId` (non-null when linked, null otherwise)
 
 ---
 

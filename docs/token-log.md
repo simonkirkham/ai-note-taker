@@ -742,6 +742,25 @@ If no agent ran unexpectedly high: write `None — slice ran within expected ran
 
 ---
 
+## Slice 9-C — NoteLinkedToCalendarEvent + CalendarLinkIndex projection
+
+| Agent     | ~Tokens      |
+| --------- | ------------ |
+| Scout     | —            |
+| Breaker   | 50 000       |
+| Pip       | 35 000       |
+| Hawk 1    | 66 000       |
+| Hawk 2    | 30 000       |
+| Scribe    | 8 000        |
+| **Total** | **~189 000** |
+
+**Why:** Two Hawk passes dominated cost (~96k combined). First pass found two blocking issues — bare `Task.WhenAll` over DynamoDB lookups swallowing individual failures as a 500, and a missing `CancellationToken` propagation in `LinkNoteToCalendar`. Both were clean fixes with no rework needed; Hawk approved immediately on the second pass.
+
+**Optimisation suggestions:**
+- **Hawk (–30 000):** Both first-pass findings are mechanical pre-PR checks: (1) any `Task.WhenAll` over per-item external calls should have per-item try/catch to degrade gracefully — add to Pip's pre-PR checklist; (2) any handler that accepts `CancellationToken ct` and calls stores/handlers must pass it through — already a standard pattern, add to the pre-PR checklist alongside the existing `LastModifiedAt` item. Catching these in a pre-PR self-review would have collapsed two Hawk rounds to one.
+
+---
+
 ## Slice 11-C — Delete blank note on cancel
 
 | Agent     | ~Tokens    |

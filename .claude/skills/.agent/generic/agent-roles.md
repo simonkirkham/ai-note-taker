@@ -176,6 +176,8 @@ Hawk round-trips are expensive (~8–35k tokens each). Catch the common findings
 2. **Guard symmetry** — for every endpoint pair on the same resource (e.g. `POST /notes/{id}/actions` and `GET /notes/{id}/actions`), confirm both apply the same existence guard on the parent resource. If the write endpoint returns 404 for a missing note, the read endpoint must too.
 3. **Hawk checklist** — scan Hawk's checklist in this file. If any item is obviously violated, fix it before opening the PR.
 4. **Frontend lint** — if any `web/src/` files were changed, run `npm --prefix web run lint` and `npm --prefix web run build`. Fix all errors before opening the PR.
+5. **Task.WhenAll isolation** — any `Task.WhenAll` over per-item external calls (DynamoDB, HTTP, etc.) must wrap each item in an `async` lambda with a try/catch that returns null on failure. A bare `Task.WhenAll` turns one item's error into a 500 for the entire response.
+6. **CancellationToken propagation** — every handler or endpoint method that accepts `CancellationToken ct` must pass it to every store call and nested handler call. Silently dropping `ct` opts out of cancellation and can mask connection timeouts.
 
 **Step 2 — Run local validation and signal Hawk:**
 
