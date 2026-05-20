@@ -13,6 +13,10 @@
 11-B  Add To Do from home screen ──────────────────────────── independent
 11-C  Delete blank note on cancel ──────────────────────────── independent
 11-D  Token expiry and silent refresh ──────────────────────── independent
+11-E  Delete note from home screen ──────────────────────────── independent
+11-F  Adaptive note action buttons ──────────────────────────── independent
+11-G  Fix 401s during active sessions ─────────────────────── bug fix (builds on 11-D)
+11-H  Fix note not deleted when discarded from meeting ──────── bug fix (builds on 11-C)
 ```
 
 ---
@@ -158,44 +162,124 @@ Scenario: Clicking a suggestion submits it immediately
 
 ## Slice 11-B — Add To Do from the home screen
 
-**Status:** Not Started
+**Status:** Done
 
-**Value:** Users can capture a to-do item without navigating away from the home screen. A compact input in the To Do section lets you type a description and hit Enter (or click Add) to create the action item immediately. The new item appears at the top of the open list optimistically; if the API call fails the item is removed and an inline error message is shown.
+**Value:** Users can capture a to-do item without navigating away from the home screen. Standalone to-dos are independent of notes — no hidden note, no filtering hack. The To Do section gains a quick-add input, reopen and delete affordances on all items, and a collapsible "Done" section showing what was completed today.
 
-**Backend changes:** None. `POST /todos` already exists and accepts `{ description }`. The note the item is attached to is a user choice — see UX below.
+**Backend changes:** New `Todo` aggregate with `TodoAdded` / `TodoCompleted` / `TodoReopened` / `TodoDeleted` events. New `POST /todos`, `POST /todos/{todoId}/complete`, `POST /todos/{todoId}/reopen`, `DELETE /todos/{todoId}` endpoints. Projection updated to retain completed items and unify note-based actions and standalone todos under a single response shape.
+
+---
+
+### Domain — `Todo` aggregate
+
+Stream key: `todo-{todoId}`
+
+**Events:**
+
+| Event | Fields |
+|-------|--------|
+| `TodoAdded` | `TodoId`, `UserId`, `Description`, `Priority?` |
+| `TodoCompleted` | `TodoId` |
+| `TodoReopened` | `TodoId` |
+| `TodoDeleted` | `TodoId` |
+
+`Priority` is nullable and reserved for a future prioritisation UI (today / next / later). It is accepted on `POST /todos` but ignored by the frontend in this slice.
+
+**Commands:** `AddTodo`, `CompleteTodo`, `ReopenTodo`, `DeleteTodo`
+
+---
+
+### New API endpoints
+
+| Method | Path | Body | Notes |
+|--------|------|------|-------|
+| `POST` | `/todos` | `{ description, priority? }` | Creates standalone to-do |
+| `POST` | `/todos/{todoId}/complete` | — | |
+| `POST` | `/todos/{todoId}/reopen` | — | |
+| `DELETE` | `/todos/{todoId}` | — | |
+
+---
+
+### Projection changes
+
+`TodoItem` record in `EventStore.Projections`:
+
+| Field | Type | Notes |
+|-------|------|-------|
+| `ItemId` | `string` | `ActionId.Value` or `TodoId.Value` — no domain typing in the read model |
+| `NoteId` | `string?` | Null for standalone todos |
+| `NoteTitle` | `string?` | Null for standalone todos |
+| `Type` | `string` | `"action"` or `"todo"` |
+| `Description` | `string` | |
+| `AddedAt` | `DateTimeOffset` | |
+| `CompletedAt` | `DateTimeOffset?` | Null = open |
+| `UserId` | `string` | |
+
+**Behaviour changes:**
+- `ActionCompleted` now **updates** `CompletedAt` on the projection record instead of deleting it
+- `ActionReopened` clears `CompletedAt`
+- `TodoCompleted` / `TodoReopened` / `TodoDeleted` handled by the same `TodoListEventHandler`
+- `ITodoListStore.DeleteAsync` signature changes from `(ActionId, ct)` to `(string itemId, ct)`
+
+**`GET /todos` response:**
+- Returns open items (no `CompletedAt`) **plus** items where `CompletedAt` falls within today's local calendar day (determined server-side from the `Date` header or UTC date; frontend already knows local date)
+- Response shape adds `type`, `itemId`, `noteId?`, `noteTitle?`, `completedAt?`
 
 ---
 
 ### UX design
 
-The To Do panel on the home screen gains a single-line "Add a to-do…" text input pinned above the open items list. The input is always visible (not hidden behind a button).
+The To Do panel on the home screen (`TodoSection.tsx`) gains:
 
-**Note association:** Action items must belong to a note. When the user types in the home-screen input and submits:
+1. **Quick-add input** — single-line "Add a to-do…" always visible at the top. Enter or clicking Add submits; empty input is a no-op.
+2. **Reopen and delete affordances** on every open item (matching the existing `ActionsSection` in note view).
+3. **"Done" section** — collapsible, collapsed by default, toggle label shows count (e.g. "Done (3)"). Contains items completed today (local calendar day). Both note-based actions and standalone todos appear here. Each done item has a reopen and a delete affordance.
 
-1. A "Quick Capture" note is used as the target — this is a special note titled **"Quick Capture"** that is created automatically (via `POST /notes`) the first time a home-screen to-do is added, then reused on subsequent calls. Its ID is cached in component state for the session. The note is never surfaced in the main note list (it is filtered out by the frontend using a well-known title constant `QUICK_CAPTURE_NOTE_TITLE = "Quick Capture"`).
+**Optimistic UI — all interactions:**
+- Add: item appears at top of open list immediately with a temporary client-side `itemId`; replaced with real `itemId` on success; removed and inline error shown on failure
+- Complete: item moves from open list to Done section immediately; rolls back on failure
+- Reopen: item moves from Done section to top of open list immediately; rolls back on failure
+- Delete: item removed from whichever list it was in immediately; rolls back on failure
 
-**Optimistic UI:** The item is added to the open list immediately with a temporary client-side ID. On API success the temporary ID is replaced with the real one. On failure the item is removed and an inline error banner appears beneath the input.
+**Note title display:** Standalone to-dos show no secondary line. Note-based items still show `noteTitle`.
 
 ---
 
 ### Key implementation files
 
-- `web/src/components/HomeScreen.tsx` (or equivalent) — add the `QuickCaptureTodoInput` component to the To Do panel
-- `web/src/components/QuickCaptureTodoInput.tsx` — new component: input + submit button; owns optimistic state, API call, error display
-- `web/src/api/todos.ts` — existing API client; no changes needed
-- `web/src/api/notes.ts` — existing API client; `createNote` reused for Quick Capture note creation
+**Backend (new):**
+- `src/Domain/Todos/` — `Todo` aggregate, `TodoId`, all events and commands
+- `src/Api/CommandHandlers/TodoCommandHandler.cs`
+- `src/Api/Handlers/TodoHandlers.cs` — new handlers for the four endpoints
+- `src/Api/Endpoints/TodoEndpoints.cs` — wire up new routes
+- `tests/Domain.Specs/Todos/` — BDD specs for all four commands
+
+**Backend (modified):**
+- `src/EventStore/Projections/TodoItem.cs` — updated record shape
+- `src/EventStore/Projections/ITodoListStore.cs` — updated interface
+- `src/EventStore/Projections/DynamoDbTodoListStore.cs` — updated implementation
+- `src/Api/CommandHandlers/ActionItemCommandHandler.cs` — `ActionCompleted` → update, not delete
+- `src/Api/Projections/TodoListEventHandler.cs` — handle new `Todo` events
+- `src/Api/Handlers/TodoHandlers.cs` — `GET /todos` updated response shape
+
+**Frontend (new):**
+- `web/src/components/QuickCaptureTodoInput.tsx` — input + submit; optimistic add
+
+**Frontend (modified):**
+- `web/src/components/TodoSection.tsx` — add `QuickCaptureTodoInput`, reopen/delete affordances, Done section
+- `web/src/api.ts` — updated `TodoItem` type; new `addTodo`, `completeTodo`, `reopenTodo`, `deleteTodo` functions
 
 ---
 
 ### Scenarios
 
 ```
-Scenario: Add a to-do from the home screen
+Scenario: Add a standalone to-do from the home screen
   Given I am on the home screen
-  And   the To Do panel is visible
   When  I type "Buy milk" in the to-do input and press Enter
-  Then  "Buy milk" appears at the top of the open to-do list immediately
+  Then  "Buy milk" appears at the top of the open list immediately
   And   the input clears and is ready for the next item
+  And   no note is created
 
 Scenario: Optimistic item replaced with real item on success
   Given I have submitted "Buy milk" from the home screen
@@ -208,48 +292,80 @@ Scenario: Optimistic item removed on API failure
   Then  "Buy milk" is removed from the list
   And   an error message is shown beneath the input
 
-Scenario: Quick Capture note created on first use
-  Given no Quick Capture note exists for this user
-  When  I add a to-do from the home screen for the first time
-  Then  a note titled "Quick Capture" is created automatically
-  And   the to-do is attached to that note
-
-Scenario: Quick Capture note reused on subsequent adds
-  Given a Quick Capture note already exists from a previous session
-  When  I add another to-do from the home screen
-  Then  no new note is created
-  And   the to-do is attached to the existing Quick Capture note
-
-Scenario: Quick Capture note not shown in the note list
-  Given a Quick Capture note exists
-  When  I view the note list or sidebar
-  Then  "Quick Capture" does not appear
-
 Scenario: Empty input is not submitted
   Given the to-do input is empty
   When  I press Enter or click Add
   Then  nothing is submitted and no error is shown
 
-Scenario: Add button submits the input
-  Given I have typed "Call dentist" in the to-do input
-  When  I click the Add button
-  Then  "Call dentist" appears at the top of the open to-do list
-  And   the input clears
+Scenario: Completing an item moves it to the Done section
+  Given "Buy milk" is in the open list
+  When  I mark it complete
+  Then  "Buy milk" moves to the Done section immediately
+  And   the Done section toggle shows the updated count
+
+Scenario: Done section is collapsed by default
+  Given items were completed today
+  When  I view the To Do panel
+  Then  the Done section is collapsed and shows "Done (N)"
+
+Scenario: Reopening an item moves it back to the open list
+  Given "Buy milk" is in the Done section
+  When  I click Reopen on it
+  Then  "Buy milk" moves to the top of the open list immediately
+
+Scenario: Deleting an open item removes it
+  Given "Call dentist" is in the open list
+  When  I click Delete on it
+  Then  "Call dentist" is removed from the list immediately
+
+Scenario: Deleting a done item removes it
+  Given "Buy milk" is in the Done section
+  When  I click Delete on it
+  Then  "Buy milk" is removed from the Done section immediately
+
+Scenario: Deleting a note-based action from TodoSection removes it from the note too
+  Given a note-based action "Review slides" is in the open list
+  When  I click Delete on it
+  Then  "Review slides" is removed from TodoSection
+  And   the action is deleted from its note aggregate
+
+Scenario: Completed item rolls back on failure
+  Given "Buy milk" is in the open list
+  When  I mark it complete and the API call fails
+  Then  "Buy milk" returns to the open list
+  And   an error message is shown
+
+Scenario: Standalone to-do shows no note title
+  Given a standalone to-do "Buy milk" and a note-based action "Review slides" are in the open list
+  Then  "Buy milk" has no secondary line
+  And   "Review slides" shows its note title
+
+Scenario: Done section only shows items completed today
+  Given an item was completed yesterday
+  When  I view the Done section
+  Then  the yesterday item does not appear
 ```
 
 ---
 
 ### Acceptance criteria
 
-- [ ] An "Add a to-do…" input is always visible in the To Do panel on the home screen
-- [ ] Pressing Enter or clicking Add submits the item; empty input is a no-op
-- [ ] The new item appears at the top of the open list immediately (optimistic update)
-- [ ] On API success the temporary ID is replaced with the real ID; item stays in place
-- [ ] On API failure the item is removed and an inline error message is shown beneath the input
-- [ ] A Quick Capture note is created automatically on first use and reused thereafter
-- [ ] The Quick Capture note is filtered out of the note list and sidebar
-- [ ] The input clears after a successful submission and focus returns to the input
-- [ ] Component tests cover: submit on Enter, submit on click, empty-input no-op, optimistic add, rollback on failure, Quick Capture note creation, Quick Capture note reuse, filter from note list
+- [x] An "Add a to-do…" input is always visible at the top of the To Do panel
+- [x] Pressing Enter or clicking Add submits; empty input is a no-op
+- [x] Standalone to-dos are created via `POST /todos` — no note is involved
+- [x] New item appears at top of open list immediately; temporary ID replaced with real ID on success; item removed and error shown on failure
+- [x] Every open item has reopen (no-op if already open) and delete affordances
+- [x] Completing an item moves it to the Done section optimistically; rolls back on failure
+- [x] Reopening a done item moves it back to the open list optimistically; rolls back on failure
+- [x] Deleting from either list removes it optimistically; rolls back on failure
+- [x] Deleting a note-based action calls `DELETE /notes/{noteId}/actions/{actionId}`
+- [x] Done section is collapsed by default; toggle shows count; expands on click
+- [x] Done section shows only items completed today (local calendar day); nothing from previous days
+- [x] Standalone to-dos show no note title; note-based items still show `noteTitle`
+- [x] `TodoItem` projection record uses `string ItemId`, `string? NoteId`, `string? NoteTitle`, `string Type`, `DateTimeOffset? CompletedAt`
+- [x] `ActionCompleted` updates `CompletedAt` in the projection instead of deleting the record
+- [x] BDD specs cover all four `Todo` aggregate commands
+- [x] Component tests cover: submit on Enter, submit on click, empty-input no-op, optimistic add, rollback on add failure, complete moves to Done, reopen moves to open, delete from open list, delete from Done, rollback on complete/reopen/delete failure, Done section collapsed by default, today-only filter
 
 ---
 
@@ -390,5 +506,328 @@ Scenario: Token scheduled for refresh on sign-in
 - [x] Completing sign-in from the banner clears `sessionExpired` and resumes the session
 - [x] The refresh timer is cleared on sign-out
 - [x] Component tests cover: timer scheduling on sign-in, silent refresh success path, silent refresh failure path, 401 triggering banner, re-sign-in from banner
+
+---
+
+## Slice 11-E — Delete note from home screen
+
+**Status:** Not Started
+
+**Value:** Users can remove unwanted notes without first navigating into them. A delete affordance on each note card in the home screen list triggers a confirmation prompt, then removes the note immediately with optimistic UI.
+
+**Backend changes:** None. `DELETE /notes/{noteId}` already exists.
+
+---
+
+### UX design
+
+Each note card in `MeetingsSection` gains a delete icon button (visible on hover or always visible on touch devices). Clicking it opens a small inline confirmation ("Delete this note?") with Confirm and Cancel. On confirm:
+
+- The note card is removed from the list immediately (optimistic).
+- `DELETE /notes/{noteId}` is called in the background.
+- On API failure, the note reappears at its original position and a brief error message is shown.
+
+---
+
+### Key implementation files
+
+- `web/src/components/MeetingsSection.tsx` — add delete icon + inline confirmation per note card; call `onDeleteNote(noteId)` on confirm
+- `web/src/App.tsx` — implement `handleDeleteNote(noteId)`: optimistically remove from state, call `deleteNote(noteId)`, restore on failure
+
+---
+
+### Scenarios
+
+```
+Scenario: Delete icon is visible on each note card
+  Given I am on the home screen with at least one note
+  Then  each note card shows a delete affordance
+
+Scenario: Clicking delete asks for confirmation
+  Given I am on the home screen
+  When  I click the delete icon on a note card
+  Then  a confirmation prompt appears on that card
+  And   the note is not yet removed
+
+Scenario: Confirming deletes the note optimistically
+  Given the confirmation prompt is showing for "Team sync"
+  When  I confirm the deletion
+  Then  "Team sync" is removed from the list immediately
+  And   DELETE /notes/{noteId} is called
+
+Scenario: Cancelling dismisses the prompt without deleting
+  Given the confirmation prompt is showing for "Team sync"
+  When  I click Cancel
+  Then  the prompt closes
+  And   "Team sync" remains in the list
+
+Scenario: Note restored on API failure
+  Given I confirmed deletion of "Team sync"
+  When  the API call fails
+  Then  "Team sync" reappears in the list
+  And   an error message is shown
+
+Scenario: Deleting a note while viewing another note is unaffected
+  Given "Team sync" has been deleted from the home screen
+  When  I navigate to a different note
+  Then  "Team sync" does not appear when I return to the home screen
+```
+
+---
+
+### Acceptance criteria
+
+- [ ] Each note card on the home screen shows a delete affordance
+- [ ] Clicking the affordance shows an inline confirmation; the note is not removed until confirmed
+- [ ] On confirmation, the note disappears from the list immediately (optimistic)
+- [ ] `DELETE /notes/{noteId}` is called after optimistic removal
+- [ ] On API failure, the note is restored at its original list position and an error message is shown
+- [ ] Cancelling the confirmation closes the prompt and leaves the note in place
+- [ ] Component tests cover: delete icon render, confirm removes note, cancel leaves note, rollback on failure
+
+---
+
+## Slice 11-F — Adaptive note action buttons
+
+**Status:** Not Started
+
+**Value:** The note view's action bar adapts to what the user has actually done, removing the ambiguous Cancel-vs-Save choice. A blank new note shows only Cancel (quick escape hatch). Once any content exists — title, body, tags, actions, todos, or transcript — Cancel disappears and Save + Delete take over as the only exits.
+
+**Backend changes:** None.
+
+---
+
+### Behaviour
+
+| State | Visible buttons |
+|-------|----------------|
+| Note has no content (blank) | Cancel only |
+| Note has any content | Save + Delete (no Cancel) |
+
+"Has content" mirrors the existing `isSaveEnabled` check: `title`, `content`, `tags`, or `actionCount > 0`, plus `transcriptText !== null`. The check is live — switching from blank to non-blank (or vice versa) updates the button set immediately.
+
+**Cancel** (blank note only) — deletes the note and returns to the home screen, consistent with 11-C behaviour.
+
+**Save** — persists the current state and returns to the home screen.
+
+**Delete** — deletes the note and returns to the home screen. No secondary confirmation dialog; the action is immediately reversible by recreating the note, and the user has explicitly navigated to and decided to remove it.
+
+The existing "Discard this note?" dialog (`showCancelDialog`) is removed; it is no longer reachable.
+
+---
+
+### Key implementation files
+
+- `web/src/components/NoteView.tsx` — derive `hasContent` from existing state; conditionally render `Cancel` vs `Save + Delete`; remove `showCancelDialog` state and dialog markup
+
+---
+
+### Scenarios
+
+```
+Scenario: Blank new note shows only Cancel
+  Given I have just created a new note and entered nothing
+  Then  only the Cancel button is visible
+  And   Save and Delete are not shown
+
+Scenario: Adding a title reveals Save and Delete
+  Given a blank new note showing only Cancel
+  When  I type a title
+  Then  Save and Delete appear
+  And   Cancel is no longer shown
+
+Scenario: Adding content reveals Save and Delete
+  Given a blank new note showing only Cancel
+  When  I type body content
+  Then  Save and Delete appear
+  And   Cancel is no longer shown
+
+Scenario: Cancel on a blank note deletes it
+  Given a blank new note showing only Cancel
+  When  I click Cancel
+  Then  the note is deleted
+  And   I return to the home screen
+
+Scenario: Save on a note with content saves and returns
+  Given a note with a title "Team sync"
+  When  I click Save
+  Then  the note is saved
+  And   I return to the home screen
+
+Scenario: Delete on a note with content deletes and returns
+  Given a note with a title "Team sync"
+  When  I click Delete
+  Then  the note is deleted
+  And   I return to the home screen
+
+Scenario: Existing note always shows Save and Delete
+  Given I open an existing note from the home screen
+  Then  Save and Delete are visible immediately
+  And   Cancel is not shown
+```
+
+---
+
+### Acceptance criteria
+
+- [ ] A blank note (no title, content, tags, actions, or transcript) shows only Cancel
+- [ ] Once any content is present, Save and Delete are shown and Cancel is hidden
+- [ ] The button set updates live as the user types or adds/removes content
+- [ ] Cancel on a blank note deletes it and navigates home (11-C behaviour preserved)
+- [ ] Save navigates home (saving current state)
+- [ ] Delete deletes the note and navigates home without a confirmation dialog
+- [ ] The `showCancelDialog` state and dialog markup are removed
+- [ ] Existing notes opened from the home screen always show Save + Delete on first render
+- [ ] Component tests cover: blank-note button set, content-added transition, Cancel deletes blank, Save navigates, Delete deletes, existing note initial render
+
+---
+
+## Slice 11-G — Fix 401s during active sessions
+
+**Status:** Not Started
+
+**Bug:** Users receive 401 errors mid-session despite the silent-refresh mechanism implemented in 11-D. The root cause is two compounding issues:
+
+1. **Browser timer throttling.** Browsers aggressively throttle `setTimeout` in background tabs (delays can stretch from minutes to hours). A 5-minute refresh lead time is insufficient if the tab is backgrounded — the timer fires late, the token has already expired, and the next API call returns 401.
+2. **Iframe silent refresh blocked.** The `prompt=none` iframe flow in `silentRefresh.ts` relies on third-party cookies to reuse the Google session. Modern browsers (Chrome with Privacy Sandbox, Safari ITP) block this, causing `attemptSilentRefresh` to always return `null` after its 15-second timeout. The resulting `onRefreshFailure` shows the session-expired banner rather than transparently renewing the token.
+
+**Backend changes:** None.
+
+---
+
+### Fix
+
+Two independent improvements, both needed:
+
+**1 — Recheck on tab visibility change.**
+Add a `visibilitychange` listener in `AuthContext`. When the document becomes visible (`document.visibilityState === 'visible'`), decode the current token's `exp`. If the token is already expired, call `onRefreshFailure` immediately (show the banner) rather than letting the next API call hit a 401. If the token is within `REFRESH_LEAD_MS` of expiry, attempt a silent refresh immediately rather than waiting for the throttled timer.
+
+**2 — Proactive expiry guard in the API layer.**
+In `api.ts`, before attaching the `Authorization` header, check whether the token is expired (`exp * 1000 < Date.now()`). If it is, call `triggerUnauthorized()` immediately and abort the fetch rather than sending a request that will 401. This ensures the banner appears instantly on tab wake-up rather than after a round-trip to the API.
+
+---
+
+### Key implementation files
+
+- `web/src/auth/AuthContext.tsx` — add `visibilitychange` listener; on visibility, check expiry and either trigger failure or immediate refresh
+- `web/src/api.ts` — add pre-flight expiry check before `fetch`; call `triggerUnauthorized()` and short-circuit if token is expired
+
+---
+
+### Scenarios
+
+```
+Scenario: Tab wakes with an expired token — no API call is made
+  Given I have a token that expired while the tab was backgrounded
+  When  I switch back to the tab
+  Then  the session-expired banner appears immediately
+  And   no API calls are attempted with the expired token
+
+Scenario: Tab wakes with a token near expiry — refresh attempted immediately
+  Given I have a token expiring in less than 5 minutes
+  When  I switch back to the tab
+  Then  a silent refresh is attempted immediately
+  And   if it succeeds, my session continues uninterrupted
+
+Scenario: API call attempted with expired token — short-circuited
+  Given the token has expired (regardless of how)
+  When  any API call is made
+  Then  the fetch is not sent
+  And   the session-expired banner appears immediately
+
+Scenario: Token valid on tab wake — no action taken
+  Given I have a token with more than 5 minutes remaining
+  When  I switch back to the tab
+  Then  no refresh is triggered and the app continues normally
+```
+
+---
+
+### Acceptance criteria
+
+- [ ] A `visibilitychange` listener is registered in `AuthContext`; it is cleaned up on unmount
+- [ ] On tab becoming visible: if token is expired, `sessionExpired` is set immediately without waiting for an API call
+- [ ] On tab becoming visible: if token is within `REFRESH_LEAD_MS` of expiry, silent refresh is attempted immediately
+- [ ] In `api.ts`, a request with an expired token is short-circuited: fetch is not called, `triggerUnauthorized()` fires
+- [ ] Tests cover: tab wake with expired token, tab wake with near-expiry token, tab wake with valid token, API call with expired token
+
+---
+
+## Slice 11-H — Fix note not deleted when discarded from meeting creation
+
+**Status:** Not Started
+
+**Bug:** When the user clicks "Create note" on a meeting card in `MeetingsSection`, the note is created on the backend immediately and the user is navigated to `NoteView`. If they then click Cancel (without adding any content), the note is not deleted — it persists in the notes list.
+
+**Root cause:** `MeetingsSection.handleCreateNote` calls `onOpenNote(noteId, meeting.title)`, which in `App.tsx` calls `setView({ kind: "note", noteId, initialTitle: title })` without setting `isNew: true`. `NoteView` therefore treats the note as an existing note: Cancel triggers `onBack()` rather than `onDelete(noteId)`.
+
+**Backend changes:** None.
+
+---
+
+### Fix
+
+Pass `isNew: true` when navigating to a note that was just created from a meeting. The simplest change is in `App.tsx`: update the `onOpenNote` lambda passed to `MeetingsSection` to accept an `isNew` flag, and set it in the view state.
+
+`MeetingsSection` already calls `onOpenNote(noteId, meeting.title)` after `createNoteFromMeeting` and `onOpenNote(noteId)` after `createNoteFromNextOccurrence` — both navigate to a freshly-created note and should mark it as new.
+
+With `isNew: true` set, the existing 11-C behaviour applies: Cancel on a blank note deletes it; Cancel on a note with content shows the "Discard this note?" dialog which, on confirm, deletes the note and returns to the home screen.
+
+---
+
+### Key implementation files
+
+- `web/src/App.tsx` — update `onOpenNote` passed to `MeetingsSection` to set `isNew: true` in the view state
+- `web/src/components/MeetingsSection.tsx` — no change required if `App.tsx` handles `isNew`; alternatively, `onOpenNote` signature can accept an optional `isNew` boolean if preferred
+
+---
+
+### Scenarios
+
+```
+Scenario: Cancelling a blank note created from a meeting deletes it
+  Given I click Create Note on a meeting card
+  And   I have not entered any content
+  When  I click Cancel
+  Then  the note is deleted
+  And   I return to the home screen
+  And   the meeting card no longer shows a linked note
+
+Scenario: Cancelling a note with content created from a meeting shows discard dialog
+  Given I click Create Note on a meeting card
+  And   I have typed a title
+  When  I click Cancel
+  Then  the "Discard this note?" dialog appears
+
+Scenario: Confirming discard on a meeting note deletes it
+  Given the discard dialog is showing for a meeting-created note
+  When  I confirm discard
+  Then  the note is deleted
+  And   I return to the home screen
+
+Scenario: Saving a note created from a meeting keeps it
+  Given I click Create Note on a meeting card and add a title
+  When  I click Save
+  Then  the note is saved and I return to the home screen
+  And   the meeting card shows the linked note
+
+Scenario: Same fix applies to next-occurrence note creation
+  Given I click Create Note for the next occurrence of a recurring meeting
+  And   I have not entered any content
+  When  I click Cancel
+  Then  the note is deleted
+  And   I return to the home screen
+```
+
+---
+
+### Acceptance criteria
+
+- [ ] Clicking Cancel on a blank note navigated to from a meeting card deletes the note
+- [ ] Clicking Cancel → Confirm Discard on a non-blank meeting-created note deletes the note
+- [ ] Clicking Save on a meeting-created note keeps the note and returns to the home screen
+- [ ] The fix applies to both `createNoteFromMeeting` and `createNoteFromNextOccurrence` paths
+- [ ] The meeting card reverts its "linked note" state when the note is deleted via Cancel
+- [ ] Component tests cover: blank cancel deletes, non-blank cancel shows dialog, confirm discard deletes, save keeps note, next-occurrence path
 
 ---
