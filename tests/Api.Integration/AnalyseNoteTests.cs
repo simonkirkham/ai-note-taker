@@ -3,7 +3,9 @@ using System.Net.Http.Json;
 using System.Text;
 using System.Text.Json;
 using Api.Services;
+using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 
 namespace Api.Integration;
 
@@ -142,6 +144,29 @@ public sealed class AnalyseNoteTests : IClassFixture<ApiFactory>
         Assert.Equal(HttpStatusCode.NoContent, resp.StatusCode);
         var actions = await GetActionsAsync(noteId);
         Assert.Single(actions, a => a.GetProperty("description").GetString()!.Contains("Fix login bug"));
+    }
+
+    // Scenario: Bedrock failure returns 503
+    [Fact]
+    public async Task PostAnalyse_WhenBedrockThrows_Returns503()
+    {
+        var throwingFactory = _factory.WithWebHostBuilder(b => b.ConfigureTestServices(s =>
+        {
+            s.RemoveAll<IBedrockAnalysisService>();
+            s.AddSingleton<IBedrockAnalysisService, ThrowingBedrockAnalysisService>();
+        }));
+        var client = throwingFactory.CreateClient();
+        client.DefaultRequestHeaders.Add("X-Test-User-Id", FakeCurrentUser.TestUserId);
+
+        var noteResp = await client.PostAsync("/notes", null);
+        noteResp.EnsureSuccessStatusCode();
+        var noteId = (await noteResp.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("noteId").GetString()!;
+        await client.PostAsync($"/notes/{noteId}/transcription",
+            Json(new { transcriptText = "some transcript", durationSeconds = 10 }));
+
+        var resp = await client.PostAsync($"/notes/{noteId}/analyse", null);
+
+        Assert.Equal(HttpStatusCode.ServiceUnavailable, resp.StatusCode);
     }
 
     private async Task<string> CreateNoteAsync()
