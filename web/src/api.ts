@@ -235,11 +235,13 @@ export async function moveFolder(folderId: string, parentFolderId: string | null
 }
 
 export interface TodoItem {
-  actionId: string;
-  noteId: string;
-  noteTitle: string;
+  itemId: string;
+  type: "action" | "todo";
+  noteId: string | null;
+  noteTitle: string | null;
   description: string;
   addedAt: string;
+  completedAt: string | null;
 }
 
 export async function getTodos(): Promise<TodoItem[]> {
@@ -247,6 +249,31 @@ export async function getTodos(): Promise<TodoItem[]> {
   if (!res.ok) throw new Error(`GET /todos failed: ${res.status}`);
   const body: { items: TodoItem[] } = await res.json();
   return body.items;
+}
+
+export async function addTodo(description: string, priority?: string): Promise<{ todoId: string }> {
+  const res = await apiFetch(`${base}/todos`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ description, priority: priority ?? null }),
+  });
+  if (!res.ok) throw new Error(`POST /todos failed: ${res.status}`);
+  return res.json();
+}
+
+export async function completeTodo(todoId: string): Promise<void> {
+  const res = await apiFetch(`${base}/todos/${todoId}/complete`, { method: "POST" });
+  if (!res.ok) throw new Error(`POST /todos/${todoId}/complete failed: ${res.status}`);
+}
+
+export async function reopenTodo(todoId: string): Promise<void> {
+  const res = await apiFetch(`${base}/todos/${todoId}/reopen`, { method: "POST" });
+  if (!res.ok) throw new Error(`POST /todos/${todoId}/reopen failed: ${res.status}`);
+}
+
+export async function deleteTodo(todoId: string): Promise<void> {
+  const res = await apiFetch(`${base}/todos/${todoId}`, { method: "DELETE" });
+  if (!res.ok) throw new Error(`DELETE /todos/${todoId} failed: ${res.status}`);
 }
 
 export interface CalendarMeeting {
