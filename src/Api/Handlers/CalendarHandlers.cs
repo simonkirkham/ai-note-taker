@@ -37,19 +37,25 @@ public static class CalendarHandlers
             .Distinct()
             .ToList();
 
-        var nextOccurrenceNoteMap = new Dictionary<string, bool>();
-        foreach (var seriesId in seriesIds)
-        {
-            try
+        var seriesTasks = seriesIds.ToDictionary(
+            id => id,
+            id => calendarLinkStore.GetByRecurringSeriesIdAsync(id));
+        await Task.WhenAll(seriesTasks.Values);
+
+        var nextOccurrenceNoteMap = seriesTasks.ToDictionary(
+            kvp => kvp.Key,
+            kvp =>
             {
-                var seriesLinks = await calendarLinkStore.GetByRecurringSeriesIdAsync(seriesId);
-                nextOccurrenceNoteMap[seriesId] = seriesLinks.Any(l =>
-                    l.UserId == currentUser.UserId &&
-                    !linkMap.ContainsKey(l.CalendarEventId) &&
-                    l.StartTime > DateTimeOffset.UtcNow);
-            }
-            catch { nextOccurrenceNoteMap[seriesId] = false; }
-        }
+                try
+                {
+                    var futureLink = kvp.Value.Result.FirstOrDefault(l =>
+                        l.UserId == currentUser.UserId &&
+                        !linkMap.ContainsKey(l.CalendarEventId) &&
+                        l.StartTime > DateTimeOffset.UtcNow);
+                    return (HasNote: futureLink is not null, NoteId: futureLink?.NoteId);
+                }
+                catch { return (HasNote: false, NoteId: (string?)null); }
+            });
 
         var meetings = events.OrderBy(e => e.StartTime).Select(e => new
         {
@@ -61,7 +67,10 @@ public static class CalendarHandlers
             recurringSeriesId = e.RecurringSeriesId,
             linkedNoteId = linkMap.GetValueOrDefault(e.CalendarEventId),
             hasNextOccurrenceNote = e.RecurringSeriesId is not null &&
-                nextOccurrenceNoteMap.GetValueOrDefault(e.RecurringSeriesId)
+                nextOccurrenceNoteMap.GetValueOrDefault(e.RecurringSeriesId).HasNote,
+            nextOccurrenceNoteId = e.RecurringSeriesId is not null
+                ? nextOccurrenceNoteMap.GetValueOrDefault(e.RecurringSeriesId).NoteId
+                : null
         });
 
         return Results.Ok(new { meetings });
@@ -95,6 +104,9 @@ public static class CalendarHandlers
         ICurrentUser currentUser,
         CancellationToken ct)
     {
+        if (string.IsNullOrWhiteSpace(req.RecurringSeriesId))
+            return Results.BadRequest(new { error = "recurring_series_id_required" });
+
         var next = await calendar.GetNextOccurrenceAsync(req.RecurringSeriesId, DateTimeOffset.UtcNow);
         if (next is null)
             return Results.NotFound(new { error = "no_future_occurrences" });

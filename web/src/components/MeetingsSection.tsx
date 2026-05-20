@@ -89,25 +89,26 @@ export function MeetingsSection({ onOpenNote }: { onOpenNote: (noteId: string, t
     if (!meeting.recurringSeriesId) return;
     const seriesId = meeting.recurringSeriesId;
     setCreatingNext((prev) => new Set(prev).add(seriesId));
+    // Optimistic update — flip to "Open Note" before API responds
+    setState((prev) =>
+      prev.status === "loaded"
+        ? { ...prev, meetings: prev.meetings.map((m) =>
+            m.recurringSeriesId === seriesId ? { ...m, hasNextOccurrenceNote: true } : m) }
+        : prev
+    );
     try {
-      const result = await createNoteFromNextOccurrence(seriesId, meeting.calendarEventId);
+      const result = await createNoteFromNextOccurrence(seriesId);
       const noteId = result.noteId;
       setNextNoteIds((prev) => new Map(prev).set(seriesId, noteId));
-      setState((prev) =>
-        prev.status === "loaded"
-          ? {
-              ...prev,
-              meetings: prev.meetings.map((m) =>
-                m.recurringSeriesId === seriesId
-                  ? { ...m, hasNextOccurrenceNote: true }
-                  : m
-              ),
-            }
-          : prev
-      );
       onOpenNote(noteId);
     } catch {
-      // silent failure — button reverts to Create Note
+      // Revert optimistic update on failure
+      setState((prev) =>
+        prev.status === "loaded"
+          ? { ...prev, meetings: prev.meetings.map((m) =>
+              m.recurringSeriesId === seriesId ? { ...m, hasNextOccurrenceNote: false } : m) }
+          : prev
+      );
     } finally {
       setCreatingNext((prev) => { const next = new Set(prev); next.delete(seriesId); return next; });
     }
@@ -217,7 +218,10 @@ export function MeetingsSection({ onOpenNote }: { onOpenNote: (noteId: string, t
                           {m.hasNextOccurrenceNote ? (
                             <button
                               className="meeting-action-btn"
-                              onClick={() => onOpenNote(nextNoteIds.get(m.recurringSeriesId!) ?? "")}
+                              onClick={() => {
+                                const noteId = nextNoteIds.get(m.recurringSeriesId!) ?? m.nextOccurrenceNoteId ?? "";
+                                if (noteId) onOpenNote(noteId);
+                              }}
                             >
                               Open Note ↗
                             </button>

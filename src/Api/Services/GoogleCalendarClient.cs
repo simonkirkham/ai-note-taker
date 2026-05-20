@@ -122,7 +122,8 @@ public sealed class GoogleCalendarClient : IGoogleCalendarClient
 
             var request = service.Events.Instances("primary", recurringSeriesId);
             request.TimeMinDateTimeOffset = after;
-            request.MaxResults = 1;
+            request.MaxResults = 5;
+            request.ShowDeleted = false;
 
             var result = await request.ExecuteAsync();
             var next = result.Items?.FirstOrDefault(e => e.Status != "cancelled");

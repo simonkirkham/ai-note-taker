@@ -32,8 +32,7 @@ public sealed class RecurringNextOccurrenceTests : IClassFixture<ApiFactory>
 
         var resp = await _client.PostAsJsonAsync("/notes/from-next-occurrence", new
         {
-            recurringSeriesId = "series1",
-            todayCalendarEventId = "series1_20260520T090000Z"
+            recurringSeriesId = "series1"
         });
 
         Assert.Equal(HttpStatusCode.Created, resp.StatusCode);
@@ -44,14 +43,26 @@ public sealed class RecurringNextOccurrenceTests : IClassFixture<ApiFactory>
     }
 
     [Fact]
+    public async Task CreateNoteFromNextOccurrence_EmptySeriesId_Returns400()
+    {
+        var resp = await _client.PostAsJsonAsync("/notes/from-next-occurrence", new
+        {
+            recurringSeriesId = ""
+        });
+
+        Assert.Equal(HttpStatusCode.BadRequest, resp.StatusCode);
+        var body = await resp.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("recurring_series_id_required", body.GetProperty("error").GetString());
+    }
+
+    [Fact]
     public async Task CreateNoteFromNextOccurrence_NoFutureOccurrences_Returns404()
     {
         _fakeCalendar.SetNextOccurrence("ended-series", null);
 
         var resp = await _client.PostAsJsonAsync("/notes/from-next-occurrence", new
         {
-            recurringSeriesId = "ended-series",
-            todayCalendarEventId = "ended-series_20260520T090000Z"
+            recurringSeriesId = "ended-series"
         });
 
         Assert.Equal(HttpStatusCode.NotFound, resp.StatusCode);
@@ -71,21 +82,17 @@ public sealed class RecurringNextOccurrenceTests : IClassFixture<ApiFactory>
             "series2");
         _fakeCalendar.SetNextOccurrence("series2", nextEvent);
 
-        // Create a note for that occurrence first
         var firstResp = await _client.PostAsJsonAsync("/notes/from-next-occurrence", new
         {
-            recurringSeriesId = "series2",
-            todayCalendarEventId = "series2_20260520T090000Z"
+            recurringSeriesId = "series2"
         });
         Assert.Equal(HttpStatusCode.Created, firstResp.StatusCode);
         var firstBody = await firstResp.Content.ReadFromJsonAsync<JsonElement>();
         var existingNoteId = firstBody.GetProperty("noteId").GetString()!;
 
-        // Call again — should get alreadyExists
         var secondResp = await _client.PostAsJsonAsync("/notes/from-next-occurrence", new
         {
-            recurringSeriesId = "series2",
-            todayCalendarEventId = "series2_20260520T090000Z"
+            recurringSeriesId = "series2"
         });
 
         Assert.Equal(HttpStatusCode.OK, secondResp.StatusCode);
@@ -95,7 +102,7 @@ public sealed class RecurringNextOccurrenceTests : IClassFixture<ApiFactory>
     }
 
     [Fact]
-    public async Task GetTodaysMeetings_HasNextOccurrenceNote_ReturnsTrue()
+    public async Task GetTodaysMeetings_HasNextOccurrenceNote_ReturnsTrueAndNoteId()
     {
         var todayEvent = new CalendarEvent(
             "series3_20260520T090000Z",
@@ -115,12 +122,12 @@ public sealed class RecurringNextOccurrenceTests : IClassFixture<ApiFactory>
         _fakeCalendar.SetEvents(new[] { todayEvent });
         _fakeCalendar.SetNextOccurrence("series3", nextEvent);
 
-        // Create a note for the next occurrence
-        await _client.PostAsJsonAsync("/notes/from-next-occurrence", new
+        var createResp = await _client.PostAsJsonAsync("/notes/from-next-occurrence", new
         {
-            recurringSeriesId = "series3",
-            todayCalendarEventId = todayEvent.CalendarEventId
+            recurringSeriesId = "series3"
         });
+        var createdNoteId = (await createResp.Content.ReadFromJsonAsync<JsonElement>())
+            .GetProperty("noteId").GetString()!;
 
         var resp = await _client.GetAsync("/calendar/today?tz=UTC");
         resp.EnsureSuccessStatusCode();
@@ -128,6 +135,7 @@ public sealed class RecurringNextOccurrenceTests : IClassFixture<ApiFactory>
         var meeting = body.GetProperty("meetings")[0];
 
         Assert.True(meeting.GetProperty("hasNextOccurrenceNote").GetBoolean());
+        Assert.Equal(createdNoteId, meeting.GetProperty("nextOccurrenceNoteId").GetString());
     }
 
     [Fact]
@@ -148,5 +156,6 @@ public sealed class RecurringNextOccurrenceTests : IClassFixture<ApiFactory>
         var meeting = body.GetProperty("meetings")[0];
 
         Assert.False(meeting.GetProperty("hasNextOccurrenceNote").GetBoolean());
+        Assert.Equal(JsonValueKind.Null, meeting.GetProperty("nextOccurrenceNoteId").ValueKind);
     }
 }
