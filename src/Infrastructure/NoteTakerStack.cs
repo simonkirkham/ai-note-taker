@@ -110,6 +110,7 @@ public sealed class NoteTakerStack : Stack
         {
             Runtime = Amazon.CDK.AWS.Lambda.Runtime.DOTNET_10,
             Handler = "Api",
+            Description = "AI Note Taker API",
             Code = Amazon.CDK.AWS.Lambda.Code.FromAsset(lambdaAssetPath),
             Timeout = Duration.Seconds(29),
             MemorySize = 512,
@@ -134,6 +135,44 @@ public sealed class NoteTakerStack : Stack
                 ["BEDROCK_MODEL_ID"] = props.BedrockModelId ?? ""
             }
         });
+
+        // ── Transcribe browser role ──────────────────────────────────────
+        // Scoped role the Lambda issues to the browser via STS AssumeRole.
+        // Trust policy allows only this Lambda's execution role to assume it.
+        // Defined before the alias so that AddEnvironment is called before
+        // CurrentVersion is first accessed; CDK v2 hashes function configuration
+        // at that point, and env vars set afterwards are excluded from the hash.
+        var transcribeRole = new Role(this, "TranscribeBrowserRole", new RoleProps
+        {
+            AssumedBy = new ArnPrincipal(apiFunction.Role!.RoleArn),
+            Description = "Scoped credentials for browser-held AWS Transcribe Streaming sessions",
+            InlinePolicies = new Dictionary<string, PolicyDocument>
+            {
+                ["TranscribeStreamingOnly"] = new PolicyDocument(new PolicyDocumentProps
+                {
+                    Statements = new[]
+                    {
+                        new PolicyStatement(new PolicyStatementProps
+                        {
+                            // Both actions are required: the HTTP/2 variant and the WebSocket
+                            // variant used by @aws-sdk/client-transcribe-streaming in browsers.
+                            Actions = new[]
+                            {
+                                "transcribe:StartStreamTranscription",
+                                "transcribe:StartStreamTranscriptionWebSocket"
+                            },
+                            Resources = new[] { "*" }
+                        })
+                    }
+                })
+            }
+        });
+        apiFunction.AddToRolePolicy(new PolicyStatement(new PolicyStatementProps
+        {
+            Actions = new[] { "sts:AssumeRole" },
+            Resources = new[] { transcribeRole.RoleArn }
+        }));
+        apiFunction.AddEnvironment("TRANSCRIBE_ROLE_ARN", transcribeRole.RoleArn);
 
         var apiAlias = new Amazon.CDK.AWS.Lambda.Alias(this, "LiveAlias", new Amazon.CDK.AWS.Lambda.AliasProps
         {
@@ -166,41 +205,6 @@ public sealed class NoteTakerStack : Stack
                 Resources = new[] { ssmArn }
             }));
         }
-
-        // ── Transcribe browser role ──────────────────────────────────────
-        // Scoped role the Lambda issues to the browser via STS AssumeRole.
-        // Trust policy allows only this Lambda's execution role to assume it.
-        var transcribeRole = new Role(this, "TranscribeBrowserRole", new RoleProps
-        {
-            AssumedBy = new ArnPrincipal(apiFunction.Role!.RoleArn),
-            Description = "Scoped credentials for browser-held AWS Transcribe Streaming sessions",
-            InlinePolicies = new Dictionary<string, PolicyDocument>
-            {
-                ["TranscribeStreamingOnly"] = new PolicyDocument(new PolicyDocumentProps
-                {
-                    Statements = new[]
-                    {
-                        new PolicyStatement(new PolicyStatementProps
-                        {
-                            // Both actions are required: the HTTP/2 variant and the WebSocket
-                            // variant used by @aws-sdk/client-transcribe-streaming in browsers.
-                            Actions = new[]
-                            {
-                                "transcribe:StartStreamTranscription",
-                                "transcribe:StartStreamTranscriptionWebSocket"
-                            },
-                            Resources = new[] { "*" }
-                        })
-                    }
-                })
-            }
-        });
-        apiFunction.AddToRolePolicy(new PolicyStatement(new PolicyStatementProps
-        {
-            Actions = new[] { "sts:AssumeRole" },
-            Resources = new[] { transcribeRole.RoleArn }
-        }));
-        apiFunction.AddEnvironment("TRANSCRIBE_ROLE_ARN", transcribeRole.RoleArn);
 
         // ── API Gateway ──────────────────────────────────────────────────
         // CORS is handled by ASP.NET Core UseCors middleware in the Lambda, not at
