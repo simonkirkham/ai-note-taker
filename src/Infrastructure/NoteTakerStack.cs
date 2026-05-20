@@ -131,9 +131,7 @@ public sealed class NoteTakerStack : Stack
                 ["ALLOWED_USER_SUBS"] = props.AllowedUserSubs ?? "",
                 ["GOOGLE_REFRESH_TOKEN_SSM_PATH"] = props.GoogleRefreshTokenSsmPath ?? "",
                 ["PROJ_CALENDARLINKINDEX_TABLE_NAME"] = calendarLinkIndexTable.TableName,
-                ["BEDROCK_MODEL_ID"] = props.BedrockModelId ?? "",
-                // Always present even when unset; overridden below once the role ARN is known.
-                ["TRANSCRIBE_ROLE_ARN"] = ""
+                ["BEDROCK_MODEL_ID"] = props.BedrockModelId ?? ""
             }
         });
 
