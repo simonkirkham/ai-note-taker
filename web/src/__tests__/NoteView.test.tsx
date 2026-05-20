@@ -221,13 +221,15 @@ describe('NoteView', () => {
       expect(screen.getByTestId('cancel-dialog')).toBeInTheDocument()
     })
 
-    it('Confirm in the discard dialog calls onBack', async () => {
+    it('Confirm discard on an existing note calls onBack and does not delete', async () => {
       const onBack = vi.fn()
-      renderNoteView({ onBack })
+      const onDelete = vi.fn().mockResolvedValue(undefined)
+      renderNoteView({ onBack, onDelete })
       await screen.findByLabelText('Note content')
       await userEvent.click(screen.getByTestId('cancel-button'))
       await userEvent.click(screen.getByTestId('cancel-confirm-button'))
       expect(onBack).toHaveBeenCalledOnce()
+      expect(onDelete).not.toHaveBeenCalled()
     })
 
     it('Keep Editing dismisses the discard dialog without navigating', async () => {

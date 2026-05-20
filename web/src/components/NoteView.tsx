@@ -94,10 +94,10 @@ export default function NoteView({
     untagNote(noteId, tag).catch(() => {});
   }
 
-  function handleCancel() {
+  async function handleCancel() {
     if (!isSaveEnabled) {
       if (isNew) {
-        onDelete(noteId);
+        await onDelete(noteId);
       } else {
         onBack();
       }
@@ -128,7 +128,7 @@ export default function NoteView({
                 ref={confirmButtonRef}
                 data-testid="cancel-confirm-button"
                 className="cancel-confirm-button"
-                onClick={isNew ? () => onDelete(noteId) : onBack}
+                onClick={isNew ? async () => { await onDelete(noteId); } : onBack}
               >
                 Confirm
               </button>
