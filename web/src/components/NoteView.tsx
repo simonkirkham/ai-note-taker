@@ -13,6 +13,7 @@ export default function NoteView({
   onBack,
   onDelete,
   onDateSet,
+  isNew,
 }: {
   noteId: string;
   initialTitle: string;
@@ -20,6 +21,7 @@ export default function NoteView({
   onBack: () => void;
   onDelete: (noteId: string) => Promise<void>;
   onDateSet: (noteId: string, date: string) => void;
+  isNew?: boolean;
 }) {
   const [title, setTitle] = useState(initialTitle);
   const [content, setContent] = useState("");
@@ -94,7 +96,11 @@ export default function NoteView({
 
   function handleCancel() {
     if (!isSaveEnabled) {
-      onBack();
+      if (isNew) {
+        onDelete(noteId);
+      } else {
+        onBack();
+      }
     } else {
       setShowCancelDialog(true);
     }
@@ -122,7 +128,7 @@ export default function NoteView({
                 ref={confirmButtonRef}
                 data-testid="cancel-confirm-button"
                 className="cancel-confirm-button"
-                onClick={onBack}
+                onClick={isNew ? () => onDelete(noteId) : onBack}
               >
                 Confirm
               </button>
