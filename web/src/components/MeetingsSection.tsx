@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { CalendarMeeting, createNoteFromMeeting, getTodaysMeetings } from "../api";
+import { CalendarMeeting, createNoteFromMeeting, createNoteFromNextOccurrence, getTodaysMeetings } from "../api";
 import { MeetingReminder, useMeetingReminders } from "../hooks/useMeetingReminders";
 
 const NO_MEETINGS: MeetingReminder[] = [];
@@ -21,10 +21,12 @@ type State =
 export function MeetingsSection({ onOpenNote }: { onOpenNote: (noteId: string, title?: string) => void }) {
   const [state, setState] = useState<State>({ status: "loading" });
   const [bannerDismissed, setBannerDismissed] = useState(false);
-  // tracks calendarEventIds currently being created, for pending button state
   const [creating, setCreating] = useState<Set<string>>(new Set());
-  // tracks calendarEventIds that failed to create, for inline error feedback
   const [createErrors, setCreateErrors] = useState<Map<string, string>>(new Map());
+  // tracks recurringSeriesIds where a next-occurrence note is being created
+  const [creatingNext, setCreatingNext] = useState<Set<string>>(new Set());
+  // tracks next-occurrence note IDs keyed by recurringSeriesId, for "Open Note ↗" after creation
+  const [nextNoteIds, setNextNoteIds] = useState<Map<string, string>>(new Map());
 
   useEffect(() => {
     let cancelled = false;
@@ -80,6 +82,34 @@ export function MeetingsSection({ onOpenNote }: { onOpenNote: (noteId: string, t
       setCreateErrors((prev) => new Map(prev).set(meeting.calendarEventId, "Could not create note. Try again."));
     } finally {
       setCreating((prev) => { const next = new Set(prev); next.delete(meeting.calendarEventId); return next; });
+    }
+  }
+
+  async function handleCreateNextOccurrenceNote(meeting: CalendarMeeting) {
+    if (!meeting.recurringSeriesId) return;
+    const seriesId = meeting.recurringSeriesId;
+    setCreatingNext((prev) => new Set(prev).add(seriesId));
+    try {
+      const result = await createNoteFromNextOccurrence(seriesId, meeting.calendarEventId);
+      const noteId = result.noteId;
+      setNextNoteIds((prev) => new Map(prev).set(seriesId, noteId));
+      setState((prev) =>
+        prev.status === "loaded"
+          ? {
+              ...prev,
+              meetings: prev.meetings.map((m) =>
+                m.recurringSeriesId === seriesId
+                  ? { ...m, hasNextOccurrenceNote: true }
+                  : m
+              ),
+            }
+          : prev
+      );
+      onOpenNote(noteId);
+    } catch {
+      // silent failure — button reverts to Create Note
+    } finally {
+      setCreatingNext((prev) => { const next = new Set(prev); next.delete(seriesId); return next; });
     }
   }
 
@@ -179,14 +209,27 @@ export function MeetingsSection({ onOpenNote }: { onOpenNote: (noteId: string, t
                         {createErrors.get(m.calendarEventId)}
                       </p>
                     )}
-                    {m.isRecurring && (
+                    {m.isRecurring && m.recurringSeriesId && (
                       <>
                         <div className="meeting-card-divider" />
                         <div className="meeting-card-row">
                           <span className="meeting-card-row-label">↻ Next</span>
-                          <button className="meeting-action-btn">
-                            {m.hasNextOccurrenceNote ? "Open Note ↗" : "Create Note"}
-                          </button>
+                          {m.hasNextOccurrenceNote ? (
+                            <button
+                              className="meeting-action-btn"
+                              onClick={() => onOpenNote(nextNoteIds.get(m.recurringSeriesId!) ?? "")}
+                            >
+                              Open Note ↗
+                            </button>
+                          ) : (
+                            <button
+                              className="meeting-action-btn"
+                              disabled={creatingNext.has(m.recurringSeriesId)}
+                              onClick={() => handleCreateNextOccurrenceNote(m)}
+                            >
+                              {creatingNext.has(m.recurringSeriesId) ? "Creating…" : "Create Note"}
+                            </button>
+                          )}
                         </div>
                       </>
                     )}
