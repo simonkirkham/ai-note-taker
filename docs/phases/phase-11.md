@@ -19,7 +19,7 @@
 
 ## Slice 11-A — Tag autocomplete and suggestions
 
-**Status:** Not Started
+**Status:** Done
 
 **Value:** Tag entry becomes fast and consistent. Typing the first few characters surfaces matching tags from the existing vocabulary so users don't create near-duplicates ("job-hunting" vs "JobHunting"). When the input is empty, the most-used tags appear as one-click shortcuts; notes that already have tags get a curated "Related" list derived from tag co-occurrence.
 
@@ -142,17 +142,17 @@ Scenario: Clicking a suggestion submits it immediately
 
 ### Acceptance criteria
 
-- [ ] Typing in the tag input shows a ranked dropdown (prefix matches above substring matches, each group sorted by `noteCount` desc)
-- [ ] Tab on an open dropdown completes the input with the top (or highlighted) suggestion; pressing Tab again submits it
-- [ ] `↑` / `↓` navigate the dropdown; highlighted item wraps at top/bottom
-- [ ] Enter submits the highlighted suggestion (or the raw input if nothing is highlighted)
-- [ ] Escape closes the dropdown without submitting
-- [ ] Clicking a suggestion submits it
-- [ ] Empty focus state shows Common (top 8 by count) and Related (top 5 by co-occurrence, only when note has tags)
-- [ ] Already-applied tags never appear in suggestions
-- [ ] `useTagSuggestions` is a pure function of `(input, allTags, appliedTags)` — no side effects, testable in isolation
-- [ ] All existing `TagsSection` component tests remain green
-- [ ] New component tests cover: prefix ranking, substring ranking, Tab completion, keyboard nav, Related algorithm, exclusion of applied tags
+- [x] Typing in the tag input shows a ranked dropdown (prefix matches above substring matches, each group sorted by `noteCount` desc)
+- [x] Tab on an open dropdown completes the input with the top (or highlighted) suggestion; pressing Tab again submits it
+- [x] `↑` / `↓` navigate the dropdown; highlighted item wraps at top/bottom
+- [x] Enter submits the highlighted suggestion (or the raw input if nothing is highlighted)
+- [x] Escape closes the dropdown without submitting
+- [x] Clicking a suggestion submits it
+- [x] Empty focus state shows Common (top 8 by count) and Related (top 5 by co-occurrence, only when note has tags)
+- [x] Already-applied tags never appear in suggestions
+- [x] `useTagSuggestions` is a pure function of `(input, allTags, appliedTags)` — no side effects, testable in isolation
+- [x] All existing `TagsSection` component tests remain green
+- [x] New component tests cover: prefix ranking, substring ranking, Tab completion, keyboard nav, Related algorithm, exclusion of applied tags
 
 ---
 

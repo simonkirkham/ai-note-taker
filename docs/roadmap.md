@@ -176,7 +176,7 @@ Slices and acceptance criteria: [docs/phases/phase-9.md](phases/phase-9.md)
 
 Slices and acceptance criteria: [docs/phases/phase-10.md](phases/phase-10.md)
 
-## Phase 11 — UI Polish
+## Phase 11 — UI Polish _(In Progress)_
 
 - Tag autocomplete: prefix and substring matching against existing tags, Tab to complete, common tags by usage frequency, related tags by co-occurrence on shared notes
 - Add to-do items from the home screen: quick-capture input in the To Do panel; optimistic add; auto-creates a "Quick Capture" note on first use

@@ -839,3 +839,21 @@ If no agent ran unexpectedly high: write `None — slice ran within expected ran
 - **Pip (–25 000):** Three of Hawk's four findings are mechanical pre-PR checks: (1) verify all new `.cs` files in `src/Api/Contracts/` have their namespace; (2) verify every command handler catches both `NoteNotFoundException` and `InvalidOperationException`; (3) run `npm run lint` before pushing — the `react-hooks/set-state-in-effect` and `react-hooks/no-refs-in-render` rules would have surfaced both the effect-setState pattern and the ref-during-render pattern before CI.
 - **Hawk 1 (–20 000):** The missing namespace and exception gap are pre-PR checklist items, not review findings. Moving them upstream collapses two Hawk passes to one.
 
+---
+
+## Slice 11-A — Tag autocomplete
+
+| Agent     | ~Tokens     |
+|-----------|-------------|
+| Pip       | 55 000      |
+| Stylist   | 4 000       |
+| Hawk 1    | 41 000      |
+| Hawk 2    | 32 000      |
+| Scribe    | 5 000       |
+| **Total** | **~137 000** |
+
+**Why:** Two Hawk passes (73k combined) dominated cost. First pass found three real issues: Related+Common dedup missing (duplicate React keys in production), full WAI-ARIA combobox attributes missing, and group headings nested inside `<li role="option">` (accidentally submittable on click). All three fixed in one commit; second pass approved cleanly.
+
+**Optimisation suggestions:**
+- **Hawk (–32 000):** The three findings are mechanical pre-PR checks: (1) test every dropdown for the overlap case where a tag qualifies for both Related and Common; (2) verify custom dropdowns have the full WAI-ARIA combobox wiring (`role=combobox`, `aria-controls`, `aria-activedescendant`); (3) verify group headings are `role="presentation"` siblings, not nested inside options. Adding these to Pip's pre-PR checklist collapses Hawk to one pass.
+
