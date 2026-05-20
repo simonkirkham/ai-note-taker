@@ -4,12 +4,12 @@ let _token: string | null = null
 let _onForbidden: (() => void) | null = null
 let _onUnauthorized: (() => void) | null = null
 
-function jwtExpired(token: string): boolean {
+export function jwtExpired(token: string): boolean {
   try {
     const payload = JSON.parse(atob(token.split('.')[1]))
     return typeof payload.exp === 'number' && payload.exp * 1000 < Date.now()
   } catch {
-    return true
+    return false
   }
 }
 

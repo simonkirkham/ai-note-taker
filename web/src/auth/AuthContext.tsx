@@ -1,7 +1,8 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react'
 import { buildAuthUrl, exchangeCode, generateCodeChallenge, generateCodeVerifier } from './pkce'
 import { clearToken, loadPersistedToken, setToken, setOnForbidden, setOnUnauthorized } from './tokenStore'
-import { getExp, useGoogleAuth } from './useGoogleAuth'
+import { getExp, REFRESH_LEAD_MS, useGoogleAuth } from './useGoogleAuth'
+import { attemptSilentRefresh } from './silentRefresh'
 
 interface AuthState {
   idToken: string | null
@@ -73,6 +74,30 @@ export function AuthProvider({
     const exp = getExp(idToken)
     if (exp) scheduleRefresh(exp)
   }, [idToken, clientId, scheduleRefresh])
+
+  // Recheck token when the tab becomes visible — the refresh timer may have been
+  // throttled while the tab was backgrounded, leaving an expired token in memory.
+  useEffect(() => {
+    if (!clientId || !idToken || idToken === 'no-auth') return
+
+    function onVisibilityChange() {
+      if (document.visibilityState !== 'visible') return
+      const exp = getExp(idToken!)
+      if (!exp) return
+      const remaining = exp * 1000 - Date.now()
+      if (remaining <= 0) {
+        handleRefreshFailure()
+      } else if (remaining < REFRESH_LEAD_MS) {
+        attemptSilentRefresh(clientId).then(newToken => {
+          if (newToken) handleRefreshSuccess(newToken)
+          else handleRefreshFailure()
+        }).catch(() => handleRefreshFailure())
+      }
+    }
+
+    document.addEventListener('visibilitychange', onVisibilityChange)
+    return () => document.removeEventListener('visibilitychange', onVisibilityChange)
+  }, [clientId, idToken, handleRefreshSuccess, handleRefreshFailure])
 
   useEffect(() => {
     if (mounted.current) return

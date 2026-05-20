@@ -1,9 +1,13 @@
-import { getToken, triggerForbidden, triggerUnauthorized } from './auth/tokenStore'
+import { getToken, jwtExpired, triggerForbidden, triggerUnauthorized } from './auth/tokenStore'
 
 const base = "/api";
 
 function apiFetch(url: string, init?: RequestInit): Promise<Response> {
   const token = getToken()
+  if (token && jwtExpired(token)) {
+    triggerUnauthorized()
+    return Promise.resolve(new Response(null, { status: 401 }))
+  }
   const headers = new Headers(init?.headers)
   if (token) headers.set('Authorization', `Bearer ${token}`)
   return fetch(url, { ...init, headers }).then(res => {
