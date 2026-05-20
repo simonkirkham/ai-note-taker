@@ -706,3 +706,37 @@ If no agent ran unexpectedly high: write `None — slice ran within expected ran
 **Optimisation suggestions:**
 - **Pip (–60 000):** IDOR gap, smoke auth, and E2E bypass are all pre-emptable by Breaker: a standard auth-slice checklist (ownership guard, smoke fixture criterion, E2E token criterion) would have caught all three before the PR opened, collapsing seven post-merge fix commits to zero.
 - **Pip (–20 000):** CI environment-secret gaps (Test environment missing `GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET`) required three deploy cycles to diagnose. A comment in deploy.yml listing required secrets per environment would surface this at secret-setup time, not at deploy-fail time.
+
+## Hotfix — Auth token persistence
+
+> No Scout/Breaker/Hawk agents — single-session diagnosis and fix.
+
+| Agent     | ~Tokens    |
+| --------- | ---------- |
+| Pip       | 18 000     |
+| Scribe    | 3 000      |
+| **Total** | **~21 000** |
+
+**Why:** Minimal change (3 files, ~45 lines). Token cost reflects reading auth code, diagnosing the React effect-ordering race, producing the guard fix, and diagnosing the follow-up E2E regression from the same session.
+
+---
+
+## Slice 10-B — Live transcript
+
+> **Note:** Session was auto-compacted mid-slice (pre-compaction covered full backend + frontend implementation). Post-compaction session handled two Hawk fix rounds, rebase conflict resolution, and a post-merge lint hotfix. No separate Scout or Breaker agent — roles were combined in the same session.
+
+| Agent                                       | ~Tokens      |
+| ------------------------------------------- | ------------ |
+| Breaker/Pip (pre-compaction implementation) | 150 000      |
+| Pip (post-compaction fixes + rebase)        | 80 000       |
+| Hawk Round 1                                | 65 000       |
+| Hawk Round 2                                | 69 000       |
+| Scribe                                      | 10 000       |
+| **Total**                                   | **~374 000** |
+
+**Why:** Two Hawk rounds (six combined findings) drove ~50k of rework, and context compaction mid-implementation added overhead from context reconstruction. The post-merge lint error (`done` never reassigned after `_endStream` removal) required an emergency hotfix commit to main, indicating lint was not re-run after the second fix commit.
+
+**Optimisation suggestions:**
+- **Hawk (–30 000):** Five of the six findings were preventable: (1) missing try/catch for AWS SDK exceptions is a standard pattern for any new AWS service call — add to Pip's pre-PR self-check; (2) deprecated `ScriptProcessorNode` could be caught by a "deprecated browser API" note in the frontend-ui-engineering skill; (3) CSS class not wired to component — Pip should verify every new CSS selector has a corresponding JSX className; (4) time-dependent fake credentials — add "use far-future dates in fakes" to the test-driven-development skill; (5) CDK assertion scope — covered by existing cdk-stack-update skill but not checked by Breaker.
+- **Post-merge lint hotfix (–10 000):** Re-run `npm run lint` after every fix commit, not just after the full implementation pass. The `done` variable issue was introduced in the second fix commit and would have been caught immediately.
+
