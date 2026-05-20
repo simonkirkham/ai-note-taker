@@ -1,3 +1,4 @@
+using Amazon.BedrockRuntime;
 using Amazon.SecurityToken;
 using Domain.ActionItems;
 using Domain.Notes;
@@ -38,15 +39,26 @@ public static class TranscriptionHandlers
         INoteCommandHandler noteHandler,
         IActionItemCommandHandler actionHandler,
         INoteDetailStore noteDetailStore,
+        INoteActionsStore noteActionsStore,
         IBedrockAnalysisService bedrockAnalysis,
         ICurrentUser currentUser,
+        ILogger<IBedrockAnalysisService> logger,
         CancellationToken ct)
     {
         var detail = await noteDetailStore.GetAsync(new NoteId(noteId), ct);
         if (detail is null || detail.UserId != currentUser.UserId) return Results.NotFound();
         if (string.IsNullOrEmpty(detail.TranscriptText)) return Results.UnprocessableEntity();
 
-        var result = await bedrockAnalysis.AnalyseAsync(detail.TranscriptText, detail.Content ?? "", currentUser.Name, ct);
+        NoteAnalysisResult result;
+        try
+        {
+            result = await bedrockAnalysis.AnalyseAsync(detail.TranscriptText, detail.Content ?? "", currentUser.Name, ct);
+        }
+        catch (Exception ex) when (ex is AmazonBedrockRuntimeException or InvalidOperationException)
+        {
+            logger.LogError(ex, "Bedrock analysis failed: {ExceptionType} {Message}", ex.GetType().Name, ex.Message);
+            return Results.Problem(statusCode: 503, title: "Analysis service unavailable", detail: ex.Message);
+        }
 
         if (result.UpdatedContent != (detail.Content ?? ""))
             await noteHandler.HandleAsync(new EditContent(new NoteId(noteId), result.UpdatedContent), ct);
@@ -55,7 +67,11 @@ public static class TranscriptionHandlers
         foreach (var tag in result.NewTags.Where(t => !existingTags.Contains(t, StringComparer.OrdinalIgnoreCase)))
             await noteHandler.HandleAsync(new TagNote(new NoteId(noteId), tag), ct);
 
-        foreach (var action in result.NewActionItems)
+        var existingActionsView = await noteActionsStore.QueryByNoteAsync(new NoteId(noteId), ct);
+        var existingDescriptions = existingActionsView.Actions
+            .Select(a => a.Description)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        foreach (var action in result.NewActionItems.Where(a => !existingDescriptions.Contains(a)))
             await actionHandler.HandleAsync(new AddActionItem(new ActionId(Guid.NewGuid()), new NoteId(noteId), action), ct);
 
         return Results.NoContent();

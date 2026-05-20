@@ -6,14 +6,25 @@ using Microsoft.Extensions.Logging;
 
 namespace Api.Services;
 
-public sealed class BedrockAnalysisService(
-    IAmazonBedrockRuntime bedrock,
-    ILogger<BedrockAnalysisService> logger) : IBedrockAnalysisService
+public sealed class BedrockAnalysisService : IBedrockAnalysisService
 {
+    readonly IAmazonBedrockRuntime _bedrock;
+    readonly ILogger<BedrockAnalysisService> _logger;
+    readonly string _modelId;
+
+    public BedrockAnalysisService(IAmazonBedrockRuntime bedrock, ILogger<BedrockAnalysisService> logger)
+    {
+        _bedrock = bedrock;
+        _logger = logger;
+        _modelId = Environment.GetEnvironmentVariable("BEDROCK_MODEL_ID") ?? "";
+    }
+
     public async Task<NoteAnalysisResult> AnalyseAsync(
         string transcriptText, string existingContent, string currentUserName, CancellationToken ct = default)
     {
-        var modelId = Environment.GetEnvironmentVariable("BEDROCK_MODEL_ID") ?? "";
+        if (string.IsNullOrEmpty(_modelId))
+            throw new InvalidOperationException("BEDROCK_MODEL_ID is not configured.");
+
         var prompt = BuildPrompt(transcriptText, existingContent, currentUserName);
 
         var body = JsonSerializer.Serialize(new
@@ -25,13 +36,13 @@ public sealed class BedrockAnalysisService(
 
         var request = new InvokeModelRequest
         {
-            ModelId = modelId,
+            ModelId = _modelId,
             ContentType = "application/json",
             Accept = "application/json",
             Body = new MemoryStream(Encoding.UTF8.GetBytes(body))
         };
 
-        var response = await bedrock.InvokeModelAsync(request, ct).ConfigureAwait(false);
+        var response = await _bedrock.InvokeModelAsync(request, ct).ConfigureAwait(false);
         var responseBody = await new StreamReader(response.Body).ReadToEndAsync(ct).ConfigureAwait(false);
 
         return ParseResponse(responseBody, existingContent);
@@ -70,7 +81,7 @@ public sealed class BedrockAnalysisService(
         }
         catch (Exception ex) when (ex is JsonException or KeyNotFoundException or InvalidOperationException)
         {
-            logger.LogWarning(ex, "Failed to parse Bedrock response; returning original content unchanged");
+            _logger.LogWarning(ex, "Failed to parse Bedrock response; returning original content unchanged");
             return new NoteAnalysisResult(existingContent, [], []);
         }
     }

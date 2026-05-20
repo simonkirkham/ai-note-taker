@@ -23,6 +23,7 @@ export default function TranscriptionPanel({
   const transcriptRef = useRef<HTMLDivElement>(null);
   const [hasRecordedThisSession, setHasRecordedThisSession] = useState(false);
   const [isAnalysing, setIsAnalysing] = useState(false);
+  const [analyseError, setAnalyseError] = useState<string | null>(null);
 
   useEffect(() => {
     if (transcriptRef.current) {
@@ -37,9 +38,12 @@ export default function TranscriptionPanel({
 
   async function handleAnalyse() {
     setIsAnalysing(true);
+    setAnalyseError(null);
     try {
       await analyseNote(noteId);
       onAnalysisComplete?.();
+    } catch {
+      setAnalyseError('Analysis failed. Please try again.');
     } finally {
       setIsAnalysing(false);
     }
@@ -120,6 +124,11 @@ export default function TranscriptionPanel({
           </button>
         )}
       </div>
+      {analyseError && (
+        <p className="transcription-analyse-error" data-testid="transcription-analyse-error">
+          {analyseError}
+        </p>
+      )}
     </div>
   );
 }

@@ -7,11 +7,19 @@ using Microsoft.Extensions.DependencyInjection;
 
 namespace Api.Integration;
 
-public sealed class AnalyseNoteTests(ApiFactory factory) : IClassFixture<ApiFactory>
+public sealed class AnalyseNoteTests : IClassFixture<ApiFactory>
 {
-    private readonly HttpClient _client = factory.CreateClient();
-    private readonly FakeBedrockAnalysisService _fakeBedrock =
-        factory.Services.GetRequiredService<FakeBedrockAnalysisService>();
+    private readonly HttpClient _client;
+    private readonly FakeBedrockAnalysisService _fakeBedrock;
+    private readonly ApiFactory _factory;
+
+    public AnalyseNoteTests(ApiFactory factory)
+    {
+        _factory = factory;
+        _client = factory.CreateClient();
+        _fakeBedrock = factory.Services.GetRequiredService<FakeBedrockAnalysisService>();
+        _fakeBedrock.NextResult = new NoteAnalysisResult("", [], []);
+    }
 
     // Scenario: Analysis fills gaps in note content, extracts tags and action items
     [Fact]
@@ -71,7 +79,7 @@ public sealed class AnalyseNoteTests(ApiFactory factory) : IClassFixture<ApiFact
     [Fact]
     public async Task PostAnalyse_Unauthenticated_Returns401()
     {
-        var unauthClient = factory.CreateUnauthenticatedClient();
+        var unauthClient = _factory.CreateUnauthenticatedClient();
 
         var resp = await unauthClient.PostAsync($"/notes/{Guid.NewGuid()}/analyse", null);
 
@@ -94,7 +102,7 @@ public sealed class AnalyseNoteTests(ApiFactory factory) : IClassFixture<ApiFact
         _fakeBedrock.NextResult = new NoteAnalysisResult("updated", [], []);
         var noteId = await CreateNoteWithTranscriptAsync("original", "transcript");
 
-        var otherClient = factory.CreateClientAsOtherUser();
+        var otherClient = _factory.CreateClientAsOtherUser();
         var resp = await otherClient.PostAsync($"/notes/{noteId}/analyse", null);
 
         Assert.Equal(HttpStatusCode.NotFound, resp.StatusCode);
@@ -117,6 +125,23 @@ public sealed class AnalyseNoteTests(ApiFactory factory) : IClassFixture<ApiFact
         var detail = await GetNoteAsync(noteId);
         var tags = detail.GetProperty("tags").EnumerateArray().Select(t => t.GetString()).ToList();
         Assert.Single(tags, t => t == "login");
+    }
+
+    // Scenario: Re-analysing with the same action item text does not produce duplicates
+    [Fact]
+    public async Task PostAnalyse_ExistingActionItemNotDuplicated()
+    {
+        _fakeBedrock.NextResult = new NoteAnalysisResult("same content", [], ["Fix login bug by Friday"]);
+
+        var noteId = await CreateNoteWithTranscriptAsync("same content", "Fix login bug by Friday");
+        await _client.PostAsync($"/notes/{noteId}/analyse", null);
+
+        // Second call with the same action item
+        var resp = await _client.PostAsync($"/notes/{noteId}/analyse", null);
+
+        Assert.Equal(HttpStatusCode.NoContent, resp.StatusCode);
+        var actions = await GetActionsAsync(noteId);
+        Assert.Single(actions, a => a.GetProperty("description").GetString()!.Contains("Fix login bug"));
     }
 
     private async Task<string> CreateNoteAsync()
