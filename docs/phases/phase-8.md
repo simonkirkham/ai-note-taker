@@ -158,7 +158,7 @@ Scenario: Sign out clears the session
 
 ## Slice 8-C — JWT verification in the API
 
-**Status:** Not Started
+**Status:** Done
 
 **Value:** The API rejects any request without a valid Google-issued ID token. The authenticated user's `sub` claim is available to every endpoint handler.
 
@@ -223,17 +223,20 @@ Scenario: ICurrentUser.UserId contains the sub claim
 
 **Acceptance criteria:**
 
-- [ ] All endpoints return 401 when no/invalid token is provided
-- [ ] Valid token from a non-allowlisted sub returns 403
-- [ ] Valid token from an allowlisted sub returns 200; `ICurrentUser.UserId` equals the `sub` claim
-- [ ] `Api.Integration` tests use `TestAuthHandler` with test sub in `ALLOWED_USER_SUBS`; all existing tests pass
-- [ ] JWT middleware config: audience = `GOOGLE_CLIENT_ID`; issuer = `accounts.google.com`
+- [x] All endpoints return 401 when no/invalid token is provided
+- [x] Valid token from a non-allowlisted sub returns 403
+- [x] Valid token from an allowlisted sub returns 200; `ICurrentUser.UserId` equals the `sub` claim
+- [x] `Api.Integration` tests use `TestAuthHandler` with test sub in `ALLOWED_USER_SUBS`; all existing tests pass
+- [x] JWT middleware config: audience = `GOOGLE_CLIENT_ID`; issuer = `accounts.google.com`
+- [x] Write endpoints return 404 when the resource belongs to a different user (IDOR guard)
+- [x] Smoke test fixture passes Bearer token when `SMOKE_TEST_TOKEN` is set; all tests skip (not fail) when absent
+- [x] E2E tests inject auth token via `window.__E2E_AUTH_TOKEN`; `BrowserFixture` reads `E2E_GOOGLE_ID_TOKEN`
 
 ---
 
 ## Slice 8-D — Wire userId into the domain
 
-**Status:** Not Started
+**Status:** Done
 
 **Value:** Every event and projection row is stamped with the real authenticated user's ID. Data is naturally isolated per user.
 
@@ -275,10 +278,10 @@ Scenario: Projection stores are keyed by userId
 
 **Acceptance criteria:**
 
-- [ ] `EventMetadata.UserId` is non-null on all new events
-- [ ] All read endpoints filter by the authenticated user's ID
-- [ ] All `Api.Integration` tests pass with the test user wiring
-- [ ] All BDD domain specs continue to pass (domain is user-ID agnostic)
+- [x] `EventMetadata.UserId` is non-null on all new events
+- [x] All read endpoints filter by the authenticated user's ID
+- [x] All `Api.Integration` tests pass with the test user wiring
+- [x] All BDD domain specs continue to pass (domain is user-ID agnostic)
 
 ---
 

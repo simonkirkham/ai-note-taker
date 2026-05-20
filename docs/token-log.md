@@ -647,3 +647,24 @@ If no agent ran unexpectedly high: write `None — slice ran within expected ran
 
 **Optimisation suggestions:**
 - **Hawk (–20 000):** Both findings are now documented in cdk-stack-update SKILL.md. Breaker should apply both patterns when writing any conditional IAM grant test, collapsing Hawk to a single-pass review.
+
+---
+
+## Slice 8-C/D — JWT Bearer auth + per-user data isolation (+ post-merge hardening)
+
+> **Note:** Session was auto-compacted mid-slice. Counts are estimates from context summary and commit history. 8-C, 8-D, IDOR fixes, smoke test auth, E2E auth bypass, and CI token exchange are combined here as they ran in a single extended pipeline.
+
+| Agent     | ~Tokens      |
+|-----------|--------------|
+| Scout     | —            |
+| Breaker   | 20 000       |
+| Pip       | 180 000      |
+| Hawk      | 25 000       |
+| Scribe    | 8 000        |
+| **Total** | **~233 000** |
+
+**Why:** IDOR gap (ownership checks absent from the spec) discovered by Hawk after merge generated 12 new integration tests and ownership guards across 8 handlers. Smoke test auth, E2E auth bypass, and CI token-exchange secret gaps each required one or more deploy cycles — seven post-merge commits total. Context was auto-compacted once.
+
+**Optimisation suggestions:**
+- **Pip (–60 000):** IDOR gap, smoke auth, and E2E bypass are all pre-emptable by Breaker: a standard auth-slice checklist (ownership guard, smoke fixture criterion, E2E token criterion) would have caught all three before the PR opened, collapsing seven post-merge fix commits to zero.
+- **Pip (–20 000):** CI environment-secret gaps (Test environment missing `GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET`) required three deploy cycles to diagnose. A comment in deploy.yml listing required secrets per environment would surface this at secret-setup time, not at deploy-fail time.
