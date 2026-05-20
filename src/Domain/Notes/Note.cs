@@ -11,6 +11,7 @@ public sealed class Note : IAggregate
     FolderId? _folderId;
     string? _calendarEventId;
     readonly HashSet<string> _tags = [];
+    string? _transcriptText;
 
     public void Apply(IDomainEvent @event)
     {
@@ -46,6 +47,9 @@ public sealed class Note : IAggregate
             case NoteLinkedToCalendarEvent e:
                 _calendarEventId = e.CalendarEventId;
                 break;
+            case TranscriptionCompleted e:
+                _transcriptText = e.TranscriptText;
+                break;
             default:
                 break;
         }
@@ -64,6 +68,7 @@ public sealed class Note : IAggregate
             MoveNoteToFolder cmd => HandleMoveToFolder(cmd),
             UnfileNote cmd => HandleUnfile(cmd),
             LinkNoteToCalendarEvent cmd => HandleLinkToCalendarEvent(cmd),
+            CompleteTranscription cmd => HandleCompleteTranscription(cmd),
             _ => throw new ArgumentOutOfRangeException(nameof(command))
         };
 
@@ -150,5 +155,12 @@ public sealed class Note : IAggregate
             throw new InvalidOperationException($"Note {cmd.NoteId} is already linked to a calendar event.");
         return [new NoteLinkedToCalendarEvent(cmd.NoteId, cmd.CalendarEventId, cmd.CalendarEventTitle,
             cmd.StartTime, cmd.EndTime, cmd.IsRecurring, cmd.RecurringSeriesId)];
+    }
+
+    IReadOnlyList<IDomainEvent> HandleCompleteTranscription(CompleteTranscription cmd)
+    {
+        if (!_exists || _deleted)
+            throw new InvalidOperationException($"Note {cmd.NoteId} does not exist.");
+        return [new TranscriptionCompleted(cmd.NoteId, cmd.TranscriptText, cmd.DurationSeconds)];
     }
 }
