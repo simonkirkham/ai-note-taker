@@ -9,6 +9,9 @@ namespace Api.Services;
 /// Set that var to a JSON array of CalendarEventDto objects to inject
 /// fake meetings without real Google credentials.
 ///
+/// Note: GetTodaysEventsAsync returns ALL stub events regardless of date.
+/// Populate STUB_CALENDAR_JSON with events whose startTime falls today.
+///
 /// Example value:
 /// [{"calendarEventId":"s1_20260527T090000Z","title":"Weekly Sync","startTime":"2026-05-27T09:00:00Z","endTime":"2026-05-27T09:30:00Z","isRecurring":true,"recurringSeriesId":"s1"}]
 /// </summary>
