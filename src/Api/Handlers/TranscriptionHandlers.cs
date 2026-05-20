@@ -1,11 +1,12 @@
 using Amazon.SecurityToken;
 using Api.Services;
+using Microsoft.Extensions.Logging;
 
 namespace Api.Handlers;
 
 public static class TranscriptionHandlers
 {
-    public static async Task<IResult> GetCredentials(IStsCredentialService sts)
+    public static async Task<IResult> GetCredentials(IStsCredentialService sts, ILogger<IStsCredentialService> logger)
     {
         try
         {
@@ -25,7 +26,8 @@ public static class TranscriptionHandlers
         }
         catch (Exception ex) when (ex is AmazonSecurityTokenServiceException or InvalidOperationException)
         {
-            return Results.Problem(statusCode: 503, title: "Transcription service unavailable");
+            logger.LogError(ex, "STS AssumeRole failed: {ExceptionType} {Message}", ex.GetType().Name, ex.Message);
+            return Results.Problem(statusCode: 503, title: "Transcription service unavailable", detail: ex.Message);
         }
     }
 }

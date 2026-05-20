@@ -675,8 +675,9 @@ body {
   min-width: 0;
   display: flex;
   flex-direction: column;
-  height: calc(100vh - 140px);
+  height: calc(100vh - 200px);
   min-height: 0;
+  overflow: hidden;
 }
 
 .actions-section {
@@ -987,6 +988,7 @@ body {
 
 /* ── Tags section (note view right panel) ───────────────────────── */
 .tags-section {
+  flex-shrink: 0;
   margin-bottom: 1.5rem;
   padding-bottom: 1.25rem;
   border-bottom: 1px solid var(--color-border);
@@ -1586,7 +1588,7 @@ body {
 /* ── Transcription panel ────────────────────────────────────────── */
 .transcription-panel {
   flex: 1;
-  min-height: 200px;
+  min-height: 0;
   display: flex;
   flex-direction: column;
   border: 1.5px dashed var(--color-border);
