@@ -23,8 +23,9 @@ export function useGoogleAuth({
 }) {
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const callbacksRef = useRef({ onRefreshSuccess, onRefreshFailure })
-  const scheduleRefreshRef = useRef<((exp: number) => void) | null>(null)
 
+  // Intentionally no dep array — runs after every render to keep ref in sync
+  // without adding callbacks to scheduleRefresh's dep array (which would reset the timer).
   useEffect(() => {
     callbacksRef.current = { onRefreshSuccess, onRefreshFailure }
   })
@@ -48,8 +49,8 @@ export function useGoogleAuth({
         timerRef.current = null
         const newToken = await attemptSilentRefresh(clientId)
         if (newToken) {
-          const newExp = getExp(newToken)
-          if (newExp) scheduleRefreshRef.current?.(newExp)
+          // onRefreshSuccess sets idToken, which triggers the AuthContext useEffect
+          // that calls scheduleRefresh — no need to reschedule explicitly here.
           callbacksRef.current.onRefreshSuccess(newToken)
         } else {
           callbacksRef.current.onRefreshFailure()
@@ -58,8 +59,6 @@ export function useGoogleAuth({
     },
     [cancelRefresh, clientId],
   )
-
-  scheduleRefreshRef.current = scheduleRefresh
 
   useEffect(() => () => { cancelRefresh() }, [cancelRefresh])
 

@@ -65,6 +65,6 @@ export function attemptSilentRefresh(clientId: string): Promise<string | null> {
 
       window.addEventListener('message', handleMessage)
       document.body.appendChild(iframe)
-    })
+    }).catch(() => resolve(null))
   })
 }

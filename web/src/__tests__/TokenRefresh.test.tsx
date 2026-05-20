@@ -1,8 +1,10 @@
 import { render, screen, act, fireEvent } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { http, HttpResponse } from 'msw'
 import { server } from '../test/setup'
 import { AuthProvider } from '../auth/AuthContext'
 import { clearToken, setToken } from '../auth/tokenStore'
+import SessionExpiredBanner from '../components/SessionExpiredBanner'
 import App from '../App'
 import * as silentRefreshMod from '../auth/silentRefresh'
 
@@ -168,6 +170,17 @@ describe('session-expired banner', () => {
   it('is non-dismissable — no close or dismiss button', async () => {
     await renderWithExpiredSession()
     expect(screen.queryByRole('button', { name: /close|dismiss|cancel/i })).not.toBeInTheDocument()
+  })
+})
+
+// ─── SessionExpiredBanner component (no fake timers) ──────────────────────────
+
+describe('SessionExpiredBanner component', () => {
+  it('"Sign in again" button calls onSignIn', async () => {
+    const onSignIn = vi.fn()
+    render(<SessionExpiredBanner onSignIn={onSignIn} />)
+    await userEvent.click(screen.getByRole('button', { name: /sign in again/i }))
+    expect(onSignIn).toHaveBeenCalledOnce()
   })
 })
 
