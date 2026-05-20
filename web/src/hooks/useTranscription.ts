@@ -48,6 +48,7 @@ export function useTranscription(): UseTranscriptionResult {
   const audioContextRef = useRef<AudioContext | null>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const startTimeRef = useRef<number>(0);
+  const finalizedRef = useRef('');
 
   const cleanup = useCallback(() => {
     stoppedRef.current = true;
@@ -71,6 +72,7 @@ export function useTranscription(): UseTranscriptionResult {
 
   const startRecording = useCallback(() => {
     stoppedRef.current = false;
+    finalizedRef.current = '';
     setTranscript('');
     setElapsedSeconds(0);
     setError(undefined);
@@ -152,9 +154,14 @@ export function useTranscription(): UseTranscriptionResult {
             if (event.TranscriptEvent) {
               const results = event.TranscriptEvent.Transcript?.Results ?? [];
               for (const result of results) {
-                if (!result.IsPartial) {
-                  const text = result.Alternatives?.[0]?.Transcript ?? '';
-                  if (text) setTranscript((prev) => (prev ? `${prev} ${text}` : text));
+                const text = result.Alternatives?.[0]?.Transcript ?? '';
+                if (!text) continue;
+                if (result.IsPartial) {
+                  const display = finalizedRef.current ? `${finalizedRef.current} ${text}` : text;
+                  setTranscript(display);
+                } else {
+                  finalizedRef.current = finalizedRef.current ? `${finalizedRef.current} ${text}` : text;
+                  setTranscript(finalizedRef.current);
                 }
               }
             }
@@ -181,6 +188,7 @@ export function useTranscription(): UseTranscriptionResult {
 
   const reset = useCallback(() => {
     cleanup();
+    finalizedRef.current = '';
     setStatus('idle');
     setTranscript('');
     setElapsedSeconds(0);
