@@ -25,7 +25,7 @@ import {
 type View =
   | { kind: "list" }
   | { kind: "folder"; folderId: string; folderPath: string[] }
-  | { kind: "note"; noteId: string };
+  | { kind: "note"; noteId: string; isNew?: boolean };
 
 function mapTree(
   nodes: FolderNode[],
@@ -97,7 +97,7 @@ function AppContent({ signOut }: { signOut: () => void }) {
           setCards((prev) => prev.map((c) => c.noteId === noteId ? { ...c, folderId: null } : c));
         });
       }
-      setView({ kind: "note", noteId });
+      setView({ kind: "note", noteId, isNew: true });
     } catch {
       // error surfaced by hook via createError
     }
@@ -221,6 +221,7 @@ function AppContent({ signOut }: { signOut: () => void }) {
         onBack={() => { setView(backDestination()); getNoteCards().then(setCards).catch(() => {}); }}
         onDelete={handleDelete}
         onDateSet={handleDateSet}
+        isNew={view.isNew}
       />
     ) : (
       <ListView

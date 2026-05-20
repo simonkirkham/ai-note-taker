@@ -27,16 +27,17 @@ afterEach(() => {
   vi.useRealTimers()
 })
 
-function renderNoteView(props: { noteId?: string; initialTitle?: string; onBack?: () => void } = {}) {
-  const { noteId = 'note-1', initialTitle = 'Test Note', onBack = noop } = props
+function renderNoteView(props: { noteId?: string; initialTitle?: string; onBack?: () => void; onDelete?: (noteId: string) => Promise<void>; isNew?: boolean } = {}) {
+  const { noteId = 'note-1', initialTitle = 'Test Note', onBack = noop, onDelete = asyncNoop, isNew } = props
   return render(
     <NoteView
       noteId={noteId}
       initialTitle={initialTitle}
       onRename={noop}
       onBack={onBack}
-      onDelete={asyncNoop}
+      onDelete={onDelete}
       onDateSet={noop}
+      isNew={isNew}
     />,
   )
 }
@@ -220,13 +221,15 @@ describe('NoteView', () => {
       expect(screen.getByTestId('cancel-dialog')).toBeInTheDocument()
     })
 
-    it('Confirm in the discard dialog calls onBack', async () => {
+    it('Confirm discard on an existing note calls onBack and does not delete', async () => {
       const onBack = vi.fn()
-      renderNoteView({ onBack })
+      const onDelete = vi.fn().mockResolvedValue(undefined)
+      renderNoteView({ onBack, onDelete })
       await screen.findByLabelText('Note content')
       await userEvent.click(screen.getByTestId('cancel-button'))
       await userEvent.click(screen.getByTestId('cancel-confirm-button'))
       expect(onBack).toHaveBeenCalledOnce()
+      expect(onDelete).not.toHaveBeenCalled()
     })
 
     it('Keep Editing dismisses the discard dialog without navigating', async () => {
@@ -236,6 +239,31 @@ describe('NoteView', () => {
       await userEvent.click(screen.getByTestId('cancel-button'))
       await userEvent.click(screen.getByTestId('cancel-keep-button'))
       expect(screen.queryByTestId('cancel-dialog')).toBeNull()
+      expect(onBack).not.toHaveBeenCalled()
+    })
+
+    it('Cancel on a new blank note calls onDelete without showing a dialog', async () => {
+      const onDelete = vi.fn().mockResolvedValue(undefined)
+      server.use(
+        http.get('/api/notes/:noteId', () =>
+          HttpResponse.json({ noteId: 'note-1', title: '', content: '', date: null, tags: [] }),
+        ),
+      )
+      renderNoteView({ initialTitle: '', onDelete, isNew: true })
+      await screen.findByLabelText('Note content')
+      await userEvent.click(screen.getByTestId('cancel-button'))
+      expect(onDelete).toHaveBeenCalledWith('note-1')
+      expect(screen.queryByTestId('cancel-dialog')).toBeNull()
+    })
+
+    it('Confirm discard on a new note calls onDelete instead of onBack', async () => {
+      const onBack = vi.fn()
+      const onDelete = vi.fn().mockResolvedValue(undefined)
+      renderNoteView({ onBack, onDelete, isNew: true })
+      await screen.findByLabelText('Note content')
+      await userEvent.click(screen.getByTestId('cancel-button'))
+      await userEvent.click(screen.getByTestId('cancel-confirm-button'))
+      expect(onDelete).toHaveBeenCalledWith('note-1')
       expect(onBack).not.toHaveBeenCalled()
     })
   })
