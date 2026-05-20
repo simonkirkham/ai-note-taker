@@ -8,5 +8,7 @@ public static class TranscriptionEndpoints
     {
         app.MapGet("/transcription/credentials", TranscriptionHandlers.GetCredentials)
            .RequireAuthorization();
+        app.MapPost("/notes/{noteId:guid}/transcription", TranscriptionHandlers.CompleteTranscription)
+           .RequireAuthorization();
     }
 }
