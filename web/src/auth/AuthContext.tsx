@@ -1,10 +1,12 @@
-import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from 'react'
+import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react'
 import { buildAuthUrl, exchangeCode, generateCodeChallenge, generateCodeVerifier } from './pkce'
 import { clearToken, loadPersistedToken, setToken, setOnForbidden, setOnUnauthorized } from './tokenStore'
+import { getExp, useGoogleAuth } from './useGoogleAuth'
 
 interface AuthState {
   idToken: string | null
   forbidden: boolean
+  sessionExpired: boolean
   signIn: () => Promise<void>
   signOut: () => void
 }
@@ -12,6 +14,7 @@ interface AuthState {
 export const AuthContext = createContext<AuthState>({
   idToken: null,
   forbidden: false,
+  sessionExpired: false,
   signIn: async () => {},
   signOut: () => {},
 })
@@ -29,7 +32,26 @@ export function AuthProvider({
   const persisted = !initialToken && clientId ? loadPersistedToken() : null
   const [idToken, setIdToken] = useState<string | null>(initialToken ?? persisted ?? (clientId ? null : 'no-auth'))
   const [forbidden, setForbidden] = useState(false)
+  const [sessionExpired, setSessionExpired] = useState(false)
   const mounted = useRef(false)
+
+  const handleRefreshSuccess = useCallback((token: string) => {
+    setToken(token)
+    setIdToken(token)
+    setSessionExpired(false)
+  }, [])
+
+  const handleRefreshFailure = useCallback(() => {
+    clearToken()
+    setIdToken(null)
+    setSessionExpired(true)
+  }, [])
+
+  const { scheduleRefresh, cancelRefresh } = useGoogleAuth({
+    clientId,
+    onRefreshSuccess: handleRefreshSuccess,
+    onRefreshFailure: handleRefreshFailure,
+  })
 
   useEffect(() => {
     if (persisted) setToken(persisted)
@@ -40,8 +62,17 @@ export function AuthProvider({
     setOnUnauthorized(() => {
       clearToken()
       setIdToken(null)
+      cancelRefresh()
+      setSessionExpired(true)
     })
-  }, [])
+  }, [cancelRefresh])
+
+  // Schedule token refresh whenever a real token is loaded or replaced
+  useEffect(() => {
+    if (!idToken || !clientId || idToken === 'no-auth') return
+    const exp = getExp(idToken)
+    if (exp) scheduleRefresh(exp)
+  }, [idToken, clientId, scheduleRefresh])
 
   useEffect(() => {
     if (mounted.current) return
@@ -86,12 +117,14 @@ export function AuthProvider({
 
   function signOut() {
     clearToken()
+    cancelRefresh()
     setForbidden(false)
+    setSessionExpired(false)
     setIdToken(clientId ? null : 'no-auth')
   }
 
   return (
-    <AuthContext.Provider value={{ idToken, forbidden, signIn, signOut }}>
+    <AuthContext.Provider value={{ idToken, forbidden, sessionExpired, signIn, signOut }}>
       {children}
     </AuthContext.Provider>
   )

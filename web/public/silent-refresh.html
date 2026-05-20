@@ -1,0 +1,9 @@
+<!DOCTYPE html>
+<html>
+<script>
+  window.parent?.postMessage(
+    { type: 'silent-refresh-callback', search: window.location.search },
+    window.location.origin,
+  )
+</script>
+</html>

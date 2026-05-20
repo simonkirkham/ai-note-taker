@@ -1,6 +1,7 @@
 import "./App.css";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useAuth } from "./auth/AuthContext";
+import SessionExpiredBanner from "./components/SessionExpiredBanner";
 import SignInPage from "./components/SignInPage";
 import FolderPreviewPanel from "./components/FolderPreviewPanel";
 import ListView from "./components/ListView";
@@ -46,7 +47,8 @@ function removeFromTree(nodes: FolderNode[], folderId: string): FolderNode[] {
 }
 
 export default function App() {
-  const { idToken, forbidden, signOut } = useAuth();
+  const { idToken, forbidden, sessionExpired, signIn, signOut } = useAuth();
+  if (sessionExpired) return <SessionExpiredBanner onSignIn={signIn} />;
   if (!idToken) return <SignInPage />;
   if (forbidden) return (
     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100vh', gap: '1rem', fontFamily: 'sans-serif' }}>
