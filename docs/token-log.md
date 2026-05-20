@@ -4,6 +4,25 @@ Approximate tokens consumed per slice, broken down by agent. Recorded by Scribe 
 
 ---
 
+## Hotfix — TRANSCRIBE_ROLE_ARN production 503
+
+| Agent     | ~Tokens      |
+|-----------|--------------|
+| Scout     | —            |
+| Breaker   | —            |
+| Pip       | 95 000       |
+| Stylist   | —            |
+| Hawk      | —            |
+| Scribe    | 4 000        |
+| **Total** | **~99 000**  |
+
+**Why:** Three failed fix deploys before root cause was identified — the investigative cycle of synth → inspect → deploy → check production consumed most of the budget. The stale-alias mechanism wasn't surfaced until the fourth session, after the CDK template, SnapStart, and placeholder theories had been ruled out one by one.
+
+**Optimisation suggestions:**
+- **Pip (–40 000):** Two of the three fix deploys were unnecessary once the stale-alias root cause was understood. Earlier comparison of `ApiFunctionCurrentVersion<hash>` across synths would have revealed the hash wasn't changing after commit 1, saving the second and third deploy rounds.
+
+---
+
 ## Slice 3-A — Add action items on the note screen
 
 > **Note:** Session exhausted context and was auto-compacted. Exact per-agent counts unavailable. Figures below are estimates from the session summary.
