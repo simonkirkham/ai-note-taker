@@ -133,7 +133,7 @@ public sealed class NoteTakerStack : Stack
                 ["GOOGLE_REFRESH_TOKEN_SSM_PATH"] = props.GoogleRefreshTokenSsmPath ?? "",
                 ["PROJ_CALENDARLINKINDEX_TABLE_NAME"] = calendarLinkIndexTable.TableName,
                 ["BEDROCK_MODEL_ID"] = string.IsNullOrEmpty(props.BedrockModelId)
-                    ? "anthropic.claude-3-5-haiku-20241022"
+                    ? "anthropic.claude-3-5-haiku-20241022-v1:0"
                     : props.BedrockModelId
             }
         });
@@ -177,7 +177,7 @@ public sealed class NoteTakerStack : Stack
         apiFunction.AddEnvironment("TRANSCRIBE_ROLE_ARN", transcribeRole.RoleArn);
 
         var bedrockModelId = string.IsNullOrEmpty(props.BedrockModelId)
-            ? "anthropic.claude-3-5-haiku-20241022"
+            ? "anthropic.claude-3-5-haiku-20241022-v1:0"
             : props.BedrockModelId;
         var bedrockArn = Arn.Format(new ArnComponents
         {
