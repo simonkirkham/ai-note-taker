@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { editContent, getNoteDetail, setNoteDate, tagNote, untagNote } from "../api";
+import { editContent, getNoteDetail, getTags, setNoteDate, tagNote, untagNote, type TagIndexEntry } from "../api";
 import ActionsSection from "./ActionsSection";
 import NoteEditor from "./NoteEditor";
 import ShortcutsPanel from "./ShortcutsPanel";
@@ -27,6 +27,7 @@ export default function NoteView({
   const [content, setContent] = useState("");
   const [date, setDate] = useState("");
   const [tags, setTags] = useState<string[]>([]);
+  const [allTags, setAllTags] = useState<TagIndexEntry[]>([]);
   const [actionCount, setActionCount] = useState(0);
   const [loadingDetail, setLoadingDetail] = useState(true);
   const [notFound, setNotFound] = useState(false);
@@ -68,6 +69,10 @@ export default function NoteView({
       });
     return () => { cancelled = true; };
   }, [noteId, onDateSet]);
+
+  useEffect(() => {
+    getTags().then((tags) => setAllTags(tags)).catch(() => {});
+  }, []);
 
   useEffect(() => {
     if (!loadingDetail && !notFound) inputRef.current?.focus();
@@ -214,7 +219,7 @@ export default function NoteView({
           )}
         </div>
         <div className="note-right-panel">
-          <TagsSection tags={tags} onAdd={handleAddTags} onRemove={handleRemoveTag} />
+          <TagsSection tags={tags} allTags={allTags} onAdd={handleAddTags} onRemove={handleRemoveTag} />
           <div className="actions-section">
             <ActionsSection noteId={noteId} onCountChange={setActionCount} />
           </div>

@@ -1066,6 +1066,53 @@ body {
   color: var(--color-text-muted);
 }
 
+.tags-input-wrapper {
+  position: relative;
+}
+
+.tag-suggestions {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  z-index: 20;
+  list-style: none;
+  margin: 0;
+  padding: 0.25rem 0;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  max-height: 14rem;
+  overflow-y: auto;
+}
+
+.tag-suggestion-item {
+  display: flex;
+  flex-direction: column;
+  padding: 0.35rem 0.65rem;
+  font-size: 0.875rem;
+  color: var(--color-text);
+  cursor: pointer;
+  transition: background var(--transition);
+  user-select: none;
+}
+
+.tag-suggestion-item:hover,
+.tag-suggestion-item.highlighted {
+  background: var(--color-primary-bg);
+  color: var(--color-primary);
+}
+
+.suggestion-group-heading {
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--color-text-muted);
+  margin-bottom: 0.1rem;
+}
+
 /* ── Note card tags ──────────────────────────────────────────────── */
 .note-card-tags {
   display: flex;
