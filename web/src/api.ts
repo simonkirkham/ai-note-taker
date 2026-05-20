@@ -1,4 +1,4 @@
-import { getToken, triggerForbidden } from './auth/tokenStore'
+import { getToken, triggerForbidden, triggerUnauthorized } from './auth/tokenStore'
 
 const base = "/api";
 
@@ -7,6 +7,7 @@ function apiFetch(url: string, init?: RequestInit): Promise<Response> {
   const headers = new Headers(init?.headers)
   if (token) headers.set('Authorization', `Bearer ${token}`)
   return fetch(url, { ...init, headers }).then(res => {
+    if (res.status === 401) triggerUnauthorized()
     if (res.status === 403) triggerForbidden()
     return res
   })

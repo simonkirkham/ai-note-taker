@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from 'react'
 import { buildAuthUrl, exchangeCode, generateCodeChallenge, generateCodeVerifier } from './pkce'
-import { clearToken, setToken, setOnForbidden } from './tokenStore'
+import { clearToken, loadPersistedToken, setToken, setOnForbidden, setOnUnauthorized } from './tokenStore'
 
 interface AuthState {
   idToken: string | null
@@ -26,14 +26,20 @@ export function AuthProvider({
   // When no client ID is configured (unset GitHub secret resolves to ""), bypass the sign-in
   // gate so local dev and E2E tests work without real Google credentials.
   const clientId = import.meta.env.VITE_GOOGLE_CLIENT_ID ?? ''
-  const [idToken, setIdToken] = useState<string | null>(initialToken ?? (clientId ? null : 'no-auth'))
+  const persisted = !initialToken && clientId ? loadPersistedToken() : null
+  const [idToken, setIdToken] = useState<string | null>(initialToken ?? persisted ?? (clientId ? null : 'no-auth'))
   const [forbidden, setForbidden] = useState(false)
   const mounted = useRef(false)
 
   useEffect(() => {
+    if (persisted) setToken(persisted)
     setOnForbidden(() => {
       clearToken()
       setForbidden(true)
+    })
+    setOnUnauthorized(() => {
+      clearToken()
+      setIdToken(null)
     })
   }, [])
 
