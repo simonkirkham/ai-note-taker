@@ -18,7 +18,7 @@ type State =
   | { status: "unavailable" }
   | { status: "loaded"; meetings: CalendarMeeting[] };
 
-export function MeetingsSection({ onOpenNote }: { onOpenNote: (noteId: string) => void }) {
+export function MeetingsSection({ onOpenNote }: { onOpenNote: (noteId: string, title?: string) => void }) {
   const [state, setState] = useState<State>({ status: "loading" });
   const [bannerDismissed, setBannerDismissed] = useState(false);
   // tracks calendarEventIds currently being created, for pending button state
@@ -75,7 +75,7 @@ export function MeetingsSection({ onOpenNote }: { onOpenNote: (noteId: string) =
             }
           : prev
       );
-      onOpenNote(noteId);
+      onOpenNote(noteId, meeting.title);
     } catch {
       setCreateErrors((prev) => new Map(prev).set(meeting.calendarEventId, "Could not create note. Try again."));
     } finally {

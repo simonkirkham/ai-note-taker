@@ -477,6 +477,12 @@ Scenario: Creating a note when one already exists returns 409
 - [x] Note date is set to the meeting's `startTime` local date (`DateOnly.FromDateTime(startTime.LocalDateTime)`)
 - [ ] E2E: click "Create Note" on a meeting; card shows "Open Note"; click it — note screen opens with meeting title
 
+**Known bugs (post-ship):**
+
+- **BUG-9D-1 (fixed):** Note screen opened after "Create Note" showed a blank title — the new note was not yet in the cards list so `initialTitle` resolved to `""`. Fixed by threading a `title?: string` parameter through `onOpenNote` and using it as the initial title override in `App.tsx`.
+
+- **BUG-9D-2 (open — tracked in 9-F):** The "↻ Next · Create Note" button on recurring meeting cards has no `onClick` handler and does nothing when clicked. This button is stubbed from the Stylist pass and will be wired up in slice 9-F.
+
 ---
 
 ## Slice 9-E — Meeting-time browser reminder

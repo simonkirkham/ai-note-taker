@@ -26,7 +26,7 @@ import {
 type View =
   | { kind: "list" }
   | { kind: "folder"; folderId: string; folderPath: string[] }
-  | { kind: "note"; noteId: string; isNew?: boolean };
+  | { kind: "note"; noteId: string; isNew?: boolean; initialTitle?: string };
 
 function mapTree(
   nodes: FolderNode[],
@@ -218,7 +218,7 @@ function AppContent({ signOut }: { signOut: () => void }) {
       <NoteView
         key={view.noteId}
         noteId={view.noteId}
-        initialTitle={notes.find((n) => n.noteId === view.noteId)?.title ?? ""}
+        initialTitle={view.initialTitle ?? notes.find((n) => n.noteId === view.noteId)?.title ?? ""}
         onRename={handleRename}
         onBack={() => { setView(backDestination()); getNoteCards().then(setCards).catch(() => {}); }}
         onDelete={handleDelete}
@@ -233,7 +233,7 @@ function AppContent({ signOut }: { signOut: () => void }) {
         createError={createError}
         onNewNote={handleNewNote}
         onEditNote={(noteId) => setView({ kind: "note", noteId })}
-        onOpenNote={(noteId) => setView({ kind: "note", noteId })}
+        onOpenNote={(noteId, title) => setView({ kind: "note", noteId, ...(title ? { initialTitle: title } : {}) })}
         folderPath={view.kind === "folder" ? view.folderPath : undefined}
         currentFolderId={view.kind === "folder" ? view.folderId : undefined}
         onHome={handleHome}

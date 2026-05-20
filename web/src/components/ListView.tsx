@@ -23,7 +23,7 @@ export default function ListView({
   createError: string | null;
   onNewNote: () => void;
   onEditNote: (noteId: string) => void;
-  onOpenNote: (noteId: string) => void;
+  onOpenNote: (noteId: string, title?: string) => void;
   folderPath?: string[];
   currentFolderId?: string;
   onHome?: () => void;
