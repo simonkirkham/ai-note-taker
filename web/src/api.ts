@@ -243,3 +243,24 @@ export async function getTodos(): Promise<TodoItem[]> {
   const body: { items: TodoItem[] } = await res.json();
   return body.items;
 }
+
+export interface CalendarMeeting {
+  calendarEventId: string;
+  title: string;
+  startTime: string;
+  endTime: string;
+  isRecurring: boolean;
+  recurringSeriesId: string | null;
+  linkedNoteId: string | null;
+  hasNextOccurrenceNote: boolean;
+}
+
+export type TodaysMeetingsResult =
+  | { meetings: CalendarMeeting[] }
+  | { error: string };
+
+export async function getTodaysMeetings(tz: string): Promise<TodaysMeetingsResult> {
+  const res = await apiFetch(`${base}/calendar/today?tz=${encodeURIComponent(tz)}`);
+  if (!res.ok) throw new Error(`GET /calendar/today failed: ${res.status}`);
+  return res.json();
+}

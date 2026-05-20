@@ -2,6 +2,7 @@ using EventStore;
 using EventStore.Projections;
 using Api.Auth;
 using Api.HealthChecks;
+using Api.Services;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
@@ -30,6 +31,9 @@ public sealed class ApiFactory : WebApplicationFactory<Program>
     {
         builder.ConfigureTestServices(services =>
         {
+            services.RemoveAll<IGoogleCalendarClient>();
+            services.AddSingleton<FakeGoogleCalendarClient>();
+            services.AddSingleton<IGoogleCalendarClient>(sp => sp.GetRequiredService<FakeGoogleCalendarClient>());
             services.RemoveAll<IEventStore>();
             services.RemoveAll<INoteTitleListStore>();
             services.RemoveAll<INoteDetailStore>();

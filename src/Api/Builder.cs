@@ -6,6 +6,7 @@ using Api.CommandHandlers;
 using Api.EventHandlers;
 using Api.HealthChecks;
 using Api.Projections;
+using Api.Services;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 
 namespace Api;
@@ -89,6 +90,7 @@ public static class Builder
         builder.Services.AddScoped<IProjectionRebuildHandler, ProjectionRebuildHandler>();
         builder.Services.AddSingleton<IDynamoHealthCheck>(sp =>
             new DynamoDbHealthCheck(sp.GetRequiredService<IAmazonDynamoDB>(), eventTableName));
+        builder.Services.AddSingleton<IGoogleCalendarClient, GoogleCalendarClient>();
         builder.Services.AddAWSLambdaHosting(LambdaEventSource.HttpApi);
 
         return builder.Build();
