@@ -28,4 +28,13 @@ export const handlers = [
   http.post('/api/notes/:noteId/tags', () => new HttpResponse(null, { status: 204 })),
   http.delete('/api/notes/:noteId/tags/:tag', () => new HttpResponse(null, { status: 204 })),
   http.put('/api/notes/:noteId/folder', () => new HttpResponse(null, { status: 204 })),
+  http.get('/api/transcription/credentials', () =>
+    HttpResponse.json({
+      accessKeyId: 'ASIATEST',
+      secretAccessKey: 'fakesecret',
+      sessionToken: 'faketoken',
+      expiration: '2099-01-01T00:00:00Z',
+      region: 'eu-west-1',
+    }),
+  ),
 ]

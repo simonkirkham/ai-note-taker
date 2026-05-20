@@ -16,6 +16,10 @@ vi.mock('../components/NoteEditor', () => ({
   ),
 }))
 
+vi.mock('../components/TranscriptionPanel', () => ({
+  default: () => <div data-testid="transcription-panel-mock" />,
+}))
+
 const noop = () => {}
 const asyncNoop = async () => {}
 

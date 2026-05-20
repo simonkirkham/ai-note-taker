@@ -268,3 +268,18 @@ export async function getTodaysMeetings(tz: string): Promise<TodaysMeetingsResul
   if (!res.ok) throw new Error(`GET /calendar/today failed: ${res.status}`);
   return res.json();
 }
+
+export interface TranscriptionCredentials {
+  accessKeyId: string;
+  secretAccessKey: string;
+  sessionToken: string;
+  expiration: string;
+  region: string;
+}
+
+export async function getTranscriptionCredentials(): Promise<TranscriptionCredentials> {
+  const res = await apiFetch(`${base}/transcription/credentials`);
+  if (!res.ok) throw new Error(`GET /transcription/credentials failed: ${res.status}`);
+  return res.json();
+}
+
