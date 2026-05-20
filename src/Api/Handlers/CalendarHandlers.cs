@@ -17,8 +17,12 @@ public static class CalendarHandlers
         if (events is null)
             return Results.Ok(new { error = "calendar_unavailable" });
 
-        var linkTasks = events.Select(e => calendarLinkStore.GetByCalendarEventIdAsync(e.CalendarEventId));
-        var links = await Task.WhenAll(linkTasks);
+        var links = await Task.WhenAll(
+            events.Select(async e =>
+            {
+                try { return await calendarLinkStore.GetByCalendarEventIdAsync(e.CalendarEventId); }
+                catch { return null; }
+            }));
         var linkMap = links
             .Where(l => l is not null)
             .ToDictionary(l => l!.CalendarEventId, l => l!.NoteId);
