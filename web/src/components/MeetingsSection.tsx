@@ -4,6 +4,15 @@ import { MeetingReminder, useMeetingReminders } from "../hooks/useMeetingReminde
 
 const NO_MEETINGS: MeetingReminder[] = [];
 
+const CalendarIcon = ({ className }: { className?: string }) => (
+  <svg className={className} width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/>
+    <line x1="16" y1="2" x2="16" y2="6"/>
+    <line x1="8" y1="2" x2="8" y2="6"/>
+    <line x1="3" y1="10" x2="21" y2="10"/>
+  </svg>
+);
+
 type State =
   | { status: "loading" }
   | { status: "unavailable" }
@@ -19,15 +28,10 @@ export function MeetingsSection() {
     getTodaysMeetings(tz)
       .then((result) => {
         if (cancelled) return;
-        if ("error" in result) {
-          setState({ status: "unavailable" });
-        } else {
-          setState({ status: "loaded", meetings: result.meetings });
-        }
+        if ("error" in result) setState({ status: "unavailable" });
+        else setState({ status: "loaded", meetings: result.meetings });
       })
-      .catch(() => {
-        if (!cancelled) setState({ status: "unavailable" });
-      });
+      .catch(() => { if (!cancelled) setState({ status: "unavailable" }); });
     return () => { cancelled = true; };
   }, []);
 
@@ -39,96 +43,115 @@ export function MeetingsSection() {
     typeof Notification !== "undefined" &&
     Notification.permission === "default";
 
+  useEffect(() => {
+    if (showBanner) document.body.classList.add("has-notification-banner");
+    else document.body.classList.remove("has-notification-banner");
+    return () => document.body.classList.remove("has-notification-banner");
+  }, [showBanner]);
+
   async function handleEnable() {
-    try {
-      await Notification.requestPermission();
-    } catch {
-      // permission API unavailable; dismiss anyway
-    }
+    try { await Notification.requestPermission(); } catch { /* unavailable */ }
     setBannerDismissed(true);
   }
 
-  function handleDismiss() {
-    setBannerDismissed(true);
+  function handleRetry() {
+    setState({ status: "loading" });
+    const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    getTodaysMeetings(tz)
+      .then((result) => {
+        if ("error" in result) setState({ status: "unavailable" });
+        else setState({ status: "loaded", meetings: result.meetings });
+      })
+      .catch(() => setState({ status: "unavailable" }));
   }
 
   return (
-    <section data-testid="meetings-section" className="meetings-section" aria-label="Today's meetings">
+    <>
       {showBanner && (
         <div
           data-testid="notification-banner"
           role="status"
-          style={{
-            background: "#2563eb",
-            color: "#fff",
-            padding: "0.75rem 1rem",
-            display: "flex",
-            alignItems: "center",
-            gap: "0.75rem",
-            width: "100%",
-            boxSizing: "border-box",
-          }}
+          className="notification-banner"
         >
-          <span style={{ flex: 1 }}>
+          <span className="notification-banner-text">
             Enable notifications to get reminders before your meetings start.
           </span>
           <button
             data-testid="enable-notifications-button"
             onClick={handleEnable}
-            style={{
-              background: "#fff",
-              color: "#2563eb",
-              border: "none",
-              borderRadius: "4px",
-              padding: "0.25rem 0.75rem",
-              cursor: "pointer",
-              fontWeight: 600,
-            }}
+            className="notification-banner-enable"
           >
             Enable
           </button>
           <button
             data-testid="dismiss-notification-banner"
-            onClick={handleDismiss}
+            onClick={() => setBannerDismissed(true)}
             aria-label="Dismiss notification banner"
-            style={{
-              background: "transparent",
-              color: "#fff",
-              border: "none",
-              cursor: "pointer",
-              fontSize: "1.1rem",
-              lineHeight: 1,
-            }}
+            className="notification-banner-dismiss"
           >
             ✕
           </button>
         </div>
       )}
-      <h2 className="meetings-heading">Today's Meetings</h2>
-      {state.status === "loading" && (
-        <p className="loading">Loading…</p>
-      )}
-      {state.status === "unavailable" && (
-        <p data-testid="meetings-unavailable" className="meetings-error">
-          Cannot connect to calendar
-        </p>
-      )}
-      {state.status === "loaded" && state.meetings.length === 0 && (
-        <p data-testid="meetings-empty" className="empty">No meetings today.</p>
-      )}
-      {state.status === "loaded" && state.meetings.length > 0 && (
-        <ul data-testid="meetings-list" className="meetings-list">
-          {state.meetings.map((m) => (
-            <li key={m.calendarEventId} className="meeting-item">
-              <span className="meeting-title">{m.title}</span>
-              <span className="meeting-time">
-                {formatTime(m.startTime)} – {formatTime(m.endTime)}
-              </span>
-            </li>
-          ))}
-        </ul>
-      )}
-    </section>
+      <section data-testid="meetings-section" className="meetings-section" aria-label="Today's meetings">
+        <h2 className="meetings-heading">Today's Meetings</h2>
+
+        {state.status === "loading" && (
+          <p className="loading">Loading…</p>
+        )}
+
+        {state.status === "unavailable" && (
+          <div data-testid="meetings-unavailable" className="meetings-status-state">
+            <CalendarIcon className="meetings-status-icon" />
+            <p className="meetings-status-text">Cannot connect to calendar</p>
+            <button className="meetings-retry-link" onClick={handleRetry}>Retry</button>
+          </div>
+        )}
+
+        {state.status === "loaded" && state.meetings.length === 0 && (
+          <div data-testid="meetings-empty" className="meetings-status-state">
+            <CalendarIcon className="meetings-status-icon" />
+            <p className="meetings-status-text">No meetings today.</p>
+          </div>
+        )}
+
+        {state.status === "loaded" && state.meetings.length > 0 && (
+          <ul data-testid="meetings-list" className="meetings-list">
+            {state.meetings.map((m) => (
+              <li key={m.calendarEventId}>
+                <article className="meeting-card">
+                  <div className="meeting-card-header">
+                    <span className="meeting-card-title">{m.title}</span>
+                    <span className="meeting-card-time">
+                      {formatTime(m.startTime)}–{formatTime(m.endTime)}
+                    </span>
+                  </div>
+                  <footer className="meeting-card-footer">
+                    <div className="meeting-card-row">
+                      <span className="meeting-card-row-label">Today</span>
+                      <button className="meeting-action-btn">
+                        {m.linkedNoteId ? "Open Note ↗" : "Create Note"}
+                      </button>
+                    </div>
+                    {m.isRecurring && (
+                      <>
+                        <div className="meeting-card-divider" />
+                        <div className="meeting-card-row">
+                          <span className="meeting-card-row-label">↻ Next</span>
+                          <button className="meeting-action-btn">
+                            {m.hasNextOccurrenceNote ? "Open Note ↗" : "Create Note"}
+                          </button>
+                        </div>
+                      </>
+                    )}
+                  </footer>
+                </article>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+    </>
   );
 }
 

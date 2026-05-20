@@ -91,25 +91,54 @@ export default function ListView({
         </p>
       )}
       {loading && <p>Loading…</p>}
-      {!isInFolder && <MeetingsSection />}
-      {!isInFolder && <TodoSection />}
-      <TagFilter
-        tags={availableTags}
-        selectedTags={selectedTags}
-        mode={filterMode}
-        onToggle={toggleTag}
-        onModeChange={setFilterMode}
-        onClear={clearFilter}
-      />
-      {filteredCards.length > 0 && (
-        <section className="note-cards-section">
-          <h2 className="note-cards-heading">Notes</h2>
-          <div className="note-cards" data-testid="note-cards">
-            {filteredCards.map((card) => (
-              <NoteCard key={card.noteId} card={card} onEdit={onEditNote} />
-            ))}
+      {isInFolder ? (
+        <>
+          <TagFilter
+            tags={availableTags}
+            selectedTags={selectedTags}
+            mode={filterMode}
+            onToggle={toggleTag}
+            onModeChange={setFilterMode}
+            onClear={clearFilter}
+          />
+          {filteredCards.length > 0 && (
+            <section className="note-cards-section">
+              <h2 className="note-cards-heading">Notes</h2>
+              <div className="note-cards" data-testid="note-cards">
+                {filteredCards.map((card) => (
+                  <NoteCard key={card.noteId} card={card} onEdit={onEditNote} />
+                ))}
+              </div>
+            </section>
+          )}
+        </>
+      ) : (
+        <div className="home-layout">
+          <div className="home-left">
+            <TagFilter
+              tags={availableTags}
+              selectedTags={selectedTags}
+              mode={filterMode}
+              onToggle={toggleTag}
+              onModeChange={setFilterMode}
+              onClear={clearFilter}
+            />
+            {filteredCards.length > 0 && (
+              <section className="note-cards-section">
+                <h2 className="note-cards-heading">Notes</h2>
+                <div className="note-cards" data-testid="note-cards">
+                  {filteredCards.map((card) => (
+                    <NoteCard key={card.noteId} card={card} onEdit={onEditNote} />
+                  ))}
+                </div>
+              </section>
+            )}
           </div>
-        </section>
+          <aside className="home-right-panel">
+            <MeetingsSection />
+            <TodoSection />
+          </aside>
+        </div>
       )}
     </main>
   );
