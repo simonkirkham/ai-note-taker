@@ -21,10 +21,6 @@ export default function TranscriptionPanel({
   const [hasRecordedThisSession, setHasRecordedThisSession] = useState(false);
 
   useEffect(() => {
-    if (status === 'requestingCredentials') setHasRecordedThisSession(true);
-  }, [status]);
-
-  useEffect(() => {
     if (transcriptRef.current) {
       transcriptRef.current.scrollTop = transcriptRef.current.scrollHeight;
     }
@@ -32,6 +28,7 @@ export default function TranscriptionPanel({
 
   const isRecording = status === 'recording';
   const isRequesting = status === 'requestingCredentials';
+  const showInitialTranscript = status === 'idle' && !!initialTranscript && !hasRecordedThisSession;
 
   return (
     <div className="transcription-panel" data-testid="transcription-panel">
@@ -50,10 +47,10 @@ export default function TranscriptionPanel({
         ref={transcriptRef}
         data-testid="transcription-body"
       >
-        {status === 'idle' && (!initialTranscript || hasRecordedThisSession) && (
+        {status === 'idle' && !showInitialTranscript && (
           <p className="transcription-placeholder">Press Record to start transcribing</p>
         )}
-        {status === 'idle' && initialTranscript && !hasRecordedThisSession && (
+        {showInitialTranscript && (
           <p className="transcription-text" data-testid="transcription-text">{initialTranscript}</p>
         )}
         {(isRequesting || isRecording || status === 'stopped') && (
@@ -82,7 +79,7 @@ export default function TranscriptionPanel({
           <button
             className="transcription-record-button"
             data-testid="transcription-record-button"
-            onClick={startRecording}
+            onClick={() => { setHasRecordedThisSession(true); startRecording(); }}
           >
             Record
           </button>
