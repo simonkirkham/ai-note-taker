@@ -194,7 +194,7 @@ describe('MeetingsSection — Create Note button', () => {
     await screen.findByRole('button', { name: 'Create Note' })
     await userEvent.click(screen.getByRole('button', { name: 'Create Note' }))
 
-    await waitFor(() => expect(onOpenNote).toHaveBeenCalledWith('new-note-123'))
+    await waitFor(() => expect(onOpenNote).toHaveBeenCalledWith('new-note-123', 'Team standup'))
   })
 
   it('button shows Creating… while the request is in-flight', async () => {
