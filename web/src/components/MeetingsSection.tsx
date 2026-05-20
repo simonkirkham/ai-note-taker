@@ -23,6 +23,8 @@ export function MeetingsSection({ onOpenNote }: { onOpenNote: (noteId: string) =
   const [bannerDismissed, setBannerDismissed] = useState(false);
   // tracks calendarEventIds currently being created, for pending button state
   const [creating, setCreating] = useState<Set<string>>(new Set());
+  // tracks calendarEventIds that failed to create, for inline error feedback
+  const [createErrors, setCreateErrors] = useState<Map<string, string>>(new Map());
 
   useEffect(() => {
     let cancelled = false;
@@ -58,6 +60,7 @@ export function MeetingsSection({ onOpenNote }: { onOpenNote: (noteId: string) =
 
   async function handleCreateNote(meeting: CalendarMeeting) {
     setCreating((prev) => new Set(prev).add(meeting.calendarEventId));
+    setCreateErrors((prev) => { const next = new Map(prev); next.delete(meeting.calendarEventId); return next; });
     try {
       const { noteId } = await createNoteFromMeeting(meeting);
       setState((prev) =>
@@ -73,6 +76,8 @@ export function MeetingsSection({ onOpenNote }: { onOpenNote: (noteId: string) =
           : prev
       );
       onOpenNote(noteId);
+    } catch {
+      setCreateErrors((prev) => new Map(prev).set(meeting.calendarEventId, "Could not create note. Try again."));
     } finally {
       setCreating((prev) => { const next = new Set(prev); next.delete(meeting.calendarEventId); return next; });
     }
@@ -169,6 +174,11 @@ export function MeetingsSection({ onOpenNote }: { onOpenNote: (noteId: string) =
                         </button>
                       )}
                     </div>
+                    {createErrors.has(m.calendarEventId) && (
+                      <p data-testid={`create-error-${m.calendarEventId}`} className="meeting-create-error">
+                        {createErrors.get(m.calendarEventId)}
+                      </p>
+                    )}
                     {m.isRecurring && (
                       <>
                         <div className="meeting-card-divider" />

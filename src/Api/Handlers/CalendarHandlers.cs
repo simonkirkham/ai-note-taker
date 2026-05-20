@@ -54,7 +54,7 @@ public static class CalendarHandlers
         CancellationToken ct)
     {
         var existing = await calendarLinkStore.GetByCalendarEventIdAsync(req.CalendarEventId, ct);
-        if (existing is not null) return Results.Conflict();
+        if (existing is not null && existing.UserId == currentUser.UserId) return Results.Conflict();
 
         var noteId = new NoteId(Guid.NewGuid());
         await handler.HandleAsync(new CreateNote(noteId), ct);
