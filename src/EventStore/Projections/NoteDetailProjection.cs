@@ -41,6 +41,10 @@ public sealed class NoteDetailProjection
             case NoteDeleted e:
                 _items.Remove(e.NoteId);
                 break;
+            case TranscriptionCompleted e:
+                if (_items.TryGetValue(e.NoteId, out var transcribed))
+                    _items[e.NoteId] = transcribed with { TranscriptText = e.TranscriptText };
+                break;
             default:
                 break;
         }

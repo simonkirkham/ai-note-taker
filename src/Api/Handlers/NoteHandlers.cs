@@ -77,7 +77,8 @@ public static class NoteHandlers
             date = detail.Date,
             tags = detail.Tags ?? [],
             createdAt = detail.CreatedAt,
-            lastModifiedAt = detail.LastModifiedAt
+            lastModifiedAt = detail.LastModifiedAt,
+            transcriptText = detail.TranscriptText
         });
     }
 

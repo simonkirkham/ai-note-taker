@@ -28,6 +28,7 @@ export default function NoteView({
   const [date, setDate] = useState("");
   const [tags, setTags] = useState<string[]>([]);
   const [actionCount, setActionCount] = useState(0);
+  const [transcriptText, setTranscriptText] = useState<string | null>(null);
   const [loadingDetail, setLoadingDetail] = useState(true);
   const [notFound, setNotFound] = useState(false);
   const [showCancelDialog, setShowCancelDialog] = useState(false);
@@ -57,6 +58,7 @@ export default function NoteView({
           onDateSet(noteId, loadedDate);
           if (!detail.date) setNoteDate(noteId, loadedDate).catch(() => {});
           if (!tagsModifiedRef.current) setTags(detail.tags ?? []);
+          setTranscriptText(detail.transcriptText ?? null);
           setLoadingDetail(false);
         }
       })
@@ -218,7 +220,7 @@ export default function NoteView({
           <div className="actions-section">
             <ActionsSection noteId={noteId} onCountChange={setActionCount} />
           </div>
-          <TranscriptionPanel noteId={noteId} />
+          <TranscriptionPanel noteId={noteId} initialTranscript={transcriptText} />
         </div>
       </div>
     </main>

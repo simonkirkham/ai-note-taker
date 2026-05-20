@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useTranscription } from '../hooks/useTranscription';
 
 function formatTime(seconds: number): string {
@@ -7,14 +7,22 @@ function formatTime(seconds: number): string {
   return `${m}:${s}`;
 }
 
-export default function TranscriptionPanel({ noteId }: { noteId: string }) {
-  // noteId will be used in 10-C (completeTranscription) and 10-D (analyseNote)
-  void noteId;
-
+export default function TranscriptionPanel({
+  noteId,
+  initialTranscript,
+}: {
+  noteId: string;
+  initialTranscript?: string | null;
+}) {
   const { status, transcript, elapsedSeconds, error, startRecording, stopRecording, reset } =
-    useTranscription();
+    useTranscription(noteId);
 
   const transcriptRef = useRef<HTMLDivElement>(null);
+  const [hasRecordedThisSession, setHasRecordedThisSession] = useState(false);
+
+  useEffect(() => {
+    if (status === 'requestingCredentials') setHasRecordedThisSession(true);
+  }, [status]);
 
   useEffect(() => {
     if (transcriptRef.current) {
@@ -42,8 +50,11 @@ export default function TranscriptionPanel({ noteId }: { noteId: string }) {
         ref={transcriptRef}
         data-testid="transcription-body"
       >
-        {status === 'idle' && (
+        {status === 'idle' && (!initialTranscript || hasRecordedThisSession) && (
           <p className="transcription-placeholder">Press Record to start transcribing</p>
+        )}
+        {status === 'idle' && initialTranscript && !hasRecordedThisSession && (
+          <p className="transcription-text" data-testid="transcription-text">{initialTranscript}</p>
         )}
         {(isRequesting || isRecording || status === 'stopped') && (
           <p className="transcription-text" data-testid="transcription-text">

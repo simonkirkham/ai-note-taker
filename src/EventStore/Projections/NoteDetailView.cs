@@ -10,4 +10,5 @@ public record NoteDetailView(
     DateTimeOffset LastModifiedAt,
     DateOnly? Date = null,
     IReadOnlyList<string>? Tags = null,
-    string UserId = "");
+    string UserId = "",
+    string? TranscriptText = null);

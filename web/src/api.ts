@@ -24,6 +24,7 @@ export interface NoteDetail {
   content: string;
   date: string | null;
   tags: string[];
+  transcriptText: string | null;
 }
 
 export async function getNoteDetail(noteId: string): Promise<NoteDetail> {
@@ -281,5 +282,18 @@ export async function getTranscriptionCredentials(): Promise<TranscriptionCreden
   const res = await apiFetch(`${base}/transcription/credentials`);
   if (!res.ok) throw new Error(`GET /transcription/credentials failed: ${res.status}`);
   return res.json();
+}
+
+export async function completeTranscription(
+  noteId: string,
+  transcriptText: string,
+  durationSeconds: number
+): Promise<void> {
+  const res = await apiFetch(`${base}/notes/${noteId}/transcription`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ transcriptText, durationSeconds }),
+  });
+  if (!res.ok) throw new Error(`POST /notes/${noteId}/transcription failed: ${res.status}`);
 }
 
