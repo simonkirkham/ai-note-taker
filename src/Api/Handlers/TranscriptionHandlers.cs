@@ -1,4 +1,5 @@
 using Amazon.SecurityToken;
+using Domain.ActionItems;
 using Domain.Notes;
 using Api.CommandHandlers;
 using Api.Contracts;
@@ -29,6 +30,34 @@ public static class TranscriptionHandlers
         }
         catch (Exceptions.NoteNotFoundException) { return Results.NotFound(); }
         catch (InvalidOperationException) { return Results.NotFound(); }
+        return Results.NoContent();
+    }
+
+    public static async Task<IResult> AnalyseNote(
+        Guid noteId,
+        INoteCommandHandler noteHandler,
+        IActionItemCommandHandler actionHandler,
+        INoteDetailStore noteDetailStore,
+        IBedrockAnalysisService bedrockAnalysis,
+        ICurrentUser currentUser,
+        CancellationToken ct)
+    {
+        var detail = await noteDetailStore.GetAsync(new NoteId(noteId), ct);
+        if (detail is null || detail.UserId != currentUser.UserId) return Results.NotFound();
+        if (string.IsNullOrEmpty(detail.TranscriptText)) return Results.UnprocessableEntity();
+
+        var result = await bedrockAnalysis.AnalyseAsync(detail.TranscriptText, detail.Content ?? "", currentUser.Name, ct);
+
+        if (result.UpdatedContent != (detail.Content ?? ""))
+            await noteHandler.HandleAsync(new EditContent(new NoteId(noteId), result.UpdatedContent), ct);
+
+        var existingTags = detail.Tags ?? [];
+        foreach (var tag in result.NewTags.Where(t => !existingTags.Contains(t, StringComparer.OrdinalIgnoreCase)))
+            await noteHandler.HandleAsync(new TagNote(new NoteId(noteId), tag), ct);
+
+        foreach (var action in result.NewActionItems)
+            await actionHandler.HandleAsync(new AddActionItem(new ActionId(Guid.NewGuid()), new NoteId(noteId), action), ct);
+
         return Results.NoContent();
     }
 

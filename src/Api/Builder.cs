@@ -1,3 +1,4 @@
+using Amazon.BedrockRuntime;
 using Amazon.DynamoDBv2;
 using Amazon.SecurityToken;
 using EventStore;
@@ -96,6 +97,8 @@ public static class Builder
         builder.Services.AddSingleton<IGoogleCalendarClient, GoogleCalendarClient>();
         builder.Services.AddAWSService<IAmazonSecurityTokenService>();
         builder.Services.AddSingleton<IStsCredentialService, StsCredentialService>();
+        builder.Services.AddAWSService<IAmazonBedrockRuntime>();
+        builder.Services.AddSingleton<IBedrockAnalysisService, BedrockAnalysisService>();
         builder.Services.AddAWSLambdaHosting(LambdaEventSource.HttpApi);
 
         return builder.Build();

@@ -65,6 +65,9 @@ public sealed class ApiFactory : WebApplicationFactory<Program>
             services.AddScoped<ICurrentUser, FakeCurrentUser>();
             services.RemoveAll<IStsCredentialService>();
             services.AddSingleton<IStsCredentialService, FakeStsCredentialService>();
+            services.RemoveAll<IBedrockAnalysisService>();
+            services.AddSingleton<FakeBedrockAnalysisService>();
+            services.AddSingleton<IBedrockAnalysisService>(sp => sp.GetRequiredService<FakeBedrockAnalysisService>());
         });
     }
 

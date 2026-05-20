@@ -32,6 +32,7 @@ export default function NoteView({
   const [transcriptText, setTranscriptText] = useState<string | null>(null);
   const [loadingDetail, setLoadingDetail] = useState(true);
   const [notFound, setNotFound] = useState(false);
+  const [actionsKey, setActionsKey] = useState(0);
   const [showCancelDialog, setShowCancelDialog] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const confirmButtonRef = useRef<HTMLButtonElement>(null);
@@ -83,6 +84,18 @@ export default function NoteView({
   useEffect(() => {
     if (showCancelDialog) confirmButtonRef.current?.focus();
   }, [showCancelDialog]);
+
+  async function refreshNote() {
+    try {
+      const detail = await getNoteDetail(noteId);
+      setContent(detail.content);
+      if (detail.tags) setTags(detail.tags);
+      setTranscriptText(detail.transcriptText ?? null);
+      setActionsKey((k) => k + 1);
+    } catch {
+      // best-effort refresh; ignore errors
+    }
+  }
 
   async function handleAddTags(raw: string) {
     const tokens = raw.trim().split(/\s+/).filter(Boolean);
@@ -223,9 +236,9 @@ export default function NoteView({
         <div className="note-right-panel">
           <TagsSection tags={tags} allTags={allTags} onAdd={handleAddTags} onRemove={handleRemoveTag} />
           <div className="actions-section">
-            <ActionsSection noteId={noteId} onCountChange={setActionCount} />
+            <ActionsSection key={actionsKey} noteId={noteId} onCountChange={setActionCount} />
           </div>
-          <TranscriptionPanel noteId={noteId} initialTranscript={transcriptText} />
+          <TranscriptionPanel noteId={noteId} initialTranscript={transcriptText} onAnalysisComplete={refreshNote} />
         </div>
       </div>
     </main>

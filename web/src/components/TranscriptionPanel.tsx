@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { analyseNote } from '../api';
 import { useTranscription } from '../hooks/useTranscription';
 
 function formatTime(seconds: number): string {
@@ -10,15 +11,18 @@ function formatTime(seconds: number): string {
 export default function TranscriptionPanel({
   noteId,
   initialTranscript,
+  onAnalysisComplete,
 }: {
   noteId: string;
   initialTranscript?: string | null;
+  onAnalysisComplete?: () => void;
 }) {
   const { status, transcript, elapsedSeconds, error, startRecording, stopRecording, reset } =
     useTranscription(noteId);
 
   const transcriptRef = useRef<HTMLDivElement>(null);
   const [hasRecordedThisSession, setHasRecordedThisSession] = useState(false);
+  const [isAnalysing, setIsAnalysing] = useState(false);
 
   useEffect(() => {
     if (transcriptRef.current) {
@@ -29,6 +33,17 @@ export default function TranscriptionPanel({
   const isRecording = status === 'recording';
   const isRequesting = status === 'requestingCredentials';
   const showInitialTranscript = status === 'idle' && !!initialTranscript && !hasRecordedThisSession;
+  const canAnalyse = (status === 'stopped' || showInitialTranscript) && !isAnalysing;
+
+  async function handleAnalyse() {
+    setIsAnalysing(true);
+    try {
+      await analyseNote(noteId);
+      onAnalysisComplete?.();
+    } finally {
+      setIsAnalysing(false);
+    }
+  }
 
   return (
     <div className="transcription-panel" data-testid="transcription-panel">
@@ -92,6 +107,16 @@ export default function TranscriptionPanel({
             disabled={isRequesting}
           >
             Stop
+          </button>
+        )}
+        {canAnalyse && (
+          <button
+            className="transcription-analyse-button"
+            data-testid="transcription-analyse-button"
+            onClick={handleAnalyse}
+            disabled={isAnalysing}
+          >
+            {isAnalysing ? 'Analysing…' : 'Save & Analyse'}
           </button>
         )}
       </div>
