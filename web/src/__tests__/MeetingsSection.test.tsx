@@ -183,7 +183,7 @@ describe('MeetingsSection — Create Note button', () => {
     expect(screen.getByRole('button', { name: 'Open Note ↗' })).toBeInTheDocument()
   })
 
-  it('clicking Create Note calls the API and navigates to the new note', async () => {
+  it('clicking Create Note calls the API and navigates to the new note with isNew flag', async () => {
     server.use(
       http.get('/api/calendar/today', () =>
         HttpResponse.json({ meetings: [meeting2] }),
@@ -196,7 +196,7 @@ describe('MeetingsSection — Create Note button', () => {
     await screen.findByRole('button', { name: 'Create Note' })
     await userEvent.click(screen.getByRole('button', { name: 'Create Note' }))
 
-    await waitFor(() => expect(onOpenNote).toHaveBeenCalledWith('new-note-123', 'Team standup'))
+    await waitFor(() => expect(onOpenNote).toHaveBeenCalledWith('new-note-123', 'Team standup', true))
   })
 
   it('button shows Creating… while the request is in-flight', async () => {
