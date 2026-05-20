@@ -23,6 +23,25 @@ Approximate tokens consumed per slice, broken down by agent. Recorded by Scribe 
 
 ---
 
+## Slice 9-D — One-click create note from a meeting
+
+> **Note:** Session exhausted context and was auto-compacted. Exact per-agent counts unavailable. Figures below are estimates from the session summary.
+
+| Agent     | ~Tokens      |
+|-----------|--------------|
+| Scout     | —            |
+| Breaker   | 15 000       |
+| Pip       | 85 000       |
+| Stylist   | —            |
+| Hawk 1    | 45 000       |
+| Hawk 2    | 30 000       |
+| Scribe    | 5 000        |
+| **Total** | **~180 000** |
+
+**Why:** Two Hawk passes (75k combined) dominated cost. First pass found three issues: missing user-isolation in 409 guard (cross-user blocking), silent frontend errors (no catch block), and missing `onOpenNote` prop in component tests. Second pass found one more: `GET /calendar/today` leaking other users' `linkedNoteId`. All fixed; third pass approved. A post-merge CI failure (`onOpenNote` missing in `TagFilter.test.tsx`) required a follow-up fix commit — running `tsc -p tsconfig.test.json --noEmit` before push would have caught it.
+
+---
+
 ## Slice 3-A — Add action items on the note screen
 
 > **Note:** Session exhausted context and was auto-compacted. Exact per-agent counts unavailable. Figures below are estimates from the session summary.

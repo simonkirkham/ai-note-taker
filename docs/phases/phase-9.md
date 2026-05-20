@@ -392,7 +392,7 @@ Scenario: Deleting a note removes it from the CalendarLinkIndex
 
 ## Slice 9-D — One-click create note from a meeting
 
-**Status:** Not Started
+**Status:** Done
 
 **Value:** I can create a note for a meeting in one click. The note is pre-titled from the meeting title, dated to the meeting's date, and immediately linked to the calendar event. The meeting card updates to show "Open Note".
 
@@ -468,13 +468,13 @@ Scenario: Creating a note when one already exists returns 409
 
 **Acceptance criteria:**
 
-- [ ] `POST /notes/from-meeting` creates, renames, and links a note; returns `{ noteId }`
-- [ ] `POST /notes/from-meeting` with an already-linked `calendarEventId` returns 409
-- [ ] `GET /calendar/today` returns correct `linkedNoteId` after creation
-- [ ] "Create Note" button calls the endpoint; on success becomes "Open Note"
-- [ ] "Open Note" navigates to the note screen for the linked note
-- [ ] Note title is pre-populated from the meeting title
-- [ ] Note date is set to the meeting's `startTime` local date (`DateOnly.FromDateTime(startTime.ToLocalTime())`)
+- [x] `POST /notes/from-meeting` creates, renames, and links a note; returns `{ noteId }`
+- [x] `POST /notes/from-meeting` with an already-linked `calendarEventId` returns 409
+- [x] `GET /calendar/today` returns correct `linkedNoteId` after creation
+- [x] "Create Note" button calls the endpoint; on success becomes "Open Note"
+- [x] "Open Note" navigates to the note screen for the linked note
+- [x] Note title is pre-populated from the meeting title
+- [x] Note date is set to the meeting's `startTime` local date (`DateOnly.FromDateTime(startTime.LocalDateTime)`)
 - [ ] E2E: click "Create Note" on a meeting; card shows "Open Note"; click it — note screen opens with meeting title
 
 ---
