@@ -205,7 +205,7 @@ Scenario: Credentials endpoint requires authentication
 
 ## Slice 10-C — Persist transcript
 
-**Status:** Not Started
+**Status:** Done
 
 **Value:** Stop recording and reopen the note — the transcript is still there.
 

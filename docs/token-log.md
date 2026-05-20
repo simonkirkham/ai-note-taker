@@ -818,3 +818,24 @@ If no agent ran unexpectedly high: write `None — slice ran within expected ran
 - **Pip (–15 000):** The fake-timer + `findByRole` interaction is a known RTL pitfall. A project-level note (or a short section in the test setup file) documenting "use synchronous queries after `act(advanceTimers)`, not `findByRole`" would have short-circuited the diagnosis loop.
 - **Hawk (–0):** Single pass, both findings were genuine and caught early. No optimisation needed here.
 
+---
+
+## Slice 10-C — Persist transcript
+
+| Agent     | ~Tokens    |
+|-----------|------------|
+| Scout     | —          |
+| Breaker   | —          |
+| Pip       | 120 000    |
+| Stylist   | —          |
+| Hawk 1    | 60 000     |
+| Hawk 2    | 38 000     |
+| Scribe    | 4 000      |
+| **Total** | **~222 000** |
+
+**Why:** Two Hawk passes (98k combined) were needed. First pass found three important issues: missing `namespace Api.Contracts` on the contract file, unhandled `InvalidOperationException` producing 500 on a delete race, and stale `initialTranscript` shown after Reset. All three were fixed in one commit. Second pass approved cleanly (38k). A post-merge lint failure on `react-hooks/set-state-in-effect` required a follow-up fix PR (#80) — running `npm run lint` locally before push would have caught it.
+
+**Optimisation suggestions:**
+- **Pip (–25 000):** Three of Hawk's four findings are mechanical pre-PR checks: (1) verify all new `.cs` files in `src/Api/Contracts/` have their namespace; (2) verify every command handler catches both `NoteNotFoundException` and `InvalidOperationException`; (3) run `npm run lint` before pushing — the `react-hooks/set-state-in-effect` and `react-hooks/no-refs-in-render` rules would have surfaced both the effect-setState pattern and the ref-during-render pattern before CI.
+- **Hawk 1 (–20 000):** The missing namespace and exception gap are pre-PR checklist items, not review findings. Moving them upstream collapses two Hawk passes to one.
+
