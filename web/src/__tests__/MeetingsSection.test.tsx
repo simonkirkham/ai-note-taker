@@ -1,4 +1,5 @@
 import { render, screen, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { http, HttpResponse } from 'msw'
 import { server } from '../test/setup'
 import MeetingsSection from '../components/MeetingsSection'
@@ -25,11 +26,26 @@ const meeting2 = {
   hasNextOccurrenceNote: false,
 }
 
+function stubNotificationPermission(permission: NotificationPermission) {
+  Object.defineProperty(globalThis, 'Notification', {
+    configurable: true,
+    writable: true,
+    value: {
+      permission,
+      requestPermission: vi.fn().mockResolvedValue(permission),
+    },
+  })
+}
+
 function renderSection() {
   return render(<MeetingsSection />)
 }
 
-describe('MeetingsSection', () => {
+afterEach(() => {
+  vi.restoreAllMocks()
+})
+
+describe('MeetingsSection — meetings data', () => {
   it('shows meetings with title and time when calendar returns events', async () => {
     server.use(
       http.get('/api/calendar/today', () =>
@@ -98,5 +114,43 @@ describe('MeetingsSection', () => {
     // useState initialises with { status: 'loading' } before the useEffect fetch fires
     renderSection()
     expect(screen.getByText('Loading…')).toBeInTheDocument()
+  })
+})
+
+describe('MeetingsSection — notification banner', () => {
+  it('shows the banner when permission is default', () => {
+    stubNotificationPermission('default')
+    renderSection()
+    expect(screen.getByTestId('notification-banner')).toBeInTheDocument()
+  })
+
+  it('hides the banner when permission is granted', () => {
+    stubNotificationPermission('granted')
+    renderSection()
+    expect(screen.queryByTestId('notification-banner')).not.toBeInTheDocument()
+  })
+
+  it('hides the banner when permission is denied', () => {
+    stubNotificationPermission('denied')
+    renderSection()
+    expect(screen.queryByTestId('notification-banner')).not.toBeInTheDocument()
+  })
+
+  it('clicking Enable calls requestPermission and hides the banner', async () => {
+    stubNotificationPermission('default')
+    renderSection()
+    const enableBtn = screen.getByTestId('enable-notifications-button')
+    await userEvent.click(enableBtn)
+    expect(Notification.requestPermission).toHaveBeenCalledOnce()
+    expect(screen.queryByTestId('notification-banner')).not.toBeInTheDocument()
+  })
+
+  it('clicking ✕ hides the banner without calling requestPermission', async () => {
+    stubNotificationPermission('default')
+    renderSection()
+    const dismissBtn = screen.getByTestId('dismiss-notification-banner')
+    await userEvent.click(dismissBtn)
+    expect(screen.queryByTestId('notification-banner')).not.toBeInTheDocument()
+    expect(Notification.requestPermission).not.toHaveBeenCalled()
   })
 })
