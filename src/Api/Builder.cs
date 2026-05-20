@@ -89,6 +89,7 @@ public static class Builder
         builder.Services.AddSingleton<IDomainEventDispatcher, DomainEventDispatcher>();
         builder.Services.AddScoped<INoteCommandHandler, NoteCommandHandler>();
         builder.Services.AddScoped<IActionItemCommandHandler, ActionItemCommandHandler>();
+        builder.Services.AddScoped<ITodoCommandHandler, TodoCommandHandler>();
         builder.Services.AddScoped<IFolderCommandHandler, FolderCommandHandler>();
         builder.Services.AddScoped<IProjectionRebuildHandler, ProjectionRebuildHandler>();
         builder.Services.AddSingleton<IDynamoHealthCheck>(sp =>

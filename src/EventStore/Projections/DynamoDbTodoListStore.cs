@@ -1,6 +1,5 @@
 using Amazon.DynamoDBv2;
 using Amazon.DynamoDBv2.Model;
-using Domain.ActionItems;
 using Domain.Notes;
 
 namespace EventStore.Projections;
@@ -11,39 +10,73 @@ public sealed class DynamoDbTodoListStore(IAmazonDynamoDB dynamo, string tableNa
 
     public async Task PutAsync(TodoItem item, CancellationToken ct = default)
     {
+        var attrs = new Dictionary<string, AttributeValue>
+        {
+            ["PK"] = new() { S = item.ItemId },
+            ["Type"] = new() { S = item.Type },
+            ["Description"] = new() { S = item.Description },
+            ["AddedAt"] = new() { S = item.AddedAt.ToString("O") },
+            ["UserId"] = new() { S = item.UserId }
+        };
+
+        if (item.NoteId is not null)
+            attrs["NoteId"] = new() { S = item.NoteId };
+        if (item.NoteTitle is not null)
+            attrs["NoteTitle"] = new() { S = item.NoteTitle };
+        if (item.CompletedAt is not null)
+            attrs["CompletedAt"] = new() { S = item.CompletedAt.Value.ToString("O") };
+
         await dynamo.PutItemAsync(new PutItemRequest
         {
             TableName = tableName,
-            Item = new Dictionary<string, AttributeValue>
-            {
-                ["PK"] = new() { S = item.ActionId.Value.ToString() },
-                ["NoteId"] = new() { S = item.NoteId.Value.ToString() },
-                ["NoteTitle"] = new() { S = item.NoteTitle },
-                ["Description"] = new() { S = item.Description },
-                ["AddedAt"] = new() { S = item.AddedAt.ToString("O") },
-                ["UserId"] = new() { S = item.UserId }
-            }
+            Item = attrs
         }, ct).ConfigureAwait(false);
     }
 
-    public async Task DeleteAsync(ActionId actionId, CancellationToken ct = default)
+    public async Task UpdateCompletedAtAsync(string itemId, DateTimeOffset? completedAt, CancellationToken ct = default)
+    {
+        if (completedAt is not null)
+        {
+            await dynamo.UpdateItemAsync(new UpdateItemRequest
+            {
+                TableName = tableName,
+                Key = new Dictionary<string, AttributeValue> { ["PK"] = new() { S = itemId } },
+                UpdateExpression = "SET CompletedAt = :at",
+                ExpressionAttributeValues = new Dictionary<string, AttributeValue>
+                {
+                    [":at"] = new() { S = completedAt.Value.ToString("O") }
+                }
+            }, ct).ConfigureAwait(false);
+        }
+        else
+        {
+            await dynamo.UpdateItemAsync(new UpdateItemRequest
+            {
+                TableName = tableName,
+                Key = new Dictionary<string, AttributeValue> { ["PK"] = new() { S = itemId } },
+                UpdateExpression = "REMOVE CompletedAt"
+            }, ct).ConfigureAwait(false);
+        }
+    }
+
+    public async Task DeleteAsync(string itemId, CancellationToken ct = default)
     {
         await dynamo.DeleteItemAsync(new DeleteItemRequest
         {
             TableName = tableName,
             Key = new Dictionary<string, AttributeValue>
             {
-                ["PK"] = new() { S = actionId.Value.ToString() }
+                ["PK"] = new() { S = itemId }
             }
         }, ct).ConfigureAwait(false);
     }
 
     public async Task DeleteByNoteAsync(NoteId noteId, CancellationToken ct = default)
     {
-        var actionIds = await QueryActionIdsByNoteAsync(noteId, ct).ConfigureAwait(false);
-        for (var i = 0; i < actionIds.Count; i += 25)
+        var itemIds = await QueryItemIdsByNoteAsync(noteId, ct).ConfigureAwait(false);
+        for (var i = 0; i < itemIds.Count; i += 25)
         {
-            var batch = actionIds.Skip(i).Take(25)
+            var batch = itemIds.Skip(i).Take(25)
                 .Select(id => new WriteRequest
                 {
                     DeleteRequest = new DeleteRequest
@@ -60,8 +93,8 @@ public sealed class DynamoDbTodoListStore(IAmazonDynamoDB dynamo, string tableNa
 
     public async Task UpdateNoteTitleAsync(NoteId noteId, string newTitle, CancellationToken ct = default)
     {
-        var actionIds = await QueryActionIdsByNoteAsync(noteId, ct).ConfigureAwait(false);
-        foreach (var id in actionIds)
+        var itemIds = await QueryItemIdsByNoteAsync(noteId, ct).ConfigureAwait(false);
+        foreach (var id in itemIds)
         {
             await dynamo.UpdateItemAsync(new UpdateItemRequest
             {
@@ -89,14 +122,7 @@ public sealed class DynamoDbTodoListStore(IAmazonDynamoDB dynamo, string tableNa
                 ConsistentRead = true
             }, ct).ConfigureAwait(false);
 
-            items.AddRange(scan.Items.Select(row => new TodoItem(
-                new ActionId(Guid.Parse(row["PK"].S)),
-                new NoteId(Guid.Parse(row["NoteId"].S)),
-                row["NoteTitle"].S,
-                row["Description"].S,
-                DateTimeOffset.Parse(row["AddedAt"].S),
-                row.TryGetValue("UserId", out var uidAttr) ? uidAttr.S : "")));
-
+            items.AddRange(scan.Items.Select(ToTodoItem));
             lastKey = scan.LastEvaluatedKey?.Count > 0 ? scan.LastEvaluatedKey : null;
         }
         while (lastKey is not null);
@@ -104,9 +130,20 @@ public sealed class DynamoDbTodoListStore(IAmazonDynamoDB dynamo, string tableNa
         return new TodoListView(items.OrderBy(i => i.AddedAt).ToList().AsReadOnly());
     }
 
-    private async Task<List<string>> QueryActionIdsByNoteAsync(NoteId noteId, CancellationToken ct)
+    private static TodoItem ToTodoItem(Dictionary<string, AttributeValue> row) =>
+        new(
+            ItemId: row["PK"].S,
+            NoteId: row.TryGetValue("NoteId", out var nid) ? nid.S : null,
+            NoteTitle: row.TryGetValue("NoteTitle", out var nt) ? nt.S : null,
+            Type: row.TryGetValue("Type", out var t) ? t.S : "action",
+            Description: row["Description"].S,
+            AddedAt: DateTimeOffset.Parse(row["AddedAt"].S),
+            CompletedAt: row.TryGetValue("CompletedAt", out var ca) ? DateTimeOffset.Parse(ca.S) : null,
+            UserId: row.TryGetValue("UserId", out var uid) ? uid.S : "");
+
+    private async Task<List<string>> QueryItemIdsByNoteAsync(NoteId noteId, CancellationToken ct)
     {
-        var actionIds = new List<string>();
+        var itemIds = new List<string>();
         Dictionary<string, AttributeValue>? lastKey = null;
         do
         {
@@ -122,10 +159,10 @@ public sealed class DynamoDbTodoListStore(IAmazonDynamoDB dynamo, string tableNa
                 },
                 ExclusiveStartKey = lastKey
             }, ct).ConfigureAwait(false);
-            actionIds.AddRange(resp.Items.Select(row => row["PK"].S));
+            itemIds.AddRange(resp.Items.Select(row => row["PK"].S));
             lastKey = resp.LastEvaluatedKey?.Count > 0 ? resp.LastEvaluatedKey : null;
         }
         while (lastKey is not null);
-        return actionIds;
+        return itemIds;
     }
 }

@@ -3,6 +3,7 @@ using Domain;
 using Domain.ActionItems;
 using Domain.Folders;
 using Domain.Notes;
+using Domain.Todos;
 
 namespace EventStore;
 
@@ -30,6 +31,10 @@ public static class EventDeserializer
         (nameof(NoteUnfiled), _) => JsonSerializer.Deserialize<NoteUnfiled>(envelope.Payload)!,
         (nameof(NoteLinkedToCalendarEvent), _) => JsonSerializer.Deserialize<NoteLinkedToCalendarEvent>(envelope.Payload)!,
         (nameof(TranscriptionCompleted), _) => JsonSerializer.Deserialize<TranscriptionCompleted>(envelope.Payload)!,
+        (nameof(TodoAdded), _) => JsonSerializer.Deserialize<TodoAdded>(envelope.Payload)!,
+        (nameof(TodoCompleted), _) => JsonSerializer.Deserialize<TodoCompleted>(envelope.Payload)!,
+        (nameof(TodoReopened), _) => JsonSerializer.Deserialize<TodoReopened>(envelope.Payload)!,
+        (nameof(TodoDeleted), _) => JsonSerializer.Deserialize<TodoDeleted>(envelope.Payload)!,
         _ => throw new InvalidOperationException($"Unknown event type/version: {envelope.EventType} v{envelope.EventVersion}")
     };
 }
