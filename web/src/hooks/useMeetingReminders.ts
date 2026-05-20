@@ -9,11 +9,14 @@ export interface MeetingReminder {
 function fireReminder(meeting: MeetingReminder): void {
   if (typeof Notification !== "undefined" && Notification.permission === "granted") {
     new Notification(meeting.title, { body: "Your meeting is starting now" });
-  } else {
+  } else if (typeof Notification === "undefined" || Notification.permission === "denied") {
+    // Only fall back to alert for denied; "default" means not asked yet — skip silently.
     alert(`Reminder: "${meeting.title}" is starting now`);
   }
 }
 
+// Callers must pass a stable array reference (e.g. from state or a module-level const).
+// A new [] literal on every render will cause timers to be cleared and re-registered each time.
 export function useMeetingReminders(meetings: MeetingReminder[]): void {
   useEffect(() => {
     const now = Date.now();

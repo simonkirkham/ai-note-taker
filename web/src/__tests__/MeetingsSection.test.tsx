@@ -46,6 +46,7 @@ afterEach(() => {
 })
 
 describe('MeetingsSection — meetings data', () => {
+  beforeEach(() => stubNotificationPermission('granted'))
   it('shows meetings with title and time when calendar returns events', async () => {
     server.use(
       http.get('/api/calendar/today', () =>

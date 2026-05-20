@@ -92,7 +92,7 @@ describe('useMeetingReminders', () => {
     expect(alertSpy).toHaveBeenCalledWith(expect.stringContaining('Retro'))
   })
 
-  it('shows an in-app fallback (alert) when permission is default', () => {
+  it('does not fire alert when permission is default (user has not decided yet)', () => {
     vi.useFakeTimers()
     stubNotificationPermission('default')
     const alertSpy = vi.spyOn(globalThis, 'alert').mockImplementation(() => {})
@@ -104,8 +104,7 @@ describe('useMeetingReminders', () => {
 
     vi.runAllTimers()
 
-    expect(alertSpy).toHaveBeenCalledOnce()
-    expect(alertSpy).toHaveBeenCalledWith(expect.stringContaining('Demo'))
+    expect(alertSpy).not.toHaveBeenCalled()
   })
 
   it('clears timers on unmount', () => {

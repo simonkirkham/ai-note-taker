@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 import { CalendarMeeting, getTodaysMeetings } from "../api";
-import { useMeetingReminders } from "../hooks/useMeetingReminders";
+import { MeetingReminder, useMeetingReminders } from "../hooks/useMeetingReminders";
+
+const NO_MEETINGS: MeetingReminder[] = [];
 
 type State =
   | { status: "loading" }
@@ -29,7 +31,7 @@ export function MeetingsSection() {
     return () => { cancelled = true; };
   }, []);
 
-  const meetings = state.status === "loaded" ? state.meetings : [];
+  const meetings = state.status === "loaded" ? state.meetings : NO_MEETINGS;
   useMeetingReminders(meetings);
 
   const showBanner =
@@ -38,7 +40,11 @@ export function MeetingsSection() {
     Notification.permission === "default";
 
   async function handleEnable() {
-    await Notification.requestPermission();
+    try {
+      await Notification.requestPermission();
+    } catch {
+      // permission API unavailable; dismiss anyway
+    }
     setBannerDismissed(true);
   }
 
@@ -51,7 +57,7 @@ export function MeetingsSection() {
       {showBanner && (
         <div
           data-testid="notification-banner"
-          role="alert"
+          role="status"
           style={{
             background: "#2563eb",
             color: "#fff",
