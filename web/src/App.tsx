@@ -46,8 +46,14 @@ function removeFromTree(nodes: FolderNode[], folderId: string): FolderNode[] {
 }
 
 export default function App() {
-  const { idToken, signOut } = useAuth();
+  const { idToken, forbidden, signOut } = useAuth();
   if (!idToken) return <SignInPage />;
+  if (forbidden) return (
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100vh', gap: '1rem', fontFamily: 'sans-serif' }}>
+      <p style={{ fontSize: '1.1rem' }}>Your Google account doesn't have access to this app.</p>
+      <button onClick={signOut} style={{ padding: '0.5rem 1.25rem', cursor: 'pointer' }}>Sign out</button>
+    </div>
+  );
 
   return <AppContent signOut={signOut} />;
 }

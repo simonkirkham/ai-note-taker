@@ -1,4 +1,4 @@
-import { getToken } from './auth/tokenStore'
+import { getToken, triggerForbidden } from './auth/tokenStore'
 
 const base = "/api";
 
@@ -6,7 +6,10 @@ function apiFetch(url: string, init?: RequestInit): Promise<Response> {
   const token = getToken()
   const headers = new Headers(init?.headers)
   if (token) headers.set('Authorization', `Bearer ${token}`)
-  return fetch(url, { ...init, headers })
+  return fetch(url, { ...init, headers }).then(res => {
+    if (res.status === 403) triggerForbidden()
+    return res
+  })
 }
 
 export interface NoteItem {

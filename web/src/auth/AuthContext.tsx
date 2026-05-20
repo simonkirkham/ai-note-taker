@@ -1,15 +1,17 @@
 import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from 'react'
 import { buildAuthUrl, exchangeCode, generateCodeChallenge, generateCodeVerifier } from './pkce'
-import { clearToken, setToken } from './tokenStore'
+import { clearToken, setToken, setOnForbidden } from './tokenStore'
 
 interface AuthState {
   idToken: string | null
+  forbidden: boolean
   signIn: () => Promise<void>
   signOut: () => void
 }
 
 export const AuthContext = createContext<AuthState>({
   idToken: null,
+  forbidden: false,
   signIn: async () => {},
   signOut: () => {},
 })
@@ -25,7 +27,15 @@ export function AuthProvider({
   // gate so local dev and E2E tests work without real Google credentials.
   const clientId = import.meta.env.VITE_GOOGLE_CLIENT_ID ?? ''
   const [idToken, setIdToken] = useState<string | null>(initialToken ?? (clientId ? null : 'no-auth'))
+  const [forbidden, setForbidden] = useState(false)
   const mounted = useRef(false)
+
+  useEffect(() => {
+    setOnForbidden(() => {
+      clearToken()
+      setForbidden(true)
+    })
+  }, [])
 
   useEffect(() => {
     if (mounted.current) return
@@ -70,11 +80,12 @@ export function AuthProvider({
 
   function signOut() {
     clearToken()
+    setForbidden(false)
     setIdToken(clientId ? null : 'no-auth')
   }
 
   return (
-    <AuthContext.Provider value={{ idToken, signIn, signOut }}>
+    <AuthContext.Provider value={{ idToken, forbidden, signIn, signOut }}>
       {children}
     </AuthContext.Provider>
   )
