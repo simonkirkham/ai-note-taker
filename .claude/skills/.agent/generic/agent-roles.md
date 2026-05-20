@@ -178,6 +178,8 @@ Hawk round-trips are expensive (~8–35k tokens each). Catch the common findings
 4. **Frontend lint** — if any `web/src/` files were changed, run `npm --prefix web run lint` and `npm --prefix web run build`. Fix all errors before opening the PR.
 5. **Task.WhenAll isolation** — any `Task.WhenAll` over per-item external calls (DynamoDB, HTTP, etc.) must wrap each item in an `async` lambda with a try/catch that returns null on failure. A bare `Task.WhenAll` turns one item's error into a 500 for the entire response.
 6. **CancellationToken propagation** — every handler or endpoint method that accepts `CancellationToken ct` must pass it to every store call and nested handler call. Silently dropping `ct` opts out of cancellation and can mask connection timeouts.
+7. **Contract file namespaces** — every new `.cs` file in `src/Api/Contracts/` must open with `namespace Api.Contracts;`. A missing namespace compiles (implicit global using) but breaks conventions and requires a follow-up `using` directive in every consumer.
+8. **Command handler exception coverage** — every endpoint that dispatches a Note command must catch both `Exceptions.NoteNotFoundException` and `InvalidOperationException`, mapping both to 404. The aggregate throws `InvalidOperationException` for rejected commands (note deleted, note not found at dispatch time). Check the aggregate's `Handle` method to confirm which exceptions it throws before writing the catch list.
 
 **Step 2 — Run local validation and signal Hawk:**
 
