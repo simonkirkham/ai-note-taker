@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { http, HttpResponse } from 'msw'
 import { server } from '../test/setup'
 import TranscriptionPanel from '../components/TranscriptionPanel'
+import { TranscribeStreamingClient } from '@aws-sdk/client-transcribe-streaming'
 
 // ── Transcribe SDK mock ───────────────────────────────────────────
 // Each test gets a fresh deferred that controls when the transcript stream emits.
@@ -228,4 +229,55 @@ it('Reset button returns to idle state', async () => {
 
   await userEvent.click(screen.getByTestId('transcription-reset-button'))
   expect(screen.getByText('Press Record to start transcribing')).toBeInTheDocument()
+})
+
+// Scenario: Reset after recording with saved transcript shows placeholder, not stale text
+it('shows placeholder after Reset even when initialTranscript is set', async () => {
+  stubBrowserApis()
+  server.use(
+    http.get('/api/transcription/credentials', () => new HttpResponse(null, { status: 401 })),
+  )
+
+  render(<TranscriptionPanel noteId="note-1" initialTranscript="Old saved text" />)
+  expect(screen.getByTestId('transcription-text')).toHaveTextContent('Old saved text')
+
+  await userEvent.click(screen.getByTestId('transcription-record-button'))
+  await waitFor(() => expect(screen.getByTestId('transcription-reset-button')).toBeInTheDocument())
+
+  await userEvent.click(screen.getByTestId('transcription-reset-button'))
+  expect(screen.getByText('Press Record to start transcribing')).toBeInTheDocument()
+  expect(screen.queryByText('Old saved text')).toBeNull()
+})
+
+// Scenario: Natural end-of-stream also calls completeTranscription
+it('calls completeTranscription when the stream ends naturally', async () => {
+  stubBrowserApis()
+
+  let completionBody: unknown = null
+  server.use(
+    http.post('/api/notes/note-1/transcription', async ({ request }) => {
+      completionBody = await request.json()
+      return new HttpResponse(null, { status: 204 })
+    }),
+  )
+
+  vi.mocked(TranscribeStreamingClient).mockImplementationOnce(() => ({
+    send: vi.fn().mockResolvedValue({
+      TranscriptResultStream: (async function* () {
+        yield {
+          TranscriptEvent: {
+            Transcript: {
+              Results: [{ IsPartial: false, Alternatives: [{ Transcript: 'Natural end text' }] }],
+            },
+          },
+        }
+        // stream ends naturally here
+      })(),
+    }),
+  }) as unknown as TranscribeStreamingClient)
+
+  render(<TranscriptionPanel noteId="note-1" />)
+  await userEvent.click(screen.getByTestId('transcription-record-button'))
+
+  await waitFor(() => expect(completionBody).toMatchObject({ transcriptText: 'Natural end text' }), { timeout: 3000 })
 })

@@ -82,6 +82,29 @@ public sealed class TranscriptionPersistenceTests(ApiFactory factory) : IClassFi
     }
 
     [Fact]
+    public async Task PostTranscription_DeletedNote_Returns404()
+    {
+        var noteId = await CreateNoteAsync();
+        await _client.DeleteAsync($"/notes/{noteId}");
+
+        var resp = await _client.PostAsync($"/notes/{noteId}/transcription",
+            Json(new { transcriptText = "text", durationSeconds = 1 }));
+
+        Assert.Equal(HttpStatusCode.NotFound, resp.StatusCode);
+    }
+
+    [Fact]
+    public async Task PostTranscription_EmptyTranscriptText_Returns422()
+    {
+        var noteId = await CreateNoteAsync();
+
+        var resp = await _client.PostAsync($"/notes/{noteId}/transcription",
+            Json(new { transcriptText = "", durationSeconds = 1 }));
+
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, resp.StatusCode);
+    }
+
+    [Fact]
     public async Task PostTranscription_Unauthenticated_Returns401()
     {
         var client = factory.CreateUnauthenticatedClient();

@@ -1,6 +1,7 @@
 using Amazon.SecurityToken;
 using Domain.Notes;
 using Api.CommandHandlers;
+using Api.Contracts;
 using Api.Services;
 using EventStore.Projections;
 using Api.Auth;
@@ -18,6 +19,7 @@ public static class TranscriptionHandlers
         ICurrentUser currentUser,
         CancellationToken ct)
     {
+        if (string.IsNullOrWhiteSpace(req.TranscriptText)) return Results.UnprocessableEntity();
         var detail = await noteDetailStore.GetAsync(new NoteId(noteId), ct);
         if (detail is null || detail.UserId != currentUser.UserId) return Results.NotFound();
         try
@@ -26,6 +28,7 @@ public static class TranscriptionHandlers
                 new Domain.Notes.CompleteTranscription(new NoteId(noteId), req.TranscriptText, req.DurationSeconds), ct);
         }
         catch (Exceptions.NoteNotFoundException) { return Results.NotFound(); }
+        catch (InvalidOperationException) { return Results.NotFound(); }
         return Results.NoContent();
     }
 
