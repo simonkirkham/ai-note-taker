@@ -396,6 +396,8 @@ Scenario: Deleting a note removes it from the CalendarLinkIndex
 
 **Value:** I can create a note for a meeting in one click. The note is pre-titled from the meeting title and immediately linked to the calendar event. The meeting card updates to show "Open Note".
 
+**Note:** The "Create Note" and "Open Note ↗" buttons are currently rendered in `MeetingsSection.tsx` without `onClick` handlers — they were wired up visually by the Stylist pass but have no backing implementation until this slice lands. Clicking them does nothing.
+
 **Commands in scope:** `CreateNote` + `RenameNote` + `LinkNoteToCalendarEvent` — issued in sequence by the handler; no new commands needed.
 
 **API endpoint:**
@@ -677,3 +679,4 @@ Scenario: Lambda has read-write access to the CalendarLinkIndex table
 - **Link an existing note to a meeting** — the domain supports it (`LinkNoteToCalendarEvent` on any note), but the UX for doing this from the note screen is not in scope.
 - **Unlink a note from a calendar event** — deferred.
 - **Calendar event details on the note screen** — show meeting time and attendees when a note is calendar-linked. Deferred.
+- **Calendar data refreshes on every home-screen mount** — `MeetingsSection` re-fetches on every navigation back to home because it has no shared state or cache. Likely acceptable (data stays fresh) but may feel slow on poor connections. **Parked — check back after 9-D lands to see if the latency is noticeable in practice.**
