@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef } from 'react'
 import { attemptSilentRefresh } from './silentRefresh'
 
-const REFRESH_LEAD_MS = 5 * 60 * 1000
+export const REFRESH_LEAD_MS = 5 * 60 * 1000
 
 export function getExp(token: string): number | null {
   try {

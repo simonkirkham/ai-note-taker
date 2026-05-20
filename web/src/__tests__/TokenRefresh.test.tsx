@@ -173,6 +173,102 @@ describe('session-expired banner', () => {
   })
 })
 
+// ─── Tab visibility change ────────────────────────────────────────────────────
+
+describe('tab visibility change', () => {
+  beforeEach(() => {
+    vi.useFakeTimers()
+    vi.stubEnv('VITE_GOOGLE_CLIENT_ID', 'test-client-id')
+    vi.mocked(silentRefreshMod.attemptSilentRefresh).mockResolvedValue(null)
+    Object.defineProperty(document, 'visibilityState', { value: 'visible', configurable: true, writable: true })
+  })
+  afterEach(() => {
+    vi.useRealTimers()
+    vi.unstubAllEnvs()
+  })
+
+  function fireVisibilityChange() {
+    document.dispatchEvent(new Event('visibilitychange'))
+  }
+
+  it('shows banner when tab wakes with an expired token (timer was throttled)', async () => {
+    const token = makeToken(65)
+    render(<AuthProvider initialToken={token}><App /></AuthProvider>)
+
+    // Advance system clock past expiry WITHOUT firing timers (simulates background throttling)
+    vi.setSystemTime(new Date(Date.now() + 66 * 60 * 1000))
+
+    await act(async () => { fireVisibilityChange() })
+
+    expect(screen.getByRole('button', { name: /sign in again/i })).toBeInTheDocument()
+    expect(silentRefreshMod.attemptSilentRefresh).not.toHaveBeenCalled()
+  })
+
+  it('attempts immediate refresh when tab wakes with token near expiry', async () => {
+    vi.mocked(silentRefreshMod.attemptSilentRefresh).mockResolvedValue(null)
+    const token = makeToken(10) // expires in 10 min → timer set for 5 min
+    render(<AuthProvider initialToken={token}><App /></AuthProvider>)
+
+    // Advance clock 6 min without firing timers — now 4 min remain (< 5 min lead)
+    vi.setSystemTime(new Date(Date.now() + 6 * 60 * 1000))
+
+    await act(async () => { fireVisibilityChange() })
+
+    expect(silentRefreshMod.attemptSilentRefresh).toHaveBeenCalledOnce()
+  })
+
+  it('does nothing when tab wakes with a token that has no exp claim', async () => {
+    // A token without exp (e.g. a service account token) should not trigger refresh or banner
+    const header = btoa(JSON.stringify({ alg: 'RS256', typ: 'JWT' }))
+    const payload = btoa(JSON.stringify({ sub: 'user-1' })) // no exp
+    const noExpToken = `${header}.${payload}.fake-sig`
+    render(<AuthProvider initialToken={noExpToken}><App /></AuthProvider>)
+
+    await act(async () => { fireVisibilityChange() })
+
+    expect(silentRefreshMod.attemptSilentRefresh).not.toHaveBeenCalled()
+    expect(screen.queryByRole('button', { name: /sign in again/i })).not.toBeInTheDocument()
+  })
+
+  it('does nothing when tab wakes with a token with plenty of time remaining', async () => {
+    const token = makeToken(60) // expires in 60 min — well outside the 5-min window
+    render(<AuthProvider initialToken={token}><App /></AuthProvider>)
+
+    await act(async () => { fireVisibilityChange() })
+
+    expect(silentRefreshMod.attemptSilentRefresh).not.toHaveBeenCalled()
+    expect(screen.queryByRole('button', { name: /sign in again/i })).not.toBeInTheDocument()
+  })
+})
+
+// ─── Pre-flight expiry guard in apiFetch ──────────────────────────────────────
+
+describe('pre-flight expiry guard in apiFetch', () => {
+  beforeEach(() => vi.stubEnv('VITE_GOOGLE_CLIENT_ID', 'test-client-id'))
+  afterEach(() => vi.unstubAllEnvs())
+
+  it('shows banner and does not call fetch when token is expired mid-session', async () => {
+    // Render with a valid token to let AuthProvider set up its callbacks
+    const validToken = makeToken(65)
+    render(<AuthProvider initialToken={validToken}><App /></AuthProvider>)
+    await screen.findByTestId('sidebar-toggle')
+
+    // Replace with an expired token (simulates expiry during an active session)
+    const expiredToken = makeToken(-5)
+    setToken(expiredToken)
+
+    const fetchSpy = vi.spyOn(window, 'fetch')
+
+    // Trigger an action that causes an API call (clicking New Note calls POST /notes)
+    await act(async () => {
+      screen.getByTestId('new-note-button').click()
+    })
+
+    expect(fetchSpy).not.toHaveBeenCalled()
+    expect(screen.getByRole('button', { name: /sign in again/i })).toBeInTheDocument()
+  })
+})
+
 // ─── SessionExpiredBanner component (no fake timers) ──────────────────────────
 
 describe('SessionExpiredBanner component', () => {

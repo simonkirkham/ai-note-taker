@@ -1,7 +1,8 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react'
 import { buildAuthUrl, exchangeCode, generateCodeChallenge, generateCodeVerifier } from './pkce'
 import { clearToken, loadPersistedToken, setToken, setOnForbidden, setOnUnauthorized } from './tokenStore'
-import { getExp, useGoogleAuth } from './useGoogleAuth'
+import { getExp, REFRESH_LEAD_MS, useGoogleAuth } from './useGoogleAuth'
+import { attemptSilentRefresh } from './silentRefresh'
 
 interface AuthState {
   idToken: string | null
@@ -34,6 +35,9 @@ export function AuthProvider({
   const [forbidden, setForbidden] = useState(false)
   const [sessionExpired, setSessionExpired] = useState(false)
   const mounted = useRef(false)
+  // Forward ref so handleRefreshFailure can call cancelRefresh without a circular dep:
+  // handleRefreshFailure is declared before useGoogleAuth returns cancelRefresh.
+  const cancelRefreshRef = useRef<() => void>(() => {})
 
   const handleRefreshSuccess = useCallback((token: string) => {
     setToken(token)
@@ -42,6 +46,7 @@ export function AuthProvider({
   }, [])
 
   const handleRefreshFailure = useCallback(() => {
+    cancelRefreshRef.current()
     clearToken()
     setIdToken(null)
     setSessionExpired(true)
@@ -52,6 +57,10 @@ export function AuthProvider({
     onRefreshSuccess: handleRefreshSuccess,
     onRefreshFailure: handleRefreshFailure,
   })
+
+  // cancelRefresh is a stable useCallback (no deps), but we populate the ref after
+  // useGoogleAuth so handleRefreshFailure can call it without a circular initialisation.
+  useEffect(() => { cancelRefreshRef.current = cancelRefresh }, [cancelRefresh])
 
   useEffect(() => {
     if (persisted) setToken(persisted)
@@ -73,6 +82,30 @@ export function AuthProvider({
     const exp = getExp(idToken)
     if (exp) scheduleRefresh(exp)
   }, [idToken, clientId, scheduleRefresh])
+
+  // Recheck token when the tab becomes visible — the refresh timer may have been
+  // throttled while the tab was backgrounded, leaving an expired token in memory.
+  useEffect(() => {
+    if (!clientId || !idToken || idToken === 'no-auth') return
+
+    function onVisibilityChange() {
+      if (document.visibilityState !== 'visible') return
+      const exp = getExp(idToken!) // safe: effect guard above ensures idToken is a non-null string
+      if (!exp) return
+      const remaining = exp * 1000 - Date.now()
+      if (remaining <= 0) {
+        handleRefreshFailure()
+      } else if (remaining < REFRESH_LEAD_MS) {
+        attemptSilentRefresh(clientId).then(newToken => {
+          if (newToken) handleRefreshSuccess(newToken)
+          else handleRefreshFailure()
+        }).catch(() => handleRefreshFailure())
+      }
+    }
+
+    document.addEventListener('visibilitychange', onVisibilityChange)
+    return () => document.removeEventListener('visibilitychange', onVisibilityChange)
+  }, [clientId, idToken, handleRefreshSuccess, handleRefreshFailure])
 
   useEffect(() => {
     if (mounted.current) return
