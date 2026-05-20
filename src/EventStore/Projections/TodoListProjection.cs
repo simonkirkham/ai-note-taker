@@ -18,14 +18,8 @@ public sealed class TodoListProjection
                 break;
             case NoteRenamed e:
                 _noteTitles[e.NoteId] = e.NewTitle;
-                if (_state.Any(kvp => kvp.Value.NoteId == e.NoteId.Value.ToString()))
-                {
-                    foreach (var key in _state.Where(kvp => kvp.Value.NoteId == e.NoteId.Value.ToString()).Select(kvp => kvp.Key).ToList())
-                    {
-                        var s = _state[key];
-                        _state[key] = s with { NoteTitle = e.NewTitle };
-                    }
-                }
+                foreach (var key in _state.Where(kvp => kvp.Value.NoteId == e.NoteId.Value.ToString()).Select(kvp => kvp.Key).ToList())
+                    _state[key] = _state[key] with { NoteTitle = e.NewTitle };
                 break;
             case NoteDeleted e:
                 _noteTitles.Remove(e.NoteId);
@@ -62,8 +56,6 @@ public sealed class TodoListProjection
                 break;
             case TodoDeleted e:
                 _state.Remove(e.TodoId.Value.ToString());
-                break;
-            default:
                 break;
         }
     }

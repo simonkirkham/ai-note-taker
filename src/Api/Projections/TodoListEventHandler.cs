@@ -2,8 +2,8 @@ using Domain.Notes;
 using Domain.Todos;
 using EventStore;
 using EventStore.Projections;
-
 using Api.EventHandlers;
+
 namespace Api.Projections;
 
 public sealed class TodoListEventHandler(ITodoListStore store) : IDomainEventHandler
