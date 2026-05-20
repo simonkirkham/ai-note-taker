@@ -183,7 +183,7 @@ Scenario: Banner is not shown when permission is already granted or denied
 
 ## Slice 9-B — Google Calendar API pass-through
 
-**Status:** Not Started
+**Status:** Done
 
 **Value:** Today's meetings appear on the home screen, fetched live from Google Calendar. `linkedNoteId` is always `null` in this slice — the link index comes in 9-C.
 
@@ -294,12 +294,12 @@ Scenario: GET /calendar/today without tz returns 400
 
 **Acceptance criteria:**
 
-- [ ] `IGoogleCalendarClient` is injectable; `FakeGoogleCalendarClient` used in all tests
-- [ ] `GET /calendar/today?tz=Europe/London` returns today's meetings in start-time order
-- [ ] `GET /calendar/today` without `tz` returns 400
-- [ ] `GET /calendar/today` when Google is unreachable returns `{ "error": "calendar_unavailable" }` with 200
-- [ ] All meetings have `linkedNoteId: null` and `hasNextOccurrenceNote: false` in this slice
-- [ ] `<MeetingsSection />` renders meetings, empty state, and error state correctly
+- [x] `IGoogleCalendarClient` is injectable; `FakeGoogleCalendarClient` used in all tests
+- [x] `GET /calendar/today?tz=Europe/London` returns today's meetings in start-time order
+- [x] `GET /calendar/today` without `tz` returns 400
+- [x] `GET /calendar/today` when Google is unreachable returns `{ "error": "calendar_unavailable" }` with 200
+- [x] All meetings have `linkedNoteId: null` and `hasNextOccurrenceNote: false` in this slice
+- [x] `<MeetingsSection />` renders meetings, empty state, and error state correctly
 
 ---
 

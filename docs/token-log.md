@@ -632,6 +632,25 @@ If no agent ran unexpectedly high: write `None — slice ran within expected ran
 
 ---
 
+## Slice 9-B — Google Calendar API pass-through
+
+| Agent     | ~Tokens     |
+| --------- | ----------- |
+| Scout     | —           |
+| Breaker   | —           |
+| Pip       | 95 000      |
+| Hawk      | 45 000      |
+| Scribe    | 5 000       |
+| **Total** | **~145 000** |
+
+**Why:** Hawk made two passes (10 findings first pass → all fixed → approved). Root causes: (1) Google SDK `Items` null behaviour is not in any local skill doc; (2) all-day event timezone parsing is a subtle edge case; (3) IDisposable leak is easy to miss with unfamiliar SDK. All five blocking fixes were correct on first attempt; no fix-revert cycle.
+
+**Optimisation suggestions:**
+- **Pip (–10 000):** The `events.Items ?? []` null guard and `using var` disposal are both defensive patterns for Google SDK types. Adding a `google-calendar-sdk` section to the cdk-stack-update skill (or a new google-apis skill) would surface these before Hawk.
+- **Hawk (–15 000):** Both passes could be compressed to one if Breaker's spec includes a checklist item: "all-day events have `Date` not `DateTime` — test the timezone boundary explicitly."
+
+---
+
 ## Slice 9-G — CDK wiring (CalendarLinkIndex table + SSM grant)
 
 | Agent     | ~Tokens    |
