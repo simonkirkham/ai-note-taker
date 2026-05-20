@@ -1,11 +1,15 @@
+using Api.CommandHandlers;
+using Api.Contracts;
+using Api.Auth;
 using Api.Services;
+using Domain.Notes;
 using EventStore.Projections;
 
 namespace Api.Handlers;
 
 public static class CalendarHandlers
 {
-    public static async Task<IResult> GetTodaysMeetings(string? tz, IGoogleCalendarClient calendar, ICalendarLinkIndexStore calendarLinkStore)
+    public static async Task<IResult> GetTodaysMeetings(string? tz, IGoogleCalendarClient calendar, ICalendarLinkIndexStore calendarLinkStore, ICurrentUser currentUser)
     {
         if (string.IsNullOrWhiteSpace(tz))
             return Results.BadRequest(new { error = "tz parameter is required" });
@@ -24,7 +28,7 @@ public static class CalendarHandlers
                 catch { return null; }
             }));
         var linkMap = links
-            .Where(l => l is not null)
+            .Where(l => l is not null && l.UserId == currentUser.UserId)
             .ToDictionary(l => l!.CalendarEventId, l => l!.NoteId);
 
         var meetings = events.OrderBy(e => e.StartTime).Select(e => new
@@ -40,5 +44,25 @@ public static class CalendarHandlers
         });
 
         return Results.Ok(new { meetings });
+    }
+
+    public static async Task<IResult> CreateNoteFromMeeting(
+        CreateNoteFromMeetingRequest req,
+        INoteCommandHandler handler,
+        ICalendarLinkIndexStore calendarLinkStore,
+        ICurrentUser currentUser,
+        CancellationToken ct)
+    {
+        var existing = await calendarLinkStore.GetByCalendarEventIdAsync(req.CalendarEventId, ct);
+        if (existing is not null && existing.UserId == currentUser.UserId) return Results.Conflict();
+
+        var noteId = new NoteId(Guid.NewGuid());
+        await handler.HandleAsync(new CreateNote(noteId), ct);
+        await handler.HandleAsync(new RenameNote(noteId, req.Title), ct);
+        await handler.HandleAsync(new SetNoteDate(noteId, DateOnly.FromDateTime(req.StartTime.LocalDateTime)), ct);
+        await handler.HandleAsync(new LinkNoteToCalendarEvent(noteId, req.CalendarEventId, req.Title,
+            req.StartTime, req.EndTime, req.IsRecurring, req.RecurringSeriesId), ct);
+
+        return Results.Created($"/notes/{noteId.Value}", new { noteId = noteId.Value });
     }
 }

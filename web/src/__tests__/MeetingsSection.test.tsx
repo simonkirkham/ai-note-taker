@@ -37,8 +37,8 @@ function stubNotificationPermission(permission: NotificationPermission) {
   })
 }
 
-function renderSection() {
-  return render(<MeetingsSection />)
+function renderSection(onOpenNote = vi.fn()) {
+  return { onOpenNote, ...render(<MeetingsSection onOpenNote={onOpenNote} />) }
 }
 
 afterEach(() => {
@@ -153,5 +153,97 @@ describe('MeetingsSection — notification banner', () => {
     await userEvent.click(dismissBtn)
     expect(screen.queryByTestId('notification-banner')).not.toBeInTheDocument()
     expect(Notification.requestPermission).not.toHaveBeenCalled()
+  })
+})
+
+describe('MeetingsSection — Create Note button', () => {
+  beforeEach(() => stubNotificationPermission('granted'))
+
+  it('shows Create Note when linkedNoteId is null', async () => {
+    server.use(
+      http.get('/api/calendar/today', () =>
+        HttpResponse.json({ meetings: [meeting2] }),
+      ),
+    )
+    renderSection()
+    await screen.findByText('Team standup')
+    expect(screen.getByRole('button', { name: 'Create Note' })).toBeInTheDocument()
+  })
+
+  it('shows Open Note when linkedNoteId is set', async () => {
+    server.use(
+      http.get('/api/calendar/today', () =>
+        HttpResponse.json({ meetings: [{ ...meeting2, linkedNoteId: 'note-abc' }] }),
+      ),
+    )
+    renderSection()
+    await screen.findByText('Team standup')
+    expect(screen.getByRole('button', { name: 'Open Note ↗' })).toBeInTheDocument()
+  })
+
+  it('clicking Create Note calls the API and navigates to the new note', async () => {
+    server.use(
+      http.get('/api/calendar/today', () =>
+        HttpResponse.json({ meetings: [meeting2] }),
+      ),
+      http.post('/api/notes/from-meeting', () =>
+        HttpResponse.json({ noteId: 'new-note-123' }, { status: 201 }),
+      ),
+    )
+    const { onOpenNote } = renderSection()
+    await screen.findByRole('button', { name: 'Create Note' })
+    await userEvent.click(screen.getByRole('button', { name: 'Create Note' }))
+
+    await waitFor(() => expect(onOpenNote).toHaveBeenCalledWith('new-note-123'))
+  })
+
+  it('button shows Creating… while the request is in-flight', async () => {
+    let resolve: (v: Response) => void
+    server.use(
+      http.get('/api/calendar/today', () =>
+        HttpResponse.json({ meetings: [meeting2] }),
+      ),
+      http.post('/api/notes/from-meeting', () =>
+        new Promise<Response>((res) => { resolve = res }),
+      ),
+    )
+    renderSection()
+    await screen.findByRole('button', { name: 'Create Note' })
+    await userEvent.click(screen.getByRole('button', { name: 'Create Note' }))
+
+    expect(screen.getByRole('button', { name: 'Creating…' })).toBeInTheDocument()
+    resolve!(HttpResponse.json({ noteId: 'n1' }, { status: 201 }) as unknown as Response)
+  })
+
+  it('clicking Open Note calls onOpenNote with the linked noteId', async () => {
+    server.use(
+      http.get('/api/calendar/today', () =>
+        HttpResponse.json({ meetings: [{ ...meeting2, linkedNoteId: 'note-xyz' }] }),
+      ),
+    )
+    const { onOpenNote } = renderSection()
+    await screen.findByRole('button', { name: 'Open Note ↗' })
+    await userEvent.click(screen.getByRole('button', { name: 'Open Note ↗' }))
+
+    expect(onOpenNote).toHaveBeenCalledWith('note-xyz')
+  })
+
+  it('shows an inline error when note creation fails', async () => {
+    server.use(
+      http.get('/api/calendar/today', () =>
+        HttpResponse.json({ meetings: [meeting2] }),
+      ),
+      http.post('/api/notes/from-meeting', () =>
+        HttpResponse.json({ error: 'server_error' }, { status: 500 }),
+      ),
+    )
+    renderSection()
+    await screen.findByRole('button', { name: 'Create Note' })
+    await userEvent.click(screen.getByRole('button', { name: 'Create Note' }))
+
+    await waitFor(() =>
+      expect(screen.getByTestId(`create-error-${meeting2.calendarEventId}`)).toBeInTheDocument(),
+    )
+    expect(screen.getByRole('button', { name: 'Create Note' })).toBeEnabled()
   })
 })

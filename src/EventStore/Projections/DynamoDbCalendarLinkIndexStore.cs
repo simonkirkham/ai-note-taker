@@ -39,7 +39,8 @@ public sealed class DynamoDbCalendarLinkIndexStore(IAmazonDynamoDB dynamo, strin
         {
             ["CalendarEventId"] = new() { S = view.CalendarEventId },
             ["NoteId"] = new() { S = view.NoteId },
-            ["StartTime"] = new() { S = view.StartTime.ToString("O") }
+            ["StartTime"] = new() { S = view.StartTime.ToString("O") },
+            ["UserId"] = new() { S = view.UserId }
         };
         if (view.RecurringSeriesId is not null)
             item["RecurringSeriesId"] = new() { S = view.RecurringSeriesId };
@@ -82,6 +83,7 @@ public sealed class DynamoDbCalendarLinkIndexStore(IAmazonDynamoDB dynamo, strin
             CalendarEventId: item["CalendarEventId"].S,
             NoteId: item["NoteId"].S,
             RecurringSeriesId: item.TryGetValue("RecurringSeriesId", out var rid) ? rid.S : null,
-            StartTime: DateTimeOffset.Parse(item["StartTime"].S)
+            StartTime: DateTimeOffset.Parse(item["StartTime"].S),
+            UserId: item.TryGetValue("UserId", out var uid) ? uid.S : string.Empty
         );
 }

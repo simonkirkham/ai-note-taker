@@ -12,6 +12,7 @@ export default function ListView({
   createError,
   onNewNote,
   onEditNote,
+  onOpenNote,
   folderPath,
   currentFolderId,
   onHome,
@@ -22,6 +23,7 @@ export default function ListView({
   createError: string | null;
   onNewNote: () => void;
   onEditNote: (noteId: string) => void;
+  onOpenNote: (noteId: string) => void;
   folderPath?: string[];
   currentFolderId?: string;
   onHome?: () => void;
@@ -135,7 +137,7 @@ export default function ListView({
             )}
           </div>
           <aside className="home-right-panel">
-            <MeetingsSection />
+            <MeetingsSection onOpenNote={onOpenNote} />
             <TodoSection />
           </aside>
         </div>
