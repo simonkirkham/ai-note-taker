@@ -12,6 +12,10 @@
 
 - Empty `transcriptText` must be validated server-side before the projection lookup. Without the guard, a direct API call bypasses the frontend `if (text)` check and stores an empty string in the aggregate event; the DynamoDB conditional then silently drops it, leaving projection and event log inconsistent. **Action:** Pattern documented here — Documented.
 
+- Pip did not run `npm run lint` before pushing. The `react-hooks/set-state-in-effect` error only surfaced in CI after the PR was merged, requiring a follow-up fix PR (#80) that broke and then re-triggered the production deploy. The pre-PR checklist (item 4) already requires this — it was simply not followed. **Action:** No checklist change needed; the rule exists. Reminder: the pre-commit hook at `.githooks/pre-commit` also runs lint — activate it (`git config core.hooksPath .githooks`) in every new worktree — Done (noted in pre-commit hook setup; no code change needed).
+
+- Two Hawk passes cost ~98k tokens combined (~44% of the slice total). The three findings in the first pass — missing namespace, missing `InvalidOperationException` catch, stale `initialTranscript` — are all detectable before opening the PR. Items 7 and 8 above are now in the pre-PR checklist; the stale-prop pattern is harder to generalise. **Action:** Items 7 and 8 added to checklist (Done above). If both first-pass findings had been caught pre-PR, this slice would have had one Hawk pass (~38k) instead of two (~98k), saving ~60k tokens — Documented.
+
 ## Applied status
 
 | Learning | Status |
@@ -22,3 +26,5 @@
 | 4. Stale initialTranscript after Reset | Documented — design pattern; no checklist rule generalises cleanly |
 | 5. Natural end-of-stream test path | Documented — test pattern; no checklist rule generalises cleanly |
 | 6. Server-side empty transcript validation | Documented — boundary validation pattern; already general practice |
+| 7. Lint not run before push → post-merge fix PR | Documented — rule already exists in checklist item 4; no code change |
+| 8. Two Hawk passes (~98k) from pre-PR-catchable findings | Applied — checklist items 7 and 8 address the two mechanical findings; stale-prop documented |
