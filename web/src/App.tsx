@@ -111,6 +111,10 @@ function AppContent({ signOut }: { signOut: () => void }) {
     setView(backDestination());
   }
 
+  function handleDeleteNote(noteId: string) {
+    setCards((prev) => prev.filter((c) => c.noteId !== noteId));
+  }
+
   function handleRename(noteId: string, title: string) {
     const prevTitle = cardsRef.current.find((c) => c.noteId === noteId)?.title ?? '';
     setCards((prev) => prev.map((c) => c.noteId === noteId ? { ...c, title } : c));
@@ -234,6 +238,7 @@ function AppContent({ signOut }: { signOut: () => void }) {
         onNewNote={handleNewNote}
         onEditNote={(noteId) => setView({ kind: "note", noteId })}
         onOpenNote={(noteId, title, isNew) => setView({ kind: "note", noteId, isNew, ...(title ? { initialTitle: title } : {}) })}
+        onDeleteNote={handleDeleteNote}
         folderPath={view.kind === "folder" ? view.folderPath : undefined}
         currentFolderId={view.kind === "folder" ? view.folderId : undefined}
         onHome={handleHome}
