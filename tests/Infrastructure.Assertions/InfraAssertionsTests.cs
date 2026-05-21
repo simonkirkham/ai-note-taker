@@ -602,7 +602,7 @@ public class InfraAssertionsTests
             {
                 ["Variables"] = Match.ObjectLike(new Dictionary<string, object>
                 {
-                    ["BEDROCK_MODEL_ID"] = "anthropic.claude-3-haiku-20240307-v1:0"
+                    ["BEDROCK_MODEL_ID"] = "anthropic.claude-haiku-4-5-20251001-v1:0"
                 })
             })
         }));
