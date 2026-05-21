@@ -8,6 +8,12 @@
 
 - Context compaction occurred mid-Pip-session; the auto-generated summary was accurate and work resumed cleanly. The two-session structure added overhead but did not cause data loss or rework. **Action:** For large slices (10+ files), commit incrementally (backend green → frontend green → CDK green) so less state needs reconstructing if compaction occurs — TODO.
 
+- **Bedrock Anthropic models require an FTU form and AWS Marketplace subscription.** First invocations may temporarily succeed while the background subscription is being established; subsequent calls fail with "Model use case details have not been submitted." The FTU form is separate from the model access page (which shows only "serverless models are automatically enabled"). **Action:** Default to Amazon's own models (`amazon.nova-lite-v1:0`) rather than Anthropic models on Bedrock — no FTU, no Marketplace subscription, on-demand inference in eu-west-2 without a cross-region inference profile — Done.
+
+- **Amazon Nova Lite uses a different request/response schema from Anthropic.** Request body: `{ "schemaVersion": "messages-v1", "messages": [{"role": "user", "content": [{"text": "..."}]}], "inferenceConfig": {"maxTokens": N} }`. Response text is at `output.message.content[0].text`, not `content[0].text`. **Action:** Applied in `BedrockAnalysisService.cs` — Done.
+
+- **Bedrock foundation-model IAM ARNs have no account ID.** CDK's `Arn.Format` injects `${AWS::AccountId}` by default, producing an ARN that Bedrock never matches. Fix: `Account = string.Empty` in `ArnComponents`. For cross-region inference profiles (`eu./us./ap.` prefix), two ARNs are needed: one inference-profile ARN (with account) and one wildcard-region foundation-model ARN (without account). Amazon Nova models avoid this entirely — direct on-demand, single ARN, no account — Done.
+
 ## Applied status
 
 | Learning | Status |
@@ -16,3 +22,6 @@
 | 2. Primary-to-explicit constructor field assignment | Applied — fixed in session (no doc change needed; not a systemic pattern) |
 | 3. WithWebHostBuilder isolation behaviour | Applied — correct pattern used in `PostAnalyse_WhenBedrockThrows_Returns503` test |
 | 4. Incremental commits for large slices | TODO — architectural workflow guidance |
+| 5. Anthropic FTU blocks production invocations | Applied — switched default to `amazon.nova-lite-v1:0` |
+| 6. Nova Lite request/response schema | Applied — `BedrockAnalysisService.cs` updated |
+| 7. Foundation-model ARN has no account ID | Applied — `Account = string.Empty` + inference-profile pattern documented |
