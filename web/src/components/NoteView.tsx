@@ -33,18 +33,17 @@ export default function NoteView({
   const [loadingDetail, setLoadingDetail] = useState(true);
   const [notFound, setNotFound] = useState(false);
   const [actionsKey, setActionsKey] = useState(0);
-  const [showCancelDialog, setShowCancelDialog] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
-  const confirmButtonRef = useRef<HTMLButtonElement>(null);
   const tagsModifiedRef = useRef(false);
   const contentModifiedRef = useRef(false);
   const contentRef = useRef("");
 
-  const isSaveEnabled =
+  const hasContent =
     title.trim().length > 0 ||
     content.trim().length > 0 ||
     tags.length > 0 ||
-    actionCount > 0;
+    actionCount > 0 ||
+    transcriptText !== null;
 
   useEffect(() => {
     tagsModifiedRef.current = false;
@@ -81,10 +80,6 @@ export default function NoteView({
     if (!loadingDetail && !notFound) inputRef.current?.focus();
   }, [loadingDetail, notFound]);
 
-  useEffect(() => {
-    if (showCancelDialog) confirmButtonRef.current?.focus();
-  }, [showCancelDialog]);
-
   async function refreshNote() {
     try {
       const detail = await getNoteDetail(noteId);
@@ -114,15 +109,12 @@ export default function NoteView({
     untagNote(noteId, tag).catch(() => {});
   }
 
+  // Cancel is only reachable when !hasContent (blank note)
   async function handleCancel() {
-    if (!isSaveEnabled) {
-      if (isNew) {
-        await onDelete(noteId);
-      } else {
-        onBack();
-      }
+    if (isNew) {
+      await onDelete(noteId);
     } else {
-      setShowCancelDialog(true);
+      onBack();
     }
   }
 
@@ -139,47 +131,26 @@ export default function NoteView({
 
   return (
     <main className="container">
-      {showCancelDialog && (
-        <div className="cancel-dialog-overlay" data-testid="cancel-dialog">
-          <div className="cancel-dialog" role="dialog" aria-modal="true" aria-labelledby="cancel-dialog-title">
-            <p id="cancel-dialog-title" className="cancel-dialog-message">Discard this note?</p>
-            <div className="cancel-dialog-buttons">
-              <button
-                ref={confirmButtonRef}
-                data-testid="cancel-confirm-button"
-                className="cancel-confirm-button"
-                onClick={isNew ? async () => { await onDelete(noteId); } : onBack}
-              >
-                Confirm
-              </button>
-              <button
-                data-testid="cancel-keep-button"
-                className="cancel-keep-button"
-                onClick={() => setShowCancelDialog(false)}
-              >
-                Keep Editing
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
       <div className="note-header">
         <div className="note-header-actions">
-          <button
-            data-testid="cancel-button"
-            onClick={handleCancel}
-            className="back-button"
-          >
-            Cancel
-          </button>
-          <button
-            data-testid="save-button"
-            onClick={onBack}
-            disabled={!isSaveEnabled || loadingDetail}
-            className="save-button"
-          >
-            Save
-          </button>
+          {!hasContent ? (
+            <button
+              data-testid="cancel-button"
+              onClick={handleCancel}
+              className="back-button"
+            >
+              Cancel
+            </button>
+          ) : (
+            <button
+              data-testid="save-button"
+              onClick={onBack}
+              disabled={loadingDetail}
+              className="save-button"
+            >
+              Save
+            </button>
+          )}
         </div>
         <div className="note-header-right">
           <div className="note-date-wrapper">
@@ -193,14 +164,16 @@ export default function NoteView({
               aria-label="Meeting date"
             />
           </div>
-          <button
-            data-testid="delete-note-button"
-            onClick={() => onDelete(noteId)}
-            className="delete-note-button"
-            aria-label="Delete note"
-          >
-            Delete
-          </button>
+          {hasContent && (
+            <button
+              data-testid="delete-note-button"
+              onClick={() => onDelete(noteId)}
+              className="delete-note-button"
+              aria-label="Delete note"
+            >
+              Delete
+            </button>
+          )}
         </div>
       </div>
       <input
