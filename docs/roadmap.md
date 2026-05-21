@@ -176,10 +176,13 @@ Slices and acceptance criteria: [docs/phases/phase-9.md](phases/phase-9.md)
 
 Slices and acceptance criteria: [docs/phases/phase-10.md](phases/phase-10.md)
 
-## Phase 11 — UI Polish _(In Progress)_
+## Phase 11 — UI Polish _(Done)_
 
-- Tag autocomplete: prefix and substring matching against existing tags, Tab to complete, common tags by usage frequency, related tags by co-occurrence on shared notes
-- Add to-do items from the home screen: quick-capture input in the To Do panel; optimistic add; auto-creates a "Quick Capture" note on first use
+- Tag autocomplete: prefix and substring matching, Tab to complete, common tags by frequency, related tags by co-occurrence
+- Add to-do items from the home screen: quick-capture input, optimistic add, standalone todo aggregate
+- Delete blank note on cancel; adaptive note action bar (Cancel-only when blank, Save+Delete when content present)
+- Token expiry and silent refresh; fix 401s on tab wake-up via `visibilitychange` + pre-flight guard
+- Delete notes from home screen; fix meeting-created notes not deleted on discard
 
 **Goal:** Make everyday interactions feel faster and more intentional. Pure-frontend slices with no new aggregates.
 

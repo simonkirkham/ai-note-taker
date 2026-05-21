@@ -959,3 +959,20 @@ If no agent ran unexpectedly high: write `None — slice ran within expected ran
 **Optimisation suggestions:**
 - **Pip (–5 000 hotfix):** Any prop signature change must be followed by `grep -rn "<prop-name>"` to locate all parent component declarations, then `npm exec -- tsc -p web/tsconfig.app.json --noEmit` before pushing. The `ListView.tsx` mismatch would have been visible instantly. Memory `feedback_typecheck_before_merge` records this rule.
 
+---
+
+## Slice 11-F — Adaptive note action buttons
+
+| Agent     | ~Tokens      |
+|-----------|--------------|
+| Pip       | 25 000       |
+| Hawk 1    | 58 000       |
+| Hawk 2    | 24 000       |
+| Scribe    | 5 000        |
+| **Total** | **~112 000** |
+
+**Why:** Two Hawk passes (82k combined). First pass had three findings: missing `transcriptText` test (the `transcriptText !== null` arm of `hasContent` was untested), 11-F status not updated in phase doc, and 11-H discard-dialog criterion not annotated as superseded. All three were minor and clean to fix; second pass approved immediately. The implementation itself was small (one component, two files) and TypeScript clean on first attempt.
+
+**Optimisation suggestions:**
+- **Hawk round 1 (–24 000):** The `transcriptText` test gap is a direct consequence of "test every arm of a new predicate." Adding a pre-PR checklist item — "for each new branch in `hasContent` / `isSaveEnabled`, at least one test isolates it as the sole truthy trigger" — would catch this before Hawk. The phase-doc update and criterion annotation are process steps that Pip should complete in the same commit as the implementation.
+
