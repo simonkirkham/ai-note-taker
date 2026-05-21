@@ -896,6 +896,20 @@ If no agent ran unexpectedly high: write `None — slice ran within expected ran
 
 ---
 
+## Hotfix — 9-F next-occurrence title + StubGoogleCalendarClient
+
+| Agent     | ~Tokens    |
+|-----------|------------|
+| Pip       | 55 000     |
+| Hawk 1    | 40 000     |
+| Hawk 2    | 25 000     |
+| Scribe    | 5 000      |
+| **Total** | **~125 000** |
+
+**Why:** Two Hawk passes (65k combined) plus three failed main deploys from a merge-ordering regression. Hawk 1 requested unit tests for `StubGoogleCalendarClient` and a doc comment. After fixing and merging, the deploy failed because the fix/9f PR had been merged before slice 11-H, and 11-H's `MeetingsSection.tsx` changes overwrote the title fix — requiring a direct commit to main to restore the `meeting.title` arg and update the test expectation.
+
+---
+
 ## Slice 11-A — Tag autocomplete
 
 | Agent     | ~Tokens     |
