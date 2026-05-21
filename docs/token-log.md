@@ -926,3 +926,36 @@ If no agent ran unexpectedly high: write `None — slice ran within expected ran
 **Optimisation suggestions:**
 - **Hawk (–32 000):** The three findings are mechanical pre-PR checks: (1) test every dropdown for the overlap case where a tag qualifies for both Related and Common; (2) verify custom dropdowns have the full WAI-ARIA combobox wiring (`role=combobox`, `aria-controls`, `aria-activedescendant`); (3) verify group headings are `role="presentation"` siblings, not nested inside options. Adding these to Pip's pre-PR checklist collapses Hawk to one pass.
 
+---
+
+## Slice 11-G — Fix 401s during active sessions
+
+| Agent     | ~Tokens      |
+|-----------|--------------|
+| Pip       | 45 000       |
+| Hawk 1    | 40 000       |
+| Hawk 2    | 32 000       |
+| Scribe    | 5 000        |
+| **Total** | **~122 000** |
+
+**Why:** Two Hawk passes (72k combined) drove the total. The first Hawk pass surfaced a semantic inversion in `jwtExpired`'s catch block — changing it to `return false` to skip non-JWT dev tokens regressed `loadPersistedToken`, which relied on `return true` for corrupt tokens. The fix required a structural guard (`token.split('.').length === 3`) at the `apiFetch` callsite only, keeping `jwtExpired` conservatively correct everywhere else. The implementation itself was non-trivial: a forward-ref pattern was needed to break the circular initialisation between `handleRefreshFailure` (declared before `useGoogleAuth`) and `cancelRefresh` (returned by `useGoogleAuth`), and the `visibilitychange` + fake-timer test approach required `vi.setSystemTime` rather than `vi.advanceTimersByTime` to simulate background-tab clock drift without triggering throttled timers.
+
+**Optimisation suggestions:**
+- **Hawk round 1 (–32 000):** The `jwtExpired` semantics conflict (conservative storage reject vs. permissive dev-token skip) is a consequence of the function being used in two different contexts with opposing requirements. A pre-implementation note documenting "functions used in both storage loading and API layer callsites must document which default applies where, and callsites with different requirements must add local guards" would surface the design question before code is written, collapsing two Hawk rounds to one.
+
+---
+
+## Slice 11-H — Fix note not deleted when discarded from meeting creation
+
+| Agent     | ~Tokens    |
+|-----------|------------|
+| Pip       | 20 000     |
+| Hawk      | 30 000     |
+| Scribe    | 3 000      |
+| **Total** | **~53 000** |
+
+**Why:** Single Hawk pass approved cleanly, but a post-merge TypeScript error in `ListView.tsx` required a hotfix PR (#87). `MeetingsSection.onOpenNote` was updated from a 2-param to a 3-param signature as part of the fix, but `ListView.tsx` still declared the old 2-param type — TypeScript caught this at CI/deploy time, not locally before merge. The hotfix PR was fast (one-line change) but required a full deploy cycle.
+
+**Optimisation suggestions:**
+- **Pip (–5 000 hotfix):** Any prop signature change must be followed by `grep -rn "<prop-name>"` to locate all parent component declarations, then `npm exec -- tsc -p web/tsconfig.app.json --noEmit` before pushing. The `ListView.tsx` mismatch would have been visible instantly. Memory `feedback_typecheck_before_merge` records this rule.
+

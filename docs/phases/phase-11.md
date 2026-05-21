@@ -684,7 +684,7 @@ Scenario: Existing note always shows Save and Delete
 
 ## Slice 11-G — Fix 401s during active sessions
 
-**Status:** Not Started
+**Status:** Done
 
 **Bug:** Users receive 401 errors mid-session despite the silent-refresh mechanism implemented in 11-D. The root cause is two compounding issues:
 
@@ -745,17 +745,17 @@ Scenario: Token valid on tab wake — no action taken
 
 ### Acceptance criteria
 
-- [ ] A `visibilitychange` listener is registered in `AuthContext`; it is cleaned up on unmount
-- [ ] On tab becoming visible: if token is expired, `sessionExpired` is set immediately without waiting for an API call
-- [ ] On tab becoming visible: if token is within `REFRESH_LEAD_MS` of expiry, silent refresh is attempted immediately
-- [ ] In `api.ts`, a request with an expired token is short-circuited: fetch is not called, `triggerUnauthorized()` fires
-- [ ] Tests cover: tab wake with expired token, tab wake with near-expiry token, tab wake with valid token, API call with expired token
+- [x] A `visibilitychange` listener is registered in `AuthContext`; it is cleaned up on unmount
+- [x] On tab becoming visible: if token is expired, `sessionExpired` is set immediately without waiting for an API call
+- [x] On tab becoming visible: if token is within `REFRESH_LEAD_MS` of expiry, silent refresh is attempted immediately
+- [x] In `api.ts`, a request with an expired token is short-circuited: fetch is not called, `triggerUnauthorized()` fires
+- [x] Tests cover: tab wake with expired token, tab wake with near-expiry token, tab wake with valid token, API call with expired token
 
 ---
 
 ## Slice 11-H — Fix note not deleted when discarded from meeting creation
 
-**Status:** Not Started
+**Status:** Done
 
 **Bug:** When the user clicks "Create note" on a meeting card in `MeetingsSection`, the note is created on the backend immediately and the user is navigated to `NoteView`. If they then click Cancel (without adding any content), the note is not deleted — it persists in the notes list.
 
@@ -823,11 +823,11 @@ Scenario: Same fix applies to next-occurrence note creation
 
 ### Acceptance criteria
 
-- [ ] Clicking Cancel on a blank note navigated to from a meeting card deletes the note
-- [ ] Clicking Cancel → Confirm Discard on a non-blank meeting-created note deletes the note
-- [ ] Clicking Save on a meeting-created note keeps the note and returns to the home screen
-- [ ] The fix applies to both `createNoteFromMeeting` and `createNoteFromNextOccurrence` paths
-- [ ] The meeting card reverts its "linked note" state when the note is deleted via Cancel
-- [ ] Component tests cover: blank cancel deletes, non-blank cancel shows dialog, confirm discard deletes, save keeps note, next-occurrence path
+- [x] Clicking Cancel on a blank note navigated to from a meeting card deletes the note
+- [x] Clicking Cancel → Confirm Discard on a non-blank meeting-created note deletes the note
+- [x] Clicking Save on a meeting-created note keeps the note and returns to the home screen
+- [x] The fix applies to both `createNoteFromMeeting` and `createNoteFromNextOccurrence` paths
+- [x] The meeting card reverts its "linked note" state when the note is deleted via Cancel
+- [x] Component tests cover: blank cancel deletes, non-blank cancel shows dialog, confirm discard deletes, save keeps note, next-occurrence path
 
 ---
