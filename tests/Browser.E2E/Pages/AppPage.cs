@@ -48,6 +48,7 @@ public sealed class AppPage(IPage page, string baseUrl, string? authToken = null
         page.GetByTestId("note-cards")
             .Locator(".note-card")
             .Filter(new LocatorFilterOptions { HasText = title })
+            .Locator("h3.note-card-title")
             .ClickAsync();
 
     public async Task DeleteNoteAsync()
