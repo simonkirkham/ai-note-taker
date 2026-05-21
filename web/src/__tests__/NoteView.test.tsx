@@ -251,5 +251,18 @@ describe('NoteView', () => {
       expect(onDelete).toHaveBeenCalledWith('note-1')
       expect(screen.queryByTestId('cancel-dialog')).toBeNull()
     })
+
+    it('note with only a transcript (blank title/content/tags) shows Save and Delete', async () => {
+      server.use(
+        http.get('/api/notes/:noteId', () =>
+          HttpResponse.json({ noteId: 'note-1', title: '', content: '', date: null, tags: [], transcriptText: 'words words words' }),
+        ),
+      )
+      renderNoteView({ initialTitle: '' })
+      await screen.findByLabelText('Note content')
+      await waitFor(() => expect(screen.queryByTestId('save-button')).toBeInTheDocument())
+      expect(screen.getByTestId('delete-note-button')).toBeInTheDocument()
+      expect(screen.queryByTestId('cancel-button')).toBeNull()
+    })
   })
 })
