@@ -157,44 +157,60 @@ describe('NoteView', () => {
     expect(document.activeElement).toBe(screen.getByLabelText('Note content'))
   })
 
-  describe('save/cancel', () => {
-    it('Save button is disabled when note is empty', async () => {
+  describe('adaptive action buttons', () => {
+    it('blank note shows only Cancel — Save and Delete are not in the DOM', async () => {
       renderEmptyNoteView()
       await screen.findByLabelText('Note content')
-      expect(screen.getByTestId('save-button')).toBeDisabled()
+      expect(screen.getByTestId('cancel-button')).toBeInTheDocument()
+      expect(screen.queryByTestId('save-button')).toBeNull()
+      expect(screen.queryByTestId('delete-note-button')).toBeNull()
     })
 
-    it('Save button is enabled when title is non-empty', async () => {
+    it('note with a title shows Save and Delete — Cancel is not in the DOM', async () => {
+      renderNoteView()
+      await screen.findByLabelText('Note content')
+      expect(screen.getByTestId('save-button')).toBeInTheDocument()
+      expect(screen.getByTestId('delete-note-button')).toBeInTheDocument()
+      expect(screen.queryByTestId('cancel-button')).toBeNull()
+    })
+
+    it('typing a title on a blank note reveals Save and Delete and hides Cancel', async () => {
       renderEmptyNoteView()
       await screen.findByLabelText('Note content')
+      expect(screen.getByTestId('cancel-button')).toBeInTheDocument()
       await userEvent.type(screen.getByLabelText('Note title'), 'My note')
-      expect(screen.getByTestId('save-button')).toBeEnabled()
+      expect(screen.getByTestId('save-button')).toBeInTheDocument()
+      expect(screen.getByTestId('delete-note-button')).toBeInTheDocument()
+      expect(screen.queryByTestId('cancel-button')).toBeNull()
     })
 
-    it('Save button is enabled when content is entered', async () => {
+    it('typing content on a blank note reveals Save and Delete', async () => {
       renderEmptyNoteView()
       const textarea = await screen.findByLabelText('Note content')
       await userEvent.type(textarea, 'Some content')
-      expect(screen.getByTestId('save-button')).toBeEnabled()
+      expect(screen.getByTestId('save-button')).toBeInTheDocument()
+      expect(screen.getByTestId('delete-note-button')).toBeInTheDocument()
     })
 
-    it('Save button is enabled when a tag is added', async () => {
+    it('adding a tag on a blank note reveals Save and Delete', async () => {
       renderEmptyNoteView()
       await screen.findByLabelText('Note content')
       const tagInput = screen.getByTestId('tag-input')
       await userEvent.type(tagInput, 'planning')
       fireEvent.blur(tagInput)
-      await waitFor(() => expect(screen.getByTestId('save-button')).toBeEnabled())
+      await waitFor(() => expect(screen.queryByTestId('save-button')).toBeInTheDocument())
+      expect(screen.getByTestId('delete-note-button')).toBeInTheDocument()
     })
 
-    it('Save button is enabled when an action is added', async () => {
+    it('action items loading reveals Save and Delete', async () => {
       server.use(
         http.get('/api/notes/:noteId/actions', () =>
           HttpResponse.json({ actions: [{ actionId: 'a-1', description: 'Follow up', completed: false, addedAt: new Date().toISOString(), completedAt: null }] }),
         ),
       )
       renderEmptyNoteView()
-      await waitFor(() => expect(screen.getByTestId('save-button')).toBeEnabled())
+      await waitFor(() => expect(screen.queryByTestId('save-button')).toBeInTheDocument())
+      expect(screen.getByTestId('delete-note-button')).toBeInTheDocument()
     })
 
     it('Save button calls onBack', async () => {
@@ -205,7 +221,15 @@ describe('NoteView', () => {
       expect(onBack).toHaveBeenCalledOnce()
     })
 
-    it('Cancel on an empty note navigates back immediately without dialog', async () => {
+    it('Delete button calls onDelete with the noteId', async () => {
+      const onDelete = vi.fn().mockResolvedValue(undefined)
+      renderNoteView({ onDelete })
+      await screen.findByLabelText('Note content')
+      await userEvent.click(screen.getByTestId('delete-note-button'))
+      expect(onDelete).toHaveBeenCalledWith('note-1')
+    })
+
+    it('Cancel on a blank existing note calls onBack without deleting', async () => {
       const onBack = vi.fn()
       renderEmptyNoteView(onBack)
       await screen.findByLabelText('Note content')
@@ -214,35 +238,7 @@ describe('NoteView', () => {
       expect(screen.queryByTestId('cancel-dialog')).toBeNull()
     })
 
-    it('Cancel on a note with content shows the discard dialog', async () => {
-      renderNoteView()
-      await screen.findByLabelText('Note content')
-      await userEvent.click(screen.getByTestId('cancel-button'))
-      expect(screen.getByTestId('cancel-dialog')).toBeInTheDocument()
-    })
-
-    it('Confirm discard on an existing note calls onBack and does not delete', async () => {
-      const onBack = vi.fn()
-      const onDelete = vi.fn().mockResolvedValue(undefined)
-      renderNoteView({ onBack, onDelete })
-      await screen.findByLabelText('Note content')
-      await userEvent.click(screen.getByTestId('cancel-button'))
-      await userEvent.click(screen.getByTestId('cancel-confirm-button'))
-      expect(onBack).toHaveBeenCalledOnce()
-      expect(onDelete).not.toHaveBeenCalled()
-    })
-
-    it('Keep Editing dismisses the discard dialog without navigating', async () => {
-      const onBack = vi.fn()
-      renderNoteView({ onBack })
-      await screen.findByLabelText('Note content')
-      await userEvent.click(screen.getByTestId('cancel-button'))
-      await userEvent.click(screen.getByTestId('cancel-keep-button'))
-      expect(screen.queryByTestId('cancel-dialog')).toBeNull()
-      expect(onBack).not.toHaveBeenCalled()
-    })
-
-    it('Cancel on a new blank note calls onDelete without showing a dialog', async () => {
+    it('Cancel on a blank new note calls onDelete without a dialog', async () => {
       const onDelete = vi.fn().mockResolvedValue(undefined)
       server.use(
         http.get('/api/notes/:noteId', () =>
@@ -256,15 +252,17 @@ describe('NoteView', () => {
       expect(screen.queryByTestId('cancel-dialog')).toBeNull()
     })
 
-    it('Confirm discard on a new note calls onDelete instead of onBack', async () => {
-      const onBack = vi.fn()
-      const onDelete = vi.fn().mockResolvedValue(undefined)
-      renderNoteView({ onBack, onDelete, isNew: true })
+    it('note with only a transcript (blank title/content/tags) shows Save and Delete', async () => {
+      server.use(
+        http.get('/api/notes/:noteId', () =>
+          HttpResponse.json({ noteId: 'note-1', title: '', content: '', date: null, tags: [], transcriptText: 'words words words' }),
+        ),
+      )
+      renderNoteView({ initialTitle: '' })
       await screen.findByLabelText('Note content')
-      await userEvent.click(screen.getByTestId('cancel-button'))
-      await userEvent.click(screen.getByTestId('cancel-confirm-button'))
-      expect(onDelete).toHaveBeenCalledWith('note-1')
-      expect(onBack).not.toHaveBeenCalled()
+      await waitFor(() => expect(screen.queryByTestId('save-button')).toBeInTheDocument())
+      expect(screen.getByTestId('delete-note-button')).toBeInTheDocument()
+      expect(screen.queryByTestId('cancel-button')).toBeNull()
     })
   })
 })

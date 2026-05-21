@@ -589,7 +589,7 @@ Scenario: Deleting a note while viewing another note is unaffected
 
 ## Slice 11-F — Adaptive note action buttons
 
-**Status:** Not Started
+**Status:** Done
 
 **Value:** The note view's action bar adapts to what the user has actually done, removing the ambiguous Cancel-vs-Save choice. A blank new note shows only Cancel (quick escape hatch). Once any content exists — title, body, tags, actions, todos, or transcript — Cancel disappears and Save + Delete take over as the only exits.
 
@@ -824,7 +824,7 @@ Scenario: Same fix applies to next-occurrence note creation
 ### Acceptance criteria
 
 - [x] Clicking Cancel on a blank note navigated to from a meeting card deletes the note
-- [x] Clicking Cancel → Confirm Discard on a non-blank meeting-created note deletes the note
+- [x] Clicking Cancel → Confirm Discard on a non-blank meeting-created note deletes the note *(note: the discard dialog was removed in 11-F; non-blank meeting-created notes now show Delete instead)*
 - [x] Clicking Save on a meeting-created note keeps the note and returns to the home screen
 - [x] The fix applies to both `createNoteFromMeeting` and `createNoteFromNextOccurrence` paths
 - [x] The meeting card reverts its "linked note" state when the note is deleted via Cancel
