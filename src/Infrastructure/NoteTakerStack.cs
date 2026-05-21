@@ -133,7 +133,7 @@ public sealed class NoteTakerStack : Stack
                 ["GOOGLE_REFRESH_TOKEN_SSM_PATH"] = props.GoogleRefreshTokenSsmPath ?? "",
                 ["PROJ_CALENDARLINKINDEX_TABLE_NAME"] = calendarLinkIndexTable.TableName,
                 ["BEDROCK_MODEL_ID"] = string.IsNullOrEmpty(props.BedrockModelId)
-                    ? "eu.anthropic.claude-haiku-4-5-20251001-v1:0"
+                    ? "amazon.nova-lite-v1:0"
                     : props.BedrockModelId
             }
         });
@@ -177,7 +177,7 @@ public sealed class NoteTakerStack : Stack
         apiFunction.AddEnvironment("TRANSCRIBE_ROLE_ARN", transcribeRole.RoleArn);
 
         var bedrockModelId = string.IsNullOrEmpty(props.BedrockModelId)
-            ? "eu.anthropic.claude-haiku-4-5-20251001-v1:0"
+            ? "amazon.nova-lite-v1:0"
             : props.BedrockModelId;
 
         // Cross-region inference profiles (eu./us./ap. prefix) require two IAM ARNs:

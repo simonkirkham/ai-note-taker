@@ -29,9 +29,9 @@ public sealed class BedrockAnalysisService : IBedrockAnalysisService
 
         var body = JsonSerializer.Serialize(new
         {
-            anthropic_version = "bedrock-2023-05-31",
-            max_tokens = 2048,
-            messages = new[] { new { role = "user", content = prompt } }
+            schemaVersion = "messages-v1",
+            messages = new[] { new { role = "user", content = new[] { new { text = prompt } } } },
+            inferenceConfig = new { maxTokens = 2048 }
         });
 
         var request = new InvokeModelRequest
@@ -54,6 +54,8 @@ public sealed class BedrockAnalysisService : IBedrockAnalysisService
         {
             using var doc = JsonDocument.Parse(responseBody);
             var text = doc.RootElement
+                .GetProperty("output")
+                .GetProperty("message")
                 .GetProperty("content")[0]
                 .GetProperty("text")
                 .GetString() ?? "";
