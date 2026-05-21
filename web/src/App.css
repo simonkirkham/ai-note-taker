@@ -1114,8 +1114,15 @@ body {
   color: var(--color-primary);
 }
 
-.note-card-edit-button {
+.note-card-actions-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
   margin-top: auto;
+  flex-wrap: wrap;
+}
+
+.note-card-edit-button {
   align-self: flex-start;
   background: none;
   border: 1.5px solid var(--color-primary);
@@ -1136,6 +1143,80 @@ body {
 
 .note-card-edit-button:focus-visible {
   outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
+.note-card-delete-btn {
+  background: none;
+  border: 1.5px solid var(--color-error);
+  border-radius: var(--radius);
+  color: var(--color-error);
+  font-family: inherit;
+  font-size: 0.875rem;
+  font-weight: 500;
+  padding: 0.625rem 0.875rem;
+  cursor: pointer;
+  transition: background var(--transition), color var(--transition);
+}
+
+.note-card-delete-btn:hover {
+  background: var(--color-error);
+  color: #fff;
+}
+
+.note-card-delete-btn:focus-visible {
+  outline: 2px solid var(--color-error);
+  outline-offset: 2px;
+}
+
+.note-card-confirm-row {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+}
+
+.note-card-confirm-btn {
+  background: var(--color-error);
+  border: none;
+  border-radius: var(--radius);
+  color: #fff;
+  font-family: inherit;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  padding: 0.5rem 0.75rem;
+  cursor: pointer;
+  transition: opacity var(--transition);
+}
+
+.note-card-confirm-btn:hover {
+  opacity: 0.85;
+}
+
+.note-card-confirm-btn:focus-visible {
+  outline: 2px solid var(--color-error);
+  outline-offset: 2px;
+}
+
+.note-card-cancel-btn {
+  background: none;
+  border: 1.5px solid var(--color-border);
+  border-radius: var(--radius);
+  color: var(--color-text-muted);
+  font-family: inherit;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  padding: 0.5rem 0.75rem;
+  cursor: pointer;
+  transition: border-color var(--transition), color var(--transition);
+}
+
+.note-card-cancel-btn:hover {
+  border-color: var(--color-text-muted);
+  color: var(--color-text);
+}
+
+.note-card-cancel-btn:focus-visible {
+  outline: 2px solid var(--color-text-muted);
   outline-offset: 2px;
 }
 

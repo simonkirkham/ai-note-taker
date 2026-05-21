@@ -24,7 +24,7 @@ export default function ListView({
   createError: string | null;
   onNewNote: () => void;
   onEditNote: (noteId: string) => void;
-  onOpenNote: (noteId: string, title?: string) => void;
+  onOpenNote: (noteId: string, title?: string, isNew?: boolean) => void;
   onDeleteNote?: (noteId: string) => void;
   folderPath?: string[];
   currentFolderId?: string;
