@@ -179,11 +179,14 @@ public sealed class NoteTakerStack : Stack
         var bedrockModelId = string.IsNullOrEmpty(props.BedrockModelId)
             ? "anthropic.claude-3-haiku-20240307-v1:0"
             : props.BedrockModelId;
+        // Bedrock foundation model ARNs have no account ID (arn:aws:bedrock:{region}::foundation-model/...).
+        // Omitting Account causes CDK to inject ${AWS::AccountId}, which never matches — set it explicitly.
         var bedrockArn = Arn.Format(new ArnComponents
         {
             Service = "bedrock",
             Resource = "foundation-model",
-            ResourceName = bedrockModelId
+            ResourceName = bedrockModelId,
+            Account = string.Empty
         }, this);
         apiFunction.AddToRolePolicy(new PolicyStatement(new PolicyStatementProps
         {
