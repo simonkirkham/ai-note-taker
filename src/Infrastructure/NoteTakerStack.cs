@@ -133,7 +133,7 @@ public sealed class NoteTakerStack : Stack
                 ["GOOGLE_REFRESH_TOKEN_SSM_PATH"] = props.GoogleRefreshTokenSsmPath ?? "",
                 ["PROJ_CALENDARLINKINDEX_TABLE_NAME"] = calendarLinkIndexTable.TableName,
                 ["BEDROCK_MODEL_ID"] = string.IsNullOrEmpty(props.BedrockModelId)
-                    ? "anthropic.claude-haiku-4-5-20251001-v1:0"
+                    ? "eu.anthropic.claude-haiku-4-5-20251001-v1:0"
                     : props.BedrockModelId
             }
         });
@@ -177,21 +177,34 @@ public sealed class NoteTakerStack : Stack
         apiFunction.AddEnvironment("TRANSCRIBE_ROLE_ARN", transcribeRole.RoleArn);
 
         var bedrockModelId = string.IsNullOrEmpty(props.BedrockModelId)
-            ? "anthropic.claude-haiku-4-5-20251001-v1:0"
+            ? "eu.anthropic.claude-haiku-4-5-20251001-v1:0"
             : props.BedrockModelId;
-        // Bedrock foundation model ARNs have no account ID — set Account = "" explicitly
-        // or CDK injects ${AWS::AccountId} which never matches at runtime.
-        var bedrockArn = Arn.Format(new ArnComponents
+
+        // Cross-region inference profiles (eu./us./ap. prefix) require two IAM ARNs:
+        //   - inference-profile: includes account ID, scoped to the deployment region
+        //   - foundation-model:  no account ID, wildcard region (Bedrock routes internally)
+        // Direct foundation model IDs only need the foundation-model ARN (no account ID).
+        string[] bedrockResources;
+        if (bedrockModelId.Length > 3 && bedrockModelId[2] == '.')
         {
-            Service = "bedrock",
-            Resource = "foundation-model",
-            ResourceName = bedrockModelId,
-            Account = string.Empty
-        }, this);
+            var baseModelId = bedrockModelId[3..];
+            bedrockResources =
+            [
+                Arn.Format(new ArnComponents { Service = "bedrock", Resource = "inference-profile", ResourceName = bedrockModelId }, this),
+                $"arn:aws:bedrock:*::foundation-model/{baseModelId}"
+            ];
+        }
+        else
+        {
+            bedrockResources =
+            [
+                Arn.Format(new ArnComponents { Service = "bedrock", Resource = "foundation-model", ResourceName = bedrockModelId, Account = string.Empty }, this)
+            ];
+        }
         apiFunction.AddToRolePolicy(new PolicyStatement(new PolicyStatementProps
         {
             Actions = new[] { "bedrock:InvokeModel" },
-            Resources = new[] { bedrockArn }
+            Resources = bedrockResources
         }));
 
         var apiAlias = new Amazon.CDK.AWS.Lambda.Alias(this, "LiveAlias", new Amazon.CDK.AWS.Lambda.AliasProps
