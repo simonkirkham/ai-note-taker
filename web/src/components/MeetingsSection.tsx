@@ -18,7 +18,7 @@ type State =
   | { status: "unavailable" }
   | { status: "loaded"; meetings: CalendarMeeting[] };
 
-export function MeetingsSection({ onOpenNote }: { onOpenNote: (noteId: string, title?: string) => void }) {
+export function MeetingsSection({ onOpenNote }: { onOpenNote: (noteId: string, title?: string, isNew?: boolean) => void }) {
   const [state, setState] = useState<State>({ status: "loading" });
   const [bannerDismissed, setBannerDismissed] = useState(false);
   const [creating, setCreating] = useState<Set<string>>(new Set());
@@ -77,7 +77,7 @@ export function MeetingsSection({ onOpenNote }: { onOpenNote: (noteId: string, t
             }
           : prev
       );
-      onOpenNote(noteId, meeting.title);
+      onOpenNote(noteId, meeting.title, true);
     } catch {
       setCreateErrors((prev) => new Map(prev).set(meeting.calendarEventId, "Could not create note. Try again."));
     } finally {
@@ -100,7 +100,7 @@ export function MeetingsSection({ onOpenNote }: { onOpenNote: (noteId: string, t
       const result = await createNoteFromNextOccurrence(seriesId);
       const noteId = result.noteId;
       setNextNoteIds((prev) => new Map(prev).set(seriesId, noteId));
-      onOpenNote(noteId, meeting.title);
+      onOpenNote(noteId, undefined, true);
     } catch {
       // Revert optimistic update on failure
       setState((prev) =>
