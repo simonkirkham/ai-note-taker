@@ -269,6 +269,6 @@ describe('MeetingsSection — next occurrence Create Note button', () => {
     // meeting1 is recurring — second Create Note button is the next-occurrence row
     await userEvent.click(createBtns[1])
 
-    await waitFor(() => expect(onOpenNote).toHaveBeenCalledWith('next-note-456', '1:1 with Bill'))
+    await waitFor(() => expect(onOpenNote).toHaveBeenCalledWith('next-note-456', '1:1 with Bill', true))
   })
 })
