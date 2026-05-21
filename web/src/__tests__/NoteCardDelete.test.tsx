@@ -60,10 +60,11 @@ describe('NoteCard — delete affordance', () => {
     expect(screen.getByText('Team sync')).toBeInTheDocument()
   })
 
-  it('only one confirmation is shown at a time', async () => {
+  it('clicking delete on one card does not show confirmation on another card', async () => {
     render(<ListView {...defaultProps} cards={[card, card2]} />)
     await userEvent.click(screen.getByRole('button', { name: /delete "Team sync"/i }))
     expect(screen.getAllByRole('button', { name: /confirm delete/i })).toHaveLength(1)
+    expect(screen.getByRole('button', { name: /delete "Project brief"/i })).toBeInTheDocument()
   })
 
   it('confirming removes the note optimistically and calls onDeleteNote', async () => {

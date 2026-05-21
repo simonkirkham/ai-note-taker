@@ -11,6 +11,7 @@ export default function NoteCard({
   onDelete?: () => void;
 }) {
   const [confirming, setConfirming] = useState(false);
+  // vanished prevents a flash of the card before the parent unmounts it after onDelete
   const [vanished, setVanished] = useState(false);
 
   const displayDate = card.date
@@ -18,8 +19,6 @@ export default function NoteCard({
     : null;
 
   const tags = card.tags ?? [];
-
-  if (vanished) return null;
 
   function handleDeleteClick(e: React.MouseEvent) {
     e.stopPropagation();
@@ -30,6 +29,9 @@ export default function NoteCard({
     e.stopPropagation();
     setVanished(true);
     setConfirming(false);
+    // NoteCard owns the API call; onDelete notifies the parent to update cards state.
+    // No rollback: calling onDelete first lets the parent filter the card out, causing
+    // this component to unmount before the async catch could restore it.
     deleteNote(card.noteId).catch(() => {});
     onDelete?.();
   }
@@ -38,6 +40,8 @@ export default function NoteCard({
     e.stopPropagation();
     setConfirming(false);
   }
+
+  if (vanished) return null;
 
   return (
     <article

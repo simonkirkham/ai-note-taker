@@ -111,6 +111,7 @@ function AppContent({ signOut }: { signOut: () => void }) {
     setView(backDestination());
   }
 
+  // NoteCard calls deleteNote() internally; this callback removes the card from shared state.
   function handleDeleteNote(noteId: string) {
     setCards((prev) => prev.filter((c) => c.noteId !== noteId));
   }
