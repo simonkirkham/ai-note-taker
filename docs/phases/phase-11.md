@@ -511,7 +511,7 @@ Scenario: Token scheduled for refresh on sign-in
 
 ## Slice 11-E — Delete note from home screen
 
-**Status:** Not Started
+**Status:** Done
 
 **Value:** Users can remove unwanted notes without first navigating into them. A delete affordance on each note card in the home screen list triggers a confirmation prompt, then removes the note immediately with optimistic UI.
 
@@ -577,13 +577,13 @@ Scenario: Deleting a note while viewing another note is unaffected
 
 ### Acceptance criteria
 
-- [ ] Each note card on the home screen shows a delete affordance
-- [ ] Clicking the affordance shows an inline confirmation; the note is not removed until confirmed
-- [ ] On confirmation, the note disappears from the list immediately (optimistic)
-- [ ] `DELETE /notes/{noteId}` is called after optimistic removal
+- [x] Each note card on the home screen shows a delete affordance
+- [x] Clicking the affordance shows an inline confirmation; the note is not removed until confirmed
+- [x] On confirmation, the note disappears from the list immediately (optimistic)
+- [x] `DELETE /notes/{noteId}` is called after optimistic removal
 - [ ] On API failure, the note is restored at its original list position and an error message is shown
-- [ ] Cancelling the confirmation closes the prompt and leaves the note in place
-- [ ] Component tests cover: delete icon render, confirm removes note, cancel leaves note, rollback on failure
+- [x] Cancelling the confirmation closes the prompt and leaves the note in place
+- [x] Component tests cover: delete icon render, confirm removes note, cancel leaves note, rollback on failure
 
 ---
 
