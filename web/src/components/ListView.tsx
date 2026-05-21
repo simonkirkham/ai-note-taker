@@ -13,6 +13,7 @@ export default function ListView({
   onNewNote,
   onEditNote,
   onOpenNote,
+  onDeleteNote,
   folderPath,
   currentFolderId,
   onHome,
@@ -24,6 +25,7 @@ export default function ListView({
   onNewNote: () => void;
   onEditNote: (noteId: string) => void;
   onOpenNote: (noteId: string, title?: string, isNew?: boolean) => void;
+  onDeleteNote?: (noteId: string) => void;
   folderPath?: string[];
   currentFolderId?: string;
   onHome?: () => void;
@@ -108,7 +110,12 @@ export default function ListView({
               <h2 className="note-cards-heading">Notes</h2>
               <div className="note-cards" data-testid="note-cards">
                 {filteredCards.map((card) => (
-                  <NoteCard key={card.noteId} card={card} onEdit={onEditNote} />
+                  <NoteCard
+                    key={card.noteId}
+                    card={card}
+                    onEdit={onEditNote}
+                    onDelete={onDeleteNote ? () => onDeleteNote(card.noteId) : undefined}
+                  />
                 ))}
               </div>
             </section>
@@ -130,7 +137,12 @@ export default function ListView({
                 <h2 className="note-cards-heading">Notes</h2>
                 <div className="note-cards" data-testid="note-cards">
                   {filteredCards.map((card) => (
-                    <NoteCard key={card.noteId} card={card} onEdit={onEditNote} />
+                    <NoteCard
+                      key={card.noteId}
+                      card={card}
+                      onEdit={onEditNote}
+                      onDelete={onDeleteNote ? () => onDeleteNote(card.noteId) : undefined}
+                    />
                   ))}
                 </div>
               </section>

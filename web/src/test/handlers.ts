@@ -28,6 +28,7 @@ export const handlers = [
   ),
   http.post('/api/notes/:noteId/actions/:actionId/complete', () => new HttpResponse(null, { status: 200 })),
   http.post('/api/notes/:noteId/actions/:actionId/reopen', () => new HttpResponse(null, { status: 200 })),
+  http.delete('/api/notes/:noteId', () => new HttpResponse(null, { status: 204 })),
   http.delete('/api/notes/:noteId/actions/:actionId', () => new HttpResponse(null, { status: 204 })),
   http.post('/api/notes/:noteId/tags', () => new HttpResponse(null, { status: 204 })),
   http.delete('/api/notes/:noteId/tags/:tag', () => new HttpResponse(null, { status: 204 })),
