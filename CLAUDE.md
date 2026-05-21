@@ -98,6 +98,7 @@ cdk deploy
 - **Never include request-contract fields that the handler does not use.** A field declared in a request record but never read by the handler is a contract lie — callers populate it, nothing consumes it, and the next developer will be misled. Delete unused fields before opening the PR.
 - **When a response includes a boolean flag that enables navigation, include the required ID in the same response object.** A flag like `hasNextOccurrenceNote: true` is useless if the client must make a second call to discover the note ID. Return `nextOccurrenceNoteId` alongside `hasNextOccurrenceNote` so the flag is immediately actionable on page reload.
 - **Use `Task.WhenAll` for independent async batches — never a sequential `foreach` over `Task`-returning calls.** If a set of store/API calls are independent (each takes different inputs, none depends on a prior result), start all tasks first and await together with `Task.WhenAll`. Sequential foreach adds latency proportional to N and is never correct for independent calls.
+- **When changing a shared callback signature (e.g. `onOpenNote`), grep all call sites and wrapper components in the same PR.** Signature changes that widen or narrow parameters cascade through every component that wraps or re-exports the prop — a drift between wrapper type and caller type breaks the TypeScript build. Run `grep -r "onOpenNote\|propName"` before opening the PR and update every occurrence in one commit.
 
 ## Skills
 
