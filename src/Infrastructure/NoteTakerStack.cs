@@ -529,6 +529,87 @@ public sealed class NoteTakerStack : Stack
             Value = rumIdentityPool.Ref,
             Description = "Cognito identity pool ID for the browser RUM client"
         });
+
+        // ── Alarms + SNS notifications ───────────────────────────────────
+        // Turns the ops dashboard from something you remember to check into
+        // something that emails you. One topic, three alarms (error rate, P99
+        // latency, concurrency-conflict spikes), each wired via an SnsAction.
+        // The email address is the only environment-specific value — kept in a
+        // single const so it is easy to change.
+        const string alarmEmail = "simon.kirkham+note-taker-ai@gmail.com";
+
+        var alarmsTopic = new Amazon.CDK.AWS.SNS.Topic(this, "AlarmsTopic", new Amazon.CDK.AWS.SNS.TopicProps
+        {
+            TopicName = "notetaker-alarms"
+        });
+        alarmsTopic.AddSubscription(new Amazon.CDK.AWS.SNS.Subscriptions.EmailSubscription(alarmEmail));
+
+        var alarmAction = new Amazon.CDK.AWS.CloudWatch.Actions.SnsAction(alarmsTopic);
+
+        // Error rate as a percentage of invocations, computed at the alarm so a
+        // burst of errors against low traffic still trips. NOT_BREACHING keeps
+        // the alarm OK during idle windows where no invocations are recorded.
+        var errorRate = new Amazon.CDK.AWS.CloudWatch.MathExpression(new Amazon.CDK.AWS.CloudWatch.MathExpressionProps
+        {
+            Expression = "errors / invocations * 100",
+            UsingMetrics = new Dictionary<string, Amazon.CDK.AWS.CloudWatch.IMetric>
+            {
+                ["errors"] = apiFunction.MetricErrors(new Amazon.CDK.AWS.CloudWatch.MetricOptions { Statistic = "Sum" }),
+                ["invocations"] = apiFunction.MetricInvocations(new Amazon.CDK.AWS.CloudWatch.MetricOptions { Statistic = "Sum" })
+            },
+            Label = "Error rate (%)",
+            Period = Duration.Minutes(5)
+        });
+
+        var errorRateAlarm = new Amazon.CDK.AWS.CloudWatch.Alarm(this, "ErrorRateAlarm", new Amazon.CDK.AWS.CloudWatch.AlarmProps
+        {
+            AlarmName = "notetaker-error-rate",
+            AlarmDescription = "Lambda error rate exceeds 1% over 5 minutes",
+            Metric = errorRate,
+            Threshold = 1,
+            EvaluationPeriods = 2,
+            ComparisonOperator = Amazon.CDK.AWS.CloudWatch.ComparisonOperator.GREATER_THAN_THRESHOLD,
+            TreatMissingData = Amazon.CDK.AWS.CloudWatch.TreatMissingData.NOT_BREACHING
+        });
+        errorRateAlarm.AddAlarmAction(alarmAction);
+
+        var latencyAlarm = new Amazon.CDK.AWS.CloudWatch.Alarm(this, "LatencyAlarm", new Amazon.CDK.AWS.CloudWatch.AlarmProps
+        {
+            AlarmName = "notetaker-p99-latency",
+            AlarmDescription = "Lambda P99 duration exceeds 5000 ms over 5 minutes",
+            Metric = apiFunction.MetricDuration(new Amazon.CDK.AWS.CloudWatch.MetricOptions
+            {
+                Statistic = "p99",
+                Period = Duration.Minutes(5)
+            }),
+            Threshold = 5000,
+            EvaluationPeriods = 2,
+            ComparisonOperator = Amazon.CDK.AWS.CloudWatch.ComparisonOperator.GREATER_THAN_THRESHOLD,
+            TreatMissingData = Amazon.CDK.AWS.CloudWatch.TreatMissingData.NOT_BREACHING
+        });
+        latencyAlarm.AddAlarmAction(alarmAction);
+
+        // Powertools adds a Service dimension to the domain metric, so a fixed-
+        // dimension Metric reads nothing. Match the dashboard's DomainTotal(...)
+        // pattern: a free-text SEARCH summed across every dimension combination.
+        var concurrencyConflicts = new Amazon.CDK.AWS.CloudWatch.MathExpression(new Amazon.CDK.AWS.CloudWatch.MathExpressionProps
+        {
+            Expression = "SUM(SEARCH('Namespace=\"NoteTaker/Domain\" MetricName=\"ConcurrencyConflict\"', 'Sum'))",
+            Label = "ConcurrencyConflict",
+            Period = Duration.Minutes(5)
+        });
+
+        var concurrencyAlarm = new Amazon.CDK.AWS.CloudWatch.Alarm(this, "ConcurrencyConflictAlarm", new Amazon.CDK.AWS.CloudWatch.AlarmProps
+        {
+            AlarmName = "notetaker-concurrency-conflicts",
+            AlarmDescription = "More than 10 optimistic-concurrency conflicts in 5 minutes",
+            Metric = concurrencyConflicts,
+            Threshold = 10,
+            EvaluationPeriods = 1,
+            ComparisonOperator = Amazon.CDK.AWS.CloudWatch.ComparisonOperator.GREATER_THAN_THRESHOLD,
+            TreatMissingData = Amazon.CDK.AWS.CloudWatch.TreatMissingData.NOT_BREACHING
+        });
+        concurrencyAlarm.AddAlarmAction(alarmAction);
     }
 
     private DistributionProps BuildDistributionProps(

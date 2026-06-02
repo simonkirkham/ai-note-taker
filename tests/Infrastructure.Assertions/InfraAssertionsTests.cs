@@ -805,4 +805,86 @@ public class InfraAssertionsTests
     {
         _template.HasOutput("RumIdentityPoolId", Match.AnyValue());
     }
+
+    [Fact]
+    public void Alarms_TopicExistsNamedNotetakerAlarms()
+    {
+        _template.HasResourceProperties("AWS::SNS::Topic", Match.ObjectLike(new Dictionary<string, object>
+        {
+            ["TopicName"] = "notetaker-alarms"
+        }));
+    }
+
+    [Fact]
+    public void Alarms_TopicHasEmailSubscription()
+    {
+        _template.HasResourceProperties("AWS::SNS::Subscription", Match.ObjectLike(new Dictionary<string, object>
+        {
+            ["Protocol"] = "email",
+            ["Endpoint"] = "simon.kirkham+note-taker-ai@gmail.com"
+        }));
+    }
+
+    [Fact]
+    public void Alarms_ErrorRateAlarmWiredToTopic()
+    {
+        // Error rate is a MathExpression (errors / invocations * 100) > 1 over 2 periods.
+        _template.HasResourceProperties("AWS::CloudWatch::Alarm", Match.ObjectLike(new Dictionary<string, object>
+        {
+            ["AlarmName"] = "notetaker-error-rate",
+            ["Threshold"] = 1,
+            ["EvaluationPeriods"] = 2,
+            ["ComparisonOperator"] = "GreaterThanThreshold",
+            ["TreatMissingData"] = "notBreaching",
+            ["Metrics"] = Match.ArrayWith(new object[]
+            {
+                Match.ObjectLike(new Dictionary<string, object>
+                {
+                    ["Expression"] = Match.StringLikeRegexp(".*errors / invocations \\* 100.*")
+                })
+            }),
+            ["AlarmActions"] = Match.AnyValue()
+        }));
+    }
+
+    [Fact]
+    public void Alarms_LatencyAlarmWiredToTopic()
+    {
+        _template.HasResourceProperties("AWS::CloudWatch::Alarm", Match.ObjectLike(new Dictionary<string, object>
+        {
+            ["AlarmName"] = "notetaker-p99-latency",
+            ["Threshold"] = 5000,
+            ["EvaluationPeriods"] = 2,
+            ["ComparisonOperator"] = "GreaterThanThreshold",
+            ["ExtendedStatistic"] = "p99",
+            ["AlarmActions"] = Match.AnyValue()
+        }));
+    }
+
+    [Fact]
+    public void Alarms_ConcurrencyConflictAlarmWiredToTopic()
+    {
+        // Domain metric is queried via SUM(SEARCH(...)) so it matches any dimension
+        // set Powertools adds (Service alongside Aggregate), like the dashboard.
+        _template.HasResourceProperties("AWS::CloudWatch::Alarm", Match.ObjectLike(new Dictionary<string, object>
+        {
+            ["AlarmName"] = "notetaker-concurrency-conflicts",
+            ["Threshold"] = 10,
+            ["ComparisonOperator"] = "GreaterThanThreshold",
+            ["Metrics"] = Match.ArrayWith(new object[]
+            {
+                Match.ObjectLike(new Dictionary<string, object>
+                {
+                    ["Expression"] = Match.StringLikeRegexp(".*SUM\\(SEARCH.*MetricName.*ConcurrencyConflict.*")
+                })
+            }),
+            ["AlarmActions"] = Match.AnyValue()
+        }));
+    }
+
+    [Fact]
+    public void Alarms_AllThreeAlarmsExist()
+    {
+        _template.ResourceCountIs("AWS::CloudWatch::Alarm", 3);
+    }
 }
