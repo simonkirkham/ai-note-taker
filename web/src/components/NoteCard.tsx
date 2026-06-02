@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { NoteCard as NoteCardData, deleteNote } from "../api";
+import { PencilIcon, TrashIcon } from "./icons";
 
 export default function NoteCard({
   card,
@@ -60,18 +61,8 @@ export default function NoteCard({
       {card.contentPreview && (
         <p className="note-card-snippet">{card.contentPreview}</p>
       )}
-      {card.openActions.length > 0 && (
-        <ul className="note-card-actions">
-          {card.openActions.map((a) => (
-            <li key={a.actionId} className="note-card-action">
-              {a.description}
-            </li>
-          ))}
-        </ul>
-      )}
       {tags.length > 0 && (
         <div className="note-card-tags">
-          <span className="note-card-tags-label">Tags</span>
           {tags.map((tag) => (
             <span key={tag} data-testid={`card-tag-${tag}`} className="note-card-tag-pill">{tag}</span>
           ))}
@@ -79,18 +70,19 @@ export default function NoteCard({
       )}
       <div className="note-card-actions-row">
         <button
-          className="note-card-edit-button"
+          className="icon-btn"
+          aria-label="Edit note"
           onClick={(e) => { e.stopPropagation(); onEdit(card.noteId); }}
         >
-          Edit Note
+          <PencilIcon />
         </button>
         {onDelete && !confirming && (
           <button
-            className="note-card-delete-btn"
+            className="icon-btn icon-btn--danger"
             aria-label={`Delete "${card.title || "Untitled"}"`}
             onClick={handleDeleteClick}
           >
-            Delete
+            <TrashIcon />
           </button>
         )}
         {confirming && (

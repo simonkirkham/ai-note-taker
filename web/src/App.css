@@ -1153,7 +1153,6 @@ body {
   font-style: italic;
 }
 
-.todo-delete-btn,
 .todo-reopen-btn {
   flex-shrink: 0;
   padding: 0.25rem 0.625rem;
@@ -1166,19 +1165,8 @@ body {
   min-height: 2rem;
 }
 
-.todo-delete-btn {
-  color: var(--color-text-muted);
-  background: transparent;
-  border-color: var(--color-border);
-}
 
-.todo-delete-btn:hover:not(:disabled) {
-  color: var(--color-error);
-  border-color: var(--color-error-border);
-  background: var(--color-error-bg);
-}
 
-.todo-delete-btn:disabled,
 .todo-reopen-btn:disabled {
   opacity: 0.45;
   cursor: not-allowed;
@@ -1425,29 +1413,8 @@ body {
   overflow: hidden;
 }
 
-.note-card-actions {
-  list-style: none;
-  padding: 0;
-  margin: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 0.25rem;
-}
 
-.note-card-action {
-  font-size: 0.875rem;
-  color: var(--color-text);
-  padding: 0.25rem 0;
-  padding-left: 1rem;
-  position: relative;
-}
 
-.note-card-action::before {
-  content: "•";
-  position: absolute;
-  left: 0;
-  color: var(--color-primary);
-}
 
 .note-card-actions-row {
   display: flex;
@@ -1457,52 +1424,11 @@ body {
   flex-wrap: wrap;
 }
 
-.note-card-edit-button {
-  align-self: flex-start;
-  background: none;
-  border: 1.5px solid var(--color-primary);
-  border-radius: var(--radius);
-  color: var(--color-primary);
-  font-family: inherit;
-  font-size: 0.875rem;
-  font-weight: 500;
-  padding: 0.625rem 0.875rem;
-  cursor: pointer;
-  transition: background var(--transition), color var(--transition);
-}
 
-.note-card-edit-button:hover {
-  background: var(--color-primary);
-  color: #fff;
-}
 
-.note-card-edit-button:focus-visible {
-  outline: 2px solid var(--color-primary);
-  outline-offset: 2px;
-}
 
-.note-card-delete-btn {
-  background: none;
-  border: 1.5px solid var(--color-error);
-  border-radius: var(--radius);
-  color: var(--color-error);
-  font-family: inherit;
-  font-size: 0.875rem;
-  font-weight: 500;
-  padding: 0.625rem 0.875rem;
-  cursor: pointer;
-  transition: background var(--transition), color var(--transition);
-}
 
-.note-card-delete-btn:hover {
-  background: var(--color-error);
-  color: #fff;
-}
 
-.note-card-delete-btn:focus-visible {
-  outline: 2px solid var(--color-error);
-  outline-offset: 2px;
-}
 
 .note-card-confirm-row {
   display: flex;
@@ -1695,14 +1621,6 @@ body {
   margin-top: 0.125rem;
 }
 
-.note-card-tags-label {
-  font-size: 0.75rem;
-  font-weight: 600;
-  color: var(--color-text-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  flex-shrink: 0;
-}
 
 .note-card-tag-pill {
   display: inline-block;
@@ -2851,3 +2769,69 @@ body.has-notification-banner {
   border-top: 1px solid var(--color-border);
 }
 /* === CHANGE-6 + CHANGE-9: collapsible home Filters control (end) === */
+
+/* === CHANGE-10: home refinements (start) === */
+/* Shared small icon button — note-card edit/delete and to-do delete. */
+.icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.9rem;
+  height: 1.9rem;
+  padding: 0;
+  border: 1.5px solid var(--color-border);
+  border-radius: 7px;
+  background: transparent;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  transition: color var(--transition), border-color var(--transition);
+  flex-shrink: 0;
+}
+.icon-btn:hover:not(:disabled) {
+  color: var(--color-primary);
+  border-color: var(--color-primary);
+}
+.icon-btn--danger {
+  color: var(--color-error, #dc2626);
+}
+.icon-btn--danger:hover:not(:disabled) {
+  color: var(--color-error, #dc2626);
+  border-color: var(--color-error, #dc2626);
+}
+.icon-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Filters: the Tags-group pills sit inline with no box — the collapsible
+   panel itself keeps its card. (Folder-view TagFilter, outside .filters-panel,
+   keeps its own box.) */
+.filters-panel .tag-filter {
+  margin-top: 0;
+  padding: 0;
+  background: none;
+  border: none;
+  border-radius: 0;
+}
+
+/* Lighter Today's Meetings — borderless rows separated by thin dividers. */
+.meetings-list {
+  gap: 0;
+}
+.meetings-list > li {
+  border-bottom: 1px solid var(--color-border);
+}
+.meetings-list > li:last-child {
+  border-bottom: none;
+}
+.meeting-card {
+  border: none;
+  border-radius: 0;
+}
+.meeting-card-header {
+  padding: 0.6rem 0 0.3rem;
+}
+.meeting-card-footer {
+  padding: 0 0 0.6rem;
+}
+/* === CHANGE-10: home refinements (end) === */

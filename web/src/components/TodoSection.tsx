@@ -5,6 +5,7 @@ import {
   completeTodo, reopenTodo, deleteTodo,
 } from "../api";
 import QuickCaptureTodoInput from "./QuickCaptureTodoInput";
+import { TrashIcon } from "./icons";
 
 function isToday(isoString: string): boolean {
   const d = new Date(isoString);
@@ -135,12 +136,12 @@ export default function TodoSection() {
                     {item.noteTitle && <span className="todo-note-title">{item.noteTitle}</span>}
                   </div>
                   <button
-                    className="todo-delete-btn"
+                    className="icon-btn icon-btn--danger"
                     aria-label={`Delete "${item.description}"`}
                     disabled={busy.has(item.itemId)}
                     onClick={() => handleDelete(item)}
                   >
-                    Delete
+                    <TrashIcon />
                   </button>
                 </li>
               ))}
@@ -173,12 +174,12 @@ export default function TodoSection() {
                         Reopen
                       </button>
                       <button
-                        className="todo-delete-btn"
+                        className="icon-btn icon-btn--danger"
                         aria-label={`Delete "${item.description}"`}
                         disabled={busy.has(item.itemId)}
                         onClick={() => handleDelete(item)}
                       >
-                        Delete
+                        <TrashIcon />
                       </button>
                     </li>
                   ))}
