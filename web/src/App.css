@@ -2438,3 +2438,64 @@ body.has-notification-banner {
   font-size: 0.8125rem;
   color: #ef4444;
 }
+
+/* === CHANGE-6: collapsible home Filters control (start) === */
+.filters-section {
+  margin-top: 0.75rem;
+}
+
+.filters-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.4rem 0.65rem;
+  background: var(--color-surface);
+  border: 1.5px solid var(--color-border);
+  border-radius: 8px;
+  font-family: inherit;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  transition: background var(--transition), color var(--transition),
+    border-color var(--transition);
+}
+
+.filters-toggle:hover {
+  color: var(--color-text);
+  border-color: var(--color-primary);
+}
+
+.filters-toggle:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
+.filters-toggle--active {
+  color: var(--color-primary);
+  border-color: var(--color-primary);
+}
+
+.filters-toggle-chevron {
+  display: inline-block;
+  font-size: 0.7rem;
+  line-height: 1;
+  transition: transform var(--transition);
+}
+
+.filters-toggle--open .filters-toggle-chevron {
+  transform: rotate(90deg);
+}
+
+.filters-toggle-count {
+  font-weight: 700;
+}
+
+.filters-panel[hidden] {
+  display: none;
+}
+
+.filters-panel .tag-filter {
+  margin-top: 0.5rem;
+}
+/* === CHANGE-6: collapsible home Filters control (end) === */
