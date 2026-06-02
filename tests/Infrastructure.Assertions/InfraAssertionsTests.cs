@@ -939,4 +939,37 @@ public class InfraAssertionsTests
             })
         }));
     }
+
+    [Fact]
+    public void SavedQueries_FourQueryDefinitionsExist()
+    {
+        _template.ResourceCountIs("AWS::Logs::QueryDefinition", 4);
+    }
+
+    [Theory]
+    [InlineData("NoteTaker/All errors")]
+    [InlineData("NoteTaker/By trace ID")]
+    [InlineData("NoteTaker/Slowest requests")]
+    [InlineData("NoteTaker/Concurrency conflicts")]
+    public void SavedQueries_NamedQueryDefinitionExists(string name)
+    {
+        _template.HasResourceProperties("AWS::Logs::QueryDefinition", Match.ObjectLike(new Dictionary<string, object>
+        {
+            ["Name"] = name,
+            ["QueryString"] = Match.AnyValue(),
+            ["LogGroupNames"] = Match.AnyValue()
+        }));
+    }
+
+    [Fact]
+    public void SavedQueries_ConcurrencyConflictsQueryMatchesTheWarningLogLine()
+    {
+        // Guards that the saved query filters on the exact message the event-store
+        // decorator logs ("Concurrency conflict {StreamId} ..."), so it returns data.
+        _template.HasResourceProperties("AWS::Logs::QueryDefinition", Match.ObjectLike(new Dictionary<string, object>
+        {
+            ["Name"] = "NoteTaker/Concurrency conflicts",
+            ["QueryString"] = Match.StringLikeRegexp("[\\s\\S]*Concurrency conflict[\\s\\S]*")
+        }));
+    }
 }
