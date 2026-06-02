@@ -31,7 +31,7 @@ export interface UseTranscriptionResult {
   transcript: string;
   elapsedSeconds: number;
   error: string | undefined;
-  startRecording: () => void;
+  startRecording: (includeCallAudio: boolean) => void;
   stopRecording: () => void;
   reset: () => void;
 }
@@ -45,6 +45,7 @@ export function useTranscription(noteId: string): UseTranscriptionResult {
   const stoppedRef = useRef(false);
   const wakeupRef = useRef<(() => void) | null>(null);
   const mediaStreamRef = useRef<MediaStream | null>(null);
+  const displayStreamRef = useRef<MediaStream | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const startTimeRef = useRef<number>(0);
@@ -66,11 +67,15 @@ export function useTranscription(noteId: string): UseTranscriptionResult {
       mediaStreamRef.current.getTracks().forEach((t) => t.stop());
       mediaStreamRef.current = null;
     }
+    if (displayStreamRef.current) {
+      displayStreamRef.current.getTracks().forEach((t) => t.stop());
+      displayStreamRef.current = null;
+    }
   }, []);
 
   useEffect(() => () => cleanup(), [cleanup]);
 
-  const startRecording = useCallback(() => {
+  const startRecording = useCallback((includeCallAudio: boolean) => {
     stoppedRef.current = false;
     finalizedRef.current = '';
     setTranscript('');
@@ -80,22 +85,55 @@ export function useTranscription(noteId: string): UseTranscriptionResult {
 
     void (async () => {
       try {
-        const creds = await getTranscriptionCredentials();
-        if (stoppedRef.current) return;
+        // Optionally capture remote-participant (call) audio via screen-share and mix it with the
+        // mic. Requested first, before the credential and mic awaits, because getDisplayMedia needs
+        // the click's transient user activation — intervening awaits can let that window expire.
+        // If the user cancels, the browser is unsupported, or activation lapsed, fall back to
+        // mic-only — call audio is a best-effort enhancement, not a hard requirement.
+        let displayStream: MediaStream | null = null;
+        if (includeCallAudio) {
+          try {
+            displayStream = await navigator.mediaDevices.getDisplayMedia({ audio: true, video: false });
+          } catch (err) {
+            console.warn('Call audio capture unavailable; continuing with microphone only.', err);
+            displayStream = null;
+          }
+          displayStreamRef.current = displayStream;
+          if (stoppedRef.current) {
+            cleanup();
+            return;
+          }
+        }
 
-        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        const creds = await getTranscriptionCredentials();
         if (stoppedRef.current) {
-          stream.getTracks().forEach((t) => t.stop());
+          cleanup();
           return;
         }
+
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
         mediaStreamRef.current = stream;
+        if (stoppedRef.current) {
+          cleanup();
+          return;
+        }
 
         const audioContext = new AudioContext({ sampleRate: 16000 });
         audioContextRef.current = audioContext;
-        const source = audioContext.createMediaStreamSource(stream);
         await audioContext.audioWorklet.addModule(WORKLET_DATA_URL);
         const workletNode = new AudioWorkletNode(audioContext, 'pcm-processor');
-        source.connect(workletNode);
+
+        const micSource = audioContext.createMediaStreamSource(stream);
+        if (displayStream && displayStream.getAudioTracks().length > 0) {
+          // Sum mic + system audio into a single mono mix before the worklet sees it.
+          const systemSource = audioContext.createMediaStreamSource(displayStream);
+          const mixer = audioContext.createGain();
+          micSource.connect(mixer);
+          systemSource.connect(mixer);
+          mixer.connect(workletNode);
+        } else {
+          micSource.connect(workletNode);
+        }
 
         const audioQueue: Uint8Array[] = [];
 

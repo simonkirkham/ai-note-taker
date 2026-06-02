@@ -27,6 +27,7 @@ export default function TranscriptionPanel({
   const [isAnalysing, setIsAnalysing] = useState(false);
   const [analyseError, setAnalyseError] = useState<string | null>(null);
   const [updateContent, setUpdateContent] = useState(false);
+  const [includeCallAudio, setIncludeCallAudio] = useState(true);
 
   useEffect(() => {
     if (transcriptRef.current) {
@@ -89,6 +90,21 @@ export default function TranscriptionPanel({
         )}
       </div>
 
+      {(status === 'idle' || status === 'stopped') && (
+        <label className="transcription-call-audio-toggle">
+          <input
+            type="checkbox"
+            data-testid="transcription-call-audio-toggle"
+            checked={includeCallAudio}
+            onChange={(e) => setIncludeCallAudio(e.target.checked)}
+          />
+          Include call audio
+          <span className="transcription-call-audio-hint">
+            Requires Chrome or Edge; shares audio from your screen or tab.
+          </span>
+        </label>
+      )}
+
       <div className="transcription-controls">
         {status === 'error' && (
           <button
@@ -103,7 +119,7 @@ export default function TranscriptionPanel({
           <button
             className="transcription-record-button"
             data-testid="transcription-record-button"
-            onClick={() => { setHasRecordedThisSession(true); startRecording(); }}
+            onClick={() => { setHasRecordedThisSession(true); startRecording(includeCallAudio); }}
           >
             Record
           </button>

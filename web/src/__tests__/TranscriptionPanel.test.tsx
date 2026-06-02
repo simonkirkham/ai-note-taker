@@ -57,30 +57,41 @@ function stubBrowserApis() {
     getTracks: () => [{ stop: vi.fn() }],
   } as unknown as MediaStream
 
+  // Display (system/tab) audio stream — carries one audio track by default.
+  const mockDisplayStream = {
+    getTracks: () => [{ stop: vi.fn() }],
+    getAudioTracks: () => [{ stop: vi.fn() }],
+  } as unknown as MediaStream
+
   const mockWorkletNode = {
     connect: vi.fn(),
     port: { onmessage: null as ((e: MessageEvent) => void) | null },
   }
 
   const mockSource = { connect: vi.fn() }
+  const mockGain = { connect: vi.fn() }
 
   const mockAudioContext = {
     sampleRate: 16000,
     createMediaStreamSource: vi.fn().mockReturnValue(mockSource),
+    createGain: vi.fn().mockReturnValue(mockGain),
     audioWorklet: { addModule: vi.fn().mockResolvedValue(undefined) },
     destination: {},
     close: vi.fn().mockResolvedValue(undefined),
   }
 
+  const getUserMedia = vi.fn().mockResolvedValue(mockStream)
+  const getDisplayMedia = vi.fn().mockResolvedValue(mockDisplayStream)
+
   Object.defineProperty(global.navigator, 'mediaDevices', {
-    value: { getUserMedia: vi.fn().mockResolvedValue(mockStream) },
+    value: { getUserMedia, getDisplayMedia },
     configurable: true,
   })
 
   vi.stubGlobal('AudioContext', vi.fn().mockImplementation(() => mockAudioContext))
   vi.stubGlobal('AudioWorkletNode', vi.fn().mockImplementation(() => mockWorkletNode))
 
-  return { mockStream, mockWorkletNode, mockAudioContext }
+  return { mockStream, mockDisplayStream, mockWorkletNode, mockAudioContext, getUserMedia, getDisplayMedia }
 }
 
 beforeEach(() => {
@@ -332,4 +343,82 @@ it('enabling Update note content posts updateContent=true', async () => {
   await userEvent.click(screen.getByTestId('transcription-analyse-button'))
 
   await waitFor(() => expect(analyseBody).toEqual({ updateContent: true }))
+})
+
+// ── 10-F: Capture remote participants (system audio mix) ──────────
+
+// Scenario: System audio is mixed with mic when toggle is on
+//   Given the "Include call audio" toggle is ON (default)
+//   When I press Record and grant screen-share permission
+//   Then getDisplayMedia is called with { audio: true, video: false }
+//   And the resulting audio track is mixed with the microphone track
+it('captures system audio via getDisplayMedia when the call-audio toggle is on', async () => {
+  const { getDisplayMedia, mockAudioContext } = stubBrowserApis()
+
+  render(<TranscriptionPanel noteId="note-1" />)
+  // Toggle defaults ON, so no interaction needed.
+  expect(screen.getByTestId('transcription-call-audio-toggle')).toBeChecked()
+  await userEvent.click(screen.getByTestId('transcription-record-button'))
+
+  await waitFor(() => expect(screen.getByTestId('transcription-stop-button')).toBeInTheDocument())
+  expect(getDisplayMedia).toHaveBeenCalledWith({ audio: true, video: false })
+  // Mic + system sources are both created and summed into the mixer (GainNode).
+  await waitFor(() => expect(mockAudioContext.createMediaStreamSource).toHaveBeenCalledTimes(2))
+  expect(mockAudioContext.createGain).toHaveBeenCalled()
+})
+
+// Scenario: Falls back to mic-only if screen-share is cancelled
+//   Given the toggle is ON
+//   When I press Record and cancel the screen-share prompt
+//   Then recording continues with microphone audio only
+//   And no error is shown
+it('falls back to mic-only and shows no error when screen-share is cancelled', async () => {
+  const { getDisplayMedia, mockAudioContext } = stubBrowserApis()
+  getDisplayMedia.mockRejectedValueOnce(new DOMException('Permission denied', 'NotAllowedError'))
+
+  render(<TranscriptionPanel noteId="note-1" />)
+  await userEvent.click(screen.getByTestId('transcription-record-button'))
+
+  await waitFor(() => expect(screen.getByTestId('transcription-stop-button')).toBeInTheDocument())
+  expect(screen.queryByTestId('transcription-error')).toBeNull()
+  // Only the mic source is created; recording proceeds normally.
+  expect(mockAudioContext.createMediaStreamSource).toHaveBeenCalledTimes(1)
+})
+
+// Scenario: Mic-only when toggle is off
+//   Given the "Include call audio" toggle is OFF
+//   When I press Record
+//   Then getDisplayMedia is not called
+//   And recording uses the microphone only
+it('does not call getDisplayMedia when the call-audio toggle is off', async () => {
+  const { getDisplayMedia, mockAudioContext } = stubBrowserApis()
+
+  render(<TranscriptionPanel noteId="note-1" />)
+  await userEvent.click(screen.getByTestId('transcription-call-audio-toggle'))
+  await userEvent.click(screen.getByTestId('transcription-record-button'))
+
+  await waitFor(() => expect(screen.getByTestId('transcription-stop-button')).toBeInTheDocument())
+  expect(getDisplayMedia).not.toHaveBeenCalled()
+  expect(mockAudioContext.createMediaStreamSource).toHaveBeenCalledTimes(1)
+})
+
+// Scenario: Screen-share granted but carries no audio (e.g. a silent window/tab)
+//   Given the toggle is ON and the user shares a window with no audio
+//   When I press Record
+//   Then no mixer is created and recording proceeds mic-only
+it('records mic-only when the shared display stream carries no audio track', async () => {
+  const { getDisplayMedia, mockAudioContext } = stubBrowserApis()
+  // A display stream the user granted but that has no audio (shared a silent window).
+  getDisplayMedia.mockResolvedValueOnce({
+    getTracks: () => [{ stop: vi.fn() }],
+    getAudioTracks: () => [],
+  } as unknown as MediaStream)
+
+  render(<TranscriptionPanel noteId="note-1" />)
+  await userEvent.click(screen.getByTestId('transcription-record-button'))
+
+  await waitFor(() => expect(screen.getByTestId('transcription-stop-button')).toBeInTheDocument())
+  // Only the mic source is wired; the empty display stream is not mixed in.
+  expect(mockAudioContext.createMediaStreamSource).toHaveBeenCalledTimes(1)
+  expect(mockAudioContext.createGain).not.toHaveBeenCalled()
 })

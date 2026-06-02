@@ -2408,6 +2408,31 @@ body.has-notification-banner {
   cursor: not-allowed;
 }
 
+.transcription-call-audio-toggle {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+  margin-bottom: 0.5rem;
+  font-size: 0.8125rem;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.transcription-call-audio-toggle input[type="checkbox"] {
+  accent-color: var(--color-primary);
+  width: 0.95rem;
+  height: 0.95rem;
+  cursor: pointer;
+}
+
+.transcription-call-audio-hint {
+  flex-basis: 100%;
+  font-size: 0.75rem;
+  opacity: 0.8;
+}
+
 .transcription-analyse-error {
   margin-top: 0.4rem;
   font-size: 0.8125rem;
