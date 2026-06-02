@@ -41,3 +41,12 @@ While there, consider adding `cdk synth` to the hook to match the guardrail "Nev
 **Why it matters:** The documented "activate once per clone" step (`git config core.hooksPath .githooks`) makes the hook fail immediately at the `domain specs` step, blocking every commit. Because the default `core.hooksPath` (`.git/hooks`) has no pre-commit, the hook has been dormant and commits have been effectively ungated — so the documented local gate provides no protection today.
 **Raised in:** Phase Minor Changes — discovered when activating the hook for CHANGE-1.
 **Depends on:** Nothing blocking.
+
+---
+
+## Pre-commit hook runs frontend eslint even for backend-only commits
+
+**What:** `.githooks/pre-commit` runs `eslint` unconditionally. Backend/infra-only slice worktrees skip `npm --prefix web install` (to avoid Node-version lockfile drift), so the hook fails with `eslint: not found` even when no `web/` files changed — forcing `git commit --no-verify`. Make the frontend lint conditional: skip it when no staged paths are under `web/`, or when `web/node_modules` is absent (and print a notice).
+**Why it matters:** Recurs on every backend/infra slice (hit on 12-C; will recur on 12-D/12-E). Routinely bypassing the hook with `--no-verify` erodes the local gate's value and hides real frontend lint failures when they do matter.
+**Raised in:** Phase 12 (12-C) — backend/infra slice worktree.
+**Depends on:** Nothing blocking. Pairs naturally with the stale-test-paths fix above (same file).
