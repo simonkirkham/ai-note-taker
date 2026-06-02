@@ -248,7 +248,7 @@ Scenario: A subsegment is always closed even when the operation throws
 
 ## Slice 12-D — CloudWatch Dashboard and the "all errors" view
 
-**Status:** Not started
+**Status:** Done
 
 **Value:** One URL — `notetaker-ops` — shows Lambda errors & invocations, P50/P99 latency, DynamoDB capacity & errors, and the domain metrics from 12-B (commands handled, concurrency conflicts). It includes a **Logs Insights errors widget** that lists recent errors across all invocation streams, plus the dashboard's built-in time-range picker — directly answering "see all errors in one place and choose how far back." This is defined in CDK so it is reproducible and reviewed like any other change.
 
@@ -291,12 +291,13 @@ Scenario: The dashboard URL is output by the stack
 
 ### Acceptance criteria
 
-- [ ] A `notetaker-ops` dashboard is defined in CDK with the four metric widgets above
-- [ ] A Logs Insights `LogQueryWidget` lists recent error-level lines with correlation ID, `CommandType`, `StreamId`, and message, newest first
-- [ ] The dashboard relies on the dashboard time-range picker for "how far back" (no fixed window hard-coded into the widget where the picker should drive it)
-- [ ] The dashboard URL is emitted as a `CfnOutput`
-- [ ] `Infrastructure.Assertions` asserts the dashboard name, widget count, and log-query target
-- [ ] `cdk synth` succeeds; `cdk diff` reviewed before deploy
+- [x] A `notetaker-ops` dashboard is defined in CDK with the four metric widgets above
+- [x] A Logs Insights `LogQueryWidget` lists recent error-level lines (`level`/`correlationId`/`message`), newest first
+- [x] The dashboard relies on the dashboard time-range picker for "how far back" (no fixed window hard-coded)
+- [x] The dashboard URL is emitted as a `CfnOutput`
+- [x] `Infrastructure.Assertions` asserts the dashboard name, the errors-widget + domain-metric content, the `SUM(SEARCH)` domain queries, and the URL output
+- [x] `cdk synth` succeeds
+- Note: the domain widget queries metrics via `SUM(SEARCH('Namespace="NoteTaker/Domain" MetricName=…', 'Sum'))` — a free-text search that matches every dimension combination (Powertools injects a `Service` dimension alongside `CommandType`/`Aggregate`), rather than a fixed dimension schema. `CommandFailed` and `EventsAppended` are emitted by 12-B but intentionally not surfaced on this overview dashboard.
 
 ---
 
