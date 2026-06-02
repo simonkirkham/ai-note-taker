@@ -56,6 +56,7 @@ npm --prefix web run dev       # Dev server (port 5173)
 
 - Do **not** use `AudioContext.createScriptProcessor` — it is deprecated. Use `AudioWorkletNode` with a data-URL worklet module (`data:application/javascript,...`) or a static file in `public/`.
 - **`getDisplayMedia` must be requested before any `await` that follows the user's click** (credentials, `getUserMedia`, etc.) — it requires the click's *transient user activation*, and intervening awaits can let that window expire, making the prompt fail silently.
+- **`getDisplayMedia` must request `video: true` even when you only want audio** — Chromium rejects an audio-only display capture with `NotSupportedError`. Request a video track to obtain the audio one, use only `getAudioTracks()`, and leave the (unused) video track alone; do **not** stop it early, as that can tear down the audio capture too. A jsdom mock cannot catch this — verify display/media capture in a real Chromium browser before marking the slice Done.
 - **A best-effort capability that degrades silently must still be observable.** When a `catch` swallows a failure to fall back (e.g. screen-share denied → mic-only), log it with `console.warn` so the degrade is visible in DevTools rather than invisible.
 - Every new CSS selector must have a matching `className` prop in the rendered JSX. Verify with grep: `grep -n "className=\"my-selector\"" web/src/` — if no match, the selector is dead.
 
