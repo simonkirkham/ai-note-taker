@@ -607,4 +607,13 @@ public class InfraAssertionsTests
             })
         }));
     }
+
+    [Fact]
+    public void ApiFunction_HasLogGroupWithOneMonthRetention()
+    {
+        _template.HasResourceProperties("AWS::Logs::LogGroup", Match.ObjectLike(new Dictionary<string, object>
+        {
+            ["RetentionInDays"] = 30
+        }));
+    }
 }

@@ -30,6 +30,8 @@ var calendarLinkTableName = Environment.GetEnvironmentVariable("PROJ_CALENDARLIN
 
 var app = Builder.BuildApp(args, eventTableName, projTableName, noteDetailTableName, noteActionsTableName, todoListTableName, noteCardListTableName, folderTreeTableName, tagIndexTableName, calendarLinkTableName);
 
+LoggingConfig.UseCorrelationId(app);
+
 app.UseCors(p => p.AllowAnyOrigin().AllowAnyMethod().AllowAnyHeader());
 app.UseAuthentication();
 app.UseMiddleware<Api.Auth.AllowlistMiddleware>();

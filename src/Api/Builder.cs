@@ -1,6 +1,7 @@
 using Amazon.BedrockRuntime;
 using Amazon.DynamoDBv2;
 using Amazon.SecurityToken;
+using AWS.Lambda.Powertools.Logging;
 using EventStore;
 using EventStore.Projections;
 using Api.Auth;
@@ -18,6 +19,15 @@ public static class Builder
     internal static WebApplication BuildApp(string[] args, string eventTableName, string projTableName, string noteDetailTableName, string noteActionsTableName, string todoListTableName, string noteCardListTableName, string folderTreeTableName, string tagIndexTableName, string calendarLinkTableName)
     {
         var builder = WebApplication.CreateBuilder(args);
+
+        // LogEvent is intentionally left off: logging the Lambda event would
+        // capture the Authorization bearer token.
+        builder.Logging.ClearProviders();
+        builder.Logging.AddPowertoolsLogger(config =>
+        {
+            config.Service = "note-taker";
+        });
+
         builder.Services.AddCors();
         builder.Services.AddHttpContextAccessor();
 
