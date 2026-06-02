@@ -1,20 +1,46 @@
-import { getToken, jwtExpired, triggerForbidden, triggerUnauthorized } from './auth/tokenStore'
+import { getToken, jwtExpired, triggerForbidden, triggerRefresh, triggerUnauthorized } from './auth/tokenStore'
 
 const base = "/api";
 
-function apiFetch(url: string, init?: RequestInit): Promise<Response> {
-  const token = getToken()
-  if (token && token.split('.').length === 3 && jwtExpired(token)) {
-    triggerUnauthorized()
-    return Promise.resolve(new Response(null, { status: 401 }))
-  }
+// A single in-flight silent refresh shared by all concurrent 401s. The home screen fires
+// several data fetches at once; without this they would each kick off their own refresh.
+let refreshInFlight: Promise<string | null> | null = null
+function refreshOnce(): Promise<string | null> {
+  if (!refreshInFlight) refreshInFlight = triggerRefresh().finally(() => { refreshInFlight = null })
+  return refreshInFlight
+}
+
+function withAuth(init: RequestInit | undefined, token: string | null): RequestInit {
   const headers = new Headers(init?.headers)
   if (token) headers.set('Authorization', `Bearer ${token}`)
-  return fetch(url, { ...init, headers }).then(res => {
-    if (res.status === 401 && token) triggerUnauthorized()
-    if (res.status === 403) triggerForbidden()
-    return res
-  })
+  return { ...init, headers }
+}
+
+async function apiFetch(url: string, init?: RequestInit): Promise<Response> {
+  let token = getToken()
+  if (token && token.split('.').length === 3 && jwtExpired(token)) {
+    // Pre-flight: the token is already expired — try a silent refresh before sending.
+    token = await refreshOnce()
+    if (!token) {
+      triggerUnauthorized()
+      return new Response(null, { status: 401 })
+    }
+  }
+  const res = await fetch(url, withAuth(init, token))
+  if (res.status === 403) triggerForbidden()
+  if (res.status === 401) {
+    // Fires regardless of whether a token was attached: a 401 must never be swallowed.
+    const newToken = await refreshOnce()
+    if (!newToken) {
+      triggerUnauthorized()
+      return res
+    }
+    const retried = await fetch(url, withAuth(init, newToken))
+    if (retried.status === 401) triggerUnauthorized()
+    if (retried.status === 403) triggerForbidden()
+    return retried
+  }
+  return res
 }
 
 export interface NoteItem {

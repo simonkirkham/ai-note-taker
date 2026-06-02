@@ -3,6 +3,7 @@ const STORAGE_KEY = 'id_token'
 let _token: string | null = null
 let _onForbidden: (() => void) | null = null
 let _onUnauthorized: (() => void) | null = null
+let _onRefresh: (() => Promise<string | null>) | null = null
 
 export function jwtExpired(token: string): boolean {
   try {
@@ -35,3 +36,5 @@ export const setOnForbidden = (cb: () => void): void => { _onForbidden = cb }
 export const triggerForbidden = (): void => { _onForbidden?.() }
 export const setOnUnauthorized = (cb: () => void): void => { _onUnauthorized = cb }
 export const triggerUnauthorized = (): void => { _onUnauthorized?.() }
+export const setOnRefresh = (cb: () => Promise<string | null>): void => { _onRefresh = cb }
+export const triggerRefresh = (): Promise<string | null> => _onRefresh ? _onRefresh() : Promise.resolve(null)
