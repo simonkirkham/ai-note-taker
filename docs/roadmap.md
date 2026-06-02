@@ -193,7 +193,7 @@ Slices and acceptance criteria: [docs/phases/phase-10.md](phases/phase-10.md)
 
 Slices and acceptance criteria: [docs/phases/phase-11.md](phases/phase-11.md)
 
-## Phase 12 — Observability _(In Progress)_
+## Phase 12 — Observability _(Done)_
 
 Make the app properly observable for production using AWS-native tooling only. Today there is one Lambda log group with unstructured text logs and nothing else — no correlation IDs, metrics, traces, dashboards, alarms, or frontend visibility. This phase closes every gap, pillar by pillar.
 
@@ -206,7 +206,7 @@ Make the app properly observable for production using AWS-native tooling only. T
 - **12-G:** Observability runbook (`docs/observability.md`) + saved Logs Insights query definitions
 - **12-H:** Unified error view — surface frontend (RUM) JS/HTTP errors on the `notetaker-ops` dashboard so backend + frontend errors share one screen
 
-**Status:** 12-A → 12-F and 12-H are Done (12-E's concurrency-conflict alarm deferred — CloudWatch rejects `SEARCH` on metric alarms). Only **12-G** (runbook + saved queries) remains.
+**Status:** Done — all eight slices shipped (12-A → 12-H). Two follow-ups tracked separately: 12-E's concurrency-conflict alarm is deferred (CloudWatch rejects `SEARCH` on metric alarms — needs an alarmable dimensionless metric), and the `x-correlation-id` value returned to clients isn't yet emitted as a log field (BUG-8). Optional post-deploy check: confirm the 12-H `AWS/RUM` metric widget populates (else add `CfnMetricsDestination`).
 
 **Goal:** answer "is it healthy?", "what broke?", and "why is it slow?" from one place; learn the three pillars of observability and how they correlate, AWS Lambda Powertools, EMF metrics, X-Ray service maps, CloudWatch dashboards/alarms as CDK, and CloudWatch RUM. Driven by the `observability` skill.
 

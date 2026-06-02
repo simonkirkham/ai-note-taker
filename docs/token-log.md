@@ -4,6 +4,25 @@ Approximate tokens consumed per slice, broken down by agent. Recorded by Scribe 
 
 ---
 
+## Slice 12-G — Observability runbook + saved Logs Insights queries (closes Phase 12)
+
+> **Note:** Mostly docs + four `CfnQueryDefinition`s, but it took **two Hawk rounds**. Hawk's first review requested changes on a wrong-log-group basis, yet its log-checking process surfaced two genuine "query returns blank/nothing" bugs (the `correlationId` non-field → BUG-8, and PascalCase-vs-snake_case projections). Both Hawk passes ran as real subagents (exact counts).
+
+| Agent                                   | ~Tokens  |
+|-----------------------------------------|----------|
+| Pip (gather values, write runbook+queries+tests, 2 fix rounds, merge/deploy, Scribe, BUG-8) | 100 000 |
+| Hawk (round 1 — requested changes)      | 59 000   |
+| Hawk (round 2 — approved)               | 39 000   |
+| **Total**                               | **~198 000** |
+
+**Why:** higher than a typical docs slice because the queries had to be verified against *real* prod logs, not just synth — and that verification (correct vs stale log group; snake_case field names; correlationId absence) is exactly what caught the two latent bugs before merge. The up-front prod-log inspection during authoring (checking `command_type`/`stream_id`/`xray_trace_id` actually exist) would have pre-empted Hawk round 1.
+
+**Optimisation suggestions:**
+- **Author against real logs first (≈ –50 000).** For any Logs Insights / dashboard / query deliverable, run the filters against the live log group while writing them. Both Hawk rounds were spent discovering field names that one `filter-log-events` probe at authoring time would have revealed.
+- **Resolve the real log group once, up front.** The wrong-log-group false alarm cost a full review round; `get-function-configuration --query LoggingConfig` settles it immediately.
+
+---
+
 ## Slices 12-E + 12-H — Alarms/SNS and Unified error view (parallel run, with a deploy-break recovery)
 
 > **Note:** Run in parallel worktrees at the user's request. Both implementation agents and all reviewers ran as real subagents (their counts are exact from hand-offs). 12-E shipped a deploy-breaking bug (`SEARCH` on a metric alarm) that passed Hawk + synth and only failed at `cdk deploy`; recovering it (hotfix BUG-class fix + re-rebasing 12-H onto the corrected main, re-resolving the shared-file conflict) is the bulk of the orchestration cost.

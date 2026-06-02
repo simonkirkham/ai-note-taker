@@ -12,7 +12,7 @@
 | 12-D | CloudWatch Dashboard and the "all errors" view | Done | 12-A, 12-B |
 | 12-E | CloudWatch Alarms and SNS notifications | Done (concurrency alarm deferred) | 12-B |
 | 12-F | Frontend monitoring (CloudWatch RUM) | Done | — |
-| 12-G | Observability runbook and saved Logs Insights queries | Not Started | 12-A–12-F |
+| 12-G | Observability runbook and saved Logs Insights queries | Done | 12-A–12-F |
 | 12-H | Unified error view — surface frontend (RUM) errors on the ops dashboard | Done | 12-D, 12-F |
 
 Recommended build order: **12-A → 12-B → 12-C → 12-D → 12-E**, with **12-F** runnable in parallel any time, then **12-H** (needs both the dashboard and RUM), and **12-G** last once all the surfaces it documents exist.
@@ -423,7 +423,7 @@ Scenario: RUM is not injected into non-production builds
 
 ## Slice 12-G — Observability runbook and saved Logs Insights queries
 
-**Status:** Not started
+**Status:** Done — runbook `docs/observability.md` + four `NoteTaker/` saved queries live in prod. Note: the "By correlation ID" query became **"By trace ID"** (filters `xray_trace_id`) because `correlationId` is not actually a log field (see BUG-8); "Slowest commands" shipped as **"Slowest requests"** (Lambda `@duration` is per-invocation; X-Ray covers per-command). See `docs/learnings/phase-12g-observability-runbook.md`.
 
 **Value:** The surfaces built in 12-A..12-F are only useful if you know where to look. This slice writes a short runbook (`docs/observability.md`) — "where do I see errors / latency / a single user's request / a frontend crash", with the dashboard URL, the X-Ray console path, the RUM console path, and a set of copy-paste Logs Insights queries (all errors, errors for one correlation ID, slowest commands, concurrency-conflict timeline). The most-used queries are also saved as CDK `CfnQueryDefinition`s so they appear in the Logs Insights query picker for everyone.
 
@@ -461,11 +461,11 @@ Scenario: Common queries are saved in Logs Insights
 
 ### Acceptance criteria
 
-- [ ] `docs/observability.md` written: a "how do I see X" runbook covering all three pillars + dashboard + alarms + RUM, with console paths and stack outputs
-- [ ] `CfnQueryDefinition`s added for All errors, Slowest commands, and Concurrency-conflict timeline (and a documented by-correlation-ID query)
-- [ ] `Infrastructure.Assertions` asserts the saved query definitions
-- [ ] `CLAUDE.md` links to the runbook
-- [ ] `cdk synth` succeeds
+- [x] `docs/observability.md` written: a "how do I see X" runbook covering all three pillars + dashboard + alarms + RUM, with console paths and stack outputs
+- [x] `CfnQueryDefinition`s added for All errors, Slowest requests, Concurrency-conflict timeline, and By trace ID — live in prod under the `NoteTaker/` folder (query fields verified against the real Powertools snake_case log shape)
+- [x] `Infrastructure.Assertions` asserts the saved query definitions (count + each name + the concurrency query's filter text)
+- [x] `CLAUDE.md` links to the runbook
+- [x] `cdk synth` succeeds; deployed green and the four saved queries confirmed live
 
 ---
 
