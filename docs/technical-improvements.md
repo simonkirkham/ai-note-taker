@@ -26,3 +26,18 @@ Each entry records what it is, why it matters, where it was raised, and any depe
 **Why it matters:** Removes an unnecessary AWS dependency from the PR-validation path, simplifying CI and reducing the blast radius of credential issues.
 **Raised in:** CI / Dev Experience observation.
 **Depends on:** Confirm the CDK app performs no environment-bound context lookups during synth.
+
+---
+
+## Fix stale test project paths in `.githooks/pre-commit`
+
+**What:** The committed `.githooks/pre-commit` invokes `dotnet test` against project paths that no longer exist after the tests were renamed to dotted form. Update the three stale references:
+- `tests/Specs/Specs.csproj` → `tests/Domain.Specs/Domain.Specs.csproj`
+- `tests/ApiIntegration/ApiIntegration.csproj` → `tests/Api.Integration/Api.Integration.csproj`
+- `tests/InfraAssertions/InfraAssertions.csproj` → `tests/Infrastructure.Assertions/Infrastructure.Assertions.csproj`
+
+While there, consider adding `cdk synth` to the hook to match the guardrail "Never commit without all BDD specs green and cdk synth succeeding", and deleting the leftover empty `tests/Specs`, `tests/ApiIntegration`, `tests/InfraAssertions`, `tests/EventStoreIntegration` directories (stale `bin`/`obj` output from before the rename).
+
+**Why it matters:** The documented "activate once per clone" step (`git config core.hooksPath .githooks`) makes the hook fail immediately at the `domain specs` step, blocking every commit. Because the default `core.hooksPath` (`.git/hooks`) has no pre-commit, the hook has been dormant and commits have been effectively ungated — so the documented local gate provides no protection today.
+**Raised in:** Phase Minor Changes — discovered when activating the hook for CHANGE-1.
+**Depends on:** Nothing blocking.
