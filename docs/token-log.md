@@ -1292,3 +1292,19 @@ If no agent ran unexpectedly high: write `None — slice ran within expected ran
 **Phase-10 feedback track total (10-I→10-L):** ~125k + ~188k + ~110k + ~207k ≈ **630k**. The two projection slices (J, L) cost ~1.7× the two event slices (I, K), driven by store/rebuild/CDK breadth and, for L, the cross-stream rebuild design.
 
 **Optimisation note:** the cross-stream ordering insight is now a learning — any future multi-aggregate projection should reach for deferred computation (or sort by `OccurredAt`) from the start rather than discover the parity gap in review.
+
+---
+
+## CHANGE-10 — Home screen refinement pass
+
+> Multi-file frontend slice (NoteCard, TodoSection, App.css, new icons.tsx) preceded by **three prototype rounds** (the brief — "simpler" — was subjective). One Hawk pass, approved with two cheap tidy suggestions applied. ~150k total incl. prototypes.
+
+| Phase | ~Tokens |
+|-------|---------|
+| Prototypes (3 rounds: holistic → before/after → full-screen) | 45 000 |
+| Pip (impl + dead-CSS removal + tests) | 70 000 |
+| Hawk + tidy | 40 000 |
+| Scribe | 9 000 |
+| **Total** | **~164 000** |
+
+**Notes:** the prototype rounds were the cost driver but earned it — they converted "simplify the home screen" into six concrete, low-risk changes. Reusing the *real* component CSS in the before/after prototype made the deltas legible. Querying delete tests by `aria-label` (not text) meant swapping text buttons for icons broke only one test file. Last item in the Minor Changes backlog.

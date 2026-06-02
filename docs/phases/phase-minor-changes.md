@@ -21,7 +21,7 @@
 | CHANGE-7 | More colour schemes; drop duplicate Forest theme | Done | CHANGE-2 (shipped) |
 | CHANGE-8 | Theme picker + Sign out always visible without scrolling | Done | CHANGE-2 (shipped) |
 | CHANGE-9 | Restructure home Filters: Show-older + Tags inside, fix gap | Done | CHANGE-3, CHANGE-6 (shipped) |
-| CHANGE-10 | Refine home: hide tag labels, icon card/to-do actions, boxless filter tags, simpler calendar | Planned | — |
+| CHANGE-10 | Refine home: hide tag labels, icon card/to-do actions, boxless filter tags, simpler calendar | Done | — |
 | CHANGE-11 | Preview pull-out `»` becomes `«` when its panel is open | Done | — |
 | CHANGE-12 | Drop home Notes divider; top-align with Today's Meetings | Done | CHANGE-10? (numbering collision — see section) |
 
@@ -922,7 +922,7 @@ Scenario: Existing filter behaviour is unchanged
 
 ## CHANGE-10 — Refine the home screen (cards, filters, to-dos, meetings)
 
-**Status:** Prototype approved (2026-06-02) — confirmed via the before/after and full-screen galleries on branch `prototype/minor-10-home-simplify` (`home-refine-prototype.html`, `home-fullscreen-prototype.html`). Ready to implement; do not start from prototype code.
+**Status:** ✅ Done — PR #129, deployed 2026-06-02. See [docs/learnings/phase-minor-10-home-refine.md](../learnings/phase-minor-10-home-refine.md). Prototype-approved (before/after + full-screen galleries); shipped the six confirmed refinements.
 
 **Value:** The home screen reads as busy. Rather than a dramatic redesign (an earlier "make everything smaller / minimal" prototype was rejected as too far from today's look), the user confirmed a set of targeted refinements that keep today's layout but reduce visual noise — quieter cards, lighter actions, and calmer Filters and Meetings presentation.
 
@@ -982,13 +982,13 @@ Scenario: The Today's Meetings panel is lighter
 ### Acceptance criteria
 
 - [x] Prototype built and approved (full-screen) before implementation
-- [ ] Note summary cards: no "TAGS" label (pills remain); no action-items list; Edit/Delete are icon buttons with accessible labels and the inline delete-confirm flow intact
-- [ ] To-do items (open + Done) use a trash icon for delete, with the `aria-label` preserved
-- [ ] The Filters "Tags" group shows pills inline with no surrounding box; the collapsible panel itself is unchanged
-- [ ] The Today's Meetings panel uses the lighter row layout
-- [ ] No functionality removed — edit, delete (+ confirm), complete/reopen, tag filter, and "+ Note" all behave as before (visual only)
-- [ ] Folder and note views are unaffected unless a shared style is touched
-- [ ] Component tests updated where they assert on changed text (e.g. "Edit Note"/"Delete" → icon `aria-label`s); existing NoteCard / TodoSection / TagFilter / Meetings tests remain green
+- [x] Note summary cards: no "TAGS" label (pills remain); no action-items list; Edit/Delete are icon buttons with accessible labels and the inline delete-confirm flow intact
+- [x] To-do items (open + Done) use a trash icon for delete, with the `aria-label` preserved
+- [x] The Filters "Tags" group shows pills inline with no surrounding box; the collapsible panel itself is unchanged
+- [x] The Today's Meetings panel uses the lighter row layout
+- [x] No functionality removed — edit, delete (+ confirm), complete/reopen, tag filter, and "+ Note" all behave as before (visual only)
+- [x] Folder and note views are unaffected unless a shared style is touched
+- [x] Component tests updated where they assert on changed text (e.g. "Edit Note"/"Delete" → icon `aria-label`s); existing NoteCard / TodoSection / TagFilter / Meetings tests remain green
 
 ---
 
