@@ -93,6 +93,30 @@ public sealed class ActionItemFeedbackIntegrationTests : IClassFixture<ApiFactor
         Assert.Equal(before, Snapshot(await store.GetAllAsync()));
     }
 
+    // Scenario: rebuild parity holds for the same item completed then deleted (both counters increment)
+    [Fact]
+    public async Task Rebuild_SameItemCompletedThenDeleted_ParityHolds()
+    {
+        var noteId = await AnalyseWithActionsAsync("af-both");
+        var actionId = await ActionIdForAsync(noteId, "af-both");
+        var beforeComp = Comp(await FeedbackAsync(User));
+        var beforeDel = Del(await FeedbackAsync(User));
+
+        await _client.PostAsync($"/notes/{noteId}/actions/{actionId}/complete", null);
+        await _client.DeleteAsync($"/notes/{noteId}/actions/{actionId}");
+
+        Assert.Equal(beforeComp + 1, Comp(await FeedbackAsync(User)));
+        Assert.Equal(beforeDel + 1, Del(await FeedbackAsync(User)));
+
+        var store = _factory.Services.GetRequiredService<IActionItemFeedbackStore>();
+        var snapshot = Snapshot(await store.GetAllAsync());
+
+        var rebuild = await _client.PostAsync("/admin/projections/rebuild", null);
+        rebuild.EnsureSuccessStatusCode();
+
+        Assert.Equal(snapshot, Snapshot(await store.GetAllAsync()));
+    }
+
     private async Task<string> AnalyseWithActionsAsync(params string[] descriptions)
     {
         _fakeBedrock.NextResult = new NoteAnalysisResult("same content", [], descriptions);
