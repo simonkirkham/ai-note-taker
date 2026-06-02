@@ -58,7 +58,10 @@ A standalone to-do not attached to any note. Created from the home screen quick-
 | `TagNote(noteId, tag, taggedAt)` | Note exists, tag not already present (one command per token) | `NoteTagged` |
 | `UntagNote(noteId, tag, untaggedAt)` | Note exists, tag present | `NoteUntagged` |
 | `SetNoteDate(noteId, date, setAt)` | Note exists, not deleted | `NoteDateSet` |
+| `RecordTagSuggestions(noteId, tags)` | Note exists, not deleted; empty tag list emits nothing | `TagsSuggested` |
 | `DeleteNote(noteId, deletedAt)` | Note exists, status ≠ Deleted | `NoteDeleted` |
+
+> `RecordTagSuggestions` is issued by the analysis handler (not the user) to record which tags an AI run contributed. It records provenance only — the tags are applied separately via `TagNote`/`NoteTagged`.
 
 ### ActionItem
 
@@ -93,6 +96,7 @@ A standalone to-do not attached to any note. Created from the home screen quick-
 - `NoteTagged { NoteId, Tag }`
 - `NoteUntagged { NoteId, Tag }`
 - `NoteDateSet { NoteId, Date }` — user-specified `DateOnly`; can be set or changed at any time while the note is active
+- `TagsSuggested { NoteId, Tags[] }` — AI provenance; records the tags an analysis run contributed (the post-dedup applied set), so a later `NoteUntagged` of one can be classified as a rejected AI suggestion. No aggregate state change
 - `NoteDeleted { NoteId }` — soft delete; event remains in the stream, projections filter it out
 
 ### ActionItem

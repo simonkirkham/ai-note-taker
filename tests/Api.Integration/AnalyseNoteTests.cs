@@ -3,6 +3,8 @@ using System.Net.Http.Json;
 using System.Text;
 using System.Text.Json;
 using Api.Services;
+using Domain.Notes;
+using EventStore;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
@@ -252,6 +254,56 @@ public sealed class AnalyseNoteTests : IClassFixture<ApiFactory>
         var resp = await client.PostAsync($"/notes/{noteId}/analyse", null);
 
         Assert.Equal(HttpStatusCode.ServiceUnavailable, resp.StatusCode);
+    }
+
+    // Scenario: Analysis records only the newly-applied AI tags as TagsSuggested, before NoteTagged (10-I)
+    [Fact]
+    public async Task PostAnalyse_RecordsOnlyNewTagsAsSuggested_BeforeNoteTagged()
+    {
+        _fakeBedrock.NextResult = new NoteAnalysisResult("same content", ["auth", "login"], []);
+
+        var noteId = await CreateNoteAsync();
+        await _client.PostAsync($"/notes/{noteId}/transcription",
+            Json(new { transcriptText = "login and auth discussion", durationSeconds = 10 }));
+        await _client.PostAsync($"/notes/{noteId}/tags", Json(new { tag = "auth" }));
+
+        var resp = await _client.PostAsync($"/notes/{noteId}/analyse", null);
+
+        Assert.Equal(HttpStatusCode.NoContent, resp.StatusCode);
+
+        var events = await ReadStreamAsync(noteId);
+        var suggestedEnvelope = Assert.Single(events, e => e.EventType == nameof(TagsSuggested));
+        var suggested = (TagsSuggested)EventDeserializer.Deserialize(suggestedEnvelope);
+        Assert.Equal(new[] { "login" }, suggested.Tags);
+
+        var taggedLoginEnvelope = Assert.Single(events, e =>
+            e.EventType == nameof(NoteTagged) &&
+            ((NoteTagged)EventDeserializer.Deserialize(e)).Tag == "login");
+        Assert.True(suggestedEnvelope.SequenceNumber < taggedLoginEnvelope.SequenceNumber);
+    }
+
+    // Scenario: No new tags means no TagsSuggested event is recorded (10-I)
+    [Fact]
+    public async Task PostAnalyse_NoNewTags_RecordsNoTagsSuggested()
+    {
+        _fakeBedrock.NextResult = new NoteAnalysisResult("same content", ["auth"], []);
+
+        var noteId = await CreateNoteAsync();
+        await _client.PostAsync($"/notes/{noteId}/transcription",
+            Json(new { transcriptText = "auth discussion", durationSeconds = 10 }));
+        await _client.PostAsync($"/notes/{noteId}/tags", Json(new { tag = "auth" }));
+
+        var resp = await _client.PostAsync($"/notes/{noteId}/analyse", null);
+
+        Assert.Equal(HttpStatusCode.NoContent, resp.StatusCode);
+        var events = await ReadStreamAsync(noteId);
+        Assert.DoesNotContain(events, e => e.EventType == nameof(TagsSuggested));
+    }
+
+    private async Task<IReadOnlyList<EventEnvelope>> ReadStreamAsync(string noteId)
+    {
+        var store = _factory.Services.GetRequiredService<IEventStore>();
+        return await store.ReadAsync($"note#{noteId}");
     }
 
     private async Task<string> CreateNoteAsync()

@@ -52,6 +52,8 @@ public sealed class Note : IAggregate
             case TranscriptionCompleted e:
                 _transcriptText = e.TranscriptText;
                 break;
+            case TagsSuggested:
+                break;
             default:
                 break;
         }
@@ -71,6 +73,7 @@ public sealed class Note : IAggregate
             UnfileNote cmd => HandleUnfile(cmd),
             LinkNoteToCalendarEvent cmd => HandleLinkToCalendarEvent(cmd),
             CompleteTranscription cmd => HandleCompleteTranscription(cmd),
+            RecordTagSuggestions cmd => HandleRecordTagSuggestions(cmd),
             _ => throw new ArgumentOutOfRangeException(nameof(command))
         };
 
@@ -164,5 +167,14 @@ public sealed class Note : IAggregate
         if (!_exists || _deleted)
             throw new InvalidOperationException($"Note {cmd.NoteId} does not exist.");
         return [new TranscriptionCompleted(cmd.NoteId, cmd.TranscriptText, cmd.DurationSeconds)];
+    }
+
+    IReadOnlyList<IDomainEvent> HandleRecordTagSuggestions(RecordTagSuggestions cmd)
+    {
+        if (!_exists || _deleted)
+            throw new InvalidOperationException($"Note {cmd.NoteId} does not exist.");
+        if (cmd.Tags.Count == 0)
+            return [];
+        return [new TagsSuggested(cmd.NoteId, cmd.Tags)];
     }
 }
