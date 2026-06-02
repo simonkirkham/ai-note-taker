@@ -55,6 +55,19 @@ public sealed class NoteCardsIntegrationTests(ApiFactory factory) : IClassFixtur
     }
 
     [Fact]
+    public async Task GetNoteCards_CardIncludesLastModifiedAt()
+    {
+        var noteId = await CreateNoteAsync();
+
+        var card = await GetCardAsync(noteId);
+        Assert.True(card.TryGetProperty("lastModifiedAt", out var lastModified),
+            "card should include lastModifiedAt");
+        Assert.NotEqual(JsonValueKind.Null, lastModified.ValueKind);
+        Assert.True(lastModified.TryGetDateTimeOffset(out _),
+            "lastModifiedAt should be a valid timestamp");
+    }
+
+    [Fact]
     public async Task GetNoteCards_CardContentPreviewTruncatedAt120Chars()
     {
         var noteId = await CreateNoteAsync();

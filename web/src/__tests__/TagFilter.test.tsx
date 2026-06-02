@@ -5,6 +5,7 @@ import { server } from '../test/setup'
 import ListView from '../components/ListView'
 import TagFilter from '../components/TagFilter'
 import type { NoteCard } from '../api'
+import { localTodayISO } from '../dates'
 
 describe('TagFilter — isolated', () => {
   it('renders a pill for each tag', () => {
@@ -88,13 +89,18 @@ describe('TagFilter — isolated', () => {
 })
 
 describe('TagFilter — filtering cards via ListView', () => {
+  // Dated today so both are visible in the home view by default; these tests
+  // exercise tag filtering, not the today/older date filter.
+  const today = localTodayISO()
   const alphaCard: NoteCard = {
-    noteId: 'n-1', title: 'Alpha', contentPreview: '', date: null,
-    openActions: [], createdAt: '2026-01-01T00:00:00Z', tags: ['meeting'], folderId: null,
+    noteId: 'n-1', title: 'Alpha', contentPreview: '', date: today,
+    openActions: [], createdAt: '2026-01-01T00:00:00Z', lastModifiedAt: '2026-01-01T00:00:00Z',
+    tags: ['meeting'], folderId: null,
   }
   const betaCard: NoteCard = {
-    noteId: 'n-2', title: 'Beta', contentPreview: '', date: null,
-    openActions: [], createdAt: '2026-01-01T00:00:00Z', tags: [], folderId: null,
+    noteId: 'n-2', title: 'Beta', contentPreview: '', date: today,
+    openActions: [], createdAt: '2026-01-01T00:00:00Z', lastModifiedAt: '2026-01-01T00:00:00Z',
+    tags: [], folderId: null,
   }
 
   beforeEach(() => {

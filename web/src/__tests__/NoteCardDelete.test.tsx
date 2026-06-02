@@ -4,14 +4,20 @@ import { http, HttpResponse } from 'msw'
 import { server } from '../test/setup'
 import ListView from '../components/ListView'
 import type { NoteCard as NoteCardData } from '../api'
+import { localTodayISO } from '../dates'
+
+// Dated today so both render in the home view by default; these tests exercise
+// the delete affordance, not the today/older date filter.
+const today = localTodayISO()
 
 const card: NoteCardData = {
   noteId: 'note-1',
   title: 'Team sync',
   contentPreview: 'Weekly update',
-  date: null,
+  date: today,
   openActions: [],
   createdAt: '2026-01-01T00:00:00Z',
+  lastModifiedAt: '2026-01-01T00:00:00Z',
   tags: [],
   folderId: null,
 }
@@ -20,9 +26,10 @@ const card2: NoteCardData = {
   noteId: 'note-2',
   title: 'Project brief',
   contentPreview: '',
-  date: null,
+  date: today,
   openActions: [],
   createdAt: '2026-01-02T00:00:00Z',
+  lastModifiedAt: '2026-01-02T00:00:00Z',
   tags: [],
   folderId: null,
 }
