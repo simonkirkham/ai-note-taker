@@ -27,7 +27,7 @@ CHANGE-1 to CHANGE-4 were moved here from the former "Phase 13 — UI Polish II"
 
 ## CHANGE-1 — Single-spaced note lines by default
 
-**Status:** Planned
+**Status:** ✅ Done — PR #98, deployed 2026-06-02. See [docs/learnings/phase-minor-1-single-spaced-lines.md](../learnings/phase-minor-1-single-spaced-lines.md).
 
 **Value:** Pressing Enter in the note editor currently leaves a full blank line between paragraphs, so notes look double-spaced and waste vertical space. Each `Enter` creates a new ProseMirror `<p>`, and with no paragraph-margin override the browser's default `p { margin: 1em 0 }` — compounded by the editor's `line-height: 1.75` — renders a visible blank line between every block. Notes should read as single-spaced by default: consecutive lines sit directly beneath one another, the way a meeting scratchpad does.
 
@@ -101,7 +101,7 @@ Scenario: Headings and lists keep their own spacing
 
 ## CHANGE-2 — Theme selection
 
-**Status:** Planned
+**Status:** ✅ Done — PR #102, deployed 2026-06-02. See [docs/learnings/phase-minor-2-theme-selection.md](../learnings/phase-minor-2-theme-selection.md).
 
 **Value:** Users can choose a colour theme for the app. The whole UI already draws every colour from CSS custom properties on `:root` (`--color-primary`, `--color-bg`, `--color-text`, `--color-cta`, `--color-border`, etc.), so theming is a matter of overriding those variables and remembering the choice. This change ships three themes — the current **Teal** (default), **Forest** (deeper emerald, light), and **Midnight** (full dark mode) — selectable from a small picker in the sidebar footer and persisted across sessions.
 
@@ -213,7 +213,7 @@ Scenario: Theme is independent of the signed-in user
 
 ## CHANGE-3 — Home screen shows today's notes by default
 
-**Status:** Planned
+**Status:** ✅ Done — PR #101, deployed 2026-06-02. See [docs/learnings/phase-minor-3-home-todays-notes.md](../learnings/phase-minor-3-home-todays-notes.md).
 
 **Value:** The home screen note list grows without bound — every note ever created is shown in API order, so the most recent work is buried and the screen gets noisier over time. This change focuses the home list on what's current: by default it shows the notes that matter **today** — those **dated today** plus any **edited today** (even if dated earlier) — and **hides future-dated notes**. A **"Show older notes"** toggle reveals past notes. Whatever is shown is ordered **reverse-chronologically** (newest first), so the freshest work is always at the top.
 
@@ -349,7 +349,7 @@ Scenario: Folder view is unaffected
 
 ## CHANGE-4 — To-do rows wrap cleanly with long text and a note title
 
-**Status:** Planned
+**Status:** Prototype approved — ready to implement. Prototype on branch `prototype/todo-row-wrap` (`todo-row-wrap-prototype.html`), approved 2026-06-02. Implement the confirmed layout below as a normal slice (Breaker → spec → implement → Hawk → merge). Do **not** start from prototype code.
 
 **Value:** A to-do row in the **To Do** section is laid out as a single flex row — `checkbox · description · note-title · Delete` — with `justify-content: space-between` (`.todo-item`, `App.css` ~L821). The note title (`.todo-note-title`, ~L853) carries `white-space: nowrap`, so when a note-derived to-do has a long title (e.g. *"Head of Technical Delivery – Finova"*) it reserves a wide fixed strip of horizontal space. That squeezes the description column to near-zero width, forcing the description to wrap **one word per line** and growing the row to an absurd height, while the **Delete** button is pushed off the right edge and clipped. Short to-dos look fine; long ones become unusable. The row should stay compact: the description wraps normally, the note title sits beneath it as a quiet caption, and the Delete/Reopen control stays pinned and fully visible at all widths.
 
@@ -367,6 +367,21 @@ Run the **prototype** skill first (this is a UX/layout-uncertain change, not obv
 - a long description with **no** note title
 
 Use it to confirm the chosen layout — description + note title stacked in a content column, Delete pinned right — holds up across the narrow home-column width **and** the wider full-width breakpoint, in both the open list and the expanded **Done** list (Reopen + Delete buttons). On approval, the exit procedure rewrites this change's GWT scenarios with the confirmed layout before real implementation begins. No prototype code is merged.
+
+---
+
+### Approved layout (confirmed by prototype, 2026-06-02)
+
+The prototype (`prototype/todo-row-wrap` → `todo-row-wrap-prototype.html`) was reviewed and **approved**. The confirmed layout, to implement verbatim:
+
+- Wrap `.todo-description` + `.todo-note-title` in a new `.todo-item-content` div, in **both** the open-items `<li>` and the Done `<li>`.
+- `.todo-item-content { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 0.125rem; }` — `min-width: 0` is load-bearing (lets the text wrap instead of forcing overflow).
+- Remove `flex: 1` from `.todo-description` and `white-space: nowrap` from `.todo-note-title`; add `overflow-wrap: anywhere` to both so a single long token can't overflow.
+- `.todo-item` uses **`align-items: flex-start`** (confirmed preference) so the checkbox sits against the first line of a tall, wrapped row rather than floating in the vertical centre.
+- The full text **wraps** — no truncation/ellipsis; nothing the user wrote is hidden.
+- Checkbox and Delete/Reopen buttons keep `flex-shrink: 0` and stay pinned and fully visible at all widths.
+
+The scenarios and acceptance criteria below already reflect this layout. Remove the `prototype/todo-row-wrap` branch after the slice ships.
 
 ---
 
@@ -439,7 +454,7 @@ Scenario: The to-do data is unchanged by the layout fix
 - [ ] `.todo-note-title` no longer uses `white-space: nowrap`; long titles wrap instead of reserving fixed horizontal space
 - [ ] No change to `TodoItem`, events, projections, the API, or complete/reopen/delete behaviour — the fix is visual only
 - [ ] Existing `TodoSection` component tests remain green; a test asserts a long-description note-derived item still exposes its description and the Delete control
-- [ ] Prototype built and approved before implementation; confirmed layout reflected in the scenarios above
+- [x] Prototype built and approved before implementation; confirmed layout reflected in the scenarios above
 
 ---
 
