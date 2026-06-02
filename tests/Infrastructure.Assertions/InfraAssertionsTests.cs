@@ -729,4 +729,80 @@ public class InfraAssertionsTests
     {
         _template.HasOutput("DashboardUrl", Match.AnyValue());
     }
+
+    [Fact]
+    public void Rum_AppMonitorExists_WithTelemetriesAndXRay()
+    {
+        _template.HasResourceProperties("AWS::RUM::AppMonitor", Match.ObjectLike(new Dictionary<string, object>
+        {
+            ["Name"] = "notetaker-rum",
+            // No-domain template scopes the monitor to the CloudFront default domain,
+            // which is a token (Fn::GetAtt) here — assert presence, not a literal.
+            ["Domain"] = Match.AnyValue(),
+            ["AppMonitorConfiguration"] = Match.ObjectLike(new Dictionary<string, object>
+            {
+                ["EnableXRay"] = true,
+                ["SessionSampleRate"] = 1,
+                ["Telemetries"] = Match.ArrayWith(new object[] { "errors", "performance", "http" }),
+                ["IdentityPoolId"] = Match.AnyValue(),
+                ["GuestRoleArn"] = Match.AnyValue()
+            })
+        }));
+    }
+
+    [Fact]
+    public void Rum_AppMonitorScopedToCustomDomain_WhenConfigured()
+    {
+        _domainTemplate.HasResourceProperties("AWS::RUM::AppMonitor", Match.ObjectLike(new Dictionary<string, object>
+        {
+            ["Domain"] = "test.note-taker-ai.com"
+        }));
+    }
+
+    [Fact]
+    public void Rum_IdentityPoolAllowsUnauthenticated()
+    {
+        _template.HasResourceProperties("AWS::Cognito::IdentityPool", Match.ObjectLike(new Dictionary<string, object>
+        {
+            ["AllowUnauthenticatedIdentities"] = true
+        }));
+    }
+
+    [Fact]
+    public void Rum_GuestRoleCanPutRumEvents()
+    {
+        // Single action renders as a scalar string, not an array.
+        _template.HasResourceProperties("AWS::IAM::Role", Match.ObjectLike(new Dictionary<string, object>
+        {
+            ["Policies"] = Match.ArrayWith(new object[]
+            {
+                Match.ObjectLike(new Dictionary<string, object>
+                {
+                    ["PolicyDocument"] = Match.ObjectLike(new Dictionary<string, object>
+                    {
+                        ["Statement"] = Match.ArrayWith(new object[]
+                        {
+                            Match.ObjectLike(new Dictionary<string, object>
+                            {
+                                ["Action"] = "rum:PutRumEvents",
+                                ["Effect"] = "Allow"
+                            })
+                        })
+                    })
+                })
+            })
+        }));
+    }
+
+    [Fact]
+    public void Rum_MonitorIdOutputExists()
+    {
+        _template.HasOutput("RumMonitorId", Match.AnyValue());
+    }
+
+    [Fact]
+    public void Rum_IdentityPoolIdOutputExists()
+    {
+        _template.HasOutput("RumIdentityPoolId", Match.AnyValue());
+    }
 }

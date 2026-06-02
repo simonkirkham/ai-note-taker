@@ -2,10 +2,12 @@ using Amazon.CDK;
 using Amazon.CDK.AWS.CertificateManager;
 using Amazon.CDK.AWS.CloudFront;
 using Amazon.CDK.AWS.CloudFront.Origins;
+using Amazon.CDK.AWS.Cognito;
 using Amazon.CDK.AWS.DynamoDB;
 using Amazon.CDK.AWS.IAM;
 using Amazon.CDK.AWS.Route53;
 using Amazon.CDK.AWS.Route53.Targets;
+using Amazon.CDK.AWS.RUM;
 using Amazon.CDK.AWS.S3;
 using Constructs;
 
@@ -422,6 +424,110 @@ public sealed class NoteTakerStack : Stack
         {
             Value = $"https://{Region}.console.aws.amazon.com/cloudwatch/home?region={Region}#dashboards:name=notetaker-ops",
             Description = "CloudWatch ops dashboard URL"
+        });
+
+        // ── Frontend monitoring (CloudWatch RUM) ─────────────────────────
+        // RUM captures JS errors, Core Web Vitals, and failed API calls from
+        // real browsers, and (EnableXRay) links a frontend error to its backend
+        // trace via the trace id propagated in 12-C. The browser RUM client is
+        // anonymous, so it needs temporary AWS creds to call rum:PutRumEvents.
+        // CfnAppMonitor does NOT auto-create the Cognito pool/guest-role that the
+        // console wizard creates, so we wire them explicitly.
+        var rumDomain = !string.IsNullOrEmpty(props.DomainName)
+            ? props.DomainName
+            : distribution.DistributionDomainName;
+
+        // Used as both the AppMonitor name and the ResourceName the guest-role
+        // ARN is built from; the two must stay identical or the role grants
+        // rum:PutRumEvents on the wrong ARN and RUM silently drops events.
+        const string rumMonitorName = "notetaker-rum";
+
+        var rumIdentityPool = new CfnIdentityPool(this, "RumIdentityPool", new CfnIdentityPoolProps
+        {
+            AllowUnauthenticatedIdentities = true
+        });
+
+        // The guest role's policy references the monitor ARN and the monitor
+        // references the role ARN — a cycle. Break it by building the ARN from
+        // the fixed monitor name rather than from the L1 attribute.
+        var rumMonitorArn = Arn.Format(new ArnComponents
+        {
+            Service = "rum",
+            Resource = "appmonitor",
+            ResourceName = rumMonitorName
+        }, this);
+
+        var rumGuestRole = new Role(this, "RumGuestRole", new RoleProps
+        {
+            Description = "Unauthenticated Cognito role allowing the browser RUM client to PutRumEvents",
+            AssumedBy = new FederatedPrincipal(
+                "cognito-identity.amazonaws.com",
+                new Dictionary<string, object>
+                {
+                    ["StringEquals"] = new Dictionary<string, object>
+                    {
+                        ["cognito-identity.amazonaws.com:aud"] = rumIdentityPool.Ref
+                    },
+                    ["ForAnyValue:StringLike"] = new Dictionary<string, object>
+                    {
+                        ["cognito-identity.amazonaws.com:amr"] = "unauthenticated"
+                    }
+                },
+                "sts:AssumeRoleWithWebIdentity"),
+            InlinePolicies = new Dictionary<string, PolicyDocument>
+            {
+                ["RumPutEvents"] = new PolicyDocument(new PolicyDocumentProps
+                {
+                    Statements = new[]
+                    {
+                        new PolicyStatement(new PolicyStatementProps
+                        {
+                            Actions = new[] { "rum:PutRumEvents" },
+                            Resources = new[] { rumMonitorArn }
+                        })
+                    }
+                })
+            }
+        });
+
+        new CfnIdentityPoolRoleAttachment(this, "RumIdentityPoolRoleAttachment", new CfnIdentityPoolRoleAttachmentProps
+        {
+            IdentityPoolId = rumIdentityPool.Ref,
+            Roles = new Dictionary<string, object>
+            {
+                ["unauthenticated"] = rumGuestRole.RoleArn
+            }
+        });
+
+        var rumAppMonitor = new CfnAppMonitor(this, "RumAppMonitor", new CfnAppMonitorProps
+        {
+            Name = rumMonitorName,
+            Domain = rumDomain,
+            CwLogEnabled = true,
+            AppMonitorConfiguration = new CfnAppMonitor.AppMonitorConfigurationProperty
+            {
+                AllowCookies = true,
+                EnableXRay = true,
+                // Learning project: capture every session. Lower this in real prod for cost.
+                SessionSampleRate = 1.0,
+                Telemetries = new[] { "errors", "performance", "http" },
+                IdentityPoolId = rumIdentityPool.Ref,
+                GuestRoleArn = rumGuestRole.RoleArn
+            }
+        });
+
+        // AttrId is the generated AppMonitor GUID the browser snippet needs;
+        // Ref would return the monitor name and RUM would silently drop events.
+        new CfnOutput(this, "RumMonitorId", new CfnOutputProps
+        {
+            Value = rumAppMonitor.AttrId,
+            Description = "CloudWatch RUM AppMonitor ID (injected into index.html at deploy time)"
+        });
+
+        new CfnOutput(this, "RumIdentityPoolId", new CfnOutputProps
+        {
+            Value = rumIdentityPool.Ref,
+            Description = "Cognito identity pool ID for the browser RUM client"
         });
     }
 
