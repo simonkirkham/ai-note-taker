@@ -176,6 +176,8 @@ describe('ListView — home today/older date filter', () => {
       makeCard({ noteId: 'w', title: 'Work today', date: plusDays(0), tags: ['work'] }),
       makeCard({ noteId: 'x', title: 'Other today', date: plusDays(0), tags: [] }),
     ])
+    // Home filters default to collapsed (CHANGE-6) — expand first.
+    await userEvent.click(screen.getByRole('button', { name: /^filters/i }))
     const pill = await screen.findByTestId('tag-filter-pill-work')
     await userEvent.click(pill)
     expect(screen.getByText('Work today')).toBeInTheDocument()

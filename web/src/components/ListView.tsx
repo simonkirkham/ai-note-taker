@@ -35,6 +35,7 @@ export default function ListView({
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [filterMode, setFilterMode] = useState<"AND" | "OR">("AND");
   const [showOlder, setShowOlder] = useState(false);
+  const [filtersOpen, setFiltersOpen] = useState(false);
 
   useEffect(() => {
     getTags().then(setTagEntries).catch(() => {});
@@ -97,6 +98,7 @@ export default function ListView({
 
   const isInFolder = !!currentFolderId;
   const heading = folderPath && folderPath.length > 0 ? folderPath.join(" → ") : "Home";
+  const showActiveFilterCount = !filtersOpen && selectedTags.length > 0;
 
   return (
     <main className="container">
@@ -152,14 +154,6 @@ export default function ListView({
       ) : (
         <div className="home-layout">
           <div className="home-left">
-            <TagFilter
-              tags={availableTags}
-              selectedTags={selectedTags}
-              mode={filterMode}
-              onToggle={toggleTag}
-              onModeChange={setFilterMode}
-              onClear={clearFilter}
-            />
             <section className="note-cards-section">
               <div className="note-cards-header">
                 <h2 className="note-cards-heading">Notes</h2>
@@ -171,6 +165,43 @@ export default function ListView({
                   />
                   Show older notes
                 </label>
+              </div>
+              <div className="filters-section">
+                <button
+                  type="button"
+                  className={`filters-toggle${filtersOpen ? " filters-toggle--open" : ""}${
+                    showActiveFilterCount ? " filters-toggle--active" : ""
+                  }`}
+                  aria-expanded={filtersOpen}
+                  aria-controls="home-filters-panel"
+                  onClick={() => setFiltersOpen((open) => !open)}
+                >
+                  <span className="filters-toggle-chevron" aria-hidden="true">
+                    ▸
+                  </span>
+                  <span className="filters-toggle-label">
+                    Filters
+                    {showActiveFilterCount && (
+                      <span className="filters-toggle-count"> ({selectedTags.length})</span>
+                    )}
+                  </span>
+                </button>
+                <div
+                  id="home-filters-panel"
+                  className="filters-panel"
+                  hidden={!filtersOpen}
+                >
+                  {filtersOpen && (
+                    <TagFilter
+                      tags={availableTags}
+                      selectedTags={selectedTags}
+                      mode={filterMode}
+                      onToggle={toggleTag}
+                      onModeChange={setFilterMode}
+                      onClear={clearFilter}
+                    />
+                  )}
+                </div>
               </div>
               {homeCards.length > 0 ? (
                 <div className="note-cards" data-testid="note-cards">

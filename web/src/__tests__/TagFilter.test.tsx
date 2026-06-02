@@ -123,6 +123,8 @@ describe('TagFilter — filtering cards via ListView', () => {
         onOpenNote={() => {}}
       />,
     )
+    // Home filters default to collapsed (CHANGE-6) — expand first.
+    await userEvent.click(screen.getByRole('button', { name: /^filters/i }))
     const pill = await screen.findByTestId('tag-filter-pill-meeting')
     await userEvent.click(pill)
     expect(screen.getByText('Alpha')).toBeInTheDocument()
@@ -141,6 +143,8 @@ describe('TagFilter — filtering cards via ListView', () => {
         onOpenNote={() => {}}
       />,
     )
+    // Home filters default to collapsed (CHANGE-6) — expand first.
+    await userEvent.click(screen.getByRole('button', { name: /^filters/i }))
     const pill = await screen.findByTestId('tag-filter-pill-meeting')
     await userEvent.click(pill)
     await waitFor(() => expect(screen.queryByText('Beta')).not.toBeInTheDocument())
