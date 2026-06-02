@@ -1132,3 +1132,25 @@ If no agent ran unexpectedly high: write `None — slice ran within expected ran
 - **One driver per slice (−~60 000):** never both background a slice agent *and* take it over. The collision caused a reset + redundant re-merge + extra full-suite runs. If you take over, treat the agent as dead and don't let it keep a worktree.
 - **Stagger shared-file slices (−~25 000):** when N parallel slices all touch one CSS file, merge them back-to-back and rebase each immediately, or give each a pre-reserved fenced region so the conflict is trivial (the fenced-region + take-theirs-and-reappend recipe worked, but still cost two full-suite reruns).
 - **Hawk first-pass approval on all three** — no rework cycles; that part was efficient.
+
+
+---
+
+## Slice 10-E — Auto-analysis on stop
+
+> Breaker tests + Pip implementation in one session, plus a Hawk round-trip (suggestions applied) and a merge-gate incident + remediation. Hawk count exact from its hand-off (47 000).
+
+| Agent     | ~Tokens     |
+|-----------|-------------|
+| Breaker   | —           |
+| Pip (impl + Hawk-suggestion fixes + orchestration) | 85 000 |
+| Hawk      | 47 000      |
+| Stylist   | —           |
+| Scribe    | 12 000      |
+| **Total** | **~144 000** |
+
+**Why:** Two drivers. (1) The slow WSL frontend suite — three+ full runs (~3 min each: initial green, the Hawk-suggestion delta, and two pre-commit hook runs). (2) A **merge-gate incident**: 10-E was merged while deploy #403 was in progress and PR CI was pending; investigating the timeline and remediating the gate (CLAUDE.md + workflow step 11 + memory) added cost beyond the feature itself.
+
+**Optimisation suggestions:**
+- **Process (not tokens):** the gate fix is the real value here — future merges check the *latest* deploy run + `gh pr checks` all green, which prevents the rework class entirely.
+- **Pip (−~10 000):** the targeted `vitest run TranscriptionPanel` before each commit is redundant with the pre-commit hook's full-suite run; pick one.

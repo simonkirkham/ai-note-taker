@@ -10,7 +10,7 @@
 | 10-B | Live transcript | Done | 10-A |
 | 10-C | Persist transcript | Done | 10-B |
 | 10-D | Manual analysis | Done | 10-C |
-| 10-E | Auto-analysis on stop | Not Started | — |
+| 10-E | Auto-analysis on stop | Done | — |
 | 10-F | Capture remote participants (system audio mix) | Done | — |
 | 10-G | Analysis evaluation harness | Not Started | — |
 | 10-H | Analyse note content (transcript optional) | Done | — |
@@ -347,7 +347,7 @@ Scenario: Analysis requires authentication
 
 ## Slice 10-E — Auto-analysis on stop
 
-**Status:** Not Started
+**Status:** Done
 
 **Value:** Record a meeting, stop — the note enriches itself. No button click required.
 
