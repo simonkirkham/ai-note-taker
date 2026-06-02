@@ -416,7 +416,7 @@ Scenario: RUM is not injected into non-production builds
 - [x] `web/index.html` has an empty `rum-snippet` placeholder; the ID is never committed to source
 - [x] `deploy.yml` injects the snippet (with the deployed AppMonitor ID) into `dist/index.html` for the deploy build only (both `deploy-test` and `deploy-production` jobs), fail-closed on missing outputs
 - [x] `Infrastructure.Assertions` asserts the AppMonitor config (telemetries, X-Ray, sample rate), the unauthenticated identity pool, the `rum:PutRumEvents` guest role, and both outputs
-- [ ] Post-deploy: a deliberately-thrown browser error appears in the RUM console — **TODO (human):** verify on the live site
+- [x] Post-deploy: a deliberately-thrown browser error appears in the RUM console — verified on the live site (required the BUG-6 loader-host fix first)
 - [x] `cdk synth` succeeds; `cdk diff` reviewed before deploy
 
 ---

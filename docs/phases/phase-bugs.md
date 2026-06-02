@@ -187,6 +187,6 @@ Further bugs will be appended as they are identified.
 
 **Acceptance criteria:**
 - [x] `deploy.yml` RUM snippet loads `cwr.js` from `client.rum.us-east-1.amazonaws.com` (both `deploy-test` and `deploy-production` jobs); data-plane `endpoint` stays regional.
-- [ ] Post-deploy: a thrown browser error appears in the `notetaker-rum` console and `PutRumEvents` → `dataplane.rum.eu-west-2.amazonaws.com` returns 200 — **verify on the live site after this hotfix deploys.**
+- [x] Post-deploy: a thrown browser error appears in the `notetaker-rum` console and `PutRumEvents` → `dataplane.rum.eu-west-2.amazonaws.com` returns 200 — verified on the live site after the hotfix deploy.
 
 **Key files:** `.github/workflows/deploy.yml` (`Inject RUM snippet` step, both jobs).
