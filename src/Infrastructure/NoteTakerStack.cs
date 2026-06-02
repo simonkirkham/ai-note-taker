@@ -125,8 +125,12 @@ public sealed class NoteTakerStack : Stack
             MemorySize = 512,
             LogGroup = apiLogGroup,
             SnapStart = Amazon.CDK.AWS.Lambda.SnapStartConf.ON_PUBLISHED_VERSIONS,
+            Tracing = Amazon.CDK.AWS.Lambda.Tracing.ACTIVE,
             Environment = new Dictionary<string, string>
             {
+                // Defensive: with active tracing the Lambda runtime always provides a
+                // segment, but log rather than throw if the X-Ray context is ever absent.
+                ["AWS_XRAY_CONTEXT_MISSING"] = "LOG_ERROR",
                 ["EVENTS_TABLE_NAME"] = eventsTable.TableName,
                 ["PROJ_NOTETITLELIST_TABLE_NAME"] = projTable.TableName,
                 ["PROJ_NOTEDETAIL_TABLE_NAME"] = noteDetailTable.TableName,

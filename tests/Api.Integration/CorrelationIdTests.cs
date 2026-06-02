@@ -11,6 +11,7 @@ namespace Api.Integration;
 public sealed class CorrelationIdTests(ApiFactory factory) : IClassFixture<ApiFactory>
 {
     private const string CorrelationIdHeader = "x-correlation-id";
+    private const string TraceIdHeader = "x-amzn-trace-id";
 
     [Fact]
     public async Task SuccessfulResponse_CarriesCorrelationIdHeader()
@@ -22,6 +23,33 @@ public sealed class CorrelationIdTests(ApiFactory factory) : IClassFixture<ApiFa
         resp.EnsureSuccessStatusCode();
         Assert.True(resp.Headers.TryGetValues(CorrelationIdHeader, out var values));
         Assert.False(string.IsNullOrWhiteSpace(values!.Single()));
+    }
+
+    [Fact]
+    public async Task SuccessfulResponse_CarriesTraceIdHeader()
+    {
+        var client = factory.CreateClient();
+
+        var resp = await client.GetAsync("/health");
+
+        resp.EnsureSuccessStatusCode();
+        Assert.True(resp.Headers.TryGetValues(TraceIdHeader, out var values));
+        Assert.False(string.IsNullOrWhiteSpace(values!.Single()));
+    }
+
+    [Fact]
+    public async Task Response_EchoesInboundTraceId()
+    {
+        var client = factory.CreateClient();
+        const string inbound = "Root=1-5e1b4151-5ac6c58dc39a6e8d5e3a1234";
+
+        var request = new HttpRequestMessage(HttpMethod.Get, "/health");
+        request.Headers.Add(TraceIdHeader, inbound);
+        var resp = await client.SendAsync(request);
+
+        resp.EnsureSuccessStatusCode();
+        Assert.True(resp.Headers.TryGetValues(TraceIdHeader, out var values));
+        Assert.Equal(inbound, values!.Single());
     }
 
     [Fact]

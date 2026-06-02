@@ -616,4 +616,54 @@ public class InfraAssertionsTests
             ["RetentionInDays"] = 30
         }));
     }
+
+    [Fact]
+    public void Lambda_HasActiveXRayTracing()
+    {
+        _template.HasResourceProperties("AWS::Lambda::Function", Match.ObjectLike(new Dictionary<string, object>
+        {
+            ["TracingConfig"] = Match.ObjectLike(new Dictionary<string, object>
+            {
+                ["Mode"] = "Active"
+            })
+        }));
+    }
+
+    [Fact]
+    public void Lambda_HasXRayWritePermissions()
+    {
+        _template.HasResourceProperties("AWS::IAM::Policy", Match.ObjectLike(new Dictionary<string, object>
+        {
+            ["PolicyDocument"] = Match.ObjectLike(new Dictionary<string, object>
+            {
+                ["Statement"] = Match.ArrayWith(new object[]
+                {
+                    Match.ObjectLike(new Dictionary<string, object>
+                    {
+                        ["Action"] = Match.ArrayWith(new object[]
+                        {
+                            "xray:PutTraceSegments",
+                            "xray:PutTelemetryRecords"
+                        }),
+                        ["Effect"] = "Allow"
+                    })
+                })
+            })
+        }));
+    }
+
+    [Fact]
+    public void Lambda_HasXRayContextMissingEnvVar()
+    {
+        _template.HasResourceProperties("AWS::Lambda::Function", Match.ObjectLike(new Dictionary<string, object>
+        {
+            ["Environment"] = Match.ObjectLike(new Dictionary<string, object>
+            {
+                ["Variables"] = Match.ObjectLike(new Dictionary<string, object>
+                {
+                    ["AWS_XRAY_CONTEXT_MISSING"] = "LOG_ERROR"
+                })
+            })
+        }));
+    }
 }

@@ -1,3 +1,5 @@
+using Amazon.XRay.Recorder.Core;
+using Amazon.XRay.Recorder.Core.Strategies;
 using Api.Observability;
 using EventStore;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -6,6 +8,11 @@ namespace Api.Integration;
 
 public sealed class InstrumentedEventStoreTests
 {
+    static InstrumentedEventStoreTests() =>
+        // The decorator opens X-Ray subsegments; with no active segment outside
+        // Lambda, log rather than throw on the missing trace context.
+        AWSXRayRecorder.Instance.ContextMissingStrategy = ContextMissingStrategy.LOG_ERROR;
+
     private static readonly DateTimeOffset FixedTime = new(2026, 1, 1, 0, 0, 0, TimeSpan.Zero);
 
     private static InstrumentedEventStore NewStore(RecordingDomainMetrics metrics) =>
