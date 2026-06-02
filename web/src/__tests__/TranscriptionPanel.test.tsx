@@ -281,3 +281,52 @@ it('calls completeTranscription when the stream ends naturally', async () => {
 
   await waitFor(() => expect(completionBody).toMatchObject({ transcriptText: 'Natural end text' }), { timeout: 3000 })
 })
+
+// Scenario: Analyse note is available without a recording when the note has content (10-H)
+it('shows the Analyse note button and switch when the note has content and is idle', () => {
+  render(<TranscriptionPanel noteId="note-1" noteHasContent />)
+  expect(screen.getByTestId('transcription-analyse-button')).toHaveTextContent('Analyse note')
+  expect(screen.getByTestId('transcription-update-content-toggle')).toBeInTheDocument()
+})
+
+// Scenario: no analyse control when there is nothing to analyse (10-H)
+it('hides the Analyse note button when there is no content and no transcript', () => {
+  render(<TranscriptionPanel noteId="note-1" />)
+  expect(screen.queryByTestId('transcription-analyse-button')).toBeNull()
+  expect(screen.queryByTestId('transcription-update-content-toggle')).toBeNull()
+})
+
+// Scenario: analysing with the switch off posts updateContent=false and refreshes (10-H)
+it('clicking Analyse note posts updateContent=false by default', async () => {
+  let analyseBody: unknown = null
+  server.use(
+    http.post('/api/notes/note-1/analyse', async ({ request }) => {
+      analyseBody = await request.json()
+      return new HttpResponse(null, { status: 204 })
+    }),
+  )
+  const onAnalysisComplete = vi.fn()
+  render(<TranscriptionPanel noteId="note-1" noteHasContent onAnalysisComplete={onAnalysisComplete} />)
+
+  await userEvent.click(screen.getByTestId('transcription-analyse-button'))
+
+  await waitFor(() => expect(analyseBody).toEqual({ updateContent: false }))
+  await waitFor(() => expect(onAnalysisComplete).toHaveBeenCalled())
+})
+
+// Scenario: enabling the switch posts updateContent=true (10-H)
+it('enabling Update note content posts updateContent=true', async () => {
+  let analyseBody: unknown = null
+  server.use(
+    http.post('/api/notes/note-1/analyse', async ({ request }) => {
+      analyseBody = await request.json()
+      return new HttpResponse(null, { status: 204 })
+    }),
+  )
+  render(<TranscriptionPanel noteId="note-1" noteHasContent />)
+
+  await userEvent.click(screen.getByTestId('transcription-update-content-toggle'))
+  await userEvent.click(screen.getByTestId('transcription-analyse-button'))
+
+  await waitFor(() => expect(analyseBody).toEqual({ updateContent: true }))
+})

@@ -211,7 +211,7 @@ export default function NoteView({
           <div className="actions-section">
             <ActionsSection key={actionsKey} noteId={noteId} onCountChange={setActionCount} />
           </div>
-          <TranscriptionPanel noteId={noteId} initialTranscript={transcriptText} onAnalysisComplete={refreshNote} />
+          <TranscriptionPanel noteId={noteId} initialTranscript={transcriptText} noteHasContent={content.trim().length > 0} onAnalysisComplete={refreshNote} />
         </div>
       </div>
     </main>

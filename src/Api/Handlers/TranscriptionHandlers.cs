@@ -36,6 +36,7 @@ public static class TranscriptionHandlers
 
     public static async Task<IResult> AnalyseNote(
         Guid noteId,
+        AnalyseNoteRequest? req,
         INoteCommandHandler noteHandler,
         IActionItemCommandHandler actionHandler,
         INoteDetailStore noteDetailStore,
@@ -47,12 +48,18 @@ public static class TranscriptionHandlers
     {
         var detail = await noteDetailStore.GetAsync(new NoteId(noteId), ct);
         if (detail is null || detail.UserId != currentUser.UserId) return Results.NotFound();
-        if (string.IsNullOrEmpty(detail.TranscriptText)) return Results.UnprocessableEntity();
+
+        var content = detail.Content ?? "";
+        if (string.IsNullOrWhiteSpace(detail.TranscriptText) && string.IsNullOrWhiteSpace(content))
+            return Results.UnprocessableEntity();
+
+        var allowContentRewrite = req?.UpdateContent ?? false;
 
         NoteAnalysisResult result;
         try
         {
-            result = await bedrockAnalysis.AnalyseAsync(detail.TranscriptText, detail.Content ?? "", currentUser.Name, ct);
+            result = await bedrockAnalysis.AnalyseAsync(
+                new NoteAnalysisRequest(content, detail.TranscriptText, currentUser.Name, allowContentRewrite), ct);
         }
         catch (Exception ex) when (ex is AmazonBedrockRuntimeException or InvalidOperationException)
         {
@@ -60,7 +67,7 @@ public static class TranscriptionHandlers
             return Results.Problem(statusCode: 503, title: "Analysis service unavailable", detail: ex.Message);
         }
 
-        if (result.UpdatedContent != (detail.Content ?? ""))
+        if (allowContentRewrite && result.UpdatedContent != content)
             await noteHandler.HandleAsync(new EditContent(new NoteId(noteId), result.UpdatedContent), ct);
 
         var existingTags = detail.Tags ?? [];

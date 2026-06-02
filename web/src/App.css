@@ -2224,3 +2224,53 @@ body.has-notification-banner {
   opacity: 0.5;
   cursor: not-allowed;
 }
+
+.transcription-analyse-button {
+  flex: 1;
+  padding: 0.5rem;
+  border-radius: var(--radius);
+  font-size: 0.875rem;
+  font-weight: 600;
+  cursor: pointer;
+  background: var(--color-primary);
+  color: #fff;
+  border: 1.5px solid var(--color-primary);
+  transition: background var(--transition), border-color var(--transition);
+}
+
+.transcription-analyse-button:hover:not(:disabled) {
+  filter: brightness(0.95);
+}
+
+.transcription-analyse-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.transcription-update-content-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin-top: 0.5rem;
+  font-size: 0.8125rem;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.transcription-update-content-toggle input[type="checkbox"] {
+  accent-color: var(--color-primary);
+  width: 0.95rem;
+  height: 0.95rem;
+  cursor: pointer;
+}
+
+.transcription-update-content-toggle input:disabled {
+  cursor: not-allowed;
+}
+
+.transcription-analyse-error {
+  margin-top: 0.4rem;
+  font-size: 0.8125rem;
+  color: #ef4444;
+}

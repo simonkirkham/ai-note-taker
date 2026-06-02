@@ -2,8 +2,15 @@ namespace Api.Services;
 
 public interface IBedrockAnalysisService
 {
-    Task<NoteAnalysisResult> AnalyseAsync(string transcriptText, string existingContent, string currentUserName, CancellationToken ct = default);
+    Task<NoteAnalysisResult> AnalyseAsync(NoteAnalysisRequest request, CancellationToken ct = default);
 }
+
+public record NoteAnalysisRequest(
+    string ExistingContent,
+    string? TranscriptText,
+    string CurrentUserName,
+    bool AllowContentRewrite
+);
 
 public record NoteAnalysisResult(
     string UpdatedContent,

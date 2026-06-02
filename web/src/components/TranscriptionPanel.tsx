@@ -11,10 +11,12 @@ function formatTime(seconds: number): string {
 export default function TranscriptionPanel({
   noteId,
   initialTranscript,
+  noteHasContent = false,
   onAnalysisComplete,
 }: {
   noteId: string;
   initialTranscript?: string | null;
+  noteHasContent?: boolean;
   onAnalysisComplete?: () => void;
 }) {
   const { status, transcript, elapsedSeconds, error, startRecording, stopRecording, reset } =
@@ -24,6 +26,7 @@ export default function TranscriptionPanel({
   const [hasRecordedThisSession, setHasRecordedThisSession] = useState(false);
   const [isAnalysing, setIsAnalysing] = useState(false);
   const [analyseError, setAnalyseError] = useState<string | null>(null);
+  const [updateContent, setUpdateContent] = useState(false);
 
   useEffect(() => {
     if (transcriptRef.current) {
@@ -34,13 +37,13 @@ export default function TranscriptionPanel({
   const isRecording = status === 'recording';
   const isRequesting = status === 'requestingCredentials';
   const showInitialTranscript = status === 'idle' && !!initialTranscript && !hasRecordedThisSession;
-  const canAnalyse = (status === 'stopped' || showInitialTranscript) && !isAnalysing;
+  const showAnalyse = status === 'stopped' || showInitialTranscript || noteHasContent;
 
   async function handleAnalyse() {
     setIsAnalysing(true);
     setAnalyseError(null);
     try {
-      await analyseNote(noteId);
+      await analyseNote(noteId, updateContent);
       onAnalysisComplete?.();
     } catch {
       setAnalyseError('Analysis failed. Please try again.');
@@ -113,17 +116,29 @@ export default function TranscriptionPanel({
             Stop
           </button>
         )}
-        {canAnalyse && (
+        {showAnalyse && (
           <button
             className="transcription-analyse-button"
             data-testid="transcription-analyse-button"
             onClick={handleAnalyse}
             disabled={isAnalysing}
           >
-            {isAnalysing ? 'Analysing…' : 'Save & Analyse'}
+            {isAnalysing ? 'Analysing…' : 'Analyse note'}
           </button>
         )}
       </div>
+      {showAnalyse && (
+        <label className="transcription-update-content-toggle">
+          <input
+            type="checkbox"
+            data-testid="transcription-update-content-toggle"
+            checked={updateContent}
+            onChange={(e) => setUpdateContent(e.target.checked)}
+            disabled={isAnalysing}
+          />
+          Update note content
+        </label>
+      )}
       {analyseError && (
         <p className="transcription-analyse-error" data-testid="transcription-analyse-error">
           {analyseError}
