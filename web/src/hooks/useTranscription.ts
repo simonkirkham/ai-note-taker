@@ -88,12 +88,14 @@ export function useTranscription(noteId: string): UseTranscriptionResult {
         // Optionally capture remote-participant (call) audio via screen-share and mix it with the
         // mic. Requested first, before the credential and mic awaits, because getDisplayMedia needs
         // the click's transient user activation — intervening awaits can let that window expire.
+        // video must be true: Chromium rejects an audio-only getDisplayMedia with NotSupportedError,
+        // so we request a video track to obtain the audio one, then use only the audio in the mix.
         // If the user cancels, the browser is unsupported, or activation lapsed, fall back to
         // mic-only — call audio is a best-effort enhancement, not a hard requirement.
         let displayStream: MediaStream | null = null;
         if (includeCallAudio) {
           try {
-            displayStream = await navigator.mediaDevices.getDisplayMedia({ audio: true, video: false });
+            displayStream = await navigator.mediaDevices.getDisplayMedia({ audio: true, video: true });
           } catch (err) {
             console.warn('Call audio capture unavailable; continuing with microphone only.', err);
             displayStream = null;

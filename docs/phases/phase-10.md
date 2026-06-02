@@ -395,7 +395,7 @@ Scenario: Switch resets to ON on page reload
 
 **Audio strategy:** Mix mic + system audio into a single PCM stream using the Web Audio API:
 1. `getUserMedia` → local mic track
-2. `getDisplayMedia({ audio: true, video: false })` → system audio track (requires browser permission; falls back gracefully if denied or unsupported)
+2. `getDisplayMedia({ audio: true, video: true })` → system audio track (`video: true` is mandatory — Chromium rejects an audio-only display capture with `NotSupportedError`; the video track is requested only to obtain the audio one and is otherwise unused). Requires browser permission; falls back gracefully if denied or unsupported.
 3. Both tracks fed into the same `AudioContext` via `createMediaStreamSource`; a `ChannelMergerNode` (or `GainNode` sum) produces a single mono mix at 16 kHz
 4. Existing `PcmProcessor` worklet sends the mix to Transcribe unchanged
 
@@ -411,7 +411,7 @@ Scenario: Switch resets to ON on page reload
 Scenario: System audio is mixed with mic when toggle is on
   Given the "Include call audio" toggle is ON
   When I press Record and grant screen-share permission
-  Then getDisplayMedia is called with { audio: true, video: false }
+  Then getDisplayMedia is called with { audio: true, video: true }
   And the resulting audio track is mixed with the microphone track
 
 Scenario: Falls back to mic-only if screen-share is cancelled
