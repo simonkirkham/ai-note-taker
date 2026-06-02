@@ -20,6 +20,7 @@ export default function Sidebar({
   onUnfiledSelect,
   isUnfiledActive,
   onDropToUnfiled,
+  previewFolderId,
   onPreview,
   onSignOut,
 }: {
@@ -38,6 +39,7 @@ export default function Sidebar({
   onUnfiledSelect: () => void;
   isUnfiledActive: boolean;
   onDropToUnfiled: (noteId: string) => void;
+  previewFolderId: string | null;
   onPreview: (folderId: string, name: string) => void;
   onSignOut?: () => void;
 }) {
@@ -109,10 +111,10 @@ export default function Sidebar({
             className="folder-tree-action-btn"
             data-testid="unfiled-preview-button"
             onClick={(e) => { e.stopPropagation(); onPreview(UNFILED_ID, "Unfiled Notes"); }}
-            title="Preview unfiled notes"
-            aria-label="Preview unfiled notes"
+            title={previewFolderId === UNFILED_ID ? "Close unfiled preview" : "Preview unfiled notes"}
+            aria-label={previewFolderId === UNFILED_ID ? "Close unfiled preview" : "Preview unfiled notes"}
           >
-            »
+            {previewFolderId === UNFILED_ID ? "«" : "»"}
           </button>
         </div>
         <FolderTree
@@ -124,6 +126,7 @@ export default function Sidebar({
           onCreateChild={onCreateChildFolder}
           onDropNote={onDropNote}
           onMoveFolder={onMoveFolder}
+          previewFolderId={previewFolderId}
           onPreview={onPreview}
         />
         {addingFolder && (

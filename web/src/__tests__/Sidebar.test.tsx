@@ -8,7 +8,7 @@ const folder: FolderNode = { folderId: 'f-1', name: 'People', children: [] }
 
 const noop = () => {}
 
-function renderSidebar(folders: FolderNode[] = []) {
+function renderSidebar(folders: FolderNode[] = [], previewFolderId: string | null = null) {
   return render(
     <Sidebar
       open={true}
@@ -25,6 +25,7 @@ function renderSidebar(folders: FolderNode[] = []) {
       onUnfiledSelect={noop}
       isUnfiledActive={false}
       onDropToUnfiled={noop}
+      previewFolderId={previewFolderId}
       onPreview={noop}
     />,
   )
@@ -61,6 +62,7 @@ describe('Sidebar', () => {
         onUnfiledSelect={noop}
         isUnfiledActive={false}
         onDropToUnfiled={noop}
+        previewFolderId={null}
         onPreview={noop}
       />,
     )
@@ -91,6 +93,7 @@ describe('Sidebar', () => {
         onUnfiledSelect={noop}
         isUnfiledActive={false}
         onDropToUnfiled={noop}
+        previewFolderId={null}
         onPreview={noop}
         onSignOut={onSignOut}
       />,
@@ -117,10 +120,42 @@ describe('Sidebar', () => {
         onUnfiledSelect={noop}
         isUnfiledActive={false}
         onDropToUnfiled={noop}
+        previewFolderId={null}
         onPreview={onPreview}
       />,
     )
     await userEvent.click(screen.getByTestId('unfiled-preview-button'))
     expect(onPreview).toHaveBeenCalledWith(UNFILED_ID, 'Unfiled Notes')
+  })
+
+  // CHANGE-11 — preview button reflects open/closed state with » / «
+  it('unfiled preview button shows » and "Preview" label when its panel is closed', () => {
+    renderSidebar([], null)
+    const btn = screen.getByTestId('unfiled-preview-button')
+    expect(btn).toHaveTextContent('»')
+    expect(btn).toHaveAttribute('aria-label', 'Preview unfiled notes')
+  })
+
+  it('unfiled preview button shows « and "Close" label when its panel is open', () => {
+    renderSidebar([], UNFILED_ID)
+    const btn = screen.getByTestId('unfiled-preview-button')
+    expect(btn).toHaveTextContent('«')
+    expect(btn).toHaveAttribute('aria-label', 'Close unfiled preview')
+  })
+
+  it('shows « only on the previewed folder; every other preview button shows »', () => {
+    const folders: FolderNode[] = [
+      { folderId: 'f-1', name: 'People', children: [] },
+      { folderId: 'f-2', name: 'Projects', children: [] },
+    ]
+    renderSidebar(folders, 'f-1')
+    // The previewed folder (f-1) shows the collapse affordance.
+    const open = screen.getByRole('button', { name: 'Close folder preview' })
+    expect(open).toHaveTextContent('«')
+    // The other folder (f-2) still shows »; unfiled uses its own label, so this
+    // matches only the non-previewed folder row.
+    const closed = screen.getAllByRole('button', { name: 'Preview folder notes' })
+    expect(closed).toHaveLength(1)
+    expect(closed[0]).toHaveTextContent('»')
   })
 })

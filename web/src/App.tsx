@@ -277,7 +277,13 @@ function AppContent({ signOut }: { signOut: () => void }) {
         onUnfiledSelect={handleUnfiledSelect}
         isUnfiledActive={activeFolderId === UNFILED_ID}
         onDropToUnfiled={(noteId) => handleMoveNoteToFolder(noteId, null)}
-        onPreview={(folderId, name) => { setPreviewFolderId(folderId); setPreviewFolderName(name); }}
+        previewFolderId={previewFolderId}
+        onPreview={(folderId, name) => {
+          // CHANGE-11: clicking the preview button toggles — close it if this
+          // folder is already previewed, otherwise open it.
+          setPreviewFolderId((prev) => (prev === folderId ? null : folderId));
+          setPreviewFolderName(name);
+        }}
         onSignOut={signOut}
       />
       <FolderPreviewPanel
