@@ -2,6 +2,20 @@
 
 **Goal:** Surface today's Google Calendar meetings on the home screen so meeting notes can be created with one click, linked to the calendar event, and reminded at meeting time. Recurring meetings support one-click creation of a note for the next scheduled occurrence.
 
+## Summary
+
+| Slice | Summary | Status | Depends on |
+|-------|---------|--------|------------|
+| 9-A | UX prototype (human approval required) | Done | — |
+| 9-B | Google Calendar API pass-through | Done | 9-A |
+| 9-C | NoteLinkedToCalendarEvent event + CalendarLinkIndex projection | Done | 9-B |
+| 9-D | One-click create note from a meeting | Done | 9-C |
+| 9-E | Meeting-time browser reminder | Done | 9-B |
+| 9-F | Recurring meetings: create note for next occurrence | Done | 9-D |
+| 9-G | CDK wiring (SSM grant, Google env vars, CalendarLinkIndex table + GSI) | Done | — |
+
+Each slice is a complete vertical: domain, API, projections, and frontend wired together. 9-G can run in parallel with 9-B and 9-C; 9-E is independent of 9-C/9-D/9-F.
+
 **Learning surface:** Outbound HTTP from Lambda (first time); Google OAuth2 refresh-token flow for Calendar access; SSM Parameter Store for secrets; extending an existing aggregate with a new event (`NoteLinkedToCalendarEvent`) without touching the immutable `NoteCreated`; a new read projection (`CalendarLinkIndex`) keyed by an external ID; browser Notifications API + `setTimeout` for client-side reminders.
 
 ---
@@ -33,31 +47,6 @@ What is **not** yet in place:
 - No browser notification wiring.
 
 **Out-of-band prerequisite (not a slice):** Create a GCP project, enable the Calendar API, create OAuth2 client credentials, and run the one-time authorisation flow to obtain a refresh token for `calendar.readonly` scope. Store the refresh token in AWS SSM Parameter Store as a `SecureString` at the path configured in `GOOGLE_REFRESH_TOKEN_SSM_PATH`. This must be done before 9-B can be deployed.
-
----
-
-## Slice order and dependencies
-
-```
-9-A  UX prototype ─── human approval required ────────────────────────────────────────┐
-                                                                                       │
-9-G  CDK wiring ──────────────────────────────────────────────────────────────────┐   │
-     (SSM grant, Google env vars, CalendarLinkIndex table + GSI)                  │   │
-     can run in parallel with 9-B and 9-C                                         │   │
-                                                                                  │   ▼
-9-B  Google Calendar pass-through ─────────────────────────────────────────────────────┤
-     GET /calendar/today, OAuth, MeetingsSection UI (linkedNoteId always null here)    │
-        │                                                                              │
-        ├──→ 9-C  NoteLinkedToCalendarEvent + CalendarLinkIndex projection ────────────┤
-        │           │                                                                  │
-        │           └──→ 9-D  One-click create note from a meeting ───────────────────┤
-        │                       │                                                      │
-        │                       └──→ 9-F  Recurring: note for next occurrence ─────────┘
-        │
-        └──→ 9-E  Meeting-time browser reminder  (no backend changes; independent of C/D/F)
-```
-
-Each slice is a complete vertical: domain, API, projections, and frontend wired together.
 
 ---
 

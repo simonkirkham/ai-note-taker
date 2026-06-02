@@ -2,6 +2,17 @@
 
 **Goal:** Secure the API and UI with real Google authentication. Replace the hardcoded single-user ID with a verified identity from a Google ID token. Every API request requires a valid bearer token; the authenticated user's `sub` claim becomes the canonical user ID throughout the system.
 
+## Summary
+
+| Slice | Summary | Status | Depends on |
+|-------|---------|--------|------------|
+| 8-A | CDK and CORS wiring (`GOOGLE_CLIENT_ID`, allow `Authorization` header) | Done | — |
+| 8-B | Google Sign-In on the frontend (PKCE; ID token forwarded as Bearer) | Done | — |
+| 8-C | JWT verification in the API (`ICurrentUser` from `sub` claim) | Done | 8-A, 8-B |
+| 8-D | Wire userId into the domain (`EventMetadata.UserId`, projection keys scoped) | Done | 8-C |
+
+8-A and 8-B can run in parallel; 8-C depends on both; 8-D follows 8-C.
+
 **Learning surface:** Google OAuth2 authorisation code flow with PKCE; OpenID Connect ID token validation; ASP.NET Core JWT Bearer middleware; JWKS endpoint and key rotation; extracting user claims in a minimal API; multi-user data isolation via user-scoped projection keys; wiring CORS for credentialed cross-origin requests; testing authenticated endpoints with fake tokens.
 
 ---
@@ -20,31 +31,6 @@ What is **not** yet in place:
 - No `ICurrentUser` abstraction.
 - No Google Sign-In button or OAuth flow in the frontend.
 - No Authorization header forwarded with API requests.
-
----
-
-## Slice order and dependencies
-
-```
-8-A  CDK + CORS wiring ──────────────────────────────────────────────────────┐
-     (GOOGLE_CLIENT_ID env var, CORS allow Authorization header)             │
-     can run in parallel with 8-B                                            │
-                                                                             ▼
-8-B  Google Sign-In on the frontend ─────────────────────────────────────────┤
-     PKCE flow, ID token obtained, stored in memory,                        │
-     forwarded as Authorization: Bearer on all API calls                    │
-        │                                                                   │
-        ▼                                                                   │
-8-C  JWT verification in the API ────────────────────────────────────────────┘
-     AddJwtBearer, Google JWKS, 401 on missing/invalid token,
-     ICurrentUser wired from sub claim
-        │
-        ▼
-8-D  Wire userId into the domain
-     EventMetadata.UserId from ICurrentUser.UserId
-     Projection keys scoped to userId
-     Api.Integration tests updated for authenticated requests
-```
 
 ---
 

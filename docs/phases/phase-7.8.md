@@ -2,25 +2,23 @@
 
 **Goal:** Establish a production deployment target and sharpen the note-screen interaction model with explicit lifecycle controls, keyboard-first focus, drag-and-drop note filing, and a layout that uses available screen space effectively.
 
-**Learning surface:** Multi-environment GitHub Actions pipeline with environment-scoped secrets and sequential promotion; React controlled form patterns and dirty-state detection across multiple fields; focus management with `useRef` and `tabIndex`; HTML5 drag-and-drop API in React; `useReducer` as a client-side projection — discriminated union action types as frontend events, pure reducer as state machine, compensating actions as reverts; responsive CSS layout with fluid containers and viewport-aware sizing.
+## Summary
 
----
-
-## Slice order and dependencies
-
-```
-7.8-A  Production pipeline ──────────────────── CI/CD only (manual AWS + GitHub setup)
-7.8-B  Note screen focus ────────────────────── frontend only; independent
-7.8-C  Note screen save/cancel ──────────────── frontend only; independent of 7.8-B
-7.8-D  Drag-and-drop into folder panel ─────── frontend only; independent
-7.8-E  Layout space review ──────────────────── frontend only; prototype recommended
-7.8-F  Optimistic card state sync ───────────── frontend only; independent
-7.8-G  Domain event dispatcher ──────────────── backend refactor; independent
-7.8-H  Human-readable URLs ─────────────────── CDK + CI; depends on 7.8-A (prod env exists)
-7.8-I  Read-only smoke suite ───────────────── test-only; independent
-```
+| Slice | Summary | Status | Depends on |
+|-------|---------|--------|------------|
+| 7.8-A | Production deployment pipeline | Done | — |
+| 7.8-B | Note screen keyboard focus | Done | — |
+| 7.8-C | Note screen save/cancel | Done | — |
+| 7.8-D | Drag-and-drop notes into folder slide-out panel | Done | — |
+| 7.8-E | Layout space review | Done | — |
+| 7.8-F | Optimistic card state sync | Done | — |
+| 7.8-G | Domain event dispatcher | Done | — |
+| 7.8-H | Human-readable URLs | Done | 7.8-A |
+| 7.8-I | Read-only smoke suite | Done | — |
 
 All slices are independent and can run in any order. 7.8-B and 7.8-C both touch `NoteView.tsx` so should not run in parallel.
+
+**Learning surface:** Multi-environment GitHub Actions pipeline with environment-scoped secrets and sequential promotion; React controlled form patterns and dirty-state detection across multiple fields; focus management with `useRef` and `tabIndex`; HTML5 drag-and-drop API in React; `useReducer` as a client-side projection — discriminated union action types as frontend events, pure reducer as state machine, compensating actions as reverts; responsive CSS layout with fluid containers and viewport-aware sizing.
 
 ---
 

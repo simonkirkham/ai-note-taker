@@ -2,6 +2,17 @@
 
 **Goal:** one API, fully built, tested with a BDD acceptance spec, and deployed through a pipeline to AWS. Nothing expands until this is solid.
 
+## Summary
+
+| Slice | Summary | Status | Depends on |
+|-------|---------|--------|------------|
+| 0-A | BDD harness and solution scaffold | Done | — |
+| 0-B | Lambda health endpoint and CDK stack | Done | — |
+| 0-C | BDD acceptance spec for deployed Lambda | Done | — |
+| 0-D | CI/CD pipeline | Done | — |
+| 0-E | Local dev loop documented | Done | — |
+| Deferred | React app scaffold and CDK hosting | Deferred | — |
+
 Status key: `Done` · `In Progress` · `Not Started`
 
 ---

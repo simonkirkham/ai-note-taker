@@ -12,7 +12,7 @@ Run after the main pipeline passes following a slice merge. No human approval ne
 1. **[`token-log`](./../token-log/SKILL.md)** — collect agent token counts, append to `docs/token-log.md`, identify spikes.
 2. **[`process-improvements`](./../process-improvements/SKILL.md)** — permission audit + learnings doc + execute Done actions. Pass any spike observations from step 1 as inputs.
 3. **Update progress tracking:**
-   - `docs/phases/phase-N.md` — mark every completed acceptance criterion `[x]`, set slice status to `Done`. For a standing phase (`phase-bugs.md`, `phase-minor-changes.md`), mark the fixed item Done.
+   - `docs/phases/phase-N.md` — mark every completed acceptance criterion `[x]`, set the slice's per-slice `**Status:**` line to `Done`, **and update that slice's `Status` cell in the `## Summary` table at the top of the doc** (the two must always agree). For a standing phase (`phase-bugs.md`, `phase-minor-changes.md`), mark the fixed item Done in both the per-item `**Status:**` line and the `## Summary` table row.
    - `docs/roadmap.md` — mark phase as `_(Done)_` if all slices are complete; update `_(In Progress)_` if partially done; keep the standing-tracks summaries (Bugs / Minor Changes / Future Features / Technical Improvements) in sync.
    - If the slice delivered something listed in `docs/future-features.md` or `docs/technical-improvements.md`, remove that entry from the register.
 4. **Update developer docs** (only if the slice changed them):

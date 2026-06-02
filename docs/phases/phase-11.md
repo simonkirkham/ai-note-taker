@@ -2,22 +2,20 @@
 
 **Goal:** A collection of targeted UX improvements that make the app feel faster and more intentional to use. No new aggregates — these are frontend-focused slices that build on what already exists.
 
+## Summary
+
+| Slice | Summary | Status | Depends on |
+|-------|---------|--------|------------|
+| 11-A | Tag autocomplete and suggestions | Done | — |
+| 11-B | Add To Do from the home screen | Done | — |
+| 11-C | Delete blank note on cancel | Done | — |
+| 11-D | Token expiry and silent refresh | Done | — |
+| 11-E | Delete note from home screen | Done | — |
+| 11-F | Adaptive note action buttons | Done | — |
+| 11-G | Fix 401s during active sessions | Done | 11-D |
+| 11-H | Fix note not deleted when discarded from meeting creation | Done | 11-C |
+
 **Learning surface:** Component-level autocomplete patterns in React; client-side ranking and relevance algorithms; accessible keyboard navigation in custom dropdowns; optimistic UI for cross-screen interactions.
-
----
-
-## Slice order and dependencies
-
-```
-11-A  Tag autocomplete ─────────────────────────────────────── independent
-11-B  Add To Do from home screen ──────────────────────────── independent
-11-C  Delete blank note on cancel ──────────────────────────── independent
-11-D  Token expiry and silent refresh ──────────────────────── independent
-11-E  Delete note from home screen ──────────────────────────── independent
-11-F  Adaptive note action buttons ──────────────────────────── independent
-11-G  Fix 401s during active sessions ─────────────────────── bug fix (builds on 11-D)
-11-H  Fix note not deleted when discarded from meeting ──────── bug fix (builds on 11-C)
-```
 
 ---
 

@@ -2,11 +2,19 @@
 
 **Goal:** you've changed your mind about an event's shape at least once and survived. By the end of this phase a user can write content into a note, delete notes they no longer need, and the projection can be rebuilt from scratch — covering event versioning, soft delete, and projection rebuild as deliberate learning targets.
 
+## Summary
+
+| Slice | Summary | Status | Depends on |
+|-------|---------|--------|------------|
+| 2-A | Load and display note content | Done | — |
+| 2-B | Write and save note content | Done | — |
+| 2-C | Event versioning | Done | — |
+| 2-D | Delete a note | Done | — |
+| 2-E | Projection rebuild | Done | — |
+
 **Scope note:** The roadmap lists `NoteDeleted`, `NoteContentReplaced`, and event versioning as Phase 2 work. `NoteContentReplaced` was resolved to `ContentEdited` (full snapshot) in the event model. Phase 2 delivers five slices: NoteDetail projection, EditContent, event versioning, DeleteNote, and projection rebuild. Acceptance criteria are written as user behaviour — what the user does and sees. Most slices involve UI work; where they don't, the reason is stated explicitly.
 
 Status key: `Done` · `In Progress` · `Not Started`
-
----
 
 ## Slice 2-A — Load and display note content
 **Status:** Done

@@ -2,6 +2,14 @@
 
 **Goal:** Migrate every project in the solution from .NET 8 to .NET 10 and update the Lambda runtime to match. .NET 8 and .NET 10 are both LTS releases; this is an LTS → LTS upgrade that skips the non-LTS .NET 9.
 
+## Summary
+
+| Slice | Summary | Status | Depends on |
+|-------|---------|--------|------------|
+| 6-A | Bump framework and packages; green build and tests locally | Done | — |
+| 6-B | Update Lambda runtime in CDK; redeploy; smoke test | Done | 6-A |
+| 6-C | Measure cold starts; enable Lambda SnapStart | Done | 6-B |
+
 **Learning surface:** .NET release cadence and the LTS/STS distinction; AWS Lambda managed runtime lifecycle and how runtime updates map to CDK `Runtime.*` constants; auditing package compatibility across a multi-project solution; working through BCL and framework-layer breaking changes introduced across two major versions; the test suite as a safety net for a runtime upgrade.
 
 ---
@@ -16,16 +24,6 @@
 | Lambda runtime in CDK stack | `Runtime.DOTNET_8` | `Runtime.DOTNET_10` |
 
 AWS SDK packages (`AWSSDK.DynamoDBv2`, `AWSSDK.Extensions.NETCore.Setup`), CDK packages (`Amazon.CDK.Lib`, `Constructs`), and test tooling (`xunit`, `Microsoft.NET.Test.Sdk`, `Testcontainers.DynamoDb`) all target `netstandard2.0` or are framework-agnostic and should not require version changes to build; update them only if the build requires it or newer versions ship relevant fixes.
-
----
-
-## Slice order and dependencies
-
-```
-6-A  Bump framework and packages; green build and tests locally
-6-B  Update Lambda runtime in CDK; redeploy; smoke test  (depends 6-A)
-6-C  Measure cold starts; enable Lambda SnapStart               (depends 6-B)
-```
 
 ---
 

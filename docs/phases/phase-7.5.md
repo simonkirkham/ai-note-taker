@@ -2,6 +2,19 @@
 
 **Goal:** Fix a set of UX regressions introduced during Phase 5 that were not caught by the then-missing component test layer, and resolve a Lambda memory constraint that causes 10+ second warm request latency. All frontend fixes are paired with component tests that would have caught the original defect.
 
+## Summary
+
+| Slice | Summary | Status | Depends on |
+|-------|---------|--------|------------|
+| 7.5-A | Remove sidebar note list | Done | — |
+| 7.5-B | Unfiled Notes preview pull-out | Done | 7.5-A |
+| 7.5-C | Fix folder preview panel cards | Done | — |
+| 7.5-D | Optimistic folder mutations and heading sync | Done | — |
+| 7.5-E | Lambda memory allocation | Done | — |
+| 7.5-F | Replace flaky E2E folder tests with component tests | Done | — |
+
+7.5-A through 7.5-D are independent of each other once 7.5-A lands (7.5-B touches the same Sidebar component). 7.5-E is completely independent and can run in parallel with any frontend slice. 7.5-F was added post-merge to replace two consistently-failing E2E tests with component tests.
+
 **Learning surface:** Optimistic UI state management in React; the gap between a spec and its implementation when the E2E net is removed before component tests exist; Lambda memory as the primary warm-latency lever; the difference between cold-start (SnapStart solves) and warm-latency (memory solves).
 
 ---
@@ -23,21 +36,6 @@
 ### Test coverage gap
 
 None of the 7 issues had component test coverage. Issues 1–6 were frontend state/rendering bugs that the Phase 6.5 component tests would have caught — had those tests existed when Phase 5 shipped. Issue 7 had no CDK assertion for `MemorySize`.
-
----
-
-## Slice order and dependencies
-
-```
-7.5-A  Remove sidebar note list ─────────────────────── frontend only
-7.5-B  Unfiled Notes preview pull-out ───────────────── frontend only (depends 7.5-A — Sidebar changes)
-7.5-C  Fix folder preview panel cards ───────────────── frontend only
-7.5-D  Optimistic folder mutations + heading sync ────── frontend only
-7.5-E  Lambda memory allocation ─────────────────────── CDK + infra assertion
-7.5-F  Replace flaky E2E folder tests with component tests ── test-only (added post 7.5-D deploy)
-```
-
-7.5-A through 7.5-D are independent of each other once 7.5-A lands (7.5-B touches the same Sidebar component). 7.5-E is completely independent and can run in parallel with any frontend slice. 7.5-F was added post-merge to replace two consistently-failing E2E tests with component tests.
 
 ---
 

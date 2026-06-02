@@ -2,6 +2,16 @@
 
 **Goal:** Introduce the `ActionItem` aggregate and demonstrate the defining power of event-sourced projections: the same stream of events feeds two completely different read models — a per-note actions panel and a cross-note todo list. By the end of this phase the user can add and complete action items inside a note, and see all open items from every note in a single list on the home screen.
 
+## Summary
+
+| Slice | Summary | Status | Depends on |
+|-------|---------|--------|------------|
+| 3-A | Add action items on the note screen | Done | — |
+| 3-B | Complete and reopen action items on the note screen | Done | — |
+| 3-C | View open todos on the home screen | Done | — |
+| 3-D | Complete and reopen todos from the home screen | Done | — |
+| 3-E | Delete an action item | Done | — |
+
 **Scope note:** Phase 3 covers three commands (`AddActionItem`, `CompleteActionItem`, `ReopenActionItem`) and three events (`ActionItemAdded`, `ActionItemCompleted`, `ActionItemReopened`), plus `DeleteActionItem` / `ActionItemDeleted` in the final slice. Edit is deliberately deferred. Each slice is a full vertical cut — backend and frontend together, delivering observable user value. The contrast between 3-C and 3-A/3-B is the "power of projections" moment: the same events, a completely different read model shape.
 
 **Dependencies and risks:**
@@ -11,8 +21,6 @@
 - `TodoList` uses `ActionId` as PK only — a single-key table, but needs a `NoteId` GSI for the `NoteRenamed` / `NoteDeleted` update sweep.
 
 Status key: `Done` · `In Progress` · `Not Started`
-
----
 
 ## Slice 3-A — Add action items on the note screen
 

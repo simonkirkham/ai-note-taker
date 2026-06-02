@@ -2,6 +2,30 @@
 
 **Goal:** Produce a *high-quality* AI analysis of a meeting note — and build the means to keep it high quality. The user records audio (local mic plus, optionally, remote-call audio); AWS Transcribe Streaming produces a live rolling transcript; Amazon Bedrock analyses the transcript against the existing note content and applies gap-filling content, tags, and action items. Analysis quality is then made **measurable** — an offline evaluation harness scores prompt/model variants over fixed transcripts — and **improvable** — durable capture of which AI suggestions users keep, reject, or complete provides the correction signal that feeds prompt/model refinement, tied to a specific prompt version.
 
+## Summary
+
+| Slice | Summary | Status | Depends on |
+|-------|---------|--------|------------|
+| 10-A | UX prototype | Done | — |
+| 10-B | Live transcript | Done | 10-A |
+| 10-C | Persist transcript | Done | 10-B |
+| 10-D | Manual analysis | Done | 10-C |
+| 10-E | Auto-analysis on stop | Not Started | — |
+| 10-F | Capture remote participants (system audio mix) | Not Started | — |
+| 10-G | Analysis evaluation harness | Not Started | — |
+| 10-H | Analyse note content (transcript optional) | Done | — |
+| 10-I | Record AI tag suggestions (`TagsSuggested`) | Not Started | — |
+| 10-J | Tag feedback projection | Not Started | 10-I |
+| 10-K | Record AI action-item suggestions (`ActionItemsSuggested`) | Not Started | — |
+| 10-L | Action-item feedback projection | Not Started | 10-K |
+| 10-M | Stamp modelId / promptVersion on the suggestion events | Not Started | 10-G, 10-I, 10-K |
+
+Phase 10 has two parts. The **core flow** (10-A → 10-H) makes recording → transcription → analysis work end to end. The **quality track** (10-E, 10-F, then 10-G → 10-M) makes that analysis *good* and *keeps it good*: better input, smoother UX, measurement, and a durable correction signal that feeds prompt/model refinement. Slices 10-I → 10-M were moved here from the former Phase 13 ("Feedback capture for AI suggestions") so that analysis quality — building it, measuring it, refining it — lives in one phase.
+
+CDK wiring for transcription is bundled into 10-B (where it is first needed); Bedrock IAM into 10-D. *(10-H was delivered ahead of 10-E.)*
+
+**Dependencies:** 10-J depends on 10-I; 10-L depends on 10-K; the tag track (10-I/J) and the action track (10-K/L) are independent and either may land first. 10-M depends on the versioned prompts from 10-G and on the suggestion events (10-I, 10-K). 10-E, 10-F, and 10-G are independent of everything else and of each other.
+
 **Learning surface:** AWS Transcribe Streaming from the browser (first real-time streaming service); STS AssumeRole — Lambda issues scoped temporary credentials after verifying the Google JWT; first outbound AWS service call from Lambda beyond DynamoDB (Bedrock); IAM scoping: Transcribe permissions restricted to the browser-held role, Bedrock permission on the Lambda role; mixing mic + system audio via the Web Audio API; prompt engineering for structured extraction (content gap-fill, tag inference, action item extraction); configurable model via env var as a deployment pattern; **offline LLM evaluation** (LLM-as-judge scoring, prompt/model matrices, versioned prompts); **purely additive provenance events** and projections that *classify by combining* events rather than copying them; **event versioning** to stamp `modelId`/`promptVersion` so the correction signal ties to a specific prompt version; async event chain — `TranscriptionCompleted` triggers existing event types, keeping the domain unaware of AI.
 
 ---
@@ -68,47 +92,6 @@ What is **not** yet in place:
 | `ActionItemsSuggested` | `Note` | `actionItemIds: Guid[]` — provenance only; `Apply` is a no-op | 10-K |
 
 Analysis output reuses **existing** event types: `ContentEditedV2`, `TagAdded`, `ActionItemAdded`. The domain does not know whether content originated from a human or an LLM. The `*Suggested` events above are the exception — they record AI provenance without changing aggregate state, so a later untag/delete can be classified as a rejected AI suggestion (10-J/10-L). 10-M versions these two events to add `modelId`/`promptVersion`.
-
----
-
-## Slice order and dependencies
-
-Phase 10 has two parts. The **core flow** (10-A → 10-H) makes recording → transcription → analysis work end to end. The **quality track** (10-E, 10-F, then 10-G → 10-M) makes that analysis *good* and *keeps it good*: better input, smoother UX, measurement, and a durable correction signal that feeds prompt/model refinement. Slices 10-I → 10-M were moved here from the former Phase 13 ("Feedback capture for AI suggestions") so that analysis quality — building it, measuring it, refining it — lives in one phase.
-
-CDK wiring for transcription is bundled into 10-B (where it is first needed); Bedrock IAM into 10-D.
-
-**Status at a glance:**
-- Core flow: 10-A ✅ · 10-B ✅ · 10-C ✅ · 10-D ✅ · 10-H ✅
-- Quality track: 10-E ⬜ · 10-F ⬜ · 10-G ⬜ · 10-I ⬜ · 10-J ⬜ · 10-K ⬜ · 10-L ⬜ · 10-M ⬜
-
-*(10-H was delivered ahead of 10-E.)*
-
-```
-Core flow (built in order — done)
-─────────────────────────────────
-10-A  UX Prototype ──▶ 10-B  Live transcript ──▶ 10-C  Persist transcript ──▶ 10-D  Manual analysis
-10-H  Analyse note content (transcript optional; content-rewrite switch)
-
-Quality track (recommended build order for remaining work)
-──────────────────────────────────────────────────────────
-Input & UX (frontend only, independent of each other and the rest)
-  10-E  Auto-analysis on stop ........... record → stop → note enriches automatically
-  10-F  Capture remote participants ..... mix system/call audio so remote speakers are transcribed
-
-Measurement (testing)
-  10-G  Analysis evaluation harness ..... versioned prompts (PromptCatalog) + offline scoring over fixed transcripts
-
-Correction signal (refining) — moved from the former Phase 13
-  10-I  Record AI tag suggestions ....... TagsSuggested event (provenance for applied AI tags)
-        └─▶ 10-J  Tag feedback projection ......... per-user/per-tag: suggested vs rejected
-  10-K  Record AI action suggestions .... ActionItemsSuggested event (provenance for AI-created actions)
-        └─▶ 10-L  Action feedback projection ...... per-user: suggested / deleted / completed
-
-Closing the loop
-  10-M  Stamp modelId + promptVersion ... version the *Suggested events so feedback ties to a prompt version
-```
-
-**Dependencies:** 10-J depends on 10-I; 10-L depends on 10-K; the tag track (10-I/J) and the action track (10-K/L) are independent and either may land first. 10-M depends on the versioned prompts from 10-G and on the suggestion events (10-I, 10-K). 10-E, 10-F, and 10-G are independent of everything else and of each other.
 
 ---
 

@@ -8,16 +8,17 @@
 
 ---
 
-## Change list
+## Summary
 
-```
-CHANGE-1  Single-spaced note lines by default ─────────────────── independent
-CHANGE-2  Theme selection (Teal / Forest / Midnight) ──────────── independent
-CHANGE-3  Home screen shows today's notes by default ──────────── independent
-CHANGE-4  To-do rows wrap cleanly with long text + note title ─── independent
-CHANGE-5  Sign-in screen visual polish ───────────────────────── independent
-CHANGE-6  Collapsible "Filters" control for home tags ─────────── independent
-```
+| Item | Summary | Status | Depends on |
+|------|---------|--------|------------|
+| CHANGE-1 | Single-spaced note lines by default | Done | — |
+| CHANGE-2 | Theme selection (Teal / Forest / Midnight) | Done | — |
+| CHANGE-3 | Home screen shows today's notes by default | Done | — |
+| CHANGE-4 | To-do rows wrap cleanly with long text + note title | Done | — |
+| CHANGE-5 | Sign-in screen visual polish | Open | — |
+| CHANGE-6 | Collapsible "Filters" control for home tags | Open | — |
+| CHANGE-7 | More colour schemes; drop duplicate Forest theme | Open | CHANGE-2 (shipped) |
 
 Tweaks are appended here as they are identified. Use the same per-item format: a short title, **Status**, value/symptom, and acceptance criteria (with scenarios and approach where the change warrants them).
 
@@ -349,7 +350,7 @@ Scenario: Folder view is unaffected
 
 ## CHANGE-4 — To-do rows wrap cleanly with long text and a note title
 
-**Status:** Prototype approved — ready to implement. Prototype on branch `prototype/todo-row-wrap` (`todo-row-wrap-prototype.html`), approved 2026-06-02. Implement the confirmed layout below as a normal slice (Breaker → spec → implement → Hawk → merge). Do **not** start from prototype code.
+**Status:** ✅ Done — PR #104, deployed 2026-06-02. See [docs/learnings/phase-minor-4-todo-row-wrap.md](../learnings/phase-minor-4-todo-row-wrap.md). Prototype on branch `prototype/todo-row-wrap` (`todo-row-wrap-prototype.html`) was approved 2026-06-02 and implemented verbatim as the confirmed layout below.
 
 **Value:** A to-do row in the **To Do** section is laid out as a single flex row — `checkbox · description · note-title · Delete` — with `justify-content: space-between` (`.todo-item`, `App.css` ~L821). The note title (`.todo-note-title`, ~L853) carries `white-space: nowrap`, so when a note-derived to-do has a long title (e.g. *"Head of Technical Delivery – Finova"*) it reserves a wide fixed strip of horizontal space. That squeezes the description column to near-zero width, forcing the description to wrap **one word per line** and growing the row to an absurd height, while the **Delete** button is pushed off the right edge and clipped. Short to-dos look fine; long ones become unusable. The row should stay compact: the description wraps normally, the note title sits beneath it as a quiet caption, and the Delete/Reopen control stays pinned and fully visible at all widths.
 
@@ -447,13 +448,13 @@ Scenario: The to-do data is unchanged by the layout fix
 
 ### Acceptance criteria
 
-- [ ] A to-do with a long description and a long note title renders with the description wrapped across lines and the note title beneath it — never one word per line
-- [ ] The Delete (open list) and Reopen + Delete (Done list) buttons stay pinned and fully visible at the narrow home-column width and the wider breakpoint
-- [ ] Short to-dos still render on a single compact row, visually unchanged from today
-- [ ] The same stacked layout is applied to both the open-items list and the expanded Done list
-- [ ] `.todo-note-title` no longer uses `white-space: nowrap`; long titles wrap instead of reserving fixed horizontal space
-- [ ] No change to `TodoItem`, events, projections, the API, or complete/reopen/delete behaviour — the fix is visual only
-- [ ] Existing `TodoSection` component tests remain green; a test asserts a long-description note-derived item still exposes its description and the Delete control
+- [x] A to-do with a long description and a long note title renders with the description wrapped across lines and the note title beneath it — never one word per line
+- [x] The Delete (open list) and Reopen + Delete (Done list) buttons stay pinned and fully visible at the narrow home-column width and the wider breakpoint
+- [x] Short to-dos still render on a single compact row, visually unchanged from today
+- [x] The same stacked layout is applied to both the open-items list and the expanded Done list
+- [x] `.todo-note-title` no longer uses `white-space: nowrap`; long titles wrap instead of reserving fixed horizontal space
+- [x] No change to `TodoItem`, events, projections, the API, or complete/reopen/delete behaviour — the fix is visual only
+- [x] Existing `TodoSection` component tests remain green; a test asserts a long-description note-derived item still exposes its description and the Delete control
 - [x] Prototype built and approved before implementation; confirmed layout reflected in the scenarios above
 
 ---
@@ -628,3 +629,99 @@ Scenario: Folder view is unaffected
 - [ ] Folder view tag filtering is unchanged
 - [ ] No API/event/projection/`TagFilter` change — frontend layout/interaction only
 - [ ] Component tests cover: default collapsed, expand reveals controls, collapse hides them, active-count when collapsed with a selected tag, filtering composes with the date filter
+
+---
+
+## CHANGE-7 — More colour schemes; drop duplicate Forest theme
+
+**Status:** Open
+
+**Value:** CHANGE-2 shipped three themes — Teal (default), Forest, Midnight. In practice **Teal and Forest are visually almost identical**: both are light themes with a green/emerald primary on a near-white green-tinted background (Teal `#0D9488`/`#F0FDFA`, Forest `#059669`/`#ECFDF5`), so the picker offers a choice with no perceptible difference. This change **removes Forest** and **adds several genuinely distinct palettes**, so the picker offers a real spread of looks across the hue wheel and a second dark option. Teal stays as the `:root` default; Midnight stays as the dark theme.
+
+**Backend changes:** None. Themes remain pure CSS custom-property overrides selected by `data-theme` and persisted in `localStorage`, exactly as CHANGE-2 established. No event, projection, or API change.
+
+---
+
+### What changes
+
+1. **Remove Forest.** Delete the `[data-theme="forest"]` palette block, the Forest `<option>` in `ThemePicker`, and `forest` from the theme type union / valid-values list. Anything previously persisted as `forest` falls through the existing unknown-value guard to Teal (the same fallback CHANGE-2 already ships) — no migration needed.
+2. **Add distinct palettes** (proposed below — open to trimming/renaming). Each is a new `[data-theme="…"]` block re-declaring the same custom properties; no component touches a literal colour.
+3. **Picker scales as-is.** The sidebar `<select>` just gains/loses `<option>`s; no structural change.
+
+---
+
+### Proposed palettes *(for review — adjust before implementation)*
+
+Keeping Teal (default light) and Midnight (dark); removing Forest; adding four new, clearly-distinguishable themes — three light across different hues and a second dark.
+
+| Theme | Kind | Primary | Primary-dark | CTA | Background | Surface | Text | Text-muted | Border |
+|-------|------|---------|--------------|-----|------------|---------|------|-----------|--------|
+| **Teal** *(default)* | light | `#0D9488` | `#0F766E` | `#F97316` | `#F0FDFA` | `#FFFFFF` | `#134E4A` | `#64748B` | `#CCEBE8` |
+| **Indigo** *(new)* | light | `#4F46E5` | `#4338CA` | `#F97316` | `#EEF2FF` | `#FFFFFF` | `#1E1B4B` | `#64748B` | `#C7D2FE` |
+| **Rose** *(new)* | light | `#E11D48` | `#BE123C` | `#0EA5E9` | `#FFF1F2` | `#FFFFFF` | `#4C0519` | `#6B7280` | `#FECDD3` |
+| **Amber** *(new)* | light | `#D97706` | `#B45309` | `#2563EB` | `#FFFBEB` | `#FFFFFF` | `#451A03` | `#78716C` | `#FDE68A` |
+| **Midnight** | dark | `#2DD4BF` | `#14B8A6` | `#FB923C` | `#0F172A` | `#1E293B` | `#E2E8F0` | `#94A3B8` | `#334155` |
+| **Slate** *(new)* | dark | `#818CF8` | `#6366F1` | `#FB923C` | `#0B1120` | `#1E293B` | `#E2E8F0` | `#94A3B8` | `#334155` |
+
+As in CHANGE-2: `--color-primary-bg` follows the primary at ~6% opacity (light) / ~10% (dark); `--color-cta-dark` is the CTA one step darker. CTA colours are chosen to contrast with each theme's primary (e.g. Rose pairs a red primary with a sky-blue CTA so the call-to-action stays distinct). Slate is a cool indigo-on-deep-navy dark, clearly different from Midnight's teal-on-slate.
+
+> These are starting points. Confirm the final set and exact hex before implementation — drop any you don't want, rename freely. Each light theme must clear 4.5:1 text contrast; each dark theme reuses the Midnight semantic error/surface tokens introduced in CHANGE-2's dark-mode audit so no hardcoded light background leaks through.
+
+---
+
+### Key implementation files
+
+**Frontend (modified):**
+- `web/src/App.css` — remove the `[data-theme="forest"]` block; add a `[data-theme="…"]` block per new theme, re-declaring the custom properties
+- `web/src/components/ThemePicker.tsx` — drop the Forest `<option>`; add one `<option>` per new theme
+- `web/src/hooks/useTheme.ts` (or the theme context) — update the valid-values list / type union: remove `forest`, add the new theme keys; unknown values still fall back to Teal
+- `web/index.html` — the inline pre-mount bootstrap already applies whatever `data-theme` is stored; confirm it still validates against the updated allow-list if it does any validation
+
+No `.ts` handler, event, projection, or API change.
+
+---
+
+### Scenarios
+
+```
+Scenario: Forest is no longer offered
+  Given I open the theme picker
+  Then  there is no "Forest" option
+  And   Teal, Midnight, and the new themes are listed
+
+Scenario: A previously-saved Forest preference falls back to Teal
+  Given localStorage holds the theme value "forest"
+  When  I open the app
+  Then  the Teal palette is applied (unknown value falls back to default)
+
+Scenario: Each new theme reskins the app immediately and is visually distinct
+  Given I am on any screen
+  When  I choose a new theme (e.g. Indigo) in the picker
+  Then  the app's colours change to that palette without a reload
+  And   the result is clearly distinguishable from Teal
+
+Scenario: A new dark theme keeps dark-mode surfaces dark
+  Given I choose Slate
+  Then  the background and surfaces are dark and text is light
+  And   no light-coloured panels or error backgrounds remain bright
+
+Scenario: A new theme choice persists across reloads
+  Given I have selected a new theme
+  When  I reload the app
+  Then  that theme is applied before the first paint (no flash of Teal)
+  And   the picker still shows it selected
+```
+
+---
+
+### Acceptance criteria
+
+- [ ] The Forest theme is removed: no `[data-theme="forest"]` block, no Forest `<option>`, `forest` removed from the valid-values/type union
+- [ ] A previously-stored `forest` (or any unknown) value falls back to Teal — no console error, no broken palette
+- [ ] The confirmed set of new themes is added, each defined purely as CSS custom-property overrides; no component references a literal colour for themed surfaces
+- [ ] Each new theme is visually distinct from Teal and from the other themes (not a near-duplicate)
+- [ ] Selecting any new theme reskins the app immediately (no reload), updates `document.documentElement[data-theme]`, and persists to `localStorage`
+- [ ] The saved theme is applied before React mounts so there is no flash of the default theme on reload
+- [ ] Each light theme meets 4.5:1 text contrast; each dark theme reuses CHANGE-2's semantic error/surface tokens so no hardcoded light background leaks through
+- [ ] Theme preference remains client-only — no event, projection, or API change
+- [ ] `ThemePicker` component tests updated: Forest gone, each new theme applies its `data-theme`, persistence across remount, fallback on the now-invalid `forest` value

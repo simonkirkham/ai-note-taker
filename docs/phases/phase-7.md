@@ -2,6 +2,15 @@
 
 **Goal:** Replace the plain textarea with a WYSIWYG editor that lets users structure meeting notes using headings, bold, bullet lists, and checkboxes — all via keyboard shortcuts. Headings double as agenda topics; a single click marks a topic as discussed (strikethrough).
 
+## Summary
+
+| Slice | Summary | Status | Depends on |
+|-------|---------|--------|------------|
+| 7-A | Base editor, markdown storage, stripped preview | Done | — |
+| 7-B | Mark topic as discussed | Done | 7-A |
+
+> **Dropped:** Task list (checkboxes) removed — heading mark-as-discussed covers the meeting tracking need without the added complexity of a separate checkbox extension.
+
 **Learning surface:** Integrating a ProseMirror-based editor (TipTap) into a React component; markdown as a storage format for structured content; server-side content transformation (markdown stripping for preview text); the difference between editor-internal state and persisted state.
 
 ---
@@ -16,17 +25,6 @@
 | `src/Api/Handlers/NoteHandlers.cs` | Strip markdown syntax before truncating `contentPreview` |
 
 No new events, no new projections, no CDK changes, no new API endpoints.
-
----
-
-## Slice order and dependencies
-
-```
-7-A  Base editor (headings, bold, bullets) + markdown storage + stripped preview
-7-B  Mark-as-discussed on headings                             (depends 7-A)
-```
-
-> **Dropped:** Task list (checkboxes) removed — heading mark-as-discussed covers the meeting tracking need without the added complexity of a separate checkbox extension.
 
 ---
 

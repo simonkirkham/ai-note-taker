@@ -2,6 +2,19 @@
 
 **Goal:** Bring the app's layout and interaction model in line with the wireframes in `docs/wireframes/`. This phase is primarily frontend-driven, with backend additions where the wireframe requires data the API does not yet expose. No new aggregates are introduced; the primary backend learning surface is **projection evolution** (extending `NoteDetail`, adding `NoteCardList`).
 
+## Summary
+
+| Slice | Summary | Status | Depends on |
+|-------|---------|--------|------------|
+| 4-A | Settable note date | Done | — |
+| 4-B | Note screen layout redesign | Done | — |
+| 4-C | Implicit action item add | Done | — |
+| 4-D | Persistent note list sidebar | Done | — |
+| 4-E | Note summary cards on home screen | Done | 4-A |
+| 4-F | Expandable completed todos | Not Started | — |
+
+4-E must land after 4-A so the `NoteCardList` projection can handle `NoteDateSet` and the card schema includes `Date`.
+
 **Wireframe references:**
 - `docs/wireframes/Note Screen.png` — two-column layout; content area left in a bordered box; tags and actions in right panel; note title + date in header
 - `docs/wireframes/Homescreen with note summary.png` — left sidebar with note names; To Do section; rich note cards showing title, date, content snippet, open actions, tags, "Edit Note" button
@@ -12,21 +25,6 @@
 
 **Doc/code divergence to fix before Breaker starts:**
 The event model uses `ActionItemRemoved` / `RemoveActionItem`; the Phase 3 implementation used `ActionItemDeleted` / `DeleteActionItem`. Pip must update `docs/event-model.md` and `docs/event-schemas.md` at the start of the first slice to reconcile this before any new test references the wrong name.
-
----
-
-## Slice order and dependencies
-
-```
-4-A  Note date  ─────────────────────┐
-4-B  Note screen layout (frontend)   │  (independent)
-4-C  Implicit action add (frontend)  │  (independent)
-4-D  Sidebar (frontend)              │  (independent)
-4-E  Note summary cards  ────────────┘  (depends on 4-A: cards show date)
-4-F  Expandable completed todos         (independent)
-```
-
-4-E must land after 4-A so the `NoteCardList` projection can handle `NoteDateSet` and the card schema includes `Date`.
 
 ---
 

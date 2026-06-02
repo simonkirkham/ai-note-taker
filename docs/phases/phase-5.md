@@ -2,6 +2,27 @@
 
 **Goal:** Let users label notes with tags and organise them into folders. Tags give notes searchable metadata; folders give them a home. This phase introduces the `TagIndex` projection, the `Folder` aggregate, the `FolderTree` projection, and wires all of them to the frontend.
 
+## Summary
+
+| Slice | Summary | Status | Depends on |
+|-------|---------|--------|------------|
+| 5-A | Add tags to a note | Done | — |
+| 5-B | Remove a tag from a note | Done | 5-A |
+| 5-C | Tag filter bar | Done | 5-A |
+| 5-D | Create and browse folders | Done | — |
+| 5-E | Rename a folder | Done | 5-D |
+| 5-F | Delete an empty folder | Done | 5-D |
+| 5-G | File a note in a folder | Done | 5-D |
+| 5-H | Unfiled Notes view | Done | 5-G |
+| 5-I | Folder preview panel | Done | 5-G |
+| 5-J | Auto-assign note to current folder | Done | 5-G |
+| 5-K | Reparent a folder | Done | 5-D |
+| 5-L | Cascade delete a folder | Done | 5-F, 5-G |
+| 5-M | Note date defaults to today | Done | — |
+| 5-N | Folder navigation component tests | Done | 5-D |
+
+Each slice is a complete vertical: domain events, API endpoints, projections, and the frontend wired to those endpoints. 5-B and 5-C are parallel once 5-A lands. 5-E, 5-F, and 5-K are parallel once 5-D lands. 5-H, 5-I, and 5-J are parallel once 5-G lands.
+
 **Learning surface:** A second projection axis over the existing event stream (`TagIndex`); a brand-new aggregate (`Folder`) with its own event stream; projection evolution (`NoteCardList` extended with `Tags` and `FolderId?`); client-side filter state against a server projection; hierarchical read models.
 
 ---
@@ -45,34 +66,6 @@ What is **not** yet in place:
 - No `FolderTree` projection or DynamoDB table
 - No `NoteFiledInFolder` / `NoteUnfiled` events on the `Note` aggregate
 - All frontend API calls are fire-and-forget stubs — none are wired to real backend responses
-
----
-
-## Slice order and dependencies
-
-```
-5-A  Add tags to a note ─────────────────────────────────────────────────────┐
-5-B  Remove a tag  (depends 5-A) ─────────────────────────────────────────────┤ tags
-5-C  Tag filter bar  (depends 5-A) ───────────────────────────────────────────┘
-
-5-D  Create and browse folders ──────────────────────────────────────────────┐
-5-E  Rename a folder  (depends 5-D) ──────────────────────────────────────────┤
-5-F  Delete an empty folder  (depends 5-D) ────────────────────────────────────┤
-5-G  File a note in a folder  (depends 5-D) ───────────────────────────────────┤ folders
-5-H  Unfiled Notes view  (depends 5-G) ────────────────────────────────────────┤
-5-I  Folder preview panel  (depends 5-G) ──────────────────────────────────────┤
-5-J  Auto-assign note to current folder  (depends 5-G) ────────────────────────┤
-5-K  Reparent a folder  (depends 5-D) ─────────────────────────────────────────┤
-5-L  Cascade delete a folder  (depends 5-F, 5-G) ──────────────────────────────┘
-
-5-M  Note date defaults to today  (no dependencies — backend already shipped) ── standalone
-
-5-N  Folder navigation component tests  (depends 5-D — App and Sidebar must exist) ─── test refactor
-```
-
-Each slice is a complete vertical: domain events, API endpoints, projections, and the frontend wired to those endpoints. No "backend first, frontend later" splits across slices.
-
-5-B and 5-C are parallel once 5-A lands. 5-E, 5-F, and 5-K are parallel once 5-D lands. 5-H, 5-I, and 5-J are parallel once 5-G lands.
 
 ---
 

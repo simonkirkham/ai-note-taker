@@ -2,6 +2,20 @@
 
 **Goal:** Make the app properly observable for production — one place to answer "is it healthy?", "what broke?", and "why is it slow?". Today there is a single Lambda log group with unstructured text logs, no correlation IDs, no metrics, no traces, no dashboards, no alarms, and zero frontend visibility. This phase closes every one of those gaps using AWS-native tooling only.
 
+## Summary
+
+| Slice | Summary | Status | Depends on |
+|-------|---------|--------|------------|
+| 12-A | Structured logging, correlation IDs, and log retention | Done | — |
+| 12-B | Domain metrics (EMF) and event-sourcing log fields | Done | 12-A |
+| 12-C | Distributed tracing with AWS X-Ray | Done | 12-A |
+| 12-D | CloudWatch Dashboard and the "all errors" view | Done | 12-A, 12-B |
+| 12-E | CloudWatch Alarms and SNS notifications | Not Started | 12-B |
+| 12-F | Frontend monitoring (CloudWatch RUM) | Not Started | — |
+| 12-G | Observability runbook and saved Logs Insights queries | Not Started | 12-A–12-F |
+
+Recommended build order: **12-A → 12-B → 12-C → 12-D → 12-E**, with **12-F** runnable in parallel any time, and **12-G** last once the surfaces it documents exist.
+
 **Learning surface:** The three pillars of observability (logs, metrics, traces) and how they correlate via a shared trace/correlation ID; AWS Lambda Powertools for .NET; CloudWatch Embedded Metric Format (EMF); AWS X-Ray distributed tracing and service maps; CloudWatch Dashboards and Alarms as code (CDK); CloudWatch RUM for real-user frontend monitoring; the event-sourcing-specific signals worth instrumenting (stream version on append, optimistic-concurrency conflicts, projection lag and rebuild duration); log hygiene (no PII at `Information`, domain exceptions are `Warning` not `Error`).
 
 **Reference:** the `observability` skill (`.claude/skills/observability/SKILL.md`) is the implementation blueprint for this phase — each slice maps to one or more of its seven steps.
@@ -23,22 +37,6 @@
 | Frontend monitoring | None | No CloudWatch RUM AppMonitor |
 
 Errors are technically in one log group (`/aws/lambda/NoteTakerStack-ApiFunction*`) but spread across many invocation log streams with no structured field to query by — so "see all errors in one place, choose how far back" is not yet answerable without manual string-matching. Slice 12-A + 12-F fix this directly.
-
----
-
-## Slice order and dependencies
-
-```
-12-A  Structured logging + correlation IDs + log retention ──── foundation (do first)
-12-B  Domain metrics (EMF) + event-sourcing log fields ──────── builds on 12-A
-12-C  Distributed tracing (X-Ray) ────────────────────────────── builds on 12-A (shared correlation/trace ID)
-12-D  CloudWatch Dashboard + Logs Insights "all errors" view ── builds on 12-A, 12-B
-12-E  CloudWatch Alarms + SNS notifications ──────────────────── builds on 12-B (domain metrics) + Lambda metrics
-12-F  Frontend monitoring (CloudWatch RUM) ───────────────────── independent (frontend + CDK)
-12-G  Observability runbook + saved Logs Insights queries ───── builds on 12-A..12-F (documentation slice)
-```
-
-Recommended build order: **12-A → 12-B → 12-C → 12-D → 12-E**, with **12-F** runnable in parallel any time, and **12-G** last once the surfaces it documents exist.
 
 ---
 

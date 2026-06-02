@@ -2,11 +2,19 @@
 
 **Goal:** event sourcing plumbing works end-to-end and is covered by event-model-driven specs. By the end of this phase you can create a note, give it a title, and see it in a list — deployed, pipeline green, specs covering every layer.
 
+## Summary
+
+| Slice | Summary | Status | Depends on |
+|-------|---------|--------|------------|
+| 1-A | Note aggregate: CreateNote + RenameNote | Done | — |
+| 1-B | DynamoDB event store | Done | — |
+| 1-C | Create Note API endpoint | Done | — |
+| 1-D | RenameNote endpoint + NoteTitleList projection + GET /notes | Done | — |
+| 1-E | React scaffold + create/list notes UI | Done | — |
+
 **Scope note:** The roadmap lists `NoteCreated` + `ContentAppended` as the two Phase 1 events. The event model has since resolved `ContentAppended` → `ContentEdited` (full snapshot). This phase uses `NoteCreated` + `NoteRenamed` instead — you need a title to have a meaningful list. `ContentEdited` lands in Phase 2 alongside the note detail view.
 
 Status key: `Done` · `In Progress` · `Not Started`
-
----
 
 ## Slice 1-A — Note aggregate: CreateNote + RenameNote
 **Status:** Done

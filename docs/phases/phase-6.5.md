@@ -2,6 +2,17 @@
 
 **Goal:** Replace the current approach of using Playwright E2E tests as the primary UI regression safety net with a fast, deterministic component test layer. E2E tests are kept for key full-stack journey smoke checks only. A rename pass gives all test projects names that describe what they cover.
 
+## Summary
+
+| Slice | Summary | Status | Depends on |
+|-------|---------|--------|------------|
+| 6.5-A | Rename test projects (pure refactor) | Done | — |
+| 6.5-B | Vitest scaffold — install tooling, wire CI, one smoke test | Done | 6.5-A |
+| 6.5-C | Home screen component tests (NoteCard, TagFilter, TodoSection) | Done | 6.5-B |
+| 6.5-D | Note view component tests (NoteView, ActionsSection, Sidebar) | Done | 6.5-C |
+
+6.5-C removes 4 E2E journeys (NoteCard, TagFilter, TodoList, TodoComplete); 6.5-D removes 8 more (NoteContent, NoteDate, NoteDateDefaults, NoteLayout, ActionItemComplete, DeleteAction, ImplicitActionAdd, Sidebar), trimming Browser.E2E to exactly 5 kept journeys and cleaning up `AppPage.cs`.
+
 **Learning surface:** Vitest as a Vite-native test runner; React Testing Library's "test what the user sees" philosophy vs implementation-detail testing; MSW intercepting fetch at the network boundary so component code never changes for tests; where in the testing pyramid each layer earns its cost; naming as documentation — project names that encode their scope reduce the time to find the right test.
 
 ---
@@ -32,22 +43,6 @@ The full E2E suite has 17 journey files. 5 are kept (see ADR 0008); the remainin
 `ActionItemCompleteJourney`, `DeleteActionJourney`, `ImplicitActionAddJourney`, `NoteCardJourney`, `NoteContentJourney`, `NoteDateDefaultsJourney`, `NoteDateJourney`, `NoteLayoutJourney`, `SidebarJourney`, `TagFilterJourney`, `TodoCompleteJourney`, `TodoListJourney`
 
 > `TagFilterJourney` was missing from the original remove list but belongs here: it tests only filter-bar UI interaction (no wiring path unique to production).
-
----
-
-## Slice order and dependencies
-
-```
-6.5-A  Rename test projects — pure refactor, no behaviour change
-6.5-B  Vitest scaffold — install tooling, wire CI, one smoke test       (depends 6.5-A — uses new project names in CI)
-6.5-C  Home screen component tests — NoteCard, TagFilter, TodoSection   (depends 6.5-B)
-        → removes 4 E2E journeys: NoteCardJourney, TagFilterJourney, TodoListJourney, TodoCompleteJourney
-6.5-D  Note view component tests — NoteView, ActionsSection, Sidebar    (depends 6.5-C — reuses MSW handler patterns)
-        → removes 8 E2E journeys: NoteContentJourney, NoteDateJourney, NoteDateDefaultsJourney,
-          NoteLayoutJourney, ActionItemCompleteJourney, DeleteActionJourney, ImplicitActionAddJourney,
-          SidebarJourney
-        → Browser.E2E is now trimmed to exactly 5 kept journeys; AppPage.cs cleaned up
-```
 
 ---
 
