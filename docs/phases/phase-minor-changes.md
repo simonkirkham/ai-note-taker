@@ -15,6 +15,7 @@ CHANGE-1  Single-spaced note lines by default ───────────�
 CHANGE-2  Theme selection (Teal / Forest / Midnight) ──────────── independent
 CHANGE-3  Home screen shows today's notes by default ──────────── independent
 CHANGE-4  To-do rows wrap cleanly with long text + note title ─── independent
+CHANGE-5  Sign-in screen visual polish ───────────────────────── independent
 ```
 
 Tweaks are appended here as they are identified. Use the same per-item format: a short title, **Status**, value/symptom, and acceptance criteria (with scenarios and approach where the change warrants them).
@@ -438,3 +439,79 @@ Scenario: The to-do data is unchanged by the layout fix
 - [ ] No change to `TodoItem`, events, projections, the API, or complete/reopen/delete behaviour — the fix is visual only
 - [ ] Existing `TodoSection` component tests remain green; a test asserts a long-description note-derived item still exposes its description and the Delete control
 - [ ] Prototype built and approved before implementation; confirmed layout reflected in the scenarios above
+
+---
+
+## CHANGE-5 — Sign-in screen visual polish
+
+**Status:** Planned
+
+**Value:** The sign-in screen is the first thing a user sees, and it is currently unstyled. `web/src/components/SignInPage.tsx` renders a bare `<h1>AI Note Taker</h1>` and a default browser `<button>Sign in with Google</button>` inside a `.sign-in-page` div for which **no CSS exists** — so it falls back to Times New Roman-ish defaults, a top-left heading, and a grey system button on a plain background. It reads as broken rather than intentional. This change gives the sign-in screen a polished, on-brand first impression consistent with the rest of the app, without changing the auth flow.
+
+**Backend changes:** None. Pure presentation. The `useAuth().signIn` call, the OAuth flow, and the no-auth bypass path (`VITE_GOOGLE_CLIENT_ID` absent) are all untouched.
+
+---
+
+### Approach
+
+Style-only, building on the app's existing design tokens (`--color-primary`, `--color-bg`, `--color-surface`, `--color-cta`, etc.) so the sign-in screen inherits whatever theme is active (this composes naturally with CHANGE-2's theming — it must not hardcode colours).
+
+Run the **ui-ux-pro-max** (Stylist) skill against `SignInPage.tsx` to produce the polish, working from `web/design-system/MASTER.md` if present. Target shape:
+
+- A centred card on a full-height branded background (use `--color-bg`; a subtle gradient or the primary tint is acceptable).
+- App wordmark/title in the app's display font and `--color-text`, optionally with a short tagline.
+- A clearly styled primary "Sign in with Google" button (the established Google button conventions — Google "G" mark, adequate padding, hover/focus states), using `--color-cta`/`--color-primary` per the design system, not the raw browser default.
+- Accessible focus ring, 4.5:1 contrast, sensible sizing on mobile and desktop, and a visible loading/disabled state while `signIn` is in flight if the auth context exposes one.
+
+Add the styles under a new `.sign-in-page` (and child) block in `App.css`. Keep markup changes minimal — a card wrapper and the Google mark are fine; do not restructure the auth wiring.
+
+**Why Stylist, not a from-scratch rebuild:** the component's behaviour is correct and trivial; only its appearance is missing. The design-system skill gives an on-brand result that stays consistent with the rest of the app and the themes.
+
+---
+
+### Key implementation files
+
+**Frontend (modified):**
+- `web/src/components/SignInPage.tsx` — minimal markup wrapper for the card + Google mark; no auth-flow change
+- `web/src/App.css` — new `.sign-in-page` styles using design tokens (currently none exist)
+
+No `.ts`, handler, event, projection, or API change.
+
+---
+
+### Scenarios
+
+```
+Scenario: Sign-in screen is visually polished and on-brand
+  Given I am signed out
+  When  the sign-in screen loads
+  Then  the title and "Sign in with Google" button are presented in a centred, branded card
+  And   colours are drawn from the active theme's design tokens, not browser defaults
+
+Scenario: Sign-in still works after the restyle
+  Given I am on the styled sign-in screen
+  When  I click "Sign in with Google"
+  Then  the existing OAuth sign-in flow runs exactly as before
+
+Scenario: Sign-in screen respects the selected theme
+  Given a theme is active (e.g. Midnight, once CHANGE-2 ships)
+  When  the sign-in screen loads
+  Then  it uses that theme's background, surface, and text colours
+
+Scenario: No-auth bypass is unaffected
+  Given VITE_GOOGLE_CLIENT_ID is absent
+  When  the app loads
+  Then  the home screen is shown without the sign-in screen, as today
+```
+
+---
+
+### Acceptance criteria
+
+- [ ] The sign-in screen renders a centred, branded card (title + Google sign-in button) instead of bare unstyled defaults
+- [ ] All colours come from existing CSS custom properties — no hardcoded literals — so it composes with CHANGE-2 theming
+- [ ] The "Sign in with Google" button has clear hover/focus states and meets 4.5:1 contrast
+- [ ] The auth flow (`useAuth().signIn`), OAuth path, and no-auth bypass are unchanged — visual only
+- [ ] Layout holds on mobile and desktop widths
+- [ ] Existing `Auth` / `SignInPage` tests remain green
+- [ ] Stylist (ui-ux-pro-max) run recorded; result consistent with `web/design-system/MASTER.md`
