@@ -188,6 +188,22 @@ Slices and acceptance criteria: [docs/phases/phase-10.md](phases/phase-10.md)
 
 Slices and acceptance criteria: [docs/phases/phase-11.md](phases/phase-11.md)
 
+## Phase 12 — Observability _(Planned)_
+
+Make the app properly observable for production using AWS-native tooling only. Today there is one Lambda log group with unstructured text logs and nothing else — no correlation IDs, metrics, traces, dashboards, alarms, or frontend visibility. This phase closes every gap, pillar by pillar.
+
+- **12-A:** Structured logging (Lambda Powertools) + correlation IDs returned to the caller + explicit log group with retention
+- **12-B:** Domain metrics via EMF (`CommandHandled`, `CommandFailed`, `EventsAppended`, `ConcurrencyConflict`, projection durations) + event-sourcing log fields (stream ID/version)
+- **12-C:** Distributed tracing with AWS X-Ray (active tracing, SDK instrumentation, named subsegments, trace-ID propagation)
+- **12-D:** CloudWatch Dashboard (`notetaker-ops`) including a Logs Insights "all errors" widget with a time-range picker
+- **12-E:** CloudWatch Alarms + SNS email (error rate, P99 latency, concurrency-conflict spikes)
+- **12-F:** Frontend monitoring via CloudWatch RUM (browser errors, Core Web Vitals, failed API calls; trace-linked to the backend)
+- **12-G:** Observability runbook (`docs/observability.md`) + saved Logs Insights query definitions
+
+**Goal:** answer "is it healthy?", "what broke?", and "why is it slow?" from one place; learn the three pillars of observability and how they correlate, AWS Lambda Powertools, EMF metrics, X-Ray service maps, CloudWatch dashboards/alarms as CDK, and CloudWatch RUM. Driven by the `observability` skill.
+
+Slices and acceptance criteria: [docs/phases/phase-12.md](phases/phase-12.md)
+
 ## Future Ideas
 
 - Workspaces - Switching between collections of notes
