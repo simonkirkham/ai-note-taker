@@ -541,6 +541,23 @@ body {
   color: var(--color-text-muted);
 }
 
+/* Single-spaced note lines: collapse the inter-paragraph gap so consecutive
+   lines sit directly beneath one another. line-height keeps in-paragraph
+   leading comfortable; markdown serialisation is unaffected (still distinct
+   <p> blocks). Scoped to the editor so it cannot leak to other screens. */
+.content-input p {
+  margin: 0;
+}
+
+/* Keep headings visually distinct from the preceding paragraph now that the
+   paragraph margin is gone. */
+.content-input h1,
+.content-input h2,
+.content-input h3 {
+  margin-top: 0.75rem;
+  margin-bottom: 0.25rem;
+}
+
 /* ── Note two-column layout ────────────────────────────────────── */
 .note-layout {
   display: grid;
