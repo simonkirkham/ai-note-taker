@@ -227,7 +227,7 @@ Currently open: **BUG-3** Data Protection warnings on cold start · **BUG-4** Co
 
 ### Minor Changes _(Ongoing)_
 
-An unnumbered, standing phase for small tweaks and changes to existing behaviour that don't warrant a numbered phase and aren't defects. Currently planned: single-spaced note lines, theme selection (Teal/Forest/Midnight), home screen shows today's notes by default, and to-do rows that wrap cleanly with long text (moved here from the former Phase 13).
+An unnumbered, standing phase for small tweaks and changes to existing behaviour that don't warrant a numbered phase and aren't defects. Shipped: single-spaced note lines, theme selection, home screen shows today's notes by default, and to-do rows that wrap cleanly with long text. Open: sign-in screen visual polish, a collapsible "Filters" control for home tags, and more colour schemes (dropping the near-duplicate Forest theme).
 
 → [docs/phases/phase-minor-changes.md](phases/phase-minor-changes.md)
 

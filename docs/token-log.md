@@ -1013,3 +1013,22 @@ If no agent ran unexpectedly high: write `None — slice ran within expected ran
 - **Pip (–15 000):** The worktree was first created with a relative path from `web/` and landed nested inside the repo, forcing a remove-and-recreate (plus a stray `Write` to the wrong path). Using an absolute `git worktree add` path (now in CLAUDE.md) avoids the rework.
 - **Deploy monitoring (–10 000):** Several gate re-checks were spent watching concurrency-cancelled deploy runs on a busy main. Watching the single newest run id (and only re-fetching "latest" on cancellation) rather than re-listing repeatedly would trim the polling overhead.
 
+
+---
+
+## CHANGE-4 — To-do rows wrap cleanly with long text + note title
+
+> **Note:** Resumed after a VS Code crash — the implementation was already complete and staged (uncommitted) in the slice worktree. This session was recovery + verification + merge/deploy orchestration; no fresh implementation. Hawk ran as a real subagent (exact 37k from its hand-off). Other counts are estimates.
+
+| Agent                          | ~Tokens     |
+|--------------------------------|-------------|
+| Pip (recover + verify + orchestration) | 60 000 |
+| Hawk                           | 37 000      |
+| Scribe                         | 8 000       |
+| **Total**                      | **~105 000** |
+
+**Why:** No Hawk rework — approved first pass, zero critical/important findings, because the implementation matched the prototype-approved layout in the phase doc verbatim. The dominant non-Hawk cost was the two long pre-commit + verification test runs (the full 214-test frontend suite runs under the pre-commit hook, ~3 min each in WSL) and the deploy monitor. No implementation tokens were spent — the slice was recovered complete from the worktree.
+
+**Optimisation suggestions:**
+- **Verification (–10 000):** Two full frontend suite runs happened back to back — once as a manual targeted `vitest run TodoSection` + tsc, then again inside the pre-commit hook (which runs the *entire* suite). For a single-component visual change, the manual targeted run is redundant with the hook; trust the hook's full run and skip the pre-commit manual rehearsal, or vice-versa.
+- **None on Hawk:** first-pass approval is the target state; nothing to trim.
