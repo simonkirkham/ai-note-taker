@@ -1,4 +1,4 @@
-import { render, screen, within } from '@testing-library/react'
+import { render, screen, within, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { http, HttpResponse } from 'msw'
 import { server } from '../test/setup'
@@ -51,5 +51,25 @@ describe('FolderNavigation', () => {
   it('» button is visible next to Unfiled Notes', async () => {
     renderApp()
     expect(await screen.findByTestId('unfiled-preview-button')).toBeInTheDocument()
+  })
+
+  it('CHANGE-11: the unfiled preview button toggles » ↔ « and opens/closes the panel', async () => {
+    renderApp()
+    const btn = await screen.findByTestId('unfiled-preview-button')
+    expect(btn).toHaveTextContent('»')
+    // Panel is present but closed (no --open class) before any interaction.
+    expect(screen.getByTestId('folder-preview-panel')).not.toHaveClass('folder-preview-panel--open')
+    // Open the preview — button flips to « and the panel opens.
+    await userEvent.click(btn)
+    await waitFor(() =>
+      expect(screen.getByTestId('folder-preview-panel')).toHaveClass('folder-preview-panel--open'),
+    )
+    expect(screen.getByTestId('unfiled-preview-button')).toHaveTextContent('«')
+    // Click again — panel closes and the button returns to ».
+    await userEvent.click(screen.getByTestId('unfiled-preview-button'))
+    await waitFor(() =>
+      expect(screen.getByTestId('folder-preview-panel')).not.toHaveClass('folder-preview-panel--open'),
+    )
+    expect(screen.getByTestId('unfiled-preview-button')).toHaveTextContent('»')
   })
 })

@@ -11,10 +11,12 @@ interface NodeProps {
   onCreateChild: (parentFolderId: string, name: string) => void;
   onDropNote: (noteId: string, folderId: string) => void;
   onMoveFolder?: (folderId: string, parentFolderId: string | null) => void;
+  previewFolderId: string | null;
   onPreview: (folderId: string, name: string) => void;
 }
 
-function FolderTreeNode({ node, activeFolderId, path, onSelect, onRename, onDelete, onCreateChild, onDropNote, onMoveFolder, onPreview }: NodeProps) {
+function FolderTreeNode({ node, activeFolderId, path, onSelect, onRename, onDelete, onCreateChild, onDropNote, onMoveFolder, previewFolderId, onPreview }: NodeProps) {
+  const isPreviewing = node.folderId === previewFolderId;
   const [expanded, setExpanded] = useState(false);
   const [editing, setEditing] = useState(false);
   const [editName, setEditName] = useState(node.name);
@@ -105,10 +107,10 @@ function FolderTreeNode({ node, activeFolderId, path, onSelect, onRename, onDele
           <button
             className="folder-tree-action-btn"
             onClick={(e) => { e.stopPropagation(); onPreview(node.folderId, node.name); }}
-            title="Preview notes"
-            aria-label="Preview folder notes"
+            title={isPreviewing ? "Close folder preview" : "Preview folder notes"}
+            aria-label={isPreviewing ? "Close folder preview" : "Preview folder notes"}
           >
-            »
+            {isPreviewing ? "«" : "»"}
           </button>
           <button
             className="folder-tree-action-btn"
@@ -151,6 +153,7 @@ function FolderTreeNode({ node, activeFolderId, path, onSelect, onRename, onDele
               onCreateChild={onCreateChild}
               onDropNote={onDropNote}
               onMoveFolder={onMoveFolder}
+              previewFolderId={previewFolderId}
               onPreview={onPreview}
             />
           ))}
@@ -190,6 +193,7 @@ export default function FolderTree({
   onCreateChild,
   onDropNote,
   onMoveFolder,
+  previewFolderId,
   onPreview,
 }: {
   nodes: FolderNode[];
@@ -200,6 +204,7 @@ export default function FolderTree({
   onCreateChild: (parentFolderId: string, name: string) => void;
   onDropNote: (noteId: string, folderId: string) => void;
   onMoveFolder?: (folderId: string, parentFolderId: string | null) => void;
+  previewFolderId: string | null;
   onPreview: (folderId: string, name: string) => void;
 }) {
   if (nodes.length === 0) return null;
@@ -218,6 +223,7 @@ export default function FolderTree({
           onCreateChild={onCreateChild}
           onDropNote={onDropNote}
           onMoveFolder={onMoveFolder}
+          previewFolderId={previewFolderId}
           onPreview={onPreview}
         />
       ))}
