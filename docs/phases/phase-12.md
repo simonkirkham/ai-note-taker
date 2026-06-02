@@ -44,7 +44,7 @@ Recommended build order: **12-A → 12-B → 12-C → 12-D → 12-E**, with **12
 
 ## Slice 12-A — Structured logging, correlation IDs, and log retention
 
-**Status:** Not started
+**Status:** Done
 
 **Value:** Every log line becomes a queryable JSON record carrying a correlation ID, the HTTP method/path, and (for command flows, completed in 12-B) the stream ID and command type. The correlation ID is returned to the browser on every response and on the 500 error body, so a user-reported error can be traced to its exact log line. An explicit log group with a retention policy stops logs accumulating forever (cost + hygiene). This is the foundation the rest of the phase depends on, and it is what makes "show me all errors, last 24h / 7d" a one-query answer.
 
@@ -93,15 +93,15 @@ Scenario: Log group has a finite retention
 
 ### Acceptance criteria
 
-- [ ] `AWS.Lambda.Powertools.Logging` referenced in `Api.csproj`; solution builds on .NET 10
-- [ ] Default logging providers cleared; Powertools logger registered with `Service = "note-taker"`
-- [ ] Logs are emitted as JSON (structured) in the Lambda environment
-- [ ] Every HTTP response carries an `x-correlation-id` header
-- [ ] Unhandled exceptions return 500 with the correlation ID in the body and a structured `Error` log line carrying correlation ID, method, and path
-- [ ] `Authorization` header / bearer token never appears in any log line (verified by an integration assertion or a code-level guard)
-- [ ] An explicit `LogGroup` with one-month retention is defined in CDK and attached to the function
-- [ ] `tests/Infrastructure.Assertions` asserts the log group + retention; `tests/Api.Integration` asserts the correlation-ID header and error body
-- [ ] `cdk synth` succeeds; `cdk diff` reviewed before deploy
+- [x] `AWS.Lambda.Powertools.Logging` referenced in `Api.csproj`; solution builds on .NET 10
+- [x] Default logging providers cleared; Powertools logger registered with `Service = "note-taker"`
+- [x] Logs are emitted as JSON (structured) in the Lambda environment
+- [x] Every HTTP response carries an `x-correlation-id` header
+- [x] Unhandled exceptions return 500 with the correlation ID in the body and a structured `Error` log line carrying correlation ID, method, and path
+- [x] `Authorization` header / bearer token never appears in any log line (code-level guard: `LogEvent` left off; no log path touches the header)
+- [x] An explicit `LogGroup` with one-month retention is defined in CDK and attached to the function
+- [x] `tests/Infrastructure.Assertions` asserts the log group + retention; `tests/Api.Integration` asserts the correlation-ID header and error body
+- [x] `cdk synth` succeeds; `cdk diff` reviewed before deploy
 
 ---
 

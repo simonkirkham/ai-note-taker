@@ -25,12 +25,14 @@ This skill adds production-grade observability to the app using three pillars: *
 In `src/Api/Api.csproj`, add:
 
 ```xml
-<PackageReference Include="AWS.Lambda.Powertools.Logging" Version="1.*" />
+<PackageReference Include="AWS.Lambda.Powertools.Logging" Version="3.2.2" />
 <PackageReference Include="AWS.Lambda.Powertools.Tracing" Version="1.*" />
 <PackageReference Include="AWS.Lambda.Powertools.Metrics" Version="1.*" />
 ```
 
 These three packages share a common Powertools core and add zero cold-start overhead beyond their own init. They emit JSON, embed correlation IDs, and push EMF metric blobs to stdout (Lambda picks them up automatically).
+
+> **Version note (learned in 12-A):** the `builder.Logging.AddPowertoolsLogger(...)` ILogger-provider API in Step 2 only exists from Powertools **v2+** — pinning `1.*` for Logging will not compile against that snippet (v1 used the static `Logger` API and the `[Logging]` handler decorator). 12-A shipped on Logging `3.2.2`. Pin the latest current-major version and check the package feed before pinning; the Tracing/Metrics pins above are still illustrative — verify them the same way when 12-C/12-B implement them.
 
 ---
 
