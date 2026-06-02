@@ -1312,6 +1312,15 @@ body {
   padding-top: 1.5rem;
 }
 
+/* CHANGE-10: on the home view, drop the divider and top-align the Notes
+   heading with "Today's Meetings" in the right column — no blank band under
+   the Home title. Folder view keeps the base spacing/divider above. */
+.home-left .note-cards-section {
+  margin-top: 0;
+  padding-top: 0;
+  border-top: none;
+}
+
 .note-cards-heading {
   margin: 0 0 1.25rem;
   font-size: 1rem;
