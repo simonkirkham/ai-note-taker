@@ -183,6 +183,7 @@ public static class NoteHandlers
             tags = c.Tags ?? [],
             openActions,
             createdAt = c.CreatedAt,
+            lastModifiedAt = c.LastModifiedAt,
             folderId = c.FolderId?.Value
         };
     }

@@ -6,15 +6,15 @@ const noop = () => {}
 
 const cardInFolder: NoteCard = {
   noteId: 'n-1', title: '1:1 with Bill', date: null,
-  contentPreview: '', openActions: [], createdAt: '2024-01-01', folderId: 'f-1', tags: [],
+  contentPreview: '', openActions: [], createdAt: '2024-01-01', lastModifiedAt: '2024-01-01', folderId: 'f-1', tags: [],
 }
 const cardOtherFolder: NoteCard = {
   noteId: 'n-2', title: 'Team standup', date: null,
-  contentPreview: '', openActions: [], createdAt: '2024-01-01', folderId: 'f-2', tags: [],
+  contentPreview: '', openActions: [], createdAt: '2024-01-01', lastModifiedAt: '2024-01-01', folderId: 'f-2', tags: [],
 }
 const cardUnfiled: NoteCard = {
   noteId: 'n-3', title: 'Random note', date: null,
-  contentPreview: '', openActions: [], createdAt: '2024-01-01', folderId: null, tags: [],
+  contentPreview: '', openActions: [], createdAt: '2024-01-01', lastModifiedAt: '2024-01-01', folderId: null, tags: [],
 }
 
 describe('FolderPreviewPanel', () => {
