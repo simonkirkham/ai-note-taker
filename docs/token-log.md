@@ -4,6 +4,22 @@ Approximate tokens consumed per slice, broken down by agent. Recorded by Scribe 
 
 ---
 
+## BUG-3 / BUG-4 / BUG-5 — backend defect sweep (one session)
+
+> **Note:** Three bugs driven through the full pipeline in a single autonomous session. BUG-4+BUG-5 shipped as one slice (shared cross-cutting fix, PR #107); BUG-3 as a second slice in parallel (PR #108). Pip/Breaker were the main loop, not separate agents — only Hawk and Scribe figures are per-agent.
+
+| Agent     | ~Tokens     |
+|-----------|-------------|
+| Hawk (PR #107, BUG-4+5) | 58 000 |
+| Hawk (PR #108, BUG-3)   | 37 000 |
+| Scribe (all three)      | 18 000 |
+| Main loop (explore + implement both slices + drive pipeline) | ~120 000 |
+| **Total** | **~233 000** |
+
+**Why:** Each PR was approved by Hawk on the first pass (no fix rounds) — both verdicts were APPROVE with only optional nits. Cost was dominated by the up-front backend exploration shared across all three bugs (reading the command handler, aggregate, exception types, and test infrastructure to design reproduce-first tests) plus running two slices end-to-end. No wasted deploys. A mid-session coordination cost came from the primary checkout being dirty/divergent, which moved Scribe to a separate worktree.
+
+---
+
 ## Slice 12-F — Frontend monitoring (CloudWatch RUM)
 
 > **Note:** A fresh slice resumed after a VS Code crash — but the crash interrupted only the *review* of Phase 12 state, not in-flight slice work (nothing was lost). 12-F was planned and built from scratch this session. Plan and Hawk ran as real subagents (Hawk's 45k is exact from its hand-off); other counts are estimates.

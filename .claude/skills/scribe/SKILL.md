@@ -18,7 +18,7 @@ Run after the main pipeline passes following a slice merge. No human approval ne
 4. **Update developer docs** (only if the slice changed them):
    - `README.md` — new env vars, tables, scripts, ports, or prerequisites; verify names against `launchSettings.json` / CDK stack before editing
    - Any other `docs/` file describing something the slice changed (event schemas, view schemas, ADRs, architecture)
-5. **Commit** — single commit with message `docs: scribe notes for slice <id>`, covering all files from steps 1–4. First `git status` the main checkout: if it carries changes outside the files Scribe itself wrote/edited (e.g. a human's in-flight WIP), stage only Scribe's own files by path — never `git add -A`/`.` — and leave the foreign changes untouched.
+5. **Commit** — single commit with message `docs: scribe notes for slice <id>`, covering all files from steps 1–4. First `git status` the main checkout: if it carries changes outside the files Scribe itself wrote/edited (e.g. a human's in-flight WIP), stage only Scribe's own files by path — never `git add -A`/`.` — and leave the foreign changes untouched. If the primary checkout is dirty **or** its local `main` has diverged from `origin/main` (a `git push` would be non-fast-forward), do not commit in it at all: run Scribe from a fresh worktree off `origin/main` (`git worktree add <path> -b docs/scribe-<id> origin/main`), commit there, and push directly with `git push origin HEAD:main`. This keeps entirely clear of the human's working copy.
 6. **Hand off** — post the learnings file path, count of Done actions applied, and any TODO items for the human.
 
 ## What Scribe does NOT do
