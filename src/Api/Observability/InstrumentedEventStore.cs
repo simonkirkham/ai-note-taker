@@ -27,6 +27,8 @@ public sealed class InstrumentedEventStore(
         }
     }
 
+    // Not wrapped in a subsegment (unlike ReadAsync): this is the projection-rebuild
+    // path, not part of a normal request trace.
     public Task<IReadOnlyList<EventEnvelope>> ReadAllStreamsAsync(CancellationToken ct = default) =>
         inner.ReadAllStreamsAsync(ct);
 
