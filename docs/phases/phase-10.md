@@ -427,3 +427,256 @@ Scenario: Mic-only when toggle is off
   Then getDisplayMedia is not called
   And recording uses the microphone only
 ```
+
+---
+
+## Slice 10-G — Analysis evaluation harness
+
+**Status:** Not Started
+
+**Value:** Compare prompt and model variants for the transcript analysis on a fixed set of meeting transcripts, scored against expected tags, action items, and content gap-fill. Run on demand or nightly; produce a markdown report that diffs runs side by side. Makes prompt iteration measurable instead of vibes-based.
+
+**Commands in scope:** none
+**Events in scope:** none
+
+**Out of scope (deferred to 10-I):** stamping `modelId` + `promptVersion` onto a new `AnalysisApplied` event in the production stream. Once the harness exists, that becomes a tight follow-up that lets real meetings feed the fixture set.
+
+---
+
+### Refactor: versioned prompts
+
+Lift the analysis prompt into a small catalog so it can be swapped at construction time. No production behaviour change — the default prompt stays `analysis@v1` with the existing text.
+
+```csharp
+// src/Api/Services/PromptCatalog.cs
+public sealed record AnalysisPrompt(string Version, Func<string, string, string, string> Build);
+
+public static class PromptCatalog
+{
+    public static readonly AnalysisPrompt V1 = new("analysis@v1", BuildV1);
+    public static AnalysisPrompt Current => V1;
+    static string BuildV1(string transcript, string content, string user) => /* current prompt text */;
+}
+```
+
+`BedrockAnalysisService` constructor takes `AnalysisPrompt` and the model id explicitly (DI default: `PromptCatalog.Current` + `BEDROCK_MODEL_ID` env var). `NoteAnalysisResult` gains `ModelId` and `PromptVersion` fields so every analysis call self-describes.
+
+```csharp
+public record NoteAnalysisResult(
+    string UpdatedContent,
+    IReadOnlyList<string> NewTags,
+    IReadOnlyList<string> NewActionItems,
+    string ModelId,
+    string PromptVersion);
+```
+
+---
+
+### New test project: `tests/Analysis.Eval/`
+
+xUnit, **opt-in** — every test gated on `RUN_BEDROCK_EVAL=1`. Skipped by default so PR CI does not burn Bedrock credit; runs locally or nightly via a separate GitHub Action.
+
+```
+tests/Analysis.Eval/
+  Analysis.Eval.csproj
+  Fixtures/
+    01-standup-clear-owners.json
+    02-one-on-one-mixed-actions.json
+    ...
+  Scoring/
+    TagScorer.cs
+    ActionItemScorer.cs
+    ContentJudge.cs
+  Fixture.cs            # POCO + loader
+  EvalRunner.cs         # the [SkippableTheory] that drives it
+  Report.cs             # reads Results/*.jsonl → markdown table
+  Results/              # .gitignored
+```
+
+**Fixture shape:**
+
+```json
+{
+  "id": "01-standup-clear-owners",
+  "transcriptText": "...",
+  "existingContent": "Standup notes",
+  "currentUserName": "Alice",
+  "expected": {
+    "tags": ["standup", "login"],
+    "actionItems": ["Fix the login bug by Friday"],
+    "contentMustMention": ["Bob will update the docs"]
+  }
+}
+```
+
+**Scorers:**
+
+- `TagScorer` — pure C#, set-based P/R/F1 with case-insensitive normalisation.
+- `ActionItemScorer` — v1: lowercased exact match after punctuation strip. Leaves an embedding-cosine hook for v2 once v1 produces false negatives.
+- `ContentJudge` — LLM-as-judge using Nova Pro (deliberately stronger than the system-under-test). Atomic rubric: for each listed fact, return YES/NO whether it is clearly present. Score = `yes_count / total`. Injectable judge client so unit tests can stub it.
+
+**Runner:**
+
+```csharp
+public static IEnumerable<object[]> Matrix =>
+    from fixture in LoadFixtures()
+    from prompt in new[] { PromptCatalog.V1 }
+    from model in new[] { "amazon.nova-lite-v1:0" }
+    select new object[] { fixture, prompt, model };
+
+[SkippableTheory, MemberData(nameof(Matrix))]
+public async Task Score(Fixture f, AnalysisPrompt prompt, string modelId) { ... }
+```
+
+Default matrix: 1 prompt × 1 model. Expanding to more prompts or models is a one-line config change.
+
+**Output:** `tests/Analysis.Eval/Results/<runId>.jsonl` — one row per fixture × prompt × model with all three scores. Gitignored.
+
+**Report:** `dotnet test --filter Category=Report` runs a single test that reads `Results/*.jsonl` and writes a markdown table grouped by (prompt, model) with mean F1 per metric. Slots into existing tooling without a new entry point.
+
+---
+
+### Scenarios
+
+```
+Scenario: TagScorer is case-insensitive and order-independent
+  Given expected tags ["auth", "Backend"]
+  And predicted tags ["backend", "AUTH"]
+  When the tag scorer runs
+  Then precision is 1.0, recall is 1.0, F1 is 1.0
+
+Scenario: TagScorer penalises missing tags
+  Given expected tags ["auth", "backend"]
+  And predicted tags ["auth"]
+  When the tag scorer runs
+  Then recall is 0.5
+
+Scenario: ActionItemScorer matches after normalisation
+  Given expected actions ["Fix the login bug by Friday."]
+  And predicted actions ["fix the login bug by friday"]
+  When the action item scorer runs
+  Then precision is 1.0 and recall is 1.0
+
+Scenario: ContentJudge counts present facts
+  Given content "Bob agreed to update the docs by Tuesday."
+  And required facts ["Bob will update the docs", "Alice has no action items"]
+  And a stub judge that returns YES, NO
+  When the content judge runs
+  Then the score is 0.5
+
+Scenario: PromptCatalog.Current returns analysis@v1 by default
+  When PromptCatalog.Current is read
+  Then its Version is "analysis@v1"
+
+Scenario: BedrockAnalysisService stamps the prompt version and model on the result
+  Given the service is constructed with PromptCatalog.V1 and model "amazon.nova-lite-v1:0"
+  When AnalyseAsync returns
+  Then NoteAnalysisResult.ModelId is "amazon.nova-lite-v1:0"
+  And NoteAnalysisResult.PromptVersion is "analysis@v1"
+
+Scenario: Eval runner is skipped when RUN_BEDROCK_EVAL is unset
+  Given the environment variable RUN_BEDROCK_EVAL is not set
+  When the eval theory is invoked
+  Then every test is reported as skipped
+
+Scenario: Eval runner emits one results row per fixture per (model × prompt)
+  Given 2 fixtures, 1 prompt, 1 model, and RUN_BEDROCK_EVAL=1
+  And a stub Bedrock that returns a known analysis result
+  When the eval theory runs
+  Then 2 rows are appended to the run's results file
+  And each row carries the fixture id, model id, prompt version, and three score values
+
+Scenario: Report aggregates results into a markdown table
+  Given a Results directory with one .jsonl run file containing 3 rows for analysis@v1 + nova-lite
+  When Report runs
+  Then a markdown table is printed with one row per (prompt, model) pair
+  And mean tag F1, action F1, and content score are reported
+```
+
+---
+
+## Slice 10-H — Analyse note content (transcript optional)
+
+**Status:** Not Started
+
+**Value:** Run analysis on *any* note to infer tags and extract action items from what is already written — no recording required. When a transcript is present it is analysed alongside the content. A switch controls whether analysis may also rewrite the note content, so hand-written notes can be left untouched.
+
+**Builds on 10-D.** This slice relaxes and extends the existing `/notes/{id}/analyse` path rather than adding a parallel one. Note content becomes a first-class analysis input; the transcript becomes optional supplementary input.
+
+**Commands in scope:** none (analysis fires existing commands internally, as 10-D)
+**Events in scope:** `TagAdded`, `ActionItemAdded` (existing); `ContentEditedV2` (existing — only when the "Update note content" switch is on)
+
+**CDK changes:** none. `bedrock:InvokeModel` was granted in 10-D; no new env vars.
+
+### Changes to the 10-D analysis path
+
+1. **Drop the transcript requirement.** `POST /notes/{id}/analyse` no longer returns 422 when there is no `TranscriptionCompleted` event. It analyses the note content; a transcript, if present, is included as supplementary input. 422 is returned only when there is *nothing* to analyse — empty content **and** no transcript.
+   - This supersedes 10-D's "Analysis requires a transcript to exist → 422" scenario.
+
+2. **`IBedrockAnalysisService` takes a request object.** The transcript becomes optional and a content-rewrite flag is added:
+
+```csharp
+public record NoteAnalysisRequest(
+    string ExistingContent,
+    string? TranscriptText,      // null/empty when the note was never recorded
+    string CurrentUserName,
+    bool AllowContentRewrite);
+
+Task<NoteAnalysisResult> AnalyseAsync(NoteAnalysisRequest request);
+```
+
+   This is a shared-signature change — per CLAUDE.md, grep every call site (production impl, the `/analyse` endpoint, `Api.Integration` fakes, and the 10-G eval harness) and update them in one commit. `NoteAnalysisResult` is unchanged.
+
+3. **Prompt changes.** The prompt builder treats content as the primary source and the transcript as supplementary (possibly empty). When `AllowContentRewrite` is false it instructs the model to return the existing content unchanged and to focus on tags + actions only.
+
+4. **Handler gates content rewrite (belt-and-braces).** Even if the model returns changed content, the handler appends `ContentEditedV2` only when `AllowContentRewrite` is true *and* the content actually changed. `TagAdded`/`ActionItemAdded` behave exactly as in 10-D (dedup against existing tags/actions; action items scoped to the current user).
+
+### API
+
+- `POST /notes/{id}/analyse` — body gains `{ "updateContent": bool }` (the switch state). Requires authentication. Reads the Note aggregate for content + transcript; returns 422 if both are empty; otherwise calls `AnalyseAsync` with `AllowContentRewrite = updateContent`, appends events as above, and returns 204.
+
+### Frontend
+
+- **Entry point without recording.** The "Analyse note" trigger must be reachable when not recording (today `<TranscriptionPanel>` renders nothing in `idle`). Add an "Analyse note" button on the note screen, enabled whenever the note has content or a transcript.
+- **"Update note content" switch** beside the button — ephemeral (resets on page load), consistent with the 10-E/10-F switch convention. When on, the analyse request sets `updateContent: true`.
+  - **Default — confirm at spec time:** default ON keeps 10-D's gap-fill behaviour and matches the phase's other switches; default OFF better protects hand-written notes. Pick one in the BDD spec.
+- **Optimistic UI:** on click, immediately show the in-flight state (disable button + spinner); on completion refresh the `NoteDetail` projection so new tags/actions (and content, if rewritten) appear in place; on error show an error and re-enable. The discovered tags/actions cannot be predicted, so the optimistic surface is the loading/disabled state.
+
+### Scenarios
+
+```
+Scenario: Analysis runs on note content when no transcript exists
+  Given a Note with content "Met with Bob about the login bug." and no TranscriptionCompleted event
+  When POST /notes/{id}/analyse is called with updateContent = false
+  Then TagAdded is raised for each inferred tag
+  And ActionItemAdded is raised for each extracted action item
+  And the response is 204 (no 422)
+
+Scenario: Analysis combines content and transcript when both exist
+  Given a Note with content "Login bug." and a transcript "Alice will fix it by Friday."
+  When POST /notes/{id}/analyse is called
+  Then the analysis request includes both the existing content and the transcript text
+
+Scenario: Content is rewritten when the switch is on
+  Given a Note with rough content and updateContent = true
+  When POST /notes/{id}/analyse is called
+  And the model returns gap-filled content
+  Then ContentEditedV2 is raised with the updated content
+
+Scenario: Content is left untouched when the switch is off
+  Given a Note with hand-written content "My private notes."
+  When POST /notes/{id}/analyse is called with updateContent = false
+  Then no ContentEditedV2 event is raised
+  And the note content is unchanged
+  And TagAdded / ActionItemAdded may still be raised
+
+Scenario: Analysis requires something to analyse
+  Given a Note with empty content and no TranscriptionCompleted event
+  When POST /notes/{id}/analyse is called
+  Then the response is 422 Unprocessable Entity
+
+Scenario: Analysis requires authentication
+  Given no valid JWT is present
+  When POST /notes/{id}/analyse is called
+  Then the response is 401 Unauthorized
+```

@@ -204,6 +204,17 @@ Make the app properly observable for production using AWS-native tooling only. T
 
 Slices and acceptance criteria: [docs/phases/phase-12.md](phases/phase-12.md)
 
+## Phase 13 — UI Polish II _(Planned)_
+
+A second pass of targeted UI improvements and tweaks, building on Phase 11. Frontend-focused slices with no new aggregates, events, or projections.
+
+- **13-A:** Single-spaced note lines by default — collapse the inter-paragraph gap in the editor so notes no longer render double-spaced
+- **13-B:** Theme selection — Teal (default), Forest, and Midnight (dark) palettes via `data-theme` overrides; sidebar picker persisted to `localStorage`
+
+**Goal:** Continue tightening everyday interactions and visual polish. Pure-frontend slices.
+
+Slices and acceptance criteria: [docs/phases/phase-13.md](phases/phase-13.md)
+
 ## Future Ideas
 
 - Workspaces - Switching between collections of notes
