@@ -16,6 +16,7 @@ public sealed class NoteCommandHandler(
     ITodoListStore todoListStore,
     INoteCardListStore noteCardListStore,
     ITagIndexStore tagIndexStore,
+    ITagFeedbackStore tagFeedbackStore,
     ICalendarLinkIndexStore calendarLinkIndexStore,
     ICurrentUser currentUser,
     IDomainMetrics metrics,
@@ -76,7 +77,27 @@ public sealed class NoteCommandHandler(
             ApplyNoteEventsToCard(card, noteId, newEnvelopes), ct).ConfigureAwait(false);
 
         await UpdateTagIndexForNewEventsAsync(newEnvelopes, ct).ConfigureAwait(false);
+        await UpdateTagFeedbackForNewEventsAsync(newEnvelopes, ct).ConfigureAwait(false);
         await UpdateCalendarLinkIndexForNewEventsAsync(noteId, newEnvelopes, ct).ConfigureAwait(false);
+    }
+
+    private async Task UpdateTagFeedbackForNewEventsAsync(List<EventEnvelope> newEnvelopes, CancellationToken ct)
+    {
+        foreach (var envelope in newEnvelopes)
+        {
+            switch (EventDeserializer.Deserialize(envelope))
+            {
+                case TagsSuggested e:
+                    foreach (var tag in e.Tags)
+                        await tagFeedbackStore.RecordSuggestionAsync(currentUser.UserId, e.NoteId.Value.ToString("N"), tag, ct).ConfigureAwait(false);
+                    break;
+                case NoteUntagged e:
+                    await tagFeedbackStore.TryRecordRejectionAsync(e.NoteId.Value.ToString("N"), e.Tag, ct).ConfigureAwait(false);
+                    break;
+                default:
+                    break;
+            }
+        }
     }
 
     private static (NoteTitleListItem TitleItem, NoteDetailView Detail) RebuildTitleAndDetailProjections(
@@ -129,6 +150,7 @@ public sealed class NoteCommandHandler(
         await noteDetailStore.DeleteAsync(noteId, ct).ConfigureAwait(false);
         await todoListStore.DeleteByNoteAsync(noteId, ct).ConfigureAwait(false);
         await tagIndexStore.DeleteByNoteAsync(noteId.Value.ToString("N"), ct).ConfigureAwait(false);
+        await tagFeedbackStore.DeleteProvenanceByNoteAsync(noteId.Value.ToString("N"), ct).ConfigureAwait(false);
         await calendarLinkIndexStore.DeleteByNoteIdAsync(noteId.Value.ToString(), ct).ConfigureAwait(false);
     }
 

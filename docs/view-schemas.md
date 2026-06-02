@@ -314,6 +314,39 @@ public record TagIndexView(
 
 ---
 
+### 7. `TagFeedback` *(Phase 10-J)*
+
+**Consumed by:** ad-hoc analysis of which AI-suggested tags users keep vs reject (no read endpoint — query DynamoDB directly). Feeds future prompt refinement.
+**Source events:** `TagsSuggested`, `NoteUntagged`, `NoteDeleted`. (`NoteTagged` is ignored — acceptance is derived as `Suggested − Rejected`.)
+
+```csharp
+public record TagFeedbackView(
+    string UserId,
+    string Tag,
+    int SuggestedCount,
+    int RejectedCount);   // AcceptedCount = SuggestedCount - RejectedCount, derived at read time
+```
+
+This projection **classifies by combining events** rather than copying state: a tag the AI suggested (`TagsSuggested`) and later removed (`NoteUntagged`) counts as a rejection, but a tag removed with *no prior suggestion* (manual cleanup) does not. The classification needs per-note provenance, so the table holds **two row types**:
+
+**Storage rows** (single table `notetaker-proj-tagfeedback`, keyed `PK` / `SK`):
+
+| Row type   | PK              | SK         | Attributes                      |
+|------------|-----------------|------------|---------------------------------|
+| Aggregate  | `USER#{userId}` | `TAG#{tag}`| `SuggestedCount`, `RejectedCount` |
+| Provenance | `NOTE#{noteId}` | `TAG#{tag}`| `UserId`                        |
+
+The aggregate row is the queryable per-(user, tag) counter. The provenance row records that a tag was AI-suggested on a specific note — the state needed to classify a later untag.
+
+**Event handling (live, inline in `NoteCommandHandler`):**
+- `TagsSuggested` → per tag: `SuggestedCount++` on the aggregate row; write the provenance row `(noteId, tag, userId)`.
+- `NoteUntagged` → if a provenance row `(noteId, tag)` exists: `RejectedCount++` for its `UserId` and **delete** the provenance row (only a fresh `TagsSuggested` re-arms it — prevents a manual re-add/remove from double-counting).
+- `NoteDeleted` → delete that note's provenance rows; **counts untouched** (deletion is not tag rejection).
+
+**Accepted approximation (v1):** an accepted tag removed during unrelated cleanup months later still counts as rejected (no time-weighting).
+
+---
+
 ## Soft delete handling
 
 Two valid approaches; pick one and apply consistently:

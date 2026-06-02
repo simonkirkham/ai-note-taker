@@ -90,6 +90,15 @@ public sealed class NoteTakerStack : Stack
             RemovalPolicy = RemovalPolicy.RETAIN
         });
 
+        var tagFeedbackTable = new Table(this, "ProjTagFeedbackTable", new TableProps
+        {
+            TableName = "notetaker-proj-tagfeedback",
+            PartitionKey = new Amazon.CDK.AWS.DynamoDB.Attribute { Name = "PK", Type = AttributeType.STRING },
+            SortKey = new Amazon.CDK.AWS.DynamoDB.Attribute { Name = "SK", Type = AttributeType.STRING },
+            BillingMode = BillingMode.PAY_PER_REQUEST,
+            RemovalPolicy = RemovalPolicy.RETAIN
+        });
+
         var calendarLinkIndexTable = new Table(this, "ProjCalendarLinkIndexTable", new TableProps
         {
             TableName = "notetaker-proj-calendarlinkindex",
@@ -141,6 +150,7 @@ public sealed class NoteTakerStack : Stack
                 ["PROJ_NOTECARDLIST_TABLE_NAME"] = noteCardListTable.TableName,
                 ["PROJ_FOLDERTREE_TABLE_NAME"] = folderTreeTable.TableName,
                 ["PROJ_TAGINDEX_TABLE_NAME"] = tagIndexTable.TableName,
+                ["PROJ_TAGFEEDBACK_TABLE_NAME"] = tagFeedbackTable.TableName,
                 // Always present even when unset so runtime code reads "" rather than throwing on missing key.
                 // Use string.IsNullOrEmpty() on the consumer side; the key itself is always there.
                 ["GOOGLE_CLIENT_ID"] = props.GoogleClientId ?? "",
@@ -238,6 +248,7 @@ public sealed class NoteTakerStack : Stack
         noteCardListTable.GrantReadWriteData(apiFunction);
         folderTreeTable.GrantReadWriteData(apiFunction);
         tagIndexTable.GrantReadWriteData(apiFunction);
+        tagFeedbackTable.GrantReadWriteData(apiFunction);
         calendarLinkIndexTable.GrantReadWriteData(apiFunction);
 
         if (!string.IsNullOrEmpty(props.GoogleRefreshTokenSsmPath))
