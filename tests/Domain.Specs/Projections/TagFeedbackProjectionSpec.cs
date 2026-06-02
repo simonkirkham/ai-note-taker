@@ -107,6 +107,21 @@ public sealed class TagFeedbackProjectionSpec
     }
 
     [Fact]
+    public void UntagThenDelete_CountsRejectionThenClearsProvenance()
+    {
+        var p = new TagFeedbackProjection();
+        p.Handle(Suggested(NoteId1, 1, Alice, "auth"));
+        p.Handle(Untagged(NoteId1, 2, "auth"));
+        p.Handle(Deleted(NoteId1, 3));
+
+        var view = Find(p, Alice, "auth");
+        Assert.NotNull(view);
+        Assert.Equal(1, view!.SuggestedCount);
+        Assert.Equal(1, view.RejectedCount);
+        Assert.Empty(p.GetProvenance());
+    }
+
+    [Fact]
     public void MultipleTagsInOneSuggestion_EachCounted()
     {
         var p = new TagFeedbackProjection();

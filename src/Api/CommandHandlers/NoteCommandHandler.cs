@@ -57,6 +57,9 @@ public sealed class NoteCommandHandler(
     {
         if (newEnvelopes.Any(e => e.EventType == nameof(NoteDeleted)))
         {
+            // Classify tag feedback for the batch before dropping provenance, so an untag that
+            // shares a batch with the delete is recorded as a rejection exactly as a rebuild would.
+            await UpdateTagFeedbackForNewEventsAsync(newEnvelopes, ct).ConfigureAwait(false);
             await DeleteAllProjections(noteId, ct).ConfigureAwait(false);
             var existingCard = await noteCardListStore.GetByNoteAsync(noteId, ct).ConfigureAwait(false);
             if (existingCard is null) return;
