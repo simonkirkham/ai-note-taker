@@ -221,7 +221,7 @@ Alongside the numbered phases above, work is tracked in four standing docs. The 
 
 An unnumbered, standing phase capturing defects in the deployed app, tracked to a fix. No learning theme, no fixed sequence.
 
-Currently open: **BUG-1** — Blank screen presented when 401 returned from API.
+Currently open: **BUG-2** favicon.ico 404 on page load · **BUG-3** Data Protection warnings on cold start · **BUG-4** ConcurrencyException surfaces as 500 · **BUG-5** renaming a deleted note throws 500 instead of 404. Fixed: **BUG-1** blank screen on 401 _(done 2026-06-02)_.
 
 → [docs/phases/phase-bugs.md](phases/phase-bugs.md)
 

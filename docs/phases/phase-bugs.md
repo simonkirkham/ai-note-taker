@@ -11,7 +11,7 @@
 ## Bug list
 
 ```
-BUG-1  Blank screen presented when 401 returned from API ──────────────── open
+BUG-1  Blank screen presented when 401 returned from API ──────────────── done
 BUG-2  favicon.ico request 404s / errors on every page load ───────────── open
 BUG-3  Data Protection warnings on every Lambda cold start (log noise) ── open
 BUG-4  ConcurrencyException surfaces as unhandled 500 on note writes ──── open
@@ -24,7 +24,7 @@ Further bugs will be appended as they are identified.
 
 ## BUG-1 — Blank screen presented when 401 returned from API
 
-**Status:** Open
+**Status:** Done — fixed in PR #99 (commit `7272d5b`), deployed to main 2026-06-02. See [docs/learnings/phase-bug-1-blank-screen-on-401.md](../learnings/phase-bug-1-blank-screen-on-401.md).
 
 **Severity:** High — the app is unusable when it occurs; the user sees an empty/broken screen with no way to recover other than a manual reload.
 
@@ -42,11 +42,15 @@ Further bugs will be appended as they are identified.
 3. Observe all data fetches return 401 and the screen renders empty instead of refreshing or redirecting.
 
 **Acceptance criteria:**
-- A 401 response from any data fetch triggers a silent refresh-and-retry exactly once.
-- If refresh fails or no session exists, the user is routed to sign-in — never left on a blank screen.
-- A failing test reproduces the blank-screen-on-401 condition before the fix lands, and passes after.
+- [x] A 401 response from any data fetch triggers a silent refresh-and-retry exactly once.
+- [x] If refresh fails or no session exists, the user is routed to sign-in — never left on a blank screen.
+- [x] A failing test reproduces the blank-screen-on-401 condition before the fix lands, and passes after.
 
-**Key files (to be confirmed):** frontend API client / fetch wrapper and `AuthProvider` in `web/src/`.
+**Root cause (confirmed):** the in-memory token was seeded in a parent `useEffect`, which runs *after* child data-fetch effects, so the first fetches on a cold load went out with no `Authorization` header → `401`; the `&& token` guard in `apiFetch` then swallowed that 401 (no banner, no redirect → blank screen).
+
+**Fix:** seed the in-memory token synchronously in the `AuthProvider` `useState` initialiser (closes the effect-ordering race); on any `401`, `apiFetch` performs a single silent refresh-and-retry (deduped across concurrent calls) and routes to sign-in on failure; new `setOnRefresh`/`triggerRefresh` in the token store lets the API layer request a refresh without knowing the `clientId`.
+
+**Key files:** `web/src/api.ts`, `web/src/auth/AuthContext.tsx`, `web/src/auth/tokenStore.ts`; tests `web/src/__tests__/ApiFetch.test.ts`, `web/src/__tests__/TokenRefresh.test.tsx`.
 
 ---
 

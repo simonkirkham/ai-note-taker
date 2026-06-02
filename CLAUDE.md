@@ -132,6 +132,8 @@ git worktree add ../ai-note-taker-slices/slice-5e-my-feature -b slice/5-e-my-fea
 
 The worktree lands at `../ai-note-taker-slices/<slice-name>/` (a sibling of the main checkout, outside this repo). All slice work — tests, builds, `npm install` — runs from inside that directory. The main checkout stays on `main` and is never touched during a slice.
 
+> **Use an absolute path for `git worktree add`.** The shell cwd may be a subdirectory (e.g. `web/`), in which case `../ai-note-taker-slices/...` resolves to `ai-note-taker/ai-note-taker-slices/...` — nesting the worktree *inside* the repo. Pass the full absolute sibling path (and `git -C <repo-root>` if unsure of cwd).
+
 **After the slice branch is merged and deleted**, remove the worktree:
 
 ```bash
@@ -159,7 +161,7 @@ Prototype branches follow the same pattern: `git worktree add ../ai-note-taker-s
 8. **Stylist** (user-facing slices only) — run the `ui-ux-pro-max` skill to apply visual polish; re-run tests after.
 9. Open PR. After every `git push` to a PR branch, immediately schedule a CI monitor (`gh pr checks <n>` every 60s) — do not wait to be asked. CI results are informational; they do not block Hawk.
 10. **Open PR → Hawk** — spawn `agent-skills:code-reviewer` subagent to review the PR immediately; do not wait for CI results.
-11. **Hawk approves → Pip checks main, then merges** — before running `gh pr merge --squash --delete-branch`, confirm main's latest deploy workflow run completed successfully (`gh run list --branch main --workflow deploy.yml --status completed --limit 1 --json conclusion`). If main's deploy is not green, stop and investigate. No user confirmation needed once main is green.
+11. **Hawk approves → Pip checks main, then merges** — before running `gh pr merge --squash --delete-branch`, confirm main's latest deploy workflow run completed successfully (`gh run list --branch main --workflow deploy.yml --status completed --limit 1 --json conclusion`). If main's deploy is not green, stop and investigate. No user confirmation needed once main is green. Note: `--delete-branch` deletes the *remote* branch server-side but its *local* cleanup fails with `'main' is already used by worktree` (main is checked out in the primary worktree) — this is harmless; the squash merge still succeeds. Do local cleanup separately in step 13 (`git worktree remove` + `git branch -D <slice-branch>`).
 12. **Hawk requests changes → Pip fixes** — fix every finding, push, re-run Hawk.
 13. **Merge to main → remove worktree + monitor deploy** — run `git worktree remove ../ai-note-taker-slices/<slice-name>`, then immediately schedule a monitor on `gh run list --branch main --limit 1`. Poll every 90s until the deploy run completes.
 14. **Deploy succeeds → Scribe** — run all Scribe steps without being asked:

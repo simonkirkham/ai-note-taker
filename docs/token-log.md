@@ -976,3 +976,22 @@ If no agent ran unexpectedly high: write `None — slice ran within expected ran
 **Optimisation suggestions:**
 - **Hawk round 1 (–24 000):** The `transcriptText` test gap is a direct consequence of "test every arm of a new predicate." Adding a pre-PR checklist item — "for each new branch in `hasContent` / `isSaveEnabled`, at least one test isolates it as the sole truthy trigger" — would catch this before Hawk. The phase-doc update and criterion annotation are process steps that Pip should complete in the same commit as the implementation.
 
+---
+
+## BUG-1 — Blank screen on 401
+
+> **Note:** Frontend-only bug fix run from a single main-loop session (Breaker + Pip + merge/deploy orchestration combined). Hawk ran as a real subagent (exact 44k from its hand-off). Other counts are estimates.
+
+| Agent              | ~Tokens      |
+|--------------------|--------------|
+| Pip (impl + orchestration) | 110 000 |
+| Hawk               | 44 000       |
+| Scribe             | 9 000        |
+| **Total**          | **~163 000** |
+
+**Why:** No Hawk rework (approved first pass). The dominant driver was merge/deploy orchestration against a fast-moving main — multiple deploy-monitor cycles (concurrency-cancelled runs forced re-checks of the merge gate), merging the ~10-commit-advanced `origin/main` into the branch, and re-running the full 206-test suite to validate the combined state before merge. Scribe's read of the large `token-log.md` (~980 lines) added a few k.
+
+**Optimisation suggestions:**
+- **Pip (–15 000):** The worktree was first created with a relative path from `web/` and landed nested inside the repo, forcing a remove-and-recreate (plus a stray `Write` to the wrong path). Using an absolute `git worktree add` path (now in CLAUDE.md) avoids the rework.
+- **Deploy monitoring (–10 000):** Several gate re-checks were spent watching concurrency-cancelled deploy runs on a busy main. Watching the single newest run id (and only re-fetching "latest" on cancellation) rather than re-listing repeatedly would trim the polling overhead.
+
