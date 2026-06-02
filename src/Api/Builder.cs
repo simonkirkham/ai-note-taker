@@ -20,7 +20,7 @@ namespace Api;
 
 public static class Builder
 {
-    internal static WebApplication BuildApp(string[] args, string eventTableName, string projTableName, string noteDetailTableName, string noteActionsTableName, string todoListTableName, string noteCardListTableName, string folderTreeTableName, string tagIndexTableName, string tagFeedbackTableName, string calendarLinkTableName)
+    internal static WebApplication BuildApp(string[] args, string eventTableName, string projTableName, string noteDetailTableName, string noteActionsTableName, string todoListTableName, string noteCardListTableName, string folderTreeTableName, string tagIndexTableName, string tagFeedbackTableName, string actionFeedbackTableName, string calendarLinkTableName)
     {
         var builder = WebApplication.CreateBuilder(args);
 
@@ -114,6 +114,8 @@ public static class Builder
             new DynamoDbTagIndexStore(sp.GetRequiredService<IAmazonDynamoDB>(), tagIndexTableName));
         builder.Services.AddSingleton<ITagFeedbackStore>(sp =>
             new DynamoDbTagFeedbackStore(sp.GetRequiredService<IAmazonDynamoDB>(), tagFeedbackTableName));
+        builder.Services.AddSingleton<IActionItemFeedbackStore>(sp =>
+            new DynamoDbActionItemFeedbackStore(sp.GetRequiredService<IAmazonDynamoDB>(), actionFeedbackTableName));
         builder.Services.AddSingleton<ICalendarLinkIndexStore>(sp =>
             new DynamoDbCalendarLinkIndexStore(sp.GetRequiredService<IAmazonDynamoDB>(), calendarLinkTableName));
         builder.Services.AddSingleton<IDomainEventHandler, NoteTitleListEventHandler>();
