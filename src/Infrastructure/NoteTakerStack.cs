@@ -656,7 +656,8 @@ public sealed class NoteTakerStack : Stack
         // Persist the runbook's most-used queries so they appear in everyone's
         // Logs Insights query picker under the "NoteTaker/" folder. Field names
         // match the Powertools log shape verified in prod: level / message /
-        // xray_trace_id / CommandType / StreamId. (There is no correlationId log
+        // xray_trace_id / command_type / stream_id (Powertools emits snake_case).
+        // (There is no correlationId log
         // field — x-correlation-id is only a response header; the queryable
         // per-request key is xray_trace_id, set by X-Ray in 12-C.)
         // The "Concurrency conflicts" filter matches the warning the event-store
@@ -670,13 +671,13 @@ public sealed class NoteTakerStack : Stack
             });
 
         SavedQuery("QueryAllErrors", "NoteTaker/All errors", string.Join("\n",
-            "fields @timestamp, level, xray_trace_id, CommandType, StreamId, message, @message",
+            "fields @timestamp, level, xray_trace_id, command_type, stream_id, message, @message",
             "| filter level in [\"Error\", \"Warning\"] or @message like /(?i)exception|error|fail/",
             "| sort @timestamp desc",
             "| limit 100"));
 
         SavedQuery("QueryByTraceId", "NoteTaker/By trace ID", string.Join("\n",
-            "fields @timestamp, level, CommandType, StreamId, message",
+            "fields @timestamp, level, command_type, stream_id, message",
             // Replace the placeholder with the trace id — the Root=1-... value from the
             // x-amzn-trace-id response header (it appears in logs as xray_trace_id).
             "| filter xray_trace_id = \"REPLACE_WITH_XRAY_TRACE_ID\"",
@@ -691,7 +692,7 @@ public sealed class NoteTakerStack : Stack
             "| fields @timestamp, @duration, @billedDuration, @maxMemoryUsed, @requestId"));
 
         SavedQuery("QueryConcurrencyConflicts", "NoteTaker/Concurrency conflicts", string.Join("\n",
-            "fields @timestamp, StreamId, @message",
+            "fields @timestamp, stream_id, @message",
             "| filter message like /Concurrency conflict/",
             "| sort @timestamp desc",
             "| limit 100"));

@@ -111,11 +111,13 @@ These persist as named queries in the Logs Insights picker under the **`NoteTake
 
 ## Log field reference (Powertools JSON)
 
+Powertools emits **snake_case** keys — use these exact names in Logs Insights `fields`/`filter`:
+
 | Field | Set by |
 |-------|--------|
 | `level`, `message`, `timestamp`, `service`, `xray_trace_id`, `name` | every line (12-A; `xray_trace_id` from 12-C) |
-| `CommandType`, `Aggregate` | "Command received …" (12-B) |
-| `StreamId`, `Version`, `EventCount` | "Events appended …" (12-B) |
-| `ExceptionType` | "Command failed …" (Warning, 12-B) |
+| `command_type`, `aggregate` | "Command received …" (12-B) |
+| `stream_id`, `version`, `count` | "Events appended …" (12-B) |
+| `exception_type` | "Command failed …" (Warning, 12-B) |
 
 The bearer token / `Authorization` header is never logged (12-A).
