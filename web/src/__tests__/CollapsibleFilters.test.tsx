@@ -127,19 +127,43 @@ describe('CHANGE-6 — collapsible Filters on the home view', () => {
     expect(filtersToggle()).toHaveAttribute('aria-expanded', 'false')
   })
 
-  it('shows an active-filter count when collapsed with a tag selected', async () => {
+  it('summarises active filters on the collapsed control (Option D)', async () => {
     useWorkTag()
     renderView([makeCard({ noteId: 'w', title: 'Work today', tags: ['work'] })])
     // Expand, select the tag, then collapse.
     await userEvent.click(filtersToggle())
     await userEvent.click(await screen.findByTestId('tag-filter-pill-work'))
     await userEvent.click(filtersToggle())
-    // Collapsed control now advertises the active filter count.
+    // Collapsed control now summarises the active filter (Option D).
     const toggle = filtersToggle()
     expect(toggle).toHaveAttribute('aria-expanded', 'false')
-    expect(toggle).toHaveTextContent(/filters \(1\)/i)
+    expect(toggle).toHaveTextContent(/filters · 1 tag/i)
     // And the list stays filtered to the selected tag even while collapsed.
     expect(screen.getByText('Work today')).toBeInTheDocument()
+  })
+
+  it('show older notes lives inside the expanded panel, not the Notes header', async () => {
+    useWorkTag()
+    renderView([makeCard({ noteId: 'a', title: 'Today note', tags: ['work'] })])
+    // Collapsed: the toggle is not rendered yet.
+    expect(
+      screen.queryByRole('checkbox', { name: /show older notes/i }),
+    ).not.toBeInTheDocument()
+    // Expand: it appears inside the Filters panel.
+    await userEvent.click(filtersToggle())
+    const older = await screen.findByRole('checkbox', { name: /show older notes/i })
+    expect(document.getElementById('home-filters-panel')).toContainElement(older)
+  })
+
+  it('collapsed summary reflects "show older" too (Option D)', async () => {
+    useWorkTag()
+    renderView([makeCard({ noteId: 'a', title: 'Today note', tags: ['work'] })])
+    await userEvent.click(filtersToggle())
+    await userEvent.click(
+      await screen.findByRole('checkbox', { name: /show older notes/i }),
+    )
+    await userEvent.click(filtersToggle()) // collapse
+    expect(filtersToggle()).toHaveTextContent(/filters · older/i)
   })
 
   it('does not show a count when collapsed with no tags selected', () => {

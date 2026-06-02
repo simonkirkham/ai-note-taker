@@ -98,7 +98,16 @@ export default function ListView({
 
   const isInFolder = !!currentFolderId;
   const heading = folderPath && folderPath.length > 0 ? folderPath.join(" → ") : "Home";
-  const showActiveFilterCount = !filtersOpen && selectedTags.length > 0;
+  // CHANGE-9 (Option D): the collapsed Filters control summarises every active
+  // filter — selected tags and/or "show older" — e.g. "Filters · 2 tags · older".
+  const tagCount = selectedTags.length;
+  const filterSummary = [
+    tagCount > 0 ? `${tagCount} ${tagCount === 1 ? "tag" : "tags"}` : null,
+    showOlder ? "older" : null,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+  const showActiveSummary = !filtersOpen && filterSummary.length > 0;
 
   return (
     <main className="container">
@@ -157,20 +166,12 @@ export default function ListView({
             <section className="note-cards-section">
               <div className="note-cards-header">
                 <h2 className="note-cards-heading">Notes</h2>
-                <label className="show-older-toggle">
-                  <input
-                    type="checkbox"
-                    checked={showOlder}
-                    onChange={(e) => setShowOlder(e.target.checked)}
-                  />
-                  Show older notes
-                </label>
               </div>
               <div className="filters-section">
                 <button
                   type="button"
                   className={`filters-toggle${filtersOpen ? " filters-toggle--open" : ""}${
-                    showActiveFilterCount ? " filters-toggle--active" : ""
+                    showActiveSummary ? " filters-toggle--active" : ""
                   }`}
                   aria-expanded={filtersOpen}
                   aria-controls="home-filters-panel"
@@ -181,8 +182,8 @@ export default function ListView({
                   </span>
                   <span className="filters-toggle-label">
                     Filters
-                    {showActiveFilterCount && (
-                      <span className="filters-toggle-count"> ({selectedTags.length})</span>
+                    {showActiveSummary && (
+                      <span className="filters-toggle-summary"> · {filterSummary}</span>
                     )}
                   </span>
                 </button>
@@ -192,14 +193,30 @@ export default function ListView({
                   hidden={!filtersOpen}
                 >
                   {filtersOpen && (
-                    <TagFilter
-                      tags={availableTags}
-                      selectedTags={selectedTags}
-                      mode={filterMode}
-                      onToggle={toggleTag}
-                      onModeChange={setFilterMode}
-                      onClear={clearFilter}
-                    />
+                    <>
+                      <div className="filters-group">
+                        <span className="filters-group-label">Tags</span>
+                        <TagFilter
+                          tags={availableTags}
+                          selectedTags={selectedTags}
+                          mode={filterMode}
+                          onToggle={toggleTag}
+                          onModeChange={setFilterMode}
+                          onClear={clearFilter}
+                        />
+                      </div>
+                      <div className="filters-group">
+                        <span className="filters-group-label">Other</span>
+                        <label className="show-older-toggle">
+                          <input
+                            type="checkbox"
+                            checked={showOlder}
+                            onChange={(e) => setShowOlder(e.target.checked)}
+                          />
+                          Show older notes
+                        </label>
+                      </div>
+                    </>
                   )}
                 </div>
               </div>
