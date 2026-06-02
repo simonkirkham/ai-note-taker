@@ -107,7 +107,9 @@ Scenario: Log group has a finite retention
 
 ## Slice 12-B — Domain metrics (EMF) and event-sourcing log fields
 
-**Status:** Not started
+**Status:** Done — except `ProjectionUpdateDuration`/`ProjectionRebuildDuration`, deferred (see acceptance criteria)
+
+**Implementation note:** rather than the skill's "instrument each handler" model, the slice uses two single-responsibility seams that fit this codebase's reality (cascading folder deletes, multi-append action items, an unused `IDomainEventDispatcher`): an `IEventStore` decorator (`InstrumentedEventStore`) for append-level signals (`EventsAppended`, `ConcurrencyConflict`, stream/version log) and a `CommandInstrumentation` helper wrapping each handler for command-level signals (`CommandHandled`/`CommandFailed`). Metrics go through an `IDomainMetrics` abstraction (Powertools `Metrics.PushSingleMetric`), not the raw `IMetrics`. See `docs/learnings/phase-12b-domain-metrics.md`.
 
 **Value:** The command/append/projection path becomes measurable and queryable. Command handlers emit EMF metrics (`CommandHandled`, `CommandFailed`, `EventsAppended`, `ConcurrencyConflict`, projection durations) and structured log lines that include the stream ID and version, so a single command's whole lifecycle is greppable and concurrency-conflict spikes are visible as a metric instead of buried in text. Domain rule violations are logged as `Warning` (expected business behaviour), not `Error` — keeping the error view clean.
 
@@ -165,15 +167,15 @@ Scenario: A projection update emits its duration
 
 ### Acceptance criteria
 
-- [ ] `AWS.Lambda.Powertools.Metrics` referenced; `IMetrics` registered in `Builder.cs`
-- [ ] Command handlers log on receipt (`CommandType`, `StreamId`) and on append (`StreamId`, `Version`, `EventCount`)
-- [ ] `CommandHandled` + `EventsAppended` emitted on success; `CommandFailed` (with `ExceptionType`) on domain exception; `ConcurrencyConflict` on OCC failure
-- [ ] Domain exceptions are logged at `Warning`, never `Error`
-- [ ] Projection handlers emit `ProjectionUpdateDuration`; the rebuild path emits `ProjectionRebuildDuration` and logs start/count/duration
-- [ ] Metric dimensions are low-cardinality; no IDs or free text used as dimensions
-- [ ] No PII / event payload bodies logged at `Information`
-- [ ] Tests assert metric emission on success, domain-failure, and concurrency-conflict paths
-- [ ] All existing BDD specs remain green; `cdk synth` succeeds
+- [x] `AWS.Lambda.Powertools.Metrics` referenced; metrics registered via `IDomainMetrics` (`PowertoolsDomainMetrics`) in `Builder.cs`
+- [x] Append path logs `Events appended {StreamId} Version={Version} EventCount={Count}`; command handlers log receipt (`CommandType`, `Aggregate`)
+- [x] `CommandHandled` + `EventsAppended` emitted on success; `CommandFailed` (with `ExceptionType`) on domain exception; `ConcurrencyConflict` on OCC failure
+- [x] Domain exceptions are logged at `Warning`, never `Error`
+- [ ] Projection handlers emit `ProjectionUpdateDuration`; the rebuild path emits `ProjectionRebuildDuration` and logs start/count/duration — **deferred:** projections are updated inline in four structurally different ways (the registered `IDomainEventDispatcher` is dead code), so a uniform timing seam warrants its own focused change. Candidate follow-up slice.
+- [x] Metric dimensions are low-cardinality; no IDs or free text used as dimensions
+- [x] No PII / event payload bodies logged at `Information`
+- [x] Tests assert metric emission on success, domain-failure, and concurrency-conflict paths
+- [x] All existing BDD specs remain green; `cdk synth` succeeds
 
 ---
 

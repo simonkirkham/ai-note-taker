@@ -175,6 +175,8 @@ Metrics.AddMetric("CommandHandled", 1, MetricUnit.Count,
 
 **Namespace**: use `NoteTaker/Domain` for business metrics, `NoteTaker/Infrastructure` for DynamoDB-level metrics.
 
+> **Seam note (learned in 12-B):** instrument signals where the event *actually happens*, not always per-handler. `EventsAppended`/`ConcurrencyConflict` correspond to appends that fan out (cascading folder delete = N appends; action items append from several methods), so they belong in an `IEventStore` **decorator** that every append flows through — not in each handler. Only one-per-command signals (`CommandHandled`/`CommandFailed`) belong in a per-handler wrapper. Route metric calls through an `IDomainMetrics` abstraction so they're unit-testable with a fake. On this ASP.NET-Core-on-Lambda host (no handler method to `[Metrics]`-decorate), use `Metrics.PushSingleMetric(...)` — self-contained EMF blob, no flush/namespace setup. Note the test harness swaps `IEventStore` for an in-memory fake, so decorator-emitted metrics must be unit-tested on the decorator directly, not over the HTTP path. `ProjectionUpdateDuration` has no clean seam yet — projections are updated inline and the registered `IDomainEventDispatcher` is unused.
+
 ---
 
 ## Step 5 — CloudWatch Dashboard (CDK)
