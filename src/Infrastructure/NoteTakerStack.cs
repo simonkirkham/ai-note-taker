@@ -651,6 +651,46 @@ public sealed class NoteTakerStack : Stack
                     "| sort @timestamp desc",
                     "| limit 100")
             }));
+
+        // ── Saved Logs Insights queries (12-G) ───────────────────────────
+        // Persist the runbook's most-used queries so they appear in everyone's
+        // Logs Insights query picker under the "NoteTaker/" folder. Field names
+        // match the Powertools log shape (correlationId / CommandType / StreamId);
+        // the "Concurrency conflicts" filter matches the warning the event-store
+        // decorator logs ("Concurrency conflict {StreamId} ..."). See docs/observability.md.
+        void SavedQuery(string id, string name, string query) =>
+            new Amazon.CDK.AWS.Logs.CfnQueryDefinition(this, id, new Amazon.CDK.AWS.Logs.CfnQueryDefinitionProps
+            {
+                Name = name,
+                LogGroupNames = new[] { apiLogGroup.LogGroupName },
+                QueryString = query
+            });
+
+        SavedQuery("QueryAllErrors", "NoteTaker/All errors", string.Join("\n",
+            "fields @timestamp, level, correlationId, CommandType, StreamId, message, @message",
+            "| filter level in [\"Error\", \"Warning\"] or @message like /(?i)exception|error|fail/",
+            "| sort @timestamp desc",
+            "| limit 100"));
+
+        SavedQuery("QueryByCorrelationId", "NoteTaker/By correlation ID", string.Join("\n",
+            "fields @timestamp, level, CommandType, StreamId, message",
+            // Replace the placeholder with the x-correlation-id header value from the response.
+            "| filter correlationId = \"REPLACE_WITH_CORRELATION_ID\"",
+            "| sort @timestamp asc"));
+
+        SavedQuery("QuerySlowestRequests", "NoteTaker/Slowest requests", string.Join("\n",
+            // The Lambda REPORT line carries @duration; for per-command/subsegment
+            // latency use X-Ray (ReadEvents/AppendEvents subsegments) instead.
+            "filter @type = \"REPORT\"",
+            "| sort @duration desc",
+            "| limit 20",
+            "| fields @timestamp, @duration, @billedDuration, @maxMemoryUsed, @requestId"));
+
+        SavedQuery("QueryConcurrencyConflicts", "NoteTaker/Concurrency conflicts", string.Join("\n",
+            "fields @timestamp, StreamId, @message",
+            "| filter message like /Concurrency conflict/",
+            "| sort @timestamp desc",
+            "| limit 100"));
     }
 
     private DistributionProps BuildDistributionProps(
