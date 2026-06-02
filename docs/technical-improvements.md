@@ -29,18 +29,12 @@ Each entry records what it is, why it matters, where it was raised, and any depe
 
 ---
 
-## Fix stale test project paths in `.githooks/pre-commit`
+## Add `cdk synth` to the pre-commit hook
 
-**What:** The committed `.githooks/pre-commit` invokes `dotnet test` against project paths that no longer exist after the tests were renamed to dotted form. Update the three stale references:
-- `tests/Specs/Specs.csproj` → `tests/Domain.Specs/Domain.Specs.csproj`
-- `tests/ApiIntegration/ApiIntegration.csproj` → `tests/Api.Integration/Api.Integration.csproj`
-- `tests/InfraAssertions/InfraAssertions.csproj` → `tests/Infrastructure.Assertions/Infrastructure.Assertions.csproj`
-
-While there, consider adding `cdk synth` to the hook to match the guardrail "Never commit without all BDD specs green and cdk synth succeeding", and deleting the leftover empty `tests/Specs`, `tests/ApiIntegration`, `tests/InfraAssertions`, `tests/EventStoreIntegration` directories (stale `bin`/`obj` output from before the rename).
-
-**Why it matters:** The documented "activate once per clone" step (`git config core.hooksPath .githooks`) makes the hook fail immediately at the `domain specs` step, blocking every commit. Because the default `core.hooksPath` (`.git/hooks`) has no pre-commit, the hook has been dormant and commits have been effectively ungated — so the documented local gate provides no protection today.
-**Raised in:** Phase Minor Changes — discovered when activating the hook for CHANGE-1.
-**Depends on:** Nothing blocking.
+**What:** The pre-commit hook builds, lints, typechecks, and runs the test suites, but does **not** run `cdk synth`. Add it so the local gate matches the guardrail "Never commit without all BDD specs green and `cdk synth` succeeding." Note `cdk synth` requires a prior `dotnet publish` of the API, so factor that into the step.
+**Why it matters:** The hook otherwise lets through commits that break CDK synthesis, which then fail later in CI/deploy.
+**Raised in:** Spun off from the now-resolved stale-test-paths fix (840464b) — that change corrected the hook's project paths and removed the leftover empty test dirs, but left the `cdk synth` suggestion unactioned.
+**Depends on:** Nothing blocking. Decide whether the `dotnet publish` cost is acceptable in a pre-commit gate.
 
 ---
 
@@ -49,4 +43,4 @@ While there, consider adding `cdk synth` to the hook to match the guardrail "Nev
 **What:** `.githooks/pre-commit` runs `eslint` unconditionally. Backend/infra-only slice worktrees skip `npm --prefix web install` (to avoid Node-version lockfile drift), so the hook fails with `eslint: not found` even when no `web/` files changed — forcing `git commit --no-verify`. Make the frontend lint conditional: skip it when no staged paths are under `web/`, or when `web/node_modules` is absent (and print a notice).
 **Why it matters:** Recurs on every backend/infra slice (hit on 12-C; will recur on 12-D/12-E). Routinely bypassing the hook with `--no-verify` erodes the local gate's value and hides real frontend lint failures when they do matter.
 **Raised in:** Phase 12 (12-C) — backend/infra slice worktree.
-**Depends on:** Nothing blocking. Pairs naturally with the stale-test-paths fix above (same file).
+**Depends on:** Nothing blocking. Touches the same file as the `cdk synth` item above.
