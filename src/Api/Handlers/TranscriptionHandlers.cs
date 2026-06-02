@@ -71,7 +71,12 @@ public static class TranscriptionHandlers
             await noteHandler.HandleAsync(new EditContent(new NoteId(noteId), result.UpdatedContent), ct);
 
         var existingTags = detail.Tags ?? [];
-        foreach (var tag in result.NewTags.Where(t => !existingTags.Contains(t, StringComparer.OrdinalIgnoreCase)))
+        var appliedTags = result.NewTags
+            .Where(t => !existingTags.Contains(t, StringComparer.OrdinalIgnoreCase))
+            .ToList();
+        if (appliedTags.Count > 0)
+            await noteHandler.HandleAsync(new RecordTagSuggestions(new NoteId(noteId), appliedTags), ct);
+        foreach (var tag in appliedTags)
             await noteHandler.HandleAsync(new TagNote(new NoteId(noteId), tag), ct);
 
         var existingActionsView = await noteActionsStore.QueryByNoteAsync(new NoteId(noteId), ct);
