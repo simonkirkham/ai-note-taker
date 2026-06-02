@@ -18,6 +18,7 @@
 | BUG-4 | ConcurrencyException surfaces as unhandled 500 on note writes | Done | — |
 | BUG-5 | Renaming a deleted note throws unhandled 500 instead of 404 | Done | — |
 | BUG-6 | CloudWatch RUM receives no data — loader CDN host is regional, doesn't resolve | Done | 12-F |
+| BUG-7 | Empty notes are created and left behind (not removed) | Open | — |
 
 Further bugs will be appended as they are identified.
 
@@ -190,3 +191,37 @@ Further bugs will be appended as they are identified.
 - [x] Post-deploy: a thrown browser error appears in the `notetaker-rum` console and `PutRumEvents` → `dataplane.rum.eu-west-2.amazonaws.com` returns 200 — verified on the live site after the hotfix deploy.
 
 **Key files:** `.github/workflows/deploy.yml` (`Inject RUM snippet` step, both jobs).
+
+---
+
+## BUG-7 — Empty notes are created and left behind (not removed)
+
+**Status:** Open. **Repro not yet pinned down** — the user will do a little exploratory testing to narrow which exit path leaves the empty note behind; the failing test and fix wait on that. The suspected paths below are the starting hypotheses to check, not a confirmed repro.
+
+**Severity:** Medium — clutters the notes list and projections with empty, never-edited notes that the user did not intend to keep. Over time the home and folder views fill with `Untitled`/blank cards, and the count/projections drift from the user's mental model.
+
+**Symptom:** Sometimes a note is created but never given a title or content, and it is **not cleaned up** — it persists as an empty card. The user reports "sometimes notes are created empty and not removed."
+
+**Suspected cause (to confirm):** `handleNewNote` (`web/src/App.tsx:83`) creates the note eagerly — it calls `create()` (which appends `NoteCreated`) and `setNoteDate(...)` **before** the user has typed anything, then navigates into the editor with `isNew: true`. Phase 11 added "delete blank note on cancel" and "delete meeting-created notes on discard", but those only fire on specific exit paths (the Cancel control, the discard action). A blank note appears to survive when the user leaves the editor by some **other** path that doesn't trigger the blank-note cleanup — e.g.:
+- browser Back / closing the tab / reload while on a brand-new empty note;
+- navigating Home or to another note via the sidebar rather than Cancel;
+- a failure partway through creation (e.g. `setNoteDate` throws — handled non-fatally at `App.tsx:89` — or `apiMoveNoteToFolder` fails) leaving an orphaned empty note;
+- the optimistic card (`App.tsx:93`) being created without a matching cleanup if the editor is dismissed without an explicit cancel.
+
+Needs confirmation against the actual exit paths and the existing blank-note-delete logic shipped in Phase 11 — this is likely a *gap* in that cleanup, not a fresh mechanism.
+
+**Expected behaviour:** A note that is created but never given any title or content should not be left behind. Either (a) defer the `NoteCreated` append until the user actually types something (create-on-first-edit, so navigating away from an untouched editor creates nothing), or (b) ensure **every** exit path from a brand-new, still-empty note deletes it — not just the explicit Cancel/discard paths. Option (a) is the more robust fix because it removes the window entirely; option (b) is the minimum and matches the existing Phase 11 approach.
+
+**Repro (to be confirmed during fix):**
+1. From the home screen, click "New Note" (a `NoteCreated` is appended immediately).
+2. Without typing a title or content, leave the editor by a non-Cancel path — press the browser Back button, click Home/another note in the sidebar, or reload the tab.
+3. Return to the home screen and observe an empty/`Untitled` note card that was never cleaned up.
+
+**Acceptance criteria:**
+- [ ] A note created but never given any title or content is not left behind — it is either never persisted until first edit, or removed on **every** exit path (not just explicit Cancel/discard).
+- [ ] The fix is consistent with the Phase 11 blank-note-on-cancel and meeting-note-discard behaviour — it closes the remaining gap rather than duplicating logic on one path.
+- [ ] A failure during creation (e.g. date-set or folder-move error) does not leave an orphaned empty note.
+- [ ] A failing test reproduces the leftover-empty-note condition before the fix and passes after (component test over the exit paths; a domain/API test if the fix moves persistence to first-edit).
+- [ ] Existing tests for note creation, cancel, and meeting-note discard remain green.
+
+**Key files (provisional):** `web/src/App.tsx` (`handleNewNote` ~L83, exit/navigation handlers), the note editor cancel/discard path (Phase 11), and whichever component owns leaving an unsaved new note; tests under `web/src/__tests__/`. If the fix moves to create-on-first-edit, also the create hook and any `NoteCreated` smoke/API coverage.

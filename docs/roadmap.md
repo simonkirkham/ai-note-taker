@@ -224,24 +224,24 @@ Alongside the numbered phases above, work is tracked in four standing docs. The 
 
 An unnumbered, standing phase capturing defects in the deployed app, tracked to a fix. No learning theme, no fixed sequence.
 
-Currently open: _(none)_. Fixed: **BUG-1** blank screen on 401 _(done 2026-06-02)_ · **BUG-2** favicon.ico 404 on page load _(done 2026-06-02)_ · **BUG-3** Data Protection cold-start log noise _(done 2026-06-02)_ · **BUG-4** ConcurrencyException → 409 _(done 2026-06-02)_ · **BUG-5** write to deleted note → 404 _(done 2026-06-02)_.
+Currently open: **BUG-7** empty notes are created and left behind (not removed). Fixed: **BUG-1** blank screen on 401 _(done 2026-06-02)_ · **BUG-2** favicon.ico 404 on page load _(done 2026-06-02)_ · **BUG-3** Data Protection cold-start log noise _(done 2026-06-02)_ · **BUG-4** ConcurrencyException → 409 _(done 2026-06-02)_ · **BUG-5** write to deleted note → 404 _(done 2026-06-02)_ · **BUG-6** CloudWatch RUM loader CDN host regional _(done 2026-06-02)_.
 
 → [docs/phases/phase-bugs.md](phases/phase-bugs.md)
 
 ### Minor Changes _(Ongoing)_
 
-An unnumbered, standing phase for small tweaks and changes to existing behaviour that don't warrant a numbered phase and aren't defects. Shipped: single-spaced note lines, theme selection, home screen shows today's notes by default, to-do rows that wrap cleanly with long text, sign-in screen visual polish, a collapsible "Filters" control for home tags, and 12 colour schemes (Forest dropped as a Teal duplicate). Open: keeping the theme picker and Sign out button always visible without scrolling, and restructuring the home Filters panel (Show-older + Tags inside, gap fixed — Option D, prototype-approved).
+An unnumbered, standing phase for small tweaks and changes to existing behaviour that don't warrant a numbered phase and aren't defects. Shipped: single-spaced note lines, theme selection, home screen shows today's notes by default, to-do rows that wrap cleanly with long text, sign-in screen visual polish, a collapsible "Filters" control for home tags, and 12 colour schemes (Forest dropped as a Teal duplicate). Open: keeping the theme picker and Sign out button always visible without scrolling; restructuring the home Filters panel (Show-older + Tags inside, gap fixed — Option D, prototype-approved); simplifying the busy home screen with smaller action buttons (prototype-led); and making the preview pull-out `»` flip to `«` when its panel is open.
 
 → [docs/phases/phase-minor-changes.md](phases/phase-minor-changes.md)
 
 ### Future Features
 
-Possible user-facing features not yet committed to a numbered phase. When one is picked up it becomes a numbered phase here. Currently: Workspaces, search across notes.
+Possible user-facing features not yet committed to a numbered phase. When one is picked up it becomes a numbered phase here. Currently: Workspaces; search across notes; expanding the to-do functionality for today and the future (due/scheduled dates with Today/Upcoming grouping); scalable note loading (pagination) with server-side filtering, which is the home of server-side folder tag search; and dynamic folders (saved tag-based views).
 
 → [docs/future-features.md](future-features.md)
 
 ### Technical Improvements
 
-Technical, infrastructure, and developer-experience items to address in the future (refactors, upgrades, CI/CD, hardening). Currently: upgrade GitHub Actions to Node.js 24, investigate whether `cdk synth` needs AWS credentials in `validate.yml`, add `cdk synth` to the pre-commit hook, make the pre-commit eslint step conditional, and split the single API Lambda into CQRS write/read Lambdas with async projectors ([ADR 0009](adr/0009-split-lambdas-cqrs-async-projectors.md)).
+Technical, infrastructure, and developer-experience items to address in the future (refactors, upgrades, CI/CD, hardening). Currently: upgrade GitHub Actions to Node.js 24, investigate whether `cdk synth` needs AWS credentials in `validate.yml`, add `cdk synth` to the pre-commit hook, make the pre-commit eslint step conditional, split the single API Lambda into CQRS write/read Lambdas with async projectors ([ADR 0009](adr/0009-split-lambdas-cqrs-async-projectors.md)), and break the monolithic 2,800-line `web/src/App.css` into a proper CSS architecture (tokens + per-feature files or CSS Modules).
 
 → [docs/technical-improvements.md](technical-improvements.md)

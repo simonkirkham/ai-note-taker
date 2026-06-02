@@ -26,3 +26,42 @@ Each entry records what it is, why it isn't scheduled yet, and where it was rais
 **What:** Full-text search over all notes.
 **Status:** Idea — not broken down.
 **Raised in:** Roadmap "Future Ideas".
+
+---
+
+## Expand the to-do functionality for today and the future
+
+**What:** Grow the to-do feature beyond today's flat list into something that understands **when** a to-do is due. Today the To Do section (`web/src/components/TodoSection.tsx`, fed by the cross-note todo projection from Phase 3 and the standalone todo aggregate from Phase 11) shows a single undated list of open items plus an expandable Done list. This feature adds a time dimension: to-dos that are scheduled for **today** versus **upcoming/future** dates, so the home screen can show "what's due today" distinctly from "what's coming up", and future-dated to-dos don't clutter today's view until they're relevant. Likely sub-capabilities to scope when broken down:
+- A **due date** (and/or scheduled date) on a to-do — a new event on the todo aggregate (e.g. `ActionItemDueDateSet` / `TodoScheduled`), kept purely additive so existing events are untouched.
+- Home views/grouping: **Today**, **Upcoming**, and possibly **Overdue**; reuse the local-date discipline from CHANGE-3 (compute "today" as the local calendar date, compare `YYYY-MM-DD` strings, beware timezone/time-bomb pitfalls).
+- A projection (or extension of the existing todo projection) that exposes the due date and supports the today/future grouping.
+- UI to set/clear a due date on both note-derived action items and standalone home-quick-capture to-dos.
+
+**Why it isn't scheduled yet:** Needs breaking down — the event-model additions (new event(s), projection changes) and the UX (grouping, where future to-dos surface, overdue handling) should be designed by Scout into a numbered phase before implementation. It's a genuinely new capability, not a tweak to the existing flat list.
+
+**Raised in:** User request, 2026-06-02 — "we need to expand the to-do functionality for today and future."
+
+---
+
+## Scalable note loading (pagination) + server-side folder tag search
+
+**What:** Today the entire note set is loaded into the client (`cards` in `App.tsx`), and all filtering — date, tags, folder — happens in the browser over that full set. This won't hold once a user has too many notes. This feature moves note loading to a **paginated / lazy** model (server returns a page at a time) and, as a direct consequence, moves filtering to the **server** so a filter searches *all* matching notes, not just the page that happens to be loaded. Scope to design when broken down:
+- **Paginated notes endpoint(s)** — page/cursor-based listing for home and folder views; the frontend loads more on demand (scroll / "load more").
+- **Server-side filtering** — date and tag filters become query parameters resolved against projections, so results are complete regardless of what's loaded.
+- **Server-side folder tag search** *(this absorbs the former minor-change CHANGE-12)* — when viewing a folder, the tag filter must offer the tags used across **all** notes in that folder (just that folder, **not** the subtree — confirmed 2026-06-02), and filtering by a tag must match all of the folder's notes, not only the loaded page. Both require a server source: a folder→tags aggregation (e.g. a projection keyed by folder id, reacting to `NoteCreated` / tag add / tag remove / folder move / note delete; surfaced as something like `GET /folders/{id}/tags`) and a server-side tag-filtered note query. This is why folder-scoped tag search was pulled out of the minor-changes track — it can't be made correct before pagination exists (until then everything is loaded and the trivial client-side version already works), and the two are best built together.
+
+**Why it isn't scheduled yet:** Needs breaking down by Scout into a numbered phase. It's a substantial change — new query/pagination endpoints, projections for server-side tag aggregation, frontend incremental loading, and reworking the home/folder filter pipeline from client-side to server-side. Strong event-sourcing learning surface (query models, pagination over projections, keeping optimistic UI correct against partial data).
+
+**Decided so far (2026-06-02):** folder tag search is scoped to *just that folder, not its subtree*; the folder note list stays direct-children-only as it is today.
+
+**Raised in:** Routing discussion for the folder-scoped tag filter, 2026-06-02 — the user noted that in future not all notes will be loaded, but still wants to search across **all** notes in a folder, which forces server-side aggregation/filtering. Related: [[#dynamic-folders-saved-tag-based-views]].
+
+---
+
+## Dynamic folders (saved tag-based views)
+
+**What:** "Folders" that aren't a place notes live but a **saved query over tags** — e.g. a dynamic folder "Urgent Work" defined as `work AND urgent` that always shows every note matching those tags, with no manual filing. They'd appear in the sidebar alongside real (structural) folders and be navigable the same way, but their contents are computed from the tag index rather than from a `folderId`. Likely considerations when broken down: how dynamic folders are created/edited (pick tags + AND/OR), how they're visually distinguished from structural folders, whether a note can be "in" both a real folder and any number of dynamic ones (it can — membership is derived), and how they interact with the tag filter and with reparenting/drag-and-drop (a note can't be *moved into* a dynamic folder; filing is implicit via its tags).
+
+**Why it isn't scheduled yet:** Early idea — needs more thought. It builds directly on the existing `TagIndex` projection (Phase 5) and the AND/OR tag filter, and pairs naturally with **server-side tag filtering** from the scalable-note-loading feature above — a dynamic folder is essentially a persisted, named tag query, so it wants the same server-side filtering to be correct at scale. Best designed after (or with) that work.
+
+**Raised in:** User idea, 2026-06-02, raised while discussing folder-scoped tag search. Related: [[#scalable-note-loading-pagination-server-side-folder-tag-search]].

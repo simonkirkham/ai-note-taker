@@ -21,6 +21,8 @@
 | CHANGE-7 | More colour schemes; drop duplicate Forest theme | Done | CHANGE-2 (shipped) |
 | CHANGE-8 | Theme picker + Sign out always visible without scrolling | Planned | CHANGE-2 (shipped) |
 | CHANGE-9 | Restructure home Filters: Show-older + Tags inside, fix gap | Planned | CHANGE-3, CHANGE-6 (shipped) |
+| CHANGE-10 | Simplify the busy home screen; make action buttons smaller | Planned | — |
+| CHANGE-11 | Preview pull-out `»` becomes `«` when its panel is open | Planned | — |
 
 Tweaks are appended here as they are identified. Use the same per-item format: a short title, **Status**, value/symptom, and acceptance criteria (with scenarios and approach where the change warrants them).
 
@@ -914,3 +916,139 @@ Scenario: Existing filter behaviour is unchanged
 - [ ] Folder view is unchanged
 - [ ] No API/event/projection change; `TagFilter` filtering logic unchanged
 - [ ] Component tests updated: "show older" is found inside the expanded Filters panel (not the header), tags render under the Tags group, collapsed affordance reflects show-older, and the existing date/tag composition tests still pass
+
+---
+
+## CHANGE-10 — Simplify the busy home screen; make action buttons smaller
+
+**Status:** Planned. **Prototype required before implementation** (see below) — "simpler" is subjective, so the layout must be confirmed from a prototype gallery before any real code, the same way CHANGE-9 was.
+
+**Value:** The home screen has accumulated controls — the meetings widget, the "New Note" button, the To Do section, the collapsible Filters control, the notes list, and the sidebar — and reads as busy and dense rather than calm and focused. The user's note is that it "needs simplifying" and that the **action buttons can be smaller** (the prominent `New Note` button at `ListView.tsx:114` `.new-note-button`, and similar primary actions, take more visual weight than a frequently-but-briefly-used control needs). The home screen should lead with the content (today's notes and to-dos) and let secondary actions recede.
+
+This is the umbrella "calm the home screen" item. It composes with — and should be planned alongside — the already-queued home tweaks: CHANGE-8 (footer always visible) and CHANGE-9 (consolidated Filters panel). Where those two are specific, this one is the holistic "reduce visual weight" pass: tighten spacing, downsize action buttons, and reduce competing emphasis so one thing is clearly primary.
+
+**Backend changes:** None. Pure frontend layout/styling change — no event, projection, or API change.
+
+---
+
+### Prototype requirement
+
+Run the **prototype** skill first — this is a UX/density decision, not obvious CRUD, and "simpler" is subjective. Build a throwaway frontend-only prototype on a `prototype/minor-10-home-simplify` branch/worktree that presents **2–3 options** for the calmed home layout (e.g. button sizing/weight, region spacing, and emphasis hierarchy), the same option-gallery approach that settled CHANGE-9. Exercise each option against a realistic home screen — meetings widget present and absent, a populated To Do section, the collapsed/expanded Filters control, and both the narrow and wide breakpoints — so the chosen density holds up in the busy case, not just an empty one. On approval, the exit procedure rewrites this item's scope, scenarios, and acceptance criteria with the confirmed layout before real implementation begins. No prototype code is merged.
+
+---
+
+### Likely scope (to confirm via the prototype)
+
+- **Downsize action buttons.** Reduce the padding/font-weight/size of `.new-note-button` (`ListView.tsx:113`, styled in `App.css`) and align other home action buttons to a single smaller "secondary action" size, reserving large/CTA emphasis for at most one primary action.
+- **Reduce competing emphasis.** Audit the home regions (meetings widget, To Do section, Notes header, Filters control) so they don't all shout at once — consistent heading sizes, calmer borders/shadows, more whitespace between regions rather than dense stacking.
+- **Tighten spacing, not features.** This is visual de-cluttering only; no region is removed. If a region should actually be hidden/collapsed by default, raise that as its own item rather than folding it in here.
+
+---
+
+### Key implementation files (provisional)
+
+- `web/src/components/ListView.tsx` — the `New Note` button and home layout regions
+- `web/src/App.css` — `.new-note-button`, home section spacing, heading sizes, button sizing tokens
+- Possibly `web/src/components/TodoSection.tsx` / meetings widget for spacing consistency
+
+---
+
+### Scenarios
+
+```
+Scenario: Home action buttons are smaller and less dominant
+  Given I am on the home screen
+  Then  the New Note (and peer action) buttons render at the smaller secondary size
+  And   no single secondary action competes visually with the notes content
+
+Scenario: Home leads with content
+  Given I open the home screen
+  Then  today's notes and to-dos are the visual focus
+  And   the surrounding controls recede with calmer spacing and emphasis
+
+Scenario: No functionality is removed
+  Given any home control (New Note, Filters, To Do actions, meetings)
+  When  I use it after the simplification
+  Then  it behaves exactly as before — the change is visual only
+```
+
+---
+
+### Acceptance criteria
+
+- [ ] Home action buttons (starting with `New Note`) are reduced to a smaller, consistent size; large/CTA emphasis is reserved for at most one primary action
+- [ ] The home screen reads as calmer — consistent heading sizes, reduced competing emphasis, and more deliberate spacing between regions
+- [ ] No home region or control is removed; all existing behaviour is unchanged (visual only)
+- [ ] Folder and note views are unaffected unless an explicitly shared style is touched
+- [ ] A prototype was used to confirm the chosen density/sizing before implementation
+- [ ] Existing `ListView` / home component tests remain green
+
+---
+
+## CHANGE-11 — Preview pull-out `»` becomes `«` when its panel is open
+
+**Status:** Planned.
+
+**Value:** The folder and Unfiled "preview notes" pull-out is triggered by a `»` button — on each folder row (`FolderTree.tsx:111`, `.folder-tree-action-btn`, `aria-label="Preview folder notes"`) and next to Unfiled Notes (`Sidebar.tsx:115`, `data-testid="unfiled-preview-button"`). The button always shows `»`, even when its preview panel (`FolderPreviewPanel`) is already open for that folder. The glyph should reflect state: show `»` (open/expand) when the panel is closed, and `«` (collapse) when the panel is already showing that folder's notes — so the affordance reads as a toggle and the user can tell, and undo, what's expanded.
+
+**Backend changes:** None. Pure frontend presentation/state-reflection change — no event, projection, or API change.
+
+---
+
+### Approach
+
+The open panel's folder is already tracked at the `App` level (`previewFolderId`, `App.tsx:80`). Thread the "is this folder currently previewed" flag down to `FolderTree`/`Sidebar` (or pass `previewFolderId` and compare against `node.folderId` / `UNFILED_ID`) so each preview button can render `«` when it matches the open panel and `»` otherwise. Update the `aria-label`/`title` to match (`Preview folder notes` ↔ `Close folder preview`) so the control is accessible in both states. Clicking the button when already open should close the panel (toggle), consistent with the new `«` glyph.
+
+Decide and note: whether the existing `FolderPreviewPanel` close (`×`, `FolderPreviewPanel.tsx:59`) and the row toggle should stay both-present (they can — the `«` is a second way to collapse).
+
+---
+
+### Key implementation files (provisional)
+
+- `web/src/App.tsx` — pass `previewFolderId` (or a derived `isPreviewing` flag) down to the sidebar/folder tree
+- `web/src/components/FolderTree.tsx` — render `«`/`»` and the matching label per node; toggle/close on click when open
+- `web/src/components/Sidebar.tsx` — same for the Unfiled preview button
+- `web/src/App.css` — only if the `«`/`»` states need styling tweaks
+
+---
+
+### Scenarios
+
+```
+Scenario: Preview button shows » when the panel is closed
+  Given the folder preview panel is not open for a folder
+  Then  that folder's preview button shows »
+  And   its label reads "Preview folder notes"
+
+Scenario: Preview button shows « when its panel is open
+  Given I open the preview panel for a folder
+  Then  that folder's preview button shows «
+  And   its label reads "Close folder preview"
+
+Scenario: Clicking « collapses the open preview
+  Given the preview panel is open for a folder and its button shows «
+  When  I click that button
+  Then  the preview panel closes
+  And   the button returns to »
+
+Scenario: Only the open folder's button shows «
+  Given the preview panel is open for folder A
+  Then  folder A's button shows « and every other folder's button shows »
+
+Scenario: Unfiled preview button behaves the same
+  Given I open the preview for Unfiled Notes
+  Then  the Unfiled preview button shows « and toggles closed on click
+```
+
+---
+
+### Acceptance criteria
+
+- [ ] A folder's preview button shows `«` when its preview panel is open for that folder, and `»` otherwise
+- [ ] Only the currently-previewed folder's button shows `«`; all others show `»`
+- [ ] The Unfiled Notes preview button follows the same `»`/`«` rule
+- [ ] Clicking the button when the panel is already open collapses it (toggle); the glyph returns to `»`
+- [ ] `aria-label`/`title` reflect the state (`Preview folder notes` ↔ `Close folder preview`) for accessibility
+- [ ] No event, projection, or API change — presentation/state only
+- [ ] Component tests cover: closed shows `»`, open shows `«` only on the matching folder, clicking `«` closes the panel, Unfiled parity
+
