@@ -38,15 +38,6 @@ Each entry records what it is, why it matters, where it was raised, and any depe
 
 ---
 
-## Pre-commit hook runs frontend eslint even for backend-only commits
-
-**What:** `.githooks/pre-commit` runs `eslint` unconditionally. Backend/infra-only slice worktrees skip `npm --prefix web install` (to avoid Node-version lockfile drift), so the hook fails with `eslint: not found` even when no `web/` files changed — forcing `git commit --no-verify`. Make the frontend lint conditional: skip it when no staged paths are under `web/`, or when `web/node_modules` is absent (and print a notice).
-**Why it matters:** Recurs on every backend/infra slice (hit on 12-C; will recur on 12-D/12-E). Routinely bypassing the hook with `--no-verify` erodes the local gate's value and hides real frontend lint failures when they do matter.
-**Raised in:** Phase 12 (12-C) — backend/infra slice worktree.
-**Depends on:** Nothing blocking. Touches the same file as the `cdk synth` item above.
-
----
-
 ## Split the single API Lambda into individual Lambdas (CQRS + async projectors)
 
 **What:** The backend currently runs as one `ApiFunction` Lambda (ASP.NET minimal API behind an HTTP API proxy) that handles every route and updates all projections **synchronously in-process** via `IDomainEventDispatcher` before returning the HTTP response. Move to a deployment shape that matches an event-sourced system, in two stages:
@@ -62,3 +53,14 @@ The full rationale, target diagrams, staged migration plan, and the eventual-con
 
 **Raised in:** Architecture discussion, 2026-06-02 — desire to align the deployment with the event-sourced design.
 **Depends on:** Nothing blocking. Pairs with the `observability` skill (async failure visibility). Best done as its own numbered phase given the breadth; graduate Stage 1 to a phase when picked up.
+
+---
+
+## Reduce Lambda SnapStart costs
+
+**What:** Investigate and reduce the cost of Lambda SnapStart on the API function. SnapStart bills for the cache storage of each published version's snapshot and incurs a restore charge per cold start, on top of the init work captured in the snapshot. Options to evaluate: trim the number of published versions/aliases retained (delete stale ones so their snapshots stop accruing storage), confirm only versions actually routed to are kept warm, measure restore-time billing against the cold-start latency benefit, and check whether SnapStart is even net-positive for current traffic — if cold starts are rare, plain on-demand init may be cheaper.
+
+**Why it matters:** SnapStart adds billing dimensions (snapshot cache storage + tiered restore charges) that are easy to leave unmanaged. Accumulating published versions each carry a snapshot, so cost creeps up silently as deploys pile up. Worth right-sizing before it becomes a noticeable line item.
+
+**Raised in:** Cost-review observation, 2026-06-02.
+**Depends on:** Nothing blocking. Pull SnapStart-related charges from Cost Explorer (filter the API Lambda) to quantify before acting. Confirm current SnapStart config in `src/Infrastructure/` CDK and how many versions are retained.
