@@ -193,7 +193,7 @@ Slices and acceptance criteria: [docs/phases/phase-10.md](phases/phase-10.md)
 
 Slices and acceptance criteria: [docs/phases/phase-11.md](phases/phase-11.md)
 
-## Phase 12 — Observability _(Planned)_
+## Phase 12 — Observability _(In Progress)_
 
 Make the app properly observable for production using AWS-native tooling only. Today there is one Lambda log group with unstructured text logs and nothing else — no correlation IDs, metrics, traces, dashboards, alarms, or frontend visibility. This phase closes every gap, pillar by pillar.
 
@@ -204,6 +204,8 @@ Make the app properly observable for production using AWS-native tooling only. T
 - **12-E:** CloudWatch Alarms + SNS email (error rate, P99 latency, concurrency-conflict spikes)
 - **12-F:** Frontend monitoring via CloudWatch RUM (browser errors, Core Web Vitals, failed API calls; trace-linked to the backend)
 - **12-G:** Observability runbook (`docs/observability.md`) + saved Logs Insights query definitions
+
+**Status:** 12-A → 12-D and 12-F are Done; **12-E** (alarms + SNS) and **12-G** (runbook + saved queries) remain.
 
 **Goal:** answer "is it healthy?", "what broke?", and "why is it slow?" from one place; learn the three pillars of observability and how they correlate, AWS Lambda Powertools, EMF metrics, X-Ray service maps, CloudWatch dashboards/alarms as CDK, and CloudWatch RUM. Driven by the `observability` skill.
 

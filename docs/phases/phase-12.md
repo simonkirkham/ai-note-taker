@@ -11,7 +11,7 @@
 | 12-C | Distributed tracing with AWS X-Ray | Done | 12-A |
 | 12-D | CloudWatch Dashboard and the "all errors" view | Done | 12-A, 12-B |
 | 12-E | CloudWatch Alarms and SNS notifications | Not Started | 12-B |
-| 12-F | Frontend monitoring (CloudWatch RUM) | Not Started | — |
+| 12-F | Frontend monitoring (CloudWatch RUM) | Done | — |
 | 12-G | Observability runbook and saved Logs Insights queries | Not Started | 12-A–12-F |
 
 Recommended build order: **12-A → 12-B → 12-C → 12-D → 12-E**, with **12-F** runnable in parallel any time, and **12-G** last once the surfaces it documents exist.
@@ -363,7 +363,9 @@ Scenario: Concurrency-conflict alarm is wired
 
 ## Slice 12-F — Frontend monitoring (CloudWatch RUM)
 
-**Status:** Not started
+**Status:** Done
+
+**Implementation note:** a `CfnAppMonitor` does **not** auto-create the Cognito identity pool + guest role the RUM console wizard creates, so the slice also adds an unauthenticated `CfnIdentityPool` + a guest IAM role scoped to `rum:PutRumEvents` (ARN built from the fixed monitor name to break the role↔monitor cycle), wired into the monitor config via `IdentityPoolId`/`GuestRoleArn`. Two outputs (`RumMonitorId` via `AttrId`, `RumIdentityPoolId`) feed the deploy-time snippet. See `docs/learnings/phase-12f-frontend-rum.md`.
 
 **Value:** The blind spot — the browser — becomes visible. CloudWatch RUM captures JavaScript errors, Core Web Vitals, and failed API calls from real users on the deployed CloudFront domain, and (with X-Ray enabled on the monitor) links a frontend error to its backend trace via the trace ID propagated in 12-C. This is the other half of "see all errors in one place": frontend errors that never reach the Lambda.
 
@@ -381,8 +383,8 @@ Scenario: Concurrency-conflict alarm is wired
 
 ### Key implementation files
 
-- `src/Infrastructure/NoteTakerStack.cs` — `CfnAppMonitor`, `CfnOutput` for the ID
-- `src/Infrastructure/Infrastructure.csproj` — add `Amazon.CDK.AWS.RUM`
+- `src/Infrastructure/NoteTakerStack.cs` — `CfnAppMonitor` + Cognito identity pool/guest role, `CfnOutput`s for the monitor ID and pool ID
+- `src/Infrastructure/Infrastructure.csproj` — no change needed: `Amazon.CDK.AWS.RUM` and `Amazon.CDK.AWS.Cognito` ship inside `Amazon.CDK.Lib` v2; just add the `using`
 - `web/index.html` — empty `rum-snippet` placeholder before `</head>`
 - `.github/workflows/deploy.yml` — read `RumMonitorId` output; inject the snippet into `dist/index.html` after build, before S3 upload
 - `tests/Infrastructure.Assertions/` — assert the AppMonitor exists with the expected telemetries and X-Ray enabled
@@ -408,13 +410,13 @@ Scenario: RUM is not injected into non-production builds
 
 ### Acceptance criteria
 
-- [ ] `CfnAppMonitor` "notetaker-rum" defined in CDK, scoped to the app domain, X-Ray enabled, telemetries errors/performance/http
-- [ ] AppMonitor ID emitted as a `CfnOutput`
-- [ ] `web/index.html` has an empty `rum-snippet` placeholder; the ID is never committed to source
-- [ ] `deploy.yml` injects the snippet (with the deployed AppMonitor ID) into `dist/index.html` for production only
-- [ ] `Infrastructure.Assertions` asserts the AppMonitor config
-- [ ] Post-deploy: a deliberately-thrown browser error appears in the RUM console
-- [ ] `cdk synth` succeeds; `cdk diff` reviewed before deploy
+- [x] `CfnAppMonitor` "notetaker-rum" defined in CDK, scoped to the app domain, X-Ray enabled, telemetries errors/performance/http — plus the Cognito identity pool + guest role the browser client needs (see implementation note)
+- [x] AppMonitor ID emitted as a `CfnOutput` (`RumMonitorId`); identity pool ID emitted as `RumIdentityPoolId`
+- [x] `web/index.html` has an empty `rum-snippet` placeholder; the ID is never committed to source
+- [x] `deploy.yml` injects the snippet (with the deployed AppMonitor ID) into `dist/index.html` for the deploy build only (both `deploy-test` and `deploy-production` jobs), fail-closed on missing outputs
+- [x] `Infrastructure.Assertions` asserts the AppMonitor config (telemetries, X-Ray, sample rate), the unauthenticated identity pool, the `rum:PutRumEvents` guest role, and both outputs
+- [ ] Post-deploy: a deliberately-thrown browser error appears in the RUM console — **TODO (human):** verify on the live site
+- [x] `cdk synth` succeeds; `cdk diff` reviewed before deploy
 
 ---
 

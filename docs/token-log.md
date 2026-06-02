@@ -4,6 +4,26 @@ Approximate tokens consumed per slice, broken down by agent. Recorded by Scribe 
 
 ---
 
+## Slice 12-F — Frontend monitoring (CloudWatch RUM)
+
+> **Note:** A fresh slice resumed after a VS Code crash — but the crash interrupted only the *review* of Phase 12 state, not in-flight slice work (nothing was lost). 12-F was planned and built from scratch this session. Plan and Hawk ran as real subagents (Hawk's 45k is exact from its hand-off); other counts are estimates.
+
+| Agent                                  | ~Tokens  |
+|----------------------------------------|----------|
+| Plan (design + AWS-docs verification)  | 45 000   |
+| Pip (Breaker + implement + orchestration) | 95 000 |
+| Hawk                                   | 45 000   |
+| Scribe                                 | 11 000   |
+| **Total**                              | **~196 000** |
+
+**Why:** No Hawk rework — approved first pass with only nits, because the Plan agent had already resolved the one non-obvious design point (the Cognito identity pool + guest role that `CfnAppMonitor` doesn't auto-create) against AWS docs *before* implementation. The dominant cost was Pip's orchestration: full `dotnet publish` + `cdk synth`, a real `npm run build` to confirm Vite preserves the snippet placeholder, the injection dry-run, the pre-commit hook running the *entire* suite (137 domain + 197 API + 51 infra + 213 component tests, several minutes in WSL), and the deploy monitor. The up-front Plan agent (45k) paid for itself by eliminating a Hawk round-trip on the missing Cognito wiring.
+
+**Optimisation suggestions:**
+- **None on Plan/Hawk:** spending 45k on design to get a first-pass Hawk approval on a slice with a genuine hidden requirement is the target trade, not waste.
+- **Pip (–10 000):** the manual `cdk synth` + infra-test run before commit duplicated what the pre-commit hook + CI re-run anyway; for an infra-only slice already covered by `Infrastructure.Assertions`, one of those passes is redundant.
+
+---
+
 ## BUG-2 — favicon.ico 404 on every page load
 
 > **Note:** A recovery slice. The fix (Breaker + Pip) was written and staged in a prior session; a VS Code crash interrupted it before the first commit. This session only resumed the pipeline — verify, commit, PR, Hawk, merge, deploy, Scribe — so Breaker/Pip implementation cost is not attributable here.
