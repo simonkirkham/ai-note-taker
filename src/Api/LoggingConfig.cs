@@ -57,7 +57,9 @@ public static class LoggingConfig
 
     // Maps domain/store exceptions that escape a handler to a meaningful status, so a
     // concurrency conflict or a write to a vanished note never surfaces as a 500. This
-    // is the single cross-cutting mapping point — endpoints must not re-map per-route.
+    // is the cross-cutting backstop: endpoints that already catch and translate (e.g.
+    // NoteNotFoundException -> 404) win before reaching here; anything they miss is
+    // mapped uniformly rather than re-mapped per-route.
     private static (int Status, string Error) Map(Exception? ex) => ex switch
     {
         ConcurrencyException => (StatusCodes.Status409Conflict, "conflict"),

@@ -11,6 +11,9 @@ internal sealed class ConflictingEventStore : IEventStore
 
     public bool ConflictOnNextAppend { get; set; }
 
+    // The flag check-and-reset is deliberately non-atomic: these tests drive a single
+    // client sequentially, so there is no concurrent append. Do not reuse this double
+    // for parallel-append scenarios without adding synchronisation.
     public Task AppendAsync(string streamId, long expectedVersion, IReadOnlyList<EventEnvelope> events, CancellationToken ct = default)
     {
         if (ConflictOnNextAppend)
