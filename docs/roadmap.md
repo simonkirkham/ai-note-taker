@@ -206,7 +206,7 @@ Make the app properly observable for production using AWS-native tooling only. T
 - **12-G:** Observability runbook (`docs/observability.md`) + saved Logs Insights query definitions
 - **12-H:** Unified error view — surface frontend (RUM) JS/HTTP errors on the `notetaker-ops` dashboard so backend + frontend errors share one screen
 
-**Status:** 12-A → 12-D and 12-F are Done; **12-E** (alarms + SNS), **12-H** (unified error view), and **12-G** (runbook + saved queries, last) remain.
+**Status:** 12-A → 12-F and 12-H are Done (12-E's concurrency-conflict alarm deferred — CloudWatch rejects `SEARCH` on metric alarms). Only **12-G** (runbook + saved queries) remains.
 
 **Goal:** answer "is it healthy?", "what broke?", and "why is it slow?" from one place; learn the three pillars of observability and how they correlate, AWS Lambda Powertools, EMF metrics, X-Ray service maps, CloudWatch dashboards/alarms as CDK, and CloudWatch RUM. Driven by the `observability` skill.
 

@@ -4,6 +4,27 @@ Approximate tokens consumed per slice, broken down by agent. Recorded by Scribe 
 
 ---
 
+## Slices 12-E + 12-H — Alarms/SNS and Unified error view (parallel run, with a deploy-break recovery)
+
+> **Note:** Run in parallel worktrees at the user's request. Both implementation agents and all reviewers ran as real subagents (their counts are exact from hand-offs). 12-E shipped a deploy-breaking bug (`SEARCH` on a metric alarm) that passed Hawk + synth and only failed at `cdk deploy`; recovering it (hotfix BUG-class fix + re-rebasing 12-H onto the corrected main, re-resolving the shared-file conflict) is the bulk of the orchestration cost.
+
+| Agent                                   | ~Tokens  |
+|-----------------------------------------|----------|
+| Pip-12E (impl subagent)                 | 78 000   |
+| Pip-12H (impl subagent)                 | 59 000   |
+| Hawk-12E                                | 48 000   |
+| Hawk-12H                                | 47 000   |
+| Pip (orchestration: spawn, 2× conflict resolve, 12-E deploy-break hotfix, 4 deploy monitors, Scribe) | 140 000 |
+| **Total**                               | **~372 000** |
+
+**Why so high:** this is ~2× a normal two-slice cost, almost entirely from the parallel-on-a-shared-file choice plus the deploy-break. The shared `NoteTakerStack.cs`/`InfraAssertionsTests.cs` conflicted on every merge; 12-E's SEARCH-alarm break forced a second full rebase + conflict re-resolution of 12-H against the fixed main, and an extra hotfix slice (PR + deploy). Two of this phase's deploy-breakers (RUM CDN host, SEARCH-on-alarm) were invisible to synth/`Template.FromStack`/Hawk and only failed at real deploy — each costing a full diagnose→fix→redeploy cycle.
+
+**Optimisation suggestions:**
+- **Sequential would have been cheaper here (≈ –120 000).** Two slices sharing one file is the anti-pattern for parallel worktrees: no clean-merge benefit, double conflict resolution, and a break in one stalled the other. Reserve parallel worktrees for disjoint-file slices.
+- **Catch deploy-only failures earlier (≈ –60 000 across the phase).** A `cdk deploy` into a throwaway/sandbox stack (or even `cdk deploy --no-execute` + change-set inspection) on risky infra (alarms, RUM, cross-service ARNs) would surface "SEARCH not supported on alarms" / "host doesn't resolve" before merging to main, avoiding the red-main hotfix cycles. Synth alone is not a deploy gate.
+
+---
+
 ## BUG-3 / BUG-4 / BUG-5 — backend defect sweep (one session)
 
 > **Note:** Three bugs driven through the full pipeline in a single autonomous session. BUG-4+BUG-5 shipped as one slice (shared cross-cutting fix, PR #107); BUG-3 as a second slice in parallel (PR #108). Pip/Breaker were the main loop, not separate agents — only Hawk and Scribe figures are per-agent.

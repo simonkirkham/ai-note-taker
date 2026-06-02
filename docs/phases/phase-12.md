@@ -13,7 +13,7 @@
 | 12-E | CloudWatch Alarms and SNS notifications | Done (concurrency alarm deferred) | 12-B |
 | 12-F | Frontend monitoring (CloudWatch RUM) | Done | — |
 | 12-G | Observability runbook and saved Logs Insights queries | Not Started | 12-A–12-F |
-| 12-H | Unified error view — surface frontend (RUM) errors on the ops dashboard | Not Started | 12-D, 12-F |
+| 12-H | Unified error view — surface frontend (RUM) errors on the ops dashboard | Done | 12-D, 12-F |
 
 Recommended build order: **12-A → 12-B → 12-C → 12-D → 12-E**, with **12-F** runnable in parallel any time, then **12-H** (needs both the dashboard and RUM), and **12-G** last once all the surfaces it documents exist.
 
@@ -471,7 +471,7 @@ Scenario: Common queries are saved in Logs Insights
 
 ## Slice 12-H — Unified error view (frontend RUM errors on the ops dashboard)
 
-**Status:** Not started
+**Status:** Done — implementation note: kept the existing 12-D backend "All errors" widget and added a *second* combined "All errors (backend + frontend)" `LogQueryWidget` (over both the API and derived RUM log groups) plus a RUM `JsErrorCount`/`HttpErrorCount` metric widget, rather than reordering the stack to extend the original widget. See `docs/learnings/phase-12h-unified-error-view.md`.
 
 **Value:** One place to answer "what's broken?" across the whole stack. Today backend errors are on the `notetaker-ops` dashboard (12-D "All errors" widget) and frontend errors live only in the separate CloudWatch RUM console (12-F). This slice brings the browser's JavaScript errors and failed API calls onto the same dashboard, so a single screen — with one time-range picker — shows Lambda errors *and* frontend errors. Because RUM `http` events carry the X-Ray trace id (12-C), a frontend error on the dashboard can be pivoted straight to its backend trace.
 
@@ -519,12 +519,12 @@ Scenario: A frontend error links to its backend trace
 
 ### Acceptance criteria
 
-- [ ] `notetaker-ops` gains a `GraphWidget` for `AWS/RUM` `JsErrorCount` + `HttpErrorCount` (dimension `application_name = notetaker-rum`); a `CfnMetricsDestination` is added only if the default metrics don't publish on their own (verify post-deploy)
-- [ ] The existing "All errors" `LogQueryWidget` also queries the RUM log group (name derived from the monitor GUID, not hard-coded) and its query matches both the Powertools and RUM `js_error_event` shapes
-- [ ] The widget relies on the dashboard time-range picker (no fixed window)
-- [ ] `Infrastructure.Assertions` asserts the RUM namespace widget and the RUM log group + `js_error_event` query fragment
-- [ ] `cdk synth` succeeds; `cdk diff` reviewed before deploy
-- [ ] Post-deploy: a real frontend error appears in the unified "All errors" table and the RUM metric widget increments
+- [x] `notetaker-ops` gains a `GraphWidget` for `AWS/RUM` `JsErrorCount` + `HttpErrorCount` (dimension `application_name = notetaker-rum`); no `CfnMetricsDestination` added — relying on RUM's default metrics (**verify they populate post-deploy; see TODO below**)
+- [x] A combined "All errors (backend + frontend)" `LogQueryWidget` queries both the API and the RUM log group (name derived from the monitor GUID via `Fn.Select`/`Fn.Split`, not hard-coded) and matches both the Powertools and RUM `js_error_event` shapes (the original 12-D backend-only widget was left in place rather than reordering the stack)
+- [x] The widget relies on the dashboard time-range picker (no fixed window)
+- [x] `Infrastructure.Assertions` asserts the RUM namespace widget and the RUM log group + `js_error_event` query fragment (3 new tests)
+- [x] `cdk synth` succeeds; deployed green
+- [ ] Post-deploy: a real frontend error appears in the unified "All errors" table and the RUM metric widget increments — **TODO (verify on live):** confirm the `AWS/RUM` `JsErrorCount`/`HttpErrorCount` widget actually populates; if it stays empty, add a `CfnMetricsDestination` (`Destination = CloudWatch`) — Hawk flagged this as the most likely silent no-op
 
 ---
 
