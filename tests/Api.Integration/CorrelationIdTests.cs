@@ -76,3 +76,70 @@ public sealed class CorrelationIdTests(ApiFactory factory) : IClassFixture<ApiFa
         Assert.Equal(correlationId, body.GetProperty("correlationId").GetString());
     }
 }
+
+// Powertools writes its JSON to Console.Out and reads the writer lazily on every line, so
+// redirecting Console.Out for the duration of one request captures exactly what would be
+// emitted to CloudWatch. That redirection is process-global, so this test lives in a
+// collection marked DisableParallelization to keep any other test off the console while it
+// runs.
+[Collection(ConsoleCaptureCollection.Name)]
+public sealed class CorrelationIdLoggingTests(ApiFactory factory) : IClassFixture<ApiFactory>
+{
+    private const string CorrelationIdHeader = "x-correlation-id";
+
+    // BUG-8: the x-correlation-id value returned to the client must also be emitted as a
+    // queryable `correlation_id` field on the request's log lines, otherwise a user (or a
+    // 500 body) can quote an ID that cannot then be found in CloudWatch.
+    [Fact]
+    public async Task EmittedLogLine_CarriesCorrelationIdFieldMatchingHeader()
+    {
+        var client = factory.CreateClient();
+
+        var capture = new StringWriter();
+        var original = Console.Out;
+        Console.SetOut(TextWriter.Synchronized(capture));
+        HttpResponseMessage resp;
+        try
+        {
+            // A successful command emits an Information "Command received" line — a
+            // representative normal request, not just the error path.
+            resp = await client.PostAsync("/folders",
+                new StringContent("{\"name\":\"Logged folder\"}", System.Text.Encoding.UTF8, "application/json"));
+        }
+        finally
+        {
+            Console.SetOut(original);
+        }
+
+        resp.EnsureSuccessStatusCode();
+        var correlationId = resp.Headers.GetValues(CorrelationIdHeader).Single();
+
+        var loggedCorrelationIds = capture.ToString()
+            .Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Select(TryReadCorrelationId)
+            .Where(id => id is not null)
+            .ToList();
+        Assert.Contains(correlationId, loggedCorrelationIds);
+    }
+
+    private static string? TryReadCorrelationId(string line)
+    {
+        try
+        {
+            using var doc = JsonDocument.Parse(line);
+            return doc.RootElement.TryGetProperty("correlation_id", out var value)
+                ? value.GetString()
+                : null;
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
+    }
+}
+
+[CollectionDefinition(Name, DisableParallelization = true)]
+public sealed class ConsoleCaptureCollection
+{
+    public const string Name = "ConsoleCapture";
+}

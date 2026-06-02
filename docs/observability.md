@@ -56,14 +56,18 @@ Domain rule violations (e.g. renaming a missing note) are logged at **Warning**,
 
 ## What did one request (or user-reported error) do?
 
-Every HTTP response carries an **`x-amzn-trace-id`** header (the X-Ray trace, 12-C). Its `Root=1-…` value is logged on every line as the **`xray_trace_id`** field, so it's the key that ties a request's log lines together. To trace a request:
+There are two greppable identifiers, and **either** ties a request's log lines together:
 
-1. Take the `Root=1-…` value from the response's `x-amzn-trace-id` header.
-2. Run the saved query **`NoteTaker/By trace ID`** and replace `REPLACE_WITH_XRAY_TRACE_ID` with it.
-3. You get that request's full log trail (command received → events appended → any warning/error), sorted oldest-first.
-4. Paste the same trace id into **X-Ray** (below) to see it as a timed trace with the `ReadEvents`/`AppendEvents` subsegments.
+- **`x-correlation-id`** header (12-A), which a 500 body also repeats for users to quote. This value (the ASP.NET `TraceIdentifier`) is logged on every line of the request as the **`correlation_id`** field (BUG-8), so a user-reported ID resolves straight to its log trail.
+- **`x-amzn-trace-id`** header (the X-Ray trace, 12-C). Its `Root=1-…` value is logged on every line as **`xray_trace_id`** and is also the key into X-Ray itself.
 
-> Note: responses also carry an **`x-correlation-id`** header (12-A) and a 500 body repeats it for users to quote — but that value (the ASP.NET `TraceIdentifier`) is **not** currently emitted as a log field, so use `xray_trace_id` (above) for log lookups. Wiring `correlationId` into the Powertools logger is a tracked follow-up.
+To trace a request:
+
+1. **From a user / 500 body:** take the `x-correlation-id` value and run, over the API log group:
+   `filter correlation_id = "<value>" | sort @timestamp asc`
+2. **From the `x-amzn-trace-id` header:** run the saved query **`NoteTaker/By trace ID`** and replace `REPLACE_WITH_XRAY_TRACE_ID` with the `Root=1-…` value.
+3. Either gives that request's full log trail (command received → events appended → any warning/error), sorted oldest-first.
+4. Paste the trace id into **X-Ray** (below) to see it as a timed trace with the `ReadEvents`/`AppendEvents` subsegments.
 
 ## Why is it slow?
 
@@ -115,7 +119,7 @@ Powertools emits **snake_case** keys — use these exact names in Logs Insights 
 
 | Field | Set by |
 |-------|--------|
-| `level`, `message`, `timestamp`, `service`, `xray_trace_id`, `name` | every line (12-A; `xray_trace_id` from 12-C) |
+| `level`, `message`, `timestamp`, `service`, `xray_trace_id`, `correlation_id`, `name` | every line (12-A; `xray_trace_id` from 12-C; `correlation_id` = the `x-correlation-id` header, BUG-8) |
 | `command_type`, `aggregate` | "Command received …" (12-B) |
 | `stream_id`, `version`, `count` | "Events appended …" (12-B) |
 | `exception_type` | "Command failed …" (Warning, 12-B) |
