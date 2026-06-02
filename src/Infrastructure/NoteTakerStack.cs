@@ -341,6 +341,77 @@ public sealed class NoteTakerStack : Stack
             Value = distribution.DistributionId,
             Description = "CloudFront distribution ID (used for cache invalidation on deploy)"
         });
+
+        // ── Ops dashboard ────────────────────────────────────────────────
+        // One pinned place to answer "is it healthy / what broke / why slow".
+        // The errors widget is a Logs Insights query so its time-range picker
+        // drives "how far back"; the metric widgets read Lambda/DynamoDB plus the
+        // NoteTaker/Domain EMF metrics emitted in 12-B.
+        var dashboard = new Amazon.CDK.AWS.CloudWatch.Dashboard(this, "OpsDashboard", new Amazon.CDK.AWS.CloudWatch.DashboardProps
+        {
+            DashboardName = "notetaker-ops"
+        });
+
+        Amazon.CDK.AWS.CloudWatch.IMetric DomainMetric(string metricName) =>
+            new Amazon.CDK.AWS.CloudWatch.Metric(new Amazon.CDK.AWS.CloudWatch.MetricProps
+            {
+                Namespace = "NoteTaker/Domain",
+                MetricName = metricName,
+                Statistic = "Sum"
+            });
+
+        dashboard.AddWidgets(
+            new Amazon.CDK.AWS.CloudWatch.LogQueryWidget(new Amazon.CDK.AWS.CloudWatch.LogQueryWidgetProps
+            {
+                Title = "All errors",
+                LogGroupNames = new[] { apiLogGroup.LogGroupName },
+                Width = 24,
+                Height = 6,
+                View = Amazon.CDK.AWS.CloudWatch.LogQueryVisualizationType.TABLE,
+                QueryString = string.Join("\n",
+                    "fields @timestamp, level, correlationId, message, @message",
+                    "| filter level in [\"ERROR\", \"WARN\", \"Error\", \"Warning\"] or @message like /(?i)exception|error|fail/",
+                    "| sort @timestamp desc",
+                    "| limit 100")
+            }),
+            new Amazon.CDK.AWS.CloudWatch.GraphWidget(new Amazon.CDK.AWS.CloudWatch.GraphWidgetProps
+            {
+                Title = "Lambda errors & invocations",
+                Left = new[] { apiFunction.MetricErrors(), apiFunction.MetricInvocations() },
+                Width = 12
+            }),
+            new Amazon.CDK.AWS.CloudWatch.GraphWidget(new Amazon.CDK.AWS.CloudWatch.GraphWidgetProps
+            {
+                Title = "Lambda duration p50/p99",
+                Left = new[]
+                {
+                    apiFunction.MetricDuration(new Amazon.CDK.AWS.CloudWatch.MetricOptions { Statistic = "p50" }),
+                    apiFunction.MetricDuration(new Amazon.CDK.AWS.CloudWatch.MetricOptions { Statistic = "p99" })
+                },
+                Width = 12
+            }),
+            new Amazon.CDK.AWS.CloudWatch.GraphWidget(new Amazon.CDK.AWS.CloudWatch.GraphWidgetProps
+            {
+                Title = "Event store DynamoDB write capacity & errors",
+                Left = new[]
+                {
+                    eventsTable.MetricConsumedWriteCapacityUnits(),
+                    eventsTable.MetricSystemErrorsForOperations()
+                },
+                Width = 12
+            }),
+            new Amazon.CDK.AWS.CloudWatch.GraphWidget(new Amazon.CDK.AWS.CloudWatch.GraphWidgetProps
+            {
+                Title = "Commands handled vs concurrency conflicts",
+                Left = new[] { DomainMetric("CommandHandled"), DomainMetric("ConcurrencyConflict") },
+                Width = 12
+            }));
+
+        new CfnOutput(this, "DashboardUrl", new CfnOutputProps
+        {
+            Value = $"https://{Region}.console.aws.amazon.com/cloudwatch/home?region={Region}#dashboards:name=notetaker-ops",
+            Description = "CloudWatch ops dashboard URL"
+        });
     }
 
     private DistributionProps BuildDistributionProps(
