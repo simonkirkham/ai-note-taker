@@ -1090,3 +1090,24 @@ If no agent ran unexpectedly high: write `None — slice ran within expected ran
 **Optimisation suggestions:**
 - **Pip (–8 000):** Enumerate untracked .NET projects with `-not -path '*/bin/*' -not -path '*/obj/*'`; the artifact dump was pure noise (captured as a learning).
 - **Hawk:** the round-trip was legitimate — the gesture-ordering and teardown findings were real correctness fixes, not nits. Nothing to trim.
+
+---
+
+## CHANGE-5 / CHANGE-6 / CHANGE-7 — parallel minor-changes batch
+
+> Three minor slices run concurrently in separate worktrees from one orchestrator session, each built by a background sub-agent through "PR open + green", then Hawk-reviewed and merged serially by the orchestrator. Counts are estimates per slice; Hawk counts are exact from hand-offs.
+
+| Slice | Sub-agent (build) | Hawk | Orchestration share | ~Total |
+|-------|-------------------|------|---------------------|--------|
+| CHANGE-5 sign-in | 78 000 | 34 000 | — | 112 000 |
+| CHANGE-6 filters | 106 000 | 36 000 | — | 142 000 |
+| CHANGE-7 colours | 60 000 | 42 000 | — | 102 000 |
+| Orchestration (merges, conflict resolution, deploy gates, Scribe) | — | — | ~180 000 | 180 000 |
+| **Batch total** | | | | **~536 000** |
+
+**Why the orchestration share is large:** the parallel run hit two avoidable cost centres. (1) A sub-agent that was supposed to stop at "PR open" stayed alive and collided with the orchestrator on the shared CHANGE-6 worktree, forcing a reset-to-remote and a full re-merge (the merge commit's pre-commit reran the whole suite). (2) Three slices all appended to `App.css`, so the 2nd and 3rd merges each needed an `App.css` conflict resolution + a full-suite pre-commit rerun. Plus a stretch of deploy-gate polling while another session's 12-e infra deploy was red.
+
+**Optimisation suggestions:**
+- **One driver per slice (−~60 000):** never both background a slice agent *and* take it over. The collision caused a reset + redundant re-merge + extra full-suite runs. If you take over, treat the agent as dead and don't let it keep a worktree.
+- **Stagger shared-file slices (−~25 000):** when N parallel slices all touch one CSS file, merge them back-to-back and rebase each immediately, or give each a pre-reserved fenced region so the conflict is trivial (the fenced-region + take-theirs-and-reappend recipe worked, but still cost two full-suite reruns).
+- **Hawk first-pass approval on all three** — no rework cycles; that part was efficient.

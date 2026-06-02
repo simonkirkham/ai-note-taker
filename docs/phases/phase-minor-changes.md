@@ -16,9 +16,11 @@
 | CHANGE-2 | Theme selection (Teal / Forest / Midnight) | Done | — |
 | CHANGE-3 | Home screen shows today's notes by default | Done | — |
 | CHANGE-4 | To-do rows wrap cleanly with long text + note title | Done | — |
-| CHANGE-5 | Sign-in screen visual polish | In Progress | — |
-| CHANGE-6 | Collapsible "Filters" control for home tags | In Progress | — |
-| CHANGE-7 | More colour schemes; drop duplicate Forest theme | In Progress | CHANGE-2 (shipped) |
+| CHANGE-5 | Sign-in screen visual polish | Done | — |
+| CHANGE-6 | Collapsible "Filters" control for home tags | Done | — |
+| CHANGE-7 | More colour schemes; drop duplicate Forest theme | Done | CHANGE-2 (shipped) |
+| CHANGE-8 | Theme picker + Sign out always visible without scrolling | Planned | CHANGE-2 (shipped) |
+| CHANGE-9 | Restructure home Filters: Show-older + Tags inside, fix gap | Planned | CHANGE-3, CHANGE-6 (shipped) |
 
 Tweaks are appended here as they are identified. Use the same per-item format: a short title, **Status**, value/symptom, and acceptance criteria (with scenarios and approach where the change warrants them).
 
@@ -461,7 +463,7 @@ Scenario: The to-do data is unchanged by the layout fix
 
 ## CHANGE-5 — Sign-in screen visual polish
 
-**Status:** Planned
+**Status:** ✅ Done — PR #109, deployed 2026-06-02. See [docs/learnings/phase-minor-5-signin-polish.md](../learnings/phase-minor-5-signin-polish.md).
 
 **Value:** The sign-in screen is the first thing a user sees, and it is currently unstyled. `web/src/components/SignInPage.tsx` renders a bare `<h1>AI Note Taker</h1>` and a default browser `<button>Sign in with Google</button>` inside a `.sign-in-page` div for which **no CSS exists** — so it falls back to Times New Roman-ish defaults, a top-left heading, and a grey system button on a plain background. It reads as broken rather than intentional. This change gives the sign-in screen a polished, on-brand first impression consistent with the rest of the app, without changing the auth flow.
 
@@ -537,7 +539,7 @@ Scenario: No-auth bypass is unaffected
 
 ## CHANGE-6 — Collapsible "Filters" control for home tags
 
-**Status:** Planned
+**Status:** ✅ Done — PR #111, deployed 2026-06-02. See [docs/learnings/phase-minor-6-collapsible-filters.md](../learnings/phase-minor-6-collapsible-filters.md).
 
 **Value:** On the home screen the tag filter (`TagFilter`) currently sits at the top of the home-left column, permanently expanded, pushing the Notes list down and adding visual noise before the user has expressed any intent to filter. Tag filtering is an occasional action, not a constant one. This change moves the tag filter **inside the Notes section, under a collapsible "Filters" control that defaults to collapsed** — so the home screen leads with the notes, and filtering is one click away when wanted.
 
@@ -634,7 +636,7 @@ Scenario: Folder view is unaffected
 
 ## CHANGE-7 — More colour schemes; drop duplicate Forest theme
 
-**Status:** Prototype approved — ready to implement. Gallery prototype on branch `prototype/minor-7-colour-schemes` (`colour-schemes-prototype.html`), approved 2026-06-02. Confirmed set: **12 themes** (8 light, 4 dark) — Forest dropped as a Teal duplicate; all visually-distinct candidates kept. Implement the confirmed palette table below as a normal slice. Do **not** start from prototype code.
+**Status:** ✅ Done — PR #112 + contrast follow-up PR #114, deployed 2026-06-02. See [docs/learnings/phase-minor-7-colour-schemes.md](../learnings/phase-minor-7-colour-schemes.md). Gallery prototype (`prototype/minor-7-colour-schemes`) approved 2026-06-02; shipped 12 themes (8 light, 4 dark), Forest dropped as a Teal duplicate.
 
 **Value:** CHANGE-2 shipped three themes — Teal (default), Forest, Midnight. In practice **Teal and Forest are visually almost identical**: both are light themes with a green/emerald primary on a near-white green-tinted background (Teal `#0D9488`/`#F0FDFA`, Forest `#059669`/`#ECFDF5`), so the picker offers a choice with no perceptible difference. This change **removes Forest** and **adds nine genuinely distinct palettes**, so the picker offers a real spread of looks across the hue wheel and several dark options. Teal stays as the `:root` default; Midnight stays as a dark theme.
 
@@ -659,12 +661,12 @@ Twelve themes survive the gallery: Teal (default) and Midnight are unchanged; Fo
 | Theme | key | Primary | Primary-dark | CTA | Background | Surface | Text | Text-muted | Border |
 |-------|-----|---------|--------------|-----|------------|---------|------|-----------|--------|
 | **Teal** *(default)* | — | `#0D9488` | `#0F766E` | `#F97316` | `#F0FDFA` | `#FFFFFF` | `#134E4A` | `#64748B` | `#CCEBE8` |
-| **Indigo** | `indigo` | `#4F46E5` | `#4338CA` | `#F97316` | `#EEF2FF` | `#FFFFFF` | `#1E1B4B` | `#64748B` | `#C7D2FE` |
-| **Rose** | `rose` | `#E11D48` | `#BE123C` | `#0EA5E9` | `#FFF1F2` | `#FFFFFF` | `#4C0519` | `#6B7280` | `#FECDD3` |
+| **Indigo** | `indigo` | `#4F46E5` | `#4338CA` | `#F97316` | `#EEF2FF` | `#FFFFFF` | `#1E1B4B` | `#475569` | `#C7D2FE` |
+| **Rose** | `rose` | `#E11D48` | `#BE123C` | `#0EA5E9` | `#FFF1F2` | `#FFFFFF` | `#4C0519` | `#4B5563` | `#FECDD3` |
 | **Amber** | `amber` | `#D97706` | `#B45309` | `#2563EB` | `#FFFBEB` | `#FFFFFF` | `#451A03` | `#78716C` | `#FDE68A` |
-| **Violet** | `violet` | `#7C3AED` | `#6D28D9` | `#F59E0B` | `#F5F3FF` | `#FFFFFF` | `#2E1065` | `#6B7280` | `#DDD6FE` |
-| **Sky** | `sky` | `#0284C7` | `#0369A1` | `#F97316` | `#F0F9FF` | `#FFFFFF` | `#0C2A3E` | `#64748B` | `#BAE6FD` |
-| **Sepia** | `sepia` | `#B45309` | `#92400E` | `#0D9488` | `#FAF6EF` | `#FFFDF8` | `#44372A` | `#8C7A63` | `#E8DCC8` |
+| **Violet** | `violet` | `#7C3AED` | `#6D28D9` | `#F59E0B` | `#F5F3FF` | `#FFFFFF` | `#2E1065` | `#4B5563` | `#DDD6FE` |
+| **Sky** | `sky` | `#0284C7` | `#0369A1` | `#F97316` | `#F0F9FF` | `#FFFFFF` | `#0C2A3E` | `#475569` | `#BAE6FD` |
+| **Sepia** | `sepia` | `#B45309` | `#92400E` | `#0D9488` | `#FAF6EF` | `#FFFDF8` | `#44372A` | `#6B5A45` | `#E8DCC8` |
 | **Contrast** | `contrast` | `#1D4ED8` | `#1E3A8A` | `#B91C1C` | `#FFFFFF` | `#FFFFFF` | `#000000` | `#374151` | `#1F2937` |
 
 **Dark themes** (each reuses semantic `--color-error` / `--color-error-bg` so no hardcoded light background leaks through — see CHANGE-2 dark-mode audit)
@@ -676,7 +678,7 @@ Twelve themes survive the gallery: Teal (default) and Midnight are unchanged; Fo
 | **Carbon** | `carbon` | `#F59E0B` | `#D97706` | `#38BDF8` | `#1C1917` | `#292524` | `#F5F5F4` | `#A8A29E` | `#44403C` | `#F87171` / `#3A201C` |
 | **Plum** | `plum` | `#FB7185` | `#F43F5E` | `#38BDF8` | `#1A0E14` | `#2B1721` | `#FCE7F3` | `#C99BAC` | `#4A2C39` | `#FDA4AF` / `#3F1D29` |
 
-As in CHANGE-2: `--color-primary-bg` follows the primary at ~6% opacity (light) / ~10% (dark); `--color-cta-dark` is the CTA one step darker. CTA colours are chosen to contrast with each theme's primary (e.g. Rose pairs a red primary with a sky-blue CTA). The closest remaining pair is Indigo vs Violet — both kept as distinct (blue-leaning vs true purple). Each light theme must clear 4.5:1 text contrast; verify before merge.
+As in CHANGE-2: `--color-primary-bg` follows the primary at ~6% opacity (light) / ~10% (dark); `--color-cta-dark` is the CTA one step darker. CTA colours are chosen to contrast with each theme's primary (e.g. Rose pairs a red primary with a sky-blue CTA). The closest remaining pair is Indigo vs Violet — both kept as distinct (blue-leaning vs true purple). **Muted-text values above are the shipped, AA-compliant ones**: Indigo/Sky/Rose/Violet/Sepia `--color-text-muted` were darkened (PR #114) from the original draft greys to clear 4.5:1 against each light background — all light themes now meet the contrast bar.
 
 ---
 
@@ -736,3 +738,179 @@ Scenario: A new theme choice persists across reloads
 - [ ] Each light theme meets 4.5:1 text contrast; each dark theme reuses CHANGE-2's semantic error/surface tokens so no hardcoded light background leaks through
 - [ ] Theme preference remains client-only — no event, projection, or API change
 - [ ] `ThemePicker` component tests updated: Forest gone, each new theme applies its `data-theme`, persistence across remount, fallback on the now-invalid `forest` value
+
+---
+
+## CHANGE-8 — Theme picker and Sign out always visible without scrolling
+
+**Status:** Planned
+
+**Value:** The theme picker and **Sign out** button live in the sidebar footer (`.sidebar-footer`, `App.css` ~L138), pinned to the bottom of the sidebar with `margin-top: auto`. But the desktop sidebar is a grid item in `.app-layout` (`grid-template-columns: 220px auto 1fr; min-height: 100vh`, ~L79) with no fixed height and no internal scroll on the folder list (`.sidebar-folders`, ~L1639). Once a user has more than a handful of folders, the folder tree makes the whole sidebar taller than the viewport, so the document grows and the footer is pushed **below the fold** — the user has to scroll the page down to reach the theme picker or sign out. Both are global, frequently-wanted controls and should always be reachable. This change keeps the sidebar a fixed viewport height and lets only the folder list scroll, so the footer (theme picker + Sign out) is always visible without scrolling.
+
+**Backend changes:** None. Pure CSS layout change to the sidebar; no markup, component, event, projection, or API change.
+
+---
+
+### Behaviour
+
+- **Scope:** the **desktop** sidebar layout only. On mobile the sidebar is already `position: fixed; top: 0; bottom: 0` (full viewport height) with the footer pinned, so the footer is already reachable — leave the mobile media query untouched, but verify it still behaves after the change.
+- The sidebar occupies the **full viewport height** and does not grow with the document. The **Home** button, **+ New Note** button, and the **footer** (theme picker + Sign out) stay fixed in view.
+- When the folder tree is taller than the available space, **only the folder list region scrolls** (its own internal scrollbar); the buttons above and the footer below remain in place.
+- The footer keeps its current bottom-pinned position (`margin-top: auto`) and its content (theme picker above Sign out) is unchanged.
+
+---
+
+### Approach
+
+`.sidebar` is already `display: flex; flex-direction: column` with `.sidebar-footer { margin-top: auto }`, so the only missing pieces are a constrained height and a scroll region:
+
+1. Give the desktop sidebar a viewport-bound height so it cannot grow past the fold. Options: make `.app-layout` a fixed-height grid (`height: 100vh` instead of `min-height: 100vh`) and let each column scroll independently, **or** keep the layout as-is and make the sidebar `position: sticky; top: 0; height: 100vh` so it stays put while the main column scrolls. Prefer the sticky-sidebar approach as the smaller, lower-risk change — it leaves the main content scroll behaviour untouched and only changes the sidebar.
+2. Add `min-height: 0` and `overflow-y: auto` to `.sidebar-folders` (the load-bearing part: `min-height: 0` lets a flex child shrink below its content height so the overflow scrolls instead of expanding the sidebar). Give it `flex: 1` so it takes the remaining space between the New Note button and the footer.
+3. Leave `.sidebar-footer`, `.theme-picker`, and `.sidebar-sign-out` as-is — the footer is already pinned by `margin-top: auto`.
+4. Confirm the mobile `@media` branch (sidebar `position: fixed; top: 0; bottom: 0`) is unaffected, and that the folder scroll region also behaves there.
+
+**Why CSS only:** the markup already has the right structure (header buttons, a folders region, a bottom footer in a flex column). The footer simply isn't reachable because nothing caps the sidebar height. Constraining the height and scrolling only the folder list fixes it without touching `Sidebar.tsx` or any behaviour.
+
+---
+
+### Key implementation files
+
+**Frontend (modified):**
+- `web/src/App.css` — constrain the desktop sidebar to the viewport height (sticky sidebar `height: 100vh`, or a fixed-height `.app-layout`); add `flex: 1; min-height: 0; overflow-y: auto` to `.sidebar-folders` so only the folder list scrolls. No change to `.sidebar-footer` content.
+
+No `.tsx`, `.ts`, handler, event, projection, or API change. `Sidebar.tsx` and `ThemePicker.tsx` are untouched.
+
+---
+
+### Scenarios
+
+```
+Scenario: Footer is visible with a short folder list
+  Given I have only a few folders
+  When  I view the home screen on desktop
+  Then  the theme picker and Sign out button are visible at the bottom of the sidebar
+  And   no scrolling is required to reach them
+
+Scenario: Footer stays visible with a long folder list
+  Given I have more folders than fit in the sidebar height
+  When  I view the home screen on desktop
+  Then  the folder list scrolls within its own region
+  And   the theme picker and Sign out button remain visible without scrolling the page
+
+Scenario: Home and New Note stay fixed while folders scroll
+  Given a long folder list
+  When  I scroll the folder list
+  Then  the Home and + New Note buttons and the footer stay in place
+  And   only the folder list moves
+
+Scenario: Mobile sidebar is unaffected
+  Given I open the slide-out sidebar on a narrow viewport
+  Then  the theme picker and Sign out button are reachable as before
+  And   the folder list scrolls within the sidebar
+```
+
+---
+
+### Acceptance criteria
+
+- [ ] On desktop the theme picker and Sign out button are visible without scrolling the page, regardless of how many folders exist
+- [ ] The sidebar is bound to the viewport height and does not grow the document below the fold
+- [ ] When the folder tree overflows, only the folder list region scrolls; the Home/New Note buttons and the footer stay fixed
+- [ ] The footer keeps its current order (theme picker above Sign out) and styling
+- [ ] The mobile slide-out sidebar is unchanged and still reaches the footer
+- [ ] No markup, component, event, projection, or API change — CSS layout only
+- [ ] Existing `Sidebar` / `ThemePicker` component tests remain green
+
+---
+
+## CHANGE-9 — Restructure the home Filters panel (Show-older + Tags inside; fix the gap)
+
+**Status:** Prototype approved (2026-06-02) — **Option D confirmed**. Gallery on branch `prototype/minor-9-filters-layout` (`filters-layout-prototype.html`). Ready to implement as a normal slice; do not start from prototype code.
+
+**Value:** The home filtering controls are currently split across two places and the area looks unfinished:
+- The **"Show older notes"** toggle (CHANGE-3) lives in the **Notes header row** (`.note-cards-header`, next to the "Notes" heading).
+- The **tag filter** (CHANGE-6) lives in a separate collapsible **"Filters"** control (`.filters-section` → `.filters-panel` → `<TagFilter />`) below the header.
+- After CHANGE-6 there is now a visible **empty gap between the Filters control and the notes list** (the `.filters-section` margin plus the collapsed panel leave dead vertical space before `.note-cards`).
+
+This change consolidates **all** home filtering into the one collapsible **Filters** panel and tidies the spacing:
+1. **Move "Show older notes" into the Filters panel** — it's a filter, so it belongs with the others, not in the Notes header. The Notes header goes back to just the heading (and count, if any).
+2. **Give tags their own labelled "Tags" subsection inside the Filters panel** — a clear `Tags` section heading above the tag pills / AND-OR mode / Clear, so the panel reads as structured groups (Tags now; room for more filter groups later, e.g. a date/older group).
+3. **Fix the gap** between the Filters control and the notes list so the layout is tight whether the panel is open or collapsed.
+
+**Backend changes:** None. Pure frontend layout/placement change of existing controls. The date-filter logic (CHANGE-3), the tag-filter logic, the collapsible-toggle behaviour (CHANGE-6), and the active-filter affordance are all unchanged — only *where* the controls live and how the panel is grouped and spaced.
+
+---
+
+### Confirmed layout — Option D (prototype-approved)
+
+The gallery (`prototype/minor-9-filters-layout` → `filters-layout-prototype.html`) offered four options; **Option D — "rich collapsed summary"** was chosen. Confirmed design:
+
+- **Collapsed (default):** the Filters control itself summarises *every* active filter inline — e.g. `Filters · 2 tags · older` — so the active state is readable at a glance without expanding. With no active filters it reads just `Filters`. The control takes the `--active` styling when any filter is on.
+- **Expanded:** a single panel with **stacked, labelled groups**: a **Tags** group (section label + pills + AND/OR mode + Clear) followed by an **Other** group (the "Show older notes" toggle). A divider separates the groups.
+- **Show older notes** is removed from the Notes header (`.note-cards-header`) and lives in the Other group inside the panel.
+- The dead vertical gap between the Filters control and the first note card is closed in both states.
+
+---
+
+### Behaviour
+
+- **Scope:** the **home view only** (`ListView` with no `currentFolderId`). Folder view is out of scope.
+- The Notes header shows only the "Notes" heading (plus count if any); the "Show older notes" toggle is removed from it.
+- The collapsed Filters control shows the rich active-filter summary (`Filters · N tags · older`) covering tags selected and/or "show older" on. Collapsed by default, as today.
+- Expanded, the panel shows the Tags group then the Other group (Show-older toggle), per Option D.
+- No dead vertical gap between the Filters control and the first note card, in either panel state.
+- All existing behaviour is preserved: date filter, tag filter, AND/OR mode, Clear, optimistic updates, and composition between the date and tag filters.
+
+---
+
+### Key implementation files (provisional)
+
+**Frontend (modified):**
+- `web/src/components/ListView.tsx` — move the "Show older notes" control out of `.note-cards-header` and into the Filters panel; wrap the tag controls in a labelled "Tags" group; fold "show older" into the active-filter affordance on the collapsed toggle.
+- `web/src/App.css` — group/section styles inside `.filters-panel`; remove the dead gap between `.filters-section` and `.note-cards`.
+
+No API, event, projection, or `TagFilter`-logic change. `TagFilter.tsx` may gain a section wrapper but its filtering behaviour is unchanged.
+
+---
+
+### Scenarios
+
+```
+Scenario: Show-older lives in the Filters panel
+  Given the Filters panel is expanded on the home view
+  Then  the "Show older notes" toggle appears inside the panel's "Other" group
+  And   it no longer appears in the Notes header
+
+Scenario: Tags are a labelled group in the panel
+  Given the Filters panel is expanded
+  Then  a "Tags" section shows the tag pills, AND/OR mode, and Clear
+
+Scenario: Collapsed control summarises all active filters (Option D)
+  Given a tag is selected and "Show older notes" is on
+  When  I collapse the Filters panel
+  Then  the control reads a summary like "Filters · 1 tag · older"
+  And   with no active filters it reads just "Filters"
+
+Scenario: No gap between the Filters control and the notes
+  Given I am on the home view
+  Then  there is no empty vertical gap between the Filters control and the first note card
+  And   this holds whether the panel is collapsed or expanded
+
+Scenario: Existing filter behaviour is unchanged
+  Given I select tags and toggle "Show older notes"
+  Then  the notes list filters exactly as before (date + tag filters compose)
+```
+
+---
+
+### Acceptance criteria
+
+- [x] Prototype built and approved before implementation (Option D); confirmed Filters layout reflected in the scenarios above
+- [ ] "Show older notes" is moved out of the Notes header into the Filters panel's "Other" group; the Notes header shows only the heading
+- [ ] Tags are presented as a labelled "Tags" group within the Filters panel (pills + AND/OR mode + Clear)
+- [ ] The collapsed Filters control shows a rich active-filter summary (e.g. `Filters · 2 tags · older`) reflecting both selected tags and the "show older" state; with none active it reads `Filters`
+- [ ] The empty vertical gap between the Filters control and the notes list is removed, in both panel states
+- [ ] Date filter, tag filter, AND/OR mode, Clear, and date↔tag composition behave exactly as before — placement/layout change only
+- [ ] Folder view is unchanged
+- [ ] No API/event/projection change; `TagFilter` filtering logic unchanged
+- [ ] Component tests updated: "show older" is found inside the expanded Filters panel (not the header), tags render under the Tags group, collapsed affordance reflects show-older, and the existing date/tag composition tests still pass

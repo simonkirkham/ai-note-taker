@@ -230,7 +230,7 @@ Currently open: _(none)_. Fixed: **BUG-1** blank screen on 401 _(done 2026-06-02
 
 ### Minor Changes _(Ongoing)_
 
-An unnumbered, standing phase for small tweaks and changes to existing behaviour that don't warrant a numbered phase and aren't defects. Shipped: single-spaced note lines, theme selection, home screen shows today's notes by default, and to-do rows that wrap cleanly with long text. Open: sign-in screen visual polish, a collapsible "Filters" control for home tags, and more colour schemes (dropping the near-duplicate Forest theme).
+An unnumbered, standing phase for small tweaks and changes to existing behaviour that don't warrant a numbered phase and aren't defects. Shipped: single-spaced note lines, theme selection, home screen shows today's notes by default, to-do rows that wrap cleanly with long text, sign-in screen visual polish, a collapsible "Filters" control for home tags, and 12 colour schemes (Forest dropped as a Teal duplicate). Open: keeping the theme picker and Sign out button always visible without scrolling, and restructuring the home Filters panel (Show-older + Tags inside, gap fixed — Option D, prototype-approved).
 
 → [docs/phases/phase-minor-changes.md](phases/phase-minor-changes.md)
 

@@ -20,6 +20,20 @@ Each entry records what it is, why it matters, where it was raised, and any depe
 
 ---
 
+## Resolve ESLint warnings in `web/src/auth/AuthContext.tsx`
+
+**What:** `validate-frontend` emits three ESLint warnings against `web/src/auth/AuthContext.tsx`:
+- **L15 — `react-refresh/only-export-components`:** the file exports the `AuthContext` object alongside components — move the React context to its own file.
+- **L182 — `react-refresh/only-export-components`:** the file also exports the `useAuth` hook alongside components — move shared hooks/constants out so the file only exports components, restoring Fast Refresh.
+- **L155 — `react-hooks/exhaustive-deps`:** the OAuth-exchange `useEffect` has an empty dependency array but reads `clientId` and `initialToken`. This is **intentional** (it must run once on mount, guarded by `mounted.current`) — resolve by either adding the deps with a guard that preserves run-once semantics, or an explicit `eslint-disable-next-line` with a comment explaining why, so the warning stops masking real ones.
+
+Suggested split: extract `AuthContext` (and `useAuth`) into `web/src/auth/authContext.ts`, leaving `AuthProvider` as the only export of `AuthContext.tsx`.
+**Why it matters:** Fast Refresh silently degrades to full reloads for any file importing from this module, slowing local dev. Standing lint warnings also erode the signal — a genuine new warning is easy to miss in the noise. Neither warning changes runtime behaviour.
+**Raised in:** CI annotation review, 2026-06-02 (`validate-frontend`).
+**Depends on:** Nothing blocking. Re-run `npm --prefix web run lint` after the split to confirm zero warnings; the auth flow is well covered by `TokenRefresh.test.tsx` / `ApiFetch.test.ts`.
+
+---
+
 ## Investigate whether CDK synth needs real AWS credentials in `validate.yml`
 
 **What:** If the CDK app does no context lookups (SSM, VPC resolution, etc.), `cdk synth` can run without credentials. If confirmed, remove the `Configure AWS credentials` step and `environment: Test` from `validate.yml` — validate becomes a pure code-quality gate with no AWS dependency.
