@@ -589,27 +589,13 @@ public sealed class NoteTakerStack : Stack
         });
         latencyAlarm.AddAlarmAction(alarmAction);
 
-        // Powertools adds a Service dimension to the domain metric, so a fixed-
-        // dimension Metric reads nothing. Match the dashboard's DomainTotal(...)
-        // pattern: a free-text SEARCH summed across every dimension combination.
-        var concurrencyConflicts = new Amazon.CDK.AWS.CloudWatch.MathExpression(new Amazon.CDK.AWS.CloudWatch.MathExpressionProps
-        {
-            Expression = "SUM(SEARCH('Namespace=\"NoteTaker/Domain\" MetricName=\"ConcurrencyConflict\"', 'Sum'))",
-            Label = "ConcurrencyConflict",
-            Period = Duration.Minutes(5)
-        });
-
-        var concurrencyAlarm = new Amazon.CDK.AWS.CloudWatch.Alarm(this, "ConcurrencyConflictAlarm", new Amazon.CDK.AWS.CloudWatch.AlarmProps
-        {
-            AlarmName = "notetaker-concurrency-conflicts",
-            AlarmDescription = "More than 10 optimistic-concurrency conflicts in 5 minutes",
-            Metric = concurrencyConflicts,
-            Threshold = 10,
-            EvaluationPeriods = 1,
-            ComparisonOperator = Amazon.CDK.AWS.CloudWatch.ComparisonOperator.GREATER_THAN_THRESHOLD,
-            TreatMissingData = Amazon.CDK.AWS.CloudWatch.TreatMissingData.NOT_BREACHING
-        });
-        concurrencyAlarm.AddAlarmAction(alarmAction);
+        // NOTE: a concurrency-conflict alarm is deliberately NOT defined here.
+        // ConcurrencyConflict is emitted with per-Aggregate dimensions (plus the
+        // Powertools Service dimension), so the only way to aggregate across all
+        // aggregates is SUM(SEARCH(...)) — and CloudWatch rejects SEARCH on metric
+        // alarms ("SEARCH is not supported on Metric Alarms"). Alarming on it
+        // requires first emitting an alarmable (dimensionless or Service-only)
+        // ConcurrencyConflict metric; deferred to a follow-up. See phase-12 12-E.
     }
 
     private DistributionProps BuildDistributionProps(
