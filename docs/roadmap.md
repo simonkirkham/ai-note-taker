@@ -230,7 +230,7 @@ Currently open: **BUG-7** empty notes are created and left behind (not removed).
 
 ### Minor Changes _(Ongoing)_
 
-An unnumbered, standing phase for small tweaks and changes to existing behaviour that don't warrant a numbered phase and aren't defects. Shipped: single-spaced note lines, theme selection, home screen shows today's notes by default, to-do rows that wrap cleanly with long text, sign-in screen visual polish, a collapsible "Filters" control for home tags, 12 colour schemes (Forest dropped as a Teal duplicate), the theme picker and Sign out always visible without scrolling, and the restructured home Filters panel (Option D). Open: reducing the blank space under the Home title and dropping the Notes divider (prototype-led); simplifying the busy home screen with smaller action buttons (prototype-led); and making the preview pull-out `»` flip to `«` when its panel is open.
+An unnumbered, standing phase for small tweaks and changes to existing behaviour that don't warrant a numbered phase and aren't defects. Shipped: single-spaced note lines, theme selection, home screen shows today's notes by default, to-do rows that wrap cleanly with long text, sign-in screen visual polish, a collapsible "Filters" control for home tags, 12 colour schemes (Forest dropped as a Teal duplicate), the theme picker and Sign out always visible without scrolling, the restructured home Filters panel (Option D), and the home Notes list top-aligned with Today's Meetings (divider dropped). Open: simplifying the busy home screen with smaller action buttons (prototype-led); and making the preview pull-out `»` flip to `«` when its panel is open.
 
 → [docs/phases/phase-minor-changes.md](phases/phase-minor-changes.md)
 

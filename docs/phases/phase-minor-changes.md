@@ -23,6 +23,7 @@
 | CHANGE-9 | Restructure home Filters: Show-older + Tags inside, fix gap | Done | CHANGE-3, CHANGE-6 (shipped) |
 | CHANGE-10 | Simplify the busy home screen; make action buttons smaller | Planned | — |
 | CHANGE-11 | Preview pull-out `»` becomes `«` when its panel is open | Planned | — |
+| CHANGE-12 | Drop home Notes divider; top-align with Today's Meetings | Done | CHANGE-10? (numbering collision — see section) |
 
 Tweaks are appended here as they are identified. Use the same per-item format: a short title, **Status**, value/symptom, and acceptance criteria (with scenarios and approach where the change warrants them).
 
@@ -1052,3 +1053,32 @@ Scenario: Unfiled preview button behaves the same
 - [ ] No event, projection, or API change — presentation/state only
 - [ ] Component tests cover: closed shows `»`, open shows `«` only on the matching folder, clicking `«` closes the panel, Unfiled parity
 
+
+---
+
+## CHANGE-12 — Drop the home Notes divider; top-align with Today's Meetings
+
+**Status:** ✅ Done — PR #123, deployed 2026-06-02. See [docs/learnings/phase-minor-12-home-spacing.md](../learnings/phase-minor-12-home-spacing.md).
+
+> **Numbering note:** this shipped on branch `slice/minor-10-home-spacing` (commit *"feat(minor-10): …"*) but is documented as **CHANGE-12** because a concurrent session claimed CHANGE-10 (smaller action buttons) and CHANGE-11 (preview pull-out flip) in this doc while the work was in flight, overwriting its original CHANGE-10 entry. The merged commit/branch keep the "minor-10" name; the doc number is CHANGE-12.
+
+**Value:** On the home view the "Notes" list sat ~4rem below "Today's Meetings" in the right column, with a heavy 2px divider above it and a blank band under the "Home" title — because the shared `.note-cards-section` rule carries `margin-top: 2.5rem; border-top: 2px solid; padding-top: 1.5rem`. This top-aligns "Notes" with "Today's Meetings" and removes the divider, so the two columns read as one tidy row.
+
+**Backend changes:** None. CSS-only.
+
+### Confirmed design (prototype-led)
+A four-variant gallery (`prototype/minor-10-home-spacing`) was reviewed; the user chose **no divider + top-align "Notes" with "Today's Meetings"**. Implementation, scoped to the home column so folder view is untouched:
+
+```css
+.home-left .note-cards-section {
+  margin-top: 0;
+  padding-top: 0;
+  border-top: none;
+}
+```
+
+### Acceptance criteria
+- [x] The 2px divider above the home Notes list is removed
+- [x] The home "Notes" heading top-aligns with "Today's Meetings" in the right column
+- [x] The change is scoped to `.home-left`; folder view keeps its existing spacing + divider
+- [x] CSS-only; no markup/component/event/API change; existing `ListView` tests remain green

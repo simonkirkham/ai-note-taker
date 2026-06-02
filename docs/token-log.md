@@ -1208,3 +1208,11 @@ If no agent ran unexpectedly high: write `None — slice ran within expected ran
 **Why cheaper than the 3-slice parallel batch (~536k):** no worktree collisions, no App.css conflict resolution, no redundant full-suite reruns from re-merges. CHANGE-8 built inline in the main loop (tiny CSS), CHANGE-9 in a worktree with one driver. The cost was wall-clock (serial merges/deploys) not tokens — the right trade for two shared-file slices.
 
 **Optimisation note:** building CHANGE-8 inline (no sub-agent) was correct for a 5-line CSS change — spawning an agent would have cost more than it saved. Reserve sub-agents for slices big enough to amortise the worktree + brief overhead.
+
+---
+
+## CHANGE-12 — Home Notes divider/alignment (shipped as "minor-10")
+
+> Small CSS-only home-view tweak (one scoped rule). The notable cost was not tokens but a **numbering collision**: a concurrent session claimed CHANGE-10/11 in the same backlog doc while this was in flight, overwriting its CHANGE-10 entry — so its doc number became CHANGE-12 at Scribe while the merged commit/branch keep "minor-10". First-pass Hawk approval; ~70k total (build + Hawk + prototype + collision cleanup).
+
+**Optimisation note:** reserve the backlog number with a tiny table-row commit *before* building when another session may touch the same doc; re-read the doc at Scribe to detect a clobber. One wasted commit cycle came from committing before `npm install` finished (`eslint: not found`).
