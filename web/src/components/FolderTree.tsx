@@ -107,7 +107,7 @@ function FolderTreeNode({ node, activeFolderId, path, onSelect, onRename, onDele
           <button
             className="folder-tree-action-btn"
             onClick={(e) => { e.stopPropagation(); onPreview(node.folderId, node.name); }}
-            title={isPreviewing ? "Close folder preview" : "Preview notes"}
+            title={isPreviewing ? "Close folder preview" : "Preview folder notes"}
             aria-label={isPreviewing ? "Close folder preview" : "Preview folder notes"}
           >
             {isPreviewing ? "«" : "»"}
