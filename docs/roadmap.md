@@ -173,9 +173,11 @@ Build a high-quality AI analysis of meeting notes — and the means to keep it h
 - **Core flow (done):** record audio (AWS Transcribe Streaming via STS-issued temporary credentials); `TranscriptionCompleted` persists the transcript; Amazon Bedrock (Nova Lite) analyses transcript + existing content and applies gap-filling content, tags, and action items — action items scoped to the current user; model configurable via `BEDROCK_MODEL_ID`. Analysis also runs on any note with no transcript (10-H).
 - **10-E:** Auto-analysis on stop (auto-analyse switch, default ON); **10-F:** capture remote participants by mixing system/call audio
 - **10-G:** offline analysis evaluation harness — versioned prompts (`PromptCatalog`) + LLM-as-judge scoring over fixed transcripts
-- **10-I/10-J:** `TagsSuggested` event + per-user/per-tag feedback projection (suggested vs rejected)
-- **10-K/10-L:** `ActionItemsSuggested` event + per-user feedback projection (suggested / deleted / completed)
+- **10-I/10-J (done):** `TagsSuggested` event + per-user/per-tag feedback projection (suggested vs rejected)
+- **10-K/10-L (done):** `ActionItemsSuggested` event + per-user feedback projection (suggested / deleted / completed)
 - **10-M:** version the `*Suggested` events to stamp `modelId`/`promptVersion`, tying the correction signal to a prompt version
+
+The feedback track (10-I → 10-L) is complete: the correction signal is durable, queryable, and rebuildable. **Remaining:** 10-G (eval harness + versioned prompts) and 10-M (which depends on 10-G's `PromptCatalog`/`NoteAnalysisResult` changes).
 
 **Goal:** first real-time streaming feature; first LLM integration; STS AssumeRole delegation; offline LLM evaluation; purely additive provenance events and projections that *classify by combining* events; event versioning to stamp prompt/model. The event model stays clean — analysis output reuses existing event types, so the domain never knows whether content came from a human or a model; the `*Suggested` events record AI provenance without mutating state.
 

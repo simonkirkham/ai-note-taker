@@ -1271,3 +1271,24 @@ If no agent ran unexpectedly high: write `None — slice ran within expected ran
 | **Total** | **~100 000** |
 
 **Notes:** one wasted test run from asserting the preview panel *unmounts* on close when it actually toggles a `--open` class — read the component's render before writing the assertion. Merge correctly held for the other session's in-progress 10-K deploy, then merged once it cleared (the corrected concurrent-session gate discipline).
+
+---
+
+## Slice 10-L — Action-item feedback projection
+
+> Backend-only projection slice run solo; a 10-J-shaped slice (store + rebuild + CDK + wiring) but spanning two command handlers. One Hawk round-trip, first-pass approval with a coverage nudge (added a same-item complete-then-delete parity test). Hawk count exact from its hand-off (65 000).
+
+| Agent     | ~Tokens     |
+|-----------|-------------|
+| Breaker   | —           |
+| Pip (spec + impl + docs + orchestration) | 130 000 |
+| Hawk      | 65 000      |
+| Stylist   | —           |
+| Scribe    | 12 000      |
+| **Total** | **~207 000** |
+
+**Why:** Comparable to 10-J in shape but with extra design depth: the cross-stream **rebuild-ordering** problem (suggestion on the Note stream, outcomes on ActionItem streams) needed an order-independent projection design and a dedicated spec — genuinely new thinking, not a copy of 10-J. Wiring across two command handlers and a slightly larger test surface (delta-based integration assertions) added the rest. Hawk's review was the most thorough of the four (65k) and caught a worthwhile parity-coverage gap.
+
+**Phase-10 feedback track total (10-I→10-L):** ~125k + ~188k + ~110k + ~207k ≈ **630k**. The two projection slices (J, L) cost ~1.7× the two event slices (I, K), driven by store/rebuild/CDK breadth and, for L, the cross-stream rebuild design.
+
+**Optimisation note:** the cross-stream ordering insight is now a learning — any future multi-aggregate projection should reach for deferred computation (or sort by `OccurredAt`) from the start rather than discover the parity gap in review.

@@ -17,7 +17,7 @@
 | 10-I | Record AI tag suggestions (`TagsSuggested`) | Done | — |
 | 10-J | Tag feedback projection | Done | 10-I |
 | 10-K | Record AI action-item suggestions (`ActionItemsSuggested`) | Done | — |
-| 10-L | Action-item feedback projection | Not Started | 10-K |
+| 10-L | Action-item feedback projection | Done | 10-K |
 | 10-M | Stamp modelId / promptVersion on the suggestion events | Not Started | 10-G, 10-I, 10-K |
 
 Phase 10 has two parts. The **core flow** (10-A → 10-H) makes recording → transcription → analysis work end to end. The **quality track** (10-E, 10-F, then 10-G → 10-M) makes that analysis *good* and *keeps it good*: better input, smoother UX, measurement, and a durable correction signal that feeds prompt/model refinement. Slices 10-I → 10-M were moved here from the former Phase 13 ("Feedback capture for AI suggestions") so that analysis quality — building it, measuring it, refining it — lives in one phase.
@@ -906,7 +906,7 @@ Scenario: Analysis records the IDs of the action items it created
 
 ## Slice 10-L — Action-item feedback projection
 
-**Status:** Not started
+**Status:** Done
 
 **Value:** Per user: of the action items the AI extracted, how many were **deleted** (rejected extraction) and how many **completed** (confirmed a real task) — an extraction-precision picture. Queryable ad hoc; rebuildable.
 
@@ -969,12 +969,12 @@ Scenario: The projection rebuilds from the event stream
 
 ### Acceptance criteria
 
-- [ ] View (per-user), store (single table, two row types), and handler added; `UserId` from `envelope.Metadata`
-- [ ] Deleted/completed counted only for AI-suggested action IDs; manual actions ignored
-- [ ] Wired into `ProjectionRebuildHandler`; rebuild reproduces live counts
-- [ ] Registered in `Builder.cs`; env var in `Program.cs` + CDK; table created with `RETAIN`
-- [ ] `Infrastructure.Assertions` asserts the table; `docs/view-schemas.md` updated
-- [ ] All specs green; `cdk synth` succeeds; `cdk diff` reviewed before deploy
+- [x] View (per-user), store (single table, two row types), and update added. **Wired inline across `NoteCommandHandler` (suggested) + `ActionItemCommandHandler` (deleted/completed), not as an `IDomainEventHandler`** (dispatcher is dead code; see `docs/technical-improvements.md`). Live uses `currentUser.UserId` / provenance; rebuild reads `envelope.Metadata.UserId`.
+- [x] Deleted/completed counted only for AI-suggested action IDs; manual actions ignored
+- [x] Wired into `ProjectionRebuildHandler`; rebuild reproduces live counts (order-independent — suggestion on Note stream, outcomes on ActionItem streams)
+- [x] Registered in `Builder.cs`; env var in `Program.cs` + CDK; table created with `RETAIN`
+- [x] `Infrastructure.Assertions` asserts the table; `docs/view-schemas.md` updated
+- [x] All specs green; `cdk synth` succeeds
 
 ---
 
