@@ -32,6 +32,13 @@ public static class Builder
             config.Service = "note-taker";
         });
 
+        // This API authenticates with bearer tokens only — no cookies, antiforgery, or
+        // IDataProtector consumers — so ASP.NET Data Protection is unused. On Lambda it
+        // has no persistent key store and logs three Warning lines per cold start about
+        // its ephemeral in-memory key ring. They are pure noise that drowns out real
+        // errors on the ops dashboard, so suppress the category below Error. (BUG-3)
+        builder.Logging.AddFilter("Microsoft.AspNetCore.DataProtection", LogLevel.Error);
+
         // X-Ray instruments all AWS SDK calls (DynamoDB, STS, Bedrock) as trace
         // subsegments. Must run before any AWS client is constructed. Off Lambda
         // (local, tests) there is no active segment, so log rather than throw on
