@@ -511,7 +511,6 @@ body {
   50%       { opacity: 0.4; }
 }
 
-
 .note-button {
   display: block;
   width: 100%;
@@ -1165,8 +1164,6 @@ body {
   min-height: 2rem;
 }
 
-
-
 .todo-reopen-btn:disabled {
   opacity: 0.45;
   cursor: not-allowed;
@@ -1413,9 +1410,6 @@ body {
   overflow: hidden;
 }
 
-
-
-
 .note-card-actions-row {
   display: flex;
   align-items: center;
@@ -1423,12 +1417,6 @@ body {
   margin-top: auto;
   flex-wrap: wrap;
 }
-
-
-
-
-
-
 
 .note-card-confirm-row {
   display: flex;
@@ -1620,7 +1608,6 @@ body {
   gap: 0.375rem;
   margin-top: 0.125rem;
 }
-
 
 .note-card-tag-pill {
   display: inline-block;
@@ -2794,6 +2781,8 @@ body.has-notification-banner {
 .icon-btn--danger {
   color: var(--color-error, #dc2626);
 }
+/* declared after .icon-btn:hover (equal specificity) so the danger hover
+   stays red — do not reorder above .icon-btn:hover. */
 .icon-btn--danger:hover:not(:disabled) {
   color: var(--color-error, #dc2626);
   border-color: var(--color-error, #dc2626);
