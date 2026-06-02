@@ -422,3 +422,91 @@ it('records mic-only when the shared display stream carries no audio track', asy
   expect(mockAudioContext.createMediaStreamSource).toHaveBeenCalledTimes(1)
   expect(mockAudioContext.createGain).not.toHaveBeenCalled()
 })
+
+// ── 10-E: Auto-analysis on stop ───────────────────────────────────
+
+// Scenario: Auto-analysis fires when switch is on and recording stops
+//   Given the auto-analyse switch is ON (default)
+//   When I stop the recording
+//   Then analyseNote() is called automatically
+//   And a loading state is shown in the panel
+it('auto-analyses on stop when the switch is on (default)', async () => {
+  stubBrowserApis()
+  let analyseCalled = false
+  let resolveAnalyse: () => void = () => {}
+  server.use(
+    http.post('/api/notes/note-1/transcription', () => new HttpResponse(null, { status: 204 })),
+    http.post('/api/notes/note-1/analyse', async () => {
+      analyseCalled = true
+      await new Promise<void>((r) => { resolveAnalyse = r })
+      return new HttpResponse(null, { status: 204 })
+    }),
+  )
+
+  render(<TranscriptionPanel noteId="note-1" />)
+  // Switch defaults ON, no interaction needed.
+  expect(screen.getByTestId('transcription-auto-analyse-toggle')).toBeChecked()
+
+  await userEvent.click(screen.getByTestId('transcription-record-button'))
+  await waitFor(() => expect(screen.getByTestId('transcription-stop-button')).toBeInTheDocument())
+  emitTranscriptResult('Meeting transcript')
+  await waitFor(() => expect(screen.getByTestId('transcription-text')).toHaveTextContent('Meeting transcript'))
+
+  await userEvent.click(screen.getByTestId('transcription-stop-button'))
+
+  // analyseNote fires automatically...
+  await waitFor(() => expect(analyseCalled).toBe(true))
+  // ...and the panel shows a loading state while it runs.
+  await waitFor(() => expect(screen.getByTestId('transcription-analyse-button')).toHaveTextContent('Analysing…'))
+  expect(screen.getByTestId('transcription-analyse-button')).toBeDisabled()
+
+  resolveAnalyse()
+})
+
+// Scenario: Auto-analysis is suppressed when switch is off
+//   Given the auto-analyse switch is OFF
+//   When I stop the recording
+//   Then analyseNote() is not called
+//   And the Analyse note button is still available to trigger it manually
+it('does not auto-analyse on stop when the switch is off', async () => {
+  stubBrowserApis()
+  let analyseCalled = false
+  let completionCalled = false
+  server.use(
+    http.post('/api/notes/note-1/transcription', () => {
+      completionCalled = true
+      return new HttpResponse(null, { status: 204 })
+    }),
+    http.post('/api/notes/note-1/analyse', () => {
+      analyseCalled = true
+      return new HttpResponse(null, { status: 204 })
+    }),
+  )
+
+  render(<TranscriptionPanel noteId="note-1" />)
+  await userEvent.click(screen.getByTestId('transcription-auto-analyse-toggle'))
+  expect(screen.getByTestId('transcription-auto-analyse-toggle')).not.toBeChecked()
+
+  await userEvent.click(screen.getByTestId('transcription-record-button'))
+  await waitFor(() => expect(screen.getByTestId('transcription-stop-button')).toBeInTheDocument())
+  emitTranscriptResult('Meeting transcript')
+  await waitFor(() => expect(screen.getByTestId('transcription-text')).toHaveTextContent('Meeting transcript'))
+
+  await userEvent.click(screen.getByTestId('transcription-stop-button'))
+
+  // Stop completes (transcript persisted) but analysis is NOT triggered automatically.
+  await waitFor(() => expect(completionCalled).toBe(true))
+  expect(analyseCalled).toBe(false)
+  expect(screen.getByTestId('transcription-analyse-button')).toBeInTheDocument()
+})
+
+// Scenario: Switch resets to ON on page reload (it is ephemeral, never persisted)
+it('auto-analyse switch defaults back to ON on a fresh mount', async () => {
+  const first = render(<TranscriptionPanel noteId="note-1" />)
+  await userEvent.click(screen.getByTestId('transcription-auto-analyse-toggle'))
+  expect(screen.getByTestId('transcription-auto-analyse-toggle')).not.toBeChecked()
+  first.unmount()
+
+  render(<TranscriptionPanel noteId="note-1" />)
+  expect(screen.getByTestId('transcription-auto-analyse-toggle')).toBeChecked()
+})
