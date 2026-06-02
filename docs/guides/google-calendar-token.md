@@ -54,6 +54,10 @@ These only need doing once. Both live under your Google Cloud project at
    warning, and there's a 100-user cap. Full verification (privacy policy + verified domain
    + demo video) is unnecessary for single-user use.
 
+   > ⚠️ **Publishing to production does NOT revive an already-expired token.** It only stops
+   > *future* tokens from hitting the 7-day clock. Any token minted while the screen was in
+   > *Testing* is already dead — you must mint a brand-new one (below) after publishing.
+
 2. **Register the loopback redirect URI.** APIs & Services → **Credentials** → click the
    **OAuth 2.0 Client ID** matching `GOOGLE_CLIENT_ID` (type *Web application*) → under
    **Authorized redirect URIs** add exactly:
@@ -65,17 +69,25 @@ These only need doing once. Both live under your Google Cloud project at
    Save. (You can remove it again after re-minting. Use a different port via `PORT=` below
    if 4180 is taken — keep the registered URI in sync.)
 
-## Re-minting the token
+## Re-minting the token (and writing it to SSM in one step)
 
 From the repo root, with the same OAuth credentials the deploy workflow uses (the
-`GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` GitHub Actions secrets):
+`GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` GitHub Actions secrets). Set `WRITE_SSM=1` and the
+script will mint **and** store the token for you — this avoids the hand-typed `put-parameter`,
+which is the step that goes wrong (see *Common mistakes* below):
 
 ```bash
 GOOGLE_CLIENT_ID=<client id> \
 GOOGLE_CLIENT_SECRET=<client secret> \
-GOOGLE_REFRESH_TOKEN_SSM_PATH=<ssm path, e.g. /ai-note-taker/google-refresh-token> \
+GOOGLE_REFRESH_TOKEN_SSM_PATH=/notetaker/google-refresh-token \
+AWS_PROFILE=prod AWS_REGION=eu-west-2 WRITE_SSM=1 \
 node scripts/remint-google-refresh-token.mjs
 ```
+
+> The live app runs in the **prod** AWS account in **eu-west-2**, and the param is
+> `/notetaker/google-refresh-token`. The `prod`/`test` CLI profiles default to **eu-west-1**,
+> so `AWS_REGION=eu-west-2` is **required** — without it you write to (or read) the wrong
+> region and nothing changes in prod.
 
 The script ([`scripts/remint-google-refresh-token.mjs`](../../scripts/remint-google-refresh-token.mjs)):
 
@@ -83,21 +95,41 @@ The script ([`scripts/remint-google-refresh-token.mjs`](../../scripts/remint-goo
 2. Opens (and prints) the Google consent URL with `access_type=offline` + `prompt=consent`
    — the two parameters required to actually receive a refresh token.
 3. After you grant access, exchanges the code (with PKCE) and prints the new **refresh
-   token** plus the exact `aws ssm put-parameter` command to store it.
+   token**. With `WRITE_SSM=1` it then runs `aws ssm put-parameter ... --overwrite` against
+   the profile/region you gave (passing the token via a 0600 temp file, deleted immediately,
+   so it never enters the process list). Without `WRITE_SSM`, it just prints the command.
 
-The client secret is never logged and nothing is written to disk.
+The client secret is never logged.
 
-## Storing the token in SSM
+## Storing the token in SSM (manually)
 
-Use the command the script prints, or run it directly (note `--type SecureString`):
+If you didn't use `WRITE_SSM=1`, run the command the script prints. All three flags matter:
 
 ```bash
 aws ssm put-parameter \
-  --name "<GOOGLE_REFRESH_TOKEN_SSM_PATH>" \
+  --name "/notetaker/google-refresh-token" \
   --type SecureString \
   --value "<the new refresh token>" \
-  --overwrite
+  --overwrite \
+  --profile prod --region eu-west-2
 ```
+
+Then **verify it actually landed** — the version should bump and the date should be now:
+
+```bash
+aws ssm describe-parameters --profile prod --region eu-west-2 \
+  --parameter-filters "Key=Name,Values=/notetaker/google-refresh-token" \
+  --query 'Parameters[0].{Version:Version,LastModified:LastModifiedDate}'
+```
+
+### Common mistakes (why your update silently didn't land)
+
+1. **Missing `--overwrite`** → `put-parameter` errors with `ParameterAlreadyExists` and changes
+   nothing. The token stays stale.
+2. **Wrong `--profile`** → you updated the default/test account, not **prod**. Confirm with
+   `aws sts get-caller-identity`.
+3. **Wrong `--region`** → the profiles default to **eu-west-1**, but the param lives in
+   **eu-west-2**. Always pass `--region eu-west-2`.
 
 ## Getting the Lambda to use the new token
 

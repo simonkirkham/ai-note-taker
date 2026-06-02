@@ -14,31 +14,59 @@
 //          http://localhost:4180/oauth2callback
 //      (or whatever PORT you pass below). You can remove it again afterwards.
 //
-// USAGE (from the repo root):
+// USAGE (from the repo root) — just print the token + store command:
 //   GOOGLE_CLIENT_ID=xxx GOOGLE_CLIENT_SECRET=yyy node scripts/remint-google-refresh-token.mjs
 //
-// Optional env:
-//   PORT       loopback port (default 4180) — must match the registered redirect URI
-//   SCOPE      OAuth scope (default https://www.googleapis.com/auth/calendar.readonly)
+// USAGE — mint AND write straight to SSM (recommended; avoids the hand-typed put-parameter,
+// which is the step people get wrong — wrong account, wrong region, or missing --overwrite):
+//   GOOGLE_CLIENT_ID=xxx GOOGLE_CLIENT_SECRET=yyy \
+//   GOOGLE_REFRESH_TOKEN_SSM_PATH=/notetaker/google-refresh-token \
+//   AWS_PROFILE=prod AWS_REGION=eu-west-2 WRITE_SSM=1 \
+//   node scripts/remint-google-refresh-token.mjs
 //
-// The script prints the new refresh_token and the exact `aws ssm put-parameter`
-// command to store it. Nothing is written to disk and the client secret is never logged.
+// Optional env:
+//   PORT        loopback port (default 4180) — must match the registered redirect URI
+//   SCOPE       OAuth scope (default https://www.googleapis.com/auth/calendar.readonly)
+//   WRITE_SSM   "1" to run `aws ssm put-parameter ... --overwrite` for you
+//   AWS_PROFILE / AWS_REGION  passed through to the AWS CLI when WRITE_SSM=1
+//               (NOTE: the prod app runs in eu-west-2, but the prod/test CLI profiles
+//                default to eu-west-1, so AWS_REGION=eu-west-2 is required)
+//
+// The client secret is never logged. The refresh token is printed to stdout; when WRITE_SSM=1
+// it is passed to the AWS CLI via a 0600 temp file (deleted immediately) so it never lands in
+// the process list or your shell history.
 
 import http from "node:http";
 import crypto from "node:crypto";
-import { spawn } from "node:child_process";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { spawn, spawnSync } from "node:child_process";
 
 const CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
 const CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET;
 const PORT = Number(process.env.PORT ?? 4180);
 const SCOPE = process.env.SCOPE ?? "https://www.googleapis.com/auth/calendar.readonly";
 const REDIRECT_URI = `http://localhost:${PORT}/oauth2callback`;
-const SSM_PATH = process.env.GOOGLE_REFRESH_TOKEN_SSM_PATH; // optional, only used to print the store command
+const SSM_PATH = process.env.GOOGLE_REFRESH_TOKEN_SSM_PATH; // used to print/run the store command
+const WRITE_SSM = process.env.WRITE_SSM === "1";
+const AWS_PROFILE = process.env.AWS_PROFILE;
+const AWS_REGION = process.env.AWS_REGION;
 
 if (!CLIENT_ID || !CLIENT_SECRET) {
   console.error(
     "ERROR: set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET (the same values used by the deploy workflow).",
   );
+  process.exit(1);
+}
+
+if (!Number.isInteger(PORT) || PORT < 1 || PORT > 65535) {
+  console.error(`ERROR: PORT must be an integer 1-65535 (got "${process.env.PORT}").`);
+  process.exit(1);
+}
+
+if (WRITE_SSM && !SSM_PATH) {
+  console.error("ERROR: WRITE_SSM=1 requires GOOGLE_REFRESH_TOKEN_SSM_PATH to be set.");
   process.exit(1);
 }
 
@@ -107,6 +135,46 @@ async function exchangeCodeForTokens(code) {
   return body;
 }
 
+// Writes the token to SSM via the AWS CLI, passing the value through a 0600 temp file so it
+// never appears in the process list. Returns true on success. Honours AWS_PROFILE / AWS_REGION.
+function storeInSsm(token) {
+  const tmp = path.join(os.tmpdir(), `gcal-refresh-${process.pid}.txt`);
+  fs.writeFileSync(tmp, token, { mode: 0o600 });
+  try {
+    const args = [
+      "ssm", "put-parameter",
+      "--name", SSM_PATH,
+      "--type", "SecureString",
+      "--value", `file://${tmp}`,
+      "--overwrite",
+    ];
+    if (AWS_PROFILE) args.push("--profile", AWS_PROFILE);
+    if (AWS_REGION) args.push("--region", AWS_REGION);
+
+    const where =
+      `${SSM_PATH}` +
+      (AWS_PROFILE ? ` [profile ${AWS_PROFILE}]` : "") +
+      (AWS_REGION ? ` [region ${AWS_REGION}]` : "");
+    console.log(`\nWriting refresh token to SSM: ${where} ...`);
+
+    const r = spawnSync("aws", args, { stdio: ["ignore", "inherit", "inherit"] });
+    if (r.error) {
+      console.error(`Failed to run the AWS CLI (${r.error.message}). Store it manually (command above).`);
+      return false;
+    }
+    if (r.status !== 0) {
+      console.error(`aws ssm put-parameter exited ${r.status}. Store it manually (command above).`);
+      return false;
+    }
+    console.log(
+      "✅ Stored. The deployed Lambda self-heals on its next calendar call — no redeploy needed.",
+    );
+    return true;
+  } finally {
+    fs.rmSync(tmp, { force: true });
+  }
+}
+
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, `http://localhost:${PORT}`);
   if (url.pathname !== "/oauth2callback") {
@@ -159,18 +227,25 @@ const server = http.createServer(async (req, res) => {
     console.log("\n=== NEW GOOGLE CALENDAR REFRESH TOKEN ===\n");
     console.log(tokens.refresh_token);
     console.log("\n=========================================\n");
-    console.log("Store it in SSM (note: SecureString):\n");
+
+    if (WRITE_SSM) {
+      const ok = storeInSsm(tokens.refresh_token);
+      process.exit(ok ? 0 : 1);
+    }
+
+    console.log("Store it in SSM (SecureString). Re-run with WRITE_SSM=1 to do this automatically:\n");
     console.log(
       `  aws ssm put-parameter \\\n` +
         `    --name "${SSM_PATH ?? "<GOOGLE_REFRESH_TOKEN_SSM_PATH>"}" \\\n` +
         `    --type SecureString \\\n` +
         `    --value "${tokens.refresh_token}" \\\n` +
-        `    --overwrite\n`,
+        `    --overwrite${AWS_PROFILE ? ` \\\n    --profile ${AWS_PROFILE}` : ""}` +
+        `${AWS_REGION ? ` \\\n    --region ${AWS_REGION}` : ""}\n`,
     );
     console.log(
-      "Then recycle the Lambda (redeploy, or bump a config var) — GoogleCalendarClient caches\n" +
-        "the token statically with no TTL, so a running instance won't pick up the new value\n" +
-        "until it is recycled.\n",
+      "Since the self-heal change, you do NOT need to redeploy — the Lambda reloads the token\n" +
+        "from SSM on its next calendar call. (The first call after the update may still fail once\n" +
+        "before the reload kicks in; just retry.)\n",
     );
     process.exit(0);
   } catch (e) {
