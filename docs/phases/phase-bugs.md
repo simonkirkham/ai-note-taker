@@ -12,6 +12,7 @@
 
 ```
 BUG-1  Blank screen presented when 401 returned from API ──────── open
+BUG-2  favicon.ico request 404s / errors on every page load ───── open
 ```
 
 Further bugs will be appended as they are identified.
@@ -43,3 +44,29 @@ Further bugs will be appended as they are identified.
 - A failing test reproduces the blank-screen-on-401 condition before the fix lands, and passes after.
 
 **Key files (to be confirmed):** frontend API client / fetch wrapper and `AuthProvider` in `web/src/`.
+
+---
+
+## BUG-2 — favicon.ico request 404s / errors on every page load
+
+**Status:** Open
+
+**Severity:** Low — cosmetic/log noise; no functional impact, but every page load logs a failed `/favicon.ico` request in the browser console and server/CDN logs.
+
+**Symptom:** On every page load the browser issues a default request for `/favicon.ico` and receives an error (404, or an SPA fallback that isn't a valid icon). There is no favicon configured.
+
+**Suspected cause (confirmed):** `web/index.html` declares no `<link rel="icon" ...>` and `web/public/` contains no `favicon.ico`, so the browser falls back to requesting `/favicon.ico`, which the app does not serve.
+
+**Expected behaviour:** A favicon is served (an actual icon asset, or an inline/SVG data-URI `<link rel="icon">`), so no failed request is logged on page load.
+
+**Repro:**
+1. Open the app with DevTools Network/Console open.
+2. Observe a failed `GET /favicon.ico` on initial load.
+
+**Acceptance criteria:**
+- No failed `/favicon.ico` request on page load (a valid icon is served, or an explicit `<link rel="icon">` is declared).
+- A test/asset assertion guards the favicon is present (e.g. the built `dist/` includes the icon and `index.html` references it).
+
+**Key files (to be confirmed):** `web/index.html`, `web/public/`.
+
+> **Note — not logged here:** the recurring console warning `content.js:360 The kernel 'TopK' for backend 'webgl' is already registered` originates from a **browser extension** (a TensorFlow.js content script injected into the page), not from this app — the codebase has no TensorFlow.js/WebGL usage. It cannot be fixed from our code; reproduce in a clean profile with extensions disabled to confirm.
