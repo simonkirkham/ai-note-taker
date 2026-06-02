@@ -96,6 +96,17 @@ public sealed class AnalyseNoteTests : IClassFixture<ApiFactory>
         Assert.Equal(HttpStatusCode.UnprocessableEntity, resp.StatusCode);
     }
 
+    // Scenario: Whitespace-only content with no transcript is treated as nothing to analyse (10-H)
+    [Fact]
+    public async Task PostAnalyse_WhitespaceContentNoTranscript_Returns422()
+    {
+        var noteId = await CreateNoteWithContentAsync("   ");
+
+        var resp = await _client.PostAsync($"/notes/{noteId}/analyse", Json(new { updateContent = false }));
+
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, resp.StatusCode);
+    }
+
     // Scenario: Content is left untouched when the update-content switch is off (10-H)
     [Fact]
     public async Task PostAnalyse_UpdateContentFalse_LeavesContentUnchanged_StillTagsAndActions()

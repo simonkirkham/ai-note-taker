@@ -50,7 +50,7 @@ public static class TranscriptionHandlers
         if (detail is null || detail.UserId != currentUser.UserId) return Results.NotFound();
 
         var content = detail.Content ?? "";
-        if (string.IsNullOrEmpty(detail.TranscriptText) && string.IsNullOrEmpty(content))
+        if (string.IsNullOrWhiteSpace(detail.TranscriptText) && string.IsNullOrWhiteSpace(content))
             return Results.UnprocessableEntity();
 
         var allowContentRewrite = req?.UpdateContent ?? false;
