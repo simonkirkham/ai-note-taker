@@ -19,7 +19,7 @@
 | CHANGE-5 | Sign-in screen visual polish | Done | — |
 | CHANGE-6 | Collapsible "Filters" control for home tags | Done | — |
 | CHANGE-7 | More colour schemes; drop duplicate Forest theme | Done | CHANGE-2 (shipped) |
-| CHANGE-8 | Theme picker + Sign out always visible without scrolling | Planned | CHANGE-2 (shipped) |
+| CHANGE-8 | Theme picker + Sign out always visible without scrolling | Done | CHANGE-2 (shipped) |
 | CHANGE-9 | Restructure home Filters: Show-older + Tags inside, fix gap | Planned | CHANGE-3, CHANGE-6 (shipped) |
 | CHANGE-10 | Simplify the busy home screen; make action buttons smaller | Planned | — |
 | CHANGE-11 | Preview pull-out `»` becomes `«` when its panel is open | Planned | — |
@@ -745,7 +745,7 @@ Scenario: A new theme choice persists across reloads
 
 ## CHANGE-8 — Theme picker and Sign out always visible without scrolling
 
-**Status:** Planned
+**Status:** ✅ Done — PR #119, deployed 2026-06-02. See [docs/learnings/phase-minor-8-sidebar-footer.md](../learnings/phase-minor-8-sidebar-footer.md).
 
 **Value:** The theme picker and **Sign out** button live in the sidebar footer (`.sidebar-footer`, `App.css` ~L138), pinned to the bottom of the sidebar with `margin-top: auto`. But the desktop sidebar is a grid item in `.app-layout` (`grid-template-columns: 220px auto 1fr; min-height: 100vh`, ~L79) with no fixed height and no internal scroll on the folder list (`.sidebar-folders`, ~L1639). Once a user has more than a handful of folders, the folder tree makes the whole sidebar taller than the viewport, so the document grows and the footer is pushed **below the fold** — the user has to scroll the page down to reach the theme picker or sign out. Both are global, frequently-wanted controls and should always be reachable. This change keeps the sidebar a fixed viewport height and lets only the folder list scroll, so the footer (theme picker + Sign out) is always visible without scrolling.
 
@@ -815,13 +815,13 @@ Scenario: Mobile sidebar is unaffected
 
 ### Acceptance criteria
 
-- [ ] On desktop the theme picker and Sign out button are visible without scrolling the page, regardless of how many folders exist
-- [ ] The sidebar is bound to the viewport height and does not grow the document below the fold
-- [ ] When the folder tree overflows, only the folder list region scrolls; the Home/New Note buttons and the footer stay fixed
-- [ ] The footer keeps its current order (theme picker above Sign out) and styling
-- [ ] The mobile slide-out sidebar is unchanged and still reaches the footer
-- [ ] No markup, component, event, projection, or API change — CSS layout only
-- [ ] Existing `Sidebar` / `ThemePicker` component tests remain green
+- [x] On desktop the theme picker and Sign out button are visible without scrolling the page, regardless of how many folders exist
+- [x] The sidebar is bound to the viewport height and does not grow the document below the fold
+- [x] When the folder tree overflows, only the folder list region scrolls; the Home/New Note buttons and the footer stay fixed
+- [x] The footer keeps its current order (theme picker above Sign out) and styling
+- [x] The mobile slide-out sidebar is unchanged and still reaches the footer
+- [x] No markup, component, event, projection, or API change — CSS layout only
+- [x] Existing `Sidebar` / `ThemePicker` component tests remain green
 
 ---
 
