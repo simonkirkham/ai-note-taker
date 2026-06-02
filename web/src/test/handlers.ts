@@ -42,4 +42,6 @@ export const handlers = [
       region: 'eu-west-1',
     }),
   ),
+  http.post('/api/notes/:noteId/transcription', () => new HttpResponse(null, { status: 204 })),
+  http.post('/api/notes/:noteId/analyse', () => new HttpResponse(null, { status: 204 })),
 ]

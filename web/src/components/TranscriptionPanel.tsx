@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { analyseNote } from '../api';
 import { useTranscription } from '../hooks/useTranscription';
 
@@ -28,6 +28,8 @@ export default function TranscriptionPanel({
   const [analyseError, setAnalyseError] = useState<string | null>(null);
   const [updateContent, setUpdateContent] = useState(false);
   const [includeCallAudio, setIncludeCallAudio] = useState(true);
+  const [autoAnalyse, setAutoAnalyse] = useState(true);
+  const autoAnalyseFiredRef = useRef(false);
 
   useEffect(() => {
     if (transcriptRef.current) {
@@ -42,7 +44,7 @@ export default function TranscriptionPanel({
   const showAnalyseControl = status === 'idle' || status === 'stopped';
   const analyseDisabled = !hasSomethingToAnalyse || isAnalysing;
 
-  async function handleAnalyse() {
+  const handleAnalyse = useCallback(async () => {
     setIsAnalysing(true);
     setAnalyseError(null);
     try {
@@ -53,7 +55,31 @@ export default function TranscriptionPanel({
     } finally {
       setIsAnalysing(false);
     }
-  }
+  }, [noteId, updateContent, onAnalysisComplete]);
+
+  // Auto-analyse on stop: when the switch is on, fire analysis once as soon as a recording
+  // the user made this session stops and actually produced a transcript. Gating on a non-empty
+  // transcript keeps "auto-analyse on stop" about what was just recorded — an empty recording
+  // does not auto-fire (the manual button stays available for content-only analysis). The
+  // fired-ref is rearmed on each new recording so a second recording re-triggers; re-renders
+  // during analysis do not double-fire.
+  useEffect(() => {
+    if (status === 'recording') {
+      autoAnalyseFiredRef.current = false;
+      return;
+    }
+    if (
+      status === 'stopped' &&
+      autoAnalyse &&
+      hasRecordedThisSession &&
+      transcript.trim().length > 0 &&
+      !autoAnalyseFiredRef.current &&
+      !isAnalysing
+    ) {
+      autoAnalyseFiredRef.current = true;
+      void handleAnalyse();
+    }
+  }, [status, autoAnalyse, hasRecordedThisSession, transcript, isAnalysing, handleAnalyse]);
 
   return (
     <div className="transcription-panel" data-testid="transcription-panel">
@@ -146,6 +172,18 @@ export default function TranscriptionPanel({
           </button>
         )}
       </div>
+      {showAnalyseControl && (
+        <label className="transcription-auto-analyse-toggle">
+          <input
+            type="checkbox"
+            data-testid="transcription-auto-analyse-toggle"
+            checked={autoAnalyse}
+            onChange={(e) => setAutoAnalyse(e.target.checked)}
+            disabled={isAnalysing}
+          />
+          Auto-analyse on stop
+        </label>
+      )}
       {showAnalyseControl && (
         <label className="transcription-update-content-toggle">
           <input
