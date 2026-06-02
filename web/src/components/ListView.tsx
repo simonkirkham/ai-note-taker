@@ -76,7 +76,9 @@ export default function ListView({
       const ea = effectiveDate(a);
       const eb = effectiveDate(b);
       if (ea !== eb) return ea < eb ? 1 : -1; // newest effective date first
-      // tiebreak: most recently modified first
+      // tiebreak: most recently modified first. Lexicographic string compare is
+      // valid because both the backend (DateTimeOffset) and the optimistic card
+      // (new Date().toISOString()) emit canonical UTC ISO-8601 (Z-suffixed).
       if (a.lastModifiedAt === b.lastModifiedAt) return 0;
       return a.lastModifiedAt < b.lastModifiedAt ? 1 : -1;
     });
