@@ -33,10 +33,10 @@ public static class CommandInstrumentation
     // as CommandFailed. ConcurrencyException (counted by the event-store decorator) and
     // infrastructure errors are deliberately excluded — the latter must surface as a 500
     // logged at Error by the global handler, not be masked as a domain failure here.
+    // CycleDetectedException derives from InvalidOperationException, so it is covered here too.
     private static bool IsDomainViolation(Exception ex) =>
         ex is InvalidOperationException
             or NoteNotFoundException
             or ActionItemNotFoundException
-            or FolderNotFoundException
-            or CycleDetectedException;
+            or FolderNotFoundException;
 }
