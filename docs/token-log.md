@@ -1154,3 +1154,22 @@ If no agent ran unexpectedly high: write `None — slice ran within expected ran
 **Optimisation suggestions:**
 - **Process (not tokens):** the gate fix is the real value here — future merges check the *latest* deploy run + `gh pr checks` all green, which prevents the rework class entirely.
 - **Pip (−~10 000):** the targeted `vitest run TranscriptionPanel` before each commit is redundant with the pre-commit hook's full-suite run; pick one.
+
+## Slice 10-I — Record AI tag suggestions (`TagsSuggested`)
+
+> Backend-only slice run solo (Breaker + Pip + orchestration in one agent), plus one Hawk round-trip. Hawk count exact from its hand-off (45 500). No frontend suite, so no WSL-vitest tax.
+
+| Agent     | ~Tokens     |
+|-----------|-------------|
+| Breaker   | —           |
+| Pip (spec + impl + docs + orchestration) | 70 000 |
+| Hawk      | 45 500      |
+| Stylist   | —           |
+| Scribe    | 10 000      |
+| **Total** | **~125 000** |
+
+**Why:** Clean, well-scoped slice. The largest single cost was up-front reading of the reference patterns (TagIndex projection trio, NoteCommandHandler serialisation path, spec harness) — much of which doubles as prep for 10-J/10-K, so it amortises across the phase.
+
+**Optimisation suggestions:**
+- **Pip (−~10 000):** the reference reads for 10-J's projection wiring were done during this slice's deploy wait — good overlap; keep doing read-ahead during deploy/CI gaps rather than at the next slice's start.
+- Hawk approved first pass with no blocking findings — the equality-override comment and the integration ordering assertion pre-empted its likely questions, avoiding a second round.

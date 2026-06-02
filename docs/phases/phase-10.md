@@ -14,7 +14,7 @@
 | 10-F | Capture remote participants (system audio mix) | Done | — |
 | 10-G | Analysis evaluation harness | Not Started | — |
 | 10-H | Analyse note content (transcript optional) | Done | — |
-| 10-I | Record AI tag suggestions (`TagsSuggested`) | Not Started | — |
+| 10-I | Record AI tag suggestions (`TagsSuggested`) | Done | — |
 | 10-J | Tag feedback projection | Not Started | 10-I |
 | 10-K | Record AI action-item suggestions (`ActionItemsSuggested`) | Not Started | — |
 | 10-L | Action-item feedback projection | Not Started | 10-K |
@@ -704,7 +704,7 @@ Using the signal (negative-example prompting, suppression) stays out of scope he
 
 ## Slice 10-I — Record AI tag suggestions
 
-**Status:** Not started
+**Status:** Done
 
 **Value:** Each analysis run records, as a first-class event, exactly which tags the AI contributed — so a later deletion of one is unambiguously a rejected AI tag.
 
@@ -757,12 +757,12 @@ Scenario: Analysis records only the newly-applied AI tags
 
 ### Acceptance criteria
 
-- [ ] `RecordTagSuggestions` command + `TagsSuggested` event added; `Note` handles and applies (no-op) them
-- [ ] Empty tag list raises no event; missing/deleted note throws
-- [ ] `AnalyseNote` records the post-dedup applied tag set as `TagsSuggested` before the `NoteTagged` events
-- [ ] Event registered for (de)serialisation; existing streams still rebuild
-- [ ] `docs/event-model.md` + `docs/event-schemas.md` updated
-- [ ] Domain.Specs + Api.Integration specs green; `cdk synth` succeeds
+- [x] `RecordTagSuggestions` command + `TagsSuggested` event added; `Note` handles and applies (no-op) them
+- [x] Empty tag list raises no event; missing/deleted note throws
+- [x] `AnalyseNote` records the post-dedup applied tag set as `TagsSuggested` before the `NoteTagged` events
+- [x] Event registered for (de)serialisation; existing streams still rebuild
+- [x] `docs/event-model.md` + `docs/event-schemas.md` updated
+- [x] Domain.Specs + Api.Integration specs green; `cdk synth` succeeds
 
 ---
 
