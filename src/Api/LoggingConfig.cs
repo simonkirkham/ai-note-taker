@@ -1,3 +1,6 @@
+using Api.Exceptions;
+using EventStore;
+
 namespace Api;
 
 public static class LoggingConfig
@@ -34,11 +37,32 @@ public static class LoggingConfig
         {
             var ex = ctx.Features.Get<Microsoft.AspNetCore.Diagnostics.IExceptionHandlerFeature>()?.Error;
             var log = ctx.RequestServices.GetRequiredService<ILoggerFactory>().CreateLogger("Api");
-            log.LogError(ex, "Unhandled exception on {Method} {Path} CorrelationId={CorrelationId}",
-                ctx.Request.Method, ctx.Request.Path, ctx.TraceIdentifier);
-            ctx.Response.StatusCode = 500;
+            var (status, error) = Map(ex);
+
+            // Only a genuine 500 is a server fault worth an Error-level line on the ops
+            // dashboard; an expected conflict/not-found is logged at Warning so it does
+            // not drown out real errors.
+            if (status == StatusCodes.Status500InternalServerError)
+                log.LogError(ex, "Unhandled exception on {Method} {Path} CorrelationId={CorrelationId}",
+                    ctx.Request.Method, ctx.Request.Path, ctx.TraceIdentifier);
+            else
+                log.LogWarning("Request failed {Method} {Path} -> {Status} {ExceptionType} CorrelationId={CorrelationId}",
+                    ctx.Request.Method, ctx.Request.Path, status, ex?.GetType().Name, ctx.TraceIdentifier);
+
+            ctx.Response.StatusCode = status;
             ctx.Response.Headers[CorrelationIdHeader] = ctx.TraceIdentifier;
-            await ctx.Response.WriteAsJsonAsync(new { error = "internal server error", correlationId = ctx.TraceIdentifier });
+            await ctx.Response.WriteAsJsonAsync(new { error, correlationId = ctx.TraceIdentifier });
         }));
     }
+
+    // Maps domain/store exceptions that escape a handler to a meaningful status, so a
+    // concurrency conflict or a write to a vanished note never surfaces as a 500. This
+    // is the single cross-cutting mapping point — endpoints must not re-map per-route.
+    private static (int Status, string Error) Map(Exception? ex) => ex switch
+    {
+        ConcurrencyException => (StatusCodes.Status409Conflict, "conflict"),
+        NoteNotFoundException or ActionItemNotFoundException or FolderNotFoundException
+            => (StatusCodes.Status404NotFound, "not found"),
+        _ => (StatusCodes.Status500InternalServerError, "internal server error"),
+    };
 }
