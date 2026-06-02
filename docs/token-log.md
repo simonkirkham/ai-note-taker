@@ -1237,3 +1237,22 @@ If no agent ran unexpectedly high: write `None — slice ran within expected ran
 **Optimisation suggestions:**
 - **Process (the real win):** the dead-dispatcher finding is now a memory + a `technical-improvements.md` entry, so 10-L and future projection slices skip the rediscovery cost.
 - **Pip (−~15 000):** the architecture investigation was front-loaded reading; once memoised, 10-L's analogous wiring should be much cheaper.
+
+---
+
+## Slice 10-K — Record AI action-item suggestions (`ActionItemsSuggested`)
+
+> Backend-only slice run solo, symmetric to 10-I. One Hawk round-trip, first-pass approval. Hawk count exact from its hand-off (40 500).
+
+| Agent     | ~Tokens     |
+|-----------|-------------|
+| Breaker   | —           |
+| Pip (spec + impl + docs + orchestration) | 60 000 |
+| Hawk      | 40 500      |
+| Stylist   | —           |
+| Scribe    | 10 000      |
+| **Total** | **~110 000** |
+
+**Why:** The cheapest Phase-10 feedback slice so far — a near-mechanical copy of 10-I (command + collection event + handler hook + registration + docs). The 10-I equality-override learning and the 10-J memory meant zero rediscovery; almost all cost was the symmetric code and its two integration tests.
+
+**Optimisation note:** three slices in (10-I→10-K), the marginal cost is falling as patterns memoise. 10-L (projection) will cost more again — it's a 10-J-shaped slice (store + rebuild + CDK + two-handler wiring), not a 10-I-shaped one.

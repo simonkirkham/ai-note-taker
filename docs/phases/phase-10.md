@@ -16,7 +16,7 @@
 | 10-H | Analyse note content (transcript optional) | Done | — |
 | 10-I | Record AI tag suggestions (`TagsSuggested`) | Done | — |
 | 10-J | Tag feedback projection | Done | 10-I |
-| 10-K | Record AI action-item suggestions (`ActionItemsSuggested`) | Not Started | — |
+| 10-K | Record AI action-item suggestions (`ActionItemsSuggested`) | Done | — |
 | 10-L | Action-item feedback projection | Not Started | 10-K |
 | 10-M | Stamp modelId / promptVersion on the suggestion events | Not Started | 10-G, 10-I, 10-K |
 
@@ -848,7 +848,7 @@ Scenario: The projection rebuilds from the event stream
 
 ## Slice 10-K — Record AI action-item suggestions
 
-**Status:** Not started
+**Status:** Done
 
 **Value:** Each analysis run records which action items the AI extracted (by ID), so a later deletion or completion of one is attributable to the AI.
 
@@ -895,12 +895,12 @@ Scenario: Analysis records the IDs of the action items it created
 
 ### Acceptance criteria
 
-- [ ] `RecordActionItemSuggestions` command + `ActionItemsSuggested` event added; `Note` handles and applies (no-op) them
-- [ ] Empty list raises nothing; missing/deleted note throws
-- [ ] `AnalyseNote` records the IDs of the action items it created, after creating them
-- [ ] Event registered for (de)serialisation; existing streams still rebuild
-- [ ] `docs/event-model.md` + `docs/event-schemas.md` updated
-- [ ] Domain.Specs + Api.Integration specs green; `cdk synth` succeeds
+- [x] `RecordActionItemSuggestions` command + `ActionItemsSuggested` event added; `Note` handles and applies (no-op) them
+- [x] Empty list raises nothing; missing/deleted note throws
+- [x] `AnalyseNote` records the IDs of the action items it created, after creating them
+- [x] Event registered for (de)serialisation; existing streams still rebuild
+- [x] `docs/event-model.md` + `docs/event-schemas.md` updated
+- [x] Domain.Specs + Api.Integration specs green; `cdk synth` succeeds
 
 ---
 
