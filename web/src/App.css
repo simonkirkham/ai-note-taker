@@ -923,12 +923,20 @@ body {
 
 .todo-item {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
   gap: 0.625rem;
   padding: 0.625rem 0;
   border-bottom: 1px solid var(--color-border);
   font-size: 0.9375rem;
+}
+
+.todo-item-content {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.125rem;
 }
 
 .todo-item:last-child {
@@ -950,13 +958,13 @@ body {
 
 .todo-description {
   color: var(--color-text);
-  flex: 1;
+  overflow-wrap: anywhere;
 }
 
 .todo-note-title {
   color: var(--color-text-muted);
   font-size: 0.8125rem;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
   font-style: italic;
 }
 

@@ -130,8 +130,10 @@ export default function TodoSection() {
                     disabled={busy.has(item.itemId)}
                     onChange={() => handleComplete(item)}
                   />
-                  <span className="todo-description">{item.description}</span>
-                  {item.noteTitle && <span className="todo-note-title">{item.noteTitle}</span>}
+                  <div className="todo-item-content">
+                    <span className="todo-description">{item.description}</span>
+                    {item.noteTitle && <span className="todo-note-title">{item.noteTitle}</span>}
+                  </div>
                   <button
                     className="todo-delete-btn"
                     aria-label={`Delete "${item.description}"`}
@@ -158,8 +160,10 @@ export default function TodoSection() {
                 <ul id="todo-done-list" className="todo-done-list">
                   {doneItems.map((item) => (
                     <li key={item.itemId} className="todo-item todo-item--done">
-                      <span className="todo-description">{item.description}</span>
-                      {item.noteTitle && <span className="todo-note-title">{item.noteTitle}</span>}
+                      <div className="todo-item-content">
+                        <span className="todo-description">{item.description}</span>
+                        {item.noteTitle && <span className="todo-note-title">{item.noteTitle}</span>}
+                      </div>
                       <button
                         className="todo-reopen-btn"
                         aria-label={`Reopen "${item.description}"`}
