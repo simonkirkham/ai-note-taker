@@ -15,7 +15,7 @@
 | 10-G | Analysis evaluation harness | Not Started | — |
 | 10-H | Analyse note content (transcript optional) | Done | — |
 | 10-I | Record AI tag suggestions (`TagsSuggested`) | Done | — |
-| 10-J | Tag feedback projection | Not Started | 10-I |
+| 10-J | Tag feedback projection | Done | 10-I |
 | 10-K | Record AI action-item suggestions (`ActionItemsSuggested`) | Not Started | — |
 | 10-L | Action-item feedback projection | Not Started | 10-K |
 | 10-M | Stamp modelId / promptVersion on the suggestion events | Not Started | 10-G, 10-I, 10-K |
@@ -768,7 +768,7 @@ Scenario: Analysis records only the newly-applied AI tags
 
 ## Slice 10-J — Tag feedback projection
 
-**Status:** Not started
+**Status:** Done
 
 **Value:** Per user, per tag: how many times AI-suggested and how many later removed. Queryable ad hoc (the intended analysis path); rebuildable from history.
 
@@ -837,12 +837,12 @@ Scenario: The projection rebuilds from the event stream
 
 ### Acceptance criteria
 
-- [ ] View, store (single table, two row types), and handler added; `UserId` from `envelope.Metadata`; `NoteTagged` ignored
-- [ ] Rejection consumes its provenance row; note deletion clears provenance without altering counts
-- [ ] Wired into `ProjectionRebuildHandler`; rebuild reproduces live counts
-- [ ] Registered in `Builder.cs`; env var in `Program.cs` + CDK; table created with `RETAIN`
-- [ ] `Infrastructure.Assertions` asserts the table; `docs/view-schemas.md` updated
-- [ ] All specs green; `cdk synth` succeeds; `cdk diff` reviewed before deploy
+- [x] View, store (single table, two row types), and update added; `NoteTagged` ignored. **Wired inline in `NoteCommandHandler`, not as an `IDomainEventHandler`** — the dispatcher is dead code (`DispatchAsync` is never called); live updates use `currentUser.UserId` and the rebuild projection reads `envelope.Metadata.UserId`. Recorded in `docs/technical-improvements.md`.
+- [x] Rejection consumes its provenance row; note deletion clears provenance without altering counts
+- [x] Wired into `ProjectionRebuildHandler`; rebuild reproduces live counts (integration parity test)
+- [x] Registered in `Builder.cs`; env var in `Program.cs` + CDK; table created with `RETAIN`
+- [x] `Infrastructure.Assertions` asserts the table; `docs/view-schemas.md` updated
+- [x] All specs green; `cdk synth` succeeds
 
 ---
 

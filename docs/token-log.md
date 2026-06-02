@@ -1216,3 +1216,24 @@ If no agent ran unexpectedly high: write `None — slice ran within expected ran
 > Small CSS-only home-view tweak (one scoped rule). The notable cost was not tokens but a **numbering collision**: a concurrent session claimed CHANGE-10/11 in the same backlog doc while this was in flight, overwriting its CHANGE-10 entry — so its doc number became CHANGE-12 at Scribe while the merged commit/branch keep "minor-10". First-pass Hawk approval; ~70k total (build + Hawk + prototype + collision cleanup).
 
 **Optimisation note:** reserve the backlog number with a tiny table-row commit *before* building when another session may touch the same doc; re-read the doc at Scribe to detect a clobber. One wasted commit cycle came from committing before `npm install` finished (`eslint: not found`).
+
+---
+
+## Slice 10-J — Tag feedback projection
+
+> Backend-only projection slice run solo (Breaker + Pip + orchestration), plus one Hawk round-trip whose finding (a latent rebuild-parity divergence) was fixed in-slice. Hawk count exact from its hand-off (56 500). The dead-`IDomainEventDispatcher` investigation + tech-debt write-up is folded into Pip's count.
+
+| Agent     | ~Tokens     |
+|-----------|-------------|
+| Breaker   | —           |
+| Pip (spec + impl + arch investigation + docs + orchestration) | 120 000 |
+| Hawk      | 56 500      |
+| Stylist   | —           |
+| Scribe    | 12 000      |
+| **Total** | **~188 000** |
+
+**Why:** Larger than 10-I for three real reasons. (1) A meatier slice — a two-row-type store, a rebuild projection, inline command-handler wiring, CDK table + grant + env var, three test layers. (2) The **dead-dispatcher discovery** required grepping all of `src`/`tests` to confirm `DispatchAsync` is never called, then a maintainer decision and a tech-debt write-up. (3) Hawk's parity finding triggered a fix + extra spec + re-push (a second CI cycle).
+
+**Optimisation suggestions:**
+- **Process (the real win):** the dead-dispatcher finding is now a memory + a `technical-improvements.md` entry, so 10-L and future projection slices skip the rediscovery cost.
+- **Pip (−~15 000):** the architecture investigation was front-loaded reading; once memoised, 10-L's analogous wiring should be much cheaper.
