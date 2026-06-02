@@ -1,9 +1,34 @@
 import { useCallback, useState } from "react";
 
-export type Theme = "teal" | "forest" | "midnight";
+export type Theme =
+  | "teal"
+  | "indigo"
+  | "rose"
+  | "amber"
+  | "violet"
+  | "sky"
+  | "sepia"
+  | "contrast"
+  | "midnight"
+  | "slate"
+  | "carbon"
+  | "plum";
 
 const STORAGE_KEY = "note-taker-theme";
-const THEMES: readonly Theme[] = ["teal", "forest", "midnight"];
+const THEMES: readonly Theme[] = [
+  "teal",
+  "indigo",
+  "rose",
+  "amber",
+  "violet",
+  "sky",
+  "sepia",
+  "contrast",
+  "midnight",
+  "slate",
+  "carbon",
+  "plum",
+];
 const DEFAULT_THEME: Theme = "teal";
 
 // Reads the persisted theme, falling back to Teal for a missing or

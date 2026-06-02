@@ -1,9 +1,21 @@
 import { Theme, useTheme } from "../hooks/useTheme";
 
-const OPTIONS: { value: Theme; label: string }[] = [
+const LIGHT_THEMES: { value: Theme; label: string }[] = [
   { value: "teal", label: "Teal" },
-  { value: "forest", label: "Forest" },
+  { value: "indigo", label: "Indigo" },
+  { value: "rose", label: "Rose" },
+  { value: "amber", label: "Amber" },
+  { value: "violet", label: "Violet" },
+  { value: "sky", label: "Sky" },
+  { value: "sepia", label: "Sepia" },
+  { value: "contrast", label: "Contrast" },
+];
+
+const DARK_THEMES: { value: Theme; label: string }[] = [
   { value: "midnight", label: "Midnight" },
+  { value: "slate", label: "Slate" },
+  { value: "carbon", label: "Carbon" },
+  { value: "plum", label: "Plum" },
 ];
 
 export default function ThemePicker() {
@@ -20,11 +32,20 @@ export default function ThemePicker() {
         value={theme}
         onChange={(e) => setTheme(e.target.value as Theme)}
       >
-        {OPTIONS.map((o) => (
-          <option key={o.value} value={o.value}>
-            {o.label}
-          </option>
-        ))}
+        <optgroup label="Light">
+          {LIGHT_THEMES.map((o) => (
+            <option key={o.value} value={o.value}>
+              {o.label}
+            </option>
+          ))}
+        </optgroup>
+        <optgroup label="Dark">
+          {DARK_THEMES.map((o) => (
+            <option key={o.value} value={o.value}>
+              {o.label}
+            </option>
+          ))}
+        </optgroup>
       </select>
     </div>
   );
