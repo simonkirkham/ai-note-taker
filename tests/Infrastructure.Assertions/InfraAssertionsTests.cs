@@ -862,29 +862,11 @@ public class InfraAssertionsTests
     }
 
     [Fact]
-    public void Alarms_ConcurrencyConflictAlarmWiredToTopic()
+    public void Alarms_ErrorRateAndLatencyAlarmsExist()
     {
-        // Domain metric is queried via SUM(SEARCH(...)) so it matches any dimension
-        // set Powertools adds (Service alongside Aggregate), like the dashboard.
-        _template.HasResourceProperties("AWS::CloudWatch::Alarm", Match.ObjectLike(new Dictionary<string, object>
-        {
-            ["AlarmName"] = "notetaker-concurrency-conflicts",
-            ["Threshold"] = 10,
-            ["ComparisonOperator"] = "GreaterThanThreshold",
-            ["Metrics"] = Match.ArrayWith(new object[]
-            {
-                Match.ObjectLike(new Dictionary<string, object>
-                {
-                    ["Expression"] = Match.StringLikeRegexp(".*SUM\\(SEARCH.*MetricName.*ConcurrencyConflict.*")
-                })
-            }),
-            ["AlarmActions"] = Match.AnyValue()
-        }));
-    }
-
-    [Fact]
-    public void Alarms_AllThreeAlarmsExist()
-    {
-        _template.ResourceCountIs("AWS::CloudWatch::Alarm", 3);
+        // Two alarms: error-rate + P99 latency. A concurrency-conflict alarm is
+        // deferred — it would need SUM(SEARCH(...)), which CloudWatch rejects on
+        // metric alarms (only allowed on dashboard widgets). See phase-12 12-E.
+        _template.ResourceCountIs("AWS::CloudWatch::Alarm", 2);
     }
 }

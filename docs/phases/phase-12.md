@@ -10,7 +10,7 @@
 | 12-B | Domain metrics (EMF) and event-sourcing log fields | Done | 12-A |
 | 12-C | Distributed tracing with AWS X-Ray | Done | 12-A |
 | 12-D | CloudWatch Dashboard and the "all errors" view | Done | 12-A, 12-B |
-| 12-E | CloudWatch Alarms and SNS notifications | Not Started | 12-B |
+| 12-E | CloudWatch Alarms and SNS notifications | Done (concurrency alarm deferred) | 12-B |
 | 12-F | Frontend monitoring (CloudWatch RUM) | Done | — |
 | 12-G | Observability runbook and saved Logs Insights queries | Not Started | 12-A–12-F |
 | 12-H | Unified error view — surface frontend (RUM) errors on the ops dashboard | Not Started | 12-D, 12-F |
@@ -302,7 +302,7 @@ Scenario: The dashboard URL is output by the stack
 
 ## Slice 12-E — CloudWatch Alarms and SNS notifications
 
-**Status:** Not started
+**Status:** Done — error-rate + P99 latency alarms shipped; concurrency-conflict alarm deferred (CloudWatch rejects `SEARCH` on metric alarms — see acceptance criteria)
 
 **Value:** Problems find you instead of you finding them. An SNS topic emails a subscriber when the Lambda error rate exceeds 1%, when P99 latency exceeds 5s, or when optimistic-concurrency conflicts spike — turning the dashboard from something you remember to check into something that pages you.
 
@@ -352,13 +352,13 @@ Scenario: Concurrency-conflict alarm is wired
 
 ### Acceptance criteria
 
-- [ ] SNS `notetaker-alarms` topic defined with an email subscription to the configured address; address guarded with `string.IsNullOrEmpty` if sourced from config/secret
-- [ ] Error-rate alarm (>1% / 5 min, 2 periods, `NOT_BREACHING` on missing data) wired to the topic
-- [ ] P99 latency alarm (>5s / 5 min) wired to the topic
-- [ ] Concurrency-conflict alarm (>10 / 5 min) wired to the topic
-- [ ] `Infrastructure.Assertions` asserts the topic, subscription, and all three alarm thresholds + actions
-- [ ] Alarm verified manually post-deploy via `aws cloudwatch set-alarm-state` (notification arrives)
-- [ ] `cdk synth` succeeds; `cdk diff` reviewed before deploy
+- [x] SNS `notetaker-alarms` topic defined with an email subscription to the configured address; address guarded with `string.IsNullOrEmpty` if sourced from config/secret
+- [x] Error-rate alarm (>1% / 5 min, 2 periods, `NOT_BREACHING` on missing data) wired to the topic
+- [x] P99 latency alarm (>5s / 5 min) wired to the topic
+- [ ] Concurrency-conflict alarm (>10 / 5 min) wired to the topic — **deferred:** `ConcurrencyConflict` is emitted with per-`Aggregate` dimensions (plus Powertools' `Service` dimension), so aggregating across aggregates needs `SUM(SEARCH(...))` — which CloudWatch **rejects on metric alarms** ("SEARCH is not supported on Metric Alarms"; it is allowed only on dashboard widgets, which is why the 12-D dashboard uses it). The initial implementation shipped this and the deploy failed at the CloudWatch API (synth/`Template.FromStack` don't catch it). Alarming on it requires first emitting an alarmable dimensionless (or `Service`-only) `ConcurrencyConflict` metric — a follow-up. The dashboard still surfaces the conflict trend.
+- [x] `Infrastructure.Assertions` asserts the topic, subscription, and the two shipped alarm thresholds + actions
+- [ ] Alarm verified manually post-deploy via `aws cloudwatch set-alarm-state` (notification arrives) — pending
+- [x] `cdk synth` succeeds; `cdk diff` reviewed before deploy
 
 ---
 
