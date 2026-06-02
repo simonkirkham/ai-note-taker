@@ -142,6 +142,43 @@ describe('401 response', () => {
   })
 })
 
+// ─── Cold-load token seeding (BUG-1) — no fake timers (MSW is async) ──────────
+
+describe('cold load token seeding', () => {
+  beforeEach(() => vi.stubEnv('VITE_GOOGLE_CLIENT_ID', 'test-client-id'))
+  afterEach(() => {
+    vi.unstubAllEnvs()
+    localStorage.removeItem('id_token')
+  })
+
+  it('attaches the persisted token to the first data fetch on cold load', async () => {
+    // BUG-1: the persisted token was only seeded into the in-memory store in a parent
+    // effect, which runs AFTER child data-fetch effects — so the first fetches went out
+    // with no Authorization header, got 401, and left a blank screen. The token must be
+    // seeded synchronously so the very first request carries it.
+    const token = makeToken(65)
+    localStorage.setItem('id_token', token)
+
+    let captured = false
+    let firstAuth: string | null = null
+    server.use(
+      http.get('/api/notes/cards', ({ request }) => {
+        if (!captured) {
+          captured = true
+          firstAuth = request.headers.get('authorization')
+        }
+        return HttpResponse.json({ cards: [] })
+      }),
+    )
+
+    // No initialToken — exercise the real persisted-token cold-load path.
+    render(<AuthProvider><App /></AuthProvider>)
+
+    await screen.findByTestId('sidebar-toggle')
+    expect(firstAuth).toBe(`Bearer ${token}`)
+  })
+})
+
 // ─── Banner UI ────────────────────────────────────────────────────────────────
 
 describe('session-expired banner', () => {

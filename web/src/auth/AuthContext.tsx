@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react'
 import { buildAuthUrl, exchangeCode, generateCodeChallenge, generateCodeVerifier } from './pkce'
-import { clearToken, loadPersistedToken, setToken, setOnForbidden, setOnUnauthorized } from './tokenStore'
+import { clearToken, loadPersistedToken, setToken, setOnForbidden, setOnRefresh, setOnUnauthorized } from './tokenStore'
 import { getExp, REFRESH_LEAD_MS, useGoogleAuth } from './useGoogleAuth'
 import { attemptSilentRefresh } from './silentRefresh'
 
@@ -31,7 +31,15 @@ export function AuthProvider({
   // gate so local dev and E2E tests work without real Google credentials.
   const clientId = import.meta.env.VITE_GOOGLE_CLIENT_ID ?? ''
   const persisted = !initialToken && clientId ? loadPersistedToken() : null
-  const [idToken, setIdToken] = useState<string | null>(initialToken ?? persisted ?? (clientId ? null : 'no-auth'))
+  // Seed the in-memory token synchronously, in the lazy initialiser, so it is set before any
+  // child data-fetch effect runs (child effects run before parent effects). Otherwise the
+  // first fetches go out with no Authorization header, get 401, and leave a blank screen.
+  // The initialiser runs once on mount, so it never re-seeds after sign-out.
+  const [idToken, setIdToken] = useState<string | null>(() => {
+    const initial = initialToken ?? persisted ?? (clientId ? null : 'no-auth')
+    if (initial && initial !== 'no-auth') setToken(initial)
+    return initial
+  })
   const [forbidden, setForbidden] = useState(false)
   const [sessionExpired, setSessionExpired] = useState(false)
   const mounted = useRef(false)
@@ -63,7 +71,6 @@ export function AuthProvider({
   useEffect(() => { cancelRefreshRef.current = cancelRefresh }, [cancelRefresh])
 
   useEffect(() => {
-    if (persisted) setToken(persisted)
     setOnForbidden(() => {
       clearToken()
       setForbidden(true)
@@ -74,7 +81,18 @@ export function AuthProvider({
       cancelRefresh()
       setSessionExpired(true)
     })
-  }, [cancelRefresh])
+    // A 401 from the API layer asks for a one-shot silent refresh; on success the new token
+    // is adopted into React state, on failure api.ts falls back to triggerUnauthorized.
+    setOnRefresh(async () => {
+      if (!clientId) return null
+      const newToken = await attemptSilentRefresh(clientId).catch(() => null)
+      if (newToken) {
+        handleRefreshSuccess(newToken)
+        return newToken
+      }
+      return null
+    })
+  }, [cancelRefresh, clientId, handleRefreshSuccess])
 
   // Schedule token refresh whenever a real token is loaded or replaced
   useEffect(() => {
@@ -111,10 +129,8 @@ export function AuthProvider({
     if (mounted.current) return
     mounted.current = true
 
-    if (initialToken) {
-      setToken(initialToken)
-      return
-    }
+    // Token already seeded synchronously in the useState initialiser; just skip OAuth exchange.
+    if (initialToken) return
 
     if (!clientId) return
 

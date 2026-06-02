@@ -16,6 +16,7 @@ CHANGE-2  Theme selection (Teal / Forest / Midnight) ─────────
 CHANGE-3  Home screen shows today's notes by default ──────────── independent
 CHANGE-4  To-do rows wrap cleanly with long text + note title ─── independent
 CHANGE-5  Sign-in screen visual polish ───────────────────────── independent
+CHANGE-6  Collapsible "Filters" control for home tags ─────────── independent
 ```
 
 Tweaks are appended here as they are identified. Use the same per-item format: a short title, **Status**, value/symptom, and acceptance criteria (with scenarios and approach where the change warrants them).
@@ -515,3 +516,100 @@ Scenario: No-auth bypass is unaffected
 - [ ] Layout holds on mobile and desktop widths
 - [ ] Existing `Auth` / `SignInPage` tests remain green
 - [ ] Stylist (ui-ux-pro-max) run recorded; result consistent with `web/design-system/MASTER.md`
+
+---
+
+## CHANGE-6 — Collapsible "Filters" control for home tags
+
+**Status:** Planned
+
+**Value:** On the home screen the tag filter (`TagFilter`) currently sits at the top of the home-left column, permanently expanded, pushing the Notes list down and adding visual noise before the user has expressed any intent to filter. Tag filtering is an occasional action, not a constant one. This change moves the tag filter **inside the Notes section, under a collapsible "Filters" control that defaults to collapsed** — so the home screen leads with the notes, and filtering is one click away when wanted.
+
+**Backend changes:** None. Pure frontend layout/interaction change. Tag data, the filter logic, AND the today/older date filter (CHANGE-3) are all unchanged — only the *placement and visibility* of the existing `TagFilter` control changes.
+
+---
+
+### Behaviour
+
+- **Scope:** the **home view only** (`ListView` rendered with no `currentFolderId`). Folder views are out of scope for this item — leave their `TagFilter` placement as-is unless a follow-up says otherwise.
+- The tag filter moves from the top of `home-left` to **inside the Notes section** (`.note-cards-section`), beneath the existing Notes header/`Show older notes` row.
+- A **"Filters" toggle** (button) controls visibility of the `TagFilter`. **Defaults to collapsed** — the `TagFilter` is not shown until the user expands it.
+- When collapsed, only the "Filters" control (with a chevron/indicator) is visible; expanding reveals the tag pills, AND/OR mode toggle, and Clear control exactly as today.
+- **Active-filter affordance:** when tags are selected but the panel is collapsed, the control must indicate that a filter is active (e.g. a count badge "Filters (2)" or a dot) so a user isn't confused by a filtered list with no visible filter. Expanding still shows the full control; Clear still works.
+- Collapsed/expanded is **component UI state** (`useState`), not persisted — a page reload returns to the default collapsed state. (Persisting the open/closed state is a possible future tweak, not in scope.)
+- The filter continues to **compose with the CHANGE-3 date filter**: collapsing the Filters panel does not change which notes are shown; it only hides the controls. Selected tags continue to narrow the (date-filtered) list whether the panel is open or closed.
+
+---
+
+### Approach
+
+`ListView` already owns `selectedTags` / `filterMode` and renders `<TagFilter />` in the `home-left` column above the Notes section. Move that render **into** the `.note-cards-section`, wrapped in a collapsible region:
+
+1. Add `const [filtersOpen, setFiltersOpen] = useState(false)` (default collapsed) to `ListView`.
+2. Render a "Filters" toggle button inside the Notes section header area, showing an active-count when `selectedTags.length > 0` and collapsed.
+3. Conditionally render the existing `<TagFilter />` below the toggle when `filtersOpen` is true. No change to `TagFilter` itself or to the filter logic.
+4. Remove the old top-of-`home-left` `TagFilter` render so it isn't duplicated.
+5. Add accessible wiring: the toggle uses `aria-expanded` and `aria-controls`; the panel has a matching `id`.
+
+Keep the folder-view branch untouched.
+
+---
+
+### Key implementation files
+
+**Frontend (modified):**
+- `web/src/components/ListView.tsx` — add `filtersOpen` state; move `<TagFilter />` into the Notes section behind the collapsible "Filters" toggle (home branch only); active-count badge when collapsed with tags selected
+- `web/src/App.css` — styles for the `.filters-toggle` control and the collapsible panel; chevron/indicator and active-state affordance
+
+No API, event, projection, or `TagFilter` component change.
+
+---
+
+### Scenarios
+
+```
+Scenario: Filters are collapsed by default on the home screen
+  Given I open the home screen
+  Then  the tag filter controls are not visible
+  And   a "Filters" control is shown in the Notes section
+
+Scenario: Expanding Filters reveals the tag controls
+  Given the Filters control is collapsed
+  When  I click "Filters"
+  Then  the tag pills, AND/OR mode toggle, and Clear control are shown
+
+Scenario: Collapsing Filters hides the controls again
+  Given the Filters panel is expanded
+  When  I click "Filters"
+  Then  the tag controls are hidden
+
+Scenario: A collapsed Filters control still indicates active filters
+  Given I have selected the tag "work"
+  When  I collapse the Filters panel
+  Then  the Filters control indicates that a filter is active (e.g. a count)
+  And   the notes list remains filtered to "work"
+
+Scenario: Filters default to collapsed after reload
+  Given I expanded Filters and selected a tag
+  When  I reload the home screen
+  Then  the Filters control is collapsed again
+  And   (filter open/closed state is not persisted)
+
+Scenario: Folder view is unaffected
+  Given I open a folder
+  Then  the folder view's tag filter behaves exactly as before this change
+```
+
+---
+
+### Acceptance criteria
+
+- [ ] On the home screen the tag filter is rendered inside the Notes section under a "Filters" control, not at the top of the column
+- [ ] The Filters control defaults to collapsed; the tag controls are hidden until expanded
+- [ ] Expanding/collapsing toggles the tag pills, mode toggle, and Clear control; the toggle exposes `aria-expanded`/`aria-controls`
+- [ ] When collapsed with tags selected, the control shows an active-filter affordance (e.g. a count)
+- [ ] Filtering still composes with the CHANGE-3 today/older date filter; collapsing does not change which notes are listed
+- [ ] Open/closed state is component-local (not persisted); reload returns to collapsed
+- [ ] Folder view tag filtering is unchanged
+- [ ] No API/event/projection/`TagFilter` change — frontend layout/interaction only
+- [ ] Component tests cover: default collapsed, expand reveals controls, collapse hides them, active-count when collapsed with a selected tag, filtering composes with the date filter
