@@ -8,15 +8,15 @@
 
 ---
 
-## Bug list
+## Summary
 
-```
-BUG-1  Blank screen presented when 401 returned from API ──────────────── done
-BUG-2  favicon.ico request 404s / errors on every page load ───────────── open
-BUG-3  Data Protection warnings on every Lambda cold start (log noise) ── open
-BUG-4  ConcurrencyException surfaces as unhandled 500 on note writes ──── open
-BUG-5  Renaming a deleted note throws unhandled 500 instead of 404 ────── open
-```
+| Item | Summary | Status | Depends on |
+|------|---------|--------|------------|
+| BUG-1 | Blank screen presented when 401 returned from API | Done | — |
+| BUG-2 | favicon.ico request 404s / errors on every page load | Done | — |
+| BUG-3 | Data Protection warnings on every Lambda cold start (log noise) | Open | — |
+| BUG-4 | ConcurrencyException surfaces as unhandled 500 on note writes | Open | — |
+| BUG-5 | Renaming a deleted note throws unhandled 500 instead of 404 | Open | — |
 
 Further bugs will be appended as they are identified.
 
@@ -56,7 +56,7 @@ Further bugs will be appended as they are identified.
 
 ## BUG-2 — favicon.ico request 404s / errors on every page load
 
-**Status:** Open
+**Status:** Done — fixed in PR #103 (squash commit `8ef329e`), deployed to main 2026-06-02. See [docs/learnings/phase-bug-2-favicon.md](../learnings/phase-bug-2-favicon.md).
 
 **Severity:** Low — cosmetic/log noise; no functional impact, but every page load logs a failed `/favicon.ico` request in the browser console and server/CDN logs.
 
@@ -71,8 +71,12 @@ Further bugs will be appended as they are identified.
 2. Observe a failed `GET /favicon.ico` on initial load.
 
 **Acceptance criteria:**
-- No failed `/favicon.ico` request on page load (a valid icon is served, or an explicit `<link rel="icon">` is declared).
-- A test/asset assertion guards the favicon is present (e.g. the built `dist/` includes the icon and `index.html` references it).
+- [x] No failed `/favicon.ico` request on page load (a valid icon is served, or an explicit `<link rel="icon">` is declared).
+- [x] A test/asset assertion guards the favicon is present — `web/src/__tests__/Favicon.test.ts` asserts `index.html` declares an icon link and the referenced asset exists in `web/public/`.
+
+**Fix:** added `web/public/favicon.svg` (a teal note-card glyph) and declared `<link rel="icon" type="image/svg+xml" href="/favicon.svg" />` in `web/index.html`, so the browser resolves the icon instead of falling back to `/favicon.ico`.
+
+**Key files:** `web/index.html`, `web/public/favicon.svg`, `web/src/__tests__/Favicon.test.ts`.
 
 **Key files (to be confirmed):** `web/index.html`, `web/public/`.
 

@@ -4,6 +4,24 @@ Approximate tokens consumed per slice, broken down by agent. Recorded by Scribe 
 
 ---
 
+## BUG-2 — favicon.ico 404 on every page load
+
+> **Note:** A recovery slice. The fix (Breaker + Pip) was written and staged in a prior session; a VS Code crash interrupted it before the first commit. This session only resumed the pipeline — verify, commit, PR, Hawk, merge, deploy, Scribe — so Breaker/Pip implementation cost is not attributable here.
+
+| Agent     | ~Tokens     |
+|-----------|-------------|
+| Scout     | —           |
+| Breaker   | (prior session) |
+| Pip       | (prior session) |
+| Stylist   | —           |
+| Hawk      | 28 000      |
+| Scribe    | 9 000       |
+| **Total (this session)** | **~37 000** |
+
+**Why:** Trivial frontend fix; Hawk approved first pass with only optional nits. The only non-routine cost was Scribe handling a collision with a large unrelated uncommitted docs reorg in the main checkout (surfaced to the human, selective commit).
+
+---
+
 ## Slice 9-F — Recurring meetings: create note for next occurrence
 
 | Agent     | ~Tokens      |
