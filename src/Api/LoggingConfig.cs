@@ -3,11 +3,15 @@ namespace Api;
 public static class LoggingConfig
 {
     public const string CorrelationIdHeader = "x-correlation-id";
+    public const string TraceIdHeader = "x-amzn-trace-id";
 
-    // Stamps every response with the request's correlation ID. Registered as the
-    // first middleware so even short-circuited responses (e.g. 401 from auth)
-    // carry the header. OnStarting runs just before headers are sent, which is
-    // the only safe point to add a header regardless of who writes the response.
+    // Stamps every response with the request's correlation ID and the X-Ray trace
+    // ID. Registered as the first middleware so even short-circuited responses
+    // (e.g. 401 from auth) carry the headers. OnStarting runs just before headers
+    // are sent, which is the only safe point to add a header regardless of who
+    // writes the response. The trace ID echoes the inbound X-Amzn-Trace-Id set by
+    // API Gateway/Lambda so a browser error (12-F RUM) links to its backend trace;
+    // off Lambda it falls back to the request identifier so the header is always present.
     internal static void UseCorrelationId(WebApplication app)
     {
         app.Use(async (ctx, next) =>
@@ -15,6 +19,9 @@ public static class LoggingConfig
             ctx.Response.OnStarting(() =>
             {
                 ctx.Response.Headers[CorrelationIdHeader] = ctx.TraceIdentifier;
+                var inboundTrace = ctx.Request.Headers[TraceIdHeader].ToString();
+                ctx.Response.Headers[TraceIdHeader] =
+                    string.IsNullOrEmpty(inboundTrace) ? ctx.TraceIdentifier : inboundTrace;
                 return Task.CompletedTask;
             });
             await next();
