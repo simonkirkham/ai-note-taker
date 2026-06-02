@@ -363,8 +363,12 @@ export async function completeTranscription(
   if (!res.ok) throw new Error(`POST /notes/${noteId}/transcription failed: ${res.status}`);
 }
 
-export async function analyseNote(noteId: string): Promise<void> {
-  const res = await apiFetch(`${base}/notes/${noteId}/analyse`, { method: 'POST' });
+export async function analyseNote(noteId: string, updateContent: boolean): Promise<void> {
+  const res = await apiFetch(`${base}/notes/${noteId}/analyse`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ updateContent }),
+  });
   if (!res.ok) throw new Error(`POST /notes/${noteId}/analyse failed: ${res.status}`);
 }
 

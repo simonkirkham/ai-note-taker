@@ -19,13 +19,12 @@ public sealed class BedrockAnalysisService : IBedrockAnalysisService
         _modelId = Environment.GetEnvironmentVariable("BEDROCK_MODEL_ID") ?? "";
     }
 
-    public async Task<NoteAnalysisResult> AnalyseAsync(
-        string transcriptText, string existingContent, string currentUserName, CancellationToken ct = default)
+    public async Task<NoteAnalysisResult> AnalyseAsync(NoteAnalysisRequest request, CancellationToken ct = default)
     {
         if (string.IsNullOrEmpty(_modelId))
             throw new InvalidOperationException("BEDROCK_MODEL_ID is not configured.");
 
-        var prompt = BuildPrompt(transcriptText, existingContent, currentUserName);
+        var prompt = BuildPrompt(request);
 
         var body = JsonSerializer.Serialize(new
         {
@@ -34,7 +33,7 @@ public sealed class BedrockAnalysisService : IBedrockAnalysisService
             inferenceConfig = new { maxTokens = 2048 }
         });
 
-        var request = new InvokeModelRequest
+        var invokeRequest = new InvokeModelRequest
         {
             ModelId = _modelId,
             ContentType = "application/json",
@@ -42,10 +41,10 @@ public sealed class BedrockAnalysisService : IBedrockAnalysisService
             Body = new MemoryStream(Encoding.UTF8.GetBytes(body))
         };
 
-        var response = await _bedrock.InvokeModelAsync(request, ct).ConfigureAwait(false);
+        var response = await _bedrock.InvokeModelAsync(invokeRequest, ct).ConfigureAwait(false);
         var responseBody = await new StreamReader(response.Body).ReadToEndAsync(ct).ConfigureAwait(false);
 
-        return ParseResponse(responseBody, existingContent);
+        return ParseResponse(responseBody, request.ExistingContent);
     }
 
     NoteAnalysisResult ParseResponse(string responseBody, string existingContent)
@@ -88,21 +87,30 @@ public sealed class BedrockAnalysisService : IBedrockAnalysisService
         }
     }
 
-    static string BuildPrompt(string transcriptText, string existingContent, string currentUserName) => $$"""
-        You are a meeting notes assistant. Analyse the transcript below and update the meeting note.
+    static string BuildPrompt(NoteAnalysisRequest request)
+    {
+        var transcriptSection = string.IsNullOrWhiteSpace(request.TranscriptText)
+            ? "TRANSCRIPT:\n(No transcript was recorded. Analyse the note content above on its own.)"
+            : $"TRANSCRIPT:\n{request.TranscriptText}";
+
+        var contentInstruction = request.AllowContentRewrite
+            ? "- Fill gaps in the note content using the information available. Do not repeat what is already there."
+            : "- Do NOT change the note content. Return the existing note content unchanged in \"updatedContent\".";
+
+        return $$"""
+        You are a meeting notes assistant. Analyse the note below and update it.
 
         CURRENT NOTE CONTENT:
-        {{existingContent}}
+        {{request.ExistingContent}}
 
-        TRANSCRIPT:
-        {{transcriptText}}
+        {{transcriptSection}}
 
-        CURRENT USER: {{currentUserName}}
+        CURRENT USER: {{request.CurrentUserName}}
 
         Instructions:
-        - Fill gaps in the note content using information from the transcript. Do not repeat what is already there.
+        {{contentInstruction}}
         - Infer relevant tags (short lowercase keywords, e.g. "auth", "backend", "1:1").
-        - Extract action items assigned to "{{currentUserName}}" only. Other people's actions should appear in updatedContent, not in newActionItems.
+        - Extract action items assigned to "{{request.CurrentUserName}}" only. Other people's actions should appear in updatedContent, not in newActionItems.
         - Return ONLY valid JSON — no explanation, no markdown fences.
 
         JSON format:
@@ -112,4 +120,5 @@ public sealed class BedrockAnalysisService : IBedrockAnalysisService
           "newActionItems": ["Action item text"]
         }
         """;
+    }
 }
