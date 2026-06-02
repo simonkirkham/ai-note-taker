@@ -401,3 +401,24 @@ it('does not call getDisplayMedia when the call-audio toggle is off', async () =
   expect(getDisplayMedia).not.toHaveBeenCalled()
   expect(mockAudioContext.createMediaStreamSource).toHaveBeenCalledTimes(1)
 })
+
+// Scenario: Screen-share granted but carries no audio (e.g. a silent window/tab)
+//   Given the toggle is ON and the user shares a window with no audio
+//   When I press Record
+//   Then no mixer is created and recording proceeds mic-only
+it('records mic-only when the shared display stream carries no audio track', async () => {
+  const { getDisplayMedia, mockAudioContext } = stubBrowserApis()
+  // A display stream the user granted but that has no audio (shared a silent window).
+  getDisplayMedia.mockResolvedValueOnce({
+    getTracks: () => [{ stop: vi.fn() }],
+    getAudioTracks: () => [],
+  } as unknown as MediaStream)
+
+  render(<TranscriptionPanel noteId="note-1" />)
+  await userEvent.click(screen.getByTestId('transcription-record-button'))
+
+  await waitFor(() => expect(screen.getByTestId('transcription-stop-button')).toBeInTheDocument())
+  // Only the mic source is wired; the empty display stream is not mixed in.
+  expect(mockAudioContext.createMediaStreamSource).toHaveBeenCalledTimes(1)
+  expect(mockAudioContext.createGain).not.toHaveBeenCalled()
+})

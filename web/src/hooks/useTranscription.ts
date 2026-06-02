@@ -85,32 +85,37 @@ export function useTranscription(noteId: string): UseTranscriptionResult {
 
     void (async () => {
       try {
-        const creds = await getTranscriptionCredentials();
-        if (stoppedRef.current) return;
-
-        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        if (stoppedRef.current) {
-          stream.getTracks().forEach((t) => t.stop());
-          return;
-        }
-        mediaStreamRef.current = stream;
-
         // Optionally capture remote-participant (call) audio via screen-share and mix it with the
-        // mic. If the user cancels the prompt or the browser does not support it, fall back to
-        // mic-only silently — call audio is a best-effort enhancement, not a hard requirement.
+        // mic. Requested first, before the credential and mic awaits, because getDisplayMedia needs
+        // the click's transient user activation — intervening awaits can let that window expire.
+        // If the user cancels, the browser is unsupported, or activation lapsed, fall back to
+        // mic-only — call audio is a best-effort enhancement, not a hard requirement.
         let displayStream: MediaStream | null = null;
         if (includeCallAudio) {
           try {
             displayStream = await navigator.mediaDevices.getDisplayMedia({ audio: true, video: false });
-          } catch {
+          } catch (err) {
+            console.warn('Call audio capture unavailable; continuing with microphone only.', err);
             displayStream = null;
           }
+          displayStreamRef.current = displayStream;
           if (stoppedRef.current) {
-            stream.getTracks().forEach((t) => t.stop());
-            displayStream?.getTracks().forEach((t) => t.stop());
+            cleanup();
             return;
           }
-          displayStreamRef.current = displayStream;
+        }
+
+        const creds = await getTranscriptionCredentials();
+        if (stoppedRef.current) {
+          cleanup();
+          return;
+        }
+
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        mediaStreamRef.current = stream;
+        if (stoppedRef.current) {
+          cleanup();
+          return;
         }
 
         const audioContext = new AudioContext({ sampleRate: 16000 });
