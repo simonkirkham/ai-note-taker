@@ -168,6 +168,20 @@ describe('TodoSection — open items', () => {
     expect(screen.queryByText('Chase invoice')).not.toBeInTheDocument()
   })
 
+  it('a long note-derived item still exposes its description, note title, and Delete control', async () => {
+    const longItem = {
+      ...openAction,
+      itemId: 'a-long',
+      description: 'Follow up with the candidate about the offer and the revised start date before end of week',
+      noteTitle: 'Head of Technical Delivery – Finova',
+    }
+    server.use(http.get('/api/todos', () => HttpResponse.json({ items: [longItem] })))
+    render(<TodoSection />)
+    expect(await screen.findByText(longItem.description)).toBeInTheDocument()
+    expect(screen.getByText('Head of Technical Delivery – Finova')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: new RegExp(`delete "${longItem.description}"`, 'i') })).toBeInTheDocument()
+  })
+
   it('delete on a standalone todo calls DELETE /todos/:id', async () => {
     let called = false
     server.use(
