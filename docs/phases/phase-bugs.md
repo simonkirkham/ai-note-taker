@@ -19,6 +19,7 @@
 | BUG-5 | Renaming a deleted note throws unhandled 500 instead of 404 | Done | — |
 | BUG-6 | CloudWatch RUM receives no data — loader CDN host is regional, doesn't resolve | Done | 12-F |
 | BUG-7 | Empty notes are created and left behind (not removed) | Open | — |
+| BUG-8 | `x-correlation-id` returned to clients is never logged — a user-quoted ID can't be found in logs | Open | 12-A |
 
 Further bugs will be appended as they are identified.
 
@@ -225,3 +226,36 @@ Needs confirmation against the actual exit paths and the existing blank-note-del
 - [ ] Existing tests for note creation, cancel, and meeting-note discard remain green.
 
 **Key files (provisional):** `web/src/App.tsx` (`handleNewNote` ~L83, exit/navigation handlers), the note editor cancel/discard path (Phase 11), and whichever component owns leaving an unsaved new note; tests under `web/src/__tests__/`. If the fix moves to create-on-first-edit, also the create hook and any `NoteCreated` smoke/API coverage.
+
+---
+
+## BUG-8 — `x-correlation-id` returned to clients is never emitted as a log field
+
+**Status:** Open — found during slice 12-G (observability runbook). Documented workaround is in [docs/observability.md](../observability.md) (use `xray_trace_id`); this bug tracks closing the gap.
+
+**Severity:** Low–Medium — no functional impact, but it defeats the central promise of 12-A: a user (or a 500 error body) can quote a correlation ID that **cannot then be found in the logs**, so the "trace a user-reported error to its exact log line" workflow doesn't work. Only the X-Ray trace id (`xray_trace_id`) is greppable.
+
+**Symptom:** Every HTTP response carries an `x-correlation-id` header (and a 500's JSON body repeats it). But querying the API Lambda log group (the explicit `NoteTakerStack-ApiFunctionLogGroup…`, `--profile prod`, eu-west-2) for that value returns nothing — there is no `correlationId` (or `correlation_id`) field on any log line.
+
+**Evidence (prod, 2026-06-02):** Logs Insights / `filter-log-events` over the API log group: a `"correlationId"` term match returns **0** events, while lines clearly carry the other Powertools fields (`level`, `message`, `service`, `xray_trace_id`, `command_type`, `stream_id`). The per-request correlation key present in logs is `xray_trace_id` (set by X-Ray, 12-C), which corresponds to the `x-amzn-trace-id` header — a *different* value from `x-correlation-id`.
+
+**Suspected cause (confirmed by code read):** `src/Api/LoggingConfig.cs` sets the `x-correlation-id` response header and 500-body field from `ctx.TraceIdentifier`, but never appends it to the Powertools logger (no `Logger.AppendKey("correlationId", …)` / no `CorrelationIdPath`). So the value the client sees is never written to any log line. The 12-A acceptance criterion "the correlation ID is returned to the browser… so a user-reported error can be traced to its exact log line" was only half-implemented — the return half works, the log half doesn't.
+
+**Expected behaviour:** The correlation ID returned to the client appears on every log line for that request, so pasting it into Logs Insights returns that request's trail. Either:
+- (a) append `correlationId` (= `TraceIdentifier`) to the Powertools logger for the request scope (middleware `Logger.AppendKey`), **or**
+- (b) make `x-correlation-id` carry the X-Ray trace id (so it matches the already-logged `xray_trace_id`), and retire the separate `TraceIdentifier` value.
+
+Option (a) keeps the existing header semantics; (b) collapses two correlation identifiers into one. Decide during the fix.
+
+**Repro:**
+1. Trigger a 500 (or any request); note the `x-correlation-id` response-header value.
+2. In Logs Insights over the API log group, `filter correlationId = "<that value>"` (or `filter @message like /<that value>/`).
+3. Observe zero results — the value isn't in the logs.
+
+**Acceptance criteria (to confirm during fix):**
+- [ ] The `x-correlation-id` value returned to the client appears as a queryable field (or in `@message`) on every log line of that request.
+- [ ] A failing test reproduces the gap before the fix (e.g. `Api.Integration` asserts the response's correlation id is present in an emitted log line / appended log key) and passes after.
+- [ ] `docs/observability.md` "By trace ID" guidance updated once a real `correlationId` lookup works (or the runbook confirms the single-identifier approach if (b) is chosen).
+- [ ] The bearer token / `Authorization` header is still never logged.
+
+**Key files:** `src/Api/LoggingConfig.cs` (sets the header/body today), `src/Api/Builder.cs` (Powertools logger registration); tests `tests/Api.Integration/`. Same `correlationId`-vs-`xray_trace_id` mismatch was corrected in the 12-G saved queries and the 12-D/12-H dashboard "All errors" widgets (they now project `xray_trace_id`).
