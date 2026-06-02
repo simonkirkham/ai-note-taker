@@ -14,12 +14,12 @@ echo "→ component tests..."
 npm --prefix web run test
 
 echo "→ domain specs..."
-dotnet test tests/Specs/Specs.csproj --nologo -v quiet
+dotnet test tests/Domain.Specs/Domain.Specs.csproj --nologo -v quiet
 
 echo "→ API integration tests..."
-dotnet test tests/ApiIntegration/ApiIntegration.csproj --nologo -v quiet
+dotnet test tests/Api.Integration/Api.Integration.csproj --nologo -v quiet
 
 echo "→ infra assertions..."
-dotnet test tests/InfraAssertions/InfraAssertions.csproj --nologo -v quiet
+dotnet test tests/Infrastructure.Assertions/Infrastructure.Assertions.csproj --nologo -v quiet
 
 echo "✓ pre-commit checks passed"
