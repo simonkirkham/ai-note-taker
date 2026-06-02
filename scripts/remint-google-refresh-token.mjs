@@ -29,8 +29,8 @@
 //   SCOPE       OAuth scope (default https://www.googleapis.com/auth/calendar.readonly)
 //   WRITE_SSM   "1" to run `aws ssm put-parameter ... --overwrite` for you
 //   AWS_PROFILE / AWS_REGION  passed through to the AWS CLI when WRITE_SSM=1
-//               (NOTE: prod is account 642653037268 in eu-west-2; the prod/test CLI
-//                profiles default to eu-west-1, so AWS_REGION=eu-west-2 is required)
+//               (NOTE: the prod app runs in eu-west-2, but the prod/test CLI profiles
+//                default to eu-west-1, so AWS_REGION=eu-west-2 is required)
 //
 // The client secret is never logged. The refresh token is printed to stdout; when WRITE_SSM=1
 // it is passed to the AWS CLI via a 0600 temp file (deleted immediately) so it never lands in
