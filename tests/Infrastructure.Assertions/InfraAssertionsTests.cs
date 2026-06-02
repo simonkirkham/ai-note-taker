@@ -869,4 +869,74 @@ public class InfraAssertionsTests
         // metric alarms (only allowed on dashboard widgets). See phase-12 12-E.
         _template.ResourceCountIs("AWS::CloudWatch::Alarm", 2);
     }
+
+    [Fact]
+    public void OpsDashboard_IncludesRumErrorMetricWidget()
+    {
+        // 12-H: frontend error counts on the same dashboard. The RUM metric widget
+        // reads the AWS/RUM namespace; assert that literal appears in the body.
+        _template.HasResourceProperties("AWS::CloudWatch::Dashboard", Match.ObjectLike(new Dictionary<string, object>
+        {
+            ["DashboardBody"] = Match.ObjectLike(new Dictionary<string, object>
+            {
+                ["Fn::Join"] = Match.ArrayWith(new object[]
+                {
+                    Match.ArrayWith(new object[] { Match.StringLikeRegexp(".*AWS/RUM.*") })
+                })
+            })
+        }));
+    }
+
+    [Fact]
+    public void OpsDashboard_RumMetricWidgetPlotsJsAndHttpErrorCounts()
+    {
+        _template.HasResourceProperties("AWS::CloudWatch::Dashboard", Match.ObjectLike(new Dictionary<string, object>
+        {
+            ["DashboardBody"] = Match.ObjectLike(new Dictionary<string, object>
+            {
+                ["Fn::Join"] = Match.ArrayWith(new object[]
+                {
+                    Match.ArrayWith(new object[] { Match.StringLikeRegexp(".*JsErrorCount.*") })
+                })
+            })
+        }));
+        _template.HasResourceProperties("AWS::CloudWatch::Dashboard", Match.ObjectLike(new Dictionary<string, object>
+        {
+            ["DashboardBody"] = Match.ObjectLike(new Dictionary<string, object>
+            {
+                ["Fn::Join"] = Match.ArrayWith(new object[]
+                {
+                    Match.ArrayWith(new object[] { Match.StringLikeRegexp(".*HttpErrorCount.*") })
+                })
+            })
+        }));
+    }
+
+    [Fact]
+    public void OpsDashboard_UnifiedErrorTableQueriesRumLogGroupAndJsErrorEvent()
+    {
+        // 12-H: the unified all-errors table also queries the RUM log group
+        // (name derived from the monitor GUID via Fn::Select/Fn::Split, not
+        // hard-coded) and matches the RUM js_error_event shape.
+        _template.HasResourceProperties("AWS::CloudWatch::Dashboard", Match.ObjectLike(new Dictionary<string, object>
+        {
+            ["DashboardBody"] = Match.ObjectLike(new Dictionary<string, object>
+            {
+                ["Fn::Join"] = Match.ArrayWith(new object[]
+                {
+                    Match.ArrayWith(new object[] { Match.StringLikeRegexp(".*RUMService_notetaker-rum.*") })
+                })
+            })
+        }));
+        _template.HasResourceProperties("AWS::CloudWatch::Dashboard", Match.ObjectLike(new Dictionary<string, object>
+        {
+            ["DashboardBody"] = Match.ObjectLike(new Dictionary<string, object>
+            {
+                ["Fn::Join"] = Match.ArrayWith(new object[]
+                {
+                    Match.ArrayWith(new object[] { Match.StringLikeRegexp(".*com.amazon.rum.js_error_event.*") })
+                })
+            })
+        }));
+    }
 }

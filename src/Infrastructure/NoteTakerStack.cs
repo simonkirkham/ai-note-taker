@@ -596,6 +596,61 @@ public sealed class NoteTakerStack : Stack
         // alarms ("SEARCH is not supported on Metric Alarms"). Alarming on it
         // requires first emitting an alarmable (dimensionless or Service-only)
         // ConcurrencyConflict metric; deferred to a follow-up. See phase-12 12-E.
+
+        // ── Unified error view (12-H) ────────────────────────────────────
+        // Bring the browser's errors onto the same ops dashboard as the Lambda
+        // errors, so one screen (with one time-range picker) answers "what's
+        // broken?" across the whole stack. Added as a second AddWidgets call
+        // here because rumAppMonitor does not exist when the first batch runs.
+        //
+        // RUM (CwLogEnabled = true) auto-creates its log group as
+        // /aws/vendedlogs/RUMService_notetaker-rum<first-8-of-monitor-GUID>.
+        // That suffix is the first hyphen-segment of the monitor GUID, so the
+        // name is derivable from AttrId — no hard-coding the environment-specific ID.
+        var rumLogGroupName = $"/aws/vendedlogs/RUMService_{rumMonitorName}{Fn.Select(0, Fn.Split("-", rumAppMonitor.AttrId))}";
+
+        // Default RUM metrics publish to AWS/RUM automatically once traffic flows
+        // (no CfnMetricsDestination needed); the widget reads whatever RUM emits.
+        Amazon.CDK.AWS.CloudWatch.IMetric RumErrorMetric(string metricName) =>
+            new Amazon.CDK.AWS.CloudWatch.Metric(new Amazon.CDK.AWS.CloudWatch.MetricProps
+            {
+                Namespace = "AWS/RUM",
+                MetricName = metricName,
+                DimensionsMap = new Dictionary<string, string> { ["application_name"] = rumMonitorName },
+                Statistic = "Sum",
+                Period = Duration.Minutes(5)
+            });
+
+        dashboard.AddWidgets(
+            new Amazon.CDK.AWS.CloudWatch.GraphWidget(new Amazon.CDK.AWS.CloudWatch.GraphWidgetProps
+            {
+                Title = "Frontend errors (RUM)",
+                Left = new[]
+                {
+                    RumErrorMetric("JsErrorCount"),
+                    RumErrorMetric("HttpErrorCount")
+                },
+                Width = 12
+            }),
+            // Single combined "all errors" table over BOTH log groups. The two
+            // sources have different shapes: Powertools backend lines carry
+            // level/correlationId/message; RUM events are JSON with the event
+            // type com.amazon.rum.js_error_event and the message under
+            // event_details. The query matches both with an `or` and surfaces a
+            // unified field set, newest first. Time-range picker drives "how far back".
+            new Amazon.CDK.AWS.CloudWatch.LogQueryWidget(new Amazon.CDK.AWS.CloudWatch.LogQueryWidgetProps
+            {
+                Title = "All errors (backend + frontend)",
+                LogGroupNames = new[] { apiLogGroup.LogGroupName, rumLogGroupName },
+                Width = 24,
+                Height = 6,
+                View = Amazon.CDK.AWS.CloudWatch.LogQueryVisualizationType.TABLE,
+                QueryString = string.Join("\n",
+                    "fields @timestamp, level, correlationId, message, event_details.message, @message",
+                    "| filter level in [\"Error\", \"Warning\"] or @message like /com.amazon.rum.js_error_event/ or @message like /(?i)exception|error|fail/",
+                    "| sort @timestamp desc",
+                    "| limit 100")
+            }));
     }
 
     private DistributionProps BuildDistributionProps(
