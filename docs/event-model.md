@@ -59,9 +59,10 @@ A standalone to-do not attached to any note. Created from the home screen quick-
 | `UntagNote(noteId, tag, untaggedAt)` | Note exists, tag present | `NoteUntagged` |
 | `SetNoteDate(noteId, date, setAt)` | Note exists, not deleted | `NoteDateSet` |
 | `RecordTagSuggestions(noteId, tags)` | Note exists, not deleted; empty tag list emits nothing | `TagsSuggested` |
+| `RecordActionItemSuggestions(noteId, actionItemIds)` | Note exists, not deleted; empty list emits nothing | `ActionItemsSuggested` |
 | `DeleteNote(noteId, deletedAt)` | Note exists, status ≠ Deleted | `NoteDeleted` |
 
-> `RecordTagSuggestions` is issued by the analysis handler (not the user) to record which tags an AI run contributed. It records provenance only — the tags are applied separately via `TagNote`/`NoteTagged`.
+> `RecordTagSuggestions` / `RecordActionItemSuggestions` are issued by the analysis handler (not the user) to record which tags / action items an AI run contributed. They record provenance only — tags are applied separately via `TagNote`/`NoteTagged`, and action items via `AddActionItem`/`ActionItemAdded` on the `ActionItem` aggregate (the suggestion event references them by id).
 
 ### ActionItem
 
@@ -97,6 +98,7 @@ A standalone to-do not attached to any note. Created from the home screen quick-
 - `NoteUntagged { NoteId, Tag }`
 - `NoteDateSet { NoteId, Date }` — user-specified `DateOnly`; can be set or changed at any time while the note is active
 - `TagsSuggested { NoteId, Tags[] }` — AI provenance; records the tags an analysis run contributed (the post-dedup applied set), so a later `NoteUntagged` of one can be classified as a rejected AI suggestion. No aggregate state change
+- `ActionItemsSuggested { NoteId, ActionItemIds[] }` — AI provenance; records (by id) the action items an analysis run created, so a later `ActionItemDeleted`/`ActionItemCompleted` can be attributed to the AI. No aggregate state change
 - `NoteDeleted { NoteId }` — soft delete; event remains in the stream, projections filter it out
 
 ### ActionItem

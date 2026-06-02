@@ -59,6 +59,7 @@ public record NoteTagged(NoteId NoteId, string Tag)            : NoteEvent;
 public record NoteUntagged(NoteId NoteId, string Tag)          : NoteEvent;
 public record NoteDateSet(NoteId NoteId, DateOnly? Date)       : NoteEvent;  // null = cleared
 public record TagsSuggested(NoteId NoteId, IReadOnlyList<string> Tags) : NoteEvent;  // AI provenance
+public record ActionItemsSuggested(NoteId NoteId, IReadOnlyList<Guid> ActionItemIds) : NoteEvent;  // AI provenance
 public record NoteDeleted(NoteId NoteId)                       : NoteEvent;
 ```
 
@@ -95,6 +96,11 @@ public record NoteDeleted(NoteId NoteId)                       : NoteEvent;
 `TagsSuggested` (the post-dedup set of tags an analysis run applied; provenance only):
 ```json
 { "noteId": "7f3a9c2b-1e4d-4a8f-9c0d-2b1f3a4e5c6d", "tags": ["login", "auth"] }
+```
+
+`ActionItemsSuggested` (ids of the action items an analysis run created; provenance only):
+```json
+{ "noteId": "7f3a9c2b-1e4d-4a8f-9c0d-2b1f3a4e5c6d", "actionItemIds": ["c1d2e3f4-5a6b-7c8d-9e0f-1a2b3c4d5e6f"] }
 ```
 
 When clearing: `{ "noteId": "...", "date": null }`.
