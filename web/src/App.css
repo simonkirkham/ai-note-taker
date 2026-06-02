@@ -1326,7 +1326,9 @@ body {
   align-items: center;
   justify-content: space-between;
   gap: 1rem;
-  margin-bottom: 1.25rem;
+  /* CHANGE-9: header now holds only the heading; tighten the gap to the
+     Filters control that follows. */
+  margin-bottom: 0.6rem;
 }
 
 .note-cards-header .note-cards-heading {
@@ -2757,8 +2759,10 @@ body.has-notification-banner {
 /* ── end CHANGE-5 sign-in region ──────────────────────────────── */
 
 /* === CHANGE-6: collapsible home Filters control (start) === */
+/* CHANGE-9: tightened to remove the dead gap between the control and the notes. */
 .filters-section {
-  margin-top: 0.75rem;
+  margin-top: 0.5rem;
+  margin-bottom: 1rem;
 }
 
 .filters-toggle {
@@ -2804,7 +2808,7 @@ body.has-notification-banner {
   transform: rotate(90deg);
 }
 
-.filters-toggle-count {
+.filters-toggle-summary {
   font-weight: 700;
 }
 
@@ -2812,7 +2816,29 @@ body.has-notification-banner {
   display: none;
 }
 
-.filters-panel .tag-filter {
+/* CHANGE-9 (Option D): the expanded panel is a card of labelled groups —
+   a "Tags" group and an "Other" group holding the Show-older toggle. */
+.filters-panel:not([hidden]) {
   margin-top: 0.5rem;
+  padding: 0.7rem 0.8rem;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
 }
-/* === CHANGE-6: collapsible home Filters control (end) === */
+
+.filters-group-label {
+  display: block;
+  font-size: 0.6875rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--color-text-muted);
+  margin-bottom: 0.4rem;
+}
+
+.filters-group + .filters-group {
+  margin-top: 0.7rem;
+  padding-top: 0.7rem;
+  border-top: 1px solid var(--color-border);
+}
+/* === CHANGE-6 + CHANGE-9: collapsible home Filters control (end) === */

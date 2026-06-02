@@ -53,7 +53,13 @@ function renderHome(cards: NoteCard[], extra: Record<string, unknown> = {}) {
   )
 }
 
-function olderToggle() {
+// CHANGE-9 (Option D): "Show older notes" now lives inside the collapsed
+// Filters panel, so expand it first before reaching the checkbox.
+async function olderToggle() {
+  const btn = screen.getByRole('button', { name: /^filters/i })
+  if (btn.getAttribute('aria-expanded') !== 'true') {
+    await userEvent.click(btn)
+  }
   return screen.getByRole('checkbox', { name: /show older notes/i })
 }
 
@@ -113,7 +119,7 @@ describe('ListView — home today/older date filter', () => {
       }),
     ])
     expect(screen.queryByText('Future note')).not.toBeInTheDocument()
-    await userEvent.click(olderToggle())
+    await userEvent.click(await olderToggle())
     expect(screen.queryByText('Future note')).not.toBeInTheDocument()
   })
 
@@ -123,7 +129,7 @@ describe('ListView — home today/older date filter', () => {
       makeCard({ noteId: 'a', title: 'Today', date: plusDays(0) }),
       makeCard({ noteId: 'c', title: 'TwoDaysAgo', date: plusDays(-2), lastModifiedAt: isoAtLocalNoon(-2) }),
     ])
-    await userEvent.click(olderToggle())
+    await userEvent.click(await olderToggle())
     expect(cardTitlesInOrder()).toEqual(['Today', 'Yesterday', 'TwoDaysAgo'])
   })
 
@@ -133,9 +139,9 @@ describe('ListView — home today/older date filter', () => {
       makeCard({ noteId: 'o', title: 'Old note', date: plusDays(-7), lastModifiedAt: isoAtLocalNoon(-7) }),
     ])
     expect(screen.queryByText('Old note')).not.toBeInTheDocument()
-    await userEvent.click(olderToggle())
+    await userEvent.click(await olderToggle())
     expect(screen.getByText('Old note')).toBeInTheDocument()
-    await userEvent.click(olderToggle())
+    await userEvent.click(await olderToggle())
     expect(screen.queryByText('Old note')).not.toBeInTheDocument()
   })
 
@@ -152,17 +158,18 @@ describe('ListView — home today/older date filter', () => {
     // Yesterday → hidden by default…
     expect(screen.queryByText('No explicit date')).not.toBeInTheDocument()
     // …and revealed as a past note when older is shown.
-    await userEvent.click(olderToggle())
+    await userEvent.click(await olderToggle())
     expect(screen.getByText('No explicit date')).toBeInTheDocument()
   })
 
-  it('keeps the toggle visible and shows empty copy when nothing matches today', async () => {
+  it('keeps the Filters control available and shows empty copy when nothing matches today', async () => {
     renderHome([
       makeCard({ noteId: 'o', title: 'Old note', date: plusDays(-5), lastModifiedAt: isoAtLocalNoon(-5) }),
     ])
     expect(screen.getByText('No notes today')).toBeInTheDocument()
-    expect(olderToggle()).toBeInTheDocument()
-    await userEvent.click(olderToggle())
+    // The Filters control is always available; expanding it reveals "Show older".
+    expect(screen.getByRole('button', { name: /^filters/i })).toBeInTheDocument()
+    await userEvent.click(await olderToggle())
     expect(screen.getByText('Old note')).toBeInTheDocument()
   })
 
