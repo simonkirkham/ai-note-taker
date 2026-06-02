@@ -1173,3 +1173,19 @@ If no agent ran unexpectedly high: write `None — slice ran within expected ran
 **Optimisation suggestions:**
 - **Pip (−~10 000):** the reference reads for 10-J's projection wiring were done during this slice's deploy wait — good overlap; keep doing read-ahead during deploy/CI gaps rather than at the next slice's start.
 - Hawk approved first pass with no blocking findings — the equality-override comment and the integration ordering assertion pre-empted its likely questions, avoiding a second round.
+---
+
+## CHANGE-8 / CHANGE-9 — sequential minor-changes pair
+
+> Run sequentially (not parallel) by one orchestrator: CHANGE-8 (sidebar footer, CSS-only) then CHANGE-9 (filters restructure, Option D). CHANGE-9 branched after CHANGE-8 merged, so there was zero App.css conflict — the deliberate payoff of sequencing two slices that touch the same file. Both Hawk-approved first pass.
+
+| Slice | Build (inline) | Hawk | ~Total |
+|-------|----------------|------|--------|
+| CHANGE-8 sidebar footer | 30 000 | 33 000 | 63 000 |
+| CHANGE-9 filters restructure (Option D) | 70 000 | 36 000 | 106 000 |
+| Prototype (CHANGE-9 gallery) + Scribe | — | — | 40 000 |
+| **Pair total** | | | **~209 000** |
+
+**Why cheaper than the 3-slice parallel batch (~536k):** no worktree collisions, no App.css conflict resolution, no redundant full-suite reruns from re-merges. CHANGE-8 built inline in the main loop (tiny CSS), CHANGE-9 in a worktree with one driver. The cost was wall-clock (serial merges/deploys) not tokens — the right trade for two shared-file slices.
+
+**Optimisation note:** building CHANGE-8 inline (no sub-agent) was correct for a 5-line CSS change — spawning an agent would have cost more than it saved. Reserve sub-agents for slices big enough to amortise the worktree + brief overhead.

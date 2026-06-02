@@ -20,7 +20,7 @@
 | CHANGE-6 | Collapsible "Filters" control for home tags | Done | — |
 | CHANGE-7 | More colour schemes; drop duplicate Forest theme | Done | CHANGE-2 (shipped) |
 | CHANGE-8 | Theme picker + Sign out always visible without scrolling | Done | CHANGE-2 (shipped) |
-| CHANGE-9 | Restructure home Filters: Show-older + Tags inside, fix gap | Planned | CHANGE-3, CHANGE-6 (shipped) |
+| CHANGE-9 | Restructure home Filters: Show-older + Tags inside, fix gap | Done | CHANGE-3, CHANGE-6 (shipped) |
 | CHANGE-10 | Simplify the busy home screen; make action buttons smaller | Planned | — |
 | CHANGE-11 | Preview pull-out `»` becomes `«` when its panel is open | Planned | — |
 
@@ -827,7 +827,7 @@ Scenario: Mobile sidebar is unaffected
 
 ## CHANGE-9 — Restructure the home Filters panel (Show-older + Tags inside; fix the gap)
 
-**Status:** Prototype approved (2026-06-02) — **Option D confirmed**. Gallery on branch `prototype/minor-9-filters-layout` (`filters-layout-prototype.html`). Ready to implement as a normal slice; do not start from prototype code.
+**Status:** ✅ Done — PR #121, deployed 2026-06-02. See [docs/learnings/phase-minor-9-filters-restructure.md](../learnings/phase-minor-9-filters-restructure.md). Prototype gallery approved 2026-06-02; shipped Option D (rich collapsed summary + Tags/Other groups).
 
 **Value:** The home filtering controls are currently split across two places and the area looks unfinished:
 - The **"Show older notes"** toggle (CHANGE-3) lives in the **Notes header row** (`.note-cards-header`, next to the "Notes" heading).
@@ -908,14 +908,14 @@ Scenario: Existing filter behaviour is unchanged
 ### Acceptance criteria
 
 - [x] Prototype built and approved before implementation (Option D); confirmed Filters layout reflected in the scenarios above
-- [ ] "Show older notes" is moved out of the Notes header into the Filters panel's "Other" group; the Notes header shows only the heading
-- [ ] Tags are presented as a labelled "Tags" group within the Filters panel (pills + AND/OR mode + Clear)
-- [ ] The collapsed Filters control shows a rich active-filter summary (e.g. `Filters · 2 tags · older`) reflecting both selected tags and the "show older" state; with none active it reads `Filters`
-- [ ] The empty vertical gap between the Filters control and the notes list is removed, in both panel states
-- [ ] Date filter, tag filter, AND/OR mode, Clear, and date↔tag composition behave exactly as before — placement/layout change only
-- [ ] Folder view is unchanged
-- [ ] No API/event/projection change; `TagFilter` filtering logic unchanged
-- [ ] Component tests updated: "show older" is found inside the expanded Filters panel (not the header), tags render under the Tags group, collapsed affordance reflects show-older, and the existing date/tag composition tests still pass
+- [x] "Show older notes" is moved out of the Notes header into the Filters panel's "Other" group; the Notes header shows only the heading
+- [x] Tags are presented as a labelled "Tags" group within the Filters panel (pills + AND/OR mode + Clear)
+- [x] The collapsed Filters control shows a rich active-filter summary (e.g. `Filters · 2 tags · older`) reflecting both selected tags and the "show older" state; with none active it reads `Filters`
+- [x] The empty vertical gap between the Filters control and the notes list is removed, in both panel states
+- [x] Date filter, tag filter, AND/OR mode, Clear, and date↔tag composition behave exactly as before — placement/layout change only
+- [x] Folder view is unchanged
+- [x] No API/event/projection change; `TagFilter` filtering logic unchanged
+- [x] Component tests updated: "show older" is found inside the expanded Filters panel (not the header), tags render under the Tags group, collapsed affordance reflects show-older, and the existing date/tag composition tests still pass
 
 ---
 
