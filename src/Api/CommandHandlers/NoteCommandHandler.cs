@@ -5,6 +5,7 @@ using EventStore;
 using EventStore.Projections;
 using Api.Auth;
 using Api.Exceptions;
+using Api.Observability;
 
 namespace Api.CommandHandlers;
 
@@ -16,15 +17,18 @@ public sealed class NoteCommandHandler(
     INoteCardListStore noteCardListStore,
     ITagIndexStore tagIndexStore,
     ICalendarLinkIndexStore calendarLinkIndexStore,
-    ICurrentUser currentUser) : INoteCommandHandler
+    ICurrentUser currentUser,
+    IDomainMetrics metrics,
+    ILogger<NoteCommandHandler> logger) : INoteCommandHandler
 {
     private const int InitialEventVersion = 1;
 
-    public async Task<NoteId> HandleAsync(NoteCommand cmd, CancellationToken ct = default)
-    {
-        await ExecuteAsync(cmd.NoteId, note => note.Handle(cmd), ct, mustExist: cmd.MustExist).ConfigureAwait(false);
-        return cmd.NoteId;
-    }
+    public Task<NoteId> HandleAsync(NoteCommand cmd, CancellationToken ct = default) =>
+        CommandInstrumentation.RunAsync(metrics, logger, cmd.GetType().Name, "Note", async () =>
+        {
+            await ExecuteAsync(cmd.NoteId, note => note.Handle(cmd), ct, mustExist: cmd.MustExist).ConfigureAwait(false);
+            return cmd.NoteId;
+        });
 
     private async Task ExecuteAsync(NoteId noteId, Func<Note, IReadOnlyList<IDomainEvent>> handle, CancellationToken ct,
         bool mustExist = true)
