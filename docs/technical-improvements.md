@@ -44,3 +44,21 @@ Each entry records what it is, why it matters, where it was raised, and any depe
 **Why it matters:** Recurs on every backend/infra slice (hit on 12-C; will recur on 12-D/12-E). Routinely bypassing the hook with `--no-verify` erodes the local gate's value and hides real frontend lint failures when they do matter.
 **Raised in:** Phase 12 (12-C) — backend/infra slice worktree.
 **Depends on:** Nothing blocking. Touches the same file as the `cdk synth` item above.
+
+---
+
+## Split the single API Lambda into individual Lambdas (CQRS + async projectors)
+
+**What:** The backend currently runs as one `ApiFunction` Lambda (ASP.NET minimal API behind an HTTP API proxy) that handles every route and updates all projections **synchronously in-process** via `IDomainEventDispatcher` before returning the HTTP response. Move to a deployment shape that matches an event-sourced system, in two stages:
+
+1. **Stage 1 — CQRS + async projectors (do first).** Split write from read into separate Lambdas, and move projection-building off the request path onto **DynamoDB Streams** (or EventBridge): a **Command Lambda** appends events only; a **Projector Lambda** (idempotent, replayable) rebuilds read models off the stream; a **Query Lambda** serves reads from projections.
+2. **Stage 2 — per-context command Lambdas (when ready to take it on).** Split the command surface by bounded context (Note / Folder / Calendar / Transcription / Todo) into separate Lambdas for deploy and scaling isolation and tighter per-context IAM. Adopt incrementally, only where a context earns it (e.g. Transcription's different runtime profile) — not wholesale.
+
+The full rationale, target diagrams, staged migration plan, and the eventual-consistency trade-off are in **[ADR 0009](adr/0009-split-lambdas-cqrs-async-projectors.md)**.
+
+**Why it matters:** This is the defining event-sourcing deployment lesson for the project — an append-only log with decoupled, replayable async consumers — and it's the largest remaining ES learning surface (Streams, idempotency, replay, eventual consistency, async failure handling, DLQs/alarms). It also shrinks the write path and tightens per-Lambda IAM (today one role grants read/write on ~10 tables).
+
+**Headline trade-off:** Stage 1 replaces today's immediate read-after-write consistency with **eventual** consistency (projector lags the write by stream latency, typically <1s). The frontend's optimistic updates already insulate the user, but server-side read-after-write — **smoke tests, E2E tests, and any read-after-append flow** — must move to retry/polling. Async projection failures also become invisible (DLQ + alarm) rather than a synchronous 500, so observability must be wired in the same slice.
+
+**Raised in:** Architecture discussion, 2026-06-02 — desire to align the deployment with the event-sourced design.
+**Depends on:** Nothing blocking. Pairs with the `observability` skill (async failure visibility). Best done as its own numbered phase given the breadth; graduate Stage 1 to a phase when picked up.
