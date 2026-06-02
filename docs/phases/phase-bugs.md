@@ -78,8 +78,6 @@ Further bugs will be appended as they are identified.
 
 **Key files:** `web/index.html`, `web/public/favicon.svg`, `web/src/__tests__/Favicon.test.ts`.
 
-**Key files (to be confirmed):** `web/index.html`, `web/public/`.
-
 > **Note — not logged here:** the recurring console warning `content.js:360 The kernel 'TopK' for backend 'webgl' is already registered` originates from a **browser extension** (a TensorFlow.js content script injected into the page), not from this app — the codebase has no TensorFlow.js/WebGL usage. It cannot be fixed from our code; reproduce in a clean profile with extensions disabled to confirm.
 
 ---
@@ -114,7 +112,7 @@ Further bugs will be appended as they are identified.
 - [x] The `notetaker-ops` "All errors" widget no longer shows Data Protection lines.
 - [x] The chosen approach (suppress vs. persist) is recorded, with a note on whether the app relies on Data Protection — suppress; the app does not rely on Data Protection (bearer-token auth).
 
-**Key files (to be confirmed):** `src/Api/Program.cs`, `src/Api/LoggingConfig.cs`, CDK in `src/Infrastructure/` (if SSM/S3/KMS persistence is chosen, plus the IAM grant).
+**Key files:** `src/Api/Builder.cs` (log filter), `tests/Api.Integration/DataProtectionLoggingTests.cs`.
 
 ---
 
@@ -141,7 +139,7 @@ Further bugs will be appended as they are identified.
 - [x] A failing spec/test reproduces the conflict before the fix and passes after — `ExceptionMappingTests.ConcurrencyConflict_OnNoteWrite_Returns409…` (via a `ConflictingEventStore` double).
 - [x] The fix is applied at a single cross-cutting point (global `ConcurrencyException → 409` mapping in `LoggingConfig`), not patched per-endpoint.
 
-**Key files (to be confirmed):** `src/Api/CommandHandlers/NoteCommandHandler.cs`, `src/EventStore/DynamoDbEventStore.cs`, `src/Api/LoggingConfig.cs` (global exception handler), `src/Api/Handlers/NoteHandlers.cs`.
+**Key files:** `src/Api/LoggingConfig.cs` (global `ConcurrencyException → 409` mapping), `src/Api/Observability/CommandInstrumentation.cs`; tests `tests/Api.Integration/ExceptionMappingTests.cs`, `tests/Api.Integration/ConflictingEventStore.cs`.
 
 ---
 
@@ -168,4 +166,4 @@ Further bugs will be appended as they are identified.
 - [x] A failing spec/test reproduces the rename-of-deleted-note 500 before the fix and passes after — `ExceptionMappingTests.WriteToDeletedNote_WithStaleProjection_Returns404…` (`[Theory]` over title/content/date).
 - [x] Mapping is uniform, not per-endpoint: the handler throws the typed `NoteNotFoundException` for every note write command via `Note.Exists`, rather than relying on per-endpoint `InvalidOperationException` catches.
 
-**Key files (to be confirmed):** `src/Api/Handlers/NoteHandlers.cs` (`RenameNote`, `EditContent`, `SetNoteDate`), `src/Domain/Notes/Note.cs` (`HandleRename`).
+**Key files:** `src/Api/CommandHandlers/NoteCommandHandler.cs` (`ExecuteAsync` existence check), `src/Domain/Notes/Note.cs` (`Exists`), `src/Api/LoggingConfig.cs` (`NoteNotFoundException → 404` mapping); tests `tests/Api.Integration/ExceptionMappingTests.cs`.
