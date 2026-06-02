@@ -1,4 +1,7 @@
 /* ── Design tokens ─────────────────────────────────────────────── */
+/* Teal is the default palette. Other themes override these custom
+   properties via [data-theme="…"] blocks below; the whole UI reskins
+   through the cascade because no component references a literal colour. */
 :root {
   --color-primary:      #0D9488;
   --color-primary-dark: #0F766E;
@@ -11,8 +14,50 @@
   --color-text-muted:   #64748B;
   --color-border:       #CCEBE8;
   --color-error:        #DC2626;
+  --color-error-bg:     #FEE2E2;
+  --color-error-border: #FCA5A5;
+  --color-banner:       #1E40AF;
+  --color-banner-text:  #FFFFFF;
   --radius:             6px;
   --transition:         150ms ease;
+}
+
+/* Forest — deeper emerald, light. */
+[data-theme="forest"] {
+  --color-primary:      #059669;
+  --color-primary-dark: #047857;
+  --color-primary-bg:   rgba(5, 150, 105, 0.06);
+  --color-cta:          #F97316;
+  --color-cta-dark:     #EA6C0A;
+  --color-bg:           #ECFDF5;
+  --color-surface:      #FFFFFF;
+  --color-text:         #064E3B;
+  --color-text-muted:   #64748B;
+  --color-border:       #BBF7D0;
+  --color-error:        #DC2626;
+  --color-error-bg:     #FEE2E2;
+  --color-error-border: #FCA5A5;
+  --color-banner:       #1E40AF;
+  --color-banner-text:  #FFFFFF;
+}
+
+/* Midnight — full dark mode. Error/banner shift to readable variants on dark. */
+[data-theme="midnight"] {
+  --color-primary:      #2DD4BF;
+  --color-primary-dark: #14B8A6;
+  --color-primary-bg:   rgba(45, 212, 191, 0.10);
+  --color-cta:          #FB923C;
+  --color-cta-dark:     #F97316;
+  --color-bg:           #0F172A;
+  --color-surface:      #1E293B;
+  --color-text:         #E2E8F0;
+  --color-text-muted:   #94A3B8;
+  --color-border:       #334155;
+  --color-error:        #F87171;
+  --color-error-bg:     rgba(248, 113, 113, 0.15);
+  --color-error-border: rgba(248, 113, 113, 0.40);
+  --color-banner:       #1E40AF;
+  --color-banner-text:  #FFFFFF;
 }
 
 /* ── Reset ─────────────────────────────────────────────────────── */
@@ -88,8 +133,49 @@ body {
   background: var(--color-cta-dark);
 }
 
-.sidebar-sign-out {
+/* Footer group pinned to the bottom of the sidebar: theme picker above
+   the sign-out button. */
+.sidebar-footer {
   margin-top: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.625rem;
+  padding-top: 0.75rem;
+}
+
+.theme-picker {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.theme-picker-label {
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: var(--color-text-muted);
+}
+
+.theme-picker-select {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  padding: 0.35rem 0.5rem;
+  font-family: inherit;
+  font-size: 0.8rem;
+  color: var(--color-text);
+  cursor: pointer;
+  transition: border-color var(--transition);
+}
+
+.theme-picker-select:hover,
+.theme-picker-select:focus-visible {
+  border-color: var(--color-primary);
+  outline: none;
+}
+
+.sidebar-sign-out {
   background: none;
   border: 1px solid var(--color-border);
   border-radius: var(--radius);
@@ -894,9 +980,9 @@ body {
 }
 
 .todo-delete-btn:hover:not(:disabled) {
-  color: #DC2626;
-  border-color: #FCA5A5;
-  background: #FEF2F2;
+  color: var(--color-error);
+  border-color: var(--color-error-border);
+  background: var(--color-error-bg);
 }
 
 .todo-delete-btn:disabled,
@@ -2085,8 +2171,8 @@ body {
   right: 0;
   z-index: 50;
   height: 48px;
-  background: #1e40af;
-  color: #fff;
+  background: var(--color-banner);
+  color: var(--color-banner-text);
   display: flex;
   align-items: center;
   padding: 0 1rem;
@@ -2099,8 +2185,8 @@ body {
 }
 
 .notification-banner-enable {
-  background: #fff;
-  color: #1e40af;
+  background: var(--color-banner-text);
+  color: var(--color-banner);
   border: none;
   border-radius: var(--radius);
   padding: 0.3rem 0.875rem;
@@ -2219,11 +2305,11 @@ body.has-notification-banner {
 
 .transcription-error {
   padding: 0.5rem 0.75rem;
-  background: #fee2e2;
-  border: 1px solid #fca5a5;
+  background: var(--color-error-bg);
+  border: 1px solid var(--color-error-border);
   border-radius: 6px;
   font-size: 0.875rem;
-  color: #991b1b;
+  color: var(--color-error);
 }
 
 .transcription-error p {
@@ -2257,12 +2343,12 @@ body.has-notification-banner {
 }
 
 .transcription-stop-button {
-  border-color: #ef4444;
-  color: #ef4444;
+  border-color: var(--color-error);
+  color: var(--color-error);
 }
 
 .transcription-stop-button:hover:not(:disabled) {
-  background: #fee2e2;
+  background: var(--color-error-bg);
 }
 
 .transcription-stop-button:disabled {

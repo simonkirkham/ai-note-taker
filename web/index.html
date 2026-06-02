@@ -7,6 +7,21 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+    <script>
+      // Apply the saved theme before React mounts so a Midnight/Forest user
+      // never sees a flash of the default Teal palette. Teal is :root, so it
+      // needs no data-theme attribute. Keep the valid set in sync with useTheme.
+      (function () {
+        try {
+          var t = localStorage.getItem("note-taker-theme");
+          if (t === "forest" || t === "midnight") {
+            document.documentElement.dataset.theme = t;
+          }
+        } catch (e) {
+          /* localStorage unavailable — fall back to the default theme */
+        }
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>
