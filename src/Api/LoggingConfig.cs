@@ -1,4 +1,5 @@
 using Api.Exceptions;
+using AWS.Lambda.Powertools.Logging;
 using EventStore;
 
 namespace Api;
@@ -8,6 +9,11 @@ public static class LoggingConfig
     public const string CorrelationIdHeader = "x-correlation-id";
     public const string TraceIdHeader = "x-amzn-trace-id";
 
+    // Appended to the Powertools logger for the request scope so every log line carries
+    // the same value returned in the x-correlation-id header. Powertools emits it as the
+    // snake_case field "correlation_id" (matching xray_trace_id, command_type, etc.).
+    private const string CorrelationIdLogKey = "CorrelationId";
+
     // Stamps every response with the request's correlation ID and the X-Ray trace
     // ID. Registered as the first middleware so even short-circuited responses
     // (e.g. 401 from auth) carry the headers. OnStarting runs just before headers
@@ -15,6 +21,12 @@ public static class LoggingConfig
     // writes the response. The trace ID echoes the inbound X-Amzn-Trace-Id set by
     // API Gateway/Lambda so a browser error (12-F RUM) links to its backend trace;
     // off Lambda it falls back to the request identifier so the header is always present.
+    //
+    // The same correlation ID is appended to the Powertools logger so every log line for
+    // the request carries it as "correlation_id" — without this the value handed to the
+    // client could not be found in CloudWatch (BUG-8). AppendKey is AsyncLocal-scoped, so
+    // concurrent requests never see each other's key; RemoveKeys clears it once the
+    // request unwinds so the value never leaks to a later request on a warm Lambda.
     internal static void UseCorrelationId(WebApplication app)
     {
         app.Use(async (ctx, next) =>
@@ -27,7 +39,16 @@ public static class LoggingConfig
                     string.IsNullOrEmpty(inboundTrace) ? ctx.TraceIdentifier : inboundTrace;
                 return Task.CompletedTask;
             });
-            await next();
+
+            Logger.AppendKey(CorrelationIdLogKey, ctx.TraceIdentifier);
+            try
+            {
+                await next();
+            }
+            finally
+            {
+                Logger.RemoveKeys(CorrelationIdLogKey);
+            }
         });
     }
 
