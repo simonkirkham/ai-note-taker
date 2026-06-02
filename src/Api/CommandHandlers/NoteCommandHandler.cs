@@ -35,8 +35,12 @@ public sealed class NoteCommandHandler(
     {
         var streamId = noteId.ToStreamId();
         var history = await store.ReadAsync(streamId, ct).ConfigureAwait(false);
-        if (mustExist && history.Count == 0) throw new NoteNotFoundException(noteId);
-        var newEvents = handle(Rebuild(history));
+        var note = Rebuild(history);
+        // Covers both a never-created note (empty stream) and a deleted one whose
+        // stream still exists: either way the aggregate is gone, so the write is a
+        // 404 rather than a domain InvalidOperationException that escapes as a 500.
+        if (mustExist && !note.Exists) throw new NoteNotFoundException(noteId);
+        var newEvents = handle(note);
         if (newEvents.Count == 0) return;
         await PersistAsync(streamId, noteId, history, newEvents, ct).ConfigureAwait(false);
     }

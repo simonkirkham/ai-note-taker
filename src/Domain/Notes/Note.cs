@@ -13,6 +13,8 @@ public sealed class Note : IAggregate
     readonly HashSet<string> _tags = [];
     string? _transcriptText;
 
+    public bool Exists => _exists && !_deleted;
+
     public void Apply(IDomainEvent @event)
     {
         switch (@event)

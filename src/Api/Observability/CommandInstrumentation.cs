@@ -31,8 +31,9 @@ public static class CommandInstrumentation
 
     // Domain rule violations are expected business outcomes: logged as Warning, counted
     // as CommandFailed. ConcurrencyException (counted by the event-store decorator) and
-    // infrastructure errors are deliberately excluded — the latter must surface as a 500
-    // logged at Error by the global handler, not be masked as a domain failure here.
+    // infrastructure errors are deliberately excluded — the global handler maps a
+    // ConcurrencyException to 409 and any other infrastructure error to a 500 logged at
+    // Error, rather than masking either as a domain failure here.
     // CycleDetectedException derives from InvalidOperationException, so it is covered here too.
     private static bool IsDomainViolation(Exception ex) =>
         ex is InvalidOperationException
