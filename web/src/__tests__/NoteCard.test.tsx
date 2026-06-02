@@ -22,13 +22,20 @@ describe('NoteCard', () => {
     expect(screen.getByText('We discussed quarterly targets')).toBeInTheDocument()
   })
 
-  it('renders open action items', () => {
+  it('does not render open action items on the summary card (CHANGE-10)', () => {
     const card: NoteCardData = {
       ...base,
       openActions: [{ actionId: 'a-1', description: 'Send recap email' }],
     }
     render(<NoteCard card={card} onEdit={() => {}} />)
-    expect(screen.getByText('Send recap email')).toBeInTheDocument()
+    expect(screen.queryByText('Send recap email')).not.toBeInTheDocument()
+  })
+
+  it('renders tag pills without a "Tags" label (CHANGE-10)', () => {
+    render(<NoteCard card={{ ...base, tags: ['work', 'planning'] }} onEdit={() => {}} />)
+    expect(screen.getByText('work')).toBeInTheDocument()
+    expect(screen.getByText('planning')).toBeInTheDocument()
+    expect(screen.queryByText('Tags')).not.toBeInTheDocument()
   })
 
   it('does not render a snippet when contentPreview is empty', () => {
@@ -36,10 +43,10 @@ describe('NoteCard', () => {
     expect(container.querySelector('.note-card-snippet')).toBeNull()
   })
 
-  it('calls onEdit when Edit button is clicked', async () => {
+  it('calls onEdit when the edit icon button is clicked', async () => {
     const onEdit = vi.fn()
     render(<NoteCard card={base} onEdit={onEdit} />)
-    await userEvent.click(screen.getByRole('button', { name: 'Edit Note' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Edit note' }))
     expect(onEdit).toHaveBeenCalledWith('note-1')
   })
 
