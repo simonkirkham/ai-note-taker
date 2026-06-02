@@ -948,7 +948,7 @@ public class InfraAssertionsTests
 
     [Theory]
     [InlineData("NoteTaker/All errors")]
-    [InlineData("NoteTaker/By correlation ID")]
+    [InlineData("NoteTaker/By trace ID")]
     [InlineData("NoteTaker/Slowest requests")]
     [InlineData("NoteTaker/Concurrency conflicts")]
     public void SavedQueries_NamedQueryDefinitionExists(string name)

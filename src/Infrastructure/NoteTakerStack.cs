@@ -379,7 +379,7 @@ public sealed class NoteTakerStack : Stack
                 // level literals match Powertools' casing ("Error"/"Warning"); the
                 // @message regex is the fallback that catches anything else.
                 QueryString = string.Join("\n",
-                    "fields @timestamp, level, correlationId, message, @message",
+                    "fields @timestamp, level, xray_trace_id, message, @message",
                     "| filter level in [\"Error\", \"Warning\"] or @message like /(?i)exception|error|fail/",
                     "| sort @timestamp desc",
                     "| limit 100")
@@ -634,7 +634,7 @@ public sealed class NoteTakerStack : Stack
             }),
             // Single combined "all errors" table over BOTH log groups. The two
             // sources have different shapes: Powertools backend lines carry
-            // level/correlationId/message; RUM events are JSON with the event
+            // level/xray_trace_id/message; RUM events are JSON with the event
             // type com.amazon.rum.js_error_event and the message under
             // event_details. The query matches both with an `or` and surfaces a
             // unified field set, newest first. Time-range picker drives "how far back".
@@ -646,7 +646,7 @@ public sealed class NoteTakerStack : Stack
                 Height = 6,
                 View = Amazon.CDK.AWS.CloudWatch.LogQueryVisualizationType.TABLE,
                 QueryString = string.Join("\n",
-                    "fields @timestamp, level, correlationId, message, event_details.message, @message",
+                    "fields @timestamp, level, xray_trace_id, message, event_details.message, @message",
                     "| filter level in [\"Error\", \"Warning\"] or @message like /com.amazon.rum.js_error_event/ or @message like /(?i)exception|error|fail/",
                     "| sort @timestamp desc",
                     "| limit 100")
@@ -655,8 +655,11 @@ public sealed class NoteTakerStack : Stack
         // ── Saved Logs Insights queries (12-G) ───────────────────────────
         // Persist the runbook's most-used queries so they appear in everyone's
         // Logs Insights query picker under the "NoteTaker/" folder. Field names
-        // match the Powertools log shape (correlationId / CommandType / StreamId);
-        // the "Concurrency conflicts" filter matches the warning the event-store
+        // match the Powertools log shape verified in prod: level / message /
+        // xray_trace_id / CommandType / StreamId. (There is no correlationId log
+        // field — x-correlation-id is only a response header; the queryable
+        // per-request key is xray_trace_id, set by X-Ray in 12-C.)
+        // The "Concurrency conflicts" filter matches the warning the event-store
         // decorator logs ("Concurrency conflict {StreamId} ..."). See docs/observability.md.
         void SavedQuery(string id, string name, string query) =>
             new Amazon.CDK.AWS.Logs.CfnQueryDefinition(this, id, new Amazon.CDK.AWS.Logs.CfnQueryDefinitionProps
@@ -667,15 +670,16 @@ public sealed class NoteTakerStack : Stack
             });
 
         SavedQuery("QueryAllErrors", "NoteTaker/All errors", string.Join("\n",
-            "fields @timestamp, level, correlationId, CommandType, StreamId, message, @message",
+            "fields @timestamp, level, xray_trace_id, CommandType, StreamId, message, @message",
             "| filter level in [\"Error\", \"Warning\"] or @message like /(?i)exception|error|fail/",
             "| sort @timestamp desc",
             "| limit 100"));
 
-        SavedQuery("QueryByCorrelationId", "NoteTaker/By correlation ID", string.Join("\n",
+        SavedQuery("QueryByTraceId", "NoteTaker/By trace ID", string.Join("\n",
             "fields @timestamp, level, CommandType, StreamId, message",
-            // Replace the placeholder with the x-correlation-id header value from the response.
-            "| filter correlationId = \"REPLACE_WITH_CORRELATION_ID\"",
+            // Replace the placeholder with the trace id — the Root=1-... value from the
+            // x-amzn-trace-id response header (it appears in logs as xray_trace_id).
+            "| filter xray_trace_id = \"REPLACE_WITH_XRAY_TRACE_ID\"",
             "| sort @timestamp asc"));
 
         SavedQuery("QuerySlowestRequests", "NoteTaker/Slowest requests", string.Join("\n",

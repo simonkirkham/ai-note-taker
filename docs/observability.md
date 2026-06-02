@@ -56,12 +56,14 @@ Domain rule violations (e.g. renaming a missing note) are logged at **Warning**,
 
 ## What did one request (or user-reported error) do?
 
-Every HTTP response carries an **`x-correlation-id`** header, and a 500's JSON body repeats it — so a user can quote it. To trace it:
+Every HTTP response carries an **`x-amzn-trace-id`** header (the X-Ray trace, 12-C). Its `Root=1-…` value is logged on every line as the **`xray_trace_id`** field, so it's the key that ties a request's log lines together. To trace a request:
 
-1. Run the saved query **`NoteTaker/By correlation ID`** and replace `REPLACE_WITH_CORRELATION_ID` with the value.
-2. You get that request's full log trail (command received → events appended → any warning/error), sorted oldest-first.
+1. Take the `Root=1-…` value from the response's `x-amzn-trace-id` header.
+2. Run the saved query **`NoteTaker/By trace ID`** and replace `REPLACE_WITH_XRAY_TRACE_ID` with it.
+3. You get that request's full log trail (command received → events appended → any warning/error), sorted oldest-first.
+4. Paste the same trace id into **X-Ray** (below) to see it as a timed trace with the `ReadEvents`/`AppendEvents` subsegments.
 
-Every response also carries **`x-amzn-trace-id`** — paste it into **X-Ray** (below) to see the same request as a timed trace.
+> Note: responses also carry an **`x-correlation-id`** header (12-A) and a 500 body repeats it for users to quote — but that value (the ASP.NET `TraceIdentifier`) is **not** currently emitted as a log field, so use `xray_trace_id` (above) for log lookups. Wiring `correlationId` into the Powertools logger is a tracked follow-up.
 
 ## Why is it slow?
 
@@ -103,7 +105,7 @@ These persist as named queries in the Logs Insights picker under the **`NoteTake
 | Name | Answers |
 |------|---------|
 | `NoteTaker/All errors` | All error/warning lines, newest first |
-| `NoteTaker/By correlation ID` | One request's full trail (replace the placeholder) |
+| `NoteTaker/By trace ID` | One request's full trail by `xray_trace_id` (replace the placeholder) |
 | `NoteTaker/Slowest requests` | Lambda invocations by `@duration` |
 | `NoteTaker/Concurrency conflicts` | Optimistic-concurrency conflict timeline |
 
@@ -111,7 +113,7 @@ These persist as named queries in the Logs Insights picker under the **`NoteTake
 
 | Field | Set by |
 |-------|--------|
-| `level`, `message`, `correlationId` | every line (12-A) |
+| `level`, `message`, `timestamp`, `service`, `xray_trace_id`, `name` | every line (12-A; `xray_trace_id` from 12-C) |
 | `CommandType`, `Aggregate` | "Command received …" (12-B) |
 | `StreamId`, `Version`, `EventCount` | "Events appended …" (12-B) |
 | `ExceptionType` | "Command failed …" (Warning, 12-B) |
