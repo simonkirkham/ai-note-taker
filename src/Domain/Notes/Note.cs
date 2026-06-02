@@ -54,6 +54,8 @@ public sealed class Note : IAggregate
                 break;
             case TagsSuggested:
                 break;
+            case ActionItemsSuggested:
+                break;
             default:
                 break;
         }
@@ -74,6 +76,7 @@ public sealed class Note : IAggregate
             LinkNoteToCalendarEvent cmd => HandleLinkToCalendarEvent(cmd),
             CompleteTranscription cmd => HandleCompleteTranscription(cmd),
             RecordTagSuggestions cmd => HandleRecordTagSuggestions(cmd),
+            RecordActionItemSuggestions cmd => HandleRecordActionItemSuggestions(cmd),
             _ => throw new ArgumentOutOfRangeException(nameof(command))
         };
 
@@ -176,5 +179,14 @@ public sealed class Note : IAggregate
         if (cmd.Tags.Count == 0)
             return [];
         return [new TagsSuggested(cmd.NoteId, cmd.Tags)];
+    }
+
+    IReadOnlyList<IDomainEvent> HandleRecordActionItemSuggestions(RecordActionItemSuggestions cmd)
+    {
+        if (!_exists || _deleted)
+            throw new InvalidOperationException($"Note {cmd.NoteId} does not exist.");
+        if (cmd.ActionItemIds.Count == 0)
+            return [];
+        return [new ActionItemsSuggested(cmd.NoteId, cmd.ActionItemIds)];
     }
 }

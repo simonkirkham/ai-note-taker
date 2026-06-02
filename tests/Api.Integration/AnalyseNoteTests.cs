@@ -300,6 +300,43 @@ public sealed class AnalyseNoteTests : IClassFixture<ApiFactory>
         Assert.DoesNotContain(events, e => e.EventType == nameof(TagsSuggested));
     }
 
+    // Scenario: Analysis records the IDs of the action items it created (10-K)
+    [Fact]
+    public async Task PostAnalyse_RecordsCreatedActionItemIds_AsActionItemsSuggested()
+    {
+        _fakeBedrock.NextResult = new NoteAnalysisResult("same content", [], ["Fix the login bug by Friday"]);
+
+        var noteId = await CreateNoteWithTranscriptAsync(content: "Login bug.", transcript: "Alice will fix login by Friday.");
+
+        var resp = await _client.PostAsync($"/notes/{noteId}/analyse", null);
+
+        Assert.Equal(HttpStatusCode.NoContent, resp.StatusCode);
+
+        var events = await ReadStreamAsync(noteId);
+        var suggestedEnvelope = Assert.Single(events, e => e.EventType == nameof(ActionItemsSuggested));
+        var suggested = (ActionItemsSuggested)EventDeserializer.Deserialize(suggestedEnvelope);
+        Assert.Single(suggested.ActionItemIds);
+
+        var actions = await GetActionsAsync(noteId);
+        var actionIds = actions.Select(a => a.GetProperty("actionId").GetString()).ToList();
+        Assert.Contains(suggested.ActionItemIds[0].ToString(), actionIds);
+    }
+
+    // Scenario: No new action items means no ActionItemsSuggested event (10-K)
+    [Fact]
+    public async Task PostAnalyse_NoNewActionItems_RecordsNoActionItemsSuggested()
+    {
+        _fakeBedrock.NextResult = new NoteAnalysisResult("same content", [], []);
+
+        var noteId = await CreateNoteWithTranscriptAsync(content: "Login bug.", transcript: "nothing actionable here.");
+
+        var resp = await _client.PostAsync($"/notes/{noteId}/analyse", null);
+
+        Assert.Equal(HttpStatusCode.NoContent, resp.StatusCode);
+        var events = await ReadStreamAsync(noteId);
+        Assert.DoesNotContain(events, e => e.EventType == nameof(ActionItemsSuggested));
+    }
+
     private async Task<IReadOnlyList<EventEnvelope>> ReadStreamAsync(string noteId)
     {
         var store = _factory.Services.GetRequiredService<IEventStore>();

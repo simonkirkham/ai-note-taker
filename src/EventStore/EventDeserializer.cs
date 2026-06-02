@@ -20,6 +20,7 @@ public static class EventDeserializer
         (nameof(NoteTagged), _) => JsonSerializer.Deserialize<NoteTagged>(envelope.Payload)!,
         (nameof(NoteUntagged), _) => JsonSerializer.Deserialize<NoteUntagged>(envelope.Payload)!,
         (nameof(TagsSuggested), _) => JsonSerializer.Deserialize<TagsSuggested>(envelope.Payload)!,
+        (nameof(ActionItemsSuggested), _) => JsonSerializer.Deserialize<ActionItemsSuggested>(envelope.Payload)!,
         (nameof(ActionItemAdded), _) => JsonSerializer.Deserialize<ActionItemAdded>(envelope.Payload)!,
         (nameof(ActionItemCompleted), _) => JsonSerializer.Deserialize<ActionItemCompleted>(envelope.Payload)!,
         (nameof(ActionItemReopened), _) => JsonSerializer.Deserialize<ActionItemReopened>(envelope.Payload)!,

@@ -83,8 +83,15 @@ public static class TranscriptionHandlers
         var existingDescriptions = existingActionsView.Actions
             .Select(a => a.Description)
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var createdActionIds = new List<Guid>();
         foreach (var action in result.NewActionItems.Where(a => !existingDescriptions.Contains(a)))
-            await actionHandler.HandleAsync(new AddActionItem(new ActionId(Guid.NewGuid()), new NoteId(noteId), action), ct);
+        {
+            var actionId = Guid.NewGuid();
+            await actionHandler.HandleAsync(new AddActionItem(new ActionId(actionId), new NoteId(noteId), action), ct);
+            createdActionIds.Add(actionId);
+        }
+        if (createdActionIds.Count > 0)
+            await noteHandler.HandleAsync(new RecordActionItemSuggestions(new NoteId(noteId), createdActionIds), ct);
 
         return Results.NoContent();
     }
