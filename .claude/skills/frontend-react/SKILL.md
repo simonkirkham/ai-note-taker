@@ -55,6 +55,8 @@ npm --prefix web run dev       # Dev server (port 5173)
 ## Audio in the browser
 
 - Do **not** use `AudioContext.createScriptProcessor` — it is deprecated. Use `AudioWorkletNode` with a data-URL worklet module (`data:application/javascript,...`) or a static file in `public/`.
+- **`getDisplayMedia` must be requested before any `await` that follows the user's click** (credentials, `getUserMedia`, etc.) — it requires the click's *transient user activation*, and intervening awaits can let that window expire, making the prompt fail silently.
+- **A best-effort capability that degrades silently must still be observable.** When a `catch` swallows a failure to fall back (e.g. screen-share denied → mic-only), log it with `console.warn` so the degrade is visible in DevTools rather than invisible.
 - Every new CSS selector must have a matching `className` prop in the rendered JSX. Verify with grep: `grep -n "className=\"my-selector\"" web/src/` — if no match, the selector is dead.
 
 ## Checklist (run before opening a PR)

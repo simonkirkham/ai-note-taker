@@ -11,7 +11,7 @@
 | 10-C | Persist transcript | Done | 10-B |
 | 10-D | Manual analysis | Done | 10-C |
 | 10-E | Auto-analysis on stop | Not Started | — |
-| 10-F | Capture remote participants (system audio mix) | Not Started | — |
+| 10-F | Capture remote participants (system audio mix) | Done | — |
 | 10-G | Analysis evaluation harness | Not Started | — |
 | 10-H | Analyse note content (transcript optional) | Done | — |
 | 10-I | Record AI tag suggestions (`TagsSuggested`) | Not Started | — |
@@ -383,7 +383,7 @@ Scenario: Switch resets to ON on page reload
 
 ## Slice 10-F — Capture remote participants (system audio mix)
 
-**Status:** Not Started
+**Status:** Done
 
 **Value:** Capture the full conversation — not just the local microphone — so that remote participants dialled in via video call (Zoom, Teams, Meet) are also transcribed.
 

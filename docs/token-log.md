@@ -1068,3 +1068,25 @@ If no agent ran unexpectedly high: write `None — slice ran within expected ran
 **Optimisation suggestions:**
 - **Verification (–10 000):** Two full frontend suite runs happened back to back — once as a manual targeted `vitest run TodoSection` + tsc, then again inside the pre-commit hook (which runs the *entire* suite). For a single-component visual change, the manual targeted run is redundant with the hook; trust the hook's full run and skip the pre-commit manual rehearsal, or vice-versa.
 - **None on Hawk:** first-pass approval is the target state; nothing to trim.
+
+
+---
+
+## Slice 10-F — Capture remote participants (system audio mix)
+
+> Resumed after a VS Code crash. Breaker's three red tests pre-existed (uncommitted) in the worktree; this session was Pip implementation + one Hawk round-trip + merge/deploy + Scribe. Hawk counts are exact from the two subagent hand-offs (39 000 + 34 000).
+
+| Agent     | ~Tokens     |
+|-----------|-------------|
+| Breaker   | —           |
+| Pip (impl + Hawk fixes + orchestration) | 90 000 |
+| Hawk (two reviews) | 73 000 |
+| Stylist   | —           |
+| Scribe    | 9 000       |
+| **Total** | **~172 000** |
+
+**Why:** Two cost drivers, roughly equal. (1) The opening review swept *both* in-flight Phase 10 worktrees to decide where work stood; inspecting the untracked 10-G project with `find … -type f` dumped ~150 lines of `bin/`+`obj/` artifacts into context. (2) One Hawk round-trip (REQUEST CHANGES → fix → APPROVE) doubled Hawk's spend, and each of the three frontend test runs takes ~3 min under WSL (jsdom environment setup dominates).
+
+**Optimisation suggestions:**
+- **Pip (–8 000):** Enumerate untracked .NET projects with `-not -path '*/bin/*' -not -path '*/obj/*'`; the artifact dump was pure noise (captured as a learning).
+- **Hawk:** the round-trip was legitimate — the gesture-ordering and teardown findings were real correctness fixes, not nits. Nothing to trim.
