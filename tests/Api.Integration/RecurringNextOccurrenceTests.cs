@@ -111,11 +111,12 @@ public sealed class RecurringNextOccurrenceTests : IClassFixture<ApiFactory>
             DateTimeOffset.UtcNow.AddMinutes(15),
             true,
             "series3");
+        var nextOccurrenceStart = DateTimeOffset.UtcNow.AddDays(7);
         var nextEvent = new CalendarEvent(
-            "series3_20260527T090000Z",
+            "series3_next",
             "Standup",
-            new DateTimeOffset(2026, 5, 27, 9, 0, 0, TimeSpan.Zero),
-            new DateTimeOffset(2026, 5, 27, 9, 15, 0, TimeSpan.Zero),
+            nextOccurrenceStart,
+            nextOccurrenceStart.AddMinutes(15),
             true,
             "series3");
 
