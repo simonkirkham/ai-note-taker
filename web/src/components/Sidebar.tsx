@@ -2,6 +2,7 @@ import { useState } from "react";
 import { FolderNode } from "../api";
 import { UNFILED_ID } from "../constants";
 import FolderTree from "./FolderTree";
+import ThemePicker from "./ThemePicker";
 
 export default function Sidebar({
   open,
@@ -142,14 +143,17 @@ export default function Sidebar({
           />
         )}
       </div>
-      {onSignOut && (
-        <button
-          className="sidebar-sign-out"
-          data-testid="sign-out-button"
-          aria-label="Sign out"
-          onClick={onSignOut}
-        >Sign out</button>
-      )}
+      <div className="sidebar-footer">
+        <ThemePicker />
+        {onSignOut && (
+          <button
+            className="sidebar-sign-out"
+            data-testid="sign-out-button"
+            aria-label="Sign out"
+            onClick={onSignOut}
+          >Sign out</button>
+        )}
+      </div>
     </nav>
   );
 }
