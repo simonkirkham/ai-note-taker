@@ -1256,3 +1256,18 @@ If no agent ran unexpectedly high: write `None — slice ran within expected ran
 **Why:** The cheapest Phase-10 feedback slice so far — a near-mechanical copy of 10-I (command + collection event + handler hook + registration + docs). The 10-I equality-override learning and the 10-J memory meant zero rediscovery; almost all cost was the symmetric code and its two integration tests.
 
 **Optimisation note:** three slices in (10-I→10-K), the marginal cost is falling as patterns memoise. 10-L (projection) will cost more again — it's a 10-J-shaped slice (store + rebuild + CDK + two-handler wiring), not a 10-I-shaped one.
+
+---
+
+## CHANGE-11 — Preview pull-out »↔« state
+
+> Frontend prop-threading slice (App → Sidebar → FolderTree → node) + a toggle reducer. Built inline, one Hawk pass (approved with a 1-line title-tidy suggestion applied). ~95k total.
+
+| Agent | ~Tokens |
+|-------|---------|
+| Pip (impl + tests + orchestration) | 60 000 |
+| Hawk  | 32 000 |
+| Scribe | 8 000 |
+| **Total** | **~100 000** |
+
+**Notes:** one wasted test run from asserting the preview panel *unmounts* on close when it actually toggles a `--open` class — read the component's render before writing the assertion. Merge correctly held for the other session's in-progress 10-K deploy, then merged once it cleared (the corrected concurrent-session gate discipline).

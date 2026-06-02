@@ -21,8 +21,8 @@
 | CHANGE-7 | More colour schemes; drop duplicate Forest theme | Done | CHANGE-2 (shipped) |
 | CHANGE-8 | Theme picker + Sign out always visible without scrolling | Done | CHANGE-2 (shipped) |
 | CHANGE-9 | Restructure home Filters: Show-older + Tags inside, fix gap | Done | CHANGE-3, CHANGE-6 (shipped) |
-| CHANGE-10 | Simplify the busy home screen; make action buttons smaller | Planned | — |
-| CHANGE-11 | Preview pull-out `»` becomes `«` when its panel is open | Planned | — |
+| CHANGE-10 | Refine home: hide tag labels, icon card/to-do actions, boxless filter tags, simpler calendar | Planned | — |
+| CHANGE-11 | Preview pull-out `»` becomes `«` when its panel is open | Done | — |
 | CHANGE-12 | Drop home Notes divider; top-align with Today's Meetings | Done | CHANGE-10? (numbering collision — see section) |
 
 Tweaks are appended here as they are identified. Use the same per-item format: a short title, **Status**, value/symptom, and acceptance criteria (with scenarios and approach where the change warrants them).
@@ -920,75 +920,81 @@ Scenario: Existing filter behaviour is unchanged
 
 ---
 
-## CHANGE-10 — Simplify the busy home screen; make action buttons smaller
+## CHANGE-10 — Refine the home screen (cards, filters, to-dos, meetings)
 
-**Status:** Planned. **Prototype required before implementation** (see below) — "simpler" is subjective, so the layout must be confirmed from a prototype gallery before any real code, the same way CHANGE-9 was.
+**Status:** Prototype approved (2026-06-02) — confirmed via the before/after and full-screen galleries on branch `prototype/minor-10-home-simplify` (`home-refine-prototype.html`, `home-fullscreen-prototype.html`). Ready to implement; do not start from prototype code.
 
-**Value:** The home screen has accumulated controls — the meetings widget, the "New Note" button, the To Do section, the collapsible Filters control, the notes list, and the sidebar — and reads as busy and dense rather than calm and focused. The user's note is that it "needs simplifying" and that the **action buttons can be smaller** (the prominent `New Note` button at `ListView.tsx:114` `.new-note-button`, and similar primary actions, take more visual weight than a frequently-but-briefly-used control needs). The home screen should lead with the content (today's notes and to-dos) and let secondary actions recede.
+**Value:** The home screen reads as busy. Rather than a dramatic redesign (an earlier "make everything smaller / minimal" prototype was rejected as too far from today's look), the user confirmed a set of targeted refinements that keep today's layout but reduce visual noise — quieter cards, lighter actions, and calmer Filters and Meetings presentation.
 
-This is the umbrella "calm the home screen" item. It composes with — and should be planned alongside — the already-queued home tweaks: CHANGE-8 (footer always visible) and CHANGE-9 (consolidated Filters panel). Where those two are specific, this one is the holistic "reduce visual weight" pass: tighten spacing, downsize action buttons, and reduce competing emphasis so one thing is clearly primary.
-
-**Backend changes:** None. Pure frontend layout/styling change — no event, projection, or API change.
+**Backend changes:** None. Pure frontend layout/styling — no event, projection, or API change. No functionality is removed; only presentation changes.
 
 ---
 
-### Prototype requirement
+### Confirmed changes (prototype-approved)
 
-Run the **prototype** skill first — this is a UX/density decision, not obvious CRUD, and "simpler" is subjective. Build a throwaway frontend-only prototype on a `prototype/minor-10-home-simplify` branch/worktree that presents **2–3 options** for the calmed home layout (e.g. button sizing/weight, region spacing, and emphasis hierarchy), the same option-gallery approach that settled CHANGE-9. Exercise each option against a realistic home screen — meetings widget present and absent, a populated To Do section, the collapsed/expanded Filters control, and both the narrow and wide breakpoints — so the chosen density holds up in the busy case, not just an empty one. On approval, the exit procedure rewrites this item's scope, scenarios, and acceptance criteria with the confirmed layout before real implementation begins. No prototype code is merged.
+1. **Hide the "TAGS" label on note summary cards** — drop the `.note-card-tags-label` ("Tags") word; keep the tag pills.
+2. **Note-card Edit & Delete become small icon buttons** — replace the "Edit Note" / "Delete" text buttons (`.note-card-edit-button`, `.note-card-delete-btn`) with a pencil and a trash icon. Keep accessible `aria-label`s and the existing inline delete-confirm flow.
+3. **Remove the action-items list from summary cards** — drop the `.note-card-actions` `<ul>` of open actions; the card shows title, date, tags, and the icon actions only.
+4. **To-do "Delete" becomes a trash icon** — replace the `.todo-delete-btn` text with a trash icon in both the open list and the Done list. Keep the `aria-label="Delete …"`.
+5. **Remove the box around the Filters tags** — drop the border/background/padding from `.tag-filter` so the pills sit inline within the Filters panel's "Tags" group (the collapsible panel itself keeps its card).
+6. **Simplify the Today's Meetings panel** — lighter meeting rows (time · title with a quiet outline "+ Note" button), matching the prototype, reducing the panel's visual weight.
+
+The **New Note** button keeps its current prominence — the original "make action buttons smaller" idea was dropped in favour of these targeted refinements.
 
 ---
 
-### Likely scope (to confirm via the prototype)
+### Key implementation files
 
-- **Downsize action buttons.** Reduce the padding/font-weight/size of `.new-note-button` (`ListView.tsx:113`, styled in `App.css`) and align other home action buttons to a single smaller "secondary action" size, reserving large/CTA emphasis for at most one primary action.
-- **Reduce competing emphasis.** Audit the home regions (meetings widget, To Do section, Notes header, Filters control) so they don't all shout at once — consistent heading sizes, calmer borders/shadows, more whitespace between regions rather than dense stacking.
-- **Tighten spacing, not features.** This is visual de-cluttering only; no region is removed. If a region should actually be hidden/collapsed by default, raise that as its own item rather than folding it in here.
-
----
-
-### Key implementation files (provisional)
-
-- `web/src/components/ListView.tsx` — the `New Note` button and home layout regions
-- `web/src/App.css` — `.new-note-button`, home section spacing, heading sizes, button sizing tokens
-- Possibly `web/src/components/TodoSection.tsx` / meetings widget for spacing consistency
+- `web/src/components/NoteCard.tsx` + `web/src/App.css` — remove the tags label and the actions `<ul>`; swap edit/delete text for icon buttons (a shared `.icon-btn` style).
+- `web/src/components/TodoSection.tsx` + `web/src/App.css` — swap the open-list and Done-list delete text for a trash icon.
+- `web/src/components/TagFilter.tsx` / `web/src/App.css` — remove the `.tag-filter` box (border/background/padding/`margin-top`).
+- `web/src/components/MeetingsSection.tsx` + `web/src/App.css` — lighter meeting-row layout.
+- A small reusable icon set (inline SVG pencil/trash) shared by cards and to-dos.
 
 ---
 
 ### Scenarios
 
 ```
-Scenario: Home action buttons are smaller and less dominant
-  Given I am on the home screen
-  Then  the New Note (and peer action) buttons render at the smaller secondary size
-  And   no single secondary action competes visually with the notes content
+Scenario: Note cards are quieter
+  Given a note summary card with tags and open actions
+  Then  the "TAGS" label is not shown (pills remain)
+  And   the open-actions list is not shown on the card
+  And   Edit and Delete are small pencil/trash icon buttons
 
-Scenario: Home leads with content
-  Given I open the home screen
-  Then  today's notes and to-dos are the visual focus
-  And   the surrounding controls recede with calmer spacing and emphasis
+Scenario: Card and to-do actions remain usable and accessible
+  Given the icon Edit/Delete on a card and the trash icon on a to-do
+  When  I use them
+  Then  they behave exactly as the old text buttons did (edit, delete + confirm, delete to-do)
+  And   each exposes an accessible label
 
-Scenario: No functionality is removed
-  Given any home control (New Note, Filters, To Do actions, meetings)
-  When  I use it after the simplification
-  Then  it behaves exactly as before — the change is visual only
+Scenario: Filter tags have no box
+  Given the Filters panel is expanded
+  Then  the tag pills sit inline in the "Tags" group with no surrounding border/background
+
+Scenario: The Today's Meetings panel is lighter
+  Given today has meetings
+  Then  each meeting is a light row (time · title) with a quiet "+ Note" button
 ```
 
 ---
 
 ### Acceptance criteria
 
-- [ ] Home action buttons (starting with `New Note`) are reduced to a smaller, consistent size; large/CTA emphasis is reserved for at most one primary action
-- [ ] The home screen reads as calmer — consistent heading sizes, reduced competing emphasis, and more deliberate spacing between regions
-- [ ] No home region or control is removed; all existing behaviour is unchanged (visual only)
-- [ ] Folder and note views are unaffected unless an explicitly shared style is touched
-- [ ] A prototype was used to confirm the chosen density/sizing before implementation
-- [ ] Existing `ListView` / home component tests remain green
+- [x] Prototype built and approved (full-screen) before implementation
+- [ ] Note summary cards: no "TAGS" label (pills remain); no action-items list; Edit/Delete are icon buttons with accessible labels and the inline delete-confirm flow intact
+- [ ] To-do items (open + Done) use a trash icon for delete, with the `aria-label` preserved
+- [ ] The Filters "Tags" group shows pills inline with no surrounding box; the collapsible panel itself is unchanged
+- [ ] The Today's Meetings panel uses the lighter row layout
+- [ ] No functionality removed — edit, delete (+ confirm), complete/reopen, tag filter, and "+ Note" all behave as before (visual only)
+- [ ] Folder and note views are unaffected unless a shared style is touched
+- [ ] Component tests updated where they assert on changed text (e.g. "Edit Note"/"Delete" → icon `aria-label`s); existing NoteCard / TodoSection / TagFilter / Meetings tests remain green
 
 ---
 
 ## CHANGE-11 — Preview pull-out `»` becomes `«` when its panel is open
 
-**Status:** Planned.
+**Status:** ✅ Done — PR #126, deployed 2026-06-02. See [docs/learnings/phase-minor-11-preview-toggle.md](../learnings/phase-minor-11-preview-toggle.md).
 
 **Value:** The folder and Unfiled "preview notes" pull-out is triggered by a `»` button — on each folder row (`FolderTree.tsx:111`, `.folder-tree-action-btn`, `aria-label="Preview folder notes"`) and next to Unfiled Notes (`Sidebar.tsx:115`, `data-testid="unfiled-preview-button"`). The button always shows `»`, even when its preview panel (`FolderPreviewPanel`) is already open for that folder. The glyph should reflect state: show `»` (open/expand) when the panel is closed, and `«` (collapse) when the panel is already showing that folder's notes — so the affordance reads as a toggle and the user can tell, and undo, what's expanded.
 
@@ -1045,13 +1051,13 @@ Scenario: Unfiled preview button behaves the same
 
 ### Acceptance criteria
 
-- [ ] A folder's preview button shows `«` when its preview panel is open for that folder, and `»` otherwise
-- [ ] Only the currently-previewed folder's button shows `«`; all others show `»`
-- [ ] The Unfiled Notes preview button follows the same `»`/`«` rule
-- [ ] Clicking the button when the panel is already open collapses it (toggle); the glyph returns to `»`
-- [ ] `aria-label`/`title` reflect the state (`Preview folder notes` ↔ `Close folder preview`) for accessibility
-- [ ] No event, projection, or API change — presentation/state only
-- [ ] Component tests cover: closed shows `»`, open shows `«` only on the matching folder, clicking `«` closes the panel, Unfiled parity
+- [x] A folder's preview button shows `«` when its preview panel is open for that folder, and `»` otherwise
+- [x] Only the currently-previewed folder's button shows `«`; all others show `»`
+- [x] The Unfiled Notes preview button follows the same `»`/`«` rule
+- [x] Clicking the button when the panel is already open collapses it (toggle); the glyph returns to `»`
+- [x] `aria-label`/`title` reflect the state (`Preview folder notes` ↔ `Close folder preview`) for accessibility
+- [x] No event, projection, or API change — presentation/state only
+- [x] Component tests cover: closed shows `»`, open shows `«` only on the matching folder, clicking `«` closes the panel, Unfiled parity
 
 
 ---
