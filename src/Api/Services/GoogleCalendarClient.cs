@@ -38,6 +38,14 @@ public sealed class GoogleCalendarClient : IGoogleCalendarClient
             if (refreshToken is null)
                 return null;
 
+            if (string.IsNullOrEmpty(_clientId) || string.IsNullOrEmpty(_clientSecret))
+            {
+                _logger.LogWarning(
+                    "Google OAuth client is not configured (GOOGLE_CLIENT_ID empty: {ClientIdEmpty}, GOOGLE_CLIENT_SECRET empty: {ClientSecretEmpty}); reporting calendar_unavailable",
+                    string.IsNullOrEmpty(_clientId), string.IsNullOrEmpty(_clientSecret));
+                return null;
+            }
+
             using var flow = new GoogleAuthorizationCodeFlow(new GoogleAuthorizationCodeFlow.Initializer
             {
                 ClientSecrets = new ClientSecrets { ClientId = _clientId, ClientSecret = _clientSecret },
@@ -163,7 +171,13 @@ public sealed class GoogleCalendarClient : IGoogleCalendarClient
 
             var ssmPath = Environment.GetEnvironmentVariable("GOOGLE_REFRESH_TOKEN_SSM_PATH");
             if (string.IsNullOrEmpty(ssmPath))
+            {
+                _logger.LogWarning(
+                    "GOOGLE_REFRESH_TOKEN_SSM_PATH is not set; Google Calendar integration is disabled and will report calendar_unavailable");
                 return null;
+            }
+
+            _logger.LogInformation("Loading Google refresh token from SSM path {Path}", ssmPath);
 
             using var ssm = new AmazonSimpleSystemsManagementClient();
             var response = await ssm.GetParameterAsync(new GetParameterRequest
