@@ -5,6 +5,7 @@ using EventStore;
 using EventStore.Projections;
 using Api.Auth;
 using Api.Exceptions;
+using Api.Observability;
 using Api.Utilities;
 
 namespace Api.CommandHandlers;
@@ -14,69 +15,75 @@ public sealed class FolderCommandHandler(
     IFolderTreeStore folderTreeStore,
     INoteCardListStore noteCardListStore,
     INoteCommandHandler noteCommandHandler,
-    ICurrentUser currentUser) : IFolderCommandHandler
+    ICurrentUser currentUser,
+    IDomainMetrics metrics,
+    ILogger<FolderCommandHandler> logger) : IFolderCommandHandler
 {
-    public async Task<FolderId> HandleAsync(CreateFolder cmd, CancellationToken ct = default)
-    {
-        var streamId = cmd.FolderId.ToStreamId();
-        var history = await store.ReadAsync(streamId, ct).ConfigureAwait(false);
-        var newEvents = RebuildFolder(history).Handle(cmd);
-        await PersistFolderAsync(streamId, history, newEvents, ct).ConfigureAwait(false);
-        return cmd.FolderId;
-    }
-
-    public async Task HandleAsync(RenameFolder cmd, CancellationToken ct = default)
-    {
-        var streamId = cmd.FolderId.ToStreamId();
-        var history = await store.ReadAsync(streamId, ct).ConfigureAwait(false);
-        if (history.Count == 0) throw new FolderNotFoundException(cmd.FolderId);
-        var newEvents = RebuildFolder(history).Handle(cmd);
-        if (newEvents.Count == 0) return;
-        await PersistFolderAsync(streamId, history, newEvents, ct).ConfigureAwait(false);
-    }
-
-    public async Task HandleAsync(DeleteFolder cmd, CancellationToken ct = default)
-    {
-        var streamId = cmd.FolderId.ToStreamId();
-        var history = await store.ReadAsync(streamId, ct).ConfigureAwait(false);
-        if (history.Count == 0) throw new InvalidOperationException("Folder does not exist.");
-
-        var allFolders = await folderTreeStore.GetAllAsync(ct).ConfigureAwait(false);
-        var subtreeIds = GetSubtreeIds(cmd.FolderId, allFolders);
-
-        // Unfile notes in descendants + root folder (order doesn't matter for unfiling)
-        foreach (var folderId in subtreeIds.Concat([cmd.FolderId]))
-            await UnfileNotesInFolderAsync(folderId, ct).ConfigureAwait(false);
-
-        // Delete descendant folders bottom-up (subtreeIds already in bottom-up order)
-        foreach (var folderId in subtreeIds)
-            await DeleteOneFolderAsync(folderId, ct).ConfigureAwait(false);
-
-        // Delete the target folder
-        var newEvents = RebuildFolder(history).Handle(cmd);
-        var envelopes = ToEnvelopes(streamId, newEvents);
-        await store.AppendAsync(streamId, history.Count, envelopes, ct).ConfigureAwait(false);
-        await folderTreeStore.DeleteAsync(cmd.FolderId, ct).ConfigureAwait(false);
-    }
-
-    public async Task HandleAsync(MoveFolder cmd, CancellationToken ct = default)
-    {
-        var streamId = cmd.FolderId.ToStreamId();
-        var history = await store.ReadAsync(streamId, ct).ConfigureAwait(false);
-        if (history.Count == 0) throw new InvalidOperationException("Folder does not exist.");
-
-        if (cmd.NewParentFolderId.HasValue)
+    public Task<FolderId> HandleAsync(CreateFolder cmd, CancellationToken ct = default) =>
+        CommandInstrumentation.RunAsync(metrics, logger, nameof(CreateFolder), "Folder", async () =>
         {
+            var streamId = cmd.FolderId.ToStreamId();
+            var history = await store.ReadAsync(streamId, ct).ConfigureAwait(false);
+            var newEvents = RebuildFolder(history).Handle(cmd);
+            await PersistFolderAsync(streamId, history, newEvents, ct).ConfigureAwait(false);
+            return cmd.FolderId;
+        });
+
+    public Task HandleAsync(RenameFolder cmd, CancellationToken ct = default) =>
+        CommandInstrumentation.RunAsync(metrics, logger, nameof(RenameFolder), "Folder", async () =>
+        {
+            var streamId = cmd.FolderId.ToStreamId();
+            var history = await store.ReadAsync(streamId, ct).ConfigureAwait(false);
+            if (history.Count == 0) throw new FolderNotFoundException(cmd.FolderId);
+            var newEvents = RebuildFolder(history).Handle(cmd);
+            if (newEvents.Count == 0) return;
+            await PersistFolderAsync(streamId, history, newEvents, ct).ConfigureAwait(false);
+        });
+
+    public Task HandleAsync(DeleteFolder cmd, CancellationToken ct = default) =>
+        CommandInstrumentation.RunAsync(metrics, logger, nameof(DeleteFolder), "Folder", async () =>
+        {
+            var streamId = cmd.FolderId.ToStreamId();
+            var history = await store.ReadAsync(streamId, ct).ConfigureAwait(false);
+            if (history.Count == 0) throw new InvalidOperationException("Folder does not exist.");
+
             var allFolders = await folderTreeStore.GetAllAsync(ct).ConfigureAwait(false);
             var subtreeIds = GetSubtreeIds(cmd.FolderId, allFolders);
-            var subtreeSet = new HashSet<FolderId>(subtreeIds) { cmd.FolderId };
-            if (subtreeSet.Contains(cmd.NewParentFolderId.Value))
-                throw new CycleDetectedException("Cannot move a folder into itself or one of its descendants.");
-        }
 
-        var newEvents = RebuildFolder(history).Handle(cmd);
-        await PersistFolderAsync(streamId, history, newEvents, ct).ConfigureAwait(false);
-    }
+            // Unfile notes in descendants + root folder (order doesn't matter for unfiling)
+            foreach (var folderId in subtreeIds.Concat([cmd.FolderId]))
+                await UnfileNotesInFolderAsync(folderId, ct).ConfigureAwait(false);
+
+            // Delete descendant folders bottom-up (subtreeIds already in bottom-up order)
+            foreach (var folderId in subtreeIds)
+                await DeleteOneFolderAsync(folderId, ct).ConfigureAwait(false);
+
+            // Delete the target folder
+            var newEvents = RebuildFolder(history).Handle(cmd);
+            var envelopes = ToEnvelopes(streamId, newEvents);
+            await store.AppendAsync(streamId, history.Count, envelopes, ct).ConfigureAwait(false);
+            await folderTreeStore.DeleteAsync(cmd.FolderId, ct).ConfigureAwait(false);
+        });
+
+    public Task HandleAsync(MoveFolder cmd, CancellationToken ct = default) =>
+        CommandInstrumentation.RunAsync(metrics, logger, nameof(MoveFolder), "Folder", async () =>
+        {
+            var streamId = cmd.FolderId.ToStreamId();
+            var history = await store.ReadAsync(streamId, ct).ConfigureAwait(false);
+            if (history.Count == 0) throw new InvalidOperationException("Folder does not exist.");
+
+            if (cmd.NewParentFolderId.HasValue)
+            {
+                var allFolders = await folderTreeStore.GetAllAsync(ct).ConfigureAwait(false);
+                var subtreeIds = GetSubtreeIds(cmd.FolderId, allFolders);
+                var subtreeSet = new HashSet<FolderId>(subtreeIds) { cmd.FolderId };
+                if (subtreeSet.Contains(cmd.NewParentFolderId.Value))
+                    throw new CycleDetectedException("Cannot move a folder into itself or one of its descendants.");
+            }
+
+            var newEvents = RebuildFolder(history).Handle(cmd);
+            await PersistFolderAsync(streamId, history, newEvents, ct).ConfigureAwait(false);
+        });
 
     private async Task UnfileNotesInFolderAsync(FolderId folderId, CancellationToken ct)
     {

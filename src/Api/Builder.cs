@@ -8,6 +8,7 @@ using Api.Auth;
 using Api.CommandHandlers;
 using Api.EventHandlers;
 using Api.HealthChecks;
+using Api.Observability;
 using Api.Projections;
 using Api.Services;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
@@ -74,8 +75,12 @@ public static class Builder
         {
             builder.Services.AddAWSService<IAmazonDynamoDB>();
         }
+        builder.Services.AddSingleton<IDomainMetrics, PowertoolsDomainMetrics>();
         builder.Services.AddSingleton<IEventStore>(sp =>
-            new DynamoDbEventStore(sp.GetRequiredService<IAmazonDynamoDB>(), eventTableName));
+            new InstrumentedEventStore(
+                new DynamoDbEventStore(sp.GetRequiredService<IAmazonDynamoDB>(), eventTableName),
+                sp.GetRequiredService<IDomainMetrics>(),
+                sp.GetRequiredService<ILogger<InstrumentedEventStore>>()));
         builder.Services.AddSingleton<INoteTitleListStore>(sp =>
             new NoteTitleListStore(sp.GetRequiredService<IAmazonDynamoDB>(), projTableName));
         builder.Services.AddSingleton<INoteDetailStore>(sp =>
