@@ -9,7 +9,8 @@ public sealed class ProjectionRebuildHandler(
     INoteDetailStore detailStore,
     INoteCardListStore noteCardListStore,
     IFolderTreeStore folderTreeStore,
-    ITagIndexStore tagIndexStore) : IProjectionRebuildHandler
+    ITagIndexStore tagIndexStore,
+    ITagFeedbackStore tagFeedbackStore) : IProjectionRebuildHandler
 {
     public async Task<int> RebuildAsync(CancellationToken ct = default)
     {
@@ -17,6 +18,7 @@ public sealed class ProjectionRebuildHandler(
         await detailStore.DeleteAllAsync(ct).ConfigureAwait(false);
         await folderTreeStore.DeleteAllAsync(ct).ConfigureAwait(false);
         await tagIndexStore.DeleteAllAsync(ct).ConfigureAwait(false);
+        await tagFeedbackStore.DeleteAllAsync(ct).ConfigureAwait(false);
 
         var allEvents = await store.ReadAllStreamsAsync(ct).ConfigureAwait(false);
 
@@ -25,6 +27,7 @@ public sealed class ProjectionRebuildHandler(
         var noteCards = new NoteCardListProjection();
         var folderProjection = new FolderTreeProjection();
         var tagIndex = new TagIndexProjection();
+        var tagFeedback = new TagFeedbackProjection();
         foreach (var e in allEvents)
         {
             titleList.Handle(e);
@@ -32,6 +35,7 @@ public sealed class ProjectionRebuildHandler(
             noteCards.Handle(e);
             folderProjection.Handle(e);
             tagIndex.Handle(e);
+            tagFeedback.Handle(e);
         }
 
         var upsertTasks = titleList.GetView().Items
@@ -39,7 +43,9 @@ public sealed class ProjectionRebuildHandler(
             .Concat(detail.GetAllDetails().Select(d => detailStore.UpsertAsync(d, ct)))
             .Concat(noteCards.GetAll().Select(c => noteCardListStore.UpsertAsync(c, ct)))
             .Concat(folderProjection.GetAll().Select(f => folderTreeStore.UpsertAsync(f, ct)))
-            .Concat(tagIndex.GetAll().Select(v => tagIndexStore.PutAsync(v.Tag, v.NoteId, v.UserId, ct)));
+            .Concat(tagIndex.GetAll().Select(v => tagIndexStore.PutAsync(v.Tag, v.NoteId, v.UserId, ct)))
+            .Concat(tagFeedback.GetAggregates().Select(v => tagFeedbackStore.UpsertAggregateAsync(v, ct)))
+            .Concat(tagFeedback.GetProvenance().Select(p => tagFeedbackStore.PutProvenanceAsync(p.NoteId, p.Tag, p.UserId, ct)));
 
         await Task.WhenAll(upsertTasks).ConfigureAwait(false);
 

@@ -242,6 +242,46 @@ public class InfraAssertionsTests
     }
 
     [Fact]
+    public void TagFeedbackTable_Exists()
+    {
+        _template.HasResource("AWS::DynamoDB::Table", Match.ObjectLike(new Dictionary<string, object>
+        {
+            ["Properties"] = Match.ObjectLike(new Dictionary<string, object>
+            {
+                ["TableName"] = Match.StringLikeRegexp(".*tagfeedback.*")
+            })
+        }));
+    }
+
+    [Fact]
+    public void TagFeedbackTable_HasRetainDeletionPolicy()
+    {
+        _template.HasResource("AWS::DynamoDB::Table", Match.ObjectLike(new Dictionary<string, object>
+        {
+            ["DeletionPolicy"] = "Retain",
+            ["Properties"] = Match.ObjectLike(new Dictionary<string, object>
+            {
+                ["TableName"] = Match.StringLikeRegexp(".*tagfeedback.*")
+            })
+        }));
+    }
+
+    [Fact]
+    public void Lambda_HasTagFeedbackTableEnvVar()
+    {
+        _template.HasResourceProperties("AWS::Lambda::Function", Match.ObjectLike(new Dictionary<string, object>
+        {
+            ["Environment"] = Match.ObjectLike(new Dictionary<string, object>
+            {
+                ["Variables"] = Match.ObjectLike(new Dictionary<string, object>
+                {
+                    ["PROJ_TAGFEEDBACK_TABLE_NAME"] = Match.AnyValue()
+                })
+            })
+        }));
+    }
+
+    [Fact]
     public void Lambda_HasMemorySize512()
     {
         _template.HasResourceProperties("AWS::Lambda::Function", Match.ObjectLike(new Dictionary<string, object>

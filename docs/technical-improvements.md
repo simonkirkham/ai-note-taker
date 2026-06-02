@@ -52,6 +52,19 @@ Suggested split: extract `AuthContext` (and `useAuth`) into `web/src/auth/authCo
 
 ---
 
+## Remove (or wire up) the dead `IDomainEventDispatcher` / `IDomainEventHandler` infrastructure
+
+**What:** `IDomainEventDispatcher` and every `IDomainEventHandler` implementation (`TagIndexEventHandler`, `NoteDetailEventHandler`, `NoteTitleListEventHandler`, `NoteCardListEventHandler`, `TodoListEventHandler`) are registered in `Builder.cs` but **`DispatchAsync` is never called anywhere** in `src` or `tests` — confirmed by grep. They are dead code. Live projection updates actually happen **inline inside the command handlers** (`NoteCommandHandler.UpdateProjectionAsync` / `UpdateTagIndexForNewEventsAsync`, `ActionItemCommandHandler`'s inline upserts). Pick one direction and make the code and docs agree:
+- **Option A (cleanup):** delete the dispatcher + the five unused `IDomainEventHandler` classes and their DI registrations; the inline-in-handler updates become the documented pattern.
+- **Option B (restore the intended design):** call `IDomainEventDispatcher.DispatchAsync` from the command handlers after append and migrate each inline projection update into its `IDomainEventHandler`, deleting the inline blocks so projections aren't double-updated. (Effectively a down-payment on the async-projector split below.)
+
+**Why it matters:** The dead infrastructure actively misleads. **CLAUDE.md** ("the handler … then calls `IDomainEventDispatcher.DispatchAsync` — that's it. Reacting to events … belongs in `IDomainEventHandler` implementations") and the "Split the single API Lambda" entry below ("updates all projections synchronously in-process **via `IDomainEventDispatcher`**") both describe an architecture the code does not use. This drift cost real time in slice 10-J: the phase-10 doc prescribed a `TagFeedbackEventHandler : IDomainEventHandler` mirroring `TagIndexEventHandler`, which would have been dead on arrival — the feedback projection had to be wired inline instead. The next projection slice (10-L) and anyone reading the architecture docs will hit the same trap.
+
+**Raised in:** Slice 10-J implementation, 2026-06-02 — discovered while wiring the tag-feedback projection.
+**Depends on:** Nothing blocking. Option B overlaps heavily with the async-projector split below; if that phase is imminent, prefer doing this as part of it (or pick Option A now to stop the bleeding and let the split re-introduce real handlers). Whichever is chosen, update CLAUDE.md and the CQRS entry's wording to match.
+
+---
+
 ## Split the single API Lambda into individual Lambdas (CQRS + async projectors)
 
 **What:** The backend currently runs as one `ApiFunction` Lambda (ASP.NET minimal API behind an HTTP API proxy) that handles every route and updates all projections **synchronously in-process** via `IDomainEventDispatcher` before returning the HTTP response. Move to a deployment shape that matches an event-sourced system, in two stages:
