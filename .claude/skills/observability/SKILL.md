@@ -9,14 +9,14 @@ This skill adds production-grade observability to the app using three pillars: *
 
 ## Pillar overview
 
-| Pillar | Tool | Where it lands |
-|--------|------|---------------|
-| Logs | AWS Lambda Powertools (Logging) | CloudWatch Logs |
-| Traces | AWS X-Ray via Lambda Powertools (Tracing) | X-Ray service map |
-| Metrics | AWS Lambda Powertools (Metrics, EMF) | CloudWatch Metrics |
-| Frontend | CloudWatch RUM | CloudWatch RUM console |
-| Dashboards | CloudWatch Dashboard (CDK) | CloudWatch Dashboards |
-| Alarms | CloudWatch Alarms (CDK) | SNS → email / PagerDuty |
+| Pillar     | Tool                                      | Where it lands          |
+| ---------- | ----------------------------------------- | ----------------------- |
+| Logs       | AWS Lambda Powertools (Logging)           | CloudWatch Logs         |
+| Traces     | AWS X-Ray via Lambda Powertools (Tracing) | X-Ray service map       |
+| Metrics    | AWS Lambda Powertools (Metrics, EMF)      | CloudWatch Metrics      |
+| Frontend   | CloudWatch RUM                            | CloudWatch RUM console  |
+| Dashboards | CloudWatch Dashboard (CDK)                | CloudWatch Dashboards   |
+| Alarms     | CloudWatch Alarms (CDK)                   | SNS → email / PagerDuty |
 
 ---
 
@@ -156,14 +156,14 @@ builder.Services.AddSingleton<IMetrics>(Metrics.Instance);
 
 **Key metrics to emit** — one `Metrics.AddMetric` call per business event, not per HTTP request:
 
-| Metric name | Unit | When to emit | Dimensions |
-|-------------|------|-------------|------------|
-| `CommandHandled` | Count | command handler success | `CommandType`, `Aggregate` |
-| `CommandFailed` | Count | domain exception thrown | `CommandType`, `ExceptionType` |
-| `EventsAppended` | Count | after successful append | `Aggregate` |
-| `ConcurrencyConflict` | Count | on `ConditionalCheckFailedException` | `Aggregate` |
-| `ProjectionUpdateDuration` | Milliseconds | after each `IDomainEventHandler` | `ProjectionName` |
-| `ProjectionRebuildDuration` | Milliseconds | after a full rebuild | `ProjectionName` |
+| Metric name                 | Unit         | When to emit                         | Dimensions                     |
+| --------------------------- | ------------ | ------------------------------------ | ------------------------------ |
+| `CommandHandled`            | Count        | command handler success              | `CommandType`, `Aggregate`     |
+| `CommandFailed`             | Count        | domain exception thrown              | `CommandType`, `ExceptionType` |
+| `EventsAppended`            | Count        | after successful append              | `Aggregate`                    |
+| `ConcurrencyConflict`       | Count        | on `ConditionalCheckFailedException` | `Aggregate`                    |
+| `ProjectionUpdateDuration`  | Milliseconds | after each `IDomainEventHandler`     | `ProjectionName`               |
+| `ProjectionRebuildDuration` | Milliseconds | after a full rebuild                 | `ProjectionName`               |
 
 **Example in a command handler**:
 
@@ -175,7 +175,7 @@ Metrics.AddMetric("CommandHandled", 1, MetricUnit.Count,
 
 **Namespace**: use `NoteTaker/Domain` for business metrics, `NoteTaker/Infrastructure` for DynamoDB-level metrics.
 
-> **Seam note (learned in 12-B):** instrument signals where the event *actually happens*, not always per-handler. `EventsAppended`/`ConcurrencyConflict` correspond to appends that fan out (cascading folder delete = N appends; action items append from several methods), so they belong in an `IEventStore` **decorator** that every append flows through — not in each handler. Only one-per-command signals (`CommandHandled`/`CommandFailed`) belong in a per-handler wrapper. Route metric calls through an `IDomainMetrics` abstraction so they're unit-testable with a fake. On this ASP.NET-Core-on-Lambda host (no handler method to `[Metrics]`-decorate), use `Metrics.PushSingleMetric(...)` — self-contained EMF blob, no flush/namespace setup. Note the test harness swaps `IEventStore` for an in-memory fake, so decorator-emitted metrics must be unit-tested on the decorator directly, not over the HTTP path. `ProjectionUpdateDuration` has no clean seam yet — projections are updated inline and the registered `IDomainEventDispatcher` is unused.
+> **Seam note (learned in 12-B):** instrument signals where the event _actually happens_, not always per-handler. `EventsAppended`/`ConcurrencyConflict` correspond to appends that fan out (cascading folder delete = N appends; action items append from several methods), so they belong in an `IEventStore` **decorator** that every append flows through — not in each handler. Only one-per-command signals (`CommandHandled`/`CommandFailed`) belong in a per-handler wrapper. Route metric calls through an `IDomainMetrics` abstraction so they're unit-testable with a fake. On this ASP.NET-Core-on-Lambda host (no handler method to `[Metrics]`-decorate), use `Metrics.PushSingleMetric(...)` — self-contained EMF blob, no flush/namespace setup. Note the test harness swaps `IEventStore` for an in-memory fake, so decorator-emitted metrics must be unit-tested on the decorator directly, not over the HTTP path. `ProjectionUpdateDuration` has no clean seam yet — projections are updated inline and the registered `IDomainEventDispatcher` is unused.
 
 ---
 
@@ -315,29 +315,81 @@ CloudWatch RUM captures browser errors, Core Web Vitals, and API call failures f
 
 ### 7a — Add AppMonitor in CDK
 
+> **Cognito is required (learned in 12-F).** The anonymous browser RUM client must
+> obtain temporary AWS creds to call `rum:PutRumEvents`. The console wizard auto-creates
+> a Cognito identity pool + guest role for this; **`CfnAppMonitor` does NOT**. You must
+> create an unauthenticated identity pool + a guest role scoped to `rum:PutRumEvents` and
+> pass `IdentityPoolId`/`GuestRoleArn` into `AppMonitorConfiguration`, or the client
+> silently drops every event. Build the monitor ARN from the fixed name (`Arn.Format`)
+> to break the role↔monitor dependency cycle. The snippet (7b) also needs the identity
+> pool id — so emit `RumIdentityPoolId` as a second output.
+
 ```csharp
-var rumMonitor = new Amazon.CDK.AWS.RUM.CfnAppMonitor(this, "RumMonitor", new Amazon.CDK.AWS.RUM.CfnAppMonitorProps
+const string rumMonitorName = "notetaker-rum";
+var rumDomain = !string.IsNullOrEmpty(props.DomainName)
+    ? props.DomainName
+    : distribution.DistributionDomainName;
+
+var rumPool = new Amazon.CDK.AWS.Cognito.CfnIdentityPool(this, "RumIdentityPool",
+    new Amazon.CDK.AWS.Cognito.CfnIdentityPoolProps { AllowUnauthenticatedIdentities = true });
+
+var rumMonitorArn = Arn.Format(new ArnComponents
 {
-    Name = "notetaker-rum",
-    Domain = props.DomainName ?? distribution.DistributionDomainName,
+    Service = "rum", Resource = "appmonitor", ResourceName = rumMonitorName
+}, this);
+
+var rumGuestRole = new Role(this, "RumGuestRole", new RoleProps
+{
+    AssumedBy = new FederatedPrincipal("cognito-identity.amazonaws.com",
+        new Dictionary<string, object>
+        {
+            ["StringEquals"] = new Dictionary<string, object> { ["cognito-identity.amazonaws.com:aud"] = rumPool.Ref },
+            ["ForAnyValue:StringLike"] = new Dictionary<string, object> { ["cognito-identity.amazonaws.com:amr"] = "unauthenticated" }
+        },
+        "sts:AssumeRoleWithWebIdentity"),
+    InlinePolicies = new Dictionary<string, PolicyDocument>
+    {
+        ["RumPutEvents"] = new PolicyDocument(new PolicyDocumentProps
+        {
+            Statements = new[] { new PolicyStatement(new PolicyStatementProps
+            {
+                Actions = new[] { "rum:PutRumEvents" }, Resources = new[] { rumMonitorArn }
+            }) }
+        })
+    }
+});
+
+new Amazon.CDK.AWS.Cognito.CfnIdentityPoolRoleAttachment(this, "RumIdentityPoolRoleAttachment",
+    new Amazon.CDK.AWS.Cognito.CfnIdentityPoolRoleAttachmentProps
+    {
+        IdentityPoolId = rumPool.Ref,
+        Roles = new Dictionary<string, object> { ["unauthenticated"] = rumGuestRole.RoleArn }
+    });
+
+var rumMonitor = new Amazon.CDK.AWS.RUM.CfnAppMonitor(this, "RumAppMonitor", new Amazon.CDK.AWS.RUM.CfnAppMonitorProps
+{
+    Name = rumMonitorName,
+    Domain = rumDomain,
     CwLogEnabled = true,
     AppMonitorConfiguration = new Amazon.CDK.AWS.RUM.CfnAppMonitor.AppMonitorConfigurationProperty
     {
         AllowCookies = true,
         EnableXRay = true,
         SessionSampleRate = 1.0,
-        Telemetries = new[] { "errors", "performance", "http" }
+        Telemetries = new[] { "errors", "performance", "http" },
+        IdentityPoolId = rumPool.Ref,
+        GuestRoleArn = rumGuestRole.RoleArn
     }
 });
 
-new CfnOutput(this, "RumMonitorId", new CfnOutputProps
-{
-    Value = rumMonitor.AttrId,
-    Description = "CloudWatch RUM AppMonitor ID"
+new CfnOutput(this, "RumMonitorId", new CfnOutputProps { Value = rumMonitor.AttrId, Description = "CloudWatch RUM AppMonitor ID"
 });
+new CfnOutput(this, "RumIdentityPoolId", new CfnOutputProps { Value = rumPool.Ref, Description = "Cognito identity pool ID for the
+browser RUM client" });
 ```
 
-Add NuGet to `Infrastructure.csproj`: `Amazon.CDK.AWS.RUM`.
+No NuGet change needed: `Amazon.CDK.AWS.RUM` and `Amazon.CDK.AWS.Cognito` ship inside the monolithic `Amazon.CDK.Lib` v2 package —
+just add the `using`s (or fully-qualify, as above).
 
 ### 7b — Inject the RUM snippet into the React app
 
