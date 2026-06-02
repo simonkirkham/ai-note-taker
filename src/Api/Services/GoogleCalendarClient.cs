@@ -4,7 +4,6 @@ using Google.Apis.Auth.OAuth2;
 using Google.Apis.Auth.OAuth2.Flows;
 using Google.Apis.Auth.OAuth2.Responses;
 using Google.Apis.Calendar.v3;
-using Google.Apis.Calendar.v3.Data;
 using Google.Apis.Services;
 using Microsoft.Extensions.Logging;
 
@@ -17,7 +16,9 @@ public sealed class GoogleCalendarClient : IGoogleCalendarClient
     private readonly string _clientSecret;
 
     // Cached for the Lambda process lifetime (survives SnapStart warm invocations).
-    // Deliberately has no TTL: token revocation requires a Lambda redeployment or instance recycle.
+    // No TTL by design. When Google rejects the token with invalid_grant, ExecuteWithRetryAsync
+    // force-reloads it from SSM once and retries, so updating the SSM parameter heals a running
+    // instance on its next call without a redeploy. See docs/guides/google-calendar-token.md.
     // NOTE: if the SSM parameter uses a customer-managed KMS key (CMK), the Lambda execution role
     // must also have kms:Decrypt on that key in addition to ssm:GetParameter.
     private static string? _refreshToken;
@@ -30,39 +31,9 @@ public sealed class GoogleCalendarClient : IGoogleCalendarClient
         _clientSecret = Environment.GetEnvironmentVariable("GOOGLE_CLIENT_SECRET") ?? "";
     }
 
-    public async Task<IReadOnlyList<CalendarEvent>?> GetTodaysEventsAsync(string ianaTimezone)
-    {
-        try
+    public Task<IReadOnlyList<CalendarEvent>?> GetTodaysEventsAsync(string ianaTimezone) =>
+        ExecuteWithRetryAsync<IReadOnlyList<CalendarEvent>>("GetTodaysEvents", async service =>
         {
-            var refreshToken = await GetRefreshTokenAsync();
-            if (refreshToken is null)
-                return null;
-
-            if (string.IsNullOrEmpty(_clientId) || string.IsNullOrEmpty(_clientSecret))
-            {
-                _logger.LogWarning(
-                    "Google OAuth client is not configured (GOOGLE_CLIENT_ID empty: {ClientIdEmpty}, GOOGLE_CLIENT_SECRET empty: {ClientSecretEmpty}); reporting calendar_unavailable",
-                    string.IsNullOrEmpty(_clientId), string.IsNullOrEmpty(_clientSecret));
-                return null;
-            }
-
-            using var flow = new GoogleAuthorizationCodeFlow(new GoogleAuthorizationCodeFlow.Initializer
-            {
-                ClientSecrets = new ClientSecrets { ClientId = _clientId, ClientSecret = _clientSecret },
-                Scopes = new[] { CalendarService.Scope.CalendarReadonly }
-            });
-
-            var credential = new UserCredential(flow, "user", new TokenResponse
-            {
-                RefreshToken = refreshToken
-            });
-
-            using var service = new CalendarService(new BaseClientService.Initializer
-            {
-                HttpClientInitializer = credential,
-                ApplicationName = "ai-note-taker"
-            });
-
             var tz = TimeZoneInfo.FindSystemTimeZoneById(ianaTimezone);
             var nowUtc = DateTimeOffset.UtcNow;
             var todayLocal = TimeZoneInfo.ConvertTime(nowUtc, tz).Date; // DateTime (midnight local)
@@ -98,36 +69,11 @@ public sealed class GoogleCalendarClient : IGoogleCalendarClient
                     );
                 })
                 .ToList();
-        }
-        catch (Exception ex)
+        });
+
+    public Task<CalendarEvent?> GetNextOccurrenceAsync(string recurringSeriesId, DateTimeOffset after) =>
+        ExecuteWithRetryAsync<CalendarEvent>($"GetNextOccurrence for series {recurringSeriesId}", async service =>
         {
-            _logger.LogError(ex, "Google Calendar API call failed");
-            return null;
-        }
-    }
-
-    public async Task<CalendarEvent?> GetNextOccurrenceAsync(string recurringSeriesId, DateTimeOffset after)
-    {
-        try
-        {
-            var refreshToken = await GetRefreshTokenAsync();
-            if (refreshToken is null)
-                return null;
-
-            using var flow = new GoogleAuthorizationCodeFlow(new GoogleAuthorizationCodeFlow.Initializer
-            {
-                ClientSecrets = new ClientSecrets { ClientId = _clientId, ClientSecret = _clientSecret },
-                Scopes = new[] { CalendarService.Scope.CalendarReadonly }
-            });
-
-            var credential = new UserCredential(flow, "user", new TokenResponse { RefreshToken = refreshToken });
-
-            using var service = new CalendarService(new BaseClientService.Initializer
-            {
-                HttpClientInitializer = credential,
-                ApplicationName = "ai-note-taker"
-            });
-
             var request = service.Events.Instances("primary", recurringSeriesId);
             request.TimeMinDateTimeOffset = after;
             request.MaxResults = 5;
@@ -150,23 +96,91 @@ public sealed class GoogleCalendarClient : IGoogleCalendarClient
                 IsRecurring: true,
                 RecurringSeriesId: recurringSeriesId
             );
-        }
-        catch (Exception ex)
+        });
+
+    // Runs a Calendar API call, and if Google rejects the refresh token with invalid_grant,
+    // force-reloads the token from SSM once and retries. This lets an operator heal a running
+    // Lambda by updating the SSM parameter (re-mint) without a redeploy. Any other failure, or a
+    // second invalid_grant, reports calendar_unavailable (returns null).
+    private async Task<T?> ExecuteWithRetryAsync<T>(string operation, Func<CalendarService, Task<T?>> action)
+        where T : class
+    {
+        var refreshToken = await GetRefreshTokenAsync();
+        if (refreshToken is null)
+            return null;
+
+        if (string.IsNullOrEmpty(_clientId) || string.IsNullOrEmpty(_clientSecret))
         {
-            _logger.LogError(ex, "GetNextOccurrenceAsync failed for series {SeriesId}", recurringSeriesId);
+            _logger.LogWarning(
+                "Google OAuth client is not configured (GOOGLE_CLIENT_ID empty: {ClientIdEmpty}, GOOGLE_CLIENT_SECRET empty: {ClientSecretEmpty}); reporting calendar_unavailable",
+                string.IsNullOrEmpty(_clientId), string.IsNullOrEmpty(_clientSecret));
             return null;
         }
+
+        for (var attempt = 1; attempt <= 2; attempt++)
+        {
+            using var flow = new GoogleAuthorizationCodeFlow(new GoogleAuthorizationCodeFlow.Initializer
+            {
+                ClientSecrets = new ClientSecrets { ClientId = _clientId, ClientSecret = _clientSecret },
+                Scopes = new[] { CalendarService.Scope.CalendarReadonly }
+            });
+
+            var credential = new UserCredential(flow, "user", new TokenResponse { RefreshToken = refreshToken });
+
+            using var service = new CalendarService(new BaseClientService.Initializer
+            {
+                HttpClientInitializer = credential,
+                ApplicationName = "ai-note-taker"
+            });
+
+            try
+            {
+                return await action(service);
+            }
+            catch (TokenResponseException ex) when (ex.Error?.Error == "invalid_grant")
+            {
+                if (attempt == 1)
+                {
+                    _logger.LogWarning(ex,
+                        "Google rejected the calendar refresh token (invalid_grant: {Description}) during {Operation}. The cached token is expired or revoked; reloading from SSM and retrying once.",
+                        ex.Error?.ErrorDescription, operation);
+
+                    var reloaded = await GetRefreshTokenAsync(forceReload: true);
+                    if (reloaded is not null && reloaded != refreshToken)
+                    {
+                        refreshToken = reloaded;
+                        continue;
+                    }
+
+                    _logger.LogError(
+                        "Calendar refresh token in SSM is unchanged and still invalid (invalid_grant); reporting calendar_unavailable. Re-mint the token — see docs/guides/google-calendar-token.md.");
+                    return null;
+                }
+
+                _logger.LogError(ex,
+                    "Calendar refresh token still invalid (invalid_grant) after reloading from SSM during {Operation}; reporting calendar_unavailable. Re-mint the token — see docs/guides/google-calendar-token.md.",
+                    operation);
+                return null;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Google Calendar API call failed during {Operation}", operation);
+                return null;
+            }
+        }
+
+        return null;
     }
 
-    private async Task<string?> GetRefreshTokenAsync()
+    private async Task<string?> GetRefreshTokenAsync(bool forceReload = false)
     {
-        if (_refreshToken is not null)
+        if (!forceReload && _refreshToken is not null)
             return _refreshToken;
 
         await _initLock.WaitAsync();
         try
         {
-            if (_refreshToken is not null)
+            if (!forceReload && _refreshToken is not null)
                 return _refreshToken;
 
             var ssmPath = Environment.GetEnvironmentVariable("GOOGLE_REFRESH_TOKEN_SSM_PATH");

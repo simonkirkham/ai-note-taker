@@ -6,7 +6,7 @@ A meeting-focused note taking app, built as a learning vehicle for event-sourced
 
 ## Stack
 
-- **Backend:** .NET 8 on AWS Lambda
+- **Backend:** .NET 10 on AWS Lambda
 - **Event store:** DynamoDB (with a lightweight helper library)
 - **Frontend:** React + TypeScript
 - **Infrastructure:** AWS CDK in C#
@@ -24,6 +24,7 @@ Phase 1 complete — walking skeleton deployed. React frontend on CloudFront, ev
 - [Event model](docs/event-model.md)
 - [Architecture Decision Records](docs/adr/)
 - [Agentic workflow reflection log](docs/workflow-log.md)
+- [Re-minting the Google Calendar refresh token](docs/guides/google-calendar-token.md)
 
 ## Agents
 
@@ -33,7 +34,7 @@ Coding agents work against this repo using instructions in `CLAUDE.md` and skill
 
 Full local stack: DynamoDB Local in Docker + .NET API on Kestrel + Vite dev server. No AWS account needed.
 
-**Prerequisites:** [Docker Desktop](https://www.docker.com/products/docker-desktop/), [.NET 8 SDK](https://dotnet.microsoft.com/download/dotnet/8), [Node.js 20+](https://nodejs.org/)
+**Prerequisites:** [Docker Desktop](https://www.docker.com/products/docker-desktop/), [.NET 10 SDK](https://dotnet.microsoft.com/download/dotnet/10), [Node.js 20+](https://nodejs.org/)
 
 ### Quick start
 
@@ -86,7 +87,7 @@ Open `http://localhost:5173`.
 
 ## Prerequisites (AWS deployment)
 
-- [.NET 8 SDK](https://dotnet.microsoft.com/download/dotnet/8)
+- [.NET 10 SDK](https://dotnet.microsoft.com/download/dotnet/10)
 - [AWS CLI](https://aws.amazon.com/cli/) — configured with credentials (`aws configure`)
 - [AWS CDK CLI](https://docs.aws.amazon.com/cdk/latest/guide/getting_started.html) — `npm install -g aws-cdk`
 - [GitHub CLI](https://cli.github.com/) — `gh`
@@ -126,14 +127,14 @@ dotnet run --project src/Api/Api.csproj
 
 ```bash
 # Validate the CDK stack (publish Lambda first — asset path is checked at synth time)
-dotnet publish src/Api/Api.csproj -c Release -o src/Api/bin/Release/net8.0/publish
+dotnet publish src/Api/Api.csproj -c Release -o src/Api/bin/Release/net10.0/publish
 cdk synth
 
 # Preview changes before deploying
 cdk diff
 
 # Deploy to AWS
-dotnet publish src/Api/Api.csproj -c Release -o src/Api/bin/Release/net8.0/publish
+dotnet publish src/Api/Api.csproj -c Release -o src/Api/bin/Release/net10.0/publish
 cdk deploy
 ```
 
@@ -160,7 +161,7 @@ cdk deploy
 | `GOOGLE_CLIENT_ID`              | Google OAuth2 client ID; injected into Lambda and Vite build              |
 | `GOOGLE_CLIENT_SECRET`          | Google OAuth2 client secret; used by `POST /auth/token` to exchange codes |
 | `ALLOWED_USER_SUBS`             | Comma-separated Google `sub` values allowed to sign in (empty = no auth)  |
-| `GOOGLE_REFRESH_TOKEN_SSM_PATH` | SSM Parameter Store path for the Google Calendar refresh token (e.g. `/ai-note-taker/google-refresh-token`); Lambda reads it at cold start |
+| `GOOGLE_REFRESH_TOKEN_SSM_PATH` | SSM Parameter Store path for the Google Calendar refresh token (e.g. `/ai-note-taker/google-refresh-token`); Lambda reads it at cold start. See [re-minting the token](docs/guides/google-calendar-token.md) when it expires or is revoked |
 | `BEDROCK_MODEL_ID`              | Amazon Bedrock model ID for transcript analysis (e.g. `us.anthropic.claude-haiku-4-5-20251001-v1:0`); required from 10-D onward |
 
 **Frontend** — set in `web/.env.local` (copy from `web/.env.local.example` on first run):
