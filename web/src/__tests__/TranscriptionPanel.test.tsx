@@ -500,6 +500,58 @@ it('does not auto-analyse on stop when the switch is off', async () => {
   expect(screen.getByTestId('transcription-analyse-button')).toBeInTheDocument()
 })
 
+// Scenario: An empty recording (no transcript) does not auto-analyse
+//   Auto-analyse on stop is about what was just recorded; with nothing captured it must not fire.
+it('does not auto-analyse on stop when the recording produced no transcript', async () => {
+  stubBrowserApis()
+  let analyseCalled = false
+  server.use(
+    http.post('/api/notes/note-1/analyse', () => {
+      analyseCalled = true
+      return new HttpResponse(null, { status: 204 })
+    }),
+  )
+
+  render(<TranscriptionPanel noteId="note-1" />)
+  await userEvent.click(screen.getByTestId('transcription-record-button'))
+  await waitFor(() => expect(screen.getByTestId('transcription-stop-button')).toBeInTheDocument())
+  // No emitTranscriptResult — nothing was captured.
+  await userEvent.click(screen.getByTestId('transcription-stop-button'))
+
+  await waitFor(() => expect(screen.getByTestId('transcription-record-button')).toBeInTheDocument())
+  expect(analyseCalled).toBe(false)
+})
+
+// Scenario: A second recording re-arms auto-analyse (the fired-ref resets on each new recording)
+it('auto-analyses again on a second recording', async () => {
+  stubBrowserApis()
+  let analyseCount = 0
+  server.use(
+    http.post('/api/notes/note-1/analyse', () => {
+      analyseCount += 1
+      return new HttpResponse(null, { status: 204 })
+    }),
+  )
+
+  render(<TranscriptionPanel noteId="note-1" />)
+
+  // First recording → stop → auto-analyse.
+  await userEvent.click(screen.getByTestId('transcription-record-button'))
+  await waitFor(() => expect(screen.getByTestId('transcription-stop-button')).toBeInTheDocument())
+  emitTranscriptResult('First meeting')
+  await waitFor(() => expect(screen.getByTestId('transcription-text')).toHaveTextContent('First meeting'))
+  await userEvent.click(screen.getByTestId('transcription-stop-button'))
+  await waitFor(() => expect(analyseCount).toBe(1))
+
+  // Second recording → stop → auto-analyse fires again.
+  await userEvent.click(screen.getByTestId('transcription-record-button'))
+  await waitFor(() => expect(screen.getByTestId('transcription-stop-button')).toBeInTheDocument())
+  emitTranscriptResult('Second meeting')
+  await waitFor(() => expect(screen.getByTestId('transcription-text')).toHaveTextContent('Second meeting'))
+  await userEvent.click(screen.getByTestId('transcription-stop-button'))
+  await waitFor(() => expect(analyseCount).toBe(2))
+})
+
 // Scenario: Switch resets to ON on page reload (it is ephemeral, never persisted)
 it('auto-analyse switch defaults back to ON on a fresh mount', async () => {
   const first = render(<TranscriptionPanel noteId="note-1" />)

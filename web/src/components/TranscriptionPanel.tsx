@@ -58,8 +58,11 @@ export default function TranscriptionPanel({
   }, [noteId, updateContent, onAnalysisComplete]);
 
   // Auto-analyse on stop: when the switch is on, fire analysis once as soon as a recording
-  // the user made this session stops. The fired-ref is rearmed on each new recording so a
-  // second recording re-triggers; re-renders during analysis do not double-fire.
+  // the user made this session stops and actually produced a transcript. Gating on a non-empty
+  // transcript keeps "auto-analyse on stop" about what was just recorded — an empty recording
+  // does not auto-fire (the manual button stays available for content-only analysis). The
+  // fired-ref is rearmed on each new recording so a second recording re-triggers; re-renders
+  // during analysis do not double-fire.
   useEffect(() => {
     if (status === 'recording') {
       autoAnalyseFiredRef.current = false;
@@ -69,13 +72,14 @@ export default function TranscriptionPanel({
       status === 'stopped' &&
       autoAnalyse &&
       hasRecordedThisSession &&
+      transcript.trim().length > 0 &&
       !autoAnalyseFiredRef.current &&
       !isAnalysing
     ) {
       autoAnalyseFiredRef.current = true;
       void handleAnalyse();
     }
-  }, [status, autoAnalyse, hasRecordedThisSession, isAnalysing, handleAnalyse]);
+  }, [status, autoAnalyse, hasRecordedThisSession, transcript, isAnalysing, handleAnalyse]);
 
   return (
     <div className="transcription-panel" data-testid="transcription-panel">
