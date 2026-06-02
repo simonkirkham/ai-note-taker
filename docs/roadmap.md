@@ -206,7 +206,7 @@ Make the app properly observable for production using AWS-native tooling only. T
 - **12-G:** Observability runbook (`docs/observability.md`) + saved Logs Insights query definitions
 - **12-H:** Unified error view — surface frontend (RUM) JS/HTTP errors on the `notetaker-ops` dashboard so backend + frontend errors share one screen
 
-**Status:** Done — all eight slices shipped (12-A → 12-H). Two follow-ups tracked separately: 12-E's concurrency-conflict alarm is deferred (CloudWatch rejects `SEARCH` on metric alarms — needs an alarmable dimensionless metric), and the `x-correlation-id` value returned to clients isn't yet emitted as a log field (BUG-8). Optional post-deploy check: confirm the 12-H `AWS/RUM` metric widget populates (else add `CfnMetricsDestination`).
+**Status:** Done — all eight slices shipped (12-A → 12-H). One follow-up remains: 12-E's concurrency-conflict alarm is deferred (CloudWatch rejects `SEARCH` on metric alarms — needs an alarmable dimensionless metric). (BUG-8 — `x-correlation-id` not emitted as a log field — was the other follow-up and is now fixed.) Optional post-deploy check: confirm the 12-H `AWS/RUM` metric widget populates (else add `CfnMetricsDestination`).
 
 **Goal:** answer "is it healthy?", "what broke?", and "why is it slow?" from one place; learn the three pillars of observability and how they correlate, AWS Lambda Powertools, EMF metrics, X-Ray service maps, CloudWatch dashboards/alarms as CDK, and CloudWatch RUM. Driven by the `observability` skill.
 
@@ -224,7 +224,7 @@ Alongside the numbered phases above, work is tracked in four standing docs. The 
 
 An unnumbered, standing phase capturing defects in the deployed app, tracked to a fix. No learning theme, no fixed sequence.
 
-Currently open: **BUG-7** empty notes are created and left behind (not removed). Fixed: **BUG-1** blank screen on 401 _(done 2026-06-02)_ · **BUG-2** favicon.ico 404 on page load _(done 2026-06-02)_ · **BUG-3** Data Protection cold-start log noise _(done 2026-06-02)_ · **BUG-4** ConcurrencyException → 409 _(done 2026-06-02)_ · **BUG-5** write to deleted note → 404 _(done 2026-06-02)_ · **BUG-6** CloudWatch RUM loader CDN host regional _(done 2026-06-02)_.
+Currently open: **BUG-7** empty notes are created and left behind (not removed). Fixed: **BUG-1** blank screen on 401 _(done 2026-06-02)_ · **BUG-2** favicon.ico 404 on page load _(done 2026-06-02)_ · **BUG-3** Data Protection cold-start log noise _(done 2026-06-02)_ · **BUG-4** ConcurrencyException → 409 _(done 2026-06-02)_ · **BUG-5** write to deleted note → 404 _(done 2026-06-02)_ · **BUG-6** CloudWatch RUM loader CDN host regional _(done 2026-06-02)_ · **BUG-8** `x-correlation-id` now emitted as the `correlation_id` log field _(done 2026-06-02)_.
 
 → [docs/phases/phase-bugs.md](phases/phase-bugs.md)
 
