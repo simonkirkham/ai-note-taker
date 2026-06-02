@@ -136,17 +136,20 @@ Create these files before any feature work starts:
 
 ```
 docs/
-  goals.md            — what you're learning and why
-  roadmap.md          — phases and high-level milestones
-  architecture.md     — stack, topology diagram, key decisions
-  event-model.md      — commands, events, projections (start empty, fill as you go)
-  event-schemas.md    — wire shapes for events
-  view-schemas.md     — wire shapes for read projections
-  workflow-log.md     — copy template from this repo
-  agent-workflow.md   — thin pointer; the real pipeline doc is .claude/skills/.agent/generic/agent-roles.md
-  adr/                — one file per architectural decision
-  learnings/          — one file per completed slice (Hawk + Scribe write here)
-  phases/             — one file per phase (Scout writes here)
+  goals.md                  — what you're learning and why
+  roadmap.md                — index: phase summaries + links to the standing planning docs
+  future-features.md        — possible features not yet broken into a numbered phase
+  technical-improvements.md — refactors, upgrades, CI/infra items to address in future
+  architecture.md           — stack, topology diagram, key decisions
+  event-model.md            — commands, events, projections (start empty, fill as you go)
+  event-schemas.md          — wire shapes for events
+  view-schemas.md           — wire shapes for read projections
+  workflow-log.md           — copy template from this repo
+  agent-workflow.md         — thin pointer; the real pipeline doc is .claude/skills/.agent/generic/agent-roles.md
+  adr/                      — one file per architectural decision
+  learnings/                — one file per completed slice (Hawk + Scribe write here)
+  phases/                   — one file per numbered phase (Scout writes here), plus the
+                              standing unnumbered phases phase-bugs.md and phase-minor-changes.md
 ```
 
 ---

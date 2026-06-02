@@ -29,7 +29,7 @@ See [docs/goals.md](docs/goals.md) for the learning goals.
 - `tests/Infrastructure.Assertions/` — CDK template assertions (IAM, env vars, deletion policies)
 - `tests/Browser.E2E/` — Playwright browser journey tests (BDD-style); **fails the build** if `FRONTEND_URL` is not set
 - `web/` — React + TypeScript frontend
-- `docs/` — architecture, roadmap, ADRs, event model, learnings
+- `docs/` — architecture, roadmap (the index), ADRs, event model, learnings, and the standing planning docs (`future-features.md`, `technical-improvements.md`, `phases/phase-bugs.md`, `phases/phase-minor-changes.md`)
 
 ## How to run
 
@@ -79,6 +79,7 @@ cdk deploy
 - **Command handlers own orchestration.** Each aggregate gets a `*CommandHandler` in `src/Api/`. The handler loads the stream, rebuilds the aggregate, executes the command, persists events, then calls `IDomainEventDispatcher.DispatchAsync` — that's it. Reacting to events (updating projections, sending notifications, etc.) belongs in `IDomainEventHandler` implementations in `src/Api/EventHandlers/`, not in command handlers. API endpoints do HTTP only — parse request, call handler, return result. Never write `store.ReadAsync` or `store.AppendAsync` inside an endpoint lambda. Never update a projection store inside a command handler.
 - **Optimistic UI updates.** The UI must reflect the user's action immediately — do not wait for the API response before updating local state. Apply the expected state optimistically; reconcile on error. Breaker must include this as an explicit acceptance criterion in the BDD spec for every slice with frontend changes. When adding a new async mutation handler, mirror the optimistic-first pattern of the nearest existing handler in the same component.
 - **Learnings docs are named `phase-<phase><id>-<short-description>.md`** (e.g. `phase-4e-note-summary-cards.md`) and live in `docs/learnings/`. Never use `slice-` as a prefix.
+- **Work is tracked in one place per type, and `docs/roadmap.md` is the index that links to all of them.** Route each item by type: a **broken-down feature** → a numbered phase (`docs/phases/phase-N.md`); a **possible future feature** not yet scheduled → `docs/future-features.md`; a **bug** → `docs/phases/phase-bugs.md`; a **minor tweak** to existing behaviour → `docs/phases/phase-minor-changes.md`; a **technical/infra/CI improvement** → `docs/technical-improvements.md`. The roadmap holds a one-paragraph summary of each phase and of each standing track, never the full content. When a future-features or technical-improvements item is picked up, it graduates to a numbered phase (features) or is actioned and removed (technical).
 
 ## Guardrails
 

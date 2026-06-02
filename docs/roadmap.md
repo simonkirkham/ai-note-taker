@@ -1,5 +1,7 @@
 # Roadmap
 
+This is the index for all planned and in-progress work. Each numbered phase below has a one-paragraph summary here and a detail doc under `docs/phases/`. Work that isn't a numbered phase — bugs, minor tweaks, future feature ideas, and technical improvements — lives in the standing docs linked from [Standing tracks and planning docs](#standing-tracks-and-planning-docs) at the bottom.
+
 Sequence is learning-optimised: event sourcing plumbing lands in Phase 1 so every subsequent feature is an ES learning moment, not a feature grind.
 
 ## Phase 0 — Setup _(Done)_
@@ -204,22 +206,34 @@ Make the app properly observable for production using AWS-native tooling only. T
 
 Slices and acceptance criteria: [docs/phases/phase-12.md](phases/phase-12.md)
 
-## Phase 13 — UI Polish II _(Planned)_
+---
 
-A second pass of targeted UI improvements and tweaks, building on Phase 11. Frontend-focused slices with no new aggregates, events, or projections.
+## Standing tracks and planning docs
 
-- **13-A:** Single-spaced note lines by default — collapse the inter-paragraph gap in the editor so notes no longer render double-spaced
-- **13-B:** Theme selection — Teal (default), Forest, and Midnight (dark) palettes via `data-theme` overrides; sidebar picker persisted to `localStorage`
+Alongside the numbered phases above, work is tracked in four standing docs. The roadmap summarises them; each doc owns its content.
 
-**Goal:** Continue tightening everyday interactions and visual polish. Pure-frontend slices.
+### Bugs _(Ongoing)_
 
-Slices and acceptance criteria: [docs/phases/phase-13.md](phases/phase-13.md)
+An unnumbered, standing phase capturing defects in the deployed app, tracked to a fix. No learning theme, no fixed sequence.
 
-## Future Ideas
+Currently open: **BUG-1** — Blank screen presented when 401 returned from API.
 
-- Workspaces - Switching between collections of notes
-- Search across notes
+→ [docs/phases/phase-bugs.md](phases/phase-bugs.md)
 
-## CI / Dev Experience Backlog
+### Minor Changes _(Ongoing)_
 
-- **Investigate whether CDK synth needs real AWS credentials in `validate.yml`.** If the CDK app does no context lookups (SSM, VPC resolution, etc.), `cdk synth` can run without credentials. If confirmed, remove the `Configure AWS credentials` step and `environment: Test` from `validate.yml` — validate becomes a pure code-quality gate with no AWS dependency.
+An unnumbered, standing phase for small tweaks and changes to existing behaviour that don't warrant a numbered phase and aren't defects. Currently planned: single-spaced note lines, theme selection (Teal/Forest/Midnight), home screen shows today's notes by default, and to-do rows that wrap cleanly with long text (moved here from the former Phase 13).
+
+→ [docs/phases/phase-minor-changes.md](phases/phase-minor-changes.md)
+
+### Future Features
+
+Possible user-facing features not yet committed to a numbered phase. When one is picked up it becomes a numbered phase here. Currently: Workspaces, search across notes.
+
+→ [docs/future-features.md](future-features.md)
+
+### Technical Improvements
+
+Technical, infrastructure, and developer-experience items to address in the future (refactors, upgrades, CI/CD, hardening). Currently: upgrade GitHub Actions to Node.js 24, investigate whether `cdk synth` needs AWS credentials in `validate.yml`.
+
+→ [docs/technical-improvements.md](technical-improvements.md)

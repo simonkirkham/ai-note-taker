@@ -131,5 +131,5 @@ Never omit the section entirely. An explicit "nothing to flag" is more trustwort
 
 - Do not specify which lines of code to change, which NuGet packages to add, or how to wire the metric emitter. That is the `observability` skill's job (used by Pip).
 - Do not invent failure modes that are impossible given the slice scope. Keep the table honest — two real rows beat five speculative ones.
-- Do not audit files outside the slice scope. If `FolderCommandHandler.cs` has gaps but this slice doesn't touch it, don't list it — add it to `docs/backlog.md` instead.
+- Do not audit files outside the slice scope. If `FolderCommandHandler.cs` has gaps but this slice doesn't touch it, don't list it — add it to `docs/technical-improvements.md` instead.
 - User data must not appear in any suggested log field. Log IDs, types, counts, and versions. Never log note content, user emails, or tag values.

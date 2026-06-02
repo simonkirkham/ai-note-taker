@@ -8,7 +8,7 @@ Each piece of work is handled by agents in sequence. No agent does another's job
 
 **Remit:** Research what to build next, update the event model, and produce a feature brief with acceptance criteria. Does not write code or tests.
 
-**Inputs:** The current project state (`docs/roadmap.md`, `docs/event-model.md`, codebase) and a loose idea from a human.
+**Inputs:** The current project state (`docs/roadmap.md` and the standing docs it indexes — `docs/future-features.md`, `docs/technical-improvements.md`, `docs/phases/phase-bugs.md`, `docs/phases/phase-minor-changes.md` — plus `docs/event-model.md` and the codebase) and a loose idea from a human. When picking the next thing to build, `docs/future-features.md` is the primary candidate list.
 
 **Skills to load:**
 
@@ -53,7 +53,7 @@ One scenario per distinct behaviour (happy path + each meaningful error/edge cas
 - **Value statements must be user-focused** — reject any value statement that names a technical artefact (aggregate, projection, event, endpoint). Rewrite it until a non-technical user would immediately understand why the slice matters. Bad: _"The domain gets its first set-membership command."_ Good: _"I can add tags to my notes so I can label what each one is about."_
 - Scenarios must be specific enough for Breaker to turn directly into a C# spec without further clarification
 - Flag any dependencies or risks for downstream roles
-- Any idea that surfaces during planning but is explicitly deferred must be added to `docs/backlog.md` before hand-off
+- Any idea that surfaces during planning but is explicitly deferred must be recorded before hand-off, routed by type: a future user-facing feature → `docs/future-features.md`; a refactor/upgrade/CI or infra item → `docs/technical-improvements.md`; a small tweak to existing behaviour → `docs/phases/phase-minor-changes.md`; a defect → `docs/phases/phase-bugs.md`
 - **Flag REST structural conventions in the brief** — if a route includes a param that is required by REST convention but unused by the domain command (e.g. `noteId` in `PATCH /notes/{noteId}/actions/{actionId}/complete`), say so explicitly. This prevents Hawk from raising it as a finding and saves a round-trip.
 
 **Hand-off:** Post the path to the phase breakdown file and confirm the event model is updated. Human reviews before Breaker begins. Scout must not proceed to Breaker until the human explicitly approves the breakdown.
@@ -326,8 +326,8 @@ Commit style changes separately from functional changes with a message like `Sty
 **Outputs:**
 
 - `README.md` — reflect any local-dev changes: new env vars, new tables, new scripts, changed ports, updated prerequisites
-- `docs/phases/phase-N.md` — mark completed acceptance criteria as `[x]`, update slice status to `Done`
-- `docs/roadmap.md` — update phase status if the phase is now complete or newly in progress
+- `docs/phases/phase-N.md` — mark completed acceptance criteria as `[x]`, update slice status to `Done`. For a standing phase (`phase-bugs.md`, `phase-minor-changes.md`), mark the fixed item Done. If the slice delivered something listed in `docs/future-features.md` or `docs/technical-improvements.md`, remove that entry from the register.
+- `docs/roadmap.md` — update phase status if the phase is now complete or newly in progress; keep the standing-tracks summaries (Bugs / Minor Changes / Future Features / Technical Improvements) in sync with their docs
 - Any `docs/` file that describes something the slice changed (architecture, event schemas, view schemas, ADRs)
 - `docs/learnings/phase-<id>-<kebab-name>.md` — brief improvement-focused observations (workflow, code, project, token usage) with a concrete action per entry. **Check existing files in `docs/learnings/` to match the naming convention before creating.**
 - `docs/token-log.md` — append one row per agent for the completed slice
