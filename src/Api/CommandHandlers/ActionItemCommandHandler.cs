@@ -16,6 +16,7 @@ public sealed class ActionItemCommandHandler(
     INoteActionsStore noteActionsStore,
     ITodoListStore todoListStore,
     INoteCardListStore noteCardListStore,
+    IActionItemFeedbackStore actionItemFeedbackStore,
     ICurrentUser currentUser,
     IDomainMetrics metrics,
     ILogger<ActionItemCommandHandler> logger) : IActionItemCommandHandler
@@ -65,6 +66,7 @@ public sealed class ActionItemCommandHandler(
                     await UpdateCardActionItemsAsync(addedEvent.NoteId,
                         items => items.Select(a => a.ActionId == e.ActionId ? a with { Completed = true } : a).ToList().AsReadOnly(),
                         envelope.OccurredAt, ct).ConfigureAwait(false);
+                    await actionItemFeedbackStore.TryRecordCompletionAsync(e.ActionId.Value.ToString(), ct).ConfigureAwait(false);
                 }
         });
 
@@ -96,6 +98,7 @@ public sealed class ActionItemCommandHandler(
                     await UpdateCardActionItemsAsync(addedEvent.NoteId,
                         items => items.Where(a => a.ActionId != cmd.ActionId).ToList().AsReadOnly(),
                         envelope.OccurredAt, ct).ConfigureAwait(false);
+                    await actionItemFeedbackStore.TryRecordDeletionAsync(cmd.ActionId.Value.ToString(), ct).ConfigureAwait(false);
                 }
         });
 

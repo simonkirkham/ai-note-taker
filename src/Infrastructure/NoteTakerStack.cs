@@ -99,6 +99,14 @@ public sealed class NoteTakerStack : Stack
             RemovalPolicy = RemovalPolicy.RETAIN
         });
 
+        var actionFeedbackTable = new Table(this, "ProjActionFeedbackTable", new TableProps
+        {
+            TableName = "notetaker-proj-actionfeedback",
+            PartitionKey = new Amazon.CDK.AWS.DynamoDB.Attribute { Name = "PK", Type = AttributeType.STRING },
+            BillingMode = BillingMode.PAY_PER_REQUEST,
+            RemovalPolicy = RemovalPolicy.RETAIN
+        });
+
         var calendarLinkIndexTable = new Table(this, "ProjCalendarLinkIndexTable", new TableProps
         {
             TableName = "notetaker-proj-calendarlinkindex",
@@ -151,6 +159,7 @@ public sealed class NoteTakerStack : Stack
                 ["PROJ_FOLDERTREE_TABLE_NAME"] = folderTreeTable.TableName,
                 ["PROJ_TAGINDEX_TABLE_NAME"] = tagIndexTable.TableName,
                 ["PROJ_TAGFEEDBACK_TABLE_NAME"] = tagFeedbackTable.TableName,
+                ["PROJ_ACTIONFEEDBACK_TABLE_NAME"] = actionFeedbackTable.TableName,
                 // Always present even when unset so runtime code reads "" rather than throwing on missing key.
                 // Use string.IsNullOrEmpty() on the consumer side; the key itself is always there.
                 ["GOOGLE_CLIENT_ID"] = props.GoogleClientId ?? "",
@@ -249,6 +258,7 @@ public sealed class NoteTakerStack : Stack
         folderTreeTable.GrantReadWriteData(apiFunction);
         tagIndexTable.GrantReadWriteData(apiFunction);
         tagFeedbackTable.GrantReadWriteData(apiFunction);
+        actionFeedbackTable.GrantReadWriteData(apiFunction);
         calendarLinkIndexTable.GrantReadWriteData(apiFunction);
 
         if (!string.IsNullOrEmpty(props.GoogleRefreshTokenSsmPath))

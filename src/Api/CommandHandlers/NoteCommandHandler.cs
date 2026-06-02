@@ -17,6 +17,7 @@ public sealed class NoteCommandHandler(
     INoteCardListStore noteCardListStore,
     ITagIndexStore tagIndexStore,
     ITagFeedbackStore tagFeedbackStore,
+    IActionItemFeedbackStore actionItemFeedbackStore,
     ICalendarLinkIndexStore calendarLinkIndexStore,
     ICurrentUser currentUser,
     IDomainMetrics metrics,
@@ -81,7 +82,18 @@ public sealed class NoteCommandHandler(
 
         await UpdateTagIndexForNewEventsAsync(newEnvelopes, ct).ConfigureAwait(false);
         await UpdateTagFeedbackForNewEventsAsync(newEnvelopes, ct).ConfigureAwait(false);
+        await UpdateActionItemFeedbackForNewEventsAsync(newEnvelopes, ct).ConfigureAwait(false);
         await UpdateCalendarLinkIndexForNewEventsAsync(noteId, newEnvelopes, ct).ConfigureAwait(false);
+    }
+
+    private async Task UpdateActionItemFeedbackForNewEventsAsync(List<EventEnvelope> newEnvelopes, CancellationToken ct)
+    {
+        foreach (var envelope in newEnvelopes)
+        {
+            if (EventDeserializer.Deserialize(envelope) is ActionItemsSuggested e)
+                foreach (var actionItemId in e.ActionItemIds)
+                    await actionItemFeedbackStore.RecordSuggestionAsync(currentUser.UserId, actionItemId.ToString(), ct).ConfigureAwait(false);
+        }
     }
 
     private async Task UpdateTagFeedbackForNewEventsAsync(List<EventEnvelope> newEnvelopes, CancellationToken ct)

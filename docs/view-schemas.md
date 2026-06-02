@@ -347,6 +347,42 @@ The aggregate row is the queryable per-(user, tag) counter. The provenance row r
 
 ---
 
+### 8. `ActionItemFeedback` *(Phase 10-L)*
+
+**Consumed by:** ad-hoc analysis of AI action-item extraction precision (no read endpoint — query DynamoDB directly). Feeds future prompt refinement.
+**Source events:** `ActionItemsSuggested` (on the `Note` stream), `ActionItemDeleted`, `ActionItemCompleted` (on the `ActionItem` streams).
+
+```csharp
+public record ActionItemFeedbackView(
+    string UserId,
+    int SuggestedCount,
+    int DeletedCount,
+    int CompletedCount);   // keyed per user only — free-text descriptions don't aggregate per-value, unlike tags
+```
+
+Unlike tags (a repeating categorical value), action items are unique free text, so there is nothing to blocklist — the signal is a per-user **quality rate**: of the action items the AI extracted, how many were **deleted** (rejected extraction) vs **completed** (confirmed a real task).
+
+**Storage rows** (single table `notetaker-proj-actionfeedback`, partition key `PK` only — no sort key):
+
+| Row type   | PK                    | Attributes                                  |
+|------------|-----------------------|---------------------------------------------|
+| Aggregate  | `USER#{userId}`       | `SuggestedCount`, `DeletedCount`, `CompletedCount` |
+| Provenance | `ACTION#{actionItemId}` | `UserId`                                   |
+
+The provenance row marks an action item as AI-extracted; it is matched by id when the item is later deleted or completed (on its own `ActionItem` stream).
+
+**Event handling (live, inline across two command handlers):**
+- `ActionItemsSuggested` (in `NoteCommandHandler`) → per id: `SuggestedCount++` for the current user; write provenance `(actionItemId, userId)`.
+- `ActionItemDeleted` (in `ActionItemCommandHandler`) → if provenance for that `ActionId` exists: `DeletedCount++` for its user.
+- `ActionItemCompleted` (in `ActionItemCommandHandler`) → if provenance exists: `CompletedCount++`.
+- Provenance is **not** consumed — action ids are unique and immutable, so there is no double-count risk.
+
+**Rebuild ordering note:** the suggestion lives on the `Note` stream while the deletion/completion live on `ActionItem` streams, and a rebuild replays streams ordered by id (`action#…` before `note#…`). The rebuild projection therefore defers count computation (records provenance and the deleted/completed id lists, then computes counts in `GetAggregates`) so it is **order-independent**. The live path is naturally ordered (a suggestion always precedes any later delete/complete).
+
+**Accepted approximations (v1):** an item completed *then* deleted increments both counts; reopen and edit are ignored.
+
+---
+
 ## Soft delete handling
 
 Two valid approaches; pick one and apply consistently:
