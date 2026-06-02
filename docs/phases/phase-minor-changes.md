@@ -16,9 +16,9 @@
 | CHANGE-2 | Theme selection (Teal / Forest / Midnight) | Done | — |
 | CHANGE-3 | Home screen shows today's notes by default | Done | — |
 | CHANGE-4 | To-do rows wrap cleanly with long text + note title | Done | — |
-| CHANGE-5 | Sign-in screen visual polish | Open | — |
-| CHANGE-6 | Collapsible "Filters" control for home tags | Open | — |
-| CHANGE-7 | More colour schemes; drop duplicate Forest theme | Open | CHANGE-2 (shipped) |
+| CHANGE-5 | Sign-in screen visual polish | In Progress | — |
+| CHANGE-6 | Collapsible "Filters" control for home tags | In Progress | — |
+| CHANGE-7 | More colour schemes; drop duplicate Forest theme | In Progress | CHANGE-2 (shipped) |
 
 Tweaks are appended here as they are identified. Use the same per-item format: a short title, **Status**, value/symptom, and acceptance criteria (with scenarios and approach where the change warrants them).
 
@@ -634,9 +634,9 @@ Scenario: Folder view is unaffected
 
 ## CHANGE-7 — More colour schemes; drop duplicate Forest theme
 
-**Status:** Open
+**Status:** Prototype approved — ready to implement. Gallery prototype on branch `prototype/minor-7-colour-schemes` (`colour-schemes-prototype.html`), approved 2026-06-02. Confirmed set: **12 themes** (8 light, 4 dark) — Forest dropped as a Teal duplicate; all visually-distinct candidates kept. Implement the confirmed palette table below as a normal slice. Do **not** start from prototype code.
 
-**Value:** CHANGE-2 shipped three themes — Teal (default), Forest, Midnight. In practice **Teal and Forest are visually almost identical**: both are light themes with a green/emerald primary on a near-white green-tinted background (Teal `#0D9488`/`#F0FDFA`, Forest `#059669`/`#ECFDF5`), so the picker offers a choice with no perceptible difference. This change **removes Forest** and **adds several genuinely distinct palettes**, so the picker offers a real spread of looks across the hue wheel and a second dark option. Teal stays as the `:root` default; Midnight stays as the dark theme.
+**Value:** CHANGE-2 shipped three themes — Teal (default), Forest, Midnight. In practice **Teal and Forest are visually almost identical**: both are light themes with a green/emerald primary on a near-white green-tinted background (Teal `#0D9488`/`#F0FDFA`, Forest `#059669`/`#ECFDF5`), so the picker offers a choice with no perceptible difference. This change **removes Forest** and **adds nine genuinely distinct palettes**, so the picker offers a real spread of looks across the hue wheel and several dark options. Teal stays as the `:root` default; Midnight stays as a dark theme.
 
 **Backend changes:** None. Themes remain pure CSS custom-property overrides selected by `data-theme` and persisted in `localStorage`, exactly as CHANGE-2 established. No event, projection, or API change.
 
@@ -645,27 +645,38 @@ Scenario: Folder view is unaffected
 ### What changes
 
 1. **Remove Forest.** Delete the `[data-theme="forest"]` palette block, the Forest `<option>` in `ThemePicker`, and `forest` from the theme type union / valid-values list. Anything previously persisted as `forest` falls through the existing unknown-value guard to Teal (the same fallback CHANGE-2 already ships) — no migration needed.
-2. **Add distinct palettes** (proposed below — open to trimming/renaming). Each is a new `[data-theme="…"]` block re-declaring the same custom properties; no component touches a literal colour.
+2. **Add the nine confirmed distinct palettes** (table below). Each is a new `[data-theme="…"]` block re-declaring the same custom properties; no component touches a literal colour.
 3. **Picker scales as-is.** The sidebar `<select>` just gains/loses `<option>`s; no structural change.
 
 ---
 
-### Proposed palettes *(for review — adjust before implementation)*
+### Confirmed palettes *(prototype-approved 2026-06-02)*
 
-Keeping Teal (default light) and Midnight (dark); removing Forest; adding four new, clearly-distinguishable themes — three light across different hues and a second dark.
+Twelve themes survive the gallery: Teal (default) and Midnight are unchanged; Forest is removed as a Teal duplicate; nine new distinct palettes are added (seven light, three dark). `data-theme` key is the lowercase name (`teal` is `:root`, no attribute needed).
 
-| Theme | Kind | Primary | Primary-dark | CTA | Background | Surface | Text | Text-muted | Border |
-|-------|------|---------|--------------|-----|------------|---------|------|-----------|--------|
-| **Teal** *(default)* | light | `#0D9488` | `#0F766E` | `#F97316` | `#F0FDFA` | `#FFFFFF` | `#134E4A` | `#64748B` | `#CCEBE8` |
-| **Indigo** *(new)* | light | `#4F46E5` | `#4338CA` | `#F97316` | `#EEF2FF` | `#FFFFFF` | `#1E1B4B` | `#64748B` | `#C7D2FE` |
-| **Rose** *(new)* | light | `#E11D48` | `#BE123C` | `#0EA5E9` | `#FFF1F2` | `#FFFFFF` | `#4C0519` | `#6B7280` | `#FECDD3` |
-| **Amber** *(new)* | light | `#D97706` | `#B45309` | `#2563EB` | `#FFFBEB` | `#FFFFFF` | `#451A03` | `#78716C` | `#FDE68A` |
-| **Midnight** | dark | `#2DD4BF` | `#14B8A6` | `#FB923C` | `#0F172A` | `#1E293B` | `#E2E8F0` | `#94A3B8` | `#334155` |
-| **Slate** *(new)* | dark | `#818CF8` | `#6366F1` | `#FB923C` | `#0B1120` | `#1E293B` | `#E2E8F0` | `#94A3B8` | `#334155` |
+**Light themes**
 
-As in CHANGE-2: `--color-primary-bg` follows the primary at ~6% opacity (light) / ~10% (dark); `--color-cta-dark` is the CTA one step darker. CTA colours are chosen to contrast with each theme's primary (e.g. Rose pairs a red primary with a sky-blue CTA so the call-to-action stays distinct). Slate is a cool indigo-on-deep-navy dark, clearly different from Midnight's teal-on-slate.
+| Theme | key | Primary | Primary-dark | CTA | Background | Surface | Text | Text-muted | Border |
+|-------|-----|---------|--------------|-----|------------|---------|------|-----------|--------|
+| **Teal** *(default)* | — | `#0D9488` | `#0F766E` | `#F97316` | `#F0FDFA` | `#FFFFFF` | `#134E4A` | `#64748B` | `#CCEBE8` |
+| **Indigo** | `indigo` | `#4F46E5` | `#4338CA` | `#F97316` | `#EEF2FF` | `#FFFFFF` | `#1E1B4B` | `#64748B` | `#C7D2FE` |
+| **Rose** | `rose` | `#E11D48` | `#BE123C` | `#0EA5E9` | `#FFF1F2` | `#FFFFFF` | `#4C0519` | `#6B7280` | `#FECDD3` |
+| **Amber** | `amber` | `#D97706` | `#B45309` | `#2563EB` | `#FFFBEB` | `#FFFFFF` | `#451A03` | `#78716C` | `#FDE68A` |
+| **Violet** | `violet` | `#7C3AED` | `#6D28D9` | `#F59E0B` | `#F5F3FF` | `#FFFFFF` | `#2E1065` | `#6B7280` | `#DDD6FE` |
+| **Sky** | `sky` | `#0284C7` | `#0369A1` | `#F97316` | `#F0F9FF` | `#FFFFFF` | `#0C2A3E` | `#64748B` | `#BAE6FD` |
+| **Sepia** | `sepia` | `#B45309` | `#92400E` | `#0D9488` | `#FAF6EF` | `#FFFDF8` | `#44372A` | `#8C7A63` | `#E8DCC8` |
+| **Contrast** | `contrast` | `#1D4ED8` | `#1E3A8A` | `#B91C1C` | `#FFFFFF` | `#FFFFFF` | `#000000` | `#374151` | `#1F2937` |
 
-> These are starting points. Confirm the final set and exact hex before implementation — drop any you don't want, rename freely. Each light theme must clear 4.5:1 text contrast; each dark theme reuses the Midnight semantic error/surface tokens introduced in CHANGE-2's dark-mode audit so no hardcoded light background leaks through.
+**Dark themes** (each reuses semantic `--color-error` / `--color-error-bg` so no hardcoded light background leaks through — see CHANGE-2 dark-mode audit)
+
+| Theme | key | Primary | Primary-dark | CTA | Background | Surface | Text | Text-muted | Border | error / error-bg |
+|-------|-----|---------|--------------|-----|------------|---------|------|-----------|--------|------------------|
+| **Midnight** | `midnight` | `#2DD4BF` | `#14B8A6` | `#FB923C` | `#0F172A` | `#1E293B` | `#E2E8F0` | `#94A3B8` | `#334155` | `#F87171` / `#3F1D1D` |
+| **Slate** | `slate` | `#818CF8` | `#6366F1` | `#FB923C` | `#0B1120` | `#1E293B` | `#E2E8F0` | `#94A3B8` | `#334155` | `#F87171` / `#3F1D1D` |
+| **Carbon** | `carbon` | `#F59E0B` | `#D97706` | `#38BDF8` | `#1C1917` | `#292524` | `#F5F5F4` | `#A8A29E` | `#44403C` | `#F87171` / `#3A201C` |
+| **Plum** | `plum` | `#FB7185` | `#F43F5E` | `#38BDF8` | `#1A0E14` | `#2B1721` | `#FCE7F3` | `#C99BAC` | `#4A2C39` | `#FDA4AF` / `#3F1D29` |
+
+As in CHANGE-2: `--color-primary-bg` follows the primary at ~6% opacity (light) / ~10% (dark); `--color-cta-dark` is the CTA one step darker. CTA colours are chosen to contrast with each theme's primary (e.g. Rose pairs a red primary with a sky-blue CTA). The closest remaining pair is Indigo vs Violet — both kept as distinct (blue-leaning vs true purple). Each light theme must clear 4.5:1 text contrast; verify before merge.
 
 ---
 
