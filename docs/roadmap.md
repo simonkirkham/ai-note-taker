@@ -206,6 +206,19 @@ Make the app properly observable for production using AWS-native tooling only. T
 
 Slices and acceptance criteria: [docs/phases/phase-12.md](phases/phase-12.md)
 
+## Phase 13 — Feedback capture for AI suggestions _(Planned)_
+
+Capture which AI-suggested tags and action items users keep, remove, or complete — as permanent, rebuildable signal — without changing any AI behaviour. The analyse path applies AI tags and action items through the same commands a human uses, so today a deletion can't be distinguished from a human tidying up their own content, and the correction signal is lost. This phase records provenance via two additive events.
+
+- **13-A:** `TagsSuggested` event (new `RecordTagSuggestions` command) — records the AI tags newly applied by an analysis run
+- **13-B:** `TagFeedbackProjection` — per-user/per-tag `suggested`/`rejected` counts, derived via a per-note provenance row
+- **13-C:** `ActionItemsSuggested` event (new `RecordActionItemSuggestions` command) — records the IDs of action items the AI created
+- **13-D:** `ActionItemFeedbackProjection` — per-user `suggested`/`deleted`/`completed` counts, derived via a per-action provenance row
+
+**Goal:** lay the data foundation for later prompt/model tuning. Learn additive provenance events (no versioning of hot events), projections that *classify by combining* events rather than copying them, and two contrasting read-model shapes from one idea — a per-tag-value index vs a per-user quality rate. Using the captured signal (prompt tuning, suppression) is explicitly out of scope.
+
+Slices and acceptance criteria: [docs/phases/phase-13.md](phases/phase-13.md)
+
 ---
 
 ## Standing tracks and planning docs
