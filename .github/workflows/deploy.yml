@@ -133,6 +133,8 @@ jobs:
           echo "frontend-url=$(jq -r '.NoteTakerStack.WebUrl' outputs.json)" >> $GITHUB_OUTPUT
           echo "bucket=$(jq -r '.NoteTakerStack.WebBucketName' outputs.json)" >> $GITHUB_OUTPUT
           echo "distribution-id=$(jq -r '.NoteTakerStack.DistributionId' outputs.json)" >> $GITHUB_OUTPUT
+          echo "rum-monitor-id=$(jq -r '.NoteTakerStack.RumMonitorId' outputs.json)" >> $GITHUB_OUTPUT
+          echo "rum-identity-pool-id=$(jq -r '.NoteTakerStack.RumIdentityPoolId' outputs.json)" >> $GITHUB_OUTPUT
 
       - name: Print deployment URLs
         run: |
@@ -144,6 +146,51 @@ jobs:
         run: npm ci && npm run build
         env:
           VITE_GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
+
+      - name: Inject RUM snippet
+        working-directory: web
+        env:
+          RUM_MONITOR_ID: ${{ steps.outputs.outputs.rum-monitor-id }}
+          RUM_IDENTITY_POOL_ID: ${{ steps.outputs.outputs.rum-identity-pool-id }}
+          RUM_REGION: ${{ secrets.AWS_REGION }}
+        run: |
+          # GitHub passes unset secrets as "" and jq on a missing key returns "null";
+          # refuse to ship an unmonitored frontend if either RUM output is absent.
+          if [ -z "$RUM_MONITOR_ID" ] || [ "$RUM_MONITOR_ID" = "null" ] \
+             || [ -z "$RUM_IDENTITY_POOL_ID" ] || [ "$RUM_IDENTITY_POOL_ID" = "null" ]; then
+            echo "::error::RUM stack outputs missing — refusing to deploy frontend without monitoring"
+            exit 1
+          fi
+          # Literal string-replace the empty placeholder in the BUILT artifact only
+          # (dist/index.html), never the source web/index.html. Node avoids sed/regex
+          # escaping pain with the snippet's slashes and braces.
+          node -e '
+            const fs = require("fs");
+            const id = process.env.RUM_MONITOR_ID;
+            const pool = process.env.RUM_IDENTITY_POOL_ID;
+            const region = process.env.RUM_REGION;
+            const snippet =
+              `<script id="rum-snippet">(function(n,i,v,r,s,c,u,x,z){`
+              + `x=window.AwsRumClient={q:[],n:n,i:i,v:v,r:r,c:c,u:u};`
+              + `window[n]=function(c,p){x.q.push({c:c,p:p});};`
+              + `z=document.createElement("script");z.async=true;z.src=s;`
+              + `document.head.insertBefore(z,document.getElementsByTagName("script")[0]);`
+              + `})("cwr","${id}","1.0.0","${region}",`
+              + `"https://client.rum.${region}.amazonaws.com/3.x/cwr.js",`
+              + `{sessionSampleRate:1,identityPoolId:"${pool}",`
+              + `endpoint:"https://dataplane.rum.${region}.amazonaws.com",`
+              + `telemetries:["errors","performance",["http",{addXRayTraceIdHeader:true}]],`
+              + `allowCookies:true,enableXRay:true});</script>`;
+            const file = "dist/index.html";
+            const html = fs.readFileSync(file, "utf8");
+            const placeholder = `<script id="rum-snippet"></script>`;
+            if (!html.includes(placeholder)) {
+              console.error("::error::rum-snippet placeholder not found in dist/index.html");
+              process.exit(1);
+            }
+            fs.writeFileSync(file, html.replace(placeholder, snippet));
+            console.log("Injected RUM snippet for monitor " + id);
+          '
 
       - name: Deploy frontend
         run: aws s3 sync web/dist/ s3://${{ steps.outputs.outputs.bucket }}/ --delete
@@ -274,6 +321,8 @@ jobs:
           echo "frontend-url=$(jq -r '.NoteTakerStack.WebUrl' outputs.json)" >> $GITHUB_OUTPUT
           echo "bucket=$(jq -r '.NoteTakerStack.WebBucketName' outputs.json)" >> $GITHUB_OUTPUT
           echo "distribution-id=$(jq -r '.NoteTakerStack.DistributionId' outputs.json)" >> $GITHUB_OUTPUT
+          echo "rum-monitor-id=$(jq -r '.NoteTakerStack.RumMonitorId' outputs.json)" >> $GITHUB_OUTPUT
+          echo "rum-identity-pool-id=$(jq -r '.NoteTakerStack.RumIdentityPoolId' outputs.json)" >> $GITHUB_OUTPUT
 
       - name: Print deployment URLs
         run: |
@@ -285,6 +334,51 @@ jobs:
         run: npm ci && npm run build
         env:
           VITE_GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
+
+      - name: Inject RUM snippet
+        working-directory: web
+        env:
+          RUM_MONITOR_ID: ${{ steps.outputs.outputs.rum-monitor-id }}
+          RUM_IDENTITY_POOL_ID: ${{ steps.outputs.outputs.rum-identity-pool-id }}
+          RUM_REGION: ${{ secrets.AWS_REGION }}
+        run: |
+          # GitHub passes unset secrets as "" and jq on a missing key returns "null";
+          # refuse to ship an unmonitored frontend if either RUM output is absent.
+          if [ -z "$RUM_MONITOR_ID" ] || [ "$RUM_MONITOR_ID" = "null" ] \
+             || [ -z "$RUM_IDENTITY_POOL_ID" ] || [ "$RUM_IDENTITY_POOL_ID" = "null" ]; then
+            echo "::error::RUM stack outputs missing — refusing to deploy frontend without monitoring"
+            exit 1
+          fi
+          # Literal string-replace the empty placeholder in the BUILT artifact only
+          # (dist/index.html), never the source web/index.html. Node avoids sed/regex
+          # escaping pain with the snippet's slashes and braces.
+          node -e '
+            const fs = require("fs");
+            const id = process.env.RUM_MONITOR_ID;
+            const pool = process.env.RUM_IDENTITY_POOL_ID;
+            const region = process.env.RUM_REGION;
+            const snippet =
+              `<script id="rum-snippet">(function(n,i,v,r,s,c,u,x,z){`
+              + `x=window.AwsRumClient={q:[],n:n,i:i,v:v,r:r,c:c,u:u};`
+              + `window[n]=function(c,p){x.q.push({c:c,p:p});};`
+              + `z=document.createElement("script");z.async=true;z.src=s;`
+              + `document.head.insertBefore(z,document.getElementsByTagName("script")[0]);`
+              + `})("cwr","${id}","1.0.0","${region}",`
+              + `"https://client.rum.${region}.amazonaws.com/3.x/cwr.js",`
+              + `{sessionSampleRate:1,identityPoolId:"${pool}",`
+              + `endpoint:"https://dataplane.rum.${region}.amazonaws.com",`
+              + `telemetries:["errors","performance",["http",{addXRayTraceIdHeader:true}]],`
+              + `allowCookies:true,enableXRay:true});</script>`;
+            const file = "dist/index.html";
+            const html = fs.readFileSync(file, "utf8");
+            const placeholder = `<script id="rum-snippet"></script>`;
+            if (!html.includes(placeholder)) {
+              console.error("::error::rum-snippet placeholder not found in dist/index.html");
+              process.exit(1);
+            }
+            fs.writeFileSync(file, html.replace(placeholder, snippet));
+            console.log("Injected RUM snippet for monitor " + id);
+          '
 
       - name: Deploy frontend
         run: aws s3 sync web/dist/ s3://${{ steps.outputs.outputs.bucket }}/ --delete
