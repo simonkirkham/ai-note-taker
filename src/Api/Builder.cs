@@ -1,6 +1,9 @@
 using Amazon.BedrockRuntime;
 using Amazon.DynamoDBv2;
 using Amazon.SecurityToken;
+using Amazon.XRay.Recorder.Core;
+using Amazon.XRay.Recorder.Core.Strategies;
+using Amazon.XRay.Recorder.Handlers.AwsSdk;
 using AWS.Lambda.Powertools.Logging;
 using EventStore;
 using EventStore.Projections;
@@ -28,6 +31,13 @@ public static class Builder
         {
             config.Service = "note-taker";
         });
+
+        // X-Ray instruments all AWS SDK calls (DynamoDB, STS, Bedrock) as trace
+        // subsegments. Must run before any AWS client is constructed. Off Lambda
+        // (local, tests) there is no active segment, so log rather than throw on
+        // missing context.
+        AWSXRayRecorder.Instance.ContextMissingStrategy = ContextMissingStrategy.LOG_ERROR;
+        AWSSDKHandler.RegisterXRayForAllServices();
 
         builder.Services.AddCors();
         builder.Services.AddHttpContextAccessor();

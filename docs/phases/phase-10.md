@@ -1,8 +1,8 @@
-# Phase 10 — Transcription
+# Phase 10 — Transcription & high-quality analysis
 
-**Goal:** Add live meeting transcription to the note screen. The user records audio during a meeting; AWS Transcribe Streaming produces a live rolling transcript; when recording stops, Amazon Bedrock (Claude Haiku) analyses the transcript against the existing note content and auto-applies gap-filling content, tags, and action items.
+**Goal:** Produce a *high-quality* AI analysis of a meeting note — and build the means to keep it high quality. The user records audio (local mic plus, optionally, remote-call audio); AWS Transcribe Streaming produces a live rolling transcript; Amazon Bedrock analyses the transcript against the existing note content and applies gap-filling content, tags, and action items. Analysis quality is then made **measurable** — an offline evaluation harness scores prompt/model variants over fixed transcripts — and **improvable** — durable capture of which AI suggestions users keep, reject, or complete provides the correction signal that feeds prompt/model refinement, tied to a specific prompt version.
 
-**Learning surface:** AWS Transcribe Streaming from the browser (first real-time streaming service); STS AssumeRole — Lambda issues scoped temporary credentials after verifying the Google JWT; first outbound AWS service call from Lambda beyond DynamoDB (Bedrock); IAM scoping: Transcribe permissions restricted to the browser-held role, Bedrock permission on the Lambda role; prompt engineering for structured extraction (content gap-fill, tag inference, action item extraction); configurable model via env var as a deployment pattern; async event chain — `TranscriptionCompleted` triggers existing event types, keeping the domain unaware of AI.
+**Learning surface:** AWS Transcribe Streaming from the browser (first real-time streaming service); STS AssumeRole — Lambda issues scoped temporary credentials after verifying the Google JWT; first outbound AWS service call from Lambda beyond DynamoDB (Bedrock); IAM scoping: Transcribe permissions restricted to the browser-held role, Bedrock permission on the Lambda role; mixing mic + system audio via the Web Audio API; prompt engineering for structured extraction (content gap-fill, tag inference, action item extraction); configurable model via env var as a deployment pattern; **offline LLM evaluation** (LLM-as-judge scoring, prompt/model matrices, versioned prompts); **purely additive provenance events** and projections that *classify by combining* events rather than copying them; **event versioning** to stamp `modelId`/`promptVersion` so the correction signal ties to a specific prompt version; async event chain — `TranscriptionCompleted` triggers existing event types, keeping the domain unaware of AI.
 
 ---
 
@@ -61,38 +61,54 @@ What is **not** yet in place:
 
 ## New events
 
-| Event | Aggregate | Payload |
-|---|---|---|
-| `TranscriptionCompleted` | `Note` | `transcriptText: string`, `durationSeconds: int` |
+| Event | Aggregate | Payload | Slice |
+|---|---|---|---|
+| `TranscriptionCompleted` | `Note` | `transcriptText: string`, `durationSeconds: int` | 10-C |
+| `TagsSuggested` | `Note` | `tags: string[]` — provenance only; `Apply` is a no-op | 10-I |
+| `ActionItemsSuggested` | `Note` | `actionItemIds: Guid[]` — provenance only; `Apply` is a no-op | 10-K |
 
-Analysis output reuses **existing** event types: `ContentEditedV2`, `TagAdded`, `ActionItemAdded`. The domain does not know whether content originated from a human or an LLM.
+Analysis output reuses **existing** event types: `ContentEditedV2`, `TagAdded`, `ActionItemAdded`. The domain does not know whether content originated from a human or an LLM. The `*Suggested` events above are the exception — they record AI provenance without changing aggregate state, so a later untag/delete can be classified as a rejected AI suggestion (10-J/10-L). 10-M versions these two events to add `modelId`/`promptVersion`.
 
 ---
 
 ## Slice order and dependencies
 
-Each slice from 10-B onward is independently demoable. CDK wiring is bundled into 10-B (where it is first needed) rather than a standalone infrastructure-only slice.
+Phase 10 has two parts. The **core flow** (10-A → 10-H) makes recording → transcription → analysis work end to end. The **quality track** (10-E, 10-F, then 10-G → 10-M) makes that analysis *good* and *keeps it good*: better input, smoother UX, measurement, and a durable correction signal that feeds prompt/model refinement. Slices 10-I → 10-M were moved here from the former Phase 13 ("Feedback capture for AI suggestions") so that analysis quality — building it, measuring it, refining it — lives in one phase.
+
+CDK wiring for transcription is bundled into 10-B (where it is first needed); Bedrock IAM into 10-D.
+
+**Status at a glance:**
+- Core flow: 10-A ✅ · 10-B ✅ · 10-C ✅ · 10-D ✅ · 10-H ✅
+- Quality track: 10-E ⬜ · 10-F ⬜ · 10-G ⬜ · 10-I ⬜ · 10-J ⬜ · 10-K ⬜ · 10-L ⬜ · 10-M ⬜
+
+*(10-H was delivered ahead of 10-E.)*
 
 ```
-10-A  UX Prototype ── human approval required ──────────────────────────────────────────┐
-      Demo: record button, live fake transcript scrolling, auto-analyse switch,        │
-      "Save & Analyse" button, fake analysis output                                    │
-                                                                                       ▼
-10-B  Live transcript ──────────────────────────────────────────────────────────────────┤
-      Demo: open a note → press Record → speak → see words appear in real time        │
-         │                                                                             │
-         ▼                                                                             │
-10-C  Persist transcript ───────────────────────────────────────────────────────────────┤
-      Demo: stop recording → close note → reopen → transcript still visible           │
-         │                                                                             │
-         ▼                                                                             │
-10-D  Manual analysis ──────────────────────────────────────────────────────────────────┤
-      Demo: click "Save & Analyse" → content fills gaps, tags appear, actions added   │
-         │                                                                             │
-         ▼                                                                             │
-10-E  Auto-analysis on stop ────────────────────────────────────────────────────────────┘
-      Demo: record → stop → note enriches automatically (frontend only)
+Core flow (built in order — done)
+─────────────────────────────────
+10-A  UX Prototype ──▶ 10-B  Live transcript ──▶ 10-C  Persist transcript ──▶ 10-D  Manual analysis
+10-H  Analyse note content (transcript optional; content-rewrite switch)
+
+Quality track (recommended build order for remaining work)
+──────────────────────────────────────────────────────────
+Input & UX (frontend only, independent of each other and the rest)
+  10-E  Auto-analysis on stop ........... record → stop → note enriches automatically
+  10-F  Capture remote participants ..... mix system/call audio so remote speakers are transcribed
+
+Measurement (testing)
+  10-G  Analysis evaluation harness ..... versioned prompts (PromptCatalog) + offline scoring over fixed transcripts
+
+Correction signal (refining) — moved from the former Phase 13
+  10-I  Record AI tag suggestions ....... TagsSuggested event (provenance for applied AI tags)
+        └─▶ 10-J  Tag feedback projection ......... per-user/per-tag: suggested vs rejected
+  10-K  Record AI action suggestions .... ActionItemsSuggested event (provenance for AI-created actions)
+        └─▶ 10-L  Action feedback projection ...... per-user: suggested / deleted / completed
+
+Closing the loop
+  10-M  Stamp modelId + promptVersion ... version the *Suggested events so feedback ties to a prompt version
 ```
+
+**Dependencies:** 10-J depends on 10-I; 10-L depends on 10-K; the tag track (10-I/J) and the action track (10-K/L) are independent and either may land first. 10-M depends on the versioned prompts from 10-G and on the suggestion events (10-I, 10-K). 10-E, 10-F, and 10-G are independent of everything else and of each other.
 
 ---
 
@@ -439,7 +455,7 @@ Scenario: Mic-only when toggle is off
 **Commands in scope:** none
 **Events in scope:** none
 
-**Out of scope (deferred to 10-I):** stamping `modelId` + `promptVersion` onto a new `AnalysisApplied` event in the production stream. Once the harness exists, that becomes a tight follow-up that lets real meetings feed the fixture set.
+**Out of scope (deferred to 10-M):** stamping `modelId` + `promptVersion` onto the production analysis events. Once the harness and versioned prompts exist here, 10-M is a tight follow-up that lets real meetings feed the fixture set.
 
 ---
 
@@ -597,7 +613,7 @@ Scenario: Report aggregates results into a markdown table
 
 ## Slice 10-H — Analyse note content (transcript optional)
 
-**Status:** Not Started
+**Status:** Done
 
 **Value:** Run analysis on *any* note to infer tags and extract action items from what is already written — no recording required. When a transcript is present it is analysed alongside the content. A switch controls whether analysis may also rewrite the note content, so hand-written notes can be left untouched.
 
@@ -680,3 +696,368 @@ Scenario: Analysis requires authentication
   When POST /notes/{id}/analyse is called
   Then the response is 401 Unauthorized
 ```
+
+---
+
+## Feedback capture (10-I → 10-M) — overview
+
+*Moved from the former Phase 13 ("Feedback capture for AI suggestions"). The implementation blueprints are the `event-modelling`, `aggregate-command`, and `projection` skills.*
+
+The analyse path (`src/Api/Handlers/TranscriptionHandlers.cs`) makes the AI contribute two kinds of content to a note, and both go through the **same commands a human uses**, so AI-origin is invisible:
+
+| AI contribution | Command → event | Why the correction signal is lost |
+|---|---|---|
+| Tags | `TagNote` → `NoteTagged` | A later `NoteUntagged` can't be told apart from a human tidying up their own tag. |
+| Action items | `AddActionItem` → `ActionItemAdded` | A later `ActionItemDeleted` can't be told apart from a human deleting their own task. |
+
+The user's *correction* — deleting an AI suggestion — is signal for improving the prompt, and it is currently thrown away. These slices record provenance so the signal becomes durable, queryable, rebuildable data. **Two signals, different shapes:**
+
+- **Tags are repeating categorical values** → the tag projection (10-J) is keyed *per tag value*, so analysis can learn "stop suggesting `q3-planning` for this user." Signal = suggested vs removed.
+- **Action items are unique free text** → you cannot blocklist a value. The action projection (10-L) is a *per-user quality rate*: of the actions the AI extracted, how many were **deleted** (rejected) vs **completed** (confirmed a real task).
+
+Using the signal (negative-example prompting, suppression) stays out of scope here; 10-M ties the signal to a prompt version so it can be acted on later.
+
+---
+
+## Slice 10-I — Record AI tag suggestions
+
+**Status:** Not started
+
+**Value:** Each analysis run records, as a first-class event, exactly which tags the AI contributed — so a later deletion of one is unambiguously a rejected AI tag.
+
+**Commands in scope:** `RecordTagSuggestions` (new)
+**Events in scope:** `TagsSuggested` (new)
+**CDK changes:** none.
+
+### Design
+
+- `src/Domain/Notes/RecordTagSuggestions.cs` — `record RecordTagSuggestions(NoteId NoteId, IReadOnlyList<string> Tags) : NoteCommand;` (mirror `TagNote.cs`).
+- `src/Domain/Notes/TagsSuggested.cs` — `record TagsSuggested(NoteId NoteId, IReadOnlyList<string> Tags) : NoteEvent;` (mirror `NoteTagged.cs`).
+- `src/Domain/Notes/Note.cs` — add the `RecordTagSuggestions` case to the `Handle` switch; a `HandleRecordTagSuggestions` method (guard exists + not deleted; return `[]` if `Tags` empty, else one `TagsSuggested`); a no-op `Apply(TagsSuggested)` case so rebuild accepts it.
+- `src/Api/Handlers/TranscriptionHandlers.cs` (`AnalyseNote`) — compute the post-dedup applied tag set (the existing `Where(t => !existingTags.Contains(t, …))` list); if non-empty, call `RecordTagSuggestions(noteId, appliedTags)` **before** the per-tag `TagNote` calls, so `TagsSuggested` precedes the `NoteTagged` events in stream order.
+- Register the event in `EventDeserializer` / the event-type map.
+
+> **Stamping `modelId` / `promptVersion` is slice 10-M** — a deliberate event-versioning exercise. Kept out of 10-I v1 to avoid speculative fields.
+
+### Key implementation files
+
+- `src/Domain/Notes/{RecordTagSuggestions,TagsSuggested,Note}.cs`
+- `src/Api/Handlers/TranscriptionHandlers.cs`
+- event-type registration (`EventDeserializer`)
+- `docs/event-model.md` + `docs/event-schemas.md`
+- `tests/Domain.Specs/` + `tests/Api.Integration/`
+
+### Scenarios
+
+```
+Scenario: Recording suggestions raises TagsSuggested
+  Given a Note exists
+  When RecordTagSuggestions is handled with ["auth", "backend"]
+  Then TagsSuggested is raised with tags ["auth", "backend"]
+
+Scenario: An empty suggestion list raises nothing
+  Given a Note exists
+  When RecordTagSuggestions is handled with []
+  Then no event is raised
+
+Scenario: Recording on a missing note is rejected
+  Given no Note exists
+  When RecordTagSuggestions is handled
+  Then it throws InvalidOperationException
+
+Scenario: Analysis records only the newly-applied AI tags
+  Given a Note already tagged "auth" and a transcript about login and auth
+  When POST /notes/{id}/analyse runs and the model returns ["auth", "login"]
+  Then a TagsSuggested event is appended listing only ["login"]
+  And NoteTagged is appended for "login"
+```
+
+### Acceptance criteria
+
+- [ ] `RecordTagSuggestions` command + `TagsSuggested` event added; `Note` handles and applies (no-op) them
+- [ ] Empty tag list raises no event; missing/deleted note throws
+- [ ] `AnalyseNote` records the post-dedup applied tag set as `TagsSuggested` before the `NoteTagged` events
+- [ ] Event registered for (de)serialisation; existing streams still rebuild
+- [ ] `docs/event-model.md` + `docs/event-schemas.md` updated
+- [ ] Domain.Specs + Api.Integration specs green; `cdk synth` succeeds
+
+---
+
+## Slice 10-J — Tag feedback projection
+
+**Status:** Not started
+
+**Value:** Per user, per tag: how many times AI-suggested and how many later removed. Queryable ad hoc (the intended analysis path); rebuildable from history.
+
+**Commands in scope:** none
+**Events consumed:** `TagsSuggested`, `NoteUntagged`, `NoteDeleted`
+**CDK changes:** one new projection table.
+
+### Design (mirror the TagIndex trio)
+
+- **View:** `TagFeedbackView(string UserId, string Tag, int SuggestedCount, int RejectedCount)` — `Accepted` = `Suggested − Rejected`, derived at read time, not stored.
+- **Store:** `ITagFeedbackStore` + `DynamoDbTagFeedbackStore` (`src/EventStore/Projections/`). Single table `notetaker-proj-tagfeedback` holding two row types:
+  - *Aggregate* — `PK=USER#{userId}`, `SK=TAG#{tag}` → `SuggestedCount`, `RejectedCount`.
+  - *Provenance* — `PK=NOTE#{noteId}`, `SK=TAG#{tag}` (carries `UserId`) → marks a tag AI-suggested on that note; the state needed to classify a later untag.
+- **Event handler:** `src/Api/Projections/TagFeedbackEventHandler.cs` (`IDomainEventHandler`), reading `UserId` from `envelope.Metadata.UserId` (exactly as `TagIndexEventHandler.cs`):
+  - `TagsSuggested` → per tag: `SuggestedCount++`; write the provenance row.
+  - `NoteUntagged` → if provenance `(noteId, tag)` present: `RejectedCount++` and **delete** the provenance row (only a fresh `TagsSuggested` re-arms it — prevents a manual re-add/remove from double-counting).
+  - `NoteDeleted` → delete that note's provenance rows; **counts untouched** (deletion is not tag rejection).
+  - `NoteTagged` → ignored (acceptance is derived).
+- **Rebuild:** `TagFeedbackProjection` (same `Handle`/`GetAll` shape as `TagIndexProjection.cs`); add an instance to `ProjectionRebuildHandler` and upsert its rows.
+- **Wiring:** register store + handler in `src/Api/Builder.cs`; read `PROJ_TAGFEEDBACK_TABLE_NAME` in `Program.cs`; create the table in `NoteTakerStack.cs` (mirror `ProjTagIndexTable`, `RemovalPolicy.RETAIN`) and pass the env var into the Lambda `Environment` dict.
+
+**Accepted approximations (documented):** an accepted tag removed during unrelated cleanup months later still counts as rejected (no time-weighting in v1).
+
+### Key implementation files
+
+- `src/EventStore/Projections/{TagFeedbackView,ITagFeedbackStore,DynamoDbTagFeedbackStore,TagFeedbackProjection}.cs`
+- `src/Api/Projections/TagFeedbackEventHandler.cs`
+- `src/Api/{Builder,Program}.cs`; `src/Api/CommandHandlers/ProjectionRebuildHandler.cs`
+- `src/Infrastructure/NoteTakerStack.cs`; `tests/Infrastructure.Assertions/`
+- `docs/view-schemas.md`
+
+### Scenarios
+
+```
+Scenario: A suggested tag increments the suggested count
+  Given an empty TagFeedback projection
+  When TagsSuggested for user "alice" lists ["auth"] on note N
+  Then feedback for (alice, "auth") has suggested=1, rejected=0
+
+Scenario: Removing a suggested tag increments the rejected count
+  Given user "alice" was suggested "auth" on note N
+  When "auth" is untagged from note N
+  Then feedback for (alice, "auth") has suggested=1, rejected=1
+
+Scenario: Removing a manually-added tag is not a rejection
+  Given "auth" was added to note N with no prior suggestion
+  When "auth" is untagged from note N
+  Then no rejected count is recorded for "auth"
+
+Scenario: A rejection counts once per suggestion
+  Given "auth" was suggested then untagged on note N (rejected=1)
+  When "auth" is manually re-added to note N and removed again
+  Then rejected for (alice, "auth") stays 1
+
+Scenario: Deleting a note clears provenance but not counts
+  Given user "alice" was suggested "auth" on note N (suggested=1)
+  When note N is deleted
+  Then suggested for (alice, "auth") remains 1
+  And provenance for (N, "auth") is removed
+
+Scenario: The projection rebuilds from the event stream
+  Given a stream with TagsSuggested and NoteUntagged events
+  When projections are rebuilt
+  Then TagFeedback counts equal the live projection's
+```
+
+### Acceptance criteria
+
+- [ ] View, store (single table, two row types), and handler added; `UserId` from `envelope.Metadata`; `NoteTagged` ignored
+- [ ] Rejection consumes its provenance row; note deletion clears provenance without altering counts
+- [ ] Wired into `ProjectionRebuildHandler`; rebuild reproduces live counts
+- [ ] Registered in `Builder.cs`; env var in `Program.cs` + CDK; table created with `RETAIN`
+- [ ] `Infrastructure.Assertions` asserts the table; `docs/view-schemas.md` updated
+- [ ] All specs green; `cdk synth` succeeds; `cdk diff` reviewed before deploy
+
+---
+
+## Slice 10-K — Record AI action-item suggestions
+
+**Status:** Not started
+
+**Value:** Each analysis run records which action items the AI extracted (by ID), so a later deletion or completion of one is attributable to the AI.
+
+**Commands in scope:** `RecordActionItemSuggestions` (new, on `Note`)
+**Events in scope:** `ActionItemsSuggested` (new)
+**CDK changes:** none.
+
+### Design
+
+- `src/Domain/Notes/RecordActionItemSuggestions.cs` — `record RecordActionItemSuggestions(NoteId NoteId, IReadOnlyList<Guid> ActionItemIds) : NoteCommand;`.
+- `src/Domain/Notes/ActionItemsSuggested.cs` — `record ActionItemsSuggested(NoteId NoteId, IReadOnlyList<Guid> ActionItemIds) : NoteEvent;`.
+- `src/Domain/Notes/Note.cs` — `Handle` case + `HandleRecordActionItemSuggestions` (guard exists + not deleted; `[]` if empty) + no-op `Apply(ActionItemsSuggested)`.
+- `src/Api/Handlers/TranscriptionHandlers.cs` (`AnalyseNote`) — the loop already generates an `ActionId` per new action. Collect those IDs; if any were created, after the `AddActionItem` calls issue `RecordActionItemSuggestions(noteId, createdIds)`.
+- Register the event for (de)serialisation.
+
+> **Why on `Note`, by ID:** symmetric with `TagsSuggested`, keeps the hot `ActionItemAdded` event unversioned, and the deletion/completion events on the `ActionItem` aggregate carry the `ActionId`, so the projection (10-L) matches by ID regardless of which stream the suggestion event sits in.
+
+### Key implementation files
+
+- `src/Domain/Notes/{RecordActionItemSuggestions,ActionItemsSuggested,Note}.cs`
+- `src/Api/Handlers/TranscriptionHandlers.cs`
+- event-type registration; `docs/event-model.md` + `docs/event-schemas.md`
+- `tests/Domain.Specs/` + `tests/Api.Integration/`
+
+### Scenarios
+
+```
+Scenario: Recording action suggestions raises ActionItemsSuggested
+  Given a Note exists
+  When RecordActionItemSuggestions is handled with [id1, id2]
+  Then ActionItemsSuggested is raised listing [id1, id2]
+
+Scenario: An empty list raises nothing
+  Given a Note exists
+  When RecordActionItemSuggestions is handled with []
+  Then no event is raised
+
+Scenario: Analysis records the IDs of the action items it created
+  Given a Note and a transcript with "Alice will fix the login bug"
+  When POST /notes/{id}/analyse extracts one action item for the current user
+  Then ActionItemAdded is appended for it
+  And ActionItemsSuggested is appended listing that action item's ID
+```
+
+### Acceptance criteria
+
+- [ ] `RecordActionItemSuggestions` command + `ActionItemsSuggested` event added; `Note` handles and applies (no-op) them
+- [ ] Empty list raises nothing; missing/deleted note throws
+- [ ] `AnalyseNote` records the IDs of the action items it created, after creating them
+- [ ] Event registered for (de)serialisation; existing streams still rebuild
+- [ ] `docs/event-model.md` + `docs/event-schemas.md` updated
+- [ ] Domain.Specs + Api.Integration specs green; `cdk synth` succeeds
+
+---
+
+## Slice 10-L — Action-item feedback projection
+
+**Status:** Not started
+
+**Value:** Per user: of the action items the AI extracted, how many were **deleted** (rejected extraction) and how many **completed** (confirmed a real task) — an extraction-precision picture. Queryable ad hoc; rebuildable.
+
+**Commands in scope:** none
+**Events consumed:** `ActionItemsSuggested`, `ActionItemDeleted`, `ActionItemCompleted`
+**CDK changes:** one new projection table.
+
+### Design
+
+- **View:** `ActionItemFeedbackView(string UserId, int SuggestedCount, int DeletedCount, int CompletedCount)` — keyed **per user only** (free-text descriptions don't aggregate per-value, unlike tags).
+- **Store:** `IActionItemFeedbackStore` + `DynamoDbActionItemFeedbackStore`. Single table `notetaker-proj-actionfeedback` holding two row types:
+  - *Aggregate* — `PK=USER#{userId}` → `SuggestedCount`, `DeletedCount`, `CompletedCount`.
+  - *Provenance* — `PK=ACTION#{actionItemId}` (carries `UserId`) → marks an action item AI-extracted.
+- **Event handler:** `src/Api/Projections/ActionItemFeedbackEventHandler.cs` (`IDomainEventHandler`), reading `UserId` from `envelope.Metadata.UserId`:
+  - `ActionItemsSuggested` → per ID: `SuggestedCount++`; write provenance `(actionItemId, userId)`.
+  - `ActionItemDeleted` → if provenance for that `ActionId` present: `DeletedCount++`.
+  - `ActionItemCompleted` → if provenance present: `CompletedCount++`.
+  - Provenance is **not** consumed — `ActionId`s are unique and immutable, so there is no double-count risk (an item completed then deleted may increment both, which is acceptable for a quality signal).
+- **Rebuild:** `ActionItemFeedbackProjection`; add an instance to `ProjectionRebuildHandler`.
+- **Wiring:** register store + handler in `Builder.cs`; read `PROJ_ACTIONFEEDBACK_TABLE_NAME` in `Program.cs`; create the table in `NoteTakerStack.cs` (`RETAIN`) and pass the env var into the Lambda dict.
+
+**Accepted approximations (documented):** completed-then-deleted increments both counts; reopen and edit are ignored in v1.
+
+### Key implementation files
+
+- `src/EventStore/Projections/{ActionItemFeedbackView,IActionItemFeedbackStore,DynamoDbActionItemFeedbackStore,ActionItemFeedbackProjection}.cs`
+- `src/Api/Projections/ActionItemFeedbackEventHandler.cs`
+- `src/Api/{Builder,Program}.cs`; `src/Api/CommandHandlers/ProjectionRebuildHandler.cs`
+- `src/Infrastructure/NoteTakerStack.cs`; `tests/Infrastructure.Assertions/`
+- `docs/view-schemas.md`
+
+### Scenarios
+
+```
+Scenario: A suggested action increments the suggested count
+  Given an empty ActionItemFeedback projection
+  When ActionItemsSuggested for user "alice" lists [id1]
+  Then feedback for "alice" has suggested=1, deleted=0, completed=0
+
+Scenario: Deleting an AI-suggested action increments the deleted count
+  Given action id1 was AI-suggested for user "alice"
+  When id1 is deleted
+  Then feedback for "alice" has deleted=1
+
+Scenario: Completing an AI-suggested action increments the completed count
+  Given action id1 was AI-suggested for user "alice"
+  When id1 is completed
+  Then feedback for "alice" has completed=1
+
+Scenario: Deleting a manually-added action is not counted
+  Given action id2 was added by the user with no prior suggestion
+  When id2 is deleted
+  Then no deleted count is recorded for "alice"
+
+Scenario: The projection rebuilds from the event stream
+  Given a stream with ActionItemsSuggested, ActionItemDeleted, ActionItemCompleted events
+  When projections are rebuilt
+  Then ActionItemFeedback counts equal the live projection's
+```
+
+### Acceptance criteria
+
+- [ ] View (per-user), store (single table, two row types), and handler added; `UserId` from `envelope.Metadata`
+- [ ] Deleted/completed counted only for AI-suggested action IDs; manual actions ignored
+- [ ] Wired into `ProjectionRebuildHandler`; rebuild reproduces live counts
+- [ ] Registered in `Builder.cs`; env var in `Program.cs` + CDK; table created with `RETAIN`
+- [ ] `Infrastructure.Assertions` asserts the table; `docs/view-schemas.md` updated
+- [ ] All specs green; `cdk synth` succeeds; `cdk diff` reviewed before deploy
+
+---
+
+## Slice 10-M — Stamp modelId / promptVersion on the suggestion events
+
+**Status:** Not started
+
+**Value:** Tie every captured correction (10-J / 10-L) to the exact prompt and model that produced the suggestion, so refinement can compare quality *across prompt versions* rather than only in aggregate. This closes the loop between the eval harness (10-G) and the live feedback signal — and lets real meetings feed the 10-G fixture set.
+
+**Depends on:** 10-G (versioned prompts / `PromptCatalog`, and `NoteAnalysisResult.ModelId` + `PromptVersion`), plus the suggestion events from 10-I and 10-K.
+
+**Commands in scope:** none new (existing `RecordTagSuggestions`, `RecordActionItemSuggestions`)
+**Events in scope:** `TagsSuggestedV2`, `ActionItemsSuggestedV2` (versioned)
+**CDK changes:** none.
+
+### Design
+
+- A deliberate **event-versioning** exercise — the v1 `*Suggested` events shipped in 10-I/10-K must not change shape (immutability guardrail). Introduce `TagsSuggestedV2(NoteId, Tags, ModelId, PromptVersion)` and `ActionItemsSuggestedV2(NoteId, ActionItemIds, ModelId, PromptVersion)`; the `Note` aggregate applies both v1 and v2 (both no-ops); the analyse handler now raises the **v2** events, carrying `result.ModelId` / `result.PromptVersion` from `NoteAnalysisResult`.
+- The feedback projections (10-J/10-L) consume v1 and v2 alike for their existing counts, and additionally annotate provenance rows with `promptVersion`, so quality can be sliced per prompt version. Streams containing only v1 events rebuild unchanged (no stamp → `"unknown"`).
+- Register both v2 events for (de)serialisation; update `docs/event-model.md`, `docs/event-schemas.md`, `docs/view-schemas.md`.
+
+### Scenarios
+
+```
+Scenario: Analysis stamps the prompt version on the suggestion events
+  Given analysis runs with PromptCatalog.V1 and model "amazon.nova-lite-v1:0"
+  When tags and action items are suggested
+  Then TagsSuggestedV2 and ActionItemsSuggestedV2 are raised
+  And each carries promptVersion "analysis@v1" and the model id
+
+Scenario: v1 suggestion events still rebuild after the v2 upgrade
+  Given a stream containing only v1 TagsSuggested events
+  When projections are rebuilt
+  Then the feedback counts are unchanged
+  And those provenance rows carry promptVersion "unknown"
+
+Scenario: Feedback can be sliced per prompt version
+  Given suggestions recorded under promptVersion "analysis@v1" and "analysis@v2"
+  When the tag feedback projection is queried
+  Then suggested/rejected counts are available per (user, tag, promptVersion)
+```
+
+### Acceptance criteria
+
+- [ ] `TagsSuggestedV2` / `ActionItemsSuggestedV2` added; v1 events untouched; aggregate applies both (no-op)
+- [ ] Analyse handler raises the v2 events carrying `ModelId` + `PromptVersion` from `NoteAnalysisResult`
+- [ ] 10-J / 10-L projections consume v1 and v2; provenance carries `promptVersion` (`"unknown"` for v1)
+- [ ] Existing streams rebuild unchanged; both v2 events registered for (de)serialisation
+- [ ] `docs/event-model.md`, `docs/event-schemas.md`, `docs/view-schemas.md` updated
+- [ ] All specs green; `cdk synth` succeeds
+
+---
+
+## Feedback capture — explicitly out of scope (deferred)
+
+- **Using the signals** — negative-example prompting (tags) and tuning the action-extraction prompt for precision. This belongs with the prompt/model-optimisation work, run manually once enough data has accrued (10-G is the harness for it). The data is captured and rebuildable, so it can happen any time later.
+- **Hard suppression** of strongly-rejected tags before they are applied.
+- **Read endpoint / UI** for either feedback model — query DynamoDB directly when analysing.
+- **Time-weighting** of rejections, action **edits**, and reopen handling.
+
+### Verification (10-I → 10-M)
+
+- `dotnet test tests/Domain.Specs` — `RecordTagSuggestions`, `RecordActionItemSuggestions`, the v2 stamping, and both projection-classification specs.
+- `dotnet test tests/Api.Integration` — `POST /notes/{id}/analyse` appends `TagsSuggested(V2)` (applied tag set) and `ActionItemsSuggested(V2)` (created action IDs).
+- `dotnet test tests/Infrastructure.Assertions` — both new projection tables exist.
+- `cdk synth` / `cdk diff` before deploy.
+- Post-deploy ad-hoc check (the intended analysis path): analyse a note, delete one suggested tag and one suggested action, complete another action, then query the feedback tables and confirm the counts:
+  - `aws dynamodb query --table-name notetaker-proj-tagfeedback --key-condition-expression "PK = :u" … --profile prod --region eu-west-2`
+  - `aws dynamodb get-item --table-name notetaker-proj-actionfeedback --key '{"PK":{"S":"USER#<id>"}}' --profile prod --region eu-west-2`

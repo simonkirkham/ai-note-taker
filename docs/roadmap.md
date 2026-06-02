@@ -166,15 +166,18 @@ Slices and acceptance criteria: [docs/phases/phase-8.md](phases/phase-8.md)
 
 Slices and acceptance criteria: [docs/phases/phase-9.md](phases/phase-9.md)
 
-## Phase 10 — Transcription _(In Progress)_
+## Phase 10 — Transcription & high-quality analysis _(In Progress)_
 
-- Record audio during a meeting via MediaRecorder API; words appear live in a scrolling transcript panel on the note screen (AWS Transcribe Streaming; browser streams directly with STS-issued temporary credentials)
-- `TranscriptionCompleted` event persists the full transcript on the Note aggregate
-- Amazon Bedrock (Claude Haiku) analyses the transcript against existing note content and auto-applies gap-filling content, new tags, and new action items — **action items scoped to the current user only**; other team tasks go into the note content
-- Auto-analyse switch (default ON) fires analysis when recording stops; switch OFF reveals a manual "Save & Analyse" button
-- Model configurable via `BEDROCK_MODEL_ID` env var without code change
+Build a high-quality AI analysis of meeting notes — and the means to keep it high quality: better input, measurement, and a durable correction signal that feeds prompt/model refinement. Slices 10-I → 10-M were absorbed from the former Phase 13 ("Feedback capture for AI suggestions") so that building, measuring, and refining analysis quality live in one phase.
 
-**Goal:** first real-time streaming feature; first LLM integration; STS AssumeRole credential delegation; first outbound AWS service call from Lambda beyond DynamoDB. The event model stays clean — `TranscriptionCompleted` records what happened; analysis output reuses existing event types so the domain never knows whether content came from a human or a model.
+- **Core flow (done):** record audio (AWS Transcribe Streaming via STS-issued temporary credentials); `TranscriptionCompleted` persists the transcript; Amazon Bedrock (Nova Lite) analyses transcript + existing content and applies gap-filling content, tags, and action items — action items scoped to the current user; model configurable via `BEDROCK_MODEL_ID`. Analysis also runs on any note with no transcript (10-H).
+- **10-E:** Auto-analysis on stop (auto-analyse switch, default ON); **10-F:** capture remote participants by mixing system/call audio
+- **10-G:** offline analysis evaluation harness — versioned prompts (`PromptCatalog`) + LLM-as-judge scoring over fixed transcripts
+- **10-I/10-J:** `TagsSuggested` event + per-user/per-tag feedback projection (suggested vs rejected)
+- **10-K/10-L:** `ActionItemsSuggested` event + per-user feedback projection (suggested / deleted / completed)
+- **10-M:** version the `*Suggested` events to stamp `modelId`/`promptVersion`, tying the correction signal to a prompt version
+
+**Goal:** first real-time streaming feature; first LLM integration; STS AssumeRole delegation; offline LLM evaluation; purely additive provenance events and projections that *classify by combining* events; event versioning to stamp prompt/model. The event model stays clean — analysis output reuses existing event types, so the domain never knows whether content came from a human or a model; the `*Suggested` events record AI provenance without mutating state.
 
 Slices and acceptance criteria: [docs/phases/phase-10.md](phases/phase-10.md)
 
@@ -206,18 +209,7 @@ Make the app properly observable for production using AWS-native tooling only. T
 
 Slices and acceptance criteria: [docs/phases/phase-12.md](phases/phase-12.md)
 
-## Phase 13 — Feedback capture for AI suggestions _(Planned)_
-
-Capture which AI-suggested tags and action items users keep, remove, or complete — as permanent, rebuildable signal — without changing any AI behaviour. The analyse path applies AI tags and action items through the same commands a human uses, so today a deletion can't be distinguished from a human tidying up their own content, and the correction signal is lost. This phase records provenance via two additive events.
-
-- **13-A:** `TagsSuggested` event (new `RecordTagSuggestions` command) — records the AI tags newly applied by an analysis run
-- **13-B:** `TagFeedbackProjection` — per-user/per-tag `suggested`/`rejected` counts, derived via a per-note provenance row
-- **13-C:** `ActionItemsSuggested` event (new `RecordActionItemSuggestions` command) — records the IDs of action items the AI created
-- **13-D:** `ActionItemFeedbackProjection` — per-user `suggested`/`deleted`/`completed` counts, derived via a per-action provenance row
-
-**Goal:** lay the data foundation for later prompt/model tuning. Learn additive provenance events (no versioning of hot events), projections that *classify by combining* events rather than copying them, and two contrasting read-model shapes from one idea — a per-tag-value index vs a per-user quality rate. Using the captured signal (prompt tuning, suppression) is explicitly out of scope.
-
-Slices and acceptance criteria: [docs/phases/phase-13.md](phases/phase-13.md)
+*(The former Phase 13 — "Feedback capture for AI suggestions" — was absorbed into Phase 10 as slices 10-I → 10-M.)*
 
 ---
 
@@ -247,6 +239,6 @@ Possible user-facing features not yet committed to a numbered phase. When one is
 
 ### Technical Improvements
 
-Technical, infrastructure, and developer-experience items to address in the future (refactors, upgrades, CI/CD, hardening). Currently: upgrade GitHub Actions to Node.js 24, investigate whether `cdk synth` needs AWS credentials in `validate.yml`.
+Technical, infrastructure, and developer-experience items to address in the future (refactors, upgrades, CI/CD, hardening). Currently: upgrade GitHub Actions to Node.js 24, investigate whether `cdk synth` needs AWS credentials in `validate.yml`, add `cdk synth` to the pre-commit hook, make the pre-commit eslint step conditional, and split the single API Lambda into CQRS write/read Lambdas with async projectors ([ADR 0009](adr/0009-split-lambdas-cqrs-async-projectors.md)).
 
 → [docs/technical-improvements.md](technical-improvements.md)

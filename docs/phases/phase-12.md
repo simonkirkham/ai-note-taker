@@ -181,7 +181,7 @@ Scenario: A projection update emits its duration
 
 ## Slice 12-C — Distributed tracing with AWS X-Ray
 
-**Status:** Not started
+**Status:** Done — explicit projection-update subsegments deferred (see acceptance criteria)
 
 **Value:** A single request can be followed end to end as a trace: the Lambda invocation, each DynamoDB call (event store read, append, projection writes), and named subsegments for the domain steps. The X-Ray service map shows where latency lives and which downstream call failed. The trace ID is propagated to the HTTP response so a frontend error (12-F) links straight to its backend trace.
 
@@ -236,12 +236,13 @@ Scenario: A subsegment is always closed even when the operation throws
 
 ### Acceptance criteria
 
-- [ ] `Tracing.ACTIVE` set on the Lambda in CDK; `Infrastructure.Assertions` confirms it and the X-Ray IAM grants
-- [ ] `AWSXRayRecorder.Handlers.AwsSdk` referenced; `RegisterXRayForAllServices()` called before the DynamoDB client is built
-- [ ] Event store read, event store append, and projection update each appear as a named, stable subsegment
-- [ ] Every subsegment is ended in a `finally` block — no orphaned segments
-- [ ] `x-amzn-trace-id` header returned on responses
-- [ ] `Api.Integration` asserts the trace-ID header; `cdk synth` succeeds; `cdk diff` reviewed
+- [x] `Tracing.ACTIVE` set on the Lambda in CDK; `Infrastructure.Assertions` confirms it and the X-Ray IAM grants
+- [x] `AWSXRayRecorder.Handlers.AwsSdk` referenced; `RegisterXRayForAllServices()` called before the DynamoDB client is built
+- [x] Event store read and append appear as named, stable subsegments (`ReadEvents`/`AppendEvents`). **Projection-update subsegments deferred** — projections are updated inline four different ways (the dispatcher is unused); SDK auto-instrumentation already captures the DynamoDB writes beneath the command. Same deferral as 12-B's `ProjectionUpdateDuration`.
+- [x] Every subsegment is ended in a `finally` block — no orphaned segments
+- [x] `x-amzn-trace-id` header returned on responses (echoes inbound API Gateway/Lambda trace id; falls back to the request id)
+- [x] `Api.Integration` asserts the trace-ID header; `cdk synth` succeeds
+- [x] `AWS_XRAY_CONTEXT_MISSING=LOG_ERROR` + recorder strategy so off-Lambda (local/tests) logs rather than throws on missing trace context
 
 ---
 

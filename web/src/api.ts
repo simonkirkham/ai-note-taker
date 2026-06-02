@@ -166,6 +166,7 @@ export interface NoteCard {
   date: string | null;
   openActions: NoteCardAction[];
   createdAt: string;
+  lastModifiedAt: string;
   tags: string[];
   folderId: string | null;
 }

@@ -3,6 +3,14 @@ name: PR Checks
 on:
   pull_request:
     branches: [ main ]
+    paths-ignore:
+      - "docs/**" # all project documentation
+      - "**/*.md" # README, CLAUDE.md, ADRs, learnings — anywhere in the tree
+      - "LICENSE"
+      - ".gitignore"
+      - ".gitattributes"
+      - ".githooks/**" # local git hooks, never run in CI
+      - ".claude/**" # agent skills/config, never built or deployed
 
 jobs:
   backend:

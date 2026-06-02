@@ -541,6 +541,23 @@ body {
   color: var(--color-text-muted);
 }
 
+/* Single-spaced note lines: collapse the inter-paragraph gap so consecutive
+   lines sit directly beneath one another. line-height keeps in-paragraph
+   leading comfortable; markdown serialisation is unaffected (still distinct
+   <p> blocks). Scoped to the editor so it cannot leak to other screens. */
+.content-input p {
+  margin: 0;
+}
+
+/* Keep headings visually distinct from the preceding paragraph now that the
+   paragraph margin is gone. */
+.content-input h1,
+.content-input h2,
+.content-input h3 {
+  margin-top: 0.75rem;
+  margin-bottom: 0.25rem;
+}
+
 /* ── Note two-column layout ────────────────────────────────────── */
 .note-layout {
   display: grid;
@@ -1023,6 +1040,34 @@ body {
   letter-spacing: 0.02em;
   text-transform: uppercase;
   color: var(--color-text-muted);
+}
+
+.note-cards-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1.25rem;
+}
+
+.note-cards-header .note-cards-heading {
+  margin: 0;
+}
+
+.show-older-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.85rem;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  user-select: none;
+}
+
+.note-cards-empty {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: 0.9rem;
 }
 
 .note-cards {
