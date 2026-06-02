@@ -92,7 +92,8 @@ function AppContent({ signOut }: { signOut: () => void }) {
       const newFolderId = activeFolderId && activeFolderId !== UNFILED_ID ? activeFolderId : null;
       setCards((prev) => [{
         noteId, title: '', contentPreview: '', date: todayAsISO,
-        openActions: [], createdAt: new Date().toISOString(), tags: [], folderId: newFolderId,
+        openActions: [], createdAt: new Date().toISOString(),
+        lastModifiedAt: new Date().toISOString(), tags: [], folderId: newFolderId,
       }, ...prev]);
       if (newFolderId) {
         apiMoveNoteToFolder(noteId, newFolderId).catch(() => {

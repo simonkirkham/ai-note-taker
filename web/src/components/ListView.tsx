@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { NoteCard as NoteCardData, TagIndexEntry, getTags } from "../api";
+import { effectiveDate, isEditedToday, localTodayISO } from "../dates";
 import MeetingsSection from "./MeetingsSection";
 import NoteCard from "./NoteCard";
 import TodoSection from "./TodoSection";
@@ -33,6 +34,7 @@ export default function ListView({
   const [tagEntries, setTagEntries] = useState<TagIndexEntry[]>([]);
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [filterMode, setFilterMode] = useState<"AND" | "OR">("AND");
+  const [showOlder, setShowOlder] = useState(false);
 
   useEffect(() => {
     getTags().then(setTagEntries).catch(() => {});
@@ -55,6 +57,32 @@ export default function ListView({
         : selectedTags.some((t) => cardTags.includes(t));
     });
   }, [cards, selectedTags, filterMode, currentFolderId]);
+
+  // Home note list: today's notes (effective date today) plus anything edited
+  // today, always hiding future-dated notes. "Show older notes" additionally
+  // reveals past notes. Sorted reverse-chronologically by effective date, with
+  // lastModifiedAt descending as the tiebreaker. The folder view does not use
+  // this — it keeps showing all notes via filteredCards.
+  const homeCards = useMemo(() => {
+    const today = localTodayISO();
+    const visible = filteredCards.filter((c) => {
+      const eff = effectiveDate(c);
+      if (eff > today) return false; // future-dated notes are always hidden
+      if (eff === today) return true; // today
+      if (isEditedToday(c, today)) return true; // edited today, dated earlier
+      return showOlder; // past notes only when the toggle is on
+    });
+    return [...visible].sort((a, b) => {
+      const ea = effectiveDate(a);
+      const eb = effectiveDate(b);
+      if (ea !== eb) return ea < eb ? 1 : -1; // newest effective date first
+      // tiebreak: most recently modified first. Lexicographic string compare is
+      // valid because both the backend (DateTimeOffset) and the optimistic card
+      // (new Date().toISOString()) emit canonical UTC ISO-8601 (Z-suffixed).
+      if (a.lastModifiedAt === b.lastModifiedAt) return 0;
+      return a.lastModifiedAt < b.lastModifiedAt ? 1 : -1;
+    });
+  }, [filteredCards, showOlder]);
 
   function toggleTag(tag: string) {
     setSelectedTags((prev) =>
@@ -132,11 +160,21 @@ export default function ListView({
               onModeChange={setFilterMode}
               onClear={clearFilter}
             />
-            {filteredCards.length > 0 && (
-              <section className="note-cards-section">
+            <section className="note-cards-section">
+              <div className="note-cards-header">
                 <h2 className="note-cards-heading">Notes</h2>
+                <label className="show-older-toggle">
+                  <input
+                    type="checkbox"
+                    checked={showOlder}
+                    onChange={(e) => setShowOlder(e.target.checked)}
+                  />
+                  Show older notes
+                </label>
+              </div>
+              {homeCards.length > 0 ? (
                 <div className="note-cards" data-testid="note-cards">
-                  {filteredCards.map((card) => (
+                  {homeCards.map((card) => (
                     <NoteCard
                       key={card.noteId}
                       card={card}
@@ -145,8 +183,12 @@ export default function ListView({
                     />
                   ))}
                 </div>
-              </section>
-            )}
+              ) : (
+                <p className="note-cards-empty">
+                  {showOlder ? "No notes" : "No notes today"}
+                </p>
+              )}
+            </section>
           </div>
           <aside className="home-right-panel">
             <MeetingsSection onOpenNote={onOpenNote} />

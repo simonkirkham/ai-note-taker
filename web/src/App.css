@@ -1042,6 +1042,34 @@ body {
   color: var(--color-text-muted);
 }
 
+.note-cards-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1.25rem;
+}
+
+.note-cards-header .note-cards-heading {
+  margin: 0;
+}
+
+.show-older-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.85rem;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  user-select: none;
+}
+
+.note-cards-empty {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: 0.9rem;
+}
+
 .note-cards {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
