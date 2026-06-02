@@ -666,4 +666,67 @@ public class InfraAssertionsTests
             })
         }));
     }
+
+    [Fact]
+    public void OpsDashboard_ExistsNamedNotetakerOps()
+    {
+        _template.ResourceCountIs("AWS::CloudWatch::Dashboard", 1);
+        _template.HasResourceProperties("AWS::CloudWatch::Dashboard", Match.ObjectLike(new Dictionary<string, object>
+        {
+            ["DashboardName"] = "notetaker-ops"
+        }));
+    }
+
+    [Fact]
+    public void OpsDashboard_IncludesErrorsWidgetAndDomainMetrics()
+    {
+        // DashboardBody is an Fn::Join of literal JSON fragments and tokens; assert
+        // the literal fragments carry the errors widget title and the domain namespace.
+        _template.HasResourceProperties("AWS::CloudWatch::Dashboard", Match.ObjectLike(new Dictionary<string, object>
+        {
+            ["DashboardBody"] = Match.ObjectLike(new Dictionary<string, object>
+            {
+                ["Fn::Join"] = Match.ArrayWith(new object[]
+                {
+                    Match.ArrayWith(new object[] { Match.StringLikeRegexp(".*All errors.*") })
+                })
+            })
+        }));
+        _template.HasResourceProperties("AWS::CloudWatch::Dashboard", Match.ObjectLike(new Dictionary<string, object>
+        {
+            ["DashboardBody"] = Match.ObjectLike(new Dictionary<string, object>
+            {
+                ["Fn::Join"] = Match.ArrayWith(new object[]
+                {
+                    Match.ArrayWith(new object[] { Match.StringLikeRegexp(".*NoteTaker/Domain.*") })
+                })
+            })
+        }));
+    }
+
+    [Theory]
+    [InlineData("CommandHandled")]
+    [InlineData("ConcurrencyConflict")]
+    public void OpsDashboard_DomainMetricUsesSumSearch(string metricName)
+    {
+        // Guards the fix for the dimensioned-metric bug: the widget must query the
+        // domain metric via SUM(SEARCH(...)) (matches any dimension set), not a
+        // dimensionless Metric. Asserts the expression literal is in the dashboard body.
+        _template.HasResourceProperties("AWS::CloudWatch::Dashboard", Match.ObjectLike(new Dictionary<string, object>
+        {
+            ["DashboardBody"] = Match.ObjectLike(new Dictionary<string, object>
+            {
+                ["Fn::Join"] = Match.ArrayWith(new object[]
+                {
+                    Match.ArrayWith(new object[] { Match.StringLikeRegexp($".*SUM\\(SEARCH.*MetricName.*{metricName}.*") })
+                })
+            })
+        }));
+    }
+
+    [Fact]
+    public void OpsDashboard_UrlOutputExists()
+    {
+        _template.HasOutput("DashboardUrl", Match.AnyValue());
+    }
 }
