@@ -14,9 +14,10 @@
 |------|---------|--------|------------|
 | BUG-1 | Blank screen presented when 401 returned from API | Done | — |
 | BUG-2 | favicon.ico request 404s / errors on every page load | Done | — |
-| BUG-3 | Data Protection warnings on every Lambda cold start (log noise) | Open | — |
-| BUG-4 | ConcurrencyException surfaces as unhandled 500 on note writes | Open | — |
-| BUG-5 | Renaming a deleted note throws unhandled 500 instead of 404 | Open | — |
+| BUG-3 | Data Protection warnings on every Lambda cold start (log noise) | Done | — |
+| BUG-4 | ConcurrencyException surfaces as unhandled 500 on note writes | Done | — |
+| BUG-5 | Renaming a deleted note throws unhandled 500 instead of 404 | Done | — |
+| BUG-6 | CloudWatch RUM receives no data — loader CDN host is regional, doesn't resolve | Done | 12-F |
 
 Further bugs will be appended as they are identified.
 
@@ -78,15 +79,13 @@ Further bugs will be appended as they are identified.
 
 **Key files:** `web/index.html`, `web/public/favicon.svg`, `web/src/__tests__/Favicon.test.ts`.
 
-**Key files (to be confirmed):** `web/index.html`, `web/public/`.
-
 > **Note — not logged here:** the recurring console warning `content.js:360 The kernel 'TopK' for backend 'webgl' is already registered` originates from a **browser extension** (a TensorFlow.js content script injected into the page), not from this app — the codebase has no TensorFlow.js/WebGL usage. It cannot be fixed from our code; reproduce in a clean profile with extensions disabled to confirm.
 
 ---
 
 ## BUG-3 — ASP.NET Data Protection warnings on every Lambda cold start
 
-**Status:** Open
+**Status:** Done — fixed in PR #108 (squash commit `fac23e7`), deployed to main 2026-06-02. **Chosen approach: suppress at source** — the API authenticates with bearer tokens only (no cookie auth, antiforgery, or `IDataProtector` consumers), so Data Protection is genuinely unused; `Builder.cs` filters the `Microsoft.AspNetCore.DataProtection` category below `Error`. See [docs/learnings/phase-bug-3-dataprotection-logs.md](../learnings/phase-bug-3-dataprotection-logs.md).
 
 **Severity:** Low — log noise, no functional impact today, but it dominates the `notetaker-ops` "All errors" widget (3 Warning lines per cold start), drowning out the genuine Error-level entries the widget is meant to surface.
 
@@ -110,17 +109,17 @@ Further bugs will be appended as they are identified.
 2. Observe the three Data Protection `Warning` lines in the Lambda log group for that invocation.
 
 **Acceptance criteria:**
-- A cold-start invocation produces zero Data Protection warning lines in the Lambda log group.
-- The `notetaker-ops` "All errors" widget no longer shows Data Protection lines.
-- The chosen approach (suppress vs. persist) is recorded, with a note on whether the app relies on Data Protection.
+- [x] A cold-start invocation produces zero Data Protection warning lines in the Lambda log group.
+- [x] The `notetaker-ops` "All errors" widget no longer shows Data Protection lines.
+- [x] The chosen approach (suppress vs. persist) is recorded, with a note on whether the app relies on Data Protection — suppress; the app does not rely on Data Protection (bearer-token auth).
 
-**Key files (to be confirmed):** `src/Api/Program.cs`, `src/Api/LoggingConfig.cs`, CDK in `src/Infrastructure/` (if SSM/S3/KMS persistence is chosen, plus the IAM grant).
+**Key files:** `src/Api/Builder.cs` (log filter), `tests/Api.Integration/DataProtectionLoggingTests.cs`.
 
 ---
 
 ## BUG-4 — `ConcurrencyException` surfaces as an unhandled 500 on note writes
 
-**Status:** Open
+**Status:** Done — fixed in PR #107 (squash commit `bcdf97b`, combined with BUG-5), deployed to main 2026-06-02. The global exception handler in `LoggingConfig` now maps `EventStore.ConcurrencyException` → `409 Conflict` at a single cross-cutting point. See [docs/learnings/phase-bug-4-5-exception-mapping.md](../learnings/phase-bug-4-5-exception-mapping.md).
 
 **Severity:** Medium — a concurrent or rapidly-repeated write to the same note returns HTTP 500 with an unhandled-exception stack trace, instead of a meaningful status the client can act on. It is a recurring Error-level entry on the dashboard.
 
@@ -137,17 +136,17 @@ Further bugs will be appended as they are identified.
 2. Observe the second append fail with `ConcurrencyException` → 500.
 
 **Acceptance criteria:**
-- A concurrency conflict on a note write never returns 500 — it is either retried-and-resolved or returned as `409 Conflict`.
-- A failing spec/test reproduces the conflict (two appends at the same expected version) before the fix and passes after.
-- The fix is applied at a single cross-cutting point (handler-level retry or a global `ConcurrencyException → 409` mapping), not patched per-endpoint.
+- [x] A concurrency conflict on a note write never returns 500 — it is returned as `409 Conflict`.
+- [x] A failing spec/test reproduces the conflict before the fix and passes after — `ExceptionMappingTests.ConcurrencyConflict_OnNoteWrite_Returns409…` (via a `ConflictingEventStore` double).
+- [x] The fix is applied at a single cross-cutting point (global `ConcurrencyException → 409` mapping in `LoggingConfig`), not patched per-endpoint.
 
-**Key files (to be confirmed):** `src/Api/CommandHandlers/NoteCommandHandler.cs`, `src/EventStore/DynamoDbEventStore.cs`, `src/Api/LoggingConfig.cs` (global exception handler), `src/Api/Handlers/NoteHandlers.cs`.
+**Key files:** `src/Api/LoggingConfig.cs` (global `ConcurrencyException → 409` mapping), `src/Api/Observability/CommandInstrumentation.cs`; tests `tests/Api.Integration/ExceptionMappingTests.cs`, `tests/Api.Integration/ConflictingEventStore.cs`.
 
 ---
 
 ## BUG-5 — Renaming a deleted/non-rebuildable note throws an unhandled 500
 
-**Status:** Open
+**Status:** Done — fixed in PR #107 (squash commit `bcdf97b`, combined with BUG-4), deployed to main 2026-06-02. `NoteCommandHandler.ExecuteAsync` now rebuilds the aggregate and throws the typed `NoteNotFoundException` when the note no longer exists (empty stream **or** deleted), via the new `Note.Exists` predicate; the global handler maps that family → `404`. See [docs/learnings/phase-bug-4-5-exception-mapping.md](../learnings/phase-bug-4-5-exception-mapping.md).
 
 **Severity:** Medium — `PATCH /notes/{id}/title` returns 500 instead of a clean 404/409 when the note no longer exists in the event stream.
 
@@ -164,8 +163,30 @@ Further bugs will be appended as they are identified.
 2. Observe a 500 with `InvalidOperationException: Note … does not exist.`
 
 **Acceptance criteria:**
-- `RenameNote`, `EditContent`, and `SetNoteDate` return a clean 404/409 (not 500) when the note does not exist in the event stream.
-- A failing spec/test reproduces the rename-of-deleted-note 500 before the fix and passes after.
-- Consider making the domain throw a typed `NoteNotFoundException` (or having the handler catch `InvalidOperationException`) consistently across all note write endpoints, so the mapping is uniform rather than per-endpoint drift.
+- [x] `RenameNote`, `EditContent`, and `SetNoteDate` return a clean 404 (not 500) when the note does not exist in the event stream.
+- [x] A failing spec/test reproduces the rename-of-deleted-note 500 before the fix and passes after — `ExceptionMappingTests.WriteToDeletedNote_WithStaleProjection_Returns404…` (`[Theory]` over title/content/date).
+- [x] Mapping is uniform, not per-endpoint: the handler throws the typed `NoteNotFoundException` for every note write command via `Note.Exists`, rather than relying on per-endpoint `InvalidOperationException` catches.
 
-**Key files (to be confirmed):** `src/Api/Handlers/NoteHandlers.cs` (`RenameNote`, `EditContent`, `SetNoteDate`), `src/Domain/Notes/Note.cs` (`HandleRename`).
+**Key files:** `src/Api/CommandHandlers/NoteCommandHandler.cs` (`ExecuteAsync` existence check), `src/Domain/Notes/Note.cs` (`Exists`), `src/Api/LoggingConfig.cs` (`NoteNotFoundException → 404` mapping); tests `tests/Api.Integration/ExceptionMappingTests.cs`.
+
+---
+
+## BUG-6 — CloudWatch RUM receives no data (loader CDN host is regional)
+
+**Status:** Done — fixed in `hotfix/12-f-rum-cdn-host`. See [docs/learnings/phase-12f-frontend-rum.md](../learnings/phase-12f-frontend-rum.md).
+
+**Severity:** Medium — no user-facing impact, but the entire frontend observability surface delivered in 12-F was silently dead: the RUM console showed "we haven't received any data" and `RumEventCount` was flat zero.
+
+**Symptom:** After 12-F deployed, the `notetaker-rum` AppMonitor received zero events. Throwing an error on the live site produced nothing in the JS Errors view; no page-view or performance events arrived either.
+
+**Cause (confirmed):** The deploy-time RUM snippet built its loader URL as `https://client.rum.{region}.amazonaws.com/3.x/cwr.js` with `{region} = eu-west-2`. That host does **not exist** — `client.rum.eu-west-2.amazonaws.com` returns NXDOMAIN. The aws-rum-web loader CDN is global, served only from **`us-east-1`**; only the data-plane `endpoint` (`dataplane.rum.{region}.amazonaws.com`) is regional. The `<script>` failed to load, so `window.cwr(...)` calls queued forever and nothing was ever sent. Everything else (AppMonitor state, Cognito identity pool, guest role + `rum:PutRumEvents` on the exact monitor ARN, domain match, snippet injection, version) was verified correct.
+
+**Why no gate caught it:** the loader host is a literal string inside the `Inject RUM snippet` CI step — not exercised by `Template.FromStack` assertions, the build, or any unit test. It only fails at runtime DNS in a real browser. Diagnosed post-deploy by inspecting the live `index.html`, the IAM/Cognito wiring, and a flat-zero `RumEventCount`, then DNS-resolving the regional vs `us-east-1` host.
+
+**Fix:** hard-code `us-east-1` for the loader host in `deploy.yml`'s snippet template (both deploy jobs); keep the data-plane `endpoint` regional.
+
+**Acceptance criteria:**
+- [x] `deploy.yml` RUM snippet loads `cwr.js` from `client.rum.us-east-1.amazonaws.com` (both `deploy-test` and `deploy-production` jobs); data-plane `endpoint` stays regional.
+- [x] Post-deploy: a thrown browser error appears in the `notetaker-rum` console and `PutRumEvents` → `dataplane.rum.eu-west-2.amazonaws.com` returns 200 — verified on the live site after the hotfix deploy.
+
+**Key files:** `.github/workflows/deploy.yml` (`Inject RUM snippet` step, both jobs).

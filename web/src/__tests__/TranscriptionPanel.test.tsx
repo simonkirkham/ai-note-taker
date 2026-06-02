@@ -350,7 +350,7 @@ it('enabling Update note content posts updateContent=true', async () => {
 // Scenario: System audio is mixed with mic when toggle is on
 //   Given the "Include call audio" toggle is ON (default)
 //   When I press Record and grant screen-share permission
-//   Then getDisplayMedia is called with { audio: true, video: false }
+//   Then getDisplayMedia is called with { audio: true, video: true } (Chromium rejects audio-only)
 //   And the resulting audio track is mixed with the microphone track
 it('captures system audio via getDisplayMedia when the call-audio toggle is on', async () => {
   const { getDisplayMedia, mockAudioContext } = stubBrowserApis()
@@ -361,7 +361,7 @@ it('captures system audio via getDisplayMedia when the call-audio toggle is on',
   await userEvent.click(screen.getByTestId('transcription-record-button'))
 
   await waitFor(() => expect(screen.getByTestId('transcription-stop-button')).toBeInTheDocument())
-  expect(getDisplayMedia).toHaveBeenCalledWith({ audio: true, video: false })
+  expect(getDisplayMedia).toHaveBeenCalledWith({ audio: true, video: true })
   // Mic + system sources are both created and summed into the mixer (GainNode).
   await waitFor(() => expect(mockAudioContext.createMediaStreamSource).toHaveBeenCalledTimes(2))
   expect(mockAudioContext.createGain).toHaveBeenCalled()

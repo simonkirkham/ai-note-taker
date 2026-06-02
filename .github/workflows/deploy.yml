@@ -164,6 +164,8 @@ jobs:
           # Literal string-replace the empty placeholder in the BUILT artifact only
           # (dist/index.html), never the source web/index.html. Node avoids sed/regex
           # escaping pain with the snippet's slashes and braces.
+          # NB: the cwr.js loader CDN is GLOBAL (us-east-1 only); only the data-plane
+          # endpoint is regional. A client.rum.{region} loader host does not resolve.
           node -e '
             const fs = require("fs");
             const id = process.env.RUM_MONITOR_ID;
@@ -176,7 +178,7 @@ jobs:
               + `z=document.createElement("script");z.async=true;z.src=s;`
               + `document.head.insertBefore(z,document.getElementsByTagName("script")[0]);`
               + `})("cwr","${id}","1.0.0","${region}",`
-              + `"https://client.rum.${region}.amazonaws.com/3.x/cwr.js",`
+              + `"https://client.rum.us-east-1.amazonaws.com/3.x/cwr.js",`
               + `{sessionSampleRate:1,identityPoolId:"${pool}",`
               + `endpoint:"https://dataplane.rum.${region}.amazonaws.com",`
               + `telemetries:["errors","performance",["http",{addXRayTraceIdHeader:true}]],`
@@ -352,6 +354,8 @@ jobs:
           # Literal string-replace the empty placeholder in the BUILT artifact only
           # (dist/index.html), never the source web/index.html. Node avoids sed/regex
           # escaping pain with the snippet's slashes and braces.
+          # NB: the cwr.js loader CDN is GLOBAL (us-east-1 only); only the data-plane
+          # endpoint is regional. A client.rum.{region} loader host does not resolve.
           node -e '
             const fs = require("fs");
             const id = process.env.RUM_MONITOR_ID;
@@ -364,7 +368,7 @@ jobs:
               + `z=document.createElement("script");z.async=true;z.src=s;`
               + `document.head.insertBefore(z,document.getElementsByTagName("script")[0]);`
               + `})("cwr","${id}","1.0.0","${region}",`
-              + `"https://client.rum.${region}.amazonaws.com/3.x/cwr.js",`
+              + `"https://client.rum.us-east-1.amazonaws.com/3.x/cwr.js",`
               + `{sessionSampleRate:1,identityPoolId:"${pool}",`
               + `endpoint:"https://dataplane.rum.${region}.amazonaws.com",`
               + `telemetries:["errors","performance",["http",{addXRayTraceIdHeader:true}]],`

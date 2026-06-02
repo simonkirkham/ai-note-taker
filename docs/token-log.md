@@ -4,6 +4,22 @@ Approximate tokens consumed per slice, broken down by agent. Recorded by Scribe 
 
 ---
 
+## BUG-3 / BUG-4 / BUG-5 — backend defect sweep (one session)
+
+> **Note:** Three bugs driven through the full pipeline in a single autonomous session. BUG-4+BUG-5 shipped as one slice (shared cross-cutting fix, PR #107); BUG-3 as a second slice in parallel (PR #108). Pip/Breaker were the main loop, not separate agents — only Hawk and Scribe figures are per-agent.
+
+| Agent     | ~Tokens     |
+|-----------|-------------|
+| Hawk (PR #107, BUG-4+5) | 58 000 |
+| Hawk (PR #108, BUG-3)   | 37 000 |
+| Scribe (all three)      | 18 000 |
+| Main loop (explore + implement both slices + drive pipeline) | ~120 000 |
+| **Total** | **~233 000** |
+
+**Why:** Each PR was approved by Hawk on the first pass (no fix rounds) — both verdicts were APPROVE with only optional nits. Cost was dominated by the up-front backend exploration shared across all three bugs (reading the command handler, aggregate, exception types, and test infrastructure to design reproduce-first tests) plus running two slices end-to-end. No wasted deploys. A mid-session coordination cost came from the primary checkout being dirty/divergent, which moved Scribe to a separate worktree.
+
+---
+
 ## Slice 12-F — Frontend monitoring (CloudWatch RUM)
 
 > **Note:** A fresh slice resumed after a VS Code crash — but the crash interrupted only the *review* of Phase 12 state, not in-flight slice work (nothing was lost). 12-F was planned and built from scratch this session. Plan and Hawk ran as real subagents (Hawk's 45k is exact from its hand-off); other counts are estimates.
@@ -1052,3 +1068,25 @@ If no agent ran unexpectedly high: write `None — slice ran within expected ran
 **Optimisation suggestions:**
 - **Verification (–10 000):** Two full frontend suite runs happened back to back — once as a manual targeted `vitest run TodoSection` + tsc, then again inside the pre-commit hook (which runs the *entire* suite). For a single-component visual change, the manual targeted run is redundant with the hook; trust the hook's full run and skip the pre-commit manual rehearsal, or vice-versa.
 - **None on Hawk:** first-pass approval is the target state; nothing to trim.
+
+
+---
+
+## Slice 10-F — Capture remote participants (system audio mix)
+
+> Resumed after a VS Code crash. Breaker's three red tests pre-existed (uncommitted) in the worktree; this session was Pip implementation + one Hawk round-trip + merge/deploy + Scribe. Hawk counts are exact from the two subagent hand-offs (39 000 + 34 000).
+
+| Agent     | ~Tokens     |
+|-----------|-------------|
+| Breaker   | —           |
+| Pip (impl + Hawk fixes + orchestration) | 90 000 |
+| Hawk (two reviews) | 73 000 |
+| Stylist   | —           |
+| Scribe    | 9 000       |
+| **Total** | **~172 000** |
+
+**Why:** Two cost drivers, roughly equal. (1) The opening review swept *both* in-flight Phase 10 worktrees to decide where work stood; inspecting the untracked 10-G project with `find … -type f` dumped ~150 lines of `bin/`+`obj/` artifacts into context. (2) One Hawk round-trip (REQUEST CHANGES → fix → APPROVE) doubled Hawk's spend, and each of the three frontend test runs takes ~3 min under WSL (jsdom environment setup dominates).
+
+**Optimisation suggestions:**
+- **Pip (–8 000):** Enumerate untracked .NET projects with `-not -path '*/bin/*' -not -path '*/obj/*'`; the artifact dump was pure noise (captured as a learning).
+- **Hawk:** the round-trip was legitimate — the gesture-ordering and teardown findings were real correctness fixes, not nits. Nothing to trim.

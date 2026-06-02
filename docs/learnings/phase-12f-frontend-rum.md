@@ -35,3 +35,13 @@ A `node -e '…'` step does the literal string replace instead of `sed`: the sni
 ## CDK template assertions prove the wiring exists, not that data flows
 
 `Template.FromStack` confirms the AppMonitor, identity pool, guest-role policy, and outputs are in the synthesized template — necessary, but (same caveat as 12-D) it cannot prove the browser actually authenticates and events arrive. The real verification is post-deploy: throw an error on the live site, confirm it appears in the `notetaker-rum` console within ~1 min, and that `PutRumEvents` → `dataplane.rum.{region}` returns 200 (proves the Cognito guest-role path works).
+
+## The cwr.js loader CDN is global (us-east-1 only) — only the data plane is regional
+
+The first deploy shipped a snippet whose loader URL was `https://client.rum.{region}.amazonaws.com/3.x/cwr.js` with `{region} = eu-west-2`. That host **does not exist** — `client.rum.eu-west-2.amazonaws.com` returns NXDOMAIN. The RUM web-client loader CDN is served **only from `us-east-1`**, globally, regardless of which region the AppMonitor and data plane live in. So the `<script>` failed to load, `window.cwr(...)` calls queued forever, nothing was ever sent, and the RUM console showed "we haven't received any data" with a flat-zero `RumEventCount` — even though the AppMonitor, Cognito pool, guest role, ARN, domain, and snippet injection were all correct.
+
+The split that's easy to get wrong:
+- **Loader script:** `https://client.rum.us-east-1.amazonaws.com/{version}/cwr.js` — **always `us-east-1`**. (`1.x`/`2.x`/`3.x` all resolve there.)
+- **Data plane `endpoint`:** `https://dataplane.rum.{region}.amazonaws.com` — **regional** (your deployment region).
+
+**Rule:** in the RUM snippet, hard-code `us-east-1` for the loader host and keep only the `endpoint` regional. This is invisible to every pre-deploy gate: the host is a literal string in a CI heredoc, not exercised by `Template.FromStack` assertions, the build, or a unit test — it only fails at runtime DNS in a real browser. The catch was a manual post-deploy check + reading `RumEventCount`. Treat "throw an error, confirm it lands, confirm `PutRumEvents` 200" as a mandatory post-deploy step for any RUM change, not optional. (Fixed in hotfix `hotfix/12-f-rum-cdn-host` → BUG-6.)
