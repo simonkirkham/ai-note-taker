@@ -704,6 +704,26 @@ public class InfraAssertionsTests
         }));
     }
 
+    [Theory]
+    [InlineData("CommandHandled")]
+    [InlineData("ConcurrencyConflict")]
+    public void OpsDashboard_DomainMetricUsesSumSearch(string metricName)
+    {
+        // Guards the fix for the dimensioned-metric bug: the widget must query the
+        // domain metric via SUM(SEARCH(...)) (matches any dimension set), not a
+        // dimensionless Metric. Asserts the expression literal is in the dashboard body.
+        _template.HasResourceProperties("AWS::CloudWatch::Dashboard", Match.ObjectLike(new Dictionary<string, object>
+        {
+            ["DashboardBody"] = Match.ObjectLike(new Dictionary<string, object>
+            {
+                ["Fn::Join"] = Match.ArrayWith(new object[]
+                {
+                    Match.ArrayWith(new object[] { Match.StringLikeRegexp($".*SUM\\(SEARCH.*MetricName.*{metricName}.*") })
+                })
+            })
+        }));
+    }
+
     [Fact]
     public void OpsDashboard_UrlOutputExists()
     {

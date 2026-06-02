@@ -352,14 +352,16 @@ public sealed class NoteTakerStack : Stack
             DashboardName = "notetaker-ops"
         });
 
-        // Domain metrics (12-B) are emitted *with* dimensions (CommandType/Aggregate),
-        // so a dimensionless metric query reads an empty series. SUM(SEARCH(...))
-        // aggregates across every dimension value into one total line. The dimension
-        // schema must list the exact keys 12-B emits for that metric.
-        Amazon.CDK.AWS.CloudWatch.IMetric DomainTotal(string metricName, string dimensionSchema) =>
+        // Domain metrics (12-B) are emitted with dimensions — CommandType/Aggregate
+        // plus a "Service" dimension that Powertools adds from the service: argument,
+        // not from the dimensions dict. A dimensionless query reads nothing, and a
+        // fixed dimension schema is brittle (must list every key, Service included).
+        // A free-text SEARCH on namespace+name matches every dimension combination;
+        // SUM collapses them into one total line.
+        Amazon.CDK.AWS.CloudWatch.IMetric DomainTotal(string metricName) =>
             new Amazon.CDK.AWS.CloudWatch.MathExpression(new Amazon.CDK.AWS.CloudWatch.MathExpressionProps
             {
-                Expression = $"SUM(SEARCH('{{{dimensionSchema}}} MetricName=\"{metricName}\"', 'Sum'))",
+                Expression = $"SUM(SEARCH('Namespace=\"NoteTaker/Domain\" MetricName=\"{metricName}\"', 'Sum'))",
                 Label = metricName,
                 Period = Duration.Minutes(5)
             });
@@ -410,8 +412,8 @@ public sealed class NoteTakerStack : Stack
                 Title = "Commands handled vs concurrency conflicts",
                 Left = new[]
                 {
-                    DomainTotal("CommandHandled", "NoteTaker/Domain,Aggregate,CommandType"),
-                    DomainTotal("ConcurrencyConflict", "NoteTaker/Domain,Aggregate")
+                    DomainTotal("CommandHandled"),
+                    DomainTotal("ConcurrencyConflict")
                 },
                 Width = 12
             }));
