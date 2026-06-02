@@ -106,6 +106,15 @@ public sealed class NoteTakerStack : Stack
         // ── API Lambda ───────────────────────────────────────────────────
         var lambdaAssetPath = (string?)this.Node.TryGetContext("lambdaAssetPath")
             ?? "src/Api/bin/Release/net10.0/publish";
+
+        // Explicit log group so retention is managed (and cost-bounded) rather
+        // than letting the runtime auto-create an unmanaged, never-expiring group.
+        var apiLogGroup = new Amazon.CDK.AWS.Logs.LogGroup(this, "ApiFunctionLogGroup", new Amazon.CDK.AWS.Logs.LogGroupProps
+        {
+            Retention = Amazon.CDK.AWS.Logs.RetentionDays.ONE_MONTH,
+            RemovalPolicy = RemovalPolicy.DESTROY
+        });
+
         var apiFunction = new Amazon.CDK.AWS.Lambda.Function(this, "ApiFunction", new Amazon.CDK.AWS.Lambda.FunctionProps
         {
             Runtime = Amazon.CDK.AWS.Lambda.Runtime.DOTNET_10,
@@ -114,6 +123,7 @@ public sealed class NoteTakerStack : Stack
             Code = Amazon.CDK.AWS.Lambda.Code.FromAsset(lambdaAssetPath),
             Timeout = Duration.Seconds(29),
             MemorySize = 512,
+            LogGroup = apiLogGroup,
             SnapStart = Amazon.CDK.AWS.Lambda.SnapStartConf.ON_PUBLISHED_VERSIONS,
             Environment = new Dictionary<string, string>
             {
