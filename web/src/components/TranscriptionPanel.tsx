@@ -37,7 +37,9 @@ export default function TranscriptionPanel({
   const isRecording = status === 'recording';
   const isRequesting = status === 'requestingCredentials';
   const showInitialTranscript = status === 'idle' && !!initialTranscript && !hasRecordedThisSession;
-  const showAnalyse = status === 'stopped' || showInitialTranscript || noteHasContent;
+  const hasSomethingToAnalyse = status === 'stopped' || showInitialTranscript || noteHasContent;
+  const showAnalyseControl = status === 'idle' || status === 'stopped';
+  const analyseDisabled = !hasSomethingToAnalyse || isAnalysing;
 
   async function handleAnalyse() {
     setIsAnalysing(true);
@@ -116,25 +118,26 @@ export default function TranscriptionPanel({
             Stop
           </button>
         )}
-        {showAnalyse && (
+        {showAnalyseControl && (
           <button
             className="transcription-analyse-button"
             data-testid="transcription-analyse-button"
             onClick={handleAnalyse}
-            disabled={isAnalysing}
+            disabled={analyseDisabled}
+            title={hasSomethingToAnalyse ? undefined : 'Add notes or record a transcript to analyse'}
           >
             {isAnalysing ? 'Analysing…' : 'Analyse note'}
           </button>
         )}
       </div>
-      {showAnalyse && (
+      {showAnalyseControl && (
         <label className="transcription-update-content-toggle">
           <input
             type="checkbox"
             data-testid="transcription-update-content-toggle"
             checked={updateContent}
             onChange={(e) => setUpdateContent(e.target.checked)}
-            disabled={isAnalysing}
+            disabled={analyseDisabled}
           />
           Update note content
         </label>
