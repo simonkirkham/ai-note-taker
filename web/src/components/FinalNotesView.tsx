@@ -1,4 +1,6 @@
 import { useState } from "react";
+import clsx from "clsx";
+import { useToast } from "./ToastProvider";
 import styles from "./FinalNotesView.module.css";
 
 export default function FinalNotesView({
@@ -14,6 +16,7 @@ export default function FinalNotesView({
   summaryModelId: string | null;
   onGenerate: () => Promise<void>;
 }) {
+  const { showError } = useToast();
   const [isGenerating, setIsGenerating] = useState(false);
   const [generateError, setGenerateError] = useState<string | null>(null);
 
@@ -26,7 +29,11 @@ export default function FinalNotesView({
     try {
       await onGenerate();
     } catch {
-      setGenerateError("Couldn't generate final notes. Please try again.");
+      if (hasSummary) {
+        showError("Couldn't re-process final notes. Please try again.");
+      } else {
+        setGenerateError("Couldn't generate final notes. Please try again.");
+      }
     } finally {
       setIsGenerating(false);
     }
@@ -71,7 +78,19 @@ export default function FinalNotesView({
       data-testid="final-notes"
       aria-label="Final notes"
     >
-      <h2 className={styles.heading}>Final notes</h2>
+      <div className={styles.headingRow}>
+        <h2 className={styles.heading}>Final notes</h2>
+        <button
+          type="button"
+          className={clsx(styles.reprocessButton, isGenerating && styles.isPending)}
+          data-testid="reprocess-final-notes-button"
+          onClick={handleGenerate}
+          disabled={isGenerating}
+          aria-label="Re-process final notes"
+        >
+          {isGenerating ? "Re-processing…" : "Re-process"}
+        </button>
+      </div>
 
       <section className={styles.block} aria-label="Summary">
         <h3 className={styles.sectionHeading}>Summary</h3>

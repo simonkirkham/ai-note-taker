@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { http, HttpResponse } from 'msw'
 import { server } from '../test/setup'
 import NoteView from '../components/NoteView'
+import { ToastProvider } from '../components/ToastProvider'
 
 vi.mock('../components/NoteEditor', () => ({
   default: ({ value, onChange, onBlur }: { value: string; onChange: (md: string) => void; onBlur: () => void }) => (
@@ -36,15 +37,17 @@ afterEach(() => {
 function renderNoteView(props: { noteId?: string; initialTitle?: string; onBack?: () => void; onDelete?: (noteId: string) => Promise<void>; isNew?: boolean } = {}) {
   const { noteId = 'note-1', initialTitle = 'Test Note', onBack = noop, onDelete = asyncNoop, isNew } = props
   return render(
-    <NoteView
-      noteId={noteId}
-      initialTitle={initialTitle}
-      onRename={noop}
-      onBack={onBack}
-      onDelete={onDelete}
-      onDateSet={noop}
-      isNew={isNew}
-    />,
+    <ToastProvider>
+      <NoteView
+        noteId={noteId}
+        initialTitle={initialTitle}
+        onRename={noop}
+        onBack={onBack}
+        onDelete={onDelete}
+        onDateSet={noop}
+        isNew={isNew}
+      />
+    </ToastProvider>,
   )
 }
 
@@ -248,6 +251,66 @@ describe('NoteView', () => {
       await userEvent.type(textarea, 'My own notes')
       await userEvent.tab()
       await waitFor(() => expect(savedContent).toBe('My own notes'))
+    })
+  })
+
+  describe('re-processing final notes', () => {
+    it('leaves the Quick notes content byte-for-byte unchanged after re-processing', async () => {
+      server.use(
+        http.get('/api/notes/:noteId', () =>
+          HttpResponse.json({
+            noteId: 'note-1',
+            title: 'T',
+            content: '# Heading\n\nMy quick notes verbatim.',
+            date: null,
+            tags: [],
+            summary: 'Original summary',
+            summaryModelId: 'nova-lite',
+          }),
+        ),
+        http.post('/api/notes/:noteId/analyse', () => new HttpResponse(null, { status: 204 })),
+      )
+      renderNoteView()
+      const textarea = await screen.findByLabelText('Note content')
+      const before = (textarea as HTMLTextAreaElement).value
+
+      await userEvent.click(screen.getByTestId('note-tab-final'))
+      await userEvent.click(screen.getByTestId('reprocess-final-notes-button'))
+      await waitFor(() => expect(screen.getByTestId('reprocess-final-notes-button')).toBeEnabled())
+
+      await userEvent.click(screen.getByTestId('note-tab-quick'))
+      const after = (screen.getByLabelText('Note content') as HTMLTextAreaElement).value
+      expect(after).toBe(before)
+    })
+
+    it('shows the regenerated summary after a successful re-process (latest wins)', async () => {
+      let detailCalls = 0
+      server.use(
+        http.get('/api/notes/:noteId', () => {
+          detailCalls += 1
+          const summary = detailCalls === 1 ? 'Original summary' : 'Regenerated summary'
+          return HttpResponse.json({
+            noteId: 'note-1',
+            title: 'T',
+            content: 'Quick notes',
+            date: null,
+            tags: [],
+            summary,
+            summaryModelId: 'nova-lite',
+          })
+        }),
+        http.post('/api/notes/:noteId/analyse', () => new HttpResponse(null, { status: 204 })),
+      )
+      renderNoteView()
+      await screen.findByLabelText('Note content')
+
+      await userEvent.click(screen.getByTestId('note-tab-final'))
+      expect(screen.getByTestId('final-notes-summary')).toHaveTextContent('Original summary')
+
+      await userEvent.click(screen.getByTestId('reprocess-final-notes-button'))
+      await waitFor(() =>
+        expect(screen.getByTestId('final-notes-summary')).toHaveTextContent('Regenerated summary'),
+      )
     })
   })
 

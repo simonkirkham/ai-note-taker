@@ -1,12 +1,18 @@
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import type { ReactElement } from 'react'
 import FinalNotesView from '../components/FinalNotesView'
+import { ToastProvider } from '../components/ToastProvider'
 
 const noop = async () => {}
 
+function renderWithToast(ui: ReactElement) {
+  return render(<ToastProvider>{ui}</ToastProvider>)
+}
+
 describe('FinalNotesView', () => {
   it('renders summary, discussion, decisions and attribution when populated', () => {
-    render(
+    renderWithToast(
       <FinalNotesView
         summary="We agreed to ship Friday."
         discussionPoints={['Scope risk', 'Staffing']}
@@ -34,7 +40,7 @@ describe('FinalNotesView', () => {
   })
 
   it('omits the attribution line when no model id is given', () => {
-    render(
+    renderWithToast(
       <FinalNotesView
         summary="A summary."
         discussionPoints={[]}
@@ -49,7 +55,7 @@ describe('FinalNotesView', () => {
   })
 
   it('does not render action items', () => {
-    render(
+    renderWithToast(
       <FinalNotesView
         summary="A summary."
         discussionPoints={['point']}
@@ -63,7 +69,7 @@ describe('FinalNotesView', () => {
   })
 
   it('shows the empty state with a Generate CTA when summary is null', () => {
-    render(
+    renderWithToast(
       <FinalNotesView
         summary={null}
         discussionPoints={[]}
@@ -77,10 +83,11 @@ describe('FinalNotesView', () => {
     const cta = screen.getByTestId('generate-final-notes-button')
     expect(cta.tagName).toBe('BUTTON')
     expect(screen.queryByTestId('final-notes-summary')).toBeNull()
+    expect(screen.queryByTestId('reprocess-final-notes-button')).toBeNull()
   })
 
   it('treats an empty-string summary as the empty state', () => {
-    render(
+    renderWithToast(
       <FinalNotesView
         summary="   "
         discussionPoints={[]}
@@ -92,9 +99,9 @@ describe('FinalNotesView', () => {
     expect(screen.getByTestId('final-notes-empty')).toBeInTheDocument()
   })
 
-  it('invokes onGenerate when the CTA is clicked', async () => {
+  it('invokes onGenerate when the empty-state CTA is clicked', async () => {
     const onGenerate = vi.fn().mockResolvedValue(undefined)
-    render(
+    renderWithToast(
       <FinalNotesView
         summary={null}
         discussionPoints={[]}
@@ -107,9 +114,9 @@ describe('FinalNotesView', () => {
     expect(onGenerate).toHaveBeenCalledOnce()
   })
 
-  it('surfaces an inline error and re-enables the button when generation fails', async () => {
+  it('surfaces an inline error and re-enables the button when empty-state generation fails', async () => {
     const onGenerate = vi.fn().mockRejectedValue(new Error('analyse failed'))
-    render(
+    renderWithToast(
       <FinalNotesView
         summary={null}
         discussionPoints={[]}
@@ -124,8 +131,6 @@ describe('FinalNotesView', () => {
     const error = await screen.findByTestId('final-notes-generate-error')
     expect(error).toHaveTextContent(/couldn't generate/i)
     expect(error).toHaveAttribute('role', 'alert')
-    // The empty state is still distinct from the failure: the empty message remains,
-    // and the button is re-enabled so the user can retry.
     expect(screen.getByTestId('final-notes-empty')).toBeInTheDocument()
     expect(screen.getByTestId('generate-final-notes-button')).toBeEnabled()
   })
@@ -135,7 +140,7 @@ describe('FinalNotesView', () => {
       .fn()
       .mockRejectedValueOnce(new Error('analyse failed'))
       .mockResolvedValueOnce(undefined)
-    render(
+    renderWithToast(
       <FinalNotesView
         summary={null}
         discussionPoints={[]}
@@ -152,5 +157,75 @@ describe('FinalNotesView', () => {
     await waitFor(() =>
       expect(screen.queryByTestId('final-notes-generate-error')).toBeNull(),
     )
+  })
+
+  describe('re-process control (populated state)', () => {
+    it('renders a Re-process button that calls onGenerate', async () => {
+      const onGenerate = vi.fn().mockResolvedValue(undefined)
+      renderWithToast(
+        <FinalNotesView
+          summary="We agreed to ship Friday."
+          discussionPoints={['Scope risk']}
+          decisions={['Ship Friday']}
+          summaryModelId="amazon.nova-lite-v1"
+          onGenerate={onGenerate}
+        />,
+      )
+
+      const button = screen.getByTestId('reprocess-final-notes-button')
+      expect(button.tagName).toBe('BUTTON')
+      await userEvent.click(button)
+      expect(onGenerate).toHaveBeenCalledOnce()
+    })
+
+    it('shows a pending label and keeps the existing summary visible during re-processing', async () => {
+      let resolve!: () => void
+      const onGenerate = vi.fn(
+        () =>
+          new Promise<void>((r) => {
+            resolve = r
+          }),
+      )
+      renderWithToast(
+        <FinalNotesView
+          summary="We agreed to ship Friday."
+          discussionPoints={['Scope risk']}
+          decisions={['Ship Friday']}
+          summaryModelId="amazon.nova-lite-v1"
+          onGenerate={onGenerate}
+        />,
+      )
+
+      await userEvent.click(screen.getByTestId('reprocess-final-notes-button'))
+
+      const button = screen.getByTestId('reprocess-final-notes-button')
+      expect(button).toBeDisabled()
+      expect(button).toHaveTextContent(/re-processing/i)
+      expect(screen.getByTestId('final-notes-summary')).toHaveTextContent('We agreed to ship Friday.')
+      expect(screen.getByTestId('final-notes-discussion')).toHaveTextContent('Scope risk')
+
+      resolve()
+      await waitFor(() => expect(screen.getByTestId('reprocess-final-notes-button')).toBeEnabled())
+    })
+
+    it('surfaces an error toast and keeps the prior summary when re-processing fails', async () => {
+      const onGenerate = vi.fn().mockRejectedValue(new Error('analyse failed'))
+      renderWithToast(
+        <FinalNotesView
+          summary="We agreed to ship Friday."
+          discussionPoints={['Scope risk']}
+          decisions={['Ship Friday']}
+          summaryModelId="amazon.nova-lite-v1"
+          onGenerate={onGenerate}
+        />,
+      )
+
+      await userEvent.click(screen.getByTestId('reprocess-final-notes-button'))
+
+      const alert = await screen.findByRole('alert')
+      expect(alert).toHaveTextContent(/couldn't re-process final notes/i)
+      expect(screen.getByTestId('final-notes-summary')).toHaveTextContent('We agreed to ship Friday.')
+      expect(screen.getByTestId('reprocess-final-notes-button')).toBeEnabled()
+    })
   })
 })

@@ -8,11 +8,49 @@
   border-radius: var(--radius);
 }
 
+.headingRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
 .heading {
   margin: 0;
   font-size: 1rem;
   font-weight: 700;
   color: var(--color-text);
+}
+
+.reprocessButton {
+  padding: var(--space-1) var(--space-3);
+  background: transparent;
+  color: var(--color-cta);
+  border: 1.5px solid var(--color-cta);
+  border-radius: var(--radius);
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background var(--transition), color var(--transition);
+}
+
+.reprocessButton:hover:not(:disabled) {
+  background: var(--color-cta);
+  color: var(--color-surface);
+}
+
+.reprocessButton:focus-visible {
+  outline: 2px solid var(--color-cta);
+  outline-offset: 2px;
+}
+
+.reprocessButton:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.isPending {
+  cursor: progress;
 }
 
 .block {
