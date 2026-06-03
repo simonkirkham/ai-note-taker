@@ -1,5 +1,7 @@
 import { FolderNode } from "../api";
 
+import styles from "./FolderPicker.module.css";
+
 function flatten(
   nodes: FolderNode[],
   depth = 0
@@ -22,10 +24,10 @@ export default function FolderPicker({
   const options = flatten(folders);
 
   return (
-    <div className="folder-picker-section">
-      <h2 className="folder-picker-heading">Folder</h2>
+    <div className={styles.folderPickerSection}>
+      <h2 className={styles.folderPickerHeading}>Folder</h2>
       <select
-        className="folder-picker-select"
+        className={styles.folderPickerSelect}
         value={assignedFolderId ?? ""}
         onChange={(e) => onMove(e.target.value || null)}
       >

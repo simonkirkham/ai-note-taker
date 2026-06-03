@@ -1,5 +1,7 @@
 import { Theme, useTheme } from "../hooks/useTheme";
 
+import styles from "./ThemePicker.module.css";
+
 const LIGHT_THEMES: { value: Theme; label: string }[] = [
   { value: "teal", label: "Teal" },
   { value: "indigo", label: "Indigo" },
@@ -22,13 +24,13 @@ export default function ThemePicker() {
   const { theme, setTheme } = useTheme();
 
   return (
-    <div className="theme-picker">
-      <label className="theme-picker-label" htmlFor="theme-select">
+    <div className={styles.themePicker}>
+      <label className={styles.themePickerLabel} htmlFor="theme-select">
         Theme
       </label>
       <select
         id="theme-select"
-        className="theme-picker-select"
+        className={styles.themePickerSelect}
         value={theme}
         onChange={(e) => setTheme(e.target.value as Theme)}
       >

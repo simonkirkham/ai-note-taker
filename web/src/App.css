@@ -71,38 +71,6 @@
   padding-top: 0.75rem;
 }
 
-.theme-picker {
-  display: flex;
-  flex-direction: column;
-  gap: 0.25rem;
-}
-
-.theme-picker-label {
-  font-size: 0.7rem;
-  font-weight: 600;
-  letter-spacing: 0.03em;
-  text-transform: uppercase;
-  color: var(--color-text-muted);
-}
-
-.theme-picker-select {
-  background: var(--color-surface);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius);
-  padding: 0.35rem 0.5rem;
-  font-family: inherit;
-  font-size: 0.8rem;
-  color: var(--color-text);
-  cursor: pointer;
-  transition: border-color var(--transition);
-}
-
-.theme-picker-select:hover,
-.theme-picker-select:focus-visible {
-  border-color: var(--color-primary);
-  outline: none;
-}
-
 .sidebar-sign-out {
   background: none;
   border: 1px solid var(--color-border);
@@ -1750,42 +1718,6 @@
 .folder-preview-note-date {
   font-size: 0.75rem;
   color: var(--color-text-muted);
-}
-
-/* ── Folder picker (note view right panel) ──────────────────────── */
-.folder-picker-section {
-  margin-bottom: 1.5rem;
-  padding-bottom: 1.25rem;
-  border-bottom: 1px solid var(--color-border);
-}
-
-.folder-picker-heading {
-  margin: 0 0 0.75rem;
-  font-size: 1rem;
-  font-weight: 600;
-  letter-spacing: 0.02em;
-  text-transform: uppercase;
-  color: var(--color-text-muted);
-}
-
-.folder-picker-select {
-  display: block;
-  width: 100%;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius);
-  padding: 0.35rem 0.65rem;
-  font-family: inherit;
-  font-size: 0.875rem;
-  color: var(--color-text);
-  background: var(--color-surface);
-  outline: none;
-  cursor: pointer;
-  transition: border-color var(--transition);
-}
-
-.folder-picker-select:focus {
-  border-color: var(--color-primary);
-  box-shadow: 0 0 0 3px rgba(13, 148, 136, 0.12);
 }
 
 /* ── Home two-column layout ─────────────────────────────────────── */
