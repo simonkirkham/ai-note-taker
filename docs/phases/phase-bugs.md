@@ -20,6 +20,7 @@
 | BUG-6 | CloudWatch RUM receives no data — loader CDN host is regional, doesn't resolve | Done | 12-F |
 | BUG-7 | Empty notes are created and left behind (not removed) | Open | — |
 | BUG-8 | `x-correlation-id` returned to clients is never logged — a user-quoted ID can't be found in logs | Done | 12-A |
+| BUG-9 | Note tab panels (Transcript/Final notes) stack below Quick notes instead of replacing it | Done | 15-B |
 
 Further bugs will be appended as they are identified.
 
@@ -259,3 +260,19 @@ Option (a) keeps the existing header semantics; (b) collapses two correlation id
 - [x] The bearer token / `Authorization` header is still never logged (no header logging added; `LogEvent` stays off).
 
 **Key files:** `src/Api/LoggingConfig.cs` (sets the header/body today), `src/Api/Builder.cs` (Powertools logger registration); tests `tests/Api.Integration/`. Same `correlationId`-vs-`xray_trace_id` mismatch was corrected in the 12-G saved queries and the 12-D/12-H dashboard "All errors" widgets (they now project `xray_trace_id`).
+
+---
+
+## BUG-9 — Note tab panels stack below Quick notes instead of replacing it
+
+**Status:** Done — fixed in PR #156 (commit `20361ca`), deployed to main 2026-06-03.
+
+**Symptom:** On a note (Phase 15-B three-tab view), the Transcript and Final notes panels rendered *below* the Quick notes editor rather than replacing it when their tab was selected — all three panels floating stacked.
+
+**Cause:** Each tab panel used `hidden={activeTab !== id}`, but `.panel { display: flex }` (NoteTabs.module.css) overrode the `hidden` attribute — the attribute's `display: none` is only the UA-stylesheet default, which any explicit `display` rule beats. So inactive panels stayed laid out.
+
+**Fix:** Added `.panel[hidden] { display: none }` (specificity `0,2,0` > `.panel` `0,1,0`), so hidden panels are truly removed from layout. Same pattern already used by `.filters-panel[hidden]`.
+
+**Why it shipped / regression guard:** jsdom does not apply CSS-Module stylesheets, so the component tests' `toBeVisible()` saw only the `hidden` attribute and passed despite the visual bug — a CSS-only defect is invisible to the jsdom layer. Guarded with a real-browser test: `tests/Browser.E2E/Journeys/NoteTabsJourney.cs` switches tabs and asserts the inactive panel `ToBeHidden` (Playwright checks computed visibility). **Lesson:** layout/visibility behaviour driven by CSS must be guarded at the browser (E2E) layer, not jsdom.
+
+**Key files:** `web/src/components/NoteTabs.module.css`, `web/src/components/NoteView.tsx` (panels), `tests/Browser.E2E/Journeys/NoteTabsJourney.cs`.
