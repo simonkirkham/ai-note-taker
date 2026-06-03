@@ -11,9 +11,15 @@ public sealed class ContentJudge
 
     public ContentJudge(IJudgeClient judge) => _judge = judge;
 
-    public Task<double> ScoreAsync(string content, IReadOnlyList<string> requiredFacts, CancellationToken ct = default)
+    public async Task<double> ScoreAsync(string content, IReadOnlyList<string> requiredFacts, CancellationToken ct = default)
     {
-        throw new NotImplementedException(
-            "Pip: call _judge.RateAsync(content, requiredFacts) and return yes_count / total.");
+        if (requiredFacts.Count == 0)
+            return 1.0;
+
+        var verdicts = await _judge.RateAsync(content, requiredFacts, ct);
+        if (verdicts.Count == 0)
+            return 1.0;
+
+        return verdicts.Count(present => present) / (double)verdicts.Count;
     }
 }

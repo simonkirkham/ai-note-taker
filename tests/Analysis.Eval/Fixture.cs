@@ -25,6 +25,11 @@ public static class FixtureLoader
 
     public static IReadOnlyList<Fixture> LoadAll(string directory)
     {
-        throw new NotImplementedException("Pip: load every *.json under directory and deserialize to Fixture.");
+        return Directory.EnumerateFiles(directory, "*.json")
+            .OrderBy(path => path, StringComparer.Ordinal)
+            .Select(path =>
+                JsonSerializer.Deserialize<Fixture>(File.ReadAllText(path), Options)
+                ?? throw new InvalidDataException($"Fixture {path} deserialized to null"))
+            .ToList();
     }
 }

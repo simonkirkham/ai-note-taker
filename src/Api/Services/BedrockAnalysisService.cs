@@ -10,13 +10,19 @@ public sealed class BedrockAnalysisService : IBedrockAnalysisService
 {
     readonly IAmazonBedrockRuntime _bedrock;
     readonly ILogger<BedrockAnalysisService> _logger;
+    readonly AnalysisPrompt _prompt;
     readonly string _modelId;
 
-    public BedrockAnalysisService(IAmazonBedrockRuntime bedrock, ILogger<BedrockAnalysisService> logger)
+    public BedrockAnalysisService(
+        IAmazonBedrockRuntime bedrock,
+        ILogger<BedrockAnalysisService> logger,
+        AnalysisPrompt prompt,
+        string modelId)
     {
         _bedrock = bedrock;
         _logger = logger;
-        _modelId = Environment.GetEnvironmentVariable("BEDROCK_MODEL_ID") ?? "";
+        _prompt = prompt;
+        _modelId = modelId;
     }
 
     public async Task<NoteAnalysisResult> AnalyseAsync(NoteAnalysisRequest request, CancellationToken ct = default)
@@ -24,7 +30,7 @@ public sealed class BedrockAnalysisService : IBedrockAnalysisService
         if (string.IsNullOrEmpty(_modelId))
             throw new InvalidOperationException("BEDROCK_MODEL_ID is not configured.");
 
-        var prompt = BuildPrompt(request);
+        var prompt = _prompt.Build(request);
 
         var body = JsonSerializer.Serialize(new
         {
@@ -78,47 +84,12 @@ public sealed class BedrockAnalysisService : IBedrockAnalysisService
                 .Where(a => !string.IsNullOrWhiteSpace(a))
                 .ToList();
 
-            return new NoteAnalysisResult(updatedContent, newTags, newActionItems);
+            return new NoteAnalysisResult(updatedContent, newTags, newActionItems, _modelId, _prompt.Version);
         }
         catch (Exception ex) when (ex is JsonException or KeyNotFoundException or InvalidOperationException)
         {
             _logger.LogWarning(ex, "Failed to parse Bedrock response; returning original content unchanged");
-            return new NoteAnalysisResult(existingContent, [], []);
+            return new NoteAnalysisResult(existingContent, [], [], _modelId, _prompt.Version);
         }
-    }
-
-    static string BuildPrompt(NoteAnalysisRequest request)
-    {
-        var transcriptSection = string.IsNullOrWhiteSpace(request.TranscriptText)
-            ? "TRANSCRIPT:\n(No transcript was recorded. Analyse the note content above on its own.)"
-            : $"TRANSCRIPT:\n{request.TranscriptText}";
-
-        var contentInstruction = request.AllowContentRewrite
-            ? "- Fill gaps in the note content using the information available. Do not repeat what is already there."
-            : "- Do NOT change the note content. Return the existing note content unchanged in \"updatedContent\".";
-
-        return $$"""
-        You are a meeting notes assistant. Analyse the note below and update it.
-
-        CURRENT NOTE CONTENT:
-        {{request.ExistingContent}}
-
-        {{transcriptSection}}
-
-        CURRENT USER: {{request.CurrentUserName}}
-
-        Instructions:
-        {{contentInstruction}}
-        - Infer relevant tags (short lowercase keywords, e.g. "auth", "backend", "1:1").
-        - Extract action items assigned to "{{request.CurrentUserName}}" only. Other people's actions should appear in updatedContent, not in newActionItems.
-        - Return ONLY valid JSON — no explanation, no markdown fences.
-
-        JSON format:
-        {
-          "updatedContent": "<full updated note content as plain text>",
-          "newTags": ["tag1", "tag2"],
-          "newActionItems": ["Action item text"]
-        }
-        """;
     }
 }

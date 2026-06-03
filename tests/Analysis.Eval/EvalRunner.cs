@@ -1,3 +1,5 @@
+using System.Text.Json;
+using Analysis.Eval.Scoring;
 using Api.Services;
 
 namespace Analysis.Eval;
@@ -17,20 +19,47 @@ public static class EvalRunner
 
     public static bool IsEnabled => Environment.GetEnvironmentVariable(EnvFlag) == "1";
 
-    public static Task<EvalRow> RunAsync(
+    static readonly JsonSerializerOptions JsonOptions = new()
+    {
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase
+    };
+
+    public static async Task<EvalRow> RunAsync(
         Fixture fixture,
         AnalysisPrompt prompt,
         string modelId,
         IBedrockAnalysisService bedrock,
-        Scoring.IJudgeClient judge,
+        IJudgeClient judge,
         string runId,
         string resultsDirectory,
         CancellationToken ct = default)
     {
-        throw new NotImplementedException(
-            "Pip: build a NoteAnalysisRequest from the fixture (ExistingContent, TranscriptText, " +
-            "CurrentUserName, AllowContentRewrite: true), call bedrock.AnalyseAsync(request), score the " +
-            "result with TagScorer/ActionItemScorer/ContentJudge against fixture.Expected, append one row " +
-            "to Results/<runId>.jsonl, and return the row carrying modelId + prompt.Version.");
+        var request = new NoteAnalysisRequest(
+            ExistingContent: fixture.ExistingContent,
+            TranscriptText: fixture.TranscriptText,
+            CurrentUserName: fixture.CurrentUserName,
+            AllowContentRewrite: true);
+
+        var result = await bedrock.AnalyseAsync(request, ct);
+
+        var tag = TagScorer.Score(fixture.Expected.Tags, result.NewTags);
+        var action = ActionItemScorer.Score(fixture.Expected.ActionItems, result.NewActionItems);
+        var contentScore = await new ContentJudge(judge)
+            .ScoreAsync(result.UpdatedContent, fixture.Expected.ContentMustMention, ct);
+
+        var row = new EvalRow(
+            RunId: runId,
+            FixtureId: fixture.Id,
+            ModelId: modelId,
+            PromptVersion: prompt.Version,
+            TagF1: tag.F1,
+            ActionF1: action.F1,
+            ContentScore: contentScore);
+
+        Directory.CreateDirectory(resultsDirectory);
+        var file = Path.Combine(resultsDirectory, $"{runId}.jsonl");
+        await File.AppendAllTextAsync(file, JsonSerializer.Serialize(row, JsonOptions) + "\n", ct);
+
+        return row;
     }
 }

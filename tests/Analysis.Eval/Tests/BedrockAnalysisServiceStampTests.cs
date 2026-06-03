@@ -1,12 +1,24 @@
+using Api.Services;
+
 namespace Analysis.Eval.Tests;
 
 public class BedrockAnalysisServiceStampTests
 {
     [SkippableFact]
-    public void NoteAnalysisResult_carries_ModelId_and_PromptVersion()
+    public async Task NoteAnalysisResult_carries_ModelId_and_PromptVersion()
     {
-        Skip.If(true, "Pip: enable once NoteAnalysisResult is widened to carry ModelId + PromptVersion " +
-                      "and BedrockAnalysisService is constructed with (AnalysisPrompt, modelId). " +
-                      "Assertion: given AnalyseAsync returns, ModelId == 'amazon.nova-lite-v1:0' and PromptVersion == 'analysis@v1'.");
+        Skip.IfNot(EvalRunner.IsEnabled, $"{EvalRunner.EnvFlag} not set — skipping live Bedrock call.");
+
+        const string modelId = "amazon.nova-lite-v1:0";
+        var service = BedrockEvalFactory.AnalysisService(PromptCatalog.V1, modelId);
+
+        var result = await service.AnalyseAsync(new NoteAnalysisRequest(
+            ExistingContent: "Standup notes",
+            TranscriptText: "Alice: I'll fix the login bug by Friday.",
+            CurrentUserName: "Alice",
+            AllowContentRewrite: true));
+
+        Assert.Equal(modelId, result.ModelId);
+        Assert.Equal("analysis@v1", result.PromptVersion);
     }
 }

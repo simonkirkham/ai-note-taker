@@ -471,7 +471,7 @@ public record NoteAnalysisResult(
     string PromptVersion);
 ```
 
-**Shared-change checklist (per CLAUDE.md).** `AnalyseAsync`'s signature is unchanged, so its call sites (the `/analyse` endpoint, `NoteCommandHandler`) need no edit. But widening `NoteAnalysisResult` touches every place that *constructs* one — grep and update in the same commit: `BedrockAnalysisService.ParseResponse`, and the `Api.Integration` fakes (`FakeBedrockAnalysisService`, `ThrowingBedrockAnalysisService`). The fakes stamp a known model/prompt (e.g. `"fake-model"` / `"analysis@v1"`).
+**Shared-change checklist (per CLAUDE.md).** `AnalyseAsync`'s signature is unchanged, so its call sites (the `/analyse` endpoint, `NoteCommandHandler`) need no edit. `ModelId` / `PromptVersion` are added to `NoteAnalysisResult` **with empty-string defaults**, so the ~17 existing constructions in `Api.Integration` tests and the fakes (`FakeBedrockAnalysisService`, `ThrowingBedrockAnalysisService`) keep compiling untouched — they don't care about provenance. Only the production path stamps real values: both `BedrockAnalysisService.ParseResponse` return paths pass `_modelId` + `_prompt.Version`. The stamp is verified by a live, `RUN_BEDROCK_EVAL`-gated test (`BedrockAnalysisServiceStampTests`), since the project uses hand-written fakes rather than a mocking library and the full `IAmazonBedrockRuntime` is impractical to stub offline.
 
 ---
 
