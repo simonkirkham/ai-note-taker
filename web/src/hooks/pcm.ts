@@ -22,7 +22,12 @@ export class PcmChunker {
   private filled = 0;
 
   // Accumulate a worklet frame, returning any full PCM chunks it completed
-  // (usually zero or one; more if `frame` is larger than a chunk).
+  // (usually zero or one; more if `frame` is larger than a chunk). Each returned
+  // chunk is backed by a freshly allocated buffer, so reusing the internal
+  // accumulator never corrupts an already-returned chunk. A sub-chunk remainder
+  // (<100ms) left after the final frame is intentionally not emitted — on stop
+  // it is negligible trailing audio and the saved transcript comes from the
+  // finalised results, not from late audio.
   push(frame: Float32Array): Uint8Array[] {
     const chunks: Uint8Array[] = [];
     let offset = 0;
@@ -37,13 +42,5 @@ export class PcmChunker {
       }
     }
     return chunks;
-  }
-
-  // Emit any partially-filled remainder (e.g. on stop); null if empty.
-  flush(): Uint8Array | null {
-    if (this.filled === 0) return null;
-    const chunk = floatTo16BitPcm(this.buffer.subarray(0, this.filled));
-    this.filled = 0;
-    return chunk;
   }
 }

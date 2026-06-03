@@ -45,15 +45,12 @@ describe('PcmChunker', () => {
     expect(out.every((b) => b.byteLength === CHUNK_SAMPLES * 2)).toBe(true)
   })
 
-  it('flush returns the buffered remainder once, then null', () => {
+  it('does not alias the internal buffer — a returned chunk is immutable to later pushes', () => {
     const chunker = new PcmChunker()
-    chunker.push(new Float32Array(100))
-    const tail = chunker.flush()
-    expect(tail?.byteLength).toBe(200) // 100 samples × 2 bytes
-    expect(chunker.flush()).toBeNull()
-  })
-
-  it('flush returns null when nothing is buffered', () => {
-    expect(new PcmChunker().flush()).toBeNull()
+    const [first] = chunker.push(new Float32Array(CHUNK_SAMPLES).fill(1)) // +1.0 → 32767
+    const before = first.slice() // snapshot
+    chunker.push(new Float32Array(CHUNK_SAMPLES).fill(-1)) // would overwrite a shared buffer
+    expect(Array.from(first)).toEqual(Array.from(before))
+    expect(new DataView(first.buffer).getInt16(0, true)).toBe(32767)
   })
 })
