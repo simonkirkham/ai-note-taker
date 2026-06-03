@@ -11,13 +11,13 @@
 | 14-C | Migrate `SessionExpiredBanner` + `ShortcutsPanel` (leaf, self-contained) | Done | 14-B |
 | 14-D | Migrate `ThemePicker` + `FolderPicker` (small selects) | Done | 14-B |
 | 14-E | Migrate `TagFilter` + `QuickCaptureTodoInput` (leaf inputs) | Done | 14-B |
-| 14-F | Migrate `NoteCard` (home list card) | In Progress | 14-B |
+| 14-F | Migrate `NoteCard` (home list card) | Done | 14-B |
 | 14-G | Migrate `TagsSection` + `ActionsSection` (note-view right panel) | Not Started | 14-B |
 | 14-H | Migrate `NoteEditor` (editor container + discussed button) | Not Started | 14-B |
 | 14-I | Migrate `TodoSection` (todo + done + quick-capture sections) | Not Started | 14-B, 14-E |
-| 14-J | Migrate `MeetingsSection` (meetings list + meeting card + status states) | In Progress | 14-B |
-| 14-K | Migrate `FolderPreviewPanel` + `FolderTree` (folder tree + slide-out preview) | In Progress | 14-B |
-| 14-L | Migrate `Sidebar` (folders section + app-shell sidebar chrome) | In Progress | 14-B, 14-K |
+| 14-J | Migrate `MeetingsSection` (meetings list + meeting card + status states) | Done | 14-B |
+| 14-K | Migrate `FolderPreviewPanel` + `FolderTree` (folder tree + slide-out preview) | Done | 14-B |
+| 14-L | Migrate `Sidebar` (folders section + app-shell sidebar chrome) | Done | 14-B, 14-K |
 | 14-M | Migrate `ListView` (home two-column layout, breadcrumb, summary cards) | Not Started | 14-B |
 | 14-N | Migrate `NoteView` (note header, two-column layout, status messages) | Not Started | 14-B, 14-G, 14-H |
 | 14-O | Migrate `TranscriptionPanel` (the large transcription block, ~L2347–2670) | Not Started | 14-B |
@@ -270,7 +270,7 @@ Scenario: App.css no longer contains the migrated selectors
 
 ## Slice 14-F — Migrate `NoteCard`
 
-**Status:** In Progress
+**Status:** Done
 
 **Value:** The home-screen note card (`/* ── Note card tags ── */` ~L1603–1623 plus its `note-card-*` block and any note-summary-card rules it owns). A single focused component with rich internal structure (header, title, date, snippet, tags, action row) — a good standalone slice.
 
@@ -425,7 +425,7 @@ Scenario: App.css no longer contains the migrated selectors
 
 ## Slice 14-J — Migrate `MeetingsSection`
 
-**Status:** In Progress
+**Status:** Done
 
 **Value:** Today's Meetings panel: the section, the bordered meeting card, and its empty/error status states (`/* ── Meetings section ── */` ~L2142–2164, `/* ── Meeting card ── */` ~L2165–2242, `/* ── Meetings status states ── */` ~L2243–2280). One focused, self-contained feature panel.
 
@@ -461,7 +461,7 @@ Scenario: App.css no longer contains the migrated selectors
 
 ## Slice 14-K — Migrate `FolderPreviewPanel` + `FolderTree`
 
-**Status:** In Progress
+**Status:** Done
 
 **Value:** The folder tree and its slide-out preview, which share the folder-navigation visual language (`/* ── Folder tree ── */` ~L1846–1969, `/* ── Folder preview panel ── */` ~L1970–2074). `FolderTree` is a child of `Sidebar`; doing the tree here lets `Sidebar` (14-L) reference the already-modular tree.
 
@@ -503,7 +503,7 @@ Scenario: App.css no longer contains the migrated selectors
 
 ## Slice 14-L — Migrate `Sidebar`
 
-**Status:** In Progress
+**Status:** Done
 
 **Value:** The sidebar chrome and its folders section (`/* ── Sidebar folders section ── */` ~L1739–1845, plus the sidebar-specific parts of `/* ── App shell ── */` ~L258–440 that belong to the sidebar element rather than the outer layout). Done after 14-K so the folder tree it contains is already modular; the outer `app-layout`/`app-main`/overlay shell rules stay for 14-P.
 
