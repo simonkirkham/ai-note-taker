@@ -4,24 +4,29 @@ namespace Api.Services;
 
 // Maps the model's text output to a NoteAnalysisResult. The model is told to return
 // JSON; we extract the first {...} object and read the known fields. Transport-agnostic
-// and pure, so it's unit-testable without a Bedrock client. On any parse failure it
-// returns an empty result, leaving the user's note untouched.
+// and pure, so it's unit-testable without a Bedrock client.
+//
+// Returns false when no well-formed JSON object could be parsed (the "parse-fallback"
+// path) so the caller can log that distinctly from a valid-but-empty summary — see the
+// AnalysisSummaryEmpty observability contract in docs/phases/phase-15.md. In both the
+// fallback and the success case `result` is fully populated (empty on fallback), so the
+// caller can always return it and leave the user's note untouched.
 public static class AnalysisResponseParser
 {
-    public static NoteAnalysisResult Parse(string modelText, string modelId, string promptVersion)
+    public static bool TryParse(string modelText, string modelId, string promptVersion, out NoteAnalysisResult result)
     {
         try
         {
             var startIndex = modelText.IndexOf('{');
             var endIndex = modelText.LastIndexOf('}');
-            if (startIndex < 0 || endIndex < 0)
+            if (startIndex < 0 || endIndex < startIndex)
                 throw new JsonException("No JSON object found in response");
 
             var json = modelText[startIndex..(endIndex + 1)];
-            using var result = JsonDocument.Parse(json);
-            var root = result.RootElement;
+            using var doc = JsonDocument.Parse(json);
+            var root = doc.RootElement;
 
-            return new NoteAnalysisResult(
+            result = new NoteAnalysisResult(
                 ReadString(root, "summary"),
                 ReadStringArray(root, "discussion"),
                 ReadStringArray(root, "decisions"),
@@ -29,10 +34,12 @@ public static class AnalysisResponseParser
                 ReadStringArray(root, "newActionItems"),
                 modelId,
                 promptVersion);
+            return true;
         }
-        catch (Exception ex) when (ex is JsonException or KeyNotFoundException or InvalidOperationException)
+        catch (Exception ex) when (ex is JsonException or InvalidOperationException)
         {
-            return new NoteAnalysisResult("", [], [], [], [], modelId, promptVersion);
+            result = new NoteAnalysisResult("", [], [], [], [], modelId, promptVersion);
+            return false;
         }
     }
 

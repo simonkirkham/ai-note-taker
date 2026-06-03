@@ -18,8 +18,9 @@ public class AnalysisResponseParserTests
             }
             """;
 
-        var result = AnalysisResponseParser.Parse(text, "amazon.nova-lite-v1:0", "analysis@v1");
+        var ok = AnalysisResponseParser.TryParse(text, "amazon.nova-lite-v1:0", "analysis@v1", out var result);
 
+        Assert.True(ok);
         Assert.Equal("Team synced on checkout.", result.Summary);
         Assert.Equal(["Stripe retries flaky", "Launch on hold"], result.DiscussionPoints);
         Assert.Equal(["Hold launch until green"], result.Decisions);
@@ -30,10 +31,11 @@ public class AnalysisResponseParserTests
     }
 
     [Fact]
-    public void No_json_falls_back_to_empty_result_but_keeps_stamp()
+    public void No_json_is_a_parse_failure_with_an_empty_stamped_result()
     {
-        var result = AnalysisResponseParser.Parse("I could not analyse that.", "model-x", "analysis@v1");
+        var ok = AnalysisResponseParser.TryParse("I could not analyse that.", "model-x", "analysis@v1", out var result);
 
+        Assert.False(ok);
         Assert.Equal("", result.Summary);
         Assert.Empty(result.DiscussionPoints);
         Assert.Empty(result.Decisions);
@@ -44,10 +46,29 @@ public class AnalysisResponseParserTests
     }
 
     [Fact]
-    public void Malformed_json_falls_back_to_empty_result()
+    public void Malformed_json_is_a_parse_failure()
     {
-        var result = AnalysisResponseParser.Parse("{ \"summary\": ", "model-x", "analysis@v1");
+        var ok = AnalysisResponseParser.TryParse("{ \"summary\": ", "model-x", "analysis@v1", out var result);
 
+        Assert.False(ok);
+        Assert.Equal("", result.Summary);
+    }
+
+    [Fact]
+    public void Reversed_braces_do_not_throw_and_are_a_parse_failure()
+    {
+        var ok = AnalysisResponseParser.TryParse("} then later {", "m", "p", out var result);
+
+        Assert.False(ok);
+        Assert.Equal("", result.Summary);
+    }
+
+    [Fact]
+    public void Valid_json_with_empty_summary_is_a_success_not_a_parse_failure()
+    {
+        var ok = AnalysisResponseParser.TryParse("{}", "m", "p", out var result);
+
+        Assert.True(ok);
         Assert.Equal("", result.Summary);
         Assert.Empty(result.NewActionItems);
     }
@@ -57,8 +78,9 @@ public class AnalysisResponseParserTests
     {
         var text = """{ "summary": "Just a summary", "newTags": ["a", "", " "] }""";
 
-        var result = AnalysisResponseParser.Parse(text, "m", "p");
+        var ok = AnalysisResponseParser.TryParse(text, "m", "p", out var result);
 
+        Assert.True(ok);
         Assert.Equal("Just a summary", result.Summary);
         Assert.Empty(result.Decisions);
         Assert.Equal(["a"], result.NewTags);

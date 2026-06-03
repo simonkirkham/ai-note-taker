@@ -46,9 +46,10 @@ public sealed class BedrockAnalysisService : IBedrockAnalysisService
 
         var response = await _bedrock.ConverseAsync(converseRequest, ct).ConfigureAwait(false);
         var modelText = ConverseResponseReader.Text(response);
-        var result = AnalysisResponseParser.Parse(modelText, _modelId, _prompt.Version);
 
-        if (string.IsNullOrWhiteSpace(result.Summary) && result.DiscussionPoints.Count == 0 && result.Decisions.Count == 0)
+        if (!AnalysisResponseParser.TryParse(modelText, _modelId, _prompt.Version, out var result))
+            _logger.LogWarning("Failed to parse Bedrock response (AnalysisSummaryEmpty); returning an empty summary, leaving the user's note untouched. Model {ModelId} prompt {PromptVersion}, {TextLength} chars of model text", _modelId, _prompt.Version, modelText.Length);
+        else if (string.IsNullOrWhiteSpace(result.Summary) && result.DiscussionPoints.Count == 0 && result.Decisions.Count == 0)
             _logger.LogWarning("Bedrock analysis produced an empty summary (AnalysisSummaryEmpty) for model {ModelId} prompt {PromptVersion}", _modelId, _prompt.Version);
         else
             _logger.LogInformation("Bedrock analysis produced a summary: {SummaryLength} chars, {DiscussionCount} discussion points, {DecisionCount} decisions", result.Summary.Length, result.DiscussionPoints.Count, result.Decisions.Count);
