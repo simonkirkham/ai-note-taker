@@ -12,7 +12,7 @@
 | 10-D | Manual analysis | Done | 10-C |
 | 10-E | Auto-analysis on stop | Done | — |
 | 10-F | Capture remote participants (system audio mix) | Done | — |
-| 10-G | Analysis evaluation harness | Not Started | — |
+| 10-G | Analysis evaluation harness | Done | — |
 | 10-H | Analyse note content (transcript optional) | Done | — |
 | 10-I | Record AI tag suggestions (`TagsSuggested`) | Done | — |
 | 10-J | Tag feedback projection | Done | 10-I |
@@ -431,7 +431,7 @@ Scenario: Mic-only when toggle is off
 
 ## Slice 10-G — Analysis evaluation harness
 
-**Status:** Not Started
+**Status:** Done — shipped 2026-06-03 (PR #132, deploy #418). See [learnings](../learnings/phase-10g-analysis-eval-harness.md).
 
 **Value:** Compare prompt and model variants for the transcript analysis on a fixed set of meeting transcripts, scored against expected tags, action items, and content gap-fill. Run on demand or nightly; produce a markdown report that diffs runs side by side. Makes prompt iteration measurable instead of vibes-based.
 

@@ -1308,3 +1308,22 @@ If no agent ran unexpectedly high: write `None — slice ran within expected ran
 | **Total** | **~164 000** |
 
 **Notes:** the prototype rounds were the cost driver but earned it — they converted "simplify the home screen" into six concrete, low-risk changes. Reusing the *real* component CSS in the before/after prototype made the deltas legible. Querying delete tests by `aria-label` (not text) meant swapping text buttons for icons broke only one test file. Last item in the Minor Changes backlog.
+
+---
+
+## Slice 10-G — Analysis evaluation harness + versioned prompts
+
+> Re-cut from a stale, uncommitted scaffold that had drifted 100 commits behind main and predated the 10-H `NoteAnalysisRequest` contract. One driver acted as Breaker + Pip + Refactor; one Hawk pass (real subagent, exact count) approved with suggestions, one of which was a genuine nightly-no-op bug. Single PR, no re-review needed.
+
+| Agent                                   | ~Tokens  |
+|-----------------------------------------|----------|
+| Investigate + preserve stale scaffold + re-cut | 60 000 |
+| Breaker (reconcile spec + scaffold + red verify) | 70 000 |
+| Pip (prod refactor + harness impl + build/test) | 120 000 |
+| Refactor (no changes warranted)         | 8 000    |
+| Hawk (code-reviewer subagent)           | 64 000   |
+| Hawk fixes + gate monitoring            | 35 000   |
+| Scribe                                  | 30 000   |
+| **Total**                               | **~387 000** |
+
+**Notes:** the dominant avoidable cost was reconciling a scaffold that should never have drifted — had it been committed/pushed red when first written, the contract mismatch would have been a visible diff against main rather than a from-scratch re-derivation (learning 1 in the slice doc). Hawk's 64k earned its keep: it caught the env-flag/`RUN_BEDROCK_EVAL` save-restore bug that would have silently no-op'd the nightly eval. The two background gate-monitor polls (PR CI + main deploy) kept the merge gate honest at negligible token cost.
