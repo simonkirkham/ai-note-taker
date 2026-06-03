@@ -322,11 +322,11 @@ public class InfraAssertionsTests
     }
 
     [Fact]
-    public void Lambda_HasMemorySize512()
+    public void Lambda_HasMemorySize256()
     {
         _template.HasResourceProperties("AWS::Lambda::Function", Match.ObjectLike(new Dictionary<string, object>
         {
-            ["MemorySize"] = 512
+            ["MemorySize"] = 256
         }));
     }
 
