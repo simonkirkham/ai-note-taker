@@ -20,7 +20,7 @@
 | 14-L | Migrate `Sidebar` (folders section + app-shell sidebar chrome) | Done | 14-B, 14-K |
 | 14-M | Migrate `ListView` (home two-column layout, breadcrumb, summary cards) | Done | 14-B |
 | 14-N | Migrate `NoteView` (note header, two-column layout, status messages) | Done | 14-B, 14-G, 14-H |
-| 14-O | Migrate `TranscriptionPanel` (the large transcription block, ~L2347–2670) | Not Started | 14-B |
+| 14-O | Migrate `TranscriptionPanel` (the large transcription block, ~L2347–2670) | In Progress | 14-B |
 | 14-P | Migrate `App.tsx` shell + notification banner; remove the now-empty `App.css` and its import | Not Started | 14-B…14-O |
 | 14-Q | Add `@/` path alias (Vite `resolve.alias` + tsconfig `paths`) | Done | — |
 | 14-R | Add `eslint-plugin-import` + enforce import ordering | Not Started | 14-Q |
@@ -611,7 +611,7 @@ Scenario: App.css no longer contains the migrated selectors
 
 ## Slice 14-O — Migrate `TranscriptionPanel`
 
-**Status:** Not Started
+**Status:** In Progress
 
 **Value:** The single largest section in `App.css` — the transcription UI (`/* ── Transcription panel ── */` ~L2347–2670, ~320 lines). Isolated as its own slice precisely because of its size; it's a self-contained feature panel with no shared rules.
 
