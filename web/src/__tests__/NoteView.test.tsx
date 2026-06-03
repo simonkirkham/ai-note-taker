@@ -16,8 +16,14 @@ vi.mock('../components/NoteEditor', () => ({
   ),
 }))
 
-vi.mock('../components/TranscriptionPanel', () => ({
-  default: () => <div data-testid="transcription-panel-mock" />,
+vi.mock('../components/RecordControl', () => ({
+  default: ({ onTranscriptChange }: { onTranscriptChange: (t: string) => void }) => (
+    <div data-testid="record-control-mock">
+      <button data-testid="transcription-record-button" onClick={() => onTranscriptChange('live words')}>
+        Record
+      </button>
+    </div>
+  ),
 }))
 
 const noop = () => {}
@@ -149,12 +155,100 @@ describe('NoteView', () => {
     expect(document.activeElement).toBe(screen.getByLabelText('Note title'))
   })
 
-  it('Tab from title input moves focus to the content area', async () => {
+  it('Tab from title input moves focus to the first tab', async () => {
     renderNoteView()
     await screen.findByLabelText('Note content')
     screen.getByLabelText('Note title').focus()
     await userEvent.tab()
-    expect(document.activeElement).toBe(screen.getByLabelText('Note content'))
+    expect(document.activeElement).toBe(screen.getByTestId('note-tab-quick'))
+  })
+
+  describe('three-tab layout', () => {
+    it('opens on the Quick notes tab by default with three labelled tabs', async () => {
+      renderNoteView()
+      await screen.findByLabelText('Note content')
+      expect(screen.getByTestId('note-tab-quick')).toHaveAttribute('aria-selected', 'true')
+      expect(screen.getByTestId('note-tab-transcript')).toHaveAttribute('aria-selected', 'false')
+      expect(screen.getByTestId('note-tab-final')).toHaveAttribute('aria-selected', 'false')
+      expect(screen.getByRole('tab', { name: 'Quick notes' })).toBeInTheDocument()
+      expect(screen.getByRole('tab', { name: 'Transcript' })).toBeInTheDocument()
+      expect(screen.getByRole('tab', { name: 'Final notes' })).toBeInTheDocument()
+    })
+
+    it('switching to the Transcript tab shows the transcript read-only', async () => {
+      server.use(
+        http.get('/api/notes/:noteId', () =>
+          HttpResponse.json({ noteId: 'note-1', title: 'T', content: '', date: null, tags: [], transcriptText: 'spoken words here' }),
+        ),
+      )
+      renderNoteView()
+      await screen.findByLabelText('Note content')
+      await userEvent.click(screen.getByTestId('note-tab-transcript'))
+      expect(screen.getByTestId('note-tab-transcript')).toHaveAttribute('aria-selected', 'true')
+      expect(screen.getByTestId('transcription-text')).toHaveTextContent('spoken words here')
+      // Read-only: there is no editable control inside the transcript panel.
+      const panel = screen.getByTestId('note-tabpanel-transcript')
+      expect(panel.querySelector('textarea')).toBeNull()
+      expect(panel.querySelector('input')).toBeNull()
+    })
+
+    it('switching to the Final notes tab shows the final-notes view', async () => {
+      server.use(
+        http.get('/api/notes/:noteId', () =>
+          HttpResponse.json({ noteId: 'note-1', title: 'T', content: '', date: null, tags: [], summary: 'A concise summary', summaryModelId: 'nova-lite' }),
+        ),
+      )
+      renderNoteView()
+      await screen.findByLabelText('Note content')
+      await userEvent.click(screen.getByTestId('note-tab-final'))
+      expect(screen.getByTestId('final-notes-summary')).toHaveTextContent('A concise summary')
+    })
+
+    it('shows the Final notes empty-state CTA when there is no summary', async () => {
+      renderNoteView()
+      await screen.findByLabelText('Note content')
+      await userEvent.click(screen.getByTestId('note-tab-final'))
+      expect(screen.getByTestId('generate-final-notes-button')).toBeInTheDocument()
+    })
+
+    it('keeps Tags and Action items visible on every tab', async () => {
+      renderNoteView()
+      await screen.findByLabelText('Note content')
+      // Quick notes (default)
+      expect(screen.getByTestId('tags-section')).toBeVisible()
+      expect(screen.getByTestId('tag-input')).toBeVisible()
+      // Transcript tab
+      await userEvent.click(screen.getByTestId('note-tab-transcript'))
+      expect(screen.getByTestId('tags-section')).toBeVisible()
+      expect(screen.getByTestId('tag-input')).toBeVisible()
+      // Final notes tab
+      await userEvent.click(screen.getByTestId('note-tab-final'))
+      expect(screen.getByTestId('tags-section')).toBeVisible()
+      expect(screen.getByTestId('tag-input')).toBeVisible()
+    })
+
+    it('renders the record control on the tab row', async () => {
+      renderNoteView()
+      await screen.findByLabelText('Note content')
+      expect(screen.getByTestId('record-control-mock')).toBeInTheDocument()
+    })
+
+    it('Quick notes editor still saves via editContent on blur', async () => {
+      let savedContent: string | undefined
+      server.use(
+        http.put('/api/notes/:noteId/content', async ({ request }) => {
+          const body = await request.json() as { content: string }
+          savedContent = body.content
+          return new HttpResponse(null, { status: 204 })
+        }),
+      )
+      renderNoteView()
+      const textarea = await screen.findByLabelText('Note content')
+      await userEvent.clear(textarea)
+      await userEvent.type(textarea, 'My own notes')
+      await userEvent.tab()
+      await waitFor(() => expect(savedContent).toBe('My own notes'))
+    })
   })
 
   describe('adaptive action buttons', () => {

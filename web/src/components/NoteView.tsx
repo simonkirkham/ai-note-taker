@@ -1,12 +1,24 @@
+import clsx from "clsx";
 import { useEffect, useRef, useState } from "react";
 import { analyseNote, editContent, getNoteDetail, getTags, setNoteDate, tagNote, untagNote, type TagIndexEntry } from "../api";
+import type { TranscriptionStatus } from "../hooks/useTranscription";
 import ActionsSection from "./ActionsSection";
 import FinalNotesView from "./FinalNotesView";
 import NoteEditor from "./NoteEditor";
+import RecordControl from "./RecordControl";
 import ShortcutsPanel from "./ShortcutsPanel";
 import TagsSection from "./TagsSection";
-import TranscriptionPanel from "./TranscriptionPanel";
+import TranscriptTab from "./TranscriptTab";
 import styles from "./NoteView.module.css";
+import tabStyles from "./NoteTabs.module.css";
+
+type NoteTab = "quick" | "transcript" | "final";
+
+const TABS: { id: NoteTab; label: string }[] = [
+  { id: "quick", label: "Quick notes" },
+  { id: "transcript", label: "Transcript" },
+  { id: "final", label: "Final notes" },
+];
 
 export default function NoteView({
   noteId,
@@ -39,6 +51,9 @@ export default function NoteView({
   const [loadingDetail, setLoadingDetail] = useState(true);
   const [notFound, setNotFound] = useState(false);
   const [actionsKey, setActionsKey] = useState(0);
+  const [activeTab, setActiveTab] = useState<NoteTab>("quick");
+  const [liveTranscript, setLiveTranscript] = useState<string | null>(null);
+  const [recordingStatus, setRecordingStatus] = useState<TranscriptionStatus>("idle");
   const inputRef = useRef<HTMLInputElement>(null);
   const tagsModifiedRef = useRef(false);
   const contentModifiedRef = useRef(false);
@@ -50,6 +65,10 @@ export default function NoteView({
     tags.length > 0 ||
     actionCount > 0 ||
     transcriptText !== null;
+
+  const isRecording =
+    recordingStatus === "recording" || recordingStatus === "requestingCredentials";
+  const displayedTranscript = liveTranscript ?? transcriptText;
 
   useEffect(() => {
     tagsModifiedRef.current = false;
@@ -209,39 +228,101 @@ export default function NoteView({
         className={styles.titleInput}
         aria-label="Note title"
       />
-      <div className={styles.noteLayout}>
-        <div className={styles.noteContentPanel}>
-          <div className={styles.capturedNotesHeader}>
-            <span data-testid="captured-notes-label" className={styles.capturedNotesLabel}>
-              Captured Notes
-            </span>
-            <ShortcutsPanel />
+      <div className={tabStyles.tabLayout}>
+        <div className={tabStyles.main}>
+          <div className={tabStyles.tabRow}>
+            <div className={tabStyles.tabs} role="tablist" aria-label="Note views">
+              {TABS.map((tab) => (
+                <button
+                  key={tab.id}
+                  type="button"
+                  role="tab"
+                  id={`note-tab-${tab.id}`}
+                  aria-selected={activeTab === tab.id}
+                  aria-controls={`note-tabpanel-${tab.id}`}
+                  data-testid={`note-tab-${tab.id}`}
+                  className={clsx(tabStyles.tab, activeTab === tab.id && tabStyles.tabActive)}
+                  onClick={() => setActiveTab(tab.id)}
+                >
+                  {tab.label}
+                </button>
+              ))}
+            </div>
+            <div className={tabStyles.tabRowControls}>
+              <RecordControl
+                noteId={noteId}
+                noteHasContent={content.trim().length > 0}
+                hasInitialTranscript={transcriptText !== null}
+                onTranscriptChange={setLiveTranscript}
+                onStatusChange={setRecordingStatus}
+                onAnalysisComplete={refreshNote}
+              />
+            </div>
           </div>
-          {loadingDetail ? (
-            <p data-testid="note-loading" className="loading">Loading…</p>
-          ) : (
-            <NoteEditor
-              key={noteId}
-              value={content}
-              onChange={(md) => { contentModifiedRef.current = true; contentRef.current = md; setContent(md); }}
-              onBlur={() => editContent(noteId, contentRef.current)}
+
+          <div
+            role="tabpanel"
+            id="note-tabpanel-quick"
+            aria-labelledby="note-tab-quick"
+            data-testid="note-tabpanel-quick"
+            hidden={activeTab !== "quick"}
+            className={tabStyles.panel}
+          >
+            <div className={tabStyles.contentPanel}>
+              <div className={tabStyles.capturedHeader}>
+                <span data-testid="captured-notes-label" className={tabStyles.capturedLabel}>
+                  Captured Notes
+                </span>
+                <ShortcutsPanel />
+              </div>
+              {loadingDetail ? (
+                <p data-testid="note-loading" className="loading">Loading…</p>
+              ) : (
+                <NoteEditor
+                  key={noteId}
+                  value={content}
+                  onChange={(md) => { contentModifiedRef.current = true; contentRef.current = md; setContent(md); }}
+                  onBlur={() => editContent(noteId, contentRef.current)}
+                />
+              )}
+            </div>
+          </div>
+
+          <div
+            role="tabpanel"
+            id="note-tabpanel-transcript"
+            aria-labelledby="note-tab-transcript"
+            data-testid="note-tabpanel-transcript"
+            hidden={activeTab !== "transcript"}
+            className={tabStyles.panel}
+          >
+            <TranscriptTab transcript={displayedTranscript} isRecording={isRecording} />
+          </div>
+
+          <div
+            role="tabpanel"
+            id="note-tabpanel-final"
+            aria-labelledby="note-tab-final"
+            data-testid="note-tabpanel-final"
+            hidden={activeTab !== "final"}
+            className={tabStyles.panel}
+          >
+            <FinalNotesView
+              summary={summary}
+              discussionPoints={discussionPoints}
+              decisions={decisions}
+              summaryModelId={summaryModelId}
+              onGenerate={handleGenerateFinalNotes}
             />
-          )}
+          </div>
         </div>
-        <div className={styles.noteRightPanel}>
+
+        <aside className={tabStyles.sidebar} aria-label="Tags and action items">
           <TagsSection tags={tags} allTags={allTags} onAdd={handleAddTags} onRemove={handleRemoveTag} />
-          <div className={styles.actionsSectionWrapper}>
+          <div className={tabStyles.actions}>
             <ActionsSection key={actionsKey} noteId={noteId} onCountChange={setActionCount} />
           </div>
-          <TranscriptionPanel noteId={noteId} initialTranscript={transcriptText} noteHasContent={content.trim().length > 0} onAnalysisComplete={refreshNote} />
-          <FinalNotesView
-            summary={summary}
-            discussionPoints={discussionPoints}
-            decisions={decisions}
-            summaryModelId={summaryModelId}
-            onGenerate={handleGenerateFinalNotes}
-          />
-        </div>
+        </aside>
       </div>
     </main>
   );
