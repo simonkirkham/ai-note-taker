@@ -65,14 +65,16 @@ public class BedrockEvalTheory
             row = await EvalRunner.RunAsync(
                 fixture, prompt, modelId, bedrock, judge, RunId, ResultsDirectory);
         }
-        catch (AmazonClientException ex)
+        catch (Exception ex) when (ex is AmazonServiceException or AmazonClientException)
         {
             // Sweeping "all accessible models" means some won't be: not access-granted
-            // (AccessDenied), not invokable by raw id (needs an inference profile), or
-            // not Nova-schema-compatible (ValidationException) — all AmazonServiceException.
-            // We also catch the broader AmazonClientException (its base) to cover retry
-            // exhaustion under heavy throttling ("capacity could not be obtained"), so a
-            // rate-limited tail skips gracefully instead of sinking the whole sweep.
+            // (AccessDenied), invalid/unknown id (ValidationException), or inference-
+            // profile-only — all AmazonServiceException. Retry exhaustion under heavy
+            // throttling ("capacity could not be obtained") is instead a plain
+            // AmazonClientException. In AWS SDK for .NET v4 these are SEPARATE branches
+            // (not parent/child), so we must catch BOTH — otherwise an invalid or
+            // inaccessible model hard-fails the case instead of skipping. Skipping lets
+            // one bad model drop out of the sweep without sinking the rest.
             // The judge model is named too: if it's the inaccessible one, EVERY case
             // skips, and the shared judge id in the message is the tell (rather than
             // looking like the system-under-test model was at fault).
