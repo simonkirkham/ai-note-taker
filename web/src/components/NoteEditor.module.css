@@ -1,0 +1,78 @@
+.noteEditorContainer {
+  position: relative;
+}
+
+.contentInput {
+  display: block;
+  width: 100%;
+  min-height: calc(100vh - 360px);
+  background: transparent;
+  border: none;
+  border-top: 2px solid transparent;
+  padding: 0.5rem 0 0;
+  font-family: inherit;
+  font-size: 1rem;
+  line-height: 1.75;
+  color: var(--color-text);
+  resize: none;
+  outline: none;
+  transition: border-color var(--transition);
+}
+
+.contentInput:focus {
+  border-top-color: var(--color-primary);
+}
+
+.contentInput::placeholder {
+  color: var(--color-text-muted);
+}
+
+/* ── Tiptap/ProseMirror vendor overrides ────────────────────────────
+   These descendant selectors target the rich-text nodes Tiptap injects
+   inside the editor element (.contentInput). Kept isolated and labelled
+   per the standard. No !important is required for these overrides. */
+
+/* Single-spaced note lines: collapse the inter-paragraph gap so consecutive
+   lines sit directly beneath one another. line-height keeps in-paragraph
+   leading comfortable; markdown serialisation is unaffected (still distinct
+   <p> blocks). Scoped to the editor so it cannot leak to other screens. */
+.contentInput p {
+  margin: 0;
+}
+
+/* Keep headings visually distinct from the preceding paragraph now that the
+   paragraph margin is gone. */
+.contentInput h1,
+.contentInput h2,
+.contentInput h3 {
+  margin-top: 0.75rem;
+  margin-bottom: 0.25rem;
+}
+
+.discussedButton {
+  position: absolute;
+  right: 4px;
+  width: 1.4rem;
+  height: 1.4rem;
+  border-radius: 50%;
+  border: 1.5px solid var(--color-primary);
+  background: transparent;
+  color: var(--color-primary);
+  font-size: 0.7rem;
+  font-weight: 700;
+  cursor: pointer;
+  padding: 0;
+  line-height: 1;
+  transition: background var(--transition), color var(--transition);
+  transform: translateY(-50%);
+}
+
+.discussedButton:hover {
+  background: var(--color-primary);
+  color: #fff;
+}
+
+.discussedButton:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}

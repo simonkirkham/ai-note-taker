@@ -1,6 +1,8 @@
 import { useState, type KeyboardEvent } from "react";
+import clsx from "clsx";
 import type { TagIndexEntry } from "../api";
 import { useTagSuggestions } from "../hooks/useTagSuggestions";
+import styles from "./TagsSection.module.css";
 
 const LISTBOX_ID = "tag-suggestions-listbox";
 
@@ -79,14 +81,14 @@ export default function TagsSection({
       : undefined;
 
   return (
-    <div data-testid="tags-section" className="tags-section">
-      <h2 className="tags-heading">Tags</h2>
-      <div className="tags-pills">
+    <div data-testid="tags-section" className={styles.tagsSection}>
+      <h2 className={styles.tagsHeading}>Tags</h2>
+      <div className={styles.tagsPills}>
         {tags.map((tag) => (
-          <span key={tag} data-testid={`tag-pill-${tag}`} className="tag-pill">
+          <span key={tag} data-testid={`tag-pill-${tag}`} className={styles.tagPill}>
             {tag}
             <button
-              className="tag-pill-remove"
+              className={styles.tagPillRemove}
               onClick={() => onRemove(tag)}
               aria-label={`Remove tag ${tag}`}
             >
@@ -95,10 +97,10 @@ export default function TagsSection({
           </span>
         ))}
       </div>
-      <div className="tags-input-wrapper">
+      <div className={styles.tagsInputWrapper}>
         <input
           data-testid="tag-input"
-          className="tags-input"
+          className={styles.tagsInput}
           type="text"
           placeholder="Add tag…"
           value={input}
@@ -126,7 +128,7 @@ export default function TagsSection({
           <ul
             id={LISTBOX_ID}
             data-testid="tag-suggestions"
-            className="tag-suggestions"
+            className={styles.tagSuggestions}
             role="listbox"
             aria-label="Tag suggestions"
           >
@@ -138,10 +140,10 @@ export default function TagsSection({
                   <li
                     key={`heading-${item.heading}`}
                     role="presentation"
-                    className="suggestion-group-item"
+                    className={styles.suggestionGroupItem}
                   >
                     <span
-                      className="suggestion-group-heading"
+                      className={styles.suggestionGroupHeading}
                       data-testid={`heading-${item.heading}`}
                     >
                       {item.heading}
@@ -156,7 +158,9 @@ export default function TagsSection({
                   role="option"
                   aria-selected={idx === highlightedIndex}
                   data-testid={`suggestion-${item.tag}`}
-                  className={`tag-suggestion-item${idx === highlightedIndex ? " highlighted" : ""}`}
+                  className={clsx(styles.tagSuggestionItem, {
+                    [styles.highlighted]: idx === highlightedIndex,
+                  })}
                   onMouseDown={(e) => e.preventDefault()}
                   onClick={() => submitTag(item.tag)}
                 >

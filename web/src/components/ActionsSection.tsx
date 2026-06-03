@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
+import clsx from "clsx";
 import { getActions, addAction, completeAction, reopenAction, deleteAction, ActionItem } from "../api";
+import styles from "./ActionsSection.module.css";
 
 export default function ActionsSection({
   noteId,
@@ -82,17 +84,20 @@ export default function ActionsSection({
   }
 
   return (
-    <section className="actions-section" data-testid="actions-section" aria-label="Action items">
-      <h2 className="actions-heading">Actions</h2>
+    <section className={styles.actionsSection} data-testid="actions-section" aria-label="Action items">
+      <h2 className={styles.actionsHeading}>Actions</h2>
       {actions.length === 0 ? (
         <p data-testid="actions-empty" className="empty">No action items yet</p>
       ) : (
-        <ul data-testid="actions-list" className="actions-list">
+        <ul data-testid="actions-list" className={styles.actionsList}>
           {actions.map((item) => (
-            <li key={item.actionId} className={`action-item${item.completed ? " action-item--done" : ""}`}>
+            <li
+              key={item.actionId}
+              className={clsx(styles.actionItem, { [styles.actionItemDone]: item.completed })}
+            >
               <input
                 type="checkbox"
-                className="action-checkbox"
+                className={styles.actionCheckbox}
                 aria-label={`Mark "${item.description}" ${item.completed ? "open" : "complete"}`}
                 checked={item.completed}
                 disabled={toggling.has(item.actionId) || deleting.has(item.actionId)}
@@ -103,7 +108,7 @@ export default function ActionsSection({
               </span>
               <button
                 data-testid={`delete-action-${item.actionId}`}
-                className="delete-action-button"
+                className={styles.deleteActionButton}
                 aria-label={`Delete "${item.description}"`}
                 disabled={deleting.has(item.actionId) || toggling.has(item.actionId)}
                 onClick={() => handleDelete(item)}
@@ -127,7 +132,7 @@ export default function ActionsSection({
         }}
         onBlur={() => handleSubmitDescription(newAction.trim())}
         placeholder="Add an action item…"
-        className="action-input"
+        className={styles.actionInput}
         disabled={submitting}
       />
     </section>

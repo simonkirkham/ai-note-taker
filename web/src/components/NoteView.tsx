@@ -6,6 +6,7 @@ import NoteEditor from "./NoteEditor";
 import ShortcutsPanel from "./ShortcutsPanel";
 import TagsSection from "./TagsSection";
 import TranscriptionPanel from "./TranscriptionPanel";
+import styles from "./NoteView.module.css";
 
 export default function NoteView({
   noteId,
@@ -142,7 +143,7 @@ export default function NoteView({
   if (notFound) {
     return (
       <main className="container">
-        <button data-testid="back-button" onClick={onBack} className="back-button">
+        <button data-testid="back-button" onClick={onBack} className={styles.backButton}>
           ← Back
         </button>
         <p data-testid="note-not-found" className="empty">Note not found.</p>
@@ -152,13 +153,13 @@ export default function NoteView({
 
   return (
     <main className="container">
-      <div className="note-header">
-        <div className="note-header-actions">
+      <div className={styles.noteHeader}>
+        <div className={styles.noteHeaderActions}>
           {!hasContent ? (
             <button
               data-testid="cancel-button"
               onClick={handleCancel}
-              className="back-button"
+              className={styles.backButton}
             >
               Cancel
             </button>
@@ -167,21 +168,21 @@ export default function NoteView({
               data-testid="save-button"
               onClick={onBack}
               disabled={loadingDetail}
-              className="save-button"
+              className={styles.saveButton}
             >
               Save
             </button>
           )}
         </div>
-        <div className="note-header-right">
-          <div className="note-date-wrapper">
+        <div className={styles.noteHeaderRight}>
+          <div className={styles.noteDateWrapper}>
             <input
               type="date"
               data-testid="note-date-input"
               value={date}
               onChange={(e) => setDate(e.target.value)}
               onBlur={() => { setNoteDate(noteId, date || null); if (date) onDateSet(noteId, date); }}
-              className="date-input"
+              className={styles.dateInput}
               aria-label="Meeting date"
             />
           </div>
@@ -189,7 +190,7 @@ export default function NoteView({
             <button
               data-testid="delete-note-button"
               onClick={() => onDelete(noteId)}
-              className="delete-note-button"
+              className={styles.deleteNoteButton}
               aria-label="Delete note"
             >
               Delete
@@ -205,13 +206,13 @@ export default function NoteView({
         onChange={(e) => setTitle(e.target.value)}
         onBlur={(e) => onRename(noteId, e.currentTarget.value)}
         placeholder="Note title…"
-        className="title-input"
+        className={styles.titleInput}
         aria-label="Note title"
       />
-      <div className="note-layout">
-        <div className="note-content-panel">
-          <div className="captured-notes-header">
-            <span data-testid="captured-notes-label" className="captured-notes-label">
+      <div className={styles.noteLayout}>
+        <div className={styles.noteContentPanel}>
+          <div className={styles.capturedNotesHeader}>
+            <span data-testid="captured-notes-label" className={styles.capturedNotesLabel}>
               Captured Notes
             </span>
             <ShortcutsPanel />
@@ -227,9 +228,9 @@ export default function NoteView({
             />
           )}
         </div>
-        <div className="note-right-panel">
+        <div className={styles.noteRightPanel}>
           <TagsSection tags={tags} allTags={allTags} onAdd={handleAddTags} onRemove={handleRemoveTag} />
-          <div className="actions-section">
+          <div className={styles.actionsSectionWrapper}>
             <ActionsSection key={actionsKey} noteId={noteId} onCountChange={setActionCount} />
           </div>
           <TranscriptionPanel noteId={noteId} initialTranscript={transcriptText} noteHasContent={content.trim().length > 0} onAnalysisComplete={refreshNote} />
