@@ -224,7 +224,7 @@ Bring the `web/` frontend in line with the rewritten frontend standards (the `fr
 
 Slices and acceptance criteria: [docs/phases/phase-14.md](phases/phase-14.md)
 
-## Phase 15 — Split the note into Transcript, Quick notes & Final notes _(Not Started)_
+## Phase 15 — Split the note into Transcript, Quick notes & Final notes _(Done)_
 
 Stop conflating what the user wrote with what the AI generated. Today a single `content` field holds both, and analysis with `updateContent` overwrites the user's notes with AI gap-fill. This phase splits the note screen into three labelled views — **Transcript** (raw speech-to-text, already stored), **Quick notes** (what the user typed; the AI never touches it again), and **Final notes** (a new durable, structured AI artifact: Summary, Discussion, Decisions, Action items, attributed to the model that wrote it) — matching the Transcript / Quick notes / Final notes tab model in the reference design. The core behavioural change: AI analysis stops mutating the user's notes and instead records a first-class `AnalysisSummaryRecorded` event. Sliced by user value, not by layer: a throwaway prototype validates the tab UX first; **15-A** delivers the headline fix — running analysis produces a separate, model-attributed Final notes artifact (Summary, Discussion, Decisions, Action items) and never overwrites the user's typed notes; **15-B** promotes the three views into the polished Transcript / Quick notes / Final notes tabbed reading experience; **15-C** adds on-demand "Re-process" regeneration. Forward-only — existing notes keep their already-merged content as Quick notes (no migration).
 

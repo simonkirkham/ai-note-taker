@@ -9,7 +9,7 @@
 | Prototype | Throwaway frontend prototype of the tab layout — **Done**; confirmed Layout B hybrid (Quick notes default, Record+Export inline on the tab row, Tags+Actions in a persistent sidebar, Final notes = Summary/Discussion/Decisions) | Done | — |
 | 15-A | **Your notes stay yours, and the AI's notes get their own home.** Running analysis produces a separate, model-attributed Final notes artifact (Summary, Discussion, Decisions, Action items) and *never overwrites* the user's typed notes | Done | — |
 | 15-B | **Read a note as three tabs — Transcript, Quick notes, Final notes.** The raw transcript and the user's own notes each get a dedicated view alongside Final notes, per the approved prototype | Done | 15-A, Prototype |
-| 15-C | **Regenerate Final notes on demand.** A "Re-process" control re-runs analysis from the Final notes view, with an optimistic pending state and rollback on failure | Not Started | 15-A, 15-B |
+| 15-C | **Regenerate Final notes on demand.** A "Re-process" control re-runs analysis from the Final notes view, with an optimistic pending state and rollback on failure | Done | 15-A, 15-B |
 
 **Ordering notes.** The **Prototype** runs first and is a hard precondition for the tabbed reading experience (15-B). **15-A is the headline value and ships first** — it is the behavioural fix the user actually asked for ("divide what I wrote from what the AI generated"): analysis stops clobbering the user's notes and instead writes a separate, attributed artifact the user can see. 15-A is independent of the prototype because its value (notes are AI-safe; the AI's output is visible and separate) lands regardless of the final tab styling — it surfaces Final notes in a simple dedicated view, which **15-B** then promotes into the polished three-tab layout (Transcript and Quick notes each becoming their own view). **15-C** adds manual regeneration last, since it needs both the new artifact (15-A) and a place to host the control (15-B). Recommended order: A → B → C.
 
@@ -191,7 +191,7 @@ Scenario: Recording and export are reachable from the tab row
 
 ## Slice 15-C — Regenerate Final notes on demand
 
-**Status:** Not Started
+**Status:** Done — shipped 2026-06-03 (PR #153, deploy #437). Learnings: `docs/learnings/phase-15c-reprocess.md`. Failure surfacing uses Phase 14-V's `ToastProvider`/`useToast`.
 
 **User value:** The user can re-run analysis whenever they want — after editing the transcript or their notes — and get fresh Final notes, without leaving the note. A "Re-process" control (confirmed by the prototype to live in the Final notes tab header, alongside the empty-state "Generate final notes" CTA) regenerates the artifact with an optimistic pending state, and on failure it rolls back and tells them, rather than leaving a stale or silently-broken view.
 
