@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react'
+import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import FinalNotesView from '../components/FinalNotesView'
 
@@ -105,5 +105,52 @@ describe('FinalNotesView', () => {
     )
     await userEvent.click(screen.getByTestId('generate-final-notes-button'))
     expect(onGenerate).toHaveBeenCalledOnce()
+  })
+
+  it('surfaces an inline error and re-enables the button when generation fails', async () => {
+    const onGenerate = vi.fn().mockRejectedValue(new Error('analyse failed'))
+    render(
+      <FinalNotesView
+        summary={null}
+        discussionPoints={[]}
+        decisions={[]}
+        summaryModelId={null}
+        onGenerate={onGenerate}
+      />,
+    )
+
+    await userEvent.click(screen.getByTestId('generate-final-notes-button'))
+
+    const error = await screen.findByTestId('final-notes-generate-error')
+    expect(error).toHaveTextContent(/couldn't generate/i)
+    expect(error).toHaveAttribute('role', 'alert')
+    // The empty state is still distinct from the failure: the empty message remains,
+    // and the button is re-enabled so the user can retry.
+    expect(screen.getByTestId('final-notes-empty')).toBeInTheDocument()
+    expect(screen.getByTestId('generate-final-notes-button')).toBeEnabled()
+  })
+
+  it('clears a prior error on a subsequent successful generate', async () => {
+    const onGenerate = vi
+      .fn()
+      .mockRejectedValueOnce(new Error('analyse failed'))
+      .mockResolvedValueOnce(undefined)
+    render(
+      <FinalNotesView
+        summary={null}
+        discussionPoints={[]}
+        decisions={[]}
+        summaryModelId={null}
+        onGenerate={onGenerate}
+      />,
+    )
+
+    await userEvent.click(screen.getByTestId('generate-final-notes-button'))
+    expect(await screen.findByTestId('final-notes-generate-error')).toBeInTheDocument()
+
+    await userEvent.click(screen.getByTestId('generate-final-notes-button'))
+    await waitFor(() =>
+      expect(screen.queryByTestId('final-notes-generate-error')).toBeNull(),
+    )
   })
 })

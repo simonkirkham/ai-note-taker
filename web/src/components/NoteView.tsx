@@ -107,7 +107,7 @@ export default function NoteView({
 
   async function handleGenerateFinalNotes() {
     try {
-      await analyseNote(noteId, false);
+      await analyseNote(noteId);
     } finally {
       await refreshNote();
     }

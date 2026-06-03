@@ -15,14 +15,18 @@ export default function FinalNotesView({
   onGenerate: () => Promise<void>;
 }) {
   const [isGenerating, setIsGenerating] = useState(false);
+  const [generateError, setGenerateError] = useState<string | null>(null);
 
   const hasSummary = !!summary && summary.trim().length > 0;
 
   async function handleGenerate() {
     if (isGenerating) return;
     setIsGenerating(true);
+    setGenerateError(null);
     try {
       await onGenerate();
+    } catch {
+      setGenerateError("Couldn't generate final notes. Please try again.");
     } finally {
       setIsGenerating(false);
     }
@@ -47,6 +51,15 @@ export default function FinalNotesView({
           >
             {isGenerating ? "Generating…" : "Generate final notes"}
           </button>
+          {generateError && (
+            <p
+              className={styles.generateError}
+              data-testid="final-notes-generate-error"
+              role="alert"
+            >
+              {generateError}
+            </p>
+          )}
         </div>
       </section>
     );

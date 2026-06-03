@@ -1944,28 +1944,6 @@ body.has-notification-banner {
   cursor: not-allowed;
 }
 
-.transcription-update-content-toggle {
-  display: flex;
-  align-items: center;
-  gap: 0.4rem;
-  margin-top: 0.5rem;
-  font-size: 0.8125rem;
-  color: var(--color-text-muted);
-  cursor: pointer;
-  flex-shrink: 0;
-}
-
-.transcription-update-content-toggle input[type="checkbox"] {
-  accent-color: var(--color-primary);
-  width: 0.95rem;
-  height: 0.95rem;
-  cursor: pointer;
-}
-
-.transcription-update-content-toggle input:disabled {
-  cursor: not-allowed;
-}
-
 .transcription-auto-analyse-toggle {
   display: flex;
   align-items: center;

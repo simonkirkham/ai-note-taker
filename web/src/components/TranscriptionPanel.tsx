@@ -26,7 +26,6 @@ export default function TranscriptionPanel({
   const [hasRecordedThisSession, setHasRecordedThisSession] = useState(false);
   const [isAnalysing, setIsAnalysing] = useState(false);
   const [analyseError, setAnalyseError] = useState<string | null>(null);
-  const [updateContent, setUpdateContent] = useState(false);
   const [includeCallAudio, setIncludeCallAudio] = useState(true);
   const [autoAnalyse, setAutoAnalyse] = useState(true);
   const autoAnalyseFiredRef = useRef(false);
@@ -48,14 +47,14 @@ export default function TranscriptionPanel({
     setIsAnalysing(true);
     setAnalyseError(null);
     try {
-      await analyseNote(noteId, updateContent);
+      await analyseNote(noteId);
       onAnalysisComplete?.();
     } catch {
       setAnalyseError('Analysis failed. Please try again.');
     } finally {
       setIsAnalysing(false);
     }
-  }, [noteId, updateContent, onAnalysisComplete]);
+  }, [noteId, onAnalysisComplete]);
 
   // Auto-analyse on stop: when the switch is on, fire analysis once as soon as a recording
   // the user made this session stops and actually produced a transcript. Gating on a non-empty
@@ -182,18 +181,6 @@ export default function TranscriptionPanel({
             disabled={isAnalysing}
           />
           Auto-analyse on stop
-        </label>
-      )}
-      {showAnalyseControl && (
-        <label className="transcription-update-content-toggle">
-          <input
-            type="checkbox"
-            data-testid="transcription-update-content-toggle"
-            checked={updateContent}
-            onChange={(e) => setUpdateContent(e.target.checked)}
-            disabled={analyseDisabled}
-          />
-          Update note content
         </label>
       )}
       {analyseError && (
