@@ -14,11 +14,11 @@
 | 14-F | Migrate `NoteCard` (home list card) | Done | 14-B |
 | 14-G | Migrate `TagsSection` + `ActionsSection` (note-view right panel) | Done | 14-B |
 | 14-H | Migrate `NoteEditor` (editor container + discussed button) | Done | 14-B |
-| 14-I | Migrate `TodoSection` (todo + done + quick-capture sections) | In Progress | 14-B, 14-E |
+| 14-I | Migrate `TodoSection` (todo + done + quick-capture sections) | Done | 14-B, 14-E |
 | 14-J | Migrate `MeetingsSection` (meetings list + meeting card + status states) | Done | 14-B |
 | 14-K | Migrate `FolderPreviewPanel` + `FolderTree` (folder tree + slide-out preview) | Done | 14-B |
 | 14-L | Migrate `Sidebar` (folders section + app-shell sidebar chrome) | Done | 14-B, 14-K |
-| 14-M | Migrate `ListView` (home two-column layout, breadcrumb, summary cards) | In Progress | 14-B |
+| 14-M | Migrate `ListView` (home two-column layout, breadcrumb, summary cards) | Done | 14-B |
 | 14-N | Migrate `NoteView` (note header, two-column layout, status messages) | Done | 14-B, 14-G, 14-H |
 | 14-O | Migrate `TranscriptionPanel` (the large transcription block, ~L2347–2670) | Not Started | 14-B |
 | 14-P | Migrate `App.tsx` shell + notification banner; remove the now-empty `App.css` and its import | Not Started | 14-B…14-O |
@@ -389,7 +389,7 @@ Scenario: App.css no longer contains the migrated selectors
 
 ## Slice 14-I — Migrate `TodoSection`
 
-**Status:** In Progress
+**Status:** Done
 
 **Value:** The home-screen To Do panel: open list, the collapsible Done section, and reopen/delete affordances (`/* ── Todo section ── */` ~L1086–1186 and `/* ── Done section ── */` ~L1187–1223). It renders `QuickCaptureTodoInput`, whose styles are migrated in 14-E, so this slice can reference the already-modular child cleanly.
 
@@ -539,7 +539,7 @@ Scenario: App.css no longer contains the migrated sidebar selectors
 
 ## Slice 14-M — Migrate `ListView`
 
-**Status:** In Progress
+**Status:** Done
 
 **Value:** The home two-column layout, the ListView folder breadcrumb, and the note-summary cards it lays out (`/* ── Home two-column layout ── */` ~L2111–2141, `/* ── Folder breadcrumb in ListView ── */` ~L1716–1738, `/* ── Note summary cards ── */` ~L1293–1471). `NoteCard` is already modular (14-F); this slice owns the surrounding list/grid layout.
 
