@@ -201,7 +201,6 @@ describe('FinalNotesView', () => {
       const button = screen.getByTestId('reprocess-final-notes-button')
       expect(button).toBeDisabled()
       expect(button).toHaveTextContent(/re-processing/i)
-      // Existing content stays visible — no blanking while the request is in flight.
       expect(screen.getByTestId('final-notes-summary')).toHaveTextContent('We agreed to ship Friday.')
       expect(screen.getByTestId('final-notes-discussion')).toHaveTextContent('Scope risk')
 
@@ -225,7 +224,6 @@ describe('FinalNotesView', () => {
 
       const alert = await screen.findByRole('alert')
       expect(alert).toHaveTextContent(/couldn't re-process final notes/i)
-      // Prior content remains intact; the button re-enables for retry.
       expect(screen.getByTestId('final-notes-summary')).toHaveTextContent('We agreed to ship Friday.')
       expect(screen.getByTestId('reprocess-final-notes-button')).toBeEnabled()
     })

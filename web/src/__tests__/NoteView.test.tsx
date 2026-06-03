@@ -254,6 +254,66 @@ describe('NoteView', () => {
     })
   })
 
+  describe('re-processing final notes', () => {
+    it('leaves the Quick notes content byte-for-byte unchanged after re-processing', async () => {
+      server.use(
+        http.get('/api/notes/:noteId', () =>
+          HttpResponse.json({
+            noteId: 'note-1',
+            title: 'T',
+            content: '# Heading\n\nMy quick notes verbatim.',
+            date: null,
+            tags: [],
+            summary: 'Original summary',
+            summaryModelId: 'nova-lite',
+          }),
+        ),
+        http.post('/api/notes/:noteId/analyse', () => new HttpResponse(null, { status: 204 })),
+      )
+      renderNoteView()
+      const textarea = await screen.findByLabelText('Note content')
+      const before = (textarea as HTMLTextAreaElement).value
+
+      await userEvent.click(screen.getByTestId('note-tab-final'))
+      await userEvent.click(screen.getByTestId('reprocess-final-notes-button'))
+      await waitFor(() => expect(screen.getByTestId('reprocess-final-notes-button')).toBeEnabled())
+
+      await userEvent.click(screen.getByTestId('note-tab-quick'))
+      const after = (screen.getByLabelText('Note content') as HTMLTextAreaElement).value
+      expect(after).toBe(before)
+    })
+
+    it('shows the regenerated summary after a successful re-process (latest wins)', async () => {
+      let detailCalls = 0
+      server.use(
+        http.get('/api/notes/:noteId', () => {
+          detailCalls += 1
+          const summary = detailCalls === 1 ? 'Original summary' : 'Regenerated summary'
+          return HttpResponse.json({
+            noteId: 'note-1',
+            title: 'T',
+            content: 'Quick notes',
+            date: null,
+            tags: [],
+            summary,
+            summaryModelId: 'nova-lite',
+          })
+        }),
+        http.post('/api/notes/:noteId/analyse', () => new HttpResponse(null, { status: 204 })),
+      )
+      renderNoteView()
+      await screen.findByLabelText('Note content')
+
+      await userEvent.click(screen.getByTestId('note-tab-final'))
+      expect(screen.getByTestId('final-notes-summary')).toHaveTextContent('Original summary')
+
+      await userEvent.click(screen.getByTestId('reprocess-final-notes-button'))
+      await waitFor(() =>
+        expect(screen.getByTestId('final-notes-summary')).toHaveTextContent('Regenerated summary'),
+      )
+    })
+  })
+
   describe('adaptive action buttons', () => {
     it('blank note shows only Cancel — Save and Delete are not in the DOM', async () => {
       renderEmptyNoteView()

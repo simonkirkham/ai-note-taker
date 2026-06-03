@@ -50,7 +50,6 @@
 }
 
 .isPending {
-  opacity: 0.6;
   cursor: progress;
 }
 
