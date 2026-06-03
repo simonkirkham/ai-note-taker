@@ -1,0 +1,200 @@
+.transcriptionPanel {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  border: 1.5px dashed var(--color-border);
+  border-radius: 8px;
+  padding: 0.75rem;
+  margin-top: 1rem;
+  overflow: hidden;
+}
+
+.transcriptionHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.5rem;
+  flex-shrink: 0;
+}
+
+.transcriptionHeading {
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--color-text-muted);
+}
+
+.transcriptionTimer {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  font-size: 0.8125rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--color-text-muted);
+}
+
+.transcriptionDot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #ef4444;
+  flex-shrink: 0;
+  animation: pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.3; }
+}
+
+.transcriptionBody {
+  flex: 1;
+  overflow-y: auto;
+  margin-bottom: 0.5rem;
+}
+
+.transcriptionPlaceholder {
+  margin: 0;
+  font-size: 0.875rem;
+  color: var(--color-text-muted);
+  font-style: italic;
+}
+
+.transcriptionText {
+  margin: 0;
+  font-size: 0.875rem;
+  color: var(--color-text);
+  white-space: pre-wrap;
+  word-break: break-word;
+  line-height: 1.6;
+}
+
+.transcriptionError {
+  padding: 0.5rem 0.75rem;
+  background: var(--color-error-bg);
+  border: 1px solid var(--color-error-border);
+  border-radius: 6px;
+  font-size: 0.875rem;
+  color: var(--color-error);
+}
+
+.transcriptionError p {
+  margin: 0;
+}
+
+.transcriptionControls {
+  display: flex;
+  gap: 0.5rem;
+  flex-shrink: 0;
+}
+
+.transcriptionRecordButton,
+.transcriptionStopButton,
+.transcriptionResetButton {
+  flex: 1;
+  padding: 0.5rem;
+  border-radius: 6px;
+  font-size: 0.875rem;
+  font-weight: 500;
+  cursor: pointer;
+  border: 1.5px solid var(--color-border);
+  background: var(--color-surface);
+  color: var(--color-text);
+  transition: background var(--transition), border-color var(--transition);
+}
+
+.transcriptionRecordButton:hover:not(:disabled),
+.transcriptionResetButton:hover:not(:disabled) {
+  background: var(--color-border);
+}
+
+.transcriptionStopButton {
+  border-color: var(--color-error);
+  color: var(--color-error);
+}
+
+.transcriptionStopButton:hover:not(:disabled) {
+  background: var(--color-error-bg);
+}
+
+.transcriptionStopButton:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.transcriptionAnalyseButton {
+  flex: 1;
+  padding: 0.5rem;
+  border-radius: var(--radius);
+  font-size: 0.875rem;
+  font-weight: 600;
+  cursor: pointer;
+  background: var(--color-primary);
+  color: #fff;
+  border: 1.5px solid var(--color-primary);
+  transition: background var(--transition), border-color var(--transition);
+}
+
+.transcriptionAnalyseButton:hover:not(:disabled) {
+  filter: brightness(0.95);
+}
+
+.transcriptionAnalyseButton:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.transcriptionAutoAnalyseToggle {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin-top: 0.5rem;
+  font-size: 0.8125rem;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.transcriptionAutoAnalyseToggle input[type="checkbox"] {
+  accent-color: var(--color-primary);
+  width: 0.95rem;
+  height: 0.95rem;
+  cursor: pointer;
+}
+
+.transcriptionAutoAnalyseToggle input:disabled {
+  cursor: not-allowed;
+}
+
+.transcriptionCallAudioToggle {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+  margin-bottom: 0.5rem;
+  font-size: 0.8125rem;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.transcriptionCallAudioToggle input[type="checkbox"] {
+  accent-color: var(--color-primary);
+  width: 0.95rem;
+  height: 0.95rem;
+  cursor: pointer;
+}
+
+.transcriptionCallAudioHint {
+  flex-basis: 100%;
+  font-size: 0.75rem;
+  opacity: 0.8;
+}
+
+.transcriptionAnalyseError {
+  margin-top: 0.4rem;
+  font-size: 0.8125rem;
+  color: #ef4444;
+}

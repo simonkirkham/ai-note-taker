@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { analyseNote } from '../api';
 import { useTranscription } from '../hooks/useTranscription';
+import styles from './TranscriptionPanel.module.css';
 
 function formatTime(seconds: number): string {
   const m = Math.floor(seconds / 60).toString().padStart(2, '0');
@@ -81,42 +82,42 @@ export default function TranscriptionPanel({
   }, [status, autoAnalyse, hasRecordedThisSession, transcript, isAnalysing, handleAnalyse]);
 
   return (
-    <div className="transcription-panel" data-testid="transcription-panel">
-      <div className="transcription-header">
-        <span className="transcription-heading">Transcript</span>
+    <div className={styles.transcriptionPanel} data-testid="transcription-panel">
+      <div className={styles.transcriptionHeader}>
+        <span className={styles.transcriptionHeading}>Transcript</span>
         {isRecording && (
-          <span className="transcription-timer" data-testid="transcription-timer">
-            <span className="transcription-dot" aria-hidden="true" />
+          <span className={styles.transcriptionTimer} data-testid="transcription-timer">
+            <span className={styles.transcriptionDot} aria-hidden="true" />
             {formatTime(elapsedSeconds)}
           </span>
         )}
       </div>
 
       <div
-        className="transcription-body"
+        className={styles.transcriptionBody}
         ref={transcriptRef}
         data-testid="transcription-body"
       >
         {status === 'idle' && !showInitialTranscript && (
-          <p className="transcription-placeholder">Press Record to start transcribing</p>
+          <p className={styles.transcriptionPlaceholder}>Press Record to start transcribing</p>
         )}
         {showInitialTranscript && (
-          <p className="transcription-text" data-testid="transcription-text">{initialTranscript}</p>
+          <p className={styles.transcriptionText} data-testid="transcription-text">{initialTranscript}</p>
         )}
         {(isRequesting || isRecording || status === 'stopped') && (
-          <p className="transcription-text" data-testid="transcription-text">
+          <p className={styles.transcriptionText} data-testid="transcription-text">
             {transcript || (isRequesting ? '' : ' ')}
           </p>
         )}
         {status === 'error' && (
-          <div className="transcription-error" data-testid="transcription-error">
+          <div className={styles.transcriptionError} data-testid="transcription-error">
             <p>{error ?? 'Cannot connect to transcription service.'}</p>
           </div>
         )}
       </div>
 
       {(status === 'idle' || status === 'stopped') && (
-        <label className="transcription-call-audio-toggle">
+        <label className={styles.transcriptionCallAudioToggle}>
           <input
             type="checkbox"
             data-testid="transcription-call-audio-toggle"
@@ -124,16 +125,16 @@ export default function TranscriptionPanel({
             onChange={(e) => setIncludeCallAudio(e.target.checked)}
           />
           Include call audio
-          <span className="transcription-call-audio-hint">
+          <span className={styles.transcriptionCallAudioHint}>
             Requires Chrome or Edge; shares audio from your screen or tab.
           </span>
         </label>
       )}
 
-      <div className="transcription-controls">
+      <div className={styles.transcriptionControls}>
         {status === 'error' && (
           <button
-            className="transcription-reset-button"
+            className={styles.transcriptionResetButton}
             data-testid="transcription-reset-button"
             onClick={reset}
           >
@@ -142,7 +143,7 @@ export default function TranscriptionPanel({
         )}
         {(status === 'idle' || status === 'stopped') && (
           <button
-            className="transcription-record-button"
+            className={styles.transcriptionRecordButton}
             data-testid="transcription-record-button"
             onClick={() => { setHasRecordedThisSession(true); startRecording(includeCallAudio); }}
           >
@@ -151,7 +152,7 @@ export default function TranscriptionPanel({
         )}
         {(isRequesting || isRecording) && (
           <button
-            className="transcription-stop-button"
+            className={styles.transcriptionStopButton}
             data-testid="transcription-stop-button"
             onClick={stopRecording}
             disabled={isRequesting}
@@ -161,7 +162,7 @@ export default function TranscriptionPanel({
         )}
         {showAnalyseControl && (
           <button
-            className="transcription-analyse-button"
+            className={styles.transcriptionAnalyseButton}
             data-testid="transcription-analyse-button"
             onClick={handleAnalyse}
             disabled={analyseDisabled}
@@ -172,7 +173,7 @@ export default function TranscriptionPanel({
         )}
       </div>
       {showAnalyseControl && (
-        <label className="transcription-auto-analyse-toggle">
+        <label className={styles.transcriptionAutoAnalyseToggle}>
           <input
             type="checkbox"
             data-testid="transcription-auto-analyse-toggle"
@@ -184,7 +185,7 @@ export default function TranscriptionPanel({
         </label>
       )}
       {analyseError && (
-        <p className="transcription-analyse-error" data-testid="transcription-analyse-error">
+        <p className={styles.transcriptionAnalyseError} data-testid="transcription-analyse-error">
           {analyseError}
         </p>
       )}
