@@ -7,7 +7,7 @@
 | Slice | Summary | Status | Depends on |
 |-------|---------|--------|------------|
 | Prototype | Throwaway frontend prototype of the tab layout — **Done**; confirmed Layout B hybrid (Quick notes default, Record+Export inline on the tab row, Tags+Actions in a persistent sidebar, Final notes = Summary/Discussion/Decisions) | Done | — |
-| 15-A | **Your notes stay yours, and the AI's notes get their own home.** Running analysis produces a separate, model-attributed Final notes artifact (Summary, Discussion, Decisions, Action items) and *never overwrites* the user's typed notes | Not Started | — |
+| 15-A | **Your notes stay yours, and the AI's notes get their own home.** Running analysis produces a separate, model-attributed Final notes artifact (Summary, Discussion, Decisions, Action items) and *never overwrites* the user's typed notes | Done | — |
 | 15-B | **Read a note as three tabs — Transcript, Quick notes, Final notes.** The raw transcript and the user's own notes each get a dedicated view alongside Final notes, per the approved prototype | Not Started | 15-A, Prototype |
 | 15-C | **Regenerate Final notes on demand.** A "Re-process" control re-runs analysis from the Final notes view, with an optimistic pending state and rollback on failure | Not Started | 15-A, 15-B |
 
@@ -38,7 +38,7 @@ Per the project workflow, prototype code is quick-and-dirty scaffolding on a `pr
 
 ## Slice 15-A — Your notes stay yours; the AI's notes get their own home
 
-**Status:** Not Started
+**Status:** Done — shipped 2026-06-03 (PR #144, deploy #431). Learnings: `docs/learnings/phase-15a-final-notes-artifact.md`.
 
 **User value:** When analysis runs on a note, the AI now writes a **separate Final notes artifact** — a Summary, Discussion points, Decisions, and the extracted Action items — attributed to the model that produced it, and it **never overwrites what the user typed**. The user can see the AI's output as its own thing, distinct from their own notes. This is the behavioural fix at the heart of the phase: "what I wrote" and "what the AI generated" stop being the same field.
 
