@@ -18,17 +18,28 @@ public class EvalRunnerTests : IDisposable
         if (Directory.Exists(_resultsDir)) Directory.Delete(_resultsDir, recursive: true);
     }
 
+    // Both env tests save and RESTORE the original flag value — not force it to null.
+    // In the nightly run RUN_BEDROCK_EVAL=1, and forcing null here would make the
+    // live matrix tests skip (a silent no-op eval), regardless of execution order.
     [Fact]
     public void Is_disabled_when_env_flag_is_unset()
     {
-        Environment.SetEnvironmentVariable(EvalRunner.EnvFlag, null);
-
-        Assert.False(EvalRunner.IsEnabled);
+        var original = Environment.GetEnvironmentVariable(EvalRunner.EnvFlag);
+        try
+        {
+            Environment.SetEnvironmentVariable(EvalRunner.EnvFlag, null);
+            Assert.False(EvalRunner.IsEnabled);
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable(EvalRunner.EnvFlag, original);
+        }
     }
 
     [Fact]
     public void Is_enabled_when_env_flag_is_one()
     {
+        var original = Environment.GetEnvironmentVariable(EvalRunner.EnvFlag);
         try
         {
             Environment.SetEnvironmentVariable(EvalRunner.EnvFlag, "1");
@@ -36,7 +47,7 @@ public class EvalRunnerTests : IDisposable
         }
         finally
         {
-            Environment.SetEnvironmentVariable(EvalRunner.EnvFlag, null);
+            Environment.SetEnvironmentVariable(EvalRunner.EnvFlag, original);
         }
     }
 

@@ -55,5 +55,6 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: analysis-eval-results
+          # Default (Debug) build output — keep in sync if the build/test steps gain -c Release.
           path: tests/Analysis.Eval/bin/Debug/net10.0/Results/
           if-no-files-found: warn

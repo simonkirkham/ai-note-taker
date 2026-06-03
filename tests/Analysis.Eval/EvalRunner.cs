@@ -56,6 +56,9 @@ public static class EvalRunner
             ActionF1: action.F1,
             ContentScore: contentScore);
 
+        // All rows in one process share {runId}.jsonl. The concurrent appends are
+        // safe only because the assembly disables test parallelization (AssemblyInfo.cs);
+        // re-enabling it would interleave lines and corrupt the jsonl.
         Directory.CreateDirectory(resultsDirectory);
         var file = Path.Combine(resultsDirectory, $"{runId}.jsonl");
         await File.AppendAllTextAsync(file, JsonSerializer.Serialize(row, JsonOptions) + "\n", ct);

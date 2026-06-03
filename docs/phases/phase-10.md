@@ -473,6 +473,8 @@ public record NoteAnalysisResult(
 
 **Shared-change checklist (per CLAUDE.md).** `AnalyseAsync`'s signature is unchanged, so its call sites (the `/analyse` endpoint, `NoteCommandHandler`) need no edit. `ModelId` / `PromptVersion` are added to `NoteAnalysisResult` **with empty-string defaults**, so the ~17 existing constructions in `Api.Integration` tests and the fakes (`FakeBedrockAnalysisService`, `ThrowingBedrockAnalysisService`) keep compiling untouched — they don't care about provenance. Only the production path stamps real values: both `BedrockAnalysisService.ParseResponse` return paths pass `_modelId` + `_prompt.Version`. The stamp is verified by a live, `RUN_BEDROCK_EVAL`-gated test (`BedrockAnalysisServiceStampTests`), since the project uses hand-written fakes rather than a mocking library and the full `IAmazonBedrockRuntime` is impractical to stub offline.
 
+> `ModelId` / `PromptVersion` on `NoteAnalysisResult` are **provenance for the eval harness only** — the analyse handler still consumes just `UpdatedContent` / `NewTags` / `NewActionItems`. They are *not* yet written into any event; persisting them onto the suggestion events is slice **10-M** (`TagsSuggestedV2` / `ActionItemsSuggestedV2`).
+
 ---
 
 ### New test project: `tests/Analysis.Eval/`
