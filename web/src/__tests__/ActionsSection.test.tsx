@@ -1,8 +1,8 @@
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { http, HttpResponse } from 'msw'
-import { server } from '../test/setup'
 import ActionsSection from '../components/ActionsSection'
+import { server } from '../test/setup'
 
 const NOTE_ID = 'note-1'
 const action1 = { actionId: 'a-1', description: 'Book meeting', completed: false, addedAt: '2026-01-01T00:00:00Z', completedAt: null }

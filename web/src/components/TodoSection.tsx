@@ -1,12 +1,12 @@
-import { useEffect, useState } from "react";
 import clsx from "clsx";
+import { useEffect, useState } from "react";
 import {
   getTodos, TodoItem,
   completeAction, reopenAction, deleteAction,
   completeTodo, reopenTodo, deleteTodo,
 } from "../api";
-import QuickCaptureTodoInput from "./QuickCaptureTodoInput";
 import { TrashIcon } from "./icons";
+import QuickCaptureTodoInput from "./QuickCaptureTodoInput";
 import styles from "./TodoSection.module.css";
 
 function isToday(isoString: string): boolean {

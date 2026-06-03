@@ -1,10 +1,10 @@
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { http, HttpResponse } from 'msw'
-import { server } from '../test/setup'
-import { clearToken, setToken } from '../auth/tokenStore'
-import { AuthProvider } from '../auth/AuthContext'
 import App from '../App'
+import { AuthProvider } from '../auth/AuthContext'
+import { clearToken, setToken } from '../auth/tokenStore'
+import { server } from '../test/setup'
 
 beforeEach(() => clearToken())
 afterEach(() => clearToken())

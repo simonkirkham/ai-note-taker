@@ -1,8 +1,8 @@
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { delay, http, HttpResponse } from 'msw'
-import { server } from '../test/setup'
 import TodoSection from '../components/TodoSection'
+import { server } from '../test/setup'
 
 const today = new Date().toISOString()
 const yesterday = new Date(Date.now() - 86_400_001).toISOString()

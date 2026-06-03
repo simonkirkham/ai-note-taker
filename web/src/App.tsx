@@ -1,15 +1,5 @@
 import clsx from "clsx";
-import styles from "./components/App.module.css";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useAuth } from "./auth/AuthContext";
-import SessionExpiredBanner from "./components/SessionExpiredBanner";
-import SignInPage from "./components/SignInPage";
-import FolderPreviewPanel from "./components/FolderPreviewPanel";
-import ListView from "./components/ListView";
-import NoteView from "./components/NoteView";
-import Sidebar from "./components/Sidebar";
-import { UNFILED_ID } from "./constants";
-import { useNotes } from "./hooks/useNotes";
 import {
   FolderNode,
   NoteCard,
@@ -23,6 +13,16 @@ import {
   unfileNote as apiUnfileNote,
   moveFolder as apiMoveFolder,
 } from "./api";
+import { useAuth } from "./auth/AuthContext";
+import styles from "./components/App.module.css";
+import FolderPreviewPanel from "./components/FolderPreviewPanel";
+import ListView from "./components/ListView";
+import NoteView from "./components/NoteView";
+import SessionExpiredBanner from "./components/SessionExpiredBanner";
+import Sidebar from "./components/Sidebar";
+import SignInPage from "./components/SignInPage";
+import { UNFILED_ID } from "./constants";
+import { useNotes } from "./hooks/useNotes";
 
 type View =
   | { kind: "list" }

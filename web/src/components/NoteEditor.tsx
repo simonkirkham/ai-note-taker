@@ -1,7 +1,7 @@
-import { useCallback, useRef, useState } from "react";
 import { useEditor, EditorContent } from "@tiptap/react";
 import type { Editor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
+import { useCallback, useRef, useState } from "react";
 import { Markdown } from "tiptap-markdown";
 import styles from "./NoteEditor.module.css";
 

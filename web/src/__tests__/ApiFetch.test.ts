@@ -1,7 +1,7 @@
 import { http, HttpResponse } from 'msw'
-import { server } from '../test/setup'
 import { getTodos, getTags } from '../api'
 import { clearToken, setToken, setOnRefresh, setOnUnauthorized } from '../auth/tokenStore'
+import { server } from '../test/setup'
 
 // apiFetch is exercised through the real exported API functions (getTodos, getTags),
 // which call it under the hood. MSW intercepts the network; the token store callbacks

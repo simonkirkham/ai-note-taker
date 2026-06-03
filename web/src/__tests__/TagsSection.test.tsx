@@ -1,7 +1,7 @@
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import TagsSection from '../components/TagsSection'
 import type { TagIndexEntry } from '../api'
+import TagsSection from '../components/TagsSection'
 
 function mkTag(tag: string, noteCount: number, noteIds: string[] = []): TagIndexEntry {
   return { tag, noteCount, noteIds }

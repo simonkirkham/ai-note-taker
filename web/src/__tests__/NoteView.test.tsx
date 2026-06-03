@@ -1,9 +1,9 @@
 import { render, screen, waitFor, fireEvent } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { http, HttpResponse } from 'msw'
-import { server } from '../test/setup'
 import NoteView from '../components/NoteView'
 import { ToastProvider } from '../components/ToastProvider'
+import { server } from '../test/setup'
 
 vi.mock('../components/NoteEditor', () => ({
   default: ({ value, onChange, onBlur }: { value: string; onChange: (md: string) => void; onBlur: () => void }) => (

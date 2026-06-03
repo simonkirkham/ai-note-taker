@@ -1,8 +1,8 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   TranscribeStreamingClient,
   StartStreamTranscriptionCommand,
 } from '@aws-sdk/client-transcribe-streaming';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { completeTranscription, getTranscriptionCredentials } from '../api';
 
 const LANGUAGE_CODE = 'en-GB' as const;

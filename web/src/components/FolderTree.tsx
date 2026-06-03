@@ -1,5 +1,5 @@
-import { useState } from "react";
 import clsx from "clsx";
+import { useState } from "react";
 import { FolderNode } from "../api";
 import styles from "./FolderTree.module.css";
 

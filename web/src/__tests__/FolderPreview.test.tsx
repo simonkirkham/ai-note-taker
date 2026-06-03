@@ -1,7 +1,7 @@
 import { render, screen, fireEvent } from '@testing-library/react'
+import type { NoteCard } from '../api'
 import FolderPreviewPanel from '../components/FolderPreviewPanel'
 import styles from '../components/FolderPreviewPanel.module.css'
-import type { NoteCard } from '../api'
 
 const noop = () => {}
 

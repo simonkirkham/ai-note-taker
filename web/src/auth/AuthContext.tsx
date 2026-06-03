@@ -1,8 +1,8 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react'
 import { buildAuthUrl, exchangeCode, generateCodeChallenge, generateCodeVerifier } from './pkce'
+import { attemptSilentRefresh } from './silentRefresh'
 import { clearToken, loadPersistedToken, setToken, setOnForbidden, setOnRefresh, setOnUnauthorized } from './tokenStore'
 import { getExp, REFRESH_LEAD_MS, useGoogleAuth } from './useGoogleAuth'
-import { attemptSilentRefresh } from './silentRefresh'
 
 interface AuthState {
   idToken: string | null
