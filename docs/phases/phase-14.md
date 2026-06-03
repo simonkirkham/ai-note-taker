@@ -10,7 +10,7 @@
 | 14-B | Pattern-setter migration: `SignInPage` → CSS Module (establishes the conventions the rest copy) | Done | 14-A |
 | 14-C | Migrate `SessionExpiredBanner` + `ShortcutsPanel` (leaf, self-contained) | Done | 14-B |
 | 14-D | Migrate `ThemePicker` + `FolderPicker` (small selects) | Done | 14-B |
-| 14-E | Migrate `TagFilter` + `QuickCaptureTodoInput` (leaf inputs) | In Progress | 14-B |
+| 14-E | Migrate `TagFilter` + `QuickCaptureTodoInput` (leaf inputs) | Done | 14-B |
 | 14-F | Migrate `NoteCard` (home list card) | Not Started | 14-B |
 | 14-G | Migrate `TagsSection` + `ActionsSection` (note-view right panel) | Not Started | 14-B |
 | 14-H | Migrate `NoteEditor` (editor container + discussed button) | Not Started | 14-B |
@@ -228,7 +228,7 @@ Scenario: App.css no longer contains the migrated selectors
 
 ## Slice 14-E — Migrate `TagFilter` + `QuickCaptureTodoInput`
 
-**Status:** In Progress
+**Status:** Done
 
 **Value:** Two leaf input/pill controls. `TagFilter` is the home-screen tag filter bar (`/* ── Tag filter bar ── */` ~L1624–1715); `QuickCaptureTodoInput` is the to-do quick-add input (`/* ── Quick-capture input ── */` ~L1224–1292). Migrating the quick-capture input here clears the way for `TodoSection` (14-I), which renders it.
 
