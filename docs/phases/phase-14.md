@@ -8,8 +8,8 @@
 |-------|---------|--------|------------|
 | 14-A | Foundation: `styles/tokens.css` + `styles/global.css`, `--space-*` scale, `clsx` dep, wire global imports | Done | — |
 | 14-B | Pattern-setter migration: `SignInPage` → CSS Module (establishes the conventions the rest copy) | Done | 14-A |
-| 14-C | Migrate `SessionExpiredBanner` + `ShortcutsPanel` (leaf, self-contained) | In Progress | 14-B |
-| 14-D | Migrate `ThemePicker` + `FolderPicker` (small selects) | Not Started | 14-B |
+| 14-C | Migrate `SessionExpiredBanner` + `ShortcutsPanel` (leaf, self-contained) | Done | 14-B |
+| 14-D | Migrate `ThemePicker` + `FolderPicker` (small selects) | Done | 14-B |
 | 14-E | Migrate `TagFilter` + `QuickCaptureTodoInput` (leaf inputs) | Not Started | 14-B |
 | 14-F | Migrate `NoteCard` (home list card) | Not Started | 14-B |
 | 14-G | Migrate `TagsSection` + `ActionsSection` (note-view right panel) | Not Started | 14-B |
@@ -26,9 +26,9 @@
 | 14-R | Add `eslint-plugin-import` + enforce import ordering | Not Started | 14-Q |
 | 14-S | Add `eslint-plugin-jsx-a11y` in `warn` mode | Not Started | — |
 | 14-T | Fix the a11y backlog and promote jsx-a11y to `error` | Not Started | 14-S |
-| 14-U | Add a route/feature-root error boundary | In Progress | — |
+| 14-U | Add a route/feature-root error boundary | Done | — |
 | 14-V | Add a reusable inline-error/toast primitive | Not Started | — |
-| 14-W | Server-state library ADR (decision, not code) | Not Started | — |
+| 14-W | Server-state library ADR (decision, not code) | Done | — |
 
 **Ordering notes.** 14-A is the foundation every CSS-Modules slice depends on (no component can reference `var(--space-*)` or import `clsx` until it lands). 14-B is the explicit **pattern-setter**: it establishes the module conventions (camelCase classes, `styles.*`, `clsx` for conditionals, `var(--…)` tokens) that 14-C…14-O copy verbatim — do it before any other component migration. The per-component slices (14-C…14-O) are otherwise independent of each other and can run in any order / in parallel, except where a parent renders a child whose rules co-mingle in `App.css` (14-I depends on 14-E's quick-capture work; 14-L depends on 14-K's tree; 14-N depends on 14-G + 14-H). **14-P is the closing slice** — it removes the last shell rules, deletes the emptied `App.css`, and drops the `import "./App.css"` line, so it depends on *all* component migrations. The tooling slices (14-Q…14-U), the toast primitive (14-V), and the ADR (14-W) are independent of the CSS migration and can land at any point; 14-R depends on 14-Q (the import plugin resolves the `@/` alias) and 14-T depends on 14-S (fix-then-promote).
 
@@ -144,7 +144,7 @@ Scenario: The module follows the standard
 
 ## Slice 14-C — Migrate `SessionExpiredBanner` + `ShortcutsPanel`
 
-**Status:** In Progress
+**Status:** Done
 
 **Value:** Two small, self-contained leaf components migrated together. `SessionExpiredBanner` is a full-screen overlay; `ShortcutsPanel` is a toggle + table. Neither shares rules with other components, so grouping them keeps the diff thin while clearing two more `App.css` sections (`/* ── Shortcuts panel ── */` ~L865–927; the banner's overlay rules).
 
@@ -186,7 +186,7 @@ Scenario: App.css no longer contains the migrated selectors
 
 ## Slice 14-D — Migrate `ThemePicker` + `FolderPicker`
 
-**Status:** Not Started
+**Status:** Done
 
 **Value:** Two tiny select-based controls migrated together. `ThemePicker` (theme dropdown) and `FolderPicker` (note-view folder select) are both small, leaf, label+select widgets — trivially grouped. Clears `/* ── Folder picker ── */` ~L2075–2110 and the theme-picker rules.
 
@@ -841,7 +841,7 @@ Scenario: No behavioural regression from the fixes
 
 ## Slice 14-U — Add a route/feature-root error boundary
 
-**Status:** In Progress
+**Status:** Done
 
 **Value:** The broader-conventions table requires wrapping route/feature roots in an error boundary so one component crash doesn't blank the whole app. None exists today (verified). A thin slice adding a single reusable `ErrorBoundary` and wrapping the app's feature roots.
 
@@ -921,7 +921,7 @@ Scenario: The toast is accessible and auto-dismisses (or is dismissible)
 
 ## Slice 14-W — Server-state library ADR (decision, not code)
 
-**Status:** Not Started
+**Status:** Done
 
 **Value:** The standards are silent on how the frontend manages *server state* (cached server-owned data: notes, folders, action items), which reads as unconsidered. This slice lands a short **ADR** that records a conscious decision — adopt TanStack Query / SWR and migrate hooks incrementally, **or** deliberately stay hand-rolled because this is a learning vehicle — with the rationale. **This is a DECISION, not a migration:** no TanStack-Query code, no hook rewrites. (A migration, if chosen, graduates to its own future phase.) Included as a single ADR slice rather than left out, because the decision is small, self-contained, and unblocks every future server-state choice.
 
