@@ -96,7 +96,7 @@ The fixture set is intentionally shaped to exercise two behaviours:
 1. **Tags describe pronouns, streams, and meeting types.** Each fixture's expected tags draw from: **people or companies** (`acme`, `globex`, `tom`, `chen`), a **stream of work** (`renewal`, `checkout-redesign`, `payments-outage`), and a **recurring meeting type** (`1:1`, `sales-pipeline-review`, `qbr`, `sprint-retro`, `board-meeting`, `incident-review`, …). Tags are short and lowercase, matching the prompt's instruction.
 2. **Actions are scoped to the current user.** `actionItems` lists **only** the action(s) the `currentUserName` owns. Every fixture also contains at least one **other person's** action, which belongs in `contentMustMention` — never in `actionItems`. This is what makes the harness able to detect action leakage.
 
-These rules are enforced offline by `FixtureCorpusTests` (no Bedrock): all fixtures load, ids are unique, every fixture has ≥1 user action and ≥1 other-party fact, and the two sets never overlap.
+`FixtureCorpusTests` (offline, no Bedrock) guards the mechanical parts: all fixtures load, ids are unique, every fixture has ≥1 user action and ≥1 content fact, and `actionItems`/`contentMustMention` are disjoint. Note this is a *proxy* — the JSON carries no speaker labels, so the test can't prove an action was attributed to the right person. **Per-speaker attribution (rule 2) is an authoring-time check**; at eval time, leakage of someone else's action into the user's list shows up as a drop in Action-F1 precision.
 
 ### Adding a fixture
 

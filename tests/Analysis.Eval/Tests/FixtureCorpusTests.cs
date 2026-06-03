@@ -35,10 +35,12 @@ public class FixtureCorpusTests
             $"{id}: expected at least one other-party fact in contentMustMention");
     }
 
-    // The core rule: an action the user owns must not also be listed as a content
-    // fact, and an other-party fact must not be listed as a user action. If these
-    // sets overlap, the fixture can't distinguish "captured my action" from
-    // "wrongly captured someone else's".
+    // A cheap proxy for the user-scoping rule: the user's actions and the content
+    // facts must be disjoint sets. This does NOT prove per-speaker attribution
+    // (the JSON has no speaker labels) — an other-party action wrongly placed in
+    // actionItems would still pass. True attribution is verified by hand at
+    // authoring time; the live Action-F1 precision score is what catches leakage
+    // at eval time.
     [Theory]
     [MemberData(nameof(FixtureIds))]
     public void User_actions_and_content_facts_do_not_overlap(string id)
