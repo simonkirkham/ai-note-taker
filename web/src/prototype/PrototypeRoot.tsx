@@ -1,13 +1,14 @@
 // Phase 15 prototype — Transcript / Quick notes / Final notes.
 // Throwaway scaffolding on prototype/phase-15-note-tabs. Never merged.
-// Two layouts behind a toggle:
-//   A — persistent side panel (record + tags + actions always visible)
-//   B — tabs own everything (record in header, actions inside Final notes, tags under title)
+// CONFIRMED layout (Layout B hybrid):
+//   - Tab row: tabs left, Record + Export inline on the right
+//   - Quick notes is the first + default tab
+//   - Tags + Action items live in a persistent right sidebar (visible on every tab)
+//   - Final notes holds Summary / Discussion / Decisions only (actions are in the sidebar)
 import { useState } from "react";
 import "./prototype.css";
 
-type Tab = "transcript" | "quick" | "final";
-type Layout = "A" | "B";
+type Tab = "quick" | "transcript" | "final";
 
 // ── Sample data (the screenshot's meeting) ───────────────────────────────
 const TITLE = "Spotify Icon Change and Brand Recognition Discussion";
@@ -57,16 +58,6 @@ function RecordButton({ recording, onToggle }: { recording: boolean; onToggle: (
   );
 }
 
-function TagsRow() {
-  return (
-    <div className="p-tags">
-      {["branding", "marketing", "rory-stewart", "1:1"].map((t) => (
-        <span key={t} className="p-tag">#{t}</span>
-      ))}
-    </div>
-  );
-}
-
 function ActionItems() {
   return (
     <div className="p-actions">
@@ -84,8 +75,8 @@ function ActionItems() {
 
 function TabBar({ tab, setTab }: { tab: Tab; setTab: (t: Tab) => void }) {
   const tabs: [Tab, string][] = [
-    ["transcript", "Transcript"],
     ["quick", "Quick notes"],
+    ["transcript", "Transcript"],
     ["final", "Final notes"],
   ];
   return (
@@ -105,12 +96,10 @@ function TranscriptTab() {
 }
 
 function QuickNotesTab() {
-  return (
-    <textarea className="p-quick" defaultValue={QUICK_NOTES} aria-label="Quick notes" />
-  );
+  return <textarea className="p-quick" defaultValue={QUICK_NOTES} aria-label="Quick notes" />;
 }
 
-function FinalNotesTab({ populated, showActions }: { populated: boolean; showActions: boolean }) {
+function FinalNotesTab({ populated }: { populated: boolean }) {
   if (!populated) {
     return (
       <div className="p-empty">
@@ -132,94 +121,67 @@ function FinalNotesTab({ populated, showActions }: { populated: boolean; showAct
       <ul>{DISCUSSION.map((d, i) => <li key={i}>{d}</li>)}</ul>
       <h3>✓ Decisions</h3>
       <ul>{DECISIONS.map((d, i) => <li key={i}>{d}</li>)}</ul>
-      {showActions && <ActionItems />}
       <p className="p-attribution">Written by {MODEL} · 00:33</p>
     </div>
   );
 }
 
-function TabContent({ tab, populated, finalHasActions }: { tab: Tab; populated: boolean; finalHasActions: boolean }) {
+function TabContent({ tab, populated }: { tab: Tab; populated: boolean }) {
   if (tab === "transcript") return <TranscriptTab />;
   if (tab === "quick") return <QuickNotesTab />;
-  return <FinalNotesTab populated={populated} showActions={finalHasActions} />;
+  return <FinalNotesTab populated={populated} />;
 }
 
-// ── Layout A: persistent side panel ──────────────────────────────────────
-function LayoutA({ tab, setTab, recording, setRecording, populated }: LayoutProps) {
-  return (
-    <div className="p-note">
-      <div className="p-title">{TITLE}</div>
-      <div className="p-subtitle">{SUBTITLE}</div>
-      <div className="p-layoutA">
-        <div className="p-main">
-          <TabBar tab={tab} setTab={setTab} />
-          <div className="p-tabpanel"><TabContent tab={tab} populated={populated} finalHasActions={false} /></div>
-        </div>
-        <aside className="p-side">
-          <RecordButton recording={recording} onToggle={() => setRecording(!recording)} />
-          <div className="p-side-block">
-            <div className="p-section-label">Tags</div>
-            <TagsRow />
-          </div>
-          <div className="p-side-block">
-            <ActionItems />
-          </div>
-        </aside>
-      </div>
-    </div>
-  );
-}
-
-// ── Layout B: tabs own everything ────────────────────────────────────────
-function LayoutB({ tab, setTab, recording, setRecording, populated }: LayoutProps) {
-  return (
-    <div className="p-note">
-      <div className="p-topbar">
-        <RecordButton recording={recording} onToggle={() => setRecording(!recording)} />
-        <button className="p-ghost">⤓ Export</button>
-      </div>
-      <div className="p-title">{TITLE}</div>
-      <div className="p-subtitle">{SUBTITLE}</div>
-      <TagsRow />
-      <TabBar tab={tab} setTab={setTab} />
-      {/* In Layout B, action items live inside Final notes (screenshot-faithful) */}
-      <div className="p-tabpanel"><TabContent tab={tab} populated={populated} finalHasActions /></div>
-    </div>
-  );
-}
-
-type LayoutProps = {
-  tab: Tab;
-  setTab: (t: Tab) => void;
-  recording: boolean;
-  setRecording: (r: boolean) => void;
-  populated: boolean;
-};
-
-// ── Root: layout toggle + state toggles ──────────────────────────────────
+// ── Root ─────────────────────────────────────────────────────────────────
 export function PrototypeRoot() {
-  const [layout, setLayout] = useState<Layout>("A");
-  const [tab, setTab] = useState<Tab>("final");
+  const [tab, setTab] = useState<Tab>("quick");
   const [recording, setRecording] = useState(false);
   const [populated, setPopulated] = useState(true);
-
-  const props: LayoutProps = { tab, setTab, recording, setRecording, populated };
 
   return (
     <div className="p-root">
       <div className="p-controls">
         <strong>Phase 15 prototype</strong>
         <span className="p-seg">
-          <button className={layout === "A" ? "on" : ""} onClick={() => setLayout("A")}>Layout A · side panel</button>
-          <button className={layout === "B" ? "on" : ""} onClick={() => setLayout("B")}>Layout B · tabs own all</button>
-        </span>
-        <span className="p-seg">
           <button className={populated ? "on" : ""} onClick={() => setPopulated(true)}>Final: populated</button>
           <button className={!populated ? "on" : ""} onClick={() => setPopulated(false)}>Final: empty</button>
         </span>
-        <span className="p-hint">switch tabs + toggle states to compare</span>
+        <span className="p-hint">Layout B hybrid · record/export inline · tags + actions in sidebar</span>
       </div>
-      {layout === "A" ? <LayoutA {...props} /> : <LayoutB {...props} />}
+
+      <div className="p-note">
+        <div className="p-title">{TITLE}</div>
+        <div className="p-subtitle">{SUBTITLE}</div>
+
+        {/* Tab row: tabs left, record/export inline on the right */}
+        <div className="p-tabrow">
+          <TabBar tab={tab} setTab={setTab} />
+          <div className="p-tabrow-actions">
+            <RecordButton recording={recording} onToggle={() => setRecording(!recording)} />
+            <button className="p-ghost">⤓ Export</button>
+          </div>
+        </div>
+
+        {/* Main tab panel + persistent sidebar (tags + actions) */}
+        <div className="p-layout">
+          <div className="p-main">
+            <div className="p-tabpanel"><TabContent tab={tab} populated={populated} /></div>
+          </div>
+          <aside className="p-side">
+            <div className="p-side-block">
+              <div className="p-section-label">Tags</div>
+              <div className="p-tags">
+                {["branding", "marketing", "rory-stewart", "1:1"].map((t) => (
+                  <span key={t} className="p-tag">#{t}</span>
+                ))}
+              </div>
+            </div>
+            <div className="p-side-block">
+              <ActionItems />
+            </div>
+          </aside>
+        </div>
+      </div>
     </div>
   );
 }
