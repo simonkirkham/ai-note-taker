@@ -1,0 +1,67 @@
+.quickCaptureInput {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+}
+
+.quickCaptureInput input {
+  flex: 1;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  font-size: 0.9375rem;
+  color: var(--color-text);
+  background: var(--color-surface);
+  transition: border-color 150ms ease, box-shadow 150ms ease;
+  min-height: 2.5rem;
+}
+
+.quickCaptureInput input::placeholder {
+  color: var(--color-text-muted);
+}
+
+.quickCaptureInput input:focus {
+  border-color: var(--color-primary);
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(13, 148, 136, 0.12);
+}
+
+.quickCaptureInput input:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.quickCaptureInput button {
+  padding: 0.5rem 1rem;
+  background: var(--color-primary);
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  font-size: 0.9375rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 150ms ease, opacity 150ms ease;
+  white-space: nowrap;
+  min-height: 2.5rem;
+}
+
+.quickCaptureInput button:hover:not(:disabled) {
+  background: var(--color-primary-dark);
+}
+
+.quickCaptureInput button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.quickCaptureInput button:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
+.quickCaptureError {
+  margin: 0.25rem 0 0;
+  font-size: 0.875rem;
+  color: var(--color-error);
+  grid-column: 1 / -1;
+}

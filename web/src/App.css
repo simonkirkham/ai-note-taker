@@ -869,75 +869,6 @@
   margin: 0.25rem 0 0;
 }
 
-/* ── Quick-capture input ────────────────────────────────────────── */
-.quick-capture-input {
-  display: flex;
-  gap: 0.5rem;
-  margin-bottom: 1rem;
-}
-
-.quick-capture-input input {
-  flex: 1;
-  padding: 0.5rem 0.75rem;
-  border: 1px solid var(--color-border);
-  border-radius: 8px;
-  font-size: 0.9375rem;
-  color: var(--color-text);
-  background: var(--color-surface);
-  transition: border-color 150ms ease, box-shadow 150ms ease;
-  min-height: 2.5rem;
-}
-
-.quick-capture-input input::placeholder {
-  color: var(--color-text-muted);
-}
-
-.quick-capture-input input:focus {
-  border-color: var(--color-primary);
-  outline: none;
-  box-shadow: 0 0 0 3px rgba(13, 148, 136, 0.12);
-}
-
-.quick-capture-input input:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
-
-.quick-capture-input button {
-  padding: 0.5rem 1rem;
-  background: var(--color-primary);
-  color: #fff;
-  border: none;
-  border-radius: 8px;
-  font-size: 0.9375rem;
-  font-weight: 600;
-  cursor: pointer;
-  transition: background 150ms ease, opacity 150ms ease;
-  white-space: nowrap;
-  min-height: 2.5rem;
-}
-
-.quick-capture-input button:hover:not(:disabled) {
-  background: var(--color-primary-dark);
-}
-
-.quick-capture-input button:disabled {
-  opacity: 0.55;
-  cursor: not-allowed;
-}
-
-.quick-capture-input button:focus-visible {
-  outline: 2px solid var(--color-primary);
-  outline-offset: 2px;
-}
-
-.quick-capture-error {
-  margin: 0.25rem 0 0;
-  font-size: 0.875rem;
-  color: var(--color-error);
-  grid-column: 1 / -1;
-}
-
 /* ── Note summary cards ─────────────────────────────────────────── */
 .note-cards-section {
   margin-top: 2.5rem;
@@ -1267,98 +1198,6 @@
   font-size: 0.75rem;
   font-weight: 500;
   line-height: 1.4;
-}
-
-/* ── Tag filter bar (home screen) ───────────────────────────────── */
-.tag-filter {
-  margin-top: 1.5rem;
-  padding: 0.875rem 1rem;
-  background: var(--color-surface);
-  border: 1.5px solid var(--color-border);
-  border-radius: 8px;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.5rem;
-  align-items: center;
-}
-
-.tag-filter-pills {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.375rem;
-  flex: 1;
-}
-
-.tag-filter-pill {
-  background: none;
-  border: 1.5px solid var(--color-border);
-  border-radius: 9999px;
-  padding: 0.25rem 0.75rem;
-  font-family: inherit;
-  font-size: 0.8125rem;
-  font-weight: 500;
-  color: var(--color-text-muted);
-  cursor: pointer;
-  transition: background var(--transition), color var(--transition), border-color var(--transition);
-}
-
-.tag-filter-pill:hover {
-  border-color: var(--color-primary);
-  color: var(--color-primary);
-}
-
-.tag-filter-pill--active {
-  background: var(--color-primary);
-  border-color: var(--color-primary);
-  color: #fff;
-}
-
-.tag-filter-pill--active:hover {
-  background: var(--color-primary-dark);
-  border-color: var(--color-primary-dark);
-  color: #fff;
-}
-
-.tag-filter-controls {
-  display: flex;
-  align-items: center;
-  gap: 0.375rem;
-}
-
-.tag-filter-mode-toggle {
-  background: none;
-  border: 1.5px solid var(--color-primary);
-  border-radius: var(--radius);
-  padding: 0.2rem 0.6rem;
-  font-family: inherit;
-  font-size: 0.75rem;
-  font-weight: 700;
-  color: var(--color-primary);
-  cursor: pointer;
-  letter-spacing: 0.05em;
-  transition: background var(--transition), color var(--transition);
-}
-
-.tag-filter-mode-toggle:hover {
-  background: var(--color-primary);
-  color: #fff;
-}
-
-.tag-filter-clear {
-  background: none;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius);
-  padding: 0.2rem 0.6rem;
-  font-family: inherit;
-  font-size: 0.8125rem;
-  color: var(--color-text-muted);
-  cursor: pointer;
-  transition: color var(--transition), border-color var(--transition);
-}
-
-.tag-filter-clear:hover {
-  color: var(--color-error);
-  border-color: var(--color-error);
 }
 
 /* ── Folder breadcrumb in ListView ──────────────────────────────── */
@@ -2298,17 +2137,6 @@ body.has-notification-banner {
 .icon-btn:disabled {
   opacity: 0.5;
   cursor: not-allowed;
-}
-
-/* Filters: the Tags-group pills sit inline with no box — the collapsible
-   panel itself keeps its card. (Folder-view TagFilter, outside .filters-panel,
-   keeps its own box.) */
-.filters-panel .tag-filter {
-  margin-top: 0;
-  padding: 0;
-  background: none;
-  border: none;
-  border-radius: 0;
 }
 
 /* Lighter Today's Meetings — keep each meeting grouped as a card (so a
