@@ -1,4 +1,5 @@
-import "./App.css";
+import clsx from "clsx";
+import styles from "./components/App.module.css";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useAuth } from "./auth/AuthContext";
 import SessionExpiredBanner from "./components/SessionExpiredBanner";
@@ -248,17 +249,17 @@ function AppContent({ signOut }: { signOut: () => void }) {
     );
 
   return (
-    <div className="app-layout">
+    <div className={styles.appLayout}>
       <button
         data-testid="sidebar-toggle"
-        className="sidebar-toggle"
+        className={styles.sidebarToggle}
         aria-label="Toggle sidebar"
         onClick={() => setSidebarOpen((o) => !o)}
       >
         <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
       </button>
       <div
-        className={`sidebar-overlay${sidebarOpen ? " sidebar-overlay--open" : ""}`}
+        className={clsx(styles.sidebarOverlay, sidebarOpen && styles.sidebarOverlayOpen)}
         onClick={() => setSidebarOpen(false)}
       />
       <Sidebar
@@ -294,7 +295,7 @@ function AppContent({ signOut }: { signOut: () => void }) {
         onEditNote={(noteId) => { setView({ kind: "note", noteId }); setPreviewFolderId(null); }}
         onDropNote={(noteId) => handleMoveNoteToFolder(noteId, previewFolderId === UNFILED_ID ? null : previewFolderId)}
       />
-      <div className="app-main">{main}</div>
+      <div className={styles.appMain}>{main}</div>
     </div>
   );
 }

@@ -1,0 +1,55 @@
+/* ── App shell (sidebar + main) ────────────────────────────────── */
+.appLayout {
+  display: grid;
+  grid-template-columns: 220px auto 1fr;
+  min-height: 100vh;
+}
+
+.appMain {
+  min-width: 0;
+}
+
+.sidebarToggle {
+  display: none;
+}
+
+.sidebarOverlay {
+  display: none;
+}
+
+@media (max-width: 639px) {
+  .appLayout {
+    grid-template-columns: 1fr;
+  }
+
+  .sidebarOverlay {
+    display: block;
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.3);
+    z-index: 20;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 200ms ease;
+  }
+
+  .sidebarOverlayOpen {
+    opacity: 1;
+    pointer-events: auto;
+  }
+
+  .sidebarToggle {
+    display: block;
+    position: fixed;
+    top: 0.75rem;
+    left: 0.75rem;
+    z-index: 40;
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius);
+    padding: 0.25rem 0.5rem;
+    font-size: 1.1rem;
+    cursor: pointer;
+    line-height: 1;
+  }
+}
