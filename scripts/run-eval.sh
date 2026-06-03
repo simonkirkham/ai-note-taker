@@ -18,6 +18,7 @@
 set -euo pipefail
 
 PROJ="tests/Analysis.Eval/Analysis.Eval.csproj"
+# Assumes the default (Debug) build configuration — `dotnet test` below uses Debug.
 RESULTS_DIR="tests/Analysis.Eval/bin/Debug/net10.0/Results"
 REGION="${AWS_REGION:-eu-west-2}"
 
@@ -31,6 +32,10 @@ if [ -z "${EVAL_MODEL_IDS:-}" ]; then
     --by-inference-type ON_DEMAND \
     --query "modelSummaries[?contains(modelId, 'nova')].modelId" \
     --output text 2>/dev/null | tr '[:space:]' ',' | sed 's/,\{2,\}/,/g; s/^,//; s/,$//') || true
+  # `aws ... --output text` prints the literal "None" (not an empty string) when the
+  # query matches zero models — e.g. creds present but no Nova access grant in-region.
+  # Normalise it to empty so the fallback below actually fires.
+  [ "${EVAL_MODEL_IDS}" = "None" ] && EVAL_MODEL_IDS=""
   if [ -z "${EVAL_MODEL_IDS}" ]; then
     echo "  discovery returned nothing (no creds / no access?) — falling back to amazon.nova-lite-v1:0"
     EVAL_MODEL_IDS="amazon.nova-lite-v1:0"
@@ -39,7 +44,8 @@ fi
 echo "Sweeping models: ${EVAL_MODEL_IDS}"
 
 # 2. Clean prior results so the report reflects only this run.
-rm -rf "${RESULTS_DIR}"
+#    `:?` aborts rather than deleting cwd if the literal ever becomes empty/unset.
+rm -rf "${RESULTS_DIR:?}"
 
 # 3. Matrix phase (writes Results/*.jsonl), then report phase (writes report.md).
 #    Two phases because the report renders whatever rows exist, and test order

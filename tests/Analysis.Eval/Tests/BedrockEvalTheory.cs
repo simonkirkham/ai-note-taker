@@ -53,8 +53,13 @@ public class BedrockEvalTheory
             // (AccessDenied), not invokable by raw id (needs an inference profile), or
             // not Nova-schema-compatible (ValidationException). Skip rather than fail so
             // one bad model doesn't sink the whole sweep — the report just omits it.
-            _output.WriteLine($"SKIP {modelId} on {fixture.Id}: {ex.GetType().Name} — {ex.Message}");
-            Skip.If(true, $"{modelId} unavailable: {ex.Message}");
+            // The judge model is named too: if it's the inaccessible one, EVERY case
+            // skips, and the shared judge id in the message is the tell (rather than
+            // looking like the system-under-test model was at fault).
+            var judgeModelId = BedrockEvalFactory.JudgeModelId;
+            _output.WriteLine(
+                $"SKIP {modelId} on {fixture.Id} (judge: {judgeModelId}): {ex.GetType().Name} — {ex.Message}");
+            Skip.If(true, $"{modelId} (or judge {judgeModelId}) unavailable: {ex.Message}");
             return;
         }
 
