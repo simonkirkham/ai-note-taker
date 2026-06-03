@@ -216,6 +216,14 @@ Slices and acceptance criteria: [docs/phases/phase-12.md](phases/phase-12.md)
 
 *(The former Phase 13 — "Feedback capture for AI suggestions" — was absorbed into Phase 10 as slices 10-I → 10-M.)*
 
+## Phase 14 — Frontend standards alignment — CSS Modules migration & tooling _(Not Started)_
+
+Bring the `web/` frontend in line with the rewritten frontend standards (the `frontend-react` skill + `docs/react-coding-standards.md`). A pure refactor — no new behaviour, no backend, no event-model change — that retires the single 2,816-line global `App.css` for co-located CSS Modules, extracts design tokens and a new `--space-*` scale into `styles/tokens.css` + `styles/global.css`, and adds the tooling the standards now mandate (`clsx`, `@/` path alias, `eslint-plugin-import`, `eslint-plugin-jsx-a11y`), an error boundary, a reusable inline-error/toast primitive, and a server-state-strategy ADR. 23 slices: a foundation slice, a pattern-setter, ~14 per-component module migrations ending with `App.css`'s deletion, four tooling slices, plus the error boundary, toast, and ADR. Regression-gated by the existing Vitest/RTL suite and Playwright E2E journeys; no visual change intended. Graduates the "Migrate App.css to CSS Modules", "Adopt jsx-a11y + import + `@/` alias", and "Decide on a server-state library" items from `docs/technical-improvements.md`.
+
+**Goal:** retire a 2,816-line global stylesheet for scoped CSS Modules without changing a pixel; learn CSS Modules scoping, design-token/spacing systems, safe large-scale incremental refactoring under a regression net, ESLint flat-config plugins, path aliases, error boundaries, and ADRs.
+
+Slices and acceptance criteria: [docs/phases/phase-14.md](phases/phase-14.md)
+
 ---
 
 ## Standing tracks and planning docs
