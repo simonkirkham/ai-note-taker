@@ -1,7 +1,7 @@
-using System.Text;
 using System.Text.Json;
 using Amazon.BedrockRuntime;
 using Amazon.BedrockRuntime.Model;
+using Api.Services;
 
 namespace Analysis.Eval.Scoring;
 
@@ -41,35 +41,26 @@ public sealed class BedrockContentJudgeClient : IJudgeClient
             Return ONLY a JSON array of "YES"/"NO" strings, one per fact, in order. No other text.
             """;
 
-        var body = JsonSerializer.Serialize(new
-        {
-            schemaVersion = "messages-v1",
-            messages = new[] { new { role = "user", content = new[] { new { text = prompt } } } },
-            inferenceConfig = new { maxTokens = 512 }
-        });
-
-        var response = await _bedrock.InvokeModelAsync(new InvokeModelRequest
+        var converseRequest = new ConverseRequest
         {
             ModelId = _modelId,
-            ContentType = "application/json",
-            Accept = "application/json",
-            Body = new MemoryStream(Encoding.UTF8.GetBytes(body))
-        }, ct).ConfigureAwait(false);
+            Messages =
+            [
+                new Message
+                {
+                    Role = ConversationRole.User,
+                    Content = [new ContentBlock { Text = prompt }]
+                }
+            ],
+            InferenceConfig = new InferenceConfiguration { MaxTokens = 512 }
+        };
 
-        var responseBody = await new StreamReader(response.Body).ReadToEndAsync(ct).ConfigureAwait(false);
-        return ParseVerdicts(responseBody, facts.Count);
+        var response = await _bedrock.ConverseAsync(converseRequest, ct).ConfigureAwait(false);
+        return ParseVerdicts(ConverseResponseReader.Text(response), facts.Count);
     }
 
-    static IReadOnlyList<bool> ParseVerdicts(string responseBody, int expectedCount)
+    internal static IReadOnlyList<bool> ParseVerdicts(string text, int expectedCount)
     {
-        using var doc = JsonDocument.Parse(responseBody);
-        var text = doc.RootElement
-            .GetProperty("output")
-            .GetProperty("message")
-            .GetProperty("content")[0]
-            .GetProperty("text")
-            .GetString() ?? "";
-
         var start = text.IndexOf('[');
         var end = text.LastIndexOf(']');
         if (start < 0 || end < 0)

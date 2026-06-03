@@ -19,6 +19,7 @@
 | 10-K | Record AI action-item suggestions (`ActionItemsSuggested`) | Done | — |
 | 10-L | Action-item feedback projection | Done | 10-K |
 | 10-M | Stamp modelId / promptVersion on the suggestion events | Not Started | 10-G, 10-I, 10-K |
+| 10-N | Migrate analysis to the Converse API (model-agnostic) | Not Started | — |
 
 Phase 10 has two parts. The **core flow** (10-A → 10-H) makes recording → transcription → analysis work end to end. The **quality track** (10-E, 10-F, then 10-G → 10-M) makes that analysis *good* and *keeps it good*: better input, smoother UX, measurement, and a durable correction signal that feeds prompt/model refinement. Slices 10-I → 10-M were moved here from the former Phase 13 ("Feedback capture for AI suggestions") so that analysis quality — building it, measuring it, refining it — lives in one phase.
 
@@ -1032,6 +1033,67 @@ Scenario: Feedback can be sliced per prompt version
 - [ ] 10-J / 10-L projections consume v1 and v2; provenance carries `promptVersion` (`"unknown"` for v1)
 - [ ] Existing streams rebuild unchanged; both v2 events registered for (de)serialisation
 - [ ] `docs/event-model.md`, `docs/event-schemas.md`, `docs/view-schemas.md` updated
+- [ ] All specs green; `cdk synth` succeeds
+
+---
+
+## Slice 10-N — Migrate analysis to the Converse API (model-agnostic)
+
+**Status:** Not Started
+
+**Value:** `BedrockAnalysisService` calls Bedrock's `InvokeModel` with Amazon Nova's `messages-v1` body and parses the Nova envelope, so only Nova models work — the eval harness's `make eval` sweep is restricted to the Nova family. Switching to Bedrock's model-agnostic **Converse API** lets the same code drive *any* accessible Bedrock text model (Claude, Llama, Mistral, Titan, Cohere…), so the harness can compare them and the production model is swappable via `BEDROCK_MODEL_ID` alone. Graduated from `technical-improvements.md`.
+
+**Commands in scope:** none · **Events in scope:** none
+
+**Behaviour must be identical** for the default `analysis@v1` prompt + Nova Lite: same prompt text, same parsed `summary` / `discussion` / `decisions` / `newTags` / `newActionItems`, same empty-summary fallback. Converse is a transport change, not a behaviour change.
+
+### Design
+
+- Replace `InvokeModelAsync(messages-v1 body)` with `ConverseAsync(ConverseRequest { ModelId, Messages = [user: prompt], InferenceConfig = { MaxTokens = 2048 } })` in `BedrockAnalysisService`, and in the eval judge (`BedrockContentJudgeClient`) likewise.
+- Extract two pure, testable helpers in `src/Api/Services/`:
+  - `ConverseResponseReader.Text(ConverseResponse)` → the model's text output (`Output.Message.Content[0].Text`), null-safe; shared by the service and the judge (removes the duplicated envelope-unwrap).
+  - `AnalysisResponseParser.Parse(modelText, modelId, promptVersion)` → `NoteAnalysisResult` — the existing JSON-from-text extraction, minus the Nova envelope unwrap. The service keeps the empty-summary log based on the parsed result.
+- The judge's `ParseVerdicts(modelText, count)` becomes `internal static` and parses the Converse text directly.
+
+### IAM / infra
+
+- **No change.** `Converse` / `ConverseStream` authorize against the same `bedrock:InvokeModel` action already granted to the Lambda role for Nova in `eu-west-2`; `Infrastructure.Assertions` IAM tests stay green.
+- **Out of scope:** cross-region **inference-profile** models (Claude 3.5/3.7, newer Llama) need the profile id + member-model permissions across regions — a config/IAM follow-on once a specific non-Nova model is chosen. This slice keeps the default model Nova Lite and only changes the transport.
+
+### Scenarios
+
+```
+Scenario: Converse text with valid analysis JSON is parsed and stamped
+  Given model text containing {"summary":"…","discussion":[…],"decisions":[…],"newTags":[…],"newActionItems":[…]}
+  When AnalysisResponseParser.Parse runs with model "amazon.nova-lite-v1:0" and prompt "analysis@v1"
+  Then the result carries those fields, and ModelId / PromptVersion are stamped
+
+Scenario: Converse text with no JSON falls back to an empty summary
+  Given model text with no JSON object
+  When Parse runs
+  Then the result is an empty summary with empty lists (the user's note is left untouched)
+
+Scenario: ConverseResponseReader extracts the first content block's text
+  Given a ConverseResponse whose Output.Message.Content = [ { Text = "hello" } ]
+  Then ConverseResponseReader.Text returns "hello"; a null/empty response returns ""
+
+Scenario: Judge verdicts parse from Converse text
+  Given judge model text "[\"YES\",\"NO\"]" for 2 facts
+  Then ParseVerdicts returns [true, false]
+
+Scenario: Existing analyse-handler behaviour is unchanged
+  Then tests/Api.Integration AnalyseNoteTests stay green (they use the fake service)
+```
+
+### Verification
+
+- `dotnet test tests/Analysis.Eval` — new parser + reader + judge-verdict unit tests (offline).
+- `dotnet test tests/Api.Integration` — `AnalyseNoteTests` green (handler unchanged).
+- `dotnet build -p:TreatWarningsAsErrors=true` + `cdk synth`.
+- **Live (human gate):** run `make eval` against Nova Lite and confirm `analysis@v1` still produces a non-empty, well-formed result (Converse parity); optionally sweep a non-Nova model via `EVAL_MODEL_IDS` to confirm cross-vendor works. Post-deploy: analyse one real note and confirm summary / tags / actions still populate.
+
+- [ ] Behaviour-identical for analysis@v1 + Nova Lite
+- [ ] Converse parsing unit-tested offline
 - [ ] All specs green; `cdk synth` succeeds
 
 ---
