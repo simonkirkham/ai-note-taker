@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { http, HttpResponse } from 'msw'
 import { server } from '../test/setup'
 import NoteView from '../components/NoteView'
+import { ToastProvider } from '../components/ToastProvider'
 
 vi.mock('../components/NoteEditor', () => ({
   default: ({ value, onChange, onBlur }: { value: string; onChange: (md: string) => void; onBlur: () => void }) => (
@@ -36,15 +37,17 @@ afterEach(() => {
 function renderNoteView(props: { noteId?: string; initialTitle?: string; onBack?: () => void; onDelete?: (noteId: string) => Promise<void>; isNew?: boolean } = {}) {
   const { noteId = 'note-1', initialTitle = 'Test Note', onBack = noop, onDelete = asyncNoop, isNew } = props
   return render(
-    <NoteView
-      noteId={noteId}
-      initialTitle={initialTitle}
-      onRename={noop}
-      onBack={onBack}
-      onDelete={onDelete}
-      onDateSet={noop}
-      isNew={isNew}
-    />,
+    <ToastProvider>
+      <NoteView
+        noteId={noteId}
+        initialTitle={initialTitle}
+        onRename={noop}
+        onBack={onBack}
+        onDelete={onDelete}
+        onDateSet={noop}
+        isNew={isNew}
+      />
+    </ToastProvider>,
   )
 }
 
