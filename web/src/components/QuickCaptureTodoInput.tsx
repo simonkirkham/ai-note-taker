@@ -1,6 +1,8 @@
 import { useRef, useState } from "react";
 import { addTodo, TodoItem } from "../api";
 
+import styles from "./QuickCaptureTodoInput.module.css";
+
 interface Props {
   onAdded: (item: TodoItem) => void;
   onConfirmed: (tempId: string, realId: string) => void;
@@ -47,7 +49,7 @@ export default function QuickCaptureTodoInput({ onAdded, onConfirmed, onFailed }
   }
 
   return (
-    <div className="quick-capture-input">
+    <div className={styles.quickCaptureInput}>
       <input
         ref={inputRef}
         type="text"
@@ -61,7 +63,7 @@ export default function QuickCaptureTodoInput({ onAdded, onConfirmed, onFailed }
       <button onClick={submit} disabled={submitting} aria-label="Add to-do">
         Add
       </button>
-      {error && <p className="quick-capture-error">{error}</p>}
+      {error && <p className={styles.quickCaptureError}>{error}</p>}
     </div>
   );
 }
