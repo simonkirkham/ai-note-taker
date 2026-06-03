@@ -37,15 +37,19 @@ public static class EvalRunner
         var request = new NoteAnalysisRequest(
             ExistingContent: fixture.ExistingContent,
             TranscriptText: fixture.TranscriptText,
-            CurrentUserName: fixture.CurrentUserName,
-            AllowContentRewrite: true);
+            CurrentUserName: fixture.CurrentUserName);
 
         var result = await bedrock.AnalyseAsync(request, ct);
 
         var tag = TagScorer.Score(fixture.Expected.Tags, result.NewTags);
         var action = ActionItemScorer.Score(fixture.Expected.ActionItems, result.NewActionItems);
+        // V2 produces a structured summary/discussion/decisions artifact rather than rewritten
+        // content; the judge scores whether the expected facts surface across those sections.
+        var summaryText = string.Join("\n", new[] { result.Summary }
+            .Concat(result.DiscussionPoints)
+            .Concat(result.Decisions));
         var contentScore = await new ContentJudge(judge)
-            .ScoreAsync(result.UpdatedContent, fixture.Expected.ContentMustMention, ct);
+            .ScoreAsync(summaryText, fixture.Expected.ContentMustMention, ct);
 
         var row = new EvalRow(
             RunId: runId,

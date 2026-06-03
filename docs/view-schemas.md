@@ -151,10 +151,18 @@ public record NoteDetail(
     DateOnly? Date,
     DateTimeOffset CreatedAt,
     DateTimeOffset LastModifiedAt,
-    long Version);                  // current stream sequence number
+    string? TranscriptText,                       // raw speech-to-text; null until a transcript is completed
+    string? Summary,                              // AI Final notes; null = never analysed (a normal empty state, not an error)
+    IReadOnlyList<string> DiscussionPoints,       // [] when none
+    IReadOnlyList<string> Decisions,              // [] when none
+    string? SummaryModelId,                       // attribution: which model wrote the summary
+    string? SummaryPromptVersion,                 // attribution: which prompt version produced it
+    long Version);                                // current stream sequence number
 ```
 
 `Version` is returned so the client can include it on the next command for optimistic concurrency (see [`dynamodb-event-append`](../dot-claude/skills/dynamodb-event-append/SKILL.md)).
+
+The **Final notes** fields (`summary`/`discussionPoints`/`decisions`/`summaryModelId`/`summaryPromptVersion`) are the AI's structured artifact, folded from the latest `AnalysisSummaryRecorded` (latest wins). A note that has **never been analysed** has `summary: null` and empty lists — this is a normal "no final notes yet" state, *not* an error, and is distinct from a failed analysis run (which the API surfaces as a 503 and the UI shows as an error). `content` is the user's own Quick notes and is **never** written by analysis from Phase 15-A onward.
 
 **Wire JSON:**
 ```json
@@ -166,6 +174,12 @@ public record NoteDetail(
   "date": "2026-04-21",
   "createdAt": "2026-04-23T09:14:22Z",
   "lastModifiedAt": "2026-04-23T09:15:01Z",
+  "transcriptText": "Bill: I'll send the specs on Friday...",
+  "summary": "Reviewed the API integration; Bill owns the spec delivery.",
+  "discussionPoints": ["API integration timeline", "Outstanding spec questions"],
+  "decisions": ["Bill sends specs by Friday"],
+  "summaryModelId": "amazon.nova-lite-v1:0",
+  "summaryPromptVersion": "analysis@v2",
   "version": 7
 }
 ```

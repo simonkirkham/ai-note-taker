@@ -8,12 +8,13 @@ public interface IBedrockAnalysisService
 public record NoteAnalysisRequest(
     string ExistingContent,
     string? TranscriptText,
-    string CurrentUserName,
-    bool AllowContentRewrite
+    string CurrentUserName
 );
 
 public record NoteAnalysisResult(
-    string UpdatedContent,
+    string Summary,
+    IReadOnlyList<string> DiscussionPoints,
+    IReadOnlyList<string> Decisions,
     IReadOnlyList<string> NewTags,
     IReadOnlyList<string> NewActionItems,
     string ModelId = "",

@@ -294,11 +294,17 @@ it('calls completeTranscription when the stream ends naturally', async () => {
 })
 
 // Scenario: Analyse note is enabled without a recording when the note has content (10-H)
-it('shows the Analyse note button and switch enabled when the note has content and is idle', () => {
+it('shows the Analyse note button enabled when the note has content and is idle', () => {
   render(<TranscriptionPanel noteId="note-1" noteHasContent />)
   expect(screen.getByTestId('transcription-analyse-button')).toHaveTextContent('Analyse note')
   expect(screen.getByTestId('transcription-analyse-button')).toBeEnabled()
-  expect(screen.getByTestId('transcription-update-content-toggle')).toBeInTheDocument()
+})
+
+// Scenario: The "Update note content" toggle is gone (15-A) — AI never edits the user's notes
+it('does not render an Update note content toggle', () => {
+  render(<TranscriptionPanel noteId="note-1" noteHasContent />)
+  expect(screen.queryByTestId('transcription-update-content-toggle')).toBeNull()
+  expect(screen.queryByText(/update note content/i)).toBeNull()
 })
 
 // Scenario: Analyse note is visible but disabled when there is nothing to analyse (10-H2)
@@ -310,12 +316,14 @@ it('shows the Analyse note button visible but disabled when there is nothing to 
   expect(btn).toHaveAttribute('title')
 })
 
-// Scenario: analysing with the switch off posts updateContent=false and refreshes (10-H)
-it('clicking Analyse note posts updateContent=false by default', async () => {
-  let analyseBody: unknown = null
+// Scenario: analysing POSTs to /analyse with no body and refreshes (15-A)
+it('clicking Analyse note POSTs to /analyse and triggers a refresh', async () => {
+  let analyseCalled = false
+  let analyseBody: string | null = null
   server.use(
     http.post('/api/notes/note-1/analyse', async ({ request }) => {
-      analyseBody = await request.json()
+      analyseCalled = true
+      analyseBody = await request.text()
       return new HttpResponse(null, { status: 204 })
     }),
   )
@@ -324,25 +332,9 @@ it('clicking Analyse note posts updateContent=false by default', async () => {
 
   await userEvent.click(screen.getByTestId('transcription-analyse-button'))
 
-  await waitFor(() => expect(analyseBody).toEqual({ updateContent: false }))
+  await waitFor(() => expect(analyseCalled).toBe(true))
+  expect(analyseBody).toBe('')
   await waitFor(() => expect(onAnalysisComplete).toHaveBeenCalled())
-})
-
-// Scenario: enabling the switch posts updateContent=true (10-H)
-it('enabling Update note content posts updateContent=true', async () => {
-  let analyseBody: unknown = null
-  server.use(
-    http.post('/api/notes/note-1/analyse', async ({ request }) => {
-      analyseBody = await request.json()
-      return new HttpResponse(null, { status: 204 })
-    }),
-  )
-  render(<TranscriptionPanel noteId="note-1" noteHasContent />)
-
-  await userEvent.click(screen.getByTestId('transcription-update-content-toggle'))
-  await userEvent.click(screen.getByTestId('transcription-analyse-button'))
-
-  await waitFor(() => expect(analyseBody).toEqual({ updateContent: true }))
 })
 
 // ── 10-F: Capture remote participants (system audio mix) ──────────

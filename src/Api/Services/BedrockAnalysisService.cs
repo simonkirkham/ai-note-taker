@@ -50,10 +50,10 @@ public sealed class BedrockAnalysisService : IBedrockAnalysisService
         var response = await _bedrock.InvokeModelAsync(invokeRequest, ct).ConfigureAwait(false);
         var responseBody = await new StreamReader(response.Body).ReadToEndAsync(ct).ConfigureAwait(false);
 
-        return ParseResponse(responseBody, request.ExistingContent);
+        return ParseResponse(responseBody);
     }
 
-    NoteAnalysisResult ParseResponse(string responseBody, string existingContent)
+    NoteAnalysisResult ParseResponse(string responseBody)
     {
         try
         {
@@ -74,22 +74,36 @@ public sealed class BedrockAnalysisService : IBedrockAnalysisService
             using var result = JsonDocument.Parse(json);
             var root = result.RootElement;
 
-            var updatedContent = root.GetProperty("updatedContent").GetString() ?? existingContent;
-            var newTags = root.GetProperty("newTags").EnumerateArray()
-                .Select(t => t.GetString() ?? "")
-                .Where(t => !string.IsNullOrWhiteSpace(t))
-                .ToList();
-            var newActionItems = root.GetProperty("newActionItems").EnumerateArray()
-                .Select(a => a.GetString() ?? "")
-                .Where(a => !string.IsNullOrWhiteSpace(a))
-                .ToList();
+            var summary = ReadString(root, "summary");
+            var discussionPoints = ReadStringArray(root, "discussion");
+            var decisions = ReadStringArray(root, "decisions");
+            var newTags = ReadStringArray(root, "newTags");
+            var newActionItems = ReadStringArray(root, "newActionItems");
 
-            return new NoteAnalysisResult(updatedContent, newTags, newActionItems, _modelId, _prompt.Version);
+            if (string.IsNullOrWhiteSpace(summary) && discussionPoints.Count == 0 && decisions.Count == 0)
+                _logger.LogWarning("Bedrock analysis produced an empty summary (AnalysisSummaryEmpty) for model {ModelId} prompt {PromptVersion}", _modelId, _prompt.Version);
+            else
+                _logger.LogInformation("Bedrock analysis produced a summary: {SummaryLength} chars, {DiscussionCount} discussion points, {DecisionCount} decisions", summary.Length, discussionPoints.Count, decisions.Count);
+
+            return new NoteAnalysisResult(summary, discussionPoints, decisions, newTags, newActionItems, _modelId, _prompt.Version);
         }
         catch (Exception ex) when (ex is JsonException or KeyNotFoundException or InvalidOperationException)
         {
-            _logger.LogWarning(ex, "Failed to parse Bedrock response; returning original content unchanged");
-            return new NoteAnalysisResult(existingContent, [], [], _modelId, _prompt.Version);
+            _logger.LogWarning(ex, "Failed to parse Bedrock response (AnalysisSummaryEmpty); returning an empty summary, leaving the user's note untouched");
+            return new NoteAnalysisResult("", [], [], [], [], _modelId, _prompt.Version);
         }
     }
+
+    static string ReadString(JsonElement root, string property) =>
+        root.TryGetProperty(property, out var value) && value.ValueKind == JsonValueKind.String
+            ? value.GetString() ?? ""
+            : "";
+
+    static List<string> ReadStringArray(JsonElement root, string property) =>
+        root.TryGetProperty(property, out var value) && value.ValueKind == JsonValueKind.Array
+            ? value.EnumerateArray()
+                .Select(e => e.GetString() ?? "")
+                .Where(s => !string.IsNullOrWhiteSpace(s))
+                .ToList()
+            : [];
 }

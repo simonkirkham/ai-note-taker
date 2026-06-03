@@ -55,6 +55,11 @@ export interface NoteDetail {
   date: string | null;
   tags: string[];
   transcriptText: string | null;
+  summary: string | null;
+  discussionPoints: string[];
+  decisions: string[];
+  summaryModelId: string | null;
+  summaryPromptVersion: string | null;
 }
 
 export async function getNoteDetail(noteId: string): Promise<NoteDetail> {
@@ -390,11 +395,9 @@ export async function completeTranscription(
   if (!res.ok) throw new Error(`POST /notes/${noteId}/transcription failed: ${res.status}`);
 }
 
-export async function analyseNote(noteId: string, updateContent: boolean): Promise<void> {
+export async function analyseNote(noteId: string): Promise<void> {
   const res = await apiFetch(`${base}/notes/${noteId}/analyse`, {
     method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ updateContent }),
   });
   if (!res.ok) throw new Error(`POST /notes/${noteId}/analyse failed: ${res.status}`);
 }

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
-import { editContent, getNoteDetail, getTags, setNoteDate, tagNote, untagNote, type TagIndexEntry } from "../api";
+import { analyseNote, editContent, getNoteDetail, getTags, setNoteDate, tagNote, untagNote, type TagIndexEntry } from "../api";
 import ActionsSection from "./ActionsSection";
+import FinalNotesView from "./FinalNotesView";
 import NoteEditor from "./NoteEditor";
 import ShortcutsPanel from "./ShortcutsPanel";
 import TagsSection from "./TagsSection";
@@ -30,6 +31,10 @@ export default function NoteView({
   const [allTags, setAllTags] = useState<TagIndexEntry[]>([]);
   const [actionCount, setActionCount] = useState(0);
   const [transcriptText, setTranscriptText] = useState<string | null>(null);
+  const [summary, setSummary] = useState<string | null>(null);
+  const [discussionPoints, setDiscussionPoints] = useState<string[]>([]);
+  const [decisions, setDecisions] = useState<string[]>([]);
+  const [summaryModelId, setSummaryModelId] = useState<string | null>(null);
   const [loadingDetail, setLoadingDetail] = useState(true);
   const [notFound, setNotFound] = useState(false);
   const [actionsKey, setActionsKey] = useState(0);
@@ -60,6 +65,10 @@ export default function NoteView({
           if (!detail.date) setNoteDate(noteId, loadedDate).catch(() => {});
           if (!tagsModifiedRef.current) setTags(detail.tags ?? []);
           setTranscriptText(detail.transcriptText ?? null);
+          setSummary(detail.summary ?? null);
+          setDiscussionPoints(detail.discussionPoints ?? []);
+          setDecisions(detail.decisions ?? []);
+          setSummaryModelId(detail.summaryModelId ?? null);
           setLoadingDetail(false);
         }
       })
@@ -86,9 +95,21 @@ export default function NoteView({
       setContent(detail.content);
       if (detail.tags) setTags(detail.tags);
       setTranscriptText(detail.transcriptText ?? null);
+      setSummary(detail.summary ?? null);
+      setDiscussionPoints(detail.discussionPoints ?? []);
+      setDecisions(detail.decisions ?? []);
+      setSummaryModelId(detail.summaryModelId ?? null);
       setActionsKey((k) => k + 1);
     } catch {
       // best-effort refresh; ignore errors
+    }
+  }
+
+  async function handleGenerateFinalNotes() {
+    try {
+      await analyseNote(noteId);
+    } finally {
+      await refreshNote();
     }
   }
 
@@ -212,6 +233,13 @@ export default function NoteView({
             <ActionsSection key={actionsKey} noteId={noteId} onCountChange={setActionCount} />
           </div>
           <TranscriptionPanel noteId={noteId} initialTranscript={transcriptText} noteHasContent={content.trim().length > 0} onAnalysisComplete={refreshNote} />
+          <FinalNotesView
+            summary={summary}
+            discussionPoints={discussionPoints}
+            decisions={decisions}
+            summaryModelId={summaryModelId}
+            onGenerate={handleGenerateFinalNotes}
+          />
         </div>
       </div>
     </main>

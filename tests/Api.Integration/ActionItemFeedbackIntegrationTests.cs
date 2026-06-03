@@ -119,7 +119,7 @@ public sealed class ActionItemFeedbackIntegrationTests : IClassFixture<ApiFactor
 
     private async Task<string> AnalyseWithActionsAsync(params string[] descriptions)
     {
-        _fakeBedrock.NextResult = new NoteAnalysisResult("same content", [], descriptions);
+        _fakeBedrock.NextResult = new NoteAnalysisResult("a summary", [], [], [], descriptions);
         var noteId = await CreateNoteAsync();
         await _client.PostAsync($"/notes/{noteId}/transcription",
             Json(new { transcriptText = "discussion", durationSeconds = 10 }));

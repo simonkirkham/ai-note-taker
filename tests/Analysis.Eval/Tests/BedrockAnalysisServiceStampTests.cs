@@ -10,15 +10,14 @@ public class BedrockAnalysisServiceStampTests
         Skip.IfNot(EvalRunner.IsEnabled, $"{EvalRunner.EnvFlag} not set — skipping live Bedrock call.");
 
         const string modelId = "amazon.nova-lite-v1:0";
-        var service = BedrockEvalFactory.AnalysisService(PromptCatalog.V1, modelId);
+        var service = BedrockEvalFactory.AnalysisService(PromptCatalog.V2, modelId);
 
         var result = await service.AnalyseAsync(new NoteAnalysisRequest(
             ExistingContent: "Standup notes",
             TranscriptText: "Alice: I'll fix the login bug by Friday.",
-            CurrentUserName: "Alice",
-            AllowContentRewrite: true));
+            CurrentUserName: "Alice"));
 
         Assert.Equal(modelId, result.ModelId);
-        Assert.Equal("analysis@v1", result.PromptVersion);
+        Assert.Equal("analysis@v2", result.PromptVersion);
     }
 }
