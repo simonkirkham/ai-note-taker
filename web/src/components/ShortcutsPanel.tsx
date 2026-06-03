@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 
+import styles from "./ShortcutsPanel.module.css";
+
 const SHORTCUTS = [
   { keys: "## + Space", description: "H2 heading (agenda topic)" },
   { keys: "### + Space", description: "H3 heading (sub-topic)" },
@@ -35,9 +37,9 @@ export default function ShortcutsPanel() {
   }, [open]);
 
   return (
-    <div className="shortcuts-panel" ref={panelRef}>
+    <div className={styles.shortcutsPanel} ref={panelRef}>
       <button
-        className="shortcuts-toggle"
+        className={styles.shortcutsToggle}
         onClick={() => setOpen((o) => !o)}
         aria-expanded={open}
         aria-controls="shortcuts-table"
@@ -48,7 +50,7 @@ export default function ShortcutsPanel() {
         ?
       </button>
       {open && (
-        <table id="shortcuts-table" className="shortcuts-table" data-testid="shortcuts-table">
+        <table id="shortcuts-table" className={styles.shortcutsTable} data-testid="shortcuts-table">
           <tbody>
             {SHORTCUTS.map(({ keys, description }) => (
               <tr key={keys}>
