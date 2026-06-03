@@ -116,12 +116,17 @@ The full rationale, target diagrams, staged migration plan, and the eventual-con
 
 ## Reduce Lambda SnapStart costs
 
-**What:** Investigate and reduce the cost of Lambda SnapStart on the API function. SnapStart bills for the cache storage of each published version's snapshot and incurs a restore charge per cold start, on top of the init work captured in the snapshot. Options to evaluate: trim the number of published versions/aliases retained (delete stale ones so their snapshots stop accruing storage), confirm only versions actually routed to are kept warm, measure restore-time billing against the cold-start latency benefit, and check whether SnapStart is even net-positive for current traffic — if cold starts are rare, plain on-demand init may be cheaper.
+✅ **Done** (2026-06-03) — investigated against prod (account 642653037268, eu-west-2) and right-sized via memory reduction.
 
-**Why it matters:** SnapStart adds billing dimensions (snapshot cache storage + tiered restore charges) that are easy to leave unmanaged. Accumulating published versions each carry a snapshot, so cost creeps up silently as deploys pile up. Worth right-sizing before it becomes a noticeable line item.
+**Findings:**
+- **Version accumulation is not happening.** The version counter is at 164, but CloudFormation retains only the active version plus two May-20 orphans (42, 43); it replaces the published version on each deploy rather than piling them up. Orphan snapshots auto-expire after 14 days with no invocation, so they self-clean.
+- **Cost is almost entirely snapshot-cache storage** (`SnapStart-Cached-GB-S`, ~$4–5/mo), billed per GB of `MemorySize`. Restore charges (`SnapStart-Restored-GB`) are ~$0.03/mo and per-request compute (`Lambda-GB-Second`) is ~$0 (free tier).
+- **SnapStart earns its keep — kept on.** Cold starts are not rare (~10–25/day, 300+/mo) and SnapStart restores them in ~400–650 ms vs the multi-second .NET 10 cold init without it. Disabling it would save ~$50/yr but regress hundreds of requests/month.
+- **The lever was memory, not versions.** The function was provisioned at 512 MB but peak `Max Memory Used` is ~165 MB (~3× over-provisioned).
 
-**Raised in:** Cost-review observation, 2026-06-02.
-**Depends on:** Nothing blocking. Pull SnapStart-related charges from Cost Explorer (filter the API Lambda) to quantify before acting. Confirm current SnapStart config in `src/Infrastructure/` CDK and how many versions are retained.
+**Action taken:** Dropped `ApiFunction` `MemorySize` 512 → 256 MB (~55% headroom over observed peak), roughly halving the dominant cache-storage cost *and* per-request compute. CDK assertion updated to match. Watch restore duration post-deploy — less memory means less vCPU, so if restore latency climbs materially, bump to 384 MB.
+
+**Raised in:** Cost-review observation, 2026-06-02. Actioned 2026-06-03.
 
 ---
 
