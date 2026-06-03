@@ -8,7 +8,7 @@
 |-------|---------|--------|------------|
 | Prototype | Throwaway frontend prototype of the tab layout — **Done**; confirmed Layout B hybrid (Quick notes default, Record+Export inline on the tab row, Tags+Actions in a persistent sidebar, Final notes = Summary/Discussion/Decisions) | Done | — |
 | 15-A | **Your notes stay yours, and the AI's notes get their own home.** Running analysis produces a separate, model-attributed Final notes artifact (Summary, Discussion, Decisions, Action items) and *never overwrites* the user's typed notes | Done | — |
-| 15-B | **Read a note as three tabs — Transcript, Quick notes, Final notes.** The raw transcript and the user's own notes each get a dedicated view alongside Final notes, per the approved prototype | Not Started | 15-A, Prototype |
+| 15-B | **Read a note as three tabs — Transcript, Quick notes, Final notes.** The raw transcript and the user's own notes each get a dedicated view alongside Final notes, per the approved prototype | Done | 15-A, Prototype |
 | 15-C | **Regenerate Final notes on demand.** A "Re-process" control re-runs analysis from the Final notes view, with an optimistic pending state and rollback on failure | Not Started | 15-A, 15-B |
 
 **Ordering notes.** The **Prototype** runs first and is a hard precondition for the tabbed reading experience (15-B). **15-A is the headline value and ships first** — it is the behavioural fix the user actually asked for ("divide what I wrote from what the AI generated"): analysis stops clobbering the user's notes and instead writes a separate, attributed artifact the user can see. 15-A is independent of the prototype because its value (notes are AI-safe; the AI's output is visible and separate) lands regardless of the final tab styling — it surfaces Final notes in a simple dedicated view, which **15-B** then promotes into the polished three-tab layout (Transcript and Quick notes each becoming their own view). **15-C** adds manual regeneration last, since it needs both the new artifact (15-A) and a place to host the control (15-B). Recommended order: A → B → C.
@@ -128,7 +128,7 @@ Scenario: Final notes survive a projection rebuild
 
 ## Slice 15-B — Read a note as three tabs: Transcript, Quick notes, Final notes
 
-**Status:** Not Started
+**Status:** Done — shipped 2026-06-03 (PR #149, deploy #435). Learnings: `docs/learnings/phase-15b-three-tab-view.md`. (Phase 14-O "migrate TranscriptionPanel" was dropped as superseded — 15-B deletes that component.)
 
 **User value:** The note screen becomes the clean three-tab reading experience confirmed in the prototype. The user flips between their own **Quick notes**, the raw **Transcript**, and the AI's **Final notes** — three clearly-labelled surfaces, so at a glance it is obvious which is which. The raw transcript gets its own read-only tab instead of a side panel, and Quick notes is unmistakably the user's space.
 
