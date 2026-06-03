@@ -74,6 +74,10 @@
   flex: 1;
 }
 
+.panel[hidden] {
+  display: none;
+}
+
 .contentPanel {
   display: flex;
   flex-direction: column;
