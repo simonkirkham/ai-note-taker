@@ -3,6 +3,7 @@ import { useEditor, EditorContent } from "@tiptap/react";
 import type { Editor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import { Markdown } from "tiptap-markdown";
+import styles from "./NoteEditor.module.css";
 
 interface NoteEditorProps {
   value: string;
@@ -33,7 +34,7 @@ export default function NoteEditor({ value, onChange, onBlur }: NoteEditorProps)
       attributes: {
         "aria-label": "Note content",
         "data-testid": "note-content",
-        class: "content-input",
+        class: styles.contentInput,
       },
     },
     onUpdate: ({ editor: ed }) => {
@@ -49,10 +50,10 @@ export default function NoteEditor({ value, onChange, onBlur }: NoteEditorProps)
   });
 
   return (
-    <div ref={containerRef} className="note-editor-container">
+    <div ref={containerRef} className={styles.noteEditorContainer}>
       {buttonY !== null && editor && (
         <button
-          className="discussed-button"
+          className={styles.discussedButton}
           style={{ top: buttonY }}
           onMouseDown={(e) => {
             e.preventDefault();
