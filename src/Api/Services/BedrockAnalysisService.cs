@@ -48,7 +48,7 @@ public sealed class BedrockAnalysisService : IBedrockAnalysisService
         var modelText = ConverseResponseReader.Text(response);
 
         if (!AnalysisResponseParser.TryParse(modelText, _modelId, _prompt.Version, out var result))
-            _logger.LogWarning("Failed to parse Bedrock response (AnalysisSummaryEmpty); returning an empty summary, leaving the user's note untouched. Model {ModelId} prompt {PromptVersion}, {TextLength} chars of model text", _modelId, _prompt.Version, modelText.Length);
+            _logger.LogWarning("Failed to parse Bedrock response (AnalysisParseFallback); returning an empty summary, leaving the user's note untouched. Model {ModelId} prompt {PromptVersion}, {TextLength} chars of model text", _modelId, _prompt.Version, modelText.Length);
         else if (string.IsNullOrWhiteSpace(result.Summary) && result.DiscussionPoints.Count == 0 && result.Decisions.Count == 0)
             _logger.LogWarning("Bedrock analysis produced an empty summary (AnalysisSummaryEmpty) for model {ModelId} prompt {PromptVersion}", _modelId, _prompt.Version);
         else
