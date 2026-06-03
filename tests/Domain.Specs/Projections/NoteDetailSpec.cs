@@ -124,4 +124,49 @@ public sealed class NoteDetailSpec
         Assert.Equal(createdAt, detail.CreatedAt);
         Assert.Equal(editedAt, detail.LastModifiedAt);
     }
+
+    [Fact]
+    public void AnalysisSummaryRecorded_folds_summary_sections_and_attribution()
+    {
+        var noteId = Guid.NewGuid();
+        var projection = new NoteDetailProjection();
+        projection.Handle(Envelope($"note#{noteId}", 1, nameof(NoteCreated),
+            JsonSerializer.Serialize(new NoteCreated(new NoteId(noteId)))));
+
+        projection.Handle(Envelope($"note#{noteId}", 2, nameof(AnalysisSummaryRecorded),
+            JsonSerializer.Serialize(new AnalysisSummaryRecorded(new NoteId(noteId),
+                "A summary", ["point one"], ["decision one"], "amazon.nova-lite-v1:0", "analysis@v2"))));
+
+        var detail = projection.GetDetail(new NoteId(noteId));
+        Assert.Equal("A summary", detail!.Summary);
+        Assert.Equal(["point one"], detail.DiscussionPoints);
+        Assert.Equal(["decision one"], detail.Decisions);
+        Assert.Equal("amazon.nova-lite-v1:0", detail.SummaryModelId);
+        Assert.Equal("analysis@v2", detail.SummaryPromptVersion);
+    }
+
+    [Fact]
+    public void Rebuilding_from_two_AnalysisSummaryRecorded_keeps_the_latest()
+    {
+        var noteId = Guid.NewGuid();
+        var stream = new[]
+        {
+            Envelope($"note#{noteId}", 1, nameof(NoteCreated),
+                JsonSerializer.Serialize(new NoteCreated(new NoteId(noteId)))),
+            Envelope($"note#{noteId}", 2, nameof(AnalysisSummaryRecorded),
+                JsonSerializer.Serialize(new AnalysisSummaryRecorded(new NoteId(noteId),
+                    "First", ["old point"], ["old decision"], "model", "analysis@v2"))),
+            Envelope($"note#{noteId}", 3, nameof(AnalysisSummaryRecorded),
+                JsonSerializer.Serialize(new AnalysisSummaryRecorded(new NoteId(noteId),
+                    "Second", ["new point"], ["new decision"], "model", "analysis@v2")))
+        };
+
+        var projection = new NoteDetailProjection();
+        foreach (var e in stream) projection.Handle(e);
+
+        var detail = projection.GetDetail(new NoteId(noteId));
+        Assert.Equal("Second", detail!.Summary);
+        Assert.Equal(["new point"], detail.DiscussionPoints);
+        Assert.Equal(["new decision"], detail.Decisions);
+    }
 }

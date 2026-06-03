@@ -12,6 +12,7 @@ public sealed class Note : IAggregate
     string? _calendarEventId;
     readonly HashSet<string> _tags = [];
     string? _transcriptText;
+    string? _summary;
 
     public bool Exists => _exists && !_deleted;
 
@@ -52,6 +53,9 @@ public sealed class Note : IAggregate
             case TranscriptionCompleted e:
                 _transcriptText = e.TranscriptText;
                 break;
+            case AnalysisSummaryRecorded e:
+                _summary = e.Summary;
+                break;
             case TagsSuggested:
                 break;
             case ActionItemsSuggested:
@@ -77,6 +81,7 @@ public sealed class Note : IAggregate
             CompleteTranscription cmd => HandleCompleteTranscription(cmd),
             RecordTagSuggestions cmd => HandleRecordTagSuggestions(cmd),
             RecordActionItemSuggestions cmd => HandleRecordActionItemSuggestions(cmd),
+            RecordAnalysisSummary cmd => HandleRecordAnalysisSummary(cmd),
             _ => throw new ArgumentOutOfRangeException(nameof(command))
         };
 
@@ -188,5 +193,13 @@ public sealed class Note : IAggregate
         if (cmd.ActionItemIds.Count == 0)
             return [];
         return [new ActionItemsSuggested(cmd.NoteId, cmd.ActionItemIds)];
+    }
+
+    IReadOnlyList<IDomainEvent> HandleRecordAnalysisSummary(RecordAnalysisSummary cmd)
+    {
+        if (!_exists || _deleted)
+            throw new InvalidOperationException($"Note {cmd.NoteId} does not exist.");
+        return [new AnalysisSummaryRecorded(cmd.NoteId, cmd.Summary, cmd.DiscussionPoints, cmd.Decisions,
+            cmd.ModelId, cmd.PromptVersion)];
     }
 }

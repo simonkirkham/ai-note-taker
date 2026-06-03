@@ -22,50 +22,83 @@ public sealed class AnalyseNoteTests : IClassFixture<ApiFactory>
         _factory = factory;
         _client = factory.CreateClient();
         _fakeBedrock = factory.Services.GetRequiredService<FakeBedrockAnalysisService>();
-        _fakeBedrock.NextResult = new NoteAnalysisResult("", [], []);
+        _fakeBedrock.NextResult = new NoteAnalysisResult("", [], [], [], []);
     }
 
-    // Scenario: Analysis fills gaps in note content, extracts tags and action items
+    // Scenario: Analysis writes a separate Final notes artifact, not over my notes
     [Fact]
-    public async Task PostAnalyse_UpdatesContentTagsAndActions_Returns204()
+    public async Task PostAnalyse_RecordsSummary_DoesNotEditContent_Returns204()
     {
         _fakeBedrock.NextResult = new NoteAnalysisResult(
-            "Discussed login bug. We agreed to fix login by Friday. Owner: Alice.",
-            ["login", "auth"],
-            ["Fix login bug by Friday"]);
+            Summary: "The team discussed the login bug and agreed a fix.",
+            DiscussionPoints: ["Login fails on Friday", "Alice owns the fix"],
+            Decisions: ["Ship the fix by Friday"],
+            NewTags: ["login", "auth"],
+            NewActionItems: ["Fix login bug by Friday"],
+            ModelId: "amazon.nova-lite-v1:0",
+            PromptVersion: "analysis@v2");
 
         var noteId = await CreateNoteWithTranscriptAsync(
-            content: "Discussed login bug.",
+            content: "My private notes.",
             transcript: "We agreed to fix login by Friday. Alice will fix it.");
-
-        var resp = await _client.PostAsync($"/notes/{noteId}/analyse", Json(new { updateContent = true }));
-
-        Assert.Equal(HttpStatusCode.NoContent, resp.StatusCode);
-
-        var detail = await GetNoteAsync(noteId);
-        Assert.Contains("Owner: Alice", detail.GetProperty("content").GetString());
-        var tags = detail.GetProperty("tags").EnumerateArray().Select(t => t.GetString()).ToList();
-        Assert.Contains("login", tags);
-        Assert.Contains("auth", tags);
-
-        var actions = await GetActionsAsync(noteId);
-        Assert.Contains(actions, a => a.GetProperty("description").GetString()!.Contains("Fix login bug"));
-    }
-
-    // Scenario: Analysis is a no-op when Bedrock returns unchanged content and empty tags/actions
-    [Fact]
-    public async Task PostAnalyse_NoChanges_Returns204WithNoSideEffects()
-    {
-        const string content = "Meeting notes.";
-        _fakeBedrock.NextResult = new NoteAnalysisResult(content, [], []);
-
-        var noteId = await CreateNoteWithTranscriptAsync(content: content, transcript: "same old stuff");
 
         var resp = await _client.PostAsync($"/notes/{noteId}/analyse", null);
 
         Assert.Equal(HttpStatusCode.NoContent, resp.StatusCode);
+
         var detail = await GetNoteAsync(noteId);
-        Assert.Equal(content, detail.GetProperty("content").GetString());
+        Assert.Equal("My private notes.", detail.GetProperty("content").GetString());
+        Assert.Equal("The team discussed the login bug and agreed a fix.", detail.GetProperty("summary").GetString());
+        var discussion = detail.GetProperty("discussionPoints").EnumerateArray().Select(p => p.GetString()).ToList();
+        Assert.Contains("Login fails on Friday", discussion);
+        var decisions = detail.GetProperty("decisions").EnumerateArray().Select(d => d.GetString()).ToList();
+        Assert.Contains("Ship the fix by Friday", decisions);
+        Assert.Equal("amazon.nova-lite-v1:0", detail.GetProperty("summaryModelId").GetString());
+        Assert.Equal("analysis@v2", detail.GetProperty("summaryPromptVersion").GetString());
+
+        var events = await ReadStreamAsync(noteId);
+        Assert.Single(events, e => e.EventType == nameof(AnalysisSummaryRecorded));
+        // The only ContentEdited is the user's own PUT /content; analysis adds none.
+        Assert.Single(events, e => e.EventType == nameof(ContentEdited));
+
+        var tags = detail.GetProperty("tags").EnumerateArray().Select(t => t.GetString()).ToList();
+        Assert.Contains("login", tags);
+        var actions = await GetActionsAsync(noteId);
+        Assert.Contains(actions, a => a.GetProperty("description").GetString()!.Contains("Fix login bug"));
+    }
+
+    // Scenario: Re-running analysis replaces the Final notes (latest wins), both events remain in the stream
+    [Fact]
+    public async Task PostAnalyse_RerunReplacesSummary_LatestWins()
+    {
+        var noteId = await CreateNoteWithTranscriptAsync(content: "Notes.", transcript: "A meeting happened.");
+
+        _fakeBedrock.NextResult = new NoteAnalysisResult("First summary", ["a"], [], [], []);
+        await _client.PostAsync($"/notes/{noteId}/analyse", null);
+
+        _fakeBedrock.NextResult = new NoteAnalysisResult("Second summary", ["b"], [], [], []);
+        var resp = await _client.PostAsync($"/notes/{noteId}/analyse", null);
+
+        Assert.Equal(HttpStatusCode.NoContent, resp.StatusCode);
+        var detail = await GetNoteAsync(noteId);
+        Assert.Equal("Second summary", detail.GetProperty("summary").GetString());
+
+        var events = await ReadStreamAsync(noteId);
+        Assert.Equal(2, events.Count(e => e.EventType == nameof(AnalysisSummaryRecorded)));
+    }
+
+    // Scenario: A note never analysed shows an empty Final notes state, not an error
+    [Fact]
+    public async Task GetNote_NeverAnalysed_HasNullSummaryAndEmptyLists()
+    {
+        var noteId = await CreateNoteWithContentAsync("Some notes I typed.");
+
+        var detail = await GetNoteAsync(noteId);
+
+        Assert.Equal(JsonValueKind.Null, detail.GetProperty("summary").ValueKind);
+        Assert.Empty(detail.GetProperty("discussionPoints").EnumerateArray());
+        Assert.Empty(detail.GetProperty("decisions").EnumerateArray());
+        Assert.Equal(JsonValueKind.Null, detail.GetProperty("summaryModelId").ValueKind);
     }
 
     // Scenario: Analysis runs on note content when no transcript exists (10-H)
@@ -73,11 +106,11 @@ public sealed class AnalyseNoteTests : IClassFixture<ApiFactory>
     public async Task PostAnalyse_ContentButNoTranscript_RunsAnalysis_Returns204()
     {
         _fakeBedrock.NextResult = new NoteAnalysisResult(
-            "Met with Bob about the login bug.", ["login"], ["Follow up with Bob"]);
+            "Met with Bob about the login bug.", [], [], ["login"], ["Follow up with Bob"]);
 
         var noteId = await CreateNoteWithContentAsync("Met with Bob about the login bug.");
 
-        var resp = await _client.PostAsync($"/notes/{noteId}/analyse", Json(new { updateContent = false }));
+        var resp = await _client.PostAsync($"/notes/{noteId}/analyse", null);
 
         Assert.Equal(HttpStatusCode.NoContent, resp.StatusCode);
         var detail = await GetNoteAsync(noteId);
@@ -93,7 +126,7 @@ public sealed class AnalyseNoteTests : IClassFixture<ApiFactory>
     {
         var noteId = await CreateNoteAsync();
 
-        var resp = await _client.PostAsync($"/notes/{noteId}/analyse", Json(new { updateContent = false }));
+        var resp = await _client.PostAsync($"/notes/{noteId}/analyse", null);
 
         Assert.Equal(HttpStatusCode.UnprocessableEntity, resp.StatusCode);
     }
@@ -104,64 +137,69 @@ public sealed class AnalyseNoteTests : IClassFixture<ApiFactory>
     {
         var noteId = await CreateNoteWithContentAsync("   ");
 
-        var resp = await _client.PostAsync($"/notes/{noteId}/analyse", Json(new { updateContent = false }));
+        var resp = await _client.PostAsync($"/notes/{noteId}/analyse", null);
 
         Assert.Equal(HttpStatusCode.UnprocessableEntity, resp.StatusCode);
     }
 
-    // Scenario: Content is left untouched when the update-content switch is off (10-H)
+    // Scenario: Content is left byte-for-byte untouched even when the model returns a summary
     [Fact]
-    public async Task PostAnalyse_UpdateContentFalse_LeavesContentUnchanged_StillTagsAndActions()
+    public async Task PostAnalyse_LeavesQuickNotesUnchanged_StillTagsAndActions()
     {
         _fakeBedrock.NextResult = new NoteAnalysisResult(
-            "COMPLETELY REWRITTEN BY THE MODEL", ["login"], ["Fix the login bug"]);
+            "A SUMMARY THE MODEL WROTE", [], [], ["login"], ["Fix the login bug"]);
 
         var noteId = await CreateNoteWithTranscriptAsync(
             content: "My private notes.", transcript: "Alice will fix login.");
 
-        var resp = await _client.PostAsync($"/notes/{noteId}/analyse", Json(new { updateContent = false }));
+        var resp = await _client.PostAsync($"/notes/{noteId}/analyse", null);
 
         Assert.Equal(HttpStatusCode.NoContent, resp.StatusCode);
         var detail = await GetNoteAsync(noteId);
         Assert.Equal("My private notes.", detail.GetProperty("content").GetString());
+        var events = await ReadStreamAsync(noteId);
+        // The only ContentEdited is the user's own PUT /content; analysis never edits content.
+        Assert.Single(events, e => e.EventType == nameof(ContentEdited));
         var tags = detail.GetProperty("tags").EnumerateArray().Select(t => t.GetString()).ToList();
         Assert.Contains("login", tags);
         var actions = await GetActionsAsync(noteId);
         Assert.Contains(actions, a => a.GetProperty("description").GetString()!.Contains("Fix the login bug"));
     }
 
-    // Scenario: Content is rewritten only when the update-content switch is on (10-H)
-    [Fact]
-    public async Task PostAnalyse_UpdateContentTrue_RewritesContent()
-    {
-        _fakeBedrock.NextResult = new NoteAnalysisResult(
-            "My private notes. Alice will fix the login bug by Friday.", [], []);
-
-        var noteId = await CreateNoteWithTranscriptAsync(
-            content: "My private notes.", transcript: "Alice will fix login by Friday.");
-
-        var resp = await _client.PostAsync($"/notes/{noteId}/analyse", Json(new { updateContent = true }));
-
-        Assert.Equal(HttpStatusCode.NoContent, resp.StatusCode);
-        var detail = await GetNoteAsync(noteId);
-        Assert.Contains("by Friday", detail.GetProperty("content").GetString());
-    }
-
     // Scenario: Both note content and transcript are passed to the analysis service (10-H)
     [Fact]
-    public async Task PostAnalyse_PassesContentTranscriptAndFlagToService()
+    public async Task PostAnalyse_PassesContentAndTranscriptToService()
     {
-        _fakeBedrock.NextResult = new NoteAnalysisResult("unchanged", [], []);
+        _fakeBedrock.NextResult = new NoteAnalysisResult("unchanged", [], [], [], []);
 
         var noteId = await CreateNoteWithTranscriptAsync(
             content: "Login bug.", transcript: "Alice will fix it by Friday.");
 
-        await _client.PostAsync($"/notes/{noteId}/analyse", Json(new { updateContent = true }));
+        await _client.PostAsync($"/notes/{noteId}/analyse", null);
 
         Assert.NotNull(_fakeBedrock.LastRequest);
         Assert.Equal("Login bug.", _fakeBedrock.LastRequest!.ExistingContent);
         Assert.Equal("Alice will fix it by Friday.", _fakeBedrock.LastRequest.TranscriptText);
-        Assert.True(_fakeBedrock.LastRequest.AllowContentRewrite);
+    }
+
+    // Scenario: Malformed model output never corrupts the note — empty summary, no throw, content untouched
+    [Fact]
+    public async Task PostAnalyse_EmptySummary_NoThrow_ContentAndStreamUntouched()
+    {
+        _fakeBedrock.NextResult = new NoteAnalysisResult("", [], [], [], []);
+
+        var noteId = await CreateNoteWithTranscriptAsync(content: "My notes.", transcript: "garbled.");
+
+        var resp = await _client.PostAsync($"/notes/{noteId}/analyse", null);
+
+        Assert.Equal(HttpStatusCode.NoContent, resp.StatusCode);
+        var detail = await GetNoteAsync(noteId);
+        Assert.Equal("My notes.", detail.GetProperty("content").GetString());
+        Assert.Equal("", detail.GetProperty("summary").GetString());
+        var events = await ReadStreamAsync(noteId);
+        // The only ContentEdited is the user's own PUT /content; the empty-summary analysis adds none.
+        Assert.Single(events, e => e.EventType == nameof(ContentEdited));
+        Assert.Single(events, e => e.EventType == nameof(AnalysisSummaryRecorded));
     }
 
     // Scenario: Analysis requires authentication
@@ -188,7 +226,7 @@ public sealed class AnalyseNoteTests : IClassFixture<ApiFactory>
     [Fact]
     public async Task PostAnalyse_OtherUsersNote_Returns404()
     {
-        _fakeBedrock.NextResult = new NoteAnalysisResult("updated", [], []);
+        _fakeBedrock.NextResult = new NoteAnalysisResult("updated", [], [], [], []);
         var noteId = await CreateNoteWithTranscriptAsync("original", "transcript");
 
         var otherClient = _factory.CreateClientAsOtherUser();
@@ -201,7 +239,7 @@ public sealed class AnalyseNoteTests : IClassFixture<ApiFactory>
     [Fact]
     public async Task PostAnalyse_ExistingTagNotDuplicated()
     {
-        _fakeBedrock.NextResult = new NoteAnalysisResult("same content", ["login"], []);
+        _fakeBedrock.NextResult = new NoteAnalysisResult("a summary", [], [], ["login"], []);
 
         var noteId = await CreateNoteAsync();
         await _client.PostAsync($"/notes/{noteId}/transcription",
@@ -220,7 +258,7 @@ public sealed class AnalyseNoteTests : IClassFixture<ApiFactory>
     [Fact]
     public async Task PostAnalyse_ExistingActionItemNotDuplicated()
     {
-        _fakeBedrock.NextResult = new NoteAnalysisResult("same content", [], ["Fix login bug by Friday"]);
+        _fakeBedrock.NextResult = new NoteAnalysisResult("a summary", [], [], [], ["Fix login bug by Friday"]);
 
         var noteId = await CreateNoteWithTranscriptAsync("same content", "Fix login bug by Friday");
         await _client.PostAsync($"/notes/{noteId}/analyse", null);
@@ -233,9 +271,9 @@ public sealed class AnalyseNoteTests : IClassFixture<ApiFactory>
         Assert.Single(actions, a => a.GetProperty("description").GetString()!.Contains("Fix login bug"));
     }
 
-    // Scenario: Bedrock failure returns 503
+    // Scenario: Bedrock failure returns 503 and records nothing
     [Fact]
-    public async Task PostAnalyse_WhenBedrockThrows_Returns503()
+    public async Task PostAnalyse_WhenBedrockThrows_Returns503_RecordsNothing()
     {
         var throwingFactory = _factory.WithWebHostBuilder(b => b.ConfigureTestServices(s =>
         {
@@ -254,13 +292,15 @@ public sealed class AnalyseNoteTests : IClassFixture<ApiFactory>
         var resp = await client.PostAsync($"/notes/{noteId}/analyse", null);
 
         Assert.Equal(HttpStatusCode.ServiceUnavailable, resp.StatusCode);
+        var events = await ReadStreamAsync(noteId);
+        Assert.DoesNotContain(events, e => e.EventType == nameof(AnalysisSummaryRecorded));
     }
 
     // Scenario: Analysis records only the newly-applied AI tags as TagsSuggested, before NoteTagged (10-I)
     [Fact]
     public async Task PostAnalyse_RecordsOnlyNewTagsAsSuggested_BeforeNoteTagged()
     {
-        _fakeBedrock.NextResult = new NoteAnalysisResult("same content", ["auth", "login"], []);
+        _fakeBedrock.NextResult = new NoteAnalysisResult("a summary", [], [], ["auth", "login"], []);
 
         var noteId = await CreateNoteAsync();
         await _client.PostAsync($"/notes/{noteId}/transcription",
@@ -286,7 +326,7 @@ public sealed class AnalyseNoteTests : IClassFixture<ApiFactory>
     [Fact]
     public async Task PostAnalyse_NoNewTags_RecordsNoTagsSuggested()
     {
-        _fakeBedrock.NextResult = new NoteAnalysisResult("same content", ["auth"], []);
+        _fakeBedrock.NextResult = new NoteAnalysisResult("a summary", [], [], ["auth"], []);
 
         var noteId = await CreateNoteAsync();
         await _client.PostAsync($"/notes/{noteId}/transcription",
@@ -304,7 +344,7 @@ public sealed class AnalyseNoteTests : IClassFixture<ApiFactory>
     [Fact]
     public async Task PostAnalyse_RecordsCreatedActionItemIds_AsActionItemsSuggested()
     {
-        _fakeBedrock.NextResult = new NoteAnalysisResult("same content", [], ["Fix the login bug by Friday"]);
+        _fakeBedrock.NextResult = new NoteAnalysisResult("a summary", [], [], [], ["Fix the login bug by Friday"]);
 
         var noteId = await CreateNoteWithTranscriptAsync(content: "Login bug.", transcript: "Alice will fix login by Friday.");
 
@@ -326,7 +366,7 @@ public sealed class AnalyseNoteTests : IClassFixture<ApiFactory>
     [Fact]
     public async Task PostAnalyse_NoNewActionItems_RecordsNoActionItemsSuggested()
     {
-        _fakeBedrock.NextResult = new NoteAnalysisResult("same content", [], []);
+        _fakeBedrock.NextResult = new NoteAnalysisResult("a summary", [], [], [], []);
 
         var noteId = await CreateNoteWithTranscriptAsync(content: "Login bug.", transcript: "nothing actionable here.");
 

@@ -24,6 +24,16 @@ public sealed class DynamoDbNoteDetailStore(IAmazonDynamoDB dynamo, string table
             item["Tags"] = new AttributeValue { SS = detail.Tags.ToList() };
         if (!string.IsNullOrEmpty(detail.TranscriptText))
             item["TranscriptText"] = new AttributeValue { S = detail.TranscriptText };
+        if (detail.Summary is not null)
+            item["Summary"] = new AttributeValue { S = detail.Summary };
+        if (detail.DiscussionPoints is { Count: > 0 })
+            item["DiscussionPoints"] = new AttributeValue { L = detail.DiscussionPoints.Select(p => new AttributeValue { S = p }).ToList() };
+        if (detail.Decisions is { Count: > 0 })
+            item["Decisions"] = new AttributeValue { L = detail.Decisions.Select(d => new AttributeValue { S = d }).ToList() };
+        if (!string.IsNullOrEmpty(detail.SummaryModelId))
+            item["SummaryModelId"] = new AttributeValue { S = detail.SummaryModelId };
+        if (!string.IsNullOrEmpty(detail.SummaryPromptVersion))
+            item["SummaryPromptVersion"] = new AttributeValue { S = detail.SummaryPromptVersion };
 
         await dynamo.PutItemAsync(new PutItemRequest { TableName = tableName, Item = item }, ct)
             .ConfigureAwait(false);
@@ -81,6 +91,11 @@ public sealed class DynamoDbNoteDetailStore(IAmazonDynamoDB dynamo, string table
             ? tagsAttr.SS.AsReadOnly()
             : Array.Empty<string>();
         var transcriptText = item.TryGetValue("TranscriptText", out var txAttr) ? txAttr.S : null;
+        var summary = item.TryGetValue("Summary", out var summaryAttr) ? summaryAttr.S : null;
+        var discussionPoints = ReadStringList(item, "DiscussionPoints");
+        var decisions = ReadStringList(item, "Decisions");
+        var summaryModelId = item.TryGetValue("SummaryModelId", out var modelAttr) ? modelAttr.S : null;
+        var summaryPromptVersion = item.TryGetValue("SummaryPromptVersion", out var promptAttr) ? promptAttr.S : null;
         return new NoteDetailView(
             new NoteId(Guid.Parse(item["NoteId"].S)),
             ReadStringAttribute(item, "Title"),
@@ -90,8 +105,18 @@ public sealed class DynamoDbNoteDetailStore(IAmazonDynamoDB dynamo, string table
             date,
             tags,
             UserId: item.TryGetValue("UserId", out var uidAttr) ? uidAttr.S : "",
-            TranscriptText: transcriptText);
+            TranscriptText: transcriptText,
+            Summary: summary,
+            DiscussionPoints: discussionPoints,
+            Decisions: decisions,
+            SummaryModelId: summaryModelId,
+            SummaryPromptVersion: summaryPromptVersion);
     }
+
+    private static IReadOnlyList<string>? ReadStringList(Dictionary<string, AttributeValue> item, string key) =>
+        item.TryGetValue(key, out var attr) && attr.L?.Count > 0
+            ? attr.L.Select(v => v.S).ToList().AsReadOnly()
+            : null;
 
     private static string ReadStringAttribute(Dictionary<string, AttributeValue> item, string key) =>
         item.TryGetValue(key, out var attr) && attr.NULL != true ? (attr.S ?? "") : "";

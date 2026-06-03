@@ -55,6 +55,11 @@ export interface NoteDetail {
   date: string | null;
   tags: string[];
   transcriptText: string | null;
+  summary: string | null;
+  discussionPoints: string[];
+  decisions: string[];
+  summaryModelId: string | null;
+  summaryPromptVersion: string | null;
 }
 
 export async function getNoteDetail(noteId: string): Promise<NoteDetail> {

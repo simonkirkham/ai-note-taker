@@ -60,9 +60,12 @@ A standalone to-do not attached to any note. Created from the home screen quick-
 | `SetNoteDate(noteId, date, setAt)` | Note exists, not deleted | `NoteDateSet` |
 | `RecordTagSuggestions(noteId, tags)` | Note exists, not deleted; empty tag list emits nothing | `TagsSuggested` |
 | `RecordActionItemSuggestions(noteId, actionItemIds)` | Note exists, not deleted; empty list emits nothing | `ActionItemsSuggested` |
+| `RecordAnalysisSummary(noteId, summary, discussionPoints, decisions, modelId, promptVersion)` | Note exists, not deleted | `AnalysisSummaryRecorded` |
 | `DeleteNote(noteId, deletedAt)` | Note exists, status ≠ Deleted | `NoteDeleted` |
 
 > `RecordTagSuggestions` / `RecordActionItemSuggestions` are issued by the analysis handler (not the user) to record which tags / action items an AI run contributed. They record provenance only — tags are applied separately via `TagNote`/`NoteTagged`, and action items via `AddActionItem`/`ActionItemAdded` on the `ActionItem` aggregate (the suggestion event references them by id).
+>
+> `RecordAnalysisSummary` is also issued by the analysis handler. It records the AI's structured **Final notes** artifact (Summary, Discussion points, Decisions) as a separate first-class fact — a full snapshot where the latest wins, like `ContentEdited`. From Phase 15-A onward analysis **never** edits the user's notes (`ContentEdited` is no longer emitted by the analysis path); the AI's output lives only in `AnalysisSummaryRecorded`, attributed by `ModelId`/`PromptVersion`. Action items are **not** duplicated into this event — they remain `ActionItem` aggregates (single source of truth), referenced for provenance via `ActionItemsSuggested`.
 
 ### ActionItem
 
@@ -99,6 +102,7 @@ A standalone to-do not attached to any note. Created from the home screen quick-
 - `NoteDateSet { NoteId, Date }` — user-specified `DateOnly`; can be set or changed at any time while the note is active
 - `TagsSuggested { NoteId, Tags[] }` — AI provenance; records the tags an analysis run contributed (the post-dedup applied set), so a later `NoteUntagged` of one can be classified as a rejected AI suggestion. No aggregate state change
 - `ActionItemsSuggested { NoteId, ActionItemIds[] }` — AI provenance; records (by id) the action items an analysis run created, so a later `ActionItemDeleted`/`ActionItemCompleted` can be attributed to the AI. No aggregate state change
+- `AnalysisSummaryRecorded { NoteId, Summary, DiscussionPoints[], Decisions[], ModelId, PromptVersion }` — the AI's Final notes artifact; full snapshot, latest wins (like `ContentEdited`). `ModelId`/`PromptVersion` attribute who/what generated it. Folds into `NoteDetail.summary`/`discussionPoints`/`decisions`/`summaryModelId`/`summaryPromptVersion`
 - `NoteDeleted { NoteId }` — soft delete; event remains in the stream, projections filter it out
 
 ### ActionItem

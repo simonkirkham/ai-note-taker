@@ -65,19 +65,21 @@ public class EvalRunnerTests : IDisposable
                 ContentMustMention: []));
 
         var bedrock = new StubBedrock(new NoteAnalysisResult(
-            UpdatedContent: "Updated notes",
+            Summary: "We discussed the login bug.",
+            DiscussionPoints: ["Login is broken"],
+            Decisions: ["Fix it"],
             NewTags: ["login"],
             NewActionItems: ["Fix login bug"]));
         var judge = new StubJudge(allYes: true);
 
         var row = await EvalRunner.RunAsync(
-            fixture, PromptCatalog.V1, modelId: "amazon.nova-lite-v1:0",
+            fixture, PromptCatalog.V2, modelId: "amazon.nova-lite-v1:0",
             bedrock: bedrock, judge: judge, runId: "run-1",
             resultsDirectory: _resultsDir);
 
         Assert.Equal("test-fixture", row.FixtureId);
         Assert.Equal("amazon.nova-lite-v1:0", row.ModelId);
-        Assert.Equal("analysis@v1", row.PromptVersion);
+        Assert.Equal("analysis@v2", row.PromptVersion);
         Assert.Equal("run-1", row.RunId);
     }
 
@@ -86,10 +88,10 @@ public class EvalRunnerTests : IDisposable
     {
         var fixture = new Fixture("f1", "t", "c", "Alice",
             new FixtureExpected([], [], []));
-        var bedrock = new StubBedrock(new NoteAnalysisResult("c", [], []));
+        var bedrock = new StubBedrock(new NoteAnalysisResult("c", [], [], [], []));
         var judge = new StubJudge(allYes: true);
 
-        await EvalRunner.RunAsync(fixture, PromptCatalog.V1, "model-x",
+        await EvalRunner.RunAsync(fixture, PromptCatalog.V2, "model-x",
             bedrock, judge, runId: "run-2", resultsDirectory: _resultsDir);
 
         var file = Path.Combine(_resultsDir, "run-2.jsonl");

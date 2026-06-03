@@ -78,7 +78,12 @@ public static class NoteHandlers
             tags = detail.Tags ?? [],
             createdAt = detail.CreatedAt,
             lastModifiedAt = detail.LastModifiedAt,
-            transcriptText = detail.TranscriptText
+            transcriptText = detail.TranscriptText,
+            summary = detail.Summary,
+            discussionPoints = detail.DiscussionPoints ?? [],
+            decisions = detail.Decisions ?? [],
+            summaryModelId = detail.SummaryModelId,
+            summaryPromptVersion = detail.SummaryPromptVersion
         });
     }
 

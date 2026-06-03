@@ -91,7 +91,7 @@ public sealed class TagFeedbackIntegrationTests : IClassFixture<ApiFactory>
 
     private async Task<string> AnalyseWithTagsAsync(params string[] tags)
     {
-        _fakeBedrock.NextResult = new NoteAnalysisResult("same content", tags, []);
+        _fakeBedrock.NextResult = new NoteAnalysisResult("a summary", [], [], tags, []);
         var noteId = await CreateNoteAsync();
         await _client.PostAsync($"/notes/{noteId}/transcription",
             Json(new { transcriptText = "discussion", durationSeconds = 10 }));

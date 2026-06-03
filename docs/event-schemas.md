@@ -60,6 +60,13 @@ public record NoteUntagged(NoteId NoteId, string Tag)          : NoteEvent;
 public record NoteDateSet(NoteId NoteId, DateOnly? Date)       : NoteEvent;  // null = cleared
 public record TagsSuggested(NoteId NoteId, IReadOnlyList<string> Tags) : NoteEvent;  // AI provenance
 public record ActionItemsSuggested(NoteId NoteId, IReadOnlyList<Guid> ActionItemIds) : NoteEvent;  // AI provenance
+public record AnalysisSummaryRecorded(                         // AI Final notes artifact; full snapshot, latest wins
+    NoteId NoteId,
+    string Summary,
+    IReadOnlyList<string> DiscussionPoints,
+    IReadOnlyList<string> Decisions,
+    string ModelId,
+    string PromptVersion) : NoteEvent;
 public record NoteDeleted(NoteId NoteId)                       : NoteEvent;
 ```
 
@@ -101,6 +108,18 @@ public record NoteDeleted(NoteId NoteId)                       : NoteEvent;
 `ActionItemsSuggested` (ids of the action items an analysis run created; provenance only):
 ```json
 { "noteId": "7f3a9c2b-1e4d-4a8f-9c0d-2b1f3a4e5c6d", "actionItemIds": ["c1d2e3f4-5a6b-7c8d-9e0f-1a2b3c4d5e6f"] }
+```
+
+`AnalysisSummaryRecorded` (the AI's Final notes artifact; full snapshot, latest wins; empty summary + empty lists is a valid "analysis produced nothing" state, distinct from a never-analysed note which has no event at all):
+```json
+{
+  "noteId": "7f3a9c2b-1e4d-4a8f-9c0d-2b1f3a4e5c6d",
+  "summary": "The team reviewed the login bug and agreed Alice owns the fix.",
+  "discussionPoints": ["Login fails intermittently on Friday deploys", "Root cause likely the session cache"],
+  "decisions": ["Ship the fix before the next release"],
+  "modelId": "amazon.nova-lite-v1:0",
+  "promptVersion": "analysis@v2"
+}
 ```
 
 When clearing: `{ "noteId": "...", "date": null }`.

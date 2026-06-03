@@ -11,4 +11,9 @@ public record NoteDetailView(
     DateOnly? Date = null,
     IReadOnlyList<string>? Tags = null,
     string UserId = "",
-    string? TranscriptText = null);
+    string? TranscriptText = null,
+    string? Summary = null,
+    IReadOnlyList<string>? DiscussionPoints = null,
+    IReadOnlyList<string>? Decisions = null,
+    string? SummaryModelId = null,
+    string? SummaryPromptVersion = null);
