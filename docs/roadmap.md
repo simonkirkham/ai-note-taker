@@ -177,7 +177,7 @@ Build a high-quality AI analysis of meeting notes — and the means to keep it h
 - **10-K/10-L (done):** `ActionItemsSuggested` event + per-user feedback projection (suggested / deleted / completed)
 - **10-M:** version the `*Suggested` events to stamp `modelId`/`promptVersion`, tying the correction signal to a prompt version
 
-The feedback track (10-I → 10-L) is complete: the correction signal is durable, queryable, and rebuildable. 10-G shipped the eval harness + versioned prompts. **Remaining:** 10-M (now unblocked — it stamps `modelId`/`promptVersion` onto the `*Suggested` events using 10-G's `PromptCatalog`/`NoteAnalysisResult`).
+The feedback track (10-I → 10-L) is complete: the correction signal is durable, queryable, and rebuildable. 10-G shipped the eval harness + versioned prompts; 10-N moved the analyse path to the model-agnostic Bedrock **Converse** API, so any accessible model can be evaluated/run. **Remaining:** 10-M (now unblocked — it stamps `modelId`/`promptVersion` onto the `*Suggested` events using 10-G's `PromptCatalog`/`NoteAnalysisResult`).
 
 **Goal:** first real-time streaming feature; first LLM integration; STS AssumeRole delegation; offline LLM evaluation; purely additive provenance events and projections that *classify by combining* events; event versioning to stamp prompt/model. The event model stays clean — analysis output reuses existing event types, so the domain never knows whether content came from a human or a model; the `*Suggested` events record AI provenance without mutating state.
 

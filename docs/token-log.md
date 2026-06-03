@@ -1327,3 +1327,21 @@ If no agent ran unexpectedly high: write `None — slice ran within expected ran
 | **Total**                               | **~387 000** |
 
 **Notes:** the dominant avoidable cost was reconciling a scaffold that should never have drifted — had it been committed/pushed red when first written, the contract mismatch would have been a visible diff against main rather than a from-scratch re-derivation (learning 1 in the slice doc). Hawk's 64k earned its keep: it caught the env-flag/`RUN_BEDROCK_EVAL` save-restore bug that would have silently no-op'd the nightly eval. The two background gate-monitor polls (PR CI + main deploy) kept the merge gate honest at negligible token cost.
+
+---
+
+## Slice 10-N — Migrate analysis to the Bedrock Converse API
+
+> Production-path transport swap (`InvokeModel` → `Converse`) with a hard "behaviour-identical" bar, plus pure-helper extraction. **Two Hawk rounds** (one full, one focused re-review), both genuinely additive — the first restored a dropped phase-15 observability signal, the second flagged a reused log marker. Driven inline (Scout + Breaker + Pip + Refactor).
+
+| Agent / phase                                   | ~Tokens  |
+|-------------------------------------------------|----------|
+| Scout (phase-10 slice doc + graduate tech-improvements) | 14 000 |
+| Pip (Converse migration + extract 2 helpers + tests) | 70 000 |
+| Hawk round 1 (full, production-path)            | 47 000   |
+| Hawk fixes (TryParse + 3-way logging + brace guard) | 22 000 |
+| Hawk round 2 (focused re-review of the fix)     | 31 000   |
+| Marker tweak + gate/deploy monitoring + Scribe  | 40 000   |
+| **Total**                                       | **~224 000** |
+
+**Notes:** the two Hawk passes were the cost driver and both paid off — neither was a rubber-stamp. Extracting the pure parser/reader *before* claiming "behaviour-identical" is what made the equivalence reviewable and surfaced a latent reversed-brace crash that pre-existed on main. Lesson banked: on a path with an observability contract, a logged marker string is an API — grep it before editing.

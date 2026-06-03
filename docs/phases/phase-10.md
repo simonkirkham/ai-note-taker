@@ -19,7 +19,7 @@
 | 10-K | Record AI action-item suggestions (`ActionItemsSuggested`) | Done | — |
 | 10-L | Action-item feedback projection | Done | 10-K |
 | 10-M | Stamp modelId / promptVersion on the suggestion events | Not Started | 10-G, 10-I, 10-K |
-| 10-N | Migrate analysis to the Converse API (model-agnostic) | Not Started | — |
+| 10-N | Migrate analysis to the Converse API (model-agnostic) | Done | — |
 
 Phase 10 has two parts. The **core flow** (10-A → 10-H) makes recording → transcription → analysis work end to end. The **quality track** (10-E, 10-F, then 10-G → 10-M) makes that analysis *good* and *keeps it good*: better input, smoother UX, measurement, and a durable correction signal that feeds prompt/model refinement. Slices 10-I → 10-M were moved here from the former Phase 13 ("Feedback capture for AI suggestions") so that analysis quality — building it, measuring it, refining it — lives in one phase.
 
@@ -1039,7 +1039,7 @@ Scenario: Feedback can be sliced per prompt version
 
 ## Slice 10-N — Migrate analysis to the Converse API (model-agnostic)
 
-**Status:** Not Started
+**Status:** Done — shipped 2026-06-03 (PR #152, deploy #436). See [learnings](../learnings/phase-10n-converse-api.md).
 
 **Value:** `BedrockAnalysisService` calls Bedrock's `InvokeModel` with Amazon Nova's `messages-v1` body and parses the Nova envelope, so only Nova models work — the eval harness's `make eval` sweep is restricted to the Nova family. Switching to Bedrock's model-agnostic **Converse API** lets the same code drive *any* accessible Bedrock text model (Claude, Llama, Mistral, Titan, Cohere…), so the harness can compare them and the production model is swappable via `BEDROCK_MODEL_ID` alone. Graduated from `technical-improvements.md`.
 
