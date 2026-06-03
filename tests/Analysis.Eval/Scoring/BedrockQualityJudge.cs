@@ -55,18 +55,24 @@ public sealed class BedrockQualityJudge : IQualityJudge
               should flag it as uncertain. REWARD hedging on ambiguous items; PENALISE confidently
               stating an ambiguous thing as fact — a confident wrong claim is worse than a flagged one.
 
-            Score each dimension 0.0–1.0:
-            - tags: a SMALL, MINIMAL set (ideally ~2-4) of recurring, findable entities/themes so
-              {{x.CurrentUserName}} can retrieve related notes later — people & companies (proper nouns),
-              work streams/projects, and the recurring meeting type. Reward restraint and light tagging;
-              PENALISE long, noisy, or over-tagged lists. Fewer high-signal tags beats many.
+            Score each dimension 0.0–1.0. Use the FULL range and be decisive — do NOT cluster around
+            0.5: a clearly weak dimension scores below 0.3, an excellent one above 0.8.
+
+            - tags: a SMALL, MINIMAL set — ideally 2-3, NEVER more than ~5 — of recurring, findable
+              entities/themes so {{x.CurrentUserName}} can retrieve related notes later (people &
+              companies, work streams/projects, recurring meeting type). Score HARSHLY: more than ~5
+              tags, or any generic/low-signal tag, is over-tagging and scores ≤ 0.4. Fewer high-signal
+              tags is strongly better than many.
             - actions: contains ONLY {{x.CurrentUserName}}'s own commitments (other people's actions must
-              NOT appear here) and is accurate (no invented or wrong actions).
+              NOT appear here — their presence is a serious error) and is accurate (no invented/wrong actions).
             - decisions: only actual decisions reached (not topics merely discussed), accurate, complete
               (no key decision missed), and clearly and specifically stated.
-            - content: summary + discussion cover what matters with breadth (don't miss real points),
-              are faithful (light inference OK, no invented facts), flag uncertainty rather than guessing,
-              and are well-organised (tight wording, bullet points, headers grouping related content).
+            - content: summary + discussion must THOROUGHLY capture the substance and detail of the
+              meeting. Score this HARSHLY for thinness: a light, sparse, shallow, or headline-only note
+              is a MAJOR failure even when faithful — such a note scores ≤ 0.4 no matter how accurate.
+              Reward genuine depth and breadth (don't miss real points or detail); require it to be
+              faithful (light inference OK, no invented facts), to flag uncertainty rather than guess,
+              and to be well-organised (tight wording, bullet points, headers grouping related content).
             - overall: your holistic 0.0–1.0 usefulness of this note to {{x.CurrentUserName}}, weighting
               the preferences above.
 
