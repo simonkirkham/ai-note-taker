@@ -1,6 +1,7 @@
 import { render, screen, fireEvent } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import NoteCard from '../components/NoteCard'
+import styles from '../components/NoteCard.module.css'
 import type { NoteCard as NoteCardData } from '../api'
 
 const base: NoteCardData = {
@@ -40,7 +41,7 @@ describe('NoteCard', () => {
 
   it('does not render a snippet when contentPreview is empty', () => {
     const { container } = render(<NoteCard card={base} onEdit={() => {}} />)
-    expect(container.querySelector('.note-card-snippet')).toBeNull()
+    expect(container.querySelector(`.${styles.noteCardSnippet}`)).toBeNull()
   })
 
   it('calls onEdit when the edit icon button is clicked', async () => {

@@ -1,8 +1,11 @@
 import { useState } from "react";
+import clsx from "clsx";
 import { FolderNode } from "../api";
 import { UNFILED_ID } from "../constants";
 import FolderTree from "./FolderTree";
 import ThemePicker from "./ThemePicker";
+import styles from "./Sidebar.module.css";
+import folderTreeStyles from "./FolderTree.module.css";
 
 export default function Sidebar({
   open,
@@ -56,12 +59,12 @@ export default function Sidebar({
 
   return (
     <nav
-      className={`sidebar${open ? " sidebar--open" : ""}`}
+      className={clsx(styles.sidebar, open && styles.sidebarOpen)}
       data-testid="sidebar"
       aria-label="Notes"
     >
       <button
-        className="sidebar-home-button"
+        className={styles.sidebarHomeButton}
         data-testid="home-button"
         onClick={onHome}
         aria-label="Home"
@@ -69,18 +72,18 @@ export default function Sidebar({
         Home
       </button>
       <button
-        className="sidebar-new-button"
+        className={styles.sidebarNewButton}
         data-testid="new-note-button"
         onClick={onCreate}
         aria-label="New Note"
       >
         + New Note
       </button>
-      <div className="sidebar-folders">
-        <div className="sidebar-folders-header">
-          <span className="sidebar-folders-label">Folders</span>
+      <div className={styles.sidebarFolders}>
+        <div className={styles.sidebarFoldersHeader}>
+          <span className={styles.sidebarFoldersLabel}>Folders</span>
           <button
-            className="folder-new-btn"
+            className={styles.folderNewBtn}
             data-testid="new-folder-button"
             onClick={() => setAddingFolder(true)}
             title="New folder"
@@ -89,9 +92,13 @@ export default function Sidebar({
             +
           </button>
         </div>
-        <div className="sidebar-unfiled-row">
+        <div className={styles.sidebarUnfiledRow}>
           <button
-            className={`sidebar-unfiled${isUnfiledActive ? " sidebar-unfiled--active" : ""}${isUnfiledDragOver ? " sidebar-unfiled--drag-over" : ""}`}
+            className={clsx(
+              styles.sidebarUnfiled,
+              isUnfiledActive && styles.sidebarUnfiledActive,
+              isUnfiledDragOver && styles.sidebarUnfiledDragOver,
+            )}
             data-testid="unfiled-notes-button"
             onClick={onUnfiledSelect}
             onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = "move"; }}
@@ -108,7 +115,7 @@ export default function Sidebar({
             Unfiled Notes
           </button>
           <button
-            className="folder-tree-action-btn"
+            className={folderTreeStyles.folderTreeActionBtn}
             data-testid="unfiled-preview-button"
             onClick={(e) => { e.stopPropagation(); onPreview(UNFILED_ID, "Unfiled Notes"); }}
             title={previewFolderId === UNFILED_ID ? "Close unfiled preview" : "Preview unfiled notes"}
@@ -131,7 +138,7 @@ export default function Sidebar({
         />
         {addingFolder && (
           <input
-            className="folder-new-input"
+            className={styles.folderNewInput}
             data-testid="new-folder-input"
             autoFocus
             value={newFolderName}
@@ -146,11 +153,11 @@ export default function Sidebar({
           />
         )}
       </div>
-      <div className="sidebar-footer">
+      <div className={styles.sidebarFooter}>
         <ThemePicker />
         {onSignOut && (
           <button
-            className="sidebar-sign-out"
+            className={styles.sidebarSignOut}
             data-testid="sign-out-button"
             aria-label="Sign out"
             onClick={onSignOut}

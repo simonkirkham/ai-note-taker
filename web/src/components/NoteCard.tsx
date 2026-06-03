@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { NoteCard as NoteCardData, deleteNote } from "../api";
 import { PencilIcon, TrashIcon } from "./icons";
+import styles from "./NoteCard.module.css";
 
 export default function NoteCard({
   card,
@@ -46,7 +47,7 @@ export default function NoteCard({
 
   return (
     <article
-      className="note-card"
+      className={styles.noteCard}
       draggable
       onDragStart={(e) => {
         e.dataTransfer.effectAllowed = "move";
@@ -54,21 +55,21 @@ export default function NoteCard({
       }}
       onClick={() => onEdit(card.noteId)}
     >
-      <div className="note-card-header">
-        <h3 className="note-card-title">{card.title || <em>Untitled</em>}</h3>
-        {displayDate && <span className="note-card-date">{displayDate}</span>}
+      <div className={styles.noteCardHeader}>
+        <h3 className={styles.noteCardTitle}>{card.title || <em>Untitled</em>}</h3>
+        {displayDate && <span className={styles.noteCardDate}>{displayDate}</span>}
       </div>
       {card.contentPreview && (
-        <p className="note-card-snippet">{card.contentPreview}</p>
+        <p className={styles.noteCardSnippet}>{card.contentPreview}</p>
       )}
       {tags.length > 0 && (
-        <div className="note-card-tags">
+        <div className={styles.noteCardTags}>
           {tags.map((tag) => (
-            <span key={tag} data-testid={`card-tag-${tag}`} className="note-card-tag-pill">{tag}</span>
+            <span key={tag} data-testid={`card-tag-${tag}`} className={styles.noteCardTagPill}>{tag}</span>
           ))}
         </div>
       )}
-      <div className="note-card-actions-row">
+      <div className={styles.noteCardActionsRow}>
         <button
           className="icon-btn"
           aria-label="Edit note"
@@ -86,16 +87,16 @@ export default function NoteCard({
           </button>
         )}
         {confirming && (
-          <span className="note-card-confirm-row">
+          <span className={styles.noteCardConfirmRow}>
             <button
-              className="note-card-confirm-btn"
+              className={styles.noteCardConfirmBtn}
               aria-label="Confirm delete"
               onClick={handleConfirm}
             >
               Confirm
             </button>
             <button
-              className="note-card-cancel-btn"
+              className={styles.noteCardCancelBtn}
               aria-label="Cancel"
               onClick={handleCancel}
             >

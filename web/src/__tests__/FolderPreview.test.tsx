@@ -1,5 +1,6 @@
 import { render, screen, fireEvent } from '@testing-library/react'
 import FolderPreviewPanel from '../components/FolderPreviewPanel'
+import styles from '../components/FolderPreviewPanel.module.css'
 import type { NoteCard } from '../api'
 
 const noop = () => {}
@@ -85,9 +86,9 @@ describe('FolderPreviewPanel', () => {
     )
     const panel = screen.getByTestId('folder-preview-panel')
     fireEvent.dragOver(panel, { dataTransfer: { dropEffect: '' } })
-    expect(panel).toHaveClass('folder-preview-panel--drag-over')
+    expect(panel).toHaveClass(styles.folderPreviewPanelDragOver)
     fireEvent.dragLeave(panel)
-    expect(panel).not.toHaveClass('folder-preview-panel--drag-over')
+    expect(panel).not.toHaveClass(styles.folderPreviewPanelDragOver)
   })
 
   it('drop calls onDropNote with the dragged noteId', () => {
