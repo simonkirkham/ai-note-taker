@@ -138,7 +138,12 @@ public static class Builder
         builder.Services.AddAWSService<IAmazonSecurityTokenService>();
         builder.Services.AddSingleton<IStsCredentialService, StsCredentialService>();
         builder.Services.AddAWSService<IAmazonBedrockRuntime>();
-        builder.Services.AddSingleton<IBedrockAnalysisService, BedrockAnalysisService>();
+        builder.Services.AddSingleton<IBedrockAnalysisService>(sp =>
+            new BedrockAnalysisService(
+                sp.GetRequiredService<IAmazonBedrockRuntime>(),
+                sp.GetRequiredService<ILogger<BedrockAnalysisService>>(),
+                PromptCatalog.Current,
+                Environment.GetEnvironmentVariable("BEDROCK_MODEL_ID") ?? ""));
         builder.Services.AddAWSLambdaHosting(LambdaEventSource.HttpApi);
 
         return builder.Build();

@@ -1,0 +1,14 @@
+{
+  "id": "02-one-on-one-mixed-actions",
+  "transcriptText": "Manager: Let's talk about your growth. I'll set up a mentoring session for you next week. Alice: Great, I'll draft a list of skills I want to develop and share it before then. Manager: Perfect. I'll also raise your scope question with the team lead.",
+  "existingContent": "1:1 with manager",
+  "currentUserName": "Alice",
+  "expected": {
+    "tags": ["1:1", "growth"],
+    "actionItems": ["Draft a list of skills to develop and share it"],
+    "contentMustMention": [
+      "Manager will set up a mentoring session next week",
+      "Manager will raise the scope question with the team lead"
+    ]
+  }
+}

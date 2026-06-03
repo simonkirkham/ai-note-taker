@@ -15,5 +15,7 @@ public record NoteAnalysisRequest(
 public record NoteAnalysisResult(
     string UpdatedContent,
     IReadOnlyList<string> NewTags,
-    IReadOnlyList<string> NewActionItems
+    IReadOnlyList<string> NewActionItems,
+    string ModelId = "",
+    string PromptVersion = ""
 );

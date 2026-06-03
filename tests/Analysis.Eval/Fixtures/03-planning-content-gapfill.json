@@ -1,0 +1,14 @@
+{
+  "id": "03-planning-content-gapfill",
+  "transcriptText": "Carol: For the Q3 launch we agreed the date is September 15th. Dave: We still need marketing assets two weeks before. Carol: Bob, can you own the asset checklist? Bob: Yes, I'll have the checklist ready by August 20th.",
+  "existingContent": "Q3 launch planning. Date TBD.",
+  "currentUserName": "Bob",
+  "expected": {
+    "tags": ["planning", "launch"],
+    "actionItems": ["Prepare the asset checklist by August 20th"],
+    "contentMustMention": [
+      "Q3 launch date is September 15th",
+      "Marketing assets are needed two weeks before launch"
+    ]
+  }
+}

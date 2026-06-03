@@ -444,21 +444,23 @@ Scenario: Mic-only when toggle is off
 
 ### Refactor: versioned prompts
 
-Lift the analysis prompt into a small catalog so it can be swapped at construction time. No production behaviour change — the default prompt stays `analysis@v1` with the existing text.
+> **Contract note (reconciled after 10-H).** When this slice was first drafted, `IBedrockAnalysisService.AnalyseAsync` took three strings `(transcript, content, user)`. Slice 10-H replaced that with a `NoteAnalysisRequest` record carrying `ExistingContent`, `TranscriptText?`, `CurrentUserName`, and an `AllowContentRewrite` flag, and `BedrockAnalysisService` now builds its prompt inline via `BuildPrompt(NoteAnalysisRequest)`. This refactor is reconciled to that current contract: the prompt builder takes a `NoteAnalysisRequest`, not three strings.
+
+Lift the analysis prompt into a small catalog so it can be swapped at construction time. The default prompt stays `analysis@v1` with the **exact current inline text** (including the `AllowContentRewrite` content-instruction branch), so there is no production behaviour change.
 
 ```csharp
 // src/Api/Services/PromptCatalog.cs
-public sealed record AnalysisPrompt(string Version, Func<string, string, string, string> Build);
+public sealed record AnalysisPrompt(string Version, Func<NoteAnalysisRequest, string> Build);
 
 public static class PromptCatalog
 {
     public static readonly AnalysisPrompt V1 = new("analysis@v1", BuildV1);
     public static AnalysisPrompt Current => V1;
-    static string BuildV1(string transcript, string content, string user) => /* current prompt text */;
+    static string BuildV1(NoteAnalysisRequest request) => /* the current BuildPrompt body, verbatim */;
 }
 ```
 
-`BedrockAnalysisService` constructor takes `AnalysisPrompt` and the model id explicitly (DI default: `PromptCatalog.Current` + `BEDROCK_MODEL_ID` env var). `NoteAnalysisResult` gains `ModelId` and `PromptVersion` fields so every analysis call self-describes.
+`BedrockAnalysisService` keeps `AnalyseAsync(NoteAnalysisRequest, ct)` (no interface change) but its **constructor** gains an `AnalysisPrompt prompt` and an explicit `string modelId` (DI default: `PromptCatalog.Current` + `BEDROCK_MODEL_ID` env var; the env-var read moves out of the ctor body into the DI registration). The static `BuildPrompt` is deleted — the service calls `_prompt.Build(request)` instead. `NoteAnalysisResult` gains `ModelId` and `PromptVersion` so every analysis call self-describes.
 
 ```csharp
 public record NoteAnalysisResult(
@@ -468,6 +470,10 @@ public record NoteAnalysisResult(
     string ModelId,
     string PromptVersion);
 ```
+
+**Shared-change checklist (per CLAUDE.md).** `AnalyseAsync`'s signature is unchanged, so its call sites (the `/analyse` endpoint, `NoteCommandHandler`) need no edit. `ModelId` / `PromptVersion` are added to `NoteAnalysisResult` **with empty-string defaults**, so the ~17 existing constructions in `Api.Integration` tests and the fakes (`FakeBedrockAnalysisService`, `ThrowingBedrockAnalysisService`) keep compiling untouched — they don't care about provenance. Only the production path stamps real values: both `BedrockAnalysisService.ParseResponse` return paths pass `_modelId` + `_prompt.Version`. The stamp is verified by a live, `RUN_BEDROCK_EVAL`-gated test (`BedrockAnalysisServiceStampTests`), since the project uses hand-written fakes rather than a mocking library and the full `IAmazonBedrockRuntime` is impractical to stub offline.
+
+> `ModelId` / `PromptVersion` on `NoteAnalysisResult` are **provenance for the eval harness only** — the analyse handler still consumes just `UpdatedContent` / `NewTags` / `NewActionItems`. They are *not* yet written into any event; persisting them onto the suggestion events is slice **10-M** (`TagsSuggestedV2` / `ActionItemsSuggestedV2`).
 
 ---
 
@@ -528,6 +534,8 @@ public async Task Score(Fixture f, AnalysisPrompt prompt, string modelId) { ... 
 ```
 
 Default matrix: 1 prompt × 1 model. Expanding to more prompts or models is a one-line config change.
+
+The runner maps each fixture to a `NoteAnalysisRequest` — `ExistingContent = fixture.ExistingContent`, `TranscriptText = fixture.TranscriptText`, `CurrentUserName = fixture.CurrentUserName`, `AllowContentRewrite = true` (gap-fill is what the content score measures) — constructs `BedrockAnalysisService` with the matrix's `(prompt, modelId)`, and calls `AnalyseAsync(request)`. The stub Bedrock in unit tests implements the same `AnalyseAsync(NoteAnalysisRequest, ct)` interface and returns a canned `NoteAnalysisResult`.
 
 **Output:** `tests/Analysis.Eval/Results/<runId>.jsonl` — one row per fixture × prompt × model with all three scores. Gitignored.
 
