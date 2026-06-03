@@ -22,6 +22,15 @@ public class BedrockEvalTheory
     static string ResultsDirectory =>
         Path.Combine(AppContext.BaseDirectory, "Results");
 
+    // Where fixtures are loaded from. Defaults to the committed corpus copied next to the
+    // test binary; EVAL_FIXTURES_DIR overrides it so the sweep can run against a private,
+    // out-of-repo set (e.g. real meeting transcripts that must never be committed to this
+    // public repo). The override only affects this live theory, not FixtureCorpusTests.
+    static string FixturesDirectory =>
+        Environment.GetEnvironmentVariable("EVAL_FIXTURES_DIR") is { Length: > 0 } dir
+            ? dir
+            : Path.Combine(AppContext.BaseDirectory, "Fixtures");
+
     // Live progress counters. Parallelization is disabled (AssemblyInfo), so the sweep is
     // serial; the counter is still Interlocked for cleanliness. TotalCases is the matrix
     // size, computed once on first use. Progress is written to stderr because xUnit v2
@@ -35,7 +44,7 @@ public class BedrockEvalTheory
     public BedrockEvalTheory(ITestOutputHelper output) => _output = output;
 
     public static IEnumerable<object[]> Matrix =>
-        from fixture in FixtureLoader.LoadAll(Path.Combine(AppContext.BaseDirectory, "Fixtures"))
+        from fixture in FixtureLoader.LoadAll(FixturesDirectory)
         from prompt in Prompts
         from model in Models
         select new object[] { fixture, prompt, model };

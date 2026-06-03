@@ -21,7 +21,14 @@ The judge deliberately uses a **stronger** model than the system under test (Nov
 
 Every run also writes **`Results/<runId>-outputs.md`** — the raw `summary`/`discussion`/`decisions`/`tags`/`actions` each model produced per fixture, with its scores. Read it to *see* why a model scored the way it did rather than trusting the number.
 
-> **Caveat the scores can't fix: fixture realism.** On short, clean synthetic transcripts even a weak model stays faithful, so Faithfulness won't separate models there. The metrics only expose a model's real failure modes when fed inputs that trigger them — long, messy, real meetings. Reproducing a real-world failure means running against real transcripts (which, since this repo is public, can't be committed — a private/out-of-repo fixtures path is the way to do it).
+> **Caveat the scores can't fix: fixture realism.** On short, clean synthetic transcripts even a weak model stays faithful, so Faithfulness won't separate models there. The metrics only expose a model's real failure modes when fed inputs that trigger them — long, messy, real meetings. Since this repo is public, real transcripts can't be committed, so `scripts/extract-prod-fixtures.sh` pulls real meetings from the prod note-detail projection into a **git-ignored** `eval-fixtures-real/` (self-protecting), and `EVAL_FIXTURES_DIR` points the sweep at them:
+
+```bash
+AWS_PROFILE=prod ./scripts/extract-prod-fixtures.sh
+EVAL_FIXTURES_DIR=eval-fixtures-real AWS_PROFILE=prod EVAL_PRESET=core make eval
+```
+
+Real fixtures have no gold labels, so only **Faithfulness** (plus eyeballing `Results/<runId>-outputs.md`) is meaningful on them — Tag/Action/Content F1 need hand-authored `expected` values.
 
 > **Why Action F1 catches "only my actions".** The fixtures put the current user's actions in `actionItems` and *other people's* actions in `contentMustMention`. If the model wrongly captures someone else's action as one of the user's, that's an extra predicted item not in `expected` — **precision drops**, so Action F1 < 1. Conversely, the missing-from-content fact lowers the content score. The two scores together pin the "scope actions to the current user" behaviour.
 
@@ -74,6 +81,7 @@ Two phases because the report renders whatever rows exist in `Results/`, and tes
 | `EVAL_PRESET` | named curated set, paste-free (`core` = Amazon+Meta+Mistral cross-vendor) | none |
 | `EVAL_MODEL_IDS` | comma-separated analysis models to sweep — pinning these **bypasses discovery** | discovered |
 | `EVAL_PROVIDER` | scopes discovery to a Bedrock provider (`amazon`, `anthropic`, `meta`, …) or `all` for every vendor | `amazon` |
+| `EVAL_FIXTURES_DIR` | load fixtures from this dir instead of the built-in corpus (e.g. private real meetings from `extract-prod-fixtures.sh`) | built-in `Fixtures/` |
 | `BEDROCK_JUDGE_MODEL_ID` | model used as the content judge | `amazon.nova-pro-v1:0` |
 | `EVAL_REQUEST_DELAY_MS` | pause between sweep cases, to stay under a rate-limited account's Bedrock per-minute quota | `0` (raw `dotnet test`); `make eval` sets `1500` |
 | `AWS_PROFILE` / `AWS_REGION` | standard AWS SDK credential/region resolution | — |
