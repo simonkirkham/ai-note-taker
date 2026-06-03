@@ -21,7 +21,7 @@
 | 14-M | Migrate `ListView` (home two-column layout, breadcrumb, summary cards) | Done | 14-B |
 | 14-N | Migrate `NoteView` (note header, two-column layout, status messages) | Done | 14-B, 14-G, 14-H |
 | 14-O | ~~Migrate `TranscriptionPanel`~~ — **Dropped** (Phase 15-B deleted the component) | Dropped | 14-B |
-| 14-P | Resolve remaining shared shell/utility classes (App shell → module, shared utilities → shared module, body/reduced-motion → global.css); remove `App.css` and its import | In Progress | 14-B…14-N |
+| 14-P | Resolve remaining shared shell/utility classes (App shell → module, shared utilities → shared module, body/reduced-motion → global.css); remove `App.css` and its import | Done | 14-B…14-N |
 | 14-Q | Add `@/` path alias (Vite `resolve.alias` + tsconfig `paths`) | Done | — |
 | 14-R | Add `eslint-plugin-import` + enforce import ordering | Not Started | 14-Q |
 | 14-S | Add `eslint-plugin-jsx-a11y` in `warn` mode | Not Started | — |
@@ -647,7 +647,7 @@ Scenario: App.css no longer contains the migrated selectors
 
 ## Slice 14-P — Migrate `App.tsx` shell + notification banner; delete `App.css`
 
-**Status:** In Progress
+**Status:** Done
 
 **Value:** The closing slice. Migrates the remaining outer-shell rules — `app-layout`, `app-main`, `sidebar-toggle`, `sidebar-overlay` (`/* ── App shell ── */` ~L258–440) and the global `/* ── Notification banner ── */` (~L2281–2338) and `/* ── New Note button (CTA) ── */` (~L464–491) and `/* ── Reduced motion ── */` (~L2339–2346) — into `App.module.css` (or `global.css` for the genuinely global `prefers-reduced-motion` rule), then **deletes the now-empty `App.css` and removes its `import "./App.css"` line from `App.tsx`.** Depends on every earlier component migration: it can only land once `App.css` holds nothing but shell rules.
 
