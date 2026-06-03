@@ -16,16 +16,19 @@ public static class BedrockEvalFactory
 
     static IAmazonBedrockRuntime BuildClient()
     {
-        // A full sweep fires many InvokeModel calls in a burst — every fixture × model,
-        // plus a judge call per fixture, and the judge is one shared model — which trips
-        // Bedrock throttling (429). Adaptive retry adds client-side rate-limiting and
-        // exponential backoff so throttled calls wait and succeed instead of being
-        // skipped, keeping the fixture set even across models (otherwise the busiest
-        // model — the judge — silently loses fixtures and its scores aren't comparable).
+        // A full sweep fires many calls in a burst — every fixture × model, plus a judge
+        // call per fixture (the judge being one shared model) — which trips Bedrock
+        // throttling (429) on a rate-limited account.
+        //
+        // Use STANDARD retry, not Adaptive. Adaptive's client-side rate limiter gives up
+        // under sustained 429s and throws `AmazonClientException: capacity could not be
+        // obtained` — which fails the run rather than backing off. Standard mode simply
+        // retries with exponential backoff + jitter, which is what let earlier runs
+        // complete; a higher MaxErrorRetry just reduces how many fixtures get skipped.
         var config = new AmazonBedrockRuntimeConfig
         {
-            RetryMode = RequestRetryMode.Adaptive,
-            MaxErrorRetry = 10,
+            RetryMode = RequestRetryMode.Standard,
+            MaxErrorRetry = 8,
         };
         // Passing a config bypasses the parameterless ctor's region auto-resolution, so
         // carry the region across explicitly (env first, then the SDK fallback chain).

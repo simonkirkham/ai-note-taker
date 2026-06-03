@@ -38,6 +38,12 @@ public class BedrockEvalTheory
     {
         Skip.IfNot(EvalRunner.IsEnabled, $"{EvalRunner.EnvFlag} not set — skipping live Bedrock eval.");
 
+        // Pace the sweep on rate-limited accounts: a small delay between cases lets the
+        // Bedrock per-minute limit recover, so Standard retry doesn't have to absorb the
+        // whole burst. Opt-in via EVAL_REQUEST_DELAY_MS (make eval sets a default).
+        if (int.TryParse(Environment.GetEnvironmentVariable("EVAL_REQUEST_DELAY_MS"), out var delayMs) && delayMs > 0)
+            await Task.Delay(delayMs);
+
         var bedrock = BedrockEvalFactory.AnalysisService(prompt, modelId);
         var judge = BedrockEvalFactory.Judge();
 
@@ -47,12 +53,14 @@ public class BedrockEvalTheory
             row = await EvalRunner.RunAsync(
                 fixture, prompt, modelId, bedrock, judge, RunId, ResultsDirectory);
         }
-        catch (AmazonServiceException ex)
+        catch (AmazonClientException ex)
         {
             // Sweeping "all accessible models" means some won't be: not access-granted
             // (AccessDenied), not invokable by raw id (needs an inference profile), or
-            // not Nova-schema-compatible (ValidationException). Skip rather than fail so
-            // one bad model doesn't sink the whole sweep — the report just omits it.
+            // not Nova-schema-compatible (ValidationException) — all AmazonServiceException.
+            // We also catch the broader AmazonClientException (its base) to cover retry
+            // exhaustion under heavy throttling ("capacity could not be obtained"), so a
+            // rate-limited tail skips gracefully instead of sinking the whole sweep.
             // The judge model is named too: if it's the inaccessible one, EVERY case
             // skips, and the shared judge id in the message is the tell (rather than
             // looking like the system-under-test model was at fault).
