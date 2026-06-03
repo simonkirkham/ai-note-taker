@@ -6,9 +6,9 @@
 
 | Slice | Summary | Status | Depends on |
 |-------|---------|--------|------------|
-| 14-A | Foundation: `styles/tokens.css` + `styles/global.css`, `--space-*` scale, `clsx` dep, wire global imports | Not Started | — |
-| 14-B | Pattern-setter migration: `SignInPage` → CSS Module (establishes the conventions the rest copy) | Not Started | 14-A |
-| 14-C | Migrate `SessionExpiredBanner` + `ShortcutsPanel` (leaf, self-contained) | Not Started | 14-B |
+| 14-A | Foundation: `styles/tokens.css` + `styles/global.css`, `--space-*` scale, `clsx` dep, wire global imports | Done | — |
+| 14-B | Pattern-setter migration: `SignInPage` → CSS Module (establishes the conventions the rest copy) | Done | 14-A |
+| 14-C | Migrate `SessionExpiredBanner` + `ShortcutsPanel` (leaf, self-contained) | In Progress | 14-B |
 | 14-D | Migrate `ThemePicker` + `FolderPicker` (small selects) | Not Started | 14-B |
 | 14-E | Migrate `TagFilter` + `QuickCaptureTodoInput` (leaf inputs) | Not Started | 14-B |
 | 14-F | Migrate `NoteCard` (home list card) | Not Started | 14-B |
@@ -22,11 +22,11 @@
 | 14-N | Migrate `NoteView` (note header, two-column layout, status messages) | Not Started | 14-B, 14-G, 14-H |
 | 14-O | Migrate `TranscriptionPanel` (the large transcription block, ~L2347–2670) | Not Started | 14-B |
 | 14-P | Migrate `App.tsx` shell + notification banner; remove the now-empty `App.css` and its import | Not Started | 14-B…14-O |
-| 14-Q | Add `@/` path alias (Vite `resolve.alias` + tsconfig `paths`) | Not Started | — |
+| 14-Q | Add `@/` path alias (Vite `resolve.alias` + tsconfig `paths`) | Done | — |
 | 14-R | Add `eslint-plugin-import` + enforce import ordering | Not Started | 14-Q |
 | 14-S | Add `eslint-plugin-jsx-a11y` in `warn` mode | Not Started | — |
 | 14-T | Fix the a11y backlog and promote jsx-a11y to `error` | Not Started | 14-S |
-| 14-U | Add a route/feature-root error boundary | Not Started | — |
+| 14-U | Add a route/feature-root error boundary | In Progress | — |
 | 14-V | Add a reusable inline-error/toast primitive | Not Started | — |
 | 14-W | Server-state library ADR (decision, not code) | Not Started | — |
 
@@ -38,7 +38,7 @@
 
 ## Slice 14-A — Foundation: token/global stylesheets, spacing scale, `clsx`
 
-**Status:** Not Started
+**Status:** Done
 
 **Value:** Establishes the structural target every later slice builds on: the two canonical global stylesheets (`styles/tokens.css`, `styles/global.css`), a brand-new `--space-*` spacing scale, and the `clsx` dependency. After this slice, `App.css` holds only component rules — its `:root` tokens, every `[data-theme]` block, and the reset/base-element rules have moved out. Zero visual change: the same cascade, the same tokens, just relocated.
 
@@ -98,7 +98,7 @@ Scenario: No FOUC regression
 
 ## Slice 14-B — Pattern-setter: migrate `SignInPage` to a CSS Module
 
-**Status:** Not Started
+**Status:** Done
 
 **Value:** The first component migration, chosen deliberately as the **convention-setter**. `SignInPage` is a self-contained leaf (the sign-in region, App.css ~L2347 / the `/* ── end CHANGE-5 sign-in region ── */` banner ~L2673) with no children sharing its rules, so it is a clean canvas to establish the exact module pattern every later slice copies: `import styles from "./SignInPage.module.css"`, camelCase class names, `styles.*` in JSX, `clsx` for any conditional class, `var(--…)` tokens (including `--space-*`) throughout, and deletion of the migrated selectors from `App.css`. The slice's notes call out the pattern explicitly so 14-C…14-O have a worked reference.
 
@@ -144,7 +144,7 @@ Scenario: The module follows the standard
 
 ## Slice 14-C — Migrate `SessionExpiredBanner` + `ShortcutsPanel`
 
-**Status:** Not Started
+**Status:** In Progress
 
 **Value:** Two small, self-contained leaf components migrated together. `SessionExpiredBanner` is a full-screen overlay; `ShortcutsPanel` is a toggle + table. Neither shares rules with other components, so grouping them keeps the diff thin while clearing two more `App.css` sections (`/* ── Shortcuts panel ── */` ~L865–927; the banner's overlay rules).
 
@@ -693,7 +693,7 @@ Scenario: Reduced-motion preference still honoured
 
 ## Slice 14-Q — Add the `@/` path alias
 
-**Status:** Not Started
+**Status:** Done
 
 **Value:** Replace deep `../../..` relative-import chains with an `@/` alias, as the broader-conventions table requires. Independent of the CSS migration. Pairs with 14-R (the import plugin's resolver uses the alias).
 
@@ -841,7 +841,7 @@ Scenario: No behavioural regression from the fixes
 
 ## Slice 14-U — Add a route/feature-root error boundary
 
-**Status:** Not Started
+**Status:** In Progress
 
 **Value:** The broader-conventions table requires wrapping route/feature roots in an error boundary so one component crash doesn't blank the whole app. None exists today (verified). A thin slice adding a single reusable `ErrorBoundary` and wrapping the app's feature roots.
 
