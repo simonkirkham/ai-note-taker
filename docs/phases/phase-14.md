@@ -12,14 +12,14 @@
 | 14-D | Migrate `ThemePicker` + `FolderPicker` (small selects) | Done | 14-B |
 | 14-E | Migrate `TagFilter` + `QuickCaptureTodoInput` (leaf inputs) | Done | 14-B |
 | 14-F | Migrate `NoteCard` (home list card) | Done | 14-B |
-| 14-G | Migrate `TagsSection` + `ActionsSection` (note-view right panel) | In Progress | 14-B |
-| 14-H | Migrate `NoteEditor` (editor container + discussed button) | In Progress | 14-B |
+| 14-G | Migrate `TagsSection` + `ActionsSection` (note-view right panel) | Done | 14-B |
+| 14-H | Migrate `NoteEditor` (editor container + discussed button) | Done | 14-B |
 | 14-I | Migrate `TodoSection` (todo + done + quick-capture sections) | Not Started | 14-B, 14-E |
 | 14-J | Migrate `MeetingsSection` (meetings list + meeting card + status states) | Done | 14-B |
 | 14-K | Migrate `FolderPreviewPanel` + `FolderTree` (folder tree + slide-out preview) | Done | 14-B |
 | 14-L | Migrate `Sidebar` (folders section + app-shell sidebar chrome) | Done | 14-B, 14-K |
 | 14-M | Migrate `ListView` (home two-column layout, breadcrumb, summary cards) | Not Started | 14-B |
-| 14-N | Migrate `NoteView` (note header, two-column layout, status messages) | In Progress | 14-B, 14-G, 14-H |
+| 14-N | Migrate `NoteView` (note header, two-column layout, status messages) | Done | 14-B, 14-G, 14-H |
 | 14-O | Migrate `TranscriptionPanel` (the large transcription block, ~L2347–2670) | Not Started | 14-B |
 | 14-P | Migrate `App.tsx` shell + notification banner; remove the now-empty `App.css` and its import | Not Started | 14-B…14-O |
 | 14-Q | Add `@/` path alias (Vite `resolve.alias` + tsconfig `paths`) | Done | — |
@@ -306,7 +306,7 @@ Scenario: App.css no longer contains the migrated selectors
 
 ## Slice 14-G — Migrate `TagsSection` + `ActionsSection`
 
-**Status:** In Progress
+**Status:** Done
 
 **Value:** The two right-panel note-view sections, tightly co-located in the layout. `TagsSection` (`/* ── Tags section ── */` ~L1472–1602) and `ActionsSection` (`/* ── Actions section ── */` ~L982–1085) sit side by side in the note view and share its panel grid, so migrating them together keeps the layout coherent. `NoteView` (14-N) depends on both being done.
 
@@ -348,7 +348,7 @@ Scenario: App.css no longer contains the migrated selectors
 
 ## Slice 14-H — Migrate `NoteEditor`
 
-**Status:** In Progress
+**Status:** Done
 
 **Value:** The note editor container and "discussed" button (`/* ── Editor container + discussed button ── */` ~L928–981, plus `/* ── Note editor ── */` ~L761–830). Note the Tiptap vendor-override carve-out: any `!important` overriding Tiptap's injected styles must stay isolated in a clearly-labelled block (the one sanctioned `!important` exception per the standard) rather than scattered.
 
@@ -575,7 +575,7 @@ Scenario: App.css no longer contains the migrated selectors
 
 ## Slice 14-N — Migrate `NoteView`
 
-**Status:** In Progress
+**Status:** Done
 
 **Value:** The note-view shell: header (back + delete row), header date, the two-column note layout, and the note-view status messages (`/* ── Back button ── */` ~L544–571, `/* ── Note header ── */` ~L572–719, `/* ── Note header date ── */` ~L720–760, `/* ── Note two-column layout ── */` ~L831–864, `/* ── Status messages ── */` ~L492–543). Done after its panel children (`TagsSection`/`ActionsSection` in 14-G, `NoteEditor` in 14-H) so only the surrounding shell remains.
 
