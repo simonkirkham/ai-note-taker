@@ -1,5 +1,7 @@
 import { useState } from "react";
+import clsx from "clsx";
 import { FolderNode } from "../api";
+import styles from "./FolderTree.module.css";
 
 interface NodeProps {
   node: FolderNode;
@@ -44,11 +46,16 @@ function FolderTreeNode({ node, activeFolderId, path, onSelect, onRename, onDele
 
   return (
     <li
-      className="folder-tree-node"
+      className={styles.folderTreeNode}
       data-testid={`folder-item-${node.folderId}`}
     >
       <div
-        className={`folder-tree-node-row${isActive ? " folder-tree-node-row--active" : ""}${isDragOver ? " folder-tree-node-row--drag-over" : ""}${hovered ? " folder-tree-node-row--hovered" : ""}`}
+        className={clsx(
+          styles.folderTreeNodeRow,
+          isActive && styles.folderTreeNodeRowActive,
+          isDragOver && styles.folderTreeNodeRowDragOver,
+          hovered && styles.folderTreeNodeRowHovered,
+        )}
         draggable={!!onMoveFolder}
         onDragStart={(e) => {
           e.stopPropagation();
@@ -74,7 +81,7 @@ function FolderTreeNode({ node, activeFolderId, path, onSelect, onRename, onDele
         }}
       >
         <button
-          className="folder-tree-expand"
+          className={styles.folderTreeExpand}
           onClick={() => setExpanded((e) => !e)}
           aria-label={expanded ? "Collapse folder" : "Expand folder"}
         >
@@ -82,7 +89,7 @@ function FolderTreeNode({ node, activeFolderId, path, onSelect, onRename, onDele
         </button>
         {editing ? (
           <input
-            className="folder-tree-rename-input"
+            className={styles.folderTreeRenameInput}
             value={editName}
             autoFocus
             onChange={(e) => setEditName(e.target.value)}
@@ -95,7 +102,7 @@ function FolderTreeNode({ node, activeFolderId, path, onSelect, onRename, onDele
           />
         ) : (
           <button
-            className="folder-tree-name"
+            className={styles.folderTreeName}
             data-testid={`folder-name-${node.folderId}`}
             onClick={() => { onSelect(node.folderId, currentPath); setExpanded(true); }}
             onDoubleClick={() => { setEditing(true); setEditName(node.name); }}
@@ -103,9 +110,9 @@ function FolderTreeNode({ node, activeFolderId, path, onSelect, onRename, onDele
             {node.name}
           </button>
         )}
-        <div className="folder-tree-actions">
+        <div className={styles.folderTreeActions}>
           <button
-            className="folder-tree-action-btn"
+            className={styles.folderTreeActionBtn}
             onClick={(e) => { e.stopPropagation(); onPreview(node.folderId, node.name); }}
             title={isPreviewing ? "Close folder preview" : "Preview folder notes"}
             aria-label={isPreviewing ? "Close folder preview" : "Preview folder notes"}
@@ -113,7 +120,7 @@ function FolderTreeNode({ node, activeFolderId, path, onSelect, onRename, onDele
             {isPreviewing ? "«" : "»"}
           </button>
           <button
-            className="folder-tree-action-btn"
+            className={styles.folderTreeActionBtn}
             data-testid="add-subfolder-button"
             onClick={() => { setAddingChild(true); setExpanded(true); }}
             title="New subfolder"
@@ -122,7 +129,7 @@ function FolderTreeNode({ node, activeFolderId, path, onSelect, onRename, onDele
             +
           </button>
           <button
-            className="folder-tree-action-btn"
+            className={styles.folderTreeActionBtn}
             onClick={() => { setEditName(node.name); setEditing(true); }}
             title="Rename"
             aria-label="Rename folder"
@@ -130,7 +137,7 @@ function FolderTreeNode({ node, activeFolderId, path, onSelect, onRename, onDele
             <svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"/></svg>
           </button>
           <button
-            className="folder-tree-action-btn folder-tree-action-btn--delete"
+            className={clsx(styles.folderTreeActionBtn, styles.folderTreeActionBtnDelete)}
             onClick={() => onDelete(node.folderId)}
             title="Delete"
             aria-label="Delete folder"
@@ -140,7 +147,7 @@ function FolderTreeNode({ node, activeFolderId, path, onSelect, onRename, onDele
         </div>
       </div>
       {(expanded || addingChild) && (
-        <ul className="folder-tree-children">
+        <ul className={styles.folderTreeChildren}>
           {expanded && node.children.map((child) => (
             <FolderTreeNode
               key={child.folderId}
@@ -158,11 +165,11 @@ function FolderTreeNode({ node, activeFolderId, path, onSelect, onRename, onDele
             />
           ))}
           {addingChild && (
-            <li className="folder-tree-node">
-              <div className="folder-tree-node-row">
-                <span className="folder-tree-expand">·</span>
+            <li className={styles.folderTreeNode}>
+              <div className={styles.folderTreeNodeRow}>
+                <span className={styles.folderTreeExpand}>·</span>
                 <input
-                  className="folder-tree-rename-input"
+                  className={styles.folderTreeRenameInput}
                   data-testid="subfolder-input"
                   value={childName}
                   autoFocus
@@ -210,7 +217,7 @@ export default function FolderTree({
   if (nodes.length === 0) return null;
 
   return (
-    <ul className="folder-tree">
+    <ul className={styles.folderTree}>
       {nodes.map((node) => (
         <FolderTreeNode
           key={node.folderId}

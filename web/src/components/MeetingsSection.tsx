@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { CalendarMeeting, createNoteFromMeeting, createNoteFromNextOccurrence, getTodaysMeetings } from "../api";
 import { MeetingReminder, useMeetingReminders } from "../hooks/useMeetingReminders";
+import styles from "./MeetingsSection.module.css";
 
 const NO_MEETINGS: MeetingReminder[] = [];
 
@@ -131,15 +132,15 @@ export function MeetingsSection({ onOpenNote }: { onOpenNote: (noteId: string, t
         <div
           data-testid="notification-banner"
           role="status"
-          className="notification-banner"
+          className={styles.notificationBanner}
         >
-          <span className="notification-banner-text">
+          <span className={styles.notificationBannerText}>
             Enable notifications to get reminders before your meetings start.
           </span>
           <button
             data-testid="enable-notifications-button"
             onClick={handleEnable}
-            className="notification-banner-enable"
+            className={styles.notificationBannerEnable}
           >
             Enable
           </button>
@@ -147,57 +148,57 @@ export function MeetingsSection({ onOpenNote }: { onOpenNote: (noteId: string, t
             data-testid="dismiss-notification-banner"
             onClick={() => setBannerDismissed(true)}
             aria-label="Dismiss notification banner"
-            className="notification-banner-dismiss"
+            className={styles.notificationBannerDismiss}
           >
             ✕
           </button>
         </div>
       )}
-      <section data-testid="meetings-section" className="meetings-section" aria-label="Today's meetings">
-        <h2 className="meetings-heading">Today's Meetings</h2>
+      <section data-testid="meetings-section" className={styles.meetingsSection} aria-label="Today's meetings">
+        <h2 className={styles.meetingsHeading}>Today's Meetings</h2>
 
         {state.status === "loading" && (
           <p className="loading">Loading…</p>
         )}
 
         {state.status === "unavailable" && (
-          <div data-testid="meetings-unavailable" className="meetings-status-state">
-            <CalendarIcon className="meetings-status-icon" />
-            <p className="meetings-status-text">Cannot connect to calendar</p>
-            <button className="meetings-retry-link" onClick={handleRetry}>Retry</button>
+          <div data-testid="meetings-unavailable" className={styles.meetingsStatusState}>
+            <CalendarIcon className={styles.meetingsStatusIcon} />
+            <p className={styles.meetingsStatusText}>Cannot connect to calendar</p>
+            <button className={styles.meetingsRetryLink} onClick={handleRetry}>Retry</button>
           </div>
         )}
 
         {state.status === "loaded" && state.meetings.length === 0 && (
-          <div data-testid="meetings-empty" className="meetings-status-state">
-            <CalendarIcon className="meetings-status-icon" />
-            <p className="meetings-status-text">No meetings today.</p>
+          <div data-testid="meetings-empty" className={styles.meetingsStatusState}>
+            <CalendarIcon className={styles.meetingsStatusIcon} />
+            <p className={styles.meetingsStatusText}>No meetings today.</p>
           </div>
         )}
 
         {state.status === "loaded" && state.meetings.length > 0 && (
-          <ul data-testid="meetings-list" className="meetings-list">
+          <ul data-testid="meetings-list" className={styles.meetingsList}>
             {state.meetings.map((m) => (
               <li key={m.calendarEventId}>
-                <article className="meeting-card">
-                  <div className="meeting-card-header">
-                    <span className="meeting-card-title">{m.title}</span>
-                    <span className="meeting-card-time">
+                <article className={styles.meetingCard}>
+                  <div className={styles.meetingCardHeader}>
+                    <span className={styles.meetingCardTitle}>{m.title}</span>
+                    <span className={styles.meetingCardTime}>
                       {formatTime(m.startTime)}–{formatTime(m.endTime)}
                     </span>
                   </div>
-                  <footer className="meeting-card-footer">
-                    <div className="meeting-card-row">
+                  <footer className={styles.meetingCardFooter}>
+                    <div className={styles.meetingCardRow}>
                       {m.linkedNoteId ? (
                         <button
-                          className="meeting-action-btn"
+                          className={styles.meetingActionBtn}
                           onClick={() => onOpenNote(m.linkedNoteId!)}
                         >
                           Open Note ↗
                         </button>
                       ) : (
                         <button
-                          className="meeting-action-btn"
+                          className={styles.meetingActionBtn}
                           disabled={creating.has(m.calendarEventId)}
                           onClick={() => handleCreateNote(m)}
                         >
@@ -206,18 +207,18 @@ export function MeetingsSection({ onOpenNote }: { onOpenNote: (noteId: string, t
                       )}
                     </div>
                     {createErrors.has(m.calendarEventId) && (
-                      <p data-testid={`create-error-${m.calendarEventId}`} className="meeting-create-error">
+                      <p data-testid={`create-error-${m.calendarEventId}`}>
                         {createErrors.get(m.calendarEventId)}
                       </p>
                     )}
                     {m.isRecurring && m.recurringSeriesId && (
                       <>
-                        <div className="meeting-card-divider" />
-                        <div className="meeting-card-row">
-                          <span className="meeting-card-row-label">↻ Next</span>
+                        <div className={styles.meetingCardDivider} />
+                        <div className={styles.meetingCardRow}>
+                          <span className={styles.meetingCardRowLabel}>↻ Next</span>
                           {m.hasNextOccurrenceNote ? (
                             <button
-                              className="meeting-action-btn"
+                              className={styles.meetingActionBtn}
                               onClick={() => {
                                 const noteId = nextNoteIds.get(m.recurringSeriesId!) ?? m.nextOccurrenceNoteId ?? "";
                                 if (noteId) onOpenNote(noteId);
@@ -227,7 +228,7 @@ export function MeetingsSection({ onOpenNote }: { onOpenNote: (noteId: string, t
                             </button>
                           ) : (
                             <button
-                              className="meeting-action-btn"
+                              className={styles.meetingActionBtn}
                               disabled={creatingNext.has(m.recurringSeriesId)}
                               onClick={() => handleCreateNextOccurrenceNote(m)}
                             >

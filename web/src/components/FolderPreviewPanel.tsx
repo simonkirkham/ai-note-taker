@@ -1,6 +1,8 @@
 import { useState } from "react";
+import clsx from "clsx";
 import { NoteCard } from "../api";
 import { UNFILED_ID } from "../constants";
+import styles from "./FolderPreviewPanel.module.css";
 
 export default function FolderPreviewPanel({
   folderId,
@@ -48,24 +50,28 @@ export default function FolderPreviewPanel({
 
   return (
     <div
-      className={`folder-preview-panel${folderId ? " folder-preview-panel--open" : ""}${isDragOver ? " folder-preview-panel--drag-over" : ""}`}
+      className={clsx(
+        styles.folderPreviewPanel,
+        folderId && styles.folderPreviewPanelOpen,
+        isDragOver && styles.folderPreviewPanelDragOver,
+      )}
       data-testid="folder-preview-panel"
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
     >
-      <div className="folder-preview-header">
-        <span className="folder-preview-title">{folderName}</span>
-        <button className="folder-preview-close" onClick={onClose} aria-label="Close">×</button>
+      <div className={styles.folderPreviewHeader}>
+        <span className={styles.folderPreviewTitle}>{folderName}</span>
+        <button className={styles.folderPreviewClose} onClick={onClose} aria-label="Close">×</button>
       </div>
-      {folderId && <ul className="folder-preview-list">
+      {folderId && <ul className={styles.folderPreviewList}>
         {folderCards.length === 0 ? (
-          <li className="folder-preview-empty">No notes in this folder</li>
+          <li className={styles.folderPreviewEmpty}>No notes in this folder</li>
         ) : (
           folderCards.map((c) => (
             <li
               key={c.noteId}
-              className="folder-preview-item"
+              className={styles.folderPreviewItem}
               draggable
               onDragStart={(e) => {
                 e.dataTransfer.effectAllowed = "move";
@@ -73,9 +79,9 @@ export default function FolderPreviewPanel({
               }}
               onClick={() => onEditNote(c.noteId)}
             >
-              <span className="folder-preview-note-title">{c.title || <em>Untitled</em>}</span>
+              <span className={styles.folderPreviewNoteTitle}>{c.title || <em>Untitled</em>}</span>
               {c.date && (
-                <span className="folder-preview-note-date">
+                <span className={styles.folderPreviewNoteDate}>
                   {new Date(c.date + "T00:00:00").toLocaleDateString("en-GB")}
                 </span>
               )}

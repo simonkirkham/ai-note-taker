@@ -5,6 +5,7 @@ import { server } from '../test/setup'
 import { AuthProvider } from '../auth/AuthContext'
 import { clearToken } from '../auth/tokenStore'
 import App from '../App'
+import folderPreviewStyles from '../components/FolderPreviewPanel.module.css'
 
 const folder = { folderId: 'f-1', name: 'People', children: [] }
 
@@ -58,17 +59,17 @@ describe('FolderNavigation', () => {
     const btn = await screen.findByTestId('unfiled-preview-button')
     expect(btn).toHaveTextContent('»')
     // Panel is present but closed (no --open class) before any interaction.
-    expect(screen.getByTestId('folder-preview-panel')).not.toHaveClass('folder-preview-panel--open')
+    expect(screen.getByTestId('folder-preview-panel')).not.toHaveClass(folderPreviewStyles.folderPreviewPanelOpen)
     // Open the preview — button flips to « and the panel opens.
     await userEvent.click(btn)
     await waitFor(() =>
-      expect(screen.getByTestId('folder-preview-panel')).toHaveClass('folder-preview-panel--open'),
+      expect(screen.getByTestId('folder-preview-panel')).toHaveClass(folderPreviewStyles.folderPreviewPanelOpen),
     )
     expect(screen.getByTestId('unfiled-preview-button')).toHaveTextContent('«')
     // Click again — panel closes and the button returns to ».
     await userEvent.click(screen.getByTestId('unfiled-preview-button'))
     await waitFor(() =>
-      expect(screen.getByTestId('folder-preview-panel')).not.toHaveClass('folder-preview-panel--open'),
+      expect(screen.getByTestId('folder-preview-panel')).not.toHaveClass(folderPreviewStyles.folderPreviewPanelOpen),
     )
     expect(screen.getByTestId('unfiled-preview-button')).toHaveTextContent('»')
   })
