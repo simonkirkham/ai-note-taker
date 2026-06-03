@@ -26,17 +26,28 @@ REGION="${AWS_REGION:-eu-west-2}"
 export EVAL_REQUEST_DELAY_MS="${EVAL_REQUEST_DELAY_MS:-1500}"
 
 # 1. Discover models unless the caller pinned EVAL_MODEL_IDS.
+#    EVAL_PROVIDER scopes discovery: a Bedrock provider name (e.g. "amazon", "anthropic",
+#    "meta") filters to that vendor's on-demand text models; "all" lists every vendor's.
+#    Default "amazon" (no access grant needed). Now that analysis speaks Converse (10-N),
+#    non-Amazon models work too — but they must be access-granted, and inference-profile-
+#    only models (newer Claude/Llama) won't appear here (they aren't ON_DEMAND by raw id).
+PROVIDER="${EVAL_PROVIDER:-amazon}"
+PROVIDER_FILTER=""
+if [ "${PROVIDER}" != "all" ] && [ -n "${PROVIDER}" ]; then
+  PROVIDER_FILTER="--by-provider ${PROVIDER}"
+fi
 if [ -z "${EVAL_MODEL_IDS:-}" ]; then
-  echo "Discovering accessible on-demand Amazon Nova text models in ${REGION}..."
+  echo "Discovering accessible on-demand text models in ${REGION} (provider: ${PROVIDER})..."
+  # PROVIDER_FILTER is intentionally unquoted so it word-splits into two args (or none).
   EVAL_MODEL_IDS=$(aws bedrock list-foundation-models \
     --region "${REGION}" \
-    --by-provider amazon \
+    ${PROVIDER_FILTER} \
     --by-output-modality TEXT \
     --by-inference-type ON_DEMAND \
-    --query "modelSummaries[?contains(modelId, 'nova')].modelId" \
+    --query "modelSummaries[].modelId" \
     --output text 2>/dev/null | tr '[:space:]' ',' | sed 's/,\{2,\}/,/g; s/^,//; s/,$//') || true
   # `aws ... --output text` prints the literal "None" (not an empty string) when the
-  # query matches zero models — e.g. creds present but no Nova access grant in-region.
+  # query matches zero models — e.g. creds present but no access grant in-region.
   # Normalise it to empty so the fallback below actually fires.
   [ "${EVAL_MODEL_IDS}" = "None" ] && EVAL_MODEL_IDS=""
   if [ -z "${EVAL_MODEL_IDS}" ]; then

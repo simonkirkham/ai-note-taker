@@ -22,6 +22,14 @@ public class BedrockEvalTheory
     static string ResultsDirectory =>
         Path.Combine(AppContext.BaseDirectory, "Results");
 
+    // Live progress counters. Parallelization is disabled (AssemblyInfo), so the sweep is
+    // serial; the counter is still Interlocked for cleanliness. TotalCases is the matrix
+    // size, computed once on first use. Progress is written to stderr because xUnit v2
+    // doesn't capture Console, so it streams live during `dotnet test` (unlike
+    // ITestOutputHelper, which only surfaces under detailed verbosity).
+    static readonly Lazy<int> TotalCases = new(() => Matrix.Count());
+    static int _caseNumber;
+
     readonly ITestOutputHelper _output;
 
     public BedrockEvalTheory(ITestOutputHelper output) => _output = output;
@@ -44,6 +52,10 @@ public class BedrockEvalTheory
         if (int.TryParse(Environment.GetEnvironmentVariable("EVAL_REQUEST_DELAY_MS"), out var delayMs) && delayMs > 0)
             await Task.Delay(delayMs);
 
+        var caseNo = Interlocked.Increment(ref _caseNumber);
+        var total = TotalCases.Value;
+        Console.Error.WriteLine($"[eval {caseNo}/{total}] running {modelId} x {fixture.Id} ...");
+
         var bedrock = BedrockEvalFactory.AnalysisService(prompt, modelId);
         var judge = BedrockEvalFactory.Judge();
 
@@ -65,12 +77,17 @@ public class BedrockEvalTheory
             // skips, and the shared judge id in the message is the tell (rather than
             // looking like the system-under-test model was at fault).
             var judgeModelId = BedrockEvalFactory.JudgeModelId;
+            Console.Error.WriteLine(
+                $"[eval {caseNo}/{total}] SKIP {modelId} x {fixture.Id}: {ex.GetType().Name} ({total - caseNo} remaining)");
             _output.WriteLine(
                 $"SKIP {modelId} on {fixture.Id} (judge: {judgeModelId}): {ex.GetType().Name} — {ex.Message}");
             Skip.If(true, $"{modelId} (or judge {judgeModelId}) unavailable: {ex.Message}");
             return;
         }
 
+        Console.Error.WriteLine(
+            $"[eval {caseNo}/{total}] done {modelId} x {fixture.Id}  " +
+            $"tag={row.TagF1:F2} act={row.ActionF1:F2} content={row.ContentScore:F2} ({total - caseNo} remaining)");
         _output.WriteLine(
             $"{row.FixtureId} [{row.ModelId} / {row.PromptVersion}]  " +
             $"tagF1={row.TagF1:F2} actionF1={row.ActionF1:F2} content={row.ContentScore:F2}");

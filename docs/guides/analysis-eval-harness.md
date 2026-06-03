@@ -30,9 +30,17 @@ Everything that calls Bedrock is gated behind `RUN_BEDROCK_EVAL=1`, so a normal 
 AWS_PROFILE=prod make eval
 ```
 
-This discovers **every accessible on-demand Amazon Nova text model** in the region (`bedrock list-foundation-models`), sweeps the fixtures against all of them, renders the report, and prints it. Models the account can't invoke (no access grant, inference-profile-only, or non-Nova schema) are skipped gracefully — the report only shows models that actually ran. Override the sweep with `EVAL_MODEL_IDS="id1,id2" make eval`, or run only the offline tests with `make eval-offline`. The script lives at [`scripts/run-eval.sh`](../../scripts/run-eval.sh).
+This discovers the account's **accessible on-demand text models** in the region (`bedrock list-foundation-models`) — by default the Amazon provider (Nova + Titan) — sweeps the fixtures against all of them, renders the report, and prints it. Models the account can't invoke (no access grant, inference-profile-only) are skipped gracefully — the report only shows models that actually ran. Progress streams to stderr as `[eval N/total] …`. Run only the offline tests with `make eval-offline`. The script lives at [`scripts/run-eval.sh`](../../scripts/run-eval.sh).
 
-> Today the sweep is Nova-only because the analyse path speaks Nova's `InvokeModel` schema. Cross-vendor sweeps (Claude, Llama, Titan…) are tracked in [technical-improvements](../technical-improvements.md) — migrate the invoke path to the Bedrock **Converse** API.
+Since the analyse path speaks the model-agnostic Bedrock **Converse** API (slice 10-N), the sweep is **not** Nova-only. Widen it across vendors with `EVAL_PROVIDER`, or pin exact models with `EVAL_MODEL_IDS`:
+
+```bash
+AWS_PROFILE=prod EVAL_PROVIDER=all make eval                       # every accessible vendor
+AWS_PROFILE=prod EVAL_PROVIDER=anthropic make eval                 # one vendor's on-demand models
+AWS_PROFILE=prod EVAL_MODEL_IDS="amazon.nova-lite-v1:0,meta.llama3-1-70b-instruct-v1:0" make eval
+```
+
+> Two limits remain: non-Amazon models must be **access-granted** in the Bedrock console first (Claude needs the use-case form + Marketplace sub), and **inference-profile-only** models (newer Claude/Llama) won't appear in discovery — they aren't on-demand by raw id and need the profile id + cross-region IAM (out of scope for now).
 
 ### Manual two-phase run
 
@@ -55,7 +63,8 @@ Two phases because the report renders whatever rows exist in `Results/`, and tes
 | Variable | Effect | Default |
 |---|---|---|
 | `RUN_BEDROCK_EVAL` | `1` enables the live Bedrock tests; anything else skips them | unset (skip) |
-| `EVAL_MODEL_IDS` | comma-separated analysis models to sweep | `amazon.nova-lite-v1:0` |
+| `EVAL_MODEL_IDS` | comma-separated analysis models to sweep — pinning these **bypasses discovery** | discovered |
+| `EVAL_PROVIDER` | scopes discovery to a Bedrock provider (`amazon`, `anthropic`, `meta`, …) or `all` for every vendor | `amazon` |
 | `BEDROCK_JUDGE_MODEL_ID` | model used as the content judge | `amazon.nova-pro-v1:0` |
 | `EVAL_REQUEST_DELAY_MS` | pause between sweep cases, to stay under a rate-limited account's Bedrock per-minute quota | `0` (raw `dotnet test`); `make eval` sets `1500` |
 | `AWS_PROFILE` / `AWS_REGION` | standard AWS SDK credential/region resolution | — |
