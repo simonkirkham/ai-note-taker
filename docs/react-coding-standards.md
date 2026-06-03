@@ -20,15 +20,16 @@ Principles
 
 Project conventions
 
-Folder layout (recommended)
+Folder layout (actual)
 
-- `src/` — app code
-  - `components/` — presentational components (small, focused)
-  - `views/` or `pages/` — page-level containers and routes
-  - `hooks/` — shared custom hooks
-  - `lib/` — small utilities and API wrappers
-  - `styles/` — global styles, theme, tokens
-  - `tests/` — shared test helpers and fixtures
+- `web/src/` — app code
+  - `App.tsx` — root container; `App.css` — the single global stylesheet (tokens, themes, all rules)
+  - `components/` — components (small, focused; PascalCase file = exported name)
+  - `hooks/` — shared custom hooks (`useNotes`, `useTheme`, `useTranscription`, …)
+  - `auth/` — auth context, PKCE, token store, silent refresh
+  - `__tests__/` — Vitest + RTL component tests (`*.test.tsx`)
+  - `test/` — shared test setup, polyfills, network handlers
+  - utilities and the API wrapper live as flat files (`api.ts`, `dates.ts`, `constants.ts`, `types.ts`) — there is no `lib/` or `styles/` dir
 
 Component design
 
@@ -59,14 +60,22 @@ Accessibility (a11y)
 
 Styling
 
-- Pick one CSS strategy and be consistent across the repo: CSS Modules, Tailwind utility classes, or a CSS-in-JS library.
-- Keep styles local to components when possible; avoid globals except for theme tokens and resets.
+**The standard is CSS Modules.** A migration off the legacy single global stylesheet (`web/src/App.css`) is in progress — new and substantially-changed components use modules; `App.css` is retired opportunistically (full migration planned). Do not introduce Tailwind or CSS-in-JS.
+
+- **Co-located CSS Modules.** `NoteCard.tsx` ships with `NoteCard.module.css`; `import styles from "./NoteCard.module.css"` and reference `styles.card`. Vite-native, no dependency; scoping is automatic. Local class names are `camelCase`.
+- **Two global stylesheets only:** `styles/tokens.css` (`:root` design tokens + every `[data-theme]` theme block) and `styles/global.css` (reset + bare-element base styles). No other global CSS; components never add a global rule.
+- **Design tokens as CSS custom properties.** Colours, `--radius`, and `--transition` live in `tokens.css`; module rules reference them with `var(--…)`. Never hard-code a colour/radius/transition — it breaks theming and the cascade. A `--space-*` spacing scale doesn't exist yet — define one during the migration, then extend the no-hard-code rule to spacing.
+- **Theming = token override.** Each theme is a `[data-theme="…"]` block in `tokens.css`; `useTheme` sets `data-theme` on the root and the UI reskins through the cascade. Adding a theme adds one `[data-theme]` block, nothing per-component.
+- **Compose conditional classes with `clsx`:** `clsx(styles.card, isActive && styles.isActive)`. Mobile-first responsive; honour `prefers-reduced-motion`; never use `!important`.
+- Every class in a module must be referenced via `styles.*` (no dead classes).
+
+> **Legacy:** `App.css` uses flat kebab-case BEM-ish global classes (`sidebar`, `sidebar-footer`, `sidebar--open`). Do not extend it; migrate a component's rules into a module when you substantially touch it.
 
 Testing
 
-- Unit + integration: React Testing Library for component tests, assert on user-visible behaviour rather than internals.
-- E2E: Playwright for user journeys (use the `tests/E2E` harness already present).
-- Mock network calls in unit tests; prefer test fixtures for deterministic results.
+- Unit + integration: **Vitest + React Testing Library + jsdom**, co-located in `web/src/__tests__/`; run with `npm --prefix web test`. Assert on user-visible behaviour rather than internals.
+- E2E: **Playwright (C#)** journeys in `tests/Browser.E2E/` (gated on `FRONTEND_URL`).
+- Mock network calls in unit tests via the helpers in `web/src/test/`; prefer fixtures for deterministic results.
 
 Linting & formatting
 

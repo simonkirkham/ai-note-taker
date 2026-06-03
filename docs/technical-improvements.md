@@ -11,6 +11,36 @@ Each entry records what it is, why it matters, where it was raised, and any depe
 
 ---
 
+## Decide on a server-state library (TanStack Query / SWR) vs hand-rolled hooks — and record it
+
+**What:** Make and **document** a conscious decision about how the frontend manages *server state* (cached copies of server-owned data: notes, folders, action items). Today each feature hand-rolls a `useEffect`-fetch + `useState` data/loading/error hook (`useNotes`, etc.). Evaluate adopting **TanStack Query** (a.k.a. React Query) or **SWR**, which provide caching, request de-duplication, retry, stale-while-revalidate, and built-in optimistic-update-with-rollback (the pattern this app already mandates). Capture the outcome as a short **ADR** under `docs/` — either "adopt TanStack Query, migrate hooks incrementally" or "deliberately stay hand-rolled because <reason>". The decision, not the silence, is the deliverable.
+**Why it matters:** Hand-rolled hooks re-solve the same server-state problems in every feature and usually skip the hard parts (caching, dedup, retry), which invites subtle staleness/duplicate-fetch bugs as the app grows. Against that, this repo is explicitly a **learning vehicle** (`docs/goals.md`) — hand-rolling teaches what a library would hide, so "don't adopt" is a legitimate, defensible choice *if made on purpose*. Right now the standards docs are silent, which reads as unconsidered. Either way, writing it down stops every future contributor from re-litigating it.
+**Raised in:** Frontend standards review, 2026-06-03 (second-opinion feedback flagged the absent server-state strategy).
+**Depends on:** Nothing blocking. If adopted, expect incremental migration of existing hooks and a new dependency; align with the optimistic-update rule in CLAUDE.md and the `frontend-react` skill. If deferred, just land the ADR.
+
+---
+
+## Adopt `eslint-plugin-jsx-a11y` + `eslint-plugin-import` and an `@/` path alias
+
+**What:** Add two ESLint plugins to the flat config in `web/eslint.config.js` and wire one path alias:
+- **`eslint-plugin-jsx-a11y`** — machine-enforce the accessibility conventions (semantic elements, `aria-label` on icon-only controls, no static-element interactions) that are currently only advisory in the `frontend-react` skill.
+- **`eslint-plugin-import`** — enforce import ordering (builtin → external → internal) and catch unresolved/circular imports.
+- **`@/` path alias** — configure `resolve.alias` in `web/vite.config.ts` and matching `paths`/`baseUrl` in `tsconfig`, so imports read `@/components/...` instead of `../../..` chains (pairs with `eslint-plugin-import`'s resolver).
+**Why it matters:** The skill and `react-coding-standards.md` describe these as standards, but none are installed today — so they're unenforced and the docs flag them as *proposed*. Installing them turns "please remember" into "the build fails if you don't," which is where a11y and import hygiene actually hold. `react-hooks` is already active; this closes the gap on the other two.
+**Raised in:** Frontend standards review, 2026-06-03 (codebase verification found the plugins/alias referenced but absent).
+**Depends on:** Nothing blocking. Expect an initial batch of a11y warnings to triage on first install — add the plugin in `warn` mode first, fix the backlog, then promote to `error`. Re-run `npm --prefix web run lint` after.
+
+---
+
+## Migrate `App.css` to CSS Modules
+
+**What:** Retire the single 2853-line global stylesheet `web/src/App.css` in favour of co-located CSS Modules (`Component.module.css`), the adopted standard (see [docs/react-coding-standards.md](react-coding-standards.md) and the `frontend-react` skill). Concretely: (1) extract the `:root` design tokens and every `[data-theme]` theme block into `web/src/styles/tokens.css` (and **add a `--space-*` spacing scale** while there — none exists today), and the reset/base-element rules into `web/src/styles/global.css`, imported once at the app root; (2) for each component, move its rules into a co-located `*.module.css`, convert class names to `camelCase`, swap JSX `className` strings to `styles.*`, and use `clsx` for conditional classes; (3) delete migrated (and dead) selectors from `App.css` until the file is empty and removed. New/changed components already follow the module standard — this item is the bulk migration of existing components.
+**Why it matters:** The global namespace has no scoping — collisions and dead selectors accumulate, and a 2853-line file is hard to navigate and safely change. Modules give automatic scoping, co-location with the owning component, and obvious dead-code detection, with no new runtime dependency (Vite supports modules natively). Theming via CSS custom properties is preserved unchanged.
+**Raised in:** Frontend standards update, 2026-06-02. Decision: CSS Modules, incremental migration with a near-term dedicated full-migration effort.
+**Depends on:** Nothing blocking. Best done component-by-component (each migration is independently shippable); regression-checked by the existing Vitest/RTL suite and `Browser.E2E` journeys. Add `clsx` to `web/` deps on the first migration PR.
+
+---
+
 ## Upgrade GitHub Actions to Node.js 24
 
 **What:** Update `actions/checkout`, `actions/setup-node`, `actions/cache`, `actions/upload-artifact`, and `aws-actions/configure-aws-credentials` to versions that run on Node.js 24. Alternatively set `FORCE_JAVASCRIPT_ACTIONS_TO_NODE24=true` in workflows as a quick opt-in to verify nothing breaks, then pin updated action versions.
