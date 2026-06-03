@@ -4,8 +4,15 @@ import {
 } from '@aws-sdk/client-transcribe-streaming';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { completeTranscription, getTranscriptionCredentials } from '../api';
+import { PcmChunker } from './pcm';
 
 const LANGUAGE_CODE = 'en-GB' as const;
+
+// Coalesce live partial-result re-renders to at most one per this interval. The
+// finalised tail of a long transcript grows unbounded, so re-rendering it on
+// every partial (several/sec) congests the main thread and competes with audio
+// streaming; finals always render immediately.
+const PARTIAL_RENDER_INTERVAL_MS = 200;
 
 const WORKLET_CODE = `
 class PcmProcessor extends AudioWorkletProcessor {
@@ -50,6 +57,7 @@ export function useTranscription(noteId: string): UseTranscriptionResult {
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const startTimeRef = useRef<number>(0);
   const finalizedRef = useRef('');
+  const lastPartialAtRef = useRef(0);
 
   const cleanup = useCallback(() => {
     stoppedRef.current = true;
@@ -78,6 +86,7 @@ export function useTranscription(noteId: string): UseTranscriptionResult {
   const startRecording = useCallback((includeCallAudio: boolean) => {
     stoppedRef.current = false;
     finalizedRef.current = '';
+    lastPartialAtRef.current = 0;
     setTranscript('');
     setElapsedSeconds(0);
     setError(undefined);
@@ -138,15 +147,13 @@ export function useTranscription(noteId: string): UseTranscriptionResult {
         }
 
         const audioQueue: Uint8Array[] = [];
+        const chunker = new PcmChunker();
 
         workletNode.port.onmessage = (e: MessageEvent) => {
           if (stoppedRef.current) return;
-          const input = e.data as Float32Array;
-          const pcm = new Int16Array(input.length);
-          for (let i = 0; i < input.length; i++) {
-            pcm[i] = Math.max(-32768, Math.min(32767, Math.round(input[i] * 32767)));
-          }
-          audioQueue.push(new Uint8Array(pcm.buffer));
+          const chunks = chunker.push(e.data as Float32Array);
+          if (chunks.length === 0) return;
+          for (const chunk of chunks) audioQueue.push(chunk);
           wakeupRef.current?.();
           wakeupRef.current = null;
         };
@@ -197,9 +204,13 @@ export function useTranscription(noteId: string): UseTranscriptionResult {
                 const text = result.Alternatives?.[0]?.Transcript ?? '';
                 if (!text) continue;
                 if (result.IsPartial) {
+                  const now = Date.now();
+                  if (now - lastPartialAtRef.current < PARTIAL_RENDER_INTERVAL_MS) continue;
+                  lastPartialAtRef.current = now;
                   const display = finalizedRef.current ? `${finalizedRef.current} ${text}` : text;
                   setTranscript(display);
                 } else {
+                  lastPartialAtRef.current = 0;
                   finalizedRef.current = finalizedRef.current ? `${finalizedRef.current} ${text}` : text;
                   setTranscript(finalizedRef.current);
                 }
