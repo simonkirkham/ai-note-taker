@@ -1,3 +1,4 @@
+using Amazon.Runtime;
 using Analysis.Eval.Scoring;
 using Api.Services;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -40,8 +41,22 @@ public class BedrockEvalTheory
         var bedrock = BedrockEvalFactory.AnalysisService(prompt, modelId);
         var judge = BedrockEvalFactory.Judge();
 
-        var row = await EvalRunner.RunAsync(
-            fixture, prompt, modelId, bedrock, judge, RunId, ResultsDirectory);
+        EvalRow row;
+        try
+        {
+            row = await EvalRunner.RunAsync(
+                fixture, prompt, modelId, bedrock, judge, RunId, ResultsDirectory);
+        }
+        catch (AmazonServiceException ex)
+        {
+            // Sweeping "all accessible models" means some won't be: not access-granted
+            // (AccessDenied), not invokable by raw id (needs an inference profile), or
+            // not Nova-schema-compatible (ValidationException). Skip rather than fail so
+            // one bad model doesn't sink the whole sweep — the report just omits it.
+            _output.WriteLine($"SKIP {modelId} on {fixture.Id}: {ex.GetType().Name} — {ex.Message}");
+            Skip.If(true, $"{modelId} unavailable: {ex.Message}");
+            return;
+        }
 
         _output.WriteLine(
             $"{row.FixtureId} [{row.ModelId} / {row.PromptVersion}]  " +

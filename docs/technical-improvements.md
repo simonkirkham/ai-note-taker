@@ -11,6 +11,18 @@ Each entry records what it is, why it matters, where it was raised, and any depe
 
 ---
 
+## Migrate the Bedrock analysis path to the Converse API (enables cross-vendor eval sweeps)
+
+**What:** `BedrockAnalysisService` and the eval harness's `BedrockContentJudgeClient` call Bedrock via `InvokeModel` using Amazon Nova's `messages-v1` request/response schema (parsing `output.message.content[0].text`). That schema is Nova-specific. Rewrite the invoke path to the model-agnostic **Converse API** (`ConverseAsync` — unified `messages` + `system` request, `output.message.content` response) so any accessible text model works through the same code.
+
+**Why:** The eval harness (slice 10-G) is built to compare model variants, and `make eval` already discovers and sweeps accessible models — but it's restricted to the Nova family because non-Nova models (Claude, Llama, Titan, Mistral) reject the Nova body. Converse removes that ceiling and lets the matrix score every accessible model, which is the whole point of the harness. It also future-proofs the production analyse path against schema drift.
+
+**Where raised:** 10-G follow-on (`make eval` slice). The user opted for "Nova sweep now, Converse next."
+
+**Scope/notes:** Production change to the live analyse Lambda path — its own numbered slice with a BDD spec and Hawk review. Keep `analysis@v1` behaviour identical (same prompt, same parsed fields); only the transport changes. The harness's `Score` theory already skips models that throw, so once Converse lands, widening `make eval`'s discovery beyond `contains(modelId, 'nova')` is a one-line change. Watch for inference-profile-only models (need the profile id/ARN, not the raw model id).
+
+---
+
 ## Decide on a server-state library (TanStack Query / SWR) vs hand-rolled hooks — and record it
 
 **Resolved** by [ADR 0010](adr/0010-server-state-strategy.md) (slice 14-W) — **deferred, stay hand-rolled**. The decision is to keep the hand-rolled `useEffect`-fetch + `useState` hooks for now because this repo is a learning vehicle; adopting TanStack Query / SWR would hide the server-state mechanics we want to learn. See the ADR for the rationale and the "Revisit when" triggers that would graduate a library migration to its own numbered phase.

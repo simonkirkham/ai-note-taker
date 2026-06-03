@@ -22,7 +22,19 @@ The judge deliberately uses a **stronger** model than the system under test (Nov
 
 ## Running it
 
-Everything that calls Bedrock is gated behind `RUN_BEDROCK_EVAL=1`, so a normal `dotnet test` skips the live cases and runs only the offline unit + corpus tests. To run a real evaluation you need AWS credentials with `bedrock:InvokeModel` in a region where the models are available on-demand (Nova Lite/Pro work on-demand in `eu-west-2`).
+Everything that calls Bedrock is gated behind `RUN_BEDROCK_EVAL=1`, so a normal `dotnet test` skips the live cases and runs only the offline unit + corpus tests. To run a real evaluation you need AWS credentials with `bedrock:InvokeModel` (and `bedrock:ListFoundationModels` for model discovery) in a region where the models are available on-demand (Nova models work on-demand in `eu-west-2`).
+
+### Quick start: `make eval`
+
+```bash
+AWS_PROFILE=prod make eval
+```
+
+This discovers **every accessible on-demand Amazon Nova text model** in the region (`bedrock list-foundation-models`), sweeps the fixtures against all of them, renders the report, and prints it. Models the account can't invoke (no access grant, inference-profile-only, or non-Nova schema) are skipped gracefully — the report only shows models that actually ran. Override the sweep with `EVAL_MODEL_IDS="id1,id2" make eval`, or run only the offline tests with `make eval-offline`. The script lives at [`scripts/run-eval.sh`](../../scripts/run-eval.sh).
+
+> Today the sweep is Nova-only because the analyse path speaks Nova's `InvokeModel` schema. Cross-vendor sweeps (Claude, Llama, Titan…) are tracked in [technical-improvements](../technical-improvements.md) — migrate the invoke path to the Bedrock **Converse** API.
+
+### Manual two-phase run
 
 It's a **two-phase** run — populate the results, then render the report:
 
