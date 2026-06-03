@@ -1,5 +1,5 @@
-import { useEffect, useState } from "react";
 import clsx from "clsx";
+import { useEffect, useState } from "react";
 import { getActions, addAction, completeAction, reopenAction, deleteAction, ActionItem } from "../api";
 import styles from "./ActionsSection.module.css";
 

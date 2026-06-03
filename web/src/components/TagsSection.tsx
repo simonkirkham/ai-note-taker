@@ -1,5 +1,5 @@
-import { useState, type KeyboardEvent } from "react";
 import clsx from "clsx";
+import { useState, type KeyboardEvent } from "react";
 import type { TagIndexEntry } from "../api";
 import { useTagSuggestions } from "../hooks/useTagSuggestions";
 import styles from "./TagsSection.module.css";

@@ -1,11 +1,11 @@
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { http, HttpResponse } from 'msw'
-import { server } from '../test/setup'
+import type { NoteCard } from '../api'
 import ListView from '../components/ListView'
 import TagFilter from '../components/TagFilter'
-import type { NoteCard } from '../api'
 import { localTodayISO } from '../dates'
+import { server } from '../test/setup'
 
 describe('TagFilter — isolated', () => {
   it('renders a pill for each tag', () => {

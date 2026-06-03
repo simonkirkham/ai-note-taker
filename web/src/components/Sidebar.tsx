@@ -1,11 +1,11 @@
-import { useState } from "react";
 import clsx from "clsx";
+import { useState } from "react";
 import { FolderNode } from "../api";
 import { UNFILED_ID } from "../constants";
 import FolderTree from "./FolderTree";
-import ThemePicker from "./ThemePicker";
-import styles from "./Sidebar.module.css";
 import folderTreeStyles from "./FolderTree.module.css";
+import styles from "./Sidebar.module.css";
+import ThemePicker from "./ThemePicker";
 
 export default function Sidebar({
   open,

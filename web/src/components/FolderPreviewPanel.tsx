@@ -1,5 +1,5 @@
-import { useState } from "react";
 import clsx from "clsx";
+import { useState } from "react";
 import { NoteCard } from "../api";
 import { UNFILED_ID } from "../constants";
 import styles from "./FolderPreviewPanel.module.css";

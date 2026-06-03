@@ -1,10 +1,10 @@
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { http, HttpResponse } from 'msw'
-import { server } from '../test/setup'
-import ListView from '../components/ListView'
 import type { NoteCard as NoteCardData } from '../api'
+import ListView from '../components/ListView'
 import { localTodayISO } from '../dates'
+import { server } from '../test/setup'
 
 // Dated today so both render in the home view by default; these tests exercise
 // the delete affordance, not the today/older date filter.

@@ -5,12 +5,12 @@ import type { TranscriptionStatus } from "../hooks/useTranscription";
 import ActionsSection from "./ActionsSection";
 import FinalNotesView from "./FinalNotesView";
 import NoteEditor from "./NoteEditor";
+import tabStyles from "./NoteTabs.module.css";
+import styles from "./NoteView.module.css";
 import RecordControl from "./RecordControl";
 import ShortcutsPanel from "./ShortcutsPanel";
 import TagsSection from "./TagsSection";
 import TranscriptTab from "./TranscriptTab";
-import styles from "./NoteView.module.css";
-import tabStyles from "./NoteTabs.module.css";
 
 type NoteTab = "quick" | "transcript" | "final";
 

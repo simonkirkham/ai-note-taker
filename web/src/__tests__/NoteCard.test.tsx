@@ -1,8 +1,8 @@
 import { render, screen, fireEvent } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import type { NoteCard as NoteCardData } from '../api'
 import NoteCard from '../components/NoteCard'
 import styles from '../components/NoteCard.module.css'
-import type { NoteCard as NoteCardData } from '../api'
 
 const base: NoteCardData = {
   noteId: 'note-1',

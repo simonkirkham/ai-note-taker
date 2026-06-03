@@ -1,12 +1,12 @@
-import { useEffect, useMemo, useState } from "react";
 import clsx from "clsx";
+import { useEffect, useMemo, useState } from "react";
 import { NoteCard as NoteCardData, TagIndexEntry, getTags } from "../api";
 import { effectiveDate, isEditedToday, localTodayISO } from "../dates";
+import styles from "./ListView.module.css";
 import MeetingsSection from "./MeetingsSection";
 import NoteCard from "./NoteCard";
-import TodoSection from "./TodoSection";
 import TagFilter from "./TagFilter";
-import styles from "./ListView.module.css";
+import TodoSection from "./TodoSection";
 
 export default function ListView({
   cards,
