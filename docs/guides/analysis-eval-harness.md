@@ -14,9 +14,14 @@ For each fixture the harness builds a `NoteAnalysisRequest`, calls `BedrockAnaly
 |---|---|---|
 | **Tag F1** | inferred tags vs expected | set precision/recall/F1, case-insensitive (`TagScorer`) |
 | **Action F1** | extracted action items vs expected | normalised exact match P/R/F1 (`ActionItemScorer`) |
-| **Content score** | the gap-filled content contains the required facts | LLM-as-judge: fraction of `contentMustMention` facts the judge confirms present (`ContentJudge` + `BedrockContentJudgeClient`) |
+| **Content** (recall) | the artifact contains the required facts | LLM-as-judge: fraction of `contentMustMention` facts supported by the summary/discussion/decisions |
+| **Faithfulness** (precision) | the model's *claims* are supported by the source | LLM-as-judge: fraction of the model's discussion points + decisions + action items that are supported by the transcript + existing note — catches **invented** decisions/actions that Content (recall-only) is blind to |
 
-The judge deliberately uses a **stronger** model than the system under test (Nova Pro judging Nova Lite by default).
+The judge deliberately uses a **stronger** model than the system under test (Nova Pro judging Nova Lite by default). Content and Faithfulness are complementary: Content asks "did it capture what mattered?", Faithfulness asks "is everything it said actually true?". A terse model that hits the expected facts but invents extra content scores high on Content and low on Faithfulness.
+
+Every run also writes **`Results/<runId>-outputs.md`** — the raw `summary`/`discussion`/`decisions`/`tags`/`actions` each model produced per fixture, with its scores. Read it to *see* why a model scored the way it did rather than trusting the number.
+
+> **Caveat the scores can't fix: fixture realism.** On short, clean synthetic transcripts even a weak model stays faithful, so Faithfulness won't separate models there. The metrics only expose a model's real failure modes when fed inputs that trigger them — long, messy, real meetings. Reproducing a real-world failure means running against real transcripts (which, since this repo is public, can't be committed — a private/out-of-repo fixtures path is the way to do it).
 
 > **Why Action F1 catches "only my actions".** The fixtures put the current user's actions in `actionItems` and *other people's* actions in `contentMustMention`. If the model wrongly captures someone else's action as one of the user's, that's an extra predicted item not in `expected` — **precision drops**, so Action F1 < 1. Conversely, the missing-from-content fact lowers the content score. The two scores together pin the "scope actions to the current user" behaviour.
 

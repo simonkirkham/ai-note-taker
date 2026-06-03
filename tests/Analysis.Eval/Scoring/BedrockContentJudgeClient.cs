@@ -6,8 +6,10 @@ using Api.Services;
 namespace Analysis.Eval.Scoring;
 
 // LLM-as-judge. Deliberately uses a stronger model than the system-under-test
-// (default Nova Pro vs the analysed Nova Lite). Atomic rubric: for each fact,
-// the judge returns YES/NO whether it is clearly present in the content.
+// (default Nova Pro vs the analysed Nova Lite). Atomic rubric: for each statement,
+// the judge returns YES/NO whether it is supported by a reference text. Used both
+// ways: reference = the note + statements = expected facts (Content/recall), and
+// reference = the transcript + statements = the model's claims (Faithfulness/precision).
 public sealed class BedrockContentJudgeClient : IJudgeClient
 {
     readonly IAmazonBedrockRuntime _bedrock;
@@ -27,18 +29,18 @@ public sealed class BedrockContentJudgeClient : IJudgeClient
 
         var numberedFacts = string.Join("\n", facts.Select((f, i) => $"{i + 1}. {f}"));
         var prompt = $$"""
-            You are grading whether a meeting note contains specific facts.
+            You are grading whether a REFERENCE TEXT supports specific statements.
 
-            NOTE:
+            REFERENCE TEXT:
             {{content}}
 
-            For each fact below, decide whether it is clearly present in the note.
-            Answer YES if present, NO if not.
+            For each statement below, decide whether it is clearly supported by the reference text above.
+            Answer YES if it is supported, NO if it is not supported (including if it is invented or contradicted).
 
-            FACTS:
+            STATEMENTS:
             {{numberedFacts}}
 
-            Return ONLY a JSON array of "YES"/"NO" strings, one per fact, in order. No other text.
+            Return ONLY a JSON array of "YES"/"NO" strings, one per statement, in order. No other text.
             """;
 
         var converseRequest = new ConverseRequest

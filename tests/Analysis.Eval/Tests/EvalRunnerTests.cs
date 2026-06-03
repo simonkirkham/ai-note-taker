@@ -81,6 +81,33 @@ public class EvalRunnerTests : IDisposable
         Assert.Equal("amazon.nova-lite-v1:0", row.ModelId);
         Assert.Equal("analysis@v2", row.PromptVersion);
         Assert.Equal("run-1", row.RunId);
+        Assert.Equal(1.0, row.FaithfulnessScore); // allYes judge → every claim "supported"
+    }
+
+    [Fact]
+    public async Task Faithfulness_is_zero_when_no_claim_is_supported()
+    {
+        var fixture = new Fixture(
+            Id: "unfaithful",
+            TranscriptText: "Alice: nothing was decided.",
+            ExistingContent: "Notes",
+            CurrentUserName: "Alice",
+            Expected: new FixtureExpected([], [], [])); // empty must-mention → content scores 1.0
+
+        // Model invents claims the transcript doesn't support.
+        var bedrock = new StubBedrock(new NoteAnalysisResult(
+            Summary: "Big decisions were made.",
+            DiscussionPoints: ["Budget doubled"],
+            Decisions: ["Hire ten engineers"],
+            NewTags: [],
+            NewActionItems: ["Sign the lease"]));
+        var judge = new StubJudge(allYes: false); // judge says nothing is supported
+
+        var row = await EvalRunner.RunAsync(
+            fixture, PromptCatalog.V2, "model-x", bedrock, judge, "run-3", _resultsDir);
+
+        Assert.Equal(0.0, row.FaithfulnessScore);
+        Assert.Equal(1.0, row.ContentScore); // empty expected facts → recall vacuously 1.0
     }
 
     [Fact]

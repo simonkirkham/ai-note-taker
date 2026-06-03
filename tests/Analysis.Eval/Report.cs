@@ -22,8 +22,8 @@ public static class Report
             : [];
 
         var sb = new StringBuilder();
-        sb.AppendLine("| Prompt | Model | Tag F1 | Action F1 | Content | Fixtures |");
-        sb.AppendLine("| --- | --- | --- | --- | --- | --- |");
+        sb.AppendLine("| Prompt | Model | Tag F1 | Action F1 | Content | Faithfulness | Fixtures |");
+        sb.AppendLine("| --- | --- | --- | --- | --- | --- | --- |");
 
         var groups = rows
             .GroupBy(r => (r.PromptVersion, r.ModelId))
@@ -38,6 +38,7 @@ public static class Report
                 "|", Mean(group.Select(r => r.TagF1)),
                 "|", Mean(group.Select(r => r.ActionF1)),
                 "|", Mean(group.Select(r => r.ContentScore)),
+                "|", Mean(group.Select(r => r.FaithfulnessScore)),
                 "|", group.Count().ToString(CultureInfo.InvariantCulture),
                 "|"));
         }
