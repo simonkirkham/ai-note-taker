@@ -6,7 +6,7 @@
 
 | Slice | Summary | Status | Depends on |
 |-------|---------|--------|------------|
-| Prototype | Throwaway frontend prototype of the Transcript / Quick notes / Final notes tab layout — confirm tab UX, where recording controls/tags/actions live, and the Final-notes section order before any real code | Not Started | — |
+| Prototype | Throwaway frontend prototype of the tab layout — **Done**; confirmed Layout B hybrid (Quick notes default, Record+Export inline on the tab row, Tags+Actions in a persistent sidebar, Final notes = Summary/Discussion/Decisions) | Done | — |
 | 15-A | **Your notes stay yours, and the AI's notes get their own home.** Running analysis produces a separate, model-attributed Final notes artifact (Summary, Discussion, Decisions, Action items) and *never overwrites* the user's typed notes | Not Started | — |
 | 15-B | **Read a note as three tabs — Transcript, Quick notes, Final notes.** The raw transcript and the user's own notes each get a dedicated view alongside Final notes, per the approved prototype | Not Started | 15-A, Prototype |
 | 15-C | **Regenerate Final notes on demand.** A "Re-process" control re-runs analysis from the Final notes view, with an optimistic pending state and rollback on failure | Not Started | 15-A, 15-B |
@@ -21,7 +21,9 @@
 
 ## Prototype — three-tab note layout (throwaway, frontend-only)
 
-**Status:** Not Started
+**Status:** Done — approved 2026-06-03. Built on `prototype/phase-15-note-tabs`; confirmed UX captured in that branch's `web/src/prototype/REFERENCE.md`.
+
+**Confirmed layout (Layout B hybrid).** Tabs are **Quick notes (default) · Transcript · Final notes**. **Record + Export sit inline on the tab row**, right-aligned, level with the tabs. **Tags + Action items stay in a persistent right sidebar** (today's `TagsSection`/`ActionsSection`, unmoved) — visible on every tab. **Final notes renders Summary → Discussion → Decisions + a "Written by {model}" attribution line only**; action items are **not** folded into Final notes (they live in the sidebar, one home — a deliberate divergence from the original screenshot). Transcript is read-only; Quick notes is the editable body the AI never writes to. The never-analysed Final-notes state is a centred "generate final notes" CTA, visually distinct from an error. Default tab is Quick notes for *all* notes (opening analysed notes on Final notes was considered and declined — revisitable later).
 
 **Why prototype.** This phase replaces today's two-column note layout (`note-content-panel` + `note-right-panel`, with the live transcript in `TranscriptionPanel`) with a tabbed layout. Several interaction questions are genuinely open and cheap to get wrong:
 
@@ -61,13 +63,13 @@ This slice spans the model, the pipeline, and a first presentation — that is t
   // Command → event (precondition: note exists, not deleted)
   RecordAnalysisSummary(NoteId, Summary, DiscussionPoints, Decisions, ModelId, PromptVersion)
   ```
-  Action items are **not** duplicated into the event — they stay `ActionItem` aggregates (single source of truth) and the Final notes view renders them from the existing `NoteActions` data. The event carries only the three sections with no existing home (Summary, Discussion, Decisions) plus `ModelId`/`PromptVersion` for attribution and prompt traceability (consistent with Phase 10-G's `NoteAnalysisResult`).
+  Action items are **not** duplicated into the event — they stay `ActionItem` aggregates (single source of truth) and continue to render in the existing sidebar actions section (`NoteActions` data), **not** inside Final notes (per the approved prototype). The event carries only the three sections with no existing home (Summary, Discussion, Decisions) plus `ModelId`/`PromptVersion` for attribution and prompt traceability (consistent with Phase 10-G's `NoteAnalysisResult`).
 - **`NoteDetail` projection + DTO + wire JSON** gain `summary`, `discussionPoints` (`[]` when none), `decisions` (`[]` when none), `summaryModelId`, `summaryPromptVersion`; latest `AnalysisSummaryRecorded` wins; absent ⇒ empty/`null` (a normal "never analysed" state, *not* an error). While here, align `docs/view-schemas.md` §3 with the already-shipped `transcriptText` field it currently omits.
 - **Structured `analysis@v2` prompt** (`src/Api/Services/PromptCatalog.cs`): returns `{ summary, discussion[], decisions[], newTags[], newActionItems[] }`, **no `updatedContent`**, and explicitly instructs the model not to edit the user's notes. Register V2 as `Current`; keep V1 for eval history.
 - **Internal `NoteAnalysisResult`/`NoteAnalysisRequest`** (unpublished DTOs — free to change): replace `UpdatedContent` with `Summary`/`DiscussionPoints`/`Decisions`; drop `AllowContentRewrite`. The parser falls back to an **empty** summary on malformed JSON (current no-throw behaviour preserved) and logs a warning.
 - **`AnalyseNote` handler** (`src/Api/Handlers/TranscriptionHandlers.cs`): remove the `EditContent` gap-fill call entirely; emit `RecordAnalysisSummary` on success; keep the tag path (`RecordTagSuggestions` + `TagNote`) and action-item path (`AddActionItem` + `RecordActionItemSuggestions`) exactly as today; preserve the 503-on-Bedrock-failure response. Remove the now-unused `updateContent` field from `AnalyseNoteRequest` (guardrail: no unread request-contract fields).
 - **Eval harness** (`tests/Analysis.Eval/`): update fixtures/judge to the structured output and `analysis@v2` so nightly `eval.yml` stays green.
-- **Frontend:** a `FinalNotesTab`/`FinalNotesView` component renders Summary, Discussion, Decisions, Action items (from existing actions data), and the attribution line, with an empty-state CTA; `NoteDetail` TS interface gains the new fields. AI-written text must never appear in the Quick-notes editor.
+- **Frontend:** a `FinalNotesView` component renders Summary, Discussion, Decisions, and the attribution line, with an empty-state CTA; `NoteDetail` TS interface gains the new fields. Action items are **not** shown here — they stay in the existing `ActionsSection` (the prototype confirmed action items live in the sidebar, not inside Final notes). AI-written text must never appear in the Quick-notes editor.
 
 ### Scenarios
 
@@ -118,7 +120,7 @@ Scenario: Final notes survive a projection rebuild
 - [ ] `analysis@v2` prompt returns the structured shape with no `updatedContent` and instructs the model not to edit the user's notes; `PromptCatalog.Current` = V2; V1 retained
 - [ ] `AnalyseNote` **never** calls `EditContent`; emits `RecordAnalysisSummary` on success; tag/action provenance paths unchanged; 503 path preserved; `AnalyseNoteRequest.UpdateContent` removed
 - [ ] Parser falls back to an empty summary on malformed JSON (no throw) and logs the fallback
-- [ ] Final notes view renders summary/discussion/decisions/action items + model attribution + empty-state CTA; no AI-written text ever appears in the Quick-notes editor
+- [ ] Final notes view renders summary/discussion/decisions + model attribution + empty-state CTA (action items stay in the existing sidebar section, not inside Final notes); no AI-written text ever appears in the Quick-notes editor
 - [ ] Eval harness updated to structured output; nightly `eval.yml` green
 - [ ] Domain spec + Api.Integration read-shape test + frontend component test green; `docs/event-model.md`/`event-schemas.md`/`view-schemas.md` updated (incl. the `transcriptText` drift fix); `cdk synth` succeeds
 
@@ -128,28 +130,27 @@ Scenario: Final notes survive a projection rebuild
 
 **Status:** Not Started
 
-> Scenarios below are the pre-prototype draft. **The Prototype step rewrites this slice** with the confirmed tab UX (default tab, recording-control home, tags/actions placement) before implementation.
+**User value:** The note screen becomes the clean three-tab reading experience confirmed in the prototype. The user flips between their own **Quick notes**, the raw **Transcript**, and the AI's **Final notes** — three clearly-labelled surfaces, so at a glance it is obvious which is which. The raw transcript gets its own read-only tab instead of a side panel, and Quick notes is unmistakably the user's space.
 
-**User value:** The note screen becomes the clean three-tab reading experience from the screenshot. The user flips between the raw **Transcript**, their own **Quick notes**, and the AI's **Final notes** — three clearly-labelled surfaces, so at a glance it is obvious which is which. The raw transcript gets its own read-only tab instead of a side panel, and Quick notes is unmistakably the user's space.
-
-**What the user sees:** a note opens with Transcript / Quick notes / Final notes tabs; the Final notes view from 15-A moves into its tab unchanged; the transcript reads in its own tab; recording controls live wherever the approved prototype put them.
+**Confirmed UX (from the prototype — see REFERENCE.md):** tab order is **Quick notes · Transcript · Final notes**, with **Quick notes the default** on open for all notes. **Record + Export sit inline on the tab row**, right-aligned. **Tags + Action items remain in the persistent right sidebar** (today's `TagsSection`/`ActionsSection`, unmoved) — *not* folded into tabs, and visible on every tab. The 15-A Final-notes view (Summary/Discussion/Decisions + attribution) moves into the Final notes tab unchanged.
 
 **Backend changes:** None (reuses 15-A's fields + the existing transcript/actions data).
 
 ### Key implementation files
 
-- `web/src/components/NoteView.tsx` — replace the two-column `note-layout` with the prototype's tab control; route `NoteEditor` into **Quick notes**, the transcript into **Transcript**, and 15-A's Final-notes view into **Final notes**; relocate recording controls + tags/actions per the prototype.
+- `web/src/components/NoteView.tsx` — replace the two-column `note-layout` with the confirmed layout: a tab control (**Quick notes default · Transcript · Final notes**) with **Record + Export inline on the tab row**, beside a **persistent right sidebar** that keeps the existing `TagsSection` + `ActionsSection`. Route `NoteEditor` into Quick notes, the transcript into Transcript, and 15-A's Final-notes view into Final notes. Move the record controls out of `TranscriptionPanel` onto the tab row.
 - `web/src/components/TranscriptTab.tsx` (or similar) — **new**; read-only transcript view.
-- `web/src/__tests__/` — tab switching, Quick-notes editability, Transcript read-only, Final notes shown in its tab.
+- `web/src/__tests__/` — Quick notes is the default tab; tab switching; Quick-notes editability; Transcript read-only; Tags/Actions visible on every tab; record/export reachable from the tab row.
 - `tests/Browser.E2E/` — update the kept note-screen journey to the tabbed layout.
 
 ### Scenarios
 
 ```
-Scenario: A note opens with three labelled tabs
+Scenario: A note opens on Quick notes with three labelled tabs
   Given a note
   When  I open it
-  Then  I see Transcript, Quick notes, and Final notes tabs and can switch between them
+  Then  the Quick notes tab is selected by default
+  And   I can switch to the Transcript and Final notes tabs
 
 Scenario: Quick notes is clearly my space and stays editable
   Given the Quick notes tab
@@ -164,15 +165,26 @@ Scenario: Transcript reads in its own tab, read-only
 Scenario: Final notes appears in its own tab
   Given a note with a recorded summary
   When  I open the Final notes tab
-  Then  I see the summary, discussion, decisions, action items, and model attribution from 15-A
+  Then  I see the summary, discussion, and decisions, with model attribution from 15-A
+
+Scenario: Tags and action items stay visible across tabs
+  Given any tab is selected
+  Then  the Tags and Action items sidebar is visible
+  And   action items are shown only in the sidebar, not inside Final notes
+
+Scenario: Recording and export are reachable from the tab row
+  Given any tab is selected
+  Then  the Record and Export controls are available inline on the tab row
 ```
 
 ### Acceptance criteria
 
-- [ ] Note view renders Transcript / Quick notes / Final notes tabs; default tab + recording-control placement match the approved prototype
+- [ ] Note view renders the tabs in order **Quick notes · Transcript · Final notes**, with Quick notes selected by default
+- [ ] Record + Export controls sit inline on the tab row (moved out of `TranscriptionPanel`)
+- [ ] Tags + Action items remain in a persistent sidebar visible on every tab; action items are not duplicated inside Final notes
 - [ ] Quick notes remains the existing editor and saves via `editContent`; no AI-written text appears in it
 - [ ] Transcript tab is read-only; Final notes reuses the 15-A view component (not rebuilt)
-- [ ] Component tests cover tab switching + read-only transcript + Quick-notes editing; the kept E2E note journey updated and green
+- [ ] Component tests cover default tab + tab switching + read-only transcript + Quick-notes editing + sidebar persistence; the kept E2E note journey updated and green
 - [ ] No styling regression (coordinate with Phase 14 if it lands first); existing Vitest suite green
 
 ---
@@ -181,9 +193,7 @@ Scenario: Final notes appears in its own tab
 
 **Status:** Not Started
 
-> Scenarios below are the pre-prototype draft; the Prototype confirms where the control lives and its pending affordance.
-
-**User value:** The user can re-run analysis whenever they want — after editing the transcript or their notes — and get fresh Final notes, without leaving the note. A "Re-process" control regenerates the artifact with an optimistic pending state, and on failure it rolls back and tells them, rather than leaving a stale or silently-broken view.
+**User value:** The user can re-run analysis whenever they want — after editing the transcript or their notes — and get fresh Final notes, without leaving the note. A "Re-process" control (confirmed by the prototype to live in the Final notes tab header, alongside the empty-state "Generate final notes" CTA) regenerates the artifact with an optimistic pending state, and on failure it rolls back and tells them, rather than leaving a stale or silently-broken view.
 
 **Backend changes:** None (calls the 15-A `POST /notes/{id}/analyse`).
 
