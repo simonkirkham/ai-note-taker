@@ -13,10 +13,7 @@ Each entry records what it is, why it matters, where it was raised, and any depe
 
 ## Decide on a server-state library (TanStack Query / SWR) vs hand-rolled hooks — and record it
 
-**What:** Make and **document** a conscious decision about how the frontend manages *server state* (cached copies of server-owned data: notes, folders, action items). Today each feature hand-rolls a `useEffect`-fetch + `useState` data/loading/error hook (`useNotes`, etc.). Evaluate adopting **TanStack Query** (a.k.a. React Query) or **SWR**, which provide caching, request de-duplication, retry, stale-while-revalidate, and built-in optimistic-update-with-rollback (the pattern this app already mandates). Capture the outcome as a short **ADR** under `docs/` — either "adopt TanStack Query, migrate hooks incrementally" or "deliberately stay hand-rolled because <reason>". The decision, not the silence, is the deliverable.
-**Why it matters:** Hand-rolled hooks re-solve the same server-state problems in every feature and usually skip the hard parts (caching, dedup, retry), which invites subtle staleness/duplicate-fetch bugs as the app grows. Against that, this repo is explicitly a **learning vehicle** (`docs/goals.md`) — hand-rolling teaches what a library would hide, so "don't adopt" is a legitimate, defensible choice *if made on purpose*. Right now the standards docs are silent, which reads as unconsidered. Either way, writing it down stops every future contributor from re-litigating it.
-**Raised in:** Frontend standards review, 2026-06-03 (second-opinion feedback flagged the absent server-state strategy).
-**Depends on:** Nothing blocking. If adopted, expect incremental migration of existing hooks and a new dependency; align with the optimistic-update rule in CLAUDE.md and the `frontend-react` skill. If deferred, just land the ADR.
+**Resolved** by [ADR 0010](adr/0010-server-state-strategy.md) (slice 14-W) — **deferred, stay hand-rolled**. The decision is to keep the hand-rolled `useEffect`-fetch + `useState` hooks for now because this repo is a learning vehicle; adopting TanStack Query / SWR would hide the server-state mechanics we want to learn. See the ADR for the rationale and the "Revisit when" triggers that would graduate a library migration to its own numbered phase.
 
 ---
 
