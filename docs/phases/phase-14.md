@@ -23,9 +23,9 @@
 | 14-O | ~~Migrate `TranscriptionPanel`~~ — **Dropped** (Phase 15-B deleted the component) | Dropped | 14-B |
 | 14-P | Resolve remaining shared shell/utility classes (App shell → module, shared utilities → shared module, body/reduced-motion → global.css); remove `App.css` and its import | Done | 14-B…14-N |
 | 14-Q | Add `@/` path alias (Vite `resolve.alias` + tsconfig `paths`) | Done | — |
-| 14-R | Add `eslint-plugin-import` + enforce import ordering | Not Started | 14-Q |
-| 14-S | Add `eslint-plugin-jsx-a11y` in `warn` mode | Not Started | — |
-| 14-T | Fix the a11y backlog and promote jsx-a11y to `error` | Not Started | 14-S |
+| 14-R | Enforce import ordering (via `eslint-plugin-import-x`, ESLint-10-compatible) | Done | 14-Q |
+| 14-S | Add `eslint-plugin-jsx-a11y` in `warn` mode | **Deferred** — no ESLint 10 support | — |
+| 14-T | Fix the a11y backlog and promote jsx-a11y to `error` | **Deferred** — blocked by 14-S | 14-S |
 | 14-U | Add a route/feature-root error boundary | Done | — |
 | 14-V | Add a reusable inline-error/toast primitive | Done | — |
 | 14-W | Server-state library ADR (decision, not code) | Done | — |
@@ -730,7 +730,7 @@ Scenario: Tests still resolve the alias
 
 ## Slice 14-R — Add `eslint-plugin-import` and enforce import ordering
 
-**Status:** Not Started
+**Status:** Done — implemented with **`eslint-plugin-import-x`** (the ESLint-10-compatible fork) rather than `eslint-plugin-import`, which peer-caps at ESLint 9. Enabled `import-x/order` only; `import/no-unresolved` + `import/no-cycle` (also named in the original AC) were deferred — they need `eslint-import-resolver-typescript` wired for the `@/` alias and can be noisy on a first pass. See `technical-improvements.md`.
 
 **Value:** Machine-enforce the builtin → external → internal import ordering the standards describe, and catch unresolved/circular imports. Depends on 14-Q so the resolver understands the `@/` alias.
 
@@ -768,7 +768,7 @@ Scenario: The existing codebase passes after the fix sweep
 
 ## Slice 14-S — Add `eslint-plugin-jsx-a11y` in `warn` mode
 
-**Status:** Not Started
+**Status:** Deferred — `eslint-plugin-jsx-a11y@6.10.2` peer-caps at ESLint 9 and has no ESLint 10 support (the project is on ESLint 10). Forcing it via `--legacy-peer-deps` would risk the lint gate, so it is deferred until jsx-a11y ships ESLint 10 support. Tracked in `technical-improvements.md`.
 
 **Value:** Introduce machine-enforced accessibility linting, but **non-blocking first** so the existing backlog of warnings is surfaced and quantified before it gates the build. Independent of the CSS migration. The fix-and-promote step is 14-T.
 
@@ -800,7 +800,7 @@ Scenario: jsx-a11y warnings surface without breaking the build
 
 ## Slice 14-T — Fix the a11y backlog and promote jsx-a11y to `error`
 
-**Status:** Not Started
+**Status:** Deferred — blocked by 14-S (jsx-a11y has no ESLint 10 support). Will follow once the plugin is installable.
 
 **Value:** Clear every `jsx-a11y` warning surfaced in 14-S, then promote the ruleset to `error` so accessibility regressions fail the build. Depends on 14-S. (If the backlog turns out small, 14-S and 14-T could merge — but they are split here to keep each diff thin, per the "if a slice's diff would be large, split it" rule.)
 

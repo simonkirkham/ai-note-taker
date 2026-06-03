@@ -17,15 +17,19 @@ Each entry records what it is, why it matters, where it was raised, and any depe
 
 ---
 
-## Adopt `eslint-plugin-jsx-a11y` + `eslint-plugin-import` and an `@/` path alias
+## ESLint `jsx-a11y` (blocked on ESLint 10) + `import` rules follow-up + `@/` alias
 
-**What:** Add two ESLint plugins to the flat config in `web/eslint.config.js` and wire one path alias:
-- **`eslint-plugin-jsx-a11y`** — machine-enforce the accessibility conventions (semantic elements, `aria-label` on icon-only controls, no static-element interactions) that are currently only advisory in the `frontend-react` skill.
-- **`eslint-plugin-import`** — enforce import ordering (builtin → external → internal) and catch unresolved/circular imports.
-- **`@/` path alias** — configure `resolve.alias` in `web/vite.config.ts` and matching `paths`/`baseUrl` in `tsconfig`, so imports read `@/components/...` instead of `../../..` chains (pairs with `eslint-plugin-import`'s resolver).
-**Why it matters:** The skill and `react-coding-standards.md` describe these as standards, but none are installed today — so they're unenforced and the docs flag them as *proposed*. Installing them turns "please remember" into "the build fails if you don't," which is where a11y and import hygiene actually hold. `react-hooks` is already active; this closes the gap on the other two.
-**Raised in:** Frontend standards review, 2026-06-03 (codebase verification found the plugins/alias referenced but absent).
-**Depends on:** Nothing blocking. Expect an initial batch of a11y warnings to triage on first install — add the plugin in `warn` mode first, fix the backlog, then promote to `error`. Re-run `npm --prefix web run lint` after.
+**Status of the three originals (Phase 14):**
+- **`@/` path alias** — ✅ **Done** (Phase 14-Q): `resolve.alias` in `vite.config.ts` + tsconfig `paths`.
+- **Import ordering** — ✅ **Done** (Phase 14-R), but via **`eslint-plugin-import-x`** (the maintained, flat-config-native fork), NOT `eslint-plugin-import` — the latter peer-caps at ESLint 9 and the project is on **ESLint 10**. Only `import-x/order` was enabled.
+- **`eslint-plugin-jsx-a11y`** — ⛔ **BLOCKED / deferred** (Phase 14-S/T): `eslint-plugin-jsx-a11y@6.10.2` peer-caps at ESLint 9, no ESLint 10 support. Forcing it via `--legacy-peer-deps` would risk the lint gate, so it was deferred.
+
+**Remaining work (this item):**
+1. **`jsx-a11y` once it supports ESLint 10** — add in `warn` mode, triage the a11y backlog, promote to `error` (the deferred 14-S/14-T). Re-check the plugin's peer range periodically, or adopt an ESLint-10-compatible a11y plugin if one emerges first.
+2. **`import-x/no-unresolved` + `import-x/no-cycle`** — the original AC also named "catch unresolved/circular imports", which 14-R did not enable (needs `eslint-import-resolver-typescript` wired for the `@/` alias; `no-cycle` can be noisy). Add these on a follow-up pass.
+**Why it matters:** a11y and import-hygiene enforcement turn "please remember" into "the build fails if you don't." `react-hooks` + `import-x/order` are now active; this closes the remaining gaps.
+**Raised in:** Frontend standards review 2026-06-03; updated after Phase 14-Q/R/S/T (ESLint-10 plugin-ecosystem gap discovered).
+**Depends on:** `jsx-a11y` shipping ESLint 10 support (external). The import rules are unblocked.
 
 ---
 

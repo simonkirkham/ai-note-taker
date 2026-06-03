@@ -51,11 +51,11 @@ Load before writing or reviewing any `.tsx` / `.ts` file in `web/src/`. This ski
 - **No `!important` in your own modules** — restructure the selector to win specificity instead. The one carve-out is overriding a third-party library's injected styles (e.g. Tiptap): keep those vendor overrides isolated in a clearly-labelled block/file so the exception is obvious, never scattered through component modules.
 - **Every class defined in a module must be referenced** via `styles.x` in its component; an unreferenced class is dead and should not be committed.
 
-**CSS migration status** *(legacy → CSS Modules)*
-- `web/src/App.css` is the **legacy** global stylesheet (flat kebab-case BEM-ish classes). It is being retired, not extended.
-- **Do not add new rules to `App.css`.** New styling goes in a CSS Module.
-- **When you substantially touch a component still styled by `App.css`, migrate it** in the same PR: move its rules into a co-located `*.module.css`, convert class names to camelCase, swap the JSX `className` strings to `styles.*`, and delete the migrated rules (and any now-dead selectors) from `App.css`.
-- The tokens/reset blocks currently at the top of `App.css` move to `styles/tokens.css` and `styles/global.css` as part of the first migration PR. Full migration is planned as a near-term dedicated effort — until then the codebase is a deliberate hybrid.
+**CSS structure** *(migration complete — Phase 14)*
+- **`App.css` no longer exists** — every component is styled by a co-located `*.module.css`. There is no global component stylesheet; do not recreate one.
+- Three global stylesheets, imported once at the app root: `styles/tokens.css` (design tokens + `[data-theme]` themes), `styles/global.css` (reset, bare-element base styles, **and a small set of genuinely-shared utility/layout classes** — `.icon-btn`/`.icon-btn--danger`, `.container`, `.header`, `.title`, `.new-note-button`, status messages `.error`/`.empty`/`.loading`, `body.has-notification-banner`, reduced-motion). These shared utilities stay global because multiple components use them; reference them as plain `className="icon-btn"` strings.
+- App-shell-exclusive chrome (`.sidebarToggle`, `.sidebarOverlay`, etc.) lives in `web/src/components/App.module.css`.
+- A class needed by both a CSS Module and a global/other-module selector (e.g. `.filters-panel`, referenced by `TagFilter.module.css` via `:global(.filters-panel)`) stays a **global contract class** — do not hash it.
 
 **Linting and formatting**
 - ESLint flat config is in `web/eslint.config.js` using `typescript-eslint@^8` — do not add `.eslintrc.*` files.
@@ -65,6 +65,7 @@ Load before writing or reviewing any `.tsx` / `.ts` file in `web/src/`. This ski
 **Testing**
 - Component unit tests use **Vitest + React Testing Library + jsdom**, kept centrally in `web/src/__tests__/` (one `*.test.tsx` per component). Run with `npm --prefix web test`. Assert on user-visible behaviour, not internals; mock network via the handlers in `web/src/test/`.
 - End-to-end journeys use **Playwright (C#)** in `tests/Browser.E2E/` (BDD-style, gated on `FRONTEND_URL`). When adding a new user journey, add or extend a journey there.
+- **E2E selectors must use `data-testid`, NEVER a CSS class.** jsdom unit tests don't apply CSS, so a class that a Playwright journey selects on (e.g. `.note-card`) will pass every unit test but break the real-browser E2E on deploy if the class is renamed/hashed (this exact thing red-lined the pipeline during the CSS-Modules migration — CSS Modules hash class names). Keep a stable `data-testid` on any element an E2E journey needs to find. When renaming/removing a class, grep `tests/Browser.E2E/` for it.
 - New or changed components ship with a matching `__tests__/*.test.tsx`; new user journeys ship with a `Browser.E2E` journey.
 
 **No comments**
@@ -77,7 +78,7 @@ Conventions drawn from established style guides (Airbnb, Google, GitHub Primer) 
 | Area | Standard |
 |---|---|
 | **Component files** | One component per file; co-locate `Component.tsx` with its `Component.module.css`. Test files live centrally in `web/src/__tests__/` (see *Testing*). Prefer **named exports**; avoid barrel `index.ts` re-export files (they hurt tree-shaking and invite circular deps). |
-| **Imports** | Order builtin → external → internal. *(Proposed — not yet enforced: add `eslint-plugin-import` to automate the ordering, and configure an `@/` path alias in Vite `resolve.alias` + tsconfig `paths` to replace deep `../../..` chains. Until then, follow the ordering manually and keep relative paths.)* |
+| **Imports** | **Enforced** by `import-x/order` (`eslint-plugin-import-x` — the ESLint-10-compatible fork; `eslint-plugin-import` peer-caps at ESLint 9): builtin → external → internal (`@/*`) → parent/sibling/index, alphabetised; `eslint --fix` auto-orders. Use the **`@/` alias** (Vite `resolve.alias` + tsconfig `paths`) over deep `../../..`. Side-effect imports (global CSS) are left in place — keep `tokens.css`/`global.css` first in `main.tsx`. *(Not yet enforced: `import-x/no-unresolved`/`no-cycle`, and `jsx-a11y` — blocked on ESLint 10 support; see technical-improvements.)* |
 | **Prop & event naming** | Boolean props read as predicates (`isOpen`, `hasError`, `shouldFocus`). The callback **prop** is `onX` (`onSelect`); the handler **implementation** is `handleX` (`handleSelect`). |
 | **State & data** | Distinguish **server state** (fetched, cached — goes through `web/src/api.ts`) from **local UI state** (`useState`). Mutations are optimistic (see *State and data flow*). Don't scatter ad-hoc `fetch` + `useEffect` + loading-flag triples across components — encapsulate in a hook. |
 | **Rendering** | Stable list `key`s — never the array index for a reorderable/removable list. Guard conditional render with booleans, not numbers (`list.length > 0 && …`, never `list.length && …`). |
