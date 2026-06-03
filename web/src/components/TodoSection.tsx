@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import clsx from "clsx";
 import {
   getTodos, TodoItem,
   completeAction, reopenAction, deleteAction,
@@ -6,6 +7,7 @@ import {
 } from "../api";
 import QuickCaptureTodoInput from "./QuickCaptureTodoInput";
 import { TrashIcon } from "./icons";
+import styles from "./TodoSection.module.css";
 
 function isToday(isoString: string): boolean {
   const d = new Date(isoString);
@@ -106,8 +108,8 @@ export default function TodoSection() {
   }
 
   return (
-    <section data-testid="todo-section" className="todo-section" aria-label="To-do items" aria-live="polite">
-      <h2 className="todo-heading">To Do</h2>
+    <section data-testid="todo-section" className={styles.todoSection} aria-label="To-do items" aria-live="polite">
+      <h2 className={styles.todoHeading}>To Do</h2>
       <QuickCaptureTodoInput
         onAdded={handleOptimisticAdd}
         onConfirmed={handleAddConfirmed}
@@ -120,20 +122,20 @@ export default function TodoSection() {
       ) : (
         <>
           {openItems.length > 0 && (
-            <ul data-testid="todo-list" className="todo-list">
+            <ul data-testid="todo-list" className={styles.todoList}>
               {openItems.map((item) => (
-                <li key={item.itemId} className="todo-item">
+                <li key={item.itemId} className={styles.todoItem}>
                   <input
                     type="checkbox"
-                    className="todo-checkbox"
+                    className={styles.todoCheckbox}
                     aria-label={`Complete "${item.description}"`}
                     checked={false}
                     disabled={busy.has(item.itemId)}
                     onChange={() => handleComplete(item)}
                   />
-                  <div className="todo-item-content">
-                    <span className="todo-description">{item.description}</span>
-                    {item.noteTitle && <span className="todo-note-title">{item.noteTitle}</span>}
+                  <div className={styles.todoItemContent}>
+                    <span className={styles.todoDescription}>{item.description}</span>
+                    {item.noteTitle && <span className={styles.todoNoteTitle}>{item.noteTitle}</span>}
                   </div>
                   <button
                     className="icon-btn icon-btn--danger"
@@ -148,9 +150,9 @@ export default function TodoSection() {
             </ul>
           )}
           {doneItems.length > 0 && (
-            <div className="todo-done-section">
+            <div className={styles.todoDoneSection}>
               <button
-                className="todo-done-toggle"
+                className={styles.todoDoneToggle}
                 onClick={() => setDoneOpen((o) => !o)}
                 aria-expanded={doneOpen}
                 aria-controls="todo-done-list"
@@ -158,15 +160,15 @@ export default function TodoSection() {
                 Done ({doneItems.length})
               </button>
               {doneOpen && (
-                <ul id="todo-done-list" className="todo-done-list">
+                <ul id="todo-done-list" className={styles.todoDoneList}>
                   {doneItems.map((item) => (
-                    <li key={item.itemId} className="todo-item todo-item--done">
-                      <div className="todo-item-content">
-                        <span className="todo-description">{item.description}</span>
-                        {item.noteTitle && <span className="todo-note-title">{item.noteTitle}</span>}
+                    <li key={item.itemId} className={clsx(styles.todoItem, styles.todoItemDone)}>
+                      <div className={styles.todoItemContent}>
+                        <span className={styles.todoDescription}>{item.description}</span>
+                        {item.noteTitle && <span className={styles.todoNoteTitle}>{item.noteTitle}</span>}
                       </div>
                       <button
-                        className="todo-reopen-btn"
+                        className={styles.todoReopenBtn}
                         aria-label={`Reopen "${item.description}"`}
                         disabled={busy.has(item.itemId)}
                         onClick={() => handleReopen(item)}

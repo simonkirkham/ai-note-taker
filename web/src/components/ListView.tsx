@@ -1,10 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
+import clsx from "clsx";
 import { NoteCard as NoteCardData, TagIndexEntry, getTags } from "../api";
 import { effectiveDate, isEditedToday, localTodayISO } from "../dates";
 import MeetingsSection from "./MeetingsSection";
 import NoteCard from "./NoteCard";
 import TodoSection from "./TodoSection";
 import TagFilter from "./TagFilter";
+import styles from "./ListView.module.css";
 
 export default function ListView({
   cards,
@@ -112,9 +114,9 @@ export default function ListView({
   return (
     <main className="container">
       <div className="header">
-        <div className="header-title-group">
+        <div className={styles.headerTitleGroup}>
           {folderPath && folderPath.length > 0 && (
-            <button className="folder-breadcrumb-back" onClick={onHome}>
+            <button className={styles.folderBreadcrumbBack} onClick={onHome}>
               ← All Notes
             </button>
           )}
@@ -145,9 +147,9 @@ export default function ListView({
             onClear={clearFilter}
           />
           {filteredCards.length > 0 && (
-            <section className="note-cards-section">
-              <h2 className="note-cards-heading">Notes</h2>
-              <div className="note-cards" data-testid="note-cards">
+            <section className={styles.noteCardsSection}>
+              <h2 className={styles.noteCardsHeading}>Notes</h2>
+              <div className={styles.noteCards} data-testid="note-cards">
                 {filteredCards.map((card) => (
                   <NoteCard
                     key={card.noteId}
@@ -161,29 +163,30 @@ export default function ListView({
           )}
         </>
       ) : (
-        <div className="home-layout">
-          <div className="home-left">
-            <section className="note-cards-section">
-              <div className="note-cards-header">
-                <h2 className="note-cards-heading">Notes</h2>
+        <div className={styles.homeLayout}>
+          <div className={styles.homeLeft}>
+            <section className={styles.noteCardsSection}>
+              <div className={styles.noteCardsHeader}>
+                <h2 className={styles.noteCardsHeading}>Notes</h2>
               </div>
-              <div className="filters-section">
+              <div className={styles.filtersSection}>
                 <button
                   type="button"
-                  className={`filters-toggle${filtersOpen ? " filters-toggle--open" : ""}${
-                    showActiveSummary ? " filters-toggle--active" : ""
-                  }`}
+                  className={clsx(styles.filtersToggle, {
+                    [styles.filtersToggleOpen]: filtersOpen,
+                    [styles.filtersToggleActive]: showActiveSummary,
+                  })}
                   aria-expanded={filtersOpen}
                   aria-controls="home-filters-panel"
                   onClick={() => setFiltersOpen((open) => !open)}
                 >
-                  <span className="filters-toggle-chevron" aria-hidden="true">
+                  <span className={styles.filtersToggleChevron} aria-hidden="true">
                     ▸
                   </span>
-                  <span className="filters-toggle-label">
+                  <span>
                     Filters
                     {showActiveSummary && (
-                      <span className="filters-toggle-summary"> · {filterSummary}</span>
+                      <span className={styles.filtersToggleSummary}> · {filterSummary}</span>
                     )}
                   </span>
                 </button>
@@ -194,8 +197,8 @@ export default function ListView({
                 >
                   {filtersOpen && (
                     <>
-                      <div className="filters-group">
-                        <span className="filters-group-label">Tags</span>
+                      <div className={styles.filtersGroup}>
+                        <span className={styles.filtersGroupLabel}>Tags</span>
                         <TagFilter
                           tags={availableTags}
                           selectedTags={selectedTags}
@@ -205,9 +208,9 @@ export default function ListView({
                           onClear={clearFilter}
                         />
                       </div>
-                      <div className="filters-group">
-                        <span className="filters-group-label">Other</span>
-                        <label className="show-older-toggle">
+                      <div className={styles.filtersGroup}>
+                        <span className={styles.filtersGroupLabel}>Other</span>
+                        <label className={styles.showOlderToggle}>
                           <input
                             type="checkbox"
                             checked={showOlder}
@@ -221,7 +224,7 @@ export default function ListView({
                 </div>
               </div>
               {homeCards.length > 0 ? (
-                <div className="note-cards" data-testid="note-cards">
+                <div className={styles.noteCards} data-testid="note-cards">
                   {homeCards.map((card) => (
                     <NoteCard
                       key={card.noteId}
@@ -232,13 +235,13 @@ export default function ListView({
                   ))}
                 </div>
               ) : (
-                <p className="note-cards-empty">
+                <p className={styles.noteCardsEmpty}>
                   {showOlder ? "No notes" : "No notes today"}
                 </p>
               )}
             </section>
           </div>
-          <aside className="home-right-panel">
+          <aside className={styles.homeRightPanel}>
             <MeetingsSection onOpenNote={onOpenNote} />
             <TodoSection />
           </aside>

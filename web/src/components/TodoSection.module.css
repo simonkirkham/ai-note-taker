@@ -1,0 +1,139 @@
+/* TodoSection only ever renders inside ListView's home-right panel, where the
+   former `.home-right-panel .todo-section` seam neutralised the base section's
+   top margin/border/padding. Those reset values are baked in here directly so
+   the rendered result is unchanged. */
+.todoSection {
+  margin-top: 0;
+  border-top: none;
+  padding-top: 0;
+}
+
+.todoHeading {
+  margin: 0 0 1rem;
+  font-size: 1rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--color-text-muted);
+}
+
+.todoList {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.todoItem {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.625rem;
+  padding: 0.625rem 0;
+  border-bottom: 1px solid var(--color-border);
+  font-size: 0.9375rem;
+}
+
+.todoItemContent {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.125rem;
+}
+
+.todoItem:last-child {
+  border-bottom: none;
+}
+
+.todoCheckbox {
+  cursor: pointer;
+  flex-shrink: 0;
+  accent-color: var(--color-primary);
+  width: 1rem;
+  height: 1rem;
+}
+
+.todoCheckbox:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.todoDescription {
+  color: var(--color-text);
+  overflow-wrap: anywhere;
+}
+
+.todoNoteTitle {
+  color: var(--color-text-muted);
+  font-size: 0.8125rem;
+  overflow-wrap: anywhere;
+  font-style: italic;
+}
+
+.todoReopenBtn {
+  flex-shrink: 0;
+  padding: 0.25rem 0.625rem;
+  border-radius: 6px;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  cursor: pointer;
+  border: 1px solid transparent;
+  transition: background 150ms ease, color 150ms ease, border-color 150ms ease;
+  min-height: 2rem;
+}
+
+.todoReopenBtn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.todoReopenBtn {
+  color: var(--color-primary);
+  background: transparent;
+  border-color: var(--color-primary);
+}
+
+.todoReopenBtn:hover:not(:disabled) {
+  background: var(--color-primary-bg);
+}
+
+.todoItemDone .todoDescription {
+  color: var(--color-text-muted);
+  text-decoration: line-through;
+}
+
+.todoDoneSection {
+  margin-top: 0.75rem;
+}
+
+.todoDoneToggle {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 0.375rem 0.5rem;
+  background: transparent;
+  border: none;
+  color: var(--color-text-muted);
+  font-size: 0.875rem;
+  font-weight: 500;
+  cursor: pointer;
+  border-radius: 6px;
+  transition: color 150ms ease, background 150ms ease;
+  min-height: 2.25rem;
+}
+
+.todoDoneToggle:hover {
+  color: var(--color-text);
+  background: var(--color-primary-bg);
+}
+
+.todoDoneToggle:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
+.todoDoneList {
+  list-style: none;
+  padding: 0;
+  margin: 0.25rem 0 0;
+}
