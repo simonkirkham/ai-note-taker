@@ -21,6 +21,9 @@ PROJ="tests/Analysis.Eval/Analysis.Eval.csproj"
 # Assumes the default (Debug) build configuration — `dotnet test` below uses Debug.
 RESULTS_DIR="tests/Analysis.Eval/bin/Debug/net10.0/Results"
 REGION="${AWS_REGION:-eu-west-2}"
+# Pace requests between sweep cases so a rate-limited account recovers between calls.
+# Override (e.g. EVAL_REQUEST_DELAY_MS=0 for a high-quota account) to run faster.
+export EVAL_REQUEST_DELAY_MS="${EVAL_REQUEST_DELAY_MS:-1500}"
 
 # 1. Discover models unless the caller pinned EVAL_MODEL_IDS.
 if [ -z "${EVAL_MODEL_IDS:-}" ]; then

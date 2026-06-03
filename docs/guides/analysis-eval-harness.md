@@ -57,7 +57,10 @@ Two phases because the report renders whatever rows exist in `Results/`, and tes
 | `RUN_BEDROCK_EVAL` | `1` enables the live Bedrock tests; anything else skips them | unset (skip) |
 | `EVAL_MODEL_IDS` | comma-separated analysis models to sweep | `amazon.nova-lite-v1:0` |
 | `BEDROCK_JUDGE_MODEL_ID` | model used as the content judge | `amazon.nova-pro-v1:0` |
+| `EVAL_REQUEST_DELAY_MS` | pause between sweep cases, to stay under a rate-limited account's Bedrock per-minute quota | `0` (raw `dotnet test`); `make eval` sets `1500` |
 | `AWS_PROFILE` / `AWS_REGION` | standard AWS SDK credential/region resolution | — |
+
+**Throttling.** On a low-quota account a full sweep (fixtures × models, plus a judge call each) trips Bedrock 429s. The client uses **Standard** retry with backoff (`MaxErrorRetry=8`), `make eval` paces requests via `EVAL_REQUEST_DELAY_MS=1500`, and any case that still exhausts retries is **skipped** (not failed) — so the report only shows what completed. If you see many skips / uneven `Fixtures` counts, raise `EVAL_REQUEST_DELAY_MS`, sweep fewer models at once, or request a Bedrock quota increase.
 
 Compare two analysis models in one run:
 
