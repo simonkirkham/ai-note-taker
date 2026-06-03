@@ -1,0 +1,21 @@
+{
+  "id": "19-weekly-crossfunctional-sync",
+  "transcriptText": "Tom: Morning everyone, weekly sync for the checkout redesign. Let's start with status. Sana: Backend's mostly there. The new payment intent flow is merged behind a flag. I'll enable the flag for the internal beta cohort today. Raj: On infra, the Stripe webhook retries are still flaky in staging. I'll raise a ticket with Stripe support and add idempotency keys this week. Mara: Design-wise the express-checkout sheet tested well, but the error states are inconsistent. Sana: Good point - I'll also write up the error-state spec so engineering and design agree on the copy. Tom: Great. Leo, where's QA? Leo: Regression pass is eighty percent green. I'll finish the remaining mobile cases by Thursday and file any blockers. Tom: We agreed to hold the public launch until the regression suite is fully green and the Stripe retries are stable. Mara: One tangent - should the guest-checkout flow reuse the same sheet? Tom: Let's park that, it's out of scope for this release. Sana: Agreed. Raj: Also, the legacy checkout endpoint is still getting five percent of traffic; we should plan its deprecation. Tom: I'll add a deprecation milestone to the roadmap for next quarter. Sana: Last thing - conversion on the beta is up six percent so far. Tom: Promising. Let's reconvene next week.",
+  "existingContent": "Weekly checkout redesign sync",
+  "currentUserName": "Sana",
+  "expected": {
+    "tags": ["weekly-sync", "checkout-redesign", "stripe"],
+    "actionItems": [
+      "Enable the payment intent flag for the internal beta cohort today",
+      "Write up the error-state spec for engineering and design"
+    ],
+    "contentMustMention": [
+      "Raj will raise a ticket with Stripe support and add idempotency keys this week",
+      "Leo will finish the remaining mobile QA cases by Thursday",
+      "Tom will add a deprecation milestone for the legacy checkout endpoint to next quarter's roadmap",
+      "The team agreed to hold the public launch until the regression suite is fully green and Stripe retries are stable",
+      "Guest-checkout sheet reuse was parked as out of scope for this release",
+      "Beta conversion is up six percent so far"
+    ]
+  }
+}

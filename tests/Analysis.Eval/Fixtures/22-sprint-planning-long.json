@@ -1,0 +1,22 @@
+{
+  "id": "22-sprint-planning-long",
+  "transcriptText": "Lena: Sprint planning for sprint 15. Let's size the top of the backlog. First story is the reranking spike for search relevance. Felix: I scoped it last week, it's a five-pointer. Lena: I'll take the reranking spike. Raj: Next is the checkout idempotency work carried over from the incident. I'll pick that up - it's eight points with the dead-letter queue. Lena: Good. Mara, the express-checkout error states? Mara: I'll own the error-state implementation, three points, but it's pending Lena's spec. Lena: I'll get you the error-state spec by Tuesday so you're not blocked. Felix: We also have the search analytics dashboard request from product. Lena: Let's pull it in if there's capacity. I'll groom it and add acceptance criteria before we commit. Raj: Capacity check - I'm out Thursday and Friday next week. Lena: Noted, we'll plan around that. Felix: I'll demo the current reranking prototype at Friday's review. Lena: We agreed the sprint goal is to ship checkout idempotency and de-risk reranking. Mara: Velocity target is twenty-four points. Lena: Sounds right. Let's commit.",
+  "existingContent": "Sprint 15 planning",
+  "currentUserName": "Lena",
+  "expected": {
+    "tags": ["sprint-planning", "search-relevance", "checkout"],
+    "actionItems": [
+      "Take the reranking spike for search relevance",
+      "Get Mara the error-state spec by Tuesday",
+      "Groom the search analytics dashboard request and add acceptance criteria"
+    ],
+    "contentMustMention": [
+      "Raj will pick up the checkout idempotency work, sized at eight points with the dead-letter queue",
+      "Mara will own the error-state implementation, pending Lena's spec",
+      "Felix will demo the reranking prototype at Friday's review",
+      "Raj is out Thursday and Friday next week",
+      "The sprint goal is to ship checkout idempotency and de-risk reranking",
+      "The velocity target is twenty-four points"
+    ]
+  }
+}

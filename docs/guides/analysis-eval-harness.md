@@ -91,7 +91,9 @@ One JSON file per scenario in `tests/Analysis.Eval/Fixtures/`, auto-discovered b
 
 ### Corpus design rules
 
-The fixture set is intentionally shaped to exercise two behaviours:
+The corpus mixes **short, single-topic** meetings (`01`–`18`) with **long, multi-speaker** ones (`19`+: cross-functional syncs, QBRs, postmortems, sprint planning) that have tangents, parked items, several work streams, and the user owning *multiple* actions among many other people's. The long fixtures are the honest stress test — clean short transcripts tend to overstate real-world quality.
+
+Each fixture is shaped to exercise two behaviours:
 
 1. **Tags describe pronouns, streams, and meeting types.** Each fixture's expected tags draw from: **people or companies** (`acme`, `globex`, `tom`, `chen`), a **stream of work** (`renewal`, `checkout-redesign`, `payments-outage`), and a **recurring meeting type** (`1:1`, `sales-pipeline-review`, `qbr`, `sprint-retro`, `board-meeting`, `incident-review`, …). Tags are short and lowercase, matching the prompt's instruction.
 2. **Actions are scoped to the current user.** `actionItems` lists **only** the action(s) the `currentUserName` owns. Every fixture also contains at least one **other person's** action, which belongs in `contentMustMention` — never in `actionItems`. This is what makes the harness able to detect action leakage.
