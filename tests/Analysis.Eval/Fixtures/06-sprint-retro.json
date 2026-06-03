@@ -1,0 +1,14 @@
+{
+  "id": "06-sprint-retro",
+  "transcriptText": "Lena: Retro for the checkout redesign sprint. The flaky tests hurt us. I'll write up a ticket to quarantine the flaky checkout tests. Raj: I'll pair with the CI team on the runner timeouts. Lena: Agreed — velocity was down twenty percent this sprint.",
+  "existingContent": "Sprint 14 retrospective",
+  "currentUserName": "Lena",
+  "expected": {
+    "tags": ["sprint-retro", "checkout-redesign", "raj"],
+    "actionItems": ["Write up a ticket to quarantine the flaky checkout tests"],
+    "contentMustMention": [
+      "Raj will pair with the CI team on the runner timeouts",
+      "Velocity was down twenty percent this sprint"
+    ]
+  }
+}

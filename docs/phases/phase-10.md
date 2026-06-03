@@ -431,7 +431,7 @@ Scenario: Mic-only when toggle is off
 
 ## Slice 10-G — Analysis evaluation harness
 
-**Status:** Done — shipped 2026-06-03 (PR #132, deploy #418). See [learnings](../learnings/phase-10g-analysis-eval-harness.md).
+**Status:** Done — shipped 2026-06-03 (PR #132, deploy #418). See [learnings](../learnings/phase-10g-analysis-eval-harness.md) and the [testing guide](../guides/analysis-eval-harness.md).
 
 **Value:** Compare prompt and model variants for the transcript analysis on a fixed set of meeting transcripts, scored against expected tags, action items, and content gap-fill. Run on demand or nightly; produce a markdown report that diffs runs side by side. Makes prompt iteration measurable instead of vibes-based.
 
