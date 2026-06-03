@@ -1,0 +1,14 @@
+{
+  "id": "08-qbr-renewal",
+  "transcriptText": "Owen: QBR with Wayne Enterprises. The renewal is up in sixty days. I'll draft the renewal SOW this week. Bruce: I'll confirm the budget with our finance team. Owen: Usage is up forty percent year over year.",
+  "existingContent": "Wayne Enterprises quarterly business review",
+  "currentUserName": "Owen",
+  "expected": {
+    "tags": ["qbr", "wayne-enterprises", "renewal"],
+    "actionItems": ["Draft the renewal SOW this week"],
+    "contentMustMention": [
+      "Bruce will confirm the budget with his finance team",
+      "Wayne Enterprises usage is up forty percent year over year"
+    ]
+  }
+}

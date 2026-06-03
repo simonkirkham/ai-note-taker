@@ -1,0 +1,11 @@
+{
+  "id": "04-one-on-one-onboarding",
+  "transcriptText": "Tom: Thanks for making time for our 1:1. How's onboarding going? Priya: Good. I'll complete the security training by Friday. Tom: Great. I'll arrange a mentor for you from the platform team this week. Priya: Perfect, thank you.",
+  "existingContent": "Weekly 1:1 with Tom",
+  "currentUserName": "Priya",
+  "expected": {
+    "tags": ["1:1", "tom", "onboarding"],
+    "actionItems": ["Complete the security training by Friday"],
+    "contentMustMention": ["Tom will arrange a mentor from the platform team this week"]
+  }
+}

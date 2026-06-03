@@ -1,0 +1,14 @@
+{
+  "id": "10-customer-onboarding",
+  "transcriptText": "Sam: Onboarding kickoff with Hooli. I'll schedule the integration kickoff for Monday. Gavin: I'll provide the production API keys by Thursday. Sam: We're targeting go-live in three weeks.",
+  "existingContent": "Hooli onboarding",
+  "currentUserName": "Sam",
+  "expected": {
+    "tags": ["customer-onboarding", "hooli", "integration"],
+    "actionItems": ["Schedule the integration kickoff for Monday"],
+    "contentMustMention": [
+      "Gavin will provide the production API keys by Thursday",
+      "Go-live is targeted in three weeks"
+    ]
+  }
+}

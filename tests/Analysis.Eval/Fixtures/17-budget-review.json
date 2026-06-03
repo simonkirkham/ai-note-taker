@@ -1,0 +1,14 @@
+{
+  "id": "17-budget-review",
+  "transcriptText": "Grace: Budget review on infrastructure cost. I'll submit a compute savings plan proposal. Miles: I'll approve the reserved instance purchase. Grace: Cloud spend is eighteen percent over budget this quarter.",
+  "existingContent": "Cyberdyne infrastructure budget review",
+  "currentUserName": "Grace",
+  "expected": {
+    "tags": ["budget-review", "cyberdyne", "infra-cost"],
+    "actionItems": ["Submit a compute savings plan proposal"],
+    "contentMustMention": [
+      "Miles will approve the reserved instance purchase",
+      "Cloud spend is eighteen percent over budget this quarter"
+    ]
+  }
+}

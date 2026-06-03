@@ -1,0 +1,14 @@
+{
+  "id": "07-board-meeting-fundraising",
+  "transcriptText": "Helen: Board meeting, fundraising update. I'll prepare the Series B deck for the next session. Sam: As CFO I'll review the burn model and update the runway figures. Helen: We agreed to target a Q3 raise.",
+  "existingContent": "Q2 Initech board meeting",
+  "currentUserName": "Helen",
+  "expected": {
+    "tags": ["board-meeting", "initech", "fundraising"],
+    "actionItems": ["Prepare the Series B deck for the next board session"],
+    "contentMustMention": [
+      "Sam will review the burn model and update the runway figures",
+      "The board agreed to target a Q3 raise"
+    ]
+  }
+}

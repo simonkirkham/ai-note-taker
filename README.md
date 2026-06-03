@@ -121,7 +121,12 @@ dotnet test tests/Specs/Specs.csproj
 
 # Run the API locally (Kestrel — no Lambda runtime needed)
 dotnet run --project src/Api/Api.csproj
+
+# Run the analysis evaluation harness (opt-in; hits Bedrock, needs AWS creds)
+RUN_BEDROCK_EVAL=1 dotnet test tests/Analysis.Eval/Analysis.Eval.csproj --filter "Category!=Report"
 ```
+
+The analysis eval harness scores prompt/model variants of the AI note analysis — see [docs/guides/analysis-eval-harness.md](docs/guides/analysis-eval-harness.md).
 
 ### Infrastructure
 
