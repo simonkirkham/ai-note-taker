@@ -32,7 +32,19 @@ vi.mock('@aws-sdk/client-transcribe-streaming', () => {
               yield {
                 TranscriptEvent: {
                   Transcript: {
-                    Results: [{ IsPartial: false, Alternatives: [{ Transcript: text }] }],
+                    // ShowSpeakerLabel is on: finalised results carry per-item speakers,
+                    // and the finalised transcript is assembled from Items (one speaker here).
+                    Results: [
+                      {
+                        IsPartial: false,
+                        Alternatives: [
+                          {
+                            Transcript: text,
+                            Items: [{ Content: text, Speaker: '0', Type: 'pronunciation' }],
+                          },
+                        ],
+                      },
+                    ],
                   },
                 },
               }
@@ -149,7 +161,7 @@ it('reports live transcript text upward as results arrive', async () => {
   await waitFor(() => expect(screen.getByTestId('transcription-stop-button')).toBeInTheDocument())
 
   emitTranscriptResult('Hello world')
-  await waitFor(() => expect(onTranscriptChange).toHaveBeenCalledWith('Hello world'))
+  await waitFor(() => expect(onTranscriptChange).toHaveBeenCalledWith('Speaker 1: Hello world'))
 })
 
 it('clicking Stop transitions back to idle (Record visible again)', async () => {
@@ -193,7 +205,7 @@ it('clicking Stop calls completeTranscription with transcript text', async () =>
   emitTranscriptResult('Test transcript')
   await userEvent.click(screen.getByTestId('transcription-stop-button'))
 
-  await waitFor(() => expect(completionBody).toMatchObject({ transcriptText: 'Test transcript' }))
+  await waitFor(() => expect(completionBody).toMatchObject({ transcriptText: 'Speaker 1: Test transcript' }))
 })
 
 it('shows the Analyse note button enabled when the note has content and is idle', () => {

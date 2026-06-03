@@ -5,6 +5,7 @@ import {
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { completeTranscription, getTranscriptionCredentials } from '../api';
 import { PcmChunker } from './pcm';
+import { SpeakerTranscript } from './speakerSegments';
 
 const LANGUAGE_CODE = 'en-GB' as const;
 
@@ -148,6 +149,7 @@ export function useTranscription(noteId: string): UseTranscriptionResult {
 
         const audioQueue: Uint8Array[] = [];
         const chunker = new PcmChunker();
+        const speakerTranscript = new SpeakerTranscript();
 
         workletNode.port.onmessage = (e: MessageEvent) => {
           if (stoppedRef.current) return;
@@ -184,6 +186,7 @@ export function useTranscription(noteId: string): UseTranscriptionResult {
           LanguageCode: LANGUAGE_CODE,
           MediaEncoding: 'pcm',
           MediaSampleRateHertz: audioContext.sampleRate,
+          ShowSpeakerLabel: true,
           AudioStream: audioStream(),
         });
 
@@ -211,7 +214,8 @@ export function useTranscription(noteId: string): UseTranscriptionResult {
                   setTranscript(display);
                 } else {
                   lastPartialAtRef.current = 0;
-                  finalizedRef.current = finalizedRef.current ? `${finalizedRef.current} ${text}` : text;
+                  speakerTranscript.append(result.Alternatives?.[0]?.Items ?? []);
+                  finalizedRef.current = speakerTranscript.toString();
                   setTranscript(finalizedRef.current);
                 }
               }
