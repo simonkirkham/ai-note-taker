@@ -27,7 +27,7 @@
 | 14-S | Add `eslint-plugin-jsx-a11y` in `warn` mode | Not Started | — |
 | 14-T | Fix the a11y backlog and promote jsx-a11y to `error` | Not Started | 14-S |
 | 14-U | Add a route/feature-root error boundary | Done | — |
-| 14-V | Add a reusable inline-error/toast primitive | In Progress | — |
+| 14-V | Add a reusable inline-error/toast primitive | Done | — |
 | 14-W | Server-state library ADR (decision, not code) | Done | — |
 
 **Ordering notes.** 14-A is the foundation every CSS-Modules slice depends on (no component can reference `var(--space-*)` or import `clsx` until it lands). 14-B is the explicit **pattern-setter**: it establishes the module conventions (camelCase classes, `styles.*`, `clsx` for conditionals, `var(--…)` tokens) that 14-C…14-O copy verbatim — do it before any other component migration. The per-component slices (14-C…14-O) are otherwise independent of each other and can run in any order / in parallel, except where a parent renders a child whose rules co-mingle in `App.css` (14-I depends on 14-E's quick-capture work; 14-L depends on 14-K's tree; 14-N depends on 14-G + 14-H). **14-P is the closing slice** — it removes the last shell rules, deletes the emptied `App.css`, and drops the `import "./App.css"` line, so it depends on *all* component migrations. The tooling slices (14-Q…14-U), the toast primitive (14-V), and the ADR (14-W) are independent of the CSS migration and can land at any point; 14-R depends on 14-Q (the import plugin resolves the `@/` alias) and 14-T depends on 14-S (fix-then-promote).
@@ -880,7 +880,7 @@ Scenario: Normal rendering is unaffected
 
 ## Slice 14-V — Add a reusable inline-error/toast primitive
 
-**Status:** In Progress
+**Status:** Done
 
 **Value:** The new optimistic-failure rule (`frontend-react` skill) requires surfacing a failed mutation to the user — undo the local change *and* show the failure — but the only error UI today is the full-screen `SessionExpiredBanner`. The skill explicitly names "a reusable inline-error/toast component" as a known gap. This slice adds a small, reusable primitive (a transient toast or an inline-error slot) that mutation handlers can call to surface a failure, replacing the "nearest available mechanism" stopgap. **Included** in-scope: it's a thin, self-contained primitive with no backend, and it directly unblocks the mandated optimistic-failure UX that the rest of the app currently can't satisfy cleanly.
 
