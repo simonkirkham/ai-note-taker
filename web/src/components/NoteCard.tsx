@@ -48,6 +48,7 @@ export default function NoteCard({
   return (
     <article
       className={styles.noteCard}
+      data-testid="note-card"
       draggable
       onDragStart={(e) => {
         e.dataTransfer.effectAllowed = "move";
@@ -56,7 +57,7 @@ export default function NoteCard({
       onClick={() => onEdit(card.noteId)}
     >
       <div className={styles.noteCardHeader}>
-        <h3 className={styles.noteCardTitle}>{card.title || <em>Untitled</em>}</h3>
+        <h3 className={styles.noteCardTitle} data-testid="note-card-title">{card.title || <em>Untitled</em>}</h3>
         {displayDate && <span className={styles.noteCardDate}>{displayDate}</span>}
       </div>
       {card.contentPreview && (

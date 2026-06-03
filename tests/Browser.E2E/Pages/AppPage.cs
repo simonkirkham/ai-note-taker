@@ -40,15 +40,15 @@ public sealed class AppPage(IPage page, string baseUrl, string? authToken = null
     public Task AssertNoteVisibleInListAsync(string title) =>
         Assertions.Expect(
             page.GetByTestId("note-cards")
-                .Locator(".note-card")
+                .Locator("[data-testid='note-card']")
                 .Filter(new LocatorFilterOptions { HasText = title })
         ).ToBeVisibleAsync();
 
     public Task ClickNoteInListAsync(string title) =>
         page.GetByTestId("note-cards")
-            .Locator(".note-card")
+            .Locator("[data-testid='note-card']")
             .Filter(new LocatorFilterOptions { HasText = title })
-            .Locator("h3.note-card-title")
+            .Locator("[data-testid='note-card-title']")
             .ClickAsync();
 
     public async Task DeleteNoteAsync()
@@ -62,7 +62,7 @@ public sealed class AppPage(IPage page, string baseUrl, string? authToken = null
     public Task AssertNoteAbsentFromListAsync(string title) =>
         Assertions.Expect(
             page.GetByTestId("note-cards")
-                .Locator(".note-card")
+                .Locator("[data-testid='note-card']")
                 .Filter(new LocatorFilterOptions { HasText = title })
         ).Not.ToBeVisibleAsync();
 
@@ -131,7 +131,7 @@ public sealed class AppPage(IPage page, string baseUrl, string? authToken = null
     public Task AssertCardTagVisibleAsync(string cardTitle, string tag) =>
         Assertions.Expect(
             page.GetByTestId("note-cards")
-                .Locator(".note-card")
+                .Locator("[data-testid='note-card']")
                 .Filter(new LocatorFilterOptions { HasText = cardTitle })
                 .GetByTestId($"card-tag-{tag}")
         ).ToBeVisibleAsync();
