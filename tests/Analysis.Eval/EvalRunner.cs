@@ -13,7 +13,15 @@ public sealed record EvalRow(
     double TagF1,
     double ActionF1,
     double ContentScore,
-    double FaithfulnessScore);
+    double FaithfulnessScore,
+    // Rubric-based holistic quality (the headline metric; the atomic scores above are
+    // supplementary). Scored by a neutral judge against the user's stated preferences.
+    double Quality,
+    double QualityTags,
+    double QualityActions,
+    double QualityDecisions,
+    double QualityContent,
+    string QualityRationale = "");
 
 public static class EvalRunner
 {
@@ -32,6 +40,7 @@ public static class EvalRunner
         string modelId,
         IBedrockAnalysisService bedrock,
         IJudgeClient judge,
+        IQualityJudge qualityJudge,
         string runId,
         string resultsDirectory,
         CancellationToken ct = default)
@@ -67,6 +76,17 @@ public static class EvalRunner
             .Where(s => !string.IsNullOrWhiteSpace(s)));
         var faithfulness = await contentJudge.ScoreAsync(source, claims, ct);
 
+        // Holistic quality against the user's rubric — the headline metric.
+        var quality = await qualityJudge.ScoreAsync(new QualityJudgeInput(
+            Transcript: fixture.TranscriptText,
+            ExistingContent: fixture.ExistingContent,
+            CurrentUserName: fixture.CurrentUserName,
+            Summary: result.Summary,
+            Discussion: result.DiscussionPoints,
+            Decisions: result.Decisions,
+            Tags: result.NewTags,
+            Actions: result.NewActionItems), ct);
+
         var row = new EvalRow(
             RunId: runId,
             FixtureId: fixture.Id,
@@ -75,7 +95,13 @@ public static class EvalRunner
             TagF1: tag.F1,
             ActionF1: action.F1,
             ContentScore: contentScore,
-            FaithfulnessScore: faithfulness);
+            FaithfulnessScore: faithfulness,
+            Quality: quality.Overall,
+            QualityTags: quality.Tags,
+            QualityActions: quality.Actions,
+            QualityDecisions: quality.Decisions,
+            QualityContent: quality.Content,
+            QualityRationale: quality.Rationale);
 
         // All rows in one process share {runId}.jsonl. The concurrent appends are
         // safe only because the assembly disables test parallelization (AssemblyInfo.cs);
@@ -97,7 +123,8 @@ public static class EvalRunner
     {
         var sb = new StringBuilder();
         sb.AppendLine($"## {row.FixtureId} — {row.ModelId} [{row.PromptVersion}]");
-        sb.AppendLine($"_tagF1={row.TagF1:F2} · actionF1={row.ActionF1:F2} · content={row.ContentScore:F2} · faithfulness={row.FaithfulnessScore:F2}_");
+        sb.AppendLine($"**Quality {row.Quality:F2}** (tags={row.QualityTags:F2} actions={row.QualityActions:F2} decisions={row.QualityDecisions:F2} content={row.QualityContent:F2}) — {row.QualityRationale}");
+        sb.AppendLine($"_atomic: tagF1={row.TagF1:F2} · actionF1={row.ActionF1:F2} · content={row.ContentScore:F2} · faithfulness={row.FaithfulnessScore:F2}_");
         sb.AppendLine();
         sb.AppendLine($"**Summary:** {result.Summary}");
         sb.AppendLine();

@@ -67,12 +67,13 @@ public class BedrockEvalTheory
 
         var bedrock = BedrockEvalFactory.AnalysisService(prompt, modelId);
         var judge = BedrockEvalFactory.Judge();
+        var qualityJudge = BedrockEvalFactory.QualityJudge();
 
         EvalRow row;
         try
         {
             row = await EvalRunner.RunAsync(
-                fixture, prompt, modelId, bedrock, judge, RunId, ResultsDirectory);
+                fixture, prompt, modelId, bedrock, judge, qualityJudge, RunId, ResultsDirectory);
         }
         catch (Exception ex) when (ex is AmazonServiceException or AmazonClientException)
         {
@@ -98,7 +99,7 @@ public class BedrockEvalTheory
 
         Console.Error.WriteLine(
             $"[eval {caseNo}/{total}] done {modelId} x {fixture.Id}  " +
-            $"tag={row.TagF1:F2} act={row.ActionF1:F2} content={row.ContentScore:F2} ({total - caseNo} remaining)");
+            $"QUALITY={row.Quality:F2} (tags={row.QualityTags:F2} act={row.QualityActions:F2} dec={row.QualityDecisions:F2} content={row.QualityContent:F2}) ({total - caseNo} remaining)");
         _output.WriteLine(
             $"{row.FixtureId} [{row.ModelId} / {row.PromptVersion}]  " +
             $"tagF1={row.TagF1:F2} actionF1={row.ActionF1:F2} content={row.ContentScore:F2}");

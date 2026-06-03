@@ -71,10 +71,11 @@ public class EvalRunnerTests : IDisposable
             NewTags: ["login"],
             NewActionItems: ["Fix login bug"]));
         var judge = new StubJudge(allYes: true);
+        var qualityJudge = new StubQualityJudge(score: 0.42);
 
         var row = await EvalRunner.RunAsync(
             fixture, PromptCatalog.V2, modelId: "amazon.nova-lite-v1:0",
-            bedrock: bedrock, judge: judge, runId: "run-1",
+            bedrock: bedrock, judge: judge, qualityJudge: qualityJudge, runId: "run-1",
             resultsDirectory: _resultsDir);
 
         Assert.Equal("test-fixture", row.FixtureId);
@@ -82,6 +83,7 @@ public class EvalRunnerTests : IDisposable
         Assert.Equal("analysis@v2", row.PromptVersion);
         Assert.Equal("run-1", row.RunId);
         Assert.Equal(1.0, row.FaithfulnessScore); // allYes judge → every claim "supported"
+        Assert.Equal(0.42, row.Quality); // quality judge score flows through to the row
     }
 
     [Fact]
@@ -104,7 +106,7 @@ public class EvalRunnerTests : IDisposable
         var judge = new StubJudge(allYes: false); // judge says nothing is supported
 
         var row = await EvalRunner.RunAsync(
-            fixture, PromptCatalog.V2, "model-x", bedrock, judge, "run-3", _resultsDir);
+            fixture, PromptCatalog.V2, "model-x", bedrock, judge, new StubQualityJudge(), "run-3", _resultsDir);
 
         Assert.Equal(0.0, row.FaithfulnessScore);
         Assert.Equal(1.0, row.ContentScore); // empty expected facts → recall vacuously 1.0
@@ -119,7 +121,7 @@ public class EvalRunnerTests : IDisposable
         var judge = new StubJudge(allYes: true);
 
         await EvalRunner.RunAsync(fixture, PromptCatalog.V2, "model-x",
-            bedrock, judge, runId: "run-2", resultsDirectory: _resultsDir);
+            bedrock, judge, new StubQualityJudge(), runId: "run-2", resultsDirectory: _resultsDir);
 
         var file = Path.Combine(_resultsDir, "run-2.jsonl");
         Assert.True(File.Exists(file));
@@ -139,5 +141,11 @@ public class EvalRunnerTests : IDisposable
             string content, IReadOnlyList<string> facts, CancellationToken ct = default)
             => Task.FromResult<IReadOnlyList<bool>>(
                 Enumerable.Repeat(allYes, facts.Count).ToList());
+    }
+
+    sealed class StubQualityJudge(double score = 0.5) : IQualityJudge
+    {
+        public Task<QualityScore> ScoreAsync(QualityJudgeInput input, CancellationToken ct = default)
+            => Task.FromResult(new QualityScore(score, score, score, score, score, "stub"));
     }
 }
