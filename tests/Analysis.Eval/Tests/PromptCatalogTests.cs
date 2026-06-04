@@ -5,9 +5,9 @@ namespace Analysis.Eval.Tests;
 public class PromptCatalogTests
 {
     [Fact]
-    public void Current_is_v2()
+    public void Current_is_v3()
     {
-        Assert.Equal("analysis@v2", PromptCatalog.Current.Version);
+        Assert.Equal("analysis@v3", PromptCatalog.Current.Version);
     }
 
     [Fact]

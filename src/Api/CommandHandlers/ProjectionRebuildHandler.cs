@@ -49,9 +49,9 @@ public sealed class ProjectionRebuildHandler(
             .Concat(folderProjection.GetAll().Select(f => folderTreeStore.UpsertAsync(f, ct)))
             .Concat(tagIndex.GetAll().Select(v => tagIndexStore.PutAsync(v.Tag, v.NoteId, v.UserId, ct)))
             .Concat(tagFeedback.GetAggregates().Select(v => tagFeedbackStore.UpsertAggregateAsync(v, ct)))
-            .Concat(tagFeedback.GetProvenance().Select(p => tagFeedbackStore.PutProvenanceAsync(p.NoteId, p.Tag, p.UserId, ct)))
+            .Concat(tagFeedback.GetProvenance().Select(p => tagFeedbackStore.PutProvenanceAsync(p.NoteId, p.Tag, p.UserId, p.PromptVersion, ct)))
             .Concat(actionFeedback.GetAggregates().Select(v => actionItemFeedbackStore.UpsertAggregateAsync(v, ct)))
-            .Concat(actionFeedback.GetProvenance().Select(p => actionItemFeedbackStore.PutProvenanceAsync(p.ActionItemId, p.UserId, ct)));
+            .Concat(actionFeedback.GetProvenance().Select(p => actionItemFeedbackStore.PutProvenanceAsync(p.ActionItemId, p.UserId, p.PromptVersion, ct)));
 
         await Task.WhenAll(upsertTasks).ConfigureAwait(false);
 

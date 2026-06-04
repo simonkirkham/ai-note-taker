@@ -73,7 +73,7 @@ public static class TranscriptionHandlers
             .Where(t => !existingTags.Contains(t, StringComparer.OrdinalIgnoreCase))
             .ToList();
         if (appliedTags.Count > 0)
-            await noteHandler.HandleAsync(new RecordTagSuggestions(new NoteId(noteId), appliedTags), ct);
+            await noteHandler.HandleAsync(new RecordTagSuggestions(new NoteId(noteId), appliedTags, result.ModelId, result.PromptVersion), ct);
         foreach (var tag in appliedTags)
             await noteHandler.HandleAsync(new TagNote(new NoteId(noteId), tag), ct);
 
@@ -89,7 +89,7 @@ public static class TranscriptionHandlers
             createdActionIds.Add(actionId);
         }
         if (createdActionIds.Count > 0)
-            await noteHandler.HandleAsync(new RecordActionItemSuggestions(new NoteId(noteId), createdActionIds), ct);
+            await noteHandler.HandleAsync(new RecordActionItemSuggestions(new NoteId(noteId), createdActionIds, result.ModelId, result.PromptVersion), ct);
 
         return Results.NoContent();
     }

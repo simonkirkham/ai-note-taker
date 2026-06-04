@@ -34,8 +34,8 @@ afterEach(() => {
   vi.useRealTimers()
 })
 
-function renderNoteView(props: { noteId?: string; initialTitle?: string; onBack?: () => void; onDelete?: (noteId: string) => Promise<void>; isNew?: boolean } = {}) {
-  const { noteId = 'note-1', initialTitle = 'Test Note', onBack = noop, onDelete = asyncNoop, isNew } = props
+function renderNoteView(props: { noteId?: string; initialTitle?: string; onBack?: () => void; onDelete?: (noteId: string) => Promise<void>; onOpenNote?: (noteId: string, title?: string, isNew?: boolean) => void; isNew?: boolean } = {}) {
+  const { noteId = 'note-1', initialTitle = 'Test Note', onBack = noop, onDelete = asyncNoop, onOpenNote = noop, isNew } = props
   return render(
     <ToastProvider>
       <NoteView
@@ -45,6 +45,7 @@ function renderNoteView(props: { noteId?: string; initialTitle?: string; onBack?
         onBack={onBack}
         onDelete={onDelete}
         onDateSet={noop}
+        onOpenNote={onOpenNote}
         isNew={isNew}
       />
     </ToastProvider>,
@@ -311,6 +312,61 @@ describe('NoteView', () => {
       await waitFor(() =>
         expect(screen.getByTestId('final-notes-summary')).toHaveTextContent('Regenerated summary'),
       )
+    })
+  })
+
+  describe('next occurrence control', () => {
+    function recurringNote() {
+      server.use(
+        http.get('/api/notes/:noteId', () =>
+          HttpResponse.json({ noteId: 'note-1', title: 'Weekly Sync', content: 'c', date: null, tags: [], recurringSeriesId: 'series-9', isRecurring: true }),
+        ),
+      )
+    }
+
+    it('shows no Next occurrence button for a non-recurring note', async () => {
+      renderNoteView()
+      await screen.findByLabelText('Note content')
+      expect(screen.queryByTestId('next-occurrence-button')).toBeNull()
+    })
+
+    it('shows a Next occurrence button for a recurring-meeting note', async () => {
+      recurringNote()
+      renderNoteView()
+      await screen.findByLabelText('Note content')
+      expect(await screen.findByTestId('next-occurrence-button')).toBeInTheDocument()
+    })
+
+    it('clicking Next occurrence creates-or-opens the next note and navigates to it', async () => {
+      recurringNote()
+      let seriesId: string | undefined
+      server.use(
+        http.post('/api/notes/from-next-occurrence', async ({ request }) => {
+          const body = await request.json() as { recurringSeriesId: string }
+          seriesId = body.recurringSeriesId
+          return HttpResponse.json({ noteId: 'note-next', alreadyExists: true })
+        }),
+      )
+      const onOpenNote = vi.fn()
+      renderNoteView({ onOpenNote, initialTitle: 'Weekly Sync' })
+      const button = await screen.findByTestId('next-occurrence-button')
+      await userEvent.click(button)
+      await waitFor(() => expect(onOpenNote).toHaveBeenCalled())
+      expect(seriesId).toBe('series-9')
+      expect(onOpenNote).toHaveBeenCalledWith('note-next', 'Weekly Sync', true)
+    })
+
+    it('shows an inline message and does not navigate when there is no upcoming occurrence', async () => {
+      recurringNote()
+      server.use(
+        http.post('/api/notes/from-next-occurrence', () => new HttpResponse(null, { status: 404 })),
+      )
+      const onOpenNote = vi.fn()
+      renderNoteView({ onOpenNote })
+      const button = await screen.findByTestId('next-occurrence-button')
+      await userEvent.click(button)
+      expect(await screen.findByTestId('no-next-occurrence')).toBeInTheDocument()
+      expect(onOpenNote).not.toHaveBeenCalled()
     })
   })
 

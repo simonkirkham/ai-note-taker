@@ -16,7 +16,7 @@ The canonical, versioned set of **models** and **prompts** the analysis eval sho
 | `meta.llama3-70b-instruct-v1:0` | dropped (2026-06-04) | Consistently weakest (content 0.54). |
 | `amazon.nova-micro-v1:0` | not tested | Weakest Amazon tier; excluded from frontier. |
 
-> Preset sync: the `frontier` preset in `scripts/run-eval.sh` still lists all six (incl. the two dropped) for a full cross-vendor comparison. To sweep only the keep-set, pin `EVAL_MODEL_IDS` or trim the preset.
+> **This table drives the sweep.** `EVAL_PRESET=keep make eval` reads the model id from every `**keep**` row above and runs exactly those — edit a row's status and the next run follows, so the recommendation and the actual sweep can't drift. The `frontier` preset still lists all candidates (incl. dropped ones) for a one-off full cross-vendor comparison.
 
 ## Prompts under test
 

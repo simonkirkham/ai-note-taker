@@ -53,12 +53,12 @@ Write `docs/eval-runs/<YYYY-MM-DD>-<slug>.md`.
 
 ## Maintain the test matrix (every run)
 
-After writing the report, update **`docs/eval-runs/test-matrix.md`** — the versioned source of truth for which models and prompts are under test. This keeps the next sweep focused on what's worth testing.
+After writing the report, update **`docs/eval-runs/test-matrix.md`** — the versioned source of truth for which models and prompts are under test. **This file drives the sweep:** `EVAL_PRESET=keep make eval` reads the model id from every `**keep**` row, so editing the matrix here changes what the next run tests — there is no second list to sync.
 
 - **Bump the version** (integer) and set the date + the `runId` it reflects.
 - **Apply this run's decisions:** mark dropped models `dropped (<date>)` with a one-line reason; keep the survivors; add any newly-introduced models/prompts; mark the current production prompt and any planned next prompt.
 - **Append a changelog line:** `vN (<date>, <runId>): <what changed and why>`.
-- **Keep the presets in sync:** the `keep` model set should match the `frontier`/`core` presets in `scripts/run-eval.sh`; if they've diverged, note it (or update the preset in the same change).
+- **Preserve the `**keep**` status format** on kept-model rows — the `keep` preset greps for that exact bold token to build the sweep, so a model is only tested if its status cell reads `**keep**`. Changing a row to any other status drops it from the next run automatically.
 - Never delete rows — mark them `retired`/`dropped` so the history of what was tried (and why it was cut) survives.
 
 If `docs/eval-runs/test-matrix.md` doesn't exist yet, create it: a short intro, a **Models under test** table (`Model | Status | Notes`), a **Prompts under test** table (`Prompt | Status | Notes`), and a **Changelog**.

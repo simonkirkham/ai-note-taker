@@ -17,7 +17,7 @@ public class BedrockEvalTheory
             ?? "amazon.nova-lite-v1:0")
         .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
 
-    static readonly AnalysisPrompt[] Prompts = [PromptCatalog.V2];
+    static readonly AnalysisPrompt[] Prompts = [PromptCatalog.V2, PromptCatalog.V3];
 
     static string ResultsDirectory =>
         Path.Combine(AppContext.BaseDirectory, "Results");

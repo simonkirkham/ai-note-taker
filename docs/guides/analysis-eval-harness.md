@@ -37,7 +37,7 @@ Every run also writes **`Results/<runId>-outputs.md`** — the raw `summary`/`di
 
 ```bash
 AWS_PROFILE=prod ./scripts/extract-prod-fixtures.sh
-EVAL_FIXTURES_DIR=eval-fixtures-real AWS_PROFILE=prod EVAL_PRESET=core make eval
+EVAL_FIXTURES_DIR=eval-fixtures-real AWS_PROFILE=prod EVAL_PRESET=keep make eval
 ```
 
 Real fixtures have no gold labels, so **Quality and Faithfulness** are the meaningful metrics on them (both judge against the transcript, no labels needed) — Tag/Action/Content F1 need hand-authored `expected` values.
@@ -59,13 +59,14 @@ This discovers the account's **accessible on-demand text models** in the region 
 Since the analyse path speaks the model-agnostic Bedrock **Converse** API (slice 10-N), the sweep is **not** Nova-only. Pick models without pasting a long string (pasting long lines into a terminal can inject a newline mid-id and break it) via a **preset** or **provider**, or pin exact ids with `EVAL_MODEL_IDS`:
 
 ```bash
+AWS_PROFILE=prod EVAL_PRESET=keep make eval                        # the live keep-set, read from the test matrix ← default for regular runs
 AWS_PROFILE=prod EVAL_PRESET=core make eval                        # curated cross-vendor set (Amazon+Meta+Mistral)
 AWS_PROFILE=prod EVAL_PROVIDER=all make eval                       # every accessible vendor
 AWS_PROFILE=prod EVAL_PROVIDER=anthropic make eval                 # one vendor's on-demand models
 AWS_PROFILE=prod EVAL_MODEL_IDS="amazon.nova-lite-v1:0,meta.llama3-70b-instruct-v1:0" make eval
 ```
 
-`EVAL_PRESET=core` is the paste-safe way to run the standard cross-vendor comparison.
+**`EVAL_PRESET=keep` is the one to reach for.** It reads the model ids straight from the `**keep**` rows of [`docs/eval-runs/test-matrix.md`](../eval-runs/test-matrix.md), so the matrix is the single source of truth — prune a model there and the next sweep drops it, with no second list to keep in sync. `EVAL_PRESET=core` is the paste-safe way to run a broader one-off cross-vendor comparison.
 
 > Two limits remain: non-Amazon models must be **access-granted** in the Bedrock console first (Claude needs the use-case form + Marketplace sub), and **inference-profile-only** models (newer Claude/Llama) won't appear in discovery — they aren't on-demand by raw id and need the profile id + cross-region IAM (out of scope for now).
 
@@ -90,7 +91,8 @@ Two phases because the report renders whatever rows exist in `Results/`, and tes
 | Variable | Effect | Default |
 |---|---|---|
 | `RUN_BEDROCK_EVAL` | `1` enables the live Bedrock tests; anything else skips them | unset (skip) |
-| `EVAL_PRESET` | named curated model set, paste-free: `core` (Amazon+Meta+Mistral, no access grants) or `frontier` (strong model per vendor incl. Anthropic — needs Claude access) | none |
+| `EVAL_PRESET` | named model set, paste-free: `keep` (the `**keep**` rows of `docs/eval-runs/test-matrix.md` — the matrix drives the sweep), `core` (Amazon+Meta+Mistral, no access grants), or `frontier` (strong model per vendor incl. Anthropic — needs Claude access) | none |
+| `EVAL_MATRIX_FILE` | path the `keep` preset reads the keep-set from | `docs/eval-runs/test-matrix.md` |
 | `EVAL_MODEL_IDS` | comma-separated analysis models to sweep — pinning these **bypasses discovery** | discovered |
 | `EVAL_PROVIDER` | scopes discovery to a Bedrock provider (`amazon`, `anthropic`, `meta`, …) or `all` for every vendor | `amazon` |
 | `EVAL_FIXTURES_DIR` | load fixtures from this dir instead of the built-in corpus (e.g. private real meetings from `extract-prod-fixtures.sh`) | built-in `Fixtures/` |
@@ -184,7 +186,7 @@ static readonly AnalysisPrompt[] Prompts = [PromptCatalog.V2, PromptCatalog.V3];
 **3. Run it** (against your real meetings is best):
 
 ```bash
-EVAL_FIXTURES_DIR=eval-fixtures-real AWS_PROFILE=prod EVAL_PRESET=core make eval
+EVAL_FIXTURES_DIR=eval-fixtures-real AWS_PROFILE=prod EVAL_PRESET=keep make eval
 ```
 
 **4. Read `report.md`.** You get one row per `(prompt, model)`. Compare the `analysis@v3` rows to `analysis@v2`: did **Quality** go up — and specifically the dimension you were trying to fix (e.g. `Content` if you asked for deeper notes, `Tags` if you trimmed tagging)? If yes, ship it by pointing `PromptCatalog.Current` at `V3`. If not, tweak the prompt and rerun.
