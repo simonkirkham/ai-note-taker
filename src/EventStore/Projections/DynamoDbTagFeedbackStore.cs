@@ -9,10 +9,10 @@ public sealed class DynamoDbTagFeedbackStore(IAmazonDynamoDB dynamo, string tabl
     private static string NotePk(string noteId) => $"NOTE#{noteId}";
     private static string TagSk(string tag) => $"TAG#{tag}";
 
-    public async Task RecordSuggestionAsync(string userId, string noteId, string tag, CancellationToken ct = default)
+    public async Task RecordSuggestionAsync(string userId, string noteId, string tag, string promptVersion, CancellationToken ct = default)
     {
         await IncrementAsync(userId, tag, "SuggestedCount", ct).ConfigureAwait(false);
-        await PutProvenanceAsync(noteId, tag, userId, ct).ConfigureAwait(false);
+        await PutProvenanceAsync(noteId, tag, userId, promptVersion, ct).ConfigureAwait(false);
     }
 
     public async Task<bool> TryRecordRejectionAsync(string noteId, string tag, CancellationToken ct = default)
@@ -92,7 +92,7 @@ public sealed class DynamoDbTagFeedbackStore(IAmazonDynamoDB dynamo, string tabl
         }, ct).ConfigureAwait(false);
     }
 
-    public async Task PutProvenanceAsync(string noteId, string tag, string userId, CancellationToken ct = default)
+    public async Task PutProvenanceAsync(string noteId, string tag, string userId, string promptVersion, CancellationToken ct = default)
     {
         await dynamo.PutItemAsync(new PutItemRequest
         {
@@ -101,7 +101,8 @@ public sealed class DynamoDbTagFeedbackStore(IAmazonDynamoDB dynamo, string tabl
             {
                 ["PK"] = new() { S = NotePk(noteId) },
                 ["SK"] = new() { S = TagSk(tag) },
-                ["UserId"] = new() { S = userId }
+                ["UserId"] = new() { S = userId },
+                ["PromptVersion"] = new() { S = promptVersion }
             }
         }, ct).ConfigureAwait(false);
     }

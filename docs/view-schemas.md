@@ -331,7 +331,7 @@ public record TagIndexView(
 ### 7. `TagFeedback` *(Phase 10-J)*
 
 **Consumed by:** ad-hoc analysis of which AI-suggested tags users keep vs reject (no read endpoint — query DynamoDB directly). Feeds future prompt refinement.
-**Source events:** `TagsSuggested`, `NoteUntagged`, `NoteDeleted`. (`NoteTagged` is ignored — acceptance is derived as `Suggested − Rejected`.)
+**Source events:** `TagsSuggested` / `TagsSuggestedV2`, `NoteUntagged`, `NoteDeleted`. (`NoteTagged` is ignored — acceptance is derived as `Suggested − Rejected`.)
 
 ```csharp
 public record TagFeedbackView(
@@ -348,12 +348,12 @@ This projection **classifies by combining events** rather than copying state: a 
 | Row type   | PK              | SK         | Attributes                      |
 |------------|-----------------|------------|---------------------------------|
 | Aggregate  | `USER#{userId}` | `TAG#{tag}`| `SuggestedCount`, `RejectedCount` |
-| Provenance | `NOTE#{noteId}` | `TAG#{tag}`| `UserId`                        |
+| Provenance | `NOTE#{noteId}` | `TAG#{tag}`| `UserId`, `PromptVersion`        |
 
-The aggregate row is the queryable per-(user, tag) counter. The provenance row records that a tag was AI-suggested on a specific note — the state needed to classify a later untag.
+The aggregate row is the queryable per-(user, tag) counter. The provenance row records that a tag was AI-suggested on a specific note — the state needed to classify a later untag. `PromptVersion` (10-M) records which prompt version produced the suggestion so feedback can be sliced per prompt version; a v1 `TagsSuggested` event (pre-10-M) records `"unknown"`.
 
 **Event handling (live, inline in `NoteCommandHandler`):**
-- `TagsSuggested` → per tag: `SuggestedCount++` on the aggregate row; write the provenance row `(noteId, tag, userId)`.
+- `TagsSuggested` (v1) / `TagsSuggestedV2` (v2) → per tag: `SuggestedCount++` on the aggregate row; write the provenance row `(noteId, tag, userId, promptVersion)` — `promptVersion` is the event's value for v2, `"unknown"` for v1.
 - `NoteUntagged` → if a provenance row `(noteId, tag)` exists: `RejectedCount++` for its `UserId` and **delete** the provenance row (only a fresh `TagsSuggested` re-arms it — prevents a manual re-add/remove from double-counting).
 - `NoteDeleted` → delete that note's provenance rows; **counts untouched** (deletion is not tag rejection).
 
@@ -364,7 +364,7 @@ The aggregate row is the queryable per-(user, tag) counter. The provenance row r
 ### 8. `ActionItemFeedback` *(Phase 10-L)*
 
 **Consumed by:** ad-hoc analysis of AI action-item extraction precision (no read endpoint — query DynamoDB directly). Feeds future prompt refinement.
-**Source events:** `ActionItemsSuggested` (on the `Note` stream), `ActionItemDeleted`, `ActionItemCompleted` (on the `ActionItem` streams).
+**Source events:** `ActionItemsSuggested` / `ActionItemsSuggestedV2` (on the `Note` stream), `ActionItemDeleted`, `ActionItemCompleted` (on the `ActionItem` streams).
 
 ```csharp
 public record ActionItemFeedbackView(
@@ -381,12 +381,12 @@ Unlike tags (a repeating categorical value), action items are unique free text, 
 | Row type   | PK                    | Attributes                                  |
 |------------|-----------------------|---------------------------------------------|
 | Aggregate  | `USER#{userId}`       | `SuggestedCount`, `DeletedCount`, `CompletedCount` |
-| Provenance | `ACTION#{actionItemId}` | `UserId`                                   |
+| Provenance | `ACTION#{actionItemId}` | `UserId`, `PromptVersion`                  |
 
-The provenance row marks an action item as AI-extracted; it is matched by id when the item is later deleted or completed (on its own `ActionItem` stream).
+The provenance row marks an action item as AI-extracted; it is matched by id when the item is later deleted or completed (on its own `ActionItem` stream). `PromptVersion` (10-M) records which prompt version produced the suggestion; a v1 `ActionItemsSuggested` event (pre-10-M) records `"unknown"`.
 
 **Event handling (live, inline across two command handlers):**
-- `ActionItemsSuggested` (in `NoteCommandHandler`) → per id: `SuggestedCount++` for the current user; write provenance `(actionItemId, userId)`.
+- `ActionItemsSuggested` (v1) / `ActionItemsSuggestedV2` (v2, in `NoteCommandHandler`) → per id: `SuggestedCount++` for the current user; write provenance `(actionItemId, userId, promptVersion)` — `promptVersion` is the event's value for v2, `"unknown"` for v1.
 - `ActionItemDeleted` (in `ActionItemCommandHandler`) → if provenance for that `ActionId` exists: `DeletedCount++` for its user.
 - `ActionItemCompleted` (in `ActionItemCommandHandler`) → if provenance exists: `CompletedCount++`.
 - Provenance is **not** consumed — action ids are unique and immutable, so there is no double-count risk.

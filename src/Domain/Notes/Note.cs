@@ -57,8 +57,9 @@ public sealed class Note : IAggregate
                 _summary = e.Summary;
                 break;
             case TagsSuggested:
-                break;
+            case TagsSuggestedV2:
             case ActionItemsSuggested:
+            case ActionItemsSuggestedV2:
                 break;
             default:
                 break;
@@ -183,7 +184,7 @@ public sealed class Note : IAggregate
             throw new InvalidOperationException($"Note {cmd.NoteId} does not exist.");
         if (cmd.Tags.Count == 0)
             return [];
-        return [new TagsSuggested(cmd.NoteId, cmd.Tags)];
+        return [new TagsSuggestedV2(cmd.NoteId, cmd.Tags, cmd.ModelId, cmd.PromptVersion)];
     }
 
     IReadOnlyList<IDomainEvent> HandleRecordActionItemSuggestions(RecordActionItemSuggestions cmd)
@@ -192,7 +193,7 @@ public sealed class Note : IAggregate
             throw new InvalidOperationException($"Note {cmd.NoteId} does not exist.");
         if (cmd.ActionItemIds.Count == 0)
             return [];
-        return [new ActionItemsSuggested(cmd.NoteId, cmd.ActionItemIds)];
+        return [new ActionItemsSuggestedV2(cmd.NoteId, cmd.ActionItemIds, cmd.ModelId, cmd.PromptVersion)];
     }
 
     IReadOnlyList<IDomainEvent> HandleRecordAnalysisSummary(RecordAnalysisSummary cmd)

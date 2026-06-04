@@ -18,7 +18,7 @@
 | 10-J | Tag feedback projection | Done | 10-I |
 | 10-K | Record AI action-item suggestions (`ActionItemsSuggested`) | Done | — |
 | 10-L | Action-item feedback projection | Done | 10-K |
-| 10-M | Stamp modelId / promptVersion on the suggestion events | Not Started | 10-G, 10-I, 10-K |
+| 10-M | Stamp modelId / promptVersion on the suggestion events | In Progress | 10-G, 10-I, 10-K |
 | 10-N | Migrate analysis to the Converse API (model-agnostic) | Done | — |
 
 Phase 10 has two parts. The **core flow** (10-A → 10-H) makes recording → transcription → analysis work end to end. The **quality track** (10-E, 10-F, then 10-G → 10-M) makes that analysis *good* and *keeps it good*: better input, smoother UX, measurement, and a durable correction signal that feeds prompt/model refinement. Slices 10-I → 10-M were moved here from the former Phase 13 ("Feedback capture for AI suggestions") so that analysis quality — building it, measuring it, refining it — lives in one phase.
@@ -989,7 +989,7 @@ Scenario: The projection rebuilds from the event stream
 
 ## Slice 10-M — Stamp modelId / promptVersion on the suggestion events
 
-**Status:** Not started
+**Status:** In Progress
 
 **Value:** Tie every captured correction (10-J / 10-L) to the exact prompt and model that produced the suggestion, so refinement can compare quality *across prompt versions* rather than only in aggregate. This closes the loop between the eval harness (10-G) and the live feedback signal — and lets real meetings feed the 10-G fixture set.
 

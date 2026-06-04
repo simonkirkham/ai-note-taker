@@ -58,8 +58,10 @@ public record ContentEdited(NoteId NoteId, string Content)     : NoteEvent;  // 
 public record NoteTagged(NoteId NoteId, string Tag)            : NoteEvent;
 public record NoteUntagged(NoteId NoteId, string Tag)          : NoteEvent;
 public record NoteDateSet(NoteId NoteId, DateOnly? Date)       : NoteEvent;  // null = cleared
-public record TagsSuggested(NoteId NoteId, IReadOnlyList<string> Tags) : NoteEvent;  // AI provenance
-public record ActionItemsSuggested(NoteId NoteId, IReadOnlyList<Guid> ActionItemIds) : NoteEvent;  // AI provenance
+public record TagsSuggested(NoteId NoteId, IReadOnlyList<string> Tags) : NoteEvent;  // AI provenance (v1)
+public record TagsSuggestedV2(NoteId NoteId, IReadOnlyList<string> Tags, string ModelId, string PromptVersion) : NoteEvent;  // AI provenance (v2, 10-M)
+public record ActionItemsSuggested(NoteId NoteId, IReadOnlyList<Guid> ActionItemIds) : NoteEvent;  // AI provenance (v1)
+public record ActionItemsSuggestedV2(NoteId NoteId, IReadOnlyList<Guid> ActionItemIds, string ModelId, string PromptVersion) : NoteEvent;  // AI provenance (v2, 10-M)
 public record AnalysisSummaryRecorded(                         // AI Final notes artifact; full snapshot, latest wins
     NoteId NoteId,
     string Summary,
@@ -100,14 +102,14 @@ public record NoteDeleted(NoteId NoteId)                       : NoteEvent;
 { "noteId": "7f3a9c2b-1e4d-4a8f-9c0d-2b1f3a4e5c6d", "date": "2026-04-29" }
 ```
 
-`TagsSuggested` (the post-dedup set of tags an analysis run applied; provenance only):
+`TagsSuggestedV2` (the post-dedup set of tags an analysis run applied; provenance only; stored under `EventType` `TagsSuggested`, `EventVersion` 2). v1 (`EventVersion` 1) is the same payload without `modelId`/`promptVersion`:
 ```json
-{ "noteId": "7f3a9c2b-1e4d-4a8f-9c0d-2b1f3a4e5c6d", "tags": ["login", "auth"] }
+{ "noteId": "7f3a9c2b-1e4d-4a8f-9c0d-2b1f3a4e5c6d", "tags": ["login", "auth"], "modelId": "amazon.nova-lite-v1:0", "promptVersion": "analysis@v2" }
 ```
 
-`ActionItemsSuggested` (ids of the action items an analysis run created; provenance only):
+`ActionItemsSuggestedV2` (ids of the action items an analysis run created; provenance only; stored under `EventType` `ActionItemsSuggested`, `EventVersion` 2). v1 (`EventVersion` 1) omits `modelId`/`promptVersion`:
 ```json
-{ "noteId": "7f3a9c2b-1e4d-4a8f-9c0d-2b1f3a4e5c6d", "actionItemIds": ["c1d2e3f4-5a6b-7c8d-9e0f-1a2b3c4d5e6f"] }
+{ "noteId": "7f3a9c2b-1e4d-4a8f-9c0d-2b1f3a4e5c6d", "actionItemIds": ["c1d2e3f4-5a6b-7c8d-9e0f-1a2b3c4d5e6f"], "modelId": "amazon.nova-lite-v1:0", "promptVersion": "analysis@v2" }
 ```
 
 `AnalysisSummaryRecorded` (the AI's Final notes artifact; full snapshot, latest wins; empty summary + empty lists is a valid "analysis produced nothing" state, distinct from a never-analysed note which has no event at all):

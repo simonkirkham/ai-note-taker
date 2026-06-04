@@ -5,22 +5,25 @@ namespace Api.Integration;
 internal sealed class InMemoryTagFeedbackStore : ITagFeedbackStore
 {
     private readonly Dictionary<(string UserId, string Tag), (int Suggested, int Rejected)> _aggregates = new();
-    private readonly Dictionary<(string NoteId, string Tag), string> _provenance = new();
+    private readonly Dictionary<(string NoteId, string Tag), (string UserId, string PromptVersion)> _provenance = new();
 
-    public Task RecordSuggestionAsync(string userId, string noteId, string tag, CancellationToken ct = default)
+    public string? PromptVersionFor(string noteId, string tag) =>
+        _provenance.TryGetValue((noteId, tag), out var prov) ? prov.PromptVersion : null;
+
+    public Task RecordSuggestionAsync(string userId, string noteId, string tag, string promptVersion, CancellationToken ct = default)
     {
         var current = _aggregates.GetValueOrDefault((userId, tag));
         _aggregates[(userId, tag)] = (current.Suggested + 1, current.Rejected);
-        _provenance[(noteId, tag)] = userId;
+        _provenance[(noteId, tag)] = (userId, promptVersion);
         return Task.CompletedTask;
     }
 
     public Task<bool> TryRecordRejectionAsync(string noteId, string tag, CancellationToken ct = default)
     {
-        if (!_provenance.TryGetValue((noteId, tag), out var userId))
+        if (!_provenance.TryGetValue((noteId, tag), out var prov))
             return Task.FromResult(false);
-        var current = _aggregates.GetValueOrDefault((userId, tag));
-        _aggregates[(userId, tag)] = (current.Suggested, current.Rejected + 1);
+        var current = _aggregates.GetValueOrDefault((prov.UserId, tag));
+        _aggregates[(prov.UserId, tag)] = (current.Suggested, current.Rejected + 1);
         _provenance.Remove((noteId, tag));
         return Task.FromResult(true);
     }
@@ -43,9 +46,9 @@ internal sealed class InMemoryTagFeedbackStore : ITagFeedbackStore
         return Task.CompletedTask;
     }
 
-    public Task PutProvenanceAsync(string noteId, string tag, string userId, CancellationToken ct = default)
+    public Task PutProvenanceAsync(string noteId, string tag, string userId, string promptVersion, CancellationToken ct = default)
     {
-        _provenance[(noteId, tag)] = userId;
+        _provenance[(noteId, tag)] = (userId, promptVersion);
         return Task.CompletedTask;
     }
 

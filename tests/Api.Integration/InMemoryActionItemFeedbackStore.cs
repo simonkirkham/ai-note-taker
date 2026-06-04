@@ -5,29 +5,32 @@ namespace Api.Integration;
 internal sealed class InMemoryActionItemFeedbackStore : IActionItemFeedbackStore
 {
     private readonly Dictionary<string, (int Suggested, int Deleted, int Completed)> _aggregates = new();
-    private readonly Dictionary<string, string> _provenance = new();
+    private readonly Dictionary<string, (string UserId, string PromptVersion)> _provenance = new();
 
-    public Task RecordSuggestionAsync(string userId, string actionItemId, CancellationToken ct = default)
+    public string? PromptVersionFor(string actionItemId) =>
+        _provenance.TryGetValue(actionItemId, out var prov) ? prov.PromptVersion : null;
+
+    public Task RecordSuggestionAsync(string userId, string actionItemId, string promptVersion, CancellationToken ct = default)
     {
         var current = _aggregates.GetValueOrDefault(userId);
         _aggregates[userId] = (current.Suggested + 1, current.Deleted, current.Completed);
-        _provenance[actionItemId] = userId;
+        _provenance[actionItemId] = (userId, promptVersion);
         return Task.CompletedTask;
     }
 
     public Task<bool> TryRecordDeletionAsync(string actionItemId, CancellationToken ct = default)
     {
-        if (!_provenance.TryGetValue(actionItemId, out var userId)) return Task.FromResult(false);
-        var c = _aggregates.GetValueOrDefault(userId);
-        _aggregates[userId] = (c.Suggested, c.Deleted + 1, c.Completed);
+        if (!_provenance.TryGetValue(actionItemId, out var prov)) return Task.FromResult(false);
+        var c = _aggregates.GetValueOrDefault(prov.UserId);
+        _aggregates[prov.UserId] = (c.Suggested, c.Deleted + 1, c.Completed);
         return Task.FromResult(true);
     }
 
     public Task<bool> TryRecordCompletionAsync(string actionItemId, CancellationToken ct = default)
     {
-        if (!_provenance.TryGetValue(actionItemId, out var userId)) return Task.FromResult(false);
-        var c = _aggregates.GetValueOrDefault(userId);
-        _aggregates[userId] = (c.Suggested, c.Deleted, c.Completed + 1);
+        if (!_provenance.TryGetValue(actionItemId, out var prov)) return Task.FromResult(false);
+        var c = _aggregates.GetValueOrDefault(prov.UserId);
+        _aggregates[prov.UserId] = (c.Suggested, c.Deleted, c.Completed + 1);
         return Task.FromResult(true);
     }
 
@@ -42,9 +45,9 @@ internal sealed class InMemoryActionItemFeedbackStore : IActionItemFeedbackStore
         return Task.CompletedTask;
     }
 
-    public Task PutProvenanceAsync(string actionItemId, string userId, CancellationToken ct = default)
+    public Task PutProvenanceAsync(string actionItemId, string userId, string promptVersion, CancellationToken ct = default)
     {
-        _provenance[actionItemId] = userId;
+        _provenance[actionItemId] = (userId, promptVersion);
         return Task.CompletedTask;
     }
 
