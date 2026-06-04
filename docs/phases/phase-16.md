@@ -6,7 +6,7 @@
 
 | Slice | Summary | Status | Depends on |
 |-------|---------|--------|------------|
-| 16-A | **See any day's meetings, not just today's.** Prev/next-day buttons + a behind-a-button date picker drive a date-aware meetings list with a day-reflecting heading; reminders stay pinned to the real today | Not Started | — |
+| 16-A | **See any day's meetings, not just today's.** Prev/next-day buttons + a behind-a-button date picker drive a date-aware meetings list with a day-reflecting heading; reminders stay pinned to the real today | Done | — |
 
 > **Note on slice size.** 16-A is a single vertical slice spanning the calendar client, the endpoint contract, and the home-screen UI, because the user value — "browse meetings for a chosen day" — is invisible if delivered in backend-only or frontend-only halves. If the diff proves large, Breaker may sub-split along the natural **generalise-the-read-path** (calendar client + endpoint accept a date) → **date-navigation UI** (controls + heading + reminder decoupling) seam during spec-writing, **without** changing the single user-value definition. The frontend half would then depend on the backend half.
 
@@ -16,7 +16,7 @@
 
 ## Slice 16-A — See any day's meetings, not just today's
 
-**Status:** Not Started
+**Status:** Done
 
 **User value:** On the home screen the user can move the meetings list to any day. **‹ Prev** and **Next ›** step one day at a time; a **calendar button** reveals a date picker to jump straight to a date; and the section heading tells them which day they're looking at — **"Today's Meetings"** for today, **"Tomorrow's Meetings"** / **"Yesterday's Meetings"** for ±1 day, and a formatted date like **"Meetings — Mon, 8 Jun"** for any other day. Browsing is a read-only look-ahead/look-back: creating a note from a meeting works on any day, but **meeting reminders keep firing only for the real today**, regardless of which day is on screen.
 
@@ -98,14 +98,14 @@ Scenario: A missing timezone is rejected
 
 ### Acceptance criteria
 
-- [ ] `IGoogleCalendarClient.GetEventsForDayAsync(DateOnly date, string tz)` replaces `GetTodaysEventsAsync`; window computed from the passed date in `tz`, not `UtcNow`; `StubGoogleCalendarClient` honours the date; `GetNextOccurrenceAsync` unchanged
-- [ ] `GET /calendar/{date}?tz=` (ISO `YYYY-MM-DD` path segment) replaces `/calendar/today`; malformed date ⇒ `400 { error = "invalid_date" }`; missing/invalid `tz` guard preserved; all callers (`web` API client, `Api.Smoke`, E2E) moved over; handler renamed; `hasNextOccurrenceNote`/`nextOccurrenceNoteId` still relative to `UtcNow`
-- [ ] `web/src/api.ts` exposes `getMeetingsForDate(tz, date)` hitting `/calendar/{date}?tz=`; the home screen always passes a concrete `YYYY-MM-DD`
-- [ ] `MeetingsSection` has prev/next-day buttons and a date picker hidden behind a button; selecting a date refetches and closes the picker; navigation is unbounded (both arrows always enabled)
-- [ ] Heading: `Today's Meetings` (today) / `Tomorrow's Meetings` (+1) / `Yesterday's Meetings` (−1) / `Meetings — {EEE, d MMM}` (otherwise); empty-state copy no longer says "today"; section landmark `aria-label` is stable
-- [ ] `useMeetingReminders` is fed a dedicated **today** fetch, never the browsed day; browsing never schedules/cancels reminders for other days; when the selected day is today the displayed list reuses the today fetch (no duplicate request)
-- [ ] Optimistic note-creation from a browsed-day meeting works as it does for today (per the optimistic-UI convention)
-- [ ] `Api.Integration` test covers the date param (explicit date, default-to-today, `invalid_date`); component tests cover prev/next, picker toggle + selection, all four heading variants, the empty state, and reminders-stay-on-today; existing meetings/calendar specs updated for the renamed client method; the kept calendar E2E journey green; `cdk synth` succeeds
+- [x] `IGoogleCalendarClient.GetEventsForDayAsync(DateOnly date, string tz)` replaces `GetTodaysEventsAsync`; window computed from the passed date in `tz`, not `UtcNow`; `StubGoogleCalendarClient` honours the date; `GetNextOccurrenceAsync` unchanged
+- [x] `GET /calendar/{date}?tz=` (ISO `YYYY-MM-DD` path segment) replaces `/calendar/today`; malformed date ⇒ `400 { error = "invalid_date" }`; missing/invalid `tz` guard preserved; all callers (`web` API client, `Api.Smoke`, E2E) moved over; handler renamed; `hasNextOccurrenceNote`/`nextOccurrenceNoteId` still relative to `UtcNow`
+- [x] `web/src/api.ts` exposes `getMeetingsForDate(tz, date)` hitting `/calendar/{date}?tz=`; the home screen always passes a concrete `YYYY-MM-DD`
+- [x] `MeetingsSection` has prev/next-day buttons and a date picker hidden behind a button; selecting a date refetches and closes the picker; navigation is unbounded (both arrows always enabled)
+- [x] Heading: `Today's Meetings` (today) / `Tomorrow's Meetings` (+1) / `Yesterday's Meetings` (−1) / `Meetings — {EEE, d MMM}` (otherwise); empty-state copy no longer says "today"; section landmark `aria-label` is stable
+- [x] `useMeetingReminders` is fed a dedicated **today** fetch, never the browsed day; browsing never schedules/cancels reminders for other days; when the selected day is today the displayed list reuses the today fetch (no duplicate request)
+- [x] Optimistic note-creation from a browsed-day meeting works as it does for today (per the optimistic-UI convention)
+- [x] `Api.Integration` test covers the date param (explicit date, default-to-today, `invalid_date`); component tests cover prev/next, picker toggle + selection, all four heading variants, the empty state, and reminders-stay-on-today; existing meetings/calendar specs updated for the renamed client method; the kept calendar E2E journey green; `cdk synth` succeeds
 
 ---
 

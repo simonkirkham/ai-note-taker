@@ -234,7 +234,7 @@ Stop conflating what the user wrote with what the AI generated. Today a single `
 
 Slices and acceptance criteria: [docs/phases/phase-15.md](phases/phase-15.md)
 
-## Phase 16 — Browse meetings by date on the home screen _(Not Started)_
+## Phase 16 — Browse meetings by date on the home screen _(Done)_
 
 The home-screen meetings section only ever shows *today's* meetings — `GET /calendar/today` and the Google Calendar client are both hard-wired to "now". This phase makes it **date-navigable**: previous/next-day buttons, a date picker hidden behind a button, and a heading that reflects the selected day (`Today's Meetings` / `Tomorrow's Meetings` / `Yesterday's Meetings` / `Meetings — Mon, 8 Jun`). A single vertical slice (16-A) generalises the today-only read path — the calendar client windows any day, and the misnamed `/calendar/today` route is replaced by a date-addressed `GET /calendar/{date}?tz=` (ISO date) — and adds the navigation UI, while deliberately decoupling meeting *reminders*, which stay pinned to the real today, from whatever day is being *browsed*. Navigation is unbounded. Builds on Phase 9.
 

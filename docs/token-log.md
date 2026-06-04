@@ -1393,3 +1393,19 @@ If no agent ran unexpectedly high: write `None — slice ran within expected ran
 | **Total**                                            | **~90 000** |
 
 **Notes:** no spike — the smallest slice to date, as expected for a one-line copy change. Hawk (~33k) was the largest single agent and the cost floor for a five-axis review regardless of diff size; it approved first pass with one optional non-blocking suggestion. Two self-inflicted tooling costs worth shaving next time: the deploy monitor 404-looped on the run *display number* vs `databaseId`, and a watcher `until`-loop matched "error" inside "0 errors" and fired early — both folded into the learnings doc as fixes for the `run-pipeline` deploy-monitor step.
+
+## Slice 16-A — Browse meetings by date on the home screen (closes Phase 16)
+
+> Single specced vertical slice (calendar client → `/calendar/{date}` endpoint → home-screen date navigation), run end-to-end through `run-pipeline` with no gate pauses. Breaker + Pip + Refactor + Stylist driven inline in the main loop; one Hawk subagent.
+
+| Agent / phase                                              | ~Tokens  |
+|------------------------------------------------------------|----------|
+| Read phase doc + map calendar client/endpoint/UI/tests     | 22 000   |
+| Breaker + Pip (client + endpoint + UI + 4 backend test files + component tests) | 70 000 |
+| Refactor (fix `react-hooks/set-state-in-effect`; restructure date state) + Stylist (nav controls) | 16 000 |
+| Local gates (build, Api.Integration 230, Domain 170, Infra 71, frontend 309, tsc, lint, web build, cdk synth) | 18 000 |
+| Hawk (code-reviewer subagent, full five-axis)              | 83 000   |
+| Gate + merge + deploy monitoring + Scribe                  | 30 000   |
+| **Total**                                                  | **~239 000** |
+
+**Notes:** no spike. Hawk (~83k) was the largest single agent — proportionate for an end-to-end slice the reviewer had to trace across the calendar client window math, the route/guard contract, and the frontend reminder-decoupling timing; it approved first pass with only cosmetic nits. One self-inflicted cost worth shaving: `eslint` was run only at the end of Refactor and caught a `set-state-in-effect` error that `tsc`/`vitest` had passed — running lint earlier in Refactor would have caught it before the restructure. Folded into a CLAUDE.md frontend guardrail.
