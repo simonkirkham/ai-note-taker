@@ -252,7 +252,7 @@ Alongside the numbered phases above, work is tracked in five standing docs. The 
 
 An unnumbered, standing phase capturing defects in the deployed app, tracked to a fix. No learning theme, no fixed sequence.
 
-Currently open: **BUG-7** empty notes are created and left behind (not removed). Fixed: **BUG-1** blank screen on 401 _(done 2026-06-02)_ · **BUG-2** favicon.ico 404 on page load _(done 2026-06-02)_ · **BUG-3** Data Protection cold-start log noise _(done 2026-06-02)_ · **BUG-4** ConcurrencyException → 409 _(done 2026-06-02)_ · **BUG-5** write to deleted note → 404 _(done 2026-06-02)_ · **BUG-6** CloudWatch RUM loader CDN host regional _(done 2026-06-02)_ · **BUG-8** `x-correlation-id` now emitted as the `correlation_id` log field _(done 2026-06-02)_.
+Currently open: **BUG-7** empty notes are created and left behind (not removed). Fixed: **BUG-1** blank screen on 401 _(done 2026-06-02)_ · **BUG-2** favicon.ico 404 on page load _(done 2026-06-02)_ · **BUG-3** Data Protection cold-start log noise _(done 2026-06-02)_ · **BUG-4** ConcurrencyException → 409 _(done 2026-06-02)_ · **BUG-5** write to deleted note → 404 _(done 2026-06-02)_ · **BUG-6** CloudWatch RUM loader CDN host regional _(done 2026-06-02)_ · **BUG-8** `x-correlation-id` now emitted as the `correlation_id` log field _(done 2026-06-02)_ · **BUG-10** live transcription kept in pace — audio batched into ~100ms chunks _(done 2026-06-03)_.
 
 → [docs/phases/phase-bugs.md](phases/phase-bugs.md)
 

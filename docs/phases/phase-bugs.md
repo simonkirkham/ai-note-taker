@@ -21,7 +21,7 @@
 | BUG-7 | Empty notes are created and left behind (not removed) | Open | — |
 | BUG-8 | `x-correlation-id` returned to clients is never logged — a user-quoted ID can't be found in logs | Done | 12-A |
 | BUG-9 | Note tab panels (Transcript/Final notes) stack below Quick notes instead of replacing it | Done | 15-B |
-| BUG-10 | Live transcription falls behind realtime — audio streamed in ~8ms chunks (~125 events/sec) | In Progress | — |
+| BUG-10 | Live transcription falls behind realtime — audio streamed in ~8ms chunks (~125 events/sec) | Done | — |
 
 Further bugs will be appended as they are identified.
 
@@ -282,7 +282,7 @@ Option (a) keeps the existing header semantics; (b) collapses two correlation id
 
 ## BUG-10 — Live transcription falls progressively behind realtime
 
-**Status:** In Progress — fix on `slice/bug-10-transcription-keep-pace`.
+**Status:** Done — fixed in PR #158 (squash commit `3ce415d`), deployed to main 2026-06-03 (deploy #445). Confirmed working on a real call (transcription keeps pace). See [docs/learnings/phase-bug-10-transcription-keep-pace.md](../learnings/phase-bug-10-transcription-keep-pace.md).
 
 **Severity:** High — on a real call the transcript lags further and further behind the conversation and never catches up until speech pauses, so live notes are unusable and the saved transcript can be truncated when the user stops.
 
@@ -303,6 +303,6 @@ Option (a) keeps the existing header semantics; (b) collapses two correlation id
 - [x] Audio is sent to Transcribe in ~100ms chunks (~10 events/sec), not per 128-sample frame — guarded by a unit test of the chunking contract (`web/src/__tests__/pcm.test.ts`).
 - [x] Live partial-result re-renders are bounded (≤1 per 200ms); final results still render immediately.
 - [x] Existing transcription/RecordControl tests remain green.
-- [ ] Confirmed on a real call: the live transcript keeps pace for the full duration (manual, post-deploy — requires a live microphone).
+- [x] Confirmed on a real call: the live transcript keeps pace for the full duration (manual, post-deploy — verified 2026-06-03, noticeably better).
 
 **Key files:** `web/src/hooks/pcm.ts` (new — `PcmChunker`, `floatTo16BitPcm`), `web/src/hooks/useTranscription.ts` (chunker wiring + partial-render throttle); tests `web/src/__tests__/pcm.test.ts`.
