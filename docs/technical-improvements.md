@@ -68,15 +68,6 @@ Suggested split: extract `AuthContext` (and `useAuth`) into `web/src/auth/authCo
 
 ---
 
-## Investigate whether CDK synth needs real AWS credentials in `validate.yml`
-
-**What:** If the CDK app does no context lookups (SSM, VPC resolution, etc.), `cdk synth` can run without credentials. If confirmed, remove the `Configure AWS credentials` step and `environment: Test` from `validate.yml` — validate becomes a pure code-quality gate with no AWS dependency.
-**Why it matters:** Removes an unnecessary AWS dependency from the PR-validation path, simplifying CI and reducing the blast radius of credential issues.
-**Raised in:** CI / Dev Experience observation.
-**Depends on:** Confirm the CDK app performs no environment-bound context lookups during synth.
-
----
-
 ## Add `cdk synth` to the pre-commit hook
 
 **What:** The pre-commit hook builds, lints, typechecks, and runs the test suites, but does **not** run `cdk synth`. Add it so the local gate matches the guardrail "Never commit without all BDD specs green and `cdk synth` succeeding." Note `cdk synth` requires a prior `dotnet publish` of the API, so factor that into the step.
