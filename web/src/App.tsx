@@ -13,7 +13,7 @@ import {
   unfileNote as apiUnfileNote,
   moveFolder as apiMoveFolder,
 } from "./api";
-import { useAuth } from "./auth/AuthContext";
+import { useAuth } from "./auth/context";
 import styles from "./components/App.module.css";
 import FolderPreviewPanel from "./components/FolderPreviewPanel";
 import ListView from "./components/ListView";

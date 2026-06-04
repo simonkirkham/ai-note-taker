@@ -1,6 +1,6 @@
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { AuthContext } from '../auth/AuthContext'
+import { AuthContext } from '../auth/context'
 import SignInPage from '../components/SignInPage'
 
 function renderWithSignIn(signIn = vi.fn()) {
