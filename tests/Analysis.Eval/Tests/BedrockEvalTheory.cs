@@ -17,7 +17,7 @@ public class BedrockEvalTheory
             ?? "amazon.nova-lite-v1:0")
         .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
 
-    static readonly AnalysisPrompt[] Prompts = [PromptCatalog.V3, PromptCatalog.V4];
+    static readonly AnalysisPrompt[] Prompts = [PromptCatalog.V3, PromptCatalog.V4, PromptCatalog.V5];
 
     static string ResultsDirectory =>
         Path.Combine(AppContext.BaseDirectory, "Results");
@@ -38,6 +38,27 @@ public class BedrockEvalTheory
     // ITestOutputHelper, which only surfaces under detailed verbosity).
     static readonly Lazy<int> TotalCases = new(() => Matrix.Count());
     static int _caseNumber;
+
+    // VSTest buffers a test's Console output and only flushes it when the test finishes,
+    // so the per-row lines below are invisible during the long live sweep. When
+    // EVAL_PROGRESS_FILE is set (make eval sets it), also append each line to that plain
+    // file so it can be `tail -F`'d live. Best-effort: a logging failure never sinks a case.
+    static readonly string? ProgressFile = Environment.GetEnvironmentVariable("EVAL_PROGRESS_FILE");
+
+    static void Progress(string line)
+    {
+        Console.Error.WriteLine(line);
+        var file = ProgressFile;
+        if (string.IsNullOrEmpty(file)) return;
+        try
+        {
+            var dir = Path.GetDirectoryName(file);
+            if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
+            File.AppendAllText(file, line + Environment.NewLine);
+        }
+        catch (IOException) { }
+        catch (UnauthorizedAccessException) { }
+    }
 
     readonly ITestOutputHelper _output;
 
@@ -63,7 +84,7 @@ public class BedrockEvalTheory
 
         var caseNo = Interlocked.Increment(ref _caseNumber);
         var total = TotalCases.Value;
-        Console.Error.WriteLine($"[eval {caseNo}/{total}] running {modelId} x {fixture.Id} ...");
+        Progress($"[eval {caseNo}/{total}] running {modelId} x {fixture.Id} ...");
 
         var bedrock = BedrockEvalFactory.AnalysisService(prompt, modelId);
         var judge = BedrockEvalFactory.Judge();
@@ -89,7 +110,7 @@ public class BedrockEvalTheory
             // skips, and the shared judge id in the message is the tell (rather than
             // looking like the system-under-test model was at fault).
             var judgeModelId = BedrockEvalFactory.JudgeModelId;
-            Console.Error.WriteLine(
+            Progress(
                 $"[eval {caseNo}/{total}] SKIP {modelId} x {fixture.Id}: {ex.GetType().Name} ({total - caseNo} remaining)");
             _output.WriteLine(
                 $"SKIP {modelId} on {fixture.Id} (judge: {judgeModelId}): {ex.GetType().Name} — {ex.Message}");
@@ -97,7 +118,7 @@ public class BedrockEvalTheory
             return;
         }
 
-        Console.Error.WriteLine(
+        Progress(
             $"[eval {caseNo}/{total}] done {modelId} x {fixture.Id}  " +
             $"QUALITY={row.Quality:F2} (tags={row.QualityTags:F2} act={row.QualityActions:F2} dec={row.QualityDecisions:F2} content={row.QualityContent:F2}) ({total - caseNo} remaining)");
         _output.WriteLine(
