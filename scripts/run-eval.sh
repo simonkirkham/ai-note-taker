@@ -25,6 +25,18 @@ REGION="${AWS_REGION:-eu-west-2}"
 # Override (e.g. EVAL_REQUEST_DELAY_MS=0 for a high-quota account) to run faster.
 export EVAL_REQUEST_DELAY_MS="${EVAL_REQUEST_DELAY_MS:-1500}"
 
+# Named presets so you don't have to paste a long EVAL_MODEL_IDS string (pasting
+# long lines into a terminal can inject newlines mid-id and break them).
+#   EVAL_PRESET=core  → a reliable cross-vendor set (Amazon + Meta + Mistral).
+case "${EVAL_PRESET:-}" in
+  core)
+    EVAL_MODEL_IDS="amazon.nova-micro-v1:0,amazon.nova-lite-v1:0,amazon.nova-pro-v1:0,meta.llama3-70b-instruct-v1:0,meta.llama3-8b-instruct-v1:0,mistral.mistral-large-2402-v1:0,mistral.mixtral-8x7b-instruct-v0:1"
+    echo "Preset 'core': ${EVAL_MODEL_IDS}"
+    ;;
+  "") ;;  # no preset
+  *) echo "Unknown EVAL_PRESET='${EVAL_PRESET}' (known: core) — ignoring" ;;
+esac
+
 # 1. Discover models unless the caller pinned EVAL_MODEL_IDS.
 #    EVAL_PROVIDER scopes discovery: a Bedrock provider name (e.g. "amazon", "anthropic",
 #    "meta") filters to that vendor's on-demand text models; "all" lists every vendor's.

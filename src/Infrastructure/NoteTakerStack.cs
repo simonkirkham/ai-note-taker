@@ -141,7 +141,11 @@ public sealed class NoteTakerStack : Stack
             Description = "AI Note Taker API",
             Code = Amazon.CDK.AWS.Lambda.Code.FromAsset(lambdaAssetPath),
             Timeout = Duration.Seconds(29),
-            MemorySize = 512,
+            // 256 MB: observed peak Max Memory Used is ~165 MB, so this leaves
+            // ~55% headroom. SnapStart snapshot-cache cost is billed per GB of
+            // memory, so this also roughly halves the dominant Lambda cost line
+            // (snapshot cache storage) versus the previous 512 MB.
+            MemorySize = 256,
             LogGroup = apiLogGroup,
             SnapStart = Amazon.CDK.AWS.Lambda.SnapStartConf.ON_PUBLISHED_VERSIONS,
             Tracing = Amazon.CDK.AWS.Lambda.Tracing.ACTIVE,

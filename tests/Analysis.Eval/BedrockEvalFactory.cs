@@ -43,6 +43,12 @@ public static class BedrockEvalFactory
     public static string JudgeModelId =>
         Environment.GetEnvironmentVariable("BEDROCK_JUDGE_MODEL_ID") ?? "amazon.nova-pro-v1:0";
 
+    // The holistic quality judge defaults to a NEUTRAL (non-Nova) model so it isn't biased
+    // toward the family it grades. Claude 3.7 Sonnet is a strong reasoner for rubric work.
+    public static string QualityJudgeModelId =>
+        Environment.GetEnvironmentVariable("BEDROCK_QUALITY_JUDGE_MODEL_ID")
+            ?? "anthropic.claude-3-7-sonnet-20250219-v1:0";
+
     public static IBedrockAnalysisService AnalysisService(AnalysisPrompt prompt, string modelId) =>
         new BedrockAnalysisService(
             Runtime.Value,
@@ -52,4 +58,7 @@ public static class BedrockEvalFactory
 
     public static IJudgeClient Judge() =>
         new BedrockContentJudgeClient(Runtime.Value, JudgeModelId);
+
+    public static IQualityJudge QualityJudge() =>
+        new BedrockQualityJudge(Runtime.Value, QualityJudgeModelId);
 }

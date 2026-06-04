@@ -22,22 +22,27 @@ public static class Report
             : [];
 
         var sb = new StringBuilder();
-        sb.AppendLine("| Prompt | Model | Tag F1 | Action F1 | Content | Fixtures |");
-        sb.AppendLine("| --- | --- | --- | --- | --- | --- |");
+        sb.AppendLine("| Prompt | Model | Quality | Tags | Actions | Decisions | Content | Faithfulness | Fixtures |");
+        sb.AppendLine("| --- | --- | --- | --- | --- | --- | --- | --- | --- |");
 
+        // Headline is the rubric-based Quality; rows ordered best-first so the table reads
+        // as a ranking. The atomic scores (TagF1/ActionF1/ContentScore) stay in the jsonl.
         var groups = rows
             .GroupBy(r => (r.PromptVersion, r.ModelId))
-            .OrderBy(g => g.Key.PromptVersion, StringComparer.Ordinal)
-            .ThenBy(g => g.Key.ModelId, StringComparer.Ordinal);
+            .OrderByDescending(g => g.Average(r => r.Quality))
+            .ThenBy(g => g.Key.PromptVersion, StringComparer.Ordinal);
 
         foreach (var group in groups)
         {
             sb.AppendLine(string.Join(" ",
                 "|", group.Key.PromptVersion,
                 "|", group.Key.ModelId,
-                "|", Mean(group.Select(r => r.TagF1)),
-                "|", Mean(group.Select(r => r.ActionF1)),
-                "|", Mean(group.Select(r => r.ContentScore)),
+                "|", Mean(group.Select(r => r.Quality)),
+                "|", Mean(group.Select(r => r.QualityTags)),
+                "|", Mean(group.Select(r => r.QualityActions)),
+                "|", Mean(group.Select(r => r.QualityDecisions)),
+                "|", Mean(group.Select(r => r.QualityContent)),
+                "|", Mean(group.Select(r => r.FaithfulnessScore)),
                 "|", group.Count().ToString(CultureInfo.InvariantCulture),
                 "|"));
         }

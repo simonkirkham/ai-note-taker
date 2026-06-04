@@ -21,6 +21,7 @@
 | BUG-7 | Empty notes are created and left behind (not removed) | Open | — |
 | BUG-8 | `x-correlation-id` returned to clients is never logged — a user-quoted ID can't be found in logs | Done | 12-A |
 | BUG-9 | Note tab panels (Transcript/Final notes) stack below Quick notes instead of replacing it | Done | 15-B |
+| BUG-10 | Live transcription falls behind realtime — audio streamed in ~8ms chunks (~125 events/sec) | In Progress | — |
 
 Further bugs will be appended as they are identified.
 
@@ -276,3 +277,32 @@ Option (a) keeps the existing header semantics; (b) collapses two correlation id
 **Why it shipped / regression guard:** jsdom does not apply CSS-Module stylesheets, so the component tests' `toBeVisible()` saw only the `hidden` attribute and passed despite the visual bug — a CSS-only defect is invisible to the jsdom layer. Guarded with a real-browser test: `tests/Browser.E2E/Journeys/NoteTabsJourney.cs` switches tabs and asserts the inactive panel `ToBeHidden` (Playwright checks computed visibility). **Lesson:** layout/visibility behaviour driven by CSS must be guarded at the browser (E2E) layer, not jsdom.
 
 **Key files:** `web/src/components/NoteTabs.module.css`, `web/src/components/NoteView.tsx` (panels), `tests/Browser.E2E/Journeys/NoteTabsJourney.cs`.
+
+---
+
+## BUG-10 — Live transcription falls progressively behind realtime
+
+**Status:** In Progress — fix on `slice/bug-10-transcription-keep-pace`.
+
+**Severity:** High — on a real call the transcript lags further and further behind the conversation and never catches up until speech pauses, so live notes are unusable and the saved transcript can be truncated when the user stops.
+
+**Symptom:** During a live recording the displayed transcript drifts steadily behind what is actually being said; the longer the call, the larger the gap. Pressing Stop submits only what has been finalised so far, so trailing speech can be lost.
+
+**Cause (confirmed by code read):** `web/src/hooks/useTranscription.ts` posted audio from the AudioWorklet once per render quantum — a fixed **128 samples**. At the 16kHz capture rate that is ~8ms of audio, ~125 messages/sec, each pushed to the Transcribe stream as its own `AudioEvent`/`AudioChunk`. Every event in the AWS event stream is serialised and SigV4-signed on the main thread, so ~125 signed events/sec is far more per-event overhead than the client can sustain — a backlog forms in the audio queue, and because Transcribe Streaming only consumes at ~realtime, the backlog never drains. AWS guidance is ~100ms chunks; the client was sending at ~8ms, ~12× too fine. Secondary contributor: every partial result called `setTranscript` with the entire growing transcript string, so main-thread render cost grew with call length and competed with streaming.
+
+**Expected behaviour:** The live transcript keeps pace with the conversation for the full duration of a call; stopping captures the complete transcript.
+
+**Fix:** Coalesce worklet frames into fixed ~100ms PCM chunks before they reach the Transcribe client (`web/src/hooks/pcm.ts`, `PcmChunker`), cutting the event-stream rate from ~125/sec to ~10/sec. Throttle live partial-result re-renders to ≤1 per 200ms (finals always render immediately) so a long transcript no longer congests the main thread. Capture is unchanged (still AudioWorklet, off the main thread) — no change in approach (browser → AWS Transcribe Streaming).
+
+**Repro:**
+1. Start a recording and speak continuously for several minutes.
+2. Observe the transcript falling further behind real speech as the call goes on; it does not catch up until you pause.
+3. (Diagnostic) logging the audio-queue length shows it growing monotonically during the call.
+
+**Acceptance criteria:**
+- [x] Audio is sent to Transcribe in ~100ms chunks (~10 events/sec), not per 128-sample frame — guarded by a unit test of the chunking contract (`web/src/__tests__/pcm.test.ts`).
+- [x] Live partial-result re-renders are bounded (≤1 per 200ms); final results still render immediately.
+- [x] Existing transcription/RecordControl tests remain green.
+- [ ] Confirmed on a real call: the live transcript keeps pace for the full duration (manual, post-deploy — requires a live microphone).
+
+**Key files:** `web/src/hooks/pcm.ts` (new — `PcmChunker`, `floatTo16BitPcm`), `web/src/hooks/useTranscription.ts` (chunker wiring + partial-render throttle); tests `web/src/__tests__/pcm.test.ts`.

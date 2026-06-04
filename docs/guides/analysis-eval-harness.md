@@ -14,9 +14,21 @@ For each fixture the harness builds a `NoteAnalysisRequest`, calls `BedrockAnaly
 |---|---|---|
 | **Tag F1** | inferred tags vs expected | set precision/recall/F1, case-insensitive (`TagScorer`) |
 | **Action F1** | extracted action items vs expected | normalised exact match P/R/F1 (`ActionItemScorer`) |
-| **Content score** | the gap-filled content contains the required facts | LLM-as-judge: fraction of `contentMustMention` facts the judge confirms present (`ContentJudge` + `BedrockContentJudgeClient`) |
+| **Content** (recall) | the artifact contains the required facts | LLM-as-judge: fraction of `contentMustMention` facts supported by the summary/discussion/decisions |
+| **Faithfulness** (precision) | the model's *claims* are supported by the source | LLM-as-judge: fraction of the model's discussion points + decisions + action items that are supported by the transcript + existing note — catches **invented** decisions/actions that Content (recall-only) is blind to |
 
-The judge deliberately uses a **stronger** model than the system under test (Nova Pro judging Nova Lite by default).
+The judge deliberately uses a **stronger** model than the system under test (Nova Pro judging Nova Lite by default). Content and Faithfulness are complementary: Content asks "did it capture what mattered?", Faithfulness asks "is everything it said actually true?". A terse model that hits the expected facts but invents extra content scores high on Content and low on Faithfulness.
+
+Every run also writes **`Results/<runId>-outputs.md`** — the raw `summary`/`discussion`/`decisions`/`tags`/`actions` each model produced per fixture, with its scores. Read it to *see* why a model scored the way it did rather than trusting the number.
+
+> **Caveat the scores can't fix: fixture realism.** On short, clean synthetic transcripts even a weak model stays faithful, so Faithfulness won't separate models there. The metrics only expose a model's real failure modes when fed inputs that trigger them — long, messy, real meetings. Since this repo is public, real transcripts can't be committed, so `scripts/extract-prod-fixtures.sh` pulls real meetings from the prod note-detail projection into a **git-ignored** `eval-fixtures-real/` (self-protecting), and `EVAL_FIXTURES_DIR` points the sweep at them:
+
+```bash
+AWS_PROFILE=prod ./scripts/extract-prod-fixtures.sh
+EVAL_FIXTURES_DIR=eval-fixtures-real AWS_PROFILE=prod EVAL_PRESET=core make eval
+```
+
+Real fixtures have no gold labels, so only **Faithfulness** (plus eyeballing `Results/<runId>-outputs.md`) is meaningful on them — Tag/Action/Content F1 need hand-authored `expected` values.
 
 > **Why Action F1 catches "only my actions".** The fixtures put the current user's actions in `actionItems` and *other people's* actions in `contentMustMention`. If the model wrongly captures someone else's action as one of the user's, that's an extra predicted item not in `expected` — **precision drops**, so Action F1 < 1. Conversely, the missing-from-content fact lowers the content score. The two scores together pin the "scope actions to the current user" behaviour.
 
@@ -32,13 +44,16 @@ AWS_PROFILE=prod make eval
 
 This discovers the account's **accessible on-demand text models** in the region (`bedrock list-foundation-models`) — by default the Amazon provider (Nova + Titan) — sweeps the fixtures against all of them, renders the report, and prints it. Models the account can't invoke (no access grant, inference-profile-only) are skipped gracefully — the report only shows models that actually ran. Progress streams to stderr as `[eval N/total] …`. Run only the offline tests with `make eval-offline`. The script lives at [`scripts/run-eval.sh`](../../scripts/run-eval.sh).
 
-Since the analyse path speaks the model-agnostic Bedrock **Converse** API (slice 10-N), the sweep is **not** Nova-only. Widen it across vendors with `EVAL_PROVIDER`, or pin exact models with `EVAL_MODEL_IDS`:
+Since the analyse path speaks the model-agnostic Bedrock **Converse** API (slice 10-N), the sweep is **not** Nova-only. Pick models without pasting a long string (pasting long lines into a terminal can inject a newline mid-id and break it) via a **preset** or **provider**, or pin exact ids with `EVAL_MODEL_IDS`:
 
 ```bash
+AWS_PROFILE=prod EVAL_PRESET=core make eval                        # curated cross-vendor set (Amazon+Meta+Mistral)
 AWS_PROFILE=prod EVAL_PROVIDER=all make eval                       # every accessible vendor
 AWS_PROFILE=prod EVAL_PROVIDER=anthropic make eval                 # one vendor's on-demand models
-AWS_PROFILE=prod EVAL_MODEL_IDS="amazon.nova-lite-v1:0,meta.llama3-1-70b-instruct-v1:0" make eval
+AWS_PROFILE=prod EVAL_MODEL_IDS="amazon.nova-lite-v1:0,meta.llama3-70b-instruct-v1:0" make eval
 ```
+
+`EVAL_PRESET=core` is the paste-safe way to run the standard cross-vendor comparison.
 
 > Two limits remain: non-Amazon models must be **access-granted** in the Bedrock console first (Claude needs the use-case form + Marketplace sub), and **inference-profile-only** models (newer Claude/Llama) won't appear in discovery — they aren't on-demand by raw id and need the profile id + cross-region IAM (out of scope for now).
 
@@ -63,8 +78,10 @@ Two phases because the report renders whatever rows exist in `Results/`, and tes
 | Variable | Effect | Default |
 |---|---|---|
 | `RUN_BEDROCK_EVAL` | `1` enables the live Bedrock tests; anything else skips them | unset (skip) |
+| `EVAL_PRESET` | named curated set, paste-free (`core` = Amazon+Meta+Mistral cross-vendor) | none |
 | `EVAL_MODEL_IDS` | comma-separated analysis models to sweep — pinning these **bypasses discovery** | discovered |
 | `EVAL_PROVIDER` | scopes discovery to a Bedrock provider (`amazon`, `anthropic`, `meta`, …) or `all` for every vendor | `amazon` |
+| `EVAL_FIXTURES_DIR` | load fixtures from this dir instead of the built-in corpus (e.g. private real meetings from `extract-prod-fixtures.sh`) | built-in `Fixtures/` |
 | `BEDROCK_JUDGE_MODEL_ID` | model used as the content judge | `amazon.nova-pro-v1:0` |
 | `EVAL_REQUEST_DELAY_MS` | pause between sweep cases, to stay under a rate-limited account's Bedrock per-minute quota | `0` (raw `dotnet test`); `make eval` sets `1500` |
 | `AWS_PROFILE` / `AWS_REGION` | standard AWS SDK credential/region resolution | — |
