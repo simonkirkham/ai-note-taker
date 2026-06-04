@@ -1345,3 +1345,20 @@ If no agent ran unexpectedly high: write `None — slice ran within expected ran
 | **Total**                                       | **~224 000** |
 
 **Notes:** the two Hawk passes were the cost driver and both paid off — neither was a rubber-stamp. Extracting the pure parser/reader *before* claiming "behaviour-identical" is what made the equivalence reviewable and surfaced a latent reversed-brace crash that pre-existed on main. Lesson banked: on a path with an observability contract, a logged marker string is an API — grep it before editing.
+
+---
+
+## CHANGE-13 — "Next occurrence" control inside a recurring-meeting note
+
+> Reuse-in-a-new-location minor change: read-side (`GetByNoteIdAsync` reverse lookup + two fields on `GET /notes/{id}`) plus a `NoteView` control reusing the existing endpoint and `onOpenNote`. Driven inline (Scout + Breaker + Pip + Refactor in the main loop); one Hawk subagent.
+
+| Agent / phase                                        | ~Tokens  |
+|------------------------------------------------------|----------|
+| Investigate (confirm option 1, map files)            | 28 000   |
+| Breaker + Pip (backend store/handler + frontend control + 7 tests) | 95 000 |
+| Refactor / self-review (caught lockfile churn, Limit-before-filter fix) | 14 000 |
+| Hawk (code-reviewer subagent)                        | 47 000   |
+| Gate + deploy monitoring + Scribe                    | 32 000   |
+| **Total**                                            | **~216 000** |
+
+**Notes:** no spike. The self-review pass earned its keep twice over — it caught the `Limit = 1`-before-`FilterExpression` scan bug *before* committing (would have silently returned no series link for notes past the first page) and the Node-24 `package-lock.json` churn (would have broken CI's Node-20 `npm ci`). Hawk added no blocking findings — expected for a small read-side slice that reuses an existing scan idiom — but confirmed the `isRecurring`-derivation and scan-pagination correctness and logged the per-load scan-latency follow-up. Both background gate monitors (PR CI + main deploy) ran at negligible cost.

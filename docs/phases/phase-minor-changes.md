@@ -24,7 +24,7 @@
 | CHANGE-10 | Refine home: hide tag labels, icon card/to-do actions, boxless filter tags, simpler calendar | Done | — |
 | CHANGE-11 | Preview pull-out `»` becomes `«` when its panel is open | Done | — |
 | CHANGE-12 | Drop home Notes divider; top-align with Today's Meetings | Done | CHANGE-10? (numbering collision — see section) |
-| CHANGE-13 | "Next occurrence" button inside a recurring-meeting note | Open | 9-F (shipped) |
+| CHANGE-13 | "Next occurrence" button inside a recurring-meeting note | Done | 9-F (shipped) |
 
 Tweaks are appended here as they are identified. Use the same per-item format: a short title, **Status**, value/symptom, and acceptance criteria (with scenarios and approach where the change warrants them).
 
@@ -1094,7 +1094,7 @@ A four-variant gallery (`prototype/minor-10-home-spacing`) was reviewed; the use
 
 ## CHANGE-13 — "Next occurrence" button inside a recurring-meeting note
 
-**Status:** Open
+**Status:** Done — shipped in PR #162 (squash `23e3940`), deployed to main 2026-06-04 (deploy run 455). Implemented option 1 (reverse lookup on `CalendarLinkView`). See [docs/learnings/phase-minor-13-next-occurrence-in-note.md](../learnings/phase-minor-13-next-occurrence-in-note.md).
 
 **Value:** Slice 9-F shipped "next occurrence" navigation, but only on the **home screen's Today's Meetings panel** (`MeetingsSection.tsx`): from a recurring meeting row you can create-or-open the note for that series' next occurrence. Once you are *inside* a note, that affordance is gone — to jump to the next occurrence of the same recurring meeting you have to navigate back to the home screen and find the meeting row. This change surfaces the same capability **inside the note view**: when the open note belongs to a recurring meeting, show a control that takes you to the next occurrence — opening its note if one already exists, or creating it first if not — then navigating straight there. It is a reuse-in-a-new-location change, not new backend capability: the create-or-open endpoint already exists.
 
@@ -1178,13 +1178,13 @@ Scenario: No upcoming occurrences is handled gracefully
 
 ### Acceptance criteria
 
-- [ ] `GET /notes/{noteId}` exposes `recurringSeriesId` (nullable) and `isRecurring`; the frontend `NoteDetail` type declares both
-- [ ] The note read path sources the series link from existing stored data — no new event, no published-event-shape change, no projection rebuild required
-- [ ] `NoteView` shows a "Next occurrence" control only when the note is linked to a recurring series; non-recurring/unlinked notes show nothing
-- [ ] Clicking the control opens the existing next-occurrence note when one exists, and creates-then-opens it when it does not — reusing `POST /notes/from-next-occurrence` (no new endpoint, no duplicate note)
-- [ ] The handler follows the optimistic-first pattern of `MeetingsSection.handleCreateNextOccurrenceNote`, with a busy/disabled state while in flight and revert-on-error
-- [ ] `404 no_future_occurrences` is surfaced gracefully (no navigation to a broken note)
-- [ ] The control works after a page reload / direct note open, with no in-memory meeting context
-- [ ] Any new/changed callback prop (e.g. `onOpenNote`) is grepped across all call sites and `tsc --noEmit` passes before merge
-- [ ] `NoteView` component tests cover: control shown for recurring, hidden for non-recurring, opens existing note, creates-then-opens, no-future-occurrences handling
+- [x] `GET /notes/{noteId}` exposes `recurringSeriesId` (nullable) and `isRecurring`; the frontend `NoteDetail` type declares both
+- [x] The note read path sources the series link from existing stored data — no new event, no published-event-shape change, no projection rebuild required (reverse lookup on the existing `CalendarLinkView` projection via `GetByNoteIdAsync`)
+- [x] `NoteView` shows a "Next occurrence" control only when the note is linked to a recurring series; non-recurring/unlinked notes show nothing
+- [x] Clicking the control opens the existing next-occurrence note when one exists, and creates-then-opens it when it does not — reusing `POST /notes/from-next-occurrence` (no new endpoint, no duplicate note)
+- [x] The handler has a busy/disabled state while in flight; on error it does not navigate (toast on unexpected error). *Note: a navigation action has no local optimistic state to revert — the disabled-in-flight guard is the applicable part of the `MeetingsSection` pattern (confirmed by Hawk).*
+- [x] `404 no_future_occurrences` is surfaced gracefully — inline "No upcoming occurrences" message, no navigation to a broken note
+- [x] The control works after a page reload / direct note open, with no in-memory meeting context — `recurringSeriesId` comes from the server read path, not meeting context
+- [x] Any new/changed callback prop (e.g. `onOpenNote`) is grepped across all call sites and `tsc --noEmit` passes before merge
+- [x] `NoteView` component tests cover: control shown for recurring, hidden for non-recurring, opens existing note, creates-then-opens, no-future-occurrences handling
 
