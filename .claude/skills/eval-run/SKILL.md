@@ -71,10 +71,43 @@ Model/prompt improvement is open-ended, so the next thing to try is tracked in t
 
 1. **Draft the next item** from this run's recommendation — a one-line summary plus a short scope (what prompt change / model swap to try, and which dimension it targets), citing this run's report under `docs/eval-runs/`.
 2. **Check with the user before recording it.** Present the proposed `MPI-N` item and ask whether to add it (and whether to reword/re-scope). Do **not** append it unsilently — the user owns what goes on the backlog.
-3. **On approval**, append a new `MPI-N` row to the Summary table and a matching detail section at the bottom of the doc, with `Status: Open` and a `Depends on` referencing the harness/prompt it builds from. If `docs/phases/phase-model-prompt-improvements.md` doesn't exist yet, note that and create it mirroring the other standing docs (`phase-bugs.md` / `phase-minor-changes.md`): a `**Goal:**` paragraph, a `## Summary` table (`Item | Summary | Status | Depends on`), then one detail section per item.
+3. **On approval**, append a new `MPI-N` row to the Summary table and a matching detail section at the bottom of the doc (format below), with `Status: Open` and a `Depends on` referencing the harness/prompt it builds from. If `docs/phases/phase-model-prompt-improvements.md` doesn't exist yet, note that and create it mirroring the other standing docs (`phase-bugs.md` / `phase-minor-changes.md`): a `**Goal:**` paragraph, a `## Summary` table (`Item | Summary | Status | Depends on`), then one detail section per item.
 4. **Close out shipped items.** If this run's decision *ships* a prompt/model that an existing `MPI-` item was driving (e.g. V4 won and is now live), mark that item `Done` with the deciding run — don't leave it Open.
 
 Never delete backlog rows — mark `Done`/`Dropped` with the deciding run so the history of what was tried survives, mirroring `test-matrix.md`.
+
+### MPI item format
+
+Write the detail section so a reader knows **what** and **why** in ten seconds. Lead with the proposal; make the value scannable. Obeys CLAUDE.md `## Writing style` (facts over prose, lead with the conclusion, no windup).
+
+```markdown
+## MPI-N — <imperative title, e.g. "Swap-test claude-sonnet-4-6 as the value pick">
+
+**Status:** Open
+
+**Proposal:** <one line — exactly what to do>
+
+**Why it's worth doing:**
+- <concrete payoff — what improves, with a number if there is one>
+- <another payoff / what it unblocks or decides>
+
+**Cost:** <rough scope (sweeps × models × prompts), and any blocker or "not blocked">
+
+### Steps
+1. <step>
+2. <step>
+
+- [ ] <acceptance check — measurable>
+- [ ] Decision recorded in `docs/eval-runs/` + `test-matrix.md`
+
+**Depends on:** <ids, or —>
+```
+
+Rules for the write-up:
+- **Proposal is one line.** If it needs two, it's two items.
+- **Every "Why" bullet is a concrete payoff** (a metric moved, a decision made, a risk removed) — not background. "Keep-set should track current models" is fine; a paragraph of history is not.
+- **No stale caveats.** If a blocker is already resolved, state "not blocked" in one clause, don't keep the old warning.
+- **No prose paragraphs.** Tables/bullets only.
 
 ## Rules
 

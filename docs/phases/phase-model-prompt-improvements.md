@@ -15,6 +15,7 @@
 | MPI-1 | `analysis@v4` — deepen note content (the universal weak dimension) | Done (not shipped, `run-532442`) | 10-G, 10-O |
 | MPI-2 | `analysis@v5` — keep V4's depth win, add a thin-transcript grounding clamp + restore V3 tag discipline | Done — ships (`run-551897`) | MPI-1 |
 | MPI-3 | Model sweep — add `anthropic.claude-sonnet-4-6`, evaluate as replacement for the aged `claude-3-sonnet-20240229` value pick | Open | 10-G |
+| MPI-4 | Fix the judge — give it the user's note as grounding + stop the content rubric auto-failing faithful terse notes | Open | 10-G |
 
 Further items are appended as each eval run surfaces the next weakest dimension. The `eval-run` skill proposes them (see [How items are added](#how-items-are-added)).
 
@@ -26,7 +27,7 @@ This backlog is fed by the eval loop, not drafted up front. After each `make eva
 
 1. Writes the per-run decision report under `docs/eval-runs/` and updates `test-matrix.md`.
 2. Derives the **next suggested improvement** — usually targeting the weakest Quality dimension, or a model worth adding/dropping — and **checks with the user** before recording it.
-3. On the user's go-ahead, appends a new `MPI-N` row to the Summary table above and a detail section below, citing the eval run that motivated it.
+3. On the user's go-ahead, appends a new `MPI-N` row to the Summary table above and a detail section below (format: see the eval-run skill's [MPI item format](../../.claude/skills/eval-run/SKILL.md) — lead with a one-line **Proposal**, scannable **Why it's worth doing** bullets, a **Cost** line, then **Steps**), citing the eval run that motivated it.
 
 Items are never deleted — a shipped or abandoned item is marked `Done`/`Dropped` with the deciding eval run, so the history of what was tried (and why) survives alongside `test-matrix.md`.
 
@@ -88,23 +89,51 @@ So v4 must chase **depth where the source supports it and restraint where it doe
 
 ---
 
-## MPI-3 — Model sweep: evaluate `claude-sonnet-4-6` as the value pick
+## MPI-3 — Swap-test `claude-sonnet-4-6` as the value pick
 
 **Status:** Open
 
-**Value:** The matrix's "value pick" model is `anthropic.claude-3-sonnet-20240229-v1:0` — an early-2024 model almost certainly superseded by the current Sonnet generation. `run-532442` flagged `anthropic.claude-sonnet-4-6` as discovered-available. A model-only sweep should confirm whether the newer Sonnet beats the aged one (and how it stacks against the Opus ceiling and the Mistral non-Anthropic best) so the keep-set reflects current models, not 2024 ones.
+**Proposal:** Add `anthropic.claude-sonnet-4-6` to the keep-set; run one model-only sweep on the shipped prompt (`analysis@v5`).
 
-> **Access caveat:** Anthropic models on Bedrock historically needed the FTU form + Marketplace subscription in this account (Nova Lite was chosen as prod precisely because it's Amazon-own and on-demand with no prerequisites — see the project memory). Confirm `claude-sonnet-4-6` is actually invocable on-demand in `eu-west-2` before relying on it; if it isn't, the sweep is blocked on enabling access.
+**Why it's worth doing:**
+- The current "value pick", `claude-3-sonnet-20240229`, is an early-2024 model — almost certainly beaten by the current-gen Sonnet. The keep-set should track current models.
+- One sweep answers: keep the old Sonnet, or swap it.
+- May also move the **prod model** — V5 put Nova Lite within −0.021 of Opus, so a strong, cheaper Sonnet could become the new prod default.
 
-**Commands in scope:** none · **Events in scope:** none
+**Cost:** ~1 sweep (keep-set + 1 model) × 22 fixtures, one prompt. Access is **confirmed live** (`run-551897`: Anthropic models invocable on-demand in prod) — not blocked.
 
-### Scope
-- Add `anthropic.claude-sonnet-4-6` to the matrix model set; run a model-only sweep on the **shipped** prompt (`analysis@v3`) across the keep-set + the new model.
-- Decide whether it replaces `claude-3-sonnet-20240229` as the value pick (mark the old row `dropped` with the deciding run if so) — and whether its quality/cost changes the production-model choice.
-- Record the decision via the `eval-run` skill; update `test-matrix.md`.
+### Steps
+1. Add `claude-sonnet-4-6` to the matrix; sweep model-only on `analysis@v5`.
+2. Rank vs the keep-set; decide keep/drop on `claude-3-sonnet-20240229`.
+3. Record via the `eval-run` skill; update `test-matrix.md`.
 
-- [ ] `claude-sonnet-4-6` confirmed invocable on-demand in eu-west-2 (or access enabled)
-- [ ] Sweep run on `analysis@v3`; new Sonnet ranked against the keep-set
-- [ ] Matrix updated (keep/drop decision recorded) and decision report written
+- [ ] Swept on `analysis@v5`; new Sonnet ranked vs the keep-set
+- [ ] Keep/drop decision recorded in `test-matrix.md` + report
+
+**Depends on:** 10-G (the harness).
+
+---
+
+## MPI-4 — Fix the judge: note-blindness + terseness penalty
+
+**Status:** Open
+
+**Proposal:** Give the quality/faithfulness judges the user's note as grounding context, and stop the content rubric auto-failing a faithful, justified-terse note on a thin transcript.
+
+**Why it's worth doing:**
+- Note-blindness already produced wrong calls — the judge flagged grounded gold-tag entities ("Cyberdyne"/"Stark Industries", both in the fixtures' user-note) as fabrication; it sank V4 in `run-532442` and nearly sank V5.
+- The terseness penalty (content ≤0.4 even when fully faithful) fights the grounding clamp V5 just shipped — sparse-fixture content scores can't be trusted until it's fixed.
+- Both are *measurement* bugs: they distort every future prompt comparison, not just one run.
+
+**Cost:** Prompt-only edits to the two judges in `tests/Analysis.Eval/Scoring/` (`BedrockQualityJudge`, `ContentJudge`/faithfulness). No new infra. Re-run V5 to confirm sparse-fixture scores rise with no prompt change.
+
+### Steps
+1. Pass `existingContent` (user note) into the judge prompts as valid grounding alongside the transcript.
+2. Reword the content rubric so a faithful note that is short *because the transcript is thin* is not auto-failed to ≤0.4.
+3. Re-run V3/V5 on the keep-set; confirm the sparse fixtures (`17-budget-review`, `14-all-hands-reorg`) no longer mis-score, and no prompt regressed.
+
+- [ ] Judges receive the user note; gold-tag entities no longer flagged as fabrication
+- [ ] Sparse-fixture content scores reflect faithfulness, not length
+- [ ] Decision recorded in `docs/eval-runs/` + `test-matrix.md`
 
 **Depends on:** 10-G (the harness).
