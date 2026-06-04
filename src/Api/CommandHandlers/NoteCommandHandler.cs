@@ -90,10 +90,24 @@ public sealed class NoteCommandHandler(
     {
         foreach (var envelope in newEnvelopes)
         {
-            if (EventDeserializer.Deserialize(envelope) is ActionItemsSuggested e)
-                foreach (var actionItemId in e.ActionItemIds)
-                    await actionItemFeedbackStore.RecordSuggestionAsync(currentUser.UserId, actionItemId.ToString(), ct).ConfigureAwait(false);
+            switch (EventDeserializer.Deserialize(envelope))
+            {
+                case ActionItemsSuggestedV2 e:
+                    await RecordActionSuggestionsAsync(e.ActionItemIds, e.PromptVersion, ct).ConfigureAwait(false);
+                    break;
+                case ActionItemsSuggested e:
+                    await RecordActionSuggestionsAsync(e.ActionItemIds, ActionItemFeedbackProjection.UnknownPromptVersion, ct).ConfigureAwait(false);
+                    break;
+                default:
+                    break;
+            }
         }
+    }
+
+    private async Task RecordActionSuggestionsAsync(IReadOnlyList<Guid> actionItemIds, string promptVersion, CancellationToken ct)
+    {
+        foreach (var actionItemId in actionItemIds)
+            await actionItemFeedbackStore.RecordSuggestionAsync(currentUser.UserId, actionItemId.ToString(), promptVersion, ct).ConfigureAwait(false);
     }
 
     private async Task UpdateTagFeedbackForNewEventsAsync(List<EventEnvelope> newEnvelopes, CancellationToken ct)
@@ -102,9 +116,11 @@ public sealed class NoteCommandHandler(
         {
             switch (EventDeserializer.Deserialize(envelope))
             {
+                case TagsSuggestedV2 e:
+                    await RecordTagSuggestionsAsync(e.NoteId, e.Tags, e.PromptVersion, ct).ConfigureAwait(false);
+                    break;
                 case TagsSuggested e:
-                    foreach (var tag in e.Tags)
-                        await tagFeedbackStore.RecordSuggestionAsync(currentUser.UserId, e.NoteId.Value.ToString("N"), tag, ct).ConfigureAwait(false);
+                    await RecordTagSuggestionsAsync(e.NoteId, e.Tags, TagFeedbackProjection.UnknownPromptVersion, ct).ConfigureAwait(false);
                     break;
                 case NoteUntagged e:
                     await tagFeedbackStore.TryRecordRejectionAsync(e.NoteId.Value.ToString("N"), e.Tag, ct).ConfigureAwait(false);
@@ -113,6 +129,12 @@ public sealed class NoteCommandHandler(
                     break;
             }
         }
+    }
+
+    private async Task RecordTagSuggestionsAsync(NoteId noteId, IReadOnlyList<string> tags, string promptVersion, CancellationToken ct)
+    {
+        foreach (var tag in tags)
+            await tagFeedbackStore.RecordSuggestionAsync(currentUser.UserId, noteId.Value.ToString("N"), tag, promptVersion, ct).ConfigureAwait(false);
     }
 
     private static (NoteTitleListItem TitleItem, NoteDetailView Detail) RebuildTitleAndDetailProjections(
@@ -222,11 +244,18 @@ public sealed class NoteCommandHandler(
     private static List<EventEnvelope> ToEnvelopes(string streamId, IReadOnlyList<IDomainEvent> events, string userId) =>
         events.Select(e =>
         {
-            // The domain aggregate emits ContentEdited; the infrastructure layer persists it as ContentEditedV2.
-            var (type, version, payload) = e is ContentEdited ce
-                ? (nameof(ContentEdited), 2, JsonSerializer.Serialize(
-                    new ContentEditedV2(ce.NoteId, ce.NewContent, ce.NewContent.Length)))
-                : (e.GetType().Name, InitialEventVersion, JsonSerializer.Serialize(e, e.GetType()));
+            // Versioned events are persisted under their logical (v1) EventType name with a bumped
+            // EventVersion, so a stream's history reads as one type across versions. The aggregate emits
+            // ContentEdited but it is stored as ContentEditedV2; the V2 suggestion events (10-M) carry
+            // their own shape but persist under the TagsSuggested/ActionItemsSuggested names at version 2.
+            var (type, version, payload) = e switch
+            {
+                ContentEdited ce => (nameof(ContentEdited), 2, JsonSerializer.Serialize(
+                    new ContentEditedV2(ce.NoteId, ce.NewContent, ce.NewContent.Length))),
+                TagsSuggestedV2 => (nameof(TagsSuggested), 2, JsonSerializer.Serialize(e, e.GetType())),
+                ActionItemsSuggestedV2 => (nameof(ActionItemsSuggested), 2, JsonSerializer.Serialize(e, e.GetType())),
+                _ => (e.GetType().Name, InitialEventVersion, JsonSerializer.Serialize(e, e.GetType()))
+            };
 
             return new EventEnvelope(
                 StreamId: streamId, SequenceNumber: 0, EventType: type, EventVersion: version,

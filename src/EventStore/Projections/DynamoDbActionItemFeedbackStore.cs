@@ -8,10 +8,10 @@ public sealed class DynamoDbActionItemFeedbackStore(IAmazonDynamoDB dynamo, stri
     private static string UserPk(string userId) => $"USER#{userId}";
     private static string ActionPk(string actionItemId) => $"ACTION#{actionItemId}";
 
-    public async Task RecordSuggestionAsync(string userId, string actionItemId, CancellationToken ct = default)
+    public async Task RecordSuggestionAsync(string userId, string actionItemId, string promptVersion, CancellationToken ct = default)
     {
         await IncrementAsync(userId, "SuggestedCount", ct).ConfigureAwait(false);
-        await PutProvenanceAsync(actionItemId, userId, ct).ConfigureAwait(false);
+        await PutProvenanceAsync(actionItemId, userId, promptVersion, ct).ConfigureAwait(false);
     }
 
     public Task<bool> TryRecordDeletionAsync(string actionItemId, CancellationToken ct = default) =>
@@ -63,7 +63,7 @@ public sealed class DynamoDbActionItemFeedbackStore(IAmazonDynamoDB dynamo, stri
         }, ct).ConfigureAwait(false);
     }
 
-    public async Task PutProvenanceAsync(string actionItemId, string userId, CancellationToken ct = default)
+    public async Task PutProvenanceAsync(string actionItemId, string userId, string promptVersion, CancellationToken ct = default)
     {
         await dynamo.PutItemAsync(new PutItemRequest
         {
@@ -71,7 +71,8 @@ public sealed class DynamoDbActionItemFeedbackStore(IAmazonDynamoDB dynamo, stri
             Item = new Dictionary<string, AttributeValue>
             {
                 ["PK"] = new() { S = ActionPk(actionItemId) },
-                ["UserId"] = new() { S = userId }
+                ["UserId"] = new() { S = userId },
+                ["PromptVersion"] = new() { S = promptVersion }
             }
         }, ct).ConfigureAwait(false);
     }

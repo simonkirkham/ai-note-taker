@@ -89,6 +89,26 @@ public sealed class TagFeedbackIntegrationTests : IClassFixture<ApiFactory>
         Assert.Equal(before, after);
     }
 
+    // Scenario (10-M): the analyse path stamps the run's prompt version onto the tag provenance row,
+    // and the stamp survives a projection rebuild (rebuild handler passes PromptVersion through).
+    [Fact]
+    public async Task Analyse_StampsPromptVersionOnProvenance_AndSurvivesRebuild()
+    {
+        _fakeBedrock.NextResult = new NoteAnalysisResult("a summary", [], [], ["tf-pv"], [],
+            ModelId: "amazon.nova-lite-v1:0", PromptVersion: "analysis@v2");
+        var noteId = await CreateNoteAsync();
+        await _client.PostAsync($"/notes/{noteId}/transcription",
+            Json(new { transcriptText = "discussion", durationSeconds = 10 }));
+        (await _client.PostAsync($"/notes/{noteId}/analyse", null)).EnsureSuccessStatusCode();
+
+        var store = (InMemoryTagFeedbackStore)_factory.Services.GetRequiredService<ITagFeedbackStore>();
+        var noteKey = Guid.Parse(noteId).ToString("N");
+        Assert.Equal("analysis@v2", store.PromptVersionFor(noteKey, "tf-pv"));
+
+        (await _client.PostAsync("/admin/projections/rebuild", null)).EnsureSuccessStatusCode();
+        Assert.Equal("analysis@v2", store.PromptVersionFor(noteKey, "tf-pv"));
+    }
+
     private async Task<string> AnalyseWithTagsAsync(params string[] tags)
     {
         _fakeBedrock.NextResult = new NoteAnalysisResult("a summary", [], [], tags, []);

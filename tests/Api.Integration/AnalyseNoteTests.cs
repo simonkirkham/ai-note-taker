@@ -296,11 +296,13 @@ public sealed class AnalyseNoteTests : IClassFixture<ApiFactory>
         Assert.DoesNotContain(events, e => e.EventType == nameof(AnalysisSummaryRecorded));
     }
 
-    // Scenario: Analysis records only the newly-applied AI tags as TagsSuggested, before NoteTagged (10-I)
+    // Scenario: Analysis records only the newly-applied AI tags as TagsSuggested, before NoteTagged (10-I);
+    // the event is the v2 shape stamped with the run's model id and prompt version (10-M).
     [Fact]
     public async Task PostAnalyse_RecordsOnlyNewTagsAsSuggested_BeforeNoteTagged()
     {
-        _fakeBedrock.NextResult = new NoteAnalysisResult("a summary", [], [], ["auth", "login"], []);
+        _fakeBedrock.NextResult = new NoteAnalysisResult("a summary", [], [], ["auth", "login"], [],
+            ModelId: "amazon.nova-lite-v1:0", PromptVersion: "analysis@v2");
 
         var noteId = await CreateNoteAsync();
         await _client.PostAsync($"/notes/{noteId}/transcription",
@@ -313,8 +315,11 @@ public sealed class AnalyseNoteTests : IClassFixture<ApiFactory>
 
         var events = await ReadStreamAsync(noteId);
         var suggestedEnvelope = Assert.Single(events, e => e.EventType == nameof(TagsSuggested));
-        var suggested = (TagsSuggested)EventDeserializer.Deserialize(suggestedEnvelope);
+        Assert.Equal(2, suggestedEnvelope.EventVersion);
+        var suggested = (TagsSuggestedV2)EventDeserializer.Deserialize(suggestedEnvelope);
         Assert.Equal(new[] { "login" }, suggested.Tags);
+        Assert.Equal("amazon.nova-lite-v1:0", suggested.ModelId);
+        Assert.Equal("analysis@v2", suggested.PromptVersion);
 
         var taggedLoginEnvelope = Assert.Single(events, e =>
             e.EventType == nameof(NoteTagged) &&
@@ -340,11 +345,13 @@ public sealed class AnalyseNoteTests : IClassFixture<ApiFactory>
         Assert.DoesNotContain(events, e => e.EventType == nameof(TagsSuggested));
     }
 
-    // Scenario: Analysis records the IDs of the action items it created (10-K)
+    // Scenario: Analysis records the IDs of the action items it created (10-K); the event is the v2
+    // shape stamped with the run's model id and prompt version (10-M).
     [Fact]
     public async Task PostAnalyse_RecordsCreatedActionItemIds_AsActionItemsSuggested()
     {
-        _fakeBedrock.NextResult = new NoteAnalysisResult("a summary", [], [], [], ["Fix the login bug by Friday"]);
+        _fakeBedrock.NextResult = new NoteAnalysisResult("a summary", [], [], [], ["Fix the login bug by Friday"],
+            ModelId: "amazon.nova-lite-v1:0", PromptVersion: "analysis@v2");
 
         var noteId = await CreateNoteWithTranscriptAsync(content: "Login bug.", transcript: "Alice will fix login by Friday.");
 
@@ -354,8 +361,11 @@ public sealed class AnalyseNoteTests : IClassFixture<ApiFactory>
 
         var events = await ReadStreamAsync(noteId);
         var suggestedEnvelope = Assert.Single(events, e => e.EventType == nameof(ActionItemsSuggested));
-        var suggested = (ActionItemsSuggested)EventDeserializer.Deserialize(suggestedEnvelope);
+        Assert.Equal(2, suggestedEnvelope.EventVersion);
+        var suggested = (ActionItemsSuggestedV2)EventDeserializer.Deserialize(suggestedEnvelope);
         Assert.Single(suggested.ActionItemIds);
+        Assert.Equal("amazon.nova-lite-v1:0", suggested.ModelId);
+        Assert.Equal("analysis@v2", suggested.PromptVersion);
 
         var actions = await GetActionsAsync(noteId);
         var actionIds = actions.Select(a => a.GetProperty("actionId").GetString()).ToList();
