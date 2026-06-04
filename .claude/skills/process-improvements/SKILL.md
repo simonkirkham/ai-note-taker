@@ -50,11 +50,11 @@ Answer two questions:
 
 | Q2 | Q1 | Tier | Output |
 |----|----|------|--------|
-| Yes | either | **2 — full doc** | `phase-<id>-….md` per Step 3 below |
-| No | Yes | **1 — stub** | One dated line appended to `docs/learnings/_minor-log.md` (what was applied + pointer to the commit/guardrail); skip Step 3 |
+| Yes | either | **2 — full doc** | `phase-<n><id>-….md` per Step 3 below |
+| No | Yes | **1 — stub** | One dated line appended to `docs/learnings/_minor-log.md` (what was applied + pointer to the commit/guardrail); skip Step 3. In practice Tier 1 is reachable only when the sole applied change is a bare permission-allow entry — any guardrail/role/skill-rule change is Q2-yes (Tier 2) |
 | No | No | **0 — none** | No file. The PR + git history is the record; skip Step 3 |
 
-State the tier in one line before proceeding, e.g. *"Tier 0 — pure CSS slice, CI green first try, no guardrail, no permission gap → no doc."*
+State the tier in one line before proceeding, e.g. *"Tier 0 — pure CSS slice, CI green first try, no guardrail, no permission gap → no doc."* or *"Tier 1 — added one permission-allow entry, no guardrail, nothing non-obvious → one line in `_minor-log.md`."*
 
 Litmus test: *would a future agent change its behaviour because this prose exists?* If the only honest answer is "they'd re-read what they already know from CLAUDE.md or git," it is Tier 0/1. **"No learnings doc" is a valid, expected result for a trivial slice — never manufacture observations to justify a file.**
 
@@ -76,9 +76,9 @@ Create `docs/learnings/phase-<n><id>-<short-description>.md`. Check existing fil
 
 Example bullet: Pip ran `cd web && npm run build`, which needed manual approval and broke the run. **Action:** added `Bash(npm --prefix web run build)` to the allow-list + a CLAUDE.md guardrail — Done.
 
-## Step 4 — Execute all Done actions
+## Step 4 — Execute all applied actions
 
-Before committing, apply every action marked Done:
+Runs at **every tier** — this is job (A), and it never gets skipped. Apply every guardrail/permission/rule change the slice produced:
 
 | Action type | Where to edit |
 |------------|--------------|
@@ -87,11 +87,11 @@ Before committing, apply every action marked Done:
 | Role rule | `.claude/skills/.agent/generic/agent-roles.md` |
 | Skill rule | The relevant `SKILL.md` |
 
-Re-read the learnings doc after applying to confirm every Done label is accurate.
+For **Tier 2**, the source of these actions is the learnings doc — re-read it after applying to confirm every `— Done` label is accurate. For **Tier 0/1** there is no doc; apply the Step 1 permission/guardrail fixes directly, and for Tier 1 record the applied change as the one-line `_minor-log.md` entry.
 
-## Step 5 — Append an applied-status table to the learnings doc
+## Step 5 — Append an applied-status table to the learnings doc (Tier 2 only)
 
-Add the `## Applied status` table **only when status is genuinely mixed** — some Applied, some Documented/TODO. If every learning ends in an inline "— Applied", the table just re-lists the bullets; omit it.
+Add the `## Applied status` table **only when status is genuinely mixed** — some Done, some Documented/TODO. If every learning already ends in an inline "— Done", the table just re-lists the bullets; omit it.
 
 When it earns its place, add an `## Applied status` section at the bottom of the learnings doc. One row per learning:
 
@@ -121,4 +121,4 @@ This table is the audit trail that answers "were the learnings from this slice a
 
 ## Done when
 
-Learnings doc is written, all Done actions are applied, and you have a list of TODO items to surface to the human.
+The tier is stated; for Tier 2 the learnings doc is written (for Tier 1 the `_minor-log.md` line is appended, for Tier 0 no file); all applied guardrail/permission/rule changes are in place; and you have a list of TODO items to surface to the human.
