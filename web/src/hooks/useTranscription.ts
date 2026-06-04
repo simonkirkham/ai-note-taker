@@ -5,6 +5,7 @@ import {
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { completeTranscription, getTranscriptionCredentials } from '../api';
 import { PcmChunker } from './pcm';
+import { SpeakerTranscript } from './speakerSegments';
 
 const LANGUAGE_CODE = 'en-GB' as const;
 
@@ -148,6 +149,7 @@ export function useTranscription(noteId: string): UseTranscriptionResult {
 
         const audioQueue: Uint8Array[] = [];
         const chunker = new PcmChunker();
+        const speakerTranscript = new SpeakerTranscript();
 
         workletNode.port.onmessage = (e: MessageEvent) => {
           if (stoppedRef.current) return;
@@ -184,6 +186,7 @@ export function useTranscription(noteId: string): UseTranscriptionResult {
           LanguageCode: LANGUAGE_CODE,
           MediaEncoding: 'pcm',
           MediaSampleRateHertz: audioContext.sampleRate,
+          ShowSpeakerLabel: true,
           AudioStream: audioStream(),
         });
 
@@ -201,17 +204,25 @@ export function useTranscription(noteId: string): UseTranscriptionResult {
             if (event.TranscriptEvent) {
               const results = event.TranscriptEvent.Transcript?.Results ?? [];
               for (const result of results) {
-                const text = result.Alternatives?.[0]?.Transcript ?? '';
-                if (!text) continue;
+                const alternative = result.Alternatives?.[0];
                 if (result.IsPartial) {
+                  // Partials carry no stable speaker labels; show the plain in-flight
+                  // text on its own line below the labelled finalised turns.
+                  const text = alternative?.Transcript ?? '';
+                  if (!text) continue;
                   const now = Date.now();
                   if (now - lastPartialAtRef.current < PARTIAL_RENDER_INTERVAL_MS) continue;
                   lastPartialAtRef.current = now;
-                  const display = finalizedRef.current ? `${finalizedRef.current} ${text}` : text;
+                  const display = finalizedRef.current ? `${finalizedRef.current}\n${text}` : text;
                   setTranscript(display);
                 } else {
+                  // Finalised results are assembled from per-item speakers, so the
+                  // guard must key off Items — not .Transcript, which is a different field.
+                  const items = alternative?.Items ?? [];
+                  if (items.length === 0) continue;
                   lastPartialAtRef.current = 0;
-                  finalizedRef.current = finalizedRef.current ? `${finalizedRef.current} ${text}` : text;
+                  speakerTranscript.append(items);
+                  finalizedRef.current = speakerTranscript.toString();
                   setTranscript(finalizedRef.current);
                 }
               }
