@@ -30,7 +30,9 @@ This skill applies safe-by-default changes to the CDK app in `src/Infrastructure
 
 6. **Snapshot test.** If `tests/Infrastructure/` contains snapshot tests, update the snapshot only when the diff is the change you want.
 
-7. **Commit the CDK change separately** from app code changes when feasible — makes reverts cleaner.
+7. **Deploy-gate risky infra before merge.** Synth, `Template.FromStack`, and Hawk do **not** catch deploy-only failures — a whole class fails first at real `cdk deploy` (e.g. `SEARCH` unsupported on a metric alarm, a RUM/CDN host that doesn't resolve, empty-string secrets, missing `AllowedMethods`, SPA error-response conflicts, missing `ConsistentRead`). For any change to alarms, RUM, CloudFront behaviours, cross-service ARNs, or optional secrets, run a **`cdk deploy --no-execute`** and inspect the generated change set (or deploy into a throwaway/sandbox stack) before merging to main. Each deploy-only failure that reaches main costs a full diagnose→fix→redeploy cycle (15–25k tokens each; one slice burned ~185k across 7).
+
+8. **Commit the CDK change separately** from app code changes when feasible — makes reverts cleaner.
 
 ## IAM principle
 

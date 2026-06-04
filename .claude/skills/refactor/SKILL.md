@@ -63,6 +63,10 @@ Run this skill after all BDD specs pass and before opening a PR. Behaviour must 
 | Swallowed exception | `catch (Exception) { }` or catch with no rethrow/log | At minimum log; ideally don't catch what you can't handle |
 | Nullable reference not checked at boundary | External input (`req.Title`) used without null guard | Add `ArgumentNullException.ThrowIfNull` or null-coalescing at the entry point |
 | Entry-point file doing too much | `Program.cs` contains service registration, middleware config, route mapping, handler logic, and request/response records | Each concern gets its own file. The entry point becomes an orchestration sequence only — it calls into the other files, it does not define behaviour itself |
+| `CancellationToken` not propagated | A handler/method accepts `CancellationToken ct` but calls a store/handler/SDK method without passing it | Thread `ct` through every downstream async call. Any method that takes a `ct` and awaits something must forward it |
+| AWS SDK call without try/catch | An SDK call (`BedrockRuntime`, `Transcribe`, DynamoDB, Google SDK) with no surrounding try/catch — a service exception surfaces as a raw 500 | Catch the specific SDK exception (`AmazonBedrockRuntimeException`, etc.) and map to a handled result/HTTP status. For `Task.WhenAll` over per-item external calls, wrap each item so one failure degrades gracefully instead of failing the batch |
+| Read-after-write without `ConsistentRead` | A path writes a projection/event then immediately reads the same stream or projection; the `GetItem`/`Query`/`Scan` omits `ConsistentRead = true` | Set `ConsistentRead = true` on the read (except GSI queries, which don't support it). This class of bug is invisible locally and only fails in E2E against deployed DynamoDB |
+| New contract/`.cs` file missing namespace | A file added under `src/Api/Contracts/` (or any `src/` folder) has no `namespace` declaration | Every new `.cs` file declares its namespace; grep new files for a `namespace` line before opening the PR |
 
 ### React / TypeScript specific
 
@@ -80,9 +84,35 @@ Run this skill after all BDD specs pass and before opening a PR. Behaviour must 
 |---|---|---|
 | Test asserts DOM outcome but not the API call | A test checks that an item disappears/appears after a user action, but doesn't verify the network call fired — the same DOM outcome is achievable without the call if the component has optimistic update logic | Add a `let callMade = false` closure in the test, set it inside the MSW handler, and `await waitFor(() => expect(callMade).toBe(true))` before the DOM assertion. This applies to ALL fetches: both user-triggered mutations (POST/PUT/DELETE on button click or blur) AND load-triggered side-effects (auto-PATCH fired in useEffect when API returns a default value) |
 | No negative test for conditional render | A `{condition && <element>}` pattern has a positive test ("element visible when condition true") but no negative test — a regression that always renders would still pass | Add `expect(container.querySelector('.element-class')).toBeNull()` when the condition is false |
+| New predicate branch untested | A new multi-arm predicate (`hasContent`, `isSaveEnabled`, a three-way permission split, a Related+Common dedup) ships without a test isolating each arm — a regression in one arm passes | For each new branch, write at least one test where that arm is the *sole* truthy trigger. Include the overlap case where an item qualifies under two arms at once |
+| Async prop not awaited in event handler | A `void`-returning event handler (`onClick`, `onBlur`) calls an `async` prop without `await` — errors are swallowed and ordering is non-deterministic | `await` the async prop inside the handler (make the handler `async`), or chain `.catch` explicitly. Any async prop call in a handler must be awaited |
 | Presentational component tested only in isolation | A component has non-trivial parent-interaction behaviour (e.g. filter changes which sibling cards render) that is invisible in isolation — isolation tests alone can't catch it | Keep isolated tests for all single-component behaviour; add one integration test through the real parent component for each non-trivial cross-component interaction |
 | `userEvent.type` on `<input type="date">` | Partial date values (e.g. "2026-0") are sanitised to `""` by the browser spec and jsdom, so `userEvent.type` fires `onChange` with `""` for every character — the value never reaches the target date | Use `fireEvent.change(input, { target: { value: 'YYYY-MM-DD' } })` to set the full value at once; `fireEvent.blur` for the follow-up save. Always `await waitFor(() => expect(value).not.toBe(''))` first so the API response has settled before your change fires |
 | Custom dropdown missing WAI-ARIA combobox wiring | An `<input>` that opens a `<ul role="listbox">` lacks `role="combobox"`, `aria-controls` pointing to the listbox `id`, `aria-activedescendant` pointing to the highlighted option's `id`, and `role="option"` + stable `id` on each list item | Add all four: `role="combobox" aria-controls={listboxId} aria-activedescendant={highlightedIndex >= 0 ? \`option-${suggestions[highlightedIndex].tag}\` : undefined}` on the input; `id={listboxId}` on the `<ul>`; `id={\`option-${item.tag}\`}` on each `<li role="option">`. Group headings go in sibling `<li role="presentation">` elements, never inside an option. |
+
+## Pre-PR checklist (run before opening the PR)
+
+These are the findings Hawk has raised in *round one* most often across the slice history — each one is mechanical and pre-emptable, and each one that slips through costs a full Hawk→fix→re-review round (~30–60k tokens). Run this list after Refactor, before `gh pr create`. It is the single highest-leverage cost saver in the pipeline.
+
+**Backend (.NET):**
+- [ ] Every modifying event updates `LastModifiedAt` — check all `with { ... }` in `*Projection.cs` and `Apply*` helpers.
+- [ ] Every method that accepts `CancellationToken` forwards it to all downstream async calls.
+- [ ] Every AWS SDK / Google SDK call has a try/catch mapping the service exception to a handled result (and `Task.WhenAll` over per-item external calls wraps each item).
+- [ ] Every write-then-read on the same stream/projection sets `ConsistentRead = true` (except GSI queries).
+- [ ] Every new `.cs` file has a `namespace` declaration.
+- [ ] Every command handler catches both the domain `*NotFoundException` and `InvalidOperationException` where a race is possible.
+
+**Frontend (React/TS):**
+- [ ] Every async prop call inside an event handler is awaited.
+- [ ] Every custom dropdown/combobox has full WAI-ARIA wiring (`role`, `aria-controls`, `aria-activedescendant`, `role="option"`); collapsible panels handle Escape + click-outside.
+- [ ] Every new optimistic mutation updates local state first, reconciles on error.
+- [ ] Every new predicate branch has a test isolating it (plus the overlap case).
+- [ ] Component tests assert the API call fired, not just the DOM outcome — for load-triggered side-effects too.
+
+**Tooling gate (after *every* fix commit, not just the final one):**
+- [ ] `npm exec -- tsc -p web/tsconfig.app.json --noEmit` is clean. After any prop-signature change, `grep -rn "<propName>"` first to catch parent/wrapper declarations.
+- [ ] `npm run lint` is clean.
+- [ ] `git diff --cached` reviewed; no stray pre-staged files swept in (`git add <explicit paths>` only).
 
 ## What NOT to do
 
