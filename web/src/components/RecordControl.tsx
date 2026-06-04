@@ -107,7 +107,7 @@ export default function RecordControl({
             checked={includeCallAudio}
             onChange={(e) => setIncludeCallAudio(e.target.checked)}
           />
-          Call audio
+          Record screen-share audio
         </label>
       )}
 
