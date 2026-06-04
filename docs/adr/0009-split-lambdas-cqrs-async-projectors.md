@@ -4,9 +4,9 @@
 
 ## Context
 
-The backend today is one `ApiFunction` Lambda: an ASP.NET minimal API behind an HTTP API Gateway proxy that handles every route (Note, Folder, Calendar, Transcription, Todo, Auth). On a write it loads the aggregate's event stream, runs `Decide`, appends events, then calls `IDomainEventDispatcher.DispatchAsync`, which fans the new events out to every `IDomainEventHandler` **synchronously, in-process, before the HTTP response returns**. Reads are served from the same Lambda by querying projection tables.
+The backend today is one `ApiFunction` Lambda: an ASP.NET minimal API behind an HTTP API Gateway proxy that handles every route (Note, Folder, Calendar, Transcription, Todo, Auth). On a write it loads the aggregate's event stream, runs `Decide`, appends events, then updates the affected read-model projections **inline in the command handler, synchronously, in-process, before the HTTP response returns** (e.g. `NoteCommandHandler.UpdateProjectionAsync`). Reads are served from the same Lambda by querying projection tables.
 
-That synchronous dispatch gives the system one valuable property — **immediate read-after-write consistency** (see ADR 0001 and `docs/architecture.md`): a projection is up to date the instant the command returns. But it also means the deployment shape does not reflect the event-sourced design it sits on top of. The defining trait of an event-sourced system at deployment scale is an append-only log with **decoupled, independently replayable async consumers** building read models — and we don't have that. Projection-building is welded to the write request; the one Lambda's IAM role grants read/write across ~10 tables; read and write traffic share one function's concurrency and one cold-start profile.
+That synchronous, inline projection update gives the system one valuable property — **immediate read-after-write consistency** (see ADR 0001 and `docs/architecture.md`): a projection is up to date the instant the command returns. But it also means the deployment shape does not reflect the event-sourced design it sits on top of. The defining trait of an event-sourced system at deployment scale is an append-only log with **decoupled, independently replayable async consumers** building read models — and we don't have that. Projection-building is welded to the write request; the one Lambda's IAM role grants read/write across ~10 tables; read and write traffic share one function's concurrency and one cold-start profile.
 
 This project optimises for **event-sourcing learning surface**, not shipping velocity (see `docs/goals.md`). The async-projector decoupling is the single largest remaining ES lesson the codebase hasn't exercised: DynamoDB Streams wiring, projector idempotency, replay/rebuild, eventual consistency, and async failure handling (DLQs, alarms).
 
@@ -25,11 +25,11 @@ API GW ─POST/PATCH─▶  Command Lambda ──append──▶  Event store �
 API GW ─GET────────▶  Query Lambda ───────────────────────────read──────────────────────────────────────────┘
 ```
 
-- **Command Lambda** — loads the stream, runs `Decide`, appends events with optimistic concurrency. It no longer dispatches to projection handlers. Its IAM grants the event store only.
-- **Projector Lambda** — triggered by the **DynamoDB Stream** on the event store table. Replays the in-process `IDomainEventHandler` logic to update read models. Must be **idempotent** (stream records can be redelivered) and tolerant of per-shard reordering. Its IAM grants the projection tables only.
+- **Command Lambda** — loads the stream, runs `Decide`, appends events with optimistic concurrency. It no longer updates projections inline. Its IAM grants the event store only.
+- **Projector Lambda** — triggered by the **DynamoDB Stream** on the event store table. Folds events into read models. Must be **idempotent** (stream records can be redelivered) and tolerant of per-shard reordering. Its IAM grants the projection tables only.
 - **Query Lambda** — serves `GET` routes from projections. Read-only IAM.
 
-The existing `IDomainEventHandler` implementations move behind the Stream essentially unchanged — the dispatcher's *call site* moves from the request path to the projector; the handler code is reused.
+The projection-fold logic currently inline in the command handlers (e.g. `NoteCommandHandler.UpdateProjectionAsync`) is extracted into the projector — this stage formalises into a stream consumer the projection-building the write path does inline today. (An earlier dispatcher-based seam, `IDomainEventDispatcher`/`IDomainEventHandler`, was removed as dead code once projections were inlined; the projector reuses the *fold logic*, not those deleted classes.)
 
 ### Stage 2 — per-context command Lambdas *(when ready to take it on)*
 
