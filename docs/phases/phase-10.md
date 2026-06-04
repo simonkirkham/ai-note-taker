@@ -18,7 +18,7 @@
 | 10-J | Tag feedback projection | Done | 10-I |
 | 10-K | Record AI action-item suggestions (`ActionItemsSuggested`) | Done | — |
 | 10-L | Action-item feedback projection | Done | 10-K |
-| 10-M | Stamp modelId / promptVersion on the suggestion events | In Progress | 10-G, 10-I, 10-K |
+| 10-M | Stamp modelId / promptVersion on the suggestion events | Done | 10-G, 10-I, 10-K |
 | 10-N | Migrate analysis to the Converse API (model-agnostic) | Done | — |
 | 10-O | Ship `analysis@v3` as the production prompt | Done | 10-G |
 
@@ -990,7 +990,7 @@ Scenario: The projection rebuilds from the event stream
 
 ## Slice 10-M — Stamp modelId / promptVersion on the suggestion events
 
-**Status:** In Progress
+**Status:** Done — shipped 2026-06-04 (PR #163, deploy #457). See [learnings](../learnings/phase-10m-stamp-provenance.md).
 
 **Value:** Tie every captured correction (10-J / 10-L) to the exact prompt and model that produced the suggestion, so refinement can compare quality *across prompt versions* rather than only in aggregate. This closes the loop between the eval harness (10-G) and the live feedback signal — and lets real meetings feed the 10-G fixture set.
 
@@ -1029,12 +1029,12 @@ Scenario: Feedback can be sliced per prompt version
 
 ### Acceptance criteria
 
-- [ ] `TagsSuggestedV2` / `ActionItemsSuggestedV2` added; v1 events untouched; aggregate applies both (no-op)
-- [ ] Analyse handler raises the v2 events carrying `ModelId` + `PromptVersion` from `NoteAnalysisResult`
-- [ ] 10-J / 10-L projections consume v1 and v2; provenance carries `promptVersion` (`"unknown"` for v1)
-- [ ] Existing streams rebuild unchanged; both v2 events registered for (de)serialisation
-- [ ] `docs/event-model.md`, `docs/event-schemas.md`, `docs/view-schemas.md` updated
-- [ ] All specs green; `cdk synth` succeeds
+- [x] `TagsSuggestedV2` / `ActionItemsSuggestedV2` added; v1 events untouched; aggregate applies both (no-op)
+- [x] Analyse handler raises the v2 events carrying `ModelId` + `PromptVersion` from `NoteAnalysisResult`
+- [x] 10-J / 10-L projections consume v1 and v2; provenance carries `promptVersion` (`"unknown"` for v1)
+- [x] Existing streams rebuild unchanged; both v2 events registered for (de)serialisation
+- [x] `docs/event-model.md`, `docs/event-schemas.md`, `docs/view-schemas.md` updated
+- [x] All specs green; `cdk synth` succeeds
 
 ---
 

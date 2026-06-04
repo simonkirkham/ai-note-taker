@@ -1362,3 +1362,19 @@ If no agent ran unexpectedly high: write `None — slice ran within expected ran
 | **Total**                                            | **~216 000** |
 
 **Notes:** no spike. The self-review pass earned its keep twice over — it caught the `Limit = 1`-before-`FilterExpression` scan bug *before* committing (would have silently returned no series link for notes past the first page) and the Node-24 `package-lock.json` churn (would have broken CI's Node-20 `npm ci`). Hawk added no blocking findings — expected for a small read-side slice that reuses an existing scan idiom — but confirmed the `isRecurring`-derivation and scan-pagination correctness and logged the per-load scan-latency follow-up. Both background gate monitors (PR CI + main deploy) ran at negligible cost.
+
+## Slice 10-M — Stamp modelId / promptVersion on the suggestion events
+
+> Event-versioning slice: add `TagsSuggestedV2`/`ActionItemsSuggestedV2` (carry `ModelId`/`PromptVersion`) alongside untouched v1; aggregate emits v2 + applies both; persist under v1 logical name at `EventVersion 2`; feedback projections stamp `promptVersion` on provenance (`"unknown"` for v1). Driven inline (Scout + Breaker + Pip + Refactor in the main loop); one Hawk subagent; one Explore subagent for the up-front code map.
+
+| Agent / phase                                                  | ~Tokens  |
+|----------------------------------------------------------------|----------|
+| Explore (map all 11 touchpoints across domain/projections/stores/docs) | 30 000 |
+| Pip (2 events + commands + aggregate + serialisation + projections + stores + wiring + docs + specs) | 80 000 |
+| Refactor / self-review (consolidate no-op Apply cases)         | 8 000    |
+| Hawk (code-reviewer subagent, full five-axis)                  | 102 000  |
+| Hawk nits folded in (mirror action provenance test + rebuild-survival assertions) | 18 000 |
+| Gate + deploy monitoring (2 background pollers) + Scribe       | 35 000   |
+| **Total**                                                      | **~273 000** |
+
+**Why:** Hawk (~102k) was the single largest agent — appropriate for an event-versioning change where the review must trace every consumer (aggregate apply, two projections, live wiring, rebuild) across both versions and confirm v1 byte-shape immutability; it approved first pass with only two optional nits. Not a problematic spike (≈1.3× the inline Pip cost, not >2×). The up-front Explore map (30k) front-loaded context so the inline implementation hit zero rework and a clean first build under `TreatWarningsAsErrors`.
