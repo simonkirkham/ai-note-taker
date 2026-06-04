@@ -8,6 +8,16 @@ A meeting-focused note taking app, built as a **learning vehicle** for event sou
 
 See [docs/goals.md](docs/goals.md) for the learning goals.
 
+## Writing style
+
+Applies to every generated doc **and** to conversational output.
+
+- Facts over prose. Prefer tables and numbered lists to paragraphs.
+- If a point fits a table row, it does not get a paragraph.
+- One fact per point. No point spanning two sentences.
+- Lead with the conclusion. Cut windup phrases ("In order to", "It's worth noting", "This document describes").
+- No preamble, no restating the request, no summary of what you just did.
+
 ## Stack
 
 - Backend: .NET 10 on AWS Lambda (ASP.NET minimal API behind a single Lambda)
@@ -78,7 +88,7 @@ cdk deploy
 - **Projections are rebuildable** from the full event stream. No state lives only in a projection.
 - **Command handlers own orchestration.** Each aggregate gets a `*CommandHandler` in `src/Api/`. The handler loads the stream, rebuilds the aggregate, executes the command, persists events, then calls `IDomainEventDispatcher.DispatchAsync` — that's it. Reacting to events (updating projections, sending notifications, etc.) belongs in `IDomainEventHandler` implementations in `src/Api/EventHandlers/`, not in command handlers. API endpoints do HTTP only — parse request, call handler, return result. Never write `store.ReadAsync` or `store.AppendAsync` inside an endpoint lambda. Never update a projection store inside a command handler.
 - **Optimistic UI updates.** The UI must reflect the user's action immediately — do not wait for the API response before updating local state. Apply the expected state optimistically; reconcile on error. Breaker must include this as an explicit acceptance criterion in the BDD spec for every slice with frontend changes. When adding a new async mutation handler, mirror the optimistic-first pattern of the nearest existing handler in the same component.
-- **Learnings docs are named `phase-<phase><id>-<short-description>.md`** (e.g. `phase-4e-note-summary-cards.md`) and live in `docs/learnings/`. Never use `slice-` as a prefix.
+- **Learnings docs are named `phase-<phase><id>-<short-description>.md`** (e.g. `phase-4e-note-summary-cards.md`) and live in `docs/learnings/`. Never use `slice-` as a prefix. Not every slice earns a doc — the `process-improvements` skill tiers output: full doc only when there is a non-obvious *why* to preserve, else a one-line entry in `docs/learnings/_minor-log.md`, else nothing.
 - **Work is tracked in one place per type, and `docs/roadmap.md` is the index that links to all of them.** Route each item by type: a **broken-down feature** → a numbered phase (`docs/phases/phase-N.md`); a **possible future feature** not yet scheduled → `docs/future-features.md`; a **bug** → `docs/phases/phase-bugs.md`; a **minor tweak** to existing behaviour → `docs/phases/phase-minor-changes.md`; a **model/prompt/analysis-quality improvement** (eval-driven) → `docs/phases/phase-model-prompt-improvements.md`; a **technical/infra/CI improvement** → `docs/technical-improvements.md`. The roadmap holds a one-paragraph summary of each phase and of each standing track, never the full content. When a future-features or technical-improvements item is picked up, it graduates to a numbered phase (features) or is actioned and removed (technical).
 - **Every phase doc opens with a `## Summary` table, placed immediately after the `**Goal:**` paragraph so it is visible without scrolling.** Columns are `Slice | Summary | Status | Depends on` for numbered phases and `Item | Summary | Status | Depends on` for the standing docs (`phase-bugs.md`, `phase-minor-changes.md`, `phase-model-prompt-improvements.md`). One row per slice/item; `Summary` is a one-line description; `Status` is `Done` / `In Progress` / `Not Started` (numbered) or `Done` / `In Progress` / `Open` (standing); `Depends on` lists the slice/item IDs it requires, or `—` when independent. The table is the single at-a-glance source for status and cross-slice dependency — do not reintroduce a separate ASCII "slice order" diagram; any ordering nuance goes in prose directly beneath the table. **Scout creates this table when drafting a phase doc; Scribe keeps the `Status` cell in sync on every deploy (see the scribe skill).**
 
@@ -104,7 +114,6 @@ cdk deploy
 - **Use `Task.WhenAll` for independent async batches — never a sequential `foreach` over `Task`-returning calls.** If a set of store/API calls are independent (each takes different inputs, none depends on a prior result), start all tasks first and await together with `Task.WhenAll`. Sequential foreach adds latency proportional to N and is never correct for independent calls.
 - **When changing a shared callback signature (e.g. `onOpenNote`), grep all call sites and wrapper components in the same PR.** Signature changes that widen or narrow parameters cascade through every component that wraps or re-exports the prop — a drift between wrapper type and caller type breaks the TypeScript build. Run `grep -r "onOpenNote\|propName"` before opening the PR and update every occurrence in one commit.
 - **A test that mutates a process-wide environment variable must snapshot the original value and restore it in a `finally`, never force a literal (e.g. `null` or `"1"`).** The env var is shared across the whole test process and with CI. Forcing a literal leaks into other test classes (xUnit runs collections in parallel — disable parallelization for the assembly if a test must toggle a global) and, worse, can clobber a flag CI relies on: a test that forces `RUN_BEDROCK_EVAL=null` would silently turn the nightly eval into a no-op that still reports green. Capture with `var original = Environment.GetEnvironmentVariable(name);` and restore it regardless of outcome.
-- **Never call `setState` synchronously inside a `useEffect` body — derive the transient state instead.** A reset/loading `setState` run directly in an effect (not in an async callback) trips `react-hooks/set-state-in-effect`, which `tsc` and `vitest` do **not** catch but `eslint` does — and lint is a hard CI gate. Instead of resetting a "browsed" slice to `null`/`loading` in the effect, key it by what it's for (`{ key, state }`) and **compute** the displayed value (`selected === key ? slice.state : loading`); the effect then only calls `setState` inside its `.then`. Run `npm run lint` on changed frontend files during Refactor, not just `tsc`/`vitest`.
 
 ## Skills
 

@@ -19,7 +19,7 @@ Run these in order. Steps 0–2 set up and execute the sweep; steps 3+ are the w
      --query "modelSummaries[].modelId" --output text | tr '\t' '\n' | sort
    ```
    Cross-reference with `scripts/run-eval.sh` presets (`frontier`/`core`) too. Any model **not** already a matrix row (or explicitly `dropped`/`retired`/`not tested` there) is a candidate. **Surface the candidates to the user with a one-line recommendation each** (include / skip, and why — newer version of a kept model, a vendor not yet covered, etc.) and let them decide before the sweep. Note that newer Claude/Llama tiers are often inference-profile-only and won't appear as `ON_DEMAND` by raw id — call that out rather than assuming they're unavailable. Don't silently expand the sweep; the matrix is the agreed set.
-2. **Run the eval** — `make eval` (needs AWS creds, e.g. `AWS_PROFILE=prod make eval`). To sweep a specific set, pin `EVAL_MODEL_IDS="id1,id2"`; to use a preset, `EVAL_PRESET=frontier make eval`. This runs the offline preflight, then the live matrix, then renders `report.md`. If a sweep already ran and you only need the report, render it without re-running (see *Inputs*).
+2. **Run the eval** — `make eval` (needs AWS creds, e.g. `AWS_PROFILE=prod make eval`). To sweep a specific set, pin `EVAL_MODEL_IDS="id1,id2"`; to use a preset, `EVAL_PRESET=frontier make eval`. This runs the offline preflight, then the live matrix, then renders `report.md`. If a sweep already ran and you only need the report, render it without re-running (see *Inputs*). See the [analysis-eval-harness guide](../../../docs/guides/analysis-eval-harness.md) for the full command set, prompt selection, and how to tail progress.
 3. **Write the report** — the sections below.
 4. **Maintain the test matrix** — bump and update `docs/eval-runs/test-matrix.md` (see that section), folding in any models the user agreed to add in step 1.
 5. **Propose the next improvement** — record what to try next in the standing backlog (see *Feed the improvement backlog*).
@@ -44,12 +44,14 @@ Write `docs/eval-runs/<YYYY-MM-DD>-<slug>.md`.
 
 ## Sections
 
-1. **Run metadata** — date; fixtures (count + synthetic/real); prompts compared; models swept; the Quality judge model; and caveats (e.g. uneven completed-fixture counts from throttling skips).
-2. **Results** — paste `report.md` (best-Quality-first).
-3. **Column glossary** — for every column: what it measures, how much to trust it, and its weight in a decision. Explicitly flag **saturated / non-discriminating** columns (e.g. Faithfulness clustered near 1.0 = no signal) and **caveat** columns (Fixtures count → fewer = less reliable, not strictly comparable).
-4. **Model summary** — rank by Quality; per-model strengths/weaknesses by dimension; name the universal weak dimension; then **which models to keep testing and which to drop**, weighing cost vs quality.
-5. **Prompt summary** — compare versions per model and overall; quantify which dimensions each prompt moved (e.g. "V3 lifted Opus +0.06, fixed its tags 0.51→0.71"); then **which prompt to keep** and **what the next prompt iteration should target** (usually the weakest dimension).
-6. **Caveats & confidence** — uneven fixture counts; **judge family-bias** (a same-vendor judge inflates that vendor — recommend a held-out non-vendor judge re-run to confirm any vendor's lead); sample size; synthetic vs real.
+| # | Section | Must contain |
+|---|---------|--------------|
+| 1 | Run metadata | Date; fixtures (count + synthetic/real); prompts compared; models swept; Quality judge model; caveats (e.g. uneven completed counts from throttling skips). |
+| 2 | Results | Paste `report.md`, best-Quality-first. |
+| 3 | Column glossary | Per column: what it measures, how much to trust it, its decision weight. Flag **saturated** columns (e.g. Faithfulness near 1.0 = no signal) and **caveat** columns (fewer Fixtures = less reliable). |
+| 4 | Model summary | Rank by Quality; per-model strengths/weaknesses by dimension; name the universal weak dimension; then **keep vs drop** weighing cost vs quality. |
+| 5 | Prompt summary | Compare versions per model and overall; quantify each move ("V3 lifted Opus +0.06, tags 0.51→0.71"); then **which prompt to keep** and **what the next iteration targets** (usually weakest dimension). |
+| 6 | Caveats & confidence | Uneven fixture counts; **judge family-bias** (same-vendor judge inflates that vendor — recommend held-out non-vendor re-run to confirm a lead); sample size; synthetic vs real. |
 
 ## Maintain the test matrix (every run)
 

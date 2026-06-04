@@ -39,7 +39,26 @@ Scan the slice for anything worth capturing. Cast wide — any of these areas is
 
 Only record observations where you can name a concrete next action. An observation without an action is noise.
 
-## Step 3 — Write the learnings doc
+## Step 2.5 — Decide the tier
+
+Not every slice earns a full learnings doc. The doc does two jobs — **(A)** force the guardrail/permission extraction (Steps 1 & 4) and **(B)** preserve a narrative of *why*. Tiering scales **B only**; **A always runs**, at every tier.
+
+Answer two questions:
+
+- **Q1 — Did anything get *applied* that changes future agent behaviour?** A new/changed guardrail, role rule, skill rule, or permission entry.
+- **Q2 — Is there a non-obvious *why* worth preserving?** A bug root cause, a tradeoff or spec deviation, a near-miss, a *class-level* Hawk finding, or a token/workflow process change. **Adding a guardrail is always Q2-yes** — the reasoning behind it must be auditable.
+
+| Q2 | Q1 | Tier | Output |
+|----|----|------|--------|
+| Yes | either | **2 — full doc** | `phase-<id>-….md` per Step 3 below |
+| No | Yes | **1 — stub** | One dated line appended to `docs/learnings/_minor-log.md` (what was applied + pointer to the commit/guardrail); skip Step 3 |
+| No | No | **0 — none** | No file. The PR + git history is the record; skip Step 3 |
+
+State the tier in one line before proceeding, e.g. *"Tier 0 — pure CSS slice, CI green first try, no guardrail, no permission gap → no doc."*
+
+Litmus test: *would a future agent change its behaviour because this prose exists?* If the only honest answer is "they'd re-read what they already know from CLAUDE.md or git," it is Tier 0/1. **"No learnings doc" is a valid, expected result for a trivial slice — never manufacture observations to justify a file.**
+
+## Step 3 — Write the learnings doc (Tier 2 only)
 
 Create `docs/learnings/phase-<n><id>-<short-description>.md`. Check existing files in `docs/learnings/` to match the naming convention exactly before creating.
 
@@ -55,15 +74,7 @@ Create `docs/learnings/phase-<n><id>-<short-description>.md`. Check existing fil
 - **Done** = you can apply it in this turn. Do it, then mark Done.
 - **TODO** = requires a human decision (architectural change, new tool, process redesign).
 
-**Examples:**
-
-```markdown
-# Learnings: 4-E Note summary cards
-
-- Pip ran `cd web && npm run build`, which required a manual approval and broke the run. **Action:** Added `Bash(npm --prefix web run build)` to the allow-list and added a guardrail to CLAUDE.md — Done.
-- Scout read the full event-model.md but only needed the NoteCreated shape; this loaded ~400 unnecessary lines into context. **Action:** Scout should scope reads to the specific aggregate section rather than the full model — TODO.
-- Pip (~48 000 tokens) was 3× Scout's count. Root cause: three rounds of Hawk feedback caused re-implementation. **Action:** Breaker should validate the spec against the phase doc acceptance criteria before handing off to Pip — TODO.
-```
+Example bullet: Pip ran `cd web && npm run build`, which needed manual approval and broke the run. **Action:** added `Bash(npm --prefix web run build)` to the allow-list + a CLAUDE.md guardrail — Done.
 
 ## Step 4 — Execute all Done actions
 
@@ -80,7 +91,9 @@ Re-read the learnings doc after applying to confirm every Done label is accurate
 
 ## Step 5 — Append an applied-status table to the learnings doc
 
-After all Done actions are applied, add an `## Applied status` section at the bottom of the learnings doc. One row per learning:
+Add the `## Applied status` table **only when status is genuinely mixed** — some Applied, some Documented/TODO. If every learning ends in an inline "— Applied", the table just re-lists the bullets; omit it.
+
+When it earns its place, add an `## Applied status` section at the bottom of the learnings doc. One row per learning:
 
 ```markdown
 ## Applied status
