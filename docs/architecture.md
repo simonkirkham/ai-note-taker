@@ -21,7 +21,7 @@ Every write request passes through four layers. Each layer has exactly one conce
 |---|---|---|
 | **API** | `src/Api/Program.cs` — endpoint lambdas | HTTP only: parse request, call handler, map result to HTTP status |
 | **Command handler** | `src/Api/CommandHandlers/*CommandHandler.cs` | Orchestration: load stream → rebuild aggregate → execute command → persist events → update read-model projections inline |
-| **Projections** | `EventStore.Projections` (fold logic) + command handlers (write) | Read models folded from the event stream; updated inline in the same request after append; rebuildable from the full stream |
+| **Projections** | `src/EventStore/Projections/` (fold logic) + command handlers (write) | Read models folded from the event stream; updated inline in the same request after append; rebuildable from the full stream |
 | **Domain** | `src/Domain/` | Pure business logic: aggregate, commands, events — no I/O, no HTTP, no clock |
 
 **Rules:**
