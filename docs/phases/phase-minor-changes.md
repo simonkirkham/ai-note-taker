@@ -25,7 +25,7 @@
 | CHANGE-11 | Preview pull-out `»` becomes `«` when its panel is open | Done | — |
 | CHANGE-12 | Drop home Notes divider; top-align with Today's Meetings | Done | CHANGE-10? (numbering collision — see section) |
 | CHANGE-13 | "Next occurrence" button inside a recurring-meeting note | Done | 9-F (shipped) |
-| CHANGE-14 | Rename transcription "Call audio" toggle to "Record screen-share audio" | Open | — |
+| CHANGE-14 | Rename transcription "Call audio" toggle to "Record screen-share audio" | Done | — |
 
 Tweaks are appended here as they are identified. Use the same per-item format: a short title, **Status**, value/symptom, and acceptance criteria (with scenarios and approach where the change warrants them).
 
@@ -1193,7 +1193,7 @@ Scenario: No upcoming occurrences is handled gracefully
 
 ## CHANGE-14 — Rename transcription "Call audio" toggle to "Record screen-share audio"
 
-**Status:** Open
+**Status:** ✅ Done — PR #164, deployed 2026-06-04 (deploy #460). See [docs/learnings/phase-minor-14-record-screen-share-audio.md](../learnings/phase-minor-14-record-screen-share-audio.md).
 
 **Value:** The transcription panel's recording toggle is labelled simply **"Call audio"** (`RecordControl.tsx` ~L110). The label is ambiguous: it doesn't tell the user the toggle captures the audio coming *out* of their machine (the other call participants) by way of a browser **screen-share** prompt, and it reads as if it might be the *only* audio source rather than an addition to the microphone. When enabled, starting a recording calls `navigator.mediaDevices.getDisplayMedia(...)`, which pops the browser's screen/window-share dialog — surprising if the label gave no hint that sharing would be required. Renaming the toggle to **"Record screen-share audio"** names the mechanism, so the user understands why they'll be asked to pick a screen/window and what the toggle actually does.
 
@@ -1241,8 +1241,8 @@ Scenario: Disabling the toggle still records microphone only
 
 ### Acceptance criteria
 
-- [ ] The transcription audio-capture toggle's visible label reads "Record screen-share audio"
-- [ ] The `data-testid="transcription-call-audio-toggle"` and the `includeCallAudio` state/prop are unchanged (internal names, not user-facing)
-- [ ] Capture, mixing, and mic-only fallback behaviour are unchanged — the change is copy only
-- [ ] Existing `RecordControl` tests remain green (they query by `data-testid`, not label text)
+- [x] The transcription audio-capture toggle's visible label reads "Record screen-share audio"
+- [x] The `data-testid="transcription-call-audio-toggle"` and the `includeCallAudio` state/prop are unchanged (internal names, not user-facing)
+- [x] Capture, mixing, and mic-only fallback behaviour are unchanged — the change is copy only
+- [x] Existing `RecordControl` tests remain green (they query by `data-testid`, not label text)
 

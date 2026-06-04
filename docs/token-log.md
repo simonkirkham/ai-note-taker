@@ -1378,3 +1378,18 @@ If no agent ran unexpectedly high: write `None — slice ran within expected ran
 | **Total**                                                      | **~273 000** |
 
 **Why:** Hawk (~102k) was the single largest agent — appropriate for an event-versioning change where the review must trace every consumer (aggregate apply, two projections, live wiring, rebuild) across both versions and confirm v1 byte-shape immutability; it approved first pass with only two optional nits. Not a problematic spike (≈1.3× the inline Pip cost, not >2×). The up-front Explore map (30k) front-loaded context so the inline implementation hit zero rework and a clean first build under `TreatWarningsAsErrors`.
+
+## CHANGE-14 — Rename transcription "Call audio" toggle to "Record screen-share audio"
+
+> Copy-only minor change: one visible label string + one component test. First autonomous end-to-end `run-pipeline` run on an already-specced item (no gate pauses). Driven inline (Breaker + Pip in the main loop); one Hawk subagent.
+
+| Agent / phase                                        | ~Tokens  |
+|------------------------------------------------------|----------|
+| Read track doc + locate label/tests                  | 9 000    |
+| Breaker + Pip (failing label test + one-line change) | 16 000   |
+| Validation (lint + tsc + full suite, background)     | 6 000    |
+| Hawk (code-reviewer subagent)                        | 33 000   |
+| Gate + merge + deploy monitoring + Scribe            | 26 000   |
+| **Total**                                            | **~90 000** |
+
+**Notes:** no spike — the smallest slice to date, as expected for a one-line copy change. Hawk (~33k) was the largest single agent and the cost floor for a five-axis review regardless of diff size; it approved first pass with one optional non-blocking suggestion. Two self-inflicted tooling costs worth shaving next time: the deploy monitor 404-looped on the run *display number* vs `databaseId`, and a watcher `until`-loop matched "error" inside "0 errors" and fired early — both folded into the learnings doc as fixes for the `run-pipeline` deploy-monitor step.
