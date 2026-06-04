@@ -10,7 +10,7 @@ export const handlers = [
   http.post('/api/todos/:todoId/complete', () => new HttpResponse(null, { status: 204 })),
   http.post('/api/todos/:todoId/reopen', () => new HttpResponse(null, { status: 204 })),
   http.delete('/api/todos/:todoId', () => new HttpResponse(null, { status: 204 })),
-  http.get('/api/calendar/today', () => HttpResponse.json({ meetings: [] })),
+  http.get('/api/calendar/:date', () => HttpResponse.json({ meetings: [] })),
   http.get('/api/notes/:noteId', () =>
     HttpResponse.json({
       noteId: 'note-1',

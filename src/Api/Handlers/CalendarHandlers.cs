@@ -1,23 +1,31 @@
+using System.Globalization;
 using Api.CommandHandlers;
 using Api.Contracts;
 using Api.Auth;
 using Api.Services;
 using Domain.Notes;
 using EventStore.Projections;
+using Microsoft.Extensions.Logging;
 
 namespace Api.Handlers;
 
 public static class CalendarHandlers
 {
-    public static async Task<IResult> GetTodaysMeetings(string? tz, IGoogleCalendarClient calendar, ICalendarLinkIndexStore calendarLinkStore, ICurrentUser currentUser)
+    public static async Task<IResult> GetMeetingsForDate(string date, string? tz, IGoogleCalendarClient calendar, ICalendarLinkIndexStore calendarLinkStore, ICurrentUser currentUser, ILoggerFactory loggerFactory)
     {
+        if (!DateOnly.TryParseExact(date, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var selectedDate))
+        {
+            loggerFactory.CreateLogger(typeof(CalendarHandlers)).LogDebug("Rejected calendar request with malformed date segment {Date}", date);
+            return Results.BadRequest(new { error = "invalid_date" });
+        }
+
         if (string.IsNullOrWhiteSpace(tz))
             return Results.BadRequest(new { error = "tz parameter is required" });
 
         try { TimeZoneInfo.FindSystemTimeZoneById(tz); }
         catch (TimeZoneNotFoundException) { return Results.BadRequest(new { error = "invalid_timezone" }); }
 
-        var events = await calendar.GetTodaysEventsAsync(tz);
+        var events = await calendar.GetEventsForDayAsync(selectedDate, tz);
         if (events is null)
             return Results.Ok(new { error = "calendar_unavailable" });
 

@@ -9,8 +9,9 @@ namespace Api.Services;
 /// Set that var to a JSON array of CalendarEventDto objects to inject
 /// fake meetings without real Google credentials.
 ///
-/// Note: GetTodaysEventsAsync returns ALL stub events regardless of date.
-/// Populate STUB_CALENDAR_JSON with events whose startTime falls today.
+/// Note: GetEventsForDayAsync returns the stub events whose start time falls on
+/// the requested date in the caller's timezone. Populate STUB_CALENDAR_JSON with
+/// events on the day you want to browse.
 ///
 /// Example value:
 /// [{"calendarEventId":"s1_20260527T090000Z","title":"Weekly Sync","startTime":"2026-05-27T09:00:00Z","endTime":"2026-05-27T09:30:00Z","isRecurring":true,"recurringSeriesId":"s1"}]
@@ -40,8 +41,14 @@ public sealed class StubGoogleCalendarClient : IGoogleCalendarClient
         }
     }
 
-    public Task<IReadOnlyList<CalendarEvent>?> GetTodaysEventsAsync(string ianaTimezone)
-        => Task.FromResult<IReadOnlyList<CalendarEvent>?>(_events);
+    public Task<IReadOnlyList<CalendarEvent>?> GetEventsForDayAsync(DateOnly date, string ianaTimezone)
+    {
+        var tz = TimeZoneInfo.FindSystemTimeZoneById(ianaTimezone);
+        var onDay = _events
+            .Where(e => DateOnly.FromDateTime(TimeZoneInfo.ConvertTime(e.StartTime, tz).DateTime) == date)
+            .ToList();
+        return Task.FromResult<IReadOnlyList<CalendarEvent>?>(onDay);
+    }
 
     public Task<CalendarEvent?> GetNextOccurrenceAsync(string recurringSeriesId, DateTimeOffset after)
     {

@@ -326,13 +326,15 @@ export interface CalendarMeeting {
   nextOccurrenceNoteId: string | null;
 }
 
-export type TodaysMeetingsResult =
+export type MeetingsResult =
   | { meetings: CalendarMeeting[] }
   | { error: string };
 
-export async function getTodaysMeetings(tz: string): Promise<TodaysMeetingsResult> {
-  const res = await apiFetch(`${base}/calendar/today?tz=${encodeURIComponent(tz)}`);
-  if (!res.ok) throw new Error(`GET /calendar/today failed: ${res.status}`);
+// date is an ISO YYYY-MM-DD local day; the caller owns "which day", the server owns the
+// local-day window from tz.
+export async function getMeetingsForDate(tz: string, date: string): Promise<MeetingsResult> {
+  const res = await apiFetch(`${base}/calendar/${date}?tz=${encodeURIComponent(tz)}`);
+  if (!res.ok) throw new Error(`GET /calendar/${date} failed: ${res.status}`);
   return res.json();
 }
 

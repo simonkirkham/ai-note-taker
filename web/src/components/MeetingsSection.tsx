@@ -1,12 +1,12 @@
-import { useEffect, useState } from "react";
-import { CalendarMeeting, createNoteFromMeeting, createNoteFromNextOccurrence, getTodaysMeetings } from "../api";
+import { useEffect, useMemo, useState } from "react";
+import { CalendarMeeting, createNoteFromMeeting, createNoteFromNextOccurrence, getMeetingsForDate } from "../api";
 import { MeetingReminder, useMeetingReminders } from "../hooks/useMeetingReminders";
 import styles from "./MeetingsSection.module.css";
 
 const NO_MEETINGS: MeetingReminder[] = [];
 
-const CalendarIcon = ({ className }: { className?: string }) => (
-  <svg className={className} width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+const CalendarIcon = ({ className, size = 36 }: { className?: string; size?: number }) => (
+  <svg className={className} width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
     <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/>
     <line x1="16" y1="2" x2="16" y2="6"/>
     <line x1="8" y1="2" x2="8" y2="6"/>
@@ -19,8 +19,55 @@ type State =
   | { status: "unavailable" }
   | { status: "loaded"; meetings: CalendarMeeting[] };
 
+// "Which day" is owned by the client: format the current date in the user's tz as ISO YYYY-MM-DD.
+function todayInTz(tz: string): string {
+  return new Intl.DateTimeFormat("en-CA", { timeZone: tz }).format(new Date());
+}
+
+// Step an ISO YYYY-MM-DD day by n, calculating in UTC so no DST/midnight shift moves the date.
+function addDays(isoDate: string, n: number): string {
+  const d = new Date(`${isoDate}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + n);
+  return d.toISOString().slice(0, 10);
+}
+
+function dayDelta(from: string, to: string): number {
+  return Math.round((Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / 86_400_000);
+}
+
+function headingFor(selectedDate: string, today: string): string {
+  const delta = dayDelta(today, selectedDate);
+  if (delta === 0) return "Today's Meetings";
+  if (delta === 1) return "Tomorrow's Meetings";
+  if (delta === -1) return "Yesterday's Meetings";
+  const formatted = new Date(`${selectedDate}T00:00:00Z`).toLocaleDateString("en-GB", {
+    weekday: "short",
+    day: "numeric",
+    month: "short",
+    timeZone: "UTC",
+  });
+  return `Meetings — ${formatted}`;
+}
+
+async function loadState(tz: string, date: string): Promise<State> {
+  try {
+    const result = await getMeetingsForDate(tz, date);
+    return "error" in result ? { status: "unavailable" } : { status: "loaded", meetings: result.meetings };
+  } catch {
+    return { status: "unavailable" };
+  }
+}
+
 export function MeetingsSection({ onOpenNote }: { onOpenNote: (noteId: string, title?: string, isNew?: boolean) => void }) {
-  const [state, setState] = useState<State>({ status: "loading" });
+  const tz = useMemo(() => Intl.DateTimeFormat().resolvedOptions().timeZone, []);
+  const [today] = useState(() => todayInTz(tz));
+  const [selectedDate, setSelectedDate] = useState(today);
+  const [pickerOpen, setPickerOpen] = useState(false);
+  // todayState is fetched once and feeds the reminders hook; navigation never re-drives it.
+  const [todayState, setTodayState] = useState<State>({ status: "loading" });
+  // browsed backs the displayed list only while looking at a non-today day. Keyed by date so a
+  // result left over from a previous day reads as "still loading" until the new day resolves.
+  const [browsed, setBrowsed] = useState<{ date: string; state: State } | null>(null);
   const [bannerDismissed, setBannerDismissed] = useState(false);
   const [creating, setCreating] = useState<Set<string>>(new Set());
   const [createErrors, setCreateErrors] = useState<Map<string, string>>(new Map());
@@ -29,21 +76,32 @@ export function MeetingsSection({ onOpenNote }: { onOpenNote: (noteId: string, t
   // tracks next-occurrence note IDs keyed by recurringSeriesId, for "Open Note ↗" after creation
   const [nextNoteIds, setNextNoteIds] = useState<Map<string, string>>(new Map());
 
+  const isToday = selectedDate === today;
+  const displayState: State = isToday
+    ? todayState
+    : browsed?.date === selectedDate
+      ? browsed.state
+      : { status: "loading" };
+
+  // Reminders are anchored to the real today — fed only by todayState, never the browsed day.
+  const reminderMeetings = todayState.status === "loaded" ? todayState.meetings : NO_MEETINGS;
+  useMeetingReminders(reminderMeetings);
+
+  // Fetch today's meetings once on mount; this is both the reminder source and the today view.
   useEffect(() => {
     let cancelled = false;
-    const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
-    getTodaysMeetings(tz)
-      .then((result) => {
-        if (cancelled) return;
-        if ("error" in result) setState({ status: "unavailable" });
-        else setState({ status: "loaded", meetings: result.meetings });
-      })
-      .catch(() => { if (!cancelled) setState({ status: "unavailable" }); });
+    loadState(tz, today).then((s) => { if (!cancelled) setTodayState(s); });
     return () => { cancelled = true; };
-  }, []);
+  }, [tz, today]);
 
-  const meetings = state.status === "loaded" ? state.meetings : NO_MEETINGS;
-  useMeetingReminders(meetings);
+  // Browsing another day fetches it; back on today we reuse todayState (no duplicate request).
+  // While the fetch is in flight, displayState derives "loading" because browsed.date !== selectedDate.
+  useEffect(() => {
+    if (isToday) return;
+    let cancelled = false;
+    loadState(tz, selectedDate).then((s) => { if (!cancelled) setBrowsed({ date: selectedDate, state: s }); });
+    return () => { cancelled = true; };
+  }, [tz, selectedDate, isToday]);
 
   const showBanner =
     !bannerDismissed &&
@@ -56,6 +114,18 @@ export function MeetingsSection({ onOpenNote }: { onOpenNote: (noteId: string, t
     return () => document.body.classList.remove("has-notification-banner");
   }, [showBanner]);
 
+  function updateDisplayedMeetings(updater: (meetings: CalendarMeeting[]) => CalendarMeeting[]) {
+    if (isToday) {
+      setTodayState((prev) => (prev.status === "loaded" ? { ...prev, meetings: updater(prev.meetings) } : prev));
+    } else {
+      setBrowsed((prev) =>
+        prev && prev.state.status === "loaded"
+          ? { ...prev, state: { ...prev.state, meetings: updater(prev.state.meetings) } }
+          : prev
+      );
+    }
+  }
+
   async function handleEnable() {
     try { await Notification.requestPermission(); } catch { /* unavailable */ }
     setBannerDismissed(true);
@@ -66,17 +136,10 @@ export function MeetingsSection({ onOpenNote }: { onOpenNote: (noteId: string, t
     setCreateErrors((prev) => { const next = new Map(prev); next.delete(meeting.calendarEventId); return next; });
     try {
       const { noteId } = await createNoteFromMeeting(meeting);
-      setState((prev) =>
-        prev.status === "loaded"
-          ? {
-              ...prev,
-              meetings: prev.meetings.map((m) =>
-                m.calendarEventId === meeting.calendarEventId
-                  ? { ...m, linkedNoteId: noteId }
-                  : m
-              ),
-            }
-          : prev
+      updateDisplayedMeetings((meetings) =>
+        meetings.map((m) =>
+          m.calendarEventId === meeting.calendarEventId ? { ...m, linkedNoteId: noteId } : m
+        )
       );
       onOpenNote(noteId, meeting.title, true);
     } catch {
@@ -91,11 +154,8 @@ export function MeetingsSection({ onOpenNote }: { onOpenNote: (noteId: string, t
     const seriesId = meeting.recurringSeriesId;
     setCreatingNext((prev) => new Set(prev).add(seriesId));
     // Optimistic update — flip to "Open Note" before API responds
-    setState((prev) =>
-      prev.status === "loaded"
-        ? { ...prev, meetings: prev.meetings.map((m) =>
-            m.recurringSeriesId === seriesId ? { ...m, hasNextOccurrenceNote: true } : m) }
-        : prev
+    updateDisplayedMeetings((meetings) =>
+      meetings.map((m) => (m.recurringSeriesId === seriesId ? { ...m, hasNextOccurrenceNote: true } : m))
     );
     try {
       const result = await createNoteFromNextOccurrence(seriesId);
@@ -104,11 +164,8 @@ export function MeetingsSection({ onOpenNote }: { onOpenNote: (noteId: string, t
       onOpenNote(noteId, meeting.title, true);
     } catch {
       // Revert optimistic update on failure
-      setState((prev) =>
-        prev.status === "loaded"
-          ? { ...prev, meetings: prev.meetings.map((m) =>
-              m.recurringSeriesId === seriesId ? { ...m, hasNextOccurrenceNote: false } : m) }
-          : prev
+      updateDisplayedMeetings((meetings) =>
+        meetings.map((m) => (m.recurringSeriesId === seriesId ? { ...m, hasNextOccurrenceNote: false } : m))
       );
     } finally {
       setCreatingNext((prev) => { const next = new Set(prev); next.delete(seriesId); return next; });
@@ -116,14 +173,18 @@ export function MeetingsSection({ onOpenNote }: { onOpenNote: (noteId: string, t
   }
 
   function handleRetry() {
-    setState({ status: "loading" });
-    const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
-    getTodaysMeetings(tz)
-      .then((result) => {
-        if ("error" in result) setState({ status: "unavailable" });
-        else setState({ status: "loaded", meetings: result.meetings });
-      })
-      .catch(() => setState({ status: "unavailable" }));
+    if (isToday) {
+      setTodayState({ status: "loading" });
+      loadState(tz, today).then(setTodayState);
+    } else {
+      setBrowsed(null);
+      loadState(tz, selectedDate).then((s) => setBrowsed({ date: selectedDate, state: s }));
+    }
+  }
+
+  function handlePickDate(value: string) {
+    if (value) setSelectedDate(value);
+    setPickerOpen(false);
   }
 
   return (
@@ -154,14 +215,54 @@ export function MeetingsSection({ onOpenNote }: { onOpenNote: (noteId: string, t
           </button>
         </div>
       )}
-      <section data-testid="meetings-section" className={styles.meetingsSection} aria-label="Today's meetings">
-        <h2 className={styles.meetingsHeading}>Today's Meetings</h2>
+      <section data-testid="meetings-section" className={styles.meetingsSection} aria-label="Meetings">
+        <div className={styles.meetingsHeader}>
+          <h2 data-testid="meetings-heading" className={styles.meetingsHeading}>{headingFor(selectedDate, today)}</h2>
+          <div className={styles.meetingsNav}>
+            <button
+              data-testid="meetings-prev-day"
+              className={styles.meetingsNavBtn}
+              aria-label="Previous day"
+              onClick={() => setSelectedDate((d) => addDays(d, -1))}
+            >
+              ‹
+            </button>
+            <button
+              data-testid="meetings-date-picker-toggle"
+              className={styles.meetingsNavBtn}
+              aria-label="Pick a date"
+              aria-expanded={pickerOpen}
+              onClick={() => setPickerOpen((open) => !open)}
+            >
+              <CalendarIcon size={18} />
+            </button>
+            <button
+              data-testid="meetings-next-day"
+              className={styles.meetingsNavBtn}
+              aria-label="Next day"
+              onClick={() => setSelectedDate((d) => addDays(d, 1))}
+            >
+              ›
+            </button>
+          </div>
+        </div>
 
-        {state.status === "loading" && (
+        {pickerOpen && (
+          <input
+            type="date"
+            data-testid="meetings-date-input"
+            aria-label="Select a date"
+            className={styles.meetingsDateInput}
+            value={selectedDate}
+            onChange={(e) => handlePickDate(e.target.value)}
+          />
+        )}
+
+        {displayState.status === "loading" && (
           <p className="loading">Loading…</p>
         )}
 
-        {state.status === "unavailable" && (
+        {displayState.status === "unavailable" && (
           <div data-testid="meetings-unavailable" className={styles.meetingsStatusState}>
             <CalendarIcon className={styles.meetingsStatusIcon} />
             <p className={styles.meetingsStatusText}>Cannot connect to calendar</p>
@@ -169,16 +270,16 @@ export function MeetingsSection({ onOpenNote }: { onOpenNote: (noteId: string, t
           </div>
         )}
 
-        {state.status === "loaded" && state.meetings.length === 0 && (
+        {displayState.status === "loaded" && displayState.meetings.length === 0 && (
           <div data-testid="meetings-empty" className={styles.meetingsStatusState}>
             <CalendarIcon className={styles.meetingsStatusIcon} />
-            <p className={styles.meetingsStatusText}>No meetings today.</p>
+            <p className={styles.meetingsStatusText}>No meetings scheduled.</p>
           </div>
         )}
 
-        {state.status === "loaded" && state.meetings.length > 0 && (
+        {displayState.status === "loaded" && displayState.meetings.length > 0 && (
           <ul data-testid="meetings-list" className={styles.meetingsList}>
-            {state.meetings.map((m) => (
+            {displayState.meetings.map((m) => (
               <li key={m.calendarEventId}>
                 <article className={styles.meetingCard}>
                   <div className={styles.meetingCardHeader}>

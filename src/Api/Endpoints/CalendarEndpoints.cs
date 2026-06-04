@@ -6,7 +6,7 @@ public static class CalendarEndpoints
 {
     public static void MapCalendarEndpoints(this WebApplication app)
     {
-        app.MapGet("/calendar/today", CalendarHandlers.GetTodaysMeetings)
+        app.MapGet("/calendar/{date}", CalendarHandlers.GetMeetingsForDate)
            .RequireAuthorization();
         app.MapPost("/notes/from-meeting", CalendarHandlers.CreateNoteFromMeeting)
            .RequireAuthorization();
