@@ -9,10 +9,8 @@ using EventStore;
 using EventStore.Projections;
 using Api.Auth;
 using Api.CommandHandlers;
-using Api.EventHandlers;
 using Api.HealthChecks;
 using Api.Observability;
-using Api.Projections;
 using Api.Services;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 
@@ -118,12 +116,6 @@ public static class Builder
             new DynamoDbActionItemFeedbackStore(sp.GetRequiredService<IAmazonDynamoDB>(), actionFeedbackTableName));
         builder.Services.AddSingleton<ICalendarLinkIndexStore>(sp =>
             new DynamoDbCalendarLinkIndexStore(sp.GetRequiredService<IAmazonDynamoDB>(), calendarLinkTableName));
-        builder.Services.AddSingleton<IDomainEventHandler, NoteTitleListEventHandler>();
-        builder.Services.AddSingleton<IDomainEventHandler, NoteDetailEventHandler>();
-        builder.Services.AddSingleton<IDomainEventHandler, NoteCardListEventHandler>();
-        builder.Services.AddSingleton<IDomainEventHandler, TodoListEventHandler>();
-        builder.Services.AddSingleton<IDomainEventHandler, TagIndexEventHandler>();
-        builder.Services.AddSingleton<IDomainEventDispatcher, DomainEventDispatcher>();
         builder.Services.AddScoped<INoteCommandHandler, NoteCommandHandler>();
         builder.Services.AddScoped<IActionItemCommandHandler, ActionItemCommandHandler>();
         builder.Services.AddScoped<ITodoCommandHandler, TodoCommandHandler>();
