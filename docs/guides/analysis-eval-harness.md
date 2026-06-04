@@ -90,7 +90,7 @@ Two phases because the report renders whatever rows exist in `Results/`, and tes
 | Variable | Effect | Default |
 |---|---|---|
 | `RUN_BEDROCK_EVAL` | `1` enables the live Bedrock tests; anything else skips them | unset (skip) |
-| `EVAL_PRESET` | named curated set, paste-free (`core` = Amazon+Meta+Mistral cross-vendor) | none |
+| `EVAL_PRESET` | named curated model set, paste-free: `core` (Amazon+Meta+Mistral, no access grants) or `frontier` (strong model per vendor incl. Anthropic — needs Claude access) | none |
 | `EVAL_MODEL_IDS` | comma-separated analysis models to sweep — pinning these **bypasses discovery** | discovered |
 | `EVAL_PROVIDER` | scopes discovery to a Bedrock provider (`amazon`, `anthropic`, `meta`, …) or `all` for every vendor | `amazon` |
 | `EVAL_FIXTURES_DIR` | load fixtures from this dir instead of the built-in corpus (e.g. private real meetings from `extract-prod-fixtures.sh`) | built-in `Fixtures/` |

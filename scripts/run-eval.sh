@@ -27,14 +27,22 @@ export EVAL_REQUEST_DELAY_MS="${EVAL_REQUEST_DELAY_MS:-1500}"
 
 # Named presets so you don't have to paste a long EVAL_MODEL_IDS string (pasting
 # long lines into a terminal can inject newlines mid-id and break them).
-#   EVAL_PRESET=core  → a reliable cross-vendor set (Amazon + Meta + Mistral).
+#   EVAL_PRESET=core      → reliable cross-vendor set (Amazon + Meta + Mistral), no access grants needed.
+#   EVAL_PRESET=frontier  → strong model per vendor, INCLUDING Anthropic (needs Claude access granted).
 case "${EVAL_PRESET:-}" in
   core)
     EVAL_MODEL_IDS="amazon.nova-micro-v1:0,amazon.nova-lite-v1:0,amazon.nova-pro-v1:0,meta.llama3-70b-instruct-v1:0,meta.llama3-8b-instruct-v1:0,mistral.mistral-large-2402-v1:0,mistral.mixtral-8x7b-instruct-v0:1"
     echo "Preset 'core': ${EVAL_MODEL_IDS}"
     ;;
+  frontier)
+    # Strong model per vendor, including Anthropic. The default Quality judge is Claude 3.7
+    # Sonnet and is deliberately NOT in this list, so no model judges itself (the two
+    # Anthropic candidates may still get a mild same-vendor bump — see the guide).
+    EVAL_MODEL_IDS="amazon.nova-pro-v1:0,amazon.nova-lite-v1:0,anthropic.claude-opus-4-6-v1,anthropic.claude-3-sonnet-20240229-v1:0,meta.llama3-70b-instruct-v1:0,mistral.mistral-large-2402-v1:0"
+    echo "Preset 'frontier': ${EVAL_MODEL_IDS}"
+    ;;
   "") ;;  # no preset
-  *) echo "Unknown EVAL_PRESET='${EVAL_PRESET}' (known: core) — ignoring" ;;
+  *) echo "Unknown EVAL_PRESET='${EVAL_PRESET}' (known: core, frontier) — ignoring" ;;
 esac
 
 # 1. Discover models unless the caller pinned EVAL_MODEL_IDS.
