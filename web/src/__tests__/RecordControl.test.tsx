@@ -263,6 +263,15 @@ it('captures system audio via getDisplayMedia when the call-audio toggle is on',
   expect(mockAudioContext.createGain).toHaveBeenCalled()
 })
 
+it('labels the audio-capture toggle "Record screen-share audio"', () => {
+  stubBrowserApis()
+
+  renderControl()
+
+  expect(screen.getByText('Record screen-share audio')).toBeInTheDocument()
+  expect(screen.queryByText('Call audio')).not.toBeInTheDocument()
+})
+
 it('does not call getDisplayMedia when the call-audio toggle is off', async () => {
   const { getDisplayMedia, mockAudioContext } = stubBrowserApis()
 
