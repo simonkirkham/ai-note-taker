@@ -1425,3 +1425,18 @@ If no agent ran unexpectedly high: write `None — slice ran within expected ran
 | **Total**                                                  | **~240 000** |
 
 **Notes:** one self-inflicted spike — the **git-collision recovery (~55k)**. Staging eval files on the shared `main` checkout raced a concurrent user commit, which grabbed the staged index and landed the work on `main` with the wrong message; untangling needed a `--mixed` reset + preserve-branch + selective `checkout`/`rm`. Avoidable by doing the PR in a dedicated worktree (folded into the [[feedback_main_staged_index]] memory + the learnings doc). Hawk (~52k) approved first pass. The eval sweeps themselves were background Bedrock cost, not agent tokens.
+
+## TECH / tech-remove-dead-dispatcher — Remove dead IDomainEventDispatcher infra
+
+> Technical-improvements cleanup (Option A), not a numbered phase slice. Orchestrator-driven (no separate Breaker/Pip subagents). Started from a "how did we get here" investigation requested by the user.
+
+| Agent / phase                                              | ~Tokens  |
+|------------------------------------------------------------|----------|
+| Investigation (git archaeology: bisect to `9931d12`, read ADR 0009 + tech-improvements + handlers) | 40 000 |
+| Breaker + Pip (worktree, delete 8 files, Builder DI cleanup, 4 doc edits, build) | 32 000 |
+| Local gates (build, Api.Integration 230, Domain 170, Infra 71, publish, cdk synth) | 18 000 |
+| Hawk (code-reviewer subagent — coverage matrix for no-regression)            | 55 000   |
+| Gate monitoring + merge + worktree cleanup + deploy monitoring + Scribe      | 25 000   |
+| **Total**                                                  | **~170 000** |
+
+**Notes:** no spike. Hawk (~55k) was the largest single agent — proportionate: the one real risk was a projection the deleted handlers updated but the inline path did not, so the reviewer built a full event-type coverage matrix across `NoteCommandHandler`/`TodoCommandHandler`/`ActionItemCommandHandler` and confirmed the deleted `NoteCardListEventHandler` was a stale *subset* of the inline path. Approved first pass; one non-blocking doc-path nit applied. The investigation (~40k) front-loaded the cost but is what made the cleanup safe and the docs correct.

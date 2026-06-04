@@ -4,3 +4,4 @@ One line per trivial slice that applied a guardrail/permission entry but had no 
 
 | Date | Slice | What was applied | Pointer |
 |------|-------|------------------|---------|
+| 2026-06-04 | tech-remove-dead-dispatcher | Deleted dead `IDomainEventDispatcher`/`IDomainEventHandler` + 5 unused `*EventHandler` classes (never called since `9931d12` inlined projections via an unreviewed direct-to-main "reduce code" commit); corrected CLAUDE.md / architecture.md / ADR 0009 to document inline-in-handler as the real write path. *Why* already captured in `phase-10j` / `phase-12b` learnings — this slice is the resolution. | PR #171 |
