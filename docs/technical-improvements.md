@@ -35,10 +35,11 @@ Each entry records what it is, why it matters, where it was raised, and any depe
 
 ## Migrate `App.css` to CSS Modules
 
-**What:** Retire the single 2853-line global stylesheet `web/src/App.css` in favour of co-located CSS Modules (`Component.module.css`), the adopted standard (see [docs/react-coding-standards.md](react-coding-standards.md) and the `frontend-react` skill). Concretely: (1) extract the `:root` design tokens and every `[data-theme]` theme block into `web/src/styles/tokens.css` (and **add a `--space-*` spacing scale** while there — none exists today), and the reset/base-element rules into `web/src/styles/global.css`, imported once at the app root; (2) for each component, move its rules into a co-located `*.module.css`, convert class names to `camelCase`, swap JSX `className` strings to `styles.*`, and use `clsx` for conditional classes; (3) delete migrated (and dead) selectors from `App.css` until the file is empty and removed. New/changed components already follow the module standard — this item is the bulk migration of existing components.
-**Why it matters:** The global namespace has no scoping — collisions and dead selectors accumulate, and a 2853-line file is hard to navigate and safely change. Modules give automatic scoping, co-location with the owning component, and obvious dead-code detection, with no new runtime dependency (Vite supports modules natively). Theming via CSS custom properties is preserved unchanged.
+✅ **Done** (Phase 14, completed by slice 14-P, 2026-06-03). `web/src/App.css` is deleted. The `:root` tokens + every `[data-theme]` block (plus a new `--space-*` spacing scale) live in `web/src/styles/tokens.css`; reset/base-element rules in `web/src/styles/global.css`, both imported once at the app root. Every component now owns a co-located `*.module.css` with `camelCase` classes and `styles.*` references; `clsx` was added for conditional classes. Migration was shipped component-by-component across Phase 14 (14-E/F/G/H/I/J/K/L/M/N/P), regression-checked by the Vitest/RTL suite and `Browser.E2E` journeys.
+
+> This item and **"Break down the monolithic `App.css` into a proper CSS architecture"** below describe the same work — both are now complete.
+
 **Raised in:** Frontend standards update, 2026-06-02. Decision: CSS Modules, incremental migration with a near-term dedicated full-migration effort.
-**Depends on:** Nothing blocking. Best done component-by-component (each migration is independently shippable); regression-checked by the existing Vitest/RTL suite and `Browser.E2E` journeys. Add `clsx` to `web/` deps on the first migration PR.
 
 ---
 
@@ -127,6 +128,10 @@ The full rationale, target diagrams, staged migration plan, and the eventual-con
 
 ## Break down the monolithic `App.css` into a proper CSS architecture
 
+✅ **Done** (Phase 14, completed by slice 14-P, 2026-06-03) — superseded by and merged into the **"Migrate `App.css` to CSS Modules"** item above. The monolith is gone: a token layer (`styles/tokens.css`, with formalised `--space-*` spacing alongside the existing `--color-*` palettes), a base layer (`styles/global.css`), and per-component scoped CSS Modules now replace the single global stylesheet. Class collisions are impossible (module scoping), and the line-number references in the planning docs no longer apply.
+
+<details><summary>Original entry (kept for context)</summary>
+
 **What:** `web/src/App.css` is a single **2,807-line** stylesheet that holds the styles for the entire frontend — sign-in, sidebar, folder tree, home list, note editor, to-do section, transcription UI, theme palettes (`:root` + every `[data-theme="…"]` block), notification banners, and more. Everything is global-scoped and edited by line-number reference (the doc entries throughout `phase-minor-changes.md` point at "~L821", "~L2057", etc.), which is brittle and makes it easy to clobber unrelated rules. Break it down into a maintainable structure and apply proper CSS practices. Options to weigh when picked up:
 - **Split by concern into multiple files** imported from a small entry point — e.g. `tokens.css` (custom properties + theme palettes), `base.css`, and per-feature files (`sidebar.css`, `note-editor.css`, `todo.css`, `list-view.css`, `sign-in.css`, …), co-located with or near their components.
 - **Move to CSS Modules** (Vite supports `*.module.css` out of the box) so each component owns scoped styles and class collisions become impossible — the biggest structural win, but the largest change.
@@ -137,3 +142,5 @@ The full rationale, target diagrams, staged migration plan, and the eventual-con
 
 **Raised in:** User request, 2026-06-02 — "review the app.css and break it down; it needs proper CSS skills."
 **Depends on:** Nothing blocking. Best done as a behaviour-preserving refactor behind the existing component tests (no visual change intended) — snapshot/visual-diff or a careful manual pass to confirm nothing reskins. Sequence it **before or alongside** the home-screen tweaks (CHANGE-8/9/10) so they land on the new structure rather than the monolith. Given the breadth, consider graduating it to its own numbered phase when picked up.
+
+</details>
