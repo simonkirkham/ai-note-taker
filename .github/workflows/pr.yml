@@ -53,6 +53,9 @@ jobs:
       - name: Publish Lambda
         run: dotnet publish src/Api/Api.csproj -c Release -o src/Api/bin/Release/net10.0/publish
 
+      # No AWS credentials needed: the CDK app does no context lookups
+      # (no FromLookup / ValueFromLookup). If a future change adds one,
+      # restore the configure-aws-credentials step + environment: Test.
       - name: CDK Synth
         run: cdk synth
 
