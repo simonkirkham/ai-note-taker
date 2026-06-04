@@ -20,7 +20,7 @@
 | 10-L | Action-item feedback projection | Done | 10-K |
 | 10-M | Stamp modelId / promptVersion on the suggestion events | In Progress | 10-G, 10-I, 10-K |
 | 10-N | Migrate analysis to the Converse API (model-agnostic) | Done | — |
-| 10-O | Ship `analysis@v3` as the production prompt | Not Started | 10-G |
+| 10-O | Ship `analysis@v3` as the production prompt | Done | 10-G |
 
 Phase 10 has two parts. The **core flow** (10-A → 10-H) makes recording → transcription → analysis work end to end. The **quality track** (10-E, 10-F, then 10-G → 10-M) makes that analysis *good* and *keeps it good*: better input, smoother UX, measurement, and a durable correction signal that feeds prompt/model refinement. Slices 10-I → 10-M were moved here from the former Phase 13 ("Feedback capture for AI suggestions") so that analysis quality — building it, measuring it, refining it — lives in one phase.
 
@@ -1101,7 +1101,7 @@ Scenario: Existing analyse-handler behaviour is unchanged
 
 ## Slice 10-O — Ship `analysis@v3` as the production prompt
 
-**Status:** Not Started
+**Status:** Done — shipped 2026-06-04 (deploy #458). `PromptCatalog.Current` now returns `analysis@v3`.
 
 **Value:** The eval harness (10-G) showed `analysis@v3` beats `analysis@v2` on the headline **Quality** metric across the strongest models — Opus 4.6 0.743 → **0.803**, Mistral Large 0.737 → 0.774, and it fixed Opus's tags (0.510 → 0.705) — with only negligible regressions on the Nova models. Make V3 the live prompt. Evidence: [docs/eval-runs/2026-06-04-frontier-v2-v3.md](../eval-runs/2026-06-04-frontier-v2-v3.md).
 
@@ -1116,8 +1116,8 @@ Scenario: Existing analyse-handler behaviour is unchanged
 - Re-run the eval with even fixture counts (raise `EVAL_REQUEST_DELAY_MS`) so the V3 win isn't a throttle-skip artefact.
 - Re-run with a **non-Anthropic** judge (`BEDROCK_QUALITY_JUDGE_MODEL_ID=mistral.mistral-large-2402-v1:0`) to confirm the result isn't judge family-bias (the default Quality judge is Claude).
 
-- [ ] `PromptCatalog.Current.Version == "analysis@v3"`; `Current_is_v3` test green
-- [ ] Deploy green; the live analyse endpoint produces V3 output
+- [x] `PromptCatalog.Current.Version == "analysis@v3"`; `Current_is_v3` test green
+- [x] Deploy green; the live analyse endpoint produces V3 output
 
 **Depends on:** 10-G.
 

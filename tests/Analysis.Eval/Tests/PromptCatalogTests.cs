@@ -44,4 +44,27 @@ public class PromptCatalogTests
         Assert.DoesNotContain("updatedContent", prompt);
         Assert.Contains("DO NOT edit", prompt);
     }
+
+    [Fact]
+    public void V4_build_pushes_for_grounded_depth()
+    {
+        var request = new NoteAnalysisRequest(
+            ExistingContent: "existing notes",
+            TranscriptText: "a transcript",
+            CurrentUserName: "Alice");
+
+        var prompt = PromptCatalog.V4.Build(request);
+
+        Assert.Contains("a transcript", prompt);
+        Assert.Contains("existing notes", prompt);
+        Assert.Contains("Alice", prompt);
+        Assert.Contains("\"summary\"", prompt);
+        Assert.Contains("\"discussion\"", prompt);
+        Assert.Contains("\"decisions\"", prompt);
+        Assert.DoesNotContain("updatedContent", prompt);
+        Assert.Contains("DO NOT edit", prompt);
+        Assert.Contains("SHALLOW", prompt);
+        Assert.Contains("DEEP", prompt);
+        Assert.Contains("Do NOT invent", prompt);
+    }
 }
