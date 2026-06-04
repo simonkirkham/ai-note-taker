@@ -213,6 +213,8 @@ static string BuildV3(NoteAnalysisRequest r) => $$"""
 static readonly AnalysisPrompt[] Prompts = [PromptCatalog.V2, PromptCatalog.V3];
 ```
 
+> **Always sweep every compared prompt in ONE run.** Cross-run variance is large (observed ~0.07 on Content for the same model/prompt between two runs), so comparing a new prompt against a *prior* run's numbers conflates the prompt effect with run-to-run judge/model noise. Re-run the old version alongside the new one even if you "already have" its numbers.
+
 **3. Run it** (against your real meetings is best):
 
 ```bash
