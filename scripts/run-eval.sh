@@ -81,15 +81,24 @@ echo "Sweeping models: ${EVAL_MODEL_IDS}"
 #    `:?` aborts rather than deleting cwd if the literal ever becomes empty/unset.
 rm -rf "${RESULTS_DIR:?}"
 
-# 3. Matrix phase (writes Results/*.jsonl), then report phase (writes report.md).
-#    Two phases because the report renders whatever rows exist, and test order
-#    is not guaranteed — let the matrix finish writing first.
-RUN_BEDROCK_EVAL=1 EVAL_MODEL_IDS="${EVAL_MODEL_IDS}" AWS_REGION="${REGION}" \
-  dotnet test "${PROJ}" --filter "Category!=Report"
-RUN_BEDROCK_EVAL=1 AWS_REGION="${REGION}" \
-  dotnet test "${PROJ}" --filter "Category=Report"
+# 3. PREFLIGHT: run the fast offline tests FIRST (builds once, ~seconds). A trivial
+#    failure here — e.g. a stale PromptCatalog assertion — aborts now, BEFORE the long,
+#    paid live sweep, instead of 30+ minutes after it. Excludes the live Score matrix and
+#    the report renderer (both in BedrockEvalTheory). set -e aborts the run if this fails.
+echo "Preflight: offline tests (no Bedrock)..."
+dotnet test "${PROJ}" --filter "FullyQualifiedName!~BedrockEvalTheory"
 
-# 4. Print the report.
+# 4. Matrix: the live sweep (only the Score theory). `|| true` so a hard failure or
+#    skipped case can't abort the script and lose the report — partial results still count.
+echo "Live matrix..."
+RUN_BEDROCK_EVAL=1 EVAL_MODEL_IDS="${EVAL_MODEL_IDS}" AWS_REGION="${REGION}" \
+  dotnet test "${PROJ}" --no-build --filter "FullyQualifiedName~BedrockEvalTheory.Score" || true
+
+# 5. Report: always render whatever rows were written (even if the matrix hiccuped).
+RUN_BEDROCK_EVAL=1 AWS_REGION="${REGION}" \
+  dotnet test "${PROJ}" --no-build --filter "Category=Report" || true
+
+# 6. Print the report.
 echo
 echo "================= Analysis eval report ================="
 if [ -f "${RESULTS_DIR}/report.md" ]; then
