@@ -39,7 +39,18 @@ For each slice, follow CLAUDE.md `## Workflow` steps 1–15. Steps 1–3 are gat
 3. *(gate if unspecced)* **Pip** implements until specs are green. Optimistic-UI acceptance criterion is mandatory for any frontend change.
 4. **Refactor** skill over all changed files; re-run specs.
 5. **Stylist** (`ui-ux-pro-max`) for user-facing slices; re-run tests.
-6. Open the PR (`gh pr create --body-file .pr-body.md`). Immediately schedule a CI monitor (`gh pr checks <n>` every 60s).
+6. Open the PR (`gh pr create --body-file .pr-body.md`). Keep the body terse — three bullet sections, no narrative paragraphs:
+
+   ```markdown
+   ## What
+   - <one bullet per change>
+   ## Why
+   - <slice/issue ref + the reason, one line>
+   ## Tests
+   - <what was run / added, one line each>
+   ```
+
+   Immediately schedule a CI monitor (`gh pr checks <n>` every 60s).
 7. **Hawk** — spawn `agent-skills:code-reviewer` on the PR *the moment it opens*, in parallel with CI. Do not wait for CI.
 8. Hawk requests changes → fix every finding, then re-run `tsc --noEmit` + `npm run lint` **after this fix commit too** (not only after the first implementation pass — post-merge lint/type breaks have repeatedly come from an unchecked later fix commit), push, re-run Hawk. Hawk approves → check both merge gates, then merge.
 9. Merge → remove the worktree, monitor the main deploy.
