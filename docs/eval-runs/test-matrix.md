@@ -1,6 +1,6 @@
 # Eval test matrix
 
-The canonical, versioned set of **models** and **prompts** the analysis eval should sweep. Maintained by the [`eval-writeup`](../../.claude/skills/eval-writeup/SKILL.md) skill — bump the version and append a changelog line after every run. Rows are never deleted; cut ones are marked `dropped`/`retired` with a reason so the history of what was tried survives.
+The canonical, versioned set of **models** and **prompts** the analysis eval should sweep. Maintained by the [`eval-run`](../../.claude/skills/eval-run/SKILL.md) skill — bump the version and append a changelog line after every run. Rows are never deleted; cut ones are marked `dropped`/`retired` with a reason so the history of what was tried survives.
 
 **Version:** 1 · updated 2026-06-04 · reflects `run-468475` ([report](2026-06-04-frontier-v2-v3.md))
 
@@ -25,7 +25,7 @@ The canonical, versioned set of **models** and **prompts** the analysis eval sho
 | `analysis@v1` | retired | Original. |
 | `analysis@v2` | superseded | Beaten by v3 on the strong models. |
 | `analysis@v3` | **current best — shipping (10-O)** | Lifts Opus (+0.06), fixed Opus tags (0.51→0.71). |
-| `analysis@v4` | planned (10-P) | Target the universal weak dimension: **Content** depth. |
+| `analysis@v4` | planned (MPI-1) | Target the universal weak dimension: **Content** depth. |
 
 ## Judge
 

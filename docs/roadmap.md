@@ -1,6 +1,6 @@
 # Roadmap
 
-This is the index for all planned and in-progress work. Each numbered phase below has a one-paragraph summary here and a detail doc under `docs/phases/`. Work that isn't a numbered phase — bugs, minor tweaks, future feature ideas, and technical improvements — lives in the standing docs linked from [Standing tracks and planning docs](#standing-tracks-and-planning-docs) at the bottom.
+This is the index for all planned and in-progress work. Each numbered phase below has a one-paragraph summary here and a detail doc under `docs/phases/`. Work that isn't a numbered phase — bugs, minor tweaks, model/prompt improvements, future feature ideas, and technical improvements — lives in the standing docs linked from [Standing tracks and planning docs](#standing-tracks-and-planning-docs) at the bottom.
 
 Sequence is learning-optimised: event sourcing plumbing lands in Phase 1 so every subsequent feature is an ES learning moment, not a feature grind.
 
@@ -234,11 +234,19 @@ Stop conflating what the user wrote with what the AI generated. Today a single `
 
 Slices and acceptance criteria: [docs/phases/phase-15.md](phases/phase-15.md)
 
+## Phase 16 — Browse meetings by date on the home screen _(Not Started)_
+
+The home-screen meetings section only ever shows *today's* meetings — `GET /calendar/today` and the Google Calendar client are both hard-wired to "now". This phase makes it **date-navigable**: previous/next-day buttons, a date picker hidden behind a button, and a heading that reflects the selected day (`Today's Meetings` / `Tomorrow's Meetings` / `Yesterday's Meetings` / `Meetings — Mon, 8 Jun`). A single vertical slice (16-A) generalises the today-only read path — the calendar client windows any day, and the misnamed `/calendar/today` route is replaced by a date-addressed `GET /calendar/{date}?tz=` (ISO date) — and adds the navigation UI, while deliberately decoupling meeting *reminders*, which stay pinned to the real today, from whatever day is being *browsed*. Navigation is unbounded. Builds on Phase 9.
+
+**Goal:** generalise a time-bounded external-API read from `UtcNow` to an explicit local day; replace a misnamed action route with a date-addressed REST resource; nail the client/server timezone-boundary contract (client owns "which day", server owns the window); and split frontend state so the displayed data and a side-effect source (reminders) are driven by two different fetches.
+
+Slices and acceptance criteria: [docs/phases/phase-16.md](phases/phase-16.md)
+
 ---
 
 ## Standing tracks and planning docs
 
-Alongside the numbered phases above, work is tracked in four standing docs. The roadmap summarises them; each doc owns its content.
+Alongside the numbered phases above, work is tracked in five standing docs. The roadmap summarises them; each doc owns its content.
 
 ### Bugs _(Ongoing)_
 
@@ -253,6 +261,12 @@ Currently open: **BUG-7** empty notes are created and left behind (not removed).
 An unnumbered, standing phase for small tweaks and changes to existing behaviour that don't warrant a numbered phase and aren't defects. Shipped: single-spaced note lines, theme selection, home screen shows today's notes by default, to-do rows that wrap cleanly with long text, sign-in screen visual polish, a collapsible "Filters" control for home tags, 12 colour schemes (Forest dropped as a Teal duplicate), the theme picker and Sign out always visible without scrolling, the restructured home Filters panel (Option D), the home Notes list top-aligned with Today's Meetings (divider dropped), the preview pull-out `»`/`«` reflecting whether its panel is open, and a home-screen refinement pass (icon card/to-do actions, hidden tag labels, boxless filter tags, no card action lists, lighter Today's Meetings). Open: _(none — backlog clear)_.
 
 → [docs/phases/phase-minor-changes.md](phases/phase-minor-changes.md)
+
+### Model & Prompt Improvements _(Ongoing)_
+
+An unnumbered, standing phase for iterative improvements to the AI analysis — new `analysis@vN` prompts, model swaps, judge changes — each justified by an eval delta from the 10-G harness. Open-ended by design: as long as quality can be pushed higher, items are added, measured with `make eval`, and shipped. The [`eval-run`](../.claude/skills/eval-run/SKILL.md) skill appends the next suggested item after each run (with the user's go-ahead) and maintains the companion [`docs/eval-runs/`](eval-runs/) reports and [`test-matrix.md`](eval-runs/test-matrix.md). Currently open: **MPI-1** `analysis@v4` to deepen note content (the universal weak dimension), moved here from the former Phase 10-P.
+
+→ [docs/phases/phase-model-prompt-improvements.md](phases/phase-model-prompt-improvements.md)
 
 ### Future Features
 

@@ -21,7 +21,6 @@
 | 10-M | Stamp modelId / promptVersion on the suggestion events | Not Started | 10-G, 10-I, 10-K |
 | 10-N | Migrate analysis to the Converse API (model-agnostic) | Done | — |
 | 10-O | Ship `analysis@v3` as the production prompt | Not Started | 10-G |
-| 10-P | `analysis@v4` — deepen note content | Not Started | 10-G, 10-O |
 
 Phase 10 has two parts. The **core flow** (10-A → 10-H) makes recording → transcription → analysis work end to end. The **quality track** (10-E, 10-F, then 10-G → 10-M) makes that analysis *good* and *keeps it good*: better input, smoother UX, measurement, and a durable correction signal that feeds prompt/model refinement. Slices 10-I → 10-M were moved here from the former Phase 13 ("Feedback capture for AI suggestions") so that analysis quality — building it, measuring it, refining it — lives in one phase.
 
@@ -1122,31 +1121,13 @@ Scenario: Existing analyse-handler behaviour is unchanged
 
 **Depends on:** 10-G.
 
----
-
-## Slice 10-P — `analysis@v4`: deepen note content
-
-**Status:** Not Started
-
-**Value:** Across **every** model and both prompts, **Content** is the only Quality dimension still below ~0.75 — the universal weak spot (see the 10-O eval run). Because all models share it, it's a *prompt* problem, not a model one. Draft `analysis@v4` that pushes for fuller capture of the discussion's substance (not headline-only), measure v3-vs-v4 with the harness, keep the winner.
-
-**Commands in scope:** none · **Events in scope:** none
-
-### Scope
-- Add `PromptCatalog.V4` (`analysis@v4`) — same structured output, instructions emphasising depth/coverage of discussion + an explicit "deep vs shallow note" contrast; preserve the minimal-tags behaviour tuned earlier.
-- Compare via the harness: `Prompts = [V3, V4]`, `EVAL_PRESET=frontier`, read `report.md` — target the **Content** column rising **without** regressing Tags / Actions / Decisions.
-- If V4 wins, ship it (the 10-O switch, now to V4) and record the decision via the `eval-writeup` skill in `docs/eval-runs/`. Otherwise iterate.
-
-- [ ] V4 mean Content beats V3 across the frontier models, no regression elsewhere
-- [ ] Decision recorded in `docs/eval-runs/`
-
-**Depends on:** 10-G, 10-O.
+> **Ongoing prompt/model iteration beyond shipping V3** (the former 10-P `analysis@v4` content-depth work, and every prompt/model improvement after it) now lives in the standing, unnumbered [Model & Prompt Improvements](phase-model-prompt-improvements.md) backlog — that work is open-ended and isn't bounded by this phase.
 
 ---
 
 ## Feedback capture — explicitly out of scope (deferred)
 
-- **Using the signals** — negative-example prompting (tags) and tuning the action-extraction prompt for precision. This belongs with the prompt/model-optimisation work, run manually once enough data has accrued (10-G is the harness for it). The data is captured and rebuildable, so it can happen any time later.
+- **Using the signals** — negative-example prompting (tags) and tuning the action-extraction prompt for precision. This belongs with the prompt/model-optimisation work in the standing [Model & Prompt Improvements](phase-model-prompt-improvements.md) backlog, run manually once enough data has accrued (10-G is the harness for it). The data is captured and rebuildable, so it can happen any time later.
 - **Hard suppression** of strongly-rejected tags before they are applied.
 - **Read endpoint / UI** for either feedback model — query DynamoDB directly when analysing.
 - **Time-weighting** of rejections, action **edits**, and reopen handling.
