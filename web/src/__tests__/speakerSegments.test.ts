@@ -35,12 +35,31 @@ describe('groupBySpeaker', () => {
   it('skips empty items', () => {
     expect(groupBySpeaker([{ Content: '', Speaker: '0' }])).toEqual([])
   })
+
+  it('drops leading punctuation that has no segment to attach to', () => {
+    expect(
+      groupBySpeaker([
+        { Content: '.', Speaker: '0', Type: 'punctuation' },
+        { Content: 'hi', Speaker: '0', Type: 'pronunciation' },
+      ]),
+    ).toEqual([{ speaker: '0', text: 'hi' }])
+  })
+
+  it('falls back to "?" when an item carries no speaker id', () => {
+    expect(groupBySpeaker([{ Content: 'word', Type: 'pronunciation' }])).toEqual([
+      { speaker: '?', text: 'word' },
+    ])
+  })
 })
 
 describe('speakerLabel', () => {
   it('maps 0-based speaker ids to 1-based labels', () => {
     expect(speakerLabel('0')).toBe('Speaker 1')
     expect(speakerLabel('1')).toBe('Speaker 2')
+  })
+
+  it('passes a non-numeric speaker id through unchanged', () => {
+    expect(speakerLabel('?')).toBe('Speaker ?')
   })
 })
 

@@ -27,6 +27,8 @@ export function groupBySpeaker(items: TranscriptItem[]): SpeakerSegment[] {
     const last = segments[segments.length - 1];
     if (last && (isPunctuation || item.Speaker === last.speaker)) {
       last.text += isPunctuation ? content : ` ${content}`;
+    } else if (isPunctuation) {
+      continue; // punctuation with no segment to attach to → drop it
     } else {
       segments.push({ speaker: item.Speaker ?? '?', text: content });
     }
