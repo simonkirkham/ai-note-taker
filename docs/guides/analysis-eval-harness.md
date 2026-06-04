@@ -8,16 +8,28 @@ How to measure and improve the quality of the AI meeting-note analysis (slice 10
 
 ## What it measures
 
-For each fixture the harness builds a `NoteAnalysisRequest`, calls `BedrockAnalysisService.AnalyseAsync`, and scores the result against the fixture's `expected` values on three axes:
+For each fixture the harness builds a `NoteAnalysisRequest`, calls `BedrockAnalysisService.AnalyseAsync`, and scores the result. The **headline metric is Quality** — a holistic, rubric-based judge that encodes *your* definition of a good note (see [The rubric](#the-rubric)). The rest are supplementary diagnostics.
 
 | Score | What it checks | How |
 |---|---|---|
-| **Tag F1** | inferred tags vs expected | set precision/recall/F1, case-insensitive (`TagScorer`) |
-| **Action F1** | extracted action items vs expected | normalised exact match P/R/F1 (`ActionItemScorer`) |
-| **Content** (recall) | the artifact contains the required facts | LLM-as-judge: fraction of `contentMustMention` facts supported by the summary/discussion/decisions |
-| **Faithfulness** (precision) | the model's *claims* are supported by the source | LLM-as-judge: fraction of the model's discussion points + decisions + action items that are supported by the transcript + existing note — catches **invented** decisions/actions that Content (recall-only) is blind to |
+| **Quality** (headline) | overall note quality vs the rubric, with sub-scores for **tags / actions / decisions / content** | LLM-as-judge: a neutral model scores 0–1 per rubric dimension + an overall, judged against the transcript (`BedrockQualityJudge`) |
+| Tag F1 | inferred tags vs *expected* gold tags | set P/R/F1 (`TagScorer`) — only meaningful on labelled fixtures |
+| Action F1 | extracted actions vs *expected* | normalised exact-match P/R/F1 (`ActionItemScorer`) — labelled fixtures only |
+| Content (recall) | the artifact contains the *expected* must-mention facts | LLM-as-judge fraction present — labelled fixtures only |
+| Faithfulness (precision) | the model's claims are supported by the transcript | LLM-as-judge fraction supported — catches invented content; needs no labels |
 
-The judge deliberately uses a **stronger** model than the system under test (Nova Pro judging Nova Lite by default). Content and Faithfulness are complementary: Content asks "did it capture what mattered?", Faithfulness asks "is everything it said actually true?". A terse model that hits the expected facts but invents extra content scores high on Content and low on Faithfulness.
+**Two judges, two models.** The supplementary Content/Faithfulness judge defaults to **Nova Pro** (`BEDROCK_JUDGE_MODEL_ID`). The headline **Quality** judge defaults to a *neutral* **Claude 3.7 Sonnet** (`BEDROCK_QUALITY_JUDGE_MODEL_ID`) — deliberately not Nova-judging-Nova — and is told to use the full 0–1 range so it discriminates rather than clustering at 0.5.
+
+### The rubric
+
+`Quality` is scored against a fixed rubric (in `BedrockQualityJudge`) that encodes the note-owner's preferences, so the same standard is applied to every model/prompt. Current rubric:
+
+- **tags** — a *minimal* set (ideally 2–3, never >~5) of recurring, findable entities so you can retrieve related notes later (people/companies, work streams, meeting type); over-tagging or generic tags score ≤ 0.4.
+- **actions** — *only the current user's own* commitments (others' must not appear) and accurate.
+- **decisions** — actual decisions only, accurate, complete, clearly stated.
+- **content** — thoroughly captures the substance (a light/sparse note is a major failure, ≤ 0.4, even if faithful), faithful (light inference OK, no invention), flags uncertainty rather than guessing, well-organised (bullets, headers).
+
+To change what "good" means, edit the rubric prompt in `tests/Analysis.Eval/Scoring/BedrockQualityJudge.cs` — that one string *is* the quality definition.
 
 Every run also writes **`Results/<runId>-outputs.md`** — the raw `summary`/`discussion`/`decisions`/`tags`/`actions` each model produced per fixture, with its scores. Read it to *see* why a model scored the way it did rather than trusting the number.
 
@@ -28,7 +40,7 @@ AWS_PROFILE=prod ./scripts/extract-prod-fixtures.sh
 EVAL_FIXTURES_DIR=eval-fixtures-real AWS_PROFILE=prod EVAL_PRESET=core make eval
 ```
 
-Real fixtures have no gold labels, so only **Faithfulness** (plus eyeballing `Results/<runId>-outputs.md`) is meaningful on them — Tag/Action/Content F1 need hand-authored `expected` values.
+Real fixtures have no gold labels, so **Quality and Faithfulness** are the meaningful metrics on them (both judge against the transcript, no labels needed) — Tag/Action/Content F1 need hand-authored `expected` values.
 
 > **Why Action F1 catches "only my actions".** The fixtures put the current user's actions in `actionItems` and *other people's* actions in `contentMustMention`. If the model wrongly captures someone else's action as one of the user's, that's an extra predicted item not in `expected` — **precision drops**, so Action F1 < 1. Conversely, the missing-from-content fact lowers the content score. The two scores together pin the "scope actions to the current user" behaviour.
 
@@ -82,7 +94,8 @@ Two phases because the report renders whatever rows exist in `Results/`, and tes
 | `EVAL_MODEL_IDS` | comma-separated analysis models to sweep — pinning these **bypasses discovery** | discovered |
 | `EVAL_PROVIDER` | scopes discovery to a Bedrock provider (`amazon`, `anthropic`, `meta`, …) or `all` for every vendor | `amazon` |
 | `EVAL_FIXTURES_DIR` | load fixtures from this dir instead of the built-in corpus (e.g. private real meetings from `extract-prod-fixtures.sh`) | built-in `Fixtures/` |
-| `BEDROCK_JUDGE_MODEL_ID` | model used as the content judge | `amazon.nova-pro-v1:0` |
+| `BEDROCK_QUALITY_JUDGE_MODEL_ID` | model for the headline **Quality** rubric judge (neutral, non-Nova) | `anthropic.claude-3-7-sonnet-20250219-v1:0` |
+| `BEDROCK_JUDGE_MODEL_ID` | model for the supplementary content/faithfulness judge | `amazon.nova-pro-v1:0` |
 | `EVAL_REQUEST_DELAY_MS` | pause between sweep cases, to stay under a rate-limited account's Bedrock per-minute quota | `0` (raw `dotnet test`); `make eval` sets `1500` |
 | `AWS_PROFILE` / `AWS_REGION` | standard AWS SDK credential/region resolution | — |
 
@@ -99,13 +112,15 @@ RUN_BEDROCK_EVAL=1 EVAL_MODEL_IDS="amazon.nova-lite-v1:0,amazon.nova-pro-v1:0" \
 
 Written to `tests/Analysis.Eval/bin/Debug/net10.0/Results/` (gitignored):
 
-- `<runId>.jsonl` — one row per fixture × prompt × model with all three scores.
-- `report.md` — table grouped by `(prompt, model)` with mean Tag F1 / Action F1 / Content and fixture count:
+- `<runId>.jsonl` — one row per fixture × prompt × model with every score.
+- `<runId>-outputs.md` — the raw note each model produced per fixture, with scores (read this to *see* the difference).
+- `report.md` — grouped by `(prompt, model)`, **ordered best-Quality first**, with the rubric sub-scores:
 
 ```
-| Prompt | Model | Tag F1 | Action F1 | Content | Fixtures |
-| --- | --- | --- | --- | --- | --- |
-| analysis@v1 | amazon.nova-lite-v1:0 | 0.667 | 0.722 | 0.833 | 18 |
+| Prompt | Model | Quality | Tags | Actions | Decisions | Content | Faithfulness | Fixtures |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| analysis@v2 | amazon.nova-pro-v1:0  | 0.53 | 0.60 | 0.73 | 0.60 | 0.53 | 0.87 | 3 |
+| analysis@v2 | amazon.nova-lite-v1:0 | 0.42 | 0.67 | 0.63 | 0.60 | 0.33 | 1.00 | 3 |
 ```
 
 ## Nightly / on-demand CI
@@ -145,14 +160,38 @@ Each fixture is shaped to exercise two behaviours:
 
 Drop a new JSON file in `Fixtures/` following the shape and the two rules above. The id should be `NN-short-description`. It's picked up automatically — no code change. Run `dotnet test tests/Analysis.Eval/Analysis.Eval.csproj` (offline) to confirm it loads and satisfies the corpus rules before spending a paid eval run on it.
 
-## Adding a prompt variant (the core workflow)
+## Test a prompt change (the core workflow)
 
-1. Add an `AnalysisPrompt` to `PromptCatalog` (e.g. `V2` with version `analysis@v2`) — keep `Build` taking a `NoteAnalysisRequest`.
-2. Add it to the `Prompts` array in `BedrockEvalTheory`.
-3. Run the matrix. The version string flows into every results row, so `report.md` shows `analysis@v1` vs `analysis@v2` side by side.
-4. Keep the version that scores higher; switch `PromptCatalog.Current` to it when ready to ship.
+This is the main thing the harness is for: change the prompt, see — on numbers, against your rubric — whether it actually got better. Four steps, ~5 minutes.
 
-Because the prompt is versioned and `NoteAnalysisResult` stamps `ModelId`/`PromptVersion`, the planned **10-M** slice can tie real user corrections back to the exact prompt version that produced a suggestion — closing the loop between offline eval and live feedback.
+**1. Add your new prompt** in `src/Api/Services/PromptCatalog.cs` — copy the existing one and bump the version:
+
+```csharp
+public static readonly AnalysisPrompt V3 = new("analysis@v3", BuildV3);
+
+static string BuildV3(NoteAnalysisRequest r) => $$"""
+    ... your new prompt text ...
+    Reference the inputs with {{r.TranscriptText}}, {{r.ExistingContent}}, {{r.CurrentUserName}}.
+    """;
+```
+
+**2. Tell the eval to run it alongside the old one** — in `tests/Analysis.Eval/Tests/BedrockEvalTheory.cs`, list both so the report compares them side by side:
+
+```csharp
+static readonly AnalysisPrompt[] Prompts = [PromptCatalog.V2, PromptCatalog.V3];
+```
+
+**3. Run it** (against your real meetings is best):
+
+```bash
+EVAL_FIXTURES_DIR=eval-fixtures-real AWS_PROFILE=prod EVAL_PRESET=core make eval
+```
+
+**4. Read `report.md`.** You get one row per `(prompt, model)`. Compare the `analysis@v3` rows to `analysis@v2`: did **Quality** go up — and specifically the dimension you were trying to fix (e.g. `Content` if you asked for deeper notes, `Tags` if you trimmed tagging)? If yes, ship it by pointing `PromptCatalog.Current` at `V3`. If not, tweak the prompt and rerun.
+
+> Tip: to isolate the prompt, pin one model so prompt is the only variable — `EVAL_MODEL_IDS="amazon.nova-pro-v1:0"`. To compare prompts *and* models at once, leave the preset/provider as-is.
+
+The prompt is versioned and `NoteAnalysisResult` stamps `ModelId`/`PromptVersion`, so the planned **10-M** slice can later tie real user corrections back to the exact prompt version that produced a suggestion.
 
 ## Offline tests (what runs without Bedrock)
 
