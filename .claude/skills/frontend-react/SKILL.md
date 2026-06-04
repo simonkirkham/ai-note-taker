@@ -20,20 +20,29 @@ Load before writing or reviewing any `.tsx` / `.ts` file in `web/src/`. This ski
 - Follow the Rules of Hooks: call unconditionally and in the same order.
 - Keep `useEffect` dependency arrays complete — do not suppress ESLint warnings with `// eslint-disable`.
 - Encapsulate shared logic in custom hooks.
+- **You might not need an effect.** Derive values during render (or `useMemo`) instead of syncing them into state via an effect. Reset state on a prop change with a `key`, not an effect. Put logic triggered by a *user action* in the event handler, not an effect. Don't chain effects that each `setState` to trigger the next. (react.dev — *You Might Not Need an Effect*.) This generalises the existing `set-state-in-effect` guardrail.
+- **Every fetch-in-effect must guard against out-of-order responses.** Deps can change before a request resolves — last-fired ≠ last-resolved. Use an `ignore` flag (set in cleanup) or an `AbortController`, and drop the response if stale. An `AbortController` alone is not enough — it cancels the request, not a `.then` already queued. This is the one async-effect bug `set-state-in-effect` does **not** catch.
 
 **TypeScript**
 - `"strict": true` is on — no `any` without a documented reason.
 - Use discriminated unions for variant state (e.g. `{ kind: "note"; noteId: string } | { kind: "list" }`).
+- **No `enum`** — use an `as const` object or a union of string literals. `enum` is not erasable syntax and has inlining hazards; you already prefer discriminated unions, this is the sibling rule.
+- **No non-null assertion `!`** — it has no runtime check and lies about nullability. Narrow with a guard or early return instead. (Once `recommended-type-checked` lint lands, `no-non-null-assertion` enforces this — see technical-improvements.)
+- **`catch` clauses are `unknown`, not `any`** — a thrown value is not guaranteed to be an `Error`; narrow before use (`if (e instanceof Error)`).
 
 **State and data flow**
 - **Optimistic UI updates are mandatory** (CLAUDE.md). A mutation handler updates local state immediately and reconciles on error — never gate the UI on the API response. When adding a new async mutation, mirror the optimistic-first pattern of the nearest existing handler in the same component.
 - **A failed optimistic update must be surfaced to the user, never rolled back silently.** When the request fails, undo the local change *and* show the failure (inline message, banner, or toast) so the user knows their action didn't take and can retry. A silent rollback is worse than no optimism — the action appears to vanish. *(Note: there is no general toast/notification primitive yet — only the full-screen `SessionExpiredBanner`. A reusable inline-error/toast component is a known gap; until it exists, surface failures with the nearest available mechanism.)*
 - API access goes through the wrappers in `web/src/api.ts`; components do not call `fetch` directly.
+- **Never mutate state or props — replace, don't mutate.** Build a new object/array (spread, `map`, `filter`) and pass it to the setter; never `push`/`splice`/assign into existing state. Mutation keeps the same reference, so React skips the re-render and the UI silently goes stale.
+- **Non-component modules stay single-domain.** An API/util/store module that spans more than one domain — or grows past ~150 lines — is a smell: split it by domain into a folder (`api.ts` → `api/notes.ts`, `api/folders.ts`, …). Import from the specific module, **not** a barrel `index.ts` (see the *Imports* row — barrels hurt tree-shaking and invite circular deps). Mirrors the backend ">100-line class, more than one reason to change" smell in `dotnet-coding`.
 
 **Accessibility**
 - Use semantic HTML; prefer native controls over `div` + `onClick`.
 - Add `aria-label` to icon buttons and any interactive element without visible text.
 - Keyboard navigation must work: `Tab` to reach, `Enter`/`Space` to activate.
+- **Announce async / transient updates via an `aria-live` region** — a visual-only toast or status change is invisible to a screen reader. `ToastProvider.tsx` already wraps its output in a live region; any new ephemeral-notification surface must do the same.
+- **Style focus rings with `:focus-visible`, not `:focus`** — shows the ring for keyboard navigation without flashing it on every mouse click.
 
 **Styling / CSS** — *the standard is **CSS Modules**. A migration is in progress (see below).*
 - **New or substantially-changed components use a co-located CSS Module.** `NoteCard.tsx` ships with `NoteCard.module.css` in the same folder; import it as `import styles from "./NoteCard.module.css"` and reference classes as `styles.card`. Vite supports this natively — no new dependency. Scoping is automatic; class collisions cannot happen.
@@ -64,6 +73,8 @@ Load before writing or reviewing any `.tsx` / `.ts` file in `web/src/`. This ski
 
 **Testing**
 - Component unit tests use **Vitest + React Testing Library + jsdom**, kept centrally in `web/src/__tests__/` (one `*.test.tsx` per component). Run with `npm --prefix web test`. Assert on user-visible behaviour, not internals; mock network via the handlers in `web/src/test/`.
+- **Unit-test query priority: `getByRole` → `getByLabelText` → `getByText`, with `getByTestId` a last resort.** Role/label queries assert accessibility at the same time. *(This is the **unit**-test rule and does not conflict with the E2E rule below: Playwright E2E still selects on `data-testid` — jsdom applies no CSS, so a `data-testid` is the stable cross-layer contract there.)*
+- **Use `userEvent` over `fireEvent`** — it simulates the full interaction sequence (focus, key events, visibility/disabled checks) a real user triggers.
 - End-to-end journeys use **Playwright (C#)** in `tests/Browser.E2E/` (BDD-style, gated on `FRONTEND_URL`). When adding a new user journey, add or extend a journey there.
 - **E2E selectors must use `data-testid`, NEVER a CSS class.** jsdom unit tests don't apply CSS, so a class that a Playwright journey selects on (e.g. `.note-card`) will pass every unit test but break the real-browser E2E on deploy if the class is renamed/hashed (this exact thing red-lined the pipeline during the CSS-Modules migration — CSS Modules hash class names). Keep a stable `data-testid` on any element an E2E journey needs to find. When renaming/removing a class, grep `tests/Browser.E2E/` for it.
 - New or changed components ship with a matching `__tests__/*.test.tsx`; new user journeys ship with a `Browser.E2E` journey.
@@ -120,6 +131,12 @@ npm --prefix web run dev       # Dev server (port 5173)
 - [ ] If a touched component was still styled by `App.css`, its rules were migrated to a module in this PR
 - [ ] CSS rules use `var(--…)` tokens — no literal colours/radii/transitions hard-coded (and no literal spacing once `--space-*` tokens exist); no `!important` in your own modules
 - [ ] Every class in a module is referenced via `styles.*` (no dead classes)
+- [ ] No non-component module mixes unrelated domains or exceeds ~150 lines (split by domain into a folder; import the specific module, no barrel)
+- [ ] No fetch-in-effect without an out-of-order guard (`ignore` flag or `AbortController`); state derived in render where possible, not synced via an effect
+- [ ] State/props never mutated — setters get a fresh object/array (spread/`map`/`filter`)
+- [ ] No `enum`, no non-null `!`; `catch` clauses typed `unknown` and narrowed
+- [ ] Unit tests prefer `getByRole`/`getByLabelText` over `getByTestId`, and `userEvent` over `fireEvent`
+- [ ] Transient/async notifications announced via an `aria-live` region; focus rings use `:focus-visible`
 - [ ] Async mutations update local state optimistically, reconcile on error, and **surface the failure** to the user (no silent rollback)
 - [ ] Any HTML passed to `dangerouslySetInnerHTML` is sanitised via the shared DOMPurify helper
 - [ ] New user journeys have a corresponding journey in `tests/Browser.E2E/`
