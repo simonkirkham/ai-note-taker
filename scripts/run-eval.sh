@@ -25,6 +25,15 @@ REGION="${AWS_REGION:-eu-west-2}"
 # Override (e.g. EVAL_REQUEST_DELAY_MS=0 for a high-quota account) to run faster.
 export EVAL_REQUEST_DELAY_MS="${EVAL_REQUEST_DELAY_MS:-1500}"
 
+# EVAL_FIXTURES_DIR is read by the test host, which runs with its working directory
+# set to the bin output dir (NOT the repo root) — so a repo-relative value (e.g.
+# "eval-fixtures-real") resolves under bin/ and the fixtures aren't found. Anchor a
+# relative value to an absolute path here, mirroring EVAL_PROGRESS_FILE below.
+if [ -n "${EVAL_FIXTURES_DIR:-}" ] && [ "${EVAL_FIXTURES_DIR#/}" = "${EVAL_FIXTURES_DIR}" ]; then
+  export EVAL_FIXTURES_DIR="$(pwd)/${EVAL_FIXTURES_DIR}"
+  echo "Resolved EVAL_FIXTURES_DIR to absolute: ${EVAL_FIXTURES_DIR}"
+fi
+
 # Named presets so you don't have to paste a long EVAL_MODEL_IDS string (pasting
 # long lines into a terminal can inject newlines mid-id and break them).
 #   EVAL_PRESET=keep      → the live "keep" set read straight from docs/eval-runs/test-matrix.md.
@@ -110,7 +119,15 @@ dotnet test "${PROJ}" --filter "FullyQualifiedName!~BedrockEvalTheory"
 
 # 4. Matrix: the live sweep (only the Score theory). `|| true` so a hard failure or
 #    skipped case can't abort the script and lose the report — partial results still count.
-echo "Live matrix..."
+#    EVAL_PROGRESS_FILE makes the harness stream one line per row to a plain file (VSTest
+#    buffers Console output until a test ends, so that's the only way to watch live).
+# Anchor to an ABSOLUTE path: `dotnet test` runs the test host with its working
+# directory set to the bin output dir, so a path relative to the repo root would
+# resolve nested (…/net10.0/tests/…/Results/progress.log) and the file the harness
+# writes wouldn't match the path printed below. $(pwd) is the repo root here.
+PROGRESS_FILE="$(pwd)/${RESULTS_DIR}/progress.log"
+export EVAL_PROGRESS_FILE="${PROGRESS_FILE}"
+echo "Live matrix... (watch progress:  tail -F ${PROGRESS_FILE} )"
 RUN_BEDROCK_EVAL=1 EVAL_MODEL_IDS="${EVAL_MODEL_IDS}" AWS_REGION="${REGION}" \
   dotnet test "${PROJ}" --no-build --filter "FullyQualifiedName~BedrockEvalTheory.Score" || true
 

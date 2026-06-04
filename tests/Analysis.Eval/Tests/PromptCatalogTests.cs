@@ -5,9 +5,9 @@ namespace Analysis.Eval.Tests;
 public class PromptCatalogTests
 {
     [Fact]
-    public void Current_is_v3()
+    public void Current_is_v5()
     {
-        Assert.Equal("analysis@v3", PromptCatalog.Current.Version);
+        Assert.Equal("analysis@v5", PromptCatalog.Current.Version);
     }
 
     [Fact]
@@ -66,5 +66,30 @@ public class PromptCatalogTests
         Assert.Contains("SHALLOW", prompt);
         Assert.Contains("DEEP", prompt);
         Assert.Contains("Do NOT invent", prompt);
+    }
+
+    [Fact]
+    public void V5_keeps_depth_but_clamps_grounding_first_and_restores_tag_discipline()
+    {
+        var request = new NoteAnalysisRequest(
+            ExistingContent: "existing notes",
+            TranscriptText: "a transcript",
+            CurrentUserName: "Alice");
+
+        var prompt = PromptCatalog.V5.Build(request);
+
+        Assert.Contains("a transcript", prompt);
+        Assert.Contains("existing notes", prompt);
+        Assert.Contains("Alice", prompt);
+        Assert.Contains("\"summary\"", prompt);
+        Assert.Contains("\"discussion\"", prompt);
+        Assert.Contains("\"decisions\"", prompt);
+        Assert.DoesNotContain("updatedContent", prompt);
+        Assert.Contains("DO NOT edit", prompt);
+        Assert.Contains("SHALLOW", prompt);
+        Assert.Contains("DEEP", prompt);
+        Assert.Contains("GROUNDING COMES FIRST", prompt);
+        Assert.Contains("THIN TRANSCRIPT", prompt);
+        Assert.Contains("recurring themes", prompt);
     }
 }

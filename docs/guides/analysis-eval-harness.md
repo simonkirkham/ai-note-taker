@@ -54,7 +54,7 @@ Everything that calls Bedrock is gated behind `RUN_BEDROCK_EVAL=1`, so a normal 
 AWS_PROFILE=prod make eval
 ```
 
-This discovers the account's **accessible on-demand text models** in the region (`bedrock list-foundation-models`) — by default the Amazon provider (Nova + Titan) — sweeps the fixtures against all of them, renders the report, and prints it. Models the account can't invoke (no access grant, inference-profile-only) are skipped gracefully — the report only shows models that actually ran. Progress streams to stderr as `[eval N/total] …`. It runs the fast **offline tests first as a preflight** — a trivial failure (e.g. a stale `PromptCatalog` assertion) aborts in seconds *before* the long, paid sweep, not after it — and always renders the report from whatever rows were written, even if the matrix hiccups. Run only the offline tests with `make eval-offline`. The script lives at [`scripts/run-eval.sh`](../../scripts/run-eval.sh).
+This discovers the account's **accessible on-demand text models** in the region (`bedrock list-foundation-models`) — by default the Amazon provider (Nova + Titan) — sweeps the fixtures against all of them, renders the report, and prints it. Models the account can't invoke (no access grant, inference-profile-only) are skipped gracefully — the report only shows models that actually ran. Progress streams to stderr as `[eval N/total] …` — but VSTest buffers it, so to watch the long run live use the progress file instead (see [Watching progress live](#watching-progress-live)). It runs the fast **offline tests first as a preflight** — a trivial failure (e.g. a stale `PromptCatalog` assertion) aborts in seconds *before* the long, paid sweep, not after it — and always renders the report from whatever rows were written, even if the matrix hiccups. Run only the offline tests with `make eval-offline`. The script lives at [`scripts/run-eval.sh`](../../scripts/run-eval.sh).
 
 Since the analyse path speaks the model-agnostic Bedrock **Converse** API (slice 10-N), the sweep is **not** Nova-only. Pick models without pasting a long string (pasting long lines into a terminal can inject a newline mid-id and break it) via a **preset** or **provider**, or pin exact ids with `EVAL_MODEL_IDS`:
 
@@ -69,6 +69,36 @@ AWS_PROFILE=prod EVAL_MODEL_IDS="amazon.nova-lite-v1:0,meta.llama3-70b-instruct-
 **`EVAL_PRESET=keep` is the one to reach for.** It reads the model ids straight from the `**keep**` rows of [`docs/eval-runs/test-matrix.md`](../eval-runs/test-matrix.md), so the matrix is the single source of truth — prune a model there and the next sweep drops it, with no second list to keep in sync. `EVAL_PRESET=core` is the paste-safe way to run a broader one-off cross-vendor comparison.
 
 > Two limits remain: non-Amazon models must be **access-granted** in the Bedrock console first (Claude needs the use-case form + Marketplace sub), and **inference-profile-only** models (newer Claude/Llama) won't appear in discovery — they aren't on-demand by raw id and need the profile id + cross-region IAM (out of scope for now).
+
+### Watching progress live
+
+A full sweep is `fixtures × prompts × models` cases, each a paid model call plus two judge calls, paced by `EVAL_REQUEST_DELAY_MS` — so it runs for tens of minutes. Background it and watch it rather than blocking a terminal:
+
+```bash
+AWS_PROFILE=prod EVAL_PRESET=keep make eval > /tmp/eval.log 2>&1 &
+```
+
+The harness prints progress as `[eval N/total] …`, but VSTest **buffers a test's Console output until the test finishes**, so that stream isn't live during the long matrix. To watch live, the harness also appends one line per case to a plain **progress file** — `make eval` sets `EVAL_PROGRESS_FILE` and prints the exact `tail -F …` command when the live matrix starts. Copy that command; the path is **absolute**, under the test binary's output dir:
+
+```bash
+# Per-case view: "[eval N/total] done <model> x <fixture>  QUALITY=… (tags=… act=… dec=… content=…)  (R remaining)"
+tail -F tests/Analysis.Eval/bin/Debug/net10.0/Results/progress.log
+```
+
+If that file stays empty while the run is clearly going, fall back to the **run jsonl** — one row is appended as each case completes, so its line count is the reliable live counter:
+
+```bash
+# How far along (count climbs to fixtures × prompts × models):
+watch -n 5 'echo "$(cat tests/Analysis.Eval/bin/Debug/net10.0/Results/run-*.jsonl | wc -l) cases done"'
+
+# Readable per-case scores as they land:
+tail -f tests/Analysis.Eval/bin/Debug/net10.0/Results/run-*.jsonl \
+  | jq -c '{m:.modelId, p:.promptVersion, q:.quality, content:.qualityContent, tags:.qualityTags}'
+```
+
+`SKIP` lines in the stream mean a model (or the judge) was unavailable or throttled for that case — that cell won't appear in the report and the run is no longer fully comparable across models; note it in the write-up's caveats (see [throttling](#knobs)).
+
+> **`EVAL_PROGRESS_FILE` must be an absolute path.** `dotnet test` runs the test host with its working directory set to the *bin output dir*, not the repo root, so a repo-relative value resolves nested (e.g. `…/net10.0/tests/Analysis.Eval/bin/Debug/net10.0/Results/progress.log`) and won't match the path `run-eval.sh` prints. The script anchors it with `$(pwd)`; if you ever see that doubled path, the anchoring regressed.
 
 ### Manual two-phase run
 
@@ -95,7 +125,7 @@ Two phases because the report renders whatever rows exist in `Results/`, and tes
 | `EVAL_MATRIX_FILE` | path the `keep` preset reads the keep-set from | `docs/eval-runs/test-matrix.md` |
 | `EVAL_MODEL_IDS` | comma-separated analysis models to sweep — pinning these **bypasses discovery** | discovered |
 | `EVAL_PROVIDER` | scopes discovery to a Bedrock provider (`amazon`, `anthropic`, `meta`, …) or `all` for every vendor | `amazon` |
-| `EVAL_FIXTURES_DIR` | load fixtures from this dir instead of the built-in corpus (e.g. private real meetings from `extract-prod-fixtures.sh`) | built-in `Fixtures/` |
+| `EVAL_FIXTURES_DIR` | load fixtures from this dir instead of the built-in corpus (e.g. private real meetings from `extract-prod-fixtures.sh`). Via `make eval` a relative path is auto-anchored to the repo root; with raw `dotnet test` the test host's cwd is the bin dir, so pass an **absolute** path | built-in `Fixtures/` |
 | `BEDROCK_QUALITY_JUDGE_MODEL_ID` | model for the headline **Quality** rubric judge (neutral, non-Nova) | `anthropic.claude-3-7-sonnet-20250219-v1:0` |
 | `BEDROCK_JUDGE_MODEL_ID` | model for the supplementary content/faithfulness judge | `amazon.nova-pro-v1:0` |
 | `EVAL_REQUEST_DELAY_MS` | pause between sweep cases, to stay under a rate-limited account's Bedrock per-minute quota | `0` (raw `dotnet test`); `make eval` sets `1500` |
