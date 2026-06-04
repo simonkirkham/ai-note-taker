@@ -9,6 +9,9 @@ internal sealed class InMemoryCalendarLinkIndexStore : ICalendarLinkIndexStore
     public Task<CalendarLinkView?> GetByCalendarEventIdAsync(string calendarEventId, CancellationToken ct = default) =>
         Task.FromResult(_byCalendarEventId.TryGetValue(calendarEventId, out var view) ? view : null);
 
+    public Task<CalendarLinkView?> GetByNoteIdAsync(string noteId, CancellationToken ct = default) =>
+        Task.FromResult(_byCalendarEventId.Values.FirstOrDefault(v => v.NoteId == noteId));
+
     public Task<IReadOnlyList<CalendarLinkView>> GetByRecurringSeriesIdAsync(string seriesId, CancellationToken ct = default)
     {
         IReadOnlyList<CalendarLinkView> results = _byCalendarEventId.Values

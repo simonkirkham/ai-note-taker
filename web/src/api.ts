@@ -60,6 +60,8 @@ export interface NoteDetail {
   decisions: string[];
   summaryModelId: string | null;
   summaryPromptVersion: string | null;
+  recurringSeriesId: string | null;
+  isRecurring: boolean;
 }
 
 export async function getNoteDetail(noteId: string): Promise<NoteDetail> {
