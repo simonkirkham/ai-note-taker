@@ -32,6 +32,18 @@ Write `docs/eval-runs/<YYYY-MM-DD>-<slug>.md`.
 5. **Prompt summary** — compare versions per model and overall; quantify which dimensions each prompt moved (e.g. "V3 lifted Opus +0.06, fixed its tags 0.51→0.71"); then **which prompt to keep** and **what the next prompt iteration should target** (usually the weakest dimension).
 6. **Caveats & confidence** — uneven fixture counts; **judge family-bias** (a same-vendor judge inflates that vendor — recommend a held-out non-vendor judge re-run to confirm any vendor's lead); sample size; synthetic vs real.
 
+## Maintain the test matrix (every run)
+
+After writing the report, update **`docs/eval-runs/test-matrix.md`** — the versioned source of truth for which models and prompts are under test. This keeps the next sweep focused on what's worth testing.
+
+- **Bump the version** (integer) and set the date + the `runId` it reflects.
+- **Apply this run's decisions:** mark dropped models `dropped (<date>)` with a one-line reason; keep the survivors; add any newly-introduced models/prompts; mark the current production prompt and any planned next prompt.
+- **Append a changelog line:** `vN (<date>, <runId>): <what changed and why>`.
+- **Keep the presets in sync:** the `keep` model set should match the `frontier`/`core` presets in `scripts/run-eval.sh`; if they've diverged, note it (or update the preset in the same change).
+- Never delete rows — mark them `retired`/`dropped` so the history of what was tried (and why it was cut) survives.
+
+If `docs/eval-runs/test-matrix.md` doesn't exist yet, create it: a short intro, a **Models under test** table (`Model | Status | Notes`), a **Prompts under test** table (`Prompt | Status | Notes`), and a **Changelog**.
+
 ## Rules
 
 - Lead with the decision. Rank and recommend on the **trustworthy** columns (Quality + its sub-scores); say so when a column is non-discriminating.

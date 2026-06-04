@@ -20,6 +20,8 @@
 | 10-L | Action-item feedback projection | Done | 10-K |
 | 10-M | Stamp modelId / promptVersion on the suggestion events | Not Started | 10-G, 10-I, 10-K |
 | 10-N | Migrate analysis to the Converse API (model-agnostic) | Done | — |
+| 10-O | Ship `analysis@v3` as the production prompt | Not Started | 10-G |
+| 10-P | `analysis@v4` — deepen note content | Not Started | 10-G, 10-O |
 
 Phase 10 has two parts. The **core flow** (10-A → 10-H) makes recording → transcription → analysis work end to end. The **quality track** (10-E, 10-F, then 10-G → 10-M) makes that analysis *good* and *keeps it good*: better input, smoother UX, measurement, and a durable correction signal that feeds prompt/model refinement. Slices 10-I → 10-M were moved here from the former Phase 13 ("Feedback capture for AI suggestions") so that analysis quality — building it, measuring it, refining it — lives in one phase.
 
@@ -1095,6 +1097,50 @@ Scenario: Existing analyse-handler behaviour is unchanged
 - [ ] Behaviour-identical for analysis@v1 + Nova Lite
 - [ ] Converse parsing unit-tested offline
 - [ ] All specs green; `cdk synth` succeeds
+
+---
+
+## Slice 10-O — Ship `analysis@v3` as the production prompt
+
+**Status:** Not Started
+
+**Value:** The eval harness (10-G) showed `analysis@v3` beats `analysis@v2` on the headline **Quality** metric across the strongest models — Opus 4.6 0.743 → **0.803**, Mistral Large 0.737 → 0.774, and it fixed Opus's tags (0.510 → 0.705) — with only negligible regressions on the Nova models. Make V3 the live prompt. Evidence: [docs/eval-runs/2026-06-04-frontier-v2-v3.md](../eval-runs/2026-06-04-frontier-v2-v3.md).
+
+**Commands in scope:** none · **Events in scope:** none
+
+### Scope
+- Switch `PromptCatalog.Current` to `V3` (the production analyse path then uses `analysis@v3`).
+- Update `PromptCatalogTests` (`Current_is_v2` → `Current_is_v3`).
+- Keep `V1`/`V2` in the catalog — prompts are versioned history the eval still references.
+
+### Before locking in (recommended, not blocking)
+- Re-run the eval with even fixture counts (raise `EVAL_REQUEST_DELAY_MS`) so the V3 win isn't a throttle-skip artefact.
+- Re-run with a **non-Anthropic** judge (`BEDROCK_QUALITY_JUDGE_MODEL_ID=mistral.mistral-large-2402-v1:0`) to confirm the result isn't judge family-bias (the default Quality judge is Claude).
+
+- [ ] `PromptCatalog.Current.Version == "analysis@v3"`; `Current_is_v3` test green
+- [ ] Deploy green; the live analyse endpoint produces V3 output
+
+**Depends on:** 10-G.
+
+---
+
+## Slice 10-P — `analysis@v4`: deepen note content
+
+**Status:** Not Started
+
+**Value:** Across **every** model and both prompts, **Content** is the only Quality dimension still below ~0.75 — the universal weak spot (see the 10-O eval run). Because all models share it, it's a *prompt* problem, not a model one. Draft `analysis@v4` that pushes for fuller capture of the discussion's substance (not headline-only), measure v3-vs-v4 with the harness, keep the winner.
+
+**Commands in scope:** none · **Events in scope:** none
+
+### Scope
+- Add `PromptCatalog.V4` (`analysis@v4`) — same structured output, instructions emphasising depth/coverage of discussion + an explicit "deep vs shallow note" contrast; preserve the minimal-tags behaviour tuned earlier.
+- Compare via the harness: `Prompts = [V3, V4]`, `EVAL_PRESET=frontier`, read `report.md` — target the **Content** column rising **without** regressing Tags / Actions / Decisions.
+- If V4 wins, ship it (the 10-O switch, now to V4) and record the decision via the `eval-writeup` skill in `docs/eval-runs/`. Otherwise iterate.
+
+- [ ] V4 mean Content beats V3 across the frontier models, no regression elsewhere
+- [ ] Decision recorded in `docs/eval-runs/`
+
+**Depends on:** 10-G, 10-O.
 
 ---
 
