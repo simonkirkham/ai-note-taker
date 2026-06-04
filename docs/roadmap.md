@@ -276,6 +276,6 @@ Possible user-facing features not yet committed to a numbered phase. When one is
 
 ### Technical Improvements
 
-Technical, infrastructure, and developer-experience items to address in the future (refactors, upgrades, CI/CD, hardening). Currently: upgrade GitHub Actions to Node.js 24, investigate whether `cdk synth` needs AWS credentials in `validate.yml`, add `cdk synth` to the pre-commit hook, make the pre-commit eslint step conditional, split the single API Lambda into CQRS write/read Lambdas with async projectors ([ADR 0009](adr/0009-split-lambdas-cqrs-async-projectors.md)), and break the monolithic 2,800-line `web/src/App.css` into a proper CSS architecture (tokens + per-feature files or CSS Modules).
+Technical, infrastructure, and developer-experience items to address in the future (refactors, upgrades, CI/CD, hardening). Currently: investigate whether `cdk synth` needs AWS credentials in `validate.yml`, add `cdk synth` to the pre-commit hook, make the pre-commit eslint step conditional, split the single API Lambda into CQRS write/read Lambdas with async projectors ([ADR 0009](adr/0009-split-lambdas-cqrs-async-projectors.md)), and break the monolithic 2,800-line `web/src/App.css` into a proper CSS architecture (tokens + per-feature files or CSS Modules).
 
 → [docs/technical-improvements.md](technical-improvements.md)
