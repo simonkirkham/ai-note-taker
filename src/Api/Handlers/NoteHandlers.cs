@@ -65,10 +65,11 @@ public static class NoteHandlers
         return Results.NoContent();
     }
 
-    public static async Task<IResult> GetNote(Guid noteId, INoteDetailStore noteDetailStore, ICurrentUser currentUser)
+    public static async Task<IResult> GetNote(Guid noteId, INoteDetailStore noteDetailStore, ICalendarLinkIndexStore calendarLinkStore, ICurrentUser currentUser)
     {
         var detail = await noteDetailStore.GetAsync(new NoteId(noteId));
         if (detail is null || detail.UserId != currentUser.UserId) return Results.NotFound();
+        var calendarLink = await calendarLinkStore.GetByNoteIdAsync(noteId.ToString());
         return Results.Ok(new
         {
             noteId = detail.NoteId.Value,
@@ -83,7 +84,9 @@ public static class NoteHandlers
             discussionPoints = detail.DiscussionPoints ?? [],
             decisions = detail.Decisions ?? [],
             summaryModelId = detail.SummaryModelId,
-            summaryPromptVersion = detail.SummaryPromptVersion
+            summaryPromptVersion = detail.SummaryPromptVersion,
+            recurringSeriesId = calendarLink?.RecurringSeriesId,
+            isRecurring = calendarLink?.RecurringSeriesId is not null
         });
     }
 

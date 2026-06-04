@@ -135,6 +135,47 @@ public sealed class CalendarLinkIntegrationTests : IClassFixture<ApiFactory>
         Assert.Equal(JsonValueKind.Null, meeting.GetProperty("linkedNoteId").ValueKind);
     }
 
+    [Fact]
+    public async Task GetNote_RecurringLinkedNote_ExposesSeriesLink()
+    {
+        var noteId = await CreateNoteAsync();
+        await LinkNoteAsync(noteId, "evt_recurring", recurringSeriesId: "series_42", isRecurring: true);
+
+        var resp = await _client.GetAsync($"/notes/{noteId}");
+
+        resp.EnsureSuccessStatusCode();
+        var body = await resp.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("series_42", body.GetProperty("recurringSeriesId").GetString());
+        Assert.True(body.GetProperty("isRecurring").GetBoolean());
+    }
+
+    [Fact]
+    public async Task GetNote_NonRecurringLinkedNote_HasNoSeriesLink()
+    {
+        var noteId = await CreateNoteAsync();
+        await LinkNoteAsync(noteId, "evt_one_off");
+
+        var resp = await _client.GetAsync($"/notes/{noteId}");
+
+        resp.EnsureSuccessStatusCode();
+        var body = await resp.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal(JsonValueKind.Null, body.GetProperty("recurringSeriesId").ValueKind);
+        Assert.False(body.GetProperty("isRecurring").GetBoolean());
+    }
+
+    [Fact]
+    public async Task GetNote_PlainNote_HasNoSeriesLink()
+    {
+        var noteId = await CreateNoteAsync();
+
+        var resp = await _client.GetAsync($"/notes/{noteId}");
+
+        resp.EnsureSuccessStatusCode();
+        var body = await resp.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal(JsonValueKind.Null, body.GetProperty("recurringSeriesId").ValueKind);
+        Assert.False(body.GetProperty("isRecurring").GetBoolean());
+    }
+
     private async Task<Guid> CreateNoteAsync()
     {
         var resp = await _client.PostAsync("/notes", null);
@@ -143,7 +184,7 @@ public sealed class CalendarLinkIntegrationTests : IClassFixture<ApiFactory>
         return Guid.Parse(body.GetProperty("noteId").GetString()!);
     }
 
-    private async Task LinkNoteAsync(Guid noteId, string calendarEventId)
+    private async Task LinkNoteAsync(Guid noteId, string calendarEventId, string? recurringSeriesId = null, bool isRecurring = false)
     {
         var resp = await _client.PostAsJsonAsync($"/notes/{noteId}/calendar-link", new
         {
@@ -151,8 +192,8 @@ public sealed class CalendarLinkIntegrationTests : IClassFixture<ApiFactory>
             calendarEventTitle = "Test Meeting",
             startTime = "2026-05-14T09:00:00Z",
             endTime = "2026-05-14T09:30:00Z",
-            isRecurring = false,
-            recurringSeriesId = (string?)null
+            isRecurring,
+            recurringSeriesId
         });
         resp.EnsureSuccessStatusCode();
     }

@@ -17,6 +17,32 @@ public sealed class DynamoDbCalendarLinkIndexStore(IAmazonDynamoDB dynamo, strin
         return response.IsItemSet ? MapItem(response.Item) : null;
     }
 
+    public async Task<CalendarLinkView?> GetByNoteIdAsync(string noteId, CancellationToken ct = default)
+    {
+        Dictionary<string, AttributeValue>? lastKey = null;
+        do
+        {
+            var scan = await dynamo.ScanAsync(new ScanRequest
+            {
+                TableName = tableName,
+                FilterExpression = "NoteId = :noteId",
+                ExpressionAttributeValues = new Dictionary<string, AttributeValue>
+                {
+                    [":noteId"] = new() { S = noteId }
+                },
+                ExclusiveStartKey = lastKey
+            }, ct).ConfigureAwait(false);
+
+            if (scan.Items.Count > 0)
+                return MapItem(scan.Items[0]);
+
+            lastKey = scan.LastEvaluatedKey?.Count > 0 ? scan.LastEvaluatedKey : null;
+        }
+        while (lastKey is not null);
+
+        return null;
+    }
+
     public async Task<IReadOnlyList<CalendarLinkView>> GetByRecurringSeriesIdAsync(string seriesId, CancellationToken ct = default)
     {
         var response = await dynamo.QueryAsync(new QueryRequest

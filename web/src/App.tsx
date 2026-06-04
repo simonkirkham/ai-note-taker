@@ -230,6 +230,7 @@ function AppContent({ signOut }: { signOut: () => void }) {
         onBack={() => { setView(backDestination()); getNoteCards().then(setCards).catch(() => {}); }}
         onDelete={handleDelete}
         onDateSet={handleDateSet}
+        onOpenNote={(noteId, title, isNew?) => setView({ kind: "note", noteId, isNew, ...(title ? { initialTitle: title } : {}) })}
         isNew={view.isNew}
       />
     ) : (

@@ -1,6 +1,6 @@
 import clsx from "clsx";
 import { useEffect, useRef, useState } from "react";
-import { analyseNote, editContent, getNoteDetail, getTags, setNoteDate, tagNote, untagNote, type TagIndexEntry } from "../api";
+import { analyseNote, createNoteFromNextOccurrence, editContent, getNoteDetail, getTags, setNoteDate, tagNote, untagNote, type TagIndexEntry } from "../api";
 import type { TranscriptionStatus } from "../hooks/useTranscription";
 import ActionsSection from "./ActionsSection";
 import FinalNotesView from "./FinalNotesView";
@@ -10,6 +10,7 @@ import styles from "./NoteView.module.css";
 import RecordControl from "./RecordControl";
 import ShortcutsPanel from "./ShortcutsPanel";
 import TagsSection from "./TagsSection";
+import { useToast } from "./ToastProvider";
 import TranscriptTab from "./TranscriptTab";
 
 type NoteTab = "quick" | "transcript" | "final";
@@ -27,6 +28,7 @@ export default function NoteView({
   onBack,
   onDelete,
   onDateSet,
+  onOpenNote,
   isNew,
 }: {
   noteId: string;
@@ -35,6 +37,7 @@ export default function NoteView({
   onBack: () => void;
   onDelete: (noteId: string) => Promise<void>;
   onDateSet: (noteId: string, date: string) => void;
+  onOpenNote: (noteId: string, title?: string, isNew?: boolean) => void;
   isNew?: boolean;
 }) {
   const [title, setTitle] = useState(initialTitle);
@@ -54,6 +57,10 @@ export default function NoteView({
   const [activeTab, setActiveTab] = useState<NoteTab>("quick");
   const [liveTranscript, setLiveTranscript] = useState<string | null>(null);
   const [recordingStatus, setRecordingStatus] = useState<TranscriptionStatus>("idle");
+  const [recurringSeriesId, setRecurringSeriesId] = useState<string | null>(null);
+  const [openingNext, setOpeningNext] = useState(false);
+  const [noNextOccurrence, setNoNextOccurrence] = useState(false);
+  const { showError } = useToast();
   const inputRef = useRef<HTMLInputElement>(null);
   const tagsModifiedRef = useRef(false);
   const contentModifiedRef = useRef(false);
@@ -89,6 +96,7 @@ export default function NoteView({
           setDiscussionPoints(detail.discussionPoints ?? []);
           setDecisions(detail.decisions ?? []);
           setSummaryModelId(detail.summaryModelId ?? null);
+          setRecurringSeriesId(detail.recurringSeriesId ?? null);
           setLoadingDetail(false);
         }
       })
@@ -130,6 +138,24 @@ export default function NoteView({
       await analyseNote(noteId);
     } finally {
       await refreshNote();
+    }
+  }
+
+  async function handleOpenNextOccurrence() {
+    if (!recurringSeriesId || openingNext) return;
+    setOpeningNext(true);
+    setNoNextOccurrence(false);
+    try {
+      const result = await createNoteFromNextOccurrence(recurringSeriesId);
+      onOpenNote(result.noteId, title, true);
+    } catch (err) {
+      if (err instanceof Error && err.message === "no_future_occurrences") {
+        setNoNextOccurrence(true);
+      } else {
+        showError("Couldn't open the next occurrence. Please try again.");
+      }
+    } finally {
+      setOpeningNext(false);
     }
   }
 
@@ -194,6 +220,28 @@ export default function NoteView({
           )}
         </div>
         <div className={styles.noteHeaderRight}>
+          {recurringSeriesId && (
+            <div className={styles.nextOccurrence}>
+              <button
+                type="button"
+                data-testid="next-occurrence-button"
+                onClick={handleOpenNextOccurrence}
+                disabled={openingNext}
+                className={styles.nextOccurrenceButton}
+              >
+                Next occurrence →
+              </button>
+              {noNextOccurrence && (
+                <span
+                  data-testid="no-next-occurrence"
+                  role="status"
+                  className={styles.noNextOccurrence}
+                >
+                  No upcoming occurrences
+                </span>
+              )}
+            </div>
+          )}
           <div className={styles.noteDateWrapper}>
             <input
               type="date"
