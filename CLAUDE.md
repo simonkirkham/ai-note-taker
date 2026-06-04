@@ -121,6 +121,7 @@ Reach for these instead of writing patterns from scratch:
 - **token-log** — record agent token counts per slice, append to `docs/token-log.md`, flag spikes for process-improvements; see [`.claude/skills/token-log/SKILL.md`](.claude/skills/token-log/SKILL.md)
 - **observability** — add structured logs, X-Ray traces, EMF metrics, CloudWatch dashboards, and alarms; use when instrumenting a new slice, debugging in production, or setting up observability from scratch; see [`.claude/skills/observability/SKILL.md`](.claude/skills/observability/SKILL.md). For *operating* the deployed app — "where do I see errors / latency / a single request / a frontend crash" — see the runbook [`docs/observability.md`](docs/observability.md).
 - **observability-brief** — Scout skill; run after GWT scenarios are drafted to identify silent failure modes per slice and produce the Observability section in the phase doc; see [`.claude/skills/observability-brief/SKILL.md`](.claude/skills/observability-brief/SKILL.md)
+- **eval-writeup** — turn an analysis-eval run (`Results/*.jsonl` + `report.md`) into a decision report under `docs/eval-runs/` — column glossary, model ranking + which to keep, prompt comparison + what to try next; run after `make eval`; see [`.claude/skills/eval-writeup/SKILL.md`](.claude/skills/eval-writeup/SKILL.md)
 
 ## Worktrees
 
