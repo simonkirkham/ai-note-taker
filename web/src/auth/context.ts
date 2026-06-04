@@ -1,3 +1,5 @@
+// Named context.ts, not authContext.ts: /mnt/c is case-insensitive, so authContext.ts
+// would collide with the sibling AuthContext.tsx. Don't "fix" the name.
 import { createContext, useContext } from 'react'
 
 export interface AuthState {
