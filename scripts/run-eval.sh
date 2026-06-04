@@ -27,9 +27,29 @@ export EVAL_REQUEST_DELAY_MS="${EVAL_REQUEST_DELAY_MS:-1500}"
 
 # Named presets so you don't have to paste a long EVAL_MODEL_IDS string (pasting
 # long lines into a terminal can inject newlines mid-id and break them).
+#   EVAL_PRESET=keep      → the live "keep" set read straight from docs/eval-runs/test-matrix.md.
+#                           This is the DRIVER: edit the matrix's keep rows and the sweep follows —
+#                           the documented decision and the actual run can't drift apart.
 #   EVAL_PRESET=core      → reliable cross-vendor set (Amazon + Meta + Mistral), no access grants needed.
 #   EVAL_PRESET=frontier  → strong model per vendor, INCLUDING Anthropic (needs Claude access granted).
+MATRIX_FILE="${EVAL_MATRIX_FILE:-docs/eval-runs/test-matrix.md}"
 case "${EVAL_PRESET:-}" in
+  keep)
+    if [ ! -f "${MATRIX_FILE}" ]; then
+      echo "Preset 'keep': test matrix not found at ${MATRIX_FILE}" >&2
+      exit 1
+    fi
+    # Pull the model id from every row whose status cell is '**keep**'. Model ids are the
+    # only provider.model-shaped token on those rows (note text like '0.80' starts with a
+    # digit and is excluded), so we avoid matching backticks — a literal backtick inside
+    # this $(...) would otherwise start a nested command substitution.
+    EVAL_MODEL_IDS=$(grep -F '**keep**' "${MATRIX_FILE}" | grep -oE '[a-z][a-z0-9-]*\.[a-z0-9.:-]+' | paste -sd, -)
+    if [ -z "${EVAL_MODEL_IDS}" ]; then
+      echo "Preset 'keep': no '**keep**' model rows found in ${MATRIX_FILE}" >&2
+      exit 1
+    fi
+    echo "Preset 'keep' (from ${MATRIX_FILE}): ${EVAL_MODEL_IDS}"
+    ;;
   core)
     EVAL_MODEL_IDS="amazon.nova-micro-v1:0,amazon.nova-lite-v1:0,amazon.nova-pro-v1:0,meta.llama3-70b-instruct-v1:0,meta.llama3-8b-instruct-v1:0,mistral.mistral-large-2402-v1:0,mistral.mixtral-8x7b-instruct-v0:1"
     echo "Preset 'core': ${EVAL_MODEL_IDS}"
@@ -42,7 +62,7 @@ case "${EVAL_PRESET:-}" in
     echo "Preset 'frontier': ${EVAL_MODEL_IDS}"
     ;;
   "") ;;  # no preset
-  *) echo "Unknown EVAL_PRESET='${EVAL_PRESET}' (known: core, frontier) — ignoring" ;;
+  *) echo "Unknown EVAL_PRESET='${EVAL_PRESET}' (known: keep, core, frontier) — ignoring" ;;
 esac
 
 # 1. Discover models unless the caller pinned EVAL_MODEL_IDS.
