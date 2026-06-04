@@ -134,6 +134,15 @@ public sealed class NoteTakerStack : Stack
             RemovalPolicy = RemovalPolicy.DESTROY
         });
 
+        // Production Bedrock model for transcript analysis. Single source of truth:
+        // drives both the Lambda's BEDROCK_MODEL_ID env var and the InvokeModel IAM
+        // scope below. To switch the prod model after an eval run, change the default
+        // literal here and deploy (the decision is recorded in docs/eval-runs/). An
+        // optional BEDROCK_MODEL_ID override is still honoured if ever set.
+        var bedrockModelId = string.IsNullOrEmpty(props.BedrockModelId)
+            ? "amazon.nova-lite-v1:0"
+            : props.BedrockModelId;
+
         var apiFunction = new Amazon.CDK.AWS.Lambda.Function(this, "ApiFunction", new Amazon.CDK.AWS.Lambda.FunctionProps
         {
             Runtime = Amazon.CDK.AWS.Lambda.Runtime.DOTNET_10,
@@ -171,9 +180,7 @@ public sealed class NoteTakerStack : Stack
                 ["ALLOWED_USER_SUBS"] = props.AllowedUserSubs ?? "",
                 ["GOOGLE_REFRESH_TOKEN_SSM_PATH"] = props.GoogleRefreshTokenSsmPath ?? "",
                 ["PROJ_CALENDARLINKINDEX_TABLE_NAME"] = calendarLinkIndexTable.TableName,
-                ["BEDROCK_MODEL_ID"] = string.IsNullOrEmpty(props.BedrockModelId)
-                    ? "amazon.nova-lite-v1:0"
-                    : props.BedrockModelId
+                ["BEDROCK_MODEL_ID"] = bedrockModelId
             }
         });
 
@@ -214,10 +221,6 @@ public sealed class NoteTakerStack : Stack
             Resources = new[] { transcribeRole.RoleArn }
         }));
         apiFunction.AddEnvironment("TRANSCRIBE_ROLE_ARN", transcribeRole.RoleArn);
-
-        var bedrockModelId = string.IsNullOrEmpty(props.BedrockModelId)
-            ? "amazon.nova-lite-v1:0"
-            : props.BedrockModelId;
 
         // Cross-region inference profiles (eu./us./ap. prefix) require two IAM ARNs:
         //   - inference-profile: includes account ID, scoped to the deployment region

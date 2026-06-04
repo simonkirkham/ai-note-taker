@@ -1409,3 +1409,19 @@ If no agent ran unexpectedly high: write `None — slice ran within expected ran
 | **Total**                                                  | **~239 000** |
 
 **Notes:** no spike. Hawk (~83k) was the largest single agent — proportionate for an end-to-end slice the reviewer had to trace across the calendar client window math, the route/guard contract, and the frontend reminder-decoupling timing; it approved first pass with only cosmetic nits. One self-inflicted cost worth shaving: `eslint` was run only at the end of Refactor and caught a `set-state-in-effect` error that `tsc`/`vitest` had passed — running lint earlier in Refactor would have caught it before the restructure. Folded into a CLAUDE.md frontend guardrail.
+
+## MPI-2 / 10-P — Ship analysis@v5 (grounding-dominant depth + restored tags)
+
+> Not a standard pipeline slice — an `/eval-run` that authored `analysis@v5`, swept V3/V4/V5 (`run-551897`, keep-set) + a 5-fixture real-transcript confirmation, then shipped V5 to prod via PR #166. Eval sweeps ran in the background; the cost below is orchestration, report writing, a git-collision recovery, and Scribe.
+
+| Agent / phase                                              | ~Tokens  |
+|------------------------------------------------------------|----------|
+| Eval setup (read catalog/harness, author V5 + test, wire sweep) | 30 000 |
+| Sweep monitoring + decision report (incl. reading outputs.md to clear the fabrication question) | 60 000 |
+| Real-transcript extract + run + report addendum            | 18 000   |
+| PR open + **git-collision recovery** (concurrent commit landed eval work on main; reset + preserve-branch + selective discard) | 55 000 |
+| Hawk (code-reviewer subagent)                              | 52 000   |
+| Merge + deploy monitoring + Scribe (process-improvements + token-log) | 25 000 |
+| **Total**                                                  | **~240 000** |
+
+**Notes:** one self-inflicted spike — the **git-collision recovery (~55k)**. Staging eval files on the shared `main` checkout raced a concurrent user commit, which grabbed the staged index and landed the work on `main` with the wrong message; untangling needed a `--mixed` reset + preserve-branch + selective `checkout`/`rm`. Avoidable by doing the PR in a dedicated worktree (folded into the [[feedback_main_staged_index]] memory + the learnings doc). Hawk (~52k) approved first pass. The eval sweeps themselves were background Bedrock cost, not agent tokens.
