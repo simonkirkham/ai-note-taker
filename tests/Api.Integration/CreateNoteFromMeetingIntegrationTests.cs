@@ -79,7 +79,7 @@ public sealed class CreateNoteFromMeetingIntegrationTests : IClassFixture<ApiFac
             new CalendarEvent("evt_9d_linked", "Design Review", DateTimeOffset.UtcNow, DateTimeOffset.UtcNow.AddMinutes(60), false, null)
         });
 
-        var todayResp = await _client.GetAsync("/calendar/today?tz=UTC");
+        var todayResp = await _client.GetAsync($"/calendar/{DateOnly.FromDateTime(DateTime.UtcNow):yyyy-MM-dd}?tz=UTC");
         todayResp.EnsureSuccessStatusCode();
         var body = await todayResp.Content.ReadFromJsonAsync<JsonElement>();
         var meeting = body.GetProperty("meetings")[0];
@@ -108,8 +108,8 @@ public sealed class CreateNoteFromMeetingIntegrationTests : IClassFixture<ApiFac
             new CalendarEvent("evt_9d_leak", "Shared Meeting", DateTimeOffset.UtcNow, DateTimeOffset.UtcNow.AddMinutes(30), false, null)
         });
 
-        // User B's /calendar/today must show linkedNoteId: null (not User A's note)
-        var resp = await _otherClient.GetAsync("/calendar/today?tz=UTC");
+        // User B's /calendar/{date} must show linkedNoteId: null (not User A's note)
+        var resp = await _otherClient.GetAsync($"/calendar/{DateOnly.FromDateTime(DateTime.UtcNow):yyyy-MM-dd}?tz=UTC");
         resp.EnsureSuccessStatusCode();
         var body = await resp.Content.ReadFromJsonAsync<JsonElement>();
         var meeting = body.GetProperty("meetings")[0];

@@ -31,14 +31,19 @@ public sealed class GoogleCalendarClient : IGoogleCalendarClient
         _clientSecret = Environment.GetEnvironmentVariable("GOOGLE_CLIENT_SECRET") ?? "";
     }
 
-    public Task<IReadOnlyList<CalendarEvent>?> GetTodaysEventsAsync(string ianaTimezone) =>
-        ExecuteWithRetryAsync<IReadOnlyList<CalendarEvent>>("GetTodaysEvents", async service =>
+    public Task<IReadOnlyList<CalendarEvent>?> GetEventsForDayAsync(DateOnly date, string ianaTimezone) =>
+        ExecuteWithRetryAsync<IReadOnlyList<CalendarEvent>>($"GetEventsForDay {date:yyyy-MM-dd}", async service =>
         {
             var tz = TimeZoneInfo.FindSystemTimeZoneById(ianaTimezone);
-            var nowUtc = DateTimeOffset.UtcNow;
-            var todayLocal = TimeZoneInfo.ConvertTime(nowUtc, tz).Date; // DateTime (midnight local)
-            var startOfDay = new DateTimeOffset(todayLocal, tz.GetUtcOffset(todayLocal));
+            var dayLocal = date.ToDateTime(TimeOnly.MinValue); // DateTime (midnight local on the requested day)
+            var utcOffset = tz.GetUtcOffset(dayLocal);
+            var startOfDay = new DateTimeOffset(dayLocal, utcOffset);
             var endOfDay = startOfDay.AddDays(1);
+
+            // Log the resolved local-day window so an off-by-one-day boundary bug is diagnosable.
+            _logger.LogInformation(
+                "Fetching calendar events for {Date} in {Timezone}: window {Start:o}–{End:o}",
+                date, ianaTimezone, startOfDay, endOfDay);
 
             var request = service.Events.List("primary");
             request.TimeMinDateTimeOffset = startOfDay;
@@ -46,7 +51,6 @@ public sealed class GoogleCalendarClient : IGoogleCalendarClient
             request.SingleEvents = true;
 
             var events = await request.ExecuteAsync();
-            var utcOffset = tz.GetUtcOffset(todayLocal);
 
             return (events.Items ?? [])
                 .Where(e => e.Status != "cancelled")

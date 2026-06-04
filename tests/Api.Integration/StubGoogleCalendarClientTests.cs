@@ -13,15 +13,30 @@ public class StubGoogleCalendarClientTests
     }
 
     [Fact]
-    public async Task GetTodaysEventsAsync_ReturnsAllEvents_RegardlessOfDate()
+    public async Task GetEventsForDayAsync_ReturnsOnlyEventsOnTheRequestedDay()
     {
-        var json = """[{"calendarEventId":"e1","title":"Past","startTime":"2020-01-01T09:00:00Z","endTime":"2020-01-01T09:30:00Z","isRecurring":false},{"calendarEventId":"e2","title":"Future","startTime":"2030-01-01T09:00:00Z","endTime":"2030-01-01T09:30:00Z","isRecurring":false}]""";
+        var json = """[{"calendarEventId":"e1","title":"Day one","startTime":"2026-01-01T09:00:00Z","endTime":"2026-01-01T09:30:00Z","isRecurring":false},{"calendarEventId":"e2","title":"Day two","startTime":"2026-01-02T09:00:00Z","endTime":"2026-01-02T09:30:00Z","isRecurring":false}]""";
         var client = Build(json);
 
-        var result = await client.GetTodaysEventsAsync("America/New_York");
+        var result = await client.GetEventsForDayAsync(new DateOnly(2026, 1, 2), "UTC");
 
         Assert.NotNull(result);
-        Assert.Equal(2, result!.Count);
+        Assert.Single(result!);
+        Assert.Equal("e2", result![0].CalendarEventId);
+    }
+
+    [Fact]
+    public async Task GetEventsForDayAsync_ResolvesTheDayInTheCallersTimezone()
+    {
+        // 2026-01-02T02:00Z is still 2026-01-01 (21:00) in New York.
+        var json = """[{"calendarEventId":"e1","title":"Late","startTime":"2026-01-02T02:00:00Z","endTime":"2026-01-02T02:30:00Z","isRecurring":false}]""";
+        var client = Build(json);
+
+        var result = await client.GetEventsForDayAsync(new DateOnly(2026, 1, 1), "America/New_York");
+
+        Assert.NotNull(result);
+        Assert.Single(result!);
+        Assert.Equal("e1", result![0].CalendarEventId);
     }
 
     [Fact]
@@ -62,11 +77,11 @@ public class StubGoogleCalendarClientTests
     }
 
     [Fact]
-    public async Task GetTodaysEventsAsync_ReturnsEmpty_WhenJsonIsMalformed()
+    public async Task GetEventsForDayAsync_ReturnsEmpty_WhenJsonIsMalformed()
     {
         var client = Build("not valid json");
 
-        var result = await client.GetTodaysEventsAsync("UTC");
+        var result = await client.GetEventsForDayAsync(new DateOnly(2026, 1, 1), "UTC");
 
         Assert.NotNull(result);
         Assert.Empty(result!);

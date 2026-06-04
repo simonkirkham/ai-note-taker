@@ -2,7 +2,7 @@ namespace Api.Services;
 
 public interface IGoogleCalendarClient
 {
-    Task<IReadOnlyList<CalendarEvent>?> GetTodaysEventsAsync(string ianaTimezone);
+    Task<IReadOnlyList<CalendarEvent>?> GetEventsForDayAsync(DateOnly date, string ianaTimezone);
     Task<CalendarEvent?> GetNextOccurrenceAsync(string recurringSeriesId, DateTimeOffset after);
 }
 

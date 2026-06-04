@@ -102,7 +102,7 @@ public sealed class CalendarLinkIntegrationTests : IClassFixture<ApiFactory>
             new CalendarEvent("evt_unlinked", "Unlinked Meeting", DateTimeOffset.UtcNow.AddHours(1), DateTimeOffset.UtcNow.AddHours(2), false, null)
         });
 
-        var resp = await _client.GetAsync("/calendar/today?tz=UTC");
+        var resp = await _client.GetAsync($"/calendar/{DateOnly.FromDateTime(DateTime.UtcNow):yyyy-MM-dd}?tz=UTC");
 
         resp.EnsureSuccessStatusCode();
         var body = await resp.Content.ReadFromJsonAsync<JsonElement>();
@@ -128,7 +128,7 @@ public sealed class CalendarLinkIntegrationTests : IClassFixture<ApiFactory>
             new CalendarEvent("evt_to_delete", "Will Be Gone", DateTimeOffset.UtcNow, DateTimeOffset.UtcNow.AddMinutes(30), false, null)
         });
 
-        var resp = await _client.GetAsync("/calendar/today?tz=UTC");
+        var resp = await _client.GetAsync($"/calendar/{DateOnly.FromDateTime(DateTime.UtcNow):yyyy-MM-dd}?tz=UTC");
         var body = await resp.Content.ReadFromJsonAsync<JsonElement>();
         var meeting = body.GetProperty("meetings")[0];
 

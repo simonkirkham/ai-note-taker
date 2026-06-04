@@ -130,7 +130,7 @@ public sealed class RecurringNextOccurrenceTests : IClassFixture<ApiFactory>
         var createdNoteId = (await createResp.Content.ReadFromJsonAsync<JsonElement>())
             .GetProperty("noteId").GetString()!;
 
-        var resp = await _client.GetAsync("/calendar/today?tz=UTC");
+        var resp = await _client.GetAsync($"/calendar/{DateOnly.FromDateTime(DateTime.UtcNow):yyyy-MM-dd}?tz=UTC");
         resp.EnsureSuccessStatusCode();
         var body = await resp.Content.ReadFromJsonAsync<JsonElement>();
         var meeting = body.GetProperty("meetings")[0];
@@ -151,7 +151,7 @@ public sealed class RecurringNextOccurrenceTests : IClassFixture<ApiFactory>
             "series4");
         _fakeCalendar.SetEvents(new[] { todayEvent });
 
-        var resp = await _client.GetAsync("/calendar/today?tz=UTC");
+        var resp = await _client.GetAsync($"/calendar/{DateOnly.FromDateTime(DateTime.UtcNow):yyyy-MM-dd}?tz=UTC");
         resp.EnsureSuccessStatusCode();
         var body = await resp.Content.ReadFromJsonAsync<JsonElement>();
         var meeting = body.GetProperty("meetings")[0];
