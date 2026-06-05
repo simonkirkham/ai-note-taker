@@ -4,9 +4,9 @@ This file is read by coding agents at the start of every session. Keep it lean.
 
 ## What this project is
 
-A meeting-focused note taking app, built as a **learning vehicle** for event sourcing, .NET on AWS serverless, and agentic dev workflows. Optimise for learning surface area, not shipping velocity.
+A meeting-focused note taking app, now being **productionised** for long-term supportability — maintainable architecture, code-quality standards, performance, resilience, and operability. It began as a learning vehicle (event sourcing, .NET on AWS serverless, agentic dev workflows); that history explains existing choices but no longer drives new ones. Continued learning is now a secondary goal.
 
-See [docs/goals.md](docs/goals.md) for the learning goals.
+See [docs/goals.md](docs/goals.md) for the goals.
 
 ## Writing style
 
