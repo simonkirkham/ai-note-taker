@@ -253,7 +253,7 @@ Slices and acceptance criteria: [docs/phases/phase-16.md](phases/phase-16.md)
 
 Slices and acceptance criteria: [docs/phases/phase-17.md](phases/phase-17.md)
 
-## Phase 18 — Crash-safe transcription: draft autosave & recovery _(In Progress)_
+## Phase 18 — Crash-safe transcription: draft autosave & recovery _(Done)_
 
 A live transcript is persisted only at terminal points (Stop / natural end), so a crash, tab close, or navigation mid-call loses everything captured so far. A shipped stopgap added an unmount flush plus a 15s autosave, but that autosave re-POSTs `TranscriptionCompleted` every ~15s — bloating a snapshot-less event log that replays the full stream on every command ([ADR 0011](adr/0011-transcription-checkpoints-draft-store.md)). This phase implements the correct design: interim checkpoints go to an **overwrite-in-place draft store** (not the event log); the log records exactly **one `TranscriptionCompleted` per recording** on a clean stop; and an interrupted recording is **recoverable** via a Recover / Discard banner on reopen. **18-A** adds the DynamoDB draft store, the no-event `PUT`/`DELETE .../transcription/draft` endpoints, draft deletion on commit, and a read-time `transcriptDraft` on `GET /notes/{id}`. **18-B** retargets the frontend autosave from the event to the draft, keeps clean exits committing once, and adds the recovery banner (folding in the stopgap's leave-warning + recording-counts-as-content fixes). 18-B depends on 18-A. Builds on Phase 10.
 

@@ -1474,7 +1474,7 @@ If no agent ran unexpectedly high: write `None — slice ran within expected ran
 
 **Notes:** higher than a typical two-slice phase, for two structural reasons, neither a code spike. (1) **The Scout docs landed via their own PR mid-pipeline.** The phase doc was drafted as loose edits in the shared primary checkout while it sat on a user WIP branch; tidying that into a dedicated docs PR (#174) + a roadmap-reformat round added ~2 extra PR cycles. Pre-empt next time: land Scout docs on main **before** `/run-pipeline` (logged in `_minor-log`). (2) **One long single session, not three.** Driving Scout + 17-A + 17-B + Scribe in one orchestrator context (rather than separate sessions) carries the full transcript through every step — the per-slice Hawk subagents (~50k/~45k) were proportionate and both approved first pass with zero blocking findings, so no re-review rounds were spent. The `node24`-vs-CI-`node20` `package-lock` revert guardrail fired correctly twice and saved two `npm ci` CI failures.
 
-## Phase 18 — Crash-safe transcription: draft autosave & recovery (18-A only; 18-B pending)
+## Phase 18 — Crash-safe transcription: draft autosave & recovery (18-A + 18-B)
 
 > One long orchestrator session covering the ADR + Scout plan + 18-A end-to-end. Estimates except the Hawk subagent count (from its hand-off summary).
 
@@ -1487,7 +1487,19 @@ If no agent ran unexpectedly high: write `None — slice ran within expected ran
 | Gate/CI/deploy monitoring + worktree mgmt + Scribe | 45 000 |
 | **18-A subtotal**                                                  | **~315 000** |
 
-**Notes:** inflated by two non-code one-offs, both logged: (1) the **data-loss scare** — a concurrent session merged `origin/main` into the shared primary checkout mid-operation, cleaning loose duplicate edits (BUG-11 / Phase-17 WIP) that turned out to be safely committed in sibling worktrees; ~45k went to proving nothing was lost (worktree/reflog/fsck forensics). Pre-empt: never leave Scout/stopgap work as loose edits in the shared checkout — park to a branch immediately (done here via `wip/phase-18-…`). (2) **docs-to-main before pipeline** raced two concurrent merges (#174/#176), needing two rebase-and-FF-push rounds. The `node24`/`node20` `package-lock` revert guardrail fired once and saved a `npm ci` failure. 18-B (frontend) is a separate entry.
+**Notes:** inflated by two non-code one-offs, both logged: (1) the **data-loss scare** — a concurrent session merged `origin/main` into the shared primary checkout mid-operation, cleaning loose duplicate edits (BUG-11 / Phase-17 WIP) that turned out to be safely committed in sibling worktrees; ~45k went to proving nothing was lost (worktree/reflog/fsck forensics). Pre-empt: never leave Scout/stopgap work as loose edits in the shared checkout — park to a branch immediately (done here via `wip/phase-18-…`). (2) **docs-to-main before pipeline** raced two concurrent merges (#174/#176), needing two rebase-and-FF-push rounds. The `node24`/`node20` `package-lock` revert guardrail fired once and saved a `npm ci` failure.
+
+### Slice 18-B (frontend autosave + recovery)
+
+| Agent / phase | ~Tokens |
+|---|---|
+| 18-B Breaker+Pip (cherry-pick stopgap + retarget checkpoint → draft PUT + Recover/Discard banner + api fns + 2 checkpoint-test rewrites + 4 NoteView recovery tests + Stylist token fix) | 70 000 |
+| Merge-integrate the concurrent 19-A api split (`merge origin/main`, modify/delete `api.ts`, port fns to `api/` modules, repoint imports) | 25 000 |
+| 18-B Hawk (code-reviewer subagent) + 3 minor fixes (show recovered tab, surface `capturedAt`, comment) | 80 000 |
+| Gate/CI/deploy monitoring + worktree mgmt + Scribe + future-feature note | 40 000 |
+| **18-B subtotal** | **~215 000** |
+
+**Notes:** the one-off cost was the **concurrent 19-A api-split merge** landing mid-build (~25k to integrate cleanly — modify/delete on `api.ts`, two fns ported to the new modules). Hawk ran ~79k and approved first pass. **Phase 18 total ≈ 530k** across both slices.
 
 ## Phase 19 — Frontend hardening (19-A only; 19-B…19-J proposed)
 

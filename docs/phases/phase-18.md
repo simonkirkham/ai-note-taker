@@ -7,7 +7,7 @@
 | Slice | Summary | Status | Depends on |
 |-------|---------|--------|------------|
 | 18-A | **Durable checkpoints without polluting the event log.** A new DynamoDB draft store (one overwritten item per note, TTL self-clean); `PUT`/`DELETE /notes/{id}/transcription/draft` (no events); `POST /notes/{id}/transcription` also deletes the draft; `GET /notes/{id}` exposes an uncommitted draft. Documents `TranscriptionCompleted` in the event model (pre-existing gap) and the draft store as a non-event store. | Done | — |
-| 18-B | **Autosave to the draft, recover on reopen.** The checkpoint timer `PUT`s the draft instead of POSTing the event; clean Stop / intentional leave still commit (POST → event + draft delete); a **Recover / Discard banner** appears when a reopened note has an uncommitted draft. Folds in the stopgap's leave-warning + recording-counts-as-content fixes. | Not Started | 18-A |
+| 18-B | **Autosave to the draft, recover on reopen.** The checkpoint timer `PUT`s the draft instead of POSTing the event; clean Stop / intentional leave still commit (POST → event + draft delete); a **Recover / Discard banner** appears when a reopened note has an uncommitted draft. Folds in the stopgap's leave-warning + recording-counts-as-content fixes. | Done | 18-A |
 
 > **Slice order.** 18-A ships the backend draft path and the recovery *contract* (`GET` exposes `transcriptDraft`); it stands alone and is testable end to end via the API without any UI. 18-B retargets the frontend autosave from the event to the draft and adds the recovery UX, so it depends on 18-A's endpoints and `GET` shape. 18-B should **build on / cherry-pick** the stopgap branch `wip/phase-18-transcription-crash-resilience` (commit `789dd9b`) — the unmount-flush, `beforeunload` guard, leave-confirm, and recording-counts-as-content changes are reused unchanged; only the checkpoint *target* changes (PUT draft, not POST event).
 
@@ -101,7 +101,7 @@ Scenario: A blank draft is rejected
 
 ## Slice 18-B — Autosave to the draft, recover on reopen
 
-**Status:** Not Started
+**Status:** Done
 
 **User value:** While recording, the transcript is autosaved every 15s to the draft, so a crash, closed tab, or dead battery loses **at most the last ~15s**, not the whole call. Reopening a note that was left mid-recording shows a banner — **"Unsaved transcript from an interrupted recording"** with **Recover** and **Discard** — so the user decides whether to keep it. A clean Stop or pressing back saves the transcript as before and the banner never appears.
 
