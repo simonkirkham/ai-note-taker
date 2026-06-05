@@ -68,14 +68,6 @@ Each entry records what it is, why it isn't scheduled yet, and where it was rais
 
 ---
 
-## Carry on / resume a transcription
-
-**What:** Let the user resume recording on a note and **continue** the existing transcript — a second recording appends to what is already there rather than replacing it.
-
-**Why it isn't scheduled yet:** Today `TranscriptionCompleted` is a full-snapshot, latest-wins event (`_transcriptText = e.TranscriptText`), so starting a new recording overwrites the previous transcript. "Carry on" means a resumed recording seeds `finalizedRef` from the committed transcript and appends new finalised turns, then commits the concatenation. Touches the transcription hook (seed + append), the commit semantics (append vs replace — possibly a new event or a documented merge rule), and the Phase 18 draft store (the autosave buffer would seed from the existing transcript on resume). Needs Scout to break it down into a numbered phase. Builds on Phase 18 (draft store) and the diarization work.
-
-**Raised in:** User request, 2026-06-05 — "add a feature to carry on transcription".
-
 ## Desktop app to remove per-meeting audio-share consent
 
 **What:** Package the existing `web/` React app inside a desktop shell (Electron, or Tauri) so capturing call/system audio no longer requires the browser's per-meeting screen-share dialog. Today transcription captures two streams in `web/src/hooks/useTranscription.ts`: the mic via `getUserMedia({audio:true})` (whose permission can be made sticky) and call/system audio via `getDisplayMedia({audio:true, video:true})`. The second call is the friction: the W3C Screen Capture spec **mandates** a fresh user gesture + source picker on every invocation and forbids persistent screen-share permission, so for a *web origin* this nag is irreducible — no flag, origin policy, or PWA "install" changes it (a PWA is the same origin under the same rules, so it buys nothing here). A desktop shell ships its own Chromium, so it controls permission handling: Electron's `session.setDisplayMediaRequestHandler` can **auto-grant** display capture and programmatically select the source + loopback audio with no picker and no per-meeting consent — just a one-time OS-level grant per machine (trivial on Windows; a one-time "Screen Recording" toggle on macOS). Scope when broken down:
