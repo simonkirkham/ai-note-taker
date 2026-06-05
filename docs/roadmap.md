@@ -244,9 +244,12 @@ Slices and acceptance criteria: [docs/phases/phase-16.md](phases/phase-16.md)
 
 ## Phase 17 — Link an existing note to a meeting after the fact _(Not Started)_
 
-Linkage today flows one way and only at creation time: a home-screen meeting can spawn a note, but a standalone note can't be attached to a meeting later. The backend reverse path already exists and is unused by the UI — the `LinkNoteToCalendarEvent` command, `POST /notes/{noteId}/calendar-link`, and the `CalendarLinkIndex` projection. Two slices: **17-A** surfaces the link on the note — `CalendarLinkView` gains `CalendarEventTitle` + `EndTime` (both already on the event), `GetNote` returns a `linkedMeeting` object, the note shows a persistent `Linked to <title> · <date/time>` badge, and a projection rebuild backfills every existing meeting-created note (a projection-schema change plus rebuild, no event versioning, no new user action). **17-B** adds the action: an unlinked note offers a **Link to meeting** control that opens a date-navigable meeting picker (reusing Phase 16's day list); selecting a meeting links the note and the badge appears optimistically. Link-once only: no unlink/relink; the backend already rejects a second link with `409`. 17-B depends on 17-A. Builds on Phase 9 (linkage model) and Phase 16 (date-navigable meetings).
-
-**Goal:** extend and rebuild a read projection to backfill from data the event already carried; drive an existing-but-never-called command/endpoint/projection from the frontend; mirror a server-side one-shot pre-condition (`409`) with a client-side hidden action; reuse a date-navigation UI pattern inside a modal picker.
+1. **Goal:** rebuild a read projection and add the frontend UI to link an existing note to a meeting after the fact.
+2. **Backend already exists, unused by the UI:** the `LinkNoteToCalendarEvent` command, the `POST /notes/{noteId}/calendar-link` endpoint, and the `CalendarLinkIndex` projection.
+3. **17-A (read-side):** `CalendarLinkView` gains `CalendarEventTitle` + `EndTime`; `GetNote` returns a `linkedMeeting` object; a projection rebuild backfills every meeting-created note.
+4. **17-B (write-side):** an unlinked note gets a **Link to meeting** control that opens the Phase 16 date-navigable meeting picker; selecting a meeting calls the existing endpoint.
+5. **Constraints:** link-once only (the server rejects a second link with `409`); no unlink/relink; optimistic badge display.
+6. **Dependencies:** 17-B depends on 17-A; both build on Phase 9 (linkage model) and Phase 16 (date-navigable meetings).
 
 Slices and acceptance criteria: [docs/phases/phase-17.md](phases/phase-17.md)
 
