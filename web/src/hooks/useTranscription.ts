@@ -21,6 +21,11 @@ const PARTIAL_RENDER_INTERVAL_MS = 200;
 // grows while speech is actually being captured.
 export const CHECKPOINT_INTERVAL_MS = 15000;
 
+// Marks the boundary between recording sessions in a continued (resumed)
+// transcript (Phase 18-C). Speaker labels reset per session, so this is the
+// honest visual cue that "Speaker 1" below may be a different person.
+const RESUME_SEPARATOR = '— resumed —';
+
 const WORKLET_CODE = `
 class PcmProcessor extends AudioWorkletProcessor {
   process(inputs) {
@@ -156,7 +161,7 @@ export function useTranscription(noteId: string): UseTranscriptionResult {
 
   const startRecording = useCallback((includeCallAudio: boolean, resumeFrom?: string) => {
     stoppedRef.current = false;
-    const resumePrefix = resumeFrom ? `${resumeFrom}\n— resumed —\n` : '';
+    const resumePrefix = resumeFrom ? `${resumeFrom}\n${RESUME_SEPARATOR}\n` : '';
     resumePrefixRef.current = resumePrefix;
     finalizedRef.current = resumePrefix;
     lastPartialAtRef.current = 0;

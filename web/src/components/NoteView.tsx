@@ -464,7 +464,7 @@ export default function NoteView({
                 noteId={noteId}
                 noteHasContent={content.trim().length > 0}
                 hasInitialTranscript={transcriptText !== null}
-                initialTranscript={transcriptText}
+                initialTranscript={displayedTranscript}
                 onTranscriptChange={setLiveTranscript}
                 onStatusChange={setRecordingStatus}
                 onAnalysisComplete={refreshNote}

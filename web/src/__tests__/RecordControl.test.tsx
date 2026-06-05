@@ -569,6 +569,7 @@ it('Re-record starts fresh and replaces (no prior text)', async () => {
 
   emitTranscriptResult('new words')
   await waitFor(() => expect(onTranscriptChange).toHaveBeenCalledWith('Speaker 1: new words'))
-  // The prior transcript must not appear — Re-record replaces.
+  // The prior transcript and the resume separator must not appear — Re-record replaces.
   expect(onTranscriptChange).not.toHaveBeenCalledWith(expect.stringContaining('prior'))
+  expect(onTranscriptChange).not.toHaveBeenCalledWith(expect.stringContaining('— resumed —'))
 })

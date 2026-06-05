@@ -39,6 +39,12 @@ export default function RecordControl({
   const [confirmingResume, setConfirmingResume] = useState(false);
   const autoAnalyseFiredRef = useRef(false);
 
+  function begin(resumeFrom?: string) {
+    setConfirmingResume(false);
+    setHasRecordedThisSession(true);
+    startRecording(includeCallAudio, resumeFrom);
+  }
+
   // Record on a note that already has a committed transcript asks whether to
   // Continue (append) or Re-record (replace); with no transcript it starts
   // immediately. See Phase 18-C.
@@ -47,20 +53,7 @@ export default function RecordControl({
       setConfirmingResume(true);
       return;
     }
-    setHasRecordedThisSession(true);
-    startRecording(includeCallAudio);
-  }
-
-  function handleContinue() {
-    setConfirmingResume(false);
-    setHasRecordedThisSession(true);
-    startRecording(includeCallAudio, initialTranscript ?? undefined);
-  }
-
-  function handleReRecord() {
-    setConfirmingResume(false);
-    setHasRecordedThisSession(true);
-    startRecording(includeCallAudio);
+    begin();
   }
 
   useEffect(() => {
@@ -193,7 +186,7 @@ export default function RecordControl({
             type="button"
             className={styles.recordButton}
             data-testid="transcription-continue-button"
-            onClick={handleContinue}
+            onClick={() => begin(initialTranscript ?? undefined)}
           >
             <span className={styles.recordDot} aria-hidden="true" />
             Continue
@@ -202,7 +195,7 @@ export default function RecordControl({
             type="button"
             className={styles.resetButton}
             data-testid="transcription-rerecord-button"
-            onClick={handleReRecord}
+            onClick={() => begin()}
           >
             Re-record
           </button>
