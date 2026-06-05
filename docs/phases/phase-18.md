@@ -8,7 +8,7 @@
 |-------|---------|--------|------------|
 | 18-A | **Durable checkpoints without polluting the event log.** A new DynamoDB draft store (one overwritten item per note, TTL self-clean); `PUT`/`DELETE /notes/{id}/transcription/draft` (no events); `POST /notes/{id}/transcription` also deletes the draft; `GET /notes/{id}` exposes an uncommitted draft. Documents `TranscriptionCompleted` in the event model (pre-existing gap) and the draft store as a non-event store. | Done | — |
 | 18-B | **Autosave to the draft, recover on reopen.** The checkpoint timer `PUT`s the draft instead of POSTing the event; clean Stop / intentional leave still commit (POST → event + draft delete); a **Recover / Discard banner** appears when a reopened note has an uncommitted draft. Folds in the stopgap's leave-warning + recording-counts-as-content fixes. | Done | 18-A |
-| 18-C | **Continue a transcript — record again and append.** Pressing Record on a note that already has a committed transcript prompts **Continue** (append the new session after a `— resumed —` separator) or **Re-record** (replace, today's behaviour). Frontend-only: a resumed session seeds from the committed transcript and the commit saves the concatenation via the existing `TranscriptionCompleted` (latest-wins) — no new event/endpoint/CDK; the 18-A/18-B draft store autosaves & recovers the concatenation unchanged. | Not Started | 18-A, 18-B |
+| 18-C | **Continue a transcript — record again and append.** Pressing Record on a note that already has a committed transcript prompts **Continue** (append the new session after a `— resumed —` separator) or **Re-record** (replace, today's behaviour). Frontend-only: a resumed session seeds from the committed transcript and the commit saves the concatenation via the existing `TranscriptionCompleted` (latest-wins) — no new event/endpoint/CDK; the 18-A/18-B draft store autosaves & recovers the concatenation unchanged. | Done | 18-A, 18-B |
 
 > **Slice order.** 18-A ships the backend draft path and the recovery *contract* (`GET` exposes `transcriptDraft`); it stands alone and is testable end to end via the API without any UI. 18-B retargets the frontend autosave from the event to the draft and adds the recovery UX, so it depends on 18-A's endpoints and `GET` shape. 18-B should **build on / cherry-pick** the stopgap branch `wip/phase-18-transcription-crash-resilience` (commit `789dd9b`) — the unmount-flush, `beforeunload` guard, leave-confirm, and recording-counts-as-content changes are reused unchanged; only the checkpoint *target* changes (PUT draft, not POST event).
 
@@ -176,7 +176,7 @@ Scenario: Leaving mid-recording still warns and commits
 
 ## Slice 18-C — Continue a transcript: record again and append
 
-**Status:** Not Started
+**Status:** Done
 
 **User value:** A recording no longer has to be a single take. Pressing **Record** on a note that already has a transcript asks whether to **Continue** (keep recording and append to what's there) or **Re-record** (start over, replacing it — today's behaviour). A continued session shows the prior transcript, a **`— resumed —`** separator, then the new turns, and stopping saves the whole thing. This makes a meeting that ran long, dropped, or was paused recoverable as one continuous transcript.
 
