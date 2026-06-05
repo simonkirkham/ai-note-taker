@@ -66,6 +66,8 @@ public sealed class DynamoDbCalendarLinkIndexStore(IAmazonDynamoDB dynamo, strin
             ["CalendarEventId"] = new() { S = view.CalendarEventId },
             ["NoteId"] = new() { S = view.NoteId },
             ["StartTime"] = new() { S = view.StartTime.ToString("O") },
+            ["EndTime"] = new() { S = view.EndTime.ToString("O") },
+            ["CalendarEventTitle"] = new() { S = view.CalendarEventTitle },
             ["UserId"] = new() { S = view.UserId }
         };
         if (view.RecurringSeriesId is not null)
@@ -104,12 +106,38 @@ public sealed class DynamoDbCalendarLinkIndexStore(IAmazonDynamoDB dynamo, strin
         while (lastKey is not null);
     }
 
+    public async Task DeleteAllAsync(CancellationToken ct = default)
+    {
+        Dictionary<string, AttributeValue>? lastKey = null;
+        do
+        {
+            var scan = await dynamo.ScanAsync(new ScanRequest
+            {
+                TableName = tableName,
+                ProjectionExpression = "CalendarEventId",
+                ExclusiveStartKey = lastKey
+            }, ct).ConfigureAwait(false);
+
+            foreach (var item in scan.Items)
+                await dynamo.DeleteItemAsync(new DeleteItemRequest
+                {
+                    TableName = tableName,
+                    Key = new Dictionary<string, AttributeValue> { ["CalendarEventId"] = item["CalendarEventId"] }
+                }, ct).ConfigureAwait(false);
+
+            lastKey = scan.LastEvaluatedKey?.Count > 0 ? scan.LastEvaluatedKey : null;
+        }
+        while (lastKey is not null);
+    }
+
     private static CalendarLinkView MapItem(Dictionary<string, AttributeValue> item) =>
         new(
             CalendarEventId: item["CalendarEventId"].S,
             NoteId: item["NoteId"].S,
             RecurringSeriesId: item.TryGetValue("RecurringSeriesId", out var rid) ? rid.S : null,
             StartTime: DateTimeOffset.Parse(item["StartTime"].S),
+            EndTime: item.TryGetValue("EndTime", out var end) ? DateTimeOffset.Parse(end.S) : DateTimeOffset.Parse(item["StartTime"].S),
+            CalendarEventTitle: item.TryGetValue("CalendarEventTitle", out var title) ? title.S : string.Empty,
             UserId: item.TryGetValue("UserId", out var uid) ? uid.S : string.Empty
         );
 }

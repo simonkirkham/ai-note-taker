@@ -370,6 +370,37 @@ describe('NoteView', () => {
     })
   })
 
+  describe('linked-meeting badge', () => {
+    it('shows a linked-meeting badge when the note is linked to a meeting', async () => {
+      server.use(
+        http.get('/api/notes/:noteId', () =>
+          HttpResponse.json({
+            noteId: 'note-1', title: 'T', content: 'c', date: null, tags: [],
+            linkedMeeting: {
+              calendarEventId: 'evt_1', title: 'Design Review',
+              startTime: '2026-05-14T09:00:00Z', endTime: '2026-05-14T09:30:00Z',
+              recurringSeriesId: null, isRecurring: false,
+            },
+          }),
+        ),
+      )
+      renderNoteView()
+      const badge = await screen.findByTestId('linked-meeting-badge')
+      expect(badge).toHaveTextContent(/Design Review/)
+    })
+
+    it('shows no linked-meeting badge for an unlinked note', async () => {
+      server.use(
+        http.get('/api/notes/:noteId', () =>
+          HttpResponse.json({ noteId: 'note-1', title: 'T', content: 'c', date: null, tags: [], linkedMeeting: null }),
+        ),
+      )
+      renderNoteView()
+      await screen.findByLabelText('Note content')
+      expect(screen.queryByTestId('linked-meeting-badge')).toBeNull()
+    })
+  })
+
   describe('adaptive action buttons', () => {
     it('blank note shows only Cancel — Save and Delete are not in the DOM', async () => {
       renderEmptyNoteView()

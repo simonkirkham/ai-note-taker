@@ -176,6 +176,71 @@ public sealed class CalendarLinkIntegrationTests : IClassFixture<ApiFactory>
         Assert.False(body.GetProperty("isRecurring").GetBoolean());
     }
 
+    [Fact]
+    public async Task GetNote_NonRecurringLinkedNote_ReturnsLinkedMeeting()
+    {
+        var noteId = await CreateNoteAsync();
+        await LinkNoteAsync(noteId, "evt_one_off");
+
+        var resp = await _client.GetAsync($"/notes/{noteId}");
+
+        resp.EnsureSuccessStatusCode();
+        var body = await resp.Content.ReadFromJsonAsync<JsonElement>();
+        var linked = body.GetProperty("linkedMeeting");
+        Assert.Equal(JsonValueKind.Object, linked.ValueKind);
+        Assert.Equal("evt_one_off", linked.GetProperty("calendarEventId").GetString());
+        Assert.Equal("Test Meeting", linked.GetProperty("title").GetString());
+        Assert.Equal(DateTimeOffset.Parse("2026-05-14T09:00:00Z"), linked.GetProperty("startTime").GetDateTimeOffset());
+        Assert.Equal(DateTimeOffset.Parse("2026-05-14T09:30:00Z"), linked.GetProperty("endTime").GetDateTimeOffset());
+        Assert.Equal(JsonValueKind.Null, linked.GetProperty("recurringSeriesId").ValueKind);
+        Assert.False(linked.GetProperty("isRecurring").GetBoolean());
+    }
+
+    [Fact]
+    public async Task GetNote_RecurringLinkedNote_LinkedMeetingHasSeries()
+    {
+        var noteId = await CreateNoteAsync();
+        await LinkNoteAsync(noteId, "evt_recurring", recurringSeriesId: "series_42", isRecurring: true);
+
+        var resp = await _client.GetAsync($"/notes/{noteId}");
+
+        resp.EnsureSuccessStatusCode();
+        var body = await resp.Content.ReadFromJsonAsync<JsonElement>();
+        var linked = body.GetProperty("linkedMeeting");
+        Assert.Equal("series_42", linked.GetProperty("recurringSeriesId").GetString());
+        Assert.True(linked.GetProperty("isRecurring").GetBoolean());
+    }
+
+    [Fact]
+    public async Task GetNote_PlainNote_LinkedMeetingIsNull()
+    {
+        var noteId = await CreateNoteAsync();
+
+        var resp = await _client.GetAsync($"/notes/{noteId}");
+
+        resp.EnsureSuccessStatusCode();
+        var body = await resp.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal(JsonValueKind.Null, body.GetProperty("linkedMeeting").ValueKind);
+    }
+
+    [Fact]
+    public async Task RebuildProjections_ReconstructsCalendarLinkFromEvents()
+    {
+        var noteId = await CreateNoteAsync();
+        await LinkNoteAsync(noteId, "evt_rebuilt");
+
+        var rebuild = await _client.PostAsync("/admin/projections/rebuild", null);
+        rebuild.EnsureSuccessStatusCode();
+
+        var resp = await _client.GetAsync($"/notes/{noteId}");
+        resp.EnsureSuccessStatusCode();
+        var body = await resp.Content.ReadFromJsonAsync<JsonElement>();
+        var linked = body.GetProperty("linkedMeeting");
+        Assert.Equal(JsonValueKind.Object, linked.ValueKind);
+        Assert.Equal("evt_rebuilt", linked.GetProperty("calendarEventId").GetString());
+        Assert.Equal("Test Meeting", linked.GetProperty("title").GetString());
+    }
+
     private async Task<Guid> CreateNoteAsync()
     {
         var resp = await _client.PostAsync("/notes", null);

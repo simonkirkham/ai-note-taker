@@ -11,7 +11,8 @@ public sealed class ProjectionRebuildHandler(
     IFolderTreeStore folderTreeStore,
     ITagIndexStore tagIndexStore,
     ITagFeedbackStore tagFeedbackStore,
-    IActionItemFeedbackStore actionItemFeedbackStore) : IProjectionRebuildHandler
+    IActionItemFeedbackStore actionItemFeedbackStore,
+    ICalendarLinkIndexStore calendarLinkIndexStore) : IProjectionRebuildHandler
 {
     public async Task<int> RebuildAsync(CancellationToken ct = default)
     {
@@ -21,6 +22,7 @@ public sealed class ProjectionRebuildHandler(
         await tagIndexStore.DeleteAllAsync(ct).ConfigureAwait(false);
         await tagFeedbackStore.DeleteAllAsync(ct).ConfigureAwait(false);
         await actionItemFeedbackStore.DeleteAllAsync(ct).ConfigureAwait(false);
+        await calendarLinkIndexStore.DeleteAllAsync(ct).ConfigureAwait(false);
 
         var allEvents = await store.ReadAllStreamsAsync(ct).ConfigureAwait(false);
 
@@ -31,6 +33,7 @@ public sealed class ProjectionRebuildHandler(
         var tagIndex = new TagIndexProjection();
         var tagFeedback = new TagFeedbackProjection();
         var actionFeedback = new ActionItemFeedbackProjection();
+        var calendarLinks = new CalendarLinkIndexProjection();
         foreach (var e in allEvents)
         {
             titleList.Handle(e);
@@ -40,6 +43,7 @@ public sealed class ProjectionRebuildHandler(
             tagIndex.Handle(e);
             tagFeedback.Handle(e);
             actionFeedback.Handle(e);
+            calendarLinks.Handle(e);
         }
 
         var upsertTasks = titleList.GetView().Items
@@ -51,7 +55,8 @@ public sealed class ProjectionRebuildHandler(
             .Concat(tagFeedback.GetAggregates().Select(v => tagFeedbackStore.UpsertAggregateAsync(v, ct)))
             .Concat(tagFeedback.GetProvenance().Select(p => tagFeedbackStore.PutProvenanceAsync(p.NoteId, p.Tag, p.UserId, p.PromptVersion, ct)))
             .Concat(actionFeedback.GetAggregates().Select(v => actionItemFeedbackStore.UpsertAggregateAsync(v, ct)))
-            .Concat(actionFeedback.GetProvenance().Select(p => actionItemFeedbackStore.PutProvenanceAsync(p.ActionItemId, p.UserId, p.PromptVersion, ct)));
+            .Concat(actionFeedback.GetProvenance().Select(p => actionItemFeedbackStore.PutProvenanceAsync(p.ActionItemId, p.UserId, p.PromptVersion, ct)))
+            .Concat(calendarLinks.GetAll().Select(v => calendarLinkIndexStore.UpsertAsync(v, ct)));
 
         await Task.WhenAll(upsertTasks).ConfigureAwait(false);
 

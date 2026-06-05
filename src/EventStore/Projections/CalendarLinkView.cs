@@ -5,5 +5,7 @@ public record CalendarLinkView(
     string NoteId,
     string? RecurringSeriesId,
     DateTimeOffset StartTime,
+    DateTimeOffset EndTime,
+    string CalendarEventTitle,
     string UserId
 );
