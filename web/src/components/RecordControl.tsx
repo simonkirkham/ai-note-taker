@@ -15,6 +15,7 @@ export default function RecordControl({
   noteId,
   noteHasContent = false,
   hasInitialTranscript = false,
+  initialTranscript = null,
   onTranscriptChange,
   onStatusChange,
   onAnalysisComplete,
@@ -22,6 +23,7 @@ export default function RecordControl({
   noteId: string;
   noteHasContent?: boolean;
   hasInitialTranscript?: boolean;
+  initialTranscript?: string | null;
   onTranscriptChange: (transcript: string) => void;
   onStatusChange: (status: TranscriptionStatus) => void;
   onAnalysisComplete?: () => void;
@@ -34,7 +36,25 @@ export default function RecordControl({
   const [analyseError, setAnalyseError] = useState<string | null>(null);
   const [includeCallAudio, setIncludeCallAudio] = useState(true);
   const [autoAnalyse, setAutoAnalyse] = useState(true);
+  const [confirmingResume, setConfirmingResume] = useState(false);
   const autoAnalyseFiredRef = useRef(false);
+
+  function begin(resumeFrom?: string) {
+    setConfirmingResume(false);
+    setHasRecordedThisSession(true);
+    startRecording(includeCallAudio, resumeFrom);
+  }
+
+  // Record on a note that already has a committed transcript asks whether to
+  // Continue (append) or Re-record (replace); with no transcript it starts
+  // immediately. See Phase 18-C.
+  function handleRecordClick() {
+    if (hasInitialTranscript) {
+      setConfirmingResume(true);
+      return;
+    }
+    begin();
+  }
 
   useEffect(() => {
     onStatusChange(status);
@@ -148,19 +168,38 @@ export default function RecordControl({
         </button>
       )}
 
-      {(status === "idle" || status === "stopped") && (
+      {(status === "idle" || status === "stopped") && !confirmingResume && (
         <button
           type="button"
           className={styles.recordButton}
           data-testid="transcription-record-button"
-          onClick={() => {
-            setHasRecordedThisSession(true);
-            startRecording(includeCallAudio);
-          }}
+          onClick={handleRecordClick}
         >
           <span className={styles.recordDot} aria-hidden="true" />
           Record
         </button>
+      )}
+
+      {(status === "idle" || status === "stopped") && confirmingResume && (
+        <span className={styles.resumePrompt} role="group" aria-label="Continue or re-record">
+          <button
+            type="button"
+            className={styles.recordButton}
+            data-testid="transcription-continue-button"
+            onClick={() => begin(initialTranscript ?? undefined)}
+          >
+            <span className={styles.recordDot} aria-hidden="true" />
+            Continue
+          </button>
+          <button
+            type="button"
+            className={styles.resetButton}
+            data-testid="transcription-rerecord-button"
+            onClick={() => begin()}
+          >
+            Re-record
+          </button>
+        </span>
       )}
 
       {(isRequesting || isRecording) && (

@@ -5,6 +5,12 @@
   gap: var(--space-3);
 }
 
+.resumePrompt {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
 .timer {
   display: inline-flex;
   align-items: center;
