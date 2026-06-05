@@ -6,8 +6,8 @@
 
 | Slice | Summary | Status | Depends on |
 |-------|---------|--------|------------|
-| 17-A | **See a note's linked meeting.** `CalendarLinkView` gains `CalendarEventTitle` + `EndTime` (both already on the event); `GetNote` returns a `linkedMeeting` object; the note renders a persistent `Linked to <title> · <date/time>` badge; a projection rebuild backfills every existing meeting-created note. No new user action — independently shippable. | Not Started | — |
-| 17-B | **Link an open note to a meeting.** An unlinked note offers a **Link to meeting** control that opens a date-navigable meeting picker (reusing Phase 16's day list); choosing a meeting POSTs `/notes/{id}/calendar-link`; the badge appears optimistically. The control is hidden once linked. | Not Started | 17-A |
+| 17-A | **See a note's linked meeting.** `CalendarLinkView` gains `CalendarEventTitle` + `EndTime` (both already on the event); `GetNote` returns a `linkedMeeting` object; the note renders a persistent `Linked to <title> · <date/time>` badge; a projection rebuild backfills every existing meeting-created note. No new user action — independently shippable. | Done | — |
+| 17-B | **Link an open note to a meeting.** An unlinked note offers a **Link to meeting** control that opens a date-navigable meeting picker (reusing Phase 16's day list); choosing a meeting POSTs `/notes/{id}/calendar-link`; the badge appears optimistically. The control is hidden once linked. | Done | 17-A |
 
 **Confirmed product decisions (from Scout brief, 2026-06-05):**
 - **Entry point:** from the note (a control on the open `NoteView`), not from the meeting card.
@@ -23,7 +23,7 @@
 
 ## Slice 17-A — See a note's linked meeting
 
-**Status:** Not Started
+**Status:** Done
 
 **User value:** A note that belongs to a meeting visibly says so. Opening a note that is linked to a calendar event shows **Linked to \<meeting title\> · \<date, time\>**, and it survives reload. This lights up immediately for every note already created from a meeting — the link data was always in the event stream, just never surfaced on the note.
 
@@ -72,7 +72,7 @@
 
 ## Slice 17-B — Link an open note to a meeting
 
-**Status:** Not Started
+**Status:** Done
 
 **Depends on:** 17-A (persistent badge + `linkedMeeting` contract).
 

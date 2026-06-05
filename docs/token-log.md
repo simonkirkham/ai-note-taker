@@ -1457,3 +1457,19 @@ If no agent ran unexpectedly high: write `None — slice ran within expected ran
 | **Total**                                                  | **~170 000** |
 
 **Notes:** no spike. Hawk (~55k) was the largest single agent — proportionate: the one real risk was a projection the deleted handlers updated but the inline path did not, so the reviewer built a full event-type coverage matrix across `NoteCommandHandler`/`TodoCommandHandler`/`ActionItemCommandHandler` and confirmed the deleted `NoteCardListEventHandler` was a stale *subset* of the inline path. Approved first pass; one non-blocking doc-path nit applied. The investigation (~40k) front-loaded the cost but is what made the cleanup safe and the docs correct.
+
+## Phase 17 — Link a note to a meeting after the fact (17-A + 17-B)
+
+> Single orchestrator-driven `/run-pipeline` session covering Scout + both slices end-to-end (no separate Breaker/Pip subagents). Hawk ran as a subagent per slice. Figures are estimates except the two Hawk subagent counts (from hand-off summaries).
+
+| Agent / phase                                                                 | ~Tokens  |
+|-------------------------------------------------------------------------------|----------|
+| Scout (Explore subagent mapping note↔meeting + scoping, GWT phase doc, 3 AskUserQuestion rounds) | 45 000 |
+| 17-A Breaker+Pip (projection widen + `CalendarLinkIndexProjection` + rebuild wiring + `GetNote` + badge + 4 API.Integration + 2 vitest) | 60 000 |
+| 17-A Hawk (code-reviewer subagent)                                            | 50 000   |
+| 17-B Breaker+Pip (`MeetingPicker` modal + shared `meetingDay` extract + `MeetingsSection` refactor + optimistic link + 6 picker + 5 NoteView tests) | 65 000 |
+| 17-B Hawk (code-reviewer subagent)                                            | 45 000   |
+| 3 docs PRs (#174 phase doc, roadmap reformat, Scribe) + gate/CI/deploy monitoring + worktree mgmt | 70 000 |
+| **Total**                                                  | **~335 000** |
+
+**Notes:** higher than a typical two-slice phase, for two structural reasons, neither a code spike. (1) **The Scout docs landed via their own PR mid-pipeline.** The phase doc was drafted as loose edits in the shared primary checkout while it sat on a user WIP branch; tidying that into a dedicated docs PR (#174) + a roadmap-reformat round added ~2 extra PR cycles. Pre-empt next time: land Scout docs on main **before** `/run-pipeline` (logged in `_minor-log`). (2) **One long single session, not three.** Driving Scout + 17-A + 17-B + Scribe in one orchestrator context (rather than separate sessions) carries the full transcript through every step — the per-slice Hawk subagents (~50k/~45k) were proportionate and both approved first pass with zero blocking findings, so no re-review rounds were spent. The `node24`-vs-CI-`node20` `package-lock` revert guardrail fired correctly twice and saved two `npm ci` CI failures.

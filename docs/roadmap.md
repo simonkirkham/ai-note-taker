@@ -242,7 +242,7 @@ The home-screen meetings section only ever shows *today's* meetings — `GET /ca
 
 Slices and acceptance criteria: [docs/phases/phase-16.md](phases/phase-16.md)
 
-## Phase 17 — Link an existing note to a meeting after the fact _(Not Started)_
+## Phase 17 — Link an existing note to a meeting after the fact _(Done)_
 
 1. **Goal:** rebuild a read projection and add the frontend UI to link an existing note to a meeting after the fact.
 2. **Backend already exists, unused by the UI:** the `LinkNoteToCalendarEvent` command, the `POST /notes/{noteId}/calendar-link` endpoint, and the `CalendarLinkIndex` projection.
