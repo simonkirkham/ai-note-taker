@@ -6,7 +6,7 @@
 
 | Slice | Summary | Status | Depends on |
 |-------|---------|--------|------------|
-| 19-A | **Split `api.ts` by domain.** 408-line, 8-domain module → `api/<domain>.ts` + a shared `request<T>()` helper absorbing the 33 `!res.ok` repeats; no barrel; behaviour unchanged | Not Started | — |
+| 19-A | **Split `api.ts` by domain.** 434-line, 8-domain module → `api/<domain>.ts` + a shared `request<T>()`/`requestVoid()` helper absorbing the ~33 `!res.ok` repeats; no barrel; behaviour unchanged | Done | — |
 | 19-B | **Typed-lint + non-null/catch cleanup.** Adopt `@typescript-eslint` `recommended-type-checked`; remove the 8 non-null `!` and the unsafe `catch` typing; add cheap flags (`noImplicitOverride`) | Not Started | — |
 | 19-C | **Stricter index/optional TS flags.** `noUncheckedIndexedAccess` then `exactOptionalPropertyTypes`, staged with backlog clear | Not Started | 19-B |
 | 19-D | **Context provider performance.** Memoise `AuthContext`/`ToastContext` provider values; `useCallback` the Auth actions; optional Auth state/actions split | Not Started | — |
@@ -25,7 +25,7 @@
 
 ## Slice 19-A — Split `api.ts` by domain
 
-**Status:** Not Started
+**Status:** Done (PR #181, deploy #472, 2026-06-05)
 
 **User value:** None directly (pure refactor) — maintainability and a clean seam for every later frontend slice. No behaviour change; the proof is that every existing spec stays green.
 
@@ -64,10 +64,10 @@ Scenario: Behaviour is unchanged after the split
 
 ### Acceptance criteria
 
-- [ ] `web/src/api.ts` is deleted; functions live in `web/src/api/<domain>.ts` per the table; no barrel `index.ts`
-- [ ] A single `request<T>()` helper replaces the 33 `!res.ok` repeats; `tagNote`'s 409 and `createNoteFromNextOccurrence`'s 404 carve-outs are preserved explicitly
-- [ ] Every call site imports from the specific module (grep `from ".*api"` clean of the old path); `tsc --noEmit` passes
-- [ ] No behaviour change — full Vitest/RTL suite and the kept E2E journeys pass with only import-path edits; `npm --prefix web run lint` and `build` green
+- [x] `web/src/api.ts` is deleted; functions live in `web/src/api/<domain>.ts` per the table; no barrel `index.ts`
+- [x] A single `request<T>()`/`requestVoid()` helper replaces the ~33 `!res.ok` repeats; `tagNote`'s 409 and `createNoteFromNextOccurrence`'s 404 carve-outs are preserved explicitly
+- [x] Every call site imports from the specific module (28 static + 2 dynamic; grep clean of the old path); `tsc -b` passes
+- [x] No behaviour change — full Vitest suite (34 files, 328 tests) passes with only import-path edits; `npm --prefix web run lint` and `build` green
 
 ---
 

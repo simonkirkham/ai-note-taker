@@ -17,31 +17,6 @@ Each entry records what it is, why it matters, where it was raised, and any depe
 
 ---
 
-## Split the monolithic `web/src/api.ts` by domain
-
-**What:** `web/src/api.ts` is 408 lines mixing ~8 domains (notes, actions, cards, tags, folders, todos, meetings, transcription) and repeats the `if (!res.ok) throw new Error(...)` boilerplate ~34×. Split it into a per-domain folder:
-
-| New file | Holds |
-|---|---|
-| `api/client.ts` | `apiFetch`, `withAuth`, `refreshOnce`, plus a `request<T>()` helper that does the `!res.ok` throw once |
-| `api/notes.ts` | note + card fns (`getNoteDetail`, `createNote`, `getNoteCards`, `analyseNote`, …) + types |
-| `api/actions.ts` | action-item fns + types |
-| `api/tags.ts` | tag fns + `TagIndexEntry` |
-| `api/folders.ts` | folder fns + `FolderNode` |
-| `api/todos.ts` | todo fns + `TodoItem` |
-| `api/meetings.ts` | meeting/calendar fns + types |
-| `api/transcription.ts` | transcription credential/complete fns |
-
-**No barrel `api/index.ts`** — the `frontend-react` skill forbids barrels (tree-shaking + cycles). Update call sites to import from the specific module (`import { getFolders } from '@/api/folders'`). Pure file-move + `request<T>()` extraction; no behaviour change, specs stay green.
-
-**Why it matters:** single-domain modules read and edit cleanly; the `request<T>()` helper deletes ~34 lines of duplicated throw logic; and the per-domain split is the natural seam if the TanStack Query migration (ADR 0010) is ever reversed. Worth doing **independently** of that decision — the separation helps the hand-rolled hooks too.
-
-**Raised in:** Frontend module-cohesion review 2026-06-04; codified as the "non-component modules stay single-domain" smell in the `frontend-react` skill.
-
-**Depends on:** — (independent; do *before* any TanStack migration so each later slice builds on a clean per-domain file).
-
----
-
 ## Stricter TypeScript compiler flags beyond `strict`
 
 **What:** `web/tsconfig.app.json` has `strict: true` but none of the strict-*family* extras. Adopt incrementally:
