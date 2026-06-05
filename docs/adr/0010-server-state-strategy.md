@@ -1,6 +1,6 @@
 # ADR 0010 — Server-state strategy: stay hand-rolled (defer TanStack Query / SWR)
 
-**Status:** Accepted
+**Status:** Superseded by [ADR 0012](0012-adopt-tanstack-query-server-state.md) (2026-06-05)
 
 **Date:** 2026-06-03
 

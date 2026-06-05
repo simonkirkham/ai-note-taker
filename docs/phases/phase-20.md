@@ -6,7 +6,7 @@
 
 | Slice | Summary | Status | Depends on |
 |-------|---------|--------|------------|
-| Gate | **Supersede ADR 0010** with a new ADR recording the trigger that justifies reversal. No code. | Not Started | — |
+| Gate | **Supersede ADR 0010** with a new ADR recording the trigger that justifies reversal. No code. | Done | — |
 | 20-A | **Foundation + todos pilot.** `QueryClientProvider`, query-key factory, `QueryClient` defaults, devtools; migrate `TodoSection` (`getTodos` + complete/reopen/delete/add) as the reference template for every later slice. | Not Started | Gate |
 | 20-B | **Folders.** `getFolders` + 6 folder mutations; delete the `App.tsx` `getFolders().then(setFolders)` invalidation sprawl. | Not Started | 20-A |
 | 20-C | **Note cards / list.** `getNoteCards` + `useNotes` (create/rename/delete). | Not Started | 20-A, 20-B |
@@ -33,6 +33,46 @@ Each migrates one domain: add `useQuery`/`useMutation` hooks over the existing `
 - **20-E — Note detail.** Largest mutation surface.
 - **20-F — Meetings.** Watch the reminders/browsed-day split.
 - **20-G — Cleanup.** Delete dead code; retry/backoff via `QueryClient` defaults; remove `App.tsx` manual refetch entirely.
+
+---
+
+## Slice 20-A — Foundation + todos pilot
+
+**Status:** Not Started
+
+**User value:** None directly (infrastructure + a like-for-like migration of one domain). Establishes the TanStack template the rest of Phase 20 copies. Behaviour for todos is unchanged — proven by the existing `TodoSection` suite staying green.
+
+### Scenarios
+
+```
+Scenario: Todos load and render unchanged
+  Given the todos endpoint returns open and completed items
+  When the home screen renders TodoSection
+  Then the open and Done lists appear exactly as before the migration
+
+Scenario: Completing a todo is optimistic and rolls back on failure
+  Given an open todo
+  When I complete it and the request fails
+  Then it shows completed immediately, then reverts to open
+  And the failure is surfaced as it is today (no silent rollback)
+
+Scenario: Adding a todo updates the shared cache optimistically
+  Given the add input
+  When I submit a new to-do
+  Then it appears immediately and its temp id is swapped for the server id on success
+  And it is removed if the create fails
+```
+
+### Acceptance criteria
+
+- [ ] `@tanstack/react-query` added to `web/package.json`; `package-lock.json` generated on **Node 20** so `npm ci` is green in CI
+- [ ] `QueryClientProvider` wraps the app at the root (`main.tsx`); a single `QueryClient` with sane defaults (low/again-off retry — `apiFetch` already handles auth refresh)
+- [ ] `web/src/api/queryKeys.ts` key factory added (`todos`, plus the keys later slices will use)
+- [ ] `TodoSection` reads via `useTodos` (`useQuery`) and mutates via `useCompleteTodo`/`useReopenTodo`/`useDeleteTodo` (`useMutation`, `onMutate` optimistic + `onError` rollback); the add flow writes the cache via `setQueryData`; **per-item busy preserved**
+- [ ] No hand-rolled `getTodos` `useEffect` remains in `TodoSection`
+- [ ] Optimistic-UI rule satisfied — apply immediately, roll back **and surface** the failure on error
+- [ ] Component tests render through a `QueryClientProvider` (shared/local helper); full Vitest suite + `tsc -b`/build + ESLint green
+- [ ] Only the todos domain migrated; folders/notes/actions/tags/meetings remain hand-rolled (coexistence intact)
 
 ---
 
