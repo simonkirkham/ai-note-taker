@@ -1,7 +1,7 @@
 import clsx from "clsx";
 import { useState } from "react";
 import styles from "./FinalNotesView.module.css";
-import { useToast } from "./ToastProvider";
+import { useToast } from "./toastContext";
 
 export default function FinalNotesView({
   summary,

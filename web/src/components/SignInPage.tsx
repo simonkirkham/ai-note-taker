@@ -1,4 +1,4 @@
-import { useAuth } from '../auth/AuthContext'
+import { useAuth } from '../auth/context'
 import styles from './SignInPage.module.css'
 
 function GoogleMark() {

@@ -10,7 +10,7 @@ import styles from "./NoteView.module.css";
 import RecordControl from "./RecordControl";
 import ShortcutsPanel from "./ShortcutsPanel";
 import TagsSection from "./TagsSection";
-import { useToast } from "./ToastProvider";
+import { useToast } from "./toastContext";
 import TranscriptTab from "./TranscriptTab";
 
 type NoteTab = "quick" | "transcript" | "final";

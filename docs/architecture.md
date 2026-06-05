@@ -20,16 +20,15 @@ Every write request passes through four layers. Each layer has exactly one conce
 | Layer | Location | Concern |
 |---|---|---|
 | **API** | `src/Api/Program.cs` — endpoint lambdas | HTTP only: parse request, call handler, map result to HTTP status |
-| **Command handler** | `src/Api/*CommandHandler.cs` | Orchestration: load stream → rebuild aggregate → execute command → persist events → dispatch events |
-| **Event dispatcher** | `src/Api/DomainEventDispatcher.cs` | Route new events to every registered `IDomainEventHandler` in order |
-| **Event handlers** | `src/Api/EventHandlers/*EventHandler.cs` | React to domain events — update a projection, send a notification, trigger a process |
+| **Command handler** | `src/Api/CommandHandlers/*CommandHandler.cs` | Orchestration: load stream → rebuild aggregate → execute command → persist events → update read-model projections inline |
+| **Projections** | `src/EventStore/Projections/` (fold logic) + command handlers (write) | Read models folded from the event stream; updated inline in the same request after append; rebuildable from the full stream |
 | **Domain** | `src/Domain/` | Pure business logic: aggregate, commands, events — no I/O, no HTTP, no clock |
 
 **Rules:**
 - If you find yourself writing `store.ReadAsync` or `store.AppendAsync` inside an endpoint lambda, it belongs in the command handler instead.
-- If you find yourself updating a projection store inside a command handler, it belongs in an `IDomainEventHandler` instead.
-- Command handlers know only `IEventStore` and `IDomainEventDispatcher` — they do not reference projection stores.
-- Adding a new projection means adding a new `IDomainEventHandler` class and registering it in `Builder.cs`. No existing file changes required.
+- Projection updates live in the command handler, inline after `AppendAsync` (see `NoteCommandHandler.UpdateProjectionAsync`). There is no event dispatcher — projections are written synchronously by the handler that appended the events.
+- Command handlers depend on `IEventStore` plus the projection stores they update directly.
+- Adding a new projection means adding its store + fold logic, updating it inline in the owning command handler(s), and giving it a rebuild path. The async-projector split in [ADR 0009](adr/0009-split-lambdas-cqrs-async-projectors.md) will later move this off the request path onto DynamoDB Streams.
 
 ---
 
@@ -68,8 +67,7 @@ flowchart LR
 
         subgraph Lambda ["Lambda — ASP.NET Minimal API"]
             direction TB
-            WR["Write path\nload stream · Decide · append events · dispatch"]
-            PH["Event handlers\n*EventHandler : IDomainEventHandler"]
+            WR["Write path\nload stream · Decide · append events · update projections inline"]
             RD["Read path\nread projection"]
         end
 
@@ -89,12 +87,11 @@ flowchart LR
 
     WR -- "1 · load stream" --> ES
     WR -- "2 · append events" --> ES
-    WR -- "3 · dispatch events" --> PH
-    PH -- "4 · update projection" --> RM
+    WR -- "3 · update projection" --> RM
     RD -- "read" --> RM
 ```
 
-**Write path detail:** the Lambda command handler loads the full event stream for the aggregate, folds it into current state, runs `Decide` to validate the command and produce new events, then appends those events with optimistic concurrency. It then calls `IDomainEventDispatcher.DispatchAsync`, which fans the new events out to each registered `IDomainEventHandler` in sequence. All projection updates complete before the HTTP response is returned — there is no eventual consistency delay.
+**Write path detail:** the Lambda command handler loads the full event stream for the aggregate, folds it into current state, runs `Decide` to validate the command and produce new events, then appends those events with optimistic concurrency. It then updates the affected read-model projections inline (e.g. `NoteCommandHandler.UpdateProjectionAsync`) in the same request. All projection updates complete before the HTTP response is returned — there is no eventual consistency delay. [ADR 0009](adr/0009-split-lambdas-cqrs-async-projectors.md) plans to move projection-building off the request path onto DynamoDB Streams (trading immediate consistency for async, replayable projectors); that change is not yet implemented.
 
 **Infrastructure as code:** all AWS resources (API Gateway, Lambda, DynamoDB table, CloudFront distribution, S3 bucket) are provisioned by the CDK app in `src/Infrastructure/`.
 

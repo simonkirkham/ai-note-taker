@@ -1,24 +1,9 @@
-import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
+import { AuthContext } from './context'
 import { buildAuthUrl, exchangeCode, generateCodeChallenge, generateCodeVerifier } from './pkce'
 import { attemptSilentRefresh } from './silentRefresh'
 import { clearToken, loadPersistedToken, setToken, setOnForbidden, setOnRefresh, setOnUnauthorized } from './tokenStore'
 import { getExp, REFRESH_LEAD_MS, useGoogleAuth } from './useGoogleAuth'
-
-interface AuthState {
-  idToken: string | null
-  forbidden: boolean
-  sessionExpired: boolean
-  signIn: () => Promise<void>
-  signOut: () => void
-}
-
-export const AuthContext = createContext<AuthState>({
-  idToken: null,
-  forbidden: false,
-  sessionExpired: false,
-  signIn: async () => {},
-  signOut: () => {},
-})
 
 export function AuthProvider({
   children,
@@ -152,7 +137,9 @@ export function AuthProvider({
         setIdToken(id_token)
       })
       .catch(() => { setIdToken(null) })
-  }, [])
+    // The mounted ref makes this a one-shot mount effect; clientId/initialToken are
+    // listed to satisfy exhaustive-deps but are stable for the provider's lifetime.
+  }, [clientId, initialToken])
 
   async function signIn() {
     if (!clientId) return
@@ -177,8 +164,4 @@ export function AuthProvider({
       {children}
     </AuthContext.Provider>
   )
-}
-
-export function useAuth(): AuthState {
-  return useContext(AuthContext)
 }
