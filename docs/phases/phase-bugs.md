@@ -29,7 +29,7 @@ Further bugs will be appended as they are identified.
 
 ## BUG-1 — Blank screen presented when 401 returned from API
 
-**Status:** Done — fixed in PR #99 (commit `7272d5b`), deployed to main 2026-06-02. See [docs/learnings/phase-bug-1-blank-screen-on-401.md](../learnings/phase-bug-1-blank-screen-on-401.md).
+**Status:** Done — fixed in PR #99 (commit `7272d5b`), deployed to main 2026-06-02. See [docs/learnings/_archive.md](../learnings/_archive.md).
 
 **Severity:** High — the app is unusable when it occurs; the user sees an empty/broken screen with no way to recover other than a manual reload.
 
@@ -61,7 +61,7 @@ Further bugs will be appended as they are identified.
 
 ## BUG-2 — favicon.ico request 404s / errors on every page load
 
-**Status:** Done — fixed in PR #103 (squash commit `8ef329e`), deployed to main 2026-06-02. See [docs/learnings/phase-bug-2-favicon.md](../learnings/phase-bug-2-favicon.md).
+**Status:** Done — fixed in PR #103 (squash commit `8ef329e`), deployed to main 2026-06-02. See [docs/learnings/_archive.md](../learnings/_archive.md).
 
 **Severity:** Low — cosmetic/log noise; no functional impact, but every page load logs a failed `/favicon.ico` request in the browser console and server/CDN logs.
 
@@ -89,7 +89,7 @@ Further bugs will be appended as they are identified.
 
 ## BUG-3 — ASP.NET Data Protection warnings on every Lambda cold start
 
-**Status:** Done — fixed in PR #108 (squash commit `fac23e7`), deployed to main 2026-06-02. **Chosen approach: suppress at source** — the API authenticates with bearer tokens only (no cookie auth, antiforgery, or `IDataProtector` consumers), so Data Protection is genuinely unused; `Builder.cs` filters the `Microsoft.AspNetCore.DataProtection` category below `Error`. See [docs/learnings/phase-bug-3-dataprotection-logs.md](../learnings/phase-bug-3-dataprotection-logs.md).
+**Status:** Done — fixed in PR #108 (squash commit `fac23e7`), deployed to main 2026-06-02. **Chosen approach: suppress at source** — the API authenticates with bearer tokens only (no cookie auth, antiforgery, or `IDataProtector` consumers), so Data Protection is genuinely unused; `Builder.cs` filters the `Microsoft.AspNetCore.DataProtection` category below `Error`. See [docs/learnings/_archive.md](../learnings/_archive.md).
 
 **Severity:** Low — log noise, no functional impact today, but it dominates the `notetaker-ops` "All errors" widget (3 Warning lines per cold start), drowning out the genuine Error-level entries the widget is meant to surface.
 
@@ -123,7 +123,7 @@ Further bugs will be appended as they are identified.
 
 ## BUG-4 — `ConcurrencyException` surfaces as an unhandled 500 on note writes
 
-**Status:** Done — fixed in PR #107 (squash commit `bcdf97b`, combined with BUG-5), deployed to main 2026-06-02. The global exception handler in `LoggingConfig` now maps `EventStore.ConcurrencyException` → `409 Conflict` at a single cross-cutting point. See [docs/learnings/phase-bug-4-5-exception-mapping.md](../learnings/phase-bug-4-5-exception-mapping.md).
+**Status:** Done — fixed in PR #107 (squash commit `bcdf97b`, combined with BUG-5), deployed to main 2026-06-02. The global exception handler in `LoggingConfig` now maps `EventStore.ConcurrencyException` → `409 Conflict` at a single cross-cutting point. See [docs/learnings/_archive.md](../learnings/_archive.md).
 
 **Severity:** Medium — a concurrent or rapidly-repeated write to the same note returns HTTP 500 with an unhandled-exception stack trace, instead of a meaningful status the client can act on. It is a recurring Error-level entry on the dashboard.
 
@@ -150,7 +150,7 @@ Further bugs will be appended as they are identified.
 
 ## BUG-5 — Renaming a deleted/non-rebuildable note throws an unhandled 500
 
-**Status:** Done — fixed in PR #107 (squash commit `bcdf97b`, combined with BUG-4), deployed to main 2026-06-02. `NoteCommandHandler.ExecuteAsync` now rebuilds the aggregate and throws the typed `NoteNotFoundException` when the note no longer exists (empty stream **or** deleted), via the new `Note.Exists` predicate; the global handler maps that family → `404`. See [docs/learnings/phase-bug-4-5-exception-mapping.md](../learnings/phase-bug-4-5-exception-mapping.md).
+**Status:** Done — fixed in PR #107 (squash commit `bcdf97b`, combined with BUG-4), deployed to main 2026-06-02. `NoteCommandHandler.ExecuteAsync` now rebuilds the aggregate and throws the typed `NoteNotFoundException` when the note no longer exists (empty stream **or** deleted), via the new `Note.Exists` predicate; the global handler maps that family → `404`. See [docs/learnings/_archive.md](../learnings/_archive.md).
 
 **Severity:** Medium — `PATCH /notes/{id}/title` returns 500 instead of a clean 404/409 when the note no longer exists in the event stream.
 
@@ -177,7 +177,7 @@ Further bugs will be appended as they are identified.
 
 ## BUG-6 — CloudWatch RUM receives no data (loader CDN host is regional)
 
-**Status:** Done — fixed in `hotfix/12-f-rum-cdn-host`. See [docs/learnings/phase-12f-frontend-rum.md](../learnings/phase-12f-frontend-rum.md).
+**Status:** Done — fixed in `hotfix/12-f-rum-cdn-host`. See [docs/learnings/_archive.md](../learnings/_archive.md).
 
 **Severity:** Medium — no user-facing impact, but the entire frontend observability surface delivered in 12-F was silently dead: the RUM console showed "we haven't received any data" and `RumEventCount` was flat zero.
 
@@ -199,7 +199,7 @@ Further bugs will be appended as they are identified.
 
 ## BUG-8 — `x-correlation-id` returned to clients is never emitted as a log field
 
-**Status:** Done — fixed in PR #125 (commit `c202ec9`), deployed to main 2026-06-02. The correlation ID is now appended to the Powertools logger and emitted as the `correlation_id` field on every log line. See [docs/learnings/phase-bug-8-correlation-id-logged.md](../learnings/phase-bug-8-correlation-id-logged.md). Found during slice 12-G (observability runbook).
+**Status:** Done — fixed in PR #125 (commit `c202ec9`), deployed to main 2026-06-02. The correlation ID is now appended to the Powertools logger and emitted as the `correlation_id` field on every log line. See [docs/learnings/_archive.md](../learnings/_archive.md). Found during slice 12-G (observability runbook).
 
 **Severity:** Low–Medium — no functional impact, but it defeats the central promise of 12-A: a user (or a 500 error body) can quote a correlation ID that **cannot then be found in the logs**, so the "trace a user-reported error to its exact log line" workflow doesn't work. Only the X-Ray trace id (`xray_trace_id`) is greppable.
 
@@ -248,7 +248,7 @@ Option (a) keeps the existing header semantics; (b) collapses two correlation id
 
 ## BUG-10 — Live transcription falls progressively behind realtime
 
-**Status:** Done — fixed in PR #158 (squash commit `3ce415d`), deployed to main 2026-06-03 (deploy #445). Confirmed working on a real call (transcription keeps pace). See [docs/learnings/phase-bug-10-transcription-keep-pace.md](../learnings/phase-bug-10-transcription-keep-pace.md).
+**Status:** Done — fixed in PR #158 (squash commit `3ce415d`), deployed to main 2026-06-03 (deploy #445). Confirmed working on a real call (transcription keeps pace). See [docs/learnings/_archive.md](../learnings/_archive.md).
 
 **Severity:** High — on a real call the transcript lags further and further behind the conversation and never catches up until speech pauses, so live notes are unusable and the saved transcript can be truncated when the user stops.
 
@@ -277,7 +277,7 @@ Option (a) keeps the existing header semantics; (b) collapses two correlation id
 
 ## BUG-11 — User is signed out too frequently
 
-**Status:** Done — fixed in PR #175 (squash commit `0b05575`), deployed to main 2026-06-05 (deploy #469). See [docs/learnings/phase-bug-11-session-refresh-token.md](../learnings/phase-bug-11-session-refresh-token.md).
+**Status:** Done — fixed in PR #175 (squash commit `0b05575`), deployed to main 2026-06-05 (deploy #469). See [docs/learnings/_archive.md](../learnings/_archive.md).
 
 **Severity:** Medium — no data loss, but the user is repeatedly forced back through sign-in during normal use, interrupting work.
 

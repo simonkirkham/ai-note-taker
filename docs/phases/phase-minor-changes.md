@@ -35,7 +35,7 @@ CHANGE-1 to CHANGE-4 were moved here from the former "Phase 13 — UI Polish II"
 
 ## CHANGE-1 — Single-spaced note lines by default
 
-**Status:** ✅ Done — PR #98, deployed 2026-06-02. See [docs/learnings/phase-minor-1-single-spaced-lines.md](../learnings/phase-minor-1-single-spaced-lines.md).
+**Status:** ✅ Done — PR #98, deployed 2026-06-02. See [docs/learnings/_archive.md](../learnings/_archive.md).
 
 **Value:** Pressing Enter in the note editor currently leaves a full blank line between paragraphs, so notes look double-spaced and waste vertical space. Each `Enter` creates a new ProseMirror `<p>`, and with no paragraph-margin override the browser's default `p { margin: 1em 0 }` — compounded by the editor's `line-height: 1.75` — renders a visible blank line between every block. Notes should read as single-spaced by default: consecutive lines sit directly beneath one another, the way a meeting scratchpad does.
 
@@ -109,7 +109,7 @@ Scenario: Headings and lists keep their own spacing
 
 ## CHANGE-2 — Theme selection
 
-**Status:** ✅ Done — PR #102, deployed 2026-06-02. See [docs/learnings/phase-minor-2-theme-selection.md](../learnings/phase-minor-2-theme-selection.md).
+**Status:** ✅ Done — PR #102, deployed 2026-06-02. See [docs/learnings/_archive.md](../learnings/_archive.md).
 
 **Value:** Users can choose a colour theme for the app. The whole UI already draws every colour from CSS custom properties on `:root` (`--color-primary`, `--color-bg`, `--color-text`, `--color-cta`, `--color-border`, etc.), so theming is a matter of overriding those variables and remembering the choice. This change ships three themes — the current **Teal** (default), **Forest** (deeper emerald, light), and **Midnight** (full dark mode) — selectable from a small picker in the sidebar footer and persisted across sessions.
 
@@ -221,7 +221,7 @@ Scenario: Theme is independent of the signed-in user
 
 ## CHANGE-3 — Home screen shows today's notes by default
 
-**Status:** ✅ Done — PR #101, deployed 2026-06-02. See [docs/learnings/phase-minor-3-home-todays-notes.md](../learnings/phase-minor-3-home-todays-notes.md).
+**Status:** ✅ Done — PR #101, deployed 2026-06-02. See [docs/learnings/_archive.md](../learnings/_archive.md).
 
 **Value:** The home screen note list grows without bound — every note ever created is shown in API order, so the most recent work is buried and the screen gets noisier over time. This change focuses the home list on what's current: by default it shows the notes that matter **today** — those **dated today** plus any **edited today** (even if dated earlier) — and **hides future-dated notes**. A **"Show older notes"** toggle reveals past notes. Whatever is shown is ordered **reverse-chronologically** (newest first), so the freshest work is always at the top.
 
@@ -357,7 +357,7 @@ Scenario: Folder view is unaffected
 
 ## CHANGE-4 — To-do rows wrap cleanly with long text and a note title
 
-**Status:** ✅ Done — PR #104, deployed 2026-06-02. See [docs/learnings/phase-minor-4-todo-row-wrap.md](../learnings/phase-minor-4-todo-row-wrap.md). Prototype on branch `prototype/todo-row-wrap` (`todo-row-wrap-prototype.html`) was approved 2026-06-02 and implemented verbatim as the confirmed layout below.
+**Status:** ✅ Done — PR #104, deployed 2026-06-02. See [docs/learnings/_archive.md](../learnings/_archive.md). Prototype on branch `prototype/todo-row-wrap` (`todo-row-wrap-prototype.html`) was approved 2026-06-02 and implemented verbatim as the confirmed layout below.
 
 **Value:** A to-do row in the **To Do** section is laid out as a single flex row — `checkbox · description · note-title · Delete` — with `justify-content: space-between` (`.todo-item`, `App.css` ~L821). The note title (`.todo-note-title`, ~L853) carries `white-space: nowrap`, so when a note-derived to-do has a long title (e.g. *"Head of Technical Delivery – Finova"*) it reserves a wide fixed strip of horizontal space. That squeezes the description column to near-zero width, forcing the description to wrap **one word per line** and growing the row to an absurd height, while the **Delete** button is pushed off the right edge and clipped. Short to-dos look fine; long ones become unusable. The row should stay compact: the description wraps normally, the note title sits beneath it as a quiet caption, and the Delete/Reopen control stays pinned and fully visible at all widths.
 
@@ -468,7 +468,7 @@ Scenario: The to-do data is unchanged by the layout fix
 
 ## CHANGE-5 — Sign-in screen visual polish
 
-**Status:** ✅ Done — PR #109, deployed 2026-06-02. See [docs/learnings/phase-minor-5-signin-polish.md](../learnings/phase-minor-5-signin-polish.md).
+**Status:** ✅ Done — PR #109, deployed 2026-06-02. See [docs/learnings/_archive.md](../learnings/_archive.md).
 
 **Value:** The sign-in screen is the first thing a user sees, and it is currently unstyled. `web/src/components/SignInPage.tsx` renders a bare `<h1>AI Note Taker</h1>` and a default browser `<button>Sign in with Google</button>` inside a `.sign-in-page` div for which **no CSS exists** — so it falls back to Times New Roman-ish defaults, a top-left heading, and a grey system button on a plain background. It reads as broken rather than intentional. This change gives the sign-in screen a polished, on-brand first impression consistent with the rest of the app, without changing the auth flow.
 
@@ -544,7 +544,7 @@ Scenario: No-auth bypass is unaffected
 
 ## CHANGE-6 — Collapsible "Filters" control for home tags
 
-**Status:** ✅ Done — PR #111, deployed 2026-06-02. See [docs/learnings/phase-minor-6-collapsible-filters.md](../learnings/phase-minor-6-collapsible-filters.md).
+**Status:** ✅ Done — PR #111, deployed 2026-06-02. See [docs/learnings/_archive.md](../learnings/_archive.md).
 
 **Value:** On the home screen the tag filter (`TagFilter`) currently sits at the top of the home-left column, permanently expanded, pushing the Notes list down and adding visual noise before the user has expressed any intent to filter. Tag filtering is an occasional action, not a constant one. This change moves the tag filter **inside the Notes section, under a collapsible "Filters" control that defaults to collapsed** — so the home screen leads with the notes, and filtering is one click away when wanted.
 
@@ -641,7 +641,7 @@ Scenario: Folder view is unaffected
 
 ## CHANGE-7 — More colour schemes; drop duplicate Forest theme
 
-**Status:** ✅ Done — PR #112 + contrast follow-up PR #114, deployed 2026-06-02. See [docs/learnings/phase-minor-7-colour-schemes.md](../learnings/phase-minor-7-colour-schemes.md). Gallery prototype (`prototype/minor-7-colour-schemes`) approved 2026-06-02; shipped 12 themes (8 light, 4 dark), Forest dropped as a Teal duplicate.
+**Status:** ✅ Done — PR #112 + contrast follow-up PR #114, deployed 2026-06-02. See [docs/learnings/_archive.md](../learnings/_archive.md). Gallery prototype (`prototype/minor-7-colour-schemes`) approved 2026-06-02; shipped 12 themes (8 light, 4 dark), Forest dropped as a Teal duplicate.
 
 **Value:** CHANGE-2 shipped three themes — Teal (default), Forest, Midnight. In practice **Teal and Forest are visually almost identical**: both are light themes with a green/emerald primary on a near-white green-tinted background (Teal `#0D9488`/`#F0FDFA`, Forest `#059669`/`#ECFDF5`), so the picker offers a choice with no perceptible difference. This change **removes Forest** and **adds nine genuinely distinct palettes**, so the picker offers a real spread of looks across the hue wheel and several dark options. Teal stays as the `:root` default; Midnight stays as a dark theme.
 
@@ -748,7 +748,7 @@ Scenario: A new theme choice persists across reloads
 
 ## CHANGE-8 — Theme picker and Sign out always visible without scrolling
 
-**Status:** ✅ Done — PR #119, deployed 2026-06-02. See [docs/learnings/phase-minor-8-sidebar-footer.md](../learnings/phase-minor-8-sidebar-footer.md).
+**Status:** ✅ Done — PR #119, deployed 2026-06-02. See [docs/learnings/_archive.md](../learnings/_archive.md).
 
 **Value:** The theme picker and **Sign out** button live in the sidebar footer (`.sidebar-footer`, `App.css` ~L138), pinned to the bottom of the sidebar with `margin-top: auto`. But the desktop sidebar is a grid item in `.app-layout` (`grid-template-columns: 220px auto 1fr; min-height: 100vh`, ~L79) with no fixed height and no internal scroll on the folder list (`.sidebar-folders`, ~L1639). Once a user has more than a handful of folders, the folder tree makes the whole sidebar taller than the viewport, so the document grows and the footer is pushed **below the fold** — the user has to scroll the page down to reach the theme picker or sign out. Both are global, frequently-wanted controls and should always be reachable. This change keeps the sidebar a fixed viewport height and lets only the folder list scroll, so the footer (theme picker + Sign out) is always visible without scrolling.
 
@@ -830,7 +830,7 @@ Scenario: Mobile sidebar is unaffected
 
 ## CHANGE-9 — Restructure the home Filters panel (Show-older + Tags inside; fix the gap)
 
-**Status:** ✅ Done — PR #121, deployed 2026-06-02. See [docs/learnings/phase-minor-9-filters-restructure.md](../learnings/phase-minor-9-filters-restructure.md). Prototype gallery approved 2026-06-02; shipped Option D (rich collapsed summary + Tags/Other groups).
+**Status:** ✅ Done — PR #121, deployed 2026-06-02. See [docs/learnings/_archive.md](../learnings/_archive.md). Prototype gallery approved 2026-06-02; shipped Option D (rich collapsed summary + Tags/Other groups).
 
 **Value:** The home filtering controls are currently split across two places and the area looks unfinished:
 - The **"Show older notes"** toggle (CHANGE-3) lives in the **Notes header row** (`.note-cards-header`, next to the "Notes" heading).
@@ -924,7 +924,7 @@ Scenario: Existing filter behaviour is unchanged
 
 ## CHANGE-10 — Refine the home screen (cards, filters, to-dos, meetings)
 
-**Status:** ✅ Done — PR #129, deployed 2026-06-02. See [docs/learnings/phase-minor-10-home-refine.md](../learnings/phase-minor-10-home-refine.md). Prototype-approved (before/after + full-screen galleries); shipped the six confirmed refinements.
+**Status:** ✅ Done — PR #129, deployed 2026-06-02. See [docs/learnings/_archive.md](../learnings/_archive.md). Prototype-approved (before/after + full-screen galleries); shipped the six confirmed refinements.
 
 **Value:** The home screen reads as busy. Rather than a dramatic redesign (an earlier "make everything smaller / minimal" prototype was rejected as too far from today's look), the user confirmed a set of targeted refinements that keep today's layout but reduce visual noise — quieter cards, lighter actions, and calmer Filters and Meetings presentation.
 
@@ -996,7 +996,7 @@ Scenario: The Today's Meetings panel is lighter
 
 ## CHANGE-11 — Preview pull-out `»` becomes `«` when its panel is open
 
-**Status:** ✅ Done — PR #126, deployed 2026-06-02. See [docs/learnings/phase-minor-11-preview-toggle.md](../learnings/phase-minor-11-preview-toggle.md).
+**Status:** ✅ Done — PR #126, deployed 2026-06-02. See [docs/learnings/_archive.md](../learnings/_archive.md).
 
 **Value:** The folder and Unfiled "preview notes" pull-out is triggered by a `»` button — on each folder row (`FolderTree.tsx:111`, `.folder-tree-action-btn`, `aria-label="Preview folder notes"`) and next to Unfiled Notes (`Sidebar.tsx:115`, `data-testid="unfiled-preview-button"`). The button always shows `»`, even when its preview panel (`FolderPreviewPanel`) is already open for that folder. The glyph should reflect state: show `»` (open/expand) when the panel is closed, and `«` (collapse) when the panel is already showing that folder's notes — so the affordance reads as a toggle and the user can tell, and undo, what's expanded.
 
@@ -1066,7 +1066,7 @@ Scenario: Unfiled preview button behaves the same
 
 ## CHANGE-12 — Drop the home Notes divider; top-align with Today's Meetings
 
-**Status:** ✅ Done — PR #123, deployed 2026-06-02. See [docs/learnings/phase-minor-12-home-spacing.md](../learnings/phase-minor-12-home-spacing.md).
+**Status:** ✅ Done — PR #123, deployed 2026-06-02. See [docs/learnings/_archive.md](../learnings/_archive.md).
 
 > **Numbering note:** this shipped on branch `slice/minor-10-home-spacing` (commit *"feat(minor-10): …"*) but is documented as **CHANGE-12** because a concurrent session claimed CHANGE-10 (smaller action buttons) and CHANGE-11 (preview pull-out flip) in this doc while the work was in flight, overwriting its original CHANGE-10 entry. The merged commit/branch keep the "minor-10" name; the doc number is CHANGE-12.
 
@@ -1095,7 +1095,7 @@ A four-variant gallery (`prototype/minor-10-home-spacing`) was reviewed; the use
 
 ## CHANGE-13 — "Next occurrence" button inside a recurring-meeting note
 
-**Status:** Done — shipped in PR #162 (squash `23e3940`), deployed to main 2026-06-04 (deploy run 455). Implemented option 1 (reverse lookup on `CalendarLinkView`). See [docs/learnings/phase-minor-13-next-occurrence-in-note.md](../learnings/phase-minor-13-next-occurrence-in-note.md).
+**Status:** Done — shipped in PR #162 (squash `23e3940`), deployed to main 2026-06-04 (deploy run 455). Implemented option 1 (reverse lookup on `CalendarLinkView`). See [docs/learnings/_archive.md](../learnings/_archive.md).
 
 **Value:** Slice 9-F shipped "next occurrence" navigation, but only on the **home screen's Today's Meetings panel** (`MeetingsSection.tsx`): from a recurring meeting row you can create-or-open the note for that series' next occurrence. Once you are *inside* a note, that affordance is gone — to jump to the next occurrence of the same recurring meeting you have to navigate back to the home screen and find the meeting row. This change surfaces the same capability **inside the note view**: when the open note belongs to a recurring meeting, show a control that takes you to the next occurrence — opening its note if one already exists, or creating it first if not — then navigating straight there. It is a reuse-in-a-new-location change, not new backend capability: the create-or-open endpoint already exists.
 
@@ -1193,7 +1193,7 @@ Scenario: No upcoming occurrences is handled gracefully
 
 ## CHANGE-14 — Rename transcription "Call audio" toggle to "Record screen-share audio"
 
-**Status:** ✅ Done — PR #164, deployed 2026-06-04 (deploy #460). See [docs/learnings/phase-minor-14-record-screen-share-audio.md](../learnings/phase-minor-14-record-screen-share-audio.md).
+**Status:** ✅ Done — PR #164, deployed 2026-06-04 (deploy #460). See [docs/learnings/_archive.md](../learnings/_archive.md).
 
 **Value:** The transcription panel's recording toggle is labelled simply **"Call audio"** (`RecordControl.tsx` ~L110). The label is ambiguous: it doesn't tell the user the toggle captures the audio coming *out* of their machine (the other call participants) by way of a browser **screen-share** prompt, and it reads as if it might be the *only* audio source rather than an addition to the microphone. When enabled, starting a recording calls `navigator.mediaDevices.getDisplayMedia(...)`, which pops the browser's screen/window-share dialog — surprising if the label gave no hint that sharing would be required. Renaming the toggle to **"Record screen-share audio"** names the mechanism, so the user understands why they'll be asked to pick a screen/window and what the toggle actually does.
 

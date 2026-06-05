@@ -108,7 +108,7 @@ Scenario: Log group has a finite retention
 
 **Status:** Done — except `ProjectionUpdateDuration`/`ProjectionRebuildDuration`, deferred (see acceptance criteria)
 
-**Implementation note:** rather than the skill's "instrument each handler" model, the slice uses two single-responsibility seams that fit this codebase's reality (cascading folder deletes, multi-append action items, an unused `IDomainEventDispatcher`): an `IEventStore` decorator (`InstrumentedEventStore`) for append-level signals (`EventsAppended`, `ConcurrencyConflict`, stream/version log) and a `CommandInstrumentation` helper wrapping each handler for command-level signals (`CommandHandled`/`CommandFailed`). Metrics go through an `IDomainMetrics` abstraction (Powertools `Metrics.PushSingleMetric`), not the raw `IMetrics`. See `docs/learnings/phase-12b-domain-metrics.md`.
+**Implementation note:** rather than the skill's "instrument each handler" model, the slice uses two single-responsibility seams that fit this codebase's reality (cascading folder deletes, multi-append action items, an unused `IDomainEventDispatcher`): an `IEventStore` decorator (`InstrumentedEventStore`) for append-level signals (`EventsAppended`, `ConcurrencyConflict`, stream/version log) and a `CommandInstrumentation` helper wrapping each handler for command-level signals (`CommandHandled`/`CommandFailed`). Metrics go through an `IDomainMetrics` abstraction (Powertools `Metrics.PushSingleMetric`), not the raw `IMetrics`. See `docs/learnings/_archive.md`.
 
 **Value:** The command/append/projection path becomes measurable and queryable. Command handlers emit EMF metrics (`CommandHandled`, `CommandFailed`, `EventsAppended`, `ConcurrencyConflict`, projection durations) and structured log lines that include the stream ID and version, so a single command's whole lifecycle is greppable and concurrency-conflict spikes are visible as a metric instead of buried in text. Domain rule violations are logged as `Warning` (expected business behaviour), not `Error` — keeping the error view clean.
 
@@ -366,7 +366,7 @@ Scenario: Concurrency-conflict alarm is wired
 
 **Status:** Done
 
-**Implementation note:** a `CfnAppMonitor` does **not** auto-create the Cognito identity pool + guest role the RUM console wizard creates, so the slice also adds an unauthenticated `CfnIdentityPool` + a guest IAM role scoped to `rum:PutRumEvents` (ARN built from the fixed monitor name to break the role↔monitor cycle), wired into the monitor config via `IdentityPoolId`/`GuestRoleArn`. Two outputs (`RumMonitorId` via `AttrId`, `RumIdentityPoolId`) feed the deploy-time snippet. See `docs/learnings/phase-12f-frontend-rum.md`.
+**Implementation note:** a `CfnAppMonitor` does **not** auto-create the Cognito identity pool + guest role the RUM console wizard creates, so the slice also adds an unauthenticated `CfnIdentityPool` + a guest IAM role scoped to `rum:PutRumEvents` (ARN built from the fixed monitor name to break the role↔monitor cycle), wired into the monitor config via `IdentityPoolId`/`GuestRoleArn`. Two outputs (`RumMonitorId` via `AttrId`, `RumIdentityPoolId`) feed the deploy-time snippet. See `docs/learnings/_archive.md`.
 
 **Value:** The blind spot — the browser — becomes visible. CloudWatch RUM captures JavaScript errors, Core Web Vitals, and failed API calls from real users on the deployed CloudFront domain, and (with X-Ray enabled on the monitor) links a frontend error to its backend trace via the trace ID propagated in 12-C. This is the other half of "see all errors in one place": frontend errors that never reach the Lambda.
 
@@ -423,7 +423,7 @@ Scenario: RUM is not injected into non-production builds
 
 ## Slice 12-G — Observability runbook and saved Logs Insights queries
 
-**Status:** Done — runbook `docs/observability.md` + four `NoteTaker/` saved queries live in prod. Note: the "By correlation ID" query became **"By trace ID"** (filters `xray_trace_id`) because `correlationId` is not actually a log field (see BUG-8); "Slowest commands" shipped as **"Slowest requests"** (Lambda `@duration` is per-invocation; X-Ray covers per-command). See `docs/learnings/phase-12g-observability-runbook.md`.
+**Status:** Done — runbook `docs/observability.md` + four `NoteTaker/` saved queries live in prod. Note: the "By correlation ID" query became **"By trace ID"** (filters `xray_trace_id`) because `correlationId` is not actually a log field (see BUG-8); "Slowest commands" shipped as **"Slowest requests"** (Lambda `@duration` is per-invocation; X-Ray covers per-command). See `docs/learnings/_archive.md`.
 
 **Value:** The surfaces built in 12-A..12-F are only useful if you know where to look. This slice writes a short runbook (`docs/observability.md`) — "where do I see errors / latency / a single user's request / a frontend crash", with the dashboard URL, the X-Ray console path, the RUM console path, and a set of copy-paste Logs Insights queries (all errors, errors for one correlation ID, slowest commands, concurrency-conflict timeline). The most-used queries are also saved as CDK `CfnQueryDefinition`s so they appear in the Logs Insights query picker for everyone.
 
@@ -471,7 +471,7 @@ Scenario: Common queries are saved in Logs Insights
 
 ## Slice 12-H — Unified error view (frontend RUM errors on the ops dashboard)
 
-**Status:** Done — implementation note: kept the existing 12-D backend "All errors" widget and added a *second* combined "All errors (backend + frontend)" `LogQueryWidget` (over both the API and derived RUM log groups) plus a RUM `JsErrorCount`/`HttpErrorCount` metric widget, rather than reordering the stack to extend the original widget. See `docs/learnings/phase-12h-unified-error-view.md`.
+**Status:** Done — implementation note: kept the existing 12-D backend "All errors" widget and added a *second* combined "All errors (backend + frontend)" `LogQueryWidget` (over both the API and derived RUM log groups) plus a RUM `JsErrorCount`/`HttpErrorCount` metric widget, rather than reordering the stack to extend the original widget. See `docs/learnings/_archive.md`.
 
 **Value:** One place to answer "what's broken?" across the whole stack. Today backend errors are on the `notetaker-ops` dashboard (12-D "All errors" widget) and frontend errors live only in the separate CloudWatch RUM console (12-F). This slice brings the browser's JavaScript errors and failed API calls onto the same dashboard, so a single screen — with one time-range picker — shows Lambda errors *and* frontend errors. Because RUM `http` events carry the X-Ray trace id (12-C), a frontend error on the dashboard can be pivoted straight to its backend trace.
 

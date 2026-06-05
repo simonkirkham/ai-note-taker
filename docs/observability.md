@@ -84,7 +84,7 @@ To trace a request:
 
 **CloudWatch RUM → App monitors → `notetaker-rum`** (or use the `RumMonitorId` output). Tabs: **Errors** (JS errors with stack traces), **Performance** (Core Web Vitals), **Sessions**, **Browsers & Devices**. RUM also writes events to the log group `/aws/vendedlogs/RUMService_notetaker-rum<first-8-of-RumMonitorId>`, which the dashboard's combined error widget already queries. With X-Ray enabled on the monitor, a frontend error links to its backend trace via the propagated trace id (12-C).
 
-> The RUM web client loads from the **global** CDN `client.rum.us-east-1.amazonaws.com` (not regional); only the data plane is regional. If RUM shows "no data", first confirm the snippet is in the deployed `index.html` and `PutRumEvents` → `dataplane.rum.eu-west-2.amazonaws.com` returns 200. (See `docs/learnings/phase-12f-frontend-rum.md` / BUG-6.)
+> The RUM web client loads from the **global** CDN `client.rum.us-east-1.amazonaws.com` (not regional); only the data plane is regional. If RUM shows "no data", first confirm the snippet is in the deployed `index.html` and `PutRumEvents` → `dataplane.rum.eu-west-2.amazonaws.com` returns 200. (See `docs/learnings/_archive.md` / BUG-6.)
 
 ## Did something breach a threshold?
 
@@ -93,7 +93,7 @@ The **`notetaker-alarms`** SNS topic emails the configured address when an alarm
 - **`notetaker-error-rate`** — Lambda error rate > 1% over 5 min (2 periods).
 - **`notetaker-p99-latency`** — Lambda p99 duration > 5 s over 5 min (2 periods).
 
-A concurrency-conflict alarm is **deferred** — CloudWatch rejects `SEARCH` on metric alarms, and `ConcurrencyConflict` is only queryable via SEARCH today (it's emitted with per-`Aggregate` dimensions). Watch it on the dashboard / saved query meanwhile. (See `docs/learnings/phase-12e-alarms-sns.md`.)
+A concurrency-conflict alarm is **deferred** — CloudWatch rejects `SEARCH` on metric alarms, and `ConcurrencyConflict` is only queryable via SEARCH today (it's emitted with per-`Aggregate` dimensions). Watch it on the dashboard / saved query meanwhile. (See `docs/learnings/_archive.md`.)
 
 **To test the wiring** (the email subscription must be confirmed first — accept the AWS confirmation email):
 

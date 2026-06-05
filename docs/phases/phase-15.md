@@ -38,7 +38,7 @@ Per the project workflow, prototype code is quick-and-dirty scaffolding on a `pr
 
 ## Slice 15-A — Your notes stay yours; the AI's notes get their own home
 
-**Status:** Done — shipped 2026-06-03 (PR #144, deploy #431). Learnings: `docs/learnings/phase-15a-final-notes-artifact.md`.
+**Status:** Done — shipped 2026-06-03 (PR #144, deploy #431). Learnings: `docs/learnings/_archive.md`.
 
 **User value:** When analysis runs on a note, the AI now writes a **separate Final notes artifact** — a Summary, Discussion points, Decisions, and the extracted Action items — attributed to the model that produced it, and it **never overwrites what the user typed**. The user can see the AI's output as its own thing, distinct from their own notes. This is the behavioural fix at the heart of the phase: "what I wrote" and "what the AI generated" stop being the same field.
 
@@ -128,7 +128,7 @@ Scenario: Final notes survive a projection rebuild
 
 ## Slice 15-B — Read a note as three tabs: Transcript, Quick notes, Final notes
 
-**Status:** Done — shipped 2026-06-03 (PR #149, deploy #435). Learnings: `docs/learnings/phase-15b-three-tab-view.md`. (Phase 14-O "migrate TranscriptionPanel" was dropped as superseded — 15-B deletes that component.)
+**Status:** Done — shipped 2026-06-03 (PR #149, deploy #435). Learnings: `docs/learnings/_archive.md`. (Phase 14-O "migrate TranscriptionPanel" was dropped as superseded — 15-B deletes that component.)
 
 **User value:** The note screen becomes the clean three-tab reading experience confirmed in the prototype. The user flips between their own **Quick notes**, the raw **Transcript**, and the AI's **Final notes** — three clearly-labelled surfaces, so at a glance it is obvious which is which. The raw transcript gets its own read-only tab instead of a side panel, and Quick notes is unmistakably the user's space.
 
@@ -191,7 +191,7 @@ Scenario: Recording and export are reachable from the tab row
 
 ## Slice 15-C — Regenerate Final notes on demand
 
-**Status:** Done — shipped 2026-06-03 (PR #153, deploy #437). Learnings: `docs/learnings/phase-15c-reprocess.md`. Failure surfacing uses Phase 14-V's `ToastProvider`/`useToast`.
+**Status:** Done — shipped 2026-06-03 (PR #153, deploy #437). Learnings: `docs/learnings/_archive.md`. Failure surfacing uses Phase 14-V's `ToastProvider`/`useToast`.
 
 **User value:** The user can re-run analysis whenever they want — after editing the transcript or their notes — and get fresh Final notes, without leaving the note. A "Re-process" control (confirmed by the prototype to live in the Final notes tab header, alongside the empty-state "Generate final notes" CTA) regenerates the artifact with an optimistic pending state, and on failure it rolls back and tells them, rather than leaving a stale or silently-broken view.
 

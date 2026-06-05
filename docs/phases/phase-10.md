@@ -433,7 +433,7 @@ Scenario: Mic-only when toggle is off
 
 ## Slice 10-G — Analysis evaluation harness
 
-**Status:** Done — shipped 2026-06-03 (PR #132, deploy #418). See [learnings](../learnings/phase-10g-analysis-eval-harness.md) and the [testing guide](../guides/analysis-eval-harness.md).
+**Status:** Done — shipped 2026-06-03 (PR #132, deploy #418). See [learnings](../learnings/_archive.md) and the [testing guide](../guides/analysis-eval-harness.md).
 
 **Value:** Compare prompt and model variants for the transcript analysis on a fixed set of meeting transcripts, scored against expected tags, action items, and content gap-fill. Run on demand or nightly; produce a markdown report that diffs runs side by side. Makes prompt iteration measurable instead of vibes-based.
 
@@ -990,7 +990,7 @@ Scenario: The projection rebuilds from the event stream
 
 ## Slice 10-M — Stamp modelId / promptVersion on the suggestion events
 
-**Status:** Done — shipped 2026-06-04 (PR #163, deploy #457). See [learnings](../learnings/phase-10m-stamp-provenance.md).
+**Status:** Done — shipped 2026-06-04 (PR #163, deploy #457). See [learnings](../learnings/_archive.md).
 
 **Value:** Tie every captured correction (10-J / 10-L) to the exact prompt and model that produced the suggestion, so refinement can compare quality *across prompt versions* rather than only in aggregate. This closes the loop between the eval harness (10-G) and the live feedback signal — and lets real meetings feed the 10-G fixture set.
 
@@ -1040,7 +1040,7 @@ Scenario: Feedback can be sliced per prompt version
 
 ## Slice 10-N — Migrate analysis to the Converse API (model-agnostic)
 
-**Status:** Done — shipped 2026-06-03 (PR #152, deploy #436). See [learnings](../learnings/phase-10n-converse-api.md).
+**Status:** Done — shipped 2026-06-03 (PR #152, deploy #436). See [learnings](../learnings/_archive.md).
 
 **Value:** `BedrockAnalysisService` calls Bedrock's `InvokeModel` with Amazon Nova's `messages-v1` body and parses the Nova envelope, so only Nova models work — the eval harness's `make eval` sweep is restricted to the Nova family. Switching to Bedrock's model-agnostic **Converse API** lets the same code drive *any* accessible Bedrock text model (Claude, Llama, Mistral, Titan, Cohere…), so the harness can compare them and the production model is swappable via `BEDROCK_MODEL_ID` alone. Graduated from `technical-improvements.md`.
 
