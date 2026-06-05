@@ -18,7 +18,7 @@ The deciding fact is local to this codebase: the event store is **snapshot-less*
 
 **No. Interim transcription checkpoints are draft / working state, not domain events.**
 
-- Checkpoints are written to a dedicated **overwrite-in-place draft store**, keyed by `(userId, noteId)`, holding exactly one item per note — each checkpoint overwrites the last.
+- Checkpoints are written to a dedicated **overwrite-in-place draft store**, keyed per note (one item per note, owning user recorded and ownership enforced at the API boundary) — each checkpoint overwrites the last.
 - The **event log records exactly one `TranscriptionCompleted` per recording**, on a clean stop.
 - A draft is **promoted** to that single event (and then deleted) when the recording ends — either cleanly (Stop / intentional navigation away) or via **explicit recovery** after an interrupted session (crash, tab close, power loss).
 
@@ -38,7 +38,7 @@ Two concerns were being conflated: the **domain fact** ("a transcript was comple
 
 ## Design
 
-- **Draft store.** A new DynamoDB table, one item per `(userId, noteId)`, overwritten on each checkpoint, with a **TTL** so abandoned drafts self-clean. It is neither the event store nor a projection but a sanctioned third category — *loss-tolerant working state*. It lives in the `EventStore` project alongside the projections (so the "never write to DynamoDB outside `src/EventStore/`" guardrail still holds) but is documented as a non-event store. Ownership-scoped like every other store.
+- **Draft store.** A new DynamoDB table, one item per note (keyed by the note id; the owning user is recorded as an attribute and ownership is enforced at the API boundary), overwritten on each checkpoint, with a **TTL** so abandoned drafts self-clean. It is neither the event store nor a projection but a sanctioned third category — *loss-tolerant working state*. It lives in the `EventStore` project alongside the projections (so the "never write to DynamoDB outside `src/EventStore/`" guardrail still holds) but is documented as a non-event store. Ownership-scoped like every other store.
 - **Endpoints.**
   - `PUT /notes/{id}/transcription/draft` — idempotent overwrite of the draft. **Emits no event.** Called on the checkpoint timer.
   - `DELETE /notes/{id}/transcription/draft` — discard an uncommitted draft (recovery "Discard"). Emits no event.

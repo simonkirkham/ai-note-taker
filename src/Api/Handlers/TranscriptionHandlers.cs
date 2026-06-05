@@ -20,6 +20,7 @@ public static class TranscriptionHandlers
         INoteDetailStore noteDetailStore,
         ITranscriptionDraftStore draftStore,
         ICurrentUser currentUser,
+        ILoggerFactory loggerFactory,
         CancellationToken ct)
     {
         if (string.IsNullOrWhiteSpace(req.TranscriptText)) return Results.UnprocessableEntity();
@@ -34,7 +35,18 @@ public static class TranscriptionHandlers
         catch (InvalidOperationException) { return Results.NotFound(); }
         // A clean completion supersedes any in-progress draft; drop it so a later
         // reload does not offer a stale recovery for transcript now committed.
-        await draftStore.DeleteAsync(new NoteId(noteId), ct);
+        // Best-effort: the transcript is already committed, and a leftover draft is
+        // a prefix of it, so the read-time guard suppresses it anyway — never fail
+        // the request on a draft-store hiccup.
+        try
+        {
+            await draftStore.DeleteAsync(new NoteId(noteId), ct);
+        }
+        catch (Exception ex)
+        {
+            loggerFactory.CreateLogger("Api.Handlers.TranscriptionHandlers")
+                .LogWarning(ex, "Failed to delete transcription draft after completing note {NoteId}; a stale draft will be suppressed on read.", noteId);
+        }
         return Results.NoContent();
     }
 

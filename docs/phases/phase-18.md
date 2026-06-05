@@ -32,11 +32,11 @@
 ### How it works (implementation notes)
 
 - **Draft store (`src/EventStore/`, beside the projections).** New `ITranscriptionDraftStore`:
-  - `SaveAsync(NoteId, userId, string text, int durationSeconds, ct)` — overwrite the single item for `(userId, noteId)`.
-  - `GetAsync(NoteId, userId, ct)` → `TranscriptionDraft?` (`Text`, `DurationSeconds`, `CapturedAt`) or null.
-  - `DeleteAsync(NoteId, userId, ct)` — delete-if-exists (idempotent).
-  - `DynamoDbTranscriptionDraftStore` — one item keyed by `(userId, noteId)`, written with `PutItem` (full overwrite), carrying a `ttl` epoch attribute = `CapturedAt + 48h`. An in-memory implementation backs `Api.Integration`.
-- **New DynamoDB table (`src/Infrastructure`).** `TranscriptionDrafts` (PK composed of userId+noteId), **TTL enabled** on the `ttl` attribute, `RemovalPolicy.DESTROY` (working state, not durable record). Least-privilege grant to the API Lambda (`Get/Put/DeleteItem` only). `Infrastructure.Assertions` covers table existence, TTL spec, deletion policy, and the scoped IAM grant.
+  - `SaveAsync(TranscriptionDraft draft, ct)` — overwrite the single item for the note. `TranscriptionDraft` carries `NoteId`, `UserId`, `Text`, `DurationSeconds`, `CapturedAt`.
+  - `GetAsync(NoteId, ct)` → `TranscriptionDraft?` or null.
+  - `DeleteAsync(NoteId, ct)` — delete-if-exists (idempotent).
+  - `DynamoDbTranscriptionDraftStore` — one item per note (PK = the note's stream id), with the owning `UserId` stored as an attribute. A note has exactly one owner and every endpoint enforces ownership at the handler boundary before touching the store, so the key is the note id, not a composite. Written with `PutItem` (full overwrite), carrying a `TTL` epoch attribute = `CapturedAt + 48h`. An in-memory implementation backs `Api.Integration`.
+- **New DynamoDB table (`src/Infrastructure`).** `notetaker-draft-transcription` (PK = `PK`, the note's stream id), **TTL enabled** on the `TTL` attribute, `RemovalPolicy.DESTROY` (working state, not durable record). Least-privilege grant to the API Lambda (`Get/Put/DeleteItem` only). `Infrastructure.Assertions` covers table existence, TTL spec, deletion policy, and the scoped IAM grant.
 - **Endpoints (`TranscriptionEndpoints` / `TranscriptionHandlers`).**
   - `PUT /notes/{noteId:guid}/transcription/draft` → `SaveDraft`: ownership check via `noteDetailStore` (404 if missing / not owner), reject blank text (`422`), `SaveAsync`, return `204`. **No event.**
   - `DELETE /notes/{noteId:guid}/transcription/draft` → `DiscardDraft`: ownership check, `DeleteAsync`, `204`. **No event.**
@@ -89,7 +89,7 @@ Scenario: A blank draft is rejected
 
 ### Acceptance criteria
 
-- [ ] `ITranscriptionDraftStore` (`Save`/`Get`/`Delete`) with a DynamoDB implementation (single overwritten item per `(userId, noteId)`, `ttl` = CapturedAt + 48h) and an in-memory implementation for tests
+- [x] `ITranscriptionDraftStore` (`Save`/`Get`/`Delete`) with a DynamoDB implementation (single overwritten item per note, keyed by the note id with the owning `UserId` as an attribute, `TTL` = CapturedAt + 48h) and an in-memory implementation for tests
 - [ ] `PUT /notes/{id}/transcription/draft` (overwrite, ownership-checked, blank ⇒ 422, **no event**, 204) and `DELETE /notes/{id}/transcription/draft` (idempotent, ownership-checked, **no event**, 204)
 - [ ] `POST /notes/{id}/transcription` unchanged in contract; additionally deletes the draft on success
 - [ ] `GET /notes/{id}` composes `transcriptDraft { text, capturedAt } | null` at read time; surfaced only when present and not equal-to/prefix-of the committed transcript; `NoteDetailView` projection unchanged

@@ -1,6 +1,9 @@
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
+using Domain.Notes;
+using EventStore;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace Api.Integration;
 
@@ -13,13 +16,17 @@ public sealed class TranscriptionDraftTests(ApiFactory factory) : IClassFixture<
     public async Task PutDraft_saves_without_an_event_and_GetNote_exposes_it()
     {
         var noteId = await CreateNoteAsync();
+        var eventsBefore = await CountStreamEventsAsync(noteId);
 
         var put = await PutDraftAsync(noteId, "Speaker 1: Half a meeting", 12);
         Assert.Equal(HttpStatusCode.NoContent, put.StatusCode);
 
+        // The slice's core invariant: a draft PUT appends nothing to the event stream.
+        Assert.Equal(eventsBefore, await CountStreamEventsAsync(noteId));
+
         var body = await GetNoteAsync(noteId);
         Assert.Equal("Speaker 1: Half a meeting", body.GetProperty("transcriptDraft").GetProperty("text").GetString());
-        // No TranscriptionCompleted was appended: the committed transcript is still empty.
+        // And the committed transcript is still empty (no TranscriptionCompleted).
         Assert.True(IsNullOrAbsent(body, "transcriptText"));
     }
 
@@ -134,4 +141,11 @@ public sealed class TranscriptionDraftTests(ApiFactory factory) : IClassFixture<
     // A field is "no value" whether the serializer emits it as null or omits it entirely.
     private static bool IsNullOrAbsent(JsonElement body, string property) =>
         !body.TryGetProperty(property, out var value) || value.ValueKind == JsonValueKind.Null;
+
+    private async Task<int> CountStreamEventsAsync(string noteId)
+    {
+        var store = _factory.Services.GetRequiredService<IEventStore>();
+        var events = await store.ReadAsync(new NoteId(Guid.Parse(noteId)).ToStreamId());
+        return events.Count;
+    }
 }
