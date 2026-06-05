@@ -21,7 +21,7 @@
 | BUG-8 | `x-correlation-id` returned to clients is never logged — a user-quoted ID can't be found in logs | Done | 12-A |
 | BUG-9 | Note tab panels (Transcript/Final notes) stack below Quick notes instead of replacing it | Done | 15-B |
 | BUG-10 | Live transcription falls behind realtime — audio streamed in ~8ms chunks (~125 events/sec) | Done | — |
-| BUG-11 | Signed out ~hourly — iframe silent refresh fails under third-party-cookie blocking; switch to backend refresh-token flow | In Progress | — |
+| BUG-11 | Signed out ~hourly — iframe silent refresh fails under third-party-cookie blocking; switch to backend refresh-token flow | Done | — |
 
 Further bugs will be appended as they are identified.
 
@@ -277,7 +277,7 @@ Option (a) keeps the existing header semantics; (b) collapses two correlation id
 
 ## BUG-11 — User is signed out too frequently
 
-**Status:** In Progress — `slice/bug-11-session-refresh-token`.
+**Status:** Done — fixed in PR #175 (squash commit `0b05575`), deployed to main 2026-06-05 (deploy #469). See [docs/learnings/phase-bug-11-session-refresh-token.md](../learnings/phase-bug-11-session-refresh-token.md).
 
 **Severity:** Medium — no data loss, but the user is repeatedly forced back through sign-in during normal use, interrupting work.
 
@@ -305,11 +305,12 @@ No CDK change: the `/api/*` CloudFront behaviour already uses `CACHING_DISABLED`
 3. Observe being bounced to sign-in when the iframe silent refresh fails.
 
 **Acceptance criteria:**
-- [ ] The auth URL requests `access_type=offline` so Google issues a refresh token.
-- [ ] `/auth/token` success sets the refresh token in a cookie with `HttpOnly`, `SameSite=Strict`, `Path=/api/auth` (and `Secure` over HTTPS); the response body still returns only `id_token`.
-- [ ] `POST /auth/refresh` returns a fresh `id_token` for a valid refresh-token cookie, and `401` when the cookie is absent or Google rejects the refresh token.
-- [ ] The frontend silent refresh calls `/api/auth/refresh` (no iframe); `silent-refresh.html` and the iframe code are removed.
-- [ ] Failing tests reproduce the gap before the fix and pass after: backend `/auth/refresh` (200 w/ cookie via a stubbed Google client, 401 w/o) + `/auth/token` cookie attributes; frontend `silentRefresh` posts to `/api/auth/refresh` and returns the token / null.
-- [ ] Existing `TokenRefresh`/`Auth` frontend tests and `AuthTokenExchange` backend tests stay green (the 401-retry and scheduled-refresh behaviour is unchanged).
+- [x] The auth URL requests `access_type=offline` so Google issues a refresh token.
+- [x] `/auth/token` success sets the refresh token in a cookie with `HttpOnly`, `SameSite=Strict`, `Path=/api/auth` (and `Secure` over HTTPS); the response body still returns only `id_token`.
+- [x] `POST /auth/refresh` returns a fresh `id_token` for a valid refresh-token cookie, and `401` when the cookie is absent or Google rejects the refresh token.
+- [x] The frontend silent refresh calls `/api/auth/refresh` (no iframe); `silent-refresh.html` and the iframe code are removed.
+- [x] Failing tests reproduce the gap before the fix and pass after: backend `/auth/refresh` (200 w/ cookie via a stubbed Google client, 401 w/o) + `/auth/token` cookie attributes; frontend `silentRefresh` posts to `/api/auth/refresh` and returns the token / null.
+- [x] Existing `TokenRefresh`/`Auth` frontend tests and `AuthTokenExchange` backend tests stay green (the 401-retry and scheduled-refresh behaviour is unchanged).
+- [x] The refresh cookie's 30-day window slides forward on every successful refresh (Hawk #1), so an active session is never force-signed-out at the 30-day mark.
 
-**Key files (planned):** `web/src/auth/pkce.ts`, `web/src/auth/silentRefresh.ts`, `web/src/auth/AuthContext.tsx`, `web/src/auth/useGoogleAuth.ts`, remove `web/public/silent-refresh.html`; `src/Api/Endpoints/AuthEndpoints.cs`, new `src/Api/Auth/IGoogleOAuthClient.cs` (+ real impl), `src/Api/Program.cs` wiring; tests `tests/Api.Integration/AuthRefreshTests.cs`, `tests/Api.Integration/ApiFactory.cs` (fake OAuth client), `web/src/__tests__/SilentRefresh.test.ts`.
+**Key files:** `web/src/auth/pkce.ts`, `web/src/auth/silentRefresh.ts`, `web/src/auth/AuthContext.tsx`, `web/src/auth/useGoogleAuth.ts`, removed `web/public/silent-refresh.html`; `src/Api/Endpoints/AuthEndpoints.cs`, new `src/Api/Auth/IGoogleOAuthClient.cs` + `GoogleOAuthClient.cs`, `src/Api/Builder.cs` wiring; tests `tests/Api.Integration/AuthRefreshTests.cs`, `FakeGoogleOAuthClient.cs`, `AuthEnvCollection.cs`, `AuthTokenExchangeTests.cs`, `ApiFactory.cs`, `web/src/__tests__/SilentRefresh.test.ts`, `AuthUrl.test.ts`.

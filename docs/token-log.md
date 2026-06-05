@@ -4,6 +4,23 @@ Approximate tokens consumed per slice, broken down by agent. Recorded by Scribe 
 
 ---
 
+## BUG-11 — Session refresh-token flow (signed out too often)
+
+> Orchestrator-driven (no separate Breaker/Pip subagents). Started from a user "raise a bug" → diagnosis → 3-way design decision (Option A + httpOnly cookie) → full pipeline.
+
+| Agent / phase                                                                 | ~Tokens  |
+|-------------------------------------------------------------------------------|----------|
+| Diagnosis + design (read auth stack, confirm third-party-cookie root cause, pros/cons over 3 options + 2 storage options) | 45 000 |
+| Breaker + Pip (worktree, `IGoogleOAuthClient` seam + endpoint + cookie, frontend `fetch` rewrite, delete iframe, 4 backend + 2 frontend tests) | 55 000 |
+| Local gates (Api.Integration 234, vitest 315, tsc, eslint, full build, pre-commit ×2) | 22 000 |
+| Hawk (code-reviewer subagent — approved, 4 findings; #1 applied)              | 62 000   |
+| Gate monitoring (CI ×2 incl. stale-check catch) + merge + cleanup + deploy monitor + Scribe | 30 000 |
+| **Total**                                                                     | **~214 000** |
+
+**Notes:** no spike. Hawk (~62k) the largest single agent and earning it — caught the 30-day-window residual (finding #1), a softer recurrence of the bug being fixed. The CI stale-check race (a settled `gh pr checks` reporting the *prior* commit's run) cost an extra monitor cycle but was caught before merge by keying on head SHA. One process miss (merge during in-flight deploy) logged in `_minor-log.md`.
+
+---
+
 ## Slice 12-G — Observability runbook + saved Logs Insights queries (closes Phase 12)
 
 > **Note:** Mostly docs + four `CfnQueryDefinition`s, but it took **two Hawk rounds**. Hawk's first review requested changes on a wrong-log-group basis, yet its log-checking process surfaced two genuine "query returns blank/nothing" bugs (the `correlationId` non-field → BUG-8, and PascalCase-vs-snake_case projections). Both Hawk passes ran as real subagents (exact counts).
