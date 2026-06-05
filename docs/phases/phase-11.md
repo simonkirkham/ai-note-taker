@@ -15,62 +15,11 @@
 | 11-G | Fix 401s during active sessions | Done | 11-D |
 | 11-H | Fix note not deleted when discarded from meeting creation | Done | 11-C |
 
-**Learning surface:** Component-level autocomplete patterns in React; client-side ranking and relevance algorithms; accessible keyboard navigation in custom dropdowns; optimistic UI for cross-screen interactions.
-
 ---
 
 ## Slice 11-A — Tag autocomplete and suggestions
 
 **Status:** Done
-
-**Value:** Tag entry becomes fast and consistent. Typing the first few characters surfaces matching tags from the existing vocabulary so users don't create near-duplicates ("job-hunting" vs "JobHunting"). When the input is empty, the most-used tags appear as one-click shortcuts; notes that already have tags get a curated "Related" list derived from tag co-occurrence.
-
-**Backend changes:** None. `GET /tags` already returns every tag with `noteCount` and `noteIds[]`. The frontend fetches this index once on mount and does all ranking client-side.
-
----
-
-### How the suggestions work
-
-**When the user is typing:**
-
-1. **Prefix matches** — tags that begin with the typed prefix (case-insensitive), ordered by `noteCount` descending.
-2. **Substring matches** — tags that contain but do not start with the prefix (case-insensitive), ordered by `noteCount` descending.
-
-The two groups are shown in order (prefix first) with no heading. Together they form a deduplicated, ranked list. Already-applied tags on the current note are excluded at every step.
-
-**When the input is empty (focus state):**
-
-- **Common** — top 8 tags by `noteCount`, excluding already-applied tags. Shown with a "Common" heading.
-- **Related** — shown only when the note already has at least one tag. Algorithm:
-  1. Collect `noteIds` from every already-applied tag using the in-memory tag index.
-  2. For every tag in the index, count how many of its `noteIds` overlap with that set.
-  3. Remove already-applied tags and any tag with zero overlap.
-  4. Sort descending by overlap count; take the top 5.
-  - Shown with a "Related" heading, above Common.
-
-**Keyboard behaviour:**
-
-| Key | Action |
-|-----|--------|
-| `↓` / `↑` | Move highlight through the dropdown |
-| `Tab` or `→` (when a suggestion is highlighted) | Complete the input with the highlighted tag |
-| `Tab` (nothing highlighted, suggestions open) | Complete with the first suggestion |
-| `Enter` | Submit the current input text (same as today) if nothing is highlighted; submit the highlighted suggestion if one is |
-| `Escape` | Close the dropdown; do not change the input |
-
-Mouse click on a suggestion submits that tag immediately (same as pressing Enter on it).
-
-The dropdown closes after any submission and when focus leaves the input.
-
----
-
-### Key implementation files
-
-- `web/src/components/TagsSection.tsx` — rewrite to accept `allTags: TagIndexEntry[]`; add dropdown state; keyboard nav; Tab completion
-- `web/src/hooks/useTagSuggestions.ts` — new hook: derives the ranked suggestion list from `(input, allTags, appliedTags)`; memoised with `useMemo`
-- `web/src/components/NoteView.tsx` — pass `allTags` down to `<TagsSection />`; fetch from `getTags()` on mount (or receive from parent if already fetched)
-
----
 
 ### Scenarios
 
@@ -161,113 +110,6 @@ Scenario: Clicking a suggestion submits it immediately
 ## Slice 11-B — Add To Do from the home screen
 
 **Status:** Done
-
-**Value:** Users can capture a to-do item without navigating away from the home screen. Standalone to-dos are independent of notes — no hidden note, no filtering hack. The To Do section gains a quick-add input, reopen and delete affordances on all items, and a collapsible "Done" section showing what was completed today.
-
-**Backend changes:** New `Todo` aggregate with `TodoAdded` / `TodoCompleted` / `TodoReopened` / `TodoDeleted` events. New `POST /todos`, `POST /todos/{todoId}/complete`, `POST /todos/{todoId}/reopen`, `DELETE /todos/{todoId}` endpoints. Projection updated to retain completed items and unify note-based actions and standalone todos under a single response shape.
-
----
-
-### Domain — `Todo` aggregate
-
-Stream key: `todo-{todoId}`
-
-**Events:**
-
-| Event | Fields |
-|-------|--------|
-| `TodoAdded` | `TodoId`, `UserId`, `Description`, `Priority?` |
-| `TodoCompleted` | `TodoId` |
-| `TodoReopened` | `TodoId` |
-| `TodoDeleted` | `TodoId` |
-
-`Priority` is nullable and reserved for a future prioritisation UI (today / next / later). It is accepted on `POST /todos` but ignored by the frontend in this slice.
-
-**Commands:** `AddTodo`, `CompleteTodo`, `ReopenTodo`, `DeleteTodo`
-
----
-
-### New API endpoints
-
-| Method | Path | Body | Notes |
-|--------|------|------|-------|
-| `POST` | `/todos` | `{ description, priority? }` | Creates standalone to-do |
-| `POST` | `/todos/{todoId}/complete` | — | |
-| `POST` | `/todos/{todoId}/reopen` | — | |
-| `DELETE` | `/todos/{todoId}` | — | |
-
----
-
-### Projection changes
-
-`TodoItem` record in `EventStore.Projections`:
-
-| Field | Type | Notes |
-|-------|------|-------|
-| `ItemId` | `string` | `ActionId.Value` or `TodoId.Value` — no domain typing in the read model |
-| `NoteId` | `string?` | Null for standalone todos |
-| `NoteTitle` | `string?` | Null for standalone todos |
-| `Type` | `string` | `"action"` or `"todo"` |
-| `Description` | `string` | |
-| `AddedAt` | `DateTimeOffset` | |
-| `CompletedAt` | `DateTimeOffset?` | Null = open |
-| `UserId` | `string` | |
-
-**Behaviour changes:**
-- `ActionCompleted` now **updates** `CompletedAt` on the projection record instead of deleting it
-- `ActionReopened` clears `CompletedAt`
-- `TodoCompleted` / `TodoReopened` / `TodoDeleted` handled by the same `TodoListEventHandler`
-- `ITodoListStore.DeleteAsync` signature changes from `(ActionId, ct)` to `(string itemId, ct)`
-
-**`GET /todos` response:**
-- Returns open items (no `CompletedAt`) **plus** items where `CompletedAt` falls within today's local calendar day (determined server-side from the `Date` header or UTC date; frontend already knows local date)
-- Response shape adds `type`, `itemId`, `noteId?`, `noteTitle?`, `completedAt?`
-
----
-
-### UX design
-
-The To Do panel on the home screen (`TodoSection.tsx`) gains:
-
-1. **Quick-add input** — single-line "Add a to-do…" always visible at the top. Enter or clicking Add submits; empty input is a no-op.
-2. **Reopen and delete affordances** on every open item (matching the existing `ActionsSection` in note view).
-3. **"Done" section** — collapsible, collapsed by default, toggle label shows count (e.g. "Done (3)"). Contains items completed today (local calendar day). Both note-based actions and standalone todos appear here. Each done item has a reopen and a delete affordance.
-
-**Optimistic UI — all interactions:**
-- Add: item appears at top of open list immediately with a temporary client-side `itemId`; replaced with real `itemId` on success; removed and inline error shown on failure
-- Complete: item moves from open list to Done section immediately; rolls back on failure
-- Reopen: item moves from Done section to top of open list immediately; rolls back on failure
-- Delete: item removed from whichever list it was in immediately; rolls back on failure
-
-**Note title display:** Standalone to-dos show no secondary line. Note-based items still show `noteTitle`.
-
----
-
-### Key implementation files
-
-**Backend (new):**
-- `src/Domain/Todos/` — `Todo` aggregate, `TodoId`, all events and commands
-- `src/Api/CommandHandlers/TodoCommandHandler.cs`
-- `src/Api/Handlers/TodoHandlers.cs` — new handlers for the four endpoints
-- `src/Api/Endpoints/TodoEndpoints.cs` — wire up new routes
-- `tests/Domain.Specs/Todos/` — BDD specs for all four commands
-
-**Backend (modified):**
-- `src/EventStore/Projections/TodoItem.cs` — updated record shape
-- `src/EventStore/Projections/ITodoListStore.cs` — updated interface
-- `src/EventStore/Projections/DynamoDbTodoListStore.cs` — updated implementation
-- `src/Api/CommandHandlers/ActionItemCommandHandler.cs` — `ActionCompleted` → update, not delete
-- `src/Api/Projections/TodoListEventHandler.cs` — handle new `Todo` events
-- `src/Api/Handlers/TodoHandlers.cs` — `GET /todos` updated response shape
-
-**Frontend (new):**
-- `web/src/components/QuickCaptureTodoInput.tsx` — input + submit; optimistic add
-
-**Frontend (modified):**
-- `web/src/components/TodoSection.tsx` — add `QuickCaptureTodoInput`, reopen/delete affordances, Done section
-- `web/src/api.ts` — updated `TodoItem` type; new `addTodo`, `completeTodo`, `reopenTodo`, `deleteTodo` functions
-
----
 
 ### Scenarios
 
@@ -371,12 +213,6 @@ Scenario: Done section only shows items completed today
 
 **Status:** Done
 
-**Value:** Clicking Cancel on a freshly-created note that the user never filled in no longer leaves a ghost blank entry in the notes list.
-
-**Backend changes:** None. `DELETE /notes/:id` already exists.
-
----
-
 ### Scenarios
 
 ```
@@ -404,13 +240,6 @@ Scenario: Canceling an existing note does not delete it
 
 ---
 
-### Key implementation files
-
-- `web/src/App.tsx` — extend `View` type to carry `isNew?: boolean` on the `note` variant; set it in `handleNewNote`
-- `web/src/components/NoteView.tsx` — add `isNew?: boolean` prop; call `onDelete(noteId)` instead of `onBack()` when `isNew` is true
-
----
-
 ### Acceptance criteria
 
 - [x] Clicking Cancel on a brand-new blank note (no title, content, tags, or actions) deletes it and returns to the list — no dialog
@@ -423,34 +252,6 @@ Scenario: Canceling an existing note does not delete it
 ## Slice 11-D — Token expiry and silent refresh
 
 **Status:** Done
-
-**Value:** Google ID tokens expire after 1 hour. Without a refresh mechanism, users are silently logged out mid-session: API calls start returning 401s, the UI stops working, and there is no clear feedback. This slice makes expiry invisible when the browser allows silent refresh, and shows a clear re-sign-in prompt as the fallback when it cannot.
-
-**Backend changes:** None. The API already validates token expiry via JWT Bearer middleware.
-
----
-
-### How it works
-
-Google ID tokens carry an `exp` claim. The flow:
-
-1. On sign-in, schedule a silent refresh 5 minutes before the token's `exp` timestamp using `setTimeout`.
-2. Silent refresh attempts `prompt=none` in a hidden iframe — this reuses the existing Google session without user interaction. On success, swap in the new token transparently and reschedule.
-3. If silent refresh fails (third-party cookies blocked, session ended, consent required), cancel the timer and show the re-sign-in banner.
-4. As a safety net, the existing 401 handler in `api.ts` also triggers the re-sign-in banner — this covers any token that expired before the timer fired (e.g., tab left open overnight, clock skew).
-
-The re-sign-in banner is a non-dismissable overlay/banner that blocks interaction and shows a single "Sign in again" button initiating a fresh PKCE flow.
-
----
-
-### Key implementation files
-
-- `web/src/auth/useGoogleAuth.ts` — add `scheduleRefresh(exp: number)`: parses the `exp` claim from the decoded ID token, sets a `setTimeout` for `(exp - now - 5min)`, attempts silent refresh via hidden iframe on fire; on failure calls `handleAuthFailure()`
-- `web/src/auth/AuthContext.tsx` — expose `sessionExpired: boolean`; set it when silent refresh fails or a 401 is received; cleared on successful re-sign-in
-- `web/src/api.ts` — existing 401 handler sets `sessionExpired` via context rather than clearing the token silently; ensures the banner is shown
-- `web/src/components/SessionExpiredBanner.tsx` — new component: full-screen overlay shown when `sessionExpired` is true; "Sign in again" button triggers `signIn()`
-
----
 
 ### Scenarios
 
@@ -511,29 +312,6 @@ Scenario: Token scheduled for refresh on sign-in
 
 **Status:** Done
 
-**Value:** Users can remove unwanted notes without first navigating into them. A delete affordance on each note card in the home screen list triggers a confirmation prompt, then removes the note immediately with optimistic UI.
-
-**Backend changes:** None. `DELETE /notes/{noteId}` already exists.
-
----
-
-### UX design
-
-Each note card in `MeetingsSection` gains a delete icon button (visible on hover or always visible on touch devices). Clicking it opens a small inline confirmation ("Delete this note?") with Confirm and Cancel. On confirm:
-
-- The note card is removed from the list immediately (optimistic).
-- `DELETE /notes/{noteId}` is called in the background.
-- On API failure, the note reappears at its original position and a brief error message is shown.
-
----
-
-### Key implementation files
-
-- `web/src/components/MeetingsSection.tsx` — add delete icon + inline confirmation per note card; call `onDeleteNote(noteId)` on confirm
-- `web/src/App.tsx` — implement `handleDeleteNote(noteId)`: optimistically remove from state, call `deleteNote(noteId)`, restore on failure
-
----
-
 ### Scenarios
 
 ```
@@ -588,37 +366,6 @@ Scenario: Deleting a note while viewing another note is unaffected
 ## Slice 11-F — Adaptive note action buttons
 
 **Status:** Done
-
-**Value:** The note view's action bar adapts to what the user has actually done, removing the ambiguous Cancel-vs-Save choice. A blank new note shows only Cancel (quick escape hatch). Once any content exists — title, body, tags, actions, todos, or transcript — Cancel disappears and Save + Delete take over as the only exits.
-
-**Backend changes:** None.
-
----
-
-### Behaviour
-
-| State | Visible buttons |
-|-------|----------------|
-| Note has no content (blank) | Cancel only |
-| Note has any content | Save + Delete (no Cancel) |
-
-"Has content" mirrors the existing `isSaveEnabled` check: `title`, `content`, `tags`, or `actionCount > 0`, plus `transcriptText !== null`. The check is live — switching from blank to non-blank (or vice versa) updates the button set immediately.
-
-**Cancel** (blank note only) — deletes the note and returns to the home screen, consistent with 11-C behaviour.
-
-**Save** — persists the current state and returns to the home screen.
-
-**Delete** — deletes the note and returns to the home screen. No secondary confirmation dialog; the action is immediately reversible by recreating the note, and the user has explicitly navigated to and decided to remove it.
-
-The existing "Discard this note?" dialog (`showCancelDialog`) is removed; it is no longer reachable.
-
----
-
-### Key implementation files
-
-- `web/src/components/NoteView.tsx` — derive `hasContent` from existing state; conditionally render `Cancel` vs `Save + Delete`; remove `showCancelDialog` state and dialog markup
-
----
 
 ### Scenarios
 
@@ -684,34 +431,6 @@ Scenario: Existing note always shows Save and Delete
 
 **Status:** Done
 
-**Bug:** Users receive 401 errors mid-session despite the silent-refresh mechanism implemented in 11-D. The root cause is two compounding issues:
-
-1. **Browser timer throttling.** Browsers aggressively throttle `setTimeout` in background tabs (delays can stretch from minutes to hours). A 5-minute refresh lead time is insufficient if the tab is backgrounded — the timer fires late, the token has already expired, and the next API call returns 401.
-2. **Iframe silent refresh blocked.** The `prompt=none` iframe flow in `silentRefresh.ts` relies on third-party cookies to reuse the Google session. Modern browsers (Chrome with Privacy Sandbox, Safari ITP) block this, causing `attemptSilentRefresh` to always return `null` after its 15-second timeout. The resulting `onRefreshFailure` shows the session-expired banner rather than transparently renewing the token.
-
-**Backend changes:** None.
-
----
-
-### Fix
-
-Two independent improvements, both needed:
-
-**1 — Recheck on tab visibility change.**
-Add a `visibilitychange` listener in `AuthContext`. When the document becomes visible (`document.visibilityState === 'visible'`), decode the current token's `exp`. If the token is already expired, call `onRefreshFailure` immediately (show the banner) rather than letting the next API call hit a 401. If the token is within `REFRESH_LEAD_MS` of expiry, attempt a silent refresh immediately rather than waiting for the throttled timer.
-
-**2 — Proactive expiry guard in the API layer.**
-In `api.ts`, before attaching the `Authorization` header, check whether the token is expired (`exp * 1000 < Date.now()`). If it is, call `triggerUnauthorized()` immediately and abort the fetch rather than sending a request that will 401. This ensures the banner appears instantly on tab wake-up rather than after a round-trip to the API.
-
----
-
-### Key implementation files
-
-- `web/src/auth/AuthContext.tsx` — add `visibilitychange` listener; on visibility, check expiry and either trigger failure or immediate refresh
-- `web/src/api.ts` — add pre-flight expiry check before `fetch`; call `triggerUnauthorized()` and short-circuit if token is expired
-
----
-
 ### Scenarios
 
 ```
@@ -754,31 +473,6 @@ Scenario: Token valid on tab wake — no action taken
 ## Slice 11-H — Fix note not deleted when discarded from meeting creation
 
 **Status:** Done
-
-**Bug:** When the user clicks "Create note" on a meeting card in `MeetingsSection`, the note is created on the backend immediately and the user is navigated to `NoteView`. If they then click Cancel (without adding any content), the note is not deleted — it persists in the notes list.
-
-**Root cause:** `MeetingsSection.handleCreateNote` calls `onOpenNote(noteId, meeting.title)`, which in `App.tsx` calls `setView({ kind: "note", noteId, initialTitle: title })` without setting `isNew: true`. `NoteView` therefore treats the note as an existing note: Cancel triggers `onBack()` rather than `onDelete(noteId)`.
-
-**Backend changes:** None.
-
----
-
-### Fix
-
-Pass `isNew: true` when navigating to a note that was just created from a meeting. The simplest change is in `App.tsx`: update the `onOpenNote` lambda passed to `MeetingsSection` to accept an `isNew` flag, and set it in the view state.
-
-`MeetingsSection` already calls `onOpenNote(noteId, meeting.title)` after `createNoteFromMeeting` and `onOpenNote(noteId)` after `createNoteFromNextOccurrence` — both navigate to a freshly-created note and should mark it as new.
-
-With `isNew: true` set, the existing 11-C behaviour applies: Cancel on a blank note deletes it; Cancel on a note with content shows the "Discard this note?" dialog which, on confirm, deletes the note and returns to the home screen.
-
----
-
-### Key implementation files
-
-- `web/src/App.tsx` — update `onOpenNote` passed to `MeetingsSection` to set `isNew: true` in the view state
-- `web/src/components/MeetingsSection.tsx` — no change required if `App.tsx` handles `isNew`; alternatively, `onOpenNote` signature can accept an optional `isNew` boolean if preferred
-
----
 
 ### Scenarios
 

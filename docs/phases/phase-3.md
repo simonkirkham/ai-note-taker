@@ -12,27 +12,13 @@
 | 3-D | Complete and reopen todos from the home screen | Done | — |
 | 3-E | Delete an action item | Done | — |
 
-**Scope note:** Phase 3 covers three commands (`AddActionItem`, `CompleteActionItem`, `ReopenActionItem`) and three events (`ActionItemAdded`, `ActionItemCompleted`, `ActionItemReopened`), plus `DeleteActionItem` / `ActionItemDeleted` in the final slice. Edit is deliberately deferred. Each slice is a full vertical cut — backend and frontend together, delivering observable user value. The contrast between 3-C and 3-A/3-B is the "power of projections" moment: the same events, a completely different read model shape.
-
-**Dependencies and risks:**
-- `ActionId` needs a strongly-typed value wrapper (like `NoteId`) — add it in `src/Domain/` at the start of 3-A.
-- The `TodoList` handler for `ActionItemAdded` reads the parent note's title from the `NoteDetail` projection at write time (to denormalise it into the row). This is a cross-projection read at the projection layer — acceptable per `view-schemas.md` principles, but it means `NoteDetail` must be populated before a `TodoList` rebuild is meaningful. Flag in the implementation.
-- `NoteActions` uses a composite DynamoDB key `(NoteId, ActionId)` — the CDK stack needs a new table with both PK and SK.
-- `TodoList` uses `ActionId` as PK only — a single-key table, but needs a `NoteId` GSI for the `NoteRenamed` / `NoteDeleted` update sweep.
-
-Status key: `Done` · `In Progress` · `Not Started`
-
 ## Slice 3-A — Add action items on the note screen
 
 **Status:** Done
 
 **Value:** Users can capture action items while editing a note — the note editor becomes an active task-capture tool, not just a text area.
 
-**Commands in scope:** `AddActionItem(actionId, noteId, description, addedAt)`
-**Events in scope:** `ActionItemAdded { ActionId, NoteId, Description, AddedAt }`
-**Projections in scope:** `NoteActions` — per-note view; composite key `(NoteId, ActionId)` in DynamoDB; `IsCompleted: bool` field
-
-**Scenarios:**
+### Scenarios
 
 ```
 Scenario: Add an action item to a note
@@ -62,7 +48,7 @@ Scenario: Reject duplicate action item (API)
   Then  the response is 409 Conflict
 ```
 
-**Acceptance criteria:**
+### Acceptance criteria
 
 - [x] *(internal)* Adding an action item to an existing note appends `ActionItemAdded` to the event store under the action's own stream
 - [x] *(internal)* Adding an action item with an `ActionId` that already exists is rejected (duplicate guard)
@@ -81,11 +67,7 @@ Scenario: Reject duplicate action item (API)
 
 **Value:** Users can tick action items off and undo that tick — the checkbox behaves like a real checkbox.
 
-**Commands in scope:** `CompleteActionItem(actionId, completedAt)`, `ReopenActionItem(actionId, reopenedAt)`
-**Events in scope:** `ActionItemCompleted { ActionId, CompletedAt }`, `ActionItemReopened { ActionId, ReopenedAt }`
-**Projections in scope:** `NoteActions` — extend to handle `ActionItemCompleted` and `ActionItemReopened`; `IsCompleted` toggled accordingly
-
-**Scenarios:**
+### Scenarios
 
 ```
 Scenario: Tick an action item complete
@@ -114,7 +96,7 @@ Scenario: Reject reopening an already-open item (API)
   Then  the response is 409 Conflict
 ```
 
-**Acceptance criteria:**
+### Acceptance criteria
 
 - [x] *(internal)* Completing an open action item appends `ActionItemCompleted`
 - [x] *(internal)* Completing an already-completed action item is rejected (status guard)
@@ -131,13 +113,9 @@ Scenario: Reject reopening an already-open item (API)
 
 **Status:** Done
 
-**Value:** All open action items from every note appear together on the home screen — the same events that drive the per-note panel, projected into a completely different shape. This is the "power of projections" moment: one event stream, two independent read models.
+**Value:** All open action items from every note appear together on the home screen — the same events that drive the per-note panel, projected into a completely different shape.
 
-**Commands in scope:** none (read-side only)
-**Events in scope:** `ActionItemAdded`, `ActionItemCompleted`, `ActionItemReopened` (same as 3-A/3-B); `NoteRenamed` and `NoteDeleted` (to keep denormalised note titles fresh and remove orphaned rows)
-**Projections in scope:** `TodoList` — cross-note; keyed by `ActionId`; only open items stored; `NoteId` GSI for title-update and delete sweeps
-
-**Scenarios:**
+### Scenarios
 
 ```
 Scenario: Todo list is empty on a clean account
@@ -168,7 +146,7 @@ Scenario: Renaming a note updates the title shown in the todo list
   Then  the action item in the todo list shows "Q2 Planning" as its parent note title
 ```
 
-**Acceptance criteria:**
+### Acceptance criteria
 
 - [x] User lands on the home screen — a "To Do" section is visible above the notes list; if no open items exist it shows "Your ToDo list is clear."
 - [x] Open action items from notes appear in the todo list with the parent note's title
@@ -185,11 +163,7 @@ Scenario: Renaming a note updates the title shown in the todo list
 
 **Value:** Users can tick off todos without leaving the home screen — the most common action (marking something done) requires zero navigation.
 
-**Commands in scope:** `CompleteActionItem`, `ReopenActionItem` (no new backend — reuses 3-B's endpoints; `TodoList` projection already handles these events from 3-C)
-**New backend:** none
-**New frontend:** checkbox toggle on home screen todo items
-
-**Scenarios:**
+### Scenarios
 
 ```
 Scenario: Complete a todo from the home screen
@@ -208,7 +182,7 @@ Scenario: Completing from home screen is reflected in the note
   Then  the action item is shown as complete
 ```
 
-**Acceptance criteria:**
+### Acceptance criteria
 
 - [x] User ticks a todo on the home screen — it disappears from the list immediately
 - [x] The completion is reflected when the parent note is opened
@@ -222,11 +196,7 @@ Scenario: Completing from home screen is reflected in the note
 
 **Value:** Users can remove action items they no longer need — keeps the actions list clean.
 
-**Commands in scope:** `DeleteActionItem(actionId, deletedAt)`
-**Events in scope:** `ActionItemDeleted { ActionId, DeletedAt }`
-**Projections in scope:** `NoteActions` and `TodoList` — both handle `ActionItemDeleted` by removing the row
-
-**Scenarios:**
+### Scenarios
 
 ```
 Scenario: Delete an action item from the note screen
@@ -245,7 +215,7 @@ Scenario: Reject deleting a non-existent action item (API)
   Then  the response is 404 Not Found
 ```
 
-**Acceptance criteria:**
+### Acceptance criteria
 
 - [x] *(internal)* Deleting an action item appends `ActionItemDeleted` to the event store
 - [x] *(internal)* Deleting a non-existent action item returns 404

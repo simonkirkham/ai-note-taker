@@ -9,39 +9,13 @@
 | 17-A | **See a note's linked meeting.** `CalendarLinkView` gains `CalendarEventTitle` + `EndTime` (both already on the event); `GetNote` returns a `linkedMeeting` object; the note renders a persistent `Linked to <title> · <date/time>` badge; a projection rebuild backfills every existing meeting-created note. No new user action — independently shippable. | Done | — |
 | 17-B | **Link an open note to a meeting.** An unlinked note offers a **Link to meeting** control that opens a date-navigable meeting picker (reusing Phase 16's day list); choosing a meeting POSTs `/notes/{id}/calendar-link`; the badge appears optimistically. The control is hidden once linked. | Done | 17-A |
 
-**Confirmed product decisions (from Scout brief, 2026-06-05):**
-- **Entry point:** from the note (a control on the open `NoteView`), not from the meeting card.
-- **Meeting set:** a date picker + day list — reuse Phase 16's day-navigation pattern (`getMeetingsForDate(tz, date)`); not search.
-- **Cardinality:** link-once only. No unlink, no relink. The backend already rejects a second link with `409`; the UI must hide/disable the action once linked.
-- **Note display:** the note persistently shows which meeting it is linked to (survives reload), which is why the projection + `GetNote` extension is in scope.
-
-> **Slice order.** 17-A ships first and stands alone: extending and rebuilding the projection makes every *existing* meeting-created note show its meeting, with no new user action. 17-B then adds the "link after the fact" action and depends on 17-A for the persistent badge and the `linkedMeeting` contract. Prototype skipped — the picker is a modal reuse of Phase 16's day-navigation pattern, not novel UX.
-
-**Learning surface:** extending a read projection's schema and rebuilding it to backfill from already-persisted events (the event carried the data all along — only the projection under-captured it); reusing an existing, never-called command/endpoint/projection from the frontend (the backend was built ahead of the UI in Phase 9); a one-shot mutation guarded server-side by a domain pre-condition (`_calendarEventId is not null` → `409`) and mirrored client-side by hiding the action; reusing a date-navigation UI pattern (Phase 16) inside a modal picker rather than a page section.
-
 ---
 
 ## Slice 17-A — See a note's linked meeting
 
 **Status:** Done
 
-**User value:** A note that belongs to a meeting visibly says so. Opening a note that is linked to a calendar event shows **Linked to \<meeting title\> · \<date, time\>**, and it survives reload. This lights up immediately for every note already created from a meeting — the link data was always in the event stream, just never surfaced on the note.
-
-### Backend — capture and return the link
-
-`CalendarLinkView` gains two fields, both already present on `NoteLinkedToCalendarEvent`:
-
-| Field | Source |
-|-------|--------|
-| `CalendarEventTitle` (string) | `e.CalendarEventTitle` |
-| `EndTime` (`DateTimeOffset`) | `e.EndTime` |
-
-- The inline projection write in `NoteCommandHandler.UpdateCalendarLinkIndexForNewEventsAsync` maps the two new fields.
-- `DynamoDbCalendarLinkIndexStore` read/write mapping carries the new attributes.
-- `GetNote` returns a `linkedMeeting` object — `{ calendarEventId, title, startTime, endTime, recurringSeriesId, isRecurring }` — or `null` when unlinked (replacing the current bare `recurringSeriesId`/`isRecurring` pair; keep those derivable from `linkedMeeting` for the existing "Next occurrence" button).
-- **Projection rebuild** runs on deploy to backfill `CalendarEventTitle`/`EndTime` for every existing linked note.
-
-### Scenarios (Given/When/Then)
+### Scenarios
 
 **Linked note shows its meeting**
 - Given a note linked to a calendar event
@@ -70,15 +44,13 @@
 3. A linked note renders a persistent `Linked to <title> · <date/time>` badge that survives reload.
 4. The projection rebuild backfills `CalendarEventTitle`/`EndTime` for every existing linked note; `cdk synth` green.
 
+---
+
 ## Slice 17-B — Link an open note to a meeting
 
 **Status:** Done
 
-**Depends on:** 17-A (persistent badge + `linkedMeeting` contract).
-
-**User value:** While looking at a note created on its own, the user can attach it to a meeting they actually had. A **Link to meeting** control opens a picker showing a day's meetings (with **‹ Prev** / **Next ›** and a date-picker jump, exactly like the home meetings list); picking one links the note. The badge from 17-A appears at once, and the meeting card on the home screen flips to **Open Note ↗** — the link is bidirectional. A note already linked does not offer the control.
-
-### Scenarios (Given/When/Then)
+### Scenarios
 
 **Link an unlinked note to a meeting**
 - Given a note that is not linked to any calendar event
@@ -114,17 +86,3 @@
 5. A failed calendar fetch in the picker shows a retry/unavailable state, never a false "no meetings".
 6. The picker reuses Phase 16's day-navigation semantics (client owns "which day" via `tz` + ISO date).
 7. `LinkNoteToCalendarRequest` carries no fields the handler does not read (contract-honesty guardrail).
-
-## Observability
-
-Silent failure modes specific to this slice and what must be visible in production:
-
-| Slice | Failure mode | Why it's silent | Instrumentation |
-|-------|--------------|-----------------|-----------------|
-| 17-A | Projection rebuild not run / partial after deploy | Existing notes silently keep showing no badge; looks like data loss | Rebuild is an explicit deploy step; log rebuilt-record count for `CalendarLinkIndex` |
-| 17-A | Inline projection write drops the new fields | Title/end-time silently null on new links; badge renders blank | Assert the two new attributes are written (integration test); log on null title at write time |
-| 17-B | Link POST returns `409` (re-link / race) | Frontend may swallow it as a generic error; user thinks the link silently failed | Log the `calendar-link` outcome with `noteId` + `calendarEventId` + result (`linked` / `conflict` / `not-found`); count conflicts as a metric |
-| 17-B | User links a meeting already owned by another note | Without the picker guard, surfaces only as a `409` after submit | Picker disables already-linked meetings up front; the `409` path is the backstop, logged as above |
-| 17-B | Calendar fetch failure in the picker | Renders as "no meetings" → user assumes the day is empty and can't link | Distinguish `unavailable` from `empty` in the picker state (mirror `MeetingsSection`'s `unavailable` branch) |
-
-No new dashboard or alarm proposed; the existing calendar/note request instrumentation plus the per-outcome log on `calendar-link` covers this slice. Flag for the implementer: confirm `POST /notes/{id}/calendar-link` currently emits a structured outcome log — if not, add one in this slice.

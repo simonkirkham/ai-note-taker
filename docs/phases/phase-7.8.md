@@ -18,27 +18,13 @@
 
 All slices are independent and can run in any order. 7.8-B and 7.8-C both touch `NoteView.tsx` so should not run in parallel.
 
-**Learning surface:** Multi-environment GitHub Actions pipeline with environment-scoped secrets and sequential promotion; React controlled form patterns and dirty-state detection across multiple fields; focus management with `useRef` and `tabIndex`; HTML5 drag-and-drop API in React; `useReducer` as a client-side projection — discriminated union action types as frontend events, pure reducer as state machine, compensating actions as reverts; responsive CSS layout with fluid containers and viewport-aware sizing.
-
 ---
 
 ## Slice 7.8-A — Production deployment pipeline
 
 **Status:** Done
 
-**Value:** Every merge to main automatically promotes through Test and then deploys to a production environment, giving confidence that what works in Test ships to users.
-
-**Manual setup steps (not a code slice — done by the developer):**
-1. Create a production AWS account via AWS Organizations.
-   - New member accounts have **password recovery disabled** — do not try to reset the root password via the standard flow.
-   - Access the new account via Switch Role: add an inline `sts:AssumeRole` policy on your management account IAM user (resource: `arn:aws:iam::<NEW_ACCOUNT_ID>:role/OrganizationAccountAccessRole`), then use `https://signin.aws.amazon.com/switchrole` with role `OrganizationAccountAccessRole`.
-2. In the production account, create a `github-deploy` IAM user with `AdministratorAccess` and generate an access key.
-3. Bootstrap CDK in the production account (one-time per account/region): `AWS_ACCESS_KEY_ID=<key> AWS_SECRET_ACCESS_KEY=<secret> AWS_REGION=<region> cdk bootstrap`
-4. In GitHub repo Settings → Environments → New environment: name it `Production`.
-5. Add `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_REGION` as environment secrets for `Production`.
-6. Optionally add a required reviewer to the `Production` environment for a manual approval gate before production deploys.
-
-**Scenarios:**
+### Scenarios
 
 ```
 Scenario: A merge to main promotes through Test then deploys to Production
@@ -58,7 +44,7 @@ Scenario: Smoke tests pass against the production API
   Then  all Api.Smoke tests pass against the production API URL
 ```
 
-**Acceptance criteria:**
+### Acceptance criteria
 
 - [x] `Production` GitHub environment exists with `AWS_*` secrets configured
 - [x] `deploy-production` job runs after `deploy` (Test) succeeds
@@ -72,23 +58,7 @@ Scenario: Smoke tests pass against the production API
 
 **Status:** Done
 
-**Value:** Opening a note is keyboard-ready immediately — the cursor is in the title so I can start typing or rename without clicking. A single Tab moves focus to the content area so I can write without reaching for the mouse.
-
-**What is already in place:**
-- `NoteView.tsx` already calls `inputRef.current?.focus()` after the detail load resolves — cursor-in-title may already work
-- The title is an `<input>` and the content is a `<textarea>` or editor element
-
-**What needs verifying / changing:**
-- Confirm `inputRef` is attached to the title `<input>` (not the date or another input)
-- Confirm that Tab from the title input moves focus to the content area and not to an intervening control (date picker, etc.)
-- If intervening controls interrupt the Tab flow, use `tabIndex` ordering to enforce `title → content`
-- All other controls (date, tags, action input) remain in natural tab order after content
-
-**Changes in scope:**
-- `web/src/components/NoteView.tsx` — verify `inputRef` on title; add `tabIndex` if needed to ensure title → content tab order
-- `web/src/__tests__/NoteView.test.tsx` — add: "title input is focused on load"; "pressing Tab from title moves focus to content"
-
-**Scenarios:**
+### Scenarios
 
 ```
 Scenario: Title input receives focus when the note screen opens
@@ -107,7 +77,7 @@ Scenario: Tab order skips to content directly from title
   Then  focus moves to the content area, not the date input
 ```
 
-**Acceptance criteria:**
+### Acceptance criteria
 
 - [x] Title input has focus immediately after note detail loads (no click needed)
 - [x] Single Tab from title moves focus to content
@@ -120,26 +90,7 @@ Scenario: Tab order skips to content directly from title
 
 **Status:** Done
 
-**Value:** New notes have an explicit lifecycle — Save confirms the note is worth keeping; Cancel abandons it cleanly. This prevents empty or accidental notes building up in the list, and gives users a clear escape hatch on a note they didn't mean to create.
-
-**Interaction model:**
-
-- Save and Cancel buttons are always visible on the note screen.
-- **Save** is disabled when the note has no title, no content, no tags, and no actions.
-- **Save** is enabled as soon as any of those fields is non-empty.
-- Clicking **Save** navigates back to the note list (content is already auto-persisted on blur — Save is a "done" action).
-- Clicking **Cancel** on a note with no title, content, tags, or actions navigates back immediately (no confirmation — nothing to lose).
-- Clicking **Cancel** on a note with any content shows a confirmation dialog: "Discard this note?" with Confirm and Keep Editing options. Confirm navigates back.
-
-**Note:** Auto-save on blur is preserved for content and title. Save/Cancel are navigation controls, not persistence controls. The note is already saved to the server as the user types; Save/Cancel determine whether to stay on the screen or leave.
-
-**Changes in scope:**
-
-- `web/src/components/NoteView.tsx` — add `isSaveEnabled` derived state (true if title, content, tags, or actions are non-empty); add Save and Cancel buttons; wire Cancel confirmation dialog; Save navigates via `onBack()`
-- `web/src/components/NoteView.tsx` — track action count to include in `isSaveEnabled`; `ActionsSection` must surface action count to parent (or NoteView reads it from loaded detail)
-- `web/src/__tests__/NoteView.test.tsx` — tests for all scenarios below
-
-**Scenarios:**
+### Scenarios
 
 ```
 Scenario: Save is disabled on an empty new note
@@ -193,7 +144,7 @@ Scenario: Keeping editing dismisses the dialog
   Then  the dialog closes and I remain on the note screen
 ```
 
-**Acceptance criteria:**
+### Acceptance criteria
 
 - [x] Save disabled when title, content, tags, and actions are all empty
 - [x] Save enabled when any of title, content, tags, or actions is non-empty
@@ -209,32 +160,7 @@ Scenario: Keeping editing dismisses the dialog
 
 **Status:** Done
 
-**Value:** I can file a note into a folder by dragging the note card from the home screen and dropping it onto the folder's slide-out preview panel, without needing to navigate into the note screen to change its folder.
-
-**What is already in place:**
-- Folders have a `»` button that opens a `FolderPreviewPanel` slide-out showing the folder's notes
-- `MoveNoteToFolder` command exists in the domain (`src/Domain/Notes/MoveNoteToFolder.cs`)
-- `POST /notes/{noteId}/move` endpoint exists (or will be confirmed before implementation)
-- Note cards (`NoteCard.tsx`) render on the home screen
-
-**Interaction design:**
-- Note cards are draggable (`draggable` attribute + `onDragStart`)
-- The `FolderPreviewPanel` accepts drops (`onDragOver` + `onDrop`)
-- On drop: call `POST /notes/{noteId}/move` with the target folder ID; optimistically remove the note card from the Unfiled / current folder view and add it to the folder panel's note list
-- If the API call fails: revert the optimistic update and show an error
-- A note already in the target folder: drop is a no-op (no API call)
-- Dragging a note to the same folder it is already in: visual feedback that it's the current folder; drop does nothing
-
-**Changes in scope:**
-
-- `web/src/components/NoteCard.tsx` — add `draggable` attribute; `onDragStart` stores `noteId` in `dataTransfer`
-- `web/src/components/FolderPreviewPanel.tsx` — add `onDragOver` (prevent default to allow drop); `onDrop` reads `noteId` from `dataTransfer`; calls move API; triggers optimistic state update
-- `web/src/api.ts` — add `moveNoteToFolder(noteId, folderId)` → `POST /notes/{noteId}/move`
-- `web/src/App.tsx` (or wherever folder/card state lives) — handle optimistic removal from current list and add to folder
-- `web/src/__tests__/NoteCard.test.tsx` — add: "note card is draggable"; "dragStart sets noteId in dataTransfer"
-- `web/src/__tests__/FolderPreviewPanel.test.tsx` — add: "drop calls moveNoteToFolder"; "optimistic update moves card"; "failed move reverts"
-
-**Scenarios:**
+### Scenarios
 
 ```
 Scenario: Dragging a note card onto a folder panel moves the note
@@ -263,7 +189,7 @@ Scenario: Drop target folder panel shows a visual drop zone
   Then  the panel shows a visual drop zone indicator
 ```
 
-**Acceptance criteria:**
+### Acceptance criteria
 
 - [x] Note cards have `draggable` attribute set; `dragStart` writes `noteId` to `dataTransfer`
 - [x] `FolderPreviewPanel` accepts drops; calls `moveNoteToFolder` on drop
@@ -279,28 +205,7 @@ Scenario: Drop target folder panel shows a visual drop zone
 
 **Status:** Done
 
-**Prototype recommended.** The right layout is uncertain enough that building a throwaway prototype before touching production CSS is the right call. Run the `prototype` skill first.
-
-**Problem:** Both the home screen and note screen leave large blank margins on typical laptop and desktop viewports. The root causes identified from the CSS:
-
-| Issue | Root cause |
-|-------|-----------|
-| Home screen constrained to a narrow column | `.container` has `max-width: 640px; margin: 0 auto` — on wide viewports this wastes the majority of the viewport width |
-| Note content area feels small | `.note-layout` is `grid-template-columns: 1fr 320px` but the whole screen sits inside the narrow `.container`, so `1fr` resolves to a small absolute value |
-| Right panel fixed at 320px | Fine on a 1280px+ screen; too wide relative to content on 900–1100px viewports |
-
-**Design intent (to validate via prototype):**
-
-- Home screen: note cards should expand to fill available width; consider a wider max-width (e.g. `1200px`) or removing the cap and using a responsive card grid instead of a single-column list
-- Note screen: content panel should grow to fill the available viewport height and most of the horizontal space; right panel (actions/tags) should remain comfortably wide but not dominate
-- Both screens should feel "full" on a 1280px laptop — no prominent blank gutters
-
-**Changes in scope (post-prototype):**
-
-- `web/src/App.css` — increase or remove `.container` max-width; adjust `.note-layout` column proportions; ensure `.content-input` `min-height` grows to fill available vertical space (e.g. use `flex-grow: 1` in a flex column rather than a fixed `60vh`)
-- `web/src/__tests__/` — layout is visual; no new component tests required beyond confirming existing tests still pass after CSS changes
-
-**Scenarios:**
+### Scenarios
 
 ```
 Scenario: Home screen uses the full available width on a wide viewport
@@ -327,7 +232,7 @@ Scenario: Layout remains usable at 768px viewport width
   Then  no content is cut off or inaccessible
 ```
 
-**Acceptance criteria:**
+### Acceptance criteria
 
 - [ ] Prototype approved before CSS changes begin (skipped — interaction was unambiguous)
 - [x] `.container` max-width increased or removed; home screen cards use available width
@@ -342,42 +247,7 @@ Scenario: Layout remains usable at 768px viewport width
 
 **Status:** Done
 
-**Value:** The home screen shows the correct note title the moment you return from editing, and a note disappears from a folder's preview panel the instant it is dragged to another folder. No stale data, no lag.
-
-**Root cause:** Note card state is siloed in individual components. `ListView` and `FolderPreviewPanel` each fetch their own `cards` in a local `useState` on mount. `useNotes.rename` updates the sidebar's `notes` list but has no way to reach the `cards` in `ListView`. Similarly, when a note is moved out of a folder panel, only the destination panel updates; the source panel's local state is untouched until it remounts.
-
-**Two bugs, one fix:** Lift `cards` state out of `ListView` and `FolderPreviewPanel` and into `App` via a `useReducer`-backed hook. Each card-mutating operation dispatches an explicit action (client-side event); the reducer applies it. Optimistic reverts are compensating actions — the same pattern the backend uses.
-
-**Architectural approach — explicit event handlers with `useReducer`:**
-
-Because this is an event-sourced system, frontend state transitions should mirror that model. Rather than scattering ad-hoc `setState` calls across handlers, shared card state is managed by a `useReducer` with explicit action types. Each card-mutating operation dispatches an action; the reducer applies it to produce the next state. Reverts are compensating actions dispatched on failure.
-
-```ts
-type CardAction =
-  | { type: 'CARDS_LOADED';        cards: NoteCard[] }
-  | { type: 'CARD_TITLE_UPDATED';  noteId: string; title: string }
-  | { type: 'CARD_TITLE_REVERTED'; noteId: string; title: string }
-  | { type: 'CARD_MOVED';          noteId: string; folderId: string | null }
-  | { type: 'CARD_MOVE_REVERTED';  noteId: string; folderId: string | null }
-  | { type: 'CARD_ADDED';          card: NoteCard }
-  | { type: 'CARD_REMOVED';        noteId: string }
-```
-
-The reducer is a pure function — no side effects, no API calls — exactly like a backend aggregate. API calls live in the handlers that dispatch actions before and after the async call.
-
-**Learning surface:** `useReducer` as a client-side projection; discriminated union action types as frontend events; pure reducer as the state machine — the same conceptual model as the backend aggregate applied to UI state.
-
-**Changes in scope:**
-
-- `web/src/hooks/useCardState.ts` — new hook: `useReducer` with the `CardAction` discriminated union; exposes `cards` and `dispatch`; initial load dispatches `CARDS_LOADED`
-- `web/src/App.tsx` — use `useCardState`; rename handler dispatches `CARD_TITLE_UPDATED` optimistically then `CARD_TITLE_REVERTED` on failure; move handler dispatches `CARD_MOVED` optimistically then `CARD_MOVE_REVERTED` on failure; passes `cards` down to `ListView` and `FolderPreviewPanel`
-- `web/src/components/ListView.tsx` — remove local `cards` state and `getNoteCards()` fetch; accept `cards` as a prop
-- `web/src/components/FolderPreviewPanel.tsx` — remove local `cards` state; accept `cards` as a prop filtered to the folder
-- `web/src/__tests__/useCardState.test.ts` — unit-test the reducer directly: each action type produces the correct next state; revert actions restore previous state
-- `web/src/__tests__/ListView.test.tsx` — update to pass `cards` as a prop
-- `web/src/__tests__/FolderPreviewPanel.test.tsx` — update similarly
-
-**Scenarios:**
+### Scenarios
 
 ```
 Scenario: Note title updates on the home screen immediately after renaming
@@ -412,7 +282,7 @@ Scenario: A failed move reverts both panels
   And   the note is removed from folder B's panel
 ```
 
-**Acceptance criteria:**
+### Acceptance criteria
 
 - [x] `cards` state lives in `App` (or a shared hook); `ListView` and `FolderPreviewPanel` receive it as a prop
 - [x] Renaming a note updates the matching card's title in shared state immediately (before API response)
@@ -429,77 +299,7 @@ Scenario: A failed move reverts both panels
 
 **Status:** Done
 
-**Value:** Projection updates are decoupled from command handlers. Adding a new projection is a new class; it does not require touching an existing command handler. The command handler shrinks to two dependencies (`IEventStore` and `IDomainEventDispatcher`) and knows nothing about which projections exist.
-
-**Problem with the current design:** `NoteCommandHandler` takes five projection store dependencies and owns a 50-line `UpdateProjectionAsync` method that hard-codes every projection update. Every new projection requires modifying both the constructor and that method. This is the opposite of the Open/Closed Principle and makes the command handler a bottleneck for all projection work.
-
-**Design — in-process synchronous dispatcher:**
-
-Keep the update synchronous and in-process so read-after-write consistency is preserved (projection is updated before the HTTP response returns). The dispatcher is not a message bus — it is a structured way to route events to projection handlers within the same request.
-
-```csharp
-// src/Api/IDomainEventDispatcher.cs
-public interface IDomainEventDispatcher
-{
-    Task DispatchAsync(IReadOnlyList<EventEnvelope> events, CancellationToken ct = default);
-}
-
-// src/Api/IDomainEventHandler.cs
-public interface IDomainEventHandler
-{
-    Task HandleAsync(IReadOnlyList<EventEnvelope> events, CancellationToken ct = default);
-}
-
-// src/Api/DomainEventDispatcher.cs
-public sealed class DomainEventDispatcher(IEnumerable<IDomainEventHandler> handlers) : IDomainEventDispatcher
-{
-    public async Task DispatchAsync(IReadOnlyList<EventEnvelope> events, CancellationToken ct)
-    {
-        foreach (var handler in handlers)
-            await handler.HandleAsync(events, ct).ConfigureAwait(false);
-    }
-}
-```
-
-Each existing projection becomes a dedicated `IDomainEventHandler` class:
-
-| Handler class | Replaces |
-|---|---|
-| `NoteTitleListEventHandler` | `projStore` logic in `UpdateProjectionAsync` |
-| `NoteDetailEventHandler` | `noteDetailStore` logic |
-| `NoteCardListEventHandler` | `noteCardListStore` logic + `ApplyNoteEventsToCard` |
-| `TodoListEventHandler` | `todoListStore` logic |
-| `TagIndexEventHandler` | `tagIndexStore` logic |
-
-`NoteCommandHandler` after the refactor:
-
-```csharp
-public sealed class NoteCommandHandler(IEventStore store, IDomainEventDispatcher dispatcher)
-{
-    private async Task PersistAsync(...)
-    {
-        var envelopes = ToEnvelopes(streamId, newEvents);
-        await store.AppendAsync(streamId, history.Count, envelopes, ct).ConfigureAwait(false);
-        await dispatcher.DispatchAsync(envelopes, ct).ConfigureAwait(false);
-    }
-}
-```
-
-**Changes in scope:**
-
-- `src/Api/IDomainEventDispatcher.cs` — new interface
-- `src/Api/IDomainEventHandler.cs` — new interface
-- `src/Api/DomainEventDispatcher.cs` — new: iterates registered handlers in registration order
-- `src/Api/Projections/NoteTitleListEventHandler.cs` — new: extracted from `UpdateProjectionAsync`
-- `src/Api/Projections/NoteDetailEventHandler.cs` — new: extracted from `UpdateProjectionAsync`
-- `src/Api/Projections/NoteCardListEventHandler.cs` — new: extracted from `UpdateProjectionAsync` + `ApplyNoteEventsToCard`
-- `src/Api/Projections/TodoListEventHandler.cs` — new: extracted from `UpdateProjectionAsync`
-- `src/Api/Projections/TagIndexEventHandler.cs` — new: extracted from `UpdateProjectionAsync`
-- `src/Api/NoteCommandHandler.cs` — remove all projection store dependencies and `UpdateProjectionAsync`; add `IDomainEventDispatcher`; call `dispatcher.DispatchAsync` in `PersistAsync`
-- `src/Api/Builder.cs` — register `DomainEventDispatcher` as `IDomainEventDispatcher`; register each handler as `IDomainEventHandler` (order preserved)
-- `tests/Api.Integration/` — no behaviour changes; all existing tests must pass unchanged
-
-**Scenarios:**
+### Scenarios
 
 ```
 Scenario: All projections are updated after a command is handled
@@ -522,7 +322,7 @@ Scenario: Projection updates remain synchronous — read-after-write is consiste
   And   no eventual-consistency delay is observable
 ```
 
-**Acceptance criteria:**
+### Acceptance criteria
 
 - [x] `IDomainEventDispatcher` and `IDomainEventHandler` interfaces exist in `src/Api/`
 - [x] Five event handler classes extracted; each handles only its own projection's stores
@@ -538,37 +338,7 @@ Scenario: Projection updates remain synchronous — read-after-write is consiste
 
 **Status:** Done
 
-**Value:** The app is reachable at a memorable URL for both environments (`test.` subdomain for test, apex or `www.` for production) rather than opaque CloudFront and API Gateway hostnames. This also removes the `VITE_API_URL` build-time coupling — the frontend calls relative `/api/*` paths and CloudFront proxies them to API Gateway.
-
-**Addresses backlog item:** *CloudFront proxy for API (remove VITE_API_URL build-time coupling)* — once a custom domain is on CloudFront, adding the `/api` behaviour is a natural part of the same CDK change.
-
-**Prerequisites (manual — not code):**
-1. Own a domain (e.g. `example.com`) with DNS manageable via Route 53 or an external provider.
-2. Create a Route 53 hosted zone for the domain (if not already in place).
-3. Decide on the subdomain convention — e.g. `notes-test.example.com` / `notes.example.com`.
-4. Add `DOMAIN_NAME` (e.g. `notes.example.com`) and `HOSTED_ZONE_ID` as environment secrets in both GitHub environments (`Test` and `Production`). The Test environment uses a subdomain prefix; Production uses the bare domain.
-
-**CDK changes:**
-
-The CDK stack accepts two new optional context/env values: `DomainName` and `HostedZoneId`. When present:
-
-1. **ACM certificate** — request a `DnsValidatedCertificate` in `us-east-1` (required for CloudFront). Validated automatically via Route 53 if the hosted zone is in the same account; otherwise output the CNAME record for manual DNS entry.
-2. **CloudFront custom domain** — add `domainNames: [domainName]` and `certificate` to the existing `Distribution`.
-3. **CloudFront `/api` behaviour** — add a second `CacheBehavior` for path pattern `/api/*` pointing to the API Gateway origin; add a `CloudFront Function` that strips the `/api` prefix before forwarding to API Gateway.
-4. **Route 53 alias record** — create an `ARecord` pointing the domain to the CloudFront distribution.
-5. **CDK outputs** — `WebUrl` output switches from the CloudFront default domain to the custom domain when configured; `ApiUrl` output is removed (the API is now accessed via CloudFront `/api`).
-6. **`VITE_API_URL` removed** — the deploy workflow no longer passes `VITE_API_URL` to the frontend build; `web/src/api.ts` switches to relative `/api` paths.
-
-When `DomainName` is not set (local `cdk synth`, PR checks) the stack deploys as before with the CloudFront default URL — no breakage.
-
-**Key implementation files:**
-
-- `src/Infrastructure/NoteTakerStack.cs` — add optional `DomainName`/`HostedZoneId` props; ACM cert; CloudFront custom domain + `/api` behaviour + CloudFront Function; Route 53 alias record
-- `web/src/api.ts` — replace `import.meta.env.VITE_API_URL` base URL with `""` (empty string = relative paths)
-- `.github/workflows/deploy.yml` — remove `VITE_API_URL` env var from "Build frontend" steps in both `deploy` and `deploy-production` jobs; add `DOMAIN_NAME` / `HOSTED_ZONE_ID` as CDK context or env vars
-- `tests/Infrastructure.Assertions/` — add assertions: ACM cert present when domain configured; CloudFront has custom domain alias; `/api` behaviour present; Route 53 record present
-
-**Scenarios:**
+### Scenarios
 
 ```
 Scenario: The app is reachable at the custom domain in Test
@@ -594,7 +364,7 @@ Scenario: CDK synth without a domain name produces no certificate or alias recor
   And   the CloudFront distribution uses only its default domain
 ```
 
-**Acceptance criteria:**
+### Acceptance criteria
 
 - [x] Prerequisites met: domain owned, Route 53 hosted zone created, `DOMAIN_NAME` + `HOSTED_ZONE_ID` secrets added to both GitHub environments
 - [x] CDK stack creates ACM certificate and CloudFront alias when `DomainName` is set; skips both when unset
@@ -612,27 +382,7 @@ Scenario: CDK synth without a domain name produces no certificate or alias recor
 
 **Status:** Done
 
-**Value:** The smoke suite no longer pollutes production (or Test) with leftover notes and action items. Post-deploy confidence comes from health checks, read-endpoint shape assertions, and 404-path verification — none of which require creating data.
-
-**Root cause:** Every spec in `Api.Smoke` creates one or more notes and leaves them behind — there is no cleanup step and no delete-note endpoint called in teardown. Running the suite after every deploy to production means production accumulates test notes on every CI run.
-
-**Fix approach:** Strip `Api.Smoke` to three concerns only:
-1. **Health** — `GET /health` returns 200 with DynamoDB status (already clean).
-2. **Read endpoints** — `GET /notes`, `GET /notes/cards`, `GET /todos`, `GET /tags`, `GET /folders` each return 200 with the expected top-level array property. These prove projections are reachable and returning the right shape against real deployed state.
-3. **Error paths** — `PATCH /notes/{random-guid}/title` etc. return 404. These prove routing and Lambda execution work without creating anything.
-
-All write-path correctness coverage (create note, rename, edit content, add/complete/delete actions) moves permanently to `Api.Integration` (in-process `WebApplicationFactory`), where it already has near-complete coverage and runs against an in-memory store.
-
-**Changes in scope:**
-
-- `tests/Api.Smoke/ReadEndpointsSpec.cs` (new) — GET /notes, GET /notes/cards, GET /todos, GET /tags, GET /folders shape assertions
-- `tests/Api.Smoke/ErrorResponsesSpec.cs` (new) — 404 assertions for PATCH title, PUT content, PATCH date, DELETE action item using random GUIDs
-- Delete: `CreateNoteSpec.cs`, `ListNotesSpec.cs`, `GetNoteSpec.cs`, `RenameNoteSpec.cs`, `EditContentSpec.cs`, `SetNoteDateSpec.cs`, `ActionItemCompleteSpec.cs`, `DeleteActionItemSpec.cs`, `TodoListSpec.cs`, `TodoCompleteSpec.cs`
-- Keep unchanged: `HealthEndpointSpec.cs`, `FrontendSmokeSpec.cs`, `DeployedApiFixture.cs`, `DeployedFrontendFixture.cs`
-
-**Note:** `Api.Integration` already covers all the write paths being removed from smoke. No coverage gap is introduced.
-
-**Scenarios:**
+### Scenarios
 
 ```
 Scenario: Smoke suite makes no write calls
@@ -651,7 +401,7 @@ Scenario: 404 path works for non-existent note
   Then  the response is 404
 ```
 
-**Acceptance criteria:**
+### Acceptance criteria
 
 - [x] `ReadEndpointsSpec.cs` and `ErrorResponsesSpec.cs` added; no `PostAsync("notes", ...)` anywhere in the suite
 - [x] All 10 write-heavy spec files deleted

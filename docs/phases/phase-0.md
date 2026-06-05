@@ -13,14 +13,10 @@
 | 0-E | Local dev loop documented | Done | — |
 | Deferred | React app scaffold and CDK hosting | Deferred | — |
 
-Status key: `Done` · `In Progress` · `Not Started`
-
 ---
 
 ## Slice 0-A — BDD harness and solution scaffold
 **Status:** Done
-
-**Objective:** Establish the .NET solution structure and prove the BDD spec harness works end-to-end before any domain logic is written.
 
 **Acceptance criteria:**
 - [x] `dotnet build` succeeds across all 5 projects (`Api`, `Domain`, `EventStore`, `Infrastructure`, `Specs`) with 0 errors and 0 warnings
@@ -32,8 +28,6 @@ Status key: `Done` · `In Progress` · `Not Started`
 
 ## Slice 0-B — Lambda health endpoint and CDK stack
 **Status:** Done
-
-**Objective:** Provision the core AWS infrastructure and deploy a minimal Lambda with a health endpoint reachable via API Gateway.
 
 **Acceptance criteria:**
 - [x] `GET /health` returns `200 OK` with body `{ "status": "ok" }` when run locally via `dotnet run`
@@ -47,8 +41,6 @@ Status key: `Done` · `In Progress` · `Not Started`
 ## Slice 0-C — BDD acceptance spec for deployed Lambda
 **Status:** Done
 
-**Objective:** Prove the deployed Lambda works via a BDD spec that calls the real API Gateway endpoint. This is the quality gate that the pipeline will enforce after every deploy.
-
 **Acceptance criteria:**
 - [x] A BDD acceptance spec exists: `Given` the Lambda is deployed, `When` `GET /health` is called against the live API Gateway URL, `Then` the response is `200 OK` with `{ "status": "ok" }`
 - [x] The spec reads the API Gateway URL from an environment variable (`API_BASE_URL`); it is skipped (not failed) when the variable is absent so the suite stays green locally without AWS access
@@ -58,8 +50,6 @@ Status key: `Done` · `In Progress` · `Not Started`
 
 ## Slice 0-D — CI/CD pipeline
 **Status:** Done
-
-**Objective:** Automate build, test, deploy, and acceptance verification on every PR and merge to main.
 
 **Acceptance criteria:**
 - [x] PR workflow runs: `dotnet build` (0 warnings), `dotnet test` (unit/BDD specs), `cdk synth` — all must pass before merge is allowed
@@ -72,8 +62,6 @@ Status key: `Done` · `In Progress` · `Not Started`
 ## Slice 0-E — Local dev loop documented
 **Status:** Done
 
-**Objective:** Fill in the "How to run" section so any developer (or agent) can get up and running from scratch, and enforce local quality gates via a pre-commit hook.
-
 **Acceptance criteria:**
 - [x] `CLAUDE.md` "How to run" section filled in with: `dotnet build`, `dotnet test`, `dotnet run` (Api), `cdk synth`, `cdk deploy`
 - [x] README covers: prerequisites (.NET 8, AWS CLI, CDK CLI, `gh`), clone-to-running steps, environment variables required
@@ -85,6 +73,4 @@ Status key: `Done` · `In Progress` · `Not Started`
 ---
 
 ## Deferred — React app scaffold and CDK hosting
-**Status:** Deferred (starts Phase 1 or later)
-
-Frontend work starts only once the API is deployed and the pipeline is green. No frontend scaffolding until 0-A through 0-E are complete.
+**Status:** Deferred
