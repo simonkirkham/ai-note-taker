@@ -18,10 +18,19 @@ vi.mock('../components/NoteEditor', () => ({
 }))
 
 vi.mock('../components/RecordControl', () => ({
-  default: ({ onTranscriptChange }: { onTranscriptChange: (t: string) => void }) => (
+  default: ({
+    onTranscriptChange,
+    onStatusChange,
+  }: {
+    onTranscriptChange: (t: string) => void
+    onStatusChange?: (s: string) => void
+  }) => (
     <div data-testid="record-control-mock">
       <button data-testid="transcription-record-button" onClick={() => onTranscriptChange('live words')}>
         Record
+      </button>
+      <button data-testid="mock-start-recording" onClick={() => onStatusChange?.('recording')}>
+        Start recording
       </button>
     </div>
   ),
@@ -577,6 +586,29 @@ describe('NoteView', () => {
       expect(screen.queryByTestId('cancel-dialog')).toBeNull()
     })
 
+    it('leaving while recording warns first and only calls onBack on confirm', async () => {
+      const onBack = vi.fn()
+      renderNoteView({ onBack })
+      await screen.findByLabelText('Note content')
+
+      await userEvent.click(screen.getByTestId('mock-start-recording'))
+
+      // Save now warns instead of leaving immediately.
+      await userEvent.click(screen.getByTestId('save-button'))
+      expect(onBack).not.toHaveBeenCalled()
+      expect(screen.getByTestId('confirm-leave-button')).toBeInTheDocument()
+
+      // "Keep recording" dismisses the warning without leaving.
+      await userEvent.click(screen.getByTestId('cancel-leave-button'))
+      expect(screen.queryByTestId('confirm-leave-button')).toBeNull()
+      expect(onBack).not.toHaveBeenCalled()
+
+      // Confirming leaves.
+      await userEvent.click(screen.getByTestId('save-button'))
+      await userEvent.click(screen.getByTestId('confirm-leave-button'))
+      expect(onBack).toHaveBeenCalledOnce()
+    })
+
     it('note with only a transcript (blank title/content/tags) shows Save and Delete', async () => {
       server.use(
         http.get('/api/notes/:noteId', () =>
@@ -588,6 +620,65 @@ describe('NoteView', () => {
       await waitFor(() => expect(screen.queryByTestId('save-button')).toBeInTheDocument())
       expect(screen.getByTestId('delete-note-button')).toBeInTheDocument()
       expect(screen.queryByTestId('cancel-button')).toBeNull()
+    })
+  })
+
+  describe('transcript recovery banner', () => {
+    function withDraft() {
+      server.use(
+        http.get('/api/notes/:noteId', () =>
+          HttpResponse.json({
+            noteId: 'note-1', title: 'T', content: '', date: null, tags: [],
+            transcriptDraft: { text: 'Speaker 1: recovered words', capturedAt: '2026-06-05T10:00:00Z' },
+          }),
+        ),
+      )
+    }
+
+    it('shows the recovery banner when the note has an uncommitted transcript draft', async () => {
+      withDraft()
+      renderNoteView()
+      expect(await screen.findByTestId('transcript-recovery-banner')).toBeInTheDocument()
+      expect(screen.getByTestId('recover-transcript-button')).toBeInTheDocument()
+      expect(screen.getByTestId('discard-transcript-button')).toBeInTheDocument()
+    })
+
+    it('opening a note with a draft never auto-commits', async () => {
+      withDraft()
+      let committed = false
+      server.use(
+        http.post('/api/notes/note-1/transcription', () => { committed = true; return new HttpResponse(null, { status: 204 }) }),
+      )
+      renderNoteView()
+      await screen.findByTestId('transcript-recovery-banner')
+      expect(committed).toBe(false)
+    })
+
+    it('Recover commits the draft (POST) and hides the banner', async () => {
+      withDraft()
+      let committedBody: unknown = null
+      server.use(
+        http.post('/api/notes/note-1/transcription', async ({ request }) => {
+          committedBody = await request.json()
+          return new HttpResponse(null, { status: 204 })
+        }),
+      )
+      renderNoteView()
+      await userEvent.click(await screen.findByTestId('recover-transcript-button'))
+      await waitFor(() => expect(committedBody).toMatchObject({ transcriptText: 'Speaker 1: recovered words' }))
+      expect(screen.queryByTestId('transcript-recovery-banner')).toBeNull()
+    })
+
+    it('Discard deletes the draft (DELETE) and hides the banner', async () => {
+      withDraft()
+      let discarded = false
+      server.use(
+        http.delete('/api/notes/note-1/transcription/draft', () => { discarded = true; return new HttpResponse(null, { status: 204 }) }),
+      )
+      renderNoteView()
+      await userEvent.click(await screen.findByTestId('discard-transcript-button'))
+      await waitFor(() => expect(discarded).toBe(true))
+      expect(screen.queryByTestId('transcript-recovery-banner')).toBeNull()
     })
   })
 })

@@ -14,6 +14,11 @@ export interface LinkedMeeting {
   isRecurring: boolean;
 }
 
+export interface TranscriptionDraft {
+  text: string;
+  capturedAt: string;
+}
+
 export interface NoteDetail {
   noteId: string;
   title: string;
@@ -21,6 +26,9 @@ export interface NoteDetail {
   date: string | null;
   tags: string[];
   transcriptText: string | null;
+  // An uncommitted transcript left by an interrupted recording (crash/tab close),
+  // surfaced for recovery. Null on the happy path. See ADR 0011 / Phase 18.
+  transcriptDraft: TranscriptionDraft | null;
   summary: string | null;
   discussionPoints: string[];
   decisions: string[];

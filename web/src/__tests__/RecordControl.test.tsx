@@ -1,7 +1,8 @@
-import { render, screen, waitFor } from '@testing-library/react'
+import { act, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { http, HttpResponse } from 'msw'
 import RecordControl from '../components/RecordControl'
+import { CHECKPOINT_INTERVAL_MS } from '../hooks/useTranscription'
 import { server } from '../test/setup'
 
 // ── Transcribe SDK mock ───────────────────────────────────────────
@@ -206,6 +207,149 @@ it('clicking Stop calls completeTranscription with transcript text', async () =>
   await userEvent.click(screen.getByTestId('transcription-stop-button'))
 
   await waitFor(() => expect(completionBody).toMatchObject({ transcriptText: 'Speaker 1: Test transcript' }))
+})
+
+it('persists the in-progress transcript when unmounted mid-recording (navigating back)', async () => {
+  stubBrowserApis()
+  let completionBody: unknown = null
+  server.use(
+    http.post('/api/notes/note-1/transcription', async ({ request }) => {
+      completionBody = await request.json()
+      return new HttpResponse(null, { status: 204 })
+    }),
+  )
+
+  const view = renderControl()
+  await userEvent.click(screen.getByTestId('transcription-record-button'))
+  await waitFor(() => expect(screen.getByTestId('transcription-stop-button')).toBeInTheDocument())
+
+  emitTranscriptResult('Half a meeting')
+  await waitFor(() => expect(screen.getByTestId('transcription-stop-button')).toBeInTheDocument())
+
+  // Unmount while still recording — equivalent to pressing back mid-call.
+  view.unmount()
+
+  await waitFor(() =>
+    expect(completionBody).toMatchObject({ transcriptText: 'Speaker 1: Half a meeting' }),
+  )
+})
+
+it('autosaves the transcript to the draft on the periodic checkpoint while still recording', async () => {
+  stubBrowserApis()
+  // Capture the checkpoint interval's callback so we can fire it deterministically
+  // without waiting wall-clock time; pass every other interval through unchanged.
+  let checkpointCb: (() => void) | null = null
+  const realSetInterval = global.setInterval.bind(global)
+  const intervalSpy = vi.spyOn(global, 'setInterval').mockImplementation(((cb: () => void, ms?: number, ...rest: unknown[]) => {
+    if (ms === CHECKPOINT_INTERVAL_MS) checkpointCb = cb
+    return realSetInterval(cb, ms, ...rest)
+  }) as typeof setInterval)
+
+  let draftBody: unknown = null
+  let committed = false
+  server.use(
+    http.put('/api/notes/note-1/transcription/draft', async ({ request }) => {
+      draftBody = await request.json()
+      return new HttpResponse(null, { status: 204 })
+    }),
+    http.post('/api/notes/note-1/transcription', () => { committed = true; return new HttpResponse(null, { status: 204 }) }),
+  )
+
+  const onTranscriptChange = vi.fn()
+  renderControl({ onTranscriptChange })
+  await userEvent.click(screen.getByTestId('transcription-record-button'))
+  await waitFor(() => expect(screen.getByTestId('transcription-stop-button')).toBeInTheDocument())
+  await waitFor(() => expect(checkpointCb).not.toBeNull())
+
+  emitTranscriptResult('Captured so far')
+  await waitFor(() => expect(onTranscriptChange).toHaveBeenCalledWith('Speaker 1: Captured so far'))
+
+  // Fire the checkpoint mid-recording — no Stop pressed.
+  act(() => { checkpointCb!() })
+
+  // It PUTs the draft (no event); the committing POST must NOT fire mid-recording.
+  await waitFor(() => expect(draftBody).toMatchObject({ transcriptText: 'Speaker 1: Captured so far' }))
+  expect(committed).toBe(false)
+  expect(screen.getByTestId('transcription-stop-button')).toBeInTheDocument()
+  intervalSpy.mockRestore()
+})
+
+it('checkpoint does not re-PUT the draft when the transcript has not changed', async () => {
+  stubBrowserApis()
+  let checkpointCb: (() => void) | null = null
+  const realSetInterval = global.setInterval.bind(global)
+  const intervalSpy = vi.spyOn(global, 'setInterval').mockImplementation(((cb: () => void, ms?: number, ...rest: unknown[]) => {
+    if (ms === CHECKPOINT_INTERVAL_MS) checkpointCb = cb
+    return realSetInterval(cb, ms, ...rest)
+  }) as typeof setInterval)
+
+  let completionCalls = 0
+  server.use(
+    http.put('/api/notes/note-1/transcription/draft', () => {
+      completionCalls += 1
+      return new HttpResponse(null, { status: 204 })
+    }),
+    // unmount on test teardown commits via POST — handle it so it isn't an unhandled request
+    http.post('/api/notes/note-1/transcription', () => new HttpResponse(null, { status: 204 })),
+  )
+
+  const onTranscriptChange = vi.fn()
+  renderControl({ onTranscriptChange })
+  await userEvent.click(screen.getByTestId('transcription-record-button'))
+  await waitFor(() => expect(checkpointCb).not.toBeNull())
+
+  emitTranscriptResult('Same text')
+  await waitFor(() => expect(onTranscriptChange).toHaveBeenCalledWith('Speaker 1: Same text'))
+
+  act(() => { checkpointCb!() })
+  await waitFor(() => expect(completionCalls).toBe(1))
+  // No new finalised text — the next checkpoint must be a no-op.
+  act(() => { checkpointCb!() })
+  await new Promise((r) => setTimeout(r, 0))
+  expect(completionCalls).toBe(1)
+  intervalSpy.mockRestore()
+})
+
+it('registers a beforeunload warning while recording and removes it after stop', async () => {
+  stubBrowserApis()
+  const addSpy = vi.spyOn(window, 'addEventListener')
+  const removeSpy = vi.spyOn(window, 'removeEventListener')
+
+  renderControl()
+  await userEvent.click(screen.getByTestId('transcription-record-button'))
+  await waitFor(() => expect(screen.getByTestId('transcription-stop-button')).toBeInTheDocument())
+  expect(addSpy).toHaveBeenCalledWith('beforeunload', expect.any(Function))
+
+  await userEvent.click(screen.getByTestId('transcription-stop-button'))
+  await waitFor(() =>
+    expect(removeSpy).toHaveBeenCalledWith('beforeunload', expect.any(Function)),
+  )
+  addSpy.mockRestore()
+  removeSpy.mockRestore()
+})
+
+it('does not double-persist when Stop is pressed then the control unmounts', async () => {
+  stubBrowserApis()
+  let completionCalls = 0
+  server.use(
+    http.post('/api/notes/note-1/transcription', () => {
+      completionCalls += 1
+      return new HttpResponse(null, { status: 204 })
+    }),
+  )
+
+  const view = renderControl()
+  await userEvent.click(screen.getByTestId('transcription-record-button'))
+  await waitFor(() => expect(screen.getByTestId('transcription-stop-button')).toBeInTheDocument())
+
+  emitTranscriptResult('Whole meeting')
+  await userEvent.click(screen.getByTestId('transcription-stop-button'))
+  await waitFor(() => expect(completionCalls).toBe(1))
+
+  view.unmount()
+  // Give any erroneous unmount-flush a chance to fire.
+  await new Promise((r) => setTimeout(r, 0))
+  expect(completionCalls).toBe(1)
 })
 
 it('shows the Analyse note button enabled when the note has content and is idle', () => {
