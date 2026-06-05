@@ -127,6 +127,7 @@ public static class Builder
             builder.Services.AddSingleton<IGoogleCalendarClient, StubGoogleCalendarClient>();
         else
             builder.Services.AddSingleton<IGoogleCalendarClient, GoogleCalendarClient>();
+        builder.Services.AddHttpClient<IGoogleOAuthClient, GoogleOAuthClient>(c => c.Timeout = TimeSpan.FromSeconds(10));
         builder.Services.AddAWSService<IAmazonSecurityTokenService>();
         builder.Services.AddSingleton<IStsCredentialService, StsCredentialService>();
         builder.Services.AddAWSService<IAmazonBedrockRuntime>();

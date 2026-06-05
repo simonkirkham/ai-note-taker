@@ -21,6 +21,7 @@
 | BUG-8 | `x-correlation-id` returned to clients is never logged — a user-quoted ID can't be found in logs | Done | 12-A |
 | BUG-9 | Note tab panels (Transcript/Final notes) stack below Quick notes instead of replacing it | Done | 15-B |
 | BUG-10 | Live transcription falls behind realtime — audio streamed in ~8ms chunks (~125 events/sec) | Done | — |
+| BUG-11 | Signed out ~hourly — iframe silent refresh fails under third-party-cookie blocking; switch to backend refresh-token flow | In Progress | — |
 
 Further bugs will be appended as they are identified.
 
@@ -271,3 +272,44 @@ Option (a) keeps the existing header semantics; (b) collapses two correlation id
 - [x] Confirmed on a real call: the live transcript keeps pace for the full duration (manual, post-deploy — verified 2026-06-03, noticeably better).
 
 **Key files:** `web/src/hooks/pcm.ts` (new — `PcmChunker`, `floatTo16BitPcm`), `web/src/hooks/useTranscription.ts` (chunker wiring + partial-render throttle); tests `web/src/__tests__/pcm.test.ts`.
+
+---
+
+## BUG-11 — User is signed out too frequently
+
+**Status:** In Progress — `slice/bug-11-session-refresh-token`.
+
+**Severity:** Medium — no data loss, but the user is repeatedly forced back through sign-in during normal use, interrupting work.
+
+**Symptom:** The signed-in session does not persist as long as expected. The user is returned to the sign-in flow more often than a normal session lifetime should require (reported as "I get signed out too often").
+
+**Root cause (confirmed by code read):** the session lasts at most ~1 hour (Google ID-token lifetime) and the *only* mechanism to extend it is the hidden-iframe `prompt=none` silent refresh against `accounts.google.com` (`web/src/auth/silentRefresh.ts`). That depends on Google's session cookie being readable inside a **third-party iframe**, which modern browsers (Safari ITP, Firefox ETP, Chrome third-party-cookie phase-out) block by default. When the cookie is unavailable the iframe returns `login_required`, `attemptSilentRefresh` resolves `null`, and `onRefreshFailure` immediately sets `sessionExpired = true` (`AuthContext.tsx:56-61`) → the user is bounced to sign-in. The refresh fires ~5 min before expiry (`REFRESH_LEAD_MS`, `useGoogleAuth.ts:4`), so a user whose browser blocks the iframe cookie is signed out roughly **every ~55 minutes**, and also on any tab-refocus near expiry (`AuthContext.tsx:116-120`).
+
+No refresh token is ever used: the auth URL requests no `access_type=offline` (`pkce.ts:25`) and the backend code-exchange discards everything except `id_token` (`AuthEndpoints.cs:45`) — even though it holds the `client_secret` and is exactly where a refresh token could be obtained.
+
+Distinct from [BUG-1] (blank screen on 401) — there the screen broke; here the session ends and sign-in is shown, just too often.
+
+**Chosen fix — backend refresh-token flow (Option A), refresh token in an httpOnly cookie:**
+1. Auth URL requests `access_type=offline` + `prompt=consent` so Google returns a `refresh_token` on sign-in.
+2. The backend `/auth/token` exchange captures the `refresh_token` and sets it in an `HttpOnly; Secure; SameSite=Strict; Path=/api/auth` cookie (named `rt`). The token never reaches JS. Browser-visible path is `/api/auth/*` (a CloudFront function strips `/api` before the origin), so the cookie path is `/api/auth`.
+3. A new backend `POST /auth/refresh` reads the `rt` cookie, exchanges it with Google (`grant_type=refresh_token`), and returns a fresh `id_token`. No cookie / invalid-or-expired refresh token → `401` (session genuinely over).
+4. The frontend silent refresh becomes a `fetch('/api/auth/refresh', { credentials: 'include' })` — the fragile iframe + `silent-refresh.html` are deleted. The existing 401-retry and scheduled-refresh paths are unchanged (they call the same `attemptSilentRefresh`).
+
+No CDK change: the `/api/*` CloudFront behaviour already uses `CACHING_DISABLED` + `ALL_VIEWER_EXCEPT_HOST_HEADER`, so `Cookie`/`Set-Cookie` are forwarded both ways.
+
+**Expected behaviour:** The session persists for the refresh token's lifetime (days–weeks), independent of third-party-cookie policy; the user is only sent to sign-in when the refresh token is genuinely expired or revoked.
+
+**Repro:**
+1. Sign in in a browser that blocks third-party cookies (Safari, or Chrome with third-party cookies blocked).
+2. Use the app for over an hour (or fast-forward: let the access token reach ~55 min).
+3. Observe being bounced to sign-in when the iframe silent refresh fails.
+
+**Acceptance criteria:**
+- [ ] The auth URL requests `access_type=offline` so Google issues a refresh token.
+- [ ] `/auth/token` success sets the refresh token in a cookie with `HttpOnly`, `SameSite=Strict`, `Path=/api/auth` (and `Secure` over HTTPS); the response body still returns only `id_token`.
+- [ ] `POST /auth/refresh` returns a fresh `id_token` for a valid refresh-token cookie, and `401` when the cookie is absent or Google rejects the refresh token.
+- [ ] The frontend silent refresh calls `/api/auth/refresh` (no iframe); `silent-refresh.html` and the iframe code are removed.
+- [ ] Failing tests reproduce the gap before the fix and pass after: backend `/auth/refresh` (200 w/ cookie via a stubbed Google client, 401 w/o) + `/auth/token` cookie attributes; frontend `silentRefresh` posts to `/api/auth/refresh` and returns the token / null.
+- [ ] Existing `TokenRefresh`/`Auth` frontend tests and `AuthTokenExchange` backend tests stay green (the 401-retry and scheduled-refresh behaviour is unchanged).
+
+**Key files (planned):** `web/src/auth/pkce.ts`, `web/src/auth/silentRefresh.ts`, `web/src/auth/AuthContext.tsx`, `web/src/auth/useGoogleAuth.ts`, remove `web/public/silent-refresh.html`; `src/Api/Endpoints/AuthEndpoints.cs`, new `src/Api/Auth/IGoogleOAuthClient.cs` (+ real impl), `src/Api/Program.cs` wiring; tests `tests/Api.Integration/AuthRefreshTests.cs`, `tests/Api.Integration/ApiFactory.cs` (fake OAuth client), `web/src/__tests__/SilentRefresh.test.ts`.

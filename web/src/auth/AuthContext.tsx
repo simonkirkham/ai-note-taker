@@ -46,7 +46,6 @@ export function AuthProvider({
   }, [])
 
   const { scheduleRefresh, cancelRefresh } = useGoogleAuth({
-    clientId,
     onRefreshSuccess: handleRefreshSuccess,
     onRefreshFailure: handleRefreshFailure,
   })
@@ -70,7 +69,7 @@ export function AuthProvider({
     // is adopted into React state, on failure api.ts falls back to triggerUnauthorized.
     setOnRefresh(async () => {
       if (!clientId) return null
-      const newToken = await attemptSilentRefresh(clientId).catch(() => null)
+      const newToken = await attemptSilentRefresh().catch(() => null)
       if (newToken) {
         handleRefreshSuccess(newToken)
         return newToken
@@ -99,7 +98,7 @@ export function AuthProvider({
       if (remaining <= 0) {
         handleRefreshFailure()
       } else if (remaining < REFRESH_LEAD_MS) {
-        attemptSilentRefresh(clientId).then(newToken => {
+        attemptSilentRefresh().then(newToken => {
           if (newToken) handleRefreshSuccess(newToken)
           else handleRefreshFailure()
         }).catch(() => handleRefreshFailure())
