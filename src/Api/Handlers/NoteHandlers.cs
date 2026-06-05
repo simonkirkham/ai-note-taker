@@ -70,6 +70,15 @@ public static class NoteHandlers
         var detail = await noteDetailStore.GetAsync(new NoteId(noteId));
         if (detail is null || detail.UserId != currentUser.UserId) return Results.NotFound();
         var calendarLink = await calendarLinkStore.GetByNoteIdAsync(noteId.ToString());
+        var linkedMeeting = calendarLink is null ? null : new
+        {
+            calendarEventId = calendarLink.CalendarEventId,
+            title = calendarLink.CalendarEventTitle,
+            startTime = calendarLink.StartTime,
+            endTime = calendarLink.EndTime,
+            recurringSeriesId = calendarLink.RecurringSeriesId,
+            isRecurring = calendarLink.RecurringSeriesId is not null
+        };
         return Results.Ok(new
         {
             noteId = detail.NoteId.Value,
@@ -86,7 +95,8 @@ public static class NoteHandlers
             summaryModelId = detail.SummaryModelId,
             summaryPromptVersion = detail.SummaryPromptVersion,
             recurringSeriesId = calendarLink?.RecurringSeriesId,
-            isRecurring = calendarLink?.RecurringSeriesId is not null
+            isRecurring = calendarLink?.RecurringSeriesId is not null,
+            linkedMeeting
         });
     }
 

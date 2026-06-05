@@ -37,4 +37,10 @@ internal sealed class InMemoryCalendarLinkIndexStore : ICalendarLinkIndexStore
             _byCalendarEventId.Remove(key);
         return Task.CompletedTask;
     }
+
+    public Task DeleteAllAsync(CancellationToken ct = default)
+    {
+        _byCalendarEventId.Clear();
+        return Task.CompletedTask;
+    }
 }

@@ -48,6 +48,15 @@ export interface NoteItem {
   title: string;
 }
 
+export interface LinkedMeeting {
+  calendarEventId: string;
+  title: string;
+  startTime: string;
+  endTime: string;
+  recurringSeriesId: string | null;
+  isRecurring: boolean;
+}
+
 export interface NoteDetail {
   noteId: string;
   title: string;
@@ -62,6 +71,7 @@ export interface NoteDetail {
   summaryPromptVersion: string | null;
   recurringSeriesId: string | null;
   isRecurring: boolean;
+  linkedMeeting: LinkedMeeting | null;
 }
 
 export async function getNoteDetail(noteId: string): Promise<NoteDetail> {

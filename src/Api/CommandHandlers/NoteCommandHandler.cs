@@ -176,7 +176,7 @@ public sealed class NoteCommandHandler(
         {
             if (EventDeserializer.Deserialize(envelope) is NoteLinkedToCalendarEvent e)
                 await calendarLinkIndexStore.UpsertAsync(
-                    new CalendarLinkView(e.CalendarEventId, noteId.Value.ToString(), e.RecurringSeriesId, e.StartTime, currentUser.UserId), ct)
+                    new CalendarLinkView(e.CalendarEventId, noteId.Value.ToString(), e.RecurringSeriesId, e.StartTime, e.EndTime, e.CalendarEventTitle, currentUser.UserId), ct)
                     .ConfigureAwait(false);
         }
     }

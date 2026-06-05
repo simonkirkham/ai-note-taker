@@ -7,4 +7,5 @@ public interface ICalendarLinkIndexStore
     Task<IReadOnlyList<CalendarLinkView>> GetByRecurringSeriesIdAsync(string seriesId, CancellationToken ct = default);
     Task UpsertAsync(CalendarLinkView view, CancellationToken ct = default);
     Task DeleteByNoteIdAsync(string noteId, CancellationToken ct = default);
+    Task DeleteAllAsync(CancellationToken ct = default);
 }
