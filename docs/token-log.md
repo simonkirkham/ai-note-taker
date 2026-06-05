@@ -1473,3 +1473,18 @@ If no agent ran unexpectedly high: write `None — slice ran within expected ran
 | **Total**                                                  | **~335 000** |
 
 **Notes:** higher than a typical two-slice phase, for two structural reasons, neither a code spike. (1) **The Scout docs landed via their own PR mid-pipeline.** The phase doc was drafted as loose edits in the shared primary checkout while it sat on a user WIP branch; tidying that into a dedicated docs PR (#174) + a roadmap-reformat round added ~2 extra PR cycles. Pre-empt next time: land Scout docs on main **before** `/run-pipeline` (logged in `_minor-log`). (2) **One long single session, not three.** Driving Scout + 17-A + 17-B + Scribe in one orchestrator context (rather than separate sessions) carries the full transcript through every step — the per-slice Hawk subagents (~50k/~45k) were proportionate and both approved first pass with zero blocking findings, so no re-review rounds were spent. The `node24`-vs-CI-`node20` `package-lock` revert guardrail fired correctly twice and saved two `npm ci` CI failures.
+
+## Phase 18 — Crash-safe transcription: draft autosave & recovery (18-A only; 18-B pending)
+
+> One long orchestrator session covering the ADR + Scout plan + 18-A end-to-end. Estimates except the Hawk subagent count (from its hand-off summary).
+
+| Agent / phase                                                                 | ~Tokens  |
+|-------------------------------------------------------------------------------|----------|
+| Pre-pipeline: ADR 0011 (checkpoints-aren't-events) + Scout phase doc + recovery-UX decision + the back-button stopgap parked to `wip/phase-18-…` | 70 000 |
+| Data-loss scare forensics (worktree map / reflog / fsck after a concurrent `origin/main` merge cleaned loose pile-C edits — no loss) + docs-to-main merge dance | 45 000 |
+| 18-A Breaker+Pip (Explore backend-pattern map + draft store + Dynamo/in-memory impls + PUT/DELETE endpoints + `GetNote` compose + CDK table/TTL/IAM + event-model doc + 8 API.Integration + 5 EventStore.Integration + 4 Infra.Assertions) | 95 000 |
+| 18-A Hawk (code-reviewer subagent) + 3 minor fixes (best-effort delete, no-event stream assert, doc/key reconcile) | 60 000 |
+| Gate/CI/deploy monitoring + worktree mgmt + Scribe | 45 000 |
+| **18-A subtotal**                                                  | **~315 000** |
+
+**Notes:** inflated by two non-code one-offs, both logged: (1) the **data-loss scare** — a concurrent session merged `origin/main` into the shared primary checkout mid-operation, cleaning loose duplicate edits (BUG-11 / Phase-17 WIP) that turned out to be safely committed in sibling worktrees; ~45k went to proving nothing was lost (worktree/reflog/fsck forensics). Pre-empt: never leave Scout/stopgap work as loose edits in the shared checkout — park to a branch immediately (done here via `wip/phase-18-…`). (2) **docs-to-main before pipeline** raced two concurrent merges (#174/#176), needing two rebase-and-FF-push rounds. The `node24`/`node20` `package-lock` revert guardrail fired once and saved a `npm ci` failure. 18-B (frontend) is a separate entry.
