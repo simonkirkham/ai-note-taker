@@ -64,22 +64,28 @@ export default function NoteView({
   const [linkingEventId, setLinkingEventId] = useState<string | null>(null);
   const [openingNext, setOpeningNext] = useState(false);
   const [noNextOccurrence, setNoNextOccurrence] = useState(false);
+  const [confirmingLeave, setConfirmingLeave] = useState(false);
   const { showError } = useToast();
   const inputRef = useRef<HTMLInputElement>(null);
   const tagsModifiedRef = useRef(false);
   const contentModifiedRef = useRef(false);
   const contentRef = useRef("");
 
+  const isRecording =
+    recordingStatus === "recording" || recordingStatus === "requestingCredentials";
+  const displayedTranscript = liveTranscript ?? transcriptText;
+
+  // An in-progress or just-finished recording counts as content: leaving the
+  // note must "Save" (keep it) and never show "Cancel"/delete, so the captured
+  // transcript persisted on unmount is not thrown away with the note.
   const hasContent =
     title.trim().length > 0 ||
     content.trim().length > 0 ||
     tags.length > 0 ||
     actionCount > 0 ||
-    transcriptText !== null;
-
-  const isRecording =
-    recordingStatus === "recording" || recordingStatus === "requestingCredentials";
-  const displayedTranscript = liveTranscript ?? transcriptText;
+    transcriptText !== null ||
+    isRecording ||
+    (liveTranscript?.trim().length ?? 0) > 0;
 
   useEffect(() => {
     tagsModifiedRef.current = false;
@@ -206,6 +212,17 @@ export default function NoteView({
     untagNote(noteId, tag).catch(() => {});
   }
 
+  // Leaving mid-recording stops the capture. Warn first so the user doesn't
+  // walk away thinking it is still running; the transcript so far is saved
+  // either way (autosave + flush on unmount).
+  function handleBack() {
+    if (isRecording) {
+      setConfirmingLeave(true);
+      return;
+    }
+    onBack();
+  }
+
   // Cancel is only reachable when !hasContent (blank note)
   async function handleCancel() {
     if (isNew) {
@@ -238,10 +255,32 @@ export default function NoteView({
             >
               Cancel
             </button>
+          ) : confirmingLeave ? (
+            <span
+              className={styles.leaveConfirm}
+              role="alertdialog"
+              aria-label="Recording in progress"
+            >
+              <span className={styles.leaveConfirmText}>Still recording —</span>
+              <button
+                data-testid="confirm-leave-button"
+                onClick={() => { setConfirmingLeave(false); onBack(); }}
+                className={styles.saveButton}
+              >
+                Leave &amp; save
+              </button>
+              <button
+                data-testid="cancel-leave-button"
+                onClick={() => setConfirmingLeave(false)}
+                className={styles.backButton}
+              >
+                Keep recording
+              </button>
+            </span>
           ) : (
             <button
               data-testid="save-button"
-              onClick={onBack}
+              onClick={handleBack}
               disabled={loadingDetail}
               className={styles.saveButton}
             >

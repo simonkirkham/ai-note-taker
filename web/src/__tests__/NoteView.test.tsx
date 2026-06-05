@@ -18,10 +18,19 @@ vi.mock('../components/NoteEditor', () => ({
 }))
 
 vi.mock('../components/RecordControl', () => ({
-  default: ({ onTranscriptChange }: { onTranscriptChange: (t: string) => void }) => (
+  default: ({
+    onTranscriptChange,
+    onStatusChange,
+  }: {
+    onTranscriptChange: (t: string) => void
+    onStatusChange?: (s: string) => void
+  }) => (
     <div data-testid="record-control-mock">
       <button data-testid="transcription-record-button" onClick={() => onTranscriptChange('live words')}>
         Record
+      </button>
+      <button data-testid="mock-start-recording" onClick={() => onStatusChange?.('recording')}>
+        Start recording
       </button>
     </div>
   ),
@@ -575,6 +584,29 @@ describe('NoteView', () => {
       await userEvent.click(screen.getByTestId('cancel-button'))
       expect(onDelete).toHaveBeenCalledWith('note-1')
       expect(screen.queryByTestId('cancel-dialog')).toBeNull()
+    })
+
+    it('leaving while recording warns first and only calls onBack on confirm', async () => {
+      const onBack = vi.fn()
+      renderNoteView({ onBack })
+      await screen.findByLabelText('Note content')
+
+      await userEvent.click(screen.getByTestId('mock-start-recording'))
+
+      // Save now warns instead of leaving immediately.
+      await userEvent.click(screen.getByTestId('save-button'))
+      expect(onBack).not.toHaveBeenCalled()
+      expect(screen.getByTestId('confirm-leave-button')).toBeInTheDocument()
+
+      // "Keep recording" dismisses the warning without leaving.
+      await userEvent.click(screen.getByTestId('cancel-leave-button'))
+      expect(screen.queryByTestId('confirm-leave-button')).toBeNull()
+      expect(onBack).not.toHaveBeenCalled()
+
+      // Confirming leaves.
+      await userEvent.click(screen.getByTestId('save-button'))
+      await userEvent.click(screen.getByTestId('confirm-leave-button'))
+      expect(onBack).toHaveBeenCalledOnce()
     })
 
     it('note with only a transcript (blank title/content/tags) shows Save and Delete', async () => {
