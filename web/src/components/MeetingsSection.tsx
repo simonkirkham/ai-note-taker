@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { CalendarMeeting, createNoteFromMeeting, createNoteFromNextOccurrence, getMeetingsForDate } from "../api";
 import { MeetingReminder, useMeetingReminders } from "../hooks/useMeetingReminders";
+import { addDays, dayDelta, formatMeetingTime, todayInTz } from "./meetingDay";
 import styles from "./MeetingsSection.module.css";
 
 const NO_MEETINGS: MeetingReminder[] = [];
@@ -18,22 +19,6 @@ type State =
   | { status: "loading" }
   | { status: "unavailable" }
   | { status: "loaded"; meetings: CalendarMeeting[] };
-
-// "Which day" is owned by the client: format the current date in the user's tz as ISO YYYY-MM-DD.
-function todayInTz(tz: string): string {
-  return new Intl.DateTimeFormat("en-CA", { timeZone: tz }).format(new Date());
-}
-
-// Step an ISO YYYY-MM-DD day by n, calculating in UTC so no DST/midnight shift moves the date.
-function addDays(isoDate: string, n: number): string {
-  const d = new Date(`${isoDate}T00:00:00Z`);
-  d.setUTCDate(d.getUTCDate() + n);
-  return d.toISOString().slice(0, 10);
-}
-
-function dayDelta(from: string, to: string): number {
-  return Math.round((Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / 86_400_000);
-}
 
 function headingFor(selectedDate: string, today: string): string {
   const delta = dayDelta(today, selectedDate);
@@ -285,7 +270,7 @@ export function MeetingsSection({ onOpenNote }: { onOpenNote: (noteId: string, t
                   <div className={styles.meetingCardHeader}>
                     <span className={styles.meetingCardTitle}>{m.title}</span>
                     <span className={styles.meetingCardTime}>
-                      {formatTime(m.startTime)}–{formatTime(m.endTime)}
+                      {formatMeetingTime(m.startTime)}–{formatMeetingTime(m.endTime)}
                     </span>
                   </div>
                   <footer className={styles.meetingCardFooter}>
@@ -348,10 +333,6 @@ export function MeetingsSection({ onOpenNote }: { onOpenNote: (noteId: string, t
       </section>
     </>
   );
-}
-
-function formatTime(iso: string): string {
-  return new Date(iso).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 }
 
 export default MeetingsSection;
