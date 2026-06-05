@@ -263,9 +263,15 @@ Slices and acceptance criteria: [docs/phases/phase-18.md](phases/phase-18.md)
 
 ## Phase 19 — Frontend hardening _(In Progress)_
 
-Close the gap between the `frontend-react` skill rules (extended in PR #173) and the actual `web/` code, and adopt the lint/compiler gates that would catch regressions automatically. A full audit on 2026-06-05 confirms the codebase is already clean on the headline rules — **0 `enum`, 0 `any`, 0 in-place state mutation, no active fetch races, no XSS sinks** — so this is hardening and consistency, not bug-fixing. Anchored by **19-A** (split the 408-line, 8-domain `api.ts` into per-domain modules behind a `request<T>()` helper, no barrel; behaviour unchanged). 19-B…19-K are proposed and need selection: typed-lint + non-null/catch cleanup, stricter TS flags, context-provider memoization, effect hygiene, accessibility (live regions + focus — the one **high-value** cluster, several mutation-failure errors are currently silent to screen readers), test-quality, network retry/backoff, bundle/CWV, and explicit Tiptap Link config. **19-K** proposes migrating server state to **TanStack Query** — gated on reversing [ADR 0010](adr/0010-server-state-strategy.md) (currently Accepted: stay hand-rolled) and large enough to likely graduate to its own phase.
+Close the gap between the `frontend-react` skill rules (extended in PR #173) and the actual `web/` code, and adopt the lint/compiler gates that would catch regressions automatically. A full audit on 2026-06-05 confirms the codebase is already clean on the headline rules — **0 `enum`, 0 `any`, 0 in-place state mutation, no active fetch races, no XSS sinks** — so this is hardening and consistency, not bug-fixing. Anchored by **19-A** (split the 408-line, 8-domain `api.ts` into per-domain modules behind a `request<T>()` helper, no barrel; behaviour unchanged). 19-B…19-J are proposed and need selection: typed-lint + non-null/catch cleanup, stricter TS flags, context-provider memoization, effect hygiene, accessibility (live regions + focus — the one **high-value** cluster, several mutation-failure errors are currently silent to screen readers), test-quality, network retry/backoff, bundle/CWV, and explicit Tiptap Link config. (The TanStack Query server-state migration has graduated to **Phase 20**.)
 
 Slices and acceptance criteria: [docs/phases/phase-19.md](phases/phase-19.md)
+
+## Phase 20 — Server-state migration to TanStack Query _(Not Started)_
+
+Replace the hand-rolled `useEffect`-fetch + `useState` server-state hooks with **TanStack Query** (cache, dedup, retry/backoff, stale-while-revalidate, optimistic-update-with-rollback), migrating **one domain per slice** with hand-rolled and library coexisting until the last. **Reverses [ADR 0010](adr/0010-server-state-strategy.md)** (Accepted: stay hand-rolled), so the whole phase is **hard-gated** on a superseding ADR. Builds on the `api/<domain>.ts` seam from 19-A. Seven slices: **20-A** foundation + todos pilot (sets the `useQuery`/`useMutation`+rollback template), then **20-B** folders, **20-C** cards/list, **20-D** actions+tags, **20-E** note detail, **20-F** meetings, **20-G** cleanup (subsumes 19-H). Transcription credentials stay hand-rolled.
+
+Slices and acceptance criteria: [docs/phases/phase-20.md](phases/phase-20.md)
 
 ---
 

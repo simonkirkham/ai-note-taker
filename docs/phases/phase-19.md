@@ -16,9 +16,9 @@
 | 19-H | **Network resilience.** Exponential-backoff retry (5xx/429/network) for idempotent requests in `apiFetch` | Not Started | 19-A |
 | 19-I | **Bundle / CWV.** Lazy-load Tiptap + transcribe-streaming; add a CI bundle-size budget | Not Started | — |
 | 19-J | **URL-scheme hardening.** Configure the Tiptap Link extension explicitly instead of relying on StarterKit defaults | Not Started | — |
-| 19-K | **Adopt TanStack Query (server-state migration).** Replace hand-rolled `useEffect`-fetch hooks with TanStack Query (cache, dedup, retry, stale-while-revalidate, optimistic-rollback), incremental hook-by-hook. **Reverses [ADR 0010](../adr/0010-server-state-strategy.md).** | Not Started | 19-A; ADR 0010 reversal |
+| 19-K | **Adopt TanStack Query (server-state migration)** — **graduated to its own phase: [Phase 20](phase-20.md)** (7 slices, gated on reversing [ADR 0010](../adr/0010-server-state-strategy.md)). Too large for one slice. | Moved → P20 | — |
 
-> **Only 19-A is confirmed.** 19-B…19-K are **proposed** and need selection/prioritisation before Breaker drafts each (19-B…19-J from the 2026-06-05 audit; 19-K is the server-state migration, which additionally requires reversing an Accepted ADR — see its entry). None blocks the others except as noted (`19-C`→`19-B`, `19-H`→`19-A`). Value tiers below: **high** = real correctness/UX/security; **medium** = perf/maintainability; **low** = consistency/future-proofing. Because the headline rules are already clean, most slices are medium/low — do not treat the long list as a backlog of bugs.
+> **Only 19-A is confirmed.** 19-B…19-J are **proposed** from the 2026-06-05 audit and need selection/prioritisation before Breaker drafts each. (19-K, the TanStack Query server-state migration, has **graduated to its own [Phase 20](phase-20.md)** — it reverses an Accepted ADR and is 7 slices, too big to sit here.) None blocks the others except as noted (`19-C`→`19-B`, `19-H`→`19-A`). Value tiers below: **high** = real correctness/UX/security; **medium** = perf/maintainability; **low** = consistency/future-proofing. Because the headline rules are already clean, most slices are medium/low — do not treat the long list as a backlog of bugs.
 
 **Learning surface:** module decomposition behind a stable import seam; typed (whole-program) ESLint and the strict-flag family; React context re-render mechanics; the fetch-race/`ignore`-flag pattern and the "you might not need an effect" refactor; ARIA live regions and focus management; Testing-Library query priority; transient-failure retry/backoff; route/feature code-splitting and bundle budgeting.
 
@@ -120,12 +120,8 @@ Each lists the finding, locations, value tier, and effort. Specs are written per
 - No app-level injection sink today (all AI/user text is escaped React children; no `dangerouslySetInnerHTML`; no dynamic `href`/`src`). The Tiptap note-link path is safe **only** via StarterKit's bundled `extension-link` `isAllowedUri` default. `NoteEditor.tsx:29-50` never configures Link explicitly — a future Tiptap upgrade could silently loosen it. Configure Link explicitly (`protocols`/`isAllowedUri`, `rel="noopener noreferrer nofollow"`).
 - **Effort:** small. Defense-in-depth, not a live hole.
 
-### 19-K — Adopt TanStack Query (server-state migration) — **value: medium** — **gated: reverses [ADR 0010](../adr/0010-server-state-strategy.md)**
-- **Precondition (hard gate):** ADR 0010 (Accepted — *stay hand-rolled*) must be **superseded by a new ADR before any code** — this slice re-opens a recorded decision, so it cannot start under the normal "specced slice runs autonomously" rule. Justify against the ADR's own "Revisit when" triggers: recurring staleness / duplicate fetches, the app outgrowing the learning-vehicle framing, or the hand-rolled optimistic-rollback plumbing becoming a maintenance liability.
-- **What:** replace the hand-rolled `useEffect`-fetch + `useState` hooks (`useNotes` and siblings) with **TanStack Query** — normalised query cache, request dedup, retry/backoff, stale-while-revalidate, and built-in optimistic-update-with-rollback. `QueryClientProvider` at the root; a query-key factory; `useQuery` wrappers over the `api/<domain>.ts` functions (the clean seam 19-A created); `useMutation` with `onMutate`/rollback per mutation (CLAUDE.md's optimistic-UI rule still applies — the library supplies the rollback machinery).
-- **Shape:** **incremental, hook-by-hook, not big-bang** (per the ADR) — folders → cards/list → todos → actions/tags → note detail → meetings, each shipping green with hand-rolled and TanStack coexisting. **Subsumes 19-H** (TanStack supplies retry/backoff) and removes the `App.tsx` manual `getFolders().then(setFolders)` invalidation sprawl.
-- **Caveat:** large and multi-slice — realistically **its own numbered phase**. Listed here as proposed per request; if selected it most likely **graduates out of Phase 19** into a dedicated phase rather than running as one slice. Adds a ~12–13 kB gzipped dependency.
-- **Effort:** large.
+### 19-K — Adopt TanStack Query → **see [Phase 20](phase-20.md)**
+Graduated out of Phase 19. The server-state migration reverses [ADR 0010](../adr/0010-server-state-strategy.md) and breaks into 7 slices behind that ADR gate — too large for one slice. Full breakdown and the worked migration example live in `docs/phases/phase-20.md`.
 
 ---
 
