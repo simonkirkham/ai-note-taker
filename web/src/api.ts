@@ -365,6 +365,22 @@ export async function createNoteFromMeeting(meeting: CalendarMeeting): Promise<{
   return res.json();
 }
 
+export async function linkNoteToCalendar(noteId: string, meeting: CalendarMeeting): Promise<void> {
+  const res = await apiFetch(`${base}/notes/${noteId}/calendar-link`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      calendarEventId: meeting.calendarEventId,
+      calendarEventTitle: meeting.title,
+      startTime: meeting.startTime,
+      endTime: meeting.endTime,
+      isRecurring: meeting.isRecurring,
+      recurringSeriesId: meeting.recurringSeriesId,
+    }),
+  });
+  if (!res.ok) throw new Error(`POST /notes/${noteId}/calendar-link failed: ${res.status}`);
+}
+
 export type CreateNoteFromNextOccurrenceResult =
   | { noteId: string; alreadyExists: true }
   | { noteId: string; nextOccurrence: { calendarEventId: string; startTime: string; endTime: string } };

@@ -1,9 +1,10 @@
 import clsx from "clsx";
 import { useEffect, useRef, useState } from "react";
-import { analyseNote, createNoteFromNextOccurrence, editContent, getNoteDetail, getTags, setNoteDate, tagNote, untagNote, type LinkedMeeting, type TagIndexEntry } from "../api";
+import { analyseNote, createNoteFromNextOccurrence, editContent, getNoteDetail, getTags, linkNoteToCalendar, setNoteDate, tagNote, untagNote, type CalendarMeeting, type LinkedMeeting, type TagIndexEntry } from "../api";
 import type { TranscriptionStatus } from "../hooks/useTranscription";
 import ActionsSection from "./ActionsSection";
 import FinalNotesView from "./FinalNotesView";
+import MeetingPicker from "./MeetingPicker";
 import NoteEditor from "./NoteEditor";
 import tabStyles from "./NoteTabs.module.css";
 import styles from "./NoteView.module.css";
@@ -59,6 +60,8 @@ export default function NoteView({
   const [recordingStatus, setRecordingStatus] = useState<TranscriptionStatus>("idle");
   const [recurringSeriesId, setRecurringSeriesId] = useState<string | null>(null);
   const [linkedMeeting, setLinkedMeeting] = useState<LinkedMeeting | null>(null);
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [linkingEventId, setLinkingEventId] = useState<string | null>(null);
   const [openingNext, setOpeningNext] = useState(false);
   const [noNextOccurrence, setNoNextOccurrence] = useState(false);
   const { showError } = useToast();
@@ -158,6 +161,31 @@ export default function NoteView({
       }
     } finally {
       setOpeningNext(false);
+    }
+  }
+
+  async function handleLinkMeeting(meeting: CalendarMeeting) {
+    const optimistic: LinkedMeeting = {
+      calendarEventId: meeting.calendarEventId,
+      title: meeting.title,
+      startTime: meeting.startTime,
+      endTime: meeting.endTime,
+      recurringSeriesId: meeting.recurringSeriesId,
+      isRecurring: meeting.isRecurring,
+    };
+    setLinkingEventId(meeting.calendarEventId);
+    setLinkedMeeting(optimistic);
+    setRecurringSeriesId(meeting.recurringSeriesId ?? null);
+    setPickerOpen(false);
+    try {
+      await linkNoteToCalendar(noteId, meeting);
+    } catch {
+      setLinkedMeeting(null);
+      setRecurringSeriesId(null);
+      setPickerOpen(true);
+      showError("Couldn't link the meeting. Please try again.");
+    } finally {
+      setLinkingEventId(null);
     }
   }
 
@@ -286,6 +314,24 @@ export default function NoteView({
             <span className={styles.linkedMeetingWhen}> · {formatMeetingWhen(linkedMeeting.startTime)}</span>
           </span>
         </div>
+      )}
+      {!loadingDetail && !notFound && !linkedMeeting && (
+        <button
+          type="button"
+          data-testid="link-meeting-button"
+          className={styles.linkMeetingButton}
+          onClick={() => setPickerOpen(true)}
+        >
+          <CalendarLinkIcon />
+          Link to meeting
+        </button>
+      )}
+      {pickerOpen && (
+        <MeetingPicker
+          linkingEventId={linkingEventId}
+          onSelect={handleLinkMeeting}
+          onClose={() => setPickerOpen(false)}
+        />
       )}
       <div className={tabStyles.tabLayout}>
         <div className={tabStyles.main}>

@@ -159,10 +159,12 @@ describe('NoteView', () => {
     expect(document.activeElement).toBe(screen.getByLabelText('Note title'))
   })
 
-  it('Tab from title input moves focus to the first tab', async () => {
+  it('Tab from title input reaches the tab list (via the Link to meeting control on an unlinked note)', async () => {
     renderNoteView()
     await screen.findByLabelText('Note content')
     screen.getByLabelText('Note title').focus()
+    await userEvent.tab()
+    expect(document.activeElement).toBe(screen.getByTestId('link-meeting-button'))
     await userEvent.tab()
     expect(document.activeElement).toBe(screen.getByTestId('note-tab-quick'))
   })
@@ -398,6 +400,85 @@ describe('NoteView', () => {
       renderNoteView()
       await screen.findByLabelText('Note content')
       expect(screen.queryByTestId('linked-meeting-badge')).toBeNull()
+    })
+  })
+
+  describe('link to meeting', () => {
+    function unlinkedNote() {
+      server.use(
+        http.get('/api/notes/:noteId', () =>
+          HttpResponse.json({ noteId: 'note-1', title: 'T', content: 'c', date: null, tags: [], linkedMeeting: null }),
+        ),
+      )
+    }
+
+    const meeting = {
+      calendarEventId: 'evt_9', title: 'Design Review',
+      startTime: '2026-05-14T09:00:00Z', endTime: '2026-05-14T09:30:00Z',
+      isRecurring: false, recurringSeriesId: null,
+      linkedNoteId: null, hasNextOccurrenceNote: false, nextOccurrenceNoteId: null,
+    }
+
+    it('shows a Link to meeting button when the note is unlinked', async () => {
+      unlinkedNote()
+      renderNoteView()
+      expect(await screen.findByTestId('link-meeting-button')).toBeInTheDocument()
+    })
+
+    it('hides the Link to meeting button when the note is already linked', async () => {
+      server.use(
+        http.get('/api/notes/:noteId', () =>
+          HttpResponse.json({
+            noteId: 'note-1', title: 'T', content: 'c', date: null, tags: [],
+            linkedMeeting: { calendarEventId: 'evt_1', title: 'Standup', startTime: '2026-05-14T09:00:00Z', endTime: '2026-05-14T09:15:00Z', recurringSeriesId: null, isRecurring: false },
+          }),
+        ),
+      )
+      renderNoteView()
+      await screen.findByTestId('linked-meeting-badge')
+      expect(screen.queryByTestId('link-meeting-button')).toBeNull()
+    })
+
+    it('opens the meeting picker listing the day\'s meetings', async () => {
+      unlinkedNote()
+      server.use(http.get('/api/calendar/:date', () => HttpResponse.json({ meetings: [meeting] })))
+      renderNoteView()
+      await userEvent.click(await screen.findByTestId('link-meeting-button'))
+      expect(await screen.findByTestId('meeting-picker')).toBeInTheDocument()
+      expect(await screen.findByTestId('picker-link-evt_9')).toBeInTheDocument()
+    })
+
+    it('selecting a meeting links it optimistically, shows the badge, hides the button, and POSTs', async () => {
+      unlinkedNote()
+      let linked = false
+      server.use(
+        http.get('/api/calendar/:date', () => HttpResponse.json({ meetings: [meeting] })),
+        http.post('/api/notes/:noteId/calendar-link', async ({ request }) => {
+          const body = await request.json() as { calendarEventId: string; calendarEventTitle: string }
+          if (body.calendarEventId === 'evt_9' && body.calendarEventTitle === 'Design Review') linked = true
+          return new HttpResponse(null, { status: 204 })
+        }),
+      )
+      renderNoteView()
+      await userEvent.click(await screen.findByTestId('link-meeting-button'))
+      await userEvent.click(await screen.findByTestId('picker-link-evt_9'))
+      const badge = await screen.findByTestId('linked-meeting-badge')
+      expect(badge).toHaveTextContent(/Design Review/)
+      expect(screen.queryByTestId('link-meeting-button')).toBeNull()
+      await waitFor(() => expect(linked).toBe(true))
+    })
+
+    it('reverts the optimistic badge and reopens the picker when linking fails', async () => {
+      unlinkedNote()
+      server.use(
+        http.get('/api/calendar/:date', () => HttpResponse.json({ meetings: [meeting] })),
+        http.post('/api/notes/:noteId/calendar-link', () => new HttpResponse(null, { status: 409 })),
+      )
+      renderNoteView()
+      await userEvent.click(await screen.findByTestId('link-meeting-button'))
+      await userEvent.click(await screen.findByTestId('picker-link-evt_9'))
+      await waitFor(() => expect(screen.queryByTestId('linked-meeting-badge')).toBeNull())
+      expect(await screen.findByTestId('link-meeting-button')).toBeInTheDocument()
     })
   })
 
