@@ -30,6 +30,11 @@ export function buildAuthUrl(
     code_challenge: codeChallenge,
     code_challenge_method: 'S256',
     state,
+    // Offline access returns a refresh token to the backend; prompt=consent ensures Google
+    // re-issues one even for a previously-authorised user. The backend stores it in an
+    // httpOnly cookie and refreshes the session without the fragile third-party-cookie iframe.
+    access_type: 'offline',
+    prompt: 'consent',
   })
   return `https://accounts.google.com/o/oauth2/v2/auth?${params}`
 }

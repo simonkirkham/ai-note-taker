@@ -13,11 +13,9 @@ export function getExp(token: string): number | null {
 }
 
 export function useGoogleAuth({
-  clientId,
   onRefreshSuccess,
   onRefreshFailure,
 }: {
-  clientId: string
   onRefreshSuccess: (token: string) => void
   onRefreshFailure: () => void
 }) {
@@ -47,7 +45,7 @@ export function useGoogleAuth({
       }
       timerRef.current = setTimeout(async () => {
         timerRef.current = null
-        const newToken = await attemptSilentRefresh(clientId)
+        const newToken = await attemptSilentRefresh()
         if (newToken) {
           // onRefreshSuccess sets idToken, which triggers the AuthContext useEffect
           // that calls scheduleRefresh — no need to reschedule explicitly here.
@@ -57,7 +55,7 @@ export function useGoogleAuth({
         }
       }, delay)
     },
-    [cancelRefresh, clientId],
+    [cancelRefresh],
   )
 
   useEffect(() => () => { cancelRefresh() }, [cancelRefresh])

@@ -1,8 +1,11 @@
 using System.Net;
 using System.Net.Http.Json;
+using System.Text.Json;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace Api.Integration;
 
+[Collection("AuthEnv")]
 public sealed class AuthTokenExchangeTests(ApiFactory factory) : IClassFixture<ApiFactory>
 {
     private readonly HttpClient _client = factory.CreateClient();
@@ -29,6 +32,28 @@ public sealed class AuthTokenExchangeTests(ApiFactory factory) : IClassFixture<A
         var body = new { code = "some-code", codeVerifier = "verifier", redirectUri = "" };
         var response = await _client.PostAsJsonAsync("/auth/token", body);
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task PostAuthToken_Success_SetsHttpOnlyRefreshCookie()
+    {
+        var fake = factory.Services.GetRequiredService<FakeGoogleOAuthClient>();
+        fake.Reset();
+        fake.ExchangeResult = FakeGoogleOAuthClient.Success("an-id-token", "a-refresh-token");
+
+        var body = new { code = "auth-code", codeVerifier = "verifier", redirectUri = "https://example.com" };
+        var response = await _client.PostAsJsonAsync("/auth/token", body);
+
+        response.EnsureSuccessStatusCode();
+        var json = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("an-id-token", json.GetProperty("id_token").GetString());
+
+        Assert.True(response.Headers.TryGetValues("Set-Cookie", out var cookies));
+        var rt = Assert.Single(cookies, c => c.StartsWith("rt="));
+        Assert.Contains("rt=a-refresh-token", rt);
+        Assert.Contains("httponly", rt.ToLowerInvariant());
+        Assert.Contains("samesite=strict", rt.ToLowerInvariant());
+        Assert.Contains("path=/api/auth", rt.ToLowerInvariant());
     }
 
     [Fact]
