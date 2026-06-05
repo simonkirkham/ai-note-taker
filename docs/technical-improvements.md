@@ -222,3 +222,22 @@ The full rationale, target diagrams, staged migration plan, and the eventual-con
 
 **Raised in:** Hawk review of PR #177 (slice 17-B), 2026-06-05 — flagged as a low-severity gap, recommended deferring as a cross-dialog follow-up rather than a one-off.
 **Depends on:** Nothing blocking.
+
+---
+
+## Make the projection-rebuild endpoint robust (it 500s + partial-rebuilds under burst)
+
+**What:** `POST /admin/projections/rebuild` (`ProjectionRebuildHandler.RebuildAsync`) **deletes every projection first**, then re-upserts all of them via an **unbounded `Task.WhenAll`** (~290 writes for the current dataset: 227 cards + details + tags + folders + links + feedback). The DynamoDB client is configured with an aggressive **~5s per-operation timeout** (`DYNAMO_TIMEOUT_SECONDS`, default 5, tuned for user-facing request latency). When the burst hits a *cold* on-demand table, individual writes throttle past 5s, the client cancels them (`TimeoutException: The operation was canceled`), the faulted tasks make `Task.WhenAll` throw → the endpoint returns **500**, and because delete-all already ran, the result is a **partial rebuild** (the faulted items are silently missing).
+
+**Confirmed in prod, 2026-06-05** (Phase 17 calendar-link backfill): first call → 500 with **2 DynamoDB ops canceled at 5s** (X-Ray trace `1-6a22c000-…`, invocation 17.2s, well under the 29s Lambda limit — *not* a Lambda timeout); two projection items were dropped. Immediate re-run (tables now warmed/scaled by the first burst) → **200 `{"rebuilt":11}` in 9.9s**, fully consistent. So today the operation is **only reliable on the second try**, and the first try can leave projections partially rebuilt.
+
+**Why it matters:** the failure mode is silent data loss in read models — delete-all runs unconditionally, so any fault after it leaves the app degraded until a successful re-run. It worsens as the event store / projection counts grow.
+
+**Fix options (pick one or combine):**
+1. **Bound the write concurrency** — replace the unbounded `Task.WhenAll` with a `SemaphoreSlim`/chunked batches (e.g. 25 at a time) so on-demand tables aren't hit with a cold ~290-write spike.
+2. **Use a longer DynamoDB timeout for the admin/rebuild path** — the 5s ceiling is right for user requests, wrong for a bulk maintenance op; inject a higher-timeout client for the rebuild.
+3. **Rebuild-then-swap instead of delete-then-rebuild** — build into shadow tables / a staging set and atomically switch, so a mid-rebuild fault never leaves the live read models partial.
+4. **Move it off the 29s HTTP path** — async job (Step Functions / SQS) that paginates and is resumable; the endpoint just enqueues.
+
+**Raised in:** Operating the Phase 17 backfill against prod, 2026-06-05 (this session). The backfill itself succeeded and is verified; this is about the endpoint's robustness, not Phase 17.
+**Depends on:** Nothing blocking.
