@@ -65,7 +65,7 @@ public static class NoteHandlers
         return Results.NoContent();
     }
 
-    public static async Task<IResult> GetNote(Guid noteId, INoteDetailStore noteDetailStore, ICalendarLinkIndexStore calendarLinkStore, ICurrentUser currentUser)
+    public static async Task<IResult> GetNote(Guid noteId, INoteDetailStore noteDetailStore, ICalendarLinkIndexStore calendarLinkStore, ITranscriptionDraftStore draftStore, ICurrentUser currentUser)
     {
         var detail = await noteDetailStore.GetAsync(new NoteId(noteId));
         if (detail is null || detail.UserId != currentUser.UserId) return Results.NotFound();
@@ -79,6 +79,15 @@ public static class NoteHandlers
             recurringSeriesId = calendarLink.RecurringSeriesId,
             isRecurring = calendarLink.RecurringSeriesId is not null
         };
+        // Compose an uncommitted transcription draft at read time (working state,
+        // not a projection field — see ADR 0011). Suppress when the draft is a
+        // prefix of / equal to the committed transcript (a stale draft left by a
+        // failed post-commit delete), so only a genuinely interrupted recording
+        // surfaces a recovery prompt.
+        var draft = await draftStore.GetAsync(new NoteId(noteId));
+        var transcriptDraft = draft is not null && IsUncommittedDraft(draft.Text, detail.TranscriptText)
+            ? new { text = draft.Text, capturedAt = draft.CapturedAt }
+            : null;
         return Results.Ok(new
         {
             noteId = detail.NoteId.Value,
@@ -89,6 +98,7 @@ public static class NoteHandlers
             createdAt = detail.CreatedAt,
             lastModifiedAt = detail.LastModifiedAt,
             transcriptText = detail.TranscriptText,
+            transcriptDraft,
             summary = detail.Summary,
             discussionPoints = detail.DiscussionPoints ?? [],
             decisions = detail.Decisions ?? [],
@@ -99,6 +109,11 @@ public static class NoteHandlers
             linkedMeeting
         });
     }
+
+    private static bool IsUncommittedDraft(string draftText, string? committedTranscript) =>
+        !string.IsNullOrEmpty(draftText)
+        && (string.IsNullOrEmpty(committedTranscript)
+            || !committedTranscript.StartsWith(draftText, StringComparison.Ordinal));
 
     public static async Task<IResult> SetNoteDate(Guid noteId, SetNoteDateRequest req, INoteCommandHandler handler, INoteDetailStore noteDetailStore, ICurrentUser currentUser)
     {

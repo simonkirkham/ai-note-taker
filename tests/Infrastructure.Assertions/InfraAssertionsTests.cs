@@ -1052,4 +1052,75 @@ public class InfraAssertionsTests
             ["QueryString"] = Match.StringLikeRegexp("[\\s\\S]*Concurrency conflict[\\s\\S]*")
         }));
     }
+
+    [Fact]
+    public void DraftTranscriptionTable_HasDeleteDeletionPolicy()
+    {
+        // Working state, not a durable record — DESTROY (CloudFormation "Delete").
+        _template.HasResource("AWS::DynamoDB::Table", Match.ObjectLike(new Dictionary<string, object>
+        {
+            ["DeletionPolicy"] = "Delete",
+            ["Properties"] = Match.ObjectLike(new Dictionary<string, object>
+            {
+                ["TableName"] = "notetaker-draft-transcription"
+            })
+        }));
+    }
+
+    [Fact]
+    public void DraftTranscriptionTable_HasTtlEnabledOnTtlAttribute()
+    {
+        _template.HasResource("AWS::DynamoDB::Table", Match.ObjectLike(new Dictionary<string, object>
+        {
+            ["Properties"] = Match.ObjectLike(new Dictionary<string, object>
+            {
+                ["TableName"] = "notetaker-draft-transcription",
+                ["TimeToLiveSpecification"] = Match.ObjectLike(new Dictionary<string, object>
+                {
+                    ["AttributeName"] = "TTL",
+                    ["Enabled"] = true
+                })
+            })
+        }));
+    }
+
+    [Fact]
+    public void Lambda_HasDraftTranscriptionTableEnvVar()
+    {
+        _template.HasResourceProperties("AWS::Lambda::Function", Match.ObjectLike(new Dictionary<string, object>
+        {
+            ["Environment"] = Match.ObjectLike(new Dictionary<string, object>
+            {
+                ["Variables"] = Match.ObjectLike(new Dictionary<string, object>
+                {
+                    ["DRAFT_TRANSCRIPTION_TABLE_NAME"] = Match.AnyValue()
+                })
+            })
+        }));
+    }
+
+    [Fact]
+    public void Lambda_HasLeastPrivilegeGrantOnDraftTranscriptionTable()
+    {
+        // Only point Get/Put/Delete — never a blanket GrantReadWriteData.
+        _template.HasResourceProperties("AWS::IAM::Policy", Match.ObjectLike(new Dictionary<string, object>
+        {
+            ["PolicyDocument"] = Match.ObjectLike(new Dictionary<string, object>
+            {
+                ["Statement"] = Match.ArrayWith(new object[]
+                {
+                    Match.ObjectLike(new Dictionary<string, object>
+                    {
+                        ["Action"] = Match.ArrayWith(new object[]
+                        {
+                            "dynamodb:GetItem",
+                            "dynamodb:PutItem",
+                            "dynamodb:DeleteItem"
+                        }),
+                        ["Effect"] = "Allow"
+                    })
+                })
+            })
+        }));
+    }
 }

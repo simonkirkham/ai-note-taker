@@ -122,6 +122,19 @@ public sealed class NoteTakerStack : Stack
             ProjectionType = ProjectionType.ALL
         });
 
+        // ── Working-state store (NOT a projection, NOT the event log) ─────
+        // In-progress transcription drafts, overwritten in place and self-reaped
+        // via TTL. Loss-tolerant recovery buffer (ADR 0011): DESTROY removal,
+        // since nothing authoritative lives here.
+        var draftTranscriptionTable = new Table(this, "DraftTranscriptionTable", new TableProps
+        {
+            TableName = "notetaker-draft-transcription",
+            PartitionKey = new Amazon.CDK.AWS.DynamoDB.Attribute { Name = "PK", Type = AttributeType.STRING },
+            BillingMode = BillingMode.PAY_PER_REQUEST,
+            TimeToLiveAttribute = "TTL",
+            RemovalPolicy = RemovalPolicy.DESTROY
+        });
+
         // ── API Lambda ───────────────────────────────────────────────────
         var lambdaAssetPath = (string?)this.Node.TryGetContext("lambdaAssetPath")
             ?? "src/Api/bin/Release/net10.0/publish";
@@ -180,6 +193,7 @@ public sealed class NoteTakerStack : Stack
                 ["ALLOWED_USER_SUBS"] = props.AllowedUserSubs ?? "",
                 ["GOOGLE_REFRESH_TOKEN_SSM_PATH"] = props.GoogleRefreshTokenSsmPath ?? "",
                 ["PROJ_CALENDARLINKINDEX_TABLE_NAME"] = calendarLinkIndexTable.TableName,
+                ["DRAFT_TRANSCRIPTION_TABLE_NAME"] = draftTranscriptionTable.TableName,
                 ["BEDROCK_MODEL_ID"] = bedrockModelId
             }
         });
@@ -267,6 +281,8 @@ public sealed class NoteTakerStack : Stack
         tagFeedbackTable.GrantReadWriteData(apiFunction);
         actionFeedbackTable.GrantReadWriteData(apiFunction);
         calendarLinkIndexTable.GrantReadWriteData(apiFunction);
+        // Least-privilege: the draft store only ever does point Get/Put/Delete.
+        draftTranscriptionTable.Grant(apiFunction, "dynamodb:GetItem", "dynamodb:PutItem", "dynamodb:DeleteItem");
 
         if (!string.IsNullOrEmpty(props.GoogleRefreshTokenSsmPath))
         {

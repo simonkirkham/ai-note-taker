@@ -18,7 +18,9 @@ public static class TranscriptionHandlers
         CompleteTranscriptionRequest req,
         INoteCommandHandler handler,
         INoteDetailStore noteDetailStore,
+        ITranscriptionDraftStore draftStore,
         ICurrentUser currentUser,
+        ILoggerFactory loggerFactory,
         CancellationToken ct)
     {
         if (string.IsNullOrWhiteSpace(req.TranscriptText)) return Results.UnprocessableEntity();
@@ -31,6 +33,49 @@ public static class TranscriptionHandlers
         }
         catch (Exceptions.NoteNotFoundException) { return Results.NotFound(); }
         catch (InvalidOperationException) { return Results.NotFound(); }
+        // A clean completion supersedes any in-progress draft; drop it so a later
+        // reload does not offer a stale recovery for transcript now committed.
+        // Best-effort: the transcript is already committed, and a leftover draft is
+        // a prefix of it, so the read-time guard suppresses it anyway — never fail
+        // the request on a draft-store hiccup.
+        try
+        {
+            await draftStore.DeleteAsync(new NoteId(noteId), ct);
+        }
+        catch (Exception ex)
+        {
+            loggerFactory.CreateLogger("Api.Handlers.TranscriptionHandlers")
+                .LogWarning(ex, "Failed to delete transcription draft after completing note {NoteId}; a stale draft will be suppressed on read.", noteId);
+        }
+        return Results.NoContent();
+    }
+
+    public static async Task<IResult> SaveDraft(
+        Guid noteId,
+        CompleteTranscriptionRequest req,
+        ITranscriptionDraftStore draftStore,
+        INoteDetailStore noteDetailStore,
+        ICurrentUser currentUser,
+        CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(req.TranscriptText)) return Results.UnprocessableEntity();
+        var detail = await noteDetailStore.GetAsync(new NoteId(noteId), ct);
+        if (detail is null || detail.UserId != currentUser.UserId) return Results.NotFound();
+        await draftStore.SaveAsync(
+            new TranscriptionDraft(new NoteId(noteId), currentUser.UserId, req.TranscriptText, req.DurationSeconds, DateTimeOffset.UtcNow), ct);
+        return Results.NoContent();
+    }
+
+    public static async Task<IResult> DiscardDraft(
+        Guid noteId,
+        ITranscriptionDraftStore draftStore,
+        INoteDetailStore noteDetailStore,
+        ICurrentUser currentUser,
+        CancellationToken ct)
+    {
+        var detail = await noteDetailStore.GetAsync(new NoteId(noteId), ct);
+        if (detail is null || detail.UserId != currentUser.UserId) return Results.NotFound();
+        await draftStore.DeleteAsync(new NoteId(noteId), ct);
         return Results.NoContent();
     }
 
