@@ -6,7 +6,7 @@
 
 | Slice | Summary | Status | Depends on |
 |-------|---------|--------|------------|
-| 19-A | **Split `api.ts` by domain.** 408-line, 8-domain module → `api/<domain>.ts` + a shared `request<T>()` helper absorbing the 33 `!res.ok` repeats; no barrel; behaviour unchanged | Not Started | — |
+| 19-A | **Split `api.ts` by domain.** 434-line, 8-domain module → `api/<domain>.ts` + a shared `request<T>()`/`requestVoid()` helper absorbing the ~33 `!res.ok` repeats; no barrel; behaviour unchanged | Done | — |
 | 19-B | **Typed-lint + non-null/catch cleanup.** Adopt `@typescript-eslint` `recommended-type-checked`; remove the 8 non-null `!` and the unsafe `catch` typing; add cheap flags (`noImplicitOverride`) | Not Started | — |
 | 19-C | **Stricter index/optional TS flags.** `noUncheckedIndexedAccess` then `exactOptionalPropertyTypes`, staged with backlog clear | Not Started | 19-B |
 | 19-D | **Context provider performance.** Memoise `AuthContext`/`ToastContext` provider values; `useCallback` the Auth actions; optional Auth state/actions split | Not Started | — |
@@ -16,8 +16,9 @@
 | 19-H | **Network resilience.** Exponential-backoff retry (5xx/429/network) for idempotent requests in `apiFetch` | Not Started | 19-A |
 | 19-I | **Bundle / CWV.** Lazy-load Tiptap + transcribe-streaming; add a CI bundle-size budget | Not Started | — |
 | 19-J | **URL-scheme hardening.** Configure the Tiptap Link extension explicitly instead of relying on StarterKit defaults | Not Started | — |
+| 19-K | **Adopt TanStack Query (server-state migration).** Replace hand-rolled `useEffect`-fetch hooks with TanStack Query (cache, dedup, retry, stale-while-revalidate, optimistic-rollback), incremental hook-by-hook. **Reverses [ADR 0010](../adr/0010-server-state-strategy.md).** | Not Started | 19-A; ADR 0010 reversal |
 
-> **Only 19-A is confirmed.** 19-B…19-J are **proposed** from the 2026-06-05 audit and need selection/prioritisation before Breaker drafts each. None blocks the others except as noted (`19-C`→`19-B`, `19-H`→`19-A`). Value tiers below: **high** = real correctness/UX/security; **medium** = perf/maintainability; **low** = consistency/future-proofing. Because the headline rules are already clean, most slices are medium/low — do not treat the long list as a backlog of bugs.
+> **Only 19-A is confirmed.** 19-B…19-K are **proposed** and need selection/prioritisation before Breaker drafts each (19-B…19-J from the 2026-06-05 audit; 19-K is the server-state migration, which additionally requires reversing an Accepted ADR — see its entry). None blocks the others except as noted (`19-C`→`19-B`, `19-H`→`19-A`). Value tiers below: **high** = real correctness/UX/security; **medium** = perf/maintainability; **low** = consistency/future-proofing. Because the headline rules are already clean, most slices are medium/low — do not treat the long list as a backlog of bugs.
 
 **Learning surface:** module decomposition behind a stable import seam; typed (whole-program) ESLint and the strict-flag family; React context re-render mechanics; the fetch-race/`ignore`-flag pattern and the "you might not need an effect" refactor; ARIA live regions and focus management; Testing-Library query priority; transient-failure retry/backoff; route/feature code-splitting and bundle budgeting.
 
@@ -25,7 +26,7 @@
 
 ## Slice 19-A — Split `api.ts` by domain
 
-**Status:** Not Started
+**Status:** Done (PR #181, deploy #472, 2026-06-05)
 
 **User value:** None directly (pure refactor) — maintainability and a clean seam for every later frontend slice. No behaviour change; the proof is that every existing spec stays green.
 
@@ -64,10 +65,10 @@ Scenario: Behaviour is unchanged after the split
 
 ### Acceptance criteria
 
-- [ ] `web/src/api.ts` is deleted; functions live in `web/src/api/<domain>.ts` per the table; no barrel `index.ts`
-- [ ] A single `request<T>()` helper replaces the 33 `!res.ok` repeats; `tagNote`'s 409 and `createNoteFromNextOccurrence`'s 404 carve-outs are preserved explicitly
-- [ ] Every call site imports from the specific module (grep `from ".*api"` clean of the old path); `tsc --noEmit` passes
-- [ ] No behaviour change — full Vitest/RTL suite and the kept E2E journeys pass with only import-path edits; `npm --prefix web run lint` and `build` green
+- [x] `web/src/api.ts` is deleted; functions live in `web/src/api/<domain>.ts` per the table; no barrel `index.ts`
+- [x] A single `request<T>()`/`requestVoid()` helper replaces the ~33 `!res.ok` repeats; `tagNote`'s 409 and `createNoteFromNextOccurrence`'s 404 carve-outs are preserved explicitly
+- [x] Every call site imports from the specific module (28 static + 2 dynamic; grep clean of the old path); `tsc -b` passes
+- [x] No behaviour change — full Vitest suite (34 files, 328 tests) passes with only import-path edits; `npm --prefix web run lint` and `build` green
 
 ---
 
@@ -119,11 +120,17 @@ Each lists the finding, locations, value tier, and effort. Specs are written per
 - No app-level injection sink today (all AI/user text is escaped React children; no `dangerouslySetInnerHTML`; no dynamic `href`/`src`). The Tiptap note-link path is safe **only** via StarterKit's bundled `extension-link` `isAllowedUri` default. `NoteEditor.tsx:29-50` never configures Link explicitly — a future Tiptap upgrade could silently loosen it. Configure Link explicitly (`protocols`/`isAllowedUri`, `rel="noopener noreferrer nofollow"`).
 - **Effort:** small. Defense-in-depth, not a live hole.
 
+### 19-K — Adopt TanStack Query (server-state migration) — **value: medium** — **gated: reverses [ADR 0010](../adr/0010-server-state-strategy.md)**
+- **Precondition (hard gate):** ADR 0010 (Accepted — *stay hand-rolled*) must be **superseded by a new ADR before any code** — this slice re-opens a recorded decision, so it cannot start under the normal "specced slice runs autonomously" rule. Justify against the ADR's own "Revisit when" triggers: recurring staleness / duplicate fetches, the app outgrowing the learning-vehicle framing, or the hand-rolled optimistic-rollback plumbing becoming a maintenance liability.
+- **What:** replace the hand-rolled `useEffect`-fetch + `useState` hooks (`useNotes` and siblings) with **TanStack Query** — normalised query cache, request dedup, retry/backoff, stale-while-revalidate, and built-in optimistic-update-with-rollback. `QueryClientProvider` at the root; a query-key factory; `useQuery` wrappers over the `api/<domain>.ts` functions (the clean seam 19-A created); `useMutation` with `onMutate`/rollback per mutation (CLAUDE.md's optimistic-UI rule still applies — the library supplies the rollback machinery).
+- **Shape:** **incremental, hook-by-hook, not big-bang** (per the ADR) — folders → cards/list → todos → actions/tags → note detail → meetings, each shipping green with hand-rolled and TanStack coexisting. **Subsumes 19-H** (TanStack supplies retry/backoff) and removes the `App.tsx` manual `getFolders().then(setFolders)` invalidation sprawl.
+- **Caveat:** large and multi-slice — realistically **its own numbered phase**. Listed here as proposed per request; if selected it most likely **graduates out of Phase 19** into a dedicated phase rather than running as one slice. Adds a ~12–13 kB gzipped dependency.
+- **Effort:** large.
+
 ---
 
 ## Out of scope (explicitly deferred)
 
-- **TanStack Query / SWR.** Deferred by [ADR 0010](../adr/0010-server-state-strategy.md). The 19-A split is the natural seam if that decision is ever reversed, but the migration is its own future phase and does not belong here.
 - **DOMPurify.** No HTML-render path exists; only worth adding if `dangerouslySetInnerHTML` is ever introduced.
 - **Image/CLS handling.** No `<img>` tags exist; revisit if images are added.
 - **A general toast for non-error notices** — `ToastProvider` already exists; this phase only fixes the surfaces that bypass it.

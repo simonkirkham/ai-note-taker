@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { NoteCard as NoteCardData, deleteNote } from "../api";
+import { NoteCard as NoteCardData, deleteNote } from "../api/notes";
 import { PencilIcon, TrashIcon } from "./icons";
 import styles from "./NoteCard.module.css";
 

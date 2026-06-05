@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { CalendarMeeting, getMeetingsForDate } from "../api";
+import { CalendarMeeting, getMeetingsForDate } from "../api/meetings";
 import { addDays, dayDelta, formatMeetingTime, todayInTz } from "./meetingDay";
 import styles from "./MeetingPicker.module.css";
 

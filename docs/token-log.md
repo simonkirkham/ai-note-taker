@@ -1488,3 +1488,17 @@ If no agent ran unexpectedly high: write `None — slice ran within expected ran
 | **18-A subtotal**                                                  | **~315 000** |
 
 **Notes:** inflated by two non-code one-offs, both logged: (1) the **data-loss scare** — a concurrent session merged `origin/main` into the shared primary checkout mid-operation, cleaning loose duplicate edits (BUG-11 / Phase-17 WIP) that turned out to be safely committed in sibling worktrees; ~45k went to proving nothing was lost (worktree/reflog/fsck forensics). Pre-empt: never leave Scout/stopgap work as loose edits in the shared checkout — park to a branch immediately (done here via `wip/phase-18-…`). (2) **docs-to-main before pipeline** raced two concurrent merges (#174/#176), needing two rebase-and-FF-push rounds. The `node24`/`node20` `package-lock` revert guardrail fired once and saved a `npm ci` failure. 18-B (frontend) is a separate entry.
+
+## Phase 19 — Frontend hardening (19-A only; 19-B…19-J proposed)
+
+> Phase-doc audit + the 19-A refactor in one orchestrator session. Subagent counts from hand-off summaries; orchestrator phases estimated.
+
+| Agent / phase                                                                 | ~Tokens  |
+|-------------------------------------------------------------------------------|----------|
+| Scout/audit (4 parallel codebase scans → phase doc + `## Summary` + proposed 19-B…19-J) | 215 000 |
+| 19-A Breaker+Pip (`api.ts` → 8 modules + `request<T>`/`requestVoid`, repoint 30 import sites, tsc/lint/vitest gates) | 70 000 |
+| 19-A Hawk (code-reviewer subagent)                                            | 50 000   |
+| Gate/CI/deploy monitoring + worktree mgmt + Scribe                            | 45 000   |
+| **19-A subtotal**                                                  | **~380 000** |
+
+**Notes:** the **audit fan-out** (4 concurrent scan subagents, ~215k) dominates and is a one-off for the *whole* phase — it scoped all of 19-A…19-J, so it amortises across future Phase-19 slices rather than belonging to 19-A alone. The refactor itself was mechanical and cheap next to the audit; both Hawk passes (here + the earlier #173 standards review) approved first time with zero blocking findings. Two small process snags, both cheap and logged in `_minor-log`: a static-import grep missed two dynamic `await import("../api")` sites (first suite run failed one test file); and `npm run lint` passed on a stale `.eslintcache` while the pre-commit `eslint .` correctly caught an `import-x/order` violation. The `package-lock` node-version revert guardrail fired once.

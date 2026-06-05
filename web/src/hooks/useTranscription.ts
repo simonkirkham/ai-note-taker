@@ -3,7 +3,7 @@ import {
   StartStreamTranscriptionCommand,
 } from '@aws-sdk/client-transcribe-streaming';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { completeTranscription, getTranscriptionCredentials, saveTranscriptionDraft } from '../api';
+import { completeTranscription, getTranscriptionCredentials, saveTranscriptionDraft } from '../api/transcription';
 import { PcmChunker } from './pcm';
 import { SpeakerTranscript } from './speakerSegments';
 

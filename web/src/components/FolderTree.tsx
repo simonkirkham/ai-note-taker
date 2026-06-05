@@ -1,6 +1,6 @@
 import clsx from "clsx";
 import { useState } from "react";
-import { FolderNode } from "../api";
+import { FolderNode } from "../api/folders";
 import styles from "./FolderTree.module.css";
 
 interface NodeProps {

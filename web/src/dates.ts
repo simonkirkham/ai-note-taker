@@ -1,4 +1,4 @@
-import { NoteCard } from "./api";
+import { NoteCard } from "./api/notes";
 
 // Local calendar date (YYYY-MM-DD) for a Date, using the browser's local
 // timezone — NOT UTC. Using UTC (toISOString().slice(0,10)) would flip a day
