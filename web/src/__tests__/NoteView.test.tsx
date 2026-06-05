@@ -622,4 +622,63 @@ describe('NoteView', () => {
       expect(screen.queryByTestId('cancel-button')).toBeNull()
     })
   })
+
+  describe('transcript recovery banner', () => {
+    function withDraft() {
+      server.use(
+        http.get('/api/notes/:noteId', () =>
+          HttpResponse.json({
+            noteId: 'note-1', title: 'T', content: '', date: null, tags: [],
+            transcriptDraft: { text: 'Speaker 1: recovered words', capturedAt: '2026-06-05T10:00:00Z' },
+          }),
+        ),
+      )
+    }
+
+    it('shows the recovery banner when the note has an uncommitted transcript draft', async () => {
+      withDraft()
+      renderNoteView()
+      expect(await screen.findByTestId('transcript-recovery-banner')).toBeInTheDocument()
+      expect(screen.getByTestId('recover-transcript-button')).toBeInTheDocument()
+      expect(screen.getByTestId('discard-transcript-button')).toBeInTheDocument()
+    })
+
+    it('opening a note with a draft never auto-commits', async () => {
+      withDraft()
+      let committed = false
+      server.use(
+        http.post('/api/notes/note-1/transcription', () => { committed = true; return new HttpResponse(null, { status: 204 }) }),
+      )
+      renderNoteView()
+      await screen.findByTestId('transcript-recovery-banner')
+      expect(committed).toBe(false)
+    })
+
+    it('Recover commits the draft (POST) and hides the banner', async () => {
+      withDraft()
+      let committedBody: unknown = null
+      server.use(
+        http.post('/api/notes/note-1/transcription', async ({ request }) => {
+          committedBody = await request.json()
+          return new HttpResponse(null, { status: 204 })
+        }),
+      )
+      renderNoteView()
+      await userEvent.click(await screen.findByTestId('recover-transcript-button'))
+      await waitFor(() => expect(committedBody).toMatchObject({ transcriptText: 'Speaker 1: recovered words' }))
+      expect(screen.queryByTestId('transcript-recovery-banner')).toBeNull()
+    })
+
+    it('Discard deletes the draft (DELETE) and hides the banner', async () => {
+      withDraft()
+      let discarded = false
+      server.use(
+        http.delete('/api/notes/note-1/transcription/draft', () => { discarded = true; return new HttpResponse(null, { status: 204 }) }),
+      )
+      renderNoteView()
+      await userEvent.click(await screen.findByTestId('discard-transcript-button'))
+      await waitFor(() => expect(discarded).toBe(true))
+      expect(screen.queryByTestId('transcript-recovery-banner')).toBeNull()
+    })
+  })
 })

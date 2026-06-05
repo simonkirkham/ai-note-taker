@@ -1,6 +1,6 @@
 import clsx from "clsx";
 import { useEffect, useRef, useState } from "react";
-import { analyseNote, createNoteFromNextOccurrence, editContent, getNoteDetail, getTags, linkNoteToCalendar, setNoteDate, tagNote, untagNote, type CalendarMeeting, type LinkedMeeting, type TagIndexEntry } from "../api";
+import { analyseNote, completeTranscription, createNoteFromNextOccurrence, discardTranscriptionDraft, editContent, getNoteDetail, getTags, linkNoteToCalendar, setNoteDate, tagNote, untagNote, type CalendarMeeting, type LinkedMeeting, type TagIndexEntry, type TranscriptionDraft } from "../api";
 import type { TranscriptionStatus } from "../hooks/useTranscription";
 import ActionsSection from "./ActionsSection";
 import FinalNotesView from "./FinalNotesView";
@@ -65,6 +65,7 @@ export default function NoteView({
   const [openingNext, setOpeningNext] = useState(false);
   const [noNextOccurrence, setNoNextOccurrence] = useState(false);
   const [confirmingLeave, setConfirmingLeave] = useState(false);
+  const [transcriptDraft, setTranscriptDraft] = useState<TranscriptionDraft | null>(null);
   const { showError } = useToast();
   const inputRef = useRef<HTMLInputElement>(null);
   const tagsModifiedRef = useRef(false);
@@ -108,6 +109,7 @@ export default function NoteView({
           setSummaryModelId(detail.summaryModelId ?? null);
           setRecurringSeriesId(detail.recurringSeriesId ?? null);
           setLinkedMeeting(detail.linkedMeeting ?? null);
+          setTranscriptDraft(detail.transcriptDraft ?? null);
           setLoadingDetail(false);
         }
       })
@@ -210,6 +212,38 @@ export default function NoteView({
     tagsModifiedRef.current = true;
     setTags((prev) => prev.filter((t) => t !== tag));
     untagNote(noteId, tag).catch(() => {});
+  }
+
+  // Recovery for an interrupted recording (crash/tab close left an uncommitted
+  // draft). Optimistic: hide the banner immediately and show the recovered text;
+  // reconcile on error. Recover commits the draft as the durable transcript;
+  // Discard drops it, leaving any previously committed transcript untouched.
+  async function handleRecoverDraft() {
+    const draft = transcriptDraft;
+    if (!draft) return;
+    const prevTranscript = transcriptText;
+    setTranscriptDraft(null);
+    setTranscriptText(draft.text);
+    try {
+      // An interrupted recording has no reliable final duration; the text is what matters.
+      await completeTranscription(noteId, draft.text, 0);
+    } catch {
+      setTranscriptDraft(draft);
+      setTranscriptText(prevTranscript);
+      showError("Couldn't recover the transcript. Please try again.");
+    }
+  }
+
+  async function handleDiscardDraft() {
+    const draft = transcriptDraft;
+    if (!draft) return;
+    setTranscriptDraft(null);
+    try {
+      await discardTranscriptionDraft(noteId);
+    } catch {
+      setTranscriptDraft(draft);
+      showError("Couldn't discard the draft. Please try again.");
+    }
   }
 
   // Leaving mid-recording stops the capture. Warn first so the user doesn't
@@ -345,6 +379,32 @@ export default function NoteView({
         className={styles.titleInput}
         aria-label="Note title"
       />
+      {transcriptDraft && (
+        <div
+          data-testid="transcript-recovery-banner"
+          role="alertdialog"
+          aria-label="Unsaved transcript from an interrupted recording"
+          className={styles.recoveryBanner}
+        >
+          <span className={styles.recoveryText}>Unsaved transcript from an interrupted recording</span>
+          <button
+            type="button"
+            data-testid="recover-transcript-button"
+            onClick={handleRecoverDraft}
+            className={styles.saveButton}
+          >
+            Recover
+          </button>
+          <button
+            type="button"
+            data-testid="discard-transcript-button"
+            onClick={handleDiscardDraft}
+            className={styles.backButton}
+          >
+            Discard
+          </button>
+        </div>
+      )}
       {linkedMeeting && (
         <div data-testid="linked-meeting-badge" className={styles.linkedMeetingBadge}>
           <CalendarLinkIcon />

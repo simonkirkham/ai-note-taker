@@ -234,7 +234,7 @@ it('persists the in-progress transcript when unmounted mid-recording (navigating
   )
 })
 
-it('autosaves the transcript on the periodic checkpoint while still recording', async () => {
+it('autosaves the transcript to the draft on the periodic checkpoint while still recording', async () => {
   stubBrowserApis()
   // Capture the checkpoint interval's callback so we can fire it deterministically
   // without waiting wall-clock time; pass every other interval through unchanged.
@@ -245,12 +245,14 @@ it('autosaves the transcript on the periodic checkpoint while still recording', 
     return realSetInterval(cb, ms, ...rest)
   }) as typeof setInterval)
 
-  let completionBody: unknown = null
+  let draftBody: unknown = null
+  let committed = false
   server.use(
-    http.post('/api/notes/note-1/transcription', async ({ request }) => {
-      completionBody = await request.json()
+    http.put('/api/notes/note-1/transcription/draft', async ({ request }) => {
+      draftBody = await request.json()
       return new HttpResponse(null, { status: 204 })
     }),
+    http.post('/api/notes/note-1/transcription', () => { committed = true; return new HttpResponse(null, { status: 204 }) }),
   )
 
   const onTranscriptChange = vi.fn()
@@ -265,13 +267,14 @@ it('autosaves the transcript on the periodic checkpoint while still recording', 
   // Fire the checkpoint mid-recording — no Stop pressed.
   act(() => { checkpointCb!() })
 
-  await waitFor(() => expect(completionBody).toMatchObject({ transcriptText: 'Speaker 1: Captured so far' }))
-  // Still recording: the autosave must not have stopped the session.
+  // It PUTs the draft (no event); the committing POST must NOT fire mid-recording.
+  await waitFor(() => expect(draftBody).toMatchObject({ transcriptText: 'Speaker 1: Captured so far' }))
+  expect(committed).toBe(false)
   expect(screen.getByTestId('transcription-stop-button')).toBeInTheDocument()
   intervalSpy.mockRestore()
 })
 
-it('checkpoint does not re-POST when the transcript has not changed', async () => {
+it('checkpoint does not re-PUT the draft when the transcript has not changed', async () => {
   stubBrowserApis()
   let checkpointCb: (() => void) | null = null
   const realSetInterval = global.setInterval.bind(global)
@@ -282,10 +285,12 @@ it('checkpoint does not re-POST when the transcript has not changed', async () =
 
   let completionCalls = 0
   server.use(
-    http.post('/api/notes/note-1/transcription', () => {
+    http.put('/api/notes/note-1/transcription/draft', () => {
       completionCalls += 1
       return new HttpResponse(null, { status: 204 })
     }),
+    // unmount on test teardown commits via POST — handle it so it isn't an unhandled request
+    http.post('/api/notes/note-1/transcription', () => new HttpResponse(null, { status: 204 })),
   )
 
   const onTranscriptChange = vi.fn()

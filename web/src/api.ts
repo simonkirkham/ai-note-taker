@@ -57,6 +57,11 @@ export interface LinkedMeeting {
   isRecurring: boolean;
 }
 
+export interface TranscriptionDraft {
+  text: string;
+  capturedAt: string;
+}
+
 export interface NoteDetail {
   noteId: string;
   title: string;
@@ -64,6 +69,9 @@ export interface NoteDetail {
   date: string | null;
   tags: string[];
   transcriptText: string | null;
+  // An uncommitted transcript left by an interrupted recording (crash/tab close),
+  // surfaced for recovery. Null on the happy path. See ADR 0011 / Phase 18.
+  transcriptDraft: TranscriptionDraft | null;
   summary: string | null;
   discussionPoints: string[];
   decisions: string[];
@@ -423,6 +431,26 @@ export async function completeTranscription(
     body: JSON.stringify({ transcriptText, durationSeconds }),
   });
   if (!res.ok) throw new Error(`POST /notes/${noteId}/transcription failed: ${res.status}`);
+}
+
+// Autosave an in-progress transcript to the draft store (no event). Overwrite-in-place
+// checkpoint; the committed transcript is still produced by completeTranscription on stop.
+export async function saveTranscriptionDraft(
+  noteId: string,
+  transcriptText: string,
+  durationSeconds: number
+): Promise<void> {
+  const res = await apiFetch(`${base}/notes/${noteId}/transcription/draft`, {
+    method: 'PUT',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ transcriptText, durationSeconds }),
+  });
+  if (!res.ok) throw new Error(`PUT /notes/${noteId}/transcription/draft failed: ${res.status}`);
+}
+
+export async function discardTranscriptionDraft(noteId: string): Promise<void> {
+  const res = await apiFetch(`${base}/notes/${noteId}/transcription/draft`, { method: 'DELETE' });
+  if (!res.ok) throw new Error(`DELETE /notes/${noteId}/transcription/draft failed: ${res.status}`);
 }
 
 export async function analyseNote(noteId: string): Promise<void> {

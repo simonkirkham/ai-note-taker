@@ -3,7 +3,7 @@ import {
   StartStreamTranscriptionCommand,
 } from '@aws-sdk/client-transcribe-streaming';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { completeTranscription, getTranscriptionCredentials } from '../api';
+import { completeTranscription, getTranscriptionCredentials, saveTranscriptionDraft } from '../api';
 import { PcmChunker } from './pcm';
 import { SpeakerTranscript } from './speakerSegments';
 
@@ -65,7 +65,8 @@ export function useTranscription(noteId: string): UseTranscriptionResult {
   const startTimeRef = useRef<number>(0);
   const finalizedRef = useRef('');
   const lastPartialAtRef = useRef(0);
-  const lastSavedRef = useRef<string | null>(null);
+  const lastDraftRef = useRef<string | null>(null);
+  const committedRef = useRef(false);
   const checkpointTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const cleanup = useCallback(() => {
@@ -94,29 +95,41 @@ export function useTranscription(noteId: string): UseTranscriptionResult {
     }
   }, []);
 
-  // Persist the finalised transcript so far, but only when it has changed since
-  // the last save. The backend replaces (not appends), so re-sending the full
-  // accumulated text is idempotent. Driven on a periodic checkpoint while
-  // recording and on every exit path (Stop, natural end, unmount) — so a
-  // crash, tab close, or navigation mid-call keeps whatever was captured up to
-  // the last checkpoint instead of losing it. On failure the saved marker is
-  // cleared so the next checkpoint retries.
-  const saveTranscript = useCallback(() => {
+  // Autosave the finalised transcript so far to the DRAFT store (PUT, no event),
+  // only when it changed since the last checkpoint. Loss-tolerant crash buffer
+  // (ADR 0011); the committed transcript is produced by commitTranscript on a
+  // clean exit. On failure the marker is cleared so the next checkpoint retries.
+  const saveCheckpoint = useCallback(() => {
     const text = finalizedRef.current;
-    if (!text || text === lastSavedRef.current) return;
-    lastSavedRef.current = text;
+    if (!text || text === lastDraftRef.current) return;
+    lastDraftRef.current = text;
+    const elapsed = Math.floor((Date.now() - startTimeRef.current) / 1000);
+    void saveTranscriptionDraft(noteId, text, elapsed).catch(() => {
+      if (lastDraftRef.current === text) lastDraftRef.current = null;
+    });
+  }, [noteId]);
+
+  // Commit the finalised transcript as the durable TranscriptionCompleted event
+  // (POST) — once per recording, on a clean exit (Stop, natural end, intentional
+  // unmount/navigation). The backend deletes the draft on commit, so no recovery
+  // is offered afterwards. On failure the one-shot guard is released to retry.
+  const commitTranscript = useCallback(() => {
+    if (committedRef.current) return;
+    const text = finalizedRef.current;
+    if (!text) return;
+    committedRef.current = true;
     const elapsed = Math.floor((Date.now() - startTimeRef.current) / 1000);
     void completeTranscription(noteId, text, elapsed).catch(() => {
-      if (lastSavedRef.current === text) lastSavedRef.current = null;
+      committedRef.current = false;
     });
   }, [noteId]);
 
   useEffect(
     () => () => {
-      saveTranscript();
+      commitTranscript();
       cleanup();
     },
-    [cleanup, saveTranscript],
+    [cleanup, commitTranscript],
   );
 
   // Warn before a browser-level leave (tab close, refresh, navigation) while a
@@ -136,7 +149,8 @@ export function useTranscription(noteId: string): UseTranscriptionResult {
     stoppedRef.current = false;
     finalizedRef.current = '';
     lastPartialAtRef.current = 0;
-    lastSavedRef.current = null;
+    lastDraftRef.current = null;
+    committedRef.current = false;
     setTranscript('');
     setElapsedSeconds(0);
     setError(undefined);
@@ -244,7 +258,7 @@ export function useTranscription(noteId: string): UseTranscriptionResult {
         timerRef.current = setInterval(() => {
           setElapsedSeconds(Math.floor((Date.now() - startTimeRef.current) / 1000));
         }, 1000);
-        checkpointTimerRef.current = setInterval(saveTranscript, CHECKPOINT_INTERVAL_MS);
+        checkpointTimerRef.current = setInterval(saveCheckpoint, CHECKPOINT_INTERVAL_MS);
 
         const response = await client.send(command);
 
@@ -281,7 +295,7 @@ export function useTranscription(noteId: string): UseTranscriptionResult {
         }
 
         if (!stoppedRef.current) {
-          saveTranscript();
+          commitTranscript();
           cleanup();
           setStatus('stopped');
         }
@@ -292,18 +306,19 @@ export function useTranscription(noteId: string): UseTranscriptionResult {
         setStatus('error');
       }
     })();
-  }, [cleanup, saveTranscript]);
+  }, [cleanup, saveCheckpoint, commitTranscript]);
 
   const stopRecording = useCallback(() => {
-    saveTranscript();
+    commitTranscript();
     cleanup();
     setStatus('stopped');
-  }, [cleanup, saveTranscript]);
+  }, [cleanup, commitTranscript]);
 
   const reset = useCallback(() => {
     cleanup();
     finalizedRef.current = '';
-    lastSavedRef.current = null;
+    lastDraftRef.current = null;
+    committedRef.current = false;
     setStatus('idle');
     setTranscript('');
     setElapsedSeconds(0);
