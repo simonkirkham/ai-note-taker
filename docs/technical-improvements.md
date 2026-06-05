@@ -17,6 +17,88 @@ Each entry records what it is, why it matters, where it was raised, and any depe
 
 ---
 
+## Split the monolithic `web/src/api.ts` by domain
+
+**What:** `web/src/api.ts` is 408 lines mixing ~8 domains (notes, actions, cards, tags, folders, todos, meetings, transcription) and repeats the `if (!res.ok) throw new Error(...)` boilerplate ~34×. Split it into a per-domain folder:
+
+| New file | Holds |
+|---|---|
+| `api/client.ts` | `apiFetch`, `withAuth`, `refreshOnce`, plus a `request<T>()` helper that does the `!res.ok` throw once |
+| `api/notes.ts` | note + card fns (`getNoteDetail`, `createNote`, `getNoteCards`, `analyseNote`, …) + types |
+| `api/actions.ts` | action-item fns + types |
+| `api/tags.ts` | tag fns + `TagIndexEntry` |
+| `api/folders.ts` | folder fns + `FolderNode` |
+| `api/todos.ts` | todo fns + `TodoItem` |
+| `api/meetings.ts` | meeting/calendar fns + types |
+| `api/transcription.ts` | transcription credential/complete fns |
+
+**No barrel `api/index.ts`** — the `frontend-react` skill forbids barrels (tree-shaking + cycles). Update call sites to import from the specific module (`import { getFolders } from '@/api/folders'`). Pure file-move + `request<T>()` extraction; no behaviour change, specs stay green.
+
+**Why it matters:** single-domain modules read and edit cleanly; the `request<T>()` helper deletes ~34 lines of duplicated throw logic; and the per-domain split is the natural seam if the TanStack Query migration (ADR 0010) is ever reversed. Worth doing **independently** of that decision — the separation helps the hand-rolled hooks too.
+
+**Raised in:** Frontend module-cohesion review 2026-06-04; codified as the "non-component modules stay single-domain" smell in the `frontend-react` skill.
+
+**Depends on:** — (independent; do *before* any TanStack migration so each later slice builds on a clean per-domain file).
+
+---
+
+## Stricter TypeScript compiler flags beyond `strict`
+
+**What:** `web/tsconfig.app.json` has `strict: true` but none of the strict-*family* extras. Adopt incrementally:
+1. **`noUncheckedIndexedAccess`** first — makes `arr[i]` / `record[key]` typed as `T | undefined`, catching a real class of "index that isn't there" bugs `strict` lets through.
+2. **`exactOptionalPropertyTypes`** later — distinguishes "absent" from "present and `undefined`".
+
+**Why it matters:** `strict` alone still lets `arr[i]` lie about `undefined`; a mature TS codebase closes these.
+**Cost:** non-trivial one-time fix backlog, especially `exactOptionalPropertyTypes`. Do `noUncheckedIndexedAccess` first as its own PR; defer `exactOptionalPropertyTypes` until the first is clean.
+**Raised in:** Frontend standards research 2026-06-04 (gap vs Google TS / typescript-eslint strict family).
+**Depends on:** —
+
+---
+
+## Frontend state-management hygiene — colocation + Context performance
+
+**What:** Two related guidelines, currently uncodified:
+1. **State colocation** — keep state nearest its consumer; lift only when siblings genuinely share it; prefer component composition (children/slots) over Context to solve prop drilling. (KCD, Bulletproof React.)
+2. **Context performance audit** — memoize every provider `value` with `useMemo` (callbacks via `useCallback`), and split a context by update frequency (state vs dispatch) where it has both. An unmemoized value re-renders every consumer on each parent render; `React.memo` on a consumer does **not** block a context-driven re-render. Audit `AuthContext`, `ThemeProvider`, `ToastProvider`.
+
+**Why it matters:** prevents whole-tree re-render cascades and over-coupling to global context as the app grows.
+**Raised in:** Frontend standards research 2026-06-04 (react.dev useContext / KCD colocation).
+**Depends on:** — (the context-value audit is a small concrete task; colocation is an ongoing convention — candidate to also fold into the `frontend-react` skill if it recurs in review).
+
+---
+
+## Core Web Vitals — bundle budget gate + CLS sizing + non-urgent transitions
+
+**What:**
+1. **Bundle-size budget that fails CI** (`size-limit` or `rollup-plugin-visualizer` threshold) — bundle size only grows silently without a hard gate. Pairs with the existing `React.lazy` code-splitting of Tiptap / transcribe-streaming.
+2. **Reserve space for async/media content** (explicit width/height or `aspect-ratio`, skeletons) to avoid CLS; never lazy-load the LCP image.
+3. **`useTransition` / `useDeferredValue`** for non-urgent updates (tag/note filtering, search) to keep INP low.
+
+**Targets (field, 75th pct):** LCP ≤ 2.5s, INP ≤ 200ms, CLS ≤ 0.1. (INP replaced FID in 2024.)
+**Why it matters:** these are the pass/fail bars real users are scored on; a CI budget stops silent regressions.
+**Raised in:** Frontend standards research 2026-06-04 (web.dev/vitals).
+**Depends on:** —
+
+---
+
+## Network resilience — retry transient failures with backoff
+
+**What:** `apiFetch` does not retry. Add exponential backoff + jitter for transient failures (network error, 5xx, 429); **never** retry 4xx (won't self-heal). Scope it to idempotent GETs first.
+**Why it matters:** a single transient blip currently surfaces as a hard error; naive immediate retries amplify outages, so backoff+jitter is the correct form.
+**Raised in:** Frontend standards research 2026-06-04.
+**Depends on:** — (revisit if/when the TanStack Query migration in ADR 0010 is reversed — the library supplies retry/backoff for free, so don't hand-roll it twice).
+
+---
+
+## XSS hardening — allowlist URL schemes on user-derived `href`/`src`
+
+**What:** React auto-escapes text but **not** URL attributes. Any `href`/`src` built from user/AI-derived data (e.g. links inside note content / markdown output) must allowlist the scheme and reject `javascript:` / `data:`. Centralise in one helper alongside the planned `renderSafeHtml()` DOMPurify wrapper so the check can't be skipped ad hoc.
+**Why it matters:** a `javascript:` URL in rendered note content is a stored-XSS vector the existing DOMPurify-for-HTML guardrail does not cover (it sanitises HTML bodies, not anchor hrefs in JSX).
+**Raised in:** Frontend standards research 2026-06-04 (OWASP XSS).
+**Depends on:** — (only bites once user/AI-derived links are rendered as anchors; not currently the case, so this is a guardrail-ahead-of-need).
+
+---
+
 ## ESLint `jsx-a11y` (blocked on ESLint 10) + `import` rules follow-up + `@/` alias
 
 **Status of the three originals (Phase 14):**
@@ -27,7 +109,8 @@ Each entry records what it is, why it matters, where it was raised, and any depe
 **Remaining work (this item):**
 1. **`jsx-a11y` once it supports ESLint 10** — add in `warn` mode, triage the a11y backlog, promote to `error` (the deferred 14-S/14-T). Re-check the plugin's peer range periodically, or adopt an ESLint-10-compatible a11y plugin if one emerges first.
 2. **`import-x/no-unresolved` + `import-x/no-cycle`** — the original AC also named "catch unresolved/circular imports", which 14-R did not enable (needs `eslint-import-resolver-typescript` wired for the `@/` alias; `no-cycle` can be noisy). Add these on a follow-up pass.
-**Why it matters:** a11y and import-hygiene enforcement turn "please remember" into "the build fails if you don't." `react-hooks` + `import-x/order` are now active; this closes the remaining gaps.
+3. **Typed-lint family — adopt `@typescript-eslint` `recommended-type-checked`** (needs `parserOptions.project` wired). Unlocks the machine-enforced half of the TS conventions just added to the `frontend-react` skill: `no-floating-promises` + `no-misused-promises` (the #1 silent async bug — un-awaited promises, async `onClick`), `no-non-null-assertion` (bans `!`), `no-explicit-any`/`no-unsafe-*`, `prefer-nullish-coalescing` + `prefer-optional-chain`. Expect a one-time backlog to clear; introduce in `warn` then promote to `error`. Note: typed lint is slower (whole-program) — keep it to `*.ts/*.tsx` and confirm CI time is acceptable.
+**Why it matters:** a11y and import-hygiene enforcement turn "please remember" into "the build fails if you don't." `react-hooks` + `import-x/order` are now active; typed-lint closes the async-promise and `!`/`any` gaps; this closes the remaining gaps.
 **Raised in:** Frontend standards review 2026-06-03; updated after Phase 14-Q/R/S/T (ESLint-10 plugin-ecosystem gap discovered).
 **Depends on:** `jsx-a11y` shipping ESLint 10 support (external). The import rules are unblocked.
 
@@ -56,15 +139,12 @@ Each entry records what it is, why it matters, where it was raised, and any depe
 
 ## Resolve ESLint warnings in `web/src/auth/AuthContext.tsx`
 
-**What:** `validate-frontend` emits three ESLint warnings against `web/src/auth/AuthContext.tsx`:
-- **L15 — `react-refresh/only-export-components`:** the file exports the `AuthContext` object alongside components — move the React context to its own file.
-- **L182 — `react-refresh/only-export-components`:** the file also exports the `useAuth` hook alongside components — move shared hooks/constants out so the file only exports components, restoring Fast Refresh.
-- **L155 — `react-hooks/exhaustive-deps`:** the OAuth-exchange `useEffect` has an empty dependency array but reads `clientId` and `initialToken`. This is **intentional** (it must run once on mount, guarded by `mounted.current`) — resolve by either adding the deps with a guard that preserves run-once semantics, or an explicit `eslint-disable-next-line` with a comment explaining why, so the warning stops masking real ones.
+✅ **Done** (PR #172, 2026-06-04). All four repo-wide lint warnings cleared:
+- `AuthContext` + `useAuth` moved into `web/src/auth/context.ts` (named `context.ts`, not `authContext.ts`, to avoid a case-collision with `AuthContext.tsx` on the case-insensitive `/mnt/c` filesystem); `AuthProvider` is now the only export of `AuthContext.tsx`, restoring Fast Refresh.
+- `ToastContext` + `useToast` split out into `web/src/components/toastContext.ts` the same way.
+- The one-shot OAuth-exchange `useEffect` now takes its stable `clientId`/`initialToken` deps, clearing the last `react-hooks/exhaustive-deps` warning. No behaviour change.
 
-Suggested split: extract `AuthContext` (and `useAuth`) into `web/src/auth/authContext.ts`, leaving `AuthProvider` as the only export of `AuthContext.tsx`.
-**Why it matters:** Fast Refresh silently degrades to full reloads for any file importing from this module, slowing local dev. Standing lint warnings also erode the signal — a genuine new warning is easy to miss in the noise. Neither warning changes runtime behaviour.
-**Raised in:** CI annotation review, 2026-06-02 (`validate-frontend`).
-**Depends on:** Nothing blocking. Re-run `npm --prefix web run lint` after the split to confirm zero warnings; the auth flow is well covered by `TokenRefresh.test.tsx` / `ApiFetch.test.ts`.
+**Raised in:** CI annotation review, 2026-06-02 (`validate-frontend`). **Actioned:** 2026-06-04.
 
 ---
 

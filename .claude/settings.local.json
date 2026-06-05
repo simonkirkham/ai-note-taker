@@ -55,7 +55,14 @@
       "PowerShell(*)",
       "Bash(Get-Command aws *)",
       "Bash(*)",
-      "WebSearch"
+      "WebSearch",
+      "WebFetch(domain:web.dev)",
+      "WebFetch(domain:google.github.io)",
+      "WebFetch(domain:tkdodo.eu)",
+      "WebFetch(domain:kentcdodds.com)",
+      "WebFetch(domain:testing-library.com)",
+      "WebFetch(domain:www.totaltypescript.com)",
+      "WebFetch(domain:typescript-eslint.io)"
     ]
   }
 }
