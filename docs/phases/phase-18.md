@@ -7,7 +7,8 @@
 | Slice | Summary | Status | Depends on |
 |-------|---------|--------|------------|
 | 18-A | **Durable checkpoints without polluting the event log.** A new DynamoDB draft store (one overwritten item per note, TTL self-clean); `PUT`/`DELETE /notes/{id}/transcription/draft` (no events); `POST /notes/{id}/transcription` also deletes the draft; `GET /notes/{id}` exposes an uncommitted draft. Documents `TranscriptionCompleted` in the event model (pre-existing gap) and the draft store as a non-event store. | Done | — |
-| 18-B | **Autosave to the draft, recover on reopen.** The checkpoint timer `PUT`s the draft instead of POSTing the event; clean Stop / intentional leave still commit (POST → event + draft delete); a **Recover / Discard banner** appears when a reopened note has an uncommitted draft. Folds in the stopgap's leave-warning + recording-counts-as-content fixes. | Not Started | 18-A |
+| 18-B | **Autosave to the draft, recover on reopen.** The checkpoint timer `PUT`s the draft instead of POSTing the event; clean Stop / intentional leave still commit (POST → event + draft delete); a **Recover / Discard banner** appears when a reopened note has an uncommitted draft. Folds in the stopgap's leave-warning + recording-counts-as-content fixes. | Done | 18-A |
+| 18-C | **Continue a transcript — record again and append.** Pressing Record on a note that already has a committed transcript prompts **Continue** (append the new session after a `— resumed —` separator) or **Re-record** (replace, today's behaviour). Frontend-only: a resumed session seeds from the committed transcript and the commit saves the concatenation via the existing `TranscriptionCompleted` (latest-wins) — no new event/endpoint/CDK; the 18-A/18-B draft store autosaves & recovers the concatenation unchanged. | Not Started | 18-A, 18-B |
 
 > **Slice order.** 18-A ships the backend draft path and the recovery *contract* (`GET` exposes `transcriptDraft`); it stands alone and is testable end to end via the API without any UI. 18-B retargets the frontend autosave from the event to the draft and adds the recovery UX, so it depends on 18-A's endpoints and `GET` shape. 18-B should **build on / cherry-pick** the stopgap branch `wip/phase-18-transcription-crash-resilience` (commit `789dd9b`) — the unmount-flush, `beforeunload` guard, leave-confirm, and recording-counts-as-content changes are reused unchanged; only the checkpoint *target* changes (PUT draft, not POST event).
 
@@ -101,7 +102,7 @@ Scenario: A blank draft is rejected
 
 ## Slice 18-B — Autosave to the draft, recover on reopen
 
-**Status:** Not Started
+**Status:** Done
 
 **User value:** While recording, the transcript is autosaved every 15s to the draft, so a crash, closed tab, or dead battery loses **at most the last ~15s**, not the whole call. Reopening a note that was left mid-recording shows a banner — **"Unsaved transcript from an interrupted recording"** with **Recover** and **Discard** — so the user decides whether to keep it. A clean Stop or pressing back saves the transcript as before and the banner never appears.
 
@@ -173,6 +174,82 @@ Scenario: Leaving mid-recording still warns and commits
 
 ---
 
+## Slice 18-C — Continue a transcript: record again and append
+
+**Status:** Not Started
+
+**User value:** A recording no longer has to be a single take. Pressing **Record** on a note that already has a transcript asks whether to **Continue** (keep recording and append to what's there) or **Re-record** (start over, replacing it — today's behaviour). A continued session shows the prior transcript, a **`— resumed —`** separator, then the new turns, and stopping saves the whole thing. This makes a meeting that ran long, dropped, or was paused recoverable as one continuous transcript.
+
+**Confirmed product decisions (from Scout brief, 2026-06-05):**
+- **Trigger:** an **explicit Continue / Re-record prompt** shown only when a committed transcript already exists. No silent default; a note with no transcript records immediately as today.
+- **Speaker labels:** **reset per session** (AWS Transcribe numbers speakers from scratch each session, so labels aren't identity-stable across sessions); a `— resumed —` separator marks each session boundary so the reset is honest and visible. No cross-session speaker reconciliation.
+- **No new event:** a resumed recording commits the **concatenation** via the existing `TranscriptionCompleted` (latest-wins replace). The event model stays one event per commit.
+
+### How it works (implementation notes)
+
+Frontend-only — no backend, event, or CDK change. Builds on 18-A's draft store and 18-B's autosave/recovery.
+
+- **`useTranscription` — seed-and-append.** `startRecording` gains a resume input (e.g. `startRecording(includeCallAudio, { resumeFrom?: string })`). When `resumeFrom` is present, seed `finalizedRef` with `resumeFrom + "\n— resumed —\n"` *before* streaming, so the session's new finalised turns are appended after it; the live `setTranscript` shows the combined text from the first result. The new session's `SpeakerTranscript` still starts fresh (labels reset by design). `lastDraftRef`/`committedRef` reset as today. Net: the 15s checkpoint draft and the final commit both carry the **full concatenation**, so 18-A's `PUT`-draft and 18-B's `POST`-commit/recovery paths work unchanged.
+- **`RecordControl` — Continue / Re-record prompt.** When a committed transcript exists (`hasInitialTranscript`), clicking **Record** shows an inline two-button prompt (mirroring NoteView's leave-confirm idiom): **Continue** → `startRecording(includeCallAudio, { resumeFrom: <committed transcript> })`; **Re-record** → `startRecording(includeCallAudio)` (fresh, replaces). With no committed transcript, Record starts immediately (no prompt) exactly as today.
+- **`NoteView` — pass the transcript text.** RecordControl today only receives `hasInitialTranscript` (a boolean) and `noteHasContent`; add the actual committed `transcriptText` so a Continue can seed from it.
+- **Event model doc.** Add a one-line note under `TranscriptionCompleted` that a *resumed* recording commits the prior text + new turns as a single replace (still one event per commit; resume is a frontend concatenation, not a new event).
+- **Optimistic UI.** A Continue session shows the combined transcript (prior + live new turns) from the first result — the user never sees the prior text disappear.
+
+### Scenarios
+
+```
+Scenario: Recording on a note with no transcript starts immediately
+  Given a note with no committed transcript
+  When  I press Record
+  Then  recording starts with no prompt (unchanged)
+
+Scenario: Recording on a note that has a transcript prompts Continue or Re-record
+  Given a note with a committed transcript
+  When  I press Record
+  Then  I am asked to Continue or Re-record
+  And   recording has not started yet
+
+Scenario: Continue appends the new session to the existing transcript
+  Given the Continue / Re-record prompt is shown
+  When  I choose Continue and speak
+  Then  the transcript shows the prior text, a "— resumed —" separator, then the new turns
+  And   stopping commits the full concatenation as the note's transcript
+
+Scenario: Re-record replaces the existing transcript
+  Given the Continue / Re-record prompt is shown
+  When  I choose Re-record and speak
+  Then  the new session replaces the prior transcript (today's behaviour)
+
+Scenario: Speaker labels reset per resumed session
+  Given a continued recording
+  Then  the resumed session's speakers are numbered from Speaker 1 again, below the separator
+
+Scenario: A continued recording autosaves and recovers the full concatenation
+  Given I am in a continued recording
+  When  a checkpoint fires, or the tab crashes and I reopen the note
+  Then  the draft / recovered transcript contains the prior text + separator + new turns
+
+Scenario: Leaving mid-continue commits the concatenation
+  Given I am in a continued recording
+  When  I navigate away (after the leave warning)
+  Then  the committed transcript is the prior text + separator + the captured new turns
+```
+
+### Acceptance criteria
+
+- [ ] `useTranscription.startRecording` accepts a resume input and seeds `finalizedRef` with `resumeFrom + "— resumed —"` so new turns append; speaker labels reset per session; `lastDraftRef`/`committedRef` reset as today
+- [ ] `RecordControl` shows an inline **Continue / Re-record** prompt only when a committed transcript exists; Continue resumes (append), Re-record replaces; no prompt when there is no transcript
+- [ ] `NoteView` passes the committed transcript text to `RecordControl`
+- [ ] The 15s checkpoint draft and the final commit carry the full concatenation; 18-B recovery surfaces the concatenation; **no new event / endpoint / CDK**
+- [ ] `— resumed —` separator rendered at each session boundary
+- [ ] Optimistic: the combined transcript (prior + live) is visible from the start of a Continue session (explicit BDD acceptance criterion)
+- [ ] Event-model doc note: a resumed recording commits the concatenation as a single `TranscriptionCompleted`
+- [ ] Component tests: prompt shown only with an existing transcript; Continue appends + separator; Re-record replaces; speakers reset; commit carries the concatenation; existing RecordControl/NoteView specs updated; `tsc` + `lint` + `vitest` green
+
+> **Single vertical slice.** 18-C is frontend-only and small (hook seed-and-append + the prompt + one prop). The natural Breaker sub-split seam is **hook append-logic (`useTranscription` seed) → prompt UI (`RecordControl`)**, but the value is invisible split either way, so keep it one slice unless the diff grows. Depends on 18-A + 18-B (the draft store and recovery must carry the concatenation, which they do unchanged).
+
+---
+
 ## Out of scope (explicitly deferred)
 
 - **Draft bodies larger than the 400 KB DynamoDB item limit.** Expected meeting lengths fit; the S3-backed-body escape hatch is recorded in ADR 0011's *Revisit when*, not built here.
@@ -180,6 +257,10 @@ Scenario: Leaving mid-recording still warns and commits
 - **Recovering the in-flight partial sentence at the instant of the crash.** Only finalised speaker turns up to the last checkpoint are saved; the unfinalised tail (≤ ~15s) is gone by design.
 - **Merging a recovered draft with an existing committed transcript.** Recover *replaces* (consistent with existing `TranscriptionCompleted` semantics); concatenation is not a goal.
 - **A visible "saving…/saved" indicator for each checkpoint.** Considered for 18-B's observability (below) but not a committed deliverable unless checkpoint failures prove common.
+- **(18-C) Cross-session speaker identity reconciliation.** Resumed-session speaker labels reset by design; matching "Speaker 1" across sessions to the same person is not a goal.
+- **(18-C) Per-session timestamps / headers** beyond the `— resumed —` separator, and auto-continue without the explicit prompt — the trigger is always an explicit Continue / Re-record choice.
+
+> Note: the *recovery* path (18-B) **replaces** with the recovered draft (a single interrupted session). The *resume* path (18-C) deliberately **concatenates** onto the committed transcript. These are different user actions — recovery is not append, and append is not recovery.
 
 ---
 
@@ -191,5 +272,6 @@ The whole point of this phase is that a checkpoint *did* save — silent failure
 2. **>400 KB item write rejection.** A long meeting can exceed the DynamoDB item limit; the `PutItem` then fails every checkpoint. Log the rejected size at warning so it is diagnosable (and is the trigger for the ADR 0011 S3 escape hatch), distinct from a transient throttle.
 3. **TTL reaping an active-but-paused session.** A 48h TTL is far longer than any meeting, but log draft `CapturedAt`/`ttl` on save so a too-aggressive TTL (were it ever shortened) is visible rather than silently dropping recoverable drafts.
 4. **Recovery never offered when it should be.** If `GET /notes/{id}` fails to compose `transcriptDraft` (e.g. the equal-to-committed guard is too aggressive), the banner silently never appears and the user can't recover. This is logic, not telemetry: guard with the 18-A `Api.Integration` scenarios (draft surfaced when uncommitted; suppressed when equal to committed) and an 18-B component test.
+5. **(18-C) Silent transcript loss on resume.** The highest-risk 18-C failure: a **Continue** that fails to seed `finalizedRef` would commit only the new session and **replace** the prior transcript — silent data loss with no error. This is frontend logic, not telemetry: guard with a component test asserting a Continue commit's text *contains* the prior transcript + separator, and (symmetrically) that a Re-record commit's text does *not*.
 
-Fold the draft-endpoint metric/log into 18-A's backend work and the failure indicator + banner assertions into 18-B. Run the `observability-brief` skill output into the acceptance criteria when Breaker drafts each spec.
+Fold the draft-endpoint metric/log into 18-A's backend work and the failure indicator + banner assertions into 18-B. The 18-C guard is a component-test assertion, not instrumentation. Run the `observability-brief` skill output into the acceptance criteria when Breaker drafts each spec.

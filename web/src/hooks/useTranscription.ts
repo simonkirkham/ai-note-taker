@@ -3,7 +3,7 @@ import {
   StartStreamTranscriptionCommand,
 } from '@aws-sdk/client-transcribe-streaming';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { completeTranscription, getTranscriptionCredentials } from '../api/transcription';
+import { completeTranscription, getTranscriptionCredentials, saveTranscriptionDraft } from '../api/transcription';
 import { PcmChunker } from './pcm';
 import { SpeakerTranscript } from './speakerSegments';
 
@@ -14,6 +14,12 @@ const LANGUAGE_CODE = 'en-GB' as const;
 // every partial (several/sec) congests the main thread and competes with audio
 // streaming; finals always render immediately.
 const PARTIAL_RENDER_INTERVAL_MS = 200;
+
+// Autosave the finalised transcript on this cadence while recording, so a crash
+// or unexpected close loses at most this much of the tail. Dedupe means a quiet
+// interval (no new finalised text) emits nothing, so the event stream only
+// grows while speech is actually being captured.
+export const CHECKPOINT_INTERVAL_MS = 15000;
 
 const WORKLET_CODE = `
 class PcmProcessor extends AudioWorkletProcessor {
@@ -59,6 +65,9 @@ export function useTranscription(noteId: string): UseTranscriptionResult {
   const startTimeRef = useRef<number>(0);
   const finalizedRef = useRef('');
   const lastPartialAtRef = useRef(0);
+  const lastDraftRef = useRef<string | null>(null);
+  const committedRef = useRef(false);
+  const checkpointTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const cleanup = useCallback(() => {
     stoppedRef.current = true;
@@ -67,6 +76,10 @@ export function useTranscription(noteId: string): UseTranscriptionResult {
     if (timerRef.current) {
       clearInterval(timerRef.current);
       timerRef.current = null;
+    }
+    if (checkpointTimerRef.current) {
+      clearInterval(checkpointTimerRef.current);
+      checkpointTimerRef.current = null;
     }
     if (audioContextRef.current) {
       audioContextRef.current.close().catch(() => {});
@@ -82,12 +95,63 @@ export function useTranscription(noteId: string): UseTranscriptionResult {
     }
   }, []);
 
-  useEffect(() => () => cleanup(), [cleanup]);
+  // Autosave the finalised transcript so far to the DRAFT store (PUT, no event),
+  // only when it changed since the last checkpoint. Loss-tolerant crash buffer
+  // (ADR 0011); the committed transcript is produced by commitTranscript on a
+  // clean exit. On failure the marker is cleared so the next checkpoint retries.
+  const saveCheckpoint = useCallback(() => {
+    const text = finalizedRef.current;
+    if (!text || text === lastDraftRef.current) return;
+    lastDraftRef.current = text;
+    const elapsed = Math.floor((Date.now() - startTimeRef.current) / 1000);
+    void saveTranscriptionDraft(noteId, text, elapsed).catch(() => {
+      if (lastDraftRef.current === text) lastDraftRef.current = null;
+    });
+  }, [noteId]);
+
+  // Commit the finalised transcript as the durable TranscriptionCompleted event
+  // (POST) — once per recording, on a clean exit (Stop, natural end, intentional
+  // unmount/navigation). The backend deletes the draft on commit, so no recovery
+  // is offered afterwards. On failure the one-shot guard is released to retry.
+  const commitTranscript = useCallback(() => {
+    if (committedRef.current) return;
+    const text = finalizedRef.current;
+    if (!text) return;
+    committedRef.current = true;
+    const elapsed = Math.floor((Date.now() - startTimeRef.current) / 1000);
+    void completeTranscription(noteId, text, elapsed).catch(() => {
+      committedRef.current = false;
+    });
+  }, [noteId]);
+
+  useEffect(
+    () => () => {
+      commitTranscript();
+      cleanup();
+    },
+    [cleanup, commitTranscript],
+  );
+
+  // Warn before a browser-level leave (tab close, refresh, navigation) while a
+  // recording is live or starting up (requestingCredentials) — the in-flight
+  // tail since the last checkpoint would be lost. Only armed during those two
+  // phases so it never blocks normal navigation.
+  useEffect(() => {
+    if (status !== 'recording' && status !== 'requestingCredentials') return;
+    const handler = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = '';
+    };
+    window.addEventListener('beforeunload', handler);
+    return () => window.removeEventListener('beforeunload', handler);
+  }, [status]);
 
   const startRecording = useCallback((includeCallAudio: boolean) => {
     stoppedRef.current = false;
     finalizedRef.current = '';
     lastPartialAtRef.current = 0;
+    lastDraftRef.current = null;
+    committedRef.current = false;
     setTranscript('');
     setElapsedSeconds(0);
     setError(undefined);
@@ -195,6 +259,7 @@ export function useTranscription(noteId: string): UseTranscriptionResult {
         timerRef.current = setInterval(() => {
           setElapsedSeconds(Math.floor((Date.now() - startTimeRef.current) / 1000));
         }, 1000);
+        checkpointTimerRef.current = setInterval(saveCheckpoint, CHECKPOINT_INTERVAL_MS);
 
         const response = await client.send(command);
 
@@ -231,11 +296,9 @@ export function useTranscription(noteId: string): UseTranscriptionResult {
         }
 
         if (!stoppedRef.current) {
-          const text = finalizedRef.current;
-          const elapsed = Math.floor((Date.now() - startTimeRef.current) / 1000);
+          commitTranscript();
           cleanup();
           setStatus('stopped');
-          if (text) void completeTranscription(noteId, text, elapsed).catch(() => {});
         }
       } catch (err) {
         if (stoppedRef.current) return;
@@ -244,19 +307,19 @@ export function useTranscription(noteId: string): UseTranscriptionResult {
         setStatus('error');
       }
     })();
-  }, [cleanup, noteId]);
+  }, [cleanup, saveCheckpoint, commitTranscript]);
 
   const stopRecording = useCallback(() => {
-    const text = finalizedRef.current;
-    const elapsed = Math.floor((Date.now() - startTimeRef.current) / 1000);
+    commitTranscript();
     cleanup();
     setStatus('stopped');
-    if (text) void completeTranscription(noteId, text, elapsed).catch(() => {});
-  }, [cleanup, noteId]);
+  }, [cleanup, commitTranscript]);
 
   const reset = useCallback(() => {
     cleanup();
     finalizedRef.current = '';
+    lastDraftRef.current = null;
+    committedRef.current = false;
     setStatus('idle');
     setTranscript('');
     setElapsedSeconds(0);

@@ -1,8 +1,9 @@
 import clsx from "clsx";
 import { useEffect, useRef, useState } from "react";
 import { createNoteFromNextOccurrence, linkNoteToCalendar, type CalendarMeeting } from "../api/meetings";
-import { analyseNote, editContent, getNoteDetail, setNoteDate, type LinkedMeeting } from "../api/notes";
+import { analyseNote, editContent, getNoteDetail, setNoteDate, type LinkedMeeting, type TranscriptionDraft } from "../api/notes";
 import { getTags, tagNote, untagNote, type TagIndexEntry } from "../api/tags";
+import { completeTranscription, discardTranscriptionDraft } from "../api/transcription";
 import type { TranscriptionStatus } from "../hooks/useTranscription";
 import ActionsSection from "./ActionsSection";
 import FinalNotesView from "./FinalNotesView";
@@ -66,22 +67,29 @@ export default function NoteView({
   const [linkingEventId, setLinkingEventId] = useState<string | null>(null);
   const [openingNext, setOpeningNext] = useState(false);
   const [noNextOccurrence, setNoNextOccurrence] = useState(false);
+  const [confirmingLeave, setConfirmingLeave] = useState(false);
+  const [transcriptDraft, setTranscriptDraft] = useState<TranscriptionDraft | null>(null);
   const { showError } = useToast();
   const inputRef = useRef<HTMLInputElement>(null);
   const tagsModifiedRef = useRef(false);
   const contentModifiedRef = useRef(false);
   const contentRef = useRef("");
 
+  const isRecording =
+    recordingStatus === "recording" || recordingStatus === "requestingCredentials";
+  const displayedTranscript = liveTranscript ?? transcriptText;
+
+  // An in-progress or just-finished recording counts as content: leaving the
+  // note must "Save" (keep it) and never show "Cancel"/delete, so the captured
+  // transcript persisted on unmount is not thrown away with the note.
   const hasContent =
     title.trim().length > 0 ||
     content.trim().length > 0 ||
     tags.length > 0 ||
     actionCount > 0 ||
-    transcriptText !== null;
-
-  const isRecording =
-    recordingStatus === "recording" || recordingStatus === "requestingCredentials";
-  const displayedTranscript = liveTranscript ?? transcriptText;
+    transcriptText !== null ||
+    isRecording ||
+    (liveTranscript?.trim().length ?? 0) > 0;
 
   useEffect(() => {
     tagsModifiedRef.current = false;
@@ -104,6 +112,7 @@ export default function NoteView({
           setSummaryModelId(detail.summaryModelId ?? null);
           setRecurringSeriesId(detail.recurringSeriesId ?? null);
           setLinkedMeeting(detail.linkedMeeting ?? null);
+          setTranscriptDraft(detail.transcriptDraft ?? null);
           setLoadingDetail(false);
         }
       })
@@ -208,6 +217,50 @@ export default function NoteView({
     untagNote(noteId, tag).catch(() => {});
   }
 
+  // Recovery for an interrupted recording (crash/tab close left an uncommitted
+  // draft). Optimistic: hide the banner immediately and show the recovered text;
+  // reconcile on error. Recover commits the draft as the durable transcript;
+  // Discard drops it, leaving any previously committed transcript untouched.
+  async function handleRecoverDraft() {
+    const draft = transcriptDraft;
+    if (!draft) return;
+    const prevTranscript = transcriptText;
+    setTranscriptDraft(null);
+    setTranscriptText(draft.text);
+    setActiveTab("transcript");
+    try {
+      // An interrupted recording has no reliable final duration; the text is what matters.
+      await completeTranscription(noteId, draft.text, 0);
+    } catch {
+      setTranscriptDraft(draft);
+      setTranscriptText(prevTranscript);
+      showError("Couldn't recover the transcript. Please try again.");
+    }
+  }
+
+  async function handleDiscardDraft() {
+    const draft = transcriptDraft;
+    if (!draft) return;
+    setTranscriptDraft(null);
+    try {
+      await discardTranscriptionDraft(noteId);
+    } catch {
+      setTranscriptDraft(draft);
+      showError("Couldn't discard the draft. Please try again.");
+    }
+  }
+
+  // Leaving mid-recording stops the capture. Warn first so the user doesn't
+  // walk away thinking it is still running; the transcript so far is saved
+  // either way (autosave + flush on unmount).
+  function handleBack() {
+    if (isRecording) {
+      setConfirmingLeave(true);
+      return;
+    }
+    onBack();
+  }
+
   // Cancel is only reachable when !hasContent (blank note)
   async function handleCancel() {
     if (isNew) {
@@ -240,10 +293,32 @@ export default function NoteView({
             >
               Cancel
             </button>
+          ) : confirmingLeave ? (
+            <span
+              className={styles.leaveConfirm}
+              role="alertdialog"
+              aria-label="Recording in progress"
+            >
+              <span className={styles.leaveConfirmText}>Still recording —</span>
+              <button
+                data-testid="confirm-leave-button"
+                onClick={() => { setConfirmingLeave(false); onBack(); }}
+                className={styles.saveButton}
+              >
+                Leave &amp; save
+              </button>
+              <button
+                data-testid="cancel-leave-button"
+                onClick={() => setConfirmingLeave(false)}
+                className={styles.backButton}
+              >
+                Keep recording
+              </button>
+            </span>
           ) : (
             <button
               data-testid="save-button"
-              onClick={onBack}
+              onClick={handleBack}
               disabled={loadingDetail}
               className={styles.saveButton}
             >
@@ -308,6 +383,35 @@ export default function NoteView({
         className={styles.titleInput}
         aria-label="Note title"
       />
+      {transcriptDraft && (
+        <div
+          data-testid="transcript-recovery-banner"
+          role="alertdialog"
+          aria-label="Unsaved transcript from an interrupted recording"
+          className={styles.recoveryBanner}
+        >
+          <span className={styles.recoveryText}>
+            Unsaved transcript from an interrupted recording
+            <span className={styles.recoveryWhen}> · {formatDraftWhen(transcriptDraft.capturedAt)}</span>
+          </span>
+          <button
+            type="button"
+            data-testid="recover-transcript-button"
+            onClick={handleRecoverDraft}
+            className={styles.saveButton}
+          >
+            Recover
+          </button>
+          <button
+            type="button"
+            data-testid="discard-transcript-button"
+            onClick={handleDiscardDraft}
+            className={styles.backButton}
+          >
+            Discard
+          </button>
+        </div>
+      )}
       {linkedMeeting && (
         <div data-testid="linked-meeting-badge" className={styles.linkedMeetingBadge}>
           <CalendarLinkIcon />
@@ -433,6 +537,12 @@ export default function NoteView({
       </div>
     </main>
   );
+}
+
+function formatDraftWhen(capturedAt: string): string {
+  const d = new Date(capturedAt);
+  if (isNaN(d.getTime())) return "";
+  return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 }
 
 function formatMeetingWhen(startTime: string): string {
