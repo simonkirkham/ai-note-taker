@@ -41,6 +41,26 @@ public sealed class AuthRefreshTests : IClassFixture<ApiFactory>
         var body = await response.Content.ReadFromJsonAsync<JsonElement>();
         Assert.Equal("rotated-id-token", body.GetProperty("id_token").GetString());
         Assert.Equal("stored-refresh-token", _google.LastRefreshTokenSeen);
+
+        // Cookie is re-issued (window slid forward) even though Google returned no rotated token.
+        Assert.True(response.Headers.TryGetValues("Set-Cookie", out var cookies));
+        Assert.Contains(cookies, c => c.StartsWith("rt=stored-refresh-token"));
+    }
+
+    [Fact]
+    public async Task PostAuthRefresh_PersistsRotatedRefreshToken_WhenGoogleReturnsOne()
+    {
+        _google.RefreshResult = FakeGoogleOAuthClient.Success("rotated-id-token", "rotated-refresh-token");
+
+        var client = _factory.CreateUnauthenticatedClient();
+        var request = new HttpRequestMessage(HttpMethod.Post, "/auth/refresh");
+        request.Headers.Add("Cookie", "rt=old-refresh-token");
+
+        var response = await client.SendAsync(request);
+
+        response.EnsureSuccessStatusCode();
+        Assert.True(response.Headers.TryGetValues("Set-Cookie", out var cookies));
+        Assert.Contains(cookies, c => c.StartsWith("rt=rotated-refresh-token"));
     }
 
     [Fact]

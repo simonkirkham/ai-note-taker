@@ -58,9 +58,11 @@ public static class AuthEndpoints
                 if (!result.Success || result.Tokens?.IdToken is null)
                     return Results.Unauthorized();
 
-                // Google may rotate the refresh token; persist the new one if it did.
-                if (!string.IsNullOrEmpty(result.Tokens.RefreshToken))
-                    SetRefreshCookie(ctx, result.Tokens.RefreshToken);
+                // Re-issue the cookie on every successful refresh to slide its 30-day window
+                // forward. Google usually omits a rotated refresh_token on grant_type=refresh_token,
+                // so reuse the existing one; otherwise an active session would still be force-signed
+                // out at the original 30-day mark. Persist a rotated token if Google sent one.
+                SetRefreshCookie(ctx, string.IsNullOrEmpty(result.Tokens.RefreshToken) ? refreshToken : result.Tokens.RefreshToken);
 
                 return Results.Ok(new { id_token = result.Tokens.IdToken });
             }
