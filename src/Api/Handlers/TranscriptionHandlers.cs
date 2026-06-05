@@ -18,6 +18,7 @@ public static class TranscriptionHandlers
         CompleteTranscriptionRequest req,
         INoteCommandHandler handler,
         INoteDetailStore noteDetailStore,
+        ITranscriptionDraftStore draftStore,
         ICurrentUser currentUser,
         CancellationToken ct)
     {
@@ -31,6 +32,38 @@ public static class TranscriptionHandlers
         }
         catch (Exceptions.NoteNotFoundException) { return Results.NotFound(); }
         catch (InvalidOperationException) { return Results.NotFound(); }
+        // A clean completion supersedes any in-progress draft; drop it so a later
+        // reload does not offer a stale recovery for transcript now committed.
+        await draftStore.DeleteAsync(new NoteId(noteId), ct);
+        return Results.NoContent();
+    }
+
+    public static async Task<IResult> SaveDraft(
+        Guid noteId,
+        CompleteTranscriptionRequest req,
+        ITranscriptionDraftStore draftStore,
+        INoteDetailStore noteDetailStore,
+        ICurrentUser currentUser,
+        CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(req.TranscriptText)) return Results.UnprocessableEntity();
+        var detail = await noteDetailStore.GetAsync(new NoteId(noteId), ct);
+        if (detail is null || detail.UserId != currentUser.UserId) return Results.NotFound();
+        await draftStore.SaveAsync(
+            new TranscriptionDraft(new NoteId(noteId), currentUser.UserId, req.TranscriptText, req.DurationSeconds, DateTimeOffset.UtcNow), ct);
+        return Results.NoContent();
+    }
+
+    public static async Task<IResult> DiscardDraft(
+        Guid noteId,
+        ITranscriptionDraftStore draftStore,
+        INoteDetailStore noteDetailStore,
+        ICurrentUser currentUser,
+        CancellationToken ct)
+    {
+        var detail = await noteDetailStore.GetAsync(new NoteId(noteId), ct);
+        if (detail is null || detail.UserId != currentUser.UserId) return Results.NotFound();
+        await draftStore.DeleteAsync(new NoteId(noteId), ct);
         return Results.NoContent();
     }
 

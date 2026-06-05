@@ -10,6 +10,10 @@ public static class TranscriptionEndpoints
            .RequireAuthorization();
         app.MapPost("/notes/{noteId:guid}/transcription", TranscriptionHandlers.CompleteTranscription)
            .RequireAuthorization();
+        app.MapPut("/notes/{noteId:guid}/transcription/draft", TranscriptionHandlers.SaveDraft)
+           .RequireAuthorization();
+        app.MapDelete("/notes/{noteId:guid}/transcription/draft", TranscriptionHandlers.DiscardDraft)
+           .RequireAuthorization();
         app.MapPost("/notes/{noteId:guid}/analyse", TranscriptionHandlers.AnalyseNote)
            .RequireAuthorization();
     }

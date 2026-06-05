@@ -18,7 +18,7 @@ namespace Api;
 
 public static class Builder
 {
-    internal static WebApplication BuildApp(string[] args, string eventTableName, string projTableName, string noteDetailTableName, string noteActionsTableName, string todoListTableName, string noteCardListTableName, string folderTreeTableName, string tagIndexTableName, string tagFeedbackTableName, string actionFeedbackTableName, string calendarLinkTableName)
+    internal static WebApplication BuildApp(string[] args, string eventTableName, string projTableName, string noteDetailTableName, string noteActionsTableName, string todoListTableName, string noteCardListTableName, string folderTreeTableName, string tagIndexTableName, string tagFeedbackTableName, string actionFeedbackTableName, string calendarLinkTableName, string draftTranscriptionTableName)
     {
         var builder = WebApplication.CreateBuilder(args);
 
@@ -116,6 +116,8 @@ public static class Builder
             new DynamoDbActionItemFeedbackStore(sp.GetRequiredService<IAmazonDynamoDB>(), actionFeedbackTableName));
         builder.Services.AddSingleton<ICalendarLinkIndexStore>(sp =>
             new DynamoDbCalendarLinkIndexStore(sp.GetRequiredService<IAmazonDynamoDB>(), calendarLinkTableName));
+        builder.Services.AddSingleton<ITranscriptionDraftStore>(sp =>
+            new DynamoDbTranscriptionDraftStore(sp.GetRequiredService<IAmazonDynamoDB>(), draftTranscriptionTableName));
         builder.Services.AddScoped<INoteCommandHandler, NoteCommandHandler>();
         builder.Services.AddScoped<IActionItemCommandHandler, ActionItemCommandHandler>();
         builder.Services.AddScoped<ITodoCommandHandler, TodoCommandHandler>();

@@ -61,6 +61,7 @@ A standalone to-do not attached to any note. Created from the home screen quick-
 | `RecordTagSuggestions(noteId, tags, modelId, promptVersion)` | Note exists, not deleted; empty tag list emits nothing | `TagsSuggestedV2` |
 | `RecordActionItemSuggestions(noteId, actionItemIds, modelId, promptVersion)` | Note exists, not deleted; empty list emits nothing | `ActionItemsSuggestedV2` |
 | `RecordAnalysisSummary(noteId, summary, discussionPoints, decisions, modelId, promptVersion)` | Note exists, not deleted | `AnalysisSummaryRecorded` |
+| `CompleteTranscription(noteId, transcriptText, durationSeconds)` | Note exists, not deleted; blank text rejected at the API | `TranscriptionCompleted` |
 | `DeleteNote(noteId, deletedAt)` | Note exists, status ≠ Deleted | `NoteDeleted` |
 
 > `RecordTagSuggestions` / `RecordActionItemSuggestions` are issued by the analysis handler (not the user) to record which tags / action items an AI run contributed. They record provenance only — tags are applied separately via `TagNote`/`NoteTagged`, and action items via `AddActionItem`/`ActionItemAdded` on the `ActionItem` aggregate (the suggestion event references them by id).
@@ -103,7 +104,10 @@ A standalone to-do not attached to any note. Created from the home screen quick-
 - `TagsSuggested { NoteId, Tags[] }` (v1) / `TagsSuggestedV2 { NoteId, Tags[], ModelId, PromptVersion }` (v2, 10-M) — AI provenance; records the tags an analysis run contributed (the post-dedup applied set), so a later `NoteUntagged` of one can be classified as a rejected AI suggestion. v2 stamps `ModelId`/`PromptVersion` so the correction ties to the exact prompt/model. The aggregate emits **v2**; v1 remains for streams written before 10-M. No aggregate state change
 - `ActionItemsSuggested { NoteId, ActionItemIds[] }` (v1) / `ActionItemsSuggestedV2 { NoteId, ActionItemIds[], ModelId, PromptVersion }` (v2, 10-M) — AI provenance; records (by id) the action items an analysis run created, so a later `ActionItemDeleted`/`ActionItemCompleted` can be attributed to the AI. v2 stamps `ModelId`/`PromptVersion`. The aggregate emits **v2**; v1 remains for pre-10-M streams. No aggregate state change
 - `AnalysisSummaryRecorded { NoteId, Summary, DiscussionPoints[], Decisions[], ModelId, PromptVersion }` — the AI's Final notes artifact; full snapshot, latest wins (like `ContentEdited`). `ModelId`/`PromptVersion` attribute who/what generated it. Folds into `NoteDetail.summary`/`discussionPoints`/`decisions`/`summaryModelId`/`summaryPromptVersion`
+- `TranscriptionCompleted { NoteId, TranscriptText, DurationSeconds }` — the finalised transcript of a recording; full snapshot, latest wins (a re-record replaces). Folds into `NoteDetail.transcriptText`. One per completed recording.
 - `NoteDeleted { NoteId }` — soft delete; event remains in the stream, projections filter it out
+
+> **Transcription checkpoints are NOT events.** While a recording is in progress the browser autosaves the partial transcript every few seconds to an overwrite-in-place **draft store** (`ITranscriptionDraftStore`, a loss-tolerant recovery buffer keyed by note, self-reaped via TTL), **not** the event log — see [ADR 0011](adr/0011-transcription-checkpoints-draft-store.md). Only the final, committed transcript becomes a `TranscriptionCompleted` event; a clean stop also deletes the draft. The draft is composed into `GET /notes/{id}` at read time (`transcriptDraft`) purely so an interrupted recording can be recovered; it is never a projection field and holds no authoritative state.
 
 ### ActionItem
 

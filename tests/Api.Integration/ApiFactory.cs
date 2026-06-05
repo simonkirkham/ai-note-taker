@@ -27,6 +27,7 @@ public sealed class ApiFactory : WebApplicationFactory<Program>
         Environment.SetEnvironmentVariable("PROJ_TAGFEEDBACK_TABLE_NAME", "test-proj-tagfeedback");
         Environment.SetEnvironmentVariable("PROJ_ACTIONFEEDBACK_TABLE_NAME", "test-proj-actionfeedback");
         Environment.SetEnvironmentVariable("PROJ_CALENDARLINKINDEX_TABLE_NAME", "test-proj-calendarlinkindex");
+        Environment.SetEnvironmentVariable("DRAFT_TRANSCRIPTION_TABLE_NAME", "test-draft-transcription");
         Environment.SetEnvironmentVariable("ALLOWED_USER_SUBS", "test-user-123,other-user-456");
         Environment.SetEnvironmentVariable("GOOGLE_CLIENT_ID", "test-client-id");
         Environment.SetEnvironmentVariable("GOOGLE_CLIENT_SECRET", "test-client-secret");
@@ -53,6 +54,7 @@ public sealed class ApiFactory : WebApplicationFactory<Program>
             services.RemoveAll<ITagFeedbackStore>();
             services.RemoveAll<IActionItemFeedbackStore>();
             services.RemoveAll<ICalendarLinkIndexStore>();
+            services.RemoveAll<ITranscriptionDraftStore>();
             services.RemoveAll<IDynamoHealthCheck>();
             services.AddSingleton<IEventStore, InMemoryEventStore>();
             services.AddSingleton<INoteTitleListStore, InMemoryNoteTitleListStore>();
@@ -65,6 +67,7 @@ public sealed class ApiFactory : WebApplicationFactory<Program>
             services.AddSingleton<ITagFeedbackStore, InMemoryTagFeedbackStore>();
             services.AddSingleton<IActionItemFeedbackStore, InMemoryActionItemFeedbackStore>();
             services.AddSingleton<ICalendarLinkIndexStore, InMemoryCalendarLinkIndexStore>();
+            services.AddSingleton<ITranscriptionDraftStore, InMemoryTranscriptionDraftStore>();
             services.AddSingleton<IDynamoHealthCheck, AlwaysHealthyDynamoCheck>();
             services.AddAuthentication(options =>
             {
