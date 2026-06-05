@@ -1,6 +1,8 @@
 import clsx from "clsx";
 import { useEffect, useRef, useState } from "react";
-import { analyseNote, createNoteFromNextOccurrence, editContent, getNoteDetail, getTags, linkNoteToCalendar, setNoteDate, tagNote, untagNote, type CalendarMeeting, type LinkedMeeting, type TagIndexEntry } from "../api";
+import { createNoteFromNextOccurrence, linkNoteToCalendar, type CalendarMeeting } from "../api/meetings";
+import { analyseNote, editContent, getNoteDetail, setNoteDate, type LinkedMeeting } from "../api/notes";
+import { getTags, tagNote, untagNote, type TagIndexEntry } from "../api/tags";
 import type { TranscriptionStatus } from "../hooks/useTranscription";
 import ActionsSection from "./ActionsSection";
 import FinalNotesView from "./FinalNotesView";

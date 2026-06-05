@@ -1,5 +1,5 @@
 import { render, screen, fireEvent } from '@testing-library/react'
-import type { NoteCard } from '../api'
+import type { NoteCard } from '../api/notes'
 import FolderPreviewPanel from '../components/FolderPreviewPanel'
 import styles from '../components/FolderPreviewPanel.module.css'
 

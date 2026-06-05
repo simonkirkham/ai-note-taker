@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { analyseNote } from "../api";
+import { analyseNote } from "../api/notes";
 import { useTranscription, type TranscriptionStatus } from "../hooks/useTranscription";
 import styles from "./RecordControl.module.css";
 

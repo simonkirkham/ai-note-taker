@@ -1,6 +1,7 @@
 import clsx from "clsx";
 import { useEffect, useMemo, useState } from "react";
-import { NoteCard as NoteCardData, TagIndexEntry, getTags } from "../api";
+import { NoteCard as NoteCardData } from "../api/notes";
+import { TagIndexEntry, getTags } from "../api/tags";
 import { effectiveDate, isEditedToday, localTodayISO } from "../dates";
 import styles from "./ListView.module.css";
 import MeetingsSection from "./MeetingsSection";

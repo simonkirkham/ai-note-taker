@@ -46,7 +46,7 @@ describe('API calls', () => {
       }),
     )
     setToken('test-id-token')
-    const { listNotes } = await import('../api')
+    const { listNotes } = await import('../api/notes')
     await listNotes()
     expect(capturedAuth).toBe('Bearer test-id-token')
   })
@@ -59,7 +59,7 @@ describe('API calls', () => {
         return HttpResponse.json({ items: [] })
       }),
     )
-    const { listNotes } = await import('../api')
+    const { listNotes } = await import('../api/notes')
     await listNotes()
     expect(capturedAuth).toBeNull()
   })

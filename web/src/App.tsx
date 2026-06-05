@@ -2,17 +2,15 @@ import clsx from "clsx";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   FolderNode,
-  NoteCard,
-  setNoteDate,
   getFolders,
-  getNoteCards,
   createFolder as apiCreateFolder,
   renameFolder as apiRenameFolder,
   deleteFolder as apiDeleteFolder,
   moveNoteToFolder as apiMoveNoteToFolder,
   unfileNote as apiUnfileNote,
   moveFolder as apiMoveFolder,
-} from "./api";
+} from "./api/folders";
+import { NoteCard, setNoteDate, getNoteCards } from "./api/notes";
 import { useAuth } from "./auth/context";
 import styles from "./components/App.module.css";
 import FolderPreviewPanel from "./components/FolderPreviewPanel";

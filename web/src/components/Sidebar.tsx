@@ -1,6 +1,6 @@
 import clsx from "clsx";
 import { useState } from "react";
-import { FolderNode } from "../api";
+import { FolderNode } from "../api/folders";
 import { UNFILED_ID } from "../constants";
 import FolderTree from "./FolderTree";
 import folderTreeStyles from "./FolderTree.module.css";

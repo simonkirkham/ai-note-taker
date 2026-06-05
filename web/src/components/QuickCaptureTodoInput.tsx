@@ -1,5 +1,5 @@
 import { useRef, useState } from "react";
-import { addTodo, TodoItem } from "../api";
+import { addTodo, TodoItem } from "../api/todos";
 
 import styles from "./QuickCaptureTodoInput.module.css";
 
