@@ -513,3 +513,62 @@ it('auto-analyse switch defaults back to ON on a fresh mount', async () => {
   renderControl()
   expect(screen.getByTestId('transcription-auto-analyse-toggle')).toBeChecked()
 })
+
+// ── 18-C: continue a transcript (record again & append) ───────────
+
+it('Record on a note with no transcript starts immediately (no prompt)', async () => {
+  stubBrowserApis()
+  renderControl()
+  await userEvent.click(screen.getByTestId('transcription-record-button'))
+  await waitFor(() => expect(screen.getByTestId('transcription-stop-button')).toBeInTheDocument())
+  expect(screen.queryByTestId('transcription-continue-button')).toBeNull()
+  expect(screen.queryByTestId('transcription-rerecord-button')).toBeNull()
+})
+
+it('Record on a note with an existing transcript shows a Continue / Re-record prompt and does not start', async () => {
+  stubBrowserApis()
+  renderControl({ hasInitialTranscript: true, initialTranscript: 'Speaker 1: prior' })
+  await userEvent.click(screen.getByTestId('transcription-record-button'))
+  expect(screen.getByTestId('transcription-continue-button')).toBeInTheDocument()
+  expect(screen.getByTestId('transcription-rerecord-button')).toBeInTheDocument()
+  // Recording has NOT started — no stop button, and the Record button is hidden.
+  expect(screen.queryByTestId('transcription-stop-button')).toBeNull()
+  expect(screen.queryByTestId('transcription-record-button')).toBeNull()
+})
+
+it('Continue resumes seeded from the prior transcript (appends after the separator)', async () => {
+  stubBrowserApis()
+  const onTranscriptChange = vi.fn()
+  server.use(
+    http.put('/api/notes/note-1/transcription/draft', () => new HttpResponse(null, { status: 204 })),
+    http.post('/api/notes/note-1/transcription', () => new HttpResponse(null, { status: 204 })),
+  )
+  renderControl({ hasInitialTranscript: true, initialTranscript: 'Speaker 1: prior', onTranscriptChange })
+
+  await userEvent.click(screen.getByTestId('transcription-record-button'))
+  await userEvent.click(screen.getByTestId('transcription-continue-button'))
+  await waitFor(() => expect(screen.getByTestId('transcription-stop-button')).toBeInTheDocument())
+
+  emitTranscriptResult('new words')
+  await waitFor(() =>
+    expect(onTranscriptChange).toHaveBeenCalledWith('Speaker 1: prior\n— resumed —\nSpeaker 1: new words'),
+  )
+})
+
+it('Re-record starts fresh and replaces (no prior text)', async () => {
+  stubBrowserApis()
+  const onTranscriptChange = vi.fn()
+  server.use(
+    http.post('/api/notes/note-1/transcription', () => new HttpResponse(null, { status: 204 })),
+  )
+  renderControl({ hasInitialTranscript: true, initialTranscript: 'Speaker 1: prior', onTranscriptChange })
+
+  await userEvent.click(screen.getByTestId('transcription-record-button'))
+  await userEvent.click(screen.getByTestId('transcription-rerecord-button'))
+  await waitFor(() => expect(screen.getByTestId('transcription-stop-button')).toBeInTheDocument())
+
+  emitTranscriptResult('new words')
+  await waitFor(() => expect(onTranscriptChange).toHaveBeenCalledWith('Speaker 1: new words'))
+  // The prior transcript must not appear — Re-record replaces.
+  expect(onTranscriptChange).not.toHaveBeenCalledWith(expect.stringContaining('prior'))
+})

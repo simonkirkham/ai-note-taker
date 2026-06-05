@@ -45,7 +45,10 @@ export interface UseTranscriptionResult {
   transcript: string;
   elapsedSeconds: number;
   error: string | undefined;
-  startRecording: (includeCallAudio: boolean) => void;
+  // resumeFrom: an existing committed transcript to continue. When set, the new
+  // session's finalised turns are appended after it (with a "— resumed —"
+  // separator); when omitted, recording starts fresh and replaces. See Phase 18-C.
+  startRecording: (includeCallAudio: boolean, resumeFrom?: string) => void;
   stopRecording: () => void;
   reset: () => void;
 }
@@ -68,6 +71,10 @@ export function useTranscription(noteId: string): UseTranscriptionResult {
   const lastDraftRef = useRef<string | null>(null);
   const committedRef = useRef(false);
   const checkpointTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  // The committed transcript a resumed recording is continuing (plus separator),
+  // prepended to every finalised result so the new turns append rather than
+  // replace. Empty for a fresh recording. See Phase 18-C.
+  const resumePrefixRef = useRef('');
 
   const cleanup = useCallback(() => {
     stoppedRef.current = true;
@@ -101,7 +108,8 @@ export function useTranscription(noteId: string): UseTranscriptionResult {
   // clean exit. On failure the marker is cleared so the next checkpoint retries.
   const saveCheckpoint = useCallback(() => {
     const text = finalizedRef.current;
-    if (!text || text === lastDraftRef.current) return;
+    // Skip the seed-only state (a resume with no new turns yet) and unchanged text.
+    if (!text || text === lastDraftRef.current || text === resumePrefixRef.current) return;
     lastDraftRef.current = text;
     const elapsed = Math.floor((Date.now() - startTimeRef.current) / 1000);
     void saveTranscriptionDraft(noteId, text, elapsed).catch(() => {
@@ -146,13 +154,15 @@ export function useTranscription(noteId: string): UseTranscriptionResult {
     return () => window.removeEventListener('beforeunload', handler);
   }, [status]);
 
-  const startRecording = useCallback((includeCallAudio: boolean) => {
+  const startRecording = useCallback((includeCallAudio: boolean, resumeFrom?: string) => {
     stoppedRef.current = false;
-    finalizedRef.current = '';
+    const resumePrefix = resumeFrom ? `${resumeFrom}\n— resumed —\n` : '';
+    resumePrefixRef.current = resumePrefix;
+    finalizedRef.current = resumePrefix;
     lastPartialAtRef.current = 0;
     lastDraftRef.current = null;
     committedRef.current = false;
-    setTranscript('');
+    setTranscript(resumePrefix);
     setElapsedSeconds(0);
     setError(undefined);
     setStatus('requestingCredentials');
@@ -287,7 +297,7 @@ export function useTranscription(noteId: string): UseTranscriptionResult {
                   if (items.length === 0) continue;
                   lastPartialAtRef.current = 0;
                   speakerTranscript.append(items);
-                  finalizedRef.current = speakerTranscript.toString();
+                  finalizedRef.current = resumePrefixRef.current + speakerTranscript.toString();
                   setTranscript(finalizedRef.current);
                 }
               }
@@ -318,6 +328,7 @@ export function useTranscription(noteId: string): UseTranscriptionResult {
   const reset = useCallback(() => {
     cleanup();
     finalizedRef.current = '';
+    resumePrefixRef.current = '';
     lastDraftRef.current = null;
     committedRef.current = false;
     setStatus('idle');
