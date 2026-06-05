@@ -242,6 +242,17 @@ The home-screen meetings section only ever shows *today's* meetings — `GET /ca
 
 Slices and acceptance criteria: [docs/phases/phase-16.md](phases/phase-16.md)
 
+## Phase 17 — Link an existing note to a meeting after the fact _(Not Started)_
+
+1. **Goal:** rebuild a read projection and add the frontend UI to link an existing note to a meeting after the fact.
+2. **Backend already exists, unused by the UI:** the `LinkNoteToCalendarEvent` command, the `POST /notes/{noteId}/calendar-link` endpoint, and the `CalendarLinkIndex` projection.
+3. **17-A (read-side):** `CalendarLinkView` gains `CalendarEventTitle` + `EndTime`; `GetNote` returns a `linkedMeeting` object; a projection rebuild backfills every meeting-created note.
+4. **17-B (write-side):** an unlinked note gets a **Link to meeting** control that opens the Phase 16 date-navigable meeting picker; selecting a meeting calls the existing endpoint.
+5. **Constraints:** link-once only (the server rejects a second link with `409`); no unlink/relink; optimistic badge display.
+6. **Dependencies:** 17-B depends on 17-A; both build on Phase 9 (linkage model) and Phase 16 (date-navigable meetings).
+
+Slices and acceptance criteria: [docs/phases/phase-17.md](phases/phase-17.md)
+
 ---
 
 ## Standing tracks and planning docs
