@@ -23,13 +23,15 @@ Project conventions
 Folder layout (actual)
 
 - `web/src/` — app code
-  - `App.tsx` — root container; `App.css` — the single global stylesheet (tokens, themes, all rules)
+  - `App.tsx` — root container; global stylesheets live in `styles/` (`tokens.css`, `global.css`); per-component styles are co-located `*.module.css`
   - `components/` — components (small, focused; PascalCase file = exported name)
   - `hooks/` — shared custom hooks (`useNotes`, `useTheme`, `useTranscription`, …)
   - `auth/` — auth context, PKCE, token store, silent refresh
   - `__tests__/` — Vitest + RTL component tests (`*.test.tsx`)
   - `test/` — shared test setup, polyfills, network handlers
-  - utilities and the API wrapper live as flat files (`api.ts`, `dates.ts`, `constants.ts`, `types.ts`) — there is no `lib/` or `styles/` dir
+  - `api/` — the HTTP client split by domain (`client.ts` + `notes.ts`, `folders.ts`, `todos.ts`, … ; a shared `request<T>()` helper; **no barrel** `index.ts`)
+  - `styles/` — the two global stylesheets only (`tokens.css`, `global.css`)
+  - other utilities are flat files (`dates.ts`, `constants.ts`, `types.ts`); there is no `lib/` dir
 
 Component design
 
@@ -60,16 +62,16 @@ Accessibility (a11y)
 
 Styling
 
-**The standard is CSS Modules.** A migration off the legacy single global stylesheet (`web/src/App.css`) is in progress — new and substantially-changed components use modules; `App.css` is retired opportunistically (full migration planned). Do not introduce Tailwind or CSS-in-JS.
+**The standard is CSS Modules** (migration complete — Phase 14; `web/src/App.css` no longer exists). Every component owns a co-located `*.module.css`; the only global CSS is the two stylesheets in `styles/`. Do not introduce Tailwind or CSS-in-JS, and do not recreate a global component stylesheet.
 
 - **Co-located CSS Modules.** `NoteCard.tsx` ships with `NoteCard.module.css`; `import styles from "./NoteCard.module.css"` and reference `styles.card`. Vite-native, no dependency; scoping is automatic. Local class names are `camelCase`.
 - **Two global stylesheets only:** `styles/tokens.css` (`:root` design tokens + every `[data-theme]` theme block) and `styles/global.css` (reset + bare-element base styles). No other global CSS; components never add a global rule.
-- **Design tokens as CSS custom properties.** Colours, `--radius`, and `--transition` live in `tokens.css`; module rules reference them with `var(--…)`. Never hard-code a colour/radius/transition — it breaks theming and the cascade. A `--space-*` spacing scale doesn't exist yet — define one during the migration, then extend the no-hard-code rule to spacing.
+- **Design tokens as CSS custom properties.** Colours, `--radius`, and `--transition` live in `tokens.css`; module rules reference them with `var(--…)`. Never hard-code a colour/radius/transition — it breaks theming and the cascade. A `--space-*` spacing scale exists in `tokens.css`; reference spacing via `var(--space-…)` rather than hard-coded margins/padding.
 - **Theming = token override.** Each theme is a `[data-theme="…"]` block in `tokens.css`; `useTheme` sets `data-theme` on the root and the UI reskins through the cascade. Adding a theme adds one `[data-theme]` block, nothing per-component.
 - **Compose conditional classes with `clsx`:** `clsx(styles.card, isActive && styles.isActive)`. Mobile-first responsive; honour `prefers-reduced-motion`; never use `!important`.
 - Every class in a module must be referenced via `styles.*` (no dead classes).
 
-> **Legacy:** `App.css` uses flat kebab-case BEM-ish global classes (`sidebar`, `sidebar-footer`, `sidebar--open`). Do not extend it; migrate a component's rules into a module when you substantially touch it.
+> The authoritative, current frontend rules live in the `frontend-react` skill (`.claude/skills/frontend-react/SKILL.md`); this doc is the summary reference.
 
 Testing
 
