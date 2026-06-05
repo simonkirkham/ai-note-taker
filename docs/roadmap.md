@@ -261,6 +261,12 @@ A live transcript is persisted only at terminal points (Stop / natural end), so 
 
 Slices and acceptance criteria: [docs/phases/phase-18.md](phases/phase-18.md)
 
+## Phase 19 — Frontend hardening _(In Progress)_
+
+Close the gap between the `frontend-react` skill rules (extended in PR #173) and the actual `web/` code, and adopt the lint/compiler gates that would catch regressions automatically. A full audit on 2026-06-05 confirms the codebase is already clean on the headline rules — **0 `enum`, 0 `any`, 0 in-place state mutation, no active fetch races, no XSS sinks** — so this is hardening and consistency, not bug-fixing. Anchored by **19-A** (split the 408-line, 8-domain `api.ts` into per-domain modules behind a `request<T>()` helper, no barrel; behaviour unchanged). 19-B…19-J are proposed from the audit and need selection: typed-lint + non-null/catch cleanup, stricter TS flags, context-provider memoization, effect hygiene, accessibility (live regions + focus — the one **high-value** cluster, several mutation-failure errors are currently silent to screen readers), test-quality, network retry/backoff, bundle/CWV, and explicit Tiptap Link config. TanStack Query stays deferred per [ADR 0010](adr/0010-server-state-strategy.md).
+
+Slices and acceptance criteria: [docs/phases/phase-19.md](phases/phase-19.md)
+
 ---
 
 ## Standing tracks and planning docs
