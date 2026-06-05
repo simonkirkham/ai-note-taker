@@ -1,10 +1,10 @@
 import clsx from "clsx";
 import { useEffect, useState } from "react";
+import { completeAction, reopenAction, deleteAction } from "../api/actions";
 import {
   getTodos, TodoItem,
-  completeAction, reopenAction, deleteAction,
   completeTodo, reopenTodo, deleteTodo,
-} from "../api";
+} from "../api/todos";
 import { TrashIcon } from "./icons";
 import QuickCaptureTodoInput from "./QuickCaptureTodoInput";
 import styles from "./TodoSection.module.css";

@@ -5,7 +5,7 @@ import {
   renameNote as apiRename,
   deleteNote as apiDelete,
   NoteItem,
-} from "../api";
+} from "../api/notes";
 
 export function useNotes() {
   const [notes, setNotes] = useState<NoteItem[]>([]);

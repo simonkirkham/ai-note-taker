@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { CalendarMeeting, createNoteFromMeeting, createNoteFromNextOccurrence, getMeetingsForDate } from "../api";
+import { CalendarMeeting, createNoteFromMeeting, createNoteFromNextOccurrence, getMeetingsForDate } from "../api/meetings";
 import { MeetingReminder, useMeetingReminders } from "../hooks/useMeetingReminders";
 import { addDays, dayDelta, formatMeetingTime, todayInTz } from "./meetingDay";
 import styles from "./MeetingsSection.module.css";

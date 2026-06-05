@@ -1,6 +1,6 @@
 import clsx from "clsx";
 import { useEffect, useState } from "react";
-import { getActions, addAction, completeAction, reopenAction, deleteAction, ActionItem } from "../api";
+import { getActions, addAction, completeAction, reopenAction, deleteAction, ActionItem } from "../api/actions";
 import styles from "./ActionsSection.module.css";
 
 export default function ActionsSection({

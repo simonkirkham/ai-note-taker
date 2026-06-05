@@ -1,6 +1,6 @@
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import type { FolderNode } from '../api'
+import type { FolderNode } from '../api/folders'
 import Sidebar from '../components/Sidebar'
 import { UNFILED_ID } from '../constants'
 

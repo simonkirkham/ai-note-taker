@@ -1,5 +1,6 @@
 import { http, HttpResponse } from 'msw'
-import { getTodos, getTags } from '../api'
+import { getTags } from '../api/tags'
+import { getTodos } from '../api/todos'
 import { clearToken, setToken, setOnRefresh, setOnUnauthorized } from '../auth/tokenStore'
 import { server } from '../test/setup'
 

@@ -1,4 +1,4 @@
-import { FolderNode } from "../api";
+import { FolderNode } from "../api/folders";
 
 import styles from "./FolderPicker.module.css";
 

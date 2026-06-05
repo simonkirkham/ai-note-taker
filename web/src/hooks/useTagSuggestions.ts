@@ -1,5 +1,5 @@
 import { useMemo } from 'react'
-import type { TagIndexEntry } from '../api'
+import type { TagIndexEntry } from '../api/tags'
 
 export interface SuggestionItem {
   tag: string
