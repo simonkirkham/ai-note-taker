@@ -14,7 +14,7 @@ A meeting-focused note taking app, built as a learning vehicle for event-sourced
 
 ## Status
 
-Phase 1 complete — walking skeleton deployed. React frontend on CloudFront, event-sourced .NET API on Lambda, DynamoDB event store.
+Actively developed. Walking skeleton deployed and built out across many phases — React frontend on CloudFront, event-sourced .NET API on Lambda, DynamoDB event store, Google Calendar linkage, transcription, and AI analysis. Phases 0–9, 16, and 17 are complete; Phases 10 (transcription & analysis), 18 (crash-safe transcription), and 19 (frontend hardening) are in progress. See the [roadmap](docs/roadmap.md) for the current state.
 
 ## Docs
 
@@ -116,14 +116,20 @@ cdk bootstrap
 # Build entire solution (0 warnings enforced in CI)
 dotnet build ai-note-taker.sln
 
-# Run all BDD specs
-dotnet test tests/Specs/Specs.csproj
+# Run the domain BDD specs (one project per test layer — see CLAUDE.md "How to run" for all of them)
+dotnet test tests/Domain.Specs/Domain.Specs.csproj
+
+# Run the in-process API tests (no AWS credentials needed)
+dotnet test tests/Api.Integration/Api.Integration.csproj
 
 # Run the API locally (Kestrel — no Lambda runtime needed)
 dotnet run --project src/Api/Api.csproj
 
-# Run the analysis evaluation harness (opt-in; hits Bedrock, needs AWS creds)
-RUN_BEDROCK_EVAL=1 dotnet test tests/Analysis.Eval/Analysis.Eval.csproj --filter "Category!=Report"
+# Run the analysis evaluation harness (opt-in; hits Bedrock, needs AWS creds, e.g. AWS_PROFILE=prod)
+make eval
+
+# Run only the offline eval harness tests (scorers, loader, corpus guards — no Bedrock)
+make eval-offline
 ```
 
 The analysis eval harness scores prompt/model variants of the AI note analysis — see [docs/guides/analysis-eval-harness.md](docs/guides/analysis-eval-harness.md).
@@ -178,7 +184,7 @@ cdk deploy
 
 **Tests** — set in CI or manually before running post-deploy test suites:
 
-| Variable        | Used by          | Description                                                      |
-| --------------- | ---------------- | ---------------------------------------------------------------- |
-| `API_BASE_URL`  | Acceptance tests | Deployed API Gateway URL — required to run `tests/Acceptance/`   |
-| `FRONTEND_URL`  | E2E tests        | Deployed CloudFront URL — required to run `tests/E2E/`           |
+| Variable        | Used by             | Description                                                          |
+| --------------- | ------------------- | ------------------------------------------------------------------- |
+| `API_BASE_URL`  | Smoke tests         | Deployed API Gateway URL — required to run `tests/Api.Smoke/`        |
+| `FRONTEND_URL`  | Smoke + E2E tests   | Deployed CloudFront URL — required to run `tests/Browser.E2E/` (and the frontend smoke check in `tests/Api.Smoke/`) |
