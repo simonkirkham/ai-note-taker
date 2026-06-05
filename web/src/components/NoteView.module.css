@@ -72,6 +72,11 @@
   color: var(--color-text);
 }
 
+.recoveryWhen {
+  font-weight: 400;
+  color: var(--color-text-muted);
+}
+
 .saveButton {
   display: inline-flex;
   align-items: center;

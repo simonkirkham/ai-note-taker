@@ -227,6 +227,7 @@ export default function NoteView({
     const prevTranscript = transcriptText;
     setTranscriptDraft(null);
     setTranscriptText(draft.text);
+    setActiveTab("transcript");
     try {
       // An interrupted recording has no reliable final duration; the text is what matters.
       await completeTranscription(noteId, draft.text, 0);
@@ -389,7 +390,10 @@ export default function NoteView({
           aria-label="Unsaved transcript from an interrupted recording"
           className={styles.recoveryBanner}
         >
-          <span className={styles.recoveryText}>Unsaved transcript from an interrupted recording</span>
+          <span className={styles.recoveryText}>
+            Unsaved transcript from an interrupted recording
+            <span className={styles.recoveryWhen}> · {formatDraftWhen(transcriptDraft.capturedAt)}</span>
+          </span>
           <button
             type="button"
             data-testid="recover-transcript-button"
@@ -533,6 +537,12 @@ export default function NoteView({
       </div>
     </main>
   );
+}
+
+function formatDraftWhen(capturedAt: string): string {
+  const d = new Date(capturedAt);
+  if (isNaN(d.getTime())) return "";
+  return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 }
 
 function formatMeetingWhen(startTime: string): string {

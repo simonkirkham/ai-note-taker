@@ -133,8 +133,9 @@ export function useTranscription(noteId: string): UseTranscriptionResult {
   );
 
   // Warn before a browser-level leave (tab close, refresh, navigation) while a
-  // recording is live — the in-flight tail since the last checkpoint would be
-  // lost. Only armed while recording so it never blocks normal navigation.
+  // recording is live or starting up (requestingCredentials) — the in-flight
+  // tail since the last checkpoint would be lost. Only armed during those two
+  // phases so it never blocks normal navigation.
   useEffect(() => {
     if (status !== 'recording' && status !== 'requestingCredentials') return;
     const handler = (e: BeforeUnloadEvent) => {
