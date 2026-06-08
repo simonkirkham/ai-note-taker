@@ -14,7 +14,7 @@ const parent = { folderId: 'parent-1', name: 'Parent', children: [child] }
 const renderApp = () => render(<AuthProvider initialToken="test-token"><App /></AuthProvider>)
 
 beforeEach(() => {
-  window.history.replaceState({}, '', '/')
+  // URL reset is handled globally in test/setup (afterEach); just seed folders.
   server.use(http.get('/api/folders', () => HttpResponse.json({ folders: [parent] })))
 })
 
