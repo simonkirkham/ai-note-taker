@@ -10,7 +10,7 @@
 | 20-A | **Foundation + todos pilot.** `QueryClientProvider`, query-key factory, `QueryClient` defaults, devtools; migrate `TodoSection` (`getTodos` + complete/reopen/delete/add) as the reference template for every later slice. | Done | Gate |
 | 20-B | **Folders (tree).** `getFolders` + create/rename/delete/move-folder; delete the `App.tsx` `getFolders().then(setFolders)` invalidation sprawl. Note↔folder assignment (`moveNoteToFolder`/`unfileNote`) defers to 20-C with note cards. | Done | 20-A |
 | 20-C | **Note cards / list.** `getNoteCards` + `useNotes` (create/rename/delete). | Not Started | 20-A, 20-B |
-| 20-D | **Actions + tags.** `getActions`/`getTags` + their mutations + `useTagSuggestions`. | Not Started | 20-A |
+| 20-D | **Actions + tag index.** `useActions(noteId)` + action mutations (also invalidate `keys.todos`); `useTags()` (dedups NoteView+ListView's two `getTags` fetches) + tag-index invalidation. Note-applied tags stay local (→ 20-E). Component-only, no `App.tsx`. | Not Started | 20-A |
 | 20-E | **Note detail.** `getNoteDetail` + `editContent`/`setNoteDate`/`analyseNote` refetch (NoteView has the most mutations). | Not Started | 20-A |
 | 20-F | **Meetings.** `getMeetingsForDate` + create-from-meeting / next-occurrence / link; preserve Phase 16's reminders-vs-browsed-day decoupling. | Not Started | 20-A |
 | 20-G | **Cleanup.** Remove dead hand-rolled hooks + remaining manual invalidation; fold retry/backoff into `QueryClient` defaults (subsumes Phase 19's 19-H); learnings. | Not Started | 20-B…20-F |
@@ -29,7 +29,7 @@ Each migrates one domain: add `useQuery`/`useMutation` hooks over the existing `
 - **20-A — Foundation + todos pilot.** Root `QueryClientProvider` (above/around `AuthProvider`); `api/queryKeys.ts` factory; `QueryClient` defaults (staleTime, retry — low, since `apiFetch` already handles auth refresh); `@tanstack/react-query-devtools` (dev-only). Migrate `TodoSection` as the worked template (Appendix A). **Install on Node 20 to match CI** before committing `package-lock.json`.
 - **20-B — Folders (tree).** Biggest manual-invalidation payoff. Migrates the folder *tree* domain only (`keys.folders`): `getFolders` read + create/rename/delete/move-folder mutations. `moveNoteToFolder`/`unfileNote` mutate *note cards* (hand-rolled until 20-C) so they stay hand-rolled this slice — migrating them now would mean a TanStack mutation writing hand-rolled `useState`. Folder-tree mutations **do** use `onSettled: invalidateQueries` (temp-id→real-id reconciliation + multiple downstream readers).
 - **20-C — Note cards / list.** After 20-B (shares `App.tsx`).
-- **20-D — Actions + tags.**
+- **20-D — Actions + tag index.** Two component-scoped domains, **no `App.tsx`**. Actions: `useActions(noteId)` + add/complete/reopen/delete in `ActionsSection`, optimistic + `onSettled` invalidate `keys.actions(noteId)` **and `keys.todos`** (actions surface as todos — close the loop both ways). Tags: `useTags()` (`keys.tags`) replaces the two separate hand-rolled `getTags()` reads in `NoteView` (`allTags`) and `ListView` (filter); `tagNote`/`untagNote` mutations invalidate `keys.tags`. Note-applied tags (`NoteView`'s local `tags`) stay hand-rolled until 20-E. `useTagSuggestions` is pure `useMemo` — untouched.
 - **20-E — Note detail.** Largest mutation surface.
 - **20-F — Meetings.** Watch the reminders/browsed-day split.
 - **20-G — Cleanup.** Delete dead code; retry/backoff via `QueryClient` defaults; remove `App.tsx` manual refetch entirely.
@@ -149,6 +149,80 @@ Scenario: A folder mutation in one view updates every view
 1. **Silent optimistic divergence (tree).** Each of create/rename/delete/move must roll back on error or the sidebar tree drifts ahead of the server. Guard per mutation with a component test that forces the request to reject and asserts the tree reverts (and surfacing is unchanged from today).
 2. **Delete-folder note orphaning (known coexistence gap).** The backend moves a deleted folder's notes to unfiled, but `noteCards` is hand-rolled until 20-C, so deleting a folder does **not** refresh the cards list this slice — the home/list view can briefly show notes under a now-deleted folder until the next card refetch. This matches today's behaviour (the current `handleDeleteFolder` also doesn't refresh cards); 20-C wires `useDeleteFolder` to also `invalidateQueries({ queryKey: keys.noteCards })`. Note it; do not fix here.
 3. **Over-invalidation.** `invalidateQueries` is scoped to `keys.folders` only — one refetch per mutation, no fan-out. Do not invalidate `["folders"]`-adjacent keys.
+
+---
+
+## Slice 20-D — Actions + tag index
+
+**Status:** Not Started
+
+**User value:** None directly (like-for-like migration of two component-scoped domains). Completing or deleting an action inside a note now updates the home to-do list without a remount, and tagging a note refreshes the tag filter/suggestions everywhere — both via cache invalidation rather than the current per-component refetch.
+
+**Scope.** Two domains, **entirely within components — no `App.tsx` changes** (deliberate: keeps clear of `App.tsx`-editing phases).
+- **Actions** (`keys.actions(noteId)`): migrate `ActionsSection` fully — `useActions(noteId)` read + `useAddAction`/`useCompleteAction`/`useReopenAction`/`useDeleteAction`. Optimistic + rollback; `onSettled` invalidates `keys.actions(noteId)` **and `keys.todos`** (the home to-do list shows actions). Close the loop the other way: the 20-A todo mutations (`useTodoMutations`) invalidate `keys.actions(item.noteId)` for `type:"action"` items so an open `ActionsSection` reflects a todo-list completion.
+- **Tag index** (`keys.tags`): `useTags()` replaces the two independent `getTags().then(set…)` effects in `NoteView` (`allTags`) and `ListView` (filter) — one shared cache. `useTagNote`/`useUntagNote` wrap `tagNote`/`untagNote` and `onSettled`-invalidate `keys.tags`.
+
+**Out of scope this slice:** the note's **applied** tags (`NoteView`'s local `tags` state) are note-detail state → migrate in 20-E (`keys.note`). 20-D keeps that optimism local; it only migrates the global tag *index* read + invalidation. `useTagSuggestions` is a pure `useMemo` — untouched. `keys.noteCards` is not invalidated (no consumer until 20-C).
+
+### Scenarios
+
+```
+Scenario: A note's actions load and render unchanged
+  Given the actions endpoint returns items for a note
+  When the note's Actions section renders
+  Then the open and completed actions appear as before the migration
+
+Scenario: Adding an action is optimistic and reconciles the real id
+  Given the action input
+  When I add an action
+  Then it appears immediately and its temp id is swapped for the server id on success
+  And it is removed if the create fails
+
+Scenario: Completing an action is optimistic and rolls back on failure
+  Given an open action
+  When I complete it and the request fails
+  Then it shows completed immediately, then reverts to open
+
+Scenario: Deleting an action rolls back on failure
+  Given an action
+  When I delete it and the request fails
+  Then it disappears immediately, then reappears
+
+Scenario: Completing an action in a note updates the home to-do list
+  Given an action that also appears in the home to-do list
+  When I complete it from the note's Actions section
+  Then the home to-do list reflects the completion without a manual refetch
+
+Scenario: The tag index is fetched once and shared
+  Given NoteView and ListView both need the tag index
+  When both are mounted
+  Then the tag index is read from one shared cache (no duplicate fetch)
+
+Scenario: Tagging a note refreshes the tag index everywhere
+  Given a note and the home tag filter
+  When I add a tag to the note
+  Then the tag filter and suggestions reflect the new tag without a manual refetch
+```
+
+### Acceptance criteria
+
+- [ ] `web/src/hooks/useActions.ts` reads via `useQuery({ queryKey: keys.actions(noteId), queryFn: () => getActions(noteId) })`; `ActionsSection` consumes it (no hand-rolled `getActions` `useEffect`/`useState` remains)
+- [ ] `useActionMutations` exposes add/complete/reopen/delete (`useMutation`, `onMutate` optimistic + `onError` rollback + `onSettled` invalidate `keys.actions(noteId)` **and `keys.todos`**); per-item busy preserved (`mutation.variables`/`isPending` or a local in-flight set)
+- [ ] Add swaps the optimistic temp id for the server id via the `onSettled` refetch; `onCountChange` to `NoteView` still fires
+- [ ] `useTodoMutations` (20-A) additionally invalidates `keys.actions(item.noteId)` for `type:"action"` items so an open `ActionsSection` reflects a home-list completion
+- [ ] `web/src/hooks/useTags.ts` (`useQuery`, `keys.tags`) replaces the hand-rolled `getTags().then(setAllTags)` in `NoteView` and `getTags().then(setTagEntries)` in `ListView` — both read the shared cache
+- [ ] `useTagMutations` (`useTagNote`/`useUntagNote`) wrap `tagNote`/`untagNote` and `onSettled`-invalidate `keys.tags`; `NoteView`'s applied-tags optimism stays local but reverts on mutation error
+- [ ] `useTagSuggestions` unchanged; note-applied tags (`NoteView` local `tags`) not migrated (→ 20-E)
+- [ ] **No `App.tsx` changes**; todos (20-A) + folders (20-B) stay on TanStack; note cards/meetings/note-detail stay hand-rolled (coexistence intact)
+- [ ] Optimistic-UI rule satisfied — apply immediately, roll back on error (surfacing unchanged from today)
+- [ ] `ActionsSection.test.tsx` rendered through the QueryClient helper with mutation-aware MSW handlers; `TagFilter`/`ListView`/`NoteView`/`TagsSection` tests stay green; full Vitest suite + `tsc -b`/build + ESLint green
+
+### Observability
+
+1. **Silent optimistic divergence (actions).** Each of add/complete/reopen/delete must roll back on error or the section drifts ahead of the server. Guard per mutation with a forced-reject component test asserting the row reverts.
+2. **Cross-view action↔todo sync.** Action mutations invalidate `keys.todos` and the todo mutations invalidate `keys.actions(noteId)`. If either direction is dropped, completing in one view leaves the other stale during coexistence. Cover with the "completing in a note updates the home to-do list" scenario.
+3. **Tag-index over-invalidation.** Every tag add/remove invalidates `keys.tags` (one refetch). Acceptable — the index is small and read by two views. Do not invalidate `keys.noteCards` yet (no consumer until 20-C).
+4. **Tag write fan-out.** `handleAddTags` issues one `tagNote` per token in a loop; ensure the index is invalidated once after the batch settles, not per token, to avoid a refetch storm on a multi-tag paste.
 
 ---
 
