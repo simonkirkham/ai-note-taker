@@ -13,6 +13,9 @@ internal sealed class InMemoryNoteSearchViewStore : INoteSearchViewStore
         return Task.CompletedTask;
     }
 
+    public Task<NoteSearchView?> GetByNoteIdAsync(NoteId noteId, CancellationToken ct = default) =>
+        Task.FromResult(_items.TryGetValue(noteId, out var view) ? view : null);
+
     public Task DeleteAsync(NoteId noteId, CancellationToken ct = default)
     {
         _items.Remove(noteId);

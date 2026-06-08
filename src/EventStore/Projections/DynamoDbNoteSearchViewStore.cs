@@ -8,6 +8,8 @@ public sealed class DynamoDbNoteSearchViewStore(IAmazonDynamoDB dynamo, string t
 {
     public async Task UpsertAsync(NoteSearchView view, CancellationToken ct = default)
     {
+        if (string.IsNullOrEmpty(view.UserId)) return;
+
         var item = new Dictionary<string, AttributeValue>
         {
             ["PK"] = new() { S = view.NoteId.Value.ToString() },
@@ -24,6 +26,16 @@ public sealed class DynamoDbNoteSearchViewStore(IAmazonDynamoDB dynamo, string t
 
         await dynamo.PutItemAsync(new PutItemRequest { TableName = tableName, Item = item }, ct)
             .ConfigureAwait(false);
+    }
+
+    public async Task<NoteSearchView?> GetByNoteIdAsync(NoteId noteId, CancellationToken ct = default)
+    {
+        var response = await dynamo.GetItemAsync(new GetItemRequest
+        {
+            TableName = tableName,
+            Key = new Dictionary<string, AttributeValue> { ["PK"] = new() { S = noteId.Value.ToString() } }
+        }, ct).ConfigureAwait(false);
+        return response.Item is { Count: > 0 } ? MapItem(response.Item) : null;
     }
 
     public async Task DeleteAsync(NoteId noteId, CancellationToken ct = default) =>

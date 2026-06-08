@@ -119,8 +119,7 @@ public sealed class ActionItemCommandHandler(
     async Task UpdateSearchViewActionsAsync(NoteId noteId, IReadOnlyList<NoteCardActionItem> items,
         DateTimeOffset occurredAt, CancellationToken ct)
     {
-        var existing = (await noteSearchViewStore.QueryByUserIdAsync(currentUser.UserId, ct).ConfigureAwait(false))
-            .FirstOrDefault(v => v.NoteId == noteId);
+        var existing = await noteSearchViewStore.GetByNoteIdAsync(noteId, ct).ConfigureAwait(false);
         if (existing is null) return;
         var actionItemsText = string.Join(" ", items.Select(i => i.Description));
         await noteSearchViewStore.UpsertAsync(

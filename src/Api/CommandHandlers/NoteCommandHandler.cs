@@ -63,11 +63,6 @@ public sealed class NoteCommandHandler(
             // shares a batch with the delete is recorded as a rejection exactly as a rebuild would.
             await UpdateTagFeedbackForNewEventsAsync(newEnvelopes, ct).ConfigureAwait(false);
             await DeleteAllProjections(noteId, ct).ConfigureAwait(false);
-            var existingSearch = await noteSearchViewStore.QueryByUserIdAsync(currentUser.UserId, ct).ConfigureAwait(false);
-            var deletedSearch = existingSearch.FirstOrDefault(v => v.NoteId == noteId);
-            if (deletedSearch is not null)
-                await noteSearchViewStore.UpsertAsync(
-                    deletedSearch with { Deleted = true, LastModifiedAt = newEnvelopes[0].OccurredAt }, ct).ConfigureAwait(false);
             var existingCard = await noteCardListStore.GetByNoteAsync(noteId, ct).ConfigureAwait(false);
             if (existingCard is null) return;
             await noteCardListStore.UpsertAsync(
@@ -95,8 +90,7 @@ public sealed class NoteCommandHandler(
 
     private async Task UpdateSearchViewAsync(NoteId noteId, NoteDetailView detail, CancellationToken ct)
     {
-        var existing = (await noteSearchViewStore.QueryByUserIdAsync(currentUser.UserId, ct).ConfigureAwait(false))
-            .FirstOrDefault(v => v.NoteId == noteId);
+        var existing = await noteSearchViewStore.GetByNoteIdAsync(noteId, ct).ConfigureAwait(false);
         var actionItemsText = existing?.ActionItemsText ?? string.Empty;
         var finalNotes = ComposeFinalNotes(detail);
         var view = new NoteSearchView(noteId, detail.UserId, detail.Title, detail.Content, finalNotes,
