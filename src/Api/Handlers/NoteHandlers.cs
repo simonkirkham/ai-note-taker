@@ -214,7 +214,8 @@ public static class NoteHandlers
             title = r.View.Title,
             snippet = r.Snippet,
             score = r.Score,
-            matchedField = r.MatchedField
+            matchedField = r.MatchedField,
+            matchedTerms = r.MatchedTerms
         });
         return Results.Ok(new { items });
     }
