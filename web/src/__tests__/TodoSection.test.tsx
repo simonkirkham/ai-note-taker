@@ -1,7 +1,7 @@
-import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { delay, http, HttpResponse } from 'msw'
 import TodoSection from '../components/TodoSection'
+import { render, screen, waitFor } from '../test/render'
 import { server } from '../test/setup'
 
 const today = new Date().toISOString()
