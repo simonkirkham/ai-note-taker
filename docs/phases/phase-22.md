@@ -9,7 +9,7 @@
 | Slice | Summary | Status | Depends on |
 |-------|---------|--------|------------|
 | 22-A | **Searchable read model + fuzzy search endpoint.** New `NoteSearchView` projection (one doc per note: title, body, final-notes text, tags, action-item text, `UserId`), wired inline in every handler that changes a searchable field, plus a rebuild backfill. New `GET /notes/search?q=` reads the user's docs and fuzzy-ranks in-Lambda, returning ranked results scoped to the user. No UI — independently shippable. | Done | — |
-| 22-B | **Home search bar.** A debounced, as-you-type search box on the home screen; results replace the card grid; composes with the existing tag/folder/date filters; explicit no-results and error states distinct from each other; clearing restores the normal view; out-of-order responses discarded (latest query wins). | Not Started | 22-A |
+| 22-B | **Home search bar.** A debounced, as-you-type search box on the home screen; results replace the card grid; composes with the existing tag/folder/date filters; explicit no-results and error states distinct from each other; clearing restores the normal view; out-of-order responses discarded (latest query wins). | Done | 22-A |
 
 > 22-A is a backend-only vertical slice (a working search API, no screen) and ships on its own. 22-B is the user-facing half and depends on 22-A. Both build on the projection-rebuild infrastructure and on Phase 15 (Final-notes content) and Phase 3/11 (action-item text). A throwaway frontend prototype of the search bar precedes 22-B; its confirmed GWT/UX rewrites the 22-B section here on exit.
 
@@ -109,7 +109,7 @@
 
 ## Slice 22-B — Home search bar
 
-**Status:** Not Started
+**Status:** Done (PR #189, deploy #480, 2026-06-08)
 
 **User value:** Find any note by typing a few characters — including with a typo — without scrolling or filtering by tag/folder.
 
