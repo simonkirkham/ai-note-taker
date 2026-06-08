@@ -147,6 +147,10 @@ export function AuthProvider({
     const state = generateCodeVerifier()
     sessionStorage.setItem('pkce_code_verifier', verifier)
     sessionStorage.setItem('pkce_state', state)
+    // OAuth redirects back to the origin root, so stash the requested deep-link
+    // and let the gate restore it once authed (21-C).
+    const dest = window.location.pathname + window.location.search
+    if (dest !== '/') sessionStorage.setItem('postLoginRedirect', dest)
     window.location.href = buildAuthUrl(clientId, window.location.origin, challenge, state)
   }
 

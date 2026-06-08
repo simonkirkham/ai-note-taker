@@ -11,6 +11,31 @@ public sealed class AppPage(IPage page, string baseUrl, string? authToken = null
         await page.GotoAsync(baseUrl);
     }
 
+    // Hard-load a path under the app origin (e.g. "/notes/abc") — exercises the
+    // CloudFront SPA rewrite, not just in-app client navigation.
+    public async Task GotoPathAsync(string path)
+    {
+        if (!string.IsNullOrEmpty(authToken))
+            await page.AddInitScriptAsync($"window.__E2E_AUTH_TOKEN = '{authToken}';");
+        await page.GotoAsync($"{baseUrl.TrimEnd('/')}{path}");
+    }
+
+    // Hard-load an absolute URL (e.g. a captured note URL) as a fresh navigation.
+    public async Task GotoUrlAsync(string url)
+    {
+        if (!string.IsNullOrEmpty(authToken))
+            await page.AddInitScriptAsync($"window.__E2E_AUTH_TOKEN = '{authToken}';");
+        await page.GotoAsync(url);
+    }
+
+    public string CurrentUrl => page.Url;
+
+    public Task AssertHomeLoadedAsync() =>
+        Assertions.Expect(page.GetByTestId("new-note-button")).ToBeVisibleAsync();
+
+    public Task AssertNoteScreenLoadedAsync() =>
+        Assertions.Expect(page.GetByTestId("note-title-input")).ToBeVisibleAsync();
+
     public async Task ClickNewNoteAsync()
     {
         var viewport = page.ViewportSize;

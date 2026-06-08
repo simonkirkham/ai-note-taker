@@ -34,6 +34,7 @@ export default function NoteView({
   onDelete,
   onDateSet,
   onOpenNote,
+  onNotFound,
   isNew,
 }: {
   noteId: string;
@@ -43,6 +44,7 @@ export default function NoteView({
   onDelete: (noteId: string) => Promise<void>;
   onDateSet: (noteId: string, date: string) => void;
   onOpenNote: (noteId: string, title?: string, isNew?: boolean) => void;
+  onNotFound?: () => void;
   isNew?: boolean;
 }) {
   const [title, setTitle] = useState(initialTitle);
@@ -121,12 +123,17 @@ export default function NoteView({
       })
       .catch((err: Error) => {
         if (!cancelled) {
-          if (err.message.includes("404")) setNotFound(true);
+          // A missing note on deep-link is handled by the parent (redirect +
+          // toast); without a handler, fall back to the in-place not-found view.
+          if (err.message.includes("404")) {
+            if (onNotFound) onNotFound();
+            else setNotFound(true);
+          }
           setLoadingDetail(false);
         }
       });
     return () => { cancelled = true; };
-  }, [noteId, onDateSet]);
+  }, [noteId, onDateSet, onNotFound]);
 
   useEffect(() => {
     if (!loadingDetail && !notFound) inputRef.current?.focus();
