@@ -1,8 +1,8 @@
-import { render, screen, waitFor, fireEvent } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { http, HttpResponse } from 'msw'
 import NoteView from '../components/NoteView'
 import { ToastProvider } from '../components/ToastProvider'
+import { render, screen, waitFor, fireEvent } from '../test/render'
 import { server } from '../test/setup'
 
 vi.mock('../components/NoteEditor', () => ({

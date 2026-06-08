@@ -2,8 +2,9 @@ import clsx from "clsx";
 import { useEffect, useRef, useState } from "react";
 import { createNoteFromNextOccurrence, linkNoteToCalendar, type CalendarMeeting } from "../api/meetings";
 import { analyseNote, editContent, getNoteDetail, setNoteDate, type LinkedMeeting, type TranscriptionDraft } from "../api/notes";
-import { getTags, tagNote, untagNote, type TagIndexEntry } from "../api/tags";
 import { completeTranscription, discardTranscriptionDraft } from "../api/transcription";
+import { useTagNote, useUntagNote } from "../hooks/useTagMutations";
+import { useTags } from "../hooks/useTags";
 import type { TranscriptionStatus } from "../hooks/useTranscription";
 import ActionsSection from "./ActionsSection";
 import FinalNotesView from "./FinalNotesView";
@@ -48,7 +49,9 @@ export default function NoteView({
   const [content, setContent] = useState("");
   const [date, setDate] = useState("");
   const [tags, setTags] = useState<string[]>([]);
-  const [allTags, setAllTags] = useState<TagIndexEntry[]>([]);
+  const { data: allTags = [] } = useTags();
+  const tagNoteM = useTagNote();
+  const untagNoteM = useUntagNote();
   const [actionCount, setActionCount] = useState(0);
   const [transcriptText, setTranscriptText] = useState<string | null>(null);
   const [summary, setSummary] = useState<string | null>(null);
@@ -126,10 +129,6 @@ export default function NoteView({
   }, [noteId, onDateSet]);
 
   useEffect(() => {
-    getTags().then(setAllTags).catch((err) => { console.error('getTags failed:', err) });
-  }, []);
-
-  useEffect(() => {
     if (!loadingDetail && !notFound) inputRef.current?.focus();
   }, [loadingDetail, notFound]);
 
@@ -200,21 +199,27 @@ export default function NoteView({
     }
   }
 
-  async function handleAddTags(raw: string) {
+  function handleAddTags(raw: string) {
     const tokens = raw.trim().split(/\s+/).filter(Boolean);
     const newTokens = tokens.filter((t) => !tags.includes(t));
     if (newTokens.length === 0) return;
     tagsModifiedRef.current = true;
     setTags((prev) => [...prev, ...newTokens]);
+    // Applied tags are local note-detail state (→ 20-E); the mutation reconciles
+    // the global tag index and reverts this optimistic add on failure.
     for (const token of newTokens) {
-      await tagNote(noteId, token).catch(() => {});
+      tagNoteM.mutate({ noteId, tag: token }, {
+        onError: () => setTags((prev) => prev.filter((t) => t !== token)),
+      });
     }
   }
 
   function handleRemoveTag(tag: string) {
     tagsModifiedRef.current = true;
     setTags((prev) => prev.filter((t) => t !== tag));
-    untagNote(noteId, tag).catch(() => {});
+    untagNoteM.mutate({ noteId, tag }, {
+      onError: () => setTags((prev) => (prev.includes(tag) ? prev : [...prev, tag])),
+    });
   }
 
   // Recovery for an interrupted recording (crash/tab close left an uncommitted
