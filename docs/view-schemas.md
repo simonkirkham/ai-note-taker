@@ -397,6 +397,41 @@ The provenance row marks an action item as AI-extracted; it is matched by id whe
 
 ---
 
+### 9. `NoteSearchView` *(Phase 22-A)*
+
+**Consumed by:** `GET /notes/search?q=` — fuzzy free-text search across the caller's notes (ranked in-Lambda; see Phase 22). One searchable document per note.
+**Source events:** `NoteCreated`, `NoteRenamed`, `ContentEdited` / `ContentEditedV2`, `AnalysisSummaryRecorded`, `NoteTagged`, `NoteUntagged`, `NoteDeleted` (on the `Note` stream); `ActionItem*` (for `ActionItemsText`). **Transcript is deliberately excluded** (long/noisy — would swamp results).
+
+```csharp
+public record NoteSearchView(
+    NoteId NoteId,
+    string UserId,
+    string Title,
+    string Body,             // Quick notes (ContentEditedV2)
+    string FinalNotesText,   // Summary + DiscussionPoints + Decisions, concatenated
+    IReadOnlyList<string> Tags,
+    string ActionItemsText,  // action-item descriptions, concatenated
+    bool Deleted,
+    DateTimeOffset LastModifiedAt);
+```
+
+**Storage row** (table `notetaker-proj-notesearchview`, partition key `PK` = NoteId):
+
+| PK (NoteId) | UserId (GSI `UserId-index`) | Title | Body | FinalNotesText | Tags (SS) | ActionItemsText | Deleted | LastModifiedAt |
+|-------------|-----------------------------|-------|------|----------------|-----------|-----------------|---------|----------------|
+
+The `UserId-index` GSI (ProjectionType.ALL) lets the search endpoint `Query` all of one user's documents; ranking (FuzzySharp, title-weighted, threshold) then runs in-process. A point `GetItem(PK)` (`GetByNoteIdAsync`) serves the write path's read-modify-write so a mutation never scans the GSI.
+
+**Event handlers (live, inline across `NoteCommandHandler` + `ActionItemCommandHandler`):**
+- `NoteCreated` / `NoteRenamed` / `ContentEditedV2` / `AnalysisSummaryRecorded` / `NoteTagged` / `NoteUntagged` → upsert the document (title/body/final-notes/tags from `NoteDetail`; `ActionItemsText` preserved from the existing row).
+- `ActionItem*` → recompute `ActionItemsText` from the note card's action items.
+- `NoteDeleted` → hard-delete the row (prune-on-event).
+- **Cross-stream note:** action items live on separate `ActionItem` streams, so the live path derives `ActionItemsText` from the note card; the rebuild path uses the cross-stream `NoteSearchViewProjection` (like `NoteCardList`). Both converge.
+
+**Privacy:** the `SearchPerformed` metric logs only query length + result/scanned counts — never the raw query text or note content.
+
+---
+
 ## Soft delete handling
 
 Two valid approaches; pick one and apply consistently:

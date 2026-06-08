@@ -147,6 +147,7 @@ The Home view's richness pushes us toward denormalized read models — `NoteCard
 | `NoteActions` | All ActionItem events filtered by NoteId | Actions panel within a note |
 | `TodoList` | All ActionItem events (all notes) + all Todo events | Home view's TO DO List section. Returns open items plus items completed today. Each row carries a `type` discriminator (`"action"` / `"todo"`), a plain-string `ItemId`, nullable `NoteId`/`NoteTitle`, and nullable `CompletedAt`. Empty state: "Your ToDo list is clear." |
 | `TagIndex` | `NoteTagged`, `NoteUntagged`, `NoteDeleted` | Tag-based filtering (Phase 4) |
+| `NoteSearchView` | All Note events (title/content/summary/tags) + `ActionItem*`; **transcript excluded** | Fuzzy free-text search (`GET /notes/search?q=`); `UserId-index` GSI, ranked in-Lambda (Phase 22-A) |
 
 **Implication for milestones:** the `TodoList` projection is now visible in the Home view from day one (empty state initially), so the projection scaffold lands in Phase 1 even though the action-item events that populate it land in Phase 3. Easier to scaffold an empty projection early than to retrofit the Home view later.
 

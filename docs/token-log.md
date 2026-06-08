@@ -93,6 +93,7 @@ Recurring cost drivers and their pre-emptions live in [token-optimisation-playbo
 | 20-A TanStack foundation + todos | 175k | 115k | 57k | Inherited a near-complete worktree (prior session); cost was verification + flaky vitest segfault retries, not authoring |
 | 20-B Folders (tree) | 360k | 290k | 59k | Two mid-build rebases (21-A router, then 22-A/BUG-12) onto shared App.tsx + a `git rebase --quit` detached-HEAD recovery; explore+spec+impl in one session |
 | 21-A Router foundation + note/home URLs | ~340k | ~280k | 61k | Spike: two avoidable rounds — react-router-dom/Vitest vmThreads CJS-.mjs debug, then a mid-slice 20-A merge that broke PR-merge CI and forced a re-verify. Authoring itself was small. |
+| 22-A Search read model + fuzzy endpoint | ~330k | ~255k | 75k | Backend slice; Explore map + single Pip pass (impl ~183k); Hawk caught O(user-notes) write-path scan → point-get. No spike. |
 
 ## Scribe append format
 
