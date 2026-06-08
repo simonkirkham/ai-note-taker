@@ -7,7 +7,7 @@
 | Slice | Summary | Status | Depends on |
 |-------|---------|--------|------------|
 | Gate | **Supersede ADR 0010** with a new ADR recording the trigger that justifies reversal. No code. | Done | — |
-| 20-A | **Foundation + todos pilot.** `QueryClientProvider`, query-key factory, `QueryClient` defaults, devtools; migrate `TodoSection` (`getTodos` + complete/reopen/delete/add) as the reference template for every later slice. | Not Started | Gate |
+| 20-A | **Foundation + todos pilot.** `QueryClientProvider`, query-key factory, `QueryClient` defaults, devtools; migrate `TodoSection` (`getTodos` + complete/reopen/delete/add) as the reference template for every later slice. | Done | Gate |
 | 20-B | **Folders.** `getFolders` + 6 folder mutations; delete the `App.tsx` `getFolders().then(setFolders)` invalidation sprawl. | Not Started | 20-A |
 | 20-C | **Note cards / list.** `getNoteCards` + `useNotes` (create/rename/delete). | Not Started | 20-A, 20-B |
 | 20-D | **Actions + tags.** `getActions`/`getTags` + their mutations + `useTagSuggestions`. | Not Started | 20-A |
@@ -38,7 +38,7 @@ Each migrates one domain: add `useQuery`/`useMutation` hooks over the existing `
 
 ## Slice 20-A — Foundation + todos pilot
 
-**Status:** Not Started
+**Status:** Done
 
 **User value:** None directly (infrastructure + a like-for-like migration of one domain). Establishes the TanStack template the rest of Phase 20 copies. Behaviour for todos is unchanged — proven by the existing `TodoSection` suite staying green.
 
@@ -65,14 +65,15 @@ Scenario: Adding a todo updates the shared cache optimistically
 
 ### Acceptance criteria
 
-- [ ] `@tanstack/react-query` added to `web/package.json`; `package-lock.json` generated on **Node 20** so `npm ci` is green in CI
-- [ ] `QueryClientProvider` wraps the app at the root (`main.tsx`); a single `QueryClient` with sane defaults (low/again-off retry — `apiFetch` already handles auth refresh)
-- [ ] `web/src/api/queryKeys.ts` key factory added (`todos`, plus the keys later slices will use)
-- [ ] `TodoSection` reads via `useTodos` (`useQuery`) and mutates via `useCompleteTodo`/`useReopenTodo`/`useDeleteTodo` (`useMutation`, `onMutate` optimistic + `onError` rollback); the add flow writes the cache via `setQueryData`; **per-item busy preserved**
-- [ ] No hand-rolled `getTodos` `useEffect` remains in `TodoSection`
-- [ ] Optimistic-UI rule satisfied — apply immediately, roll back **and surface** the failure on error
-- [ ] Component tests render through a `QueryClientProvider` (shared/local helper); full Vitest suite + `tsc -b`/build + ESLint green
-- [ ] Only the todos domain migrated; folders/notes/actions/tags/meetings remain hand-rolled (coexistence intact)
+- [x] `@tanstack/react-query` added to `web/package.json`; `package-lock.json` generated on **Node 20** so `npm ci` is green in CI
+- [x] `QueryClientProvider` wraps the app at the root (`main.tsx`); a single `QueryClient` with sane defaults (`retry: 1`, `staleTime: 30s`, `refetchOnWindowFocus: false`, mutations `retry: false` — `apiFetch` already handles auth refresh)
+- [x] `web/src/api/queryKeys.ts` key factory added (`todos`, plus the keys later slices will use)
+- [x] `TodoSection` reads via `useTodos` (`useQuery`) and mutates via `useCompleteTodo`/`useReopenTodo`/`useDeleteTodo` (`useMutation`, `onMutate` optimistic + `onError` rollback); the add flow writes the cache via `setQueryData`; **per-item busy preserved**
+- [x] No hand-rolled `getTodos` `useEffect` remains in `TodoSection`
+- [x] Optimistic-UI rule satisfied — apply immediately, roll back **and surface** the failure on error
+- [x] Component tests render through a `QueryClientProvider` (`src/test/render.tsx` helper); full Vitest suite + `tsc -b`/build + ESLint green
+- [x] Only the todos domain migrated; folders/notes/actions/tags/meetings remain hand-rolled (coexistence intact)
+- [x] Dev-only `@tanstack/react-query-devtools` wired in `main.tsx` (excluded from prod bundle)
 
 ---
 

@@ -90,6 +90,7 @@ Recurring cost drivers and their pre-emptions live in [token-optimisation-playbo
 | CHANGE-13 Next-occurrence control | 216k | 95k | 47k | Reuse-in-new-location; self-review caught 2 bugs |
 | CHANGE-14 Rename audio toggle | 90k | 16k | 33k | One-line copy; smallest slice; Hawk is the floor |
 | tech-remove-dead-dispatcher | 170k | 32k | 55k | Dead-dispatcher cleanup; Hawk coverage matrix |
+| 20-A TanStack foundation + todos | 175k | 115k | 57k | Inherited a near-complete worktree (prior session); cost was verification + flaky vitest segfault retries, not authoring |
 
 ## Scribe append format
 
