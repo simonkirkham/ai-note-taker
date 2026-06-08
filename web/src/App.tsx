@@ -123,7 +123,14 @@ function AppContent({ signOut }: { signOut: () => void }) {
       // Create inserts the real card (with folderId) on success; then persist the
       // default date and the folder assignment. Navigation keys off the server id.
       const { noteId } = await createNote.mutateAsync({ folderId: newFolderId });
-      setNoteDate(noteId, new Date().toISOString().slice(0, 10)).catch(() => {});
+      // Await the date so it is persisted before navigation — otherwise the
+      // note-cards refetch on return can land before the date is set, leaving the
+      // card date-less and hidden by the home date filter.
+      try {
+        await setNoteDate(noteId, new Date().toISOString().slice(0, 10));
+      } catch {
+        // non-fatal: user can set the date manually
+      }
       if (newFolderId) moveNote.mutate({ noteId, folderId: newFolderId });
       openNote(noteId, undefined, true);
     } catch {
