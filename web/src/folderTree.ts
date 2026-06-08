@@ -43,3 +43,15 @@ export function findNode(nodes: FolderNode[], folderId: string): FolderNode | un
   }
   return undefined;
 }
+
+// Breadcrumb of folder names from the root down to folderId (inclusive), or
+// undefined if the id is not in the tree. Used to derive the heading for a
+// folder URL — a sub-folder rebuilds its full ancestor path, not just its leaf.
+export function findPath(nodes: FolderNode[], folderId: string): string[] | undefined {
+  for (const n of nodes) {
+    if (n.folderId === folderId) return [n.name];
+    const sub = findPath(n.children ?? [], folderId);
+    if (sub) return [n.name, ...sub];
+  }
+  return undefined;
+}

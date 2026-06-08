@@ -1,11 +1,12 @@
 import clsx from "clsx";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   BrowserRouter,
   Navigate,
   Route,
   Routes,
   useLocation,
+  useMatch,
   useNavigate,
   useParams,
 } from "react-router";
@@ -23,7 +24,7 @@ import SessionExpiredBanner from "./components/SessionExpiredBanner";
 import Sidebar from "./components/Sidebar";
 import SignInPage from "./components/SignInPage";
 import { UNFILED_ID } from "./constants";
-import { findNode } from "./folderTree";
+import { findNode, findPath } from "./folderTree";
 import {
   useCreateFolder,
   useRenameFolder,
@@ -67,8 +68,18 @@ function AppContent({ signOut }: { signOut: () => void }) {
   const renameFolderM = useRenameFolder();
   const deleteFolderM = useDeleteFolder();
   const moveFolderM = useMoveFolder();
-  const [activeFolderId, setActiveFolderId] = useState<string | undefined>();
-  const [activeFolderPath, setActiveFolderPath] = useState<string[]>([]);
+  // Folder context is derived from the URL (/folders/:folderId; the literal
+  // "unfiled" segment maps to UNFILED_ID), not component state — 21-B. The
+  // breadcrumb is rebuilt from the folders cache, so a sub-folder shows its full
+  // ancestor path and a rename re-derives automatically (the cache is the source).
+  const folderMatch = useMatch("/folders/:folderId");
+  const folderSeg = folderMatch?.params.folderId;
+  const activeFolderId = folderSeg === "unfiled" ? UNFILED_ID : folderSeg;
+  const activeFolderPath = useMemo<string[]>(() => {
+    if (!activeFolderId) return [];
+    if (activeFolderId === UNFILED_ID) return ["Unfiled Notes"];
+    return findPath(folders, activeFolderId) ?? [];
+  }, [activeFolderId, folders]);
   const [cards, setCards] = useState<NoteCard[]>([]);
   const cardsRef = useRef<NoteCard[]>([]);
   useEffect(() => { cardsRef.current = cards; }, [cards]);
@@ -144,24 +155,18 @@ function AppContent({ signOut }: { signOut: () => void }) {
   }
 
   function handleUnfiledSelect() {
-    setActiveFolderId(UNFILED_ID);
-    setActiveFolderPath(["Unfiled Notes"]);
-    navigate("/");
+    navigate("/folders/unfiled");
     setSidebarOpen(false);
   }
 
   function handleFolderSelect(folderId: string, folderPath: string[]) {
-    setActiveFolderId(folderId);
-    setActiveFolderPath(folderPath);
-    navigate("/");
+    navigate(`/folders/${folderId}`);
     setSidebarOpen(false);
     setPreviewFolderId(folderId);
     setPreviewFolderName(folderPath[folderPath.length - 1] ?? "");
   }
 
   function handleHome() {
-    setActiveFolderId(undefined);
-    setActiveFolderPath([]);
     navigate("/");
   }
 
@@ -172,17 +177,9 @@ function AppContent({ signOut }: { signOut: () => void }) {
   }
 
   function handleRenameFolder(folderId: string, name: string) {
-    // The folder-tree optimism/rollback is in the hook. The component owns the
-    // derived active-folder breadcrumb, so it applies and reverts that.
-    const prevActiveFolderPath = activeFolderPath;
-    if (folderId === activeFolderId) {
-      setActiveFolderPath((prev) =>
-        prev.map((seg, i) => (i === prev.length - 1 ? name : seg)),
-      );
-    }
-    renameFolderM.mutate({ folderId, name }, {
-      onError: () => setActiveFolderPath(prevActiveFolderPath),
-    });
+    // The breadcrumb is derived from the folders cache, which the rename hook
+    // updates and rolls back optimistically — so the heading follows for free.
+    renameFolderM.mutate({ folderId, name });
   }
 
   function handleMoveNoteToFolder(noteId: string, folderId: string | null) {
@@ -195,11 +192,7 @@ function AppContent({ signOut }: { signOut: () => void }) {
   }
 
   function handleDeleteFolder(folderId: string) {
-    if (activeFolderId === folderId) {
-      setActiveFolderId(undefined);
-      setActiveFolderPath([]);
-      navigate("/");
-    }
+    if (activeFolderId === folderId) navigate("/");
     if (previewFolderId === folderId) setPreviewFolderId(null);
     deleteFolderM.mutate({ folderId });
   }
@@ -212,6 +205,24 @@ function AppContent({ signOut }: { signOut: () => void }) {
     if (parentFolderId !== null && node && findNode(node.children ?? [], parentFolderId)) return;
     moveFolderM.mutate({ folderId, parentFolderId });
   }
+
+  // Home (`/`) and a folder (`/folders/:id`) render the same ListView; the
+  // route-derived activeFolderId/Path switch it between the two.
+  const listView = (
+    <ListView
+      cards={cards}
+      loading={loading}
+      creating={creating}
+      createError={createError}
+      onNewNote={handleNewNote}
+      onEditNote={(noteId) => openNote(noteId)}
+      onOpenNote={(noteId, title, isNew) => openNote(noteId, title, isNew)}
+      onDeleteNote={handleDeleteNote}
+      folderPath={activeFolderId ? activeFolderPath : undefined}
+      currentFolderId={activeFolderId}
+      onHome={handleHome}
+    />
+  );
 
   return (
     <div className={styles.appLayout}>
@@ -262,24 +273,8 @@ function AppContent({ signOut }: { signOut: () => void }) {
       />
       <div className={styles.appMain}>
         <Routes>
-          <Route
-            path="/"
-            element={
-              <ListView
-                cards={cards}
-                loading={loading}
-                creating={creating}
-                createError={createError}
-                onNewNote={handleNewNote}
-                onEditNote={(noteId) => openNote(noteId)}
-                onOpenNote={(noteId, title, isNew) => openNote(noteId, title, isNew)}
-                onDeleteNote={handleDeleteNote}
-                folderPath={activeFolderId ? activeFolderPath : undefined}
-                currentFolderId={activeFolderId}
-                onHome={handleHome}
-              />
-            }
-          />
+          <Route path="/" element={listView} />
+          <Route path="/folders/:folderId" element={listView} />
           <Route
             path="/notes/:noteId"
             element={
