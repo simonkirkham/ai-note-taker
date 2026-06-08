@@ -33,7 +33,8 @@ public sealed class DynamoDbNoteSearchViewStore(IAmazonDynamoDB dynamo, string t
         var response = await dynamo.GetItemAsync(new GetItemRequest
         {
             TableName = tableName,
-            Key = new Dictionary<string, AttributeValue> { ["PK"] = new() { S = noteId.Value.ToString() } }
+            Key = new Dictionary<string, AttributeValue> { ["PK"] = new() { S = noteId.Value.ToString() } },
+            ConsistentRead = true
         }, ct).ConfigureAwait(false);
         return response.Item is { Count: > 0 } ? MapItem(response.Item) : null;
     }
