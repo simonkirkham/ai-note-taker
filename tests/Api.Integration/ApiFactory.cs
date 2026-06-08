@@ -54,6 +54,7 @@ public sealed class ApiFactory : WebApplicationFactory<Program>
             services.RemoveAll<ITagFeedbackStore>();
             services.RemoveAll<IActionItemFeedbackStore>();
             services.RemoveAll<ICalendarLinkIndexStore>();
+            services.RemoveAll<INoteSearchViewStore>();
             services.RemoveAll<ITranscriptionDraftStore>();
             services.RemoveAll<IDynamoHealthCheck>();
             services.AddSingleton<IEventStore, InMemoryEventStore>();
@@ -67,6 +68,7 @@ public sealed class ApiFactory : WebApplicationFactory<Program>
             services.AddSingleton<ITagFeedbackStore, InMemoryTagFeedbackStore>();
             services.AddSingleton<IActionItemFeedbackStore, InMemoryActionItemFeedbackStore>();
             services.AddSingleton<ICalendarLinkIndexStore, InMemoryCalendarLinkIndexStore>();
+            services.AddSingleton<INoteSearchViewStore, InMemoryNoteSearchViewStore>();
             services.AddSingleton<ITranscriptionDraftStore, InMemoryTranscriptionDraftStore>();
             services.AddSingleton<IDynamoHealthCheck, AlwaysHealthyDynamoCheck>();
             services.AddAuthentication(options =>
