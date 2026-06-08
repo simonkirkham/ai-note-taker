@@ -97,6 +97,7 @@ Recurring cost drivers and their pre-emptions live in [token-optimisation-playbo
 | 22-A Search read model + fuzzy endpoint | ~330k | ~255k | 75k | Backend slice; Explore map + single Pip pass (impl ~183k); Hawk caught O(user-notes) write-path scan → point-get. No spike. |
 | 22-B Home search bar | ~220k | ~150k | 53k | Frontend; built in parallel w/ 22-A deploy; search kept in ListView (zero App.tsx edit) dodged the 20-B parallel conflict; merged main pre-PR; Hawk clean (3 nits). |
 | 21-B Folder & sub-folder URLs | ~200k | ~150k | 47k | Clean single pass on top of 20-B's TanStack folders; Hawk approved first round (3 nits). One self-fixed regression (URL leak across tests → global reset) + a flaky eventstore CI rerun. No spike. |
+| 21-C Deep-link edge cases | ~210k | ~165k | 44k | Closes Phase 21. Single pass; Hawk approved first round (3 optional nits, none applied). Auth-flow investigation (OAuth stash/restore) + new E2E journey. No spike. |
 
 ## Scribe append format
 

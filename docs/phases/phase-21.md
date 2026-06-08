@@ -9,7 +9,7 @@
 | Gate | **ADR 0013 — adopt React Router v7 (`react-router`).** Record why a router (deep-linking + history) now earns a dependency in this learning-vehicle frontend. No code. | Done | — |
 | 21-A | **Router foundation + note & home URLs.** Install `react-router`; mount `<BrowserRouter>` inside `App`; routes `/` (home) and `/notes/:noteId`; convert note open/back/create to `navigate()`; remove the `note` arm of the `view` union. Back/forward + deep-link + shareable note URL. | Done | Gate |
 | 21-B | **Folder URLs.** Route `/folders/:folderId` (+ `/folders/unfiled`); derive `folderPath` from the folder tree by id; remove the `folder` arm of the `view` union. Back/forward across folders + home; deep-link to a folder. | Done | 21-A |
-| 21-C | **Deep-link edge cases.** Missing/deleted note → redirect home with a toast; signed-out deep link returns to the requested URL after sign-in; verify CloudFront serves a hard-loaded deep link (smoke/E2E). | Not Started | 21-A, 21-B |
+| 21-C | **Deep-link edge cases.** Missing/deleted note → redirect home with a toast; signed-out deep link returns to the requested URL after sign-in; verify CloudFront serves a hard-loaded deep link (smoke/E2E). | Done | 21-A, 21-B |
 
 > **21-A is the keystone** — it introduces the router and sets the `navigate()`/`useParams` pattern every later slice copies; get the route table and the new-note navigation right before fanning out. 21-B and 21-C both depend on it; 21-B and 21-C both touch `App.tsx` route wiring, so sequence them (B then C). **Transient surfaces stay in component state, not the URL:** the folder sidebar, the folder-preview pull-out, and the Transcript/Quick/Final note tabs are *not* routed in this phase (note tabs are a candidate follow-up). The optimistic-UI rule (CLAUDE.md) applies to navigation too — `navigate()` must fire synchronously on the user action, never after an `await`.
 
@@ -130,6 +130,8 @@ Scenario: Unfiled notes has its own URL
 ---
 
 ## Slice 21-C — Deep-link edge cases
+
+**Status:** Done (PR #192, deploy #483, 2026-06-08) — **completes Phase 21.** Missing note → redirect home + toast + RUM `deadNoteLink` event; signed-out deep link is stashed by `signIn()` and restored by `AppGate` once authed (OAuth returns to the origin root, so in-memory preservation was impossible); a `Browser.E2E` DeepLinkJourney proves the CloudFront SPA-rewrite hard-load for both an existing and a missing note. See [phase-21c-deep-link-edges](../learnings/phase-21c-deep-link-edges.md).
 
 **User value:** A stale or shared link to a note that no longer exists recovers gracefully instead of breaking; a shared link works even when the recipient has to sign in first.
 

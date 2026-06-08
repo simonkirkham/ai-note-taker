@@ -273,7 +273,7 @@ Replace the hand-rolled `useEffect`-fetch + `useState` server-state hooks with *
 
 Slices and acceptance criteria: [docs/phases/phase-20.md](phases/phase-20.md)
 
-## Phase 21 — URL routing: distinct URLs, working back/forward, shareable note links _(In Progress)_
+## Phase 21 — URL routing: distinct URLs, working back/forward, shareable note links _(Done)_
 
 The frontend has **no router** — `App.tsx` holds a single in-memory `view` union (`list` | `folder` | `note`) and opening a note is just `setView({ kind: "note", noteId })`, so the URL never changes, back/forward are no-ops, and a specific note can't be linked. This phase adopts **react-router-dom** (recorded in [ADR 0013](adr/0013-adopt-react-router-dom.md)) and maps the three surfaces — home, folder, note — to real routes (`/`, `/folders/:folderId`, `/notes/:noteId`), so back/forward work and a note or folder URL can be shared and deep-loaded. Frontend-only: no event model, API, or backend change; CloudFront already rewrites unknown paths to `index.html`. Four steps: an **ADR gate**, **21-A** (router foundation + note & home URLs — the keystone), **21-B** (folder URLs), **21-C** (deep-link edge cases: missing-note recovery, signed-out-link survival, hard-load coverage). Transient surfaces (sidebar, preview pull-out, note tabs) stay in component state.
 
