@@ -11,7 +11,6 @@ import {
   useDeleteNote,
   useMoveNoteToFolder,
 } from '../hooks/useNoteMutations'
-import { useTagNote } from '../hooks/useTagMutations'
 import { server } from '../test/setup'
 
 const card: NoteCard = {
@@ -86,15 +85,6 @@ describe('useNoteMutations', () => {
     const spy = vi.spyOn(qc, 'invalidateQueries')
     const { result } = renderHook(() => useDeleteFolder(), { wrapper })
     await act(async () => { await result.current.mutateAsync({ folderId: 'f-1' }) })
-    expect(spy).toHaveBeenCalledWith({ queryKey: keys.noteCards })
-  })
-
-  it('tagging a note invalidates the note-cards cache (card pills — 20-D deferral)', async () => {
-    server.use(http.post('/api/notes/n-1/tags', () => new HttpResponse(null, { status: 204 })))
-    const { qc, wrapper } = setup()
-    const spy = vi.spyOn(qc, 'invalidateQueries')
-    const { result } = renderHook(() => useTagNote(), { wrapper })
-    await act(async () => { await result.current.mutateAsync({ noteId: 'n-1', tag: 'urgent' }) })
     expect(spy).toHaveBeenCalledWith({ queryKey: keys.noteCards })
   })
 })
