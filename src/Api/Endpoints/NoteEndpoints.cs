@@ -12,6 +12,7 @@ public static class NoteEndpoints
         app.MapPatch("/notes/{noteId}/title", NoteHandlers.RenameNote).RequireAuthorization();
         app.MapGet("/notes", NoteHandlers.ListNotes).RequireAuthorization();
         app.MapGet("/notes/cards", NoteHandlers.GetNoteCards).RequireAuthorization();
+        app.MapGet("/notes/search", NoteHandlers.SearchNotes).RequireAuthorization();
         app.MapPut("/notes/{noteId}/content", NoteHandlers.EditContent).RequireAuthorization();
         app.MapGet("/notes/{noteId}", NoteHandlers.GetNote).RequireAuthorization();
         app.MapDelete("/notes/{noteId}", NoteHandlers.DeleteNote).RequireAuthorization();

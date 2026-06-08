@@ -19,6 +19,19 @@ public sealed class PowertoolsDomainMetrics : IDomainMetrics
     public void ConcurrencyConflict(string aggregate) =>
         Push("ConcurrencyConflict", 1, new Dictionary<string, string> { ["Aggregate"] = aggregate });
 
+    // Privacy: SearchPerformed carries only counts and latency — never the query text
+    // or any note content (meeting notes are sensitive). resultCount drives the
+    // zero-result-rate watch; notesScanned + latency quantify the linear-scan cost curve.
+    public void SearchPerformed(int resultCount, int notesScanned, double latencyMs)
+    {
+        var dimensions = new Dictionary<string, string> { ["Aggregate"] = "Note" };
+        Push("SearchPerformed", 1, dimensions);
+        Push("SearchResultCount", resultCount, dimensions);
+        Push("SearchNotesScanned", notesScanned, dimensions);
+        Metrics.PushSingleMetric("SearchLatencyMs", latencyMs, MetricUnit.Milliseconds,
+            nameSpace: MetricNamespace, service: ServiceName, dimensions: dimensions);
+    }
+
     // PushSingleMetric emits a self-contained EMF blob with its own dimensions, so no
     // global namespace/flush setup (or the [Metrics] handler decorator) is needed —
     // which suits an ASP.NET-Core-on-Lambda host that has no Lambda handler method.

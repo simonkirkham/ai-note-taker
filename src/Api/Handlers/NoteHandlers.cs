@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using EventStore.Projections;
 using Domain.Folders;
 using Domain.Notes;
@@ -6,6 +7,8 @@ using Api.Contracts;
 using Api.CommandHandlers;
 using Api.Exceptions;
 using Api.HealthChecks;
+using Api.Observability;
+using Api.Search;
 using Api.Utilities;
 using EditContentCmd = Domain.Notes.EditContent;
 
@@ -190,6 +193,30 @@ public static class NoteHandlers
         catch (NoteNotFoundException) { return Results.NotFound(); }
         catch (InvalidOperationException) { return Results.Conflict(); }
         return Results.NoContent();
+    }
+
+    public static async Task<IResult> SearchNotes(string? q, INoteSearchViewStore searchStore, ICurrentUser currentUser, IDomainMetrics metrics, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(q))
+            return Results.Ok(new { items = Array.Empty<object>() });
+
+        var stopwatch = Stopwatch.StartNew();
+        var docs = await searchStore.QueryByUserIdAsync(currentUser.UserId, ct).ConfigureAwait(false);
+        var searchable = docs.Where(d => !d.Deleted).ToList();
+        var ranked = NoteSearchRanker.Rank(q, searchable);
+        stopwatch.Stop();
+
+        metrics.SearchPerformed(ranked.Count, searchable.Count, stopwatch.Elapsed.TotalMilliseconds);
+
+        var items = ranked.Select(r => new
+        {
+            noteId = r.View.NoteId.Value,
+            title = r.View.Title,
+            snippet = r.Snippet,
+            score = r.Score,
+            matchedField = r.MatchedField
+        });
+        return Results.Ok(new { items });
     }
 
     public static async Task<IResult> GetNoteCards(INoteCardListStore store, ICurrentUser currentUser, CancellationToken ct)

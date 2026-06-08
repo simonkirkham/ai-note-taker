@@ -19,6 +19,7 @@ public sealed class NoteCommandHandler(
     ITagFeedbackStore tagFeedbackStore,
     IActionItemFeedbackStore actionItemFeedbackStore,
     ICalendarLinkIndexStore calendarLinkIndexStore,
+    INoteSearchViewStore noteSearchViewStore,
     ICurrentUser currentUser,
     IDomainMetrics metrics,
     ILogger<NoteCommandHandler> logger) : INoteCommandHandler
@@ -72,6 +73,7 @@ public sealed class NoteCommandHandler(
         var (item, noteDetail) = RebuildTitleAndDetailProjections(noteId, history, newEnvelopes);
         await noteTitleStore.UpsertAsync(item, ct).ConfigureAwait(false);
         await noteDetailStore.UpsertAsync(noteDetail, ct).ConfigureAwait(false);
+        await UpdateSearchViewAsync(noteId, noteDetail, ct).ConfigureAwait(false);
 
         if (newEnvelopes.Any(e => e.EventType == nameof(NoteRenamed)))
             await todoListStore.UpdateNoteTitleAsync(noteId, item.Title, ct).ConfigureAwait(false);
@@ -85,6 +87,22 @@ public sealed class NoteCommandHandler(
         await UpdateActionItemFeedbackForNewEventsAsync(newEnvelopes, ct).ConfigureAwait(false);
         await UpdateCalendarLinkIndexForNewEventsAsync(noteId, newEnvelopes, ct).ConfigureAwait(false);
     }
+
+    private async Task UpdateSearchViewAsync(NoteId noteId, NoteDetailView detail, CancellationToken ct)
+    {
+        var existing = await noteSearchViewStore.GetByNoteIdAsync(noteId, ct).ConfigureAwait(false);
+        var actionItemsText = existing?.ActionItemsText ?? string.Empty;
+        var finalNotes = ComposeFinalNotes(detail);
+        var view = new NoteSearchView(noteId, detail.UserId, detail.Title, detail.Content, finalNotes,
+            detail.Tags ?? [], actionItemsText, false, detail.LastModifiedAt);
+        await noteSearchViewStore.UpsertAsync(view, ct).ConfigureAwait(false);
+    }
+
+    private static string ComposeFinalNotes(NoteDetailView detail) =>
+        string.Join(" ", new[] { detail.Summary ?? string.Empty }
+            .Concat(detail.DiscussionPoints ?? [])
+            .Concat(detail.Decisions ?? [])
+            .Where(s => !string.IsNullOrWhiteSpace(s)));
 
     private async Task UpdateActionItemFeedbackForNewEventsAsync(List<EventEnvelope> newEnvelopes, CancellationToken ct)
     {
@@ -189,6 +207,7 @@ public sealed class NoteCommandHandler(
         await tagIndexStore.DeleteByNoteAsync(noteId.Value.ToString("N"), ct).ConfigureAwait(false);
         await tagFeedbackStore.DeleteProvenanceByNoteAsync(noteId.Value.ToString("N"), ct).ConfigureAwait(false);
         await calendarLinkIndexStore.DeleteByNoteIdAsync(noteId.Value.ToString(), ct).ConfigureAwait(false);
+        await noteSearchViewStore.DeleteAsync(noteId, ct).ConfigureAwait(false);
     }
 
     private static NoteCardView ApplyNoteEventsToCard(NoteCardView? existing, NoteId noteId, List<EventEnvelope> envelopes)

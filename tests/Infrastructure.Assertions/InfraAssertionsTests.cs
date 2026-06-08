@@ -1054,6 +1054,65 @@ public class InfraAssertionsTests
     }
 
     [Fact]
+    public void NoteSearchViewTable_Exists()
+    {
+        _template.HasResource("AWS::DynamoDB::Table", Match.ObjectLike(new Dictionary<string, object>
+        {
+            ["Properties"] = Match.ObjectLike(new Dictionary<string, object>
+            {
+                ["TableName"] = "notetaker-proj-notesearchview"
+            })
+        }));
+    }
+
+    [Fact]
+    public void NoteSearchViewTable_HasRetainDeletionPolicy()
+    {
+        _template.HasResource("AWS::DynamoDB::Table", Match.ObjectLike(new Dictionary<string, object>
+        {
+            ["DeletionPolicy"] = "Retain",
+            ["Properties"] = Match.ObjectLike(new Dictionary<string, object>
+            {
+                ["TableName"] = "notetaker-proj-notesearchview"
+            })
+        }));
+    }
+
+    [Fact]
+    public void NoteSearchViewTable_HasUserIdGsi()
+    {
+        _template.HasResource("AWS::DynamoDB::Table", Match.ObjectLike(new Dictionary<string, object>
+        {
+            ["Properties"] = Match.ObjectLike(new Dictionary<string, object>
+            {
+                ["TableName"] = "notetaker-proj-notesearchview",
+                ["GlobalSecondaryIndexes"] = Match.ArrayWith(new object[]
+                {
+                    Match.ObjectLike(new Dictionary<string, object>
+                    {
+                        ["IndexName"] = "UserId-index"
+                    })
+                })
+            })
+        }));
+    }
+
+    [Fact]
+    public void Lambda_HasNoteSearchViewTableEnvVar()
+    {
+        _template.HasResourceProperties("AWS::Lambda::Function", Match.ObjectLike(new Dictionary<string, object>
+        {
+            ["Environment"] = Match.ObjectLike(new Dictionary<string, object>
+            {
+                ["Variables"] = Match.ObjectLike(new Dictionary<string, object>
+                {
+                    ["PROJ_NOTESEARCHVIEW_TABLE_NAME"] = Match.AnyValue()
+                })
+            })
+        }));
+    }
+
+    [Fact]
     public void DraftTranscriptionTable_HasDeleteDeletionPolicy()
     {
         // Working state, not a durable record — DESTROY (CloudFormation "Delete").
