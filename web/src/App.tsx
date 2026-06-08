@@ -23,6 +23,7 @@ import NoteView from "./components/NoteView";
 import SessionExpiredBanner from "./components/SessionExpiredBanner";
 import Sidebar from "./components/Sidebar";
 import SignInPage from "./components/SignInPage";
+import { useToast } from "./components/toastContext";
 import { UNFILED_ID } from "./constants";
 import { findNode, findPath } from "./folderTree";
 import {
@@ -33,6 +34,7 @@ import {
 } from "./hooks/useFolderMutations";
 import { useFolders } from "./hooks/useFolders";
 import { useNotes } from "./hooks/useNotes";
+import { recordRumEvent } from "./rum";
 
 type NoteNavState = { isNew?: boolean; initialTitle?: string };
 
@@ -46,6 +48,19 @@ export default function App() {
 
 function AppGate() {
   const { idToken, forbidden, sessionExpired, signIn, signOut } = useAuth();
+  const navigate = useNavigate();
+  // OAuth redirects back to the origin root; once authed, restore the deep-link
+  // the user originally requested (stashed by signIn in sessionStorage) — 21-C.
+  useEffect(() => {
+    if (!idToken) return;
+    const dest = sessionStorage.getItem("postLoginRedirect");
+    if (!dest) return;
+    sessionStorage.removeItem("postLoginRedirect");
+    if (dest !== window.location.pathname + window.location.search) {
+      navigate(dest, { replace: true });
+    }
+  }, [idToken, navigate]);
+
   if (sessionExpired) return <SessionExpiredBanner onSignIn={signIn} />;
   if (!idToken) return <SignInPage />;
   if (forbidden) return (
@@ -312,7 +327,16 @@ function NoteRoute({
 }) {
   const { noteId } = useParams();
   const location = useLocation();
+  const navigate = useNavigate();
+  const { showError } = useToast();
   const navState = location.state as NoteNavState | null;
+  // A deep-link to a deleted/unknown note recovers to home with a toast, and
+  // emits a RUM event so the rate of dead links is observable (21-C).
+  const handleNotFound = useCallback(() => {
+    recordRumEvent("deadNoteLink", { noteId });
+    showError("That note no longer exists.");
+    navigate("/", { replace: true });
+  }, [noteId, navigate, showError]);
   if (!noteId) return <Navigate to="/" replace />;
   return (
     <NoteView
@@ -324,6 +348,7 @@ function NoteRoute({
       onDelete={onDelete}
       onDateSet={onDateSet}
       onOpenNote={onOpenNote}
+      onNotFound={handleNotFound}
       isNew={navState?.isNew}
     />
   );
