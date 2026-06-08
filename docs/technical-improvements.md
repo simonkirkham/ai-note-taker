@@ -215,4 +215,31 @@ The full rationale, target diagrams, staged migration plan, and the eventual-con
 4. **Move it off the 29s HTTP path** — async job (Step Functions / SQS) that paginates and is resumable; the endpoint just enqueues.
 
 **Raised in:** Operating the Phase 17 backfill against prod, 2026-06-05 (this session). The backfill itself succeeded and is verified; this is about the endpoint's robustness, not Phase 17.
+**Recurred:** Phase 22 `NoteSearchView` backfill, 2026-06-08 — clean `{"rebuilt":12}` 200 on the first try this time (luck of warm tables), but the unbounded-write/5s-timeout risk is unchanged.
+**Depends on:** Nothing blocking.
+
+---
+
+## Auto-backfill a new projection on deploy (new projections ship empty)
+
+**What:** A deploy creates a new projection's table but **never populates it** — there is no automatic rebuild — so a newly-shipped projection holds only entities written *after* the deploy. The feature reads empty in prod while every test passes. The current mitigation is a manual post-deploy `POST /admin/projections/rebuild` (now a mandatory Scribe step + CLAUDE.md guardrail for projection-adding slices), but that is human-triggered and was missed once.
+
+**Confirmed in prod, 2026-06-08:** Phase 22 search returned **no results** because `notetaker-proj-notesearchview` had 1 of ~12 live notes — the 22-A deploy created the table but nothing rebuilt it. A manual rebuild fixed it.
+
+**Why it matters:** silent, repeats for *every* future projection, and the symptom (feature returns nothing) looks like a code bug, not an ops gap.
+
+**Fix options:** (1) detect new projection tables in the deploy job and POST the rebuild automatically (idempotent) after deploy; or (2) a deploy step that diffs the projection set and rebuilds only the new ones (needs the rebuild-robustness fix above so a bulk rebuild can't partial-fail). Pairs with the rebuild-robustness item.
+**Raised in:** Phase 22 search backfill, 2026-06-08.
+**Depends on:** the rebuild-robustness fix above (a safe auto-rebuild must not partial-fail).
+
+---
+
+## Rebuild emits delete tombstones for `NoteSearchView` (rebuild soft-deletes; live hard-deletes)
+
+**What:** The **live** delete path hard-deletes the search row on `NoteDeleted` (`DynamoDbNoteSearchViewStore.DeleteAsync`), but the **rebuild** path writes deleted notes as `Deleted=true` rows (the `NoteSearchViewProjection` keeps them and `GetAll()` returns them). After the Phase 22 prod backfill the table held **80 `Deleted=true` tombstones** alongside 11 live rows.
+
+**Why it matters:** search correctness is fine (the endpoint filters `Deleted`), but every search's `UserId-index` GSI query now returns the tombstones too and the in-Lambda rank scans them (inflated `notesScanned`/latency), and the two delete strategies diverge. Low severity, grows with deletion volume.
+
+**Fix:** make the rebuild projection prune deleted notes (drop them from `GetAll()`) so the rebuilt table matches the live hard-delete, OR have the rebuild explicitly skip upserting `Deleted` search rows.
+**Raised in:** Phase 22 search backfill verification, 2026-06-08.
 **Depends on:** Nothing blocking.
