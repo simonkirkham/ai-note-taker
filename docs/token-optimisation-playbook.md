@@ -38,6 +38,7 @@ Deploy-only failures invisible to `cdk synth` / `Template.FromStack` / Hawk, eac
 
 - Two slices sharing one file (`App.css`, `NoteTakerStack.cs`) is the anti-pattern for parallel worktrees — double conflict resolution + redundant full-suite reruns, and a break in one stalls the other (12-E/H ≈ –120k; CHANGE-5/6/7 batch ~536k). Sequence shared-file slices instead (CHANGE-8/9 proved it: branch the second after the first merges → zero conflict).
 - Never background a slice agent *and* take it over — the collision forces a reset + re-merge (CHANGE-6). If you take over, treat the agent as dead.
+- The rule scales to **phases**: phases that all edit a hub file (`App.tsx` — Phase 20 server-state, 21 routing, 22 search) must be **sequenced**, not overlapped. 20-B cost ~360k (≈2× clean) in two mid-build rebases + re-verifies when 21-A then 22-A landed on `App.tsx` mid-build; the folder logic never conflicted, only the shared file. Land the structural phase (routing) first, branch the rest off it.
 
 ## Work off main in a worktree, never stage on the shared checkout
 
@@ -69,5 +70,7 @@ A Plan/Explore agent that resolves a hidden requirement before implementation bu
 | Concurrent session clobbers backlog numbering | Reserve the number with a table-row commit first; re-read at Scribe | CHANGE-12 |
 | `find` over untracked project dumps `bin/`+`obj/` | `-not -path '*/bin/*' -not -path '*/obj/*'` | 10-F |
 | Stale E2E data from a prior failed run poisons next | Clear test data *before* E2E, not only after | 3-B |
+| `git rebase --quit` to finish a resolved rebase leaves the branch ref behind → detached HEAD → stale PR head pushed | Never `--quit` to finish; use `--continue`, or `git checkout -B <branch> <sha>` then `--force-with-lease`; verify `gh pr view -n --json headRefOid` == local HEAD | 20-B |
+| Async `onError` rollback assertion races a sync check (green on `forks`, red on `threads`/CI) | Wrap rollback assertions in `waitFor`; only optimistic-apply-after-`userEvent` can be sync | 20-B |
 | Sibling frontend slice merged shared infra (providers/test helper) → PR-merge CI red while local green | Merge `origin/main` + re-run before finalizing a frontend PR when other frontend slices are in flight | 21-A |
 | Local green only under `CI=1` forks; `vmThreads` red on an ESM-in-CJS dep | Test new frontend deps under the local `vmThreads` pool too, not just forks, before committing | 21-A |
