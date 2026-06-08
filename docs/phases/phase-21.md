@@ -8,7 +8,7 @@
 |-------|---------|--------|------------|
 | Gate | **ADR 0013 — adopt React Router v7 (`react-router`).** Record why a router (deep-linking + history) now earns a dependency in this learning-vehicle frontend. No code. | Done | — |
 | 21-A | **Router foundation + note & home URLs.** Install `react-router`; mount `<BrowserRouter>` inside `App`; routes `/` (home) and `/notes/:noteId`; convert note open/back/create to `navigate()`; remove the `note` arm of the `view` union. Back/forward + deep-link + shareable note URL. | Done | Gate |
-| 21-B | **Folder URLs.** Route `/folders/:folderId` (+ `/folders/unfiled`); derive `folderPath` from the folder tree by id; remove the `folder` arm of the `view` union. Back/forward across folders + home; deep-link to a folder. | Not Started | 21-A |
+| 21-B | **Folder URLs.** Route `/folders/:folderId` (+ `/folders/unfiled`); derive `folderPath` from the folder tree by id; remove the `folder` arm of the `view` union. Back/forward across folders + home; deep-link to a folder. | Done | 21-A |
 | 21-C | **Deep-link edge cases.** Missing/deleted note → redirect home with a toast; signed-out deep link returns to the requested URL after sign-in; verify CloudFront serves a hard-loaded deep link (smoke/E2E). | Not Started | 21-A, 21-B |
 
 > **21-A is the keystone** — it introduces the router and sets the `navigate()`/`useParams` pattern every later slice copies; get the route table and the new-note navigation right before fanning out. 21-B and 21-C both depend on it; 21-B and 21-C both touch `App.tsx` route wiring, so sequence them (B then C). **Transient surfaces stay in component state, not the URL:** the folder sidebar, the folder-preview pull-out, and the Transcript/Quick/Final note tabs are *not* routed in this phase (note tabs are a candidate follow-up). The optimistic-UI rule (CLAUDE.md) applies to navigation too — `navigate()` must fire synchronously on the user action, never after an `await`.
@@ -81,6 +81,8 @@ Scenario: Creating a note navigates without a recreate on Back
 ---
 
 ## Slice 21-B — Folder URLs
+
+**Status:** Done (PR #190, deploy #481, 2026-06-08). Folder context (`activeFolderId` + breadcrumb) is derived from the URL via `useMatch` rather than component state; one flat `/folders/:folderId` segment addresses any depth, with the breadcrumb rebuilt from the folders tree by a new `findPath` helper. Built on 20-B's TanStack folder hooks — deriving the breadcrumb from the cache let the manual rename-path rollback be deleted. See [phase-21b-folder-urls](../learnings/phase-21b-folder-urls.md).
 
 **User value:** A folder view has its own URL; back/forward steps through folder navigation, and a folder can be linked directly.
 
