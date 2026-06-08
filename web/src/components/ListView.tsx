@@ -1,13 +1,37 @@
 import clsx from "clsx";
 import { useEffect, useMemo, useState } from "react";
-import { NoteCard as NoteCardData } from "../api/notes";
+import { NoteCard as NoteCardData, SearchResult } from "../api/notes";
 import { TagIndexEntry, getTags } from "../api/tags";
 import { effectiveDate, isEditedToday, localTodayISO } from "../dates";
+import { type SearchState, useNoteSearch } from "../hooks/useNoteSearch";
 import styles from "./ListView.module.css";
 import MeetingsSection from "./MeetingsSection";
 import NoteCard from "./NoteCard";
+import SearchBar from "./SearchBar";
 import TagFilter from "./TagFilter";
 import TodoSection from "./TodoSection";
+
+// Join a ranked search result to its already-loaded card so the full NoteCard
+// renders, but with the matched snippet as the preview. Falls back to a minimal
+// card when the result's note isn't in the loaded set (edge case).
+function resultToCard(
+  result: SearchResult,
+  byId: Map<string, NoteCardData>,
+): NoteCardData {
+  const card = byId.get(result.noteId);
+  if (card) return { ...card, contentPreview: result.snippet };
+  return {
+    noteId: result.noteId,
+    title: result.title,
+    contentPreview: result.snippet,
+    date: null,
+    openActions: [],
+    createdAt: "",
+    lastModifiedAt: "",
+    tags: [],
+    folderId: null,
+  };
+}
 
 export default function ListView({
   cards,
@@ -39,10 +63,27 @@ export default function ListView({
   const [filterMode, setFilterMode] = useState<"AND" | "OR">("AND");
   const [showOlder, setShowOlder] = useState(false);
   const [filtersOpen, setFiltersOpen] = useState(false);
+  const [query, setQuery] = useState("");
+
+  const { state: searchState, retry } = useNoteSearch(query);
+  const searching = query.trim() !== "";
 
   useEffect(() => {
     getTags().then(setTagEntries).catch(() => {});
   }, []);
+
+  const cardsById = useMemo(
+    () => new Map(cards.map((c) => [c.noteId, c])),
+    [cards],
+  );
+
+  const searchCards = useMemo(
+    () =>
+      searchState.status === "results"
+        ? searchState.results.map((r) => resultToCard(r, cardsById))
+        : [],
+    [searchState, cardsById],
+  );
 
   const availableTags = useMemo(() => tagEntries.map((e) => e.tag), [tagEntries]);
 
@@ -168,17 +209,25 @@ export default function ListView({
           <div className={styles.homeLeft}>
             <section className={styles.noteCardsSection}>
               <div className={styles.noteCardsHeader}>
-                <h2 className={styles.noteCardsHeading}>Notes</h2>
+                <h2 className={styles.noteCardsHeading}>
+                  {searchState.status === "results"
+                    ? `${searchState.results.length} ${
+                        searchState.results.length === 1 ? "match" : "matches"
+                      }`
+                    : "Notes"}
+                </h2>
               </div>
+              <SearchBar value={query} onChange={setQuery} onClear={() => setQuery("")} />
               <div className={styles.filtersSection}>
                 <button
                   type="button"
                   className={clsx(styles.filtersToggle, {
-                    [styles.filtersToggleOpen]: filtersOpen,
-                    [styles.filtersToggleActive]: showActiveSummary,
+                    [styles.filtersToggleOpen]: filtersOpen && !searching,
+                    [styles.filtersToggleActive]: showActiveSummary && !searching,
                   })}
-                  aria-expanded={filtersOpen}
+                  aria-expanded={filtersOpen && !searching}
                   aria-controls="home-filters-panel"
+                  disabled={searching}
                   onClick={() => setFiltersOpen((open) => !open)}
                 >
                   <span className={styles.filtersToggleChevron} aria-hidden="true">
@@ -186,17 +235,22 @@ export default function ListView({
                   </span>
                   <span>
                     Filters
-                    {showActiveSummary && (
+                    {showActiveSummary && !searching && (
                       <span className={styles.filtersToggleSummary}> · {filterSummary}</span>
                     )}
                   </span>
                 </button>
+                {searching && (
+                  <p className={styles.filtersPausedHint} role="status">
+                    Filters paused while searching
+                  </p>
+                )}
                 <div
                   id="home-filters-panel"
                   className="filters-panel"
-                  hidden={!filtersOpen}
+                  hidden={!filtersOpen || searching}
                 >
-                  {filtersOpen && (
+                  {filtersOpen && !searching && (
                     <>
                       <div className={styles.filtersGroup}>
                         <span className={styles.filtersGroupLabel}>Tags</span>
@@ -224,7 +278,14 @@ export default function ListView({
                   )}
                 </div>
               </div>
-              {homeCards.length > 0 ? (
+              {searching ? (
+                <SearchResultsArea
+                  state={searchState}
+                  cards={searchCards}
+                  onEditNote={onEditNote}
+                  onRetry={retry}
+                />
+              ) : homeCards.length > 0 ? (
                 <div className={styles.noteCards} data-testid="note-cards">
                   {homeCards.map((card) => (
                     <NoteCard
@@ -249,5 +310,49 @@ export default function ListView({
         </div>
       )}
     </main>
+  );
+}
+
+function SearchResultsArea({
+  state,
+  cards,
+  onEditNote,
+  onRetry,
+}: {
+  state: SearchState;
+  cards: NoteCardData[];
+  onEditNote: (noteId: string) => void;
+  onRetry: () => void;
+}) {
+  if (state.status === "loading") {
+    return (
+      <p className={styles.searchStatus} role="status">
+        Searching…
+      </p>
+    );
+  }
+  if (state.status === "error") {
+    return (
+      <div className={styles.searchError} role="alert">
+        <p>Search failed.</p>
+        <button type="button" className={styles.searchRetry} onClick={onRetry}>
+          Retry
+        </button>
+      </div>
+    );
+  }
+  if (state.status === "empty") {
+    return (
+      <p className={styles.noteCardsEmpty} role="status">
+        No matching notes
+      </p>
+    );
+  }
+  return (
+    <div className={styles.noteCards} data-testid="note-cards">
+      {cards.map((card) => (
+        <NoteCard key={card.noteId} card={card} onEdit={onEditNote} />
+      ))}
+    </div>
   );
 }
