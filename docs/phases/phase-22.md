@@ -10,6 +10,7 @@
 |-------|---------|--------|------------|
 | 22-A | **Searchable read model + fuzzy search endpoint.** New `NoteSearchView` projection (one doc per note: title, body, final-notes text, tags, action-item text, `UserId`), wired inline in every handler that changes a searchable field, plus a rebuild backfill. New `GET /notes/search?q=` reads the user's docs and fuzzy-ranks in-Lambda, returning ranked results scoped to the user. No UI — independently shippable. | Done | — |
 | 22-B | **Home search bar.** A debounced, as-you-type search box on the home screen; results replace the card grid; composes with the existing tag/folder/date filters; explicit no-results and error states distinct from each other; clearing restores the normal view; out-of-order responses discarded (latest query wins). | Done | 22-A |
+| 22-C | **Highlight matched terms.** The ranker returns the actual word(s) that matched (`matchedTerms`, including fuzzy/typo hits via FuzzySharp token extraction); results highlight those terms in the title, snippet, and matching tag pill, plus a "matched in title/tag/notes" label. | Not Started | 22-A, 22-B |
 
 > 22-A is a backend-only vertical slice (a working search API, no screen) and ships on its own. 22-B is the user-facing half and depends on 22-A. Both build on the projection-rebuild infrastructure and on Phase 15 (Final-notes content) and Phase 3/11 (action-item text). A throwaway frontend prototype of the search bar precedes 22-B; its confirmed GWT/UX rewrites the 22-B section here on exit.
 
@@ -178,6 +179,70 @@
 
 ---
 
+## Slice 22-C — Highlight matched terms
+
+**Status:** Not Started
+
+**User value:** See *why* each result matched — the actual word(s) that hit are highlighted in the title, snippet, and tag, even for typo/fuzzy matches (`planing` lights up `planning`), with a "matched in title/tag/notes" label.
+
+### How it works (implementation notes)
+
+- **Backend** — `NoteSearchRanker` already finds the winning field + score per result; extend it to also capture the **matched term(s)**: run FuzzySharp `Process.ExtractOne`/`ExtractTop` (the same ratio used for ranking) over the **winning field's tokens** against the query, keep the token(s) at/above the match threshold, and return them as `matchedTerms: string[]` on the result. For a tag match the term is the matched tag; for title/notes it's the matched word. This is the only place that *knows* what matched, so it owns highlighting truth — the client never re-runs fuzzy logic. Add `matchedTerms` to the `GET /notes/search` response item (additive).
+- **Frontend** — `NoteCard` gains an optional `highlight?: string[]` prop (set only for search results). When present, wrap each occurrence of a term (case-insensitive **exact** substring — the terms came from the text, so they're literally present) in `<mark>` across the **title, snippet, and any matching tag pill**, via JSX text nodes (**never** `dangerouslySetInnerHTML`). Render the existing `matchedField` as a small "matched in title/tag/notes" label. Home/folder grids pass no `highlight`, so they render unchanged. Closes the Hawk nit that `score`/`matchedField` were unused.
+
+### Scenarios
+
+**Exact match returns the matched term**
+- Given a note body containing "budget review"
+- When the user searches `budget`
+- Then the result's `matchedTerms` includes `budget`
+
+**Fuzzy/typo match returns the word that actually matched**
+- Given a note body containing "planning"
+- When the user searches `planing`
+- Then `matchedTerms` includes `planning` (the matched word, not the query)
+
+**Tag match returns the matched tag as the term**
+- Given a note tagged `roadmap`
+- When the user searches `roadmap`
+- Then `matchedTerms` includes `roadmap` and `matchedField` is `tag`
+
+**No spurious terms**
+- Given a note that matched on one word
+- When the result is returned
+- Then `matchedTerms` contains only token(s) at/above the match threshold, not unrelated words
+
+**Terms highlighted in the result**
+- Given a result with `matchedTerms` `["planning"]`
+- When it is rendered
+- Then `planning` is wrapped in a highlight in the title and/or snippet, and a "matched in …" label is shown
+
+**Matching tag pill highlighted**
+- Given a result whose match is a tag
+- When it is rendered
+- Then the matching tag pill is highlighted
+
+**Non-search cards are unchanged**
+- Given the home or folder grid (no `highlight` prop)
+- When cards render
+- Then no highlight markup is applied
+
+**Highlighting is XSS-safe**
+- Given a matched term containing markup characters
+- When highlighted
+- Then it renders as text (no injected markup)
+
+### Acceptance criteria
+
+1. `GET /notes/search` items include `matchedTerms: string[]` — the actual winning-field word(s) that matched (via FuzzySharp token extraction), populated for fuzzy/typo matches too; empty when nothing clears the threshold.
+2. `matchedField` and `matchedTerms` are both consumed by the frontend (no unused response fields — contract-honesty).
+3. Each matched term is highlighted (case-insensitive) in the result's title, snippet, and matching tag pill; a "matched in title/tag/notes" label is shown.
+4. Highlighting renders via JSX text nodes, never `dangerouslySetInnerHTML`; a term with HTML/markdown characters cannot inject markup — covered by a test.
+5. `NoteCard` highlighting is opt-in; home/folder grids render identically to before — covered by a test.
+6. Backend `Api.Integration` asserts `matchedTerms` for exact, typo, title, and tag matches; frontend component tests cover highlight-in-title/snippet/tag, the label, the no-prop case, and XSS-safety. `tsc`/`lint`/`vitest` green; no infra change (`cdk synth` unaffected).
+
+---
+
 ## Observability
 
 Search fails **silently** in two ways that both look like "no notes" to the user, so the failure modes must be distinguishable in telemetry and UI.
@@ -187,6 +252,7 @@ Search fails **silently** in two ways that both look like "no notes" to the user
 3. **Latency growth with note count.** In-Lambda ranking is linear in the user's note count; as it grows, search latency climbs silently. Emit `notesScanned` + search latency on `SearchPerformed`; this is the quantified trigger to graduate to the pagination/server-side-filter feature. Alarm-worthy if P99 latency crosses the user-facing budget.
 4. **Cross-user leakage.** A bug in the `UserId` filter would return another user's notes — a silent security failure, not a visible error. This is logic, not telemetry: guard with the 22-A isolation `Api.Integration` scenario.
 5. **Frontend: failed search rendered as empty.** A swallowed fetch error shown as "no matching notes" hides a real outage. Guard: the explicit error state (22-B AC #2) + a component test; surface search request failures to RUM like other failed API calls.
+6. **(22-C) No new silent failure modes.** `matchedTerms` is an additive response field and highlighting is pure presentation — a wrong/empty term just shows no highlight, never a wrong result. No new instrumentation; the XSS-safety and no-highlight-leak guards are component tests (22-C AC #4/#5).
 
 **Privacy:** never log the **raw query text** or **note content** — meeting notes are sensitive (the same reason the data stays in AWS). Log query **length** + `resultCount` + latency only; metrics carry no free text.
 
