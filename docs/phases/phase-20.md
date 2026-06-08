@@ -10,7 +10,7 @@
 | 20-A | **Foundation + todos pilot.** `QueryClientProvider`, query-key factory, `QueryClient` defaults, devtools; migrate `TodoSection` (`getTodos` + complete/reopen/delete/add) as the reference template for every later slice. | Done | Gate |
 | 20-B | **Folders (tree).** `getFolders` + create/rename/delete/move-folder; delete the `App.tsx` `getFolders().then(setFolders)` invalidation sprawl. Note↔folder assignment (`moveNoteToFolder`/`unfileNote`) defers to 20-C with note cards. | Done | 20-A |
 | 20-C | **Note cards / list.** `getNoteCards` + `useNotes` (create/rename/delete). | Not Started | 20-A, 20-B |
-| 20-D | **Actions + tag index.** `useActions(noteId)` + action mutations (also invalidate `keys.todos`); `useTags()` (dedups NoteView+ListView's two `getTags` fetches) + tag-index invalidation. Note-applied tags stay local (→ 20-E). Component-only, no `App.tsx`. | Not Started | 20-A |
+| 20-D | **Actions + tag index.** `useActions(noteId)` + action mutations (also invalidate `keys.todos`); `useTags()` (dedups NoteView+ListView's two `getTags` fetches) + tag-index invalidation. Note-applied tags stay local (→ 20-E). Component-only, no `App.tsx`. | Done | 20-A |
 | 20-E | **Note detail.** `getNoteDetail` + `editContent`/`setNoteDate`/`analyseNote` refetch (NoteView has the most mutations). | Not Started | 20-A |
 | 20-F | **Meetings.** `getMeetingsForDate` + create-from-meeting / next-occurrence / link; preserve Phase 16's reminders-vs-browsed-day decoupling. | Not Started | 20-A |
 | 20-G | **Cleanup.** Remove dead hand-rolled hooks + remaining manual invalidation; fold retry/backoff into `QueryClient` defaults (subsumes Phase 19's 19-H); learnings. | Not Started | 20-B…20-F |
@@ -154,7 +154,7 @@ Scenario: A folder mutation in one view updates every view
 
 ## Slice 20-D — Actions + tag index
 
-**Status:** Not Started
+**Status:** Done
 
 **User value:** None directly (like-for-like migration of two component-scoped domains). Completing or deleting an action inside a note now updates the home to-do list without a remount, and tagging a note refreshes the tag filter/suggestions everywhere — both via cache invalidation rather than the current per-component refetch.
 
@@ -206,16 +206,16 @@ Scenario: Tagging a note refreshes the tag index everywhere
 
 ### Acceptance criteria
 
-- [ ] `web/src/hooks/useActions.ts` reads via `useQuery({ queryKey: keys.actions(noteId), queryFn: () => getActions(noteId) })`; `ActionsSection` consumes it (no hand-rolled `getActions` `useEffect`/`useState` remains)
-- [ ] `useActionMutations` exposes add/complete/reopen/delete (`useMutation`, `onMutate` optimistic + `onError` rollback + `onSettled` invalidate `keys.actions(noteId)` **and `keys.todos`**); per-item busy preserved (`mutation.variables`/`isPending` or a local in-flight set)
-- [ ] Add swaps the optimistic temp id for the server id via the `onSettled` refetch; `onCountChange` to `NoteView` still fires
-- [ ] `useTodoMutations` (20-A) additionally invalidates `keys.actions(item.noteId)` for `type:"action"` items so an open `ActionsSection` reflects a home-list completion
-- [ ] `web/src/hooks/useTags.ts` (`useQuery`, `keys.tags`) replaces the hand-rolled `getTags().then(setAllTags)` in `NoteView` and `getTags().then(setTagEntries)` in `ListView` — both read the shared cache
-- [ ] `useTagMutations` (`useTagNote`/`useUntagNote`) wrap `tagNote`/`untagNote` and `onSettled`-invalidate `keys.tags`; `NoteView`'s applied-tags optimism stays local but reverts on mutation error
-- [ ] `useTagSuggestions` unchanged; note-applied tags (`NoteView` local `tags`) not migrated (→ 20-E)
-- [ ] **No `App.tsx` changes**; todos (20-A) + folders (20-B) stay on TanStack; note cards/meetings/note-detail stay hand-rolled (coexistence intact)
-- [ ] Optimistic-UI rule satisfied — apply immediately, roll back on error (surfacing unchanged from today)
-- [ ] `ActionsSection.test.tsx` rendered through the QueryClient helper with mutation-aware MSW handlers; `TagFilter`/`ListView`/`NoteView`/`TagsSection` tests stay green; full Vitest suite + `tsc -b`/build + ESLint green
+- [x] `web/src/hooks/useActions.ts` reads via `useQuery({ queryKey: keys.actions(noteId), queryFn: () => getActions(noteId) })`; `ActionsSection` consumes it (no hand-rolled `getActions` `useEffect`/`useState` remains)
+- [x] `useActionMutations` exposes add/complete/reopen/delete (`useMutation`, `onMutate` optimistic + `onError` rollback); per-item busy preserved (local in-flight sets). **As shipped:** complete/reopen/delete invalidate `keys.todos` only (single `keys.actions` consumer — keystone principle); `add` also invalidates `keys.actions` for the temp-id swap
+- [x] Add swaps the optimistic temp id for the server id via the `onSettled` refetch; `onCountChange` to `NoteView` still fires
+- [x] `useTodoMutations` (20-A) additionally invalidates `keys.actions(item.noteId)` for `type:"action"` items so an open `ActionsSection` reflects a home-list completion
+- [x] `web/src/hooks/useTags.ts` (`useQuery`, `keys.tags`) replaces the hand-rolled `getTags().then(setAllTags)` in `NoteView` and `getTags().then(setTagEntries)` in `ListView` — both read the shared cache
+- [x] `useTagMutations` (`useTagNote`/`useUntagNote`) wrap `tagNote`/`untagNote` and `onSettled`-invalidate `keys.tags`; `NoteView`'s applied-tags optimism stays local but reverts on mutation error
+- [x] `useTagSuggestions` unchanged; note-applied tags (`NoteView` local `tags`) not migrated (→ 20-E)
+- [x] **No `App.tsx` changes**; todos (20-A) + folders (20-B) stay on TanStack; note cards/meetings/note-detail stay hand-rolled (coexistence intact)
+- [x] Optimistic-UI rule satisfied — apply immediately, roll back on error (forced-reject tests for add/complete/delete; surfacing unchanged from today)
+- [x] `ActionsSection.test.tsx` rendered through the QueryClient helper with mutation-aware MSW handlers + a cross-view action→todo test; `NoteView.test.tsx` moved to the helper; `TagFilter`/`ListView`/`TagsSection` tests stay green; full Vitest suite + `tsc -b`/build + ESLint green
 
 ### Observability
 
