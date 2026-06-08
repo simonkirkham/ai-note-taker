@@ -56,6 +56,21 @@ export interface NoteCard {
   folderId: string | null;
 }
 
+export interface SearchResult {
+  noteId: string;
+  title: string;
+  snippet: string;
+  score: number;
+  matchedField: string;
+}
+
+export async function searchNotes(q: string): Promise<SearchResult[]> {
+  const body = await request<{ items: SearchResult[] }>(
+    `/notes/search?q=${encodeURIComponent(q)}`,
+  );
+  return body.items;
+}
+
 export function getNoteDetail(noteId: string): Promise<NoteDetail> {
   return request<NoteDetail>(`/notes/${noteId}`);
 }

@@ -4,6 +4,7 @@ export const handlers = [
   http.get('/api/notes', () => HttpResponse.json({ items: [] })),
   http.get('/api/folders', () => HttpResponse.json({ folders: [] })),
   http.get('/api/notes/cards', () => HttpResponse.json({ cards: [] })),
+  http.get('/api/notes/search', () => HttpResponse.json({ items: [] })),
   http.get('/api/tags', () => HttpResponse.json({ tags: [] })),
   http.get('/api/todos', () => HttpResponse.json({ items: [] })),
   http.post('/api/todos', () => HttpResponse.json({ todoId: 'new-todo-id' })),
