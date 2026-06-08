@@ -1,0 +1,104 @@
+import { render, screen, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
+import { http, HttpResponse } from 'msw'
+import App from '../App'
+import { AuthProvider } from '../auth/AuthContext'
+import { clearToken } from '../auth/tokenStore'
+import { ToastProvider } from '../components/ToastProvider'
+import { server } from '../test/setup'
+
+// Phase 21-A — distinct URLs for home and notes; working back/forward; deep-linkable note URL.
+// App owns its own <BrowserRouter>, so these tests assert against window.location.
+
+const today = new Date().toISOString().slice(0, 10)
+const now = new Date().toISOString()
+
+const oneCard = {
+  noteId: 'note-1',
+  title: 'Test Note',
+  contentPreview: '',
+  date: today,
+  openActions: [],
+  createdAt: now,
+  lastModifiedAt: now,
+  tags: [],
+  folderId: null,
+}
+
+const renderApp = () =>
+  render(
+    <ToastProvider>
+      <AuthProvider initialToken="test-token">
+        <App />
+      </AuthProvider>
+    </ToastProvider>,
+  )
+
+beforeEach(() => {
+  window.history.replaceState({}, '', '/')
+  server.use(http.get('/api/notes/cards', () => HttpResponse.json({ cards: [oneCard] })))
+})
+
+afterEach(() => clearToken())
+
+describe('Routing (21-A)', () => {
+  it('opening a note pushes a /notes/:id URL', async () => {
+    renderApp()
+    await userEvent.click(await screen.findByTestId('note-card'))
+    expect(await screen.findByTestId('note-title-input')).toBeInTheDocument()
+    expect(window.location.pathname).toBe('/notes/note-1')
+  })
+
+  it('Back returns to the home screen', async () => {
+    renderApp()
+    await userEvent.click(await screen.findByTestId('note-card'))
+    await screen.findByTestId('note-title-input')
+
+    window.history.back()
+
+    await waitFor(() => expect(window.location.pathname).toBe('/'))
+    expect(await screen.findByRole('heading', { name: 'Home' })).toBeInTheDocument()
+  })
+
+  it('Forward reopens the note', async () => {
+    renderApp()
+    await userEvent.click(await screen.findByTestId('note-card'))
+    await screen.findByTestId('note-title-input')
+    window.history.back()
+    await waitFor(() => expect(window.location.pathname).toBe('/'))
+
+    window.history.forward()
+
+    await waitFor(() => expect(window.location.pathname).toBe('/notes/note-1'))
+    expect(await screen.findByTestId('note-title-input')).toBeInTheDocument()
+  })
+
+  it('deep-linking /notes/:id loads the note directly', async () => {
+    window.history.replaceState({}, '', '/notes/note-1')
+    renderApp()
+    expect(await screen.findByTestId('note-title-input')).toBeInTheDocument()
+    expect(window.location.pathname).toBe('/notes/note-1')
+  })
+
+  it('creating a note navigates to it and Back does not recreate it', async () => {
+    let creates = 0
+    server.use(
+      http.post('/api/notes', () => {
+        creates += 1
+        return HttpResponse.json({ noteId: 'created-1' })
+      }),
+    )
+    renderApp()
+    await screen.findByTestId('note-card') // home loaded
+
+    await userEvent.click(document.querySelector('.new-note-button') as HTMLElement)
+
+    await waitFor(() => expect(window.location.pathname).toBe('/notes/created-1'))
+    expect(creates).toBe(1)
+
+    window.history.back()
+
+    await waitFor(() => expect(window.location.pathname).toBe('/'))
+    expect(creates).toBe(1)
+  })
+})

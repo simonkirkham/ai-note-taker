@@ -1,6 +1,15 @@
 import clsx from "clsx";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
+  BrowserRouter,
+  Navigate,
+  Route,
+  Routes,
+  useLocation,
+  useNavigate,
+  useParams,
+} from "react-router";
+import {
   FolderNode,
   getFolders,
   createFolder as apiCreateFolder,
@@ -22,10 +31,7 @@ import SignInPage from "./components/SignInPage";
 import { UNFILED_ID } from "./constants";
 import { useNotes } from "./hooks/useNotes";
 
-type View =
-  | { kind: "list" }
-  | { kind: "folder"; folderId: string; folderPath: string[] }
-  | { kind: "note"; noteId: string; isNew?: boolean; initialTitle?: string };
+type NoteNavState = { isNew?: boolean; initialTitle?: string };
 
 function mapTree(
   nodes: FolderNode[],
@@ -46,6 +52,14 @@ function removeFromTree(nodes: FolderNode[], folderId: string): FolderNode[] {
 }
 
 export default function App() {
+  return (
+    <BrowserRouter>
+      <AppGate />
+    </BrowserRouter>
+  );
+}
+
+function AppGate() {
   const { idToken, forbidden, sessionExpired, signIn, signOut } = useAuth();
   if (sessionExpired) return <SessionExpiredBanner onSignIn={signIn} />;
   if (!idToken) return <SignInPage />;
@@ -60,7 +74,7 @@ export default function App() {
 }
 
 function AppContent({ signOut }: { signOut: () => void }) {
-  const [view, setView] = useState<View>({ kind: "list" });
+  const navigate = useNavigate();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const { notes, loading, creating, createError, create, rename, remove } = useNotes();
   const [folders, setFolders] = useState<FolderNode[]>([]);
@@ -78,6 +92,13 @@ function AppContent({ signOut }: { signOut: () => void }) {
   const handleDateSet = useCallback((_noteId: string, _date: string) => {}, []);
   const [previewFolderId, setPreviewFolderId] = useState<string | null>(null);
   const [previewFolderName, setPreviewFolderName] = useState("");
+
+  function openNote(noteId: string, title?: string, isNew?: boolean) {
+    const state: NoteNavState = {};
+    if (isNew) state.isNew = true;
+    if (title) state.initialTitle = title;
+    navigate(`/notes/${noteId}`, { state });
+  }
 
   async function handleNewNote() {
     try {
@@ -99,7 +120,7 @@ function AppContent({ signOut }: { signOut: () => void }) {
           setCards((prev) => prev.map((c) => c.noteId === noteId ? { ...c, folderId: null } : c));
         });
       }
-      setView({ kind: "note", noteId, isNew: true });
+      openNote(noteId, undefined, true);
     } catch {
       // error surfaced by hook via createError
     }
@@ -108,7 +129,7 @@ function AppContent({ signOut }: { signOut: () => void }) {
   async function handleDelete(noteId: string) {
     await remove(noteId);
     setCards((prev) => prev.filter((c) => c.noteId !== noteId));
-    setView(backDestination());
+    navigate("/");
   }
 
   // NoteCard calls deleteNote() internally; this callback removes the card from shared state.
@@ -124,22 +145,22 @@ function AppContent({ signOut }: { signOut: () => void }) {
     });
   }
 
-  function backDestination(): View {
-    if (activeFolderId) return { kind: "folder", folderId: activeFolderId, folderPath: activeFolderPath };
-    return { kind: "list" };
+  function handleBackFromNote() {
+    navigate(-1);
+    getNoteCards().then(setCards).catch(() => {});
   }
 
   function handleUnfiledSelect() {
     setActiveFolderId(UNFILED_ID);
     setActiveFolderPath(["Unfiled Notes"]);
-    setView({ kind: "folder", folderId: UNFILED_ID, folderPath: ["Unfiled Notes"] });
+    navigate("/");
     setSidebarOpen(false);
   }
 
   function handleFolderSelect(folderId: string, folderPath: string[]) {
     setActiveFolderId(folderId);
     setActiveFolderPath(folderPath);
-    setView({ kind: "folder", folderId, folderPath });
+    navigate("/");
     setSidebarOpen(false);
     setPreviewFolderId(folderId);
     setPreviewFolderName(folderPath[folderPath.length - 1] ?? "");
@@ -148,7 +169,7 @@ function AppContent({ signOut }: { signOut: () => void }) {
   function handleHome() {
     setActiveFolderId(undefined);
     setActiveFolderPath([]);
-    setView({ kind: "list" });
+    navigate("/");
   }
 
   async function handleCreateFolder(name: string, parentFolderId?: string) {
@@ -170,16 +191,10 @@ function AppContent({ signOut }: { signOut: () => void }) {
   function handleRenameFolder(folderId: string, name: string) {
     const prevFolders = folders;
     const prevActiveFolderPath = activeFolderPath;
-    const prevView = view;
     setFolders((prev) => mapTree(prev, folderId, (n) => ({ ...n, name })));
     if (folderId === activeFolderId) {
-      const updatePath = (prev: string[]) =>
-        prev.map((seg, i) => (i === prev.length - 1 ? name : seg));
-      setActiveFolderPath(updatePath);
-      setView((prev) =>
-        prev.kind === "folder" && prev.folderId === folderId
-          ? { ...prev, folderPath: updatePath(prev.folderPath) }
-          : prev,
+      setActiveFolderPath((prev) =>
+        prev.map((seg, i) => (i === prev.length - 1 ? name : seg)),
       );
     }
     apiRenameFolder(folderId, name)
@@ -187,7 +202,6 @@ function AppContent({ signOut }: { signOut: () => void }) {
       .catch(() => {
         setFolders(prevFolders);
         setActiveFolderPath(prevActiveFolderPath);
-        setView(prevView);
       });
   }
 
@@ -204,7 +218,7 @@ function AppContent({ signOut }: { signOut: () => void }) {
     if (activeFolderId === folderId) {
       setActiveFolderId(undefined);
       setActiveFolderPath([]);
-      setView({ kind: "list" });
+      navigate("/");
     }
     if (previewFolderId === folderId) setPreviewFolderId(null);
     apiDeleteFolder(folderId)
@@ -217,35 +231,6 @@ function AppContent({ signOut }: { signOut: () => void }) {
       .then(() => getFolders().then(setFolders))
       .catch(() => {});
   }
-
-  const main =
-    view.kind === "note" ? (
-      <NoteView
-        key={view.noteId}
-        noteId={view.noteId}
-        initialTitle={view.initialTitle ?? notes.find((n) => n.noteId === view.noteId)?.title ?? ""}
-        onRename={handleRename}
-        onBack={() => { setView(backDestination()); getNoteCards().then(setCards).catch(() => {}); }}
-        onDelete={handleDelete}
-        onDateSet={handleDateSet}
-        onOpenNote={(noteId, title, isNew?) => setView({ kind: "note", noteId, isNew, ...(title ? { initialTitle: title } : {}) })}
-        isNew={view.isNew}
-      />
-    ) : (
-      <ListView
-        cards={cards}
-        loading={loading}
-        creating={creating}
-        createError={createError}
-        onNewNote={handleNewNote}
-        onEditNote={(noteId) => setView({ kind: "note", noteId })}
-        onOpenNote={(noteId, title, isNew?) => setView({ kind: "note", noteId, isNew, ...(title ? { initialTitle: title } : {}) })}
-        onDeleteNote={handleDeleteNote}
-        folderPath={view.kind === "folder" ? view.folderPath : undefined}
-        currentFolderId={view.kind === "folder" ? view.folderId : undefined}
-        onHome={handleHome}
-      />
-    );
 
   return (
     <div className={styles.appLayout}>
@@ -291,10 +276,79 @@ function AppContent({ signOut }: { signOut: () => void }) {
         folderName={previewFolderName}
         cards={cards}
         onClose={() => setPreviewFolderId(null)}
-        onEditNote={(noteId) => { setView({ kind: "note", noteId }); setPreviewFolderId(null); }}
+        onEditNote={(noteId) => { openNote(noteId); setPreviewFolderId(null); }}
         onDropNote={(noteId) => handleMoveNoteToFolder(noteId, previewFolderId === UNFILED_ID ? null : previewFolderId)}
       />
-      <div className={styles.appMain}>{main}</div>
+      <div className={styles.appMain}>
+        <Routes>
+          <Route
+            path="/"
+            element={
+              <ListView
+                cards={cards}
+                loading={loading}
+                creating={creating}
+                createError={createError}
+                onNewNote={handleNewNote}
+                onEditNote={(noteId) => openNote(noteId)}
+                onOpenNote={(noteId, title, isNew) => openNote(noteId, title, isNew)}
+                onDeleteNote={handleDeleteNote}
+                folderPath={activeFolderId ? activeFolderPath : undefined}
+                currentFolderId={activeFolderId}
+                onHome={handleHome}
+              />
+            }
+          />
+          <Route
+            path="/notes/:noteId"
+            element={
+              <NoteRoute
+                notes={notes}
+                onRename={handleRename}
+                onBack={handleBackFromNote}
+                onDelete={handleDelete}
+                onDateSet={handleDateSet}
+                onOpenNote={openNote}
+              />
+            }
+          />
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Routes>
+      </div>
     </div>
+  );
+}
+
+function NoteRoute({
+  notes,
+  onRename,
+  onBack,
+  onDelete,
+  onDateSet,
+  onOpenNote,
+}: {
+  notes: { noteId: string; title: string }[];
+  onRename: (noteId: string, title: string) => void;
+  onBack: () => void;
+  onDelete: (noteId: string) => Promise<void>;
+  onDateSet: (noteId: string, date: string) => void;
+  onOpenNote: (noteId: string, title?: string, isNew?: boolean) => void;
+}) {
+  const { noteId } = useParams();
+  const location = useLocation();
+  const navState = location.state as NoteNavState | null;
+  if (!noteId) return <Navigate to="/" replace />;
+  return (
+    <NoteView
+      key={noteId}
+      noteId={noteId}
+      initialTitle={navState?.initialTitle ?? notes.find((n) => n.noteId === noteId)?.title ?? ""}
+      onRename={onRename}
+      onBack={onBack}
+      onDelete={onDelete}
+      onDateSet={onDateSet}
+      onOpenNote={onOpenNote}
+      isNew={navState?.isNew}
+    />
   );
 }
