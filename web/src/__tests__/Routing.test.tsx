@@ -1,10 +1,12 @@
-import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { http, HttpResponse } from 'msw'
 import App from '../App'
 import { AuthProvider } from '../auth/AuthContext'
 import { clearToken } from '../auth/tokenStore'
 import { ToastProvider } from '../components/ToastProvider'
+// Shared render wraps in QueryClientProvider — ListView → TodoSection reads
+// server state via TanStack Query (slice 20-A).
+import { render, screen, waitFor, within } from '../test/render'
 import { server } from '../test/setup'
 
 // Phase 21-A — distinct URLs for home and notes; working back/forward; deep-linkable note URL.
