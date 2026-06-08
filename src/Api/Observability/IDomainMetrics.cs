@@ -9,4 +9,6 @@ public interface IDomainMetrics
     void EventsAppended(string aggregate, int count);
 
     void ConcurrencyConflict(string aggregate);
+
+    void SearchPerformed(int resultCount, int notesScanned, double latencyMs);
 }

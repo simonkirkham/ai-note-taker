@@ -17,6 +17,7 @@ public sealed class ActionItemCommandHandler(
     ITodoListStore todoListStore,
     INoteCardListStore noteCardListStore,
     IActionItemFeedbackStore actionItemFeedbackStore,
+    INoteSearchViewStore noteSearchViewStore,
     ICurrentUser currentUser,
     IDomainMetrics metrics,
     ILogger<ActionItemCommandHandler> logger) : IActionItemCommandHandler
@@ -108,9 +109,22 @@ public sealed class ActionItemCommandHandler(
         CancellationToken ct)
     {
         var card = await noteCardListStore.GetByNoteAsync(noteId, ct).ConfigureAwait(false);
-        if (card is { Deleted: false })
-            await noteCardListStore.UpsertAsync(
-                card with { ActionItems = update(card.ActionItems), LastModifiedAt = occurredAt }, ct).ConfigureAwait(false);
+        if (card is not { Deleted: false }) return;
+        var updatedItems = update(card.ActionItems);
+        await noteCardListStore.UpsertAsync(
+            card with { ActionItems = updatedItems, LastModifiedAt = occurredAt }, ct).ConfigureAwait(false);
+        await UpdateSearchViewActionsAsync(noteId, updatedItems, occurredAt, ct).ConfigureAwait(false);
+    }
+
+    async Task UpdateSearchViewActionsAsync(NoteId noteId, IReadOnlyList<NoteCardActionItem> items,
+        DateTimeOffset occurredAt, CancellationToken ct)
+    {
+        var existing = (await noteSearchViewStore.QueryByUserIdAsync(currentUser.UserId, ct).ConfigureAwait(false))
+            .FirstOrDefault(v => v.NoteId == noteId);
+        if (existing is null) return;
+        var actionItemsText = string.Join(" ", items.Select(i => i.Description));
+        await noteSearchViewStore.UpsertAsync(
+            existing with { ActionItemsText = actionItemsText, LastModifiedAt = occurredAt }, ct).ConfigureAwait(false);
     }
 
     async Task<(ActionItemAdded AddedEvent, EventEnvelope AddedEnvelope, IReadOnlyList<IDomainEvent> NewEvents, List<EventEnvelope> NewEnvelopes)>
