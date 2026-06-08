@@ -75,6 +75,7 @@ function AppGate() {
 
 function AppContent({ signOut }: { signOut: () => void }) {
   const navigate = useNavigate();
+  const location = useLocation();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const { notes, loading, creating, createError, create, rename, remove } = useNotes();
   const [folders, setFolders] = useState<FolderNode[]>([]);
@@ -129,7 +130,8 @@ function AppContent({ signOut }: { signOut: () => void }) {
   async function handleDelete(noteId: string) {
     await remove(noteId);
     setCards((prev) => prev.filter((c) => c.noteId !== noteId));
-    navigate("/");
+    // Destructive: replace so the deleted note is not reachable via Back.
+    navigate("/", { replace: true });
   }
 
   // NoteCard calls deleteNote() internally; this callback removes the card from shared state.
@@ -146,7 +148,11 @@ function AppContent({ signOut }: { signOut: () => void }) {
   }
 
   function handleBackFromNote() {
-    navigate(-1);
+    // On a cold deep-link there is no in-app history entry behind the note, so
+    // navigate(-1) would be a no-op; fall back to home. (location.key is
+    // "default" only for the initial entry.)
+    if (location.key === "default") navigate("/");
+    else navigate(-1);
     getNoteCards().then(setCards).catch(() => {});
   }
 

@@ -1,4 +1,6 @@
-# ADR 0013 — Adopt react-router-dom for client-side routing
+# ADR 0013 — Adopt React Router v7 (`react-router`) for client-side routing
+
+> Filename keeps the `react-router-dom` slug for stable inbound links (roadmap, phase-21). The decision is to import from the **`react-router`** package — see Decision below.
 
 **Status:** Accepted (Phase 21, slice 21-A, 2026-06-08)
 

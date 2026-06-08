@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { http, HttpResponse } from 'msw'
 import App from '../App'
@@ -80,6 +80,16 @@ describe('Routing (21-A)', () => {
     expect(window.location.pathname).toBe('/notes/note-1')
   })
 
+  it('in-app Back from a cold deep-link falls back to home', async () => {
+    window.history.replaceState({}, '', '/notes/note-1')
+    renderApp()
+    // A blank note shows Cancel, which calls onBack; there is no in-app history
+    // entry behind a cold deep-link, so the handler must fall back to "/".
+    await userEvent.click(await screen.findByTestId('cancel-button'))
+    await waitFor(() => expect(window.location.pathname).toBe('/'))
+    expect(await screen.findByRole('heading', { name: 'Home' })).toBeInTheDocument()
+  })
+
   it('creating a note navigates to it and Back does not recreate it', async () => {
     let creates = 0
     server.use(
@@ -91,7 +101,8 @@ describe('Routing (21-A)', () => {
     renderApp()
     await screen.findByTestId('note-card') // home loaded
 
-    await userEvent.click(document.querySelector('.new-note-button') as HTMLElement)
+    const main = screen.getByRole('main')
+    await userEvent.click(within(main).getByRole('button', { name: 'New Note' }))
 
     await waitFor(() => expect(window.location.pathname).toBe('/notes/created-1'))
     expect(creates).toBe(1)
