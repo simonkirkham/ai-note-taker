@@ -28,26 +28,22 @@ A spike is any agent whose count is more than double the next-highest agent, or 
 
 For each spike, note: which agent, roughly why, and what rule or workflow step would have changed the outcome. Pass these to the `process-improvements` skill as inputs — they become TODO or Done learnings entries.
 
-## Step 4 — Append to docs/token-log.md
+## Step 4 — Append a row to docs/token-log.md
+
+`docs/token-log.md` is one master table, one row per slice. Add a row:
 
 ```markdown
-## Slice <id> — <name>
-
-| Agent     | ~Tokens    |
-| --------- | ---------- |
-| Scout     | 12 000     |
-| Breaker   | 8 000      |
-| Pip       | 45 000     |
-| Stylist   | 12 000     |
-| Hawk      | 5 000      |
-| Scribe    | 3 000      |
-| **Total** | **85 000** |
-
-**Why:** <one sentence identifying the dominant cost driver>
+| <id> <short name> | <total> | <pip> | <hawk> | <one-line dominant cost driver> |
 ```
 
-If `docs/token-log.md` does not exist yet, create it with a `# Token Log` heading before appending.
+- `Pip` folds Breaker + implementation + orchestration (everything that isn't Hawk).
+- `Hawk` folds all review rounds — the recurring spike, so it gets its own column.
+- Use the per-agent counts from Step 1 only to compute these two figures; the full breakdown is not stored.
+
+If a slice surfaced a *new* avoidable cost (not already a row in `docs/token-optimisation-playbook.md`), add it there — never as a prose block in the log.
+
+If `docs/token-log.md` does not exist yet, create it with the `# Token Usage Log` heading and table header before appending.
 
 ## Done when
 
-Row appended to `docs/token-log.md` and any spike observations passed to `process-improvements`.
+Row appended to `docs/token-log.md`; any new avoidable cost added to `docs/token-optimisation-playbook.md`; any spike passed to `process-improvements`.

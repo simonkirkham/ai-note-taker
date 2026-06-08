@@ -13,66 +13,13 @@
 
 6.5-C removes 4 E2E journeys (NoteCard, TagFilter, TodoList, TodoComplete); 6.5-D removes 8 more (NoteContent, NoteDate, NoteDateDefaults, NoteLayout, ActionItemComplete, DeleteAction, ImplicitActionAdd, Sidebar), trimming Browser.E2E to exactly 5 kept journeys and cleaning up `AppPage.cs`.
 
-**Learning surface:** Vitest as a Vite-native test runner; React Testing Library's "test what the user sees" philosophy vs implementation-detail testing; MSW intercepting fetch at the network boundary so component code never changes for tests; where in the testing pyramid each layer earns its cost; naming as documentation — project names that encode their scope reduce the time to find the right test.
-
----
-
-## What changes
-
-### Test project renames
-
-| Old | New |
-|-----|-----|
-| `tests/Specs/` | `tests/Domain.Specs/` |
-| `tests/EventStoreIntegration/` | `tests/EventStore.Integration/` |
-| `tests/ApiIntegration/` | `tests/Api.Integration/` |
-| `tests/Acceptance/` | `tests/Api.Smoke/` |
-| `tests/InfraAssertions/` | `tests/Infrastructure.Assertions/` |
-| `tests/E2E/` | `tests/Browser.E2E/` |
-
-### New test layer
-
-| Layer | Type | Tool | Location | Run on |
-|-------|------|------|----------|--------|
-| 7 — Frontend components | Component (in-process) | Vitest + RTL + MSW | `web/src/__tests__/` | Every PR |
-
-### Browser.E2E — journeys to remove (12)
-
-The full E2E suite has 17 journey files. 5 are kept (see ADR 0008); the remaining 12 are replaced by component tests in 6.5-C and 6.5-D:
-
-`ActionItemCompleteJourney`, `DeleteActionJourney`, `ImplicitActionAddJourney`, `NoteCardJourney`, `NoteContentJourney`, `NoteDateDefaultsJourney`, `NoteDateJourney`, `NoteLayoutJourney`, `SidebarJourney`, `TagFilterJourney`, `TodoCompleteJourney`, `TodoListJourney`
-
-> `TagFilterJourney` was missing from the original remove list but belongs here: it tests only filter-bar UI interaction (no wiring path unique to production).
-
 ---
 
 ## Slice 6.5-A — Rename test projects
 
 **Status:** Done
 
-**Value:** Test project names that make their scope legible at a glance. Any engineer opening the `tests/` directory knows which project to reach for without reading a map.
-
-**Changes in scope:**
-
-- Six directory renames (`git mv`)
-- Six `.csproj` file renames
-- C# namespace declarations updated across all `.cs` files in each project
-- `ai-note-taker.sln` project display names and paths updated
-- `.github/workflows/pr.yml` — four `dotnet test` paths updated
-- `.github/workflows/deploy.yml` — five `dotnet test`/`dotnet build` paths updated; `playwright.ps1` path updated
-- `CLAUDE.md` — layout table and `How to run` commands updated
-- `docs/roadmap.md` — Phase 1.5 bullet paths updated
-- `docs/adr/0008-testing-strategy.md` — layer table and all prose updated
-
-**Key implementation files:**
-- `ai-note-taker.sln`
-- `.github/workflows/pr.yml`
-- `.github/workflows/deploy.yml`
-- `CLAUDE.md`
-- `docs/roadmap.md`
-- `docs/adr/0008-testing-strategy.md`
-
-**Scenarios:**
+### Scenarios
 
 ```
 Scenario: Solution builds clean after rename
@@ -97,7 +44,7 @@ Scenario: Infrastructure assertions pass under new name
   Then  all assertions pass
 ```
 
-**Acceptance criteria:**
+### Acceptance criteria
 
 - [x] All six directories, `.csproj` files, and C# namespaces renamed
 - [x] `ai-note-taker.sln` references updated
@@ -114,28 +61,7 @@ Scenario: Infrastructure assertions pass under new name
 
 **Status:** Done
 
-**Value:** The test infrastructure that all component tests depend on: Vitest wired to Vite, jsdom, RTL matchers, and an MSW server that intercepts `fetch` at the network boundary. CI gates on `npm run test` from this slice onwards.
-
-**Learning surface:** How MSW intercepts `fetch` at the network boundary rather than mocking modules — components call `fetch` exactly as in production, MSW responds in-process; `jsdom` as a headless DOM environment; React Testing Library's `screen.getByRole` / `findByText` query hierarchy and why it mirrors how a user reads the page.
-
-**Changes in scope:**
-
-- `web/package.json`: add `vitest`, `@testing-library/react`, `@testing-library/user-event`, `@testing-library/jest-dom`, `msw`, `jsdom` to `devDependencies`; add `"test": "vitest run"` script
-- `web/vite.config.ts`: add `test` block (`environment: 'jsdom'`, `setupFiles: ['./src/test/setup.ts']`, `globals: true`)
-- `web/src/test/setup.ts`: import `@testing-library/jest-dom`; configure MSW server lifecycle (`beforeAll` / `afterEach` / `afterAll`)
-- `web/src/test/handlers.ts`: MSW request handlers for all API routes (built out across B, C, D — start with the routes the smoke test needs)
-- `web/src/__tests__/scaffold.test.tsx`: one smoke test that renders a trivial component to prove the scaffold works end-to-end
-- `.github/workflows/pr.yml`: add `npm run test` step in the frontend section
-- `.github/workflows/deploy.yml`: add `npm run test` step in the `validate` job
-
-**Key implementation files:**
-- `web/package.json`
-- `web/vite.config.ts`
-- `web/src/test/setup.ts`
-- `web/src/test/handlers.ts`
-- `web/src/__tests__/scaffold.test.tsx`
-
-**Scenarios:**
+### Scenarios
 
 ```
 Scenario: Vitest scaffold runs in CI
@@ -148,7 +74,7 @@ Scenario: MSW server intercepts fetch without real network
   Then  the component shows the mocked data and no real network call is made
 ```
 
-**Acceptance criteria:**
+### Acceptance criteria
 
 - [x] `npm run test` exits 0 from `web/`
 - [x] `pr.yml` and `deploy.yml` both gate on `npm run test`
@@ -161,61 +87,7 @@ Scenario: MSW server intercepts fetch without real network
 
 **Status:** Done
 
-**Value:** Component tests for every piece of UI visible on the home/list screen. Four E2E journeys are deleted once their behaviours are covered here, making the Playwright suite faster and cheaper to run.
-
-**Changes in scope:**
-
-- `web/src/__tests__/NoteCard.test.tsx` — written
-- `web/src/__tests__/TagFilter.test.tsx` — written
-- `web/src/__tests__/TodoSection.test.tsx` — written
-- `web/src/test/handlers.ts` — extended with handlers for `GET /notes/cards`, `GET /tags`, `GET /todos`
-- `tests/Browser.E2E/Journeys/NoteCardJourney.cs` — deleted
-- `tests/Browser.E2E/Journeys/TagFilterJourney.cs` — deleted
-- `tests/Browser.E2E/Journeys/TodoListJourney.cs` — deleted
-- `tests/Browser.E2E/Journeys/TodoCompleteJourney.cs` — deleted
-- `tests/Browser.E2E/Pages/AppPage.cs` — remove selectors used only by the 4 deleted journeys
-
-**E2E behaviours replaced and their component test equivalents:**
-
-### NoteCard.test.tsx → replaces `NoteCardJourney`
-
-| E2E test | Component test equivalent |
-|----------|--------------------------|
-| Home screen shows card for each note | MSW returns 2 cards → both titles visible in rendered NoteCard list |
-| Card shows content snippet | MSW returns card with `snippet` → snippet text visible on card |
-| Card shows open action items | MSW returns card with `openActionCount: 1, firstAction: "Send recap email"` → action text visible |
-| EditNote button opens the note | `onEdit` callback prop called when Edit button clicked |
-| Deleted note card disappears | Covered by `NoteDeleteJourney` (kept as E2E) — not duplicated |
-
-### TagFilter.test.tsx → replaces `TagFilterJourney`
-
-| E2E test | Component test equivalent |
-|----------|--------------------------|
-| Tag filter pill appears after tag added | MSW GET /tags returns `["filtertest"]` → pill labelled "filtertest" visible |
-| Clicking pill filters cards | Two cards rendered; clicking tag pill → only matching card remains visible |
-| Clear button shows all cards | Tag filter active → click clear → both cards visible |
-| AND/OR toggle appears with 2 tags selected | Two tag pills clicked → mode toggle button visible; clicking it changes mode |
-
-### TodoSection.test.tsx → replaces `TodoListJourney` + `TodoCompleteJourney`
-
-| E2E test | Component test equivalent |
-|----------|--------------------------|
-| Home screen shows open todo items from all notes | MSW GET /todos returns 2 items → both descriptions visible |
-| Completing todo removes it from list | Checkbox clicked → MSW POST /complete called → item disappears from list |
-| Completing todo reflects in note | Full-stack concern — covered by `ActionItemJourney` (kept as E2E) |
-
-**Key implementation files:**
-- `web/src/__tests__/NoteCard.test.tsx`
-- `web/src/__tests__/TagFilter.test.tsx`
-- `web/src/__tests__/TodoSection.test.tsx`
-- `web/src/test/handlers.ts` (extended)
-- `tests/Browser.E2E/Journeys/NoteCardJourney.cs` (deleted)
-- `tests/Browser.E2E/Journeys/TagFilterJourney.cs` (deleted)
-- `tests/Browser.E2E/Journeys/TodoListJourney.cs` (deleted)
-- `tests/Browser.E2E/Journeys/TodoCompleteJourney.cs` (deleted)
-- `tests/Browser.E2E/Pages/AppPage.cs` (selectors pruned)
-
-**Scenarios:**
+### Scenarios
 
 ```
 Scenario: Note card renders title and snippet from API data
@@ -244,7 +116,7 @@ Scenario: Completing a todo removes it from the list
   Then  POST /todos/:id/complete is called and "Chase invoice" is absent
 ```
 
-**Acceptance criteria:**
+### Acceptance criteria
 
 - [x] `npm run test` exits 0 with all 3 new test files passing
 - [x] No test imports a real API URL or uses `API_BASE_URL`
@@ -260,75 +132,7 @@ Scenario: Completing a todo removes it from the list
 
 **Status:** Done
 
-**Value:** Component tests for every piece of UI visible when editing a note: content editing, date defaults, action item interactions, and sidebar state. Eight E2E journeys are deleted after this slice, leaving the Playwright suite with exactly 5 kept journeys. `AppPage.cs` is fully cleaned of now-unused selectors.
-
-**Changes in scope:**
-
-- `web/src/__tests__/NoteView.test.tsx` — written
-- `web/src/__tests__/ActionsSection.test.tsx` — written
-- `web/src/__tests__/Sidebar.test.tsx` — written
-- `web/src/test/handlers.ts` — extended with handlers for `GET /notes/:id`, `PUT /notes/:id/content`, `PATCH /notes/:id/date`, `GET /notes/:id/actions`, `POST /notes/:id/actions`, `POST /notes/:id/actions/:aid/complete`, `POST /notes/:id/actions/:aid/reopen`, `DELETE /notes/:id/actions/:aid`
-- `tests/Browser.E2E/Journeys/NoteContentJourney.cs` — deleted
-- `tests/Browser.E2E/Journeys/NoteDateJourney.cs` — deleted
-- `tests/Browser.E2E/Journeys/NoteDateDefaultsJourney.cs` — deleted
-- `tests/Browser.E2E/Journeys/NoteLayoutJourney.cs` — deleted
-- `tests/Browser.E2E/Journeys/ActionItemCompleteJourney.cs` — deleted
-- `tests/Browser.E2E/Journeys/DeleteActionJourney.cs` — deleted
-- `tests/Browser.E2E/Journeys/ImplicitActionAddJourney.cs` — deleted
-- `tests/Browser.E2E/Journeys/SidebarJourney.cs` — deleted
-- `tests/Browser.E2E/Pages/AppPage.cs` — remove all remaining selectors used only by deleted journeys
-
-**E2E behaviours replaced and their component test equivalents:**
-
-### NoteView.test.tsx → replaces `NoteContentJourney`, `NoteDateJourney`, `NoteDateDefaultsJourney`, `NoteLayoutJourney`
-
-| E2E test | Component test equivalent |
-|----------|--------------------------|
-| Opening a new note shows an empty content area | MSW GET /notes/:id returns `content: ""` → textarea visible and empty |
-| Typing content and blurring saves it | User types in textarea and blurs → PUT /content called with typed text |
-| Content persists after navigation | MSW GET /notes/:id returns `content: "saved text"` → textarea shows "saved text" |
-| Clearing content saves empty | User clears textarea and blurs → PUT /content called with `""` |
-| New note date defaults to today | `vi.setSystemTime("2026-01-15")` + MSW returns `date: null` → date input value is "2026-01-15" |
-| No formatted date label visible on new note | MSW returns `date: null` → note-date-display element is absent |
-| Date input saves on blur | User sets date to "2026-04-21" and blurs → PATCH /date called with "2026-04-21" |
-| Date persists after navigation | MSW returns `date: "2026-04-21"` → date input shows "2026-04-21" |
-| Captured notes label visible | NoteView renders → `data-testid="captured-notes-label"` is present |
-| Actions panel right of content on desktop | Both `note-content` and `actions-section` are present in DOM *(jsdom cannot test bounding boxes; positional layout is a CSS-only concern not verifiable in jsdom)* |
-| Actions panel stacks below content on mobile | Same limitation — presence of both panels is verified; layout is CSS |
-
-### ActionsSection.test.tsx → replaces `ActionItemCompleteJourney`, `DeleteActionJourney`, `ImplicitActionAddJourney`
-
-| E2E test | Component test equivalent |
-|----------|--------------------------|
-| Note with no actions shows empty state | MSW GET /actions returns `[]` → actions-empty element visible |
-| Enter key adds item and clears input | User types "Book meeting" + presses Enter → POST /actions called; "Book meeting" appears; input is empty |
-| Blur adds non-empty item | User types "Book the room" + blurs → POST /actions called; item appears |
-| Blur on empty input does not add item | Empty input blurred → no POST call; empty state remains |
-| No add button visible | ActionsSection renders → add-action-button is absent from DOM |
-| Completing action marks checkbox checked | Checkbox clicked on open item → POST /complete called; checkbox is checked |
-| Reopening shows as open | Checkbox clicked on completed item → POST /reopen called; checkbox unchecked |
-| Deleting removes item from list | Delete button clicked → DELETE /actions/:id called; item absent from list |
-| Action items persist across navigation | Full-stack concern — covered by `ActionItemJourney` (kept as E2E) |
-
-### Sidebar.test.tsx → replaces `SidebarJourney`
-
-| E2E test | Component test equivalent |
-|----------|--------------------------|
-| Note names appear in sidebar on home screen | Sidebar rendered with notes prop → both note titles visible |
-| Clicking sidebar entry opens the note | Note title clicked → `onNoteSelect` callback called with the note's id |
-| Sidebar is visible on note screen | Sidebar element present in DOM when rendered alongside NoteView |
-| Active note is highlighted in sidebar | `activeNoteId` prop matching a note → that item has `sidebar-note-item--active` class |
-| New note appears in sidebar immediately | Notes prop updated with new title → new title visible without re-mount |
-
-**Key implementation files:**
-- `web/src/__tests__/NoteView.test.tsx`
-- `web/src/__tests__/ActionsSection.test.tsx`
-- `web/src/__tests__/Sidebar.test.tsx`
-- `web/src/test/handlers.ts` (extended)
-- `tests/Browser.E2E/Journeys/` (8 deletions)
-- `tests/Browser.E2E/Pages/AppPage.cs` (remaining unused selectors pruned)
-
-**Scenarios:**
+### Scenarios
 
 ```
 Scenario: Content area renders content returned by the API
@@ -367,7 +171,7 @@ Scenario: Browser.E2E contains exactly 5 journeys after all deletions
   Then  exactly 5 journey files remain
 ```
 
-**Acceptance criteria:**
+### Acceptance criteria
 
 - [x] `npm run test` exits 0 with all 3 new test files passing
 - [x] No test imports a real API URL or requires a deployed backend

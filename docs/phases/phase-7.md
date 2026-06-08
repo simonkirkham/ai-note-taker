@@ -11,76 +11,11 @@
 
 > **Dropped:** Task list (checkboxes) removed — heading mark-as-discussed covers the meeting tracking need without the added complexity of a separate checkbox extension.
 
-**Learning surface:** Integrating a ProseMirror-based editor (TipTap) into a React component; markdown as a storage format for structured content; server-side content transformation (markdown stripping for preview text); the difference between editor-internal state and persisted state.
-
----
-
-## What needs to change
-
-| Area | Change |
-|------|--------|
-| `web/src/components/NoteView.tsx` | Replace `<textarea>` with `<NoteEditor>` component |
-| `web/src/components/NoteEditor.tsx` | New TipTap editor component (new file) |
-| `web/package.json` | Add TipTap packages |
-| `src/Api/Handlers/NoteHandlers.cs` | Strip markdown syntax before truncating `contentPreview` |
-
-No new events, no new projections, no CDK changes, no new API endpoints.
-
 ---
 
 ## Slice 7-A — Base editor, markdown storage, stripped preview
 
 **Status:** Done
-
-**Value:** The textarea is gone. The editor renders existing markdown content correctly and saves it back as markdown on blur. Headings, bold, and bullet lists work via keyboard shortcuts. The NoteCard snippet shows plain text, not raw markdown syntax.
-
-**Changes in scope:**
-
-- `web/package.json`: add `@tiptap/react`, `@tiptap/pm`, `@tiptap/starter-kit`, and a markdown serialisation package (see implementation note below)
-- `web/src/components/NoteEditor.tsx`: new component wrapping `useEditor` from `@tiptap/react`; exposes `value: string` (markdown) and `onChange: (md: string) => void`; saves on blur via `onBlur` prop
-- `web/src/components/NoteView.tsx`: import `NoteEditor`; replace `<textarea>` with `<NoteEditor value={content} onChange={setContent} onBlur={() => editContent(noteId, content)} />`
-- `src/Api/Handlers/NoteHandlers.cs`: strip common markdown tokens from `c.Content` before truncating to `MaxPreviewLength`
-
-**Keyboard shortcuts (provided by StarterKit defaults):**
-
-| Keys | Effect |
-|------|--------|
-| `#` + Space | H1 heading |
-| `##` + Space | H2 heading (primary topic marker) |
-| `###` + Space | H3 heading |
-| `**text**` | Bold |
-| `-` + Space | Bullet list item |
-| Enter | New list item / new paragraph |
-| Backspace at start of list item | Lift out of list |
-
-**Markdown serialisation implementation note:**
-
-TipTap stores content as a ProseMirror JSON document internally. For persistence, content must be converted to/from a markdown string. Two options:
-
-- `@tiptap/extension-markdown` (official, experimental) — simplest integration
-- `tiptap-markdown` (community, well-maintained) — more complete markdown support
-
-Use `@tiptap/extension-markdown` first; switch to `tiptap-markdown` if task list or strikethrough serialisation gaps appear during testing.
-
-**Markdown stripping in preview (server-side):**
-
-In `NoteHandlers.cs`, apply a simple transformation before truncation:
-
-```csharp
-private static string StripMarkdown(string content)
-{
-    var s = content;
-    s = Regex.Replace(s, @"^#{1,6}\s*", "", RegexOptions.Multiline);   // headings
-    s = Regex.Replace(s, @"~~(.+?)~~", "$1");                           // strikethrough
-    s = Regex.Replace(s, @"\*\*(.+?)\*\*", "$1");                      // bold
-    s = Regex.Replace(s, @"\*(.+?)\*", "$1");                          // italic
-    s = Regex.Replace(s, @"^\s*-\s+\[[ x]\]\s*", "", RegexOptions.Multiline); // task items
-    s = Regex.Replace(s, @"^\s*[-*]\s+", "", RegexOptions.Multiline);  // bullet items
-    return s.Trim();
-}
-```
-
-Call before truncation: `var preview = StripMarkdown(c.Content)...`
 
 **Scenarios:**
 
@@ -132,19 +67,6 @@ Scenario: NoteCard snippet shows plain text
 
 **Status:** Done
 
-**Value:** Users can mark a heading (agenda topic) as discussed during a meeting. A ✓ button appears when the cursor is inside a heading; clicking it applies strikethrough to the heading text and saves the updated markdown (`## ~~Topic~~`). Clicking again removes it. A collapsible shortcuts panel below the editor lets users discover all keyboard shortcuts without leaving the screen.
-
-**Changes in scope:**
-
-- `web/src/components/NoteEditor.tsx`: extend with `Strike` extension (from StarterKit or standalone); add a ✓ button that appears when the current selection is inside a heading node; toggle calls `editor.commands.toggleStrike()` and triggers `onChange`
-- `web/src/components/ShortcutsPanel.tsx`: new collapsible component showing all editor keyboard shortcuts; collapsed by default, toggled by a `?` button near the editor label
-
-**Implementation note:**
-
-The ✓ button is positioned absolutely alongside the active heading using `editor.view.coordsAtPos()` to track its Y coordinate — confirmed in prototype as the preferred UX over a fixed toolbar row. Use `onMouseDown` + `preventDefault()` on the button to prevent the editor losing focus before the toggle fires.
-
-Verify that the markdown extension correctly round-trips `## ~~text~~`. If not, fall back to `## ✓ Topic name` and update `StripMarkdown` to strip the `✓ ` prefix.
-
 **Scenarios:**
 
 ```
@@ -185,5 +107,3 @@ Scenario: NoteCard snippet strips strikethrough from discussed topics
 - [x] Shortcuts panel is collapsed by default; `?` button expands it to show all shortcuts
 - [x] Panel lists: `##`/`###` headings, `**bold**`, `- bullet`, `Ctrl+B` toggle, ✓ mark discussed
 - [x] `npm run build` and `npm run lint` pass
-
-**Follow-up (deferred):** Add a `Browser.E2E` journey (`RichEditorJourney.cs`) covering: ✓ button appears on heading cursor, toggle applies strikethrough, toggle again removes it, discussed state persists after close/reopen. NoteEditor is mocked in unit tests so the discussed-button logic has no automated coverage today — E2E is the right layer.

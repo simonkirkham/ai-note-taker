@@ -12,17 +12,8 @@
 | 1-D | RenameNote endpoint + NoteTitleList projection + GET /notes | Done | — |
 | 1-E | React scaffold + create/list notes UI | Done | — |
 
-**Scope note:** The roadmap lists `NoteCreated` + `ContentAppended` as the two Phase 1 events. The event model has since resolved `ContentAppended` → `ContentEdited` (full snapshot). This phase uses `NoteCreated` + `NoteRenamed` instead — you need a title to have a meaningful list. `ContentEdited` lands in Phase 2 alongside the note detail view.
-
-Status key: `Done` · `In Progress` · `Not Started`
-
 ## Slice 1-A — Note aggregate: CreateNote + RenameNote
 **Status:** Done
-
-**Objective:** Implement the `Note` aggregate as a pure C# type in `src/Domain/`. No I/O, no database. Exercises the core event-sourcing pattern: command in, events out, state rebuilt by folding prior events.
-
-**Commands in scope:** `CreateNote`, `RenameNote`  
-**Events in scope:** `NoteCreated`, `NoteRenamed`
 
 **Acceptance criteria:**
 - [x] `NoteId` is a strongly-typed record struct wrapping `Guid` (per event-schemas.md)
@@ -39,8 +30,6 @@ Status key: `Done` · `In Progress` · `Not Started`
 
 ## Slice 1-B — DynamoDB event store
 **Status:** Done
-
-**Objective:** Implement `IEventStore` in `src/EventStore/` with a DynamoDB backend. This is the core infrastructure learning moment: append-with-optimistic-concurrency using a conditional write.
 
 **Acceptance criteria:**
 - [x] `IEventStore` interface defined with `AppendAsync(streamId, expectedVersion, events)` and `ReadAsync(streamId)`
@@ -59,8 +48,6 @@ Status key: `Done` · `In Progress` · `Not Started`
 ## Slice 1-C — Create Note API endpoint
 **Status:** Done
 
-**Objective:** Wire the first end-to-end slice: `POST /notes` accepts a command, appends `NoteCreated` to DynamoDB, returns 201 with the new `noteId`. Proves the aggregate + event store + API layer work together.
-
 **Acceptance criteria:**
 - [x] `POST /notes` returns `201 Created` with body `{ "noteId": "<guid>" }`
 - [x] `NoteCreated` event is appended to the `notetaker-events` table
@@ -73,8 +60,6 @@ Status key: `Done` · `In Progress` · `Not Started`
 
 ## Slice 1-D — RenameNote endpoint + NoteTitleList projection + GET /notes
 **Status:** Done
-
-**Objective:** Add the rename command, build the `NoteTitleList` projection, and expose `GET /notes`. First time the full read-side of event sourcing is exercised: event appended → projection updated → query returns result.
 
 **Acceptance criteria:**
 - [x] `PATCH /notes/{id}/title` with body `{ "title": "..." }` appends `NoteRenamed`, returns `200`
@@ -92,8 +77,6 @@ Status key: `Done` · `In Progress` · `Not Started`
 
 ## Slice 1-E — React scaffold + create/list notes UI
 **Status:** Done
-
-**Objective:** Scaffold the frontend and deploy it to AWS. By the end, a user can open the app, create a note, name it, and see it in the list — the full walking skeleton is walkable.
 
 **Acceptance criteria:**
 - [x] Vite + React + TypeScript app in `web/` with `npm run dev` serving on `localhost:5173`

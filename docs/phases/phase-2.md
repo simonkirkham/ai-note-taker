@@ -14,15 +14,8 @@
 
 **Scope note:** The roadmap lists `NoteDeleted`, `NoteContentReplaced`, and event versioning as Phase 2 work. `NoteContentReplaced` was resolved to `ContentEdited` (full snapshot) in the event model. Phase 2 delivers five slices: NoteDetail projection, EditContent, event versioning, DeleteNote, and projection rebuild. Acceptance criteria are written as user behaviour — what the user does and sees. Most slices involve UI work; where they don't, the reason is stated explicitly.
 
-Status key: `Done` · `In Progress` · `Not Started`
-
 ## Slice 2-A — Load and display note content
 **Status:** Done
-
-**Value:** Users can open a note and see its content — the app graduates from "a list of titles" to "something you can actually read."
-
-**Commands in scope:** none (read-side only)
-**Events subscribed:** `NoteCreated`, `NoteRenamed`, `ContentEdited`
 
 **Acceptance criteria:**
 
@@ -36,11 +29,6 @@ Status key: `Done` · `In Progress` · `Not Started`
 
 ## Slice 2-B — Write and save note content
 **Status:** Done
-
-**Value:** Users can type meeting notes and have them saved automatically — the core use case of the app.
-
-**Commands in scope:** `EditContent`
-**Events in scope:** `ContentEdited`
 
 **Acceptance criteria:**
 
@@ -56,12 +44,6 @@ Status key: `Done` · `In Progress` · `Not Started`
 ## Slice 2-C — Event versioning
 **Status:** Done
 
-**Value:** The project survives its first event shape change without losing history — the defining "trust the event log" moment of event sourcing.
-
-**Design:** `ContentEdited` v2 adds `CharacterCount: int` (auto-computed from `Content.Length`). Existing v1 events remain readable. `EventDeserializer` routes by `EventVersion`. `NoteDetailProjection` handles both versions gracefully.
-
-**Events in scope:** `ContentEdited` v2 (new shape); v1 remains readable
-
 **Acceptance criteria:**
 
 *Backend:*
@@ -69,19 +51,10 @@ Status key: `Done` · `In Progress` · `Not Started`
 - [x] User saves new content after the deploy — it saves and reloads correctly
 - [x] *(internal)* The event stream contains both v1 and v2 `ContentEdited` events; the system handles both without error
 
-*Note: this is a backend learning slice — no visible UI change. The acceptance criteria confirm the UI is unbroken across the version boundary.*
-
 ---
 
 ## Slice 2-D — Delete a note
 **Status:** Done
-
-**Value:** Users can remove notes they no longer need — keeps the list clean and teaches soft delete in an event-sourced system.
-
-**Design:** prune-on-event — `NoteTitleListProjection` and `NoteDetailProjection` hard-delete their DynamoDB rows when `NoteDeleted` fires. The event stream retains the full history.
-
-**Commands in scope:** `DeleteNote`
-**Events in scope:** `NoteDeleted`
 
 **Acceptance criteria:**
 
@@ -96,14 +69,8 @@ Status key: `Done` · `In Progress` · `Not Started`
 ## Slice 2-E — Projection rebuild
 **Status:** Done
 
-**Value:** The read side can be fully recovered by replaying the event log — proves the durability promise of event sourcing and closes the gap where notes created before a projection existed are invisible.
-
-**Design:** `IEventStore` gains `ReadAllStreamsAsync()`. Each projection gains `Reset()` / `DeleteAllAsync()`. An admin endpoint triggers reset → fold → upsert.
-
 **Acceptance criteria:**
 
 - [x] After triggering a rebuild, all notes that exist in the event log are visible in the list — including any that were created before the projection table existed
 - [x] The note list renders correctly after a rebuild — no UI changes required
 - [x] *(internal)* The rebuild endpoint resets both projections and replays all events from the event store
-
-*Note: rebuild is an admin/ops operation with no user-facing UI. The acceptance criteria confirm the list is correct after a rebuild is run externally.*
