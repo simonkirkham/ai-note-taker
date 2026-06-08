@@ -281,6 +281,14 @@ The frontend has **no router** — `App.tsx` holds a single in-memory `view` uni
 
 Slices and acceptance criteria: [docs/phases/phase-21.md](phases/phase-21.md)
 
+## Phase 22 — Search across notes _(Not Started)_
+
+Add fuzzy free-text search across all of a user's notes from a home-screen search bar, with **no new infrastructure and no fixed cost**. A new `NoteSearchView` projection holds one searchable document per note (title, Quick notes, Final notes, tags, action-item text — **not** the raw transcript); a `GET /notes/search?q=` endpoint reads the current user's documents and **fuzzy-ranks them in-Lambda** (Levenshtein / token-set ratio), staying inside the existing DynamoDB + Lambda stack at $0 marginal cost. **22-A** builds the searchable read model + endpoint (backend-only, independently shippable); **22-B** adds the debounced as-you-type search bar (results replace the card grid, explicit no-results/error states), preceded by a throwaway UX prototype. 22-B depends on 22-A. Graduated from the "Search across notes" future-features idea.
+
+**Goal:** build search *without* a search engine — a purpose-built read model shaped for a query and in-process fuzzy ranking over a `UserId`-scoped projection read; understand where that approach's cost/latency curve bends (linear in note count, superseded later by pagination/server-side filtering); ranking/threshold tuning as a measured concern; and the privacy discipline of never logging query text or note content.
+
+Slices and acceptance criteria: [docs/phases/phase-22.md](phases/phase-22.md)
+
 ---
 
 ## Standing tracks and planning docs
@@ -309,7 +317,7 @@ An unnumbered, standing phase for iterative improvements to the AI analysis — 
 
 ### Future Features
 
-Possible user-facing features not yet committed to a numbered phase. When one is picked up it becomes a numbered phase here. Currently: Workspaces; search across notes; expanding the to-do functionality for today and the future (due/scheduled dates with Today/Upcoming grouping); scalable note loading (pagination) with server-side filtering, which is the home of server-side folder tag search; and dynamic folders (saved tag-based views).
+Possible user-facing features not yet committed to a numbered phase. When one is picked up it becomes a numbered phase here. Currently: Workspaces; expanding the to-do functionality for today and the future (due/scheduled dates with Today/Upcoming grouping); scalable note loading (pagination) with server-side filtering, which is the home of server-side folder tag search; and dynamic folders (saved tag-based views).
 
 → [docs/future-features.md](future-features.md)
 
