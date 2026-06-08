@@ -18,13 +18,15 @@ function rollback(qc: QueryClient, ctx: Ctx | undefined) {
   if (ctx?.previous) qc.setQueryData(keys.todos, ctx.previous);
 }
 
-// Template note for later Phase 20 slices: these mutations intentionally omit
-// `onSettled: invalidateQueries`. Todos is currently the SOLE consumer of
-// keys.todos and the optimistic result equals what the server echoes back, so a
-// reconciling refetch buys nothing here. A domain with MORE than one consumer
-// (folders, note cards, note detail) MUST add
-// `onSettled: () => qc.invalidateQueries({ queryKey: keys.<domain> })` so every
-// view re-reads — that cross-view sync is the win ADR 0012 is buying.
+// Todos optimism needs no keys.todos reconcile (sole consumer; optimistic == server
+// echo). But when the item is an ACTION (20-D), its note's Actions section reads
+// keys.actions(noteId) — so on settle we invalidate that key, the other half of the
+// action↔todo cross-view loop (the action mutations invalidate keys.todos in turn).
+function settleAction(qc: QueryClient, item: TodoItem) {
+  if (item.type === "action" && item.noteId) {
+    qc.invalidateQueries({ queryKey: keys.actions(item.noteId) });
+  }
+}
 
 export function useCompleteTodo() {
   const qc = useQueryClient();
@@ -37,6 +39,7 @@ export function useCompleteTodo() {
         items.map((i) => (i.itemId === item.itemId ? { ...i, completedAt } : i)));
     },
     onError: (_e, _item, ctx) => rollback(qc, ctx),
+    onSettled: (_d, _e, item) => settleAction(qc, item),
   });
 }
 
@@ -49,6 +52,7 @@ export function useReopenTodo() {
       optimistic(qc, (items) =>
         items.map((i) => (i.itemId === item.itemId ? { ...i, completedAt: null } : i))),
     onError: (_e, _item, ctx) => rollback(qc, ctx),
+    onSettled: (_d, _e, item) => settleAction(qc, item),
   });
 }
 
@@ -60,5 +64,6 @@ export function useDeleteTodo() {
     onMutate: (item) =>
       optimistic(qc, (items) => items.filter((i) => i.itemId !== item.itemId)),
     onError: (_e, _item, ctx) => rollback(qc, ctx),
+    onSettled: (_d, _e, item) => settleAction(qc, item),
   });
 }

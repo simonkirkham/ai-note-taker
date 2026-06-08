@@ -1,6 +1,13 @@
 import clsx from "clsx";
 import { useEffect, useState } from "react";
-import { getActions, addAction, completeAction, reopenAction, deleteAction, ActionItem } from "../api/actions";
+import { ActionItem } from "../api/actions";
+import {
+  useAddAction,
+  useCompleteAction,
+  useReopenAction,
+  useDeleteAction,
+} from "../hooks/useActionMutations";
+import { useActions } from "../hooks/useActions";
 import styles from "./ActionsSection.module.css";
 
 export default function ActionsSection({
@@ -10,19 +17,15 @@ export default function ActionsSection({
   noteId: string;
   onCountChange?: (count: number) => void;
 }) {
-  const [actions, setActions] = useState<ActionItem[]>([]);
+  const { data: actions = [] } = useActions(noteId);
+  const addAction = useAddAction(noteId);
+  const completeAction = useCompleteAction(noteId);
+  const reopenAction = useReopenAction(noteId);
+  const deleteActionM = useDeleteAction(noteId);
   const [newAction, setNewAction] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [toggling, setToggling] = useState<Set<string>>(new Set());
   const [deleting, setDeleting] = useState<Set<string>>(new Set());
-
-  useEffect(() => {
-    let cancelled = false;
-    getActions(noteId).then((items) => {
-      if (!cancelled) setActions(items);
-    });
-    return () => { cancelled = true; };
-  }, [noteId]);
 
   useEffect(() => {
     onCountChange?.(actions.length);
@@ -32,18 +35,10 @@ export default function ActionsSection({
     if (toggling.has(item.actionId)) return;
     setToggling((prev) => new Set(prev).add(item.actionId));
     try {
-      if (item.completed) {
-        await reopenAction(noteId, item.actionId);
-      } else {
-        await completeAction(noteId, item.actionId);
-      }
-      setActions((prev) =>
-        prev.map((a) =>
-          a.actionId === item.actionId
-            ? { ...a, completed: !a.completed, completedAt: item.completed ? null : new Date().toISOString() }
-            : a
-        )
-      );
+      if (item.completed) await reopenAction.mutateAsync(item.actionId);
+      else await completeAction.mutateAsync(item.actionId);
+    } catch {
+      // optimistic update already rolled back in the mutation's onError
     } finally {
       setToggling((prev) => {
         const next = new Set(prev);
@@ -57,8 +52,9 @@ export default function ActionsSection({
     if (deleting.has(item.actionId)) return;
     setDeleting((prev) => new Set(prev).add(item.actionId));
     try {
-      await deleteAction(noteId, item.actionId);
-      setActions((prev) => prev.filter((a) => a.actionId !== item.actionId));
+      await deleteActionM.mutateAsync(item.actionId);
+    } catch {
+      // rolled back in onError
     } finally {
       setDeleting((prev) => {
         const next = new Set(prev);
@@ -72,12 +68,10 @@ export default function ActionsSection({
     if (!description || submitting) return;
     setSubmitting(true);
     try {
-      const { actionId } = await addAction(noteId, description);
-      setActions((prev) => [
-        ...prev,
-        { actionId, description, completed: false, addedAt: new Date().toISOString(), completedAt: null },
-      ]);
+      await addAction.mutateAsync({ description, tempId: `temp-${crypto.randomUUID()}` });
       setNewAction("");
+    } catch {
+      // rolled back in onError
     } finally {
       setSubmitting(false);
     }

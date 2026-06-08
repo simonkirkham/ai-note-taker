@@ -1,7 +1,8 @@
-import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { http, HttpResponse } from 'msw'
 import ActionsSection from '../components/ActionsSection'
+import TodoSection from '../components/TodoSection'
+import { render, screen, waitFor, within } from '../test/render'
 import { server } from '../test/setup'
 
 const NOTE_ID = 'note-1'
@@ -26,11 +27,15 @@ describe('ActionsSection', () => {
 
   it('Enter key adds item and clears the input', async () => {
     let postCalled = false
+    // Add invalidates keys.actions → the onSettled refetch must include the new
+    // action, or it would revert the optimistic add (temp-id→real-id swap).
     server.use(
       http.post(`/api/notes/${NOTE_ID}/actions`, async () => {
         postCalled = true
         return HttpResponse.json({ actionId: 'new-1' }, { status: 201 })
       }),
+      http.get(`/api/notes/${NOTE_ID}/actions`, () =>
+        HttpResponse.json({ actions: postCalled ? [{ ...action1, actionId: 'new-1', description: 'Book meeting' }] : [] })),
     )
     renderActions()
     await screen.findByTestId('actions-empty')
@@ -48,6 +53,8 @@ describe('ActionsSection', () => {
         postCalled = true
         return HttpResponse.json({ actionId: 'new-2' }, { status: 201 })
       }),
+      http.get(`/api/notes/${NOTE_ID}/actions`, () =>
+        HttpResponse.json({ actions: postCalled ? [{ ...action1, actionId: 'new-2', description: 'Book the room' }] : [] })),
     )
     renderActions()
     await screen.findByTestId('actions-empty')
@@ -124,5 +131,30 @@ describe('ActionsSection', () => {
     await waitFor(() => expect(deleteCalled).toBe(true))
     await waitFor(() => expect(screen.queryByText('Book meeting')).not.toBeInTheDocument())
     expect(screen.getByTestId('actions-empty')).toBeInTheDocument()
+  })
+
+  it('completing an action in a note updates the home to-do list (cross-view)', async () => {
+    let completed = false
+    const todo = { itemId: 'a-1', type: 'action', noteId: NOTE_ID, description: 'Book meeting', noteTitle: 'Note', completedAt: null }
+    server.use(
+      http.get(`/api/notes/${NOTE_ID}/actions`, () => HttpResponse.json({ actions: [action1] })),
+      http.get('/api/todos', () =>
+        HttpResponse.json({ items: [completed ? { ...todo, completedAt: new Date().toISOString() } : todo] })),
+      http.post(`/api/notes/${NOTE_ID}/actions/:actionId/complete`, () => {
+        completed = true
+        return new HttpResponse(null, { status: 200 })
+      }),
+    )
+    // Both views share one QueryClient (single render) — completing in the note
+    // must invalidate keys.todos so the home list re-reads.
+    render(<><TodoSection /><ActionsSection noteId={NOTE_ID} /></>)
+    const todoList = await screen.findByTestId('todo-list')
+    expect(todoList).toHaveTextContent('Book meeting')
+    // Complete from the note's Actions section (distinct aria-label from the todo row)
+    await userEvent.click(await screen.findByRole('checkbox', { name: /Mark "Book meeting" complete/i }))
+    // The home list drops it from the open view once keys.todos refetches the
+    // completed state (it moves to the collapsed Done section, not in the DOM).
+    await waitFor(() =>
+      expect(within(screen.getByTestId('todo-section')).queryByText('Book meeting')).not.toBeInTheDocument())
   })
 })

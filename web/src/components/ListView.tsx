@@ -1,9 +1,9 @@
 import clsx from "clsx";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { NoteCard as NoteCardData, SearchResult } from "../api/notes";
-import { TagIndexEntry, getTags } from "../api/tags";
 import { effectiveDate, isEditedToday, localTodayISO } from "../dates";
 import { type SearchState, useNoteSearch } from "../hooks/useNoteSearch";
+import { useTags } from "../hooks/useTags";
 import styles from "./ListView.module.css";
 import MeetingsSection from "./MeetingsSection";
 import NoteCard from "./NoteCard";
@@ -58,7 +58,7 @@ export default function ListView({
   currentFolderId?: string;
   onHome?: () => void;
 }) {
-  const [tagEntries, setTagEntries] = useState<TagIndexEntry[]>([]);
+  const { data: tagEntries = [] } = useTags();
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [filterMode, setFilterMode] = useState<"AND" | "OR">("AND");
   const [showOlder, setShowOlder] = useState(false);
@@ -67,10 +67,6 @@ export default function ListView({
 
   const { state: searchState, retry } = useNoteSearch(query);
   const searching = query.trim() !== "";
-
-  useEffect(() => {
-    getTags().then(setTagEntries).catch(() => {});
-  }, []);
 
   const cardsById = useMemo(
     () => new Map(cards.map((c) => [c.noteId, c])),
