@@ -1,6 +1,9 @@
 import userEvent from '@testing-library/user-event'
 import { http, HttpResponse } from 'msw'
 import type { NoteCard as NoteCardData } from '../api/notes'
+import App from '../App'
+import { AuthProvider } from '../auth/AuthContext'
+import { clearToken } from '../auth/tokenStore'
 import ListView from '../components/ListView'
 import { localTodayISO } from '../dates'
 import { render, screen, waitFor } from '../test/render'
@@ -84,19 +87,23 @@ describe('NoteCard — delete affordance', () => {
   })
 })
 
-describe('NoteCard — delete from ListView (App integration)', () => {
-  it('confirming calls DELETE /notes/:noteId', async () => {
+describe('NoteCard — delete from the home list (App integration)', () => {
+  afterEach(() => clearToken())
+
+  it('confirming calls DELETE /notes/:noteId via the parent mutation', async () => {
     let called = false
     server.use(
-      http.delete('/api/notes/:noteId', () => {
+      http.get('/api/notes/cards', () => HttpResponse.json({ cards: [card] })),
+      http.delete('/api/notes/note-1', () => {
         called = true
         return new HttpResponse(null, { status: 204 })
       }),
     )
-    const onDeleteNote = vi.fn()
-    render(<ListView {...defaultProps} onDeleteNote={onDeleteNote} />)
-    await userEvent.click(screen.getByRole('button', { name: /delete "Team sync"/i }))
+    render(<AuthProvider initialToken="test-token"><App /></AuthProvider>)
+    await userEvent.click(await screen.findByRole('button', { name: /delete "Team sync"/i }))
     await userEvent.click(screen.getByRole('button', { name: /confirm delete/i }))
+    // NoteCard is presentational now; the home list's onDeleteNote drives the
+    // useDeleteNote mutation, which fires DELETE.
     await waitFor(() => expect(called).toBe(true))
   })
 })

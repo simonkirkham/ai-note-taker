@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { NoteCard as NoteCardData, deleteNote } from "../api/notes";
+import { NoteCard as NoteCardData } from "../api/notes";
 import { PencilIcon, TrashIcon } from "./icons";
 import styles from "./NoteCard.module.css";
 
@@ -31,10 +31,8 @@ export default function NoteCard({
     e.stopPropagation();
     setVanished(true);
     setConfirming(false);
-    // NoteCard owns the API call; onDelete notifies the parent to update cards state.
-    // No rollback: calling onDelete first lets the parent filter the card out, causing
-    // this component to unmount before the async catch could restore it.
-    deleteNote(card.noteId).catch(() => {});
+    // NoteCard is presentational: onDelete drives the parent's delete mutation
+    // (optimistic cache removal + DELETE). `vanished` hides the row immediately.
     onDelete?.();
   }
 
