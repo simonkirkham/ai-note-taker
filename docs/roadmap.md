@@ -273,6 +273,14 @@ Replace the hand-rolled `useEffect`-fetch + `useState` server-state hooks with *
 
 Slices and acceptance criteria: [docs/phases/phase-20.md](phases/phase-20.md)
 
+## Phase 21 — URL routing: distinct URLs, working back/forward, shareable note links _(Not Started)_
+
+The frontend has **no router** — `App.tsx` holds a single in-memory `view` union (`list` | `folder` | `note`) and opening a note is just `setView({ kind: "note", noteId })`, so the URL never changes, back/forward are no-ops, and a specific note can't be linked. This phase adopts **react-router-dom** (recorded in [ADR 0013](adr/0013-adopt-react-router-dom.md)) and maps the three surfaces — home, folder, note — to real routes (`/`, `/folders/:folderId`, `/notes/:noteId`), so back/forward work and a note or folder URL can be shared and deep-loaded. Frontend-only: no event model, API, or backend change; CloudFront already rewrites unknown paths to `index.html`. Four steps: an **ADR gate**, **21-A** (router foundation + note & home URLs — the keystone), **21-B** (folder URLs), **21-C** (deep-link edge cases: missing-note recovery, signed-out-link survival, hard-load coverage). Transient surfaces (sidebar, preview pull-out, note tabs) stay in component state.
+
+**Goal:** client-side routing on an SPA; mapping a hand-rolled view-state union onto a declarative route table; deep-linking against an already-configured CloudFront SPA rewrite; the auth-gate-vs-route ordering problem; and the dependency tradeoff of adopting a router in a deliberately hand-rolled frontend (contrast [ADR 0010](adr/0010-server-state-strategy.md)).
+
+Slices and acceptance criteria: [docs/phases/phase-21.md](phases/phase-21.md)
+
 ---
 
 ## Standing tracks and planning docs
