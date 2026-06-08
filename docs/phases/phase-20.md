@@ -8,7 +8,7 @@
 |-------|---------|--------|------------|
 | Gate | **Supersede ADR 0010** with a new ADR recording the trigger that justifies reversal. No code. | Done | — |
 | 20-A | **Foundation + todos pilot.** `QueryClientProvider`, query-key factory, `QueryClient` defaults, devtools; migrate `TodoSection` (`getTodos` + complete/reopen/delete/add) as the reference template for every later slice. | Done | Gate |
-| 20-B | **Folders (tree).** `getFolders` + create/rename/delete/move-folder; delete the `App.tsx` `getFolders().then(setFolders)` invalidation sprawl. Note↔folder assignment (`moveNoteToFolder`/`unfileNote`) defers to 20-C with note cards. | Not Started | 20-A |
+| 20-B | **Folders (tree).** `getFolders` + create/rename/delete/move-folder; delete the `App.tsx` `getFolders().then(setFolders)` invalidation sprawl. Note↔folder assignment (`moveNoteToFolder`/`unfileNote`) defers to 20-C with note cards. | Done | 20-A |
 | 20-C | **Note cards / list.** `getNoteCards` + `useNotes` (create/rename/delete). | Not Started | 20-A, 20-B |
 | 20-D | **Actions + tags.** `getActions`/`getTags` + their mutations + `useTagSuggestions`. | Not Started | 20-A |
 | 20-E | **Note detail.** `getNoteDetail` + `editContent`/`setNoteDate`/`analyseNote` refetch (NoteView has the most mutations). | Not Started | 20-A |
@@ -79,7 +79,7 @@ Scenario: Adding a todo updates the shared cache optimistically
 
 ## Slice 20-B — Folders (tree)
 
-**Status:** Not Started
+**Status:** Done
 
 **User value:** None directly (like-for-like migration of the folder-tree domain). Removes the four `getFolders().then(setFolders)` manual refetches in `App.tsx` — the largest manual-invalidation surface in the app — replacing them with one `useFolders()` read and four `useMutation`s that reconcile via `invalidateQueries`. Folder behaviour is unchanged, proven by the existing folder suites staying green.
 
@@ -132,15 +132,17 @@ Scenario: A folder mutation in one view updates every view
 
 ### Acceptance criteria
 
-- [ ] `web/src/hooks/useFolders.ts` reads via `useQuery({ queryKey: keys.folders, queryFn: getFolders })`; `App.tsx` consumes it and passes the tree down as today (Sidebar/FolderTree/FolderPicker/FolderPreview props unchanged)
-- [ ] The `getFolders().then(setFolders)` initial `useEffect` and the `folders`/`setFolders` `useState` are removed from `App.tsx`
-- [ ] `useFolderMutations` exposes `useCreateFolder`/`useRenameFolder`/`useDeleteFolder`/`useMoveFolder` (`useMutation`, `onMutate` optimistic tree edit + `onError` rollback + `onSettled: invalidateQueries({ queryKey: keys.folders })`)
-- [ ] Create swaps the optimistic `temp-…` id for the server id via the `onSettled` refetch (no manual id reconciliation in `App.tsx`)
-- [ ] Renaming the active folder still updates the derived `activeFolderPath`/`view` heading optimistically (local UI state stays in `App.tsx`)
-- [ ] The four manual `getFolders().then(setFolders)` refetch calls are deleted from the folder handlers
-- [ ] `moveNoteToFolder`/`unfileNote` remain hand-rolled over the `cards` state (unchanged this slice); todos (20-A) stay on TanStack; everything else stays hand-rolled (coexistence intact)
-- [ ] Optimistic-UI rule satisfied — apply immediately, roll back on error; failure surfacing unchanged from today (folder-tree errors currently roll back without a toast — adding toasts is out of scope)
-- [ ] Folder component tests render through the `src/test/render.tsx` QueryClient helper; `FolderMutations`/`FolderNavigation` (App-level) updated to drive folders via the cache; full Vitest suite + `tsc -b`/build + ESLint green
+- [x] `web/src/hooks/useFolders.ts` reads via `useQuery({ queryKey: keys.folders, queryFn: getFolders })`; `App.tsx` consumes it and passes the tree down as today (Sidebar/FolderTree/FolderPicker/FolderPreview props unchanged)
+- [x] The `getFolders().then(setFolders)` initial `useEffect` and the `folders`/`setFolders` `useState` are removed from `App.tsx`
+- [x] `useFolderMutations` exposes `useCreateFolder`/`useRenameFolder`/`useDeleteFolder`/`useMoveFolder` (`useMutation`, `onMutate` optimistic tree edit + `onError` rollback + `onSettled: invalidateQueries({ queryKey: keys.folders })`)
+- [x] Create swaps the optimistic `temp-…` id for the server id via the `onSettled` refetch (no manual id reconciliation in `App.tsx`)
+- [x] Renaming the active folder still updates the derived `activeFolderPath` breadcrumb optimistically (local UI state stays in `App.tsx`; the `view` state machine was removed by 21-A's router, so only `activeFolderPath` remains)
+- [x] The four manual `getFolders().then(setFolders)` refetch calls are deleted from the folder handlers
+- [x] `moveNoteToFolder`/`unfileNote` remain hand-rolled over the `cards` state (unchanged this slice); todos (20-A) stay on TanStack; everything else stays hand-rolled (coexistence intact)
+- [x] Optimistic-UI rule satisfied — apply immediately, roll back on error; failure surfacing unchanged from today (folder-tree errors currently roll back without a toast — adding toasts is out of scope)
+- [x] Folder component tests render through the `src/test/render.tsx` QueryClient helper; `FolderMutations`/`FolderNavigation` (App-level) updated to drive folders via the cache; full Vitest suite + `tsc -b`/build + ESLint green
+- [x] Self/descendant folder-move guarded (optimistic move would otherwise orphan the subtree; backend has no cycle guard) — added in `App.handleMoveFolder` + `useMoveFolder` (Hawk)
+- [x] Tree helpers extracted to `web/src/folderTree.ts` (`mapTree`/`removeFromTree`/`insertIntoTree`/`findNode`), shared by the hooks
 
 ### Observability
 

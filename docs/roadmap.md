@@ -269,7 +269,7 @@ Slices and acceptance criteria: [docs/phases/phase-19.md](phases/phase-19.md)
 
 ## Phase 20 — Server-state migration to TanStack Query _(In Progress)_
 
-Replace the hand-rolled `useEffect`-fetch + `useState` server-state hooks with **TanStack Query** (cache, dedup, retry/backoff, stale-while-revalidate, optimistic-update-with-rollback), migrating **one domain per slice** with hand-rolled and library coexisting until the last. **Reverses [ADR 0010](adr/0010-server-state-strategy.md)** (Accepted: stay hand-rolled), so the whole phase is **hard-gated** on a superseding ADR. Builds on the `api/<domain>.ts` seam from 19-A. Seven slices: **20-A** foundation + todos pilot (sets the `useQuery`/`useMutation`+rollback template), then **20-B** folders, **20-C** cards/list, **20-D** actions+tags, **20-E** note detail, **20-F** meetings, **20-G** cleanup (subsumes 19-H). Transcription credentials stay hand-rolled. **Done:** the ADR gate ([ADR 0012](adr/0012-adopt-tanstack-query-server-state.md) supersedes 0010) and **20-A** (foundation + todos pilot, the template the rest copy).
+Replace the hand-rolled `useEffect`-fetch + `useState` server-state hooks with **TanStack Query** (cache, dedup, retry/backoff, stale-while-revalidate, optimistic-update-with-rollback), migrating **one domain per slice** with hand-rolled and library coexisting until the last. **Reverses [ADR 0010](adr/0010-server-state-strategy.md)** (Accepted: stay hand-rolled), so the whole phase is **hard-gated** on a superseding ADR. Builds on the `api/<domain>.ts` seam from 19-A. Seven slices: **20-A** foundation + todos pilot (sets the `useQuery`/`useMutation`+rollback template), then **20-B** folders, **20-C** cards/list, **20-D** actions+tags, **20-E** note detail, **20-F** meetings, **20-G** cleanup (subsumes 19-H). Transcription credentials stay hand-rolled. **Done:** the ADR gate ([ADR 0012](adr/0012-adopt-tanstack-query-server-state.md) supersedes 0010), **20-A** (foundation + todos pilot, the template the rest copy), and **20-B** (folder tree). Remaining: 20-C…20-G.
 
 Slices and acceptance criteria: [docs/phases/phase-20.md](phases/phase-20.md)
 
@@ -281,7 +281,7 @@ The frontend has **no router** — `App.tsx` holds a single in-memory `view` uni
 
 Slices and acceptance criteria: [docs/phases/phase-21.md](phases/phase-21.md)
 
-## Phase 22 — Search across notes _(Not Started)_
+## Phase 22 — Search across notes _(In Progress)_
 
 Add fuzzy free-text search across all of a user's notes from a home-screen search bar, with **no new infrastructure and no fixed cost**. A new `NoteSearchView` projection holds one searchable document per note (title, Quick notes, Final notes, tags, action-item text — **not** the raw transcript); a `GET /notes/search?q=` endpoint reads the current user's documents and **fuzzy-ranks them in-Lambda** (Levenshtein / token-set ratio), staying inside the existing DynamoDB + Lambda stack at $0 marginal cost. **22-A** builds the searchable read model + endpoint (backend-only, independently shippable); **22-B** adds the debounced as-you-type search bar (results replace the card grid, explicit no-results/error states), preceded by a throwaway UX prototype. 22-B depends on 22-A. Graduated from the "Search across notes" future-features idea.
 

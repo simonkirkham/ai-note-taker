@@ -160,6 +160,7 @@ cdk deploy
 | `PROJ_NOTETITLELIST_TABLE_NAME`   | `notetaker-proj-notetitlelist`    | Note title list projection table                                  |
 | `PROJ_NOTEDETAIL_TABLE_NAME`      | `notetaker-proj-notedetail`       | Note detail projection table                                      |
 | `PROJ_CALENDARLINKINDEX_TABLE_NAME` | `notetaker-proj-calendarlinkindex` | CalendarLinkIndex projection table (calendarEventId → noteId)   |
+| `PROJ_NOTESEARCHVIEW_TABLE_NAME`  | `notetaker-proj-notesearchview`   | NoteSearchView projection table (search; UserId-index GSI)        |
 | `AWS_ACCESS_KEY_ID`               | `local`                           | Dummy credential accepted by DynamoDB Local                       |
 | `AWS_SECRET_ACCESS_KEY`           | `local`                           | Dummy credential accepted by DynamoDB Local                       |
 | `AWS_DEFAULT_REGION`              | `us-east-1`                       | Region sent to DynamoDB Local                                     |
