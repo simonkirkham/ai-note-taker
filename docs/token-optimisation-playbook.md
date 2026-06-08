@@ -48,6 +48,14 @@ Staging PR work on the shared primary `main` checkout races concurrent sessions/
 
 Slices with ≥4 criteria / new aggregate + projection + E2E auto-compacted mid-Pip (3-A, 8-C/D, 10-D, 7.5, 7.8-H). Breaker splits: domain/API tests → Pip → E2E tests → Pip. Two smaller sessions beat one compacted 95k+ session; domain errors caught before the expensive E2E layer.
 
+## Cache-invalidation/optimism bugs hide until the post-merge E2E
+
+A clean Vitest suite + green Hawk does **not** de-risk TanStack invalidation/optimism changes against the real stack. Two 20-C regressions passed everything local and only the post-merge deploy E2E caught them (fix #195, red main, ~one extra fix cycle):
+- **Always-mounted parent query → invalidation churn.** `useNoteCards` lives in `AppContent` (wraps every route), so a tag mutation invalidating `keys.noteCards` inside NoteView forced a `GET /notes/cards` while the list wasn't visible → E2E timing flake (different test each run). Before invalidating from a mutation, ask *where is that query observed?* — prefer invalidating on navigation back to the consuming view over from an unrelated view.
+- **Fire-and-forget write that gates a filter.** `setNoteDate` (home list filters by date) was made non-awaited; the cards refetch could beat the date PATCH → card date-less → hidden. A write whose value gates list visibility must complete before the list can refetch. Optimistic local state masked it in unit tests; only the server-refetching E2E exposed it.
+
+Budget for a possible post-merge E2E fix on `App.tsx`-hub TanStack slices. When an E2E flakes on a *different* test each run within one suite, suspect newly-added refetch churn, not a flaky test. (20-C)
+
 ## Don't double-run the test suite
 
 The WSL frontend suite is ~3 min/run. A manual targeted `vitest run <X>` before commit is redundant with the pre-commit hook's full-suite run (10-E, 10-F, CHANGE-4). Pick one.
