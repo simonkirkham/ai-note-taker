@@ -2,21 +2,12 @@ import './styles/tokens.css'
 import './styles/global.css'
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
-import App from '@/App'
-import ErrorBoundary from '@/components/ErrorBoundary'
-import { ToastProvider } from '@/components/ToastProvider'
-import { AuthProvider } from './auth/AuthContext.tsx'
+import { PrototypeRoot } from './prototype/PrototypeRoot'
 
-const e2eToken = (window as unknown as Record<string, unknown>).__E2E_AUTH_TOKEN as string | undefined
-
+// PROTOTYPE BRANCH ONLY — renders the throwaway search-bar prototype instead of
+// the real App. Never commit this swap to main or a slice branch.
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <ErrorBoundary>
-      <ToastProvider>
-        <AuthProvider initialToken={e2eToken}>
-          <App />
-        </AuthProvider>
-      </ToastProvider>
-    </ErrorBoundary>
+    <PrototypeRoot />
   </StrictMode>,
 )
