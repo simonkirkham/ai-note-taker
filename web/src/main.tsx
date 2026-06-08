@@ -23,6 +23,9 @@ const queryClient = new QueryClient({
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <ErrorBoundary>
+      {/* QueryClientProvider sits outside AuthProvider deliberately: query fns read
+          the module-level token store (not React context) and apiFetch handles
+          401-refresh, so no provider-ordering/auth-token race exists. */}
       <QueryClientProvider client={queryClient}>
         <ToastProvider>
           <AuthProvider initialToken={e2eToken}>

@@ -10,7 +10,9 @@ import type { ReactElement, ReactNode } from "react";
 // Use this everywhere a component (or its subtree, e.g. ListView → TodoSection)
 // reads server state via TanStack Query.
 function customRender(ui: ReactElement, options?: Omit<RenderOptions, "wrapper">) {
-  const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+  });
   const Wrapper = ({ children }: { children: ReactNode }) => (
     <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
   );

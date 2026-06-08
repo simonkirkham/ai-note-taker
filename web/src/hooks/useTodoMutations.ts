@@ -18,6 +18,14 @@ function rollback(qc: QueryClient, ctx: Ctx | undefined) {
   if (ctx?.previous) qc.setQueryData(keys.todos, ctx.previous);
 }
 
+// Template note for later Phase 20 slices: these mutations intentionally omit
+// `onSettled: invalidateQueries`. Todos is currently the SOLE consumer of
+// keys.todos and the optimistic result equals what the server echoes back, so a
+// reconciling refetch buys nothing here. A domain with MORE than one consumer
+// (folders, note cards, note detail) MUST add
+// `onSettled: () => qc.invalidateQueries({ queryKey: keys.<domain> })` so every
+// view re-reads — that cross-view sync is the win ADR 0012 is buying.
+
 export function useCompleteTodo() {
   const qc = useQueryClient();
   return useMutation<void, Error, TodoItem, Ctx>({
