@@ -1,10 +1,10 @@
+import { useQueryClient } from "@tanstack/react-query";
 import clsx from "clsx";
-import { useEffect, useState } from "react";
-import { completeAction, reopenAction, deleteAction } from "../api/actions";
-import {
-  getTodos, TodoItem,
-  completeTodo, reopenTodo, deleteTodo,
-} from "../api/todos";
+import { useState } from "react";
+import { keys } from "../api/queryKeys";
+import { TodoItem } from "../api/todos";
+import { useCompleteTodo, useReopenTodo, useDeleteTodo } from "../hooks/useTodoMutations";
+import { useTodos } from "../hooks/useTodos";
 import { TrashIcon } from "./icons";
 import QuickCaptureTodoInput from "./QuickCaptureTodoInput";
 import styles from "./TodoSection.module.css";
@@ -20,18 +20,13 @@ function isToday(isoString: string): boolean {
 }
 
 export default function TodoSection() {
-  const [items, setItems] = useState<TodoItem[]>([]);
-  const [loading, setLoading] = useState(true);
+  const qc = useQueryClient();
+  const { data: items = [], isLoading: loading } = useTodos();
+  const complete = useCompleteTodo();
+  const reopen = useReopenTodo();
+  const remove = useDeleteTodo();
   const [busy, setBusy] = useState<Set<string>>(new Set());
   const [doneOpen, setDoneOpen] = useState(false);
-
-  useEffect(() => {
-    let cancelled = false;
-    getTodos()
-      .then((data) => { if (!cancelled) { setItems(data); setLoading(false); } })
-      .catch(() => { if (!cancelled) setLoading(false); });
-    return () => { cancelled = true; };
-  }, []);
 
   const openItems = items.filter((i) => i.completedAt === null);
   const doneItems = items.filter((i) => i.completedAt !== null && isToday(i.completedAt));
@@ -43,8 +38,9 @@ export default function TodoSection() {
     setBusy((prev) => { const next = new Set(prev); next.delete(id); return next; });
   }
 
+  // The add flow is owned by QuickCaptureTodoInput; these callbacks reconcile the query cache.
   function handleOptimisticAdd(item: TodoItem) {
-    setItems((prev) => {
+    qc.setQueryData<TodoItem[]>(keys.todos, (prev = []) => {
       const existing = prev.findIndex((i) => i.itemId === item.itemId);
       if (existing >= 0) {
         const next = [...prev];
@@ -56,23 +52,21 @@ export default function TodoSection() {
   }
 
   function handleAddConfirmed(tempId: string, realId: string) {
-    setItems((prev) => prev.map((i) => i.itemId === tempId ? { ...i, itemId: realId } : i));
+    qc.setQueryData<TodoItem[]>(keys.todos, (prev = []) =>
+      prev.map((i) => i.itemId === tempId ? { ...i, itemId: realId } : i));
   }
 
   function handleAddFailed(tempId: string) {
-    setItems((prev) => prev.filter((i) => i.itemId !== tempId));
+    qc.setQueryData<TodoItem[]>(keys.todos, (prev = []) => prev.filter((i) => i.itemId !== tempId));
   }
 
   async function handleComplete(item: TodoItem) {
     if (busy.has(item.itemId)) return;
     addBusy(item.itemId);
-    const completedAt = new Date().toISOString();
-    setItems((prev) => prev.map((i) => i.itemId === item.itemId ? { ...i, completedAt } : i));
     try {
-      if (item.type === "action") await completeAction(item.noteId!, item.itemId);
-      else await completeTodo(item.itemId);
+      await complete.mutateAsync(item);
     } catch {
-      setItems((prev) => prev.map((i) => i.itemId === item.itemId ? { ...i, completedAt: null } : i));
+      // optimistic update already rolled back in the mutation's onError
     } finally {
       removeBusy(item.itemId);
     }
@@ -81,13 +75,10 @@ export default function TodoSection() {
   async function handleReopen(item: TodoItem) {
     if (busy.has(item.itemId)) return;
     addBusy(item.itemId);
-    const originalCompletedAt = item.completedAt;
-    setItems((prev) => prev.map((i) => i.itemId === item.itemId ? { ...i, completedAt: null } : i));
     try {
-      if (item.type === "action") await reopenAction(item.noteId!, item.itemId);
-      else await reopenTodo(item.itemId);
+      await reopen.mutateAsync(item);
     } catch {
-      setItems((prev) => prev.map((i) => i.itemId === item.itemId ? { ...i, completedAt: originalCompletedAt } : i));
+      // rolled back in onError
     } finally {
       removeBusy(item.itemId);
     }
@@ -96,12 +87,10 @@ export default function TodoSection() {
   async function handleDelete(item: TodoItem) {
     if (busy.has(item.itemId)) return;
     addBusy(item.itemId);
-    setItems((prev) => prev.filter((i) => i.itemId !== item.itemId));
     try {
-      if (item.type === "action") await deleteAction(item.noteId!, item.itemId);
-      else await deleteTodo(item.itemId);
+      await remove.mutateAsync(item);
     } catch {
-      setItems((prev) => [item, ...prev]);
+      // rolled back in onError
     } finally {
       removeBusy(item.itemId);
     }

@@ -1,9 +1,9 @@
-import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { http, HttpResponse } from 'msw'
 import type { NoteCard } from '../api/notes'
 import ListView from '../components/ListView'
 import { localDateISO } from '../dates'
+import { render, screen, waitFor, within } from '../test/render'
 import { server } from '../test/setup'
 
 // Build dates relative to the real "today" so the tests never become a

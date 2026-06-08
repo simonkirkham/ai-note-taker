@@ -1,10 +1,10 @@
-import { render, screen, within, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { http, HttpResponse } from 'msw'
 import App from '../App'
 import { AuthProvider } from '../auth/AuthContext'
 import { clearToken } from '../auth/tokenStore'
 import folderPreviewStyles from '../components/FolderPreviewPanel.module.css'
+import { render, screen, within, waitFor } from '../test/render'
 import { server } from '../test/setup'
 
 const folder = { folderId: 'f-1', name: 'People', children: [] }

@@ -267,9 +267,9 @@ Close the gap between the `frontend-react` skill rules (extended in PR #173) and
 
 Slices and acceptance criteria: [docs/phases/phase-19.md](phases/phase-19.md)
 
-## Phase 20 — Server-state migration to TanStack Query _(Not Started)_
+## Phase 20 — Server-state migration to TanStack Query _(In Progress)_
 
-Replace the hand-rolled `useEffect`-fetch + `useState` server-state hooks with **TanStack Query** (cache, dedup, retry/backoff, stale-while-revalidate, optimistic-update-with-rollback), migrating **one domain per slice** with hand-rolled and library coexisting until the last. **Reverses [ADR 0010](adr/0010-server-state-strategy.md)** (Accepted: stay hand-rolled), so the whole phase is **hard-gated** on a superseding ADR. Builds on the `api/<domain>.ts` seam from 19-A. Seven slices: **20-A** foundation + todos pilot (sets the `useQuery`/`useMutation`+rollback template), then **20-B** folders, **20-C** cards/list, **20-D** actions+tags, **20-E** note detail, **20-F** meetings, **20-G** cleanup (subsumes 19-H). Transcription credentials stay hand-rolled.
+Replace the hand-rolled `useEffect`-fetch + `useState` server-state hooks with **TanStack Query** (cache, dedup, retry/backoff, stale-while-revalidate, optimistic-update-with-rollback), migrating **one domain per slice** with hand-rolled and library coexisting until the last. **Reverses [ADR 0010](adr/0010-server-state-strategy.md)** (Accepted: stay hand-rolled), so the whole phase is **hard-gated** on a superseding ADR. Builds on the `api/<domain>.ts` seam from 19-A. Seven slices: **20-A** foundation + todos pilot (sets the `useQuery`/`useMutation`+rollback template), then **20-B** folders, **20-C** cards/list, **20-D** actions+tags, **20-E** note detail, **20-F** meetings, **20-G** cleanup (subsumes 19-H). Transcription credentials stay hand-rolled. **Done:** the ADR gate ([ADR 0012](adr/0012-adopt-tanstack-query-server-state.md) supersedes 0010) and **20-A** (foundation + todos pilot, the template the rest copy).
 
 Slices and acceptance criteria: [docs/phases/phase-20.md](phases/phase-20.md)
 
