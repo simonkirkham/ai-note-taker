@@ -10,14 +10,8 @@ import {
   useParams,
 } from "react-router";
 import {
-  FolderNode,
-  getFolders,
-  createFolder as apiCreateFolder,
-  renameFolder as apiRenameFolder,
-  deleteFolder as apiDeleteFolder,
   moveNoteToFolder as apiMoveNoteToFolder,
   unfileNote as apiUnfileNote,
-  moveFolder as apiMoveFolder,
 } from "./api/folders";
 import { NoteCard, setNoteDate, getNoteCards } from "./api/notes";
 import { useAuth } from "./auth/context";
@@ -29,27 +23,17 @@ import SessionExpiredBanner from "./components/SessionExpiredBanner";
 import Sidebar from "./components/Sidebar";
 import SignInPage from "./components/SignInPage";
 import { UNFILED_ID } from "./constants";
+import { findNode } from "./folderTree";
+import {
+  useCreateFolder,
+  useRenameFolder,
+  useDeleteFolder,
+  useMoveFolder,
+} from "./hooks/useFolderMutations";
+import { useFolders } from "./hooks/useFolders";
 import { useNotes } from "./hooks/useNotes";
 
 type NoteNavState = { isNew?: boolean; initialTitle?: string };
-
-function mapTree(
-  nodes: FolderNode[],
-  folderId: string,
-  update: (n: FolderNode) => FolderNode,
-): FolderNode[] {
-  return nodes.map((n) =>
-    n.folderId === folderId
-      ? update(n)
-      : { ...n, children: mapTree(n.children ?? [], folderId, update) },
-  );
-}
-
-function removeFromTree(nodes: FolderNode[], folderId: string): FolderNode[] {
-  return nodes
-    .filter((n) => n.folderId !== folderId)
-    .map((n) => ({ ...n, children: removeFromTree(n.children ?? [], folderId) }));
-}
 
 export default function App() {
   return (
@@ -78,7 +62,11 @@ function AppContent({ signOut }: { signOut: () => void }) {
   const location = useLocation();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const { notes, loading, creating, createError, create, rename, remove } = useNotes();
-  const [folders, setFolders] = useState<FolderNode[]>([]);
+  const { data: folders = [] } = useFolders();
+  const createFolderM = useCreateFolder();
+  const renameFolderM = useRenameFolder();
+  const deleteFolderM = useDeleteFolder();
+  const moveFolderM = useMoveFolder();
   const [activeFolderId, setActiveFolderId] = useState<string | undefined>();
   const [activeFolderPath, setActiveFolderPath] = useState<string[]>([]);
   const [cards, setCards] = useState<NoteCard[]>([]);
@@ -86,7 +74,6 @@ function AppContent({ signOut }: { signOut: () => void }) {
   useEffect(() => { cardsRef.current = cards; }, [cards]);
 
   useEffect(() => {
-    getFolders().then(setFolders).catch(() => {});
     getNoteCards().then(setCards).catch(() => {});
   }, []);
 
@@ -178,37 +165,24 @@ function AppContent({ signOut }: { signOut: () => void }) {
     navigate("/");
   }
 
-  async function handleCreateFolder(name: string, parentFolderId?: string) {
-    const tempId = `temp-${crypto.randomUUID()}`;
-    const tempFolder: FolderNode = { folderId: tempId, name, children: [] };
-    if (parentFolderId) {
-      setFolders((prev) => mapTree(prev, parentFolderId, (n) => ({ ...n, children: [...(n.children ?? []), tempFolder] })));
-    } else {
-      setFolders((prev) => [...prev, tempFolder]);
-    }
-    try {
-      await apiCreateFolder(name, parentFolderId);
-      getFolders().then(setFolders).catch(() => {});
-    } catch {
-      setFolders((prev) => removeFromTree(prev, tempId));
-    }
+  function handleCreateFolder(name: string, parentFolderId?: string) {
+    // The cache optimism (insert temp folder) + temp-id→real-id reconciliation
+    // live in the mutation hook; the component only supplies a temp id.
+    createFolderM.mutate({ name, parentFolderId, tempId: `temp-${crypto.randomUUID()}` });
   }
 
   function handleRenameFolder(folderId: string, name: string) {
-    const prevFolders = folders;
+    // The folder-tree optimism/rollback is in the hook. The component owns the
+    // derived active-folder breadcrumb, so it applies and reverts that.
     const prevActiveFolderPath = activeFolderPath;
-    setFolders((prev) => mapTree(prev, folderId, (n) => ({ ...n, name })));
     if (folderId === activeFolderId) {
       setActiveFolderPath((prev) =>
         prev.map((seg, i) => (i === prev.length - 1 ? name : seg)),
       );
     }
-    apiRenameFolder(folderId, name)
-      .then(() => getFolders().then(setFolders))
-      .catch(() => {
-        setFolders(prevFolders);
-        setActiveFolderPath(prevActiveFolderPath);
-      });
+    renameFolderM.mutate({ folderId, name }, {
+      onError: () => setActiveFolderPath(prevActiveFolderPath),
+    });
   }
 
   function handleMoveNoteToFolder(noteId: string, folderId: string | null) {
@@ -227,15 +201,16 @@ function AppContent({ signOut }: { signOut: () => void }) {
       navigate("/");
     }
     if (previewFolderId === folderId) setPreviewFolderId(null);
-    apiDeleteFolder(folderId)
-      .then(() => getFolders().then(setFolders))
-      .catch(() => {});
+    deleteFolderM.mutate({ folderId });
   }
 
   function handleMoveFolder(folderId: string, parentFolderId: string | null) {
-    apiMoveFolder(folderId, parentFolderId)
-      .then(() => getFolders().then(setFolders))
-      .catch(() => {});
+    // Skip self/descendant drops — they would orphan the subtree, and the backend
+    // has no cycle guard so a refetch wouldn't recover.
+    if (parentFolderId === folderId) return;
+    const node = findNode(folders, folderId);
+    if (parentFolderId !== null && node && findNode(node.children ?? [], parentFolderId)) return;
+    moveFolderM.mutate({ folderId, parentFolderId });
   }
 
   return (
