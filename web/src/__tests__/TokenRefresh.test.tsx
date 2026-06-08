@@ -1,4 +1,3 @@
-import { render, screen, act, fireEvent } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { http, HttpResponse } from 'msw'
 import App from '../App'
@@ -6,6 +5,7 @@ import { AuthProvider } from '../auth/AuthContext'
 import * as silentRefreshMod from '../auth/silentRefresh'
 import { clearToken, setToken } from '../auth/tokenStore'
 import SessionExpiredBanner from '../components/SessionExpiredBanner'
+import { render, screen, act, fireEvent } from '../test/render'
 import { server } from '../test/setup'
 
 vi.mock('../auth/silentRefresh', () => ({
