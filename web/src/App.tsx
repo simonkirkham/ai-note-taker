@@ -1,5 +1,6 @@
+import { useQueryClient } from "@tanstack/react-query";
 import clsx from "clsx";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   BrowserRouter,
   Navigate,
@@ -10,11 +11,8 @@ import {
   useNavigate,
   useParams,
 } from "react-router";
-import {
-  moveNoteToFolder as apiMoveNoteToFolder,
-  unfileNote as apiUnfileNote,
-} from "./api/folders";
-import { NoteCard, setNoteDate, getNoteCards } from "./api/notes";
+import { setNoteDate } from "./api/notes";
+import { keys } from "./api/queryKeys";
 import { useAuth } from "./auth/context";
 import styles from "./components/App.module.css";
 import FolderPreviewPanel from "./components/FolderPreviewPanel";
@@ -33,7 +31,13 @@ import {
   useMoveFolder,
 } from "./hooks/useFolderMutations";
 import { useFolders } from "./hooks/useFolders";
-import { useNotes } from "./hooks/useNotes";
+import { useNoteCards } from "./hooks/useNoteCards";
+import {
+  useCreateNote,
+  useRenameNote,
+  useDeleteNote,
+  useMoveNoteToFolder,
+} from "./hooks/useNoteMutations";
 import { recordRumEvent } from "./rum";
 
 type NoteNavState = { isNew?: boolean; initialTitle?: string };
@@ -77,7 +81,14 @@ function AppContent({ signOut }: { signOut: () => void }) {
   const navigate = useNavigate();
   const location = useLocation();
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const { notes, loading, creating, createError, create, rename, remove } = useNotes();
+  const qc = useQueryClient();
+  const { data: cards = [], isLoading: loading } = useNoteCards();
+  const createNote = useCreateNote();
+  const renameNote = useRenameNote();
+  const deleteNote = useDeleteNote();
+  const moveNote = useMoveNoteToFolder();
+  const creating = createNote.isPending;
+  const createError = createNote.error ? "Failed to create note" : null;
   const { data: folders = [] } = useFolders();
   const createFolderM = useCreateFolder();
   const renameFolderM = useRenameFolder();
@@ -95,14 +106,6 @@ function AppContent({ signOut }: { signOut: () => void }) {
     if (activeFolderId === UNFILED_ID) return ["Unfiled Notes"];
     return findPath(folders, activeFolderId) ?? [];
   }, [activeFolderId, folders]);
-  const [cards, setCards] = useState<NoteCard[]>([]);
-  const cardsRef = useRef<NoteCard[]>([]);
-  useEffect(() => { cardsRef.current = cards; }, [cards]);
-
-  useEffect(() => {
-    getNoteCards().then(setCards).catch(() => {});
-  }, []);
-
   const handleDateSet = useCallback((_noteId: string, _date: string) => {}, []);
   const [previewFolderId, setPreviewFolderId] = useState<string | null>(null);
   const [previewFolderName, setPreviewFolderName] = useState("");
@@ -115,49 +118,37 @@ function AppContent({ signOut }: { signOut: () => void }) {
   }
 
   async function handleNewNote() {
+    const newFolderId = activeFolderId && activeFolderId !== UNFILED_ID ? activeFolderId : null;
     try {
-      const noteId = await create();
-      const todayAsISO = new Date().toISOString().slice(0, 10);
-      try {
-        await setNoteDate(noteId, todayAsISO);
-      } catch {
-        // non-fatal: date will default to empty; user can set it manually
-      }
-      const newFolderId = activeFolderId && activeFolderId !== UNFILED_ID ? activeFolderId : null;
-      setCards((prev) => [{
-        noteId, title: '', contentPreview: '', date: todayAsISO,
-        openActions: [], createdAt: new Date().toISOString(),
-        lastModifiedAt: new Date().toISOString(), tags: [], folderId: newFolderId,
-      }, ...prev]);
-      if (newFolderId) {
-        apiMoveNoteToFolder(noteId, newFolderId).catch(() => {
-          setCards((prev) => prev.map((c) => c.noteId === noteId ? { ...c, folderId: null } : c));
-        });
-      }
+      // Create inserts the real card (with folderId) on success; then persist the
+      // default date and the folder assignment. Navigation keys off the server id.
+      const { noteId } = await createNote.mutateAsync({ folderId: newFolderId });
+      setNoteDate(noteId, new Date().toISOString().slice(0, 10)).catch(() => {});
+      if (newFolderId) moveNote.mutate({ noteId, folderId: newFolderId });
       openNote(noteId, undefined, true);
     } catch {
-      // error surfaced by hook via createError
+      // error surfaced via createError (createNote.error)
     }
   }
 
   async function handleDelete(noteId: string) {
-    await remove(noteId);
-    setCards((prev) => prev.filter((c) => c.noteId !== noteId));
-    // Destructive: replace so the deleted note is not reachable via Back.
-    navigate("/", { replace: true });
+    try {
+      await deleteNote.mutateAsync(noteId);
+      // Destructive: replace so the deleted note is not reachable via Back.
+      navigate("/", { replace: true });
+    } catch {
+      // rolled back in the mutation's onError; stay on the note
+    }
   }
 
-  // NoteCard calls deleteNote() internally; this callback removes the card from shared state.
+  // NoteCard is presentational; this triggers the delete mutation (optimistic
+  // removal from the noteCards cache + DELETE).
   function handleDeleteNote(noteId: string) {
-    setCards((prev) => prev.filter((c) => c.noteId !== noteId));
+    deleteNote.mutate(noteId);
   }
 
   function handleRename(noteId: string, title: string) {
-    const prevTitle = cardsRef.current.find((c) => c.noteId === noteId)?.title ?? '';
-    setCards((prev) => prev.map((c) => c.noteId === noteId ? { ...c, title } : c));
-    rename(noteId, title).catch(() => {
-      setCards((prev) => prev.map((c) => c.noteId === noteId ? { ...c, title: prevTitle } : c));
-    });
+    renameNote.mutate({ noteId, title });
   }
 
   function handleBackFromNote() {
@@ -166,7 +157,8 @@ function AppContent({ signOut }: { signOut: () => void }) {
     // "default" only for the initial entry.)
     if (location.key === "default") navigate("/");
     else navigate(-1);
-    getNoteCards().then(setCards).catch(() => {});
+    // The note's content/preview may have changed in NoteView — refresh the list.
+    qc.invalidateQueries({ queryKey: keys.noteCards });
   }
 
   function handleUnfiledSelect() {
@@ -198,12 +190,7 @@ function AppContent({ signOut }: { signOut: () => void }) {
   }
 
   function handleMoveNoteToFolder(noteId: string, folderId: string | null) {
-    const prevFolderId = cardsRef.current.find((c) => c.noteId === noteId)?.folderId ?? null;
-    setCards((prev) => prev.map((c) => c.noteId === noteId ? { ...c, folderId } : c));
-    const apiCall = folderId ? apiMoveNoteToFolder(noteId, folderId) : apiUnfileNote(noteId);
-    apiCall.catch(() => {
-      setCards((prev) => prev.map((c) => c.noteId === noteId ? { ...c, folderId: prevFolderId } : c));
-    });
+    moveNote.mutate({ noteId, folderId });
   }
 
   function handleDeleteFolder(folderId: string) {
@@ -294,7 +281,7 @@ function AppContent({ signOut }: { signOut: () => void }) {
             path="/notes/:noteId"
             element={
               <NoteRoute
-                notes={notes}
+                notes={cards}
                 onRename={handleRename}
                 onBack={handleBackFromNote}
                 onDelete={handleDelete}
