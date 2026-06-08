@@ -56,4 +56,14 @@ describe('useMoveFolder', () => {
       expect(ids(qc.getQueryData<FolderNode[]>(keys.folders)!)).toEqual(['f-1', 'f-2'])
     })
   })
+
+  it('does not orphan the node on a self-drop (no-op optimistic transform)', async () => {
+    server.use(http.put('/api/folders/f-1/parent', () => new HttpResponse(null, { status: 204 })))
+    const { qc, wrapper } = setup()
+    const { result } = renderHook(() => useMoveFolder(), { wrapper })
+    act(() => { result.current.mutate({ folderId: 'f-1', parentFolderId: 'f-1' }) })
+    // Tree is unchanged — f-1 is not removed-then-lost
+    await waitFor(() => expect(result.current.isPending).toBe(false))
+    expect(ids(qc.getQueryData<FolderNode[]>(keys.folders)!)).toEqual(['f-1', 'f-2'])
+  })
 })

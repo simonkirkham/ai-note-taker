@@ -27,9 +27,10 @@ function rollback(qc: QueryClient, ctx: Ctx | undefined) {
   if (ctx?.previous) qc.setQueryData(keys.folders, ctx.previous);
 }
 
-// Unlike todos (single consumer), folders has multiple readers (sidebar tree,
-// folder picker) AND create returns a server id the optimistic temp id must be
-// swapped for — so every mutation reconciles via invalidateQueries on settle.
+// Unlike todos (single consumer, no reconcile), create returns a server id the
+// optimistic temp id must be swapped for — only a refetch knows the real id — so
+// every mutation reconciles via invalidateQueries on settle. (This also keeps the
+// tree correct once 20-C adds more readers of keys.folders.)
 function invalidate(qc: QueryClient) {
   return qc.invalidateQueries({ queryKey: keys.folders });
 }
@@ -79,7 +80,10 @@ export function useMoveFolder() {
     onMutate: ({ folderId, parentFolderId }) =>
       optimistic(qc, (tree) => {
         const node = findNode(tree, folderId);
-        if (!node) return tree;
+        // No-op on a self- or descendant-drop: removing the node then failing to
+        // re-insert (target lives inside the removed subtree) would orphan it.
+        if (!node || parentFolderId === folderId) return tree;
+        if (parentFolderId !== null && findNode(node.children ?? [], parentFolderId)) return tree;
         return insertIntoTree(removeFromTree(tree, folderId), parentFolderId, node);
       }),
     onError: (_e, _v, ctx) => rollback(qc, ctx),

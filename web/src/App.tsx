@@ -23,6 +23,7 @@ import SessionExpiredBanner from "./components/SessionExpiredBanner";
 import Sidebar from "./components/Sidebar";
 import SignInPage from "./components/SignInPage";
 import { UNFILED_ID } from "./constants";
+import { findNode } from "./folderTree";
 import {
   useCreateFolder,
   useRenameFolder,
@@ -204,6 +205,11 @@ function AppContent({ signOut }: { signOut: () => void }) {
   }
 
   function handleMoveFolder(folderId: string, parentFolderId: string | null) {
+    // Skip self/descendant drops — they would orphan the subtree, and the backend
+    // has no cycle guard so a refetch wouldn't recover.
+    if (parentFolderId === folderId) return;
+    const node = findNode(folders, folderId);
+    if (parentFolderId !== null && node && findNode(node.children ?? [], parentFolderId)) return;
     moveFolderM.mutate({ folderId, parentFolderId });
   }
 

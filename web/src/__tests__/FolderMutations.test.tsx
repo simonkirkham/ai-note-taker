@@ -40,6 +40,8 @@ describe('FolderMutations', () => {
     await act(async () => { resolveCreate() })
     expect(await within(screen.getByTestId('sidebar')).findByTestId('folder-name-f-real')).toBeInTheDocument()
     expect(within(screen.getByTestId('sidebar')).getByText('People')).toBeInTheDocument()
+    // The optimistic temp folder is swapped out, not left as a duplicate
+    expect(within(screen.getByTestId('sidebar')).queryByTestId(/folder-name-temp-/)).not.toBeInTheDocument()
   })
 
   it('renamed folder shows the new name in the sidebar immediately', async () => {
