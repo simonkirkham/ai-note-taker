@@ -91,6 +91,7 @@ Recurring cost drivers and their pre-emptions live in [token-optimisation-playbo
 | CHANGE-14 Rename audio toggle | 90k | 16k | 33k | One-line copy; smallest slice; Hawk is the floor |
 | tech-remove-dead-dispatcher | 170k | 32k | 55k | Dead-dispatcher cleanup; Hawk coverage matrix |
 | 20-A TanStack foundation + todos | 175k | 115k | 57k | Inherited a near-complete worktree (prior session); cost was verification + flaky vitest segfault retries, not authoring |
+| 21-A Router foundation + note/home URLs | ~340k | ~280k | 61k | Spike: two avoidable rounds — react-router-dom/Vitest vmThreads CJS-.mjs debug, then a mid-slice 20-A merge that broke PR-merge CI and forced a re-verify. Authoring itself was small. |
 
 ## Scribe append format
 

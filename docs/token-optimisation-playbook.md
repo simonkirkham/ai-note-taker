@@ -69,3 +69,5 @@ A Plan/Explore agent that resolves a hidden requirement before implementation bu
 | Concurrent session clobbers backlog numbering | Reserve the number with a table-row commit first; re-read at Scribe | CHANGE-12 |
 | `find` over untracked project dumps `bin/`+`obj/` | `-not -path '*/bin/*' -not -path '*/obj/*'` | 10-F |
 | Stale E2E data from a prior failed run poisons next | Clear test data *before* E2E, not only after | 3-B |
+| Sibling frontend slice merged shared infra (providers/test helper) → PR-merge CI red while local green | Merge `origin/main` + re-run before finalizing a frontend PR when other frontend slices are in flight | 21-A |
+| Local green only under `CI=1` forks; `vmThreads` red on an ESM-in-CJS dep | Test new frontend deps under the local `vmThreads` pool too, not just forks, before committing | 21-A |

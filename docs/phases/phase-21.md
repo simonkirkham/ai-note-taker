@@ -6,8 +6,8 @@
 
 | Slice | Summary | Status | Depends on |
 |-------|---------|--------|------------|
-| Gate | **ADR 0013 — adopt react-router-dom.** Record why a router (deep-linking + history) now earns a dependency in this learning-vehicle frontend. No code. | Not Started | — |
-| 21-A | **Router foundation + note & home URLs.** Install `react-router-dom`; mount `<BrowserRouter>`; routes `/` (home) and `/notes/:noteId`; convert note open/back/create to `navigate()`; remove the `note` arm of the `view` union. Back/forward + deep-link + shareable note URL. | Not Started | Gate |
+| Gate | **ADR 0013 — adopt React Router v7 (`react-router`).** Record why a router (deep-linking + history) now earns a dependency in this learning-vehicle frontend. No code. | Done | — |
+| 21-A | **Router foundation + note & home URLs.** Install `react-router`; mount `<BrowserRouter>` inside `App`; routes `/` (home) and `/notes/:noteId`; convert note open/back/create to `navigate()`; remove the `note` arm of the `view` union. Back/forward + deep-link + shareable note URL. | Done | Gate |
 | 21-B | **Folder URLs.** Route `/folders/:folderId` (+ `/folders/unfiled`); derive `folderPath` from the folder tree by id; remove the `folder` arm of the `view` union. Back/forward across folders + home; deep-link to a folder. | Not Started | 21-A |
 | 21-C | **Deep-link edge cases.** Missing/deleted note → redirect home with a toast; signed-out deep link returns to the requested URL after sign-in; verify CloudFront serves a hard-loaded deep link (smoke/E2E). | Not Started | 21-A, 21-B |
 
@@ -28,6 +28,8 @@ Frontend-only; the silent failure modes are all on the deep-link/hard-load path,
 ---
 
 ## Slice 21-A — Router foundation + note & home URLs
+
+**Status:** Done (PR #185, deploy #476, 2026-06-08). Imported from `react-router` (not the `react-router-dom` shim — its CJS entry `require()`s an `.mjs` the Vitest `vmThreads` pool can't load); `<BrowserRouter>` mounted inside `App` so existing `<App/>` tests need no router wrapper. See [phase-21a-router-foundation](../learnings/phase-21a-router-foundation.md).
 
 **User value:** Open a note and the URL becomes `/notes/:id` — copy it, share it, reload it, and the note opens. Back returns to where you were; forward reopens the note.
 
