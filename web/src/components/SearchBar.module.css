@@ -31,6 +31,12 @@
   color: var(--color-text-muted);
 }
 
+.searchInput::-webkit-search-cancel-button,
+.searchInput::-webkit-search-decoration {
+  appearance: none;
+  -webkit-appearance: none;
+}
+
 .searchInput:focus-visible {
   outline: 2px solid var(--color-primary);
   outline-offset: 1px;
