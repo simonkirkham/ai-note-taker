@@ -9,7 +9,7 @@
 | Gate | **Supersede ADR 0010** with a new ADR recording the trigger that justifies reversal. No code. | Done | — |
 | 20-A | **Foundation + todos pilot.** `QueryClientProvider`, query-key factory, `QueryClient` defaults, devtools; migrate `TodoSection` (`getTodos` + complete/reopen/delete/add) as the reference template for every later slice. | Done | Gate |
 | 20-B | **Folders (tree).** `getFolders` + create/rename/delete/move-folder; delete the `App.tsx` `getFolders().then(setFolders)` invalidation sprawl. Note↔folder assignment (`moveNoteToFolder`/`unfileNote`) defers to 20-C with note cards. | Done | 20-A |
-| 20-C | **Note cards / list.** Unify `App.tsx`'s `cards` state + `useNotes().notes` into one `useNoteCards()` query; note CRUD + move-to-folder/unfile mutations; wire deferred `keys.noteCards` invalidations (delete-folder, tag mutations). Delete `useNotes`. | Not Started | 20-A, 20-B |
+| 20-C | **Note cards / list.** Unify `App.tsx`'s `cards` state + `useNotes().notes` into one `useNoteCards()` query; note CRUD + move-to-folder/unfile mutations; delete-folder invalidates `keys.noteCards`. Delete `useNotes`. (Tag→card-pill refresh is via `handleBackFromNote`, not a tag invalidation — see fix #195.) | Done | 20-A, 20-B |
 | 20-D | **Actions + tag index.** `useActions(noteId)` + action mutations (also invalidate `keys.todos`); `useTags()` (dedups NoteView+ListView's two `getTags` fetches) + tag-index invalidation. Note-applied tags stay local (→ 20-E). Component-only, no `App.tsx`. | Done | 20-A |
 | 20-E | **Note detail.** `getNoteDetail` + `editContent`/`setNoteDate`/`analyseNote` refetch (NoteView has the most mutations). | Not Started | 20-A |
 | 20-F | **Meetings.** `getMeetingsForDate` + create-from-meeting / next-occurrence / link; preserve Phase 16's reminders-vs-browsed-day decoupling. | Not Started | 20-A |
@@ -154,7 +154,7 @@ Scenario: A folder mutation in one view updates every view
 
 ## Slice 20-C — Note cards / list
 
-**Status:** Not Started
+**Status:** Done
 
 **User value:** None directly (consolidation + like-for-like migration of the home note list). Removes the duplicated note state and the manual cross-view refetches; a note created/renamed/deleted/moved in any view reflects everywhere via one cache.
 
@@ -170,7 +170,8 @@ Scenario: A folder mutation in one view updates every view
 - `App.tsx` handlers (`handleNewNote`, `handleDelete`, `handleDeleteNote`, `handleRename`, `handleMoveNoteToFolder`) rewired onto the mutations; the `cards`/`setCards`/`cardsRef` state and the manual `getNoteCards().then(setCards)` calls (incl. the on-back refetch → becomes `invalidateQueries(keys.noteCards)`) deleted.
 - `NoteCard.tsx` stops owning its `deleteNote` API call; `onDelete` drives `useDeleteNote` in the parent (NoteCard becomes presentational). `ListView` keeps wrapping `onDelete={() => onDeleteNote(card.noteId)}`.
 - Delete `web/src/hooks/useNotes.ts` (sole consumer is `App.tsx`).
-- **Deferred cross-domain invalidations now wired:** `useDeleteFolder` (20-B) adds `keys.noteCards` invalidation (backend orphans a deleted folder's notes to unfiled); `useTagNote`/`useUntagNote` (20-D) add `keys.noteCards` invalidation (NoteCard renders tag pills, so they'd otherwise stale after tagging in NoteView).
+- **Deferred cross-domain invalidation now wired:** `useDeleteFolder` (20-B) adds `keys.noteCards` invalidation (backend orphans a deleted folder's notes to unfiled).
+- **Tag → card-pill refresh:** handled by `handleBackFromNote` invalidating `keys.noteCards` on return from NoteView — **not** by a tag-mutation invalidation. (20-C briefly added tag→`keys.noteCards`, but `AppContent`'s `useNoteCards` is always mounted, so it forced a GET `/notes/cards` on every keystroke-level tag op while the list wasn't visible — churn that flaked the tag E2E journeys. Reverted in fix #195; tags are only edited in NoteView, so the return-path invalidation covers it.)
 
 **Out of scope:** `getNoteDetail`/`editContent`/`analyseNote`/`setNoteDate` semantics for the open note (20-E) — except `setNoteDate` stays a direct call inside the create flow (default date). Action mutations do **not** invalidate `keys.noteCards` (NoteCard hides `openActions` — CHANGE-10). Meetings (20-F).
 
@@ -219,22 +220,22 @@ Scenario: One cache, no duplicate fetch
 
 ### Acceptance criteria
 
-- [ ] `web/src/hooks/useNoteCards.ts` (`useQuery`, `keys.noteCards`) is the single source for the note list; `App.tsx`'s `cards`/`setCards`/`cardsRef` state and `getNoteCards` effect are removed
-- [ ] `web/src/hooks/useNoteMutations.ts` exposes `useCreateNote`/`useRenameNote`/`useDeleteNote`/`useMoveNoteToFolder` (optimistic `onMutate` + `onError` rollback + `onSettled` invalidate `keys.noteCards`); create returns the real `noteId` for navigation and reconciles via the refetch
-- [ ] `App.tsx`'s five card handlers are rewired onto the mutations; `creating`/`createError` for `ListView` come from the create mutation; the on-back manual refetch becomes `invalidateQueries(keys.noteCards)`
-- [ ] `NoteCard.tsx` no longer calls `deleteNote` directly — `onDelete` drives `useDeleteNote` in the parent; `NoteView`'s title lookup reads the `useNoteCards` cache
-- [ ] `web/src/hooks/useNotes.ts` deleted; no remaining `getNotes`/`listNotes` read for the list (GET `/notes` no longer called from the list path)
-- [ ] `useDeleteFolder` (20-B) and `useTagNote`/`useUntagNote` (20-D) additionally invalidate `keys.noteCards`
-- [ ] Action mutations do **not** invalidate `keys.noteCards` (openActions not shown); meetings/note-detail stay hand-rolled (coexistence intact); todos/folders/actions/tags stay on TanStack
-- [ ] Optimistic-UI rule satisfied — apply immediately, roll back on error (forced-reject tests for rename/delete/move)
-- [ ] App-rendering tests provide a `GET /notes/cards` MSW handler; `ListView`/`NoteCardDelete`/`FolderMutations`/`FolderRouting`/`Routing`/`NoteView` tests updated/green; full Vitest suite + `tsc -b`/build + ESLint green
+- [x] `web/src/hooks/useNoteCards.ts` (`useQuery`, `keys.noteCards`) is the single source for the note list; `App.tsx`'s `cards`/`setCards`/`cardsRef` state and `getNoteCards` effect are removed
+- [x] `web/src/hooks/useNoteMutations.ts` exposes `useCreateNote`/`useRenameNote`/`useDeleteNote`/`useMoveNoteToFolder` (optimistic `onMutate` + `onError` rollback + `onSettled` invalidate `keys.noteCards`); create returns the real `noteId` and inserts the real-id card on success
+- [x] `App.tsx`'s five card handlers are rewired onto the mutations; `creating`/`createError` for `ListView` come from the create mutation; the on-back manual refetch becomes `invalidateQueries(keys.noteCards)`. `handleNewNote` **awaits** `setNoteDate` before navigating (fix #195 — else the card is date-less and hidden by the home filter)
+- [x] `NoteCard.tsx` no longer calls `deleteNote` directly — `onDelete` drives `useDeleteNote` in the parent; `NoteView`'s title lookup reads the `useNoteCards` cache
+- [x] `web/src/hooks/useNotes.ts` deleted; no remaining `getNotes`/`listNotes` read for the list (GET `/notes` no longer called from the list path). *(`listNotes` export remains, used only by `Auth.test` as an auth probe — remove in 20-G.)*
+- [x] `useDeleteFolder` (20-B) additionally invalidates `keys.noteCards`. *(Tag mutations do **not** — reverted in fix #195; `handleBackFromNote` covers the card-pill refresh on return.)*
+- [x] Action mutations do **not** invalidate `keys.noteCards` (openActions not shown); meetings/note-detail stay hand-rolled (coexistence intact); todos/folders/actions/tags stay on TanStack
+- [x] Optimistic-UI rule satisfied — apply immediately, roll back on error (forced-reject tests for rename/delete/move)
+- [x] App-rendering tests provide a `GET /notes/cards` MSW handler; `ListView`/`NoteCardDelete`/`FolderMutations`/`FolderRouting`/`Routing`/`NoteView` tests updated/green; full Vitest suite + `tsc -b`/build + ESLint green
 
 ### Observability
 
 1. **Silent optimistic divergence (notes).** rename/delete/move must roll back on error or the list drifts ahead of the server. Forced-reject test per mutation.
 2. **Create temp-id reconciliation.** The new card must end up with the **server** id (navigation + later mutations key off it). Assert the real id appears after the create settles, not just the title text.
 3. **Delete-folder → orphan refresh.** Closes the 20-B gap: deleting a folder now refetches `keys.noteCards` so orphaned notes show as unfiled. Cover with the folder-delete scenario.
-4. **Tag → card pill staleness.** Closes the 20-D gap: tagging in NoteView invalidates `keys.noteCards` so the home card's pills update. Without it, the card pills stale until a full reload.
+4. **Tag → card pill staleness.** Closes the 20-D gap, but via `handleBackFromNote` (return-path `keys.noteCards` invalidation), **not** a tag-mutation invalidation — the latter churned the always-mounted `useNoteCards` on every tag op and flaked the E2E (fix #195). Tags are only edited in NoteView, so the return path covers it.
 5. **No double fetch.** GET `/notes` (listNotes) must be gone from the list path — one `GET /notes/cards` feeds both the list and the title lookup.
 
 ---
