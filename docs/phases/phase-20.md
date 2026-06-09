@@ -11,7 +11,7 @@
 | 20-B | **Folders (tree).** `getFolders` + create/rename/delete/move-folder; delete the `App.tsx` `getFolders().then(setFolders)` invalidation sprawl. Note↔folder assignment (`moveNoteToFolder`/`unfileNote`) defers to 20-C with note cards. | Done | 20-A |
 | 20-C | **Note cards / list.** Unify `App.tsx`'s `cards` state + `useNotes().notes` into one `useNoteCards()` query; note CRUD + move-to-folder/unfile mutations; delete-folder invalidates `keys.noteCards`. Delete `useNotes`. (Tag→card-pill refresh is via `handleBackFromNote`, not a tag invalidation — see fix #195.) | Done | 20-A, 20-B |
 | 20-D | **Actions + tag index.** `useActions(noteId)` + action mutations (also invalidate `keys.todos`); `useTags()` (dedups NoteView+ListView's two `getTags` fetches) + tag-index invalidation. Note-applied tags stay local (→ 20-E). Component-only, no `App.tsx`. | Done | 20-A |
-| 20-E | **Note detail.** `useNoteDetail(noteId)` (`keys.note(id)`) — the full `getNoteDetail` read; editable content/date via the **draft pattern** (lint-safe, clobber-safe), tags + edit/date/analyse mutations; transcription & meeting handlers invalidate `keys.note`. The hardest slice (most entangled). Do **last**. | Not Started | 20-A, 20-D, 20-F |
+| 20-E | **Note detail.** `useNoteDetail(noteId)` (`keys.note(id)`) — the full `getNoteDetail` read; editable content/date via the **draft pattern** (lint-safe, clobber-safe), tags + edit/date/analyse mutations; transcription & meeting handlers patch/invalidate `keys.note`. The hardest slice (most entangled). Do **last**. | Done | 20-A, 20-D, 20-F |
 | 20-F | **Meetings.** `useMeetings(date)` (`keys.meetings(date)`) — two date-keyed queries (today for reminders, selectedDate for display) preserve Phase 16's reminders-vs-browsed-day decoupling; create-from-meeting / next-occurrence / link mutations. App.tsx-free. | Done | 20-A |
 | 20-G | **Cleanup.** Remove dead hand-rolled hooks + remaining manual invalidation; fold retry/backoff into `QueryClient` defaults (subsumes Phase 19's 19-H); learnings. | Not Started | 20-B…20-F |
 
@@ -316,7 +316,9 @@ Scenario: Tagging a note refreshes the tag index everywhere
 
 ## Slice 20-E — Note detail
 
-**Status:** Not Started
+**Status:** Done
+
+> **As shipped (PR #199):** `keys.note(id)` is single-consumer, so per the keystone principle commits **optimistically patch** it (content/date via `onSuccess setQueryData`; tags/link/transcription via `onMutate`+rollback) and invalidate only cross-domain keys (`noteCards`/`meetings`); **only analyse** invalidates `keys.note` (server-computed summary/actions). This refines the scope text below ("invalidate `keys.note`"), which would churn a refetch per blur and revert the optimistic state — see [phase-20e-note-detail](../learnings/phase-20e-note-detail.md).
 
 **User value:** None directly (the final like-for-like migration). Completes Phase 20: the note-detail read becomes one `keys.note(id)` cache that every note-touching mutation reconciles, so content/date/tag/analysis/transcription/meeting changes stay consistent without the hand-rolled `getNoteDetail`-refetch + ref-guard machinery.
 
