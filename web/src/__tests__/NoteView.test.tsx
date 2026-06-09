@@ -1,8 +1,8 @@
 import userEvent from '@testing-library/user-event'
-import { http, HttpResponse } from 'msw'
+import { delay, http, HttpResponse } from 'msw'
 import NoteView from '../components/NoteView'
 import { ToastProvider } from '../components/ToastProvider'
-import { render, screen, waitFor, fireEvent } from '../test/render'
+import { render, screen, waitFor, fireEvent, within } from '../test/render'
 import { server } from '../test/setup'
 
 vi.mock('../components/NoteEditor', () => ({
@@ -679,6 +679,73 @@ describe('NoteView', () => {
       await userEvent.click(await screen.findByTestId('discard-transcript-button'))
       await waitFor(() => expect(discarded).toBe(true))
       expect(screen.queryByTestId('transcript-recovery-banner')).toBeNull()
+    })
+  })
+
+  // 20-E: detail mutations are optimistic on the keys.note(id) cache. Each must
+  // roll back on error and surface the failure (no silent divergence).
+  describe('optimistic rollback (20-E)', () => {
+    it('adding a tag reverts the pill and surfaces an error when the request fails', async () => {
+      server.use(
+        http.get('/api/notes/:noteId', () =>
+          HttpResponse.json({ noteId: 'note-1', title: 'T', content: 'c', date: '2026-04-21', tags: [] })),
+        http.post('/api/notes/:noteId/tags', async () => { await delay(60); return new HttpResponse(null, { status: 500 }) }),
+      )
+      renderNoteView()
+      const tagInput = await screen.findByTestId('tag-input')
+      await userEvent.type(tagInput, 'planning')
+      fireEvent.blur(tagInput)
+      // Optimistic add shows the pill immediately…
+      expect(await screen.findByTestId('tag-pill-planning')).toBeInTheDocument()
+      // …then it reverts and the failure surfaces.
+      await waitFor(() => expect(screen.queryByTestId('tag-pill-planning')).toBeNull())
+      expect(await screen.findByRole('alert')).toHaveTextContent(/tag/i)
+    })
+
+    it('removing a tag restores the pill and surfaces an error when the request fails', async () => {
+      server.use(
+        http.get('/api/notes/:noteId', () =>
+          HttpResponse.json({ noteId: 'note-1', title: 'T', content: 'c', date: '2026-04-21', tags: ['planning'] })),
+        http.delete('/api/notes/:noteId/tags/:tag', async () => { await delay(60); return new HttpResponse(null, { status: 500 }) }),
+      )
+      renderNoteView()
+      const pill = await screen.findByTestId('tag-pill-planning')
+      await userEvent.click(within(pill).getByLabelText('Remove tag planning'))
+      await waitFor(() => expect(screen.queryByTestId('tag-pill-planning')).toBeNull())
+      // Rollback restores the pill and surfaces the failure.
+      expect(await screen.findByTestId('tag-pill-planning')).toBeInTheDocument()
+      expect(await screen.findByRole('alert')).toHaveTextContent(/tag/i)
+    })
+
+    it('saving the date reverts the input and surfaces an error when the request fails', async () => {
+      server.use(
+        http.get('/api/notes/:noteId', () =>
+          HttpResponse.json({ noteId: 'note-1', title: 'T', content: 'c', date: '2026-04-21', tags: [] })),
+        http.patch('/api/notes/:noteId/date', () => new HttpResponse(null, { status: 500 })),
+      )
+      renderNoteView()
+      const dateInput = await screen.findByLabelText('Meeting date')
+      await waitFor(() => expect((dateInput as HTMLInputElement).value).toBe('2026-04-21'))
+      fireEvent.change(dateInput, { target: { value: '2026-05-01' } })
+      fireEvent.blur(dateInput)
+      // Rollback reverts the input to the last saved date and surfaces the failure.
+      await waitFor(() => expect((dateInput as HTMLInputElement).value).toBe('2026-04-21'))
+      expect(await screen.findByRole('alert')).toHaveTextContent(/date/i)
+    })
+
+    it('surfaces an error but keeps the typed text when saving content fails', async () => {
+      server.use(
+        http.get('/api/notes/:noteId', () =>
+          HttpResponse.json({ noteId: 'note-1', title: 'T', content: '', date: '2026-04-21', tags: [] })),
+        http.put('/api/notes/:noteId/content', () => new HttpResponse(null, { status: 500 })),
+      )
+      renderNoteView()
+      const textarea = await screen.findByLabelText('Note content')
+      await userEvent.type(textarea, 'My unsaved words')
+      await userEvent.tab()
+      // The failure surfaces, but the user's text is kept (no silent loss, no revert).
+      expect(await screen.findByRole('alert')).toBeInTheDocument()
+      expect(textarea).toHaveValue('My unsaved words')
     })
   })
 })
