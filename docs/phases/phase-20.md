@@ -11,7 +11,7 @@
 | 20-B | **Folders (tree).** `getFolders` + create/rename/delete/move-folder; delete the `App.tsx` `getFolders().then(setFolders)` invalidation sprawl. Note↔folder assignment (`moveNoteToFolder`/`unfileNote`) defers to 20-C with note cards. | Done | 20-A |
 | 20-C | **Note cards / list.** Unify `App.tsx`'s `cards` state + `useNotes().notes` into one `useNoteCards()` query; note CRUD + move-to-folder/unfile mutations; delete-folder invalidates `keys.noteCards`. Delete `useNotes`. (Tag→card-pill refresh is via `handleBackFromNote`, not a tag invalidation — see fix #195.) | Done | 20-A, 20-B |
 | 20-D | **Actions + tag index.** `useActions(noteId)` + action mutations (also invalidate `keys.todos`); `useTags()` (dedups NoteView+ListView's two `getTags` fetches) + tag-index invalidation. Note-applied tags stay local (→ 20-E). Component-only, no `App.tsx`. | Done | 20-A |
-| 20-E | **Note detail.** `getNoteDetail` + `editContent`/`setNoteDate`/`analyseNote` refetch (NoteView has the most mutations). | Not Started | 20-A |
+| 20-E | **Note detail.** `useNoteDetail(noteId)` (`keys.note(id)`) — the full `getNoteDetail` read; editable content/date via the **draft pattern** (lint-safe, clobber-safe), tags + edit/date/analyse mutations; transcription & meeting handlers invalidate `keys.note`. The hardest slice (most entangled). Do **last**. | Not Started | 20-A, 20-D, 20-F |
 | 20-F | **Meetings.** `useMeetings(date)` (`keys.meetings(date)`) — two date-keyed queries (today for reminders, selectedDate for display) preserve Phase 16's reminders-vs-browsed-day decoupling; create-from-meeting / next-occurrence / link mutations. App.tsx-free. | Done | 20-A |
 | 20-G | **Cleanup.** Remove dead hand-rolled hooks + remaining manual invalidation; fold retry/backoff into `QueryClient` defaults (subsumes Phase 19's 19-H); learnings. | Not Started | 20-B…20-F |
 
@@ -30,7 +30,7 @@ Each migrates one domain: add `useQuery`/`useMutation` hooks over the existing `
 - **20-B — Folders (tree).** Biggest manual-invalidation payoff. Migrates the folder *tree* domain only (`keys.folders`): `getFolders` read + create/rename/delete/move-folder mutations. `moveNoteToFolder`/`unfileNote` mutate *note cards* (hand-rolled until 20-C) so they stay hand-rolled this slice — migrating them now would mean a TanStack mutation writing hand-rolled `useState`. Folder-tree mutations **do** use `onSettled: invalidateQueries` (temp-id→real-id reconciliation + multiple downstream readers).
 - **20-C — Note cards / list.** The big `App.tsx` consolidation. Today `App.tsx` holds a hand-rolled `cards: NoteCard[]` (GET `/notes/cards`) **and** `useNotes()` holds a separate `notes: {noteId,title}[]` (GET `/notes`) — two fetches, duplicated CRUD. Unify into one `useNoteCards()` (`keys.noteCards`); migrate create/rename/delete + move-to-folder/unfile to mutations; delete `useNotes`. Wire the deferred cross-domain invalidations: `useDeleteFolder` (20-B) and the tag mutations (20-D, card tag pills) invalidate `keys.noteCards`. Now that `App.tsx`-editing phases (21/22) have landed, the hub file is clear.
 - **20-D — Actions + tag index.** Two component-scoped domains, **no `App.tsx`**. Actions: `useActions(noteId)` + add/complete/reopen/delete in `ActionsSection`, optimistic + `onSettled` invalidate `keys.actions(noteId)` **and `keys.todos`** (actions surface as todos — close the loop both ways). Tags: `useTags()` (`keys.tags`) replaces the two separate hand-rolled `getTags()` reads in `NoteView` (`allTags`) and `ListView` (filter); `tagNote`/`untagNote` mutations invalidate `keys.tags`. Note-applied tags (`NoteView`'s local `tags`) stay hand-rolled until 20-E. `useTagSuggestions` is pure `useMemo` — untouched.
-- **20-E — Note detail.** Largest mutation surface.
+- **20-E — Note detail.** Largest, most entangled surface — do **last** (after folders/cards/actions/tags/meetings are migrated). `useNoteDetail(noteId)` over `getNoteDetail` (`keys.note(id)`). Read-only display fields (summary, discussionPoints, decisions, transcriptText, transcriptDraft, linkedMeeting, recurringSeriesId, isRecurring, summaryModelId) come straight from `data`. Editable content/date use the **draft pattern** (below). Tag applied-state folds into `keys.note`. The transcription handlers (recover/discard, RecordControl commit/analyse) and the 20-F meeting handlers (link/next-occurrence) — which previously `setState`d note-detail fields locally — now patch/invalidate `keys.note`. See the dedicated slice section for the full design.
 - **20-F — Meetings.** `useMeetings(date)` over `getMeetingsForDate`, keyed by date (`keys.meetings(date)`). The Phase 16 reminders-vs-browsed-day decoupling becomes two date-keyed queries: `useMeetings(today)` (always active → feeds `useMeetingReminders`, auto-cached so returning to today never refetches) and `useMeetings(selectedDate)` (display; dedups with the today query when equal). Migrate the meeting mutations (`createNoteFromMeeting`, `createNoteFromNextOccurrence`, `linkNoteToCalendar`) to `useMeetingMutations`, invalidating `keys.meetings(date)` (+ `keys.noteCards` for the create flows). NoteView's `handleLinkMeeting`/`handleOpenNextOccurrence` use the hooks but keep their local `linkedMeeting`/`recurringSeriesId` optimism (note-detail → `keys.note` invalidation deferred to 20-E). `MeetingPicker` also reads `useMeetings(date)`.
 - **20-G — Cleanup.** Delete dead code; retry/backoff via `QueryClient` defaults; remove `App.tsx` manual refetch entirely.
 
@@ -311,6 +311,108 @@ Scenario: Tagging a note refreshes the tag index everywhere
 2. **Cross-view action↔todo sync.** Action mutations invalidate `keys.todos` and the todo mutations invalidate `keys.actions(noteId)`. If either direction is dropped, completing in one view leaves the other stale during coexistence. Cover with the "completing in a note updates the home to-do list" scenario.
 3. **Tag-index over-invalidation.** Every tag add/remove invalidates `keys.tags` (one refetch). Acceptable — the index is small and read by two views. Do not invalidate `keys.noteCards` yet (no consumer until 20-C).
 4. **Tag write fan-out.** `handleAddTags` issues one `tagNote` per token in a loop; ensure the index is invalidated once after the batch settles, not per token, to avoid a refetch storm on a multi-tag paste.
+
+---
+
+## Slice 20-E — Note detail
+
+**Status:** Not Started
+
+**User value:** None directly (the final like-for-like migration). Completes Phase 20: the note-detail read becomes one `keys.note(id)` cache that every note-touching mutation reconciles, so content/date/tag/analysis/transcription/meeting changes stay consistent without the hand-rolled `getNoteDetail`-refetch + ref-guard machinery.
+
+**Why last + hardest.** NoteView (~580 lines) is the most entangled component: one `getNoteDetail` read populates ~11 fields spanning **four domains** — note-detail proper (content/date/tags), analysis (summary/discussionPoints/decisions/summaryModelId), transcription (transcriptText/transcriptDraft — Phase 18, otherwise out of scope), and meetings (linkedMeeting/recurringSeriesId — 20-F). Doing it last means folders/cards/actions/tags/meetings are already migrated, so this slice only adds `keys.note` reconciliation to mutations that already exist.
+
+### The two hard constraints and their solution
+
+1. **Unsaved-edit clobber (data-loss risk).** Today `contentModifiedRef`/`contentRef` stop a `getNoteDetail` refetch from overwriting in-flight typing. Under `useQuery`, refetches happen on their own (staleTime/invalidate), so this must be preserved.
+2. **`react-hooks/set-state-in-effect` (hard CI gate).** Seeding local editable state from query data via `useEffect(() => setContent(data.content))` trips the lint.
+
+**Solution — the draft pattern (solves both at once).** Don't seed editable state in an effect. Keep a nullable local **draft** and *compute* the displayed value:
+- `const [contentDraft, setContentDraft] = useState<string | null>(null)`
+- displayed content = `contentDraft ?? data?.content ?? ""`
+- editor `onChange` → `setContentDraft(md)`; `onBlur` → `editContent` mutation, and on success `setContentDraft(null)` (reconcile to server).
+- While `contentDraft !== null` (user has edits) a refetch shows the draft, never clobbering it — **no ref guard, no seeding effect, no lint violation**. `contentDraft !== null` *is* the dirty flag; the draft *is* the latest value (replaces both `contentModifiedRef` and `contentRef`).
+- Same pattern for the date input (`dateDraft`).
+
+### Scope — field-by-field
+
+- `web/src/hooks/useNoteDetail.ts` — `useQuery({ queryKey: keys.note(noteId), queryFn: () => getNoteDetail(noteId) })`. `loadingDetail` → `isLoading`; 404 → the existing `onNotFound`/not-found handling off the query error.
+- **Read straight from `data`** (delete the local `useState` + the setters in the load effect/`refreshNote`): `summary`, `discussionPoints`, `decisions`, `summaryModelId`, `transcriptText`, `transcriptDraft`, `linkedMeeting`, `recurringSeriesId`, `isRecurring`.
+- **Editable via draft pattern:** `content`, `date` (remove `contentModifiedRef`/`contentRef`).
+- **Tags:** read applied tags from `data.tags`; `useTagNote`/`useUntagNote` gain an optimistic `onMutate` that patches `keys.note(noteId)`'s `tags` + `onError` rollback (single consumer → no `keys.note` self-invalidate needed; they keep invalidating `keys.tags` for the index). Removes the local `tags` state + `tagsModifiedRef`.
+- **Keep local (genuinely client state):** `title` (parent-owned rename), `activeTab`, `liveTranscript`, `recordingStatus`, `pickerOpen`, `linkingEventId`, `openingNext`, `noNextOccurrence`, `confirmingLeave`, `actionsKey`.
+- **Mutations → `keys.note` reconciliation:**
+  - `useEditContent` / `useSetNoteDate` — `onSettled` invalidate `keys.note(noteId)` **and** `keys.noteCards` (content/date change the home card preview/date). The auto-set-today on a date-less note stays.
+  - `useAnalyseNote` — replaces `refreshNote()`: `onSettled` invalidate `keys.note(noteId)` (summary/discussion/decisions) **+ `keys.actions(noteId)`** (analysis can extract actions — replaces the `actionsKey` remount) **+ `keys.noteCards`** if a summary preview ever lands on the card.
+  - Transcription handlers (`handleRecoverDraft`/`handleDiscardDraft`, and `RecordControl`'s commit + `onAnalysisComplete`) — they change `transcriptText`/`transcriptDraft` server-side; each must invalidate `keys.note(noteId)` (optimistic `setQueryData` patch where the current code updates state pre-API, e.g. recover sets `transcriptText=draft.text, transcriptDraft=null`).
+  - Meeting handlers (`handleLinkMeeting`/`handleOpenNextOccurrence`, 20-F) — add `keys.note(noteId)` invalidation (the 20-F-deferred wiring) so `linkedMeeting`/`recurringSeriesId` refresh; the link optimism becomes a `setQueryData(keys.note)` patch + rollback (replaces the local `setLinkedMeeting`).
+- **`hasContent`** (drives the leave-confirm) recomputes from the query data + drafts + live transcript — verify it still treats an in-progress recording as content (Phase 18 leave-confirm).
+
+**Out of scope:** transcription *capture/streaming* (RecordControl internals, `liveTranscript`, `recordingStatus`) stays hand-rolled — only its committed outputs (read from `data`, invalidate on commit) are touched. No new endpoints.
+
+### Scenarios
+
+```
+Scenario: Note detail loads and renders unchanged
+  Given the note endpoint returns a note
+  When NoteView renders
+  Then content, date, tags, summary, transcript, and meeting link appear as before
+
+Scenario: Typing is not clobbered by a refetch
+  Given I am typing in the editor (unsaved)
+  When the note detail refetches (e.g. after tagging)
+  Then my in-progress text is preserved, not overwritten by the server copy
+
+Scenario: Editing content saves on blur and reconciles
+  Given I edit the content
+  When I blur the editor
+  Then editContent is called, and the editor then reflects the server copy
+
+Scenario: Setting the date saves and updates the home card
+  Given I change the date
+  When I blur the date input
+  Then setNoteDate is called and the note's home card date updates
+
+Scenario: Generating final notes refreshes summary and actions
+  Given a note with a transcript
+  When I generate final notes
+  Then the summary/discussion/decisions and the action list refresh (no manual remount)
+
+Scenario: Adding a tag is optimistic and rolls back on failure
+  Given the note's tags
+  When I add a tag and the request fails
+  Then the tag shows immediately, then reverts
+
+Scenario: Recovering an interrupted transcript updates the note
+  Given a recovery draft on the note
+  When I recover it
+  Then the committed transcript appears and the draft banner clears
+
+Scenario: Linking a meeting refreshes the note's linked-meeting badge
+  Given an unlinked note
+  When I link a meeting
+  Then the badge appears immediately and persists after the note refetches
+```
+
+### Acceptance criteria
+
+- [ ] `web/src/hooks/useNoteDetail.ts` is the single note-detail read; `loadingDetail`→`isLoading`, 404→existing not-found handling; the `getNoteDetail` load effect and the per-field `useState`/setters for read-only fields are removed
+- [ ] Content + date use the **draft pattern** (`draft ?? data.field`); `contentModifiedRef`/`contentRef`/`tagsModifiedRef` deleted; no `set-state-in-effect` violation; the "typing not clobbered by a refetch" scenario has a test
+- [ ] `useEditContent`/`useSetNoteDate`/`useAnalyseNote` mutations invalidate `keys.note(noteId)` (+ `keys.noteCards` for content/date; + `keys.actions(noteId)` for analyse, replacing the `actionsKey` remount)
+- [ ] Tag applied-state reads from `data.tags`; `useTagNote`/`useUntagNote` optimistically patch `keys.note(noteId)` + rollback (and still invalidate `keys.tags`); local `tags`/`tagsModifiedRef` removed
+- [ ] Transcription handlers (recover/discard, RecordControl commit + analyse) invalidate/patch `keys.note(noteId)`; capture/streaming (`liveTranscript`/`recordingStatus`) stays local; crash-recovery behaviour unchanged
+- [ ] Meeting handlers (link/next-occurrence) add `keys.note(noteId)` invalidation (20-F-deferred wiring); link optimism via `setQueryData(keys.note)` + rollback
+- [ ] `hasContent`/leave-confirm preserved (in-progress recording still counts as content)
+- [ ] Optimistic-UI rule satisfied — apply immediately, roll back on error (forced-reject tests for content save, tag add, link)
+- [ ] `NoteView.test.tsx` (45 tests) green through the QueryClient render; full Vitest suite + `tsc -b`/build + ESLint green; **post-merge deploy E2E green** (NoteView is heavily E2E-covered — budget for it per the 20-C lesson)
+
+### Observability
+
+1. **Data-loss clobber (highest risk).** The draft pattern must prevent a refetch (especially the tag/analyse-triggered ones) from overwriting unsaved content. The "typing not clobbered" test is mandatory; ideally an E2E that types, triggers a refetch (add a tag), and asserts the text survives.
+2. **`keys.note` refetch churn during editing.** `keys.note(noteId)` is observed only by the open NoteView. Mutations that invalidate it refetch the *current* note (cheap, single-note) — but don't invalidate it from per-keystroke paths. Tag mutations should optimistic-patch (no `keys.note` self-invalidate); only content/date/analyse/transcription/meeting *commits* invalidate.
+3. **Analyse → actions refresh.** Replacing the `actionsKey` remount with `keys.actions(noteId)` invalidation must still refresh the ActionsSection after analysis (analysis can add extracted actions).
+4. **Card preview staleness.** content/date edits invalidate `keys.noteCards` so the home card preview/date update without waiting for `handleBackFromNote`.
+5. **Transcription crash-recovery.** The recover/discard flows and the leave-confirm (`hasContent`) are Phase 18 safety behaviour — preserve exactly; the draft banner must clear on recover/discard and reappear from `data.transcriptDraft` on reload.
 
 ---
 
