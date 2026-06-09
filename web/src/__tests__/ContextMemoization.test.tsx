@@ -16,8 +16,9 @@ describe('AuthProvider value memoization', () => {
   it('keeps the context value (and actions) referentially stable across a re-render with unchanged auth state', async () => {
     const values: AuthState[] = []
     function Capture() {
-      values.push(useAuth())
-      return null
+      const auth = useAuth()
+      values.push(auth)
+      return <button onClick={auth.signOut}>do sign out</button>
     }
     function Harness() {
       const [n, setN] = useState(0)
@@ -41,6 +42,11 @@ describe('AuthProvider value memoization', () => {
     expect(afterRerender).toBe(first)
     expect(afterRerender.signIn).toBe(first.signIn)
     expect(afterRerender.signOut).toBe(first.signOut)
+
+    // The memo is not over-frozen: a real auth-state change (signOut flips idToken)
+    // must yield a fresh value, or consumers would never see the update.
+    await userEvent.click(screen.getByRole('button', { name: 'do sign out' }))
+    expect(values.at(-1)!).not.toBe(first)
   })
 })
 
