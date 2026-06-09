@@ -4,6 +4,15 @@ namespace Browser.E2E.Pages;
 
 public sealed class AppPage(IPage page, string baseUrl, string? authToken = null)
 {
+    // Tag pills render optimistically, but a cold post-deploy stack (cold Lambda +
+    // cold on-demand tables) can let a note-detail refetch transiently overwrite the
+    // optimistic pill with not-yet-consistent server state; it re-settles only once
+    // the POST /tags + projection catch up. Give that window room: the old budgets
+    // (15s explicit assert, 30s implicit click auto-wait) both raced cold-start
+    // latency and flaked TagsJourney (a different test each run). 45s clears the 15s
+    // failures with 3x margin and beats the observed 30s case.
+    private const float TagPillTimeoutMs = 45000;
+
     public async Task GotoAsync()
     {
         if (!string.IsNullOrEmpty(authToken))
@@ -135,7 +144,7 @@ public sealed class AppPage(IPage page, string baseUrl, string? authToken = null
     public Task AssertTagPillVisibleAsync(string tag) =>
         Assertions.Expect(
             page.GetByTestId("tags-section").GetByTestId($"tag-pill-{tag}")
-        ).ToBeVisibleAsync(new() { Timeout = 15000 });
+        ).ToBeVisibleAsync(new() { Timeout = TagPillTimeoutMs });
 
     public Task AssertTagPillAbsentAsync(string tag) =>
         Assertions.Expect(
@@ -144,12 +153,16 @@ public sealed class AppPage(IPage page, string baseUrl, string? authToken = null
 
     public async Task RemoveTagAsync(string tag)
     {
+        var pillButton = page.GetByTestId("tags-section")
+            .GetByTestId($"tag-pill-{tag}")
+            .GetByRole(AriaRole.Button);
+        // Wait for the (optimistic) pill to settle on the same generous budget as
+        // AssertTagPillVisibleAsync before clicking — otherwise removal inherits the
+        // default 15s and flakes on the cold-start pill-render race.
+        await Assertions.Expect(pillButton).ToBeVisibleAsync(new() { Timeout = TagPillTimeoutMs });
         var deleteDone = page.WaitForResponseAsync(r =>
             r.Url.Contains("/tags/") && r.Request.Method == "DELETE");
-        await page.GetByTestId("tags-section")
-            .GetByTestId($"tag-pill-{tag}")
-            .GetByRole(AriaRole.Button)
-            .ClickAsync();
+        await pillButton.ClickAsync();
         await deleteDone;
     }
 
