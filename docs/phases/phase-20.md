@@ -493,6 +493,82 @@ Scenario: Linking a note to a meeting is optimistic and rolls back on failure
 
 ---
 
+## Slice 20-G — Cleanup
+
+**Status:** Not Started
+
+**User value:** Marginal directly — closes Phase 20. The user-visible win is **resilience**: transient backend blips (5xx/429/network drop) self-heal via a bounded backoff in `apiFetch` instead of surfacing as a failed read. Everything else is dead-code removal + confirming the migration left no hand-rolled remnant.
+
+**State after 20-A…20-F (verified on main).** Every server-state domain is on TanStack (`todos`/`folders`/`noteCards`/`actions`/`tags`/`note`/`meetings`); a grep for hand-rolled `useEffect`+`get*()` fetches in `components`/`hooks` is **clean**. So the "remove dead hand-rolled hooks" line is already mostly satisfied — the only true remnant is `listNotes`. The substantive work is **folding in 19-H** (network resilience), which Phase 20 subsumes.
+
+**Scope.**
+- **Remove `listNotes`** (`web/src/api/notes.ts:103`). Its only consumer is `Auth.test.tsx` (lines 49–50, 62–63), which uses it purely as an auth-header probe. Rewire those two tests to a retained read (`getTags`) or a direct `apiFetch` against a stubbed endpoint, then delete the export. Confirm GET `/notes` is gone from every path.
+- **Network resilience in `apiFetch` (19-H, subsumed).** Add exponential backoff + jitter for transient failures — `res.status >= 500 || === 429`, and a thrown network `TypeError` — honouring `Retry-After` when present. **Idempotent methods only** (GET + idempotent PUT/DELETE); **never** auto-retry a POST creator. The existing 401 pre-flight + single auth-retry stays **outside** the transient loop (a 401 is not a transient failure). Bounded attempts (e.g. 3) with a capped delay; `console.warn` each retry so a degrading backend is visible in DevTools (per phase-19 Observability §3).
+- **Confirm QueryClient defaults are the single retry/stale source** (`main.tsx`: `retry:1, staleTime:30s, refetchOnWindowFocus:false, mutations:retry:false`). No per-hook overrides exist (audited) — nothing to fold; just assert it. Note the two retry layers are distinct: TanStack's query-level `retry:1` vs `apiFetch`'s transport-level transient backoff. Keep query `retry` low so the two don't multiply.
+- **Dead-key / dead-hook sweep.** All 7 query keys are in use (`note` since 20-E, `meetings` since 20-F) — confirm none orphaned; confirm no exported hand-rolled hook lingers unused.
+- **Learnings** — Phase 20 retro (the library's cache/dedup/invalidation model vs hand-rolled effects; the keystone optimistic-patch-vs-invalidate rule that recurred every slice; incremental two-system coexistence; the draft pattern from 20-E; the dependency/bundle tradeoff the ADR weighed).
+
+**Out of scope:** transcription credentials/streaming (intentionally hand-rolled). No new endpoints. No change to the QueryClient defaults' *values* (only confirm they're central).
+
+### Scenarios
+
+```
+Scenario: A transient 5xx on a GET is retried and succeeds
+  Given a GET that returns 503 then 200
+  When apiFetch issues it
+  Then it backs off, retries, and resolves with the 200 (no error surfaced)
+
+Scenario: A 429 honours Retry-After
+  Given a GET that returns 429 with a Retry-After header
+  When apiFetch issues it
+  Then the retry waits at least the Retry-After interval
+
+Scenario: A network drop on a GET is retried
+  Given fetch rejects with a TypeError then resolves 200
+  When apiFetch issues a GET
+  Then it retries and resolves with the 200
+
+Scenario: A POST creator is never auto-retried
+  Given a POST that returns 503
+  When apiFetch issues it
+  Then it fails without a transient retry (no duplicate create)
+
+Scenario: Retries are bounded
+  Given a GET that returns 503 on every attempt
+  When apiFetch issues it
+  Then it stops after the attempt cap and surfaces the failure
+
+Scenario: A 401 is not treated as transient
+  Given a GET that returns 401
+  When apiFetch issues it
+  Then it routes to the single auth-refresh path, not the backoff loop
+
+Scenario: The auth probe no longer depends on listNotes
+  Given the Auth tests
+  When they assert the Authorization header
+  Then they use a retained read, and listNotes is gone
+```
+
+### Acceptance criteria
+
+- [ ] `listNotes` removed from `web/src/api/notes.ts`; `Auth.test.tsx` auth-probe rewired to a retained read (or direct `apiFetch`); no GET `/notes` remains in any path
+- [ ] `apiFetch` retries transient failures (`status >= 500`, `429`, network `TypeError`) with exponential backoff + jitter, honouring `Retry-After`; **idempotent methods only** (GET/PUT/DELETE), never POST; bounded attempt cap; `console.warn` per retry
+- [ ] The 401 pre-flight refresh + single auth-retry stays **outside** the transient loop (unchanged behaviour); a 401 never enters backoff
+- [ ] QueryClient defaults confirmed as the single retry/stale source; no per-hook retry overrides remain; query `retry` kept low so it doesn't multiply with the transport backoff
+- [ ] No hand-rolled `useState`+`useEffect` server-fetch remains anywhere in `web/src/` (grep clean); every domain on `useQuery`/`useMutation`; no orphaned query key or unused hand-rolled hook
+- [ ] `docs/learnings/phase-20g-cleanup.md` (or a `_minor-log.md` entry) written — the Phase 20 retro
+- [ ] New `apiFetch` retry unit tests (5xx-then-200, 429+Retry-After, network-TypeError-then-200, POST-not-retried, attempt-cap, 401-not-transient); full Vitest suite + `tsc -b`/build + ESLint green
+
+### Observability
+
+1. **Retry must not duplicate writes.** The backoff loop must exclude POST — a retried create is a duplicate note/folder/action. The "POST never auto-retried" scenario is the guard.
+2. **Retry must terminate.** Bounded attempts + capped backoff, or a slow/broken endpoint hangs the UI. Assert the attempt cap and that exhaustion surfaces the error.
+3. **Auth-refresh isolation.** The 401 path must stay separate from the transient loop, or a 401 inside backoff re-triggers refresh repeatedly. Assert 401 routes to the single auth-refresh, not the retry loop.
+4. **Retry hiding latency.** Backoff can mask a degrading backend as "slow but working" — `console.warn` each retry so it's visible in DevTools (phase-19 §3); a frontend retry metric is future work (no EMF for the SPA yet).
+5. **No silent hand-rolled survivor.** A missed `useEffect` fetch would keep a domain off the cache (stale-on-mutation). The grep-clean assertion is the guard.
+
+---
+
 ## Appendix A — What one domain migration looks like (todos)
 
 The concrete shape, using `TodoSection` (the 20-A pilot). Three new files, one slimmed component.
