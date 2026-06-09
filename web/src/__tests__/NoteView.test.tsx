@@ -1,5 +1,5 @@
 import userEvent from '@testing-library/user-event'
-import { http, HttpResponse } from 'msw'
+import { delay, http, HttpResponse } from 'msw'
 import NoteView from '../components/NoteView'
 import { ToastProvider } from '../components/ToastProvider'
 import { render, screen, waitFor, fireEvent } from '../test/render'
@@ -679,6 +679,58 @@ describe('NoteView', () => {
       await userEvent.click(await screen.findByTestId('discard-transcript-button'))
       await waitFor(() => expect(discarded).toBe(true))
       expect(screen.queryByTestId('transcript-recovery-banner')).toBeNull()
+    })
+  })
+
+  // 20-E: note-detail is one keys.note(id) cache. The draft pattern protects
+  // in-flight edits from refetches; commits are optimistic and surface failures.
+  describe('TanStack note-detail (20-E)', () => {
+    it('does not clobber in-progress typing when the note refetches', async () => {
+      server.use(
+        http.get('/api/notes/:noteId', () =>
+          HttpResponse.json({ noteId: 'note-1', title: 'T', content: 'server copy', date: '2026-04-21', tags: [] })),
+        http.post('/api/notes/:noteId/tags', () => new HttpResponse(null, { status: 204 })),
+      )
+      renderNoteView()
+      const textarea = await screen.findByLabelText('Note content')
+      await userEvent.clear(textarea)
+      await userEvent.type(textarea, 'my unsaved words')
+      // Trigger a keys.note refetch path (adding a tag invalidates the index and the
+      // note cache via optimistic patch); the unsaved draft must survive.
+      const tagInput = screen.getByTestId('tag-input')
+      await userEvent.type(tagInput, 'planning')
+      fireEvent.blur(tagInput)
+      await waitFor(() => expect(screen.queryByTestId('tag-pill-planning')).toBeInTheDocument())
+      expect(textarea).toHaveValue('my unsaved words')
+    })
+
+    it('surfaces an error but keeps the typed text when saving content fails', async () => {
+      server.use(
+        http.get('/api/notes/:noteId', () =>
+          HttpResponse.json({ noteId: 'note-1', title: 'T', content: '', date: '2026-04-21', tags: [] })),
+        http.put('/api/notes/:noteId/content', () => new HttpResponse(null, { status: 500 })),
+      )
+      renderNoteView()
+      const textarea = await screen.findByLabelText('Note content')
+      await userEvent.type(textarea, 'My unsaved words')
+      await userEvent.tab()
+      expect(await screen.findByRole('alert')).toBeInTheDocument()
+      expect(textarea).toHaveValue('My unsaved words')
+    })
+
+    it('adding a tag is optimistic and reverts on failure', async () => {
+      server.use(
+        http.get('/api/notes/:noteId', () =>
+          HttpResponse.json({ noteId: 'note-1', title: 'T', content: 'c', date: '2026-04-21', tags: [] })),
+        http.post('/api/notes/:noteId/tags', async () => { await delay(60); return new HttpResponse(null, { status: 500 }) }),
+      )
+      renderNoteView()
+      const tagInput = await screen.findByTestId('tag-input')
+      await userEvent.type(tagInput, 'planning')
+      fireEvent.blur(tagInput)
+      expect(await screen.findByTestId('tag-pill-planning')).toBeInTheDocument()
+      await waitFor(() => expect(screen.queryByTestId('tag-pill-planning')).toBeNull())
+      expect(await screen.findByRole('alert')).toHaveTextContent(/tag/i)
     })
   })
 })
