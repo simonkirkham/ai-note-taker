@@ -13,7 +13,7 @@
 | 20-D | **Actions + tag index.** `useActions(noteId)` + action mutations (also invalidate `keys.todos`); `useTags()` (dedups NoteView+ListView's two `getTags` fetches) + tag-index invalidation. Note-applied tags stay local (→ 20-E). Component-only, no `App.tsx`. | Done | 20-A |
 | 20-E | **Note detail.** `useNoteDetail(noteId)` (`keys.note(id)`) — the full `getNoteDetail` read; editable content/date via the **draft pattern** (lint-safe, clobber-safe), tags + edit/date/analyse mutations; transcription & meeting handlers patch/invalidate `keys.note`. The hardest slice (most entangled). Do **last**. | Done | 20-A, 20-D, 20-F |
 | 20-F | **Meetings.** `useMeetings(date)` (`keys.meetings(date)`) — two date-keyed queries (today for reminders, selectedDate for display) preserve Phase 16's reminders-vs-browsed-day decoupling; create-from-meeting / next-occurrence / link mutations. App.tsx-free. | Done | 20-A |
-| 20-G | **Cleanup.** Remove dead hand-rolled hooks + remaining manual invalidation; fold retry/backoff into `QueryClient` defaults (subsumes Phase 19's 19-H); learnings. | Not Started | 20-B…20-F |
+| 20-G | **Cleanup.** Remove dead `listNotes`; add transient-read backoff to `apiFetch` (5xx/429/network, GET/HEAD only — subsumes Phase 19's 19-H); confirm QueryClient defaults are central; learnings. | Done | 20-B…20-F |
 
 > **The whole phase is gated on the ADR** — do not start 20-A until ADR 0010 is superseded. **20-A is the keystone**: it sets the conventions (key factory, optimistic `onMutate`/rollback template, retry/error defaults) every later slice copies — get it right before fanning out. 20-B…20-F are independent *domains* and could parallelise after 20-A, **except** 20-B and 20-C both edit `App.tsx`, so sequence those (per the "same-file → don't parallelise" rule). **Subsumes 19-H** — don't also run it. **Transcription credentials stay hand-rolled** (short-lived STS creds fetched once before streaming aren't cacheable server state).
 
@@ -495,7 +495,9 @@ Scenario: Linking a note to a meeting is optimistic and rolls back on failure
 
 ## Slice 20-G — Cleanup
 
-**Status:** Not Started
+**Status:** Done
+
+> **As shipped (PR #204):** the transient retry covers **GET/HEAD only**, not the scope text's "idempotent PUT/DELETE". Retrying an optimistic write would only delay its rollback (mutations are optimistic + `mutations:retry:false`); a POST would risk a duplicate. Only reads — where a transient failure leaves blank UI — retry. Backoff lives in `apiFetch` (not the QueryClient defaults, which stay the query-retry source). See [phase-20g-cleanup](../learnings/phase-20g-cleanup.md).
 
 **User value:** Marginal directly — closes Phase 20. The user-visible win is **resilience**: transient backend blips (5xx/429/network drop) self-heal via a bounded backoff in `apiFetch` instead of surfacing as a failed read. Everything else is dead-code removal + confirming the migration left no hand-rolled remnant.
 
