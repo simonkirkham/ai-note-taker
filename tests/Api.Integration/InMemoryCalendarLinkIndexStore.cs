@@ -27,6 +27,15 @@ internal sealed class InMemoryCalendarLinkIndexStore : ICalendarLinkIndexStore
         return Task.CompletedTask;
     }
 
+    public Task<IReadOnlyList<CalendarLinkView>> GetAllAsync(CancellationToken ct = default) =>
+        Task.FromResult<IReadOnlyList<CalendarLinkView>>(_byCalendarEventId.Values.ToList().AsReadOnly());
+
+    public Task DeleteAsync(string calendarEventId, CancellationToken ct = default)
+    {
+        _byCalendarEventId.Remove(calendarEventId);
+        return Task.CompletedTask;
+    }
+
     public Task DeleteByNoteIdAsync(string noteId, CancellationToken ct = default)
     {
         var keys = _byCalendarEventId

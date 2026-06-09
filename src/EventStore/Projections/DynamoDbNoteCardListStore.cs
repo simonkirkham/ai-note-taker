@@ -54,9 +54,27 @@ public sealed class DynamoDbNoteCardListStore(IAmazonDynamoDB dynamo, string tab
 
     public async Task<IReadOnlyList<NoteCardView>> QueryAllAsync(CancellationToken ct = default)
     {
-        var response = await dynamo.ScanAsync(new ScanRequest { TableName = tableName, ConsistentRead = true }, ct)
-            .ConfigureAwait(false);
-        return response.Items.Select(ToCard).OrderByDescending(c => c.CreatedAt).ToList().AsReadOnly();
+        var rows = new List<NoteCardView>();
+        Dictionary<string, AttributeValue>? lastKey = null;
+        do
+        {
+            var scan = await dynamo.ScanAsync(
+                new ScanRequest { TableName = tableName, ConsistentRead = true, ExclusiveStartKey = lastKey }, ct)
+                .ConfigureAwait(false);
+            rows.AddRange(scan.Items.Select(ToCard));
+            lastKey = scan.LastEvaluatedKey?.Count > 0 ? scan.LastEvaluatedKey : null;
+        }
+        while (lastKey is not null);
+        return rows.OrderByDescending(c => c.CreatedAt).ToList().AsReadOnly();
+    }
+
+    public async Task DeleteAsync(NoteId noteId, CancellationToken ct = default)
+    {
+        await dynamo.DeleteItemAsync(new DeleteItemRequest
+        {
+            TableName = tableName,
+            Key = new Dictionary<string, AttributeValue> { ["PK"] = new() { S = noteId.Value.ToString() } }
+        }, ct).ConfigureAwait(false);
     }
 
     private static NoteCardView ToCard(Dictionary<string, AttributeValue> row)

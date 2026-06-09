@@ -70,6 +70,22 @@ public sealed class DynamoDbNoteSearchViewStore(IAmazonDynamoDB dynamo, string t
         while (lastKey is not null);
     }
 
+    public async Task<IReadOnlyList<NoteSearchView>> QueryAllAsync(CancellationToken ct = default)
+    {
+        var results = new List<NoteSearchView>();
+        Dictionary<string, AttributeValue>? lastKey = null;
+        do
+        {
+            var scan = await dynamo.ScanAsync(
+                new ScanRequest { TableName = tableName, ConsistentRead = true, ExclusiveStartKey = lastKey }, ct)
+                .ConfigureAwait(false);
+            results.AddRange(scan.Items.Select(MapItem));
+            lastKey = scan.LastEvaluatedKey?.Count > 0 ? scan.LastEvaluatedKey : null;
+        }
+        while (lastKey is not null);
+        return results.AsReadOnly();
+    }
+
     public async Task<IReadOnlyList<NoteSearchView>> QueryByUserIdAsync(string userId, CancellationToken ct = default)
     {
         var results = new List<NoteSearchView>();

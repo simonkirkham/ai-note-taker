@@ -77,6 +77,31 @@ public sealed class DynamoDbCalendarLinkIndexStore(IAmazonDynamoDB dynamo, strin
             .ConfigureAwait(false);
     }
 
+    public async Task<IReadOnlyList<CalendarLinkView>> GetAllAsync(CancellationToken ct = default)
+    {
+        var results = new List<CalendarLinkView>();
+        Dictionary<string, AttributeValue>? lastKey = null;
+        do
+        {
+            var scan = await dynamo.ScanAsync(
+                new ScanRequest { TableName = tableName, ConsistentRead = true, ExclusiveStartKey = lastKey }, ct)
+                .ConfigureAwait(false);
+            results.AddRange(scan.Items.Select(MapItem));
+            lastKey = scan.LastEvaluatedKey?.Count > 0 ? scan.LastEvaluatedKey : null;
+        }
+        while (lastKey is not null);
+        return results.AsReadOnly();
+    }
+
+    public async Task DeleteAsync(string calendarEventId, CancellationToken ct = default)
+    {
+        await dynamo.DeleteItemAsync(new DeleteItemRequest
+        {
+            TableName = tableName,
+            Key = new Dictionary<string, AttributeValue> { ["CalendarEventId"] = new() { S = calendarEventId } }
+        }, ct).ConfigureAwait(false);
+    }
+
     public async Task DeleteByNoteIdAsync(string noteId, CancellationToken ct = default)
     {
         Dictionary<string, AttributeValue>? lastKey = null;
