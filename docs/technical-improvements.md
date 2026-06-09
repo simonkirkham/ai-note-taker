@@ -234,6 +234,10 @@ The full rationale, target diagrams, staged migration plan, and the eventual-con
 
 ## Stabilise the flaky `TagsJourney` E2E (post-deploy gate fails intermittently)
 
+✅ **Resolved** (root cause fixed, not stabilised) — the flake was **[BUG-14](phases/phase-bugs.md#bug-14--pasting-space-separated-tags-intermittently-drops-a-pill)**, a real optimistic-update race in `useTagMutations`: tagging a freshly-created note while its initial `keys.note` GET is in flight made the optimistic patch a no-op, the GET resolved tagless, and nothing refetched — so a pasted multi-tag (`"1:1s Bill"`) dropped a pill. Every failure was on a multi-tag test. Fixed in PR #205 (deploy #495). The first attempt (PR #203) misdiagnosed it as cold-start latency and raised the E2E tag-pill timeout 15s→45s; deploy #493 then failed **with the 45s applied** (`ToBeVisibleAsync with timeout 45000ms` in the log), disproving the latency theory — PR #205 reverts that timeout to 15s. **Lesson:** a near-deterministic "element never appears" E2E timeout (vs an occasional *slow* one) is a *missing render*, not latency; raising the timeout masks it. The fix options below (pre-warm, optimistic-assert) were not needed.
+
+<details><summary>Original entry (kept for context)</summary>
+
 **What:** `Browser.E2E.Journeys.TagsJourney` flakes in the `deploy-test` E2E step — a single test fails (13/14 pass), a **different** one each run, always a Playwright "element not visible" timeout on a tag pill just after `AddTagAsync`. Confirmed pre-existing and **change-independent**: deploy **#485** (2026-06-08) failed `RemoveTag_PillDisappears` *before* slice 19-D existed; deploy **#491** (19-D, a memoisation-only change inert in the E2E auth path) then hit it three runs running — `AddMultipleTags_SpaceSeparated`, `RemoveTag_PillDisappears`, `RemoveTag_GoneAfterNavigation`. No browser-console JS/React errors in any failure.
 
 **Why it flakes:** `AppPage.AddTagAsync` waits on the `/tags` POST response, then `AssertTagPillVisibleAsync` polls for the pill with a **15s** timeout. On a cold post-deploy environment (cold Lambda + cold DynamoDB tables) the create-note + tag round-trip races that timeout, so whichever tag test runs while the stack is coldest times out. The tag pill render is gated on the server round-trip in the journey, so latency — not correctness — decides pass/fail.
@@ -247,3 +251,5 @@ The full rationale, target diagrams, staged migration plan, and the eventual-con
 
 **Raised in:** Operating the 19-D deploy, 2026-06-09 (this session).
 **Depends on:** Nothing blocking.
+
+</details>

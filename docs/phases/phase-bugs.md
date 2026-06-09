@@ -24,6 +24,7 @@
 | BUG-11 | Signed out ~hourly — iframe silent refresh fails under third-party-cookie blocking; switch to backend refresh-token flow | Done | — |
 | BUG-12 | `DynamoDbNoteSearchViewStore.GetByNoteIdAsync` omits `ConsistentRead = true` — stale read on the inline read-modify-write can clobber a just-written field | Done | 22-A |
 | BUG-13 | Search bar shows two clear `✕` — the native `<input type="search">` cancel button on top of the custom clear button | Done | 22-B |
+| BUG-14 | Pasting space-separated tags drops a pill — optimistic patch no-ops when the note isn't cached yet (initial GET in flight) | Done | 20-E |
 
 Further bugs will be appended as they are identified.
 
@@ -316,3 +317,27 @@ No CDK change: the `/api/*` CloudFront behaviour already uses `CACHING_DISABLED`
 - [x] The refresh cookie's 30-day window slides forward on every successful refresh (Hawk #1), so an active session is never force-signed-out at the 30-day mark.
 
 **Key files:** `web/src/auth/pkce.ts`, `web/src/auth/silentRefresh.ts`, `web/src/auth/AuthContext.tsx`, `web/src/auth/useGoogleAuth.ts`, removed `web/public/silent-refresh.html`; `src/Api/Endpoints/AuthEndpoints.cs`, new `src/Api/Auth/IGoogleOAuthClient.cs` + `GoogleOAuthClient.cs`, `src/Api/Builder.cs` wiring; tests `tests/Api.Integration/AuthRefreshTests.cs`, `FakeGoogleOAuthClient.cs`, `AuthEnvCollection.cs`, `AuthTokenExchangeTests.cs`, `ApiFactory.cs`, `web/src/__tests__/SilentRefresh.test.ts`, `AuthUrl.test.ts`.
+
+---
+
+## BUG-14 — Pasting space-separated tags intermittently drops a pill
+
+**Status:** Done — fixed in PR #205 (squash commit `8e919d2`), deployed to main 2026-06-09 (deploy #495). Reproduced by `web/src/__tests__/TagMutationRace.test.tsx` (red before, green after).
+
+**Severity:** Medium — a user pasting multiple space-separated tags at once (e.g. `1:1s Bill`) can silently lose one of them; the tag is never applied even though the POST succeeded.
+
+**Symptom:** Adding multiple tags in one go on a **freshly-created** note sometimes shows only the second tag's pill (the first is missing). Surfaced as the intermittently-red `TagsJourney` E2E — **every** failure (deploys #485, #491×3, #493) was on a test doing `AddTagAsync("1:1s Bill")`; single-tag tests never failed. Worse under cold-start latency.
+
+**Misdiagnosis first:** PR #203 raised the E2E tag-pill timeout 15s→45s on a cold-start-latency theory. Deploy #493 then failed **with the 45s applied** (`ToBeVisibleAsync with timeout 45000ms` in the log) — a pill that never renders in 45s isn't slow, it's missing. That overturned the latency theory and pointed at a render race. PR #205 reverts the 45s back to 15s.
+
+**Root cause (confirmed by the reproduction test):** tag pills render optimistically — `useTagNote.onMutate` patches `keys.note`. But `patchTags` is `(old) => old ? {…old, tags: …} : old`, a **no-op when the note isn't cached yet**. On a freshly-created note whose initial `keys.note` GET is still in flight, the optimistic patch does nothing; that GET then resolves **tagless** (it was issued before the tag existed); and `onSettled` invalidated only `keys.tags`, never `keys.note` — so nothing refetched and the pill never appeared. A space-separated paste fires **two concurrent** mutations (the second re-reads the clobbered cache), so the first tag (`1:1s`) is the one lost. Cold start just widens the in-flight window.
+
+**Fix:** `useTagNote`/`useUntagNote` `onSettled` now invalidate `keys.note(noteId)` **only when the optimistic patch couldn't apply** — i.e. `ctx.previous === undefined` (the note wasn't cached at `onMutate` time). When it *was* cached, optimism already holds, so the refetch is skipped to avoid churn and a stale-GET revert (doing it unconditionally first broke two existing tests). React Query coalesces the two concurrent `keys.note` invalidations into one refetch; the note-detail draft pattern (20-E) protects unsaved content/date edits from the refetch.
+
+**Acceptance criteria:**
+- [x] A failing test reproduces the race before the fix (two concurrent tag mutations fired while the initial `keys.note` GET is in flight; the open note ends up tagless) and passes after.
+- [x] The fix only refetches `keys.note` when the optimistic patch couldn't apply (`ctx.previous` undefined) — no churn in the common cached path.
+- [x] PR #203's 45s E2E timeout reverted to 15s (`AppPage.cs` back to its pre-#203 state).
+- [x] Full frontend suite green (43 files / 402 tests).
+
+**Key files:** `web/src/hooks/useTagMutations.ts`; tests `web/src/__tests__/TagMutationRace.test.tsx`; `tests/Browser.E2E/Pages/AppPage.cs` (#203 revert).
