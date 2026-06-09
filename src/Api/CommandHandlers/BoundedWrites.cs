@@ -4,11 +4,9 @@ using Amazon.Runtime;
 
 namespace Api.CommandHandlers;
 
-// Runs a batch of projection writes with bounded concurrency and per-write retry,
-// so a cold on-demand DynamoDB table is not hit with a ~290-write spike (which
-// throttles, cancels writes at the 5s client timeout, and faults the whole batch).
-// A transient fault on one write is retried with backoff+jitter rather than failing
-// the rebuild; a genuinely permanent fault still surfaces. See Phase 24-A.
+// Bounded-concurrency + per-write retry for the projection rebuild: a cold on-demand table
+// hit with a ~290-write spike throttles, cancels writes at the 5s client timeout, and faults
+// the whole batch (500 + partial rebuild). See Phase 24-A.
 public static class BoundedWrites
 {
     public const int DefaultMaxConcurrency = 8;
@@ -44,6 +42,7 @@ public static class BoundedWrites
         TimeSpan? baseDelay = null,
         CancellationToken ct = default)
     {
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(maxAttempts);
         var delay = baseDelay ?? DefaultBaseDelay;
         for (var attempt = 1; ; attempt++)
         {
@@ -55,18 +54,19 @@ public static class BoundedWrites
             catch (Exception ex) when (attempt < maxAttempts && IsTransient(ex, ct))
             {
                 var backoff = delay.TotalMilliseconds * Math.Pow(2, attempt - 1);
-                var jitter = Random.Shared.Next(0, 50);
+                var jitter = Random.Shared.NextDouble() * backoff * 0.2;
                 await Task.Delay(TimeSpan.FromMilliseconds(backoff + jitter), ct).ConfigureAwait(false);
             }
         }
     }
 
-    // A transient fault is one a retry can clear: an on-demand throttle, a per-op client
-    // timeout (surfaces as OperationCanceledException while the caller's ct is NOT cancelled),
-    // or a 5xx/429 from the service. A requested outer cancellation is never transient.
+    // Transient = on-demand throttle, a per-op client timeout (the SDK cancels with its OWN
+    // token, so the caller's ct is not cancelled), or a 5xx/429. A cancellation carrying the
+    // caller's token is a genuine abort and is never retried.
     static bool IsTransient(Exception ex, CancellationToken ct)
     {
         if (ct.IsCancellationRequested) return false;
+        if (ex is OperationCanceledException oce && oce.CancellationToken == ct) return false;
         return ex switch
         {
             ProvisionedThroughputExceededException => true,

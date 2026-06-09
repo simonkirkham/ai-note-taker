@@ -41,6 +41,39 @@ public sealed class BoundedWritesTests
     }
 
     [Fact]
+    public async Task WithRetryAsync_retries_a_per_operation_timeout_cancellation()
+    {
+        // The 5s client timeout surfaces as an OperationCanceledException carrying the SDK's
+        // own (foreign) token, not the caller's — so it must be retried, not surfaced.
+        var attempts = 0;
+        await BoundedWrites.WithRetryAsync(_ =>
+        {
+            attempts++;
+            if (attempts < 2) throw new OperationCanceledException(new CancellationToken(canceled: true));
+            return Task.CompletedTask;
+        }, maxAttempts: 5, baseDelay: TimeSpan.FromMilliseconds(1));
+
+        Assert.Equal(2, attempts);
+    }
+
+    [Fact]
+    public async Task WithRetryAsync_does_not_retry_when_the_caller_cancels()
+    {
+        using var cts = new CancellationTokenSource();
+        var attempts = 0;
+        await Assert.ThrowsAsync<OperationCanceledException>(() =>
+            BoundedWrites.WithRetryAsync(token =>
+            {
+                attempts++;
+                cts.Cancel();
+                token.ThrowIfCancellationRequested();
+                return Task.CompletedTask;
+            }, maxAttempts: 5, baseDelay: TimeSpan.FromMilliseconds(1), ct: cts.Token));
+
+        Assert.Equal(1, attempts);
+    }
+
+    [Fact]
     public async Task WithRetryAsync_does_not_retry_a_non_transient_fault()
     {
         var attempts = 0;
