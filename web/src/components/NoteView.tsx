@@ -1,9 +1,13 @@
+import { useQueryClient } from "@tanstack/react-query";
 import clsx from "clsx";
 import { useEffect, useRef, useState } from "react";
 import { type CalendarMeeting } from "../api/meetings";
-import { analyseNote, editContent, getNoteDetail, setNoteDate, type LinkedMeeting, type TranscriptionDraft } from "../api/notes";
+import type { NoteDetail } from "../api/notes";
+import { keys } from "../api/queryKeys";
 import { completeTranscription, discardTranscriptionDraft } from "../api/transcription";
 import { useCreateNoteFromNextOccurrence, useLinkNoteToCalendar } from "../hooks/useMeetingMutations";
+import { useNoteDetail } from "../hooks/useNoteDetail";
+import { useAnalyseNote, useEditContent, useSetNoteDate } from "../hooks/useNoteDetailMutations";
 import { useTagNote, useUntagNote } from "../hooks/useTagMutations";
 import { useTags } from "../hooks/useTags";
 import type { TranscriptionStatus } from "../hooks/useTranscription";
@@ -48,40 +52,55 @@ export default function NoteView({
   onNotFound?: () => void;
   isNew?: boolean;
 }) {
-  const [title, setTitle] = useState(initialTitle);
-  const [content, setContent] = useState("");
-  const [date, setDate] = useState("");
-  const [tags, setTags] = useState<string[]>([]);
+  const qc = useQueryClient();
+  const { data: detail, isLoading: loadingDetail, isError, error } = useNoteDetail(noteId);
   const { data: allTags = [] } = useTags();
   const tagNoteM = useTagNote();
   const untagNoteM = useUntagNote();
   const linkMeetingM = useLinkNoteToCalendar();
   const nextOccurrenceM = useCreateNoteFromNextOccurrence();
+  const editContentM = useEditContent(noteId);
+  const setNoteDateM = useSetNoteDate(noteId);
+  const analyseM = useAnalyseNote(noteId);
+
+  const [title, setTitle] = useState(initialTitle);
+  // Draft pattern: displayed = draft ?? server value. While a draft is non-null the
+  // user has unsaved edits, so a refetch never clobbers in-flight typing; the draft
+  // resets to null on a successful save (reconcile to the server copy).
+  const [contentDraft, setContentDraft] = useState<string | null>(null);
+  const [dateDraft, setDateDraft] = useState<string | null>(null);
   const [actionCount, setActionCount] = useState(0);
-  const [transcriptText, setTranscriptText] = useState<string | null>(null);
-  const [summary, setSummary] = useState<string | null>(null);
-  const [discussionPoints, setDiscussionPoints] = useState<string[]>([]);
-  const [decisions, setDecisions] = useState<string[]>([]);
-  const [summaryModelId, setSummaryModelId] = useState<string | null>(null);
-  const [loadingDetail, setLoadingDetail] = useState(true);
-  const [notFound, setNotFound] = useState(false);
-  const [actionsKey, setActionsKey] = useState(0);
   const [activeTab, setActiveTab] = useState<NoteTab>("quick");
   const [liveTranscript, setLiveTranscript] = useState<string | null>(null);
   const [recordingStatus, setRecordingStatus] = useState<TranscriptionStatus>("idle");
-  const [recurringSeriesId, setRecurringSeriesId] = useState<string | null>(null);
-  const [linkedMeeting, setLinkedMeeting] = useState<LinkedMeeting | null>(null);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [linkingEventId, setLinkingEventId] = useState<string | null>(null);
   const [openingNext, setOpeningNext] = useState(false);
   const [noNextOccurrence, setNoNextOccurrence] = useState(false);
   const [confirmingLeave, setConfirmingLeave] = useState(false);
-  const [transcriptDraft, setTranscriptDraft] = useState<TranscriptionDraft | null>(null);
   const { showError } = useToast();
   const inputRef = useRef<HTMLInputElement>(null);
-  const tagsModifiedRef = useRef(false);
-  const contentModifiedRef = useRef(false);
-  const contentRef = useRef("");
+  const dateDefaultedFor = useRef<string | null>(null);
+
+  const today = new Date().toISOString().slice(0, 10);
+
+  // Editable fields via the draft pattern; read-only fields straight from the cache.
+  const content = contentDraft ?? detail?.content ?? "";
+  const date = dateDraft ?? detail?.date ?? today;
+  const tags = detail?.tags ?? [];
+  const summary = detail?.summary ?? null;
+  const discussionPoints = detail?.discussionPoints ?? [];
+  const decisions = detail?.decisions ?? [];
+  const summaryModelId = detail?.summaryModelId ?? null;
+  const recurringSeriesId = detail?.recurringSeriesId ?? null;
+  const linkedMeeting = detail?.linkedMeeting ?? null;
+  const transcriptText = detail?.transcriptText ?? null;
+  const transcriptDraft = detail?.transcriptDraft ?? null;
+
+  // A missing note on deep-link is handled by the parent (redirect + toast);
+  // without a handler, fall back to the in-place not-found view.
+  const is404 = isError && error instanceof Error && error.message.includes("404");
+  const notFound = is404 && !onNotFound;
 
   const isRecording =
     recordingStatus === "recording" || recordingStatus === "requestingCredentials";
@@ -100,70 +119,55 @@ export default function NoteView({
     (liveTranscript?.trim().length ?? 0) > 0;
 
   useEffect(() => {
-    tagsModifiedRef.current = false;
-    contentModifiedRef.current = false;
-    const today = new Date().toISOString().slice(0, 10);
-    let cancelled = false;
-    getNoteDetail(noteId)
-      .then((detail) => {
-        if (!cancelled) {
-          if (!contentModifiedRef.current) setContent(detail.content);
-          const loadedDate = detail.date ?? today;
-          setDate(loadedDate);
-          onDateSet(noteId, loadedDate);
-          if (!detail.date) setNoteDate(noteId, loadedDate).catch(() => {});
-          if (!tagsModifiedRef.current) setTags(detail.tags ?? []);
-          setTranscriptText(detail.transcriptText ?? null);
-          setSummary(detail.summary ?? null);
-          setDiscussionPoints(detail.discussionPoints ?? []);
-          setDecisions(detail.decisions ?? []);
-          setSummaryModelId(detail.summaryModelId ?? null);
-          setRecurringSeriesId(detail.recurringSeriesId ?? null);
-          setLinkedMeeting(detail.linkedMeeting ?? null);
-          setTranscriptDraft(detail.transcriptDraft ?? null);
-          setLoadingDetail(false);
-        }
-      })
-      .catch((err: Error) => {
-        if (!cancelled) {
-          // A missing note on deep-link is handled by the parent (redirect +
-          // toast); without a handler, fall back to the in-place not-found view.
-          if (err.message.includes("404")) {
-            if (onNotFound) onNotFound();
-            else setNotFound(true);
-          }
-          setLoadingDetail(false);
-        }
-      });
-    return () => { cancelled = true; };
-  }, [noteId, onDateSet, onNotFound]);
+    if (is404 && onNotFound) onNotFound();
+  }, [is404, onNotFound]);
+
+  // Inform the parent of the card date on load/change, and persist a default date
+  // for a date-less note (mutation call, never setState — lint-safe in an effect).
+  const detailLoaded = detail != null;
+  const detailDate = detail?.date;
+  useEffect(() => {
+    if (!detailLoaded) return;
+    const t = new Date().toISOString().slice(0, 10);
+    onDateSet(noteId, detailDate ?? t);
+    if (detailDate == null && dateDefaultedFor.current !== noteId) {
+      dateDefaultedFor.current = noteId;
+      setNoteDateM.mutate(t);
+    }
+  }, [detailLoaded, detailDate, noteId, onDateSet, setNoteDateM]);
 
   useEffect(() => {
     if (!loadingDetail && !notFound) inputRef.current?.focus();
   }, [loadingDetail, notFound]);
 
-  async function refreshNote() {
-    try {
-      const detail = await getNoteDetail(noteId);
-      setContent(detail.content);
-      if (detail.tags) setTags(detail.tags);
-      setTranscriptText(detail.transcriptText ?? null);
-      setSummary(detail.summary ?? null);
-      setDiscussionPoints(detail.discussionPoints ?? []);
-      setDecisions(detail.decisions ?? []);
-      setSummaryModelId(detail.summaryModelId ?? null);
-      setActionsKey((k) => k + 1);
-    } catch {
-      // best-effort refresh; ignore errors
-    }
+  // Refetch the regenerated summary/discussion/decisions and any extracted actions.
+  function refreshNote() {
+    qc.invalidateQueries({ queryKey: keys.note(noteId) });
+    qc.invalidateQueries({ queryKey: keys.actions(noteId) });
   }
 
   async function handleGenerateFinalNotes() {
     try {
-      await analyseNote(noteId);
-    } finally {
-      await refreshNote();
+      await analyseM.mutateAsync();
+    } catch {
+      showError("Couldn't generate final notes. Please try again.");
     }
+  }
+
+  function handleSaveContent() {
+    if (contentDraft == null) return;
+    editContentM.mutate(contentDraft, {
+      onSuccess: () => setContentDraft(null),
+      onError: () => showError("Couldn't save your note. We kept your text — try again."),
+    });
+  }
+
+  function handleSaveDate() {
+    if (dateDraft == null) return;
+    setNoteDateM.mutate(dateDraft || null, {
+      onSuccess: () => { if (dateDraft) onDateSet(noteId, dateDraft); setDateDraft(null); },
+      onError: () => { setDateDraft(null); showError("Couldn't save the date. Please try again."); },
+    });
   }
 
   async function handleOpenNextOccurrence() {
@@ -184,71 +188,53 @@ export default function NoteView({
     }
   }
 
-  async function handleLinkMeeting(meeting: CalendarMeeting) {
-    const optimistic: LinkedMeeting = {
-      calendarEventId: meeting.calendarEventId,
-      title: meeting.title,
-      startTime: meeting.startTime,
-      endTime: meeting.endTime,
-      recurringSeriesId: meeting.recurringSeriesId,
-      isRecurring: meeting.isRecurring,
-    };
+  function handleLinkMeeting(meeting: CalendarMeeting) {
+    // Optimistic linkedMeeting/recurringSeriesId patch + rollback live in the
+    // mutation (it owns keys.note); here we drive the picker + error surfacing.
     setLinkingEventId(meeting.calendarEventId);
-    setLinkedMeeting(optimistic);
-    setRecurringSeriesId(meeting.recurringSeriesId ?? null);
     setPickerOpen(false);
-    try {
-      await linkMeetingM.mutateAsync({ noteId, meeting });
-    } catch {
-      setLinkedMeeting(null);
-      setRecurringSeriesId(null);
-      setPickerOpen(true);
-      showError("Couldn't link the meeting. Please try again.");
-    } finally {
-      setLinkingEventId(null);
-    }
+    linkMeetingM.mutate({ noteId, meeting }, {
+      onError: () => { setPickerOpen(true); showError("Couldn't link the meeting. Please try again."); },
+      onSettled: () => setLinkingEventId(null),
+    });
   }
 
   function handleAddTags(raw: string) {
     const tokens = raw.trim().split(/\s+/).filter(Boolean);
     const newTokens = tokens.filter((t) => !tags.includes(t));
     if (newTokens.length === 0) return;
-    tagsModifiedRef.current = true;
-    setTags((prev) => [...prev, ...newTokens]);
-    // Applied tags are local note-detail state (→ 20-E); the mutation reconciles
-    // the global tag index and reverts this optimistic add on failure.
+    // The mutation optimistically patches the note cache and reverts on failure.
     for (const token of newTokens) {
       tagNoteM.mutate({ noteId, tag: token }, {
-        onError: () => setTags((prev) => prev.filter((t) => t !== token)),
+        onError: () => showError("Couldn't add the tag. Please try again."),
       });
     }
   }
 
   function handleRemoveTag(tag: string) {
-    tagsModifiedRef.current = true;
-    setTags((prev) => prev.filter((t) => t !== tag));
     untagNoteM.mutate({ noteId, tag }, {
-      onError: () => setTags((prev) => (prev.includes(tag) ? prev : [...prev, tag])),
+      onError: () => showError("Couldn't remove the tag. Please try again."),
     });
   }
 
   // Recovery for an interrupted recording (crash/tab close left an uncommitted
-  // draft). Optimistic: hide the banner immediately and show the recovered text;
+  // draft). Optimistic cache patch: hide the banner and show the recovered text;
   // reconcile on error. Recover commits the draft as the durable transcript;
   // Discard drops it, leaving any previously committed transcript untouched.
   async function handleRecoverDraft() {
     const draft = transcriptDraft;
     if (!draft) return;
-    const prevTranscript = transcriptText;
-    setTranscriptDraft(null);
-    setTranscriptText(draft.text);
+    await qc.cancelQueries({ queryKey: keys.note(noteId) });
+    const previous = qc.getQueryData<NoteDetail>(keys.note(noteId));
+    qc.setQueryData<NoteDetail>(keys.note(noteId), (old) =>
+      old ? { ...old, transcriptDraft: null, transcriptText: draft.text } : old);
     setActiveTab("transcript");
     try {
       // An interrupted recording has no reliable final duration; the text is what matters.
+      // The optimistic patch is the post-commit state (single consumer), so no refetch.
       await completeTranscription(noteId, draft.text, 0);
     } catch {
-      setTranscriptDraft(draft);
-      setTranscriptText(prevTranscript);
+      if (previous) qc.setQueryData(keys.note(noteId), previous);
       showError("Couldn't recover the transcript. Please try again.");
     }
   }
@@ -256,11 +242,14 @@ export default function NoteView({
   async function handleDiscardDraft() {
     const draft = transcriptDraft;
     if (!draft) return;
-    setTranscriptDraft(null);
+    await qc.cancelQueries({ queryKey: keys.note(noteId) });
+    const previous = qc.getQueryData<NoteDetail>(keys.note(noteId));
+    qc.setQueryData<NoteDetail>(keys.note(noteId), (old) =>
+      old ? { ...old, transcriptDraft: null } : old);
     try {
       await discardTranscriptionDraft(noteId);
     } catch {
-      setTranscriptDraft(draft);
+      if (previous) qc.setQueryData(keys.note(noteId), previous);
       showError("Couldn't discard the draft. Please try again.");
     }
   }
@@ -369,8 +358,8 @@ export default function NoteView({
               type="date"
               data-testid="note-date-input"
               value={date}
-              onChange={(e) => setDate(e.target.value)}
-              onBlur={() => { setNoteDate(noteId, date || null); if (date) onDateSet(noteId, date); }}
+              onChange={(e) => setDateDraft(e.target.value)}
+              onBlur={handleSaveDate}
               className={styles.dateInput}
               aria-label="Meeting date"
             />
@@ -508,8 +497,8 @@ export default function NoteView({
                 <NoteEditor
                   key={noteId}
                   value={content}
-                  onChange={(md) => { contentModifiedRef.current = true; contentRef.current = md; setContent(md); }}
-                  onBlur={() => editContent(noteId, contentRef.current)}
+                  onChange={(md) => setContentDraft(md)}
+                  onBlur={handleSaveContent}
                 />
               )}
             </div>
@@ -547,7 +536,7 @@ export default function NoteView({
         <aside className={tabStyles.sidebar} aria-label="Tags and action items">
           <TagsSection tags={tags} allTags={allTags} onAdd={handleAddTags} onRemove={handleRemoveTag} />
           <div className={tabStyles.actions}>
-            <ActionsSection key={actionsKey} noteId={noteId} onCountChange={setActionCount} />
+            <ActionsSection key={noteId} noteId={noteId} onCountChange={setActionCount} />
           </div>
         </aside>
       </div>
