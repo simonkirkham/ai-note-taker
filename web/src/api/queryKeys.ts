@@ -5,4 +5,5 @@ export const keys = {
   tags: ["tags"] as const,
   note: (id: string) => ["note", id] as const,
   actions: (noteId: string) => ["actions", noteId] as const,
+  meetings: (date: string) => ["meetings", date] as const,
 } as const;

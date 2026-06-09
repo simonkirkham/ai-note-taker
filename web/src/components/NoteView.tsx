@@ -1,8 +1,9 @@
 import clsx from "clsx";
 import { useEffect, useRef, useState } from "react";
-import { createNoteFromNextOccurrence, linkNoteToCalendar, type CalendarMeeting } from "../api/meetings";
+import { type CalendarMeeting } from "../api/meetings";
 import { analyseNote, editContent, getNoteDetail, setNoteDate, type LinkedMeeting, type TranscriptionDraft } from "../api/notes";
 import { completeTranscription, discardTranscriptionDraft } from "../api/transcription";
+import { useCreateNoteFromNextOccurrence, useLinkNoteToCalendar } from "../hooks/useMeetingMutations";
 import { useTagNote, useUntagNote } from "../hooks/useTagMutations";
 import { useTags } from "../hooks/useTags";
 import type { TranscriptionStatus } from "../hooks/useTranscription";
@@ -54,6 +55,8 @@ export default function NoteView({
   const { data: allTags = [] } = useTags();
   const tagNoteM = useTagNote();
   const untagNoteM = useUntagNote();
+  const linkMeetingM = useLinkNoteToCalendar();
+  const nextOccurrenceM = useCreateNoteFromNextOccurrence();
   const [actionCount, setActionCount] = useState(0);
   const [transcriptText, setTranscriptText] = useState<string | null>(null);
   const [summary, setSummary] = useState<string | null>(null);
@@ -168,7 +171,7 @@ export default function NoteView({
     setOpeningNext(true);
     setNoNextOccurrence(false);
     try {
-      const result = await createNoteFromNextOccurrence(recurringSeriesId);
+      const result = await nextOccurrenceM.mutateAsync(recurringSeriesId);
       onOpenNote(result.noteId, title, true);
     } catch (err) {
       if (err instanceof Error && err.message === "no_future_occurrences") {
@@ -195,7 +198,7 @@ export default function NoteView({
     setRecurringSeriesId(meeting.recurringSeriesId ?? null);
     setPickerOpen(false);
     try {
-      await linkNoteToCalendar(noteId, meeting);
+      await linkMeetingM.mutateAsync({ noteId, meeting });
     } catch {
       setLinkedMeeting(null);
       setRecurringSeriesId(null);

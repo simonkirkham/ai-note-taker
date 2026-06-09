@@ -1,6 +1,10 @@
+import { useQueryClient, type UseQueryResult } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
-import { CalendarMeeting, createNoteFromMeeting, createNoteFromNextOccurrence, getMeetingsForDate } from "../api/meetings";
+import { CalendarMeeting, type MeetingsResult } from "../api/meetings";
+import { keys } from "../api/queryKeys";
+import { useCreateNoteFromMeeting, useCreateNoteFromNextOccurrence } from "../hooks/useMeetingMutations";
 import { MeetingReminder, useMeetingReminders } from "../hooks/useMeetingReminders";
+import { useMeetings } from "../hooks/useMeetings";
 import { addDays, dayDelta, formatMeetingTime, todayInTz } from "./meetingDay";
 import styles from "./MeetingsSection.module.css";
 
@@ -34,25 +38,22 @@ function headingFor(selectedDate: string, today: string): string {
   return `Meetings — ${formatted}`;
 }
 
-async function loadState(tz: string, date: string): Promise<State> {
-  try {
-    const result = await getMeetingsForDate(tz, date);
-    return "error" in result ? { status: "unavailable" } : { status: "loaded", meetings: result.meetings };
-  } catch {
-    return { status: "unavailable" };
-  }
+// Derive the display State from a meetings query. A thrown fetch (network/5xx →
+// data undefined) and an `{ error }` response (calendar not connected) both read
+// as "unavailable"; the discriminated union lives in the query data.
+function toState(query: UseQueryResult<MeetingsResult>): State {
+  if (query.isLoading) return { status: "loading" };
+  const data = query.data;
+  if (!data || "error" in data) return { status: "unavailable" };
+  return { status: "loaded", meetings: data.meetings };
 }
 
 export function MeetingsSection({ onOpenNote }: { onOpenNote: (noteId: string, title?: string, isNew?: boolean) => void }) {
   const tz = useMemo(() => Intl.DateTimeFormat().resolvedOptions().timeZone, []);
+  const qc = useQueryClient();
   const [today] = useState(() => todayInTz(tz));
   const [selectedDate, setSelectedDate] = useState(today);
   const [pickerOpen, setPickerOpen] = useState(false);
-  // todayState is fetched once and feeds the reminders hook; navigation never re-drives it.
-  const [todayState, setTodayState] = useState<State>({ status: "loading" });
-  // browsed backs the displayed list only while looking at a non-today day. Keyed by date so a
-  // result left over from a previous day reads as "still loading" until the new day resolves.
-  const [browsed, setBrowsed] = useState<{ date: string; state: State } | null>(null);
   const [bannerDismissed, setBannerDismissed] = useState(false);
   const [creating, setCreating] = useState<Set<string>>(new Set());
   const [createErrors, setCreateErrors] = useState<Map<string, string>>(new Map());
@@ -61,32 +62,28 @@ export function MeetingsSection({ onOpenNote }: { onOpenNote: (noteId: string, t
   // tracks next-occurrence note IDs keyed by recurringSeriesId, for "Open Note ↗" after creation
   const [nextNoteIds, setNextNoteIds] = useState<Map<string, string>>(new Map());
 
-  const isToday = selectedDate === today;
-  const displayState: State = isToday
-    ? todayState
-    : browsed?.date === selectedDate
-      ? browsed.state
-      : { status: "loading" };
+  const createNote = useCreateNoteFromMeeting();
+  const createNext = useCreateNoteFromNextOccurrence();
 
-  // Reminders are anchored to the real today — fed only by todayState, never the browsed day.
-  const reminderMeetings = todayState.status === "loaded" ? todayState.meetings : NO_MEETINGS;
+  // Two date-keyed queries preserve the Phase 16 decoupling: the today query is the
+  // reminder source (always active, cached → no refetch when returning to today);
+  // the display query drives the list. When selectedDate === today they share one
+  // cache key (one fetch); when browsing they are distinct and today stays untouched.
+  const todayQuery = useMeetings(today);
+  const displayQuery = useMeetings(selectedDate);
+
+  const displayState: State = toState(displayQuery);
+
+  // Reminders are anchored to the real today — fed only by the today query.
+  const reminderMeetings =
+    todayQuery.data && "meetings" in todayQuery.data ? todayQuery.data.meetings : NO_MEETINGS;
   useMeetingReminders(reminderMeetings);
 
-  // Fetch today's meetings once on mount; this is both the reminder source and the today view.
-  useEffect(() => {
-    let cancelled = false;
-    loadState(tz, today).then((s) => { if (!cancelled) setTodayState(s); });
-    return () => { cancelled = true; };
-  }, [tz, today]);
-
-  // Browsing another day fetches it; back on today we reuse todayState (no duplicate request).
-  // While the fetch is in flight, displayState derives "loading" because browsed.date !== selectedDate.
-  useEffect(() => {
-    if (isToday) return;
-    let cancelled = false;
-    loadState(tz, selectedDate).then((s) => { if (!cancelled) setBrowsed({ date: selectedDate, state: s }); });
-    return () => { cancelled = true; };
-  }, [tz, selectedDate, isToday]);
+  // Optimistically patch the displayed day's meetings in the cache (create-note flows).
+  function updateDisplayedMeetings(updater: (meetings: CalendarMeeting[]) => CalendarMeeting[]) {
+    qc.setQueryData<MeetingsResult>(keys.meetings(selectedDate), (old) =>
+      old && "meetings" in old ? { meetings: updater(old.meetings) } : old);
+  }
 
   const showBanner =
     !bannerDismissed &&
@@ -99,18 +96,6 @@ export function MeetingsSection({ onOpenNote }: { onOpenNote: (noteId: string, t
     return () => document.body.classList.remove("has-notification-banner");
   }, [showBanner]);
 
-  function updateDisplayedMeetings(updater: (meetings: CalendarMeeting[]) => CalendarMeeting[]) {
-    if (isToday) {
-      setTodayState((prev) => (prev.status === "loaded" ? { ...prev, meetings: updater(prev.meetings) } : prev));
-    } else {
-      setBrowsed((prev) =>
-        prev && prev.state.status === "loaded"
-          ? { ...prev, state: { ...prev.state, meetings: updater(prev.state.meetings) } }
-          : prev
-      );
-    }
-  }
-
   async function handleEnable() {
     try { await Notification.requestPermission(); } catch { /* unavailable */ }
     setBannerDismissed(true);
@@ -120,7 +105,7 @@ export function MeetingsSection({ onOpenNote }: { onOpenNote: (noteId: string, t
     setCreating((prev) => new Set(prev).add(meeting.calendarEventId));
     setCreateErrors((prev) => { const next = new Map(prev); next.delete(meeting.calendarEventId); return next; });
     try {
-      const { noteId } = await createNoteFromMeeting(meeting);
+      const { noteId } = await createNote.mutateAsync(meeting);
       updateDisplayedMeetings((meetings) =>
         meetings.map((m) =>
           m.calendarEventId === meeting.calendarEventId ? { ...m, linkedNoteId: noteId } : m
@@ -143,7 +128,7 @@ export function MeetingsSection({ onOpenNote }: { onOpenNote: (noteId: string, t
       meetings.map((m) => (m.recurringSeriesId === seriesId ? { ...m, hasNextOccurrenceNote: true } : m))
     );
     try {
-      const result = await createNoteFromNextOccurrence(seriesId);
+      const result = await createNext.mutateAsync(seriesId);
       const noteId = result.noteId;
       setNextNoteIds((prev) => new Map(prev).set(seriesId, noteId));
       onOpenNote(noteId, meeting.title, true);
@@ -158,13 +143,7 @@ export function MeetingsSection({ onOpenNote }: { onOpenNote: (noteId: string, t
   }
 
   function handleRetry() {
-    if (isToday) {
-      setTodayState({ status: "loading" });
-      loadState(tz, today).then(setTodayState);
-    } else {
-      setBrowsed(null);
-      loadState(tz, selectedDate).then((s) => setBrowsed({ date: selectedDate, state: s }));
-    }
+    displayQuery.refetch();
   }
 
   function handlePickDate(value: string) {

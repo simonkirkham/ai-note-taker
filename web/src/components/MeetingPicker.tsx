@@ -1,5 +1,7 @@
+import { type UseQueryResult } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
-import { CalendarMeeting, getMeetingsForDate } from "../api/meetings";
+import { CalendarMeeting, type MeetingsResult } from "../api/meetings";
+import { useMeetings } from "../hooks/useMeetings";
 import { addDays, dayDelta, formatMeetingTime, todayInTz } from "./meetingDay";
 import styles from "./MeetingPicker.module.css";
 
@@ -21,13 +23,11 @@ function headingFor(selectedDate: string, today: string): string {
   });
 }
 
-async function loadState(tz: string, date: string): Promise<State> {
-  try {
-    const result = await getMeetingsForDate(tz, date);
-    return "error" in result ? { status: "unavailable" } : { status: "loaded", meetings: result.meetings };
-  } catch {
-    return { status: "unavailable" };
-  }
+function toState(query: UseQueryResult<MeetingsResult>): State {
+  if (query.isLoading) return { status: "loading" };
+  const data = query.data;
+  if (!data || "error" in data) return { status: "unavailable" };
+  return { status: "loaded", meetings: data.meetings };
 }
 
 export default function MeetingPicker({
@@ -43,16 +43,10 @@ export default function MeetingPicker({
   const [today] = useState(() => todayInTz(tz));
   const [selectedDate, setSelectedDate] = useState(today);
   const [dateInputOpen, setDateInputOpen] = useState(false);
-  // Keyed by date so a result left from a previous day reads as "still loading" until the new day resolves.
-  const [loaded, setLoaded] = useState<{ date: string; state: State } | null>(null);
 
-  const displayState: State = loaded?.date === selectedDate ? loaded.state : { status: "loading" };
-
-  useEffect(() => {
-    let cancelled = false;
-    loadState(tz, selectedDate).then((s) => { if (!cancelled) setLoaded({ date: selectedDate, state: s }); });
-    return () => { cancelled = true; };
-  }, [tz, selectedDate]);
+  // A cached day shows instantly; a new day reads as loading until it resolves.
+  const displayQuery = useMeetings(selectedDate);
+  const displayState: State = toState(displayQuery);
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) { if (e.key === "Escape") onClose(); }
@@ -61,8 +55,7 @@ export default function MeetingPicker({
   }, [onClose]);
 
   function handleRetry() {
-    setLoaded(null);
-    loadState(tz, selectedDate).then((s) => setLoaded({ date: selectedDate, state: s }));
+    displayQuery.refetch();
   }
 
   return (

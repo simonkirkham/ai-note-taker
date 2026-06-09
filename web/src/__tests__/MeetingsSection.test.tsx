@@ -1,8 +1,8 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { http, HttpResponse } from 'msw'
 import MeetingsSection from '../components/MeetingsSection'
 import { useMeetingReminders } from '../hooks/useMeetingReminders'
+import { fireEvent, render, screen, waitFor } from '../test/render'
 import { server } from '../test/setup'
 
 // The reminder hook is stubbed so we can assert exactly which meetings feed it.
