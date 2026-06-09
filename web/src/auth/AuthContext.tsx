@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
-import { AuthContext } from './context'
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { AuthContext, type AuthState } from './context'
 import { buildAuthUrl, exchangeCode, generateCodeChallenge, generateCodeVerifier } from './pkce'
 import { attemptSilentRefresh } from './silentRefresh'
 import { clearToken, loadPersistedToken, setToken, setOnForbidden, setOnRefresh, setOnUnauthorized } from './tokenStore'
@@ -140,7 +140,7 @@ export function AuthProvider({
     // listed to satisfy exhaustive-deps but are stable for the provider's lifetime.
   }, [clientId, initialToken])
 
-  async function signIn() {
+  const signIn = useCallback(async () => {
     if (!clientId) return
     const verifier = generateCodeVerifier()
     const challenge = await generateCodeChallenge(verifier)
@@ -152,19 +152,20 @@ export function AuthProvider({
     const dest = window.location.pathname + window.location.search
     if (dest !== '/') sessionStorage.setItem('postLoginRedirect', dest)
     window.location.href = buildAuthUrl(clientId, window.location.origin, challenge, state)
-  }
+  }, [clientId])
 
-  function signOut() {
+  const signOut = useCallback(() => {
     clearToken()
     cancelRefresh()
     setForbidden(false)
     setSessionExpired(false)
     setIdToken(clientId ? null : 'no-auth')
-  }
+  }, [clientId, cancelRefresh])
 
-  return (
-    <AuthContext.Provider value={{ idToken, forbidden, sessionExpired, signIn, signOut }}>
-      {children}
-    </AuthContext.Provider>
+  const value = useMemo<AuthState>(
+    () => ({ idToken, forbidden, sessionExpired, signIn, signOut }),
+    [idToken, forbidden, sessionExpired, signIn, signOut],
   )
+
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
 }

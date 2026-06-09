@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import { ToastContext, type ToastVariant } from './toastContext'
 import styles from './ToastProvider.module.css'
@@ -37,6 +37,8 @@ export function ToastProvider({ children }: { children: ReactNode }) {
 
   const showError = useCallback((message: string) => showToast(message, 'error'), [showToast])
 
+  const value = useMemo(() => ({ showToast, showError }), [showToast, showError])
+
   useEffect(() => {
     const pending = timers.current
     return () => {
@@ -46,7 +48,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   }, [])
 
   return (
-    <ToastContext.Provider value={{ showToast, showError }}>
+    <ToastContext.Provider value={value}>
       {children}
       <div className={styles.stack} aria-live="polite">
         {toasts.map((toast) => (
