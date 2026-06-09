@@ -7,7 +7,7 @@
 | Slice | Summary | Status | Depends on |
 |-------|---------|--------|------------|
 | 24-A | **Bounded, retried writes.** Replace the unbounded `Task.WhenAll` with bounded concurrency (`SemaphoreSlim` cap); retry transient throttles/cancellations with backoff+jitter (subsumes a longer-timeout client). First try succeeds on cold tables. | Done | — |
-| 24-B | **Upsert-and-reconcile (kill the delete-first window).** Stop the unconditional delete-all; upsert the full target set, then delete only stale rows (present in table, absent from rebuild). A fault now leaves stale-but-present rows, never missing ones. Folds in the `NoteSearchView` tombstone prune. | Not Started | 24-A |
+| 24-B | **Upsert-and-reconcile (kill the delete-first window).** Stop the unconditional delete-all; upsert the full target set, then delete only stale rows (present in table, absent from rebuild). A fault now leaves stale-but-present rows, never missing ones. Folds in the `NoteSearchView` tombstone prune. Feedback stores stay delete-then-rebuild (monotonic). | Done | 24-A |
 | 24-C | **Operability: per-projection summary, fault visibility, concurrency guard.** Return a per-projection count map (not one note count); structured logs + EMF metric + alarm on rebuild faults/duration; reject overlapping rebuilds. | Not Started | 24-A |
 
 > **24-A is the immediate de-risk** — smallest change, independently shippable, makes the first try reliable. **24-B removes the silent-data-loss root cause** (delete-before-build). **24-C** makes a partial result observable rather than silent. Backend-only; no event-model change.
