@@ -297,6 +297,14 @@ Partition a user's content into named **workspaces** (e.g. *Work* / *Personal*) 
 
 Slices and acceptance criteria: [docs/phases/phase-23.md](phases/phase-23.md)
 
+## Phase 24 — Projection rebuild robustness _(Not Started)_
+
+Make `POST /admin/projections/rebuild` reliable on the first try and incapable of silent partial data loss. Today `ProjectionRebuildHandler` deletes every projection unconditionally, then re-upserts ~290 rows via one unbounded `Task.WhenAll` against a 5s-per-op DynamoDB client — a cold on-demand table throttles, writes cancel at 5s, `Task.WhenAll` throws → 500, and delete-all-first leaves the read models partially rebuilt (faulted rows silently missing). Reliable only on the second try (warm tables); confirmed in prod 2026-06-05 and 2026-06-08. Three backend-only slices: bounded+retried writes with a longer admin-path timeout (24-A, the immediate de-risk), upsert-and-reconcile to remove the delete-first window and prune `NoteSearchView` tombstones (24-B), and operability — per-projection summary, fault metric/alarm, overlapping-rebuild guard (24-C). Stays on the HTTP path at current scale; async off-loading is the documented escalation, not this phase. Graduated from the rebuild-robustness item in `technical-improvements.md`. **Unblocks** auto-backfill-on-deploy, which makes Phase 23's repeated projection backfills self-healing — worth doing **before** Phase 23.
+
+**Goal:** DynamoDB on-demand cold-partition throttling and bounded concurrency; transient-fault retry with backoff+jitter; idempotent upsert-and-reconcile as a safer maintenance pattern than delete-then-rebuild.
+
+Slices and acceptance criteria: [docs/phases/phase-24.md](phases/phase-24.md)
+
 ---
 
 ## Standing tracks and planning docs

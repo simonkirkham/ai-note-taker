@@ -202,21 +202,7 @@ The full rationale, target diagrams, staged migration plan, and the eventual-con
 
 ## Make the projection-rebuild endpoint robust (it 500s + partial-rebuilds under burst)
 
-**What:** `POST /admin/projections/rebuild` (`ProjectionRebuildHandler.RebuildAsync`) **deletes every projection first**, then re-upserts all of them via an **unbounded `Task.WhenAll`** (~290 writes for the current dataset: 227 cards + details + tags + folders + links + feedback). The DynamoDB client is configured with an aggressive **~5s per-operation timeout** (`DYNAMO_TIMEOUT_SECONDS`, default 5, tuned for user-facing request latency). When the burst hits a *cold* on-demand table, individual writes throttle past 5s, the client cancels them (`TimeoutException: The operation was canceled`), the faulted tasks make `Task.WhenAll` throw → the endpoint returns **500**, and because delete-all already ran, the result is a **partial rebuild** (the faulted items are silently missing).
-
-**Confirmed in prod, 2026-06-05** (Phase 17 calendar-link backfill): first call → 500 with **2 DynamoDB ops canceled at 5s** (X-Ray trace `1-6a22c000-…`, invocation 17.2s, well under the 29s Lambda limit — *not* a Lambda timeout); two projection items were dropped. Immediate re-run (tables now warmed/scaled by the first burst) → **200 `{"rebuilt":11}` in 9.9s**, fully consistent. So today the operation is **only reliable on the second try**, and the first try can leave projections partially rebuilt.
-
-**Why it matters:** the failure mode is silent data loss in read models — delete-all runs unconditionally, so any fault after it leaves the app degraded until a successful re-run. It worsens as the event store / projection counts grow.
-
-**Fix options (pick one or combine):**
-1. **Bound the write concurrency** — replace the unbounded `Task.WhenAll` with a `SemaphoreSlim`/chunked batches (e.g. 25 at a time) so on-demand tables aren't hit with a cold ~290-write spike.
-2. **Use a longer DynamoDB timeout for the admin/rebuild path** — the 5s ceiling is right for user requests, wrong for a bulk maintenance op; inject a higher-timeout client for the rebuild.
-3. **Rebuild-then-swap instead of delete-then-rebuild** — build into shadow tables / a staging set and atomically switch, so a mid-rebuild fault never leaves the live read models partial.
-4. **Move it off the 29s HTTP path** — async job (Step Functions / SQS) that paginates and is resumable; the endpoint just enqueues.
-
-**Raised in:** Operating the Phase 17 backfill against prod, 2026-06-05 (this session). The backfill itself succeeded and is verified; this is about the endpoint's robustness, not Phase 17.
-**Recurred:** Phase 22 `NoteSearchView` backfill, 2026-06-08 — clean `{"rebuilt":12}` 200 on the first try this time (luck of warm tables), but the unbounded-write/5s-timeout risk is unchanged.
-**Depends on:** Nothing blocking.
+**Graduated → [Phase 24](phases/phase-24.md).** `POST /admin/projections/rebuild` deletes every projection first, then re-upserts ~290 rows via an unbounded `Task.WhenAll` against a 5s-per-op client — a cold on-demand table throttles, writes cancel, `Task.WhenAll` throws → 500, and delete-all-first leaves a **partial rebuild** (silent missing rows). Reliable only on the second try (warm tables). Confirmed in prod 2026-06-05 (Phase 17 backfill, 2 ops canceled at 5s) and recurred 2026-06-08 (Phase 22). The fix (bounded+retried writes, admin-path timeout, upsert-and-reconcile instead of delete-first, operability) is now broken into Phase 24-A/B/C. The `NoteSearchView` tombstone item below is folded into **24-B**.
 
 ---
 
@@ -228,9 +214,9 @@ The full rationale, target diagrams, staged migration plan, and the eventual-con
 
 **Why it matters:** silent, repeats for *every* future projection, and the symptom (feature returns nothing) looks like a code bug, not an ops gap.
 
-**Fix options:** (1) detect new projection tables in the deploy job and POST the rebuild automatically (idempotent) after deploy; or (2) a deploy step that diffs the projection set and rebuilds only the new ones (needs the rebuild-robustness fix above so a bulk rebuild can't partial-fail). Pairs with the rebuild-robustness item.
+**Fix options:** (1) detect new projection tables in the deploy job and POST the rebuild automatically (idempotent) after deploy; or (2) a deploy step that diffs the projection set and rebuilds only the new ones (needs the rebuild-robustness fix so a bulk rebuild can't partial-fail). Pairs with the rebuild-robustness item.
 **Raised in:** Phase 22 search backfill, 2026-06-08.
-**Depends on:** the rebuild-robustness fix above (a safe auto-rebuild must not partial-fail).
+**Depends on:** **[Phase 24](phases/phase-24.md)** (a safe auto-rebuild must not partial-fail). Pick this up once Phase 24 lands.
 
 ---
 
@@ -242,4 +228,4 @@ The full rationale, target diagrams, staged migration plan, and the eventual-con
 
 **Fix:** make the rebuild projection prune deleted notes (drop them from `GetAll()`) so the rebuilt table matches the live hard-delete, OR have the rebuild explicitly skip upserting `Deleted` search rows.
 **Raised in:** Phase 22 search backfill verification, 2026-06-08.
-**Depends on:** Nothing blocking.
+**Scheduled:** folded into **[Phase 24-B](phases/phase-24.md)** (upsert-and-reconcile prunes the tombstones).
