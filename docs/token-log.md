@@ -99,6 +99,7 @@ Recurring cost drivers and their pre-emptions live in [token-optimisation-playbo
 | 22-B Home search bar | ~220k | ~150k | 53k | Frontend; built in parallel w/ 22-A deploy; search kept in ListView (zero App.tsx edit) dodged the 20-B parallel conflict; merged main pre-PR; Hawk clean (3 nits). |
 | 21-B Folder & sub-folder URLs | ~200k | ~150k | 47k | Clean single pass on top of 20-B's TanStack folders; Hawk approved first round (3 nits). One self-fixed regression (URL leak across tests → global reset) + a flaky eventstore CI rerun. No spike. |
 | 21-C Deep-link edge cases | ~210k | ~165k | 44k | Closes Phase 21. Single pass; Hawk approved first round (3 optional nits, none applied). Auth-flow investigation (OAuth stash/restore) + new E2E journey. No spike. |
+| 22-C Highlight matched terms | ~200k | ~150k | 43k | Backend (matchedTerms) + frontend (Highlight) single pass; Hawk approved first round (4 optional nits). Cost tail: NoteCard.tsx conflict with parallel 20-C → merge+resolve, and a false-green `gh pr checks --watch` (only CodeRabbit ran on the conflicting branch). |
 
 ## Scribe append format
 

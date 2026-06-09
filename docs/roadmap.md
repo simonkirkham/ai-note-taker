@@ -281,7 +281,7 @@ The frontend has **no router** — `App.tsx` holds a single in-memory `view` uni
 
 Slices and acceptance criteria: [docs/phases/phase-21.md](phases/phase-21.md)
 
-## Phase 22 — Search across notes _(In Progress)_
+## Phase 22 — Search across notes _(Done)_
 
 Add fuzzy free-text search across all of a user's notes from a home-screen search bar, with **no new infrastructure and no fixed cost**. A new `NoteSearchView` projection holds one searchable document per note (title, Quick notes, Final notes, tags, action-item text — **not** the raw transcript); a `GET /notes/search?q=` endpoint reads the current user's documents and **fuzzy-ranks them in-Lambda** (Levenshtein / token-set ratio), staying inside the existing DynamoDB + Lambda stack at $0 marginal cost. **22-A** builds the searchable read model + endpoint (backend-only, independently shippable); **22-B** adds the debounced as-you-type search bar (results replace the card grid, explicit no-results/error states), preceded by a throwaway UX prototype. 22-B depends on 22-A. Graduated from the "Search across notes" future-features idea.
 

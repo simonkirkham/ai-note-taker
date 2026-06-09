@@ -10,7 +10,7 @@
 |-------|---------|--------|------------|
 | 22-A | **Searchable read model + fuzzy search endpoint.** New `NoteSearchView` projection (one doc per note: title, body, final-notes text, tags, action-item text, `UserId`), wired inline in every handler that changes a searchable field, plus a rebuild backfill. New `GET /notes/search?q=` reads the user's docs and fuzzy-ranks in-Lambda, returning ranked results scoped to the user. No UI — independently shippable. | Done | — |
 | 22-B | **Home search bar.** A debounced, as-you-type search box on the home screen; results replace the card grid; composes with the existing tag/folder/date filters; explicit no-results and error states distinct from each other; clearing restores the normal view; out-of-order responses discarded (latest query wins). | Done | 22-A |
-| 22-C | **Highlight matched terms.** The ranker returns the actual word(s) that matched (`matchedTerms`, including fuzzy/typo hits via FuzzySharp token extraction); results highlight those terms in the title, snippet, and matching tag pill, plus a "matched in title/tag/notes" label. | Not Started | 22-A, 22-B |
+| 22-C | **Highlight matched terms.** The ranker returns the actual word(s) that matched (`matchedTerms`, including fuzzy/typo hits via FuzzySharp token extraction); results highlight those terms in the title, snippet, and matching tag pill, plus a "matched in title/tag/notes" label. | Done | 22-A, 22-B |
 
 > 22-A is a backend-only vertical slice (a working search API, no screen) and ships on its own. 22-B is the user-facing half and depends on 22-A. Both build on the projection-rebuild infrastructure and on Phase 15 (Final-notes content) and Phase 3/11 (action-item text). A throwaway frontend prototype of the search bar precedes 22-B; its confirmed GWT/UX rewrites the 22-B section here on exit.
 
@@ -181,7 +181,7 @@
 
 ## Slice 22-C — Highlight matched terms
 
-**Status:** Not Started
+**Status:** Done (PR #196, deploy #487, 2026-06-09)
 
 **User value:** See *why* each result matched — the actual word(s) that hit are highlighted in the title, snippet, and tag, even for typo/fuzzy matches (`planing` lights up `planning`), with a "matched in title/tag/notes" label.
 
