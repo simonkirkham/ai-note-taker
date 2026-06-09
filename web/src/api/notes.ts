@@ -1,10 +1,5 @@
 import { request, requestVoid } from './client'
 
-export interface NoteItem {
-  noteId: string;
-  title: string;
-}
-
 export interface LinkedMeeting {
   calendarEventId: string;
   title: string;
@@ -98,11 +93,6 @@ export function editContent(noteId: string, content: string): Promise<void> {
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ content }),
   });
-}
-
-export async function listNotes(): Promise<NoteItem[]> {
-  const body = await request<{ items: NoteItem[] }>(`/notes`);
-  return body.items;
 }
 
 export function setNoteDate(noteId: string, date: string | null): Promise<void> {

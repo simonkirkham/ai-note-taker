@@ -16,6 +16,71 @@ function withAuth(init: RequestInit | undefined, token: string | null): RequestI
   return { ...init, headers }
 }
 
+// --- Transient-failure resilience (Phase 20-G, subsumes 19-H) ---
+// Safe *read* requests (GET/HEAD) retry transient failures (5xx / 429 / network
+// drop) with exponential backoff + jitter, honouring Retry-After — a failed read
+// otherwise leaves blank UI. Writes are NOT retried here: the app's mutations are
+// optimistic with immediate rollback (and the QueryClient sets mutations:retry:false),
+// so transport-retrying a PUT/DELETE would only delay that rollback; a POST retry
+// would risk a duplicate create. Auth (401) is NOT transient and is handled outside
+// this loop, in apiFetch. retryConfig is mutable so tests can zero the delay.
+export const retryConfig = { maxAttempts: 3, baseDelayMs: 300, maxDelayMs: 4000 }
+
+const RETRYABLE_METHODS = new Set(['GET', 'HEAD'])
+function isRetryableMethod(init: RequestInit | undefined): boolean {
+  return RETRYABLE_METHODS.has((init?.method ?? 'GET').toUpperCase())
+}
+
+function isTransientStatus(status: number): boolean {
+  return status >= 500 || status === 429
+}
+
+// Retry-After is whole seconds or an HTTP date; returns ms, or null if absent/unparseable.
+export function parseRetryAfter(header: string | null): number | null {
+  if (!header) return null
+  const seconds = Number(header)
+  if (Number.isFinite(seconds)) return Math.max(0, seconds * 1000)
+  const when = Date.parse(header)
+  return Number.isNaN(when) ? null : Math.max(0, when - Date.now())
+}
+
+// Exponential backoff with full jitter, capped. attempt is 1-based (first retry = 1).
+export function backoffMs(attempt: number): number {
+  const exp = Math.min(retryConfig.maxDelayMs, retryConfig.baseDelayMs * 2 ** (attempt - 1))
+  return exp + Math.random() * exp
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
+// One network attempt with transient retry for idempotent requests. Throws on a
+// non-retryable network error; returns the Response otherwise (including 401, which
+// the caller handles). Never retries POST.
+async function fetchWithRetry(url: string, requestInit: RequestInit, init: RequestInit | undefined): Promise<Response> {
+  const retryable = isRetryableMethod(init)
+  for (let attempt = 0; ; attempt++) {
+    const last = attempt >= retryConfig.maxAttempts - 1
+    try {
+      const res = await fetch(url, requestInit)
+      if (retryable && !last && isTransientStatus(res.status)) {
+        console.warn(`apiFetch retry ${attempt + 1}/${retryConfig.maxAttempts - 1} after ${res.status}: ${url}`)
+        await sleep(parseRetryAfter(res.headers.get('Retry-After')) ?? backoffMs(attempt + 1))
+        continue
+      }
+      return res
+    } catch (err) {
+      // A thrown error from fetch is a network failure (TypeError). Retry reads only.
+      if (retryable && !last && err instanceof TypeError) {
+        console.warn(`apiFetch retry ${attempt + 1}/${retryConfig.maxAttempts - 1} after network error: ${url}`)
+        await sleep(backoffMs(attempt + 1))
+        continue
+      }
+      throw err
+    }
+  }
+}
+
 export async function apiFetch(url: string, init?: RequestInit): Promise<Response> {
   let token = getToken()
   if (token && token.split('.').length === 3 && jwtExpired(token)) {
@@ -26,16 +91,17 @@ export async function apiFetch(url: string, init?: RequestInit): Promise<Respons
       return new Response(null, { status: 401 })
     }
   }
-  const res = await fetch(url, withAuth(init, token))
+  const res = await fetchWithRetry(url, withAuth(init, token), init)
   if (res.status === 403) triggerForbidden()
   if (res.status === 401) {
-    // Fires regardless of whether a token was attached: a 401 must never be swallowed.
+    // Auth-retry lives OUTSIDE the transient loop: a 401 is not transient. Fires
+    // regardless of whether a token was attached — a 401 must never be swallowed.
     const newToken = await refreshOnce()
     if (!newToken) {
       triggerUnauthorized()
       return res
     }
-    const retried = await fetch(url, withAuth(init, newToken))
+    const retried = await fetchWithRetry(url, withAuth(init, newToken), init)
     if (retried.status === 401) triggerUnauthorized()
     if (retried.status === 403) triggerForbidden()
     return retried
