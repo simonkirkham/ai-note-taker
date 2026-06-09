@@ -36,14 +36,14 @@
 - Given cold on-demand projection tables, when I `POST /admin/projections/rebuild`, then it completes `200` on the first call (no throttle-induced 500).
 - Given a transient throttle/cancellation on a single write, when the rebuild runs, then that write is retried with backoff and the rebuild still completes (one fault does not fail the whole batch).
 - Given the rebuild runs, then no more than **N** writes are in flight at once (bounded fan-out).
-- Given a normal user note write, then it still uses the 5s client timeout (the longer timeout is scoped to the rebuild path only).
+- Given a transient 5s-timeout cancellation on a rebuild write, then it is retried with backoff (not surfaced); user-request writes are unchanged (still 5s, no retry added there).
 
 **Acceptance criteria:**
-- Unbounded `Task.WhenAll(upsertTasks)` replaced with bounded concurrency (`SemaphoreSlim` gate or chunked batches, ≤N e.g. 25).
-- Per-write transient-fault retry (throttle/`TimeoutException`/cancellation) with exponential backoff + jitter; non-transient faults still surface.
-- A higher-timeout `IAmazonDynamoDB`/store variant injected for the rebuild path; user-request path keeps `DYNAMO_TIMEOUT_SECONDS` (5s).
-- Tests: Api.Integration rebuild succeeds under a store double that cancels the first attempt on a subset of writes; a test asserts the in-flight cap.
-- Infrastructure.Assertions unchanged (no new resource) unless a separate client is wired via env.
+- Unbounded `Task.WhenAll(upsertTasks)` replaced with bounded concurrency (`SemaphoreSlim` gate, cap `BoundedWrites.DefaultMaxConcurrency`).
+- Per-write transient-fault retry (DynamoDB throttle / `TimeoutException` / per-op cancellation / 5xx-429) with exponential backoff + jitter; non-transient faults surface immediately; a requested outer cancellation is never retried. The delete-all calls are wrapped in the same retry.
+- **Retry subsumes a separate longer-timeout client** (decision): a 5s client-timeout cancellation is *recovered* by retry (and retry also covers throttles a longer timeout would not). A parallel longer-timeout store set was rejected — the test architecture injects store doubles via DI, so a second store set would bypass them; retry is strictly more robust. User-request path is untouched.
+- Tests: a `BoundedWrites` unit test asserts the in-flight cap, retry-then-succeed, no-retry-on-non-transient, and surface-after-max-attempts; an Api.Integration test arms a store double to throttle one rebuild write and asserts the rebuild still returns 200 with the row present.
+- Infrastructure.Assertions unchanged (no new resource).
 
 ### Slice 24-B — Upsert-and-reconcile (kill the delete-first window)
 
