@@ -6,7 +6,7 @@
 
 | Slice | Summary | Status | Depends on |
 |-------|---------|--------|------------|
-| 24-A | **Bounded, retried writes + admin-path timeout.** Replace the unbounded `Task.WhenAll` with bounded concurrency (≤N in flight); retry transient throttles/cancellations with backoff+jitter; inject a longer-timeout DynamoDB client for the rebuild path. Makes the first try succeed on cold tables. | Not Started | — |
+| 24-A | **Bounded, retried writes.** Replace the unbounded `Task.WhenAll` with bounded concurrency (`SemaphoreSlim` cap); retry transient throttles/cancellations with backoff+jitter (subsumes a longer-timeout client). First try succeeds on cold tables. | Done | — |
 | 24-B | **Upsert-and-reconcile (kill the delete-first window).** Stop the unconditional delete-all; upsert the full target set, then delete only stale rows (present in table, absent from rebuild). A fault now leaves stale-but-present rows, never missing ones. Folds in the `NoteSearchView` tombstone prune. | Not Started | 24-A |
 | 24-C | **Operability: per-projection summary, fault visibility, concurrency guard.** Return a per-projection count map (not one note count); structured logs + EMF metric + alarm on rebuild faults/duration; reject overlapping rebuilds. | Not Started | 24-A |
 
@@ -57,6 +57,7 @@
 
 **Acceptance criteria:**
 - Remove the unconditional `DeleteAllAsync` calls; rebuild = upsert-all-then-delete-the-diff (rows in the table but not in the rebuilt set).
+- **`INoteCardListStore` has no delete capability today** (no `DeleteAllAsync`) — the current rebuild upserts cards over stale rows and never prunes, so a deleted note's card survives a rebuild (found in 24-A Hawk review). 24-B's reconcile must add enumerate+delete-stale to the card store, closing this pre-existing orphan gap.
 - `NoteSearchView` rebuild prunes deleted notes instead of writing tombstones (folds in the `technical-improvements.md` tombstone item).
 - A fault injected mid-reconcile leaves the prior data intact (test).
 - Tests: reconcile removes a since-deleted entity; tombstone-free `NoteSearchView` after rebuild; idempotent re-run.
