@@ -1,7 +1,7 @@
-import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { http, HttpResponse } from 'msw'
 import MeetingPicker from '../components/MeetingPicker'
+import { render, screen, waitFor } from '../test/render'
 import { server } from '../test/setup'
 
 const noop = () => {}
