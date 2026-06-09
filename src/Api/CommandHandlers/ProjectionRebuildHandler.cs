@@ -17,14 +17,20 @@ public sealed class ProjectionRebuildHandler(
 {
     public async Task<int> RebuildAsync(CancellationToken ct = default)
     {
-        await titleStore.DeleteAllAsync(ct).ConfigureAwait(false);
-        await detailStore.DeleteAllAsync(ct).ConfigureAwait(false);
-        await folderTreeStore.DeleteAllAsync(ct).ConfigureAwait(false);
-        await tagIndexStore.DeleteAllAsync(ct).ConfigureAwait(false);
-        await tagFeedbackStore.DeleteAllAsync(ct).ConfigureAwait(false);
-        await actionItemFeedbackStore.DeleteAllAsync(ct).ConfigureAwait(false);
-        await calendarLinkIndexStore.DeleteAllAsync(ct).ConfigureAwait(false);
-        await noteSearchViewStore.DeleteAllAsync(ct).ConfigureAwait(false);
+        foreach (var clear in new Func<CancellationToken, Task>[]
+                 {
+                     titleStore.DeleteAllAsync,
+                     detailStore.DeleteAllAsync,
+                     folderTreeStore.DeleteAllAsync,
+                     tagIndexStore.DeleteAllAsync,
+                     tagFeedbackStore.DeleteAllAsync,
+                     actionItemFeedbackStore.DeleteAllAsync,
+                     calendarLinkIndexStore.DeleteAllAsync,
+                     noteSearchViewStore.DeleteAllAsync,
+                 })
+        {
+            await BoundedWrites.WithRetryAsync(clear, ct: ct).ConfigureAwait(false);
+        }
 
         var allEvents = await store.ReadAllStreamsAsync(ct).ConfigureAwait(false);
 
@@ -50,20 +56,26 @@ public sealed class ProjectionRebuildHandler(
             searchView.Handle(e);
         }
 
-        var upsertTasks = titleList.GetView().Items
-            .Select(item => titleStore.UpsertAsync(item, ct))
-            .Concat(detail.GetAllDetails().Select(d => detailStore.UpsertAsync(d, ct)))
-            .Concat(noteCards.GetAll().Select(c => noteCardListStore.UpsertAsync(c, ct)))
-            .Concat(folderProjection.GetAll().Select(f => folderTreeStore.UpsertAsync(f, ct)))
-            .Concat(tagIndex.GetAll().Select(v => tagIndexStore.PutAsync(v.Tag, v.NoteId, v.UserId, ct)))
-            .Concat(tagFeedback.GetAggregates().Select(v => tagFeedbackStore.UpsertAggregateAsync(v, ct)))
-            .Concat(tagFeedback.GetProvenance().Select(p => tagFeedbackStore.PutProvenanceAsync(p.NoteId, p.Tag, p.UserId, p.PromptVersion, ct)))
-            .Concat(actionFeedback.GetAggregates().Select(v => actionItemFeedbackStore.UpsertAggregateAsync(v, ct)))
-            .Concat(actionFeedback.GetProvenance().Select(p => actionItemFeedbackStore.PutProvenanceAsync(p.ActionItemId, p.UserId, p.PromptVersion, ct)))
-            .Concat(calendarLinks.GetAll().Select(v => calendarLinkIndexStore.UpsertAsync(v, ct)))
-            .Concat(searchView.GetAll().Select(v => noteSearchViewStore.UpsertAsync(v, ct)));
+        var writes = new List<Func<CancellationToken, Task>>();
+        void Add<T>(IEnumerable<T> items, Func<T, CancellationToken, Task> op)
+        {
+            foreach (var item in items)
+                writes.Add(c => op(item, c));
+        }
 
-        await Task.WhenAll(upsertTasks).ConfigureAwait(false);
+        Add(titleList.GetView().Items, (i, c) => titleStore.UpsertAsync(i, c));
+        Add(detail.GetAllDetails(), (d, c) => detailStore.UpsertAsync(d, c));
+        Add(noteCards.GetAll(), (card, c) => noteCardListStore.UpsertAsync(card, c));
+        Add(folderProjection.GetAll(), (f, c) => folderTreeStore.UpsertAsync(f, c));
+        Add(tagIndex.GetAll(), (v, c) => tagIndexStore.PutAsync(v.Tag, v.NoteId, v.UserId, c));
+        Add(tagFeedback.GetAggregates(), (v, c) => tagFeedbackStore.UpsertAggregateAsync(v, c));
+        Add(tagFeedback.GetProvenance(), (p, c) => tagFeedbackStore.PutProvenanceAsync(p.NoteId, p.Tag, p.UserId, p.PromptVersion, c));
+        Add(actionFeedback.GetAggregates(), (v, c) => actionItemFeedbackStore.UpsertAggregateAsync(v, c));
+        Add(actionFeedback.GetProvenance(), (p, c) => actionItemFeedbackStore.PutProvenanceAsync(p.ActionItemId, p.UserId, p.PromptVersion, c));
+        Add(calendarLinks.GetAll(), (v, c) => calendarLinkIndexStore.UpsertAsync(v, c));
+        Add(searchView.GetAll(), (v, c) => noteSearchViewStore.UpsertAsync(v, c));
+
+        await BoundedWrites.RunAsync(writes, ct: ct).ConfigureAwait(false);
 
         return titleList.GetView().Items.Count;
     }
