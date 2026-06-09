@@ -88,12 +88,20 @@ public sealed class RebuildOperabilityTests
         factory.TitleStore.Armed = true;
 
         var first = client.PostAsync("/admin/projections/rebuild", null);
-        await factory.TitleStore.Entered.Task; // first rebuild now holds the single-flight lock
+        try
+        {
+            await factory.TitleStore.Entered.Task; // first rebuild now holds the single-flight lock
 
-        var second = await client.PostAsync("/admin/projections/rebuild", null);
-        Assert.Equal(HttpStatusCode.Conflict, second.StatusCode);
+            var second = await client.PostAsync("/admin/projections/rebuild", null);
+            Assert.Equal(HttpStatusCode.Conflict, second.StatusCode);
+        }
+        finally
+        {
+            // Always release so a failed assertion can't leave the first rebuild holding the
+            // process-wide static lock — which would cascade-409 every later rebuild test.
+            factory.TitleStore.Release.TrySetResult();
+        }
 
-        factory.TitleStore.Release.SetResult();
         var firstResp = await first;
         Assert.Equal(HttpStatusCode.OK, firstResp.StatusCode);
     }

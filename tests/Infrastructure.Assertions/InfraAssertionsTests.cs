@@ -952,6 +952,10 @@ public class InfraAssertionsTests
             ["Statistic"] = "Sum",
             ["Threshold"] = 0,
             ["ComparisonOperator"] = "GreaterThanThreshold",
+            ["Dimensions"] = Match.ArrayWith(new object[]
+            {
+                Match.ObjectLike(new Dictionary<string, object> { ["Name"] = "Service", ["Value"] = "note-taker" })
+            }),
             ["AlarmActions"] = Match.AnyValue()
         }));
     }
@@ -967,6 +971,10 @@ public class InfraAssertionsTests
             ["Statistic"] = "Maximum",
             ["Threshold"] = 20000,
             ["ComparisonOperator"] = "GreaterThanThreshold",
+            ["Dimensions"] = Match.ArrayWith(new object[]
+            {
+                Match.ObjectLike(new Dictionary<string, object> { ["Name"] = "Service", ["Value"] = "note-taker" })
+            }),
             ["AlarmActions"] = Match.AnyValue()
         }));
     }
