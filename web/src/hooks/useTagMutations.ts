@@ -9,8 +9,17 @@ import { tagNote, untagNote } from "../api/tags";
 //
 // The note's *applied* tags are note-detail state (keys.note(id), migrated in 20-E):
 // each mutation optimistically patches that cache and rolls back on error, so the
-// open note's tag pills update immediately. keys.note has a single consumer
-// (NoteView) so no self-invalidate is needed (optimistic == server).
+// open note's tag pills update immediately.
+//
+// onSettled reconciles keys.note(id) against server truth ONLY when the optimistic
+// patch couldn't apply — i.e. the note wasn't cached at onMutate time (ctx.previous
+// is undefined). That happens when tagging a freshly-created note while its initial
+// keys.note GET is still in flight: patchTags sees `old === undefined` and does
+// nothing, the in-flight GET then resolves tagless (it was issued before the tag
+// existed), and the pill would never appear (BUG-14). A space-separated multi-tag
+// paste widens that window (two concurrent mutations re-reading the cache).
+// When the note WAS cached the optimistic patch already holds, so we skip the refetch
+// to avoid churn and a stale-GET revert (optimistic == server in that path).
 //
 // Tags are only edited inside NoteView; the home-card tag pills are refreshed by
 // App's handleBackFromNote (it invalidates keys.noteCards on return to the list).
@@ -43,7 +52,10 @@ export function useTagNote() {
       return ctx;
     },
     onError: (_e, { noteId }, ctx) => rollback(qc, noteId, ctx),
-    onSettled: () => qc.invalidateQueries({ queryKey: keys.tags }),
+    onSettled: (_d, _e, { noteId }, ctx) => {
+      qc.invalidateQueries({ queryKey: keys.tags });
+      if (!ctx?.previous) qc.invalidateQueries({ queryKey: keys.note(noteId) });
+    },
   });
 }
 
@@ -57,6 +69,9 @@ export function useUntagNote() {
       return ctx;
     },
     onError: (_e, { noteId }, ctx) => rollback(qc, noteId, ctx),
-    onSettled: () => qc.invalidateQueries({ queryKey: keys.tags }),
+    onSettled: (_d, _e, { noteId }, ctx) => {
+      qc.invalidateQueries({ queryKey: keys.tags });
+      if (!ctx?.previous) qc.invalidateQueries({ queryKey: keys.note(noteId) });
+    },
   });
 }
