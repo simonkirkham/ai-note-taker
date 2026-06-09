@@ -7,6 +7,7 @@ using Microsoft.Extensions.DependencyInjection;
 
 namespace Api.Integration;
 
+[Collection("ProjectionRebuild")]
 public sealed class TagFeedbackIntegrationTests : IClassFixture<ApiFactory>
 {
     private readonly HttpClient _client;

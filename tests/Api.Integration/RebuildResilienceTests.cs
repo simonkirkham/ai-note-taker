@@ -26,6 +26,7 @@ public sealed class FaultInjectingApiFactory : ApiFactory
     }
 }
 
+[Collection("ProjectionRebuild")]
 public sealed class RebuildResilienceTests(FaultInjectingApiFactory factory) : IClassFixture<FaultInjectingApiFactory>
 {
     private readonly FaultInjectingApiFactory _factory = factory;

@@ -942,12 +942,50 @@ public class InfraAssertionsTests
     }
 
     [Fact]
-    public void Alarms_ErrorRateAndLatencyAlarmsExist()
+    public void Alarms_ProjectionRebuildFaultAlarmWiredToTopic()
     {
-        // Two alarms: error-rate + P99 latency. A concurrency-conflict alarm is
-        // deferred — it would need SUM(SEARCH(...)), which CloudWatch rejects on
-        // metric alarms (only allowed on dashboard widgets). See phase-12 12-E.
-        _template.ResourceCountIs("AWS::CloudWatch::Alarm", 2);
+        _template.HasResourceProperties("AWS::CloudWatch::Alarm", Match.ObjectLike(new Dictionary<string, object>
+        {
+            ["AlarmName"] = "notetaker-projection-rebuild-fault",
+            ["Namespace"] = "NoteTaker/Domain",
+            ["MetricName"] = "ProjectionRebuildFault",
+            ["Statistic"] = "Sum",
+            ["Threshold"] = 0,
+            ["ComparisonOperator"] = "GreaterThanThreshold",
+            ["Dimensions"] = Match.ArrayWith(new object[]
+            {
+                Match.ObjectLike(new Dictionary<string, object> { ["Name"] = "Service", ["Value"] = "note-taker" })
+            }),
+            ["AlarmActions"] = Match.AnyValue()
+        }));
+    }
+
+    [Fact]
+    public void Alarms_ProjectionRebuildDurationAlarmWiredToTopic()
+    {
+        _template.HasResourceProperties("AWS::CloudWatch::Alarm", Match.ObjectLike(new Dictionary<string, object>
+        {
+            ["AlarmName"] = "notetaker-projection-rebuild-duration",
+            ["Namespace"] = "NoteTaker/Domain",
+            ["MetricName"] = "ProjectionRebuildDuration",
+            ["Statistic"] = "Maximum",
+            ["Threshold"] = 20000,
+            ["ComparisonOperator"] = "GreaterThanThreshold",
+            ["Dimensions"] = Match.ArrayWith(new object[]
+            {
+                Match.ObjectLike(new Dictionary<string, object> { ["Name"] = "Service", ["Value"] = "note-taker" })
+            }),
+            ["AlarmActions"] = Match.AnyValue()
+        }));
+    }
+
+    [Fact]
+    public void Alarms_AllExpectedAlarmsExist()
+    {
+        // Four alarms: error-rate, P99 latency, projection-rebuild-fault, projection-rebuild-duration.
+        // A concurrency-conflict alarm is deferred — it would need SUM(SEARCH(...)), which CloudWatch
+        // rejects on metric alarms (only allowed on dashboard widgets). See phase-12 12-E.
+        _template.ResourceCountIs("AWS::CloudWatch::Alarm", 4);
     }
 
     [Fact]

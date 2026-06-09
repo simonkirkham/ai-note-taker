@@ -649,6 +649,49 @@ public sealed class NoteTakerStack : Stack
         });
         latencyAlarm.AddAlarmAction(alarmAction);
 
+        // Projection-rebuild operability (24-C). Both metrics carry only the Powertools
+        // Service dimension, so each is a single concrete metric an alarm can target (no
+        // SEARCH). A fault means a partial/failed rebuild — degraded read models until a
+        // clean re-run — so any occurrence pages. Duration warns when a rebuild creeps
+        // toward the 29s HTTP limit (the trigger to move it off the request path).
+        var rebuildFaultAlarm = new Amazon.CDK.AWS.CloudWatch.Alarm(this, "ProjectionRebuildFaultAlarm", new Amazon.CDK.AWS.CloudWatch.AlarmProps
+        {
+            AlarmName = "notetaker-projection-rebuild-fault",
+            AlarmDescription = "A projection rebuild faulted (partial/failed rebuild) in the last 5 minutes",
+            Metric = new Amazon.CDK.AWS.CloudWatch.Metric(new Amazon.CDK.AWS.CloudWatch.MetricProps
+            {
+                Namespace = "NoteTaker/Domain",
+                MetricName = "ProjectionRebuildFault",
+                DimensionsMap = new Dictionary<string, string> { ["Service"] = "note-taker" },
+                Statistic = "Sum",
+                Period = Duration.Minutes(5)
+            }),
+            Threshold = 0,
+            EvaluationPeriods = 1,
+            ComparisonOperator = Amazon.CDK.AWS.CloudWatch.ComparisonOperator.GREATER_THAN_THRESHOLD,
+            TreatMissingData = Amazon.CDK.AWS.CloudWatch.TreatMissingData.NOT_BREACHING
+        });
+        rebuildFaultAlarm.AddAlarmAction(alarmAction);
+
+        var rebuildDurationAlarm = new Amazon.CDK.AWS.CloudWatch.Alarm(this, "ProjectionRebuildDurationAlarm", new Amazon.CDK.AWS.CloudWatch.AlarmProps
+        {
+            AlarmName = "notetaker-projection-rebuild-duration",
+            AlarmDescription = "Projection rebuild duration exceeds 20s, approaching the 29s HTTP limit",
+            Metric = new Amazon.CDK.AWS.CloudWatch.Metric(new Amazon.CDK.AWS.CloudWatch.MetricProps
+            {
+                Namespace = "NoteTaker/Domain",
+                MetricName = "ProjectionRebuildDuration",
+                DimensionsMap = new Dictionary<string, string> { ["Service"] = "note-taker" },
+                Statistic = "Maximum",
+                Period = Duration.Minutes(5)
+            }),
+            Threshold = 20000,
+            EvaluationPeriods = 1,
+            ComparisonOperator = Amazon.CDK.AWS.CloudWatch.ComparisonOperator.GREATER_THAN_THRESHOLD,
+            TreatMissingData = Amazon.CDK.AWS.CloudWatch.TreatMissingData.NOT_BREACHING
+        });
+        rebuildDurationAlarm.AddAlarmAction(alarmAction);
+
         // NOTE: a concurrency-conflict alarm is deliberately NOT defined here.
         // ConcurrencyConflict is emitted with per-Aggregate dimensions (plus the
         // Powertools Service dimension), so the only way to aggregate across all

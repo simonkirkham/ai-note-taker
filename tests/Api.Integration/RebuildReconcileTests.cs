@@ -32,6 +32,7 @@ public sealed class ReconcileApiFactory : ApiFactory
     }
 }
 
+[Collection("ProjectionRebuild")]
 public sealed class RebuildReconcileTests(ReconcileApiFactory factory) : IClassFixture<ReconcileApiFactory>
 {
     private readonly ReconcileApiFactory _factory = factory;

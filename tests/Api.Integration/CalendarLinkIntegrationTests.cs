@@ -6,6 +6,7 @@ using Microsoft.Extensions.DependencyInjection;
 
 namespace Api.Integration;
 
+[Collection("ProjectionRebuild")]
 public sealed class CalendarLinkIntegrationTests : IClassFixture<ApiFactory>
 {
     private readonly HttpClient _client;

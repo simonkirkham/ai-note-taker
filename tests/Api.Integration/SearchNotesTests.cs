@@ -7,6 +7,7 @@ using Microsoft.Extensions.DependencyInjection;
 
 namespace Api.Integration;
 
+[Collection("ProjectionRebuild")]
 public sealed class SearchNotesTests : IClassFixture<ApiFactory>
 {
     private readonly ApiFactory _factory;

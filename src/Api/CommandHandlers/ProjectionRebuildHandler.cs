@@ -1,3 +1,4 @@
+using Api.Exceptions;
 using EventStore;
 using EventStore.Projections;
 
@@ -15,7 +16,27 @@ public sealed class ProjectionRebuildHandler(
     ICalendarLinkIndexStore calendarLinkIndexStore,
     INoteSearchViewStore noteSearchViewStore) : IProjectionRebuildHandler
 {
-    public async Task<int> RebuildAsync(CancellationToken ct = default)
+    // Single-flight: a rebuild deletes-and-rewrites read models, so two concurrent runs must
+    // not interleave. Static so it gates across requests on a warm Lambda (WaitAsync(0) →
+    // reject rather than queue). Cross-instance overlap on a horizontally-scaled Lambda is not
+    // guarded — acceptable for a rare manual admin op; a distributed lock would be the next step.
+    private static readonly SemaphoreSlim RebuildLock = new(1, 1);
+
+    public async Task<ProjectionRebuildResult> RebuildAsync(CancellationToken ct = default)
+    {
+        if (!await RebuildLock.WaitAsync(0, ct).ConfigureAwait(false))
+            throw new RebuildInProgressException();
+        try
+        {
+            return await RebuildCoreAsync(ct).ConfigureAwait(false);
+        }
+        finally
+        {
+            RebuildLock.Release();
+        }
+    }
+
+    private async Task<ProjectionRebuildResult> RebuildCoreAsync(CancellationToken ct)
     {
         // The feedback projections are monotonic provenance — the live path never deletes their
         // aggregate rows — so they stay delete-then-rebuild. Every user-facing projection below
@@ -104,6 +125,18 @@ public sealed class ProjectionRebuildHandler(
 
         await BoundedWrites.RunAsync(deletes, ct: ct).ConfigureAwait(false);
 
-        return titles.Count;
+        var counts = new Dictionary<string, int>
+        {
+            ["noteTitleList"] = titles.Count,
+            ["noteDetail"] = details.Count,
+            ["noteCardList"] = cards.Count,
+            ["folderTree"] = folders.Count,
+            ["tagIndex"] = tags.Count,
+            ["calendarLinkIndex"] = links.Count,
+            ["noteSearchView"] = searches.Count,
+            ["tagFeedback"] = tagFeedback.GetAggregates().Count(),
+            ["actionItemFeedback"] = actionFeedback.GetAggregates().Count(),
+        };
+        return new ProjectionRebuildResult(counts, deletes.Count);
     }
 }
