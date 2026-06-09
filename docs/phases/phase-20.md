@@ -12,7 +12,7 @@
 | 20-C | **Note cards / list.** Unify `App.tsx`'s `cards` state + `useNotes().notes` into one `useNoteCards()` query; note CRUD + move-to-folder/unfile mutations; delete-folder invalidates `keys.noteCards`. Delete `useNotes`. (Tag→card-pill refresh is via `handleBackFromNote`, not a tag invalidation — see fix #195.) | Done | 20-A, 20-B |
 | 20-D | **Actions + tag index.** `useActions(noteId)` + action mutations (also invalidate `keys.todos`); `useTags()` (dedups NoteView+ListView's two `getTags` fetches) + tag-index invalidation. Note-applied tags stay local (→ 20-E). Component-only, no `App.tsx`. | Done | 20-A |
 | 20-E | **Note detail.** `getNoteDetail` + `editContent`/`setNoteDate`/`analyseNote` refetch (NoteView has the most mutations). | Not Started | 20-A |
-| 20-F | **Meetings.** `useMeetings(date)` (`keys.meetings(date)`) — two date-keyed queries (today for reminders, selectedDate for display) preserve Phase 16's reminders-vs-browsed-day decoupling; create-from-meeting / next-occurrence / link mutations. App.tsx-free. | Not Started | 20-A |
+| 20-F | **Meetings.** `useMeetings(date)` (`keys.meetings(date)`) — two date-keyed queries (today for reminders, selectedDate for display) preserve Phase 16's reminders-vs-browsed-day decoupling; create-from-meeting / next-occurrence / link mutations. App.tsx-free. | Done | 20-A |
 | 20-G | **Cleanup.** Remove dead hand-rolled hooks + remaining manual invalidation; fold retry/backoff into `QueryClient` defaults (subsumes Phase 19's 19-H); learnings. | Not Started | 20-B…20-F |
 
 > **The whole phase is gated on the ADR** — do not start 20-A until ADR 0010 is superseded. **20-A is the keystone**: it sets the conventions (key factory, optimistic `onMutate`/rollback template, retry/error defaults) every later slice copies — get it right before fanning out. 20-B…20-F are independent *domains* and could parallelise after 20-A, **except** 20-B and 20-C both edit `App.tsx`, so sequence those (per the "same-file → don't parallelise" rule). **Subsumes 19-H** — don't also run it. **Transcription credentials stay hand-rolled** (short-lived STS creds fetched once before streaming aren't cacheable server state).
@@ -316,7 +316,7 @@ Scenario: Tagging a note refreshes the tag index everywhere
 
 ## Slice 20-F — Meetings
 
-**Status:** Not Started
+**Status:** Done
 
 **User value:** None directly (like-for-like migration of the home meetings panel). The reminders-vs-browsed-day behaviour and the create/link flows are unchanged; the win is one shared, deduped, cached meetings cache instead of hand-rolled `todayState`/`browsed` fetches.
 
@@ -371,14 +371,14 @@ Scenario: Linking a note to a meeting is optimistic and rolls back on failure
 
 ### Acceptance criteria
 
-- [ ] `keys.meetings(date)` added; `web/src/hooks/useMeetings.ts` reads via `useQuery` and returns the `MeetingsResult` union (loaded/unavailable derived from data, loading from `isLoading`)
-- [ ] `MeetingsSection` uses `useMeetings(today)` (reminder source) + `useMeetings(selectedDate)` (display); `todayState`/`browsed` state + both fetch effects removed; reminders fed only from the today query; returning to today does not refetch (same key, cached)
-- [ ] `MeetingPicker` reads `useMeetings(date)`
-- [ ] `useMeetingMutations` exposes `useCreateNoteFromMeeting`/`useCreateNoteFromNextOccurrence`/`useLinkNoteToCalendar` (optimistic where today is; `onSettled` invalidate `keys.meetings(date)`; create flows also invalidate `keys.noteCards`)
-- [ ] `NoteView`'s `handleLinkMeeting`/`handleOpenNextOccurrence` use the hooks, keep local `linkedMeeting`/`recurringSeriesId` optimism + rollback; `keys.note` invalidation deferred to 20-E (note it)
-- [ ] `useMeetingReminders` unchanged (consumes the today query's meetings)
-- [ ] Optimistic-UI rule satisfied — apply immediately, roll back on error
-- [ ] `MeetingsSection`/`MeetingPicker`/`useMeetingReminders` tests stay green (esp. the reminders-decoupling + no-refetch-on-return tests); App-rendering tests already stub `/calendar/:date`; full Vitest suite + `tsc -b`/build + ESLint green
+- [x] `keys.meetings(date)` added; `web/src/hooks/useMeetings.ts` reads via `useQuery` and returns the `MeetingsResult` union (loaded/unavailable derived from data, loading from `isLoading`)
+- [x] `MeetingsSection` uses `useMeetings(today)` (reminder source) + `useMeetings(selectedDate)` (display); `todayState`/`browsed` state + both fetch effects removed; reminders fed only from the today query; returning to today does not refetch (same key, cached)
+- [x] `MeetingPicker` reads `useMeetings(date)`
+- [x] `useMeetingMutations` exposes `useCreateNoteFromMeeting`/`useCreateNoteFromNextOccurrence`/`useLinkNoteToCalendar` (optimistic where today is; `onSettled` invalidate `keys.meetings(date)`; create flows also invalidate `keys.noteCards`)
+- [x] `NoteView`'s `handleLinkMeeting`/`handleOpenNextOccurrence` use the hooks, keep local `linkedMeeting`/`recurringSeriesId` optimism + rollback; `keys.note` invalidation deferred to 20-E (note it)
+- [x] `useMeetingReminders` unchanged (consumes the today query's meetings)
+- [x] Optimistic-UI rule satisfied — apply immediately, roll back on error
+- [x] `MeetingsSection`/`MeetingPicker`/`useMeetingReminders` tests stay green (esp. the reminders-decoupling + no-refetch-on-return tests); App-rendering tests already stub `/calendar/:date`; full Vitest suite + `tsc -b`/build + ESLint green
 
 ### Observability
 
