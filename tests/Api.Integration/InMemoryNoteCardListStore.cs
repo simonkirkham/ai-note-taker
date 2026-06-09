@@ -19,4 +19,10 @@ internal sealed class InMemoryNoteCardListStore : INoteCardListStore
     public Task<IReadOnlyList<NoteCardView>> QueryAllAsync(CancellationToken ct = default) =>
         Task.FromResult<IReadOnlyList<NoteCardView>>(
             _cards.Values.OrderByDescending(c => c.CreatedAt).ToList().AsReadOnly());
+
+    public Task DeleteAsync(NoteId noteId, CancellationToken ct = default)
+    {
+        _cards.Remove(noteId);
+        return Task.CompletedTask;
+    }
 }

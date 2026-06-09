@@ -59,6 +59,15 @@ public sealed class DynamoDbNoteCardListStore(IAmazonDynamoDB dynamo, string tab
         return response.Items.Select(ToCard).OrderByDescending(c => c.CreatedAt).ToList().AsReadOnly();
     }
 
+    public async Task DeleteAsync(NoteId noteId, CancellationToken ct = default)
+    {
+        await dynamo.DeleteItemAsync(new DeleteItemRequest
+        {
+            TableName = tableName,
+            Key = new Dictionary<string, AttributeValue> { ["PK"] = new() { S = noteId.Value.ToString() } }
+        }, ct).ConfigureAwait(false);
+    }
+
     private static NoteCardView ToCard(Dictionary<string, AttributeValue> row)
     {
         var actions = JsonSerializer.Deserialize<List<ActionItemDto>>(row["ActionItems"].S)!

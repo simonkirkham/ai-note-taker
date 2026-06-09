@@ -36,4 +36,7 @@ internal sealed class InMemoryNoteSearchViewStore : INoteSearchViewStore
             .AsReadOnly();
         return Task.FromResult(results);
     }
+
+    public Task<IReadOnlyList<NoteSearchView>> QueryAllAsync(CancellationToken ct = default) =>
+        Task.FromResult<IReadOnlyList<NoteSearchView>>(_items.Values.ToList().AsReadOnly());
 }

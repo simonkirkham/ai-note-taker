@@ -9,4 +9,5 @@ public interface INoteSearchViewStore
     Task DeleteAsync(NoteId noteId, CancellationToken ct = default);
     Task DeleteAllAsync(CancellationToken ct = default);
     Task<IReadOnlyList<NoteSearchView>> QueryByUserIdAsync(string userId, CancellationToken ct = default);
+    Task<IReadOnlyList<NoteSearchView>> QueryAllAsync(CancellationToken ct = default);
 }

@@ -27,4 +27,7 @@ internal sealed class InMemoryNoteDetailStore : INoteDetailStore
 
     public Task<NoteDetailView?> GetAsync(NoteId noteId, CancellationToken ct = default) =>
         Task.FromResult(_items.TryGetValue(noteId, out var detail) ? detail : null);
+
+    public Task<IReadOnlyList<NoteDetailView>> QueryAllAsync(CancellationToken ct = default) =>
+        Task.FromResult<IReadOnlyList<NoteDetailView>>(_items.Values.ToList().AsReadOnly());
 }
