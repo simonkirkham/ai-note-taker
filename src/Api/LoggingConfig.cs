@@ -84,6 +84,7 @@ public static class LoggingConfig
     private static (int Status, string Error) Map(Exception? ex) => ex switch
     {
         ConcurrencyException => (StatusCodes.Status409Conflict, "conflict"),
+        RebuildInProgressException => (StatusCodes.Status409Conflict, "rebuild in progress"),
         NoteNotFoundException or ActionItemNotFoundException or FolderNotFoundException
             => (StatusCodes.Status404NotFound, "not found"),
         _ => (StatusCodes.Status500InternalServerError, "internal server error"),

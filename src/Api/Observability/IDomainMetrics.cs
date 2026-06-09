@@ -11,4 +11,8 @@ public interface IDomainMetrics
     void ConcurrencyConflict(string aggregate);
 
     void SearchPerformed(int resultCount, int notesScanned, double latencyMs);
+
+    void ProjectionRebuildDuration(double milliseconds);
+
+    void ProjectionRebuildFault();
 }

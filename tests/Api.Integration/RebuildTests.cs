@@ -4,6 +4,7 @@ using System.Text.Json;
 
 namespace Api.Integration;
 
+[Collection("ProjectionRebuild")]
 public sealed class RebuildTests(ApiFactory factory) : IClassFixture<ApiFactory>
 {
     private readonly HttpClient _client = factory.CreateClient();

@@ -9,6 +9,8 @@ internal sealed class RecordingDomainMetrics : IDomainMetrics
     public List<(string Aggregate, int Count)> Appended { get; } = [];
     public List<string> Conflicts { get; } = [];
     public List<(int ResultCount, int NotesScanned, double LatencyMs)> Searches { get; } = [];
+    public List<double> RebuildDurations { get; } = [];
+    public int RebuildFaults { get; private set; }
 
     public void CommandHandled(string commandType, string aggregate) => Handled.Add((commandType, aggregate));
 
@@ -20,4 +22,8 @@ internal sealed class RecordingDomainMetrics : IDomainMetrics
 
     public void SearchPerformed(int resultCount, int notesScanned, double latencyMs) =>
         Searches.Add((resultCount, notesScanned, latencyMs));
+
+    public void ProjectionRebuildDuration(double milliseconds) => RebuildDurations.Add(milliseconds);
+
+    public void ProjectionRebuildFault() => RebuildFaults++;
 }
