@@ -62,6 +62,7 @@ export interface SearchResult {
   snippet: string;
   score: number;
   matchedField: string;
+  matchedTerms: string[];
 }
 
 export async function searchNotes(q: string): Promise<SearchResult[]> {

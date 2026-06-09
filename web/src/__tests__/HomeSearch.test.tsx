@@ -40,6 +40,7 @@ interface SearchItem {
   snippet: string
   score: number
   matchedField: string
+  matchedTerms?: string[]
 }
 
 function searchReturns(items: SearchItem[]) {
@@ -199,6 +200,72 @@ describe('Home search bar (22-B)', () => {
     await new Promise((r) => setTimeout(r, 300))
     expect(screen.getByText('Beta fresh')).toBeInTheDocument()
     expect(screen.queryByText('Alpha stale')).not.toBeInTheDocument()
+  })
+
+  it('highlights the matched term in the title', async () => {
+    searchReturns([
+      { noteId: 'b', title: 'Budget review', snippet: 's', score: 90, matchedField: 'title', matchedTerms: ['Budget'] },
+    ])
+    renderHome([makeCard({ noteId: 'b', title: 'Budget review' })])
+    await typeQuery('budget')
+    const title = await screen.findByTestId('note-card-title')
+    const mark = title.querySelector('mark')
+    expect(mark).not.toBeNull()
+    expect(mark!.textContent).toBe('Budget')
+  })
+
+  it('highlights the matched term in the snippet', async () => {
+    searchReturns([
+      { noteId: 'b', title: 'Plan note', snippet: 'we discussed planning at length', score: 90, matchedField: 'notes', matchedTerms: ['planning'] },
+    ])
+    renderHome([makeCard({ noteId: 'b', title: 'Plan note' })])
+    await typeQuery('planing')
+    const mark = await screen.findByText('planning', { selector: 'mark' })
+    expect(mark).toBeInTheDocument()
+  })
+
+  it('highlights a matching tag pill', async () => {
+    searchReturns([
+      { noteId: 'b', title: 'Tagged note', snippet: 's', score: 90, matchedField: 'tag', matchedTerms: ['roadmap'] },
+    ])
+    renderHome([makeCard({ noteId: 'b', title: 'Tagged note', tags: ['roadmap', 'other'] })])
+    await typeQuery('roadmap')
+    const pill = await screen.findByTestId('card-tag-roadmap')
+    expect(pill.querySelector('mark')).not.toBeNull()
+    expect(screen.getByTestId('card-tag-other').querySelector('mark')).toBeNull()
+  })
+
+  it('shows a "matched in" label', async () => {
+    searchReturns([
+      { noteId: 'b', title: 'Budget review', snippet: 's', score: 90, matchedField: 'tag', matchedTerms: ['roadmap'] },
+    ])
+    renderHome([makeCard({ noteId: 'b', title: 'Budget review', tags: ['roadmap'] })])
+    await typeQuery('roadmap')
+    expect(await screen.findByText(/matched in tag/i)).toBeInTheDocument()
+  })
+
+  it('renders no highlight markup on a non-search card', () => {
+    renderHome([makeCard({ noteId: 'b', title: 'Budget review', contentPreview: 'budget budget' })])
+    const title = screen.getByTestId('note-card-title')
+    expect(title.querySelector('mark')).toBeNull()
+  })
+
+  it('renders a markup-bearing term as text, never injected markup (XSS-safe)', async () => {
+    searchReturns([
+      {
+        noteId: 'b',
+        title: 'safe <img src=x onerror=alert(1)> end',
+        snippet: 's',
+        score: 90,
+        matchedField: 'title',
+        matchedTerms: ['<img src=x onerror=alert(1)>'],
+      },
+    ])
+    renderHome([makeCard({ noteId: 'b', title: 'safe <img src=x onerror=alert(1)> end' })])
+    await typeQuery('img')
+    const title = await screen.findByTestId('note-card-title')
+    expect(title.querySelector('img')).toBeNull()
+    expect(title.textContent).toContain('<img src=x onerror=alert(1)>')
   })
 
   it('clicking a result opens the note', async () => {

@@ -218,6 +218,91 @@ public sealed class SearchNotesTests : IClassFixture<ApiFactory>
         Assert.Contains(matchedField, new[] { "title", "tag", "notes" });
     }
 
+    // Scenario (22-C): Exact match returns the matched term
+    [Fact]
+    public async Task Search_MatchedTerms_ExactBodyMatch()
+    {
+        var noteId = await CreateNoteWithBodyAsync("Notes from the budget review session.");
+
+        var terms = await MatchedTermsAsync("budget", noteId);
+
+        Assert.Contains("budget", terms, StringComparer.OrdinalIgnoreCase);
+    }
+
+    // Scenario (22-C): Fuzzy/typo match returns the word that actually matched
+    [Fact]
+    public async Task Search_MatchedTerms_FuzzyReturnsActualWord()
+    {
+        var noteId = await CreateNoteWithBodyAsync("This meeting is about planning the roadmap.");
+
+        var terms = await MatchedTermsAsync("planing", noteId);
+
+        Assert.Contains("planning", terms, StringComparer.OrdinalIgnoreCase);
+        Assert.DoesNotContain("planing", terms, StringComparer.OrdinalIgnoreCase);
+    }
+
+    // Scenario (22-C): Title match returns the matched title word
+    [Fact]
+    public async Task Search_MatchedTerms_TitleMatch()
+    {
+        var noteId = await CreateNoteAsync();
+        await RenameAsync(noteId, "Procurement strategy");
+        await PutContentAsync(noteId, "Generic notes.");
+
+        var item = await SearchItemAsync("procurement", noteId);
+
+        Assert.Equal("title", item.GetProperty("matchedField").GetString());
+        var terms = TermsOf(item);
+        Assert.Contains("Procurement", terms, StringComparer.OrdinalIgnoreCase);
+    }
+
+    // Scenario (22-C): Tag match returns the matched tag as the term
+    [Fact]
+    public async Task Search_MatchedTerms_TagMatch()
+    {
+        var noteId = await CreateNoteAsync();
+        await PutContentAsync(noteId, "Unrelated body text.");
+        await PostAsync($"/notes/{noteId}/tags", new { tag = "roadmap" });
+
+        var item = await SearchItemAsync("roadmap", noteId);
+
+        Assert.Equal("tag", item.GetProperty("matchedField").GetString());
+        Assert.Contains("roadmap", TermsOf(item), StringComparer.OrdinalIgnoreCase);
+    }
+
+    // Scenario (22-C): Snippet contains the matched term for a fuzzy match
+    [Fact]
+    public async Task Search_Snippet_ContainsMatchedTermForFuzzy()
+    {
+        var lead = new string('x', 200);
+        var noteId = await CreateNoteWithBodyAsync($"{lead} budget planning session at the end.");
+
+        var item = await SearchItemAsync("planing", noteId);
+
+        var snippet = item.GetProperty("snippet").GetString()!;
+        var terms = TermsOf(item);
+        Assert.NotEmpty(terms);
+        Assert.Contains(terms[0], snippet, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private async Task<JsonElement> SearchItemAsync(string query, string noteId)
+    {
+        var resp = await _client.GetAsync($"/notes/search?q={Uri.EscapeDataString(query)}");
+        resp.EnsureSuccessStatusCode();
+        var body = await resp.Content.ReadFromJsonAsync<JsonElement>();
+        return body.GetProperty("items").EnumerateArray()
+            .First(i => i.GetProperty("noteId").GetString() == noteId);
+    }
+
+    private async Task<List<string>> MatchedTermsAsync(string query, string noteId)
+    {
+        var item = await SearchItemAsync(query, noteId);
+        return TermsOf(item);
+    }
+
+    private static List<string> TermsOf(JsonElement item) =>
+        item.GetProperty("matchedTerms").EnumerateArray().Select(t => t.GetString()!).ToList();
+
     // Scenario: Rebuild backfills the searchable model
     [Fact]
     public async Task Search_RebuildBackfillsSearchableModel()

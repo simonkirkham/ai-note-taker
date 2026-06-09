@@ -1,16 +1,27 @@
 import { useState } from "react";
 import { NoteCard as NoteCardData } from "../api/notes";
+import Highlight from "./Highlight";
 import { PencilIcon, TrashIcon } from "./icons";
 import styles from "./NoteCard.module.css";
+
+const FIELD_LABELS: Record<string, string> = {
+  title: "title",
+  tag: "tag",
+  notes: "notes",
+};
 
 export default function NoteCard({
   card,
   onEdit,
   onDelete,
+  highlight,
+  matchedField,
 }: {
   card: NoteCardData;
   onEdit: (noteId: string) => void;
   onDelete?: () => void;
+  highlight?: string[];
+  matchedField?: string;
 }) {
   const [confirming, setConfirming] = useState(false);
   // vanished prevents a flash of the card before the parent unmounts it after onDelete
@@ -21,6 +32,11 @@ export default function NoteCard({
     : null;
 
   const tags = card.tags ?? [];
+  const terms = highlight;
+  const matchedLabel =
+    highlight && matchedField ? FIELD_LABELS[matchedField] : undefined;
+  const tagMatches = (tag: string) =>
+    (terms ?? []).some((t) => t.toLowerCase() === tag.toLowerCase());
 
   function handleDeleteClick(e: React.MouseEvent) {
     e.stopPropagation();
@@ -55,16 +71,29 @@ export default function NoteCard({
       onClick={() => onEdit(card.noteId)}
     >
       <div className={styles.noteCardHeader}>
-        <h3 className={styles.noteCardTitle} data-testid="note-card-title">{card.title || <em>Untitled</em>}</h3>
+        <h3 className={styles.noteCardTitle} data-testid="note-card-title">
+          {card.title ? <Highlight text={card.title} terms={terms} /> : <em>Untitled</em>}
+        </h3>
         {displayDate && <span className={styles.noteCardDate}>{displayDate}</span>}
       </div>
+      {matchedLabel && (
+        <span className={styles.matchedLabel}>matched in {matchedLabel}</span>
+      )}
       {card.contentPreview && (
-        <p className={styles.noteCardSnippet}>{card.contentPreview}</p>
+        <p className={styles.noteCardSnippet}>
+          <Highlight text={card.contentPreview} terms={terms} />
+        </p>
       )}
       {tags.length > 0 && (
         <div className={styles.noteCardTags}>
           {tags.map((tag) => (
-            <span key={tag} data-testid={`card-tag-${tag}`} className={styles.noteCardTagPill}>{tag}</span>
+            <span
+              key={tag}
+              data-testid={`card-tag-${tag}`}
+              className={styles.noteCardTagPill}
+            >
+              {tagMatches(tag) ? <mark className={styles.mark}>{tag}</mark> : tag}
+            </span>
           ))}
         </div>
       )}

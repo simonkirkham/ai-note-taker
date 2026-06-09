@@ -73,13 +73,7 @@ export default function ListView({
     [cards],
   );
 
-  const searchCards = useMemo(
-    () =>
-      searchState.status === "results"
-        ? searchState.results.map((r) => resultToCard(r, cardsById))
-        : [],
-    [searchState, cardsById],
-  );
+  const searchResults = searchState.status === "results" ? searchState.results : [];
 
   const availableTags = useMemo(() => tagEntries.map((e) => e.tag), [tagEntries]);
 
@@ -277,7 +271,8 @@ export default function ListView({
               {searching ? (
                 <SearchResultsArea
                   state={searchState}
-                  cards={searchCards}
+                  results={searchResults}
+                  cardsById={cardsById}
                   onEditNote={onEditNote}
                   onRetry={retry}
                 />
@@ -311,12 +306,14 @@ export default function ListView({
 
 function SearchResultsArea({
   state,
-  cards,
+  results,
+  cardsById,
   onEditNote,
   onRetry,
 }: {
   state: SearchState;
-  cards: NoteCardData[];
+  results: SearchResult[];
+  cardsById: Map<string, NoteCardData>;
   onEditNote: (noteId: string) => void;
   onRetry: () => void;
 }) {
@@ -346,8 +343,14 @@ function SearchResultsArea({
   }
   return (
     <div className={styles.noteCards} data-testid="note-cards">
-      {cards.map((card) => (
-        <NoteCard key={card.noteId} card={card} onEdit={onEditNote} />
+      {results.map((result) => (
+        <NoteCard
+          key={result.noteId}
+          card={resultToCard(result, cardsById)}
+          onEdit={onEditNote}
+          highlight={result.matchedTerms}
+          matchedField={result.matchedField}
+        />
       ))}
     </div>
   );
