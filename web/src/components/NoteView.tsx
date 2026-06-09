@@ -177,6 +177,8 @@ export default function NoteView({
     const previous = detail?.date ?? null;
     if ((next ?? "") === (previous ?? "")) return;
     if (date) onDateSet(noteId, date);
+    // The mutation's own onError rolls back the cache; this per-call onError only
+    // reverts the local input mirror (the date input is driven by state, not cache).
     setNoteDateM.mutate(next, {
       onError: () => {
         setDate(previous ?? "");
