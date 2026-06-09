@@ -229,3 +229,21 @@ The full rationale, target diagrams, staged migration plan, and the eventual-con
 **Fix:** make the rebuild projection prune deleted notes (drop them from `GetAll()`) so the rebuilt table matches the live hard-delete, OR have the rebuild explicitly skip upserting `Deleted` search rows.
 **Raised in:** Phase 22 search backfill verification, 2026-06-08.
 **Scheduled:** folded into **[Phase 24-B](phases/phase-24.md)** (upsert-and-reconcile prunes the tombstones).
+
+---
+
+## Stabilise the flaky `TagsJourney` E2E (post-deploy gate fails intermittently)
+
+**What:** `Browser.E2E.Journeys.TagsJourney` flakes in the `deploy-test` E2E step — a single test fails (13/14 pass), a **different** one each run, always a Playwright "element not visible" timeout on a tag pill just after `AddTagAsync`. Confirmed pre-existing and **change-independent**: deploy **#485** (2026-06-08) failed `RemoveTag_PillDisappears` *before* slice 19-D existed; deploy **#491** (19-D, a memoisation-only change inert in the E2E auth path) then hit it three runs running — `AddMultipleTags_SpaceSeparated`, `RemoveTag_PillDisappears`, `RemoveTag_GoneAfterNavigation`. No browser-console JS/React errors in any failure.
+
+**Why it flakes:** `AppPage.AddTagAsync` waits on the `/tags` POST response, then `AssertTagPillVisibleAsync` polls for the pill with a **15s** timeout. On a cold post-deploy environment (cold Lambda + cold DynamoDB tables) the create-note + tag round-trip races that timeout, so whichever tag test runs while the stack is coldest times out. The tag pill render is gated on the server round-trip in the journey, so latency — not correctness — decides pass/fail.
+
+**Why it matters:** a flaky post-deploy gate forces repeated `gh run rerun` (19-D needed 4 attempts), and a red main deploy blocks the *next* slice's merge gate ("main's latest deploy must be green").
+
+**Fix options (pick one or combine):**
+1. Raise the tag-pill assertion timeout (15s → 30s) to absorb cold-start latency — smallest change.
+2. Pre-warm the stack before the E2E run (one throwaway request per cold path) so the first real tag op isn't cold.
+3. Make tag-pill rendering optimistic in the journey's eyes (assert the optimistic pill, not the server-reconciled one) — but NoteView tags are still hand-rolled until 20-E, so revisit alongside that.
+
+**Raised in:** Operating the 19-D deploy, 2026-06-09 (this session).
+**Depends on:** Nothing blocking.

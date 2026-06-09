@@ -9,7 +9,7 @@
 | 19-A | **Split `api.ts` by domain.** 434-line, 8-domain module → `api/<domain>.ts` + a shared `request<T>()`/`requestVoid()` helper absorbing the ~33 `!res.ok` repeats; no barrel; behaviour unchanged | Done | — |
 | 19-B | **Typed-lint + non-null/catch cleanup.** Adopt `@typescript-eslint` `recommended-type-checked`; remove the 8 non-null `!` and the unsafe `catch` typing; add cheap flags (`noImplicitOverride`) | Not Started | — |
 | 19-C | **Stricter index/optional TS flags.** `noUncheckedIndexedAccess` then `exactOptionalPropertyTypes`, staged with backlog clear | Not Started | 19-B |
-| 19-D | **Context provider performance.** Memoise `AuthContext`/`ToastContext` provider values; `useCallback` the Auth actions; optional Auth state/actions split | Not Started | — |
+| 19-D | **Context provider performance.** Memoise `AuthContext`/`ToastContext` provider values; `useCallback` the Auth actions; optional Auth state/actions split | Done | — |
 | 19-E | **Effect hygiene.** Add out-of-order guards to 3 mount-only fetches; replace 3 notify-parent-in-effect patterns | Not Started | — |
 | 19-F | **Accessibility: live regions + focus.** `aria-live`/`role` on ~10 transient surfaces; 6 `:focus`→`:focus-visible`; focus management for 3 dialog/popover surfaces | Not Started | — |
 | 19-G | **Test quality.** Migrate testid-heavy unit tests to role/label queries; convert remaining `fireEvent` to `userEvent` | Not Started | — |
@@ -87,9 +87,13 @@ Each lists the finding, locations, value tier, and effort. Specs are written per
 - **Effort:** large. Highest-friction slice; schedule last.
 
 ### 19-D — Context provider performance — **value: medium**
-- `AuthContext.tsx:163` — provider `value` is a fresh literal each render **and** `signIn`/`signOut` are unmemoised; wrap actions in `useCallback`, then `useMemo` the value. Optionally split read-state vs actions so `signOut`-only consumers don't re-render on `idToken` change.
-- `ToastProvider.tsx:49` — callbacks already `useCallback`-stable; just `useMemo` the value object.
-- **Effort:** small.
+
+**Status:** Done (PR #201, deployed to main 2026-06-09).
+
+- `AuthContext.tsx` — provider `value` was a fresh literal each render **and** `signIn`/`signOut` were unmemoised; wrapped the actions in `useCallback` and `useMemo`'d the value.
+- `ToastProvider.tsx` — callbacks already `useCallback`-stable; `useMemo`'d the value object.
+- Optional Auth state/actions split **deferred** — extra consumer churn for no measured need.
+- Guarded by `web/src/__tests__/ContextMemoization.test.tsx` (value + Auth action identity stable across a no-state-change re-render; fresh value on a real auth-state change).
 
 ### 19-E — Effect hygiene — **value: medium**
 - **Fetch-race guards (consistency; no active race today):** add an `ignore`/`cancelled` flag to the 3 unguarded mount-only fetches — `NoteView.tsx:112` (`getTags`), `ListView.tsx:42` (`getTags`), `App.tsx:75-78` (`getFolders`+`getNoteCards`). The dep-changing fetches are already correctly guarded (`MeetingsSection.tsx:99` is the model).
