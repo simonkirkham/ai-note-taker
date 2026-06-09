@@ -314,6 +314,222 @@ Scenario: Tagging a note refreshes the tag index everywhere
 
 ---
 
+## Slice 20-E — Note detail
+
+**Status:** Not Started
+
+**User value:** None directly (like-for-like migration of the note-detail domain — the largest single-component mutation surface). One `getNoteDetail` read replaces the `useEffect` fetch in `NoteView`; content/date/analysis/applied-tags/link mutations become `useMutation`s with optimistic rollback. Behaviour is unchanged, proven by the existing `NoteView` suite staying green.
+
+**The migration.** `NoteView` holds **one** read effect — `getNoteDetail(noteId)` (GET `/notes/{id}`) — populating ~11 server-state fields (`content`, `date`, `tags`, `transcriptText`, `summary`, `discussionPoints`, `decisions`, `summaryModelId`, `linkedMeeting`, `recurringSeriesId`, `transcriptDraft`). 20-E unifies that into one `useNoteDetail(noteId)` query on the pre-declared `keys.note(id)` (currently defined but unused). The manual `refreshNote()` refetch becomes `invalidateQueries({ queryKey: keys.note(noteId) })`.
+
+**Scope.**
+- `web/src/hooks/useNoteDetail.ts` — `useQuery({ queryKey: keys.note(noteId), queryFn: () => getNoteDetail(noteId) })`. Replaces the `getNoteDetail` effect + the ~11 `useState`s it feeds. `notFound`/`loadingDetail` derive from the query (`isLoading`, error). The default-date-on-load call (`setNoteDate` when a note has no date) moves into the create flow / a mutation, not the read.
+- `web/src/hooks/useNoteDetailMutations.ts` — `useEditContent`, `useSetNoteDate`, `useAnalyseNote`, `useLinkNoteToCalendar`. Optimistic `onMutate` on the `keys.note(id)` cache + `onError` rollback + `onSettled` invalidate `keys.note(id)`.
+- **Applied tags** (deferred from 20-D): `NoteView`'s local `tags` state folds into the note-detail cache. `handleAddTags`/`handleRemoveTag` keep firing `useTagNote`/`useUntagNote` (20-D, which invalidate the global `keys.tags` index) but their optimism now mutates the `keys.note(id)` cache via `onMutate` snapshots; rollback restores the snapshot. The per-token `tagNote` loop still invalidates `keys.tags` once after the batch settles (20-D rule), not per token.
+- `analyseNote` replaces `refreshNote()` — `onSettled` invalidates `keys.note(noteId)`; the editor re-reads `summary`/`discussionPoints`/`decisions`/`summaryModelId` from the cache.
+- `linkNoteToCalendar` (today hand-rolled optimistic in `NoteView`, lines ~184–207) becomes `useLinkNoteToCalendar`: optimistic `linkedMeeting`/`recurringSeriesId` on the note-detail cache, rollback + surface error on failure.
+
+**Out of scope:** the TipTap editor's in-progress text stays **local** UI state — only the *save* (`editContent` on blur) is a mutation. `title` stays a prop driven by the parent `onRename` (note-cards domain, 20-C). `actionCount`/`ActionsSection` already on TanStack (20-D). The meetings *list* `linkedNoteId` staleness after a link is pre-existing and handled by 20-F (not this slice). `transcriptText`/`transcriptDraft` recovery (`completeTranscription`/`discardTranscriptionDraft`) refetch via `keys.note(id)` invalidation but are not re-architected. No `keys.noteCards` invalidation — content/date/analysis don't change card-visible fields, and the card-pill tag refresh is already covered by `handleBackFromNote` (20-C, fix #195).
+
+### Scenarios
+
+```
+Scenario: Note detail loads and renders unchanged
+  Given the note-detail endpoint returns a note
+  When NoteView opens
+  Then content, date, tags, summary and linked meeting render exactly as before the migration
+
+Scenario: Saving edited content surfaces a failure
+  Given an open note
+  When I edit the content and the save (on blur) fails
+  Then the failure surfaces as it does today (no silent loss)
+
+Scenario: Setting the note date is optimistic and rolls back on failure
+  Given an open note
+  When I change its date and the request fails
+  Then the new date shows immediately, then reverts
+
+Scenario: Adding an applied tag is optimistic and rolls back on failure
+  Given an open note
+  When I add a tag and the request fails
+  Then the tag pill shows immediately, then is removed, and the failure surfaces
+
+Scenario: Generating final notes refetches the detail
+  Given an open note with a transcript
+  When I generate final notes
+  Then the summary, discussion points and decisions appear from the refetched detail (no manual refreshNote)
+
+Scenario: Linking a meeting is optimistic and rolls back on failure
+  Given an open note and a meeting
+  When I link the meeting and the request fails
+  Then the linked-meeting banner shows immediately, then reverts, and the failure surfaces
+
+Scenario: One cache for note detail
+  Given NoteView reads note detail
+  Then it is read from keys.note(id) (GET /notes/{id} once), shared across re-renders
+```
+
+### Acceptance criteria
+
+- [ ] `web/src/hooks/useNoteDetail.ts` (`useQuery`, `keys.note(noteId)`) is the single source for note detail; `NoteView`'s `getNoteDetail` `useEffect` and the ~11 `useState`s it fed are removed (`loadingDetail`/`notFound` derive from the query)
+- [ ] `web/src/hooks/useNoteDetailMutations.ts` exposes `useEditContent`/`useSetNoteDate`/`useAnalyseNote`/`useLinkNoteToCalendar` (optimistic `onMutate` on `keys.note(id)` + `onError` rollback + `onSettled` invalidate `keys.note(id)`)
+- [ ] `analyseNote` replaces the manual `refreshNote()` refetch with `invalidateQueries({ queryKey: keys.note(noteId) })`; the editor re-reads summary/discussion/decisions/model from the cache
+- [ ] Applied tags: `NoteView`'s local `tags` state folds into the `keys.note(id)` cache; `handleAddTags`/`handleRemoveTag` optimism mutates that cache and rolls back on error; `useTagNote`/`useUntagNote` still invalidate the global `keys.tags` index once per batch (not per token)
+- [ ] `linkNoteToCalendar` is migrated to `useLinkNoteToCalendar` (optimistic `linkedMeeting`/`recurringSeriesId`, rollback + surfaced error); the hand-rolled try/catch in `NoteView` is removed
+- [ ] TipTap in-progress text stays local; only `editContent` (on blur) is a mutation; `title`/`actionCount` unchanged; no `keys.noteCards` invalidation added
+- [ ] Todos/folders/note-cards/actions/tags stay on TanStack; meetings/transcription stay hand-rolled (coexistence intact)
+- [ ] Optimistic-UI rule satisfied — apply immediately, roll back **and surface** on error (forced-reject tests for date/tag/link)
+- [ ] `NoteView.test.tsx` (already on the `src/test/render.tsx` QueryClient helper) updated with note-detail MSW handlers + forced-reject mutation tests; full Vitest suite + `tsc -b`/build + ESLint green
+
+### Observability
+
+1. **Silent optimistic divergence (detail).** date/tag/link must roll back on error or NoteView drifts ahead of the server. Forced-reject test per mutation, asserting revert **and** surfaced failure.
+2. **Content-save loss.** `editContent` saves on blur; a dropped save with no surfaced error silently loses an edit. Assert the failure surfaces (toast/`role="alert"`), matching today.
+3. **analyse refetch.** Generating final notes must repaint summary/discussion/decisions from the refetched detail — assert the new fields appear after `analyseNote` settles, not stale ones.
+4. **No card over-invalidation.** 20-E must **not** invalidate `keys.noteCards` (card-visible fields unchanged; refresh already covered by `handleBackFromNote`). Guard against a refetch storm on every keystroke-level detail op.
+
+---
+
+## Slice 20-F — Meetings
+
+**Status:** Not Started
+
+**User value:** None directly (like-for-like migration of the meetings domain). Today's and the browsed day's meeting lists move onto one cache; create-from-meeting and next-occurrence become mutations. Behaviour is unchanged, proven by the existing meetings suites staying green.
+
+**The decoupling that must survive (Phase 16).** `MeetingsSection` holds **two independent** fetches: `todayState` (real today, feeds `useMeetingReminders`) and `browsed` (the date the user is navigating). Reminders are scheduled **only** from `todayState` (`reminderMeetings = todayState.loaded ? … : NO_MEETINGS`), so date navigation never reschedules or clears today's reminders. A naive migration that unifies both into a single `keys.meetings(date)` cache breaks this: on navigating away, the reminder feed would see the new day's (or empty) data and drop today's timers.
+
+**Scope.**
+- `web/src/hooks/useMeetings.ts` — **two** distinct query keys to preserve the decoupling:
+  - `keys.meetingsToday` (no date param) → `getMeetingsForDate(tz, today)`. Feeds `useMeetingReminders` — never re-keyed by navigation.
+  - `keys.meetingsBrowsed(date)` → `getMeetingsForDate(tz, date)`, enabled only when `selectedDate !== today`. Date-keyed so each day caches independently; browsing back to today reads `keys.meetingsToday` from cache.
+  - `MeetingPicker` (read-only, inside NoteView) reads `keys.meetingsBrowsed(date)` too — sharing the cache.
+- `web/src/hooks/useMeetingMutations.ts` — `useCreateNoteFromMeeting`, `useCreateNoteFromNextOccurrence`. Optimistic cache edits on the relevant meetings key + rollback + `onSettled` invalidate.
+  - `createNoteFromMeeting`: on success set the meeting's `linkedNoteId` in the meetings cache, open the note, **invalidate `keys.noteCards`** (it creates a card). Per-meeting busy (`creating: Set`) + per-meeting `createErrors` preserved (local in-flight, like `ActionsSection`).
+  - `createNoteFromNextOccurrence`: optimistic `hasNextOccurrenceNote = true` flip across the series in the meetings cache, store the real `noteId` (`nextNoteIds`) on success, rollback the flag on error. Invalidate `keys.noteCards`.
+- `selectedDate`/`pickerOpen` stay **local** `useState` (UI navigation, not server state). `meetingDay.ts` pure helpers unchanged.
+
+**Out of scope:** `linkNoteToCalendar` is migrated in **20-E** (it mutates note-detail `linkedMeeting`, not the meetings list). The meetings-list `linkedNoteId` going briefly stale after a link is **pre-existing** behaviour (today the list only refreshes on Retry / date-nav); 20-F does not add cross-invalidation from the note-detail link back into the meetings cache — note it, don't fix. Transcription credentials stay hand-rolled.
+
+### Scenarios
+
+```
+Scenario: Today's meetings load unchanged and reminders are scheduled
+  Given the meetings endpoint returns today's meetings
+  When MeetingsSection renders
+  Then today's meetings appear as before and reminders are scheduled from today only
+
+Scenario: Browsing to another day does not disturb today's reminders
+  Given today's meetings are loaded and reminders scheduled
+  When I navigate to a different day
+  Then that day's meetings load and today's reminders are unchanged
+
+Scenario: Browsing back to today reads the cache
+  Given I navigated away and back to today within the stale window
+  Then today's meetings render from cache without a refetch
+
+Scenario: Creating a note from a meeting opens it and refreshes the list
+  Given a meeting with no linked note
+  When I create a note from it
+  Then the note opens, the meeting shows as linked, and the home note list includes it (cards invalidated)
+
+Scenario: Creating a note from a meeting surfaces a per-meeting failure
+  Given a meeting
+  When create-from-meeting fails
+  Then the error surfaces against that meeting only and its busy state clears
+
+Scenario: Creating a next-occurrence note is optimistic and rolls back on failure
+  Given a recurring meeting series
+  When I create the next-occurrence note and it fails
+  Then the "has next note" flag flips immediately, then reverts
+
+Scenario: The meeting picker shares the meetings cache
+  Given MeetingPicker browses a day already fetched
+  Then it reads from keys.meetingsBrowsed(date) without a duplicate fetch
+```
+
+### Acceptance criteria
+
+- [ ] `web/src/hooks/useMeetings.ts` exposes `useMeetingsToday()` (`keys.meetingsToday`) and `useMeetingsBrowsed(date)` (`keys.meetingsBrowsed(date)`, `enabled: date !== today`); `MeetingsSection` consumes both; `MeetingPicker` reads `useMeetingsBrowsed`
+- [ ] `useMeetingReminders` is fed **only** from `useMeetingsToday` data — date navigation never re-keys or clears the reminder feed (Phase 16 decoupling preserved)
+- [ ] `web/src/api/queryKeys.ts` gains `meetingsToday` and `meetingsBrowsed: (date) => […]`
+- [ ] `useMeetingMutations` exposes `useCreateNoteFromMeeting` (on success set `linkedNoteId` in the meetings cache + open note + invalidate `keys.noteCards`; per-meeting `creating`/`createErrors` preserved) and `useCreateNoteFromNextOccurrence` (optimistic `hasNextOccurrenceNote` flip + `nextNoteIds` reconcile + rollback + invalidate `keys.noteCards`)
+- [ ] The `getMeetingsForDate().then(setTodayState/setBrowsed)` effects and the `todayState`/`browsed` `useState`s are removed from `MeetingsSection` and `MeetingPicker`; `selectedDate`/`pickerOpen` stay local
+- [ ] `linkNoteToCalendar` is **not** touched here (migrated in 20-E); the meetings-list `linkedNoteId`-after-link staleness is left as today (noted, not fixed)
+- [ ] Todos/folders/note-cards/actions/tags/note-detail stay on TanStack; transcription stays hand-rolled (coexistence intact)
+- [ ] Optimistic-UI rule satisfied — apply immediately, roll back **and surface** on error (forced-reject tests for create-from-meeting and next-occurrence)
+- [ ] `MeetingsSection.test.tsx`/`MeetingPicker.test.tsx` (already on the QueryClient helper, `useMeetingReminders` mocked) updated with meetings MSW handlers + a reminders-decoupling test (navigate day, assert reminder feed unchanged); full Vitest suite + `tsc -b`/build + ESLint green
+
+### Observability
+
+1. **Reminders decoupling regression.** The headline risk: a unified cache lets date navigation clear today's reminders. Cover with a test that loads today, navigates to another day, and asserts the reminder feed (today's meetings) is unchanged.
+2. **Silent optimistic divergence (next-occurrence).** The `hasNextOccurrenceNote` flip must roll back on error or the button drifts to "Open Note" for a note that was never created. Forced-reject test.
+3. **Create-from-meeting → card refresh.** Creating a note from a meeting must invalidate `keys.noteCards` so the new note appears in the home list. Assert the card appears.
+4. **Per-meeting busy/error isolation.** A failed create on one meeting must not clear another's busy state or show its error against the wrong row. Assert errors and busy flags are keyed per meeting.
+
+---
+
+## Slice 20-G — Cleanup
+
+**Status:** Not Started
+
+**User value:** None directly (dead-code removal + centralised network resilience). Closes Phase 20: every server-state domain is on TanStack, the last hand-rolled remnants are deleted, and transient-error retry/backoff is folded into one place (subsuming Phase 19's 19-H).
+
+**Scope.**
+- **Delete `listNotes`** (`api/notes.ts`) — sole remaining consumer is `Auth.test.tsx`'s auth-probe (asserts the `Authorization` header is set/omitted). Rewrite that probe against another simple read (e.g. `getTags`) or a direct MSW-observed `fetch`, then remove the export. Confirm GET `/notes` is gone from every path.
+- **Network resilience in `apiFetch` (subsumes 19-H)** — add exponential backoff with jitter for transient failures (`res.status >= 500 || === 429`, and thrown `TypeError`/network errors), honouring `Retry-After`. **Idempotent requests only** (GET + idempotent PUT/DELETE) — **never** auto-retry POST creators. The existing 401 auth-refresh stays **outside** the transient-retry loop. This is the central default; remove any need for per-hook retry config.
+- **QueryClient defaults review** — confirm the `main.tsx` defaults (`retry: 1`, `staleTime: 30s`, `refetchOnWindowFocus: false`, mutations `retry: false`) are the single source; no per-hook overrides exist (audited: none), so nothing to fold beyond confirming.
+- **Dead-code sweep** — no hand-rolled `useState`+`useEffect` fetch remains in `src/` after 20-E/20-F; `keys.note(id)` is now in use (20-E); no unused query keys. `App.tsx`'s one remaining `invalidateQueries(keys.noteCards)` in `handleBackFromNote` is intentional (20-C) and **kept**.
+- **Learnings** — Phase 20 retro (the library's cache/dedup/invalidation model vs hand-rolled; incremental two-system coexistence; the dependency/bundle tradeoff).
+
+**Depends on:** 20-B…20-F (every domain migrated before the seam is removed). **Subsumes 19-H** — do not also run it.
+
+### Scenarios
+
+```
+Scenario: A transient 5xx on a GET is retried with backoff
+  Given a GET that returns 503 then 200
+  When apiFetch issues it
+  Then it backs off, retries, and resolves with the 200 (no error surfaced)
+
+Scenario: A 429 honours Retry-After
+  Given a GET that returns 429 with Retry-After
+  When apiFetch issues it
+  Then the retry waits at least the Retry-After interval
+
+Scenario: A POST creator is never auto-retried
+  Given a POST that returns 503
+  When apiFetch issues it
+  Then it fails without a transient retry (no duplicate create)
+
+Scenario: The auth probe no longer depends on listNotes
+  Given the Auth tests
+  When they assert the Authorization header
+  Then they use a retained read endpoint, and listNotes is gone
+
+Scenario: No hand-rolled server fetch remains
+  Given the migrated app
+  Then no component reads server state via useEffect + useState (all via useQuery/useMutation)
+```
+
+### Acceptance criteria
+
+- [ ] `listNotes` removed from `api/notes.ts`; `Auth.test.tsx` auth-probe rewired to a retained endpoint (or direct MSW-observed `fetch`); no GET `/notes` remains in any path
+- [ ] `apiFetch` retries transient failures (`>=500`, `429`, network `TypeError`) with exponential backoff + jitter, honouring `Retry-After`; **idempotent methods only** (GET/PUT/DELETE), never POST; 401 auth-refresh stays outside the transient loop (subsumes 19-H)
+- [ ] QueryClient defaults confirmed as the single retry/stale source; no per-hook overrides remain
+- [ ] No hand-rolled `useState`+`useEffect` server-fetch remains anywhere in `web/src/` (grep `.then(set`, `getX().then`, effect-driven api calls); every domain on `useQuery`/`useMutation`
+- [ ] `keys.note(id)` in use; no unused query keys; `App.tsx`'s `handleBackFromNote` `invalidateQueries(keys.noteCards)` retained (intentional)
+- [ ] `docs/learnings/phase-20g-…md` (or `_minor-log.md` entry) written; ADR 0010 supersession already recorded (Gate)
+- [ ] Full Vitest suite + `tsc -b`/build + ESLint green; backend/eventstore unaffected
+
+### Observability
+
+1. **Retry must not duplicate writes.** The backoff loop must exclude POST. A retried create is a duplicate note/folder/action. Cover with the "POST never auto-retried" scenario.
+2. **Retry must terminate.** Bounded attempts + capped backoff or a slow endpoint hangs the UI. Assert a max attempt count and that exhaustion surfaces the error.
+3. **Auth-refresh isolation.** The 401 refresh path must stay separate from the transient loop — a 401 inside the backoff would re-trigger refresh repeatedly. Assert 401 still routes to the single auth-refresh, not the retry loop.
+4. **No silent hand-rolled survivor.** A missed `useEffect` fetch would keep a domain off the cache (stale-on-mutation). The grep-clean assertion is the guard.
+
+---
+
 ## Appendix A — What one domain migration looks like (todos)
 
 The concrete shape, using `TodoSection` (the 20-A pilot). Three new files, one slimmed component.
