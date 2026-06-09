@@ -1,4 +1,6 @@
 import { http, HttpResponse } from 'msw'
+import { backoffMs, parseRetryAfter, retryConfig } from '../api/client'
+import { createNote } from '../api/notes'
 import { getTags } from '../api/tags'
 import { getTodos } from '../api/todos'
 import { clearToken, setToken, setOnRefresh, setOnUnauthorized } from '../auth/tokenStore'
@@ -99,5 +101,117 @@ describe('apiFetch 401 handling', () => {
 
     await expect(getTodos()).rejects.toThrow()
     expect(onUnauthorized).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('apiFetch transient retry (19-H)', () => {
+  // Zero the backoff so retries are instant; restore the real config afterwards.
+  const originalBase = retryConfig.baseDelayMs
+  beforeEach(() => { retryConfig.baseDelayMs = 0 })
+  afterEach(() => { retryConfig.baseDelayMs = originalBase })
+
+  it('retries an idempotent GET after a 503 and resolves on the retry', async () => {
+    let call = 0
+    server.use(
+      http.get('/api/todos', () => {
+        call++
+        return call === 1 ? new HttpResponse(null, { status: 503 }) : HttpResponse.json({ items: [] })
+      }),
+    )
+    expect(await getTodos()).toEqual([])
+    expect(call).toBe(2)
+  })
+
+  it('retries an idempotent GET after a 429 (honouring Retry-After) and resolves', async () => {
+    let call = 0
+    server.use(
+      http.get('/api/todos', () => {
+        call++
+        return call === 1
+          ? new HttpResponse(null, { status: 429, headers: { 'Retry-After': '0' } })
+          : HttpResponse.json({ items: [] })
+      }),
+    )
+    expect(await getTodos()).toEqual([])
+    expect(call).toBe(2)
+  })
+
+  it('retries an idempotent GET after a network error (TypeError)', async () => {
+    let call = 0
+    server.use(
+      http.get('/api/todos', () => {
+        call++
+        return call === 1 ? HttpResponse.error() : HttpResponse.json({ items: [] })
+      }),
+    )
+    expect(await getTodos()).toEqual([])
+    expect(call).toBe(2)
+  })
+
+  it('never retries a POST creator on a 503 (no duplicate create)', async () => {
+    let call = 0
+    server.use(
+      http.post('/api/notes', () => {
+        call++
+        return new HttpResponse(null, { status: 503 })
+      }),
+    )
+    await expect(createNote()).rejects.toThrow()
+    expect(call).toBe(1)
+  })
+
+  it('bounds retries at the attempt cap and surfaces the failure', async () => {
+    let call = 0
+    server.use(
+      http.get('/api/todos', () => {
+        call++
+        return new HttpResponse(null, { status: 503 })
+      }),
+    )
+    await expect(getTodos()).rejects.toThrow()
+    expect(call).toBe(retryConfig.maxAttempts)
+  })
+
+  it('does not treat a 401 as transient (single call, routes to auth)', async () => {
+    clearToken()
+    const onUnauthorized = vi.fn()
+    setOnUnauthorized(onUnauthorized)
+    setOnRefresh(async () => null)
+    let call = 0
+    server.use(
+      http.get('/api/todos', () => {
+        call++
+        return new HttpResponse(null, { status: 401 })
+      }),
+    )
+    await expect(getTodos()).rejects.toThrow()
+    expect(call).toBe(1)
+    expect(onUnauthorized).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('retry helpers', () => {
+  it('parseRetryAfter reads whole seconds into ms, and null when absent/unparseable', () => {
+    expect(parseRetryAfter('2')).toBe(2000)
+    expect(parseRetryAfter('0')).toBe(0)
+    expect(parseRetryAfter(null)).toBeNull()
+    expect(parseRetryAfter('not-a-number')).toBeNull()
+  })
+
+  it('backoffMs grows exponentially within a jittered band', () => {
+    const original = { ...retryConfig }
+    try {
+      retryConfig.baseDelayMs = 100
+      retryConfig.maxDelayMs = 4000
+      // attempt 1: base 100, full jitter → [100, 200); attempt 2: base 200 → [200, 400)
+      const d1 = backoffMs(1)
+      const d2 = backoffMs(2)
+      expect(d1).toBeGreaterThanOrEqual(100)
+      expect(d1).toBeLessThan(200)
+      expect(d2).toBeGreaterThanOrEqual(200)
+      expect(d2).toBeLessThan(400)
+    } finally {
+      Object.assign(retryConfig, original)
+    }
   })
 })

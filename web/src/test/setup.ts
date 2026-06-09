@@ -1,8 +1,13 @@
 import '@testing-library/jest-dom'
 import { setupServer } from 'msw/node'
+import { retryConfig } from '../api/client'
 import { handlers } from './handlers'
 
 export const server = setupServer(...handlers)
+
+// Zero the transient-retry backoff so GET error-state tests retry instantly instead
+// of paying real wall-clock delay (the ApiFetch suite covers the backoff timing).
+retryConfig.baseDelayMs = 0
 
 beforeAll(() => server.listen())
 afterEach(() => server.resetHandlers())

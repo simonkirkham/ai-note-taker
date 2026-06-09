@@ -40,27 +40,27 @@ describe('API calls', () => {
   it('include Authorization Bearer header when a token is set', async () => {
     let capturedAuth: string | null = null
     server.use(
-      http.get('/api/notes', ({ request }) => {
+      http.get('/api/tags', ({ request }) => {
         capturedAuth = request.headers.get('Authorization')
-        return HttpResponse.json({ items: [] })
+        return HttpResponse.json({ tags: [] })
       }),
     )
     setToken('test-id-token')
-    const { listNotes } = await import('../api/notes')
-    await listNotes()
+    const { getTags } = await import('../api/tags')
+    await getTags()
     expect(capturedAuth).toBe('Bearer test-id-token')
   })
 
   it('omit Authorization header when no token is set', async () => {
     let capturedAuth: string | null | undefined = undefined
     server.use(
-      http.get('/api/notes', ({ request }) => {
+      http.get('/api/tags', ({ request }) => {
         capturedAuth = request.headers.get('Authorization')
-        return HttpResponse.json({ items: [] })
+        return HttpResponse.json({ tags: [] })
       }),
     )
-    const { listNotes } = await import('../api/notes')
-    await listNotes()
+    const { getTags } = await import('../api/tags')
+    await getTags()
     expect(capturedAuth).toBeNull()
   })
 })
