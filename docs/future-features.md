@@ -13,14 +13,6 @@ Each entry records what it is, why it isn't scheduled yet, and where it was rais
 
 ---
 
-## Workspaces
-
-**What:** Switch between collections of notes (e.g. separate work and personal spaces).
-**Status:** Idea — not broken down.
-**Raised in:** Roadmap "Future Ideas".
-
----
-
 ## Expand the to-do functionality for today and the future
 
 **What:** Grow the to-do feature beyond today's flat list into something that understands **when** a to-do is due. Today the To Do section (`web/src/components/TodoSection.tsx`, fed by the cross-note todo projection from Phase 3 and the standalone todo aggregate from Phase 11) shows a single undated list of open items plus an expandable Done list. This feature adds a time dimension: to-dos that are scheduled for **today** versus **upcoming/future** dates, so the home screen can show "what's due today" distinctly from "what's coming up", and future-dated to-dos don't clutter today's view until they're relevant. Likely sub-capabilities to scope when broken down:
