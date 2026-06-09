@@ -72,9 +72,18 @@ public sealed class DynamoDbNoteDetailStore(IAmazonDynamoDB dynamo, string table
 
     public async Task<IReadOnlyList<NoteDetailView>> QueryAllAsync(CancellationToken ct = default)
     {
-        var response = await dynamo.ScanAsync(new ScanRequest { TableName = tableName, ConsistentRead = true }, ct)
-            .ConfigureAwait(false);
-        return response.Items.Select(MapItemToNoteDetailView).ToList().AsReadOnly();
+        var results = new List<NoteDetailView>();
+        Dictionary<string, AttributeValue>? lastKey = null;
+        do
+        {
+            var scan = await dynamo.ScanAsync(
+                new ScanRequest { TableName = tableName, ConsistentRead = true, ExclusiveStartKey = lastKey }, ct)
+                .ConfigureAwait(false);
+            results.AddRange(scan.Items.Select(MapItemToNoteDetailView));
+            lastKey = scan.LastEvaluatedKey?.Count > 0 ? scan.LastEvaluatedKey : null;
+        }
+        while (lastKey is not null);
+        return results.AsReadOnly();
     }
 
     public async Task<NoteDetailView?> GetAsync(NoteId noteId, CancellationToken ct = default)

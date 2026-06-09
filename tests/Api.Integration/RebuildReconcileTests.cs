@@ -64,15 +64,20 @@ public sealed class RebuildReconcileTests(ReconcileApiFactory factory) : IClassF
     }
 
     [Fact]
-    public async Task Rebuild_leaves_no_search_tombstone_for_a_deleted_note()
+    public async Task Rebuild_prunes_a_pre_existing_search_tombstone()
     {
-        var noteId = await CreateNoteAsync("Searchable note");
-        await _client.DeleteAsync($"/notes/{noteId.Value}");
+        await CreateNoteAsync("A live note");
+
+        // A Deleted=true tombstone left in the table by an earlier rebuild — the live path hard-deletes,
+        // so reconcile must prune it (the note has no live events, so it is absent from the keep-set).
+        var tombstone = new NoteId(Guid.NewGuid());
+        await _factory.SearchStore.UpsertAsync(new NoteSearchView(
+            tombstone, FakeCurrentUser.TestUserId, "Ghost", "", "", Array.Empty<string>(), "",
+            Deleted: true, DateTimeOffset.UtcNow));
 
         await _client.PostAsync("/admin/projections/rebuild", null);
 
-        // Rebuild must not re-introduce a Deleted=true tombstone row — it prunes to match the live hard-delete.
-        Assert.Null(await _factory.SearchStore.GetByNoteIdAsync(noteId));
+        Assert.Null(await _factory.SearchStore.GetByNoteIdAsync(tombstone));
     }
 
     [Fact]

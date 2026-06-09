@@ -9,6 +9,7 @@ internal sealed class InMemoryNoteSearchViewStore : INoteSearchViewStore
 
     public Task UpsertAsync(NoteSearchView view, CancellationToken ct = default)
     {
+        if (string.IsNullOrEmpty(view.UserId)) return Task.CompletedTask;
         _items[view.NoteId] = view;
         return Task.CompletedTask;
     }

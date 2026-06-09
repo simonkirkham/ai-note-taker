@@ -76,7 +76,8 @@ public sealed class DynamoDbNoteSearchViewStore(IAmazonDynamoDB dynamo, string t
         Dictionary<string, AttributeValue>? lastKey = null;
         do
         {
-            var scan = await dynamo.ScanAsync(new ScanRequest { TableName = tableName, ExclusiveStartKey = lastKey }, ct)
+            var scan = await dynamo.ScanAsync(
+                new ScanRequest { TableName = tableName, ConsistentRead = true, ExclusiveStartKey = lastKey }, ct)
                 .ConfigureAwait(false);
             results.AddRange(scan.Items.Select(MapItem));
             lastKey = scan.LastEvaluatedKey?.Count > 0 ? scan.LastEvaluatedKey : null;
