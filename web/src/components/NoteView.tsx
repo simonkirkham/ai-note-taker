@@ -496,6 +496,7 @@ export default function NoteView({
               ) : (
                 <NoteEditor
                   key={noteId}
+                  noteId={noteId}
                   value={content}
                   onChange={(md) => setContentDraft(md)}
                   onBlur={handleSaveContent}

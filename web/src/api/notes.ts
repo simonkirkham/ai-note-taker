@@ -1,4 +1,4 @@
-import { request, requestVoid } from './client'
+import { request, requestVoid } from './client';
 
 export interface LinkedMeeting {
   calendarEventId: string;
@@ -61,9 +61,7 @@ export interface SearchResult {
 }
 
 export async function searchNotes(q: string): Promise<SearchResult[]> {
-  const body = await request<{ items: SearchResult[] }>(
-    `/notes/search?q=${encodeURIComponent(q)}`,
-  );
+  const body = await request<{ items: SearchResult[] }>(`/notes/search?q=${encodeURIComponent(q)}`);
   return body.items;
 }
 
@@ -73,38 +71,38 @@ export function getNoteDetail(noteId: string): Promise<NoteDetail> {
 
 export function createNote(): Promise<{ noteId: string }> {
   return request<{ noteId: string }>(`/notes`, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: "null",
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: 'null',
   });
 }
 
 export function renameNote(noteId: string, title: string): Promise<void> {
   return requestVoid(`/notes/${noteId}/title`, {
-    method: "PATCH",
-    headers: { "content-type": "application/json" },
+    method: 'PATCH',
+    headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ title }),
   });
 }
 
 export function editContent(noteId: string, content: string): Promise<void> {
   return requestVoid(`/notes/${noteId}/content`, {
-    method: "PUT",
-    headers: { "content-type": "application/json" },
+    method: 'PUT',
+    headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ content }),
   });
 }
 
 export function setNoteDate(noteId: string, date: string | null): Promise<void> {
   return requestVoid(`/notes/${noteId}/date`, {
-    method: "PATCH",
-    headers: { "content-type": "application/json" },
+    method: 'PATCH',
+    headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ date }),
   });
 }
 
 export function deleteNote(noteId: string): Promise<void> {
-  return requestVoid(`/notes/${noteId}`, { method: "DELETE" });
+  return requestVoid(`/notes/${noteId}`, { method: 'DELETE' });
 }
 
 export async function getNoteCards(): Promise<NoteCard[]> {
@@ -113,5 +111,36 @@ export async function getNoteCards(): Promise<NoteCard[]> {
 }
 
 export function analyseNote(noteId: string): Promise<void> {
-  return requestVoid(`/notes/${noteId}/analyse`, { method: "POST" });
+  return requestVoid(`/notes/${noteId}/analyse`, { method: 'POST' });
+}
+
+export interface PresignUploadResult {
+  imageId: string;
+  key: string;
+  uploadUrl: string;
+  contentType: string;
+}
+
+export function presignUpload(
+  noteId: string,
+  body: { contentType: string; contentLength: number }
+): Promise<PresignUploadResult> {
+  return request<PresignUploadResult>(`/notes/${noteId}/images/presign-upload`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+}
+
+export async function resolveImages(
+  noteId: string,
+  keys: string[]
+): Promise<Record<string, string>> {
+  if (keys.length === 0) return {};
+  const body = await request<{ urls: Record<string, string> }>(`/notes/${noteId}/images/resolve`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ keys }),
+  });
+  return body.urls;
 }
