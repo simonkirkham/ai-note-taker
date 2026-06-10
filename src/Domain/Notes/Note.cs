@@ -1,4 +1,5 @@
 using Domain.Folders;
+using Domain.Workspaces;
 
 namespace Domain.Notes;
 
@@ -13,6 +14,7 @@ public sealed class Note : IAggregate
     readonly HashSet<string> _tags = [];
     string? _transcriptText;
     string? _summary;
+    WorkspaceId _workspaceId = WorkspaceId.Default;
 
     public bool Exists => _exists && !_deleted;
 
@@ -46,6 +48,9 @@ public sealed class Note : IAggregate
                 break;
             case NoteUnfiled:
                 _folderId = null;
+                break;
+            case NoteAssignedToWorkspace e:
+                _workspaceId = e.WorkspaceId;
                 break;
             case NoteLinkedToCalendarEvent e:
                 _calendarEventId = e.CalendarEventId;
@@ -90,7 +95,7 @@ public sealed class Note : IAggregate
     {
         if (_exists)
             throw new InvalidOperationException($"Note {cmd.NoteId} already exists.");
-        return [new NoteCreated(cmd.NoteId)];
+        return [new NoteCreated(cmd.NoteId), new NoteAssignedToWorkspace(cmd.NoteId, cmd.WorkspaceId)];
     }
 
     IReadOnlyList<IDomainEvent> HandleRename(RenameNote cmd)

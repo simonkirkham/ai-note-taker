@@ -220,6 +220,8 @@ The full rationale, target diagrams, staged migration plan, and the eventual-con
 
 **But deploy #496 (24-C, an unrelated backend-only change) then failed `RemoveTag_GoneAfterNavigation`** — a *different* symptom: after `AddTagAsync("1:1s Bill")` → `RemoveTagAsync("Bill")` → save → reopen, the **removed** "Bill" pill is **still present** on the server-fresh reopen (`expected not to be visible`, resolved visible 9×). The BUG-14 patch addressed the dropped-add path; the *removed-tag-lost* path survives. Likely a backend optimistic-concurrency interaction: the two concurrent multi-tag adds (one retries on 409) race the subsequent remove, so the remove writes at a stale stream version and is silently lost. Re-cleared the gate for 24-C by re-running deploy #496 (intermittent — #495 ran the same test green). **Still open**; needs a reproduction test for the add-add-then-remove interleave, not another timeout bump.
 
+**Recurred again on deploy #501 (PR #213, 2026-06-10) — the strongest change-independence evidence yet.** #213 was a **docs + CI-config-only** PR (`.github/workflows/*.yml` + `docs/`, zero application/test code), yet `deploy-test` failed the E2E gate **three runs in a row**: run 1 failed both `RemoveTag_GoneAfterNavigation` *and* `RemoveTag_PillDisappears` (2/14), the two reruns failed `RemoveTag_PillDisappears` alone (1/14). A docs/CI PR cannot touch tag behaviour, so this rules out any per-slice regression and points squarely at the backend add-add-then-remove optimistic-concurrency race described above (or test-side ordering). The flake now blocks unrelated CI/docs deploys, not just feature slices — raising its priority. **Fix needs the reproduction test, not reruns.**
+
 <details><summary>Original entry (kept for context)</summary>
 
 **What:** `Browser.E2E.Journeys.TagsJourney` flakes in the `deploy-test` E2E step — a single test fails (13/14 pass), a **different** one each run, always a Playwright "element not visible" timeout on a tag pill just after `AddTagAsync`. Confirmed pre-existing and **change-independent**: deploy **#485** (2026-06-08) failed `RemoveTag_PillDisappears` *before* slice 19-D existed; deploy **#491** (19-D, a memoisation-only change inert in the E2E auth path) then hit it three runs running — `AddMultipleTags_SpaceSeparated`, `RemoveTag_PillDisappears`, `RemoveTag_GoneAfterNavigation`. No browser-console JS/React errors in any failure.
@@ -250,3 +252,19 @@ The full rationale, target diagrams, staged migration plan, and the eventual-con
 
 **Raised in:** Hawk review of PR #207 (slice 23-A), 2026-06-10.
 **Depends on:** —
+
+---
+
+## CI pipeline hygiene — skip no-op deploys, cancel superseded PR runs, cache Playwright
+
+✅ **Done** (2026-06-10, this PR). Three independent pipeline optimisations shipped together:
+
+1. **Skip deploys on eval-harness-only changes.** Added `tests/Analysis.Eval/**` to `deploy.yml` `paths-ignore`. That project is built/run only by `eval.yml` (nightly + manual dispatch) and the `Makefile`; it is never part of the deployed artifact (`src/Api`). A push to main touching only the eval harness (e.g. judge-prompt/matrix tweaks like #210) previously ran a full ~12-min test+prod deploy for nothing. **Trade-off accepted:** a broken eval build is no longer caught by deploy's `validate-backend`, but `eval.yml` already builds that project.
+2. **Cancel superseded PR runs.** Added a `concurrency` group to `pr.yml` keyed per-PR (`github.head_ref`) with `cancel-in-progress: true`. Pushing a new commit to a PR previously ran the full backend+frontend+eventstore suite to completion even when obsolete; now the in-flight run is cancelled. Safe — only the latest commit's checks matter. Does not touch the `deploy.yml` concurrency groups (deploys must never cancel).
+3. **Cache Playwright browsers.** Added an `actions/cache@v5` step on `~/.cache/ms-playwright` before the E2E `Install Playwright browsers` step in `deploy.yml`, keyed on the pinned `Microsoft.Playwright` version (hash of `Browser.E2E.csproj`). The chromium binary was re-downloaded every deploy (~30–60s); on a cache hit `playwright install` skips the download. `--with-deps` still runs to install OS apt libraries (not cacheable — ephemeral runner).
+
+**Why it matters:** removes wasted runner minutes and shortens the merge→deploy loop that gates parallel slices.
+**Raised in:** Pipeline-optimisation review, 2026-06-10. **Actioned:** same session.
+**Depends on:** —
+
+> **Considered and rejected:** mirroring the `tests/Analysis.Eval/**` ignore into `pr.yml`. PR checks are the merge gate; an eval-only PR that skips them produces no `backend`/`frontend` checks, which the CLAUDE.md merge rule relies on being present and green (`gh pr checks` could read falsely green on a near-empty list). A "build once, deploy twice" refactor (share the Lambda zip + frontend base bundle between `deploy-test` and `deploy-production`) was also identified — larger, restructures the job graph, deferred to its own change.

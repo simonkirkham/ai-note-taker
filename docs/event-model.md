@@ -64,7 +64,7 @@ A named partition of a user's content (e.g. *Work* / *Personal*). A second isola
 
 | Command | Pre-conditions | Events emitted |
 |---|---|---|
-| `CreateNote(noteId, createdAt)` | NoteId does not exist | `NoteCreated` (with empty title) |
+| `CreateNote(noteId, workspaceId)` | NoteId does not exist | `NoteCreated` (empty title) + `NoteAssignedToWorkspace` (the request's workspace, 23-B) |
 | `RenameNote(noteId, newTitle, renamedAt)` | Note exists, not deleted, new title differs from current | `NoteRenamed` |
 | `EditContent(noteId, content, editedAt)` | Note exists, not deleted, content differs from current | `ContentEdited` |
 | `TagNote(noteId, tag, taggedAt)` | Note exists, tag not already present (one command per token) | `NoteTagged` |
@@ -128,6 +128,7 @@ A named partition of a user's content (e.g. *Work* / *Personal*). A second isola
 - `AnalysisSummaryRecorded { NoteId, Summary, DiscussionPoints[], Decisions[], ModelId, PromptVersion }` — the AI's Final notes artifact; full snapshot, latest wins (like `ContentEdited`). `ModelId`/`PromptVersion` attribute who/what generated it. Folds into `NoteDetail.summary`/`discussionPoints`/`decisions`/`summaryModelId`/`summaryPromptVersion`
 - `TranscriptionCompleted { NoteId, TranscriptText, DurationSeconds }` — the finalised transcript of a recording; full snapshot, latest wins (a re-record replaces). Folds into `NoteDetail.transcriptText`. One per completed recording. A **resumed** recording (Phase 18-C "continue") seeds the new session from the prior committed transcript and commits the **concatenation** (prior + `— resumed —` + new turns) — still one `TranscriptionCompleted` per commit; resume is a frontend concatenation, not a new event.
 - `NoteDeleted { NoteId }` — soft delete; event remains in the stream, projections filter it out
+- `NoteAssignedToWorkspace { NoteId, WorkspaceId }` *(Phase 23-B)* — latest-wins workspace membership, folded on the Note aggregate like `NoteFiledInFolder`. Emitted by `CreateNote` (and by `MoveNoteToWorkspace` in 23-F). Note-derived read models (NoteCard/NoteDetail/NoteTitleList/NoteSearchView/TagIndex) fold it to carry `WorkspaceId`; a note with no such event resolves to the default workspace at read time
 
 > **Transcription checkpoints are NOT events.** While a recording is in progress the browser autosaves the partial transcript every few seconds to an overwrite-in-place **draft store** (`ITranscriptionDraftStore`, a loss-tolerant recovery buffer keyed by note, self-reaped via TTL), **not** the event log — see [ADR 0011](adr/0011-transcription-checkpoints-draft-store.md). Only the final, committed transcript becomes a `TranscriptionCompleted` event; a clean stop also deletes the draft. The draft is composed into `GET /notes/{id}` at read time (`transcriptDraft`) purely so an interrupted recording can be recovered; it is never a projection field and holds no authoritative state.
 

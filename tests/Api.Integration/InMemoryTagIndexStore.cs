@@ -6,10 +6,10 @@ internal sealed class InMemoryTagIndexStore : ITagIndexStore
 {
     private readonly List<TagIndexView> _entries = new();
 
-    public Task PutAsync(string tag, string noteId, string userId, CancellationToken ct = default)
+    public Task PutAsync(string tag, string noteId, string userId, string? workspaceId, CancellationToken ct = default)
     {
-        if (!_entries.Any(x => x.Tag == tag && x.NoteId == noteId))
-            _entries.Add(new TagIndexView(tag, noteId, userId));
+        _entries.RemoveAll(x => x.Tag == tag && x.NoteId == noteId);
+        _entries.Add(new TagIndexView(tag, noteId, userId, workspaceId));
         return Task.CompletedTask;
     }
 

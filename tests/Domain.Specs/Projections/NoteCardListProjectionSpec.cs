@@ -36,6 +36,33 @@ public sealed class NoteCardListProjectionSpec
     }
 
     [Fact]
+    public void NoteCreated_without_assignment_leaves_workspace_null()
+    {
+        // Historical notes (created before 23-B) carry no NoteAssignedToWorkspace;
+        // the row's WorkspaceId stays null and read paths resolve it to the default.
+        var projection = new NoteCardListProjection();
+
+        projection.Handle(NoteEnv(1, nameof(NoteCreated),
+            JsonSerializer.Serialize(new NoteCreated(NoteId1))));
+
+        Assert.Null(projection.GetAll()[0].WorkspaceId);
+    }
+
+    [Fact]
+    public void NoteAssignedToWorkspace_sets_card_workspace()
+    {
+        var projection = new NoteCardListProjection();
+        var ws = new Domain.Workspaces.WorkspaceId("ws-work");
+
+        projection.Handle(NoteEnv(1, nameof(NoteCreated),
+            JsonSerializer.Serialize(new NoteCreated(NoteId1))));
+        projection.Handle(NoteEnv(2, nameof(NoteAssignedToWorkspace),
+            JsonSerializer.Serialize(new NoteAssignedToWorkspace(NoteId1, ws))));
+
+        Assert.Equal("ws-work", projection.GetAll()[0].WorkspaceId);
+    }
+
+    [Fact]
     public void NoteRenamed_updates_title()
     {
         var projection = new NoteCardListProjection();

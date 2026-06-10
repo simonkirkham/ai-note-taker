@@ -34,6 +34,8 @@ public sealed class DynamoDbNoteDetailStore(IAmazonDynamoDB dynamo, string table
             item["SummaryModelId"] = new AttributeValue { S = detail.SummaryModelId };
         if (!string.IsNullOrEmpty(detail.SummaryPromptVersion))
             item["SummaryPromptVersion"] = new AttributeValue { S = detail.SummaryPromptVersion };
+        if (!string.IsNullOrEmpty(detail.WorkspaceId))
+            item["WorkspaceId"] = new AttributeValue { S = detail.WorkspaceId };
 
         await dynamo.PutItemAsync(new PutItemRequest { TableName = tableName, Item = item }, ct)
             .ConfigureAwait(false);
@@ -126,7 +128,8 @@ public sealed class DynamoDbNoteDetailStore(IAmazonDynamoDB dynamo, string table
             DiscussionPoints: discussionPoints,
             Decisions: decisions,
             SummaryModelId: summaryModelId,
-            SummaryPromptVersion: summaryPromptVersion);
+            SummaryPromptVersion: summaryPromptVersion,
+            WorkspaceId: item.TryGetValue("WorkspaceId", out var wsAttr) ? wsAttr.S : null);
     }
 
     private static IReadOnlyList<string>? ReadStringList(Dictionary<string, AttributeValue> item, string key) =>

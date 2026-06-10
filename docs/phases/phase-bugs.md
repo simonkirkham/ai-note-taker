@@ -25,7 +25,7 @@
 | BUG-12 | `DynamoDbNoteSearchViewStore.GetByNoteIdAsync` omits `ConsistentRead = true` — stale read on the inline read-modify-write can clobber a just-written field | Done | 22-A |
 | BUG-13 | Search bar shows two clear `✕` — the native `<input type="search">` cancel button on top of the custom clear button | Done | 22-B |
 | BUG-14 | Pasting space-separated tags drops a pill — optimistic patch no-ops when the note isn't cached yet (initial GET in flight) | Done | 20-E |
-| BUG-15 | Forced through full Google sign-in on cold load — bootstrap never uses the `rt` refresh cookie, so the session is only ~1h not 30 days | In Progress | BUG-11 |
+| BUG-15 | Forced through full Google sign-in on cold load — bootstrap never uses the `rt` refresh cookie, so the session is only ~1h not 30 days | Done | BUG-11 |
 | BUG-16 | Google emails the user on every login — `prompt=consent` forces a fresh consent grant on each sign-in | Not Started | BUG-11 |
 
 Further bugs will be appended as they are identified.
@@ -348,7 +348,7 @@ No CDK change: the `/api/*` CloudFront behaviour already uses `CACHING_DISABLED`
 
 ## BUG-15 — Forced through full Google sign-in on cold load (refresh cookie unused at bootstrap)
 
-**Status:** In Progress.
+**Status:** Done — fixed in PR #209 (squash commit `05d927a`), deployed to main 2026-06-10 (deploy #500). Reproduced by the `cold-start silent refresh (BUG-15)` block in `web/src/__tests__/TokenRefresh.test.tsx` (red before, green after).
 
 **Severity:** Medium — no data loss, but the user is repeatedly bounced through the full Google OAuth consent ("You're signing back in to note-taker-ai.com") during normal use, despite holding a valid 30-day refresh cookie. The user reports hitting this "regularly".
 
@@ -369,14 +369,16 @@ The mount effect (`AuthContext.tsx:112-141`) only handles returning *from* a Goo
 3. Observe the Google "You're signing back in" screen instead of a silently restored session — even though the 30-day `rt` cookie is still valid.
 
 **Acceptance criteria:**
-- [ ] A failing test reproduces the gap before the fix: cold mount with an expired/absent persisted token but a refresh that *would* succeed ends up signed-in (currently ends up at the sign-in gate).
-- [ ] On mount — when `clientId` is set, `initialToken` is absent, there is no OAuth `code` in the URL, and there is no valid persisted token — the app calls `attemptSilentRefresh()` and adopts the returned token on success.
-- [ ] While the cold-start refresh is in flight the gate shows a loading state, not the sign-in button (no flash of the sign-in screen, no premature `signIn()`).
-- [ ] On refresh failure the sign-in gate is shown exactly as today (no regression to the genuinely-signed-out path).
-- [ ] Existing auth/token-refresh tests stay green (scheduled refresh, tab-visible recheck, 401-retry unchanged).
-- [ ] Optimistic-UI / effect-ordering invariant preserved: the in-memory token is still set before child data-fetch effects run (no reintroduction of the BUG-1 blank-screen race).
+- [x] A failing test reproduces the gap before the fix: cold mount with an expired/absent persisted token but a refresh that *would* succeed ends up signed-in (currently ends up at the sign-in gate).
+- [x] On mount — when `clientId` is set, `initialToken` is absent, there is no OAuth `code` in the URL, and there is no valid persisted token — the app calls `attemptSilentRefresh()` and adopts the returned token on success.
+- [x] While the cold-start refresh is in flight the gate shows a loading state, not the sign-in button (no flash of the sign-in screen, no premature `signIn()`).
+- [x] On refresh failure the sign-in gate is shown exactly as today (no regression to the genuinely-signed-out path).
+- [x] Existing auth/token-refresh tests stay green (scheduled refresh, tab-visible recheck, 401-retry unchanged).
+- [x] Optimistic-UI / effect-ordering invariant preserved: the in-memory token is still set before child data-fetch effects run (no reintroduction of the BUG-1 blank-screen race).
 
-**Key files (anticipated):** `web/src/auth/AuthContext.tsx` (bootstrap effect + loading state), `web/src/auth/silentRefresh.ts`, the sign-in gate component that renders on `idToken === null`; tests under `web/src/__tests__/` (new cold-start bootstrap test). Related: [BUG-11] (refresh-token flow), [BUG-1] (effect-ordering / blank-screen race).
+**Fix:** added a one-shot cold-start refresh in `AuthProvider`. `shouldBootstrapRefresh` is true when a clientId is set, no token was seeded (no `initialToken`, no valid persisted token), and there is no OAuth `code` in the URL; a mount effect then calls `attemptSilentRefresh()` and adopts the token on success. New `authLoading` gate state holds an accessible `<AuthLoading>` spinner while the refresh is in flight, so the sign-in screen never flashes; `idToken` stays null until the token arrives, preserving the BUG-1 token-before-first-fetch invariant.
+
+**Key files:** `web/src/auth/AuthContext.tsx` (bootstrap effect + `authLoading`), `web/src/auth/context.ts` (`authLoading` on `AuthState`), `web/src/App.tsx` (`AuthLoading` gate), `web/src/components/App.module.css` (`.authSpinner`); tests `web/src/__tests__/TokenRefresh.test.tsx` (cold-start block), `web/src/__tests__/Auth.test.tsx`, `web/src/__tests__/SignInPage.test.tsx`. Related: [BUG-11] (refresh-token flow), [BUG-1] (effect-ordering / blank-screen race), [BUG-16] (per-login consent email).
 
 ---
 

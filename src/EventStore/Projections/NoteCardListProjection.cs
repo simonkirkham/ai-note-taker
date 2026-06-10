@@ -85,6 +85,9 @@ public sealed class NoteCardListProjection
             case NoteUnfiled e when _cards.TryGetValue(e.NoteId, out var c):
                 _cards[e.NoteId] = c with { FolderId = null, LastModifiedAt = envelope.OccurredAt };
                 break;
+            case NoteAssignedToWorkspace e when _cards.TryGetValue(e.NoteId, out var c):
+                _cards[e.NoteId] = c with { WorkspaceId = e.WorkspaceId.Value };
+                break;
             default:
                 break;
         }

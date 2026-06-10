@@ -63,6 +63,7 @@ public static class Builder
             });
         builder.Services.AddAuthorization();
         builder.Services.AddScoped<ICurrentUser, CurrentUser>();
+        builder.Services.AddScoped<ICurrentWorkspace, CurrentWorkspace>();
 
         // Configure AmazonDynamoDB client with reduced timeouts (seconds).
         // Set DYNAMO_TIMEOUT_SECONDS env var to override the default (5s).
