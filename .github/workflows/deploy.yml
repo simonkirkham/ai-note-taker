@@ -243,11 +243,13 @@ jobs:
       - name: Cache Playwright browsers
         uses: actions/cache@v5
         with:
+          # Playwright .NET shells to the same default browser cache as JS Playwright.
           path: ~/.cache/ms-playwright
           # Keyed on the pinned Microsoft.Playwright version (csproj) — a browser
-          # bump changes the key and forces a fresh download.
+          # bump changes the key and forces a fresh download. No restore-keys: a
+          # prefix fallback would only restore the OLD browser revision (useless —
+          # the bumped version re-downloads regardless) as dead disk.
           key: playwright-${{ runner.os }}-${{ hashFiles('tests/Browser.E2E/Browser.E2E.csproj') }}
-          restore-keys: playwright-${{ runner.os }}-
 
       # On a cache hit the browser download is skipped; --with-deps still installs
       # the OS apt libraries (not cached — the runner is ephemeral).
