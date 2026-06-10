@@ -7,7 +7,7 @@
 | Slice | Summary | Status | Depends on |
 |-------|---------|--------|------------|
 | 23-A | **Workspace aggregate + list + CRUD API + default workspace.** `Workspace` aggregate (create/rename/delete), `WorkspaceList` projection + table, `/workspaces` endpoints, reserved non-deletable default "Personal". No content scoping yet. | Done | — |
-| 23-B | **Scope the write path + note read models.** `EventMetadata.WorkspaceId`; `/w/{wsId}` route group + rootless→default fallback; context reads & validates `wsId`; `NoteAssignedToWorkspace` on create; scope NoteCard/NoteDetail/NoteTitleList/NoteSearch/TagIndex/NoteActions by (user, workspace) with `null→default`. | Not Started | 23-A |
+| 23-B | **Scope the write path + note read models.** `EventMetadata.WorkspaceId`; `/w/{wsId}` route group + rootless→default fallback; context reads & validates `wsId`; `NoteAssignedToWorkspace` on create; scope NoteCard/NoteDetail/NoteTitleList/NoteSearch/TagIndex/NoteActions by (user, workspace) with `null→default`. | Done | 23-A |
 | 23-C | **Scope folders + to-dos; enforce delete-if-empty.** FolderTree + TodoList gain a workspace dimension; `DeleteWorkspace` blocked when the workspace holds any active note. | Not Started | 23-B |
 | 23-D | **Frontend workspace routing + context.** `/w/:wsId` routes, `/`→`/w/{default}` redirect, `WorkspaceContext` from route params, api-client path injection, query keys gain `wsId`, cache reset on switch. Single (default) workspace, fully prefix-routed. | Not Started | 23-B |
 | 23-E | **Workspace switcher + CRUD UI** *(prototype first)*. Sidebar switcher, create/rename/delete workspace, navigate between workspaces. Multi-workspace usable end to end. | Not Started | 23-D |
