@@ -66,18 +66,3 @@ Each entry records what it is, why it isn't scheduled yet, and where it was rais
 **Spike result (2026-06-03, Windows — de-risked):** A throwaway Electron spike on the `prototype/desktop-audio-spike` branch (`desktop-spike/`) confirmed the core hypothesis. With `session.setDisplayMediaRequestHandler` answering each request `{ video: <screen>, audio: 'loopback' }`, the renderer's `getDisplayMedia({audio,video})` resolved with **no source-picker dialog and no per-meeting consent**, and a live level meter tracked **system audio** (Windows loopback). So the picker friction is genuinely removable via a desktop shell — the remaining work is integration/packaging, not feasibility. macOS loopback via this handler remains unproven (the known weak platform). Branch is reference-only, never merged.
 
 **Raised in:** User request, 2026-06-03 — "Currently agreeing to share the audio from the machine for each meeting is far from ideal"; would an installed app make audio access easier?
-
----
-
-## Paste images into a note during a live meeting
-
-**What:** Let the user paste an image (clipboard paste, e.g. a screenshot of a shared slide/whiteboard) into a note **while a meeting is live**, so visual context is captured alongside the transcript. The primary trigger is the live-meeting flow (`web/src/hooks/useTranscription.ts` and the active-note view), not just after-the-fact editing. Scope to design when broken down:
-- **Capture** — handle a paste event (`ClipboardEvent` image blob) in the live note view; likely also support paste while editing an existing note for consistency.
-- **Storage** — images don't belong in the event store as blobs. Needs an image store (S3) with the note event recording a reference (key/URL + metadata), not the bytes. New additive event on the note aggregate (e.g. `NoteImageAttached`), an S3 bucket + upload path in CDK, and presigned-URL access for the frontend.
-- **Inline vs attachment (open decision):** user is fine with either — **inline** display (image rendered in the note body, e.g. a markdown image ref against content) is the nicer UX but only worth it if not significantly harder than a simple **attachment** list (stored, listed, downloadable). Breaker/Scout to pick based on effort once the storage path is designed; default to attachment if inline turns out to be materially more work.
-
-**Out of scope (for now):** AI analysis of the image (OCR / extracting action items or summary from a slide/whiteboard) — user did **not** ask for this. If revisited, it would touch the analysis/model-prompt track and need a vision-capable model, so capture it as a separate feature rather than bolting it on.
-
-**Why it isn't scheduled yet:** Needs breaking down by Scout into a numbered phase. Introduces the project's first binary-blob storage path (S3 + presigned access + CDK wiring), a new note event, and frontend paste handling — plus the inline-vs-attachment UX decision. Not a tweak to existing behaviour.
-
-**Raised in:** User idea, 2026-06-10 — "being able to paste in images". Clarified same day: primary use is **during a live meeting**; inline preferred but not if significantly harder than an attachment; AI analysis not requested.

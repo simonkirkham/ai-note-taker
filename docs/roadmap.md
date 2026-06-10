@@ -305,6 +305,14 @@ Make `POST /admin/projections/rebuild` reliable on the first try and incapable o
 
 Slices and acceptance criteria: [docs/phases/phase-24.md](phases/phase-24.md)
 
+## Phase 25 — Inline images in notes (paste, drop, pick) _(Not Started)_
+
+Add images to a note via **clipboard paste, drag-and-drop, or a file-picker button** and render them **inline** in the note body — primarily while a meeting is live (the "Quick notes" tab), identically when editing afterwards. Images are stored as binary objects in a **private S3 bucket** (the project's first user-data blob store); note content holds only a stable key reference, and the browser fetches each image via a short-lived **presigned GET** minted at render time. Frontend is reuse-heavy — content is already markdown rendered by Tiptap, whose `StarterKit` bundles an `Image` extension — so the net-new work is the backend media path. Three slices: backend media store + presigned upload/download with ownership+prefix authz and a server-enforced type allowlist/10 MB cap (25-A); paste/drop/pick → upload → inline render across live + edit, optimistic, with the key↔presigned `src` rewrite that never persists an expiring URL (25-B); lifecycle + analysis hygiene — delete-note purges the image prefix, image markdown stripped from the AI analysis input (25-C). 25-B and 25-C depend only on 25-A. **No new event, no new projection, no event-model change** — image refs ride in `ContentEditedV2`, bytes are external blob state. Graduated from the "Paste images" future-features idea.
+
+**Goal:** first binary-blob path in a text/event-sourced app; browser-direct-to-S3 uploads via a presigned POST policy (size/type conditions + bucket CORS) vs proxying bytes through Lambda; minting short-lived presigned GETs at render time and the data-rot trap of persisting an expiring URL; keeping external blob state honest alongside an event-sourced aggregate.
+
+Slices and acceptance criteria: [docs/phases/phase-25.md](phases/phase-25.md)
+
 ---
 
 ## Standing tracks and planning docs
