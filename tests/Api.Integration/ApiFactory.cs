@@ -88,6 +88,8 @@ public class ApiFactory : WebApplicationFactory<Program>
             services.RemoveAll<IBedrockAnalysisService>();
             services.AddSingleton<FakeBedrockAnalysisService>();
             services.AddSingleton<IBedrockAnalysisService>(sp => sp.GetRequiredService<FakeBedrockAnalysisService>());
+            services.RemoveAll<Api.Services.INoteImageStore>();
+            services.AddSingleton<Api.Services.INoteImageStore, FakeNoteImageStore>();
         });
     }
 

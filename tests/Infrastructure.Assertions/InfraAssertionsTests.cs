@@ -1260,4 +1260,88 @@ public class InfraAssertionsTests
             })
         }));
     }
+
+    // ── Note images bucket (Phase 25-A) ──────────────────────────────
+    // The images bucket is the only bucket with a CorsConfiguration, so matching on
+    // its presence uniquely identifies it (the web bucket has none).
+
+    [Fact]
+    public void NoteImagesBucket_HasRetainAndBlocksPublicAccess()
+    {
+        _template.HasResource("AWS::S3::Bucket", Match.ObjectLike(new Dictionary<string, object>
+        {
+            ["DeletionPolicy"] = "Retain",
+            ["Properties"] = Match.ObjectLike(new Dictionary<string, object>
+            {
+                ["PublicAccessBlockConfiguration"] = Match.ObjectLike(new Dictionary<string, object>
+                {
+                    ["BlockPublicAcls"] = true,
+                    ["BlockPublicPolicy"] = true,
+                    ["IgnorePublicAcls"] = true,
+                    ["RestrictPublicBuckets"] = true
+                }),
+                ["CorsConfiguration"] = Match.AnyValue()
+            })
+        }));
+    }
+
+    [Fact]
+    public void NoteImagesBucket_HasCorsRuleAllowingPut()
+    {
+        _template.HasResourceProperties("AWS::S3::Bucket", Match.ObjectLike(new Dictionary<string, object>
+        {
+            ["CorsConfiguration"] = Match.ObjectLike(new Dictionary<string, object>
+            {
+                ["CorsRules"] = Match.ArrayWith(new object[]
+                {
+                    Match.ObjectLike(new Dictionary<string, object>
+                    {
+                        ["AllowedMethods"] = Match.ArrayWith(new object[] { "PUT" })
+                    })
+                })
+            })
+        }));
+    }
+
+    [Fact]
+    public void Lambda_HasImageBucketEnvVar()
+    {
+        _template.HasResourceProperties("AWS::Lambda::Function", Match.ObjectLike(new Dictionary<string, object>
+        {
+            ["Environment"] = Match.ObjectLike(new Dictionary<string, object>
+            {
+                ["Variables"] = Match.ObjectLike(new Dictionary<string, object>
+                {
+                    ["IMAGE_BUCKET_NAME"] = Match.AnyValue()
+                })
+            })
+        }));
+    }
+
+    [Fact]
+    public void Lambda_HasScopedS3PermissionsForImages()
+    {
+        // The bucket grant puts read+write object actions in one statement (wildcard
+        // forms). Assert each independently — Match.ArrayWith matches in order, so a
+        // single-action pattern avoids coupling the test to CDK's action ordering.
+        _template.HasResourceProperties("AWS::IAM::Policy", PolicyWithObjectAction("s3:GetObject*"));
+        _template.HasResourceProperties("AWS::IAM::Policy", PolicyWithObjectAction("s3:PutObject"));
+        _template.HasResourceProperties("AWS::IAM::Policy", PolicyWithObjectAction("s3:DeleteObject*"));
+    }
+
+    private static object PolicyWithObjectAction(string action) =>
+        Match.ObjectLike(new Dictionary<string, object>
+        {
+            ["PolicyDocument"] = Match.ObjectLike(new Dictionary<string, object>
+            {
+                ["Statement"] = Match.ArrayWith(new object[]
+                {
+                    Match.ObjectLike(new Dictionary<string, object>
+                    {
+                        ["Action"] = Match.ArrayWith(new object[] { action }),
+                        ["Effect"] = "Allow"
+                    })
+                })
+            })
+        });
 }
