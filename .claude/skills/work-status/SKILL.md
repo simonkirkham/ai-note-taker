@@ -7,6 +7,10 @@ description: Report outstanding work across all phase docs and standing tracks. 
 
 Produce a factual, no-prose snapshot of outstanding work. Read the docs, classify each item by status, print the report. Do not edit anything.
 
+## Step 0 — Pull latest
+
+Run `git pull` first so the report reflects the current state of the docs. A parallel session can advance `origin/main` ahead of the local checkout; reading stale phase docs reports stale status. If the pull fails (e.g. dirty working tree, conflict), note it in one line at the top of the report and continue with the local docs.
+
 ## Step 1 — Read the sources
 
 | Track | Source | Status cell |
