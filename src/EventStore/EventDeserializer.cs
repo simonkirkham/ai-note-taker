@@ -34,6 +34,7 @@ public static class EventDeserializer
         (nameof(FolderMoved), _) => JsonSerializer.Deserialize<FolderMoved>(envelope.Payload)!,
         (nameof(NoteFiledInFolder), _) => JsonSerializer.Deserialize<NoteFiledInFolder>(envelope.Payload)!,
         (nameof(NoteUnfiled), _) => JsonSerializer.Deserialize<NoteUnfiled>(envelope.Payload)!,
+        (nameof(NoteAssignedToWorkspace), _) => JsonSerializer.Deserialize<NoteAssignedToWorkspace>(envelope.Payload)!,
         (nameof(NoteLinkedToCalendarEvent), _) => JsonSerializer.Deserialize<NoteLinkedToCalendarEvent>(envelope.Payload)!,
         (nameof(TranscriptionCompleted), _) => JsonSerializer.Deserialize<TranscriptionCompleted>(envelope.Payload)!,
         (nameof(AnalysisSummaryRecorded), _) => JsonSerializer.Deserialize<AnalysisSummaryRecorded>(envelope.Payload)!,

@@ -28,7 +28,8 @@ public record EventMetadata(
     Guid CommandId,         // for idempotency / dedup
     string? UserId,         // null until Phase 7 auth lands
     string? CorrelationId,  // trace id from the API request
-    string? CausationId     // event id of the event that caused this one (if any)
+    string? CausationId,    // event id of the event that caused this one (if any)
+    string? WorkspaceId = null  // Phase 23-B: workspace the write happened in; null on pre-23-B events
 );
 ```
 

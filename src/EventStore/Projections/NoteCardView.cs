@@ -14,4 +14,5 @@ public record NoteCardView(
     bool Deleted,
     IReadOnlyList<string>? Tags = null,
     FolderId? FolderId = null,
-    string UserId = "");
+    string UserId = "",
+    string? WorkspaceId = null);

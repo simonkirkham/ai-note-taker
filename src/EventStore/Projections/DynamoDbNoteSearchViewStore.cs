@@ -23,6 +23,8 @@ public sealed class DynamoDbNoteSearchViewStore(IAmazonDynamoDB dynamo, string t
         };
         if (view.Tags is { Count: > 0 })
             item["Tags"] = new() { SS = view.Tags.ToList() };
+        if (!string.IsNullOrEmpty(view.WorkspaceId))
+            item["WorkspaceId"] = new() { S = view.WorkspaceId };
 
         await dynamo.PutItemAsync(new PutItemRequest { TableName = tableName, Item = item }, ct)
             .ConfigureAwait(false);
@@ -127,6 +129,7 @@ public sealed class DynamoDbNoteSearchViewStore(IAmazonDynamoDB dynamo, string t
             Tags: tags,
             ActionItemsText: item.TryGetValue("ActionItemsText", out var ai) ? ai.S : string.Empty,
             Deleted: item.TryGetValue("Deleted", out var del) && (del.BOOL ?? false),
-            LastModifiedAt: item.TryGetValue("LastModifiedAt", out var lm) ? DateTimeOffset.Parse(lm.S) : default);
+            LastModifiedAt: item.TryGetValue("LastModifiedAt", out var lm) ? DateTimeOffset.Parse(lm.S) : default,
+            WorkspaceId: item.TryGetValue("WorkspaceId", out var ws) ? ws.S : null);
     }
 }

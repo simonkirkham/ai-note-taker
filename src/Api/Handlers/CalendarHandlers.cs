@@ -4,6 +4,7 @@ using Api.Contracts;
 using Api.Auth;
 using Api.Services;
 using Domain.Notes;
+using Domain.Workspaces;
 using EventStore.Projections;
 using Microsoft.Extensions.Logging;
 
@@ -89,13 +90,14 @@ public static class CalendarHandlers
         INoteCommandHandler handler,
         ICalendarLinkIndexStore calendarLinkStore,
         ICurrentUser currentUser,
+        ICurrentWorkspace currentWorkspace,
         CancellationToken ct)
     {
         var existing = await calendarLinkStore.GetByCalendarEventIdAsync(req.CalendarEventId, ct);
         if (existing is not null && existing.UserId == currentUser.UserId) return Results.Conflict();
 
         var noteId = new NoteId(Guid.NewGuid());
-        await handler.HandleAsync(new CreateNote(noteId), ct);
+        await handler.HandleAsync(new CreateNote(noteId, new WorkspaceId(currentWorkspace.WorkspaceId)), ct);
         await handler.HandleAsync(new RenameNote(noteId, req.Title), ct);
         await handler.HandleAsync(new SetNoteDate(noteId, DateOnly.FromDateTime(req.StartTime.LocalDateTime)), ct);
         await handler.HandleAsync(new LinkNoteToCalendarEvent(noteId, req.CalendarEventId, req.Title,
@@ -110,6 +112,7 @@ public static class CalendarHandlers
         INoteCommandHandler handler,
         ICalendarLinkIndexStore calendarLinkStore,
         ICurrentUser currentUser,
+        ICurrentWorkspace currentWorkspace,
         CancellationToken ct)
     {
         if (string.IsNullOrWhiteSpace(req.RecurringSeriesId))
@@ -124,7 +127,7 @@ public static class CalendarHandlers
             return Results.Ok(new { noteId = existing.NoteId, alreadyExists = true });
 
         var noteId = new NoteId(Guid.NewGuid());
-        await handler.HandleAsync(new CreateNote(noteId), ct);
+        await handler.HandleAsync(new CreateNote(noteId, new WorkspaceId(currentWorkspace.WorkspaceId)), ct);
         await handler.HandleAsync(new RenameNote(noteId, next.Title), ct);
         await handler.HandleAsync(new SetNoteDate(noteId, DateOnly.FromDateTime(next.StartTime.LocalDateTime)), ct);
         await handler.HandleAsync(new LinkNoteToCalendarEvent(noteId, next.CalendarEventId, next.Title,

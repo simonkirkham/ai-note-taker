@@ -5,17 +5,21 @@ namespace EventStore.Projections;
 
 public sealed class DynamoDbTagIndexStore(IAmazonDynamoDB dynamo, string tableName) : ITagIndexStore
 {
-    public async Task PutAsync(string tag, string noteId, string userId, CancellationToken ct = default)
+    public async Task PutAsync(string tag, string noteId, string userId, string? workspaceId, CancellationToken ct = default)
     {
+        var item = new Dictionary<string, AttributeValue>
+        {
+            ["Tag"] = new() { S = tag },
+            ["NoteId"] = new() { S = noteId },
+            ["UserId"] = new() { S = userId }
+        };
+        if (!string.IsNullOrEmpty(workspaceId))
+            item["WorkspaceId"] = new() { S = workspaceId };
+
         await dynamo.PutItemAsync(new PutItemRequest
         {
             TableName = tableName,
-            Item = new Dictionary<string, AttributeValue>
-            {
-                ["Tag"] = new() { S = tag },
-                ["NoteId"] = new() { S = noteId },
-                ["UserId"] = new() { S = userId }
-            }
+            Item = item
         }, ct).ConfigureAwait(false);
     }
 
@@ -69,7 +73,9 @@ public sealed class DynamoDbTagIndexStore(IAmazonDynamoDB dynamo, string tableNa
                 ConsistentRead = true
             }, ct).ConfigureAwait(false);
             foreach (var row in response.Items)
-                items.Add(new TagIndexView(row["Tag"].S, row["NoteId"].S, row.TryGetValue("UserId", out var uidAttr) ? uidAttr.S : ""));
+                items.Add(new TagIndexView(row["Tag"].S, row["NoteId"].S,
+                    row.TryGetValue("UserId", out var uidAttr) ? uidAttr.S : "",
+                    row.TryGetValue("WorkspaceId", out var wsAttr) ? wsAttr.S : null));
             lastKey = response.LastEvaluatedKey?.Count > 0 ? response.LastEvaluatedKey : null;
         }
         while (lastKey is not null);

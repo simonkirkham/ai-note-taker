@@ -21,6 +21,7 @@ public sealed class NoteCommandHandler(
     ICalendarLinkIndexStore calendarLinkIndexStore,
     INoteSearchViewStore noteSearchViewStore,
     ICurrentUser currentUser,
+    ICurrentWorkspace currentWorkspace,
     IDomainMetrics metrics,
     ILogger<NoteCommandHandler> logger) : INoteCommandHandler
 {
@@ -50,7 +51,7 @@ public sealed class NoteCommandHandler(
 
     private async Task PersistAsync(string streamId, NoteId noteId, IReadOnlyList<EventEnvelope> history, IReadOnlyList<IDomainEvent> newEvents, CancellationToken ct)
     {
-        var envelopes = ToEnvelopes(streamId, newEvents, currentUser.UserId);
+        var envelopes = ToEnvelopes(streamId, newEvents, currentUser.UserId, currentWorkspace.WorkspaceId);
         await store.AppendAsync(streamId, history.Count, envelopes, ct).ConfigureAwait(false);
         await UpdateProjectionAsync(noteId, history, envelopes, ct).ConfigureAwait(false);
     }
@@ -82,7 +83,10 @@ public sealed class NoteCommandHandler(
         await noteCardListStore.UpsertAsync(
             ApplyNoteEventsToCard(card, noteId, newEnvelopes), ct).ConfigureAwait(false);
 
-        await UpdateTagIndexForNewEventsAsync(newEnvelopes, ct).ConfigureAwait(false);
+        // Tag rows inherit the note's CURRENT workspace (from the rebuilt detail), not the
+        // request route's workspace — so the live write matches what a rebuild would produce
+        // even if a note is tagged via a different workspace's route.
+        await UpdateTagIndexForNewEventsAsync(noteDetail.WorkspaceId, newEnvelopes, ct).ConfigureAwait(false);
         await UpdateTagFeedbackForNewEventsAsync(newEnvelopes, ct).ConfigureAwait(false);
         await UpdateActionItemFeedbackForNewEventsAsync(newEnvelopes, ct).ConfigureAwait(false);
         await UpdateCalendarLinkIndexForNewEventsAsync(noteId, newEnvelopes, ct).ConfigureAwait(false);
@@ -94,7 +98,7 @@ public sealed class NoteCommandHandler(
         var actionItemsText = existing?.ActionItemsText ?? string.Empty;
         var finalNotes = ComposeFinalNotes(detail);
         var view = new NoteSearchView(noteId, detail.UserId, detail.Title, detail.Content, finalNotes,
-            detail.Tags ?? [], actionItemsText, false, detail.LastModifiedAt);
+            detail.Tags ?? [], actionItemsText, false, detail.LastModifiedAt, detail.WorkspaceId);
         await noteSearchViewStore.UpsertAsync(view, ct).ConfigureAwait(false);
     }
 
@@ -170,14 +174,14 @@ public sealed class NoteCommandHandler(
         return (item, noteDetail);
     }
 
-    private async Task UpdateTagIndexForNewEventsAsync(List<EventEnvelope> newEnvelopes, CancellationToken ct)
+    private async Task UpdateTagIndexForNewEventsAsync(string? noteWorkspaceId, List<EventEnvelope> newEnvelopes, CancellationToken ct)
     {
         foreach (var envelope in newEnvelopes)
         {
             switch (EventDeserializer.Deserialize(envelope))
             {
                 case NoteTagged e:
-                    await tagIndexStore.PutAsync(e.Tag, e.NoteId.Value.ToString("N"), currentUser.UserId, ct).ConfigureAwait(false);
+                    await tagIndexStore.PutAsync(e.Tag, e.NoteId.Value.ToString("N"), currentUser.UserId, noteWorkspaceId, ct).ConfigureAwait(false);
                     break;
                 case NoteUntagged e:
                     await tagIndexStore.DeleteAsync(e.Tag, e.NoteId.Value.ToString("N"), ct).ConfigureAwait(false);
@@ -245,6 +249,9 @@ public sealed class NoteCommandHandler(
                 case NoteUnfiled when card is not null:
                     card = card with { FolderId = null, LastModifiedAt = envelope.OccurredAt };
                     break;
+                case NoteAssignedToWorkspace e when card is not null:
+                    card = card with { WorkspaceId = e.WorkspaceId.Value };
+                    break;
                 default:
                     break;
             }
@@ -260,7 +267,7 @@ public sealed class NoteCommandHandler(
         return note;
     }
 
-    private static List<EventEnvelope> ToEnvelopes(string streamId, IReadOnlyList<IDomainEvent> events, string userId) =>
+    private static List<EventEnvelope> ToEnvelopes(string streamId, IReadOnlyList<IDomainEvent> events, string userId, string? workspaceId) =>
         events.Select(e =>
         {
             // Versioned events are persisted under their logical (v1) EventType name with a bumped
@@ -279,6 +286,6 @@ public sealed class NoteCommandHandler(
             return new EventEnvelope(
                 StreamId: streamId, SequenceNumber: 0, EventType: type, EventVersion: version,
                 OccurredAt: DateTimeOffset.UtcNow, Payload: payload,
-                Metadata: new EventMetadata(Guid.NewGuid(), userId, null, null));
+                Metadata: new EventMetadata(Guid.NewGuid(), userId, null, null, workspaceId));
         }).ToList();
 }
