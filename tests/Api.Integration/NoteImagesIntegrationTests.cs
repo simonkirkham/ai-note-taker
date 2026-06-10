@@ -1,3 +1,4 @@
+using System.Linq;
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
@@ -79,6 +80,39 @@ public class NoteImagesIntegrationTests : IClassFixture<ApiFactory>
         Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
         var body = await resp.Content.ReadFromJsonAsync<JsonElement>();
         Assert.False(string.IsNullOrEmpty(body.GetProperty("urls").GetProperty(key).GetString()));
+    }
+
+    [Fact]
+    public async Task Resolve_DuplicateKeys_DedupedReturns200()
+    {
+        var noteId = await CreateNoteAsync();
+        var key = $"notes/{noteId}/dup.png";
+        var resp = await _client.PostAsJsonAsync($"/notes/{noteId}/images/resolve",
+            new { keys = new[] { key, key } });
+
+        Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
+        var body = await resp.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal(1, body.GetProperty("urls").EnumerateObject().Count());
+    }
+
+    [Fact]
+    public async Task Resolve_TooManyKeys_Returns400()
+    {
+        var noteId = await CreateNoteAsync();
+        var keys = Enumerable.Range(0, 101).Select(i => $"notes/{noteId}/{i}.png").ToArray();
+        var resp = await _client.PostAsJsonAsync($"/notes/{noteId}/images/resolve", new { keys });
+
+        Assert.Equal(HttpStatusCode.BadRequest, resp.StatusCode);
+    }
+
+    [Fact]
+    public async Task PresignUpload_ZeroContentLength_Returns400()
+    {
+        var noteId = await CreateNoteAsync();
+        var resp = await _client.PostAsJsonAsync($"/notes/{noteId}/images/presign-upload",
+            new { contentType = "image/png", contentLength = 0 });
+
+        Assert.Equal(HttpStatusCode.BadRequest, resp.StatusCode);
     }
 
     [Fact]
