@@ -1,22 +1,49 @@
-import { useEditor, EditorContent } from "@tiptap/react";
-import type { Editor } from "@tiptap/react";
-import StarterKit from "@tiptap/starter-kit";
-import { useCallback, useRef, useState } from "react";
-import { Markdown } from "tiptap-markdown";
-import styles from "./NoteEditor.module.css";
+import Image from '@tiptap/extension-image';
+import { useEditor, EditorContent } from '@tiptap/react';
+import type { Editor } from '@tiptap/react';
+import StarterKit from '@tiptap/starter-kit';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { Markdown } from 'tiptap-markdown';
+import { presignUpload, resolveImages } from '../api/notes';
+import { extractImageKeys, srcsToKeys } from '../lib/noteImages';
+import styles from './NoteEditor.module.css';
+import { useToast } from './toastContext';
 
 interface NoteEditorProps {
+  noteId: string;
   value: string;
   onChange: (md: string) => void;
   onBlur: () => void;
 }
 
-export default function NoteEditor({ value, onChange, onBlur }: NoteEditorProps) {
+const ALLOWED_IMAGE_TYPES = new Set(['image/png', 'image/jpeg', 'image/gif', 'image/webp']);
+const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
+
+export default function NoteEditor({ noteId, value, onChange, onBlur }: NoteEditorProps) {
   const containerRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const [buttonY, setButtonY] = useState<number | null>(null);
+  const { showError } = useToast();
+
+  // The ProseMirror paste/drop handlers reach the upload logic through this ref.
+  // Calling the helpers directly from the useEditor config would make the config
+  // depend on `editor` (the useEditor return), a circular type/initialiser cycle.
+  const dataTransferHandlerRef = useRef<(data: DataTransfer | null) => boolean>(() => false);
+
+  // Maps every transient display src (object URL while uploading, presigned URL
+  // after a resolve) back to its stable S3 key. Serialization runs each value
+  // through this so persisted markdown only ever contains keys, never an
+  // expiring URL. A ref, not state: it changes outside React's render cycle
+  // (upload callbacks, resolve) and must not trigger re-renders.
+  const displaySrcToKey = useRef<Record<string, string>>({});
+
+  const serialize = useCallback(
+    (ed: Editor) => srcsToKeys(ed.storage.markdown.getMarkdown(), displaySrcToKey.current),
+    []
+  );
 
   const updateButton = useCallback((ed: Editor) => {
-    if (!ed.isActive("heading") || !containerRef.current) {
+    if (!ed.isActive('heading') || !containerRef.current) {
       setButtonY(null);
       return;
     }
@@ -28,17 +55,20 @@ export default function NoteEditor({ value, onChange, onBlur }: NoteEditorProps)
 
   const editor = useEditor({
     immediatelyRender: false,
-    extensions: [StarterKit, Markdown],
+    extensions: [StarterKit, Markdown, Image],
     content: value,
     editorProps: {
       attributes: {
-        "aria-label": "Note content",
-        "data-testid": "note-content",
+        'aria-label': 'Note content',
+        'data-testid': 'note-content',
         class: styles.contentInput,
       },
+      handlePaste: (_view, event): boolean => dataTransferHandlerRef.current(event.clipboardData),
+      handleDrop: (_view, event): boolean =>
+        dataTransferHandlerRef.current((event as DragEvent).dataTransfer),
     },
     onUpdate: ({ editor: ed }) => {
-      onChange(ed.storage.markdown.getMarkdown());
+      onChange(serialize(ed));
       updateButton(ed);
     },
     onSelectionUpdate: ({ editor: ed }) => updateButton(ed),
@@ -49,8 +79,155 @@ export default function NoteEditor({ value, onChange, onBlur }: NoteEditorProps)
     },
   });
 
+  // Replace the src of every image node currently rendering `oldSrc`.
+  const swapImageSrc = useCallback((ed: Editor, oldSrc: string, newSrc: string) => {
+    const { state } = ed;
+    const tr = state.tr;
+    let changed = false;
+    state.doc.descendants((node, pos) => {
+      if (node.type.name === 'image' && node.attrs.src === oldSrc) {
+        tr.setNodeMarkup(pos, undefined, { ...node.attrs, src: newSrc });
+        changed = true;
+      }
+    });
+    if (changed) ed.view.dispatch(tr);
+  }, []);
+
+  const removeImage = useCallback((ed: Editor, src: string) => {
+    const { state } = ed;
+    const tr = state.tr;
+    const positions: { from: number; to: number }[] = [];
+    state.doc.descendants((node, pos) => {
+      if (node.type.name === 'image' && node.attrs.src === src) {
+        positions.push({ from: pos, to: pos + node.nodeSize });
+      }
+    });
+    for (const { from, to } of positions.reverse()) tr.delete(from, to);
+    if (positions.length > 0) ed.view.dispatch(tr);
+  }, []);
+
+  const uploadImage = useCallback(
+    async (ed: Editor, file: File, previewUrl: string) => {
+      try {
+        const presign = await presignUpload(noteId, {
+          contentType: file.type,
+          contentLength: file.size,
+        });
+        const put = await fetch(presign.uploadUrl, {
+          method: 'PUT',
+          headers: { 'Content-Type': file.type },
+          body: file,
+        });
+        if (!put.ok) throw new Error(`upload failed: ${put.status}`);
+        displaySrcToKey.current[previewUrl] = presign.key;
+        // Keep the object URL for display (no extra resolve round-trip); the
+        // markdown now serializes to the stable key via displaySrcToKey.
+        onChange(serialize(ed));
+      } catch {
+        removeImage(ed, previewUrl);
+        URL.revokeObjectURL(previewUrl);
+        onChange(serialize(ed));
+        showError("Couldn't attach the image. Please try again.");
+      }
+    },
+    [noteId, onChange, removeImage, serialize, showError]
+  );
+
+  const insertAndUpload = useCallback(
+    (ed: Editor, file: File) => {
+      if (!ALLOWED_IMAGE_TYPES.has(file.type)) {
+        showError("That image type isn't supported.");
+        return;
+      }
+      if (file.size > MAX_IMAGE_BYTES) {
+        showError('That image is larger than 10 MB.');
+        return;
+      }
+      const previewUrl = URL.createObjectURL(file);
+      ed.chain().focus().setImage({ src: previewUrl }).run();
+      void uploadImage(ed, file, previewUrl);
+    },
+    [showError, uploadImage]
+  );
+
+  const handleImageDataTransfer = useCallback(
+    (data: DataTransfer | null): boolean => {
+      if (!editor || !data) return false;
+      const images = [...data.files].filter((f) => f.type.startsWith('image/'));
+      if (images.length === 0) return false;
+      for (const file of images) insertAndUpload(editor, file);
+      return true;
+    },
+    [editor, insertAndUpload]
+  );
+  useEffect(() => {
+    dataTransferHandlerRef.current = handleImageDataTransfer;
+  }, [handleImageDataTransfer]);
+
+  const handlePickFiles = useCallback(
+    (files: FileList | null) => {
+      if (!editor || !files) return;
+      for (const file of [...files]) insertAndUpload(editor, file);
+    },
+    [editor, insertAndUpload]
+  );
+
+  // Resolve stored keys to presigned URLs for display. Runs when the loaded
+  // content first contains unresolved keys; the `ignore` flag drops a stale
+  // response if the editor changed before the resolve returned. setState-free —
+  // the only mutation is a ProseMirror dispatch inside the `.then`.
+  const resolvedFor = useRef<string | null>(null);
+  useEffect(() => {
+    if (!editor) return;
+    const keys = extractImageKeys(value);
+    if (keys.length === 0) return;
+    const signature = `${noteId}:${keys.join(',')}`;
+    if (resolvedFor.current === signature) return;
+    resolvedFor.current = signature;
+    let ignore = false;
+    resolveImages(noteId, keys)
+      .then((urls) => {
+        if (ignore) return;
+        for (const [key, url] of Object.entries(urls)) {
+          displaySrcToKey.current[url] = key;
+          swapImageSrc(editor, key, url);
+        }
+      })
+      .catch(() => {
+        if (!ignore) resolvedFor.current = null;
+      });
+    return () => {
+      ignore = true;
+    };
+  }, [editor, noteId, value, swapImageSrc]);
+
   return (
     <div ref={containerRef} className={styles.noteEditorContainer}>
+      <div className={styles.toolbar}>
+        <button
+          type="button"
+          className={styles.toolbarButton}
+          data-testid="insert-image-button"
+          onClick={() => fileInputRef.current?.click()}
+          aria-label="Insert image"
+        >
+          <ImageIcon />
+          <span>Image</span>
+        </button>
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/png,image/jpeg,image/gif,image/webp"
+          multiple
+          className={styles.fileInput}
+          data-testid="image-file-input"
+          aria-label="Choose image to insert"
+          onChange={(e) => {
+            handlePickFiles(e.currentTarget.files);
+            e.currentTarget.value = '';
+          }}
+        />
+      </div>
       {buttonY !== null && editor && (
         <button
           className={styles.discussedButton}
@@ -66,5 +243,25 @@ export default function NoteEditor({ value, onChange, onBlur }: NoteEditorProps)
       )}
       <EditorContent editor={editor} />
     </div>
+  );
+}
+
+function ImageIcon() {
+  return (
+    <svg
+      width="14"
+      height="14"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
+      <circle cx="8.5" cy="8.5" r="1.5" />
+      <polyline points="21 15 16 10 5 21" />
+    </svg>
   );
 }
