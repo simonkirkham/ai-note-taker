@@ -26,7 +26,7 @@
 | BUG-13 | Search bar shows two clear `✕` — the native `<input type="search">` cancel button on top of the custom clear button | Done | 22-B |
 | BUG-14 | Pasting space-separated tags drops a pill — optimistic patch no-ops when the note isn't cached yet (initial GET in flight) | Done | 20-E |
 | BUG-15 | Forced through full Google sign-in on cold load — bootstrap never uses the `rt` refresh cookie, so the session is only ~1h not 30 days | Done | BUG-11 |
-| BUG-16 | Google emails the user on every login — `prompt=consent` forces a fresh consent grant on each sign-in | In Progress | BUG-11 |
+| BUG-16 | Google emails the user on every login — `prompt=consent` forces a fresh consent grant on each sign-in | Done | BUG-11 |
 
 Further bugs will be appended as they are identified.
 
@@ -384,7 +384,7 @@ The mount effect (`AuthContext.tsx:112-141`) only handles returning *from* a Goo
 
 ## BUG-16 — Google emails the user on every login (`prompt=consent` forces a consent grant)
 
-**Status:** In Progress.
+**Status:** Done — fixed in PR #215 (squash commit `0ecdb81`), deployed to main 2026-06-10 (deploy #504). Reproduced by `web/src/__tests__/ConsentPrompt.test.tsx` + `AuthUrl.test.ts` (red before, green after).
 
 **Severity:** Low — no functional impact, but on every sign-in Google sends a "You used Sign in with Google to sign in to note-taker-ai.com … This email summarises the info that you shared" security notification. Atypical SSO behaviour; reads as noisy/suspicious to the user.
 
@@ -408,12 +408,10 @@ The mount effect (`AuthContext.tsx:112-141`) only handles returning *from* a Goo
 3. Repeat sign-in → another email each time.
 
 **Acceptance criteria:**
-- [ ] `buildAuthUrl(..., forceConsent)` emits `prompt=consent` when `forceConsent` is true and omits `prompt` when false; `access_type=offline` is sent in both cases.
-- [ ] `signIn` passes `forceConsent = !isRefreshEstablished()` — a returning user (flag set) gets no `prompt=consent`; a first-time user (flag absent) does.
-- [ ] The `google_refresh_established` flag is set on a successful silent refresh and on a successful interactive exchange, and cleared on a silent-refresh failure and on a cold-start bootstrap-refresh failure (tests cover set + clear).
-- [ ] The backend never clobbers an on-file refresh token with an empty one: `POST /auth/token` with a Google success that carries **no** `refresh_token` sets **no** `rt` cookie — regression test in `AuthTokenExchangeTests`.
-- [ ] Existing auth tests stay green (BUG-15 cold-start refresh, token refresh, sign-in/out).
+- [x] `buildAuthUrl(..., forceConsent)` emits `prompt=consent` when `forceConsent` is true and omits `prompt` when false; `access_type=offline` is sent in both cases.
+- [x] `signIn` passes `forceConsent = !isRefreshEstablished()` — a returning user (flag set) gets no `prompt=consent`; a first-time user (flag absent) does.
+- [x] The `google_refresh_established` flag is set on a successful silent refresh and on a successful interactive exchange, and cleared on **all** refresh-failure paths — scheduled, tab-visibility, cold-start bootstrap, **and the api-layer 401** (`setOnRefresh` null branch; the last was a Hawk catch — without it a fetch-driven 401 left the flag set and looped the session at ~1h).
+- [x] The backend never clobbers an on-file refresh token with an empty one: `POST /auth/token` with a Google success that carries **no** `refresh_token` sets **no** `rt` cookie — regression test in `AuthTokenExchangeTests`.
+- [x] Existing auth tests stay green (BUG-15 cold-start refresh, token refresh, sign-in/out).
 
-**Key files (anticipated):** `web/src/auth/pkce.ts` (`buildAuthUrl` `forceConsent`), `web/src/auth/AuthContext.tsx` (`signIn` decision + set/clear in `handleRefreshSuccess`/`handleRefreshFailure`/exchange/cold-start), `web/src/auth/tokenStore.ts` (flag helpers); tests `web/src/__tests__/AuthUrl.test.ts`, `web/src/__tests__/TokenRefresh.test.tsx`, `tests/Api.Integration/AuthTokenExchangeTests.cs`. Related: [BUG-11] (refresh-token flow), [BUG-15] (cold-start silent refresh).
-
-**Key files (anticipated):** `web/src/auth/pkce.ts` (`buildAuthUrl` — conditional `prompt`), `web/src/auth/AuthContext.tsx` (`signIn` — first-auth vs returning signal), `src/Api/Endpoints/AuthEndpoints.cs` (refresh-token persistence guard); tests `web/src/__tests__/AuthUrl.test.ts`, `tests/Api.Integration/AuthRefreshTests.cs`. Related: [BUG-11] (refresh-token flow), [BUG-15] (cold-start silent refresh — reduces sign-in frequency).
+**Key files:** `web/src/auth/pkce.ts` (`buildAuthUrl` `forceConsent`), `web/src/auth/AuthContext.tsx` (`signIn` decision + flag set/clear across `handleRefreshSuccess`/`handleRefreshFailure`/`setOnRefresh`/exchange/cold-start), `web/src/auth/tokenStore.ts` (flag helpers, fail-safe to force-consent); tests `web/src/__tests__/AuthUrl.test.ts`, `web/src/__tests__/ConsentPrompt.test.tsx`, `tests/Api.Integration/AuthTokenExchangeTests.cs`. The backend `/auth/token` non-clobber guard (`AuthEndpoints.cs:30`) needed no change. Related: [BUG-11] (refresh-token flow), [BUG-15] (cold-start silent refresh).
