@@ -17,7 +17,29 @@ public class BedrockEvalTheory
             ?? "amazon.nova-lite-v1:0")
         .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
 
-    static readonly AnalysisPrompt[] Prompts = [PromptCatalog.V3, PromptCatalog.V4, PromptCatalog.V5];
+    // Prompts swept per model. Defaults to the recent set [V3, V4, V5]; EVAL_PROMPT_VERSIONS
+    // (comma-separated, e.g. "analysis@v5") narrows it — mirrors EVAL_MODEL_IDS so a model-only
+    // sweep (MPI-3) doesn't have to re-run every prompt. An unknown version id is ignored; if
+    // the override resolves to nothing, fall back to the default set rather than an empty matrix.
+    static readonly AnalysisPrompt[] DefaultPrompts = [PromptCatalog.V3, PromptCatalog.V4, PromptCatalog.V5];
+
+    static readonly AnalysisPrompt[] AllPrompts =
+        [PromptCatalog.V1, PromptCatalog.V2, PromptCatalog.V3, PromptCatalog.V4, PromptCatalog.V5];
+
+    static readonly AnalysisPrompt[] Prompts = ResolvePrompts();
+
+    static AnalysisPrompt[] ResolvePrompts()
+    {
+        var requested = (Environment.GetEnvironmentVariable("EVAL_PROMPT_VERSIONS") ?? "")
+            .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        if (requested.Length == 0)
+            return DefaultPrompts;
+
+        var selected = AllPrompts
+            .Where(p => requested.Contains(p.Version, StringComparer.OrdinalIgnoreCase))
+            .ToArray();
+        return selected.Length > 0 ? selected : DefaultPrompts;
+    }
 
     static string ResultsDirectory =>
         Path.Combine(AppContext.BaseDirectory, "Results");

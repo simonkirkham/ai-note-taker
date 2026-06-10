@@ -2,20 +2,32 @@ import userEvent from '@testing-library/user-event'
 import { http, HttpResponse } from 'msw'
 import App from '../App'
 import { AuthProvider } from '../auth/AuthContext'
+import * as silentRefreshMod from '../auth/silentRefresh'
 import { clearToken, setToken } from '../auth/tokenStore'
 import { render, screen } from '../test/render'
 import { server } from '../test/setup'
 
-beforeEach(() => clearToken())
-afterEach(() => clearToken())
+// Cold loads now attempt a refresh-cookie restore before showing sign-in (BUG-15); mock it
+// so these tests control the outcome instead of hitting a real /api/auth/refresh fetch.
+vi.mock('../auth/silentRefresh', () => ({ attemptSilentRefresh: vi.fn() }))
+
+beforeEach(() => {
+  clearToken()
+  vi.mocked(silentRefreshMod.attemptSilentRefresh).mockResolvedValue(null)
+})
+afterEach(() => {
+  clearToken()
+  vi.restoreAllMocks()
+})
 
 describe('unauthenticated state', () => {
   beforeEach(() => vi.stubEnv('VITE_GOOGLE_CLIENT_ID', 'test-client-id'))
   afterEach(() => vi.unstubAllEnvs())
 
-  it('shows sign-in screen and hides the note list', () => {
+  it('shows sign-in screen and hides the note list once the cold-start refresh fails', async () => {
+    // No refresh cookie (mock resolves null) → fall back to the sign-in screen.
     render(<AuthProvider><App /></AuthProvider>)
-    expect(screen.getByRole('button', { name: /sign in with google/i })).toBeInTheDocument()
+    expect(await screen.findByRole('button', { name: /sign in with google/i })).toBeInTheDocument()
     expect(screen.queryByTestId('sidebar-toggle')).not.toBeInTheDocument()
   })
 })

@@ -14,7 +14,8 @@ public sealed class ProjectionRebuildHandler(
     ITagFeedbackStore tagFeedbackStore,
     IActionItemFeedbackStore actionItemFeedbackStore,
     ICalendarLinkIndexStore calendarLinkIndexStore,
-    INoteSearchViewStore noteSearchViewStore) : IProjectionRebuildHandler
+    INoteSearchViewStore noteSearchViewStore,
+    IWorkspaceListStore workspaceListStore) : IProjectionRebuildHandler
 {
     // Single-flight: a rebuild deletes-and-rewrites read models, so two concurrent runs must
     // not interleave. Static so it gates across requests on a warm Lambda (WaitAsync(0) →
@@ -56,6 +57,7 @@ public sealed class ProjectionRebuildHandler(
         var actionFeedback = new ActionItemFeedbackProjection();
         var calendarLinks = new CalendarLinkIndexProjection();
         var searchView = new NoteSearchViewProjection();
+        var workspaceList = new WorkspaceListProjection();
         foreach (var e in allEvents)
         {
             titleList.Handle(e);
@@ -67,6 +69,7 @@ public sealed class ProjectionRebuildHandler(
             actionFeedback.Handle(e);
             calendarLinks.Handle(e);
             searchView.Handle(e);
+            workspaceList.Handle(e);
         }
 
         var titles = titleList.GetView().Items;
@@ -78,6 +81,7 @@ public sealed class ProjectionRebuildHandler(
         // A deleted note is pruned from search to match the live hard-delete (no Deleted=true tombstone);
         // the reconcile pass below removes any tombstone already in the table.
         var searches = searchView.GetAll().Where(v => !v.Deleted).ToList();
+        var workspaces = workspaceList.GetAll();
 
         var writes = new List<Func<CancellationToken, Task>>();
         void Add<T>(IEnumerable<T> items, Func<T, CancellationToken, Task> op)
@@ -93,6 +97,7 @@ public sealed class ProjectionRebuildHandler(
         Add(tags, (v, c) => tagIndexStore.PutAsync(v.Tag, v.NoteId, v.UserId, c));
         Add(links, (v, c) => calendarLinkIndexStore.UpsertAsync(v, c));
         Add(searches, (v, c) => noteSearchViewStore.UpsertAsync(v, c));
+        Add(workspaces, (w, c) => workspaceListStore.UpsertAsync(w, c));
         Add(tagFeedback.GetAggregates(), (v, c) => tagFeedbackStore.UpsertAggregateAsync(v, c));
         Add(tagFeedback.GetProvenance(), (p, c) => tagFeedbackStore.PutProvenanceAsync(p.NoteId, p.Tag, p.UserId, p.PromptVersion, c));
         Add(actionFeedback.GetAggregates(), (v, c) => actionItemFeedbackStore.UpsertAggregateAsync(v, c));
@@ -122,6 +127,8 @@ public sealed class ProjectionRebuildHandler(
             links.Select(x => x.CalendarEventId).ToHashSet(), (k, c) => calendarLinkIndexStore.DeleteAsync(k, c));
         AddStale((await noteSearchViewStore.QueryAllAsync(ct).ConfigureAwait(false)).Select(x => x.NoteId),
             searches.Select(x => x.NoteId).ToHashSet(), (k, c) => noteSearchViewStore.DeleteAsync(k, c));
+        AddStale((await workspaceListStore.GetAllAsync(ct).ConfigureAwait(false)).Select(x => x.WorkspaceId),
+            workspaces.Select(x => x.WorkspaceId).ToHashSet(), (k, c) => workspaceListStore.DeleteAsync(k, c));
 
         await BoundedWrites.RunAsync(deletes, ct: ct).ConfigureAwait(false);
 
@@ -134,6 +141,7 @@ public sealed class ProjectionRebuildHandler(
             ["tagIndex"] = tags.Count,
             ["calendarLinkIndex"] = links.Count,
             ["noteSearchView"] = searches.Count,
+            ["workspaceList"] = workspaces.Count,
             ["tagFeedback"] = tagFeedback.GetAggregates().Count(),
             ["actionItemFeedback"] = actionFeedback.GetAggregates().Count(),
         };

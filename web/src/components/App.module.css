@@ -53,3 +53,25 @@
     line-height: 1;
   }
 }
+
+/* ── Cold-start session-restore spinner (BUG-15) ───────────────── */
+.authSpinner {
+  width: 2rem;
+  height: 2rem;
+  border: 3px solid var(--color-border);
+  border-top-color: var(--color-primary);
+  border-radius: 50%;
+  animation: authSpin 0.8s linear infinite;
+}
+
+@keyframes authSpin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .authSpinner {
+    animation-duration: 2s;
+  }
+}

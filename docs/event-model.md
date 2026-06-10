@@ -44,6 +44,18 @@ A standalone to-do not attached to any note. Created from the home screen quick-
 | `Priority` | Optional — `null` until priority UI lands; future values: `Today` / `Next` / `Later` |
 | `Status` | `Open` / `Completed` / `Deleted` |
 
+### Workspace *(Phase 23)*
+
+A named partition of a user's content (e.g. *Work* / *Personal*). A second isolation dimension layered over the Phase 8 `UserId` scope. A note's workspace membership is **domain state on the `Note` aggregate** (`NoteAssignedToWorkspace`, latest-wins), not on this aggregate — modelled on `NoteFiledInFolder`.
+
+| State | Description |
+|---|---|
+| `WorkspaceId` | Identity — a globally-unique GUID (`N` format), or the reserved sentinel `__default__` |
+| `Name` | User-entered name (default workspace is "Personal") |
+| `Status` | `Active` / `Deleted` |
+
+> The reserved default workspace (`__default__`) is **virtual** — synthesised at read time per user, never persisted, never deletable. All historical (unassigned) content resolves to it. No event-log migration.
+
 ---
 
 ## Commands → Events
@@ -87,6 +99,16 @@ A standalone to-do not attached to any note. Created from the home screen quick-
 | `ReopenTodo(todoId, reopenedAt)` | Todo exists, status = Completed | `TodoReopened` |
 | `DeleteTodo(todoId, deletedAt)` | Todo exists, not already deleted | `TodoDeleted` |
 
+### Workspace *(Phase 23-A)*
+
+| Command | Pre-conditions | Events emitted |
+|---|---|---|
+| `CreateWorkspace(workspaceId, name)` | WorkspaceId does not exist; name non-empty | `WorkspaceCreated` |
+| `RenameWorkspace(workspaceId, newName)` | Workspace exists, not deleted; new name non-empty and differs | `WorkspaceRenamed` |
+| `DeleteWorkspace(workspaceId)` | Not the default (`__default__`); workspace exists, not deleted | `WorkspaceDeleted` |
+
+> Deleting `__default__` is rejected in the aggregate (`DefaultWorkspaceUndeletableException` → `409`). The 23-A delete has no emptiness check; the **block-if-non-empty** pre-condition (active-note count) lands in 23-C.
+
 ---
 
 ## Events
@@ -124,6 +146,12 @@ A standalone to-do not attached to any note. Created from the home screen quick-
 - `TodoReopened { TodoId, ReopenedAt }`
 - `TodoDeleted { TodoId, DeletedAt }`
 
+### Workspace *(Phase 23-A)*
+
+- `WorkspaceCreated { WorkspaceId, Name }`
+- `WorkspaceRenamed { WorkspaceId, NewName }`
+- `WorkspaceDeleted { WorkspaceId }` — hard-removes the `WorkspaceList` row; the stream retains the event
+
 ---
 
 ## Views
@@ -148,6 +176,7 @@ The Home view's richness pushes us toward denormalized read models — `NoteCard
 | `TodoList` | All ActionItem events (all notes) + all Todo events | Home view's TO DO List section. Returns open items plus items completed today. Each row carries a `type` discriminator (`"action"` / `"todo"`), a plain-string `ItemId`, nullable `NoteId`/`NoteTitle`, and nullable `CompletedAt`. Empty state: "Your ToDo list is clear." |
 | `TagIndex` | `NoteTagged`, `NoteUntagged`, `NoteDeleted` | Tag-based filtering (Phase 4) |
 | `NoteSearchView` | All Note events (title/content/summary/tags) + `ActionItem*`; **transcript excluded** | Fuzzy free-text search (`GET /notes/search?q=`); `UserId-index` GSI, ranked in-Lambda (Phase 22-A) |
+| `WorkspaceList` | `WorkspaceCreated`, `WorkspaceRenamed`, `WorkspaceDeleted` | The workspace switcher (`GET /workspaces`); default `__default__` synthesised at read time (Phase 23-A) |
 
 **Implication for milestones:** the `TodoList` projection is now visible in the Home view from day one (empty state initially), so the projection scaffold lands in Phase 1 even though the action-item events that populate it land in Phase 3. Easier to scaffold an empty projection early than to retrofit the Home view later.
 

@@ -39,5 +39,6 @@ public static class CommandInstrumentation
         ex is InvalidOperationException
             or NoteNotFoundException
             or ActionItemNotFoundException
-            or FolderNotFoundException;
+            or FolderNotFoundException
+            or WorkspaceNotFoundException;
 }

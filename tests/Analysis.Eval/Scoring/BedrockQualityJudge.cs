@@ -22,16 +22,35 @@ public sealed class BedrockQualityJudge : IQualityJudge
 
     public async Task<QualityScore> ScoreAsync(QualityJudgeInput x, CancellationToken ct = default)
     {
-        var prompt = $$"""
+        var prompt = BuildPrompt(x);
+
+        var response = await _bedrock.ConverseAsync(new ConverseRequest
+        {
+            ModelId = _modelId,
+            Messages = [new Message { Role = ConversationRole.User, Content = [new ContentBlock { Text = prompt }] }],
+            InferenceConfig = new InferenceConfiguration { MaxTokens = 400 }
+        }, ct).ConfigureAwait(false);
+
+        return Parse(ConverseResponseReader.Text(response));
+    }
+
+    // Built separately so the grounding + terseness rubric wording can be unit-tested
+    // without a live Bedrock call (see BedrockQualityJudgePromptTests).
+    internal static string BuildPrompt(QualityJudgeInput x) =>
+        $$"""
             You are a strict, consistent evaluator of AI-generated meeting notes, scoring against
             the preferences of the user the note is for ({{x.CurrentUserName}}). Score the GENERATED
-            NOTE against the TRANSCRIPT (the ground truth) using the rubric below. Apply it identically
-            every time; be harsh — vague, sparse, or over-confident notes are low quality.
+            NOTE against the SOURCE using the rubric below. Apply it identically
+            every time; be harsh — vague, over-confident, or padded notes are low quality.
+
+            The SOURCE is BOTH the transcript AND the user's existing note below. BOTH are ground
+            truth: any name, number, company, person, or fact that appears in EITHER is grounded and
+            must NOT be treated as invented or unfaithful. Only content absent from both is ungrounded.
 
             TRANSCRIPT:
             {{x.Transcript}}
 
-            EXISTING NOTE ({{x.CurrentUserName}} wrote this already; may be empty):
+            EXISTING NOTE ({{x.CurrentUserName}} wrote this already; may be empty — it is valid grounding, not fabrication):
             {{x.ExistingContent}}
 
             GENERATED NOTE
@@ -67,28 +86,21 @@ public sealed class BedrockQualityJudge : IQualityJudge
               NOT appear here — their presence is a serious error) and is accurate (no invented/wrong actions).
             - decisions: only actual decisions reached (not topics merely discussed), accurate, complete
               (no key decision missed), and clearly and specifically stated.
-            - content: summary + discussion must THOROUGHLY capture the substance and detail of the
-              meeting. Score this HARSHLY for thinness: a light, sparse, shallow, or headline-only note
-              is a MAJOR failure even when faithful — such a note scores ≤ 0.4 no matter how accurate.
-              Reward genuine depth and breadth (don't miss real points or detail); require it to be
-              faithful (light inference OK, no invented facts), to flag uncertainty rather than guess,
-              and to be well-organised (tight wording, bullet points, headers grouping related content).
+            - content: summary + discussion should capture the substance and detail the SOURCE
+              supports. Judge thinness RELATIVE TO THE SOURCE. When the transcript is rich, a light,
+              shallow, or headline-only note that drops real content is a MAJOR failure (≤ 0.4) even
+              when faithful. But when the transcript is genuinely thin or sparse, a short faithful note
+              is the CORRECT output — do NOT auto-fail it for length: a terse note that captures
+              everything the sparse source contains scores HIGH. Never reward padding or invented
+              detail added to look thorough. Reward depth where the source supports it; require the note
+              to be faithful (light inference OK, no facts absent from the source), to flag uncertainty
+              rather than guess, and to be well-organised (tight wording, bullets, headers).
             - overall: your holistic 0.0–1.0 usefulness of this note to {{x.CurrentUserName}}, weighting
               the preferences above.
 
             Return ONLY JSON, no other text:
             {"tags":0.0,"actions":0.0,"decisions":0.0,"content":0.0,"overall":0.0,"rationale":"one short sentence"}
             """;
-
-        var response = await _bedrock.ConverseAsync(new ConverseRequest
-        {
-            ModelId = _modelId,
-            Messages = [new Message { Role = ConversationRole.User, Content = [new ContentBlock { Text = prompt }] }],
-            InferenceConfig = new InferenceConfiguration { MaxTokens = 400 }
-        }, ct).ConfigureAwait(false);
-
-        return Parse(ConverseResponseReader.Text(response));
-    }
 
     static QualityScore Parse(string text)
     {

@@ -1,10 +1,25 @@
 import userEvent from '@testing-library/user-event'
 import { http, HttpResponse } from 'msw'
+import { useState } from 'react'
 import MeetingPicker from '../components/MeetingPicker'
 import { render, screen, waitFor } from '../test/render'
 import { server } from '../test/setup'
 
 const noop = () => {}
+
+// Mounts a trigger button that opens the picker, so focus-restore-on-close
+// can be asserted against the real triggering control.
+function PickerHarness() {
+  const [open, setOpen] = useState(false)
+  return (
+    <>
+      <button onClick={() => setOpen(true)}>Open picker</button>
+      {open && (
+        <MeetingPicker onSelect={noop} onClose={() => setOpen(false)} linkingEventId={null} />
+      )}
+    </>
+  )
+}
 
 function meeting(over: Record<string, unknown> = {}) {
   return {
@@ -65,5 +80,64 @@ describe('MeetingPicker', () => {
     await screen.findByTestId('picker-empty')
     await userEvent.keyboard('{Escape}')
     expect(onClose).toHaveBeenCalled()
+  })
+
+  describe('focus trap', () => {
+    it('moves focus into the dialog on open', async () => {
+      server.use(http.get('/api/calendar/:date', () => HttpResponse.json({ meetings: [] })))
+      render(<MeetingPicker onSelect={noop} onClose={noop} linkingEventId={null} />)
+      await screen.findByTestId('picker-empty')
+      const dialog = screen.getByTestId('meeting-picker')
+      expect(dialog.contains(document.activeElement)).toBe(true)
+    })
+
+    it('Tab from the last focusable element wraps to the first', async () => {
+      server.use(http.get('/api/calendar/:date', () => HttpResponse.json({ meetings: [] })))
+      render(<MeetingPicker onSelect={noop} onClose={noop} linkingEventId={null} />)
+      await screen.findByTestId('picker-empty')
+
+      const dialog = screen.getByTestId('meeting-picker')
+      const focusables = Array.from(
+        dialog.querySelectorAll<HTMLElement>('button, input, a[href], [tabindex]')
+      )
+      const first = focusables[0]
+      const last = focusables[focusables.length - 1]
+
+      last.focus()
+      expect(document.activeElement).toBe(last)
+      await userEvent.tab()
+      expect(document.activeElement).toBe(first)
+    })
+
+    it('Shift+Tab from the first focusable element wraps to the last', async () => {
+      server.use(http.get('/api/calendar/:date', () => HttpResponse.json({ meetings: [] })))
+      render(<MeetingPicker onSelect={noop} onClose={noop} linkingEventId={null} />)
+      await screen.findByTestId('picker-empty')
+
+      const dialog = screen.getByTestId('meeting-picker')
+      const focusables = Array.from(
+        dialog.querySelectorAll<HTMLElement>('button, input, a[href], [tabindex]')
+      )
+      const first = focusables[0]
+      const last = focusables[focusables.length - 1]
+
+      first.focus()
+      expect(document.activeElement).toBe(first)
+      await userEvent.tab({ shift: true })
+      expect(document.activeElement).toBe(last)
+    })
+
+    it('returns focus to the triggering control on close', async () => {
+      server.use(http.get('/api/calendar/:date', () => HttpResponse.json({ meetings: [] })))
+      render(<PickerHarness />)
+
+      const trigger = screen.getByRole('button', { name: 'Open picker' })
+      await userEvent.click(trigger)
+      await screen.findByTestId('picker-empty')
+      expect(document.activeElement).not.toBe(trigger)
+
+      await userEvent.click(screen.getByTestId('meeting-picker-close'))
+      await waitFor(() => expect(document.activeElement).toBe(trigger))
+    })
   })
 })

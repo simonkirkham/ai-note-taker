@@ -10,6 +10,10 @@ staged=$(git diff --cached --name-only --diff-filter=ACMR)
 
 echo "$staged" | grep -Eq '^(src/|tests/)|\.(sln|csproj|props|targets)$' && backend=1 || backend=0
 echo "$staged" | grep -Eq '^web/' && frontend=1 || frontend=0
+# cdk synth is slow (needs a Release publish of the API first), so gate it to
+# infra-affecting changes only: the CDK app, the API it packages, or any
+# build/project/cdk config. Docs-only, web-only, and tests-only commits skip it.
+echo "$staged" | grep -Eq '^(src/Infrastructure/|src/Api/)|\.(sln|csproj|props|targets)$|^cdk\.json$' && infra=1 || infra=0
 
 if [ "$backend" = 0 ] && [ "$frontend" = 0 ]; then
   echo "→ no src/tests/web changes staged — skipping build/test gate"
@@ -29,6 +33,14 @@ if [ "$backend" = 1 ]; then
 
   echo "→ infra assertions..."
   dotnet test tests/Infrastructure.Assertions/Infrastructure.Assertions.csproj --no-build --nologo -v quiet
+fi
+
+if [ "$infra" = 1 ]; then
+  echo "→ publish API for cdk synth..."
+  dotnet publish src/Api/Api.csproj -c Release -o src/Api/bin/Release/net10.0/publish --nologo -v quiet
+
+  echo "→ cdk synth..."
+  cdk synth --quiet
 fi
 
 if [ "$frontend" = 1 ]; then

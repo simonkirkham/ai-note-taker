@@ -136,6 +136,14 @@ public sealed class NoteTakerStack : Stack
             ProjectionType = ProjectionType.ALL
         });
 
+        var workspaceListTable = new Table(this, "ProjWorkspaceListTable", new TableProps
+        {
+            TableName = "notetaker-proj-workspacelist",
+            PartitionKey = new Amazon.CDK.AWS.DynamoDB.Attribute { Name = "PK", Type = AttributeType.STRING },
+            BillingMode = BillingMode.PAY_PER_REQUEST,
+            RemovalPolicy = RemovalPolicy.RETAIN
+        });
+
         // ── Working-state store (NOT a projection, NOT the event log) ─────
         // In-progress transcription drafts, overwritten in place and self-reaped
         // via TTL. Loss-tolerant recovery buffer (ADR 0011): DESTROY removal,
@@ -238,6 +246,7 @@ public sealed class NoteTakerStack : Stack
                 ["PROJ_NOTESEARCHVIEW_TABLE_NAME"] = noteSearchViewTable.TableName,
                 ["DRAFT_TRANSCRIPTION_TABLE_NAME"] = draftTranscriptionTable.TableName,
                 ["IMAGE_BUCKET_NAME"] = imagesBucket.BucketName,
+                ["PROJ_WORKSPACELIST_TABLE_NAME"] = workspaceListTable.TableName,
                 ["BEDROCK_MODEL_ID"] = bedrockModelId
             }
         });
@@ -331,6 +340,7 @@ public sealed class NoteTakerStack : Stack
         actionFeedbackTable.GrantReadWriteData(apiFunction);
         calendarLinkIndexTable.GrantReadWriteData(apiFunction);
         noteSearchViewTable.GrantReadWriteData(apiFunction);
+        workspaceListTable.GrantReadWriteData(apiFunction);
         // Least-privilege: the draft store only ever does point Get/Put/Delete.
         draftTranscriptionTable.Grant(apiFunction, "dynamodb:GetItem", "dynamodb:PutItem", "dynamodb:DeleteItem");
 

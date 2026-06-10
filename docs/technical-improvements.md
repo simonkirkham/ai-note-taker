@@ -103,10 +103,11 @@ Each entry records what it is, why it matters, where it was raised, and any depe
 
 ## Add `cdk synth` to the pre-commit hook
 
-**What:** The pre-commit hook builds, lints, typechecks, and runs the test suites, but does **not** run `cdk synth`. Add it so the local gate matches the guardrail "Never commit without all BDD specs green and `cdk synth` succeeding." Note `cdk synth` requires a prior `dotnet publish` of the API, so factor that into the step.
+**✅ Done** (2026-06-10): `.githooks/pre-commit` now runs `dotnet publish src/Api` + `cdk synth --quiet` after the backend block. **Cost-gating decision:** synth is slow (needs a Release publish first), so it runs **only when infra-affecting files are staged** — `src/Infrastructure/`, `src/Api/`, any `*.sln`/`*.csproj`/`*.props`/`*.targets`, or `cdk.json` — matched by a new `infra` flag. Docs-only, web-only, and tests-only commits skip it. Uses the global `cdk` CLI (`aws-cdk@2`), matching CI; no AWS creds needed (the app does no context lookups).
+
+**What:** The pre-commit hook builds, lints, typechecks, and runs the test suites, but did **not** run `cdk synth`. Added so the local gate matches the guardrail "Never commit without all BDD specs green and `cdk synth` succeeding."
 **Why it matters:** The hook otherwise lets through commits that break CDK synthesis, which then fail later in CI/deploy.
 **Raised in:** Spun off from the now-resolved stale-test-paths fix (840464b) — that change corrected the hook's project paths and removed the leftover empty test dirs, but left the `cdk synth` suggestion unactioned.
-**Depends on:** Nothing blocking. Decide whether the `dotnet publish` cost is acceptable in a pre-commit gate.
 
 ---
 
@@ -166,6 +167,8 @@ The full rationale, target diagrams, staged migration plan, and the eventual-con
 ---
 
 ## Add a shared modal focus-trap utility and apply it across all dialogs
+
+✅ **Done** (2026-06-10). `useFocusTrap(ref, { onClose })` lives in `web/src/hooks/useFocusTrap.ts` — on mount it captures `document.activeElement`, focuses the first focusable element (or the container, falling back to `tabindex="-1"`), cycles Tab / Shift+Tab within the dialog's focusable set, and restores focus to the captured element on unmount; `onClose` is an optional Escape consolidation that both current dialogs leave unused (Escape stays where it lived). Applied to `MeetingPicker` and `SessionExpiredBanner`. Vitest coverage: focus-into-dialog-on-open, Tab/Shift+Tab wrap, and focus-restore-to-trigger-on-close. **Also delivers the shared utility that [Phase 19-F](phases/phase-19.md)'s per-surface focus work would otherwise have to build** — 19-F now only needs to apply the existing hook to its remaining surfaces.
 
 **What:** `MeetingPicker` (slice 17-B) is the app's first true `aria-modal="true"` dialog. It handles Escape + click-outside but does **not** move focus into the dialog on open, trap focus within it, or return focus to the trigger on close. The pre-existing `SessionExpiredBanner` shares the `dialog` role and the same gap. There is no focus-trap utility in the codebase.
 
@@ -234,3 +237,16 @@ The full rationale, target diagrams, staged migration plan, and the eventual-con
 **Depends on:** Nothing blocking.
 
 </details>
+
+---
+
+## `WorkspaceList` reads via full table Scan, not a per-user GSI
+
+`DynamoDbWorkspaceListStore.GetAllAsync` does a paginated cross-user `Scan` (`ConsistentRead = true`) and is called on **every** `GET /workspaces`, every rename (`ApplyRenamedAsync` re-scans to point-update one row), and every ownership check (`OwnsAsync`). The closest precedent, `NoteSearchView`, uses a `UserId-index` GSI + `Query` for exactly this access pattern.
+
+**Why it's fine for now:** workspaces-per-user is tiny (low single digits), so the scan reads a handful of rows. **Why it's worth fixing:** it is an architectural inconsistency that scales O(all users' workspaces), and `ApplyRenamedAsync` loads the whole table to update one known row.
+
+**Fix:** add a `UserId` GSI to `notetaker-proj-workspacelist` and switch reads to a per-user `Query`; give the rename path a point `Get`/re-upsert instead of a scan. Fold in if Phase 23-B's scoping work touches this store.
+
+**Raised in:** Hawk review of PR #207 (slice 23-A), 2026-06-10.
+**Depends on:** —

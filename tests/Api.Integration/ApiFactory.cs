@@ -29,6 +29,7 @@ public class ApiFactory : WebApplicationFactory<Program>
         Environment.SetEnvironmentVariable("PROJ_CALENDARLINKINDEX_TABLE_NAME", "test-proj-calendarlinkindex");
         Environment.SetEnvironmentVariable("PROJ_NOTESEARCHVIEW_TABLE_NAME", "test-proj-notesearchview");
         Environment.SetEnvironmentVariable("DRAFT_TRANSCRIPTION_TABLE_NAME", "test-draft-transcription");
+        Environment.SetEnvironmentVariable("PROJ_WORKSPACELIST_TABLE_NAME", "test-proj-workspacelist");
         Environment.SetEnvironmentVariable("ALLOWED_USER_SUBS", "test-user-123,other-user-456");
         Environment.SetEnvironmentVariable("GOOGLE_CLIENT_ID", "test-client-id");
         Environment.SetEnvironmentVariable("GOOGLE_CLIENT_SECRET", "test-client-secret");
@@ -57,6 +58,7 @@ public class ApiFactory : WebApplicationFactory<Program>
             services.RemoveAll<ICalendarLinkIndexStore>();
             services.RemoveAll<INoteSearchViewStore>();
             services.RemoveAll<ITranscriptionDraftStore>();
+            services.RemoveAll<IWorkspaceListStore>();
             services.RemoveAll<IDynamoHealthCheck>();
             services.AddSingleton<IEventStore, InMemoryEventStore>();
             services.AddSingleton<INoteTitleListStore, InMemoryNoteTitleListStore>();
@@ -71,6 +73,7 @@ public class ApiFactory : WebApplicationFactory<Program>
             services.AddSingleton<ICalendarLinkIndexStore, InMemoryCalendarLinkIndexStore>();
             services.AddSingleton<INoteSearchViewStore, InMemoryNoteSearchViewStore>();
             services.AddSingleton<ITranscriptionDraftStore, InMemoryTranscriptionDraftStore>();
+            services.AddSingleton<IWorkspaceListStore, InMemoryWorkspaceListStore>();
             services.AddSingleton<IDynamoHealthCheck, AlwaysHealthyDynamoCheck>();
             services.AddAuthentication(options =>
             {

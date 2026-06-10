@@ -430,6 +430,28 @@ The `UserId-index` GSI (ProjectionType.ALL) lets the search endpoint `Query` all
 
 **Privacy:** the `SearchPerformed` metric logs only query length + result/scanned counts — never the raw query text or note content.
 
+### 10. `WorkspaceList` *(Phase 23-A)*
+
+**Consumed by:** `GET /workspaces` — the caller's named workspaces for the switcher. One row per created workspace.
+**Source events:** `WorkspaceCreated`, `WorkspaceRenamed`, `WorkspaceDeleted` (on the `Workspace` stream).
+
+```csharp
+public record WorkspaceListView(
+    WorkspaceId WorkspaceId,
+    string Name,
+    DateTimeOffset CreatedAt,
+    string UserId = "");
+```
+
+**Storage row** (table `notetaker-proj-workspacelist`, partition key `PK` = WorkspaceId):
+
+| PK (WorkspaceId) | Name | CreatedAt | UserId |
+|------------------|------|-----------|--------|
+
+**Default workspace is virtual.** The reserved default (`__default__`, name "Personal") is **never persisted** — `GetWorkspaces` synthesises it per-user at read time when no `__default__` row exists, sorted first. It is non-deletable (`DELETE /workspaces/__default__` → `409`). Persisted workspace ids are globally-unique GUIDs (`N` format), so `PK = WorkspaceId` needs no per-user composite key; `UserId` is filtered in the handler (as `FolderTree` does).
+
+**Event handlers (live, inline in `WorkspaceCommandHandler`):** `WorkspaceCreated` → upsert; `WorkspaceRenamed` → upsert with new name; `WorkspaceDeleted` → delete the row.
+
 ---
 
 ## Soft delete handling
