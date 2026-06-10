@@ -235,3 +235,16 @@ The full rationale, target diagrams, staged migration plan, and the eventual-con
 **Depends on:** Nothing blocking.
 
 </details>
+
+---
+
+## `WorkspaceList` reads via full table Scan, not a per-user GSI
+
+`DynamoDbWorkspaceListStore.GetAllAsync` does a paginated cross-user `Scan` (`ConsistentRead = true`) and is called on **every** `GET /workspaces`, every rename (`ApplyRenamedAsync` re-scans to point-update one row), and every ownership check (`OwnsAsync`). The closest precedent, `NoteSearchView`, uses a `UserId-index` GSI + `Query` for exactly this access pattern.
+
+**Why it's fine for now:** workspaces-per-user is tiny (low single digits), so the scan reads a handful of rows. **Why it's worth fixing:** it is an architectural inconsistency that scales O(all users' workspaces), and `ApplyRenamedAsync` loads the whole table to update one known row.
+
+**Fix:** add a `UserId` GSI to `notetaker-proj-workspacelist` and switch reads to a per-user `Query`; give the rename path a point `Get`/re-upsert instead of a scan. Fold in if Phase 23-B's scoping work touches this store.
+
+**Raised in:** Hawk review of PR #207 (slice 23-A), 2026-06-10.
+**Depends on:** —
