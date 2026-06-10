@@ -28,6 +28,8 @@ public sealed class DynamoDbNoteCardListStore(IAmazonDynamoDB dynamo, string tab
             attrs["Tags"] = new() { SS = card.Tags.ToList() };
         if (card.FolderId.HasValue)
             attrs["FolderId"] = new() { S = card.FolderId.Value.Value.ToString() };
+        if (!string.IsNullOrEmpty(card.WorkspaceId))
+            attrs["WorkspaceId"] = new() { S = card.WorkspaceId };
 
         await dynamo.PutItemAsync(new PutItemRequest
         {
@@ -105,7 +107,8 @@ public sealed class DynamoDbNoteCardListStore(IAmazonDynamoDB dynamo, string tab
             Deleted: row["Deleted"].BOOL ?? false,
             Tags: tags,
             FolderId: folderId,
-            UserId: row.TryGetValue("UserId", out var uidAttr) ? uidAttr.S : "");
+            UserId: row.TryGetValue("UserId", out var uidAttr) ? uidAttr.S : "",
+            WorkspaceId: row.TryGetValue("WorkspaceId", out var wsAttr) ? wsAttr.S : null);
     }
 
     private record ActionItemDto(ActionId ActionId, string Description, bool Completed);

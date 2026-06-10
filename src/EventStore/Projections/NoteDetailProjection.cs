@@ -41,6 +41,10 @@ public sealed class NoteDetailProjection
             case NoteDeleted e:
                 _items.Remove(e.NoteId);
                 break;
+            case NoteAssignedToWorkspace e:
+                if (_items.TryGetValue(e.NoteId, out var assigned))
+                    _items[e.NoteId] = assigned with { WorkspaceId = e.WorkspaceId.Value };
+                break;
             case TranscriptionCompleted e:
                 if (_items.TryGetValue(e.NoteId, out var transcribed))
                     _items[e.NoteId] = transcribed with { TranscriptText = e.TranscriptText };

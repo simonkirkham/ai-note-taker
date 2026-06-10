@@ -11,4 +11,5 @@ public record NoteSearchView(
     IReadOnlyList<string> Tags,
     string ActionItemsText,
     bool Deleted,
-    DateTimeOffset LastModifiedAt);
+    DateTimeOffset LastModifiedAt,
+    string? WorkspaceId = null);

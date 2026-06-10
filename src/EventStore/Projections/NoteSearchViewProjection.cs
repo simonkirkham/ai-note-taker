@@ -40,6 +40,9 @@ public sealed class NoteSearchViewProjection
             case NoteDeleted e when _items.TryGetValue(e.NoteId, out var c):
                 _items[e.NoteId] = c with { Deleted = true, LastModifiedAt = envelope.OccurredAt };
                 break;
+            case NoteAssignedToWorkspace e when _items.TryGetValue(e.NoteId, out var c):
+                _items[e.NoteId] = c with { WorkspaceId = e.WorkspaceId.Value };
+                break;
             case ActionItemAdded e when _items.TryGetValue(e.NoteId, out var c):
                 _noteByAction[e.ActionId] = e.NoteId;
                 Actions(e.NoteId)[e.ActionId] = e.Description;

@@ -20,6 +20,9 @@ public sealed class NoteTitleListProjection
             case NoteDeleted e:
                 _items.Remove(e.NoteId);
                 break;
+            case NoteAssignedToWorkspace e when _items.TryGetValue(e.NoteId, out var w):
+                _items[e.NoteId] = w with { WorkspaceId = e.WorkspaceId.Value };
+                break;
             default:
                 break;
         }

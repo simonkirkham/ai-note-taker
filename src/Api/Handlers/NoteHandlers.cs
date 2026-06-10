@@ -10,6 +10,7 @@ using Api.HealthChecks;
 using Api.Observability;
 using Api.Search;
 using Api.Utilities;
+using Domain.Workspaces;
 using EditContentCmd = Domain.Notes.EditContent;
 
 namespace Api.Handlers;
@@ -29,13 +30,13 @@ public static class NoteHandlers
 
     public static IResult Secret() => Results.Ok(new { status = "shhhh...." });
 
-    public static async Task<IResult> CreateNote(HttpRequest request, INoteCommandHandler handler)
+    public static async Task<IResult> CreateNote(HttpRequest request, INoteCommandHandler handler, ICurrentWorkspace currentWorkspace)
     {
         CreateNoteRequest? req = null;
         if (request.HasJsonContentType())
             req = await request.ReadFromJsonAsync<CreateNoteRequest>();
         var noteId = req?.NoteId is { } id && id != Guid.Empty ? new NoteId(id) : new NoteId(Guid.NewGuid());
-        try { await handler.HandleAsync(new CreateNote(noteId)); }
+        try { await handler.HandleAsync(new CreateNote(noteId, new WorkspaceId(currentWorkspace.WorkspaceId))); }
         catch (InvalidOperationException) { return Results.Conflict(); }
         return Results.Created($"/notes/{noteId}", new { noteId = noteId.Value });
     }
@@ -49,11 +50,11 @@ public static class NoteHandlers
         return Results.Ok();
     }
 
-    public static async Task<IResult> ListNotes(INoteTitleListStore projStore, ICurrentUser currentUser)
+    public static async Task<IResult> ListNotes(INoteTitleListStore projStore, ICurrentUser currentUser, ICurrentWorkspace currentWorkspace)
     {
         var view = await projStore.QueryAllAsync();
         var items = view.Items
-            .Where(i => i.UserId == currentUser.UserId)
+            .Where(i => i.UserId == currentUser.UserId && currentWorkspace.Includes(i.WorkspaceId))
             .OrderByDescending(i => i.LastModifiedAt)
             .Select(i => new { noteId = i.NoteId.Value, title = i.Title, lastModifiedAt = i.LastModifiedAt });
         return Results.Ok(new { items });
@@ -195,14 +196,14 @@ public static class NoteHandlers
         return Results.NoContent();
     }
 
-    public static async Task<IResult> SearchNotes(string? q, INoteSearchViewStore searchStore, ICurrentUser currentUser, IDomainMetrics metrics, CancellationToken ct)
+    public static async Task<IResult> SearchNotes(string? q, INoteSearchViewStore searchStore, ICurrentUser currentUser, ICurrentWorkspace currentWorkspace, IDomainMetrics metrics, CancellationToken ct)
     {
         if (string.IsNullOrWhiteSpace(q))
             return Results.Ok(new { items = Array.Empty<object>() });
 
         var stopwatch = Stopwatch.StartNew();
         var docs = await searchStore.QueryByUserIdAsync(currentUser.UserId, ct).ConfigureAwait(false);
-        var searchable = docs.Where(d => !d.Deleted).ToList();
+        var searchable = docs.Where(d => !d.Deleted && currentWorkspace.Includes(d.WorkspaceId)).ToList();
         var ranked = NoteSearchRanker.Rank(q, searchable);
         stopwatch.Stop();
 
@@ -220,11 +221,11 @@ public static class NoteHandlers
         return Results.Ok(new { items });
     }
 
-    public static async Task<IResult> GetNoteCards(INoteCardListStore store, ICurrentUser currentUser, CancellationToken ct)
+    public static async Task<IResult> GetNoteCards(INoteCardListStore store, ICurrentUser currentUser, ICurrentWorkspace currentWorkspace, CancellationToken ct)
     {
         var all = await store.QueryAllAsync(ct).ConfigureAwait(false);
         var cards = all
-            .Where(c => !c.Deleted && c.UserId == currentUser.UserId)
+            .Where(c => !c.Deleted && c.UserId == currentUser.UserId && currentWorkspace.Includes(c.WorkspaceId))
             .Select(MapCardToResponse);
         return Results.Ok(new { cards });
     }

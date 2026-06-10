@@ -5,11 +5,11 @@ namespace Api.Handlers;
 
 public static class TagHandlers
 {
-    public static async Task<IResult> GetTags(ITagIndexStore tagIndexStore, ICurrentUser currentUser, CancellationToken ct)
+    public static async Task<IResult> GetTags(ITagIndexStore tagIndexStore, ICurrentUser currentUser, ICurrentWorkspace currentWorkspace, CancellationToken ct)
     {
         var all = await tagIndexStore.GetAllAsync(ct).ConfigureAwait(false);
         var tags = all
-            .Where(x => x.UserId == currentUser.UserId)
+            .Where(x => x.UserId == currentUser.UserId && currentWorkspace.Includes(x.WorkspaceId))
             .GroupBy(x => x.Tag)
             .Select(g => new
             {

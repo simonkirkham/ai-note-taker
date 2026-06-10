@@ -94,7 +94,7 @@ public sealed class ProjectionRebuildHandler(
         Add(details, (d, c) => detailStore.UpsertAsync(d, c));
         Add(cards, (x, c) => noteCardListStore.UpsertAsync(x, c));
         Add(folders, (f, c) => folderTreeStore.UpsertAsync(f, c));
-        Add(tags, (v, c) => tagIndexStore.PutAsync(v.Tag, v.NoteId, v.UserId, c));
+        Add(tags, (v, c) => tagIndexStore.PutAsync(v.Tag, v.NoteId, v.UserId, v.WorkspaceId, c));
         Add(links, (v, c) => calendarLinkIndexStore.UpsertAsync(v, c));
         Add(searches, (v, c) => noteSearchViewStore.UpsertAsync(v, c));
         Add(workspaces, (w, c) => workspaceListStore.UpsertAsync(w, c));
