@@ -4,14 +4,14 @@
 
 ## Summary
 
-| Slice | Summary | Status | Depends on |
-|-------|---------|--------|------------|
-| 4-A | Settable note date | Done | — |
-| 4-B | Note screen layout redesign | Done | — |
-| 4-C | Implicit action item add | Done | — |
-| 4-D | Persistent note list sidebar | Done | — |
-| 4-E | Note summary cards on home screen | Done | 4-A |
-| 4-F | Expandable completed todos | Not Started | — |
+| Slice | Summary                           | Status | Depends on |
+| ----- | --------------------------------- | ------ | ---------- |
+| 4-A   | Settable note date                | Done   | —          |
+| 4-B   | Note screen layout redesign       | Done   | —          |
+| 4-C   | Implicit action item add          | Done   | —          |
+| 4-D   | Persistent note list sidebar      | Done   | —          |
+| 4-E   | Note summary cards on home screen | Done   | 4-A        |
+| 4-F   | Expandable completed todos        | Done   | —          |
 
 4-E must land after 4-A so the `NoteCardList` projection can handle `NoteDateSet` and the card schema includes `Date`.
 
@@ -51,8 +51,8 @@ Scenario: Set date on non-existent note (API)
 
 ### Acceptance criteria
 
-- [x] *(internal)* Setting a date appends `NoteDateSet` to the event store
-- [x] *(internal)* Setting a date on a non-existent note returns 404
+- [x] _(internal)_ Setting a date appends `NoteDateSet` to the event store
+- [x] _(internal)_ Setting a date on a non-existent note returns 404
 - [x] User sees a date input field top-right of the note header; it is empty by default
 - [x] User sets a date — it is shown (formatted DD/MM/YYYY) and persists on navigation
 - [x] User clears the date — field returns to empty and persists as empty on navigation
@@ -218,7 +218,7 @@ Scenario: Card disappears when note is deleted
 
 ### Acceptance criteria
 
-- [x] *(internal)* `NoteCardList` projection folds `NoteCreated`, `NoteRenamed`, `ContentEditedV2`, `NoteDateSet`, `NoteDeleted`, `ActionItemAdded`, `ActionItemCompleted`, `ActionItemReopened`, `ActionItemDeleted` correctly
+- [x] _(internal)_ `NoteCardList` projection folds `NoteCreated`, `NoteRenamed`, `ContentEditedV2`, `NoteDateSet`, `NoteDeleted`, `ActionItemAdded`, `ActionItemCompleted`, `ActionItemReopened`, `ActionItemDeleted` correctly
 - [x] `GET /notes/cards` returns title, date, content snippet (≤120 chars), open action descriptions, for each active note
 - [x] Home screen renders a card per note (not a plain list)
 - [x] Each card shows: title, formatted date (or blank), content snippet, open action items, "Edit Note" button
@@ -262,7 +262,7 @@ Scenario: Completing a todo from the home screen updates the count
 
 ### Acceptance criteria
 
-- [ ] *(internal)* `GET /todos/completed` returns completed action items with description, noteTitle, completedAt
+- [ ] _(internal)_ `GET /todos/completed` returns completed action items with description, noteTitle, completedAt
 - [ ] Home screen To Do section shows a "Show completed (N)" toggle when N > 0
 - [ ] Expanding the toggle reveals completed items with their parent note title
 - [ ] Collapsing hides them; state resets to collapsed on page reload
