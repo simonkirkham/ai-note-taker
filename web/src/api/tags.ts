@@ -15,7 +15,10 @@ export function tagNote(noteId: string, tag: string): Promise<void> {
 }
 
 export function untagNote(noteId: string, tag: string): Promise<void> {
-  return requestVoid(`/notes/${noteId}/tags/${encodeURIComponent(tag)}`, { method: "DELETE" });
+  // 404/409 are accepted: removing a tag the server doesn't have matches the user's
+  // intent (the tag is already gone), and must not roll the optimistic removal back
+  // into a phantom pill. Mirrors tagNote() accepting 409 on a duplicate add (BUG-17).
+  return requestVoid(`/notes/${noteId}/tags/${encodeURIComponent(tag)}`, { method: "DELETE" }, [404, 409]);
 }
 
 export async function getTags(): Promise<TagIndexEntry[]> {
