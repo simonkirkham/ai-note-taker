@@ -83,6 +83,10 @@ public static class WorkspaceHandlers
         {
             return Results.Conflict(new { error = "The default workspace cannot be deleted." });
         }
+        catch (WorkspaceNotEmptyException)
+        {
+            return Results.Conflict(new { error = "Workspace is not empty." });
+        }
         catch (WorkspaceNotFoundException)
         {
             return Results.NotFound();

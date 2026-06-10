@@ -7,7 +7,7 @@ namespace Api.Handlers;
 
 public static class TodoHandlers
 {
-    public static async Task<IResult> GetTodos(ITodoListStore store, ICurrentUser currentUser, CancellationToken ct)
+    public static async Task<IResult> GetTodos(ITodoListStore store, ICurrentUser currentUser, ICurrentWorkspace currentWorkspace, CancellationToken ct)
     {
         var view = await store.QueryAllAsync(ct).ConfigureAwait(false);
         // Extend cutoff to 2 days back so any UTC-offset "today" is covered;
@@ -17,7 +17,7 @@ public static class TodoHandlers
         return Results.Ok(new
         {
             items = view.Items
-                .Where(i => i.UserId == currentUser.UserId)
+                .Where(i => i.UserId == currentUser.UserId && currentWorkspace.Includes(i.WorkspaceId))
                 .Where(i => i.CompletedAt is null || i.CompletedAt.Value.UtcDateTime.Date >= cutoff)
                 .Select(i => new
                 {

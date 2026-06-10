@@ -16,6 +16,7 @@ public sealed class FolderCommandHandler(
     INoteCardListStore noteCardListStore,
     INoteCommandHandler noteCommandHandler,
     ICurrentUser currentUser,
+    ICurrentWorkspace currentWorkspace,
     IDomainMetrics metrics,
     ILogger<FolderCommandHandler> logger) : IFolderCommandHandler
 {
@@ -119,7 +120,7 @@ public sealed class FolderCommandHandler(
             {
                 case FolderCreated e:
                     await folderTreeStore.UpsertAsync(
-                        new FolderTreeView(e.FolderId, e.Name, e.ParentFolderId, envelope.OccurredAt, envelope.Metadata.UserId ?? ""), ct)
+                        new FolderTreeView(e.FolderId, e.Name, e.ParentFolderId, envelope.OccurredAt, envelope.Metadata.UserId ?? "", envelope.Metadata.WorkspaceId), ct)
                         .ConfigureAwait(false);
                     break;
                 case FolderRenamed e:
@@ -175,5 +176,5 @@ public sealed class FolderCommandHandler(
     }
 
     private List<EventEnvelope> ToEnvelopes(string streamId, IReadOnlyList<IDomainEvent> events) =>
-        EventEnvelopeFactory.CreateEnvelopes(streamId, events, currentUser.UserId);
+        EventEnvelopeFactory.CreateEnvelopes(streamId, events, currentUser.UserId, currentWorkspace.WorkspaceId);
 }

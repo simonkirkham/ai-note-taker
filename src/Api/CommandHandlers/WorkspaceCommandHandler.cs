@@ -12,6 +12,7 @@ namespace Api.CommandHandlers;
 public sealed class WorkspaceCommandHandler(
     IEventStore store,
     IWorkspaceListStore workspaceListStore,
+    INoteCardListStore noteCardListStore,
     ICurrentUser currentUser,
     IDomainMetrics metrics,
     ILogger<WorkspaceCommandHandler> logger) : IWorkspaceCommandHandler
@@ -44,6 +45,8 @@ public sealed class WorkspaceCommandHandler(
             var history = await store.ReadAsync(streamId, ct).ConfigureAwait(false);
             if (history.Count == 0 && !cmd.WorkspaceId.IsDefault)
                 throw new WorkspaceNotFoundException(cmd.WorkspaceId);
+            if (await HasActiveNotesAsync(cmd.WorkspaceId, ct).ConfigureAwait(false))
+                throw new WorkspaceNotEmptyException(cmd.WorkspaceId);
             var newEvents = Rebuild(history).Handle(cmd);
             var envelopes = ToEnvelopes(streamId, newEvents);
             await store.AppendAsync(streamId, history.Count, envelopes, ct).ConfigureAwait(false);
@@ -81,6 +84,16 @@ public sealed class WorkspaceCommandHandler(
         var existing = all.FirstOrDefault(w => w.WorkspaceId == e.WorkspaceId);
         if (existing is null) return;
         await workspaceListStore.UpsertAsync(existing with { Name = e.NewName }, ct).ConfigureAwait(false);
+    }
+
+    // A workspace is "empty" when it holds no active (non-deleted) note for the caller.
+    // Historical notes with no workspace resolve to the default workspace (null→default).
+    private async Task<bool> HasActiveNotesAsync(WorkspaceId workspaceId, CancellationToken ct)
+    {
+        var cards = await noteCardListStore.QueryAllAsync(ct).ConfigureAwait(false);
+        return cards.Any(c => !c.Deleted
+            && c.UserId == currentUser.UserId
+            && (string.IsNullOrEmpty(c.WorkspaceId) ? WorkspaceId.DefaultValue : c.WorkspaceId) == workspaceId.Value);
     }
 
     private static Workspace Rebuild(IReadOnlyList<EventEnvelope> history)
