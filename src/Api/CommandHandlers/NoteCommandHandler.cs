@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Amazon.S3;
 using Domain;
 using Domain.Notes;
 using EventStore;
@@ -6,6 +7,7 @@ using EventStore.Projections;
 using Api.Auth;
 using Api.Exceptions;
 using Api.Observability;
+using Api.Services;
 
 namespace Api.CommandHandlers;
 
@@ -22,6 +24,7 @@ public sealed class NoteCommandHandler(
     INoteSearchViewStore noteSearchViewStore,
     ICurrentUser currentUser,
     ICurrentWorkspace currentWorkspace,
+    INoteImageStore noteImageStore,
     IDomainMetrics metrics,
     ILogger<NoteCommandHandler> logger) : INoteCommandHandler
 {
@@ -64,6 +67,16 @@ public sealed class NoteCommandHandler(
             // shares a batch with the delete is recorded as a rejection exactly as a rebuild would.
             await UpdateTagFeedbackForNewEventsAsync(newEnvelopes, ct).ConfigureAwait(false);
             await DeleteAllProjections(noteId, ct).ConfigureAwait(false);
+            // Purge the note's S3 image blobs. A failure here must not fail the delete —
+            // the note is already gone; orphaned objects are a tolerable cost, logged.
+            try
+            {
+                await noteImageStore.PurgeNoteAsync(noteId.ToString(), ct).ConfigureAwait(false);
+            }
+            catch (AmazonS3Exception ex)
+            {
+                logger.LogWarning(ex, "Failed to purge images for deleted note {NoteId}", noteId.Value);
+            }
             var existingCard = await noteCardListStore.GetByNoteAsync(noteId, ct).ConfigureAwait(false);
             if (existingCard is null) return;
             await noteCardListStore.UpsertAsync(

@@ -1,3 +1,4 @@
+using System.Text.RegularExpressions;
 using Amazon.BedrockRuntime;
 using Amazon.SecurityToken;
 using Domain.ActionItems;
@@ -13,6 +14,12 @@ namespace Api.Handlers;
 
 public static class TranscriptionHandlers
 {
+    // Images are stored and displayed but never analysed this phase; strip the markdown
+    // image syntax so it doesn't pollute the model prompt or burn tokens.
+    private static readonly Regex ImageMarkdown = new(@"!\[[^\]]*\]\([^)]*\)", RegexOptions.Compiled);
+
+    private static string StripImageMarkdown(string content) => ImageMarkdown.Replace(content, "");
+
     public static async Task<IResult> CompleteTranscription(
         Guid noteId,
         CompleteTranscriptionRequest req,
@@ -93,7 +100,7 @@ public static class TranscriptionHandlers
         var detail = await noteDetailStore.GetAsync(new NoteId(noteId), ct);
         if (detail is null || detail.UserId != currentUser.UserId) return Results.NotFound();
 
-        var content = detail.Content ?? "";
+        var content = StripImageMarkdown(detail.Content ?? "");
         if (string.IsNullOrWhiteSpace(detail.TranscriptText) && string.IsNullOrWhiteSpace(content))
             return Results.UnprocessableEntity();
 
