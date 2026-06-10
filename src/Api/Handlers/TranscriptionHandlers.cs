@@ -15,7 +15,8 @@ namespace Api.Handlers;
 public static class TranscriptionHandlers
 {
     // Images are stored and displayed but never analysed this phase; strip the markdown
-    // image syntax so it doesn't pollute the model prompt or burn tokens.
+    // image syntax so it doesn't pollute the model prompt or burn tokens. Assumes
+    // paren-free URLs — 25-A persists stable keys (notes/{id}/{guid}.png), never URLs.
     private static readonly Regex ImageMarkdown = new(@"!\[[^\]]*\]\([^)]*\)", RegexOptions.Compiled);
 
     private static string StripImageMarkdown(string content) => ImageMarkdown.Replace(content, "");

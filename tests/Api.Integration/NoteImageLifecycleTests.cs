@@ -43,6 +43,22 @@ public sealed class NoteImageLifecycleTests : IClassFixture<ApiFactory>
     }
 
     [Fact]
+    public async Task DeletingNote_WhenPurgeFails_StillReturns204()
+    {
+        var noteId = await CreateNoteAsync();
+        _images.PurgeThrows = true;
+        try
+        {
+            var resp = await _client.DeleteAsync($"/notes/{noteId}");
+            Assert.Equal(HttpStatusCode.NoContent, resp.StatusCode);
+        }
+        finally
+        {
+            _images.PurgeThrows = false;
+        }
+    }
+
+    [Fact]
     public async Task Analyse_StripsImageMarkdownFromContentSentToModel()
     {
         var noteId = await CreateNoteAsync();
