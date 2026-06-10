@@ -26,7 +26,7 @@
 | BUG-13 | Search bar shows two clear `✕` — the native `<input type="search">` cancel button on top of the custom clear button | Done | 22-B |
 | BUG-14 | Pasting space-separated tags drops a pill — optimistic patch no-ops when the note isn't cached yet (initial GET in flight) | Done | 20-E |
 | BUG-15 | Forced through full Google sign-in on cold load — bootstrap never uses the `rt` refresh cookie, so the session is only ~1h not 30 days | Done | BUG-11 |
-| BUG-16 | Google emails the user on every login — `prompt=consent` forces a fresh consent grant on each sign-in | Not Started | BUG-11 |
+| BUG-16 | Google emails the user on every login — `prompt=consent` forces a fresh consent grant on each sign-in | In Progress | BUG-11 |
 
 Further bugs will be appended as they are identified.
 
@@ -384,7 +384,7 @@ The mount effect (`AuthContext.tsx:112-141`) only handles returning *from* a Goo
 
 ## BUG-16 — Google emails the user on every login (`prompt=consent` forces a consent grant)
 
-**Status:** Not Started.
+**Status:** In Progress.
 
 **Severity:** Low — no functional impact, but on every sign-in Google sends a "You used Sign in with Google to sign in to note-taker-ai.com … This email summarises the info that you shared" security notification. Atypical SSO behaviour; reads as noisy/suspicious to the user.
 
@@ -394,9 +394,13 @@ The mount effect (`AuthContext.tsx:112-141`) only handles returning *from* a Goo
 
 **Expected behaviour:** Consent (and its email) only on first authorisation — or when Google has no refresh token for the user. Returning users re-authenticate without a forced consent grant and without an email each time.
 
-**Approach to weigh during fix:**
-- Request `prompt=consent` **only when no refresh token exists yet** (first sign-in / after revocation); omit `prompt` (or use `select_account`) otherwise. The client doesn't know whether the backend holds a refresh token, so this needs a signal — e.g. the gate attempts a silent refresh first (BUG-15) and only falls to interactive sign-in with `prompt=consent` when that genuinely fails, or the backend tracks whether a refresh token is on file.
-- Trade-off to verify: dropping `prompt=consent` risks Google **not** returning a `refresh_token` on a re-auth where one is already on file. Confirm the backend still has/keeps a usable refresh token in that case (Google omits `refresh_token` on silent grants — the backend must not overwrite the stored token with an empty value; see the [BUG-11] cookie re-issue logic that already guards `string.IsNullOrEmpty`).
+**Chosen approach — client first-auth flag (decided 2026-06-10):** request `prompt=consent` only when the client has no evidence a refresh token is on file; omit `prompt` otherwise (Google then re-authenticates a returning user silently, with no consent grant and no email — while still returning the existing session via `access_type=offline`). The evidence is a browser-local localStorage flag with a self-healing lifecycle so the client never ends up in a tokenless degraded session:
+
+- **Flag = "a refresh token is on file" (`google_refresh_established`).** `signIn` sends `prompt=consent` iff the flag is **absent**.
+- **Set** the flag on any token acquisition that proves a refresh token exists: a successful silent refresh (`handleRefreshSuccess`) and a successful interactive OAuth code exchange.
+- **Clear** the flag whenever the refresh token is known gone/invalid: silent-refresh failure (`handleRefreshFailure`) and cold-start bootstrap-refresh failure.
+- Net effect: consent (and the email) fires **only** when we genuinely lack a refresh token (first auth, or after the token expired/was revoked/cookie cleared) — exactly when Google must issue a new one. A returning user with a live `rt` cookie refreshes silently → no email. A user who clears only localStorage self-heals: the next cold-start silent refresh succeeds (cookie still present) and re-sets the flag, no consent prompt.
+- **No backend change needed** for refresh-token retention: `/auth/token` already sets the `rt` cookie only when Google returns a non-empty `refresh_token` (`AuthEndpoints.cs:30`), so a `prompt`-less re-auth that returns no token never clobbers an existing cookie. Locked with a regression test.
 
 **Repro:**
 1. Sign in to the app (complete the Google flow).
@@ -404,8 +408,12 @@ The mount effect (`AuthContext.tsx:112-141`) only handles returning *from* a Goo
 3. Repeat sign-in → another email each time.
 
 **Acceptance criteria:**
-- [ ] A returning user signing in does not receive a Google consent/sign-in summary email and is not shown a fresh consent screen, while a first-time user still grants consent once.
-- [ ] The backend still obtains/retains a usable refresh token across re-auths (never clobbered by an empty `refresh_token` on a silent grant) — guarded by a test.
-- [ ] A test covers the auth-URL builder emitting `prompt=consent` only on the first-auth path and omitting it otherwise.
+- [ ] `buildAuthUrl(..., forceConsent)` emits `prompt=consent` when `forceConsent` is true and omits `prompt` when false; `access_type=offline` is sent in both cases.
+- [ ] `signIn` passes `forceConsent = !isRefreshEstablished()` — a returning user (flag set) gets no `prompt=consent`; a first-time user (flag absent) does.
+- [ ] The `google_refresh_established` flag is set on a successful silent refresh and on a successful interactive exchange, and cleared on a silent-refresh failure and on a cold-start bootstrap-refresh failure (tests cover set + clear).
+- [ ] The backend never clobbers an on-file refresh token with an empty one: `POST /auth/token` with a Google success that carries **no** `refresh_token` sets **no** `rt` cookie — regression test in `AuthTokenExchangeTests`.
+- [ ] Existing auth tests stay green (BUG-15 cold-start refresh, token refresh, sign-in/out).
+
+**Key files (anticipated):** `web/src/auth/pkce.ts` (`buildAuthUrl` `forceConsent`), `web/src/auth/AuthContext.tsx` (`signIn` decision + set/clear in `handleRefreshSuccess`/`handleRefreshFailure`/exchange/cold-start), `web/src/auth/tokenStore.ts` (flag helpers); tests `web/src/__tests__/AuthUrl.test.ts`, `web/src/__tests__/TokenRefresh.test.tsx`, `tests/Api.Integration/AuthTokenExchangeTests.cs`. Related: [BUG-11] (refresh-token flow), [BUG-15] (cold-start silent refresh).
 
 **Key files (anticipated):** `web/src/auth/pkce.ts` (`buildAuthUrl` — conditional `prompt`), `web/src/auth/AuthContext.tsx` (`signIn` — first-auth vs returning signal), `src/Api/Endpoints/AuthEndpoints.cs` (refresh-token persistence guard); tests `web/src/__tests__/AuthUrl.test.ts`, `tests/Api.Integration/AuthRefreshTests.cs`. Related: [BUG-11] (refresh-token flow), [BUG-15] (cold-start silent refresh — reduces sign-in frequency).
