@@ -4,6 +4,7 @@ using Domain.ActionItems;
 using Domain.Folders;
 using Domain.Notes;
 using Domain.Todos;
+using Domain.Workspaces;
 
 namespace EventStore;
 
@@ -40,6 +41,9 @@ public static class EventDeserializer
         (nameof(TodoCompleted), _) => JsonSerializer.Deserialize<TodoCompleted>(envelope.Payload)!,
         (nameof(TodoReopened), _) => JsonSerializer.Deserialize<TodoReopened>(envelope.Payload)!,
         (nameof(TodoDeleted), _) => JsonSerializer.Deserialize<TodoDeleted>(envelope.Payload)!,
+        (nameof(WorkspaceCreated), _) => JsonSerializer.Deserialize<WorkspaceCreated>(envelope.Payload)!,
+        (nameof(WorkspaceRenamed), _) => JsonSerializer.Deserialize<WorkspaceRenamed>(envelope.Payload)!,
+        (nameof(WorkspaceDeleted), _) => JsonSerializer.Deserialize<WorkspaceDeleted>(envelope.Payload)!,
         _ => throw new InvalidOperationException($"Unknown event type/version: {envelope.EventType} v{envelope.EventVersion}")
     };
 }

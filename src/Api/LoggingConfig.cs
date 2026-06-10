@@ -1,5 +1,6 @@
 using Api.Exceptions;
 using AWS.Lambda.Powertools.Logging;
+using Domain.Workspaces;
 using EventStore;
 
 namespace Api;
@@ -85,7 +86,8 @@ public static class LoggingConfig
     {
         ConcurrencyException => (StatusCodes.Status409Conflict, "conflict"),
         RebuildInProgressException => (StatusCodes.Status409Conflict, "rebuild in progress"),
-        NoteNotFoundException or ActionItemNotFoundException or FolderNotFoundException
+        DefaultWorkspaceUndeletableException => (StatusCodes.Status409Conflict, "default workspace cannot be deleted"),
+        NoteNotFoundException or ActionItemNotFoundException or FolderNotFoundException or WorkspaceNotFoundException
             => (StatusCodes.Status404NotFound, "not found"),
         _ => (StatusCodes.Status500InternalServerError, "internal server error"),
     };

@@ -18,7 +18,7 @@ namespace Api;
 
 public static class Builder
 {
-    internal static WebApplication BuildApp(string[] args, string eventTableName, string projTableName, string noteDetailTableName, string noteActionsTableName, string todoListTableName, string noteCardListTableName, string folderTreeTableName, string tagIndexTableName, string tagFeedbackTableName, string actionFeedbackTableName, string calendarLinkTableName, string noteSearchViewTableName, string draftTranscriptionTableName)
+    internal static WebApplication BuildApp(string[] args, string eventTableName, string projTableName, string noteDetailTableName, string noteActionsTableName, string todoListTableName, string noteCardListTableName, string folderTreeTableName, string tagIndexTableName, string tagFeedbackTableName, string actionFeedbackTableName, string calendarLinkTableName, string noteSearchViewTableName, string draftTranscriptionTableName, string workspaceListTableName)
     {
         var builder = WebApplication.CreateBuilder(args);
 
@@ -120,10 +120,13 @@ public static class Builder
             new DynamoDbNoteSearchViewStore(sp.GetRequiredService<IAmazonDynamoDB>(), noteSearchViewTableName));
         builder.Services.AddSingleton<ITranscriptionDraftStore>(sp =>
             new DynamoDbTranscriptionDraftStore(sp.GetRequiredService<IAmazonDynamoDB>(), draftTranscriptionTableName));
+        builder.Services.AddSingleton<IWorkspaceListStore>(sp =>
+            new DynamoDbWorkspaceListStore(sp.GetRequiredService<IAmazonDynamoDB>(), workspaceListTableName));
         builder.Services.AddScoped<INoteCommandHandler, NoteCommandHandler>();
         builder.Services.AddScoped<IActionItemCommandHandler, ActionItemCommandHandler>();
         builder.Services.AddScoped<ITodoCommandHandler, TodoCommandHandler>();
         builder.Services.AddScoped<IFolderCommandHandler, FolderCommandHandler>();
+        builder.Services.AddScoped<IWorkspaceCommandHandler, WorkspaceCommandHandler>();
         builder.Services.AddScoped<IProjectionRebuildHandler, ProjectionRebuildHandler>();
         builder.Services.AddSingleton<IDynamoHealthCheck>(sp =>
             new DynamoDbHealthCheck(sp.GetRequiredService<IAmazonDynamoDB>(), eventTableName));
