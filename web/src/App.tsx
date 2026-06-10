@@ -51,7 +51,7 @@ export default function App() {
 }
 
 function AppGate() {
-  const { idToken, forbidden, sessionExpired, signIn, signOut } = useAuth();
+  const { idToken, forbidden, sessionExpired, authLoading, signIn, signOut } = useAuth();
   const navigate = useNavigate();
   // OAuth redirects back to the origin root; once authed, restore the deep-link
   // the user originally requested (stashed by signIn in sessionStorage) — 21-C.
@@ -66,6 +66,9 @@ function AppGate() {
   }, [idToken, navigate]);
 
   if (sessionExpired) return <SessionExpiredBanner onSignIn={signIn} />;
+  // A cold-start silent refresh is in flight — the refresh cookie may still restore the
+  // session, so hold a loading state instead of flashing the sign-in screen (BUG-15).
+  if (authLoading) return <AuthLoading />;
   if (!idToken) return <SignInPage />;
   if (forbidden) return (
     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100vh', gap: '1rem', fontFamily: 'sans-serif' }}>
@@ -75,6 +78,22 @@ function AppGate() {
   );
 
   return <AppContent signOut={signOut} />;
+}
+
+function AuthLoading() {
+  return (
+    <div
+      data-testid="auth-loading"
+      role="status"
+      aria-live="polite"
+      style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', fontFamily: 'sans-serif' }}
+    >
+      <span style={{ position: 'absolute', width: 1, height: 1, overflow: 'hidden', clip: 'rect(0 0 0 0)' }}>
+        Restoring your session…
+      </span>
+      <span aria-hidden="true" className={styles.authSpinner} />
+    </div>
+  );
 }
 
 function AppContent({ signOut }: { signOut: () => void }) {
