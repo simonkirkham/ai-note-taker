@@ -27,6 +27,7 @@
 | BUG-14 | Pasting space-separated tags drops a pill — optimistic patch no-ops when the note isn't cached yet (initial GET in flight) | Done | 20-E |
 | BUG-15 | Forced through full Google sign-in on cold load — bootstrap never uses the `rt` refresh cookie, so the session is only ~1h not 30 days | Done | BUG-11 |
 | BUG-16 | Google emails the user on every login — `prompt=consent` forces a fresh consent grant on each sign-in | Done | BUG-11 |
+| BUG-17 | Concurrent multi-word tag add drops a tag — second append loses the optimistic-concurrency race and is silently dropped (no handler retry) | In Progress | BUG-4, BUG-14 |
 
 Further bugs will be appended as they are identified.
 
@@ -415,3 +416,33 @@ The mount effect (`AuthContext.tsx:112-141`) only handles returning *from* a Goo
 - [x] Existing auth tests stay green (BUG-15 cold-start refresh, token refresh, sign-in/out).
 
 **Key files:** `web/src/auth/pkce.ts` (`buildAuthUrl` `forceConsent`), `web/src/auth/AuthContext.tsx` (`signIn` decision + flag set/clear across `handleRefreshSuccess`/`handleRefreshFailure`/`setOnRefresh`/exchange/cold-start), `web/src/auth/tokenStore.ts` (flag helpers, fail-safe to force-consent); tests `web/src/__tests__/AuthUrl.test.ts`, `web/src/__tests__/ConsentPrompt.test.tsx`, `tests/Api.Integration/AuthTokenExchangeTests.cs`. The backend `/auth/token` non-clobber guard (`AuthEndpoints.cs:30`) needed no change. Related: [BUG-11] (refresh-token flow), [BUG-15] (cold-start silent refresh).
+
+---
+
+## BUG-17 — Concurrent multi-word tag add silently drops a tag (no handler retry on conflict)
+
+**Status:** In Progress.
+
+**Severity:** Medium — a user pasting space-separated tags (e.g. `1:1s Bill`) loses one server-side; the lost tag's pill then resists removal (untag 404s and rolls back). Backend half of the flaky `TagsJourney` E2E; a real lost write. BUG-14 fixed the frontend optimistic-cache half; the events still race on the backend.
+
+**Symptom:** Two near-simultaneous `POST /notes/{id}/tags` on the same note stream both read the same version; the second `AppendAsync` throws `ConcurrencyException` and the tag is dropped. The frontend treats the resulting 409 as success, so the UI shows a pill with no backing event. Removing that pill `DELETE`s a tag the stream never had → 404 → untag rollback re-inserts the phantom pill.
+
+**Root cause (confirmed by code read):** `NoteCommandHandler.ExecuteAsync` does `ReadAsync → Rebuild → handle → AppendAsync(expectedVersion)` with **no retry** on `ConcurrencyException`. BUG-4 mapped the conflict to a clean 409 but never retried — so a benign race still loses the write. The aggregate is pure and tag commands are idempotent (`TagNote` no-ops a duplicate via 409, `UntagNote` 404s a missing tag), so re-reading and re-running the command on the fresh version is safe.
+
+**Expected behaviour:** A benign concurrency race on a note write transparently retries (re-read, rebuild, re-run, re-append at the fresh version) and persists. Both concurrent tag adds end up on the note. A genuine persistent conflict still surfaces as 409 after bounded attempts.
+
+**Scenarios (GWT):**
+- Given a note tagged at version N, When two adds of different tags race and the first append wins, Then the handler retries the second on version N+1 and **both tags persist**.
+- Given both tags persisted, When either tag is removed, Then the remove returns success (no 404 bounce-back).
+- Given a frontend untag whose tag is already absent server-side, When `DELETE /notes/{id}/tags/{tag}` returns 404 or 409, Then the client treats it as success (no rollback, no phantom pill re-insert).
+- Given a persistent (every-attempt) conflict, When the bounded retries exhaust, Then the conflict surfaces as 409 (BUG-4 behaviour preserved).
+
+**Acceptance criteria:**
+- [ ] Two concurrent tag adds on the same note both persist server-side (handler retries the loser on the fresh version).
+- [ ] A subsequent remove of either tag succeeds — no 404 bounce-back.
+- [ ] The retry lives in the command handler; the aggregate stays pure (no clock/IO/retry in `Note`).
+- [ ] A persistent conflict still maps to 409 after bounded attempts (BUG-4 regression held).
+- [ ] Frontend `untagNote()` treats 404 and 409 as OK (matches `tagNote()` accepting 409), so removing an absent tag never rolls back and re-inserts a phantom pill.
+- [ ] A failing spec reproduces the dropped-write before the fix and passes after (`ConflictingEventStore` forces a one-shot conflict; handler retries and the tag persists).
+
+**Key files:** `src/Api/CommandHandlers/NoteCommandHandler.cs` (`ExecuteAsync` retry loop), `web/src/api/tags.ts` (`untagNote` ok-statuses); tests `tests/Api.Integration/ExceptionMappingTests.cs`, `tests/Api.Integration/ConflictingEventStore.cs`. Related: [BUG-4] (conflict→409 mapping), [BUG-14] (frontend optimistic-cache half).

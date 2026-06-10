@@ -33,13 +33,77 @@ public sealed class ExceptionMappingTests(ApiFactory factory) : IClassFixture<Ap
 
         var noteId = await CreateNoteAsync(client);
 
-        // The next append loses the optimistic-concurrency check, as a racing or
-        // double-submitted write to the same stream would.
-        store.ConflictOnNextAppend = true;
+        // Every append loses the optimistic-concurrency check, so the handler's bounded
+        // retry (BUG-17) exhausts and the persistent conflict still surfaces as a 409
+        // (rather than an unhandled 500). A *single* benign race that the retry resolves
+        // is covered by ConcurrencyConflict_OnTagAdd_RetriesAndPersists below.
+        store.ConflictsRemaining = int.MaxValue;
         var resp = await client.PatchAsync($"/notes/{noteId}/title",
             new StringContent("{\"title\":\"Renamed\"}", Encoding.UTF8, "application/json"));
 
         Assert.Equal(HttpStatusCode.Conflict, resp.StatusCode);
+    }
+
+    // BUG-17: a single benign concurrency race on a tag add must NOT drop the write.
+    // The handler re-reads the stream, re-runs the pure command, and re-appends at the
+    // fresh version, so the tag persists and a subsequent remove succeeds (no 404 bounce).
+    [Fact]
+    public async Task ConcurrencyConflict_OnTagAdd_RetriesAndPersists()
+    {
+        var store = new ConflictingEventStore();
+        var custom = _factory.WithWebHostBuilder(b => b.ConfigureTestServices(s =>
+        {
+            s.RemoveAll<IEventStore>();
+            s.AddSingleton<IEventStore>(store);
+        }));
+        var client = custom.CreateClient();
+        client.DefaultRequestHeaders.Add("X-Test-User-Id", FakeCurrentUser.TestUserId);
+
+        var noteId = await CreateNoteAsync(client);
+
+        // The first append attempt loses the race (as the second of two concurrent tag
+        // adds would); the handler must retry and succeed rather than drop the write.
+        store.ConflictsRemaining = 1;
+        var add = await PostTagAsync(client, noteId, "1:1s");
+        Assert.Equal(HttpStatusCode.NoContent, add.StatusCode);
+
+        // The tag is genuinely on the stream — it appears in GET /notes/{id}...
+        var tags = await GetTagsAsync(client, noteId);
+        Assert.Contains("1:1s", tags);
+
+        // ...and removing it succeeds (no 404 bounce-back from a phantom tag).
+        var remove = await client.DeleteAsync($"/notes/{noteId}/tags/1%3A1s");
+        Assert.Equal(HttpStatusCode.NoContent, remove.StatusCode);
+    }
+
+    // BUG-17: two adds of *different* tags racing — the loser's append conflicts once,
+    // the handler retries on the fresh version, and BOTH tags end up persisted.
+    [Fact]
+    public async Task ConcurrencyConflict_OnSecondOfTwoTagAdds_BothPersist()
+    {
+        var store = new ConflictingEventStore();
+        var custom = _factory.WithWebHostBuilder(b => b.ConfigureTestServices(s =>
+        {
+            s.RemoveAll<IEventStore>();
+            s.AddSingleton<IEventStore>(store);
+        }));
+        var client = custom.CreateClient();
+        client.DefaultRequestHeaders.Add("X-Test-User-Id", FakeCurrentUser.TestUserId);
+
+        var noteId = await CreateNoteAsync(client);
+
+        var first = await PostTagAsync(client, noteId, "1:1s");
+        Assert.Equal(HttpStatusCode.NoContent, first.StatusCode);
+
+        // The second add's first append loses the race; the retry re-reads the stream
+        // (now carrying the first tag) and re-appends the second tag at the fresh version.
+        store.ConflictsRemaining = 1;
+        var second = await PostTagAsync(client, noteId, "Bill");
+        Assert.Equal(HttpStatusCode.NoContent, second.StatusCode);
+
+        var tags = await GetTagsAsync(client, noteId);
+        Assert.Contains("1:1s", tags);
+        Assert.Contains("Bill", tags);
     }
 
     [Theory]
@@ -78,5 +142,17 @@ public sealed class ExceptionMappingTests(ApiFactory factory) : IClassFixture<Ap
     {
         var create = await client.PostAsync("/notes", null);
         return (await create.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("noteId").GetString()!;
+    }
+
+    private static Task<HttpResponseMessage> PostTagAsync(HttpClient client, string noteId, string tag) =>
+        client.PostAsync($"/notes/{noteId}/tags",
+            new StringContent($"{{\"tag\":\"{tag}\"}}", Encoding.UTF8, "application/json"));
+
+    private static async Task<List<string?>> GetTagsAsync(HttpClient client, string noteId)
+    {
+        var get = await client.GetAsync($"/notes/{noteId}");
+        get.EnsureSuccessStatusCode();
+        var body = await get.Content.ReadFromJsonAsync<JsonElement>();
+        return body.GetProperty("tags").EnumerateArray().Select(t => t.GetString()).ToList();
     }
 }

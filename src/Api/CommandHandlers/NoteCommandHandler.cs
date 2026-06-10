@@ -27,6 +27,15 @@ public sealed class NoteCommandHandler(
 {
     private const int InitialEventVersion = 1;
 
+    // A benign concurrency race (two fast writes to the same note stream, e.g. a
+    // space-separated multi-tag paste) makes the second append lose the optimistic-
+    // concurrency check. The aggregate is pure and these commands are idempotent on a
+    // fresh version (TagNote 409s a duplicate, UntagNote 404s a missing tag), so re-read,
+    // re-run, re-append resolves the race transparently instead of dropping the write
+    // (BUG-17). A persistent conflict still surfaces after the bounded attempts (→ 409).
+    private const int MaxAppendAttempts = 4;
+    private static readonly TimeSpan AppendRetryBaseDelay = TimeSpan.FromMilliseconds(20);
+
     public Task<NoteId> HandleAsync(NoteCommand cmd, CancellationToken ct = default) =>
         CommandInstrumentation.RunAsync(metrics, logger, cmd.GetType().Name, "Note", async () =>
         {
@@ -38,22 +47,41 @@ public sealed class NoteCommandHandler(
         bool mustExist = true)
     {
         var streamId = noteId.ToStreamId();
-        var history = await store.ReadAsync(streamId, ct).ConfigureAwait(false);
-        var note = Rebuild(history);
-        // Covers both a never-created note (empty stream) and a deleted one whose
-        // stream still exists: either way the aggregate is gone, so the write is a
-        // 404 rather than a domain InvalidOperationException that escapes as a 500.
-        if (mustExist && !note.Exists) throw new NoteNotFoundException(noteId);
-        var newEvents = handle(note);
-        if (newEvents.Count == 0) return;
-        await PersistAsync(streamId, noteId, history, newEvents, ct).ConfigureAwait(false);
+        // Read → rebuild → handle → append is retried as a unit: each attempt re-reads
+        // the stream so the pure aggregate runs against the latest version, and the
+        // append targets that fresh expected version. Only ConcurrencyException is
+        // retried; any other failure (or an exhausted budget) propagates unchanged.
+        for (var attempt = 1; ; attempt++)
+        {
+            var history = await store.ReadAsync(streamId, ct).ConfigureAwait(false);
+            var note = Rebuild(history);
+            // Covers both a never-created note (empty stream) and a deleted one whose
+            // stream still exists: either way the aggregate is gone, so the write is a
+            // 404 rather than a domain InvalidOperationException that escapes as a 500.
+            if (mustExist && !note.Exists) throw new NoteNotFoundException(noteId);
+            var newEvents = handle(note);
+            if (newEvents.Count == 0) return;
+
+            var envelopes = ToEnvelopes(streamId, newEvents, currentUser.UserId, currentWorkspace.WorkspaceId);
+            try
+            {
+                await store.AppendAsync(streamId, history.Count, envelopes, ct).ConfigureAwait(false);
+            }
+            catch (ConcurrencyException) when (attempt < MaxAppendAttempts)
+            {
+                await DelayBeforeRetryAsync(attempt, ct).ConfigureAwait(false);
+                continue;
+            }
+            await UpdateProjectionAsync(noteId, history, envelopes, ct).ConfigureAwait(false);
+            return;
+        }
     }
 
-    private async Task PersistAsync(string streamId, NoteId noteId, IReadOnlyList<EventEnvelope> history, IReadOnlyList<IDomainEvent> newEvents, CancellationToken ct)
+    private static Task DelayBeforeRetryAsync(int attempt, CancellationToken ct)
     {
-        var envelopes = ToEnvelopes(streamId, newEvents, currentUser.UserId, currentWorkspace.WorkspaceId);
-        await store.AppendAsync(streamId, history.Count, envelopes, ct).ConfigureAwait(false);
-        await UpdateProjectionAsync(noteId, history, envelopes, ct).ConfigureAwait(false);
+        var backoff = AppendRetryBaseDelay.TotalMilliseconds * Math.Pow(2, attempt - 1);
+        var jitter = Random.Shared.NextDouble() * backoff * 0.2;
+        return Task.Delay(TimeSpan.FromMilliseconds(backoff + jitter), ct);
     }
 
     private async Task UpdateProjectionAsync(NoteId noteId, IReadOnlyList<EventEnvelope> history, List<EventEnvelope> newEnvelopes, CancellationToken ct)
