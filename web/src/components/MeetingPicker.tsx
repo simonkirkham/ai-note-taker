@@ -1,6 +1,7 @@
 import { type UseQueryResult } from "@tanstack/react-query";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { CalendarMeeting, type MeetingsResult } from "../api/meetings";
+import { useFocusTrap } from "../hooks/useFocusTrap";
 import { useMeetings } from "../hooks/useMeetings";
 import { addDays, dayDelta, formatMeetingTime, todayInTz } from "./meetingDay";
 import styles from "./MeetingPicker.module.css";
@@ -43,6 +44,8 @@ export default function MeetingPicker({
   const [today] = useState(() => todayInTz(tz));
   const [selectedDate, setSelectedDate] = useState(today);
   const [dateInputOpen, setDateInputOpen] = useState(false);
+  const dialogRef = useRef<HTMLDivElement>(null);
+  useFocusTrap(dialogRef);
 
   // A cached day shows instantly; a new day reads as loading until it resolves.
   const displayQuery = useMeetings(selectedDate);
@@ -66,7 +69,7 @@ export default function MeetingPicker({
       aria-label="Link to a meeting"
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
-      <div className={styles.dialog} data-testid="meeting-picker">
+      <div ref={dialogRef} className={styles.dialog} data-testid="meeting-picker">
         <header className={styles.header}>
           <h2 className={styles.title}>Link to a meeting</h2>
           <button data-testid="meeting-picker-close" aria-label="Close" onClick={onClose} className={styles.closeBtn}>
