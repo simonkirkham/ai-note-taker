@@ -250,3 +250,19 @@ The full rationale, target diagrams, staged migration plan, and the eventual-con
 
 **Raised in:** Hawk review of PR #207 (slice 23-A), 2026-06-10.
 **Depends on:** —
+
+---
+
+## CI pipeline hygiene — skip no-op deploys, cancel superseded PR runs, cache Playwright
+
+✅ **Done** (2026-06-10, this PR). Three independent pipeline optimisations shipped together:
+
+1. **Skip deploys on eval-harness-only changes.** Added `tests/Analysis.Eval/**` to `deploy.yml` `paths-ignore`. That project is built/run only by `eval.yml` (nightly + manual dispatch) and the `Makefile`; it is never part of the deployed artifact (`src/Api`). A push to main touching only the eval harness (e.g. judge-prompt/matrix tweaks like #210) previously ran a full ~12-min test+prod deploy for nothing. **Trade-off accepted:** a broken eval build is no longer caught by deploy's `validate-backend`, but `eval.yml` already builds that project.
+2. **Cancel superseded PR runs.** Added a `concurrency` group to `pr.yml` keyed per-PR (`github.head_ref`) with `cancel-in-progress: true`. Pushing a new commit to a PR previously ran the full backend+frontend+eventstore suite to completion even when obsolete; now the in-flight run is cancelled. Safe — only the latest commit's checks matter. Does not touch the `deploy.yml` concurrency groups (deploys must never cancel).
+3. **Cache Playwright browsers.** Added an `actions/cache@v5` step on `~/.cache/ms-playwright` before the E2E `Install Playwright browsers` step in `deploy.yml`, keyed on the pinned `Microsoft.Playwright` version (hash of `Browser.E2E.csproj`). The chromium binary was re-downloaded every deploy (~30–60s); on a cache hit `playwright install` skips the download. `--with-deps` still runs to install OS apt libraries (not cacheable — ephemeral runner).
+
+**Why it matters:** removes wasted runner minutes and shortens the merge→deploy loop that gates parallel slices.
+**Raised in:** Pipeline-optimisation review, 2026-06-10. **Actioned:** same session.
+**Depends on:** —
+
+> **Considered and rejected:** mirroring the `tests/Analysis.Eval/**` ignore into `pr.yml`. PR checks are the merge gate; an eval-only PR that skips them produces no `backend`/`frontend` checks, which the CLAUDE.md merge rule relies on being present and green (`gh pr checks` could read falsely green on a near-empty list). A "build once, deploy twice" refactor (share the Lambda zip + frontend base bundle between `deploy-test` and `deploy-production`) was also identified — larger, restructures the job graph, deferred to its own change.
