@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 import { AuthContext, type AuthState } from './context'
 import { buildAuthUrl, exchangeCode, generateCodeChallenge, generateCodeVerifier } from './pkce'
 import { attemptSilentRefresh } from './silentRefresh'
-import { clearToken, loadPersistedToken, setToken, setOnForbidden, setOnRefresh, setOnUnauthorized } from './tokenStore'
+import { clearRefreshEstablished, clearToken, isRefreshEstablished, loadPersistedToken, markRefreshEstablished, setToken, setOnForbidden, setOnRefresh, setOnUnauthorized } from './tokenStore'
 import { getExp, REFRESH_LEAD_MS, useGoogleAuth } from './useGoogleAuth'
 
 export function AuthProvider({
@@ -45,6 +45,9 @@ export function AuthProvider({
     setToken(token)
     setIdToken(token)
     setSessionExpired(false)
+    // A working refresh proves a refresh token is on file → returning sign-ins can skip the
+    // consent prompt (and its email) (BUG-16).
+    markRefreshEstablished()
   }, [])
 
   const handleRefreshFailure = useCallback(() => {
@@ -52,6 +55,8 @@ export function AuthProvider({
     clearToken()
     setIdToken(null)
     setSessionExpired(true)
+    // The refresh token is gone/invalid → the next sign-in must re-consent to obtain a new one.
+    clearRefreshEstablished()
   }, [])
 
   const { scheduleRefresh, cancelRefresh } = useGoogleAuth({
@@ -143,6 +148,9 @@ export function AuthProvider({
       .then(({ id_token }) => {
         setToken(id_token)
         setIdToken(id_token)
+        // A completed interactive sign-in establishes the session; record that a refresh token
+        // is on file so subsequent sign-ins can skip the consent prompt (BUG-16).
+        markRefreshEstablished()
       })
       .catch(() => { setIdToken(null) })
     // The mounted ref makes this a one-shot mount effect; clientId/initialToken are
@@ -161,8 +169,11 @@ export function AuthProvider({
       .then((token) => {
         if (cancelled) return
         if (token) handleRefreshSuccess(token)
+        // No token: the refresh cookie is gone/invalid, so the upcoming sign-in must re-consent
+        // to obtain a new refresh token (BUG-16). handleRefreshSuccess marks it on success.
+        else clearRefreshEstablished()
       })
-      .catch(() => {})
+      .catch(() => { if (!cancelled) clearRefreshEstablished() })
       .finally(() => { if (!cancelled) setAuthLoading(false) })
     return () => { cancelled = true }
     // Run once on mount; shouldBootstrapRefresh/handleRefreshSuccess are stable for the
@@ -181,7 +192,9 @@ export function AuthProvider({
     // and let the gate restore it once authed (21-C).
     const dest = window.location.pathname + window.location.search
     if (dest !== '/') sessionStorage.setItem('postLoginRedirect', dest)
-    window.location.href = buildAuthUrl(clientId, window.location.origin, challenge, state)
+    // Force the consent prompt only when no refresh token is on file — a returning user
+    // re-authenticates silently, with no fresh consent grant and no Google email (BUG-16).
+    window.location.href = buildAuthUrl(clientId, window.location.origin, challenge, state, !isRefreshEstablished())
   }, [clientId])
 
   const signOut = useCallback(() => {

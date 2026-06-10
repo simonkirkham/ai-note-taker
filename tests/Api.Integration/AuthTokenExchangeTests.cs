@@ -56,6 +56,27 @@ public sealed class AuthTokenExchangeTests(ApiFactory factory) : IClassFixture<A
         Assert.Contains("path=/api/auth", rt.ToLowerInvariant());
     }
 
+    // BUG-16: a returning user re-authenticates without prompt=consent, so Google may return
+    // no refresh_token. The exchange must NOT set an empty rt cookie — that would clobber the
+    // user's still-valid refresh cookie and degrade the session back to ~1h.
+    [Fact]
+    public async Task PostAuthToken_SuccessWithoutRefreshToken_DoesNotSetRefreshCookie()
+    {
+        var fake = factory.Services.GetRequiredService<FakeGoogleOAuthClient>();
+        fake.Reset();
+        fake.ExchangeResult = FakeGoogleOAuthClient.Success("an-id-token", null);
+
+        var body = new { code = "auth-code", codeVerifier = "verifier", redirectUri = "https://example.com" };
+        var response = await _client.PostAsJsonAsync("/auth/token", body);
+
+        response.EnsureSuccessStatusCode();
+        var json = await response.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("an-id-token", json.GetProperty("id_token").GetString());
+
+        if (response.Headers.TryGetValues("Set-Cookie", out var cookies))
+            Assert.DoesNotContain(cookies, c => c.StartsWith("rt="));
+    }
+
     [Fact]
     public async Task PostAuthToken_GoogleSecretsNotConfigured_Returns503()
     {
