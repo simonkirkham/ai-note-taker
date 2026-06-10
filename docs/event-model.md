@@ -103,7 +103,7 @@ A named partition of a user's content (e.g. *Work* / *Personal*). A second isola
 
 | Command | Pre-conditions | Events emitted |
 |---|---|---|
-| `CreateWorkspace(workspaceId, name, createdAt)` | WorkspaceId does not exist; name non-empty | `WorkspaceCreated` |
+| `CreateWorkspace(workspaceId, name)` | WorkspaceId does not exist; name non-empty | `WorkspaceCreated` |
 | `RenameWorkspace(workspaceId, newName)` | Workspace exists, not deleted; new name non-empty and differs | `WorkspaceRenamed` |
 | `DeleteWorkspace(workspaceId)` | Not the default (`__default__`); workspace exists, not deleted | `WorkspaceDeleted` |
 

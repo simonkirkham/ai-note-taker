@@ -6,14 +6,13 @@ namespace Domain.Specs.Workspaces;
 public sealed class CreateWorkspaceSpec
 {
     static readonly WorkspaceId Id = new("ws-aaaa");
-    static readonly DateTimeOffset Now = new(2026, 6, 10, 12, 0, 0, TimeSpan.Zero);
 
     [Fact]
     public void CreatesWorkspace()
     {
         Spec
             .Given<Workspace>()
-            .When(new CreateWorkspace(Id, "Work", Now))
+            .When(new CreateWorkspace(Id, "Work"))
             .Then(new WorkspaceCreated(Id, "Work"));
     }
 
@@ -22,7 +21,7 @@ public sealed class CreateWorkspaceSpec
     {
         Spec
             .Given<Workspace>()
-            .When(new CreateWorkspace(Id, "", Now))
+            .When(new CreateWorkspace(Id, ""))
             .ThenThrows<InvalidOperationException>();
     }
 
@@ -31,7 +30,7 @@ public sealed class CreateWorkspaceSpec
     {
         Spec
             .Given<Workspace>()
-            .When(new CreateWorkspace(Id, "   ", Now))
+            .When(new CreateWorkspace(Id, "   "))
             .ThenThrows<InvalidOperationException>();
     }
 
@@ -40,7 +39,7 @@ public sealed class CreateWorkspaceSpec
     {
         Spec
             .Given<Workspace>(new WorkspaceCreated(Id, "Work"))
-            .When(new CreateWorkspace(Id, "Work", Now))
+            .When(new CreateWorkspace(Id, "Work"))
             .ThenThrows<InvalidOperationException>();
     }
 }

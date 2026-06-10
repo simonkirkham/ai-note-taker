@@ -37,7 +37,7 @@ public static class WorkspaceHandlers
         var workspaceId = new WorkspaceId(Guid.NewGuid().ToString("N"));
         try
         {
-            await handler.HandleAsync(new CreateWorkspace(workspaceId, req.Name, DateTimeOffset.UtcNow), ct);
+            await handler.HandleAsync(new CreateWorkspace(workspaceId, req.Name), ct);
         }
         catch (InvalidOperationException)
         {
