@@ -19,58 +19,36 @@ Each entry records what it is, why it matters, where it was raised, and any depe
 
 ## Stricter TypeScript compiler flags beyond `strict`
 
-**What:** `web/tsconfig.app.json` has `strict: true` but none of the strict-*family* extras. Adopt incrementally:
-1. **`noUncheckedIndexedAccess`** first — makes `arr[i]` / `record[key]` typed as `T | undefined`, catching a real class of "index that isn't there" bugs `strict` lets through.
-2. **`exactOptionalPropertyTypes`** later — distinguishes "absent" from "present and `undefined`".
-
-**Why it matters:** `strict` alone still lets `arr[i]` lie about `undefined`; a mature TS codebase closes these.
-**Cost:** non-trivial one-time fix backlog, especially `exactOptionalPropertyTypes`. Do `noUncheckedIndexedAccess` first as its own PR; defer `exactOptionalPropertyTypes` until the first is clean.
-**Raised in:** Frontend standards research 2026-06-04 (gap vs Google TS / typescript-eslint strict family).
-**Depends on:** —
+**Graduated → [Phase 19](phases/phase-19.md)** (slices **19-B** `noImplicitOverride` + **19-C** `noUncheckedIndexedAccess` → `exactOptionalPropertyTypes`). Same work; tracked in the phase doc. Removed here to avoid a duplicate backlog.
 
 ---
 
 ## Frontend state-management hygiene — colocation + Context performance
 
-**What:** Two related guidelines, currently uncodified:
-1. **State colocation** — keep state nearest its consumer; lift only when siblings genuinely share it; prefer component composition (children/slots) over Context to solve prop drilling. (KCD, Bulletproof React.)
-2. **Context performance audit** — memoize every provider `value` with `useMemo` (callbacks via `useCallback`), and split a context by update frequency (state vs dispatch) where it has both. An unmemoized value re-renders every consumer on each parent render; `React.memo` on a consumer does **not** block a context-driven re-render. Audit `AuthContext`, `ThemeProvider`, `ToastProvider`.
+**Context-performance half ✅ Done** as **[Phase 19-D](phases/phase-19.md)** (2026-06-05): `AuthContext`/`ToastContext` provider values memoised, Auth actions `useCallback`-wrapped. **Colocation half — Open:** state colocation (keep state nearest its consumer; prefer component composition over Context for prop drilling) stays an ongoing convention, not a slice — candidate to fold into the `frontend-react` skill if it recurs in review.
 
-**Why it matters:** prevents whole-tree re-render cascades and over-coupling to global context as the app grows.
 **Raised in:** Frontend standards research 2026-06-04 (react.dev useContext / KCD colocation).
-**Depends on:** — (the context-value audit is a small concrete task; colocation is an ongoing convention — candidate to also fold into the `frontend-react` skill if it recurs in review).
+**Depends on:** —
 
 ---
 
 ## Core Web Vitals — bundle budget gate + CLS sizing + non-urgent transitions
 
-**What:**
-1. **Bundle-size budget that fails CI** (`size-limit` or `rollup-plugin-visualizer` threshold) — bundle size only grows silently without a hard gate. Pairs with the existing `React.lazy` code-splitting of Tiptap / transcribe-streaming.
-2. **Reserve space for async/media content** (explicit width/height or `aspect-ratio`, skeletons) to avoid CLS; never lazy-load the LCP image.
-3. **`useTransition` / `useDeferredValue`** for non-urgent updates (tag/note filtering, search) to keep INP low.
-
-**Targets (field, 75th pct):** LCP ≤ 2.5s, INP ≤ 200ms, CLS ≤ 0.1. (INP replaced FID in 2024.)
-**Why it matters:** these are the pass/fail bars real users are scored on; a CI budget stops silent regressions.
-**Raised in:** Frontend standards research 2026-06-04 (web.dev/vitals).
-**Depends on:** —
+**Graduated → [Phase 19](phases/phase-19.md)** (slice **19-I** — lazy-load Tiptap + transcribe-streaming, CI bundle-size budget; CLS sizing + `useTransition`/`useDeferredValue` folded into the same slice). Targets (field, 75th pct): LCP ≤ 2.5s, INP ≤ 200ms, CLS ≤ 0.1. Tracked in the phase doc; removed here to avoid a duplicate backlog.
 
 ---
 
 ## Network resilience — retry transient failures with backoff
 
-**What:** `apiFetch` does not retry. Add exponential backoff + jitter for transient failures (network error, 5xx, 429); **never** retry 4xx (won't self-heal). Scope it to idempotent GETs first.
-**Why it matters:** a single transient blip currently surfaces as a hard error; naive immediate retries amplify outages, so backoff+jitter is the correct form.
-**Raised in:** Frontend standards research 2026-06-04.
-**Depends on:** — (revisit if/when the TanStack Query migration in ADR 0010 is reversed — the library supplies retry/backoff for free, so don't hand-roll it twice).
+✅ **Done** (Phase **20-G**, deploy on the TanStack Query migration). `web/src/api/client.ts` `apiFetch` retries transient failures (5xx / 429 / network drop) with **exponential backoff + full jitter**, honouring `Retry-After`, capped at 3 attempts. Scoped to safe **reads** (GET/HEAD) only — writes are optimistic-with-rollback and `mutations.retry:false`, so transport-retrying a PUT/DELETE would only delay rollback and a POST retry would risk a duplicate create. 401 is handled separately (not transient). This was tracked as Phase **19-H**; the 20-G implementation note records it as subsuming 19-H.
+
+**Raised in:** Frontend standards research 2026-06-04. **Actioned:** Phase 20-G.
 
 ---
 
 ## XSS hardening — allowlist URL schemes on user-derived `href`/`src`
 
-**What:** React auto-escapes text but **not** URL attributes. Any `href`/`src` built from user/AI-derived data (e.g. links inside note content / markdown output) must allowlist the scheme and reject `javascript:` / `data:`. Centralise in one helper alongside the planned `renderSafeHtml()` DOMPurify wrapper so the check can't be skipped ad hoc.
-**Why it matters:** a `javascript:` URL in rendered note content is a stored-XSS vector the existing DOMPurify-for-HTML guardrail does not cover (it sanitises HTML bodies, not anchor hrefs in JSX).
-**Raised in:** Frontend standards research 2026-06-04 (OWASP XSS).
-**Depends on:** — (only bites once user/AI-derived links are rendered as anchors; not currently the case, so this is a guardrail-ahead-of-need).
+**Graduated → [Phase 19](phases/phase-19.md)** (slice **19-J** — configure the Tiptap Link extension explicitly to allowlist schemes and reject `javascript:` / `data:`). A `javascript:` URL in rendered note content is a stored-XSS vector the HTML-body DOMPurify guardrail does not cover (it sanitises bodies, not anchor hrefs). Guardrail-ahead-of-need: only bites once user/AI-derived links render as anchors. Tracked in the phase doc; removed here to avoid a duplicate backlog.
 
 ---
 
@@ -197,6 +175,7 @@ The full rationale, target diagrams, staged migration plan, and the eventual-con
 
 **Raised in:** Hawk review of PR #177 (slice 17-B), 2026-06-05 — flagged as a low-severity gap, recommended deferring as a cross-dialog follow-up rather than a one-off.
 **Depends on:** Nothing blocking.
+**Overlaps [Phase 19-F](phases/phase-19.md)** (focus management for 3 dialog/popover surfaces). 19-F is per-surface; this item is the shared `useFocusTrap` utility behind it. Best built once as part of 19-F and applied to `MeetingPicker` + `SessionExpiredBanner` together. Stays here as the utility's home until 19-F is scoped.
 
 ---
 
