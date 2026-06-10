@@ -6,7 +6,7 @@
 
 | Slice | Summary | Status | Depends on |
 |-------|---------|--------|------------|
-| 25-A | **Backend media store + presigned upload/download.** Private S3 bucket (block-public-access, RETAIN, CORS for the app origin); `POST /notes/{id}/images:presign-upload` (server-enforced content-type allowlist + max-size) and `POST /notes/{id}/images:resolve` (batch presigned GET). Both authorize by note ownership + key prefix. | Not Started | — |
+| 25-A | **Backend media store + presigned upload/download.** Private S3 bucket (block-public-access, RETAIN, CORS for the app origin); `POST /notes/{id}/images:presign-upload` (server-enforced content-type allowlist + max-size) and `POST /notes/{id}/images:resolve` (batch presigned GET). Both authorize by note ownership + key prefix. | Done | — |
 | 25-B | **Paste / drop / pick → upload → inline render (frontend, live + edit).** Tiptap paste+drop handlers and a toolbar file-picker; optimistic local preview while the upload runs; persist a **stable key reference** in content; on load resolve refs → presigned GET and swap into image `src`; on save swap presigned URLs **back** to keys so an expiring URL is never written. | Not Started | 25-A |
 | 25-C | **Lifecycle + analysis hygiene.** Deleting a note purges its `notes/{id}/` image prefix from S3; image markdown is stripped from the text sent to the AI analysis model (images are stored/displayed, never analysed this phase). | Not Started | 25-A |
 
