@@ -92,7 +92,7 @@ public class NoteImagesIntegrationTests : IClassFixture<ApiFactory>
 
         Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
         var body = await resp.Content.ReadFromJsonAsync<JsonElement>();
-        Assert.Equal(1, body.GetProperty("urls").EnumerateObject().Count());
+        Assert.Single(body.GetProperty("urls").EnumerateObject());
     }
 
     [Fact]
