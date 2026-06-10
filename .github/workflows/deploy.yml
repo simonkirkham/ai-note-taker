@@ -12,6 +12,7 @@ on:
       - ".githooks/**" # local git hooks, never run in CI
       - ".claude/**" # agent skills/config, never built or deployed
       - "scripts/**" # dev/ops scripts, never built or deployed
+      - "tests/Analysis.Eval/**" # LLM eval harness, run only by eval.yml, never deployed
 
 jobs:
   validate-frontend:
@@ -239,6 +240,17 @@ jobs:
       - name: Build E2E project
         run: dotnet build tests/Browser.E2E/Browser.E2E.csproj -c Release
 
+      - name: Cache Playwright browsers
+        uses: actions/cache@v5
+        with:
+          path: ~/.cache/ms-playwright
+          # Keyed on the pinned Microsoft.Playwright version (csproj) — a browser
+          # bump changes the key and forces a fresh download.
+          key: playwright-${{ runner.os }}-${{ hashFiles('tests/Browser.E2E/Browser.E2E.csproj') }}
+          restore-keys: playwright-${{ runner.os }}-
+
+      # On a cache hit the browser download is skipped; --with-deps still installs
+      # the OS apt libraries (not cached — the runner is ephemeral).
       - name: Install Playwright browsers
         run: pwsh tests/Browser.E2E/bin/Release/net10.0/playwright.ps1 install --with-deps chromium
 
