@@ -26,4 +26,32 @@ public sealed class S3NoteImageStore(IAmazonS3 s3, string bucketName) : INoteIma
             Verb = HttpVerb.GET,
             Expires = DateTime.UtcNow.Add(DownloadTtl)
         });
+
+    public async Task PurgeNoteAsync(string noteId, CancellationToken ct = default)
+    {
+        var prefix = NoteImageKeys.Prefix(noteId);
+        string? continuationToken = null;
+        do
+        {
+            var listed = await s3.ListObjectsV2Async(new ListObjectsV2Request
+            {
+                BucketName = bucketName,
+                Prefix = prefix,
+                ContinuationToken = continuationToken
+            }, ct);
+
+            var objects = listed.S3Objects;
+            if (objects is { Count: > 0 })
+            {
+                await s3.DeleteObjectsAsync(new DeleteObjectsRequest
+                {
+                    BucketName = bucketName,
+                    Objects = objects.Select(o => new KeyVersion { Key = o.Key }).ToList()
+                }, ct);
+            }
+
+            continuationToken = listed.IsTruncated == true ? listed.NextContinuationToken : null;
+        }
+        while (continuationToken is not null);
+    }
 }

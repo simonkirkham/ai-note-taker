@@ -6,6 +6,7 @@ using EventStore.Projections;
 using Api.Auth;
 using Api.Exceptions;
 using Api.Observability;
+using Api.Services;
 
 namespace Api.CommandHandlers;
 
@@ -22,6 +23,7 @@ public sealed class NoteCommandHandler(
     INoteSearchViewStore noteSearchViewStore,
     ICurrentUser currentUser,
     ICurrentWorkspace currentWorkspace,
+    INoteImageStore noteImageStore,
     IDomainMetrics metrics,
     ILogger<NoteCommandHandler> logger) : INoteCommandHandler
 {
@@ -64,6 +66,18 @@ public sealed class NoteCommandHandler(
             // shares a batch with the delete is recorded as a rejection exactly as a rebuild would.
             await UpdateTagFeedbackForNewEventsAsync(newEnvelopes, ct).ConfigureAwait(false);
             await DeleteAllProjections(noteId, ct).ConfigureAwait(false);
+            // Purge the note's S3 image blobs — best-effort cleanup that must NEVER fail
+            // the delete (the note is already gone; orphaned objects are a tolerable,
+            // logged cost). Broad catch is deliberate: any S3 fault (incl. AmazonClient/
+            // ServiceException for network/throttle) is swallowed; only cancellation propagates.
+            try
+            {
+                await noteImageStore.PurgeNoteAsync(noteId.ToString(), ct).ConfigureAwait(false);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                logger.LogWarning(ex, "Failed to purge images for deleted note {NoteId}", noteId.ToString());
+            }
             var existingCard = await noteCardListStore.GetByNoteAsync(noteId, ct).ConfigureAwait(false);
             if (existingCard is null) return;
             await noteCardListStore.UpsertAsync(
