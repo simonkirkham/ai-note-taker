@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
+  dropUnresolvedImages,
   extractImageKeys,
   extractImageSrcs,
-  invert,
   isImageKey,
   keysToSrcs,
   rewriteImageSrcs,
@@ -86,9 +86,32 @@ describe('rewriteImageSrcs', () => {
   });
 });
 
-describe('invert', () => {
-  it('swaps keys and values', () => {
-    expect(invert({ [KEY_A]: URL_A })).toEqual({ [URL_A]: KEY_A });
+describe('dropUnresolvedImages', () => {
+  it('drops a blob: object-URL image (upload still in flight)', () => {
+    const md = `Notes\n\n![](blob:http://localhost/uuid)\n\nmore`;
+    expect(dropUnresolvedImages(md)).toBe('Notes\n\n\n\nmore');
+  });
+
+  it('drops a leftover presigned URL image', () => {
+    expect(dropUnresolvedImages(`![](${URL_A})`)).toBe('');
+  });
+
+  it('keeps an image whose src is a stable key', () => {
+    const md = `![alt](${KEY_A})`;
+    expect(dropUnresolvedImages(md)).toBe(md);
+  });
+
+  it('keeps key images and drops transient ones in mixed content', () => {
+    const md = `![](${KEY_A}) and ![](blob:http://localhost/x) and ![](${KEY_B})`;
+    const out = dropUnresolvedImages(md);
+    expect(out).toContain(KEY_A);
+    expect(out).toContain(KEY_B);
+    expect(out).not.toContain('blob:');
+  });
+
+  it('leaves plain links and text untouched', () => {
+    const md = `[a link](${KEY_A})\n\ntext`;
+    expect(dropUnresolvedImages(md)).toBe(md);
   });
 });
 
@@ -101,7 +124,7 @@ describe('round-trip and never-persist-presigned invariant', () => {
     expect(displayed).toContain(URL_A);
     expect(displayed).toContain(URL_B);
 
-    const saved = srcsToKeys(displayed, invert(urlByKey));
+    const saved = srcsToKeys(displayed, { [URL_A]: KEY_A, [URL_B]: KEY_B });
     expect(saved).toBe(original);
   });
 

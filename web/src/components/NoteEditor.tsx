@@ -5,7 +5,7 @@ import StarterKit from '@tiptap/starter-kit';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Markdown } from 'tiptap-markdown';
 import { presignUpload, resolveImages } from '../api/notes';
-import { extractImageKeys, srcsToKeys } from '../lib/noteImages';
+import { dropUnresolvedImages, extractImageKeys, srcsToKeys } from '../lib/noteImages';
 import styles from './NoteEditor.module.css';
 import { useToast } from './toastContext';
 
@@ -37,8 +37,12 @@ export default function NoteEditor({ noteId, value, onChange, onBlur }: NoteEdit
   // (upload callbacks, resolve) and must not trigger re-renders.
   const displaySrcToKey = useRef<Record<string, string>>({});
 
+  // Save guard: map known transient srcs back to keys, then DROP any image whose src is
+  // still not a key (e.g. an object URL for an upload mid-flight). Guarantees a blur-save
+  // during the upload window can never persist a blob:/presigned URL into note content.
   const serialize = useCallback(
-    (ed: Editor) => srcsToKeys(ed.storage.markdown.getMarkdown(), displaySrcToKey.current),
+    (ed: Editor) =>
+      dropUnresolvedImages(srcsToKeys(ed.storage.markdown.getMarkdown(), displaySrcToKey.current)),
     []
   );
 
@@ -194,7 +198,8 @@ export default function NoteEditor({ noteId, value, onChange, onBlur }: NoteEdit
         }
       })
       .catch(() => {
-        if (!ignore) resolvedFor.current = null;
+        // Leave resolvedFor set: a transient resolve failure must not retry-storm on
+        // every keystroke. A different image set (new signature) still attempts afresh.
       });
     return () => {
       ignore = true;

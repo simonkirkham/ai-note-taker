@@ -47,8 +47,13 @@ export function srcsToKeys(markdown: string, keyByUrl: Record<string, string>): 
   return rewriteImageSrcs(markdown, keyByUrl);
 }
 
-export function invert(map: Record<string, string>): Record<string, string> {
-  const out: Record<string, string> = {};
-  for (const [k, v] of Object.entries(map)) out[v] = k;
-  return out;
+// Final save guard: drop any image whose src is not a stable key — e.g. a `blob:`
+// object URL for an upload still in flight, or a presigned URL that somehow escaped
+// the key swap. Makes the never-persist-a-transient-URL invariant hold by construction,
+// independent of upload/serialize ordering. A dropped image reappears (as its key) once
+// its upload completes and the next serialize runs.
+export function dropUnresolvedImages(markdown: string): string {
+  return markdown.replace(IMAGE_MARKDOWN, (whole, _alt: string, src: string) =>
+    isImageKey(src) ? whole : ''
+  );
 }
