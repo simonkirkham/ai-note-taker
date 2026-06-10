@@ -13,7 +13,7 @@
 | 19-E | **Effect hygiene.** Add out-of-order guards to 3 mount-only fetches; replace 3 notify-parent-in-effect patterns | Not Started | — |
 | 19-F | **Accessibility: live regions + focus.** `aria-live`/`role` on ~10 transient surfaces; 6 `:focus`→`:focus-visible`; focus management for 3 dialog/popover surfaces | Not Started | — |
 | 19-G | **Test quality.** Migrate testid-heavy unit tests to role/label queries; convert remaining `fireEvent` to `userEvent` | Not Started | — |
-| 19-H | **Network resilience.** Exponential-backoff retry (5xx/429/network) for idempotent requests in `apiFetch` | Not Started | 19-A |
+| 19-H | **Network resilience.** Exponential-backoff retry (5xx/429/network) for idempotent requests in `apiFetch` | Done (shipped in 20-G) | 19-A |
 | 19-I | **Bundle / CWV.** Lazy-load Tiptap + transcribe-streaming; add a CI bundle-size budget | Not Started | — |
 | 19-J | **URL-scheme hardening.** Configure the Tiptap Link extension explicitly instead of relying on StarterKit defaults | Not Started | — |
 | 19-K | **Adopt TanStack Query (server-state migration)** — **graduated to its own phase: [Phase 20](phase-20.md)** (7 slices, gated on reversing [ADR 0010](../adr/0010-server-state-strategy.md)). Too large for one slice. | Moved → P20 | — |
@@ -111,9 +111,8 @@ Each lists the finding, locations, value tier, and effort. Specs are written per
 - **`fireEvent`→`userEvent` (36 calls, 8 files):** `TagsSection.test.tsx` (23) is ~64% of all usage — convert first. Verify non-interaction `fireEvent` (timers in `ToastProvider`/`TokenRefresh`) before converting.
 - **Effort:** medium-high (mechanical but broad). Pure test churn — lowest external value.
 
-### 19-H — Network resilience: retry + backoff — **value: medium** — depends on 19-A
-- `api/client.ts` `apiFetch` retries auth only; add exponential backoff + jitter for `res.status >= 500 || === 429` (honour `Retry-After`) and thrown network `TypeError`. **Idempotent requests only** (GET + idempotent PUT/DELETE) — never auto-retry the POST creators. Keep the auth-retry outside the transient loop.
-- **Effort:** small-medium. Slots cleanly into the post-split `client.ts`.
+### 19-H — Network resilience: retry + backoff — **value: medium** — depends on 19-A — **Done (shipped in 20-G)**
+- ✅ Shipped as part of Phase **20-G**, not a standalone 19 slice. `api/client.ts` `apiFetch` now retries transient failures (`res.status >= 500 || === 429`, thrown network `TypeError`) with exponential backoff + full jitter, honouring `Retry-After`, capped at 3 attempts. Scoped to safe **reads** (GET/HEAD) only — writes are optimistic-with-rollback (`mutations.retry:false`), so retrying a PUT/DELETE only delays rollback and a POST retry risks a duplicate create. Auth-retry stays outside the transient loop. Each retry `console.warn`s (the latency-masking guard below).
 
 ### 19-I — Bundle / CWV — **value: medium**
 - No `React.lazy`/dynamic import in app code. `NoteEditor.tsx:1-5` (Tiptap StarterKit, ~20 extensions) and `useTranscription.ts:4` (`@aws-sdk/client-transcribe-streaming`, very heavy) are both eager but interaction-gated. Lazy-load behind `React.lazy` + `Suspense` / dynamic import.

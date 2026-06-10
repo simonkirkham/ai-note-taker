@@ -262,8 +262,8 @@ Scenario: Completing a todo from the home screen updates the count
 
 ### Acceptance criteria
 
-- [ ] _(internal)_ `GET /todos/completed` returns completed action items with description, noteTitle, completedAt
-- [ ] Home screen To Do section shows a "Show completed (N)" toggle when N > 0
-- [ ] Expanding the toggle reveals completed items with their parent note title
-- [ ] Collapsing hides them; state resets to collapsed on page reload
-- [ ] E2E: complete an action item; go home; click "Show completed" — item visible with note title; click again — collapses
+- [x] _(internal)_ `GET /todos/completed` returns completed action items with description, noteTitle, completedAt
+- [x] Home screen To Do section shows a "Show completed (N)" toggle when N > 0
+- [x] Expanding the toggle reveals completed items with their parent note title
+- [x] Collapsing hides them; state resets to collapsed on page reload
+- [x] E2E: complete an action item; go home; click "Show completed" — item visible with note title; click again — collapses
