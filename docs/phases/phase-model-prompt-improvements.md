@@ -14,8 +14,9 @@
 |------|---------|--------|------------|
 | MPI-1 | `analysis@v4` — deepen note content (the universal weak dimension) | Done (not shipped, `run-532442`) | 10-G, 10-O |
 | MPI-2 | `analysis@v5` — keep V4's depth win, add a thin-transcript grounding clamp + restore V3 tag discipline | Done — ships (`run-551897`) | MPI-1 |
-| MPI-3 | Model sweep — add `anthropic.claude-sonnet-4-6`, evaluate as replacement for the aged `claude-3-sonnet-20240229` value pick | Open | 10-G |
-| MPI-4 | Fix the judge — give it the user's note as grounding + stop the content rubric auto-failing faithful terse notes | Open | 10-G |
+| MPI-3 | Model sweep — add `anthropic.claude-sonnet-4-6`, evaluate as replacement for the aged `claude-3-sonnet-20240229` value pick | Done (`run-28225`) | 10-G |
+| MPI-4 | Fix the judge — give it the user's note as grounding + stop the content rubric auto-failing faithful terse notes | Done — terseness fixed; note-grounding partial (`run-28225`) | 10-G |
+| MPI-5 | Programmatic note-grounding for the judge — prompt-level grounding proved insufficient; exclude note/gold entities from the fabrication check | Open | MPI-4 |
 
 Further items are appended as each eval run surfaces the next weakest dimension. The `eval-run` skill proposes them (see [How items are added](#how-items-are-added)).
 
@@ -91,7 +92,7 @@ So v4 must chase **depth where the source supports it and restraint where it doe
 
 ## MPI-3 — Swap-test `claude-sonnet-4-6` as the value pick
 
-**Status:** Open
+**Status:** Done — `claude-sonnet-4-6` swept on `analysis@v5` (`run-28225`, [report](../eval-runs/2026-06-10-sonnet-4-6-model-sweep-judge-fix.md)). **It wins:** top model overall (Quality **0.850**), beating the aged `claude-3-sonnet-20240229` (0.820, **+0.030**) and Opus (0.811, **+0.039**) at lower cost. Decision: **add `claude-sonnet-4-6` as `**keep**`, drop `claude-3-sonnet-20240229`** (same vendor, dominated). It also leads the prod model Nova Lite (0.814) by +0.036 — a prod-upgrade candidate (cost/latency review, non-vendor judge confirmation needed first; not actioned here). Matrix bumped to v4. Access confirmed: invoked cleanly on-demand in eu-west-2, zero skips.
 
 **Proposal:** Add `anthropic.claude-sonnet-4-6` to the keep-set; run one model-only sweep on the shipped prompt (`analysis@v5`).
 
@@ -107,8 +108,8 @@ So v4 must chase **depth where the source supports it and restraint where it doe
 2. Rank vs the keep-set; decide keep/drop on `claude-3-sonnet-20240229`.
 3. Record via the `eval-run` skill; update `test-matrix.md`.
 
-- [ ] Swept on `analysis@v5`; new Sonnet ranked vs the keep-set
-- [ ] Keep/drop decision recorded in `test-matrix.md` + report
+- [x] Swept on `analysis@v5`; new Sonnet ranked vs the keep-set — top of the keep-set (0.850)
+- [x] Keep/drop decision recorded in `test-matrix.md` + report — matrix v4; 2024 Sonnet dropped, Sonnet-4-6 kept
 
 **Depends on:** 10-G (the harness).
 
@@ -116,7 +117,7 @@ So v4 must chase **depth where the source supports it and restraint where it doe
 
 ## MPI-4 — Fix the judge: note-blindness + terseness penalty
 
-**Status:** Open
+**Status:** Done — judge rubric reworded and re-run (`run-28225`, [report](../eval-runs/2026-06-10-sonnet-4-6-model-sweep-judge-fix.md)). **Terseness penalty fixed:** the content rubric now judges thinness relative to the source, so faithful-terse notes on thin transcripts are no longer auto-capped at ≤0.4 — `17-budget-review` content rose to 0.80–0.90 on three models. **Note-grounding only partially fixed:** the rubric now names the existing note as valid grounding, but the LLM judge still mis-flags note-only entities as fabrication where they recur through the output (`14-all-hands-reorg`'s gold-tag "Stark Industries" → content 0.20, faithfulness 1.00). Prompt wording is necessary but insufficient; a programmatic fix is carried to **MPI-5**. Code: `BedrockQualityJudge.BuildPrompt` (extracted for unit testing) + `BedrockQualityJudgePromptTests`.
 
 **Proposal:** Give the quality/faithfulness judges the user's note as grounding context, and stop the content rubric auto-failing a faithful, justified-terse note on a thin transcript.
 
@@ -132,8 +133,34 @@ So v4 must chase **depth where the source supports it and restraint where it doe
 2. Reword the content rubric so a faithful note that is short *because the transcript is thin* is not auto-failed to ≤0.4.
 3. Re-run V3/V5 on the keep-set; confirm the sparse fixtures (`17-budget-review`, `14-all-hands-reorg`) no longer mis-score, and no prompt regressed.
 
-- [ ] Judges receive the user note; gold-tag entities no longer flagged as fabrication
-- [ ] Sparse-fixture content scores reflect faithfulness, not length
-- [ ] Decision recorded in `docs/eval-runs/` + `test-matrix.md`
+- [x] Judges receive the user note; rubric names it as grounding — **partial**: prompt edit done, but the judge still mis-flags note-only gold entities (`14-all-hands-reorg`) → carried to MPI-5
+- [x] Sparse-fixture content scores reflect faithfulness, not length — terseness floor removed (`17-budget-review` 0.20→0.90 on 3 models)
+- [x] Decision recorded in `docs/eval-runs/` + `test-matrix.md` — [report](../eval-runs/2026-06-10-sonnet-4-6-model-sweep-judge-fix.md), matrix v4
 
 **Depends on:** 10-G (the harness).
+
+---
+
+## MPI-5 — Programmatic note-grounding for the judge
+
+**Status:** Open
+
+**Proposal:** Stop relying on prompt wording for note-grounding — extract the user-note (and gold-tag) entities and exclude them from the quality judge's fabrication check programmatically, or add a held-out non-vendor judge to confirm sparse-fixture content.
+
+**Why it's worth doing:**
+- MPI-4's prompt edit proved **insufficient**: `run-28225` still scored `14-all-hands-reorg` content at 0.20 because the judge flagged "Stark Industries" (in the user's note, a gold tag) as fabrication, faithfulness 1.00 on the same cell. Even Opus's rationale admits the entity is in the note, then penalises it.
+- Sparse-fixture content scores still can't be trusted per-cell, so every future prompt comparison on thin transcripts stays distorted — a measurement bug, not a one-run artefact.
+- A deterministic grounding check removes judge variance on the dimension MPI-1/2 spent two runs chasing.
+
+**Cost:** Harness-only. Either (a) inject note/gold entities into the faithfulness reference and have the quality judge defer to it, or (b) a parallel non-vendor judge on the sparse fixtures. No infra. One confirming re-run of `analysis@v5` on the keep-set.
+
+### Steps
+1. Extract note + gold-tag entities; pass them to the quality judge as an explicit "these are grounded, do not call them fabrication" allowlist (or post-process the fabrication verdict against it).
+2. Re-run `analysis@v5` on the keep-set; confirm `14-all-hands-reorg` / `17-budget-review` content scores reflect faithfulness, not entity-flagging.
+3. Record via the `eval-run` skill; update `test-matrix.md`.
+
+- [ ] Note/gold entities no longer flagged as fabrication on the sparse fixtures
+- [ ] Sparse-fixture content scores consistent with faithfulness across all keep-set models
+- [ ] Decision recorded in `docs/eval-runs/` + `test-matrix.md`
+
+**Depends on:** MPI-4 (the prompt-level edit and the `run-28225` finding that it's insufficient).
