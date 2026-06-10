@@ -1220,4 +1220,44 @@ public class InfraAssertionsTests
             })
         }));
     }
+
+    [Fact]
+    public void WorkspaceListTable_Exists()
+    {
+        _template.HasResource("AWS::DynamoDB::Table", Match.ObjectLike(new Dictionary<string, object>
+        {
+            ["Properties"] = Match.ObjectLike(new Dictionary<string, object>
+            {
+                ["TableName"] = "notetaker-proj-workspacelist"
+            })
+        }));
+    }
+
+    [Fact]
+    public void WorkspaceListTable_HasRetainDeletionPolicy()
+    {
+        _template.HasResource("AWS::DynamoDB::Table", Match.ObjectLike(new Dictionary<string, object>
+        {
+            ["DeletionPolicy"] = "Retain",
+            ["Properties"] = Match.ObjectLike(new Dictionary<string, object>
+            {
+                ["TableName"] = "notetaker-proj-workspacelist"
+            })
+        }));
+    }
+
+    [Fact]
+    public void Lambda_HasWorkspaceListTableEnvVar()
+    {
+        _template.HasResourceProperties("AWS::Lambda::Function", Match.ObjectLike(new Dictionary<string, object>
+        {
+            ["Environment"] = Match.ObjectLike(new Dictionary<string, object>
+            {
+                ["Variables"] = Match.ObjectLike(new Dictionary<string, object>
+                {
+                    ["PROJ_WORKSPACELIST_TABLE_NAME"] = Match.AnyValue()
+                })
+            })
+        }));
+    }
 }
