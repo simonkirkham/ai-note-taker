@@ -26,6 +26,7 @@
 | BUG-13 | Search bar shows two clear `✕` — the native `<input type="search">` cancel button on top of the custom clear button | Done | 22-B |
 | BUG-14 | Pasting space-separated tags drops a pill — optimistic patch no-ops when the note isn't cached yet (initial GET in flight) | Done | 20-E |
 | BUG-15 | Forced through full Google sign-in on cold load — bootstrap never uses the `rt` refresh cookie, so the session is only ~1h not 30 days | In Progress | BUG-11 |
+| BUG-16 | Google emails the user on every login — `prompt=consent` forces a fresh consent grant on each sign-in | Not Started | BUG-11 |
 
 Further bugs will be appended as they are identified.
 
@@ -376,3 +377,33 @@ The mount effect (`AuthContext.tsx:112-141`) only handles returning *from* a Goo
 - [ ] Optimistic-UI / effect-ordering invariant preserved: the in-memory token is still set before child data-fetch effects run (no reintroduction of the BUG-1 blank-screen race).
 
 **Key files (anticipated):** `web/src/auth/AuthContext.tsx` (bootstrap effect + loading state), `web/src/auth/silentRefresh.ts`, the sign-in gate component that renders on `idToken === null`; tests under `web/src/__tests__/` (new cold-start bootstrap test). Related: [BUG-11] (refresh-token flow), [BUG-1] (effect-ordering / blank-screen race).
+
+---
+
+## BUG-16 — Google emails the user on every login (`prompt=consent` forces a consent grant)
+
+**Status:** Not Started.
+
+**Severity:** Low — no functional impact, but on every sign-in Google sends a "You used Sign in with Google to sign in to note-taker-ai.com … This email summarises the info that you shared" security notification. Atypical SSO behaviour; reads as noisy/suspicious to the user.
+
+**Symptom:** Each time the user signs in, Google emails a sign-in/consent summary. A normal SSO app shows consent only on first authorisation, then re-authenticates silently without a new email.
+
+**Root cause (confirmed by code read):** the OAuth auth URL hard-codes `prompt: 'consent'` on **every** request (`web/src/auth/pkce.ts:37`). `prompt=consent` forces Google to re-display the consent screen and record a **fresh consent grant** on each sign-in, which is what triggers the notification email. It was added in BUG-11 to guarantee Google returns a `refresh_token` (refresh tokens are only issued on a consent grant under `access_type=offline`). Compounded by [BUG-15]: because cold loads forced full sign-ins "regularly", the email fired roughly that often. Fixing BUG-15 reduces the frequency; this bug removes the per-login consent grant itself.
+
+**Expected behaviour:** Consent (and its email) only on first authorisation — or when Google has no refresh token for the user. Returning users re-authenticate without a forced consent grant and without an email each time.
+
+**Approach to weigh during fix:**
+- Request `prompt=consent` **only when no refresh token exists yet** (first sign-in / after revocation); omit `prompt` (or use `select_account`) otherwise. The client doesn't know whether the backend holds a refresh token, so this needs a signal — e.g. the gate attempts a silent refresh first (BUG-15) and only falls to interactive sign-in with `prompt=consent` when that genuinely fails, or the backend tracks whether a refresh token is on file.
+- Trade-off to verify: dropping `prompt=consent` risks Google **not** returning a `refresh_token` on a re-auth where one is already on file. Confirm the backend still has/keeps a usable refresh token in that case (Google omits `refresh_token` on silent grants — the backend must not overwrite the stored token with an empty value; see the [BUG-11] cookie re-issue logic that already guards `string.IsNullOrEmpty`).
+
+**Repro:**
+1. Sign in to the app (complete the Google flow).
+2. Check the Google account's email — a "Sign in with Google" summary arrives.
+3. Repeat sign-in → another email each time.
+
+**Acceptance criteria:**
+- [ ] A returning user signing in does not receive a Google consent/sign-in summary email and is not shown a fresh consent screen, while a first-time user still grants consent once.
+- [ ] The backend still obtains/retains a usable refresh token across re-auths (never clobbered by an empty `refresh_token` on a silent grant) — guarded by a test.
+- [ ] A test covers the auth-URL builder emitting `prompt=consent` only on the first-auth path and omitting it otherwise.
+
+**Key files (anticipated):** `web/src/auth/pkce.ts` (`buildAuthUrl` — conditional `prompt`), `web/src/auth/AuthContext.tsx` (`signIn` — first-auth vs returning signal), `src/Api/Endpoints/AuthEndpoints.cs` (refresh-token persistence guard); tests `web/src/__tests__/AuthUrl.test.ts`, `tests/Api.Integration/AuthRefreshTests.cs`. Related: [BUG-11] (refresh-token flow), [BUG-15] (cold-start silent refresh — reduces sign-in frequency).
