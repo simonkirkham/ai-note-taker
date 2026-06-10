@@ -374,6 +374,23 @@ describe('SessionExpiredBanner component', () => {
     await userEvent.click(screen.getByRole('button', { name: /sign in again/i }))
     expect(onSignIn).toHaveBeenCalledOnce()
   })
+
+  it('moves focus into the dialog on open', () => {
+    render(<SessionExpiredBanner onSignIn={vi.fn()} />)
+    const dialog = screen.getByRole('dialog')
+    expect(dialog.contains(document.activeElement)).toBe(true)
+    expect(document.activeElement).toBe(screen.getByRole('button', { name: /sign in again/i }))
+  })
+
+  it('Tab and Shift+Tab keep focus on the sole control', async () => {
+    render(<SessionExpiredBanner onSignIn={vi.fn()} />)
+    const signIn = screen.getByRole('button', { name: /sign in again/i })
+    expect(document.activeElement).toBe(signIn)
+    await userEvent.tab()
+    expect(document.activeElement).toBe(signIn)
+    await userEvent.tab({ shift: true })
+    expect(document.activeElement).toBe(signIn)
+  })
 })
 
 // ─── Sign-out clears the refresh timer ────────────────────────────────────────

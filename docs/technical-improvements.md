@@ -168,6 +168,8 @@ The full rationale, target diagrams, staged migration plan, and the eventual-con
 
 ## Add a shared modal focus-trap utility and apply it across all dialogs
 
+✅ **Done** (2026-06-10). `useFocusTrap(ref, { onClose })` lives in `web/src/hooks/useFocusTrap.ts` — on mount it captures `document.activeElement`, focuses the first focusable element (or the container, falling back to `tabindex="-1"`), cycles Tab / Shift+Tab within the dialog's focusable set, and restores focus to the captured element on unmount; `onClose` is an optional Escape consolidation that both current dialogs leave unused (Escape stays where it lived). Applied to `MeetingPicker` and `SessionExpiredBanner`. Vitest coverage: focus-into-dialog-on-open, Tab/Shift+Tab wrap, and focus-restore-to-trigger-on-close. **Also delivers the shared utility that [Phase 19-F](phases/phase-19.md)'s per-surface focus work would otherwise have to build** — 19-F now only needs to apply the existing hook to its remaining surfaces.
+
 **What:** `MeetingPicker` (slice 17-B) is the app's first true `aria-modal="true"` dialog. It handles Escape + click-outside but does **not** move focus into the dialog on open, trap focus within it, or return focus to the trigger on close. The pre-existing `SessionExpiredBanner` shares the `dialog` role and the same gap. There is no focus-trap utility in the codebase.
 
 **Why:** Keyboard and screen-reader users can tab out of an open modal into the page behind it; on close, focus is lost rather than returned to the control that opened it. This is a real WAI-ARIA dialog gap, not a regression — both dialogs share it.

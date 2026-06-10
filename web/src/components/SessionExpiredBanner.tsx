@@ -1,3 +1,5 @@
+import { useRef } from 'react'
+import { useFocusTrap } from '../hooks/useFocusTrap'
 import styles from './SessionExpiredBanner.module.css'
 
 interface Props {
@@ -5,8 +7,12 @@ interface Props {
 }
 
 export default function SessionExpiredBanner({ onSignIn }: Props) {
+  const dialogRef = useRef<HTMLDivElement>(null)
+  useFocusTrap(dialogRef)
+
   return (
     <div
+      ref={dialogRef}
       role="dialog"
       aria-modal="true"
       aria-labelledby="session-expired-heading"
