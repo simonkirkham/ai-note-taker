@@ -30,6 +30,8 @@ export function loadPersistedToken(): string | null {
 }
 
 export const isRefreshEstablished = (): boolean => {
+  // Fail-safe: if localStorage is unavailable (locked-down browser), report "not established"
+  // so signIn forces consent — the user always gets a refresh token, never a broken session.
   try { return localStorage.getItem(REFRESH_ESTABLISHED_KEY) === '1' } catch { return false }
 }
 export const markRefreshEstablished = (): void => {

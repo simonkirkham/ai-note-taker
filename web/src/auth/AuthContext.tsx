@@ -88,6 +88,10 @@ export function AuthProvider({
         handleRefreshSuccess(newToken)
         return newToken
       }
+      // The refresh token is gone/invalid (this is the 401-driven path, which doesn't go through
+      // handleRefreshFailure), so the next sign-in must re-consent to obtain a new one (BUG-16) —
+      // otherwise a prompt-less re-auth returns no refresh token and the session loops at ~1h.
+      clearRefreshEstablished()
       return null
     })
   }, [cancelRefresh, clientId, handleRefreshSuccess])

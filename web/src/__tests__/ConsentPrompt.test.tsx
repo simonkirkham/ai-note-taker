@@ -1,4 +1,5 @@
 import userEvent from '@testing-library/user-event'
+import { http, HttpResponse } from 'msw'
 import App from '../App'
 import { AuthProvider } from '../auth/AuthContext'
 import * as pkce from '../auth/pkce'
@@ -8,8 +9,10 @@ import {
   clearToken,
   isRefreshEstablished,
   markRefreshEstablished,
+  setToken,
 } from '../auth/tokenStore'
 import { render, screen, act, waitFor } from '../test/render'
+import { server } from '../test/setup'
 
 // Wrap buildAuthUrl so signIn's choice of forceConsent is observable. Stub the PKCE crypto
 // helpers too — generateCodeChallenge uses crypto.subtle, which is unreliable under jsdom, and
@@ -68,6 +71,10 @@ describe('signIn consent prompt selection (BUG-16)', () => {
     await waitFor(() => expect(pkce.buildAuthUrl).toHaveBeenCalled())
     const forceConsent = vi.mocked(pkce.buildAuthUrl).mock.calls.at(-1)![4]
     expect(forceConsent).toBe(false)
+    // The real URL signIn navigated to omits prompt entirely (asserting the built result, not
+    // just the arg, catches a regression where signIn computes the flag but never navigates).
+    const url = vi.mocked(pkce.buildAuthUrl).mock.results.at(-1)!.value as string
+    expect(url).not.toContain('prompt=')
   })
 
   it('forces prompt=consent when no refresh token is on file (flag absent)', async () => {
@@ -78,6 +85,8 @@ describe('signIn consent prompt selection (BUG-16)', () => {
     await waitFor(() => expect(pkce.buildAuthUrl).toHaveBeenCalled())
     const forceConsent = vi.mocked(pkce.buildAuthUrl).mock.calls.at(-1)![4]
     expect(forceConsent).toBe(true)
+    const url = vi.mocked(pkce.buildAuthUrl).mock.results.at(-1)!.value as string
+    expect(url).toContain('prompt=consent')
   })
 })
 
@@ -111,6 +120,21 @@ describe('refresh-established flag lifecycle (BUG-16)', () => {
     render(<AuthProvider><App /></AuthProvider>)
 
     await screen.findByRole('button', { name: /sign in with google/i })
+    expect(isRefreshEstablished()).toBe(false)
+  })
+
+  it('is cleared on the 401-driven refresh failure (the path that does not go through handleRefreshFailure)', async () => {
+    // A fetch-driven 401 races ahead of the scheduled/visibility timers: apiFetch asks for a
+    // one-shot silent refresh, which fails → the flag must clear so the next sign-in re-consents
+    // and obtains a fresh refresh token (otherwise the session loops at ~1h).
+    markRefreshEstablished()
+    vi.mocked(silentRefreshMod.attemptSilentRefresh).mockResolvedValue(null)
+    server.use(http.get('/api/notes/cards', () => new HttpResponse(null, { status: 401 })))
+    setToken('test-token')
+
+    render(<AuthProvider initialToken="test-token"><App /></AuthProvider>)
+
+    await screen.findByRole('button', { name: /sign in again/i })
     expect(isRefreshEstablished()).toBe(false)
   })
 })
