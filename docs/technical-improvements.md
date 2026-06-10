@@ -103,10 +103,11 @@ Each entry records what it is, why it matters, where it was raised, and any depe
 
 ## Add `cdk synth` to the pre-commit hook
 
-**What:** The pre-commit hook builds, lints, typechecks, and runs the test suites, but does **not** run `cdk synth`. Add it so the local gate matches the guardrail "Never commit without all BDD specs green and `cdk synth` succeeding." Note `cdk synth` requires a prior `dotnet publish` of the API, so factor that into the step.
+**✅ Done** (2026-06-10): `.githooks/pre-commit` now runs `dotnet publish src/Api` + `cdk synth --quiet` after the backend block. **Cost-gating decision:** synth is slow (needs a Release publish first), so it runs **only when infra-affecting files are staged** — `src/Infrastructure/`, `src/Api/`, any `*.sln`/`*.csproj`/`*.props`/`*.targets`, or `cdk.json` — matched by a new `infra` flag. Docs-only, web-only, and tests-only commits skip it. Uses the global `cdk` CLI (`aws-cdk@2`), matching CI; no AWS creds needed (the app does no context lookups).
+
+**What:** The pre-commit hook builds, lints, typechecks, and runs the test suites, but did **not** run `cdk synth`. Added so the local gate matches the guardrail "Never commit without all BDD specs green and `cdk synth` succeeding."
 **Why it matters:** The hook otherwise lets through commits that break CDK synthesis, which then fail later in CI/deploy.
 **Raised in:** Spun off from the now-resolved stale-test-paths fix (840464b) — that change corrected the hook's project paths and removed the leftover empty test dirs, but left the `cdk synth` suggestion unactioned.
-**Depends on:** Nothing blocking. Decide whether the `dotnet publish` cost is acceptable in a pre-commit gate.
 
 ---
 
