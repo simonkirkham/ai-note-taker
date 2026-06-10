@@ -27,6 +27,8 @@ public static class NoteEndpoints
         app.MapPost("/notes/{noteId}/actions/{actionId}/reopen", ActionItemHandlers.ReopenActionItem).RequireAuthorization();
         app.MapDelete("/notes/{noteId}/actions/{actionId}", ActionItemHandlers.DeleteActionItem).RequireAuthorization();
         app.MapGet("/notes/{noteId}/actions", ActionItemHandlers.GetActions).RequireAuthorization();
+        app.MapPost("/notes/{noteId}/images/presign-upload", NoteImageHandlers.PresignUpload).RequireAuthorization();
+        app.MapPost("/notes/{noteId}/images/resolve", NoteImageHandlers.ResolveImages).RequireAuthorization();
         app.MapGet("/tags", TagHandlers.GetTags).RequireAuthorization();
         app.MapPost("/admin/projections/rebuild", AdminHandlers.RebuildProjections).RequireAuthorization();
 

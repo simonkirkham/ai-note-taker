@@ -1,5 +1,6 @@
 using Amazon.BedrockRuntime;
 using Amazon.DynamoDBv2;
+using Amazon.S3;
 using Amazon.SecurityToken;
 using Amazon.XRay.Recorder.Core;
 using Amazon.XRay.Recorder.Core.Strategies;
@@ -141,6 +142,10 @@ public static class Builder
                 sp.GetRequiredService<ILogger<BedrockAnalysisService>>(),
                 PromptCatalog.Current,
                 Environment.GetEnvironmentVariable("BEDROCK_MODEL_ID") ?? ""));
+        builder.Services.AddAWSService<IAmazonS3>();
+        var imageBucketName = Environment.GetEnvironmentVariable("IMAGE_BUCKET_NAME") ?? "";
+        builder.Services.AddSingleton<INoteImageStore>(sp =>
+            new S3NoteImageStore(sp.GetRequiredService<IAmazonS3>(), imageBucketName));
         builder.Services.AddAWSLambdaHosting(LambdaEventSource.HttpApi);
 
         return builder.Build();

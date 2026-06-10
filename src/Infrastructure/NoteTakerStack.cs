@@ -149,6 +149,34 @@ public sealed class NoteTakerStack : Stack
             RemovalPolicy = RemovalPolicy.DESTROY
         });
 
+        // ── Note images (user-uploaded blobs) ────────────────────────────
+        // Private bucket: the browser uploads/downloads directly via presigned URLs,
+        // so CORS must allow PUT/GET. RETAIN — user data is never auto-deleted on a
+        // stack teardown. Created before the Lambda so its name goes in the function's
+        // constructor Environment dict (a token there is part of the hashed config,
+        // exactly like the table names) rather than a post-construction AddEnvironment.
+        var imagesBucket = new Bucket(this, "NoteImagesBucket", new BucketProps
+        {
+            RemovalPolicy = RemovalPolicy.RETAIN,
+            BlockPublicAccess = BlockPublicAccess.BLOCK_ALL,
+            AutoDeleteObjects = false,
+            Encryption = BucketEncryption.S3_MANAGED,
+            Cors = new[]
+            {
+                new CorsRule
+                {
+                    AllowedMethods = new[] { HttpMethods.PUT, HttpMethods.GET },
+                    AllowedOrigins = new[] { "*" },
+                    AllowedHeaders = new[] { "*" },
+                    MaxAge = 3000
+                }
+            },
+            LifecycleRules = new[]
+            {
+                new LifecycleRule { AbortIncompleteMultipartUploadAfter = Duration.Days(1) }
+            }
+        });
+
         // ── API Lambda ───────────────────────────────────────────────────
         var lambdaAssetPath = (string?)this.Node.TryGetContext("lambdaAssetPath")
             ?? "src/Api/bin/Release/net10.0/publish";
@@ -209,6 +237,7 @@ public sealed class NoteTakerStack : Stack
                 ["PROJ_CALENDARLINKINDEX_TABLE_NAME"] = calendarLinkIndexTable.TableName,
                 ["PROJ_NOTESEARCHVIEW_TABLE_NAME"] = noteSearchViewTable.TableName,
                 ["DRAFT_TRANSCRIPTION_TABLE_NAME"] = draftTranscriptionTable.TableName,
+                ["IMAGE_BUCKET_NAME"] = imagesBucket.BucketName,
                 ["BEDROCK_MODEL_ID"] = bedrockModelId
             }
         });
@@ -277,6 +306,11 @@ public sealed class NoteTakerStack : Stack
             Actions = new[] { "bedrock:InvokeModel" },
             Resources = bedrockResources
         }));
+        // Note images: object read/write scoped to the note image prefix. Uses the
+        // bucket grant (not apiFunction.AddToRolePolicy / Role.AddToPrincipalPolicy with
+        // a bespoke statement): adding a distinct statement that way silently drops the
+        // conditional post-CurrentVersion SSM grant, whereas the bucket grant does not.
+        imagesBucket.GrantReadWrite(apiFunction, "notes/*");
 
         var apiAlias = new Amazon.CDK.AWS.Lambda.Alias(this, "LiveAlias", new Amazon.CDK.AWS.Lambda.AliasProps
         {
