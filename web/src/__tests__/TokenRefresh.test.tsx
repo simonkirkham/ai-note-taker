@@ -179,6 +179,65 @@ describe('cold load token seeding', () => {
   })
 })
 
+// ─── Cold-start silent refresh (BUG-15) — no fake timers (refresh is async) ───
+
+describe('cold-start silent refresh (BUG-15)', () => {
+  beforeEach(() => vi.stubEnv('VITE_GOOGLE_CLIENT_ID', 'test-client-id'))
+  afterEach(() => {
+    vi.unstubAllEnvs()
+    localStorage.removeItem('id_token')
+  })
+
+  it('restores the session from the refresh cookie when there is no persisted token', async () => {
+    // No persisted id_token (expired and discarded), but the httpOnly rt cookie would
+    // still mint a fresh one. Bootstrap must use it instead of forcing a full sign-in.
+    vi.mocked(silentRefreshMod.attemptSilentRefresh).mockResolvedValue(makeToken(65))
+
+    render(<AuthProvider><App /></AuthProvider>)
+
+    expect(await screen.findByTestId('sidebar-toggle')).toBeInTheDocument()
+    expect(silentRefreshMod.attemptSilentRefresh).toHaveBeenCalledOnce()
+    expect(screen.queryByRole('button', { name: /sign in with google/i })).not.toBeInTheDocument()
+  })
+
+  it('does not flash the sign-in screen while the cold-start refresh is in flight', async () => {
+    let resolveRefresh: (t: string | null) => void = () => {}
+    vi.mocked(silentRefreshMod.attemptSilentRefresh).mockImplementation(
+      () => new Promise<string | null>((res) => { resolveRefresh = res }),
+    )
+
+    render(<AuthProvider><App /></AuthProvider>)
+
+    // While the refresh promise is pending, neither the sign-in screen nor the app shows.
+    expect(screen.queryByRole('button', { name: /sign in with google/i })).not.toBeInTheDocument()
+    expect(screen.queryByTestId('sidebar-toggle')).not.toBeInTheDocument()
+
+    await act(async () => { resolveRefresh(makeToken(65)) })
+    expect(await screen.findByTestId('sidebar-toggle')).toBeInTheDocument()
+  })
+
+  it('falls back to the sign-in screen when the refresh cookie is gone', async () => {
+    vi.mocked(silentRefreshMod.attemptSilentRefresh).mockResolvedValue(null)
+
+    render(<AuthProvider><App /></AuthProvider>)
+
+    expect(await screen.findByRole('button', { name: /sign in with google/i })).toBeInTheDocument()
+    expect(silentRefreshMod.attemptSilentRefresh).toHaveBeenCalledOnce()
+    expect(screen.queryByTestId('sidebar-toggle')).not.toBeInTheDocument()
+  })
+
+  it('uses a valid persisted token directly and skips the cold-start refresh', async () => {
+    const token = makeToken(65)
+    localStorage.setItem('id_token', token)
+    vi.mocked(silentRefreshMod.attemptSilentRefresh).mockResolvedValue(makeToken(65))
+
+    render(<AuthProvider><App /></AuthProvider>)
+
+    expect(await screen.findByTestId('sidebar-toggle')).toBeInTheDocument()
+    expect(silentRefreshMod.attemptSilentRefresh).not.toHaveBeenCalled()
+  })
+})
+
 // ─── Banner UI ────────────────────────────────────────────────────────────────
 
 describe('session-expired banner', () => {

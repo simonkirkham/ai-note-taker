@@ -25,6 +25,15 @@ export function AuthProvider({
     if (initial && initial !== 'no-auth') setToken(initial)
     return initial
   })
+  // Cold start with no usable in-memory token: the access token has lapsed but the httpOnly
+  // refresh cookie may still mint a fresh one. Attempt a silent refresh before falling back to
+  // sign-in, so the session lasts the cookie's lifetime (~30 days), not ~1 hour (BUG-15).
+  // Skipped when returning from an OAuth redirect (a `code` is present — the exchange effect
+  // below handles that) and in no-auth/dev mode (no clientId).
+  const hasOAuthCode = clientId !== '' && typeof window !== 'undefined'
+    && new URLSearchParams(window.location.search).has('code')
+  const shouldBootstrapRefresh = clientId !== '' && !initialToken && !persisted && !hasOAuthCode
+  const [authLoading, setAuthLoading] = useState(shouldBootstrapRefresh)
   const [forbidden, setForbidden] = useState(false)
   const [sessionExpired, setSessionExpired] = useState(false)
   const mounted = useRef(false)
@@ -140,6 +149,27 @@ export function AuthProvider({
     // listed to satisfy exhaustive-deps but are stable for the provider's lifetime.
   }, [clientId, initialToken])
 
+  // One-shot cold-start refresh: mint a fresh token from the refresh cookie before the gate
+  // decides to show sign-in. authLoading keeps the gate in a loading state while in flight, so
+  // the sign-in screen never flashes for a user whose cookie is still valid (BUG-15). idToken
+  // stays null until the token arrives, so AppContent (and its child fetches) is not rendered
+  // mid-flight — preserving the BUG-1 "token set before first fetch" invariant.
+  useEffect(() => {
+    if (!shouldBootstrapRefresh) return
+    let cancelled = false
+    attemptSilentRefresh()
+      .then((token) => {
+        if (cancelled) return
+        if (token) handleRefreshSuccess(token)
+      })
+      .catch(() => {})
+      .finally(() => { if (!cancelled) setAuthLoading(false) })
+    return () => { cancelled = true }
+    // Run once on mount; shouldBootstrapRefresh/handleRefreshSuccess are stable for the
+    // provider's lifetime.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
   const signIn = useCallback(async () => {
     if (!clientId) return
     const verifier = generateCodeVerifier()
@@ -163,8 +193,8 @@ export function AuthProvider({
   }, [clientId, cancelRefresh])
 
   const value = useMemo<AuthState>(
-    () => ({ idToken, forbidden, sessionExpired, signIn, signOut }),
-    [idToken, forbidden, sessionExpired, signIn, signOut],
+    () => ({ idToken, forbidden, sessionExpired, authLoading, signIn, signOut }),
+    [idToken, forbidden, sessionExpired, authLoading, signIn, signOut],
   )
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
