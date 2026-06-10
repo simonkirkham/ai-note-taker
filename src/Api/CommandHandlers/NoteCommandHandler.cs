@@ -33,6 +33,9 @@ public sealed class NoteCommandHandler(
     // fresh version (TagNote 409s a duplicate, UntagNote 404s a missing tag), so re-read,
     // re-run, re-append resolves the race transparently instead of dropping the write
     // (BUG-17). A persistent conflict still surfaces after the bounded attempts (→ 409).
+    // 4 attempts bounds worst-case added latency at ~170ms on the interactive request
+    // path (20/40/80ms exponential backoff + ≤20% jitter before attempts 2/3/4; the
+    // final attempt rethrows without delaying). Raising this materially raises that bound.
     private const int MaxAppendAttempts = 4;
     private static readonly TimeSpan AppendRetryBaseDelay = TimeSpan.FromMilliseconds(20);
 

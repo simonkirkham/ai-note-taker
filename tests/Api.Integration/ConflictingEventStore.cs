@@ -15,12 +15,6 @@ internal sealed class ConflictingEventStore : IEventStore
     // bounded retry exhausts and the conflict surfaces as 409).
     public int ConflictsRemaining { get; set; }
 
-    public bool ConflictOnNextAppend
-    {
-        get => ConflictsRemaining > 0;
-        set => ConflictsRemaining = value ? 1 : 0;
-    }
-
     // The counter decrement is deliberately non-atomic: these tests drive a single
     // client sequentially, so there is no concurrent append. Do not reuse this double
     // for parallel-append scenarios without adding synchronisation.
