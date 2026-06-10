@@ -83,7 +83,10 @@ public sealed class NoteCommandHandler(
         await noteCardListStore.UpsertAsync(
             ApplyNoteEventsToCard(card, noteId, newEnvelopes), ct).ConfigureAwait(false);
 
-        await UpdateTagIndexForNewEventsAsync(newEnvelopes, ct).ConfigureAwait(false);
+        // Tag rows inherit the note's CURRENT workspace (from the rebuilt detail), not the
+        // request route's workspace — so the live write matches what a rebuild would produce
+        // even if a note is tagged via a different workspace's route.
+        await UpdateTagIndexForNewEventsAsync(noteDetail.WorkspaceId, newEnvelopes, ct).ConfigureAwait(false);
         await UpdateTagFeedbackForNewEventsAsync(newEnvelopes, ct).ConfigureAwait(false);
         await UpdateActionItemFeedbackForNewEventsAsync(newEnvelopes, ct).ConfigureAwait(false);
         await UpdateCalendarLinkIndexForNewEventsAsync(noteId, newEnvelopes, ct).ConfigureAwait(false);
@@ -171,14 +174,14 @@ public sealed class NoteCommandHandler(
         return (item, noteDetail);
     }
 
-    private async Task UpdateTagIndexForNewEventsAsync(List<EventEnvelope> newEnvelopes, CancellationToken ct)
+    private async Task UpdateTagIndexForNewEventsAsync(string? noteWorkspaceId, List<EventEnvelope> newEnvelopes, CancellationToken ct)
     {
         foreach (var envelope in newEnvelopes)
         {
             switch (EventDeserializer.Deserialize(envelope))
             {
                 case NoteTagged e:
-                    await tagIndexStore.PutAsync(e.Tag, e.NoteId.Value.ToString("N"), currentUser.UserId, currentWorkspace.WorkspaceId, ct).ConfigureAwait(false);
+                    await tagIndexStore.PutAsync(e.Tag, e.NoteId.Value.ToString("N"), currentUser.UserId, noteWorkspaceId, ct).ConfigureAwait(false);
                     break;
                 case NoteUntagged e:
                     await tagIndexStore.DeleteAsync(e.Tag, e.NoteId.Value.ToString("N"), ct).ConfigureAwait(false);

@@ -82,6 +82,33 @@ public sealed class WorkspaceScopingIntegrationTests(ApiFactory factory) : IClas
         Assert.DoesNotContain(noteId, await ListIdsAsync($"/w/{wsB}/notes"));
     }
 
+    [Fact]
+    public async Task TagInheritsTheNotesWorkspace_NotTheRouteWorkspace()
+    {
+        // A note in A, tagged via B's route, must keep the tag in A (matching a rebuild) —
+        // the live write derives the workspace from the note, not the request route.
+        var wsA = await CreateWorkspaceAsync("TagA");
+        var wsB = await CreateWorkspaceAsync("TagB");
+        var noteId = await CreateNoteAsync($"/w/{wsA}/notes");
+
+        var tagResp = await _client.PostAsync($"/w/{wsB}/notes/{noteId}/tags",
+            new StringContent("{\"tag\":\"crossws\"}", Encoding.UTF8, "application/json"));
+        Assert.Equal(HttpStatusCode.NoContent, tagResp.StatusCode);
+
+        Assert.Contains("crossws", await TagsAsync($"/w/{wsA}/tags"));
+        Assert.DoesNotContain("crossws", await TagsAsync($"/w/{wsB}/tags"));
+    }
+
+    private async Task<List<string?>> TagsAsync(string path)
+    {
+        var resp = await _client.GetAsync(path);
+        resp.EnsureSuccessStatusCode();
+        var body = await resp.Content.ReadFromJsonAsync<JsonElement>();
+        return body.GetProperty("tags").EnumerateArray()
+            .Select(t => t.GetProperty("tag").GetString())
+            .ToList();
+    }
+
     private async Task<string> CreateWorkspaceAsync(string name, HttpClient? client = null)
     {
         client ??= _client;

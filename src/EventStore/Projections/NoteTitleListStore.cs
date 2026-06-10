@@ -8,19 +8,19 @@ public sealed class NoteTitleListStore(IAmazonDynamoDB dynamo, string tableName)
 {
     public async Task UpsertAsync(NoteTitleListItem item, CancellationToken ct = default)
     {
-        await dynamo.PutItemAsync(new PutItemRequest
+        var attrs = new Dictionary<string, AttributeValue>
         {
-            TableName = tableName,
-            Item = new Dictionary<string, AttributeValue>
-            {
-                ["PK"] = new AttributeValue { S = item.NoteId.ToStreamId() },
-                ["NoteId"] = new AttributeValue { S = item.NoteId.Value.ToString() },
-                ["Title"] = new AttributeValue { S = item.Title },
-                ["LastModifiedAt"] = new AttributeValue { S = item.LastModifiedAt.ToString("O") },
-                ["UserId"] = new AttributeValue { S = item.UserId },
-                ["WorkspaceId"] = new AttributeValue { S = item.WorkspaceId ?? "" }
-            }
-        }, ct).ConfigureAwait(false);
+            ["PK"] = new AttributeValue { S = item.NoteId.ToStreamId() },
+            ["NoteId"] = new AttributeValue { S = item.NoteId.Value.ToString() },
+            ["Title"] = new AttributeValue { S = item.Title },
+            ["LastModifiedAt"] = new AttributeValue { S = item.LastModifiedAt.ToString("O") },
+            ["UserId"] = new AttributeValue { S = item.UserId }
+        };
+        if (!string.IsNullOrEmpty(item.WorkspaceId))
+            attrs["WorkspaceId"] = new AttributeValue { S = item.WorkspaceId };
+
+        await dynamo.PutItemAsync(new PutItemRequest { TableName = tableName, Item = attrs }, ct)
+            .ConfigureAwait(false);
     }
 
     public async Task DeleteAsync(NoteId noteId, CancellationToken ct = default)
