@@ -27,14 +27,27 @@ jobs:
     outputs:
       backend: ${{ steps.filter.outputs.backend }}
     steps:
+      # fetch-depth: 0 so paths-filter always has the diff base on a push event
+      # (github.event.before). On the all-zeros base of a first push / history
+      # rewrite it then falls back to "everything changed" → full deploy, the
+      # safe default. A shallow checkout could leave the base commit absent.
       - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
 
+      # backend = the complete set of paths that change the deploy artifact:
+      #   src/**          Lambda asset (src/Api + refs) AND CDK template (src/Infrastructure)
+      #   cdk.json        CDK app command + context/feature flags → alters synth
+      #   ai-note-taker.sln  build inputs (defensive; rarely changes alone)
+      # Anything else (web/**, docs already filtered at trigger) is frontend-only.
       - uses: dorny/paths-filter@v3
         id: filter
         with:
           filters: |
             backend:
               - 'src/**'
+              - 'cdk.json'
+              - 'ai-note-taker.sln'
 
   validate-frontend:
     runs-on: ubuntu-latest
@@ -161,19 +174,40 @@ jobs:
         # describe-stacks (not the cdk --outputs-file) so outputs resolve whether
         # or not this run deployed — on a frontend-only push the backend steps are
         # skipped, but the live stack still holds the outputs the frontend needs.
-        # All six are CfnOutputs on NoteTakerStack in the configured region; the
-        # per-environment AWS creds scope this to the right account.
+        # All six are CfnOutputs on NoteTakerStack (see src/Infrastructure/Program.cs
+        # for the stack name) in the configured region; the per-environment AWS
+        # creds scope this to the right account.
         id: outputs
         run: |
+          set -euo pipefail
           OUTS=$(aws cloudformation describe-stacks --stack-name NoteTakerStack \
             --query 'Stacks[0].Outputs' --output json)
-          get() { echo "$OUTS" | jq -r --arg k "$1" '.[] | select(.OutputKey==$k) | .OutputValue'; }
-          echo "api-url=$(get ApiUrl)" >> $GITHUB_OUTPUT
-          echo "frontend-url=$(get WebUrl)" >> $GITHUB_OUTPUT
-          echo "bucket=$(get WebBucketName)" >> $GITHUB_OUTPUT
-          echo "distribution-id=$(get DistributionId)" >> $GITHUB_OUTPUT
-          echo "rum-monitor-id=$(get RumMonitorId)" >> $GITHUB_OUTPUT
-          echo "rum-identity-pool-id=$(get RumIdentityPoolId)" >> $GITHUB_OUTPUT
+          # Assign each into a var first: with `set -e` a failed command
+          # substitution in an assignment aborts the step, whereas `echo "$(get …)"`
+          # would mask a missing output (echo succeeds) and emit an empty value.
+          get() {
+            local v
+            v=$(echo "$OUTS" | jq -r --arg k "$1" '.[] | select(.OutputKey==$k) | .OutputValue')
+            if [ -z "$v" ] || [ "$v" = "null" ]; then
+              echo "::error::Stack output '$1' missing or empty — refusing to continue with an unresolved output" >&2
+              return 1
+            fi
+            printf '%s' "$v"
+          }
+          API_URL=$(get ApiUrl)
+          FRONTEND_URL=$(get WebUrl)
+          BUCKET=$(get WebBucketName)
+          DISTRIBUTION_ID=$(get DistributionId)
+          RUM_MONITOR_ID=$(get RumMonitorId)
+          RUM_IDENTITY_POOL_ID=$(get RumIdentityPoolId)
+          {
+            echo "api-url=$API_URL"
+            echo "frontend-url=$FRONTEND_URL"
+            echo "bucket=$BUCKET"
+            echo "distribution-id=$DISTRIBUTION_ID"
+            echo "rum-monitor-id=$RUM_MONITOR_ID"
+            echo "rum-identity-pool-id=$RUM_IDENTITY_POOL_ID"
+          } >> "$GITHUB_OUTPUT"
 
       - name: Print deployment URLs
         run: |
@@ -399,19 +433,40 @@ jobs:
         # describe-stacks (not the cdk --outputs-file) so outputs resolve whether
         # or not this run deployed — on a frontend-only push the backend steps are
         # skipped, but the live stack still holds the outputs the frontend needs.
-        # All six are CfnOutputs on NoteTakerStack in the configured region; the
-        # per-environment AWS creds scope this to the right account.
+        # All six are CfnOutputs on NoteTakerStack (see src/Infrastructure/Program.cs
+        # for the stack name) in the configured region; the per-environment AWS
+        # creds scope this to the right account.
         id: outputs
         run: |
+          set -euo pipefail
           OUTS=$(aws cloudformation describe-stacks --stack-name NoteTakerStack \
             --query 'Stacks[0].Outputs' --output json)
-          get() { echo "$OUTS" | jq -r --arg k "$1" '.[] | select(.OutputKey==$k) | .OutputValue'; }
-          echo "api-url=$(get ApiUrl)" >> $GITHUB_OUTPUT
-          echo "frontend-url=$(get WebUrl)" >> $GITHUB_OUTPUT
-          echo "bucket=$(get WebBucketName)" >> $GITHUB_OUTPUT
-          echo "distribution-id=$(get DistributionId)" >> $GITHUB_OUTPUT
-          echo "rum-monitor-id=$(get RumMonitorId)" >> $GITHUB_OUTPUT
-          echo "rum-identity-pool-id=$(get RumIdentityPoolId)" >> $GITHUB_OUTPUT
+          # Assign each into a var first: with `set -e` a failed command
+          # substitution in an assignment aborts the step, whereas `echo "$(get …)"`
+          # would mask a missing output (echo succeeds) and emit an empty value.
+          get() {
+            local v
+            v=$(echo "$OUTS" | jq -r --arg k "$1" '.[] | select(.OutputKey==$k) | .OutputValue')
+            if [ -z "$v" ] || [ "$v" = "null" ]; then
+              echo "::error::Stack output '$1' missing or empty — refusing to continue with an unresolved output" >&2
+              return 1
+            fi
+            printf '%s' "$v"
+          }
+          API_URL=$(get ApiUrl)
+          FRONTEND_URL=$(get WebUrl)
+          BUCKET=$(get WebBucketName)
+          DISTRIBUTION_ID=$(get DistributionId)
+          RUM_MONITOR_ID=$(get RumMonitorId)
+          RUM_IDENTITY_POOL_ID=$(get RumIdentityPoolId)
+          {
+            echo "api-url=$API_URL"
+            echo "frontend-url=$FRONTEND_URL"
+            echo "bucket=$BUCKET"
+            echo "distribution-id=$DISTRIBUTION_ID"
+            echo "rum-monitor-id=$RUM_MONITOR_ID"
+            echo "rum-identity-pool-id=$RUM_IDENTITY_POOL_ID"
+          } >> "$GITHUB_OUTPUT"
 
       - name: Print deployment URLs
         run: |
