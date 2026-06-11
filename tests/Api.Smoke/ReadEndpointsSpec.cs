@@ -13,7 +13,7 @@ public sealed class ReadEndpointsSpec(DeployedApiFixture fixture)
     public async Task GetNotes_returns_200_with_items_array()
     {
         Skip.IfNot(fixture.IsAuthenticated, AuthRequired);
-        var response = await fixture.Client.GetAsync("notes");
+        var response = await fixture.Client.GetAsync("w/__default__/notes");
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         var body = await response.Content.ReadFromJsonAsync<JsonElement>();
@@ -25,7 +25,7 @@ public sealed class ReadEndpointsSpec(DeployedApiFixture fixture)
     public async Task GetNoteCards_returns_200_with_cards_array()
     {
         Skip.IfNot(fixture.IsAuthenticated, AuthRequired);
-        var response = await fixture.Client.GetAsync("notes/cards");
+        var response = await fixture.Client.GetAsync("w/__default__/notes/cards");
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         var body = await response.Content.ReadFromJsonAsync<JsonElement>();
@@ -37,7 +37,7 @@ public sealed class ReadEndpointsSpec(DeployedApiFixture fixture)
     public async Task GetTodos_returns_200_with_items_array()
     {
         Skip.IfNot(fixture.IsAuthenticated, AuthRequired);
-        var response = await fixture.Client.GetAsync("todos");
+        var response = await fixture.Client.GetAsync("w/__default__/todos");
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         var body = await response.Content.ReadFromJsonAsync<JsonElement>();
@@ -49,7 +49,7 @@ public sealed class ReadEndpointsSpec(DeployedApiFixture fixture)
     public async Task GetTags_returns_200_with_tags_array()
     {
         Skip.IfNot(fixture.IsAuthenticated, AuthRequired);
-        var response = await fixture.Client.GetAsync("tags");
+        var response = await fixture.Client.GetAsync("w/__default__/tags");
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         var body = await response.Content.ReadFromJsonAsync<JsonElement>();
@@ -61,7 +61,7 @@ public sealed class ReadEndpointsSpec(DeployedApiFixture fixture)
     public async Task GetFolders_returns_200_with_folders_array()
     {
         Skip.IfNot(fixture.IsAuthenticated, AuthRequired);
-        var response = await fixture.Client.GetAsync("folders");
+        var response = await fixture.Client.GetAsync("w/__default__/folders");
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         var body = await response.Content.ReadFromJsonAsync<JsonElement>();

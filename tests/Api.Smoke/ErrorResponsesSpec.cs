@@ -14,7 +14,7 @@ public sealed class ErrorResponsesSpec(DeployedApiFixture fixture)
     {
         Skip.IfNot(fixture.IsAuthenticated, AuthRequired);
         var body = new StringContent("{\"title\":\"x\"}", Encoding.UTF8, "application/json");
-        var response = await fixture.Client.PatchAsync($"notes/{Guid.NewGuid()}/title", body);
+        var response = await fixture.Client.PatchAsync($"w/__default__/notes/{Guid.NewGuid()}/title", body);
 
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
     }
@@ -24,7 +24,7 @@ public sealed class ErrorResponsesSpec(DeployedApiFixture fixture)
     {
         Skip.IfNot(fixture.IsAuthenticated, AuthRequired);
         var body = new StringContent("{\"content\":\"x\"}", Encoding.UTF8, "application/json");
-        var response = await fixture.Client.PutAsync($"notes/{Guid.NewGuid()}/content", body);
+        var response = await fixture.Client.PutAsync($"w/__default__/notes/{Guid.NewGuid()}/content", body);
 
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
     }
@@ -34,7 +34,7 @@ public sealed class ErrorResponsesSpec(DeployedApiFixture fixture)
     {
         Skip.IfNot(fixture.IsAuthenticated, AuthRequired);
         var body = new StringContent("{\"date\":\"2099-01-01\"}", Encoding.UTF8, "application/json");
-        var response = await fixture.Client.PatchAsync($"notes/{Guid.NewGuid()}/date", body);
+        var response = await fixture.Client.PatchAsync($"w/__default__/notes/{Guid.NewGuid()}/date", body);
 
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
     }
@@ -43,7 +43,7 @@ public sealed class ErrorResponsesSpec(DeployedApiFixture fixture)
     public async Task DeleteActionItem_nonexistent_action_returns_404()
     {
         Skip.IfNot(fixture.IsAuthenticated, AuthRequired);
-        var response = await fixture.Client.DeleteAsync($"notes/{Guid.NewGuid()}/actions/{Guid.NewGuid()}");
+        var response = await fixture.Client.DeleteAsync($"w/__default__/notes/{Guid.NewGuid()}/actions/{Guid.NewGuid()}");
 
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
     }
