@@ -88,10 +88,12 @@ function FolderTreeNode({ node, activeFolderId, path, onSelect, onRename, onDele
           {node.children.length > 0 || addingChild ? (expanded ? "▾" : "▸") : "·"}
         </button>
         {editing ? (
-          <input
+          // autoFocus is intentional: the rename input appears in direct
+          // response to the user choosing Rename, so focusing it is expected.
+          // eslint-disable-next-line jsx-a11y/no-autofocus
+          <input autoFocus
             className={styles.folderTreeRenameInput}
             value={editName}
-            autoFocus
             onChange={(e) => setEditName(e.target.value)}
             onBlur={finishEdit}
             onKeyDown={(e) => {
@@ -168,11 +170,13 @@ function FolderTreeNode({ node, activeFolderId, path, onSelect, onRename, onDele
             <li className={styles.folderTreeNode}>
               <div className={styles.folderTreeNodeRow}>
                 <span className={styles.folderTreeExpand}>·</span>
-                <input
+                {/* autoFocus is intentional: the subfolder name input appears
+                    when the user chooses to add a subfolder, so focusing it is expected. */}
+                {/* eslint-disable-next-line jsx-a11y/no-autofocus */}
+                <input autoFocus
                   className={styles.folderTreeRenameInput}
                   data-testid="subfolder-input"
                   value={childName}
-                  autoFocus
                   placeholder="Subfolder name…"
                   onChange={(e) => setChildName(e.target.value)}
                   onBlur={submitChild}

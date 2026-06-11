@@ -139,10 +139,12 @@ export default function Sidebar({
           onPreview={onPreview}
         />
         {addingFolder && (
-          <input
+          // autoFocus is intentional: the new-folder input appears when the user
+          // chooses to add a folder, so focusing it is the expected behaviour.
+          // eslint-disable-next-line jsx-a11y/no-autofocus
+          <input autoFocus
             className={styles.folderNewInput}
             data-testid="new-folder-input"
-            autoFocus
             value={newFolderName}
             placeholder="Folder name…"
             onChange={(e) => setNewFolderName(e.target.value)}

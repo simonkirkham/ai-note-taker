@@ -152,6 +152,9 @@ export default function TagsSection({
                 );
               }
               elements.push(
+                // Listbox option: keyboard selection is handled on the combobox
+                // input via aria-activedescendant, not a per-option key handler.
+                /* eslint-disable-next-line jsx-a11y/click-events-have-key-events */
                 <li
                   key={item.tag}
                   id={optionId}
