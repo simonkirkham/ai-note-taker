@@ -9,7 +9,7 @@
 | 25-A | **Backend media store + presigned upload/download.** Private S3 bucket (block-public-access, RETAIN, CORS for the app origin); `POST /notes/{id}/images:presign-upload` (server-enforced content-type allowlist + max-size) and `POST /notes/{id}/images:resolve` (batch presigned GET). Both authorize by note ownership + key prefix. | Done | — |
 | 25-B | **Paste / drop / pick → upload → inline render (frontend, live + edit).** Tiptap paste+drop handlers and a toolbar file-picker; optimistic local preview while the upload runs; persist a **stable key reference** in content; on load resolve refs → presigned GET and swap into image `src`; on save swap presigned URLs **back** to keys so an expiring URL is never written. | Done | 25-A |
 | 25-C | **Lifecycle + analysis hygiene.** Deleting a note purges its `notes/{id}/` image prefix from S3; image markdown is stripped from the text sent to the AI analysis model (images are stored/displayed, never analysed this phase). | Done | 25-A |
-| 25-D | **Remove an inline image.** Hover/focus ✕ control on each inline image (Tiptap React NodeView) deletes the node from content; frontend-only, no API call (optimistic by construction). S3 blob intentionally left as an orphan, purged on note delete per 25-C. | Not Started | 25-B |
+| 25-D | **Remove an inline image.** Hover/focus ✕ control on each inline image (Tiptap React NodeView) deletes the node from content; frontend-only, no API call (optimistic by construction). S3 blob intentionally left as an orphan, purged on note delete per 25-C. | Done | 25-B |
 
 > **25-A is the foundation** — no user-visible change alone, but everything else needs the bucket + presign endpoints. **25-B is the whole user-facing feature** and the only slice with real subtlety (the key↔presigned-URL rewrite on load/save). **25-C** prevents two silent rots: orphaned blobs after a note delete, and image syntax polluting the analysis prompt. 25-B and 25-C both depend only on 25-A and can run in parallel. **25-D** is a follow-up to 25-B's *add* path — image *removal* — and is frontend-only.
 
@@ -85,7 +85,7 @@
 
 ## Slice 25-D — Remove an inline image
 
-**Status:** Not Started
+**Status:** Done (PR #226, deploy #513, 2026-06-11)
 
 **User value:** A user can delete an image they added to a note.
 
