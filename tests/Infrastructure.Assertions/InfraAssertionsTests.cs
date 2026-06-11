@@ -7,29 +7,24 @@ public class InfraAssertionsTests
     private static readonly Template _domainTemplate = BuildDomainTemplate();
     private static readonly Template _calendarTemplate = BuildCalendarTemplate();
 
+    // Both Lambda assets point at a real directory (the test bin dir) so synth never
+    // needs an actual `dotnet publish` — the projector asset uses the same context-key
+    // indirection as the API asset.
+    private static Dictionary<string, object> AssetContext() => new()
+    {
+        ["lambdaAssetPath"] = AppContext.BaseDirectory,
+        ["projectorAssetPath"] = AppContext.BaseDirectory
+    };
+
     private static Template BuildTemplate()
     {
-        var lambdaAssetPath = AppContext.BaseDirectory;
-        var app = new App(new AppProps
-        {
-            Context = new Dictionary<string, object>
-            {
-                ["lambdaAssetPath"] = lambdaAssetPath
-            }
-        });
+        var app = new App(new AppProps { Context = AssetContext() });
         return Template.FromStack(new NoteTakerStack(app, "TestStack", new NoteTakerStackProps()));
     }
 
     private static Template BuildDomainTemplate()
     {
-        var lambdaAssetPath = AppContext.BaseDirectory;
-        var app = new App(new AppProps
-        {
-            Context = new Dictionary<string, object>
-            {
-                ["lambdaAssetPath"] = lambdaAssetPath
-            }
-        });
+        var app = new App(new AppProps { Context = AssetContext() });
         return Template.FromStack(new NoteTakerStack(app, "TestStack", new NoteTakerStackProps
         {
             CertificateArn = "arn:aws:acm:us-east-1:123456789012:certificate/fake-cert-id",
@@ -40,14 +35,7 @@ public class InfraAssertionsTests
 
     private static Template BuildCalendarTemplate()
     {
-        var lambdaAssetPath = AppContext.BaseDirectory;
-        var app = new App(new AppProps
-        {
-            Context = new Dictionary<string, object>
-            {
-                ["lambdaAssetPath"] = lambdaAssetPath
-            }
-        });
+        var app = new App(new AppProps { Context = AssetContext() });
         return Template.FromStack(new NoteTakerStack(app, "TestStack", new NoteTakerStackProps
         {
             GoogleRefreshTokenSsmPath = "/test/google-refresh-token"
@@ -982,10 +970,12 @@ public class InfraAssertionsTests
     [Fact]
     public void Alarms_AllExpectedAlarmsExist()
     {
-        // Four alarms: error-rate, P99 latency, projection-rebuild-fault, projection-rebuild-duration.
+        // Seven alarms: error-rate, P99 latency, projection-rebuild-fault,
+        // projection-rebuild-duration, and the three 27-B projector alarms
+        // (projector-error, projector-dlq-depth, projector-iterator-age).
         // A concurrency-conflict alarm is deferred — it would need SUM(SEARCH(...)), which CloudWatch
         // rejects on metric alarms (only allowed on dashboard widgets). See phase-12 12-E.
-        _template.ResourceCountIs("AWS::CloudWatch::Alarm", 4);
+        _template.ResourceCountIs("AWS::CloudWatch::Alarm", 7);
     }
 
     [Fact]
@@ -1356,6 +1346,319 @@ public class InfraAssertionsTests
         _template.HasResourceProperties("AWS::IAM::Policy", PolicyWithObjectAction("s3:PutObject"));
         _template.HasResourceProperties("AWS::IAM::Policy", PolicyWithObjectAction("s3:DeleteObject*"));
     }
+
+    // ── Phase 27-B: DynamoDB stream + async Projector Lambda ─────────────
+
+    [Fact]
+    public void EventsTable_HasNewImageStream()
+    {
+        _template.HasResourceProperties("AWS::DynamoDB::Table", Match.ObjectLike(new Dictionary<string, object>
+        {
+            ["TableName"] = "notetaker-events",
+            ["StreamSpecification"] = Match.ObjectLike(new Dictionary<string, object>
+            {
+                ["StreamViewType"] = "NEW_IMAGE"
+            })
+        }));
+    }
+
+    [Fact]
+    public void ProjPositionTable_ExistsWithDestroyDeletionPolicy()
+    {
+        // Reconstructible by replay — DESTROY (CloudFormation "Delete").
+        _template.HasResource("AWS::DynamoDB::Table", Match.ObjectLike(new Dictionary<string, object>
+        {
+            ["DeletionPolicy"] = "Delete",
+            ["Properties"] = Match.ObjectLike(new Dictionary<string, object>
+            {
+                ["TableName"] = "notetaker-proj-position"
+            })
+        }));
+    }
+
+    [Fact]
+    public void ProjectorDlq_QueueExists()
+    {
+        _template.HasResourceProperties("AWS::SQS::Queue", Match.ObjectLike(new Dictionary<string, object>
+        {
+            ["QueueName"] = "notetaker-projector-dlq"
+        }));
+    }
+
+    [Fact]
+    public void ProjectorFunction_ExistsWithStreamHandler()
+    {
+        _template.HasResourceProperties("AWS::Lambda::Function", Match.ObjectLike(new Dictionary<string, object>
+        {
+            ["Handler"] = "Projector::Projector.ProjectorFunction::Handle",
+            ["MemorySize"] = 512,
+            ["Timeout"] = 60
+        }));
+    }
+
+    [Fact]
+    public void ProjectorFunction_HasPositionTableEnvVar()
+    {
+        // The projector function is the only Lambda carrying PROJ_POSITION_TABLE_NAME —
+        // matching on it uniquely identifies the projector function's environment.
+        _template.HasResourceProperties("AWS::Lambda::Function", Match.ObjectLike(new Dictionary<string, object>
+        {
+            ["Handler"] = "Projector::Projector.ProjectorFunction::Handle",
+            ["Environment"] = Match.ObjectLike(new Dictionary<string, object>
+            {
+                ["Variables"] = Match.ObjectLike(new Dictionary<string, object>
+                {
+                    ["PROJ_POSITION_TABLE_NAME"] = Match.AnyValue(),
+                    ["EVENTS_TABLE_NAME"] = Match.AnyValue(),
+                    ["PROJ_NOTETITLELIST_TABLE_NAME"] = Match.AnyValue(),
+                    ["IMAGE_BUCKET_NAME"] = Match.AnyValue()
+                })
+            })
+        }));
+    }
+
+    [Fact]
+    public void ProjectorFunction_HasNoSnapStart()
+    {
+        // An async throughput consumer, not a request handler — no SnapStart, no alias.
+        var thrown = Record.Exception(() =>
+            _template.HasResourceProperties("AWS::Lambda::Function", Match.ObjectLike(new Dictionary<string, object>
+            {
+                ["Handler"] = "Projector::Projector.ProjectorFunction::Handle",
+                ["SnapStart"] = Match.AnyValue()
+            })));
+        Assert.NotNull(thrown);
+    }
+
+    [Fact]
+    public void ProjectorEventSourceMapping_HasBisectRetryAgeAndDlq()
+    {
+        _template.HasResourceProperties("AWS::Lambda::EventSourceMapping", Match.ObjectLike(new Dictionary<string, object>
+        {
+            ["StartingPosition"] = "TRIM_HORIZON",
+            ["BatchSize"] = 10,
+            ["BisectBatchOnFunctionError"] = true,
+            ["MaximumRetryAttempts"] = 3,
+            ["MaximumRecordAgeInSeconds"] = 86400,
+            ["ParallelizationFactor"] = 1,
+            ["DestinationConfig"] = Match.ObjectLike(new Dictionary<string, object>
+            {
+                ["OnFailure"] = Match.ObjectLike(new Dictionary<string, object>
+                {
+                    ["Destination"] = Match.AnyValue()
+                })
+            })
+        }));
+    }
+
+    [Fact]
+    public void ProjectorRole_HasStreamReadAndEventsTableRead()
+    {
+        // Positive: the projector's role grants stream-read (GetRecords/GetShardIterator)
+        // and item-read (GetItem/Query) so it can fold the log. The grants land on the
+        // projector role's policies (a DefaultPolicy plus a CDK-split Overflow managed
+        // policy when the statement set exceeds the inline size limit), so scan both
+        // AWS::IAM::Policy and AWS::IAM::ManagedPolicy.
+        var actions = ProjectorRoleActions();
+        Assert.Contains("dynamodb:GetRecords", actions);
+        Assert.Contains("dynamodb:GetItem", actions);
+        Assert.Contains("dynamodb:Query", actions);
+    }
+
+    [Fact]
+    public void ProjectorRole_HasNoEventsTableWrite()
+    {
+        // Load-bearing least-privilege boundary: the projector can read/re-fold the events
+        // table but can NEVER append to it. No statement on the projector role scoped to the
+        // events-table ARN may grant a write verb (PutItem/UpdateItem/DeleteItem/
+        // BatchWriteItem/TransactWriteItems). The 12 projection-table grants are read/write
+        // (those carry PutItem etc.), so we must check the actions of the statements scoped
+        // to the EVENTS table specifically — not a blanket "no PutItem anywhere".
+        var eventsLogicalId = EventsTableLogicalId();
+        var writeVerbs = new[]
+        {
+            "dynamodb:PutItem", "dynamodb:UpdateItem", "dynamodb:DeleteItem",
+            "dynamodb:BatchWriteItem", "dynamodb:TransactWriteItems"
+        };
+        foreach (var stmt in ProjectorRoleStatements())
+        {
+            if (!StatementReferencesLogicalId(stmt, eventsLogicalId)) continue;
+            var actions = ActionsOf(stmt);
+            foreach (var verb in writeVerbs)
+                Assert.DoesNotContain(verb, actions);
+        }
+        // And sanity: the events table IS referenced by at least one projector statement
+        // (otherwise the loop above is vacuously true).
+        Assert.Contains(ProjectorRoleStatements(),
+            s => StatementReferencesLogicalId(s, eventsLogicalId));
+    }
+
+    [Fact]
+    public void ProjectorRole_CanSendToDlq()
+    {
+        Assert.Contains("sqs:SendMessage", ProjectorRoleActions());
+    }
+
+    [Fact]
+    public void ProjectorRole_CanDeleteImagesScopedToNotesPrefix()
+    {
+        // NoteDeleted purge path: delete only, never a blanket bucket grant.
+        Assert.Contains("s3:DeleteObject*", ProjectorRoleActions());
+        // Never a write/put on the image bucket from the projector.
+        Assert.DoesNotContain("s3:PutObject", ProjectorRoleActions());
+    }
+
+    [Fact]
+    public void Alarms_ProjectorErrorAlarmWiredToTopic()
+    {
+        _template.HasResourceProperties("AWS::CloudWatch::Alarm", Match.ObjectLike(new Dictionary<string, object>
+        {
+            ["AlarmName"] = "notetaker-projector-error",
+            ["Namespace"] = "NoteTaker/Domain",
+            ["MetricName"] = "ProjectorFailure",
+            ["Statistic"] = "Sum",
+            ["Threshold"] = 0,
+            ["ComparisonOperator"] = "GreaterThanThreshold",
+            ["Dimensions"] = Match.ArrayWith(new object[]
+            {
+                Match.ObjectLike(new Dictionary<string, object> { ["Name"] = "Service", ["Value"] = "note-taker-projector" })
+            }),
+            ["AlarmActions"] = Match.AnyValue()
+        }));
+    }
+
+    [Fact]
+    public void Alarms_ProjectorDlqDepthAlarmWiredToTopic()
+    {
+        _template.HasResourceProperties("AWS::CloudWatch::Alarm", Match.ObjectLike(new Dictionary<string, object>
+        {
+            ["AlarmName"] = "notetaker-projector-dlq-depth",
+            ["Namespace"] = "AWS/SQS",
+            ["MetricName"] = "ApproximateNumberOfMessagesVisible",
+            ["Threshold"] = 0,
+            ["ComparisonOperator"] = "GreaterThanThreshold",
+            ["AlarmActions"] = Match.AnyValue()
+        }));
+    }
+
+    [Fact]
+    public void Alarms_ProjectorIteratorAgeAlarmWiredToTopic()
+    {
+        _template.HasResourceProperties("AWS::CloudWatch::Alarm", Match.ObjectLike(new Dictionary<string, object>
+        {
+            ["AlarmName"] = "notetaker-projector-iterator-age",
+            ["Namespace"] = "AWS/Lambda",
+            ["MetricName"] = "IteratorAge",
+            ["Threshold"] = 60000,
+            ["ComparisonOperator"] = "GreaterThanThreshold",
+            ["AlarmActions"] = Match.AnyValue()
+        }));
+    }
+
+    [Fact]
+    public void OpsDashboard_HasProjectorWidget()
+    {
+        _template.HasResourceProperties("AWS::CloudWatch::Dashboard", Match.ObjectLike(new Dictionary<string, object>
+        {
+            ["DashboardBody"] = Match.ObjectLike(new Dictionary<string, object>
+            {
+                ["Fn::Join"] = Match.ArrayWith(new object[]
+                {
+                    Match.ArrayWith(new object[] { Match.StringLikeRegexp(".*ProjectorLag.*") })
+                })
+            })
+        }));
+    }
+
+    // ── Projector IAM helpers ────────────────────────────────────────────
+    // The projector role's grants are split across an inline AWS::IAM::Policy
+    // (DefaultPolicy) and, when the statement set overflows the inline size limit,
+    // an attached AWS::IAM::ManagedPolicy (OverflowPolicy). Scan both, walking the
+    // raw template JSON so a scalar Action ("s3:DeleteObject*") and an array Action
+    // are both handled. Projector policies are identified by their logical id prefix.
+
+    private static Dictionary<string, object> TemplateJson() =>
+        ToDict(_template.ToJSON());
+
+    private static IEnumerable<Dictionary<string, object>> ProjectorRoleStatements()
+    {
+        var resources = ToDict(TemplateJson()["Resources"]);
+        foreach (var (logicalId, raw) in resources)
+        {
+            if (!logicalId.StartsWith("ProjectorFunctionServiceRole")) continue;
+            var res = ToDict(raw);
+            var type = res.TryGetValue("Type", out var t) ? t as string : null;
+            if (type != "AWS::IAM::Policy" && type != "AWS::IAM::ManagedPolicy") continue;
+            var props = ToDict(res["Properties"]);
+            var doc = ToDict(props["PolicyDocument"]);
+            foreach (var s in ToArray(doc["Statement"]))
+                yield return ToDict(s);
+        }
+    }
+
+    private static HashSet<string> ProjectorRoleActions()
+    {
+        var actions = new HashSet<string>();
+        foreach (var stmt in ProjectorRoleStatements())
+            foreach (var a in ActionsOf(stmt))
+                actions.Add(a);
+        return actions;
+    }
+
+    private static IEnumerable<string> ActionsOf(Dictionary<string, object> statement)
+    {
+        if (!statement.TryGetValue("Action", out var a)) yield break;
+        if (a is string s) { yield return s; yield break; }
+        foreach (var x in ToArray(a))
+            if (x is string str) yield return str;
+    }
+
+    private static string EventsTableLogicalId()
+    {
+        var resources = ToDict(TemplateJson()["Resources"]);
+        foreach (var (logicalId, raw) in resources)
+        {
+            var res = ToDict(raw);
+            if ((res.TryGetValue("Type", out var t) ? t as string : null) != "AWS::DynamoDB::Table") continue;
+            var props = ToDict(res["Properties"]);
+            if (props.TryGetValue("TableName", out var name) && name as string == "notetaker-events")
+                return logicalId;
+        }
+        throw new Xunit.Sdk.XunitException("events table not found in template");
+    }
+
+    // True if any Resource ARN in the statement is built from a Fn::GetAtt on the
+    // given logical id (covers both the table ARN and its StreamArn).
+    private static bool StatementReferencesLogicalId(Dictionary<string, object> statement, string logicalId)
+    {
+        if (!statement.TryGetValue("Resource", out var r)) return false;
+        return JsonMentions(r, logicalId);
+    }
+
+    private static bool JsonMentions(object? node, string needle)
+    {
+        switch (node)
+        {
+            case string s:
+                return s == needle;
+            case IDictionary<string, object> map:
+                return map.Any(kv => kv.Key == needle || JsonMentions(kv.Value, needle));
+            case System.Collections.IEnumerable seq:
+                return seq.Cast<object?>().Any(x => JsonMentions(x, needle));
+            default:
+                return false;
+        }
+    }
+
+    private static Dictionary<string, object> ToDict(object? o) =>
+        o is IDictionary<string, object> d
+            ? new Dictionary<string, object>(d)
+            : new Dictionary<string, object>();
+
+    private static IEnumerable<object> ToArray(object? o) =>
+        o is System.Collections.IEnumerable e and not string
+            ? e.Cast<object>()
+            : Enumerable.Empty<object>();
 
     private static object PolicyWithObjectAction(string action) =>
         Match.ObjectLike(new Dictionary<string, object>

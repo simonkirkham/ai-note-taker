@@ -22,7 +22,12 @@ public sealed class NoteTakerStack : Stack
             PartitionKey = new Amazon.CDK.AWS.DynamoDB.Attribute { Name = "PK", Type = AttributeType.STRING },
             SortKey = new Amazon.CDK.AWS.DynamoDB.Attribute { Name = "SK", Type = AttributeType.STRING },
             BillingMode = BillingMode.PAY_PER_REQUEST,
-            RemovalPolicy = RemovalPolicy.RETAIN
+            RemovalPolicy = RemovalPolicy.RETAIN,
+            // 27-B: fan-out transport for the async Projector Lambda. NEW_IMAGE is enough
+            // to re-fold a stream — the projector reads the stream id off the new image and
+            // replays the event store, it does not need the OLD image. Enabling a stream is
+            // a one-off stack-update cost, not a recurring per-deploy tax.
+            Stream = StreamViewType.NEW_IMAGE
         });
 
         // ── Projection tables ────────────────────────────────────────────
@@ -144,6 +149,31 @@ public sealed class NoteTakerStack : Stack
             RemovalPolicy = RemovalPolicy.RETAIN
         });
 
+        // ── Projector processed-position guard (27-B) ────────────────────
+        // Highest applied event sequence per stream, so a redelivered stream record
+        // is skipped instead of re-applied — the redelivery-idempotency mechanism the
+        // increment-based feedback counters need. Reconstructible by replay (the event
+        // log is authoritative), so DESTROY: a teardown loses only the cursor, which a
+        // re-drive from TRIM_HORIZON rebuilds. Created before the Projector Lambda so its
+        // name rides the constructor Environment dict.
+        var projPositionTable = new Table(this, "ProjPositionTable", new TableProps
+        {
+            TableName = "notetaker-proj-position",
+            PartitionKey = new Amazon.CDK.AWS.DynamoDB.Attribute { Name = "PK", Type = AttributeType.STRING },
+            BillingMode = BillingMode.PAY_PER_REQUEST,
+            RemovalPolicy = RemovalPolicy.DESTROY
+        });
+
+        // ── Projector dead-letter queue (27-B) ───────────────────────────
+        // On-failure destination for the DynamoDB event-source mapping: a record that
+        // still throws after bisect + retry exhaustion lands here instead of vanishing
+        // or wedging the shard. 14-day retention gives ample time to inspect/redrive.
+        var projectorDlq = new Amazon.CDK.AWS.SQS.Queue(this, "ProjectorDlq", new Amazon.CDK.AWS.SQS.QueueProps
+        {
+            QueueName = "notetaker-projector-dlq",
+            RetentionPeriod = Duration.Days(14)
+        });
+
         // ── Working-state store (NOT a projection, NOT the event log) ─────
         // In-progress transcription drafts, overwritten in place and self-reaped
         // via TTL. Loss-tolerant recovery buffer (ADR 0011): DESTROY removal,
@@ -188,6 +218,13 @@ public sealed class NoteTakerStack : Stack
         // ── API Lambda ───────────────────────────────────────────────────
         var lambdaAssetPath = (string?)this.Node.TryGetContext("lambdaAssetPath")
             ?? "src/Api/bin/Release/net10.0/publish";
+
+        // Projector asset path (27-B). Same context-key indirection as the API asset so
+        // the Infrastructure.Assertions tests synth against AppContext.BaseDirectory
+        // (a real directory) without a publish; the deploy pipeline publishes the real
+        // artifact to the default path before `cdk synth`/`cdk deploy`.
+        var projectorAssetPath = (string?)this.Node.TryGetContext("projectorAssetPath")
+            ?? "src/Projector/bin/Release/net10.0/publish";
 
         // Explicit log group so retention is managed (and cost-bounded) rather
         // than letting the runtime auto-create an unmanaged, never-expiring group.
@@ -358,6 +395,98 @@ public sealed class NoteTakerStack : Stack
                 Resources = new[] { ssmArn }
             }));
         }
+
+        // ── Projector Lambda (27-B, shadow mode) ─────────────────────────
+        // Async read-model writer driven by the events-table DynamoDB stream. Mirrors the
+        // API Lambda's runtime/tracing but is an async throughput consumer, not a request
+        // handler: NO SnapStart and NO alias (cold-start latency is irrelevant off the
+        // request path, and an alias would couple the ESM to a published version). All
+        // table/bucket names ride the constructor Environment dict so they are part of the
+        // hashed config. Inline projection writes remain in the command handlers, so the
+        // projector is redundant-but-idempotent here — adding it changes no read behaviour.
+        var projectorLogGroup = new Amazon.CDK.AWS.Logs.LogGroup(this, "ProjectorFunctionLogGroup", new Amazon.CDK.AWS.Logs.LogGroupProps
+        {
+            Retention = Amazon.CDK.AWS.Logs.RetentionDays.ONE_MONTH,
+            RemovalPolicy = RemovalPolicy.DESTROY
+        });
+
+        var projectorFunction = new Amazon.CDK.AWS.Lambda.Function(this, "ProjectorFunction", new Amazon.CDK.AWS.Lambda.FunctionProps
+        {
+            Runtime = Amazon.CDK.AWS.Lambda.Runtime.DOTNET_10,
+            Handler = "Projector::Projector.ProjectorFunction::Handle",
+            Description = "AI Note Taker async projector (DynamoDB stream → read models)",
+            Code = Amazon.CDK.AWS.Lambda.Code.FromAsset(projectorAssetPath),
+            // Folds events through the same projection stores as the write path; 60s/512MB
+            // gives headroom for a re-fold of a long stream without the 29s request cap.
+            Timeout = Duration.Seconds(60),
+            MemorySize = 512,
+            LogGroup = projectorLogGroup,
+            Tracing = Amazon.CDK.AWS.Lambda.Tracing.ACTIVE,
+            Environment = new Dictionary<string, string>
+            {
+                ["AWS_XRAY_CONTEXT_MISSING"] = "LOG_ERROR",
+                ["EVENTS_TABLE_NAME"] = eventsTable.TableName,
+                ["PROJ_NOTETITLELIST_TABLE_NAME"] = projTable.TableName,
+                ["PROJ_NOTEDETAIL_TABLE_NAME"] = noteDetailTable.TableName,
+                ["PROJ_NOTEACTIONS_TABLE_NAME"] = noteActionsTable.TableName,
+                ["PROJ_TODOLIST_TABLE_NAME"] = todoListTable.TableName,
+                ["PROJ_NOTECARDLIST_TABLE_NAME"] = noteCardListTable.TableName,
+                ["PROJ_FOLDERTREE_TABLE_NAME"] = folderTreeTable.TableName,
+                ["PROJ_TAGINDEX_TABLE_NAME"] = tagIndexTable.TableName,
+                ["PROJ_TAGFEEDBACK_TABLE_NAME"] = tagFeedbackTable.TableName,
+                ["PROJ_ACTIONFEEDBACK_TABLE_NAME"] = actionFeedbackTable.TableName,
+                ["PROJ_CALENDARLINKINDEX_TABLE_NAME"] = calendarLinkIndexTable.TableName,
+                ["PROJ_NOTESEARCHVIEW_TABLE_NAME"] = noteSearchViewTable.TableName,
+                ["PROJ_WORKSPACELIST_TABLE_NAME"] = workspaceListTable.TableName,
+                ["PROJ_POSITION_TABLE_NAME"] = projPositionTable.TableName,
+                ["IMAGE_BUCKET_NAME"] = imagesBucket.BucketName
+            }
+        });
+
+        // Least-privilege projector role (resource-GrantX path only — never a bare
+        // AddToRolePolicy, which can silently drop a conditional post-CurrentVersion grant):
+        //  - projection tables: read/write (it writes the read models),
+        //  - events table: stream-read + read-only (re-fold a stream) — NOT write,
+        //  - position guard table: read/write (the processed-position cursor),
+        //  - DLQ: send (the ESM on-failure destination),
+        //  - image bucket: delete only, scoped to notes/* (the NoteDeleted purge path).
+        // The events-table read-without-write boundary is the load-bearing assertion:
+        // the projector can fold the log but can never append to it.
+        projTable.GrantReadWriteData(projectorFunction);
+        noteDetailTable.GrantReadWriteData(projectorFunction);
+        noteActionsTable.GrantReadWriteData(projectorFunction);
+        todoListTable.GrantReadWriteData(projectorFunction);
+        noteCardListTable.GrantReadWriteData(projectorFunction);
+        folderTreeTable.GrantReadWriteData(projectorFunction);
+        tagIndexTable.GrantReadWriteData(projectorFunction);
+        tagFeedbackTable.GrantReadWriteData(projectorFunction);
+        actionFeedbackTable.GrantReadWriteData(projectorFunction);
+        calendarLinkIndexTable.GrantReadWriteData(projectorFunction);
+        noteSearchViewTable.GrantReadWriteData(projectorFunction);
+        workspaceListTable.GrantReadWriteData(projectorFunction);
+        projPositionTable.GrantReadWriteData(projectorFunction);
+        eventsTable.GrantStreamRead(projectorFunction);
+        eventsTable.GrantReadData(projectorFunction);
+        projectorDlq.GrantSendMessages(projectorFunction);
+        // Delete-only, for the NoteDeleted image-purge path. In shadow mode both the inline
+        // API path and the projector purge on a delete; S3 delete is idempotent, so the
+        // redundant purge is expected and harmless.
+        imagesBucket.GrantDelete(projectorFunction, "notes/*");
+
+        // DynamoDB event-source mapping: TRIM_HORIZON so the projector folds the full
+        // existing log on first deploy; bisect-on-error + bounded retries + max record
+        // age so one poison record can't wedge the shard, and the on-failure DLQ catches
+        // what survives retry. ParallelizationFactor 1 keeps per-key ordering simple.
+        projectorFunction.AddEventSource(new Amazon.CDK.AWS.Lambda.EventSources.DynamoEventSource(eventsTable, new Amazon.CDK.AWS.Lambda.EventSources.DynamoEventSourceProps
+        {
+            StartingPosition = Amazon.CDK.AWS.Lambda.StartingPosition.TRIM_HORIZON,
+            BatchSize = 10,
+            BisectBatchOnError = true,
+            RetryAttempts = 3,
+            MaxRecordAge = Duration.Hours(24),
+            ParallelizationFactor = 1,
+            OnFailure = new Amazon.CDK.AWS.Lambda.EventSources.SqsDlq(projectorDlq)
+        }));
 
         // ── API Gateway ──────────────────────────────────────────────────
         // CORS is handled by ASP.NET Core UseCors middleware in the Lambda, not at
@@ -752,6 +881,92 @@ public sealed class NoteTakerStack : Stack
             TreatMissingData = Amazon.CDK.AWS.CloudWatch.TreatMissingData.NOT_BREACHING
         });
         rebuildDurationAlarm.AddAlarmAction(alarmAction);
+
+        // ── Projector alarms (27-B) ──────────────────────────────────────
+        // Async projection failure is invisible by construction (no synchronous 500), so
+        // these three are non-negotiable per ADR 0009. Each carries only the Powertools
+        // Service dimension (note-taker-projector) so it is a single alarmable metric.
+        var projectorErrorAlarm = new Amazon.CDK.AWS.CloudWatch.Alarm(this, "ProjectorErrorAlarm", new Amazon.CDK.AWS.CloudWatch.AlarmProps
+        {
+            AlarmName = "notetaker-projector-error",
+            AlarmDescription = "The async projector reported a failure (a record is retrying toward the DLQ) in the last 5 minutes",
+            Metric = new Amazon.CDK.AWS.CloudWatch.Metric(new Amazon.CDK.AWS.CloudWatch.MetricProps
+            {
+                Namespace = "NoteTaker/Domain",
+                MetricName = "ProjectorFailure",
+                DimensionsMap = new Dictionary<string, string> { ["Service"] = "note-taker-projector" },
+                Statistic = "Sum",
+                Period = Duration.Minutes(5)
+            }),
+            Threshold = 0,
+            EvaluationPeriods = 1,
+            ComparisonOperator = Amazon.CDK.AWS.CloudWatch.ComparisonOperator.GREATER_THAN_THRESHOLD,
+            TreatMissingData = Amazon.CDK.AWS.CloudWatch.TreatMissingData.NOT_BREACHING
+        });
+        projectorErrorAlarm.AddAlarmAction(alarmAction);
+
+        // A non-empty DLQ means a record exhausted retries and was parked — read models
+        // are now permanently stale for that stream until it is redriven.
+        var projectorDlqDepthAlarm = new Amazon.CDK.AWS.CloudWatch.Alarm(this, "ProjectorDlqDepthAlarm", new Amazon.CDK.AWS.CloudWatch.AlarmProps
+        {
+            AlarmName = "notetaker-projector-dlq-depth",
+            AlarmDescription = "The projector DLQ holds at least one parked record (a poison event after retry exhaustion)",
+            Metric = projectorDlq.MetricApproximateNumberOfMessagesVisible(new Amazon.CDK.AWS.CloudWatch.MetricOptions
+            {
+                Statistic = "Maximum",
+                Period = Duration.Minutes(5)
+            }),
+            Threshold = 0,
+            EvaluationPeriods = 1,
+            ComparisonOperator = Amazon.CDK.AWS.CloudWatch.ComparisonOperator.GREATER_THAN_THRESHOLD,
+            TreatMissingData = Amazon.CDK.AWS.CloudWatch.TreatMissingData.NOT_BREACHING
+        });
+        projectorDlqDepthAlarm.AddAlarmAction(alarmAction);
+
+        // Iterator age is the ESM's "how far behind the stream tip" signal (AWS/Lambda,
+        // dimensioned by FunctionName). > 60s means the projector is falling behind faster
+        // than it drains — read-after-write lag is growing past what optimistic UI masks.
+        var projectorIteratorAgeAlarm = new Amazon.CDK.AWS.CloudWatch.Alarm(this, "ProjectorIteratorAgeAlarm", new Amazon.CDK.AWS.CloudWatch.AlarmProps
+        {
+            AlarmName = "notetaker-projector-iterator-age",
+            AlarmDescription = "Projector stream iterator age exceeds 60s — the async projector is falling behind the event log",
+            Metric = new Amazon.CDK.AWS.CloudWatch.Metric(new Amazon.CDK.AWS.CloudWatch.MetricProps
+            {
+                Namespace = "AWS/Lambda",
+                MetricName = "IteratorAge",
+                DimensionsMap = new Dictionary<string, string> { ["FunctionName"] = projectorFunction.FunctionName },
+                Statistic = "Maximum",
+                Period = Duration.Minutes(5)
+            }),
+            Threshold = 60000,
+            EvaluationPeriods = 1,
+            ComparisonOperator = Amazon.CDK.AWS.CloudWatch.ComparisonOperator.GREATER_THAN_THRESHOLD,
+            TreatMissingData = Amazon.CDK.AWS.CloudWatch.TreatMissingData.NOT_BREACHING
+        });
+        projectorIteratorAgeAlarm.AddAlarmAction(alarmAction);
+
+        // Projector health on the ops dashboard: lag (now − OccurredAt), applied count,
+        // and failures, all SUM(SEARCH(...)) so any dimension combination is captured.
+        Amazon.CDK.AWS.CloudWatch.IMetric ProjectorTotal(string metricName, string stat) =>
+            new Amazon.CDK.AWS.CloudWatch.MathExpression(new Amazon.CDK.AWS.CloudWatch.MathExpressionProps
+            {
+                Expression = $"{stat}(SEARCH('Namespace=\"NoteTaker/Domain\" MetricName=\"{metricName}\"', '{stat}'))",
+                Label = metricName,
+                Period = Duration.Minutes(5)
+            });
+
+        dashboard.AddWidgets(
+            new Amazon.CDK.AWS.CloudWatch.GraphWidget(new Amazon.CDK.AWS.CloudWatch.GraphWidgetProps
+            {
+                Title = "Projector lag / applied / failures",
+                Left = new[]
+                {
+                    ProjectorTotal("ProjectorApplied", "SUM"),
+                    ProjectorTotal("ProjectorFailure", "SUM")
+                },
+                Right = new[] { ProjectorTotal("ProjectorLag", "MAX") },
+                Width = 12
+            }));
 
         // NOTE: a concurrency-conflict alarm is deliberately NOT defined here.
         // ConcurrencyConflict is emitted with per-Aggregate dimensions (plus the

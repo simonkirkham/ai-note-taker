@@ -6,7 +6,6 @@ using Domain.Todos;
 using Domain.Workspaces;
 using EventStore;
 using EventStore.Projections;
-using Api.Auth;
 using Api.Exceptions;
 using Api.Services;
 
@@ -29,7 +28,6 @@ public sealed class ProjectionUpdater(
     INoteSearchViewStore noteSearchViewStore,
     IFolderTreeStore folderTreeStore,
     IWorkspaceListStore workspaceListStore,
-    ICurrentUser currentUser,
     INoteImageStore noteImageStore,
     ILogger<ProjectionUpdater> logger) : IProjectionUpdater
 {
@@ -90,14 +88,19 @@ public sealed class ProjectionUpdater(
     // carries NoteCreated), so skip the extra store round-trips.
     private async Task RebucketWorkspaceForMoveAsync(NoteId noteId, NoteDetailView noteDetail, List<EventEnvelope> newEnvelopes, CancellationToken ct)
     {
-        var isMove = newEnvelopes.Any(e => e.EventType == nameof(NoteAssignedToWorkspace))
+        var moveEnvelope = newEnvelopes.FirstOrDefault(e => e.EventType == nameof(NoteAssignedToWorkspace));
+        var isMove = moveEnvelope is not null
             && !newEnvelopes.Any(e => e.EventType == nameof(NoteCreated));
         if (!isMove || noteDetail.WorkspaceId is null) return;
 
+        // Source userId from the move event's own envelope so the re-stamped tag rows carry
+        // the same user a rebuild would write — the projector applies per-event, with no
+        // request-scoped current user.
+        var userId = moveEnvelope!.Metadata.UserId ?? "";
         // The todo re-stamp and each tag re-stamp are independent writes — run together.
         var noteKey = noteId.Value.ToString("N");
         var restamps = (noteDetail.Tags ?? [])
-            .Select(tag => tagIndexStore.PutAsync(tag, noteKey, currentUser.UserId, noteDetail.WorkspaceId, ct))
+            .Select(tag => tagIndexStore.PutAsync(tag, noteKey, userId, noteDetail.WorkspaceId, ct))
             .Append(todoListStore.UpdateNoteWorkspaceAsync(noteId, noteDetail.WorkspaceId, ct));
         await Task.WhenAll(restamps).ConfigureAwait(false);
     }
@@ -122,13 +125,14 @@ public sealed class ProjectionUpdater(
     {
         foreach (var envelope in newEnvelopes)
         {
+            var userId = envelope.Metadata.UserId ?? "";
             switch (EventDeserializer.Deserialize(envelope))
             {
                 case ActionItemsSuggestedV2 e:
-                    await RecordActionSuggestionsAsync(e.ActionItemIds, e.PromptVersion, ct).ConfigureAwait(false);
+                    await RecordActionSuggestionsAsync(userId, e.ActionItemIds, e.PromptVersion, ct).ConfigureAwait(false);
                     break;
                 case ActionItemsSuggested e:
-                    await RecordActionSuggestionsAsync(e.ActionItemIds, ActionItemFeedbackProjection.UnknownPromptVersion, ct).ConfigureAwait(false);
+                    await RecordActionSuggestionsAsync(userId, e.ActionItemIds, ActionItemFeedbackProjection.UnknownPromptVersion, ct).ConfigureAwait(false);
                     break;
                 default:
                     break;
@@ -136,23 +140,24 @@ public sealed class ProjectionUpdater(
         }
     }
 
-    private async Task RecordActionSuggestionsAsync(IReadOnlyList<Guid> actionItemIds, string promptVersion, CancellationToken ct)
+    private async Task RecordActionSuggestionsAsync(string userId, IReadOnlyList<Guid> actionItemIds, string promptVersion, CancellationToken ct)
     {
         foreach (var actionItemId in actionItemIds)
-            await actionItemFeedbackStore.RecordSuggestionAsync(currentUser.UserId, actionItemId.ToString(), promptVersion, ct).ConfigureAwait(false);
+            await actionItemFeedbackStore.RecordSuggestionAsync(userId, actionItemId.ToString(), promptVersion, ct).ConfigureAwait(false);
     }
 
     private async Task UpdateTagFeedbackForNewEventsAsync(List<EventEnvelope> newEnvelopes, CancellationToken ct)
     {
         foreach (var envelope in newEnvelopes)
         {
+            var userId = envelope.Metadata.UserId ?? "";
             switch (EventDeserializer.Deserialize(envelope))
             {
                 case TagsSuggestedV2 e:
-                    await RecordTagSuggestionsAsync(e.NoteId, e.Tags, e.PromptVersion, ct).ConfigureAwait(false);
+                    await RecordTagSuggestionsAsync(userId, e.NoteId, e.Tags, e.PromptVersion, ct).ConfigureAwait(false);
                     break;
                 case TagsSuggested e:
-                    await RecordTagSuggestionsAsync(e.NoteId, e.Tags, TagFeedbackProjection.UnknownPromptVersion, ct).ConfigureAwait(false);
+                    await RecordTagSuggestionsAsync(userId, e.NoteId, e.Tags, TagFeedbackProjection.UnknownPromptVersion, ct).ConfigureAwait(false);
                     break;
                 case NoteUntagged e:
                     await tagFeedbackStore.TryRecordRejectionAsync(e.NoteId.Value.ToString("N"), e.Tag, ct).ConfigureAwait(false);
@@ -163,10 +168,10 @@ public sealed class ProjectionUpdater(
         }
     }
 
-    private async Task RecordTagSuggestionsAsync(NoteId noteId, IReadOnlyList<string> tags, string promptVersion, CancellationToken ct)
+    private async Task RecordTagSuggestionsAsync(string userId, NoteId noteId, IReadOnlyList<string> tags, string promptVersion, CancellationToken ct)
     {
         foreach (var tag in tags)
-            await tagFeedbackStore.RecordSuggestionAsync(currentUser.UserId, noteId.Value.ToString("N"), tag, promptVersion, ct).ConfigureAwait(false);
+            await tagFeedbackStore.RecordSuggestionAsync(userId, noteId.Value.ToString("N"), tag, promptVersion, ct).ConfigureAwait(false);
     }
 
     private static (NoteTitleListItem TitleItem, NoteDetailView Detail) RebuildTitleAndDetailProjections(
@@ -191,7 +196,7 @@ public sealed class ProjectionUpdater(
             switch (EventDeserializer.Deserialize(envelope))
             {
                 case NoteTagged e:
-                    await tagIndexStore.PutAsync(e.Tag, e.NoteId.Value.ToString("N"), currentUser.UserId, noteWorkspaceId, ct).ConfigureAwait(false);
+                    await tagIndexStore.PutAsync(e.Tag, e.NoteId.Value.ToString("N"), envelope.Metadata.UserId ?? "", noteWorkspaceId, ct).ConfigureAwait(false);
                     break;
                 case NoteUntagged e:
                     await tagIndexStore.DeleteAsync(e.Tag, e.NoteId.Value.ToString("N"), ct).ConfigureAwait(false);
@@ -208,7 +213,7 @@ public sealed class ProjectionUpdater(
         {
             if (EventDeserializer.Deserialize(envelope) is NoteLinkedToCalendarEvent e)
                 await calendarLinkIndexStore.UpsertAsync(
-                    new CalendarLinkView(e.CalendarEventId, noteId.Value.ToString(), e.RecurringSeriesId, e.StartTime, e.EndTime, e.CalendarEventTitle, currentUser.UserId), ct)
+                    new CalendarLinkView(e.CalendarEventId, noteId.Value.ToString(), e.RecurringSeriesId, e.StartTime, e.EndTime, e.CalendarEventTitle, envelope.Metadata.UserId ?? ""), ct)
                     .ConfigureAwait(false);
         }
     }
@@ -334,7 +339,7 @@ public sealed class ProjectionUpdater(
             await noteActionsStore.UpsertAsync(noteId, action, ct).ConfigureAwait(false);
             await todoListStore.PutAsync(
                 new TodoItem(e.ActionId.Value.ToString(), e.NoteId.Value.ToString(), noteDetail.Title,
-                    "action", e.Description, envelope.OccurredAt, null, currentUser.UserId, noteDetail.WorkspaceId), ct).ConfigureAwait(false);
+                    "action", e.Description, envelope.OccurredAt, null, envelope.Metadata.UserId ?? "", noteDetail.WorkspaceId), ct).ConfigureAwait(false);
             // Add-if-absent so a redelivered ActionItemAdded does not duplicate the card row
             // (27-A idempotency). For apply-once this is identical to a plain append.
             await UpdateCardActionItemsAsync(noteId,
@@ -376,7 +381,7 @@ public sealed class ProjectionUpdater(
                 case TodoAdded e:
                     await todoListStore.PutAsync(
                         new TodoItem(e.TodoId.Value.ToString(), null, null, "todo",
-                            e.Description, envelope.OccurredAt, null, currentUser.UserId, envelope.Metadata.WorkspaceId), ct).ConfigureAwait(false);
+                            e.Description, envelope.OccurredAt, null, envelope.Metadata.UserId ?? "", envelope.Metadata.WorkspaceId), ct).ConfigureAwait(false);
                     break;
                 case TodoCompleted e:
                     await todoListStore.UpdateCompletedAtAsync(e.TodoId.Value.ToString(), e.CompletedAt, ct).ConfigureAwait(false);
