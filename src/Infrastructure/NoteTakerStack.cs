@@ -394,7 +394,24 @@ public sealed class NoteTakerStack : Stack
         {
             RemovalPolicy = RemovalPolicy.RETAIN,
             BlockPublicAccess = BlockPublicAccess.BLOCK_ALL,
-            AutoDeleteObjects = false
+            AutoDeleteObjects = false,
+            // Zero-downtime deploy (Phase 26-A): the deploy no longer `s3 sync --delete`s
+            // superseded hashed bundles, so a browser/CDN still holding the previous
+            // index.html keeps finding its assets. They are reaped here instead, 30 days
+            // after they stop being re-uploaded. Scoped to `assets/` (Vite's hashed-asset
+            // dir) so index.html and other unhashed root objects are never expired.
+            // A still-referenced asset is re-synced from a fresh build each deploy, which
+            // refreshes its LastModified, so it never ages into the window while live.
+            LifecycleRules = new[]
+            {
+                new LifecycleRule
+                {
+                    Id = "expire-superseded-assets",
+                    Enabled = true,
+                    Prefix = "assets/",
+                    Expiration = Duration.Days(30)
+                }
+            }
         });
 
         var distribution = new Distribution(this, "WebDistribution", BuildDistributionProps(props, httpApi, webBucket));
