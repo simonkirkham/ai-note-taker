@@ -1,6 +1,31 @@
 import { getToken, jwtExpired, triggerForbidden, triggerRefresh, triggerUnauthorized } from '../auth/tokenStore'
+import { getWorkspaceId } from '../workspace/workspaceStore'
 
 export const base = "/api";
+
+// Paths that are NOT workspace-scoped — they stay un-prefixed. Everything else
+// (notes, folders, todos, tags, actions) is rewritten to `/w/{wsId}/...` so the
+// backend route group resolves it to the active workspace (23-D). The backend also
+// dual-maps these rootless → default, so an un-prefixed call still works.
+const GLOBAL_PATH_PREFIXES = [
+  '/calendar',
+  '/transcription/credentials',
+  '/notes/from-meeting',
+  '/notes/from-next-occurrence',
+  '/workspaces',
+  '/admin',
+];
+
+function scopedPath(path: string): string {
+  const wsId = getWorkspaceId();
+  // No active workspace (no router context) → send rootless; the backend resolves
+  // rootless to the default workspace.
+  if (!wsId) return path;
+  if (GLOBAL_PATH_PREFIXES.some((p) => path === p || path.startsWith(p + '/') || path.startsWith(p + '?'))) {
+    return path;
+  }
+  return `/w/${wsId}${path}`;
+}
 
 // A single in-flight silent refresh shared by all concurrent 401s. The home screen fires
 // several data fetches at once; without this they would each kick off their own refresh.
@@ -115,12 +140,12 @@ function ensureOk(res: Response, path: string, init: RequestInit | undefined, ok
 }
 
 export async function request<T>(path: string, init?: RequestInit, okStatuses?: number[]): Promise<T> {
-  const res = await apiFetch(`${base}${path}`, init)
+  const res = await apiFetch(`${base}${scopedPath(path)}`, init)
   ensureOk(res, path, init, okStatuses)
   return res.json() as Promise<T>
 }
 
 export async function requestVoid(path: string, init?: RequestInit, okStatuses?: number[]): Promise<void> {
-  const res = await apiFetch(`${base}${path}`, init)
+  const res = await apiFetch(`${base}${scopedPath(path)}`, init)
   ensureOk(res, path, init, okStatuses)
 }

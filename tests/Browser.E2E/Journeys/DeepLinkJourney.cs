@@ -49,8 +49,9 @@ public sealed class DeepLinkJourney(BrowserFixture browser) : IAsyncLifetime
     public async Task Hard_loading_a_missing_note_url_recovers_to_home()
     {
         // CloudFront serves the SPA for the unknown path; the app then 404s the
-        // note fetch and redirects home (21-C) rather than dead-ending.
-        await _app.GotoPathAsync($"/notes/missing-{Guid.NewGuid():N}");
+        // note fetch and redirects to the workspace home (21-C) rather than
+        // dead-ending. The deep link is workspace-prefixed (23-D).
+        await _app.GotoPathAsync($"/w/__default__/notes/missing-{Guid.NewGuid():N}");
         await _app.AssertHomeLoadedAsync();
     }
 }
