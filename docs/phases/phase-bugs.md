@@ -28,8 +28,8 @@
 | BUG-15 | Forced through full Google sign-in on cold load — bootstrap never uses the `rt` refresh cookie, so the session is only ~1h not 30 days | Done | BUG-11 |
 | BUG-16 | Google emails the user on every login — `prompt=consent` forces a fresh consent grant on each sign-in | Done | BUG-11 |
 | BUG-17 | Concurrent multi-word tag add drops a tag — second append loses the optimistic-concurrency race and is silently dropped (no handler retry) | Done | BUG-4, BUG-14 |
-| BUG-18 | Removing an inline image (or any edit) is silently not persisted — note content saves only on editor `onBlur`; the Save button navigates without flushing the draft | Not Started | 25-D |
-| BUG-19 | Inline image flashes a 403 on every open — `ImageNodeView` renders the raw S3 key as a relative `<img src>` before `resolveImages` swaps in the presigned URL | Not Started | 25-B, 25-D |
+| BUG-18 | Removing an inline image (or any edit) is silently not persisted — note content saves only on editor `onBlur`; the Save button navigates without flushing the draft | Done | 25-D |
+| BUG-19 | Inline image flashes a 403 on every open — `ImageNodeView` renders the raw S3 key as a relative `<img src>` before `resolveImages` swaps in the presigned URL | Done | 25-B, 25-D |
 
 Further bugs will be appended as they are identified.
 
@@ -453,7 +453,7 @@ The mount effect (`AuthContext.tsx:112-141`) only handles returning *from* a Goo
 
 ## BUG-18 — Removing an inline image (or any content edit) is silently not persisted
 
-**Status:** Not Started.
+**Status:** Done — fixed in PR #232 (squash commit `3dd8b31`), deployed to main 2026-06-11 (deploy #520).
 
 **Severity:** High — silent data loss. A user removes an inline image, leaves the note, reopens it, and the image is back. The same gap drops *any* content edit not followed by an editor blur.
 
@@ -477,18 +477,22 @@ The mount effect (`AuthContext.tsx:112-141`) only handles returning *from* a Goo
 4. Reopen the note — the image is back.
 
 **Acceptance criteria:**
-- [ ] A failing test reproduces the gap before the fix: a note whose **persisted** content contains an image, the image removed, leaving the note → the server content no longer contains the image (currently it still does).
-- [ ] Pending `contentDraft` is flushed when leaving the note — at minimum on the Save/back path and on unmount — not only on editor blur.
-- [ ] No double-save / no spurious save when `contentDraft` is null (respect the existing `if (contentDraft == null) return` guard).
-- [ ] Existing note-content save/draft tests stay green.
+- [x] A failing test reproduces the gap before the fix: an un-blurred content edit is lost on leave/unmount (`NoteView.test.tsx` "content flush on leave" — Save-flush and unmount-flush red before, green after).
+- [x] Pending `contentDraft` is flushed when leaving the note — on the Save/back path **and** on unmount — not only on editor blur.
+- [x] No double-save / no spurious save: a single ref-guarded `handleSaveContent` clears the draft ref before mutating, so blur+leave (or Save+unmount) can't double-fire; no save when there is no draft; no save when leaving via Delete (`deletingRef`).
+- [x] Save failure restores the draft ref so a later leave retries the kept text rather than dropping it (Hawk catch — narrowed reincarnation of the same loss class).
+- [x] E2E gap closed: `NoteImageJourney.Remove_…` now persists the image to the server before removing it (the old test removed a never-persisted image, a no-op PUT).
+- [x] Existing note-content save/draft tests stay green (full frontend suite 475 green post-merge).
 
-**Key files (suspected):** `web/src/components/NoteView.tsx` (`handleSaveContent`, the Save/back path, add unmount flush), `web/src/components/NoteEditor.tsx` / `ImageNodeView.tsx` (image-remove blur behaviour); tests under `web/src/__tests__/` plus closing the E2E gap in `tests/Browser.E2E/Journeys/NoteImageJourney.cs`. Related: [BUG-19] (the 403 reported alongside this), 25-D (remove-inline-image slice).
+**Fix:** `NoteView` mirrors `contentDraft` into a ref and flushes it on leave (Save/back) and on unmount via one ref-guarded `handleSaveContent` (also the blur handler). The ref is cleared before mutating (dedup) and restored in `onError` (retry-on-leave). `deletingRef` (set in both delete entry points) skips the unmount flush when deleting. BUG-19 placeholder fix shipped in the same PR.
+
+**Key files:** `web/src/components/NoteView.tsx` (ref-guarded `handleSaveContent`, unmount-flush effect, `deletingRef`); tests `web/src/__tests__/NoteView.test.tsx` (flush-on-leave block), `tests/Browser.E2E/Journeys/NoteImageJourney.cs` (persist-then-remove). Related: [BUG-19] (shipped together), 25-D (remove-inline-image slice).
 
 ---
 
 ## BUG-19 — Inline image flashes a 403 on every open (raw key rendered before resolve)
 
-**Status:** Not Started.
+**Status:** Done — fixed in PR #232 (squash commit `3dd8b31`), deployed to main 2026-06-11 (deploy #520).
 
 **Severity:** Low — cosmetic. A failed request + broken-image flash on each open; the image then loads once resolve completes. No data impact.
 
@@ -503,8 +507,10 @@ The mount effect (`AuthContext.tsx:112-141`) only handles returning *from* a Goo
 2. Observe a `403` on `…/notes/notes/{noteId}/{img}.png` on load, then the image appears.
 
 **Acceptance criteria:**
-- [ ] No request is made for a bare image key on open (no 403, no broken-image flash); a placeholder renders until the presigned URL resolves.
-- [ ] Once resolve completes, the image renders from the presigned URL as today.
-- [ ] A test guards that an unresolved key (`isImageKey(src)`) does not render a fetching `<img src=key>`.
+- [x] No request is made for a bare image key on open: `ImageNodeView` renders a placeholder `<span>` while `isImageKey(src)` (or `src` is empty), so the browser never fetches the unresolved key as a relative URL.
+- [x] Once resolve swaps in the presigned URL, the real `<img>` renders as before.
+- [x] A `blob:` upload preview (not a bare key) still renders as an `<img>` immediately — `isImageKey` only matches stored keys (`ImageNodeView.test.tsx`).
 
-**Key files (suspected):** `web/src/components/ImageNodeView.tsx` (placeholder when `isImageKey(src)`), `web/src/lib/noteImages.ts` (`isImageKey`); tests under `web/src/__tests__/`. Related: [BUG-18] (the persistence bug reported alongside), 25-B (resolve flow), 25-D (NodeView).
+**Fix:** `ImageNodeView` computes `unresolved = !src || isImageKey(src)` and renders a styled placeholder span instead of an `<img>` until `resolveImages` swaps the key for a presigned URL. The doubled `notes/notes` in the 403 URL was confirmed to be browser relative-URL resolution, not a malformed stored key.
+
+**Key files:** `web/src/components/ImageNodeView.tsx`, `web/src/components/ImageNodeView.module.css` (`.placeholder`); tests `web/src/__tests__/ImageNodeView.test.tsx`. Related: [BUG-18] (shipped together), 25-B (resolve flow), 25-D (NodeView).
