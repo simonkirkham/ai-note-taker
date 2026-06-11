@@ -12,6 +12,7 @@ using Api.Auth;
 using Api.CommandHandlers;
 using Api.HealthChecks;
 using Api.Observability;
+using Api.Projections;
 using Api.Services;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 
@@ -124,6 +125,7 @@ public static class Builder
             new DynamoDbTranscriptionDraftStore(sp.GetRequiredService<IAmazonDynamoDB>(), draftTranscriptionTableName));
         builder.Services.AddSingleton<IWorkspaceListStore>(sp =>
             new DynamoDbWorkspaceListStore(sp.GetRequiredService<IAmazonDynamoDB>(), workspaceListTableName));
+        builder.Services.AddScoped<IProjectionUpdater, ProjectionUpdater>();
         builder.Services.AddScoped<INoteCommandHandler, NoteCommandHandler>();
         builder.Services.AddScoped<IActionItemCommandHandler, ActionItemCommandHandler>();
         builder.Services.AddScoped<ITodoCommandHandler, TodoCommandHandler>();
