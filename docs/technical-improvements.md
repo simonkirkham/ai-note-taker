@@ -7,7 +7,40 @@ For the other tracks see:
 - **Bugs** → [docs/phases/phase-bugs.md](phases/phase-bugs.md)
 - **Minor tweaks & changes** → [docs/phases/phase-minor-changes.md](phases/phase-minor-changes.md)
 
-Each entry records what it is, why it matters, where it was raised, and any dependency. When an item is actioned, mark it Done or remove it.
+Each entry records what it is, why it matters, where it was raised, and any dependency. **The Summary table below is the at-a-glance index — scan its Status column for what's outstanding, and keep that cell in sync when an item is actioned** (the detailed section for each item carries the full status + history).
+
+## Summary
+
+Status key: 🔲 **Open** · 🟡 **Partly done / mitigated** · ✅ **Done** (graduated to a phase, or actioned in place). Outstanding work is every 🔲 and 🟡 row.
+
+| Item | Status |
+|------|--------|
+| Decide on a server-state library (TanStack/SWR) vs hand-rolled | ✅ Done — ADR 0010 (stay hand-rolled) |
+| Stricter TypeScript compiler flags beyond `strict` | ✅ Done — → Phase 19 (19-B/19-C) |
+| Frontend state-management hygiene — colocation + Context perf | 🟡 Partly — Context perf done (19-D); **colocation Open** (ongoing convention) |
+| Core Web Vitals — bundle budget + CLS + transitions | ✅ Done — → Phase 19 (19-I) |
+| Network resilience — retry transient failures with backoff | ✅ Done — 20-G |
+| XSS hardening — allowlist URL schemes on `href`/`src` | ✅ Done — → Phase 19 |
+| ESLint `jsx-a11y` + `import` rules + `@/` alias | 🔲 **Open** — jsx-a11y blocked on ESLint 10 |
+| Migrate `App.css` to CSS Modules | ✅ Done — 14-P |
+| Upgrade GitHub Actions to Node.js 24 | ✅ Done |
+| Resolve ESLint warnings in `AuthContext.tsx` | ✅ Done — #172 |
+| Add `cdk synth` to the pre-commit hook | ✅ Done — #208 |
+| Split the single API Lambda (CQRS + async projectors) | 🔲 **Open** — large; ADR 0009; own phase |
+| Reduce Lambda SnapStart costs | ✅ Done |
+| Break down the monolithic `App.css` | ✅ Done — 14-P (merged into the CSS-Modules migration) |
+| Add a shared modal focus-trap utility | ✅ Done — #211 |
+| Make the projection-rebuild endpoint robust | ✅ Done — → Phase 24 |
+| Auto-backfill a new projection on deploy | 🔲 **Open** — unblocked now P24 is done; pairs with Phase 23 |
+| Rebuild emits delete tombstones for `NoteSearchView` | 🔲 **Open** — likely addressed by 24-B; **verify + close** |
+| Stabilise the flaky `TagsJourney` E2E | ✅ Done — BUG-17 |
+| `WorkspaceList` reads via full table Scan, not a per-user GSI | 🔲 **Open** — fold into Phase 23 |
+| CI pipeline hygiene — skip no-op deploys, cancel superseded, cache Playwright | ✅ Done |
+| Generalise append-retry-on-conflict beyond `NoteCommandHandler` | 🔲 **Open** — only if a 2nd handler needs it |
+| `deploy-production` hangs at "Configure AWS credentials" | 🟡 Mitigated — `timeout-minutes` shipped (#222); **root cause Open** |
+| Add a `NoteEditor` component test for the image-ordering invariant | 🔲 **Open** — guards the 25-B regression below the E2E gate |
+
+**Outstanding (7 Open + 2 Partly):** ESLint `jsx-a11y`; Split the API Lambda; Auto-backfill projection on deploy; `NoteSearchView` tombstones (verify/close); `WorkspaceList` GSI; Generalise append-retry; `NoteEditor` ordering test; *(partly)* state-mgmt colocation; deploy-credentials root cause.
 
 ---
 
