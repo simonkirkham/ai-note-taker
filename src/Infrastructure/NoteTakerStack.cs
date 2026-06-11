@@ -721,7 +721,7 @@ public sealed class NoteTakerStack : Stack
         // ops dashboard already uses; they keep evaluating post-shift, not just during it.
         // NOTE: an alarm needs traffic to evaluate, so on an idle deploy the canary simply
         // completes with nothing to trip it (no false rollback, but also no real bake).
-        new Amazon.CDK.AWS.CodeDeploy.LambdaDeploymentGroup(this, "ApiCanaryDeploymentGroup", new Amazon.CDK.AWS.CodeDeploy.LambdaDeploymentGroupProps
+        new Amazon.CDK.AWS.CodeDeploy.LambdaDeploymentGroup(this, "ApiDeploymentGroup", new Amazon.CDK.AWS.CodeDeploy.LambdaDeploymentGroupProps
         {
             Alias = apiAlias,
             DeploymentConfig = Amazon.CDK.AWS.CodeDeploy.LambdaDeploymentConfig.CANARY_10PERCENT_5MINUTES,
