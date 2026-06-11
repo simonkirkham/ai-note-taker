@@ -149,20 +149,22 @@ export default function WorkspaceSwitcher() {
                     {w.isDefault && <span className={styles.defaultTag}> · default</span>}
                   </button>
                 )}
-                <button
-                  type="button"
-                  className={styles.iconBtn}
-                  aria-label={`Rename ${w.name}`}
-                  onClick={() => { setRenamingId(w.workspaceId); setRenameVal(w.name); }}
-                >✎</button>
-                {!w.isDefault && (
+                <span className={styles.rowActions}>
                   <button
                     type="button"
                     className={styles.iconBtn}
-                    aria-label={`Delete ${w.name}`}
-                    onClick={() => attemptDelete(w.workspaceId)}
-                  >🗑</button>
-                )}
+                    aria-label={`Rename ${w.name}`}
+                    onClick={() => { setRenamingId(w.workspaceId); setRenameVal(w.name); }}
+                  >✎</button>
+                  {!w.isDefault && (
+                    <button
+                      type="button"
+                      className={styles.iconBtn}
+                      aria-label={`Delete ${w.name}`}
+                      onClick={() => attemptDelete(w.workspaceId)}
+                    >🗑</button>
+                  )}
+                </span>
               </div>
             );
           })}
