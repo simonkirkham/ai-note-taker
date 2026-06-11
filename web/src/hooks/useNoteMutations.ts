@@ -19,14 +19,16 @@ function rollback(qc: QueryClient, ctx: Ctx | undefined) {
   if (ctx?.previous) qc.setQueryData(keys.noteCards, ctx.previous);
 }
 
-function invalidate(qc: QueryClient) {
-  return qc.invalidateQueries({ queryKey: keys.noteCards });
-}
+// Phase 27-C moved the cards projection onto an async Projector Lambda, so an
+// invalidate-on-settle refetches a lagging read model and sticks stale data (27-C2).
+// Each mutation below already maintains keys.noteCards optimistically (insert/rename/
+// remove the card) and rolls back on error, so the optimistic patch IS the source of
+// truth until the projector catches up — no reconciling refetch.
 
 // Create returns the server id (navigation keys off it) and inserts the real card
 // on success — no temp id. No onSettled invalidate: the card is correct as inserted,
-// and a folder assignment (if any) is persisted by useMoveNoteToFolder, whose own
-// invalidate reconciles. Avoids a folderId flicker from an early refetch.
+// and a folder assignment (if any) is patched optimistically by useMoveNoteToFolder.
+// Avoids a folderId flicker from an early refetch of the lagging projection (27-C2).
 export function useCreateNote() {
   const qc = useQueryClient();
   return useMutation<{ noteId: string }, Error, { folderId: string | null }>({
@@ -51,7 +53,6 @@ export function useRenameNote() {
     onMutate: ({ noteId, title }) =>
       optimistic(qc, (cards) => cards.map((c) => (c.noteId === noteId ? { ...c, title } : c))),
     onError: (_e, _v, ctx) => rollback(qc, ctx),
-    onSettled: () => invalidate(qc),
   });
 }
 
@@ -61,7 +62,6 @@ export function useDeleteNote() {
     mutationFn: (noteId) => deleteNote(noteId),
     onMutate: (noteId) => optimistic(qc, (cards) => cards.filter((c) => c.noteId !== noteId)),
     onError: (_e, _id, ctx) => rollback(qc, ctx),
-    onSettled: () => invalidate(qc),
   });
 }
 
@@ -73,18 +73,17 @@ export function useMoveNoteToFolder() {
     onMutate: ({ noteId, folderId }) =>
       optimistic(qc, (cards) => cards.map((c) => (c.noteId === noteId ? { ...c, folderId } : c))),
     onError: (_e, _v, ctx) => rollback(qc, ctx),
-    onSettled: () => invalidate(qc),
   });
 }
 
 // Moving a note to another workspace removes it from the current workspace's view —
-// optimistically drop the card, reconcile on settle.
+// optimistically drop the card. No reconcile: the optimistic removal is correct and
+// a refetch would race the lagging projector (27-C2).
 export function useMoveNoteToWorkspace() {
   const qc = useQueryClient();
   return useMutation<void, Error, { noteId: string; workspaceId: string }, Ctx>({
     mutationFn: ({ noteId, workspaceId }) => moveNoteToWorkspace(noteId, workspaceId),
     onMutate: ({ noteId }) => optimistic(qc, (cards) => cards.filter((c) => c.noteId !== noteId)),
     onError: (_e, _v, ctx) => rollback(qc, ctx),
-    onSettled: () => invalidate(qc),
   });
 }

@@ -2,6 +2,7 @@ import { useMutation, useQueryClient, type QueryClient } from "@tanstack/react-q
 import type { NoteDetail } from "../api/notes";
 import { keys } from "../api/queryKeys";
 import { tagNote, untagNote } from "../api/tags";
+import { patchOneCard, rollbackCards, type CardsCtx } from "./noteCardsCache";
 
 // Tagging/untagging changes the global tag index (counts, note ids), so each
 // mutation invalidates keys.tags on settle. React Query coalesces concurrent
@@ -21,14 +22,15 @@ import { tagNote, untagNote } from "../api/tags";
 // When the note WAS cached the optimistic patch already holds, so we skip the refetch
 // to avoid churn and a stale-GET revert (optimistic == server in that path).
 //
-// Tags are only edited inside NoteView; the home-card tag pills are refreshed by
-// App's handleBackFromNote (it invalidates keys.noteCards on return to the list).
-// We deliberately do NOT invalidate keys.noteCards here: AppContent's useNoteCards
-// is always mounted, so it would force a wasteful GET /notes/cards on every tag op
-// while the list isn't visible — churn that destabilised the tag E2E journeys.
-type Ctx = { previous?: NoteDetail };
+// Tags are edited inside NoteView; the home-card tag pills read keys.noteCards.
+// Under the async projector (27-C) the cards projection lags a write, so an eager
+// invalidate of keys.noteCards on return-to-list refetched stale data and stuck
+// (27-C2). Instead each mutation optimistically patches the matching card's `tags`
+// in keys.noteCards (and rolls it back on error) so the home card is correct without
+// a racing refetch — App's handleBackFromNote no longer invalidates keys.noteCards.
+type Ctx = { previous?: NoteDetail } & CardsCtx;
 
-async function snapshotNote(qc: QueryClient, noteId: string): Promise<Ctx> {
+async function snapshotNote(qc: QueryClient, noteId: string): Promise<{ previous?: NoteDetail }> {
   await qc.cancelQueries({ queryKey: keys.note(noteId) });
   return { previous: qc.getQueryData<NoteDetail>(keys.note(noteId)) };
 }
@@ -40,38 +42,32 @@ function patchTags(qc: QueryClient, noteId: string, apply: (tags: string[]) => s
 
 function rollback(qc: QueryClient, noteId: string, ctx: Ctx | undefined) {
   if (ctx?.previous) qc.setQueryData(keys.note(noteId), ctx.previous);
+  rollbackCards(qc, ctx);
 }
 
-export function useTagNote() {
-  const qc = useQueryClient();
-  return useMutation<void, Error, { noteId: string; tag: string }, Ctx>({
-    mutationFn: ({ noteId, tag }) => tagNote(noteId, tag),
-    onMutate: async ({ noteId, tag }) => {
-      const ctx = await snapshotNote(qc, noteId);
-      patchTags(qc, noteId, (tags) => (tags.includes(tag) ? tags : [...tags, tag]));
-      return ctx;
-    },
-    onError: (_e, { noteId }, ctx) => rollback(qc, noteId, ctx),
-    onSettled: (_d, _e, { noteId }, ctx) => {
-      qc.invalidateQueries({ queryKey: keys.tags });
-      if (!ctx?.previous) qc.invalidateQueries({ queryKey: keys.note(noteId) });
-    },
-  });
+function tagMutation(
+  call: (noteId: string, tag: string) => Promise<void>,
+  apply: (tags: string[], tag: string) => string[],
+) {
+  return function useTagMutation() {
+    const qc = useQueryClient();
+    return useMutation<void, Error, { noteId: string; tag: string }, Ctx>({
+      mutationFn: ({ noteId, tag }) => call(noteId, tag),
+      onMutate: async ({ noteId, tag }) => {
+        const noteCtx = await snapshotNote(qc, noteId);
+        patchTags(qc, noteId, (tags) => apply(tags, tag));
+        const cardsCtx = await patchOneCard(qc, noteId, (c) => ({ ...c, tags: apply(c.tags, tag) }));
+        return { ...noteCtx, ...cardsCtx };
+      },
+      onError: (_e, { noteId }, ctx) => rollback(qc, noteId, ctx),
+      onSettled: (_d, _e, { noteId }, ctx) => {
+        qc.invalidateQueries({ queryKey: keys.tags });
+        if (!ctx?.previous) qc.invalidateQueries({ queryKey: keys.note(noteId) });
+      },
+    });
+  };
 }
 
-export function useUntagNote() {
-  const qc = useQueryClient();
-  return useMutation<void, Error, { noteId: string; tag: string }, Ctx>({
-    mutationFn: ({ noteId, tag }) => untagNote(noteId, tag),
-    onMutate: async ({ noteId, tag }) => {
-      const ctx = await snapshotNote(qc, noteId);
-      patchTags(qc, noteId, (tags) => tags.filter((t) => t !== tag));
-      return ctx;
-    },
-    onError: (_e, { noteId }, ctx) => rollback(qc, noteId, ctx),
-    onSettled: (_d, _e, { noteId }, ctx) => {
-      qc.invalidateQueries({ queryKey: keys.tags });
-      if (!ctx?.previous) qc.invalidateQueries({ queryKey: keys.note(noteId) });
-    },
-  });
-}
+export const useTagNote = tagMutation(tagNote, (tags, tag) =>
+  tags.includes(tag) ? tags : [...tags, tag]);
+export const useUntagNote = tagMutation(untagNote, (tags, tag) => tags.filter((t) => t !== tag));

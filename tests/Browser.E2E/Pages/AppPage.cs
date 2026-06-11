@@ -57,10 +57,39 @@ public sealed class AppPage(IPage page, string baseUrl, string? authToken = null
 
     public async Task SaveAndReturnAsync()
     {
-        var cardsRefreshed = page.WaitForResponseAsync(r => r.Url.Contains("/notes/cards"));
+        // Under the async projector (27-C) returning to the list no longer triggers a
+        // /notes/cards refetch — the card is kept correct by the in-note optimistic
+        // cache patches (27-C2). So wait for the list to be on screen, not a refetch.
         await page.GetByTestId("save-button").ClickAsync();
-        await cardsRefreshed;
+        await Assertions.Expect(page.GetByTestId("new-note-button")).ToBeVisibleAsync();
     }
+
+    // Drop all in-memory cache and re-render from server truth — the only way to prove
+    // the deployed write+projection pipeline actually persisted, not just the optimistic
+    // cache. Init scripts registered in GotoAsync (the auth-token seed) persist across
+    // a reload in Playwright, so the session survives.
+    public Task ReloadAsync() => page.ReloadAsync();
+
+    // Bounded poll absorbing the ~1-2s projector lag after a reload.
+    public Task AssertCardTagVisibleAfterReloadAsync(string cardTitle, string tag) =>
+        Assertions.Expect(
+            page.GetByTestId("note-cards")
+                .Locator("[data-testid='note-card']")
+                .Filter(new LocatorFilterOptions { HasText = cardTitle })
+                .GetByTestId($"card-tag-{tag}")
+        ).ToBeVisibleAsync(new() { Timeout = 20000 });
+
+    public Task AssertActionItemVisibleAfterReloadAsync(string description) =>
+        Assertions.Expect(
+            page.GetByTestId("actions-list").GetByText(description)
+        ).ToBeVisibleAsync(new() { Timeout = 20000 });
+
+    public Task AssertNoteVisibleInListAfterReloadAsync(string title) =>
+        Assertions.Expect(
+            page.GetByTestId("note-cards")
+                .Locator("[data-testid='note-card']")
+                .Filter(new LocatorFilterOptions { HasText = title })
+        ).ToBeVisibleAsync(new() { Timeout = 20000 });
 
     public Task AssertNoteVisibleInListAsync(string title) =>
         Assertions.Expect(

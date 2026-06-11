@@ -42,4 +42,23 @@ public sealed class CreateAndListNoteJourney(BrowserFixture browser) : IAsyncLif
         // Then the named note appears in the list
         await _app.AssertNoteVisibleInListAsync(title);
     }
+
+    // Server-truth persistence (27-C2): reload drops all in-memory cache, so this proves
+    // the deployed write+async-projector pipeline actually persisted and projected the
+    // new note onto the cards list — not that the optimistic insert held. The bounded
+    // poll absorbs the ~1-2s projector lag.
+    [Fact]
+    public async Task Created_note_persists_in_list_after_reload()
+    {
+        var title = $"Journey note {Guid.NewGuid():N}"[..30];
+
+        await _app.GotoAsync();
+        await _app.ClickNewNoteAsync();
+        await _app.EnterTitleAsync(title);
+        await _app.SaveAndReturnAsync();
+
+        await _app.ReloadAsync();
+
+        await _app.AssertNoteVisibleInListAfterReloadAsync(title);
+    }
 }
