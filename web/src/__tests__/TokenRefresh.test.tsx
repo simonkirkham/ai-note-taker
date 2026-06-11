@@ -23,6 +23,11 @@ function makeToken(expOffsetMinutes: number): string {
 
 beforeEach(() => {
   clearToken()
+  // Vitest 4: restoreAllMocks() only restores vi.spyOn spies, not the call history of a
+  // vi.fn() created inside a vi.mock factory (attemptSilentRefresh). Without an explicit
+  // clear its call count accumulates across tests (a test expecting 0 sees 8+). Clear all
+  // mock history here, then re-establish this test's default resolution below.
+  vi.clearAllMocks()
   vi.mocked(silentRefreshMod.attemptSilentRefresh).mockResolvedValue(null)
 })
 

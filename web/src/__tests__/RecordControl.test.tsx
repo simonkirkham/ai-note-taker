@@ -10,7 +10,7 @@ let emitTranscriptResult: (text: string) => void = () => {}
 
 vi.mock('@aws-sdk/client-transcribe-streaming', () => {
   return {
-    TranscribeStreamingClient: vi.fn().mockImplementation(() => ({
+    TranscribeStreamingClient: vi.fn().mockImplementation(function () { return ({
       send: vi.fn().mockImplementation(async () => {
         const resultQueue: string[] = []
         let wakeup: (() => void) | null = null
@@ -55,7 +55,7 @@ vi.mock('@aws-sdk/client-transcribe-streaming', () => {
 
         return { TranscriptResultStream: stream() }
       }),
-    })),
+    }) }),
     StartStreamTranscriptionCommand: vi.fn(),
   }
 })
@@ -91,11 +91,19 @@ function stubBrowserApis() {
     configurable: true,
   })
 
-  vi.stubGlobal('AudioContext', vi.fn().mockImplementation(() => mockAudioContext))
-  vi.stubGlobal('AudioWorkletNode', vi.fn().mockImplementation(() => mockWorkletNode))
+  // Vitest 4 invokes mocks via `new` (the app does `new AudioContext()` /
+  // `new AudioWorkletNode()`); arrow impls aren't constructable, so use `function`.
+  vi.stubGlobal('AudioContext', vi.fn().mockImplementation(function () { return mockAudioContext }))
+  vi.stubGlobal('AudioWorkletNode', vi.fn().mockImplementation(function () { return mockWorkletNode }))
 
   return { mockAudioContext, getUserMedia, getDisplayMedia }
 }
+
+// Capture the pristine native setInterval once, before any test installs a spy. Tests that
+// mock setInterval delegate pass-through intervals to this ref; capturing it after a spy is
+// installed (global.setInterval.bind inside an it-block) would bind the spy itself, so the
+// mock's pass-through recurses infinitely under Vitest 4 (Maximum call stack size exceeded).
+const nativeSetInterval = globalThis.setInterval
 
 const noop = () => {}
 
@@ -118,6 +126,9 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.unstubAllGlobals()
+  // Restore any global spy (e.g. setInterval) left by a test that threw before its own
+  // mockRestore(), else it leaks and recurses under Vitest 4.
+  vi.restoreAllMocks()
 })
 
 // ── Tests ─────────────────────────────────────────────────────────
@@ -239,11 +250,10 @@ it('autosaves the transcript to the draft on the periodic checkpoint while still
   // Capture the checkpoint interval's callback so we can fire it deterministically
   // without waiting wall-clock time; pass every other interval through unchanged.
   let checkpointCb: (() => void) | null = null
-  const realSetInterval = global.setInterval.bind(global)
-  const intervalSpy = vi.spyOn(global, 'setInterval').mockImplementation(((cb: () => void, ms?: number, ...rest: unknown[]) => {
+  const intervalSpy = vi.spyOn(global, 'setInterval').mockImplementation((function (cb: () => void, ms?: number, ...rest: unknown[]) {
     if (ms === CHECKPOINT_INTERVAL_MS) checkpointCb = cb
-    return realSetInterval(cb, ms, ...rest)
-  }) as typeof setInterval)
+    return nativeSetInterval(cb, ms, ...rest)
+  }) as unknown as typeof setInterval)
 
   let draftBody: unknown = null
   let committed = false
@@ -277,11 +287,10 @@ it('autosaves the transcript to the draft on the periodic checkpoint while still
 it('checkpoint does not re-PUT the draft when the transcript has not changed', async () => {
   stubBrowserApis()
   let checkpointCb: (() => void) | null = null
-  const realSetInterval = global.setInterval.bind(global)
-  const intervalSpy = vi.spyOn(global, 'setInterval').mockImplementation(((cb: () => void, ms?: number, ...rest: unknown[]) => {
+  const intervalSpy = vi.spyOn(global, 'setInterval').mockImplementation((function (cb: () => void, ms?: number, ...rest: unknown[]) {
     if (ms === CHECKPOINT_INTERVAL_MS) checkpointCb = cb
-    return realSetInterval(cb, ms, ...rest)
-  }) as typeof setInterval)
+    return nativeSetInterval(cb, ms, ...rest)
+  }) as unknown as typeof setInterval)
 
   let completionCalls = 0
   server.use(
