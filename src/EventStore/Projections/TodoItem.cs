@@ -8,4 +8,5 @@ public record TodoItem(
     string Description,
     DateTimeOffset AddedAt,
     DateTimeOffset? CompletedAt,
-    string UserId);
+    string UserId,
+    string? WorkspaceId = null);

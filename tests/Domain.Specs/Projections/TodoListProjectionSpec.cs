@@ -190,4 +190,29 @@ public sealed class TodoListProjectionSpec
         Assert.Contains(items, i => i.Type == "action" && i.NoteTitle == "Work Notes");
         Assert.Contains(items, i => i.Type == "todo" && i.NoteId == null);
     }
+
+    static EventEnvelope TodoEnvWs(TodoId todoId, long seq, IDomainEvent e, string workspaceId) =>
+        new(todoId.ToStreamId(), seq, e.GetType().Name, 1, DateTimeOffset.UtcNow,
+            JsonSerializer.Serialize(e, e.GetType()), new EventMetadata(Guid.NewGuid(), null, null, null, workspaceId));
+
+    [Fact]
+    public void ActionItem_InheritsParentNoteWorkspace()
+    {
+        var ws = new Domain.Workspaces.WorkspaceId("ws-work");
+        var projection = new TodoListProjection();
+        projection.Handle(NoteEnv(NoteId1, 1, new NoteCreated(NoteId1)));
+        projection.Handle(NoteEnv(NoteId1, 2, new NoteAssignedToWorkspace(NoteId1, ws)));
+        projection.Handle(ActionEnv(ActionId1, 1, new ActionItemAdded(ActionId1, NoteId1, "Book venue")));
+
+        Assert.Equal("ws-work", projection.GetAllItems()[0].WorkspaceId);
+    }
+
+    [Fact]
+    public void StandaloneTodo_TakesTheWriteMetadataWorkspace()
+    {
+        var projection = new TodoListProjection();
+        projection.Handle(TodoEnvWs(TodoId1, 1, new TodoAdded(TodoId1, "u1", "buy milk", null), "ws-home"));
+
+        Assert.Equal("ws-home", projection.GetAllItems()[0].WorkspaceId);
+    }
 }

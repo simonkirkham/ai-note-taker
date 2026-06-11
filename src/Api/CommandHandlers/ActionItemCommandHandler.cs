@@ -44,7 +44,7 @@ public sealed class ActionItemCommandHandler(
                     await noteActionsStore.UpsertAsync(cmd.NoteId, action, ct).ConfigureAwait(false);
                     await todoListStore.PutAsync(
                         new TodoItem(e.ActionId.Value.ToString(), e.NoteId.Value.ToString(), noteDetail.Title,
-                            "action", e.Description, envelope.OccurredAt, null, currentUser.UserId), ct).ConfigureAwait(false);
+                            "action", e.Description, envelope.OccurredAt, null, currentUser.UserId, noteDetail.WorkspaceId), ct).ConfigureAwait(false);
                     await UpdateCardActionItemsAsync(cmd.NoteId,
                         items => items.Append(new NoteCardActionItem(e.ActionId, e.Description, false)).ToList().AsReadOnly(),
                         envelope.OccurredAt, ct).ConfigureAwait(false);

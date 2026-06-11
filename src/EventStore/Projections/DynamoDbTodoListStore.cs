@@ -25,6 +25,8 @@ public sealed class DynamoDbTodoListStore(IAmazonDynamoDB dynamo, string tableNa
             attrs["NoteTitle"] = new() { S = item.NoteTitle };
         if (item.CompletedAt is not null)
             attrs["CompletedAt"] = new() { S = item.CompletedAt.Value.ToString("O") };
+        if (!string.IsNullOrEmpty(item.WorkspaceId))
+            attrs["WorkspaceId"] = new() { S = item.WorkspaceId };
 
         await dynamo.PutItemAsync(new PutItemRequest
         {
@@ -147,7 +149,8 @@ public sealed class DynamoDbTodoListStore(IAmazonDynamoDB dynamo, string tableNa
             Description: row["Description"].S,
             AddedAt: DateTimeOffset.Parse(row["AddedAt"].S),
             CompletedAt: row.TryGetValue("CompletedAt", out var ca) ? DateTimeOffset.Parse(ca.S) : null,
-            UserId: row.TryGetValue("UserId", out var uid) ? uid.S : "");
+            UserId: row.TryGetValue("UserId", out var uid) ? uid.S : "",
+            WorkspaceId: row.TryGetValue("WorkspaceId", out var ws) ? ws.S : null);
 
     private async Task<List<string>> QueryItemIdsByNoteAsync(NoteId noteId, CancellationToken ct)
     {

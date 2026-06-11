@@ -452,6 +452,10 @@ public record WorkspaceListView(
 
 **Event handlers (live, inline in `WorkspaceCommandHandler`):** `WorkspaceCreated` → upsert; `WorkspaceRenamed` → upsert with new name; `WorkspaceDeleted` → delete the row.
 
+### Workspace scoping of folders + to-dos *(Phase 23-C)*
+
+`FolderTreeView` and `TodoItem` each gain a nullable **`WorkspaceId`**. Folders and **standalone** to-dos read it from `EventMetadata.WorkspaceId` (the request workspace, stamped by `EventEnvelopeFactory`); **action-item** to-do rows inherit their parent note's workspace (`TodoListProjection` maintains a `noteId→workspace` map from `NoteAssignedToWorkspace`). `GET /folders` and `GET /todos` filter by `(user, workspace)` via `ICurrentWorkspace.Includes`; both endpoint sets are dual-mapped (rootless + `/w/{workspaceId}`). `DeleteWorkspace` is blocked (`409`) when the workspace holds an active note.
+
 ### Workspace scoping of note-derived views *(Phase 23-B)*
 
 `NoteCardView`, `NoteDetailView`, `NoteTitleListItem`, `NoteSearchView`, and `TagIndexView` each gain a nullable **`WorkspaceId`** attribute. Each projection folds `NoteAssignedToWorkspace` to set it (for `TagIndex`, tag rows inherit their note's workspace via a `noteId→workspace` map the projection maintains). The list/search read endpoints (`/notes/cards`, `/notes`, `/notes/search`, `/tags`) filter by `(user, workspace)` — a **null** `WorkspaceId` (rows written before 23-B) resolves to the reserved default workspace via `ICurrentWorkspace.Includes`. **No DynamoDB key-schema change:** the attribute is additive, and `NoteSearchView`'s `UserId-index` GSI is `ProjectionType.ALL`, so it auto-projects the new attribute (the workspace filter runs in-Lambda after the per-user query). Point reads/mutations of a single note stay user-scoped by note id; `NoteActions` is scoped transitively via its parent note (never listed cross-note), so its rows carry no `WorkspaceId`.

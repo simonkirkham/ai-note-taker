@@ -17,6 +17,8 @@ public sealed class DynamoDbFolderTreeStore(IAmazonDynamoDB dynamo, string table
         };
         if (folder.ParentFolderId.HasValue)
             attrs["ParentFolderId"] = new() { S = folder.ParentFolderId.Value.Value.ToString() };
+        if (!string.IsNullOrEmpty(folder.WorkspaceId))
+            attrs["WorkspaceId"] = new() { S = folder.WorkspaceId };
 
         await dynamo.PutItemAsync(new PutItemRequest { TableName = tableName, Item = attrs }, ct)
             .ConfigureAwait(false);
@@ -81,6 +83,7 @@ public sealed class DynamoDbFolderTreeStore(IAmazonDynamoDB dynamo, string table
             Name: row["Name"].S,
             ParentFolderId: parentFolderId,
             CreatedAt: DateTimeOffset.Parse(row["CreatedAt"].S),
-            UserId: row.TryGetValue("UserId", out var uidAttr) ? uidAttr.S : "");
+            UserId: row.TryGetValue("UserId", out var uidAttr) ? uidAttr.S : "",
+            WorkspaceId: row.TryGetValue("WorkspaceId", out var wsAttr) ? wsAttr.S : null);
     }
 }

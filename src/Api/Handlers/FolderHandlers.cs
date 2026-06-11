@@ -96,10 +96,10 @@ public static class FolderHandlers
         return Results.Ok();
     }
 
-    public static async Task<IResult> GetFolders(IFolderTreeStore store, ICurrentUser currentUser, CancellationToken ct)
+    public static async Task<IResult> GetFolders(IFolderTreeStore store, ICurrentUser currentUser, ICurrentWorkspace currentWorkspace, CancellationToken ct)
     {
         var all = await store.GetAllAsync(ct).ConfigureAwait(false);
-        var userFolders = all.Where(f => f.UserId == currentUser.UserId).ToList();
+        var userFolders = all.Where(f => f.UserId == currentUser.UserId && currentWorkspace.Includes(f.WorkspaceId)).ToList();
         var tree = BuildTree(userFolders, null);
         return Results.Ok(new { folders = tree });
     }

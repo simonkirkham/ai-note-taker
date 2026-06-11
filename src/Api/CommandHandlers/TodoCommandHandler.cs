@@ -12,6 +12,7 @@ public sealed class TodoCommandHandler(
     IEventStore store,
     ITodoListStore todoListStore,
     ICurrentUser currentUser,
+    ICurrentWorkspace currentWorkspace,
     IDomainMetrics metrics,
     ILogger<TodoCommandHandler> logger) : ITodoCommandHandler
 {
@@ -27,7 +28,7 @@ public sealed class TodoCommandHandler(
             if (newEvents[0] is TodoAdded e)
                 await todoListStore.PutAsync(
                     new TodoItem(e.TodoId.Value.ToString(), null, null, "todo",
-                        e.Description, envelopes[0].OccurredAt, null, currentUser.UserId), ct).ConfigureAwait(false);
+                        e.Description, envelopes[0].OccurredAt, null, currentUser.UserId, currentWorkspace.WorkspaceId), ct).ConfigureAwait(false);
         });
 
     public Task HandleAsync(CompleteTodo cmd, CancellationToken ct = default) =>
@@ -72,5 +73,5 @@ public sealed class TodoCommandHandler(
     }
 
     List<EventEnvelope> ToEnvelopes(string streamId, IReadOnlyList<IDomainEvent> events) =>
-        EventEnvelopeFactory.CreateEnvelopes(streamId, events, currentUser.UserId);
+        EventEnvelopeFactory.CreateEnvelopes(streamId, events, currentUser.UserId, currentWorkspace.WorkspaceId);
 }

@@ -107,7 +107,9 @@ A named partition of a user's content (e.g. *Work* / *Personal*). A second isola
 | `RenameWorkspace(workspaceId, newName)` | Workspace exists, not deleted; new name non-empty and differs | `WorkspaceRenamed` |
 | `DeleteWorkspace(workspaceId)` | Not the default (`__default__`); workspace exists, not deleted | `WorkspaceDeleted` |
 
-> Deleting `__default__` is rejected in the aggregate (`DefaultWorkspaceUndeletableException` → `409`). The 23-A delete has no emptiness check; the **block-if-non-empty** pre-condition (active-note count) lands in 23-C.
+> Deleting `__default__` is rejected in the aggregate (`DefaultWorkspaceUndeletableException` → `409`). The **block-if-non-empty** pre-condition (23-C) is enforced in `WorkspaceCommandHandler` (the aggregate can't query notes): it checks the caller's active (non-deleted) note count in the target workspace via `INoteCardListStore` and throws `WorkspaceNotEmptyException` → `409`.
+>
+> **Folders and standalone to-dos carry workspace via `EventMetadata.WorkspaceId`** (23-C, decision #3 — they are not movable, so per-event metadata suffices and avoids versioning `FolderCreated`/`TodoAdded`). `EventEnvelopeFactory.CreateEnvelopes` stamps the request workspace; `FolderTree` and `TodoList` read it from the envelope. Action-item to-do rows instead inherit their **parent note's** workspace (via the note's `NoteAssignedToWorkspace`, tracked in a `noteId→workspace` map in `TodoListProjection`).
 
 ---
 
