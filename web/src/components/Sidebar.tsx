@@ -6,6 +6,7 @@ import FolderTree from "./FolderTree";
 import folderTreeStyles from "./FolderTree.module.css";
 import styles from "./Sidebar.module.css";
 import ThemePicker from "./ThemePicker";
+import WorkspaceSwitcher from "./WorkspaceSwitcher";
 
 export default function Sidebar({
   open,
@@ -63,6 +64,7 @@ export default function Sidebar({
       data-testid="sidebar"
       aria-label="Notes"
     >
+      <WorkspaceSwitcher />
       <button
         className={styles.sidebarHomeButton}
         data-testid="home-button"
