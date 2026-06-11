@@ -3,6 +3,8 @@
 **Status:** Accepted · **Stage 1 in progress (Phase 27)**
 
 > **Implementation status (2026-06-11):** Stage 1 is landing as Phase 27. **27-A** extracted the shared `ProjectionUpdater` seam; **27-B** added the DynamoDB stream + async **Projector Lambda** in shadow (inline still authoritative); **27-C** removed the inline projection writes — the command handlers are now **append-only** and the projector is the sole read-model writer, so **read-after-write is eventually consistent in prod**. In-process hosts (tests + local Kestrel) use `SyncProjectingEventStore` to run the same projector synchronously, so only the deployed system is async. **27-D** (split the HTTP Lambda into Command + Query functions) is the remaining Stage-1 step. Stage 2 (per-context command Lambdas) remains deferred.
+>
+> **Accepted consequence — command-validation reads are now eventually consistent.** A few handlers validate against a *projection*, not the event stream: `AddActionItem` checks the note exists via `noteDetailStore`; `DeleteFolder`/`MoveFolder` read `folderTreeStore`/`NoteCardList`; `DeleteWorkspace`'s empty-check reads `NoteCardList`. Post-cutover those reads can lag, so a sub-second create-then-act could spuriously 404 or mis-validate in prod. Accepted for now: the frontend's optimistic UI + bounded client retry cover the <1s window, and the in-process decorator keeps tests deterministic. The cleaner fix — validate against the authoritative event stream rather than a read model — is tracked as a `technical-improvements.md` follow-up, not done in 27-C.
 
 ## Context
 

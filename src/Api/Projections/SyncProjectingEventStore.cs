@@ -16,6 +16,10 @@ public sealed class SyncProjectingEventStore(IEventStore inner, StreamProjector 
     public async Task AppendAsync(string streamId, long expectedVersion, IReadOnlyList<EventEnvelope> events, CancellationToken ct = default)
     {
         await inner.AppendAsync(streamId, expectedVersion, events, ct).ConfigureAwait(false);
+        // Deliberately not isolated: a projector fault here surfaces as a 500 on the in-process
+        // request (the append already committed). That is the right behaviour for tests/local —
+        // it makes a projection bug loud — and mirrors that in prod the append succeeds and the
+        // async projector handles (and DLQs) failures out of band.
         await projector.ProcessStreamsAsync([streamId], ct).ConfigureAwait(false);
     }
 
