@@ -283,3 +283,25 @@ BUG-17 (PR #217) added a bounded retry-on-`ConcurrencyException` (re-read→re-r
 
 **Raised in:** Hawk review of PR #217 (BUG-17), 2026-06-10.
 **Depends on:** —
+
+---
+
+## `deploy-production` hangs at "Configure AWS credentials"
+
+The `deploy-production` job in `deploy.yml` intermittently (~half of deploys during Phase 25) **hangs at the `Configure AWS credentials` step** — a normally-seconds-long OIDC `sts:AssumeRole` — for 30+ minutes with no progress and no error, before any Lambda/CDK deploy starts. `deploy-test` (same OIDC pattern) and other deploys succeed, so it's intermittent, not a broken role/trust. The only recovery found is `gh run cancel <id> && gh run rerun <id>`, which clears it on a fresh runner. It silently stalls every affected deploy (and any slice gated on a green main) until a human notices.
+
+**Why it matters:** each hang costs ~30 min of dead wall-clock and blocks the merge→deploy→merge loop for parallel slices; it bit 25-A/B/C deploys repeatedly. **Fix candidates:** pin `aws-actions/configure-aws-credentials` to a newer version; add a short `timeout-minutes` to the step (so it fails fast and a retry kicks in) plus a step-level retry; or investigate runner/OIDC-endpoint flakiness. At minimum, a tight `timeout-minutes` on that step would convert a 30-min silent hang into a fast, auto-retryable failure.
+
+**Raised in:** Phase 25 pipeline (repeated deploy hangs), 2026-06-11.
+**Depends on:** —
+
+---
+
+## Add a `NoteEditor` component test for the image upload/serialize ordering invariant
+
+Phase 25-B shipped (then fixed) an **ordering bug** that every unit test passed and only the deploy-time E2E (`NoteImageJourney`) caught: the image node was inserted with a `blob:` src *before* its stable key was mapped, so a save during the upload window dropped the image. The fix (presign-first) re-encodes the load-bearing invariant — *seed the `src→key` map before inserting the node* — as two adjacent statements in `NoteEditor.tsx` with **nothing pinning the order below the slow deploy E2E gate**. The pure `noteImages.test.ts` covers only the rewrite helpers.
+
+**Why it matters:** a future refactor of `NoteEditor` could reorder seed-vs-insert and silently reintroduce the data-loss bug; CI wouldn't catch it until a ~15-min deploy E2E (which itself flakes/hangs). **Fix:** a `NoteEditor.test.tsx` (RTL + mocked `presignUpload`/`fetch`) asserting (a) `onChange` is never called with a `blob:`/unmapped src during a paste→presign→PUT sequence — the first `onChange` after insert already carries the key; and (b) on PUT failure the node is removed and `onChange` re-fires without the key. Tiptap-in-jsdom made this non-trivial, so it was deferred from the slice.
+
+**Raised in:** Hawk review of PR #220 (25-B presign-first fix), 2026-06-11.
+**Depends on:** —
