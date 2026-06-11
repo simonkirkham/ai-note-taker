@@ -14,11 +14,13 @@
 | 19-F | **Accessibility: live regions + focus.** `aria-live`/`role` on ~10 transient surfaces; 6 `:focus`→`:focus-visible`; focus management for 3 dialog/popover surfaces | Not Started | — |
 | 19-G | **Test quality.** Migrate testid-heavy unit tests to role/label queries; convert remaining `fireEvent` to `userEvent` | Not Started | — |
 | 19-H | **Network resilience.** Exponential-backoff retry (5xx/429/network) for idempotent requests in `apiFetch` | Done (shipped in 20-G) | 19-A |
-| 19-I | **Bundle / CWV.** Lazy-load Tiptap + transcribe-streaming; add a CI bundle-size budget | Not Started | — |
-| 19-J | **URL-scheme hardening.** Configure the Tiptap Link extension explicitly instead of relying on StarterKit defaults | Not Started | — |
+| 19-I1 | **Lazy-load + CLS.** `React.lazy` Tiptap + dynamic-import transcribe SDK; reserved-dimension fallbacks; lazy-chunk error boundary + RUM event | Not Started | 26-A |
+| 19-I2 | **CI bundle-size gate.** `size-limit` budget on the entry chunk in the `frontend` CI job | Not Started | — |
+| 19-I3 | **Non-urgent transitions.** `useDeferredValue` on ListView search/filter so the input stays responsive | Not Started | — |
+| 19-J | **URL-scheme hardening.** Configure Tiptap `Link` explicitly — allowlist `http`/`https`/`mailto`, reject `javascript:`/`data:`/`vbscript:`, add `rel="noopener noreferrer nofollow"` | Not Started | — |
 | 19-K | **Adopt TanStack Query (server-state migration)** — **graduated to its own phase: [Phase 20](phase-20.md)** (7 slices, gated on reversing [ADR 0010](../adr/0010-server-state-strategy.md)). Too large for one slice. | Moved → P20 | — |
 
-> **Only 19-A is confirmed.** 19-B…19-J are **proposed** from the 2026-06-05 audit and need selection/prioritisation before Breaker drafts each. (19-K, the TanStack Query server-state migration, has **graduated to its own [Phase 20](phase-20.md)** — it reverses an Accepted ADR and is 7 slices, too big to sit here.) None blocks the others except as noted (`19-C`→`19-B`, `19-H`→`19-A`). Value tiers below: **high** = real correctness/UX/security; **medium** = perf/maintainability; **low** = consistency/future-proofing. Because the headline rules are already clean, most slices are medium/low — do not treat the long list as a backlog of bugs.
+> **Only 19-A is confirmed.** 19-B…19-J are **proposed** from the 2026-06-05 audit and need selection/prioritisation before Breaker drafts each. (19-K, the TanStack Query server-state migration, has **graduated to its own [Phase 20](phase-20.md)** — it reverses an Accepted ADR and is 7 slices, too big to sit here.) None blocks the others except as noted (`19-C`→`19-B`, `19-H`→`19-A`, **`19-I1`→`26-A`** — dynamic imports need the zero-downtime frontend deploy first, else lazy chunks 404 mid-session; `19-I2`/`19-I3` carry no such dependency). **19-J, 19-I2, 19-I3 are specced (full sections below) and runnable now; 19-I1 waits on 26-A.** Value tiers below: **high** = real correctness/UX/security; **medium** = perf/maintainability; **low** = consistency/future-proofing. Because the headline rules are already clean, most slices are medium/low — do not treat the long list as a backlog of bugs.
 
 **Learning surface:** module decomposition behind a stable import seam; typed (whole-program) ESLint and the strict-flag family; React context re-render mechanics; the fetch-race/`ignore`-flag pattern and the "you might not need an effect" refactor; ARIA live regions and focus management; Testing-Library query priority; transient-failure retry/backoff; route/feature code-splitting and bundle budgeting.
 
@@ -72,6 +74,61 @@ Scenario: Behaviour is unchanged after the split
 
 ---
 
+## Slice 19-J — URL-scheme hardening
+
+**Intent:** Configure the Tiptap `Link` extension explicitly — allowlist `http`/`https`/`mailto`, reject `javascript:`/`data:`/`vbscript:` — so a malicious scheme in user- or AI-derived note content can't render as a live anchor. Defense-in-depth: `NoteEditor.tsx` currently relies on StarterKit's bundled Link default, which a Tiptap upgrade could silently loosen.
+
+**Scenarios (GWT):**
+- Given note content with a `javascript:` link, When the editor renders, Then no anchor with a `javascript:` href is produced.
+- Given `data:` / `vbscript:` links, When rendered, Then they are rejected (no clickable anchor).
+- Given `https:` / `http:` / `mailto:` links, When rendered, Then the anchors are preserved with hrefs intact.
+- Given an AI-suggested link with `javascript:`, When the note opens, Then it is neutralised on the same path as user-typed input.
+- Given a pasted / programmatic `setLink` with a disallowed scheme, When applied, Then it is rejected (not only the typed-autolink path).
+- Given a preserved external link, When rendered, Then it carries `rel="noopener noreferrer nofollow"`.
+
+**Acceptance criteria:**
+- `Link` added to `useEditor` extensions explicitly; StarterKit's bundled link disabled (`StarterKit.configure({ link: false })`) so it can't silently override the explicit config.
+- `Link.configure` sets `protocols: ['http','https','mailto']` + an `isAllowedUri` rejecting all other schemes; covers content-load, typed-autolink, and pasted/programmatic paths.
+- Preserved links carry `rel="noopener noreferrer nofollow"` and an explicit `target`.
+- A vitest unit test asserts on rendered DOM: a `javascript:` link yields no `javascript:` href; an `https:`/`mailto:` link is preserved.
+- No regression to legitimate linking; existing markdown round-trip / editor specs stay green.
+- Optimistic-UI: N/A — static editor config, no new async mutation.
+
+**Observability:** Client-side config; no server metric. Real risks: (1) a rejected link silently dropped with no feedback — acceptable for a security guard, but tests assert the *behaviour* so it is deliberate; (2) a config no-op if StarterKit's link is not disabled — the DOM-level test (not a config-object assertion) guards both this and a future Tiptap upgrade loosening `isAllowedUri`.
+
+**Key files:** `web/src/components/NoteEditor.tsx` (Link config, ~`:29-50`); `web/src/__tests__/NoteEditor.test.tsx` (new); `web/package.json` (pin `@tiptap/extension-link` directly — currently transitive via StarterKit).
+
+---
+
+## Slice 19-I — Bundle / Core Web Vitals (split: 19-I1 / 19-I2 / 19-I3)
+
+**Intent:** Keep field CWV in reach (LCP ≤ 2.5s, INP ≤ 200ms, CLS ≤ 0.1, 75th pct) by code-splitting the two heavy interaction-gated chunks, gating bundle size in CI, and deferring expensive list re-derivation. Split into three because it spans components + build + CI; the split also lets 19-I2/19-I3 proceed while 19-I1 waits on its deploy-strategy dependency. AWS RUM (`cwr`) already auto-collects field CWV — no web-vitals JS is added.
+
+### 19-I1 — Lazy-load Tiptap + transcribe SDK + CLS sizing — **depends on 26-A**
+
+**Blocked on 26-A** (zero-downtime frontend deploy): dynamic imports over today's `aws s3 sync … --delete` (`deploy.yml:200`/`:403`) would 404 lazy chunks for a session holding the old `index.html` → mid-session blank pane. Land 26-A first or together.
+
+- Scenarios: editor chunk loads lazily behind a fixed-height fallback (no layout shift); transcribe SDK (`@aws-sdk/client-transcribe-streaming`) fetched only at recording-start, absent from the entry bundle; a failed dynamic import degrades to an error boundary (not a blank pane) and records a RUM event.
+- Acceptance criteria: `NoteEditor` wrapped in `React.lazy`+`Suspense` (`NoteView.tsx:497`); transcribe SDK moved to dynamic `import()` (`useTranscription.ts:4`, gated via `RecordControl.tsx`), absent from the entry chunk; reserved min-height on both fallbacks (CLS ≤ 0.1); error boundary + `recordRumEvent("lazyChunkError", …)`; a minimal `vite:preloadError` reload handler if 26-B has not shipped. Optimistic-UI: N/A (perf).
+- Observability: a failed lazy import has no surface today → the `lazyChunkError` RUM event (`web/src/rum.ts`) is the gap to close; confirm RUM web-vitals collection is enabled on the AppMonitor.
+- Key files: `NoteEditor.tsx`, `NoteView.tsx:497`/`:467`, `RecordControl.tsx`, `useTranscription.ts:4`, `vite.config.ts` (manualChunks if needed), `web/src/rum.ts`.
+
+### 19-I2 — CI bundle-size budget gate — independent
+
+- Scenario: a PR that pushes the entry/main chunk over budget fails the `frontend` CI job, naming the offending chunk and its size vs budget.
+- Acceptance criteria: add `size-limit` (+ preset) and a `size` script to `web/package.json`; run it after `npm run build` in `pr.yml`'s `frontend` job; initial budget = current entry-chunk gzip size + ~10% headroom, with the absolute numbers recorded in the PR (auditable, not a guess). The Tiptap/transcribe chunks fall out of the entry budget once 19-I1 splits them.
+- Observability: the gate is the build-time regression signal, complementary to RUM's runtime field signal.
+- Key files: `web/package.json`, `.github/workflows/pr.yml` (`frontend` job, ~`:100-102`).
+
+### 19-I3 — Non-urgent transitions (ListView) — independent
+
+- Scenario: with a long list, typing in search / toggling filters keeps the input responsive while the list re-derives.
+- Acceptance criteria: `useDeferredValue` (or `useTransition`) on `query` feeding `useNoteSearch` and the `filteredCards`/`homeCards` memos in `ListView.tsx` (the one real heavy-filtered-list spot); the `SearchBar` input value updates immediately. Optimistic-UI: N/A.
+- Sequencing: `ListView.tsx` is also touched by **23-D** (workspace routing / query keys) — sequence to avoid a collision if 23-D is in flight.
+- Key files: `web/src/components/ListView.tsx` (~`:66-120`, `:210`).
+
+---
+
 ## Proposed slices (from the 2026-06-05 audit)
 
 Each lists the finding, locations, value tier, and effort. Specs are written per slice when selected.
@@ -114,14 +171,9 @@ Each lists the finding, locations, value tier, and effort. Specs are written per
 ### 19-H — Network resilience: retry + backoff — **value: medium** — depends on 19-A — **Done (shipped in 20-G)**
 - ✅ Shipped as part of Phase **20-G**, not a standalone 19 slice. `api/client.ts` `apiFetch` now retries transient failures (`res.status >= 500 || === 429`, thrown network `TypeError`) with exponential backoff + full jitter, honouring `Retry-After`, capped at 3 attempts. Scoped to safe **reads** (GET/HEAD) only — writes are optimistic-with-rollback (`mutations.retry:false`), so retrying a PUT/DELETE only delays rollback and a POST retry risks a duplicate create. Auth-retry stays outside the transient loop. Each retry `console.warn`s (the latency-masking guard below).
 
-### 19-I — Bundle / CWV — **value: medium**
-- No `React.lazy`/dynamic import in app code. `NoteEditor.tsx:1-5` (Tiptap StarterKit, ~20 extensions) and `useTranscription.ts:4` (`@aws-sdk/client-transcribe-streaming`, very heavy) are both eager but interaction-gated. Lazy-load behind `React.lazy` + `Suspense` / dynamic import.
-- No bundle budget — add `rollup-plugin-visualizer` or `size-limit` as a CI gate; set CWV targets (LCP ≤ 2.5s, INP ≤ 200ms, CLS ≤ 0.1).
-- **Effort:** medium.
+### 19-I — Bundle / CWV — **value: medium** — ✅ **specced & split** → see **## Slice 19-I (19-I1 / 19-I2 / 19-I3)** above. 19-I2 (CI gate) + 19-I3 (ListView transition) runnable now; 19-I1 (lazy-load) depends on 26-A.
 
-### 19-J — URL-scheme hardening — **value: low**
-- No app-level injection sink today (all AI/user text is escaped React children; no `dangerouslySetInnerHTML`; no dynamic `href`/`src`). The Tiptap note-link path is safe **only** via StarterKit's bundled `extension-link` `isAllowedUri` default. `NoteEditor.tsx:29-50` never configures Link explicitly — a future Tiptap upgrade could silently loosen it. Configure Link explicitly (`protocols`/`isAllowedUri`, `rel="noopener noreferrer nofollow"`).
-- **Effort:** small. Defense-in-depth, not a live hole.
+### 19-J — URL-scheme hardening — **value: low** — ✅ **specced** → see **## Slice 19-J** above. Runnable now (no dependency).
 
 ### 19-K — Adopt TanStack Query → **see [Phase 20](phase-20.md)**
 Graduated out of Phase 19. The server-state migration reverses [ADR 0010](../adr/0010-server-state-strategy.md) and breaks into 7 slices behind that ADR gate — too large for one slice. Full breakdown and the worked migration example live in `docs/phases/phase-20.md`.
