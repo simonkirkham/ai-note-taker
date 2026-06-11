@@ -7,9 +7,7 @@ using Domain.Todos;
 using Domain.Workspaces;
 using EventStore;
 using EventStore.Projections;
-using Api.Auth;
 using Api.Projections;
-using Api.Services;
 using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Api.Integration;
@@ -41,7 +39,7 @@ public sealed class ProjectionUpdaterIdempotencyTests
         _titleStore, _detailStore, _todoStore, _cardStore, _actionsStore,
         _tagIndexStore, _tagFeedbackStore, _actionFeedbackStore, _calendarLinkStore,
         _searchStore, _folderStore, _workspaceStore,
-        new StubCurrentUser(UserId), _imageStore, NullLogger<ProjectionUpdater>.Instance);
+        _imageStore, NullLogger<ProjectionUpdater>.Instance);
 
     [Fact]
     public async Task Note_create_rename_tag_content_batch_is_apply_twice_idempotent()
@@ -181,10 +179,4 @@ public sealed class ProjectionUpdaterIdempotencyTests
         new(noteId.ToStreamId(), 0, nameof(ContentEdited), 2, DateTimeOffset.UtcNow,
             JsonSerializer.Serialize(new ContentEditedV2(noteId, content, content.Length)),
             new EventMetadata(Guid.NewGuid(), UserId, null, null, WorkspaceId));
-
-    private sealed class StubCurrentUser(string userId) : ICurrentUser
-    {
-        public string UserId { get; } = userId;
-        public string Name => "Stub";
-    }
 }
