@@ -12,7 +12,7 @@
 | 19-D | **Context provider performance.** Memoise `AuthContext`/`ToastContext` provider values; `useCallback` the Auth actions; optional Auth state/actions split | Done | — |
 | 19-E | **Effect hygiene.** Add out-of-order guards to 3 mount-only fetches; replace 3 notify-parent-in-effect patterns | Not Started | — |
 | 19-F1 | **Accessibility: live regions.** `role="alert"`/`role="status"` on the ~15 transient surfaces (errors/loading/empty) that lack one; high value = the silent mutation-failure errors | Done | — |
-| 19-F2 | **Accessibility: focus + `:focus-visible`.** 6 bare `:focus`→`:focus-visible`; consolidate `MeetingPicker`'s redundant Esc handler into `useFocusTrap`'s `onClose`. (`SessionExpiredBanner` Esc-to-close dropped — blocking re-auth gate, no valid dismiss.) | Not Started | — |
+| 19-F2 | **Accessibility: focus + `:focus-visible`.** 6 bare `:focus`→`:focus-visible`; consolidate `MeetingPicker`'s redundant Esc handler into `useFocusTrap`'s `onClose`. (`SessionExpiredBanner` Esc-to-close dropped — blocking re-auth gate, no valid dismiss.) | Done | — |
 | 19-F3 | **Adopt `eslint-plugin-jsx-a11y`.** Add the plugin's `recommended` ruleset to `web/eslint.config.js`, clear the backlog, gate in CI — standing guard for a11y regressions (graduated from `technical-improvements.md`) | Not Started | — |
 | 19-G | **Test quality.** Migrate testid-heavy unit tests to role/label queries; convert remaining `fireEvent` to `userEvent` | Not Started | — |
 | 19-H | **Network resilience.** Exponential-backoff retry (5xx/429/network) for idempotent requests in `apiFetch` | Done (shipped in 20-G) | 19-A |
@@ -205,6 +205,8 @@ Already correct (do not touch): `ListView` search status/error/no-results, `Fina
 **Key files:** the 8 components in the table + their `__tests__`.
 
 ### 19-F2 — Accessibility: focus + `:focus-visible` — **value: medium**
+
+**Status:** Done (PR #234, deploy #523, 2026-06-11)
 
 **Intent:** Stop keyboard-focus rings showing on mouse click (use `:focus-visible`), and consolidate Esc-to-close into the shared focus trap where it applies. Most dialog focus management is **already done** via the shared `useFocusTrap` hook (#211) — `SessionExpiredBanner`/`MeetingPicker` already move focus in, trap, and restore; `ShortcutsPanel` and ListView filters are correctly non-modal (no trap needed).
 
