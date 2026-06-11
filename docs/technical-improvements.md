@@ -45,10 +45,10 @@ Status key: 🔲 **Open** · 🟡 **Partly done / mitigated** · ✅ **Done** (g
 | TI-27 | Frontend build Node 20 → 24 + lockfile regen (dep-audit T1)                    | ✅ Done — #237, deploy #528                                                                                                             |
 | TI-28 | ASP.NET 10 servicing + AWS SDK patch bumps (dep-audit T7)                      | ✅ Done — #241, deploy #530                                                                                                             |
 | TI-29 | Vite 5 → 7 + Vitest 2 → 4 (dep-audit T2)                                       | ✅ Done — #245, deploy #535 (held at Vite 7; Vite 8 now GA = future)                                                                    |
-| TI-30 | React 18 → 19 (dep-audit T3)                                                   | 🔲 **Open** — after T2                                                                                                                  |
+| TI-30 | React 18 → 19 (dep-audit T3)                                                   | ✅ Done — #246, deploy #536 (zero code changes)                                                                                         |
 | TI-31 | TypeScript 5.6 → 6.0 (dep-audit T4)                                            | 🔲 **Open** — pair w/ typescript-eslint bump                                                                                            |
 
-**Outstanding (7 Open + 3 Partly):** TI-17 Auto-backfill projection on deploy; TI-18 `NoteSearchView` tombstones (verify/close); TI-20 `WorkspaceList` GSI; TI-23 Generalise append-retry; TI-25 `NoteEditor` ordering test; **TI-30 React 19 (T3)** — now unblocked (T2 done); **TI-31 TypeScript 6.0 (T4)**; _(partly)_ TI-7 ESLint import-resolver + typed-lint (jsx-a11y done via 19-F3); TI-3 state-mgmt colocation; TI-24 deploy-credentials root cause.
+**Outstanding (6 Open + 3 Partly):** TI-17 Auto-backfill projection on deploy; TI-18 `NoteSearchView` tombstones (verify/close); TI-20 `WorkspaceList` GSI; TI-23 Generalise append-retry; TI-25 `NoteEditor` ordering test; **TI-31 TypeScript 6.0 (T4)** — last dep-audit item; _(partly)_ TI-7 ESLint import-resolver + typed-lint (jsx-a11y done via 19-F3); TI-3 state-mgmt colocation; TI-24 deploy-credentials root cause.
 
 > Items carry stable IDs `TI-1`–`TI-31` in document order (the `ID` column above); each detailed section below repeats its ID. Reference an item as `TI-N`. The dep-audit `T#` tags are retained in parentheses for cross-reference with the audit report.
 
@@ -431,6 +431,8 @@ Phase 25-B shipped (then fixed) an **ordering bug** that every unit test passed 
 ---
 
 ## TI-30. React 18 → 19 (dep-audit T3)
+
+✅ **Done** (PR #246, deploy #536, 2026-06-11). `react`/`react-dom` `^18.3.1 → ^19.2.7`; `@types/react` `^18.3.12 → ^19.2.17`, `@types/react-dom` `^18.3.1 → ^19.2.3`. Lockfile regenerated incrementally on Node 24 / npm 11.13.0. **Zero code changes** — a pre-migration scan found no React-19 breaking patterns: `createRoot` already in use (no legacy `ReactDOM.render`), no string refs, no component `defaultProps`, no `propTypes`/`findDOMNode`/legacy-context/`forwardRef`. No codemod needed. Single deduped `react@19.2.7` (no duplicate instance); all peer deps already declared `^18 || ^19`. Verified: vite build green; `tsc -b` clean; `tsc -p tsconfig.test.json` clean (test typecheck — required after a `@types/*` major); vitest 488/488; eslint clean. Frontend-only; deploy-time neutral. Prod bundle grew ~1005 → 1056 kB (React 19 runtime) — deferred to the 19-I2 bundle-budget gate. Original entry kept below for context.
 
 **Urgency: Medium.**
 
