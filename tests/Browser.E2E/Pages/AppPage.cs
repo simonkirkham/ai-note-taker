@@ -70,26 +70,45 @@ public sealed class AppPage(IPage page, string baseUrl, string? authToken = null
     // a reload in Playwright, so the session survives.
     public Task ReloadAsync() => page.ReloadAsync();
 
-    // Bounded poll absorbing the ~1-2s projector lag after a reload.
+    // Poll for an element by reloading on each miss. A single reload fetches the
+    // projection ONCE; if that fetch races a still-lagging projector and returns a
+    // stale 200, nothing retriggers a refetch (retry:1 fires only on error,
+    // refetchOnWindowFocus:false), so a static DOM-poll can never recover. Reloading
+    // on each miss re-fetches the projection, so the check passes once the projector
+    // catches up.
+    private async Task PollWithReloadAsync(Func<ILocator> locator, int timeoutMs = 20000)
+    {
+        var deadline = DateTime.UtcNow.AddMilliseconds(timeoutMs);
+        while (true)
+        {
+            try
+            {
+                await Assertions.Expect(locator()).ToBeVisibleAsync(new() { Timeout = 2000 });
+                return;
+            }
+            catch (PlaywrightException) when (DateTime.UtcNow < deadline)
+            {
+                await page.ReloadAsync();
+            }
+        }
+    }
+
     public Task AssertCardTagVisibleAfterReloadAsync(string cardTitle, string tag) =>
-        Assertions.Expect(
+        PollWithReloadAsync(() =>
             page.GetByTestId("note-cards")
                 .Locator("[data-testid='note-card']")
                 .Filter(new LocatorFilterOptions { HasText = cardTitle })
-                .GetByTestId($"card-tag-{tag}")
-        ).ToBeVisibleAsync(new() { Timeout = 20000 });
+                .GetByTestId($"card-tag-{tag}"));
 
     public Task AssertActionItemVisibleAfterReloadAsync(string description) =>
-        Assertions.Expect(
-            page.GetByTestId("actions-list").GetByText(description)
-        ).ToBeVisibleAsync(new() { Timeout = 20000 });
+        PollWithReloadAsync(() =>
+            page.GetByTestId("actions-list").GetByText(description));
 
     public Task AssertNoteVisibleInListAfterReloadAsync(string title) =>
-        Assertions.Expect(
+        PollWithReloadAsync(() =>
             page.GetByTestId("note-cards")
                 .Locator("[data-testid='note-card']")
-                .Filter(new LocatorFilterOptions { HasText = title })
-        ).ToBeVisibleAsync(new() { Timeout = 20000 });
+                .Filter(new LocatorFilterOptions { HasText = title }));
 
     public Task AssertNoteVisibleInListAsync(string title) =>
         Assertions.Expect(

@@ -122,10 +122,24 @@ export function useReopenAction(noteId: string) {
   return useMutation<void, Error, string, Ctx>({
     mutationFn: (actionId) => reopenAction(noteId, actionId),
     onMutate: async (actionId) => {
+      // Read the reopened action's description before the snapshot transform, so the
+      // card patch can re-add it to the card's open-actions list.
+      const description = qc
+        .getQueryData<ActionItem[]>(keys.actions(noteId))
+        ?.find((a) => a.actionId === actionId)?.description;
       const actionsCtx = await snapshotActions(qc, noteId, (items) =>
         items.map((a) => (a.actionId === actionId ? { ...a, completed: false, completedAt: null } : a)));
       const todosCtx = await snapshotTodos(qc, (items) =>
         items.map((i) => (i.itemId === actionId ? { ...i, completedAt: null } : i)));
+      // A reopened action re-enters the card's open-actions list (the inverse of
+      // complete, which filters it out). Skip if its description is unknown or it is
+      // already present.
+      if (description !== undefined) {
+        patchCardActions(qc, noteId, (actions) =>
+          actions.some((a) => a.actionId === actionId)
+            ? actions
+            : [...actions, { actionId, description }]);
+      }
       return { ...actionsCtx, ...todosCtx };
     },
     onError: (_e, _id, ctx) => rollback(qc, noteId, ctx),

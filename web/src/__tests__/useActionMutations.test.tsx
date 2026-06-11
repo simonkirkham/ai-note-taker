@@ -6,7 +6,12 @@ import type { ActionItem } from '../api/actions'
 import type { NoteCard } from '../api/notes'
 import { keys } from '../api/queryKeys'
 import type { TodoItem } from '../api/todos'
-import { useAddAction, useCompleteAction } from '../hooks/useActionMutations'
+import {
+  useAddAction,
+  useCompleteAction,
+  useDeleteAction,
+  useReopenAction,
+} from '../hooks/useActionMutations'
 import { server } from '../test/setup'
 
 // 27-C2: add-action swaps the optimistic temp id for the returned server id via
@@ -28,6 +33,17 @@ function setup(opts: { actions?: ActionItem[]; todos?: TodoItem[]; cards?: NoteC
 
 const actions = (qc: QueryClient) => qc.getQueryData<ActionItem[]>(keys.actions('n-1')) ?? []
 const todos = (qc: QueryClient) => qc.getQueryData<TodoItem[]>(keys.todos) ?? []
+const cardActionIds = (qc: QueryClient) =>
+  (qc.getQueryData<NoteCard[]>(keys.noteCards) ?? [])
+    .find((c) => c.noteId === 'n-1')?.openActions.map((a) => a.actionId) ?? []
+
+function cardWithActions(open: { actionId: string; description: string }[]): NoteCard {
+  return {
+    noteId: 'n-1', title: 'Sync', contentPreview: '', date: '2026-01-01',
+    openActions: open, createdAt: '2026-01-01T00:00:00Z', lastModifiedAt: '2026-01-01T00:00:00Z',
+    tags: [], folderId: null,
+  }
+}
 
 describe('useAddAction (27-C2)', () => {
   it('swaps the optimistic temp id for the server id without invalidating keys.actions', async () => {
@@ -85,5 +101,37 @@ describe('useCompleteAction (27-C2)', () => {
 
     expect(todos(qc)[0].completedAt).not.toBeNull()
     expect(spy).not.toHaveBeenCalledWith({ queryKey: keys.todos })
+  })
+})
+
+describe('useReopenAction (27-C2)', () => {
+  it("re-adds the reopened action to the card's open-actions list", async () => {
+    server.use(http.post('/api/notes/n-1/actions/srv-1/reopen', () =>
+      new HttpResponse(null, { status: 204 })))
+    const { qc, wrapper } = setup({
+      actions: [{ actionId: 'srv-1', description: 'Book room', completed: true, addedAt: '2026-01-01T00:00:00Z', completedAt: '2026-01-02T00:00:00Z' }],
+      cards: [cardWithActions([])],
+    })
+    const { result } = renderHook(() => useReopenAction('n-1'), { wrapper })
+
+    await act(async () => { await result.current.mutateAsync('srv-1') })
+
+    expect(cardActionIds(qc)).toEqual(['srv-1'])
+  })
+})
+
+describe('useDeleteAction (27-C2)', () => {
+  it("removes the deleted action from the card's open-actions list", async () => {
+    server.use(http.delete('/api/notes/n-1/actions/srv-1', () =>
+      new HttpResponse(null, { status: 204 })))
+    const { qc, wrapper } = setup({
+      actions: [{ actionId: 'srv-1', description: 'Book room', completed: false, addedAt: '2026-01-01T00:00:00Z', completedAt: null }],
+      cards: [cardWithActions([{ actionId: 'srv-1', description: 'Book room' }])],
+    })
+    const { result } = renderHook(() => useDeleteAction('n-1'), { wrapper })
+
+    await act(async () => { await result.current.mutateAsync('srv-1') })
+
+    expect(cardActionIds(qc)).toEqual([])
   })
 })

@@ -51,9 +51,9 @@ export function patchOneCard(
 const MAX_PREVIEW_LENGTH = 120;
 
 // Mirror the server's BuildContentPreview (NoteHandlers.cs) closely enough for an
-// optimistic card snippet: strip common markdown markers, collapse to a single
-// paragraph, truncate at 120 with an ellipsis. The projector reconciles the exact
-// text on the next genuine list fetch; this only has to look right immediately.
+// optimistic card snippet: strip common markdown markers, trim, truncate at 120 with
+// an ellipsis. The projector reconciles the exact text on the next genuine list fetch;
+// this only has to look right immediately.
 export function buildContentPreview(content: string): string {
   const stripped = content
     .replace(/^#{1,6}\s*/gm, "")

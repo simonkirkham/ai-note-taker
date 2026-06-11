@@ -27,8 +27,11 @@ function setup(seed: NoteCard[] = [card]) {
   return { qc, wrapper }
 }
 
-const cardTags = (qc: QueryClient) =>
-  qc.getQueryData<NoteCard[]>(keys.noteCards)!.find((c) => c.noteId === 'n-1')!.tags
+const cardTags = (qc: QueryClient) => {
+  const found = qc.getQueryData<NoteCard[]>(keys.noteCards)?.find((c) => c.noteId === 'n-1')
+  if (!found) throw new Error('card n-1 not in cache')
+  return found.tags
+}
 
 describe('tag mutations patch the home card optimistically (27-C2)', () => {
   it('tag adds the tag to the matching card without an invalidate', async () => {

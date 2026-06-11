@@ -1,7 +1,7 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { analyseNote, editContent, setNoteDate, type NoteDetail } from "../api/notes";
 import { keys } from "../api/queryKeys";
-import { buildContentPreview, patchOneCard } from "./noteCardsCache";
+import { buildContentPreview, patchOneCard, PROJECTOR_LAG_MS } from "./noteCardsCache";
 
 // Note-detail commits. keys.note has a single consumer (NoteView), so per the
 // keystone principle the saved value is optimistic == server: content/date patch
@@ -41,9 +41,16 @@ export function useAnalyseNote(noteId: string) {
   const qc = useQueryClient();
   return useMutation<void, Error, void>({
     mutationFn: () => analyseNote(noteId),
+    // The server computes the summary/discussion/decisions and may extract actions, so
+    // these can't be patched optimistically — a refetch is unavoidable. keys.actions is
+    // projection-backed (GET /actions → NoteActionsView) and lags the write under the
+    // async projector (27-C), so defer the reconcile by the projector-lag budget rather
+    // than racing it; keys.note rides the same delay so both land together.
     onSettled: () => {
-      qc.invalidateQueries({ queryKey: keys.note(noteId) });
-      qc.invalidateQueries({ queryKey: keys.actions(noteId) });
+      setTimeout(() => {
+        qc.invalidateQueries({ queryKey: keys.note(noteId) });
+        qc.invalidateQueries({ queryKey: keys.actions(noteId) });
+      }, PROJECTOR_LAG_MS);
     },
   });
 }
