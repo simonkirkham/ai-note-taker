@@ -56,7 +56,7 @@
   transition: border-color var(--transition);
 }
 
-.contentInput:focus {
+.contentInput:focus-visible {
   border-top-color: var(--color-primary);
 }
 

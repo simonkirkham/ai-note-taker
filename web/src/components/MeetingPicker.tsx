@@ -1,5 +1,5 @@
 import { type UseQueryResult } from "@tanstack/react-query";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { CalendarMeeting, type MeetingsResult } from "../api/meetings";
 import { useFocusTrap } from "../hooks/useFocusTrap";
 import { useMeetings } from "../hooks/useMeetings";
@@ -45,17 +45,14 @@ export default function MeetingPicker({
   const [selectedDate, setSelectedDate] = useState(today);
   const [dateInputOpen, setDateInputOpen] = useState(false);
   const dialogRef = useRef<HTMLDivElement>(null);
-  useFocusTrap(dialogRef);
+  // Escape-to-close is owned by the focus trap (onClose), not a separate
+  // document-level handler — focus is trapped inside the dialog, so the
+  // container's keydown listener always sees Escape.
+  useFocusTrap(dialogRef, { onClose });
 
   // A cached day shows instantly; a new day reads as loading until it resolves.
   const displayQuery = useMeetings(selectedDate);
   const displayState: State = toState(displayQuery);
-
-  useEffect(() => {
-    function onKey(e: KeyboardEvent) { if (e.key === "Escape") onClose(); }
-    document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
-  }, [onClose]);
 
   function handleRetry() {
     displayQuery.refetch();

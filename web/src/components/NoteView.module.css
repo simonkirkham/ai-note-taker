@@ -272,7 +272,7 @@
   transition: border-color var(--transition);
 }
 
-.titleInput:focus {
+.titleInput:focus-visible {
   border-bottom-color: var(--color-primary);
 }
 
