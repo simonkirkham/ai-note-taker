@@ -40,13 +40,13 @@ Status key: 🔲 **Open** · 🟡 **Partly done / mitigated** · ✅ **Done** (g
 | `deploy-production` hangs at "Configure AWS credentials" | 🟡 Mitigated — `timeout-minutes` shipped (#222); **root cause Open** |
 | Add a `NoteEditor` component test for the image-ordering invariant | 🔲 **Open** — guards the 25-B regression below the E2E gate |
 | Zero-downtime deployments — frontend stale-chunk 404s; backend canary/rollback | ✅ Done — → Phase 26 |
-| Frontend build Node 20 → 24 + lockfile regen (dep-audit T1) | 🔲 **Open** — Node 20 past EOL (30 Apr 2026); blocks Vite 7 |
+| Frontend build Node 20 → 24 + lockfile regen (dep-audit T1) | ✅ Done — #237, deploy #528 |
 | ASP.NET 10 servicing + AWS SDK patch bumps (dep-audit T7) | 🔲 **Open** — JwtBearer 9 patches behind incl. security |
 | Vite 5 → 7 + Vitest 2 → 4 (dep-audit T2) | 🔲 **Open** — needs Node ≥20.19; after T1 |
 | React 18 → 19 (dep-audit T3) | 🔲 **Open** — after T2 |
 | TypeScript 5.6 → 6.0 (dep-audit T4) | 🔲 **Open** — pair w/ typescript-eslint bump |
 
-**Outstanding (10 Open + 3 Partly):** Auto-backfill projection on deploy; `NoteSearchView` tombstones (verify/close); `WorkspaceList` GSI; Generalise append-retry; `NoteEditor` ordering test; **build Node 20→24 (dep-audit T1)**; **ASP.NET/AWS-SDK patches (T7)**; **Vite 7 + Vitest 4 (T2)**; **React 19 (T3)**; **TypeScript 6.0 (T4)**; *(partly)* ESLint import-resolver + typed-lint (jsx-a11y done via 19-F3); state-mgmt colocation; deploy-credentials root cause.
+**Outstanding (9 Open + 3 Partly):** Auto-backfill projection on deploy; `NoteSearchView` tombstones (verify/close); `WorkspaceList` GSI; Generalise append-retry; `NoteEditor` ordering test; **ASP.NET/AWS-SDK patches (T7)**; **Vite 7 + Vitest 4 (T2)**; **React 19 (T3)**; **TypeScript 6.0 (T4)**; *(partly)* ESLint import-resolver + typed-lint (jsx-a11y done via 19-F3); state-mgmt colocation; deploy-credentials root cause.
 
 > **Dependency upgrade audit (2026-06-11):** full inventory + LTS recommendations in [docs/dependency-audits/dependency-upgrade-audit-2026-06.md](dependency-audits/dependency-upgrade-audit-2026-06.md). High + medium-urgency items (T1, T7, T2, T3, T4) are tracked below. Low-urgency items (T5 lint-tooling batch, T6 Tiptap 3.26, T8 CDK 2.258, T9 Playwright 1.60, T10 xUnit v3) stay in the audit doc until picked up.
 
@@ -372,6 +372,8 @@ Phase 25-B shipped (then fixed) an **ordering bug** that every unit test passed 
 ---
 
 ## Frontend build Node 20 → 24 + regenerate lockfile (dep-audit T1)
+
+✅ **Done** (PR #237, deploy #528, 2026-06-11). `node-version "20" → "24"` across `deploy.yml` (3) + `pr.yml` (2); `@types/node ^20 → ^24` (resolves 24.13.2); lockfile regenerated. Two non-obvious traps surfaced and are captured in [docs/learnings/node-24-build-upgrade.md](learnings/node-24-build-upgrade.md): (1) the lockfile/npm-version skew is **bidirectional** — regenerating on an *older* local npm than CI's pruned the optional `@emnapi/*` native-binding entries CI's newer npm requires, failing `npm ci`; (2) `@types/node@24` dropped a transitive `lib` reference that had been silently providing ES2022 `Array.at()` to the **test** typecheck, so `tsc -p tsconfig.test.json` failed (fixed by making `tsconfig.test.json`'s `lib` explicit). Original entry kept below for context.
 
 **Urgency: High (EOL).** Graduates the half deliberately deferred by *"Upgrade GitHub Actions to Node.js 24"* (above) — that item bumped the action runtimes but left the **build** Node (`setup-node` `node-version: "20"`) on 20.
 
