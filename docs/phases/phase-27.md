@@ -35,15 +35,16 @@
 
 **Scenarios (GWT):**
 - Given any command that today updates projections inline, when it runs, then the read models end in **byte-identical** state to before the refactor (every existing spec stays green).
-- Given the same event is applied **twice** (the projector will redeliver), when `ProjectionUpdater.Apply` runs again, then the read models are unchanged (idempotent — including the feedback counters).
+- Given the same event batch is applied **twice**, when `ProjectionUpdater` runs again, then the **naturally-idempotent** read models are unchanged: re-fold-from-history projections (title/detail/search), full-PUT projections (todo/tagindex/calendarlink/folder/workspace), set-based card mutations (complete/reopen/file/unfile), and the made-idempotent card append paths (tag/action-item add-if-absent). **The increment-based feedback counters are explicitly NOT made redelivery-idempotent here** — that needs a processed-event/position guard, which is the projector's job in **27-B** (see note below).
 - Given a `NoteDeleted` event, when applied, then every projection drops the note's rows exactly as the inline delete path does today.
 - Given a META-row change (no event payload), when handed to the updater, then it is a no-op.
 
 **Acceptance criteria:**
 - One `ProjectionUpdater.Apply(EventEnvelope)` (or per-stream batch) replaces the bespoke `UpdateProjectionAsync`/inline blocks in all 5 command handlers; handlers call it inline (behaviour unchanged).
-- Apply is **idempotent per event**: upserts are naturally so; the non-idempotent paths (`ActionItemFeedbackStore.TryRecord*`, tag/action counters) gain a dedup/version guard keyed on `StreamId`+`SequenceNumber` (or event identity).
-- No event-model, aggregate, API, CDK, or frontend change; no new table.
-- Tests: a `ProjectionUpdater` unit/integration spec asserting apply-once == apply-twice for each projection family; the full existing suite green proves no behaviour change.
+- **Naturally-idempotent paths** stay so (re-fold-from-history, full PUT, set-based card mutations). The two cheap non-idempotent card paths are **made idempotent, behaviour-equivalent for apply-once**: card tag append → append-if-absent; card action-item add → add-if-absent.
+- **Increment-based feedback counters** (`RecordSuggestionAsync` `ADD SuggestedCount`; `TryRecordCompletion/Deletion` `ADD …Count` without removing provenance) are left increment-on-apply — full redelivery-idempotency for them is **deferred to 27-B**'s processed-event/position guard (a new table/marker is excluded from 27-A; reworking the counter model is scope creep). Apply-once behaviour is byte-identical to today.
+- No event-model, aggregate, API, CDK, or frontend change; **no new table**. `ProjectionUpdater` registered as a scoped service; depends on the same stores + `ICurrentUser`/`ICurrentWorkspace` the handlers use today (27-B later sources user/workspace from event metadata).
+- Tests: a `ProjectionUpdater` spec asserting apply-twice == apply-once for the naturally-idempotent + made-idempotent families (NOT the feedback counters); the full existing suite green proves no behaviour change.
 
 ### Slice 27-B — DynamoDB Stream + Projector Lambda (shadow mode)
 
@@ -52,13 +53,14 @@
 **Scenarios (GWT):**
 - Given the stream is enabled, when an event is appended, then the Projector Lambda is invoked with the new event record and applies it via the 27-A `ProjectionUpdater`.
 - Given the projector receives a `META#stream` record, then it is filtered out (only `SK`-`v…` event rows are applied).
-- Given a stream record is redelivered, when the projector reprocesses it, then read-model state is unchanged (idempotent — leans on 27-A).
+- Given a stream record is redelivered, when the projector reprocesses it, then read-model state is unchanged — the naturally-idempotent paths (27-A) plus a **per-stream processed-position guard** that skips already-applied sequence numbers, which is what makes the increment-based feedback counters (deferred from 27-A) redelivery-safe.
 - Given a projector apply throws on one record, when the batch retries to exhaustion, then the failed record goes to the **DLQ** and the alarm fires (it does **not** silently vanish or wedge the shard forever).
 - Given inline updates are still active, when the projector also writes, then reads are unaffected (both converge to the same state; projector is redundant in shadow).
 
 **Acceptance criteria:**
 - `StreamSpecification` (`NEW_IMAGE`) enabled on `notetaker-events`; a `ProjectorFunction` Lambda with a DynamoDB event-source mapping (batch size, **bisect-on-function-error**, `maxRetryAttempts`, `maxRecordAge`, on-failure **DLQ** SQS).
 - Projector filters to event rows, applies via `ProjectionUpdater`, and is granted **projection tables only** (read/write) + event-store **read** (to re-fold a stream if needed) — not a copy of the monolith role.
+- **Per-stream processed-position guard** (the redelivery-idempotency mechanism deferred from 27-A): track the highest applied sequence per stream and skip records at or below it, so the increment-based feedback counters cannot double-count on stream redelivery. Decide its home (a marker attribute / small guard table) in this slice.
 - **Observability wired in this slice (non-negotiable per ADR 0009):** structured logs (stream id/version, correlation id), an EMF **projector-lag** metric (`now − OccurredAt` at apply), failure-count metric, **DLQ-depth alarm** + projector-error alarm on `notetaker-ops`.
 - Inline `ProjectionUpdater` calls **remain** in the command handlers (shadow).
 - `tests/Infrastructure.Assertions`: stream enabled, ESM present with DLQ + bisect + retry caps, projector role is least-privilege (no event-store write).
