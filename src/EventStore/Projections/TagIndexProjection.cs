@@ -14,7 +14,15 @@ public sealed class TagIndexProjection
         switch (EventDeserializer.Deserialize(envelope))
         {
             case NoteAssignedToWorkspace e:
-                _workspaceByNote[e.NoteId.Value.ToString("N")] = e.WorkspaceId.Value;
+                var assignedKey = e.NoteId.Value.ToString("N");
+                _workspaceByNote[assignedKey] = e.WorkspaceId.Value;
+                // A move assigns the workspace AFTER the note was tagged, so re-stamp any
+                // tag rows already emitted for this note — otherwise a rebuild leaves them
+                // in the old workspace while the live move re-buckets them (divergence).
+                // At create this fires before any tag, so the loop is a no-op.
+                for (var i = 0; i < _entries.Count; i++)
+                    if (_entries[i].NoteId == assignedKey)
+                        _entries[i] = _entries[i] with { WorkspaceId = e.WorkspaceId.Value };
                 break;
             case NoteTagged e:
                 var noteKey = e.NoteId.Value.ToString("N");

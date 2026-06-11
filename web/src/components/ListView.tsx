@@ -279,6 +279,9 @@ export default function ListView({
                 </div>
               </div>
               {searching ? (
+                // Search results deliberately omit the move-to-workspace control: moving a
+                // note out of the active workspace mid-search would make a result vanish under
+                // the cursor. Move is available from the (non-search) card list (23-F).
                 <SearchResultsArea
                   state={searchState}
                   results={searchResults}

@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Domain.Notes;
+using Domain.Workspaces;
 using EventStore;
 using EventStore.Projections;
 
@@ -43,6 +44,26 @@ public sealed class TagIndexProjectionSpec
             JsonSerializer.Serialize(new NoteUntagged(NoteId1, "1:1s"))));
 
         Assert.Empty(projection.GetAll());
+    }
+
+    [Fact]
+    public void NoteAssignedToWorkspaceAfterTagging_RebucketsExistingTagRows()
+    {
+        // A move assigns the workspace after the note was tagged. The rebuild must re-stamp
+        // the already-emitted tag rows to the new workspace so it matches the live move path
+        // (regression for 23-F tag/rebuild divergence).
+        var projection = new TagIndexProjection();
+        projection.Handle(NoteEnv(1, nameof(NoteAssignedToWorkspace),
+            JsonSerializer.Serialize(new NoteAssignedToWorkspace(NoteId1, new WorkspaceId("ws-a")))));
+        projection.Handle(NoteEnv(2, nameof(NoteTagged),
+            JsonSerializer.Serialize(new NoteTagged(NoteId1, "1:1s"))));
+
+        projection.Handle(NoteEnv(3, nameof(NoteAssignedToWorkspace),
+            JsonSerializer.Serialize(new NoteAssignedToWorkspace(NoteId1, new WorkspaceId("ws-b")))));
+
+        var all = projection.GetAll();
+        Assert.Single(all);
+        Assert.Equal("ws-b", all[0].WorkspaceId);
     }
 
     [Fact]

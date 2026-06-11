@@ -5,6 +5,7 @@ using System.Text.Json;
 
 namespace Api.Integration;
 
+[Collection("ProjectionRebuild")]
 public sealed class MoveNoteToWorkspaceIntegrationTests(ApiFactory factory) : IClassFixture<ApiFactory>
 {
     private readonly ApiFactory _factory = factory;
@@ -39,6 +40,30 @@ public sealed class MoveNoteToWorkspaceIntegrationTests(ApiFactory factory) : IC
         Assert.DoesNotContain("moved", await TagsAsync($"/w/{wsA}/tags"));
         Assert.Contains("follow up", await TodoDescriptionsAsync($"/w/{wsB}/todos"));
         Assert.DoesNotContain("follow up", await TodoDescriptionsAsync($"/w/{wsA}/todos"));
+    }
+
+    [Fact]
+    public async Task MovedNotesDerivedRows_SurviveAFullRebuildIdentically()
+    {
+        // The live re-bucket must reproduce what a rebuild from the event stream produces —
+        // the slice's highest-risk invariant. Move a tagged note with an action-item todo,
+        // then rebuild and assert the tag/todo stay in B (and out of A) unchanged.
+        var wsA = await CreateWorkspaceAsync("ConvergeA");
+        var wsB = await CreateWorkspaceAsync("ConvergeB");
+        var noteId = await CreateNoteAsync($"/w/{wsA}/notes");
+        await PostAsync($"/w/{wsA}/notes/{noteId}/tags", "{\"tag\":\"conv\"}", HttpStatusCode.NoContent);
+        await PostAsync($"/w/{wsA}/notes/{noteId}/actions", "{\"description\":\"converge\"}");
+
+        await MoveAsync(wsA, noteId, wsB);
+        Assert.Contains("conv", await TagsAsync($"/w/{wsB}/tags"));
+        Assert.Contains("converge", await TodoDescriptionsAsync($"/w/{wsB}/todos"));
+
+        (await _client.PostAsync("/admin/projections/rebuild", null)).EnsureSuccessStatusCode();
+
+        Assert.Contains("conv", await TagsAsync($"/w/{wsB}/tags"));
+        Assert.DoesNotContain("conv", await TagsAsync($"/w/{wsA}/tags"));
+        Assert.Contains("converge", await TodoDescriptionsAsync($"/w/{wsB}/todos"));
+        Assert.DoesNotContain("converge", await TodoDescriptionsAsync($"/w/{wsA}/todos"));
     }
 
     [Fact]
