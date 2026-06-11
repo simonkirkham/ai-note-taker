@@ -68,5 +68,17 @@
       "Bash(cp /tmp/sl.bak .claude/settings.local.json)",
       "Bash(cp /mnt/c/code/ai-note-taker/.claude/settings.local.json /tmp/sl.bak)"
     ]
+  },
+  "sandbox": {
+    "autoAllowBashIfSandboxed": true,
+    "network": {
+      "allowedDomains": [
+        "github.com",
+        "*.github.com",
+        "*.githubusercontent.com",
+        "codeload.github.com",
+        "*.amazonaws.com"
+      ]
+    }
   }
 }
