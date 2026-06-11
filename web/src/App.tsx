@@ -39,6 +39,9 @@ import {
   useMoveNoteToFolder,
 } from "./hooks/useNoteMutations";
 import { recordRumEvent } from "./rum";
+import { useCurrentWorkspace } from "./workspace/context";
+import { WorkspaceProvider } from "./workspace/WorkspaceContext";
+import { DEFAULT_WORKSPACE_ID } from "./workspace/workspaceStore";
 
 type NoteNavState = { isNew?: boolean; initialTitle?: string };
 
@@ -77,7 +80,22 @@ function AppGate() {
     </div>
   );
 
-  return <AppContent signOut={signOut} />;
+  // Every screen lives under a `/w/:wsId` prefix; bare `/` and any unknown path
+  // redirect to the default workspace (23-D). Deep links like `/w/{ws}/notes/{id}`
+  // are preserved through the postLoginRedirect restore above.
+  return (
+    <Routes>
+      <Route
+        path="/w/:wsId/*"
+        element={
+          <WorkspaceProvider>
+            <AppContent signOut={signOut} />
+          </WorkspaceProvider>
+        }
+      />
+      <Route path="*" element={<Navigate to={`/w/${DEFAULT_WORKSPACE_ID}`} replace />} />
+    </Routes>
+  );
 }
 
 function AuthLoading() {
@@ -99,6 +117,9 @@ function AuthLoading() {
 function AppContent({ signOut }: { signOut: () => void }) {
   const navigate = useNavigate();
   const location = useLocation();
+  const wsId = useCurrentWorkspace();
+  // Build a workspace-scoped path; `w("")` is the workspace home (`/w/{wsId}`).
+  const w = (p: string) => `/w/${wsId}${p}`;
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const qc = useQueryClient();
   const { data: cards = [], isLoading: loading } = useNoteCards();
@@ -117,7 +138,7 @@ function AppContent({ signOut }: { signOut: () => void }) {
   // "unfiled" segment maps to UNFILED_ID), not component state — 21-B. The
   // breadcrumb is rebuilt from the folders cache, so a sub-folder shows its full
   // ancestor path and a rename re-derives automatically (the cache is the source).
-  const folderMatch = useMatch("/folders/:folderId");
+  const folderMatch = useMatch("/w/:wsId/folders/:folderId");
   const folderSeg = folderMatch?.params.folderId;
   const activeFolderId = folderSeg === "unfiled" ? UNFILED_ID : folderSeg;
   const activeFolderPath = useMemo<string[]>(() => {
@@ -133,7 +154,7 @@ function AppContent({ signOut }: { signOut: () => void }) {
     const state: NoteNavState = {};
     if (isNew) state.isNew = true;
     if (title) state.initialTitle = title;
-    navigate(`/notes/${noteId}`, { state });
+    navigate(w(`/notes/${noteId}`), { state });
   }
 
   async function handleNewNote() {
@@ -161,7 +182,7 @@ function AppContent({ signOut }: { signOut: () => void }) {
     try {
       await deleteNote.mutateAsync(noteId);
       // Destructive: replace so the deleted note is not reachable via Back.
-      navigate("/", { replace: true });
+      navigate(w(""), { replace: true });
     } catch {
       // rolled back in the mutation's onError; stay on the note
     }
@@ -181,26 +202,26 @@ function AppContent({ signOut }: { signOut: () => void }) {
     // On a cold deep-link there is no in-app history entry behind the note, so
     // navigate(-1) would be a no-op; fall back to home. (location.key is
     // "default" only for the initial entry.)
-    if (location.key === "default") navigate("/");
+    if (location.key === "default") navigate(w(""));
     else navigate(-1);
     // The note's content/preview may have changed in NoteView — refresh the list.
     qc.invalidateQueries({ queryKey: keys.noteCards });
   }
 
   function handleUnfiledSelect() {
-    navigate("/folders/unfiled");
+    navigate(w("/folders/unfiled"));
     setSidebarOpen(false);
   }
 
   function handleFolderSelect(folderId: string, folderPath: string[]) {
-    navigate(`/folders/${folderId}`);
+    navigate(w(`/folders/${folderId}`));
     setSidebarOpen(false);
     setPreviewFolderId(folderId);
     setPreviewFolderName(folderPath[folderPath.length - 1] ?? "");
   }
 
   function handleHome() {
-    navigate("/");
+    navigate(w(""));
   }
 
   function handleCreateFolder(name: string, parentFolderId?: string) {
@@ -220,7 +241,7 @@ function AppContent({ signOut }: { signOut: () => void }) {
   }
 
   function handleDeleteFolder(folderId: string) {
-    if (activeFolderId === folderId) navigate("/");
+    if (activeFolderId === folderId) navigate(w(""));
     if (previewFolderId === folderId) setPreviewFolderId(null);
     deleteFolderM.mutate({ folderId });
   }
@@ -301,10 +322,10 @@ function AppContent({ signOut }: { signOut: () => void }) {
       />
       <div className={styles.appMain}>
         <Routes>
-          <Route path="/" element={listView} />
-          <Route path="/folders/:folderId" element={listView} />
+          <Route index element={listView} />
+          <Route path="folders/:folderId" element={listView} />
           <Route
-            path="/notes/:noteId"
+            path="notes/:noteId"
             element={
               <NoteRoute
                 notes={cards}
@@ -316,7 +337,7 @@ function AppContent({ signOut }: { signOut: () => void }) {
               />
             }
           />
-          <Route path="*" element={<Navigate to="/" replace />} />
+          <Route path="*" element={<Navigate to={w("")} replace />} />
         </Routes>
       </div>
     </div>
@@ -341,16 +362,17 @@ function NoteRoute({
   const { noteId } = useParams();
   const location = useLocation();
   const navigate = useNavigate();
+  const wsId = useCurrentWorkspace();
   const { showError } = useToast();
   const navState = location.state as NoteNavState | null;
-  // A deep-link to a deleted/unknown note recovers to home with a toast, and
-  // emits a RUM event so the rate of dead links is observable (21-C).
+  // A deep-link to a deleted/unknown note recovers to the workspace home with a
+  // toast, and emits a RUM event so the rate of dead links is observable (21-C).
   const handleNotFound = useCallback(() => {
     recordRumEvent("deadNoteLink", { noteId });
     showError("That note no longer exists.");
-    navigate("/", { replace: true });
-  }, [noteId, navigate, showError]);
-  if (!noteId) return <Navigate to="/" replace />;
+    navigate(`/w/${wsId}`, { replace: true });
+  }, [noteId, navigate, showError, wsId]);
+  if (!noteId) return <Navigate to={`/w/${wsId}`} replace />;
   return (
     <NoteView
       key={noteId}

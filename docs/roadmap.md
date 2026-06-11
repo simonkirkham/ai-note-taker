@@ -315,6 +315,28 @@ Slices and acceptance criteria: [docs/phases/phase-25.md](phases/phase-25.md)
 
 ---
 
+## Phase 26 — Zero-downtime deployments _(Frontend done; backend canary reverted)_
+
+A `cdk deploy` is not yet fully zero-downtime. The backend alias flip is seamless (API Gateway routes to the `live` alias; SnapStart avoids cold starts) but lacks canary + automated rollback. The real gap is the **frontend deploy job**: `aws s3 sync … --delete` removes old content-hashed bundles the instant new ones land, so a browser/CDN still holding the previous `index.html` 404s its bundle on reload → blank app, plus a `/*` invalidation cold-cache spike and no immutable caching. Three independently-shippable slices: frontend zero-downtime deploy — two-pass upload (immutable hashed assets, no `--delete`; `index.html` `no-cache`), entry-point-only invalidation, S3 lifecycle GC (26-A, the only current-downtime fix); a `vite:preloadError` chunk-load-error reload safety net (26-B); and a backend CodeDeploy canary wired to the existing error-rate + latency alarms for auto-rollback (26-C). Frontend-first, and **before or with Phase 19-I** — lazy-loading over today's `--delete` strategy escalates the reload-404 into a mid-session crash. Graduated from the "Zero-downtime deployments" item in `technical-improvements.md`.
+
+**Goal:** a deploy never breaks a live user; learn immutable-asset caching vs `--delete`, CloudFront invalidation scoping, S3 lifecycle GC, Vite `vite:preloadError` recovery, and CodeDeploy canary traffic shifting with alarm-based auto-rollback on a Lambda alias.
+
+**Outcome:** 26-A + 26-B shipped (the frontend zero-downtime fix — the real user-facing break — plus the chunk-load safety net). 26-C (backend canary) shipped then was **reverted same-day**: the canary added ~5 min to every backend deploy and serialised the deploy queue, a cost not worth its rarely-exercised rollback protection on a single-user app (see `docs/learnings/deploy-time-is-a-first-class-cost.md`).
+
+Slices and acceptance criteria: [docs/phases/phase-26.md](phases/phase-26.md)
+
+---
+
+## Phase 27 — Split the API Lambda: CQRS write/read split + async projectors _(Not Started)_
+
+The backend runs as one `ApiFunction` Lambda that serves every route and updates all read models **synchronously inline in the command handler** (`NoteCommandHandler.UpdateProjectionAsync`) before the HTTP response returns — so projection-building is welded to the write request, one IAM role grants read/write across ~13 tables, and read/write traffic share one cold-start profile. This phase implements **Stage 1 of [ADR 0009](adr/0009-split-lambdas-cqrs-async-projectors.md)**: move projection-building **off the request path onto a DynamoDB Stream** (a **Projector Lambda**) and split the HTTP surface into a **Command Lambda** (append-only, event-store IAM) and a **Query Lambda** (reads, projection-read-only IAM) — the 3-Lambda CQRS shape. The headline trade-off is accepted: **read-after-write becomes eventually consistent** (projector lags the write by stream latency, typically <1s; the frontend's optimistic updates already insulate the user, and server-side read-after-append tests move to bounded polling). Four slices: extract a shared idempotent `ProjectionUpdater` (27-A, behaviour-neutral seam); enable the stream + a Projector Lambda in **shadow** alongside the still-inline writes, with DLQ + lag/failure alarms (27-B); **cut over** to async by removing the inline updates and moving read-after-write tests to retry (27-C, the keystone consistency flip); and **split the Lambda** into Command + Query functions with least-privilege per-function IAM (27-D). Async projection failure is invisible by construction, so the `observability` skill is wired **in 27-B**, not as a follow-up. **Stage 2** (per-context command Lambdas) and **stream-replay rebuild** are explicitly out of scope. Graduated from the "Split the single API Lambda" item in `technical-improvements.md`.
+
+**Goal:** the defining event-sourcing deployment lesson — an append-only log with decoupled, replayable async consumers — DynamoDB Streams as the fan-out transport, projector idempotency and replay-safety, eventual consistency and the read-after-write tests it breaks, async failure handling (DLQ + alarm), per-function least-privilege IAM, and per-method API Gateway routing to split integrations.
+
+Slices and acceptance criteria: [docs/phases/phase-27.md](phases/phase-27.md)
+
+---
+
 ## Standing tracks and planning docs
 
 Alongside the numbered phases above, work is tracked in five standing docs. The roadmap summarises them; each doc owns its content.

@@ -38,7 +38,7 @@ const renderApp = () =>
 
 beforeEach(() => {
   window.history.replaceState({}, '', '/')
-  server.use(http.get('/api/notes/cards', () => HttpResponse.json({ cards: [oneCard] })))
+  server.use(http.get('/api/w/:wsId/notes/cards', () => HttpResponse.json({ cards: [oneCard] })))
 })
 
 afterEach(() => clearToken())
@@ -48,7 +48,7 @@ describe('Routing (21-A)', () => {
     renderApp()
     await userEvent.click(await screen.findByTestId('note-card'))
     expect(await screen.findByTestId('note-title-input')).toBeInTheDocument()
-    expect(window.location.pathname).toBe('/notes/note-1')
+    expect(window.location.pathname).toBe('/w/__default__/notes/note-1')
   })
 
   it('Back returns to the home screen', async () => {
@@ -58,7 +58,7 @@ describe('Routing (21-A)', () => {
 
     window.history.back()
 
-    await waitFor(() => expect(window.location.pathname).toBe('/'))
+    await waitFor(() => expect(window.location.pathname).toBe('/w/__default__'))
     expect(await screen.findByRole('heading', { name: 'Home' })).toBeInTheDocument()
   })
 
@@ -67,35 +67,35 @@ describe('Routing (21-A)', () => {
     await userEvent.click(await screen.findByTestId('note-card'))
     await screen.findByTestId('note-title-input')
     window.history.back()
-    await waitFor(() => expect(window.location.pathname).toBe('/'))
+    await waitFor(() => expect(window.location.pathname).toBe('/w/__default__'))
 
     window.history.forward()
 
-    await waitFor(() => expect(window.location.pathname).toBe('/notes/note-1'))
+    await waitFor(() => expect(window.location.pathname).toBe('/w/__default__/notes/note-1'))
     expect(await screen.findByTestId('note-title-input')).toBeInTheDocument()
   })
 
   it('deep-linking /notes/:id loads the note directly', async () => {
-    window.history.replaceState({}, '', '/notes/note-1')
+    window.history.replaceState({}, '', '/w/__default__/notes/note-1')
     renderApp()
     expect(await screen.findByTestId('note-title-input')).toBeInTheDocument()
-    expect(window.location.pathname).toBe('/notes/note-1')
+    expect(window.location.pathname).toBe('/w/__default__/notes/note-1')
   })
 
   it('in-app Back from a cold deep-link falls back to home', async () => {
-    window.history.replaceState({}, '', '/notes/note-1')
+    window.history.replaceState({}, '', '/w/__default__/notes/note-1')
     renderApp()
     // A blank note shows Cancel, which calls onBack; there is no in-app history
     // entry behind a cold deep-link, so the handler must fall back to "/".
     await userEvent.click(await screen.findByTestId('cancel-button'))
-    await waitFor(() => expect(window.location.pathname).toBe('/'))
+    await waitFor(() => expect(window.location.pathname).toBe('/w/__default__'))
     expect(await screen.findByRole('heading', { name: 'Home' })).toBeInTheDocument()
   })
 
   it('creating a note navigates to it and Back does not recreate it', async () => {
     let creates = 0
     server.use(
-      http.post('/api/notes', () => {
+      http.post('/api/w/:wsId/notes', () => {
         creates += 1
         return HttpResponse.json({ noteId: 'created-1' })
       }),
@@ -106,12 +106,12 @@ describe('Routing (21-A)', () => {
     const main = screen.getByRole('main')
     await userEvent.click(within(main).getByRole('button', { name: 'New Note' }))
 
-    await waitFor(() => expect(window.location.pathname).toBe('/notes/created-1'))
+    await waitFor(() => expect(window.location.pathname).toBe('/w/__default__/notes/created-1'))
     expect(creates).toBe(1)
 
     window.history.back()
 
-    await waitFor(() => expect(window.location.pathname).toBe('/'))
+    await waitFor(() => expect(window.location.pathname).toBe('/w/__default__'))
     expect(creates).toBe(1)
   })
 })

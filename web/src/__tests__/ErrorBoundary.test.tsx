@@ -32,6 +32,22 @@ describe('ErrorBoundary', () => {
     expect(consoleErrorSpy).toHaveBeenCalled()
   })
 
+  it('renders the recoverable fallback when a dynamic-import chunk fails to load', () => {
+    function ChunkBoom(): never {
+      // Mirrors the error React surfaces when a React.lazy import 404s after a deploy.
+      throw new Error('Failed to fetch dynamically imported module: /assets/Page-abc123.js')
+    }
+
+    render(
+      <ErrorBoundary>
+        <ChunkBoom />
+      </ErrorBoundary>,
+    )
+
+    expect(screen.getByRole('alert')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Reload' })).toBeInTheDocument()
+  })
+
   it('renders children normally when nothing throws', () => {
     render(
       <ErrorBoundary>

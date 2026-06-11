@@ -25,24 +25,24 @@ afterEach(() => {
 
 describe('DeepLinkEdges (21-C)', () => {
   it('deep-linking a missing note redirects home with a toast', async () => {
-    server.use(http.get('/api/notes/:noteId', () => new HttpResponse(null, { status: 404 })))
-    window.history.replaceState({}, '', '/notes/ghost')
+    server.use(http.get('/api/w/:wsId/notes/:noteId', () => new HttpResponse(null, { status: 404 })))
+    window.history.replaceState({}, '', '/w/__default__/notes/ghost')
 
     renderApp()
 
-    await waitFor(() => expect(window.location.pathname).toBe('/'))
+    await waitFor(() => expect(window.location.pathname).toBe('/w/__default__'))
     expect(await screen.findByRole('alert')).toHaveTextContent(/no longer exists/i)
   })
 
   it('restores the requested deep-link after sign-in', async () => {
     // Simulates the OAuth round-trip: signIn() stashed the path, the callback
     // lands on "/", and the gate restores the stashed destination once authed.
-    sessionStorage.setItem('postLoginRedirect', '/notes/note-1')
+    sessionStorage.setItem('postLoginRedirect', '/w/__default__/notes/note-1')
     window.history.replaceState({}, '', '/')
 
     renderApp()
 
-    await waitFor(() => expect(window.location.pathname).toBe('/notes/note-1'))
+    await waitFor(() => expect(window.location.pathname).toBe('/w/__default__/notes/note-1'))
     expect(await screen.findByTestId('note-title-input')).toBeInTheDocument()
   })
 })

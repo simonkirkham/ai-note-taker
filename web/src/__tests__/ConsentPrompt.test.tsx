@@ -129,7 +129,7 @@ describe('refresh-established flag lifecycle (BUG-16)', () => {
     // and obtains a fresh refresh token (otherwise the session loops at ~1h).
     markRefreshEstablished()
     vi.mocked(silentRefreshMod.attemptSilentRefresh).mockResolvedValue(null)
-    server.use(http.get('/api/notes/cards', () => new HttpResponse(null, { status: 401 })))
+    server.use(http.get('/api/w/:wsId/notes/cards', () => new HttpResponse(null, { status: 401 })))
     setToken('test-token')
 
     render(<AuthProvider initialToken="test-token"><App /></AuthProvider>)

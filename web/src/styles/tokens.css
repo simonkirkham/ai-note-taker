@@ -24,6 +24,10 @@
   --color-error-border: #FCA5A5;
   --color-banner:       #1E40AF;
   --color-banner-text:  #FFFFFF;
+  /* Overlay controls sit on arbitrary image content — theme-independent (dark
+     scrim, light glyph) so they stay legible under every theme. */
+  --color-overlay-scrim: rgba(0, 0, 0, 0.55);
+  --color-on-overlay:    #FFFFFF;
   --radius:             6px;
   --transition:         150ms ease;
   --space-1:            4px;

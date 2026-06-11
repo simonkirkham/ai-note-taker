@@ -63,7 +63,7 @@ export default function QuickCaptureTodoInput({ onAdded, onConfirmed, onFailed }
       <button onClick={submit} disabled={submitting} aria-label="Add to-do">
         Add
       </button>
-      {error && <p className={styles.quickCaptureError}>{error}</p>}
+      {error && <p className={styles.quickCaptureError} role="alert">{error}</p>}
     </div>
   );
 }

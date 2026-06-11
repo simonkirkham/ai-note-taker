@@ -15,7 +15,7 @@ afterEach(() => clearToken())
 
 beforeEach(() => {
   // Persistent override (not one-shot); reset happens in global afterEach via server.resetHandlers()
-  server.use(http.get('/api/folders', () => HttpResponse.json({ folders: [folder] })))
+  server.use(http.get('/api/w/:wsId/folders', () => HttpResponse.json({ folders: [folder] })))
 })
 
 describe('FolderNavigation', () => {

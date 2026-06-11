@@ -131,7 +131,7 @@ describe('401 response', () => {
 
   it('shows the session-expired banner when the API returns 401', async () => {
     server.use(
-      http.get('/api/notes/cards', () => new HttpResponse(null, { status: 401 })),
+      http.get('/api/w/:wsId/notes/cards', () => new HttpResponse(null, { status: 401 })),
     )
     setToken('test-token') // ensure the 401 guard in api.ts fires
 
@@ -162,7 +162,7 @@ describe('cold load token seeding', () => {
     let captured = false
     let firstAuth: string | null = null
     server.use(
-      http.get('/api/notes/cards', ({ request }) => {
+      http.get('/api/w/:wsId/notes/cards', ({ request }) => {
         if (!captured) {
           captured = true
           firstAuth = request.headers.get('authorization')

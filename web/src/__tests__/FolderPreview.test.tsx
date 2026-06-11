@@ -43,7 +43,7 @@ describe('FolderPreviewPanel', () => {
         onEditNote={noop}
       />,
     )
-    expect(screen.getByText('No notes in this folder')).toBeInTheDocument()
+    expect(screen.getByText('No notes in this folder')).toHaveAttribute('role', 'status') // 19-F1
   })
 
   it('shows only unfiled notes when opened with UNFILED_ID', () => {

@@ -94,6 +94,7 @@ cdk deploy
 
 ## Guardrails
 
+- **Deploy time is a first-class cost — flag it before merge; never silently slow deploys.** Deploys are a bottleneck, and a change that adds *per-deploy* time taxes every future change. Any change touching the deploy path (CI workflow, CDK that alters update behaviour, alias/traffic-shifting, bake windows, build steps) must state its deploy-time delta (faster / neutral / +N min, one-off vs recurring) in the PR and phase doc, and Hawk reviews it as a named check. A recurring per-deploy cost needs an explicit accept, not a silent introduction — and anything that holds the CloudFormation stack lock longer also serialises concurrent deploys into "another update in progress" failures. Match resilience cost to scale: traffic-shifting/canary bakes pay off only with real concurrent traffic (Phase 26-C's canary added ~5 min to every backend deploy for protection a single-user app rarely exercised — shipped then reverted same-day; see `docs/learnings/deploy-time-is-a-first-class-cost.md`).
 - Never write directly to DynamoDB outside `src/EventStore/`.
 - Never bypass the event store to mutate aggregate state.
 - Never commit without all BDD specs green and `cdk synth` succeeding.

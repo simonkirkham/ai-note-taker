@@ -7,7 +7,41 @@ For the other tracks see:
 - **Bugs** → [docs/phases/phase-bugs.md](phases/phase-bugs.md)
 - **Minor tweaks & changes** → [docs/phases/phase-minor-changes.md](phases/phase-minor-changes.md)
 
-Each entry records what it is, why it matters, where it was raised, and any dependency. When an item is actioned, mark it Done or remove it.
+Each entry records what it is, why it matters, where it was raised, and any dependency. **The Summary table below is the at-a-glance index — scan its Status column for what's outstanding, and keep that cell in sync when an item is actioned** (the detailed section for each item carries the full status + history).
+
+## Summary
+
+Status key: 🔲 **Open** · 🟡 **Partly done / mitigated** · ✅ **Done** (graduated to a phase, or actioned in place). Outstanding work is every 🔲 and 🟡 row.
+
+| Item | Status |
+|------|--------|
+| Decide on a server-state library (TanStack/SWR) vs hand-rolled | ✅ Done — ADR 0010 (stay hand-rolled) |
+| Stricter TypeScript compiler flags beyond `strict` | ✅ Done — → Phase 19 (19-B/19-C) |
+| Frontend state-management hygiene — colocation + Context perf | 🟡 Partly — Context perf done (19-D); **colocation Open** (ongoing convention) |
+| Core Web Vitals — bundle budget + CLS + transitions | ✅ Done — → Phase 19 (19-I) |
+| Network resilience — retry transient failures with backoff | ✅ Done — 20-G |
+| XSS hardening — allowlist URL schemes on `href`/`src` | ✅ Done — → Phase 19 |
+| ESLint `jsx-a11y` + `import` rules + `@/` alias | 🔲 **Open** — jsx-a11y blocked on ESLint 10 |
+| Migrate `App.css` to CSS Modules | ✅ Done — 14-P |
+| Upgrade GitHub Actions to Node.js 24 | ✅ Done |
+| Resolve ESLint warnings in `AuthContext.tsx` | ✅ Done — #172 |
+| Add `cdk synth` to the pre-commit hook | ✅ Done — #208 |
+| Split the single API Lambda (CQRS + async projectors) | ✅ Done — → Phase 27 (Stage 1) |
+| Reduce Lambda SnapStart costs | ✅ Done |
+| Break down the monolithic `App.css` | ✅ Done — 14-P (merged into the CSS-Modules migration) |
+| Add a shared modal focus-trap utility | ✅ Done — #211 |
+| Make the projection-rebuild endpoint robust | ✅ Done — → Phase 24 |
+| Auto-backfill a new projection on deploy | 🔲 **Open** — unblocked now P24 is done; pairs with Phase 23 |
+| Rebuild emits delete tombstones for `NoteSearchView` | 🔲 **Open** — likely addressed by 24-B; **verify + close** |
+| Stabilise the flaky `TagsJourney` E2E | ✅ Done — BUG-17 |
+| `WorkspaceList` reads via full table Scan, not a per-user GSI | 🔲 **Open** — fold into Phase 23 |
+| CI pipeline hygiene — skip no-op deploys, cancel superseded, cache Playwright | ✅ Done |
+| Generalise append-retry-on-conflict beyond `NoteCommandHandler` | 🔲 **Open** — only if a 2nd handler needs it |
+| `deploy-production` hangs at "Configure AWS credentials" | 🟡 Mitigated — `timeout-minutes` shipped (#222); **root cause Open** |
+| Add a `NoteEditor` component test for the image-ordering invariant | 🔲 **Open** — guards the 25-B regression below the E2E gate |
+| Zero-downtime deployments — frontend stale-chunk 404s; backend canary/rollback | ✅ Done — → Phase 26 |
+
+**Outstanding (6 Open + 2 Partly):** ESLint `jsx-a11y`; Auto-backfill projection on deploy; `NoteSearchView` tombstones (verify/close); `WorkspaceList` GSI; Generalise append-retry; `NoteEditor` ordering test; *(partly)* state-mgmt colocation; deploy-credentials root cause.
 
 ---
 
@@ -112,6 +146,8 @@ Each entry records what it is, why it matters, where it was raised, and any depe
 ---
 
 ## Split the single API Lambda into individual Lambdas (CQRS + async projectors)
+
+**Graduated → [Phase 27](phases/phase-27.md)** (Stage 1 — CQRS write/read split + async projectors). Four slices: extract a shared idempotent `ProjectionUpdater` (27-A), enable a DynamoDB Stream + Projector Lambda in shadow with DLQ/alarms (27-B), cut over to async + move read-after-write tests to polling (27-C), split the HTTP Lambda into Command + Query functions with least-privilege IAM (27-D). **Stage 2** (per-context command Lambdas) and stream-replay rebuild stay out of scope; pick them up as follow-ons. Original entry kept below for context.
 
 **What:** The backend currently runs as one `ApiFunction` Lambda (ASP.NET minimal API behind an HTTP API proxy) that handles every route and updates all projections **synchronously in-process, inline in the command handlers** (e.g. `NoteCommandHandler.UpdateProjectionAsync`) before returning the HTTP response. Move to a deployment shape that matches an event-sourced system, in two stages:
 
@@ -288,11 +324,13 @@ BUG-17 (PR #217) added a bounded retry-on-`ConcurrencyException` (re-read→re-r
 
 ## `deploy-production` hangs at "Configure AWS credentials"
 
-The `deploy-production` job in `deploy.yml` intermittently (~half of deploys during Phase 25) **hangs at the `Configure AWS credentials` step** — a normally-seconds-long OIDC `sts:AssumeRole` — for 30+ minutes with no progress and no error, before any Lambda/CDK deploy starts. `deploy-test` (same OIDC pattern) and other deploys succeed, so it's intermittent, not a broken role/trust. The only recovery found is `gh run cancel <id> && gh run rerun <id>`, which clears it on a fresh runner. It silently stalls every affected deploy (and any slice gated on a green main) until a human notices.
+**Mitigated 2026-06-11** — added `timeout-minutes: 5` to the `Configure AWS credentials` step in **both** deploy jobs (`deploy-test` + `deploy-production`). A silent 30+ min hang now fails fast and is recovered by a rerun, so it no longer blocks a green main indefinitely. Root cause still **unconfirmed** (capture the step log next time it hangs); a version bump or step-level retry remains a possible follow-up.
 
-**Why it matters:** each hang costs ~30 min of dead wall-clock and blocks the merge→deploy→merge loop for parallel slices; it bit 25-A/B/C deploys repeatedly. **Fix candidates:** pin `aws-actions/configure-aws-credentials` to a newer version; add a short `timeout-minutes` to the step (so it fails fast and a retry kicks in) plus a step-level retry; or investigate runner/OIDC-endpoint flakiness. At minimum, a tight `timeout-minutes` on that step would convert a 30-min silent hang into a fast, auto-retryable failure.
+The `deploy-production` job in `deploy.yml` intermittently (~half of deploys during Phase 25) **hung at the `Configure AWS credentials` step** for 30+ minutes with no progress and no error, before any Lambda/CDK deploy started. The step uses `aws-actions/configure-aws-credentials@v6` with **static access keys** (`AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY`) — so the hang is the action validating those keys via `sts:GetCallerIdentity`, stalling on a transient STS/network blip (not OIDC `AssumeRole`, and not a broken role/trust — other deploys with the same secrets succeed). The only recovery found before the timeout was `gh run cancel <id> && gh run rerun <id>`, which clears it on a fresh runner.
 
-**Raised in:** Phase 25 pipeline (repeated deploy hangs), 2026-06-11.
+**Why it mattered:** each hang cost ~30 min of dead wall-clock and blocked the merge→deploy→merge loop for parallel slices; it bit 25-A/B/C deploys repeatedly. **Remaining follow-ups (optional):** pin/bump `aws-actions/configure-aws-credentials`; add a step-level retry so it self-heals without a manual rerun; or root-cause the STS-endpoint flakiness from a captured step log.
+
+**Raised in:** Phase 25 pipeline (repeated deploy hangs), 2026-06-11. **Actioned (timeout):** same day.
 **Depends on:** —
 
 ---
@@ -305,3 +343,9 @@ Phase 25-B shipped (then fixed) an **ordering bug** that every unit test passed 
 
 **Raised in:** Hawk review of PR #220 (25-B presign-first fix), 2026-06-11.
 **Depends on:** —
+
+---
+
+## Zero-downtime deployments — frontend stale-chunk 404s; backend has no canary/rollback
+
+**Graduated → [Phase 26](phases/phase-26.md).** A `cdk deploy` is not fully zero-downtime. The backend alias flip is seamless (API Gateway routes to the `live` alias, SnapStart avoids cold starts) but is an instant 100% cutover with no canary or automated rollback. The real gap is the **frontend deploy job** (`deploy.yml:200`–`204`): `aws s3 sync … --delete` removes old content-hashed bundles the instant new ones land → a browser/CDN still holding the previous `index.html` 404s its bundle on reload → **blank app**; plus a `/*` invalidation cold-cache spike and no immutable caching. Severity rises the moment **[19-I](phases/phase-19.md)** ships dynamic imports over the `--delete` strategy (reload-404 → mid-session crash). Broken into **26-A** (frontend two-pass upload, no `--delete`, immutable hashed assets, entry-point-only invalidation, S3 lifecycle GC — the only current-downtime fix, do first and before/with 19-I), **26-B** (`vite:preloadError` reload safety net), and **26-C** (backend CodeDeploy canary wired to the existing error-rate + latency alarms for auto-rollback). Full GWT scenarios and acceptance criteria in the phase doc.

@@ -25,9 +25,9 @@ export default function TranscriptTab({
             {transcript}
           </p>
         ) : isRecording ? (
-          <p className={styles.placeholder}>Listening…</p>
+          <p className={styles.placeholder} role="status">Listening…</p>
         ) : (
-          <p className={styles.placeholder} data-testid="transcript-empty">
+          <p className={styles.placeholder} data-testid="transcript-empty" role="status">
             No transcript yet. Press Record to start transcribing.
           </p>
         )}

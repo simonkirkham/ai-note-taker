@@ -159,7 +159,9 @@ describe('NoteView', () => {
       http.get('/api/notes/:noteId', () => new HttpResponse(null, { status: 404 })),
     )
     renderNoteView()
-    expect(await screen.findByTestId('note-not-found')).toBeInTheDocument()
+    const notFound = await screen.findByTestId('note-not-found')
+    expect(notFound).toBeInTheDocument()
+    expect(notFound).toHaveAttribute('role', 'alert') // 19-F1
   })
 
   it('title input receives focus after note detail loads', async () => {

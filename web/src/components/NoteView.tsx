@@ -280,7 +280,7 @@ export default function NoteView({
         <button data-testid="back-button" onClick={onBack} className={styles.backButton}>
           ← Back
         </button>
-        <p data-testid="note-not-found" className="empty">Note not found.</p>
+        <p data-testid="note-not-found" className="empty" role="alert">Note not found.</p>
       </main>
     );
   }
@@ -492,7 +492,7 @@ export default function NoteView({
                 <ShortcutsPanel />
               </div>
               {loadingDetail ? (
-                <p data-testid="note-loading" className="loading">Loading…</p>
+                <p data-testid="note-loading" className="loading" role="status">Loading…</p>
               ) : (
                 <NoteEditor
                   key={noteId}

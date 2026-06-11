@@ -100,6 +100,18 @@ describe('TodoSection — quick add', () => {
     await waitFor(() => expect(screen.queryByText('Call dentist')).not.toBeInTheDocument())
   })
 
+  it('announces an add failure as an alert (19-F1)', async () => {
+    server.use(
+      http.get('/api/todos', () => HttpResponse.json({ items: [] })),
+      http.post('/api/todos', () => new HttpResponse(null, { status: 500 })),
+    )
+    render(<TodoSection />)
+    const input = await screen.findByPlaceholderText(/add a to-do/i)
+    await userEvent.type(input, 'Call dentist{Enter}')
+    const alert = await screen.findByRole('alert')
+    expect(alert).toHaveTextContent(/failed to add to-do/i)
+  })
+
   it('replaces temp id with server id on successful add', async () => {
     server.use(
       http.get('/api/todos', () => HttpResponse.json({ items: [] })),

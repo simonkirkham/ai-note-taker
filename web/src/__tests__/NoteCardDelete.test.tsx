@@ -93,8 +93,8 @@ describe('NoteCard — delete from the home list (App integration)', () => {
   it('confirming calls DELETE /notes/:noteId via the parent mutation', async () => {
     let called = false
     server.use(
-      http.get('/api/notes/cards', () => HttpResponse.json({ cards: [card] })),
-      http.delete('/api/notes/note-1', () => {
+      http.get('/api/w/:wsId/notes/cards', () => HttpResponse.json({ cards: [card] })),
+      http.delete('/api/w/:wsId/notes/note-1', () => {
         called = true
         return new HttpResponse(null, { status: 204 })
       }),

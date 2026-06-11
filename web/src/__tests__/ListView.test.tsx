@@ -71,6 +71,13 @@ function cardTitlesInOrder(): string[] {
 }
 
 describe('ListView — home today/older date filter', () => {
+  it('announces a create-note failure as an alert (19-F1)', () => {
+    renderHome([], { createError: 'Could not create note. Please try again.' })
+    expect(screen.getByRole('alert')).toHaveTextContent(
+      'Could not create note. Please try again.',
+    )
+  })
+
   it('shows today’s notes by default and hides last week’s', () => {
     renderHome([
       makeCard({ noteId: 't', title: 'Today note', date: plusDays(0) }),

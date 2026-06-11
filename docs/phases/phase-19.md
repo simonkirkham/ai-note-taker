@@ -11,12 +11,14 @@
 | 19-C | **Stricter index/optional TS flags.** `noUncheckedIndexedAccess` then `exactOptionalPropertyTypes`, staged with backlog clear | Not Started | 19-B |
 | 19-D | **Context provider performance.** Memoise `AuthContext`/`ToastContext` provider values; `useCallback` the Auth actions; optional Auth state/actions split | Done | — |
 | 19-E | **Effect hygiene.** Add out-of-order guards to 3 mount-only fetches; replace 3 notify-parent-in-effect patterns | Not Started | — |
-| 19-F | **Accessibility: live regions + focus.** `aria-live`/`role` on ~10 transient surfaces; 6 `:focus`→`:focus-visible`; focus management for 3 dialog/popover surfaces | Not Started | — |
+| 19-F1 | **Accessibility: live regions.** `role="alert"`/`role="status"` on the ~15 transient surfaces (errors/loading/empty) that lack one; high value = the silent mutation-failure errors | Done | — |
+| 19-F2 | **Accessibility: focus + `:focus-visible`.** 6 bare `:focus`→`:focus-visible`; Esc-to-close on `SessionExpiredBanner` (pass `onClose` to its existing `useFocusTrap`); tidy `MeetingPicker`'s redundant Esc handler | Not Started | — |
+| 19-F3 | **Adopt `eslint-plugin-jsx-a11y`.** Add the plugin's `recommended` ruleset to `web/eslint.config.js`, clear the backlog, gate in CI — standing guard for a11y regressions (graduated from `technical-improvements.md`) | Not Started | — |
 | 19-G | **Test quality.** Migrate testid-heavy unit tests to role/label queries; convert remaining `fireEvent` to `userEvent` | Not Started | — |
 | 19-H | **Network resilience.** Exponential-backoff retry (5xx/429/network) for idempotent requests in `apiFetch` | Done (shipped in 20-G) | 19-A |
 | 19-I1 | **Lazy-load + CLS.** `React.lazy` Tiptap + dynamic-import transcribe SDK; reserved-dimension fallbacks; lazy-chunk error boundary + RUM event | Not Started | 26-A |
 | 19-I2 | **CI bundle-size gate.** `size-limit` budget on the entry chunk in the `frontend` CI job | Not Started | — |
-| 19-I3 | **Non-urgent transitions.** `useDeferredValue` on ListView search/filter so the input stays responsive | Not Started | — |
+| 19-I3 | **Non-urgent transitions.** `useDeferredValue` on ListView search/filter so the input stays responsive | Done | — |
 | 19-J | **URL-scheme hardening.** Configure Tiptap `Link` explicitly — allowlist `http`/`https`/`mailto`, reject `javascript:`/`data:`/`vbscript:`, add `rel="noopener noreferrer nofollow"` | Not Started | — |
 | 19-K | **Adopt TanStack Query (server-state migration)** — **graduated to its own phase: [Phase 20](phase-20.md)** (7 slices, gated on reversing [ADR 0010](../adr/0010-server-state-strategy.md)). Too large for one slice. | Moved → P20 | — |
 
@@ -120,8 +122,9 @@ Scenario: Behaviour is unchanged after the split
 - Observability: the gate is the build-time regression signal, complementary to RUM's runtime field signal.
 - Key files: `web/package.json`, `.github/workflows/pr.yml` (`frontend` job, ~`:100-102`).
 
-### 19-I3 — Non-urgent transitions (ListView) — independent
+### 19-I3 — Non-urgent transitions (ListView) — independent — **Done (PR #221)**
 
+- ✅ Shipped: `useDeferredValue` on `query` feeds `useNoteSearch` and the filtered-card memos in `ListView.tsx` (`:70`); the `SearchBar` input updates immediately while the list re-derives off the deferred value.
 - Scenario: with a long list, typing in search / toggling filters keeps the input responsive while the list re-derives.
 - Acceptance criteria: `useDeferredValue` (or `useTransition`) on `query` feeding `useNoteSearch` and the `filteredCards`/`homeCards` memos in `ListView.tsx` (the one real heavy-filtered-list spot); the `SearchBar` input value updates immediately. Optimistic-UI: N/A.
 - Sequencing: `ListView.tsx` is also touched by **23-D** (workspace routing / query keys) — sequence to avoid a collision if 23-D is in flight.
@@ -157,11 +160,89 @@ Each lists the finding, locations, value tier, and effort. Specs are written per
 - **YMNNAE — drop notify-parent-in-effect:** `RecordControl.tsx:39` & `:43` (notify parent of status/transcript in an effect), `ActionsSection.tsx:27` (push derived count to parent). Notify at the source / lift state instead.
 - **Effort:** medium (the YMNNAE pieces touch hook↔parent contracts).
 
-### 19-F — Accessibility: live regions + focus — **value: high**
-- **`aria-live` gaps (~10 transient surfaces with no live region):** `ListView.tsx:133-136` (create-note error), `:138` (loading), `:238-240` (empty); `MeetingsSection.tsx:261` (loading), `:265-270` (unavailable), `:310-313` (per-meeting create error), `:273-277` (empty); `NoteView.tsx:327` (loading), `:194` (not found); `FinalNotesView.tsx:50-51` (empty); `ActionsSection.tsx:90` (empty); `FolderPreviewPanel.tsx:69` (empty). Errors → `role="alert"`, status/empty → `role="status"`. Highest value: the silent **mutation-failure** errors (ListView create, MeetingsSection create).
-- **`:focus`→`:focus-visible` (6):** `ActionsSection.module.css:68`, `FolderPicker.module.css:31`, `NoteEditor.module.css:22`, `NoteView.module.css:191`, `QuickCaptureTodoInput.module.css:23`, `TagsSection.module.css:71`.
-- **Dialog focus management (3 gaps):** `SessionExpiredBanner.tsx` declares `role="dialog" aria-modal` but moves no focus / no trap / no Esc / no restore (highest priority); `ShortcutsPanel.tsx` and `ListView.tsx:175-198` (CollapsibleFilters) never move focus in / restore.
-- **Effort:** medium. Could sub-split into 19-F1 live-regions (high) and 19-F2 focus management (medium).
+### 19-F1 — Accessibility: live regions — **value: high**
+
+**Status:** Done (PR #229, deploy #518, 2026-06-11)
+
+**Intent:** Make currently-silent transient surfaces audible to assistive tech. Errors get `role="alert"` (assertive); loading/empty/status get `role="status"` (polite). Highest value: the **silent mutation-failure** errors a screen-reader user gets no feedback on today (create-note, per-meeting create, add-todo).
+
+**Ground-truth gaps (re-audited 2026-06-11 — several 2026-06-05 surfaces already fixed):**
+
+| File | Surface | Type | Role to add |
+|---|---|---|---|
+| `ListView.tsx` | create-note error | error | `alert` |
+| `ListView.tsx` | loading (folder/home) | loading | `status` |
+| `ListView.tsx` | empty (home notes) | empty | `status` |
+| `MeetingsSection.tsx` | loading | loading | `status` |
+| `MeetingsSection.tsx` | calendar unavailable | error | `alert` |
+| `MeetingsSection.tsx` | empty (no meetings) | empty | `status` |
+| `MeetingsSection.tsx` | per-meeting create error | error | `alert` |
+| `NoteView.tsx` | not found | error | `alert` |
+| `NoteView.tsx` | loading (detail) | loading | `status` |
+| `FinalNotesView.tsx` | empty (no final notes) | empty | `status` |
+| `ActionsSection.tsx` | empty | empty | `status` |
+| `FolderPreviewPanel.tsx` | empty | empty | `status` |
+| `QuickCaptureTodoInput.tsx` | add-todo error | error | `alert` |
+| `TranscriptTab.tsx` | listening status | status | `status` |
+| `TranscriptTab.tsx` | empty (no transcript) | empty | `status` |
+
+Already correct (do not touch): `ListView` search status/error/no-results, `FinalNotesView` generate error, `NoteView` no-next-occurrence, `RecordControl` errors, `ToastProvider`, `TodoSection` (section-level `aria-live`).
+
+**Scenarios (GWT):**
+- Given a create-note request fails in ListView, When the error renders, Then it carries `role="alert"`.
+- Given a per-meeting create fails in MeetingsSection, When the error renders, Then it carries `role="alert"`.
+- Given an add-todo request fails in QuickCaptureTodoInput, When the error renders, Then it carries `role="alert"`.
+- Given the calendar is unavailable, When MeetingsSection renders the message, Then it carries `role="alert"`.
+- Given a list/detail is loading or an empty state shows, When it renders, Then it carries `role="status"`.
+
+**Acceptance criteria:**
+- Every surface in the table above carries the listed role (`alert` for errors, `status` for loading/empty/status).
+- A vitest test per high-value mutation-error surface (ListView create, MeetingsSection create, QuickCaptureTodoInput add) asserts the failure node has `role="alert"`, queried via `getByRole("alert")`.
+- Loading/empty roles asserted where a test already renders that state; no test added purely to cover a static empty string.
+- No visual change; existing specs stay green; `lint` + `tsc` green.
+- Optimistic-UI: N/A (no new async mutation; only annotates existing error nodes).
+
+**Key files:** the 8 components in the table + their `__tests__`.
+
+### 19-F2 — Accessibility: focus + `:focus-visible` — **value: medium**
+
+**Intent:** Stop keyboard-focus rings showing on mouse click (use `:focus-visible`), and let Esc dismiss the session-expired dialog. Most dialog focus management is **already done** via the shared `useFocusTrap` hook (#211) — `SessionExpiredBanner`/`MeetingPicker` already move focus in, trap, and restore; `ShortcutsPanel` and ListView filters are correctly non-modal (no trap needed).
+
+**Ground-truth gaps (re-audited 2026-06-11):**
+- 6 bare `:focus` selectors: `ActionsSection.module.css:68`, `FolderPicker.module.css:31`, `NoteEditor.module.css:59`, `NoteView.module.css:275`, `QuickCaptureTodoInput.module.css:23`, `TagsSection.module.css:71`.
+- `SessionExpiredBanner.tsx` calls `useFocusTrap(ref)` **without** `onClose` → no Esc-to-close. Pass `onClose`.
+- `MeetingPicker.tsx` has a manual Esc handler (`:54-58`) redundant with the trap's `onClose`; collapse it into the trap.
+
+**Scenarios (GWT):**
+- Given the session-expired dialog is open, When the user presses Esc, Then the dialog closes (same as its dismiss action) and focus is restored.
+- Given a focusable input, When focused by mouse click, Then no focus ring shows; When focused by keyboard, Then the ring shows.
+
+**Acceptance criteria:**
+- All 6 `:focus` selectors become `:focus-visible` (the 6 files above); no other selector changed.
+- `SessionExpiredBanner` passes `onClose` to `useFocusTrap`; a vitest test asserts an Esc keydown invokes the dismiss handler.
+- `MeetingPicker`'s manual Esc handler removed in favour of the trap's `onClose`; its existing close-on-Esc test stays green.
+- Optimistic-UI: N/A (static config).
+
+**Key files:** the 6 `*.module.css`, `SessionExpiredBanner.tsx`, `MeetingPicker.tsx`, `hooks/useFocusTrap.ts` (reference), relevant `__tests__`.
+
+### 19-F3 — Adopt `eslint-plugin-jsx-a11y` — **value: medium** — graduated from `technical-improvements.md`
+
+**Intent:** Add a standing lint gate so accessibility regressions are caught in CI, not by hand. Graduates the "ESLint `jsx-a11y`" item out of `technical-improvements.md`.
+
+**Scope honesty:** `jsx-a11y` would **not** have caught 19-F1's gaps — it has no "dynamic content needs a live region" rule. It catches a *different* class: missing `alt`, label/control association, redundant roles, `no-noninteractive-element-to-interactive-role`, click-without-keyboard, anchor-is-valid. So it complements 19-F1/F2, it does not replace them. (It *will* lint the `<li role="status">` in `FolderPreviewPanel` under `no-redundant-roles` — confirm that rule's verdict and either keep with an inline disable + comment, or restructure, when the backlog is cleared.)
+
+**Scenarios (GWT):**
+- Given the jsx-a11y `recommended` ruleset is enabled, When `npm run lint` runs, Then it reports any a11y violations in `web/src`.
+- Given the existing backlog is fixed, When CI runs the `frontend` lint step, Then it passes with jsx-a11y active.
+
+**Acceptance criteria:**
+- Add `eslint-plugin-jsx-a11y` and its `recommended` (flat-config) rules to `web/eslint.config.js`.
+- Triage the surfaced backlog: fix genuine issues; for any deliberate exception (e.g. the `FolderPreviewPanel` redundant-role), use a scoped inline disable **with a one-line justification**, never a blanket rule-off.
+- `npm run lint` green locally and in CI with the plugin active.
+- Optimistic-UI: N/A (lint config).
+- Node-version guardrail: confirm `node --version` matches CI (Node 20) before committing the regenerated `package-lock.json`.
+
+**Key files:** `web/eslint.config.js`, `web/package.json` / `package-lock.json`, plus whatever components the backlog surfaces.
 
 ### 19-G — Test quality: role-first queries + userEvent — **value: low**
 - **Query priority:** suite is `getByTestId` 314 vs role/label 160. Worst (zero role/label): `RecordControl.test.tsx` (49/0), `ShortcutsPanel.test.tsx` (15/0), `FinalNotesView.test.tsx` (33/1). Migrate buttons/headings/inputs to `getByRole`/`getByLabelText`; keep `data-testid` as the **E2E** contract (unchanged — different layer).
@@ -171,7 +252,7 @@ Each lists the finding, locations, value tier, and effort. Specs are written per
 ### 19-H — Network resilience: retry + backoff — **value: medium** — depends on 19-A — **Done (shipped in 20-G)**
 - ✅ Shipped as part of Phase **20-G**, not a standalone 19 slice. `api/client.ts` `apiFetch` now retries transient failures (`res.status >= 500 || === 429`, thrown network `TypeError`) with exponential backoff + full jitter, honouring `Retry-After`, capped at 3 attempts. Scoped to safe **reads** (GET/HEAD) only — writes are optimistic-with-rollback (`mutations.retry:false`), so retrying a PUT/DELETE only delays rollback and a POST retry risks a duplicate create. Auth-retry stays outside the transient loop. Each retry `console.warn`s (the latency-masking guard below).
 
-### 19-I — Bundle / CWV — **value: medium** — ✅ **specced & split** → see **## Slice 19-I (19-I1 / 19-I2 / 19-I3)** above. 19-I2 (CI gate) + 19-I3 (ListView transition) runnable now; 19-I1 (lazy-load) depends on 26-A.
+### 19-I — Bundle / CWV — **value: medium** — ✅ **specced & split** → see **## Slice 19-I (19-I1 / 19-I2 / 19-I3)** above. 19-I3 (ListView transition) **done (PR #221)**; 19-I2 (CI gate) runnable now; 19-I1 (lazy-load) depends on 26-A.
 
 ### 19-J — URL-scheme hardening — **value: low** — ✅ **specced** → see **## Slice 19-J** above. Runnable now (no dependency).
 
