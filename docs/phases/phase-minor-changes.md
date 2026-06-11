@@ -27,6 +27,7 @@
 | CHANGE-13 | "Next occurrence" button inside a recurring-meeting note | Done | 9-F |
 | CHANGE-14 | Rename transcription "Call audio" toggle to "Record screen-share audio" | Done | — |
 | CHANGE-15 | Keyboard access for `FolderPreviewPanel` hover items — open a note via keyboard, not only mouse/drag (surfaced by the 19-F3 jsx-a11y gate; currently a justified scoped disable) | Open | — |
+| CHANGE-16 | Workspace-switcher popover overlaps the main content when open — it grows rightward past the narrow sidebar (`min-width: 16rem`, from the 23-E truncation fix). Constrain or reposition so it doesn't overlay the Notes/Home area. | Open | — |
 
 Open: CHANGE-15.
 

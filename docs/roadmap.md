@@ -289,7 +289,7 @@ Add fuzzy free-text search across all of a user's notes from a home-screen searc
 
 Slices and acceptance criteria: [docs/phases/phase-22.md](phases/phase-22.md)
 
-## Phase 23 — Workspaces _(In Progress)_
+## Phase 23 — Workspaces _(Complete)_
 
 Partition a user's content into named **workspaces** (e.g. *Work* / *Personal*) with a switcher, isolating notes, folders, tags, to-dos, and search per workspace. A second isolation dimension layered over the Phase 8 `UserId` scoping. Workspace membership is **domain state on the Note aggregate** — a new `NoteAssignedToWorkspace` event modelled on the existing `NoteFiledInFolder` pattern — so a note created in the wrong workspace can be **moved** (notes only in v1; moving clears the note's workspace-local folder). The active workspace is carried as a URL path prefix `/w/{wsId}/…` on both the SPA router and the API (route group + per-request validation). A reserved non-deletable default workspace ("Personal", id `__default__`) always exists, and all historical unassigned content **resolves to it at read time** — no event-log migration. Deleting a non-empty workspace is blocked; calendar/meetings stay global (one Google calendar per user). Seven slices: workspace aggregate + CRUD (23-A), write-path + note-read-model scoping (23-B, keystone), folder/to-do scoping + delete-if-empty (23-C), frontend routing + context (23-D), switcher + CRUD UI (23-E), move-note-to-workspace (23-F), cleanup + backfill (23-G). Graduated from the "Workspaces" future-features idea.
 

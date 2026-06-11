@@ -11,8 +11,8 @@
 | 23-C | **Scope folders + to-dos; enforce delete-if-empty.** FolderTree + TodoList gain a workspace dimension; `DeleteWorkspace` blocked when the workspace holds any active note. | Done | 23-B |
 | 23-D | **Frontend workspace routing + context.** `/w/:wsId` routes, `/`→`/w/{default}` redirect, `WorkspaceContext` from route params, api-client path injection, query keys gain `wsId`, cache reset on switch. Single (default) workspace, fully prefix-routed. | Done | 23-B |
 | 23-E | **Workspace switcher + CRUD UI** *(prototype first)*. Sidebar switcher, create/rename/delete workspace, navigate between workspaces. Multi-workspace usable end to end. | Done | 23-D |
-| 23-F | **Move a note to another workspace.** `MoveNoteToWorkspace` → `NoteAssignedToWorkspace` (+ `NoteUnfiled` if filed); re-bucket all note-derived read models; move control on note/card; optimistic removal from the current view. | In Progress | 23-B, 23-E |
-| 23-G | **Cleanup + backfill.** Remove rootless fallback routes; verify `ProjectionRebuildHandler` + `null→default`; post-deploy projection backfill; learnings. | Not Started | 23-C, 23-E, 23-F |
+| 23-F | **Move a note to another workspace.** `MoveNoteToWorkspace` → `NoteAssignedToWorkspace` (+ `NoteUnfiled` if filed); re-bucket all note-derived read models; move control on note/card; optimistic removal from the current view. | Done | 23-B, 23-E |
+| 23-G | **Cleanup + backfill.** Remove rootless fallback routes; verify `ProjectionRebuildHandler` + `null→default`; post-deploy projection backfill; learnings. | Done | 23-C, 23-E, 23-F |
 
 > **23-A** is independently shippable (no UI). **23-B is the keystone** — it sets the metadata/route-group/assignment-event conventions every later slice copies. The **rootless→default fallback** in 23-B/23-C keeps the unchanged frontend working until 23-D adopts the prefix, so each backend slice ships green. 23-D…23-F are the frontend arc.
 
