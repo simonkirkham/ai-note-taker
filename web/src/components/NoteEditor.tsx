@@ -113,24 +113,33 @@ export default function NoteEditor({ noteId, value, onChange, onBlur }: NoteEdit
   const uploadImage = useCallback(
     async (ed: Editor, file: File, previewUrl: string) => {
       try {
+        // Presign FIRST, then seed the key mapping and insert the image together, before
+        // any onChange (save) can fire. This makes the serialized content carry the stable
+        // key from the very first save — so a blur-save *during* the background PUT below
+        // neither persists a transient blob URL (data-rot) nor loses the image.
         const presign = await presignUpload(noteId, {
           contentType: file.type,
           contentLength: file.size,
         });
+        if (ed.isDestroyed) {
+          URL.revokeObjectURL(previewUrl);
+          return;
+        }
+        displaySrcToKey.current[previewUrl] = presign.key;
+        ed.chain().focus().setImage({ src: previewUrl }).run();
         const put = await fetch(presign.uploadUrl, {
           method: 'PUT',
           headers: { 'Content-Type': file.type },
           body: file,
         });
         if (!put.ok) throw new Error(`upload failed: ${put.status}`);
-        displaySrcToKey.current[previewUrl] = presign.key;
-        // Keep the object URL for display (no extra resolve round-trip); the
-        // markdown now serializes to the stable key via displaySrcToKey.
-        onChange(serialize(ed));
       } catch {
-        removeImage(ed, previewUrl);
+        delete displaySrcToKey.current[previewUrl];
         URL.revokeObjectURL(previewUrl);
-        onChange(serialize(ed));
+        if (!ed.isDestroyed) {
+          removeImage(ed, previewUrl);
+          onChange(serialize(ed));
+        }
         showError("Couldn't attach the image. Please try again.");
       }
     },
@@ -147,8 +156,9 @@ export default function NoteEditor({ noteId, value, onChange, onBlur }: NoteEdit
         showError('That image is larger than 10 MB.');
         return;
       }
+      // The node is inserted inside uploadImage, after presign seeds the key mapping —
+      // never before, so an unmapped object URL can't reach a save.
       const previewUrl = URL.createObjectURL(file);
-      ed.chain().focus().setImage({ src: previewUrl }).run();
       void uploadImage(ed, file, previewUrl);
     },
     [showError, uploadImage]
