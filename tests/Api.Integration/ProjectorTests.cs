@@ -70,6 +70,22 @@ public sealed class ProjectorTests
     }
 
     [Fact]
+    public async Task Projection_is_absent_before_processing_and_present_after()
+    {
+        var noteId = new NoteId(Guid.NewGuid());
+        await AppendAsync(noteId.ToStreamId(), new NoteCreated(noteId), new NoteRenamed(noteId, "Title"));
+
+        // The 27-C async cutover: an append does NOT build the projection — it lags until the
+        // projector runs. This is the read-after-write window the frontend's optimistic updates
+        // mask and server-side callers poll for.
+        Assert.Empty((await _titleStore.QueryAllAsync()).Items);
+
+        await NewProjector().ProcessStreamsAsync([noteId.ToStreamId()]);
+
+        Assert.Equal("Title", Assert.Single((await _titleStore.QueryAllAsync()).Items).Title);
+    }
+
+    [Fact]
     public async Task Todo_stream_projects_todo()
     {
         var todoId = new TodoId(Guid.NewGuid());

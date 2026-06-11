@@ -1,6 +1,8 @@
 # ADR 0009 — Split the single API Lambda into CQRS write/read Lambdas with async projectors
 
-**Status:** Accepted
+**Status:** Accepted · **Stage 1 in progress (Phase 27)**
+
+> **Implementation status (2026-06-11):** Stage 1 is landing as Phase 27. **27-A** extracted the shared `ProjectionUpdater` seam; **27-B** added the DynamoDB stream + async **Projector Lambda** in shadow (inline still authoritative); **27-C** removed the inline projection writes — the command handlers are now **append-only** and the projector is the sole read-model writer, so **read-after-write is eventually consistent in prod**. In-process hosts (tests + local Kestrel) use `SyncProjectingEventStore` to run the same projector synchronously, so only the deployed system is async. **27-D** (split the HTTP Lambda into Command + Query functions) is the remaining Stage-1 step. Stage 2 (per-context command Lambdas) remains deferred.
 
 ## Context
 
