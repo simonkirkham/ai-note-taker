@@ -1,6 +1,7 @@
 import '@testing-library/jest-dom'
 import { setupServer } from 'msw/node'
 import { retryConfig } from '../api/client'
+import { resetWorkspaceForTests } from '../workspace/workspaceStore'
 import { handlers } from './handlers'
 
 export const server = setupServer(...handlers)
@@ -17,5 +18,8 @@ afterEach(() => server.resetHandlers())
 // (e.g. Favicon) opt into the node environment where it is undefined.
 afterEach(() => {
   if (typeof window !== 'undefined') window.history.replaceState({}, '', '/')
+  // The active workspace is module-global state; clear it so a `/w/:wsId` set by a
+  // full-App render in one test never leaks the path prefix into the next.
+  resetWorkspaceForTests()
 })
 afterAll(() => server.close())
