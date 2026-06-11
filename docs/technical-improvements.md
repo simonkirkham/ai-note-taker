@@ -39,6 +39,7 @@ Status key: 🔲 **Open** · 🟡 **Partly done / mitigated** · ✅ **Done** (g
 | Generalise append-retry-on-conflict beyond `NoteCommandHandler` | 🔲 **Open** — only if a 2nd handler needs it |
 | `deploy-production` hangs at "Configure AWS credentials" | 🟡 Mitigated — `timeout-minutes` shipped (#222); **root cause Open** |
 | Add a `NoteEditor` component test for the image-ordering invariant | 🔲 **Open** — guards the 25-B regression below the E2E gate |
+| Zero-downtime deployments — frontend stale-chunk 404s; backend canary/rollback | ✅ Done — → Phase 26 |
 
 **Outstanding (7 Open + 2 Partly):** ESLint `jsx-a11y`; Split the API Lambda; Auto-backfill projection on deploy; `NoteSearchView` tombstones (verify/close); `WorkspaceList` GSI; Generalise append-retry; `NoteEditor` ordering test; *(partly)* state-mgmt colocation; deploy-credentials root cause.
 
@@ -340,3 +341,9 @@ Phase 25-B shipped (then fixed) an **ordering bug** that every unit test passed 
 
 **Raised in:** Hawk review of PR #220 (25-B presign-first fix), 2026-06-11.
 **Depends on:** —
+
+---
+
+## Zero-downtime deployments — frontend stale-chunk 404s; backend has no canary/rollback
+
+**Graduated → [Phase 26](phases/phase-26.md).** A `cdk deploy` is not fully zero-downtime. The backend alias flip is seamless (API Gateway routes to the `live` alias, SnapStart avoids cold starts) but is an instant 100% cutover with no canary or automated rollback. The real gap is the **frontend deploy job** (`deploy.yml:200`–`204`): `aws s3 sync … --delete` removes old content-hashed bundles the instant new ones land → a browser/CDN still holding the previous `index.html` 404s its bundle on reload → **blank app**; plus a `/*` invalidation cold-cache spike and no immutable caching. Severity rises the moment **[19-I](phases/phase-19.md)** ships dynamic imports over the `--delete` strategy (reload-404 → mid-session crash). Broken into **26-A** (frontend two-pass upload, no `--delete`, immutable hashed assets, entry-point-only invalidation, S3 lifecycle GC — the only current-downtime fix, do first and before/with 19-I), **26-B** (`vite:preloadError` reload safety net), and **26-C** (backend CodeDeploy canary wired to the existing error-rate + latency alarms for auto-rollback). Full GWT scenarios and acceptance criteria in the phase doc.
