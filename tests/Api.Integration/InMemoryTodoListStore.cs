@@ -40,6 +40,13 @@ internal sealed class InMemoryTodoListStore : ITodoListStore
         return Task.CompletedTask;
     }
 
+    public Task UpdateNoteWorkspaceAsync(NoteId noteId, string workspaceId, CancellationToken ct = default)
+    {
+        foreach (var key in _items.Where(kvp => kvp.Value.NoteId == noteId.Value.ToString()).Select(kvp => kvp.Key).ToList())
+            _items[key] = _items[key] with { WorkspaceId = workspaceId };
+        return Task.CompletedTask;
+    }
+
     public Task<TodoItem?> GetByIdAsync(string itemId, CancellationToken ct = default) =>
         Task.FromResult(_items.GetValueOrDefault(itemId));
 

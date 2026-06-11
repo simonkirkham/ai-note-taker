@@ -1,5 +1,5 @@
 import { useMutation, useQueryClient, type QueryClient } from "@tanstack/react-query";
-import { moveNoteToFolder, unfileNote } from "../api/folders";
+import { moveNoteToFolder, moveNoteToWorkspace, unfileNote } from "../api/folders";
 import { createNote, renameNote, deleteNote, type NoteCard } from "../api/notes";
 import { keys } from "../api/queryKeys";
 
@@ -72,6 +72,18 @@ export function useMoveNoteToFolder() {
       folderId ? moveNoteToFolder(noteId, folderId) : unfileNote(noteId),
     onMutate: ({ noteId, folderId }) =>
       optimistic(qc, (cards) => cards.map((c) => (c.noteId === noteId ? { ...c, folderId } : c))),
+    onError: (_e, _v, ctx) => rollback(qc, ctx),
+    onSettled: () => invalidate(qc),
+  });
+}
+
+// Moving a note to another workspace removes it from the current workspace's view —
+// optimistically drop the card, reconcile on settle.
+export function useMoveNoteToWorkspace() {
+  const qc = useQueryClient();
+  return useMutation<void, Error, { noteId: string; workspaceId: string }, Ctx>({
+    mutationFn: ({ noteId, workspaceId }) => moveNoteToWorkspace(noteId, workspaceId),
+    onMutate: ({ noteId }) => optimistic(qc, (cards) => cards.filter((c) => c.noteId !== noteId)),
     onError: (_e, _v, ctx) => rollback(qc, ctx),
     onSettled: () => invalidate(qc),
   });

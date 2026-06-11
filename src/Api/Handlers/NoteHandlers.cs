@@ -171,6 +171,24 @@ public static class NoteHandlers
         return Results.NoContent();
     }
 
+    public static async Task<IResult> MoveNoteToWorkspace(Guid noteId, MoveNoteToWorkspaceRequest req, INoteCommandHandler handler, INoteDetailStore noteDetailStore, IWorkspaceListStore workspaceListStore, ICurrentUser currentUser, CancellationToken ct)
+    {
+        var detail = await noteDetailStore.GetAsync(new NoteId(noteId));
+        if (detail is null || detail.UserId != currentUser.UserId) return Results.NotFound();
+        if (string.IsNullOrEmpty(req.WorkspaceId)) return Results.NotFound();
+        // The default workspace is synthesised per user (never stored), so it skips the
+        // ownership lookup — same rule as WorkspaceValidationFilter for the route param.
+        if (req.WorkspaceId != WorkspaceId.DefaultValue)
+        {
+            var all = await workspaceListStore.GetAllAsync(ct).ConfigureAwait(false);
+            if (!all.Any(w => w.WorkspaceId.Value == req.WorkspaceId && w.UserId == currentUser.UserId))
+                return Results.NotFound();
+        }
+        try { await handler.HandleAsync(new Domain.Notes.MoveNoteToWorkspace(new NoteId(noteId), new WorkspaceId(req.WorkspaceId)), ct); }
+        catch (NoteNotFoundException) { return Results.NotFound(); }
+        return Results.NoContent();
+    }
+
     public static async Task<IResult> UnfileNote(Guid noteId, INoteCommandHandler handler, INoteDetailStore noteDetailStore, ICurrentUser currentUser, CancellationToken ct)
     {
         var detail = await noteDetailStore.GetAsync(new NoteId(noteId));

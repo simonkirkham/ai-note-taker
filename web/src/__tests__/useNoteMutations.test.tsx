@@ -10,6 +10,7 @@ import {
   useRenameNote,
   useDeleteNote,
   useMoveNoteToFolder,
+  useMoveNoteToWorkspace,
 } from '../hooks/useNoteMutations'
 import { server } from '../test/setup'
 
@@ -77,6 +78,18 @@ describe('useNoteMutations', () => {
     await waitFor(() => expect(cards(qc)[0].folderId).toBe('f-1'))
     await act(async () => { reject() })
     await waitFor(() => expect(cards(qc)[0].folderId).toBeNull())
+  })
+
+  it('move-to-workspace optimistically removes the card and rolls back on failure (23-F)', async () => {
+    let reject!: () => void
+    server.use(http.put('/api/notes/n-1/workspace', () =>
+      new Promise<Response>((res) => { reject = () => res(new HttpResponse(null, { status: 500 }) as unknown as Response) })))
+    const { qc, wrapper } = setup()
+    const { result } = renderHook(() => useMoveNoteToWorkspace(), { wrapper })
+    act(() => { result.current.mutate({ noteId: 'n-1', workspaceId: 'ws-2' }) })
+    await waitFor(() => expect(cards(qc)).toHaveLength(0))
+    await act(async () => { reject() })
+    await waitFor(() => expect(cards(qc).map((c) => c.noteId)).toEqual(['n-1']))
   })
 
   it('deleting a folder invalidates the note-cards cache (orphan refresh — 20-B deferral)', async () => {

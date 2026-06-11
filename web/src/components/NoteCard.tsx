@@ -2,6 +2,7 @@ import { useState } from "react";
 import { NoteCard as NoteCardData } from "../api/notes";
 import Highlight from "./Highlight";
 import { PencilIcon, TrashIcon } from "./icons";
+import MoveToWorkspaceMenu from "./MoveToWorkspaceMenu";
 import styles from "./NoteCard.module.css";
 
 const FIELD_LABELS: Record<string, string> = {
@@ -16,12 +17,16 @@ export default function NoteCard({
   onDelete,
   highlight,
   matchedField,
+  otherWorkspaces,
+  onMoveToWorkspace,
 }: {
   card: NoteCardData;
   onEdit: (noteId: string) => void;
   onDelete?: () => void;
   highlight?: string[];
   matchedField?: string;
+  otherWorkspaces?: { workspaceId: string; name: string }[];
+  onMoveToWorkspace?: (noteId: string, workspaceId: string) => void;
 }) {
   const [confirming, setConfirming] = useState(false);
   // vanished prevents a flash of the card before the parent unmounts it after onDelete
@@ -105,6 +110,13 @@ export default function NoteCard({
         >
           <PencilIcon />
         </button>
+        {onMoveToWorkspace && otherWorkspaces && otherWorkspaces.length > 0 && (
+          <MoveToWorkspaceMenu
+            title={card.title}
+            workspaces={otherWorkspaces}
+            onMove={(workspaceId) => onMoveToWorkspace(card.noteId, workspaceId)}
+          />
+        )}
         {onDelete && !confirming && (
           <button
             className="icon-btn icon-btn--danger"
