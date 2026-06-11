@@ -7,8 +7,12 @@ namespace EventStore.Projections;
 public sealed class TodoListProjection
 {
     private readonly Dictionary<NoteId, string> _noteTitles = new();
-    // Action-item rows inherit their note's workspace (carried by NoteAssignedToWorkspace,
-    // ahead of any action item in stream order); standalone todos use the write's metadata.
+    // Action-item rows inherit their note's workspace (from the note's NoteAssignedToWorkspace);
+    // standalone todos use the write's metadata. On rebuild, ReadAllStreamsAsync orders by
+    // StreamId, so an `action#…` stream is replayed BEFORE its `note#…` stream — the map is
+    // empty when ActionItemAdded lands. The NoteAssignedToWorkspace arm below therefore
+    // back-fills any already-seen action rows for the note; that back-fill (not map ordering)
+    // is what makes rebuild correct, so do not remove it.
     private readonly Dictionary<string, string> _workspaceByNote = new();
     private readonly Dictionary<string, (string? NoteId, string? NoteTitle, string Type, string Description, DateTimeOffset AddedAt, DateTimeOffset? CompletedAt, string UserId, string? WorkspaceId)> _state = new();
 

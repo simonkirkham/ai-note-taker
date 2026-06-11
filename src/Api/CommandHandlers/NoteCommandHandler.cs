@@ -250,6 +250,11 @@ public sealed class NoteCommandHandler(
                     card = card with { FolderId = null, LastModifiedAt = envelope.OccurredAt };
                     break;
                 case NoteAssignedToWorkspace e when card is not null:
+                    // Only the card row is re-stamped here. Safe today because this event is
+                    // emitted only at create (no action items yet). When a move command (23-F)
+                    // re-emits it for an existing note, the live path must ALSO re-stamp the
+                    // note's TodoList action rows (the rebuild TodoListProjection already
+                    // back-fills them) — otherwise live and rebuild diverge for moved notes.
                     card = card with { WorkspaceId = e.WorkspaceId.Value };
                     break;
                 default:
