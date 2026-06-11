@@ -13,6 +13,7 @@
 | 19-E | **Effect hygiene.** Add out-of-order guards to 3 mount-only fetches; replace 3 notify-parent-in-effect patterns | Not Started | — |
 | 19-F1 | **Accessibility: live regions.** `role="alert"`/`role="status"` on the ~15 transient surfaces (errors/loading/empty) that lack one; high value = the silent mutation-failure errors | Not Started | — |
 | 19-F2 | **Accessibility: focus + `:focus-visible`.** 6 bare `:focus`→`:focus-visible`; Esc-to-close on `SessionExpiredBanner` (pass `onClose` to its existing `useFocusTrap`); tidy `MeetingPicker`'s redundant Esc handler | Not Started | — |
+| 19-F3 | **Adopt `eslint-plugin-jsx-a11y`.** Add the plugin's `recommended` ruleset to `web/eslint.config.js`, clear the backlog, gate in CI — standing guard for a11y regressions (graduated from `technical-improvements.md`) | Not Started | — |
 | 19-G | **Test quality.** Migrate testid-heavy unit tests to role/label queries; convert remaining `fireEvent` to `userEvent` | Not Started | — |
 | 19-H | **Network resilience.** Exponential-backoff retry (5xx/429/network) for idempotent requests in `apiFetch` | Done (shipped in 20-G) | 19-A |
 | 19-I1 | **Lazy-load + CLS.** `React.lazy` Tiptap + dynamic-import transcribe SDK; reserved-dimension fallbacks; lazy-chunk error boundary + RUM event | Not Started | 26-A |
@@ -221,6 +222,25 @@ Already correct (do not touch): `ListView` search status/error/no-results, `Fina
 - Optimistic-UI: N/A (static config).
 
 **Key files:** the 6 `*.module.css`, `SessionExpiredBanner.tsx`, `MeetingPicker.tsx`, `hooks/useFocusTrap.ts` (reference), relevant `__tests__`.
+
+### 19-F3 — Adopt `eslint-plugin-jsx-a11y` — **value: medium** — graduated from `technical-improvements.md`
+
+**Intent:** Add a standing lint gate so accessibility regressions are caught in CI, not by hand. Graduates the "ESLint `jsx-a11y`" item out of `technical-improvements.md`.
+
+**Scope honesty:** `jsx-a11y` would **not** have caught 19-F1's gaps — it has no "dynamic content needs a live region" rule. It catches a *different* class: missing `alt`, label/control association, redundant roles, `no-noninteractive-element-to-interactive-role`, click-without-keyboard, anchor-is-valid. So it complements 19-F1/F2, it does not replace them. (It *will* lint the `<li role="status">` in `FolderPreviewPanel` under `no-redundant-roles` — confirm that rule's verdict and either keep with an inline disable + comment, or restructure, when the backlog is cleared.)
+
+**Scenarios (GWT):**
+- Given the jsx-a11y `recommended` ruleset is enabled, When `npm run lint` runs, Then it reports any a11y violations in `web/src`.
+- Given the existing backlog is fixed, When CI runs the `frontend` lint step, Then it passes with jsx-a11y active.
+
+**Acceptance criteria:**
+- Add `eslint-plugin-jsx-a11y` and its `recommended` (flat-config) rules to `web/eslint.config.js`.
+- Triage the surfaced backlog: fix genuine issues; for any deliberate exception (e.g. the `FolderPreviewPanel` redundant-role), use a scoped inline disable **with a one-line justification**, never a blanket rule-off.
+- `npm run lint` green locally and in CI with the plugin active.
+- Optimistic-UI: N/A (lint config).
+- Node-version guardrail: confirm `node --version` matches CI (Node 20) before committing the regenerated `package-lock.json`.
+
+**Key files:** `web/eslint.config.js`, `web/package.json` / `package-lock.json`, plus whatever components the backlog surfaces.
 
 ### 19-G — Test quality: role-first queries + userEvent — **value: low**
 - **Query priority:** suite is `getByTestId` 314 vs role/label 160. Worst (zero role/label): `RecordControl.test.tsx` (49/0), `ShortcutsPanel.test.tsx` (15/0), `FinalNotesView.test.tsx` (33/1). Migrate buttons/headings/inputs to `getByRole`/`getByLabelText`; keep `data-testid` as the **E2E** contract (unchanged — different layer).
