@@ -1303,6 +1303,34 @@ public class InfraAssertionsTests
         }));
     }
 
+    // ── Web bucket asset GC (Phase 26-A) ─────────────────────────────
+    // Zero-downtime deploys stop deleting superseded hashed assets at deploy
+    // time (no more `s3 sync --delete`); instead a lifecycle rule expires them
+    // after a grace window. Scoped to the `assets/` prefix so `index.html` and
+    // other unhashed root objects are never GC'd. The 30-day window is unique to
+    // the web bucket (the images bucket rule has no Expiration), so matching on
+    // ExpirationInDays uniquely identifies it.
+
+    [Fact]
+    public void WebBucket_ExpiresSupersededAssetsAfterGraceWindow()
+    {
+        _template.HasResourceProperties("AWS::S3::Bucket", Match.ObjectLike(new Dictionary<string, object>
+        {
+            ["LifecycleConfiguration"] = Match.ObjectLike(new Dictionary<string, object>
+            {
+                ["Rules"] = Match.ArrayWith(new object[]
+                {
+                    Match.ObjectLike(new Dictionary<string, object>
+                    {
+                        ["Status"] = "Enabled",
+                        ["Prefix"] = "assets/",
+                        ["ExpirationInDays"] = 30
+                    })
+                })
+            })
+        }));
+    }
+
     [Fact]
     public void Lambda_HasImageBucketEnvVar()
     {
