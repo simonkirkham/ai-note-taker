@@ -3,10 +3,11 @@
 // without prop-drilling. Set by WorkspaceProvider from the `/w/:wsId` route param.
 export const DEFAULT_WORKSPACE_ID = "__default__";
 
-// Empty until a WorkspaceProvider mounts and sets it from the route. While empty,
-// the api client sends rootless paths (the backend resolves those to the default
-// workspace), so component tests that render a subtree without the router need no
-// changes. In the real app every screen is under `/w/:wsId`, so it is always set.
+// Empty until a WorkspaceProvider mounts and sets it from the route. While empty, the
+// api client sends un-prefixed paths so component tests that render a subtree without
+// the router need no changes (msw intercepts those; the rootless backend routes were
+// removed in 23-G). In the real app every screen is under `/w/:wsId`, so it is always
+// set and scoped calls are always prefixed.
 let _workspaceId = "";
 
 export const getWorkspaceId = (): string => _workspaceId;

@@ -23,12 +23,11 @@ public sealed class WorkspaceScopingIntegrationTests(ApiFactory factory) : IClas
     }
 
     [Fact]
-    public async Task RootlessNoteCreate_LandsInDefaultWorkspace()
+    public async Task DefaultWorkspaceCreate_NoteAppearsInDefaultCards()
     {
-        var noteId = await CreateNoteAsync("/notes");
+        var noteId = await CreateNoteAsync("/w/__default__/notes");
 
         Assert.Contains(noteId, await CardIdsAsync("/w/__default__/notes/cards"));
-        Assert.Contains(noteId, await CardIdsAsync("/notes/cards"));
     }
 
     [Fact]
