@@ -209,6 +209,12 @@ jobs:
         #      next load picks up the new entry point. Uploaded last so it never points
         #      at an asset that has not landed yet. Superseded assets are GC'd by the
         #      WebBucket lifecycle rule (assets/, 30 days), not at deploy time.
+        # LOAD-BEARING: the lifecycle GC is only safe because a fresh, uncached
+        # `npm run build` writes every asset with a newer mtime each deploy, so the
+        # default `s3 sync` re-uploads even byte-identical hashed files and refreshes
+        # their LastModified — keeping still-referenced assets out of the 30-day window.
+        # Do NOT cache web/dist between runs, and do NOT add `--size-only` here, or a
+        # still-referenced asset could age out and 404 (the exact break this slice fixes).
         run: |
           aws s3 sync web/dist/assets/ s3://${{ steps.outputs.outputs.bucket }}/assets/ \
             --cache-control "public,max-age=31536000,immutable"
@@ -430,6 +436,12 @@ jobs:
         #      next load picks up the new entry point. Uploaded last so it never points
         #      at an asset that has not landed yet. Superseded assets are GC'd by the
         #      WebBucket lifecycle rule (assets/, 30 days), not at deploy time.
+        # LOAD-BEARING: the lifecycle GC is only safe because a fresh, uncached
+        # `npm run build` writes every asset with a newer mtime each deploy, so the
+        # default `s3 sync` re-uploads even byte-identical hashed files and refreshes
+        # their LastModified — keeping still-referenced assets out of the 30-day window.
+        # Do NOT cache web/dist between runs, and do NOT add `--size-only` here, or a
+        # still-referenced asset could age out and 404 (the exact break this slice fixes).
         run: |
           aws s3 sync web/dist/assets/ s3://${{ steps.outputs.outputs.bucket }}/assets/ \
             --cache-control "public,max-age=31536000,immutable"
