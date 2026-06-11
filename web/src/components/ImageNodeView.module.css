@@ -33,8 +33,8 @@
   padding: 0;
   border: none;
   border-radius: 50%;
-  background: rgba(0, 0, 0, 0.55);
-  color: #fff;
+  background: var(--color-overlay-scrim);
+  color: var(--color-on-overlay);
   font-size: 0.9rem;
   line-height: 1;
   cursor: pointer;

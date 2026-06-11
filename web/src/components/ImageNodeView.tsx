@@ -7,6 +7,7 @@ import styles from './ImageNodeView.module.css';
 // left in place and purged when the note is deleted (slice 25-C).
 export default function ImageNodeView({ node, deleteNode, selected }: NodeViewProps) {
   const { src, alt, title } = node.attrs as { src?: string; alt?: string; title?: string };
+  // `alt` stays an empty string (decorative image); empty `title` omits the attribute.
   return (
     <NodeViewWrapper className={clsx(styles.wrapper, selected && styles.selected)}>
       <img className={styles.image} src={src ?? ''} alt={alt ?? ''} title={title || undefined} />
