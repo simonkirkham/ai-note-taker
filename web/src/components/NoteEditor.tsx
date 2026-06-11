@@ -1,4 +1,5 @@
 import Image from '@tiptap/extension-image';
+import Link from '@tiptap/extension-link';
 import { useEditor, EditorContent } from '@tiptap/react';
 import type { Editor } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
@@ -18,6 +19,13 @@ interface NoteEditorProps {
 
 const ALLOWED_IMAGE_TYPES = new Set(['image/png', 'image/jpeg', 'image/gif', 'image/webp']);
 const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
+
+// Only these schemes may render as a live anchor in note content. A malicious
+// scheme (javascript:/data:/vbscript:) in user- or AI-derived markdown is
+// neutralised on every path Tiptap gates through isAllowedUri: content-load,
+// typed-autolink, and pasted/programmatic setLink. defense-in-depth — do not
+// rely on StarterKit's bundled Link default, which a Tiptap upgrade could loosen.
+const ALLOWED_LINK_PROTOCOLS = ['http', 'https', 'mailto'];
 
 export default function NoteEditor({ noteId, value, onChange, onBlur }: NoteEditorProps) {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -59,7 +67,25 @@ export default function NoteEditor({ noteId, value, onChange, onBlur }: NoteEdit
 
   const editor = useEditor({
     immediatelyRender: false,
-    extensions: [StarterKit, Markdown, Image],
+    extensions: [
+      StarterKit.configure({ link: false }),
+      Markdown,
+      Image,
+      Link.configure({
+        protocols: ALLOWED_LINK_PROTOCOLS,
+        // Tiptap's built-in isAllowedUri keeps a fixed superset (ftp/tel/sms/…)
+        // and only ADDS our protocols, so deferring to defaultValidate would
+        // still pass ftp:. Enforce the allowlist ourselves: a URL bearing an
+        // explicit scheme must use an allowed one; schemeless/relative URLs
+        // (no scheme matched) still defer to defaultValidate.
+        isAllowedUri: (url, { defaultValidate }) => {
+          const scheme = url.match(/^([a-z][a-z0-9+.-]*):/i)?.[1]?.toLowerCase();
+          if (scheme && !ALLOWED_LINK_PROTOCOLS.includes(scheme)) return false;
+          return defaultValidate(url);
+        },
+        HTMLAttributes: { rel: 'noopener noreferrer nofollow', target: '_blank' },
+      }),
+    ],
     content: value,
     editorProps: {
       attributes: {
