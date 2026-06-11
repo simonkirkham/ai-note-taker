@@ -5,8 +5,11 @@ export const base = "/api";
 
 // Paths that are NOT workspace-scoped — they stay un-prefixed. Everything else
 // (notes, folders, todos, tags, actions) is rewritten to `/w/{wsId}/...` so the
-// backend route group resolves it to the active workspace (23-D). The backend also
-// dual-maps these rootless → default, so an un-prefixed call still works.
+// backend route group resolves it to the active workspace (23-D). In the real app
+// every screen is under `/w/:wsId`, so the store is always set and scoped calls are
+// always prefixed; the no-store branch only matters for component tests that render a
+// subtree without the router (msw intercepts those, so the removed rootless backend
+// routes are never reached).
 const GLOBAL_PATH_PREFIXES = [
   '/calendar',
   '/transcription/credentials',
@@ -18,8 +21,6 @@ const GLOBAL_PATH_PREFIXES = [
 
 function scopedPath(path: string): string {
   const wsId = getWorkspaceId();
-  // No active workspace (no router context) → send rootless; the backend resolves
-  // rootless to the default workspace.
   if (!wsId) return path;
   if (GLOBAL_PATH_PREFIXES.some((p) => path === p || path.startsWith(p + '/') || path.startsWith(p + '?'))) {
     return path;

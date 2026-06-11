@@ -12,12 +12,10 @@ public static class NoteEndpoints
         app.MapGet("/secret", NoteHandlers.Secret).RequireAuthorization();
         app.MapPost("/admin/projections/rebuild", AdminHandlers.RebuildProjections).RequireAuthorization();
 
-        // Workspace-scoped content routes are mapped twice:
-        //  - rootless (`/notes/...`) — `ICurrentWorkspace` resolves to the default workspace,
-        //    keeping the pre-23-D frontend working until it adopts the `/w/{wsId}` prefix.
-        //  - under `/w/{workspaceId}` — a validation filter rejects another user's workspace (404)
-        //    before the handler runs; `ICurrentWorkspace` reads the prefix.
-        MapWorkspaceScopedRoutes(app);
+        // Workspace-scoped content routes live only under `/w/{workspaceId}`: a validation
+        // filter rejects another user's workspace (404) before the handler runs, and
+        // `ICurrentWorkspace` reads the prefix. The rootless fallback (pre-23-D migration
+        // scaffold) was removed in 23-G now that the frontend always prefixes.
         MapWorkspaceScopedRoutes(app.MapGroup("/w/{workspaceId}").AddEndpointFilter<WorkspaceValidationFilter>());
 
         return app;

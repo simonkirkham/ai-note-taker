@@ -54,6 +54,21 @@ public sealed class WorkspaceScopingIntegrationTests(ApiFactory factory) : IClas
     }
 
     [Fact]
+    public async Task RootlessContentRoutes_AreGoneAfter23G_Return404()
+    {
+        // The pre-23-D rootless fallback content routes were removed in 23-G; only
+        // `/w/{wsId}/...` remains. A raw client (opting out of the test prefix rewrite)
+        // must now get 404 on the old un-prefixed paths.
+        var raw = _factory.CreateRawClient();
+        Assert.Equal(HttpStatusCode.NotFound, (await raw.GetAsync("/notes/cards")).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await raw.GetAsync("/folders")).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await raw.GetAsync("/todos")).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await raw.GetAsync("/tags")).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound,
+            (await raw.PostAsync("/notes", new StringContent("{}", Encoding.UTF8, "application/json"))).StatusCode);
+    }
+
+    [Fact]
     public async Task Search_IsScopedToTheWorkspace()
     {
         var wsA = await CreateWorkspaceAsync("SearchA");

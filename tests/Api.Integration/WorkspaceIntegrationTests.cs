@@ -5,10 +5,28 @@ using System.Text.Json;
 
 namespace Api.Integration;
 
+[Collection("ProjectionRebuild")]
 public sealed class WorkspaceIntegrationTests(ApiFactory factory) : IClassFixture<ApiFactory>
 {
     private readonly ApiFactory _factory = factory;
     private readonly HttpClient _client = factory.CreateClient();
+
+    [Fact]
+    public async Task Rebuild_RepopulatesWorkspaceList_FromTheEventStream()
+    {
+        // 23-G AC: ProjectionRebuildHandler must repopulate WorkspaceList from events.
+        var id = await CreateWorkspaceAsync("Persisted");
+        (await _client.PostAsync("/admin/projections/rebuild", null)).EnsureSuccessStatusCode();
+
+        var getResp = await _client.GetAsync("/workspaces");
+        getResp.EnsureSuccessStatusCode();
+        var body = await getResp.Content.ReadFromJsonAsync<JsonElement>();
+        var ids = body.GetProperty("workspaces").EnumerateArray()
+            .Select(w => w.GetProperty("workspaceId").GetString())
+            .ToList();
+        Assert.Contains("__default__", ids);
+        Assert.Contains(id, ids);
+    }
 
     [Fact]
     public async Task PostWorkspace_ReturnsCreatedWithId_AndAppearsInList()

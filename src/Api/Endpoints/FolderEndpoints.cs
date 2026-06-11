@@ -7,9 +7,8 @@ public static class FolderEndpoints
 {
     public static WebApplication MapFolderEndpoints(this WebApplication app)
     {
-        // Dual-mapped like the note routes (23-B): rootless resolves to the default
-        // workspace; the `/w/{workspaceId}` group validates ownership before the handler.
-        MapFolderRoutes(app);
+        // Workspace-scoped under `/w/{workspaceId}` only; the group validates ownership
+        // before the handler. The rootless fallback was removed in 23-G.
         MapFolderRoutes(app.MapGroup("/w/{workspaceId}").AddEndpointFilter<WorkspaceValidationFilter>());
 
         return app;
