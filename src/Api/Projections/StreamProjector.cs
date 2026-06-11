@@ -3,15 +3,19 @@ using Domain.ActionItems;
 using Domain.Notes;
 using EventStore;
 using EventStore.Projections;
-using Api.Projections;
 using Microsoft.Extensions.Logging;
 
-namespace Projector;
+namespace Api.Projections;
 
 // The async projector's core engine, independent of the Lambda runtime so it is unit
 // testable with in-memory stores. Given the set of stream ids that changed in a batch, it
 // rebuilds each affected stream's read models via the shared ProjectionUpdater (the 27-A
 // seam) — the same fold logic the write path runs inline, now driven off the event log.
+//
+// Lives in src/Api (not src/Projector) so the in-process hosts (test harness + local
+// Kestrel) can wrap their event store with the sync decorator without src/Api referencing
+// src/Projector (which would re-create the project cycle). The Projector Lambda references
+// src/Api for this engine.
 //
 // Authoritative re-read, not the stream record's NEW_IMAGE: for each changed stream it
 // re-reads the FULL stream and applies every event above the processed-position mark. This

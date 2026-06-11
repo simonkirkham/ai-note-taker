@@ -35,7 +35,7 @@ public sealed class ProjectorTests
     private readonly InMemoryFolderTreeStore _folderStore = new();
     private readonly InMemoryWorkspaceListStore _workspaceStore = new();
     private readonly FakeNoteImageStore _imageStore = new();
-    private readonly InMemoryProcessedPositionStore _positions = new();
+    private readonly Api.Integration.InMemoryProcessedPositionStore _positions = new();
     private readonly CountingProjectorMetrics _metrics = new();
 
     private StreamProjector NewProjector()
@@ -67,6 +67,22 @@ public sealed class ProjectorTests
         Assert.Equal("Title", Assert.Single((await _titleStore.QueryAllAsync()).Items).Title);
         Assert.Equal("Title", (await _cardStore.GetByNoteAsync(noteId))!.Title);
         Assert.Equal(1, _metrics.AppliedCalls);
+    }
+
+    [Fact]
+    public async Task Projection_is_absent_before_processing_and_present_after()
+    {
+        var noteId = new NoteId(Guid.NewGuid());
+        await AppendAsync(noteId.ToStreamId(), new NoteCreated(noteId), new NoteRenamed(noteId, "Title"));
+
+        // The 27-C async cutover: an append does NOT build the projection — it lags until the
+        // projector runs. This is the read-after-write window the frontend's optimistic updates
+        // mask and server-side callers poll for.
+        Assert.Empty((await _titleStore.QueryAllAsync()).Items);
+
+        await NewProjector().ProcessStreamsAsync([noteId.ToStreamId()]);
+
+        Assert.Equal("Title", Assert.Single((await _titleStore.QueryAllAsync()).Items).Title);
     }
 
     [Fact]

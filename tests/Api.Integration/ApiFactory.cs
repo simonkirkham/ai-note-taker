@@ -2,8 +2,10 @@ using EventStore;
 using EventStore.Projections;
 using Api.Auth;
 using Api.HealthChecks;
+using Api.Projections;
 using Api.Services;
 using Microsoft.AspNetCore.Authentication;
+using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
@@ -69,7 +71,12 @@ public class ApiFactory : WebApplicationFactory<Program>
             services.RemoveAll<ITranscriptionDraftStore>();
             services.RemoveAll<IWorkspaceListStore>();
             services.RemoveAll<IDynamoHealthCheck>();
-            services.AddSingleton<IEventStore, InMemoryEventStore>();
+            // 27-C: the command handlers no longer write projections inline. The in-process
+            // host gets immediate read-after-write by wrapping the in-memory event store with
+            // SyncProjectingEventStore, which drives the SAME StreamProjector path that runs
+            // async off the DynamoDB stream in prod. The projector MUST re-read from the same
+            // `inner` instance the decorator appends to, so `inner` is built once here.
+            services.AddSingleton<IEventStore>(sp => BuildSyncProjectingStore(sp, new InMemoryEventStore()));
             services.AddSingleton<INoteTitleListStore, InMemoryNoteTitleListStore>();
             services.AddSingleton<INoteDetailStore, InMemoryNoteDetailStore>();
             services.AddSingleton<INoteActionsStore, InMemoryNoteActionsStore>();
@@ -101,6 +108,34 @@ public class ApiFactory : WebApplicationFactory<Program>
             services.AddSingleton<FakeNoteImageStore>();
             services.AddSingleton<Api.Services.INoteImageStore>(sp => sp.GetRequiredService<FakeNoteImageStore>());
         });
+    }
+
+    // 27-C: wrap an in-memory event store with the sync projector so the in-process host gets
+    // immediate read-after-write through the SAME StreamProjector path that runs async in prod
+    // (the command handlers no longer write projections inline). The projector re-reads from the
+    // same `inner` instance the decorator appends to. Resolves the projection stores from `sp` so
+    // a test that overrides IEventStore (e.g. ConflictingEventStore) shares the factory's stores.
+    public static IEventStore BuildSyncProjectingStore(IServiceProvider sp, IEventStore inner)
+    {
+        var updater = new ProjectionUpdater(
+            sp.GetRequiredService<INoteTitleListStore>(),
+            sp.GetRequiredService<INoteDetailStore>(),
+            sp.GetRequiredService<ITodoListStore>(),
+            sp.GetRequiredService<INoteCardListStore>(),
+            sp.GetRequiredService<INoteActionsStore>(),
+            sp.GetRequiredService<ITagIndexStore>(),
+            sp.GetRequiredService<ITagFeedbackStore>(),
+            sp.GetRequiredService<IActionItemFeedbackStore>(),
+            sp.GetRequiredService<ICalendarLinkIndexStore>(),
+            sp.GetRequiredService<INoteSearchViewStore>(),
+            sp.GetRequiredService<IFolderTreeStore>(),
+            sp.GetRequiredService<IWorkspaceListStore>(),
+            sp.GetRequiredService<Api.Services.INoteImageStore>(),
+            NullLogger<ProjectionUpdater>.Instance);
+        var projector = new StreamProjector(
+            inner, updater, new Api.Integration.InMemoryProcessedPositionStore(), new NoOpProjectorMetrics(),
+            NullLogger<StreamProjector>.Instance);
+        return new SyncProjectingEventStore(inner, projector);
     }
 
     public const string NoPrefixHeader = "X-Test-No-Prefix";
