@@ -5,6 +5,7 @@ using EventStore.Projections;
 using Api.Auth;
 using Api.Exceptions;
 using Api.Observability;
+using Api.Projections;
 using Api.Utilities;
 
 namespace Api.CommandHandlers;
@@ -13,6 +14,7 @@ public sealed class WorkspaceCommandHandler(
     IEventStore store,
     IWorkspaceListStore workspaceListStore,
     INoteCardListStore noteCardListStore,
+    IProjectionUpdater projectionUpdater,
     ICurrentUser currentUser,
     IDomainMetrics metrics,
     ILogger<WorkspaceCommandHandler> logger) : IWorkspaceCommandHandler
@@ -57,33 +59,7 @@ public sealed class WorkspaceCommandHandler(
     {
         var envelopes = ToEnvelopes(streamId, newEvents);
         await store.AppendAsync(streamId, history.Count, envelopes, ct).ConfigureAwait(false);
-        await UpdateProjectionAsync(envelopes, ct).ConfigureAwait(false);
-    }
-
-    private async Task UpdateProjectionAsync(List<EventEnvelope> envelopes, CancellationToken ct)
-    {
-        foreach (var envelope in envelopes)
-        {
-            switch (EventDeserializer.Deserialize(envelope))
-            {
-                case WorkspaceCreated e:
-                    await workspaceListStore.UpsertAsync(
-                        new WorkspaceListView(e.WorkspaceId, e.Name, envelope.OccurredAt, envelope.Metadata.UserId ?? ""), ct)
-                        .ConfigureAwait(false);
-                    break;
-                case WorkspaceRenamed e:
-                    await ApplyRenamedAsync(e, ct).ConfigureAwait(false);
-                    break;
-            }
-        }
-    }
-
-    private async Task ApplyRenamedAsync(WorkspaceRenamed e, CancellationToken ct)
-    {
-        var all = await workspaceListStore.GetAllAsync(ct).ConfigureAwait(false);
-        var existing = all.FirstOrDefault(w => w.WorkspaceId == e.WorkspaceId);
-        if (existing is null) return;
-        await workspaceListStore.UpsertAsync(existing with { Name = e.NewName }, ct).ConfigureAwait(false);
+        await projectionUpdater.ApplyWorkspaceEventsAsync(envelopes, ct).ConfigureAwait(false);
     }
 
     // A workspace is "empty" when it holds no active (non-deleted) note for the caller.
