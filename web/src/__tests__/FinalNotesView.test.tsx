@@ -79,7 +79,7 @@ describe('FinalNotesView', () => {
       />,
     )
     expect(screen.getByTestId('final-notes-empty')).toBeInTheDocument()
-    expect(screen.getByText(/no final notes yet/i)).toBeInTheDocument()
+    expect(screen.getByText(/no final notes yet/i)).toHaveAttribute('role', 'status') // 19-F1
     const cta = screen.getByTestId('generate-final-notes-button')
     expect(cta.tagName).toBe('BUTTON')
     expect(screen.queryByTestId('final-notes-summary')).toBeNull()

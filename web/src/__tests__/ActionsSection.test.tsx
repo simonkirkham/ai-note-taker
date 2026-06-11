@@ -16,7 +16,9 @@ function renderActions() {
 describe('ActionsSection', () => {
   it('shows empty state when no actions exist', async () => {
     renderActions()
-    expect(await screen.findByTestId('actions-empty')).toBeInTheDocument()
+    const empty = await screen.findByTestId('actions-empty')
+    expect(empty).toBeInTheDocument()
+    expect(empty).toHaveAttribute('role', 'status') // 19-F1
   })
 
   it('does not render an add-action button', async () => {
