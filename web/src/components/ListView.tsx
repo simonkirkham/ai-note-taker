@@ -45,6 +45,8 @@ export default function ListView({
   folderPath,
   currentFolderId,
   onHome,
+  otherWorkspaces,
+  onMoveNoteToWorkspace,
 }: {
   cards: NoteCardData[];
   loading: boolean;
@@ -57,6 +59,8 @@ export default function ListView({
   folderPath?: string[];
   currentFolderId?: string;
   onHome?: () => void;
+  otherWorkspaces?: { workspaceId: string; name: string }[];
+  onMoveNoteToWorkspace?: (noteId: string, workspaceId: string) => void;
 }) {
   const { data: tagEntries = [] } = useTags();
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
@@ -192,6 +196,8 @@ export default function ListView({
                     card={card}
                     onEdit={onEditNote}
                     onDelete={onDeleteNote ? () => onDeleteNote(card.noteId) : undefined}
+                    otherWorkspaces={otherWorkspaces}
+                    onMoveToWorkspace={onMoveNoteToWorkspace}
                   />
                 ))}
               </div>
@@ -273,6 +279,9 @@ export default function ListView({
                 </div>
               </div>
               {searching ? (
+                // Search results deliberately omit the move-to-workspace control: moving a
+                // note out of the active workspace mid-search would make a result vanish under
+                // the cursor. Move is available from the (non-search) card list (23-F).
                 <SearchResultsArea
                   state={searchState}
                   results={searchResults}
@@ -288,6 +297,8 @@ export default function ListView({
                       card={card}
                       onEdit={onEditNote}
                       onDelete={onDeleteNote ? () => onDeleteNote(card.noteId) : undefined}
+                      otherWorkspaces={otherWorkspaces}
+                      onMoveToWorkspace={onMoveNoteToWorkspace}
                     />
                   ))}
                 </div>

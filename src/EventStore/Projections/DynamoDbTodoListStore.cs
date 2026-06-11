@@ -108,6 +108,21 @@ public sealed class DynamoDbTodoListStore(IAmazonDynamoDB dynamo, string tableNa
         }, ct))).ConfigureAwait(false);
     }
 
+    public async Task UpdateNoteWorkspaceAsync(NoteId noteId, string workspaceId, CancellationToken ct = default)
+    {
+        var itemIds = await QueryItemIdsByNoteAsync(noteId, ct).ConfigureAwait(false);
+        await Task.WhenAll(itemIds.Select(id => dynamo.UpdateItemAsync(new UpdateItemRequest
+        {
+            TableName = tableName,
+            Key = new Dictionary<string, AttributeValue> { ["PK"] = new() { S = id } },
+            UpdateExpression = "SET WorkspaceId = :ws",
+            ExpressionAttributeValues = new Dictionary<string, AttributeValue>
+            {
+                [":ws"] = new() { S = workspaceId }
+            }
+        }, ct))).ConfigureAwait(false);
+    }
+
     public async Task<TodoItem?> GetByIdAsync(string itemId, CancellationToken ct = default)
     {
         var resp = await dynamo.GetItemAsync(new GetItemRequest

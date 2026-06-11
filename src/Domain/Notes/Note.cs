@@ -82,6 +82,7 @@ public sealed class Note : IAggregate
             TagNote cmd => HandleTagNote(cmd),
             UntagNote cmd => HandleUntagNote(cmd),
             MoveNoteToFolder cmd => HandleMoveToFolder(cmd),
+            MoveNoteToWorkspace cmd => HandleMoveToWorkspace(cmd),
             UnfileNote cmd => HandleUnfile(cmd),
             LinkNoteToCalendarEvent cmd => HandleLinkToCalendarEvent(cmd),
             CompleteTranscription cmd => HandleCompleteTranscription(cmd),
@@ -155,6 +156,17 @@ public sealed class Note : IAggregate
         if (cmd.FolderId == _folderId)
             return [];
         return [new NoteFiledInFolder(cmd.NoteId, cmd.FolderId)];
+    }
+
+    IReadOnlyList<IDomainEvent> HandleMoveToWorkspace(MoveNoteToWorkspace cmd)
+    {
+        if (!_exists || _deleted)
+            throw new InvalidOperationException($"Note {cmd.NoteId} does not exist.");
+        if (cmd.WorkspaceId == _workspaceId)
+            return [];
+        if (_folderId is not null)
+            return [new NoteAssignedToWorkspace(cmd.NoteId, cmd.WorkspaceId), new NoteUnfiled(cmd.NoteId)];
+        return [new NoteAssignedToWorkspace(cmd.NoteId, cmd.WorkspaceId)];
     }
 
     IReadOnlyList<IDomainEvent> HandleUnfile(UnfileNote cmd)

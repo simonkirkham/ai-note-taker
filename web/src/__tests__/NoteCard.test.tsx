@@ -62,4 +62,27 @@ describe('NoteCard', () => {
     fireEvent.dragStart(screen.getByRole('article'), { dataTransfer })
     expect(dataTransfer.setData).toHaveBeenCalledWith('text/plain', 'note-1')
   })
+
+  it('shows no move control when there are no other workspaces (23-F)', () => {
+    render(<NoteCard card={base} onEdit={() => {}} onMoveToWorkspace={() => {}} otherWorkspaces={[]} />)
+    expect(screen.queryByRole('button', { name: /Move "Q1 Review"/ })).not.toBeInTheDocument()
+  })
+
+  it('moves the note to a chosen workspace (23-F)', async () => {
+    const onMoveToWorkspace = vi.fn()
+    render(
+      <NoteCard
+        card={base}
+        onEdit={() => {}}
+        onMoveToWorkspace={onMoveToWorkspace}
+        otherWorkspaces={[
+          { workspaceId: 'ws-work', name: 'Work' },
+          { workspaceId: 'ws-clients', name: 'Clients' },
+        ]}
+      />,
+    )
+    await userEvent.click(screen.getByRole('button', { name: 'Move "Q1 Review" to another workspace' }))
+    await userEvent.click(screen.getByTestId('move-workspace-option-ws-clients'))
+    expect(onMoveToWorkspace).toHaveBeenCalledWith('note-1', 'ws-clients')
+  })
 })

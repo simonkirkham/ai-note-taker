@@ -135,6 +135,27 @@ public sealed class NoteCommandHandler(
         await UpdateTagFeedbackForNewEventsAsync(newEnvelopes, ct).ConfigureAwait(false);
         await UpdateActionItemFeedbackForNewEventsAsync(newEnvelopes, ct).ConfigureAwait(false);
         await UpdateCalendarLinkIndexForNewEventsAsync(noteId, newEnvelopes, ct).ConfigureAwait(false);
+        await RebucketWorkspaceForMoveAsync(noteId, noteDetail, newEnvelopes, ct).ConfigureAwait(false);
+    }
+
+    // A move re-emits NoteAssignedToWorkspace for an existing note. The card row is
+    // re-stamped in ApplyNoteEventsToCard and title/detail/search rebuild from full
+    // history, but the note's TodoList action rows and TagIndex rows are keyed
+    // independently and must be re-stamped to the new workspace here so the live write
+    // matches what a rebuild produces. At create there are no such rows (the batch
+    // carries NoteCreated), so skip the extra store round-trips.
+    private async Task RebucketWorkspaceForMoveAsync(NoteId noteId, NoteDetailView noteDetail, List<EventEnvelope> newEnvelopes, CancellationToken ct)
+    {
+        var isMove = newEnvelopes.Any(e => e.EventType == nameof(NoteAssignedToWorkspace))
+            && !newEnvelopes.Any(e => e.EventType == nameof(NoteCreated));
+        if (!isMove || noteDetail.WorkspaceId is null) return;
+
+        // The todo re-stamp and each tag re-stamp are independent writes — run together.
+        var noteKey = noteId.Value.ToString("N");
+        var restamps = (noteDetail.Tags ?? [])
+            .Select(tag => tagIndexStore.PutAsync(tag, noteKey, currentUser.UserId, noteDetail.WorkspaceId, ct))
+            .Append(todoListStore.UpdateNoteWorkspaceAsync(noteId, noteDetail.WorkspaceId, ct));
+        await Task.WhenAll(restamps).ConfigureAwait(false);
     }
 
     private async Task UpdateSearchViewAsync(NoteId noteId, NoteDetailView detail, CancellationToken ct)

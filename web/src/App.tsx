@@ -37,7 +37,9 @@ import {
   useRenameNote,
   useDeleteNote,
   useMoveNoteToFolder,
+  useMoveNoteToWorkspace,
 } from "./hooks/useNoteMutations";
+import { useWorkspaces } from "./hooks/useWorkspaces";
 import { recordRumEvent } from "./rum";
 import { useCurrentWorkspace } from "./workspace/context";
 import { WorkspaceProvider } from "./workspace/WorkspaceContext";
@@ -127,6 +129,12 @@ function AppContent({ signOut }: { signOut: () => void }) {
   const renameNote = useRenameNote();
   const deleteNote = useDeleteNote();
   const moveNote = useMoveNoteToFolder();
+  const moveNoteToWorkspaceM = useMoveNoteToWorkspace();
+  const { data: workspaces = [] } = useWorkspaces();
+  // Move targets = the caller's workspaces minus the one currently being viewed.
+  const otherWorkspaces = workspaces
+    .filter((ws) => ws.workspaceId !== wsId)
+    .map((ws) => ({ workspaceId: ws.workspaceId, name: ws.name }));
   const creating = createNote.isPending;
   const createError = createNote.error ? "Failed to create note" : null;
   const { data: folders = [] } = useFolders();
@@ -270,6 +278,8 @@ function AppContent({ signOut }: { signOut: () => void }) {
       folderPath={activeFolderId ? activeFolderPath : undefined}
       currentFolderId={activeFolderId}
       onHome={handleHome}
+      otherWorkspaces={otherWorkspaces}
+      onMoveNoteToWorkspace={(noteId, workspaceId) => moveNoteToWorkspaceM.mutate({ noteId, workspaceId })}
     />
   );
 

@@ -43,6 +43,14 @@ export function unfileNote(noteId: string): Promise<void> {
   return requestVoid(`/notes/${noteId}/folder`, { method: "DELETE" });
 }
 
+export function moveNoteToWorkspace(noteId: string, workspaceId: string): Promise<void> {
+  return requestVoid(`/notes/${noteId}/workspace`, {
+    method: "PUT",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ workspaceId }),
+  });
+}
+
 export function moveFolder(folderId: string, parentFolderId: string | null): Promise<void> {
   return requestVoid(`/folders/${folderId}/parent`, {
     method: "PUT",
