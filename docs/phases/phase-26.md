@@ -64,6 +64,7 @@
 - The existing error boundary (Phase 23) catches dynamic-import/chunk-load errors and offers a reload action.
 - Tests (Vitest/RTL): dispatching `vite:preloadError` triggers exactly one reload; a second dispatch with the guard flag set does not reload; error-boundary fallback renders on a thrown chunk-load error.
 - Pairs with **[19-I](phase-19.md)** (the first dynamic imports) but is independent — valuable even for the current eager bundle on a flaky network.
+- **Caveat for 19-I:** the guard flag is cleared on a successful boot, which only proves the *entry* chunk loaded — not every lazy route. With no `React.lazy` yet this is loop-safe, but the first lazy route makes clear-on-boot re-arm the guard before a later route-chunk failure, so a genuinely-missing route chunk could reload-loop instead of falling to the ErrorBoundary. When 19-I lands, move the clear behind a stability signal (e.g. clear after a short delay / first idle) so a same-incident lazy failure still sees the flag set.
 
 ### Slice 26-C — Backend canary deploy + automated rollback
 
