@@ -69,26 +69,24 @@ export default function FolderPreviewPanel({
           <li className={styles.folderPreviewEmpty} role="status">No notes in this folder</li>
         ) : (
           folderCards.map((c) => (
-            // Pointer/drag hover-preview convenience; notes are keyboard-openable
-            // from the main folder view. TODO(19-F-followup): add keyboard access
-            // if this panel becomes a primary navigation surface.
-            /* eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions, jsx-a11y/click-events-have-key-events */
-            <li
-              key={c.noteId}
-              className={styles.folderPreviewItem}
-              draggable
-              onDragStart={(e) => {
-                e.dataTransfer.effectAllowed = "move";
-                e.dataTransfer.setData("text/plain", c.noteId);
-              }}
-              onClick={() => onEditNote(c.noteId)}
-            >
-              <span className={styles.folderPreviewNoteTitle}>{c.title || <em>Untitled</em>}</span>
-              {c.date && (
-                <span className={styles.folderPreviewNoteDate}>
-                  {new Date(c.date + "T00:00:00").toLocaleDateString("en-GB")}
-                </span>
-              )}
+            <li key={c.noteId} className={styles.folderPreviewItem}>
+              <button
+                type="button"
+                className={styles.folderPreviewItemButton}
+                draggable
+                onDragStart={(e) => {
+                  e.dataTransfer.effectAllowed = "move";
+                  e.dataTransfer.setData("text/plain", c.noteId);
+                }}
+                onClick={() => onEditNote(c.noteId)}
+              >
+                <span className={styles.folderPreviewNoteTitle}>{c.title || <em>Untitled</em>}</span>
+                {c.date && (
+                  <span className={styles.folderPreviewNoteDate}>
+                    {new Date(c.date + "T00:00:00").toLocaleDateString("en-GB")}
+                  </span>
+                )}
+              </button>
             </li>
           ))
         )}

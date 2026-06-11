@@ -1,4 +1,5 @@
 import { render, screen, fireEvent } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import type { NoteCard } from '../api/notes'
 import FolderPreviewPanel from '../components/FolderPreviewPanel'
 import styles from '../components/FolderPreviewPanel.module.css'
@@ -31,6 +32,40 @@ describe('FolderPreviewPanel', () => {
     )
     expect(screen.getByText('1:1 with Bill')).toBeInTheDocument()
     expect(screen.queryByText('Team standup')).not.toBeInTheDocument()
+  })
+
+  it('exposes each note as a keyboard-operable button and opens it on Enter (CHANGE-15)', async () => {
+    const onEditNote = vi.fn()
+    const user = userEvent.setup()
+    render(
+      <FolderPreviewPanel
+        folderId="f-1"
+        folderName="People"
+        cards={[cardInFolder]}
+        onClose={noop}
+        onEditNote={onEditNote}
+      />,
+    )
+    const item = screen.getByRole('button', { name: /1:1 with Bill/ })
+    item.focus()
+    expect(item).toHaveFocus()
+    await user.keyboard('{Enter}')
+    expect(onEditNote).toHaveBeenCalledWith('n-1')
+  })
+
+  it('opens a note when its preview button is clicked', () => {
+    const onEditNote = vi.fn()
+    render(
+      <FolderPreviewPanel
+        folderId="f-1"
+        folderName="People"
+        cards={[cardInFolder]}
+        onClose={noop}
+        onEditNote={onEditNote}
+      />,
+    )
+    fireEvent.click(screen.getByRole('button', { name: /1:1 with Bill/ }))
+    expect(onEditNote).toHaveBeenCalledWith('n-1')
   })
 
   it('shows empty state when no notes match the folder', () => {
