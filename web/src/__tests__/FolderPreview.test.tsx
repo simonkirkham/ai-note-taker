@@ -47,6 +47,7 @@ describe('FolderPreviewPanel', () => {
       />,
     )
     const item = screen.getByRole('button', { name: /1:1 with Bill/ })
+    expect(item).toHaveAttribute('draggable', 'true') // drag source stays on the button
     item.focus()
     expect(item).toHaveFocus()
     await user.keyboard('{Enter}')
