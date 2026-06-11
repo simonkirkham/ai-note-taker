@@ -77,7 +77,10 @@
   align-items: center;
   gap: 0.125rem;
   padding-left: 0.5rem;
-  background: var(--color-primary-bg);
+  /* Opaque backplate so a long name's trailing text doesn't bleed through behind the
+     icons. Composited as surface + the same tint the row uses, so the actions area
+     matches a hovered/active row exactly (no translucent double-tint). */
+  background: linear-gradient(var(--color-primary-bg), var(--color-primary-bg)) var(--color-surface);
   opacity: 0;
   transition: opacity var(--transition);
 }
