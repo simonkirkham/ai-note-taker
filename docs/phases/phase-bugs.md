@@ -28,6 +28,8 @@
 | BUG-15 | Forced through full Google sign-in on cold load — bootstrap never uses the `rt` refresh cookie, so the session is only ~1h not 30 days | Done | BUG-11 |
 | BUG-16 | Google emails the user on every login — `prompt=consent` forces a fresh consent grant on each sign-in | Done | BUG-11 |
 | BUG-17 | Concurrent multi-word tag add drops a tag — second append loses the optimistic-concurrency race and is silently dropped (no handler retry) | Done | BUG-4, BUG-14 |
+| BUG-18 | Removing an inline image (or any edit) is silently not persisted — note content saves only on editor `onBlur`; the Save button navigates without flushing the draft | Not Started | 25-D |
+| BUG-19 | Inline image flashes a 403 on every open — `ImageNodeView` renders the raw S3 key as a relative `<img src>` before `resolveImages` swaps in the presigned URL | Not Started | 25-B, 25-D |
 
 Further bugs will be appended as they are identified.
 
@@ -446,3 +448,63 @@ The mount effect (`AuthContext.tsx:112-141`) only handles returning *from* a Goo
 - [x] A failing spec reproduces the dropped-write before the fix and passes after (`ConflictingEventStore` forces a one-shot conflict; handler retries and the tag persists).
 
 **Key files:** `src/Api/CommandHandlers/NoteCommandHandler.cs` (`ExecuteAsync` retry loop), `web/src/api/tags.ts` (`untagNote` ok-statuses); tests `tests/Api.Integration/ExceptionMappingTests.cs`, `tests/Api.Integration/ConflictingEventStore.cs`. Related: [BUG-4] (conflict→409 mapping), [BUG-14] (frontend optimistic-cache half).
+
+---
+
+## BUG-18 — Removing an inline image (or any content edit) is silently not persisted
+
+**Status:** Not Started.
+
+**Severity:** High — silent data loss. A user removes an inline image, leaves the note, reopens it, and the image is back. The same gap drops *any* content edit not followed by an editor blur.
+
+**Symptom:** Remove an inline image via the ✕ control, click "Save", reopen the note — the image reappears. Reported alongside a 403 on the image URL ([BUG-19], cosmetic, separate).
+
+**Root cause (confirmed from code + prod event history):** note content is persisted from **exactly one** place — the editor body's `onBlur` (`web/src/components/NoteView.tsx:502`, `onBlur={handleSaveContent}`). Nothing else saves it:
+- The "Save" button (`NoteView.tsx:326`) calls `handleBack` → `onBack()` — it **navigates without saving**. It only works for typed text because moving focus to the button blurs the already-focused editor first.
+- Removing an image (`ImageNodeView.tsx:19-20`) uses `onMouseDown={(e) => e.preventDefault()}` to preserve selection, which **keeps focus off the editor body**. `deleteNode()` updates the doc and sets `contentDraft` via `onUpdate`, but if the editor body was never focused (note just opened — focus is on the title input), **no blur fires**, so `handleSaveContent` never runs. `contentDraft` holds the removal in memory; navigating away discards it; the server keeps the image.
+- There is no unmount flush and no `beforeunload` save.
+
+**Prod evidence (note `b2400cfa-7ee3-4b26-a731-cf6bc40c3f32`, `notetaker-events`):** image added at v14 (06-11 07:26), note reopened/renamed at v15 (08:29) and v16 (08:58) with the image still present, removal finally persisted at v17 (09:02) — ~1.5h and several reopens after the user first tried to remove it. Classic flaky-save signature: the removal only stuck once a blur-save happened to fire.
+
+**Why it shipped:** the 25-D E2E (`NoteImageJourney.Remove_…`) uploads then removes **without ever persisting the image into server content**, so the final content PUT is `"" == ""` — a backend no-op (`Note.HandleEditContent` returns `[]` on unchanged content) — and the test passes regardless of whether the save actually carried the removal. It never proves a *persisted* image gets removed.
+
+**Expected behaviour:** Leaving a note (Save button, back, or unmount) persists any pending `contentDraft`. Removing an image, or any edit, survives reopen — independent of whether the editor body was focused/blurred.
+
+**Repro:**
+1. Open a note, add an image, and ensure it is saved to the server (blur the editor, reopen — image present in content).
+2. Reopen the note; immediately hover the image and click ✕ (do not click into the editor text first).
+3. Click "Save".
+4. Reopen the note — the image is back.
+
+**Acceptance criteria:**
+- [ ] A failing test reproduces the gap before the fix: a note whose **persisted** content contains an image, the image removed, leaving the note → the server content no longer contains the image (currently it still does).
+- [ ] Pending `contentDraft` is flushed when leaving the note — at minimum on the Save/back path and on unmount — not only on editor blur.
+- [ ] No double-save / no spurious save when `contentDraft` is null (respect the existing `if (contentDraft == null) return` guard).
+- [ ] Existing note-content save/draft tests stay green.
+
+**Key files (suspected):** `web/src/components/NoteView.tsx` (`handleSaveContent`, the Save/back path, add unmount flush), `web/src/components/NoteEditor.tsx` / `ImageNodeView.tsx` (image-remove blur behaviour); tests under `web/src/__tests__/` plus closing the E2E gap in `tests/Browser.E2E/Journeys/NoteImageJourney.cs`. Related: [BUG-19] (the 403 reported alongside this), 25-D (remove-inline-image slice).
+
+---
+
+## BUG-19 — Inline image flashes a 403 on every open (raw key rendered before resolve)
+
+**Status:** Not Started.
+
+**Severity:** Low — cosmetic. A failed request + broken-image flash on each open; the image then loads once resolve completes. No data impact.
+
+**Symptom:** On opening a note with an inline image, the browser logs `403` for e.g. `https://note-taker-ai.com/notes/notes/{noteId}/{imageId}.png` (note the doubled `notes/notes`). The image renders correctly a moment later.
+
+**Root cause:** `ImageNodeView` (`web/src/components/ImageNodeView.tsx:13`) renders `<img src={src}>` where, on first paint, `src` is the bare S3 **key** (`notes/{noteId}/{img}.png`) loaded from content. The async `resolveImages` → `swapImageSrc` (`NoteEditor.tsx:204-227`) only replaces it with a presigned S3 URL after the round-trip. In the gap, the browser resolves the bare key **relative to the SPA route** `/notes/{id}` → `https://note-taker-ai.com/notes/notes/{noteId}/{img}.png` → 403 (no such route/object; S3 objects are only reachable via presigned URLs). The doubled `notes/notes` is the relative-URL resolution, not a malformed stored key (verified: stored key is the correct single-prefix `notes/{noteId}/...`).
+
+**Expected behaviour:** No failed image request and no broken-image flash before resolve. The browser never fetches an unresolved key as a relative URL.
+
+**Repro:**
+1. Open a note with a saved inline image, DevTools Network open.
+2. Observe a `403` on `…/notes/notes/{noteId}/{img}.png` on load, then the image appears.
+
+**Acceptance criteria:**
+- [ ] No request is made for a bare image key on open (no 403, no broken-image flash); a placeholder renders until the presigned URL resolves.
+- [ ] Once resolve completes, the image renders from the presigned URL as today.
+- [ ] A test guards that an unresolved key (`isImageKey(src)`) does not render a fetching `<img src=key>`.
+
+**Key files (suspected):** `web/src/components/ImageNodeView.tsx` (placeholder when `isImageKey(src)`), `web/src/lib/noteImages.ts` (`isImageKey`); tests under `web/src/__tests__/`. Related: [BUG-18] (the persistence bug reported alongside), 25-B (resolve flow), 25-D (NodeView).
