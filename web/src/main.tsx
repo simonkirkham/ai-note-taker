@@ -43,6 +43,11 @@ createRoot(document.getElementById('root')!).render(
   </StrictMode>,
 )
 
-// The entry chunk evaluated and the app mounted, so any prior stale-chunk reload
-// succeeded — reset the guard so the next deploy's incident can self-heal too.
+// The entry chunk evaluated, so a prior entry-chunk reload (if any) succeeded —
+// reset the guard so the next deploy's incident can self-heal once more. NOTE: this
+// proves only the entry chunk loaded, not every lazy route. Once 19-I adds
+// React.lazy routes, clearing here re-arms the guard before a later route-chunk
+// failure, so a genuinely-missing route chunk could reload-loop instead of falling
+// to the ErrorBoundary. Revisit the clear timing (e.g. clear after a stability
+// delay) when the first React.lazy lands — see phase-26.md 26-B caveat.
 clearChunkReloadFlag()
