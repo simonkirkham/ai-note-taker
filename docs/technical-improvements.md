@@ -26,7 +26,7 @@ Status key: 🔲 **Open** · 🟡 **Partly done / mitigated** · ✅ **Done** (g
 | Upgrade GitHub Actions to Node.js 24 | ✅ Done |
 | Resolve ESLint warnings in `AuthContext.tsx` | ✅ Done — #172 |
 | Add `cdk synth` to the pre-commit hook | ✅ Done — #208 |
-| Split the single API Lambda (CQRS + async projectors) | 🔲 **Open** — large; ADR 0009; own phase |
+| Split the single API Lambda (CQRS + async projectors) | ✅ Done — → Phase 27 (Stage 1) |
 | Reduce Lambda SnapStart costs | ✅ Done |
 | Break down the monolithic `App.css` | ✅ Done — 14-P (merged into the CSS-Modules migration) |
 | Add a shared modal focus-trap utility | ✅ Done — #211 |
@@ -41,7 +41,7 @@ Status key: 🔲 **Open** · 🟡 **Partly done / mitigated** · ✅ **Done** (g
 | Add a `NoteEditor` component test for the image-ordering invariant | 🔲 **Open** — guards the 25-B regression below the E2E gate |
 | Zero-downtime deployments — frontend stale-chunk 404s; backend canary/rollback | ✅ Done — → Phase 26 |
 
-**Outstanding (7 Open + 2 Partly):** ESLint `jsx-a11y`; Split the API Lambda; Auto-backfill projection on deploy; `NoteSearchView` tombstones (verify/close); `WorkspaceList` GSI; Generalise append-retry; `NoteEditor` ordering test; *(partly)* state-mgmt colocation; deploy-credentials root cause.
+**Outstanding (6 Open + 2 Partly):** ESLint `jsx-a11y`; Auto-backfill projection on deploy; `NoteSearchView` tombstones (verify/close); `WorkspaceList` GSI; Generalise append-retry; `NoteEditor` ordering test; *(partly)* state-mgmt colocation; deploy-credentials root cause.
 
 ---
 
@@ -146,6 +146,8 @@ Status key: 🔲 **Open** · 🟡 **Partly done / mitigated** · ✅ **Done** (g
 ---
 
 ## Split the single API Lambda into individual Lambdas (CQRS + async projectors)
+
+**Graduated → [Phase 27](phases/phase-27.md)** (Stage 1 — CQRS write/read split + async projectors). Four slices: extract a shared idempotent `ProjectionUpdater` (27-A), enable a DynamoDB Stream + Projector Lambda in shadow with DLQ/alarms (27-B), cut over to async + move read-after-write tests to polling (27-C), split the HTTP Lambda into Command + Query functions with least-privilege IAM (27-D). **Stage 2** (per-context command Lambdas) and stream-replay rebuild stay out of scope; pick them up as follow-ons. Original entry kept below for context.
 
 **What:** The backend currently runs as one `ApiFunction` Lambda (ASP.NET minimal API behind an HTTP API proxy) that handles every route and updates all projections **synchronously in-process, inline in the command handlers** (e.g. `NoteCommandHandler.UpdateProjectionAsync`) before returning the HTTP response. Move to a deployment shape that matches an event-sourced system, in two stages:
 
