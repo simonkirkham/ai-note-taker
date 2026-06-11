@@ -710,24 +710,6 @@ public sealed class NoteTakerStack : Stack
         });
         latencyAlarm.AddAlarmAction(alarmAction);
 
-        // ── Backend canary deploy + automated rollback (26-C) ─────────────
-        // Shift the `live` alias to a new version gradually instead of an instant 100%
-        // cutover, and auto-roll-back if the error-rate or p99-latency alarm trips during
-        // the bake. SnapStart publishes a new version each deploy; CodeDeploy shifts the
-        // alias from the old published version to the new one (SnapStart restore happens
-        // on the new version before traffic moves). CANARY_10PERCENT_5MINUTES keeps the
-        // bake short — 10% for 5 minutes, then 100% — which suits a low-traffic app where
-        // a longer linear shift only delays every deploy. The alarms are the same ones the
-        // ops dashboard already uses; they keep evaluating post-shift, not just during it.
-        // NOTE: an alarm needs traffic to evaluate, so on an idle deploy the canary simply
-        // completes with nothing to trip it (no false rollback, but also no real bake).
-        new Amazon.CDK.AWS.CodeDeploy.LambdaDeploymentGroup(this, "ApiDeploymentGroup", new Amazon.CDK.AWS.CodeDeploy.LambdaDeploymentGroupProps
-        {
-            Alias = apiAlias,
-            DeploymentConfig = Amazon.CDK.AWS.CodeDeploy.LambdaDeploymentConfig.CANARY_10PERCENT_5MINUTES,
-            Alarms = new[] { errorRateAlarm, latencyAlarm }
-        });
-
         // Projection-rebuild operability (24-C). Both metrics carry only the Powertools
         // Service dimension, so each is a single concrete metric an alarm can target (no
         // SEARCH). A fault means a partial/failed rebuild — degraded read models until a
