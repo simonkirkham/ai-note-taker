@@ -16,7 +16,7 @@
 | 19-H | **Network resilience.** Exponential-backoff retry (5xx/429/network) for idempotent requests in `apiFetch` | Done (shipped in 20-G) | 19-A |
 | 19-I1 | **Lazy-load + CLS.** `React.lazy` Tiptap + dynamic-import transcribe SDK; reserved-dimension fallbacks; lazy-chunk error boundary + RUM event | Not Started | 26-A |
 | 19-I2 | **CI bundle-size gate.** `size-limit` budget on the entry chunk in the `frontend` CI job | Not Started | — |
-| 19-I3 | **Non-urgent transitions.** `useDeferredValue` on ListView search/filter so the input stays responsive | Not Started | — |
+| 19-I3 | **Non-urgent transitions.** `useDeferredValue` on ListView search/filter so the input stays responsive | Done | — |
 | 19-J | **URL-scheme hardening.** Configure Tiptap `Link` explicitly — allowlist `http`/`https`/`mailto`, reject `javascript:`/`data:`/`vbscript:`, add `rel="noopener noreferrer nofollow"` | Not Started | — |
 | 19-K | **Adopt TanStack Query (server-state migration)** — **graduated to its own phase: [Phase 20](phase-20.md)** (7 slices, gated on reversing [ADR 0010](../adr/0010-server-state-strategy.md)). Too large for one slice. | Moved → P20 | — |
 
@@ -120,8 +120,9 @@ Scenario: Behaviour is unchanged after the split
 - Observability: the gate is the build-time regression signal, complementary to RUM's runtime field signal.
 - Key files: `web/package.json`, `.github/workflows/pr.yml` (`frontend` job, ~`:100-102`).
 
-### 19-I3 — Non-urgent transitions (ListView) — independent
+### 19-I3 — Non-urgent transitions (ListView) — independent — **Done (PR #221)**
 
+- ✅ Shipped: `useDeferredValue` on `query` feeds `useNoteSearch` and the filtered-card memos in `ListView.tsx` (`:70`); the `SearchBar` input updates immediately while the list re-derives off the deferred value.
 - Scenario: with a long list, typing in search / toggling filters keeps the input responsive while the list re-derives.
 - Acceptance criteria: `useDeferredValue` (or `useTransition`) on `query` feeding `useNoteSearch` and the `filteredCards`/`homeCards` memos in `ListView.tsx` (the one real heavy-filtered-list spot); the `SearchBar` input value updates immediately. Optimistic-UI: N/A.
 - Sequencing: `ListView.tsx` is also touched by **23-D** (workspace routing / query keys) — sequence to avoid a collision if 23-D is in flight.
@@ -171,7 +172,7 @@ Each lists the finding, locations, value tier, and effort. Specs are written per
 ### 19-H — Network resilience: retry + backoff — **value: medium** — depends on 19-A — **Done (shipped in 20-G)**
 - ✅ Shipped as part of Phase **20-G**, not a standalone 19 slice. `api/client.ts` `apiFetch` now retries transient failures (`res.status >= 500 || === 429`, thrown network `TypeError`) with exponential backoff + full jitter, honouring `Retry-After`, capped at 3 attempts. Scoped to safe **reads** (GET/HEAD) only — writes are optimistic-with-rollback (`mutations.retry:false`), so retrying a PUT/DELETE only delays rollback and a POST retry risks a duplicate create. Auth-retry stays outside the transient loop. Each retry `console.warn`s (the latency-masking guard below).
 
-### 19-I — Bundle / CWV — **value: medium** — ✅ **specced & split** → see **## Slice 19-I (19-I1 / 19-I2 / 19-I3)** above. 19-I2 (CI gate) + 19-I3 (ListView transition) runnable now; 19-I1 (lazy-load) depends on 26-A.
+### 19-I — Bundle / CWV — **value: medium** — ✅ **specced & split** → see **## Slice 19-I (19-I1 / 19-I2 / 19-I3)** above. 19-I3 (ListView transition) **done (PR #221)**; 19-I2 (CI gate) runnable now; 19-I1 (lazy-load) depends on 26-A.
 
 ### 19-J — URL-scheme hardening — **value: low** — ✅ **specced** → see **## Slice 19-J** above. Runnable now (no dependency).
 
