@@ -11,7 +11,8 @@
 | 19-C | **Stricter index/optional TS flags.** `noUncheckedIndexedAccess` then `exactOptionalPropertyTypes`, staged with backlog clear | Not Started | 19-B |
 | 19-D | **Context provider performance.** Memoise `AuthContext`/`ToastContext` provider values; `useCallback` the Auth actions; optional Auth state/actions split | Done | — |
 | 19-E | **Effect hygiene.** Add out-of-order guards to 3 mount-only fetches; replace 3 notify-parent-in-effect patterns | Not Started | — |
-| 19-F | **Accessibility: live regions + focus.** `aria-live`/`role` on ~10 transient surfaces; 6 `:focus`→`:focus-visible`; focus management for 3 dialog/popover surfaces | Not Started | — |
+| 19-F1 | **Accessibility: live regions.** `role="alert"`/`role="status"` on the ~15 transient surfaces (errors/loading/empty) that lack one; high value = the silent mutation-failure errors | Not Started | — |
+| 19-F2 | **Accessibility: focus + `:focus-visible`.** 6 bare `:focus`→`:focus-visible`; Esc-to-close on `SessionExpiredBanner` (pass `onClose` to its existing `useFocusTrap`); tidy `MeetingPicker`'s redundant Esc handler | Not Started | — |
 | 19-G | **Test quality.** Migrate testid-heavy unit tests to role/label queries; convert remaining `fireEvent` to `userEvent` | Not Started | — |
 | 19-H | **Network resilience.** Exponential-backoff retry (5xx/429/network) for idempotent requests in `apiFetch` | Done (shipped in 20-G) | 19-A |
 | 19-I1 | **Lazy-load + CLS.** `React.lazy` Tiptap + dynamic-import transcribe SDK; reserved-dimension fallbacks; lazy-chunk error boundary + RUM event | Not Started | 26-A |
@@ -158,11 +159,68 @@ Each lists the finding, locations, value tier, and effort. Specs are written per
 - **YMNNAE — drop notify-parent-in-effect:** `RecordControl.tsx:39` & `:43` (notify parent of status/transcript in an effect), `ActionsSection.tsx:27` (push derived count to parent). Notify at the source / lift state instead.
 - **Effort:** medium (the YMNNAE pieces touch hook↔parent contracts).
 
-### 19-F — Accessibility: live regions + focus — **value: high**
-- **`aria-live` gaps (~10 transient surfaces with no live region):** `ListView.tsx:133-136` (create-note error), `:138` (loading), `:238-240` (empty); `MeetingsSection.tsx:261` (loading), `:265-270` (unavailable), `:310-313` (per-meeting create error), `:273-277` (empty); `NoteView.tsx:327` (loading), `:194` (not found); `FinalNotesView.tsx:50-51` (empty); `ActionsSection.tsx:90` (empty); `FolderPreviewPanel.tsx:69` (empty). Errors → `role="alert"`, status/empty → `role="status"`. Highest value: the silent **mutation-failure** errors (ListView create, MeetingsSection create).
-- **`:focus`→`:focus-visible` (6):** `ActionsSection.module.css:68`, `FolderPicker.module.css:31`, `NoteEditor.module.css:22`, `NoteView.module.css:191`, `QuickCaptureTodoInput.module.css:23`, `TagsSection.module.css:71`.
-- **Dialog focus management (3 gaps):** `SessionExpiredBanner.tsx` declares `role="dialog" aria-modal` but moves no focus / no trap / no Esc / no restore (highest priority); `ShortcutsPanel.tsx` and `ListView.tsx:175-198` (CollapsibleFilters) never move focus in / restore.
-- **Effort:** medium. Could sub-split into 19-F1 live-regions (high) and 19-F2 focus management (medium).
+### 19-F1 — Accessibility: live regions — **value: high**
+
+**Intent:** Make currently-silent transient surfaces audible to assistive tech. Errors get `role="alert"` (assertive); loading/empty/status get `role="status"` (polite). Highest value: the **silent mutation-failure** errors a screen-reader user gets no feedback on today (create-note, per-meeting create, add-todo).
+
+**Ground-truth gaps (re-audited 2026-06-11 — several 2026-06-05 surfaces already fixed):**
+
+| File | Surface | Type | Role to add |
+|---|---|---|---|
+| `ListView.tsx` | create-note error | error | `alert` |
+| `ListView.tsx` | loading (folder/home) | loading | `status` |
+| `ListView.tsx` | empty (home notes) | empty | `status` |
+| `MeetingsSection.tsx` | loading | loading | `status` |
+| `MeetingsSection.tsx` | calendar unavailable | error | `alert` |
+| `MeetingsSection.tsx` | empty (no meetings) | empty | `status` |
+| `MeetingsSection.tsx` | per-meeting create error | error | `alert` |
+| `NoteView.tsx` | not found | error | `alert` |
+| `NoteView.tsx` | loading (detail) | loading | `status` |
+| `FinalNotesView.tsx` | empty (no final notes) | empty | `status` |
+| `ActionsSection.tsx` | empty | empty | `status` |
+| `FolderPreviewPanel.tsx` | empty | empty | `status` |
+| `QuickCaptureTodoInput.tsx` | add-todo error | error | `alert` |
+| `TranscriptTab.tsx` | listening status | status | `status` |
+| `TranscriptTab.tsx` | empty (no transcript) | empty | `status` |
+
+Already correct (do not touch): `ListView` search status/error/no-results, `FinalNotesView` generate error, `NoteView` no-next-occurrence, `RecordControl` errors, `ToastProvider`, `TodoSection` (section-level `aria-live`).
+
+**Scenarios (GWT):**
+- Given a create-note request fails in ListView, When the error renders, Then it carries `role="alert"`.
+- Given a per-meeting create fails in MeetingsSection, When the error renders, Then it carries `role="alert"`.
+- Given an add-todo request fails in QuickCaptureTodoInput, When the error renders, Then it carries `role="alert"`.
+- Given the calendar is unavailable, When MeetingsSection renders the message, Then it carries `role="alert"`.
+- Given a list/detail is loading or an empty state shows, When it renders, Then it carries `role="status"`.
+
+**Acceptance criteria:**
+- Every surface in the table above carries the listed role (`alert` for errors, `status` for loading/empty/status).
+- A vitest test per high-value mutation-error surface (ListView create, MeetingsSection create, QuickCaptureTodoInput add) asserts the failure node has `role="alert"`, queried via `getByRole("alert")`.
+- Loading/empty roles asserted where a test already renders that state; no test added purely to cover a static empty string.
+- No visual change; existing specs stay green; `lint` + `tsc` green.
+- Optimistic-UI: N/A (no new async mutation; only annotates existing error nodes).
+
+**Key files:** the 8 components in the table + their `__tests__`.
+
+### 19-F2 — Accessibility: focus + `:focus-visible` — **value: medium**
+
+**Intent:** Stop keyboard-focus rings showing on mouse click (use `:focus-visible`), and let Esc dismiss the session-expired dialog. Most dialog focus management is **already done** via the shared `useFocusTrap` hook (#211) — `SessionExpiredBanner`/`MeetingPicker` already move focus in, trap, and restore; `ShortcutsPanel` and ListView filters are correctly non-modal (no trap needed).
+
+**Ground-truth gaps (re-audited 2026-06-11):**
+- 6 bare `:focus` selectors: `ActionsSection.module.css:68`, `FolderPicker.module.css:31`, `NoteEditor.module.css:59`, `NoteView.module.css:275`, `QuickCaptureTodoInput.module.css:23`, `TagsSection.module.css:71`.
+- `SessionExpiredBanner.tsx` calls `useFocusTrap(ref)` **without** `onClose` → no Esc-to-close. Pass `onClose`.
+- `MeetingPicker.tsx` has a manual Esc handler (`:54-58`) redundant with the trap's `onClose`; collapse it into the trap.
+
+**Scenarios (GWT):**
+- Given the session-expired dialog is open, When the user presses Esc, Then the dialog closes (same as its dismiss action) and focus is restored.
+- Given a focusable input, When focused by mouse click, Then no focus ring shows; When focused by keyboard, Then the ring shows.
+
+**Acceptance criteria:**
+- All 6 `:focus` selectors become `:focus-visible` (the 6 files above); no other selector changed.
+- `SessionExpiredBanner` passes `onClose` to `useFocusTrap`; a vitest test asserts an Esc keydown invokes the dismiss handler.
+- `MeetingPicker`'s manual Esc handler removed in favour of the trap's `onClose`; its existing close-on-Esc test stays green.
+- Optimistic-UI: N/A (static config).
+
+**Key files:** the 6 `*.module.css`, `SessionExpiredBanner.tsx`, `MeetingPicker.tsx`, `hooks/useFocusTrap.ts` (reference), relevant `__tests__`.
 
 ### 19-G — Test quality: role-first queries + userEvent — **value: low**
 - **Query priority:** suite is `getByTestId` 314 vs role/label 160. Worst (zero role/label): `RecordControl.test.tsx` (49/0), `ShortcutsPanel.test.tsx` (15/0), `FinalNotesView.test.tsx` (33/1). Migrate buttons/headings/inputs to `getByRole`/`getByLabelText`; keep `data-testid` as the **E2E** contract (unchanged — different layer).
