@@ -311,6 +311,19 @@ The full rationale, target diagrams, staged migration plan, and the eventual-con
 
 ---
 
+## Skip backend publish + `cdk deploy` on frontend-only pushes
+
+✅ **Done** (2026-06-11, this PR). A `detect-changes` job (`dorny/paths-filter@v3`) sets `backend = true` only when the push touches `src/**` — which is the complete signal for a changed deploy artifact (the Lambda asset is `src/Api` + its project refs; the CDK template is `src/Infrastructure`; both under `src/**`). `deploy.yml`'s **Install CDK CLI**, **Publish Lambda**, and **Deploy infrastructure** steps now carry `if: needs.detect-changes.outputs.backend == 'true'`. Stack outputs (`ApiUrl`/`WebUrl`/`WebBucketName`/`DistributionId`/`RumMonitorId`/`RumIdentityPoolId`) are now resolved via `aws cloudformation describe-stacks` instead of the cdk `--outputs-file`, so they resolve on both paths — on a frontend-only push the backend steps are skipped but the live stack still holds the outputs the frontend deploy needs.
+
+**Deploy-time delta:** frontend-only pushes save ~137s (`cdk deploy`, dominated by the SnapStart snapshot republish) + ~10s publish + ~15s CDK CLI install **per environment** → **~5 min/pipeline** off frontend-only slices. Backend/infra pushes: neutral (full path unchanged; the `--outputs-file` → `describe-stacks` swap adds ~1 idempotent API call). Recurring saving, no standing cost — satisfies the deploy-time guardrail.
+
+**Why it matters:** frontend-only slices are common, and they were paying the full backend SnapStart bake twice (Test + Production) for a byte-identical stack.
+**Scope note:** touches `deploy.yml` only — **not** `pr.yml`, so the merge-gate `backend`/`frontend` checks still run full on every PR (avoids the false-green pitfall recorded under *CI pipeline hygiene* above). Separate AWS accounts for Test/Production confirmed, so the per-account `describe-stacks` is correctly scoped by each job's creds.
+**Raised in:** deploy-time review, 2026-06-11. **Actioned:** same session.
+**Depends on:** —
+
+---
+
 ## Generalise append-retry-on-conflict beyond `NoteCommandHandler`
 
 BUG-17 (PR #217) added a bounded retry-on-`ConcurrencyException` (re-read→re-run→re-append) to `NoteCommandHandler.ExecuteAsync` only. `ActionItemCommandHandler` shares the same optimistic-concurrency append but was left out: it interleaves projection writes with its append (not the clean read→handle→append cycle), and its streams are keyed per action item, so the BUG-17 multi-writer-on-one-stream race is far less likely there.

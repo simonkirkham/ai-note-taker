@@ -15,6 +15,27 @@ on:
       - "tests/Analysis.Eval/**" # LLM eval harness, run only by eval.yml, never deployed
 
 jobs:
+  # Did this push touch the deploy artifact? The Lambda asset (src/Api + its
+  # project refs) and the CDK template (src/Infrastructure) both live under
+  # src/**, so a push with no src/** change produces a byte-identical stack —
+  # the backend publish + `cdk deploy` (dominated by the ~2 min SnapStart
+  # snapshot republish) is pure waste. Frontend-only pushes skip it and resolve
+  # stack outputs via describe-stacks instead. pr.yml is untouched, so the
+  # merge-gate checks still run full backend+frontend on every PR.
+  detect-changes:
+    runs-on: ubuntu-latest
+    outputs:
+      backend: ${{ steps.filter.outputs.backend }}
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            backend:
+              - 'src/**'
+
   validate-frontend:
     runs-on: ubuntu-latest
     steps:
@@ -76,7 +97,7 @@ jobs:
         run: dotnet test tests/Infrastructure.Assertions/Infrastructure.Assertions.csproj --nologo -v quiet
 
   deploy-test:
-    needs: [validate-frontend, validate-backend]
+    needs: [validate-frontend, validate-backend, detect-changes]
     runs-on: ubuntu-latest
     environment:
       name: Test
@@ -104,6 +125,7 @@ jobs:
           cache-dependency-path: web/package-lock.json
 
       - name: Install CDK CLI
+        if: needs.detect-changes.outputs.backend == 'true'
         run: npm install -g aws-cdk@2
 
       - name: Configure AWS credentials
@@ -119,11 +141,13 @@ jobs:
           aws-region: ${{ secrets.AWS_REGION }}
 
       - name: Publish Lambda
+        if: needs.detect-changes.outputs.backend == 'true'
         run: dotnet publish src/Api/Api.csproj -c Release -o
           src/Api/bin/Release/net10.0/publish
 
       - name: Deploy infrastructure
-        run: cdk deploy --all --require-approval never --outputs-file outputs.json
+        if: needs.detect-changes.outputs.backend == 'true'
+        run: cdk deploy --all --require-approval never
         env:
           DOMAIN_NAME: ${{ secrets.DOMAIN_NAME }}
           HOSTED_ZONE_ID: ${{ secrets.HOSTED_ZONE_ID }}
@@ -133,15 +157,23 @@ jobs:
           GOOGLE_REFRESH_TOKEN_SSM_PATH: ${{ secrets.GOOGLE_REFRESH_TOKEN_SSM_PATH }}
           BEDROCK_MODEL_ID: ${{ secrets.BEDROCK_MODEL_ID }}
 
-      - name: Extract outputs
+      - name: Resolve stack outputs
+        # describe-stacks (not the cdk --outputs-file) so outputs resolve whether
+        # or not this run deployed — on a frontend-only push the backend steps are
+        # skipped, but the live stack still holds the outputs the frontend needs.
+        # All six are CfnOutputs on NoteTakerStack in the configured region; the
+        # per-environment AWS creds scope this to the right account.
         id: outputs
         run: |
-          echo "api-url=$(jq -r '.NoteTakerStack.ApiUrl' outputs.json)" >> $GITHUB_OUTPUT
-          echo "frontend-url=$(jq -r '.NoteTakerStack.WebUrl' outputs.json)" >> $GITHUB_OUTPUT
-          echo "bucket=$(jq -r '.NoteTakerStack.WebBucketName' outputs.json)" >> $GITHUB_OUTPUT
-          echo "distribution-id=$(jq -r '.NoteTakerStack.DistributionId' outputs.json)" >> $GITHUB_OUTPUT
-          echo "rum-monitor-id=$(jq -r '.NoteTakerStack.RumMonitorId' outputs.json)" >> $GITHUB_OUTPUT
-          echo "rum-identity-pool-id=$(jq -r '.NoteTakerStack.RumIdentityPoolId' outputs.json)" >> $GITHUB_OUTPUT
+          OUTS=$(aws cloudformation describe-stacks --stack-name NoteTakerStack \
+            --query 'Stacks[0].Outputs' --output json)
+          get() { echo "$OUTS" | jq -r --arg k "$1" '.[] | select(.OutputKey==$k) | .OutputValue'; }
+          echo "api-url=$(get ApiUrl)" >> $GITHUB_OUTPUT
+          echo "frontend-url=$(get WebUrl)" >> $GITHUB_OUTPUT
+          echo "bucket=$(get WebBucketName)" >> $GITHUB_OUTPUT
+          echo "distribution-id=$(get DistributionId)" >> $GITHUB_OUTPUT
+          echo "rum-monitor-id=$(get RumMonitorId)" >> $GITHUB_OUTPUT
+          echo "rum-identity-pool-id=$(get RumIdentityPoolId)" >> $GITHUB_OUTPUT
 
       - name: Print deployment URLs
         run: |
@@ -303,7 +335,7 @@ jobs:
           if-no-files-found: ignore
 
   deploy-production:
-    needs: deploy-test
+    needs: [deploy-test, detect-changes]
     runs-on: ubuntu-latest
     environment:
       name: Production
@@ -331,6 +363,7 @@ jobs:
           cache-dependency-path: web/package-lock.json
 
       - name: Install CDK CLI
+        if: needs.detect-changes.outputs.backend == 'true'
         run: npm install -g aws-cdk@2
 
       - name: Configure AWS credentials
@@ -346,11 +379,13 @@ jobs:
           aws-region: ${{ secrets.AWS_REGION }}
 
       - name: Publish Lambda
+        if: needs.detect-changes.outputs.backend == 'true'
         run: dotnet publish src/Api/Api.csproj -c Release -o
           src/Api/bin/Release/net10.0/publish
 
       - name: Deploy infrastructure
-        run: cdk deploy --all --require-approval never --outputs-file outputs.json
+        if: needs.detect-changes.outputs.backend == 'true'
+        run: cdk deploy --all --require-approval never
         env:
           DOMAIN_NAME: ${{ secrets.DOMAIN_NAME }}
           HOSTED_ZONE_ID: ${{ secrets.HOSTED_ZONE_ID }}
@@ -360,15 +395,23 @@ jobs:
           GOOGLE_REFRESH_TOKEN_SSM_PATH: ${{ secrets.GOOGLE_REFRESH_TOKEN_SSM_PATH }}
           BEDROCK_MODEL_ID: ${{ secrets.BEDROCK_MODEL_ID }}
 
-      - name: Extract outputs
+      - name: Resolve stack outputs
+        # describe-stacks (not the cdk --outputs-file) so outputs resolve whether
+        # or not this run deployed — on a frontend-only push the backend steps are
+        # skipped, but the live stack still holds the outputs the frontend needs.
+        # All six are CfnOutputs on NoteTakerStack in the configured region; the
+        # per-environment AWS creds scope this to the right account.
         id: outputs
         run: |
-          echo "api-url=$(jq -r '.NoteTakerStack.ApiUrl' outputs.json)" >> $GITHUB_OUTPUT
-          echo "frontend-url=$(jq -r '.NoteTakerStack.WebUrl' outputs.json)" >> $GITHUB_OUTPUT
-          echo "bucket=$(jq -r '.NoteTakerStack.WebBucketName' outputs.json)" >> $GITHUB_OUTPUT
-          echo "distribution-id=$(jq -r '.NoteTakerStack.DistributionId' outputs.json)" >> $GITHUB_OUTPUT
-          echo "rum-monitor-id=$(jq -r '.NoteTakerStack.RumMonitorId' outputs.json)" >> $GITHUB_OUTPUT
-          echo "rum-identity-pool-id=$(jq -r '.NoteTakerStack.RumIdentityPoolId' outputs.json)" >> $GITHUB_OUTPUT
+          OUTS=$(aws cloudformation describe-stacks --stack-name NoteTakerStack \
+            --query 'Stacks[0].Outputs' --output json)
+          get() { echo "$OUTS" | jq -r --arg k "$1" '.[] | select(.OutputKey==$k) | .OutputValue'; }
+          echo "api-url=$(get ApiUrl)" >> $GITHUB_OUTPUT
+          echo "frontend-url=$(get WebUrl)" >> $GITHUB_OUTPUT
+          echo "bucket=$(get WebBucketName)" >> $GITHUB_OUTPUT
+          echo "distribution-id=$(get DistributionId)" >> $GITHUB_OUTPUT
+          echo "rum-monitor-id=$(get RumMonitorId)" >> $GITHUB_OUTPUT
+          echo "rum-identity-pool-id=$(get RumIdentityPoolId)" >> $GITHUB_OUTPUT
 
       - name: Print deployment URLs
         run: |
