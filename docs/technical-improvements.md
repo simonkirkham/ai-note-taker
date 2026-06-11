@@ -3,6 +3,7 @@
 Technical, infrastructure, and developer-experience items to address in the future. These are **not user-facing features** — they're refactors, upgrades, CI/CD work, and hardening that keep the system healthy. Review this list when planning a phase or when an item becomes urgent.
 
 For the other tracks see:
+
 - **Features** → [docs/future-features.md](future-features.md)
 - **Bugs** → [docs/phases/phase-bugs.md](phases/phase-bugs.md)
 - **Minor tweaks & changes** → [docs/phases/phase-minor-changes.md](phases/phase-minor-changes.md)
@@ -13,58 +14,61 @@ Each entry records what it is, why it matters, where it was raised, and any depe
 
 Status key: 🔲 **Open** · 🟡 **Partly done / mitigated** · ✅ **Done** (graduated to a phase, or actioned in place). Outstanding work is every 🔲 and 🟡 row.
 
-| Item | Status |
-|------|--------|
-| Decide on a server-state library (TanStack/SWR) vs hand-rolled | ✅ Done — ADR 0010 (stay hand-rolled) |
-| Stricter TypeScript compiler flags beyond `strict` | ✅ Done — → Phase 19 (19-B/19-C) |
-| Frontend state-management hygiene — colocation + Context perf | 🟡 Partly — Context perf done (19-D); **colocation Open** (ongoing convention) |
-| Core Web Vitals — bundle budget + CLS + transitions | ✅ Done — → Phase 19 (19-I) |
-| Network resilience — retry transient failures with backoff | ✅ Done — 20-G |
-| XSS hardening — allowlist URL schemes on `href`/`src` | ✅ Done — → Phase 19 |
-| ESLint `jsx-a11y` + `import` rules + `@/` alias | 🟡 **Partly** — `@/` alias, `import-x/order`, **jsx-a11y (19-F3)** done; `import-x/no-unresolved`/`no-cycle` + typed-lint (19-B) remain |
-| Migrate `App.css` to CSS Modules | ✅ Done — 14-P |
-| Upgrade GitHub Actions to Node.js 24 | ✅ Done |
-| Resolve ESLint warnings in `AuthContext.tsx` | ✅ Done — #172 |
-| Add `cdk synth` to the pre-commit hook | ✅ Done — #208 |
-| Split the single API Lambda (CQRS + async projectors) | ✅ Done — → Phase 27 (Stage 1) |
-| Reduce Lambda SnapStart costs | ✅ Done |
-| Break down the monolithic `App.css` | ✅ Done — 14-P (merged into the CSS-Modules migration) |
-| Add a shared modal focus-trap utility | ✅ Done — #211 |
-| Make the projection-rebuild endpoint robust | ✅ Done — → Phase 24 |
-| Auto-backfill a new projection on deploy | 🔲 **Open** — unblocked now P24 is done; pairs with Phase 23 |
-| Rebuild emits delete tombstones for `NoteSearchView` | 🔲 **Open** — likely addressed by 24-B; **verify + close** |
-| Stabilise the flaky `TagsJourney` E2E | ✅ Done — BUG-17 |
-| `WorkspaceList` reads via full table Scan, not a per-user GSI | 🔲 **Open** — fold into Phase 23 |
-| CI pipeline hygiene — skip no-op deploys, cancel superseded, cache Playwright | ✅ Done |
-| Generalise append-retry-on-conflict beyond `NoteCommandHandler` | 🔲 **Open** — only if a 2nd handler needs it |
-| `deploy-production` hangs at "Configure AWS credentials" | 🟡 Mitigated — `timeout-minutes` shipped (#222); **root cause Open** |
-| Add a `NoteEditor` component test for the image-ordering invariant | 🔲 **Open** — guards the 25-B regression below the E2E gate |
-| Zero-downtime deployments — frontend stale-chunk 404s; backend canary/rollback | ✅ Done — → Phase 26 |
-| Frontend build Node 20 → 24 + lockfile regen (dep-audit T1) | ✅ Done — #237, deploy #528 |
-| ASP.NET 10 servicing + AWS SDK patch bumps (dep-audit T7) | 🔲 **Open** — JwtBearer 9 patches behind incl. security |
-| Vite 5 → 7 + Vitest 2 → 4 (dep-audit T2) | 🔲 **Open** — needs Node ≥20.19; after T1 |
-| React 18 → 19 (dep-audit T3) | 🔲 **Open** — after T2 |
-| TypeScript 5.6 → 6.0 (dep-audit T4) | 🔲 **Open** — pair w/ typescript-eslint bump |
+| ID    | Item                                                                           | Status                                                                                                                                  |
+| ----- | ------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------- |
+| TI-1  | Decide on a server-state library (TanStack/SWR) vs hand-rolled                 | ✅ Done — ADR 0010 (stay hand-rolled)                                                                                                   |
+| TI-2  | Stricter TypeScript compiler flags beyond `strict`                             | ✅ Done — → Phase 19 (19-B/19-C)                                                                                                        |
+| TI-3  | Frontend state-management hygiene — colocation + Context perf                  | 🟡 Partly — Context perf done (19-D); **colocation Open** (ongoing convention)                                                          |
+| TI-4  | Core Web Vitals — bundle budget + CLS + transitions                            | ✅ Done — → Phase 19 (19-I)                                                                                                             |
+| TI-5  | Network resilience — retry transient failures with backoff                     | ✅ Done — 20-G                                                                                                                          |
+| TI-6  | XSS hardening — allowlist URL schemes on `href`/`src`                          | ✅ Done — → Phase 19                                                                                                                    |
+| TI-7  | ESLint `jsx-a11y` + `import` rules + `@/` alias                                | 🟡 **Partly** — `@/` alias, `import-x/order`, **jsx-a11y (19-F3)** done; `import-x/no-unresolved`/`no-cycle` + typed-lint (19-B) remain |
+| TI-8  | Migrate `App.css` to CSS Modules                                               | ✅ Done — 14-P                                                                                                                          |
+| TI-9  | Upgrade GitHub Actions to Node.js 24                                           | ✅ Done                                                                                                                                 |
+| TI-10 | Resolve ESLint warnings in `AuthContext.tsx`                                   | ✅ Done — #172                                                                                                                          |
+| TI-11 | Add `cdk synth` to the pre-commit hook                                         | ✅ Done — #208                                                                                                                          |
+| TI-12 | Split the single API Lambda (CQRS + async projectors)                          | ✅ Done — → Phase 27 (Stage 1)                                                                                                          |
+| TI-13 | Reduce Lambda SnapStart costs                                                  | ✅ Done                                                                                                                                 |
+| TI-14 | Break down the monolithic `App.css`                                            | ✅ Done — 14-P (merged into the CSS-Modules migration)                                                                                  |
+| TI-15 | Add a shared modal focus-trap utility                                          | ✅ Done — #211                                                                                                                          |
+| TI-16 | Make the projection-rebuild endpoint robust                                    | ✅ Done — → Phase 24                                                                                                                    |
+| TI-17 | Auto-backfill a new projection on deploy                                       | 🔲 **Open** — unblocked now P24 is done; pairs with Phase 23                                                                            |
+| TI-18 | Rebuild emits delete tombstones for `NoteSearchView`                           | 🔲 **Open** — likely addressed by 24-B; **verify + close**                                                                              |
+| TI-19 | Stabilise the flaky `TagsJourney` E2E                                          | ✅ Done — BUG-17                                                                                                                        |
+| TI-20 | `WorkspaceList` reads via full table Scan, not a per-user GSI                  | 🔲 **Open** — fold into Phase 23                                                                                                        |
+| TI-21 | CI pipeline hygiene — skip no-op deploys, cancel superseded, cache Playwright  | ✅ Done                                                                                                                                 |
+| TI-22 | Skip backend publish + `cdk deploy` on frontend-only pushes                    | ✅ Done — `detect-changes` gate (2026-06-11)                                                                                            |
+| TI-23 | Generalise append-retry-on-conflict beyond `NoteCommandHandler`                | 🔲 **Open** — only if a 2nd handler needs it                                                                                            |
+| TI-24 | `deploy-production` hangs at "Configure AWS credentials"                       | 🟡 Mitigated — `timeout-minutes` shipped (#222); **root cause Open**                                                                    |
+| TI-25 | Add a `NoteEditor` component test for the image-ordering invariant             | 🔲 **Open** — guards the 25-B regression below the E2E gate                                                                             |
+| TI-26 | Zero-downtime deployments — frontend stale-chunk 404s; backend canary/rollback | ✅ Done — → Phase 26                                                                                                                    |
+| TI-27 | Frontend build Node 20 → 24 + lockfile regen (dep-audit T1)                    | ✅ Done — #237, deploy #528                                                                                                             |
+| TI-28 | ASP.NET 10 servicing + AWS SDK patch bumps (dep-audit T7)                      | ✅ Done — #241, deploy #530                                                                                                             |
+| TI-29 | Vite 5 → 7 + Vitest 2 → 4 (dep-audit T2)                                       | 🔲 **Open** — needs Node ≥20.19; after T1                                                                                               |
+| TI-30 | React 18 → 19 (dep-audit T3)                                                   | 🔲 **Open** — after T2                                                                                                                  |
+| TI-31 | TypeScript 5.6 → 6.0 (dep-audit T4)                                            | 🔲 **Open** — pair w/ typescript-eslint bump                                                                                            |
 
-**Outstanding (9 Open + 3 Partly):** Auto-backfill projection on deploy; `NoteSearchView` tombstones (verify/close); `WorkspaceList` GSI; Generalise append-retry; `NoteEditor` ordering test; **ASP.NET/AWS-SDK patches (T7)**; **Vite 7 + Vitest 4 (T2)**; **React 19 (T3)**; **TypeScript 6.0 (T4)**; *(partly)* ESLint import-resolver + typed-lint (jsx-a11y done via 19-F3); state-mgmt colocation; deploy-credentials root cause.
+**Outstanding (8 Open + 3 Partly):** TI-17 Auto-backfill projection on deploy; TI-18 `NoteSearchView` tombstones (verify/close); TI-20 `WorkspaceList` GSI; TI-23 Generalise append-retry; TI-25 `NoteEditor` ordering test; **TI-29 Vite 7 + Vitest 4 (T2)**; **TI-30 React 19 (T3)**; **TI-31 TypeScript 6.0 (T4)**; _(partly)_ TI-7 ESLint import-resolver + typed-lint (jsx-a11y done via 19-F3); TI-3 state-mgmt colocation; TI-24 deploy-credentials root cause.
+
+> Items carry stable IDs `TI-1`–`TI-31` in document order (the `ID` column above); each detailed section below repeats its ID. Reference an item as `TI-N`. The dep-audit `T#` tags are retained in parentheses for cross-reference with the audit report.
 
 > **Dependency upgrade audit (2026-06-11):** full inventory + LTS recommendations in [docs/dependency-audits/dependency-upgrade-audit-2026-06.md](dependency-audits/dependency-upgrade-audit-2026-06.md). High + medium-urgency items (T1, T7, T2, T3, T4) are tracked below. Low-urgency items (T5 lint-tooling batch, T6 Tiptap 3.26, T8 CDK 2.258, T9 Playwright 1.60, T10 xUnit v3) stay in the audit doc until picked up.
 
 ---
 
-## Decide on a server-state library (TanStack Query / SWR) vs hand-rolled hooks — and record it
+## TI-1. Decide on a server-state library (TanStack Query / SWR) vs hand-rolled hooks — and record it
 
 **Resolved** by [ADR 0010](adr/0010-server-state-strategy.md) (slice 14-W) — **deferred, stay hand-rolled**. The decision is to keep the hand-rolled `useEffect`-fetch + `useState` hooks for now because this repo is a learning vehicle; adopting TanStack Query / SWR would hide the server-state mechanics we want to learn. See the ADR for the rationale and the "Revisit when" triggers that would graduate a library migration to its own numbered phase.
 
 ---
 
-## Stricter TypeScript compiler flags beyond `strict`
+## TI-2. Stricter TypeScript compiler flags beyond `strict`
 
 **Graduated → [Phase 19](phases/phase-19.md)** (slices **19-B** `noImplicitOverride` + **19-C** `noUncheckedIndexedAccess` → `exactOptionalPropertyTypes`). Same work; tracked in the phase doc. Removed here to avoid a duplicate backlog.
 
 ---
 
-## Frontend state-management hygiene — colocation + Context performance
+## TI-3. Frontend state-management hygiene — colocation + Context performance
 
 **Context-performance half ✅ Done** as **[Phase 19-D](phases/phase-19.md)** (2026-06-05): `AuthContext`/`ToastContext` provider values memoised, Auth actions `useCallback`-wrapped. **Colocation half — Open:** state colocation (keep state nearest its consumer; prefer component composition over Context for prop drilling) stays an ongoing convention, not a slice — candidate to fold into the `frontend-react` skill if it recurs in review.
 
@@ -73,13 +77,13 @@ Status key: 🔲 **Open** · 🟡 **Partly done / mitigated** · ✅ **Done** (g
 
 ---
 
-## Core Web Vitals — bundle budget gate + CLS sizing + non-urgent transitions
+## TI-4. Core Web Vitals — bundle budget gate + CLS sizing + non-urgent transitions
 
 **Graduated → [Phase 19](phases/phase-19.md)** (slice **19-I** — lazy-load Tiptap + transcribe-streaming, CI bundle-size budget; CLS sizing + `useTransition`/`useDeferredValue` folded into the same slice). Targets (field, 75th pct): LCP ≤ 2.5s, INP ≤ 200ms, CLS ≤ 0.1. Tracked in the phase doc; removed here to avoid a duplicate backlog.
 
 ---
 
-## Network resilience — retry transient failures with backoff
+## TI-5. Network resilience — retry transient failures with backoff
 
 ✅ **Done** (Phase **20-G**, deploy on the TanStack Query migration). `web/src/api/client.ts` `apiFetch` retries transient failures (5xx / 429 / network drop) with **exponential backoff + full jitter**, honouring `Retry-After`, capped at 3 attempts. Scoped to safe **reads** (GET/HEAD) only — writes are optimistic-with-rollback and `mutations.retry:false`, so transport-retrying a PUT/DELETE would only delay rollback and a POST retry would risk a duplicate create. 401 is handled separately (not transient). This was tracked as Phase **19-H**; the 20-G implementation note records it as subsuming 19-H.
 
@@ -87,29 +91,31 @@ Status key: 🔲 **Open** · 🟡 **Partly done / mitigated** · ✅ **Done** (g
 
 ---
 
-## XSS hardening — allowlist URL schemes on user-derived `href`/`src`
+## TI-6. XSS hardening — allowlist URL schemes on user-derived `href`/`src`
 
 **Graduated → [Phase 19](phases/phase-19.md)** (slice **19-J** — configure the Tiptap Link extension explicitly to allowlist schemes and reject `javascript:` / `data:`). A `javascript:` URL in rendered note content is a stored-XSS vector the HTML-body DOMPurify guardrail does not cover (it sanitises bodies, not anchor hrefs). Guardrail-ahead-of-need: only bites once user/AI-derived links render as anchors. Tracked in the phase doc; removed here to avoid a duplicate backlog.
 
 ---
 
-## ESLint `jsx-a11y` (blocked on ESLint 10) + `import` rules follow-up + `@/` alias
+## TI-7. ESLint `jsx-a11y` (blocked on ESLint 10) + `import` rules follow-up + `@/` alias
 
 **Status of the three originals (Phase 14):**
+
 - **`@/` path alias** — ✅ **Done** (Phase 14-Q): `resolve.alias` in `vite.config.ts` + tsconfig `paths`.
 - **Import ordering** — ✅ **Done** (Phase 14-R), but via **`eslint-plugin-import-x`** (the maintained, flat-config-native fork), NOT `eslint-plugin-import` — the latter peer-caps at ESLint 9 and the project is on **ESLint 10**. Only `import-x/order` was enabled.
-- **`eslint-plugin-jsx-a11y`** — ✅ **Done (Phase 19-F3, PR #236)**: the ESLint-10 peer-cap was the deferral reason, but it is only an *install-time* constraint — the plugin runs fine on ESLint 10. Resolved with a **scoped `package.json` `overrides`** pinning jsx-a11y's eslint peer to the root eslint (`eslint-plugin-jsx-a11y` → `eslint: "$eslint"`), which keeps `npm ci` green **without** the repo-wide `--legacy-peer-deps` that the 14-S/T deferral was avoiding. Adopted `recommended` at `error`, backlog triaged. Remove the override once jsx-a11y ships a v10 peer range.
+- **`eslint-plugin-jsx-a11y`** — ✅ **Done (Phase 19-F3, PR #236)**: the ESLint-10 peer-cap was the deferral reason, but it is only an _install-time_ constraint — the plugin runs fine on ESLint 10. Resolved with a **scoped `package.json` `overrides`** pinning jsx-a11y's eslint peer to the root eslint (`eslint-plugin-jsx-a11y` → `eslint: "$eslint"`), which keeps `npm ci` green **without** the repo-wide `--legacy-peer-deps` that the 14-S/T deferral was avoiding. Adopted `recommended` at `error`, backlog triaged. Remove the override once jsx-a11y ships a v10 peer range.
 
 **Remaining work (this item):**
+
 1. **`import-x/no-unresolved` + `import-x/no-cycle`** — the original AC also named "catch unresolved/circular imports", which 14-R did not enable (needs `eslint-import-resolver-typescript` wired for the `@/` alias; `no-cycle` can be noisy). Add these on a follow-up pass.
 2. **Typed-lint family — adopt `@typescript-eslint` `recommended-type-checked`** (needs `parserOptions.project` wired; this is Phase **19-B**). Unlocks the machine-enforced half of the TS conventions just added to the `frontend-react` skill: `no-floating-promises` + `no-misused-promises` (the #1 silent async bug — un-awaited promises, async `onClick`), `no-non-null-assertion` (bans `!`), `no-explicit-any`/`no-unsafe-*`, `prefer-nullish-coalescing` + `prefer-optional-chain`. Expect a one-time backlog to clear; introduce in `warn` then promote to `error`. Note: typed lint is slower (whole-program) — keep it to `*.ts/*.tsx` and confirm CI time is acceptable.
-**Why it matters:** a11y and import-hygiene enforcement turn "please remember" into "the build fails if you don't." `react-hooks` + `import-x/order` are now active; typed-lint closes the async-promise and `!`/`any` gaps; this closes the remaining gaps.
-**Raised in:** Frontend standards review 2026-06-03; updated after Phase 14-Q/R/S/T (ESLint-10 plugin-ecosystem gap discovered).
-**Depends on:** nothing external — `jsx-a11y` shipped via 19-F3 (scoped `overrides`); the remaining import-resolver rules and typed-lint (19-B) are unblocked.
+   **Why it matters:** a11y and import-hygiene enforcement turn "please remember" into "the build fails if you don't." `react-hooks` + `import-x/order` are now active; typed-lint closes the async-promise and `!`/`any` gaps; this closes the remaining gaps.
+   **Raised in:** Frontend standards review 2026-06-03; updated after Phase 14-Q/R/S/T (ESLint-10 plugin-ecosystem gap discovered).
+   **Depends on:** nothing external — `jsx-a11y` shipped via 19-F3 (scoped `overrides`); the remaining import-resolver rules and typed-lint (19-B) are unblocked.
 
 ---
 
-## Migrate `App.css` to CSS Modules
+## TI-8. Migrate `App.css` to CSS Modules
 
 ✅ **Done** (Phase 14, completed by slice 14-P, 2026-06-03). `web/src/App.css` is deleted. The `:root` tokens + every `[data-theme]` block (plus a new `--space-*` spacing scale) live in `web/src/styles/tokens.css`; reset/base-element rules in `web/src/styles/global.css`, both imported once at the app root. Every component now owns a co-located `*.module.css` with `camelCase` classes and `styles.*` references; `clsx` was added for conditional classes. Migration was shipped component-by-component across Phase 14 (14-E/F/G/H/I/J/K/L/M/N/P), regression-checked by the Vitest/RTL suite and `Browser.E2E` journeys.
 
@@ -119,20 +125,21 @@ Status key: 🔲 **Open** · 🟡 **Partly done / mitigated** · ✅ **Done** (g
 
 ---
 
-## Upgrade GitHub Actions to Node.js 24
+## TI-9. Upgrade GitHub Actions to Node.js 24
 
 ✅ **Done** (2026-06-04). Every action across `deploy.yml`, `eval.yml`, and `pr.yml` was bumped to its latest node24 major: `checkout@v6`, `setup-node@v6`, `cache@v5`, `setup-dotnet@v5` (also a node20 action — added to scope), `upload-artifact@v7`, `aws-actions/configure-aws-credentials@v6`. Runtime confirmed `node24` for each via the GitHub API; major-version release notes checked for breaking changes — none affect this repo (`setup-node` auto-cache needs a `packageManager` field we don't have; aws-credentials v5 boolean-input cleanup is moot as we pass only string inputs; `checkout` v6 separate creds-file is harmless). Two non-obvious floors: `upload-artifact` needs **v6+** (v5 still defaults to node20) and `aws-credentials` needs **v6** (v5 is node20).
 
-**Deliberately not changed:** `setup-node`'s `node-version: "20"` (the Node used to *build* the frontend) stays at 20 — that is separate from the action-runtime deprecation and is governed by the `package-lock.json`/Node-version guardrail in CLAUDE.md. Bumping the build Node is its own decision (would require regenerating the lock file on Node 24).
+**Deliberately not changed:** `setup-node`'s `node-version: "20"` (the Node used to _build_ the frontend) stays at 20 — that is separate from the action-runtime deprecation and is governed by the `package-lock.json`/Node-version guardrail in CLAUDE.md. Bumping the build Node is its own decision (would require regenerating the lock file on Node 24).
 
 **Why it mattered:** Node.js 20 actions are deprecated; GitHub forces Node.js 24 by default from 2026-06-02 and removes Node 20 from runners on 2026-09-16.
 **Raised in:** Phase 6 / adhoc CI observation. **Actioned:** 2026-06-04.
 
 ---
 
-## Resolve ESLint warnings in `web/src/auth/AuthContext.tsx`
+## TI-10. Resolve ESLint warnings in `web/src/auth/AuthContext.tsx`
 
 ✅ **Done** (PR #172, 2026-06-04). All four repo-wide lint warnings cleared:
+
 - `AuthContext` + `useAuth` moved into `web/src/auth/context.ts` (named `context.ts`, not `authContext.ts`, to avoid a case-collision with `AuthContext.tsx` on the case-insensitive `/mnt/c` filesystem); `AuthProvider` is now the only export of `AuthContext.tsx`, restoring Fast Refresh.
 - `ToastContext` + `useToast` split out into `web/src/components/toastContext.ts` the same way.
 - The one-shot OAuth-exchange `useEffect` now takes its stable `clientId`/`initialToken` deps, clearing the last `react-hooks/exhaustive-deps` warning. No behaviour change.
@@ -141,7 +148,7 @@ Status key: 🔲 **Open** · 🟡 **Partly done / mitigated** · ✅ **Done** (g
 
 ---
 
-## Add `cdk synth` to the pre-commit hook
+## TI-11. Add `cdk synth` to the pre-commit hook
 
 **✅ Done** (2026-06-10): `.githooks/pre-commit` now runs `dotnet publish src/Api` + `cdk synth --quiet` after the backend block. **Cost-gating decision:** synth is slow (needs a Release publish first), so it runs **only when infra-affecting files are staged** — `src/Infrastructure/`, `src/Api/`, any `*.sln`/`*.csproj`/`*.props`/`*.targets`, or `cdk.json` — matched by a new `infra` flag. Docs-only, web-only, and tests-only commits skip it. Uses the global `cdk` CLI (`aws-cdk@2`), matching CI; no AWS creds needed (the app does no context lookups).
 
@@ -151,7 +158,7 @@ Status key: 🔲 **Open** · 🟡 **Partly done / mitigated** · ✅ **Done** (g
 
 ---
 
-## Split the single API Lambda into individual Lambdas (CQRS + async projectors)
+## TI-12. Split the single API Lambda into individual Lambdas (CQRS + async projectors)
 
 **Graduated → [Phase 27](phases/phase-27.md)** (Stage 1 — CQRS write/read split + async projectors). Four slices: extract a shared idempotent `ProjectionUpdater` (27-A), enable a DynamoDB Stream + Projector Lambda in shadow with DLQ/alarms (27-B), cut over to async + move read-after-write tests to polling (27-C), split the HTTP Lambda into Command + Query functions with least-privilege IAM (27-D). **Stage 2** (per-context command Lambdas) and stream-replay rebuild stay out of scope; pick them up as follow-ons. Original entry kept below for context.
 
@@ -171,29 +178,31 @@ The full rationale, target diagrams, staged migration plan, and the eventual-con
 
 ---
 
-## Reduce Lambda SnapStart costs
+## TI-13. Reduce Lambda SnapStart costs
 
 ✅ **Done** (2026-06-03) — investigated against prod (account 642653037268, eu-west-2) and right-sized via memory reduction.
 
 **Findings:**
+
 - **Version accumulation is not happening.** The version counter is at 164, but CloudFormation retains only the active version plus two May-20 orphans (42, 43); it replaces the published version on each deploy rather than piling them up. Orphan snapshots auto-expire after 14 days with no invocation, so they self-clean.
 - **Cost is almost entirely snapshot-cache storage** (`SnapStart-Cached-GB-S`, ~$4–5/mo), billed per GB of `MemorySize`. Restore charges (`SnapStart-Restored-GB`) are ~$0.03/mo and per-request compute (`Lambda-GB-Second`) is ~$0 (free tier).
 - **SnapStart earns its keep — kept on.** Cold starts are not rare (~10–25/day, 300+/mo) and SnapStart restores them in ~400–650 ms vs the multi-second .NET 10 cold init without it. Disabling it would save ~$50/yr but regress hundreds of requests/month.
 - **The lever was memory, not versions.** The function was provisioned at 512 MB but peak `Max Memory Used` is ~165 MB (~3× over-provisioned).
 
-**Action taken:** Dropped `ApiFunction` `MemorySize` 512 → 256 MB (~55% headroom over observed peak), roughly halving the dominant cache-storage cost *and* per-request compute. CDK assertion updated to match. Watch restore duration post-deploy — less memory means less vCPU, so if restore latency climbs materially, bump to 384 MB.
+**Action taken:** Dropped `ApiFunction` `MemorySize` 512 → 256 MB (~55% headroom over observed peak), roughly halving the dominant cache-storage cost _and_ per-request compute. CDK assertion updated to match. Watch restore duration post-deploy — less memory means less vCPU, so if restore latency climbs materially, bump to 384 MB.
 
 **Raised in:** Cost-review observation, 2026-06-02. Actioned 2026-06-03.
 
 ---
 
-## Break down the monolithic `App.css` into a proper CSS architecture
+## TI-14. Break down the monolithic `App.css` into a proper CSS architecture
 
 ✅ **Done** (Phase 14, completed by slice 14-P, 2026-06-03) — superseded by and merged into the **"Migrate `App.css` to CSS Modules"** item above. The monolith is gone: a token layer (`styles/tokens.css`, with formalised `--space-*` spacing alongside the existing `--color-*` palettes), a base layer (`styles/global.css`), and per-component scoped CSS Modules now replace the single global stylesheet. Class collisions are impossible (module scoping), and the line-number references in the planning docs no longer apply.
 
 <details><summary>Original entry (kept for context)</summary>
 
 **What:** `web/src/App.css` is a single **2,807-line** stylesheet that holds the styles for the entire frontend — sign-in, sidebar, folder tree, home list, note editor, to-do section, transcription UI, theme palettes (`:root` + every `[data-theme="…"]` block), notification banners, and more. Everything is global-scoped and edited by line-number reference (the doc entries throughout `phase-minor-changes.md` point at "~L821", "~L2057", etc.), which is brittle and makes it easy to clobber unrelated rules. Break it down into a maintainable structure and apply proper CSS practices. Options to weigh when picked up:
+
 - **Split by concern into multiple files** imported from a small entry point — e.g. `tokens.css` (custom properties + theme palettes), `base.css`, and per-feature files (`sidebar.css`, `note-editor.css`, `todo.css`, `list-view.css`, `sign-in.css`, …), co-located with or near their components.
 - **Move to CSS Modules** (Vite supports `*.module.css` out of the box) so each component owns scoped styles and class collisions become impossible — the biggest structural win, but the largest change.
 - **Establish a token layer** as the single source of truth for colours/spacing/typography (the `--color-*` variables already exist; formalise spacing/radius/font tokens too) so feature files never hardcode values.
@@ -208,7 +217,7 @@ The full rationale, target diagrams, staged migration plan, and the eventual-con
 
 ---
 
-## Add a shared modal focus-trap utility and apply it across all dialogs
+## TI-15. Add a shared modal focus-trap utility and apply it across all dialogs
 
 ✅ **Done** (2026-06-10). `useFocusTrap(ref, { onClose })` lives in `web/src/hooks/useFocusTrap.ts` — on mount it captures `document.activeElement`, focuses the first focusable element (or the container, falling back to `tabindex="-1"`), cycles Tab / Shift+Tab within the dialog's focusable set, and restores focus to the captured element on unmount; `onClose` is an optional Escape consolidation that both current dialogs leave unused (Escape stays where it lived). Applied to `MeetingPicker` and `SessionExpiredBanner`. Vitest coverage: focus-into-dialog-on-open, Tab/Shift+Tab wrap, and focus-restore-to-trigger-on-close. **Also delivers the shared utility that [Phase 19-F](phases/phase-19.md)'s per-surface focus work would otherwise have to build** — 19-F now only needs to apply the existing hook to its remaining surfaces.
 
@@ -224,19 +233,19 @@ The full rationale, target diagrams, staged migration plan, and the eventual-con
 
 ---
 
-## Make the projection-rebuild endpoint robust (it 500s + partial-rebuilds under burst)
+## TI-16. Make the projection-rebuild endpoint robust (it 500s + partial-rebuilds under burst)
 
 **Graduated → [Phase 24](phases/phase-24.md).** `POST /admin/projections/rebuild` deletes every projection first, then re-upserts ~290 rows via an unbounded `Task.WhenAll` against a 5s-per-op client — a cold on-demand table throttles, writes cancel, `Task.WhenAll` throws → 500, and delete-all-first leaves a **partial rebuild** (silent missing rows). Reliable only on the second try (warm tables). Confirmed in prod 2026-06-05 (Phase 17 backfill, 2 ops canceled at 5s) and recurred 2026-06-08 (Phase 22). The fix (bounded+retried writes, admin-path timeout, upsert-and-reconcile instead of delete-first, operability) is now broken into Phase 24-A/B/C. The `NoteSearchView` tombstone item below is folded into **24-B**.
 
 ---
 
-## Auto-backfill a new projection on deploy (new projections ship empty)
+## TI-17. Auto-backfill a new projection on deploy (new projections ship empty)
 
-**What:** A deploy creates a new projection's table but **never populates it** — there is no automatic rebuild — so a newly-shipped projection holds only entities written *after* the deploy. The feature reads empty in prod while every test passes. The current mitigation is a manual post-deploy `POST /admin/projections/rebuild` (now a mandatory Scribe step + CLAUDE.md guardrail for projection-adding slices), but that is human-triggered and was missed once.
+**What:** A deploy creates a new projection's table but **never populates it** — there is no automatic rebuild — so a newly-shipped projection holds only entities written _after_ the deploy. The feature reads empty in prod while every test passes. The current mitigation is a manual post-deploy `POST /admin/projections/rebuild` (now a mandatory Scribe step + CLAUDE.md guardrail for projection-adding slices), but that is human-triggered and was missed once.
 
 **Confirmed in prod, 2026-06-08:** Phase 22 search returned **no results** because `notetaker-proj-notesearchview` had 1 of ~12 live notes — the 22-A deploy created the table but nothing rebuilt it. A manual rebuild fixed it.
 
-**Why it matters:** silent, repeats for *every* future projection, and the symptom (feature returns nothing) looks like a code bug, not an ops gap.
+**Why it matters:** silent, repeats for _every_ future projection, and the symptom (feature returns nothing) looks like a code bug, not an ops gap.
 
 **Fix options:** (1) detect new projection tables in the deploy job and POST the rebuild automatically (idempotent) after deploy; or (2) a deploy step that diffs the projection set and rebuilds only the new ones (needs the rebuild-robustness fix so a bulk rebuild can't partial-fail). Pairs with the rebuild-robustness item.
 **Raised in:** Phase 22 search backfill, 2026-06-08.
@@ -244,7 +253,7 @@ The full rationale, target diagrams, staged migration plan, and the eventual-con
 
 ---
 
-## Rebuild emits delete tombstones for `NoteSearchView` (rebuild soft-deletes; live hard-deletes)
+## TI-18. Rebuild emits delete tombstones for `NoteSearchView` (rebuild soft-deletes; live hard-deletes)
 
 **What:** The **live** delete path hard-deletes the search row on `NoteDeleted` (`DynamoDbNoteSearchViewStore.DeleteAsync`), but the **rebuild** path writes deleted notes as `Deleted=true` rows (the `NoteSearchViewProjection` keeps them and `GetAll()` returns them). After the Phase 22 prod backfill the table held **80 `Deleted=true` tombstones** alongside 11 live rows.
 
@@ -256,27 +265,28 @@ The full rationale, target diagrams, staged migration plan, and the eventual-con
 
 ---
 
-## Stabilise the flaky `TagsJourney` E2E (post-deploy gate fails intermittently)
+## TI-19. Stabilise the flaky `TagsJourney` E2E (post-deploy gate fails intermittently)
 
-✅ **Resolved by [BUG-17](phases/phase-bugs.md#bug-17--concurrent-multi-word-tag-add-silently-drops-a-tag-no-handler-retry-on-conflict)** (PR #217, deploy #506, 2026-06-10). The remaining *removed-tag-lost* half was a real backend lost-write, not test timing: a space-separated multi-tag add fans out into two concurrent same-stream appends; the loser hit `ConcurrencyException` and was **silently dropped** because `NoteCommandHandler` never retried the append (the frontend swallowed the 409, then the phantom tag's removal 404'd and rolled back). A deterministic `ConflictingEventStore` repro confirmed it. Fix: bounded retry-on-conflict in the command handler (re-read→re-run→re-append) + `untagNote()` treating 404/409 as OK. Deploy #506 ran `TagsJourney` **14/14 green** on the first full E2E pass. History retained below.
+✅ **Resolved by [BUG-17](phases/phase-bugs.md#bug-17--concurrent-multi-word-tag-add-silently-drops-a-tag-no-handler-retry-on-conflict)** (PR #217, deploy #506, 2026-06-10). The remaining _removed-tag-lost_ half was a real backend lost-write, not test timing: a space-separated multi-tag add fans out into two concurrent same-stream appends; the loser hit `ConcurrencyException` and was **silently dropped** because `NoteCommandHandler` never retried the append (the frontend swallowed the 409, then the phantom tag's removal 404'd and rolled back). A deterministic `ConflictingEventStore` repro confirmed it. Fix: bounded retry-on-conflict in the command handler (re-read→re-run→re-append) + `untagNote()` treating 404/409 as OK. Deploy #506 ran `TagsJourney` **14/14 green** on the first full E2E pass. History retained below.
 
-⚠️ **(Historical) Partially fixed — recurred, re-opened.** PR #205 (deploy #495) fixed **[BUG-14](phases/phase-bugs.md#bug-14--pasting-space-separated-tags-intermittently-drops-a-pill)**, the *dropped-add* half: tagging a freshly-created note while its initial `keys.note` GET is in flight made the optimistic patch a no-op, the GET resolved tagless, and nothing refetched — so a pasted multi-tag (`"1:1s Bill"`) dropped a pill. The first attempt (PR #203) misdiagnosed it as cold-start latency and raised the E2E tag-pill timeout 15s→45s; deploy #493 failed **with the 45s applied** (`ToBeVisibleAsync with timeout 45000ms`), disproving latency — PR #205 reverts to 15s. **Lesson:** a near-deterministic "element never appears" timeout (vs an occasional *slow* one) is a *missing render*, not latency.
+⚠️ **(Historical) Partially fixed — recurred, re-opened.** PR #205 (deploy #495) fixed **[BUG-14](phases/phase-bugs.md#bug-14--pasting-space-separated-tags-intermittently-drops-a-pill)**, the _dropped-add_ half: tagging a freshly-created note while its initial `keys.note` GET is in flight made the optimistic patch a no-op, the GET resolved tagless, and nothing refetched — so a pasted multi-tag (`"1:1s Bill"`) dropped a pill. The first attempt (PR #203) misdiagnosed it as cold-start latency and raised the E2E tag-pill timeout 15s→45s; deploy #493 failed **with the 45s applied** (`ToBeVisibleAsync with timeout 45000ms`), disproving latency — PR #205 reverts to 15s. **Lesson:** a near-deterministic "element never appears" timeout (vs an occasional _slow_ one) is a _missing render_, not latency.
 
-**But deploy #496 (24-C, an unrelated backend-only change) then failed `RemoveTag_GoneAfterNavigation`** — a *different* symptom: after `AddTagAsync("1:1s Bill")` → `RemoveTagAsync("Bill")` → save → reopen, the **removed** "Bill" pill is **still present** on the server-fresh reopen (`expected not to be visible`, resolved visible 9×). The BUG-14 patch addressed the dropped-add path; the *removed-tag-lost* path survives. Likely a backend optimistic-concurrency interaction: the two concurrent multi-tag adds (one retries on 409) race the subsequent remove, so the remove writes at a stale stream version and is silently lost. Re-cleared the gate for 24-C by re-running deploy #496 (intermittent — #495 ran the same test green). **Still open**; needs a reproduction test for the add-add-then-remove interleave, not another timeout bump.
+**But deploy #496 (24-C, an unrelated backend-only change) then failed `RemoveTag_GoneAfterNavigation`** — a _different_ symptom: after `AddTagAsync("1:1s Bill")` → `RemoveTagAsync("Bill")` → save → reopen, the **removed** "Bill" pill is **still present** on the server-fresh reopen (`expected not to be visible`, resolved visible 9×). The BUG-14 patch addressed the dropped-add path; the _removed-tag-lost_ path survives. Likely a backend optimistic-concurrency interaction: the two concurrent multi-tag adds (one retries on 409) race the subsequent remove, so the remove writes at a stale stream version and is silently lost. Re-cleared the gate for 24-C by re-running deploy #496 (intermittent — #495 ran the same test green). **Still open**; needs a reproduction test for the add-add-then-remove interleave, not another timeout bump.
 
-**Recurred again on deploy #501 (PR #213, 2026-06-10) — the strongest change-independence evidence yet.** #213 was a **docs + CI-config-only** PR (`.github/workflows/*.yml` + `docs/`, zero application/test code), yet `deploy-test` failed the E2E gate **three runs in a row**: run 1 failed both `RemoveTag_GoneAfterNavigation` *and* `RemoveTag_PillDisappears` (2/14), the two reruns failed `RemoveTag_PillDisappears` alone (1/14). A docs/CI PR cannot touch tag behaviour, so this rules out any per-slice regression and points squarely at the backend add-add-then-remove optimistic-concurrency race described above (or test-side ordering). The flake now blocks unrelated CI/docs deploys, not just feature slices — raising its priority. **Fix needs the reproduction test, not reruns.**
+**Recurred again on deploy #501 (PR #213, 2026-06-10) — the strongest change-independence evidence yet.** #213 was a **docs + CI-config-only** PR (`.github/workflows/*.yml` + `docs/`, zero application/test code), yet `deploy-test` failed the E2E gate **three runs in a row**: run 1 failed both `RemoveTag_GoneAfterNavigation` _and_ `RemoveTag_PillDisappears` (2/14), the two reruns failed `RemoveTag_PillDisappears` alone (1/14). A docs/CI PR cannot touch tag behaviour, so this rules out any per-slice regression and points squarely at the backend add-add-then-remove optimistic-concurrency race described above (or test-side ordering). The flake now blocks unrelated CI/docs deploys, not just feature slices — raising its priority. **Fix needs the reproduction test, not reruns.**
 
 **Recurred on deploys #502, #503 and #504 (2026-06-10) — `RemoveTag_GoneAfterNavigation` again.** Three consecutive main deploys (23-B, 25-A, BUG-16) each failed the E2E gate on first attempt and each went green on a single rerun. While BUG-16 (a frontend auth change, change-independent of tag behaviour) sat approved with all its own gates green, this flake gated its merge twice (it had to wait out #502 and #503 reruns) and then its own deploy (#504) once. Cumulative: ≥6 deploys gated (#485/#491/#496/#501/#502/#503/#504). The "single rerun clears it" pattern keeps masking the cost, but it now routinely delays unrelated merges. Priority restated: write the add-add-then-remove reproduction test and fix the race; do not keep absorbing it via reruns.
 
 <details><summary>Original entry (kept for context)</summary>
 
-**What:** `Browser.E2E.Journeys.TagsJourney` flakes in the `deploy-test` E2E step — a single test fails (13/14 pass), a **different** one each run, always a Playwright "element not visible" timeout on a tag pill just after `AddTagAsync`. Confirmed pre-existing and **change-independent**: deploy **#485** (2026-06-08) failed `RemoveTag_PillDisappears` *before* slice 19-D existed; deploy **#491** (19-D, a memoisation-only change inert in the E2E auth path) then hit it three runs running — `AddMultipleTags_SpaceSeparated`, `RemoveTag_PillDisappears`, `RemoveTag_GoneAfterNavigation`. No browser-console JS/React errors in any failure.
+**What:** `Browser.E2E.Journeys.TagsJourney` flakes in the `deploy-test` E2E step — a single test fails (13/14 pass), a **different** one each run, always a Playwright "element not visible" timeout on a tag pill just after `AddTagAsync`. Confirmed pre-existing and **change-independent**: deploy **#485** (2026-06-08) failed `RemoveTag_PillDisappears` _before_ slice 19-D existed; deploy **#491** (19-D, a memoisation-only change inert in the E2E auth path) then hit it three runs running — `AddMultipleTags_SpaceSeparated`, `RemoveTag_PillDisappears`, `RemoveTag_GoneAfterNavigation`. No browser-console JS/React errors in any failure.
 
 **Why it flakes:** `AppPage.AddTagAsync` waits on the `/tags` POST response, then `AssertTagPillVisibleAsync` polls for the pill with a **15s** timeout. On a cold post-deploy environment (cold Lambda + cold DynamoDB tables) the create-note + tag round-trip races that timeout, so whichever tag test runs while the stack is coldest times out. The tag pill render is gated on the server round-trip in the journey, so latency — not correctness — decides pass/fail.
 
-**Why it matters:** a flaky post-deploy gate forces repeated `gh run rerun` (19-D needed 4 attempts), and a red main deploy blocks the *next* slice's merge gate ("main's latest deploy must be green").
+**Why it matters:** a flaky post-deploy gate forces repeated `gh run rerun` (19-D needed 4 attempts), and a red main deploy blocks the _next_ slice's merge gate ("main's latest deploy must be green").
 
 **Fix options (pick one or combine):**
+
 1. Raise the tag-pill assertion timeout (15s → 30s) to absorb cold-start latency — smallest change.
 2. Pre-warm the stack before the E2E run (one throwaway request per cold path) so the first real tag op isn't cold.
 3. Make tag-pill rendering optimistic in the journey's eyes (assert the optimistic pill, not the server-reconciled one) — but NoteView tags are still hand-rolled until 20-E, so revisit alongside that.
@@ -288,7 +298,7 @@ The full rationale, target diagrams, staged migration plan, and the eventual-con
 
 ---
 
-## `WorkspaceList` reads via full table Scan, not a per-user GSI
+## TI-20. `WorkspaceList` reads via full table Scan, not a per-user GSI
 
 `DynamoDbWorkspaceListStore.GetAllAsync` does a paginated cross-user `Scan` (`ConsistentRead = true`) and is called on **every** `GET /workspaces`, every rename (`ApplyRenamedAsync` re-scans to point-update one row), and every ownership check (`OwnsAsync`). The closest precedent, `NoteSearchView`, uses a `UserId-index` GSI + `Query` for exactly this access pattern.
 
@@ -301,7 +311,7 @@ The full rationale, target diagrams, staged migration plan, and the eventual-con
 
 ---
 
-## CI pipeline hygiene — skip no-op deploys, cancel superseded PR runs, cache Playwright
+## TI-21. CI pipeline hygiene — skip no-op deploys, cancel superseded PR runs, cache Playwright
 
 ✅ **Done** (2026-06-10, this PR). Three independent pipeline optimisations shipped together:
 
@@ -317,20 +327,20 @@ The full rationale, target diagrams, staged migration plan, and the eventual-con
 
 ---
 
-## Skip backend publish + `cdk deploy` on frontend-only pushes
+## TI-22. Skip backend publish + `cdk deploy` on frontend-only pushes
 
 ✅ **Done** (2026-06-11, this PR). A `detect-changes` job (`dorny/paths-filter@v3`) sets `backend = true` when the push touches any path that can change the deploy artifact: `src/**` (Lambda asset = `src/Api` + refs; CDK template = `src/Infrastructure`), `cdk.json` (CDK app command + context/feature flags → alters synth), or `ai-note-taker.sln`. `deploy.yml`'s **Install CDK CLI**, **Publish Lambda**, and **Deploy infrastructure** steps now carry `if: needs.detect-changes.outputs.backend == 'true'`. Stack outputs (`ApiUrl`/`WebUrl`/`WebBucketName`/`DistributionId`/`RumMonitorId`/`RumIdentityPoolId`) are now resolved via `aws cloudformation describe-stacks` instead of the cdk `--outputs-file`, so they resolve on both paths — on a frontend-only push the backend steps are skipped but the live stack still holds the outputs the frontend deploy needs. The resolve step fails fast (`set -e` + per-output non-empty assertion) rather than syncing to an empty bucket/distribution if an output is ever absent.
 
 **Deploy-time delta:** frontend-only pushes save ~137s (`cdk deploy`, dominated by the SnapStart snapshot republish) + ~10s publish + ~15s CDK CLI install **per environment** → **~5 min/pipeline** off frontend-only slices. Backend/infra pushes: neutral (full path unchanged; the `--outputs-file` → `describe-stacks` swap adds ~1 idempotent API call). Recurring saving, no standing cost — satisfies the deploy-time guardrail.
 
 **Why it matters:** frontend-only slices are common, and they were paying the full backend SnapStart bake twice (Test + Production) for a byte-identical stack.
-**Scope note:** touches `deploy.yml` only — **not** `pr.yml`, so the merge-gate `backend`/`frontend` checks still run full on every PR (avoids the false-green pitfall recorded under *CI pipeline hygiene* above). Separate AWS accounts for Test/Production confirmed, so the per-account `describe-stacks` is correctly scoped by each job's creds.
+**Scope note:** touches `deploy.yml` only — **not** `pr.yml`, so the merge-gate `backend`/`frontend` checks still run full on every PR (avoids the false-green pitfall recorded under _CI pipeline hygiene_ above). Separate AWS accounts for Test/Production confirmed, so the per-account `describe-stacks` is correctly scoped by each job's creds.
 **Raised in:** deploy-time review, 2026-06-11. **Actioned:** same session.
 **Depends on:** —
 
 ---
 
-## Generalise append-retry-on-conflict beyond `NoteCommandHandler`
+## TI-23. Generalise append-retry-on-conflict beyond `NoteCommandHandler`
 
 BUG-17 (PR #217) added a bounded retry-on-`ConcurrencyException` (re-read→re-run→re-append) to `NoteCommandHandler.ExecuteAsync` only. `ActionItemCommandHandler` shares the same optimistic-concurrency append but was left out: it interleaves projection writes with its append (not the clean read→handle→append cycle), and its streams are keyed per action item, so the BUG-17 multi-writer-on-one-stream race is far less likely there.
 
@@ -341,7 +351,7 @@ BUG-17 (PR #217) added a bounded retry-on-`ConcurrencyException` (re-read→re-r
 
 ---
 
-## `deploy-production` hangs at "Configure AWS credentials"
+## TI-24. `deploy-production` hangs at "Configure AWS credentials"
 
 **Mitigated 2026-06-11** — added `timeout-minutes: 5` to the `Configure AWS credentials` step in **both** deploy jobs (`deploy-test` + `deploy-production`). A silent 30+ min hang now fails fast and is recovered by a rerun, so it no longer blocks a green main indefinitely. Root cause still **unconfirmed** (capture the step log next time it hangs); a version bump or step-level retry remains a possible follow-up.
 
@@ -354,9 +364,9 @@ The `deploy-production` job in `deploy.yml` intermittently (~half of deploys dur
 
 ---
 
-## Add a `NoteEditor` component test for the image upload/serialize ordering invariant
+## TI-25. Add a `NoteEditor` component test for the image upload/serialize ordering invariant
 
-Phase 25-B shipped (then fixed) an **ordering bug** that every unit test passed and only the deploy-time E2E (`NoteImageJourney`) caught: the image node was inserted with a `blob:` src *before* its stable key was mapped, so a save during the upload window dropped the image. The fix (presign-first) re-encodes the load-bearing invariant — *seed the `src→key` map before inserting the node* — as two adjacent statements in `NoteEditor.tsx` with **nothing pinning the order below the slow deploy E2E gate**. The pure `noteImages.test.ts` covers only the rewrite helpers.
+Phase 25-B shipped (then fixed) an **ordering bug** that every unit test passed and only the deploy-time E2E (`NoteImageJourney`) caught: the image node was inserted with a `blob:` src _before_ its stable key was mapped, so a save during the upload window dropped the image. The fix (presign-first) re-encodes the load-bearing invariant — _seed the `src→key` map before inserting the node_ — as two adjacent statements in `NoteEditor.tsx` with **nothing pinning the order below the slow deploy E2E gate**. The pure `noteImages.test.ts` covers only the rewrite helpers.
 
 **Why it matters:** a future refactor of `NoteEditor` could reorder seed-vs-insert and silently reintroduce the data-loss bug; CI wouldn't catch it until a ~15-min deploy E2E (which itself flakes/hangs). **Fix:** a `NoteEditor.test.tsx` (RTL + mocked `presignUpload`/`fetch`) asserting (a) `onChange` is never called with a `blob:`/unmapped src during a paste→presign→PUT sequence — the first `onChange` after insert already carries the key; and (b) on PUT failure the node is removed and `onChange` re-fires without the key. Tiptap-in-jsdom made this non-trivial, so it was deferred from the slice.
 
@@ -365,17 +375,17 @@ Phase 25-B shipped (then fixed) an **ordering bug** that every unit test passed 
 
 ---
 
-## Zero-downtime deployments — frontend stale-chunk 404s; backend has no canary/rollback
+## TI-26. Zero-downtime deployments — frontend stale-chunk 404s; backend has no canary/rollback
 
 **Graduated → [Phase 26](phases/phase-26.md).** A `cdk deploy` is not fully zero-downtime. The backend alias flip is seamless (API Gateway routes to the `live` alias, SnapStart avoids cold starts) but is an instant 100% cutover with no canary or automated rollback. The real gap is the **frontend deploy job** (`deploy.yml:200`–`204`): `aws s3 sync … --delete` removes old content-hashed bundles the instant new ones land → a browser/CDN still holding the previous `index.html` 404s its bundle on reload → **blank app**; plus a `/*` invalidation cold-cache spike and no immutable caching. Severity rises the moment **[19-I](phases/phase-19.md)** ships dynamic imports over the `--delete` strategy (reload-404 → mid-session crash). Broken into **26-A** (frontend two-pass upload, no `--delete`, immutable hashed assets, entry-point-only invalidation, S3 lifecycle GC — the only current-downtime fix, do first and before/with 19-I), **26-B** (`vite:preloadError` reload safety net), and **26-C** (backend CodeDeploy canary wired to the existing error-rate + latency alarms for auto-rollback). Full GWT scenarios and acceptance criteria in the phase doc.
 
 ---
 
-## Frontend build Node 20 → 24 + regenerate lockfile (dep-audit T1)
+## TI-27. Frontend build Node 20 → 24 + regenerate lockfile (dep-audit T1)
 
-✅ **Done** (PR #237, deploy #528, 2026-06-11). `node-version "20" → "24"` across `deploy.yml` (3) + `pr.yml` (2); `@types/node ^20 → ^24` (resolves 24.13.2); lockfile regenerated. Two non-obvious traps surfaced and are captured in [docs/learnings/node-24-build-upgrade.md](learnings/node-24-build-upgrade.md): (1) the lockfile/npm-version skew is **bidirectional** — regenerating on an *older* local npm than CI's pruned the optional `@emnapi/*` native-binding entries CI's newer npm requires, failing `npm ci`; (2) `@types/node@24` dropped a transitive `lib` reference that had been silently providing ES2022 `Array.at()` to the **test** typecheck, so `tsc -p tsconfig.test.json` failed (fixed by making `tsconfig.test.json`'s `lib` explicit). Original entry kept below for context.
+✅ **Done** (PR #237, deploy #528, 2026-06-11). `node-version "20" → "24"` across `deploy.yml` (3) + `pr.yml` (2); `@types/node ^20 → ^24` (resolves 24.13.2); lockfile regenerated. Two non-obvious traps surfaced and are captured in [docs/learnings/node-24-build-upgrade.md](learnings/node-24-build-upgrade.md): (1) the lockfile/npm-version skew is **bidirectional** — regenerating on an _older_ local npm than CI's pruned the optional `@emnapi/*` native-binding entries CI's newer npm requires, failing `npm ci`; (2) `@types/node@24` dropped a transitive `lib` reference that had been silently providing ES2022 `Array.at()` to the **test** typecheck, so `tsc -p tsconfig.test.json` failed (fixed by making `tsconfig.test.json`'s `lib` explicit). Original entry kept below for context.
 
-**Urgency: High (EOL).** Graduates the half deliberately deferred by *"Upgrade GitHub Actions to Node.js 24"* (above) — that item bumped the action runtimes but left the **build** Node (`setup-node` `node-version: "20"`) on 20.
+**Urgency: High (EOL).** Graduates the half deliberately deferred by _"Upgrade GitHub Actions to Node.js 24"_ (above) — that item bumped the action runtimes but left the **build** Node (`setup-node` `node-version: "20"`) on 20.
 
 **What:** `node-version: "20"` → `"24"` in `deploy.yml` (3 sites) + `pr.yml` (2 sites); `@types/node` `^20` → `^24`; regenerate `web/package-lock.json` **on Node 24**.
 
@@ -388,7 +398,9 @@ Phase 25-B shipped (then fixed) an **ordering bug** that every unit test passed 
 
 ---
 
-## ASP.NET 10 servicing + AWS SDK patch bumps (dep-audit T7)
+## TI-28. ASP.NET 10 servicing + AWS SDK patch bumps (dep-audit T7)
+
+✅ **Done** (PR #241, deploy #530, 2026-06-11). 11 `.csproj`-only version bumps across `src/Api`, `src/EventStore`, `tests/Api.Integration`, `tests/Analysis.Eval` — no source changes. JwtBearer `10.0.0` → `10.0.9` (security servicing); Mvc.Testing `10.0.8` → `10.0.9`; `Amazon.Lambda.AspNetCoreServer.Hosting` `2.0.0` → `2.1.0`; `AWSSDK.*` (BedrockRuntime `4.0.20.5`, DynamoDBv2 `4.0.21.1`, S3 `4.0.24.3`, SecurityToken `4.0.7.3`, SimpleSystemsManagement `4.0.8.3`, Extensions.NETCore.Setup `4.0.4.6`); `Google.Apis.Calendar.v3` `1.74.0.4154`. `AWSXRayRecorder.Handlers.AwsSdk` (2.14.0) + `AWS.Lambda.Powertools.*` (3.2.2) already latest — no change. `BedrockRuntime` kept in sync across Api + Analysis.Eval. Deploy-time delta **neutral**. Verified: Release build 0 warnings, Domain.Specs 193/193, Api.Integration 325/325, EventStore.Integration (CI), cdk synth. **Note:** the only *minor* bump (`Amazon.Lambda.AspNetCoreServer.Hosting`, the APIGW↔ASP.NET adapter) is exercised only by post-deploy smoke, not PR CI — deploy #530 succeeded so it's confirmed live. Original entry kept below for context.
 
 **Urgency: High (security).** `Microsoft.AspNetCore.Authentication.JwtBearer` is pinned at **10.0.0** while **10.0.9** ships (9 servicing patches behind, incl. security) — and it is exact-pinned, so it does **not** float with the SDK.
 
@@ -401,7 +413,7 @@ Phase 25-B shipped (then fixed) an **ordering bug** that every unit test passed 
 
 ---
 
-## Vite 5 → 7 + Vitest 2 → 4 (dep-audit T2)
+## TI-29. Vite 5 → 7 + Vitest 2 → 4 (dep-audit T2)
 
 **Urgency: Medium.** Vite is two majors behind.
 
@@ -416,7 +428,7 @@ Phase 25-B shipped (then fixed) an **ordering bug** that every unit test passed 
 
 ---
 
-## React 18 → 19 (dep-audit T3)
+## TI-30. React 18 → 19 (dep-audit T3)
 
 **Urgency: Medium.**
 
@@ -431,13 +443,13 @@ Phase 25-B shipped (then fixed) an **ordering bug** that every unit test passed 
 
 ---
 
-## TypeScript 5.6 → 6.0 (dep-audit T4)
+## TI-31. TypeScript 5.6 → 6.0 (dep-audit T4)
 
 **Urgency: Medium.**
 
 **What:** `typescript` `^5.6.3` → `^6.0`; run `tsc -b` + `tsc -p tsconfig.test.json` (CI typechecks tests via a separate config — CLAUDE.md guardrail). Bump `typescript-eslint` to its latest TS-6-compatible release in the same PR.
 
-**Why:** 6.0 is stable (Mar 2026); 7.0 (the Go rewrite) is still beta → avoid. typescript-eslint peer caps at `<6.1.0`, so 6.0 is in range and 7.0 would not be — bump typescript-eslint alongside (overlaps the *ESLint `jsx-a11y`* item's typed-lint follow-up).
+**Why:** 6.0 is stable (Mar 2026); 7.0 (the Go rewrite) is still beta → avoid. typescript-eslint peer caps at `<6.1.0`, so 6.0 is in range and 7.0 would not be — bump typescript-eslint alongside (overlaps the _ESLint `jsx-a11y`_ item's typed-lint follow-up).
 
 **Raised in:** Dependency upgrade audit, 2026-06-11.
-**Depends on:** — (pair with the typescript-eslint bump in the *ESLint jsx-a11y* item).
+**Depends on:** — (pair with the typescript-eslint bump in the _ESLint jsx-a11y_ item).
