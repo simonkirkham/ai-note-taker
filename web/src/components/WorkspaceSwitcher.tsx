@@ -124,8 +124,10 @@ export default function WorkspaceSwitcher() {
               <div key={w.workspaceId} className={styles.row} data-active={isActive || undefined}>
                 <span className={styles.check} aria-hidden="true">{isActive ? "✓" : ""}</span>
                 {renamingId === w.workspaceId ? (
-                  <input
-                    autoFocus
+                  // autoFocus is intentional: the rename input appears in direct
+                  // response to the user choosing Rename, so focusing it is expected.
+                  // eslint-disable-next-line jsx-a11y/no-autofocus
+                  <input autoFocus
                     className={styles.editInput}
                     value={renameVal}
                     aria-label="Workspace name"
@@ -171,8 +173,10 @@ export default function WorkspaceSwitcher() {
 
           <div className={styles.createRow}>
             {creating ? (
-              <input
-                autoFocus
+              // autoFocus is intentional: the create-workspace input appears in
+              // direct response to the user choosing New, so focusing it is expected.
+              // eslint-disable-next-line jsx-a11y/no-autofocus
+              <input autoFocus
                 className={styles.editInput}
                 placeholder="Workspace name…"
                 aria-label="New workspace name"
