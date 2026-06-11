@@ -123,10 +123,6 @@ jobs:
           src/Api/bin/Release/net10.0/publish
 
       - name: Deploy infrastructure
-        # 26-C: the live alias is CodeDeploy-managed, so `cdk deploy` now blocks on the
-        # canary bake (~5 min). Cap the step so a stuck/rolling-back CodeDeploy deployment
-        # fails the job fast instead of hanging up to the 6h default.
-        timeout-minutes: 25
         run: cdk deploy --all --require-approval never --outputs-file outputs.json
         env:
           DOMAIN_NAME: ${{ secrets.DOMAIN_NAME }}
@@ -354,10 +350,6 @@ jobs:
           src/Api/bin/Release/net10.0/publish
 
       - name: Deploy infrastructure
-        # 26-C: the live alias is CodeDeploy-managed, so `cdk deploy` now blocks on the
-        # canary bake (~5 min). Cap the step so a stuck/rolling-back CodeDeploy deployment
-        # fails the job fast instead of hanging up to the 6h default.
-        timeout-minutes: 25
         run: cdk deploy --all --require-approval never --outputs-file outputs.json
         env:
           DOMAIN_NAME: ${{ secrets.DOMAIN_NAME }}
