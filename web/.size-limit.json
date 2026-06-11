@@ -1,0 +1,8 @@
+[
+  {
+    "name": "entry chunk (gzip)",
+    "path": "dist/assets/index-*.js",
+    "limit": "365 kB",
+    "gzip": true
+  }
+]
