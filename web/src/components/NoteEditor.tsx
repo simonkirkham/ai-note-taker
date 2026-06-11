@@ -6,6 +6,7 @@ import StarterKit from '@tiptap/starter-kit';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Markdown } from 'tiptap-markdown';
 import { presignUpload, resolveImages } from '../api/notes';
+import { hasDisallowedScheme } from '../lib/linkScheme';
 import { dropUnresolvedImages, extractImageKeys, srcsToKeys } from '../lib/noteImages';
 import styles from './NoteEditor.module.css';
 import { useToast } from './toastContext';
@@ -73,16 +74,11 @@ export default function NoteEditor({ noteId, value, onChange, onBlur }: NoteEdit
       Image,
       Link.configure({
         protocols: ALLOWED_LINK_PROTOCOLS,
-        // Tiptap's built-in isAllowedUri keeps a fixed superset (ftp/tel/sms/…)
-        // and only ADDS our protocols, so deferring to defaultValidate would
-        // still pass ftp:. Enforce the allowlist ourselves: a URL bearing an
-        // explicit scheme must use an allowed one; schemeless/relative URLs
-        // (no scheme matched) still defer to defaultValidate.
-        isAllowedUri: (url, { defaultValidate }) => {
-          const scheme = url.match(/^([a-z][a-z0-9+.-]*):/i)?.[1]?.toLowerCase();
-          if (scheme && !ALLOWED_LINK_PROTOCOLS.includes(scheme)) return false;
-          return defaultValidate(url);
-        },
+        // Enforce the allowlist ourselves — Tiptap's protocols-only config still
+        // permits its built-in superset (ftp/tel/…); see hasDisallowedScheme.
+        // Schemeless / relative URLs are left to defaultValidate.
+        isAllowedUri: (url, { defaultValidate }) =>
+          !hasDisallowedScheme(url, ALLOWED_LINK_PROTOCOLS) && defaultValidate(url),
         HTMLAttributes: { rel: 'noopener noreferrer nofollow', target: '_blank' },
       }),
     ],
