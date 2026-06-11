@@ -6,7 +6,6 @@ using EventStore.Projections;
 using Api.Auth;
 using Api.Exceptions;
 using Api.Observability;
-using Api.Projections;
 using Api.Utilities;
 
 namespace Api.CommandHandlers;
@@ -16,7 +15,6 @@ public sealed class FolderCommandHandler(
     IFolderTreeStore folderTreeStore,
     INoteCardListStore noteCardListStore,
     INoteCommandHandler noteCommandHandler,
-    IProjectionUpdater projectionUpdater,
     ICurrentUser currentUser,
     ICurrentWorkspace currentWorkspace,
     IDomainMetrics metrics,
@@ -65,7 +63,6 @@ public sealed class FolderCommandHandler(
             var newEvents = RebuildFolder(history).Handle(cmd);
             var envelopes = ToEnvelopes(streamId, newEvents);
             await store.AppendAsync(streamId, history.Count, envelopes, ct).ConfigureAwait(false);
-            await folderTreeStore.DeleteAsync(cmd.FolderId, ct).ConfigureAwait(false);
         });
 
     public Task HandleAsync(MoveFolder cmd, CancellationToken ct = default) =>
@@ -104,14 +101,12 @@ public sealed class FolderCommandHandler(
         var newEvents = RebuildFolder(history).Handle(new DeleteFolder(folderId));
         var envelopes = ToEnvelopes(streamId, newEvents);
         await store.AppendAsync(streamId, history.Count, envelopes, ct).ConfigureAwait(false);
-        await folderTreeStore.DeleteAsync(folderId, ct).ConfigureAwait(false);
     }
 
     private async Task PersistFolderAsync(string streamId, IReadOnlyList<EventEnvelope> history, IReadOnlyList<IDomainEvent> newEvents, CancellationToken ct)
     {
         var envelopes = ToEnvelopes(streamId, newEvents);
         await store.AppendAsync(streamId, history.Count, envelopes, ct).ConfigureAwait(false);
-        await projectionUpdater.ApplyFolderEventsAsync(envelopes, ct).ConfigureAwait(false);
     }
 
     private static IReadOnlyList<FolderId> GetSubtreeIds(FolderId rootId, IReadOnlyList<FolderTreeView> allFolders)

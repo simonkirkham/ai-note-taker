@@ -35,7 +35,7 @@ public sealed class ProjectorTests
     private readonly InMemoryFolderTreeStore _folderStore = new();
     private readonly InMemoryWorkspaceListStore _workspaceStore = new();
     private readonly FakeNoteImageStore _imageStore = new();
-    private readonly InMemoryProcessedPositionStore _positions = new();
+    private readonly Api.Integration.InMemoryProcessedPositionStore _positions = new();
     private readonly CountingProjectorMetrics _metrics = new();
 
     private StreamProjector NewProjector()

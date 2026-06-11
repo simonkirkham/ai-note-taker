@@ -1,6 +1,6 @@
 using AWS.Lambda.Powertools.Metrics;
 
-namespace Projector;
+namespace Api.Projections;
 
 public interface IProjectorMetrics
 {
