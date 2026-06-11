@@ -288,11 +288,13 @@ BUG-17 (PR #217) added a bounded retry-on-`ConcurrencyException` (re-read→re-r
 
 ## `deploy-production` hangs at "Configure AWS credentials"
 
-The `deploy-production` job in `deploy.yml` intermittently (~half of deploys during Phase 25) **hangs at the `Configure AWS credentials` step** — a normally-seconds-long OIDC `sts:AssumeRole` — for 30+ minutes with no progress and no error, before any Lambda/CDK deploy starts. `deploy-test` (same OIDC pattern) and other deploys succeed, so it's intermittent, not a broken role/trust. The only recovery found is `gh run cancel <id> && gh run rerun <id>`, which clears it on a fresh runner. It silently stalls every affected deploy (and any slice gated on a green main) until a human notices.
+**Mitigated 2026-06-11** — added `timeout-minutes: 5` to the `Configure AWS credentials` step in **both** deploy jobs (`deploy-test` + `deploy-production`). A silent 30+ min hang now fails fast and is recovered by a rerun, so it no longer blocks a green main indefinitely. Root cause still **unconfirmed** (capture the step log next time it hangs); a version bump or step-level retry remains a possible follow-up.
 
-**Why it matters:** each hang costs ~30 min of dead wall-clock and blocks the merge→deploy→merge loop for parallel slices; it bit 25-A/B/C deploys repeatedly. **Fix candidates:** pin `aws-actions/configure-aws-credentials` to a newer version; add a short `timeout-minutes` to the step (so it fails fast and a retry kicks in) plus a step-level retry; or investigate runner/OIDC-endpoint flakiness. At minimum, a tight `timeout-minutes` on that step would convert a 30-min silent hang into a fast, auto-retryable failure.
+The `deploy-production` job in `deploy.yml` intermittently (~half of deploys during Phase 25) **hung at the `Configure AWS credentials` step** for 30+ minutes with no progress and no error, before any Lambda/CDK deploy started. The step uses `aws-actions/configure-aws-credentials@v6` with **static access keys** (`AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY`) — so the hang is the action validating those keys via `sts:GetCallerIdentity`, stalling on a transient STS/network blip (not OIDC `AssumeRole`, and not a broken role/trust — other deploys with the same secrets succeed). The only recovery found before the timeout was `gh run cancel <id> && gh run rerun <id>`, which clears it on a fresh runner.
 
-**Raised in:** Phase 25 pipeline (repeated deploy hangs), 2026-06-11.
+**Why it mattered:** each hang cost ~30 min of dead wall-clock and blocked the merge→deploy→merge loop for parallel slices; it bit 25-A/B/C deploys repeatedly. **Remaining follow-ups (optional):** pin/bump `aws-actions/configure-aws-credentials`; add a step-level retry so it self-heals without a manual rerun; or root-cause the STS-endpoint flakiness from a captured step log.
+
+**Raised in:** Phase 25 pipeline (repeated deploy hangs), 2026-06-11. **Actioned (timeout):** same day.
 **Depends on:** —
 
 ---
