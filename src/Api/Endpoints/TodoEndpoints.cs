@@ -7,9 +7,8 @@ public static class TodoEndpoints
 {
     public static void MapTodoEndpoints(this WebApplication app)
     {
-        // Dual-mapped (23-C): rootless resolves to the default workspace; the
-        // `/w/{workspaceId}` group validates ownership before the handler.
-        MapTodoRoutes(app);
+        // Workspace-scoped under `/w/{workspaceId}` only; the group validates ownership
+        // before the handler. The rootless fallback was removed in 23-G.
         MapTodoRoutes(app.MapGroup("/w/{workspaceId}").AddEndpointFilter<WorkspaceValidationFilter>());
     }
 

@@ -23,12 +23,11 @@ public sealed class WorkspaceScopingIntegrationTests(ApiFactory factory) : IClas
     }
 
     [Fact]
-    public async Task RootlessNoteCreate_LandsInDefaultWorkspace()
+    public async Task DefaultWorkspaceCreate_NoteAppearsInDefaultCards()
     {
-        var noteId = await CreateNoteAsync("/notes");
+        var noteId = await CreateNoteAsync("/w/__default__/notes");
 
         Assert.Contains(noteId, await CardIdsAsync("/w/__default__/notes/cards"));
-        Assert.Contains(noteId, await CardIdsAsync("/notes/cards"));
     }
 
     [Fact]
@@ -51,6 +50,21 @@ public sealed class WorkspaceScopingIntegrationTests(ApiFactory factory) : IClas
     {
         var resp = await _client.GetAsync("/w/__default__/notes/cards");
         Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
+    }
+
+    [Fact]
+    public async Task RootlessContentRoutes_AreGoneAfter23G_Return404()
+    {
+        // The pre-23-D rootless fallback content routes were removed in 23-G; only
+        // `/w/{wsId}/...` remains. A raw client (opting out of the test prefix rewrite)
+        // must now get 404 on the old un-prefixed paths.
+        var raw = _factory.CreateRawClient();
+        Assert.Equal(HttpStatusCode.NotFound, (await raw.GetAsync("/notes/cards")).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await raw.GetAsync("/folders")).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await raw.GetAsync("/todos")).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await raw.GetAsync("/tags")).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound,
+            (await raw.PostAsync("/notes", new StringContent("{}", Encoding.UTF8, "application/json"))).StatusCode);
     }
 
     [Fact]

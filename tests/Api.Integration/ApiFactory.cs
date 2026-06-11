@@ -4,7 +4,9 @@ using Api.Auth;
 using Api.HealthChecks;
 using Api.Services;
 using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
@@ -39,6 +41,13 @@ public class ApiFactory : WebApplicationFactory<Program>
     {
         builder.ConfigureTestServices(services =>
         {
+            // 23-G removed the rootless content routes (everything is `/w/{wsId}`-only). Most
+            // integration tests call un-prefixed scoped paths (e.g. "/notes") for brevity; this
+            // server-side filter rewrites those to the default workspace before routing, so the
+            // tests exercise the real prefixed routes. It covers every client uniformly —
+            // including `WithWebHostBuilder`-derived ones, which bypass a per-client handler.
+            // Set the `X-Test-No-Prefix` header to opt out (used to assert rootless paths 404).
+            services.AddSingleton<IStartupFilter, WorkspacePrefixStartupFilter>();
             services.RemoveAll<IGoogleCalendarClient>();
             services.AddSingleton<FakeGoogleCalendarClient>();
             services.AddSingleton<IGoogleCalendarClient>(sp => sp.GetRequiredService<FakeGoogleCalendarClient>());
@@ -94,6 +103,37 @@ public class ApiFactory : WebApplicationFactory<Program>
         });
     }
 
+    public const string NoPrefixHeader = "X-Test-No-Prefix";
+
+    // Rewrites un-prefixed scoped paths to the default workspace BEFORE routing, so the
+    // suite's many rootless-style calls exercise the real `/w/{wsId}` routes after 23-G.
+    // Runs in the test server pipeline, so it covers every client (incl. WithWebHostBuilder).
+    private sealed class WorkspacePrefixStartupFilter : IStartupFilter
+    {
+        private static readonly string[] ScopedPrefixes = ["/notes", "/folders", "/todos", "/tags"];
+        // `/notes/*` paths that are NOT workspace-scoped (mapped globally) — mirror the
+        // frontend's GLOBAL_PATH_PREFIXES so they are never rewritten.
+        private static readonly string[] GlobalExceptions = ["/notes/from-meeting", "/notes/from-next-occurrence"];
+
+        public Action<IApplicationBuilder> Configure(Action<IApplicationBuilder> next) => app =>
+        {
+            app.Use(async (context, nextMw) =>
+            {
+                var path = context.Request.Path.Value;
+                if (path is not null
+                    && !context.Request.Headers.ContainsKey(NoPrefixHeader)
+                    && !path.StartsWith("/w/", StringComparison.Ordinal)
+                    && !GlobalExceptions.Any(g => path == g || path.StartsWith(g + "/", StringComparison.Ordinal))
+                    && ScopedPrefixes.Any(p => path == p || path.StartsWith(p + "/", StringComparison.Ordinal)))
+                {
+                    context.Request.Path = "/w/" + Domain.Workspaces.WorkspaceId.DefaultValue + path;
+                }
+                await nextMw();
+            });
+            next(app);
+        };
+    }
+
     public new HttpClient CreateClient()
     {
         var client = base.CreateClient();
@@ -107,6 +147,16 @@ public class ApiFactory : WebApplicationFactory<Program>
     {
         var client = base.CreateClient();
         client.DefaultRequestHeaders.Add("X-Test-User-Id", OtherTestUserId);
+        return client;
+    }
+
+    // A client whose scoped paths are NOT auto-prefixed (sets the opt-out header) — used to
+    // assert that the rootless routes really are gone (404) after 23-G.
+    public HttpClient CreateRawClient()
+    {
+        var client = base.CreateClient();
+        client.DefaultRequestHeaders.Add("X-Test-User-Id", FakeCurrentUser.TestUserId);
+        client.DefaultRequestHeaders.Add(NoPrefixHeader, "1");
         return client;
     }
 
