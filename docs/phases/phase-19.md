@@ -11,7 +11,7 @@
 | 19-C | **Stricter index/optional TS flags.** `noUncheckedIndexedAccess` then `exactOptionalPropertyTypes`, staged with backlog clear | Not Started | 19-B |
 | 19-D | **Context provider performance.** Memoise `AuthContext`/`ToastContext` provider values; `useCallback` the Auth actions; optional Auth state/actions split | Done | — |
 | 19-E | **Effect hygiene.** Add out-of-order guards to 3 mount-only fetches; replace 3 notify-parent-in-effect patterns | Not Started | — |
-| 19-F1 | **Accessibility: live regions.** `role="alert"`/`role="status"` on the ~15 transient surfaces (errors/loading/empty) that lack one; high value = the silent mutation-failure errors | Not Started | — |
+| 19-F1 | **Accessibility: live regions.** `role="alert"`/`role="status"` on the ~15 transient surfaces (errors/loading/empty) that lack one; high value = the silent mutation-failure errors | Done | — |
 | 19-F2 | **Accessibility: focus + `:focus-visible`.** 6 bare `:focus`→`:focus-visible`; Esc-to-close on `SessionExpiredBanner` (pass `onClose` to its existing `useFocusTrap`); tidy `MeetingPicker`'s redundant Esc handler | Not Started | — |
 | 19-F3 | **Adopt `eslint-plugin-jsx-a11y`.** Add the plugin's `recommended` ruleset to `web/eslint.config.js`, clear the backlog, gate in CI — standing guard for a11y regressions (graduated from `technical-improvements.md`) | Not Started | — |
 | 19-G | **Test quality.** Migrate testid-heavy unit tests to role/label queries; convert remaining `fireEvent` to `userEvent` | Not Started | — |
@@ -161,6 +161,8 @@ Each lists the finding, locations, value tier, and effort. Specs are written per
 - **Effort:** medium (the YMNNAE pieces touch hook↔parent contracts).
 
 ### 19-F1 — Accessibility: live regions — **value: high**
+
+**Status:** Done (PR #229, deploy #518, 2026-06-11)
 
 **Intent:** Make currently-silent transient surfaces audible to assistive tech. Errors get `role="alert"` (assertive); loading/empty/status get `role="status"` (polite). Highest value: the **silent mutation-failure** errors a screen-reader user gets no feedback on today (create-note, per-meeting create, add-todo).
 
