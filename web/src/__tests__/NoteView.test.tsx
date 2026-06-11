@@ -317,6 +317,22 @@ describe('NoteView', () => {
       expect(putCalled).toBe(false)
     })
 
+    it('retries a failed content save when leaving (does not drop the kept text)', async () => {
+      let puts = 0
+      server.use(
+        http.put('/api/notes/:noteId/content', () => { puts += 1; return new HttpResponse(null, { status: 500 }) }),
+      )
+      renderNoteView()
+      const textarea = await screen.findByLabelText('Note content')
+      fireEvent.change(textarea, { target: { value: 'keep me' } })
+      fireEvent.blur(textarea)
+      await waitFor(() => expect(puts).toBe(1))
+      await screen.findByRole('alert')
+      // Leaving must retry the still-pending draft, not silently drop it.
+      await userEvent.click(screen.getByTestId('save-button'))
+      await waitFor(() => expect(puts).toBe(2))
+    })
+
     it('does not flush content when leaving via Delete', async () => {
       let putCalled = false
       server.use(

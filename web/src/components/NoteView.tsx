@@ -172,7 +172,9 @@ export default function NoteView({
     contentDraftRef.current = null;
     editContentM.mutate(draft, {
       onSuccess: () => setContentDraft(null),
-      onError: () => showError("Couldn't save your note. We kept your text — try again."),
+      // Restore the ref on failure so a later leave/unmount retries the kept text
+      // rather than silently dropping it (the text stays in contentDraft state too).
+      onError: () => { contentDraftRef.current = draft; showError("Couldn't save your note. We kept your text — try again."); },
     });
   }
   const saveContentRef = useRef(handleSaveContent);
