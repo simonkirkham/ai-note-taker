@@ -1,13 +1,23 @@
 import Image from '@tiptap/extension-image';
-import { useEditor, EditorContent } from '@tiptap/react';
+import { useEditor, EditorContent, ReactNodeViewRenderer } from '@tiptap/react';
 import type { Editor } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Markdown } from 'tiptap-markdown';
 import { presignUpload, resolveImages } from '../api/notes';
 import { dropUnresolvedImages, extractImageKeys, srcsToKeys } from '../lib/noteImages';
+import ImageNodeView from './ImageNodeView';
 import styles from './NoteEditor.module.css';
 import { useToast } from './toastContext';
+
+// Image with a React NodeView so each inline image carries a remove control.
+// The schema and markdown serialization are unchanged — only the editor's DOM
+// rendering gains the ✕ button.
+const ImageWithRemove = Image.extend({
+  addNodeView() {
+    return ReactNodeViewRenderer(ImageNodeView);
+  },
+});
 
 interface NoteEditorProps {
   noteId: string;
@@ -59,7 +69,7 @@ export default function NoteEditor({ noteId, value, onChange, onBlur }: NoteEdit
 
   const editor = useEditor({
     immediatelyRender: false,
-    extensions: [StarterKit, Markdown, Image],
+    extensions: [StarterKit, Markdown, ImageWithRemove],
     content: value,
     editorProps: {
       attributes: {
