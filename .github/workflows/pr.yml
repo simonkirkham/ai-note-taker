@@ -60,6 +60,11 @@ jobs:
       - name: Publish Lambda
         run: dotnet publish src/Api/Api.csproj -c Release -o src/Api/bin/Release/net10.0/publish
 
+      # 27-B: the Projector Lambda is a second CDK asset; its publish dir must hold a
+      # real build before `cdk synth` validates the Code.FromAsset path.
+      - name: Publish Projector Lambda
+        run: dotnet publish src/Projector/Projector.csproj -c Release -o src/Projector/bin/Release/net10.0/publish
+
       # No AWS credentials needed: the CDK app does no context lookups
       # (no FromLookup / ValueFromLookup). If a future change adds one,
       # restore the configure-aws-credentials step + environment: Test.

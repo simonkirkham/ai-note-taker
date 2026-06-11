@@ -468,6 +468,9 @@ public sealed class NoteTakerStack : Stack
         eventsTable.GrantStreamRead(projectorFunction);
         eventsTable.GrantReadData(projectorFunction);
         projectorDlq.GrantSendMessages(projectorFunction);
+        // Delete-only, for the NoteDeleted image-purge path. In shadow mode both the inline
+        // API path and the projector purge on a delete; S3 delete is idempotent, so the
+        // redundant purge is expected and harmless.
         imagesBucket.GrantDelete(projectorFunction, "notes/*");
 
         // DynamoDB event-source mapping: TRIM_HORIZON so the projector folds the full

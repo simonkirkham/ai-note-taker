@@ -4,8 +4,10 @@ using Domain;
 using Domain.Notes;
 using Domain.Todos;
 using EventStore;
+using EventStore.Projections;
 using Api.Projections;
 using Projector;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Api.Integration;
@@ -109,6 +111,40 @@ public sealed class ProjectorTests
         Assert.Empty((await _titleStore.QueryAllAsync()).Items);
     }
 
+    [Fact]
+    public async Task Apply_failure_propagates_and_does_not_advance_position()
+    {
+        var noteId = new NoteId(Guid.NewGuid());
+        await AppendAsync(noteId.ToStreamId(), new NoteCreated(noteId));
+        var projector = new StreamProjector(_events, new ThrowingUpdater(), _positions, _metrics, NullLogger<StreamProjector>.Instance);
+
+        // A failed apply must surface (so the ESM bisects/DLQs) and must NOT advance the
+        // position mark — otherwise the retried record would be skipped and silently lost.
+        await Assert.ThrowsAsync<InvalidOperationException>(() => projector.ProcessStreamsAsync([noteId.ToStreamId()]));
+
+        Assert.Equal(-1, await _positions.GetLastSeqAsync(noteId.ToStreamId()));
+    }
+
+    [Fact]
+    public async Task Handle_records_failure_metric_and_rethrows()
+    {
+        var noteId = new NoteId(Guid.NewGuid());
+        await AppendAsync(noteId.ToStreamId(), new NoteCreated(noteId));
+        var services = new ServiceCollection();
+        services.AddLogging();
+        services.AddSingleton<IEventStore>(_events);
+        services.AddSingleton<IProcessedPositionStore>(_positions);
+        services.AddSingleton<IProjectorMetrics>(_metrics);
+        services.AddSingleton<IProjectionUpdater>(new ThrowingUpdater());
+        services.AddSingleton<StreamProjector>();
+        var function = new ProjectorFunction(services.BuildServiceProvider());
+        var evt = new DynamoDBEvent { Records = [EventRow(noteId.ToStreamId(), "v00000001")] };
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() => function.Handle(evt, null!));
+
+        Assert.Equal(1, _metrics.FailureCalls);
+    }
+
     private async Task AppendAsync(string streamId, params IDomainEvent[] events)
     {
         var existing = await _events.ReadAsync(streamId);
@@ -137,6 +173,15 @@ public sealed class ProjectorTests
     {
         Dynamodb = new DynamoDBEvent.StreamRecord { NewImage = null }
     };
+
+    private sealed class ThrowingUpdater : IProjectionUpdater
+    {
+        public Task ApplyNoteEventsAsync(NoteId noteId, IReadOnlyList<EventEnvelope> history, List<EventEnvelope> newEnvelopes, CancellationToken ct) => throw new InvalidOperationException("boom");
+        public Task ApplyActionItemEventsAsync(NoteId noteId, IReadOnlyList<EventEnvelope> history, IReadOnlyList<IDomainEvent> newEvents, List<EventEnvelope> newEnvelopes, CancellationToken ct) => throw new InvalidOperationException("boom");
+        public Task ApplyTodoEventsAsync(IReadOnlyList<IDomainEvent> newEvents, List<EventEnvelope> newEnvelopes, CancellationToken ct) => throw new InvalidOperationException("boom");
+        public Task ApplyFolderEventsAsync(List<EventEnvelope> newEnvelopes, CancellationToken ct) => throw new InvalidOperationException("boom");
+        public Task ApplyWorkspaceEventsAsync(List<EventEnvelope> newEnvelopes, CancellationToken ct) => throw new InvalidOperationException("boom");
+    }
 
     private sealed class CountingProjectorMetrics : IProjectorMetrics
     {

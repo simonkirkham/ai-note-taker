@@ -81,6 +81,9 @@ public sealed class ProjectorFunction
         services.AddSingleton<IProcessedPositionStore>(sp => new DynamoDbProcessedPositionStore(Dynamo(sp), Env("PROJ_POSITION_TABLE_NAME")));
         services.AddSingleton<INoteImageStore>(sp => new S3NoteImageStore(sp.GetRequiredService<IAmazonS3>(), Env("IMAGE_BUCKET_NAME")));
 
+        // Singleton (vs the API's scoped updater) is safe: the projector processes one batch
+        // sequentially per invocation and every store is stateless, so there is no per-request
+        // state to scope.
         services.AddSingleton<IProjectorMetrics, ProjectorMetrics>();
         services.AddSingleton<IProjectionUpdater, ProjectionUpdater>();
         services.AddSingleton<StreamProjector>();
