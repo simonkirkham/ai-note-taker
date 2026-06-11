@@ -216,7 +216,9 @@ The full rationale, target diagrams, staged migration plan, and the eventual-con
 
 ## Stabilise the flaky `TagsJourney` E2E (post-deploy gate fails intermittently)
 
-⚠️ **Partially fixed — recurred, re-opened.** PR #205 (deploy #495) fixed **[BUG-14](phases/phase-bugs.md#bug-14--pasting-space-separated-tags-intermittently-drops-a-pill)**, the *dropped-add* half: tagging a freshly-created note while its initial `keys.note` GET is in flight made the optimistic patch a no-op, the GET resolved tagless, and nothing refetched — so a pasted multi-tag (`"1:1s Bill"`) dropped a pill. The first attempt (PR #203) misdiagnosed it as cold-start latency and raised the E2E tag-pill timeout 15s→45s; deploy #493 failed **with the 45s applied** (`ToBeVisibleAsync with timeout 45000ms`), disproving latency — PR #205 reverts to 15s. **Lesson:** a near-deterministic "element never appears" timeout (vs an occasional *slow* one) is a *missing render*, not latency.
+✅ **Resolved by [BUG-17](phases/phase-bugs.md#bug-17--concurrent-multi-word-tag-add-silently-drops-a-tag-no-handler-retry-on-conflict)** (PR #217, deploy #506, 2026-06-10). The remaining *removed-tag-lost* half was a real backend lost-write, not test timing: a space-separated multi-tag add fans out into two concurrent same-stream appends; the loser hit `ConcurrencyException` and was **silently dropped** because `NoteCommandHandler` never retried the append (the frontend swallowed the 409, then the phantom tag's removal 404'd and rolled back). A deterministic `ConflictingEventStore` repro confirmed it. Fix: bounded retry-on-conflict in the command handler (re-read→re-run→re-append) + `untagNote()` treating 404/409 as OK. Deploy #506 ran `TagsJourney` **14/14 green** on the first full E2E pass. History retained below.
+
+⚠️ **(Historical) Partially fixed — recurred, re-opened.** PR #205 (deploy #495) fixed **[BUG-14](phases/phase-bugs.md#bug-14--pasting-space-separated-tags-intermittently-drops-a-pill)**, the *dropped-add* half: tagging a freshly-created note while its initial `keys.note` GET is in flight made the optimistic patch a no-op, the GET resolved tagless, and nothing refetched — so a pasted multi-tag (`"1:1s Bill"`) dropped a pill. The first attempt (PR #203) misdiagnosed it as cold-start latency and raised the E2E tag-pill timeout 15s→45s; deploy #493 failed **with the 45s applied** (`ToBeVisibleAsync with timeout 45000ms`), disproving latency — PR #205 reverts to 15s. **Lesson:** a near-deterministic "element never appears" timeout (vs an occasional *slow* one) is a *missing render*, not latency.
 
 **But deploy #496 (24-C, an unrelated backend-only change) then failed `RemoveTag_GoneAfterNavigation`** — a *different* symptom: after `AddTagAsync("1:1s Bill")` → `RemoveTagAsync("Bill")` → save → reopen, the **removed** "Bill" pill is **still present** on the server-fresh reopen (`expected not to be visible`, resolved visible 9×). The BUG-14 patch addressed the dropped-add path; the *removed-tag-lost* path survives. Likely a backend optimistic-concurrency interaction: the two concurrent multi-tag adds (one retries on 409) race the subsequent remove, so the remove writes at a stale stream version and is silently lost. Re-cleared the gate for 24-C by re-running deploy #496 (intermittent — #495 ran the same test green). **Still open**; needs a reproduction test for the add-add-then-remove interleave, not another timeout bump.
 
@@ -270,3 +272,14 @@ The full rationale, target diagrams, staged migration plan, and the eventual-con
 **Depends on:** —
 
 > **Considered and rejected:** mirroring the `tests/Analysis.Eval/**` ignore into `pr.yml`. PR checks are the merge gate; an eval-only PR that skips them produces no `backend`/`frontend` checks, which the CLAUDE.md merge rule relies on being present and green (`gh pr checks` could read falsely green on a near-empty list). A "build once, deploy twice" refactor (share the Lambda zip + frontend base bundle between `deploy-test` and `deploy-production`) was also identified — larger, restructures the job graph, deferred to its own change.
+
+---
+
+## Generalise append-retry-on-conflict beyond `NoteCommandHandler`
+
+BUG-17 (PR #217) added a bounded retry-on-`ConcurrencyException` (re-read→re-run→re-append) to `NoteCommandHandler.ExecuteAsync` only. `ActionItemCommandHandler` shares the same optimistic-concurrency append but was left out: it interleaves projection writes with its append (not the clean read→handle→append cycle), and its streams are keyed per action item, so the BUG-17 multi-writer-on-one-stream race is far less likely there.
+
+**Why worth doing:** the latent lost-write still exists for rapid concurrent writes to a single action-item stream (e.g. fast complete/reopen toggles). **Fix:** extract a shared `AppendWithRetry` helper (or a handler base method) so the retry is defined once and applied wherever the read→handle→append pattern lives, rather than duplicated. Do it only if a second handler needs it — don't abstract for one caller.
+
+**Raised in:** Hawk review of PR #217 (BUG-17), 2026-06-10.
+**Depends on:** —
