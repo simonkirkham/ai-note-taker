@@ -40,8 +40,15 @@ Status key: 🔲 **Open** · 🟡 **Partly done / mitigated** · ✅ **Done** (g
 | `deploy-production` hangs at "Configure AWS credentials" | 🟡 Mitigated — `timeout-minutes` shipped (#222); **root cause Open** |
 | Add a `NoteEditor` component test for the image-ordering invariant | 🔲 **Open** — guards the 25-B regression below the E2E gate |
 | Zero-downtime deployments — frontend stale-chunk 404s; backend canary/rollback | ✅ Done — → Phase 26 |
+| Frontend build Node 20 → 24 + lockfile regen (dep-audit T1) | 🔲 **Open** — Node 20 past EOL (30 Apr 2026); blocks Vite 7 |
+| ASP.NET 10 servicing + AWS SDK patch bumps (dep-audit T7) | 🔲 **Open** — JwtBearer 9 patches behind incl. security |
+| Vite 5 → 7 + Vitest 2 → 4 (dep-audit T2) | 🔲 **Open** — needs Node ≥20.19; after T1 |
+| React 18 → 19 (dep-audit T3) | 🔲 **Open** — after T2 |
+| TypeScript 5.6 → 6.0 (dep-audit T4) | 🔲 **Open** — pair w/ typescript-eslint bump |
 
-**Outstanding (6 Open + 2 Partly):** ESLint `jsx-a11y`; Auto-backfill projection on deploy; `NoteSearchView` tombstones (verify/close); `WorkspaceList` GSI; Generalise append-retry; `NoteEditor` ordering test; *(partly)* state-mgmt colocation; deploy-credentials root cause.
+**Outstanding (11 Open + 2 Partly):** ESLint `jsx-a11y`; Auto-backfill projection on deploy; `NoteSearchView` tombstones (verify/close); `WorkspaceList` GSI; Generalise append-retry; `NoteEditor` ordering test; **build Node 20→24 (dep-audit T1)**; **ASP.NET/AWS-SDK patches (T7)**; **Vite 7 + Vitest 4 (T2)**; **React 19 (T3)**; **TypeScript 6.0 (T4)**; *(partly)* state-mgmt colocation; deploy-credentials root cause.
+
+> **Dependency upgrade audit (2026-06-11):** full inventory + LTS recommendations in [docs/dependency-audits/dependency-upgrade-audit-2026-06.md](dependency-audits/dependency-upgrade-audit-2026-06.md). High + medium-urgency items (T1, T7, T2, T3, T4) are tracked below. Low-urgency items (T5 lint-tooling batch, T6 Tiptap 3.26, T8 CDK 2.258, T9 Playwright 1.60, T10 xUnit v3) stay in the audit doc until picked up.
 
 ---
 
@@ -362,3 +369,74 @@ Phase 25-B shipped (then fixed) an **ordering bug** that every unit test passed 
 ## Zero-downtime deployments — frontend stale-chunk 404s; backend has no canary/rollback
 
 **Graduated → [Phase 26](phases/phase-26.md).** A `cdk deploy` is not fully zero-downtime. The backend alias flip is seamless (API Gateway routes to the `live` alias, SnapStart avoids cold starts) but is an instant 100% cutover with no canary or automated rollback. The real gap is the **frontend deploy job** (`deploy.yml:200`–`204`): `aws s3 sync … --delete` removes old content-hashed bundles the instant new ones land → a browser/CDN still holding the previous `index.html` 404s its bundle on reload → **blank app**; plus a `/*` invalidation cold-cache spike and no immutable caching. Severity rises the moment **[19-I](phases/phase-19.md)** ships dynamic imports over the `--delete` strategy (reload-404 → mid-session crash). Broken into **26-A** (frontend two-pass upload, no `--delete`, immutable hashed assets, entry-point-only invalidation, S3 lifecycle GC — the only current-downtime fix, do first and before/with 19-I), **26-B** (`vite:preloadError` reload safety net), and **26-C** (backend CodeDeploy canary wired to the existing error-rate + latency alarms for auto-rollback). Full GWT scenarios and acceptance criteria in the phase doc.
+
+---
+
+## Frontend build Node 20 → 24 + regenerate lockfile (dep-audit T1)
+
+**Urgency: High (EOL).** Graduates the half deliberately deferred by *"Upgrade GitHub Actions to Node.js 24"* (above) — that item bumped the action runtimes but left the **build** Node (`setup-node` `node-version: "20"`) on 20.
+
+**What:** `node-version: "20"` → `"24"` in `deploy.yml` (3 sites) + `pr.yml` (2 sites); `@types/node` `^20` → `^24`; regenerate `web/package-lock.json` **on Node 24**.
+
+**Why:** Node 20 reached EOL **30 Apr 2026** — CI builds the frontend on an unsupported runtime (no security patches). Node 24 is Active LTS (to Apr 2028); Node 22 (Maint LTS to Apr 2027) is the conservative fallback. Low risk — Node is build-tooling only; the Lambda runtime is .NET. **Unblocks T2 (Vite 7 needs Node ≥20.19/22.12).**
+
+**Constraint:** regenerate the lockfile on the target Node version (CLAUDE.md guardrail — a lockfile cut on a mismatched npm/Node omits entries the other expects → `npm ci` fails). Since CI moves to 24, generate on 24 in the same PR.
+
+**Raised in:** Dependency upgrade audit, 2026-06-11.
+**Depends on:** — (blocks T2).
+
+---
+
+## ASP.NET 10 servicing + AWS SDK patch bumps (dep-audit T7)
+
+**Urgency: High (security).** `Microsoft.AspNetCore.Authentication.JwtBearer` is pinned at **10.0.0** while **10.0.9** ships (9 servicing patches behind, incl. security) — and it is exact-pinned, so it does **not** float with the SDK.
+
+**What (batch):** JwtBearer `10.0.0` → `10.0.9`; `Microsoft.AspNetCore.Mvc.Testing` `10.0.8` → `10.0.9`; `Amazon.Lambda.AspNetCoreServer.Hosting` `2.0.0` → `2.1.0`; `AWSSDK.*` (BedrockRuntime, S3, DynamoDBv2, SecurityToken, SimpleSystemsManagement, Extensions.NETCore.Setup) → latest 4.0.x; `AWSXRayRecorder.Handlers.AwsSdk` + `Google.Apis.Calendar.v3` → latest within major. `AWS.Lambda.Powertools.*` already latest (3.2.2) — no action.
+
+**Why:** auth-critical package behind on security servicing; the rest are routine patch/minor bumps within current majors (AWS SDK v4, .NET 10). Low risk. Run the full backend + Api.Integration suites.
+
+**Raised in:** Dependency upgrade audit, 2026-06-11.
+**Depends on:** —
+
+---
+
+## Vite 5 → 7 + Vitest 2 → 4 (dep-audit T2)
+
+**Urgency: Medium.** Vite is two majors behind.
+
+**What:** bump `vite` `^5` → `^7`, `vitest` `^2` → `^4`, and `@vitejs/plugin-react` to its Vite-7-compatible major **together**; reconcile `vite.config`/`vitest` config; run `npm run build` + `vitest run` + the full Vitest/RTL suite.
+
+**Why:** Vite 7 is newest stable (8 is beta → avoid); Vitest 4 is GA (v3 is backport-only maintenance). **Vite and Vitest majors must move in one PR** — mismatched majors break the runner.
+
+**Constraints:** requires Node ≥20.19/22.12 → **gated on T1**. Isolate in its own PR (don't combine with T3) so a regression points at one change.
+
+**Raised in:** Dependency upgrade audit, 2026-06-11.
+**Depends on:** **T1** (Node bump). Blocks T3 (sequence, not hard-block).
+
+---
+
+## React 18 → 19 (dep-audit T3)
+
+**Urgency: Medium.**
+
+**What:** `react`/`react-dom` `^18.3.1` → `^19.2.x`; `@types/react`/`@types/react-dom` `^18` → `^19`; run the `codemod` react-18→19 transforms; audit removed legacy APIs (string refs, function-component `defaultProps`, legacy context).
+
+**Why:** React 19 is stable and widely adopted by mid-2026; already on `18.3.1` (the React-team-recommended pre-19 step ✅). All peer deps (Tiptap, react-query, react-router, testing-library v16) already declare `^18 || ^19` — **unblocked**.
+
+**Constraint:** sequence after T2 and isolate in its own PR (don't move Vite and React together).
+
+**Raised in:** Dependency upgrade audit, 2026-06-11.
+**Depends on:** T2 (sequencing).
+
+---
+
+## TypeScript 5.6 → 6.0 (dep-audit T4)
+
+**Urgency: Medium.**
+
+**What:** `typescript` `^5.6.3` → `^6.0`; run `tsc -b` + `tsc -p tsconfig.test.json` (CI typechecks tests via a separate config — CLAUDE.md guardrail). Bump `typescript-eslint` to its latest TS-6-compatible release in the same PR.
+
+**Why:** 6.0 is stable (Mar 2026); 7.0 (the Go rewrite) is still beta → avoid. typescript-eslint peer caps at `<6.1.0`, so 6.0 is in range and 7.0 would not be — bump typescript-eslint alongside (overlaps the *ESLint `jsx-a11y`* item's typed-lint follow-up).
+
+**Raised in:** Dependency upgrade audit, 2026-06-11.
+**Depends on:** — (pair with the typescript-eslint bump in the *ESLint jsx-a11y* item).
