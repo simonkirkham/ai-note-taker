@@ -116,6 +116,12 @@ Driven by the `observability-brief` skill — async projection failure is invisi
 
 ---
 
+## Sequencing
+
+- **Start after Phase 23's backend tail (23-F + 23-G) is merged.** Not a hard dependency, a deliberate ordering choice (confirmed 2026-06-11). 23-F (move-note) and 23-G (cleanup/backfill) both mutate the inline-projection surface (`NoteCommandHandler` re-bucket, routing, `ProjectionRebuildHandler`) that 27-A extracts and 27-C retires — running them concurrently with 27-A forces a large rebase and re-ports inline logic into the projector. Let Workspaces finish, then 27-A lands on a stable handler/projection surface.
+- **Parallelises freely with Phase 19** (frontend-only — disjoint file set) and with **23-E** (frontend switcher). The only constraint is 27 vs the 23 *backend* slices.
+- The single deploy pipeline serialises merges regardless; expect merge-gate contention, not file conflicts, against 19/23-E.
+
 ## Constraints
 
 - **Stage 1 only.** Per-context command Lambdas (Stage 2 of ADR 0009 — Note/Folder/Calendar/Transcription/Todo split) are **out of scope**; adopt incrementally later, only where a context earns it. This phase stops at the 3-Lambda Command/Query/Projector shape.

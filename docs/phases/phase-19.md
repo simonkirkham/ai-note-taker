@@ -13,7 +13,7 @@
 | 19-E | **Effect hygiene.** Add out-of-order guards to 3 mount-only fetches; replace 3 notify-parent-in-effect patterns | Not Started | — |
 | 19-F1 | **Accessibility: live regions.** `role="alert"`/`role="status"` on the ~15 transient surfaces (errors/loading/empty) that lack one; high value = the silent mutation-failure errors | Done | — |
 | 19-F2 | **Accessibility: focus + `:focus-visible`.** 6 bare `:focus`→`:focus-visible`; consolidate `MeetingPicker`'s redundant Esc handler into `useFocusTrap`'s `onClose`. (`SessionExpiredBanner` Esc-to-close dropped — blocking re-auth gate, no valid dismiss.) | Done | — |
-| 19-F3 | **Adopt `eslint-plugin-jsx-a11y`.** Add the plugin's `recommended` ruleset to `web/eslint.config.js`, clear the backlog, gate in CI — standing guard for a11y regressions (graduated from `technical-improvements.md`) | Not Started | — |
+| 19-F3 | **Adopt `eslint-plugin-jsx-a11y`.** Add the plugin's `recommended` ruleset to `web/eslint.config.js`, clear the backlog, gate in CI — standing guard for a11y regressions (graduated from `technical-improvements.md`) | Done | — |
 | 19-G | **Test quality.** Migrate testid-heavy unit tests to role/label queries; convert remaining `fireEvent` to `userEvent` | Not Started | — |
 | 19-H | **Network resilience.** Exponential-backoff retry (5xx/429/network) for idempotent requests in `apiFetch` | Done (shipped in 20-G) | 19-A |
 | 19-I1 | **Lazy-load + CLS.** `React.lazy` Tiptap + dynamic-import transcribe SDK; reserved-dimension fallbacks; lazy-chunk error boundary + RUM event | Not Started | 26-A |
@@ -229,6 +229,8 @@ Already correct (do not touch): `ListView` search status/error/no-results, `Fina
 **Key files:** the 6 `*.module.css`, `SessionExpiredBanner.tsx`, `MeetingPicker.tsx`, `hooks/useFocusTrap.ts` (reference), relevant `__tests__`.
 
 ### 19-F3 — Adopt `eslint-plugin-jsx-a11y` — **value: medium** — graduated from `technical-improvements.md`
+
+**Status:** Done (PR #236, deploy #526, 2026-06-11). Plugin caps its eslint peer at v9; resolved with a scoped `package.json` `overrides` pinning jsx-a11y's eslint peer to the root eslint (not a repo-wide `legacy-peer-deps`). 12-violation backlog triaged: App sidebar scrim genuinely fixed with `aria-hidden`; the rest are documented scoped disables. The gate retroactively caught `WorkspaceSwitcher` `autoFocus` (merged in parallel after the slice branch point), fixed forward in deploy #526.
 
 **Intent:** Add a standing lint gate so accessibility regressions are caught in CI, not by hand. Graduates the "ESLint `jsx-a11y`" item out of `technical-improvements.md`.
 

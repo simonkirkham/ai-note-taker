@@ -59,6 +59,9 @@ export default function MeetingPicker({
   }
 
   return (
+    // Backdrop click-to-close is a pointer convenience; the dialog also closes
+    // via Esc (useFocusTrap onClose) and the keyboard-accessible Close button.
+    /* eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions, jsx-a11y/click-events-have-key-events */
     <div
       className={styles.overlay}
       role="dialog"
