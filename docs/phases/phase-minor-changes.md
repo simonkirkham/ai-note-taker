@@ -26,8 +26,9 @@
 | CHANGE-12 | Drop home Notes divider; top-align with Today's Meetings | Done | — |
 | CHANGE-13 | "Next occurrence" button inside a recurring-meeting note | Done | 9-F |
 | CHANGE-14 | Rename transcription "Call audio" toggle to "Record screen-share audio" | Done | — |
+| CHANGE-15 | Keyboard access for `FolderPreviewPanel` hover items — open a note via keyboard, not only mouse/drag (surfaced by the 19-F3 jsx-a11y gate; currently a justified scoped disable) | Open | — |
 
-Open: _(none — backlog clear)._
+Open: CHANGE-15.
 
 New tweaks are appended as a one-line shipped record below once Done. The full spec/Value/Approach for each lived in this doc during the slice and remains in git history; the durable *why* (where any) is in the learnings archive. CHANGE-1 to CHANGE-4 were moved here from the former "Phase 13 — UI Polish II" once it was clear they were minor tweaks rather than a distinct phase.
 

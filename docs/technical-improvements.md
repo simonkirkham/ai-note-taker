@@ -21,7 +21,7 @@ Status key: 🔲 **Open** · 🟡 **Partly done / mitigated** · ✅ **Done** (g
 | Core Web Vitals — bundle budget + CLS + transitions | ✅ Done — → Phase 19 (19-I) |
 | Network resilience — retry transient failures with backoff | ✅ Done — 20-G |
 | XSS hardening — allowlist URL schemes on `href`/`src` | ✅ Done — → Phase 19 |
-| ESLint `jsx-a11y` + `import` rules + `@/` alias | 🔲 **Open** — jsx-a11y blocked on ESLint 10 |
+| ESLint `jsx-a11y` + `import` rules + `@/` alias | 🟡 **Partly** — `@/` alias, `import-x/order`, **jsx-a11y (19-F3)** done; `import-x/no-unresolved`/`no-cycle` + typed-lint (19-B) remain |
 | Migrate `App.css` to CSS Modules | ✅ Done — 14-P |
 | Upgrade GitHub Actions to Node.js 24 | ✅ Done |
 | Resolve ESLint warnings in `AuthContext.tsx` | ✅ Done — #172 |
@@ -41,7 +41,7 @@ Status key: 🔲 **Open** · 🟡 **Partly done / mitigated** · ✅ **Done** (g
 | Add a `NoteEditor` component test for the image-ordering invariant | 🔲 **Open** — guards the 25-B regression below the E2E gate |
 | Zero-downtime deployments — frontend stale-chunk 404s; backend canary/rollback | ✅ Done — → Phase 26 |
 
-**Outstanding (6 Open + 2 Partly):** ESLint `jsx-a11y`; Auto-backfill projection on deploy; `NoteSearchView` tombstones (verify/close); `WorkspaceList` GSI; Generalise append-retry; `NoteEditor` ordering test; *(partly)* state-mgmt colocation; deploy-credentials root cause.
+**Outstanding (5 Open + 3 Partly):** Auto-backfill projection on deploy; `NoteSearchView` tombstones (verify/close); `WorkspaceList` GSI; Generalise append-retry; `NoteEditor` ordering test; *(partly)* ESLint import-resolver + typed-lint (jsx-a11y done via 19-F3); state-mgmt colocation; deploy-credentials root cause.
 
 ---
 
@@ -91,15 +91,14 @@ Status key: 🔲 **Open** · 🟡 **Partly done / mitigated** · ✅ **Done** (g
 **Status of the three originals (Phase 14):**
 - **`@/` path alias** — ✅ **Done** (Phase 14-Q): `resolve.alias` in `vite.config.ts` + tsconfig `paths`.
 - **Import ordering** — ✅ **Done** (Phase 14-R), but via **`eslint-plugin-import-x`** (the maintained, flat-config-native fork), NOT `eslint-plugin-import` — the latter peer-caps at ESLint 9 and the project is on **ESLint 10**. Only `import-x/order` was enabled.
-- **`eslint-plugin-jsx-a11y`** — ⛔ **BLOCKED / deferred** (Phase 14-S/T): `eslint-plugin-jsx-a11y@6.10.2` peer-caps at ESLint 9, no ESLint 10 support. Forcing it via `--legacy-peer-deps` would risk the lint gate, so it was deferred.
+- **`eslint-plugin-jsx-a11y`** — ✅ **Done (Phase 19-F3, PR #236)**: the ESLint-10 peer-cap was the deferral reason, but it is only an *install-time* constraint — the plugin runs fine on ESLint 10. Resolved with a **scoped `package.json` `overrides`** pinning jsx-a11y's eslint peer to the root eslint (`eslint-plugin-jsx-a11y` → `eslint: "$eslint"`), which keeps `npm ci` green **without** the repo-wide `--legacy-peer-deps` that the 14-S/T deferral was avoiding. Adopted `recommended` at `error`, backlog triaged. Remove the override once jsx-a11y ships a v10 peer range.
 
 **Remaining work (this item):**
-1. **`jsx-a11y` once it supports ESLint 10** — add in `warn` mode, triage the a11y backlog, promote to `error` (the deferred 14-S/14-T). Re-check the plugin's peer range periodically, or adopt an ESLint-10-compatible a11y plugin if one emerges first.
-2. **`import-x/no-unresolved` + `import-x/no-cycle`** — the original AC also named "catch unresolved/circular imports", which 14-R did not enable (needs `eslint-import-resolver-typescript` wired for the `@/` alias; `no-cycle` can be noisy). Add these on a follow-up pass.
-3. **Typed-lint family — adopt `@typescript-eslint` `recommended-type-checked`** (needs `parserOptions.project` wired). Unlocks the machine-enforced half of the TS conventions just added to the `frontend-react` skill: `no-floating-promises` + `no-misused-promises` (the #1 silent async bug — un-awaited promises, async `onClick`), `no-non-null-assertion` (bans `!`), `no-explicit-any`/`no-unsafe-*`, `prefer-nullish-coalescing` + `prefer-optional-chain`. Expect a one-time backlog to clear; introduce in `warn` then promote to `error`. Note: typed lint is slower (whole-program) — keep it to `*.ts/*.tsx` and confirm CI time is acceptable.
+1. **`import-x/no-unresolved` + `import-x/no-cycle`** — the original AC also named "catch unresolved/circular imports", which 14-R did not enable (needs `eslint-import-resolver-typescript` wired for the `@/` alias; `no-cycle` can be noisy). Add these on a follow-up pass.
+2. **Typed-lint family — adopt `@typescript-eslint` `recommended-type-checked`** (needs `parserOptions.project` wired; this is Phase **19-B**). Unlocks the machine-enforced half of the TS conventions just added to the `frontend-react` skill: `no-floating-promises` + `no-misused-promises` (the #1 silent async bug — un-awaited promises, async `onClick`), `no-non-null-assertion` (bans `!`), `no-explicit-any`/`no-unsafe-*`, `prefer-nullish-coalescing` + `prefer-optional-chain`. Expect a one-time backlog to clear; introduce in `warn` then promote to `error`. Note: typed lint is slower (whole-program) — keep it to `*.ts/*.tsx` and confirm CI time is acceptable.
 **Why it matters:** a11y and import-hygiene enforcement turn "please remember" into "the build fails if you don't." `react-hooks` + `import-x/order` are now active; typed-lint closes the async-promise and `!`/`any` gaps; this closes the remaining gaps.
 **Raised in:** Frontend standards review 2026-06-03; updated after Phase 14-Q/R/S/T (ESLint-10 plugin-ecosystem gap discovered).
-**Depends on:** `jsx-a11y` shipping ESLint 10 support (external). The import rules are unblocked.
+**Depends on:** nothing external — `jsx-a11y` shipped via 19-F3 (scoped `overrides`); the remaining import-resolver rules and typed-lint (19-B) are unblocked.
 
 ---
 
