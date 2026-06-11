@@ -148,16 +148,22 @@ Note cards and `useNotes` are **still hand-rolled** (Phase 20-C/E not done), so 
 
 **User value:** A user can see, switch, create, rename, and delete workspaces from the sidebar.
 
+**Confirmed UX (prototype `prototype/23-e-workspace-switcher`, approved):** a **dropdown button at the top of the sidebar** shows the active workspace (name + `▾`); click opens a popover. **Inline CRUD, no modals.** See `web/src/prototype/REFERENCE.md` on the prototype branch.
+
 **Scenarios (GWT):**
-- Given multiple workspaces, when I open the sidebar, then a switcher shows the active workspace and lists the others.
-- Given the switcher, when I pick another workspace, then I navigate to `/w/{that}/` and its content loads.
-- Given the switcher, when I create "Work", then it appears and I switch into it (**optimistic**).
-- Given a non-default workspace, when I rename/delete it, then the list updates optimistically; a non-empty delete surfaces the `409` as an inline error.
+- Given multiple workspaces, when I open the sidebar, then a dropdown button at the top shows the active workspace; when I open it, then a popover lists all workspaces with the active one marked (`✓`/highlight).
+- Given the switcher popover, when I click another workspace, then I navigate to `/w/{that}/`, its content loads, and the popover closes.
+- Given the switcher, when I click "+ New workspace", type "Work", and press Enter, then it appears in the list and I switch into it (**optimistic**, popover closes).
+- Given a non-default workspace, when I click `✎` and edit its name inline, then the list updates optimistically (rollback on error).
+- Given an **empty** non-default workspace, when I click `🗑`, then it is removed immediately (optimistic, no confirm).
+- Given a **non-empty** workspace, when I click `🗑`, then the optimistic removal rolls back and a `409`-driven **inline error** appears in the popover ("Workspace is not empty …").
+- Given the **default "Personal"** workspace, then it shows a rename `✎` but **no delete `🗑`**.
 
 **Acceptance criteria:**
-- Prototype the switcher UX before implementation (novel interaction) per the `prototype` skill.
-- Switcher + CRUD in the sidebar; default workspace shows no delete affordance.
-- Optimistic create/rename/delete with rollback on error; non-empty-delete error surfaced.
+- `WorkspaceSwitcher` at the top of `Sidebar`: dropdown button (active workspace) + popover list, close on outside-click and on pick. Reuse design tokens / CSS Modules (discard prototype inline styles).
+- `useWorkspaces` query (`GET /workspaces`, global key) + optimistic create/rename/delete mutations (`POST`/`PATCH`/`DELETE /workspaces`), mirroring `useFolderMutations`; create-then-`navigate('/w/{newId}')`.
+- Inline create/rename inputs (no modals); delete immediate (no confirm); non-empty-delete `409` surfaced as an inline error with rollback; default workspace has no delete affordance.
+- **Optimistic-UI AC:** create/rename/delete reflect immediately; rollback on error.
 - Vitest/RTL green; Stylist pass.
 
 ### Slice 23-F — Move a note to another workspace
