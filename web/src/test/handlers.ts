@@ -10,6 +10,12 @@ function scoped(method: keyof typeof methods, suffix: string, resolver: HttpResp
 }
 
 export const handlers = [
+  // /workspaces is global (un-prefixed). Default returns just the default workspace
+  // so the sidebar switcher renders in every Sidebar-mounting test.
+  http.get('/api/workspaces', () => HttpResponse.json({ workspaces: [{ workspaceId: '__default__', name: 'Personal', isDefault: true }] })),
+  http.post('/api/workspaces', () => HttpResponse.json({ workspaceId: 'ws-new' }, { status: 201 })),
+  http.patch('/api/workspaces/:id', () => new HttpResponse(null, { status: 200 })),
+  http.delete('/api/workspaces/:id', () => new HttpResponse(null, { status: 204 })),
   ...scoped('get', '/notes', () => HttpResponse.json({ items: [] })),
   ...scoped('get', '/folders', () => HttpResponse.json({ folders: [] })),
   ...scoped('get', '/notes/cards', () => HttpResponse.json({ cards: [] })),

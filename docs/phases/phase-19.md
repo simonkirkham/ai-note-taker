@@ -12,7 +12,7 @@
 | 19-D | **Context provider performance.** Memoise `AuthContext`/`ToastContext` provider values; `useCallback` the Auth actions; optional Auth state/actions split | Done | — |
 | 19-E | **Effect hygiene.** Add out-of-order guards to 3 mount-only fetches; replace 3 notify-parent-in-effect patterns | Not Started | — |
 | 19-F1 | **Accessibility: live regions.** `role="alert"`/`role="status"` on the ~15 transient surfaces (errors/loading/empty) that lack one; high value = the silent mutation-failure errors | Done | — |
-| 19-F2 | **Accessibility: focus + `:focus-visible`.** 6 bare `:focus`→`:focus-visible`; Esc-to-close on `SessionExpiredBanner` (pass `onClose` to its existing `useFocusTrap`); tidy `MeetingPicker`'s redundant Esc handler | Not Started | — |
+| 19-F2 | **Accessibility: focus + `:focus-visible`.** 6 bare `:focus`→`:focus-visible`; consolidate `MeetingPicker`'s redundant Esc handler into `useFocusTrap`'s `onClose`. (`SessionExpiredBanner` Esc-to-close dropped — blocking re-auth gate, no valid dismiss.) | Done | — |
 | 19-F3 | **Adopt `eslint-plugin-jsx-a11y`.** Add the plugin's `recommended` ruleset to `web/eslint.config.js`, clear the backlog, gate in CI — standing guard for a11y regressions (graduated from `technical-improvements.md`) | Not Started | — |
 | 19-G | **Test quality.** Migrate testid-heavy unit tests to role/label queries; convert remaining `fireEvent` to `userEvent` | Not Started | — |
 | 19-H | **Network resilience.** Exponential-backoff retry (5xx/429/network) for idempotent requests in `apiFetch` | Done (shipped in 20-G) | 19-A |
@@ -206,21 +206,24 @@ Already correct (do not touch): `ListView` search status/error/no-results, `Fina
 
 ### 19-F2 — Accessibility: focus + `:focus-visible` — **value: medium**
 
-**Intent:** Stop keyboard-focus rings showing on mouse click (use `:focus-visible`), and let Esc dismiss the session-expired dialog. Most dialog focus management is **already done** via the shared `useFocusTrap` hook (#211) — `SessionExpiredBanner`/`MeetingPicker` already move focus in, trap, and restore; `ShortcutsPanel` and ListView filters are correctly non-modal (no trap needed).
+**Status:** Done (PR #234, deploy #523, 2026-06-11)
+
+**Intent:** Stop keyboard-focus rings showing on mouse click (use `:focus-visible`), and consolidate Esc-to-close into the shared focus trap where it applies. Most dialog focus management is **already done** via the shared `useFocusTrap` hook (#211) — `SessionExpiredBanner`/`MeetingPicker` already move focus in, trap, and restore; `ShortcutsPanel` and ListView filters are correctly non-modal (no trap needed).
 
 **Ground-truth gaps (re-audited 2026-06-11):**
 - 6 bare `:focus` selectors: `ActionsSection.module.css:68`, `FolderPicker.module.css:31`, `NoteEditor.module.css:59`, `NoteView.module.css:275`, `QuickCaptureTodoInput.module.css:23`, `TagsSection.module.css:71`.
-- `SessionExpiredBanner.tsx` calls `useFocusTrap(ref)` **without** `onClose` → no Esc-to-close. Pass `onClose`.
-- `MeetingPicker.tsx` has a manual Esc handler (`:54-58`) redundant with the trap's `onClose`; collapse it into the trap.
+- `MeetingPicker.tsx` has a manual `document`-level Esc handler (`:54-58`) redundant with the trap's `onClose`; collapse it into the trap.
+
+**Scope correction (during 19-F2 implementation):** the original spec proposed adding **Esc-to-close to `SessionExpiredBanner`** — **dropped, deliberately.** `App.tsx:71` renders it as a *full-screen blocking re-auth gate* (`if (sessionExpired) return <SessionExpiredBanner onSignIn={signIn} />`) with **no dismiss action** — only "Sign in again". Per the ARIA APG, Esc-to-close is *optional* and is the wrong behaviour for a dialog where dismissing is not a valid choice: the session is already dead, so Esc would only hide the one path back. Its existing focus-trap (focus-in + restore) is correct and untouched.
 
 **Scenarios (GWT):**
-- Given the session-expired dialog is open, When the user presses Esc, Then the dialog closes (same as its dismiss action) and focus is restored.
+- Given the meeting picker is open, When the user presses Esc, Then it closes (via the trap's `onClose`) — its existing close-on-Esc test stays green.
 - Given a focusable input, When focused by mouse click, Then no focus ring shows; When focused by keyboard, Then the ring shows.
 
 **Acceptance criteria:**
 - All 6 `:focus` selectors become `:focus-visible` (the 6 files above); no other selector changed.
-- `SessionExpiredBanner` passes `onClose` to `useFocusTrap`; a vitest test asserts an Esc keydown invokes the dismiss handler.
-- `MeetingPicker`'s manual Esc handler removed in favour of the trap's `onClose`; its existing close-on-Esc test stays green.
+- `MeetingPicker`'s manual Esc handler removed in favour of `useFocusTrap(ref, { onClose })`; its existing close-on-Esc + focus-trap tests stay green.
+- `SessionExpiredBanner` unchanged (Esc-to-close intentionally not added — see scope correction).
 - Optimistic-UI: N/A (static config).
 
 **Key files:** the 6 `*.module.css`, `SessionExpiredBanner.tsx`, `MeetingPicker.tsx`, `hooks/useFocusTrap.ts` (reference), relevant `__tests__`.

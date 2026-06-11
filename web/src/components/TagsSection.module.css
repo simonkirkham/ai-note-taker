@@ -68,7 +68,7 @@
   transition: border-color var(--transition);
 }
 
-.tagsInput:focus {
+.tagsInput:focus-visible {
   border-color: var(--color-primary);
   box-shadow: 0 0 0 3px rgba(13, 148, 136, 0.12);
 }

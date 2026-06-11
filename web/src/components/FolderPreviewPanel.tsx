@@ -69,6 +69,10 @@ export default function FolderPreviewPanel({
           <li className={styles.folderPreviewEmpty} role="status">No notes in this folder</li>
         ) : (
           folderCards.map((c) => (
+            // Pointer/drag hover-preview convenience; notes are keyboard-openable
+            // from the main folder view. TODO(19-F-followup): add keyboard access
+            // if this panel becomes a primary navigation surface.
+            /* eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions, jsx-a11y/click-events-have-key-events */
             <li
               key={c.noteId}
               className={styles.folderPreviewItem}
