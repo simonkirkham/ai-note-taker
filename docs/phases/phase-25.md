@@ -9,8 +9,9 @@
 | 25-A | **Backend media store + presigned upload/download.** Private S3 bucket (block-public-access, RETAIN, CORS for the app origin); `POST /notes/{id}/images:presign-upload` (server-enforced content-type allowlist + max-size) and `POST /notes/{id}/images:resolve` (batch presigned GET). Both authorize by note ownership + key prefix. | Done | — |
 | 25-B | **Paste / drop / pick → upload → inline render (frontend, live + edit).** Tiptap paste+drop handlers and a toolbar file-picker; optimistic local preview while the upload runs; persist a **stable key reference** in content; on load resolve refs → presigned GET and swap into image `src`; on save swap presigned URLs **back** to keys so an expiring URL is never written. | Done | 25-A |
 | 25-C | **Lifecycle + analysis hygiene.** Deleting a note purges its `notes/{id}/` image prefix from S3; image markdown is stripped from the text sent to the AI analysis model (images are stored/displayed, never analysed this phase). | Done | 25-A |
+| 25-D | **Remove an inline image.** Hover/focus ✕ control on each inline image (Tiptap React NodeView) deletes the node from content; frontend-only, no API call (optimistic by construction). S3 blob intentionally left as an orphan, purged on note delete per 25-C. | Not Started | 25-B |
 
-> **25-A is the foundation** — no user-visible change alone, but everything else needs the bucket + presign endpoints. **25-B is the whole user-facing feature** and the only slice with real subtlety (the key↔presigned-URL rewrite on load/save). **25-C** prevents two silent rots: orphaned blobs after a note delete, and image syntax polluting the analysis prompt. 25-B and 25-C both depend only on 25-A and can run in parallel.
+> **25-A is the foundation** — no user-visible change alone, but everything else needs the bucket + presign endpoints. **25-B is the whole user-facing feature** and the only slice with real subtlety (the key↔presigned-URL rewrite on load/save). **25-C** prevents two silent rots: orphaned blobs after a note delete, and image syntax polluting the analysis prompt. 25-B and 25-C both depend only on 25-A and can run in parallel. **25-D** is a follow-up to 25-B's *add* path — image *removal* — and is frontend-only.
 
 **Decisions locked at scoping (2026-06-10):**
 - **Inline**, not a separate attachment model — Tiptap's built-in `Image` extension renders `![](url)` for free, so inline is *less* work than a bespoke attachment list (this reversed the future-features "default to attachment if inline is hard" steer).
@@ -79,6 +80,31 @@
 - The analysis input-prep step strips markdown image syntax (`![...](...)`) from content before the prompt is built; transcript-based analysis is unaffected.
 - **Deferred (documented, not built):** cleanup of an image removed from content *while a note still exists* (mid-edit orphan). Left as a known minor cost; a periodic prefix-vs-content reconcile sweep is the future option if it matters.
 - Tests: deleting a note purges its prefix (Api.Integration with an S3 double / LocalStack-style fake, or a unit test on the media helper); analysis input-prep strips image markdown (unit test).
+
+---
+
+## Slice 25-D — Remove an inline image
+
+**Status:** Not Started
+
+**User value:** A user can delete an image they added to a note.
+
+**Approach:** Replace the stock `Image` extension with a thin extension backed by a React NodeView (`ReactNodeViewRenderer` + `NodeViewWrapper`) that wraps the `<img>` and renders a ✕ **remove control** revealed on hover/focus. Activating it deletes the image node (`deleteNode()`), so `serialize()` drops that image's key from saved content. Pure local editor mutation — no API call, so the optimistic-UI rule is satisfied by construction. The S3 object is intentionally left in place; it is purged when the note is deleted (25-C). Accepted-orphan tradeoff; a GC sweep stays a possible future technical-improvement.
+
+**Scenarios (GWT):**
+- Given a note whose content contains an inline image, when I activate the image's remove control, then the image is removed from the note body immediately and the saved content no longer references that image's key.
+- Given a note body with two inline images, when I remove the first image, then the second image stays rendered and still referenced in saved content.
+- Given an image with its remove control, when the content is serialized/saved, then only the image key is persisted — no control markup, no `blob:`/presigned URL.
+
+**Acceptance criteria:**
+- Hover/focus reveals a remove control on each inline image.
+- Activating it removes the node immediately, with no network call (optimistic by construction).
+- Saved markdown drops the removed image's key; other image keys are unaffected.
+- The control is keyboard-accessible (real `<button>`, `aria-label="Remove image"`); `npm run lint` (jsx-a11y) and `tsc` pass.
+- The S3 object is intentionally not deleted (orphan accepted; the 25-C note-delete purge still covers cleanup).
+- Existing `NoteImageJourney` + `noteImages` tests stay green; the E2E journey gains a remove-and-reload assertion (real Tiptap; jsdom mocks `NoteEditor`, so the NodeView interaction is proven at the post-deploy E2E gate).
+
+**Observability:** none new — removal is a local editor mutation with no I/O, so there is no silent failure mode to surface.
 
 ---
 
