@@ -315,11 +315,13 @@ Slices and acceptance criteria: [docs/phases/phase-25.md](phases/phase-25.md)
 
 ---
 
-## Phase 26 — Zero-downtime deployments _(Not Started)_
+## Phase 26 — Zero-downtime deployments _(Frontend done; backend canary reverted)_
 
 A `cdk deploy` is not yet fully zero-downtime. The backend alias flip is seamless (API Gateway routes to the `live` alias; SnapStart avoids cold starts) but lacks canary + automated rollback. The real gap is the **frontend deploy job**: `aws s3 sync … --delete` removes old content-hashed bundles the instant new ones land, so a browser/CDN still holding the previous `index.html` 404s its bundle on reload → blank app, plus a `/*` invalidation cold-cache spike and no immutable caching. Three independently-shippable slices: frontend zero-downtime deploy — two-pass upload (immutable hashed assets, no `--delete`; `index.html` `no-cache`), entry-point-only invalidation, S3 lifecycle GC (26-A, the only current-downtime fix); a `vite:preloadError` chunk-load-error reload safety net (26-B); and a backend CodeDeploy canary wired to the existing error-rate + latency alarms for auto-rollback (26-C). Frontend-first, and **before or with Phase 19-I** — lazy-loading over today's `--delete` strategy escalates the reload-404 into a mid-session crash. Graduated from the "Zero-downtime deployments" item in `technical-improvements.md`.
 
 **Goal:** a deploy never breaks a live user; learn immutable-asset caching vs `--delete`, CloudFront invalidation scoping, S3 lifecycle GC, Vite `vite:preloadError` recovery, and CodeDeploy canary traffic shifting with alarm-based auto-rollback on a Lambda alias.
+
+**Outcome:** 26-A + 26-B shipped (the frontend zero-downtime fix — the real user-facing break — plus the chunk-load safety net). 26-C (backend canary) shipped then was **reverted same-day**: the canary added ~5 min to every backend deploy and serialised the deploy queue, a cost not worth its rarely-exercised rollback protection on a single-user app (see `docs/learnings/deploy-time-is-a-first-class-cost.md`).
 
 Slices and acceptance criteria: [docs/phases/phase-26.md](phases/phase-26.md)
 

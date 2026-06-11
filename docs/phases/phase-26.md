@@ -6,9 +6,11 @@
 
 | Slice | Summary | Status | Depends on |
 |-------|---------|--------|------------|
-| 26-A | **Frontend zero-downtime deploy.** Two-pass upload (immutable hashed assets, no `--delete`; `index.html` `no-cache`); scope invalidation to entry points not `/*`; S3 lifecycle rule GCs old assets after a grace window instead of deleting them at deploy time. | Not Started | — |
-| 26-B | **Chunk-load-error safety net.** A `vite:preloadError` handler reloads once (loop-guarded) to pick up the new `index.html`; the existing error boundary catches dynamic-import failures. Turns a residual stale-chunk miss into a self-heal. | Not Started | — |
-| 26-C | **Backend canary + automated rollback.** Wrap the `live` alias in a CodeDeploy `LambdaDeploymentGroup` with linear/canary traffic shifting, wired to the existing error-rate + p99-latency alarms for auto-rollback. | Not Started | — |
+| 26-A | **Frontend zero-downtime deploy.** Two-pass upload (immutable hashed assets, no `--delete`; `index.html` `no-cache`); scope invalidation to entry points not `/*`; S3 lifecycle rule GCs old assets after a grace window instead of deleting them at deploy time. | Done | — |
+| 26-B | **Chunk-load-error safety net.** A `vite:preloadError` handler reloads once (loop-guarded) to pick up the new `index.html`; the existing error boundary catches dynamic-import failures. Turns a residual stale-chunk miss into a self-heal. | Done | — |
+| 26-C | **Backend canary + automated rollback.** Wrap the `live` alias in a CodeDeploy `LambdaDeploymentGroup` with linear/canary traffic shifting, wired to the existing error-rate + p99-latency alarms for auto-rollback. | Reverted | — |
+
+> **26-C shipped (#228) then reverted same-day (#231).** The canary worked, but `CANARY_10PERCENT_5MINUTES` added ~5 min to every backend deploy (SnapStart republishes on any code change) and serialised the deploy queue — too costly for a single-user app whose deploys rarely have in-bake traffic to evaluate the rollback alarms. Revisit only if traffic grows. See `docs/learnings/phase-26c-canary-rollback.md` and `docs/learnings/deploy-time-is-a-first-class-cost.md`.
 
 > **26-A is the only slice that fixes a current user-facing break** — do it first, and **before or with [19-I](phase-19.md)** (lazy-loading over today's `--delete` strategy escalates the reload-404 into a mid-session crash). **26-B** is the safety net behind 26-A; its value rises with 19-I but it stands alone. **26-C** is a resilience/learning win, not a downtime fix — sequence it last. All three are independently shippable; only the recommended order is fixed, not a hard dependency.
 
