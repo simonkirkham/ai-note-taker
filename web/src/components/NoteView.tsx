@@ -81,6 +81,13 @@ export default function NoteView({
   const { showError } = useToast();
   const inputRef = useRef<HTMLInputElement>(null);
   const dateDefaultedFor = useRef<string | null>(null);
+  // BUG-18: content otherwise persists only via the editor's onBlur. Removing an
+  // inline image (its ✕ control preventDefaults to keep selection) never blurs the
+  // editor, so the removal — and any un-blurred edit — was lost on navigate. Mirror
+  // the latest draft into a ref and flush it when leaving the note; skip on delete.
+  const contentDraftRef = useRef<string | null>(null);
+  useEffect(() => { contentDraftRef.current = contentDraft; }, [contentDraft]);
+  const deletingRef = useRef(false);
 
   const today = new Date().toISOString().slice(0, 10);
 
@@ -154,13 +161,26 @@ export default function NoteView({
     }
   }
 
+  // Persist a pending content edit. Used on editor blur AND on leave (Save/back/unmount):
+  // removing an inline image never blurs the editor (its ✕ control preventDefaults to keep
+  // selection), so a blur-only save loses the removal on navigate (BUG-18). Clears the draft
+  // ref first so blur+leave (or Save+unmount) can't double-fire the same save; no-op when
+  // there is no draft.
   function handleSaveContent() {
-    if (contentDraft == null) return;
-    editContentM.mutate(contentDraft, {
+    const draft = contentDraftRef.current;
+    if (draft == null) return;
+    contentDraftRef.current = null;
+    editContentM.mutate(draft, {
       onSuccess: () => setContentDraft(null),
       onError: () => showError("Couldn't save your note. We kept your text — try again."),
     });
   }
+  const saveContentRef = useRef(handleSaveContent);
+  useEffect(() => { saveContentRef.current = handleSaveContent; });
+  // Flush on unmount (navigating away) unless we are deleting the note.
+  useEffect(() => () => {
+    if (!deletingRef.current) saveContentRef.current();
+  }, []);
 
   function handleSaveDate() {
     if (dateDraft == null) return;
@@ -262,12 +282,14 @@ export default function NoteView({
       setConfirmingLeave(true);
       return;
     }
+    handleSaveContent();
     onBack();
   }
 
   // Cancel is only reachable when !hasContent (blank note)
   async function handleCancel() {
     if (isNew) {
+      deletingRef.current = true;
       await onDelete(noteId);
     } else {
       onBack();
@@ -306,7 +328,7 @@ export default function NoteView({
               <span className={styles.leaveConfirmText}>Still recording —</span>
               <button
                 data-testid="confirm-leave-button"
-                onClick={() => { setConfirmingLeave(false); onBack(); }}
+                onClick={() => { setConfirmingLeave(false); handleSaveContent(); onBack(); }}
                 className={styles.saveButton}
               >
                 Leave &amp; save
@@ -367,7 +389,7 @@ export default function NoteView({
           {hasContent && (
             <button
               data-testid="delete-note-button"
-              onClick={() => onDelete(noteId)}
+              onClick={() => { deletingRef.current = true; onDelete(noteId); }}
               className={styles.deleteNoteButton}
               aria-label="Delete note"
             >
