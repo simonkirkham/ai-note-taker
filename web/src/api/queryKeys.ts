@@ -13,4 +13,7 @@ export const keys = {
   note: (id: string) => ["note", getWorkspaceId(), id] as const,
   actions: (noteId: string) => ["actions", getWorkspaceId(), noteId] as const,
   meetings: (date: string) => ["meetings", date] as const,
+  // Global — the workspace list is per-user, not per-workspace (23-E). A plain value
+  // (not a getter), and preserved across a workspace switch (see WorkspaceProvider).
+  workspaces: ["workspaces"] as const,
 };

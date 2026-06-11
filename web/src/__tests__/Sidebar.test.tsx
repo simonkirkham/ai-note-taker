@@ -1,15 +1,31 @@
-import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import type { ReactElement } from 'react'
+import { MemoryRouter, Route, Routes } from 'react-router'
 import type { FolderNode } from '../api/folders'
 import Sidebar from '../components/Sidebar'
 import { UNFILED_ID } from '../constants'
+import { render, screen } from '../test/render'
+import { WorkspaceProvider } from '../workspace/WorkspaceContext'
 
 const folder: FolderNode = { folderId: 'f-1', name: 'People', children: [] }
 
 const noop = () => {}
 
+// Sidebar now embeds <WorkspaceSwitcher/>, which needs router + WorkspaceProvider
+// context (useNavigate / useCurrentWorkspace / useWorkspaces). Wrap every render.
+function wrap(ui: ReactElement) {
+  return (
+    <MemoryRouter initialEntries={['/w/__default__']}>
+      <Routes>
+        <Route path="/w/:wsId" element={<WorkspaceProvider>{ui}</WorkspaceProvider>} />
+      </Routes>
+    </MemoryRouter>
+  )
+}
+
 function renderSidebar(folders: FolderNode[] = [], previewFolderId: string | null = null) {
   return render(
+    wrap(
     <Sidebar
       open={true}
       onCreate={noop}
@@ -28,6 +44,7 @@ function renderSidebar(folders: FolderNode[] = [], previewFolderId: string | nul
       previewFolderId={previewFolderId}
       onPreview={noop}
     />,
+    ),
   )
 }
 
@@ -47,6 +64,7 @@ describe('Sidebar', () => {
   it('calls onFolderSelect when a folder is clicked', async () => {
     const onFolderSelect = vi.fn()
     render(
+      wrap(
       <Sidebar
         open={true}
         onCreate={noop}
@@ -65,6 +83,7 @@ describe('Sidebar', () => {
         previewFolderId={null}
         onPreview={noop}
       />,
+      ),
     )
     await userEvent.click(screen.getByText('People'))
     expect(onFolderSelect).toHaveBeenCalledWith('f-1', expect.any(Array))
@@ -78,6 +97,7 @@ describe('Sidebar', () => {
   it('renders sign-out button and calls onSignOut when clicked', async () => {
     const onSignOut = vi.fn()
     render(
+      wrap(
       <Sidebar
         open={true}
         onCreate={noop}
@@ -97,6 +117,7 @@ describe('Sidebar', () => {
         onPreview={noop}
         onSignOut={onSignOut}
       />,
+      ),
     )
     await userEvent.click(screen.getByTestId('sign-out-button'))
     expect(onSignOut).toHaveBeenCalledOnce()
@@ -105,6 +126,7 @@ describe('Sidebar', () => {
   it('calls onPreview with unfiled sentinel when » is clicked', async () => {
     const onPreview = vi.fn()
     render(
+      wrap(
       <Sidebar
         open={true}
         onCreate={noop}
@@ -123,6 +145,7 @@ describe('Sidebar', () => {
         previewFolderId={null}
         onPreview={onPreview}
       />,
+      ),
     )
     await userEvent.click(screen.getByTestId('unfiled-preview-button'))
     expect(onPreview).toHaveBeenCalledWith(UNFILED_ID, 'Unfiled Notes')

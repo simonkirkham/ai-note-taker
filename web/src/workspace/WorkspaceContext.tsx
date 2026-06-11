@@ -20,7 +20,9 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
   const prev = useRef(wsId);
   useEffect(() => {
     if (prev.current !== wsId) {
-      qc.removeQueries();
+      // Drop the previous workspace's scoped caches, but keep the global workspace
+      // list (23-E) — the switcher reads it and it must survive a switch.
+      qc.removeQueries({ predicate: (q) => q.queryKey[0] !== "workspaces" });
       prev.current = wsId;
     }
   }, [wsId, qc]);
