@@ -30,7 +30,7 @@
 | BUG-17 | Concurrent multi-word tag add drops a tag — second append loses the optimistic-concurrency race and is silently dropped (no handler retry) | Done | BUG-4, BUG-14 |
 | BUG-18 | Removing an inline image (or any edit) is silently not persisted — note content saves only on editor `onBlur`; the Save button navigates without flushing the draft | Done | 25-D |
 | BUG-19 | Inline image flashes a 403 on every open — `ImageNodeView` renders the raw S3 key as a relative `<img src>` before `resolveImages` swaps in the presigned URL | Done | 25-B, 25-D |
-| BUG-20 | Workspace-switcher popover overlaps the main content when open — widened to `min-width: 16rem` (23-E truncation fix) it grows rightward past the narrow sidebar over the Home/Notes area. Keep the popover within the sidebar width and reveal the rename/delete icons on row hover/focus so full names ("Personal · default") still fit without truncating or overlapping content. | Not Started | 23-E |
+| BUG-20 | Workspace-switcher popover overlaps the main content when open — widened to `min-width: 16rem` (23-E truncation fix) it grows rightward past the narrow sidebar over the Home/Notes area. Keep the popover within the sidebar width and reveal the rename/delete icons on row hover/focus so full names ("Personal · default") still fit without truncating or overlapping content. | Done | 23-E |
 
 Further bugs will be appended as they are identified.
 
