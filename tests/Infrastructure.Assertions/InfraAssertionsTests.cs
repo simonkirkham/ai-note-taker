@@ -988,6 +988,73 @@ public class InfraAssertionsTests
         _template.ResourceCountIs("AWS::CloudWatch::Alarm", 4);
     }
 
+    // ── Backend canary deploy + automated rollback (Phase 26-C) ───────
+
+    [Fact]
+    public void Canary_DeploymentGroupShiftsTrafficWithAutoRollback()
+    {
+        _template.HasResourceProperties("AWS::CodeDeploy::DeploymentGroup", Match.ObjectLike(new Dictionary<string, object>
+        {
+            ["DeploymentConfigName"] = Match.AnyValue(),
+            ["DeploymentStyle"] = Match.ObjectLike(new Dictionary<string, object>
+            {
+                ["DeploymentType"] = "BLUE_GREEN",
+                ["DeploymentOption"] = "WITH_TRAFFIC_CONTROL"
+            }),
+            ["AutoRollbackConfiguration"] = Match.ObjectLike(new Dictionary<string, object>
+            {
+                ["Enabled"] = true
+            })
+        }));
+    }
+
+    [Fact]
+    public void Canary_DeploymentGroupWiredToBothAlarms()
+    {
+        // The error-rate and p99-latency alarms are the rollback triggers. Match the
+        // alarm names via their Ref logical IDs so the binding is to the real alarms.
+        _template.HasResourceProperties("AWS::CodeDeploy::DeploymentGroup", Match.ObjectLike(new Dictionary<string, object>
+        {
+            ["AlarmConfiguration"] = Match.ObjectLike(new Dictionary<string, object>
+            {
+                ["Enabled"] = true,
+                // Exact array (not ArrayWith): exactly these two alarms, no more, no fewer —
+                // an accidental third trigger or a dropped one must fail the test.
+                ["Alarms"] = new object[]
+                {
+                    Match.ObjectLike(new Dictionary<string, object>
+                    {
+                        ["Name"] = Match.ObjectLike(new Dictionary<string, object> { ["Ref"] = Match.StringLikeRegexp("ErrorRateAlarm.*") })
+                    }),
+                    Match.ObjectLike(new Dictionary<string, object>
+                    {
+                        ["Name"] = Match.ObjectLike(new Dictionary<string, object> { ["Ref"] = Match.StringLikeRegexp("LatencyAlarm.*") })
+                    })
+                }
+            })
+        }));
+    }
+
+    [Fact]
+    public void Canary_DeploymentTargetsTheLiveAlias()
+    {
+        // The traffic shift is driven through the `live` alias's CodeDeploy update hook,
+        // so assert the alias itself carries the CodeDeployLambdaAliasUpdate policy —
+        // this binds the deployment group to the live alias, not some other alias.
+        _template.HasResource("AWS::Lambda::Alias", Match.ObjectLike(new Dictionary<string, object>
+        {
+            ["Properties"] = Match.ObjectLike(new Dictionary<string, object> { ["Name"] = "live" }),
+            ["UpdatePolicy"] = Match.ObjectLike(new Dictionary<string, object>
+            {
+                ["CodeDeployLambdaAliasUpdate"] = Match.ObjectLike(new Dictionary<string, object>
+                {
+                    ["ApplicationName"] = Match.AnyValue(),
+                    ["DeploymentGroupName"] = Match.AnyValue()
+                })
+            })
+        }));
+    }
+
     [Fact]
     public void OpsDashboard_IncludesRumErrorMetricWidget()
     {
