@@ -39,6 +39,7 @@ import {
   useMoveNoteToFolder,
 } from "./hooks/useNoteMutations";
 import { recordRumEvent } from "./rum";
+import { PrototypeRoot } from "./prototype/PrototypeRoot";
 import { useCurrentWorkspace } from "./workspace/context";
 import { WorkspaceProvider } from "./workspace/WorkspaceContext";
 import { DEFAULT_WORKSPACE_ID } from "./workspace/workspaceStore";
@@ -48,7 +49,11 @@ type NoteNavState = { isNew?: boolean; initialTitle?: string };
 export default function App() {
   return (
     <BrowserRouter>
-      <AppGate />
+      <Routes>
+        {/* PROTOTYPE — prototype branch only, never reaches main. */}
+        <Route path="/prototype" element={<PrototypeRoot />} />
+        <Route path="*" element={<AppGate />} />
+      </Routes>
     </BrowserRouter>
   );
 }
