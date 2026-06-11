@@ -101,6 +101,26 @@ describe("WorkspaceSwitcher (23-E)", () => {
     await waitFor(() => expect(deleted).toBe("ws-clients"));
   });
 
+  it("returns to the default workspace after deleting the active one", async () => {
+    server.use(http.delete("/api/workspaces/:id", () => new HttpResponse(null, { status: 204 })));
+    renderSwitcher("ws-work");
+    const menu = await openMenu();
+    await userEvent.click(within(menu).getByRole("button", { name: "Delete Work" }));
+    await waitFor(() => expect(screen.getByTestId("loc")).toHaveTextContent("/w/__default__"));
+  });
+
+  it("clears a delete error when the menu is dismissed by an outside click", async () => {
+    server.use(http.delete("/api/workspaces/:id", () => new HttpResponse(null, { status: 409 })));
+    renderSwitcher("__default__");
+    const menu = await openMenu();
+    await userEvent.click(within(menu).getByRole("button", { name: "Delete Work" }));
+    expect(await screen.findByRole("alert")).toBeInTheDocument();
+    await userEvent.click(document.body); // outside-click dismiss
+    await waitFor(() => expect(screen.queryByTestId("workspace-switcher-menu")).not.toBeInTheDocument());
+    await openMenu(); // reopen — the stale error must not reappear
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
   it("surfaces a 409 inline error when deleting a non-empty workspace", async () => {
     server.use(http.delete("/api/workspaces/:id", () => new HttpResponse(null, { status: 409 })));
     renderSwitcher("__default__");

@@ -36,7 +36,9 @@ export default function WorkspaceSwitcher() {
   useEffect(() => {
     if (!open) return;
     function onDown(e: MouseEvent) {
-      if (rootRef.current && !rootRef.current.contains(e.target as Node)) setOpen(false);
+      // close() (not setOpen(false)) so a stale 409 error / half-typed create /
+      // in-progress rename doesn't survive the close and reappear on next open.
+      if (rootRef.current && !rootRef.current.contains(e.target as Node)) close();
     }
     document.addEventListener("mousedown", onDown);
     return () => document.removeEventListener("mousedown", onDown);
@@ -80,9 +82,16 @@ export default function WorkspaceSwitcher() {
 
   function attemptDelete(id: string) {
     setError(null);
+    const wasActive = id === wsId;
     deleteM.mutate(
       { workspaceId: id },
       {
+        // Deleting the workspace you're viewing would strand you on a now-dead
+        // route — fall back to the default workspace.
+        onSuccess: () => {
+          if (wasActive) navigate(`/w/${DEFAULT_WORKSPACE_ID}`);
+          close();
+        },
         onError: (e) =>
           setError(
             e instanceof WorkspaceNotEmptyError
