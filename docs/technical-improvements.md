@@ -33,7 +33,7 @@ Status key: 🔲 **Open** · 🟡 **Partly done / mitigated** · ✅ **Done** (g
 | TI-15 | Add a shared modal focus-trap utility                                          | ✅ Done — #211                                                                                                                          |
 | TI-16 | Make the projection-rebuild endpoint robust                                    | ✅ Done — → Phase 24                                                                                                                    |
 | TI-17 | Auto-backfill a new projection on deploy                                       | 🔲 **Open** — unblocked now P24 is done; pairs with Phase 23                                                                            |
-| TI-18 | Rebuild emits delete tombstones for `NoteSearchView`                           | 🔲 **Open** — likely addressed by 24-B; **verify + close**                                                                              |
+| TI-18 | Rebuild emits delete tombstones for `NoteSearchView`                           | ✅ **Done** — Phase 24-B upsert-and-reconcile prunes deleted notes + hard-deletes stale tombstones                                       |
 | TI-19 | Stabilise the flaky `TagsJourney` E2E                                          | ✅ Done — BUG-17                                                                                                                        |
 | TI-20 | `WorkspaceList` reads via full table Scan, not a per-user GSI                  | 🔲 **Open** — fold into Phase 23                                                                                                        |
 | TI-21 | CI pipeline hygiene — skip no-op deploys, cancel superseded, cache Playwright  | ✅ Done                                                                                                                                 |
@@ -48,7 +48,7 @@ Status key: 🔲 **Open** · 🟡 **Partly done / mitigated** · ✅ **Done** (g
 | TI-30 | React 18 → 19 (dep-audit T3)                                                   | ✅ Done — #246, deploy #536 (zero code changes)                                                                                         |
 | TI-31 | TypeScript 5.6 → 6.0 (dep-audit T4)                                            | ✅ Done — #249, deploy #539 (dropped deprecated `baseUrl`)                                                                              |
 
-**Outstanding (5 Open + 3 Partly):** TI-17 Auto-backfill projection on deploy; TI-18 `NoteSearchView` tombstones (verify/close); TI-20 `WorkspaceList` GSI; TI-23 Generalise append-retry; TI-25 `NoteEditor` ordering test; _(partly)_ TI-7 ESLint import-resolver + typed-lint (jsx-a11y done via 19-F3); TI-3 state-mgmt colocation; TI-24 deploy-credentials root cause. **The 2026-06 dependency upgrade audit (T1/T7/T2/T3/T4 = TI-27/28/29/30/31) is fully cleared.**
+**Outstanding (4 Open + 3 Partly):** TI-17 Auto-backfill projection on deploy; TI-20 `WorkspaceList` GSI; TI-23 Generalise append-retry; TI-25 `NoteEditor` ordering test; _(partly)_ TI-7 ESLint import-resolver + typed-lint (jsx-a11y done via 19-F3); TI-3 state-mgmt colocation; TI-24 deploy-credentials root cause. **The 2026-06 dependency upgrade audit (T1/T7/T2/T3/T4 = TI-27/28/29/30/31) is fully cleared.**
 
 > Items carry stable IDs `TI-1`–`TI-31` in document order (the `ID` column above); each detailed section below repeats its ID. Reference an item as `TI-N`. The dep-audit `T#` tags are retained in parentheses for cross-reference with the audit report.
 
@@ -235,6 +235,8 @@ The full rationale, target diagrams, staged migration plan, and the eventual-con
 
 ## TI-16. Make the projection-rebuild endpoint robust (it 500s + partial-rebuilds under burst)
 
+✅ **Done — [Phase 24](phases/phase-24.md) complete (24-A/B/C all Done).** Bounded+retried writes with a longer admin-path timeout (24-A), upsert-and-reconcile replacing delete-first (24-B), and operability — per-projection summary, fault metric/alarm, overlapping-rebuild guard (24-C). The rebuild is now first-try reliable against cold tables and incapable of silent partial loss. History retained below.
+
 **Graduated → [Phase 24](phases/phase-24.md).** `POST /admin/projections/rebuild` deletes every projection first, then re-upserts ~290 rows via an unbounded `Task.WhenAll` against a 5s-per-op client — a cold on-demand table throttles, writes cancel, `Task.WhenAll` throws → 500, and delete-all-first leaves a **partial rebuild** (silent missing rows). Reliable only on the second try (warm tables). Confirmed in prod 2026-06-05 (Phase 17 backfill, 2 ops canceled at 5s) and recurred 2026-06-08 (Phase 22). The fix (bounded+retried writes, admin-path timeout, upsert-and-reconcile instead of delete-first, operability) is now broken into Phase 24-A/B/C. The `NoteSearchView` tombstone item below is folded into **24-B**.
 
 ---
@@ -254,6 +256,8 @@ The full rationale, target diagrams, staged migration plan, and the eventual-con
 ---
 
 ## TI-18. Rebuild emits delete tombstones for `NoteSearchView` (rebuild soft-deletes; live hard-deletes)
+
+✅ **Done — Phase 24-B.** The rebuild now matches the live hard-delete: `ProjectionRebuildHandler` (1) excludes deleted notes from the upsert set (`searchView.GetAll().Where(v => !v.Deleted)`), and (2) reconciles — enumerates the live table via `QueryAllAsync`, diffs against the live `NoteId` set, and `DeleteAsync`-es every orphan tombstone. No `Deleted=true` rows survive a rebuild. The 80 historical tombstones are pruned on the next `/admin/projections/rebuild`. History retained below.
 
 **What:** The **live** delete path hard-deletes the search row on `NoteDeleted` (`DynamoDbNoteSearchViewStore.DeleteAsync`), but the **rebuild** path writes deleted notes as `Deleted=true` rows (the `NoteSearchViewProjection` keeps them and `GetAll()` returns them). After the Phase 22 prod backfill the table held **80 `Deleted=true` tombstones** alongside 11 live rows.
 
@@ -376,6 +380,8 @@ Phase 25-B shipped (then fixed) an **ordering bug** that every unit test passed 
 ---
 
 ## TI-26. Zero-downtime deployments — frontend stale-chunk 404s; backend has no canary/rollback
+
+✅ **Done — [Phase 26](phases/phase-26.md) complete.** 26-A (frontend two-pass upload, no `--delete`, immutable hashed assets, entry-point-only invalidation, S3 lifecycle GC) and 26-B (`vite:preloadError` reload safety net) shipped; 26-C (backend CodeDeploy canary) was shipped then **reverted same-day** as terminal — the ~5 min/deploy cost outweighed the protection for a single-user app (see `docs/learnings/deploy-time-is-a-first-class-cost.md`). The current-downtime frontend gap is closed. History retained below.
 
 **Graduated → [Phase 26](phases/phase-26.md).** A `cdk deploy` is not fully zero-downtime. The backend alias flip is seamless (API Gateway routes to the `live` alias, SnapStart avoids cold starts) but is an instant 100% cutover with no canary or automated rollback. The real gap is the **frontend deploy job** (`deploy.yml:200`–`204`): `aws s3 sync … --delete` removes old content-hashed bundles the instant new ones land → a browser/CDN still holding the previous `index.html` 404s its bundle on reload → **blank app**; plus a `/*` invalidation cold-cache spike and no immutable caching. Severity rises the moment **[19-I](phases/phase-19.md)** ships dynamic imports over the `--delete` strategy (reload-404 → mid-session crash). Broken into **26-A** (frontend two-pass upload, no `--delete`, immutable hashed assets, entry-point-only invalidation, S3 lifecycle GC — the only current-downtime fix, do first and before/with 19-I), **26-B** (`vite:preloadError` reload safety net), and **26-C** (backend CodeDeploy canary wired to the existing error-rate + latency alarms for auto-rollback). Full GWT scenarios and acceptance criteria in the phase doc.
 
