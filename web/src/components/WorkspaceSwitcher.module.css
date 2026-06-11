@@ -39,7 +39,11 @@
   position: absolute;
   z-index: 20;
   left: 0;
-  right: 0;
+  /* Grow rightward past the narrow sidebar instead of being pinned to its width —
+     otherwise a row like "Personal · default" plus the rename/delete icons truncates. */
+  right: auto;
+  min-width: 16rem;
+  max-width: min(20rem, 80vw);
   margin-top: 0.25rem;
   background: var(--color-surface);
   border: 1px solid var(--color-border);
