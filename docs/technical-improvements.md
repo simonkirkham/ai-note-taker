@@ -46,13 +46,13 @@ Status key: 🔲 **Open** · 🟡 **Partly done / mitigated** · ✅ **Done** (g
 | TI-28 | ASP.NET 10 servicing + AWS SDK patch bumps (dep-audit T7)                      | ✅ Done — #241, deploy #530                                                                                                             |
 | TI-29 | Vite 5 → 7 + Vitest 2 → 4 (dep-audit T2)                                       | ✅ Done — #245, deploy #535 (held at Vite 7; Vite 8 now GA = future)                                                                    |
 | TI-30 | React 18 → 19 (dep-audit T3)                                                   | ✅ Done — #246, deploy #536 (zero code changes)                                                                                         |
-| TI-31 | TypeScript 5.6 → 6.0 (dep-audit T4)                                            | 🔲 **Open** — pair w/ typescript-eslint bump                                                                                            |
+| TI-31 | TypeScript 5.6 → 6.0 (dep-audit T4)                                            | ✅ Done — #249, deploy #539 (dropped deprecated `baseUrl`)                                                                              |
 
-**Outstanding (6 Open + 3 Partly):** TI-17 Auto-backfill projection on deploy; TI-18 `NoteSearchView` tombstones (verify/close); TI-20 `WorkspaceList` GSI; TI-23 Generalise append-retry; TI-25 `NoteEditor` ordering test; **TI-31 TypeScript 6.0 (T4)** — last dep-audit item; _(partly)_ TI-7 ESLint import-resolver + typed-lint (jsx-a11y done via 19-F3); TI-3 state-mgmt colocation; TI-24 deploy-credentials root cause.
+**Outstanding (5 Open + 3 Partly):** TI-17 Auto-backfill projection on deploy; TI-18 `NoteSearchView` tombstones (verify/close); TI-20 `WorkspaceList` GSI; TI-23 Generalise append-retry; TI-25 `NoteEditor` ordering test; _(partly)_ TI-7 ESLint import-resolver + typed-lint (jsx-a11y done via 19-F3); TI-3 state-mgmt colocation; TI-24 deploy-credentials root cause. **The 2026-06 dependency upgrade audit (T1/T7/T2/T3/T4 = TI-27/28/29/30/31) is fully cleared.**
 
 > Items carry stable IDs `TI-1`–`TI-31` in document order (the `ID` column above); each detailed section below repeats its ID. Reference an item as `TI-N`. The dep-audit `T#` tags are retained in parentheses for cross-reference with the audit report.
 
-> **Dependency upgrade audit (2026-06-11):** full inventory + LTS recommendations in [docs/dependency-audits/dependency-upgrade-audit-2026-06.md](dependency-audits/dependency-upgrade-audit-2026-06.md). High + medium-urgency items (T1, T7, T2, T3, T4) are tracked below. Low-urgency items (T5 lint-tooling batch, T6 Tiptap 3.26, T8 CDK 2.258, T9 Playwright 1.60, T10 xUnit v3) stay in the audit doc until picked up.
+> **Dependency upgrade audit (2026-06-11):** full inventory + LTS recommendations in [docs/dependency-audits/dependency-upgrade-audit-2026-06.md](dependency-audits/dependency-upgrade-audit-2026-06.md). High + medium-urgency items (T1, T7, T2, T3, T4) are **all ✅ done** (TI-27/28/29/30/31). Low-urgency items (T5 lint-tooling batch, T6 Tiptap 3.26, T8 CDK 2.258, T9 Playwright 1.60, T10 xUnit v3) stay in the audit doc until picked up.
 
 ---
 
@@ -448,6 +448,8 @@ Phase 25-B shipped (then fixed) an **ordering bug** that every unit test passed 
 ---
 
 ## TI-31. TypeScript 5.6 → 6.0 (dep-audit T4)
+
+✅ **Done** (PR #249, deploy #539, 2026-06-11). `typescript ^5.6.3 → ^6.0.3`; `typescript-eslint ^8.59.2 → ^8.61.0` (peers `typescript <6.1.0` → 6.0 in range; eslint peer covers ESLint 10). Lockfile regenerated on Node 24 / npm 11.13.0. **One migration step:** TS 6.0 raises `baseUrl` to a deprecation **error** (TS5101, removed in TS 7.0). Fixed by **removing `baseUrl` from `tsconfig.app.json`** rather than silencing with `ignoreDeprecations` — the `@/*` paths value (`./src/*`) is `./`-relative so it resolves relative to the tsconfig dir (TS 4.1+), identical resolution; `tsconfig.test.json` extends app and inherits it; the lone `@/` import (`main.tsx`) and the independent Vite alias both still resolve. **⚠️ Do not re-add `baseUrl`** to support a non-`@/` bare import — it reintroduces the TS5101 deprecation; use an explicit relative or `@/` path instead. Verified: `tsc -b` clean, `tsc -p tsconfig.test.json` clean, vite build green, vitest 490/490, eslint clean (typed-lint under TS 6). Frontend-only; deploy-time neutral. **This closes the 2026-06 dependency upgrade audit** — every High/Medium item (T1/T7/T2/T3/T4) is done. Original entry kept below for context.
 
 **Urgency: Medium.**
 
