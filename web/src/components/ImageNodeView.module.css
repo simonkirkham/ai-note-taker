@@ -21,6 +21,19 @@
   outline-offset: 2px;
 }
 
+/* Shown while an image's src is still an unresolved S3 key, before resolveImages
+   swaps in a presigned URL — rendering the bare key as an <img> would fetch it as
+   a relative URL and 403 (BUG-19). Matches the image's block layout. */
+.wrapper .placeholder {
+  display: block;
+  width: 12rem;
+  max-width: 100%;
+  aspect-ratio: 4 / 3;
+  border-radius: var(--radius);
+  background: var(--color-surface-sunken, var(--color-overlay-scrim));
+  line-height: normal;
+}
+
 .removeButton {
   position: absolute;
   top: var(--space-1);

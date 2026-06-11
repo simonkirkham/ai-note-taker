@@ -76,7 +76,7 @@ public sealed class NoteImageJourney(BrowserFixture browser) : IAsyncLifetime
     {
         var title = $"Remove img {Guid.NewGuid():N}"[..30];
 
-        // Given a fresh note with an inline image
+        // Given a note whose *persisted* content contains an inline image
         await _app.GotoAsync();
         await _app.ClickNewNoteAsync();
         await _app.EnterTitleAsync(title);
@@ -94,6 +94,20 @@ public sealed class NoteImageJourney(BrowserFixture browser) : IAsyncLifetime
         var editorImage = _page.GetByTestId("note-content").Locator("img");
         await Assertions.Expect(editorImage).ToBeVisibleAsync(new() { Timeout = 15000 });
 
+        // Save with the image so its key lands in server content, then reopen — this is the
+        // real BUG-18 scenario. (The original test removed an image that was never persisted,
+        // so the removal PUT was a no-op against already-empty content and passed regardless.)
+        var imageSaved = _page.WaitForResponseAsync(r =>
+            r.Url.Contains("/content") && r.Request.Method == "PUT");
+        await _app.SaveAndReturnAsync();
+        await imageSaved;
+
+        await _app.ClickNoteInListAsync(title);
+        var resolveDone = _page.WaitForResponseAsync(r =>
+            r.Url.Contains("/images/resolve") && r.Request.Method == "POST");
+        await resolveDone;
+        await Assertions.Expect(editorImage).ToBeVisibleAsync(new() { Timeout = 15000 });
+
         // When I activate the image's remove control
         await editorImage.HoverAsync();
         await _page.GetByTestId("remove-image-button").ClickAsync();
@@ -101,8 +115,9 @@ public sealed class NoteImageJourney(BrowserFixture browser) : IAsyncLifetime
         // Then the image is removed from the note body immediately
         await Assertions.Expect(editorImage).ToHaveCountAsync(0);
 
-        // And after saving and reopening, the image is still gone (its key was
-        // dropped from content, so no resolve is needed and nothing renders).
+        // And after saving and reopening, the removal persisted — the key was dropped from
+        // server content (BUG-18: the save fires on leave even though removing the image
+        // never blurred the editor).
         var contentSaved = _page.WaitForResponseAsync(r =>
             r.Url.Contains("/content") && r.Request.Method == "PUT");
         await _app.SaveAndReturnAsync();

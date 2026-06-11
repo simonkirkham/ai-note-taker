@@ -268,6 +268,90 @@ describe('NoteView', () => {
     })
   })
 
+  // BUG-18: content saves only on the editor's onBlur. Removing an inline image via
+  // its ✕ control updates the doc (onChange fires) but never blurs the editor, so the
+  // removal — and any un-blurred edit — was lost on navigate. Leaving the note must
+  // flush a pending draft.
+  describe('content flush on leave (BUG-18)', () => {
+    it('saves a pending content edit when leaving via Save without the editor blurring', async () => {
+      let saved: string | undefined
+      server.use(
+        http.put('/api/notes/:noteId/content', async ({ request }) => {
+          saved = (await request.json() as { content: string }).content
+          return new HttpResponse(null, { status: 204 })
+        }),
+      )
+      const onBack = vi.fn()
+      renderNoteView({ onBack })
+      const textarea = await screen.findByLabelText('Note content')
+      // Edit without blurring — mirrors removing an image: the doc changes (onChange),
+      // but focus never leaves the editor so onBlur never fires.
+      fireEvent.change(textarea, { target: { value: 'content with the image removed' } })
+      await userEvent.click(screen.getByTestId('save-button'))
+      await waitFor(() => expect(saved).toBe('content with the image removed'))
+      expect(onBack).toHaveBeenCalledOnce()
+    })
+
+    it('flushes a pending content edit on unmount (navigating away)', async () => {
+      let saved: string | undefined
+      server.use(
+        http.put('/api/notes/:noteId/content', async ({ request }) => {
+          saved = (await request.json() as { content: string }).content
+          return new HttpResponse(null, { status: 204 })
+        }),
+      )
+      const { unmount } = renderNoteView()
+      const textarea = await screen.findByLabelText('Note content')
+      fireEvent.change(textarea, { target: { value: 'edited then navigated away' } })
+      unmount()
+      await waitFor(() => expect(saved).toBe('edited then navigated away'))
+    })
+
+    it('does not save on unmount when there is no pending edit', async () => {
+      let putCalled = false
+      server.use(
+        http.put('/api/notes/:noteId/content', () => { putCalled = true; return new HttpResponse(null, { status: 204 }) }),
+      )
+      const { unmount } = renderNoteView()
+      await screen.findByLabelText('Note content')
+      unmount()
+      await new Promise((r) => setTimeout(r, 20))
+      expect(putCalled).toBe(false)
+    })
+
+    it('retries a failed content save when leaving (does not drop the kept text)', async () => {
+      let puts = 0
+      server.use(
+        http.put('/api/notes/:noteId/content', () => { puts += 1; return new HttpResponse(null, { status: 500 }) }),
+      )
+      renderNoteView()
+      const textarea = await screen.findByLabelText('Note content')
+      fireEvent.change(textarea, { target: { value: 'keep me' } })
+      fireEvent.blur(textarea)
+      await waitFor(() => expect(puts).toBe(1))
+      await screen.findByRole('alert')
+      // Leaving must retry the still-pending draft, not silently drop it.
+      await userEvent.click(screen.getByTestId('save-button'))
+      await waitFor(() => expect(puts).toBe(2))
+    })
+
+    it('does not flush content when leaving via Delete', async () => {
+      let putCalled = false
+      server.use(
+        http.put('/api/notes/:noteId/content', () => { putCalled = true; return new HttpResponse(null, { status: 204 }) }),
+      )
+      const onDelete = vi.fn().mockResolvedValue(undefined)
+      const { unmount } = renderNoteView({ onDelete })
+      const textarea = await screen.findByLabelText('Note content')
+      fireEvent.change(textarea, { target: { value: 'unsaved edit on a note being deleted' } })
+      await userEvent.click(screen.getByTestId('delete-note-button'))
+      unmount()
+      await new Promise((r) => setTimeout(r, 20))
+      expect(onDelete).toHaveBeenCalledWith('note-1')
+      expect(putCalled).toBe(false)
+    })
+  })
+
   describe('re-processing final notes', () => {
     it('leaves the Quick notes content byte-for-byte unchanged after re-processing', async () => {
       server.use(
