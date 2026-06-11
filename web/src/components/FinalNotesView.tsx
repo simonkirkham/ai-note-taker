@@ -48,7 +48,7 @@ export default function FinalNotesView({
       >
         <h2 className={styles.heading}>Final notes</h2>
         <div className={styles.empty} data-testid="final-notes-empty">
-          <p className={styles.emptyMessage}>No final notes yet.</p>
+          <p className={styles.emptyMessage} role="status">No final notes yet.</p>
           <button
             type="button"
             className={styles.generateButton}

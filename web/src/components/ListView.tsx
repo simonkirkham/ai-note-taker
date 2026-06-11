@@ -167,11 +167,11 @@ export default function ListView({
         </button>
       </div>
       {createError && (
-        <p data-testid="create-error" className="error">
+        <p data-testid="create-error" className="error" role="alert">
           {createError}
         </p>
       )}
-      {loading && <p>Loading…</p>}
+      {loading && <p role="status">Loading…</p>}
       {isInFolder ? (
         <>
           <TagFilter
@@ -292,7 +292,7 @@ export default function ListView({
                   ))}
                 </div>
               ) : (
-                <p className={styles.noteCardsEmpty}>
+                <p className={styles.noteCardsEmpty} role="status">
                   {showOlder ? "No notes" : "No notes today"}
                 </p>
               )}

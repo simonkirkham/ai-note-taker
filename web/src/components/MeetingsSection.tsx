@@ -223,11 +223,11 @@ export function MeetingsSection({ onOpenNote }: { onOpenNote: (noteId: string, t
         )}
 
         {displayState.status === "loading" && (
-          <p className="loading">Loading…</p>
+          <p className="loading" role="status">Loading…</p>
         )}
 
         {displayState.status === "unavailable" && (
-          <div data-testid="meetings-unavailable" className={styles.meetingsStatusState}>
+          <div data-testid="meetings-unavailable" className={styles.meetingsStatusState} role="alert">
             <CalendarIcon className={styles.meetingsStatusIcon} />
             <p className={styles.meetingsStatusText}>Cannot connect to calendar</p>
             <button className={styles.meetingsRetryLink} onClick={handleRetry}>Retry</button>
@@ -235,7 +235,7 @@ export function MeetingsSection({ onOpenNote }: { onOpenNote: (noteId: string, t
         )}
 
         {displayState.status === "loaded" && displayState.meetings.length === 0 && (
-          <div data-testid="meetings-empty" className={styles.meetingsStatusState}>
+          <div data-testid="meetings-empty" className={styles.meetingsStatusState} role="status">
             <CalendarIcon className={styles.meetingsStatusIcon} />
             <p className={styles.meetingsStatusText}>No meetings scheduled.</p>
           </div>
@@ -272,7 +272,7 @@ export function MeetingsSection({ onOpenNote }: { onOpenNote: (noteId: string, t
                       )}
                     </div>
                     {createErrors.has(m.calendarEventId) && (
-                      <p data-testid={`create-error-${m.calendarEventId}`}>
+                      <p data-testid={`create-error-${m.calendarEventId}`} role="alert">
                         {createErrors.get(m.calendarEventId)}
                       </p>
                     )}

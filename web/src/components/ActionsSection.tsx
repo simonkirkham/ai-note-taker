@@ -81,7 +81,7 @@ export default function ActionsSection({
     <section className={styles.actionsSection} data-testid="actions-section" aria-label="Action items">
       <h2 className={styles.actionsHeading}>Actions</h2>
       {actions.length === 0 ? (
-        <p data-testid="actions-empty" className="empty">No action items yet</p>
+        <p data-testid="actions-empty" className="empty" role="status">No action items yet</p>
       ) : (
         <ul data-testid="actions-list" className={styles.actionsList}>
           {actions.map((item) => (

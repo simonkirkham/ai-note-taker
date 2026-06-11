@@ -15,11 +15,15 @@ it('is read-only: contains no editable controls', () => {
 
 it('shows an empty placeholder when there is no transcript and not recording', () => {
   render(<TranscriptTab transcript={null} />)
-  expect(screen.getByTestId('transcript-empty')).toBeInTheDocument()
+  const empty = screen.getByTestId('transcript-empty')
+  expect(empty).toBeInTheDocument()
+  expect(empty).toHaveAttribute('role', 'status') // 19-F1
   expect(screen.queryByTestId('transcription-text')).toBeNull()
 })
 
 it('shows a listening placeholder when recording with no transcript yet', () => {
   render(<TranscriptTab transcript={null} isRecording />)
-  expect(screen.getByText('Listening…')).toBeInTheDocument()
+  const listening = screen.getByText('Listening…')
+  expect(listening).toBeInTheDocument()
+  expect(listening).toHaveAttribute('role', 'status') // 19-F1
 })

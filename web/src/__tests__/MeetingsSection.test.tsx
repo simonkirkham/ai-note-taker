@@ -97,6 +97,8 @@ describe('MeetingsSection — meetings data', () => {
       expect(screen.getByTestId('meetings-unavailable')).toBeInTheDocument(),
     )
     expect(screen.getByText('Cannot connect to calendar')).toBeInTheDocument()
+    // 19-F1: calendar-unavailable is an error → assertive live region
+    expect(screen.getByTestId('meetings-unavailable')).toHaveAttribute('role', 'alert')
   })
 
   it('shows error message when calendar request throws', async () => {
@@ -408,6 +410,10 @@ describe('MeetingsSection — Create Note button', () => {
 
     await waitFor(() =>
       expect(screen.getByTestId(`create-error-${meeting2.calendarEventId}`)).toBeInTheDocument(),
+    )
+    // 19-F1: a per-meeting create failure is silent to screen readers today
+    expect(screen.getByRole('alert')).toHaveTextContent(
+      screen.getByTestId(`create-error-${meeting2.calendarEventId}`).textContent ?? '',
     )
     expect(screen.getByRole('button', { name: 'Create Note' })).toBeEnabled()
   })

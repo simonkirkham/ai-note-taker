@@ -66,7 +66,7 @@ export default function FolderPreviewPanel({
       </div>
       {folderId && <ul className={styles.folderPreviewList}>
         {folderCards.length === 0 ? (
-          <li className={styles.folderPreviewEmpty}>No notes in this folder</li>
+          <li className={styles.folderPreviewEmpty} role="status">No notes in this folder</li>
         ) : (
           folderCards.map((c) => (
             <li
