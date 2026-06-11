@@ -8,6 +8,7 @@ import {
 } from "../api/folders";
 import { keys } from "../api/queryKeys";
 import { mapTree, removeFromTree, insertIntoTree, findNode } from "../folderTree";
+import { PROJECTOR_LAG_MS } from "./noteCardsCache";
 
 type Ctx = { previous?: FolderNode[] };
 
@@ -71,9 +72,13 @@ export function useDeleteFolder() {
     onError: (_e, _v, ctx) => rollback(qc, ctx),
     onSettled: () => {
       invalidate(qc);
-      // The backend orphans a deleted folder's notes to unfiled — refresh the
-      // note list so they reappear there (20-C wired this 20-B deferral).
-      qc.invalidateQueries({ queryKey: keys.noteCards });
+      // The backend orphans a deleted folder's notes to unfiled — the note list must
+      // refresh so they reappear there (20-C wired this 20-B deferral). We don't know
+      // those notes' card shapes client-side (which notes were in the folder, their
+      // previews/dates), so we can't patch keys.noteCards optimistically. Under the
+      // async projector (27-C) an immediate invalidate would race the lag and refetch
+      // a stale list (27-C2), so defer the refetch past the projector's lag budget.
+      setTimeout(() => qc.invalidateQueries({ queryKey: keys.noteCards }), PROJECTOR_LAG_MS);
     },
   });
 }

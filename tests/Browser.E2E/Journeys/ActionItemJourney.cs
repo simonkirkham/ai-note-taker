@@ -45,6 +45,26 @@ public sealed class ActionItemJourney(BrowserFixture browser) : IAsyncLifetime
         await _app.AssertActionItemVisibleAsync("Send recap email");
     }
 
+    // Server-truth persistence (27-C2): reload drops all in-memory cache, so this proves
+    // the deployed write+async-projector pipeline actually persisted and projected the
+    // action into the note's actions view — not that the optimistic cache held. The
+    // bounded poll absorbs the ~1-2s projector lag.
+    [Fact]
+    public async Task Action_persists_in_note_after_reload()
+    {
+        var title = $"Act {Guid.NewGuid():N}"[..20];
+
+        await _app.GotoAsync();
+        await _app.ClickNewNoteAsync();
+        await _app.EnterTitleAsync(title);
+        await _app.AddActionItemAsync("Book meeting room");
+
+        // Still on the note screen (/notes/{id}); reload re-fetches actions from server.
+        await _app.ReloadAsync();
+
+        await _app.AssertActionItemVisibleAfterReloadAsync("Book meeting room");
+    }
+
     [Fact]
     public async Task Note_with_no_actions_shows_empty_state()
     {

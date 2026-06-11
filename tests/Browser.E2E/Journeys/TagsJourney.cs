@@ -102,6 +102,26 @@ public sealed class TagsJourney(BrowserFixture browser) : IAsyncLifetime
         await _app.AssertTagPillAbsentAsync("Bill");
     }
 
+    // Server-truth persistence (27-C2): a full page reload drops all in-memory cache,
+    // so this proves the deployed write+async-projector pipeline actually persisted and
+    // projected the tag onto the home card — not that the optimistic cache held. The
+    // bounded poll absorbs the ~1-2s projector lag.
+    [Fact]
+    public async Task AddTag_PersistsOnHomeCard_AfterReload()
+    {
+        var title = $"Tag {Guid.NewGuid():N}"[..20];
+
+        await _app.GotoAsync();
+        await _app.ClickNewNoteAsync();
+        await _app.EnterTitleAsync(title);
+        await _app.AddTagAsync("1:1s");
+        await _app.SaveAndReturnAsync();
+
+        await _app.ReloadAsync();
+
+        await _app.AssertCardTagVisibleAfterReloadAsync(title, "1:1s");
+    }
+
     [Fact]
     public async Task RemoveTag_GoneAfterNavigation()
     {

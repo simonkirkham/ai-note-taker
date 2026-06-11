@@ -5,6 +5,7 @@ import { type CalendarMeeting } from "../api/meetings";
 import type { NoteDetail } from "../api/notes";
 import { keys } from "../api/queryKeys";
 import { completeTranscription, discardTranscriptionDraft } from "../api/transcription";
+import { PROJECTOR_LAG_MS } from "../hooks/noteCardsCache";
 import { useCreateNoteFromNextOccurrence, useLinkNoteToCalendar } from "../hooks/useMeetingMutations";
 import { useNoteDetail } from "../hooks/useNoteDetail";
 import { useAnalyseNote, useEditContent, useSetNoteDate } from "../hooks/useNoteDetailMutations";
@@ -148,9 +149,14 @@ export default function NoteView({
   }, [loadingDetail, notFound]);
 
   // Refetch the regenerated summary/discussion/decisions and any extracted actions.
+  // keys.actions is projection-backed and lags the write under the async projector
+  // (27-C), so defer the reconcile by the projector-lag budget rather than racing it;
+  // keys.note rides the same delay so both land together.
   function refreshNote() {
-    qc.invalidateQueries({ queryKey: keys.note(noteId) });
-    qc.invalidateQueries({ queryKey: keys.actions(noteId) });
+    setTimeout(() => {
+      qc.invalidateQueries({ queryKey: keys.note(noteId) });
+      qc.invalidateQueries({ queryKey: keys.actions(noteId) });
+    }, PROJECTOR_LAG_MS);
   }
 
   async function handleGenerateFinalNotes() {

@@ -3,6 +3,7 @@ import { completeAction, reopenAction, deleteAction } from "../api/actions";
 import { keys } from "../api/queryKeys";
 import { completeTodo, reopenTodo, deleteTodo } from "../api/todos";
 import type { TodoItem } from "../api/todos";
+import { PROJECTOR_LAG_MS } from "./noteCardsCache";
 
 type Ctx = { previous?: TodoItem[] };
 
@@ -20,11 +21,14 @@ function rollback(qc: QueryClient, ctx: Ctx | undefined) {
 
 // Todos optimism needs no keys.todos reconcile (sole consumer; optimistic == server
 // echo). But when the item is an ACTION (20-D), its note's Actions section reads
-// keys.actions(noteId) — so on settle we invalidate that key, the other half of the
-// action↔todo cross-view loop (the action mutations invalidate keys.todos in turn).
+// keys.actions(noteId) — so on settle we reconcile that key, the other half of the
+// action↔todo cross-view loop. keys.actions is projection-backed and lags the write
+// under the async projector (27-C), so defer the invalidate by the projector-lag
+// budget rather than racing it.
 function settleAction(qc: QueryClient, item: TodoItem) {
   if (item.type === "action" && item.noteId) {
-    qc.invalidateQueries({ queryKey: keys.actions(item.noteId) });
+    const noteId = item.noteId;
+    setTimeout(() => qc.invalidateQueries({ queryKey: keys.actions(noteId) }), PROJECTOR_LAG_MS);
   }
 }
 

@@ -406,8 +406,12 @@ describe('NoteView', () => {
       expect(screen.getByTestId('final-notes-summary')).toHaveTextContent('Original summary')
 
       await userEvent.click(screen.getByTestId('reprocess-final-notes-button'))
-      await waitFor(() =>
-        expect(screen.getByTestId('final-notes-summary')).toHaveTextContent('Regenerated summary'),
+      // refreshNote defers the keys.note reconcile by PROJECTOR_LAG_MS (2s) to land
+      // after the async projector catches up (27-C2), so allow past that budget.
+      await waitFor(
+        () =>
+          expect(screen.getByTestId('final-notes-summary')).toHaveTextContent('Regenerated summary'),
+        { timeout: 4000 },
       )
     })
   })

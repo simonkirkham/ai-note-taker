@@ -92,12 +92,21 @@ describe('useNoteMutations', () => {
     await waitFor(() => expect(cards(qc).map((c) => c.noteId)).toEqual(['n-1']))
   })
 
-  it('deleting a folder invalidates the note-cards cache (orphan refresh — 20-B deferral)', async () => {
-    server.use(http.delete('/api/folders/f-1', () => new HttpResponse(null, { status: 204 })))
-    const { qc, wrapper } = setup()
-    const spy = vi.spyOn(qc, 'invalidateQueries')
-    const { result } = renderHook(() => useDeleteFolder(), { wrapper })
-    await act(async () => { await result.current.mutateAsync({ folderId: 'f-1' }) })
-    expect(spy).toHaveBeenCalledWith({ queryKey: keys.noteCards })
+  it('deleting a folder defers the note-cards refetch past the projector lag (orphan refresh — 20-B/27-C2)', async () => {
+    vi.useFakeTimers()
+    try {
+      server.use(http.delete('/api/folders/f-1', () => new HttpResponse(null, { status: 204 })))
+      const { qc, wrapper } = setup()
+      const spy = vi.spyOn(qc, 'invalidateQueries')
+      const { result } = renderHook(() => useDeleteFolder(), { wrapper })
+      await act(async () => { await result.current.mutateAsync({ folderId: 'f-1' }) })
+      // Orphaned-note card shapes aren't known client-side, so the refetch is deferred
+      // (not immediate) so it lands after the async projector catches up.
+      expect(spy).not.toHaveBeenCalledWith({ queryKey: keys.noteCards })
+      await act(async () => { await vi.runOnlyPendingTimersAsync() })
+      expect(spy).toHaveBeenCalledWith({ queryKey: keys.noteCards })
+    } finally {
+      vi.useRealTimers()
+    }
   })
 })

@@ -1,4 +1,3 @@
-import { useQueryClient } from "@tanstack/react-query";
 import clsx from "clsx";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
@@ -12,7 +11,6 @@ import {
   useParams,
 } from "react-router";
 import { setNoteDate } from "./api/notes";
-import { keys } from "./api/queryKeys";
 import { useAuth } from "./auth/context";
 import styles from "./components/App.module.css";
 import FolderPreviewPanel from "./components/FolderPreviewPanel";
@@ -123,7 +121,6 @@ function AppContent({ signOut }: { signOut: () => void }) {
   // Build a workspace-scoped path; `w("")` is the workspace home (`/w/{wsId}`).
   const w = (p: string) => `/w/${wsId}${p}`;
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const qc = useQueryClient();
   const { data: cards = [], isLoading: loading } = useNoteCards();
   const createNote = useCreateNote();
   const renameNote = useRenameNote();
@@ -212,8 +209,10 @@ function AppContent({ signOut }: { signOut: () => void }) {
     // "default" only for the initial entry.)
     if (location.key === "default") navigate(w(""));
     else navigate(-1);
-    // The note's content/preview may have changed in NoteView — refresh the list.
-    qc.invalidateQueries({ queryKey: keys.noteCards });
+    // No keys.noteCards invalidation here: under the async projector (27-C) it
+    // refetched a lagging read model on every return-to-list and stuck stale data
+    // (27-C2). The card is kept correct by the per-mutation optimistic patches
+    // (tag/untag, content edit, date set) that run while the note is open.
   }
 
   function handleUnfiledSelect() {

@@ -8,12 +8,23 @@ import {
 } from "../api/meetings";
 import type { LinkedMeeting, NoteDetail } from "../api/notes";
 import { keys } from "../api/queryKeys";
+import { PROJECTOR_LAG_MS } from "./noteCardsCache";
 
 // Invalidate every date-keyed meetings query (prefix match) — a link/create can
 // change a meeting's linked-note state on any cached day, and there are only ever
-// a couple of cached days (today + a browsed day).
+// a couple of cached days (today + a browsed day). meetings is a Google-Calendar
+// passthrough (not a projection), so this invalidate is safe to fire immediately.
 function invalidateMeetings(qc: QueryClient) {
   return qc.invalidateQueries({ queryKey: ["meetings"] });
+}
+
+// Creating a note from a meeting yields a brand-new card whose full shape (preview,
+// timestamps) isn't known client-side — only the new noteId comes back — so we can't
+// patch keys.noteCards optimistically. Under the async projector (27-C) an immediate
+// invalidate would race the lag and refetch a list missing the new card (27-C2), so
+// defer the cards refetch past the projector's lag budget.
+function reconcileCardsAfterLag(qc: QueryClient) {
+  setTimeout(() => qc.invalidateQueries({ queryKey: keys.noteCards }), PROJECTOR_LAG_MS);
 }
 
 // MeetingsSection owns its meetings-cache list patch. NoteView's note-detail
@@ -28,7 +39,7 @@ export function useCreateNoteFromMeeting() {
     mutationFn: (meeting) => createNoteFromMeeting(meeting),
     onSettled: () => {
       invalidateMeetings(qc);
-      qc.invalidateQueries({ queryKey: keys.noteCards });
+      reconcileCardsAfterLag(qc);
     },
   });
 }
@@ -39,7 +50,7 @@ export function useCreateNoteFromNextOccurrence() {
     mutationFn: (recurringSeriesId) => createNoteFromNextOccurrence(recurringSeriesId),
     onSettled: () => {
       invalidateMeetings(qc);
-      qc.invalidateQueries({ queryKey: keys.noteCards });
+      reconcileCardsAfterLag(qc);
     },
   });
 }
