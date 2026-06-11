@@ -1,5 +1,5 @@
 import clsx from "clsx";
-import { useMemo, useState } from "react";
+import { useDeferredValue, useMemo, useState } from "react";
 import { NoteCard as NoteCardData, SearchResult } from "../api/notes";
 import { effectiveDate, isEditedToday, localTodayISO } from "../dates";
 import { type SearchState, useNoteSearch } from "../hooks/useNoteSearch";
@@ -64,9 +64,13 @@ export default function ListView({
   const [showOlder, setShowOlder] = useState(false);
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [query, setQuery] = useState("");
+  // The input stays bound to `query` (updates synchronously on every keystroke);
+  // the expensive search fetch + list re-derivation run off the deferred copy as
+  // a non-urgent update, so typing never blocks on the heavy work (19-I3).
+  const deferredQuery = useDeferredValue(query);
 
-  const { state: searchState, retry } = useNoteSearch(query);
-  const searching = query.trim() !== "";
+  const { state: searchState, retry } = useNoteSearch(deferredQuery);
+  const searching = deferredQuery.trim() !== "";
 
   const cardsById = useMemo(
     () => new Map(cards.map((c) => [c.noteId, c])),
