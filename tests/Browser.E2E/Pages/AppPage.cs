@@ -171,6 +171,31 @@ public sealed class AppPage(IPage page, string baseUrl, string? authToken = null
             page.GetByTestId("todo-section").GetByText(description)
         ).ToBeVisibleAsync(new() { Timeout = 15000 });
 
+    // The real read-your-writes proof: reload FIRST (drops the optimistic cache, so the
+    // todo can only come from the server), then assert. The post-reload GET /todos carries
+    // the sessionStorage-persisted token, so the gate waits for the async projector — the
+    // todo appears deterministically. Reload-loop so a still-warming projector re-polls
+    // (each reload re-sends the token and re-gates) rather than getting stuck on one stale fetch.
+    public async Task AssertTodoVisibleAfterReloadAsync(string description, int timeoutMs = 20000)
+    {
+        var deadline = DateTime.UtcNow.AddMilliseconds(timeoutMs);
+        while (true)
+        {
+            await page.ReloadAsync();
+            try
+            {
+                await Assertions.Expect(
+                    page.GetByTestId("todo-section").GetByText(description)
+                ).ToBeVisibleAsync(new() { Timeout = 2500 });
+                return;
+            }
+            catch (PlaywrightException) when (DateTime.UtcNow < deadline)
+            {
+                // re-loop: reload + recheck until the gated read returns the todo or we time out
+            }
+        }
+    }
+
     public Task AssertCardTagVisibleAsync(string cardTitle, string tag) =>
         Assertions.Expect(
             page.GetByTestId("note-cards")

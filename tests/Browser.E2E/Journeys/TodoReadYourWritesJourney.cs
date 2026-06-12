@@ -3,11 +3,12 @@ using Microsoft.Playwright;
 
 namespace Browser.E2E.Journeys;
 
-// RYW-1: read-your-writes for "add a to-do". Runs against the DEPLOYED async projector,
-// so the add never resolves to an inline read-model write — the consistency gate (the
-// `If-Consistent-With` token on the todos refetch) is what makes this assertion
-// deterministic. If the gate or the token plumbing regressed, the new to-do would race
-// the projector and this journey would flake/fail.
+// RYW-1: read-your-writes for "add a to-do". Runs against the DEPLOYED async projector
+// (Todo is built only off the stream, never inline). The assertion reloads FIRST, which
+// drops the optimistic row, so the to-do can only reappear via the server. The post-reload
+// GET /todos carries the sessionStorage-persisted consistency token, so the gate waits for
+// the projector and the to-do appears deterministically. If the gate / token / projector
+// regressed, the post-reload read would race and the to-do would be missing → this fails.
 [Collection("E2E Journeys")]
 public sealed class TodoReadYourWritesJourney(BrowserFixture browser) : IAsyncLifetime
 {
@@ -39,6 +40,8 @@ public sealed class TodoReadYourWritesJourney(BrowserFixture browser) : IAsyncLi
         await _app.GotoAsync();
         await _app.AddTodoAsync(description);
 
-        await _app.AssertTodoVisibleAsync(description);
+        // Reload drops the optimistic row; the to-do can only reappear via the token-gated
+        // server read — the genuine read-your-writes proof against the deployed projector.
+        await _app.AssertTodoVisibleAfterReloadAsync(description);
     }
 }
