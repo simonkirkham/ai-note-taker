@@ -20,16 +20,15 @@ Every write request passes through four layers. Each layer has exactly one conce
 | Layer | Location | Concern |
 |---|---|---|
 | **API** | `src/Api/Program.cs` — endpoint lambdas | HTTP only: parse request, call handler, map result to HTTP status |
-| **Command handler** | `src/Api/CommandHandlers/*CommandHandler.cs` | Orchestration: load stream → rebuild aggregate → execute command → append events (**append-only** since Phase 27-C; projections are built async off the stream) |
-| **Projections** | `src/Api/Projections/` (fold + projector) + `src/EventStore/Projections/` (stores) | Read models folded from the event stream by the async **Projector Lambda** off a DynamoDB stream (27-B/27-C); eventually consistent; rebuildable from the full stream |
+| **Command handler** | `src/Api/CommandHandlers/*CommandHandler.cs` | Orchestration: load stream → rebuild aggregate → execute command → persist events → update read-model projections inline |
+| **Projections** | `src/EventStore/Projections/` (fold logic) + command handlers (write) | Read models folded from the event stream; updated inline in the same request after append; rebuildable from the full stream |
 | **Domain** | `src/Domain/` | Pure business logic: aggregate, commands, events — no I/O, no HTTP, no clock |
 
 **Rules:**
 - If you find yourself writing `store.ReadAsync` or `store.AppendAsync` inside an endpoint lambda, it belongs in the command handler instead.
-- Command handlers are **append-only** (Phase 27-C). Projections are folded by the async **Projector Lambda** (`src/Projector`) off a DynamoDB stream on the event table, via the shared `ProjectionUpdater` (`src/Api/Projections/`). There is no inline projection write on the request path.
-- Command handlers depend on `IEventStore` plus only the projection stores they *read* for command validation (e.g. `noteDetailStore.GetAsync` existence checks) — never to write a projection.
-- Adding a new projection means adding its store + fold logic to `ProjectionUpdater` (which both the projector and a rebuild path use) — no command-handler change. See [ADR 0009](adr/0009-split-lambdas-cqrs-async-projectors.md).
-- **In-process consistency:** the test harness (`ApiFactory`) and local Kestrel wrap `IEventStore` with `SyncProjectingEventStore`, which runs the *same* `StreamProjector` synchronously after each append — so in-process reads are immediately consistent while the deployed API is async. The deployed API Lambda has no decorator (gated on `AWS_LAMBDA_FUNCTION_NAME`).
+- Projection updates live in the command handler, inline after `AppendAsync` (see `NoteCommandHandler.UpdateProjectionAsync`). There is no event dispatcher — projections are written synchronously by the handler that appended the events.
+- Command handlers depend on `IEventStore` plus the projection stores they update directly.
+- Adding a new projection means adding its store + fold logic, updating it inline in the owning command handler(s), and giving it a rebuild path. The async-projector split in [ADR 0009](adr/0009-split-lambdas-cqrs-async-projectors.md) will later move this off the request path onto DynamoDB Streams.
 
 ---
 
@@ -66,17 +65,15 @@ flowchart LR
         CDN["S3 + CloudFront\nReact SPA"]
         APIGW["API Gateway"]
 
-        subgraph Lambda ["API Lambda — ASP.NET Minimal API"]
+        subgraph Lambda ["Lambda — ASP.NET Minimal API"]
             direction TB
-            WR["Write path\nload stream · Decide · append events (append-only)"]
+            WR["Write path\nload stream · Decide · append events · update projections inline"]
             RD["Read path\nread projection"]
         end
 
-        PROJ["Projector Lambda\nfold events → read models (async, idempotent)"]
-
-        subgraph DB ["DynamoDB"]
+        subgraph DB ["DynamoDB — single table"]
             direction TB
-            ES[("Event streams + stream\nnote/id · action/id")]
+            ES[("Event streams\nnote/id · action/id")]
             RM[("Projections\nNoteCardList · TodoList · …")]
         end
     end
@@ -90,12 +87,11 @@ flowchart LR
 
     WR -- "1 · load stream" --> ES
     WR -- "2 · append events" --> ES
-    ES -- "DynamoDB stream" --> PROJ
-    PROJ -- "fold → upsert" --> RM
+    WR -- "3 · update projection" --> RM
     RD -- "read" --> RM
 ```
 
-**Write path detail:** the API Lambda command handler loads the full event stream for the aggregate, folds it into current state, runs `Decide` to validate the command and produce new events, then appends those events with optimistic concurrency — and returns. It does **not** write projections. A **DynamoDB stream** on the event table drives the async **Projector Lambda** (`src/Projector`), which folds events into read models via the shared `ProjectionUpdater`, idempotently and replayably (a per-stream processed-position guard makes redelivery safe). **Read-after-write is therefore eventually consistent** (the projector lags the write by stream latency, typically <1s). The frontend's optimistic updates mask this for the user; server-side read-after-append callers (smoke/E2E) poll with a bounded timeout. In-process hosts (tests + local Kestrel) wrap the event store with `SyncProjectingEventStore` to run the same projector synchronously, so only the deployed system is async. Implemented across Phase 27 (27-A `ProjectionUpdater` seam → 27-B stream + projector in shadow → 27-C this cutover); see [ADR 0009](adr/0009-split-lambdas-cqrs-async-projectors.md).
+**Write path detail:** the Lambda command handler loads the full event stream for the aggregate, folds it into current state, runs `Decide` to validate the command and produce new events, then appends those events with optimistic concurrency. It then updates the affected read-model projections inline (e.g. `NoteCommandHandler.UpdateProjectionAsync`) in the same request. All projection updates complete before the HTTP response is returned — there is no eventual consistency delay. [ADR 0009](adr/0009-split-lambdas-cqrs-async-projectors.md) plans to move projection-building off the request path onto DynamoDB Streams (trading immediate consistency for async, replayable projectors); that change is not yet implemented.
 
 **Infrastructure as code:** all AWS resources (API Gateway, Lambda, DynamoDB table, CloudFront distribution, S3 bucket) are provisioned by the CDK app in `src/Infrastructure/`.
 

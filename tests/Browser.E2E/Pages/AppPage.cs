@@ -57,58 +57,10 @@ public sealed class AppPage(IPage page, string baseUrl, string? authToken = null
 
     public async Task SaveAndReturnAsync()
     {
-        // Under the async projector (27-C) returning to the list no longer triggers a
-        // /notes/cards refetch — the card is kept correct by the in-note optimistic
-        // cache patches (27-C2). So wait for the list to be on screen, not a refetch.
+        var cardsRefreshed = page.WaitForResponseAsync(r => r.Url.Contains("/notes/cards"));
         await page.GetByTestId("save-button").ClickAsync();
-        await Assertions.Expect(page.GetByTestId("new-note-button")).ToBeVisibleAsync();
+        await cardsRefreshed;
     }
-
-    // Drop all in-memory cache and re-render from server truth — the only way to prove
-    // the deployed write+projection pipeline actually persisted, not just the optimistic
-    // cache. Init scripts registered in GotoAsync (the auth-token seed) persist across
-    // a reload in Playwright, so the session survives.
-    public Task ReloadAsync() => page.ReloadAsync();
-
-    // Poll for an element by reloading on each miss. A single reload fetches the
-    // projection ONCE; if that fetch races a still-lagging projector and returns a
-    // stale 200, nothing retriggers a refetch (retry:1 fires only on error,
-    // refetchOnWindowFocus:false), so a static DOM-poll can never recover. Reloading
-    // on each miss re-fetches the projection, so the check passes once the projector
-    // catches up.
-    private async Task PollWithReloadAsync(Func<ILocator> locator, int timeoutMs = 20000)
-    {
-        var deadline = DateTime.UtcNow.AddMilliseconds(timeoutMs);
-        while (true)
-        {
-            try
-            {
-                await Assertions.Expect(locator()).ToBeVisibleAsync(new() { Timeout = 2000 });
-                return;
-            }
-            catch (PlaywrightException) when (DateTime.UtcNow < deadline)
-            {
-                await page.ReloadAsync();
-            }
-        }
-    }
-
-    public Task AssertCardTagVisibleAfterReloadAsync(string cardTitle, string tag) =>
-        PollWithReloadAsync(() =>
-            page.GetByTestId("note-cards")
-                .Locator("[data-testid='note-card']")
-                .Filter(new LocatorFilterOptions { HasText = cardTitle })
-                .GetByTestId($"card-tag-{tag}"));
-
-    public Task AssertActionItemVisibleAfterReloadAsync(string description) =>
-        PollWithReloadAsync(() =>
-            page.GetByTestId("actions-list").GetByText(description));
-
-    public Task AssertNoteVisibleInListAfterReloadAsync(string title) =>
-        PollWithReloadAsync(() =>
-            page.GetByTestId("note-cards")
-                .Locator("[data-testid='note-card']")
-                .Filter(new LocatorFilterOptions { HasText = title }));
 
     public Task AssertNoteVisibleInListAsync(string title) =>
         Assertions.Expect(

@@ -5,13 +5,16 @@ using EventStore.Projections;
 using Api.Auth;
 using Api.Exceptions;
 using Api.Observability;
+using Api.Projections;
 using Api.Utilities;
 
 namespace Api.CommandHandlers;
 
 public sealed class WorkspaceCommandHandler(
     IEventStore store,
+    IWorkspaceListStore workspaceListStore,
     INoteCardListStore noteCardListStore,
+    IProjectionUpdater projectionUpdater,
     ICurrentUser currentUser,
     IDomainMetrics metrics,
     ILogger<WorkspaceCommandHandler> logger) : IWorkspaceCommandHandler
@@ -49,12 +52,14 @@ public sealed class WorkspaceCommandHandler(
             var newEvents = Rebuild(history).Handle(cmd);
             var envelopes = ToEnvelopes(streamId, newEvents);
             await store.AppendAsync(streamId, history.Count, envelopes, ct).ConfigureAwait(false);
+            await workspaceListStore.DeleteAsync(cmd.WorkspaceId, ct).ConfigureAwait(false);
         });
 
     private async Task PersistAsync(string streamId, IReadOnlyList<EventEnvelope> history, IReadOnlyList<IDomainEvent> newEvents, CancellationToken ct)
     {
         var envelopes = ToEnvelopes(streamId, newEvents);
         await store.AppendAsync(streamId, history.Count, envelopes, ct).ConfigureAwait(false);
+        await projectionUpdater.ApplyWorkspaceEventsAsync(envelopes, ct).ConfigureAwait(false);
     }
 
     // A workspace is "empty" when it holds no active (non-deleted) note for the caller.

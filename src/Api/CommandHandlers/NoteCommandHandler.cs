@@ -5,11 +5,13 @@ using EventStore;
 using Api.Auth;
 using Api.Exceptions;
 using Api.Observability;
+using Api.Projections;
 
 namespace Api.CommandHandlers;
 
 public sealed class NoteCommandHandler(
     IEventStore store,
+    IProjectionUpdater projectionUpdater,
     ICurrentUser currentUser,
     ICurrentWorkspace currentWorkspace,
     IDomainMetrics metrics,
@@ -65,6 +67,7 @@ public sealed class NoteCommandHandler(
                 await DelayBeforeRetryAsync(attempt, ct).ConfigureAwait(false);
                 continue;
             }
+            await projectionUpdater.ApplyNoteEventsAsync(noteId, history, envelopes, ct).ConfigureAwait(false);
             return;
         }
     }

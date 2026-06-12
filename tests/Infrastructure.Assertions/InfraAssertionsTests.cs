@@ -1435,6 +1435,9 @@ public class InfraAssertionsTests
     {
         _template.HasResourceProperties("AWS::Lambda::EventSourceMapping", Match.ObjectLike(new Dictionary<string, object>
         {
+            // Disabled while the 27-C async cutover is reverted (inline projection authoritative);
+            // the mapping stays defined so re-enabling is a one-flag change for the read-your-writes phase.
+            ["Enabled"] = false,
             ["StartingPosition"] = "TRIM_HORIZON",
             ["BatchSize"] = 10,
             ["BisectBatchOnFunctionError"] = true,

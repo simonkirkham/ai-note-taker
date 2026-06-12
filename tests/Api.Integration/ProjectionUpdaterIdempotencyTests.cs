@@ -158,36 +158,6 @@ public sealed class ProjectionUpdaterIdempotencyTests
         Assert.Equal("Renamed", all[0].Name);
     }
 
-    [Fact]
-    public async Task Folder_delete_removes_row_and_stays_removed_on_redelivery()
-    {
-        var folderId = new FolderId(Guid.NewGuid());
-        var createBatch = new List<EventEnvelope> { Envelope(folderId.ToStreamId(), new FolderCreated(folderId, "Inbox", null)) };
-        var deleteBatch = new List<EventEnvelope> { Envelope(folderId.ToStreamId(), new FolderDeleted(folderId)) };
-
-        var updater = NewUpdater();
-        await updater.ApplyFolderEventsAsync(createBatch, default);
-        await updater.ApplyFolderEventsAsync(deleteBatch, default);
-        await updater.ApplyFolderEventsAsync(deleteBatch, default);
-
-        Assert.Empty(await _folderStore.GetAllAsync());
-    }
-
-    [Fact]
-    public async Task Workspace_delete_removes_row_and_stays_removed_on_redelivery()
-    {
-        var workspaceId = new WorkspaceId(WorkspaceId);
-        var createBatch = new List<EventEnvelope> { Envelope(workspaceId.ToStreamId(), new WorkspaceCreated(workspaceId, "Work")) };
-        var deleteBatch = new List<EventEnvelope> { Envelope(workspaceId.ToStreamId(), new WorkspaceDeleted(workspaceId)) };
-
-        var updater = NewUpdater();
-        await updater.ApplyWorkspaceEventsAsync(createBatch, default);
-        await updater.ApplyWorkspaceEventsAsync(deleteBatch, default);
-        await updater.ApplyWorkspaceEventsAsync(deleteBatch, default);
-
-        Assert.Empty(await _workspaceStore.GetAllAsync());
-    }
-
     private async Task SeedCardAsync(NoteId noteId)
     {
         var now = DateTimeOffset.UtcNow;

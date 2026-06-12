@@ -14,10 +14,10 @@ using Microsoft.Extensions.Logging;
 namespace Projector;
 
 // The async Projector Lambda: triggered by the DynamoDB stream on the event store, it
-// rebuilds read models off the log via the shared ProjectionUpdater. Since 27-C it is the
-// SOLE writer of read models in prod (the command handlers are append-only) — read-after-
-// write is eventually consistent. The slim DI graph deliberately excludes ASP.NET, auth,
-// Bedrock, STS, Calendar and the draft store — the projector only folds events.
+// rebuilds read models off the log via the shared ProjectionUpdater. Shadow mode in 27-B —
+// the command handlers still update projections inline, so this runs redundantly and
+// idempotently; reads are unaffected. The slim DI graph deliberately excludes ASP.NET,
+// auth, Bedrock, STS, Calendar and the draft store — the projector only folds events.
 public sealed class ProjectorFunction
 {
     private readonly StreamProjector _projector;

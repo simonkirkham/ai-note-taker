@@ -94,43 +94,11 @@ public static class Builder
             builder.Services.AddAWSService<IAmazonDynamoDB>();
         }
         builder.Services.AddSingleton<IDomainMetrics, PowertoolsDomainMetrics>();
-
-        // The deployed API Lambda has NO projection decorator: the DynamoDB stream + Projector
-        // Lambda (27-B) build read models asynchronously, and this function's IAM grants no
-        // projection-table access. In-process hosts (local Kestrel) have no async projector, so
-        // they wrap the event store with SyncProjectingEventStore — the SAME StreamProjector path
-        // that runs async in prod, giving immediate read-after-write without inline writes. Inline
-        // projection in the command handlers is gone, so exactly one of {deployed-async, in-process
-        // decorator} writes the read models — never both.
-        var inLambda = !string.IsNullOrEmpty(Environment.GetEnvironmentVariable("AWS_LAMBDA_FUNCTION_NAME"));
-        if (inLambda)
-        {
-            builder.Services.AddSingleton<IEventStore>(sp =>
-                new InstrumentedEventStore(
-                    new DynamoDbEventStore(sp.GetRequiredService<IAmazonDynamoDB>(), eventTableName),
-                    sp.GetRequiredService<IDomainMetrics>(),
-                    sp.GetRequiredService<ILogger<InstrumentedEventStore>>()));
-        }
-        else
-        {
-            builder.Services.AddSingleton<IEventStore>(sp =>
-            {
-                var baseStore = new InstrumentedEventStore(
-                    new DynamoDbEventStore(sp.GetRequiredService<IAmazonDynamoDB>(), eventTableName),
-                    sp.GetRequiredService<IDomainMetrics>(),
-                    sp.GetRequiredService<ILogger<InstrumentedEventStore>>());
-                // Construct a fresh ProjectionUpdater from the singleton stores rather than
-                // resolving the scoped IProjectionUpdater — resolving a scoped service from the
-                // root provider is a captive dependency. The projector re-reads from baseStore,
-                // the same instance the decorator appends to (do NOT resolve IEventStore from sp
-                // here — that would recurse into this very factory).
-                var updater = BuildProjectionUpdater(sp);
-                var projector = new StreamProjector(
-                    baseStore, updater, new InMemoryProcessedPositionStore(), new NoOpProjectorMetrics(),
-                    sp.GetRequiredService<ILogger<StreamProjector>>());
-                return new SyncProjectingEventStore(baseStore, projector);
-            });
-        }
+        builder.Services.AddSingleton<IEventStore>(sp =>
+            new InstrumentedEventStore(
+                new DynamoDbEventStore(sp.GetRequiredService<IAmazonDynamoDB>(), eventTableName),
+                sp.GetRequiredService<IDomainMetrics>(),
+                sp.GetRequiredService<ILogger<InstrumentedEventStore>>()));
         builder.Services.AddSingleton<INoteTitleListStore>(sp =>
             new NoteTitleListStore(sp.GetRequiredService<IAmazonDynamoDB>(), projTableName));
         builder.Services.AddSingleton<INoteDetailStore>(sp =>
@@ -188,23 +156,4 @@ public static class Builder
 
         return builder.Build();
     }
-
-    // Builds a ProjectionUpdater from the registered singleton stores. Used by the in-process
-    // sync decorator (local Kestrel); the scoped IProjectionUpdater registration is for the
-    // rebuild handler and the Projector Lambda.
-    private static ProjectionUpdater BuildProjectionUpdater(IServiceProvider sp) => new(
-        sp.GetRequiredService<INoteTitleListStore>(),
-        sp.GetRequiredService<INoteDetailStore>(),
-        sp.GetRequiredService<ITodoListStore>(),
-        sp.GetRequiredService<INoteCardListStore>(),
-        sp.GetRequiredService<INoteActionsStore>(),
-        sp.GetRequiredService<ITagIndexStore>(),
-        sp.GetRequiredService<ITagFeedbackStore>(),
-        sp.GetRequiredService<IActionItemFeedbackStore>(),
-        sp.GetRequiredService<ICalendarLinkIndexStore>(),
-        sp.GetRequiredService<INoteSearchViewStore>(),
-        sp.GetRequiredService<IFolderTreeStore>(),
-        sp.GetRequiredService<IWorkspaceListStore>(),
-        sp.GetRequiredService<Api.Services.INoteImageStore>(),
-        sp.GetRequiredService<ILogger<ProjectionUpdater>>());
 }
