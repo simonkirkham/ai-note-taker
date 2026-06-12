@@ -146,6 +146,19 @@ export async function request<T>(path: string, init?: RequestInit, okStatuses?: 
   return res.json() as Promise<T>
 }
 
+// Like request<T>, but also exposes the raw Response so the caller can read a
+// response header (RYW-1 needs `X-Consistency` on GET /todos to detect a stale read).
+// Kept as a thin variant rather than changing request<T>'s signature everywhere.
+export async function requestWithResponse<T>(
+  path: string,
+  init?: RequestInit,
+  okStatuses?: number[],
+): Promise<{ body: T; response: Response }> {
+  const res = await apiFetch(`${base}${scopedPath(path)}`, init)
+  ensureOk(res, path, init, okStatuses)
+  return { body: (await res.json()) as T, response: res }
+}
+
 export async function requestVoid(path: string, init?: RequestInit, okStatuses?: number[]): Promise<void> {
   const res = await apiFetch(`${base}${scopedPath(path)}`, init)
   ensureOk(res, path, init, okStatuses)

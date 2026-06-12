@@ -1,8 +1,13 @@
 import userEvent from '@testing-library/user-event'
 import { delay, http, HttpResponse } from 'msw'
+import { afterEach } from 'vitest'
+import { clearPendingTodoToken } from '../api/consistencyTokens'
 import TodoSection from '../components/TodoSection'
 import { render, screen, waitFor } from '../test/render'
 import { server } from '../test/setup'
+
+// The RYW pending-token store is module-global; clear it between tests.
+afterEach(() => clearPendingTodoToken())
 
 const today = new Date().toISOString()
 const yesterday = new Date(Date.now() - 86_400_001).toISOString()
@@ -110,6 +115,27 @@ describe('TodoSection — quick add', () => {
     await userEvent.type(input, 'Call dentist{Enter}')
     const alert = await screen.findByRole('alert')
     expect(alert).toHaveTextContent(/failed to add to-do/i)
+  })
+
+  it('keeps the optimistic temp row visible while a stale refetch retries (RYW-1)', async () => {
+    let gets = 0
+    server.use(
+      http.get('/api/todos', () => {
+        gets++
+        // Every refetch comes back stale: the optimistic row must stay visible throughout
+        // the bounded retries and after they are exhausted.
+        return HttpResponse.json({ items: [] }, { headers: { 'X-Consistency': 'stale' } })
+      }),
+      http.post('/api/todos', () =>
+        HttpResponse.json({ todoId: 'srv-id', consistencyToken: 'todo#srv-id@2' })),
+    )
+    render(<TodoSection />)
+    const input = await screen.findByPlaceholderText(/add a to-do/i)
+    await userEvent.type(input, 'Persist me{Enter}')
+    // The optimistic row is present immediately and remains so while refetches stay stale.
+    expect(screen.getByText('Persist me')).toBeInTheDocument()
+    await waitFor(() => expect(gets).toBeGreaterThanOrEqual(1))
+    expect(screen.getByText('Persist me')).toBeInTheDocument()
   })
 
   it('replaces temp id with server id on successful add', async () => {
