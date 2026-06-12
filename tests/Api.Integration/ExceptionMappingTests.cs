@@ -26,7 +26,7 @@ public sealed class ExceptionMappingTests(ApiFactory factory) : IClassFixture<Ap
         var custom = _factory.WithWebHostBuilder(b => b.ConfigureTestServices(s =>
         {
             s.RemoveAll<IEventStore>();
-            s.AddSingleton<IEventStore>(sp => ApiFactory.BuildSyncProjectingStore(sp, store));
+            s.AddSingleton<IEventStore>(store);
         }));
         var client = custom.CreateClient();
         client.DefaultRequestHeaders.Add("X-Test-User-Id", FakeCurrentUser.TestUserId);
@@ -54,7 +54,7 @@ public sealed class ExceptionMappingTests(ApiFactory factory) : IClassFixture<Ap
         var custom = _factory.WithWebHostBuilder(b => b.ConfigureTestServices(s =>
         {
             s.RemoveAll<IEventStore>();
-            s.AddSingleton<IEventStore>(sp => ApiFactory.BuildSyncProjectingStore(sp, store));
+            s.AddSingleton<IEventStore>(store);
         }));
         var client = custom.CreateClient();
         client.DefaultRequestHeaders.Add("X-Test-User-Id", FakeCurrentUser.TestUserId);
@@ -85,7 +85,7 @@ public sealed class ExceptionMappingTests(ApiFactory factory) : IClassFixture<Ap
         var custom = _factory.WithWebHostBuilder(b => b.ConfigureTestServices(s =>
         {
             s.RemoveAll<IEventStore>();
-            s.AddSingleton<IEventStore>(sp => ApiFactory.BuildSyncProjectingStore(sp, store));
+            s.AddSingleton<IEventStore>(store);
         }));
         var client = custom.CreateClient();
         client.DefaultRequestHeaders.Add("X-Test-User-Id", FakeCurrentUser.TestUserId);

@@ -414,9 +414,6 @@ public sealed class ProjectionUpdater(
                 case FolderMoved e:
                     await ApplyFolderMovedToProjectionAsync(e, ct).ConfigureAwait(false);
                     break;
-                case FolderDeleted e:
-                    await folderTreeStore.DeleteAsync(e.FolderId, ct).ConfigureAwait(false);
-                    break;
             }
         }
     }
@@ -450,9 +447,6 @@ public sealed class ProjectionUpdater(
                     break;
                 case WorkspaceRenamed e:
                     await ApplyWorkspaceRenamedAsync(e, ct).ConfigureAwait(false);
-                    break;
-                case WorkspaceDeleted e:
-                    await workspaceListStore.DeleteAsync(e.WorkspaceId, ct).ConfigureAwait(false);
                     break;
             }
         }
