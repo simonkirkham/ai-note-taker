@@ -3,10 +3,9 @@ using Domain.ActionItems;
 using Domain.Notes;
 using EventStore;
 using EventStore.Projections;
-using Api.Projections;
 using Microsoft.Extensions.Logging;
 
-namespace Projector;
+namespace Api.Projections;
 
 // The async projector's core engine, independent of the Lambda runtime so it is unit
 // testable with in-memory stores. Given the set of stream ids that changed in a batch, it

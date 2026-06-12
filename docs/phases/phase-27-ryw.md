@@ -50,7 +50,8 @@
 - Given any other write (notes, etc.), then it stays inline + immediate — unchanged.
 
 **Acceptance criteria:**
-- Projector ESM `Enabled = true`; inline `todoListStore.PutAsync` removed from `TodoCommandHandler.AddTodo` **only** (other todo ops and all other aggregates stay inline).
+- Projector ESM `Enabled = true`; before enabling, re-add the `FolderDeleted`/`WorkspaceDeleted` arms to `ProjectionUpdater` so the now-running projector deletes (not re-creates) deleted folders/workspaces.
+- Inline projection removed from the **whole Todo aggregate** (add/complete/reopen/delete) — not just `TodoAdded` — so the async add never races an inline complete/reopen/delete on a not-yet-written row; the aggregate becomes append-only and the projector is its sole read-model writer. All other aggregates stay inline.
 - `POST /todos` returns the per-stream version from `AppendAsync` (the write token).
 - A minimal `ConsistencyGate` on `GET /todos`: parse `If-Consistent-With`, bounded-poll `IProcessedPositionStore` (~2s), `stale` fallback. Scoped to this one read — not a global middleware yet.
 - Frontend: the add-todo mutation captures the token; the todos refetch attaches it; `stale` → bounded retry. Scoped to the todos hook for now.

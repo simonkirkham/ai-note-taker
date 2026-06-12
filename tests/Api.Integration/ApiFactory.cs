@@ -2,8 +2,10 @@ using EventStore;
 using EventStore.Projections;
 using Api.Auth;
 using Api.HealthChecks;
+using Api.Projections;
 using Api.Services;
 using Microsoft.AspNetCore.Authentication;
+using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
@@ -32,6 +34,7 @@ public class ApiFactory : WebApplicationFactory<Program>
         Environment.SetEnvironmentVariable("PROJ_NOTESEARCHVIEW_TABLE_NAME", "test-proj-notesearchview");
         Environment.SetEnvironmentVariable("DRAFT_TRANSCRIPTION_TABLE_NAME", "test-draft-transcription");
         Environment.SetEnvironmentVariable("PROJ_WORKSPACELIST_TABLE_NAME", "test-proj-workspacelist");
+        Environment.SetEnvironmentVariable("PROJ_POSITION_TABLE_NAME", "test-proj-position");
         Environment.SetEnvironmentVariable("ALLOWED_USER_SUBS", "test-user-123,other-user-456");
         Environment.SetEnvironmentVariable("GOOGLE_CLIENT_ID", "test-client-id");
         Environment.SetEnvironmentVariable("GOOGLE_CLIENT_SECRET", "test-client-secret");
@@ -69,7 +72,14 @@ public class ApiFactory : WebApplicationFactory<Program>
             services.RemoveAll<ITranscriptionDraftStore>();
             services.RemoveAll<IWorkspaceListStore>();
             services.RemoveAll<IDynamoHealthCheck>();
-            services.AddSingleton<IEventStore, InMemoryEventStore>();
+            services.RemoveAll<IProcessedPositionStore>();
+            // RYW-1: the command handlers no longer write the Todo projection inline. The in-process
+            // host gets immediate read-after-write by wrapping the in-memory event store with
+            // SyncProjectingEventStore, which drives the SAME StreamProjector path that runs async
+            // off the DynamoDB stream in prod. The gate and the decorator's projector MUST share the
+            // one position store (registered below) so the gate sees the projector's advance.
+            services.AddSingleton<IProcessedPositionStore, InMemoryProcessedPositionStore>();
+            services.AddSingleton<IEventStore>(sp => BuildSyncProjectingStore(sp, new InMemoryEventStore()));
             services.AddSingleton<INoteTitleListStore, InMemoryNoteTitleListStore>();
             services.AddSingleton<INoteDetailStore, InMemoryNoteDetailStore>();
             services.AddSingleton<INoteActionsStore, InMemoryNoteActionsStore>();
@@ -101,6 +111,36 @@ public class ApiFactory : WebApplicationFactory<Program>
             services.AddSingleton<FakeNoteImageStore>();
             services.AddSingleton<Api.Services.INoteImageStore>(sp => sp.GetRequiredService<FakeNoteImageStore>());
         });
+    }
+
+    // RYW-1: wrap an in-memory event store with the sync projector so the in-process host gets
+    // immediate read-after-write through the SAME StreamProjector path that runs async in prod
+    // (the Todo handler no longer writes its projection inline). The projector re-reads from the
+    // same `inner` instance the decorator appends to, and resolves the SHARED IProcessedPositionStore
+    // from `sp` — the same instance the consistency gate polls — so the gate sees the projector's
+    // advance. Projection stores come from `sp` so a test that overrides IEventStore (e.g.
+    // ConflictingEventStore) shares the factory's stores.
+    public static IEventStore BuildSyncProjectingStore(IServiceProvider sp, IEventStore inner)
+    {
+        var updater = new ProjectionUpdater(
+            sp.GetRequiredService<INoteTitleListStore>(),
+            sp.GetRequiredService<INoteDetailStore>(),
+            sp.GetRequiredService<ITodoListStore>(),
+            sp.GetRequiredService<INoteCardListStore>(),
+            sp.GetRequiredService<INoteActionsStore>(),
+            sp.GetRequiredService<ITagIndexStore>(),
+            sp.GetRequiredService<ITagFeedbackStore>(),
+            sp.GetRequiredService<IActionItemFeedbackStore>(),
+            sp.GetRequiredService<ICalendarLinkIndexStore>(),
+            sp.GetRequiredService<INoteSearchViewStore>(),
+            sp.GetRequiredService<IFolderTreeStore>(),
+            sp.GetRequiredService<IWorkspaceListStore>(),
+            sp.GetRequiredService<Api.Services.INoteImageStore>(),
+            NullLogger<ProjectionUpdater>.Instance);
+        var projector = new StreamProjector(
+            inner, updater, sp.GetRequiredService<IProcessedPositionStore>(), new NoOpProjectorMetrics(),
+            NullLogger<StreamProjector>.Instance);
+        return new SyncProjectingEventStore(inner, projector);
     }
 
     public const string NoPrefixHeader = "X-Test-No-Prefix";

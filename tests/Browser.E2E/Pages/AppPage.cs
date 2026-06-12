@@ -153,6 +153,49 @@ public sealed class AppPage(IPage page, string baseUrl, string? authToken = null
         await deleteDone;
     }
 
+    // RYW-1: add a standalone to-do via the home quick-capture input. Waits for the
+    // POST /todos response so the write (and its consistency token) is committed before
+    // we assert the list. The subsequent GET /todos carries the token, so the async
+    // projector is gated to catch up — making the assertion deterministic.
+    public async Task AddTodoAsync(string description)
+    {
+        var input = page.GetByPlaceholder("Add a to-do");
+        await input.FillAsync(description);
+        var postDone = page.WaitForResponseAsync(r => r.Url.Contains("/todos") && r.Request.Method == "POST");
+        await input.PressAsync("Enter");
+        await postDone;
+    }
+
+    public Task AssertTodoVisibleAsync(string description) =>
+        Assertions.Expect(
+            page.GetByTestId("todo-section").GetByText(description)
+        ).ToBeVisibleAsync(new() { Timeout = 15000 });
+
+    // The real read-your-writes proof: reload FIRST (drops the optimistic cache, so the
+    // todo can only come from the server), then assert. The post-reload GET /todos carries
+    // the sessionStorage-persisted token, so the gate waits for the async projector — the
+    // todo appears deterministically. Reload-loop so a still-warming projector re-polls
+    // (each reload re-sends the token and re-gates) rather than getting stuck on one stale fetch.
+    public async Task AssertTodoVisibleAfterReloadAsync(string description, int timeoutMs = 20000)
+    {
+        var deadline = DateTime.UtcNow.AddMilliseconds(timeoutMs);
+        while (true)
+        {
+            await page.ReloadAsync();
+            try
+            {
+                await Assertions.Expect(
+                    page.GetByTestId("todo-section").GetByText(description)
+                ).ToBeVisibleAsync(new() { Timeout = 2500 });
+                return;
+            }
+            catch (PlaywrightException) when (DateTime.UtcNow < deadline)
+            {
+                // re-loop: reload + recheck until the gated read returns the todo or we time out
+            }
+        }
+    }
+
     public Task AssertCardTagVisibleAsync(string cardTitle, string tag) =>
         Assertions.Expect(
             page.GetByTestId("note-cards")

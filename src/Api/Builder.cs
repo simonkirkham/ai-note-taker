@@ -10,6 +10,7 @@ using EventStore;
 using EventStore.Projections;
 using Api.Auth;
 using Api.CommandHandlers;
+using Api.Consistency;
 using Api.HealthChecks;
 using Api.Observability;
 using Api.Projections;
@@ -20,7 +21,7 @@ namespace Api;
 
 public static class Builder
 {
-    internal static WebApplication BuildApp(string[] args, string eventTableName, string projTableName, string noteDetailTableName, string noteActionsTableName, string todoListTableName, string noteCardListTableName, string folderTreeTableName, string tagIndexTableName, string tagFeedbackTableName, string actionFeedbackTableName, string calendarLinkTableName, string noteSearchViewTableName, string draftTranscriptionTableName, string workspaceListTableName)
+    internal static WebApplication BuildApp(string[] args, string eventTableName, string projTableName, string noteDetailTableName, string noteActionsTableName, string todoListTableName, string noteCardListTableName, string folderTreeTableName, string tagIndexTableName, string tagFeedbackTableName, string actionFeedbackTableName, string calendarLinkTableName, string noteSearchViewTableName, string draftTranscriptionTableName, string workspaceListTableName, string projPositionTableName)
     {
         var builder = WebApplication.CreateBuilder(args);
 
@@ -94,11 +95,53 @@ public static class Builder
             builder.Services.AddAWSService<IAmazonDynamoDB>();
         }
         builder.Services.AddSingleton<IDomainMetrics, PowertoolsDomainMetrics>();
-        builder.Services.AddSingleton<IEventStore>(sp =>
-            new InstrumentedEventStore(
-                new DynamoDbEventStore(sp.GetRequiredService<IAmazonDynamoDB>(), eventTableName),
-                sp.GetRequiredService<IDomainMetrics>(),
-                sp.GetRequiredService<ILogger<InstrumentedEventStore>>()));
+
+        // Read-your-writes (RYW-1). The deployed API Lambda and the in-process hosts (local
+        // Kestrel) diverge here:
+        //  - Deployed (inLambda): the DynamoDB stream + Projector Lambda build read models
+        //    asynchronously, so the API has NO projection decorator — a plain
+        //    InstrumentedEventStore(DynamoDbEventStore). The gate polls the SAME DynamoDB
+        //    proj-position table the Projector Lambda advances.
+        //  - In-process (!inLambda): no async projector, so the event store is wrapped with
+        //    SyncProjectingEventStore driving the SAME StreamProjector path, and ONE
+        //    InMemoryProcessedPositionStore is shared between that projector and the gate — the
+        //    gate must see the advance the decorator's projector writes, or it would wait the
+        //    full cap on every read.
+        var inLambda = !string.IsNullOrEmpty(Environment.GetEnvironmentVariable("AWS_LAMBDA_FUNCTION_NAME"));
+        if (inLambda)
+        {
+            builder.Services.AddSingleton<IProcessedPositionStore>(sp =>
+                new DynamoDbProcessedPositionStore(sp.GetRequiredService<IAmazonDynamoDB>(), projPositionTableName));
+            builder.Services.AddSingleton<IEventStore>(sp =>
+                new InstrumentedEventStore(
+                    new DynamoDbEventStore(sp.GetRequiredService<IAmazonDynamoDB>(), eventTableName),
+                    sp.GetRequiredService<IDomainMetrics>(),
+                    sp.GetRequiredService<ILogger<InstrumentedEventStore>>()));
+        }
+        else
+        {
+            // One shared position store: the gate resolves it as IProcessedPositionStore, and the
+            // SAME instance drives the decorator's projector — so the gate sees each apply.
+            builder.Services.AddSingleton<IProcessedPositionStore, InMemoryProcessedPositionStore>();
+            builder.Services.AddSingleton<IEventStore>(sp =>
+            {
+                var baseStore = new InstrumentedEventStore(
+                    new DynamoDbEventStore(sp.GetRequiredService<IAmazonDynamoDB>(), eventTableName),
+                    sp.GetRequiredService<IDomainMetrics>(),
+                    sp.GetRequiredService<ILogger<InstrumentedEventStore>>());
+                // Build a fresh ProjectionUpdater from the singleton stores rather than resolving
+                // the scoped IProjectionUpdater into this singleton (a captive dependency). The
+                // projector re-reads from baseStore — the same instance the decorator appends to
+                // (do NOT resolve IEventStore from sp here, which would recurse into this factory).
+                var updater = BuildProjectionUpdater(sp);
+                var projector = new StreamProjector(
+                    baseStore, updater, sp.GetRequiredService<IProcessedPositionStore>(),
+                    new NoOpProjectorMetrics(), sp.GetRequiredService<ILogger<StreamProjector>>());
+                return new SyncProjectingEventStore(baseStore, projector);
+            });
+        }
+        builder.Services.AddSingleton<IConsistencyGate>(sp =>
+            new ConsistencyGate(sp.GetRequiredService<IProcessedPositionStore>()));
         builder.Services.AddSingleton<INoteTitleListStore>(sp =>
             new NoteTitleListStore(sp.GetRequiredService<IAmazonDynamoDB>(), projTableName));
         builder.Services.AddSingleton<INoteDetailStore>(sp =>
@@ -156,4 +199,23 @@ public static class Builder
 
         return builder.Build();
     }
+
+    // Builds a ProjectionUpdater from the registered singleton stores. Used by the in-process
+    // sync decorator (local Kestrel); the scoped IProjectionUpdater registration is for the
+    // rebuild handler and the Projector Lambda.
+    private static ProjectionUpdater BuildProjectionUpdater(IServiceProvider sp) => new(
+        sp.GetRequiredService<INoteTitleListStore>(),
+        sp.GetRequiredService<INoteDetailStore>(),
+        sp.GetRequiredService<ITodoListStore>(),
+        sp.GetRequiredService<INoteCardListStore>(),
+        sp.GetRequiredService<INoteActionsStore>(),
+        sp.GetRequiredService<ITagIndexStore>(),
+        sp.GetRequiredService<ITagFeedbackStore>(),
+        sp.GetRequiredService<IActionItemFeedbackStore>(),
+        sp.GetRequiredService<ICalendarLinkIndexStore>(),
+        sp.GetRequiredService<INoteSearchViewStore>(),
+        sp.GetRequiredService<IFolderTreeStore>(),
+        sp.GetRequiredService<IWorkspaceListStore>(),
+        sp.GetRequiredService<Api.Services.INoteImageStore>(),
+        sp.GetRequiredService<ILogger<ProjectionUpdater>>());
 }
