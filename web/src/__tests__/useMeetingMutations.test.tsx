@@ -26,43 +26,25 @@ function setup() {
 }
 
 describe('useMeetingMutations', () => {
-  // A new meeting-note card's full shape isn't known client-side, so keys.noteCards
-  // can't be patched optimistically — it's the sanctioned delayed-reconcile case
-  // (27-C2): meetings invalidates immediately, the cards refetch is deferred past the
-  // async projector's lag budget so it lands after the projection has caught up.
-  it('create-from-meeting invalidates meetings immediately and defers noteCards', async () => {
-    vi.useFakeTimers()
-    try {
-      server.use(http.post('/api/notes/from-meeting', () => HttpResponse.json({ noteId: 'n-1' }, { status: 201 })))
-      const { qc, wrapper } = setup()
-      const spy = vi.spyOn(qc, 'invalidateQueries')
-      const { result } = renderHook(() => useCreateNoteFromMeeting(), { wrapper })
-      await act(async () => { await result.current.mutateAsync(meeting) })
-      expect(spy).toHaveBeenCalledWith({ queryKey: ['meetings'] })
-      expect(spy).not.toHaveBeenCalledWith({ queryKey: keys.noteCards })
-      await act(async () => { await vi.runOnlyPendingTimersAsync() })
-      expect(spy).toHaveBeenCalledWith({ queryKey: keys.noteCards })
-    } finally {
-      vi.useRealTimers()
-    }
+  it('create-from-meeting invalidates noteCards + meetings', async () => {
+    server.use(http.post('/api/notes/from-meeting', () => HttpResponse.json({ noteId: 'n-1' }, { status: 201 })))
+    const { qc, wrapper } = setup()
+    const spy = vi.spyOn(qc, 'invalidateQueries')
+    const { result } = renderHook(() => useCreateNoteFromMeeting(), { wrapper })
+    await act(async () => { await result.current.mutateAsync(meeting) })
+    expect(spy).toHaveBeenCalledWith({ queryKey: keys.noteCards })
+    expect(spy).toHaveBeenCalledWith({ queryKey: ['meetings'] })
   })
 
-  it('create-from-next-occurrence invalidates meetings immediately and defers noteCards', async () => {
-    vi.useFakeTimers()
-    try {
-      server.use(http.post('/api/notes/from-next-occurrence', () =>
-        HttpResponse.json({ noteId: 'n-2', alreadyExists: true })))
-      const { qc, wrapper } = setup()
-      const spy = vi.spyOn(qc, 'invalidateQueries')
-      const { result } = renderHook(() => useCreateNoteFromNextOccurrence(), { wrapper })
-      await act(async () => { await result.current.mutateAsync('series1') })
-      expect(spy).toHaveBeenCalledWith({ queryKey: ['meetings'] })
-      expect(spy).not.toHaveBeenCalledWith({ queryKey: keys.noteCards })
-      await act(async () => { await vi.runOnlyPendingTimersAsync() })
-      expect(spy).toHaveBeenCalledWith({ queryKey: keys.noteCards })
-    } finally {
-      vi.useRealTimers()
-    }
+  it('create-from-next-occurrence invalidates noteCards + meetings', async () => {
+    server.use(http.post('/api/notes/from-next-occurrence', () =>
+      HttpResponse.json({ noteId: 'n-2', alreadyExists: true })))
+    const { qc, wrapper } = setup()
+    const spy = vi.spyOn(qc, 'invalidateQueries')
+    const { result } = renderHook(() => useCreateNoteFromNextOccurrence(), { wrapper })
+    await act(async () => { await result.current.mutateAsync('series1') })
+    expect(spy).toHaveBeenCalledWith({ queryKey: keys.noteCards })
+    expect(spy).toHaveBeenCalledWith({ queryKey: ['meetings'] })
   })
 
   it('link-to-calendar invalidates meetings', async () => {
