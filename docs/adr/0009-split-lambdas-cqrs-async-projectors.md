@@ -1,6 +1,10 @@
 # ADR 0009 — Split the single API Lambda into CQRS write/read Lambdas with async projectors
 
-**Status:** Accepted
+**Status:** Accepted · **Stage 1 partially done; async cutover reverted (2026-06-12)**
+
+> **Implementation status (2026-06-12).** **27-A** (shared `ProjectionUpdater` seam) and **27-B** (DynamoDB stream + async Projector Lambda) shipped — the projector is a real, replayable consumer of the event log. **27-C** (remove inline writes → projector becomes sole writer → eventual consistency) was **attempted and reverted**. The backend cutover and the projector were correct; the failure was the **read-after-write contract with the client**: the frontend was built for immediate consistency (it reads server truth after navigation and reconciles by refetching a projection), so under async those refetches raced the ~1s projector lag and returned stale data across navigation. Patching it per-mutation was whack-a-mole (distinct races across several read-model caches, plus a regression). Reverted to **inline immediate-consistency**; the projector Lambda + stream stay **deployed but its stream trigger is disabled** (it would otherwise double-write the increment-based feedback counters while inline is authoritative).
+>
+> **The real lesson:** the async projectors were the easy part — the read-after-write contract is the actual work. Re-attempting the cutover is **blocked on a read-your-writes foundation** (slice **27-RYW** in `phases/phase-27.md`): a command returns the stream position it wrote, and a read can request "consistent as of position N", with the query side waiting until the projection reaches N. That makes read-after-write deterministic (no per-mutation optimism, no magic timers); only then does the cutover become a non-event. Re-enable the ESM as step 1 of that phase.
 
 ## Context
 

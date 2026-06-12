@@ -477,8 +477,14 @@ public sealed class NoteTakerStack : Stack
         // existing log on first deploy; bisect-on-error + bounded retries + max record
         // age so one poison record can't wedge the shard, and the on-failure DLQ catches
         // what survives retry. ParallelizationFactor 1 keeps per-key ordering simple.
+        // Stream trigger DISABLED while inline projection is authoritative again (the 27-C
+        // async cutover was reverted — see ADR 0009). The projector Lambda + stream + DLQ stay
+        // deployed as the dormant event-sourcing artifact; if it ran now it would double-write
+        // the increment-based feedback counters (inline +1, projector +1). Re-enable (Enabled =
+        // true) as step 1 of the future read-your-writes phase, before re-attempting the cutover.
         projectorFunction.AddEventSource(new Amazon.CDK.AWS.Lambda.EventSources.DynamoEventSource(eventsTable, new Amazon.CDK.AWS.Lambda.EventSources.DynamoEventSourceProps
         {
+            Enabled = false,
             StartingPosition = Amazon.CDK.AWS.Lambda.StartingPosition.TRIM_HORIZON,
             BatchSize = 10,
             BisectBatchOnError = true,
