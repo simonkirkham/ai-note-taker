@@ -1,5 +1,6 @@
 using Api.Auth;
 using Api.CommandHandlers;
+using Api.Consistency;
 using Domain.Todos;
 using EventStore.Projections;
 
@@ -7,8 +8,21 @@ namespace Api.Handlers;
 
 public static class TodoHandlers
 {
-    public static async Task<IResult> GetTodos(ITodoListStore store, ICurrentUser currentUser, ICurrentWorkspace currentWorkspace, CancellationToken ct)
+    public static async Task<IResult> GetTodos(
+        ITodoListStore store,
+        IConsistencyGate gate,
+        ICurrentUser currentUser,
+        ICurrentWorkspace currentWorkspace,
+        HttpContext http,
+        CancellationToken ct)
     {
+        // Read-your-writes: if the client presents the write token from its add-todo, wait
+        // (bounded) until the async projector has applied it before reading the list. Absent
+        // token → no wait. On timeout the read still returns, flagged X-Consistency: stale.
+        var result = await gate.WaitAsync(http.Request.Headers["If-Consistent-With"], ct).ConfigureAwait(false);
+        if (result.IsStale)
+            http.Response.Headers["X-Consistency"] = "stale";
+
         var view = await store.QueryAllAsync(ct).ConfigureAwait(false);
         // Extend cutoff to 2 days back so any UTC-offset "today" is covered;
         // the frontend applies its own local-calendar-day filter.
@@ -42,8 +56,10 @@ public static class TodoHandlers
             return Results.BadRequest(new { error = "Description is required." });
 
         var todoId = new TodoId(Guid.NewGuid());
-        await handler.HandleAsync(new AddTodo(todoId, currentUser.UserId, body.Description.Trim(), body.Priority), ct).ConfigureAwait(false);
-        return Results.Ok(new { todoId = todoId.Value });
+        var version = await handler.HandleAsync(new AddTodo(todoId, currentUser.UserId, body.Description.Trim(), body.Priority), ct).ConfigureAwait(false);
+        // The write token (per-stream version) the client echoes into If-Consistent-With on its
+        // todos refetch, so that read waits until the projector has applied this add.
+        return Results.Ok(new { todoId = todoId.Value, consistencyToken = $"{todoId.ToStreamId()}@{version}" });
     }
 
     public static async Task<IResult> CompleteTodo(

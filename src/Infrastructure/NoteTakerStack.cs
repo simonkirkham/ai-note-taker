@@ -284,6 +284,11 @@ public sealed class NoteTakerStack : Stack
                 ["DRAFT_TRANSCRIPTION_TABLE_NAME"] = draftTranscriptionTable.TableName,
                 ["IMAGE_BUCKET_NAME"] = imagesBucket.BucketName,
                 ["PROJ_WORKSPACELIST_TABLE_NAME"] = workspaceListTable.TableName,
+                // RYW-1: the consistency gate reads the projector's processed-position table to
+                // wait until a just-written stream has been applied. Rides the constructor dict
+                // (projPositionTable is created above the function), not AddEnvironment, so it is
+                // included in the function-config hash that drives the CurrentVersion alias.
+                ["PROJ_POSITION_TABLE_NAME"] = projPositionTable.TableName,
                 ["BEDROCK_MODEL_ID"] = bedrockModelId
             }
         });
@@ -378,6 +383,11 @@ public sealed class NoteTakerStack : Stack
         calendarLinkIndexTable.GrantReadWriteData(apiFunction);
         noteSearchViewTable.GrantReadWriteData(apiFunction);
         workspaceListTable.GrantReadWriteData(apiFunction);
+        // RYW-1: the consistency gate reads (only) the projector's processed-position table to
+        // poll whether a just-written stream has been applied. Read-only — the API never advances
+        // the cursor; the Projector Lambda owns the write. Resource-grant path, never a bare
+        // AddToRolePolicy (which can silently drop the conditional post-CurrentVersion SSM grant).
+        projPositionTable.GrantReadData(apiFunction);
         // Least-privilege: the draft store only ever does point Get/Put/Delete.
         draftTranscriptionTable.Grant(apiFunction, "dynamodb:GetItem", "dynamodb:PutItem", "dynamodb:DeleteItem");
 
@@ -477,14 +487,15 @@ public sealed class NoteTakerStack : Stack
         // existing log on first deploy; bisect-on-error + bounded retries + max record
         // age so one poison record can't wedge the shard, and the on-failure DLQ catches
         // what survives retry. ParallelizationFactor 1 keeps per-key ordering simple.
-        // Stream trigger DISABLED while inline projection is authoritative again (the 27-C
-        // async cutover was reverted — see ADR 0009). The projector Lambda + stream + DLQ stay
-        // deployed as the dormant event-sourcing artifact; if it ran now it would double-write
-        // the increment-based feedback counters (inline +1, projector +1). Re-enable (Enabled =
-        // true) as step 1 of the future read-your-writes phase, before re-attempting the cutover.
+        // Stream trigger ENABLED for the RYW-1 read-your-writes migration: the projector is the
+        // async writer for the migrated Todo flow (its inline write is removed) and the gate waits
+        // on proj-position. For flows still inline (notes, actions, folders, workspaces) the
+        // projector double-writes idempotently; the only non-idempotent case — the increment-based
+        // feedback counters — double-counts transiently (inline +1, projector +1) and is closed
+        // when the AI-analysis flow migrates in RYW-3. See ADR 0009 and docs/phases/phase-27-ryw.md.
         projectorFunction.AddEventSource(new Amazon.CDK.AWS.Lambda.EventSources.DynamoEventSource(eventsTable, new Amazon.CDK.AWS.Lambda.EventSources.DynamoEventSourceProps
         {
-            Enabled = false,
+            Enabled = true,
             StartingPosition = Amazon.CDK.AWS.Lambda.StartingPosition.TRIM_HORIZON,
             BatchSize = 10,
             BisectBatchOnError = true,

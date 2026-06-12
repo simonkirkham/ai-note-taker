@@ -1251,6 +1251,23 @@ public class InfraAssertionsTests
         }));
     }
 
+    [Fact]
+    public void Lambda_HasProjPositionTableEnvVar()
+    {
+        // RYW-1: the API Lambda's consistency gate needs the proj-position table name to poll
+        // catch-up. The env var rides the constructor dict so it is in the function-config hash.
+        _template.HasResourceProperties("AWS::Lambda::Function", Match.ObjectLike(new Dictionary<string, object>
+        {
+            ["Environment"] = Match.ObjectLike(new Dictionary<string, object>
+            {
+                ["Variables"] = Match.ObjectLike(new Dictionary<string, object>
+                {
+                    ["PROJ_POSITION_TABLE_NAME"] = Match.AnyValue()
+                })
+            })
+        }));
+    }
+
     // ── Note images bucket (Phase 25-A) ──────────────────────────────
     // The images bucket is the only bucket with a CorsConfiguration, so matching on
     // its presence uniquely identifies it (the web bucket has none).
@@ -1435,9 +1452,9 @@ public class InfraAssertionsTests
     {
         _template.HasResourceProperties("AWS::Lambda::EventSourceMapping", Match.ObjectLike(new Dictionary<string, object>
         {
-            // Disabled while the 27-C async cutover is reverted (inline projection authoritative);
-            // the mapping stays defined so re-enabling is a one-flag change for the read-your-writes phase.
-            ["Enabled"] = false,
+            // Enabled for RYW-1: the projector is the async writer for the migrated Todo flow and
+            // double-writes the still-inline flows idempotently while the migration scales out.
+            ["Enabled"] = true,
             ["StartingPosition"] = "TRIM_HORIZON",
             ["BatchSize"] = 10,
             ["BisectBatchOnFunctionError"] = true,
