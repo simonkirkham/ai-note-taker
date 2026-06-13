@@ -78,7 +78,7 @@ Scenario: Behaviour is unchanged after the split
 
 ## Slice 19-J — URL-scheme hardening
 
-**Status:** Done (PR #223, 2026-06-11). One acceptance criterion remains unmet: `@tiptap/extension-link` is imported but **still transitive via StarterKit**, not pinned directly in `web/package.json` — a future StarterKit bump that drops it would break the import. Tracked as a follow-up minor change.
+**Status:** Done (PR #223, 2026-06-11). The one previously-unmet acceptance criterion — `@tiptap/extension-link` imported but only transitive via StarterKit, not pinned directly — was closed by CHANGE-16 (direct `^3.23.4` dependency; PR #283, 2026-06-13).
 
 **Intent:** Configure the Tiptap `Link` extension explicitly — allowlist `http`/`https`/`mailto`, reject `javascript:`/`data:`/`vbscript:` — so a malicious scheme in user- or AI-derived note content can't render as a live anchor. Defense-in-depth: `NoteEditor.tsx` currently relies on StarterKit's bundled Link default, which a Tiptap upgrade could silently loosen.
 
