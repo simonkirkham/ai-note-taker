@@ -8,11 +8,18 @@ import App from '@/App'
 import ErrorBoundary from '@/components/ErrorBoundary'
 import { ToastProvider } from '@/components/ToastProvider'
 import { clearChunkReloadFlag, installChunkReloadHandler } from '@/lib/chunkReload'
+import { installResourceErrorHandler } from '@/rum'
 import { AuthProvider } from './auth/AuthContext.tsx'
 
 // Install before render so a dynamic import that fails during boot self-heals
 // with one reload instead of crashing (paired with the ErrorBoundary fallback).
 installChunkReloadHandler()
+
+// Capture-phase listener so failed resource loads (<img>/<script>/<link> 403s
+// etc.) reach RUM — they fire a DOM resource `error` event, not a JS exception
+// or fetch/XHR, so none of RUM's errors/http telemetries would otherwise see
+// them (TI-37). Registered once, before render.
+installResourceErrorHandler()
 
 const e2eToken = (window as unknown as Record<string, unknown>).__E2E_AUTH_TOKEN as string | undefined
 

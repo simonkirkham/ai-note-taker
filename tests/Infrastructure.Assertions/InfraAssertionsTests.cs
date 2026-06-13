@@ -996,6 +996,23 @@ public class InfraAssertionsTests
     }
 
     [Fact]
+    public void OpsDashboard_RumErrorWidgetTitleNotesResourceLoadFailures()
+    {
+        // TI-37: failed resource loads ride JsErrorCount via cwr('recordError'); the
+        // widget title must make that inclusion explicit so the signal isn't lost.
+        _template.HasResourceProperties("AWS::CloudWatch::Dashboard", Match.ObjectLike(new Dictionary<string, object>
+        {
+            ["DashboardBody"] = Match.ObjectLike(new Dictionary<string, object>
+            {
+                ["Fn::Join"] = Match.ArrayWith(new object[]
+                {
+                    Match.ArrayWith(new object[] { Match.StringLikeRegexp(".*resource 403s.*") })
+                })
+            })
+        }));
+    }
+
+    [Fact]
     public void OpsDashboard_RumMetricWidgetPlotsJsAndHttpErrorCounts()
     {
         _template.HasResourceProperties("AWS::CloudWatch::Dashboard", Match.ObjectLike(new Dictionary<string, object>
