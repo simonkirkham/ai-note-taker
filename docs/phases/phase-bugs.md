@@ -33,6 +33,7 @@
 | BUG-20 | Workspace-switcher popover overlaps the main content when open — widened to `min-width: 16rem` (23-E truncation fix) it grows rightward past the narrow sidebar over the Home/Notes area. Keep the popover within the sidebar width and reveal the rename/delete icons on row hover/focus so full names ("Personal · default") still fit without truncating or overlapping content. | Done | 23-E |
 | BUG-21 | Note title silently lost on navigate in/out — the title field is never reconciled with the authoritative `detail.title` (initialised once from a prop/card-cache, no draft-pattern sync), so it can show empty; the title input auto-focuses on open and its `onBlur` then persists that empty value (`HandleRename` has no empty-title guard), permanently overwriting the real title. | Done | — |
 | BUG-22 | Multi-tag add drops a pill under RYW-2 async reads — the frontend per-stream consistency-token slot is last-writer-wins; two concurrent same-stream tag POSTs (`note#id@N`, `note#id@N+1`) race it, the older `@N` can win, and the next gated note read releases before the second tag is folded. Resurfaces the long-flaky `TagsJourney` E2E (TI-19) on deploy #546. | Done | TI-19, RYW-2 |
+| BUG-23 | `POST /admin/projections/rebuild` returns an unhandled **500** when a DynamoDB call inside the rebuild times out (`System.TimeoutException "The operation was canceled."`, AWSSDK). The rebuild reads the full event stream; on a transient SDK timeout (or nearing the Lambda/API-GW limit) the whole rebuild aborts mid-flight with a 500 and no retry. Already observable (`ProjectionRebuildFault` metric + Error log) — a reliability gap, not a monitoring one. | Open | TI-16 |
 
 Further bugs will be appended as they are identified.
 
@@ -589,3 +590,23 @@ This is the CLAUDE.md guardrail in action: RYW-2 flipped the whole Note aggregat
 **Key files:** `web/src/api/consistencyTokens.ts` (the fix); tests `web/src/__tests__/noteConsistency.test.tsx`. Related: [BUG-14], [BUG-17] (earlier inline-projection-era halves of the same flaky journey), RYW-2 (PR #255), [TI-19](../technical-improvements.md).
 
 **Follow-up (done, separate PR):** the `TagsJourney` tag-pill assertions were made reload-tolerant — `AssertTagPillVisibleAsync`/`AssertTagPillAbsentAsync` now reuse `WaitVisibleWithReloadAsync` / a new `WaitHiddenWithReloadAsync`, so a still-warming projector re-sends the consistency token and re-gates instead of hard-timing-out (mirrors the RYW `AssertTodoVisibleAfterReloadAsync` pattern). The token-slot fix above is the correctness fix; this is its test-robustness complement.
+
+---
+
+## BUG-23 — Projection rebuild returns an unhandled 500 on a transient DynamoDB timeout
+
+**Status:** 🔲 Open — found in the 2026-06-13 observability review (prod log 2026-06-05 12:24:49).
+
+**Severity:** Low — admin-only endpoint, single observed occurrence, self-recoverable by re-invoking. But a failed rebuild can leave projections partially rebuilt.
+
+**Symptom:** `POST /admin/projections/rebuild` → **500** `{ "error": "internal server error" }`. Prod exception: `System.TimeoutException: "The operation was canceled."`, `source: AWSSDK.Core`, thrown from `HttpWebRequestMessage.GetResponseAsync` under the X-Ray-wrapped DynamoDB pipeline.
+
+**Root cause:** `ProjectionRebuildHandler.RebuildAsync` reads the full event stream and re-writes every projection. A single DynamoDB call timing out (transient throttle/network, or the request nearing the Lambda / API-Gateway 29 s limit) throws `TimeoutException`. `AdminHandlers.RebuildProjections` catches it only to bump `ProjectionRebuildFault` and rethrows; `LoggingConfig.Map` has no arm for `TimeoutException` → `_ => 500`. No retry, so one transient blip aborts the whole rebuild.
+
+**Already observable:** unlike the frontend gap, this *is* visible — `NoteTaker/Domain` `ProjectionRebuildFault` metric + an Error log line. This bug is about reliability (don't abort on a transient timeout), not visibility.
+
+**Expected behaviour:** a transient DynamoDB timeout inside the rebuild is retried with backoff (the SDK's standard retry, or a handler-level retry) rather than aborting; a rebuild that genuinely can't finish within the request budget returns a clear, non-500 result (e.g. 503/202 + "retry") instead of an unhandled 500.
+
+**Reproduce-before-fix:** a `ProjectionRebuildHandler` test where the store throws `TimeoutException` on the first call and succeeds on retry — assert the rebuild completes; and a case where it persistently times out — assert a mapped non-500 response, not an unhandled 500.
+
+**Key files:** `src/Api/CommandHandlers/ProjectionRebuildHandler.cs`, `src/Api/Handlers/AdminHandlers.cs`, `src/Api/LoggingConfig.cs`. Related: [TI-16] (rebuild-robustness), [TI-23] (generalise append-retry).

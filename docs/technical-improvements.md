@@ -52,8 +52,10 @@ Status key: 🔲 **Open** · 🟡 **Partly done / mitigated** · ✅ **Done** (g
 | TI-34 | Make Lambda naming specific & correct everywhere                                | 🔲 **Open** — naming audit; user-raised 2026-06-12. **API Lambda** / **Projector Lambda** now; **Command/Query Lambda** only at 27-D    |
 | TI-35 | ReadyToRun-publish the API Lambda (AOT-precompile to cut first-request JIT)     | ✅ **Done** — #260, deploy #552. R2R live (IL_ONLY cleared on Api/AWSSDK/JwtBearer); part of the −39% cold-start cut. Pairs with TI-32 |
 | TI-36 | Raise API Lambda memory 256→512–1024 MB to cut residual cold-start CPU time     | 🔲 **Open** — after TI-32/35, cold p50 still 4.82 s; ~4.3 s is post-restore CPU at ~0.145 vCPU. Needs cost accept (reverses TI-13)     |
+| TI-37 | Capture **all** frontend errors in RUM — failed resource loads (`<img>` 403s) are invisible | 🔲 **Open** — user-raised 2026-06-13. RUM `http` telemetry instruments fetch/XHR only; image/asset load failures fire no JS error and never reach the backend (S3→CloudFront direct), so they are unmonitored. Prod evidence: note-image PNGs 403 |
+| TI-38 | Expected 409/404 outcomes log at `Error` on the ops dashboard — framework double-logs | 🔲 **Open** — found 2026-06-13. ASP.NET `ExceptionHandlerMiddleware` logs every escaped exception at Error *before* `UseExceptionHandler` re-maps it to 409/404 + Warning, so expected conflicts drown the real 500s in "All errors" |
 
-**Outstanding (7 Open + 3 Partly):** TI-17 Auto-backfill projection on deploy; TI-20 `WorkspaceList` GSI; TI-23 Generalise append-retry; TI-25 `NoteEditor` ordering test; **TI-33 `NoteCardList` Scan→GSI**; **TI-34 Lambda naming audit**; **TI-36 raise Lambda memory** (residual cold-start lever after TI-32/35 landed −39%); _(partly)_ TI-7 ESLint import-resolver + typed-lint (jsx-a11y done via 19-F3); TI-3 state-mgmt colocation; TI-24 deploy-credentials root cause. **The 2026-06 cold-start pair (TI-32 priming + TI-35 ReadyToRun) is done — #260, deploy #552; the 2026-06 dependency upgrade audit (T1/T7/T2/T3/T4 = TI-27/28/29/30/31) is fully cleared.**
+**Outstanding (9 Open + 3 Partly):** TI-17 Auto-backfill projection on deploy; TI-20 `WorkspaceList` GSI; TI-23 Generalise append-retry; TI-25 `NoteEditor` ordering test; **TI-33 `NoteCardList` Scan→GSI**; **TI-34 Lambda naming audit**; **TI-36 raise Lambda memory** (residual cold-start lever after TI-32/35 landed −39%); **TI-37 capture all frontend errors in RUM**; **TI-38 expected conflicts mis-logged at Error**; _(partly)_ TI-7 ESLint import-resolver + typed-lint (jsx-a11y done via 19-F3); TI-3 state-mgmt colocation; TI-24 deploy-credentials root cause. **The 2026-06 cold-start pair (TI-32 priming + TI-35 ReadyToRun) is done — #260, deploy #552; the 2026-06 dependency upgrade audit (T1/T7/T2/T3/T4 = TI-27/28/29/30/31) is fully cleared.**
 
 > Items carry stable IDs `TI-1`–`TI-31` in document order (the `ID` column above); each detailed section below repeats its ID. Reference an item as `TI-N`. The dep-audit `T#` tags are retained in parentheses for cross-reference with the audit report.
 
@@ -599,3 +601,49 @@ After TI-32 (priming) + TI-35 (R2R) landed (deploy #552), prod cold starts dropp
 
 **Raised in:** Prod latency investigation, 2026-06-13 (post-TI-32/35 measurement).
 **Depends on:** TI-32 + TI-35 (done) — this is the next lever once they proved insufficient alone.
+
+## TI-37. Capture all frontend errors in RUM — failed resource loads are invisible
+
+**Goal:** every frontend error reaches monitoring. Today a class of real user-facing errors is recorded **nowhere**.
+
+**The gap.** CloudWatch RUM is configured with `Telemetries = ["errors", "performance", "http"]` (`NoteTakerStack.cs:780`). Those cover:
+
+| Telemetry | Captures | Misses |
+|-----------|----------|--------|
+| `errors` | uncaught JS exceptions + unhandled promise rejections | anything that doesn't throw in JS |
+| `http` | **fetch / XMLHttpRequest** responses + failures | non-XHR requests |
+| `performance` | Web Vitals, resource timing | — (timing only, not error status) |
+
+A failed **resource load** — `<img>`, `<script>`, `<link>`, media — is **none of these**: the browser fires a resource-level `error` event on the element, not a JS exception, and it is not a fetch/XHR. RUM sees nothing. These requests also go **S3 → CloudFront direct**, never touching the API Lambda, so the backend logs can't see them either. The error is invisible end-to-end.
+
+**Prod evidence (2026-06-13).** Note-image PNGs return **403 Forbidden** from S3/CloudFront — e.g. `GET https://note-taker-ai.com/w/__default__/notes/notes/02feeca8-…/c06454…png` (`X-Cache: Error from cloudfront`, `Content-Type: application/xml`). The bare S3 key is being rendered as an `<img src>` *relative to the SPA route*, producing the doubled `…/notes/notes/…` path and a 403 (the [BUG-19](phases/phase-bugs.md) failure mode, here on a surface its `ImageNodeView` placeholder guard doesn't cover — likely a card/list preview). Whatever the root cause, **the monitoring never recorded a single one of these.** This item is about the visibility gap, not the 403 root cause (that is a separate defect).
+
+**Fix (observability only — does not fix the 403):**
+1. Add a global capture-phase resource-error listener in the web bootstrap: `window.addEventListener('error', handler, /* useCapture */ true)`. Resource-load failures bubble only in the capture phase; the third arg is required. The handler forwards `{ src, tagName, route }` to RUM via the existing `cwr` global — `cwr('recordError', …)` (counts toward `JsErrorCount`) or `recordRumEvent('resource_error', …)` (`web/src/rum.ts`) for a distinct custom event.
+2. Surface it on the `notetaker-ops` dashboard — add the new custom event / a `recordResourceUrl`-tagged count to the existing combined-error widget, so resource 403s sit alongside JS + HTTP errors.
+3. Optional, complementary: enable **CloudFront standard access logs** on the web distribution + a `4xxErrorRate`/`5xxErrorRate` metric and alarm, to catch asset failures independent of whether the browser-side JS ran at all.
+
+**Acceptance:** trigger a known-bad asset URL in prod and confirm it appears in RUM (Errors tab or the custom-event stream) and on the ops dashboard within the refresh window.
+
+**Raised in:** User report, 2026-06-13 — "there are also 403 errors in the app which are not getting logged; I want all frontend errors recording for monitoring."
+**Depends on:** — (RUM + dashboard already exist; this extends them).
+
+## TI-38. Expected 409/404 outcomes are logged at `Error`, drowning real 500s on the dashboard
+
+**Symptom.** The `notetaker-ops` "All errors" widget and the `NoteTaker/All errors` saved query show **expected** business outcomes — optimistic-concurrency conflicts (409) and writes to a missing note (404) — as `Error`-level lines, defeating the deliberate Warning-vs-Error split (`LoggingConfig.cs:64-66`).
+
+**Prod evidence (14-day window, 2026-06).** Of 8 `Error`-level lines, **most were `EventStore.ConcurrencyException`** (e.g. `Stream 'note#…': expected version 8 but was 9`) — each *also* logged a paired `Warning` "Request failed … 409 ConcurrencyException". One was an `InvalidOperationException: "Note … does not exist"` on `PATCH …/title` → still a 500 (separate defect). The genuine 500s are a minority but sit in the same bucket as the noise.
+
+**Root cause.** `app.UseExceptionHandler(exApp => …)` registers ASP.NET's built-in `ExceptionHandlerMiddleware`. That middleware logs the caught exception itself at **Error** (`"An unhandled exception has occurred while executing the request."`, logger `Microsoft.AspNetCore.Diagnostics.ExceptionHandlerMiddleware`) **before** invoking our inline handler. Our handler then re-maps `ConcurrencyException`/`NoteNotFoundException` to 409/404 and logs at Warning (`LoggingConfig.Map`). The framework Error line is emitted regardless — so every mapped-to-409/404 exception double-logs, once at Error (framework) and once at Warning (ours).
+
+**Fix options (observability only):**
+1. **Map before the global handler** — a small middleware (or per-endpoint `IExceptionHandler`) that catches the known domain/store exceptions, writes the 409/404 response + Warning line, and **returns** so the exception never propagates to `ExceptionHandlerMiddleware`. Only genuine 500s reach the framework handler → only genuine 500s log at Error.
+2. **Filter the framework category** — set `Microsoft.AspNetCore.Diagnostics.ExceptionHandlerMiddleware` to `Critical` (or `None`) in logging config so the duplicate Error line is suppressed, and rely solely on our handler's level. Cheaper, but also hides the framework line for true 500s (we still log those at Error ourselves, so acceptable).
+3. **Filter at the query/widget** — exclude `name = "Microsoft.AspNetCore.Diagnostics.ExceptionHandlerMiddleware"` from the "All errors" widget + saved query. Lowest-effort, leaves the raw log noisy.
+
+Prefer option 1 (correct at source) or 2 (one-line); option 3 is a stopgap.
+
+**Acceptance:** force a concurrency conflict in prod (concurrent same-stream writes) and confirm it appears **only** at Warning, not on the "All errors" Error view; confirm a forced 500 still shows as Error.
+
+**Raised in:** Observability review, 2026-06-13.
+**Depends on:** —
