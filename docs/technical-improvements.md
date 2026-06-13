@@ -54,8 +54,9 @@ Status key: 🔲 **Open** · 🟡 **Partly done / mitigated** · ✅ **Done** (g
 | TI-36 | Raise API Lambda memory 256→512–1024 MB to cut residual cold-start CPU time     | 🟡 **In progress** — 512 MB chosen (half-step) on branch; cost accepted (~+$8/mo, falls as deploys slow). Re-measure cold p50 post-deploy |
 | TI-37 | Capture **all** frontend errors in RUM — failed resource loads (`<img>` 403s) are invisible | ✅ **Done** — #268, deploy #557 (2026-06-13). Capture-phase `window` error listener forwards `<img>`/`<script>`/`<link>` load failures to RUM via `cwr('recordError')` (rides `JsErrorCount`); real JS errors skipped to avoid double-count. Dashboard widget retitled |
 | TI-38 | Expected 409/404 outcomes log at `Error` on the ops dashboard — framework double-logs | ✅ **Done** — #267, deploy #556 (2026-06-13). Replaced `UseExceptionHandler` with a try/catch middleware that maps every exception itself, removing ASP.NET's `ExceptionHandlerMiddleware` from the pipeline — each request now logs exactly one line at the `Map()`-implied level (Warning for 409/404, Error once for 500s) |
+| TI-39 | Chronic cold-start E2E flakiness red-gates nearly every deploy | 🔲 **Open** — raised 2026-06-13. A different 1–2 of ~23 `Browser.E2E` journeys 30s-timeout each deploy (`TagsJourney.*`, `NoteImageJourney.Remove`, `ActionReadYourWrites`), forcing 1–3 `gh run rerun`s per deploy (~7 deploys today, across all sessions). Cold-start latency on the fresh test-env Lambda pushes a first read past 30s; the RYW reload-tolerant wait pattern exists but isn't applied to these journeys |
 
-**Outstanding (7 Open + 3 Partly):** TI-17 Auto-backfill projection on deploy; TI-20 `WorkspaceList` GSI; TI-23 Generalise append-retry; TI-25 `NoteEditor` ordering test; **TI-33 `NoteCardList` Scan→GSI**; **TI-34 Lambda naming audit**; **TI-36 raise Lambda memory** (residual cold-start lever after TI-32/35 landed −39%); _(partly)_ TI-7 ESLint import-resolver + typed-lint (jsx-a11y done via 19-F3); TI-3 state-mgmt colocation; TI-24 deploy-credentials root cause. **The 2026-06 observability triad (TI-37 RUM resource-error capture, TI-38 error-log-level, BUG-23 rebuild-timeout 503) is done — #267/#268/#269, deploys #556/#557/#558. The 2026-06 cold-start pair (TI-32 priming + TI-35 ReadyToRun) is done — #260, deploy #552; the 2026-06 dependency upgrade audit (T1/T7/T2/T3/T4 = TI-27/28/29/30/31) is fully cleared.**
+**Outstanding (8 Open + 3 Partly):** TI-17 Auto-backfill projection on deploy; TI-20 `WorkspaceList` GSI; TI-23 Generalise append-retry; TI-25 `NoteEditor` ordering test; **TI-33 `NoteCardList` Scan→GSI**; **TI-34 Lambda naming audit**; **TI-36 raise Lambda memory** (residual cold-start lever after TI-32/35 landed −39%); **TI-39 stabilise chronic flaky E2E deploy-gate**; _(partly)_ TI-7 ESLint import-resolver + typed-lint (jsx-a11y done via 19-F3); TI-3 state-mgmt colocation; TI-24 deploy-credentials root cause. **The 2026-06 observability triad (TI-37 RUM resource-error capture, TI-38 error-log-level, BUG-23 rebuild-timeout 503) is done — #267/#268/#269, deploys #556/#557/#558. The 2026-06 cold-start pair (TI-32 priming + TI-35 ReadyToRun) is done — #260, deploy #552; the 2026-06 dependency upgrade audit (T1/T7/T2/T3/T4 = TI-27/28/29/30/31) is fully cleared.**
 
 > Items carry stable IDs `TI-1`–`TI-31` in document order (the `ID` column above); each detailed section below repeats its ID. Reference an item as `TI-N`. The dep-audit `T#` tags are retained in parentheses for cross-reference with the audit report.
 
@@ -652,4 +653,22 @@ Prefer option 1 (correct at source) or 2 (one-line); option 3 is a stopgap.
 **Acceptance:** force a concurrency conflict in prod (concurrent same-stream writes) and confirm it appears **only** at Warning, not on the "All errors" Error view; confirm a forced 500 still shows as Error.
 
 **Raised in:** Observability review, 2026-06-13.
+**Depends on:** —
+
+## TI-39. Stabilise the chronic cold-start E2E flakiness that red-gates nearly every deploy
+
+**Symptom.** The `deploy-test` E2E gate fails intermittently on a *different* 1–2 of ~23 `Browser.E2E` journeys almost every deploy, each a **30 s Playwright timeout** waiting for an element that does eventually appear. Observed today (2026-06-13) across deploys #558, #559, #561, #562, #563 — each needed **1–3 `gh run rerun --failed`** before going green. Repeat offenders: `TagsJourney.RemoveTag_GoneAfterNavigation` / `RemoveTag_PillDisappears` / `AddMultipleTags_SpaceSeparated`, `NoteImageJourney.Remove_an_image_…`, `ActionReadYourWritesJourney.Added_action_appears_after_reload`.
+
+**Cost.** Multiplied by every session merging today, this is the single largest deploy tax — each rerun is a full ~6 min test-env redeploy + E2E pass, and it serialises the shared merge gate (main's "latest deploy green" rule) so unrelated PRs queue behind it.
+
+**Likely cause.** The gate deploys a fresh test-env Lambda then immediately runs journeys; a **cold start** (even post TI-32/35, cold p50 ~4.8 s, tail longer) on the first read of a journey pushes a single `expect(...).toBeVisible` past its timeout. It is *not* correlated with the code under test — the failing journey is random and unrelated to the PR (BUG-23's deploy failed on a Tags journey; TI-36's on a NoteImage journey).
+
+**Fix directions (not yet chosen):**
+1. **Apply the RYW reload-tolerant wait pattern broadly** — `WaitVisibleWithReloadAsync` / `WaitHiddenWithReloadAsync` (BUG-22 / TI-19 follow-up) reload-and-re-gate instead of a single hard 30 s wait. The flaky journeys above don't use it. Audit every `ToBeVisibleAsync` on a post-write/post-navigate read and wrap it.
+2. **Warm the test-env Lambda before the suite** — a single throwaway request (or a `/health` ping loop until 200) after deploy, before Playwright starts, so the first journey doesn't eat the cold start.
+3. **Raise the per-assertion timeout** for known-cold first-reads only (last resort — masks rather than fixes; BUG-14 showed a blanket raise doesn't fix a *missing* render, but these are genuine latency timeouts, not missing renders).
+
+Prefer (2) (kills the root cause for the whole suite cheaply) + (1) (defence in depth). Quantify the rerun rate before/after.
+
+**Raised in:** Observed across ~7 deploys during the 2026-06-13 observability-triad + BUG-24 work (every session paid it). Related: [TI-19] (stabilised one TagsJourney flake via BUG-22), [TI-32]/[TI-35] (cold-start reduction).
 **Depends on:** —
