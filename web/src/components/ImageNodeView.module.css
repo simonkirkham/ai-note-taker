@@ -124,6 +124,10 @@
   background: var(--color-overlay-scrim);
   cursor: nwse-resize;
   opacity: 0;
+  /* Hidden handles must not catch pointer events — opacity:0 alone still intercepts,
+     so the handle steals hover/clicks aimed at the image (it fully covers a tiny one,
+     failing the remove-image journey). Only the revealed handle is interactive. */
+  pointer-events: none;
   transition: opacity 0.12s ease;
   touch-action: none;
 }
@@ -131,4 +135,5 @@
 .wrapper:hover .resizeHandle,
 .wrapper.selected .resizeHandle {
   opacity: 1;
+  pointer-events: auto;
 }

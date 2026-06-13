@@ -31,7 +31,7 @@
 | BUG-18 | Removing an inline image (or any edit) is silently not persisted — note content saves only on editor `onBlur`; the Save button navigates without flushing the draft | Done | 25-D |
 | BUG-19 | Inline image flashes a 403 on every open — `ImageNodeView` renders the raw S3 key as a relative `<img src>` before `resolveImages` swaps in the presigned URL | Done | 25-B, 25-D |
 | BUG-20 | Workspace-switcher popover overlaps the main content when open — widened to `min-width: 16rem` (23-E truncation fix) it grows rightward past the narrow sidebar over the Home/Notes area. Keep the popover within the sidebar width and reveal the rename/delete icons on row hover/focus so full names ("Personal · default") still fit without truncating or overlapping content. | Done | 23-E |
-| BUG-21 | Note title silently lost on navigate in/out — the title field is never reconciled with the authoritative `detail.title` (initialised once from a prop/card-cache, no draft-pattern sync), so it can show empty; the title input auto-focuses on open and its `onBlur` then persists that empty value (`HandleRename` has no empty-title guard), permanently overwriting the real title. | Open | — |
+| BUG-21 | Note title silently lost on navigate in/out — the title field is never reconciled with the authoritative `detail.title` (initialised once from a prop/card-cache, no draft-pattern sync), so it can show empty; the title input auto-focuses on open and its `onBlur` then persists that empty value (`HandleRename` has no empty-title guard), permanently overwriting the real title. | Done | — |
 | BUG-22 | Multi-tag add drops a pill under RYW-2 async reads — the frontend per-stream consistency-token slot is last-writer-wins; two concurrent same-stream tag POSTs (`note#id@N`, `note#id@N+1`) race it, the older `@N` can win, and the next gated note read releases before the second tag is folded. Resurfaces the long-flaky `TagsJourney` E2E (TI-19) on deploy #546. | Done | TI-19, RYW-2 |
 
 Further bugs will be appended as they are identified.
@@ -522,7 +522,7 @@ The mount effect (`AuthContext.tsx:112-141`) only handles returning *from* a Goo
 
 ## BUG-21 — Note title silently lost when navigating in and out of a note
 
-**Status:** Open — logged 2026-06-12, not yet fixed. Reported from the live app: a note that held a meeting-derived title ("Interview: Simon Kirkham (VP of Software Engineering)") showed an empty "Note title…" placeholder after navigating away and back.
+**Status:** Done — fixed in PR #258 (squash `279aef1`), deployed to main 2026-06-13 (deploy #547). See [docs/learnings/phase-bug21-note-title-draft-reconcile.md](../learnings/phase-bug21-note-title-draft-reconcile.md). Reported from the live app: a note that held a meeting-derived title ("Interview: Simon Kirkham (VP of Software Engineering)") showed an empty "Note title…" placeholder after navigating away and back.
 
 **Severity:** High — silent, permanent data loss. The real title is overwritten with an empty string in the event stream, not merely mis-displayed.
 
@@ -541,12 +541,14 @@ The mount effect (`AuthContext.tsx:112-141`) only handles returning *from* a Goo
 4. Reopen — the title is now blank in the stream.
 
 **Acceptance criteria (for the fix):**
-- [ ] A failing test reproduces the loss before the fix: opening a note whose `detail.title` is non-empty while `initialTitle` is `""` shows the real title, and a blur does not overwrite it with empty.
-- [ ] Title uses the draft pattern — displayed = `titleDraft ?? detail?.title ?? initialTitle`; a refetch never clobbers in-flight typing; draft resets on successful rename.
-- [ ] `HandleRename` rejects/no-ops an empty-or-whitespace title (decide: domain guard vs. handler) — guarded by a domain spec — so blank can never be persisted.
-- [ ] Existing note title/rename and draft tests stay green.
+- [x] A failing test reproduces the loss before the fix: opening a note whose `detail.title` is non-empty while `initialTitle` is `""` shows the real title, and a blur does not overwrite it with empty.
+- [x] Title uses the draft pattern — displayed = `titleDraft ?? detail?.title ?? initialTitle`; a refetch never clobbers in-flight typing; draft resets on successful rename.
+- [x] `HandleRename` rejects/no-ops an empty-or-whitespace title (domain guard — `string.IsNullOrWhiteSpace` → no event) — guarded by a domain spec — so blank can never be persisted.
+- [x] Existing note title/rename and draft tests stay green.
 
-**Key files (suspected):** `web/src/components/NoteView.tsx` (title state + onBlur), `web/src/App.tsx` (`initialTitle` resolution, `handleRename`), `src/Domain/Notes/Note.cs` (`HandleRename` guard); tests `web/src/__tests__/NoteView.test.tsx`, `tests/Domain.Specs/`. Related: [BUG-18] (same un-flushed-edit / draft-pattern family), 20-E (note-detail draft pattern).
+**Fix:** title migrated to the draft pattern in `NoteView.tsx` — `title = titleDraft ?? detail?.title ?? initialTitle`, so it reconciles to the authoritative loaded title instead of being seeded once. `handleSaveTitle` (blur) discards the draft without PATCHing on empty/whitespace/unchanged, and keeps the typed title (with an error toast) on save failure. The rename now goes through a new keystone mutation `useRenameNoteDetail` (patches `keys.note` on success, invalidates `keys.noteCards` on settle — identical to `useEditContent`/`useSetNoteDate`), replacing the dead cards-only `useRenameNote` and the `onRename` prop chain through `App`/`NoteRoute`. Defence in depth: `Note.HandleRename` no-ops on `string.IsNullOrWhiteSpace(cmd.NewTitle)`.
+
+**Key files:** `web/src/components/NoteView.tsx` (title draft + `handleSaveTitle`), `web/src/hooks/useNoteDetailMutations.ts` (`useRenameNoteDetail`), `web/src/hooks/useNoteMutations.ts` (removed `useRenameNote`), `web/src/App.tsx` (removed `onRename` chain), `src/Domain/Notes/Note.cs` (`HandleRename` guard); tests `web/src/__tests__/NoteView.test.tsx`, `tests/Domain.Specs/Notes/RenameNoteSpec.cs`. Related: [BUG-18] (same un-flushed-edit / draft-pattern family), 20-E (note-detail draft pattern).
 
 ---
 
