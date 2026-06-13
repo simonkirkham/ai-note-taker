@@ -33,6 +33,24 @@ public sealed class ActionItemFeedbackIntegrationTests : IClassFixture<ApiFactor
         Assert.Equal(before + 2, Sug(await FeedbackAsync(User)));
     }
 
+    // RYW-3c — guards that the AI-suggestion feedback counter is incremented EXACTLY ONCE per
+    // suggested action. That counter is an unconditional, NON-idempotent DynamoDB `ADD`, and the
+    // projector is now its SOLE writer. Before the RYW migration, prod ran the `ADD` twice per
+    // suggestion — once on the inline handler write and once on the async Projector Lambda —
+    // double-counting every suggestion. Analysis suggestions ride on the `note#` stream, so that
+    // inline write was removed when note# migrated in RYW-2; the double-count closed then (NOT in a
+    // separate "analyse" migration — there is no remaining inline write). This test fails (+2) if an
+    // inline feedback write is ever re-introduced alongside the projector.
+    [Fact]
+    public async Task Analyse_SuggestingOneAction_IncrementsSuggestedCountExactlyOnce()
+    {
+        var before = Sug(await FeedbackAsync(User));
+
+        await AnalyseWithActionsAsync("af-once");
+
+        Assert.Equal(before + 1, Sug(await FeedbackAsync(User)));
+    }
+
     // Scenario: Completing an AI-suggested action increments the completed count
     [Fact]
     public async Task Completing_SuggestedAction_IncrementsCompletedCount()
