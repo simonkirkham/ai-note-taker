@@ -24,15 +24,30 @@ public sealed class DynamoDbEventStore(IAmazonDynamoDB dynamo, string tableName)
         {
             await dynamo.TransactWriteItemsAsync(new TransactWriteItemsRequest { TransactItems = transactItems }, ct).ConfigureAwait(false);
         }
-        catch (TransactionCanceledException ex)
-            when (ex.CancellationReasons.Any(r => r.Code == "ConditionalCheckFailed"))
+        catch (TransactionCanceledException ex) when (IsRetriableCancellation(ex))
         {
             // Version read after conflict may not reflect the exact version at conflict time;
             // callers should re-read the stream before retrying.
             var actual = await GetCurrentVersionAsync(streamId, ct).ConfigureAwait(false);
-            throw new ConcurrencyException(streamId, expectedVersion, actual);
+            var reason = ex.CancellationReasons
+                .FirstOrDefault(r => r.Code is "ConditionalCheckFailed" or "TransactionConflict")?.Code;
+            throw new ConcurrencyException(streamId, expectedVersion, actual, reason);
         }
     }
+
+    // A TransactWriteItems cancellation is a retriable optimistic-concurrency conflict — re-read +
+    // re-append resolves it — for two reasons, both mapped to ConcurrencyException so the command
+    // handler's bounded retry handles them and the loser of a race is never dropped:
+    //  - ConditionalCheckFailed: our `currentVersion = :expected` version guard lost; another append
+    //    advanced the stream first.
+    //  - TransactionConflict: DynamoDB cancelled this transaction because a CONCURRENT transaction
+    //    touched the same item (the stream META row) — two genuinely-simultaneous appends to one
+    //    stream (e.g. a space-separated multi-tag add fanning into parallel POSTs). NOT a version-guard
+    //    failure, so it was previously uncaught → surfaced as an unhandled 500, and because the handler
+    //    only retries ConcurrencyException the write was silently DROPPED (BUG-28). Not reproducible
+    //    with the in-memory store (no transaction-conflict semantics) — only against real DynamoDB.
+    public static bool IsRetriableCancellation(TransactionCanceledException ex) =>
+        ex.CancellationReasons.Any(r => r.Code is "ConditionalCheckFailed" or "TransactionConflict");
 
     private List<TransactWriteItem> BuildEventWriteItems(string streamId, long expectedVersion, IReadOnlyList<EventEnvelope> events)
     {
