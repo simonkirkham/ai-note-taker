@@ -155,7 +155,7 @@ So v4 must chase **depth where the source supports it and restraint where it doe
 **Cost:** Harness-only. Either (a) inject note/gold entities into the faithfulness reference and have the quality judge defer to it, or (b) a parallel non-vendor judge on the sparse fixtures. No infra. One confirming re-run of `analysis@v5` on the keep-set.
 
 ### Steps
-1. Extract note + gold-tag entities; pass them to the quality judge as an explicit "these are grounded, do not call them fabrication" allowlist (or post-process the fabrication verdict against it).
+1. Build the grounded-entity allowlist from the fixture's **gold tags** (humanised from kebab-case) — the deterministic, curated set of entities grounded by definition; the user note already appears verbatim in the prompt. Pass them to the quality judge as an explicit "these are grounded, do not call them fabrication" allowlist.
 2. Re-run `analysis@v5` on the keep-set; confirm `14-all-hands-reorg` / `17-budget-review` content scores reflect faithfulness, not entity-flagging.
 3. Record via the `eval-run` skill; update `test-matrix.md`.
 
