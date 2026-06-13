@@ -109,3 +109,26 @@
   outline: 2px solid var(--color-primary);
   outline-offset: 1px;
 }
+
+/* Corner drag-resize handle: revealed on hover / selection like the other controls.
+   Pointer-only affordance (the preset control is the keyboard path), so it is not a
+   focus target and has no focus styling. Sits at the bottom-right corner of the image. */
+.resizeHandle {
+  position: absolute;
+  right: -4px;
+  bottom: -4px;
+  width: 14px;
+  height: 14px;
+  border: 2px solid var(--color-on-overlay);
+  border-radius: 3px;
+  background: var(--color-overlay-scrim);
+  cursor: nwse-resize;
+  opacity: 0;
+  transition: opacity 0.12s ease;
+  touch-action: none;
+}
+
+.wrapper:hover .resizeHandle,
+.wrapper.selected .resizeHandle {
+  opacity: 1;
+}

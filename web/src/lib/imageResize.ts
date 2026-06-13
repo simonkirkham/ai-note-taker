@@ -28,3 +28,16 @@ export function presetWidth(
   if (size === 'Original') return null;
   return clampWidth(PRESET_WIDTHS[size], naturalWidth, contentWidth);
 }
+
+// The clamped width for a live corner drag: the width at drag start plus the
+// horizontal pointer delta, clamped to the same [min, natural, content] bounds as
+// the presets. Aspect ratio is preserved implicitly — only width is set and the
+// <img> keeps its intrinsic ratio (height: auto).
+export function nextWidthFromDrag(
+  startWidth: number,
+  deltaX: number,
+  naturalWidth?: number,
+  contentWidth?: number,
+): number {
+  return clampWidth(startWidth + deltaX, naturalWidth, contentWidth);
+}
