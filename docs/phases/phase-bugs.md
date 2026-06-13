@@ -34,6 +34,7 @@
 | BUG-21 | Note title silently lost on navigate in/out — the title field is never reconciled with the authoritative `detail.title` (initialised once from a prop/card-cache, no draft-pattern sync), so it can show empty; the title input auto-focuses on open and its `onBlur` then persists that empty value (`HandleRename` has no empty-title guard), permanently overwriting the real title. | Done | — |
 | BUG-22 | Multi-tag add drops a pill under RYW-2 async reads — the frontend per-stream consistency-token slot is last-writer-wins; two concurrent same-stream tag POSTs (`note#id@N`, `note#id@N+1`) race it, the older `@N` can win, and the next gated note read releases before the second tag is folded. Resurfaces the long-flaky `TagsJourney` E2E (TI-19) on deploy #546. | Done | TI-19, RYW-2 |
 | BUG-23 | `POST /admin/projections/rebuild` returns an unhandled **500** when a DynamoDB call inside the rebuild times out (`System.TimeoutException "The operation was canceled."`, AWSSDK). The rebuild reads the full event stream; on a transient SDK timeout (or nearing the Lambda/API-GW limit) the whole rebuild aborts mid-flight with a 500 and no retry. Already observable (`ProjectionRebuildFault` metric + Error log) — a reliability gap, not a monitoring one. | Done | TI-16 |
+| BUG-24 | Inline image still 403s on every note open — `tiptap-markdown` parses the stored bare key `![](notes/{id}/{img}.png)` into a transient `<img src>` at load, which the browser fetches **relative to the SPA route** (`/w/{ws}/notes/notes/{id}/{img}.png` → 403) *before* `ImageNodeView`'s placeholder guard exists. [BUG-19]'s fix only suppressed the *rendered* node, not the parse-time fetch. Surfaced by TI-37 (the 403 is now visible in RUM). | Open | BUG-19, TI-37 |
 
 Further bugs will be appended as they are identified.
 
@@ -610,3 +611,29 @@ This is the CLAUDE.md guardrail in action: RYW-2 flipped the whole Note aggregat
 **Reproduce-before-fix:** a `ProjectionRebuildHandler` test where the store throws `TimeoutException` on the first call and succeeds on retry — assert the rebuild completes; and a case where it persistently times out — assert a mapped non-500 response, not an unhandled 500.
 
 **Key files:** `src/Api/CommandHandlers/ProjectionRebuildHandler.cs`, `src/Api/Handlers/AdminHandlers.cs`, `src/Api/LoggingConfig.cs`. Related: [TI-16] (rebuild-robustness), [TI-23] (generalise append-retry).
+
+---
+
+## BUG-24 — Inline image 403s on every note open (parse-time fetch of the bare S3 key)
+
+**Status:** 🔲 Open — found 2026-06-13, immediately after [TI-37] made the 403 visible in RUM.
+
+**Severity:** Low-Medium — cosmetic (the image resolves a beat later via the presigned URL, so the user sees a brief flash, not a broken image), but it fires a failed request on **every** open of any note containing an image, polluting RUM `JsErrorCount` (now that TI-37 records it) and CloudFront 4xx, and wasting a round-trip.
+
+**Symptom:** opening a note with an inline image issues `GET https://note-taker-ai.com/w/{workspace}/notes/notes/{noteId}/{img}.png` → **403** (`X-Cache: Error from cloudfront`, `Content-Type: application/xml`), alongside the successful presigned `…png?X-Amz-…` request. Note the doubled `notes/notes/` — a **relative** URL resolved against the SPA route.
+
+**Root cause:** note content is stored as markdown with stable bare keys (`![](notes/{id}/{img}.png)` — the never-persist-a-presigned-URL invariant, `noteImages.ts`). `NoteEditor` creates the Tiptap editor with `content: value` (the raw markdown) and only *afterwards* resolves keys → presigned URLs in a `useEffect` that dispatches `swapImageSrc`. `tiptap-markdown` parses that markdown by building an HTML string and assigning it to a detached element's `innerHTML`; the browser eagerly fetches the resulting `<img src="notes/…">` (a relative URL → `…/notes/notes/…` → 403) **during parse**, before any ProseMirror node / React `ImageNodeView` exists. [BUG-19]'s placeholder guard (`unresolved = isImageKey(src)`) only governs the *rendered* NodeView, so it never prevented this transient parse-time fetch.
+
+**Why BUG-19 looked fixed:** the visible flash was gone (the rendered node shows a placeholder until resolve), and the 403 was invisible — RUM didn't capture resource-load failures until TI-37. So the request kept firing silently.
+
+**Expected behaviour:** opening a note with an image issues **no** bare-key/relative image request — only the presigned `…?X-Amz-…` GET. The save invariant (content persists bare keys, never a presigned/transient URL) is preserved.
+
+**Fix direction (implementer to choose + prove the cleanest):**
+- **(a) Resolve-before-parse:** resolve keys → presigned URLs *before* the markdown reaches the Tiptap parser (e.g. in `NoteView`, or gate the editor's initial content on resolve), so no bare key is ever parsed. Must still seed the displayed-URL→key map so save round-trips back to keys.
+- **(b) Key-out-of-`src`:** teach `imageWithResize`'s parse to put the bare key in a non-`src` attribute (e.g. `data-key`) with an empty/placeholder `src`, so parse never yields a fetchable src; `ImageNodeView` resolves `data-key`→presigned into `src`; serialize reads `data-key`.
+
+Either way: keep the optimistic/snappy load, keep `srcsToKeys` save invariant, keep the `ImageNodeView` placeholder.
+
+**Reproduce-before-fix:** a test proving the content handed to the Tiptap parser contains no fetchable bare-key `<img src>` (a pure transform/seam is the unit-testable surface — the live NodeView is jsdom-mocked, per the 25-D learning); plus the existing `NoteImageJourney` E2E extended to assert no relative-key image request 403s on open (`page.on('response')`).
+
+**Key files:** `web/src/components/NoteEditor.tsx` (content init + resolve effect), `web/src/components/imageWithResize.ts` (parse/serialize), `web/src/components/ImageNodeView.tsx`, `web/src/lib/noteImages.ts`, `web/src/components/NoteView.tsx` (the `value` source). Related: [BUG-19] (incomplete fix), [BUG-18] (sibling image-save bug), [TI-37] (made this visible).
