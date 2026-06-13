@@ -135,8 +135,8 @@ afterEach(() => {
 
 it('shows a Record button on mount and no Stop button', () => {
   renderControl()
-  expect(screen.getByTestId('transcription-record-button')).toBeInTheDocument()
-  expect(screen.queryByTestId('transcription-stop-button')).toBeNull()
+  expect(screen.getByRole('button', { name: 'Record' })).toBeInTheDocument()
+  expect(screen.queryByRole('button', { name: 'Stop' })).toBeNull()
 })
 
 it('clicking Record fetches credentials and shows recording state', async () => {
@@ -156,12 +156,12 @@ it('clicking Record fetches credentials and shows recording state', async () => 
   )
 
   renderControl()
-  await userEvent.click(screen.getByTestId('transcription-record-button'))
+  await userEvent.click(screen.getByRole('button', { name: 'Record' }))
 
   await waitFor(() => expect(credentialsCalled).toBe(true))
-  await waitFor(() => expect(screen.getByTestId('transcription-stop-button')).toBeInTheDocument())
+  await waitFor(() => expect(screen.getByRole('button', { name: 'Stop' })).toBeInTheDocument())
   expect(screen.getByTestId('transcription-timer')).toBeInTheDocument()
-  expect(screen.queryByTestId('transcription-record-button')).toBeNull()
+  expect(screen.queryByRole('button', { name: 'Record' })).toBeNull()
 })
 
 it('reports live transcript text upward as results arrive', async () => {
@@ -169,8 +169,8 @@ it('reports live transcript text upward as results arrive', async () => {
   const onTranscriptChange = vi.fn()
   renderControl({ onTranscriptChange })
 
-  await userEvent.click(screen.getByTestId('transcription-record-button'))
-  await waitFor(() => expect(screen.getByTestId('transcription-stop-button')).toBeInTheDocument())
+  await userEvent.click(screen.getByRole('button', { name: 'Record' }))
+  await waitFor(() => expect(screen.getByRole('button', { name: 'Stop' })).toBeInTheDocument())
 
   emitTranscriptResult('Hello world')
   await waitFor(() => expect(onTranscriptChange).toHaveBeenCalledWith('Speaker 1: Hello world'))
@@ -179,11 +179,11 @@ it('reports live transcript text upward as results arrive', async () => {
 it('clicking Stop transitions back to idle (Record visible again)', async () => {
   stubBrowserApis()
   renderControl()
-  await userEvent.click(screen.getByTestId('transcription-record-button'))
-  await waitFor(() => expect(screen.getByTestId('transcription-stop-button')).toBeInTheDocument())
+  await userEvent.click(screen.getByRole('button', { name: 'Record' }))
+  await waitFor(() => expect(screen.getByRole('button', { name: 'Stop' })).toBeInTheDocument())
 
-  await userEvent.click(screen.getByTestId('transcription-stop-button'))
-  await waitFor(() => expect(screen.getByTestId('transcription-record-button')).toBeInTheDocument())
+  await userEvent.click(screen.getByRole('button', { name: 'Stop' }))
+  await waitFor(() => expect(screen.getByRole('button', { name: 'Record' })).toBeInTheDocument())
   expect(screen.queryByTestId('transcription-timer')).toBeNull()
 })
 
@@ -194,10 +194,10 @@ it('shows error state when credentials fetch fails', async () => {
   )
 
   renderControl()
-  await userEvent.click(screen.getByTestId('transcription-record-button'))
+  await userEvent.click(screen.getByRole('button', { name: 'Record' }))
 
-  await waitFor(() => expect(screen.getByTestId('transcription-error')).toBeInTheDocument())
-  expect(screen.getByTestId('transcription-reset-button')).toBeInTheDocument()
+  await waitFor(() => expect(screen.getByRole('alert')).toBeInTheDocument())
+  expect(screen.getByRole('button', { name: 'Reset' })).toBeInTheDocument()
 })
 
 it('clicking Stop calls completeTranscription with transcript text', async () => {
@@ -211,11 +211,11 @@ it('clicking Stop calls completeTranscription with transcript text', async () =>
   )
 
   renderControl()
-  await userEvent.click(screen.getByTestId('transcription-record-button'))
-  await waitFor(() => expect(screen.getByTestId('transcription-stop-button')).toBeInTheDocument())
+  await userEvent.click(screen.getByRole('button', { name: 'Record' }))
+  await waitFor(() => expect(screen.getByRole('button', { name: 'Stop' })).toBeInTheDocument())
 
   emitTranscriptResult('Test transcript')
-  await userEvent.click(screen.getByTestId('transcription-stop-button'))
+  await userEvent.click(screen.getByRole('button', { name: 'Stop' }))
 
   await waitFor(() => expect(completionBody).toMatchObject({ transcriptText: 'Speaker 1: Test transcript' }))
 })
@@ -231,11 +231,11 @@ it('persists the in-progress transcript when unmounted mid-recording (navigating
   )
 
   const view = renderControl()
-  await userEvent.click(screen.getByTestId('transcription-record-button'))
-  await waitFor(() => expect(screen.getByTestId('transcription-stop-button')).toBeInTheDocument())
+  await userEvent.click(screen.getByRole('button', { name: 'Record' }))
+  await waitFor(() => expect(screen.getByRole('button', { name: 'Stop' })).toBeInTheDocument())
 
   emitTranscriptResult('Half a meeting')
-  await waitFor(() => expect(screen.getByTestId('transcription-stop-button')).toBeInTheDocument())
+  await waitFor(() => expect(screen.getByRole('button', { name: 'Stop' })).toBeInTheDocument())
 
   // Unmount while still recording — equivalent to pressing back mid-call.
   view.unmount()
@@ -267,8 +267,8 @@ it('autosaves the transcript to the draft on the periodic checkpoint while still
 
   const onTranscriptChange = vi.fn()
   renderControl({ onTranscriptChange })
-  await userEvent.click(screen.getByTestId('transcription-record-button'))
-  await waitFor(() => expect(screen.getByTestId('transcription-stop-button')).toBeInTheDocument())
+  await userEvent.click(screen.getByRole('button', { name: 'Record' }))
+  await waitFor(() => expect(screen.getByRole('button', { name: 'Stop' })).toBeInTheDocument())
   await waitFor(() => expect(checkpointCb).not.toBeNull())
 
   emitTranscriptResult('Captured so far')
@@ -280,7 +280,7 @@ it('autosaves the transcript to the draft on the periodic checkpoint while still
   // It PUTs the draft (no event); the committing POST must NOT fire mid-recording.
   await waitFor(() => expect(draftBody).toMatchObject({ transcriptText: 'Speaker 1: Captured so far' }))
   expect(committed).toBe(false)
-  expect(screen.getByTestId('transcription-stop-button')).toBeInTheDocument()
+  expect(screen.getByRole('button', { name: 'Stop' })).toBeInTheDocument()
   intervalSpy.mockRestore()
 })
 
@@ -304,7 +304,7 @@ it('checkpoint does not re-PUT the draft when the transcript has not changed', a
 
   const onTranscriptChange = vi.fn()
   renderControl({ onTranscriptChange })
-  await userEvent.click(screen.getByTestId('transcription-record-button'))
+  await userEvent.click(screen.getByRole('button', { name: 'Record' }))
   await waitFor(() => expect(checkpointCb).not.toBeNull())
 
   emitTranscriptResult('Same text')
@@ -325,11 +325,11 @@ it('registers a beforeunload warning while recording and removes it after stop',
   const removeSpy = vi.spyOn(window, 'removeEventListener')
 
   renderControl()
-  await userEvent.click(screen.getByTestId('transcription-record-button'))
-  await waitFor(() => expect(screen.getByTestId('transcription-stop-button')).toBeInTheDocument())
+  await userEvent.click(screen.getByRole('button', { name: 'Record' }))
+  await waitFor(() => expect(screen.getByRole('button', { name: 'Stop' })).toBeInTheDocument())
   expect(addSpy).toHaveBeenCalledWith('beforeunload', expect.any(Function))
 
-  await userEvent.click(screen.getByTestId('transcription-stop-button'))
+  await userEvent.click(screen.getByRole('button', { name: 'Stop' }))
   await waitFor(() =>
     expect(removeSpy).toHaveBeenCalledWith('beforeunload', expect.any(Function)),
   )
@@ -348,11 +348,11 @@ it('does not double-persist when Stop is pressed then the control unmounts', asy
   )
 
   const view = renderControl()
-  await userEvent.click(screen.getByTestId('transcription-record-button'))
-  await waitFor(() => expect(screen.getByTestId('transcription-stop-button')).toBeInTheDocument())
+  await userEvent.click(screen.getByRole('button', { name: 'Record' }))
+  await waitFor(() => expect(screen.getByRole('button', { name: 'Stop' })).toBeInTheDocument())
 
   emitTranscriptResult('Whole meeting')
-  await userEvent.click(screen.getByTestId('transcription-stop-button'))
+  await userEvent.click(screen.getByRole('button', { name: 'Stop' }))
   await waitFor(() => expect(completionCalls).toBe(1))
 
   view.unmount()
@@ -363,8 +363,8 @@ it('does not double-persist when Stop is pressed then the control unmounts', asy
 
 it('shows the Analyse note button enabled when the note has content and is idle', () => {
   renderControl({ noteHasContent: true })
-  expect(screen.getByTestId('transcription-analyse-button')).toHaveTextContent('Analyse note')
-  expect(screen.getByTestId('transcription-analyse-button')).toBeEnabled()
+  expect(screen.getByRole('button', { name: 'Analyse note' })).toHaveTextContent('Analyse note')
+  expect(screen.getByRole('button', { name: 'Analyse note' })).toBeEnabled()
 })
 
 it('does not render an Update note content toggle', () => {
@@ -380,7 +380,7 @@ it('does not render an Export control', () => {
 
 it('shows the Analyse note button disabled when there is nothing to analyse', () => {
   renderControl()
-  const btn = screen.getByTestId('transcription-analyse-button')
+  const btn = screen.getByRole('button', { name: 'Analyse note' })
   expect(btn).toBeInTheDocument()
   expect(btn).toBeDisabled()
   expect(btn).toHaveAttribute('title')
@@ -397,7 +397,7 @@ it('clicking Analyse note POSTs to /analyse and triggers a refresh', async () =>
   const onAnalysisComplete = vi.fn()
   renderControl({ noteHasContent: true, onAnalysisComplete })
 
-  await userEvent.click(screen.getByTestId('transcription-analyse-button'))
+  await userEvent.click(screen.getByRole('button', { name: 'Analyse note' }))
 
   await waitFor(() => expect(analyseCalled).toBe(true))
   await waitFor(() => expect(onAnalysisComplete).toHaveBeenCalled())
@@ -407,10 +407,10 @@ it('captures system audio via getDisplayMedia when the call-audio toggle is on',
   const { getDisplayMedia, mockAudioContext } = stubBrowserApis()
 
   renderControl()
-  expect(screen.getByTestId('transcription-call-audio-toggle')).toBeChecked()
-  await userEvent.click(screen.getByTestId('transcription-record-button'))
+  expect(screen.getByRole('checkbox', { name: /record screen-share audio/i })).toBeChecked()
+  await userEvent.click(screen.getByRole('button', { name: 'Record' }))
 
-  await waitFor(() => expect(screen.getByTestId('transcription-stop-button')).toBeInTheDocument())
+  await waitFor(() => expect(screen.getByRole('button', { name: 'Stop' })).toBeInTheDocument())
   expect(getDisplayMedia).toHaveBeenCalledWith({ audio: true, video: true })
   await waitFor(() => expect(mockAudioContext.createMediaStreamSource).toHaveBeenCalledTimes(2))
   expect(mockAudioContext.createGain).toHaveBeenCalled()
@@ -429,10 +429,10 @@ it('does not call getDisplayMedia when the call-audio toggle is off', async () =
   const { getDisplayMedia, mockAudioContext } = stubBrowserApis()
 
   renderControl()
-  await userEvent.click(screen.getByTestId('transcription-call-audio-toggle'))
-  await userEvent.click(screen.getByTestId('transcription-record-button'))
+  await userEvent.click(screen.getByRole('checkbox', { name: /record screen-share audio/i }))
+  await userEvent.click(screen.getByRole('button', { name: 'Record' }))
 
-  await waitFor(() => expect(screen.getByTestId('transcription-stop-button')).toBeInTheDocument())
+  await waitFor(() => expect(screen.getByRole('button', { name: 'Stop' })).toBeInTheDocument())
   expect(getDisplayMedia).not.toHaveBeenCalled()
   expect(mockAudioContext.createMediaStreamSource).toHaveBeenCalledTimes(1)
 })
@@ -451,16 +451,16 @@ it('auto-analyses on stop when the switch is on (default)', async () => {
   )
 
   renderControl()
-  expect(screen.getByTestId('transcription-auto-analyse-toggle')).toBeChecked()
+  expect(screen.getByRole('checkbox', { name: /auto-analyse/i })).toBeChecked()
 
-  await userEvent.click(screen.getByTestId('transcription-record-button'))
-  await waitFor(() => expect(screen.getByTestId('transcription-stop-button')).toBeInTheDocument())
+  await userEvent.click(screen.getByRole('button', { name: 'Record' }))
+  await waitFor(() => expect(screen.getByRole('button', { name: 'Stop' })).toBeInTheDocument())
   emitTranscriptResult('Meeting transcript')
-  await userEvent.click(screen.getByTestId('transcription-stop-button'))
+  await userEvent.click(screen.getByRole('button', { name: 'Stop' }))
 
   await waitFor(() => expect(analyseCalled).toBe(true))
-  await waitFor(() => expect(screen.getByTestId('transcription-analyse-button')).toHaveTextContent('Analysing…'))
-  expect(screen.getByTestId('transcription-analyse-button')).toBeDisabled()
+  await waitFor(() => expect(screen.getByRole('button', { name: 'Analysing…' })).toHaveTextContent('Analysing…'))
+  expect(screen.getByRole('button', { name: 'Analysing…' })).toBeDisabled()
 
   resolveAnalyse()
 })
@@ -481,17 +481,17 @@ it('does not auto-analyse on stop when the switch is off', async () => {
   )
 
   renderControl()
-  await userEvent.click(screen.getByTestId('transcription-auto-analyse-toggle'))
-  expect(screen.getByTestId('transcription-auto-analyse-toggle')).not.toBeChecked()
+  await userEvent.click(screen.getByRole('checkbox', { name: /auto-analyse/i }))
+  expect(screen.getByRole('checkbox', { name: /auto-analyse/i })).not.toBeChecked()
 
-  await userEvent.click(screen.getByTestId('transcription-record-button'))
-  await waitFor(() => expect(screen.getByTestId('transcription-stop-button')).toBeInTheDocument())
+  await userEvent.click(screen.getByRole('button', { name: 'Record' }))
+  await waitFor(() => expect(screen.getByRole('button', { name: 'Stop' })).toBeInTheDocument())
   emitTranscriptResult('Meeting transcript')
-  await userEvent.click(screen.getByTestId('transcription-stop-button'))
+  await userEvent.click(screen.getByRole('button', { name: 'Stop' }))
 
   await waitFor(() => expect(completionCalled).toBe(true))
   expect(analyseCalled).toBe(false)
-  expect(screen.getByTestId('transcription-analyse-button')).toBeInTheDocument()
+  expect(screen.getByRole('button', { name: 'Analyse note' })).toBeInTheDocument()
 })
 
 it('does not auto-analyse on stop when the recording produced no transcript', async () => {
@@ -505,22 +505,22 @@ it('does not auto-analyse on stop when the recording produced no transcript', as
   )
 
   renderControl()
-  await userEvent.click(screen.getByTestId('transcription-record-button'))
-  await waitFor(() => expect(screen.getByTestId('transcription-stop-button')).toBeInTheDocument())
-  await userEvent.click(screen.getByTestId('transcription-stop-button'))
+  await userEvent.click(screen.getByRole('button', { name: 'Record' }))
+  await waitFor(() => expect(screen.getByRole('button', { name: 'Stop' })).toBeInTheDocument())
+  await userEvent.click(screen.getByRole('button', { name: 'Stop' }))
 
-  await waitFor(() => expect(screen.getByTestId('transcription-record-button')).toBeInTheDocument())
+  await waitFor(() => expect(screen.getByRole('button', { name: 'Record' })).toBeInTheDocument())
   expect(analyseCalled).toBe(false)
 })
 
 it('auto-analyse switch defaults back to ON on a fresh mount', async () => {
   const first = renderControl()
-  await userEvent.click(screen.getByTestId('transcription-auto-analyse-toggle'))
-  expect(screen.getByTestId('transcription-auto-analyse-toggle')).not.toBeChecked()
+  await userEvent.click(screen.getByRole('checkbox', { name: /auto-analyse/i }))
+  expect(screen.getByRole('checkbox', { name: /auto-analyse/i })).not.toBeChecked()
   first.unmount()
 
   renderControl()
-  expect(screen.getByTestId('transcription-auto-analyse-toggle')).toBeChecked()
+  expect(screen.getByRole('checkbox', { name: /auto-analyse/i })).toBeChecked()
 })
 
 // ── 18-C: continue a transcript (record again & append) ───────────
@@ -528,21 +528,21 @@ it('auto-analyse switch defaults back to ON on a fresh mount', async () => {
 it('Record on a note with no transcript starts immediately (no prompt)', async () => {
   stubBrowserApis()
   renderControl()
-  await userEvent.click(screen.getByTestId('transcription-record-button'))
-  await waitFor(() => expect(screen.getByTestId('transcription-stop-button')).toBeInTheDocument())
-  expect(screen.queryByTestId('transcription-continue-button')).toBeNull()
-  expect(screen.queryByTestId('transcription-rerecord-button')).toBeNull()
+  await userEvent.click(screen.getByRole('button', { name: 'Record' }))
+  await waitFor(() => expect(screen.getByRole('button', { name: 'Stop' })).toBeInTheDocument())
+  expect(screen.queryByRole('button', { name: 'Continue' })).toBeNull()
+  expect(screen.queryByRole('button', { name: 'Re-record' })).toBeNull()
 })
 
 it('Record on a note with an existing transcript shows a Continue / Re-record prompt and does not start', async () => {
   stubBrowserApis()
   renderControl({ hasInitialTranscript: true, initialTranscript: 'Speaker 1: prior' })
-  await userEvent.click(screen.getByTestId('transcription-record-button'))
-  expect(screen.getByTestId('transcription-continue-button')).toBeInTheDocument()
-  expect(screen.getByTestId('transcription-rerecord-button')).toBeInTheDocument()
+  await userEvent.click(screen.getByRole('button', { name: 'Record' }))
+  expect(screen.getByRole('button', { name: 'Continue' })).toBeInTheDocument()
+  expect(screen.getByRole('button', { name: 'Re-record' })).toBeInTheDocument()
   // Recording has NOT started — no stop button, and the Record button is hidden.
-  expect(screen.queryByTestId('transcription-stop-button')).toBeNull()
-  expect(screen.queryByTestId('transcription-record-button')).toBeNull()
+  expect(screen.queryByRole('button', { name: 'Stop' })).toBeNull()
+  expect(screen.queryByRole('button', { name: 'Record' })).toBeNull()
 })
 
 it('Continue resumes seeded from the prior transcript (appends after the separator)', async () => {
@@ -554,9 +554,9 @@ it('Continue resumes seeded from the prior transcript (appends after the separat
   )
   renderControl({ hasInitialTranscript: true, initialTranscript: 'Speaker 1: prior', onTranscriptChange })
 
-  await userEvent.click(screen.getByTestId('transcription-record-button'))
-  await userEvent.click(screen.getByTestId('transcription-continue-button'))
-  await waitFor(() => expect(screen.getByTestId('transcription-stop-button')).toBeInTheDocument())
+  await userEvent.click(screen.getByRole('button', { name: 'Record' }))
+  await userEvent.click(screen.getByRole('button', { name: 'Continue' }))
+  await waitFor(() => expect(screen.getByRole('button', { name: 'Stop' })).toBeInTheDocument())
 
   emitTranscriptResult('new words')
   await waitFor(() =>
@@ -572,9 +572,9 @@ it('Re-record starts fresh and replaces (no prior text)', async () => {
   )
   renderControl({ hasInitialTranscript: true, initialTranscript: 'Speaker 1: prior', onTranscriptChange })
 
-  await userEvent.click(screen.getByTestId('transcription-record-button'))
-  await userEvent.click(screen.getByTestId('transcription-rerecord-button'))
-  await waitFor(() => expect(screen.getByTestId('transcription-stop-button')).toBeInTheDocument())
+  await userEvent.click(screen.getByRole('button', { name: 'Record' }))
+  await userEvent.click(screen.getByRole('button', { name: 'Re-record' }))
+  await waitFor(() => expect(screen.getByRole('button', { name: 'Stop' })).toBeInTheDocument())
 
   emitTranscriptResult('new words')
   await waitFor(() => expect(onTranscriptChange).toHaveBeenCalledWith('Speaker 1: new words'))

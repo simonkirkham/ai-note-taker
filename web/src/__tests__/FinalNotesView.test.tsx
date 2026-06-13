@@ -36,7 +36,7 @@ describe('FinalNotesView', () => {
     expect(screen.getByTestId('final-notes-attribution')).toHaveTextContent('Written by amazon.nova-lite-v1')
 
     expect(screen.queryByTestId('final-notes-empty')).toBeNull()
-    expect(screen.queryByTestId('generate-final-notes-button')).toBeNull()
+    expect(screen.queryByRole('button', { name: /generate final notes/i })).toBeNull()
   })
 
   it('omits the attribution line when no model id is given', () => {
@@ -80,10 +80,10 @@ describe('FinalNotesView', () => {
     )
     expect(screen.getByTestId('final-notes-empty')).toBeInTheDocument()
     expect(screen.getByText(/no final notes yet/i)).toHaveAttribute('role', 'status') // 19-F1
-    const cta = screen.getByTestId('generate-final-notes-button')
+    const cta = screen.getByRole('button', { name: /generate final notes/i })
     expect(cta.tagName).toBe('BUTTON')
     expect(screen.queryByTestId('final-notes-summary')).toBeNull()
-    expect(screen.queryByTestId('reprocess-final-notes-button')).toBeNull()
+    expect(screen.queryByRole('button', { name: /re-process final notes/i })).toBeNull()
   })
 
   it('treats an empty-string summary as the empty state', () => {
@@ -110,7 +110,7 @@ describe('FinalNotesView', () => {
         onGenerate={onGenerate}
       />,
     )
-    await userEvent.click(screen.getByTestId('generate-final-notes-button'))
+    await userEvent.click(screen.getByRole('button', { name: /generate final notes/i }))
     expect(onGenerate).toHaveBeenCalledOnce()
   })
 
@@ -126,13 +126,13 @@ describe('FinalNotesView', () => {
       />,
     )
 
-    await userEvent.click(screen.getByTestId('generate-final-notes-button'))
+    await userEvent.click(screen.getByRole('button', { name: /generate final notes/i }))
 
-    const error = await screen.findByTestId('final-notes-generate-error')
+    const error = await screen.findByRole('alert')
     expect(error).toHaveTextContent(/couldn't generate/i)
     expect(error).toHaveAttribute('role', 'alert')
     expect(screen.getByTestId('final-notes-empty')).toBeInTheDocument()
-    expect(screen.getByTestId('generate-final-notes-button')).toBeEnabled()
+    expect(screen.getByRole('button', { name: /generate final notes/i })).toBeEnabled()
   })
 
   it('clears a prior error on a subsequent successful generate', async () => {
@@ -150,12 +150,12 @@ describe('FinalNotesView', () => {
       />,
     )
 
-    await userEvent.click(screen.getByTestId('generate-final-notes-button'))
-    expect(await screen.findByTestId('final-notes-generate-error')).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: /generate final notes/i }))
+    expect(await screen.findByRole('alert')).toBeInTheDocument()
 
-    await userEvent.click(screen.getByTestId('generate-final-notes-button'))
+    await userEvent.click(screen.getByRole('button', { name: /generate final notes/i }))
     await waitFor(() =>
-      expect(screen.queryByTestId('final-notes-generate-error')).toBeNull(),
+      expect(screen.queryByRole('alert')).toBeNull(),
     )
   })
 
@@ -172,7 +172,7 @@ describe('FinalNotesView', () => {
         />,
       )
 
-      const button = screen.getByTestId('reprocess-final-notes-button')
+      const button = screen.getByRole('button', { name: /re-process final notes/i })
       expect(button.tagName).toBe('BUTTON')
       await userEvent.click(button)
       expect(onGenerate).toHaveBeenCalledOnce()
@@ -196,16 +196,16 @@ describe('FinalNotesView', () => {
         />,
       )
 
-      await userEvent.click(screen.getByTestId('reprocess-final-notes-button'))
+      await userEvent.click(screen.getByRole('button', { name: /re-process final notes/i }))
 
-      const button = screen.getByTestId('reprocess-final-notes-button')
+      const button = screen.getByRole('button', { name: /re-process final notes/i })
       expect(button).toBeDisabled()
       expect(button).toHaveTextContent(/re-processing/i)
       expect(screen.getByTestId('final-notes-summary')).toHaveTextContent('We agreed to ship Friday.')
       expect(screen.getByTestId('final-notes-discussion')).toHaveTextContent('Scope risk')
 
       resolve()
-      await waitFor(() => expect(screen.getByTestId('reprocess-final-notes-button')).toBeEnabled())
+      await waitFor(() => expect(screen.getByRole('button', { name: /re-process final notes/i })).toBeEnabled())
     })
 
     it('surfaces an error toast and keeps the prior summary when re-processing fails', async () => {
@@ -220,12 +220,12 @@ describe('FinalNotesView', () => {
         />,
       )
 
-      await userEvent.click(screen.getByTestId('reprocess-final-notes-button'))
+      await userEvent.click(screen.getByRole('button', { name: /re-process final notes/i }))
 
       const alert = await screen.findByRole('alert')
       expect(alert).toHaveTextContent(/couldn't re-process final notes/i)
       expect(screen.getByTestId('final-notes-summary')).toHaveTextContent('We agreed to ship Friday.')
-      expect(screen.getByTestId('reprocess-final-notes-button')).toBeEnabled()
+      expect(screen.getByRole('button', { name: /re-process final notes/i })).toBeEnabled()
     })
   })
 })

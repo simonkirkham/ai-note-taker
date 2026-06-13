@@ -5,32 +5,32 @@ import ShortcutsPanel from '../components/ShortcutsPanel'
 describe('ShortcutsPanel', () => {
   it('renders the toggle button', () => {
     render(<ShortcutsPanel />)
-    expect(screen.getByTestId('shortcuts-toggle')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /toggle keyboard shortcuts/i })).toBeInTheDocument()
   })
 
   it('shortcuts table is hidden by default', () => {
     render(<ShortcutsPanel />)
-    expect(screen.queryByTestId('shortcuts-table')).toBeNull()
+    expect(screen.queryByRole('table')).toBeNull()
   })
 
   it('clicking the toggle shows the shortcuts table', async () => {
     render(<ShortcutsPanel />)
-    await userEvent.click(screen.getByTestId('shortcuts-toggle'))
-    expect(screen.getByTestId('shortcuts-table')).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: /toggle keyboard shortcuts/i }))
+    expect(screen.getByRole('table')).toBeInTheDocument()
   })
 
   it('clicking the toggle again hides the table', async () => {
     render(<ShortcutsPanel />)
-    const toggle = screen.getByTestId('shortcuts-toggle')
+    const toggle = screen.getByRole('button', { name: /toggle keyboard shortcuts/i })
     await userEvent.click(toggle)
     await userEvent.click(toggle)
-    expect(screen.queryByTestId('shortcuts-table')).toBeNull()
+    expect(screen.queryByRole('table')).toBeNull()
   })
 
   it('shortcuts table lists expected shortcuts', async () => {
     render(<ShortcutsPanel />)
-    await userEvent.click(screen.getByTestId('shortcuts-toggle'))
-    const table = screen.getByTestId('shortcuts-table')
+    await userEvent.click(screen.getByRole('button', { name: /toggle keyboard shortcuts/i }))
+    const table = screen.getByRole('table')
     expect(table).toHaveTextContent('## + Space')
     expect(table).toHaveTextContent('Ctrl+B')
     expect(table).toHaveTextContent('✓ button')
@@ -38,10 +38,10 @@ describe('ShortcutsPanel', () => {
 
   it('pressing Escape hides the table', async () => {
     render(<ShortcutsPanel />)
-    await userEvent.click(screen.getByTestId('shortcuts-toggle'))
-    expect(screen.getByTestId('shortcuts-table')).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: /toggle keyboard shortcuts/i }))
+    expect(screen.getByRole('table')).toBeInTheDocument()
     fireEvent.keyDown(document, { key: 'Escape' })
-    expect(screen.queryByTestId('shortcuts-table')).toBeNull()
+    expect(screen.queryByRole('table')).toBeNull()
   })
 
   it('clicking outside the panel hides the table', async () => {
@@ -51,9 +51,9 @@ describe('ShortcutsPanel', () => {
         <button data-testid="outside">outside</button>
       </div>,
     )
-    await userEvent.click(screen.getByTestId('shortcuts-toggle'))
-    expect(screen.getByTestId('shortcuts-table')).toBeInTheDocument()
-    fireEvent.mouseDown(screen.getByTestId('outside'))
-    expect(screen.queryByTestId('shortcuts-table')).toBeNull()
+    await userEvent.click(screen.getByRole('button', { name: /toggle keyboard shortcuts/i }))
+    expect(screen.getByRole('table')).toBeInTheDocument()
+    fireEvent.mouseDown(screen.getByRole('button', { name: /outside/i }))
+    expect(screen.queryByRole('table')).toBeNull()
   })
 })
