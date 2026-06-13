@@ -52,7 +52,7 @@ public sealed class TagsJourney(BrowserFixture browser) : IAsyncLifetime
 
         await _app.SaveAndReturnAsync();
 
-        await _app.AssertCardTagVisibleAsync(title, "1:1s");
+        await _app.AssertCardTagVisibleAfterReloadAsync(title, "1:1s");
     }
 
     [Fact]
