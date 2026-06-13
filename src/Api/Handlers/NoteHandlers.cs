@@ -53,7 +53,7 @@ public static class NoteHandlers
     public static async Task<IResult> RenameNote(Guid noteId, RenameNoteRequest req, HttpResponse response, INoteCommandHandler handler, INoteDetailStore noteDetailStore, ICurrentUser currentUser)
     {
         var detail = await noteDetailStore.GetAsync(new NoteId(noteId));
-        if (detail is null || detail.UserId != currentUser.UserId) return Results.NotFound();
+        if (detail is not null && detail.UserId != currentUser.UserId) return Results.NotFound();
         long version;
         try { version = await handler.HandleAsync(new RenameNote(new NoteId(noteId), req.Title)); }
         catch (NoteNotFoundException) { return Results.NotFound(); }
@@ -74,7 +74,7 @@ public static class NoteHandlers
     public static async Task<IResult> EditContent(Guid noteId, EditContentRequest req, HttpResponse response, INoteCommandHandler handler, INoteDetailStore noteDetailStore, ICurrentUser currentUser)
     {
         var detail = await noteDetailStore.GetAsync(new NoteId(noteId));
-        if (detail is null || detail.UserId != currentUser.UserId) return Results.NotFound();
+        if (detail is not null && detail.UserId != currentUser.UserId) return Results.NotFound();
         long version;
         try { version = await handler.HandleAsync(new EditContentCmd(new NoteId(noteId), req.Content)); }
         catch (NoteNotFoundException) { return Results.NotFound(); }
@@ -141,7 +141,7 @@ public static class NoteHandlers
     public static async Task<IResult> SetNoteDate(Guid noteId, SetNoteDateRequest req, HttpResponse response, INoteCommandHandler handler, INoteDetailStore noteDetailStore, ICurrentUser currentUser)
     {
         var detail = await noteDetailStore.GetAsync(new NoteId(noteId));
-        if (detail is null || detail.UserId != currentUser.UserId) return Results.NotFound();
+        if (detail is not null && detail.UserId != currentUser.UserId) return Results.NotFound();
         long version;
         try { version = await handler.HandleAsync(new SetNoteDate(new NoteId(noteId), req.Date)); }
         catch (NoteNotFoundException) { return Results.NotFound(); }
@@ -152,7 +152,7 @@ public static class NoteHandlers
     public static async Task<IResult> DeleteNote(Guid noteId, INoteCommandHandler handler, INoteDetailStore noteDetailStore, ICurrentUser currentUser)
     {
         var detail = await noteDetailStore.GetAsync(new NoteId(noteId));
-        if (detail is null || detail.UserId != currentUser.UserId) return Results.NotFound();
+        if (detail is not null && detail.UserId != currentUser.UserId) return Results.NotFound();
         try { await handler.HandleAsync(new Domain.Notes.DeleteNote(new NoteId(noteId))); }
         catch (NoteNotFoundException) { return Results.NotFound(); }
         catch (InvalidOperationException) { return Results.NotFound(); }
@@ -162,7 +162,7 @@ public static class NoteHandlers
     public static async Task<IResult> PostTag(Guid noteId, TagNoteRequest req, HttpResponse response, INoteCommandHandler handler, INoteDetailStore noteDetailStore, ICurrentUser currentUser)
     {
         var detail = await noteDetailStore.GetAsync(new NoteId(noteId));
-        if (detail is null || detail.UserId != currentUser.UserId) return Results.NotFound();
+        if (detail is not null && detail.UserId != currentUser.UserId) return Results.NotFound();
         long version;
         try { version = await handler.HandleAsync(new TagNote(new NoteId(noteId), req.Tag)); }
         catch (NoteNotFoundException) { return Results.NotFound(); }
@@ -174,7 +174,7 @@ public static class NoteHandlers
     public static async Task<IResult> DeleteTag(Guid noteId, string tag, HttpResponse response, INoteCommandHandler handler, INoteDetailStore noteDetailStore, ICurrentUser currentUser)
     {
         var detail = await noteDetailStore.GetAsync(new NoteId(noteId));
-        if (detail is null || detail.UserId != currentUser.UserId) return Results.NotFound();
+        if (detail is not null && detail.UserId != currentUser.UserId) return Results.NotFound();
         long version;
         try { version = await handler.HandleAsync(new UntagNote(new NoteId(noteId), tag)); }
         catch (NoteNotFoundException) { return Results.NotFound(); }
@@ -186,7 +186,7 @@ public static class NoteHandlers
     public static async Task<IResult> MoveNoteToFolder(Guid noteId, MoveNoteToFolderRequest req, INoteCommandHandler handler, INoteDetailStore noteDetailStore, IFolderTreeStore folderTreeStore, ICurrentUser currentUser, CancellationToken ct)
     {
         var detail = await noteDetailStore.GetAsync(new NoteId(noteId));
-        if (detail is null || detail.UserId != currentUser.UserId) return Results.NotFound();
+        if (detail is not null && detail.UserId != currentUser.UserId) return Results.NotFound();
         var targetId = new FolderId(req.FolderId);
         var allFolders = await folderTreeStore.GetAllAsync(ct).ConfigureAwait(false);
         if (!allFolders.Any(f => f.FolderId == targetId && f.UserId == currentUser.UserId))
@@ -199,7 +199,7 @@ public static class NoteHandlers
     public static async Task<IResult> MoveNoteToWorkspace(Guid noteId, MoveNoteToWorkspaceRequest req, INoteCommandHandler handler, INoteDetailStore noteDetailStore, IWorkspaceListStore workspaceListStore, ICurrentUser currentUser, CancellationToken ct)
     {
         var detail = await noteDetailStore.GetAsync(new NoteId(noteId));
-        if (detail is null || detail.UserId != currentUser.UserId) return Results.NotFound();
+        if (detail is not null && detail.UserId != currentUser.UserId) return Results.NotFound();
         if (string.IsNullOrEmpty(req.WorkspaceId)) return Results.NotFound();
         // The default workspace is synthesised per user (never stored), so it skips the
         // ownership lookup — same rule as WorkspaceValidationFilter for the route param.
@@ -217,7 +217,7 @@ public static class NoteHandlers
     public static async Task<IResult> UnfileNote(Guid noteId, INoteCommandHandler handler, INoteDetailStore noteDetailStore, ICurrentUser currentUser, CancellationToken ct)
     {
         var detail = await noteDetailStore.GetAsync(new NoteId(noteId));
-        if (detail is null || detail.UserId != currentUser.UserId) return Results.NotFound();
+        if (detail is not null && detail.UserId != currentUser.UserId) return Results.NotFound();
         try { await handler.HandleAsync(new Domain.Notes.UnfileNote(new NoteId(noteId)), ct); }
         catch (NoteNotFoundException) { return Results.NotFound(); }
         return Results.NoContent();

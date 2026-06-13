@@ -57,6 +57,14 @@ public sealed class NoteCommandHandler(
             // stream still exists: either way the aggregate is gone, so the write is a
             // 404 rather than a domain InvalidOperationException that escapes as a 500.
             if (mustExist && !note.Exists) throw new NoteNotFoundException(noteId);
+            // Authorize from the strongly-consistent event stream, NOT the async NoteDetail projection
+            // — whose post-create lag (projector hasn't folded NoteCreated yet) made every note write
+            // 404 right after create under load (the residual E2E flake). The owner is the UserId
+            // stamped on the note's events; a non-null owner that isn't the caller is a 404 (don't leak
+            // existence). A null owner is a legacy pre-Phase-8 single-user note → not enforced.
+            if (mustExist && history.Count > 0 && history[0].Metadata.UserId is { } ownerId
+                && ownerId != currentUser.UserId)
+                throw new NoteNotFoundException(noteId);
             var newEvents = handle(note);
             // No-op command (e.g. a re-tag the aggregate ignored): nothing appended, so the write
             // token is the current version — a read carrying it waits on an already-applied mark.
