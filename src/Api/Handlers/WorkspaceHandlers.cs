@@ -1,4 +1,5 @@
 using Api.Auth;
+using Api.Consistency;
 using Api.Contracts;
 using Api.CommandHandlers;
 using Api.Exceptions;
@@ -13,8 +14,18 @@ public static class WorkspaceHandlers
     // persisted — it is materialised at read time for every user (decision #4).
     private const string DefaultWorkspaceName = "Personal";
 
-    public static async Task<IResult> GetWorkspaces(IWorkspaceListStore store, ICurrentUser currentUser, CancellationToken ct)
+    // Read-your-writes (RYW-3b): surface the workspace stream's new version as the write token so
+    // the client can echo it into If-Consistent-With on its next workspace read.
+    private static void SetConsistencyToken(HttpResponse response, WorkspaceId workspaceId, long version) =>
+        response.Headers["X-Consistency-Token"] = $"{workspaceId.ToStreamId()}@{version}";
+
+    public static async Task<IResult> GetWorkspaces(IWorkspaceListStore store, ICurrentUser currentUser, IConsistencyGate gate, HttpContext http, CancellationToken ct)
     {
+        // Read-your-writes: if the client presents the write token from its last workspace write,
+        // wait (bounded) until the async projector has applied it. On timeout, flagged stale.
+        var consistency = await gate.WaitAsync(http.Request.Headers["If-Consistent-With"], ct).ConfigureAwait(false);
+        if (consistency.IsStale) http.Response.Headers["X-Consistency"] = "stale";
+
         var all = await store.GetAllAsync(ct).ConfigureAwait(false);
         var mine = all.Where(w => w.UserId == currentUser.UserId)
             .OrderBy(w => w.CreatedAt)
@@ -32,29 +43,32 @@ public static class WorkspaceHandlers
         return Results.Ok(new { workspaces });
     }
 
-    public static async Task<IResult> CreateWorkspace(CreateWorkspaceRequest req, IWorkspaceCommandHandler handler, CancellationToken ct)
+    public static async Task<IResult> CreateWorkspace(CreateWorkspaceRequest req, HttpResponse response, IWorkspaceCommandHandler handler, CancellationToken ct)
     {
         var workspaceId = new WorkspaceId(Guid.NewGuid().ToString("N"));
+        long version;
         try
         {
-            await handler.HandleAsync(new CreateWorkspace(workspaceId, req.Name), ct);
+            version = await handler.HandleAsync(new CreateWorkspace(workspaceId, req.Name), ct);
         }
         catch (InvalidOperationException)
         {
             return Results.BadRequest();
         }
 
+        SetConsistencyToken(response, workspaceId, version);
         return Results.Created($"/workspaces/{workspaceId.Value}", new { workspaceId = workspaceId.Value });
     }
 
-    public static async Task<IResult> RenameWorkspace(string workspaceId, RenameWorkspaceRequest req, IWorkspaceCommandHandler handler, IWorkspaceListStore store, ICurrentUser currentUser, CancellationToken ct)
+    public static async Task<IResult> RenameWorkspace(string workspaceId, RenameWorkspaceRequest req, HttpResponse response, IWorkspaceCommandHandler handler, IWorkspaceListStore store, ICurrentUser currentUser, CancellationToken ct)
     {
         var id = new WorkspaceId(workspaceId);
         if (!await OwnsAsync(store, currentUser, id, ct).ConfigureAwait(false))
             return Results.NotFound();
+        long version;
         try
         {
-            await handler.HandleAsync(new RenameWorkspace(id, req.Name), ct);
+            version = await handler.HandleAsync(new RenameWorkspace(id, req.Name), ct);
         }
         catch (WorkspaceNotFoundException)
         {
@@ -65,19 +79,21 @@ public static class WorkspaceHandlers
             return Results.BadRequest();
         }
 
+        SetConsistencyToken(response, id, version);
         return Results.Ok();
     }
 
-    public static async Task<IResult> DeleteWorkspace(string workspaceId, IWorkspaceCommandHandler handler, IWorkspaceListStore store, ICurrentUser currentUser, CancellationToken ct)
+    public static async Task<IResult> DeleteWorkspace(string workspaceId, HttpResponse response, IWorkspaceCommandHandler handler, IWorkspaceListStore store, ICurrentUser currentUser, CancellationToken ct)
     {
         var id = new WorkspaceId(workspaceId);
         if (id.IsDefault)
             return Results.Conflict(new { error = "The default workspace cannot be deleted." });
         if (!await OwnsAsync(store, currentUser, id, ct).ConfigureAwait(false))
             return Results.NotFound();
+        long version;
         try
         {
-            await handler.HandleAsync(new DeleteWorkspace(id), ct);
+            version = await handler.HandleAsync(new DeleteWorkspace(id), ct);
         }
         catch (DefaultWorkspaceUndeletableException)
         {
@@ -92,6 +108,7 @@ public static class WorkspaceHandlers
             return Results.NotFound();
         }
 
+        SetConsistencyToken(response, id, version);
         return Results.NoContent();
     }
 

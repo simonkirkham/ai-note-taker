@@ -6,44 +6,50 @@ using EventStore.Projections;
 using Api.Auth;
 using Api.Exceptions;
 using Api.Observability;
-using Api.Projections;
 using Api.Utilities;
 
 namespace Api.CommandHandlers;
 
+// Append-only since RYW-3b: the Folder aggregate is async — the projector (the in-process
+// SyncProjectingEventStore decorator in tests/local, the Projector Lambda in prod) is the sole
+// writer of the folder tree projection, no inline ProjectionUpdater/folderTreeStore write. Each
+// HandleAsync returns the target folder stream's new version (the write token); the folder read
+// waits on proj-position before answering. folderTreeStore is still READ here (subtree/cycle
+// computation), just never written. A cascade delete appends DeleteFolder to each descendant
+// stream too — the projector deletes each as its own append lands (folder- is migrated); the write
+// token is the target folder's version (design decision #7 — wait on the stream the user wrote).
 public sealed class FolderCommandHandler(
     IEventStore store,
     IFolderTreeStore folderTreeStore,
     INoteCardListStore noteCardListStore,
     INoteCommandHandler noteCommandHandler,
-    IProjectionUpdater projectionUpdater,
     ICurrentUser currentUser,
     ICurrentWorkspace currentWorkspace,
     IDomainMetrics metrics,
     ILogger<FolderCommandHandler> logger) : IFolderCommandHandler
 {
-    public Task<FolderId> HandleAsync(CreateFolder cmd, CancellationToken ct = default) =>
+    public Task<long> HandleAsync(CreateFolder cmd, CancellationToken ct = default) =>
         CommandInstrumentation.RunAsync(metrics, logger, nameof(CreateFolder), "Folder", async () =>
         {
             var streamId = cmd.FolderId.ToStreamId();
             var history = await store.ReadAsync(streamId, ct).ConfigureAwait(false);
             var newEvents = RebuildFolder(history).Handle(cmd);
-            await PersistFolderAsync(streamId, history, newEvents, ct).ConfigureAwait(false);
-            return cmd.FolderId;
+            return await PersistFolderAsync(streamId, history, newEvents, ct).ConfigureAwait(false);
         });
 
-    public Task HandleAsync(RenameFolder cmd, CancellationToken ct = default) =>
+    public Task<long> HandleAsync(RenameFolder cmd, CancellationToken ct = default) =>
         CommandInstrumentation.RunAsync(metrics, logger, nameof(RenameFolder), "Folder", async () =>
         {
             var streamId = cmd.FolderId.ToStreamId();
             var history = await store.ReadAsync(streamId, ct).ConfigureAwait(false);
             if (history.Count == 0) throw new FolderNotFoundException(cmd.FolderId);
             var newEvents = RebuildFolder(history).Handle(cmd);
-            if (newEvents.Count == 0) return;
-            await PersistFolderAsync(streamId, history, newEvents, ct).ConfigureAwait(false);
+            // No-op command: nothing appended, so the write token is the current version.
+            if (newEvents.Count == 0) return (long)history.Count;
+            return await PersistFolderAsync(streamId, history, newEvents, ct).ConfigureAwait(false);
         });
 
-    public Task HandleAsync(DeleteFolder cmd, CancellationToken ct = default) =>
+    public Task<long> HandleAsync(DeleteFolder cmd, CancellationToken ct = default) =>
         CommandInstrumentation.RunAsync(metrics, logger, nameof(DeleteFolder), "Folder", async () =>
         {
             var streamId = cmd.FolderId.ToStreamId();
@@ -61,14 +67,14 @@ public sealed class FolderCommandHandler(
             foreach (var folderId in subtreeIds)
                 await DeleteOneFolderAsync(folderId, ct).ConfigureAwait(false);
 
-            // Delete the target folder
+            // Delete the target folder — the projector removes its tree row off the appended event.
             var newEvents = RebuildFolder(history).Handle(cmd);
             var envelopes = ToEnvelopes(streamId, newEvents);
             await store.AppendAsync(streamId, history.Count, envelopes, ct).ConfigureAwait(false);
-            await folderTreeStore.DeleteAsync(cmd.FolderId, ct).ConfigureAwait(false);
+            return (long)(history.Count + envelopes.Count);
         });
 
-    public Task HandleAsync(MoveFolder cmd, CancellationToken ct = default) =>
+    public Task<long> HandleAsync(MoveFolder cmd, CancellationToken ct = default) =>
         CommandInstrumentation.RunAsync(metrics, logger, nameof(MoveFolder), "Folder", async () =>
         {
             var streamId = cmd.FolderId.ToStreamId();
@@ -85,7 +91,7 @@ public sealed class FolderCommandHandler(
             }
 
             var newEvents = RebuildFolder(history).Handle(cmd);
-            await PersistFolderAsync(streamId, history, newEvents, ct).ConfigureAwait(false);
+            return await PersistFolderAsync(streamId, history, newEvents, ct).ConfigureAwait(false);
         });
 
     private async Task UnfileNotesInFolderAsync(FolderId folderId, CancellationToken ct)
@@ -104,14 +110,13 @@ public sealed class FolderCommandHandler(
         var newEvents = RebuildFolder(history).Handle(new DeleteFolder(folderId));
         var envelopes = ToEnvelopes(streamId, newEvents);
         await store.AppendAsync(streamId, history.Count, envelopes, ct).ConfigureAwait(false);
-        await folderTreeStore.DeleteAsync(folderId, ct).ConfigureAwait(false);
     }
 
-    private async Task PersistFolderAsync(string streamId, IReadOnlyList<EventEnvelope> history, IReadOnlyList<IDomainEvent> newEvents, CancellationToken ct)
+    private async Task<long> PersistFolderAsync(string streamId, IReadOnlyList<EventEnvelope> history, IReadOnlyList<IDomainEvent> newEvents, CancellationToken ct)
     {
         var envelopes = ToEnvelopes(streamId, newEvents);
         await store.AppendAsync(streamId, history.Count, envelopes, ct).ConfigureAwait(false);
-        await projectionUpdater.ApplyFolderEventsAsync(envelopes, ct).ConfigureAwait(false);
+        return history.Count + envelopes.Count;
     }
 
     private static IReadOnlyList<FolderId> GetSubtreeIds(FolderId rootId, IReadOnlyList<FolderTreeView> allFolders)

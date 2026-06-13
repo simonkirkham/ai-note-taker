@@ -182,6 +182,43 @@ public sealed class AppPage(IPage page, string baseUrl, string? authToken = null
     public Task AssertActionsEmptyAsync() =>
         Assertions.Expect(page.GetByTestId("actions-empty")).ToBeVisibleAsync();
 
+    public async Task AddFolderAsync(string name)
+    {
+        var viewport = page.ViewportSize;
+        if (viewport is { Width: < 640 })
+            await page.GetByTestId("sidebar-toggle").ClickAsync();
+        await page.GetByTestId("new-folder-button").ClickAsync();
+        var input = page.GetByTestId("new-folder-input");
+        await input.FillAsync(name);
+        var postDone = page.WaitForResponseAsync(r =>
+            r.Url.Contains("/folders") && r.Request.Method == "POST");
+        await input.PressAsync("Enter");
+        await postDone;
+    }
+
+    // The folder read-your-writes proof (RYW-3b): reload FIRST (drops the optimistic folder tree,
+    // so the just-added folder can only come from the server), then assert. The post-reload
+    // GET /folders carries the sessionStorage-persisted folder token, so the gate waits for the
+    // async projector and the folder appears deterministically. Reload-loop so a still-warming
+    // projector re-polls (each reload re-sends the token and re-gates).
+    public async Task AssertFolderVisibleAfterReloadAsync(string name, int timeoutMs = 20000)
+    {
+        var deadline = DateTime.UtcNow.AddMilliseconds(timeoutMs);
+        while (true)
+        {
+            await page.ReloadAsync();
+            try
+            {
+                await Assertions.Expect(page.GetByTestId("sidebar").GetByText(name))
+                    .ToBeVisibleAsync(new() { Timeout = 2500 });
+                return;
+            }
+            catch (PlaywrightException) when (DateTime.UtcNow < deadline)
+            {
+            }
+        }
+    }
+
     // The action read-your-writes proof (RYW-3a): reload FIRST (drops the optimistic actions cache,
     // so the just-added action can only come from the server), then assert. The post-reload
     // GET /notes/{id}/actions carries the sessionStorage-persisted action token, so the gate waits

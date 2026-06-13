@@ -1,4 +1,5 @@
 using Api.Auth;
+using Api.Consistency;
 using Api.Contracts;
 using Api.CommandHandlers;
 using Api.Exceptions;
@@ -9,33 +10,42 @@ namespace Api.Handlers;
 
 public static class FolderHandlers
 {
-    public static async Task<IResult> CreateFolder(CreateFolderRequest req, IFolderCommandHandler handler, CancellationToken ct)
+    // Read-your-writes (RYW-3b): surface the folder stream's new version as the write token so the
+    // client can echo it into If-Consistent-With on its next folder read, making that read wait
+    // until the async projector has applied this write.
+    private static void SetConsistencyToken(HttpResponse response, FolderId folderId, long version) =>
+        response.Headers["X-Consistency-Token"] = $"{folderId.ToStreamId()}@{version}";
+
+    public static async Task<IResult> CreateFolder(CreateFolderRequest req, HttpResponse response, IFolderCommandHandler handler, CancellationToken ct)
     {
         var folderId = new FolderId(Guid.NewGuid());
         FolderId? parentFolderId = req.ParentFolderId.HasValue
             ? new FolderId(req.ParentFolderId.Value)
             : null;
 
+        long version;
         try
         {
-            await handler.HandleAsync(new Domain.Folders.CreateFolder(folderId, req.Name, parentFolderId, DateTimeOffset.UtcNow), ct);
+            version = await handler.HandleAsync(new Domain.Folders.CreateFolder(folderId, req.Name, parentFolderId, DateTimeOffset.UtcNow), ct);
         }
         catch (InvalidOperationException)
         {
             return Results.BadRequest();
         }
 
+        SetConsistencyToken(response, folderId, version);
         return Results.Created($"/folders/{folderId.Value}", new { folderId = folderId.Value });
     }
 
-    public static async Task<IResult> RenameFolder(Guid folderId, RenameFolderRequest req, IFolderCommandHandler handler, IFolderTreeStore folderTreeStore, ICurrentUser currentUser, CancellationToken ct)
+    public static async Task<IResult> RenameFolder(Guid folderId, RenameFolderRequest req, HttpResponse response, IFolderCommandHandler handler, IFolderTreeStore folderTreeStore, ICurrentUser currentUser, CancellationToken ct)
     {
         var all = await folderTreeStore.GetAllAsync(ct).ConfigureAwait(false);
         if (!all.Any(f => f.FolderId == new FolderId(folderId) && f.UserId == currentUser.UserId))
             return Results.NotFound();
+        long version;
         try
         {
-            await handler.HandleAsync(new Domain.Folders.RenameFolder(new FolderId(folderId), req.Name), ct);
+            version = await handler.HandleAsync(new Domain.Folders.RenameFolder(new FolderId(folderId), req.Name), ct);
         }
         catch (FolderNotFoundException)
         {
@@ -46,27 +56,30 @@ public static class FolderHandlers
             return Results.BadRequest();
         }
 
+        SetConsistencyToken(response, new FolderId(folderId), version);
         return Results.Ok();
     }
 
-    public static async Task<IResult> DeleteFolder(Guid folderId, IFolderCommandHandler handler, IFolderTreeStore folderTreeStore, ICurrentUser currentUser, CancellationToken ct)
+    public static async Task<IResult> DeleteFolder(Guid folderId, HttpResponse response, IFolderCommandHandler handler, IFolderTreeStore folderTreeStore, ICurrentUser currentUser, CancellationToken ct)
     {
         var all = await folderTreeStore.GetAllAsync(ct).ConfigureAwait(false);
         if (!all.Any(f => f.FolderId == new FolderId(folderId) && f.UserId == currentUser.UserId))
             return Results.NotFound();
+        long version;
         try
         {
-            await handler.HandleAsync(new Domain.Folders.DeleteFolder(new FolderId(folderId)), ct);
+            version = await handler.HandleAsync(new Domain.Folders.DeleteFolder(new FolderId(folderId)), ct);
         }
         catch (InvalidOperationException)
         {
             return Results.NotFound();
         }
 
+        SetConsistencyToken(response, new FolderId(folderId), version);
         return Results.NoContent();
     }
 
-    public static async Task<IResult> MoveFolder(Guid folderId, MoveFolderRequest req, IFolderCommandHandler handler, IFolderTreeStore folderTreeStore, ICurrentUser currentUser, CancellationToken ct)
+    public static async Task<IResult> MoveFolder(Guid folderId, MoveFolderRequest req, HttpResponse response, IFolderCommandHandler handler, IFolderTreeStore folderTreeStore, ICurrentUser currentUser, CancellationToken ct)
     {
         var all = await folderTreeStore.GetAllAsync(ct).ConfigureAwait(false);
         var sourceFolderId = new FolderId(folderId);
@@ -80,9 +93,10 @@ public static class FolderHandlers
         if (newParentFolderId.HasValue && !all.Any(f => f.FolderId == newParentFolderId && f.UserId == currentUser.UserId))
             return Results.NotFound();
 
+        long version;
         try
         {
-            await handler.HandleAsync(new Domain.Folders.MoveFolder(sourceFolderId, newParentFolderId), ct);
+            version = await handler.HandleAsync(new Domain.Folders.MoveFolder(sourceFolderId, newParentFolderId), ct);
         }
         catch (CycleDetectedException ex)
         {
@@ -93,11 +107,18 @@ public static class FolderHandlers
             return Results.NotFound();
         }
 
+        SetConsistencyToken(response, sourceFolderId, version);
         return Results.Ok();
     }
 
-    public static async Task<IResult> GetFolders(IFolderTreeStore store, ICurrentUser currentUser, ICurrentWorkspace currentWorkspace, CancellationToken ct)
+    public static async Task<IResult> GetFolders(IFolderTreeStore store, ICurrentUser currentUser, ICurrentWorkspace currentWorkspace, IConsistencyGate gate, HttpContext http, CancellationToken ct)
     {
+        // Read-your-writes: if the client presents the write token from its last folder write, wait
+        // (bounded) until the async projector has applied it before reading. Absent token → no
+        // wait. On timeout the read still returns, flagged X-Consistency: stale.
+        var consistency = await gate.WaitAsync(http.Request.Headers["If-Consistent-With"], ct).ConfigureAwait(false);
+        if (consistency.IsStale) http.Response.Headers["X-Consistency"] = "stale";
+
         var all = await store.GetAllAsync(ct).ConfigureAwait(false);
         var userFolders = all.Where(f => f.UserId == currentUser.UserId && currentWorkspace.Includes(f.WorkspaceId)).ToList();
         var tree = BuildTree(userFolders, null);

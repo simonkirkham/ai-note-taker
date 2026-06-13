@@ -5,42 +5,45 @@ using EventStore.Projections;
 using Api.Auth;
 using Api.Exceptions;
 using Api.Observability;
-using Api.Projections;
 using Api.Utilities;
 
 namespace Api.CommandHandlers;
 
+// Append-only since RYW-3b: the Workspace aggregate is async — the projector (the in-process
+// SyncProjectingEventStore decorator in tests/local, the Projector Lambda in prod) is the sole
+// writer of the workspace list projection, no inline ProjectionUpdater/workspaceListStore write.
+// Each HandleAsync returns the workspace stream's new version (the write token); the workspace read
+// waits on proj-position before answering. noteCardListStore is still READ here (the empty-check),
+// just never written.
 public sealed class WorkspaceCommandHandler(
     IEventStore store,
-    IWorkspaceListStore workspaceListStore,
     INoteCardListStore noteCardListStore,
-    IProjectionUpdater projectionUpdater,
     ICurrentUser currentUser,
     IDomainMetrics metrics,
     ILogger<WorkspaceCommandHandler> logger) : IWorkspaceCommandHandler
 {
-    public Task<WorkspaceId> HandleAsync(CreateWorkspace cmd, CancellationToken ct = default) =>
+    public Task<long> HandleAsync(CreateWorkspace cmd, CancellationToken ct = default) =>
         CommandInstrumentation.RunAsync(metrics, logger, nameof(CreateWorkspace), "Workspace", async () =>
         {
             var streamId = cmd.WorkspaceId.ToStreamId();
             var history = await store.ReadAsync(streamId, ct).ConfigureAwait(false);
             var newEvents = Rebuild(history).Handle(cmd);
-            await PersistAsync(streamId, history, newEvents, ct).ConfigureAwait(false);
-            return cmd.WorkspaceId;
+            return await PersistAsync(streamId, history, newEvents, ct).ConfigureAwait(false);
         });
 
-    public Task HandleAsync(RenameWorkspace cmd, CancellationToken ct = default) =>
+    public Task<long> HandleAsync(RenameWorkspace cmd, CancellationToken ct = default) =>
         CommandInstrumentation.RunAsync(metrics, logger, nameof(RenameWorkspace), "Workspace", async () =>
         {
             var streamId = cmd.WorkspaceId.ToStreamId();
             var history = await store.ReadAsync(streamId, ct).ConfigureAwait(false);
             if (history.Count == 0) throw new WorkspaceNotFoundException(cmd.WorkspaceId);
             var newEvents = Rebuild(history).Handle(cmd);
-            if (newEvents.Count == 0) return;
-            await PersistAsync(streamId, history, newEvents, ct).ConfigureAwait(false);
+            // No-op command: nothing appended, so the write token is the current version.
+            if (newEvents.Count == 0) return (long)history.Count;
+            return await PersistAsync(streamId, history, newEvents, ct).ConfigureAwait(false);
         });
 
-    public Task HandleAsync(DeleteWorkspace cmd, CancellationToken ct = default) =>
+    public Task<long> HandleAsync(DeleteWorkspace cmd, CancellationToken ct = default) =>
         CommandInstrumentation.RunAsync(metrics, logger, nameof(DeleteWorkspace), "Workspace", async () =>
         {
             var streamId = cmd.WorkspaceId.ToStreamId();
@@ -52,14 +55,14 @@ public sealed class WorkspaceCommandHandler(
             var newEvents = Rebuild(history).Handle(cmd);
             var envelopes = ToEnvelopes(streamId, newEvents);
             await store.AppendAsync(streamId, history.Count, envelopes, ct).ConfigureAwait(false);
-            await workspaceListStore.DeleteAsync(cmd.WorkspaceId, ct).ConfigureAwait(false);
+            return (long)(history.Count + envelopes.Count);
         });
 
-    private async Task PersistAsync(string streamId, IReadOnlyList<EventEnvelope> history, IReadOnlyList<IDomainEvent> newEvents, CancellationToken ct)
+    private async Task<long> PersistAsync(string streamId, IReadOnlyList<EventEnvelope> history, IReadOnlyList<IDomainEvent> newEvents, CancellationToken ct)
     {
         var envelopes = ToEnvelopes(streamId, newEvents);
         await store.AppendAsync(streamId, history.Count, envelopes, ct).ConfigureAwait(false);
-        await projectionUpdater.ApplyWorkspaceEventsAsync(envelopes, ct).ConfigureAwait(false);
+        return history.Count + envelopes.Count;
     }
 
     // A workspace is "empty" when it holds no active (non-deleted) note for the caller.
