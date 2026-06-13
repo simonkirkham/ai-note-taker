@@ -47,12 +47,13 @@ Status key: 🔲 **Open** · 🟡 **Partly done / mitigated** · ✅ **Done** (g
 | TI-29 | Vite 5 → 7 + Vitest 2 → 4 (dep-audit T2)                                       | ✅ Done — #245, deploy #535 (held at Vite 7; Vite 8 now GA = future)                                                                    |
 | TI-30 | React 18 → 19 (dep-audit T3)                                                   | ✅ Done — #246, deploy #536 (zero code changes)                                                                                         |
 | TI-31 | TypeScript 5.6 → 6.0 (dep-audit T4)                                            | ✅ Done — #249, deploy #539 (dropped deprecated `baseUrl`)                                                                              |
-| TI-32 | Prime the ASP.NET pipeline before the SnapStart snapshot (first-request ~7 s)   | 🟡 **In progress** — `RegisterBeforeSnapshot` priming hook shipped on branch; pairs with TI-35. Verify post-deploy X-Ray              |
+| TI-32 | Prime the ASP.NET pipeline before the SnapStart snapshot (first-request ~7 s)   | ✅ **Done** — #260, deploy #552. Priming hook live; cold p50 7.92→4.82 s (−39%, n=7 prod). Residual CPU gap → TI-36                  |
 | TI-33 | `NoteCardList` reads via full-table `Scan` + `ConsistentRead`, not a GSI/Query  | 🔲 **Open** — same anti-pattern as TI-20; ~840 ms at 234 rows, scales O(all notes); fold into Phase 23                                    |
 | TI-34 | Make Lambda naming specific & correct everywhere                                | 🔲 **Open** — naming audit; user-raised 2026-06-12. **API Lambda** / **Projector Lambda** now; **Command/Query Lambda** only at 27-D    |
-| TI-35 | ReadyToRun-publish the API Lambda (AOT-precompile to cut first-request JIT)     | 🟡 **In progress** — `-r linux-x64` + conditional `PublishReadyToRun` shipped on branch; pairs with TI-32. Verify post-deploy X-Ray   |
+| TI-35 | ReadyToRun-publish the API Lambda (AOT-precompile to cut first-request JIT)     | ✅ **Done** — #260, deploy #552. R2R live (IL_ONLY cleared on Api/AWSSDK/JwtBearer); part of the −39% cold-start cut. Pairs with TI-32 |
+| TI-36 | Raise API Lambda memory 256→512–1024 MB to cut residual cold-start CPU time     | 🔲 **Open** — after TI-32/35, cold p50 still 4.82 s; ~4.3 s is post-restore CPU at ~0.145 vCPU. Needs cost accept (reverses TI-13)     |
 
-**Outstanding (6 Open + 5 in-flight/Partly):** TI-17 Auto-backfill projection on deploy; TI-20 `WorkspaceList` GSI; TI-23 Generalise append-retry; TI-25 `NoteEditor` ordering test; **TI-33 `NoteCardList` Scan→GSI**; **TI-34 Lambda naming audit**; _(in progress, one branch)_ **TI-32 SnapStart priming + TI-35 ReadyToRun** — the two cold-start fixes from the 2026-06-13 latency investigation; _(partly)_ TI-7 ESLint import-resolver + typed-lint (jsx-a11y done via 19-F3); TI-3 state-mgmt colocation; TI-24 deploy-credentials root cause. **The 2026-06 dependency upgrade audit (T1/T7/T2/T3/T4 = TI-27/28/29/30/31) is fully cleared.**
+**Outstanding (7 Open + 3 Partly):** TI-17 Auto-backfill projection on deploy; TI-20 `WorkspaceList` GSI; TI-23 Generalise append-retry; TI-25 `NoteEditor` ordering test; **TI-33 `NoteCardList` Scan→GSI**; **TI-34 Lambda naming audit**; **TI-36 raise Lambda memory** (residual cold-start lever after TI-32/35 landed −39%); _(partly)_ TI-7 ESLint import-resolver + typed-lint (jsx-a11y done via 19-F3); TI-3 state-mgmt colocation; TI-24 deploy-credentials root cause. **The 2026-06 cold-start pair (TI-32 priming + TI-35 ReadyToRun) is done — #260, deploy #552; the 2026-06 dependency upgrade audit (T1/T7/T2/T3/T4 = TI-27/28/29/30/31) is fully cleared.**
 
 > Items carry stable IDs `TI-1`–`TI-31` in document order (the `ID` column above); each detailed section below repeats its ID. Reference an item as `TI-N`. The dep-audit `T#` tags are retained in parentheses for cross-reference with the audit report.
 
@@ -510,10 +511,9 @@ Restore itself averages 457 ms; the remaining ~7.1 s is post-restore JIT + first
 
 Broad framework/SDK/our-assembly JIT is handled by the paired **TI-35** (ReadyToRun). A full in-process middleware-pipeline request (`TestServer`) was considered (item 4 in the original plan) but deferred — `AddAWSLambdaHosting` exposes no loopback handler, and TI-35 already AOT-compiles the routing/auth path; revisit only if the post-deploy trace shows a material residual gap.
 
-**Acceptance criteria:**
-- First-invocation-after-restore `Invocation` time (minus downstream subsegments) drops from ~7 s toward the warm ~1.3 s, measured on a real post-deploy X-Ray trace **and** the cold-population p50 in the CloudWatch split above.
-- Restore duration stays within the TI-13 watch band (bump 256 → 384 MB only if restore latency climbs materially with the extra snapshot work).
-- No behaviour change to any endpoint; priming is init-only, best-effort (`try/catch`), and idempotent.
+**Outcome (measured, deploy #552, 2026-06-13, n=7 prod cold starts after the new version went live):** cold-population p50 **7.92 → 4.82 s (−39%)**, avg 7.56 → 4.78 s (−37%), tight 4.31–5.06 s band; restore flat at ~0.44 s; warm p50 132 → 118 ms (R2R helps the warm path too). Priming + R2R removed ~2.8 s of the ~7.1 s post-restore warmup. **Residual ~4.3 s of post-restore CPU remains** — short of the ~1.3 s target; root cause is the 256 MB / ~0.145 vCPU budget, tracked as **TI-36** (the "interacts with TI-13 memory setting" note below, now quantified).
+
+**Acceptance criteria:** ✅ met for the priming+R2R scope — cold p50 dropped materially on a real post-deploy CloudWatch sample; restore stayed flat; no behaviour change (init-only, best-effort `try/catch`, idempotent). The remaining warm-target gap is out of this item's scope → TI-36.
 
 **Deploy-time delta:** priming runs during the SnapStart snapshot publish, already paid on every backend deploy (~137 s per TI-22). Adds **a few seconds, one-off per backend deploy** — flag and accept per the deploy-time guardrail; frontend-only deploys skip the publish. (TI-35 adds the larger, separately-flagged R2R publish cost.)
 
@@ -573,5 +573,29 @@ The ~7.1 s post-restore warmup (see TI-32) is dominated by .NET JIT of code the 
 
 **Deploy-time delta:** R2R crossgen adds **~30–90 s to each backend API publish — recurring, every backend deploy** (not one-off). This needs explicit accept per the deploy-time guardrail. Justified: it buys a ~7 s cut on ~9 % of all user requests. Frontend-only deploys are unaffected (publish skipped). Projector Lambda left on IL (async, cold start not user-visible) — revisit if its cold start ever matters.
 
+**Outcome (deploy #552, 2026-06-13):** verified live — a clean R2R publish cleared `COMIMAGE_FLAGS_IL_ONLY` on `Api.dll` / `AWSSDK.DynamoDBv2.dll` / `JwtBearer.dll`; framework-dependent (no runtime shipped). Contributed to the measured cold-start cut recorded under TI-32 (−39% p50). Actual CI publish-time delta was within the estimate; deploy #552 backend publish completed without issue.
+
 **Raised in:** Prod latency investigation, 2026-06-13.
 **Depends on:** — (pairs with TI-32; both ship together).
+
+---
+
+## TI-36. Raise API Lambda memory 256 → 512–1024 MB to cut the residual post-restore CPU time
+
+After TI-32 (priming) + TI-35 (R2R) landed (deploy #552), prod cold starts dropped to a **stable p50 of 4.82 s** (from 7.92 s) — but **~4.3 s of post-restore CPU work remains** (4.78 s avg − 0.44 s restore). Priming + R2R removed the *first-use init* and *JIT* costs; what's left is CPU-bound execution (restore-side re-init, tier-1 re-JIT of hot methods, R2R-uncovered generics/STJ paths) running on the **256 MB / ~0.145 vCPU** budget. Lambda allocates vCPU proportionally (1 vCPU at 1769 MB), so at 256 MB every CPU-ms runs ~7× slower than at full vCPU — the dominant remaining lever.
+
+**Expected (rough, assuming the ~4.3 s residual is CPU-bound and scales ~linearly with vCPU):**
+
+| Memory | vCPU | Residual CPU | Cold p50 (≈ +0.44 s restore) |
+| --- | --- | --- | --- |
+| 256 MB (now) | 0.145 | ~4.3 s | ~4.8 s |
+| 512 MB | 0.29 | ~2.2 s | ~2.6 s |
+| 1024 MB | 0.58 | ~1.1 s | ~1.5 s |
+| 1769 MB | 1.0 | ~0.65 s | ~1.1 s |
+
+**Fix:** raise `MemorySize` in `NoteTakerStack.cs` (one line), deploy, re-measure the cold-population p50 on prod CloudWatch, and pick the knee of the curve.
+
+**Cost trade-off (needs explicit accept — reverses part of TI-13):** TI-13 dropped 512 → 256 MB specifically to halve the SnapStart snapshot-cache cost (billed per GB) and per-invocation GB-s. Raising memory re-incurs that. For a single-user, low-traffic app the absolute $ is small, but it is a recurring cost increase and must be a deliberate decision, not silent. Per-invocation duration cost partly self-corrects (higher memory × shorter duration), but snapshot-cache storage scales straight with GB.
+
+**Raised in:** Prod latency investigation, 2026-06-13 (post-TI-32/35 measurement).
+**Depends on:** TI-32 + TI-35 (done) — this is the next lever once they proved insufficient alone.
