@@ -52,7 +52,7 @@ public sealed class BedrockQualityJudge : IQualityJudge
 
             EXISTING NOTE ({{x.CurrentUserName}} wrote this already; may be empty — it is valid grounding, not fabrication):
             {{x.ExistingContent}}
-
+            {{Allowlist(x.GroundedEntities)}}
             GENERATED NOTE
             Summary: {{x.Summary}}
             Discussion:
@@ -127,4 +127,17 @@ public sealed class BedrockQualityJudge : IQualityJudge
 
     static string Bullets(IReadOnlyList<string> items) =>
         items.Count == 0 ? "(none)" : string.Join("\n", items.Select(i => $"- {i}"));
+
+    // MPI-5: deterministic grounding. These entities are grounded by construction (the
+    // fixture's gold tags), so the judge must never count them as fabrication — closing the
+    // note-blindness that prompt wording alone (MPI-4) left open. Omitted entirely when empty.
+    static string Allowlist(IReadOnlyList<string> groundedEntities) =>
+        groundedEntities.Count == 0
+            ? ""
+            : $"""
+
+                GROUNDED ENTITIES — each of these appears in the SOURCE and is CONFIRMED grounded.
+                NEVER treat any of them (or a close variant) as invented, fabricated, or unfaithful:
+                {string.Join("\n", groundedEntities.Select(e => $"- {e}"))}
+                """;
 }
