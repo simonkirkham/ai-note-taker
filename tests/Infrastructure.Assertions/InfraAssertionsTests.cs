@@ -1716,4 +1716,292 @@ public class InfraAssertionsTests
                 })
             })
         });
+
+    // ── Phase 27-D: split the HTTP Lambda into Command + Query functions ──
+    // The single request Lambda becomes two: a Command function (writes + side
+    // services + admin rebuild) invoked via $LATEST, and a Query function (reads
+    // only) behind a SnapStart `live` alias. API Gateway routes by method: GETs to
+    // Query, write methods to Command, plus two side-service GETs (calendar, transcribe
+    // credentials) pinned to Command because they need Google/SSM/STS, not projections.
+    // Both run the SAME binary (Handler "Api"); the split is enforced by routing + IAM,
+    // not by code. Functions are distinguished in assertions by their Description.
+
+    private const string CommandDescription = "AI Note Taker Command API";
+    private const string QueryDescription = "AI Note Taker Query API";
+
+    [Fact]
+    public void Split_CommandFunctionExists_NoSnapStart()
+    {
+        _template.HasResourceProperties("AWS::Lambda::Function", Match.ObjectLike(new Dictionary<string, object>
+        {
+            ["Handler"] = "Api",
+            ["Description"] = CommandDescription,
+            ["MemorySize"] = 512
+        }));
+        // Writes are masked by optimistic UI, so the Command function pays no SnapStart
+        // snapshot cost (the deploy-time guardrail: only one SnapStart publish remains).
+        var thrown = Record.Exception(() =>
+            _template.HasResourceProperties("AWS::Lambda::Function", Match.ObjectLike(new Dictionary<string, object>
+            {
+                ["Description"] = CommandDescription,
+                ["SnapStart"] = Match.AnyValue()
+            })));
+        Assert.NotNull(thrown);
+    }
+
+    [Fact]
+    public void Split_QueryFunctionExists_WithSnapStart()
+    {
+        // The latency-critical read path keeps SnapStart (on published versions → live alias).
+        _template.HasResourceProperties("AWS::Lambda::Function", Match.ObjectLike(new Dictionary<string, object>
+        {
+            ["Handler"] = "Api",
+            ["Description"] = QueryDescription,
+            ["MemorySize"] = 512,
+            ["SnapStart"] = Match.ObjectLike(new Dictionary<string, object>
+            {
+                ["ApplyOn"] = "PublishedVersions"
+            })
+        }));
+    }
+
+    [Fact]
+    public void Split_ExactlyTwoRequestFunctions_PlusProjector()
+    {
+        // Two request functions (Handler "Api") + one projector. FindResources counts
+        // only Lambda functions; the log-retention provider lambdas have a different
+        // (auto-generated) handler, so filter to the two we own.
+        var apiFns = _template.FindResources("AWS::Lambda::Function",
+            Match.ObjectLike(new Dictionary<string, object>
+            {
+                ["Properties"] = Match.ObjectLike(new Dictionary<string, object> { ["Handler"] = "Api" })
+            }));
+        Assert.Equal(2, apiFns.Count);
+        // …and the projector still exists alongside them (the 3-Lambda Stage-1 shape) —
+        // guard against an accidental projector deletion while editing this region.
+        var projectorFns = _template.FindResources("AWS::Lambda::Function",
+            Match.ObjectLike(new Dictionary<string, object>
+            {
+                ["Properties"] = Match.ObjectLike(new Dictionary<string, object>
+                {
+                    ["Handler"] = "Projector::Projector.ProjectorFunction::Handle"
+                })
+            }));
+        Assert.Single(projectorFns);
+    }
+
+    // ── Routing: method → function ───────────────────────────────────────
+
+    [Fact]
+    public void Routing_GetCatchAll_TargetsQuery()
+    {
+        Assert.True(RouteTargetsFunction("GET /{proxy+}", "QueryFunction"));
+    }
+
+    [Theory]
+    [InlineData("POST /{proxy+}")]
+    [InlineData("PUT /{proxy+}")]
+    [InlineData("PATCH /{proxy+}")]
+    [InlineData("DELETE /{proxy+}")]
+    public void Routing_WriteMethods_TargetCommand(string routeKey)
+    {
+        Assert.True(RouteTargetsFunction(routeKey, "CommandFunction"));
+    }
+
+    [Fact]
+    public void Routing_CalendarGet_TargetsCommand_NotQuery()
+    {
+        // GET, but needs Google + SSM — pinned to Command so Query stays projection-only.
+        Assert.True(RouteTargetsFunction("GET /calendar/{date}", "CommandFunction"));
+    }
+
+    [Fact]
+    public void Routing_TranscribeCredentialsGet_TargetsCommand_NotQuery()
+    {
+        // GET, but issues STS AssumeRole — pinned to Command.
+        Assert.True(RouteTargetsFunction("GET /transcription/credentials", "CommandFunction"));
+    }
+
+    // ── Least privilege: Query is read-only, no event store ──────────────
+
+    [Fact]
+    public void QueryRole_HasNoDynamoWriteVerbs()
+    {
+        // Load-bearing read-path boundary: the Query function can never mutate any
+        // DynamoDB item — not a projection, not the event store, nothing.
+        var writeVerbs = new[]
+        {
+            "dynamodb:PutItem", "dynamodb:UpdateItem", "dynamodb:DeleteItem",
+            "dynamodb:BatchWriteItem", "dynamodb:TransactWriteItems"
+        };
+        var actions = RoleActions("QueryFunctionServiceRole");
+        // Sanity: the role exists and has some grants (otherwise vacuously true).
+        Assert.NotEmpty(actions);
+        foreach (var verb in writeVerbs)
+            Assert.DoesNotContain(verb, actions);
+    }
+
+    [Fact]
+    public void QueryRole_HasNoEventsTableDataAccess()
+    {
+        // The Query function never reads or writes event-store DATA. A metadata-only
+        // DescribeTable (the /health probe) is the sole permitted events-table action.
+        var eventsLogicalId = EventsTableLogicalId();
+        var dataVerbs = new[]
+        {
+            "dynamodb:GetItem", "dynamodb:BatchGetItem", "dynamodb:Query", "dynamodb:Scan",
+            "dynamodb:PutItem", "dynamodb:UpdateItem", "dynamodb:DeleteItem",
+            "dynamodb:BatchWriteItem", "dynamodb:TransactWriteItems", "dynamodb:GetRecords"
+        };
+        foreach (var stmt in RoleStatements("QueryFunctionServiceRole"))
+        {
+            if (!StatementReferencesLogicalId(stmt, eventsLogicalId)) continue;
+            var actions = ActionsOf(stmt).ToHashSet();
+            foreach (var verb in dataVerbs)
+                Assert.DoesNotContain(verb, actions);
+        }
+        // Non-vacuous: the events table IS referenced by the Query role — by the
+        // metadata-only DescribeTable grant the /health probe needs — and only that.
+        var eventsActions = RoleStatements("QueryFunctionServiceRole")
+            .Where(s => StatementReferencesLogicalId(s, eventsLogicalId))
+            .SelectMany(ActionsOf)
+            .ToHashSet();
+        Assert.Equal(new HashSet<string> { "dynamodb:DescribeTable" }, eventsActions);
+    }
+
+    [Fact]
+    public void QueryRole_CanReadProjections()
+    {
+        var actions = RoleActions("QueryFunctionServiceRole");
+        Assert.Contains("dynamodb:GetItem", actions);
+        Assert.Contains("dynamodb:Query", actions);
+    }
+
+    // ── Least privilege: Command keeps writes + side services ────────────
+
+    [Fact]
+    public void CommandRole_HasEventStoreWriteAndTransact()
+    {
+        var actions = RoleActions("CommandFunctionServiceRole");
+        Assert.Contains("dynamodb:TransactWriteItems", actions);
+        var eventsLogicalId = EventsTableLogicalId();
+        var writeVerbs = new[] { "dynamodb:PutItem", "dynamodb:UpdateItem", "dynamodb:DeleteItem" };
+        var writesEvents = RoleStatements("CommandFunctionServiceRole")
+            .Where(s => StatementReferencesLogicalId(s, eventsLogicalId))
+            .SelectMany(ActionsOf)
+            .Any(a => writeVerbs.Contains(a));
+        Assert.True(writesEvents, "Command role must hold a write verb scoped to the events table");
+    }
+
+    [Fact]
+    public void CommandRole_HasSideServiceGrants()
+    {
+        var actions = RoleActions("CommandFunctionServiceRole");
+        Assert.Contains("bedrock:InvokeModel", actions);
+        Assert.Contains("sts:AssumeRole", actions);
+    }
+
+    [Fact]
+    public void QueryRole_HasNoSideServiceGrants()
+    {
+        // The read path holds none of the write-path credentials. The two GETs that need
+        // them (calendar → Google/SSM, transcribe credentials → STS) route to Command.
+        var actions = RoleActions("QueryFunctionServiceRole");
+        Assert.DoesNotContain("bedrock:InvokeModel", actions);
+        Assert.DoesNotContain("sts:AssumeRole", actions);
+        Assert.DoesNotContain("ssm:GetParameter", actions);
+    }
+
+    // ── 27-D helpers ─────────────────────────────────────────────────────
+
+    private static IEnumerable<Dictionary<string, object>> RoleStatements(string rolePrefix)
+    {
+        var resources = ToDict(TemplateJson()["Resources"]);
+        foreach (var (logicalId, raw) in resources)
+        {
+            if (!logicalId.StartsWith(rolePrefix)) continue;
+            var res = ToDict(raw);
+            var type = res.TryGetValue("Type", out var t) ? t as string : null;
+            if (type != "AWS::IAM::Policy" && type != "AWS::IAM::ManagedPolicy") continue;
+            var props = ToDict(res["Properties"]);
+            var doc = ToDict(props["PolicyDocument"]);
+            foreach (var s in ToArray(doc["Statement"]))
+                yield return ToDict(s);
+        }
+    }
+
+    private static HashSet<string> RoleActions(string rolePrefix)
+    {
+        var actions = new HashSet<string>();
+        foreach (var stmt in RoleStatements(rolePrefix))
+            foreach (var a in ActionsOf(stmt))
+                actions.Add(a);
+        return actions;
+    }
+
+    // Resolve an ApiGatewayV2 route by its RouteKey ("GET /{proxy+}"), follow its
+    // Target to the integration, and assert the integration's URI is built from a
+    // logical id with the given function prefix (the function or its alias).
+    private static bool RouteTargetsFunction(string routeKey, string functionPrefix)
+    {
+        var resources = ToDict(TemplateJson()["Resources"]);
+        string? integrationId = null;
+        foreach (var (_, raw) in resources)
+        {
+            var res = ToDict(raw);
+            if ((res.TryGetValue("Type", out var t) ? t as string : null) != "AWS::ApiGatewayV2::Route") continue;
+            var props = ToDict(res["Properties"]);
+            if (!(props.TryGetValue("RouteKey", out var rk) && rk as string == routeKey)) continue;
+            integrationId = ExtractFirstRef(props.TryGetValue("Target", out var tgt) ? tgt : null);
+            break;
+        }
+        if (integrationId is null)
+            throw new Xunit.Sdk.XunitException($"route '{routeKey}' not found in template");
+        if (!resources.TryGetValue(integrationId, out var integRaw))
+            throw new Xunit.Sdk.XunitException($"integration '{integrationId}' for route '{routeKey}' not found");
+        var integProps = ToDict(ToDict(integRaw)["Properties"]);
+        return JsonMentionsPrefix(integProps.TryGetValue("IntegrationUri", out var uri) ? uri : null, functionPrefix);
+    }
+
+    private static string? ExtractFirstRef(object? node)
+    {
+        switch (node)
+        {
+            case IDictionary<string, object> map:
+                if (map.TryGetValue("Ref", out var r) && r is string s) return s;
+                foreach (var v in map.Values)
+                {
+                    var found = ExtractFirstRef(v);
+                    if (found is not null) return found;
+                }
+                return null;
+            case System.Collections.IEnumerable seq and not string:
+                foreach (var x in seq.Cast<object?>())
+                {
+                    var found = ExtractFirstRef(x);
+                    if (found is not null) return found;
+                }
+                return null;
+            default:
+                return null;
+        }
+    }
+
+    // True if any string value or dict key in the JSON node starts with the prefix —
+    // used to match an integration URI built from "QueryFunction…"/"CommandFunction…"
+    // logical ids (covers both a function and its alias, e.g. "QueryFunctionLiveAlias").
+    private static bool JsonMentionsPrefix(object? node, string prefix)
+    {
+        switch (node)
+        {
+            case string str:
+                return str.StartsWith(prefix);
+            case IDictionary<string, object> map:
+                return map.Any(kv => kv.Key.StartsWith(prefix) || JsonMentionsPrefix(kv.Value, prefix));
+            case System.Collections.IEnumerable seq:
+                return seq.Cast<object?>().Any(x => JsonMentionsPrefix(x, prefix));
+            default:
+                return false;
+        }
+    }
 }

@@ -226,9 +226,17 @@ public sealed class NoteTakerStack : Stack
         var projectorAssetPath = (string?)this.Node.TryGetContext("projectorAssetPath")
             ?? "src/Projector/bin/Release/net10.0/publish";
 
-        // Explicit log group so retention is managed (and cost-bounded) rather
+        // Explicit log groups so retention is managed (and cost-bounded) rather
         // than letting the runtime auto-create an unmanaged, never-expiring group.
-        var apiLogGroup = new Amazon.CDK.AWS.Logs.LogGroup(this, "ApiFunctionLogGroup", new Amazon.CDK.AWS.Logs.LogGroupProps
+        // 27-D: the single request Lambda is split into a Command and a Query function,
+        // each with its own log group so a write-path error and a read-path error are
+        // separable at a glance.
+        var commandLogGroup = new Amazon.CDK.AWS.Logs.LogGroup(this, "CommandFunctionLogGroup", new Amazon.CDK.AWS.Logs.LogGroupProps
+        {
+            Retention = Amazon.CDK.AWS.Logs.RetentionDays.ONE_MONTH,
+            RemovalPolicy = RemovalPolicy.DESTROY
+        });
+        var queryLogGroup = new Amazon.CDK.AWS.Logs.LogGroup(this, "QueryFunctionLogGroup", new Amazon.CDK.AWS.Logs.LogGroupProps
         {
             Retention = Amazon.CDK.AWS.Logs.RetentionDays.ONE_MONTH,
             RemovalPolicy = RemovalPolicy.DESTROY
@@ -243,59 +251,65 @@ public sealed class NoteTakerStack : Stack
             ? "amazon.nova-lite-v1:0"
             : props.BedrockModelId;
 
-        var apiFunction = new Amazon.CDK.AWS.Lambda.Function(this, "ApiFunction", new Amazon.CDK.AWS.Lambda.FunctionProps
+        // Shared request-environment for both the Command and Query functions. They run
+        // the SAME binary (Handler "Api"); the split is enforced by API Gateway routing
+        // and per-function IAM, not by mapping different endpoints. So both need the full
+        // env — Program.cs/Builder require every table name at boot, and auth/allowlist
+        // run on every request (including reads). A table name in the env without the
+        // matching IAM grant is inert: the Query function never calls the tables it cannot
+        // read. Token-resolved env (TRANSCRIBE_ROLE_ARN) is added per-function below.
+        var requestEnvironment = new Dictionary<string, string>
+        {
+            // Defensive: with active tracing the Lambda runtime always provides a
+            // segment, but log rather than throw if the X-Ray context is ever absent.
+            ["AWS_XRAY_CONTEXT_MISSING"] = "LOG_ERROR",
+            ["EVENTS_TABLE_NAME"] = eventsTable.TableName,
+            ["PROJ_NOTETITLELIST_TABLE_NAME"] = projTable.TableName,
+            ["PROJ_NOTEDETAIL_TABLE_NAME"] = noteDetailTable.TableName,
+            ["PROJ_NOTEACTIONS_TABLE_NAME"] = noteActionsTable.TableName,
+            ["PROJ_TODOLIST_TABLE_NAME"] = todoListTable.TableName,
+            ["PROJ_NOTECARDLIST_TABLE_NAME"] = noteCardListTable.TableName,
+            ["PROJ_FOLDERTREE_TABLE_NAME"] = folderTreeTable.TableName,
+            ["PROJ_TAGINDEX_TABLE_NAME"] = tagIndexTable.TableName,
+            ["PROJ_TAGFEEDBACK_TABLE_NAME"] = tagFeedbackTable.TableName,
+            ["PROJ_ACTIONFEEDBACK_TABLE_NAME"] = actionFeedbackTable.TableName,
+            // Always present even when unset so runtime code reads "" rather than throwing on missing key.
+            // Use string.IsNullOrEmpty() on the consumer side; the key itself is always there.
+            ["GOOGLE_CLIENT_ID"] = props.GoogleClientId ?? "",
+            ["GOOGLE_CLIENT_SECRET"] = props.GoogleClientSecret ?? "",
+            ["ALLOWED_USER_SUBS"] = props.AllowedUserSubs ?? "",
+            ["GOOGLE_REFRESH_TOKEN_SSM_PATH"] = props.GoogleRefreshTokenSsmPath ?? "",
+            ["PROJ_CALENDARLINKINDEX_TABLE_NAME"] = calendarLinkIndexTable.TableName,
+            ["PROJ_NOTESEARCHVIEW_TABLE_NAME"] = noteSearchViewTable.TableName,
+            ["DRAFT_TRANSCRIPTION_TABLE_NAME"] = draftTranscriptionTable.TableName,
+            ["IMAGE_BUCKET_NAME"] = imagesBucket.BucketName,
+            ["PROJ_WORKSPACELIST_TABLE_NAME"] = workspaceListTable.TableName,
+            // RYW-1: the consistency gate reads the projector's processed-position table to
+            // wait until a just-written stream has been applied. Rides the constructor dict
+            // (projPositionTable is created above the function), not AddEnvironment, so it is
+            // included in the function-config hash that drives the CurrentVersion alias.
+            ["PROJ_POSITION_TABLE_NAME"] = projPositionTable.TableName,
+            ["BEDROCK_MODEL_ID"] = bedrockModelId
+        };
+
+        // ── Command function (writes + side services + admin rebuild) ────────
+        // Serves every write method (POST/PUT/PATCH/DELETE) plus the two side-service
+        // GETs (calendar, transcribe credentials) that need Google/SSM/STS rather than a
+        // projection. Invoked via $LATEST (no alias) — writes are masked by the frontend's
+        // optimistic UI, so this function pays NO SnapStart snapshot cost (the deploy-time
+        // guardrail: only the Query function's SnapStart publish remains, keeping per-deploy
+        // time neutral). 512 MB matches the read function for parity.
+        var commandFunction = new Amazon.CDK.AWS.Lambda.Function(this, "CommandFunction", new Amazon.CDK.AWS.Lambda.FunctionProps
         {
             Runtime = Amazon.CDK.AWS.Lambda.Runtime.DOTNET_10,
             Handler = "Api",
-            Description = "AI Note Taker API",
+            Description = "AI Note Taker Command API",
             Code = Amazon.CDK.AWS.Lambda.Code.FromAsset(lambdaAssetPath),
             Timeout = Duration.Seconds(29),
-            // 512 MB (TI-36): raised from 256 to cut cold-start latency. Lambda
-            // allocates vCPU proportionally (1 vCPU at 1769 MB), so 256 MB gave only
-            // ~0.145 vCPU — the residual post-SnapStart-restore CPU work (tier-1
-            // re-JIT, R2R-uncovered paths) ran ~4.3 s even after priming + ReadyToRun
-            // (TI-32/35). 512 MB ~doubles vCPU. Peak Max Memory Used is ~165 MB, so
-            // this buys CPU, not capacity. Cost: SnapStart snapshot-cache is billed per GB, so this
-            // ~doubles that line (~+$8/mo at current deploy cadence, falling as deploys
-            // slow). Deliberately reverses TI-13's 512→256 cost cut, accepting the
-            // recurring cost for latency.
             MemorySize = 512,
-            LogGroup = apiLogGroup,
-            SnapStart = Amazon.CDK.AWS.Lambda.SnapStartConf.ON_PUBLISHED_VERSIONS,
+            LogGroup = commandLogGroup,
             Tracing = Amazon.CDK.AWS.Lambda.Tracing.ACTIVE,
-            Environment = new Dictionary<string, string>
-            {
-                // Defensive: with active tracing the Lambda runtime always provides a
-                // segment, but log rather than throw if the X-Ray context is ever absent.
-                ["AWS_XRAY_CONTEXT_MISSING"] = "LOG_ERROR",
-                ["EVENTS_TABLE_NAME"] = eventsTable.TableName,
-                ["PROJ_NOTETITLELIST_TABLE_NAME"] = projTable.TableName,
-                ["PROJ_NOTEDETAIL_TABLE_NAME"] = noteDetailTable.TableName,
-                ["PROJ_NOTEACTIONS_TABLE_NAME"] = noteActionsTable.TableName,
-                ["PROJ_TODOLIST_TABLE_NAME"] = todoListTable.TableName,
-                ["PROJ_NOTECARDLIST_TABLE_NAME"] = noteCardListTable.TableName,
-                ["PROJ_FOLDERTREE_TABLE_NAME"] = folderTreeTable.TableName,
-                ["PROJ_TAGINDEX_TABLE_NAME"] = tagIndexTable.TableName,
-                ["PROJ_TAGFEEDBACK_TABLE_NAME"] = tagFeedbackTable.TableName,
-                ["PROJ_ACTIONFEEDBACK_TABLE_NAME"] = actionFeedbackTable.TableName,
-                // Always present even when unset so runtime code reads "" rather than throwing on missing key.
-                // Use string.IsNullOrEmpty() on the consumer side; the key itself is always there.
-                ["GOOGLE_CLIENT_ID"] = props.GoogleClientId ?? "",
-                ["GOOGLE_CLIENT_SECRET"] = props.GoogleClientSecret ?? "",
-                ["ALLOWED_USER_SUBS"] = props.AllowedUserSubs ?? "",
-                ["GOOGLE_REFRESH_TOKEN_SSM_PATH"] = props.GoogleRefreshTokenSsmPath ?? "",
-                ["PROJ_CALENDARLINKINDEX_TABLE_NAME"] = calendarLinkIndexTable.TableName,
-                ["PROJ_NOTESEARCHVIEW_TABLE_NAME"] = noteSearchViewTable.TableName,
-                ["DRAFT_TRANSCRIPTION_TABLE_NAME"] = draftTranscriptionTable.TableName,
-                ["IMAGE_BUCKET_NAME"] = imagesBucket.BucketName,
-                ["PROJ_WORKSPACELIST_TABLE_NAME"] = workspaceListTable.TableName,
-                // RYW-1: the consistency gate reads the projector's processed-position table to
-                // wait until a just-written stream has been applied. Rides the constructor dict
-                // (projPositionTable is created above the function), not AddEnvironment, so it is
-                // included in the function-config hash that drives the CurrentVersion alias.
-                ["PROJ_POSITION_TABLE_NAME"] = projPositionTable.TableName,
-                ["BEDROCK_MODEL_ID"] = bedrockModelId
-            }
+            Environment = new Dictionary<string, string>(requestEnvironment)
         });
 
         // ── Transcribe browser role ──────────────────────────────────────
@@ -306,7 +320,7 @@ public sealed class NoteTakerStack : Stack
         // at that point, and env vars set afterwards are excluded from the hash.
         var transcribeRole = new Role(this, "TranscribeBrowserRole", new RoleProps
         {
-            AssumedBy = new ArnPrincipal(apiFunction.Role!.RoleArn),
+            AssumedBy = new ArnPrincipal(commandFunction.Role!.RoleArn),
             Description = "Scoped credentials for browser-held AWS Transcribe Streaming sessions",
             InlinePolicies = new Dictionary<string, PolicyDocument>
             {
@@ -329,12 +343,15 @@ public sealed class NoteTakerStack : Stack
                 })
             }
         });
-        apiFunction.AddToRolePolicy(new PolicyStatement(new PolicyStatementProps
+        commandFunction.AddToRolePolicy(new PolicyStatement(new PolicyStatementProps
         {
             Actions = new[] { "sts:AssumeRole" },
             Resources = new[] { transcribeRole.RoleArn }
         }));
-        apiFunction.AddEnvironment("TRANSCRIBE_ROLE_ARN", transcribeRole.RoleArn);
+        // TRANSCRIBE_ROLE_ARN is a token (role ARN) and is read lazily only by the
+        // transcribe-credentials endpoint (a Command-routed GET) — so it rides AddEnvironment
+        // on the Command function alone; the Query function never serves that route.
+        commandFunction.AddEnvironment("TRANSCRIBE_ROLE_ARN", transcribeRole.RoleArn);
 
         // Cross-region inference profiles (eu./us./ap. prefix) require two IAM ARNs:
         //   - inference-profile: includes account ID, scoped to the deployment region
@@ -357,44 +374,44 @@ public sealed class NoteTakerStack : Stack
                 Arn.Format(new ArnComponents { Service = "bedrock", Resource = "foundation-model", ResourceName = bedrockModelId, Account = string.Empty }, this)
             ];
         }
-        apiFunction.AddToRolePolicy(new PolicyStatement(new PolicyStatementProps
+        commandFunction.AddToRolePolicy(new PolicyStatement(new PolicyStatementProps
         {
             Actions = new[] { "bedrock:InvokeModel" },
             Resources = bedrockResources
         }));
         // Note images: object read/write scoped to the note image prefix. Uses the
-        // bucket grant (not apiFunction.AddToRolePolicy / Role.AddToPrincipalPolicy with
-        // a bespoke statement): adding a distinct statement that way silently drops the
-        // conditional post-CurrentVersion SSM grant, whereas the bucket grant does not.
-        imagesBucket.GrantReadWrite(apiFunction, "notes/*");
+        // bucket grant (not a bespoke AddToRolePolicy statement) as a matter of habit.
+        imagesBucket.GrantReadWrite(commandFunction, "notes/*");
 
-        var apiAlias = new Amazon.CDK.AWS.Lambda.Alias(this, "LiveAlias", new Amazon.CDK.AWS.Lambda.AliasProps
-        {
-            AliasName = "live",
-            Version = apiFunction.CurrentVersion
-        });
-
-        eventsTable.GrantReadWriteData(apiFunction);
-        eventsTable.Grant(apiFunction, "dynamodb:TransactWriteItems");
-        projTable.GrantReadWriteData(apiFunction);
-        noteDetailTable.GrantReadWriteData(apiFunction);
-        noteActionsTable.GrantReadWriteData(apiFunction);
-        todoListTable.GrantReadWriteData(apiFunction);
-        noteCardListTable.GrantReadWriteData(apiFunction);
-        folderTreeTable.GrantReadWriteData(apiFunction);
-        tagIndexTable.GrantReadWriteData(apiFunction);
-        tagFeedbackTable.GrantReadWriteData(apiFunction);
-        actionFeedbackTable.GrantReadWriteData(apiFunction);
-        calendarLinkIndexTable.GrantReadWriteData(apiFunction);
-        noteSearchViewTable.GrantReadWriteData(apiFunction);
-        workspaceListTable.GrantReadWriteData(apiFunction);
-        // RYW-1: the consistency gate reads (only) the projector's processed-position table to
-        // poll whether a just-written stream has been applied. Read-only — the API never advances
-        // the cursor; the Projector Lambda owns the write. Resource-grant path, never a bare
-        // AddToRolePolicy (which can silently drop the conditional post-CurrentVersion SSM grant).
-        projPositionTable.GrantReadData(apiFunction);
+        // The Command function is invoked via $LATEST (no alias) — it has no SnapStart,
+        // so there is no published-version snapshot to route to. Dropping the alias also
+        // removes the CurrentVersion-hash freeze, so the conditional SSM grant below can no
+        // longer be silently excluded from a version's config.
+        eventsTable.GrantReadWriteData(commandFunction);
+        eventsTable.Grant(commandFunction, "dynamodb:TransactWriteItems");
+        // Projection tables: read/write. Since RYW the command handlers are append-only and
+        // do NOT touch projections — these grants exist SOLELY for the admin rebuild endpoint
+        // (POST /admin/projections/rebuild), which folds the event log and rewrites every read
+        // model. This is the documented "admin grant" exception (ADR 0009 / phase-27): the
+        // Command role's only projection access is the rebuild maintenance path, not request
+        // handling. The Query (read) role holds these tables read-only.
+        projTable.GrantReadWriteData(commandFunction);
+        noteDetailTable.GrantReadWriteData(commandFunction);
+        noteActionsTable.GrantReadWriteData(commandFunction);
+        todoListTable.GrantReadWriteData(commandFunction);
+        noteCardListTable.GrantReadWriteData(commandFunction);
+        folderTreeTable.GrantReadWriteData(commandFunction);
+        tagIndexTable.GrantReadWriteData(commandFunction);
+        tagFeedbackTable.GrantReadWriteData(commandFunction);
+        actionFeedbackTable.GrantReadWriteData(commandFunction);
+        calendarLinkIndexTable.GrantReadWriteData(commandFunction);
+        noteSearchViewTable.GrantReadWriteData(commandFunction);
+        workspaceListTable.GrantReadWriteData(commandFunction);
+        // No proj-position grant on Command: writes don't gate, and the rebuild handler does
+        // not touch the cursor table. The read-your-writes gate (which reads proj-position)
+        // runs only on GET handlers, which route to the Query function.
         // Least-privilege: the draft store only ever does point Get/Put/Delete.
-        draftTranscriptionTable.Grant(apiFunction, "dynamodb:GetItem", "dynamodb:PutItem", "dynamodb:DeleteItem");
+        draftTranscriptionTable.Grant(commandFunction, "dynamodb:GetItem", "dynamodb:PutItem", "dynamodb:DeleteItem");
 
         if (!string.IsNullOrEmpty(props.GoogleRefreshTokenSsmPath))
         {
@@ -404,12 +421,61 @@ public sealed class NoteTakerStack : Stack
                 Resource = "parameter",
                 ResourceName = props.GoogleRefreshTokenSsmPath.TrimStart('/')
             }, this);
-            apiFunction.AddToRolePolicy(new PolicyStatement(new PolicyStatementProps
+            commandFunction.AddToRolePolicy(new PolicyStatement(new PolicyStatementProps
             {
                 Actions = new[] { "ssm:GetParameter" },
                 Resources = new[] { ssmArn }
             }));
         }
+
+        // ── Query function (reads only — projection tables read-only) ────────
+        // Serves every GET except the two side-service GETs pinned to Command. Keeps
+        // SnapStart (latency-critical, user-facing reads) behind a `live` alias. Its role
+        // is the load-bearing least-privilege boundary: read-only on the projection tables
+        // it serves + the proj-position cursor (the read-your-writes gate) + a point read on
+        // the draft store (GET /notes/{id} composes an uncommitted draft) + a metadata-only
+        // DescribeTable on the events table (the /health probe). It can NEVER mutate any item
+        // and has NO event-store data access, no Bedrock/STS/SSM/Google, no image-bucket grant.
+        var queryFunction = new Amazon.CDK.AWS.Lambda.Function(this, "QueryFunction", new Amazon.CDK.AWS.Lambda.FunctionProps
+        {
+            Runtime = Amazon.CDK.AWS.Lambda.Runtime.DOTNET_10,
+            Handler = "Api",
+            Description = "AI Note Taker Query API",
+            Code = Amazon.CDK.AWS.Lambda.Code.FromAsset(lambdaAssetPath),
+            Timeout = Duration.Seconds(29),
+            MemorySize = 512,
+            LogGroup = queryLogGroup,
+            SnapStart = Amazon.CDK.AWS.Lambda.SnapStartConf.ON_PUBLISHED_VERSIONS,
+            Tracing = Amazon.CDK.AWS.Lambda.Tracing.ACTIVE,
+            Environment = new Dictionary<string, string>(requestEnvironment)
+        });
+
+        var queryAlias = new Amazon.CDK.AWS.Lambda.Alias(this, "QueryFunctionLiveAlias", new Amazon.CDK.AWS.Lambda.AliasProps
+        {
+            AliasName = "live",
+            Version = queryFunction.CurrentVersion
+        });
+
+        // Read-only projection grants — exactly the read models the GET handlers serve.
+        // The feedback counter tables (tag/action) are deliberately excluded: they are
+        // projector-written and read only on the analysis (write) path, never on a GET.
+        projTable.GrantReadData(queryFunction);
+        noteDetailTable.GrantReadData(queryFunction);
+        noteActionsTable.GrantReadData(queryFunction);
+        todoListTable.GrantReadData(queryFunction);
+        noteCardListTable.GrantReadData(queryFunction);
+        folderTreeTable.GrantReadData(queryFunction);
+        tagIndexTable.GrantReadData(queryFunction);
+        calendarLinkIndexTable.GrantReadData(queryFunction);
+        noteSearchViewTable.GrantReadData(queryFunction);
+        workspaceListTable.GrantReadData(queryFunction);
+        // The read-your-writes gate polls the projector's processed-position cursor.
+        projPositionTable.GrantReadData(queryFunction);
+        // GET /notes/{id} composes the uncommitted transcription draft at read time.
+        draftTranscriptionTable.Grant(queryFunction, "dynamodb:GetItem");
+        // /health probes DynamoDB reachability via DescribeTable on the events table —
+        // a control-plane metadata call only; it grants no access to event-store DATA.
+        eventsTable.Grant(queryFunction, "dynamodb:DescribeTable");
 
         // ── Projector Lambda (27-B → 27-RYW: sole read-model writer) ─────────────────────────
         // Async read-model writer driven by the events-table DynamoDB stream. Mirrors the
@@ -520,24 +586,55 @@ public sealed class NoteTakerStack : Stack
             ApiName = "notetaker-api",
         });
 
-        // HTTP API's ANY method does not include OPTIONS — OPTIONS must be routed
-        // explicitly so that ASP.NET Core's UseCors middleware can handle CORS preflights.
-        var lambdaIntegration = new Amazon.CDK.AwsApigatewayv2Integrations.HttpLambdaIntegration(
-            "LambdaIntegration", apiAlias);
+        // 27-D: route by method. Reads (GET/HEAD) + CORS preflight (OPTIONS) go to the
+        // Query function; write methods go to Command. Two side-service GETs are pinned to
+        // Command (more-specific routes beat the greedy /{proxy+}) because they need
+        // Google/SSM (calendar) or STS (transcribe credentials), not a projection.
+        var commandIntegration = new Amazon.CDK.AwsApigatewayv2Integrations.HttpLambdaIntegration(
+            "CommandIntegration", commandFunction);
+        var queryIntegration = new Amazon.CDK.AwsApigatewayv2Integrations.HttpLambdaIntegration(
+            "QueryIntegration", queryAlias);
 
+        // Reads + preflight → Query. HTTP API's ANY does not include OPTIONS, so OPTIONS is
+        // routed explicitly (ASP.NET Core UseCors handles the preflight in either binary).
         httpApi.AddRoutes(new Amazon.CDK.AWS.Apigatewayv2.AddRoutesOptions
         {
             Path = "/{proxy+}",
-            Methods = new[] { Amazon.CDK.AWS.Apigatewayv2.HttpMethod.ANY },
-            Integration = lambdaIntegration
+            Methods = new[]
+            {
+                Amazon.CDK.AWS.Apigatewayv2.HttpMethod.GET,
+                Amazon.CDK.AWS.Apigatewayv2.HttpMethod.HEAD,
+                Amazon.CDK.AWS.Apigatewayv2.HttpMethod.OPTIONS
+            },
+            Integration = queryIntegration
         });
 
+        // Writes → Command.
         httpApi.AddRoutes(new Amazon.CDK.AWS.Apigatewayv2.AddRoutesOptions
         {
             Path = "/{proxy+}",
-            Methods = new[] { Amazon.CDK.AWS.Apigatewayv2.HttpMethod.OPTIONS },
-            Integration = new Amazon.CDK.AwsApigatewayv2Integrations.HttpLambdaIntegration(
-                "LambdaOptionsIntegration", apiAlias)
+            Methods = new[]
+            {
+                Amazon.CDK.AWS.Apigatewayv2.HttpMethod.POST,
+                Amazon.CDK.AWS.Apigatewayv2.HttpMethod.PUT,
+                Amazon.CDK.AWS.Apigatewayv2.HttpMethod.PATCH,
+                Amazon.CDK.AWS.Apigatewayv2.HttpMethod.DELETE
+            },
+            Integration = commandIntegration
+        });
+
+        // Side-service GETs that need write-path credentials, not projections → Command.
+        httpApi.AddRoutes(new Amazon.CDK.AWS.Apigatewayv2.AddRoutesOptions
+        {
+            Path = "/calendar/{date}",
+            Methods = new[] { Amazon.CDK.AWS.Apigatewayv2.HttpMethod.GET },
+            Integration = commandIntegration
+        });
+        httpApi.AddRoutes(new Amazon.CDK.AWS.Apigatewayv2.AddRoutesOptions
+        {
+            Path = "/transcription/credentials",
+            Methods = new[] { Amazon.CDK.AWS.Apigatewayv2.HttpMethod.GET },
+            Integration = commandIntegration
         });
 
         // ── Frontend (S3 + CloudFront) ───────────────────────────────────
@@ -644,7 +741,7 @@ public sealed class NoteTakerStack : Stack
             new Amazon.CDK.AWS.CloudWatch.LogQueryWidget(new Amazon.CDK.AWS.CloudWatch.LogQueryWidgetProps
             {
                 Title = "All errors",
-                LogGroupNames = new[] { apiLogGroup.LogGroupName },
+                LogGroupNames = new[] { commandLogGroup.LogGroupName, queryLogGroup.LogGroupName },
                 Width = 24,
                 Height = 6,
                 View = Amazon.CDK.AWS.CloudWatch.LogQueryVisualizationType.TABLE,
@@ -657,20 +754,27 @@ public sealed class NoteTakerStack : Stack
                     "| limit 100")
             }),
             // Function-level metrics aggregate across versions/aliases — the right
-            // granularity for an ops overview, deliberately not alias-scoped.
+            // granularity for an ops overview, deliberately not alias-scoped. 27-D: both
+            // request functions are plotted so a write-path and a read-path spike are distinct.
             new Amazon.CDK.AWS.CloudWatch.GraphWidget(new Amazon.CDK.AWS.CloudWatch.GraphWidgetProps
             {
-                Title = "Lambda errors & invocations",
-                Left = new[] { apiFunction.MetricErrors(), apiFunction.MetricInvocations() },
+                Title = "Lambda errors & invocations (command + query)",
+                Left = new[]
+                {
+                    commandFunction.MetricErrors(), commandFunction.MetricInvocations(),
+                    queryFunction.MetricErrors(), queryFunction.MetricInvocations()
+                },
                 Width = 12
             }),
             new Amazon.CDK.AWS.CloudWatch.GraphWidget(new Amazon.CDK.AWS.CloudWatch.GraphWidgetProps
             {
-                Title = "Lambda duration p50/p99",
+                Title = "Lambda duration p50/p99 (command + query)",
                 Left = new[]
                 {
-                    apiFunction.MetricDuration(new Amazon.CDK.AWS.CloudWatch.MetricOptions { Statistic = "p50" }),
-                    apiFunction.MetricDuration(new Amazon.CDK.AWS.CloudWatch.MetricOptions { Statistic = "p99" })
+                    commandFunction.MetricDuration(new Amazon.CDK.AWS.CloudWatch.MetricOptions { Statistic = "p50" }),
+                    commandFunction.MetricDuration(new Amazon.CDK.AWS.CloudWatch.MetricOptions { Statistic = "p99" }),
+                    queryFunction.MetricDuration(new Amazon.CDK.AWS.CloudWatch.MetricOptions { Statistic = "p50" }),
+                    queryFunction.MetricDuration(new Amazon.CDK.AWS.CloudWatch.MetricOptions { Statistic = "p99" })
                 },
                 Width = 12
             }),
@@ -821,13 +925,36 @@ public sealed class NoteTakerStack : Stack
         // Error rate as a percentage of invocations, computed at the alarm so a
         // burst of errors against low traffic still trips. NOT_BREACHING keeps
         // the alarm OK during idle windows where no invocations are recorded.
+        // 27-D: error rate across BOTH request functions — a write 500 must page as
+        // surely as a read 500. errors/invocations are each a sub-expression summing the
+        // command and query functions; the top expression is unchanged.
+        var totalErrors = new Amazon.CDK.AWS.CloudWatch.MathExpression(new Amazon.CDK.AWS.CloudWatch.MathExpressionProps
+        {
+            Expression = "ce + qe",
+            UsingMetrics = new Dictionary<string, Amazon.CDK.AWS.CloudWatch.IMetric>
+            {
+                ["ce"] = commandFunction.MetricErrors(new Amazon.CDK.AWS.CloudWatch.MetricOptions { Statistic = "Sum" }),
+                ["qe"] = queryFunction.MetricErrors(new Amazon.CDK.AWS.CloudWatch.MetricOptions { Statistic = "Sum" })
+            },
+            Period = Duration.Minutes(5)
+        });
+        var totalInvocations = new Amazon.CDK.AWS.CloudWatch.MathExpression(new Amazon.CDK.AWS.CloudWatch.MathExpressionProps
+        {
+            Expression = "ci + qi",
+            UsingMetrics = new Dictionary<string, Amazon.CDK.AWS.CloudWatch.IMetric>
+            {
+                ["ci"] = commandFunction.MetricInvocations(new Amazon.CDK.AWS.CloudWatch.MetricOptions { Statistic = "Sum" }),
+                ["qi"] = queryFunction.MetricInvocations(new Amazon.CDK.AWS.CloudWatch.MetricOptions { Statistic = "Sum" })
+            },
+            Period = Duration.Minutes(5)
+        });
         var errorRate = new Amazon.CDK.AWS.CloudWatch.MathExpression(new Amazon.CDK.AWS.CloudWatch.MathExpressionProps
         {
             Expression = "errors / invocations * 100",
             UsingMetrics = new Dictionary<string, Amazon.CDK.AWS.CloudWatch.IMetric>
             {
-                ["errors"] = apiFunction.MetricErrors(new Amazon.CDK.AWS.CloudWatch.MetricOptions { Statistic = "Sum" }),
-                ["invocations"] = apiFunction.MetricInvocations(new Amazon.CDK.AWS.CloudWatch.MetricOptions { Statistic = "Sum" })
+                ["errors"] = totalErrors,
+                ["invocations"] = totalInvocations
             },
             Label = "Error rate (%)",
             Period = Duration.Minutes(5)
@@ -845,11 +972,15 @@ public sealed class NoteTakerStack : Stack
         });
         errorRateAlarm.AddAlarmAction(alarmAction);
 
+        // 27-D: P99 latency tracks the QUERY function — the user-facing read path (SnapStart,
+        // gated reads). Write latency is masked by the frontend's optimistic UI, so it is not
+        // the latency signal a user feels; the Command function's health is covered by the
+        // error-rate alarm above.
         var latencyAlarm = new Amazon.CDK.AWS.CloudWatch.Alarm(this, "LatencyAlarm", new Amazon.CDK.AWS.CloudWatch.AlarmProps
         {
             AlarmName = "notetaker-p99-latency",
-            AlarmDescription = "Lambda P99 duration exceeds 5000 ms over 5 minutes",
-            Metric = apiFunction.MetricDuration(new Amazon.CDK.AWS.CloudWatch.MetricOptions
+            AlarmDescription = "Query (read) Lambda P99 duration exceeds 5000 ms over 5 minutes",
+            Metric = queryFunction.MetricDuration(new Amazon.CDK.AWS.CloudWatch.MetricOptions
             {
                 Statistic = "p99",
                 Period = Duration.Minutes(5)
@@ -1047,7 +1178,7 @@ public sealed class NoteTakerStack : Stack
             new Amazon.CDK.AWS.CloudWatch.LogQueryWidget(new Amazon.CDK.AWS.CloudWatch.LogQueryWidgetProps
             {
                 Title = "All errors (backend + frontend)",
-                LogGroupNames = new[] { apiLogGroup.LogGroupName, rumLogGroupName },
+                LogGroupNames = new[] { commandLogGroup.LogGroupName, queryLogGroup.LogGroupName, rumLogGroupName },
                 Width = 24,
                 Height = 6,
                 View = Amazon.CDK.AWS.CloudWatch.LogQueryVisualizationType.TABLE,
@@ -1072,7 +1203,7 @@ public sealed class NoteTakerStack : Stack
             new Amazon.CDK.AWS.Logs.CfnQueryDefinition(this, id, new Amazon.CDK.AWS.Logs.CfnQueryDefinitionProps
             {
                 Name = name,
-                LogGroupNames = new[] { apiLogGroup.LogGroupName },
+                LogGroupNames = new[] { commandLogGroup.LogGroupName, queryLogGroup.LogGroupName },
                 QueryString = query
             });
 
