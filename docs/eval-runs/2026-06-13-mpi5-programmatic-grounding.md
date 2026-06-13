@@ -1,6 +1,16 @@
 # Eval run — MPI-5 programmatic note-grounding confirmation
 
-**Decision:** MPI-5 **ships** — the deterministic grounded-entity allowlist fixes the judge's note-blindness. The sparse fixture `14-all-hands-reorg` content rose **0.20 → 0.70–0.90** across all four keep-set models, now consistent with its faithfulness (1.00). No prompt change; `analysis@v5` stays current. Keep-set unchanged.
+**What this run was for:** to check that the MPI-5 fix worked. The eval uses an AI "judge" to score each generated note. That judge had a bug — it counted facts the user had already written in their own note as if the AI had made them up, wrongly tanking the score. MPI-5 (#257) fixed it by handing the judge the known-good keywords up front. **It worked:** the worst-hit test note went from a content score of 0.20 to 0.70–0.90 on every model. This was a fix to the *measurement*, not to the app — nothing the end user sees changed.
+
+**Recommended changes coming out of this run:**
+
+| Change | Do it? | Plain reason |
+|--------|--------|--------------|
+| **Improve note tags** (reword the tagging prompt — MPI-6) | **Yes, next** | Tagging is the AI's weakest output on every model (0.53–0.72 vs 0.85+ for everything else). Tags are how you find related notes later, so this is the one change that meaningfully lifts note quality. Prompt-only, cheap. |
+| **Switch the production model** (Nova Lite → Sonnet-4-6) | **No** | Sonnet scored only 0.012 higher than the cheap Nova Lite we already run — too small to matter, at much higher cost per note. |
+| **Drop Mistral from the test set** | **Not yet** | It's the weakest and the only non-Anthropic model, but that's exactly why it's useful — it's our cross-check against the (Anthropic) judge favouring its own family. Revisit after MPI-6. |
+
+No model or prompt change ships from this run; `analysis@v5` stays live. The next action is MPI-6.
 
 ## 1. Run metadata
 
