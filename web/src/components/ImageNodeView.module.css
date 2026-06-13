@@ -64,3 +64,48 @@
   outline: 2px solid var(--color-primary);
   outline-offset: 2px;
 }
+
+/* Size control: revealed alongside the remove control on hover / focus-within /
+   selection, mirroring removeButton's reveal so the two affordances behave alike. */
+.sizeControl {
+  position: absolute;
+  bottom: var(--space-1);
+  left: 50%;
+  transform: translateX(-50%);
+  display: inline-flex;
+  gap: 1px;
+  padding: 2px;
+  border-radius: var(--radius);
+  background: var(--color-overlay-scrim);
+  line-height: 0;
+  opacity: 0;
+  transition: opacity 0.12s ease;
+}
+
+.wrapper:hover .sizeControl,
+.wrapper.selected .sizeControl,
+.sizeControl:focus-within {
+  opacity: 1;
+}
+
+.sizeButton {
+  min-width: 1.5rem;
+  height: 1.5rem;
+  padding: 0 var(--space-1);
+  border: none;
+  border-radius: calc(var(--radius) - 2px);
+  background: transparent;
+  color: var(--color-on-overlay);
+  font-size: 0.75rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.sizeButton:hover {
+  background: var(--color-on-overlay-faint, rgba(255, 255, 255, 0.18));
+}
+
+.sizeButton:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 1px;
+}
