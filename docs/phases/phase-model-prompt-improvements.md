@@ -16,7 +16,7 @@
 | MPI-2 | `analysis@v5` — keep V4's depth win, add a thin-transcript grounding clamp + restore V3 tag discipline | Done — ships (`run-551897`) | MPI-1 |
 | MPI-3 | Model sweep — add `anthropic.claude-sonnet-4-6`, evaluate as replacement for the aged `claude-3-sonnet-20240229` value pick | Done (`run-28225`) | 10-G |
 | MPI-4 | Fix the judge — give it the user's note as grounding + stop the content rubric auto-failing faithful terse notes | Done — terseness fixed; note-grounding partial (`run-28225`) | 10-G |
-| MPI-5 | Programmatic note-grounding for the judge — prompt-level grounding proved insufficient; exclude note/gold entities from the fabrication check | Open | MPI-4 |
+| MPI-5 | Programmatic note-grounding for the judge — prompt-level grounding proved insufficient; exclude note/gold entities from the fabrication check | In Progress — allowlist merged (#257), confirming `make eval` run pending | MPI-4 |
 
 Further items are appended as each eval run surfaces the next weakest dimension. The `eval-run` skill proposes them (see [How items are added](#how-items-are-added)).
 
@@ -143,7 +143,7 @@ So v4 must chase **depth where the source supports it and restraint where it doe
 
 ## MPI-5 — Programmatic note-grounding for the judge
 
-**Status:** Open
+**Status:** In Progress — the deterministic allowlist code is **merged** (#257): the quality judge now receives the fixture's gold tags (humanised) as a `GROUNDED ENTITIES — never flag as fabrication` block, replacing the prompt-only grounding of MPI-4. The **confirming `make eval` run + decision report** (acceptance criteria below) is pending — it needs live Bedrock and is run via the `eval-run` skill, not this code merge.
 
 **Proposal:** Stop relying on prompt wording for note-grounding — extract the user-note (and gold-tag) entities and exclude them from the quality judge's fabrication check programmatically, or add a held-out non-vendor judge to confirm sparse-fixture content.
 
@@ -159,8 +159,9 @@ So v4 must chase **depth where the source supports it and restraint where it doe
 2. Re-run `analysis@v5` on the keep-set; confirm `14-all-hands-reorg` / `17-budget-review` content scores reflect faithfulness, not entity-flagging.
 3. Record via the `eval-run` skill; update `test-matrix.md`.
 
-- [ ] Note/gold entities no longer flagged as fabrication on the sparse fixtures
-- [ ] Sparse-fixture content scores consistent with faithfulness across all keep-set models
-- [ ] Decision recorded in `docs/eval-runs/` + `test-matrix.md`
+- [x] **Allowlist wired** (#257): `GroundedEntities.From(fixture)` humanises + dedups gold tags; `BedrockQualityJudge.BuildPrompt` renders the `GROUNDED ENTITIES` block; `EvalRunner` populates it per row. 16 targeted unit tests; full `Analysis.Eval` green. Harness-only, `paths-ignore`d → no deploy.
+- [ ] Note/gold entities no longer flagged as fabrication on the sparse fixtures — **pending confirming `make eval` run**
+- [ ] Sparse-fixture content scores consistent with faithfulness across all keep-set models — **pending confirming `make eval` run**
+- [ ] Decision recorded in `docs/eval-runs/` + `test-matrix.md` — **pending `eval-run` skill**
 
 **Depends on:** MPI-4 (the prompt-level edit and the `run-28225` finding that it's insufficient).
