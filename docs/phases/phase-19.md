@@ -10,7 +10,7 @@
 | 19-B | **Typed-lint + non-null/catch cleanup.** Adopt `@typescript-eslint` `recommended-type-checked`; remove the 8 non-null `!` and the unsafe `catch` typing; add cheap flags (`noImplicitOverride`) | Done | — |
 | 19-C | **Stricter index/optional TS flags.** `noUncheckedIndexedAccess` then `exactOptionalPropertyTypes`, staged with backlog clear | Not Started | 19-B |
 | 19-D | **Context provider performance.** Memoise `AuthContext`/`ToastContext` provider values; `useCallback` the Auth actions; optional Auth state/actions split | Done | — |
-| 19-E | **Effect hygiene.** Add out-of-order guards to 3 mount-only fetches; replace 3 notify-parent-in-effect patterns | Not Started | — |
+| 19-E | **Effect hygiene.** Replace notify-parent-in-effect patterns. #3 (ActionsSection `onCountChange`) **Done** (PR #285); #1/#2 (RecordControl status/transcript) deferred — `useTranscription` is a stateful streaming hook, needs a hook-lift, re-spec separately | In Progress | — |
 | 19-F1 | **Accessibility: live regions.** `role="alert"`/`role="status"` on the ~15 transient surfaces (errors/loading/empty) that lack one; high value = the silent mutation-failure errors | Done | — |
 | 19-F2 | **Accessibility: focus + `:focus-visible`.** 6 bare `:focus`→`:focus-visible`; consolidate `MeetingPicker`'s redundant Esc handler into `useFocusTrap`'s `onClose`. (`SessionExpiredBanner` Esc-to-close dropped — blocking re-auth gate, no valid dismiss.) | Done | — |
 | 19-F3 | **Adopt `eslint-plugin-jsx-a11y`.** Add the plugin's `recommended` ruleset to `web/eslint.config.js`, clear the backlog, gate in CI — standing guard for a11y regressions (graduated from `technical-improvements.md`) | Done | — |
@@ -194,9 +194,13 @@ Each lists the finding, locations, value tier, and effort. Specs are written per
 
 ### 19-E — Effect hygiene — **value: medium**
 
-**Status:** Not Started (specced 2026-06-13)
+**Status:** #3 **Done** (PR #285, deploy #576, 2026-06-13). #1/#2 **deferred → re-spec needed** (see "Scope split" below).
 
-**Intent:** Remove three "you-might-not-need-an-effect" (YMNNAE) effects that mirror a child's hook value into the parent via a callback fired from `useEffect`. Lift the source-of-truth state so the parent reads it directly; delete the notify-parent-in-effect indirection and its callback props. **Behavioural cleanup only — no user-visible change.**
+> **Scope split (2026-06-13).** Only #3 (ActionsSection `onCountChange`) shipped. #1/#2 (RecordControl `status`/`transcript`) were deferred: the spec's "parent reads its own `useTranscription` instance, same cache key → same request" is **false** — `useTranscription` is a **stateful streaming hook** (owns the Transcribe client, audio worklet, credentials via `useState`/`useRef`), **not** a React Query read. A second `useTranscription(noteId)` instance in `NoteView` would start a **second independent recording session**, not dedupe. Only React-Query-backed reads (`useActions`/`useTags`/…) dedupe across instances on a shared key. The correct #1/#2 fix is to **lift `useTranscription` up into `NoteView`** (single instance) and pass `status`/`transcript`/`startRecording`/`stopRecording`/etc. **down** to `RecordControl` as props (controlled component) — a larger change to `RecordControl`'s contract than the original spec assumed. Tracked as a follow-up; re-spec before implementing.
+
+**Intent:** Remove "you-might-not-need-an-effect" (YMNNAE) effects that mirror a child's hook value into the parent via a callback fired from `useEffect`. Lift the source-of-truth state so the parent reads it directly; delete the notify-parent-in-effect indirection and its callback props. **Behavioural cleanup only — no user-visible change.**
+
+**#3 (shipped):** `ActionsSection` no longer pushes `actions.length` up via an `onCountChange` effect; `NoteView` reads the count from its own `useActions(noteId)` query — same `keys.actions(noteId)` cache key, so React Query serves both subscribers from one fetch (no extra request, `clearLatestToken` consistency-token still consumed exactly once). Guard test: `NoteView.test.tsx` "action items loading reveals Save and Delete".
 
 > **Audit correction — fetch-race half is DROPPED.** The 2026-06-05 race-guard targets no longer exist: `getTags`/`getFolders`/`getNoteCards` all migrated to React Query hooks (`useTags`/`useFolders`/`useNoteCards`) after **ADR 0010 was superseded by [ADR 0012](../adr/0012-adopt-tanstack-query-server-state.md)** (2026-06-05). React Query owns request cancellation/staleness, so the "consistency/defense, no live bug" race-guard work has no remaining target. The doc header's "TanStack Query stays deferred per ADR 0010" is stale. **This slice is now purely the YMNNAE cleanup** — the higher-value half of the original scope.
 
