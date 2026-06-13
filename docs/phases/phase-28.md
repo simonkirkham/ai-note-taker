@@ -6,8 +6,8 @@
 
 | Slice | Summary | Status | Depends on |
 |-------|---------|--------|------------|
-| 28-A | **Preset sizes + width persistence round-trip.** Add a `width` attribute to the image node; an accessible S/M/L/Original control on each image; carry `width` through `tiptap-markdown` serialize/parse and the `noteImages` key↔URL rewrite + drop-unresolved guard. Width survives save → reload → resolve. Optimistic by construction (local node attr). | Not Started | — |
-| 28-B | **Drag-to-resize handle.** Corner drag handle on the image (hover/focus/selected, mirroring the existing ✕ remove control); aspect-locked; clamps to `[min, editor content width]`; reuses 28-A's width persistence (no new persistence code). | Not Started | 28-A |
+| 28-A | **Preset sizes + width persistence round-trip.** Add a `width` attribute to the image node; an accessible S/M/L/Original control on each image; carry `width` through `tiptap-markdown` serialize/parse and the `noteImages` key↔URL rewrite + drop-unresolved guard. Width survives save → reload → resolve. Optimistic by construction (local node attr). | Done | — |
+| 28-B | **Drag-to-resize handle.** Corner drag handle on the image (hover/focus/selected, mirroring the existing ✕ remove control); aspect-locked; clamps to `[min, editor content width]`; reuses 28-A's width persistence (no new persistence code). | Done | 28-A |
 
 > **28-A is the whole feature end-to-end** through the simplest, fully-accessible control, and carries all the risk — the width round-trip and the three `noteImages` regex helpers. **28-B is a pure UX enhancement** layered on 28-A's persisted `width` attribute: it adds the drag affordance and changes no save/load code. Ship 28-A first; 28-B only after the round-trip is proven.
 

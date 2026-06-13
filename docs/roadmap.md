@@ -339,7 +339,7 @@ Slices and acceptance criteria: [docs/phases/phase-27.md](phases/phase-27.md)
 
 ---
 
-## Phase 28 — Resize images in a note _(Not Started)_
+## Phase 28 — Resize images in a note _(Done)_
 
 Let the user resize an inline image — a **corner drag handle** (free, aspect-locked) plus an accessible **preset control** (Small / Medium / Large / Original) — with the size persisted so it round-trips on reload. **Frontend-only:** images render solely through `NoteEditor` (Tiptap + `tiptap-markdown`); there is no separate read-only renderer, preview, or card image path, and the size lives inside the existing note `content` markdown, so there is **no new domain event, backend, projection, or CDK change** (content is already event-sourced via `ContentEditedV2`; deploy-time neutral). Two slices: **28-A** adds a `width` attribute, the accessible preset control, and the persistence round-trip — carrying `width` through `tiptap-markdown` serialize/parse and the existing key↔presigned-URL rewrite (`noteImages.ts`) without it being silently dropped on save (the one real subtlety, and why the keyboard-accessible presets ship first to satisfy the jsx-a11y gate); **28-B** layers the corner drag handle on top, reusing 28-A's width persistence with no new save/load code. Graduated from the "Resize images in a note" item in `future-features.md`.
 
