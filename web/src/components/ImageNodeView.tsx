@@ -1,7 +1,7 @@
 import { NodeViewWrapper, type NodeViewProps } from '@tiptap/react';
 import clsx from 'clsx';
 import { useRef } from 'react';
-import { presetWidth, type PresetSize } from '../lib/imageResize';
+import { nextWidthFromDrag, presetWidth, type PresetSize } from '../lib/imageResize';
 import { isImageKey } from '../lib/noteImages';
 import styles from './ImageNodeView.module.css';
 
@@ -48,6 +48,29 @@ export default function ImageNodeView({
     updateAttributes({ width: presetWidth(size, natural, content) });
   };
 
+  // Corner drag-resize. Pointer-only (the preset control above is the keyboard a11y
+  // path); aspect-locked because only `width` is set. Updates the local node width
+  // live during the drag — persistence rides the same blur-save path as the presets.
+  // Listeners go on `window` so the drag continues even if the pointer leaves the
+  // small handle; preventDefault stops the drag starting a text selection / blur.
+  const startDrag = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const startX = e.clientX;
+    const startWidth = width ?? Math.round(imgRef.current?.getBoundingClientRect().width ?? 0);
+    const onMove = (move: MouseEvent) => {
+      const natural = imgRef.current?.naturalWidth ?? 0;
+      const content = editor?.view.dom.clientWidth ?? 0;
+      updateAttributes({ width: nextWidthFromDrag(startWidth, move.clientX - startX, natural, content) });
+    };
+    const onUp = () => {
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+    };
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+  };
+
   // `alt` stays an empty string (decorative image); empty `title` omits the attribute.
   return (
     <NodeViewWrapper className={clsx(styles.wrapper, selected && styles.selected)}>
@@ -83,6 +106,12 @@ export default function ImageNodeView({
               </button>
             ))}
           </div>
+          <span
+            className={styles.resizeHandle}
+            data-testid="image-resize-handle"
+            aria-hidden="true"
+            onMouseDown={startDrag}
+          />
         </>
       )}
       <button
