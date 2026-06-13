@@ -21,7 +21,7 @@ export default function SignInPage() {
         <span className={styles.signInBadge} aria-hidden="true">AI</span>
         <h1 className={styles.signInTitle}>AI Note Taker</h1>
         <p className={styles.signInTagline}>Capture meetings, surface what matters.</p>
-        <button type="button" className={styles.signInButton} onClick={signIn}>
+        <button type="button" className={styles.signInButton} onClick={() => void signIn()}>
           <GoogleMark />
           Sign in with Google
         </button>

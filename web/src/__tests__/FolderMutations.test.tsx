@@ -20,7 +20,7 @@ describe('FolderMutations', () => {
     server.use(
       http.post('/api/w/:wsId/folders', () =>
         new Promise<Response>((res) => {
-          resolveCreate = () => res(HttpResponse.json({ folderId: 'f-real' }, { status: 201 }) as unknown as Response)
+          resolveCreate = () => res(HttpResponse.json({ folderId: 'f-real' }, { status: 201 }))
         }),
       ),
     )
@@ -54,7 +54,7 @@ describe('FolderMutations', () => {
     server.use(
       http.patch('/api/w/:wsId/folders/f-1/name', () =>
         new Promise<Response>((res) => {
-          resolveRename = () => res(new HttpResponse(null, { status: 204 }) as unknown as Response)
+          resolveRename = () => res(new HttpResponse(null, { status: 204 }))
         }),
       ),
     )
@@ -87,7 +87,7 @@ describe('FolderMutations', () => {
       ),
       http.patch('/api/w/:wsId/folders/f-1/name', () =>
         new Promise<Response>((res) => {
-          rejectRename = () => res(new HttpResponse(null, { status: 500 }) as unknown as Response)
+          rejectRename = () => res(new HttpResponse(null, { status: 500 }))
         }),
       ),
     )
@@ -113,7 +113,7 @@ describe('FolderMutations', () => {
       ),
       http.post('/api/w/:wsId/folders', () =>
         new Promise<Response>((res) => {
-          resolveCreate = () => res(HttpResponse.json({ folderId: 'f-child' }, { status: 201 }) as unknown as Response)
+          resolveCreate = () => res(HttpResponse.json({ folderId: 'f-child' }, { status: 201 }))
         }),
       ),
     )
@@ -142,7 +142,7 @@ describe('FolderMutations', () => {
       ),
       http.post('/api/w/:wsId/folders', () =>
         new Promise<Response>((res) => {
-          resolveWithError = () => res(new HttpResponse(null, { status: 500 }) as unknown as Response)
+          resolveWithError = () => res(new HttpResponse(null, { status: 500 }))
         }),
       ),
     )
@@ -189,7 +189,7 @@ describe('FolderMutations', () => {
       ),
       http.delete('/api/w/:wsId/folders/f-1', () =>
         new Promise<Response>((res) => {
-          rejectDelete = () => res(new HttpResponse(null, { status: 500 }) as unknown as Response)
+          rejectDelete = () => res(new HttpResponse(null, { status: 500 }))
         }),
       ),
     )

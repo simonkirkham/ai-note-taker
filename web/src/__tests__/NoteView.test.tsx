@@ -376,6 +376,9 @@ describe('NoteView', () => {
       await waitFor(() => expect(screen.getByTestId('reprocess-final-notes-button')).toBeEnabled())
 
       await userEvent.click(screen.getByTestId('note-tab-quick'))
+      // tsc-test needs the cast (getByLabelText returns HTMLElement, no .value); eslint's
+      // combined-project resolution disagrees and flags it as unnecessary.
+      // eslint-disable-next-line @typescript-eslint/no-unnecessary-type-assertion
       const after = (screen.getByLabelText('Note content') as HTMLTextAreaElement).value
       expect(after).toBe(before)
     })

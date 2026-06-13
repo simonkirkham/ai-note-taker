@@ -149,7 +149,7 @@ export default function RecordControl({
           type="button"
           className={styles.analyseButton}
           data-testid="transcription-analyse-button"
-          onClick={handleAnalyse}
+          onClick={() => void handleAnalyse()}
           disabled={analyseDisabled}
           title={hasSomethingToAnalyse ? undefined : "Add notes or record a transcript to analyse"}
         >

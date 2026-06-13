@@ -70,10 +70,10 @@ export function useDeleteFolder() {
     onMutate: ({ folderId }) => optimistic(qc, (tree) => removeFromTree(tree, folderId)),
     onError: (_e, _v, ctx) => rollback(qc, ctx),
     onSettled: () => {
-      invalidate(qc);
+      void invalidate(qc);
       // The backend orphans a deleted folder's notes to unfiled — refresh the
       // note list so they reappear there (20-C wired this 20-B deferral).
-      qc.invalidateQueries({ queryKey: keys.noteCards });
+      void qc.invalidateQueries({ queryKey: keys.noteCards });
     },
   });
 }

@@ -33,11 +33,11 @@ function rollback(qc: QueryClient, noteId: string, ctx: Ctx | undefined) {
 // keys.todos — the home to-do list surfaces actions (20-A). Only `add` also
 // invalidates keys.actions, to swap its optimistic temp id for the server id.
 function invalidateTodos(qc: QueryClient) {
-  qc.invalidateQueries({ queryKey: keys.todos });
+  void qc.invalidateQueries({ queryKey: keys.todos });
 }
 
 function invalidateActionsAndTodos(qc: QueryClient, noteId: string) {
-  qc.invalidateQueries({ queryKey: keys.actions(noteId) });
+  void qc.invalidateQueries({ queryKey: keys.actions(noteId) });
   invalidateTodos(qc);
 }
 

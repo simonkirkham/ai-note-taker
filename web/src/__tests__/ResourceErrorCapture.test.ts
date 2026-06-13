@@ -5,7 +5,7 @@ type CwrFn = (operation: string, ...args: unknown[]) => void
 
 function withCwr(): ReturnType<typeof vi.fn> {
   const cwr = vi.fn()
-  ;(window as unknown as { cwr?: CwrFn }).cwr = cwr as unknown as CwrFn
+  ;(window as unknown as { cwr?: CwrFn }).cwr = cwr
   return cwr
 }
 

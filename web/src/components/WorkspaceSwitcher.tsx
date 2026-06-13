@@ -54,7 +54,7 @@ export default function WorkspaceSwitcher() {
 
   function switchTo(id: string) {
     setError(null);
-    if (id !== wsId) navigate(`/w/${id}`);
+    if (id !== wsId) void navigate(`/w/${id}`);
     close();
   }
 
@@ -66,7 +66,7 @@ export default function WorkspaceSwitcher() {
     const tempId = `temp-${crypto.randomUUID()}`;
     try {
       const { workspaceId } = await createM.mutateAsync({ name, tempId });
-      navigate(`/w/${workspaceId}`); // create + switch into it
+      void navigate(`/w/${workspaceId}`); // create + switch into it
       close();
     } catch {
       // rolled back in the mutation's onError; surface a generic error inline
@@ -89,7 +89,7 @@ export default function WorkspaceSwitcher() {
         // Deleting the workspace you're viewing would strand you on a now-dead
         // route — fall back to the default workspace.
         onSuccess: () => {
-          if (wasActive) navigate(`/w/${DEFAULT_WORKSPACE_ID}`);
+          if (wasActive) void navigate(`/w/${DEFAULT_WORKSPACE_ID}`);
           close();
         },
         onError: (e) =>
@@ -185,10 +185,10 @@ export default function WorkspaceSwitcher() {
                 value={newName}
                 onChange={(e) => setNewName(e.target.value)}
                 onKeyDown={(e) => {
-                  if (e.key === "Enter") submitCreate();
+                  if (e.key === "Enter") void submitCreate();
                   if (e.key === "Escape") { setCreating(false); setNewName(""); }
                 }}
-                onBlur={submitCreate}
+                onBlur={() => void submitCreate()}
               />
             ) : (
               <button

@@ -95,7 +95,7 @@ export default function ActionsSection({
                 aria-label={`Mark "${item.description}" ${item.completed ? "open" : "complete"}`}
                 checked={item.completed}
                 disabled={toggling.has(item.actionId) || deleting.has(item.actionId)}
-                onChange={() => handleToggle(item)}
+                onChange={() => void handleToggle(item)}
               />
               <span data-testid={`action-description-${item.actionId}`}>
                 {item.description}
@@ -105,7 +105,7 @@ export default function ActionsSection({
                 className={styles.deleteActionButton}
                 aria-label={`Delete "${item.description}"`}
                 disabled={deleting.has(item.actionId) || toggling.has(item.actionId)}
-                onClick={() => handleDelete(item)}
+                onClick={() => void handleDelete(item)}
               >
                 ×
               </button>
@@ -121,10 +121,10 @@ export default function ActionsSection({
         onKeyDown={(e) => {
           if (e.key === "Enter") {
             e.preventDefault();
-            handleSubmitDescription(newAction.trim());
+            void handleSubmitDescription(newAction.trim());
           }
         }}
-        onBlur={() => handleSubmitDescription(newAction.trim())}
+        onBlur={() => void handleSubmitDescription(newAction.trim())}
         placeholder="Add an action item…"
         className={styles.actionInput}
         disabled={submitting}

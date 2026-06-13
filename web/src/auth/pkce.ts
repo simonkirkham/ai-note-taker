@@ -55,5 +55,5 @@ export async function exchangeCode(
     body: JSON.stringify({ code, codeVerifier, redirectUri }),
   })
   if (!res.ok) throw new Error('Token exchange failed')
-  return res.json()
+  return res.json() as Promise<{ id_token: string }>
 }

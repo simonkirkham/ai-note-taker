@@ -1,15 +1,20 @@
 import { request, requestVoid, requestWithResponse } from './client'
 import { clearPendingTodoToken, getPendingTodoToken, setPendingTodoToken } from './consistencyTokens'
 
-export interface TodoItem {
+interface TodoItemBase {
   itemId: string;
-  type: "action" | "todo";
-  noteId: string | null;
   noteTitle: string | null;
   description: string;
   addedAt: string;
   completedAt: string | null;
 }
+
+// Discriminated on `type`: an "action" is anchored to a note (noteId: string),
+// a free-standing "todo" is not (noteId: null). Narrowing on `item.type` lets
+// the action mutations reach item.noteId without a non-null assertion.
+export type TodoItem =
+  | (TodoItemBase & { type: "action"; noteId: string })
+  | (TodoItemBase & { type: "todo"; noteId: null });
 
 // Read-your-writes (RYW-1): if a pending todo write token is present, attach it as
 // `If-Consistent-With` so the server waits until the projector applied that write.

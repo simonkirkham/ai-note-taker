@@ -13,7 +13,7 @@ let _onRefresh: (() => Promise<string | null>) | null = null
 
 export function jwtExpired(token: string): boolean {
   try {
-    const payload = JSON.parse(atob(token.split('.')[1]))
+    const payload = JSON.parse(atob(token.split('.')[1])) as { exp?: unknown }
     return typeof payload.exp === 'number' && payload.exp * 1000 < Date.now()
   } catch {
     return true

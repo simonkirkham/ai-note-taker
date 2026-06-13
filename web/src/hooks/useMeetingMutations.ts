@@ -27,8 +27,8 @@ export function useCreateNoteFromMeeting() {
   return useMutation<{ noteId: string }, Error, CalendarMeeting>({
     mutationFn: (meeting) => createNoteFromMeeting(meeting),
     onSettled: () => {
-      invalidateMeetings(qc);
-      qc.invalidateQueries({ queryKey: keys.noteCards });
+      void invalidateMeetings(qc);
+      void qc.invalidateQueries({ queryKey: keys.noteCards });
     },
   });
 }
@@ -38,8 +38,8 @@ export function useCreateNoteFromNextOccurrence() {
   return useMutation<CreateNoteFromNextOccurrenceResult, Error, string>({
     mutationFn: (recurringSeriesId) => createNoteFromNextOccurrence(recurringSeriesId),
     onSettled: () => {
-      invalidateMeetings(qc);
-      qc.invalidateQueries({ queryKey: keys.noteCards });
+      void invalidateMeetings(qc);
+      void qc.invalidateQueries({ queryKey: keys.noteCards });
     },
   });
 }

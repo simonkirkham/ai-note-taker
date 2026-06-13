@@ -120,7 +120,7 @@ export default function TodoSection() {
                     aria-label={`Complete "${item.description}"`}
                     checked={false}
                     disabled={busy.has(item.itemId)}
-                    onChange={() => handleComplete(item)}
+                    onChange={() => void handleComplete(item)}
                   />
                   <div className={styles.todoItemContent}>
                     <span className={styles.todoDescription}>{item.description}</span>
@@ -130,7 +130,7 @@ export default function TodoSection() {
                     className="icon-btn icon-btn--danger"
                     aria-label={`Delete "${item.description}"`}
                     disabled={busy.has(item.itemId)}
-                    onClick={() => handleDelete(item)}
+                    onClick={() => void handleDelete(item)}
                   >
                     <TrashIcon />
                   </button>
@@ -160,7 +160,7 @@ export default function TodoSection() {
                         className={styles.todoReopenBtn}
                         aria-label={`Reopen "${item.description}"`}
                         disabled={busy.has(item.itemId)}
-                        onClick={() => handleReopen(item)}
+                        onClick={() => void handleReopen(item)}
                       >
                         Reopen
                       </button>
@@ -168,7 +168,7 @@ export default function TodoSection() {
                         className="icon-btn icon-btn--danger"
                         aria-label={`Delete "${item.description}"`}
                         disabled={busy.has(item.itemId)}
-                        onClick={() => handleDelete(item)}
+                        onClick={() => void handleDelete(item)}
                       >
                         <TrashIcon />
                       </button>

@@ -13,13 +13,13 @@ interface ErrorBoundaryState {
 }
 
 export default class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
-  state: ErrorBoundaryState = { hasError: false }
+  override state: ErrorBoundaryState = { hasError: false }
 
   static getDerivedStateFromError(): ErrorBoundaryState {
     return { hasError: true }
   }
 
-  componentDidCatch(error: Error, info: ErrorInfo): void {
+  override componentDidCatch(error: Error, info: ErrorInfo): void {
     console.error('ErrorBoundary caught an error', error, info)
   }
 
@@ -27,7 +27,7 @@ export default class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBo
     window.location.reload()
   }
 
-  render(): ReactNode {
+  override render(): ReactNode {
     if (this.state.hasError) {
       return (
         <div role="alert" className={styles.fallback}>

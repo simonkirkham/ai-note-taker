@@ -247,6 +247,8 @@ export function useTranscription(noteId: string): UseTranscriptionResult {
               });
             }
             while (!stoppedRef.current && audioQueue.length > 0) {
+              // safe: the while-guard proves the queue is non-empty, so shift() returns a chunk
+              // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
               yield { AudioEvent: { AudioChunk: audioQueue.shift()! } };
             }
           }

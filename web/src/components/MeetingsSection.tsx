@@ -143,7 +143,7 @@ export function MeetingsSection({ onOpenNote }: { onOpenNote: (noteId: string, t
   }
 
   function handleRetry() {
-    displayQuery.refetch();
+    void displayQuery.refetch();
   }
 
   function handlePickDate(value: string) {
@@ -164,7 +164,7 @@ export function MeetingsSection({ onOpenNote }: { onOpenNote: (noteId: string, t
           </span>
           <button
             data-testid="enable-notifications-button"
-            onClick={handleEnable}
+            onClick={() => void handleEnable()}
             className={styles.notificationBannerEnable}
           >
             Enable
@@ -243,7 +243,11 @@ export function MeetingsSection({ onOpenNote }: { onOpenNote: (noteId: string, t
 
         {displayState.status === "loaded" && displayState.meetings.length > 0 && (
           <ul data-testid="meetings-list" className={styles.meetingsList}>
-            {displayState.meetings.map((m) => (
+            {displayState.meetings.map((m) => {
+              // Narrow recurringSeriesId once so the nested onClick callback can read it
+              // as a string without a non-null assertion (it widens back inside the closure).
+              const seriesId = m.recurringSeriesId;
+              return (
               <li key={m.calendarEventId}>
                 <article className={styles.meetingCard}>
                   <div className={styles.meetingCardHeader}>
@@ -257,7 +261,7 @@ export function MeetingsSection({ onOpenNote }: { onOpenNote: (noteId: string, t
                       {m.linkedNoteId ? (
                         <button
                           className={styles.meetingActionBtn}
-                          onClick={() => onOpenNote(m.linkedNoteId!)}
+                          onClick={() => { if (m.linkedNoteId) onOpenNote(m.linkedNoteId); }}
                         >
                           Open Note ↗
                         </button>
@@ -265,7 +269,7 @@ export function MeetingsSection({ onOpenNote }: { onOpenNote: (noteId: string, t
                         <button
                           className={styles.meetingActionBtn}
                           disabled={creating.has(m.calendarEventId)}
-                          onClick={() => handleCreateNote(m)}
+                          onClick={() => void handleCreateNote(m)}
                         >
                           {creating.has(m.calendarEventId) ? "Creating…" : "Create Note"}
                         </button>
@@ -276,7 +280,7 @@ export function MeetingsSection({ onOpenNote }: { onOpenNote: (noteId: string, t
                         {createErrors.get(m.calendarEventId)}
                       </p>
                     )}
-                    {m.isRecurring && m.recurringSeriesId && (
+                    {m.isRecurring && seriesId && (
                       <>
                         <div className={styles.meetingCardDivider} />
                         <div className={styles.meetingCardRow}>
@@ -285,7 +289,7 @@ export function MeetingsSection({ onOpenNote }: { onOpenNote: (noteId: string, t
                             <button
                               className={styles.meetingActionBtn}
                               onClick={() => {
-                                const noteId = nextNoteIds.get(m.recurringSeriesId!) ?? m.nextOccurrenceNoteId ?? "";
+                                const noteId = nextNoteIds.get(seriesId) ?? m.nextOccurrenceNoteId ?? "";
                                 if (noteId) onOpenNote(noteId);
                               }}
                             >
@@ -294,10 +298,10 @@ export function MeetingsSection({ onOpenNote }: { onOpenNote: (noteId: string, t
                           ) : (
                             <button
                               className={styles.meetingActionBtn}
-                              disabled={creatingNext.has(m.recurringSeriesId)}
-                              onClick={() => handleCreateNextOccurrenceNote(m)}
+                              disabled={creatingNext.has(seriesId)}
+                              onClick={() => void handleCreateNextOccurrenceNote(m)}
                             >
-                              {creatingNext.has(m.recurringSeriesId) ? "Creating…" : "Create Note"}
+                              {creatingNext.has(seriesId) ? "Creating…" : "Create Note"}
                             </button>
                           )}
                         </div>
@@ -306,7 +310,8 @@ export function MeetingsSection({ onOpenNote }: { onOpenNote: (noteId: string, t
                   </footer>
                 </article>
               </li>
-            ))}
+              );
+            })}
           </ul>
         )}
       </section>

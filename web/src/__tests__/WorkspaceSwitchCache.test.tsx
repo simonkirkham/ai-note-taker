@@ -13,7 +13,7 @@ import { resetWorkspaceForTests } from "../workspace/workspaceStore";
 
 function SwitchButton() {
   const navigate = useNavigate();
-  return <button onClick={() => navigate("/w/wsB")}>switch</button>;
+  return <button onClick={() => void navigate("/w/wsB")}>switch</button>;
 }
 
 afterEach(() => resetWorkspaceForTests());

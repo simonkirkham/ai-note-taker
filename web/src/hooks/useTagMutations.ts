@@ -53,8 +53,8 @@ export function useTagNote() {
     },
     onError: (_e, { noteId }, ctx) => rollback(qc, noteId, ctx),
     onSettled: (_d, _e, { noteId }, ctx) => {
-      qc.invalidateQueries({ queryKey: keys.tags });
-      if (!ctx?.previous) qc.invalidateQueries({ queryKey: keys.note(noteId) });
+      void qc.invalidateQueries({ queryKey: keys.tags });
+      if (!ctx?.previous) void qc.invalidateQueries({ queryKey: keys.note(noteId) });
     },
   });
 }
@@ -70,8 +70,8 @@ export function useUntagNote() {
     },
     onError: (_e, { noteId }, ctx) => rollback(qc, noteId, ctx),
     onSettled: (_d, _e, { noteId }, ctx) => {
-      qc.invalidateQueries({ queryKey: keys.tags });
-      if (!ctx?.previous) qc.invalidateQueries({ queryKey: keys.note(noteId) });
+      void qc.invalidateQueries({ queryKey: keys.tags });
+      if (!ctx?.previous) void qc.invalidateQueries({ queryKey: keys.note(noteId) });
     },
   });
 }

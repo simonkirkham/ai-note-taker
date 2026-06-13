@@ -46,7 +46,7 @@ describe('useNoteMutations', () => {
   it('delete is optimistic and rolls back on failure', async () => {
     let reject!: () => void
     server.use(http.delete('/api/notes/n-1', () =>
-      new Promise<Response>((res) => { reject = () => res(new HttpResponse(null, { status: 500 }) as unknown as Response) })))
+      new Promise<Response>((res) => { reject = () => res(new HttpResponse(null, { status: 500 })) })))
     const { qc, wrapper } = setup()
     const { result } = renderHook(() => useDeleteNote(), { wrapper })
     act(() => { result.current.mutate('n-1') })
@@ -58,7 +58,7 @@ describe('useNoteMutations', () => {
   it('move-to-folder is optimistic and rolls back on failure', async () => {
     let reject!: () => void
     server.use(http.put('/api/notes/n-1/folder', () =>
-      new Promise<Response>((res) => { reject = () => res(new HttpResponse(null, { status: 500 }) as unknown as Response) })))
+      new Promise<Response>((res) => { reject = () => res(new HttpResponse(null, { status: 500 })) })))
     const { qc, wrapper } = setup()
     const { result } = renderHook(() => useMoveNoteToFolder(), { wrapper })
     act(() => { result.current.mutate({ noteId: 'n-1', folderId: 'f-1' }) })
@@ -70,7 +70,7 @@ describe('useNoteMutations', () => {
   it('move-to-workspace optimistically removes the card and rolls back on failure (23-F)', async () => {
     let reject!: () => void
     server.use(http.put('/api/notes/n-1/workspace', () =>
-      new Promise<Response>((res) => { reject = () => res(new HttpResponse(null, { status: 500 }) as unknown as Response) })))
+      new Promise<Response>((res) => { reject = () => res(new HttpResponse(null, { status: 500 })) })))
     const { qc, wrapper } = setup()
     const { result } = renderHook(() => useMoveNoteToWorkspace(), { wrapper })
     act(() => { result.current.mutate({ noteId: 'n-1', workspaceId: 'ws-2' }) })

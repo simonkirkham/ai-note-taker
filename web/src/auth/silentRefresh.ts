@@ -5,7 +5,10 @@
 // signing the user out roughly every hour.
 export function attemptSilentRefresh(): Promise<string | null> {
   return fetch('/api/auth/refresh', { method: 'POST', credentials: 'include' })
-    .then((res) => (res.ok ? res.json() : null))
-    .then((data) => (data && typeof data.id_token === 'string' ? data.id_token : null))
+    .then((res) => (res.ok ? (res.json() as Promise<unknown>) : null))
+    .then((data) => {
+      const idToken = (data as { id_token?: unknown } | null)?.id_token
+      return typeof idToken === 'string' ? idToken : null
+    })
     .catch(() => null)
 }
