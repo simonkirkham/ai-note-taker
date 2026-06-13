@@ -1,6 +1,6 @@
 # Phase 19 — Frontend hardening
 
-**Goal:** Close the gap between the `frontend-react` skill rules (extended in PR #173) and the actual `web/` code, and adopt the lint/compiler gates that would catch regressions automatically. A full audit on 2026-06-05 (four parallel scans) confirms the codebase is already clean on the headline rules — **0 `enum`, 0 `any`, 0 in-place state mutation, no active fetch races, no XSS sinks, no `<img>`/CLS risk.** So this phase is hardening and consistency, not bug-fixing: split the monolithic `api.ts`, fix a cluster of small correctness/perf/a11y/test gaps the audit surfaced, and turn the matching rules into machine-enforced lint/flags. Anchored by the `api.ts` split (19-A). Per the learning-vehicle framing, each slice is a self-contained frontend-quality lesson. **TanStack Query stays deferred per [ADR 0010](../adr/0010-server-state-strategy.md).**
+**Goal:** Close the gap between the `frontend-react` skill rules (extended in PR #173) and the actual `web/` code, and adopt the lint/compiler gates that would catch regressions automatically. A full audit on 2026-06-05 (four parallel scans) confirms the codebase is already clean on the headline rules — **0 `enum`, 0 `any`, 0 in-place state mutation, no active fetch races, no XSS sinks, no `<img>`/CLS risk.** So this phase is hardening and consistency, not bug-fixing: split the monolithic `api.ts`, fix a cluster of small correctness/perf/a11y/test gaps the audit surfaced, and turn the matching rules into machine-enforced lint/flags. Anchored by the `api.ts` split (19-A). Per the learning-vehicle framing, each slice is a self-contained frontend-quality lesson. (TanStack Query was originally deferred per ADR 0010; that ADR was **superseded by [ADR 0012](../adr/0012-adopt-tanstack-query-server-state.md)** (2026-06-05) and the migration shipped as [Phase 20](phase-20.md) — see 19-E's note.)
 
 ## Summary
 
@@ -22,7 +22,7 @@
 | 19-J | **URL-scheme hardening.** Configure Tiptap `Link` explicitly — allowlist `http`/`https`/`mailto`, reject `javascript:`/`data:`/`vbscript:`, add `rel="noopener noreferrer nofollow"` | Done | — |
 | 19-K | **Adopt TanStack Query (server-state migration)** — **graduated to its own phase: [Phase 20](phase-20.md)** (7 slices, gated on reversing [ADR 0010](../adr/0010-server-state-strategy.md)). Too large for one slice. | Moved → P20 | — |
 
-> **Only 19-A is confirmed.** 19-B…19-J are **proposed** from the 2026-06-05 audit and need selection/prioritisation before Breaker drafts each. (19-K, the TanStack Query server-state migration, has **graduated to its own [Phase 20](phase-20.md)** — it reverses an Accepted ADR and is 7 slices, too big to sit here.) None blocks the others except as noted (`19-C`→`19-B`, `19-H`→`19-A`, **`19-I1`→`26-A`** — dynamic imports need the zero-downtime frontend deploy first, else lazy chunks 404 mid-session; `19-I2`/`19-I3` carry no such dependency). **19-J, 19-I2, 19-I3 are done (PR #223 / #224 / #221); 19-I1 waits on 26-A.** Value tiers below: **high** = real correctness/UX/security; **medium** = perf/maintainability; **low** = consistency/future-proofing. Because the headline rules are already clean, most slices are medium/low — do not treat the long list as a backlog of bugs.
+> **Specced now:** 19-A (done) plus 19-B, 19-E, 19-G — full sections below, re-grounded 2026-06-13 (the 2026-06-05 audit numbers are stale). 19-C remains **proposed** (depends on 19-B). All other slices are done or moved. (19-K, the TanStack Query server-state migration, has **graduated to its own [Phase 20](phase-20.md)** — it reverses an Accepted ADR and is 7 slices, too big to sit here.) None blocks the others except as noted (`19-C`→`19-B`, `19-H`→`19-A`, **`19-I1`→`26-A`** — dynamic imports need the zero-downtime frontend deploy first, else lazy chunks 404 mid-session; `19-I2`/`19-I3` carry no such dependency). **19-J, 19-I2, 19-I3 are done (PR #223 / #224 / #221); 19-I1 waits on 26-A.** Value tiers below: **high** = real correctness/UX/security; **medium** = perf/maintainability; **low** = consistency/future-proofing. Because the headline rules are already clean, most slices are medium/low — do not treat the long list as a backlog of bugs.
 
 **Learning surface:** module decomposition behind a stable import seam; typed (whole-program) ESLint and the strict-flag family; React context re-render mechanics; the fetch-race/`ignore`-flag pattern and the "you might not need an effect" refactor; ARIA live regions and focus management; Testing-Library query priority; transient-failure retry/backoff; route/feature code-splitting and bundle budgeting.
 
@@ -139,10 +139,45 @@ Scenario: Behaviour is unchanged after the split
 Each lists the finding, locations, value tier, and effort. Specs are written per slice when selected.
 
 ### 19-B — Typed-lint + non-null/catch cleanup — **value: medium**
-- **Non-null `!` (8 in prod source):** `main.tsx:12`, `auth/AuthContext.tsx:96` (justified), `MeetingsSection.tsx:296,324`, `TodoSection.tsx:72,87,101`, `useTranscription.ts:171`. The `TodoSection` trio clears at once by making `noteId` non-optional on the action variant of the discriminated union.
-- **Unsafe error typing:** `NoteView.tsx:103` — `.catch((err: Error) => …)` asserts the rejection is an `Error`; narrow with `err instanceof Error` instead.
-- **Lint/flags:** adopt `@typescript-eslint` `recommended-type-checked` (needs `parserOptions.project`) → enforces `no-non-null-assertion`, `no-floating-promises`, `no-misused-promises`, nullish/optional-chain. Add `noImplicitOverride` (zero impact — no classes in `src`). Introduce lint rules in `warn`, fix backlog, promote to `error`.
-- **Effort:** moderate. Folds in the existing `recommended-type-checked` item from `technical-improvements.md`.
+
+**Status:** Not Started (specced 2026-06-13)
+
+**Intent:** Adopt `@typescript-eslint` `recommended-type-checked` so the typed lint rules (`no-non-null-assertion`, `no-floating-promises`, `no-misused-promises`, nullish/optional-chain) are enforced going forward, clear the resulting backlog, and remove the remaining non-null `!` assertions. Defense against silent `null`-deref and unhandled-rejection regressions, not a bug fix — the headline surfaces are already clean.
+
+**Stale-audit corrections (re-grounded 2026-06-13 against `web/src/`; the 2026-06-05 numbers above are wrong — do not work from them):**
+
+| Audit claim (2026-06-05) | Current ground truth |
+|---|---|
+| `.catch((err: Error) => …)` at `NoteView.tsx:103` | **Already fixed.** No `.catch` with an `Error` cast anywhere in prod source; `NoteView.tsx:112`/`:223` already use `err instanceof Error`. **Drop this work item.** |
+| 8 non-null `!`; `TodoSection.tsx:72,87,101` trio | **Now 7**, and the trio **moved** to `useTodoMutations.ts:35,50,63` (`item.noteId!`). |
+| `MeetingsSection.tsx:296,324` | **Moved/reduced to 2:** `MeetingsSection.tsx:260` (`m.linkedNoteId!`), `:288` (`m.recurringSeriesId!`). |
+| `useTranscription.ts:171` | **Moved to `useTranscription.ts:250`** (`audioQueue.shift()!`). |
+| `auth/AuthContext.tsx:96` (justified) | **Moved to `:113`** (`getExp(idToken!)`), justified by the guard at `:109` — keep, suppress inline. |
+| `main.tsx:12` | **Moved to `main.tsx:35`** (`getElementById('root')!`) — keep, suppress inline. |
+
+**TodoSection trio fix:** `TodoItem` (`web/src/api/todos.ts`) types `noteId: string | null` flat across both variants; the `item.type === "action" ? action(item.noteId!, …)` ternaries assert non-null. Convert `TodoItem` to a **discriminated union** on `type` (`"action"` variant: `noteId: string`; `"todo"` variant: `noteId: null`/omitted); narrowing then removes all three `!` with no behaviour change.
+
+**Pre-existing state to build on (do not re-introduce):** `typescript-eslint@^8.61.0` already a dep; `eslint.config.js` already extends `tseslint.configs.recommended` + jsx-a11y (19-F3) + prettier, but **no `parserOptions.project`** yet (required for type-checked); `tsconfig.app.json` is `strict: true` but lacks `noImplicitOverride`; CI lint (`pr.yml`, Node 24) runs `eslint .` as a hard gate plus typechecks against both `tsconfig.app.json` and `tsconfig.test.json`.
+
+**Scenarios (GWT):**
+- Given `recommended-type-checked` with `parserOptions.project`, When `npm run lint` runs, Then it type-resolves with no "file not included in project" parser error.
+- Given the `TodoItem` discriminated union, When `item.type === "action"`, Then `item.noteId` is `string` and the three `useTodoMutations` `!` are gone.
+- Given `MeetingsSection`'s open/lookup paths, When `linkedNoteId`/`recurringSeriesId` is absent, Then the code narrows (guard/early-return) rather than asserting `!`.
+- Given the 2 kept `!` (`main.tsx:35`, `AuthContext.tsx:113`), When linted under `no-non-null-assertion`, Then each carries a scoped inline disable with a justification.
+- Given the full backlog (floating/misused promises, nullish/optional-chain), When the slice lands, Then every typed rule is at `error` and `npm run lint` is green (each finding fixed or scoped-disabled with a one-line reason).
+
+**Acceptance criteria:**
+- `eslint.config.js` extends `recommendedTypeChecked` with `languageOptions.parserOptions.project` (+ `tsconfigRootDir`) resolving both `src` and test sources; new typed rules introduced as `warn`, backlog cleared, then **flipped to `error` before the PR opens** — final state all-`error`, no lingering `warn`.
+- All 3 `useTodoMutations.ts` `!` removed via the `TodoItem` union; both `MeetingsSection.tsx` `!` removed via guards.
+- The 2 kept `!` each carry a scoped `// eslint-disable-next-line @typescript-eslint/no-non-null-assertion` + justification; no file-wide or repo-wide disable.
+- `noImplicitOverride: true` in `tsconfig.app.json`.
+- The `.catch((err: Error))` item is **dropped** (already fixed); PR description states this.
+- `npm run lint`, `tsc -p tsconfig.app.json --noEmit`, **and** `tsc -p tsconfig.test.json --noEmit` all green on Node 24; all existing vitest specs stay green. Update any test fixture that constructs a `TodoItem` literal (grep first).
+- Optimistic-UI: N/A — lint/type configuration only, no new async mutation.
+
+**Observability:** Build-time only; no production signal. Risk: a typed rule left at `warn` is a silent no-op in CI (gate fails only on `error`) — the warn→error flip is mandatory. Risk: mis-scoped `parserOptions.project` fails `eslint .` on the test sources — verify lint locally against `tsconfig.test.json`'s includes, not only the app config.
+
+**Key files:** `web/eslint.config.js`, `web/tsconfig.app.json`, `web/src/api/todos.ts`, `web/src/hooks/useTodoMutations.ts`, `web/src/components/MeetingsSection.tsx`, `web/src/main.tsx`, `web/src/auth/AuthContext.tsx`, plus backlog files surfaced by the new rules. **Cross-ref:** folds in the standing `recommended-type-checked` item from `technical-improvements.md`; **19-C depends on this landing first.**
 
 ### 19-C — Stricter index/optional TS flags — **value: low** — depends on 19-B
 - `noUncheckedIndexedAccess` (large — turns `arr[i]`/`Map.get()` into `T | undefined`, cascades through the sites the 19-B `!`s guard) then `exactOptionalPropertyTypes` (moderate). Stage one PR each; clear backlog before promoting.
@@ -158,9 +193,42 @@ Each lists the finding, locations, value tier, and effort. Specs are written per
 - Guarded by `web/src/__tests__/ContextMemoization.test.tsx` (value + Auth action identity stable across a no-state-change re-render; fresh value on a real auth-state change).
 
 ### 19-E — Effect hygiene — **value: medium**
-- **Fetch-race guards (consistency; no active race today):** add an `ignore`/`cancelled` flag to the 3 unguarded mount-only fetches — `NoteView.tsx:112` (`getTags`), `ListView.tsx:42` (`getTags`), `App.tsx:75-78` (`getFolders`+`getNoteCards`). The dep-changing fetches are already correctly guarded (`MeetingsSection.tsx:99` is the model).
-- **YMNNAE — drop notify-parent-in-effect:** `RecordControl.tsx:39` & `:43` (notify parent of status/transcript in an effect), `ActionsSection.tsx:27` (push derived count to parent). Notify at the source / lift state instead.
-- **Effort:** medium (the YMNNAE pieces touch hook↔parent contracts).
+
+**Status:** Not Started (specced 2026-06-13)
+
+**Intent:** Remove three "you-might-not-need-an-effect" (YMNNAE) effects that mirror a child's hook value into the parent via a callback fired from `useEffect`. Lift the source-of-truth state so the parent reads it directly; delete the notify-parent-in-effect indirection and its callback props. **Behavioural cleanup only — no user-visible change.**
+
+> **Audit correction — fetch-race half is DROPPED.** The 2026-06-05 race-guard targets no longer exist: `getTags`/`getFolders`/`getNoteCards` all migrated to React Query hooks (`useTags`/`useFolders`/`useNoteCards`) after **ADR 0010 was superseded by [ADR 0012](../adr/0012-adopt-tanstack-query-server-state.md)** (2026-06-05). React Query owns request cancellation/staleness, so the "consistency/defense, no live bug" race-guard work has no remaining target. The doc header's "TanStack Query stays deferred per ADR 0010" is stale. **This slice is now purely the YMNNAE cleanup** — the higher-value half of the original scope.
+
+**YMNNAE targets (verified against current code):**
+
+| # | Effect | Pushes to parent | Source of truth | Refactor |
+|---|---|---|---|---|
+| 1 | `RecordControl.tsx:59-61` | `status` → `onStatusChange` | `useTranscription(noteId)` | Parent reads `status` from its own hook; drop `onStatusChange` |
+| 2 | `RecordControl.tsx:63-67` | `transcript` (gated requesting/recording/stopped) → `onTranscriptChange` | `useTranscription(noteId)` | Lift alongside #1; drop `onTranscriptChange`; preserve the status-gate at the read site |
+| 3 | `ActionsSection.tsx:30-32` | `actions.length` → `onCountChange` | `useActions(noteId)` query | Parent reads count from its own `useActions(noteId)` (same cache key, no extra fetch); drop `onCountChange` |
+
+**Parent contract to delete:** `NoteView.tsx` local state `recordingStatus`/`liveTranscript`/`actionCount` fed only by these callbacks (`:74,:76,:77`); call sites `<RecordControl onTranscriptChange={…} onStatusChange={…}>` (`:511-517`) and `<ActionsSection onCountChange={…}>` (`:584`). Downstream consumers that must keep working unchanged: `isRecording`, `displayedTranscript`, `hasContent`.
+
+**Scenarios (GWT):**
+- Given a note open, When `useTranscription` reports `status = "recording"`, Then `NoteView`'s `isRecording` UI updates and **no `onStatusChange` prop exists** on `RecordControl`.
+- Given a recording in progress, When `transcript` updates, Then `displayedTranscript` shows live text; And when `status = "idle"` the live transcript is not surfaced (gate preserved); And **no `onTranscriptChange` prop exists**.
+- Given a note with N open actions via `useActions`, When the section renders, Then `hasContent` reflects `count > 0` read directly; And **no `onCountChange` prop exists** on `ActionsSection`.
+- Given any of the above mounted, When the component unmounts mid-recording/mid-load, Then no warning fires and no callback runs after unmount.
+- Then `grep onStatusChange|onTranscriptChange|onCountChange` over `web/src/` returns zero matches.
+
+**Acceptance criteria:**
+- The 3 effects (`RecordControl.tsx:59-61`, `:63-67`, `ActionsSection.tsx:30-32`) deleted.
+- `onStatusChange`/`onTranscriptChange`/`onCountChange` props removed from the components **and all `NoteView` call sites in the same commit** (CLAUDE.md shared-callback-signature guardrail).
+- `NoteView` derives `recordingStatus`/`liveTranscript`/`actionCount` from `useTranscription`/`useActions` directly — no duplicate fetch (same React Query cache key → same request).
+- `isRecording`/`displayedTranscript`/`hasContent` behaviour preserved exactly, including the transcript status-gate.
+- Each scenario unit-tested via RTL (the YMNNAE parts are directly testable — parent receives the value on the triggering action, no effect round-trip).
+- `tsc -p tsconfig.test.json` + `npm run lint` (set-state-in-effect rule) green; net `useEffect` count drops by 3; no new effect introduced.
+- Optimistic-UI: N/A — pure refactor, no new async mutation.
+
+**Observability:** None. No new failure mode, network call, or user-visible behaviour; existing transcription/action instrumentation untouched.
+
+**Key files:** `web/src/components/RecordControl.tsx`, `web/src/components/ActionsSection.tsx`, `web/src/components/NoteView.tsx`; `web/src/hooks/useTranscription.ts`/`useActions.ts` (read-only — confirm cache-key sharing); tests `RecordControl.test.tsx`, `ActionsSection.test.tsx`, `NoteView.test.tsx`.
 
 ### 19-F1 — Accessibility: live regions — **value: high**
 
@@ -252,9 +320,42 @@ Already correct (do not touch): `ListView` search status/error/no-results, `Fina
 **Key files:** `web/eslint.config.js`, `web/package.json` / `package-lock.json`, plus whatever components the backlog surfaces.
 
 ### 19-G — Test quality: role-first queries + userEvent — **value: low**
-- **Query priority:** suite is `getByTestId` 314 vs role/label 160. Worst (zero role/label): `RecordControl.test.tsx` (49/0), `ShortcutsPanel.test.tsx` (15/0), `FinalNotesView.test.tsx` (33/1). Migrate buttons/headings/inputs to `getByRole`/`getByLabelText`; keep `data-testid` as the **E2E** contract (unchanged — different layer).
-- **`fireEvent`→`userEvent` (36 calls, 8 files):** `TagsSection.test.tsx` (23) is ~64% of all usage — convert first. Verify non-interaction `fireEvent` (timers in `ToastProvider`/`TokenRefresh`) before converting.
-- **Effort:** medium-high (mechanical but broad). Pure test churn — lowest external value.
+
+**Status:** Not Started (specced 2026-06-13)
+
+**Intent:** Convert the worst unit-test query/interaction offenders from `getByTestId` to role/label-first queries and from `fireEvent`-click to `userEvent`, so unit tests assert through the accessibility tree (catching the a11y regressions 19-F1 guards) and exercise realistic interactions. Pure test churn — lowest external value; scoped to a concrete bounded target, not a whole-suite sweep.
+
+**Ground-truth re-audit (2026-06-13 — numbers shifted from 2026-06-05):**
+
+| Metric | 2026-06-05 | Current |
+|---|---|---|
+| `getByTestId`/`getAllByTestId` | 314 | **296** |
+| `getByRole`/`getByLabelText`/`getByText` | 160 | **200** |
+| `fireEvent` calls | 36 | **68** (audit understated ~2×) |
+
+**Worst offenders (role/label-zero — confirmed, the right targets):** `RecordControl.test.tsx` (testid **69**, role/label 0); `FinalNotesView.test.tsx` (**22**, 0); `ShortcutsPanel.test.tsx` (**11**, 0). (`NoteView`/`MeetingsSection` have more testids but already carry role/label queries — not targets.)
+
+**`fireEvent` — biggest is `TagsSection.test.tsx` (24, mixed change/blur/mouseDown/click + keyDown).** Deliberate non-interaction `fireEvent` to **leave untouched**: `ImageNodeView.test.tsx` (11, window drag `mouseDown/Move/Up`), `FolderPreview.test.tsx` (drag `dragOver/leave/drop`), `TokenRefresh.test.tsx` (synchronous timer click — commented), `ToastProvider.test.tsx` (`act`/timer click). userEvent (`@testing-library/user-event@^14.6.1`) already a dep.
+
+**E2E testid contract (warning — this slice changes UNIT tests only):** `tests/Browser.E2E` references **96 `GetByTestId`** locators + 6 `[data-testid=` selectors. Migrating a unit test off a testid does **not** authorise removing that `data-testid` from component source.
+
+**Scenarios (GWT):**
+- Given `RecordControl.test.tsx`/`FinalNotesView.test.tsx`/`ShortcutsPanel.test.tsx`, When querying a button/heading/input/link with an accessible name, Then it resolves via `getByRole`/`getByLabelText` (not `getByTestId`), assertions identical, suite green.
+- Given `TagsSection.test.tsx`, When a test performs a click/text-entry/blur, Then it uses `userEvent` (`await user.click`/`type`/`tab`); specific-key `keyDown` assertions may stay raw.
+- Given any migrated test, When it runs, Then behaviour-coverage is unchanged — same scenarios, same assertions, same passing count.
+- Given the deliberate non-interaction `fireEvent` (drag/timer), When this slice runs, Then they are left untouched.
+
+**Acceptance criteria:**
+- The 3 role/label-zero files migrated to role/label-first where an accessible name/role exists; testids retained only where no role equivalent exists.
+- `TagsSection.test.tsx` interaction `fireEvent` (the ~10 non-`keyDown` of its 24) converted to `userEvent` with `userEvent.setup()` per test, `async`/`await` each interaction.
+- Exclusions left untouched: `ImageNodeView` drag, `FolderPreview` drag, `TokenRefresh`/`ToastProvider` timer clicks (converting would break the timer/drag semantics they test).
+- Behaviour-coverage guard: no scenario removed, no assertion weakened; **same passing-test count before and after** (Hawk checks the delta is zero).
+- `git diff` touches only `*.test.tsx`; **zero changes under component source and zero `data-testid` removed** (grep-confirm no E2E-contract testid deleted).
+- Optimistic-UI: N/A — test-only churn.
+
+**Observability:** N/A — unit-test-only; no runtime surface. The value is a *test-time* signal: role/label queries fail when a component loses its accessible name (the regression 19-F1 guards), which a testid query would silently pass.
+
+**Key files:** migrate `web/src/__tests__/RecordControl.test.tsx`, `FinalNotesView.test.tsx`, `ShortcutsPanel.test.tsx` (queries) + `TagsSection.test.tsx` (userEvent); do **not** touch `ImageNodeView.test.tsx`, `FolderPreview.test.tsx`, `TokenRefresh.test.tsx`, `ToastProvider.test.tsx`; preserve all `tests/Browser.E2E/**` testid locators.
 
 ### 19-H — Network resilience: retry + backoff — **value: medium** — depends on 19-A — **Done (shipped in 20-G)**
 - ✅ Shipped as part of Phase **20-G**, not a standalone 19 slice. `api/client.ts` `apiFetch` now retries transient failures (`res.status >= 500 || === 429`, thrown network `TypeError`) with exponential backoff + full jitter, honouring `Retry-After`, capped at 3 attempts. Scoped to safe **reads** (GET/HEAD) only — writes are optimistic-with-rollback (`mutations.retry:false`), so retrying a PUT/DELETE only delays rollback and a POST retry risks a duplicate create. Auth-retry stays outside the transient loop. Each retry `console.warn`s (the latency-masking guard below).
