@@ -50,7 +50,6 @@ function renderNoteView(props: { noteId?: string; initialTitle?: string; onBack?
       <NoteView
         noteId={noteId}
         initialTitle={initialTitle}
-        onRename={noop}
         onBack={onBack}
         onDelete={onDelete}
         onDateSet={noop}
@@ -817,6 +816,96 @@ describe('NoteView', () => {
       expect(await screen.findByTestId('tag-pill-planning')).toBeInTheDocument()
       await waitFor(() => expect(screen.queryByTestId('tag-pill-planning')).toBeNull())
       expect(await screen.findByRole('alert')).toHaveTextContent(/tag/i)
+    })
+  })
+
+  // BUG-21: the title was seeded once from initialTitle and never reconciled with
+  // the authoritative detail.title; a navigation path passing no title showed an
+  // empty field, and the auto-focused input's blur then persisted that empty value,
+  // permanently overwriting the real title. The title now uses the draft pattern
+  // (titleDraft ?? detail.title ?? initialTitle) and an empty/unchanged blur never PATCHes.
+  describe('title reconciliation (BUG-21)', () => {
+    it('renders the authoritative detail.title even when initialTitle is empty', async () => {
+      server.use(
+        http.get('/api/notes/:noteId', () =>
+          HttpResponse.json({ noteId: 'note-1', title: 'Interview: Simon Kirkham', content: 'c', date: null, tags: [] })),
+      )
+      renderNoteView({ initialTitle: '' })
+      await screen.findByLabelText('Note content')
+      await waitFor(() =>
+        expect(screen.getByLabelText('Note title')).toHaveValue('Interview: Simon Kirkham'))
+    })
+
+    it('blurring the auto-focused title input does not PATCH an empty title', async () => {
+      let patched: string | undefined
+      let patchCalled = false
+      server.use(
+        http.get('/api/notes/:noteId', () =>
+          HttpResponse.json({ noteId: 'note-1', title: 'Interview: Simon Kirkham', content: 'c', date: null, tags: [] })),
+        http.patch('/api/notes/:noteId/title', async ({ request }) => {
+          patchCalled = true
+          patched = (await request.json() as { title: string }).title
+          return new HttpResponse(null, { status: 204 })
+        }),
+      )
+      renderNoteView({ initialTitle: '' })
+      await screen.findByLabelText('Note content')
+      // Title reconciled to the real value; blurring without editing must not persist.
+      await waitFor(() => expect(screen.getByLabelText('Note title')).toHaveValue('Interview: Simon Kirkham'))
+      fireEvent.blur(screen.getByLabelText('Note title'))
+      await new Promise((r) => setTimeout(r, 20))
+      expect(patchCalled).toBe(false)
+      expect(patched).toBeUndefined()
+    })
+
+    it('does not PATCH when the title is cleared to empty', async () => {
+      let patchCalled = false
+      server.use(
+        http.get('/api/notes/:noteId', () =>
+          HttpResponse.json({ noteId: 'note-1', title: 'Interview: Simon Kirkham', content: 'c', date: null, tags: [] })),
+        http.patch('/api/notes/:noteId/title', () => { patchCalled = true; return new HttpResponse(null, { status: 204 }) }),
+      )
+      renderNoteView({ initialTitle: 'Interview: Simon Kirkham' })
+      const titleInput = await screen.findByLabelText('Note title')
+      await userEvent.clear(titleInput)
+      fireEvent.blur(titleInput)
+      await new Promise((r) => setTimeout(r, 20))
+      expect(patchCalled).toBe(false)
+    })
+
+    it('renaming to a new title PATCHes the new value and reconciles', async () => {
+      let patched: string | undefined
+      server.use(
+        http.get('/api/notes/:noteId', () =>
+          HttpResponse.json({ noteId: 'note-1', title: 'Old title', content: 'c', date: null, tags: [] })),
+        http.patch('/api/notes/:noteId/title', async ({ request }) => {
+          patched = (await request.json() as { title: string }).title
+          return new HttpResponse(null, { status: 204 })
+        }),
+      )
+      renderNoteView({ initialTitle: 'Old title' })
+      const titleInput = await screen.findByLabelText('Note title')
+      await userEvent.clear(titleInput)
+      await userEvent.type(titleInput, 'New title')
+      fireEvent.blur(titleInput)
+      await waitFor(() => expect(patched).toBe('New title'))
+      expect(titleInput).toHaveValue('New title')
+    })
+
+    it('surfaces an error but keeps the typed title when the rename fails', async () => {
+      server.use(
+        http.get('/api/notes/:noteId', () =>
+          HttpResponse.json({ noteId: 'note-1', title: 'Old title', content: 'c', date: null, tags: [] })),
+        http.patch('/api/notes/:noteId/title', () => new HttpResponse(null, { status: 500 })),
+      )
+      renderNoteView({ initialTitle: 'Old title' })
+      const titleInput = await screen.findByLabelText('Note title')
+      await userEvent.clear(titleInput)
+      await userEvent.type(titleInput, 'New title')
+      fireEvent.blur(titleInput)
+      expect(await screen.findByRole('alert')).toBeInTheDocument()
+      // The typed title must not be reset to the stale server copy on failure.
+      expect(titleInput).toHaveValue('New title')
     })
   })
 })

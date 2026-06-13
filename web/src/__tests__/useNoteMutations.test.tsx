@@ -7,7 +7,6 @@ import { keys } from '../api/queryKeys'
 import { useDeleteFolder } from '../hooks/useFolderMutations'
 import {
   useCreateNote,
-  useRenameNote,
   useDeleteNote,
   useMoveNoteToFolder,
   useMoveNoteToWorkspace,
@@ -42,18 +41,6 @@ describe('useNoteMutations', () => {
     const list = cards(qc)
     expect(list).toHaveLength(1)
     expect(list[0].noteId).toBe('real-1')
-  })
-
-  it('rename is optimistic and rolls back on failure', async () => {
-    let reject!: () => void
-    server.use(http.patch('/api/notes/n-1/title', () =>
-      new Promise<Response>((res) => { reject = () => res(new HttpResponse(null, { status: 500 }) as unknown as Response) })))
-    const { qc, wrapper } = setup()
-    const { result } = renderHook(() => useRenameNote(), { wrapper })
-    act(() => { result.current.mutate({ noteId: 'n-1', title: 'Renamed' }) })
-    await waitFor(() => expect(cards(qc)[0].title).toBe('Renamed'))
-    await act(async () => { reject() })
-    await waitFor(() => expect(cards(qc)[0].title).toBe('Sync'))
   })
 
   it('delete is optimistic and rolls back on failure', async () => {
