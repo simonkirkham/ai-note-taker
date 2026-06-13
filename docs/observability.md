@@ -4,6 +4,8 @@ The app is instrumented across the three pillars (logs, metrics, traces) plus fr
 
 Region is **eu-west-2**; everything below is in the account the stack is deployed to. The stack is `NoteTakerStack`.
 
+> **Periodic review:** the `observability-review` skill ([`.claude/skills/observability-review/SKILL.md`](../.claude/skills/observability-review/SKILL.md)) automates the operate-side loop — sweep these signals, triage findings against current code, and file them as bugs / technical-improvements. Run it on a cadence or on demand. This runbook is its "where to look" index.
+
 ## Where each signal lives
 
 | Question | Go to | Built in |
