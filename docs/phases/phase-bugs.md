@@ -35,6 +35,8 @@
 | BUG-22 | Multi-tag add drops a pill under RYW-2 async reads — the frontend per-stream consistency-token slot is last-writer-wins; two concurrent same-stream tag POSTs (`note#id@N`, `note#id@N+1`) race it, the older `@N` can win, and the next gated note read releases before the second tag is folded. Resurfaces the long-flaky `TagsJourney` E2E (TI-19) on deploy #546. | Done | TI-19, RYW-2 |
 | BUG-23 | `POST /admin/projections/rebuild` returns an unhandled **500** when a DynamoDB call inside the rebuild times out (`System.TimeoutException "The operation was canceled."`, AWSSDK). The rebuild reads the full event stream; on a transient SDK timeout (or nearing the Lambda/API-GW limit) the whole rebuild aborts mid-flight with a 500 and no retry. Already observable (`ProjectionRebuildFault` metric + Error log) — a reliability gap, not a monitoring one. | Done | TI-16 |
 | BUG-24 | Inline image still 403s on every note open — `tiptap-markdown` parses the stored bare key `![](notes/{id}/{img}.png)` into a transient `<img src>` at load, which the browser fetches **relative to the SPA route** (`/w/{ws}/notes/notes/{id}/{img}.png` → 403) *before* `ImageNodeView`'s placeholder guard exists. [BUG-19]'s fix only suppressed the *rendered* node, not the parse-time fetch. Surfaced by TI-37 (the 403 is now visible in RUM). | Done | BUG-19, TI-37 |
+| BUG-25 | `ActionItemJourney.Action_items_persist_across_navigation` E2E flakes on the deploy gate — RYW-3a made the actions read (`GET /notes/{id}/actions`) async + token-gated, but this **pre-existing** journey asserts the action visible after reopening the note with a plain 5 s locator wait (no reload-tolerance), so under the deployed projector's cold-start lag (> the gate's ~2.6 s bound) it serves `stale` and the assert times out. Same class as the cards (#256) / tags (#265) hardening that earlier async flows already needed; the **new** `ActionReadYourWritesJourney` was hardened, this one was missed. Observed on deploy #560. | Open | RYW-3a, BUG-26 |
+| BUG-26 | Deploy E2E gate is intermittently red because **post-navigation visibility asserts race the async projector** — a *different* journey times out at the 5 s locator bound each run (#548 `NoteImageJourney`, #549 `TagsJourney`×2, #560 `ActionItemJourney`). Systemic consequence of the RYW async migration: any journey reading a projector-built view after a write+navigation depends on the deployed projector folding within 5 s, which the token gate only bounds to ~2.6 s. Reactively hardened per-journey so far (cards #256, tags #265); needs a systematic fix (reload-tolerant helper for every projector-backed post-nav assert, or a longer locator timeout for those reads). Reds block the "main deploy green" merge gate and bury real failures among flakes. *(Test-infra robustness — could alternatively live in `technical-improvements.md`.)* | Open | RYW-2 |
 
 Further bugs will be appended as they are identified.
 
@@ -639,3 +641,48 @@ Either way: keep the optimistic/snappy load, keep `srcsToKeys` save invariant, k
 **Reproduce-before-fix:** a test proving the content handed to the Tiptap parser contains no fetchable bare-key `<img src>` (a pure transform/seam is the unit-testable surface — the live NodeView is jsdom-mocked, per the 25-D learning); plus the existing `NoteImageJourney` E2E extended to assert no relative-key image request 403s on open (`page.on('response')`).
 
 **Key files:** `web/src/components/NoteEditor.tsx` (content init + resolve effect), `web/src/components/imageWithResize.ts` (parse/serialize), `web/src/components/ImageNodeView.tsx`, `web/src/lib/noteImages.ts`, `web/src/components/NoteView.tsx` (the `value` source). Related: [BUG-19] (incomplete fix), [BUG-18] (sibling image-save bug), [TI-37] (made this visible).
+
+---
+
+## BUG-25 — `ActionItemJourney.Action_items_persist_across_navigation` E2E flakes under async-projector lag
+
+**Status:** Open. Found 2026-06-13 reviewing the recent deploy E2E history; the actions read went async in RYW-3a (PR #263).
+
+**Severity:** Low — **test-only flake, no user-facing defect.** The app is correct: the actions read is token-gated and a reopen waits on the projector; only the *test* (a single 5 s locator wait) is not robust to the deployed projector's cold-start lag. But it intermittently reds the deploy gate, which blocks the "main deploy green" merge gate for unrelated slices.
+
+**Symptom:** on the deploy `deploy-test` job, `Browser.E2E.Journeys.ActionItemJourney.Action_items_persist_across_navigation` fails with `Microsoft.Playwright.PlaywrightException: Locator expected to be visible … timeout 5000ms`. Observed on deploy **#560** (2026-06-13). Passes on every other recent deploy (#554–#564 all green, including 7 RYW deploys) → flaky, not a hard break.
+
+**Root cause:** RYW-3a migrated `GET /notes/{id}/actions` to async (projector-built, gated on the `If-Consistent-With` token). The journey adds two actions, `SaveAndReturnAsync()` to the list, `ClickNoteInListAsync(title)` to reopen the note, then asserts each action via `AppPage.AssertActionItemVisibleAsync` — a plain `Assertions.Expect(...).ToBeVisibleAsync()` with the default **5 s** timeout. The client's gated read waits the `ConsistencyGate` bound (~2 s) + 2×300 ms retries (~2.6 s) and then serves `stale`; when the deployed projector is cold/contended and lags beyond that, the action isn't folded yet and the 5 s locator times out. RYW-3a hardened the **new** `ActionReadYourWritesJourney` (it reloads + re-gates) but left this pre-existing journey on the plain wait — the same gap RYW-2 had to close for cards ([#256]) and tags ([#265]).
+
+**Expected behaviour:** the action-persistence journey tolerates sub-second-to-few-second projector lag like the cards/tags journeys — reload-and-re-gate until a deadline (~20 s) rather than a single 5 s wait.
+
+**Fix direction:** replace the two `AssertActionItemVisibleAsync(...)` calls in `Action_items_persist_across_navigation` with the reload-tolerant `AppPage.AssertActionVisibleAfterReloadAsync(...)` (already added to `AppPage` in RYW-3a) — it reloads the note page, which re-sends the persisted token and re-gates, looping until visible or the deadline. **Test-only; no app change.** Leave `Note_with_no_actions_shows_empty_state` as-is (no async write to race).
+
+**Reproduce-before-fix:** projector lag can't be deterministically forced from the E2E layer, so — per the [#256]/[#265] precedent — the reload-tolerant assertion *is* the guard. Optionally assert in an Api.Integration test that a token-gated actions read after an add releases only once folded (already covered by `ActionItemReadYourWritesTests`).
+
+**Key files:** `tests/Browser.E2E/Journeys/ActionItemJourney.cs`, `tests/Browser.E2E/Pages/AppPage.cs` (`AssertActionVisibleAfterReloadAsync` already exists). Related: [BUG-26] (the systemic pattern), [BUG-22] (RYW tag-flake), RYW-3a (PR #263), cards-list hardening (#256), TagsJourney hardening (#265).
+
+---
+
+## BUG-26 — Deploy E2E gate intermittently red: post-navigation visibility asserts race the async projector
+
+**Status:** Open. Found 2026-06-13 reviewing ~12 h of deploy runs after a "pipeline seems flaky" report.
+
+**Severity:** Medium (process, not product) — no user-facing defect, but intermittent red deploys (a) starve the "main's latest deploy must be green + idle" merge gate, especially when several sessions merge to a fast-churning main, and (b) bury genuine failures (e.g. BUG-24's real `no_bare_key` fail on #560) among flakes, training reviewers to "just re-run".
+
+**Symptom:** the `deploy-test` E2E job fails intermittently with a single `Locator expected to be visible … timeout 5000ms`, a **different journey each run**: #548 `NoteImageJourney.Remove_an_image…`, #549 `TagsJourney.AddMultipleTags_SpaceSeparated` + `TagsJourney.RemoveTag_PillDisappears` (+`NoteImageJourney`), #560 `ActionItemJourney.Action_items_persist_across_navigation`. A re-run usually goes green.
+
+**Root cause:** the RYW async-projection migration (RYW-1…3b) converted note / tag / action / folder / workspace reads to eventually-consistent (projector-built, token-gated). Every E2E journey that asserts visibility **after a navigation or reopen** now depends on the *deployed* projector having folded the write within the assertion's 5 s locator timeout. The client token gate bounds the wait at ~2.6 s and then serves `stale`; when the projector is cold (first invocation after idle) or contended, the fold lands later and the locator times out. Journeys have been hardened **reactively, one at a time** (cards [#256], tags [#265]), but there is no systematic guarantee — so each newly-async flow re-exposes the race in whatever journey reads it ([BUG-25] is the current instance).
+
+**Expected behaviour:** the deploy E2E gate is deterministic against the inherent sub-second-to-few-second projector lag — a correct-but-slightly-lagged projection never reds the gate.
+
+**Fix direction (pick/combine — implementer to choose the cleanest; this may be better tracked in `technical-improvements.md` as test-infra robustness):**
+- **(a) Generalise reload-tolerance.** Audit every E2E assertion that reads a projector-backed view after a write+navigation and route it through one reload-tolerant helper (reload re-sends the token + re-gates, deadline ~20 s) — the cards/tags/actions-RYW pattern, made the default rather than per-journey.
+- **(b) Longer locator timeout for projector-backed reads.** Raise the Playwright `Expect` timeout (e.g. 10–15 s) for post-navigation visibility asserts so the gate's bounded wait + retries fit comfortably under it.
+- **(c) An explicit "wait for consistency" test helper** that polls the gated read until non-`stale` before asserting.
+
+Prefer (a) — it matches the production read-your-writes contract (reads re-gate on reload) and is already proven; (b) is a cheap stop-gap.
+
+**Reproduce-before-fix:** an inherent timing race — reproduces under projector cold-start / CI contention, not deterministically. The fix is validated by the hardened journeys staying green across many deploys (and by not regressing the existing RYW journeys).
+
+**Key files:** `tests/Browser.E2E/Journeys/*.cs` (the post-nav visibility asserts), `tests/Browser.E2E/Pages/AppPage.cs` (the reload-tolerant helpers — `AssertNoteVisibleInListAfterReloadAsync`, `AssertActionVisibleAfterReloadAsync`, `WaitVisibleWithReloadAsync` — to generalise). Related: [BUG-25] (current instance), [BUG-22] (RYW tag-flake), cards-list hardening (#256), TagsJourney hardening (#265), the RYW phase ([phase-27-ryw.md](phase-27-ryw.md)).
