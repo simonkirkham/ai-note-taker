@@ -179,4 +179,56 @@ public sealed class NoteImageJourney(BrowserFixture browser) : IAsyncLifetime
         await Assertions.Expect(reopened).ToBeVisibleAsync(new() { Timeout = 15000 });
         await Assertions.Expect(reopened).ToHaveJSPropertyAsync("clientWidth", 240);
     }
+
+    [Fact]
+    public async Task Drag_resize_an_image_and_the_size_survives_reload()
+    {
+        var title = $"Drag img {Guid.NewGuid():N}"[..30];
+
+        // Given a note with a persisted inline image at its natural width
+        await _app.GotoAsync();
+        await _app.ClickNewNoteAsync();
+        await _app.EnterTitleAsync(title);
+
+        var presignDone = _page.WaitForResponseAsync(r =>
+            r.Url.Contains("/images/presign-upload") && r.Request.Method == "POST");
+        await _page.GetByTestId("image-file-input").SetInputFilesAsync(new FilePayload
+        {
+            Name = "wide.png",
+            MimeType = "image/png",
+            Buffer = WidePngBytes,
+        });
+        await presignDone;
+
+        var editorImage = _page.GetByTestId("note-content").Locator("img");
+        await Assertions.Expect(editorImage).ToBeVisibleAsync(new() { Timeout = 15000 });
+
+        // When I drag the corner handle far inward (past the minimum width)
+        await editorImage.HoverAsync();
+        var handle = _page.GetByTestId("image-resize-handle");
+        var box = await handle.BoundingBoxAsync();
+        await _page.Mouse.MoveAsync(box!.X + box.Width / 2, box.Y + box.Height / 2);
+        await _page.Mouse.DownAsync();
+        await _page.Mouse.MoveAsync(box.X - 800, box.Y + box.Height / 2, new() { Steps = 10 });
+        await _page.Mouse.UpAsync();
+
+        // Then it clamps to the minimum width immediately (optimistic — no save wait;
+        // a deterministic target regardless of the editor's content width)
+        await Assertions.Expect(editorImage).ToHaveJSPropertyAsync("clientWidth", 48);
+
+        // And after saving and reopening, the dragged size persisted (reusing 28-A's
+        // width round-trip — this slice adds no new save/load code)
+        var contentSaved = _page.WaitForResponseAsync(r =>
+            r.Url.Contains("/content") && r.Request.Method == "PUT");
+        await _app.SaveAndReturnAsync();
+        await contentSaved;
+
+        await _app.ClickNoteInListAsync(title);
+        var resolveDone = _page.WaitForResponseAsync(r =>
+            r.Url.Contains("/images/resolve") && r.Request.Method == "POST");
+        await resolveDone;
+        var reopened = _page.GetByTestId("note-content").Locator("img");
+        await Assertions.Expect(reopened).ToBeVisibleAsync(new() { Timeout = 15000 });
+        await Assertions.Expect(reopened).ToHaveJSPropertyAsync("clientWidth", 48);
+    }
 }

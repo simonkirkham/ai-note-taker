@@ -3,6 +3,7 @@ import {
   MIN_IMAGE_WIDTH,
   PRESET_WIDTHS,
   clampWidth,
+  nextWidthFromDrag,
   presetWidth,
 } from '../lib/imageResize';
 
@@ -53,5 +54,32 @@ describe('presetWidth', () => {
 
   it('maps Original to null (clears the width — render at natural size)', () => {
     expect(presetWidth('Original', 0, 0)).toBeNull();
+  });
+});
+
+describe('nextWidthFromDrag (28-B)', () => {
+  it('grows the width by a positive horizontal delta (drag outward)', () => {
+    expect(nextWidthFromDrag(400, 50)).toBe(450);
+  });
+
+  it('shrinks the width by a negative horizontal delta (drag inward)', () => {
+    expect(nextWidthFromDrag(400, -70)).toBe(330);
+  });
+
+  it('clamps an outward drag to the smaller of natural / content width', () => {
+    expect(nextWidthFromDrag(400, 1000, 500, 600)).toBe(500);
+    expect(nextWidthFromDrag(400, 1000, 800, 600)).toBe(600);
+  });
+
+  it('clamps an inward drag past the minimum to MIN_IMAGE_WIDTH (never zero)', () => {
+    expect(nextWidthFromDrag(60, -100)).toBe(MIN_IMAGE_WIDTH);
+  });
+
+  it('ignores zero / unknown caps (jsdom natural & content width are 0)', () => {
+    expect(nextWidthFromDrag(400, 50, 0, 0)).toBe(450);
+  });
+
+  it('returns an integer', () => {
+    expect(Number.isInteger(nextWidthFromDrag(400.4, 50.3, 0, 0))).toBe(true);
   });
 });

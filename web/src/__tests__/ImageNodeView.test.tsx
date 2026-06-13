@@ -1,6 +1,6 @@
 import type { NodeViewProps } from '@tiptap/react'
 import ImageNodeView from '../components/ImageNodeView'
-import { render, screen } from '../test/render'
+import { createEvent, fireEvent, render, screen } from '../test/render'
 
 // NodeViewWrapper needs the ReactNodeView editor context; stub it to a passthrough
 // so the component's render decision can be tested in isolation (jsdom).
@@ -96,5 +96,60 @@ describe('ImageNodeView size control (28-A)', () => {
   it('does not show the size control while the image is an unresolved placeholder', () => {
     renderNode('notes/note-1/abc123.png')
     expect(screen.queryByRole('group', { name: /image size/i })).toBeNull()
+  })
+})
+
+describe('ImageNodeView drag-resize handle (28-B)', () => {
+  it('renders a corner resize handle on a resolved image', () => {
+    renderNode(RESOLVED_URL)
+    expect(screen.getByTestId('image-resize-handle')).toBeInTheDocument()
+  })
+
+  it('does not show the resize handle while the image is an unresolved placeholder', () => {
+    renderNode('notes/note-1/abc123.png')
+    expect(screen.queryByTestId('image-resize-handle')).toBeNull()
+  })
+
+  it('keeps the handle out of the tab order (the preset control is the a11y path)', () => {
+    renderNode(RESOLVED_URL)
+    const handle = screen.getByTestId('image-resize-handle')
+    expect(handle.tagName).not.toBe('BUTTON')
+    expect(handle).toHaveAttribute('aria-hidden', 'true')
+  })
+
+  it('prevents default on mousedown so a drag does not start text selection', () => {
+    renderNode(RESOLVED_URL, { width: 400 })
+    const handle = screen.getByTestId('image-resize-handle')
+    const down = createEvent.mouseDown(handle, { clientX: 100 })
+    fireEvent(handle, down)
+    expect(down.defaultPrevented).toBe(true)
+  })
+
+  it('dragging the handle outward updates the width live (clamped)', () => {
+    const { updateAttributes } = renderNode(RESOLVED_URL, { width: 400 })
+    const handle = screen.getByTestId('image-resize-handle')
+    fireEvent.mouseDown(handle, { clientX: 100 })
+    fireEvent.mouseMove(window, { clientX: 150 })
+    expect(updateAttributes).toHaveBeenCalledWith({ width: 450 })
+    fireEvent.mouseUp(window)
+  })
+
+  it('dragging the handle inward shrinks the width', () => {
+    const { updateAttributes } = renderNode(RESOLVED_URL, { width: 400 })
+    const handle = screen.getByTestId('image-resize-handle')
+    fireEvent.mouseDown(handle, { clientX: 100 })
+    fireEvent.mouseMove(window, { clientX: 30 })
+    expect(updateAttributes).toHaveBeenCalledWith({ width: 330 })
+    fireEvent.mouseUp(window)
+  })
+
+  it('stops updating once the drag is released', () => {
+    const { updateAttributes } = renderNode(RESOLVED_URL, { width: 400 })
+    const handle = screen.getByTestId('image-resize-handle')
+    fireEvent.mouseDown(handle, { clientX: 100 })
+    fireEvent.mouseUp(window)
+    updateAttributes.mockClear()
+    fireEvent.mouseMove(window, { clientX: 300 })
+    expect(updateAttributes).not.toHaveBeenCalled()
   })
 })
