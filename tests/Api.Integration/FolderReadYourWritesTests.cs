@@ -57,6 +57,8 @@ public sealed class FolderReadYourWritesTests(ApiFactory factory) : IClassFixtur
     }
 
     // The projector — not an inline write — must DELETE the folder row off the FolderDeleted event.
+    // This covers a childless folder; the cascade-with-descendants projector path (each descendant
+    // gets its own DeleteFolder append) is covered by FolderOperationsTests.DeleteFolder_WithChildren_*.
     [Fact]
     public async Task DeleteFolder_WithConsistencyToken_ProjectorRemovesItFromTheTree()
     {

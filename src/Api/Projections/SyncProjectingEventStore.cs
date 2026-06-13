@@ -10,9 +10,9 @@ namespace Api.Projections;
 // Scoped to migrated stream prefixes (RYW-1: `todo#`; RYW-2 adds `note#`; RYW-3a adds `action#`;
 // RYW-3b adds `folder-`/`workspace-`). The migration is incremental — only migrated flows have had
 // their inline write removed. For the remaining OTHER flow (analysis) the command handler still
-// projects inline in-process,
-// so the decorator must NOT also project those streams or every read model would be written twice
-// per request. Most read-model writes are idempotent upserts, but the AI-suggestion feedback
+// projects inline in-process, so the decorator must NOT also project those streams or every read
+// model would be written twice per request. Most read-model writes are idempotent upserts, but the
+// AI-suggestion feedback
 // counters are unconditional DynamoDB `ADD`s (NOT idempotent), so on the still-inline analysis flow
 // a second in-process write would be a hard double-count (in prod the Projector Lambda already
 // double-writes that flow — the transient over-count RYW-3c closes). As each flow migrates it joins
