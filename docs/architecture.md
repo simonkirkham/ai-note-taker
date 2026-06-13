@@ -75,7 +75,7 @@ flowchart LR
 
         subgraph DB ["DynamoDB — single table"]
             direction TB
-            ES[("Event streams\nnote/id · action/id")]
+            ES[("Event streams\nnote# · action# · folder- · workspace- · todo#")]
             RM[("Projections\nNoteCardList · TodoList · …")]
             POS[("proj-position\nprocessed stream version")]
         end
