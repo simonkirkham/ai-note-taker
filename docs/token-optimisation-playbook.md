@@ -56,6 +56,10 @@ A clean Vitest suite + green Hawk does **not** de-risk TanStack invalidation/opt
 
 Budget for a possible post-merge E2E fix on `App.tsx`-hub TanStack slices. When an E2E flakes on a *different* test each run within one suite, suspect newly-added refetch churn, not a flaky test. (20-C)
 
+## Flipping a read flow sync→async breaks pre-existing E2E journeys that assert without a reload
+
+When a strangler slice moves a read flow from synchronous-inline projection to async-projector, **every pre-existing E2E journey that asserts server-rendered data immediately after a write+navigate (no reload) becomes a latent race** — they were written when the post-save read was always fresh; under async a cold/slow projector returns `stale` and the single read misses the change. PR CI does **not** catch it (E2E runs only in the deploy gate), so the cost is a failed-deploy + roll-forward cycle (RYW-2: #255 red on `TagsJourney.AddTag_PillAppearsOnHomeCard`, fixed-forward #256). Pre-empt **in the same slice**: grep the E2E journeys for assertions on the now-async read and make them reload-tolerant (reload re-sends the consistency token and re-gates; reload *only while not yet visible* → zero cost when warm). The *new* journeys you write for the slice already do this; the danger is the *old* ones you didn't touch. (RYW-2)
+
 ## Don't double-run the test suite
 
 The WSL frontend suite is ~3 min/run. A manual targeted `vitest run <X>` before commit is redundant with the pre-commit hook's full-suite run (10-E, 10-F, CHANGE-4). Pick one.
