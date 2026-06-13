@@ -92,7 +92,7 @@ describe('NoteEditor parse-time image fetch (BUG-24)', () => {
     // Hold the resolve open so the assertion runs in the pre-resolve window — the exact
     // window in which BUG-24 fired its relative-URL 403.
     server.use(
-      http.post('*/notes/:noteId/images/resolve', () => new Promise<HttpResponse>(() => {})),
+      http.post('*/notes/:noteId/images/resolve', () => new Promise<Response>(() => {})),
     )
     renderEditor(`Notes\n\n![](${KEY})`)
     await screen.findByTestId('note-content')

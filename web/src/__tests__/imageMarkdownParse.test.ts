@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   installBareKeyImageRule,
   KEY_DATA_ATTR,
+  type MarkdownItLike,
   moveBareKeyOutOfSrc,
 } from '../lib/imageMarkdownParse';
 
@@ -52,7 +53,7 @@ describe('installBareKeyImageRule — the HTML handed to the Tiptap parser', () 
 
   function render(markdown: string): string {
     const md = new MarkdownIt();
-    installBareKeyImageRule(md);
+    installBareKeyImageRule(md as unknown as MarkdownItLike);
     return md.render(markdown);
   }
 
