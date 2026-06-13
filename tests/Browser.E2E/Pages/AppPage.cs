@@ -130,6 +130,27 @@ public sealed class AppPage(IPage page, string baseUrl, string? authToken = null
         }
     }
 
+    // Hidden counterpart of WaitVisibleWithReloadAsync: re-gate a *removal* against a warming projector.
+    // A persisted removal (the DELETE is awaited before this is called) means the gated read carrying
+    // the highest token will eventually return without the element; reload to re-poll until it does, or
+    // the deadline. Reloads ONLY while the element is still visible, so a clean removal costs no reload.
+    private async Task WaitHiddenWithReloadAsync(ILocator locator, int timeoutMs = 20000)
+    {
+        var deadline = DateTime.UtcNow.AddMilliseconds(timeoutMs);
+        while (true)
+        {
+            try
+            {
+                await Assertions.Expect(locator).Not.ToBeVisibleAsync(new() { Timeout = 2500 });
+                return;
+            }
+            catch (PlaywrightException) when (DateTime.UtcNow < deadline)
+            {
+                await page.ReloadAsync();
+            }
+        }
+    }
+
     public async Task DeleteNoteAsync()
     {
         var deleteDone = page.WaitForResponseAsync(r =>
@@ -186,15 +207,18 @@ public sealed class AppPage(IPage page, string baseUrl, string? authToken = null
         }
     }
 
+    // Applied tags are note-detail state, projector-built since RYW-2: the gated GET /notes/{id} can
+    // return `stale` while the projector is still warming (cold first invocation, past the ~2s gate
+    // bound), so a pill can be transiently missing. Reload to re-send the consistency token and
+    // re-gate (the note lives at /notes/{id}, so a hard reload re-opens it from the server) — reloads
+    // ONLY while the pill isn't yet visible, so the optimistic happy path costs no reload. This is the
+    // TI-19 follow-up to the BUG-22 token fix: the fix makes the read carry the right token; this makes
+    // a still-warming projector re-poll instead of hard-timing-out on one fetch.
     public Task AssertTagPillVisibleAsync(string tag) =>
-        Assertions.Expect(
-            page.GetByTestId("tags-section").GetByTestId($"tag-pill-{tag}")
-        ).ToBeVisibleAsync(new() { Timeout = 15000 });
+        WaitVisibleWithReloadAsync(page.GetByTestId("tags-section").GetByTestId($"tag-pill-{tag}"));
 
     public Task AssertTagPillAbsentAsync(string tag) =>
-        Assertions.Expect(
-            page.GetByTestId("tags-section").GetByTestId($"tag-pill-{tag}")
-        ).Not.ToBeVisibleAsync();
+        WaitHiddenWithReloadAsync(page.GetByTestId("tags-section").GetByTestId($"tag-pill-{tag}"));
 
     public async Task RemoveTagAsync(string tag)
     {
