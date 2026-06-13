@@ -86,13 +86,17 @@ public sealed class NoteImageJourney(BrowserFixture browser) : IAsyncLifetime
         await _app.ClickNewNoteAsync();
         await _app.EnterTitleAsync(title);
 
+        // A normally-sized image (not the 1x1 PngBytes): the 28-B corner resize handle is
+        // 14px, so on a 1x1 image it blankets the whole image and intercepts the HoverAsync
+        // below (which targets the image centre). A wide image keeps the handle in the far
+        // corner, clear of the centre — matches why the resize test uses WidePngBytes.
         var presignDone = _page.WaitForResponseAsync(r =>
             r.Url.Contains("/images/presign-upload") && r.Request.Method == "POST");
         await _page.GetByTestId("image-file-input").SetInputFilesAsync(new FilePayload
         {
-            Name = "shot.png",
+            Name = "wide.png",
             MimeType = "image/png",
-            Buffer = PngBytes,
+            Buffer = WidePngBytes,
         });
         await presignDone;
 
