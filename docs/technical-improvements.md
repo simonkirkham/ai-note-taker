@@ -47,11 +47,12 @@ Status key: 🔲 **Open** · 🟡 **Partly done / mitigated** · ✅ **Done** (g
 | TI-29 | Vite 5 → 7 + Vitest 2 → 4 (dep-audit T2)                                       | ✅ Done — #245, deploy #535 (held at Vite 7; Vite 8 now GA = future)                                                                    |
 | TI-30 | React 18 → 19 (dep-audit T3)                                                   | ✅ Done — #246, deploy #536 (zero code changes)                                                                                         |
 | TI-31 | TypeScript 5.6 → 6.0 (dep-audit T4)                                            | ✅ Done — #249, deploy #539 (dropped deprecated `baseUrl`)                                                                              |
-| TI-32 | Prime the ASP.NET pipeline before the SnapStart snapshot (first-request ~7 s)   | 🔲 **Open** — biggest single API-latency win; ~7 s first-post-restore warmup, measured in prod X-Ray 2026-06-12                          |
+| TI-32 | Prime the ASP.NET pipeline before the SnapStart snapshot (first-request ~7 s)   | 🟡 **In progress** — `RegisterBeforeSnapshot` priming hook shipped on branch; pairs with TI-35. Verify post-deploy X-Ray              |
 | TI-33 | `NoteCardList` reads via full-table `Scan` + `ConsistentRead`, not a GSI/Query  | 🔲 **Open** — same anti-pattern as TI-20; ~840 ms at 234 rows, scales O(all notes); fold into Phase 23                                    |
 | TI-34 | Make Lambda naming specific & correct everywhere                                | 🔲 **Open** — naming audit; user-raised 2026-06-12. **API Lambda** / **Projector Lambda** now; **Command/Query Lambda** only at 27-D    |
+| TI-35 | ReadyToRun-publish the API Lambda (AOT-precompile to cut first-request JIT)     | 🟡 **In progress** — `-r linux-x64` + conditional `PublishReadyToRun` shipped on branch; pairs with TI-32. Verify post-deploy X-Ray   |
 
-**Outstanding (7 Open + 3 Partly):** TI-17 Auto-backfill projection on deploy; TI-20 `WorkspaceList` GSI; TI-23 Generalise append-retry; TI-25 `NoteEditor` ordering test; **TI-32 SnapStart priming**; **TI-33 `NoteCardList` Scan→GSI**; **TI-34 Lambda naming audit**; _(partly)_ TI-7 ESLint import-resolver + typed-lint (jsx-a11y done via 19-F3); TI-3 state-mgmt colocation; TI-24 deploy-credentials root cause. **The 2026-06 dependency upgrade audit (T1/T7/T2/T3/T4 = TI-27/28/29/30/31) is fully cleared.**
+**Outstanding (6 Open + 5 in-flight/Partly):** TI-17 Auto-backfill projection on deploy; TI-20 `WorkspaceList` GSI; TI-23 Generalise append-retry; TI-25 `NoteEditor` ordering test; **TI-33 `NoteCardList` Scan→GSI**; **TI-34 Lambda naming audit**; _(in progress, one branch)_ **TI-32 SnapStart priming + TI-35 ReadyToRun** — the two cold-start fixes from the 2026-06-13 latency investigation; _(partly)_ TI-7 ESLint import-resolver + typed-lint (jsx-a11y done via 19-F3); TI-3 state-mgmt colocation; TI-24 deploy-credentials root cause. **The 2026-06 dependency upgrade audit (T1/T7/T2/T3/T4 = TI-27/28/29/30/31) is fully cleared.**
 
 > Items carry stable IDs `TI-1`–`TI-31` in document order (the `ID` column above); each detailed section below repeats its ID. Reference an item as `TI-N`. The dep-audit `T#` tags are retained in parentheses for cross-reference with the audit report.
 
@@ -489,24 +490,33 @@ The `tagindex` control (essentially one DynamoDB query) burns the same ~7 s, pro
 
 **Why it matters:** every cold-ish page load is ~8 s instead of ~1.3 s, multiplied by the page's concurrent fan-out (each parallel request lands on its own fresh environment, so they don't share the warmup). TI-13 already tuned SnapStart *cost* (512 → 256 MB) but did not touch first-request *latency*; this is the unaddressed half. Lower memory = less restore vCPU, so priming and the 256 MB setting interact — measure together.
 
-**Fix:** register a `BeforeSnapshot` hook (managed-runtime SnapStart: `Amazon.Lambda.Core.SnapshotRestore.RegisterBeforeSnapshot`) in `Program.cs` *before* `app.Run()`, and in it drive a synthetic warmup so the snapshot captures a JIT'd, warm process. Priming surface to exercise (pick the minimum that moves the metric, measure each):
+**Fleet confirmation (CloudWatch Logs Insights, 24 h, 650 invocations, 2026-06-13):** the cost is cold-start-only and the warm path is healthy — the two populations split cleanly by presence of a `Restore Duration` in the REPORT line:
 
-1. Resolve the singleton stores + command handlers from DI (JITs constructors + builds the graph).
-2. Run System.Text.Json serialize/deserialize over the main response DTOs (`NoteCardView`, note-detail) — STJ first-use reflection/codegen is a large slice of the gap.
-3. Issue one cheap read per hot projection table (warms the AWS SDK pipeline + the `ConsistentRead` path + connection).
-4. If feasible, route one in-process request through the middleware pipeline (`TestHost`/`TestServer`) to JIT routing + auth middleware — highest fidelity, highest complexity; only if 1–3 leave a material gap.
+| Population | Count | Share | p50 | p90 | avg | max |
+| --- | --- | --- | --- | --- | --- | --- |
+| Warm | 591 | 91 % | 132 ms | 517 ms | 270 ms | 5.4 s |
+| Cold (SnapStart) | 59 | **9 %** | 7.92 s | 10.0 s | 7.56 s | 13.9 s |
+
+Restore itself averages 457 ms; the remaining ~7.1 s is post-restore JIT + first-use init. Cold starts are spread across nearly every active hour (idle-environment reclaim, not deploys), so ~1 in 11 interactions pays ~8 s.
+
+**Fix (shipped on branch `tech/snapstart-cold-start`, 2026-06-13):** register a `BeforeSnapshot` hook (`Amazon.Lambda.Core.SnapshotRestore.RegisterBeforeSnapshot`) so the snapshot captures a JIT'd, warm process. `Builder.RegisterSnapStartPriming(app)` is called in `Program.cs` before `app.Run()` and, guarded on `AWS_LAMBDA_FUNCTION_NAME` (no-op off-Lambda), runs at snapshot creation:
+
+1. Resolves a DI scope and runs the DynamoDB health check — warms the AWS SDK credential-provider chain + DynamoDB marshallers + HTTP/JSON machinery (the JIT survives into the snapshot; only the TLS connection is re-established post-restore).
+2. Serializes a representative nested object with System.Text.Json — warms the STJ converter factory + metadata cache, which ReadyToRun does **not** cover.
+
+Broad framework/SDK/our-assembly JIT is handled by the paired **TI-35** (ReadyToRun). A full in-process middleware-pipeline request (`TestServer`) was considered (item 4 in the original plan) but deferred — `AddAWSLambdaHosting` exposes no loopback handler, and TI-35 already AOT-compiles the routing/auth path; revisit only if the post-deploy trace shows a material residual gap.
 
 **Acceptance criteria:**
-- First-invocation-after-restore `Invocation` time (minus downstream subsegments) drops from ~7 s toward the warm ~1.3 s, measured on a real post-deploy X-Ray trace.
+- First-invocation-after-restore `Invocation` time (minus downstream subsegments) drops from ~7 s toward the warm ~1.3 s, measured on a real post-deploy X-Ray trace **and** the cold-population p50 in the CloudWatch split above.
 - Restore duration stays within the TI-13 watch band (bump 256 → 384 MB only if restore latency climbs materially with the extra snapshot work).
-- No behaviour change to any endpoint; priming is init-only and idempotent.
+- No behaviour change to any endpoint; priming is init-only, best-effort (`try/catch`), and idempotent.
 
-**Deploy-time delta:** priming runs during the SnapStart snapshot publish, which already happens on every backend deploy (~137 s per TI-22). Adds **a few seconds, one-off per backend deploy**, dwarfed by the republish already paid — flag and accept per the deploy-time guardrail; frontend-only deploys are unaffected (they skip the publish).
+**Deploy-time delta:** priming runs during the SnapStart snapshot publish, already paid on every backend deploy (~137 s per TI-22). Adds **a few seconds, one-off per backend deploy** — flag and accept per the deploy-time guardrail; frontend-only deploys skip the publish. (TI-35 adds the larger, separately-flagged R2R publish cost.)
 
-**Related:** the frontend also fans out ~6 concurrent GETs on note open — collapsing those into fewer aggregate reads would cut how many fresh environments a single page load forces. Track separately if priming alone doesn't close it.
+**Related:** the frontend also fans out ~6 concurrent GETs on note open — collapsing those into fewer aggregate reads would cut how many fresh environments a single page load forces. Track separately if priming + R2R don't close it.
 
-**Raised in:** Prod latency investigation, 2026-06-12 (X-Ray trace analysis).
-**Depends on:** — (interacts with TI-13 memory setting).
+**Raised in:** Prod latency investigation, 2026-06-12 (X-Ray); fleet split added 2026-06-13 (CloudWatch).
+**Depends on:** — (interacts with TI-13 memory setting; pairs with TI-35).
 
 ---
 
@@ -540,3 +550,24 @@ The `tagindex` control (essentially one DynamoDB query) burns the same ~7 s, pro
 **Why:** ambiguity now that there are two functions; future-split names used for the present state mislead.
 **Raised in:** user request, 2026-06-12.
 **Depends on:** — (the Command/Query half lands naturally with 27-D).
+
+---
+
+## TI-35. ReadyToRun-publish the API Lambda — AOT-precompile to cut first-request JIT after a SnapStart restore
+
+The ~7.1 s post-restore warmup (see TI-32) is dominated by .NET JIT of code the snapshot never exercised. **ReadyToRun (R2R)** AOT-precompiles IL to native images at publish time, so the first request runs precompiled code instead of JIT-compiling it live. R2R is the AWS-recommended companion to SnapStart for .NET and is orthogonal to the TI-32 priming hook: priming captures *first-use init* (SDK marshallers, STJ metadata, credential chain) into the snapshot; R2R removes the *JIT* of our assemblies + the heavy NuGet dependencies (AWS SDK, `JwtBearer`, Google API libs) that priming alone doesn't reach.
+
+**Fix (shipped on branch `tech/snapstart-cold-start`, 2026-06-13):**
+1. `src/Api/Api.csproj` — `<PublishReadyToRun>true</PublishReadyToRun>` inside a `Condition="'$(RuntimeIdentifier)' != ''"` PropertyGroup, so R2R activates **only** when a RID is supplied. Plain `dotnet build` / `dotnet test` / the local `cdk synth` publish stay portable IL — no impact on dev machines or test runs.
+2. `.github/workflows/deploy.yml` (both `deploy-test` + `deploy-production`) and `pr.yml` — the API publish gains `-r linux-x64 --self-contained false`. Framework-dependent (Lambda's `DOTNET_10` managed runtime provides the shared framework); the GitHub `ubuntu` runner is `linux-x64`, matching the x86_64 Lambda, so crossgen runs natively. `-o` keeps the asset path `Code.FromAsset` expects.
+
+**Verified:** `PublishReadyToRun` evaluates `true` only with a RID; a clean publish clears `COMIMAGE_FLAGS_IL_ONLY` on `Api.dll`, `AWSSDK.DynamoDBv2.dll`, and `JwtBearer.dll` (= native R2R images); no runtime shipped (framework-dependent). 362 in-process API tests + 105 infra-assertion tests green.
+
+**Acceptance criteria:**
+- Same as TI-32: cold-population p50 drops materially vs the CloudWatch split; verify on a post-deploy X-Ray trace.
+- No behaviour change; the deployed artefact stays framework-dependent on the managed runtime.
+
+**Deploy-time delta:** R2R crossgen adds **~30–90 s to each backend API publish — recurring, every backend deploy** (not one-off). This needs explicit accept per the deploy-time guardrail. Justified: it buys a ~7 s cut on ~9 % of all user requests. Frontend-only deploys are unaffected (publish skipped). Projector Lambda left on IL (async, cold start not user-visible) — revisit if its cold start ever matters.
+
+**Raised in:** Prod latency investigation, 2026-06-13.
+**Depends on:** — (pairs with TI-32; both ship together).
