@@ -46,8 +46,11 @@ public sealed class InstrumentedEventStore(
         catch (ConcurrencyException ex)
         {
             metrics.ConcurrencyConflict(aggregate);
-            logger.LogWarning("Concurrency conflict {StreamId} ExpectedVersion={Expected} ActualVersion={Actual}",
-                ex.StreamId, ex.ExpectedVersion, ex.ActualVersion);
+            // {Reason} distinguishes a lost version-guard (ConditionalCheckFailed) from a concurrent
+            // same-item transaction (TransactionConflict, BUG-28) — so prod can confirm the latter is
+            // now retried, not 500ing.
+            logger.LogWarning("Concurrency conflict {StreamId} ExpectedVersion={Expected} ActualVersion={Actual} Reason={Reason}",
+                ex.StreamId, ex.ExpectedVersion, ex.ActualVersion, ex.Reason ?? "unknown");
             throw;
         }
         finally

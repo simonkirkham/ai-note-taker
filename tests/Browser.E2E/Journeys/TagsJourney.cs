@@ -86,12 +86,10 @@ public sealed class TagsJourney(BrowserFixture browser) : IAsyncLifetime
         await _app.AssertTagPillVisibleAsync("Bill");
     }
 
-    // QUARANTINED — BUG-28: a concurrent multi-tag add ("1:1s Bill" = two simultaneous POSTs on one
-    // note stream) followed by removing one tag intermittently leaves the surviving tag/card unreadable
-    // for >30s under the deployed async projector. Warm-up (TI-39) and the BUG-27 contention fix cleared
-    // every other journey but not this add-then-remove combination; not reproducible in-process. Skipped
-    // from the deploy gate while investigated, so it stops red-gating every deploy. See phase-bugs BUG-28.
-    [Fact(Skip = "BUG-28: concurrent multi-tag add + remove drops a tag under async projection — quarantined, under investigation")]
+    // Un-quarantined: BUG-28 fixed — the concurrent multi-tag add's losing append was cancelled by
+    // DynamoDB with reason "TransactionConflict" (not "ConditionalCheckFailed"), which the event store
+    // didn't treat as retriable → unhandled 500 + dropped tag. Now both reasons are retriable conflicts.
+    [Fact]
     public async Task RemoveTag_PillDisappears()
     {
         var title = $"Tag {Guid.NewGuid():N}"[..20];
@@ -107,9 +105,8 @@ public sealed class TagsJourney(BrowserFixture browser) : IAsyncLifetime
         await _app.AssertTagPillAbsentAsync("Bill");
     }
 
-    // QUARANTINED — BUG-28 (see RemoveTag_PillDisappears above). Same concurrent multi-tag-add-then-remove
-    // scenario; still red-gates deploys after the TI-39 + BUG-27 fixes. Skipped pending investigation.
-    [Fact(Skip = "BUG-28: concurrent multi-tag add + remove drops a tag under async projection — quarantined, under investigation")]
+    // Un-quarantined: BUG-28 fixed (see RemoveTag_PillDisappears above — TransactionConflict now retriable).
+    [Fact]
     public async Task RemoveTag_GoneAfterNavigation()
     {
         var title = $"Tag {Guid.NewGuid():N}"[..20];
