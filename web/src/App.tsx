@@ -34,7 +34,6 @@ import { useFolders } from "./hooks/useFolders";
 import { useNoteCards } from "./hooks/useNoteCards";
 import {
   useCreateNote,
-  useRenameNote,
   useDeleteNote,
   useMoveNoteToFolder,
   useMoveNoteToWorkspace,
@@ -126,7 +125,6 @@ function AppContent({ signOut }: { signOut: () => void }) {
   const qc = useQueryClient();
   const { data: cards = [], isLoading: loading } = useNoteCards();
   const createNote = useCreateNote();
-  const renameNote = useRenameNote();
   const deleteNote = useDeleteNote();
   const moveNote = useMoveNoteToFolder();
   const moveNoteToWorkspaceM = useMoveNoteToWorkspace();
@@ -200,10 +198,6 @@ function AppContent({ signOut }: { signOut: () => void }) {
   // removal from the noteCards cache + DELETE).
   function handleDeleteNote(noteId: string) {
     deleteNote.mutate(noteId);
-  }
-
-  function handleRename(noteId: string, title: string) {
-    renameNote.mutate({ noteId, title });
   }
 
   function handleBackFromNote() {
@@ -343,7 +337,6 @@ function AppContent({ signOut }: { signOut: () => void }) {
             element={
               <NoteRoute
                 notes={cards}
-                onRename={handleRename}
                 onBack={handleBackFromNote}
                 onDelete={handleDelete}
                 onDateSet={handleDateSet}
@@ -360,14 +353,12 @@ function AppContent({ signOut }: { signOut: () => void }) {
 
 function NoteRoute({
   notes,
-  onRename,
   onBack,
   onDelete,
   onDateSet,
   onOpenNote,
 }: {
   notes: { noteId: string; title: string }[];
-  onRename: (noteId: string, title: string) => void;
   onBack: () => void;
   onDelete: (noteId: string) => Promise<void>;
   onDateSet: (noteId: string, date: string) => void;
@@ -392,7 +383,6 @@ function NoteRoute({
       key={noteId}
       noteId={noteId}
       initialTitle={navState?.initialTitle ?? notes.find((n) => n.noteId === noteId)?.title ?? ""}
-      onRename={onRename}
       onBack={onBack}
       onDelete={onDelete}
       onDateSet={onDateSet}

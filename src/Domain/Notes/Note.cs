@@ -103,6 +103,8 @@ public sealed class Note : IAggregate
     {
         if (!_exists || _deleted)
             throw new InvalidOperationException($"Note {cmd.NoteId} does not exist.");
+        if (string.IsNullOrWhiteSpace(cmd.NewTitle))
+            return [];
         if (cmd.NewTitle == _title)
             return [];
         return [new NoteRenamed(cmd.NoteId, cmd.NewTitle)];

@@ -33,4 +33,24 @@ public sealed class RenameNoteSpec
             .When(new RenameNote(Id, "Stand-up notes"))
             .Then();
     }
+
+    // BUG-21: an empty/whitespace rename (e.g. the auto-focused title input blurring
+    // before the real title loads) must never overwrite a real title with blank.
+    [Fact]
+    public void ProducesNoEventWhenTitleIsEmpty()
+    {
+        Spec
+            .Given<Note>(new NoteCreated(Id), new NoteRenamed(Id, "Interview: Simon Kirkham"))
+            .When(new RenameNote(Id, ""))
+            .Then();
+    }
+
+    [Fact]
+    public void ProducesNoEventWhenTitleIsWhitespace()
+    {
+        Spec
+            .Given<Note>(new NoteCreated(Id), new NoteRenamed(Id, "Interview: Simon Kirkham"))
+            .When(new RenameNote(Id, "   "))
+            .Then();
+    }
 }

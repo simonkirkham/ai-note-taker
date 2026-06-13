@@ -7,7 +7,7 @@ import { keys } from "../api/queryKeys";
 import { completeTranscription, discardTranscriptionDraft } from "../api/transcription";
 import { useCreateNoteFromNextOccurrence, useLinkNoteToCalendar } from "../hooks/useMeetingMutations";
 import { useNoteDetail } from "../hooks/useNoteDetail";
-import { useAnalyseNote, useEditContent, useSetNoteDate } from "../hooks/useNoteDetailMutations";
+import { useAnalyseNote, useEditContent, useRenameNoteDetail, useSetNoteDate } from "../hooks/useNoteDetailMutations";
 import { useTagNote, useUntagNote } from "../hooks/useTagMutations";
 import { useTags } from "../hooks/useTags";
 import type { TranscriptionStatus } from "../hooks/useTranscription";
@@ -34,7 +34,6 @@ const TABS: { id: NoteTab; label: string }[] = [
 export default function NoteView({
   noteId,
   initialTitle,
-  onRename,
   onBack,
   onDelete,
   onDateSet,
@@ -44,7 +43,6 @@ export default function NoteView({
 }: {
   noteId: string;
   initialTitle: string;
-  onRename: (noteId: string, title: string) => void;
   onBack: () => void;
   onDelete: (noteId: string) => Promise<void>;
   onDateSet: (noteId: string, date: string) => void;
@@ -61,12 +59,16 @@ export default function NoteView({
   const nextOccurrenceM = useCreateNoteFromNextOccurrence();
   const editContentM = useEditContent(noteId);
   const setNoteDateM = useSetNoteDate(noteId);
+  const renameM = useRenameNoteDetail(noteId);
   const analyseM = useAnalyseNote(noteId);
 
-  const [title, setTitle] = useState(initialTitle);
   // Draft pattern: displayed = draft ?? server value. While a draft is non-null the
   // user has unsaved edits, so a refetch never clobbers in-flight typing; the draft
-  // resets to null on a successful save (reconcile to the server copy).
+  // resets to null on a successful save (reconcile to the server copy). BUG-21: title
+  // is a draft-backed detail field too — it was previously seeded once from
+  // initialTitle and never reconciled with detail.title, so it could show empty and
+  // a blur then overwrote the real title with that empty value.
+  const [titleDraft, setTitleDraft] = useState<string | null>(null);
   const [contentDraft, setContentDraft] = useState<string | null>(null);
   const [dateDraft, setDateDraft] = useState<string | null>(null);
   const [actionCount, setActionCount] = useState(0);
@@ -92,6 +94,7 @@ export default function NoteView({
   const today = new Date().toISOString().slice(0, 10);
 
   // Editable fields via the draft pattern; read-only fields straight from the cache.
+  const title = titleDraft ?? detail?.title ?? initialTitle;
   const content = contentDraft ?? detail?.content ?? "";
   const date = dateDraft ?? detail?.date ?? today;
   const tags = detail?.tags ?? [];
@@ -183,6 +186,23 @@ export default function NoteView({
   useEffect(() => () => {
     if (!deletingRef.current) saveContentRef.current();
   }, []);
+
+  // BUG-21: persist a title edit on blur. Never persist empty/whitespace (the
+  // auto-focused input blurs on the first click/navigation) or an unchanged value;
+  // in both cases just discard the draft so the field reconciles to detail.title.
+  function handleSaveTitle(value: string) {
+    const current = detail?.title ?? initialTitle;
+    if (value.trim().length === 0 || value === current) {
+      setTitleDraft(null);
+      return;
+    }
+    renameM.mutate(value, {
+      // Keep the typed title on failure (don't reset to the stale server copy) so the
+      // user's edit is never silently lost; reconcile to the server copy on success.
+      onSuccess: () => setTitleDraft(null),
+      onError: () => showError("Couldn't rename the note. We kept your title — try again."),
+    });
+  }
 
   function handleSaveDate() {
     if (dateDraft == null) return;
@@ -405,8 +425,8 @@ export default function NoteView({
         ref={inputRef}
         type="text"
         value={title}
-        onChange={(e) => setTitle(e.target.value)}
-        onBlur={(e) => onRename(noteId, e.currentTarget.value)}
+        onChange={(e) => setTitleDraft(e.target.value)}
+        onBlur={(e) => handleSaveTitle(e.currentTarget.value)}
         placeholder="Note title…"
         className={styles.titleInput}
         aria-label="Note title"

@@ -1,6 +1,6 @@
 import { useMutation, useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { moveNoteToFolder, moveNoteToWorkspace, unfileNote } from "../api/folders";
-import { createNote, renameNote, deleteNote, type NoteCard } from "../api/notes";
+import { createNote, deleteNote, type NoteCard } from "../api/notes";
 import { keys } from "../api/queryKeys";
 
 type Ctx = { previous?: NoteCard[] };
@@ -41,17 +41,6 @@ export function useCreateNote() {
         ...old,
       ]);
     },
-  });
-}
-
-export function useRenameNote() {
-  const qc = useQueryClient();
-  return useMutation<void, Error, { noteId: string; title: string }, Ctx>({
-    mutationFn: ({ noteId, title }) => renameNote(noteId, title),
-    onMutate: ({ noteId, title }) =>
-      optimistic(qc, (cards) => cards.map((c) => (c.noteId === noteId ? { ...c, title } : c))),
-    onError: (_e, _v, ctx) => rollback(qc, ctx),
-    onSettled: () => invalidate(qc),
   });
 }
 
