@@ -110,7 +110,9 @@ export function AuthProvider({
 
     function onVisibilityChange() {
       if (document.visibilityState !== 'visible') return
-      const exp = getExp(idToken!) // safe: effect guard above ensures idToken is a non-null string
+      // safe: effect guard above ensures idToken is a non-null string
+      // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+      const exp = getExp(idToken!)
       if (!exp) return
       const remaining = exp * 1000 - Date.now()
       if (remaining <= 0) {

@@ -114,7 +114,7 @@ export default function NoteEditor({ noteId, value, onChange, onBlur }: NoteEdit
       },
       handlePaste: (_view, event): boolean => dataTransferHandlerRef.current(event.clipboardData),
       handleDrop: (_view, event): boolean =>
-        dataTransferHandlerRef.current((event as DragEvent).dataTransfer),
+        dataTransferHandlerRef.current((event).dataTransfer),
     },
     onUpdate: ({ editor: ed }) => {
       onChange(serialize(ed));

@@ -152,8 +152,8 @@ export default function NoteView({
 
   // Refetch the regenerated summary/discussion/decisions and any extracted actions.
   function refreshNote() {
-    qc.invalidateQueries({ queryKey: keys.note(noteId) });
-    qc.invalidateQueries({ queryKey: keys.actions(noteId) });
+    void qc.invalidateQueries({ queryKey: keys.note(noteId) });
+    void qc.invalidateQueries({ queryKey: keys.actions(noteId) });
   }
 
   async function handleGenerateFinalNotes() {
@@ -336,7 +336,7 @@ export default function NoteView({
           {!hasContent ? (
             <button
               data-testid="cancel-button"
-              onClick={handleCancel}
+              onClick={() => void handleCancel()}
               className={styles.backButton}
             >
               Cancel
@@ -380,7 +380,7 @@ export default function NoteView({
               <button
                 type="button"
                 data-testid="next-occurrence-button"
-                onClick={handleOpenNextOccurrence}
+                onClick={() => void handleOpenNextOccurrence()}
                 disabled={openingNext}
                 className={styles.nextOccurrenceButton}
               >
@@ -411,7 +411,7 @@ export default function NoteView({
           {hasContent && (
             <button
               data-testid="delete-note-button"
-              onClick={() => { deletingRef.current = true; onDelete(noteId); }}
+              onClick={() => { deletingRef.current = true; void onDelete(noteId); }}
               className={styles.deleteNoteButton}
               aria-label="Delete note"
             >
@@ -445,7 +445,7 @@ export default function NoteView({
           <button
             type="button"
             data-testid="recover-transcript-button"
-            onClick={handleRecoverDraft}
+            onClick={() => void handleRecoverDraft()}
             className={styles.saveButton}
           >
             Recover
@@ -453,7 +453,7 @@ export default function NoteView({
           <button
             type="button"
             data-testid="discard-transcript-button"
-            onClick={handleDiscardDraft}
+            onClick={() => void handleDiscardDraft()}
             className={styles.backButton}
           >
             Discard

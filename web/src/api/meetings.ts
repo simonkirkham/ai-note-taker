@@ -66,5 +66,5 @@ export async function createNoteFromNextOccurrence(
   });
   if (res.status === 404) throw new Error("no_future_occurrences");
   if (!res.ok) throw new Error(`POST /notes/from-next-occurrence failed: ${res.status}`);
-  return res.json();
+  return res.json() as Promise<CreateNoteFromNextOccurrenceResult>;
 }

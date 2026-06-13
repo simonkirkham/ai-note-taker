@@ -24,7 +24,7 @@ function rollback(qc: QueryClient, ctx: Ctx | undefined) {
 // action↔todo cross-view loop (the action mutations invalidate keys.todos in turn).
 function settleAction(qc: QueryClient, item: TodoItem) {
   if (item.type === "action" && item.noteId) {
-    qc.invalidateQueries({ queryKey: keys.actions(item.noteId) });
+    void qc.invalidateQueries({ queryKey: keys.actions(item.noteId) });
   }
 }
 
@@ -32,7 +32,7 @@ export function useCompleteTodo() {
   const qc = useQueryClient();
   return useMutation<void, Error, TodoItem, Ctx>({
     mutationFn: (item) =>
-      item.type === "action" ? completeAction(item.noteId!, item.itemId) : completeTodo(item.itemId),
+      item.type === "action" ? completeAction(item.noteId, item.itemId) : completeTodo(item.itemId),
     onMutate: (item) => {
       const completedAt = new Date().toISOString();
       return optimistic(qc, (items) =>
@@ -47,7 +47,7 @@ export function useReopenTodo() {
   const qc = useQueryClient();
   return useMutation<void, Error, TodoItem, Ctx>({
     mutationFn: (item) =>
-      item.type === "action" ? reopenAction(item.noteId!, item.itemId) : reopenTodo(item.itemId),
+      item.type === "action" ? reopenAction(item.noteId, item.itemId) : reopenTodo(item.itemId),
     onMutate: (item) =>
       optimistic(qc, (items) =>
         items.map((i) => (i.itemId === item.itemId ? { ...i, completedAt: null } : i))),
@@ -60,7 +60,7 @@ export function useDeleteTodo() {
   const qc = useQueryClient();
   return useMutation<void, Error, TodoItem, Ctx>({
     mutationFn: (item) =>
-      item.type === "action" ? deleteAction(item.noteId!, item.itemId) : deleteTodo(item.itemId),
+      item.type === "action" ? deleteAction(item.noteId, item.itemId) : deleteTodo(item.itemId),
     onMutate: (item) =>
       optimistic(qc, (items) => items.filter((i) => i.itemId !== item.itemId)),
     onError: (_e, _item, ctx) => rollback(qc, ctx),

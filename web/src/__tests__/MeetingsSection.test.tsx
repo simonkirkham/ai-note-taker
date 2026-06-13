@@ -360,7 +360,7 @@ describe('MeetingsSection — Create Note button', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Create Note' }))
 
     expect(screen.getByRole('button', { name: 'Creating…' })).toBeInTheDocument()
-    resolve!(HttpResponse.json({ noteId: 'n1' }, { status: 201 }) as unknown as Response)
+    resolve!(HttpResponse.json({ noteId: 'n1' }, { status: 201 }))
   })
 
   it('clicking Open Note calls onOpenNote with the linked noteId', async () => {

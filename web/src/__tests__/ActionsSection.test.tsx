@@ -142,7 +142,7 @@ describe('ActionsSection', () => {
     server.use(
       http.post(`/api/notes/${NOTE_ID}/actions`, () =>
         new Promise<Response>((res) => {
-          rejectPost = () => res(new HttpResponse(null, { status: 500 }) as unknown as Response)
+          rejectPost = () => res(new HttpResponse(null, { status: 500 }))
         })),
     )
     renderActions()
@@ -161,7 +161,7 @@ describe('ActionsSection', () => {
       http.get(`/api/notes/${NOTE_ID}/actions`, () => HttpResponse.json({ actions: [action1] })),
       http.post(`/api/notes/${NOTE_ID}/actions/:actionId/complete`, () =>
         new Promise<Response>((res) => {
-          rejectComplete = () => res(new HttpResponse(null, { status: 500 }) as unknown as Response)
+          rejectComplete = () => res(new HttpResponse(null, { status: 500 }))
         })),
     )
     renderActions()
@@ -178,7 +178,7 @@ describe('ActionsSection', () => {
       http.get(`/api/notes/${NOTE_ID}/actions`, () => HttpResponse.json({ actions: [action1] })),
       http.delete(`/api/notes/${NOTE_ID}/actions/:actionId`, () =>
         new Promise<Response>((res) => {
-          rejectDelete = () => res(new HttpResponse(null, { status: 500 }) as unknown as Response)
+          rejectDelete = () => res(new HttpResponse(null, { status: 500 }))
         })),
     )
     renderActions()

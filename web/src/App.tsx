@@ -65,11 +65,11 @@ function AppGate() {
     if (!dest) return;
     sessionStorage.removeItem("postLoginRedirect");
     if (dest !== window.location.pathname + window.location.search) {
-      navigate(dest, { replace: true });
+      void navigate(dest, { replace: true });
     }
   }, [idToken, navigate]);
 
-  if (sessionExpired) return <SessionExpiredBanner onSignIn={signIn} />;
+  if (sessionExpired) return <SessionExpiredBanner onSignIn={() => void signIn()} />;
   // A cold-start silent refresh is in flight — the refresh cookie may still restore the
   // session, so hold a loading state instead of flashing the sign-in screen (BUG-15).
   if (authLoading) return <AuthLoading />;
@@ -160,7 +160,7 @@ function AppContent({ signOut }: { signOut: () => void }) {
     const state: NoteNavState = {};
     if (isNew) state.isNew = true;
     if (title) state.initialTitle = title;
-    navigate(w(`/notes/${noteId}`), { state });
+    void navigate(w(`/notes/${noteId}`), { state });
   }
 
   async function handleNewNote() {
@@ -188,7 +188,7 @@ function AppContent({ signOut }: { signOut: () => void }) {
     try {
       await deleteNote.mutateAsync(noteId);
       // Destructive: replace so the deleted note is not reachable via Back.
-      navigate(w(""), { replace: true });
+      void navigate(w(""), { replace: true });
     } catch {
       // rolled back in the mutation's onError; stay on the note
     }
@@ -204,26 +204,26 @@ function AppContent({ signOut }: { signOut: () => void }) {
     // On a cold deep-link there is no in-app history entry behind the note, so
     // navigate(-1) would be a no-op; fall back to home. (location.key is
     // "default" only for the initial entry.)
-    if (location.key === "default") navigate(w(""));
-    else navigate(-1);
+    if (location.key === "default") void navigate(w(""));
+    else void navigate(-1);
     // The note's content/preview may have changed in NoteView — refresh the list.
-    qc.invalidateQueries({ queryKey: keys.noteCards });
+    void qc.invalidateQueries({ queryKey: keys.noteCards });
   }
 
   function handleUnfiledSelect() {
-    navigate(w("/folders/unfiled"));
+    void navigate(w("/folders/unfiled"));
     setSidebarOpen(false);
   }
 
   function handleFolderSelect(folderId: string, folderPath: string[]) {
-    navigate(w(`/folders/${folderId}`));
+    void navigate(w(`/folders/${folderId}`));
     setSidebarOpen(false);
     setPreviewFolderId(folderId);
     setPreviewFolderName(folderPath[folderPath.length - 1] ?? "");
   }
 
   function handleHome() {
-    navigate(w(""));
+    void navigate(w(""));
   }
 
   function handleCreateFolder(name: string, parentFolderId?: string) {
@@ -243,7 +243,7 @@ function AppContent({ signOut }: { signOut: () => void }) {
   }
 
   function handleDeleteFolder(folderId: string) {
-    if (activeFolderId === folderId) navigate(w(""));
+    if (activeFolderId === folderId) void navigate(w(""));
     if (previewFolderId === folderId) setPreviewFolderId(null);
     deleteFolderM.mutate({ folderId });
   }
@@ -265,7 +265,7 @@ function AppContent({ signOut }: { signOut: () => void }) {
       loading={loading}
       creating={creating}
       createError={createError}
-      onNewNote={handleNewNote}
+      onNewNote={() => void handleNewNote()}
       onEditNote={(noteId) => openNote(noteId)}
       onOpenNote={(noteId, title, isNew) => openNote(noteId, title, isNew)}
       onDeleteNote={handleDeleteNote}
@@ -297,7 +297,7 @@ function AppContent({ signOut }: { signOut: () => void }) {
       />
       <Sidebar
         open={sidebarOpen}
-        onCreate={handleNewNote}
+        onCreate={() => void handleNewNote()}
         folders={folders}
         activeFolderId={activeFolderId}
         onFolderSelect={handleFolderSelect}
@@ -375,7 +375,7 @@ function NoteRoute({
   const handleNotFound = useCallback(() => {
     recordRumEvent("deadNoteLink", { noteId });
     showError("That note no longer exists.");
-    navigate(`/w/${wsId}`, { replace: true });
+    void navigate(`/w/${wsId}`, { replace: true });
   }, [noteId, navigate, showError, wsId]);
   if (!noteId) return <Navigate to={`/w/${wsId}`} replace />;
   return (

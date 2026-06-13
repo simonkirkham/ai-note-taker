@@ -66,8 +66,11 @@ export const ImageWithResize = Image.extend({
   },
 
   addStorage() {
+    // Tiptap types parent storage as `any`; spread it through a typed Record so the
+    // returned object isn't inferred as `any` (no-unsafe-return).
+    const parent = (this.parent?.() ?? {}) as Record<string, unknown>;
     return {
-      ...this.parent?.(),
+      ...parent,
       markdown: {
         serialize(state: MarkdownState, node: { attrs: ImageAttrs }) {
           const { src = '', alt, width, title } = node.attrs;

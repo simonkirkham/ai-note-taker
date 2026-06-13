@@ -45,7 +45,7 @@ export default function QuickCaptureTodoInput({ onAdded, onConfirmed, onFailed }
   }
 
   function handleKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
-    if (e.key === "Enter") submit();
+    if (e.key === "Enter") void submit();
   }
 
   return (
@@ -60,7 +60,7 @@ export default function QuickCaptureTodoInput({ onAdded, onConfirmed, onFailed }
         disabled={submitting}
         aria-label="New to-do description"
       />
-      <button onClick={submit} disabled={submitting} aria-label="Add to-do">
+      <button onClick={() => void submit()} disabled={submitting} aria-label="Add to-do">
         Add
       </button>
       {error && <p className={styles.quickCaptureError} role="alert">{error}</p>}

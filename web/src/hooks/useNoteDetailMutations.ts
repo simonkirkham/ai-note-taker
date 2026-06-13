@@ -49,8 +49,8 @@ export function useAnalyseNote(noteId: string) {
   return useMutation<void, Error, void>({
     mutationFn: () => analyseNote(noteId),
     onSettled: () => {
-      qc.invalidateQueries({ queryKey: keys.note(noteId) });
-      qc.invalidateQueries({ queryKey: keys.actions(noteId) });
+      void qc.invalidateQueries({ queryKey: keys.note(noteId) });
+      void qc.invalidateQueries({ queryKey: keys.actions(noteId) });
     },
   });
 }

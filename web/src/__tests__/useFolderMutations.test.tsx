@@ -34,7 +34,7 @@ describe('useMoveFolder', () => {
     server.use(
       http.put('/api/folders/f-1/parent', () =>
         new Promise<Response>((res) => {
-          rejectMove = () => res(new HttpResponse(null, { status: 500 }) as unknown as Response)
+          rejectMove = () => res(new HttpResponse(null, { status: 500 }))
         }),
       ),
     )

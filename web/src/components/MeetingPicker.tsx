@@ -55,7 +55,7 @@ export default function MeetingPicker({
   const displayState: State = toState(displayQuery);
 
   function handleRetry() {
-    displayQuery.refetch();
+    void displayQuery.refetch();
   }
 
   return (

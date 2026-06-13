@@ -53,7 +53,7 @@ export default function FinalNotesView({
             type="button"
             className={styles.generateButton}
             data-testid="generate-final-notes-button"
-            onClick={handleGenerate}
+            onClick={() => void handleGenerate()}
             disabled={isGenerating}
           >
             {isGenerating ? "Generating…" : "Generate final notes"}
@@ -84,7 +84,7 @@ export default function FinalNotesView({
           type="button"
           className={clsx(styles.reprocessButton, isGenerating && styles.isPending)}
           data-testid="reprocess-final-notes-button"
-          onClick={handleGenerate}
+          onClick={() => void handleGenerate()}
           disabled={isGenerating}
           aria-label="Re-process final notes"
         >
