@@ -96,12 +96,39 @@ public sealed class AppPage(IPage page, string baseUrl, string? authToken = null
         }
     }
 
-    public Task ClickNoteInListAsync(string title) =>
-        page.GetByTestId("note-cards")
+    public async Task ClickNoteInListAsync(string title)
+    {
+        var card = page.GetByTestId("note-cards")
             .Locator("[data-testid='note-card']")
-            .Filter(new LocatorFilterOptions { HasText = title })
-            .Locator("[data-testid='note-card-title']")
-            .ClickAsync();
+            .Filter(new LocatorFilterOptions { HasText = title });
+        // The card list is projector-built (async) since RYW-2 — wait (re-gating on reload) for the
+        // just-saved card to land before clicking it, else a still-catching-up projector yields an
+        // empty/stale list and the click misses.
+        await WaitVisibleWithReloadAsync(card);
+        await card.Locator("[data-testid='note-card-title']").ClickAsync();
+    }
+
+    // Cards-list reads are async since RYW-2: a just-written card is projector-built, so the gated
+    // read can return `stale` while the projector is still catching up (e.g. a cold first
+    // invocation, slower than the gate's ~2s bound). Re-check, reloading to re-send the consistency
+    // token and re-gate, until the locator is visible or the deadline — reloads ONLY while not yet
+    // visible, so it costs nothing once the projector is warm.
+    private async Task WaitVisibleWithReloadAsync(ILocator locator, int timeoutMs = 20000)
+    {
+        var deadline = DateTime.UtcNow.AddMilliseconds(timeoutMs);
+        while (true)
+        {
+            try
+            {
+                await Assertions.Expect(locator).ToBeVisibleAsync(new() { Timeout = 2500 });
+                return;
+            }
+            catch (PlaywrightException) when (DateTime.UtcNow < deadline)
+            {
+                await page.ReloadAsync();
+            }
+        }
+    }
 
     public async Task DeleteNoteAsync()
     {
@@ -223,11 +250,12 @@ public sealed class AppPage(IPage page, string baseUrl, string? authToken = null
         }
     }
 
-    public Task AssertCardTagVisibleAsync(string cardTitle, string tag) =>
-        Assertions.Expect(
+    // Reload-tolerant: the card's tag pill is projector-built (async) since RYW-2, so the post-save
+    // gated read can be `stale` on a cold projector — reload to re-gate until the pill shows.
+    public Task AssertCardTagVisibleAfterReloadAsync(string cardTitle, string tag) =>
+        WaitVisibleWithReloadAsync(
             page.GetByTestId("note-cards")
                 .Locator("[data-testid='note-card']")
                 .Filter(new LocatorFilterOptions { HasText = cardTitle })
-                .GetByTestId($"card-tag-{tag}")
-        ).ToBeVisibleAsync();
+                .GetByTestId($"card-tag-{tag}"));
 }

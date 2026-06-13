@@ -109,6 +109,31 @@ public sealed class NoteReadYourWritesTests(ApiFactory factory) : IClassFixture<
         Assert.Empty(card.GetProperty("openActions").EnumerateArray());
     }
 
+    // Tagging is a note-aggregate flow: the tag lands on the (projector-built) card. Proves the
+    // E2E AddTag_PillAppearsOnHomeCard path — a token-gated cards read sees the just-added tag —
+    // so the deployed flow's only variable is projector latency (absorbed by the reload-retry),
+    // not a missing card-tag projection.
+    [Fact]
+    public async Task GetNoteCards_WithConsistencyToken_SeesTheNewTag()
+    {
+        var (noteId, _) = await CreateNoteAsync();
+        var tagResp = await _client.PostAsync($"/notes/{noteId}/tags",
+            new StringContent("{\"tag\":\"q3\"}", Encoding.UTF8, "application/json"));
+        tagResp.EnsureSuccessStatusCode();
+        var token = Assert.Single(tagResp.Headers.GetValues("X-Consistency-Token"));
+
+        var req = new HttpRequestMessage(HttpMethod.Get, "/notes/cards");
+        req.Headers.Add("If-Consistent-With", token);
+        var getResp = await _client.SendAsync(req);
+
+        getResp.EnsureSuccessStatusCode();
+        Assert.False(getResp.Headers.Contains("X-Consistency"));
+        var card = (await getResp.Content.ReadFromJsonAsync<JsonElement>())
+            .GetProperty("cards").EnumerateArray()
+            .First(c => c.GetProperty("noteId").GetString() == noteId);
+        Assert.Contains("q3", card.GetProperty("tags").EnumerateArray().Select(t => t.GetString()));
+    }
+
     private async Task<(string NoteId, string Token)> CreateNoteAsync()
     {
         var resp = await _client.PostAsync("/notes", null);
