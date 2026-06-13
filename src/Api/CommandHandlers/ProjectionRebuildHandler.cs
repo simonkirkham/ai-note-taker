@@ -46,7 +46,11 @@ public sealed class ProjectionRebuildHandler(
         await BoundedWrites.WithRetryAsync(tagFeedbackStore.DeleteAllAsync, ct: ct).ConfigureAwait(false);
         await BoundedWrites.WithRetryAsync(actionItemFeedbackStore.DeleteAllAsync, ct: ct).ConfigureAwait(false);
 
-        var allEvents = await store.ReadAllStreamsAsync(ct).ConfigureAwait(false);
+        // BUG-23: the full-stream scan is the rebuild's heaviest read and the one prod saw time
+        // out (TimeoutException from AWSSDK.Core). Retry it — and the reconcile reads below — with
+        // the same bounded backoff the writes use, so one transient blip no longer aborts the run.
+        var allEvents = await BoundedWrites
+            .WithRetryAsync(store.ReadAllStreamsAsync, ct: ct).ConfigureAwait(false);
 
         var titleList = new NoteTitleListProjection();
         var detail = new NoteDetailProjection();
@@ -113,21 +117,23 @@ public sealed class ProjectionRebuildHandler(
                     deletes.Add(c => del(key, c));
         }
 
-        AddStale((await titleStore.QueryAllAsync(ct).ConfigureAwait(false)).Items.Select(x => x.NoteId),
+        // Each reconcile read is wrapped in the same bounded retry (BUG-23) so a transient
+        // timeout on a QueryAll/GetAll scan no longer aborts the rebuild after the writes landed.
+        AddStale((await BoundedWrites.WithRetryAsync(titleStore.QueryAllAsync, ct: ct).ConfigureAwait(false)).Items.Select(x => x.NoteId),
             titles.Select(x => x.NoteId).ToHashSet(), (k, c) => titleStore.DeleteAsync(k, c));
-        AddStale((await detailStore.QueryAllAsync(ct).ConfigureAwait(false)).Select(x => x.NoteId),
+        AddStale((await BoundedWrites.WithRetryAsync(detailStore.QueryAllAsync, ct: ct).ConfigureAwait(false)).Select(x => x.NoteId),
             details.Select(x => x.NoteId).ToHashSet(), (k, c) => detailStore.DeleteAsync(k, c));
-        AddStale((await noteCardListStore.QueryAllAsync(ct).ConfigureAwait(false)).Select(x => x.NoteId),
+        AddStale((await BoundedWrites.WithRetryAsync(noteCardListStore.QueryAllAsync, ct: ct).ConfigureAwait(false)).Select(x => x.NoteId),
             cards.Select(x => x.NoteId).ToHashSet(), (k, c) => noteCardListStore.DeleteAsync(k, c));
-        AddStale((await folderTreeStore.GetAllAsync(ct).ConfigureAwait(false)).Select(x => x.FolderId),
+        AddStale((await BoundedWrites.WithRetryAsync(folderTreeStore.GetAllAsync, ct: ct).ConfigureAwait(false)).Select(x => x.FolderId),
             folders.Select(x => x.FolderId).ToHashSet(), (k, c) => folderTreeStore.DeleteAsync(k, c));
-        AddStale((await tagIndexStore.GetAllAsync(ct).ConfigureAwait(false)).Select(x => (x.Tag, x.NoteId)),
+        AddStale((await BoundedWrites.WithRetryAsync(tagIndexStore.GetAllAsync, ct: ct).ConfigureAwait(false)).Select(x => (x.Tag, x.NoteId)),
             tags.Select(x => (x.Tag, x.NoteId)).ToHashSet(), (k, c) => tagIndexStore.DeleteAsync(k.Tag, k.NoteId, c));
-        AddStale((await calendarLinkIndexStore.GetAllAsync(ct).ConfigureAwait(false)).Select(x => x.CalendarEventId),
+        AddStale((await BoundedWrites.WithRetryAsync(calendarLinkIndexStore.GetAllAsync, ct: ct).ConfigureAwait(false)).Select(x => x.CalendarEventId),
             links.Select(x => x.CalendarEventId).ToHashSet(), (k, c) => calendarLinkIndexStore.DeleteAsync(k, c));
-        AddStale((await noteSearchViewStore.QueryAllAsync(ct).ConfigureAwait(false)).Select(x => x.NoteId),
+        AddStale((await BoundedWrites.WithRetryAsync(noteSearchViewStore.QueryAllAsync, ct: ct).ConfigureAwait(false)).Select(x => x.NoteId),
             searches.Select(x => x.NoteId).ToHashSet(), (k, c) => noteSearchViewStore.DeleteAsync(k, c));
-        AddStale((await workspaceListStore.GetAllAsync(ct).ConfigureAwait(false)).Select(x => x.WorkspaceId),
+        AddStale((await BoundedWrites.WithRetryAsync(workspaceListStore.GetAllAsync, ct: ct).ConfigureAwait(false)).Select(x => x.WorkspaceId),
             workspaces.Select(x => x.WorkspaceId).ToHashSet(), (k, c) => workspaceListStore.DeleteAsync(k, c));
 
         await BoundedWrites.RunAsync(deletes, ct: ct).ConfigureAwait(false);

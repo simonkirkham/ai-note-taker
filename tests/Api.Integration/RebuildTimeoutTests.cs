@@ -32,6 +32,8 @@ internal sealed class TimeoutInjectingEventStore(IEventStore inner, int failures
 
 // BUG-23: a transient DynamoDB TimeoutException on a read inside the rebuild must be retried,
 // not surfaced as an unhandled 500; a persistent timeout must map to 503, never 500.
+// Shares the ProjectionRebuild collection so it serialises against the static single-flight lock.
+[Collection("ProjectionRebuild")]
 public sealed class RebuildTimeoutTests(ApiFactory factory) : IClassFixture<ApiFactory>
 {
     private readonly ApiFactory _factory = factory;

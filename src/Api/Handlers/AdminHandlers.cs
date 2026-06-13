@@ -29,6 +29,10 @@ public static class AdminHandlers
         }
         catch (Exception)
         {
+            // BUG-23: a TRANSIENT timeout never reaches here — the handler's bounded retry
+            // (BoundedWrites) recovers it and returns 200. Anything that escapes is a rebuild
+            // that genuinely could not finish (incl. a persistent timeout now mapped to 503),
+            // which is a real fault worth the metric.
             metrics.ProjectionRebuildFault();
             throw;
         }

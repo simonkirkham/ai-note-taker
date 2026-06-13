@@ -80,11 +80,16 @@ public static class LoggingConfig
     private static async Task WriteMappedResponseAsync(HttpContext ctx, Exception ex)
     {
         var log = ctx.RequestServices.GetRequiredService<ILoggerFactory>().CreateLogger("Api");
-        var (status, error) = Map(ex);
+        // RequestAborted tells Map() a bare OperationCanceledException apart: cancelled because
+        // the CLIENT went away (genuine abort, not our fault → no 503) vs. an SDK per-op timeout
+        // that cancelled with its own token (transient → 503). A TimeoutException is always the
+        // latter. See Map() and BoundedWrites.IsTransient for the same distinction on the retry side.
+        var (status, error) = Map(ex, ctx.RequestAborted.IsCancellationRequested);
 
         // Only a genuine 500 is a server fault worth an Error-level line on the ops
-        // dashboard; an expected conflict/not-found is logged at Warning so it does
-        // not drown out real errors.
+        // dashboard; an expected conflict/not-found — and a transient 503 (BUG-23): a
+        // recoverable timeout the caller can retry, not a code fault — is logged at Warning
+        // so it does not drown out real errors.
         if (status == StatusCodes.Status500InternalServerError)
             log.LogError(ex, "Unhandled exception on {Method} {Path} CorrelationId={CorrelationId}",
                 ctx.Request.Method, ctx.Request.Path, ctx.TraceIdentifier);
@@ -108,7 +113,7 @@ public static class LoggingConfig
     // is the cross-cutting backstop: endpoints that already catch and translate (e.g.
     // NoteNotFoundException -> 404) win before reaching here; anything they miss is
     // mapped uniformly rather than re-mapped per-route.
-    private static (int Status, string Error) Map(Exception? ex) => ex switch
+    private static (int Status, string Error) Map(Exception? ex, bool requestAborted = false) => ex switch
     {
         ConcurrencyException => (StatusCodes.Status409Conflict, "conflict"),
         RebuildInProgressException => (StatusCodes.Status409Conflict, "rebuild in progress"),
@@ -116,6 +121,15 @@ public static class LoggingConfig
         WorkspaceNotEmptyException => (StatusCodes.Status409Conflict, "workspace not empty"),
         NoteNotFoundException or ActionItemNotFoundException or FolderNotFoundException or WorkspaceNotFoundException
             => (StatusCodes.Status404NotFound, "not found"),
+        // BUG-23: a transient DynamoDB timeout that survives the rebuild's bounded retry (e.g. the
+        // request nears the Lambda/API-Gateway 29 s budget) is recoverable — surface 503 "retry",
+        // not an unhandled 500. A TimeoutException is always transient (the SDK cancels with its OWN
+        // token). A bare OperationCanceledException is 503 ONLY when the request was NOT aborted by
+        // the client; a genuine client abort falls through to 500 (the client is gone, so the body
+        // is moot — we just log it).
+        TimeoutException => (StatusCodes.Status503ServiceUnavailable, "timed out, retry"),
+        OperationCanceledException when !requestAborted
+            => (StatusCodes.Status503ServiceUnavailable, "timed out, retry"),
         _ => (StatusCodes.Status500InternalServerError, "internal server error"),
     };
 }
