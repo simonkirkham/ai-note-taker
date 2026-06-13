@@ -554,7 +554,7 @@ The mount effect (`AuthContext.tsx:112-141`) only handles returning *from* a Goo
 
 ## BUG-22 — Multi-tag add drops a pill under RYW-2 async reads — consistency-token slot overwritten by an older version
 
-**Status:** ✅ Done (deploy #546 fix). Resolves the reopened **[TI-19](../technical-improvements.md#ti-19-stabilise-the-flaky-tagsjourney-e2e-post-deploy-gate-fails-intermittently)** flaky `TagsJourney` E2E.
+**Status:** ✅ Done — PR #262, deploy #551 (2026-06-13); surfaced on deploy #546. Resolves the reopened **[TI-19](../technical-improvements.md#ti-19-stabilise-the-flaky-tagsjourney-e2e-post-deploy-gate-fails-intermittently)** flaky `TagsJourney` E2E — #551 ran the `Browser.E2E` suite 20/20 green on the first attempt.
 
 **Severity:** Medium — intermittent: a user pasting space-separated tags (e.g. `1:1s Bill`) sees one pill transiently fail to render after the optimistic UI reconciles against a too-early gated read. Self-heals on the next clean read/navigation, but it red-flags the post-deploy E2E gate and blocks unrelated merges (the "main's latest deploy must be green" rule).
 
