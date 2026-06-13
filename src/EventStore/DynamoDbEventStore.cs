@@ -29,8 +29,8 @@ public sealed class DynamoDbEventStore(IAmazonDynamoDB dynamo, string tableName)
             // Version read after conflict may not reflect the exact version at conflict time;
             // callers should re-read the stream before retrying.
             var actual = await GetCurrentVersionAsync(streamId, ct).ConfigureAwait(false);
-            var reason = ex.CancellationReasons
-                .FirstOrDefault(r => r.Code is "ConditionalCheckFailed" or "TransactionConflict")?.Code;
+            var reason = (ex.CancellationReasons ?? [])
+                .FirstOrDefault(r => RetriableCancellationCodes.Contains(r.Code))?.Code;
             throw new ConcurrencyException(streamId, expectedVersion, actual, reason);
         }
     }
@@ -46,8 +46,12 @@ public sealed class DynamoDbEventStore(IAmazonDynamoDB dynamo, string tableName)
     //    failure, so it was previously uncaught → surfaced as an unhandled 500, and because the handler
     //    only retries ConcurrencyException the write was silently DROPPED (BUG-28). Not reproducible
     //    with the in-memory store (no transaction-conflict semantics) — only against real DynamoDB.
+    // CancellationReasons can be null on the AWS SDK v4 exception — coalesce so the classifier is
+    // null-safe for any caller (the `when` filter swallows a throw, but other callers wouldn't).
+    private static readonly string[] RetriableCancellationCodes = ["ConditionalCheckFailed", "TransactionConflict"];
+
     public static bool IsRetriableCancellation(TransactionCanceledException ex) =>
-        ex.CancellationReasons.Any(r => r.Code is "ConditionalCheckFailed" or "TransactionConflict");
+        (ex.CancellationReasons ?? []).Any(r => RetriableCancellationCodes.Contains(r.Code));
 
     private List<TransactWriteItem> BuildEventWriteItems(string streamId, long expectedVersion, IReadOnlyList<EventEnvelope> events)
     {

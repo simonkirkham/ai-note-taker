@@ -34,4 +34,11 @@ public sealed class AppendConflictClassificationSpec
         // it would be retried pointlessly and never surface its real cause.
         Assert.False(DynamoDbEventStore.IsRetriableCancellation(Cancelled(reasons)));
     }
+
+    [Fact]
+    public void Unset_cancellation_reasons_is_not_retriable_and_does_not_throw()
+    {
+        // AWS SDK v4 leaves CancellationReasons null when unset — the classifier must coalesce, not NRE.
+        Assert.False(DynamoDbEventStore.IsRetriableCancellation(new TransactionCanceledException("cancelled")));
+    }
 }
