@@ -18,6 +18,15 @@ public sealed class BrowserFixture : IAsyncLifetime
 
     public async Task InitializeAsync()
     {
+        // Every read of a projector-built view (notes, cards, tags, actions, folders, todos) is
+        // eventually consistent since the RYW async-projection migration (phase 27-RYW): the client
+        // token gate bounds its wait at ~2.6s then serves `stale`, so a cold/contended projector can
+        // fold a write a few seconds after a navigation. Playwright's default 5s locator timeout then
+        // reds the deploy gate on a *correct-but-lagged* projection (BUG-26 / TI-39). Raise the default
+        // to 15s so a post-navigation assert comfortably outlasts the gate bound + projector catch-up.
+        // Reload-tolerant helpers keep their explicit short inner timeouts and re-gate on reload.
+        Assertions.SetDefaultExpectTimeout(15_000);
+
         _playwright = await Playwright.CreateAsync();
         Browser = await _playwright.Chromium.LaunchAsync(new() { Headless = true });
     }

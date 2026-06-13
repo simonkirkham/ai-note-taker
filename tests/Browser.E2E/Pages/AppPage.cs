@@ -74,7 +74,7 @@ public sealed class AppPage(IPage page, string baseUrl, string? authToken = null
     // carries the sessionStorage-persisted note token, so the gate waits for the async projector and
     // the card appears deterministically. Reload-loop so a still-warming projector re-polls (each
     // reload re-sends the token and re-gates) rather than getting stuck on one stale fetch.
-    public async Task AssertNoteVisibleInListAfterReloadAsync(string title, int timeoutMs = 20000)
+    public async Task AssertNoteVisibleInListAfterReloadAsync(string title, int timeoutMs = 30000)
     {
         var deadline = DateTime.UtcNow.AddMilliseconds(timeoutMs);
         while (true)
@@ -113,7 +113,7 @@ public sealed class AppPage(IPage page, string baseUrl, string? authToken = null
     // invocation, slower than the gate's ~2s bound). Re-check, reloading to re-send the consistency
     // token and re-gate, until the locator is visible or the deadline — reloads ONLY while not yet
     // visible, so it costs nothing once the projector is warm.
-    private async Task WaitVisibleWithReloadAsync(ILocator locator, int timeoutMs = 20000)
+    private async Task WaitVisibleWithReloadAsync(ILocator locator, int timeoutMs = 30000)
     {
         var deadline = DateTime.UtcNow.AddMilliseconds(timeoutMs);
         while (true)
@@ -134,7 +134,7 @@ public sealed class AppPage(IPage page, string baseUrl, string? authToken = null
     // A persisted removal (the DELETE is awaited before this is called) means the gated read carrying
     // the highest token will eventually return without the element; reload to re-poll until it does, or
     // the deadline. Reloads ONLY while the element is still visible, so a clean removal costs no reload.
-    private async Task WaitHiddenWithReloadAsync(ILocator locator, int timeoutMs = 20000)
+    private async Task WaitHiddenWithReloadAsync(ILocator locator, int timeoutMs = 30000)
     {
         var deadline = DateTime.UtcNow.AddMilliseconds(timeoutMs);
         while (true)
@@ -142,6 +142,31 @@ public sealed class AppPage(IPage page, string baseUrl, string? authToken = null
             try
             {
                 await Assertions.Expect(locator).Not.ToBeVisibleAsync(new() { Timeout = 2500 });
+                return;
+            }
+            catch (PlaywrightException) when (DateTime.UtcNow < deadline)
+            {
+                await page.ReloadAsync();
+            }
+        }
+    }
+
+    // Reload-tolerant absence check for an inline note image after reopen. Note content is
+    // projector-built (RYW-2), so the gated GET /notes/{id} can serve `stale` on a cold projector
+    // and still show the just-removed image. Wait for the editor to mount first (so count==0 means
+    // "no image", not "editor not rendered yet"), then assert no image; reload to re-send the token
+    // and re-gate until the removal is reflected or the deadline. Reloads ONLY while an image is
+    // still present, so a clean removal costs no reload.
+    public async Task AssertNoteImageAbsentAfterReloadAsync(int timeoutMs = 30000)
+    {
+        var deadline = DateTime.UtcNow.AddMilliseconds(timeoutMs);
+        var img = page.GetByTestId("note-content").Locator("img");
+        while (true)
+        {
+            try
+            {
+                await Assertions.Expect(page.GetByTestId("note-title-input")).ToBeVisibleAsync(new() { Timeout = 2500 });
+                await Assertions.Expect(img).ToHaveCountAsync(0, new() { Timeout = 2500 });
                 return;
             }
             catch (PlaywrightException) when (DateTime.UtcNow < deadline)
@@ -198,7 +223,7 @@ public sealed class AppPage(IPage page, string baseUrl, string? authToken = null
     // GET /folders carries the sessionStorage-persisted folder token, so the gate waits for the
     // async projector and the folder appears deterministically. Reload-loop so a still-warming
     // projector re-polls (each reload re-sends the token and re-gates).
-    public async Task AssertFolderVisibleAfterReloadAsync(string name, int timeoutMs = 20000)
+    public async Task AssertFolderVisibleAfterReloadAsync(string name, int timeoutMs = 30000)
     {
         var deadline = DateTime.UtcNow.AddMilliseconds(timeoutMs);
         while (true)
@@ -221,7 +246,7 @@ public sealed class AppPage(IPage page, string baseUrl, string? authToken = null
     // GET /notes/{id}/actions carries the sessionStorage-persisted action token, so the gate waits
     // for the async projector and the action appears deterministically. Reload-loop so a still-
     // warming projector re-polls (each reload re-sends the token and re-gates).
-    public async Task AssertActionVisibleAfterReloadAsync(string description, int timeoutMs = 20000)
+    public async Task AssertActionVisibleAfterReloadAsync(string description, int timeoutMs = 30000)
     {
         var deadline = DateTime.UtcNow.AddMilliseconds(timeoutMs);
         while (true)
@@ -311,7 +336,7 @@ public sealed class AppPage(IPage page, string baseUrl, string? authToken = null
     // the sessionStorage-persisted token, so the gate waits for the async projector — the
     // todo appears deterministically. Reload-loop so a still-warming projector re-polls
     // (each reload re-sends the token and re-gates) rather than getting stuck on one stale fetch.
-    public async Task AssertTodoVisibleAfterReloadAsync(string description, int timeoutMs = 20000)
+    public async Task AssertTodoVisibleAfterReloadAsync(string description, int timeoutMs = 30000)
     {
         var deadline = DateTime.UtcNow.AddMilliseconds(timeoutMs);
         while (true)
