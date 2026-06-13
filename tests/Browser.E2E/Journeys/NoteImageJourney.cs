@@ -191,10 +191,7 @@ public sealed class NoteImageJourney(BrowserFixture browser) : IAsyncLifetime
         await contentSaved;
 
         await _app.ClickNoteInListAsync(title);
-        await _app.AssertNoteScreenLoadedAsync();
-        await Assertions.Expect(
-            _page.GetByTestId("note-content").Locator("img")
-        ).ToHaveCountAsync(0);
+        await _app.AssertNoteImageAbsentAfterReloadAsync();
     }
 
     [Fact]

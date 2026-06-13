@@ -358,6 +358,41 @@ jobs:
       - name: Install Playwright browsers
         run: pwsh tests/Browser.E2E/bin/Release/net10.0/playwright.ps1 install --with-deps chromium
 
+      - name: Warm the API + projector before E2E
+        # A fresh deploy publishes a new SnapStart version + flips the alias, so the first request
+        # pays a cold restore (+ ASP.NET pipeline priming) and the Projector Lambda's first stream
+        # fold runs on a cold env. When that one-off latency lands on a journey's first read it pushes
+        # a locator past its timeout and reds the deploy gate on a cold start unrelated to the change
+        # (BUG-26 / TI-39). Warm both before the (sequentially-run) journeys: ping /health until it
+        # answers fast, then do one throwaway authenticated write so the projector folds at least once
+        # warm. The warm-up todo is wiped by the "Clear test data (pre-E2E)" step below, so E2E still
+        # starts from a clean state. Best-effort — a warm-up hiccup must never red the gate.
+        env:
+          API_URL: ${{ steps.outputs.outputs.api-url }}
+          TOKEN: ${{ steps.smoke-token.outputs.id_token }}
+        run: |
+          base="${API_URL%/}"
+          for i in $(seq 1 30); do
+            start=$(date +%s%3N)
+            code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 30 "$base/health" || echo 000)
+            ms=$(( $(date +%s%3N) - start ))
+            echo "health ping $i: HTTP $code in ${ms}ms"
+            if [ "$code" = "200" ] && [ "$ms" -lt 800 ]; then
+              echo "API warm after $i ping(s)."
+              break
+            fi
+            sleep 1
+          done
+          if [ -n "${TOKEN:-}" ]; then
+            curl -s -X POST "$base/todos" \
+              -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+              -d '{"description":"warmup-ti39"}' \
+              -o /dev/null -w 'projector warm-up POST /todos: HTTP %{http_code}\n' --max-time 30 || true
+            sleep 3
+          else
+            echo "::warning::no smoke token — projector warm-up write skipped (API still warmed via /health)."
+          fi
+
       - name: Clear test data (pre-E2E)
         uses: ./.github/actions/clear-test-data
 

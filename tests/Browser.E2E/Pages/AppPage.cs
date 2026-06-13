@@ -151,6 +151,31 @@ public sealed class AppPage(IPage page, string baseUrl, string? authToken = null
         }
     }
 
+    // Reload-tolerant absence check for an inline note image after reopen. Note content is
+    // projector-built (RYW-2), so the gated GET /notes/{id} can serve `stale` on a cold projector
+    // and still show the just-removed image. Wait for the editor to mount first (so count==0 means
+    // "no image", not "editor not rendered yet"), then assert no image; reload to re-send the token
+    // and re-gate until the removal is reflected or the deadline. Reloads ONLY while an image is
+    // still present, so a clean removal costs no reload.
+    public async Task AssertNoteImageAbsentAfterReloadAsync(int timeoutMs = 20000)
+    {
+        var deadline = DateTime.UtcNow.AddMilliseconds(timeoutMs);
+        var img = page.GetByTestId("note-content").Locator("img");
+        while (true)
+        {
+            try
+            {
+                await Assertions.Expect(page.GetByTestId("note-title-input")).ToBeVisibleAsync(new() { Timeout = 2500 });
+                await Assertions.Expect(img).ToHaveCountAsync(0, new() { Timeout = 2500 });
+                return;
+            }
+            catch (PlaywrightException) when (DateTime.UtcNow < deadline)
+            {
+                await page.ReloadAsync();
+            }
+        }
+    }
+
     public async Task DeleteNoteAsync()
     {
         var deleteDone = page.WaitForResponseAsync(r =>
