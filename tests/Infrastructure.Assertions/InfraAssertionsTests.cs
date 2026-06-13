@@ -1787,7 +1787,7 @@ public class InfraAssertionsTests
                     ["Handler"] = "Projector::Projector.ProjectorFunction::Handle"
                 })
             }));
-        Assert.Equal(1, projectorFns.Count);
+        Assert.Single(projectorFns);
     }
 
     // ── Routing: method → function ───────────────────────────────────────
