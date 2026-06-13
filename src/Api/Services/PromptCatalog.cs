@@ -213,10 +213,11 @@ public static class PromptCatalog
     }
 
     // V6 == V5, with ONLY the tag rule tightened. Tags were the weakest dimension on every
-    // model in run-78385 (0.53–0.72 vs 0.85+ elsewhere): the soft "likely only a few tags"
+    // model (run-78385: 0.53–0.72 vs 0.85+ elsewhere): the soft "likely only a few tags"
     // wording let models over-tag and emit low-signal tags. V6 makes the target explicit and
     // gives the retrieval rationale, mirroring what the quality judge rewards (a 2–3, ≤5,
-    // high-signal set). Everything else in V5 (grounding clamp, depth, actions) is unchanged.
+    // high-signal set); run-286900 confirmed the win (tags +0.125 mean, no regression) and
+    // is why V6 ships. Everything else in V5 (grounding clamp, depth, actions) is unchanged.
     static string BuildV6(NoteAnalysisRequest request)
     {
         var transcriptSection = string.IsNullOrWhiteSpace(request.TranscriptText)
