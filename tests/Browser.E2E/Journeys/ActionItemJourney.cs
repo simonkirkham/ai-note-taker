@@ -41,8 +41,12 @@ public sealed class ActionItemJourney(BrowserFixture browser) : IAsyncLifetime
         await _app.SaveAndReturnAsync();
         await _app.ClickNoteInListAsync(title);
 
-        await _app.AssertActionItemVisibleAsync("Book meeting room");
-        await _app.AssertActionItemVisibleAsync("Send recap email");
+        // BUG-25: the actions read is async + token-gated since RYW-3a, so a reopen can race the
+        // deployed projector's cold-start lag past the gate's ~2.6s bound. Reload-and-re-gate until
+        // the action lands (deadline ~20s) rather than a single 5s locator wait — same hardening the
+        // cards (#256) and tags (#265) journeys needed when their reads went async.
+        await _app.AssertActionVisibleAfterReloadAsync("Book meeting room");
+        await _app.AssertActionVisibleAfterReloadAsync("Send recap email");
     }
 
     [Fact]
