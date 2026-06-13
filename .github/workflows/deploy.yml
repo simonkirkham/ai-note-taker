@@ -386,14 +386,34 @@ jobs:
             sleep 1
           done
           [ "$warmed" = 1 ] || echo "::warning::/health did not reach <800ms in 30 pings — proceeding best-effort (E2E asserts have a 15s buffer)."
+          # Warm AND drain the Projector Lambda to the stream head. A cold/idle projector can be far
+          # behind (high iterator age), so on the next deploy it must chew a backlog before folding a
+          # journey's just-written event — which blew even the 20-30s reload-tolerant waits (the
+          # ActionReadYourWrites flake on deploy #566). One throwaway write gives us a consistency
+          # token; poll GET /todos with it until the gate stops returning `X-Consistency: stale`, i.e.
+          # the projector has applied everything up to that write (= the head at warm-up time). This
+          # runs *before* the pre-E2E clear, so the warm-up todo is wiped and the now-warm projector
+          # folds the clear's deletes fast — journeys then assert against a caught-up, hot projector.
           if [ -n "${TOKEN:-}" ]; then
-            curl -s -X POST "$base/todos" \
+            tok=$(curl -s -X POST "$base/todos" \
               -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
-              -d '{"description":"warmup-ti39"}' \
-              -o /dev/null -w 'projector warm-up POST /todos: HTTP %{http_code}\n' --max-time 30 || true
-            sleep 3
+              -d '{"description":"warmup-ti39"}' --max-time 30 | jq -r '.consistencyToken // empty')
+            echo "warm-up write token: ${tok:-<none>}"
+            if [ -n "$tok" ]; then
+              for i in $(seq 1 40); do
+                if curl -s -D - -o /dev/null --max-time 30 \
+                     -H "Authorization: Bearer $TOKEN" -H "If-Consistent-With: $tok" \
+                     "$base/todos" | grep -qi '^X-Consistency:[[:space:]]*stale'; then
+                  echo "projector draining (stale) — poll $i"; sleep 1
+                else
+                  echo "projector caught up to head after $i poll(s)."; break
+                fi
+              done
+            else
+              echo "::warning::warm-up write returned no token — projector drain-wait skipped (API still warmed)."
+            fi
           else
-            echo "::warning::no smoke token — projector warm-up write skipped (API still warmed via /health)."
+            echo "::warning::no smoke token — projector warm-up skipped (API still warmed via /health)."
           fi
 
       - name: Clear test data (pre-E2E)
