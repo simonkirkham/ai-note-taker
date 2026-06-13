@@ -24,7 +24,7 @@ public sealed class ExceptionLoggingLevelTests(ApiFactory factory) : IClassFixtu
         "Microsoft.AspNetCore.Diagnostics.ExceptionHandlerMiddleware";
 
     [Fact]
-    public async Task MappedConcurrencyConflict_LogsWarningOnly_NoError()
+    public async Task MappedWriteContention_LogsWarningOnly_NoError()
     {
         var captured = new CapturingLoggerProvider();
         var store = new ConflictingEventStore();
@@ -42,9 +42,11 @@ public sealed class ExceptionLoggingLevelTests(ApiFactory factory) : IClassFixtu
         var resp = await client.PatchAsync($"/notes/{noteId}/title",
             new StringContent("{\"title\":\"Renamed\"}", Encoding.UTF8, "application/json"));
 
-        Assert.Equal(HttpStatusCode.Conflict, resp.StatusCode);
+        // BUG-27: exhausted append-retry contention maps to a retriable 503, logged at Warning
+        // (not Error) — an expected, recoverable conflict must not pollute the ops error log.
+        Assert.Equal(HttpStatusCode.ServiceUnavailable, resp.StatusCode);
         var body = await resp.Content.ReadFromJsonAsync<JsonElement>();
-        Assert.Equal("conflict", body.GetProperty("error").GetString());
+        Assert.Equal("write contention, retry", body.GetProperty("error").GetString());
         Assert.False(string.IsNullOrWhiteSpace(body.GetProperty("correlationId").GetString()));
         Assert.True(resp.Headers.Contains(LoggingConfig.CorrelationIdHeader));
 
@@ -52,7 +54,7 @@ public sealed class ExceptionLoggingLevelTests(ApiFactory factory) : IClassFixtu
         Assert.DoesNotContain(captured.Entries,
             e => e.Category == FrameworkExceptionHandlerCategory);
         Assert.Contains(captured.Entries,
-            e => e.Level == LogLevel.Warning && e.Message.Contains("ConcurrencyException"));
+            e => e.Level == LogLevel.Warning && e.Message.Contains("WriteContentionException"));
     }
 
     [Fact]
