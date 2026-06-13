@@ -10,11 +10,13 @@
 |-------|---------|--------|------------|
 | RYW-1 | **Prove the whole flow on ONE call — "add a to-do," end to end.** Enabled the projector; made the **whole Todo aggregate** append-only (add-async/complete-inline would race); `POST /todos` returns its write token `todo#id@version`; a `ConsistencyGate` makes `GET /todos` carrying that token wait on `proj-position` (bounded + `stale` fallback); the client persists the token in `sessionStorage` and the E2E reloads-then-asserts so it proves the **server** read, not the cache. Foundation it required: re-add `FolderDeleted`/`WorkspaceDeleted` arms; re-introduce the in-process `SyncProjectingEventStore` (host-discriminated; `MigratedPrefixes=todo#`; gate ↔ decorator share one position store). Deploy #543 green; projector healthy (iterator age caught up 3h→1.3s). | Done | — |
 | RYW-2 | **Scale: the note flows.** Migrated note create / rename / content / date / tags to async + RYW — `NoteCommandHandler` is append-only (returns `note#id@version`), the projector is sole writer of the note read models, and `GET /notes/{id}` + `GET /notes/cards` gate on the token. The cross-aggregate card row became **field-level** writes (`UpsertNoteFieldsAsync`/`UpdateActionItemsAsync` via `UpdateItem`) so note and action writers commute. `note#` joined `MigratedPrefixes`. Deploy #255 failed the E2E gate (a pre-existing journey asserted a freshly-tagged card with no reload → cold-projector `stale` race); rolled forward in #256 by making cards-list reads reload-tolerant (re-gating). Redeploy green. | Done | RYW-1 |
-| RYW-3 | **Scale: actions, folders, workspaces, analysis.** Migrate the remaining flows; re-add the `FolderDeleted`/`WorkspaceDeleted` arms to `ProjectionUpdater`; migrating the AI-analysis flow closes the transient feedback double-count. | Not Started | RYW-1 |
-| RYW-4 | **Complete the cutover + clean up.** Last inline write removed → handlers are append-only, projector is the **sole** writer; delete now-dead inline plumbing; drop optimism-for-correctness on the frontend (keep it only for instant feel); update `architecture.md` + ADR 0009. | Not Started | RYW-2, RYW-3 |
+| RYW-3a | **Scale: the action flows.** Migrate action add / complete / delete to async + RYW — `ActionItemCommandHandler` append-only (returns `action#id@version`), projector sole writer of the action read models, action reads gate on the token, `action#` joins `MigratedPrefixes`. The note-card action rollup already commutes (RYW-2 field-level writes). | Not Started | RYW-1 |
+| RYW-3b | **Scale: folder + workspace flows.** Migrate folder create/rename/move/delete and workspace ops to async + RYW; **re-add the `FolderDeleted`/`WorkspaceDeleted` arms to `ProjectionUpdater`** so the running projector deletes (not re-creates) deleted folders/workspaces; their reads gate on the token; prefixes join `MigratedPrefixes`. | Not Started | RYW-1 |
+| RYW-3c | **Scale: the AI-analysis flow + close the double-count.** Migrate the analysis flow to async + RYW; the feedback increment counters become projector-only writes — **closing the transient feedback double-count** RYW-1 documented. | Not Started | RYW-1 |
+| RYW-4 | **Complete the cutover + clean up.** Last inline write removed → handlers are append-only, projector is the **sole** writer; delete now-dead inline plumbing; drop optimism-for-correctness on the frontend (keep it only for instant feel); update `architecture.md` + ADR 0009. | Not Started | RYW-2, RYW-3a, RYW-3b, RYW-3c |
 | RYW-D | **(Optional UX) Real-time "poke" channel (SSE).** The server pokes the client when a stream it's viewing updates; the client refetches — shrinking visible waits. Polish, not core. | Not Started | RYW-4 |
 
-> **The shape:** **RYW-1 is the spike** — one user-meaningful call (add a to-do, see it appear) proven read-your-writes against the real async projector, touching every layer thinly. **RYW-2/RYW-3 scale the *same* proven pattern** across the rest of the read-after-write flows, each slice flipping a group of flows to async and shippable on its own. **RYW-4** is reached when the last inline write is gone. 27-D (Command/Query split) follows RYW-4.
+> **The shape:** **RYW-1 is the spike** — one user-meaningful call (add a to-do, see it appear) proven read-your-writes against the real async projector, touching every layer thinly. **RYW-2 / RYW-3a / RYW-3b / RYW-3c scale the *same* proven pattern** across the rest of the read-after-write flows, each slice flipping one group of flows to async and shippable on its own. **RYW-4** is reached when the last inline write is gone. 27-D (Command/Query split) follows RYW-4.
 
 **Learning surface:** a vertical spike that exercises **session / causal consistency** (Cosmos session token · MongoDB `afterClusterTime` · Postgres `WAIT FOR LSN`) end-to-end on one call, then an **incremental strangler migration** (inline → async, flow-by-flow) rather than a big-bang flip — the approach the 27-C incident proved is necessary.
 
@@ -70,18 +72,51 @@
 - Remove the inline projection writes for the note flows (title/content/date/tags) from `NoteCommandHandler`; those projections become projector-built.
 - Per-flow E2E read-your-writes journeys (the ones 27-C2 chased reactively — now server-guaranteed); existing journeys green against deployed async.
 
-### RYW-3 — Scale outward: actions, folders, workspaces, analysis
+> **RYW-3 was re-cut into three independently-shippable slices (3a / 3b / 3c)** — one flow group each, smaller blast radius per deploy than a single bundled PR (the migration is exactly the flow family the reverted 27-C broke). All three depend only on RYW-1's gate/foundation; sequence rather than parallelise where they touch a shared file (`ProjectionUpdater`, `MigratedPrefixes`).
 
-**User value:** the remaining read-after-write flows become correct under async.
+### RYW-3a — Scale outward: the action flows
+
+**User value:** adding / completing / deleting an action item and seeing it reflected after navigation — correct under async, via the proven RYW pattern.
 
 **Scenarios (GWT):**
-- Given each remaining flow (action add/complete/delete, folder create/rename/move/delete, workspace ops, AI analysis), when its inline write is removed and its read carries the token, then it reads-your-writes.
-- Given a `FolderDeleted`/`WorkspaceDeleted` event, then the projector deletes the row (re-added arms).
-- Given the AI-analysis flow migrated, then the feedback counters are written **only** by the projector — the transient double-count is closed.
+- Given the RYW-1 gate + client session-token, when each action flow's inline write is removed and its read carries the token, then add/complete/delete all read-your-writes across navigation.
+- Given an action read carries the token for a just-written action, then it waits on that action's stream position before answering.
+- Given the note-card action rollup, then note and action writers still commute (RYW-2 field-level `UpdateActionItemsAsync` writes) — no lost update.
 
 **Acceptance criteria:**
-- Migrate the action/folder/workspace/analysis flows; re-add `FolderDeleted`/`WorkspaceDeleted` arms to `ProjectionUpdater`.
-- Closing the feedback double-count is an explicit acceptance criterion of the analysis migration.
+- `ActionItemCommandHandler` becomes append-only (returns `action#id@version`); its inline projection writes (add/complete/delete) are removed — the projector is the sole writer of the action read models. All not-yet-migrated aggregates stay inline.
+- `action#` joins `MigratedPrefixes` (host-discriminated `SyncProjectingEventStore`).
+- The gate generalises to the action read endpoint(s); the client session-token extends to the action query key; `stale` → bounded retry.
+- Tests: Api.Integration wait-then-release + `stale`-timeout for an action read; an E2E action read-your-writes journey green against the deployed async projector.
+
+### RYW-3b — Scale outward: folder + workspace flows
+
+**User value:** creating / renaming / moving / deleting folders and workspaces and seeing it reflected after navigation — correct under async.
+
+**Scenarios (GWT):**
+- Given the RYW-1 gate + client session-token, when each folder/workspace flow's inline write is removed and its read carries the token, then create/rename/move/delete all read-your-writes across navigation.
+- Given a `FolderDeleted`/`WorkspaceDeleted` event, then the **running projector deletes the row** (re-added arms) rather than re-creating it.
+- Given a folder/workspace read carries the token for a just-written stream, then it waits on that stream's position before answering.
+
+**Acceptance criteria:**
+- **Re-add the `FolderDeleted`/`WorkspaceDeleted` arms to `ProjectionUpdater`** before removing the inline writes, so the now-async projector deletes deleted folders/workspaces (the RYW-1 foundation note flagged these arms).
+- Folder + workspace command handlers become append-only (return their write token); inline projection writes removed — projector sole writer.
+- Folder/workspace prefixes join `MigratedPrefixes`.
+- The gate generalises to the folder/workspace read endpoints; the client session-token extends to their query keys.
+- Tests: Api.Integration wait-then-release + a `FolderDeleted`/`WorkspaceDeleted` projector-delete spec; an E2E folder/workspace read-your-writes journey green against deployed async.
+
+### RYW-3c — Scale outward: the AI-analysis flow + close the double-count
+
+**User value:** running AI analysis on a note and seeing the result + feedback counts correct under async — and the transient double-count RYW-1 documented is gone.
+
+**Scenarios (GWT):**
+- Given the RYW-1 gate + client session-token, when the analysis flow's inline write is removed and its read carries the token, then the analysis result reads-your-writes.
+- Given the analysis flow is migrated, then the feedback increment counters are written **only** by the projector — the transient double-count (inline + projector) is closed.
+
+**Acceptance criteria:**
+- Migrate the AI-analysis flow to async + RYW; its handler becomes append-only; analysis read gates on the token; its prefix joins `MigratedPrefixes`.
+- **Closing the feedback double-count is an explicit acceptance criterion** — assert the counter is incremented exactly once after migration (it was transiently double-counted while inline + projector both ran).
+- Tests: Api.Integration wait-then-release for the analysis read + a counter-incremented-once spec; an E2E analysis read-your-writes journey green against deployed async.
 
 ### RYW-4 — Complete the cutover + clean up
 
