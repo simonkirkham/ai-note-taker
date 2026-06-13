@@ -372,6 +372,7 @@ jobs:
           TOKEN: ${{ steps.smoke-token.outputs.id_token }}
         run: |
           base="${API_URL%/}"
+          warmed=0
           for i in $(seq 1 30); do
             start=$(date +%s%3N)
             code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 30 "$base/health" || echo 000)
@@ -379,10 +380,12 @@ jobs:
             echo "health ping $i: HTTP $code in ${ms}ms"
             if [ "$code" = "200" ] && [ "$ms" -lt 800 ]; then
               echo "API warm after $i ping(s)."
+              warmed=1
               break
             fi
             sleep 1
           done
+          [ "$warmed" = 1 ] || echo "::warning::/health did not reach <800ms in 30 pings — proceeding best-effort (E2E asserts have a 15s buffer)."
           if [ -n "${TOKEN:-}" ]; then
             curl -s -X POST "$base/todos" \
               -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
