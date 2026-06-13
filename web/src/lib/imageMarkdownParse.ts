@@ -37,6 +37,9 @@ interface MarkdownItRenderer {
   rules: { image?: RenderRule };
   renderToken(tokens: ImageToken[], idx: number, options: unknown): string;
 }
+
+const INSTALLED = Symbol('bareKeyImageRule');
+type TaggedRule = RenderRule & { [INSTALLED]?: true };
 export interface MarkdownItLike {
   renderer: MarkdownItRenderer;
 }
@@ -54,14 +57,18 @@ export function moveBareKeyOutOfSrc(token: ImageToken): ImageToken {
 }
 
 // tiptap-markdown `parse.setup` hook: wrap markdown-it's image renderer so a bare-key image
-// renders with `data-image-key` instead of a fetchable `src`. Idempotent default-rule fallback
-// (`renderToken`) covers markdown-it builds without an explicit `rules.image`.
+// renders with `data-image-key` instead of a fetchable `src`. Falls back to `renderToken` for
+// markdown-it builds without an explicit `rules.image`. Idempotent — `parse.setup` runs on
+// every parse, so a second install must not wrap the already-wrapped rule again.
 export function installBareKeyImageRule(md: MarkdownItLike): void {
-  const previous = md.renderer.rules.image;
-  md.renderer.rules.image = (tokens, idx, options, env, self) => {
+  const previous = md.renderer.rules.image as TaggedRule | undefined;
+  if (previous?.[INSTALLED]) return;
+  const wrapped: TaggedRule = (tokens, idx, options, env, self) => {
     moveBareKeyOutOfSrc(tokens[idx]);
     return previous
       ? previous(tokens, idx, options, env, self)
       : md.renderer.renderToken(tokens, idx, options);
   };
+  wrapped[INSTALLED] = true;
+  md.renderer.rules.image = wrapped;
 }

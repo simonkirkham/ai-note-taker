@@ -114,10 +114,9 @@ public sealed class NoteImageJourney(BrowserFixture browser) : IAsyncLifetime
             var url = response.Url;
             var isPng = url.Contains(".png", StringComparison.OrdinalIgnoreCase);
             var isPresigned = url.Contains("X-Amz-", StringComparison.OrdinalIgnoreCase);
-            // A note-image PNG fetched without a presign (the bare-key/relative-URL case), or the
-            // tell-tale doubled `notes/notes/` segment — either is the BUG-24 request.
-            var isBareKeyImage = isPng && !isPresigned
-                && (url.Contains("/notes/notes/") || url.Contains("/notes/"));
+            // A note-image PNG under a `/notes/` path fetched without a presign is the bare-key
+            // relative-URL request (e.g. the BUG-24 doubled-segment `…/notes/notes/{id}/{img}.png`).
+            var isBareKeyImage = isPng && !isPresigned && url.Contains("/notes/");
             if (isBareKeyImage && response.Status >= 400)
                 badRequests.Add($"{response.Status} {url}");
         };

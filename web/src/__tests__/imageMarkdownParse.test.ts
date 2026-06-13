@@ -82,4 +82,13 @@ describe('installBareKeyImageRule — the HTML handed to the Tiptap parser', () 
     expect(html).toContain('<h1>Title</h1>');
     expect(html).not.toContain(KEY_DATA_ATTR);
   });
+
+  it('is idempotent — a second install does not double-wrap or re-rewrite', () => {
+    const md = new MarkdownIt() as unknown as MarkdownItLike;
+    installBareKeyImageRule(md);
+    installBareKeyImageRule(md);
+    const html = (md as unknown as MarkdownIt).render(`![](${KEY})`);
+    expect(html).toContain(`${KEY_DATA_ATTR}="${KEY}"`);
+    expect(html).not.toMatch(/<img[^>]*\ssrc=/);
+  });
 });
