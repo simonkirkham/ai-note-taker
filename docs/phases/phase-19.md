@@ -17,12 +17,12 @@
 | 19-G | **Test quality.** Migrate testid-heavy unit tests to role/label queries; convert remaining `fireEvent` to `userEvent` | Not Started | — |
 | 19-H | **Network resilience.** Exponential-backoff retry (5xx/429/network) for idempotent requests in `apiFetch` | Done (shipped in 20-G) | 19-A |
 | 19-I1 | **Lazy-load + CLS.** `React.lazy` Tiptap + dynamic-import transcribe SDK; reserved-dimension fallbacks; lazy-chunk error boundary + RUM event | Not Started | 26-A |
-| 19-I2 | **CI bundle-size gate.** `size-limit` budget on the entry chunk in the `frontend` CI job | Not Started | — |
+| 19-I2 | **CI bundle-size gate.** `size-limit` budget on the entry chunk in the `frontend` CI job | Done | — |
 | 19-I3 | **Non-urgent transitions.** `useDeferredValue` on ListView search/filter so the input stays responsive | Done | — |
-| 19-J | **URL-scheme hardening.** Configure Tiptap `Link` explicitly — allowlist `http`/`https`/`mailto`, reject `javascript:`/`data:`/`vbscript:`, add `rel="noopener noreferrer nofollow"` | Not Started | — |
+| 19-J | **URL-scheme hardening.** Configure Tiptap `Link` explicitly — allowlist `http`/`https`/`mailto`, reject `javascript:`/`data:`/`vbscript:`, add `rel="noopener noreferrer nofollow"` | Done | — |
 | 19-K | **Adopt TanStack Query (server-state migration)** — **graduated to its own phase: [Phase 20](phase-20.md)** (7 slices, gated on reversing [ADR 0010](../adr/0010-server-state-strategy.md)). Too large for one slice. | Moved → P20 | — |
 
-> **Only 19-A is confirmed.** 19-B…19-J are **proposed** from the 2026-06-05 audit and need selection/prioritisation before Breaker drafts each. (19-K, the TanStack Query server-state migration, has **graduated to its own [Phase 20](phase-20.md)** — it reverses an Accepted ADR and is 7 slices, too big to sit here.) None blocks the others except as noted (`19-C`→`19-B`, `19-H`→`19-A`, **`19-I1`→`26-A`** — dynamic imports need the zero-downtime frontend deploy first, else lazy chunks 404 mid-session; `19-I2`/`19-I3` carry no such dependency). **19-J, 19-I2, 19-I3 are specced (full sections below) and runnable now; 19-I1 waits on 26-A.** Value tiers below: **high** = real correctness/UX/security; **medium** = perf/maintainability; **low** = consistency/future-proofing. Because the headline rules are already clean, most slices are medium/low — do not treat the long list as a backlog of bugs.
+> **Only 19-A is confirmed.** 19-B…19-J are **proposed** from the 2026-06-05 audit and need selection/prioritisation before Breaker drafts each. (19-K, the TanStack Query server-state migration, has **graduated to its own [Phase 20](phase-20.md)** — it reverses an Accepted ADR and is 7 slices, too big to sit here.) None blocks the others except as noted (`19-C`→`19-B`, `19-H`→`19-A`, **`19-I1`→`26-A`** — dynamic imports need the zero-downtime frontend deploy first, else lazy chunks 404 mid-session; `19-I2`/`19-I3` carry no such dependency). **19-J, 19-I2, 19-I3 are done (PR #223 / #224 / #221); 19-I1 waits on 26-A.** Value tiers below: **high** = real correctness/UX/security; **medium** = perf/maintainability; **low** = consistency/future-proofing. Because the headline rules are already clean, most slices are medium/low — do not treat the long list as a backlog of bugs.
 
 **Learning surface:** module decomposition behind a stable import seam; typed (whole-program) ESLint and the strict-flag family; React context re-render mechanics; the fetch-race/`ignore`-flag pattern and the "you might not need an effect" refactor; ARIA live regions and focus management; Testing-Library query priority; transient-failure retry/backoff; route/feature code-splitting and bundle budgeting.
 
@@ -78,6 +78,8 @@ Scenario: Behaviour is unchanged after the split
 
 ## Slice 19-J — URL-scheme hardening
 
+**Status:** Done (PR #223, 2026-06-11). One acceptance criterion remains unmet: `@tiptap/extension-link` is imported but **still transitive via StarterKit**, not pinned directly in `web/package.json` — a future StarterKit bump that drops it would break the import. Tracked as a follow-up minor change.
+
 **Intent:** Configure the Tiptap `Link` extension explicitly — allowlist `http`/`https`/`mailto`, reject `javascript:`/`data:`/`vbscript:` — so a malicious scheme in user- or AI-derived note content can't render as a live anchor. Defense-in-depth: `NoteEditor.tsx` currently relies on StarterKit's bundled Link default, which a Tiptap upgrade could silently loosen.
 
 **Scenarios (GWT):**
@@ -115,7 +117,7 @@ Scenario: Behaviour is unchanged after the split
 - Observability: a failed lazy import has no surface today → the `lazyChunkError` RUM event (`web/src/rum.ts`) is the gap to close; confirm RUM web-vitals collection is enabled on the AppMonitor.
 - Key files: `NoteEditor.tsx`, `NoteView.tsx:497`/`:467`, `RecordControl.tsx`, `useTranscription.ts:4`, `vite.config.ts` (manualChunks if needed), `web/src/rum.ts`.
 
-### 19-I2 — CI bundle-size budget gate — independent
+### 19-I2 — CI bundle-size budget gate — independent — **Done (PR #224, 2026-06-11)**
 
 - Scenario: a PR that pushes the entry/main chunk over budget fails the `frontend` CI job, naming the offending chunk and its size vs budget.
 - Acceptance criteria: add `size-limit` (+ preset) and a `size` script to `web/package.json`; run it after `npm run build` in `pr.yml`'s `frontend` job; initial budget = current entry-chunk gzip size + ~10% headroom, with the absolute numbers recorded in the PR (auditable, not a guess). The Tiptap/transcribe chunks fall out of the entry budget once 19-I1 splits them.

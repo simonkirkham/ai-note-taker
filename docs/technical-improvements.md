@@ -55,8 +55,9 @@ Status key: 🔲 **Open** · 🟡 **Partly done / mitigated** · ✅ **Done** (g
 | TI-37 | Capture **all** frontend errors in RUM — failed resource loads (`<img>` 403s) are invisible | ✅ **Done** — #268, deploy #557 (2026-06-13). Capture-phase `window` error listener forwards `<img>`/`<script>`/`<link>` load failures to RUM via `cwr('recordError')` (rides `JsErrorCount`); real JS errors skipped to avoid double-count. Dashboard widget retitled |
 | TI-38 | Expected 409/404 outcomes log at `Error` on the ops dashboard — framework double-logs | ✅ **Done** — #267, deploy #556 (2026-06-13). Replaced `UseExceptionHandler` with a try/catch middleware that maps every exception itself, removing ASP.NET's `ExceptionHandlerMiddleware` from the pipeline — each request now logs exactly one line at the `Map()`-implied level (Warning for 409/404, Error once for 500s) |
 | TI-39 | Chronic cold-start E2E flakiness red-gates nearly every deploy | 🔲 **Open** — raised 2026-06-13. A different 1–2 of ~23 `Browser.E2E` journeys 30s-timeout each deploy (`TagsJourney.*`, `NoteImageJourney.Remove`, `ActionReadYourWrites`), forcing 1–3 `gh run rerun`s per deploy (~7 deploys today, across all sessions). Cold-start latency on the fresh test-env Lambda pushes a first read past 30s; the RYW reload-tolerant wait pattern exists but isn't applied to these journeys |
+| TI-40 | Scoped read-only AWS creds so a cloud routine can run `observability-review` automatically | 🔲 **Open** — raised 2026-06-13. The `observability-review` skill exists but a scheduled **cloud** agent can't reach prod (`--profile prod` is local-only), so a weekly automated sweep is impossible today. Add a least-privilege read-only CloudWatch-Logs/Metrics + RUM + X-Ray role (OIDC-federated, no static keys) the cloud runner can assume, connect GitHub, and wire the weekly routine |
 
-**Outstanding (7 Open + 3 Partly):** TI-17 Auto-backfill projection on deploy; TI-20 `WorkspaceList` GSI; TI-23 Generalise append-retry; TI-25 `NoteEditor` ordering test; **TI-33 `NoteCardList` Scan→GSI**; **TI-34 Lambda naming audit**; **TI-39 stabilise chronic flaky E2E deploy-gate**; _(partly)_ TI-7 ESLint import-resolver + typed-lint (jsx-a11y done via 19-F3); TI-3 state-mgmt colocation; TI-24 deploy-credentials root cause. **The 2026-06 cold-start trio (TI-32 priming + TI-35 ReadyToRun + TI-36 512 MB) is done — #260/#270, deploys #552/#562 — cold p50 7.92→2.24 s (−72%). The 2026-06 observability triad (TI-37 RUM resource-error capture, TI-38 error-log-level, BUG-23 rebuild-timeout 503) is done — #267/#268/#269, deploys #556/#557/#558; the 2026-06 dependency upgrade audit (T1/T7/T2/T3/T4 = TI-27/28/29/30/31) is fully cleared.**
+**Outstanding (8 Open + 3 Partly):** TI-17 Auto-backfill projection on deploy; TI-20 `WorkspaceList` GSI; TI-23 Generalise append-retry; TI-25 `NoteEditor` ordering test; **TI-33 `NoteCardList` Scan→GSI**; **TI-34 Lambda naming audit**; **TI-39 stabilise chronic flaky E2E deploy-gate**; **TI-40 read-only creds for automated cloud observability-review**; _(partly)_ TI-7 ESLint import-resolver + typed-lint (jsx-a11y done via 19-F3); TI-3 state-mgmt colocation; TI-24 deploy-credentials root cause. **The 2026-06 cold-start trio (TI-32 priming + TI-35 ReadyToRun + TI-36 512 MB) is done — #260/#270, deploys #552/#562 — cold p50 7.92→2.24 s (−72%). The 2026-06 observability triad (TI-37 RUM resource-error capture, TI-38 error-log-level, BUG-23 rebuild-timeout 503) is done — #267/#268/#269, deploys #556/#557/#558; the 2026-06 dependency upgrade audit (T1/T7/T2/T3/T4 = TI-27/28/29/30/31) is fully cleared.**
 
 > Items carry stable IDs `TI-1`–`TI-31` in document order (the `ID` column above); each detailed section below repeats its ID. Reference an item as `TI-N`. The dep-audit `T#` tags are retained in parentheses for cross-reference with the audit report.
 
@@ -674,3 +675,27 @@ Prefer (2) (kills the root cause for the whole suite cheaply) + (1) (defence in 
 
 **Raised in:** Observed across ~7 deploys during the 2026-06-13 observability-triad + BUG-24 work (every session paid it). Related: [TI-19] (stabilised one TagsJourney flake via BUG-22), [TI-32]/[TI-35] (cold-start reduction).
 **Depends on:** —
+
+## TI-40. Scoped read-only AWS creds so a cloud routine can run `observability-review` automatically
+
+**Goal:** a hands-off **weekly** `observability-review` (sweep deployed signals → triage → file bugs/TI) running as a scheduled **cloud** agent, with no human in the loop and no standing security risk.
+
+**Why it's blocked today.** The `observability-review` skill ships (2026-06-13), but a scheduled routine runs as a **cloud** CCR session in Anthropic's infra — it has **no access to the local machine**, where prod AWS auth lives (`--profile prod`, acct 642653037268). So a cloud run can't query CloudWatch Logs / Metrics / RUM / X-Ray at all; it can only degrade to a "run it locally" reminder. The skill already handles that degraded path, but the real value (automated sweep) needs cloud-reachable creds. The chosen cadence is **weekly** (see the cadence decision, 2026-06-13).
+
+**Scope of work:**
+1. **Read-only IAM role (CDK, prod account).** A dedicated role granting *only* telemetry-read, region-scoped to eu-west-2 where the API supports it:
+   - `logs:` StartQuery, GetQueryResults, StopQuery, FilterLogEvents, GetLogEvents, DescribeLogGroups, DescribeLogStreams
+   - `cloudwatch:` GetMetricData, GetMetricStatistics, ListMetrics, DescribeAlarms, GetDashboard, ListDashboards
+   - `rum:` GetAppMonitor, GetAppMonitorData, ListAppMonitors, BatchGetRumMetricDefinitions
+   - `xray:` GetServiceGraph, GetTraceSummaries, BatchGetTraces, GetTraceGraph
+   - **Explicitly NO** DynamoDB / event-store / S3 / SSM access. The review reads telemetry, never user data — consistent with the skill's "IDs/types/counts only, never note content" rule. Add it as a standalone role (this is an external-principal role, not a Lambda `GrantX`).
+2. **Federate, don't store static keys.** Prefer the cloud runner assuming the role via **OIDC** (short-lived creds, role trust policy scoped to the runner's OIDC subject). Only if OIDC is unavailable, fall back to a long-lived access key for a read-only IAM user held as a routine secret — least preferred; document the rotation owner if so.
+3. **Connect GitHub for the cloud env** (`/web-setup` or the Claude GitHub App) so the routine can read the repo and **open a PR** with filed findings. Prefer a PR over a direct `main` commit for an unattended agent, so a human reviews what it files before merge.
+4. **Wire the weekly routine** (the `schedule` skill): cron weekly (Mon 09:00 Europe/London = `0 8 * * 1` UTC, or 09:00 UTC in winter — confirm at creation), prompt = run `observability-review` over the last 7 days and open a PR with any new verified findings + a one-line summary.
+
+**Security/cost:** read-only, telemetry-only, region-scoped, no data-plane access; short-lived OIDC creds preferred. Weekly cadence → negligible cost. The one real risk is credential sprawl — mitigated by least-privilege + federation + no static keys.
+
+**Acceptance:** a scheduled cloud run, with no local machine involved, queries prod CloudWatch/RUM, files any new verified finding as a PR to `phase-bugs.md`/`technical-improvements.md`, and posts the one-line summary — and the role can do nothing beyond reading telemetry (verify with an explicit deny-by-omission check: a `dynamodb:`/`s3:` call from the role is denied).
+
+**Raised in:** Cadence decision for the new `observability-review` skill, 2026-06-13 — option C (the only path to a *real* automated cloud sweep; options A/B were local-run / reminder-only). 
+**Depends on:** the `observability-review` skill (done); GitHub connected for the cloud env.
