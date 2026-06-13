@@ -4,8 +4,8 @@ namespace Api.CommandHandlers;
 
 public interface IFolderCommandHandler
 {
-    Task<FolderId> HandleAsync(CreateFolder cmd, CancellationToken ct = default);
-    Task HandleAsync(RenameFolder cmd, CancellationToken ct = default);
-    Task HandleAsync(DeleteFolder cmd, CancellationToken ct = default);
-    Task HandleAsync(MoveFolder cmd, CancellationToken ct = default);
+    Task<long> HandleAsync(CreateFolder cmd, CancellationToken ct = default);
+    Task<long> HandleAsync(RenameFolder cmd, CancellationToken ct = default);
+    Task<long> HandleAsync(DeleteFolder cmd, CancellationToken ct = default);
+    Task<long> HandleAsync(MoveFolder cmd, CancellationToken ct = default);
 }
