@@ -13,6 +13,25 @@ internal sealed class InMemoryNoteCardListStore : INoteCardListStore
         return Task.CompletedTask;
     }
 
+    // Field-level writes model DynamoDB's partial UpdateItem: each writer SETs only its own
+    // attributes, so a note-field write and an action-item write to the same card commute.
+    public Task UpsertNoteFieldsAsync(NoteCardView card, CancellationToken ct = default)
+    {
+        // Preserve the existing ActionItems (owned by the action writer); seed empty on first write.
+        var actionItems = _cards.TryGetValue(card.NoteId, out var existing)
+            ? existing.ActionItems
+            : Array.Empty<NoteCardActionItem>();
+        _cards[card.NoteId] = card with { ActionItems = actionItems };
+        return Task.CompletedTask;
+    }
+
+    public Task UpdateActionItemsAsync(NoteId noteId, IReadOnlyList<NoteCardActionItem> actionItems, DateTimeOffset lastModifiedAt, CancellationToken ct = default)
+    {
+        if (_cards.TryGetValue(noteId, out var existing))
+            _cards[noteId] = existing with { ActionItems = actionItems, LastModifiedAt = lastModifiedAt };
+        return Task.CompletedTask;
+    }
+
     public Task<NoteCardView?> GetByNoteAsync(NoteId noteId, CancellationToken ct = default) =>
         Task.FromResult(_cards.TryGetValue(noteId, out var card) ? card : null);
 

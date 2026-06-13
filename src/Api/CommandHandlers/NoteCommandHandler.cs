@@ -5,13 +5,17 @@ using EventStore;
 using Api.Auth;
 using Api.Exceptions;
 using Api.Observability;
-using Api.Projections;
 
 namespace Api.CommandHandlers;
 
+// Append-only since RYW-2: the whole Note aggregate is async — the projector (the in-process
+// SyncProjectingEventStore decorator in tests/local, the Projector Lambda in prod) is the sole
+// writer of the note read models, no inline ProjectionUpdater call. HandleAsync returns the new
+// stream version (the write token) so the endpoint can surface it; the read side waits on
+// proj-position before answering. The whole aggregate goes async at once (not flow-by-flow within
+// the aggregate) so an async create never races an inline rename/tag on a not-yet-written row.
 public sealed class NoteCommandHandler(
     IEventStore store,
-    IProjectionUpdater projectionUpdater,
     ICurrentUser currentUser,
     ICurrentWorkspace currentWorkspace,
     IDomainMetrics metrics,
@@ -31,14 +35,11 @@ public sealed class NoteCommandHandler(
     private const int MaxAppendAttempts = 4;
     private static readonly TimeSpan AppendRetryBaseDelay = TimeSpan.FromMilliseconds(20);
 
-    public Task<NoteId> HandleAsync(NoteCommand cmd, CancellationToken ct = default) =>
-        CommandInstrumentation.RunAsync(metrics, logger, cmd.GetType().Name, "Note", async () =>
-        {
-            await ExecuteAsync(cmd.NoteId, note => note.Handle(cmd), ct, mustExist: cmd.MustExist).ConfigureAwait(false);
-            return cmd.NoteId;
-        });
+    public Task<long> HandleAsync(NoteCommand cmd, CancellationToken ct = default) =>
+        CommandInstrumentation.RunAsync(metrics, logger, cmd.GetType().Name, "Note", () =>
+            ExecuteAsync(cmd.NoteId, note => note.Handle(cmd), ct, mustExist: cmd.MustExist));
 
-    private async Task ExecuteAsync(NoteId noteId, Func<Note, IReadOnlyList<IDomainEvent>> handle, CancellationToken ct,
+    private async Task<long> ExecuteAsync(NoteId noteId, Func<Note, IReadOnlyList<IDomainEvent>> handle, CancellationToken ct,
         bool mustExist = true)
     {
         var streamId = noteId.ToStreamId();
@@ -55,7 +56,9 @@ public sealed class NoteCommandHandler(
             // 404 rather than a domain InvalidOperationException that escapes as a 500.
             if (mustExist && !note.Exists) throw new NoteNotFoundException(noteId);
             var newEvents = handle(note);
-            if (newEvents.Count == 0) return;
+            // No-op command (e.g. a re-tag the aggregate ignored): nothing appended, so the write
+            // token is the current version — a read carrying it waits on an already-applied mark.
+            if (newEvents.Count == 0) return history.Count;
 
             var envelopes = ToEnvelopes(streamId, newEvents, currentUser.UserId, currentWorkspace.WorkspaceId);
             try
@@ -67,8 +70,9 @@ public sealed class NoteCommandHandler(
                 await DelayBeforeRetryAsync(attempt, ct).ConfigureAwait(false);
                 continue;
             }
-            await projectionUpdater.ApplyNoteEventsAsync(noteId, history, envelopes, ct).ConfigureAwait(false);
-            return;
+            // Append-only: the projector (sync decorator in-process, Projector Lambda in prod) is
+            // the sole writer of the note read models. The new stream version is the write token.
+            return history.Count + envelopes.Count;
         }
     }
 

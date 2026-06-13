@@ -38,6 +38,79 @@ public sealed class DynamoDbNoteCardListStore(IAmazonDynamoDB dynamo, string tab
         }, ct).ConfigureAwait(false);
     }
 
+    // SET the note-owned attributes only (leaving ActionItems untouched), so a concurrent
+    // action-item write to the same card row does not get clobbered. ActionItems is seeded to an
+    // empty list on the first write (if_not_exists) so the row is always readable; a later
+    // note-field write never overwrites it. Optional attributes absent on the card are REMOVEd so
+    // the row matches a full rebuild (e.g. an untag-to-empty drops the Tags set, which Dynamo
+    // cannot store empty).
+    public async Task UpsertNoteFieldsAsync(NoteCardView card, CancellationToken ct = default)
+    {
+        var names = new Dictionary<string, string>
+        {
+            ["#title"] = "Title", ["#content"] = "Content", ["#createdAt"] = "CreatedAt",
+            ["#lastModifiedAt"] = "LastModifiedAt", ["#deleted"] = "Deleted", ["#userId"] = "UserId",
+            ["#actionItems"] = "ActionItems", ["#date"] = "Date", ["#tags"] = "Tags",
+            ["#folderId"] = "FolderId", ["#workspaceId"] = "WorkspaceId"
+        };
+        var values = new Dictionary<string, AttributeValue>
+        {
+            [":title"] = new() { S = card.Title },
+            [":content"] = new() { S = card.Content },
+            [":createdAt"] = new() { S = card.CreatedAt.ToString("O") },
+            [":lastModifiedAt"] = new() { S = card.LastModifiedAt.ToString("O") },
+            [":deleted"] = new() { BOOL = card.Deleted },
+            [":userId"] = new() { S = card.UserId },
+            [":emptyActions"] = new() { S = JsonSerializer.Serialize(Array.Empty<NoteCardActionItem>()) }
+        };
+
+        var sets = new List<string>
+        {
+            "#title = :title", "#content = :content", "#createdAt = :createdAt",
+            "#lastModifiedAt = :lastModifiedAt", "#deleted = :deleted", "#userId = :userId",
+            "#actionItems = if_not_exists(#actionItems, :emptyActions)"
+        };
+        var removes = new List<string>();
+
+        AddOptional(sets, removes, values, "#date", ":date", card.Date.HasValue ? new AttributeValue { S = card.Date.Value.ToString("O") } : null);
+        AddOptional(sets, removes, values, "#tags", ":tags", card.Tags is { Count: > 0 } ? new AttributeValue { SS = card.Tags.ToList() } : null);
+        AddOptional(sets, removes, values, "#folderId", ":folderId", card.FolderId.HasValue ? new AttributeValue { S = card.FolderId.Value.Value.ToString() } : null);
+        AddOptional(sets, removes, values, "#workspaceId", ":workspaceId", string.IsNullOrEmpty(card.WorkspaceId) ? null : new AttributeValue { S = card.WorkspaceId });
+
+        var expression = "SET " + string.Join(", ", sets) + (removes.Count > 0 ? " REMOVE " + string.Join(", ", removes) : "");
+        await UpdateAsync(card.NoteId, expression, names, values, ct).ConfigureAwait(false);
+    }
+
+    // SET only ActionItems + LastModifiedAt, leaving the note-owned fields untouched.
+    public async Task UpdateActionItemsAsync(NoteId noteId, IReadOnlyList<NoteCardActionItem> actionItems, DateTimeOffset lastModifiedAt, CancellationToken ct = default)
+    {
+        var names = new Dictionary<string, string> { ["#actionItems"] = "ActionItems", ["#lastModifiedAt"] = "LastModifiedAt" };
+        var values = new Dictionary<string, AttributeValue>
+        {
+            [":actionItems"] = new() { S = JsonSerializer.Serialize(actionItems) },
+            [":lastModifiedAt"] = new() { S = lastModifiedAt.ToString("O") }
+        };
+        await UpdateAsync(noteId, "SET #actionItems = :actionItems, #lastModifiedAt = :lastModifiedAt", names, values, ct).ConfigureAwait(false);
+    }
+
+    private static void AddOptional(List<string> sets, List<string> removes, Dictionary<string, AttributeValue> values,
+        string nameToken, string valueToken, AttributeValue? value)
+    {
+        if (value is null) { removes.Add(nameToken); return; }
+        sets.Add($"{nameToken} = {valueToken}");
+        values[valueToken] = value;
+    }
+
+    private Task UpdateAsync(NoteId noteId, string expression, Dictionary<string, string> names, Dictionary<string, AttributeValue> values, CancellationToken ct) =>
+        dynamo.UpdateItemAsync(new UpdateItemRequest
+        {
+            TableName = tableName,
+            Key = new Dictionary<string, AttributeValue> { ["PK"] = new() { S = noteId.Value.ToString() } },
+            UpdateExpression = expression,
+            ExpressionAttributeNames = names,
+            ExpressionAttributeValues = values
+        }, ct);
+
     public async Task<NoteCardView?> GetByNoteAsync(NoteId noteId, CancellationToken ct = default)
     {
         var response = await dynamo.GetItemAsync(new GetItemRequest

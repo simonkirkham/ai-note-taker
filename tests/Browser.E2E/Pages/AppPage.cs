@@ -69,6 +69,33 @@ public sealed class AppPage(IPage page, string baseUrl, string? authToken = null
                 .Filter(new LocatorFilterOptions { HasText = title })
         ).ToBeVisibleAsync();
 
+    // The note read-your-writes proof (RYW-2): reload FIRST (drops the optimistic cards cache, so
+    // the renamed card can only come from the server), then assert. The post-reload GET /notes/cards
+    // carries the sessionStorage-persisted note token, so the gate waits for the async projector and
+    // the card appears deterministically. Reload-loop so a still-warming projector re-polls (each
+    // reload re-sends the token and re-gates) rather than getting stuck on one stale fetch.
+    public async Task AssertNoteVisibleInListAfterReloadAsync(string title, int timeoutMs = 20000)
+    {
+        var deadline = DateTime.UtcNow.AddMilliseconds(timeoutMs);
+        while (true)
+        {
+            await page.ReloadAsync();
+            try
+            {
+                await Assertions.Expect(
+                    page.GetByTestId("note-cards")
+                        .Locator("[data-testid='note-card']")
+                        .Filter(new LocatorFilterOptions { HasText = title })
+                ).ToBeVisibleAsync(new() { Timeout = 2500 });
+                return;
+            }
+            catch (PlaywrightException) when (DateTime.UtcNow < deadline)
+            {
+                // re-loop: reload + recheck until the gated read returns the card or we time out
+            }
+        }
+    }
+
     public Task ClickNoteInListAsync(string title) =>
         page.GetByTestId("note-cards")
             .Locator("[data-testid='note-card']")

@@ -163,3 +163,11 @@ export async function requestVoid(path: string, init?: RequestInit, okStatuses?:
   const res = await apiFetch(`${base}${scopedPath(path)}`, init)
   ensureOk(res, path, init, okStatuses)
 }
+
+// Like requestVoid, but returns the raw Response so the caller can read a response header
+// (RYW-2 note writes return their write token in `X-Consistency-Token`).
+export async function requestVoidWithResponse(path: string, init?: RequestInit, okStatuses?: number[]): Promise<Response> {
+  const res = await apiFetch(`${base}${scopedPath(path)}`, init)
+  ensureOk(res, path, init, okStatuses)
+  return res
+}
