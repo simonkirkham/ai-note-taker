@@ -399,11 +399,15 @@ jobs:
           # bare /todos 404s — use the scoped path, the same one the frontend's request() builds.
           todos="$base/w/__default__/todos"
           if [ -n "${TOKEN:-}" ]; then
+            # `|| ...=""` on each assignment: the step runs under `bash -eo pipefail`, so an
+            # unguarded curl timeout or a `jq` parse failure on a non-JSON error body (e.g. an API
+            # Gateway 502/503) would abort the whole step — defeating "best-effort, never red the
+            # gate." The guards make a warm-up hiccup fall through to the no-token warning instead.
             resp=$(curl -s -w '\n%{http_code}' -X POST "$todos" \
               -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
-              -d '{"description":"warmup-ti39"}' --max-time 30)
+              -d '{"description":"warmup-ti39"}' --max-time 30) || resp=""
             status=$(printf '%s' "$resp" | tail -n1)
-            tok=$(printf '%s' "$resp" | sed '$d' | jq -r '.consistencyToken // empty' 2>/dev/null)
+            tok=$(printf '%s' "$resp" | sed '$d' | jq -r '.consistencyToken // empty' 2>/dev/null) || tok=""
             echo "warm-up POST $todos -> HTTP $status, token: ${tok:-<none>}"
             if [ -n "$tok" ]; then
               for i in $(seq 1 40); do
