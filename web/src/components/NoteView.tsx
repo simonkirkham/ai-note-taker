@@ -5,6 +5,7 @@ import { type CalendarMeeting } from "../api/meetings";
 import type { NoteDetail } from "../api/notes";
 import { keys } from "../api/queryKeys";
 import { completeTranscription, discardTranscriptionDraft } from "../api/transcription";
+import { useActions } from "../hooks/useActions";
 import { useCreateNoteFromNextOccurrence, useLinkNoteToCalendar } from "../hooks/useMeetingMutations";
 import { useNoteDetail } from "../hooks/useNoteDetail";
 import { useAnalyseNote, useEditContent, useRenameNoteDetail, useSetNoteDate } from "../hooks/useNoteDetailMutations";
@@ -53,6 +54,10 @@ export default function NoteView({
   const qc = useQueryClient();
   const { data: detail, isLoading: loadingDetail, isError, error } = useNoteDetail(noteId);
   const { data: allTags = [] } = useTags();
+  // 19-E: read the action count from this note's own useActions query (same
+  // queryKey as ActionsSection → deduped, no extra request) instead of the
+  // child notifying the parent via an effect-fired callback prop.
+  const { data: actions = [] } = useActions(noteId);
   const tagNoteM = useTagNote();
   const untagNoteM = useUntagNote();
   const linkMeetingM = useLinkNoteToCalendar();
@@ -71,7 +76,6 @@ export default function NoteView({
   const [titleDraft, setTitleDraft] = useState<string | null>(null);
   const [contentDraft, setContentDraft] = useState<string | null>(null);
   const [dateDraft, setDateDraft] = useState<string | null>(null);
-  const [actionCount, setActionCount] = useState(0);
   const [activeTab, setActiveTab] = useState<NoteTab>("quick");
   const [liveTranscript, setLiveTranscript] = useState<string | null>(null);
   const [recordingStatus, setRecordingStatus] = useState<TranscriptionStatus>("idle");
@@ -123,7 +127,7 @@ export default function NoteView({
     title.trim().length > 0 ||
     content.trim().length > 0 ||
     tags.length > 0 ||
-    actionCount > 0 ||
+    actions.length > 0 ||
     transcriptText !== null ||
     isRecording ||
     (liveTranscript?.trim().length ?? 0) > 0;
@@ -581,7 +585,7 @@ export default function NoteView({
         <aside className={tabStyles.sidebar} aria-label="Tags and action items">
           <TagsSection tags={tags} allTags={allTags} onAdd={handleAddTags} onRemove={handleRemoveTag} />
           <div className={tabStyles.actions}>
-            <ActionsSection key={noteId} noteId={noteId} onCountChange={setActionCount} />
+            <ActionsSection key={noteId} noteId={noteId} />
           </div>
         </aside>
       </div>
