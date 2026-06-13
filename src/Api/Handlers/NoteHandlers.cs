@@ -3,6 +3,7 @@ using EventStore.Projections;
 using Domain.Folders;
 using Domain.Notes;
 using Api.Auth;
+using Api.Consistency;
 using Api.Contracts;
 using Api.CommandHandlers;
 using Api.Exceptions;
@@ -18,6 +19,12 @@ namespace Api.Handlers;
 public static class NoteHandlers
 {
     private const int MaxPreviewLength = 120;
+
+    // Read-your-writes (RYW-2): surface the note stream's new version as the write token so the
+    // client can echo it into If-Consistent-With on its next note read, making that read wait
+    // until the async projector has applied this write.
+    private static void SetConsistencyToken(HttpResponse response, Guid noteId, long version) =>
+        response.Headers["X-Consistency-Token"] = $"{new NoteId(noteId).ToStreamId()}@{version}";
     public static async Task<IResult> Health(IDynamoHealthCheck dynamo)
     {
         var dh = await dynamo.CheckAsync();
@@ -30,23 +37,27 @@ public static class NoteHandlers
 
     public static IResult Secret() => Results.Ok(new { status = "shhhh...." });
 
-    public static async Task<IResult> CreateNote(HttpRequest request, INoteCommandHandler handler, ICurrentWorkspace currentWorkspace)
+    public static async Task<IResult> CreateNote(HttpRequest request, HttpResponse response, INoteCommandHandler handler, ICurrentWorkspace currentWorkspace)
     {
         CreateNoteRequest? req = null;
         if (request.HasJsonContentType())
             req = await request.ReadFromJsonAsync<CreateNoteRequest>();
         var noteId = req?.NoteId is { } id && id != Guid.Empty ? new NoteId(id) : new NoteId(Guid.NewGuid());
-        try { await handler.HandleAsync(new CreateNote(noteId, new WorkspaceId(currentWorkspace.WorkspaceId))); }
+        long version;
+        try { version = await handler.HandleAsync(new CreateNote(noteId, new WorkspaceId(currentWorkspace.WorkspaceId))); }
         catch (InvalidOperationException) { return Results.Conflict(); }
+        SetConsistencyToken(response, noteId.Value, version);
         return Results.Created($"/notes/{noteId}", new { noteId = noteId.Value });
     }
 
-    public static async Task<IResult> RenameNote(Guid noteId, RenameNoteRequest req, INoteCommandHandler handler, INoteDetailStore noteDetailStore, ICurrentUser currentUser)
+    public static async Task<IResult> RenameNote(Guid noteId, RenameNoteRequest req, HttpResponse response, INoteCommandHandler handler, INoteDetailStore noteDetailStore, ICurrentUser currentUser)
     {
         var detail = await noteDetailStore.GetAsync(new NoteId(noteId));
         if (detail is null || detail.UserId != currentUser.UserId) return Results.NotFound();
-        try { await handler.HandleAsync(new RenameNote(new NoteId(noteId), req.Title)); }
+        long version;
+        try { version = await handler.HandleAsync(new RenameNote(new NoteId(noteId), req.Title)); }
         catch (NoteNotFoundException) { return Results.NotFound(); }
+        SetConsistencyToken(response, noteId, version);
         return Results.Ok();
     }
 
@@ -60,17 +71,25 @@ public static class NoteHandlers
         return Results.Ok(new { items });
     }
 
-    public static async Task<IResult> EditContent(Guid noteId, EditContentRequest req, INoteCommandHandler handler, INoteDetailStore noteDetailStore, ICurrentUser currentUser)
+    public static async Task<IResult> EditContent(Guid noteId, EditContentRequest req, HttpResponse response, INoteCommandHandler handler, INoteDetailStore noteDetailStore, ICurrentUser currentUser)
     {
         var detail = await noteDetailStore.GetAsync(new NoteId(noteId));
         if (detail is null || detail.UserId != currentUser.UserId) return Results.NotFound();
-        try { await handler.HandleAsync(new EditContentCmd(new NoteId(noteId), req.Content)); }
+        long version;
+        try { version = await handler.HandleAsync(new EditContentCmd(new NoteId(noteId), req.Content)); }
         catch (NoteNotFoundException) { return Results.NotFound(); }
+        SetConsistencyToken(response, noteId, version);
         return Results.NoContent();
     }
 
-    public static async Task<IResult> GetNote(Guid noteId, INoteDetailStore noteDetailStore, ICalendarLinkIndexStore calendarLinkStore, ITranscriptionDraftStore draftStore, ICurrentUser currentUser)
+    public static async Task<IResult> GetNote(Guid noteId, INoteDetailStore noteDetailStore, ICalendarLinkIndexStore calendarLinkStore, ITranscriptionDraftStore draftStore, ICurrentUser currentUser, IConsistencyGate gate, HttpContext http, CancellationToken ct)
     {
+        // Read-your-writes: if the client presents the write token from its last note write, wait
+        // (bounded) until the async projector has applied it before reading. Absent token → no
+        // wait. On timeout the read still returns, flagged X-Consistency: stale.
+        var consistency = await gate.WaitAsync(http.Request.Headers["If-Consistent-With"], ct).ConfigureAwait(false);
+        if (consistency.IsStale) http.Response.Headers["X-Consistency"] = "stale";
+
         var detail = await noteDetailStore.GetAsync(new NoteId(noteId));
         if (detail is null || detail.UserId != currentUser.UserId) return Results.NotFound();
         var calendarLink = await calendarLinkStore.GetByNoteIdAsync(noteId.ToString());
@@ -119,12 +138,14 @@ public static class NoteHandlers
         && (string.IsNullOrEmpty(committedTranscript)
             || !committedTranscript.StartsWith(draftText, StringComparison.Ordinal));
 
-    public static async Task<IResult> SetNoteDate(Guid noteId, SetNoteDateRequest req, INoteCommandHandler handler, INoteDetailStore noteDetailStore, ICurrentUser currentUser)
+    public static async Task<IResult> SetNoteDate(Guid noteId, SetNoteDateRequest req, HttpResponse response, INoteCommandHandler handler, INoteDetailStore noteDetailStore, ICurrentUser currentUser)
     {
         var detail = await noteDetailStore.GetAsync(new NoteId(noteId));
         if (detail is null || detail.UserId != currentUser.UserId) return Results.NotFound();
-        try { await handler.HandleAsync(new SetNoteDate(new NoteId(noteId), req.Date)); }
+        long version;
+        try { version = await handler.HandleAsync(new SetNoteDate(new NoteId(noteId), req.Date)); }
         catch (NoteNotFoundException) { return Results.NotFound(); }
+        SetConsistencyToken(response, noteId, version);
         return Results.Ok();
     }
 
@@ -138,23 +159,27 @@ public static class NoteHandlers
         return Results.NoContent();
     }
 
-    public static async Task<IResult> PostTag(Guid noteId, TagNoteRequest req, INoteCommandHandler handler, INoteDetailStore noteDetailStore, ICurrentUser currentUser)
+    public static async Task<IResult> PostTag(Guid noteId, TagNoteRequest req, HttpResponse response, INoteCommandHandler handler, INoteDetailStore noteDetailStore, ICurrentUser currentUser)
     {
         var detail = await noteDetailStore.GetAsync(new NoteId(noteId));
         if (detail is null || detail.UserId != currentUser.UserId) return Results.NotFound();
-        try { await handler.HandleAsync(new TagNote(new NoteId(noteId), req.Tag)); }
+        long version;
+        try { version = await handler.HandleAsync(new TagNote(new NoteId(noteId), req.Tag)); }
         catch (NoteNotFoundException) { return Results.NotFound(); }
         catch (InvalidOperationException) { return Results.Conflict(); }
+        SetConsistencyToken(response, noteId, version);
         return Results.NoContent();
     }
 
-    public static async Task<IResult> DeleteTag(Guid noteId, string tag, INoteCommandHandler handler, INoteDetailStore noteDetailStore, ICurrentUser currentUser)
+    public static async Task<IResult> DeleteTag(Guid noteId, string tag, HttpResponse response, INoteCommandHandler handler, INoteDetailStore noteDetailStore, ICurrentUser currentUser)
     {
         var detail = await noteDetailStore.GetAsync(new NoteId(noteId));
         if (detail is null || detail.UserId != currentUser.UserId) return Results.NotFound();
-        try { await handler.HandleAsync(new UntagNote(new NoteId(noteId), tag)); }
+        long version;
+        try { version = await handler.HandleAsync(new UntagNote(new NoteId(noteId), tag)); }
         catch (NoteNotFoundException) { return Results.NotFound(); }
         catch (InvalidOperationException) { return Results.NotFound(); }
+        SetConsistencyToken(response, noteId, version);
         return Results.NoContent();
     }
 
@@ -239,8 +264,14 @@ public static class NoteHandlers
         return Results.Ok(new { items });
     }
 
-    public static async Task<IResult> GetNoteCards(INoteCardListStore store, ICurrentUser currentUser, ICurrentWorkspace currentWorkspace, CancellationToken ct)
+    public static async Task<IResult> GetNoteCards(INoteCardListStore store, ICurrentUser currentUser, ICurrentWorkspace currentWorkspace, IConsistencyGate gate, HttpContext http, CancellationToken ct)
     {
+        // Read-your-writes: the cards list spans many note streams, but the client only holds a
+        // token for the note it just wrote — the gate waits on that one stream's contribution
+        // (the just-edited note's card) before answering. Absent token → no wait; timeout → stale.
+        var consistency = await gate.WaitAsync(http.Request.Headers["If-Consistent-With"], ct).ConfigureAwait(false);
+        if (consistency.IsStale) http.Response.Headers["X-Consistency"] = "stale";
+
         var all = await store.QueryAllAsync(ct).ConfigureAwait(false);
         var cards = all
             .Where(c => !c.Deleted && c.UserId == currentUser.UserId && currentWorkspace.Includes(c.WorkspaceId))

@@ -1,4 +1,57 @@
-import { request, requestVoid } from './client';
+import { request, requestVoid, requestVoidWithResponse, requestWithResponse } from './client';
+import {
+  clearLatestToken,
+  clearStreamToken,
+  getLatestToken,
+  getStreamToken,
+  setLatestToken,
+  setStreamToken,
+} from './consistencyTokens';
+
+// Read-your-writes (RYW-2): the note flows are async (the projector builds the read models). A
+// note write returns its write token in `X-Consistency-Token`; the next note read echoes it in
+// `If-Consistent-With` so the server waits until the projector applied the write. A single-note
+// read (GET /notes/{id}) waits on that note's own stream; the cards LIST read waits on the most
+// recently written note (the one the user just edited).
+const NOTE_CARDS_SCOPE = 'noteCards';
+const STALE_RETRIES = 2;
+const STALE_RETRY_DELAY_MS = 300;
+
+function noteStream(noteId: string): string {
+  return `note#${noteId}`;
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+// Record a note write's token both against its own stream (for the note-detail read) and as the
+// latest note write (for the cards-list read). Exported so tag writes (a note-aggregate flow in
+// a sibling module) reuse the same capture. A missing header (e.g. a 404/409 no-op) is a no-op.
+export function captureNoteToken(noteId: string, response: Response): void {
+  const token = response.headers.get('X-Consistency-Token');
+  if (!token) return;
+  setStreamToken(noteStream(noteId), token);
+  setLatestToken(NOTE_CARDS_SCOPE, token);
+}
+
+// Issue a token-gated read: attach the pending token (if any), and on a `stale` response retry a
+// bounded number of times (each retry re-sends the token so the server waits again as the
+// projector catches up). After a non-stale read, clear the token — the projection is confirmed
+// caught up.
+async function gatedRead<T>(path: string, token: string | null, onFresh: () => void): Promise<T> {
+  const headers: Record<string, string> = token ? { 'If-Consistent-With': token } : {};
+  for (let attempt = 0; ; attempt++) {
+    const { body, response } = await requestWithResponse<T>(path, { headers });
+    const stale = response.headers.get('X-Consistency') === 'stale';
+    if (!stale) {
+      onFresh();
+      return body;
+    }
+    if (attempt >= STALE_RETRIES) return body;
+    await sleep(STALE_RETRY_DELAY_MS);
+  }
+}
 
 export interface LinkedMeeting {
   calendarEventId: string;
@@ -66,39 +119,45 @@ export async function searchNotes(q: string): Promise<SearchResult[]> {
 }
 
 export function getNoteDetail(noteId: string): Promise<NoteDetail> {
-  return request<NoteDetail>(`/notes/${noteId}`);
+  const stream = noteStream(noteId);
+  return gatedRead<NoteDetail>(`/notes/${noteId}`, getStreamToken(stream), () => clearStreamToken(stream));
 }
 
-export function createNote(): Promise<{ noteId: string }> {
-  return request<{ noteId: string }>(`/notes`, {
+export async function createNote(): Promise<{ noteId: string }> {
+  const { body, response } = await requestWithResponse<{ noteId: string }>(`/notes`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: 'null',
   });
+  captureNoteToken(body.noteId, response);
+  return body;
 }
 
-export function renameNote(noteId: string, title: string): Promise<void> {
-  return requestVoid(`/notes/${noteId}/title`, {
+export async function renameNote(noteId: string, title: string): Promise<void> {
+  const response = await requestVoidWithResponse(`/notes/${noteId}/title`, {
     method: 'PATCH',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ title }),
   });
+  captureNoteToken(noteId, response);
 }
 
-export function editContent(noteId: string, content: string): Promise<void> {
-  return requestVoid(`/notes/${noteId}/content`, {
+export async function editContent(noteId: string, content: string): Promise<void> {
+  const response = await requestVoidWithResponse(`/notes/${noteId}/content`, {
     method: 'PUT',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ content }),
   });
+  captureNoteToken(noteId, response);
 }
 
-export function setNoteDate(noteId: string, date: string | null): Promise<void> {
-  return requestVoid(`/notes/${noteId}/date`, {
+export async function setNoteDate(noteId: string, date: string | null): Promise<void> {
+  const response = await requestVoidWithResponse(`/notes/${noteId}/date`, {
     method: 'PATCH',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ date }),
   });
+  captureNoteToken(noteId, response);
 }
 
 export function deleteNote(noteId: string): Promise<void> {
@@ -106,7 +165,11 @@ export function deleteNote(noteId: string): Promise<void> {
 }
 
 export async function getNoteCards(): Promise<NoteCard[]> {
-  const body = await request<{ cards: NoteCard[] }>(`/notes/cards`);
+  const body = await gatedRead<{ cards: NoteCard[] }>(
+    `/notes/cards`,
+    getLatestToken(NOTE_CARDS_SCOPE),
+    () => clearLatestToken(NOTE_CARDS_SCOPE),
+  );
   return body.cards;
 }
 

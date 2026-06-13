@@ -53,7 +53,8 @@ public sealed class ProjectionUpdater(
             }
             var existingCard = await noteCardListStore.GetByNoteAsync(noteId, ct).ConfigureAwait(false);
             if (existingCard is null) return;
-            await noteCardListStore.UpsertAsync(
+            // Note-owned field (Deleted) — field-level so a concurrent action write is not clobbered.
+            await noteCardListStore.UpsertNoteFieldsAsync(
                 existingCard with { Deleted = true, LastModifiedAt = newEnvelopes[0].OccurredAt }, ct).ConfigureAwait(false);
             return;
         }
@@ -67,7 +68,9 @@ public sealed class ProjectionUpdater(
             await todoListStore.UpdateNoteTitleAsync(noteId, item.Title, ct).ConfigureAwait(false);
 
         var card = await noteCardListStore.GetByNoteAsync(noteId, ct).ConfigureAwait(false);
-        await noteCardListStore.UpsertAsync(
+        // Note events own only the note fields of the (cross-aggregate) card row; write them
+        // field-level so a concurrent action-item write to the same row commutes (RYW-2).
+        await noteCardListStore.UpsertNoteFieldsAsync(
             ApplyNoteEventsToCard(card, noteId, newEnvelopes), ct).ConfigureAwait(false);
 
         // Tag rows inherit the note's CURRENT workspace (from the rebuilt detail), not the
@@ -358,8 +361,9 @@ public sealed class ProjectionUpdater(
         var card = await noteCardListStore.GetByNoteAsync(noteId, ct).ConfigureAwait(false);
         if (card is not { Deleted: false }) return;
         var updatedItems = update(card.ActionItems);
-        await noteCardListStore.UpsertAsync(
-            card with { ActionItems = updatedItems, LastModifiedAt = occurredAt }, ct).ConfigureAwait(false);
+        // Action events own only the ActionItems of the (cross-aggregate) card row; write them
+        // field-level so a concurrent note-field write to the same row commutes (RYW-2).
+        await noteCardListStore.UpdateActionItemsAsync(noteId, updatedItems, occurredAt, ct).ConfigureAwait(false);
         await UpdateSearchViewActionsAsync(noteId, updatedItems, occurredAt, ct).ConfigureAwait(false);
     }
 

@@ -7,12 +7,13 @@ namespace Api.Projections;
 // (the ApiFactory test harness + local Kestrel) get immediate read-after-write consistency
 // through the production projection code path with no inline projection write.
 //
-// Scoped to migrated stream prefixes (RYW-1: `todo#` only). The migration is incremental — only
-// the Todo flow has had its inline write removed. For every OTHER flow the command handler still
-// projects inline in-process, so the decorator must NOT also project those streams or the
-// increment-based feedback counters would double-count synchronously (the prod ESM projector
-// double-writes them too, but transiently/idempotently — here it would be a hard test failure).
-// As each flow migrates (RYW-2/3) it joins MigratedPrefixes and its inline write is removed.
+// Scoped to migrated stream prefixes (RYW-1: `todo#`; RYW-2 adds `note#`). The migration is
+// incremental — only migrated flows have had their inline write removed. For every OTHER flow
+// (actions, folders, workspaces) the command handler still projects inline in-process, so the
+// decorator must NOT also project those streams or the increment-based feedback counters would
+// double-count synchronously (the prod ESM projector double-writes them too, but transiently/
+// idempotently — here it would be a hard test failure). As each flow migrates (RYW-3) it joins
+// MigratedPrefixes and its inline write is removed.
 //
 // NEVER wired in the deployed API Lambda: there the stream + Projector Lambda do projections
 // asynchronously for ALL streams, and the API has no projection grants.
@@ -20,7 +21,7 @@ public sealed class SyncProjectingEventStore(IEventStore inner, StreamProjector 
 {
     // Stream prefixes whose inline projection write has been removed (so the projector is their
     // sole in-process writer). Grows as flows migrate.
-    private static readonly string[] MigratedPrefixes = ["todo#"];
+    private static readonly string[] MigratedPrefixes = ["todo#", "note#"];
 
     public async Task AppendAsync(string streamId, long expectedVersion, IReadOnlyList<EventEnvelope> events, CancellationToken ct = default)
     {
