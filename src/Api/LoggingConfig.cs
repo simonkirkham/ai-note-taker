@@ -53,28 +53,54 @@ public static class LoggingConfig
         });
     }
 
+    // TI-38: catch and map exceptions here rather than via ASP.NET's UseExceptionHandler.
+    // That built-in registers ExceptionHandlerMiddleware, which logs EVERY escaped exception
+    // at Error ("An unhandled exception has occurred…", category
+    // Microsoft.AspNetCore.Diagnostics.ExceptionHandlerMiddleware) BEFORE invoking our
+    // handler — so an exception we then re-mapped to 409/404 double-logged: once at Error
+    // (framework) and once at Warning (ours), drowning real 500s on the ops dashboard.
+    // Owning the try/catch keeps the framework middleware out of the pipeline entirely, so
+    // each request logs exactly one line at the level Map() implies. The response contract
+    // (status, JSON body shape, and the x-correlation-id header) is unchanged.
     internal static void AddLogging(WebApplication app)
     {
-        app.UseExceptionHandler(exApp => exApp.Run(async ctx =>
+        app.Use(async (ctx, next) =>
         {
-            var ex = ctx.Features.Get<Microsoft.AspNetCore.Diagnostics.IExceptionHandlerFeature>()?.Error;
-            var log = ctx.RequestServices.GetRequiredService<ILoggerFactory>().CreateLogger("Api");
-            var (status, error) = Map(ex);
+            try
+            {
+                await next();
+            }
+            catch (Exception ex)
+            {
+                await WriteMappedResponseAsync(ctx, ex);
+            }
+        });
+    }
 
-            // Only a genuine 500 is a server fault worth an Error-level line on the ops
-            // dashboard; an expected conflict/not-found is logged at Warning so it does
-            // not drown out real errors.
-            if (status == StatusCodes.Status500InternalServerError)
-                log.LogError(ex, "Unhandled exception on {Method} {Path} CorrelationId={CorrelationId}",
-                    ctx.Request.Method, ctx.Request.Path, ctx.TraceIdentifier);
-            else
-                log.LogWarning("Request failed {Method} {Path} -> {Status} {ExceptionType} CorrelationId={CorrelationId}",
-                    ctx.Request.Method, ctx.Request.Path, status, ex?.GetType().Name, ctx.TraceIdentifier);
+    private static async Task WriteMappedResponseAsync(HttpContext ctx, Exception ex)
+    {
+        var log = ctx.RequestServices.GetRequiredService<ILoggerFactory>().CreateLogger("Api");
+        var (status, error) = Map(ex);
 
-            ctx.Response.StatusCode = status;
-            ctx.Response.Headers[CorrelationIdHeader] = ctx.TraceIdentifier;
-            await ctx.Response.WriteAsJsonAsync(new { error, correlationId = ctx.TraceIdentifier });
-        }));
+        // Only a genuine 500 is a server fault worth an Error-level line on the ops
+        // dashboard; an expected conflict/not-found is logged at Warning so it does
+        // not drown out real errors.
+        if (status == StatusCodes.Status500InternalServerError)
+            log.LogError(ex, "Unhandled exception on {Method} {Path} CorrelationId={CorrelationId}",
+                ctx.Request.Method, ctx.Request.Path, ctx.TraceIdentifier);
+        else
+            log.LogWarning("Request failed {Method} {Path} -> {Status} {ExceptionType} CorrelationId={CorrelationId}",
+                ctx.Request.Method, ctx.Request.Path, status, ex.GetType().Name, ctx.TraceIdentifier);
+
+        // If the response has already begun streaming, headers/status are committed and the
+        // body cannot be rewritten — log only and let the connection fault.
+        if (ctx.Response.HasStarted)
+            return;
+
+        ctx.Response.Clear();
+        ctx.Response.StatusCode = status;
+        ctx.Response.Headers[CorrelationIdHeader] = ctx.TraceIdentifier;
+        await ctx.Response.WriteAsJsonAsync(new { error, correlationId = ctx.TraceIdentifier });
     }
 
     // Maps domain/store exceptions that escape a handler to a meaningful status, so a
