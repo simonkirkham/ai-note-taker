@@ -67,7 +67,8 @@
       "Bash(cp .claude/settings.local.json /tmp/sl.bak)",
       "Bash(cp /tmp/sl.bak .claude/settings.local.json)",
       "Bash(cp /mnt/c/code/ai-note-taker/.claude/settings.local.json /tmp/sl.bak)",
-      "WebFetch(domain:dev.to)"
+      "WebFetch(domain:dev.to)",
+      "WebFetch(domain:aws.amazon.com)"
     ]
   },
   "sandbox": {
