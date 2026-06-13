@@ -6,9 +6,14 @@ namespace Analysis.Eval.Tests;
 // alongside the transcript — so gold-tag entities that live in the note aren't flagged
 // as fabrication — and (b) not auto-fail a faithful note for being terse when the
 // transcript itself is thin. These assert the rubric wording that encodes both fixes.
+// MPI-5: prompt wording proved insufficient, so a DETERMINISTIC allowlist of grounded
+// entities is rendered into the prompt — see the GroundedEntities tests below.
 public class BedrockQualityJudgePromptTests
 {
-    static QualityJudgeInput Input(string transcript = "T", string existingContent = "N") =>
+    static QualityJudgeInput Input(
+        string transcript = "T",
+        string existingContent = "N",
+        IReadOnlyList<string>? groundedEntities = null) =>
         new(
             Transcript: transcript,
             ExistingContent: existingContent,
@@ -17,7 +22,8 @@ public class BedrockQualityJudgePromptTests
             Discussion: ["d"],
             Decisions: ["dec"],
             Tags: ["t"],
-            Actions: ["a"]);
+            Actions: ["a"],
+            GroundedEntities: groundedEntities ?? []);
 
     [Fact]
     public void Prompt_names_the_existing_note_as_valid_grounding()
@@ -70,5 +76,26 @@ public class BedrockQualityJudgePromptTests
 
         Assert.Contains("Never reward padding", prompt);
         Assert.Contains("no facts absent from the source", prompt);
+    }
+
+    [Fact]
+    public void Prompt_lists_grounded_entities_as_a_never_flag_allowlist()
+    {
+        var prompt = BedrockQualityJudge.BuildPrompt(
+            Input(groundedEntities: ["stark industries", "reorg"]));
+
+        // Each grounded entity is enumerated and the block forbids flagging them.
+        Assert.Contains("GROUNDED ENTITIES", prompt);
+        Assert.Contains("stark industries", prompt);
+        Assert.Contains("reorg", prompt);
+        Assert.Contains("NEVER", prompt);
+    }
+
+    [Fact]
+    public void Prompt_omits_the_allowlist_block_when_there_are_no_grounded_entities()
+    {
+        var prompt = BedrockQualityJudge.BuildPrompt(Input(groundedEntities: []));
+
+        Assert.DoesNotContain("GROUNDED ENTITIES", prompt);
     }
 }
