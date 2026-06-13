@@ -1,4 +1,5 @@
 using EventStore.Projections;
+using Microsoft.Extensions.Logging;
 
 namespace Api.Consistency;
 
@@ -13,13 +14,14 @@ public sealed class ConsistencyGate(
     IProcessedPositionStore positions,
     TimeSpan pollInterval,
     TimeSpan cap,
-    Func<TimeSpan, CancellationToken, Task>? delay = null) : IConsistencyGate
+    Func<TimeSpan, CancellationToken, Task>? delay = null,
+    ILogger<ConsistencyGate>? logger = null) : IConsistencyGate
 {
     private readonly Func<TimeSpan, CancellationToken, Task> _delay = delay ?? Task.Delay;
 
     // Production defaults: 50ms poll, 2000ms cap (Postgres WAIT FOR LSN ... TIMEOUT '2s').
-    public ConsistencyGate(IProcessedPositionStore positions)
-        : this(positions, TimeSpan.FromMilliseconds(50), TimeSpan.FromMilliseconds(2000)) { }
+    public ConsistencyGate(IProcessedPositionStore positions, ILogger<ConsistencyGate>? logger = null)
+        : this(positions, TimeSpan.FromMilliseconds(50), TimeSpan.FromMilliseconds(2000), delay: null, logger: logger) { }
 
     public async Task<ConsistencyResult> WaitAsync(string? ifConsistentWith, CancellationToken ct = default)
     {
@@ -31,10 +33,28 @@ public sealed class ConsistencyGate(
         {
             var lastSeq = await positions.GetLastSeqAsync(stream, ct).ConfigureAwait(false);
             if (lastSeq >= version)
+            {
+                // Slow-but-fresh: the projector caught up only after a wait. Logged so a near-cap
+                // catch-up (the precursor to a Stale flake) is visible before it tips over.
+                if (elapsed > TimeSpan.Zero)
+                    logger?.LogInformation(
+                        "RYW gate fresh {Stream} reqVersion={Version} lastSeq={LastSeq} waitMs={WaitMs}",
+                        stream, version, lastSeq, elapsed.TotalMilliseconds);
                 return ConsistencyResult.Fresh;
+            }
 
             if (elapsed >= cap)
+            {
+                // STALE: the projector did not reach the requested version within the cap. {LastSeq}
+                // vs {Version} is the key diagnostic — lastSeq < version means either the projector is
+                // behind (lastSeq climbing toward version) OR the requested version was never appended
+                // (the write didn't land — lastSeq is at head but head < version forever). Correlate
+                // {Stream}/{Version} with the InstrumentedEventStore "Events appended" log to tell which.
+                logger?.LogWarning(
+                    "RYW gate STALE {Stream} reqVersion={Version} lastSeq={LastSeq} gap={Gap} elapsedMs={Elapsed}",
+                    stream, version, lastSeq, version - lastSeq, elapsed.TotalMilliseconds);
                 return ConsistencyResult.Stale;
+            }
 
             await _delay(pollInterval, ct).ConfigureAwait(false);
             elapsed += pollInterval;

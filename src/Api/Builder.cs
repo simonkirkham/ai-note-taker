@@ -141,7 +141,9 @@ public static class Builder
             });
         }
         builder.Services.AddSingleton<IConsistencyGate>(sp =>
-            new ConsistencyGate(sp.GetRequiredService<IProcessedPositionStore>()));
+            new ConsistencyGate(
+                sp.GetRequiredService<IProcessedPositionStore>(),
+                sp.GetService<ILogger<ConsistencyGate>>()));
         builder.Services.AddSingleton<INoteTitleListStore>(sp =>
             new NoteTitleListStore(sp.GetRequiredService<IAmazonDynamoDB>(), projTableName));
         builder.Services.AddSingleton<INoteDetailStore>(sp =>
