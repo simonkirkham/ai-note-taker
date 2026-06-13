@@ -155,7 +155,12 @@ jobs:
 
       - name: Publish Lambda
         if: needs.detect-changes.outputs.backend == 'true'
-        run: dotnet publish src/Api/Api.csproj -c Release -o
+        # -r linux-x64 --self-contained false enables ReadyToRun (TI-35): the csproj
+        # turns on PublishReadyToRun only when a RID is supplied. Framework-dependent
+        # (Lambda's DOTNET_10 managed runtime provides the shared framework); R2R
+        # AOT-precompiles our + NuGet assemblies to cut first-request JIT after a
+        # SnapStart restore. -o keeps the asset path the CDK Code.FromAsset expects.
+        run: dotnet publish src/Api/Api.csproj -c Release -r linux-x64 --self-contained false -o
           src/Api/bin/Release/net10.0/publish
 
       # 27-B: the Projector Lambda is a second asset; its publish dir must hold a real
@@ -421,7 +426,12 @@ jobs:
 
       - name: Publish Lambda
         if: needs.detect-changes.outputs.backend == 'true'
-        run: dotnet publish src/Api/Api.csproj -c Release -o
+        # -r linux-x64 --self-contained false enables ReadyToRun (TI-35): the csproj
+        # turns on PublishReadyToRun only when a RID is supplied. Framework-dependent
+        # (Lambda's DOTNET_10 managed runtime provides the shared framework); R2R
+        # AOT-precompiles our + NuGet assemblies to cut first-request JIT after a
+        # SnapStart restore. -o keeps the asset path the CDK Code.FromAsset expects.
+        run: dotnet publish src/Api/Api.csproj -c Release -r linux-x64 --self-contained false -o
           src/Api/bin/Release/net10.0/publish
 
       # 27-B: the Projector Lambda is a second asset; its publish dir must hold a real

@@ -200,6 +200,42 @@ public static class Builder
         return builder.Build();
     }
 
+    // SnapStart takes the snapshot at the end of init, before any request exercises the
+    // pipeline — so the first request after each restore pays ~7 s of JIT + first-use init
+    // (measured in prod X-Ray 2026-06-12; see TI-32). This hook runs that warmup during
+    // snapshot creation, so the cost is captured in the snapshot rather than paid live on the
+    // first invocation. Off-Lambda (local Kestrel, tests) the hook is never invoked.
+    public static void RegisterSnapStartPriming(WebApplication app)
+    {
+        if (string.IsNullOrEmpty(Environment.GetEnvironmentVariable("AWS_LAMBDA_FUNCTION_NAME")))
+            return;
+
+        Amazon.Lambda.Core.SnapshotRestore.RegisterBeforeSnapshot(async () =>
+        {
+            try
+            {
+                // Warm the AWS SDK request pipeline: credential-provider chain + DynamoDB
+                // marshallers + HTTP/JSON machinery. The JIT'd code is captured in the
+                // snapshot; the TLS connection is re-established after restore, but the
+                // expensive one-off first-use initialisation is not repeated.
+                using var scope = app.Services.CreateScope();
+                await scope.ServiceProvider.GetRequiredService<IDynamoHealthCheck>()
+                    .CheckAsync().ConfigureAwait(false);
+
+                // Warm System.Text.Json: the converter factory + per-type metadata cache are
+                // built on first serialize and are NOT covered by ReadyToRun (TI-35).
+                System.Text.Json.JsonSerializer.Serialize(
+                    new { id = "warm", title = "warm", items = new[] { new { a = 1, b = "x" } } });
+            }
+            catch (Exception ex)
+            {
+                // Best-effort: priming must never fail snapshot creation — but surface a
+                // broken warm path in CloudWatch rather than swallowing it silently.
+                app.Logger.LogWarning(ex, "SnapStart priming hook failed; cold-start latency may regress.");
+            }
+        });
+    }
+
     // Builds a ProjectionUpdater from the registered singleton stores. Used by the in-process
     // sync decorator (local Kestrel); the scoped IProjectionUpdater registration is for the
     // rebuild handler and the Projector Lambda.

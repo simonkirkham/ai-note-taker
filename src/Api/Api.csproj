@@ -6,8 +6,17 @@
     <Nullable>enable</Nullable>
   </PropertyGroup>
 
+  <!-- ReadyToRun (TI-35): AOT-precompile our + dependency assemblies (AWS SDK, JwtBearer,
+       Google API libs) to native images so the first request after a SnapStart restore does
+       not JIT them. Only active when a RID is supplied (the CI publish passes -r linux-x64,
+       matching the x86_64 Lambda); a plain `dotnet build`/`test`/local publish stays portable IL. -->
+  <PropertyGroup Condition="'$(RuntimeIdentifier)' != ''">
+    <PublishReadyToRun>true</PublishReadyToRun>
+  </PropertyGroup>
+
   <ItemGroup>
     <PackageReference Include="Amazon.Lambda.AspNetCoreServer.Hosting" Version="2.1.0" />
+    <PackageReference Include="Amazon.Lambda.Core" Version="3.1.0" />
     <PackageReference Include="AWS.Lambda.Powertools.Logging" Version="3.2.2" />
     <PackageReference Include="AWS.Lambda.Powertools.Metrics" Version="3.2.2" />
     <PackageReference Include="AWSSDK.BedrockRuntime" Version="4.0.20.5" />
