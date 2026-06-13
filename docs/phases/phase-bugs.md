@@ -32,6 +32,7 @@
 | BUG-19 | Inline image flashes a 403 on every open — `ImageNodeView` renders the raw S3 key as a relative `<img src>` before `resolveImages` swaps in the presigned URL | Done | 25-B, 25-D |
 | BUG-20 | Workspace-switcher popover overlaps the main content when open — widened to `min-width: 16rem` (23-E truncation fix) it grows rightward past the narrow sidebar over the Home/Notes area. Keep the popover within the sidebar width and reveal the rename/delete icons on row hover/focus so full names ("Personal · default") still fit without truncating or overlapping content. | Done | 23-E |
 | BUG-21 | Note title silently lost on navigate in/out — the title field is never reconciled with the authoritative `detail.title` (initialised once from a prop/card-cache, no draft-pattern sync), so it can show empty; the title input auto-focuses on open and its `onBlur` then persists that empty value (`HandleRename` has no empty-title guard), permanently overwriting the real title. | Done | — |
+| BUG-22 | Multi-tag add drops a pill under RYW-2 async reads — the frontend per-stream consistency-token slot is last-writer-wins; two concurrent same-stream tag POSTs (`note#id@N`, `note#id@N+1`) race it, the older `@N` can win, and the next gated note read releases before the second tag is folded. Resurfaces the long-flaky `TagsJourney` E2E (TI-19) on deploy #546. | Done | TI-19, RYW-2 |
 
 Further bugs will be appended as they are identified.
 
@@ -548,3 +549,43 @@ The mount effect (`AuthContext.tsx:112-141`) only handles returning *from* a Goo
 **Fix:** title migrated to the draft pattern in `NoteView.tsx` — `title = titleDraft ?? detail?.title ?? initialTitle`, so it reconciles to the authoritative loaded title instead of being seeded once. `handleSaveTitle` (blur) discards the draft without PATCHing on empty/whitespace/unchanged, and keeps the typed title (with an error toast) on save failure. The rename now goes through a new keystone mutation `useRenameNoteDetail` (patches `keys.note` on success, invalidates `keys.noteCards` on settle — identical to `useEditContent`/`useSetNoteDate`), replacing the dead cards-only `useRenameNote` and the `onRename` prop chain through `App`/`NoteRoute`. Defence in depth: `Note.HandleRename` no-ops on `string.IsNullOrWhiteSpace(cmd.NewTitle)`.
 
 **Key files:** `web/src/components/NoteView.tsx` (title draft + `handleSaveTitle`), `web/src/hooks/useNoteDetailMutations.ts` (`useRenameNoteDetail`), `web/src/hooks/useNoteMutations.ts` (removed `useRenameNote`), `web/src/App.tsx` (removed `onRename` chain), `src/Domain/Notes/Note.cs` (`HandleRename` guard); tests `web/src/__tests__/NoteView.test.tsx`, `tests/Domain.Specs/Notes/RenameNoteSpec.cs`. Related: [BUG-18] (same un-flushed-edit / draft-pattern family), 20-E (note-detail draft pattern).
+
+---
+
+## BUG-22 — Multi-tag add drops a pill under RYW-2 async reads — consistency-token slot overwritten by an older version
+
+**Status:** ✅ Done (deploy #546 fix). Resolves the reopened **[TI-19](../technical-improvements.md#ti-19-stabilise-the-flaky-tagsjourney-e2e-post-deploy-gate-fails-intermittently)** flaky `TagsJourney` E2E.
+
+**Severity:** Medium — intermittent: a user pasting space-separated tags (e.g. `1:1s Bill`) sees one pill transiently fail to render after the optimistic UI reconciles against a too-early gated read. Self-heals on the next clean read/navigation, but it red-flags the post-deploy E2E gate and blocks unrelated merges (the "main's latest deploy must be green" rule).
+
+**How it surfaced:** deploy #546 (PR #255, RYW-2) failed `deploy-test` twice and passed only on attempt 3:
+| Attempt | Test | Symptom |
+|---|---|---|
+| 1 | `RemoveTag_GoneAfterNavigation` | `TimeoutException 30000ms` waiting for `Bill`'s remove button (pill never rendered) |
+| 2 | `RemoveTag_PillDisappears` | `ToBeVisible 15000ms` — `1:1s` pill not visible |
+
+Both are the _dropped-add_ signature (a pill from `AddTagAsync("1:1s Bill")` never renders), not a removal bug.
+
+**Root cause (confirmed by code read):** PR #255 (RYW-2) made the whole Note aggregate **async** — the projector is the sole writer of note read models, each note write returns its stream version in `X-Consistency-Token`, and `GET /notes/{id}` gates on that token (`If-Consistent-With`). Tags are a note-aggregate flow, so a tag write captures a token. But:
+1. `AddTagAsync("1:1s Bill")` fans out into **two concurrent same-stream POSTs**. The backend (BUG-17 retry) appends them at sequential versions → returns `note#id@N` and `note#id@N+1`.
+2. Both responses call `captureNoteToken` → `setStreamToken(stream, token)`, which was **last-writer-wins with no version compare** (`web/src/api/consistencyTokens.ts`). Whichever HTTP response resolves **last** owns the single slot — so ~half the time the older `@N` wins.
+3. The fresh-note reconcile path in `useTagMutations.onSettled` (invalidate `keys.note` when `ctx.previous === undefined`) fires a gated `GET /notes/{id}` carrying `If-Consistent-With: note#id@N`.
+4. The server waits only until the projector folded version N (the first tag), then answers **fresh** (not `stale` — the token it was handed _is_ satisfied). The second tag (`@N+1`) may not be folded yet → response omits it → clobbers the optimistic pill. `gatedRead`'s stale-retry loop can't rescue it because the server never flags `stale`.
+
+This is the CLAUDE.md guardrail in action: RYW-2 flipped the whole Note aggregate sync→async in one slice; the single-call RYW proof didn't cover the concurrent same-stream multi-write token case. Every historical TI-19 failure was on a test doing `AddTagAsync("1:1s Bill")`; single-tag tests never failed — consistent with this race.
+
+**Fix:** keep the **highest** version in the token slot.
+- `setStreamToken` keeps the higher version (the slot key already pins the stream; versions are monotonic, so a version compare is strictly correct).
+- `setLatestToken` keeps max-version **only** when the stored token is the same stream — a write to a _different_ stream still moves the "latest write" pointer regardless of version (design #7).
+
+**Repro (deterministic test):** `web/src/__tests__/noteConsistency.test.tsx` — two concurrent `tagNote` writes where the lower version resolves last leave the **higher** token in the slot; plus direct `setStreamToken`/`setLatestToken` version-ordering and cross-stream cases.
+
+**Acceptance criteria:**
+- [x] A test reproduces the regression: a lower same-stream version captured last must not win the slot (red before the fix).
+- [x] `setStreamToken` keeps the higher per-stream version; a genuinely newer write still advances it.
+- [x] `setLatestToken` keeps max-version for the same stream but replaces on a different stream (design #7 preserved).
+- [x] Existing RYW note/todo consistency tests stay green.
+
+**Key files:** `web/src/api/consistencyTokens.ts` (the fix); tests `web/src/__tests__/noteConsistency.test.tsx`. Related: [BUG-14], [BUG-17] (earlier inline-projection-era halves of the same flaky journey), RYW-2 (PR #255), [TI-19](../technical-improvements.md).
+
+**Follow-up (not in this fix):** the `TagsJourney` tag-pill assertions are not reload-tolerant (plain 15s wait), unlike the RYW pattern's own `AssertTodoVisibleAfterReloadAsync` reload-loop. A still-warming projector hard-times-out instead of re-polling. Logged as a test-robustness follow-up; the token-slot fix addresses the actual correctness bug.

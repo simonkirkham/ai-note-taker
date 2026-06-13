@@ -43,8 +43,27 @@ function safeRemove(key: string): void {
   }
 }
 
+// A write token is `<stream>@<version>`; stream versions are monotonic. Parse the two parts so a
+// later capture can't regress the gate to an older version (BUG-22).
+function tokenStream(token: string): string {
+  const at = token.lastIndexOf("@");
+  return at >= 0 ? token.slice(0, at) : token;
+}
+function tokenVersion(token: string): number {
+  const at = token.lastIndexOf("@");
+  const v = at >= 0 ? Number(token.slice(at + 1)) : Number.NaN;
+  return Number.isFinite(v) ? v : -1;
+}
+
 // --- Per-stream tokens (single-entity reads) ---
+// Keep the HIGHER version. Concurrent same-stream writes (a space-separated multi-tag add fans out
+// into two POSTs returning note#id@N and note#id@N+1) race to this single slot; without the guard
+// whichever HTTP response lands LAST wins, so ~half the time the slot holds the older @N. The next
+// gated read then releases once the projector has folded only the first write and drops the second
+// tag's pill (BUG-22). The slot key already pins the stream, so a version compare is sufficient.
 export function setStreamToken(streamId: string, token: string): void {
+  const existing = safeGet(STREAM_PREFIX + streamId);
+  if (existing && tokenVersion(existing) >= tokenVersion(token)) return;
   safeSet(STREAM_PREFIX + streamId, token);
 }
 export function getStreamToken(streamId: string): string | null {
@@ -55,7 +74,13 @@ export function clearStreamToken(streamId: string): void {
 }
 
 // --- Per-list "latest write" pointers (list reads) ---
+// Keep max-version ONLY when the stored token is the SAME stream (the BUG-22 concurrent same-stream
+// race, e.g. a multi-tag add updating one note's card row). A write to a DIFFERENT stream legitimately
+// moves the "latest write" pointer regardless of version (design #7: a list read waits on the stream
+// just written), so cross-stream always replaces.
 export function setLatestToken(scope: string, token: string): void {
+  const existing = safeGet(LATEST_PREFIX + scope);
+  if (existing && tokenStream(existing) === tokenStream(token) && tokenVersion(existing) >= tokenVersion(token)) return;
   safeSet(LATEST_PREFIX + scope, token);
 }
 export function getLatestToken(scope: string): string | null {
