@@ -161,6 +161,29 @@ public sealed class AppPage(IPage page, string baseUrl, string? authToken = null
     public Task AssertActionsEmptyAsync() =>
         Assertions.Expect(page.GetByTestId("actions-empty")).ToBeVisibleAsync();
 
+    // The action read-your-writes proof (RYW-3a): reload FIRST (drops the optimistic actions cache,
+    // so the just-added action can only come from the server), then assert. The post-reload
+    // GET /notes/{id}/actions carries the sessionStorage-persisted action token, so the gate waits
+    // for the async projector and the action appears deterministically. Reload-loop so a still-
+    // warming projector re-polls (each reload re-sends the token and re-gates).
+    public async Task AssertActionVisibleAfterReloadAsync(string description, int timeoutMs = 20000)
+    {
+        var deadline = DateTime.UtcNow.AddMilliseconds(timeoutMs);
+        while (true)
+        {
+            await page.ReloadAsync();
+            try
+            {
+                await Assertions.Expect(page.GetByTestId("actions-list").GetByText(description))
+                    .ToBeVisibleAsync(new() { Timeout = 2500 });
+                return;
+            }
+            catch (PlaywrightException) when (DateTime.UtcNow < deadline)
+            {
+            }
+        }
+    }
+
     public async Task AddTagAsync(string tagInput)
     {
         var tagCount = tagInput.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries).Length;

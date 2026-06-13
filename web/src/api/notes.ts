@@ -7,6 +7,7 @@ import {
   setLatestToken,
   setStreamToken,
 } from './consistencyTokens';
+import { gatedRead } from './gatedRead';
 
 // Read-your-writes (RYW-2): the note flows are async (the projector builds the read models). A
 // note write returns its write token in `X-Consistency-Token`; the next note read echoes it in
@@ -14,15 +15,9 @@ import {
 // read (GET /notes/{id}) waits on that note's own stream; the cards LIST read waits on the most
 // recently written note (the one the user just edited).
 const NOTE_CARDS_SCOPE = 'noteCards';
-const STALE_RETRIES = 2;
-const STALE_RETRY_DELAY_MS = 300;
 
 function noteStream(noteId: string): string {
   return `note#${noteId}`;
-}
-
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 // Record a note write's token both against its own stream (for the note-detail read) and as the
@@ -33,24 +28,6 @@ export function captureNoteToken(noteId: string, response: Response): void {
   if (!token) return;
   setStreamToken(noteStream(noteId), token);
   setLatestToken(NOTE_CARDS_SCOPE, token);
-}
-
-// Issue a token-gated read: attach the pending token (if any), and on a `stale` response retry a
-// bounded number of times (each retry re-sends the token so the server waits again as the
-// projector catches up). After a non-stale read, clear the token — the projection is confirmed
-// caught up.
-async function gatedRead<T>(path: string, token: string | null, onFresh: () => void): Promise<T> {
-  const headers: Record<string, string> = token ? { 'If-Consistent-With': token } : {};
-  for (let attempt = 0; ; attempt++) {
-    const { body, response } = await requestWithResponse<T>(path, { headers });
-    const stale = response.headers.get('X-Consistency') === 'stale';
-    if (!stale) {
-      onFresh();
-      return body;
-    }
-    if (attempt >= STALE_RETRIES) return body;
-    await sleep(STALE_RETRY_DELAY_MS);
-  }
 }
 
 export interface LinkedMeeting {

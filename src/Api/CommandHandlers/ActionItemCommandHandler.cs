@@ -5,20 +5,23 @@ using EventStore.Projections;
 using Api.Auth;
 using Api.Exceptions;
 using Api.Observability;
-using Api.Projections;
 using Api.Utilities;
 
 namespace Api.CommandHandlers;
 
+// Append-only since RYW-3a: the whole ActionItem aggregate is async — the projector (the in-process
+// SyncProjectingEventStore decorator in tests/local, the Projector Lambda in prod) is the sole
+// writer of the action read models, no inline ProjectionUpdater call. HandleAsync returns the new
+// stream version (the write token) so the endpoint can surface it; the read side waits on
+// proj-position before answering.
 public sealed class ActionItemCommandHandler(
     IEventStore store,
     INoteDetailStore noteDetailStore,
-    IProjectionUpdater projectionUpdater,
     ICurrentUser currentUser,
     IDomainMetrics metrics,
     ILogger<ActionItemCommandHandler> logger) : IActionItemCommandHandler
 {
-    public Task<ActionId> HandleAsync(AddActionItem cmd, CancellationToken ct = default) =>
+    public Task<long> HandleAsync(AddActionItem cmd, CancellationToken ct = default) =>
         CommandInstrumentation.RunAsync(metrics, logger, nameof(AddActionItem), "ActionItem", async () =>
         {
             var noteDetail = await noteDetailStore.GetAsync(cmd.NoteId, ct).ConfigureAwait(false);
@@ -31,36 +34,31 @@ public sealed class ActionItemCommandHandler(
 
             var envelopes = ToEnvelopes(streamId, newEvents);
             await store.AppendAsync(streamId, history.Count, envelopes, ct).ConfigureAwait(false);
-            await projectionUpdater.ApplyActionItemEventsAsync(cmd.NoteId, history, newEvents, envelopes, ct).ConfigureAwait(false);
-
-            return cmd.ActionId;
+            return (long)(history.Count + envelopes.Count);
         });
 
-    public Task HandleAsync(CompleteActionItem cmd, CancellationToken ct = default) =>
+    public Task<long> HandleAsync(CompleteActionItem cmd, CancellationToken ct = default) =>
         CommandInstrumentation.RunAsync(metrics, logger, nameof(CompleteActionItem), "ActionItem", () =>
-            ExecuteAppendAndProjectAsync(cmd.ActionId, cmd, ct));
+            ExecuteAppendAsync(cmd.ActionId, cmd, ct));
 
-    public Task HandleAsync(ReopenActionItem cmd, CancellationToken ct = default) =>
+    public Task<long> HandleAsync(ReopenActionItem cmd, CancellationToken ct = default) =>
         CommandInstrumentation.RunAsync(metrics, logger, nameof(ReopenActionItem), "ActionItem", () =>
-            ExecuteAppendAndProjectAsync(cmd.ActionId, cmd, ct));
+            ExecuteAppendAsync(cmd.ActionId, cmd, ct));
 
-    public Task HandleAsync(DeleteActionItem cmd, CancellationToken ct = default) =>
+    public Task<long> HandleAsync(DeleteActionItem cmd, CancellationToken ct = default) =>
         CommandInstrumentation.RunAsync(metrics, logger, nameof(DeleteActionItem), "ActionItem", () =>
-            ExecuteAppendAndProjectAsync(cmd.ActionId, cmd, ct));
+            ExecuteAppendAsync(cmd.ActionId, cmd, ct));
 
-    async Task ExecuteAppendAndProjectAsync(ActionId actionId, ICommand command, CancellationToken ct)
+    async Task<long> ExecuteAppendAsync(ActionId actionId, ICommand command, CancellationToken ct)
     {
         var streamId = actionId.ToStreamId();
         var history = await store.ReadAsync(streamId, ct).ConfigureAwait(false);
         if (history.Count == 0) throw new ActionItemNotFoundException(actionId);
 
-        var addedEnvelope = history.First(e => e.EventType == nameof(ActionItemAdded));
-        var noteId = ((ActionItemAdded)EventDeserializer.Deserialize(addedEnvelope)).NoteId;
-
         var newEvents = RebuildAggregate(history).Handle(command);
         var envelopes = ToEnvelopes(streamId, newEvents);
         await store.AppendAsync(streamId, history.Count, envelopes, ct).ConfigureAwait(false);
-        await projectionUpdater.ApplyActionItemEventsAsync(noteId, history, newEvents, envelopes, ct).ConfigureAwait(false);
+        return history.Count + envelopes.Count;
     }
 
     static ActionItem RebuildAggregate(IReadOnlyList<EventEnvelope> history)
