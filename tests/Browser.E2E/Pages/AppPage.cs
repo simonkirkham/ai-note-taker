@@ -176,9 +176,6 @@ public sealed class AppPage(IPage page, string baseUrl, string? authToken = null
         await postDone;
     }
 
-    public Task AssertActionItemVisibleAsync(string description) =>
-        Assertions.Expect(page.GetByTestId("actions-list").GetByText(description)).ToBeVisibleAsync();
-
     public Task AssertActionsEmptyAsync() =>
         Assertions.Expect(page.GetByTestId("actions-empty")).ToBeVisibleAsync();
 
