@@ -1,7 +1,9 @@
+import { http, HttpResponse } from 'msw'
 import { useState } from 'react'
 import NoteEditor from '../components/NoteEditor'
 import { ToastProvider } from '../components/ToastProvider'
 import { render, screen, waitFor } from '../test/render'
+import { server } from '../test/setup'
 
 // Mounts the real Tiptap editor (NoteView mocks NoteEditor, so its DOM-level
 // link hardening must be proven here) and feeds it markdown via the `value`
@@ -79,6 +81,41 @@ describe('NoteEditor link-scheme hardening', () => {
       const a = anchors().find((el) => (el.getAttribute('href') ?? '').startsWith('https:'))
       expect(a).toBeTruthy()
       expect(a?.getAttribute('rel')).toBe('noopener noreferrer nofollow')
+    })
+  })
+})
+
+describe('NoteEditor parse-time image fetch (BUG-24)', () => {
+  const KEY = 'notes/note-1/abc123.png'
+
+  it('parses bare-key content without ever producing a fetchable <img src> for the key', async () => {
+    // Hold the resolve open so the assertion runs in the pre-resolve window — the exact
+    // window in which BUG-24 fired its relative-URL 403.
+    server.use(
+      http.post('*/notes/:noteId/images/resolve', () => new Promise<Response>(() => {})),
+    )
+    renderEditor(`Notes\n\n![](${KEY})`)
+    await screen.findByTestId('note-content')
+
+    await waitFor(() => {
+      expect(screen.getByTestId('image-placeholder')).toBeInTheDocument()
+    })
+    const imgs = Array.from(document.querySelectorAll('[data-testid="note-content"] img'))
+    expect(imgs.some((img) => (img.getAttribute('src') ?? '').includes(KEY))).toBe(false)
+    expect(imgs.length).toBe(0)
+  })
+
+  it('swaps in the presigned <img> once resolve returns', async () => {
+    const url = 'https://bucket.s3.amazonaws.com/notes/note-1/abc123.png?X-Amz-Signature=z'
+    server.use(
+      http.post('*/notes/:noteId/images/resolve', () => HttpResponse.json({ urls: { [KEY]: url } })),
+    )
+    renderEditor(`![](${KEY})`)
+    await screen.findByTestId('note-content')
+
+    await waitFor(() => {
+      const img = document.querySelector('[data-testid="note-content"] img')
+      expect(img?.getAttribute('src')).toBe(url)
     })
   })
 })

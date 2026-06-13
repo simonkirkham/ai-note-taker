@@ -77,6 +77,63 @@ public sealed class NoteImageJourney(BrowserFixture browser) : IAsyncLifetime
     }
 
     [Fact]
+    public async Task Opening_a_note_with_an_image_issues_no_bare_key_relative_image_request()
+    {
+        // BUG-24: stored content carries the bare key `notes/{id}/{img}.png`. Before the fix,
+        // tiptap-markdown parsed that into a transient <img src="notes/…"> the browser fetched
+        // relative to the SPA route (`…/notes/notes/…`) → 403, on every open. Assert the only
+        // image request on open is the presigned (`X-Amz-…`) GET — never a bare-key/relative one.
+        var title = $"No-403 img {Guid.NewGuid():N}"[..30];
+
+        // Given a note whose persisted content contains an inline image (upload then save).
+        await _app.GotoAsync();
+        await _app.ClickNewNoteAsync();
+        await _app.EnterTitleAsync(title);
+
+        var presignDone = _page.WaitForResponseAsync(r =>
+            r.Url.Contains("/images/presign-upload") && r.Request.Method == "POST");
+        await _page.GetByTestId("image-file-input").SetInputFilesAsync(new FilePayload
+        {
+            Name = "shot.png",
+            MimeType = "image/png",
+            Buffer = PngBytes,
+        });
+        await presignDone;
+        await Assertions.Expect(_page.GetByTestId("note-content").Locator("img"))
+            .ToBeVisibleAsync(new() { Timeout = 15000 });
+
+        var contentSaved = _page.WaitForResponseAsync(r =>
+            r.Url.Contains("/content") && r.Request.Method == "PUT");
+        await _app.SaveAndReturnAsync();
+        await contentSaved;
+
+        // When I reopen the note — record every image response while it loads.
+        var badRequests = new List<string>();
+        _page.Response += (_, response) =>
+        {
+            var url = response.Url;
+            var isPng = url.Contains(".png", StringComparison.OrdinalIgnoreCase);
+            var isPresigned = url.Contains("X-Amz-", StringComparison.OrdinalIgnoreCase);
+            // A note-image PNG under a `/notes/` path fetched without a presign is the bare-key
+            // relative-URL request (e.g. the BUG-24 doubled-segment `…/notes/notes/{id}/{img}.png`).
+            var isBareKeyImage = isPng && !isPresigned && url.Contains("/notes/");
+            if (isBareKeyImage && response.Status >= 400)
+                badRequests.Add($"{response.Status} {url}");
+        };
+
+        await _app.ClickNoteInListAsync(title);
+        var resolveDone = _page.WaitForResponseAsync(r =>
+            r.Url.Contains("/images/resolve") && r.Request.Method == "POST");
+        await resolveDone;
+        await Assertions.Expect(_page.GetByTestId("note-content").Locator("img"))
+            .ToBeVisibleAsync(new() { Timeout = 15000 });
+
+        // Then no bare-key/relative image request was made (only the presigned GET).
+        Assert.True(badRequests.Count == 0,
+            $"Expected no bare-key image request on open; saw: {string.Join("; ", badRequests)}");
+    }
+
+    [Fact]
     public async Task Remove_an_image_drops_it_from_the_note_and_it_stays_gone_after_reload()
     {
         var title = $"Remove img {Guid.NewGuid():N}"[..30];
