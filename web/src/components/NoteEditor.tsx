@@ -6,7 +6,13 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Markdown } from 'tiptap-markdown';
 import { presignUpload, resolveImages } from '../api/notes';
 import { hasDisallowedScheme } from '../lib/linkScheme';
-import { dropUnresolvedImages, extractImageKeys, srcsToKeys } from '../lib/noteImages';
+import {
+  dropUnresolvedImages,
+  extractImageKeys,
+  keysToSrcs,
+  srcsToKeys,
+  stripImageKeys,
+} from '../lib/noteImages';
 import { ImageWithResize } from './imageWithResize';
 import styles from './NoteEditor.module.css';
 import { useToast } from './toastContext';
@@ -33,6 +39,12 @@ export default function NoteEditor({ noteId, value, onChange, onBlur }: NoteEdit
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [buttonY, setButtonY] = useState<number | null>(null);
   const { showError } = useToast();
+
+  // Mirrors the editor's editability for the toolbar UI (the editor itself is driven
+  // imperatively via setEditable). False while a BUG-24 image resolve is pending so the
+  // insert control is disabled; flipped true once resolve applies (or fails). Seeded false
+  // only for a note that mounts read-only (has image keys to resolve).
+  const [canInsert, setCanInsert] = useState(() => extractImageKeys(value).length === 0);
 
   // The ProseMirror paste/drop handlers reach the upload logic through this ref.
   // Calling the helpers directly from the useEditor config would make the config
@@ -82,7 +94,18 @@ export default function NoteEditor({ noteId, value, onChange, onBlur }: NoteEdit
         HTMLAttributes: { rel: 'noopener noreferrer nofollow', target: '_blank' },
       }),
     ],
-    content: value,
+    // BUG-24: never let the parser see a bare S3 key as an <img src>, or the browser
+    // fetches it relative to the SPA route (`…/notes/notes/{id}/{img}.png` → 403) during
+    // tiptap-markdown's parse, before any ImageNodeView exists. Mount with the keys
+    // stripped (text shows instantly); the resolve effect below re-inserts the images as
+    // presigned URLs via setContent — so the only image the parser ever sees is a
+    // presigned URL (→ the desired `?X-Amz-…` 200 GET), never a bare key.
+    content: stripImageKeys(value),
+    // While image keys are pending resolve the doc has them stripped out; keep the editor
+    // read-only until resolve re-inserts them, so a fast edit-then-save in that sub-second
+    // window can't persist the stripped (image-less) content. Re-enabled in the resolve
+    // .then / .catch below. Notes with no image keys mount editable immediately.
+    editable: extractImageKeys(value).length === 0,
     editorProps: {
       attributes: {
         'aria-label': 'Note content',
@@ -104,20 +127,6 @@ export default function NoteEditor({ noteId, value, onChange, onBlur }: NoteEdit
       onBlur();
     },
   });
-
-  // Replace the src of every image node currently rendering `oldSrc`.
-  const swapImageSrc = useCallback((ed: Editor, oldSrc: string, newSrc: string) => {
-    const { state } = ed;
-    const tr = state.tr;
-    let changed = false;
-    state.doc.descendants((node, pos) => {
-      if (node.type.name === 'image' && node.attrs.src === oldSrc) {
-        tr.setNodeMarkup(pos, undefined, { ...node.attrs, src: newSrc });
-        changed = true;
-      }
-    });
-    if (changed) ed.view.dispatch(tr);
-  }, []);
 
   const removeImage = useCallback((ed: Editor, src: string) => {
     const { state } = ed;
@@ -188,13 +197,13 @@ export default function NoteEditor({ noteId, value, onChange, onBlur }: NoteEdit
 
   const handleImageDataTransfer = useCallback(
     (data: DataTransfer | null): boolean => {
-      if (!editor || !data) return false;
+      if (!editor || !canInsert || !data) return false;
       const images = [...data.files].filter((f) => f.type.startsWith('image/'));
       if (images.length === 0) return false;
       for (const file of images) insertAndUpload(editor, file);
       return true;
     },
-    [editor, insertAndUpload]
+    [editor, canInsert, insertAndUpload]
   );
   useEffect(() => {
     dataTransferHandlerRef.current = handleImageDataTransfer;
@@ -202,41 +211,59 @@ export default function NoteEditor({ noteId, value, onChange, onBlur }: NoteEdit
 
   const handlePickFiles = useCallback(
     (files: FileList | null) => {
-      if (!editor || !files) return;
+      // Ignore inserts while the editor is read-only (BUG-24 pending-resolve window): a
+      // programmatic setImage isn't blocked by editable=false, and the resolve setContent
+      // would then discard the just-inserted node and orphan its uploaded S3 object.
+      if (!editor || !canInsert || !files) return;
       for (const file of [...files]) insertAndUpload(editor, file);
     },
-    [editor, insertAndUpload]
+    [editor, canInsert, insertAndUpload]
   );
 
-  // Resolve stored keys to presigned URLs for display. Runs when the loaded
-  // content first contains unresolved keys; the `ignore` flag drops a stale
-  // response if the editor changed before the resolve returned. setState-free —
-  // the only mutation is a ProseMirror dispatch inside the `.then`.
-  const resolvedFor = useRef<string | null>(null);
+  // Resolve-before-parse (BUG-24): the editor mounts with image keys stripped, so the
+  // parser never fetches a bare key. This runs ONCE per note (the editor is keyed by
+  // noteId, so it remounts per note) on the mount-time content: resolveImages → seed the
+  // display→key save map → setContent the *resolved* markdown (presigned URLs, never a
+  // bare key) and re-enable editing. Firing once on the captured initial value — not on
+  // every `value` change — is what keeps a later image upload (which changes the key set)
+  // from re-firing a whole-doc setContent that would reset selection / clobber live edits;
+  // an uploaded image is already shown via the blob→presigned upload flow and needs no
+  // resolve here. No setState in the effect body — the editor calls and the setCanInsert
+  // run inside the async `.then`/`.catch` (the set-state-in-effect lint rule is satisfied).
+  // `ignore`/`isDestroyed` drop a stale or unmounted response.
+  const didResolve = useRef(false);
+  const initialValueRef = useRef(value);
   useEffect(() => {
-    if (!editor) return;
-    const keys = extractImageKeys(value);
+    if (!editor || didResolve.current) return;
+    const initial = initialValueRef.current;
+    const keys = extractImageKeys(initial);
     if (keys.length === 0) return;
-    const signature = `${noteId}:${keys.join(',')}`;
-    if (resolvedFor.current === signature) return;
-    resolvedFor.current = signature;
+    didResolve.current = true;
     let ignore = false;
     resolveImages(noteId, keys)
       .then((urls) => {
-        if (ignore) return;
+        if (ignore || editor.isDestroyed) return;
         for (const [key, url] of Object.entries(urls)) {
           displaySrcToKey.current[url] = key;
-          swapImageSrc(editor, key, url);
         }
+        // emitUpdate:false so the resolve doesn't dirty the draft; the resolved markdown
+        // has no bare-key src, so this setContent never triggers the BUG-24 fetch.
+        editor.commands.setContent(keysToSrcs(initial, urls), { emitUpdate: false });
+        editor.setEditable(true);
+        setCanInsert(true);
       })
       .catch(() => {
-        // Leave resolvedFor set: a transient resolve failure must not retry-storm on
-        // every keystroke. A different image set (new signature) still attempts afresh.
+        // Re-enable editing even on a transient resolve failure so the note isn't stuck
+        // read-only; the stored content still holds the keys and re-resolves on next open.
+        if (!ignore && !editor.isDestroyed) {
+          editor.setEditable(true);
+          setCanInsert(true);
+        }
       });
     return () => {
       ignore = true;
     };
-  }, [editor, noteId, value, swapImageSrc]);
+  }, [editor, noteId]);
 
   return (
     <div ref={containerRef} className={styles.noteEditorContainer}>
@@ -247,6 +274,7 @@ export default function NoteEditor({ noteId, value, onChange, onBlur }: NoteEdit
           data-testid="insert-image-button"
           onClick={() => fileInputRef.current?.click()}
           aria-label="Insert image"
+          disabled={!canInsert}
         >
           <ImageIcon />
           <span>Image</span>

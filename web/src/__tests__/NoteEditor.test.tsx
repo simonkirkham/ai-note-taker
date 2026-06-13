@@ -1,7 +1,14 @@
 import { useState } from 'react'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import NoteEditor from '../components/NoteEditor'
 import { ToastProvider } from '../components/ToastProvider'
 import { render, screen, waitFor } from '../test/render'
+
+const resolveImages = vi.fn()
+vi.mock('../api/notes', () => ({
+  resolveImages: (...args: unknown[]) => resolveImages(...args),
+  presignUpload: vi.fn(),
+}))
 
 // Mounts the real Tiptap editor (NoteView mocks NoteEditor, so its DOM-level
 // link hardening must be proven here) and feeds it markdown via the `value`
@@ -80,5 +87,74 @@ describe('NoteEditor link-scheme hardening', () => {
       expect(a).toBeTruthy()
       expect(a?.getAttribute('rel')).toBe('noopener noreferrer nofollow')
     })
+  })
+})
+
+// BUG-24 (resolve-before-parse): the editor must never be handed a bare S3 key as an
+// <img src>, or the browser fetches it relative to the SPA route → 403. jsdom does not
+// fetch images, so this proves the *transform/ordering* (no bare-key src ever reaches the
+// editor DOM; the resolved presigned URL does) — NOT the absence of a network fetch. The
+// authoritative no-fetch proof is the NoteImageJourney E2E.
+describe('NoteEditor resolve-before-parse (BUG-24)', () => {
+  const KEY = 'notes/note-1/abc123.png'
+  const URL = 'https://bucket.s3.amazonaws.com/notes/note-1/abc123.png?X-Amz-Signature=sig'
+
+  function editorImgSrcs() {
+    return Array.from(
+      document.querySelectorAll<HTMLImageElement>('[data-testid="note-content"] img')
+    ).map((img) => img.getAttribute('src') ?? '')
+  }
+
+  beforeEach(() => {
+    resolveImages.mockReset()
+  })
+  afterEach(() => {
+    resolveImages.mockReset()
+  })
+
+  it('never renders the bare key as an <img src> (parser sees no fetchable key)', async () => {
+    let resolve: (urls: Record<string, string>) => void = () => {}
+    resolveImages.mockReturnValue(new Promise((r) => { resolve = r }))
+
+    renderEditor(`Notes\n\n![](${KEY})`)
+    await screen.findByTestId('note-content')
+
+    // Before resolve completes: the placeholder shows, and crucially no <img> carries the
+    // bare key as its src (the editor was constructed with the key stripped out).
+    await waitFor(() => expect(resolveImages).toHaveBeenCalledWith('note-1', [KEY]))
+    expect(editorImgSrcs().some((src) => src.includes(KEY) && !src.includes('X-Amz-'))).toBe(false)
+
+    // After resolve: the presigned URL renders, still never the bare key.
+    resolve({ [KEY]: URL })
+    await waitFor(() => expect(editorImgSrcs()).toContain(URL))
+    expect(editorImgSrcs().some((src) => src === KEY)).toBe(false)
+  })
+
+  it('keeps the editor read-only while a resolve is pending, then editable after', async () => {
+    let resolve: (urls: Record<string, string>) => void = () => {}
+    resolveImages.mockReturnValue(new Promise((r) => { resolve = r }))
+
+    renderEditor(`Notes\n\n![](${KEY})`)
+    const content = await screen.findByTestId('note-content')
+
+    // While pending: read-only, so a fast edit-then-save can't persist the stripped content,
+    // and the insert-image control is disabled so a programmatic insert can't be wiped by the
+    // resolve setContent.
+    await waitFor(() => expect(resolveImages).toHaveBeenCalled())
+    expect(content.getAttribute('contenteditable')).toBe('false')
+    expect(screen.getByTestId('insert-image-button')).toBeDisabled()
+
+    // After resolve: editable again and the insert control re-enabled.
+    resolve({ [KEY]: URL })
+    await waitFor(() => expect(content.getAttribute('contenteditable')).toBe('true'))
+    expect(screen.getByTestId('insert-image-button')).toBeEnabled()
+  })
+
+  it('does not call resolveImages for content with no image keys (snappy load)', async () => {
+    resolveImages.mockResolvedValue({})
+    renderEditor('Plain text only.')
+    const content = await screen.findByTestId('note-content')
+    expect(content.getAttribute('contenteditable')).toBe('true')
+    expect(resolveImages).not.toHaveBeenCalled()
   })
 })
