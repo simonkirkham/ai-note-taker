@@ -3,10 +3,12 @@ import {
   dropUnresolvedImages,
   extractImageKeys,
   extractImageSrcs,
+  hasNoImageKeys,
   isImageKey,
   keysToSrcs,
   rewriteImageSrcs,
   srcsToKeys,
+  stripImageKeys,
 } from '../lib/noteImages';
 
 const KEY_A = 'notes/note-1/abc123.png';
@@ -180,5 +182,79 @@ describe('width token (title slot) survives the key <-> URL pipeline', () => {
     expect(out).toContain(`![](${KEY_A} "w=480")`);
     expect(out).not.toContain('blob:');
     expect(out).not.toContain('w=300');
+  });
+});
+
+// BUG-24: the markdown handed to the Tiptap parser must never contain a bare-key
+// image src, or the browser fetches it relative to the SPA route -> 403. These
+// prove the resolve-before-parse transform at the pure data seam; jsdom does not
+// fetch images, so the authoritative no-fetch proof is the NoteImageJourney E2E.
+describe('stripImageKeys (BUG-24 load guard)', () => {
+  it('drops a bare-key image so no fetchable src reaches the parser', () => {
+    const out = stripImageKeys(`hello\n\n![](${KEY_A})\n\nworld`);
+    expect(out).not.toContain(KEY_A);
+    expect(hasNoImageKeys(out)).toBe(true);
+    expect(out).toContain('hello');
+    expect(out).toContain('world');
+  });
+
+  it('drops a sized bare-key image (width token and all)', () => {
+    const out = stripImageKeys(`![](${KEY_A} "w=480")`);
+    expect(out).not.toContain(KEY_A);
+    expect(out).not.toContain('w=480');
+  });
+
+  it('drops every bare-key image, leaving non-key srcs untouched', () => {
+    const md = `![](${KEY_A})\n\n![alt](https://cdn.example.com/cat.png)\n\n![](${KEY_B})`;
+    const out = stripImageKeys(md);
+    expect(hasNoImageKeys(out)).toBe(true);
+    expect(out).toContain('https://cdn.example.com/cat.png');
+    expect(out).not.toContain(KEY_A);
+    expect(out).not.toContain(KEY_B);
+  });
+
+  it('leaves a presigned URL image in place (already safe to parse)', () => {
+    const out = stripImageKeys(`![](${URL_A})`);
+    expect(out).toContain(URL_A);
+    expect(hasNoImageKeys(out)).toBe(true);
+  });
+
+  it('is a no-op for content with no images', () => {
+    expect(stripImageKeys('just some **text**')).toBe('just some **text**');
+  });
+});
+
+describe('hasNoImageKeys', () => {
+  it('is false when a bare key is present', () => {
+    expect(hasNoImageKeys(`![](${KEY_A})`)).toBe(false);
+  });
+
+  it('is true for presigned URLs and plain text', () => {
+    expect(hasNoImageKeys(`![](${URL_A})`)).toBe(true);
+    expect(hasNoImageKeys('no images here')).toBe(true);
+  });
+});
+
+describe('resolve-before-parse content invariant (BUG-24)', () => {
+  // The two strings NoteEditor ever hands the parser: the initial content
+  // (stripImageKeys) and the resolved content (keysToSrcs after resolve). Both
+  // must satisfy hasNoImageKeys; the resolved one must round-trip back to keys.
+  const value = `![](${KEY_A} "w=240")\n\ntext\n\n![](${KEY_B})`;
+
+  it('initial content handed to the parser has no bare-key src', () => {
+    expect(hasNoImageKeys(stripImageKeys(value))).toBe(true);
+  });
+
+  it('resolved content handed to setContent has no bare-key src', () => {
+    const resolved = keysToSrcs(value, { [KEY_A]: URL_A, [KEY_B]: URL_B });
+    expect(hasNoImageKeys(resolved)).toBe(true);
+    expect(resolved).toContain(URL_A);
+    expect(resolved).toContain(URL_B);
+  });
+
+  it('saving the resolved content serializes back to the bare keys (round-trip)', () => {
+    const resolved = keysToSrcs(value, { [KEY_A]: URL_A, [KEY_B]: URL_B });
+    const saved = srcsToKeys(resolved, { [URL_A]: KEY_A, [URL_B]: KEY_B });
+    expect(saved).toBe(value);
   });
 });

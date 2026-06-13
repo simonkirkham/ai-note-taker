@@ -47,6 +47,24 @@ export function srcsToKeys(markdown: string, keyByUrl: Record<string, string>): 
   return rewriteImageSrcs(markdown, keyByUrl);
 }
 
+// Load guard (BUG-24): drop any image whose src is a bare S3 key, so the markdown
+// can be safely handed to the Tiptap parser without the browser fetching the key
+// as a URL relative to the SPA route (`…/notes/notes/{id}/{img}.png` → 403). The
+// dropped image is re-inserted (as a presigned <img>) once resolveImages returns
+// and the resolved markdown is set as content. Non-key srcs are left untouched.
+export function stripImageKeys(markdown: string): string {
+  return markdown.replace(IMAGE_MARKDOWN, (whole, _alt: string, src: string) =>
+    isImageKey(src) ? '' : whole
+  );
+}
+
+// True when the markdown contains no image whose src is a bare key — i.e. it is
+// safe to parse without a relative-URL fetch. The resolve-before-parse invariant
+// asserts this of every string handed to the editor parser.
+export function hasNoImageKeys(markdown: string): boolean {
+  return extractImageKeys(markdown).length === 0;
+}
+
 // Final save guard: drop any image whose src is not a stable key — e.g. a `blob:`
 // object URL for an upload still in flight, or a presigned URL that somehow escaped
 // the key swap. Makes the never-persist-a-transient-URL invariant hold by construction,
