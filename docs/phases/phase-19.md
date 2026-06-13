@@ -7,7 +7,7 @@
 | Slice | Summary | Status | Depends on |
 |-------|---------|--------|------------|
 | 19-A | **Split `api.ts` by domain.** 434-line, 8-domain module → `api/<domain>.ts` + a shared `request<T>()`/`requestVoid()` helper absorbing the ~33 `!res.ok` repeats; no barrel; behaviour unchanged | Done | — |
-| 19-B | **Typed-lint + non-null/catch cleanup.** Adopt `@typescript-eslint` `recommended-type-checked`; remove the 8 non-null `!` and the unsafe `catch` typing; add cheap flags (`noImplicitOverride`) | Not Started | — |
+| 19-B | **Typed-lint + non-null/catch cleanup.** Adopt `@typescript-eslint` `recommended-type-checked`; remove the 8 non-null `!` and the unsafe `catch` typing; add cheap flags (`noImplicitOverride`) | Done | — |
 | 19-C | **Stricter index/optional TS flags.** `noUncheckedIndexedAccess` then `exactOptionalPropertyTypes`, staged with backlog clear | Not Started | 19-B |
 | 19-D | **Context provider performance.** Memoise `AuthContext`/`ToastContext` provider values; `useCallback` the Auth actions; optional Auth state/actions split | Done | — |
 | 19-E | **Effect hygiene.** Add out-of-order guards to 3 mount-only fetches; replace 3 notify-parent-in-effect patterns | Not Started | — |
@@ -140,7 +140,7 @@ Each lists the finding, locations, value tier, and effort. Specs are written per
 
 ### 19-B — Typed-lint + non-null/catch cleanup — **value: medium**
 
-**Status:** Not Started (specced 2026-06-13)
+**Status:** Done (PR #280, deploy #573, 2026-06-13). Shipped exactly as specced: `recommendedTypeChecked` + `parserOptions.project` (app + test configs), `noImplicitOverride`, `TodoItem` discriminated union removing the 3 `useTodoMutations` `!`, `MeetingsSection` guards, 2 scoped inline disables (`main.tsx`, `AuthContext.tsx`), `.catch((err: Error))` item confirmed already-fixed and dropped.
 
 **Intent:** Adopt `@typescript-eslint` `recommended-type-checked` so the typed lint rules (`no-non-null-assertion`, `no-floating-promises`, `no-misused-promises`, nullish/optional-chain) are enforced going forward, clear the resulting backlog, and remove the remaining non-null `!` assertions. Defense against silent `null`-deref and unhandled-rejection regressions, not a bug fix — the headline surfaces are already clean.
 
