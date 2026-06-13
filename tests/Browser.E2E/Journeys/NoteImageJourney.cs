@@ -30,6 +30,11 @@ public sealed class NoteImageJourney(BrowserFixture browser) : IAsyncLifetime
     private static readonly byte[] PngBytes = Convert.FromBase64String(
         "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==");
 
+    // A 600x80 solid PNG — natural width comfortably wider than the "Small" preset (240)
+    // so a clamp-to-preset resize is observable (the 1x1 above would clamp every preset to 1px).
+    private static readonly byte[] WidePngBytes = Convert.FromBase64String(
+        "iVBORw0KGgoAAAANSUhEUgAAAlgAAABQCAIAAABKyJzPAAABEElEQVR42u3VMQ0AAAgEsReGMCQiCxkMNKmCWy7VAwBvRQIAjBAAjBAAjBAAjBAAjBAAjBAAjBAAjBAAjBAAjBAAjBAAjBAAjBAAjBAAjBAAjBAAjBAAjBAAjBAAjBAAjBAAjBAAjBAAjBAAjBAAjBAAjBAAjBAAjBAAjBAAjBAAjBAAjBAAjBAAjBAAjBAAjBAAjBAAjBAAjBAAjBAAjBAAjBAAjBAAjBAAjBAAjBAAjBAAjBAAjBAAjBAAI1QBACMEACMEACMEACMEACMEACMEACMEACMEACMEACMEACMEACMEACMEACMEACMEACMEACMEACMEACMEACMEACMEACMEACMEACMEACMEACMEgCsLIANiS0+RAPsAAAAASUVORK5CYII=");
+
     [Fact]
     public async Task Pick_an_image_see_it_inline_and_it_survives_reload()
     {
@@ -81,13 +86,17 @@ public sealed class NoteImageJourney(BrowserFixture browser) : IAsyncLifetime
         await _app.ClickNewNoteAsync();
         await _app.EnterTitleAsync(title);
 
+        // A normally-sized image (not the 1x1 PngBytes): the 28-B corner resize handle is
+        // 14px, so on a 1x1 image it blankets the whole image and intercepts the HoverAsync
+        // below (which targets the image centre). A wide image keeps the handle in the far
+        // corner, clear of the centre — matches why the resize test uses WidePngBytes.
         var presignDone = _page.WaitForResponseAsync(r =>
             r.Url.Contains("/images/presign-upload") && r.Request.Method == "POST");
         await _page.GetByTestId("image-file-input").SetInputFilesAsync(new FilePayload
         {
-            Name = "shot.png",
+            Name = "wide.png",
             MimeType = "image/png",
-            Buffer = PngBytes,
+            Buffer = WidePngBytes,
         });
         await presignDone;
 
@@ -128,5 +137,102 @@ public sealed class NoteImageJourney(BrowserFixture browser) : IAsyncLifetime
         await Assertions.Expect(
             _page.GetByTestId("note-content").Locator("img")
         ).ToHaveCountAsync(0);
+    }
+
+    [Fact]
+    public async Task Resize_an_image_to_a_preset_and_the_size_survives_reload()
+    {
+        var title = $"Resize img {Guid.NewGuid():N}"[..30];
+
+        // Given a note with a persisted inline image at its natural width
+        await _app.GotoAsync();
+        await _app.ClickNewNoteAsync();
+        await _app.EnterTitleAsync(title);
+
+        var presignDone = _page.WaitForResponseAsync(r =>
+            r.Url.Contains("/images/presign-upload") && r.Request.Method == "POST");
+        await _page.GetByTestId("image-file-input").SetInputFilesAsync(new FilePayload
+        {
+            Name = "wide.png",
+            MimeType = "image/png",
+            Buffer = WidePngBytes,
+        });
+        await presignDone;
+
+        var editorImage = _page.GetByTestId("note-content").Locator("img");
+        await Assertions.Expect(editorImage).ToBeVisibleAsync(new() { Timeout = 15000 });
+
+        // When I choose the "Small" preset from the image's size control
+        await editorImage.HoverAsync();
+        await _page.GetByTestId("image-size-small").ClickAsync();
+
+        // Then it shrinks to the small preset immediately (optimistic — no save wait)
+        await Assertions.Expect(editorImage).ToHaveJSPropertyAsync("clientWidth", 240);
+
+        // And after saving and reopening, the size persisted (read-your-writes of the width)
+        var contentSaved = _page.WaitForResponseAsync(r =>
+            r.Url.Contains("/content") && r.Request.Method == "PUT");
+        await _app.SaveAndReturnAsync();
+        await contentSaved;
+
+        await _app.ClickNoteInListAsync(title);
+        var resolveDone = _page.WaitForResponseAsync(r =>
+            r.Url.Contains("/images/resolve") && r.Request.Method == "POST");
+        await resolveDone;
+        var reopened = _page.GetByTestId("note-content").Locator("img");
+        await Assertions.Expect(reopened).ToBeVisibleAsync(new() { Timeout = 15000 });
+        await Assertions.Expect(reopened).ToHaveJSPropertyAsync("clientWidth", 240);
+    }
+
+    [Fact]
+    public async Task Drag_resize_an_image_and_the_size_survives_reload()
+    {
+        var title = $"Drag img {Guid.NewGuid():N}"[..30];
+
+        // Given a note with a persisted inline image at its natural width
+        await _app.GotoAsync();
+        await _app.ClickNewNoteAsync();
+        await _app.EnterTitleAsync(title);
+
+        var presignDone = _page.WaitForResponseAsync(r =>
+            r.Url.Contains("/images/presign-upload") && r.Request.Method == "POST");
+        await _page.GetByTestId("image-file-input").SetInputFilesAsync(new FilePayload
+        {
+            Name = "wide.png",
+            MimeType = "image/png",
+            Buffer = WidePngBytes,
+        });
+        await presignDone;
+
+        var editorImage = _page.GetByTestId("note-content").Locator("img");
+        await Assertions.Expect(editorImage).ToBeVisibleAsync(new() { Timeout = 15000 });
+
+        // When I drag the corner handle far inward (past the minimum width)
+        await editorImage.HoverAsync();
+        var handle = _page.GetByTestId("image-resize-handle");
+        var box = await handle.BoundingBoxAsync();
+        await _page.Mouse.MoveAsync(box!.X + box.Width / 2, box.Y + box.Height / 2);
+        await _page.Mouse.DownAsync();
+        await _page.Mouse.MoveAsync(box.X - 800, box.Y + box.Height / 2, new() { Steps = 10 });
+        await _page.Mouse.UpAsync();
+
+        // Then it clamps to the minimum width immediately (optimistic — no save wait;
+        // a deterministic target regardless of the editor's content width)
+        await Assertions.Expect(editorImage).ToHaveJSPropertyAsync("clientWidth", 48);
+
+        // And after saving and reopening, the dragged size persisted (reusing 28-A's
+        // width round-trip — this slice adds no new save/load code)
+        var contentSaved = _page.WaitForResponseAsync(r =>
+            r.Url.Contains("/content") && r.Request.Method == "PUT");
+        await _app.SaveAndReturnAsync();
+        await contentSaved;
+
+        await _app.ClickNoteInListAsync(title);
+        var resolveDone = _page.WaitForResponseAsync(r =>
+            r.Url.Contains("/images/resolve") && r.Request.Method == "POST");
+        await resolveDone;
+        var reopened = _page.GetByTestId("note-content").Locator("img");
+        await Assertions.Expect(reopened).ToBeVisibleAsync(new() { Timeout = 15000 });
+        await Assertions.Expect(reopened).ToHaveJSPropertyAsync("clientWidth", 48);
     }
 }

@@ -58,7 +58,8 @@ jobs:
         run: dotnet test tests/Infrastructure.Assertions/Infrastructure.Assertions.csproj
 
       - name: Publish Lambda
-        run: dotnet publish src/Api/Api.csproj -c Release -o src/Api/bin/Release/net10.0/publish
+        # -r linux-x64 --self-contained false enables ReadyToRun (TI-35); see deploy.yml.
+        run: dotnet publish src/Api/Api.csproj -c Release -r linux-x64 --self-contained false -o src/Api/bin/Release/net10.0/publish
 
       # 27-B: the Projector Lambda is a second CDK asset; its publish dir must hold a
       # real build before `cdk synth` validates the Code.FromAsset path.

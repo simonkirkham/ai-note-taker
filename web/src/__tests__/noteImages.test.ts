@@ -147,3 +147,38 @@ describe('round-trip and never-persist-presigned invariant', () => {
     expect(saved).not.toContain('blob:');
   });
 });
+
+// 28-A: a sized image carries its width in the markdown title slot (`"w=<px>"`).
+// The helpers swap only the src; the title slot must ride through every swap
+// byte-for-byte, or a resized image loses its size on the next save/resolve.
+describe('width token (title slot) survives the key <-> URL pipeline', () => {
+  it('keysToSrcs preserves the width token when swapping key -> URL', () => {
+    const md = `![](${KEY_A} "w=480")`;
+    expect(keysToSrcs(md, { [KEY_A]: URL_A })).toBe(`![](${URL_A} "w=480")`);
+  });
+
+  it('srcsToKeys preserves the width token when swapping URL -> key', () => {
+    const md = `![](${URL_A} "w=480")`;
+    expect(srcsToKeys(md, { [URL_A]: KEY_A })).toBe(`![](${KEY_A} "w=480")`);
+  });
+
+  it('round-trips a sized image and never persists the presigned URL', () => {
+    const original = `![one](${KEY_A} "w=240")\n\n![two](${KEY_B} "w=720")`;
+    const displayed = keysToSrcs(original, { [KEY_A]: URL_A, [KEY_B]: URL_B });
+    const saved = srcsToKeys(displayed, { [URL_A]: KEY_A, [URL_B]: KEY_B });
+    expect(saved).toBe(original);
+    expect(saved).not.toContain('X-Amz-Signature');
+  });
+
+  it('extractImageKeys ignores the width token (still returns the bare key)', () => {
+    expect(extractImageKeys(`![](${KEY_A} "w=480")`)).toEqual([KEY_A]);
+  });
+
+  it('dropUnresolvedImages keeps a sized key image and persists no width for a dropped one', () => {
+    const md = `![](${KEY_A} "w=480")\n\n![](blob:http://localhost/x "w=300")`;
+    const out = dropUnresolvedImages(md);
+    expect(out).toContain(`![](${KEY_A} "w=480")`);
+    expect(out).not.toContain('blob:');
+    expect(out).not.toContain('w=300');
+  });
+});

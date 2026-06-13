@@ -65,6 +65,8 @@ app.MapTranscriptionEndpoints();
 app.MapTodoEndpoints();
 app.MapWorkspaceEndpoints();
 
+Builder.RegisterSnapStartPriming(app);
+
 app.Run();
 
 public partial class Program { }
