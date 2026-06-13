@@ -1777,6 +1777,17 @@ public class InfraAssertionsTests
                 ["Properties"] = Match.ObjectLike(new Dictionary<string, object> { ["Handler"] = "Api" })
             }));
         Assert.Equal(2, apiFns.Count);
+        // …and the projector still exists alongside them (the 3-Lambda Stage-1 shape) —
+        // guard against an accidental projector deletion while editing this region.
+        var projectorFns = _template.FindResources("AWS::Lambda::Function",
+            Match.ObjectLike(new Dictionary<string, object>
+            {
+                ["Properties"] = Match.ObjectLike(new Dictionary<string, object>
+                {
+                    ["Handler"] = "Projector::Projector.ProjectorFunction::Handle"
+                })
+            }));
+        Assert.Equal(1, projectorFns.Count);
     }
 
     // ── Routing: method → function ───────────────────────────────────────
@@ -1888,6 +1899,17 @@ public class InfraAssertionsTests
         var actions = RoleActions("CommandFunctionServiceRole");
         Assert.Contains("bedrock:InvokeModel", actions);
         Assert.Contains("sts:AssumeRole", actions);
+    }
+
+    [Fact]
+    public void QueryRole_HasNoSideServiceGrants()
+    {
+        // The read path holds none of the write-path credentials. The two GETs that need
+        // them (calendar → Google/SSM, transcribe credentials → STS) route to Command.
+        var actions = RoleActions("QueryFunctionServiceRole");
+        Assert.DoesNotContain("bedrock:InvokeModel", actions);
+        Assert.DoesNotContain("sts:AssumeRole", actions);
+        Assert.DoesNotContain("ssm:GetParameter", actions);
     }
 
     // ── 27-D helpers ─────────────────────────────────────────────────────
