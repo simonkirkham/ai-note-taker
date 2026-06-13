@@ -1,5 +1,6 @@
 import Image from '@tiptap/extension-image';
 import { ReactNodeViewRenderer } from '@tiptap/react';
+import { installBareKeyImageRule, KEY_DATA_ATTR, type MarkdownItLike } from '../lib/imageMarkdownParse';
 import ImageNodeView from './ImageNodeView';
 
 // Minimal shape of the prosemirror-markdown serializer state tiptap-markdown hands
@@ -36,10 +37,25 @@ export const ImageWithResize = Image.extend({
     return ReactNodeViewRenderer(ImageNodeView);
   },
 
+  // The bare key arrives in `data-image-key` (BUG-24: it must not be a fetchable `src` in the
+  // transient parse HTML); the base node only matches `img[src]`, so also match the keyed form.
+  parseHTML() {
+    return [{ tag: 'img[src]:not([src^="data:"])' }, { tag: `img[${KEY_DATA_ATTR}]` }];
+  },
+
   addAttributes() {
     const parent = this.parent?.() ?? {};
     return {
       ...parent,
+      // Read the bare key back out of `data-image-key` into `src`, so the ProseMirror node still
+      // holds the key — ImageNodeView's placeholder, resolveImages' key→presigned swap, and the
+      // serialize-from-`src` save invariant are all unchanged. A real `src` (presigned/blob, only
+      // present after an in-editor resolve/upload) wins when there is no data-image-key.
+      src: {
+        ...(parent as { src?: object }).src,
+        default: null,
+        parseHTML: (el: HTMLElement) => el.getAttribute(KEY_DATA_ATTR) ?? el.getAttribute('src'),
+      },
       width: {
         default: null,
         parseHTML: (el: HTMLElement) => {
@@ -75,7 +91,13 @@ export const ImageWithResize = Image.extend({
           const titlePart = titleText ? ` "${titleText.replace(/"/g, '\\"')}"` : '';
           state.write(`![${state.esc(alt ?? '')}](${src.replace(/[()]/g, '\\$&')}${titlePart})`);
         },
-        parse: {}, // image parse rides markdown-it core + the node's parseHTML
+        // BUG-24: rewrite a bare-key image's `src` to `data-image-key` in the markdown-it
+        // render step, so the HTML tiptap-markdown hands to DOMParser has nothing fetchable.
+        parse: {
+          setup(md: MarkdownItLike) {
+            installBareKeyImageRule(md);
+          },
+        },
       },
     };
   },
