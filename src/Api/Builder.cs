@@ -227,9 +227,11 @@ public static class Builder
                 System.Text.Json.JsonSerializer.Serialize(
                     new { id = "warm", title = "warm", items = new[] { new { a = 1, b = "x" } } });
             }
-            catch
+            catch (Exception ex)
             {
-                // Best-effort: priming must never fail snapshot creation.
+                // Best-effort: priming must never fail snapshot creation — but surface a
+                // broken warm path in CloudWatch rather than swallowing it silently.
+                app.Logger.LogWarning(ex, "SnapStart priming hook failed; cold-start latency may regress.");
             }
         });
     }
