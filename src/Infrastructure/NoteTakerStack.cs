@@ -250,11 +250,17 @@ public sealed class NoteTakerStack : Stack
             Description = "AI Note Taker API",
             Code = Amazon.CDK.AWS.Lambda.Code.FromAsset(lambdaAssetPath),
             Timeout = Duration.Seconds(29),
-            // 256 MB: observed peak Max Memory Used is ~165 MB, so this leaves
-            // ~55% headroom. SnapStart snapshot-cache cost is billed per GB of
-            // memory, so this also roughly halves the dominant Lambda cost line
-            // (snapshot cache storage) versus the previous 512 MB.
-            MemorySize = 256,
+            // 512 MB (TI-36): raised from 256 to cut cold-start latency. Lambda
+            // allocates vCPU proportionally (1 vCPU at 1769 MB), so 256 MB gave only
+            // ~0.145 vCPU — the residual post-SnapStart-restore CPU work (tier-1
+            // re-JIT, R2R-uncovered paths) ran ~4.3 s even after priming + ReadyToRun
+            // (TI-32/35). 512 MB ~doubles vCPU; measured cold p50 ~4.8 s expected to
+            // roughly halve. Peak Max Memory Used is ~165 MB, so this buys CPU, not
+            // capacity. Cost: SnapStart snapshot-cache is billed per GB, so this
+            // ~doubles that line (~+$8/mo at current deploy cadence, falling as deploys
+            // slow). Deliberately reverses TI-13's 512→256 cost cut, accepting the
+            // recurring cost for latency.
+            MemorySize = 512,
             LogGroup = apiLogGroup,
             SnapStart = Amazon.CDK.AWS.Lambda.SnapStartConf.ON_PUBLISHED_VERSIONS,
             Tracing = Amazon.CDK.AWS.Lambda.Tracing.ACTIVE,
