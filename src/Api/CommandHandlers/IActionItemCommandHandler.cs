@@ -4,8 +4,8 @@ namespace Api.CommandHandlers;
 
 public interface IActionItemCommandHandler
 {
-    Task<ActionId> HandleAsync(AddActionItem cmd, CancellationToken ct = default);
-    Task HandleAsync(CompleteActionItem cmd, CancellationToken ct = default);
-    Task HandleAsync(ReopenActionItem cmd, CancellationToken ct = default);
-    Task HandleAsync(DeleteActionItem cmd, CancellationToken ct = default);
+    Task<long> HandleAsync(AddActionItem cmd, CancellationToken ct = default);
+    Task<long> HandleAsync(CompleteActionItem cmd, CancellationToken ct = default);
+    Task<long> HandleAsync(ReopenActionItem cmd, CancellationToken ct = default);
+    Task<long> HandleAsync(DeleteActionItem cmd, CancellationToken ct = default);
 }

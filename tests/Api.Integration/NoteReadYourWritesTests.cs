@@ -87,8 +87,8 @@ public sealed class NoteReadYourWritesTests(ApiFactory factory) : IClassFixture<
         Assert.Equal("Card title via RYW", card.GetProperty("title").GetString());
     }
 
-    // The cross-aggregate row: the note card is written by BOTH note events (now via the projector)
-    // and action events (still inline). With full-item writes the two writers would clobber each
+    // The cross-aggregate row: the note card is written by BOTH note events and action events —
+    // since RYW-3a both via the projector. With full-item writes the two writers would clobber each
     // other's fields; the field-level card writes must let a note rename and an action edit coexist.
     [Fact]
     public async Task CardSurvivesInterleavedNoteAndActionWrites_NoClobber()
