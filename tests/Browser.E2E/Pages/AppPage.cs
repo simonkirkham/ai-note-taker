@@ -304,12 +304,17 @@ public sealed class AppPage(IPage page, string baseUrl, string? authToken = null
 
     public async Task RemoveTagAsync(string tag)
     {
+        var pill = page.GetByTestId("tags-section").GetByTestId($"tag-pill-{tag}");
+        // The pill is projector-backed note-detail state (RYW-2). A stale gated read can transiently
+        // drop a just-added pill — notably the 2nd of a multi-tag add (the BUG-22 token-slot race) —
+        // so clicking straight away can hang ClickAsync to its 30s actionability timeout (the
+        // RemoveTag_* deploy-gate flakes). Wait reload-tolerantly for the pill first (each reload
+        // re-sends the consistency token and re-gates), then remove it. This is the action-side
+        // counterpart to the reload-tolerant *asserts* — projector-backed clicks need it too.
+        await WaitVisibleWithReloadAsync(pill);
         var deleteDone = page.WaitForResponseAsync(r =>
             r.Url.Contains("/tags/") && r.Request.Method == "DELETE");
-        await page.GetByTestId("tags-section")
-            .GetByTestId($"tag-pill-{tag}")
-            .GetByRole(AriaRole.Button)
-            .ClickAsync();
+        await pill.GetByRole(AriaRole.Button).ClickAsync();
         await deleteDone;
     }
 
