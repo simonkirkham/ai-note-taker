@@ -10,7 +10,8 @@ namespace Api.Projections;
 // The async projector's core engine, independent of the Lambda runtime so it is unit
 // testable with in-memory stores. Given the set of stream ids that changed in a batch, it
 // rebuilds each affected stream's read models via the shared ProjectionUpdater (the 27-A
-// seam) — the same fold logic the write path runs inline, now driven off the event log.
+// seam) — the SOLE writer of those read models since Phase 27-RYW (the command handlers are
+// append-only; this fold runs off the event log, never inline on the request).
 //
 // Authoritative re-read, not the stream record's NEW_IMAGE: for each changed stream it
 // re-reads the FULL stream and applies every event above the processed-position mark. This

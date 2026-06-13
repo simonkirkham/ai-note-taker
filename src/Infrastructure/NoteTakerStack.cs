@@ -411,14 +411,15 @@ public sealed class NoteTakerStack : Stack
             }));
         }
 
-        // ── Projector Lambda (27-B, shadow mode) ─────────────────────────
+        // ── Projector Lambda (27-B → 27-RYW: sole read-model writer) ─────────────────────────
         // Async read-model writer driven by the events-table DynamoDB stream. Mirrors the
         // API Lambda's runtime/tracing but is an async throughput consumer, not a request
         // handler: NO SnapStart and NO alias (cold-start latency is irrelevant off the
         // request path, and an alias would couple the ESM to a published version). All
         // table/bucket names ride the constructor Environment dict so they are part of the
-        // hashed config. Inline projection writes remain in the command handlers, so the
-        // projector is redundant-but-idempotent here — adding it changes no read behaviour.
+        // hashed config. Since Phase 27-RYW the command handlers are append-only, so this
+        // projector is the SOLE writer of every read model; reads get read-your-writes by
+        // waiting on its proj-position (the ConsistencyGate).
         var projectorLogGroup = new Amazon.CDK.AWS.Logs.LogGroup(this, "ProjectorFunctionLogGroup", new Amazon.CDK.AWS.Logs.LogGroupProps
         {
             Retention = Amazon.CDK.AWS.Logs.RetentionDays.ONE_MONTH,
@@ -483,21 +484,20 @@ public sealed class NoteTakerStack : Stack
         eventsTable.GrantStreamRead(projectorFunction);
         eventsTable.GrantReadData(projectorFunction);
         projectorDlq.GrantSendMessages(projectorFunction);
-        // Delete-only, for the NoteDeleted image-purge path. In shadow mode both the inline
-        // API path and the projector purge on a delete; S3 delete is idempotent, so the
-        // redundant purge is expected and harmless.
+        // Delete-only, for the NoteDeleted image-purge path. The projector is the sole writer
+        // (since 27-RYW), so it owns the image purge on a delete; S3 delete is idempotent.
         imagesBucket.GrantDelete(projectorFunction, "notes/*");
 
         // DynamoDB event-source mapping: TRIM_HORIZON so the projector folds the full
         // existing log on first deploy; bisect-on-error + bounded retries + max record
         // age so one poison record can't wedge the shard, and the on-failure DLQ catches
         // what survives retry. ParallelizationFactor 1 keeps per-key ordering simple.
-        // Stream trigger ENABLED for the RYW-1 read-your-writes migration: the projector is the
-        // async writer for the migrated Todo flow (its inline write is removed) and the gate waits
-        // on proj-position. For flows still inline (notes, actions, folders, workspaces) the
-        // projector double-writes idempotently; the only non-idempotent case — the increment-based
-        // feedback counters — double-counts transiently (inline +1, projector +1) and is closed
-        // when the AI-analysis flow migrates in RYW-3. See ADR 0009 and docs/phases/phase-27-ryw.md.
+        // Stream trigger ENABLED: since Phase 27-RYW the projector is the SOLE async writer of
+        // every read model — all flows (todos, notes, actions, folders, workspaces) are migrated
+        // and their command handlers are append-only — and reads get read-your-writes by waiting on
+        // proj-position (the ConsistencyGate). The transient feedback double-count (inline +1,
+        // projector +1) that existed mid-migration closed when the last inline write was removed.
+        // See ADR 0009 and docs/phases/phase-27-ryw.md.
         projectorFunction.AddEventSource(new Amazon.CDK.AWS.Lambda.EventSources.DynamoEventSource(eventsTable, new Amazon.CDK.AWS.Lambda.EventSources.DynamoEventSourceProps
         {
             Enabled = true,

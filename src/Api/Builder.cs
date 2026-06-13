@@ -168,7 +168,6 @@ public static class Builder
             new DynamoDbTranscriptionDraftStore(sp.GetRequiredService<IAmazonDynamoDB>(), draftTranscriptionTableName));
         builder.Services.AddSingleton<IWorkspaceListStore>(sp =>
             new DynamoDbWorkspaceListStore(sp.GetRequiredService<IAmazonDynamoDB>(), workspaceListTableName));
-        builder.Services.AddScoped<IProjectionUpdater, ProjectionUpdater>();
         builder.Services.AddScoped<INoteCommandHandler, NoteCommandHandler>();
         builder.Services.AddScoped<IActionItemCommandHandler, ActionItemCommandHandler>();
         builder.Services.AddScoped<ITodoCommandHandler, TodoCommandHandler>();
@@ -236,9 +235,12 @@ public static class Builder
         });
     }
 
-    // Builds a ProjectionUpdater from the registered singleton stores. Used by the in-process
-    // sync decorator (local Kestrel); the scoped IProjectionUpdater registration is for the
-    // rebuild handler and the Projector Lambda.
+    // Builds a ProjectionUpdater from the registered singleton stores for the in-process sync
+    // decorator (test harness + local Kestrel) to drive the StreamProjector — built by hand rather
+    // than DI-resolved to avoid a captive scoped dependency inside the singleton decorator. The API
+    // host has no other consumer of IProjectionUpdater (command handlers are append-only since
+    // Phase 27-RYW; ProjectionRebuildHandler folds via its own stores), so there is no DI
+    // registration for it here — only the Projector Lambda (a separate host) registers one.
     private static ProjectionUpdater BuildProjectionUpdater(IServiceProvider sp) => new(
         sp.GetRequiredService<INoteTitleListStore>(),
         sp.GetRequiredService<INoteDetailStore>(),
