@@ -381,6 +381,6 @@ Possible user-facing features not yet committed to a numbered phase. When one is
 
 ### Technical Improvements
 
-Technical, infrastructure, and developer-experience items to address in the future (refactors, upgrades, CI/CD, hardening). Currently: investigate whether `cdk synth` needs AWS credentials in `validate.yml`, add `cdk synth` to the pre-commit hook, make the pre-commit eslint step conditional, split the single API Lambda into CQRS write/read Lambdas with async projectors ([ADR 0009](adr/0009-split-lambdas-cqrs-async-projectors.md)), and break the monolithic 2,800-line `web/src/App.css` into a proper CSS architecture (tokens + per-feature files or CSS Modules).
+Technical, infrastructure, and developer-experience items to address in the future (refactors, upgrades, CI/CD, hardening). Currently open: auto-backfill a new projection on deploy (TI-17); move `WorkspaceList`/`NoteCardList` off full-table `Scan` to a per-user/workspace GSI (TI-20/TI-33); a `NoteEditor` image-ordering test (TI-25); the Command/Query Lambda naming audit (TI-34, rides with Phase 27-D); stabilise the chronic cold-start E2E deploy-gate flakiness (TI-39); read-only creds for automated observability-review (TI-40); plus ESLint import-resolver/typed-lint, state-management colocation, and the `deploy-production` credentials root cause as follow-ons. The Command/Query Lambda split (27-D) is the last open Phase 27 slice.
 
 → [docs/technical-improvements.md](technical-improvements.md)
