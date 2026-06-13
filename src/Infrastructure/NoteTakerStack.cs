@@ -550,8 +550,12 @@ public sealed class NoteTakerStack : Stack
         eventsTable.GrantStreamRead(projectorFunction);
         eventsTable.GrantReadData(projectorFunction);
         projectorDlq.GrantSendMessages(projectorFunction);
-        // Delete-only, for the NoteDeleted image-purge path. The projector is the sole writer
-        // (since 27-RYW), so it owns the image purge on a delete; S3 delete is idempotent.
+        // For the NoteDeleted image-purge path. The projector is the sole writer (since 27-RYW), so
+        // it owns the image purge on a delete. PurgeNoteAsync LISTS the note's objects then DELETEs
+        // them, so it needs s3:ListBucket (+GetObject) AND s3:DeleteObject — GrantDelete alone omits
+        // ListBucket, which made every delete-purge fail AccessDenied in prod (BUG-29). GrantRead
+        // supplies List+Get; the existing GrantDelete supplies Delete. S3 delete is idempotent.
+        imagesBucket.GrantRead(projectorFunction, "notes/*");
         imagesBucket.GrantDelete(projectorFunction, "notes/*");
 
         // DynamoDB event-source mapping: TRIM_HORIZON so the projector folds the full

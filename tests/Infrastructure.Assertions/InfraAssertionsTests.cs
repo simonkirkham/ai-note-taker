@@ -1541,12 +1541,15 @@ public class InfraAssertionsTests
     }
 
     [Fact]
-    public void ProjectorRole_CanDeleteImagesScopedToNotesPrefix()
+    public void ProjectorRole_CanListAndDeleteImagesScopedToNotesPrefix()
     {
-        // NoteDeleted purge path: delete only, never a blanket bucket grant.
-        Assert.Contains("s3:DeleteObject*", ProjectorRoleActions());
-        // Never a write/put on the image bucket from the projector.
-        Assert.DoesNotContain("s3:PutObject", ProjectorRoleActions());
+        var actions = ProjectorRoleActions();
+        // NoteDeleted purge path LISTS the note's objects then DELETEs them. BUG-29: ListBucket was
+        // missing (delete-only grant), so every delete-purge failed AccessDenied in prod.
+        Assert.Contains("s3:DeleteObject*", actions);
+        Assert.Contains(actions, a => a.Contains("List", StringComparison.Ordinal));
+        // Still never a write/put on the image bucket from the projector.
+        Assert.DoesNotContain("s3:PutObject", actions);
     }
 
     [Fact]
