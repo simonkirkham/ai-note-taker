@@ -76,6 +76,39 @@ public sealed class ExceptionLoggingLevelTests(ApiFactory factory) : IClassFixtu
 
         var errorLines = captured.Entries.Where(e => e.Level == LogLevel.Error).ToList();
         Assert.Single(errorLines);
+
+        // Symmetric to the conflict test: a genuine 500 must NOT also emit the Warning
+        // line reserved for expected (mapped non-500) outcomes.
+        Assert.DoesNotContain(captured.Entries,
+            e => e.Level == LogLevel.Warning && e.Message.Contains("Request failed"));
+    }
+
+    // The body has already begun streaming when the exception is thrown, so the response
+    // status/headers/body are committed and cannot be rewritten. A genuine server fault on
+    // that path must still log at Error exactly once (never silently swallowed) — the only
+    // guarantee left once the body can't be replaced.
+    [Fact]
+    public async Task GenuineServerFault_AfterResponseStarted_StillLogsErrorOnce()
+    {
+        var captured = new CapturingLoggerProvider();
+        var client = new ThrowAfterResponseStartedFactory(captured).CreateClient();
+
+        // The body is already committed when the fault is thrown, so WriteMappedResponseAsync
+        // takes the HasStarted early-return: it cannot rewrite the response, only log.
+        try
+        {
+            await client.GetAsync(ThrowAfterResponseStartedFactory.Path);
+        }
+        catch (Exception)
+        {
+            // Some hosts surface the post-start fault as a transport error to the client;
+            // either way the only contract we assert is the server-side Error log below.
+        }
+
+        var errorLines = captured.Entries.Where(e => e.Level == LogLevel.Error).ToList();
+        Assert.Single(errorLines);
+        Assert.DoesNotContain(captured.Entries,
+            e => e.Level == LogLevel.Warning && e.Message.Contains("Request failed"));
     }
 
     private static async Task<string> CreateNoteAsync(HttpClient client)
