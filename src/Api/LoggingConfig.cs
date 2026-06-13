@@ -1,3 +1,4 @@
+using Api.CommandHandlers;
 using Api.Exceptions;
 using AWS.Lambda.Powertools.Logging;
 using Domain.Workspaces;
@@ -115,6 +116,11 @@ public static class LoggingConfig
     // mapped uniformly rather than re-mapped per-route.
     private static (int Status, string Error) Map(Exception? ex, bool requestAborted = false) => ex switch
     {
+        // BUG-27: exhausted append-retry contention is RETRIABLE, not a terminal conflict. It must
+        // not share the 409 the client treats as a duplicate/no-op (which would silently drop the
+        // write) — surface 503 "retry" so the client retries until the write lands. The raw
+        // ConcurrencyException below stays 409 for any path that lets one escape unwrapped.
+        WriteContentionException => (StatusCodes.Status503ServiceUnavailable, "write contention, retry"),
         ConcurrencyException => (StatusCodes.Status409Conflict, "conflict"),
         RebuildInProgressException => (StatusCodes.Status409Conflict, "rebuild in progress"),
         DefaultWorkspaceUndeletableException => (StatusCodes.Status409Conflict, "default workspace cannot be deleted"),

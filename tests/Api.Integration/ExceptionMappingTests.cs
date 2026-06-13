@@ -20,7 +20,7 @@ public sealed class ExceptionMappingTests(ApiFactory factory) : IClassFixture<Ap
     private readonly ApiFactory _factory = factory;
 
     [Fact]
-    public async Task ConcurrencyConflict_OnNoteWrite_Returns409NotUnhandled500()
+    public async Task PersistentWriteContention_OnNoteWrite_Returns503Retriable_NotUnhandled500()
     {
         var store = new ConflictingEventStore();
         var custom = _factory.WithWebHostBuilder(b => b.ConfigureTestServices(s =>
@@ -33,15 +33,16 @@ public sealed class ExceptionMappingTests(ApiFactory factory) : IClassFixture<Ap
 
         var noteId = await CreateNoteAsync(client);
 
-        // Every append loses the optimistic-concurrency check, so the handler's bounded
-        // retry (BUG-17) exhausts and the persistent conflict still surfaces as a 409
-        // (rather than an unhandled 500). A *single* benign race that the retry resolves
-        // is covered by ConcurrencyConflict_OnTagAdd_RetriesAndPersists below.
+        // Every append loses the optimistic-concurrency check, so the handler's bounded retry
+        // (BUG-17) exhausts. The persistent conflict now surfaces as a RETRIABLE 503 (BUG-27),
+        // NOT a 409 and NOT an unhandled 500: a 409 is the client's duplicate/no-op signal and
+        // would silently DROP this write. A *single* benign race the retry resolves is covered by
+        // ConcurrencyConflict_OnTagAdd_RetriesAndPersists below.
         store.ConflictsRemaining = int.MaxValue;
         var resp = await client.PatchAsync($"/notes/{noteId}/title",
             new StringContent("{\"title\":\"Renamed\"}", Encoding.UTF8, "application/json"));
 
-        Assert.Equal(HttpStatusCode.Conflict, resp.StatusCode);
+        Assert.Equal(HttpStatusCode.ServiceUnavailable, resp.StatusCode);
     }
 
     // BUG-17: a single benign concurrency race on a tag add must NOT drop the write.
