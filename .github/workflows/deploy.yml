@@ -430,7 +430,10 @@ jobs:
         uses: ./.github/actions/clear-test-data
 
       - name: E2E journey tests
-        run: dotnet test tests/Browser.E2E/Browser.E2E.csproj -c Release
+        # verbosity=detailed surfaces the per-test Console output (incl. the AppPage [api-fail] lines
+        # and [browser ...] console) into the run log — the only window into the separate-account E2E
+        # env when a journey flakes. Revert to default once the residual flake is root-caused.
+        run: dotnet test tests/Browser.E2E/Browser.E2E.csproj -c Release --logger "console;verbosity=detailed"
         env:
           FRONTEND_URL: ${{ steps.outputs.outputs.frontend-url }}
           API_URL: ${{ steps.outputs.outputs.api-url }}

@@ -4,6 +4,21 @@ namespace Browser.E2E.Pages;
 
 public sealed class AppPage(IPage page, string baseUrl, string? authToken = null)
 {
+    // The deploy E2E env is a separate AWS account we can't read CloudWatch from, so surface every
+    // failing /api/ response to the test console — this is the only window into what the env actually
+    // returns during a flake (a failed write, a 500, a stale read). Wired once per page at construction.
+    private readonly bool _apiFailLogWired = WireApiFailureLog(page);
+
+    private static bool WireApiFailureLog(IPage page)
+    {
+        page.Response += (_, r) =>
+        {
+            if (r.Url.Contains("/api/") && r.Status >= 400)
+                Console.WriteLine($"[api-fail] {r.Request.Method} {r.Url} -> {r.Status}");
+        };
+        return true;
+    }
+
     public async Task GotoAsync()
     {
         if (!string.IsNullOrEmpty(authToken))
