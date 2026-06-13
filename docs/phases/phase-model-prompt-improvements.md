@@ -17,7 +17,7 @@
 | MPI-3 | Model sweep — add `anthropic.claude-sonnet-4-6`, evaluate as replacement for the aged `claude-3-sonnet-20240229` value pick | Done (`run-28225`) | 10-G |
 | MPI-4 | Fix the judge — give it the user's note as grounding + stop the content rubric auto-failing faithful terse notes | Done — terseness fixed; note-grounding partial (`run-28225`) | 10-G |
 | MPI-5 | Programmatic note-grounding for the judge — prompt-level grounding proved insufficient; exclude note/gold entities from the fabrication check | Done (`run-78385`) — allowlist (#257) fixed sparse-fixture content (0.20→0.70–0.90) | MPI-4 |
-| MPI-6 | `analysis@v6` — tag discipline; lift Tags, the lone sub-0.75 dimension on every keep model | Open | MPI-2 |
+| MPI-6 | Improve note tags — reword the prompt to ask for fewer, sharper tags (tagging is the AI's weakest output: 0.53–0.72 vs 0.85+ elsewhere) | Open | MPI-2 |
 
 Further items are appended as each eval run surfaces the next weakest dimension. The `eval-run` skill proposes them (see [How items are added](#how-items-are-added)).
 
@@ -169,25 +169,27 @@ So v4 must chase **depth where the source supports it and restraint where it doe
 
 ---
 
-## MPI-6 — `analysis@v6`: lift the Tags dimension
+## MPI-6 — Improve the tags the AI puts on each note
 
 **Status:** Open
 
-**Proposal:** Draft `analysis@v6` from v5 with a sharper tag-discipline instruction, and measure v5-vs-v6 on the keep-set for the Tags column.
+**The change:** Rewrite the *tagging* part of the analysis prompt to ask for fewer, sharper tags. Prompt wording only — no code, no model change.
+
+**What this is about:** Tags are the keywords the AI attaches to each note (e.g. `acme`, `hiring`, `1:1`) so you can later find related notes. Good tagging = a small set of meaningful, reusable tags. Bad tagging = too many tags, or vague/generic ones that don't help you find anything.
 
 **Why it's worth doing:**
-- Tags is the **only** Quality sub-dimension below ~0.75 on *every* keep-set model (`run-78385`: 0.527–0.720) — now that MPI-5 cleared the content-measurement bug, it is the clear top weak spot.
-- Shared across all four models → a **prompt** problem, not a model one; one prompt change lifts every model at once.
-- Mistral-Large is the outlier (Tags 0.527) — a v6 that fixes tag discipline also informs the separate keep-or-drop call on Mistral.
+- **Tagging is the weakest thing the AI does.** In the latest eval (`run-78385`) every model scored lowest on tags (0.53–0.72 out of 1.0) while everything else — the summary, decisions, action items — scored 0.85+. Tags are the one part dragging note quality down.
+- **It's a wording problem, not a model problem.** All four models are weak on tags in the same way, so the fix is in the instructions we give them, not in which model we pay for. One prompt edit improves every model at once.
+- **It directly helps you find notes.** Tags are the main way to pull up related notes later; better tags mean the feature actually works for retrieval instead of adding noise.
 
-**Cost:** Harness-only. One sweep, keep-set × [`analysis@v5`, `analysis@v6`], `EVAL_PRESET=keep` + `EVAL_PROMPT_VERSIONS`. No infra.
+**Cost:** Cheap and safe. A prompt edit plus one eval run comparing the new wording against the current one on the 22 test transcripts. Nothing ships unless the numbers improve.
 
 ### Steps
-1. Add `PromptCatalog.V6` (`analysis@v6`) from V5 — tighten the tag rule: a small (2–3, ≤5) set of high-signal recurring entities (people/companies, work streams, meeting type); never generic/low-signal tags; prefer fewer. Keep V5's depth + grounding clamp verbatim.
-2. Sweep `Prompts=[V5, V6]` on the keep-set; read `report.md` — target Tags rising without regressing Content / Decisions / Actions.
-3. If V6 wins, ship it (switch `PromptCatalog.Current`); record via the `eval-run` skill.
+1. Add a new prompt version (`analysis@v6`) — same as today's `v5` but with a tighter tag rule: pick a *small* set (aim 2–3, never more than ~5) of meaningful, recurring tags (people/companies, projects, meeting type); no generic filler; fewer is better. Leave everything else in v5 unchanged.
+2. Run the eval comparing `v5` vs `v6` on the keep-set; check the tag score goes up and nothing else drops.
+3. If `v6` is better, make it the live prompt and record the decision.
 
-- [ ] V6 mean Tags beats V5 across the keep-set, no regression on Content / Actions / Decisions
+- [ ] `v6` tag score beats `v5` across all keep-set models, with no drop in summary / decisions / action-item quality
 - [ ] Decision recorded in `docs/eval-runs/` + `test-matrix.md`
 
-**Depends on:** MPI-2 (`analysis@v5`, the shipped baseline V6 iterates from).
+**Depends on:** MPI-2 (today's live prompt `analysis@v5` — the starting point `v6` edits).
