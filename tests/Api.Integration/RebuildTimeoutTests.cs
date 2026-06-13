@@ -6,10 +6,12 @@ using Microsoft.Extensions.DependencyInjection.Extensions;
 
 namespace Api.Integration;
 
-// Wraps an inner event store and throws TimeoutException on the first N ReadAllStreamsAsync
-// calls — the unprotected read the rebuild starts with. Mirrors the prod failure: a transient
-// AWSSDK.Core TimeoutException ("The operation was canceled.") on a DynamoDB scan.
-internal sealed class TimeoutInjectingEventStore(IEventStore inner, int failures) : IEventStore
+// Wraps an inner event store and throws on the first N ReadAllStreamsAsync calls — the
+// unprotected read the rebuild starts with. Mirrors the prod failure: a transient AWSSDK.Core
+// TimeoutException ("The operation was canceled.") on a DynamoDB scan. The thrown exception is
+// pluggable so we can also exercise the OperationCanceledException-with-a-foreign-token path
+// (an SDK per-op timeout), which must be treated transient — not as a client abort.
+internal sealed class TimeoutInjectingEventStore(IEventStore inner, int failures, Func<Exception> fault) : IEventStore
 {
     private int _remaining = failures;
 
@@ -24,7 +26,7 @@ internal sealed class TimeoutInjectingEventStore(IEventStore inner, int failures
         if (_remaining > 0)
         {
             _remaining--;
-            throw new TimeoutException("The operation was canceled.");
+            throw fault();
         }
         return inner.ReadAllStreamsAsync(ct);
     }
@@ -38,10 +40,20 @@ public sealed class RebuildTimeoutTests(ApiFactory factory) : IClassFixture<ApiF
 {
     private readonly ApiFactory _factory = factory;
 
+    // A foreign token (NOT the request's) cancelled — mimics an AWS SDK per-op timeout that
+    // cancels with its own token. Must be treated as transient, not as a client abort.
+    private static Exception SdkTimeout() => new TimeoutException("The operation was canceled.");
+    private static Exception SdkCancel()
+    {
+        using var cts = new CancellationTokenSource();
+        cts.Cancel();
+        return new OperationCanceledException(cts.Token);
+    }
+
     [Fact]
     public async Task Rebuild_recovers_from_a_transient_read_timeout()
     {
-        var resp = await PostRebuildWithReadFailures(1);
+        var resp = await PostRebuildWithReadFailures(1, SdkTimeout);
 
         Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
     }
@@ -49,19 +61,35 @@ public sealed class RebuildTimeoutTests(ApiFactory factory) : IClassFixture<ApiF
     [Fact]
     public async Task Rebuild_that_persistently_times_out_returns_503_not_500()
     {
-        var resp = await PostRebuildWithReadFailures(int.MaxValue);
+        var resp = await PostRebuildWithReadFailures(int.MaxValue, SdkTimeout);
 
         Assert.Equal(HttpStatusCode.ServiceUnavailable, resp.StatusCode);
     }
 
-    private async Task<HttpResponseMessage> PostRebuildWithReadFailures(int failures)
+    [Fact]
+    public async Task Rebuild_recovers_from_a_transient_read_cancellation()
+    {
+        var resp = await PostRebuildWithReadFailures(1, SdkCancel);
+
+        Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
+    }
+
+    [Fact]
+    public async Task Rebuild_that_persistently_cancels_returns_503_not_500()
+    {
+        var resp = await PostRebuildWithReadFailures(int.MaxValue, SdkCancel);
+
+        Assert.Equal(HttpStatusCode.ServiceUnavailable, resp.StatusCode);
+    }
+
+    private async Task<HttpResponseMessage> PostRebuildWithReadFailures(int failures, Func<Exception> fault)
     {
         var custom = _factory.WithWebHostBuilder(b => b.ConfigureTestServices(s =>
         {
             s.RemoveAll<IEventStore>();
             s.AddSingleton<IEventStore>(sp =>
                 ApiFactory.BuildSyncProjectingStore(
-                    sp, new TimeoutInjectingEventStore(new InMemoryEventStore(), failures)));
+                    sp, new TimeoutInjectingEventStore(new InMemoryEventStore(), failures, fault)));
         }));
         var client = custom.CreateClient();
         client.DefaultRequestHeaders.Add("X-Test-User-Id", FakeCurrentUser.TestUserId);
