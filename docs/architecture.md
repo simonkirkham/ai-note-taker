@@ -20,15 +20,15 @@ Every write request passes through four layers. Each layer has exactly one conce
 | Layer | Location | Concern |
 |---|---|---|
 | **API** | `src/Api/Program.cs` — endpoint lambdas | HTTP only: parse request, call handler, map result to HTTP status |
-| **Command handler** | `src/Api/CommandHandlers/*CommandHandler.cs` | Orchestration: load stream → rebuild aggregate → execute command → persist events → update read-model projections inline |
-| **Projections** | `src/EventStore/Projections/` (fold logic) + command handlers (write) | Read models folded from the event stream; updated inline in the same request after append; rebuildable from the full stream |
+| **Command handler** | `src/Api/CommandHandlers/*CommandHandler.cs` | Orchestration: load stream → rebuild aggregate → execute command → persist events → return the write token. **Append-only** — read models are built asynchronously by the projector, not the handler |
+| **Projections** | `src/EventStore/Projections/` (fold logic) + `src/Api/Projections/` (projector) | Read models folded from the event stream; built **asynchronously by the projector** (the Projector Lambda off DynamoDB Streams in prod; the in-process `SyncProjectingEventStore` decorator in tests/local); rebuildable from the full stream |
 | **Domain** | `src/Domain/` | Pure business logic: aggregate, commands, events — no I/O, no HTTP, no clock |
 
 **Rules:**
 - If you find yourself writing `store.ReadAsync` or `store.AppendAsync` inside an endpoint lambda, it belongs in the command handler instead.
-- Projection updates live in the command handler, inline after `AppendAsync` (see `NoteCommandHandler.UpdateProjectionAsync`). There is no event dispatcher — projections are written synchronously by the handler that appended the events.
-- Command handlers depend on `IEventStore` plus the projection stores they update directly.
-- Adding a new projection means adding its store + fold logic, updating it inline in the owning command handler(s), and giving it a rebuild path. The async-projector split in [ADR 0009](adr/0009-split-lambdas-cqrs-async-projectors.md) will later move this off the request path onto DynamoDB Streams.
+- Command handlers are **append-only**: they persist events and return the new stream version as a read-your-writes (RYW) **consistency token** (`stream@version`). They do **not** write projections — the projector (`StreamProjector`, driven by the Projector Lambda off DynamoDB Streams in prod; the in-process `SyncProjectingEventStore` decorator in tests/local) is the **sole writer** of every read model. This async cutover landed in **[ADR 0009](adr/0009-split-lambdas-cqrs-async-projectors.md)** / Phase 27-RYW.
+- Read endpoints offer **read-your-writes**: a read carrying `If-Consistent-With: stream@version` waits (bounded, ~2s) on the projector's processed-position store until the projection has caught up, then answers — else returns current data flagged `X-Consistency: stale`. See the `ConsistencyGate`.
+- Command handlers depend on `IEventStore` only. Adding a new projection means adding its store + fold logic in `ProjectionUpdater`, routing its stream prefix in `StreamProjector`, giving it a rebuild path, and (if it has a read-after-write surface) gating its read on the token. **A new flow's stream prefix must join `SyncProjectingEventStore.MigratedPrefixes`** or its read models won't update in the in-process hosts.
 
 ---
 
@@ -65,51 +65,56 @@ flowchart LR
         CDN["S3 + CloudFront\nReact SPA"]
         APIGW["API Gateway"]
 
-        subgraph Lambda ["Lambda — ASP.NET Minimal API"]
+        subgraph Lambda ["API Lambda — ASP.NET Minimal API"]
             direction TB
-            WR["Write path\nload stream · Decide · append events · update projections inline"]
-            RD["Read path\nread projection"]
+            WR["Write path (append-only)\nload stream · Decide · append events · return token"]
+            RD["Read path\nwait on token (RYW gate) · read projection"]
         end
+
+        PRJ["Projector Lambda\nfold stream → write read models"]
 
         subgraph DB ["DynamoDB — single table"]
             direction TB
             ES[("Event streams\nnote/id · action/id")]
             RM[("Projections\nNoteCardList · TodoList · …")]
+            POS[("proj-position\nprocessed stream version")]
         end
     end
 
     User -- "load app" --> CDN
     User -- "POST command" --> APIGW
-    User -- "GET query" --> APIGW
+    User -- "GET query (If-Consistent-With)" --> APIGW
 
     APIGW --> WR
     APIGW --> RD
 
     WR -- "1 · load stream" --> ES
     WR -- "2 · append events" --> ES
-    WR -- "3 · update projection" --> RM
+    ES -- "DynamoDB Stream" --> PRJ
+    PRJ -- "3 · write read models (sole writer)" --> RM
+    PRJ -- "4 · advance position" --> POS
+    RD -- "wait until position ≥ token" --> POS
     RD -- "read" --> RM
 ```
 
-**Write path detail:** the Lambda command handler loads the full event stream for the aggregate, folds it into current state, runs `Decide` to validate the command and produce new events, then appends those events with optimistic concurrency. It then updates the affected read-model projections inline (e.g. `NoteCommandHandler.UpdateProjectionAsync`) in the same request. All projection updates complete before the HTTP response is returned — there is no eventual consistency delay. [ADR 0009](adr/0009-split-lambdas-cqrs-async-projectors.md) plans to move projection-building off the request path onto DynamoDB Streams (trading immediate consistency for async, replayable projectors); that change is not yet implemented.
+**Write path detail:** the command handler loads the full event stream for the aggregate, folds it into current state, runs `Decide` to validate the command and produce new events, then appends those events with optimistic concurrency — and stops there (**append-only**). It returns the new stream version as the RYW write token. Read models are built **asynchronously** by the Projector Lambda off the DynamoDB Stream (the sole writer), typically <1s behind. Read-after-write is preserved by a **consistency token**, not by inline projection: the write returns `stream@version`; a subsequent read presenting it in `If-Consistent-With` waits (bounded ~2s) on the `proj-position` store until the projector has caught up, then answers — otherwise returns current data flagged `X-Consistency: stale`. This is **session consistency** (cf. Cosmos session tokens / Mongo causal / Postgres `WAIT FOR LSN`), the read-after-write contract delivered by Phase 27-RYW. The next step ([ADR 0009](adr/0009-split-lambdas-cqrs-async-projectors.md) Stage 1 → 27-D) splits the single Lambda into separate Command and Query Lambdas.
 
 **Infrastructure as code:** all AWS resources (API Gateway, Lambda, DynamoDB table, CloudFront distribution, S3 bucket) are provisioned by the CDK app in `src/Infrastructure/`.
 
 ## Frontend state management
 
-The React frontend treats the server as eventually consistent and updates local state optimistically.
+The React frontend updates local state optimistically for **instant feel**, and relies on the server's **read-your-writes** guarantee for correctness — optimism is UI polish, not the consistency mechanism.
 
 **Pattern:**
-1. `App` owns the notes array — single source of truth for both `ListView` and `NoteView`.
-2. On any write (create or rename), the local array is updated immediately before the API call returns.
-3. On failure, the previous value is restored from a snapshot taken before the optimistic update.
-4. `ListView` and `NoteView` are purely presentational — they receive data and callbacks as props, never fetch or mutate directly.
+1. Mutations apply an optimistic cache update (TanStack Query `onMutate` → `setQueryData`), snapshot for rollback, and `onError` restore. This is purely for immediate visual feedback.
+2. Every write captures the response's `X-Consistency-Token`; the matching read attaches it as `If-Consistent-With` so the server waits for the projector before answering (the api layer's `gatedRead`). On a `stale` response the read retries (bounded).
+3. Correctness across a reload/navigation no longer depends on optimism: the token is persisted in `sessionStorage`, so even after a hard reload (which drops the optimistic cache) the gated server read returns the user's own write.
 
-**Why not re-fetch on navigate back?**
-The list re-fetches on mount. When navigating note → list, a re-fetch races with the projection update on the server — if the GET arrives before the PATCH has been committed, the old title is returned. Optimistic state sidesteps this race entirely: the title is already correct in memory when the list renders.
+**Why this replaced "optimism-for-correctness":** the reverted async cutover (27-C) tried to make reactive optimistic patching carry read-after-write correctness, and it was whack-a-mole (every navigation path had to be predicted). Phase 27-RYW moved correctness to the server (consistency tokens + the gate), leaving the client free to use optimism only where it improves feel. See [the 27-C learnings](learnings/phase-27c-async-cutover-reverted.md).
 
 **E2E test implications:**
 - Tests must register `WaitForResponseAsync` *before* the action that triggers the request — not after — so the listener is in place when the response arrives.
+- A read-your-writes journey **reloads first** (dropping the optimistic cache), then asserts — proving the *server* read, not the cache.
 - All test data created against the real deployed environment must be uniquely named (e.g. GUID suffix) to prevent cross-run collisions in Playwright's strict-mode locators.
 
 ## Cold start note
