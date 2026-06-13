@@ -7,16 +7,19 @@ namespace Api.Projections;
 // (the ApiFactory test harness + local Kestrel) get immediate read-after-write consistency
 // through the production projection code path with no inline projection write.
 //
-// Scoped to migrated stream prefixes (RYW-1: `todo#`; RYW-2 adds `note#`; RYW-3a adds `action#`;
-// RYW-3b adds `folder-`/`workspace-`). The migration is incremental — only migrated flows have had
-// their inline write removed. For the remaining OTHER flow (analysis) the command handler still
-// projects inline in-process, so the decorator must NOT also project those streams or every read
-// model would be written twice per request. Most read-model writes are idempotent upserts, but the
-// AI-suggestion feedback
-// counters are unconditional DynamoDB `ADD`s (NOT idempotent), so on the still-inline analysis flow
-// a second in-process write would be a hard double-count (in prod the Projector Lambda already
-// double-writes that flow — the transient over-count RYW-3c closes). As each flow migrates it joins
-// MigratedPrefixes and its inline write is removed.
+// Scoped to migrated stream prefixes (RYW-1: `todo#`; RYW-2: `note#`; RYW-3a: `action#`;
+// RYW-3b: `folder-`/`workspace-`). As of RYW-3b ALL projected stream types are migrated — every
+// command handler is append-only, so the projector (this decorator in-process, the Projector
+// Lambda in prod) is the sole writer of every read model. The AI-analysis flow needed no separate
+// migration: its events ride the already-migrated `note#`/`action#` streams (RYW-2/3a), so removing
+// those inline writes already made the projector the sole writer of the suggestion-feedback
+// counters — closing the transient double-count the non-idempotent `ADD` would otherwise cause when
+// both an inline write and the projector ran (pinned by an exactly-once test, RYW-3c).
+//
+// The prefix list stays a guard: a NEW flow added later must join it the moment its inline write is
+// removed, or its read models won't update in the in-process hosts. While any flow were still inline
+// the decorator must NOT project its streams, or the non-idempotent feedback `ADD` would double in
+// tests — but no such flow remains.
 //
 // NEVER wired in the deployed API Lambda: there the stream + Projector Lambda do projections
 // asynchronously for ALL streams, and the API has no projection grants.
