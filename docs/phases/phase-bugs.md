@@ -33,7 +33,7 @@
 | BUG-20 | Workspace-switcher popover overlaps the main content when open — widened to `min-width: 16rem` (23-E truncation fix) it grows rightward past the narrow sidebar over the Home/Notes area. Keep the popover within the sidebar width and reveal the rename/delete icons on row hover/focus so full names ("Personal · default") still fit without truncating or overlapping content. | Done | 23-E |
 | BUG-21 | Note title silently lost on navigate in/out — the title field is never reconciled with the authoritative `detail.title` (initialised once from a prop/card-cache, no draft-pattern sync), so it can show empty; the title input auto-focuses on open and its `onBlur` then persists that empty value (`HandleRename` has no empty-title guard), permanently overwriting the real title. | Done | — |
 | BUG-22 | Multi-tag add drops a pill under RYW-2 async reads — the frontend per-stream consistency-token slot is last-writer-wins; two concurrent same-stream tag POSTs (`note#id@N`, `note#id@N+1`) race it, the older `@N` can win, and the next gated note read releases before the second tag is folded. Resurfaces the long-flaky `TagsJourney` E2E (TI-19) on deploy #546. | Done | TI-19, RYW-2 |
-| BUG-23 | `POST /admin/projections/rebuild` returns an unhandled **500** when a DynamoDB call inside the rebuild times out (`System.TimeoutException "The operation was canceled."`, AWSSDK). The rebuild reads the full event stream; on a transient SDK timeout (or nearing the Lambda/API-GW limit) the whole rebuild aborts mid-flight with a 500 and no retry. Already observable (`ProjectionRebuildFault` metric + Error log) — a reliability gap, not a monitoring one. | Open | TI-16 |
+| BUG-23 | `POST /admin/projections/rebuild` returns an unhandled **500** when a DynamoDB call inside the rebuild times out (`System.TimeoutException "The operation was canceled."`, AWSSDK). The rebuild reads the full event stream; on a transient SDK timeout (or nearing the Lambda/API-GW limit) the whole rebuild aborts mid-flight with a 500 and no retry. Already observable (`ProjectionRebuildFault` metric + Error log) — a reliability gap, not a monitoring one. | Done | TI-16 |
 
 Further bugs will be appended as they are identified.
 
@@ -595,7 +595,7 @@ This is the CLAUDE.md guardrail in action: RYW-2 flipped the whole Note aggregat
 
 ## BUG-23 — Projection rebuild returns an unhandled 500 on a transient DynamoDB timeout
 
-**Status:** 🔲 Open — found in the 2026-06-13 observability review (prod log 2026-06-05 12:24:49).
+**Status:** ✅ Done — PR #269, deploy #558 (2026-06-13). Root cause was narrower than first written: the rebuild's *writes* already retried (`BoundedWrites` classifies `TimeoutException` + non-caller `OperationCanceledException` as transient) but the *reads* — `ReadAllStreamsAsync` (the heavy full-stream scan that timed out in prod) and the reconcile scans — were unwrapped. Fix: added a generic `BoundedWrites.WithRetryAsync<T>` overload and wrapped every rebuild read in it; `LoggingConfig.Map` now maps a surviving `TimeoutException` → **503** "timed out, retry" and a non-client-aborted `OperationCanceledException` → 503 (a genuine client abort still → 500), logged at **Warning** (transient, caller-retryable) per TI-38's philosophy. A recovered transient returns 200 and never trips `ProjectionRebuildFault`. Found in the 2026-06-13 observability review (prod log 2026-06-05 12:24:49).
 
 **Severity:** Low — admin-only endpoint, single observed occurrence, self-recoverable by re-invoking. But a failed rebuild can leave projections partially rebuilt.
 
