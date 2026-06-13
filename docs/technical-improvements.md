@@ -47,8 +47,11 @@ Status key: 🔲 **Open** · 🟡 **Partly done / mitigated** · ✅ **Done** (g
 | TI-29 | Vite 5 → 7 + Vitest 2 → 4 (dep-audit T2)                                       | ✅ Done — #245, deploy #535 (held at Vite 7; Vite 8 now GA = future)                                                                    |
 | TI-30 | React 18 → 19 (dep-audit T3)                                                   | ✅ Done — #246, deploy #536 (zero code changes)                                                                                         |
 | TI-31 | TypeScript 5.6 → 6.0 (dep-audit T4)                                            | ✅ Done — #249, deploy #539 (dropped deprecated `baseUrl`)                                                                              |
+| TI-32 | Prime the ASP.NET pipeline before the SnapStart snapshot (first-request ~7 s)   | 🔲 **Open** — biggest single API-latency win; ~7 s first-post-restore warmup, measured in prod X-Ray 2026-06-12                          |
+| TI-33 | `NoteCardList` reads via full-table `Scan` + `ConsistentRead`, not a GSI/Query  | 🔲 **Open** — same anti-pattern as TI-20; ~840 ms at 234 rows, scales O(all notes); fold into Phase 23                                    |
+| TI-34 | Make Lambda naming specific & correct everywhere                                | 🔲 **Open** — naming audit; user-raised 2026-06-12. **API Lambda** / **Projector Lambda** now; **Command/Query Lambda** only at 27-D    |
 
-**Outstanding (4 Open + 3 Partly):** TI-17 Auto-backfill projection on deploy; TI-20 `WorkspaceList` GSI; TI-23 Generalise append-retry; TI-25 `NoteEditor` ordering test; _(partly)_ TI-7 ESLint import-resolver + typed-lint (jsx-a11y done via 19-F3); TI-3 state-mgmt colocation; TI-24 deploy-credentials root cause. **The 2026-06 dependency upgrade audit (T1/T7/T2/T3/T4 = TI-27/28/29/30/31) is fully cleared.**
+**Outstanding (7 Open + 3 Partly):** TI-17 Auto-backfill projection on deploy; TI-20 `WorkspaceList` GSI; TI-23 Generalise append-retry; TI-25 `NoteEditor` ordering test; **TI-32 SnapStart priming**; **TI-33 `NoteCardList` Scan→GSI**; **TI-34 Lambda naming audit**; _(partly)_ TI-7 ESLint import-resolver + typed-lint (jsx-a11y done via 19-F3); TI-3 state-mgmt colocation; TI-24 deploy-credentials root cause. **The 2026-06 dependency upgrade audit (T1/T7/T2/T3/T4 = TI-27/28/29/30/31) is fully cleared.**
 
 > Items carry stable IDs `TI-1`–`TI-31` in document order (the `ID` column above); each detailed section below repeats its ID. Reference an item as `TI-N`. The dep-audit `T#` tags are retained in parentheses for cross-reference with the audit report.
 
@@ -465,3 +468,75 @@ Phase 25-B shipped (then fixed) an **ordering bug** that every unit test passed 
 
 **Raised in:** Dependency upgrade audit, 2026-06-11.
 **Depends on:** — (pair with the typescript-eslint bump in the _ESLint jsx-a11y_ item).
+
+---
+
+## TI-32. Prime the ASP.NET request pipeline before the SnapStart snapshot (first request after restore pays ~7 s warmup)
+
+**Draft slice — biggest single API-latency win.** SnapStart restores in ~0.5 s, but the **first request to hit a restored execution environment spends ~7 s in `Invocation` before any handler work runs** — .NET JIT, assembly load, DI-scope build, and ASP.NET routing/serializer warmup that the snapshot never captured. The snapshot is taken at the end of init, *before any request exercises the pipeline*, so first-request cost is paid live, per environment.
+
+**Evidence (prod X-Ray, account 642653037268, eu-west-2, 2026-06-12):** a page load fanned out ~6 concurrent GETs; each forced a fresh restored environment and each took **~8.3–8.9 s**. Per-trace breakdown:
+
+| Phase | note-detail GET | tagindex GET (near-empty handler) |
+| --- | --- | --- |
+| Restore (SnapStart) | 515 ms | 455 ms |
+| **Invocation → first DynamoDB call** | **6.62 s (unaccounted)** | **6.92 s (unaccounted)** |
+| DynamoDB | 0.84 s | 0.76 s |
+| Post-query → response | 0.76 s | — |
+| A later *warm* invocation | **1.26 s** | — |
+
+The `tagindex` control (essentially one DynamoDB query) burns the same ~7 s, proving the cost is framework/runtime warmup, **not** handler logic, the query, or an external call — the gap sits at the very start of `Invocation`, before the first DynamoDB call is issued.
+
+**Why it matters:** every cold-ish page load is ~8 s instead of ~1.3 s, multiplied by the page's concurrent fan-out (each parallel request lands on its own fresh environment, so they don't share the warmup). TI-13 already tuned SnapStart *cost* (512 → 256 MB) but did not touch first-request *latency*; this is the unaddressed half. Lower memory = less restore vCPU, so priming and the 256 MB setting interact — measure together.
+
+**Fix:** register a `BeforeSnapshot` hook (managed-runtime SnapStart: `Amazon.Lambda.Core.SnapshotRestore.RegisterBeforeSnapshot`) in `Program.cs` *before* `app.Run()`, and in it drive a synthetic warmup so the snapshot captures a JIT'd, warm process. Priming surface to exercise (pick the minimum that moves the metric, measure each):
+
+1. Resolve the singleton stores + command handlers from DI (JITs constructors + builds the graph).
+2. Run System.Text.Json serialize/deserialize over the main response DTOs (`NoteCardView`, note-detail) — STJ first-use reflection/codegen is a large slice of the gap.
+3. Issue one cheap read per hot projection table (warms the AWS SDK pipeline + the `ConsistentRead` path + connection).
+4. If feasible, route one in-process request through the middleware pipeline (`TestHost`/`TestServer`) to JIT routing + auth middleware — highest fidelity, highest complexity; only if 1–3 leave a material gap.
+
+**Acceptance criteria:**
+- First-invocation-after-restore `Invocation` time (minus downstream subsegments) drops from ~7 s toward the warm ~1.3 s, measured on a real post-deploy X-Ray trace.
+- Restore duration stays within the TI-13 watch band (bump 256 → 384 MB only if restore latency climbs materially with the extra snapshot work).
+- No behaviour change to any endpoint; priming is init-only and idempotent.
+
+**Deploy-time delta:** priming runs during the SnapStart snapshot publish, which already happens on every backend deploy (~137 s per TI-22). Adds **a few seconds, one-off per backend deploy**, dwarfed by the republish already paid — flag and accept per the deploy-time guardrail; frontend-only deploys are unaffected (they skip the publish).
+
+**Related:** the frontend also fans out ~6 concurrent GETs on note open — collapsing those into fewer aggregate reads would cut how many fresh environments a single page load forces. Track separately if priming alone doesn't close it.
+
+**Raised in:** Prod latency investigation, 2026-06-12 (X-Ray trace analysis).
+**Depends on:** — (interacts with TI-13 memory setting).
+
+---
+
+## TI-33. `NoteCardList` reads via full-table `Scan` with `ConsistentRead`, not a per-user/workspace GSI + `Query`
+
+`DynamoDbNoteCardListStore.QueryAllAsync` (`src/EventStore/Projections/DynamoDbNoteCardListStore.cs:57`) does a **paginated full-table `Scan` with `ConsistentRead = true`**, then sorts client-side by `CreatedAt`. It backs the notes-list GET. Same anti-pattern as **TI-20** (`WorkspaceList`), on the larger and faster-growing table.
+
+**Evidence (prod X-Ray, 2026-06-12):** `Scan` on `notetaker-proj-notecardlist`, `scanned_count` 234, `content_length` 73,988, `ConsistentRead = true` → **840 ms** — and the count, latency, and read cost all grow O(all notes across all users).
+
+**Two issues, both growing:**
+1. **`Scan`, not `Query`** — reads the entire projection every request rather than a partition-keyed slice. The precedent fix (`NoteSearchView`) uses a `UserId-index` GSI + `Query`.
+2. **`ConsistentRead = true` on a `Scan`** — doubles read cost + latency vs eventually-consistent and forbids serving the read off a GSI. The single-item path (`GetByNoteAsync`, line 50) also uses `ConsistentRead = true`. Check whether the *list* read genuinely needs strong consistency: post-27 the API reads projections the async Projector Lambda builds, and read-your-writes is handled by the `ConsistencyGate` polling the proj-position table — if the gate already guarantees freshness, the strong-consistent Scan is redundant cost. The single-entity RYW need (RYW-1) does not imply the whole-list read needs it.
+
+**Fix:** add a `UserId` (or `WorkspaceId`) GSI to `notetaker-proj-notecardlist`; switch the list read to a per-user/workspace `Query`; drop `ConsistentRead` on the list path unless the gate analysis shows it is load-bearing. Fold into Phase 23's scoping work alongside TI-20 (same change shape, same table family) — doing both together amortises the GSI-backfill + rebuild.
+
+**Raised in:** Prod latency investigation, 2026-06-12 (X-Ray trace analysis).
+**Depends on:** — (pairs with TI-20; fold into Phase 23).
+
+---
+
+## TI-34 — Make Lambda naming specific & correct everywhere
+
+**What:** Audit every reference to "Lambda" / "the function" across CDK ids, `CLAUDE.md`, ADRs, phase docs, and code comments, and make each one specific to the function it means. There are now **two** Lambdas, so generic "the Lambda" is ambiguous.
+
+**Correct names by era:**
+- **Now (single API Lambda + async projector):** **API Lambda** (`ApiFunction` — handles all routes, command *and* query) and **Projector Lambda** (`ProjectorFunction` — async stream consumer).
+- **After 27-D (Command/Query split):** **Command Lambda** + **Query Lambda** + Projector Lambda.
+
+**Important:** do NOT rename the current single API Lambda to "Command Lambda" — the Command/Query split hasn't happened (27-C was reverted; only Todo is async via RYW-1). "Command/Query Lambda" is correct only as *target* wording in ADR 0009 / phase-27, not for the current single-Lambda state. Any place using the future-split names to describe the present should be corrected to "API Lambda".
+
+**Why:** ambiguity now that there are two functions; future-split names used for the present state mislead.
+**Raised in:** user request, 2026-06-12.
+**Depends on:** — (the Command/Query half lands naturally with 27-D).

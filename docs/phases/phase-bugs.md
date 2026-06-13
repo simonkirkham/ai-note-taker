@@ -31,6 +31,7 @@
 | BUG-18 | Removing an inline image (or any edit) is silently not persisted — note content saves only on editor `onBlur`; the Save button navigates without flushing the draft | Done | 25-D |
 | BUG-19 | Inline image flashes a 403 on every open — `ImageNodeView` renders the raw S3 key as a relative `<img src>` before `resolveImages` swaps in the presigned URL | Done | 25-B, 25-D |
 | BUG-20 | Workspace-switcher popover overlaps the main content when open — widened to `min-width: 16rem` (23-E truncation fix) it grows rightward past the narrow sidebar over the Home/Notes area. Keep the popover within the sidebar width and reveal the rename/delete icons on row hover/focus so full names ("Personal · default") still fit without truncating or overlapping content. | Done | 23-E |
+| BUG-21 | Note title silently lost on navigate in/out — the title field is never reconciled with the authoritative `detail.title` (initialised once from a prop/card-cache, no draft-pattern sync), so it can show empty; the title input auto-focuses on open and its `onBlur` then persists that empty value (`HandleRename` has no empty-title guard), permanently overwriting the real title. | Open | — |
 
 Further bugs will be appended as they are identified.
 
@@ -515,3 +516,33 @@ The mount effect (`AuthContext.tsx:112-141`) only handles returning *from* a Goo
 **Fix:** `ImageNodeView` computes `unresolved = !src || isImageKey(src)` and renders a styled placeholder span instead of an `<img>` until `resolveImages` swaps the key for a presigned URL. The doubled `notes/notes` in the 403 URL was confirmed to be browser relative-URL resolution, not a malformed stored key.
 
 **Key files:** `web/src/components/ImageNodeView.tsx`, `web/src/components/ImageNodeView.module.css` (`.placeholder`); tests `web/src/__tests__/ImageNodeView.test.tsx`. Related: [BUG-18] (shipped together), 25-B (resolve flow), 25-D (NodeView).
+
+---
+
+## BUG-21 — Note title silently lost when navigating in and out of a note
+
+**Status:** Open — logged 2026-06-12, not yet fixed. Reported from the live app: a note that held a meeting-derived title ("Interview: Simon Kirkham (VP of Software Engineering)") showed an empty "Note title…" placeholder after navigating away and back.
+
+**Severity:** High — silent, permanent data loss. The real title is overwritten with an empty string in the event stream, not merely mis-displayed.
+
+**Symptom:** Open a note whose title was set (e.g. derived from a linked meeting), navigate out and back in, and the title field renders empty (placeholder). The blank then persists.
+
+**Root cause (confirmed by code read):** two faults compound.
+1. **Title is never reconciled with the authoritative `detail.title`.** In `NoteView.tsx` the title is `const [title, setTitle] = useState(initialTitle)` (line 66) — seeded **once** from the `initialTitle` prop and never resynced when `useNoteDetail` resolves. `initialTitle` is `navState?.initialTitle ?? notes.find((n) => n.noteId === noteId)?.title ?? ""` (`App.tsx:394`); navigation paths that pass no title (`onOpenNote(noteId)` — e.g. `MeetingsSection.tsx:260`, `App.tsx:334`) fall back to the card-cache title, and when that is empty/stale the field shows `""` even though the loaded `detail.title` holds the real title. Content and date use a draft pattern (`contentDraft ?? detail?.content`, `dateDraft ?? detail?.date`); **title has no equivalent** — it is the one editable field not backed by `detail`.
+2. **The empty value is then persisted.** The title input auto-focuses on open (`NoteView.tsx:146-148`) and its `onBlur={(e) => onRename(noteId, e.currentTarget.value)}` (line 409) fires on the next click/navigation. `HandleRename` (`src/Domain/Notes/Note.cs:102-108`) has **no empty/whitespace guard** — `if (cmd.NewTitle == _title) return []` else emit `NoteRenamed(noteId, "")`. So a blur with the stale-empty value writes `NoteRenamed("")`, the optimistic patch wipes the card title too, and the title is gone permanently.
+
+**Expected behaviour:** The title field always reflects the persisted `detail.title` once loaded (via a draft pattern mirroring content/date), so it never shows empty for a titled note; and a rename to empty/whitespace is rejected (or treated as a no-op) so the title can never be silently overwritten with blank.
+
+**Repro:**
+1. Open a note with a non-empty title (e.g. created from a meeting).
+2. Navigate back to the list, then reopen the same note via a path that passes no title (linked-meeting "Open note", or the list when the card title is empty/stale).
+3. Observe the title field empty; click into the body (blurs the title input).
+4. Reopen — the title is now blank in the stream.
+
+**Acceptance criteria (for the fix):**
+- [ ] A failing test reproduces the loss before the fix: opening a note whose `detail.title` is non-empty while `initialTitle` is `""` shows the real title, and a blur does not overwrite it with empty.
+- [ ] Title uses the draft pattern — displayed = `titleDraft ?? detail?.title ?? initialTitle`; a refetch never clobbers in-flight typing; draft resets on successful rename.
+- [ ] `HandleRename` rejects/no-ops an empty-or-whitespace title (decide: domain guard vs. handler) — guarded by a domain spec — so blank can never be persisted.
+- [ ] Existing note title/rename and draft tests stay green.
+
+**Key files (suspected):** `web/src/components/NoteView.tsx` (title state + onBlur), `web/src/App.tsx` (`initialTitle` resolution, `handleRename`), `src/Domain/Notes/Note.cs` (`HandleRename` guard); tests `web/src/__tests__/NoteView.test.tsx`, `tests/Domain.Specs/`. Related: [BUG-18] (same un-flushed-edit / draft-pattern family), 20-E (note-detail draft pattern).
