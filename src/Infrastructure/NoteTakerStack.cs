@@ -1020,7 +1020,10 @@ public sealed class NoteTakerStack : Stack
         dashboard.AddWidgets(
             new Amazon.CDK.AWS.CloudWatch.GraphWidget(new Amazon.CDK.AWS.CloudWatch.GraphWidgetProps
             {
-                Title = "Frontend errors (RUM)",
+                // JsErrorCount also covers failed resource loads (<img>/<script>/<link>
+                // 403s etc.): TI-37 forwards them via cwr('recordError'), which RUM
+                // counts as a JS error — so no separate metric/widget is needed.
+                Title = "Frontend errors (RUM: JS + resource 403s, HTTP)",
                 Left = new[]
                 {
                     RumErrorMetric("JsErrorCount"),
@@ -1034,6 +1037,8 @@ public sealed class NoteTakerStack : Stack
             // type com.amazon.rum.js_error_event and the message under
             // event_details. The query matches both with an `or` and surfaces a
             // unified field set, newest first. Time-range picker drives "how far back".
+            // Resource-load failures (TI-37) ride the same js_error_event shape — their
+            // "Resource load failed: …" message lands here via the js_error_event match.
             new Amazon.CDK.AWS.CloudWatch.LogQueryWidget(new Amazon.CDK.AWS.CloudWatch.LogQueryWidgetProps
             {
                 Title = "All errors (backend + frontend)",
