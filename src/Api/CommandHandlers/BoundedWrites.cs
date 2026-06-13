@@ -36,8 +36,21 @@ public static class BoundedWrites
         await Task.WhenAll(running).ConfigureAwait(false);
     }
 
-    public static async Task WithRetryAsync(
+    public static Task WithRetryAsync(
         Func<CancellationToken, Task> write,
+        int maxAttempts = DefaultMaxAttempts,
+        TimeSpan? baseDelay = null,
+        CancellationToken ct = default)
+        => WithRetryAsync<object?>(
+            async c => { await write(c).ConfigureAwait(false); return null; },
+            maxAttempts, baseDelay, ct);
+
+    // BUG-23: the rebuild's READS (ReadAllStreamsAsync, the per-projection QueryAll/GetAll scans)
+    // were unretried — a single transient TimeoutException on a read aborted the whole rebuild
+    // with a 500. This result-returning overload lets those reads share the same bounded
+    // retry-with-backoff the writes already used. The void overload above delegates here.
+    public static async Task<T> WithRetryAsync<T>(
+        Func<CancellationToken, Task<T>> op,
         int maxAttempts = DefaultMaxAttempts,
         TimeSpan? baseDelay = null,
         CancellationToken ct = default)
@@ -48,8 +61,7 @@ public static class BoundedWrites
         {
             try
             {
-                await write(ct).ConfigureAwait(false);
-                return;
+                return await op(ct).ConfigureAwait(false);
             }
             catch (Exception ex) when (attempt < maxAttempts && IsTransient(ex, ct))
             {
