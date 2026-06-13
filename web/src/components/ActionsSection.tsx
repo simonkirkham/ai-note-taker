@@ -1,5 +1,5 @@
 import clsx from "clsx";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { ActionItem } from "../api/actions";
 import {
   useAddAction,
@@ -10,13 +10,7 @@ import {
 import { useActions } from "../hooks/useActions";
 import styles from "./ActionsSection.module.css";
 
-export default function ActionsSection({
-  noteId,
-  onCountChange,
-}: {
-  noteId: string;
-  onCountChange?: (count: number) => void;
-}) {
+export default function ActionsSection({ noteId }: { noteId: string }) {
   const { data: actions = [] } = useActions(noteId);
   const addAction = useAddAction(noteId);
   const completeAction = useCompleteAction(noteId);
@@ -26,10 +20,6 @@ export default function ActionsSection({
   const [submitting, setSubmitting] = useState(false);
   const [toggling, setToggling] = useState<Set<string>>(new Set());
   const [deleting, setDeleting] = useState<Set<string>>(new Set());
-
-  useEffect(() => {
-    onCountChange?.(actions.length);
-  }, [actions.length, onCountChange]);
 
   async function handleToggle(item: ActionItem) {
     if (toggling.has(item.actionId)) return;

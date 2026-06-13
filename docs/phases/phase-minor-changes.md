@@ -27,9 +27,9 @@
 | CHANGE-13 | "Next occurrence" button inside a recurring-meeting note | Done | 9-F |
 | CHANGE-14 | Rename transcription "Call audio" toggle to "Record screen-share audio" | Done | — |
 | CHANGE-15 | Keyboard access for `FolderPreviewPanel` hover items — open a note via keyboard, not only mouse/drag (surfaced by the 19-F3 jsx-a11y gate; currently a justified scoped disable) | Done | — |
-| CHANGE-16 | Pin `@tiptap/extension-link` directly in `web/package.json` — 19-J imports it but it is still transitive via StarterKit, so a future StarterKit bump dropping it would break the import (unmet 19-J acceptance criterion) | Open | — |
+| CHANGE-16 | Pin `@tiptap/extension-link` directly in `web/package.json` — 19-J imports it but it is still transitive via StarterKit, so a future StarterKit bump dropping it would break the import (unmet 19-J acceptance criterion) | Done | — |
 
-Open: CHANGE-16.
+Open: none.
 
 New tweaks are appended as a one-line shipped record below once Done. The full spec/Value/Approach for each lived in this doc during the slice and remains in git history; the durable *why* (where any) is in the learnings archive. CHANGE-1 to CHANGE-4 were moved here from the former "Phase 13 — UI Polish II" once it was clear they were minor tweaks rather than a distinct phase.
 
@@ -54,3 +54,4 @@ Each line: **item — what shipped — PR / deploy.** Learnings (where captured)
 - **CHANGE-13** — "Next occurrence" control inside a recurring-meeting note (option 1: reverse lookup on `CalendarLinkView`). PR #162, deployed 2026-06-04.
 - **CHANGE-14** — Transcription audio toggle relabelled "Call audio" → "Record screen-share audio". PR #164, deployed 2026-06-04.
 - **CHANGE-15** — `FolderPreviewPanel` note rows converted from click/drag-only `<li>` to real `<button>` (keyboard-openable, `:focus-visible` ring, drag-to-move preserved); scoped jsx-a11y disable removed. PR #247, deployed 2026-06-11.
+- **CHANGE-16** — `@tiptap/extension-link` promoted from transitive (via starter-kit) to a direct `^3.23.4` dependency, closing the unmet 19-J acceptance criterion. Manifest-only, no behaviour change. PR #283, deployed 2026-06-13.
