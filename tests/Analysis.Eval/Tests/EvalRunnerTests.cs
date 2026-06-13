@@ -129,6 +129,31 @@ public class EvalRunnerTests : IDisposable
         Assert.Single(lines);
     }
 
+    // MPI-5: the runner must hand the fixture's curated gold tags to the quality judge as
+    // grounded entities so the judge cannot flag them as fabrication.
+    [Fact]
+    public async Task Passes_humanised_gold_tags_to_the_quality_judge_as_grounded_entities()
+    {
+        var fixture = new Fixture(
+            Id: "14-all-hands-reorg",
+            TranscriptText: "Yuki: reorg follow-up.",
+            ExistingContent: "Stark Industries all-hands follow-up",
+            CurrentUserName: "Yuki",
+            Expected: new FixtureExpected(
+                Tags: ["stark-industries", "all-hands"],
+                ActionItems: [],
+                ContentMustMention: []));
+        var bedrock = new StubBedrock(new NoteAnalysisResult("s", [], [], [], []));
+        var capturing = new CapturingQualityJudge();
+
+        await EvalRunner.RunAsync(fixture, PromptCatalog.V2, "model-x",
+            bedrock, new StubJudge(allYes: true), capturing, runId: "run-grounded", resultsDirectory: _resultsDir);
+
+        Assert.NotNull(capturing.Last);
+        Assert.Contains("stark industries", capturing.Last!.GroundedEntities);
+        Assert.Contains("all hands", capturing.Last!.GroundedEntities);
+    }
+
     sealed class StubBedrock(NoteAnalysisResult next) : IBedrockAnalysisService
     {
         public Task<NoteAnalysisResult> AnalyseAsync(NoteAnalysisRequest request, CancellationToken ct = default)
@@ -147,5 +172,16 @@ public class EvalRunnerTests : IDisposable
     {
         public Task<QualityScore> ScoreAsync(QualityJudgeInput input, CancellationToken ct = default)
             => Task.FromResult(new QualityScore(score, score, score, score, score, "stub"));
+    }
+
+    sealed class CapturingQualityJudge : IQualityJudge
+    {
+        public QualityJudgeInput? Last { get; private set; }
+
+        public Task<QualityScore> ScoreAsync(QualityJudgeInput input, CancellationToken ct = default)
+        {
+            Last = input;
+            return Task.FromResult(new QualityScore(0.5, 0.5, 0.5, 0.5, 0.5, "stub"));
+        }
     }
 }

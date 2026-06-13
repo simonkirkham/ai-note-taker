@@ -85,7 +85,10 @@ public static class EvalRunner
             Discussion: result.DiscussionPoints,
             Decisions: result.Decisions,
             Tags: result.NewTags,
-            Actions: result.NewActionItems), ct);
+            Actions: result.NewActionItems,
+            // Deterministic grounding allowlist (MPI-5): the fixture's gold tags are grounded
+            // by definition, so the judge cannot flag them as fabrication.
+            GroundedEntities: GroundedEntities.From(fixture)), ct);
 
         var row = new EvalRow(
             RunId: runId,

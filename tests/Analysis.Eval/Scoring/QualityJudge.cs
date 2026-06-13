@@ -19,7 +19,12 @@ public sealed record QualityJudgeInput(
     IReadOnlyList<string> Discussion,
     IReadOnlyList<string> Decisions,
     IReadOnlyList<string> Tags,
-    IReadOnlyList<string> Actions);
+    IReadOnlyList<string> Actions,
+    // MPI-5: entities grounded by definition (the fixture's curated gold tags). Rendered into
+    // the prompt as a deterministic "never call these fabrication" allowlist, because prompt
+    // wording alone (MPI-4) did not stop the judge mis-flagging note/gold entities like
+    // "Stark Industries" as invented (run-28225, 14-all-hands-reorg content 0.20).
+    IReadOnlyList<string> GroundedEntities);
 
 public interface IQualityJudge
 {
