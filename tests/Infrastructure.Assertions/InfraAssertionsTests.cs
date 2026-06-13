@@ -310,11 +310,15 @@ public class InfraAssertionsTests
     }
 
     [Fact]
-    public void Lambda_HasMemorySize256()
+    public void ApiFunction_HasMemorySize512()
     {
+        // TI-36: the API Lambda runs at 512 MB (raised from 256 for cold-start vCPU).
+        // Pin the Handler so this matches the API function specifically, not the
+        // Projector function which also runs at 512.
         _template.HasResourceProperties("AWS::Lambda::Function", Match.ObjectLike(new Dictionary<string, object>
         {
-            ["MemorySize"] = 256
+            ["Handler"] = "Api",
+            ["MemorySize"] = 512
         }));
     }
 
