@@ -17,7 +17,7 @@
 | MPI-3 | Model sweep — add `anthropic.claude-sonnet-4-6`, evaluate as replacement for the aged `claude-3-sonnet-20240229` value pick | Done (`run-28225`) | 10-G |
 | MPI-4 | Fix the judge — give it the user's note as grounding + stop the content rubric auto-failing faithful terse notes | Done — terseness fixed; note-grounding partial (`run-28225`) | 10-G |
 | MPI-5 | Programmatic note-grounding for the judge — prompt-level grounding proved insufficient; exclude note/gold entities from the fabrication check | Done (`run-78385`) — allowlist (#257) fixed sparse-fixture content (0.20→0.70–0.90) | MPI-4 |
-| MPI-6 | Improve note tags — reword the prompt to ask for fewer, sharper tags (tagging is the AI's weakest output: 0.53–0.72 vs 0.85+ elsewhere) | Open | MPI-2 |
+| MPI-6 | Improve note tags — reword the prompt to ask for fewer, sharper tags (tagging is the AI's weakest output: 0.53–0.72 vs 0.85+ elsewhere) | Done (`run-286900`) — `analysis@v6` ships; tags +0.125 mean, Quality +0.028, no regression | MPI-2 |
 
 Further items are appended as each eval run surfaces the next weakest dimension. The `eval-run` skill proposes them (see [How items are added](#how-items-are-added)).
 
@@ -171,9 +171,9 @@ So v4 must chase **depth where the source supports it and restraint where it doe
 
 ## MPI-6 — Improve the tags the AI puts on each note
 
-**Status:** Open
+**Status:** Done (`run-286900`, [report](../eval-runs/2026-06-13-mpi6-tags-v6.md)) — `analysis@v6` ships; `PromptCatalog.Current` → `V6`. Tightening only the tag rule lifted tags on every keep model (+0.05 to +0.20, mean **+0.125**) and overall note Quality on every model (mean **+0.028**), with no regression. Tags is no longer the universal weak dimension (only Mistral stays sub-0.75 at 0.689 — now the clearest model drop candidate).
 
-**The change:** Rewrite the *tagging* part of the analysis prompt to ask for fewer, sharper tags. Prompt wording only — no code, no model change.
+**The change:** Rewrite the *tagging* part of the analysis prompt to ask for fewer, sharper tags. Prompt wording only — no code-behaviour or model change.
 
 **What this is about:** Tags are the keywords the AI attaches to each note (e.g. `acme`, `hiring`, `1:1`) so you can later find related notes. Good tagging = a small set of meaningful, reusable tags. Bad tagging = too many tags, or vague/generic ones that don't help you find anything.
 
@@ -189,7 +189,7 @@ So v4 must chase **depth where the source supports it and restraint where it doe
 2. Run the eval comparing `v5` vs `v6` on the keep-set; check the tag score goes up and nothing else drops.
 3. If `v6` is better, make it the live prompt and record the decision.
 
-- [ ] `v6` tag score beats `v5` across all keep-set models, with no drop in summary / decisions / action-item quality
-- [ ] Decision recorded in `docs/eval-runs/` + `test-matrix.md`
+- [x] `v6` tag score beats `v5` across all keep-set models, with no drop in summary / decisions / action-item quality — tags +0.05 to +0.20 (mean +0.125), Quality +0.028, no regression (`run-286900`)
+- [x] Decision recorded in `docs/eval-runs/` + `test-matrix.md` — [report](../eval-runs/2026-06-13-mpi6-tags-v6.md), matrix v6
 
 **Depends on:** MPI-2 (today's live prompt `analysis@v5` — the starting point `v6` edits).
