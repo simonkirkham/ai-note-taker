@@ -26,11 +26,10 @@ public static class ActionItemHandlers
         AddActionItemRequest req,
         HttpResponse response,
         IActionItemCommandHandler handler,
-        INoteDetailStore noteDetailStore,
+        INoteAuthorizer noteAuthorizer,
         ICurrentUser currentUser)
     {
-        var detail = await noteDetailStore.GetAsync(new NoteId(noteId));
-        if (detail is null || detail.UserId != currentUser.UserId) return Results.NotFound();
+        if (!await noteAuthorizer.OwnsNoteAsync(new NoteId(noteId), currentUser.UserId)) return Results.NotFound();
         var actionId = req.ActionId is { } id && id != Guid.Empty
             ? new ActionId(id)
             : new ActionId(Guid.NewGuid());
@@ -50,11 +49,10 @@ public static class ActionItemHandlers
         Guid actionId,
         HttpResponse response,
         IActionItemCommandHandler handler,
-        INoteDetailStore noteDetailStore,
+        INoteAuthorizer noteAuthorizer,
         ICurrentUser currentUser)
     {
-        var detail = await noteDetailStore.GetAsync(new NoteId(noteId));
-        if (detail is null || detail.UserId != currentUser.UserId) return Results.NotFound();
+        if (!await noteAuthorizer.OwnsNoteAsync(new NoteId(noteId), currentUser.UserId)) return Results.NotFound();
         long version;
         try
         {
@@ -71,11 +69,10 @@ public static class ActionItemHandlers
         Guid actionId,
         HttpResponse response,
         IActionItemCommandHandler handler,
-        INoteDetailStore noteDetailStore,
+        INoteAuthorizer noteAuthorizer,
         ICurrentUser currentUser)
     {
-        var detail = await noteDetailStore.GetAsync(new NoteId(noteId));
-        if (detail is null || detail.UserId != currentUser.UserId) return Results.NotFound();
+        if (!await noteAuthorizer.OwnsNoteAsync(new NoteId(noteId), currentUser.UserId)) return Results.NotFound();
         long version;
         try
         {
@@ -92,11 +89,10 @@ public static class ActionItemHandlers
         Guid actionId,
         HttpResponse response,
         IActionItemCommandHandler handler,
-        INoteDetailStore noteDetailStore,
+        INoteAuthorizer noteAuthorizer,
         ICurrentUser currentUser)
     {
-        var detail = await noteDetailStore.GetAsync(new NoteId(noteId));
-        if (detail is null || detail.UserId != currentUser.UserId) return Results.NotFound();
+        if (!await noteAuthorizer.OwnsNoteAsync(new NoteId(noteId), currentUser.UserId)) return Results.NotFound();
         long version;
         try
         {
@@ -110,7 +106,7 @@ public static class ActionItemHandlers
 
     public static async Task<IResult> GetActions(
         Guid noteId,
-        INoteDetailStore noteDetailStore,
+        INoteAuthorizer noteAuthorizer,
         INoteActionsStore store,
         ICurrentUser currentUser,
         IConsistencyGate gate,
@@ -123,8 +119,7 @@ public static class ActionItemHandlers
         var consistency = await gate.WaitAsync(http.Request.Headers["If-Consistent-With"], ct).ConfigureAwait(false);
         if (consistency.IsStale) http.Response.Headers["X-Consistency"] = "stale";
 
-        var detail = await noteDetailStore.GetAsync(new NoteId(noteId));
-        if (detail is null || detail.UserId != currentUser.UserId) return Results.NotFound();
+        if (!await noteAuthorizer.OwnsNoteAsync(new NoteId(noteId), currentUser.UserId)) return Results.NotFound();
 
         var view = await store.QueryByNoteAsync(new NoteId(noteId));
         return Results.Ok(new

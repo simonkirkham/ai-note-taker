@@ -144,6 +144,9 @@ public static class Builder
             new ConsistencyGate(
                 sp.GetRequiredService<IProcessedPositionStore>(),
                 sp.GetService<ILogger<ConsistencyGate>>()));
+        // Strongly-consistent note ownership for note-scoped handlers (event-stream, not the async
+        // projection). Scoped to match IEventStore's per-request lifetime.
+        builder.Services.AddScoped<Api.Auth.INoteAuthorizer, Api.Auth.NoteAuthorizer>();
         builder.Services.AddSingleton<INoteTitleListStore>(sp =>
             new NoteTitleListStore(sp.GetRequiredService<IAmazonDynamoDB>(), projTableName));
         builder.Services.AddSingleton<INoteDetailStore>(sp =>
