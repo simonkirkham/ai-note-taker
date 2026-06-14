@@ -42,11 +42,12 @@ describe('TagsSection — existing behavior', () => {
     expect(onRemove).toHaveBeenCalledTimes(1)
   })
 
-  it('blurring the input submits the typed text', () => {
+  it('blurring the input submits the typed text', async () => {
+    const user = userEvent.setup()
     const onAdd = vi.fn()
     const { input } = renderTags({ onAdd })
-    fireEvent.change(input, { target: { value: 'NewTag' } })
-    fireEvent.blur(input)
+    await user.type(input, 'NewTag')
+    await user.tab()
     expect(onAdd).toHaveBeenCalledWith('NewTag')
   })
 
@@ -232,10 +233,11 @@ describe('TagsSection — keyboard navigation', () => {
     expect(onAdd).toHaveBeenCalledWith('Work')
   })
 
-  it('Enter with no highlight submits the raw input text', () => {
+  it('Enter with no highlight submits the raw input text', async () => {
+    const user = userEvent.setup()
     const onAdd = vi.fn()
     const { input } = renderTags({ onAdd })
-    fireEvent.change(input, { target: { value: 'MyTag' } })
+    await user.type(input, 'MyTag')
     fireEvent.keyDown(input, { key: 'Enter' })
     expect(onAdd).toHaveBeenCalledWith('MyTag')
   })
@@ -247,7 +249,7 @@ describe('TagsSection — keyboard navigation', () => {
     await userEvent.click(input)
     expect(screen.getByTestId('tag-suggestions')).toBeInTheDocument()
     // highlightedIndex is -1 (nothing highlighted)
-    fireEvent.change(input, { target: { value: 'my-custom' } })
+    await userEvent.type(input, 'my-custom')
     fireEvent.keyDown(input, { key: 'Enter' })
     expect(onAdd).toHaveBeenCalledWith('my-custom')
   })
