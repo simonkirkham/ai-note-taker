@@ -2,7 +2,7 @@ import { act, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { http, HttpResponse } from 'msw'
 import RecordControl from '../components/RecordControl'
-import { CHECKPOINT_INTERVAL_MS } from '../hooks/useTranscription'
+import { CHECKPOINT_INTERVAL_MS, useTranscription } from '../hooks/useTranscription'
 import { server } from '../test/setup'
 
 // ── Transcribe SDK mock ───────────────────────────────────────────
@@ -105,19 +105,34 @@ function stubBrowserApis() {
 // mock's pass-through recurses infinitely under Vitest 4 (Maximum call stack size exceeded).
 const nativeSetInterval = globalThis.setInterval
 
-const noop = () => {}
+// RecordControl is now a CONTROLLED component (19-E2): the streaming hook lives in
+// the parent and is passed in as the `transcription` prop. This harness owns the
+// real `useTranscription` so the SDK-mock-driven behavioural tests still exercise
+// the genuine streaming path, and mirrors the hook's live transcript into the DOM
+// (gated exactly like the parent's status-gate) so a test can assert what the
+// parent would surface — replacing the old upward-callback spy.
+function Harness(props: Omit<React.ComponentProps<typeof RecordControl>, 'transcription'>) {
+  const transcription = useTranscription(props.noteId)
+  const gated =
+    transcription.status === 'requestingCredentials' ||
+    transcription.status === 'recording' ||
+    transcription.status === 'stopped'
+  return (
+    <>
+      <RecordControl {...props} transcription={transcription} />
+      <div data-testid="harness-live-transcript">{gated ? transcription.transcript : ''}</div>
+    </>
+  )
+}
 
 function renderControl(
-  props: Partial<React.ComponentProps<typeof RecordControl>> = {},
+  props: Partial<Omit<React.ComponentProps<typeof RecordControl>, 'transcription'>> = {},
 ) {
-  return render(
-    <RecordControl
-      noteId="note-1"
-      onTranscriptChange={props.onTranscriptChange ?? noop}
-      onStatusChange={props.onStatusChange ?? noop}
-      {...props}
-    />,
-  )
+  return render(<Harness noteId="note-1" {...props} />)
+}
+
+function liveTranscript() {
+  return screen.getByTestId('harness-live-transcript').textContent
 }
 
 beforeEach(() => {
@@ -164,16 +179,15 @@ it('clicking Record fetches credentials and shows recording state', async () => 
   expect(screen.queryByRole('button', { name: 'Record' })).toBeNull()
 })
 
-it('reports live transcript text upward as results arrive', async () => {
+it('surfaces live transcript text as results arrive', async () => {
   stubBrowserApis()
-  const onTranscriptChange = vi.fn()
-  renderControl({ onTranscriptChange })
+  renderControl()
 
   await userEvent.click(screen.getByRole('button', { name: 'Record' }))
   await waitFor(() => expect(screen.getByRole('button', { name: 'Stop' })).toBeInTheDocument())
 
   emitTranscriptResult('Hello world')
-  await waitFor(() => expect(onTranscriptChange).toHaveBeenCalledWith('Speaker 1: Hello world'))
+  await waitFor(() => expect(liveTranscript()).toBe('Speaker 1: Hello world'))
 })
 
 it('clicking Stop transitions back to idle (Record visible again)', async () => {
@@ -265,14 +279,13 @@ it('autosaves the transcript to the draft on the periodic checkpoint while still
     http.post('/api/notes/note-1/transcription', () => { committed = true; return new HttpResponse(null, { status: 204 }) }),
   )
 
-  const onTranscriptChange = vi.fn()
-  renderControl({ onTranscriptChange })
+  renderControl()
   await userEvent.click(screen.getByRole('button', { name: 'Record' }))
   await waitFor(() => expect(screen.getByRole('button', { name: 'Stop' })).toBeInTheDocument())
   await waitFor(() => expect(checkpointCb).not.toBeNull())
 
   emitTranscriptResult('Captured so far')
-  await waitFor(() => expect(onTranscriptChange).toHaveBeenCalledWith('Speaker 1: Captured so far'))
+  await waitFor(() => expect(liveTranscript()).toBe('Speaker 1: Captured so far'))
 
   // Fire the checkpoint mid-recording — no Stop pressed.
   act(() => { checkpointCb!() })
@@ -302,13 +315,12 @@ it('checkpoint does not re-PUT the draft when the transcript has not changed', a
     http.post('/api/notes/note-1/transcription', () => new HttpResponse(null, { status: 204 })),
   )
 
-  const onTranscriptChange = vi.fn()
-  renderControl({ onTranscriptChange })
+  renderControl()
   await userEvent.click(screen.getByRole('button', { name: 'Record' }))
   await waitFor(() => expect(checkpointCb).not.toBeNull())
 
   emitTranscriptResult('Same text')
-  await waitFor(() => expect(onTranscriptChange).toHaveBeenCalledWith('Speaker 1: Same text'))
+  await waitFor(() => expect(liveTranscript()).toBe('Speaker 1: Same text'))
 
   act(() => { checkpointCb!() })
   await waitFor(() => expect(completionCalls).toBe(1))
@@ -547,12 +559,11 @@ it('Record on a note with an existing transcript shows a Continue / Re-record pr
 
 it('Continue resumes seeded from the prior transcript (appends after the separator)', async () => {
   stubBrowserApis()
-  const onTranscriptChange = vi.fn()
   server.use(
     http.put('/api/notes/note-1/transcription/draft', () => new HttpResponse(null, { status: 204 })),
     http.post('/api/notes/note-1/transcription', () => new HttpResponse(null, { status: 204 })),
   )
-  renderControl({ hasInitialTranscript: true, initialTranscript: 'Speaker 1: prior', onTranscriptChange })
+  renderControl({ hasInitialTranscript: true, initialTranscript: 'Speaker 1: prior' })
 
   await userEvent.click(screen.getByRole('button', { name: 'Record' }))
   await userEvent.click(screen.getByRole('button', { name: 'Continue' }))
@@ -560,25 +571,24 @@ it('Continue resumes seeded from the prior transcript (appends after the separat
 
   emitTranscriptResult('new words')
   await waitFor(() =>
-    expect(onTranscriptChange).toHaveBeenCalledWith('Speaker 1: prior\n— resumed —\nSpeaker 1: new words'),
+    expect(liveTranscript()).toBe('Speaker 1: prior\n— resumed —\nSpeaker 1: new words'),
   )
 })
 
 it('Re-record starts fresh and replaces (no prior text)', async () => {
   stubBrowserApis()
-  const onTranscriptChange = vi.fn()
   server.use(
     http.post('/api/notes/note-1/transcription', () => new HttpResponse(null, { status: 204 })),
   )
-  renderControl({ hasInitialTranscript: true, initialTranscript: 'Speaker 1: prior', onTranscriptChange })
+  renderControl({ hasInitialTranscript: true, initialTranscript: 'Speaker 1: prior' })
 
   await userEvent.click(screen.getByRole('button', { name: 'Record' }))
   await userEvent.click(screen.getByRole('button', { name: 'Re-record' }))
   await waitFor(() => expect(screen.getByRole('button', { name: 'Stop' })).toBeInTheDocument())
 
   emitTranscriptResult('new words')
-  await waitFor(() => expect(onTranscriptChange).toHaveBeenCalledWith('Speaker 1: new words'))
+  await waitFor(() => expect(liveTranscript()).toBe('Speaker 1: new words'))
   // The prior transcript and the resume separator must not appear — Re-record replaces.
-  expect(onTranscriptChange).not.toHaveBeenCalledWith(expect.stringContaining('prior'))
-  expect(onTranscriptChange).not.toHaveBeenCalledWith(expect.stringContaining('— resumed —'))
+  expect(liveTranscript()).not.toContain('prior')
+  expect(liveTranscript()).not.toContain('— resumed —')
 })

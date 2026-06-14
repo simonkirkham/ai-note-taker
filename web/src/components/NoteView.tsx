@@ -11,7 +11,7 @@ import { useNoteDetail } from "../hooks/useNoteDetail";
 import { useAnalyseNote, useEditContent, useRenameNoteDetail, useSetNoteDate } from "../hooks/useNoteDetailMutations";
 import { useTagNote, useUntagNote } from "../hooks/useTagMutations";
 import { useTags } from "../hooks/useTags";
-import type { TranscriptionStatus } from "../hooks/useTranscription";
+import { useTranscription } from "../hooks/useTranscription";
 import ActionsSection from "./ActionsSection";
 import FinalNotesView from "./FinalNotesView";
 import MeetingPicker from "./MeetingPicker";
@@ -66,6 +66,11 @@ export default function NoteView({
   const setNoteDateM = useSetNoteDate(noteId);
   const renameM = useRenameNoteDetail(noteId);
   const analyseM = useAnalyseNote(noteId);
+  // 19-E2: the streaming transcription hook lives in the common parent so its
+  // state flows DOWN as props to RecordControl (controlled), instead of the child
+  // pushing status/transcript UP via effect-fired callbacks (YMNNAE). A second
+  // instance would start a second recording session, so there is exactly one.
+  const transcription = useTranscription(noteId);
 
   // Draft pattern: displayed = draft ?? server value. While a draft is non-null the
   // user has unsaved edits, so a refetch never clobbers in-flight typing; the draft
@@ -77,8 +82,6 @@ export default function NoteView({
   const [contentDraft, setContentDraft] = useState<string | null>(null);
   const [dateDraft, setDateDraft] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<NoteTab>("quick");
-  const [liveTranscript, setLiveTranscript] = useState<string | null>(null);
-  const [recordingStatus, setRecordingStatus] = useState<TranscriptionStatus>("idle");
   const [pickerOpen, setPickerOpen] = useState(false);
   const [linkingEventId, setLinkingEventId] = useState<string | null>(null);
   const [openingNext, setOpeningNext] = useState(false);
@@ -117,7 +120,15 @@ export default function NoteView({
   const notFound = is404 && !onNotFound;
 
   const isRecording =
-    recordingStatus === "recording" || recordingStatus === "requestingCredentials";
+    transcription.status === "recording" || transcription.status === "requestingCredentials";
+  // Preserve the status-gate the old RecordControl effect applied: only surface the
+  // live transcript while requesting/recording/just-stopped, never at idle/error.
+  const liveTranscript =
+    transcription.status === "requestingCredentials" ||
+    transcription.status === "recording" ||
+    transcription.status === "stopped"
+      ? transcription.transcript
+      : null;
   const displayedTranscript = liveTranscript ?? transcriptText;
 
   // An in-progress or just-finished recording counts as content: leaving the
@@ -517,8 +528,7 @@ export default function NoteView({
                 noteHasContent={content.trim().length > 0}
                 hasInitialTranscript={transcriptText !== null}
                 initialTranscript={displayedTranscript}
-                onTranscriptChange={setLiveTranscript}
-                onStatusChange={setRecordingStatus}
+                transcription={transcription}
                 onAnalysisComplete={refreshNote}
               />
             </div>
