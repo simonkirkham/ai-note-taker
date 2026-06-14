@@ -106,7 +106,7 @@ public static class ActionItemHandlers
 
     public static async Task<IResult> GetActions(
         Guid noteId,
-        INoteAuthorizer noteAuthorizer,
+        INoteDetailStore noteDetailStore,
         INoteActionsStore store,
         ICurrentUser currentUser,
         IConsistencyGate gate,
@@ -119,7 +119,11 @@ public static class ActionItemHandlers
         var consistency = await gate.WaitAsync(http.Request.Headers["If-Consistent-With"], ct).ConfigureAwait(false);
         if (consistency.IsStale) http.Response.Headers["X-Consistency"] = "stale";
 
-        if (!await noteAuthorizer.OwnsNoteAsync(new NoteId(noteId), currentUser.UserId)) return Results.NotFound();
+        // This read runs in the Query Lambda (27-D), which has NO event-store access — so it cannot use
+        // the event-stream INoteAuthorizer (that 500s here). Authorize against the NoteDetail projection;
+        // the gate above already waited on the projector for a token-carrying read, so the note is built.
+        var detail = await noteDetailStore.GetAsync(new NoteId(noteId));
+        if (detail is null || detail.UserId != currentUser.UserId) return Results.NotFound();
 
         var view = await store.QueryByNoteAsync(new NoteId(noteId));
         return Results.Ok(new
