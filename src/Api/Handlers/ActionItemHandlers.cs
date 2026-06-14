@@ -120,9 +120,19 @@ public static class ActionItemHandlers
         if (consistency.IsStale) http.Response.Headers["X-Consistency"] = "stale";
 
         // This read runs in the Query Lambda (27-D), which has NO event-store access — so it cannot use
-        // the event-stream INoteAuthorizer (that 500s here). Authorize against the NoteDetail projection;
-        // the gate above already waited on the projector for a token-carrying read, so the note is built.
+        // the event-stream INoteAuthorizer (that 500s here). Authorize against the NoteDetail projection.
+        // The gate above waited on the ACTION stream's position, but ownership reads the NOTE's
+        // projection — a DIFFERENT stream. DynamoDB Streams don't guarantee cross-key order, so the
+        // action can be folded BEFORE the note (NoteDetail not yet built) → a spurious 404 even though
+        // the gate "succeeded". Bounded re-poll for the note's projection to ride out that cross-stream
+        // lag (Query Lambda can't read the event store to check existence authoritatively). ~1s worst case,
+        // only when null; the happy path (note already built) costs nothing.
         var detail = await noteDetailStore.GetAsync(new NoteId(noteId));
+        for (var attempt = 0; detail is null && attempt < 10; attempt++)
+        {
+            await Task.Delay(100, ct).ConfigureAwait(false);
+            detail = await noteDetailStore.GetAsync(new NoteId(noteId));
+        }
         if (detail is null || detail.UserId != currentUser.UserId) return Results.NotFound();
 
         var view = await store.QueryByNoteAsync(new NoteId(noteId));
