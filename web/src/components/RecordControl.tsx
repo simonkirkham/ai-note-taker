@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { analyseNote } from "../api/notes";
-import { useTranscription, type TranscriptionStatus } from "../hooks/useTranscription";
+import type { UseTranscriptionResult } from "../hooks/useTranscription";
 import styles from "./RecordControl.module.css";
 
 function formatTime(seconds: number): string {
@@ -16,20 +16,18 @@ export default function RecordControl({
   noteHasContent = false,
   hasInitialTranscript = false,
   initialTranscript = null,
-  onTranscriptChange,
-  onStatusChange,
+  transcription,
   onAnalysisComplete,
 }: {
   noteId: string;
   noteHasContent?: boolean;
   hasInitialTranscript?: boolean;
   initialTranscript?: string | null;
-  onTranscriptChange: (transcript: string) => void;
-  onStatusChange: (status: TranscriptionStatus) => void;
+  transcription: UseTranscriptionResult;
   onAnalysisComplete?: () => void;
 }) {
   const { status, transcript, elapsedSeconds, error, startRecording, stopRecording, reset } =
-    useTranscription(noteId);
+    transcription;
 
   const [hasRecordedThisSession, setHasRecordedThisSession] = useState(false);
   const [isAnalysing, setIsAnalysing] = useState(false);
@@ -55,16 +53,6 @@ export default function RecordControl({
     }
     begin();
   }
-
-  useEffect(() => {
-    onStatusChange(status);
-  }, [status, onStatusChange]);
-
-  useEffect(() => {
-    if (status === "requestingCredentials" || status === "recording" || status === "stopped") {
-      onTranscriptChange(transcript);
-    }
-  }, [status, transcript, onTranscriptChange]);
 
   const isRecording = status === "recording";
   const isRequesting = status === "requestingCredentials";

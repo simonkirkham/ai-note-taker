@@ -1,7 +1,9 @@
 import userEvent from '@testing-library/user-event'
 import { delay, http, HttpResponse } from 'msw'
+import { useState } from 'react'
 import NoteView from '../components/NoteView'
 import { ToastProvider } from '../components/ToastProvider'
+import type { TranscriptionStatus, UseTranscriptionResult } from '../hooks/useTranscription'
 import { render, screen, waitFor, fireEvent } from '../test/render'
 import { server } from '../test/setup'
 
@@ -17,19 +19,33 @@ vi.mock('../components/NoteEditor', () => ({
   ),
 }))
 
+// 19-E2: the streaming hook now lives in NoteView (the parent) and is passed DOWN
+// to RecordControl as the `transcription` prop. Mock the hook with a small stateful
+// stand-in so tests can drive status/transcript, and let RecordControl be a passive
+// renderer of those props (mirroring the real controlled component).
+vi.mock('../hooks/useTranscription', () => ({
+  useTranscription: (): UseTranscriptionResult => {
+    const [status, setStatus] = useState<TranscriptionStatus>('idle')
+    const [transcript, setTranscript] = useState('')
+    return {
+      status,
+      transcript,
+      elapsedSeconds: 0,
+      error: undefined,
+      startRecording: () => { setStatus('recording'); setTranscript('live words') },
+      stopRecording: () => setStatus('stopped'),
+      reset: () => { setStatus('idle'); setTranscript('') },
+    }
+  },
+}))
+
 vi.mock('../components/RecordControl', () => ({
-  default: ({
-    onTranscriptChange,
-    onStatusChange,
-  }: {
-    onTranscriptChange: (t: string) => void
-    onStatusChange?: (s: string) => void
-  }) => (
+  default: ({ transcription }: { transcription: UseTranscriptionResult }) => (
     <div data-testid="record-control-mock">
-      <button data-testid="transcription-record-button" onClick={() => onTranscriptChange('live words')}>
+      <button data-testid="transcription-record-button" onClick={() => transcription.startRecording(true)}>
         Record
       </button>
-      <button data-testid="mock-start-recording" onClick={() => onStatusChange?.('recording')}>
+      <button data-testid="mock-start-recording" onClick={() => transcription.startRecording(true)}>
         Start recording
       </button>
     </div>
@@ -819,6 +835,52 @@ describe('NoteView', () => {
       expect(await screen.findByTestId('tag-pill-planning')).toBeInTheDocument()
       await waitFor(() => expect(screen.queryByTestId('tag-pill-planning')).toBeNull())
       expect(await screen.findByRole('alert')).toHaveTextContent(/tag/i)
+    })
+  })
+
+  // 19-E2: the streaming transcription hook was lifted into NoteView (the common
+  // parent) and RecordControl made controlled — state flows DOWN as the
+  // `transcription` prop instead of the child pushing it UP via effect-fired
+  // callbacks. RecordControl no longer has the upward status/transcript callback props.
+  describe('lifted transcription state (19-E2)', () => {
+    it('recording status drives the in-recording UI via the lifted hook (no upward status callback)', async () => {
+      const onBack = vi.fn()
+      renderNoteView({ onBack })
+      await screen.findByLabelText('Note content')
+
+      // Drive the hook to "recording" through the prop the parent passes down.
+      await userEvent.click(screen.getByTestId('mock-start-recording'))
+
+      // isRecording is now derived from the lifted hook's status: leaving warns first.
+      await userEvent.click(screen.getByTestId('save-button'))
+      expect(onBack).not.toHaveBeenCalled()
+      expect(screen.getByTestId('confirm-leave-button')).toBeInTheDocument()
+    })
+
+    it('surfaces the live transcript while recording but not once idle (status-gate preserved)', async () => {
+      server.use(
+        http.get('/api/notes/:noteId', () =>
+          HttpResponse.json({ noteId: 'note-1', title: 'T', content: '', date: null, tags: [], transcriptText: null })),
+      )
+      renderNoteView()
+      await screen.findByLabelText('Note content')
+
+      // Idle: no live transcript surfaced on the Transcript tab.
+      await userEvent.click(screen.getByTestId('note-tab-transcript'))
+      expect(screen.queryByTestId('transcription-text')).toBeNull()
+
+      // Recording: the live transcript ("live words") is surfaced.
+      await userEvent.click(screen.getByTestId('transcription-record-button'))
+      await waitFor(() =>
+        expect(screen.getByTestId('transcription-text')).toHaveTextContent('live words'))
+    })
+
+    it('unmounting mid-recording produces no warning and no post-unmount callback', async () => {
+      const { unmount } = renderNoteView()
+      await screen.findByLabelText('Note content')
+      await userEvent.click(screen.getByTestId('mock-start-recording'))
+      // No callback exists for the child to fire after unmount; unmount is clean.
+      expect(() => unmount()).not.toThrow()
     })
   })
 
