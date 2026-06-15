@@ -89,4 +89,53 @@ public sealed class ConsistencyGateTests
 
         Assert.Equal(ConsistencyOutcome.Fresh, result.Outcome);
     }
+
+    // WaitForPresenceAsync: the cross-stream existence wait. Same interval/cap/delay as the version
+    // wait, but polls a read func until it returns non-null (a projection row lagging a DIFFERENT
+    // stream than the token gated on) — returns the value once present, or null once the cap elapses.
+
+    [Fact]
+    public async Task Presence_present_immediately_returns_value_without_delaying()
+    {
+        var positions = new InMemoryProcessedPositionStore();
+        var delays = 0;
+        var gate = Gate(positions, (_, _) => { delays++; return Task.CompletedTask; });
+
+        var value = await gate.WaitForPresenceAsync(_ => Task.FromResult<string?>("note"));
+
+        Assert.Equal("note", value);
+        Assert.Equal(0, delays);
+    }
+
+    [Fact]
+    public async Task Presence_appears_after_some_polls_returns_value()
+    {
+        var positions = new InMemoryProcessedPositionStore();
+        var reads = 0;
+        var gate = Gate(positions, (_, _) => Task.CompletedTask);
+
+        // null on the first two reads, present on the third.
+        var value = await gate.WaitForPresenceAsync(_ =>
+        {
+            reads++;
+            return Task.FromResult<string?>(reads >= 3 ? "note" : null);
+        });
+
+        Assert.Equal("note", value);
+        Assert.Equal(3, reads);
+    }
+
+    [Fact]
+    public async Task Presence_never_appears_returns_null_within_the_cap()
+    {
+        var positions = new InMemoryProcessedPositionStore();
+        var polls = 0;
+        var gate = Gate(positions, (_, _) => { polls++; return Task.CompletedTask; });
+
+        var value = await gate.WaitForPresenceAsync(_ => Task.FromResult<string?>(null));
+
+        Assert.Null(value);
+        // 2000ms cap / 50ms interval = 40 polls before the cap is reached.
+        Assert.Equal(40, polls);
+    }
 }

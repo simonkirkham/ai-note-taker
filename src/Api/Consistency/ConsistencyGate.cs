@@ -61,6 +61,38 @@ public sealed class ConsistencyGate(
         }
     }
 
+    public async Task<T?> WaitForPresenceAsync<T>(Func<CancellationToken, Task<T?>> read, CancellationToken ct = default)
+        where T : class
+    {
+        var elapsed = TimeSpan.Zero;
+        while (true)
+        {
+            var value = await read(ct).ConfigureAwait(false);
+            if (value is not null)
+            {
+                // Slow-but-present: the lagging projection row only appeared after a wait. Logged so a
+                // near-cap appearance (the precursor to a spurious Absent → 404) is visible before it tips.
+                if (elapsed > TimeSpan.Zero)
+                    logger?.LogInformation(
+                        "RYW presence gate present after waitMs={WaitMs}", elapsed.TotalMilliseconds);
+                return value;
+            }
+
+            if (elapsed >= cap)
+            {
+                // ABSENT: the row never materialised within the cap. The caller treats null as the
+                // entity not existing (e.g. a 404) — same outcome the old per-handler Task.Delay loop
+                // produced, now with the gate's interval/cap and this diagnostic.
+                logger?.LogWarning(
+                    "RYW presence gate ABSENT elapsedMs={Elapsed}", elapsed.TotalMilliseconds);
+                return null;
+            }
+
+            await _delay(pollInterval, ct).ConfigureAwait(false);
+            elapsed += pollInterval;
+        }
+    }
+
     // "<stream>@<version>" — split on the LAST '@' so a stream id containing '@' is tolerated;
     // the version is the trailing long. Anything that does not parse is treated as no token.
     private static bool TryParse(string? token, out string stream, out long version)
