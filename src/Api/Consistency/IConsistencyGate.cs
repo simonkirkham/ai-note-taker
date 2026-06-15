@@ -7,6 +7,14 @@ namespace Api.Consistency;
 public interface IConsistencyGate
 {
     Task<ConsistencyResult> WaitAsync(string? ifConsistentWith, CancellationToken ct = default);
+
+    // Cross-stream existence wait. Bounded-polls `read` until it returns non-null, then returns it;
+    // returns null if the cap elapses first. Used when a read must wait on a projection lagging a
+    // DIFFERENT stream than the token gated on (no version is known for it, only that the row must
+    // appear) — e.g. the Query Lambda authorizing actions against the note's projection, where
+    // DynamoDB Streams give no cross-key order. Shares the version wait's poll interval/cap/delay.
+    Task<T?> WaitForPresenceAsync<T>(Func<CancellationToken, Task<T?>> read, string label = "", CancellationToken ct = default)
+        where T : class;
 }
 
 public enum ConsistencyOutcome
