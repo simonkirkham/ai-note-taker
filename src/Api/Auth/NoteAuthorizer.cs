@@ -1,5 +1,6 @@
 using Domain.Notes;
 using EventStore;
+using Microsoft.Extensions.Logging;
 
 namespace Api.Auth;
 
@@ -13,16 +14,30 @@ public interface INoteAuthorizer
     Task<bool> OwnsNoteAsync(NoteId noteId, string userId, CancellationToken ct = default);
 }
 
-public sealed class NoteAuthorizer(IEventStore store) : INoteAuthorizer
+public sealed class NoteAuthorizer(IEventStore store, ILogger<NoteAuthorizer>? logger = null) : INoteAuthorizer
 {
     public async Task<bool> OwnsNoteAsync(NoteId noteId, string userId, CancellationToken ct = default)
     {
         var history = await store.ReadAsync(noteId.ToStreamId(), ct).ConfigureAwait(false);
-        if (history.Count == 0) return false;                                    // never created
-        if (history.Any(e => e.EventType == nameof(NoteDeleted))) return false;  // deleted (no un-delete)
+        if (history.Count == 0)                                                  // never created
+        {
+            // TI-39 diagnostic: a denial here right after a committed create points at a
+            // read-your-writes hole on the event-stream ConsistentRead. Logged so the residual
+            // ActionReadYourWrites flake leaves a trail in the test-env Command Lambda.
+            logger?.LogWarning("note-auth denied: no events for {Stream} (user {User})", noteId.ToStreamId(), userId);
+            return false;
+        }
+        if (history.Any(e => e.EventType == nameof(NoteDeleted)))                // deleted (no un-delete)
+        {
+            logger?.LogWarning("note-auth denied: deleted {Stream} (user {User})", noteId.ToStreamId(), userId);
+            return false;
+        }
         // The note's owner is the UserId stamped on its first event. A null owner is a legacy
         // pre-Phase-8 single-user note → not enforced (matches NoteCommandHandler).
         var owner = history[0].Metadata.UserId;
-        return owner is null || owner == userId;
+        var owns = owner is null || owner == userId;
+        if (!owns)
+            logger?.LogWarning("note-auth denied: owner {Owner} != {User} for {Stream}", owner, userId, noteId.ToStreamId());
+        return owns;
     }
 }
