@@ -127,7 +127,7 @@ public static class ActionItemHandlers
         // the gate "succeeded". The gate's presence wait rides out that cross-stream lag with the same
         // bounded interval/cap/logging as the version wait above (Query Lambda can't read the event store
         // to check existence authoritatively). ~2s worst case, only when null; happy path costs nothing.
-        var detail = await gate.WaitForPresenceAsync(c => noteDetailStore.GetAsync(new NoteId(noteId), c), ct).ConfigureAwait(false);
+        var detail = await gate.WaitForPresenceAsync(c => noteDetailStore.GetAsync(new NoteId(noteId), c), $"note:{noteId}", ct).ConfigureAwait(false);
         if (detail is null || detail.UserId != currentUser.UserId) return Results.NotFound();
 
         var view = await store.QueryByNoteAsync(new NoteId(noteId));

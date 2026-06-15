@@ -61,7 +61,7 @@ public sealed class ConsistencyGate(
         }
     }
 
-    public async Task<T?> WaitForPresenceAsync<T>(Func<CancellationToken, Task<T?>> read, CancellationToken ct = default)
+    public async Task<T?> WaitForPresenceAsync<T>(Func<CancellationToken, Task<T?>> read, string label = "", CancellationToken ct = default)
         where T : class
     {
         var elapsed = TimeSpan.Zero;
@@ -72,9 +72,10 @@ public sealed class ConsistencyGate(
             {
                 // Slow-but-present: the lagging projection row only appeared after a wait. Logged so a
                 // near-cap appearance (the precursor to a spurious Absent → 404) is visible before it tips.
+                // {Label} ties the line to the entity (the read func is opaque, so the caller supplies it).
                 if (elapsed > TimeSpan.Zero)
                     logger?.LogInformation(
-                        "RYW presence gate present after waitMs={WaitMs}", elapsed.TotalMilliseconds);
+                        "RYW presence gate present {Label} waitMs={WaitMs}", label, elapsed.TotalMilliseconds);
                 return value;
             }
 
@@ -84,7 +85,7 @@ public sealed class ConsistencyGate(
                 // entity not existing (e.g. a 404) — same outcome the old per-handler Task.Delay loop
                 // produced, now with the gate's interval/cap and this diagnostic.
                 logger?.LogWarning(
-                    "RYW presence gate ABSENT elapsedMs={Elapsed}", elapsed.TotalMilliseconds);
+                    "RYW presence gate ABSENT {Label} elapsedMs={Elapsed}", label, elapsed.TotalMilliseconds);
                 return null;
             }
 
