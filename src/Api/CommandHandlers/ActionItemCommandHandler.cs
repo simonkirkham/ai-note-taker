@@ -1,7 +1,6 @@
 using Domain;
 using Domain.ActionItems;
 using EventStore;
-using EventStore.Projections;
 using Api.Auth;
 using Api.Exceptions;
 using Api.Observability;
@@ -27,7 +26,6 @@ namespace Api.CommandHandlers;
 // in a single-user app, so a persistent conflict simply surfaces as a 409. Deferred deliberately.
 public sealed class ActionItemCommandHandler(
     IEventStore store,
-    INoteDetailStore noteDetailStore,
     ICurrentUser currentUser,
     IDomainMetrics metrics,
     ILogger<ActionItemCommandHandler> logger) : IActionItemCommandHandler
@@ -35,8 +33,15 @@ public sealed class ActionItemCommandHandler(
     public Task<long> HandleAsync(AddActionItem cmd, CancellationToken ct = default) =>
         CommandInstrumentation.RunAsync(metrics, logger, nameof(AddActionItem), "ActionItem", async () =>
         {
-            var noteDetail = await noteDetailStore.GetAsync(cmd.NoteId, ct).ConfigureAwait(false);
-            if (noteDetail is null)
+            // Note existence is a strongly-consistent decision — read the note's EVENT STREAM
+            // (ConsistentRead), never the async NoteDetail projection. The projection lags right after
+            // a note is created, so an action added immediately after create raced it to a spurious
+            // NoteNotFoundException → 404 → the action was never written (the residual
+            // ActionReadYourWrites deploy-gate flake; root-caused via test-env logs, TI-39). The
+            // endpoint also authorizes ownership against the event stream (NoteAuthorizer); this is the
+            // handler's own existence guard, kept strongly consistent for the same reason.
+            var noteHistory = await store.ReadAsync(cmd.NoteId.ToStreamId(), ct).ConfigureAwait(false);
+            if (noteHistory.Count == 0)
                 throw new NoteNotFoundException(cmd.NoteId);
 
             var streamId = cmd.ActionId.ToStreamId();
