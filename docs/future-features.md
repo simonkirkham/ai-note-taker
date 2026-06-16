@@ -66,3 +66,5 @@ Each entry records what it is, why it isn't scheduled yet, and where it was rais
 **Spike result (2026-06-03, Windows — de-risked):** A throwaway Electron spike on the `prototype/desktop-audio-spike` branch (`desktop-spike/`) confirmed the core hypothesis. With `session.setDisplayMediaRequestHandler` answering each request `{ video: <screen>, audio: 'loopback' }`, the renderer's `getDisplayMedia({audio,video})` resolved with **no source-picker dialog and no per-meeting consent**, and a live level meter tracked **system audio** (Windows loopback). So the picker friction is genuinely removable via a desktop shell — the remaining work is integration/packaging, not feasibility. macOS loopback via this handler remains unproven (the known weak platform). Branch is reference-only, never merged.
 
 **Raised in:** User request, 2026-06-03 — "Currently agreeing to share the audio from the machine for each meeting is far from ideal"; would an installed app make audio access easier?
+
+> _Graduated to a numbered phase — "Notes-as-prompt: inline AI instructions" is now [Phase 29](phases/phase-29.md)._
