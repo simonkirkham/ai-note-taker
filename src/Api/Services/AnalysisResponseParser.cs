@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Domain.Notes;
 
 namespace Api.Services;
 
@@ -33,7 +34,8 @@ public static class AnalysisResponseParser
                 ReadStringArray(root, "newTags"),
                 ReadStringArray(root, "newActionItems"),
                 modelId,
-                promptVersion);
+                promptVersion,
+                ReadInstructionResponses(root));
             return true;
         }
         catch (Exception ex) when (ex is JsonException or InvalidOperationException)
@@ -53,6 +55,20 @@ public static class AnalysisResponseParser
             ? value.EnumerateArray()
                 .Select(e => e.GetString() ?? "")
                 .Where(s => !string.IsNullOrWhiteSpace(s))
+                .ToList()
+            : [];
+
+    // Reads `instructionResponses: [{ "instruction": "...", "response": "..." }]`. Entries
+    // missing either field, or with a blank response, are skipped — a model that ignored an
+    // instruction must not surface as an empty card. Absent key => empty list.
+    static List<InstructionResponse> ReadInstructionResponses(JsonElement root) =>
+        root.TryGetProperty("instructionResponses", out var value) && value.ValueKind == JsonValueKind.Array
+            ? value.EnumerateArray()
+                .Where(e => e.ValueKind == JsonValueKind.Object)
+                .Select(e => new InstructionResponse(
+                    e.TryGetProperty("instruction", out var i) && i.ValueKind == JsonValueKind.String ? i.GetString() ?? "" : "",
+                    e.TryGetProperty("response", out var r) && r.ValueKind == JsonValueKind.String ? r.GetString() ?? "" : ""))
+                .Where(p => !string.IsNullOrWhiteSpace(p.Instruction) && !string.IsNullOrWhiteSpace(p.Response))
                 .ToList()
             : [];
 }

@@ -85,4 +85,57 @@ public class AnalysisResponseParserTests
         Assert.Empty(result.Decisions);
         Assert.Equal(["a"], result.NewTags);
     }
+
+    [Fact]
+    public void Parses_instruction_responses_in_order()
+    {
+        var text = """
+            {
+              "summary": "A meeting.",
+              "instructionResponses": [
+                {"instruction": "add an agenda", "response": "1. Review\n2. Plan"},
+                {"instruction": "draft an email", "response": "Hi team, ..."}
+              ]
+            }
+            """;
+
+        var ok = AnalysisResponseParser.TryParse(text, "m", "p", out var result);
+
+        Assert.True(ok);
+        Assert.NotNull(result.InstructionResponses);
+        Assert.Equal(2, result.InstructionResponses!.Count);
+        Assert.Equal("add an agenda", result.InstructionResponses[0].Instruction);
+        Assert.Equal("1. Review\n2. Plan", result.InstructionResponses[0].Response);
+        Assert.Equal("draft an email", result.InstructionResponses[1].Instruction);
+    }
+
+    [Fact]
+    public void Absent_instruction_responses_is_empty_not_a_failure()
+    {
+        var ok = AnalysisResponseParser.TryParse("""{ "summary": "A meeting." }""", "m", "p", out var result);
+
+        Assert.True(ok);
+        Assert.Empty(result.InstructionResponses!);
+    }
+
+    [Fact]
+    public void Instruction_responses_missing_a_field_or_blank_response_are_skipped()
+    {
+        var text = """
+            {
+              "summary": "A meeting.",
+              "instructionResponses": [
+                {"instruction": "do a thing"},
+                {"instruction": "another", "response": "   "},
+                {"instruction": "valid", "response": "done"}
+              ]
+            }
+            """;
+
+        var ok = AnalysisResponseParser.TryParse(text, "m", "p", out var result);
+
+        Assert.True(ok);
+        Assert.Single(result.InstructionResponses!);
+        Assert.Equal("valid", result.InstructionResponses![0].Instruction);
+    }
 }

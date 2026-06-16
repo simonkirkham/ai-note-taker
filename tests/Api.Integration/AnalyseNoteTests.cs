@@ -387,6 +387,96 @@ public sealed class AnalyseNoteTests : IClassFixture<ApiFactory>
         Assert.DoesNotContain(events, e => e.EventType == nameof(ActionItemsSuggested));
     }
 
+    // Scenario: A /ai instruction is executed and surfaced as a labelled response in Final notes
+    [Fact]
+    public async Task PostAnalyse_WithInstruction_RecordsLabelledResponse_AndStripsItFromGroundedNote()
+    {
+        _fakeBedrock.NextResult = new NoteAnalysisResult(
+            Summary: "The team agreed a plan.",
+            DiscussionPoints: [],
+            Decisions: [],
+            NewTags: [],
+            NewActionItems: [],
+            ModelId: "amazon.nova-lite-v1:0",
+            PromptVersion: "analysis@v7",
+            InstructionResponses: [new InstructionResponse("add an agenda for the weekend", "1. Review actions\n2. Plan next week")]);
+
+        var noteId = await CreateNoteWithTranscriptAsync(
+            content: "My private notes.\n/ai add an agenda for the weekend",
+            transcript: "We agreed a plan.");
+
+        var resp = await _client.PostAsync($"/notes/{noteId}/analyse", null);
+
+        Assert.Equal(HttpStatusCode.NoContent, resp.StatusCode);
+
+        // The /ai line is stripped from the note the model summarises; the instruction rides the request separately.
+        Assert.Equal("My private notes.", _fakeBedrock.LastRequest!.ExistingContent);
+        Assert.Equal(["add an agenda for the weekend"], _fakeBedrock.LastRequest.Instructions);
+
+        var detail = await GetNoteAsync(noteId);
+        var responses = detail.GetProperty("instructionResponses").EnumerateArray().ToList();
+        var only = Assert.Single(responses);
+        Assert.Equal("add an agenda for the weekend", only.GetProperty("instruction").GetString());
+        Assert.Contains("Review actions", only.GetProperty("response").GetString());
+
+        var events = await ReadStreamAsync(noteId);
+        Assert.Single(events, e => e.EventType == nameof(InstructionResponsesRecorded));
+    }
+
+    // Scenario: A note with no /ai line behaves exactly as today — no instruction-response event
+    [Fact]
+    public async Task PostAnalyse_NoInstruction_RecordsNoInstructionResponsesEvent()
+    {
+        _fakeBedrock.NextResult = new NoteAnalysisResult("a summary", [], [], [], []);
+
+        var noteId = await CreateNoteWithTranscriptAsync(content: "Plain notes.", transcript: "A meeting happened.");
+
+        var resp = await _client.PostAsync($"/notes/{noteId}/analyse", null);
+
+        Assert.Equal(HttpStatusCode.NoContent, resp.StatusCode);
+        Assert.Empty(_fakeBedrock.LastRequest!.Instructions ?? []);
+        var detail = await GetNoteAsync(noteId);
+        Assert.Empty(detail.GetProperty("instructionResponses").EnumerateArray());
+        var events = await ReadStreamAsync(noteId);
+        Assert.DoesNotContain(events, e => e.EventType == nameof(InstructionResponsesRecorded));
+    }
+
+    // Scenario: A note that is only a /ai instruction (no transcript, no other prose) still runs
+    [Fact]
+    public async Task PostAnalyse_OnlyInstructionNoTranscript_RunsAnalysis()
+    {
+        _fakeBedrock.NextResult = new NoteAnalysisResult("", [], [], [], [], "m", "analysis@v7",
+            [new InstructionResponse("brainstorm three names", "Alpha, Beta, Gamma")]);
+
+        var noteId = await CreateNoteWithContentAsync("/ai brainstorm three names");
+
+        var resp = await _client.PostAsync($"/notes/{noteId}/analyse", null);
+
+        Assert.Equal(HttpStatusCode.NoContent, resp.StatusCode);
+        Assert.Equal(["brainstorm three names"], _fakeBedrock.LastRequest!.Instructions);
+        var detail = await GetNoteAsync(noteId);
+        Assert.Single(detail.GetProperty("instructionResponses").EnumerateArray());
+    }
+
+    // Scenario: Re-running analysis replaces the instruction responses (latest wins)
+    [Fact]
+    public async Task PostAnalyse_RerunReplacesInstructionResponses()
+    {
+        var noteId = await CreateNoteWithContentAsync("/ai do the thing");
+
+        _fakeBedrock.NextResult = new NoteAnalysisResult("", [], [], [], [], "m", "analysis@v7",
+            [new InstructionResponse("do the thing", "first answer")]);
+        await _client.PostAsync($"/notes/{noteId}/analyse", null);
+
+        _fakeBedrock.NextResult = new NoteAnalysisResult("", [], [], [], [], "m", "analysis@v7",
+            [new InstructionResponse("do the thing", "second answer")]);
+        await _client.PostAsync($"/notes/{noteId}/analyse", null);
+
+        var detail = await GetNoteAsync(noteId);
+        var responses = detail.GetProperty("instructionResponses").EnumerateArray().ToList();
+        Assert.Equal("second answer", Assert.Single(responses).GetProperty("response").GetString());
+    }
+
     private async Task<IReadOnlyList<EventEnvelope>> ReadStreamAsync(string noteId)
     {
         var store = _factory.Services.GetRequiredService<IEventStore>();

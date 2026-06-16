@@ -5,9 +5,48 @@ namespace Analysis.Eval.Tests;
 public class PromptCatalogTests
 {
     [Fact]
-    public void Current_is_v6()
+    public void Current_is_v7()
     {
-        Assert.Equal("analysis@v6", PromptCatalog.Current.Version);
+        Assert.Equal("analysis@v7", PromptCatalog.Current.Version);
+    }
+
+    [Fact]
+    public void V7_without_instructions_keeps_v6_grounding_and_omits_instruction_responses()
+    {
+        var request = new NoteAnalysisRequest(
+            ExistingContent: "existing notes",
+            TranscriptText: "a transcript",
+            CurrentUserName: "Alice");
+
+        var prompt = PromptCatalog.V7.Build(request);
+
+        // V6's grounding + depth + tag wording is preserved.
+        Assert.Contains("GROUNDING COMES FIRST", prompt);
+        Assert.Contains("THIN TRANSCRIPT", prompt);
+        Assert.Contains("aim for 2–3 tags", prompt);
+        // With no instructions, the output JSON schema must not include the instructionResponses field.
+        Assert.DoesNotContain("\"instructionResponses\": [{", prompt);
+        Assert.Equal("analysis@v7", PromptCatalog.V7.Version);
+    }
+
+    [Fact]
+    public void V7_with_instructions_asks_to_execute_each_and_return_responses()
+    {
+        var request = new NoteAnalysisRequest(
+            ExistingContent: "existing notes",
+            TranscriptText: "a transcript",
+            CurrentUserName: "Alice",
+            Instructions: ["add an agenda for the weekend", "draft a thank-you email"]);
+
+        var prompt = PromptCatalog.V7.Build(request);
+
+        // Both instructions are surfaced to the model and the output schema includes responses.
+        Assert.Contains("add an agenda for the weekend", prompt);
+        Assert.Contains("draft a thank-you email", prompt);
+        Assert.Contains("\"instructionResponses\"", prompt);
+        // Grounding for the summary is explicitly held even while instructions may generate.
+        Assert.Contains("GROUNDING COMES FIRST", prompt);
+        Assert.Contains("UNCHANGED by the instructions", prompt);
     }
 
     [Fact]

@@ -125,6 +125,8 @@ public static class NoteHandlers
             summary = detail.Summary,
             discussionPoints = detail.DiscussionPoints ?? [],
             decisions = detail.Decisions ?? [],
+            instructionResponses = (detail.InstructionResponses ?? [])
+                .Select(r => new { instruction = r.Instruction, response = r.Response }),
             summaryModelId = detail.SummaryModelId,
             summaryPromptVersion = detail.SummaryPromptVersion,
             recurringSeriesId = calendarLink?.RecurringSeriesId,

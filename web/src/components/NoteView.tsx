@@ -108,6 +108,7 @@ export default function NoteView({
   const summary = detail?.summary ?? null;
   const discussionPoints = detail?.discussionPoints ?? [];
   const decisions = detail?.decisions ?? [];
+  const instructionResponses = detail?.instructionResponses ?? [];
   const summaryModelId = detail?.summaryModelId ?? null;
   const recurringSeriesId = detail?.recurringSeriesId ?? null;
   const linkedMeeting = detail?.linkedMeeting ?? null;
@@ -586,6 +587,7 @@ export default function NoteView({
               summary={summary}
               discussionPoints={discussionPoints}
               decisions={decisions}
+              instructionResponses={instructionResponses}
               summaryModelId={summaryModelId}
               onGenerate={handleGenerateFinalNotes}
             />

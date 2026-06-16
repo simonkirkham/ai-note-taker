@@ -85,6 +85,39 @@
   line-height: 1.5;
 }
 
+.instructionList {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.instructionCard {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding: var(--space-3);
+  background: var(--color-bg);
+  border: 1.5px solid var(--color-border);
+  border-radius: var(--radius);
+}
+
+.instructionTitle {
+  margin: 0;
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: var(--color-cta);
+}
+
+.responseText {
+  margin: 0;
+  color: var(--color-text);
+  line-height: 1.5;
+  white-space: pre-wrap;
+}
+
 .attribution {
   margin: 0;
   font-size: 0.8rem;

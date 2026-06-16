@@ -70,6 +70,12 @@ public record AnalysisSummaryRecorded(                         // AI Final notes
     IReadOnlyList<string> Decisions,
     string ModelId,
     string PromptVersion) : NoteEvent;
+public sealed record InstructionResponse(string Instruction, string Response);  // one /ai instruction + the AI's reply
+public record InstructionResponsesRecorded(                   // AI responses to inline /ai instructions (Phase 29); full snapshot, latest wins
+    NoteId NoteId,
+    IReadOnlyList<InstructionResponse> Responses,
+    string ModelId,
+    string PromptVersion) : NoteEvent;
 public record NoteDeleted(NoteId NoteId)                       : NoteEvent;
 ```
 
@@ -122,6 +128,18 @@ public record NoteDeleted(NoteId NoteId)                       : NoteEvent;
   "decisions": ["Ship the fix before the next release"],
   "modelId": "amazon.nova-lite-v1:0",
   "promptVersion": "analysis@v2"
+}
+```
+
+`InstructionResponsesRecorded` (the AI's responses to inline `/ai` instructions; full snapshot, latest wins; only written when the note had at least one `/ai` instruction):
+```json
+{
+  "noteId": "7f3a9c2b-1e4d-4a8f-9c0d-2b1f3a4e5c6d",
+  "responses": [
+    { "instruction": "add an agenda for the weekend", "response": "1. Review the actions\n2. Plan next week" }
+  ],
+  "modelId": "amazon.nova-lite-v1:0",
+  "promptVersion": "analysis@v7"
 }
 ```
 

@@ -61,6 +61,14 @@ public sealed class NoteDetailProjection
                         LastModifiedAt = envelope.OccurredAt
                     };
                 break;
+            case InstructionResponsesRecorded e:
+                if (_items.TryGetValue(e.NoteId, out var instructed))
+                    _items[e.NoteId] = instructed with
+                    {
+                        InstructionResponses = e.Responses,
+                        LastModifiedAt = envelope.OccurredAt
+                    };
+                break;
             default:
                 break;
         }

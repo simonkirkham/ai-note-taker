@@ -17,4 +17,5 @@ public record NoteDetailView(
     IReadOnlyList<string>? Decisions = null,
     string? SummaryModelId = null,
     string? SummaryPromptVersion = null,
-    string? WorkspaceId = null);
+    string? WorkspaceId = null,
+    IReadOnlyList<InstructionResponse>? InstructionResponses = null);

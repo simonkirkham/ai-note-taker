@@ -36,6 +36,18 @@ public sealed class DynamoDbNoteDetailStore(IAmazonDynamoDB dynamo, string table
             item["SummaryPromptVersion"] = new AttributeValue { S = detail.SummaryPromptVersion };
         if (!string.IsNullOrEmpty(detail.WorkspaceId))
             item["WorkspaceId"] = new AttributeValue { S = detail.WorkspaceId };
+        if (detail.InstructionResponses is { Count: > 0 })
+            item["InstructionResponses"] = new AttributeValue
+            {
+                L = detail.InstructionResponses.Select(r => new AttributeValue
+                {
+                    M = new Dictionary<string, AttributeValue>
+                    {
+                        ["Instruction"] = new() { S = r.Instruction },
+                        ["Response"] = new() { S = r.Response }
+                    }
+                }).ToList()
+            };
 
         await dynamo.PutItemAsync(new PutItemRequest { TableName = tableName, Item = item }, ct)
             .ConfigureAwait(false);
@@ -129,8 +141,16 @@ public sealed class DynamoDbNoteDetailStore(IAmazonDynamoDB dynamo, string table
             Decisions: decisions,
             SummaryModelId: summaryModelId,
             SummaryPromptVersion: summaryPromptVersion,
-            WorkspaceId: item.TryGetValue("WorkspaceId", out var wsAttr) ? wsAttr.S : null);
+            WorkspaceId: item.TryGetValue("WorkspaceId", out var wsAttr) ? wsAttr.S : null,
+            InstructionResponses: ReadInstructionResponses(item));
     }
+
+    private static IReadOnlyList<InstructionResponse>? ReadInstructionResponses(Dictionary<string, AttributeValue> item) =>
+        item.TryGetValue("InstructionResponses", out var attr) && attr.L?.Count > 0
+            ? attr.L.Select(v => new InstructionResponse(
+                v.M.TryGetValue("Instruction", out var i) ? i.S : "",
+                v.M.TryGetValue("Response", out var r) ? r.S : "")).ToList().AsReadOnly()
+            : null;
 
     private static IReadOnlyList<string>? ReadStringList(Dictionary<string, AttributeValue> item, string key) =>
         item.TryGetValue(key, out var attr) && attr.L?.Count > 0

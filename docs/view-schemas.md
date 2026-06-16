@@ -155,6 +155,7 @@ public record NoteDetail(
     string? Summary,                              // AI Final notes; null = never analysed (a normal empty state, not an error)
     IReadOnlyList<string> DiscussionPoints,       // [] when none
     IReadOnlyList<string> Decisions,              // [] when none
+    IReadOnlyList<InstructionResponse> InstructionResponses,  // [] when none; AI replies to inline /ai instructions (Phase 29)
     string? SummaryModelId,                       // attribution: which model wrote the summary
     string? SummaryPromptVersion,                 // attribution: which prompt version produced it
     long Version);                                // current stream sequence number
@@ -163,6 +164,8 @@ public record NoteDetail(
 `Version` is returned so the client can include it on the next command for optimistic concurrency (see [`dynamodb-event-append`](../dot-claude/skills/dynamodb-event-append/SKILL.md)).
 
 The **Final notes** fields (`summary`/`discussionPoints`/`decisions`/`summaryModelId`/`summaryPromptVersion`) are the AI's structured artifact, folded from the latest `AnalysisSummaryRecorded` (latest wins). A note that has **never been analysed** has `summary: null` and empty lists — this is a normal "no final notes yet" state, *not* an error, and is distinct from a failed analysis run (which the API surfaces as a 503 and the UI shows as an error). `content` is the user's own Quick notes and is **never** written by analysis from Phase 15-A onward.
+
+`instructionResponses` is the AI's reply to each inline `/ai` instruction the user wrote in their Quick notes (Phase 29), folded from the latest `InstructionResponsesRecorded` (latest wins). `[]` when the note had no `/ai` instruction — the common case. Each entry is `{ instruction, response }`; the UI renders them as labelled cards in Final notes.
 
 **Wire JSON:**
 ```json
@@ -178,6 +181,7 @@ The **Final notes** fields (`summary`/`discussionPoints`/`decisions`/`summaryMod
   "summary": "Reviewed the API integration; Bill owns the spec delivery.",
   "discussionPoints": ["API integration timeline", "Outstanding spec questions"],
   "decisions": ["Bill sends specs by Friday"],
+  "instructionResponses": [],
   "summaryModelId": "amazon.nova-lite-v1:0",
   "summaryPromptVersion": "analysis@v2",
   "version": 7
