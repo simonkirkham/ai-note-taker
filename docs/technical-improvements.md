@@ -22,7 +22,7 @@ Status key: 🔲 **Open** · 🟡 **Partly done / mitigated** · ✅ **Done** (g
 | TI-4  | Core Web Vitals — bundle budget + CLS + transitions                            | ✅ Done — → Phase 19 (19-I)                                                                                                             |
 | TI-5  | Network resilience — retry transient failures with backoff                     | ✅ Done — 20-G                                                                                                                          |
 | TI-6  | XSS hardening — allowlist URL schemes on `href`/`src`                          | ✅ Done — → Phase 19                                                                                                                    |
-| TI-7  | ESLint `jsx-a11y` + `import` rules + `@/` alias                                | 🟡 **Partly** — `@/` alias, `import-x/order`, **jsx-a11y (19-F3)** done; `import-x/no-unresolved`/`no-cycle` + typed-lint (19-B) remain |
+| TI-7  | ESLint `jsx-a11y` + `import` rules + `@/` alias                                | 🟡 **Partly** — `@/` alias, `import-x/order`, **jsx-a11y (19-F3)**, **typed-lint (19-B `recommendedTypeChecked`)** all done; only `import-x/no-unresolved`/`no-cycle` (needs `eslint-import-resolver-typescript`) remain |
 | TI-8  | Migrate `App.css` to CSS Modules                                               | ✅ Done — 14-P                                                                                                                          |
 | TI-9  | Upgrade GitHub Actions to Node.js 24                                           | ✅ Done                                                                                                                                 |
 | TI-10 | Resolve ESLint warnings in `AuthContext.tsx`                                   | ✅ Done — #172                                                                                                                          |
@@ -32,15 +32,15 @@ Status key: 🔲 **Open** · 🟡 **Partly done / mitigated** · ✅ **Done** (g
 | TI-14 | Break down the monolithic `App.css`                                            | ✅ Done — 14-P (merged into the CSS-Modules migration)                                                                                  |
 | TI-15 | Add a shared modal focus-trap utility                                          | ✅ Done — #211                                                                                                                          |
 | TI-16 | Make the projection-rebuild endpoint robust                                    | ✅ Done — → Phase 24                                                                                                                    |
-| TI-17 | Auto-backfill a new projection on deploy                                       | 🔲 **Open** — unblocked now P24 is done; pairs with Phase 23                                                                            |
+| TI-17 | Auto-backfill a new projection on deploy                                       | 🔲 **Open** — still a real gap (no rebuild step in `.github/workflows`); P24 dependency now cleared. P23 shipped, so re-home as a standalone deploy-job step / next projection-adding slice |
 | TI-18 | Rebuild emits delete tombstones for `NoteSearchView`                           | ✅ **Done** — Phase 24-B upsert-and-reconcile prunes deleted notes + hard-deletes stale tombstones                                       |
 | TI-19 | Stabilise the flaky `TagsJourney` E2E                                          | ✅ **Done** — correctness fix [BUG-22](phases/phase-bugs.md#bug-22--multi-tag-add-drops-a-pill-under-ryw-2-async-reads--consistency-token-slot-overwritten-by-an-older-version) (deploy #551, E2E 20/20 first-try); residual test-robustness follow-up closed — tag-pill assertions now reload-tolerant |
-| TI-20 | `WorkspaceList` reads via full table Scan, not a per-user GSI                  | 🔲 **Open** — fold into Phase 23                                                                                                        |
+| TI-20 | `WorkspaceList` reads via full table Scan, not a per-user GSI                  | 🔲 **Open** — confirmed still `Scan`+`ConsistentRead` (`DynamoDbWorkspaceListStore`); P23 shipped without it, so "fold into P23" is moot — re-home as a standalone GSI slice (pair with TI-33) |
 | TI-21 | CI pipeline hygiene — skip no-op deploys, cancel superseded, cache Playwright  | ✅ Done                                                                                                                                 |
 | TI-22 | Skip backend publish + `cdk deploy` on frontend-only pushes                    | ✅ Done — `detect-changes` gate (2026-06-11)                                                                                            |
-| TI-23 | Generalise append-retry-on-conflict beyond `NoteCommandHandler`                | 🔲 **Open** — only if a 2nd handler needs it                                                                                            |
+| TI-23 | Generalise append-retry-on-conflict beyond `NoteCommandHandler`                | 🔲 **Open (deliberately deferred)** — `ActionItemCommandHandler` has no retry by design (single-user app). BUG-28 already added store-level `TransactionConflict`→`ConcurrencyException` for all aggregates; only the shared retry-loop extraction is left — do it only if a 2nd handler needs it |
 | TI-24 | `deploy-production` hangs at "Configure AWS credentials"                       | 🟡 Mitigated — `timeout-minutes` shipped (#222); **root cause Open**                                                                    |
-| TI-25 | Add a `NoteEditor` component test for the image-ordering invariant             | 🔲 **Open** — guards the 25-B regression below the E2E gate                                                                             |
+| TI-25 | Add a `NoteEditor` component test for the image-ordering invariant             | 🔲 **Open** — `NoteEditor.test.tsx` now exists (link-hardening + BUG-24 resolve-before-parse) but does **not** cover the 25-B paste→presign→PUT invariant (no `blob:`/unmapped `src` reaches `onChange`; PUT failure removes the node); add those cases |
 | TI-26 | Zero-downtime deployments — frontend stale-chunk 404s; backend canary/rollback | ✅ Done — → Phase 26                                                                                                                    |
 | TI-27 | Frontend build Node 20 → 24 + lockfile regen (dep-audit T1)                    | ✅ Done — #237, deploy #528                                                                                                             |
 | TI-28 | ASP.NET 10 servicing + AWS SDK patch bumps (dep-audit T7)                      | ✅ Done — #241, deploy #530                                                                                                             |
@@ -48,8 +48,8 @@ Status key: 🔲 **Open** · 🟡 **Partly done / mitigated** · ✅ **Done** (g
 | TI-30 | React 18 → 19 (dep-audit T3)                                                   | ✅ Done — #246, deploy #536 (zero code changes)                                                                                         |
 | TI-31 | TypeScript 5.6 → 6.0 (dep-audit T4)                                            | ✅ Done — #249, deploy #539 (dropped deprecated `baseUrl`)                                                                              |
 | TI-32 | Prime the ASP.NET pipeline before the SnapStart snapshot (first-request ~7 s)   | ✅ **Done** — #260, deploy #552. Priming hook live; cold p50 7.92→4.82 s (−39%, n=7 prod). Residual CPU gap → TI-36                  |
-| TI-33 | `NoteCardList` reads via full-table `Scan` + `ConsistentRead`, not a GSI/Query  | 🔲 **Open** — same anti-pattern as TI-20; ~840 ms at 234 rows, scales O(all notes); fold into Phase 23                                    |
-| TI-34 | Make Lambda naming specific & correct everywhere                                | 🔲 **Open** — naming audit; user-raised 2026-06-12. **API Lambda** / **Projector Lambda** now; **Command/Query Lambda** only at 27-D    |
+| TI-33 | `NoteCardList` reads via full-table `Scan` + `ConsistentRead`, not a GSI/Query  | 🔲 **Open** — confirmed still `Scan`+`ConsistentRead` (`DynamoDbNoteCardListStore`); ~840 ms at 234 rows, O(all notes). P23 shipped without it — re-home as a standalone GSI slice with TI-20; also re-check whether `ConsistencyGate` makes the strong read redundant |
+| TI-34 | Make Lambda naming specific & correct everywhere                                | 🔲 **Open — premise updated** — 27-D **shipped**, so the live functions ARE **Command + Query + Projector** Lambda (CDK ids correct). But ~20 docs + `CLAUDE.md` still say "API Lambda"/"the Lambda"/"single Lambda"; audit + reconcile to the post-27-D names |
 | TI-35 | ReadyToRun-publish the API Lambda (AOT-precompile to cut first-request JIT)     | ✅ **Done** — #260, deploy #552. R2R live (IL_ONLY cleared on Api/AWSSDK/JwtBearer); part of the −39% cold-start cut. Pairs with TI-32 |
 | TI-36 | Raise API Lambda memory 256→512 MB to cut residual cold-start CPU time          | ✅ **Done** — #270, deploy #562. 512 MB live (prod config confirmed); cold p50 4.82→2.24 s, warm 118→29 ms. End-to-end 7.92→2.24 s (−72%) |
 | TI-37 | Capture **all** frontend errors in RUM — failed resource loads (`<img>` 403s) are invisible | ✅ **Done** — #268, deploy #557 (2026-06-13). Capture-phase `window` error listener forwards `<img>`/`<script>`/`<link>` load failures to RUM via `cwr('recordError')` (rides `JsErrorCount`); real JS errors skipped to avoid double-count. Dashboard widget retitled |
@@ -58,7 +58,7 @@ Status key: 🔲 **Open** · 🟡 **Partly done / mitigated** · ✅ **Done** (g
 | TI-40 | Scoped read-only AWS creds so a cloud routine can run `observability-review` automatically | 🔲 **Open** — raised 2026-06-13. The `observability-review` skill exists but a scheduled **cloud** agent can't reach prod (`--profile prod` is local-only), so a weekly automated sweep is impossible today. Add a least-privilege read-only CloudWatch-Logs/Metrics + RUM + X-Ray role (OIDC-federated, no static keys) the cloud runner can assume, connect GitHub, and wire the weekly routine |
 | TI-41 | Fold the `GetActions` cross-stream re-poll into `ConsistencyGate` (existence wait)            | ✅ **Done** — #289, deploy #589 (2026-06-15) via **Option B**. `GetActions` had a hand-rolled `Task.Delay(100)×10` loop *beside* the gate to ride out note-vs-action cross-stream projector lag. Added `IConsistencyGate.WaitForPresenceAsync<T>` (bounded presence-poll, shares the version wait's interval/cap/delay/logging) and replaced the loop with it — the only `Task.Delay` flagged as a smell in the 2026-06-14 audit is gone |
 
-**Outstanding (7 Open + 3 Partly):** TI-17 Auto-backfill projection on deploy; TI-20 `WorkspaceList` GSI; TI-23 Generalise append-retry; TI-25 `NoteEditor` ordering test; **TI-33 `NoteCardList` Scan→GSI**; **TI-34 Lambda naming audit**; **TI-40 read-only creds for automated cloud observability-review**; _(partly)_ TI-7 ESLint import-resolver + typed-lint (jsx-a11y done via 19-F3); TI-3 state-mgmt colocation; TI-24 deploy-credentials root cause. **TI-41 (`GetActions` cross-stream presence wait) is done — #289, deploy #589, 2026-06-15. TI-39 (chronic E2E deploy-gate flakiness) is done — 2026-06-13, four stacked causes incl. [BUG-27]/[BUG-29]; residual [BUG-28] carved out. The 2026-06 cold-start trio (TI-32 priming + TI-35 ReadyToRun + TI-36 512 MB) is done — #260/#270, deploys #552/#562 — cold p50 7.92→2.24 s (−72%). The 2026-06 observability triad (TI-37 RUM resource-error capture, TI-38 error-log-level, BUG-23 rebuild-timeout 503) is done — #267/#268/#269, deploys #556/#557/#558; the 2026-06 dependency upgrade audit (T1/T7/T2/T3/T4 = TI-27/28/29/30/31) is fully cleared.**
+**Outstanding (7 Open + 3 Partly) — reviewed 2026-06-16, statuses refreshed against the code:** TI-17 Auto-backfill projection on deploy (P24 dependency cleared; still no deploy step); TI-20 `WorkspaceList` GSI (re-home — P23 shipped without it); TI-23 Generalise append-retry (deliberately deferred; store-level conflict handling already in via BUG-28); TI-25 `NoteEditor` ordering test (file exists but covers 19-J/BUG-24, not the 25-B invariant); **TI-33 `NoteCardList` Scan→GSI** (re-home with TI-20); **TI-34 Lambda naming audit** (premise inverted — 27-D shipped, three live Lambdas); **TI-40 read-only creds for automated cloud observability-review**; _(partly)_ TI-7 ESLint `import-x/no-unresolved`/`no-cycle` only (jsx-a11y + typed-lint now done via 19-F3/19-B); TI-3 state-mgmt colocation; TI-24 deploy-credentials root cause. **TI-41 (`GetActions` cross-stream presence wait) is done — #289, deploy #589, 2026-06-15. TI-39 (chronic E2E deploy-gate flakiness) is done — 2026-06-13, four stacked causes incl. [BUG-27]/[BUG-29]; residual [BUG-28] carved out. The 2026-06 cold-start trio (TI-32 priming + TI-35 ReadyToRun + TI-36 512 MB) is done — #260/#270, deploys #552/#562 — cold p50 7.92→2.24 s (−72%). The 2026-06 observability triad (TI-37 RUM resource-error capture, TI-38 error-log-level, BUG-23 rebuild-timeout 503) is done — #267/#268/#269, deploys #556/#557/#558; the 2026-06 dependency upgrade audit (T1/T7/T2/T3/T4 = TI-27/28/29/30/31) is fully cleared.**
 
 > Items carry stable IDs `TI-1`–`TI-31` in document order (the `ID` column above); each detailed section below repeats its ID. Reference an item as `TI-N`. The dep-audit `T#` tags are retained in parentheses for cross-reference with the audit report.
 
@@ -117,9 +117,9 @@ Status key: 🔲 **Open** · 🟡 **Partly done / mitigated** · ✅ **Done** (g
 
 **Remaining work (this item):**
 
-1. **`import-x/no-unresolved` + `import-x/no-cycle`** — the original AC also named "catch unresolved/circular imports", which 14-R did not enable (needs `eslint-import-resolver-typescript` wired for the `@/` alias; `no-cycle` can be noisy). Add these on a follow-up pass.
-2. **Typed-lint family — adopt `@typescript-eslint` `recommended-type-checked`** (needs `parserOptions.project` wired; this is Phase **19-B**). Unlocks the machine-enforced half of the TS conventions just added to the `frontend-react` skill: `no-floating-promises` + `no-misused-promises` (the #1 silent async bug — un-awaited promises, async `onClick`), `no-non-null-assertion` (bans `!`), `no-explicit-any`/`no-unsafe-*`, `prefer-nullish-coalescing` + `prefer-optional-chain`. Expect a one-time backlog to clear; introduce in `warn` then promote to `error`. Note: typed lint is slower (whole-program) — keep it to `*.ts/*.tsx` and confirm CI time is acceptable.
-   **Why it matters:** a11y and import-hygiene enforcement turn "please remember" into "the build fails if you don't." `react-hooks` + `import-x/order` are now active; typed-lint closes the async-promise and `!`/`any` gaps; this closes the remaining gaps.
+1. **`import-x/no-unresolved` + `import-x/no-cycle`** — the original AC also named "catch unresolved/circular imports", which 14-R did not enable (needs `eslint-import-resolver-typescript` wired for the `@/` alias; `no-cycle` can be noisy). Add these on a follow-up pass. **This is the only remaining work in this item.**
+2. **Typed-lint family — ✅ Done (Phase 19-B).** `web/eslint.config.js` adopts `...tseslint.configs.recommendedTypeChecked` with `parserOptions.project` wired, enabling `no-floating-promises`/`no-misused-promises`, `no-non-null-assertion`, `no-explicit-any`/`no-unsafe-*`, `prefer-nullish-coalescing`/`prefer-optional-chain`. The async-promise and `!`/`any` gaps are now machine-enforced.
+   **Why it matters:** a11y and import-hygiene enforcement turn "please remember" into "the build fails if you don't." `react-hooks` + `import-x/order` + typed-lint are now active; only `no-unresolved`/`no-cycle` remain.
    **Raised in:** Frontend standards review 2026-06-03; updated after Phase 14-Q/R/S/T (ESLint-10 plugin-ecosystem gap discovered).
    **Depends on:** nothing external — `jsx-a11y` shipped via 19-F3 (scoped `overrides`); the remaining import-resolver rules and typed-lint (19-B) are unblocked.
 
@@ -260,8 +260,10 @@ The full rationale, target diagrams, staged migration plan, and the eventual-con
 **Why it matters:** silent, repeats for _every_ future projection, and the symptom (feature returns nothing) looks like a code bug, not an ops gap.
 
 **Fix options:** (1) detect new projection tables in the deploy job and POST the rebuild automatically (idempotent) after deploy; or (2) a deploy step that diffs the projection set and rebuilds only the new ones (needs the rebuild-robustness fix so a bulk rebuild can't partial-fail). Pairs with the rebuild-robustness item.
+**Still open (reviewed 2026-06-16):** no rebuild/backfill step exists in any `.github/workflows` job; the manual post-deploy `POST /admin/projections/rebuild` remains the only path. P24 (the safe-rebuild dependency) and P23 have both shipped, so this is now unblocked and standalone — no longer "pairs with Phase 23".
+
 **Raised in:** Phase 22 search backfill, 2026-06-08.
-**Depends on:** **[Phase 24](phases/phase-24.md)** (a safe auto-rebuild must not partial-fail). Pick this up once Phase 24 lands.
+**Depends on:** ~~Phase 24~~ — **done**; now unblocked.
 
 ---
 
@@ -322,7 +324,9 @@ The full rationale, target diagrams, staged migration plan, and the eventual-con
 
 **Why it's fine for now:** workspaces-per-user is tiny (low single digits), so the scan reads a handful of rows. **Why it's worth fixing:** it is an architectural inconsistency that scales O(all users' workspaces), and `ApplyRenamedAsync` loads the whole table to update one known row.
 
-**Fix:** add a `UserId` GSI to `notetaker-proj-workspacelist` and switch reads to a per-user `Query`; give the rename path a point `Get`/re-upsert instead of a scan. Fold in if Phase 23-B's scoping work touches this store.
+**Fix:** add a `UserId` GSI to `notetaker-proj-workspacelist` and switch reads to a per-user `Query`; give the rename path a point `Get`/re-upsert instead of a scan.
+
+**Still open (reviewed 2026-06-16):** `DynamoDbWorkspaceListStore` still does the cross-user `Scan`+`ConsistentRead`. **Phase 23 has shipped** without touching this store, so the original "fold into Phase 23-B" plan is moot — re-home as a standalone GSI slice, ideally batched with TI-33 (same change shape, same projection-table family).
 
 **Raised in:** Hawk review of PR #207 (slice 23-A), 2026-06-10.
 **Depends on:** —
@@ -364,6 +368,8 @@ BUG-17 (PR #217) added a bounded retry-on-`ConcurrencyException` (re-read→re-r
 
 **Why worth doing:** the latent lost-write still exists for rapid concurrent writes to a single action-item stream (e.g. fast complete/reopen toggles). **Fix:** extract a shared `AppendWithRetry` helper (or a handler base method) so the retry is defined once and applied wherever the read→handle→append pattern lives, rather than duplicated. Do it only if a second handler needs it — don't abstract for one caller.
 
+**Still open / deliberately deferred (reviewed 2026-06-16):** `ActionItemCommandHandler` confirms no retry by design (explicit code comment: concurrent writes to a single action stream are near-impossible in a single-user app, so a persistent conflict surfaces as a 409). Separately, **BUG-28 hardened the event store itself** — `DynamoDbEventStore.AppendAsync` now classifies a `TransactionConflict` as a retriable `ConcurrencyException` for *every* aggregate — so the missing piece here is purely the shared retry-*loop* extraction, still gated on a second caller actually needing it.
+
 **Raised in:** Hawk review of PR #217 (BUG-17), 2026-06-10.
 **Depends on:** —
 
@@ -387,6 +393,8 @@ The `deploy-production` job in `deploy.yml` intermittently (~half of deploys dur
 Phase 25-B shipped (then fixed) an **ordering bug** that every unit test passed and only the deploy-time E2E (`NoteImageJourney`) caught: the image node was inserted with a `blob:` src _before_ its stable key was mapped, so a save during the upload window dropped the image. The fix (presign-first) re-encodes the load-bearing invariant — _seed the `src→key` map before inserting the node_ — as two adjacent statements in `NoteEditor.tsx` with **nothing pinning the order below the slow deploy E2E gate**. The pure `noteImages.test.ts` covers only the rewrite helpers.
 
 **Why it matters:** a future refactor of `NoteEditor` could reorder seed-vs-insert and silently reintroduce the data-loss bug; CI wouldn't catch it until a ~15-min deploy E2E (which itself flakes/hangs). **Fix:** a `NoteEditor.test.tsx` (RTL + mocked `presignUpload`/`fetch`) asserting (a) `onChange` is never called with a `blob:`/unmapped src during a paste→presign→PUT sequence — the first `onChange` after insert already carries the key; and (b) on PUT failure the node is removed and `onChange` re-fires without the key. Tiptap-in-jsdom made this non-trivial, so it was deferred from the slice.
+
+**Still open (reviewed 2026-06-16):** `web/src/__tests__/NoteEditor.test.tsx` now exists, but it covers the **link-scheme hardening** (19-J) and **BUG-24 resolve-before-parse** invariants — *not* this item's paste→presign→PUT upload-ordering invariant. The file is the natural home; add the two cases (a) and (b) above. Note BUG-31 (removed image still shows after reopen) is a live, related concern that a stronger `NoteEditor` test layer may help surface.
 
 **Raised in:** Hawk review of PR #220 (25-B presign-first fix), 2026-06-11.
 **Depends on:** —
@@ -539,10 +547,12 @@ Broad framework/SDK/our-assembly JIT is handled by the paired **TI-35** (ReadyTo
 1. **`Scan`, not `Query`** — reads the entire projection every request rather than a partition-keyed slice. The precedent fix (`NoteSearchView`) uses a `UserId-index` GSI + `Query`.
 2. **`ConsistentRead = true` on a `Scan`** — doubles read cost + latency vs eventually-consistent and forbids serving the read off a GSI. The single-item path (`GetByNoteAsync`, line 50) also uses `ConsistentRead = true`. Check whether the *list* read genuinely needs strong consistency: post-27 the API reads projections the async Projector Lambda builds, and read-your-writes is handled by the `ConsistencyGate` polling the proj-position table — if the gate already guarantees freshness, the strong-consistent Scan is redundant cost. The single-entity RYW need (RYW-1) does not imply the whole-list read needs it.
 
-**Fix:** add a `UserId` (or `WorkspaceId`) GSI to `notetaker-proj-notecardlist`; switch the list read to a per-user/workspace `Query`; drop `ConsistentRead` on the list path unless the gate analysis shows it is load-bearing. Fold into Phase 23's scoping work alongside TI-20 (same change shape, same table family) — doing both together amortises the GSI-backfill + rebuild.
+**Fix:** add a `UserId` (or `WorkspaceId`) GSI to `notetaker-proj-notecardlist`; switch the list read to a per-user/workspace `Query`; drop `ConsistentRead` on the list path unless the gate analysis shows it is load-bearing.
+
+**Still open (reviewed 2026-06-16):** `DynamoDbNoteCardListStore.QueryAllAsync` still does the full-table `Scan`+`ConsistentRead`. **Phase 23 has shipped** without it, so the "fold into Phase 23" plan is moot — re-home as a standalone GSI slice batched with TI-20 (same change shape, same table family) — doing both together amortises the GSI-backfill + rebuild. The `ConsistencyGate`-makes-strong-read-redundant analysis is still worth doing as part of that slice.
 
 **Raised in:** Prod latency investigation, 2026-06-12 (X-Ray trace analysis).
-**Depends on:** — (pairs with TI-20; fold into Phase 23).
+**Depends on:** — (pairs with TI-20).
 
 ---
 
@@ -550,15 +560,15 @@ Broad framework/SDK/our-assembly JIT is handled by the paired **TI-35** (ReadyTo
 
 **What:** Audit every reference to "Lambda" / "the function" across CDK ids, `CLAUDE.md`, ADRs, phase docs, and code comments, and make each one specific to the function it means. There are now **two** Lambdas, so generic "the Lambda" is ambiguous.
 
-**Correct names by era:**
-- **Now (single API Lambda + async projector):** **API Lambda** (`ApiFunction` — handles all routes, command *and* query) and **Projector Lambda** (`ProjectorFunction` — async stream consumer).
-- **After 27-D (Command/Query split):** **Command Lambda** + **Query Lambda** + Projector Lambda.
+**Correct names — current state (27-D shipped):** the deployment now has **three** functions: **Command Lambda** (`CommandFunction` — writes + side-service GETs + admin rebuild), **Query Lambda** (`QueryFunction` — reads), and **Projector Lambda** (`ProjectorFunction` — async stream consumer). The CDK construct ids are already correct.
 
-**Important:** do NOT rename the current single API Lambda to "Command Lambda" — the Command/Query split hasn't happened (27-C was reverted; only Todo is async via RYW-1). "Command/Query Lambda" is correct only as *target* wording in ADR 0009 / phase-27, not for the current single-Lambda state. Any place using the future-split names to describe the present should be corrected to "API Lambda".
+**Premise updated (reviewed 2026-06-16):** the original wording said "do NOT rename to Command Lambda — the split hasn't happened (27-C reverted; only Todo async)." **That is now obsolete — 27-D shipped** (prod confirmed: `CommandFunction` + `QueryFunction` + `ProjectorFunction`). So the audit's job has *inverted*: the lingering generic "API Lambda" / "the Lambda" / "single Lambda" references now describe a state that no longer exists and should be reconciled to the three real names (or kept as deliberate historical wording inside era-stamped ADR/learnings/phase docs).
 
-**Why:** ambiguity now that there are two functions; future-split names used for the present state mislead.
-**Raised in:** user request, 2026-06-12.
-**Depends on:** — (the Command/Query half lands naturally with 27-D).
+**Scope:** ~20 docs + `CLAUDE.md` still carry "API Lambda"/"the Lambda"/"single Lambda" (grep 2026-06-16). Audit each, distinguishing (a) present-tense references that should become Command/Query/Projector, from (b) historical references inside dated docs (phase-1/7.5/9/12/18, ADR 0009, learnings) that correctly describe the single-Lambda era and should stay.
+
+**Why:** ambiguity with three live functions; pre-split names used for the present state now actively mislead.
+**Raised in:** user request, 2026-06-12. **Premise corrected:** 2026-06-16 (27-D shipped).
+**Depends on:** — (27-D done).
 
 ---
 
