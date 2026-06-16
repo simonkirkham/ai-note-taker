@@ -34,8 +34,23 @@
 
 Add `[api-fail]` logging → read it on each flake → the 404 paths localized the bug to "handlers authorizing on the projection." Fix writes (event stream) → re-measure → only `/actions` 404 remained → that exposed the cross-stream race → fix → **6/6 controlled green.** Evidence each step; no fix shipped on assumption.
 
+## Update 2026-06-16 — a 5th instance, inside the command handler (deploy #590, `fab63aa`)
+
+The BUG-30 sweep fixed the **endpoint** handlers + `NoteAuthorizer`, but missed a *second* existence check living **inside a command handler**. `ActionItemCommandHandler.HandleAsync(AddActionItem)` did its own `noteDetailStore.GetAsync(noteId)` → `throw NoteNotFoundException` on null — the same async projection, one layer deeper than the endpoint authorizer.
+
+| | |
+|---|---|
+| Symptom | `ActionReadYourWritesJourney` (create → add action → reload → assert) timed out at 32 s, ~1-in-4 cold-projector deploys |
+| Why the authorizer didn't catch it | The endpoint `NoteAuthorizer` (event stream) **passed** — the log showed `Command received AddActionItem` *then* `Command failed … NoteNotFoundException`, with the note's projection appearing 61 ms later. The *handler's own* projection read was the racy one. |
+| Fix | `fab63aa` — handler existence guard reads the note **event stream** (`store.ReadAsync(NoteId.ToStreamId())`, ConsistentRead); dropped the now-unused `INoteDetailStore` dep |
+| Why tests never caught it | `Api.Integration` uses the **synchronous** `SyncProjectingEventStore` — the projection is never behind, so the race can't exist there (386 tests green through the bug *and* the fix) |
+| Proof | 9 consecutive cold-projector reruns green (pre-fix: died at attempt 3) |
+
+**Sharpened lesson:** "audit every handler that reads the migrated model to make a decision" includes the **command handlers' own internal guards**, not just endpoint-level auth — and a synchronous test projection structurally **cannot** reproduce an async-projection race, so green integration tests are not evidence here; only E2E against the real projector is.
+
 ## Follow-ups
 
-- Image/transcription write handlers share the projection-auth anti-pattern (latent — not exercised right-after-create yet). Apply the same `INoteAuthorizer`.
+- Image/transcription write handlers share the projection-auth anti-pattern (latent — not exercised right-after-create yet). Apply the same event-stream existence check / `INoteAuthorizer`.
 - An Infrastructure.Assertions/smoke check that a read-path handler never depends on event-store access (would have caught the GetActions 500).
+- A residual `NoteReadYourWrites` cards-list flake (~1/10) remains — server-side healthy, points at workspace-context-on-reload; tracked as **TI-42**.
 - `NoteImage.Remove` projector-lag-tail watched but did not recur in the converged runs.
