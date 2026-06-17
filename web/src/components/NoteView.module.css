@@ -280,3 +280,18 @@
   color: var(--color-text-muted);
   font-weight: 400;
 }
+
+.aiHint {
+  margin: var(--space-2) 0 0;
+  font-size: 0.8rem;
+  line-height: 1.4;
+  color: var(--color-text-muted);
+}
+
+.aiHint code {
+  padding: 0.05em 0.3em;
+  border-radius: var(--radius);
+  background: var(--color-bg);
+  font-size: 0.9em;
+  color: var(--color-cta);
+}

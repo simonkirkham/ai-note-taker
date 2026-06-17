@@ -281,6 +281,15 @@ describe('NoteView', () => {
       await userEvent.tab()
       await waitFor(() => expect(savedContent).toBe('My own notes'))
     })
+
+    it('shows the /ai instruction discoverability hint (29-B)', async () => {
+      renderNoteView()
+      await screen.findByLabelText('Note content')
+      const hint = screen.getByTestId('ai-instruction-hint')
+      expect(hint).toBeVisible()
+      expect(hint).toHaveTextContent('/ai')
+      expect(hint).toHaveTextContent(/generate final notes/i)
+    })
   })
 
   // BUG-18: content saves only on the editor's onBlur. Removing an inline image via

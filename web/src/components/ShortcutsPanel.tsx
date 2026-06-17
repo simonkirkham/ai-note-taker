@@ -9,6 +9,7 @@ const SHORTCUTS = [
   { keys: "Ctrl+B", description: "Toggle bold" },
   { keys: "- + Space", description: "Bullet list" },
   { keys: "✓ button", description: "Mark heading as discussed" },
+  { keys: "/ai …", description: "AI carries out the instruction on Generate" },
 ];
 
 export default function ShortcutsPanel() {
