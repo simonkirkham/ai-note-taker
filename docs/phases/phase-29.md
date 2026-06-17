@@ -79,6 +79,8 @@ The feature adds a user-controlled execution path to analysis; the silent failur
 - **Whole-analysis parse fallback.** Already covered by the existing `AnalysisSummaryEmpty` / parse-fallback contract (`AnalysisResponseParser`, phase-15) — ensure a missing `instructionResponses` key is treated as empty, not as a parse failure, so it does not pollute that signal.
 - **No new server resource to alarm** — reuses the existing Bedrock call, Lambda, and DynamoDB table; nothing new to trace or alarm beyond the mismatch log above.
 
+**Known edge (accepted):** the clear-on-rerun logic reads `hadResponses` from the same `NoteDetail` projection snapshot the rest of `AnalyseNote` already reads (content, transcript, tags). Two rapid back-to-back `/analyse` calls where the first's projection write has not yet landed could let the second see `hadResponses == false` and skip the clearing event. Not a new surface (the whole flow already reads that snapshot), requires an explicit user double-generate (the UI awaits each call), and self-corrects on the next analyse — so it is accepted, not guarded.
+
 ## Deploy-time impact
 
 **Neutral.** Backend change (new prompt version, additive event, extended projection) but **no new CDK resource** (reuses Bedrock, the existing tables, the existing Lambda) and **no CI/CDK update-behaviour change**. No new projection table ⇒ no backfill step. No per-deploy cost delta. The one gate that adds wall-clock is the **pre-merge eval run** (`make eval`), which is a developer/CI step, not a deploy-path cost.
