@@ -13,7 +13,7 @@ public sealed class AppPage
     // turns a clean 33 s flake-fail into a 44 min suite hang (PR #291). The recorded URL carries the
     // `/w/{wsId}/` workspace prefix the frontend actually requested — the most direct evidence for the
     // "cards read scoped to the wrong workspace on reload" hypothesis. Surfaced in the failure message.
-    private readonly List<string> cardsRequestLog = new();
+    private readonly System.Collections.Concurrent.ConcurrentQueue<string> cardsRequestLog = new();
 
     public AppPage(IPage page, string baseUrl, string? authToken = null)
     {
@@ -23,7 +23,7 @@ public sealed class AppPage
         page.Response += (_, r) =>
         {
             if (r.Url.Contains("/notes/cards", StringComparison.OrdinalIgnoreCase))
-                cardsRequestLog.Add($"{r.Status} {r.Url}");
+                cardsRequestLog.Enqueue($"{r.Status} {r.Url}");
         };
     }
 
@@ -120,6 +120,7 @@ public sealed class AppPage
             {
                 // Deadline exceeded — the TI-42 flake. Replace the opaque "locator not visible" timeout
                 // with synchronous diagnostics (no body reads, no hang) so the failure tells us WHY.
+                // Only Playwright timeouts get the enriched message; any other exception propagates raw.
                 throw new Exception(await DescribeMissingCardAsync(title, timeoutMs));
             }
         }
