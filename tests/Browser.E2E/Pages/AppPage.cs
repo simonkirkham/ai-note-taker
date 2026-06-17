@@ -15,13 +15,6 @@ public sealed class AppPage
     // "cards read scoped to the wrong workspace on reload" hypothesis. Surfaced in the failure message.
     private readonly System.Collections.Concurrent.ConcurrentQueue<string> cardsRequestLog = new();
 
-    // SAFE BUG-31 diagnostic: on reopen the app calls POST /images/resolve with the image KEYS the
-    // persisted content still carries. The request PostData is a SYNCHRONOUS property (never a body
-    // read → never hangs), so recording it tells us, when the removed image wrongly reappears, whether
-    // the saved content still holds the key (→ persistence bug) or not (→ a read-gating/render issue).
-    // Also records the gated GET /content read's URL/status for the same failure.
-    private readonly System.Collections.Concurrent.ConcurrentQueue<string> imageRequestLog = new();
-
     public AppPage(IPage page, string baseUrl, string? authToken = null)
     {
         this.page = page;
@@ -31,10 +24,6 @@ public sealed class AppPage
         {
             if (r.Url.Contains("/notes/cards", StringComparison.OrdinalIgnoreCase))
                 cardsRequestLog.Enqueue($"{r.Status} {r.Url}");
-            else if (r.Url.Contains("/images/resolve", StringComparison.OrdinalIgnoreCase))
-                imageRequestLog.Enqueue($"resolve {r.Status} keys={r.Request.PostData}");
-            else if (r.Url.Contains("/content", StringComparison.OrdinalIgnoreCase))
-                imageRequestLog.Enqueue($"content {r.Request.Method} {r.Status} {r.Url}");
         };
     }
 
@@ -238,38 +227,7 @@ public sealed class AppPage
             {
                 await page.ReloadAsync();
             }
-            catch (PlaywrightException)
-            {
-                // Deadline exceeded — BUG-31. Surface synchronous, hang-proof diagnostics that
-                // distinguish the two hypotheses: if a recorded /images/resolve request still lists the
-                // removed image's key, the persisted content kept it (persistence bug); if not, the
-                // gated content read served stale or the render is wrong (read/gating bug).
-                throw new Exception(await DescribeImageStillPresentAsync(img, timeoutMs));
-            }
         }
-    }
-
-    // Hang-proof BUG-31 diagnostics: reads only already-resolved page state plus the sync request log.
-    private async Task<string> DescribeImageStillPresentAsync(ILocator img, int timeoutMs)
-    {
-        var url = page.Url;
-        int count;
-        string firstSrc;
-        try
-        {
-            count = await img.CountAsync();
-            firstSrc = count > 0 ? (await img.First.GetAttributeAsync("src") ?? "<null>") : "<none>";
-        }
-        catch (Exception ex)
-        {
-            count = -1;
-            firstSrc = $"<unavailable: {ex.GetType().Name}>";
-        }
-
-        var imageRequests = imageRequestLog.TakeLast(8).ToList();
-        return $"BUG-31: image still present after {timeoutMs}ms. page.Url={url} | " +
-               $"rendered imgs={count} firstSrc={firstSrc} | " +
-               $"image requests=[{string.Join(" ;; ", imageRequests)}]";
     }
 
     public async Task DeleteNoteAsync()
