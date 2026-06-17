@@ -134,13 +134,16 @@ public sealed class NoteImageJourney(BrowserFixture browser) : IAsyncLifetime
             $"Expected no bare-key image request on open; saw: {string.Join("; ", badRequests)}");
     }
 
-    // BUG-31: after removing an inline image, saving, and reopening, the note intermittently (and on the
-    // degraded test env, reliably) still shows the image past the 30 s reload window. Temporarily
-    // UN-QUARANTINED to capture test-env evidence: the 120 s per-test cap (E2EFact) means it can no
-    // longer hang the gate, and AssertNoteImageAbsentAfterReloadAsync now throws hang-proof diagnostics
-    // (rendered img src + the sync /images/resolve request keys) that distinguish a content-persistence
-    // bug from a read-gating/render one. Re-quarantine or fix once the evidence lands.
-    [E2EFact]
+    // QUARANTINED — BUG-31. Evidence from deploy #596 (un-quarantined under PR #294, 120 s cap so it
+    // could not hang): the *original* symptom (image reappears) looks RESOLVED — attempts 1-2 passed the
+    // full flow incl. the final image-absent assert. The residual ~1/3 flake is a DIFFERENT failure,
+    // upstream of the image assert: the post-removal `SaveAndReturnAsync` (line ~196) times out after 30 s
+    // waiting for a GET /notes/cards response that intermittently never fires (React Query serves the
+    // home list from cache → no network request). A shared-helper test-sync fragility, TI-42-adjacent —
+    // NOT a content-persistence/read bug. Re-quarantined to protect the gate; fix the SaveAndReturnAsync
+    // sync (wait on the awaited /content PUT, already set up by the caller, not on a maybe-cached cards
+    // refetch) then un-quarantine.
+    [E2EFact(Skip = "BUG-31: residual ~1/3 flake is SaveAndReturnAsync waiting on a maybe-cached /notes/cards refetch; image-reappear symptom appears fixed — see comment")]
     public async Task Remove_an_image_drops_it_from_the_note_and_it_stays_gone_after_reload()
     {
         var title = $"Remove img {Guid.NewGuid():N}"[..30];
