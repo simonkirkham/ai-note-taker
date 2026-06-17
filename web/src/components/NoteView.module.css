@@ -290,7 +290,7 @@
 
 .aiHint code {
   padding: 0.05em 0.3em;
-  border-radius: var(--radius-sm, 4px);
+  border-radius: var(--radius);
   background: var(--color-bg);
   font-size: 0.9em;
   color: var(--color-cta);
