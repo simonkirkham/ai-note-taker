@@ -24,7 +24,6 @@ public sealed class NoteReadYourWritesJourney(BrowserFixture browser) : IAsyncLi
         _page = await _context.NewPageAsync();
         _page.Console += (_, msg) => Console.WriteLine($"[browser {msg.Type}] {msg.Text}");
         _page.PageError += (_, err) => Console.WriteLine($"[browser error] {err}");
-        E2EApiTrace.Attach(_page); // TEMP TI-42: surface the cards read's workspace prefix + body
         _app = new AppPage(_page, browser.FrontendUrl, browser.E2EAuthToken);
     }
 

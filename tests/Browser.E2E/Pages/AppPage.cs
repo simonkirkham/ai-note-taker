@@ -2,8 +2,31 @@ using Microsoft.Playwright;
 
 namespace Browser.E2E.Pages;
 
-public sealed class AppPage(IPage page, string baseUrl, string? authToken = null)
+public sealed class AppPage
 {
+    private readonly IPage page;
+    private readonly string baseUrl;
+    private readonly string? authToken;
+
+    // SAFE TI-42 diagnostic: record ONLY the synchronous .Url/.Status of cards reads. Never read the
+    // body — `response.TextAsync()` hangs indefinitely on a response aborted by the reload loop, which
+    // turns a clean 33 s flake-fail into a 44 min suite hang (PR #291). The recorded URL carries the
+    // `/w/{wsId}/` workspace prefix the frontend actually requested — the most direct evidence for the
+    // "cards read scoped to the wrong workspace on reload" hypothesis. Surfaced in the failure message.
+    private readonly List<string> cardsRequestLog = new();
+
+    public AppPage(IPage page, string baseUrl, string? authToken = null)
+    {
+        this.page = page;
+        this.baseUrl = baseUrl;
+        this.authToken = authToken;
+        page.Response += (_, r) =>
+        {
+            if (r.Url.Contains("/notes/cards", StringComparison.OrdinalIgnoreCase))
+                cardsRequestLog.Add($"{r.Status} {r.Url}");
+        };
+    }
+
     public async Task GotoAsync()
     {
         if (!string.IsNullOrEmpty(authToken))
@@ -93,7 +116,37 @@ public sealed class AppPage(IPage page, string baseUrl, string? authToken = null
             {
                 // re-loop: reload + recheck until the gated read returns the card or we time out
             }
+            catch (PlaywrightException)
+            {
+                // Deadline exceeded — the TI-42 flake. Replace the opaque "locator not visible" timeout
+                // with synchronous diagnostics (no body reads, no hang) so the failure tells us WHY.
+                throw new Exception(await DescribeMissingCardAsync(title, timeoutMs));
+            }
         }
+    }
+
+    // Hang-proof failure diagnostics for the cards list: reads only already-resolved page state plus
+    // the URL-only request log. `page.Url` (SPA route) and the recorded `/w/{wsId}/notes/cards` request
+    // URLs reveal whether the read was scoped to a non-`__default__` workspace; the rendered card titles
+    // show what the server actually returned. All bounded — never reads a response body.
+    private async Task<string> DescribeMissingCardAsync(string title, int timeoutMs)
+    {
+        var url = page.Url;
+        IReadOnlyList<string> cardTitles;
+        try
+        {
+            cardTitles = await page.GetByTestId("note-cards")
+                .Locator("[data-testid='note-card-title']").AllTextContentsAsync();
+        }
+        catch (Exception ex)
+        {
+            cardTitles = new[] { $"<cards-unavailable: {ex.GetType().Name}>" };
+        }
+
+        var recentRequests = cardsRequestLog.TakeLast(5).ToList();
+        return $"TI-42: card '{title}' not in cards list after {timeoutMs}ms. " +
+               $"page.Url={url} | rendered cards({cardTitles.Count})=[{string.Join(" | ", cardTitles)}] | " +
+               $"last cards requests=[{string.Join(" ;; ", recentRequests)}]";
     }
 
     public async Task ClickNoteInListAsync(string title)
