@@ -26,7 +26,7 @@ public sealed class ActionItemJourney(BrowserFixture browser) : IAsyncLifetime
         await _context.DisposeAsync();
     }
 
-    [Fact]
+    [E2EFact]
     public async Task Action_items_persist_across_navigation()
     {
         var title = $"Act {Guid.NewGuid():N}"[..20];
@@ -49,7 +49,7 @@ public sealed class ActionItemJourney(BrowserFixture browser) : IAsyncLifetime
         await _app.AssertActionVisibleAfterReloadAsync("Send recap email");
     }
 
-    [Fact]
+    [E2EFact]
     public async Task Note_with_no_actions_shows_empty_state()
     {
         var title = $"Act {Guid.NewGuid():N}"[..20];

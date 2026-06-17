@@ -33,7 +33,7 @@ public sealed class ActionReadYourWritesJourney(BrowserFixture browser) : IAsync
         await _context.DisposeAsync();
     }
 
-    [Fact]
+    [E2EFact]
     public async Task Added_action_appears_after_reload()
     {
         var description = $"RYW action {Guid.NewGuid():N}"[..26];
