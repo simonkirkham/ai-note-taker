@@ -9,6 +9,7 @@ namespace Api.Services;
 public static class InstructionExtractor
 {
     private const string Marker = "/ai";
+    private static readonly string[] ListMarkers = ["- ", "* ", "+ "];
 
     public static (string CleanedContent, IReadOnlyList<string> Instructions) Extract(string? content)
     {
@@ -39,7 +40,7 @@ public static class InstructionExtractor
         instruction = "";
         var text = line.TrimStart();
 
-        foreach (var marker in new[] { "- ", "* ", "+ " })
+        foreach (var marker in ListMarkers)
         {
             if (text.StartsWith(marker, StringComparison.Ordinal))
             {

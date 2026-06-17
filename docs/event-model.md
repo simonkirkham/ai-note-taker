@@ -73,7 +73,7 @@ A named partition of a user's content (e.g. *Work* / *Personal*). A second isola
 | `RecordTagSuggestions(noteId, tags, modelId, promptVersion)` | Note exists, not deleted; empty tag list emits nothing | `TagsSuggestedV2` |
 | `RecordActionItemSuggestions(noteId, actionItemIds, modelId, promptVersion)` | Note exists, not deleted; empty list emits nothing | `ActionItemsSuggestedV2` |
 | `RecordAnalysisSummary(noteId, summary, discussionPoints, decisions, modelId, promptVersion)` | Note exists, not deleted | `AnalysisSummaryRecorded` |
-| `RecordInstructionResponses(noteId, responses[], modelId, promptVersion)` | Note exists, not deleted; empty list emits nothing | `InstructionResponsesRecorded` |
+| `RecordInstructionResponses(noteId, responses[], modelId, promptVersion)` | Note exists, not deleted; full snapshot (empty list clears prior responses) | `InstructionResponsesRecorded` |
 | `CompleteTranscription(noteId, transcriptText, durationSeconds)` | Note exists, not deleted; blank text rejected at the API | `TranscriptionCompleted` |
 | `DeleteNote(noteId, deletedAt)` | Note exists, status ≠ Deleted | `NoteDeleted` |
 
@@ -81,7 +81,7 @@ A named partition of a user's content (e.g. *Work* / *Personal*). A second isola
 >
 > `RecordAnalysisSummary` is also issued by the analysis handler. It records the AI's structured **Final notes** artifact (Summary, Discussion points, Decisions) as a separate first-class fact — a full snapshot where the latest wins, like `ContentEdited`. From Phase 15-A onward analysis **never** edits the user's notes (`ContentEdited` is no longer emitted by the analysis path); the AI's output lives only in `AnalysisSummaryRecorded`, attributed by `ModelId`/`PromptVersion`. Action items are **not** duplicated into this event — they remain `ActionItem` aggregates (single source of truth), referenced for provenance via `ActionItemsSuggested`.
 >
-> `RecordInstructionResponses` is issued by the analysis handler when the user's Quick notes contained one or more inline `/ai` instructions (Phase 29). The handler extracts the `/ai` lines from the note *before* analysis (so they never reach the grounded summary), passes them to the model, and records the model's per-instruction `{instruction, response}` pairs as `InstructionResponsesRecorded` — a full snapshot, latest wins, attributed by `ModelId`/`PromptVersion`. Empty list emits nothing, so a note with no `/ai` line produces no event and behaves exactly as before.
+> `RecordInstructionResponses` is issued by the analysis handler when the user's Quick notes contained one or more inline `/ai` instructions (Phase 29) **or** when a previous run recorded responses that must now be cleared. The handler extracts the `/ai` lines from the note *before* analysis (so they never reach the grounded summary), passes them to the model, and records the model's per-instruction `{instruction, response}` pairs as `InstructionResponsesRecorded` — a full snapshot, latest wins, attributed by `ModelId`/`PromptVersion`. The aggregate always emits when the command is handled (an empty list is a valid "cleared" snapshot); the handler simply never issues the command for a note that has neither current nor prior responses, so a note that never had a `/ai` line produces no event and behaves exactly as before.
 
 ### ActionItem
 

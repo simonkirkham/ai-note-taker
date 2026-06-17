@@ -127,7 +127,10 @@ public static class TranscriptionHandlers
             logger.LogWarning(
                 "Instruction responses missing: {Extracted} /ai instruction(s) extracted but model returned {Returned} response(s) for note {NoteId}",
                 instructions.Count, instructionResponses.Count, noteId);
-        if (instructionResponses.Count > 0)
+        // Record when there is something to show, or to CLEAR previously-recorded responses on a re-run
+        // that no longer has any (latest wins). A note that never had instructions writes no event.
+        var hadResponses = (detail.InstructionResponses?.Count ?? 0) > 0;
+        if (instructionResponses.Count > 0 || hadResponses)
             await noteHandler.HandleAsync(new RecordInstructionResponses(
                 new NoteId(noteId), instructionResponses, result.ModelId, result.PromptVersion), ct);
 

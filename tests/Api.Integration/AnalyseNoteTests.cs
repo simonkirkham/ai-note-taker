@@ -477,6 +477,26 @@ public sealed class AnalyseNoteTests : IClassFixture<ApiFactory>
         Assert.Equal("second answer", Assert.Single(responses).GetProperty("response").GetString());
     }
 
+    // Scenario: Removing the /ai line and re-analysing clears the previously-recorded responses
+    [Fact]
+    public async Task PostAnalyse_RerunWithoutInstruction_ClearsPriorResponses()
+    {
+        var noteId = await CreateNoteWithContentAsync("My notes.\n/ai do the thing");
+
+        _fakeBedrock.NextResult = new NoteAnalysisResult("", [], [], [], [], "m", "analysis@v7",
+            [new InstructionResponse("do the thing", "an answer")]);
+        await _client.PostAsync($"/notes/{noteId}/analyse", null);
+        Assert.Single((await GetNoteAsync(noteId)).GetProperty("instructionResponses").EnumerateArray());
+
+        // User removes the /ai line, then re-analyses: the model returns no responses.
+        await _client.PutAsync($"/notes/{noteId}/content", Json(new { content = "My notes." }));
+        _fakeBedrock.NextResult = new NoteAnalysisResult("a summary", [], [], [], []);
+        var resp = await _client.PostAsync($"/notes/{noteId}/analyse", null);
+
+        Assert.Equal(HttpStatusCode.NoContent, resp.StatusCode);
+        Assert.Empty((await GetNoteAsync(noteId)).GetProperty("instructionResponses").EnumerateArray());
+    }
+
     private async Task<IReadOnlyList<EventEnvelope>> ReadStreamAsync(string noteId)
     {
         var store = _factory.Services.GetRequiredService<IEventStore>();

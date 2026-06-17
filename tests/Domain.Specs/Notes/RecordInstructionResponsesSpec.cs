@@ -42,12 +42,16 @@ public sealed class RecordInstructionResponsesSpec
     }
 
     [Fact]
-    public void EmptyResponsesRaisesNothing()
+    public void EmptyResponsesRaisesAClearingEvent()
     {
+        // Full snapshot, latest wins: an empty list still raises the event so a re-run that
+        // produced no responses clears any previously-recorded ones (mirrors RecordAnalysisSummary).
         Spec
-            .Given<Note>(new NoteCreated(Id))
+            .Given<Note>(
+                new NoteCreated(Id),
+                new InstructionResponsesRecorded(Id, [new InstructionResponse("old", "stale")], "model", "analysis@v7"))
             .When(new RecordInstructionResponses(Id, [], "model", "analysis@v7"))
-            .Then();
+            .Then(new InstructionResponsesRecorded(Id, [], "model", "analysis@v7"));
     }
 
     [Fact]

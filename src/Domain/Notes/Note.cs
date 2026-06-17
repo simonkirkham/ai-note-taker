@@ -230,8 +230,9 @@ public sealed class Note : IAggregate
     {
         if (!_exists || _deleted)
             throw new InvalidOperationException($"Note {cmd.NoteId} does not exist.");
-        if (cmd.Responses.Count == 0)
-            return [];
+        // Always emits (even an empty list) so a re-run that produced no responses clears stale ones —
+        // a full snapshot where latest wins, exactly like RecordAnalysisSummary. The analysis handler
+        // only issues this command when there is something to record or clear.
         return [new InstructionResponsesRecorded(cmd.NoteId, cmd.Responses, cmd.ModelId, cmd.PromptVersion)];
     }
 }

@@ -18,6 +18,7 @@
 | MPI-4 | Fix the judge — give it the user's note as grounding + stop the content rubric auto-failing faithful terse notes | Done — terseness fixed; note-grounding partial (`run-28225`) | 10-G |
 | MPI-5 | Programmatic note-grounding for the judge — prompt-level grounding proved insufficient; exclude note/gold entities from the fabrication check | Done (`run-78385`) — allowlist (#257) fixed sparse-fixture content (0.20→0.70–0.90) | MPI-4 |
 | MPI-6 | Improve note tags — reword the prompt to ask for fewer, sharper tags (tagging is the AI's weakest output: 0.53–0.72 vs 0.85+ elsewhere) | Done (`run-286900`) — `analysis@v6` ships; tags +0.125 mean, Quality +0.028, no regression | MPI-2 |
+| MPI-7 | `analysis@v7` — execute inline `/ai` instructions (Phase 29-A). Neutral-by-construction: no separate eval run | Done — ships (no eval run; see below) | MPI-6, Phase 29-A |
 
 Further items are appended as each eval run surfaces the next weakest dimension. The `eval-run` skill proposes them (see [How items are added](#how-items-are-added)).
 
@@ -193,3 +194,21 @@ So v4 must chase **depth where the source supports it and restraint where it doe
 - [x] Decision recorded in `docs/eval-runs/` + `test-matrix.md` — [report](../eval-runs/2026-06-13-mpi6-tags-v6.md), matrix v6
 
 **Depends on:** MPI-2 (today's live prompt `analysis@v5` — the starting point `v6` edits).
+
+---
+
+## MPI-7 — `analysis@v7`: execute inline `/ai` instructions
+
+**Proposal:** Ship `analysis@v7`, which executes inline `/ai` instructions a user wrote in their notes and returns a per-instruction response, **without a separate eval run** — the change is neutral-by-construction for everything the eval measures. Shipped as part of [Phase 29-A](phase-29.md).
+
+**Why no eval run (and why that is correct here):**
+- `BuildV7` **delegates to `BuildV6` byte-for-byte when the note has no `/ai` instruction** (`PromptCatalog.cs`). So for every fixture in the eval matrix — which contains **no `/ai` fixtures** — v7 produces the *exact* v6 prompt and therefore the exact v6 output. A v7-vs-v6 run would compare a prompt to itself: zero delta, no information.
+- The eval **cannot** measure the only thing v7 changes (the instruction-response path), because no fixture exercises it. Running it would burn Bedrock calls to confirm `v7 == v6` on inputs that don't touch the new code.
+- The new path's *correctness* (extraction, execution, recording, clearing, rendering) is proven deterministically by Domain.Specs + Api.Integration (fake Bedrock) + vitest — the right tools for behaviour the eval can't see.
+
+**Decision (2026-06-17):** ship `v7` as `Current`; record this row in lieu of an eval report. If/when `/ai` fixtures are added to the matrix, a future MPI item can measure instruction-response *quality* (a genuinely new dimension), but that is not a regression risk for existing analysis.
+
+- [x] `v7` neutral for the eval matrix by construction (delegates to `v6` when no `/ai` instruction) — no summary/discussion/decisions/tags regression possible
+- [x] New `/ai` path covered by Domain.Specs + Api.Integration + vitest (not eval)
+
+**Depends on:** MPI-6 (today's live prompt `analysis@v6` — the path `v7` delegates to), Phase 29-A.
