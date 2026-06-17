@@ -357,6 +357,14 @@ Let the user embed an instruction in their Quick notes that the AI **executes** 
 
 Slices and acceptance criteria: [docs/phases/phase-29.md](phases/phase-29.md)
 
+## Phase 30 — Durable sign-in (no re-authorise) _(Not Started)_
+
+Make sign-in behave like a normal SSO app: the Google scope-approval ("re-authorise") screen appears **once, ever**, never on return. Root cause today — the Google refresh token lives **only** in the `rt` browser cookie, so any cookie loss (idle > 30 days, cleared cookies, a new browser) leaves the backend with no token and the only way to get one back from Google is to force `prompt=consent`, i.e. the re-authorise screen. The fix persists the refresh token **server-side** keyed by the user's Google `sub` (encrypted DynamoDB table), so a returning user is restored from the store with a plain sign-in and no consent — exactly how mature SSO apps avoid re-authorising. The OAuth app is already **Published** (refresh tokens long-lived; confirmed via a 15-day-old still-working calendar token), so a stored token effectively never expires. Four slices: **30-A** the server-side store + restore-on-login (core); **30-B** drop forced `prompt=consent` on returning sign-ins; **30-C** the [BUG-32](phases/phase-bugs.md#bug-32) warm-tab fix (try the refresh before signing out on idle-return — pure frontend, ships first); **30-D** `/auth/refresh` server-side-store fallback. New encrypted table is a one-off CDK add (no projection backfill); deploy-time neutral.
+
+**Goal:** match the standard SSO durability contract — consent is a one-time grant, not a per-login event — by giving the refresh token a durable server-side home keyed to the user identity.
+
+Slices and acceptance criteria: [docs/phases/phase-30.md](phases/phase-30.md)
+
 ---
 
 ## Standing tracks and planning docs
