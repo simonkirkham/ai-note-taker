@@ -202,11 +202,14 @@ export default function NoteView({
     contentDraftRef.current = null;
     // Capture the in-flight save so handleGenerateFinalNotes can await it (BUG-32). The
     // promise always resolves (errors are handled here), so awaiting it never throws.
-    pendingContentSaveRef.current = editContentM.mutateAsync(draft)
+    const save = editContentM.mutateAsync(draft)
       .then(() => { setContentDraft(null); })
       // Restore the ref on failure so a later leave/unmount retries the kept text
       // rather than silently dropping it (the text stays in contentDraft state too).
-      .catch(() => { contentDraftRef.current = draft; showError("Couldn't save your note. We kept your text — try again."); });
+      .catch(() => { contentDraftRef.current = draft; showError("Couldn't save your note. We kept your text — try again."); })
+      // Clear once settled so the ref never reports a stale "save in flight".
+      .finally(() => { if (pendingContentSaveRef.current === save) pendingContentSaveRef.current = null; });
+    pendingContentSaveRef.current = save;
   }
   const saveContentRef = useRef(handleSaveContent);
   useEffect(() => { saveContentRef.current = handleSaveContent; });
