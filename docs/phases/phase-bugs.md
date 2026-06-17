@@ -48,6 +48,7 @@
 
 | BUG-31 | **`NoteImageJourney.Remove` — removed image still shows after reopen.** After uploading an inline image, removing it, saving, and reopening the note, the image intermittently (and on the load-degraded test env, reliably) is still present past the 30 s reload-tolerant window. **Distinct from BUG-30** (not a 404 / projection-auth issue — the content `PUT` is awaited with the image already gone from the editor DOM, and the auth fixes are 6/6 green). Either the **gated content read lags the projector** beyond the window or a **content-persistence edge** (the saved content still carries the image key). **Pre-existing** — failed #577–#580 before the auth fixes — and **not diagnosable without test-env (separate-account) CloudWatch/trace**, which is the BUG-30 observability blindspot. **Status:** the one journey is **quarantined** (`[Fact(Skip=…)]`) to unblock the deploy gate; root cause needs test-env read access (projector `IteratorAge`, the content `GET`/`PUT`). | Open | BUG-30, 27-RYW |
 | BUG-32 | **A just-typed `/ai` instruction is missed when you Generate/Re-process (Phase 29-A).** The Quick-notes content save fires on editor **blur** as a fire-and-forget mutation (`handleSaveContent` → `editContentM.mutate`), and `handleGenerateFinalNotes` called `analyseM.mutateAsync()` **without waiting for it**. Clicking Generate/Re-process (which blurs the editor) raced the content `PUT` against the `analyse` `POST`, so analysis read the **previously-saved** content and a freshly-typed `/ai` line was not extracted — the instruction silently produced no response. Visible as "new note works (content long-saved before generate), re-analysing an existing note doesn't (the just-typed `/ai` line is in-flight)." Found 2026-06-17 by the user testing 29-A. **Fix:** `handleGenerateFinalNotes` flushes any pending draft and **awaits** the in-flight content save (`pendingContentSaveRef`) before analysing; `handleSaveContent` switched to `mutateAsync` and records the save promise. Regression test asserts the `/content` PUT completes before the `/analyse` POST. **Residual (noted, not fixed here):** even after the PUT lands, `AnalyseNote` reads content from the **async `NoteDetail` projection**, so a cold/slow projector could still serve stale content — the fully-robust fix reads content from the strongly-consistent event stream (cf. BUG-30); deferred unless it recurs in practice (the projector keeps up for the single-user prod case). | Done | 29-A |
+| BUG-33 | **Forced through full Google consent after inactivity — the warm-tab refresh paths sign out an expired token without trying the valid `rt` cookie.** When a tab is backgrounded, Chrome throttles/freezes the proactive 5-min-early refresh timer, so the ~1h id_token fully expires. On refocus the visibility handler (`AuthContext.tsx:117`) finds `remaining <= 0` and calls `handleRefreshFailure()` **directly** — clearing the session *and* `clearRefreshEstablished()` — without ever calling `attemptSilentRefresh()`; same anti-pattern in `useGoogleAuth.scheduleRefresh` (`delay <= 0 → onRefreshFailure()`). The still-valid 30-day `rt` cookie is never tried, so the user is bounced to sign-in, and because the flag was cleared the next sign-in sets `prompt=consent` → the full Google approval flow. The missed warm-tab siblings of BUG-15 (which fixed only the cold-load path). Confirmed by prod logs: every Google `/token` call is 200 and a clean ~55-min refresh cadence proves the cookie works while the tab stays active; the sign-out path makes **no** server call (it short-circuits client-side). **Fix:** both paths attempt a silent refresh first and only fail (and clear the flag) if it returns null. | Open | BUG-11, BUG-15, BUG-16 |
 
 Further bugs will be appended as they are identified.
 
@@ -697,3 +698,35 @@ Prefer (a) — it matches the production read-your-writes contract (reads re-gat
 **Reproduce-before-fix:** an inherent timing race — reproduces under projector cold-start / CI contention, not deterministically. The fix is validated by the hardened journeys staying green across many deploys (and by not regressing the existing RYW journeys).
 
 **Key files:** `tests/Browser.E2E/Journeys/*.cs` (the post-nav visibility asserts), `tests/Browser.E2E/Pages/AppPage.cs` (the reload-tolerant helpers — `AssertNoteVisibleInListAfterReloadAsync`, `AssertActionVisibleAfterReloadAsync`, `WaitVisibleWithReloadAsync` — to generalise). Related: [BUG-25] (current instance), [BUG-22] (RYW tag-flake), cards-list hardening (#256), TagsJourney hardening (#265), the RYW phase ([phase-27-ryw.md](phase-27-ryw.md)).
+
+---
+
+## BUG-33 — Forced through full Google consent after inactivity (warm-tab refresh skips the `rt` cookie)
+
+**Status:** Open — diagnosed 2026-06-17 from prod logs + code read. Not yet fixed.
+
+**Severity:** Medium — no data loss, but the user is repeatedly bounced through the full Google OAuth approval/consent flow during normal use (~twice a day, after stepping away), despite holding a valid 30-day refresh cookie. Same user-facing symptom as the supposedly-fixed [BUG-15]/[BUG-16].
+
+**Symptom:** After a period of inactivity (tab backgrounded), returning to the app shows the Google sign-in **and the full scope-approval/consent screen** again, not a silently-restored session. Reported on Chrome/Edge, ~twice in one day.
+
+**Root cause (confirmed):** Two warm-tab refresh paths treat an expired in-memory token as a dead session and sign the user out **without first attempting a silent refresh against the still-valid `rt` cookie**, and both clear `google_refresh_established` — which forces `prompt=consent` on the next sign-in:
+
+1. `web/src/auth/AuthContext.tsx:117-119` — `onVisibilityChange`: `if (remaining <= 0) handleRefreshFailure()`. `handleRefreshFailure()` clears the token, sets `sessionExpired`, and calls `clearRefreshEstablished()`. It never calls `attemptSilentRefresh()`. Only the `remaining < REFRESH_LEAD_MS` (but `> 0`) branch tries the cookie.
+2. `web/src/auth/useGoogleAuth.ts:42-45` — `scheduleRefresh`: `if (delay <= 0) { onRefreshFailure(); return }` — same anti-pattern when a token is (re)scheduled already at/after expiry.
+
+Chrome throttles/freezes background-tab timers, so the proactive refresh scheduled `REFRESH_LEAD_MS` (5 min) before expiry does not fire while hidden; the ~1h id_token fully expires; on refocus `remaining <= 0` is the common case → path (1) fires. The 30-day `rt` cookie (and the 401-retry recovery in `api.ts`) would have restored the session, but the visibility handler pre-empts them by setting `sessionExpired` first. This is the warm-tab sibling [BUG-15] missed — that fix only added the **cold-load** bootstrap refresh.
+
+**Evidence (prod, Command Lambda `oauth2.googleapis.com/token` calls, 2026-06-16/17):**
+- Every Google `/token` call returns **200** — the refresh token is valid; Google never rejects it.
+- A clean **~55-min** cadence of refreshes (id-token lifetime minus the 5-min lead) — the proactive timer works while the tab stays active.
+- The user's sign-outs produce **no** failed/401 Google call — the failure path short-circuits **client-side** and never reaches `/auth/refresh`.
+
+**Expected behaviour:** Returning to a backgrounded tab whose token expired silently restores the session from the `rt` cookie; the user reaches the Google approval flow only when the refresh token is genuinely absent/expired/revoked.
+
+**Reproduce-before-fix:** add a red test in `web/src/__tests__/TokenRefresh.test.tsx`: tab becomes visible with an already-expired in-memory token but a refresh that **would** succeed → session is restored (currently ends signed-out with the flag cleared).
+
+**Fix:** both paths attempt `attemptSilentRefresh()` first and only fail (and clear the flag) on a null result.
+- `onVisibilityChange`: collapse `remaining <= 0` into the refresh branch — `if (remaining < REFRESH_LEAD_MS) { attemptSilentRefresh().then(t => t ? handleRefreshSuccess(t) : handleRefreshFailure()).catch(handleRefreshFailure) }`.
+- `scheduleRefresh`: when `delay <= 0`, run a silent refresh immediately (adopt on success, `onRefreshFailure()` on null) instead of failing outright.
+
+**Key files:** `web/src/auth/AuthContext.tsx` (visibility handler), `web/src/auth/useGoogleAuth.ts` (`scheduleRefresh`); tests `web/src/__tests__/TokenRefresh.test.tsx`. Related: [BUG-11] (refresh-token flow), [BUG-15] (cold-start bootstrap refresh), [BUG-16] (per-login consent).
