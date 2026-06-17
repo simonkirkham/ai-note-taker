@@ -42,7 +42,9 @@ public static class E2EApiTrace
             var url = response.Url;
             var status = response.Status;
             var reqToken = response.Request.Headers.TryGetValue("x-consistency-token", out var t) ? t : "-";
-            var freshness = response.Headers.TryGetValue("x-consistency", out var f) ? f : "fresh";
+            // Report the header purely factually — absent is NOT inferred as `fresh` (a stripping proxy
+            // would make that a false reading and send the investigation the wrong way).
+            var freshness = response.Headers.TryGetValue("x-consistency", out var f) ? f : "(absent)";
 
             _ = PrintAsync(response, method, url, status, reqToken, freshness);
         };
@@ -55,17 +57,17 @@ public static class E2EApiTrace
         try
         {
             body = await response.TextAsync().ConfigureAwait(false);
+            if (body.Length > 600)
+                body = string.Concat(body.AsSpan(0, 600), "…");
+            body = body.ReplaceLineEndings(" ");
         }
-        catch
+        catch (Exception ex)
         {
             // The context/page can be torn down before a late body read resolves ("Target closed").
-            // This is a diagnostic; swallow and report what we already have synchronously.
-            body = "<body-unavailable>";
+            // Swallow so a diagnostic never fails the run, but name the exception type so a genuinely
+            // interesting failure mode (e.g. a body that throws) stays visible rather than hidden.
+            body = $"<body-unavailable: {ex.GetType().Name}>";
         }
-
-        if (body.Length > 600)
-            body = body[..600] + "…";
-        body = body.ReplaceLineEndings(" ");
 
         Console.WriteLine(
             $"[api-trace] {method} {status} req-token={reqToken} resp-consistency={freshness} {url} :: {body}");
