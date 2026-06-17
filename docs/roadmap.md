@@ -349,7 +349,7 @@ Slices and acceptance criteria: [docs/phases/phase-28.md](phases/phase-28.md)
 
 ---
 
-## Phase 29 — Notes-as-prompt: inline `/ai` instructions in a note _(Not Started)_
+## Phase 29 — Notes-as-prompt: inline `/ai` instructions in a note _(In Progress — 29-A done)_
 
 Let the user embed an instruction in their Quick notes that the AI **executes** during analysis, with each result shown as its own labelled block in Final Notes. A line prefixed `/ai ` (e.g. `/ai add an agenda for the weekend`) becomes an instruction; everything else is summarised as today. The pipeline is reused almost wholesale — the note already reaches the model — so the work is three things: **extract** the `/ai` lines so they drive execution instead of being summarised; a new prompt version (`analysis@v7`) that **executes** each instruction and returns `instructionResponses: [{instruction, response}]` while keeping the summary grounding-first; and a new **additive event `InstructionResponsesRecorded` → `NoteDetailView` field → per-instruction cards in `FinalNotesView`**. Two slices: **29-A** is the whole feature end-to-end on one real `/analyse` call (extractor + v7 + event/projection/UI, back-compat when no `/ai` line, **eval-gated** so v7 ships only after `make eval` proves no summary-quality regression vs v6); **29-B** adds a discoverability affordance so `/ai` is findable (pure UX, may fold into Stylist). Because it changes the analysis prompt it is eval-gated like a `phase-model-prompt-improvements` item; no new CDK resource and no projection backfill (the new field is correctly empty for historical notes), so deploy-time is neutral. Graduated from the "Notes-as-prompt: inline AI instructions in the user's notes" item in `future-features.md`.
 
