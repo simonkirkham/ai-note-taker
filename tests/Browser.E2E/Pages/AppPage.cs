@@ -80,9 +80,16 @@ public sealed class AppPage
 
     public async Task SaveAndReturnAsync()
     {
-        var cardsRefreshed = page.WaitForResponseAsync(r => r.Url.Contains("/notes/cards"));
+        // Click save → the note saves and the app navigates back to the home list. This previously
+        // awaited a GET /notes/cards response as the "list ready" signal, but React Query can serve the
+        // home list from cache → NO network request fires → a 30 s WaitForResponse timeout (the residual
+        // BUG-31 flake: ~1/3 of post-removal saves). Wait on the navigation itself (the home "new note"
+        // control, the same signal AssertHomeLoadedAsync trusts), which is independent of whether the
+        // cards query refetches. Safe for every caller: the just-saved card is added optimistically, so
+        // callers' own AssertNoteVisibleInList*/ClickNoteInList asserts (auto-waiting / reload-tolerant)
+        // still see it; callers needing the persisted write await their own /content PUT separately.
         await page.GetByTestId("save-button").ClickAsync();
-        await cardsRefreshed;
+        await Assertions.Expect(page.GetByTestId("new-note-button")).ToBeVisibleAsync();
     }
 
     public Task AssertNoteVisibleInListAsync(string title) =>

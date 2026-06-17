@@ -134,16 +134,13 @@ public sealed class NoteImageJourney(BrowserFixture browser) : IAsyncLifetime
             $"Expected no bare-key image request on open; saw: {string.Join("; ", badRequests)}");
     }
 
-    // QUARANTINED — BUG-31. Evidence from deploy #596 (un-quarantined under PR #294, 120 s cap so it
-    // could not hang): the *original* symptom (image reappears) looks RESOLVED — attempts 1-2 passed the
-    // full flow incl. the final image-absent assert. The residual ~1/3 flake is a DIFFERENT failure,
-    // upstream of the image assert: the post-removal `SaveAndReturnAsync` (line ~196) times out after 30 s
-    // waiting for a GET /notes/cards response that intermittently never fires (React Query serves the
-    // home list from cache → no network request). A shared-helper test-sync fragility, TI-42-adjacent —
-    // NOT a content-persistence/read bug. Re-quarantined to protect the gate; fix the SaveAndReturnAsync
-    // sync (wait on the awaited /content PUT, already set up by the caller, not on a maybe-cached cards
-    // refetch) then un-quarantine.
-    [E2EFact(Skip = "BUG-31: residual ~1/3 flake is SaveAndReturnAsync waiting on a maybe-cached /notes/cards refetch; image-reappear symptom appears fixed — see comment")]
+    // BUG-31 (resolved): removing an inline image, saving, and reopening keeps it gone. The original
+    // "image reappears" symptom was fixed by the systemic RYW changes (TI-39 projector warm-up/drain +
+    // BUG-30 auth-from-event-stream) — proven when un-quarantined under #294 (attempts 1-2 passed the
+    // image-absent assert). The residual ~1/3 flake was NOT this bug but a shared-helper sync gap:
+    // SaveAndReturnAsync waited on a GET /notes/cards that React Query can serve from cache (no request),
+    // now fixed to wait on the home navigation instead. Re-enabled with that fix in place.
+    [E2EFact]
     public async Task Remove_an_image_drops_it_from_the_note_and_it_stays_gone_after_reload()
     {
         var title = $"Remove img {Guid.NewGuid():N}"[..30];
