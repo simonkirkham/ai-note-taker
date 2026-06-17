@@ -36,6 +36,14 @@ describe('ShortcutsPanel', () => {
     expect(table).toHaveTextContent('✓ button')
   })
 
+  it('documents the /ai instruction shortcut (29-B)', async () => {
+    render(<ShortcutsPanel />)
+    await userEvent.click(screen.getByRole('button', { name: /toggle keyboard shortcuts/i }))
+    const table = screen.getByRole('table')
+    expect(table).toHaveTextContent('/ai')
+    expect(table).toHaveTextContent(/carries out the instruction/i)
+  })
+
   it('pressing Escape hides the table', async () => {
     render(<ShortcutsPanel />)
     await userEvent.click(screen.getByRole('button', { name: /toggle keyboard shortcuts/i }))

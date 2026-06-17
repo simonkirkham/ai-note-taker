@@ -576,6 +576,10 @@ export default function NoteView({
                   onBlur={handleSaveContent}
                 />
               )}
+              <p className={styles.aiHint} data-testid="ai-instruction-hint">
+                Tip: start a line with <code>/ai</code> to have the AI carry out an
+                instruction (e.g. <code>/ai draft an agenda</code>) when you generate final notes.
+              </p>
             </div>
           </div>
 
