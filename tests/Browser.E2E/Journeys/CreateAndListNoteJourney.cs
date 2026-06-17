@@ -26,7 +26,7 @@ public sealed class CreateAndListNoteJourney(BrowserFixture browser) : IAsyncLif
         await _context.DisposeAsync();
     }
 
-    [Fact]
+    [E2EFact]
     public async Task Create_a_note_name_it_and_see_it_in_the_list()
     {
         var title = $"Journey note {Guid.NewGuid():N}"[..30];

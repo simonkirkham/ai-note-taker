@@ -28,7 +28,7 @@ public sealed class DeepLinkJourney(BrowserFixture browser) : IAsyncLifetime
         await _context.DisposeAsync();
     }
 
-    [Fact]
+    [E2EFact]
     public async Task Hard_loading_an_existing_note_url_opens_it()
     {
         var title = $"Deep {Guid.NewGuid():N}"[..20];
@@ -45,7 +45,7 @@ public sealed class DeepLinkJourney(BrowserFixture browser) : IAsyncLifetime
         await _app.AssertNoteScreenLoadedAsync();
     }
 
-    [Fact]
+    [E2EFact]
     public async Task Hard_loading_a_missing_note_url_recovers_to_home()
     {
         // CloudFront serves the SPA for the unknown path; the app then 404s the

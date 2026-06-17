@@ -33,7 +33,7 @@ public sealed class NoteReadYourWritesJourney(BrowserFixture browser) : IAsyncLi
         await _context.DisposeAsync();
     }
 
-    [Fact]
+    [E2EFact]
     public async Task Renamed_note_appears_in_the_cards_list()
     {
         var title = $"RYW note {Guid.NewGuid():N}"[..24];

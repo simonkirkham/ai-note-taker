@@ -35,7 +35,7 @@ public sealed class NoteImageJourney(BrowserFixture browser) : IAsyncLifetime
     private static readonly byte[] WidePngBytes = Convert.FromBase64String(
         "iVBORw0KGgoAAAANSUhEUgAAAlgAAABQCAIAAABKyJzPAAABEElEQVR42u3VMQ0AAAgEsReGMCQiCxkMNKmCWy7VAwBvRQIAjBAAjBAAjBAAjBAAjBAAjBAAjBAAjBAAjBAAjBAAjBAAjBAAjBAAjBAAjBAAjBAAjBAAjBAAjBAAjBAAjBAAjBAAjBAAjBAAjBAAjBAAjBAAjBAAjBAAjBAAjBAAjBAAjBAAjBAAjBAAjBAAjBAAjBAAjBAAjBAAjBAAjBAAjBAAjBAAjBAAjBAAjBAAjBAAjBAAjBAAjBAAI1QBACMEACMEACMEACMEACMEACMEACMEACMEACMEACMEACMEACMEACMEACMEACMEACMEACMEACMEACMEACMEACMEACMEACMEACMEACMEACMEgCsLIANiS0+RAPsAAAAASUVORK5CYII=");
 
-    [Fact]
+    [E2EFact]
     public async Task Pick_an_image_see_it_inline_and_it_survives_reload()
     {
         var title = $"Image note {Guid.NewGuid():N}"[..30];
@@ -76,7 +76,7 @@ public sealed class NoteImageJourney(BrowserFixture browser) : IAsyncLifetime
         ).ToBeVisibleAsync(new() { Timeout = 15000 });
     }
 
-    [Fact]
+    [E2EFact]
     public async Task Opening_a_note_with_an_image_issues_no_bare_key_relative_image_request()
     {
         // BUG-24: stored content carries the bare key `notes/{id}/{img}.png`. Before the fix,
@@ -140,7 +140,7 @@ public sealed class NoteImageJourney(BrowserFixture browser) : IAsyncLifetime
     // the image already removed from the editor DOM, so it's either the gated content read lagging the
     // projector or a content-persistence edge. Pre-existing (failed #577–#580 before the auth fixes);
     // not diagnosable without test-env (separate-account) CloudWatch/trace. Skipped to unblock the gate.
-    [Fact(Skip = "BUG-31: removed image still shows after reopen — projector-lag/content-persistence, needs test-env trace")]
+    [E2EFact(Skip = "BUG-31: removed image still shows after reopen — projector-lag/content-persistence, needs test-env trace")]
     public async Task Remove_an_image_drops_it_from_the_note_and_it_stays_gone_after_reload()
     {
         var title = $"Remove img {Guid.NewGuid():N}"[..30];
@@ -200,7 +200,7 @@ public sealed class NoteImageJourney(BrowserFixture browser) : IAsyncLifetime
         await _app.AssertNoteImageAbsentAfterReloadAsync();
     }
 
-    [Fact]
+    [E2EFact]
     public async Task Resize_an_image_to_a_preset_and_the_size_survives_reload()
     {
         var title = $"Resize img {Guid.NewGuid():N}"[..30];
@@ -245,7 +245,7 @@ public sealed class NoteImageJourney(BrowserFixture browser) : IAsyncLifetime
         await Assertions.Expect(reopened).ToHaveJSPropertyAsync("clientWidth", 240);
     }
 
-    [Fact]
+    [E2EFact]
     public async Task Drag_resize_an_image_and_the_size_survives_reload()
     {
         var title = $"Drag img {Guid.NewGuid():N}"[..30];

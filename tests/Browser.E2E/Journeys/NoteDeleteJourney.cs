@@ -26,7 +26,7 @@ public sealed class NoteDeleteJourney(BrowserFixture browser) : IAsyncLifetime
         await _context.DisposeAsync();
     }
 
-    [Fact]
+    [E2EFact]
     public async Task Deleting_a_note_navigates_to_list_and_note_is_absent()
     {
         var title = $"Del {Guid.NewGuid():N}"[..20];
@@ -39,7 +39,7 @@ public sealed class NoteDeleteJourney(BrowserFixture browser) : IAsyncLifetime
         await _app.AssertNoteAbsentFromListAsync(title);
     }
 
-    [Fact]
+    [E2EFact]
     public async Task Deleted_note_is_not_in_list_after_navigating_back_manually()
     {
         var title = $"Del {Guid.NewGuid():N}"[..20];

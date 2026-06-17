@@ -32,7 +32,7 @@ public sealed class FolderReadYourWritesJourney(BrowserFixture browser) : IAsync
         await _context.DisposeAsync();
     }
 
-    [Fact]
+    [E2EFact]
     public async Task Created_folder_appears_after_reload()
     {
         var name = $"RYW folder {Guid.NewGuid():N}"[..22];

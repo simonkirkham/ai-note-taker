@@ -26,7 +26,7 @@ public sealed class TagsJourney(BrowserFixture browser) : IAsyncLifetime
         await _context.DisposeAsync();
     }
 
-    [Fact]
+    [E2EFact]
     public async Task AddTag_PillAppearsOnNoteScreen()
     {
         var title = $"Tag {Guid.NewGuid():N}"[..20];
@@ -40,7 +40,7 @@ public sealed class TagsJourney(BrowserFixture browser) : IAsyncLifetime
         await _app.AssertTagPillVisibleAsync("1:1s");
     }
 
-    [Fact]
+    [E2EFact]
     public async Task AddTag_PillAppearsOnHomeCard()
     {
         var title = $"Tag {Guid.NewGuid():N}"[..20];
@@ -55,7 +55,7 @@ public sealed class TagsJourney(BrowserFixture browser) : IAsyncLifetime
         await _app.AssertCardTagVisibleAfterReloadAsync(title, "1:1s");
     }
 
-    [Fact]
+    [E2EFact]
     public async Task AddTag_PersistsAfterNavigation()
     {
         var title = $"Tag {Guid.NewGuid():N}"[..20];
@@ -71,7 +71,7 @@ public sealed class TagsJourney(BrowserFixture browser) : IAsyncLifetime
         await _app.AssertTagPillVisibleAsync("1:1s");
     }
 
-    [Fact]
+    [E2EFact]
     public async Task AddMultipleTags_SpaceSeparated()
     {
         var title = $"Tag {Guid.NewGuid():N}"[..20];
@@ -89,7 +89,7 @@ public sealed class TagsJourney(BrowserFixture browser) : IAsyncLifetime
     // Un-quarantined: BUG-28 fixed — the concurrent multi-tag add's losing append was cancelled by
     // DynamoDB with reason "TransactionConflict" (not "ConditionalCheckFailed"), which the event store
     // didn't treat as retriable → unhandled 500 + dropped tag. Now both reasons are retriable conflicts.
-    [Fact]
+    [E2EFact]
     public async Task RemoveTag_PillDisappears()
     {
         var title = $"Tag {Guid.NewGuid():N}"[..20];
@@ -106,7 +106,7 @@ public sealed class TagsJourney(BrowserFixture browser) : IAsyncLifetime
     }
 
     // Un-quarantined: BUG-28 fixed (see RemoveTag_PillDisappears above — TransactionConflict now retriable).
-    [Fact]
+    [E2EFact]
     public async Task RemoveTag_GoneAfterNavigation()
     {
         var title = $"Tag {Guid.NewGuid():N}"[..20];

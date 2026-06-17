@@ -26,7 +26,7 @@ public sealed class NoteTabsJourney(BrowserFixture browser) : IAsyncLifetime
         await _context.DisposeAsync();
     }
 
-    [Fact]
+    [E2EFact]
     public async Task Switching_tabs_replaces_the_panel_rather_than_stacking()
     {
         // Given a freshly opened note (defaults to the Quick notes tab)

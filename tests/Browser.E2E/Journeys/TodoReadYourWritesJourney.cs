@@ -32,7 +32,7 @@ public sealed class TodoReadYourWritesJourney(BrowserFixture browser) : IAsyncLi
         await _context.DisposeAsync();
     }
 
-    [Fact]
+    [E2EFact]
     public async Task Added_todo_appears_in_the_list()
     {
         var description = $"RYW todo {Guid.NewGuid():N}"[..24];
