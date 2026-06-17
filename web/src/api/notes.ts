@@ -44,6 +44,11 @@ export interface TranscriptionDraft {
   capturedAt: string;
 }
 
+export interface InstructionResponse {
+  instruction: string;
+  response: string;
+}
+
 export interface NoteDetail {
   noteId: string;
   title: string;
@@ -57,6 +62,8 @@ export interface NoteDetail {
   summary: string | null;
   discussionPoints: string[];
   decisions: string[];
+  // AI responses to inline `/ai` instructions the user wrote in their notes (Phase 29).
+  instructionResponses: InstructionResponse[];
   summaryModelId: string | null;
   summaryPromptVersion: string | null;
   recurringSeriesId: string | null;

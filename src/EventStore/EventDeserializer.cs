@@ -38,6 +38,7 @@ public static class EventDeserializer
         (nameof(NoteLinkedToCalendarEvent), _) => JsonSerializer.Deserialize<NoteLinkedToCalendarEvent>(envelope.Payload)!,
         (nameof(TranscriptionCompleted), _) => JsonSerializer.Deserialize<TranscriptionCompleted>(envelope.Payload)!,
         (nameof(AnalysisSummaryRecorded), _) => JsonSerializer.Deserialize<AnalysisSummaryRecorded>(envelope.Payload)!,
+        (nameof(InstructionResponsesRecorded), _) => JsonSerializer.Deserialize<InstructionResponsesRecorded>(envelope.Payload)!,
         (nameof(TodoAdded), _) => JsonSerializer.Deserialize<TodoAdded>(envelope.Payload)!,
         (nameof(TodoCompleted), _) => JsonSerializer.Deserialize<TodoCompleted>(envelope.Payload)!,
         (nameof(TodoReopened), _) => JsonSerializer.Deserialize<TodoReopened>(envelope.Payload)!,

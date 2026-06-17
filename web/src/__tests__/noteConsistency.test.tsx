@@ -142,6 +142,7 @@ function noteDetail(title: string) {
     summary: null,
     discussionPoints: [],
     decisions: [],
+    instructionResponses: [],
     summaryModelId: null,
     summaryPromptVersion: null,
     recurringSeriesId: null,

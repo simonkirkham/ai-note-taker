@@ -159,6 +159,61 @@ describe('FinalNotesView', () => {
     )
   })
 
+  describe('instruction responses (Phase 29)', () => {
+    it('renders a labelled card per /ai instruction response', () => {
+      renderWithToast(
+        <FinalNotesView
+          summary="We agreed a plan."
+          discussionPoints={[]}
+          decisions={[]}
+          instructionResponses={[
+            { instruction: 'add an agenda for the weekend', response: '1. Review\n2. Plan' },
+            { instruction: 'draft a thank-you email', response: 'Hi team, thanks!' },
+          ]}
+          summaryModelId="model-x"
+          onGenerate={noop}
+        />,
+      )
+
+      const list = screen.getByTestId('final-notes-instruction-responses')
+      expect(list).toHaveTextContent('add an agenda for the weekend')
+      expect(list).toHaveTextContent('1. Review')
+      expect(list).toHaveTextContent('draft a thank-you email')
+      expect(list).toHaveTextContent('Hi team, thanks!')
+    })
+
+    it('omits the AI responses section when there are none', () => {
+      renderWithToast(
+        <FinalNotesView
+          summary="A summary."
+          discussionPoints={[]}
+          decisions={[]}
+          instructionResponses={[]}
+          summaryModelId="model-x"
+          onGenerate={noop}
+        />,
+      )
+      expect(screen.queryByTestId('final-notes-instruction-responses')).toBeNull()
+    })
+
+    it('shows instruction responses even when there is no summary (only /ai instructions)', () => {
+      renderWithToast(
+        <FinalNotesView
+          summary={null}
+          discussionPoints={[]}
+          decisions={[]}
+          instructionResponses={[{ instruction: 'brainstorm names', response: 'Alpha, Beta' }]}
+          summaryModelId={null}
+          onGenerate={noop}
+        />,
+      )
+      // Not the empty state — the responses populate Final notes on their own.
+      expect(screen.queryByTestId('final-notes-empty')).toBeNull()
+      expect(screen.getByTestId('final-notes-instruction-responses')).toHaveTextContent('brainstorm names')
+      expect(screen.getByRole('button', { name: /re-process final notes/i })).toBeInTheDocument()
+    })
+  })
+
   describe('re-process control (populated state)', () => {
     it('renders a Re-process button that calls onGenerate', async () => {
       const onGenerate = vi.fn().mockResolvedValue(undefined)

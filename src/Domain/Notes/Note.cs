@@ -61,6 +61,8 @@ public sealed class Note : IAggregate
             case AnalysisSummaryRecorded e:
                 _summary = e.Summary;
                 break;
+            case InstructionResponsesRecorded:
+                break;
             case TagsSuggested:
             case TagsSuggestedV2:
             case ActionItemsSuggested:
@@ -89,6 +91,7 @@ public sealed class Note : IAggregate
             RecordTagSuggestions cmd => HandleRecordTagSuggestions(cmd),
             RecordActionItemSuggestions cmd => HandleRecordActionItemSuggestions(cmd),
             RecordAnalysisSummary cmd => HandleRecordAnalysisSummary(cmd),
+            RecordInstructionResponses cmd => HandleRecordInstructionResponses(cmd),
             _ => throw new ArgumentOutOfRangeException(nameof(command))
         };
 
@@ -221,5 +224,15 @@ public sealed class Note : IAggregate
             throw new InvalidOperationException($"Note {cmd.NoteId} does not exist.");
         return [new AnalysisSummaryRecorded(cmd.NoteId, cmd.Summary, cmd.DiscussionPoints, cmd.Decisions,
             cmd.ModelId, cmd.PromptVersion)];
+    }
+
+    IReadOnlyList<IDomainEvent> HandleRecordInstructionResponses(RecordInstructionResponses cmd)
+    {
+        if (!_exists || _deleted)
+            throw new InvalidOperationException($"Note {cmd.NoteId} does not exist.");
+        // Always emits (even an empty list) so a re-run that produced no responses clears stale ones —
+        // a full snapshot where latest wins, exactly like RecordAnalysisSummary. The analysis handler
+        // only issues this command when there is something to record or clear.
+        return [new InstructionResponsesRecorded(cmd.NoteId, cmd.Responses, cmd.ModelId, cmd.PromptVersion)];
     }
 }

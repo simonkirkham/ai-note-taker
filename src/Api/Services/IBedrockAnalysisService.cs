@@ -1,3 +1,5 @@
+using Domain.Notes;
+
 namespace Api.Services;
 
 public interface IBedrockAnalysisService
@@ -8,7 +10,8 @@ public interface IBedrockAnalysisService
 public record NoteAnalysisRequest(
     string ExistingContent,
     string? TranscriptText,
-    string CurrentUserName
+    string CurrentUserName,
+    IReadOnlyList<string>? Instructions = null
 );
 
 public record NoteAnalysisResult(
@@ -18,5 +21,6 @@ public record NoteAnalysisResult(
     IReadOnlyList<string> NewTags,
     IReadOnlyList<string> NewActionItems,
     string ModelId = "",
-    string PromptVersion = ""
+    string PromptVersion = "",
+    IReadOnlyList<InstructionResponse>? InstructionResponses = null
 );

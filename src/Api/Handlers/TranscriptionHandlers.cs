@@ -101,15 +101,16 @@ public static class TranscriptionHandlers
         var detail = await noteDetailStore.GetAsync(new NoteId(noteId), ct);
         if (detail is null || detail.UserId != currentUser.UserId) return Results.NotFound();
 
-        var content = StripImageMarkdown(detail.Content ?? "");
-        if (string.IsNullOrWhiteSpace(detail.TranscriptText) && string.IsNullOrWhiteSpace(content))
+        var (rawContent, instructions) = InstructionExtractor.Extract(detail.Content ?? "");
+        var content = StripImageMarkdown(rawContent);
+        if (string.IsNullOrWhiteSpace(detail.TranscriptText) && string.IsNullOrWhiteSpace(content) && instructions.Count == 0)
             return Results.UnprocessableEntity();
 
         NoteAnalysisResult result;
         try
         {
             result = await bedrockAnalysis.AnalyseAsync(
-                new NoteAnalysisRequest(content, detail.TranscriptText, currentUser.Name), ct);
+                new NoteAnalysisRequest(content, detail.TranscriptText, currentUser.Name, instructions), ct);
         }
         catch (Exception ex) when (ex is AmazonBedrockRuntimeException or InvalidOperationException)
         {
@@ -120,6 +121,18 @@ public static class TranscriptionHandlers
         await noteHandler.HandleAsync(new RecordAnalysisSummary(
             new NoteId(noteId), result.Summary, result.DiscussionPoints, result.Decisions,
             result.ModelId, result.PromptVersion), ct);
+
+        var instructionResponses = result.InstructionResponses ?? [];
+        if (instructions.Count > instructionResponses.Count)
+            logger.LogWarning(
+                "Instruction responses missing: {Extracted} /ai instruction(s) extracted but model returned {Returned} response(s) for note {NoteId}",
+                instructions.Count, instructionResponses.Count, noteId);
+        // Record when there is something to show, or to CLEAR previously-recorded responses on a re-run
+        // that no longer has any (latest wins). A note that never had instructions writes no event.
+        var hadResponses = (detail.InstructionResponses?.Count ?? 0) > 0;
+        if (instructionResponses.Count > 0 || hadResponses)
+            await noteHandler.HandleAsync(new RecordInstructionResponses(
+                new NoteId(noteId), instructionResponses, result.ModelId, result.PromptVersion), ct);
 
         var existingTags = detail.Tags ?? [];
         var appliedTags = result.NewTags
