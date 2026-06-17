@@ -428,6 +428,42 @@ describe('NoteView', () => {
         expect(screen.getByTestId('final-notes-summary')).toHaveTextContent('Regenerated summary'),
       )
     })
+
+    // BUG-32: a just-typed /ai instruction was missed because Generate/Re-process fired
+    // analysis without waiting for the fire-and-forget content save. Analysis must read the
+    // saved content, so the /content PUT must complete before the /analyse POST.
+    it('persists a just-typed content edit before analysing (BUG-32)', async () => {
+      const calls: string[] = []
+      server.use(
+        http.get('/api/notes/:noteId', () =>
+          HttpResponse.json({
+            noteId: 'note-1', title: 'T', content: 'old notes', date: null, tags: [],
+            summary: 'Original summary', summaryModelId: 'nova-lite',
+          }),
+        ),
+        http.put('/api/notes/:noteId/content', async ({ request }) => {
+          const body = await request.json() as { content: string }
+          await delay(100)
+          calls.push(`content:${body.content}`)
+          return new HttpResponse(null, { status: 204 })
+        }),
+        http.post('/api/notes/:noteId/analyse', () => {
+          calls.push('analyse')
+          return new HttpResponse(null, { status: 204 })
+        }),
+      )
+      renderNoteView()
+      const textarea = await screen.findByLabelText('Note content')
+      await userEvent.clear(textarea)
+      await userEvent.type(textarea, '/ai add an agenda')
+
+      await userEvent.click(screen.getByTestId('note-tab-final'))
+      await userEvent.click(screen.getByTestId('reprocess-final-notes-button'))
+
+      await waitFor(() => expect(calls).toContain('analyse'))
+      // Content saved first (with the /ai line), THEN analysis ran.
+      expect(calls).toEqual(['content:/ai add an agenda', 'analyse'])
+    })
   })
 
   describe('next occurrence control', () => {

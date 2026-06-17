@@ -97,6 +97,11 @@ export default function NoteView({
   const contentDraftRef = useRef<string | null>(null);
   useEffect(() => { contentDraftRef.current = contentDraft; }, [contentDraft]);
   const deletingRef = useRef(false);
+  // BUG-32: the content save fired on editor blur is fire-and-forget, so clicking
+  // Generate/Re-process raced it — analysis read the previously-saved content and a
+  // just-typed `/ai` instruction was missed. Track the in-flight save so Generate can
+  // await it before analysing.
+  const pendingContentSaveRef = useRef<Promise<void> | null>(null);
 
   const today = new Date().toISOString().slice(0, 10);
 
@@ -174,6 +179,12 @@ export default function NoteView({
 
   async function handleGenerateFinalNotes() {
     try {
+      // BUG-32: persist any just-typed note edit (e.g. a `/ai` instruction) and WAIT for it
+      // to land before analysing, so the server reads the latest content. handleSaveContent
+      // flushes a not-yet-saved draft; awaiting the ref also covers a save already in flight
+      // from the editor blur that the button click triggered.
+      handleSaveContent();
+      if (pendingContentSaveRef.current) await pendingContentSaveRef.current;
       await analyseM.mutateAsync();
     } catch {
       showError("Couldn't generate final notes. Please try again.");
@@ -189,12 +200,16 @@ export default function NoteView({
     const draft = contentDraftRef.current;
     if (draft == null) return;
     contentDraftRef.current = null;
-    editContentM.mutate(draft, {
-      onSuccess: () => setContentDraft(null),
+    // Capture the in-flight save so handleGenerateFinalNotes can await it (BUG-32). The
+    // promise always resolves (errors are handled here), so awaiting it never throws.
+    const save = editContentM.mutateAsync(draft)
+      .then(() => { setContentDraft(null); })
       // Restore the ref on failure so a later leave/unmount retries the kept text
       // rather than silently dropping it (the text stays in contentDraft state too).
-      onError: () => { contentDraftRef.current = draft; showError("Couldn't save your note. We kept your text — try again."); },
-    });
+      .catch(() => { contentDraftRef.current = draft; showError("Couldn't save your note. We kept your text — try again."); })
+      // Clear once settled so the ref never reports a stale "save in flight".
+      .finally(() => { if (pendingContentSaveRef.current === save) pendingContentSaveRef.current = null; });
+    pendingContentSaveRef.current = save;
   }
   const saveContentRef = useRef(handleSaveContent);
   useEffect(() => { saveContentRef.current = handleSaveContent; });
