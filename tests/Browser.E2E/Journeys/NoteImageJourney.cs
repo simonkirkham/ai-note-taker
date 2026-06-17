@@ -17,6 +17,7 @@ public sealed class NoteImageJourney(BrowserFixture browser) : IAsyncLifetime
         _page = await _context.NewPageAsync();
         _page.Console += (_, msg) => Console.WriteLine($"[browser {msg.Type}] {msg.Text}");
         _page.PageError += (_, err) => Console.WriteLine($"[browser error] {err}");
+        E2EApiTrace.Attach(_page); // TEMP BUG-31: surface /content + /images/resolve bodies on reopen
         _app = new AppPage(_page, browser.FrontendUrl, browser.E2EAuthToken);
     }
 
