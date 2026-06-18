@@ -42,7 +42,7 @@
 | BUG-28 | Concurrent multi-tag add-then-remove drops a write — DynamoDB `TransactionConflict` escaped as an unhandled 500 (only `ConditionalCheckFailed` was retried), silently dropped. | Done | BUG-27, RYW-2, 27-D |
 | BUG-29 | Projector can't purge note images on delete — role missing `s3:ListBucket`, orphaning deleted notes' images in S3 indefinitely. | Done | 27-D |
 | BUG-30 | Note-scoped handlers authorized against the async NoteDetail projection → 404 right after create; auth moved to the strongly-consistent event stream (largest residual deploy-gate flake). | Done | 27-RYW, 27-D |
-| BUG-31 | `NoteImageJourney.Remove` deploy-gate flake — three stacked causes; image-reappear & cache-wait fixed (#297), one OPEN (stuck note-detail read keeps Save `disabled` ~30 s). Quarantined; product behaviour verified. | Open | BUG-30, 27-RYW |
+| BUG-31 | A browser test (remove an image, then reopen the note) randomly fails during deploys and blocks releases. Of three underlying causes, two are fixed (the image reappearing; a network wait that never completed); one is still open — after reopening, the note's data sometimes takes ~30 s to load, so the Save button stays disabled and the test times out. The test is switched off for now; removing an image works correctly for real users. | Open | BUG-30, 27-RYW |
 | BUG-32 | A just-typed `/ai` instruction is missed on Generate/Re-process — analyse raced the fire-and-forget content save; now flushes + awaits it first. (Residual: analyse still reads content from the async projection.) | Done | 29-A |
 | BUG-33 | Forced through full Google consent after inactivity — the warm-tab refresh paths sign out an expired token without trying the valid `rt` cookie (and clear the established flag → `prompt=consent`). | Open | BUG-11, BUG-15, BUG-16 |
 
@@ -721,9 +721,21 @@ Prefer (a) — it matches the production read-your-writes contract (reads re-gat
 
 ---
 
-## BUG-31 — `NoteImageJourney.Remove` deploy-gate flake (three stacked causes; one open)
+## BUG-31 — A browser test ("remove an image, reopen the note") randomly fails during deploys
 
-**`NoteImageJourney.Remove` — removed image still shows after reopen.** Investigated 2026-06-17 by un-quarantining under a hang-proof diagnostic (120 s per-test cap, PR #294) and rerunning on the real gate. It is **THREE stacked flake causes** (like TI-39 was four): **(1) image-reappears — the original symptom — ✅ FIXED** by the RYW systemic changes (TI-39 projector warm-up/drain + BUG-30 auth-from-event-stream); proven when attempts 1–2 passed the image-absent assert. **(2) ✅ FIXED (PR #297):** the shared `SaveAndReturnAsync` helper awaited a `GET /notes/cards` response React Query can serve **from cache → no request → 30 s timeout**; now waits on home navigation (`new-note-button`) instead — a suite-wide latent-flake removal, not just this test. **(3) 🔲 OPEN:** after fix #2, deploy #599 attempt 4 (~1/4) still failed at the post-removal save — `ClickAsync("save-button")` times out 30 s because the button is `disabled={loadingDetail}` (`NoteView.tsx:401`) and `useNoteDetail` stays `isLoading` ~30 s after reopen+edit (a **stuck note-detail read**, RYW/async-projection class). **Status:** re-quarantined (PR #298) with all three layers in the Skip reason; product behaviour (remove → stays gone) verified working. **Next step:** instrument the note-detail read to capture *why* `loadingDetail` hangs 30 s (cold/stuck gated GET, retry storm, or a 2nd `save-button` match) via the evidence-through-the-thrown-message pattern; then close layer 3 and fully un-quarantine.
+**Status:** Open — two of three causes fixed, one still open. The test is switched off for now so it doesn't block deploys, and the actual feature works correctly for real users.
+
+**What the test does:** An automated browser test (`NoteImageJourney.Remove`) uploads an image into a note, removes it, saves, reopens the note, and checks the image is gone.
+
+**The problem:** It passes most of the time but fails every so often — a "flaky" test. Because it runs as part of the deploy pipeline, one random failure blocks the release of unrelated changes. When we investigated (PR #294 — running it repeatedly with a 120-second safety cap so it couldn't hang forever), it turned out to be **three separate problems stacked on top of each other**:
+
+1. **The removed image used to reappear after reopening** — the original complaint. ✅ **Fixed** by the wider read-after-write consistency work (the projector "warm-up" from TI-39 and reading ownership from the event stream in BUG-30). Confirmed once early runs showed the image correctly gone.
+2. **A shared test helper waited for a network call that never happened.** The `SaveAndReturnAsync` helper waited for the note-list request (`GET /notes/cards`), but the page can serve that list from its in-memory cache without making a request — so the wait timed out after 30 seconds. ✅ **Fixed (PR #297)** by waiting for the home screen to appear instead. This removed a hidden source of flakiness across the whole test suite, not just this one test.
+3. **The Save button stays disabled too long after reopening.** 🔲 **Still open.** After reopening and editing the note, its data sometimes takes ~30 seconds to load. The Save button is disabled while the note is loading (`NoteView.tsx:401`), so the test clicks Save, nothing happens, and it times out. This is the same async / read-after-write family of issue — the note's data read gets stuck.
+
+**Where it stands:** The test is switched off again (PR #298) with all three causes recorded, because the real app behaviour (remove an image → it stays gone) is verified working — only the test itself is unreliable.
+
+**Next step:** Add logging to the note-data read to find out *why* it hangs ~30 seconds on reopen (a slow/stuck request, a retry storm, or the test matching the wrong Save button), fix that, and switch the test back on.
 
 ---
 
