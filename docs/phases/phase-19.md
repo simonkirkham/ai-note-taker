@@ -8,7 +8,7 @@
 |-------|---------|--------|------------|
 | 19-A | **Split `api.ts` by domain.** 434-line, 8-domain module → `api/<domain>.ts` + a shared `request<T>()`/`requestVoid()` helper absorbing the ~33 `!res.ok` repeats; no barrel; behaviour unchanged | Done | — |
 | 19-B | **Typed-lint + non-null/catch cleanup.** Adopt `@typescript-eslint` `recommended-type-checked`; remove the 8 non-null `!` and the unsafe `catch` typing; add cheap flags (`noImplicitOverride`) | Done | — |
-| 19-C | **Stricter index/optional TS flags.** `noUncheckedIndexedAccess` then `exactOptionalPropertyTypes`, staged with backlog clear | Not Started | 19-B |
+| 19-C | **Stricter index/optional TS flags.** `noUncheckedIndexedAccess` then `exactOptionalPropertyTypes`, staged with backlog clear | Rejected | 19-B |
 | 19-D | **Context provider performance.** Memoise `AuthContext`/`ToastContext` provider values; `useCallback` the Auth actions; optional Auth state/actions split | Done | — |
 | 19-E | **Effect hygiene.** Replaced all 3 notify-parent-in-effect patterns. #3 ActionsSection `onCountChange` (PR #285); #1/#2 RecordControl status/transcript via a `useTranscription` hook-lift into NoteView + controlled RecordControl (PR #288) | Done | — |
 | 19-F1 | **Accessibility: live regions.** `role="alert"`/`role="status"` on the ~15 transient surfaces (errors/loading/empty) that lack one; high value = the silent mutation-failure errors | Done | — |
@@ -20,9 +20,9 @@
 | 19-I2 | **CI bundle-size gate.** `size-limit` budget on the entry chunk in the `frontend` CI job | Done | — |
 | 19-I3 | **Non-urgent transitions.** `useDeferredValue` on ListView search/filter so the input stays responsive | Done | — |
 | 19-J | **URL-scheme hardening.** Configure Tiptap `Link` explicitly — allowlist `http`/`https`/`mailto`, reject `javascript:`/`data:`/`vbscript:`, add `rel="noopener noreferrer nofollow"` | Done | — |
-| 19-K | **Adopt TanStack Query (server-state migration)** — **graduated to its own phase: [Phase 20](phase-20.md)** (7 slices, gated on reversing [ADR 0010](../adr/0010-server-state-strategy.md)). Too large for one slice. | Moved → P20 | — |
+| 19-K | **Adopt TanStack Query (server-state migration)** — **graduated to its own phase: [Phase 20](phase-20.md)** (7 slices, gated on reversing [ADR 0010](../adr/0010-server-state-strategy.md)). Too large for one slice. | Closed (→ P20, done) | — |
 
-> **Remaining:** only **19-C** (proposed, depends on 19-B; large/low-value — schedule last) and **19-I1** (blocked on **26-A**). Everything else is **Done** or moved to P20. 19-A/19-B/19-D/19-E/19-F1/19-F2/19-F3/19-G/19-I2/19-I3/19-J all shipped (19-E completed 2026-06-14: #3 PR #285, #1/#2 PR #288; 19-G PR #286). (19-K, the TanStack Query server-state migration, has **graduated to its own [Phase 20](phase-20.md)** — it reverses an Accepted ADR and is 7 slices, too big to sit here.) None blocks the others except as noted (`19-C`→`19-B`, `19-H`→`19-A`, **`19-I1`→`26-A`** — dynamic imports need the zero-downtime frontend deploy first, else lazy chunks 404 mid-session; `19-I2`/`19-I3` carry no such dependency). **19-J, 19-I2, 19-I3 are done (PR #223 / #224 / #221); 19-I1 waits on 26-A.** Value tiers below: **high** = real correctness/UX/security; **medium** = perf/maintainability; **low** = consistency/future-proofing. Because the headline rules are already clean, most slices are medium/low — do not treat the long list as a backlog of bugs.
+> **Remaining:** only **19-I1** (lazy-load; its **26-A** dependency has shipped, so it is now runnable). **19-C is Rejected** (2026-06-18) — pure low-value/high-friction type-safety future-proofing on an already-clean codebase; fixes no known bug, so deliberately not picked up. **19-K is Closed** — graduated to [Phase 20](phase-20.md), which shipped. Everything else is **Done**. 19-A/19-B/19-D/19-E/19-F1/19-F2/19-F3/19-G/19-I2/19-I3/19-J all shipped (19-E completed 2026-06-14: #3 PR #285, #1/#2 PR #288; 19-G PR #286). (19-K, the TanStack Query server-state migration, has **graduated to its own [Phase 20](phase-20.md)** — it reverses an Accepted ADR and is 7 slices, too big to sit here.) None blocks the others except as noted (`19-C`→`19-B`, `19-H`→`19-A`, **`19-I1`→`26-A`** — dynamic imports need the zero-downtime frontend deploy first, else lazy chunks 404 mid-session; `19-I2`/`19-I3` carry no such dependency). **19-J, 19-I2, 19-I3 are done (PR #223 / #224 / #221); 19-I1 waits on 26-A.** Value tiers below: **high** = real correctness/UX/security; **medium** = perf/maintainability; **low** = consistency/future-proofing. Because the headline rules are already clean, most slices are medium/low — do not treat the long list as a backlog of bugs.
 
 **Learning surface:** module decomposition behind a stable import seam; typed (whole-program) ESLint and the strict-flag family; React context re-render mechanics; the fetch-race/`ignore`-flag pattern and the "you might not need an effect" refactor; ARIA live regions and focus management; Testing-Library query priority; transient-failure retry/backoff; route/feature code-splitting and bundle budgeting.
 
@@ -179,9 +179,9 @@ Each lists the finding, locations, value tier, and effort. Specs are written per
 
 **Key files:** `web/eslint.config.js`, `web/tsconfig.app.json`, `web/src/api/todos.ts`, `web/src/hooks/useTodoMutations.ts`, `web/src/components/MeetingsSection.tsx`, `web/src/main.tsx`, `web/src/auth/AuthContext.tsx`, plus backlog files surfaced by the new rules. **Cross-ref:** folds in the standing `recommended-type-checked` item from `technical-improvements.md`; **19-C depends on this landing first.**
 
-### 19-C — Stricter index/optional TS flags — **value: low** — depends on 19-B
-- `noUncheckedIndexedAccess` (large — turns `arr[i]`/`Map.get()` into `T | undefined`, cascades through the sites the 19-B `!`s guard) then `exactOptionalPropertyTypes` (moderate). Stage one PR each; clear backlog before promoting.
-- **Effort:** large. Highest-friction slice; schedule last.
+### 19-C — Stricter index/optional TS flags — **value: low** — **Rejected (2026-06-18)**
+- **Rejected:** pure type-safety future-proofing on an already-clean codebase (Phase 19's premise). Fixes no known bug and changes nothing user-visible; the doc itself rated it large/highest-friction/schedule-last. Deliberately not picked up — preventative-only cost not justified now. Revisit only if undefined-from-lookup bugs actually surface.
+- (Original scope, for reference:) `noUncheckedIndexedAccess` (large — turns `arr[i]`/`Map.get()` into `T | undefined`, cascades through the sites the 19-B `!`s guard) then `exactOptionalPropertyTypes` (moderate). Stage one PR each; clear backlog before promoting.
 
 ### 19-D — Context provider performance — **value: medium**
 
