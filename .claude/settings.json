@@ -14,8 +14,18 @@
       "Bash(git -C * log*)",
       "Bash(git -C * diff*)",
       "Bash(git -C * worktree list*)",
+      "Bash(git fetch)",
+      "Bash(git fetch *)",
+      "Bash(git check-ignore *)",
       "Bash(gh run watch *)",
-      "Bash(cdk synth*)"
+      "Bash(cdk synth*)",
+      "Bash(scripts/deploy-status.sh)",
+      "Bash(scripts/deploy-status.sh *)",
+      "Bash(scripts/merge-gate.sh *)",
+      "Bash(scripts/ci-logs.sh)",
+      "Bash(scripts/ci-logs.sh *)",
+      "Bash(scripts/eval-status.sh)",
+      "Bash(scripts/eval-status.sh *)"
     ]
   }
 }

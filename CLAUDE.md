@@ -79,6 +79,17 @@ cdk synth
 cdk deploy
 ```
 
+## Helper scripts
+
+Prefer these read-only wrappers over hand-rolling the underlying `gh`/`aws` commands — they bake in the CLAUDE.md logic, emit a one-line verdict, and cost fewer tokens.
+
+| Script | Replaces | Output |
+| --- | --- | --- |
+| `scripts/deploy-status.sh` | the main-deploy merge-gate poll (`gh run list --branch main …` + quiescence reasoning) | `GREEN (#N) — safe to merge` / `IN PROGRESS` / `NOT SAFE`; exit 0 = safe |
+| `scripts/merge-gate.sh <pr>` | the full Pip merge gate (mergeable + PR CI + main deploy) | one `MERGE GATE: GREEN/BLOCKED` verdict; exit 0 = safe to merge |
+| `scripts/ci-logs.sh [pr\|run-id]` | finding the run id + `gh run view <id> --log-failed` (no arg = main's latest deploy) | failed-step logs |
+| `scripts/eval-status.sh` | per-model progress of the latest eval run | progress table |
+
 ## Conventions
 
 - **Specs first.** Every command requires a Given/When/Then spec before implementation. The spec is the source of truth for the slice.
@@ -194,14 +205,14 @@ Prototype branches follow the same pattern: `git worktree add ../ai-note-taker-s
 8. **Stylist** (user-facing slices only) — run the `ui-ux-pro-max` skill to apply visual polish; re-run tests after.
 9. Open PR. After every `git push` to a PR branch, immediately schedule a CI monitor (`gh pr checks <n>` every 60s) — do not wait to be asked. CI results are informational; they do not block Hawk.
 10. **Open PR → Hawk** — spawn `agent-skills:code-reviewer` subagent to review the PR immediately; do not wait for CI results.
-11. **Hawk approves → Pip checks gates, then merges** — before running `gh pr merge --squash --delete-branch`, confirm **both**: (a) the PR's own CI is all green (`gh pr checks <n>` — every check `pass`, none pending/failing), and (b) main's *latest* deploy run is `completed`+`success` with no deploy in progress (`gh run list --branch main --workflow deploy.yml --limit 1 --json number,status,conclusion` — wait out any `in_progress`/`queued` run; do not use `--status completed`). If either gate is not met, stop and wait/investigate. No user confirmation needed once both gates are green. Note: `--delete-branch` deletes the *remote* branch server-side but its *local* cleanup fails with `'main' is already used by worktree` (main is checked out in the primary worktree) — this is harmless; the squash merge still succeeds. Do local cleanup separately in step 13 (`git worktree remove` + `git branch -D <slice-branch>`).
+11. **Hawk approves → Pip checks gates, then merges** — before running `gh pr merge --squash --delete-branch`, confirm **both**: (a) the PR's own CI is all green (`gh pr checks <n>` — every check `pass`, none pending/failing), and (b) main's *latest* deploy run is `completed`+`success` with no deploy in progress (`gh run list --branch main --workflow deploy.yml --limit 1 --json number,status,conclusion` — wait out any `in_progress`/`queued` run; do not use `--status completed`). **`scripts/merge-gate.sh <n>` checks both gates in one call** (exit 0 = both green). If either gate is not met, stop and wait/investigate. No user confirmation needed once both gates are green. Note: `--delete-branch` deletes the *remote* branch server-side but its *local* cleanup fails with `'main' is already used by worktree` (main is checked out in the primary worktree) — this is harmless; the squash merge still succeeds. Do local cleanup separately in step 13 (`git worktree remove` + `git branch -D <slice-branch>`).
 12. **Hawk requests changes → Pip fixes** — fix every finding, push, re-run Hawk.
-13. **Merge to main → remove worktree + delete local branch + monitor deploy** — run `git worktree remove ../ai-note-taker-slices/<slice-name>`, then `git branch -D slice/<phase>-<id>-<short-description>` to delete the now-merged local branch (the `--delete-branch` at merge only removed the *remote* branch; the local one lingers). Then immediately schedule a monitor on `gh run list --branch main --limit 1`. Poll every 90s until the deploy run completes. Stale merged branches accumulate fast — never skip the local delete.
+13. **Merge to main → remove worktree + delete local branch + monitor deploy** — run `git worktree remove ../ai-note-taker-slices/<slice-name>`, then `git branch -D slice/<phase>-<id>-<short-description>` to delete the now-merged local branch (the `--delete-branch` at merge only removed the *remote* branch; the local one lingers). Then immediately schedule a monitor on `gh run list --branch main --limit 1` (or poll `scripts/deploy-status.sh`). Poll every 90s until the deploy run completes. Stale merged branches accumulate fast — never skip the local delete.
 14. **Deploy succeeds → Scribe** — run all Scribe steps without being asked:
     - Create `docs/learnings/phase-<n><id>-<short-description>.md`; carry out all Done actions immediately
     - Mark slice/phase status as Done in `docs/phases/phase-N.md`
     - Update `docs/roadmap.md` if the phase is now complete
-15. **Deploy fails → investigate and fix** — read `gh run view <id> --log-failed`, diagnose, fix, push. Do not stop to report unless genuinely blocked.
+15. **Deploy fails → investigate and fix** — read `gh run view <id> --log-failed` (or `scripts/ci-logs.sh`), diagnose, fix, push. Do not stop to report unless genuinely blocked.
 
 ### Human gates (the only steps that require explicit user confirmation)
 - Slice start: Scout brief, Breaker spec writing, Pip implementation start
