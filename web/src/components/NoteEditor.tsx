@@ -17,7 +17,7 @@ import { ImageWithResize } from './imageWithResize';
 import styles from './NoteEditor.module.css';
 import { useToast } from './toastContext';
 
-interface NoteEditorProps {
+export interface NoteEditorProps {
   noteId: string;
   value: string;
   onChange: (md: string) => void;
