@@ -58,4 +58,29 @@ describe('ErrorBoundary', () => {
     expect(screen.getByText('healthy content')).toBeInTheDocument()
     expect(screen.queryByRole('alert')).not.toBeInTheDocument()
   })
+
+  it('renders a custom fallback instead of the default when one is provided', () => {
+    render(
+      <ErrorBoundary fallback={<div role="alert">custom fallback</div>}>
+        <Boom />
+      </ErrorBoundary>,
+    )
+
+    expect(screen.getByText('custom fallback')).toBeInTheDocument()
+    expect(screen.queryByText('Something went wrong')).not.toBeInTheDocument()
+  })
+
+  it('invokes onError with the caught error when a child throws', () => {
+    const onError = vi.fn()
+
+    render(
+      <ErrorBoundary onError={onError}>
+        <Boom />
+      </ErrorBoundary>,
+    )
+
+    expect(onError).toHaveBeenCalledTimes(1)
+    expect(onError.mock.calls[0]?.[0]).toBeInstanceOf(Error)
+    expect((onError.mock.calls[0]?.[0] as Error).message).toBe('boom')
+  })
 })

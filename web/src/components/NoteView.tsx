@@ -14,8 +14,8 @@ import { useTags } from "../hooks/useTags";
 import { useTranscription } from "../hooks/useTranscription";
 import ActionsSection from "./ActionsSection";
 import FinalNotesView from "./FinalNotesView";
+import LazyNoteEditor from "./LazyNoteEditor";
 import MeetingPicker from "./MeetingPicker";
-import NoteEditor from "./NoteEditor";
 import tabStyles from "./NoteTabs.module.css";
 import styles from "./NoteView.module.css";
 import RecordControl from "./RecordControl";
@@ -568,7 +568,7 @@ export default function NoteView({
               {loadingDetail ? (
                 <p data-testid="note-loading" className="loading" role="status">Loading…</p>
               ) : (
-                <NoteEditor
+                <LazyNoteEditor
                   key={noteId}
                   noteId={noteId}
                   value={content}

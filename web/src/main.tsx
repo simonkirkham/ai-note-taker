@@ -7,7 +7,7 @@ import { createRoot } from 'react-dom/client'
 import App from '@/App'
 import ErrorBoundary from '@/components/ErrorBoundary'
 import { ToastProvider } from '@/components/ToastProvider'
-import { clearChunkReloadFlag, installChunkReloadHandler } from '@/lib/chunkReload'
+import { clearChunkReloadFlagAfterStable, installChunkReloadHandler } from '@/lib/chunkReload'
 import { installResourceErrorHandler } from '@/rum'
 import { AuthProvider } from './auth/AuthContext.tsx'
 
@@ -54,10 +54,11 @@ createRoot(document.getElementById('root')!).render(
 )
 
 // The entry chunk evaluated, so a prior entry-chunk reload (if any) succeeded —
-// reset the guard so the next deploy's incident can self-heal once more. NOTE: this
-// proves only the entry chunk loaded, not every lazy route. Once 19-I adds
-// React.lazy routes, clearing here re-arms the guard before a later route-chunk
-// failure, so a genuinely-missing route chunk could reload-loop instead of falling
-// to the ErrorBoundary. Revisit the clear timing (e.g. clear after a stability
-// delay) when the first React.lazy lands — see phase-26.md 26-B caveat.
-clearChunkReloadFlag()
+// reset the guard so the next deploy's incident can self-heal once more. 19-I1
+// added the first React.lazy chunk (the note editor), so the entry chunk loading
+// no longer proves every lazy chunk loaded: clearing synchronously here would
+// re-arm the guard before a later lazy-chunk failure and a genuinely-missing chunk
+// could reload-loop. So clear only after a stability delay — long enough that a
+// chunk which is truly gone fails a second time while the flag is still set and
+// falls through to the ErrorBoundary (see phase-26.md 26-B caveat).
+clearChunkReloadFlagAfterStable()

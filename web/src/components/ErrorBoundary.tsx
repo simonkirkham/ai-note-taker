@@ -6,6 +6,12 @@ import styles from './ErrorBoundary.module.css'
 
 interface ErrorBoundaryProps {
   children: ReactNode
+  // Localised fallback (e.g. a single failed lazy chunk) instead of the default
+  // whole-page "Something went wrong". When omitted, the default card renders.
+  fallback?: ReactNode
+  // Notified with the caught error — used to forward a failed lazy-chunk load to
+  // RUM (19-I1). Runs in componentDidCatch, so a throw here is swallowed by React.
+  onError?: (error: Error, info: ErrorInfo) => void
 }
 
 interface ErrorBoundaryState {
@@ -21,6 +27,7 @@ export default class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBo
 
   override componentDidCatch(error: Error, info: ErrorInfo): void {
     console.error('ErrorBoundary caught an error', error, info)
+    this.props.onError?.(error, info)
   }
 
   private handleReload = (): void => {
@@ -29,6 +36,9 @@ export default class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBo
 
   override render(): ReactNode {
     if (this.state.hasError) {
+      if (this.props.fallback !== undefined) {
+        return this.props.fallback
+      }
       return (
         <div role="alert" className={styles.fallback}>
           <div className={styles.card}>

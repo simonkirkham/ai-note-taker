@@ -29,3 +29,22 @@ export function installChunkReloadHandler(win: Window = window): void {
 export function clearChunkReloadFlag(win: Window = window): void {
   win.sessionStorage.removeItem(RELOAD_FLAG)
 }
+
+// Default stability window before re-arming the guard. Long enough to outlast the
+// first navigation to any React.lazy route, so a chunk that is genuinely gone fails
+// a SECOND time while the flag is still set and falls through to the ErrorBoundary
+// rather than reloading again.
+const STABILITY_DELAY_MS = 10_000
+
+// Clear the guard flag only after the app has run stably for `delayMs`, NOT the
+// instant the entry chunk evaluates. Once React.lazy routes exist, the entry chunk
+// loading no longer proves every lazy chunk loaded: clearing synchronously at boot
+// re-arms the guard before a later lazy-chunk failure, so a genuinely-missing chunk
+// would reload-loop. Deferring the clear closes that window (see main.tsx / phase-26
+// 26-B caveat).
+export function clearChunkReloadFlagAfterStable(
+  win: Window = window,
+  delayMs: number = STABILITY_DELAY_MS,
+): void {
+  win.setTimeout(() => clearChunkReloadFlag(win), delayMs)
+}

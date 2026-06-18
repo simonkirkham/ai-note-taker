@@ -7,7 +7,11 @@ import type { TranscriptionStatus, UseTranscriptionResult } from '../hooks/useTr
 import { render, screen, waitFor, fireEvent } from '../test/render'
 import { server } from '../test/setup'
 
-vi.mock('../components/NoteEditor', () => ({
+// NoteView renders the editor through LazyNoteEditor (19-I1: React.lazy + Suspense
+// + lazy-chunk error boundary). Mock that wrapper with the synchronous textarea
+// stand-in so these tests stay free of Suspense timing; the lazy behaviour itself
+// is covered in LazyNoteEditor.test.tsx.
+vi.mock('../components/LazyNoteEditor', () => ({
   default: ({ value, onChange, onBlur }: { value: string; onChange: (md: string) => void; onBlur: () => void }) => (
     <textarea
       aria-label="Note content"

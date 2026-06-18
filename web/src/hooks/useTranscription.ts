@@ -1,7 +1,3 @@
-import {
-  TranscribeStreamingClient,
-  StartStreamTranscriptionCommand,
-} from '@aws-sdk/client-transcribe-streaming';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { completeTranscription, getTranscriptionCredentials, saveTranscriptionDraft } from '../api/transcription';
 import { PcmChunker } from './pcm';
@@ -253,6 +249,12 @@ export function useTranscription(noteId: string): UseTranscriptionResult {
             }
           }
         }
+
+        // 19-I1: load the transcribe SDK on demand at recording-start so its weight
+        // stays out of the entry bundle (it is only needed once the user records).
+        const { TranscribeStreamingClient, StartStreamTranscriptionCommand } = await import(
+          '@aws-sdk/client-transcribe-streaming'
+        );
 
         const client = new TranscribeStreamingClient({
           region: creds.region,

@@ -1,5 +1,9 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { clearChunkReloadFlag, installChunkReloadHandler } from '../lib/chunkReload'
+import {
+  clearChunkReloadFlag,
+  clearChunkReloadFlagAfterStable,
+  installChunkReloadHandler,
+} from '../lib/chunkReload'
 
 interface FakeWindow {
   win: Window
@@ -22,6 +26,7 @@ function makeWindow(seed?: Record<string, string>): FakeWindow {
       setItem: (k: string, v: string) => void store.set(k, v),
       removeItem: (k: string) => void store.delete(k),
     },
+    setTimeout: (fn: () => void, ms?: number) => globalThis.setTimeout(fn, ms),
     location: { reload },
   }
 
@@ -78,5 +83,45 @@ describe('clearChunkReloadFlag', () => {
     clearChunkReloadFlag(win)
 
     expect(store.has('chunk-reload-attempted')).toBe(false)
+  })
+})
+
+// 19-I1: with React.lazy routes the entry chunk evaluating no longer proves
+// every lazy chunk loaded, so clearing the flag synchronously at boot re-arms
+// the guard before a later lazy-chunk failure — risking a reload loop. The flag
+// must clear only after the app has run stably for a delay.
+describe('clearChunkReloadFlagAfterStable', () => {
+  afterEach(() => vi.useRealTimers())
+
+  it('does not clear the flag immediately', () => {
+    vi.useFakeTimers()
+    const { win, store } = makeWindow({ 'chunk-reload-attempted': '1' })
+
+    clearChunkReloadFlagAfterStable(win, 10_000)
+
+    expect(store.has('chunk-reload-attempted')).toBe(true)
+  })
+
+  it('clears the flag once the stability delay elapses', () => {
+    vi.useFakeTimers()
+    const { win, store } = makeWindow({ 'chunk-reload-attempted': '1' })
+
+    clearChunkReloadFlagAfterStable(win, 10_000)
+    vi.advanceTimersByTime(10_000)
+
+    expect(store.has('chunk-reload-attempted')).toBe(false)
+  })
+
+  it('a lazy-chunk failure within the stability window falls through to the boundary (no reload loop)', () => {
+    vi.useFakeTimers()
+    const { win, reload, fire } = makeWindow()
+    installChunkReloadHandler(win)
+
+    fire() // first incident: reload + set flag
+    clearChunkReloadFlagAfterStable(win, 10_000) // boot — but do NOT clear yet
+    const second = fire() // a lazy chunk fails again before the window elapses
+
+    expect(reload).toHaveBeenCalledTimes(1) // no second reload
+    expect(second.preventDefault).not.toHaveBeenCalled() // falls through to ErrorBoundary
   })
 })
