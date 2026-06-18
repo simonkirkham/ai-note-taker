@@ -12,10 +12,7 @@ Slices and acceptance criteria: [docs/phases/phase-0.md](phases/phase-0.md)
 
 ## Phase 1 — Walking skeleton with event sourcing _(Done)_
 
-- One aggregate (`Note`), two events (`NoteCreated`, `NoteRenamed`)
-- Append-with-optimistic-concurrency on DynamoDB (`TransactWriteItems` + META row)
-- One read projection (`NoteTitleList`) in a dedicated DynamoDB table
-- React frontend on S3 + CloudFront; create and list notes end-to-end
+One `Note` aggregate (`NoteCreated`/`NoteRenamed`), append-with-optimistic-concurrency on DynamoDB (`TransactWriteItems` + META row), one `NoteTitleList` projection, and a React/S3/CloudFront frontend — create and list notes end-to-end.
 
 **Goal:** event sourcing plumbing works end-to-end and is covered by event-model-driven specs.
 
@@ -34,9 +31,7 @@ Implement the remaining test layers from [ADR 0008](adr/0008-testing-strategy.md
 
 ## Phase 2 — Richer note lifecycle _(Done)_
 
-- `ContentEdited` (done), `NoteDeleted`, event versioning, projection rebuild
-- Event versioning learned by needing it
-- Projection rebuild logic exercised
+Adds `NoteDeleted`, the first event-versioning change, and projection rebuild — event versioning learned by needing it.
 
 **Goal:** you've changed your mind about an event's shape at least once and survived.
 
@@ -44,9 +39,7 @@ Slices and acceptance criteria: [docs/phases/phase-2.md](phases/phase-2.md)
 
 ## Phase 3 — Cross-aggregate projection (todo list) _(Done)_
 
-- `ActionItemAdded`, `ActionItemCompleted`, `ActionItemReopened`, `ActionItemDeleted`
-- Projection aggregates action items across all notes into a single todo list
-- Complete and delete todos from the home screen
+`ActionItem` events (`Added`/`Completed`/`Reopened`/`Deleted`) and a projection that aggregates action items across all notes into one todo list; complete and delete todos from the home screen.
 
 **Goal:** the "power of projections" moment — same events, new read model.
 
@@ -56,12 +49,7 @@ Slices and acceptance criteria: [docs/phases/phase-3.md](phases/phase-3.md)
 
 Bring the app in line with the wireframes in `docs/wireframes/`.
 
-- **4-A:** Settable note date (`NoteDateSet` event; date shown in note header and cards)
-- **4-B:** Two-column note layout (content left, actions right panel, bordered content area)
-- **4-C:** Implicit action add (Enter or blur submits; no Add button)
-- **4-D:** Persistent note list sidebar (visible on home and note screens)
-- **4-E:** Note summary cards on home screen (new `NoteCard` projection; title, date, snippet, action count)
-- **4-F:** Expandable completed todos (new `GET /todos/completed` endpoint; collapse/expand toggle)
+Settable note date (`NoteDateSet`), two-column note layout, implicit action add, persistent note-list sidebar, note summary cards (new `NoteCard` projection), and expandable completed todos.
 
 **Goal:** the app matches the design intent; projection evolution is demonstrated by `NoteCard` aggregating across multiple event types.
 
@@ -69,12 +57,7 @@ Slices and acceptance criteria: [docs/phases/phase-4.md](phases/phase-4.md)
 
 ## Phase 5 — Tags and folders _(Done)_
 
-- Tag notes with free-text labels; tags appear as pills on note cards and the note screen
-- `TagIndex` projection powers a filter bar on the home screen (AND/OR multi-select)
-- `Folder` aggregate with full hierarchy (create, rename, delete, reparent, cascade delete)
-- `FolderTree` projection; drag notes between folders; Unfiled Notes view; folder preview panel
-- Note date defaults to today on creation; date input shown without redundant label
-- Replaces all `localStorage`-backed prototype state with real API calls
+Free-text tags (pills + a `TagIndex` filter bar with AND/OR multi-select) and a full `Folder` aggregate with hierarchy (create/rename/delete/reparent/cascade), a `FolderTree` projection, drag-between-folders, an Unfiled view, and a preview panel — replacing the prototype's `localStorage` state with real API calls.
 
 **Goal:** second projection axis (`TagIndex`) alongside an entirely new aggregate (`Folder`); client-side filter state wired to a server projection; hierarchical read models.
 
@@ -82,11 +65,7 @@ Slices and acceptance criteria: [docs/phases/phase-5.md](phases/phase-5.md)
 
 ## Phase 6 — Upgrade to .NET 10 _(Done)_
 
-- LTS → LTS upgrade from .NET 8 to .NET 10 across all 10 projects in the solution
-- Package compatibility audit; fix any BCL or framework-layer breaking changes
-- Update Lambda runtime constant in CDK stack (`Runtime.DOTNET_8` → `Runtime.DOTNET_10`)
-- Redeploy and verify with acceptance tests and E2E browser journeys
-- Measure cold start baseline; enable Lambda SnapStart; verify Init Duration eliminated
+LTS .NET 8 → 10 upgrade across all 10 projects (package-compatibility audit, Lambda runtime constant, SnapStart enabled), verified by the full test suite + E2E.
 
 **Goal:** stay on a supported Lambda runtime; learn the .NET release cadence, AWS Lambda managed runtime lifecycle, and how to run a framework upgrade safely behind a full test suite. SnapStart teaches the Lambda version/alias deployment model and how AWS eliminates cold starts via execution environment snapshots.
 
@@ -94,10 +73,7 @@ Slices and acceptance criteria: [docs/phases/phase-6.md](phases/phase-6.md)
 
 ## Phase 6.5 — Frontend Component Tests _(Done)_
 
-- Rename all six test projects to scope-descriptive names (`Domain.Specs`, `EventStore.Integration`, `Api.Integration`, `Infrastructure.Assertions`, `Api.Smoke`, `Browser.E2E`)
-- Scaffold Vitest + React Testing Library + MSW as Layer 7 of the testing strategy
-- Write component tests for every home screen UI behaviour; delete 4 redundant E2E journeys
-- Write component tests for every note view UI behaviour; delete 8 redundant E2E journeys; trim Browser.E2E to exactly 5 kept journeys
+Scaffold Vitest + React Testing Library + MSW (testing Layer 7), rename the six test projects to scope-descriptive names, and write component tests for every home + note-view behaviour, trimming Browser.E2E to exactly 5 kept journeys.
 
 **Goal:** replace slow Playwright tests as the primary UI regression net with fast, deterministic component tests; learn Vitest, RTL, MSW, and where in the pyramid each test layer earns its cost.
 
@@ -105,11 +81,7 @@ Slices and acceptance criteria: [docs/phases/phase-6.5.md](phases/phase-6.5.md)
 
 ## Phase 7 — Rich note content _(Done)_
 
-- Replace plain textarea with TipTap WYSIWYG editor
-- Headings, bold, bullet lists, and checkboxes via keyboard shortcuts
-- Heading = discussion topic; one click marks it as discussed (strikethrough)
-- Checkboxes for inline agenda items; Action Items panel untouched
-- Content stored as markdown string in existing `ContentEditedV2` event — no new events
+Replace the plain textarea with a TipTap WYSIWYG editor (headings, bold, lists, checkboxes; heading-as-discussion-topic strikethrough); content stored as markdown in the existing `ContentEditedV2` event — no new events.
 
 **Goal:** learn how to integrate a ProseMirror-based editor into a React frontend; understand markdown as a storage format and the tradeoffs of serialising structured editor state to plain text.
 
@@ -117,12 +89,7 @@ Slices and acceptance criteria: [docs/phases/phase-7.md](phases/phase-7.md)
 
 ## Phase 7.5 — Folder UX fixes and Lambda performance _(Done)_
 
-- Remove vestigial sidebar note list (sidebar is folder-navigation only post-Phase 5)
-- Add Unfiled Notes preview pull-out (`»` button parity with folder items)
-- Fix folder preview panel — cards not showing due to stale App-level state
-- Optimistic folder create/rename (eliminate disappear-then-reappear flicker)
-- Fix heading sync — renaming the active folder now updates the main heading immediately
-- Increase Lambda memory from 128 MB default to 512 MB — eliminates 10+ second warm latency
+Folder-UX fixes (remove the vestigial sidebar list, Unfiled preview pull-out, fix stale preview state, optimistic create/rename, heading sync) plus Lambda memory 128 → 512 MB to eliminate 10+ s warm latency.
 
 **Goal:** close the gap between the Phase 5 spec and its implementation; learn that optimistic UI and prop-threading decisions that aren't paired with component tests at time of writing will silently regress. Demonstrate that Lambda memory is the primary warm-latency lever once cold starts are solved by SnapStart.
 
@@ -130,12 +97,7 @@ Slices and acceptance criteria: [docs/phases/phase-7.5.md](phases/phase-7.5.md)
 
 ## Phase 7.8 — Production Pipeline and Note Screen UX _(Done)_
 
-- Production deployment pipeline: `deploy-production` job promotes automatically after Test; smoke tests only against production; no E2E data mutation
-- Note screen keyboard focus: cursor lands in title on open; single Tab moves to content
-- Note screen save/cancel: Save disabled on empty note; Cancel prompts confirmation once any field is populated
-- Drag-and-drop notes into folder slide-out panel; optimistic move with revert on failure
-- Layout space review: remove 640px container cap on home screen; note content panel grows to fill available height and width
-- Optimistic card state sync: lift `cards` state to `App` so title renames and folder moves update all views immediately
+A production deployment pipeline (`deploy-production` auto-promotes after Test; smoke-only against prod) plus note-screen UX hardening — keyboard focus, Save/Cancel lifecycle, drag-and-drop filing, a layout space review, and lifted optimistic card state.
 
 **Goal:** Ship a production deployment target and harden the note-screen interaction model with explicit lifecycle controls, keyboard-first focus, and drag-and-drop note filing.
 
@@ -143,11 +105,7 @@ Slices and acceptance criteria: [docs/phases/phase-7.8.md](phases/phase-7.8.md)
 
 ## Phase 8 — Google Sign-In (multi-user auth) _(Done)_
 
-- Google Sign-In on the frontend (PKCE flow; ID token stored in memory)
-- JWT Bearer verification in the API (Google OIDC; reject unauthenticated requests)
-- `ICurrentUser` abstraction; `sub` claim replaces the hardcoded user ID throughout
-- `EventMetadata.UserId` populated from the authenticated user for the first time
-- CDK: `GOOGLE_CLIENT_ID` env var; `Authorization` header added to CORS allow-list
+Google Sign-In (PKCE, in-memory ID token) + JWT Bearer verification (Google OIDC); an `ICurrentUser` abstraction whose `sub` claim replaces the hardcoded user ID and first populates `EventMetadata.UserId`.
 
 **Goal:** real authentication before Calendar integration arrives; learn Google OIDC, JWT Bearer middleware, PKCE, and multi-user data isolation while the system is still small enough to retrofit cleanly.
 
@@ -155,12 +113,7 @@ Slices and acceptance criteria: [docs/phases/phase-8.md](phases/phase-8.md)
 
 ## Phase 9 — Google Calendar integration + meeting notes _(Done)_
 
-- Today's meetings surfaced on the home screen (Google Calendar pass-through, single-user refresh token)
-- One-click note creation linked to a calendar event (`NoteLinkedToCalendarEvent`)
-- Meeting-time browser reminder via `setTimeout` + Notifications API
-- Recurring meetings: one-click note for the next scheduled occurrence
-- `CalendarLinkIndex` projection keyed by external calendar event ID
-- Builds on Phase 8 auth: `EventMetadata.UserId` already populated from JWT
+Today's meetings on the home screen (Google Calendar pass-through), one-click note creation linked to an event (`NoteLinkedToCalendarEvent`), meeting-time browser reminders, recurring-occurrence support, and a `CalendarLinkIndex` projection keyed by external event ID.
 
 **Goal:** first outbound HTTP from Lambda; Google OAuth2 refresh-token flow; SSM Parameter Store for secrets; extending an aggregate with a new event without touching the immutable original; a projection keyed by an external system ID.
 
@@ -170,12 +123,7 @@ Slices and acceptance criteria: [docs/phases/phase-9.md](phases/phase-9.md)
 
 Build a high-quality AI analysis of meeting notes — and the means to keep it high quality: better input, measurement, and a durable correction signal that feeds prompt/model refinement. Slices 10-I → 10-M were absorbed from the former Phase 13 ("Feedback capture for AI suggestions") so that building, measuring, and refining analysis quality live in one phase.
 
-- **Core flow (done):** record audio (AWS Transcribe Streaming via STS-issued temporary credentials); `TranscriptionCompleted` persists the transcript; Amazon Bedrock (Nova Lite) analyses transcript + existing content and applies gap-filling content, tags, and action items — action items scoped to the current user; model configurable via `BEDROCK_MODEL_ID`. Analysis also runs on any note with no transcript (10-H).
-- **10-E:** Auto-analysis on stop (auto-analyse switch, default ON); **10-F:** capture remote participants by mixing system/call audio
-- **10-G (done):** offline analysis evaluation harness — versioned prompts (`PromptCatalog`) + LLM-as-judge scoring over fixed transcripts, gated on `RUN_BEDROCK_EVAL`; nightly `eval.yml`. `NoteAnalysisResult` now self-describes with `ModelId`/`PromptVersion`
-- **10-I/10-J (done):** `TagsSuggested` event + per-user/per-tag feedback projection (suggested vs rejected)
-- **10-K/10-L (done):** `ActionItemsSuggested` event + per-user feedback projection (suggested / deleted / completed)
-- **10-M:** version the `*Suggested` events to stamp `modelId`/`promptVersion`, tying the correction signal to a prompt version
+Core flow: record audio (Transcribe Streaming via STS creds) → `TranscriptionCompleted` → Bedrock (Nova Lite) gap-fills content/tags/actions; auto-analyse on stop; the 10-G offline eval harness (versioned `PromptCatalog` + LLM-as-judge, nightly `eval.yml`); and additive `TagsSuggested`/`ActionItemsSuggested` feedback projections stamped with model/prompt version.
 
 The feedback track (10-I → 10-L) is complete: the correction signal is durable, queryable, and rebuildable. 10-G shipped the eval harness + versioned prompts; 10-N moved the analyse path to the model-agnostic Bedrock **Converse** API, so any accessible model can be evaluated/run; 10-M stamps `modelId`/`promptVersion` onto the `*Suggested` events; 10-O shipped `analysis@v3` as the production prompt. All 15 slices (10-A → 10-O) are done.
 
@@ -185,11 +133,7 @@ Slices and acceptance criteria: [docs/phases/phase-10.md](phases/phase-10.md)
 
 ## Phase 11 — UI Polish _(Done)_
 
-- Tag autocomplete: prefix and substring matching, Tab to complete, common tags by frequency, related tags by co-occurrence
-- Add to-do items from the home screen: quick-capture input, optimistic add, standalone todo aggregate
-- Delete blank note on cancel; adaptive note action bar (Cancel-only when blank, Save+Delete when content present)
-- Token expiry and silent refresh; fix 401s on tab wake-up via `visibilitychange` + pre-flight guard
-- Delete notes from home screen; fix meeting-created notes not deleted on discard
+Tag autocomplete, home-screen quick-add todos (standalone todo aggregate), an adaptive note action bar + delete-blank-on-cancel, token expiry/silent refresh with a tab-wake 401 fix, and delete-from-home. Pure-frontend; no new aggregates.
 
 **Goal:** Make everyday interactions feel faster and more intentional. Pure-frontend slices with no new aggregates.
 
@@ -199,14 +143,7 @@ Slices and acceptance criteria: [docs/phases/phase-11.md](phases/phase-11.md)
 
 Make the app properly observable for production using AWS-native tooling only. Today there is one Lambda log group with unstructured text logs and nothing else — no correlation IDs, metrics, traces, dashboards, alarms, or frontend visibility. This phase closes every gap, pillar by pillar.
 
-- **12-A:** Structured logging (Lambda Powertools) + correlation IDs returned to the caller + explicit log group with retention
-- **12-B:** Domain metrics via EMF (`CommandHandled`, `CommandFailed`, `EventsAppended`, `ConcurrencyConflict`, projection durations) + event-sourcing log fields (stream ID/version)
-- **12-C:** Distributed tracing with AWS X-Ray (active tracing, SDK instrumentation, named subsegments, trace-ID propagation)
-- **12-D:** CloudWatch Dashboard (`notetaker-ops`) including a Logs Insights "all errors" widget with a time-range picker
-- **12-E:** CloudWatch Alarms + SNS email (error rate, P99 latency, concurrency-conflict spikes)
-- **12-F:** Frontend monitoring via CloudWatch RUM (browser errors, Core Web Vitals, failed API calls; trace-linked to the backend)
-- **12-G:** Observability runbook (`docs/observability.md`) + saved Logs Insights query definitions
-- **12-H:** Unified error view — surface frontend (RUM) JS/HTTP errors on the `notetaker-ops` dashboard so backend + frontend errors share one screen
+Structured logging + correlation IDs (12-A), EMF domain metrics (12-B), X-Ray tracing (12-C), the `notetaker-ops` dashboard (12-D), alarms + SNS email (12-E), CloudWatch RUM (12-F), an observability runbook (12-G), and a unified frontend+backend error view (12-H).
 
 **Status:** Done — all eight slices shipped (12-A → 12-H). One follow-up remains: 12-E's concurrency-conflict alarm is deferred (CloudWatch rejects `SEARCH` on metric alarms — needs an alarmable dimensionless metric). (BUG-8 — `x-correlation-id` not emitted as a log field — was the other follow-up and is now fixed.) Optional post-deploy check: confirm the 12-H `AWS/RUM` metric widget populates (else add `CfnMetricsDestination`).
 
@@ -359,7 +296,7 @@ Slices and acceptance criteria: [docs/phases/phase-29.md](phases/phase-29.md)
 
 ## Phase 30 — Durable sign-in (no re-authorise) _(Not Started)_
 
-Make sign-in behave like a normal SSO app: the Google scope-approval ("re-authorise") screen appears **once, ever**, never on return. Root cause today — the Google refresh token lives **only** in the `rt` browser cookie, so any cookie loss (idle > 30 days, cleared cookies, a new browser) leaves the backend with no token and the only way to get one back from Google is to force `prompt=consent`, i.e. the re-authorise screen. The fix persists the refresh token **server-side** keyed by the user's Google `sub` (encrypted DynamoDB table), so a returning user is restored from the store with a plain sign-in and no consent — exactly how mature SSO apps avoid re-authorising. The OAuth app is already **Published** (refresh tokens long-lived; confirmed via a 15-day-old still-working calendar token), so a stored token effectively never expires. Four slices: **30-A** the server-side store + restore-on-login (core); **30-B** drop forced `prompt=consent` on returning sign-ins; **30-C** the [BUG-32](phases/phase-bugs.md#bug-32) warm-tab fix (try the refresh before signing out on idle-return — pure frontend, ships first); **30-D** `/auth/refresh` server-side-store fallback. New encrypted table is a one-off CDK add (no projection backfill); deploy-time neutral.
+Make sign-in behave like a normal SSO app: the Google scope-approval ("re-authorise") screen appears **once, ever**, never on return. Root cause today — the Google refresh token lives **only** in the `rt` browser cookie, so any cookie loss (idle > 30 days, cleared cookies, a new browser) leaves the backend with no token and the only way to get one back from Google is to force `prompt=consent`, i.e. the re-authorise screen. The fix persists the refresh token **server-side** keyed by the user's Google `sub` (encrypted DynamoDB table), so a returning user is restored from the store with a plain sign-in and no consent — exactly how mature SSO apps avoid re-authorising. The OAuth app is already **Published** (refresh tokens long-lived; confirmed via a 15-day-old still-working calendar token), so a stored token effectively never expires. Four slices: **30-A** the server-side store + restore-on-login (core); **30-B** drop forced `prompt=consent` on returning sign-ins; **30-C** the [BUG-33](phases/phase-bugs.md#bug-33) warm-tab fix (try the refresh before signing out on idle-return — pure frontend, ships first); **30-D** `/auth/refresh` server-side-store fallback. New encrypted table is a one-off CDK add (no projection backfill); deploy-time neutral.
 
 **Goal:** match the standard SSO durability contract — consent is a one-time grant, not a per-login event — by giving the refresh token a durable server-side home keyed to the user identity.
 
