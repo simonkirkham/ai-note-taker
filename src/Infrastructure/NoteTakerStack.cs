@@ -187,6 +187,21 @@ public sealed class NoteTakerStack : Stack
             RemovalPolicy = RemovalPolicy.DESTROY
         });
 
+        // ── Auth refresh-token store (30-A) ──────────────────────────────
+        // Server-side copy of each user's Google refresh token, keyed by their Google `sub`.
+        // A long-lived credential only Google can re-issue — RETAIN so a stack teardown never
+        // forces every user to re-consent. SSE-KMS encrypted at rest (AWS_MANAGED key); the
+        // token value is never returned to the browser and never logged. Only the Command
+        // Lambda gets RW (read/write below) — least privilege.
+        var authTokensTable = new Table(this, "AuthTokensTable", new TableProps
+        {
+            TableName = "notetaker-auth-tokens",
+            PartitionKey = new Amazon.CDK.AWS.DynamoDB.Attribute { Name = "sub", Type = AttributeType.STRING },
+            BillingMode = BillingMode.PAY_PER_REQUEST,
+            Encryption = TableEncryption.AWS_MANAGED,
+            RemovalPolicy = RemovalPolicy.RETAIN
+        });
+
         // ── Note images (user-uploaded blobs) ────────────────────────────
         // Private bucket: the browser uploads/downloads directly via presigned URLs,
         // so CORS must allow PUT/GET. RETAIN — user data is never auto-deleted on a
@@ -282,6 +297,7 @@ public sealed class NoteTakerStack : Stack
             ["PROJ_CALENDARLINKINDEX_TABLE_NAME"] = calendarLinkIndexTable.TableName,
             ["PROJ_NOTESEARCHVIEW_TABLE_NAME"] = noteSearchViewTable.TableName,
             ["DRAFT_TRANSCRIPTION_TABLE_NAME"] = draftTranscriptionTable.TableName,
+            ["AUTH_TOKENS_TABLE_NAME"] = authTokensTable.TableName,
             ["IMAGE_BUCKET_NAME"] = imagesBucket.BucketName,
             ["PROJ_WORKSPACELIST_TABLE_NAME"] = workspaceListTable.TableName,
             // RYW-1: the consistency gate reads the projector's processed-position table to
@@ -412,6 +428,9 @@ public sealed class NoteTakerStack : Stack
         // runs only on GET handlers, which route to the Query function.
         // Least-privilege: the draft store only ever does point Get/Put/Delete.
         draftTranscriptionTable.Grant(commandFunction, "dynamodb:GetItem", "dynamodb:PutItem", "dynamodb:DeleteItem");
+        // Auth refresh-token store (30-A): only the Command Lambda touches it (the /auth/*
+        // endpoints route there). Resource-grant path, RW; the Query Lambda gets NO grant.
+        authTokensTable.GrantReadWriteData(commandFunction);
 
         if (!string.IsNullOrEmpty(props.GoogleRefreshTokenSsmPath))
         {

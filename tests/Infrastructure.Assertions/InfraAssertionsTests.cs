@@ -1232,6 +1232,133 @@ public class InfraAssertionsTests
         }));
     }
 
+    // ── Auth refresh-token store (30-A) ───────────────────────────────
+
+    [Fact]
+    public void AuthTokensTable_Exists_WithSubPartitionKey()
+    {
+        _template.HasResourceProperties("AWS::DynamoDB::Table", Match.ObjectLike(new Dictionary<string, object>
+        {
+            ["TableName"] = "notetaker-auth-tokens",
+            ["KeySchema"] = Match.ArrayWith(new object[]
+            {
+                Match.ObjectLike(new Dictionary<string, object>
+                {
+                    ["AttributeName"] = "sub",
+                    ["KeyType"] = "HASH"
+                })
+            })
+        }));
+    }
+
+    [Fact]
+    public void AuthTokensTable_HasRetainDeletionPolicy()
+    {
+        // A long-lived credential only Google can re-issue — never auto-deleted on teardown.
+        _template.HasResource("AWS::DynamoDB::Table", Match.ObjectLike(new Dictionary<string, object>
+        {
+            ["DeletionPolicy"] = "Retain",
+            ["Properties"] = Match.ObjectLike(new Dictionary<string, object>
+            {
+                ["TableName"] = "notetaker-auth-tokens"
+            })
+        }));
+    }
+
+    [Fact]
+    public void AuthTokensTable_HasServerSideEncryptionEnabled()
+    {
+        _template.HasResource("AWS::DynamoDB::Table", Match.ObjectLike(new Dictionary<string, object>
+        {
+            ["Properties"] = Match.ObjectLike(new Dictionary<string, object>
+            {
+                ["TableName"] = "notetaker-auth-tokens",
+                ["SSESpecification"] = Match.ObjectLike(new Dictionary<string, object>
+                {
+                    ["SSEEnabled"] = true
+                })
+            })
+        }));
+    }
+
+    [Fact]
+    public void Lambda_HasAuthTokensTableEnvVar()
+    {
+        _template.HasResourceProperties("AWS::Lambda::Function", Match.ObjectLike(new Dictionary<string, object>
+        {
+            ["Environment"] = Match.ObjectLike(new Dictionary<string, object>
+            {
+                ["Variables"] = Match.ObjectLike(new Dictionary<string, object>
+                {
+                    ["AUTH_TOKENS_TABLE_NAME"] = Match.AnyValue()
+                })
+            })
+        }));
+    }
+
+    [Fact]
+    public void CommandLambda_HasReadWriteGrantOnAuthTokensTable()
+    {
+        // Resource-grant path → standard DynamoDB RW action set on the table.
+        _template.HasResourceProperties("AWS::IAM::Policy", Match.ObjectLike(new Dictionary<string, object>
+        {
+            ["PolicyDocument"] = Match.ObjectLike(new Dictionary<string, object>
+            {
+                ["Statement"] = Match.ArrayWith(new object[]
+                {
+                    Match.ObjectLike(new Dictionary<string, object>
+                    {
+                        ["Action"] = Match.ArrayWith(new object[]
+                        {
+                            "dynamodb:GetItem",
+                            "dynamodb:PutItem",
+                            "dynamodb:DeleteItem"
+                        }),
+                        ["Effect"] = "Allow"
+                    })
+                })
+            })
+        }));
+    }
+
+    [Fact]
+    public void AuthTokensTable_HasNoObjectStyleOverGrant()
+    {
+        // The refresh-token store is a DynamoDB table — no S3 *Object action should ever be
+        // granted against it. Scan every IAM statement that references the auth-tokens table
+        // and assert it carries no S3 object action.
+        var authTokensLogicalId = AuthTokensTableLogicalId();
+        var resources = ToDict(TemplateJson()["Resources"]);
+        foreach (var (_, raw) in resources)
+        {
+            var res = ToDict(raw);
+            var type = res.TryGetValue("Type", out var t) ? t as string : null;
+            if (type != "AWS::IAM::Policy" && type != "AWS::IAM::ManagedPolicy") continue;
+            var doc = ToDict(ToDict(res["Properties"])["PolicyDocument"]);
+            foreach (var s in ToArray(doc["Statement"]))
+            {
+                var stmt = ToDict(s);
+                if (!StatementReferencesLogicalId(stmt, authTokensLogicalId)) continue;
+                foreach (var action in ActionsOf(stmt))
+                    Assert.DoesNotContain("Object", action, StringComparison.OrdinalIgnoreCase);
+            }
+        }
+    }
+
+    private static string AuthTokensTableLogicalId()
+    {
+        var resources = ToDict(TemplateJson()["Resources"]);
+        foreach (var (logicalId, raw) in resources)
+        {
+            var res = ToDict(raw);
+            if ((res.TryGetValue("Type", out var t) ? t as string : null) != "AWS::DynamoDB::Table") continue;
+            var props = ToDict(res["Properties"]);
+            if (props.TryGetValue("TableName", out var name) && name as string == "notetaker-auth-tokens")
+                return logicalId;
+        }
+        throw new Xunit.Sdk.XunitException("auth-tokens table not found in template");
+    }
+
     [Fact]
     public void WorkspaceListTable_Exists()
     {
