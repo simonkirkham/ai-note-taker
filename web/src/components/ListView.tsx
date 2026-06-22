@@ -93,11 +93,14 @@ export default function ListView({
       result = result.filter((c) => c.folderId === currentFolderId);
     }
     if (selectedTags.length === 0) return result;
+    // Tags are case-insensitive (CHANGE-17): compare lowercased so a legacy mixed-case
+    // card tag still matches the lowercase filter pill before the prod rebuild lands.
+    const selected = selectedTags.map((t) => t.toLowerCase());
     return result.filter((c) => {
-      const cardTags = c.tags ?? [];
+      const cardTags = (c.tags ?? []).map((t) => t.toLowerCase());
       return filterMode === "AND"
-        ? selectedTags.every((t) => cardTags.includes(t))
-        : selectedTags.some((t) => cardTags.includes(t));
+        ? selected.every((t) => cardTags.includes(t))
+        : selected.some((t) => cardTags.includes(t));
     });
   }, [cards, selectedTags, filterMode, currentFolderId]);
 

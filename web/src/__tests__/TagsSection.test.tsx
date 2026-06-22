@@ -42,13 +42,13 @@ describe('TagsSection — existing behavior', () => {
     expect(onRemove).toHaveBeenCalledTimes(1)
   })
 
-  it('blurring the input submits the typed text', async () => {
+  it('blurring the input submits the typed text (lowercased)', async () => {
     const user = userEvent.setup()
     const onAdd = vi.fn()
     const { input } = renderTags({ onAdd })
     await user.type(input, 'NewTag')
     await user.tab()
-    expect(onAdd).toHaveBeenCalledWith('NewTag')
+    expect(onAdd).toHaveBeenCalledWith('newtag')
   })
 
   it('blurring an empty input does not submit', () => {
@@ -56,6 +56,25 @@ describe('TagsSection — existing behavior', () => {
     const { input } = renderTags({ onAdd })
     fireEvent.blur(input)
     expect(onAdd).not.toHaveBeenCalled()
+  })
+})
+
+describe('TagsSection — case-insensitive add (CHANGE-17)', () => {
+  it('lowercases a mixed-case tag before calling onAdd', async () => {
+    const user = userEvent.setup()
+    const onAdd = vi.fn()
+    const { input } = renderTags({ onAdd })
+    await user.type(input, 'Foo Bar{Enter}')
+    expect(onAdd).toHaveBeenCalledWith('foo bar')
+  })
+
+  it('trims and lowercases on submit', async () => {
+    const user = userEvent.setup()
+    const onAdd = vi.fn()
+    const { input } = renderTags({ onAdd })
+    await user.type(input, '  Work ')
+    await user.tab()
+    expect(onAdd).toHaveBeenCalledWith('work')
   })
 })
 
@@ -230,7 +249,7 @@ describe('TagsSection — keyboard navigation', () => {
     await userEvent.click(input)
     fireEvent.keyDown(input, { key: 'ArrowDown' })
     fireEvent.keyDown(input, { key: 'Enter' })
-    expect(onAdd).toHaveBeenCalledWith('Work')
+    expect(onAdd).toHaveBeenCalledWith('work')
   })
 
   it('Enter with no highlight submits the raw input text', async () => {
@@ -239,7 +258,7 @@ describe('TagsSection — keyboard navigation', () => {
     const { input } = renderTags({ onAdd })
     await user.type(input, 'MyTag')
     fireEvent.keyDown(input, { key: 'Enter' })
-    expect(onAdd).toHaveBeenCalledWith('MyTag')
+    expect(onAdd).toHaveBeenCalledWith('mytag')
   })
 
   it('Enter with dropdown open and no highlight submits the raw input', async () => {
@@ -311,6 +330,6 @@ describe('TagsSection — mouse interaction', () => {
     const suggestion = screen.getByTestId('suggestion-Design')
     fireEvent.mouseDown(suggestion)
     fireEvent.click(suggestion)
-    expect(onAdd).toHaveBeenCalledWith('Design')
+    expect(onAdd).toHaveBeenCalledWith('design')
   })
 })

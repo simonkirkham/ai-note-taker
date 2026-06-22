@@ -45,10 +45,14 @@ function rollback(qc: QueryClient, noteId: string, ctx: Ctx | undefined) {
 export function useTagNote() {
   const qc = useQueryClient();
   return useMutation<void, Error, { noteId: string; tag: string }, Ctx>({
-    mutationFn: ({ noteId, tag }) => tagNote(noteId, tag),
+    // Tags are case-insensitive (CHANGE-17): normalise centrally so every caller
+    // (TagsSection, NoteView bulk paste) stores lowercase and the optimistic pill
+    // matches the value the backend persists.
+    mutationFn: ({ noteId, tag }) => tagNote(noteId, tag.trim().toLowerCase()),
     onMutate: async ({ noteId, tag }) => {
+      const normalized = tag.trim().toLowerCase();
       const ctx = await snapshotNote(qc, noteId);
-      patchTags(qc, noteId, (tags) => (tags.includes(tag) ? tags : [...tags, tag]));
+      patchTags(qc, noteId, (tags) => (tags.includes(normalized) ? tags : [...tags, normalized]));
       return ctx;
     },
     onError: (_e, { noteId }, ctx) => rollback(qc, noteId, ctx),

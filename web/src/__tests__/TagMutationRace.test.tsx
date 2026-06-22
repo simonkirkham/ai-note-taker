@@ -87,3 +87,31 @@ describe('multi-tag optimistic add race (BUG-14)', () => {
     })
   })
 })
+
+// CHANGE-17: useTagNote normalises centrally, so any caller (TagsSection, NoteView bulk
+// paste) lands a lowercase optimistic pill AND sends a lowercase tag to the API.
+describe('useTagNote case-insensitive normalisation (CHANGE-17)', () => {
+  it('lowercases the optimistic pill and the API payload', async () => {
+    let posted: string | undefined
+    server.use(
+      http.get('/api/notes/n1', () => HttpResponse.json(makeNote([]))),
+      http.post('/api/notes/n1/tags', async ({ request }) => {
+        posted = ((await request.json()) as { tag: string }).tag
+        return new HttpResponse(null, { status: 204 })
+      }),
+    )
+
+    const { qc, wrapper } = setup()
+    const { result } = renderHook(() => useHarness(), { wrapper })
+    await waitFor(() => expect(qc.getQueryData<NoteDetail>(keys.note('n1'))).toBeDefined())
+
+    await act(async () => {
+      result.current.tag.mutate({ noteId: 'n1', tag: 'Foo Bar' })
+    })
+
+    // Optimistic pill is lowercase immediately.
+    expect(qc.getQueryData<NoteDetail>(keys.note('n1'))?.tags).toContain('foo bar')
+    // API receives the lowercase value.
+    await waitFor(() => expect(posted).toBe('foo bar'))
+  })
+})

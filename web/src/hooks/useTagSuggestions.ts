@@ -12,7 +12,10 @@ export function useTagSuggestions(
   appliedTags: string[],
 ): SuggestionItem[] {
   return useMemo(() => {
-    const available = allTags.filter((e) => !appliedTags.includes(e.tag))
+    // Tags are case-insensitive (CHANGE-17): compare against applied tags lowercased so a
+    // legacy mixed-case applied tag (pre-rebuild) is still filtered out of the suggestions.
+    const applied = new Set(appliedTags.map((t) => t.toLowerCase()))
+    const available = allTags.filter((e) => !applied.has(e.tag.toLowerCase()))
     const q = input.trim().toLowerCase()
 
     if (q) {
@@ -33,7 +36,9 @@ export function useTagSuggestions(
 
     if (appliedTags.length > 0) {
       const appliedNoteIds = new Set(
-        appliedTags.flatMap((tag) => allTags.find((e) => e.tag === tag)?.noteIds ?? []),
+        appliedTags.flatMap(
+          (tag) => allTags.find((e) => e.tag.toLowerCase() === tag.toLowerCase())?.noteIds ?? [],
+        ),
       )
 
       const related = available

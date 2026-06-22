@@ -99,12 +99,12 @@ public sealed class ExceptionMappingTests(ApiFactory factory) : IClassFixture<Ap
         // The second add's first append loses the race; the retry re-reads the stream
         // (now carrying the first tag) and re-appends the second tag at the fresh version.
         store.ConflictsRemaining = 1;
-        var second = await PostTagAsync(client, noteId, "Bill");
+        var second = await PostTagAsync(client, noteId, "bill");
         Assert.Equal(HttpStatusCode.NoContent, second.StatusCode);
 
         var tags = await GetTagsAsync(client, noteId);
         Assert.Contains("1:1s", tags);
-        Assert.Contains("Bill", tags);
+        Assert.Contains("bill", tags);
     }
 
     [Theory]

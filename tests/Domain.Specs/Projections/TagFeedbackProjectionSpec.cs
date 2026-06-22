@@ -74,6 +74,21 @@ public sealed class TagFeedbackProjectionSpec
     }
 
     [Fact]
+    public void RejectionMatchesSuggestionCaseInsensitively()
+    {
+        // A mixed-case AI suggestion ("Foo") and the now-lowercase NoteUntagged ("foo")
+        // must aggregate against one normalised key (CHANGE-17).
+        var p = new TagFeedbackProjection();
+        p.Handle(Suggested(NoteId1, 1, Alice, "Foo"));
+        p.Handle(Untagged(NoteId1, 2, "foo"));
+
+        var view = Find(p, Alice, "foo");
+        Assert.NotNull(view);
+        Assert.Equal(1, view!.SuggestedCount);
+        Assert.Equal(1, view.RejectedCount);
+    }
+
+    [Fact]
     public void RemovingManuallyAddedTag_IsNotARejection()
     {
         var p = new TagFeedbackProjection();

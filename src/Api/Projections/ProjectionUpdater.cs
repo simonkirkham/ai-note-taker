@@ -163,7 +163,7 @@ public sealed class ProjectionUpdater(
                     await RecordTagSuggestionsAsync(userId, e.NoteId, e.Tags, TagFeedbackProjection.UnknownPromptVersion, ct).ConfigureAwait(false);
                     break;
                 case NoteUntagged e:
-                    await tagFeedbackStore.TryRecordRejectionAsync(e.NoteId.Value.ToString("N"), e.Tag, ct).ConfigureAwait(false);
+                    await tagFeedbackStore.TryRecordRejectionAsync(e.NoteId.Value.ToString("N"), TagNormalization.Normalize(e.Tag), ct).ConfigureAwait(false);
                     break;
                 default:
                     break;
@@ -173,8 +173,11 @@ public sealed class ProjectionUpdater(
 
     private async Task RecordTagSuggestionsAsync(string userId, NoteId noteId, IReadOnlyList<string> tags, string promptVersion, CancellationToken ct)
     {
+        // Normalise suggested tags (CHANGE-17) so the live feedback key matches the now-lowercase
+        // NoteUntagged rejection lookup — otherwise a mixed-case AI suggestion records no rejection
+        // live, diverging from the (normalised) rebuild.
         foreach (var tag in tags)
-            await tagFeedbackStore.RecordSuggestionAsync(userId, noteId.Value.ToString("N"), tag, promptVersion, ct).ConfigureAwait(false);
+            await tagFeedbackStore.RecordSuggestionAsync(userId, noteId.Value.ToString("N"), TagNormalization.Normalize(tag), promptVersion, ct).ConfigureAwait(false);
     }
 
     private static (NoteTitleListItem TitleItem, NoteDetailView Detail) RebuildTitleAndDetailProjections(
