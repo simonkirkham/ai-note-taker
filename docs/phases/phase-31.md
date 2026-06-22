@@ -35,9 +35,13 @@
 
 **Design:**
 - New `desktop/` Electron app: `main.ts`, `preload.ts` (contextIsolation on), and a build script that runs `vite build` in `web/` and copies the output to `desktop/web-dist`.
-- **Single-origin custom scheme (NOT `loadFile`).** The frontend calls **relative** `/api/*` (`web/src/api/client.ts` → `base = "/api"`); in prod CloudFront serves the SPA and proxies `/api/*` to API Gateway from **one origin**, and the httpOnly `rt` cookie is scoped to it (confirmed `NoteTakerStack.cs:1297–1319`). A `file://` load would make `/api` resolve to `file:///api` (dead) and orphan the cookie. So `main.ts` registers a **privileged custom scheme** (e.g. `app://`) via `protocol.handle`: asset paths are served from `web-dist/` on disk; `/api/*` requests are **proxied to `https://<prod-cloudfront>/api/*`**, relaying `Cookie`/`Set-Cookie`. The renderer sees one `app://` origin and keeps issuing relative `/api` calls with **no `web/` change**.
-- **Why not absolute `base`:** pointing `base` at `https://cloudfront/api` from a custom-scheme page is cross-origin → CORS (null/file origin) + SameSite-cookie breakage. The proxy keeps it same-origin and mirrors CloudFront.
-- OAuth + cookie persistence in-window is the de-risking target: confirm Google sign-in completes in the `app://` origin and the `rt` cookie persists across an app restart (Electron session partition).
+- **`http://localhost:<port>` loopback origin (NOT `loadFile`, NOT a custom scheme).** Two constraints fix this:
+  1. The frontend calls **relative** `/api/*` (`web/src/api/client.ts` → `base = "/api"`); prod serves SPA + `/api/*` from **one origin** (`https://note-taker-ai.com`, confirmed `NoteTakerStack.cs:1297–1319`) with the httpOnly `rt` cookie scoped to it. A `file://` load makes `/api` resolve to `file:///api` (dead).
+  2. `redirect_uri = window.location.origin` (`AuthContext.tsx:145,192`), and **Google OAuth (Web client) accepts `http://localhost`/`127.0.0.1` redirect URIs but rejects custom schemes** (`app://`) and non-https. Since the origin *is* the redirect URI and `web/` must not change, the origin must be Google-acceptable → **localhost**.
+- So `main.ts` runs a tiny loopback server on `127.0.0.1:<fixed-port>`: serves `web-dist/` assets (SPA fallback to `index.html`) and **proxies `/api/*` → `https://note-taker-ai.com/api/*`** via Electron's `session.fetch` with the session cookie jar, so the httpOnly `rt` cookie round-trips and persists across restart (persistent session). `BrowserWindow` loads `http://localhost:<port>`. Renderer keeps relative `/api`, **no `web/` change**.
+- **One-time external step:** register `http://localhost:<port>` as an Authorized redirect URI (and JS origin) on the existing Google OAuth Web client. Captured in `desktop/MANUAL-VERIFICATION.md`.
+- **Why not absolute `base` or `app://`:** absolute `https://…/api` from a local page is cross-origin → CORS + SameSite-cookie breakage; `app://` is rejected by Google as a redirect URI. Loopback keeps it same-origin and Google-compatible.
+- De-risking target: confirm Google sign-in completes in the localhost window and the `rt` cookie persists across an app restart.
 
 **Scenarios (GWT):**
 - Given the bundled desktop app When I launch it Then the frontend renders from local assets (no CloudFront fetch) and the notes list loads from the prod API.
