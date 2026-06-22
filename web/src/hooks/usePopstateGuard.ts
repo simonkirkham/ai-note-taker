@@ -1,5 +1,11 @@
 import { useCallback, useEffect, useRef } from 'react';
 
+// Safety-net delay for confirmLeave: popstate dispatch after history.back() is
+// effectively synchronous in browsers, so the listener path is the happy path; this
+// fallback only guarantees the leave still runs (and the listener is cleaned up) in
+// the unlikely event popstate never fires. Not the expected timing path.
+const POPSTATE_FALLBACK_MS = 100;
+
 // Intercept browser Back/Forward (popstate, e.g. Alt+←) while `when` is true, so a
 // leave can be confirmed instead of silently unmounting the view. BrowserRouter has
 // no `useBlocker` (that needs a data router), so we guard popstate directly.
@@ -83,7 +89,7 @@ export function usePopstateGuard(
       proceed();
     };
     const onPopped = () => finish();
-    const fallback = setTimeout(finish, 100);
+    const fallback = setTimeout(finish, POPSTATE_FALLBACK_MS);
     window.addEventListener('popstate', onPopped);
     window.history.back();
   }, []);
