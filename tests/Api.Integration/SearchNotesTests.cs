@@ -137,6 +137,21 @@ public sealed class SearchNotesTests : IClassFixture<ApiFactory>
         Assert.DoesNotContain(hasInfix, ids);
     }
 
+    // Scenario (BUG): a multi-word query surfaces a note matching only one term (OR, not AND)
+    [Fact]
+    public async Task Search_MultiWordQuery_MatchesOnAnyTerm()
+    {
+        var oneTerm = await CreateNoteWithBodyAsync("Notes from the budget meeting.");
+        var bothTerms = await CreateNoteWithBodyAsync("The budget review covered every line.");
+
+        var ids = await SearchIdsAsync("budget review");
+
+        Assert.Contains(oneTerm, ids);
+        Assert.Contains(bothTerms, ids);
+        Assert.True(ids.IndexOf(bothTerms) < ids.IndexOf(oneTerm),
+            "full-coverage match should rank above single-term match");
+    }
+
     // Scenario: Results are ranked with title weighted highest
     [Fact]
     public async Task Search_TitleMatchRanksAboveBodyMatch()

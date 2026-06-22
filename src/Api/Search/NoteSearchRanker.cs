@@ -38,8 +38,12 @@ public static partial class NoteSearchRanker
         foreach (var note in notes)
         {
             var best = BestField(trimmed, terms, note);
-            if (best.Score >= ScoreThreshold)
-                ranked.Add(best);
+            // Gate on the strongest single-term hit, not the mean: a multi-word query
+            // surfaces a note that matches ANY term strongly (OR semantics); the mean
+            // only ranks full-coverage matches higher. Gating on the mean would silently
+            // require every term (AND) and drop "budget review" notes that only say "budget".
+            if (best.Gate >= ScoreThreshold)
+                ranked.Add(best.Result);
         }
 
         return ranked
@@ -49,49 +53,59 @@ public static partial class NoteSearchRanker
             .AsReadOnly();
     }
 
-    private static NoteSearchResult BestField(string query, IReadOnlyList<string> terms, NoteSearchView note)
+    private static (NoteSearchResult Result, double Gate) BestField(
+        string query, IReadOnlyList<string> terms, NoteSearchView note)
     {
-        var title = Score(terms, note.Title) * TitleWeight;
+        var title = Score(terms, note.Title);
         var body = Score(terms, note.Body);
         var finalNotes = Score(terms, note.FinalNotesText);
         var actions = Score(terms, note.ActionItemsText);
-        var tags = note.Tags.Count == 0 ? 0 : note.Tags.Max(t => Score(terms, t));
+        var tags = note.Tags.Count == 0
+            ? (Mean: 0d, MaxTerm: 0d)
+            : note.Tags.Select(t => Score(terms, t)).MaxBy(s => s.Mean);
 
-        var candidates = new (double Score, string Field, string Source)[]
+        var candidates = new (double Score, double MaxTerm, string Field, string Source)[]
         {
-            (title, "title", note.Title),
-            (tags, "tag", string.Join(" ", note.Tags)),
-            (body, "notes", note.Body),
-            (finalNotes, "notes", note.FinalNotesText),
-            (actions, "notes", note.ActionItemsText)
+            (title.Mean * TitleWeight, title.MaxTerm, "title", note.Title),
+            (tags.Mean, tags.MaxTerm, "tag", string.Join(" ", note.Tags)),
+            (body.Mean, body.MaxTerm, "notes", note.Body),
+            (finalNotes.Mean, finalNotes.MaxTerm, "notes", note.FinalNotesText),
+            (actions.Mean, actions.MaxTerm, "notes", note.ActionItemsText)
         };
 
         var winner = candidates.OrderByDescending(c => c.Score).First();
+        var gate = candidates.Max(c => c.MaxTerm);
         var matchedTerms = winner.Field == "tag"
             ? MatchedTags(query, note.Tags)
             : MatchedTokens(query, winner.Source);
         var snippet = BuildSnippet(query, note, matchedTerms);
-        return new NoteSearchResult(note, winner.Score, winner.Field, snippet, matchedTerms);
+        return (new NoteSearchResult(note, winner.Score, winner.Field, snippet, matchedTerms), gate);
     }
 
-    // Mean per-term best-token score over the field's tokens. Whole-text fuzzy
-    // ratios (PartialRatio/TokenSetRatio) are deliberately not used — they match on
-    // any shared substring window, so a 6-char query found "and…" windows in long
-    // bodies and scored above threshold against unrelated notes.
-    private static double Score(IReadOnlyList<string> terms, string text)
+    // Per-field word-level score. Whole-text fuzzy ratios (PartialRatio/TokenSetRatio)
+    // are deliberately not used — they match on any shared substring window, so a
+    // 6-char query found "and…" windows in long bodies and scored above threshold
+    // against unrelated notes. Returns the mean per-term score (for ranking — rewards
+    // full-coverage matches) and the best single-term score (for the inclusion gate).
+    private static (double Mean, double MaxTerm) Score(IReadOnlyList<string> terms, string text)
     {
-        if (terms.Count == 0 || string.IsNullOrWhiteSpace(text)) return 0;
+        if (terms.Count == 0 || string.IsNullOrWhiteSpace(text)) return (0, 0);
         var tokens = Tokenize(text);
-        if (tokens.Count == 0) return 0;
+        if (tokens.Count == 0) return (0, 0);
 
-        double total = 0;
+        double total = 0, max = 0;
         foreach (var term in terms)
-            total += BestTokenScore(term, tokens);
-        return total / terms.Count;
+        {
+            var s = BestTokenScore(term, tokens);
+            total += s;
+            if (s > max) max = s;
+        }
+        return (total / terms.Count, max);
     }
 
     private static double BestTokenScore(string term, IReadOnlyList<string> tokens)
     {
+        var lowerTerm = term.ToLowerInvariant();
         double best = 0;
         foreach (var token in tokens)
         {
@@ -103,7 +117,7 @@ public static partial class NoteSearchRanker
                 score = PrefixScore;
             else if (term.Length >= FuzzyMinTermLength)
             {
-                var ratio = Fuzz.Ratio(term.ToLowerInvariant(), token.ToLowerInvariant());
+                var ratio = Fuzz.Ratio(lowerTerm, token.ToLowerInvariant());
                 score = ratio >= FuzzyTokenFloor ? ratio : 0;
             }
             else
