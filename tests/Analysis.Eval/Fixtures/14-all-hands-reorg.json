@@ -4,7 +4,7 @@
   "existingContent": "Stark Industries all-hands follow-up",
   "currentUserName": "Yuki",
   "expected": {
-    "tags": ["all-hands", "stark-industries", "reorg"],
+    "tags": ["stark-industries"],
     "actionItems": ["Update the team page with the new reporting lines"],
     "contentMustMention": [
       "Pepper will publish the new org chart to the wiki",

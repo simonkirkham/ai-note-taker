@@ -4,7 +4,7 @@
   "existingContent": "1:1 with manager",
   "currentUserName": "Alice",
   "expected": {
-    "tags": ["1:1", "growth"],
+    "tags": [],
     "actionItems": ["Draft a list of skills to develop and share it"],
     "contentMustMention": [
       "Manager will set up a mentoring session next week",

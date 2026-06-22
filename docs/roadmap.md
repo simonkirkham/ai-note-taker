@@ -294,13 +294,23 @@ Let the user embed an instruction in their Quick notes that the AI **executes** 
 
 Slices and acceptance criteria: [docs/phases/phase-29.md](phases/phase-29.md)
 
-## Phase 30 — Durable sign-in (no re-authorise) _(Not Started)_
+## Phase 30 — Durable sign-in (no re-authorise) _(Core done — 30-A/B/C; 30-D deferred)_
 
 Make sign-in behave like a normal SSO app: the Google scope-approval ("re-authorise") screen appears **once, ever**, never on return. Root cause today — the Google refresh token lives **only** in the `rt` browser cookie, so any cookie loss (idle > 30 days, cleared cookies, a new browser) leaves the backend with no token and the only way to get one back from Google is to force `prompt=consent`, i.e. the re-authorise screen. The fix persists the refresh token **server-side** keyed by the user's Google `sub` (encrypted DynamoDB table), so a returning user is restored from the store with a plain sign-in and no consent — exactly how mature SSO apps avoid re-authorising. The OAuth app is already **Published** (refresh tokens long-lived; confirmed via a 15-day-old still-working calendar token), so a stored token effectively never expires. Four slices: **30-A** the server-side store + restore-on-login (core); **30-B** drop forced `prompt=consent` on returning sign-ins; **30-C** the [BUG-33](phases/phase-bugs.md#bug-33) warm-tab fix (try the refresh before signing out on idle-return — pure frontend, ships first); **30-D** `/auth/refresh` server-side-store fallback. New encrypted table is a one-off CDK add (no projection backfill); deploy-time neutral.
 
 **Goal:** match the standard SSO durability contract — consent is a one-time grant, not a per-login event — by giving the refresh token a durable server-side home keyed to the user identity.
 
 Slices and acceptance criteria: [docs/phases/phase-30.md](phases/phase-30.md)
+
+---
+
+## Phase 31 — Desktop app (no per-meeting audio-share consent) _(Not Started)_
+
+Remove the browser's per-meeting screen-share picker + consent when capturing call/system audio, by packaging the existing frontend as a **Windows Electron desktop app**. The whole trick is the Electron main-process `session.setDisplayMediaRequestHandler`, which auto-answers each display-capture request with `{ video: <screen>, audio: 'loopback' }` — the renderer's existing `getDisplayMedia` call resolves with **no picker and no per-meeting consent**, just a one-time OS grant per machine. Feasibility was proven by the 2026-06-03 Windows spike. **Zero backend/CDK/event-model changes** — `web/` and the transcription path are reused as-is. Locked decisions: **Windows only** (the proven path; macOS deferred), **bundle-shell** (compiled `web/` assets shipped in-app, loaded from disk, calling the live prod API — so the shell always opens and the client is version-pinned), **unsigned personal build** via `electron-builder` (no signing/auto-update). Three slices: **31-A** Electron shell loads the bundled frontend + Google sign-in works in-window (de-risks OAuth-in-Electron); **31-B** the main-process auto-grant — record with no picker (core value); **31-C** package as an unsigned Windows installer. Deploy-time impact on the prod pipeline: **neutral** (the desktop build is a separate manual artifact, not in `deploy.yml`).
+
+**Goal:** an installable Windows app that records meetings with system audio after a one-time OS grant — no per-meeting screen-share consent — reusing the existing frontend, transcription path, and API unchanged.
+
+Slices and acceptance criteria: [docs/phases/phase-31.md](phases/phase-31.md)
 
 ---
 

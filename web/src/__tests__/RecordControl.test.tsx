@@ -1,4 +1,4 @@
-import { act, render, screen, waitFor } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { http, HttpResponse } from 'msw'
 import RecordControl from '../components/RecordControl'
@@ -347,6 +347,40 @@ it('registers a beforeunload warning while recording and removes it after stop',
   )
   addSpy.mockRestore()
   removeSpy.mockRestore()
+})
+
+it('flushes the transcript to the draft on pagehide while recording (survives a true page exit)', async () => {
+  stubBrowserApis()
+  let draftBody: unknown = null
+  let draftKeepalive: boolean | undefined
+  let committed = false
+  server.use(
+    http.put('/api/notes/note-1/transcription/draft', async ({ request }) => {
+      draftBody = await request.json()
+      draftKeepalive = request.keepalive
+      return new HttpResponse(null, { status: 204 })
+    }),
+    http.post('/api/notes/note-1/transcription', () => { committed = true; return new HttpResponse(null, { status: 204 }) }),
+  )
+
+  renderControl()
+  await userEvent.click(screen.getByRole('button', { name: 'Record' }))
+  await waitFor(() => expect(screen.getByRole('button', { name: 'Stop' })).toBeInTheDocument())
+
+  emitTranscriptResult('Half a meeting')
+  await waitFor(() => expect(liveTranscript()).toBe('Speaker 1: Half a meeting'))
+
+  // A true page exit (tab close / cross-site nav) fires pagehide, not unmount. The
+  // in-flight tail must be flushed to the loss-tolerant DRAFT (no premature commit).
+  fireEvent.pageHide(window)
+
+  await waitFor(() =>
+    expect(draftBody).toMatchObject({ transcriptText: 'Speaker 1: Half a meeting' }),
+  )
+  // The flush must be a keepalive request so it survives the page teardown, and it
+  // must NOT commit a TranscriptionCompleted event mid-recording.
+  expect(draftKeepalive).toBe(true)
+  expect(committed).toBe(false)
 })
 
 it('does not double-persist when Stop is pressed then the control unmounts', async () => {

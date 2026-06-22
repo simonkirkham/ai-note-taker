@@ -26,15 +26,19 @@ export function completeTranscription(
 
 // Autosave an in-progress transcript to the draft store (no event). Overwrite-in-place
 // checkpoint; the committed transcript is still produced by completeTranscription on stop.
+// keepalive lets the final pagehide flush outlive a page teardown (BUG-34): the request
+// is allowed to complete after the document is being discarded.
 export function saveTranscriptionDraft(
   noteId: string,
   transcriptText: string,
-  durationSeconds: number
+  durationSeconds: number,
+  options?: { keepalive?: boolean }
 ): Promise<void> {
   return requestVoid(`/notes/${noteId}/transcription/draft`, {
     method: 'PUT',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ transcriptText, durationSeconds }),
+    keepalive: options?.keepalive,
   });
 }
 

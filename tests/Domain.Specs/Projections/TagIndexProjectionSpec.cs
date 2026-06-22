@@ -47,6 +47,44 @@ public sealed class TagIndexProjectionSpec
     }
 
     [Fact]
+    public void NoteTagged_LowercasesTag()
+    {
+        var projection = new TagIndexProjection();
+
+        projection.Handle(NoteEnv(1, nameof(NoteTagged),
+            JsonSerializer.Serialize(new NoteTagged(NoteId1, "Foo Bar"))));
+
+        Assert.Equal("foo bar", projection.GetAll()[0].Tag);
+    }
+
+    [Fact]
+    public void NoteTagged_MergesCaseVariantsAcrossNotes()
+    {
+        // Legacy data: NoteId1 tagged "Work", NoteId2 tagged "work". After the lowercase
+        // fold both rows carry "work", so the /tags grouping merges them into one entry.
+        var projection = new TagIndexProjection();
+        projection.Handle(NoteEnv(1, nameof(NoteTagged),
+            JsonSerializer.Serialize(new NoteTagged(NoteId1, "Work"))));
+        projection.Handle(NoteEnvFor(NoteId2, 1, nameof(NoteTagged),
+            JsonSerializer.Serialize(new NoteTagged(NoteId2, "work"))));
+
+        Assert.All(projection.GetAll(), e => Assert.Equal("work", e.Tag));
+    }
+
+    [Fact]
+    public void NoteUntagged_RemovesCaseInsensitively()
+    {
+        var projection = new TagIndexProjection();
+        projection.Handle(NoteEnv(1, nameof(NoteTagged),
+            JsonSerializer.Serialize(new NoteTagged(NoteId1, "Foo"))));
+
+        projection.Handle(NoteEnv(2, nameof(NoteUntagged),
+            JsonSerializer.Serialize(new NoteUntagged(NoteId1, "FOO"))));
+
+        Assert.Empty(projection.GetAll());
+    }
+
+    [Fact]
     public void NoteAssignedToWorkspaceAfterTagging_RebucketsExistingTagRows()
     {
         // A move assigns the workspace after the note was tagged. The rebuild must re-stamp

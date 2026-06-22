@@ -24,9 +24,11 @@ export default function TagsSection({
   const suggestions = useTagSuggestions(input, allTags, tags);
 
   function submitTag(tag: string) {
-    const trimmed = tag.trim();
-    if (!trimmed) return;
-    onAdd(trimmed);
+    // Tags are case-insensitive (CHANGE-17): normalise to trimmed lowercase so the
+    // optimistic pill matches the value the backend stores.
+    const normalized = tag.trim().toLowerCase();
+    if (!normalized) return;
+    onAdd(normalized);
     setInput("");
     setIsOpen(false);
     setHighlightedIndex(-1);

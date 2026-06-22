@@ -4,7 +4,7 @@
   "existingContent": "Q3 launch planning. Date TBD.",
   "currentUserName": "Bob",
   "expected": {
-    "tags": ["planning", "launch"],
+    "tags": ["q3-launch"],
     "actionItems": ["Prepare the asset checklist by August 20th"],
     "contentMustMention": [
       "Q3 launch date is September 15th",

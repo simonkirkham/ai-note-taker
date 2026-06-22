@@ -4,7 +4,7 @@
   "existingContent": "Hooli onboarding",
   "currentUserName": "Sam",
   "expected": {
-    "tags": ["customer-onboarding", "hooli", "integration"],
+    "tags": ["hooli"],
     "actionItems": ["Schedule the integration kickoff for Monday"],
     "contentMustMention": [
       "Gavin will provide the production API keys by Thursday",

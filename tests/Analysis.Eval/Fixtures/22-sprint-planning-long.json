@@ -4,7 +4,7 @@
   "existingContent": "Sprint 15 planning",
   "currentUserName": "Lena",
   "expected": {
-    "tags": ["sprint-planning", "search-relevance", "checkout"],
+    "tags": ["search-relevance"],
     "actionItems": [
       "Take the reranking spike for search relevance",
       "Get Mara the error-state spec by Tuesday",

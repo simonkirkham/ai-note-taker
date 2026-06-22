@@ -80,10 +80,11 @@ public sealed class TagsJourney(BrowserFixture browser) : IAsyncLifetime
         await _app.ClickNewNoteAsync();
         await _app.EnterTitleAsync(title);
 
+        // Mixed-case input "Bill" is normalised to the lowercase pill "bill" (CHANGE-17).
         await _app.AddTagAsync("1:1s Bill");
 
         await _app.AssertTagPillVisibleAsync("1:1s");
-        await _app.AssertTagPillVisibleAsync("Bill");
+        await _app.AssertTagPillVisibleAsync("bill");
     }
 
     // Un-quarantined: BUG-28 fixed — the concurrent multi-tag add's losing append was cancelled by
@@ -99,10 +100,10 @@ public sealed class TagsJourney(BrowserFixture browser) : IAsyncLifetime
         await _app.EnterTitleAsync(title);
         await _app.AddTagAsync("1:1s Bill");
 
-        await _app.RemoveTagAsync("Bill");
+        await _app.RemoveTagAsync("bill");
 
         await _app.AssertTagPillVisibleAsync("1:1s");
-        await _app.AssertTagPillAbsentAsync("Bill");
+        await _app.AssertTagPillAbsentAsync("bill");
     }
 
     // Un-quarantined: BUG-28 fixed (see RemoveTag_PillDisappears above — TransactionConflict now retriable).
@@ -115,12 +116,12 @@ public sealed class TagsJourney(BrowserFixture browser) : IAsyncLifetime
         await _app.ClickNewNoteAsync();
         await _app.EnterTitleAsync(title);
         await _app.AddTagAsync("1:1s Bill");
-        await _app.RemoveTagAsync("Bill");
+        await _app.RemoveTagAsync("bill");
 
         await _app.SaveAndReturnAsync();
         await _app.ClickNoteInListAsync(title);
 
         await _app.AssertTagPillVisibleAsync("1:1s");
-        await _app.AssertTagPillAbsentAsync("Bill");
+        await _app.AssertTagPillAbsentAsync("bill");
     }
 }

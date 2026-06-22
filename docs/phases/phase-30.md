@@ -7,9 +7,9 @@
 | Slice | Summary | Status | Depends on |
 |-------|---------|--------|------------|
 | 30-A | Server-side refresh-token store; persist on sign-in and **restore from it** when Google returns no refresh token (returning, prompt-less login) | Done (PR #301, deploy #603) | — |
-| 30-B | Stop forcing `prompt=consent` on returning sign-ins — frontend always omits it (first-ever authorization still consents once, via Google) | Not Started | 30-A |
-| 30-C | BUG-33 fix — warm-tab refresh paths try the refresh before signing out on idle-return (visibility handler + scheduler) | Not Started | — |
-| 30-D | `/auth/refresh` falls back to the server-side store when the cookie is absent (extends durability to the in-app 401-retry path) | Not Started | 30-A |
+| 30-B | Stop forcing `prompt=consent` on returning sign-ins — frontend always omits it (first-ever authorization still consents once, via Google) | Done (PR #305, deploy #605) | 30-A |
+| 30-C | BUG-33 fix — warm-tab refresh paths try the refresh before signing out on idle-return (visibility handler + scheduler) | Done (PR #302, deploy #604) | — |
+| 30-D | `/auth/refresh` falls back to the server-side store when the cookie is absent (extends durability to the in-app 401-retry path) | **Deferred** (PR #303 closed — security + value, see below) | 30-A |
 
 **Ordering:** 30-C is independent and can ship first (pure frontend, immediately reduces the symptom). 30-A is the architectural core; 30-B must follow 30-A (dropping forced consent before the store exists would break long sessions on a dead cookie). 30-D is hardening on top of 30-A.
 
@@ -87,6 +87,13 @@
 **Acceptance criteria:**
 - [ ] Cookie-less refresh with a valid id_token restores the session from the store.
 - [ ] No id_token and no cookie → 401 (unchanged).
+
+**Status: Deferred (2026-06-22).** Built once (PR #303) and **closed unmerged** — the cookie-less fallback as specced is unsafe and its value is marginal:
+- **Security.** `/auth/refresh` is `AllowAnonymous` and the `Authorization` id_token's `sub` is decoded *without signature validation* (trusted only as a store key in 30-A). The fallback used that forgeable `sub` to load the victim's stored refresh token and return a genuine Google-signed id_token → **remotely exploitable account takeover** (forge `sub`, no cookie, get the victim's session). Hawk REQUEST CHANGES on #303.
+- **Secure version cost.** Closing it needs Google-JWKS signature validation (issuer + audience) inside the anonymous endpoint, and to be *useful* it must accept an **expired** id_token (relaxed lifetime) — which reintroduces a replay residual. Non-trivial work for a single-user app.
+- **Marginal value.** The target scenario (the in-app 401-retry firing when the `rt` cookie is gone *but* a usable id_token is still in memory) is narrow. 30-A's server-side store + the 30-day httpOnly cookie + 30-C's warm-tab refresh already deliver the phase goal (consent once, durable sign-in).
+
+**Revisit only if** the cookie-less 401-retry path proves to matter in practice; the secure design is "validate the presented id_token's Google signature (relax lifetime) before trusting its `sub` to drive the fallback."
 
 ---
 

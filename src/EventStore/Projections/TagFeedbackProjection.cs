@@ -42,16 +42,20 @@ public sealed class TagFeedbackProjection
 
     private void RecordSuggestions(string noteId, string userId, IReadOnlyList<string> tags, string promptVersion)
     {
-        foreach (var tag in tags)
+        foreach (var rawTag in tags)
         {
+            // Normalise so suggestion provenance keys match the now-lowercase NoteUntagged
+            // rejection events (CHANGE-17), and case variants aggregate as one tag.
+            var tag = TagNormalization.Normalize(rawTag);
             var current = _aggregates.GetValueOrDefault((userId, tag));
             _aggregates[(userId, tag)] = (current.Suggested + 1, current.Rejected);
             _provenance[(noteId, tag)] = (userId, promptVersion);
         }
     }
 
-    private void RecordRejection(string noteId, string tag)
+    private void RecordRejection(string noteId, string rawTag)
     {
+        var tag = TagNormalization.Normalize(rawTag);
         if (!_provenance.TryGetValue((noteId, tag), out var prov))
             return;
         var current = _aggregates.GetValueOrDefault((prov.UserId, tag));

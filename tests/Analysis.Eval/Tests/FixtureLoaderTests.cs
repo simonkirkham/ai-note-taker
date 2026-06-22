@@ -10,6 +10,12 @@ public class FixtureLoaderTests
 
         var standup = Assert.Single(fixtures, f => f.Id == "01-standup-clear-owners");
         Assert.Equal("Alice", standup.CurrentUserName);
-        Assert.Contains("standup", standup.Expected.Tags);
+        // MPI-8: the standup names no proper noun, so its gold tag set is intentionally empty.
+        Assert.Empty(standup.Expected.Tags);
+
+        // A fixture that names organisations loads its proper-noun gold tags.
+        var pipeline = Assert.Single(fixtures, f => f.Id == "05-sales-pipeline-review");
+        Assert.Contains("acme", pipeline.Expected.Tags);
+        Assert.Contains("globex", pipeline.Expected.Tags);
     }
 }

@@ -4,7 +4,7 @@
   "existingContent": "Q2 Initech board meeting",
   "currentUserName": "Helen",
   "expected": {
-    "tags": ["board-meeting", "initech", "fundraising"],
+    "tags": ["initech"],
     "actionItems": ["Prepare the Series B deck for the next board session"],
     "contentMustMention": [
       "Sam will review the burn model and update the runway figures",

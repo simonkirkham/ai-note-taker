@@ -4,7 +4,7 @@
   "existingContent": "Wayne Enterprises quarterly business review",
   "currentUserName": "Owen",
   "expected": {
-    "tags": ["qbr", "wayne-enterprises", "renewal"],
+    "tags": ["wayne-enterprises"],
     "actionItems": ["Draft the renewal SOW this week"],
     "contentMustMention": [
       "Bruce will confirm the budget with his finance team",

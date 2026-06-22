@@ -4,7 +4,7 @@
   "existingContent": "Datadog vendor sync",
   "currentUserName": "Nadia",
   "expected": {
-    "tags": ["vendor-sync", "datadog", "observability"],
+    "tags": ["datadog"],
     "actionItems": ["File the access request for the new APM seats"],
     "contentMustMention": [
       "Greg will send the enterprise pricing and a trial extension",

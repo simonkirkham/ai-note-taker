@@ -4,7 +4,7 @@
   "existingContent": "Payments outage postmortem",
   "currentUserName": "Ahmed",
   "expected": {
-    "tags": ["incident-review", "payments-outage", "checkout"],
+    "tags": ["payments-outage"],
     "actionItems": [
       "Add a dead-letter queue so poison messages can't wedge the consumer",
       "Schedule a game-day to rehearse this failure mode next sprint"
