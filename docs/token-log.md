@@ -140,6 +140,8 @@ Recurring cost drivers and their pre-emptions live in [token-optimisation-playbo
 
 | 19-I1 lazy-load editor + SDK | ~430k _(est.)_ | ~350k | ~81k | Frontend-only slice authored Breaker→Pip→Refactor **inline** (no subagents; Hawk was the one subagent). `LazyNoteEditor` (React.lazy + Suspense + ErrorBoundary→`lazyChunkError` RUM) + dynamic-`import()` the transcribe SDK + the chunk-reload-guard stability-delay fix. TDD: 6 tests red first, then green; build-verified the chunk split (entry has zero `@aws-sdk`/`smithy` tokens). One clean Hawk round (APPROVE, 3 non-blocking nits — 2 carried to TI-45 + a CLS-via-RUM check). **No spike, no cost tail:** all PR CI green first pass, single green deploy #602; the chronic E2E flake did not bite. Closes Phase 19. See [phase-19i1-lazy-load](learnings/phase-19i1-lazy-load.md). |
 
+| 31-A electron-shell (resume only) | ~95k _(this session)_ | ~40k | ~52k | **Resume of an already-authored PR — not a fresh slice run.** Breaker/Pip/Stylist ran in prior sessions (counts unavailable). This session: rebase `origin/main` into the branch (one trivial `phase-bugs.md` Status conflict, BUG-34 Open→Done), one clean Hawk re-review subagent (~52k, APPROVE — confirmed the merge introduced no slice regressions + final desktop/ security pass), merge-gate, merge (#311), deploy #611 green, Scribe. No spike — the slice is purely additive under `desktop/`, conflict was one cell. See `_minor-log.md` 31-A. |
+
 ## Scribe append format
 
 Add one row above per completed slice. `Total` / `Pip` (Breaker+impl+orchestration) / `Hawk` (all rounds) / one-line dominant driver.

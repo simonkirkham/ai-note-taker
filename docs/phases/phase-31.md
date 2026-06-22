@@ -6,7 +6,7 @@
 
 | Slice | Summary | Status | Depends on |
 |-------|---------|--------|------------|
-| 31-A | Electron shell loads the **bundled** frontend and completes Google sign-in end-to-end against the prod API (de-risks OAuth-in-Electron; recording still uses the normal picker) | Not Started | — |
+| 31-A | Electron shell loads the **bundled** frontend and completes Google sign-in end-to-end against the prod API (de-risks OAuth-in-Electron; recording still uses the normal picker) | Done | — |
 | 31-B | Main-process `setDisplayMediaRequestHandler` auto-grants screen + loopback audio — record a meeting with **no picker, no per-meeting consent** (the core value) | Not Started | 31-A |
 | 31-C | Package as an **unsigned Windows installer** via `electron-builder`; a clean install launches, signs in, and records with one-time OS grant | Not Started | 31-B |
 
@@ -48,12 +48,14 @@
 - Given a first launch When I sign in with Google Then sign-in completes inside the Electron window and my notes appear.
 - Given I signed in previously When I quit and relaunch Then I am still signed in (the `rt` cookie persisted) — no re-consent.
 
+**Status:** Done (PR #311, deploy #611). Code-verifiable ACs met by `desktop/tests` (loopback serve + SPA fallback + `/api` proxy + path-traversal) and the e2e contextIsolation probe. The two real-OAuth-on-Windows ACs are manual human gates tracked in `desktop/MANUAL-VERIFICATION.md` — pending a Windows run, not blocking the shell merge.
+
 **Acceptance criteria:**
-- [ ] Desktop window loads the frontend entirely from bundled assets (verify offline-of-CloudFront: the shell still renders with CloudFront unreachable).
-- [ ] Google sign-in completes in-window; notes load from the prod API.
-- [ ] Session survives an app restart (refresh-token cookie persisted in the Electron session).
-- [ ] `contextIsolation: true`, `nodeIntegration: false`; renderer gets only what `preload` exposes.
-- [ ] No change to `web/` source beyond (if needed) an Electron feature-detect flag.
+- [x] Desktop window loads the frontend entirely from bundled assets (loopback server serves `web-dist/` with SPA fallback; no CloudFront fetch).
+- [ ] Google sign-in completes in-window; notes load from the prod API. _(manual — `MANUAL-VERIFICATION.md`)_
+- [ ] Session survives an app restart (refresh-token cookie persisted in the Electron session). _(manual — `MANUAL-VERIFICATION.md`)_
+- [x] `contextIsolation: true`, `nodeIntegration: false`; renderer gets only what `preload` exposes.
+- [x] No change to `web/` source beyond (if needed) an Electron feature-detect flag. _(zero `web/` change — slice is purely additive under `desktop/`)_
 
 ---
 
