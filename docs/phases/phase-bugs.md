@@ -45,6 +45,7 @@
 | BUG-31 | A browser test (remove an image, then reopen the note) randomly fails during deploys and blocks releases. Of three underlying causes, two are fixed (the image reappearing; a network wait that never completed); one is still open — after reopening, the note's data sometimes takes ~30 s to load, so the Save button stays disabled and the test times out. The test is switched off for now; removing an image works correctly for real users. | Open | BUG-30, 27-RYW |
 | BUG-32 | A just-typed `/ai` instruction is missed on Generate/Re-process — analyse raced the fire-and-forget content save; now flushes + awaits it first. (Residual: analyse still reads content from the async projection.) | Done | 29-A |
 | BUG-33 | Forced through full Google consent after inactivity — the warm-tab refresh paths sign out an expired token without trying the valid `rt` cookie (and clear the established flag → `prompt=consent`). | Open | BUG-11, BUG-15, BUG-16 |
+| BUG-34 | In-progress transcript lost on browser-back (Alt+←) and a re-record can't recover it — popstate is unguarded so the leave-commit is aborted; "Continue" only continues a *committed* transcript, never a draft; and starting a fresh recording overwrites then deletes the note-keyed draft. | Open | BUG-18, ADR-0011 |
 
 Further bugs will be appended as they are identified.
 
@@ -102,3 +103,39 @@ Chrome throttles/freezes background-tab timers, so the proactive refresh schedul
 **Key files:** `web/src/auth/AuthContext.tsx` (visibility handler), `web/src/auth/useGoogleAuth.ts` (`scheduleRefresh`); tests `web/src/__tests__/TokenRefresh.test.tsx`. Related: [BUG-11] (refresh-token flow), [BUG-15] (cold-start bootstrap refresh), [BUG-16] (per-login consent).
 
 **Tracking:** this frontend fix is scheduled as **slice 30-C** in [Phase 30 — Durable sign-in](phase-30.md). It is the immediate symptom-reducer; the *proper* fix for the re-authorise complaint (a server-side refresh-token store so the consent screen is shown once, ever) is the rest of Phase 30 (30-A/B/D). Empirically confirmed during diagnosis: the OAuth app is **Published** (the calendar refresh token has worked 15 days, past the 7-day Testing-mode expiry), so token expiry is not a contributing factor.
+
+---
+## BUG-34 — In-progress transcript lost on browser-back, and a re-record can't recover it
+
+**Status:** Open — diagnosed 2026-06-22 from a live report + prod event-store inspection. Not yet fixed.
+
+**Severity:** High — real, irreversible data loss. A user lost the first half of a meeting transcript; the half was never committed and the recoverable draft was destroyed by the subsequent re-record.
+
+**Symptom:** During a live recording the user pressed **Alt+← (browser back)**. The note closed with no warning and the in-progress transcript was lost. On reopening the note and starting a **new** recording, the app did not load the earlier transcript back to append to it — it started fresh, so the final transcript holds only the second half.
+
+**Evidence (prod, note `0a449915-ca89-4e01-aecd-4c6fbed9285d`, `--profile prod` eu-west-2):**
+- Exactly **one** `TranscriptionCompleted` event (v41, 2026-06-22T13:07:52Z, 783 chars, `DurationSeconds=56`) — this is the *second* recording. No event exists for the first recording.
+- `notetaker-draft-transcription` table is **empty** — the second recording's commit deleted the note-keyed draft row.
+
+**Root cause — four compounding defects:**
+
+| # | Defect | File | Effect |
+|---|--------|------|--------|
+| 1 | `beforeunload` warning doesn't fire on in-app SPA navigation, and the "still recording, leave?" confirm is wired only to the in-app back button — **popstate (Alt+←) is unguarded**. The unmount commit is fire-and-forget (`void completeTranscription(...)`), so on a true page exit the POST is aborted. | `useTranscription.ts:136-156`, `NoteView.tsx:333` | First recording never commits → lost |
+| 2 | "Continue (append)" keys off a **committed** transcript only (`hasInitialTranscript = transcriptText !== null`); `initialTranscript` passed to Record is `liveTranscript ?? transcriptText` and **never includes the draft**. | `NoteView.tsx:545-546`, `RecordControl.tsx:50,177` | Re-record on a note with an *interrupted* (drafted, uncommitted) recording starts fresh — no continue offered |
+| 3 | Starting a fresh recording reuses the **single note-keyed** draft slot (its checkpoints overwrite it) and the eventual commit **deletes** the draft. | `useTranscription.ts:110-123`, `DynamoDbTranscriptionDraftStore.cs` (PK = note) | An unrecovered draft is silently overwritten then reaped |
+| 4 | The draft-recovery "Recover / Discard" banner is driven by `detail.transcriptDraft` from the **async** NoteDetail projection. | `NoteView.tsx:121,297` | On a quick reopen the recover option may not have surfaced before the user hit Record |
+
+**Expected behaviour:**
+1. Pressing browser-back (or any leave) while recording warns the user before navigating, and the transcript captured so far is reliably committed even on a real page teardown.
+2. Reopening a note with an interrupted recording offers to **continue** it (append), not just recover-or-discard, and never silently destroys it.
+
+**Reproduce-before-fix:**
+- Frontend unit (`useTranscription.test.tsx` / `RecordControl.test.tsx`): a `popstate` while `status==='recording'` triggers the leave-confirm (not a silent unmount); a note with an existing draft offers continue-and-append rather than starting empty.
+- E2E (`Browser.E2E`): record → simulate back → reopen → record again → assert the final transcript contains the first segment.
+
+**Fix (two parts):**
+- **(a) Make leaving safe.** Guard `popstate` while recording (React Router `useBlocker`, or push a history entry + intercept) so Alt+← routes through the same confirm dialog; make the leave-commit teardown-proof with `fetch(..., { keepalive: true })` or `navigator.sendBeacon` for the final commit and the checkpoint PUTs.
+- **(b) Make re-record non-destructive.** Before starting a fresh recording, detect an existing draft and fold it into the Continue/Re-record decision (continue = seed `resumeFrom` from the draft text); never overwrite a draft without the user choosing to.
+
+**Key files:** `web/src/hooks/useTranscription.ts`, `web/src/components/RecordControl.tsx`, `web/src/components/NoteView.tsx`, `src/EventStore/Projections/DynamoDbTranscriptionDraftStore.cs`. Related: [ADR 0011](../adr/0011-transcription-checkpoints-draft-store.md) (checkpoint/draft store), [BUG-18] (persist on leave/unmount, not blur).
