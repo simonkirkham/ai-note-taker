@@ -98,13 +98,22 @@ public static class AuthEndpoints
                 if (!result.Success || result.Tokens?.IdToken is null)
                 {
                     // Google rejected the token (revoked/expired). Evict the durable copy so the
-                    // next sign-in legitimately re-consents instead of restoring a dead token.
+                    // next sign-in legitimately re-consents instead of restoring a dead token —
+                    // but ONLY when the rejected cookie token IS the stored copy. This endpoint is
+                    // anonymous and `sub` is decoded without signature validation, so a forged `sub`
+                    // must not be able to delete another user's token. Requiring the presented token
+                    // to match the stored one proves the caller actually held the credential being
+                    // evicted (an attacker cannot know the victim's refresh token).
                     if (!string.IsNullOrEmpty(sub))
                     {
                         try
                         {
-                            await tokenStore.DeleteAsync(sub, ctx.RequestAborted);
-                            log.LogInformation("Stored refresh token revoked; deleted for sub {Sub}", sub);
+                            var stored = await tokenStore.GetAsync(sub, ctx.RequestAborted);
+                            if (!string.IsNullOrEmpty(stored) && string.Equals(stored, refreshToken, StringComparison.Ordinal))
+                            {
+                                await tokenStore.DeleteAsync(sub, ctx.RequestAborted);
+                                log.LogInformation("Stored refresh token revoked; deleted for sub {Sub}", sub);
+                            }
                         }
                         catch (Exception ex)
                         {

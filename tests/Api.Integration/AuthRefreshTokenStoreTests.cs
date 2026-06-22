@@ -127,6 +127,27 @@ public sealed class AuthRefreshTokenStoreTests : IClassFixture<ApiFactory>
         Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
     }
 
+    // Security: /auth/refresh is anonymous and `sub` is decoded without signature validation.
+    // A forged Authorization `sub` paired with a cookie token that is NOT the victim's stored
+    // token must NOT evict the victim's entry — the presented token must match the stored copy.
+    [Fact]
+    public async Task RefreshRejected_ForgedSubWithNonMatchingToken_DoesNotDeleteVictimEntry()
+    {
+        _store.Seed("victim-sub", "victims-real-refresh-token");
+        _google.RefreshResult = FakeGoogleOAuthClient.Failure(400);
+
+        var request = new HttpRequestMessage(HttpMethod.Post, "/auth/refresh");
+        // Attacker presents a token they control (Google rejects it) but forges the victim's sub.
+        request.Headers.Add("Cookie", "rt=attacker-controlled-token");
+        request.Headers.Add("Authorization", "Bearer " + TestJwt.WithSub("victim-sub"));
+
+        var response = await Client.SendAsync(request);
+
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+        // The victim's durable token survives the forged-sub eviction attempt.
+        Assert.Equal("victims-real-refresh-token", _store.Get("victim-sub"));
+    }
+
     // A successful refresh that rotates the refresh token also persists the rotation to the
     // store (keyed by the Authorization id_token's sub), so the durable copy stays current.
     [Fact]
