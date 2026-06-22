@@ -44,6 +44,37 @@ public sealed class NoteDetailSpec
     }
 
     [Fact]
+    public void NoteTagged_lowercases_and_dedupes_detail_tags()
+    {
+        // Legacy data: detail tagged "Foo" then "foo" collapses to one "foo" on rebuild (CHANGE-17).
+        var noteId = Guid.NewGuid();
+        var projection = new NoteDetailProjection();
+        projection.Handle(Envelope($"note#{noteId}", 1, nameof(NoteCreated),
+            JsonSerializer.Serialize(new NoteCreated(new NoteId(noteId)))));
+        projection.Handle(Envelope($"note#{noteId}", 2, nameof(NoteTagged),
+            JsonSerializer.Serialize(new NoteTagged(new NoteId(noteId), "Foo"))));
+        projection.Handle(Envelope($"note#{noteId}", 3, nameof(NoteTagged),
+            JsonSerializer.Serialize(new NoteTagged(new NoteId(noteId), "foo"))));
+
+        Assert.Equal(new[] { "foo" }, projection.GetDetail(new NoteId(noteId))!.Tags);
+    }
+
+    [Fact]
+    public void NoteUntagged_removes_detail_tag_case_insensitively()
+    {
+        var noteId = Guid.NewGuid();
+        var projection = new NoteDetailProjection();
+        projection.Handle(Envelope($"note#{noteId}", 1, nameof(NoteCreated),
+            JsonSerializer.Serialize(new NoteCreated(new NoteId(noteId)))));
+        projection.Handle(Envelope($"note#{noteId}", 2, nameof(NoteTagged),
+            JsonSerializer.Serialize(new NoteTagged(new NoteId(noteId), "Foo"))));
+        projection.Handle(Envelope($"note#{noteId}", 3, nameof(NoteUntagged),
+            JsonSerializer.Serialize(new NoteUntagged(new NoteId(noteId), "FOO"))));
+
+        Assert.Empty(projection.GetDetail(new NoteId(noteId))!.Tags ?? []);
+    }
+
+    [Fact]
     public void NoteRenamed_updates_title_and_lastModifiedAt()
     {
         var noteId = Guid.NewGuid();

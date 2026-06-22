@@ -29,13 +29,13 @@ public sealed class TagIndexProjection
                 // Lowercase on fold (CHANGE-17) so legacy mixed-case events normalise on
                 // rebuild and case variants merge into one /tags entry. Dedupe identical
                 // (tag, note) rows so a legacy "Foo"+"foo" on one note doesn't double its count.
-                var tag = NormalizeTag(e.Tag);
+                var tag = TagNormalization.Normalize(e.Tag);
                 if (!_entries.Any(x => x.Tag == tag && x.NoteId == noteKey))
                     _entries.Add(new TagIndexView(tag, noteKey, envelope.Metadata.UserId ?? "",
                         _workspaceByNote.GetValueOrDefault(noteKey)));
                 break;
             case NoteUntagged e:
-                var untagged = NormalizeTag(e.Tag);
+                var untagged = TagNormalization.Normalize(e.Tag);
                 _entries.RemoveAll(x => x.Tag == untagged && x.NoteId == e.NoteId.Value.ToString("N"));
                 break;
             case NoteDeleted e:
@@ -47,6 +47,4 @@ public sealed class TagIndexProjection
     }
 
     public IReadOnlyList<TagIndexView> GetAll() => _entries.AsReadOnly();
-
-    static string NormalizeTag(string tag) => tag.Trim().ToLowerInvariant();
 }

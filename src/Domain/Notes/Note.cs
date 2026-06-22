@@ -38,10 +38,10 @@ public sealed class Note : IAggregate
                 _deleted = true;
                 break;
             case NoteTagged e:
-                _tags.Add(NormalizeTag(e.Tag));
+                _tags.Add(TagNormalization.Normalize(e.Tag));
                 break;
             case NoteUntagged e:
-                _tags.Remove(NormalizeTag(e.Tag));
+                _tags.Remove(TagNormalization.Normalize(e.Tag));
                 break;
             case NoteFiledInFolder e:
                 _folderId = e.FolderId;
@@ -140,7 +140,7 @@ public sealed class Note : IAggregate
     {
         if (!_exists || _deleted)
             throw new InvalidOperationException($"Note {cmd.NoteId} does not exist.");
-        var tag = NormalizeTag(cmd.Tag);
+        var tag = TagNormalization.Normalize(cmd.Tag);
         if (_tags.Contains(tag))
             throw new InvalidOperationException($"Tag '{tag}' is already present on note {cmd.NoteId}.");
         return [new NoteTagged(cmd.NoteId, tag)];
@@ -150,17 +150,11 @@ public sealed class Note : IAggregate
     {
         if (!_exists || _deleted)
             throw new InvalidOperationException($"Note {cmd.NoteId} does not exist.");
-        var tag = NormalizeTag(cmd.Tag);
+        var tag = TagNormalization.Normalize(cmd.Tag);
         if (!_tags.Contains(tag))
             throw new InvalidOperationException($"Tag '{tag}' is not present on note {cmd.NoteId}.");
         return [new NoteUntagged(cmd.NoteId, tag)];
     }
-
-    // Tags are case-insensitive (CHANGE-17): normalise to trimmed lowercase so "Foo",
-    // "foo", and "  FOO " are one tag everywhere. The aggregate is the single source of
-    // truth — emitted events carry the normalised value; the fold normalises again so
-    // legacy mixed-case history dedupes into one tag.
-    static string NormalizeTag(string tag) => tag.Trim().ToLowerInvariant();
 
     IReadOnlyList<IDomainEvent> HandleMoveToFolder(MoveNoteToFolder cmd)
     {
