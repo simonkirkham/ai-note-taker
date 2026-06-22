@@ -66,6 +66,11 @@ export default function ListView({
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [filterMode, setFilterMode] = useState<"AND" | "OR">("AND");
   const [showOlder, setShowOlder] = useState(false);
+  // Tracks that the current "show older" ON-state was turned on automatically by
+  // applying a tag filter (CHANGE-19), as opposed to a user ticking the box.
+  // Only an auto-enable is reverted when the filter clears; a pre-existing user
+  // preference, or a manual untick while filtering, is left untouched.
+  const [olderAutoEnabled, setOlderAutoEnabled] = useState(false);
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [query, setQuery] = useState("");
   // The input stays bound to `query` (updates synchronously on every keystroke);
@@ -130,15 +135,39 @@ export default function ListView({
     });
   }, [filteredCards, showOlder]);
 
+  // CHANGE-19: applying the first tag auto-enables "show older"; removing the
+  // last tag reverts an auto-enable. The older state is adjusted on the 0↔non-0
+  // selection transition in the user-action handler (not an effect) so a manual
+  // untick or a pre-existing preference is kept.
+  function applyOlderForSelection(prevCount: number, nextCount: number) {
+    if (prevCount === 0 && nextCount > 0 && !showOlder) {
+      setShowOlder(true);
+      setOlderAutoEnabled(true);
+    } else if (nextCount === 0 && olderAutoEnabled) {
+      setShowOlder(false);
+      setOlderAutoEnabled(false);
+    }
+  }
+
   function toggleTag(tag: string) {
-    setSelectedTags((prev) =>
-      prev.includes(tag) ? prev.filter((t) => t !== tag) : [...prev, tag]
-    );
+    const next = selectedTags.includes(tag)
+      ? selectedTags.filter((t) => t !== tag)
+      : [...selectedTags, tag];
+    applyOlderForSelection(selectedTags.length, next.length);
+    setSelectedTags(next);
   }
 
   function clearFilter() {
+    applyOlderForSelection(selectedTags.length, 0);
     setSelectedTags([]);
     setFilterMode("AND");
+  }
+
+  function handleShowOlderChange(checked: boolean) {
+    setShowOlder(checked);
+    // Any manual change makes the state user-driven, so a later filter-clear
+    // must not revert it.
+    setOlderAutoEnabled(false);
   }
 
   const isInFolder = !!currentFolderId;
@@ -272,7 +301,7 @@ export default function ListView({
                           <input
                             type="checkbox"
                             checked={showOlder}
-                            onChange={(e) => setShowOlder(e.target.checked)}
+                            onChange={(e) => handleShowOlderChange(e.target.checked)}
                           />
                           Show older notes
                         </label>

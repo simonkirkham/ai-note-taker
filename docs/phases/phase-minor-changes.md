@@ -29,8 +29,10 @@
 | CHANGE-15 | Keyboard access for `FolderPreviewPanel` hover items — open a note via keyboard, not only mouse/drag (surfaced by the 19-F3 jsx-a11y gate; currently a justified scoped disable) | Done | — |
 | CHANGE-16 | Pin `@tiptap/extension-link` directly in `web/package.json` — 19-J imports it but it is still transitive via StarterKit, so a future StarterKit bump dropping it would break the import (unmet 19-J acceptance criterion) | Done | — |
 | CHANGE-17 | Case-insensitive tags — force all tags to lowercase; `Foo`/`foo` are one tag everywhere (add, dedupe, filter, index) | In Progress | — |
+| CHANGE-18 | Tag-search box in the home Filters panel that filters the displayed tag pills (lists >8 tags) | In Progress | — |
+| CHANGE-19 | Auto-show "older notes" when a tag filter is applied; revert when the filter is cleared | In Progress | — |
 
-Open: CHANGE-17.
+Open: CHANGE-17, CHANGE-18, CHANGE-19.
 
 New tweaks are appended as a one-line shipped record below once Done. The full spec/Value/Approach for each lived in this doc during the slice and remains in git history; the durable *why* (where any) is in the learnings archive. CHANGE-1 to CHANGE-4 were moved here from the former "Phase 13 — UI Polish II" once it was clear they were minor tweaks rather than a distinct phase.
 
@@ -63,7 +65,42 @@ Acceptance criteria:
 - No event versioning (shape unchanged); `cdk synth` green; all BDD specs green.
 - **Mandatory Scribe step:** run prod projection rebuild (`POST /admin/projections/rebuild`) and verify tag-index row counts/merge so live tags display and merge as lowercase — legacy rows do not normalise without it.
 
-Out of scope (deferred): tag-search box in the home filter and auto-show-older-on-filter (the frontend-only Slice B).
+Out of scope (deferred): tag-search box in the home filter and auto-show-older-on-filter (the frontend-only Slice B — now CHANGE-18 / CHANGE-19 below).
+
+### CHANGE-18 — Tag-search box in the home Filters panel
+
+**Value:** With many tags, the pill list is hard to scan. A search box narrows the visible pills so a tag is found by typing instead of hunting.
+
+**Approach:** Local UI state in `TagFilter` (not lifted). Search renders only when `tags.length > 8` (avoid clutter on short lists). Filtering the *displayed* pills never touches how tag filtering applies to notes; selection state is unaffected.
+
+Scenarios (GWT):
+- More than 8 tags: Given the Filters panel with >8 tags, When opened, Then a `tag-filter-search` input renders above the pills.
+- 8 or fewer tags: Given ≤8 tags, Then no search input renders.
+- Filter pills: Given the search input, When I type `"wo"`, Then only pills whose tag contains `"wo"` (case-insensitive) render.
+- Clear restores: Given a typed search, When I clear it, Then all pills render again.
+- Selection unaffected: Given a selected tag filtered out of view, Then it stays selected and Clear/AND-OR still act on all selected tags.
+
+Acceptance criteria:
+- Search is local state in `TagFilter`; no lift to `ListView`.
+- Accessible: labelled input with placeholder; `data-testid="tag-filter-search"`.
+- No change to how tag filtering applies to notes (only which pills are shown).
+
+### CHANGE-19 — Auto-show older notes when a tag filter is applied
+
+**Value:** Tag filtering on the home page is near-useless if it only searches today's notes. Applying a tag filter should reveal older matches automatically, then restore the prior state when the filter clears.
+
+**Approach:** Track whether the older-on state is *filter-driven* vs *user-driven* with explicit state, so the revert only undoes the auto-enable. Do **not** use a naive derived `showOlder || selectedTags.length>0` (that makes the toggle un-untickable while filtering).
+
+Scenarios (GWT):
+- Auto-on: Given no tag selected and "Show older" OFF, When I select the first tag, Then older notes are included AND the checkbox shows checked.
+- Revert on clear: Given a filter that auto-enabled older, When I clear the filter, Then "Show older" reverts to OFF.
+- User override respected: Given filtering with older auto-on, When I manually untick "Show older", Then older notes hide and it stays off while filtering.
+- Pre-existing preference kept: Given "Show older" was ON before any filter, When I apply then clear a filter, Then it stays ON.
+
+Acceptance criteria:
+- Explicit filter-driven-vs-user-driven state; revert only undoes the auto-enable.
+- Optimistic-UI N/A (no mutation).
+- Collapsed "Filters · N tags · older" summary stays correct.
 
 ---
 

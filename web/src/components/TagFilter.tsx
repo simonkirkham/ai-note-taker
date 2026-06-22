@@ -1,6 +1,12 @@
 import clsx from "clsx";
+import { useMemo, useState } from "react";
 
 import styles from "./TagFilter.module.css";
+
+// Above this many tags the pill list is hard to scan, so a local search box
+// renders to narrow the displayed pills (CHANGE-18). The search is view-only:
+// it never changes which tags are selected or how filtering applies to notes.
+const SEARCH_THRESHOLD = 8;
 
 export default function TagFilter({
   tags,
@@ -17,12 +23,32 @@ export default function TagFilter({
   onModeChange: (mode: "AND" | "OR") => void;
   onClear: () => void;
 }) {
+  const [search, setSearch] = useState("");
+  const showSearch = tags.length > SEARCH_THRESHOLD;
+
+  const visibleTags = useMemo(() => {
+    const needle = search.trim().toLowerCase();
+    if (!showSearch || needle === "") return tags;
+    return tags.filter((tag) => tag.toLowerCase().includes(needle));
+  }, [tags, search, showSearch]);
+
   if (tags.length === 0) return null;
 
   return (
     <div className={styles.tagFilter} data-testid="tag-filter">
+      {showSearch && (
+        <input
+          type="text"
+          data-testid="tag-filter-search"
+          className={styles.tagFilterSearch}
+          placeholder="Search tags…"
+          aria-label="Search tags"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+        />
+      )}
       <div className={styles.tagFilterPills}>
-        {tags.map((tag) => (
+        {visibleTags.map((tag) => (
           <button
             key={tag}
             data-testid={`tag-filter-pill-${tag}`}
