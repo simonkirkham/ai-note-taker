@@ -65,6 +65,24 @@ it('stops intercepting once disarmed (e.g. recording stopped)', () => {
   expect(onAttempt).not.toHaveBeenCalled()
 })
 
+it('disarming (e.g. Stop) pops its sentinel so the next Back is not swallowed', () => {
+  const onAttempt = vi.fn()
+  // jsdom does not decrement history.length on back(), so assert the contract via a
+  // spy: disarming WITHOUT leaving must pop the sentinel it pushed on arm.
+  const backSpy = vi.spyOn(window.history, 'back')
+  function Toggle() {
+    const [armed, setArmed] = useState(true)
+    usePopstateGuard(armed, onAttempt)
+    return <button onClick={() => setArmed(false)}>disarm</button>
+  }
+  const { getByText } = render(<Toggle />)
+
+  expect(backSpy).not.toHaveBeenCalled() // arming alone does not pop
+  act(() => { getByText('disarm').click() })
+  expect(backSpy).toHaveBeenCalledTimes(1) // sentinel reconciled away on disarm
+  backSpy.mockRestore()
+})
+
 it('confirmLeave runs the proceed navigation and does NOT re-trigger onAttempt', async () => {
   const onAttempt = vi.fn()
   const proceed = vi.fn()
