@@ -28,10 +28,42 @@
 | CHANGE-14 | Rename transcription "Call audio" toggle to "Record screen-share audio" | Done | — |
 | CHANGE-15 | Keyboard access for `FolderPreviewPanel` hover items — open a note via keyboard, not only mouse/drag (surfaced by the 19-F3 jsx-a11y gate; currently a justified scoped disable) | Done | — |
 | CHANGE-16 | Pin `@tiptap/extension-link` directly in `web/package.json` — 19-J imports it but it is still transitive via StarterKit, so a future StarterKit bump dropping it would break the import (unmet 19-J acceptance criterion) | Done | — |
+| CHANGE-17 | Case-insensitive tags — force all tags to lowercase; `Foo`/`foo` are one tag everywhere (add, dedupe, filter, index) | In Progress | — |
 
-Open: none.
+Open: CHANGE-17.
 
 New tweaks are appended as a one-line shipped record below once Done. The full spec/Value/Approach for each lived in this doc during the slice and remains in git history; the durable *why* (where any) is in the learnings archive. CHANGE-1 to CHANGE-4 were moved here from the former "Phase 13 — UI Polish II" once it was clear they were minor tweaks rather than a distinct phase.
+
+---
+
+## Active spec
+
+### CHANGE-17 — Case-insensitive tags
+
+**Value:** Tags differing only in case (`Foo`, `foo`, `FOO`) are the same tag — no accidental duplicates, and filtering by `work` finds notes tagged `Work`. Decision (2026-06-22): force **lowercase** everywhere; existing mixed-case tags normalise on projection rebuild.
+
+**Approach:** Normalise in the `Note` aggregate (single source of truth); projections lowercase on fold so legacy events normalise on rebuild. **Events are not edited** — only new writes carry lowercase; legacy events keep their stored case and the fold lowercases them on read. Value-only normalisation, identical event shape → **no event versioning**.
+
+Scenarios (GWT):
+- Add lowercases: Given a note, When I add tag `"Foo Bar"`, Then `NoteTagged` carries `"foo bar"` and the note's tags are `["foo bar"]`.
+- Trim + lowercase: Given a note, When I add `"  Work "`, Then the tag is `"work"`.
+- Case-variant add is rejected: Given a note tagged `"work"`, When I add `"WORK"`, Then it throws "already present" (no second event).
+- Legacy dedupe on fold: Given a note whose history is `NoteTagged "Foo"`, When the aggregate rebuilds and I add `"foo"`, Then it throws "already present".
+- Untag is case-insensitive: Given a note whose history is `NoteTagged "Foo"`, When I untag `"foo"`, Then `NoteUntagged` is emitted and the tag is removed.
+- Tag index merges variants: Given notes tagged `"Work"` and `"work"`, When `TagIndex` rebuilds, Then one `"work"` row with the combined note count.
+- Card projection dedupes: Given a card whose history tags it `"Foo"` then `"foo"`, When the card list rebuilds, Then the card shows a single `"foo"` tag.
+- Frontend add (optimistic): Given the tag input, When I type `"Foo"` and submit, Then the optimistic pill shows `"foo"`.
+- Frontend filter: Given cards tagged `"work"`, When I select the `work` filter pill, Then matching cards show (comparison is lowercase).
+
+Acceptance criteria:
+- All new `NoteTagged`/`NoteUntagged` events carry `Trim().ToLowerInvariant()` tags.
+- Aggregate dedupe/contains is case-insensitive (folds legacy mixed-case history into lowercase `_tags`).
+- `TagIndexProjection` and `NoteCardListProjection` lowercase + dedupe on fold; both remain rebuildable from the full stream.
+- Frontend: `TagsSection` lowercases before `onAdd` (optimistic pill matches stored value); `ListView` tag filter compares lowercase.
+- No event versioning (shape unchanged); `cdk synth` green; all BDD specs green.
+- **Mandatory Scribe step:** run prod projection rebuild (`POST /admin/projections/rebuild`) and verify tag-index row counts/merge so live tags display and merge as lowercase — legacy rows do not normalise without it.
+
+Out of scope (deferred): tag-search box in the home filter and auto-show-older-on-filter (the frontend-only Slice B).
 
 ---
 
