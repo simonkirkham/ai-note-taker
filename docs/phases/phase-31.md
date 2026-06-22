@@ -48,12 +48,12 @@
 - Given a first launch When I sign in with Google Then sign-in completes inside the Electron window and my notes appear.
 - Given I signed in previously When I quit and relaunch Then I am still signed in (the `rt` cookie persisted) — no re-consent.
 
-**Status:** Done (PR #311, deploy #611). Code-verifiable ACs met by `desktop/tests` (loopback serve + SPA fallback + `/api` proxy + path-traversal) and the e2e contextIsolation probe. The two real-OAuth-on-Windows ACs are manual human gates tracked in `desktop/MANUAL-VERIFICATION.md` — pending a Windows run, not blocking the shell merge.
+**Status:** Done (PR #311, deploy #611). Code-verifiable ACs met by `desktop/tests` (loopback serve + SPA fallback + `/api` proxy + path-traversal) and the e2e contextIsolation probe. The two real-OAuth-on-Windows ACs were **manually verified on Windows 2026-06-22** (build SHA `c44a6e3`) — sign-in completes in-window and the session survives a quit+relaunch; recorded in `desktop/MANUAL-VERIFICATION.md`.
 
 **Acceptance criteria:**
 - [x] Desktop window loads the frontend entirely from bundled assets (loopback server serves `web-dist/` with SPA fallback; no CloudFront fetch).
-- [ ] Google sign-in completes in-window; notes load from the prod API. _(manual — `MANUAL-VERIFICATION.md`)_
-- [ ] Session survives an app restart (refresh-token cookie persisted in the Electron session). _(manual — `MANUAL-VERIFICATION.md`)_
+- [x] Google sign-in completes in-window; notes load from the prod API. _(manual, verified 2026-06-22 — `MANUAL-VERIFICATION.md`)_
+- [x] Session survives an app restart (refresh-token cookie persisted in the Electron session). _(manual, verified 2026-06-22 — `MANUAL-VERIFICATION.md`)_
 - [x] `contextIsolation: true`, `nodeIntegration: false`; renderer gets only what `preload` exposes.
 - [x] No change to `web/` source beyond (if needed) an Electron feature-detect flag. _(zero `web/` change — slice is purely additive under `desktop/`)_
 
