@@ -67,7 +67,13 @@ async function proxyApi(req: http.IncomingMessage, res: http.ServerResponse, pro
 }
 
 async function serveAsset(req: http.IncomingMessage, res: http.ServerResponse, webDist: string): Promise<void> {
-  const urlPath = decodeURIComponent((req.url ?? '/').split('?')[0])
+  // A malformed percent-escape (e.g. /%ZZ) throws — treat as an unknown path (SPA fallback).
+  let urlPath: string
+  try {
+    urlPath = decodeURIComponent((req.url ?? '/').split('?')[0])
+  } catch {
+    urlPath = '/'
+  }
   // Resolve as forced-relative and confirm containment — a decoded `..%2f` must
   // never escape web-dist (path.join would normalise it away into a traversal).
   const candidate = path.resolve(webDist, '.' + urlPath)
