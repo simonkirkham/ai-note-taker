@@ -115,9 +115,10 @@ export function AuthProvider({
       const exp = getExp(idToken!)
       if (!exp) return
       const remaining = exp * 1000 - Date.now()
-      if (remaining <= 0) {
-        handleRefreshFailure()
-      } else if (remaining < REFRESH_LEAD_MS) {
+      // Inside (or past) the refresh lead, always try the rt cookie first — an expired
+      // in-memory token does not mean the session is over (the cookie lasts ~30 days). Only
+      // sign out when the refresh itself fails (30-C / BUG-33).
+      if (remaining < REFRESH_LEAD_MS) {
         attemptSilentRefresh().then(newToken => {
           if (newToken) handleRefreshSuccess(newToken)
           else handleRefreshFailure()

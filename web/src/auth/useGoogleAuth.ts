@@ -39,21 +39,26 @@ export function useGoogleAuth({
     (exp: number) => {
       cancelRefresh()
       const delay = exp * 1000 - Date.now() - REFRESH_LEAD_MS
-      if (delay <= 0) {
-        callbacksRef.current.onRefreshFailure()
-        return
-      }
-      timerRef.current = setTimeout(async () => {
+      // onRefreshSuccess sets idToken, which triggers the AuthContext useEffect that calls
+      // scheduleRefresh again — no need to reschedule explicitly on success.
+      const runRefresh = async () => {
         timerRef.current = null
         const newToken = await attemptSilentRefresh()
-        if (newToken) {
-          // onRefreshSuccess sets idToken, which triggers the AuthContext useEffect
-          // that calls scheduleRefresh — no need to reschedule explicitly here.
-          callbacksRef.current.onRefreshSuccess(newToken)
-        } else {
-          callbacksRef.current.onRefreshFailure()
-        }
-      }, delay)
+        if (newToken) callbacksRef.current.onRefreshSuccess(newToken)
+        else callbacksRef.current.onRefreshFailure()
+      }
+      if (delay <= 0) {
+        // Token already inside the refresh lead (e.g. loaded stale, or the timer was throttled):
+        // refresh immediately against the cookie rather than signing out (30-C / BUG-33).
+        // No-spin invariant: on success onRefreshSuccess sets idToken, which re-enters this via the
+        // AuthContext effect; that re-entry only schedules a synchronous refresh again if the *new*
+        // token is also within REFRESH_LEAD_MS. Backend-minted tokens last ~1h (>> the 5-min lead),
+        // so the next call takes the setTimeout branch — there is no tight loop unless the backend
+        // mints sub-5-min tokens (a misconfiguration).
+        void runRefresh()
+        return
+      }
+      timerRef.current = setTimeout(runRefresh, delay)
     },
     [cancelRefresh],
   )

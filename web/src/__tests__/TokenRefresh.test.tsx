@@ -128,6 +128,42 @@ describe('silent refresh failure', () => {
   })
 })
 
+describe('scheduled refresh with an already-lapsed lead time', () => {
+  beforeEach(() => {
+    vi.useFakeTimers()
+    vi.stubEnv('VITE_GOOGLE_CLIENT_ID', 'test-client-id')
+  })
+  afterEach(() => {
+    vi.useRealTimers()
+    vi.unstubAllEnvs()
+  })
+
+  it('attempts a silent refresh (not sign-out) when the token is already inside the refresh lead', async () => {
+    // 30-C: a token loaded already past its refresh lead (delay <= 0) must try the cookie
+    // immediately rather than calling onRefreshFailure straight away.
+    vi.mocked(silentRefreshMod.attemptSilentRefresh).mockResolvedValue(makeToken(65))
+    const token = makeToken(2) // expires in 2 min — inside the 5-min lead, so delay <= 0
+
+    render(<AuthProvider initialToken={token}><App /></AuthProvider>)
+    await act(async () => { await Promise.resolve(); await Promise.resolve() })
+
+    expect(silentRefreshMod.attemptSilentRefresh).toHaveBeenCalledOnce()
+    expect(screen.queryByRole('button', { name: /sign in again/i })).not.toBeInTheDocument()
+    expect(screen.getByTestId('sidebar-toggle')).toBeInTheDocument()
+  })
+
+  it('falls back to sign-out when that immediate refresh also fails', async () => {
+    vi.mocked(silentRefreshMod.attemptSilentRefresh).mockResolvedValue(null)
+    const token = makeToken(2)
+
+    render(<AuthProvider initialToken={token}><App /></AuthProvider>)
+    await act(async () => { await Promise.resolve(); await Promise.resolve() })
+
+    expect(silentRefreshMod.attemptSilentRefresh).toHaveBeenCalledOnce()
+    expect(screen.getByRole('button', { name: /sign in again/i })).toBeInTheDocument()
+  })
+})
+
 // ─── 401 response — no fake timers (MSW is async) ─────────────────────────────
 
 describe('401 response', () => {
@@ -292,17 +328,43 @@ describe('tab visibility change', () => {
     document.dispatchEvent(new Event('visibilitychange'))
   }
 
-  it('shows banner when tab wakes with an expired token (timer was throttled)', async () => {
+  it('recovers via the cookie when tab wakes with an expired token (timer was throttled)', async () => {
+    // 30-C: a backgrounded tab whose in-memory token expired (throttled timer) but whose rt
+    // cookie is still valid must attempt a silent refresh, not sign the user out.
+    vi.mocked(silentRefreshMod.attemptSilentRefresh).mockResolvedValue(makeToken(65))
     const token = makeToken(65)
     render(<AuthProvider initialToken={token}><App /></AuthProvider>)
 
     // Advance system clock past expiry WITHOUT firing timers (simulates background throttling)
     vi.setSystemTime(new Date(Date.now() + 66 * 60 * 1000))
 
-    await act(async () => { fireVisibilityChange() })
+    await act(async () => {
+      fireVisibilityChange()
+      await Promise.resolve()
+      await Promise.resolve()
+    })
 
+    expect(silentRefreshMod.attemptSilentRefresh).toHaveBeenCalledOnce()
+    expect(screen.queryByRole('button', { name: /sign in again/i })).not.toBeInTheDocument()
+    expect(screen.getByTestId('sidebar-toggle')).toBeInTheDocument()
+  })
+
+  it('shows banner when tab wakes with an expired token and the cookie is also dead', async () => {
+    // No regression: when the refresh genuinely fails, the user still lands on sign-in.
+    vi.mocked(silentRefreshMod.attemptSilentRefresh).mockResolvedValue(null)
+    const token = makeToken(65)
+    render(<AuthProvider initialToken={token}><App /></AuthProvider>)
+
+    vi.setSystemTime(new Date(Date.now() + 66 * 60 * 1000))
+
+    await act(async () => {
+      fireVisibilityChange()
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+
+    expect(silentRefreshMod.attemptSilentRefresh).toHaveBeenCalledOnce()
     expect(screen.getByRole('button', { name: /sign in again/i })).toBeInTheDocument()
-    expect(silentRefreshMod.attemptSilentRefresh).not.toHaveBeenCalled()
   })
 
   it('attempts immediate refresh when tab wakes with token near expiry', async () => {
