@@ -79,17 +79,29 @@ public static class AuthEndpoints
         {
             var log = loggerFactory.CreateLogger("Api.Auth.Refresh");
 
-            var refreshToken = ctx.Request.Cookies[RefreshCookieName];
-            if (string.IsNullOrEmpty(refreshToken))
-                return Results.Unauthorized();
-
             if (!SecretsConfigured())
                 return Results.StatusCode(503);
 
             // Resolve the user's `sub` from the request's id_token (if present) so a revoked
             // token can be evicted from the store, and a rotated one persisted. The store is
-            // keyed by `sub`; without it we can still serve the session but cannot touch the store.
+            // keyed by `sub`; without it we can still serve a cookie-based session but cannot
+            // touch the store. It is also the key for the cookie-less fallback below.
             var sub = TryGetSubFromAuthorization(ctx);
+
+            var refreshToken = ctx.Request.Cookies[RefreshCookieName];
+            if (string.IsNullOrEmpty(refreshToken))
+            {
+                // No cookie (idle > 30 days, cleared cookies, an in-app 401-retry without one):
+                // recover the session from the durable server-side copy, provided the request
+                // identifies the user via the Authorization id_token. Use the stored token as the
+                // refresh token; the success/rotation/revoked paths below then apply unchanged,
+                // keyed by this same `sub`. Absent both cookie and a resolvable stored token -> 401.
+                var fallback = string.IsNullOrEmpty(sub) ? null : await tokenStore.GetAsync(sub, ctx.RequestAborted);
+                if (string.IsNullOrEmpty(fallback))
+                    return Results.Unauthorized();
+                refreshToken = fallback;
+                log.LogDebug("No refresh cookie; falling back to stored token for sub {Sub}", sub);
+            }
 
             try
             {
