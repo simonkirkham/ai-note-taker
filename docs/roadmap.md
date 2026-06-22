@@ -304,6 +304,16 @@ Slices and acceptance criteria: [docs/phases/phase-30.md](phases/phase-30.md)
 
 ---
 
+## Phase 31 — Desktop app (no per-meeting audio-share consent) _(Not Started)_
+
+Remove the browser's per-meeting screen-share picker + consent when capturing call/system audio, by packaging the existing frontend as a **Windows Electron desktop app**. The whole trick is the Electron main-process `session.setDisplayMediaRequestHandler`, which auto-answers each display-capture request with `{ video: <screen>, audio: 'loopback' }` — the renderer's existing `getDisplayMedia` call resolves with **no picker and no per-meeting consent**, just a one-time OS grant per machine. Feasibility was proven by the 2026-06-03 Windows spike. **Zero backend/CDK/event-model changes** — `web/` and the transcription path are reused as-is. Locked decisions: **Windows only** (the proven path; macOS deferred), **bundle-shell** (compiled `web/` assets shipped in-app, loaded from disk, calling the live prod API — so the shell always opens and the client is version-pinned), **unsigned personal build** via `electron-builder` (no signing/auto-update). Three slices: **31-A** Electron shell loads the bundled frontend + Google sign-in works in-window (de-risks OAuth-in-Electron); **31-B** the main-process auto-grant — record with no picker (core value); **31-C** package as an unsigned Windows installer. Deploy-time impact on the prod pipeline: **neutral** (the desktop build is a separate manual artifact, not in `deploy.yml`).
+
+**Goal:** an installable Windows app that records meetings with system audio after a one-time OS grant — no per-meeting screen-share consent — reusing the existing frontend, transcription path, and API unchanged.
+
+Slices and acceptance criteria: [docs/phases/phase-31.md](phases/phase-31.md)
+
+---
+
 ## Standing tracks and planning docs
 
 Alongside the numbered phases above, work is tracked in five standing docs. The roadmap summarises them; each doc owns its content.
