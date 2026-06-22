@@ -165,6 +165,9 @@ export function AuthProvider({
         if (cancelled) return
         if (token) handleRefreshSuccess(token)
       })
+      // Refresh failure needs no action — the gate falls through to the sign-in screen — but the
+      // rejection must be handled so the chain isn't a floating promise (no-floating-promises).
+      .catch(() => { /* cookie gone/invalid → show sign-in (handled by the null-token path) */ })
       .finally(() => { if (!cancelled) setAuthLoading(false) })
     return () => { cancelled = true }
     // Run once on mount; shouldBootstrapRefresh/handleRefreshSuccess are stable for the
