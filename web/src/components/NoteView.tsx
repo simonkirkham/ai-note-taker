@@ -273,8 +273,18 @@ export default function NoteView({
   }
 
   function handleAddTags(raw: string) {
-    const tokens = raw.trim().split(/\s+/).filter(Boolean);
-    const newTokens = tokens.filter((t) => !tags.includes(t));
+    // Tags are case-insensitive (CHANGE-17): normalise each token and dedupe both
+    // against the already-applied tags and within the paste, so a case variant doesn't
+    // fire a TagNote the aggregate rejects as "already present".
+    const applied = new Set(tags.map((t) => t.toLowerCase()));
+    const seen = new Set<string>();
+    const newTokens: string[] = [];
+    for (const token of raw.trim().split(/\s+/).filter(Boolean)) {
+      const normalized = token.toLowerCase();
+      if (applied.has(normalized) || seen.has(normalized)) continue;
+      seen.add(normalized);
+      newTokens.push(normalized);
+    }
     if (newTokens.length === 0) return;
     // The mutation optimistically patches the note cache and reverts on failure.
     for (const token of newTokens) {
