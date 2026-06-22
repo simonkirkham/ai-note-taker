@@ -1,0 +1,16 @@
+# 31-A manual verification (Windows)
+
+The automated `npm run test:e2e` proves the shell launches and renders the bundled
+frontend. The items below need **real Google OAuth + a real Windows machine** and
+cannot run in CI — verify by hand on Windows before marking 31-A Done.
+
+Prereq: `npm run build` then `npm start` (or install the 31-C package once it exists).
+
+| # | Given / When / Then | Pass? |
+|---|---------------------|-------|
+| 1 | Given a first launch, When I click **Sign in with Google**, Then the Google consent/sign-in completes **inside the app window** (no external browser hand-off) and my notes list loads from the **prod API**. | ☐ |
+| 2 | Given I am signed in, When I **quit and relaunch** the app, Then I am still signed in — no re-consent (the `rt` refresh-token cookie persisted in the Electron session). | ☐ |
+| 3 | Given the app is running, When I check the loaded notes, Then they are my real prod notes (confirms the bundle calls the live prod API, not a stub). | ☐ |
+| 4 | Given CloudFront is unreachable (e.g. block its host), When I launch, Then the shell **still renders** (assets are local) — only live API calls fail. | ☐ |
+
+Record the build SHA shown on launch (31-A AC: stamp the bundled commit) next to the result.
