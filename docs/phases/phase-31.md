@@ -7,7 +7,7 @@
 | Slice | Summary | Status | Depends on |
 |-------|---------|--------|------------|
 | 31-A | Electron shell loads the **bundled** frontend and completes Google sign-in end-to-end against the prod API (de-risks OAuth-in-Electron; recording still uses the normal picker) | Done | — |
-| 31-B | Main-process `setDisplayMediaRequestHandler` auto-grants screen + loopback audio — record a meeting with **no picker, no per-meeting consent** (the core value) | Not Started | 31-A |
+| 31-B | Main-process `setDisplayMediaRequestHandler` auto-grants screen + loopback audio — record a meeting with **no picker, no per-meeting consent** (the core value) | Done | 31-A |
 | 31-C | Package as an **unsigned Windows installer** via `electron-builder`; a clean install launches, signs in, and records with one-time OS grant | Not Started | 31-B |
 
 **Ordering:** strictly 31-A → 31-B → 31-C. 31-A isolates the one genuine unknown (Google OAuth redirect/cookie behaviour inside an Electron `BrowserWindow`) before any audio work; it ships a working desktop client that behaves exactly like the web app (recording via the standard picker — no regression). 31-B removes the picker. 31-C makes it installable.
@@ -77,11 +77,13 @@
 - Given a meeting playing system audio When I record Then the live transcript reflects **system** audio (not just mic).
 - Given mic + system both active When I record Then both streams are transcribed, exactly as in the web app.
 
+**Status:** Done (PR #315, deploy #615). The deterministic handler (`displayMedia.ts` + `main.ts`) is unit-tested headlessly and logs every grant/denial. The no-picker + system-audio + mix **behaviour was manually confirmed on Windows 2026-06-22** (silent-mic test → non-empty transcript); 31-B pins that behaviour so it survives an Electron upgrade. Re-confirm the explicit-handler grant log (`MANUAL-VERIFICATION.md` 31-B #3) after the next desktop rebuild.
+
 **Acceptance criteria:**
-- [ ] No source-picker dialog and no per-meeting consent on record.
-- [ ] System (loopback) audio is captured and transcribed; mic+system mixing unchanged.
-- [ ] One-time OS grant only (no per-meeting OS prompt).
-- [ ] The Transcribe streaming path is unchanged from web (no new credentials/endpoint).
+- [x] No source-picker dialog and no per-meeting consent on record. _(manual, confirmed 2026-06-22)_
+- [x] System (loopback) audio is captured and transcribed; mix unchanged. _(manual, confirmed 2026-06-22)_
+- [x] One-time OS grant only (no per-meeting OS prompt). _(manual, confirmed 2026-06-22)_
+- [x] The Transcribe streaming path is unchanged from web (no new credentials/endpoint). _(code — zero `web/`/backend change; slice is desktop-only)_
 
 ---
 
