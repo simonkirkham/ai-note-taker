@@ -31,8 +31,9 @@
 | CHANGE-17 | Case-insensitive tags — force all tags to lowercase; `Foo`/`foo` are one tag everywhere (add, dedupe, filter, index) | In Progress | — |
 | CHANGE-18 | Tag-search box in the home Filters panel that filters the displayed tag pills (lists >8 tags) | Done | — |
 | CHANGE-19 | Auto-show "older notes" when a tag filter is applied; revert when the filter is cleared | Done | — |
+| CHANGE-20 | Search highlight uses the same word-level matcher as the gate — `MatchedTokens`/`MatchedTags` still pick displayed terms via FuzzySharp `Process.ExtractTop` (substring) while inclusion uses BUG-35's word-level rules; reuse `BestTokenScore` so the highlighted term/snippet always reflects why the note matched | Not Started | BUG-35 |
 
-Open: CHANGE-17.
+Open: CHANGE-17, CHANGE-20.
 
 New tweaks are appended as a one-line shipped record below once Done. The full spec/Value/Approach for each lived in this doc during the slice and remains in git history; the durable *why* (where any) is in the learnings archive. CHANGE-1 to CHANGE-4 were moved here from the former "Phase 13 — UI Polish II" once it was clear they were minor tweaks rather than a distinct phase.
 
@@ -66,6 +67,22 @@ Acceptance criteria:
 - **Mandatory Scribe step:** run prod projection rebuild (`POST /admin/projections/rebuild`) and verify tag-index row counts/merge so live tags display and merge as lowercase — legacy rows do not normalise without it.
 
 Out of scope (deferred): tag-search box in the home filter and auto-show-older-on-filter (the frontend-only Slice B — now CHANGE-18 / CHANGE-19 below).
+
+### CHANGE-20 — Search highlight reuses the word-level matcher
+
+**Value:** The highlighted matched term (and the snippet anchored to it) always reflects *why* the note was returned. After BUG-35, inclusion gates on word-level matching (`BestTokenScore`: exact / prefix / tight whole-token `Fuzz.Ratio ≥ 85`) but `MatchedTokens`/`MatchedTags` still pick the displayed `matchedTerms` via FuzzySharp `Process.ExtractTop` (substring-based, `TokenMatchThreshold = 70`). The two paths use different definitions of "matched", so a displayed term can differ from the one that actually cleared the gate. No user-visible defect on tested cases (the note already legitimately matched), but a latent inconsistency.
+
+**Approach:** Backend-only, in `src/Api/Search/NoteSearchRanker.cs`. Replace the `Process.ExtractTop` calls in `MatchedTokens`/`MatchedTags` with the same `BestTokenScore` used by the gate: rank a field's tokens (and tags) by `BestTokenScore` against each query term, take the top `MaxTerms` whose score clears the same floor used for inclusion. No projection change, no event change, query-time only — no rebuild.
+
+Scenarios (GWT):
+- Prefix highlight: Given a note bodied `"Met the Andrews family"`, When I search `"Andrew"`, Then `matchedTerms` contains `"Andrews"` (the token that matched), not a substring.
+- No infix term surfaces: Given a note bodied `"the vacation policy"`, When I search `"cat"`, Then the note is not returned and no term is highlighted.
+- Existing typo highlight preserved: Given a note bodied `"planning the roadmap"`, When I search `"planing"`, Then `matchedTerms` contains `"planning"` and not `"planing"`.
+- Tag highlight: Given a note tagged `"roadmap"`, When I search `"roadmap"`, Then `matchedField` is `tag` and `matchedTerms` contains `"roadmap"`.
+
+Acceptance criteria:
+- `MatchedTokens`/`MatchedTags` rank via `BestTokenScore`, not `Process.ExtractTop`; the displayed term is one the gate would also accept for that query.
+- All existing `SearchNotesTests` matched-terms/snippet scenarios stay green; no projection rebuild required.
 
 ---
 
