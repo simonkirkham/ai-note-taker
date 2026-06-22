@@ -26,6 +26,17 @@ function createWindow(): void {
       sandbox: true,
     },
   })
+  // Navigation policy: deny popups outright; allow top-level navigation only to the
+  // local origin and Google's sign-in domains (the OAuth flow leaves localhost for
+  // accounts.google.com and back). Anything else is blocked.
+  win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }))
+  win.webContents.on('will-navigate', (event, url) => {
+    let host = ''
+    try { host = new URL(url).hostname } catch { /* malformed → block below */ }
+    const allowed = host === 'localhost' || host === '127.0.0.1' || host === 'google.com' || host.endsWith('.google.com')
+    if (!allowed) event.preventDefault()
+  })
+
   void win.loadURL(`http://localhost:${PORT}/`)
 }
 

@@ -42,6 +42,22 @@ test('SPA fallback: unknown route serves index.html, real asset serves itself', 
   }
 })
 
+test('path traversal: encoded ../ cannot escape web-dist (serves index.html)', async () => {
+  const server = createBundleServer('http://127.0.0.1:1', webDist)
+  const port = await listen(server)
+  try {
+    for (const evil of ['/..%2f..%2fpackage.json', '/..%2fbuild-web.mjs', '/%2e%2e%2fpackage.json']) {
+      const res = await fetch(`http://127.0.0.1:${port}${evil}`)
+      const body = await res.text()
+      // Contained: falls back to the SPA shell, never leaks an outside file.
+      expect(body).toContain('<div id="root">')
+      expect(body).not.toContain('"name": "ai-note-taker-desktop"')
+    }
+  } finally {
+    server.close()
+  }
+})
+
 test('proxies /api to prod: forwards Authorization, strips cookie Domain for localhost', async () => {
   let seenAuth: string | undefined
   let seenPath: string | undefined

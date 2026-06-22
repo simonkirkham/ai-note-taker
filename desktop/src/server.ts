@@ -34,10 +34,13 @@ async function proxyApi(req: http.IncomingMessage, res: http.ServerResponse, pro
   for (const [key, value] of Object.entries(req.headers)) {
     if (value === undefined) continue
     const lower = key.toLowerCase()
-    // Drop hop-by-hop / origin-revealing headers; forward Authorization + Cookie.
+    // Drop the localhost-revealing/hop-by-hop headers; forward Authorization + Cookie.
     if (['host', 'origin', 'referer', 'accept-encoding', 'connection', 'content-length'].includes(lower)) continue
     headers.set(key, Array.isArray(value) ? value.join(', ') : value)
   }
+  // Present the prod origin upstream (mirrors the browser's same-origin request in
+  // prod) so any Origin-allowlist/CSRF check on the API still passes.
+  headers.set('origin', prodOrigin)
 
   const upstream = await fetch(`${prodOrigin}${req.url}`, {
     method: req.method,
@@ -50,6 +53,11 @@ async function proxyApi(req: http.IncomingMessage, res: http.ServerResponse, pro
   upstream.headers.forEach((value, key) => {
     const lower = key.toLowerCase()
     if (['set-cookie', 'content-encoding', 'content-length', 'transfer-encoding', 'connection'].includes(lower)) return
+    // Keep redirects same-origin: strip the prod origin so the client stays on localhost.
+    if (lower === 'location' && value.startsWith(prodOrigin)) {
+      res.setHeader(key, value.slice(prodOrigin.length) || '/')
+      return
+    }
     res.setHeader(key, value)
   })
   for (const cookie of upstream.headers.getSetCookie()) {
@@ -60,9 +68,12 @@ async function proxyApi(req: http.IncomingMessage, res: http.ServerResponse, pro
 
 async function serveAsset(req: http.IncomingMessage, res: http.ServerResponse, webDist: string): Promise<void> {
   const urlPath = decodeURIComponent((req.url ?? '/').split('?')[0])
-  const candidate = path.join(webDist, urlPath)
-  // SPA fallback: anything that isn't an existing file serves index.html.
-  const file = urlPath !== '/' && existsSync(candidate) && !candidate.endsWith(path.sep)
+  // Resolve as forced-relative and confirm containment — a decoded `..%2f` must
+  // never escape web-dist (path.join would normalise it away into a traversal).
+  const candidate = path.resolve(webDist, '.' + urlPath)
+  const inside = candidate === webDist || candidate.startsWith(webDist + path.sep)
+  // SPA fallback: anything not an existing in-bundle file serves index.html.
+  const file = urlPath !== '/' && inside && existsSync(candidate) && !candidate.endsWith(path.sep)
     ? candidate
     : path.join(webDist, 'index.html')
   try {
@@ -81,13 +92,15 @@ export function createBundleServer(prodOrigin: string, webDist: string): http.Se
       ? proxyApi(req, res, prodOrigin)
       : serveAsset(req, res, webDist)
     handler.catch((err) => {
-      res.statusCode = 502
-      res.end(`Proxy error: ${String(err)}`)
+      console.error('[desktop] request failed:', err)
+      if (!res.headersSent) res.statusCode = 500
+      res.end('Internal error')
     })
   })
 }
 
 export function startBundleServer(port: number, prodOrigin: string, webDist: string): Promise<http.Server> {
   const server = createBundleServer(prodOrigin, webDist)
+  server.on('error', (err) => console.error(`[desktop] server error on port ${port} (is it already in use?):`, err))
   return new Promise((resolve) => server.listen(port, '127.0.0.1', () => resolve(server)))
 }
