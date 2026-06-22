@@ -4,7 +4,9 @@ The automated `npm run test:e2e` proves the shell launches and renders the bundl
 frontend. The items below need **real Google OAuth + a real Windows machine** and
 cannot run in CI — verify by hand on Windows before marking 31-A Done.
 
-Prereq: `npm run build` then `npm start` (or install the 31-C package once it exists).
+**One-time setup (external):**
+1. In Google Cloud Console → the existing OAuth **Web** client, add `http://localhost:5180` to **Authorized JavaScript origins** *and* **Authorized redirect URIs** (the app serves itself on `http://localhost:5180`; `redirect_uri = window.location.origin`).
+2. Build with the client id baked in: `VITE_GOOGLE_CLIENT_ID=<id> npm run build`, then `npm start`.
 
 | # | Given / When / Then | Pass? |
 |---|---------------------|-------|

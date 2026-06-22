@@ -4,7 +4,7 @@ import { defineConfig } from '@playwright/test'
 // CI runs headless Linux → wrap `npm run test:e2e` in xvfb-run (see README).
 export default defineConfig({
   testDir: './tests',
-  testMatch: '**/*.e2e.ts',
+  testMatch: ['**/*.e2e.ts', '**/*.spec.ts'],
   timeout: 60_000,
   fullyParallel: false,
   workers: 1,

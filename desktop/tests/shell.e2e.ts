@@ -27,10 +27,10 @@ test('launches and renders the bundled frontend from local assets', async () => 
   const window = await app.firstWindow()
   await expect(window.getByRole('button', { name: /sign in with google/i })).toBeVisible()
 
+  // Served from the local loopback origin (not the remote prod site).
   const url = window.url()
-  expect(url).not.toContain('cloudfront.net')
-  expect(url).not.toMatch(/^https?:\/\//)
-  expect(url).toMatch(/^(file:|app:)/)
+  expect(url).not.toContain('note-taker-ai.com')
+  expect(url).toMatch(/^http:\/\/(localhost|127\.0\.0\.1):\d+/)
 })
 
 // Given the renderer, Then it is sandboxed: contextIsolation on, no Node in renderer.

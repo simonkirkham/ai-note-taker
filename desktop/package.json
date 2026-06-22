@@ -3,13 +3,14 @@
   "version": "0.0.0",
   "private": true,
   "description": "Windows desktop shell (Electron) for AI Note Taker — bundle-shell: ships the compiled web/ frontend, calls the live prod API.",
-  "main": "dist/main/main.js",
+  "main": "dist/main.js",
   "scripts": {
-    "build:web": "echo 'TODO(31-A/Pip): vite build web/ with prod API base URL, copy dist into desktop/web-dist' && exit 1",
+    "build:web": "node scripts/build-web.mjs",
     "build:main": "tsc -p tsconfig.json",
     "build": "npm run build:web && npm run build:main",
     "start": "electron .",
     "test:e2e": "playwright test",
+    "test:server": "playwright test server.spec.ts",
     "package": "echo 'TODO(31-C): electron-builder --win' && exit 1"
   },
   "devDependencies": {

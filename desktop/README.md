@@ -18,13 +18,22 @@ npm start          # launch the Electron app
 
 ## Test
 
+Two tiers:
+
 ```bash
-npm run test:e2e            # Playwright drives the real Electron app (Node-only API)
-# CI (headless Linux): xvfb-run -a npm run test:e2e
+npm run test:server   # portable — loopback server + /api proxy logic (no Electron, no display)
+npm run test:e2e      # full — drives the real Electron app; needs a display + GUI libs
+# headless Linux CI: xvfb-run -a npm run test:e2e (also needs libnss3, libgbm, etc.)
 ```
 
-Automated tests cover shell launch + bundled-asset render only. Real Google
-sign-in and restart-persistence are manual — see [MANUAL-VERIFICATION.md](MANUAL-VERIFICATION.md).
+- `test:server` (`tests/server.spec.ts`) covers the risky integration: serving the
+  bundle from local assets, SPA fallback, and the `/api` proxy forwarding
+  `Authorization` + rewriting the `Set-Cookie` `Domain` to localhost. Runs anywhere.
+- `test:e2e` (`tests/shell.e2e.ts`) covers Electron launch + bundled-frontend render
+  + `contextIsolation`. Requires a desktop/X environment (Windows, or Linux with
+  `xvfb` and Electron's shared libs).
+- Real Google sign-in + restart-persistence are manual — see
+  [MANUAL-VERIFICATION.md](MANUAL-VERIFICATION.md).
 
 ## Slices
 
