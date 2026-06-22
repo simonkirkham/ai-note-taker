@@ -53,10 +53,11 @@ function registerDisplayMediaHandler(): void {
         .getSources({ types: ['screen'] })
         .then((sources) => {
           const primaryId = String(screen.getPrimaryDisplay().id)
-          const grant = pickDisplayMediaResponse(sources, primaryId)
-          if (grant) {
-            console.log(`[desktop] display-media granted: screen ${grant.video.id} + loopback audio`)
-            callback({ video: grant.video, audio: 'loopback' })
+          const selection = pickDisplayMediaResponse(sources, primaryId)
+          if (selection) {
+            const where = selection.matchedPrimary ? 'matched primary' : `no primary match, fell back to first of ${sources.length}`
+            console.log(`[desktop] display-media granted: screen ${selection.grant.video.id} (${where}) + loopback audio`)
+            callback(selection.grant)
           } else {
             console.warn('[desktop] display-media denied: no screen source — renderer falls back to mic-only')
             callback({})
