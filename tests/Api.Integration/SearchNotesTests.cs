@@ -100,6 +100,58 @@ public sealed class SearchNotesTests : IClassFixture<ApiFactory>
         Assert.DoesNotContain(noteId, ids);
     }
 
+    // Scenario (BUG): a name query does not match the substring "and" in unrelated notes
+    [Fact]
+    public async Task Search_NameQuery_DoesNotMatchSubstringAnd()
+    {
+        var hasName = await CreateNoteWithBodyAsync("Spoke with Andrew about the rollout.");
+        var onlyAnd = await CreateNoteWithBodyAsync("We met and agreed the plan and the budget.");
+
+        var ids = await SearchIdsAsync("Andrew");
+
+        Assert.Contains(hasName, ids);
+        Assert.DoesNotContain(onlyAnd, ids);
+    }
+
+    // Scenario (BUG): a query matches a word it is a prefix of
+    [Fact]
+    public async Task Search_PrefixMatchesLongerWord()
+    {
+        var noteId = await CreateNoteWithBodyAsync("Met the Andrews family yesterday.");
+
+        var ids = await SearchIdsAsync("Andrew");
+
+        Assert.Contains(noteId, ids);
+    }
+
+    // Scenario (BUG): a query does not match a word that merely contains it mid-word (infix)
+    [Fact]
+    public async Task Search_DoesNotMatchInfixSubstring()
+    {
+        var hasCat = await CreateNoteWithBodyAsync("The cat sat on the mat.");
+        var hasInfix = await CreateNoteWithBodyAsync("We discussed the vacation policy.");
+
+        var ids = await SearchIdsAsync("cat");
+
+        Assert.Contains(hasCat, ids);
+        Assert.DoesNotContain(hasInfix, ids);
+    }
+
+    // Scenario (BUG): a multi-word query surfaces a note matching only one term (OR, not AND)
+    [Fact]
+    public async Task Search_MultiWordQuery_MatchesOnAnyTerm()
+    {
+        var oneTerm = await CreateNoteWithBodyAsync("Notes from the budget meeting.");
+        var bothTerms = await CreateNoteWithBodyAsync("The budget review covered every line.");
+
+        var ids = await SearchIdsAsync("budget review");
+
+        Assert.Contains(oneTerm, ids);
+        Assert.Contains(bothTerms, ids);
+        Assert.True(ids.IndexOf(bothTerms) < ids.IndexOf(oneTerm),
+            "full-coverage match should rank above single-term match");
+    }
+
     // Scenario: Results are ranked with title weighted highest
     [Fact]
     public async Task Search_TitleMatchRanksAboveBodyMatch()
