@@ -60,14 +60,16 @@ public static partial class NoteSearchRanker
         var body = Score(terms, note.Body);
         var finalNotes = Score(terms, note.FinalNotesText);
         var actions = Score(terms, note.ActionItemsText);
-        var tags = note.Tags.Count == 0
-            ? (Mean: 0d, MaxTerm: 0d)
-            : note.Tags.Select(t => Score(terms, t)).MaxBy(s => s.Mean);
+        // Each tag scored independently: rank on the best tag's mean, but gate on the
+        // strongest single-term hit across ALL tags (a different tag may carry it).
+        var tagScores = note.Tags.Select(t => Score(terms, t)).ToList();
+        var tagMean = tagScores.Count == 0 ? 0 : tagScores.Max(s => s.Mean);
+        var tagGate = tagScores.Count == 0 ? 0 : tagScores.Max(s => s.MaxTerm);
 
         var candidates = new (double Score, double MaxTerm, string Field, string Source)[]
         {
             (title.Mean * TitleWeight, title.MaxTerm, "title", note.Title),
-            (tags.Mean, tags.MaxTerm, "tag", string.Join(" ", note.Tags)),
+            (tagMean, tagGate, "tag", string.Join(" ", note.Tags)),
             (body.Mean, body.MaxTerm, "notes", note.Body),
             (finalNotes.Mean, finalNotes.MaxTerm, "notes", note.FinalNotesText),
             (actions.Mean, actions.MaxTerm, "notes", note.ActionItemsText)
