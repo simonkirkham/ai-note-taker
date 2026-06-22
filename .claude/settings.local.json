@@ -73,13 +73,25 @@
   },
   "sandbox": {
     "autoAllowBashIfSandboxed": true,
+    "filesystem": {
+      "allowWrite": [
+        "/mnt/c/code/ai-note-taker-slices/",
+        "~/.nuget",
+        "~/.npm",
+        "/tmp"
+      ]
+    },
     "network": {
       "allowedDomains": [
         "github.com",
         "*.github.com",
         "*.githubusercontent.com",
         "codeload.github.com",
-        "*.amazonaws.com"
+        "*.amazonaws.com",
+        "registry.npmjs.org",
+        "*.npmjs.org",
+        "api.nuget.org",
+        "*.nuget.org"
       ]
     }
   }
