@@ -4,7 +4,7 @@
   "existingContent": "Umbrella Corp account review",
   "currentUserName": "Tara",
   "expected": {
-    "tags": ["account-review", "umbrella", "upsell"],
+    "tags": ["umbrella"],
     "actionItems": ["Build the upsell deck"],
     "contentMustMention": [
       "Leon will schedule an executive dinner with Umbrella's VP",

@@ -4,7 +4,7 @@
   "existingContent": "Hiring debrief — Jordan (platform engineer)",
   "currentUserName": "Diego",
   "expected": {
-    "tags": ["hiring-debrief", "jordan", "platform-hiring"],
+    "tags": ["jordan"],
     "actionItems": ["Send the offer recommendation to the panel"],
     "contentMustMention": [
       "Mia will check the candidate's references",

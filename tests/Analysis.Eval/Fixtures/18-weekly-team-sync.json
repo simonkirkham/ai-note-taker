@@ -4,7 +4,7 @@
   "existingContent": "Data platform weekly sync",
   "currentUserName": "Ivan",
   "expected": {
-    "tags": ["weekly-sync", "snowflake", "data-pipeline"],
+    "tags": ["snowflake"],
     "actionItems": ["Migrate the nightly ETL job to the new Snowflake warehouse"],
     "contentMustMention": [
       "Olga will document the new schema for the team",

@@ -4,7 +4,7 @@
   "existingContent": "Mobile navigation design review",
   "currentUserName": "Beth",
   "expected": {
-    "tags": ["design-review", "mobile-nav", "carlos"],
+    "tags": ["mobile-nav"],
     "actionItems": ["Revise the prototype to use a bottom tab bar"],
     "contentMustMention": [
       "Carlos will run a usability test with five users next week",

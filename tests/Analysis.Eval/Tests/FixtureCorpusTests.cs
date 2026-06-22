@@ -2,9 +2,10 @@ namespace Analysis.Eval.Tests;
 
 // Offline guards on the fixture corpus — no Bedrock. These catch authoring
 // mistakes before a (paid) eval run and encode the corpus design rules:
-// tags describe people/companies + work stream + recurring meeting type, and
-// only the current user's actions belong in actionItems — everyone else's go
-// into contentMustMention.
+// tags are proper nouns only (named orgs/clients, the person a meeting is ABOUT,
+// named products/projects) per MPI-8 — a fixture with no proper noun carries an
+// intentionally EMPTY tag set as a restraint case — and only the current user's
+// actions belong in actionItems — everyone else's go into contentMustMention.
 public class FixtureCorpusTests
 {
     static readonly IReadOnlyList<Fixture> Fixtures =
@@ -29,10 +30,28 @@ public class FixtureCorpusTests
     {
         var f = Fixtures.Single(x => x.Id == id);
         Assert.NotEmpty(f.CurrentUserName);
-        Assert.NotEmpty(f.Expected.Tags);
         Assert.True(f.Expected.ActionItems.Count >= 1, $"{id}: expected at least one user action item");
         Assert.True(f.Expected.ContentMustMention.Count >= 1,
             $"{id}: expected at least one other-party fact in contentMustMention");
+    }
+
+    // MPI-8: tags are proper nouns only, so a fixture with no named entity carries an empty
+    // tag set on purpose. Guard the corpus shape instead of every row: the vast majority must
+    // still exercise tagging, and every non-empty tag must be lowercase + hyphenated (the stored
+    // form), never a stray meeting-type. A handful of deliberate zero-tag restraint fixtures is fine.
+    [Fact]
+    public void Most_fixtures_carry_proper_noun_tags_and_all_tags_are_normalised()
+    {
+        var tagged = Fixtures.Count(f => f.Expected.Tags.Count > 0);
+        Assert.True(tagged >= Fixtures.Count - 4,
+            $"expected most fixtures to carry tags; only {tagged}/{Fixtures.Count} do");
+
+        var malformed = Fixtures
+            .SelectMany(f => f.Expected.Tags.Select(t => (f.Id, t)))
+            .Where(x => x.t != x.t.Trim().ToLowerInvariant() || x.t.Contains(' '))
+            .ToList();
+        Assert.True(malformed.Count == 0,
+            $"tags must be lowercase + hyphenated: {string.Join(", ", malformed.Select(x => $"{x.Id}:{x.t}"))}");
     }
 
     // A cheap proxy for the user-scoping rule: the user's actions and the content

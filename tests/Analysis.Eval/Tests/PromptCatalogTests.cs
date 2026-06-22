@@ -5,9 +5,40 @@ namespace Analysis.Eval.Tests;
 public class PromptCatalogTests
 {
     [Fact]
-    public void Current_is_v7()
+    public void Current_is_v8()
     {
-        Assert.Equal("analysis@v7", PromptCatalog.Current.Version);
+        Assert.Equal("analysis@v8", PromptCatalog.Current.Version);
+    }
+
+    [Fact]
+    public void V8_narrows_tags_to_proper_nouns_and_keeps_v7_instruction_path()
+    {
+        var plain = new NoteAnalysisRequest(
+            ExistingContent: "existing notes",
+            TranscriptText: "a transcript",
+            CurrentUserName: "Alice");
+
+        var prompt = PromptCatalog.V8.Build(plain);
+
+        // The proper-noun-only tag rule replaces V6/V7's "aim for 2–3 tags / meeting type" wording.
+        Assert.Contains("Emit ONLY proper nouns", prompt);
+        Assert.Contains("ALWAYS tag every named organisation or client mentioned", prompt);
+        Assert.Contains("an empty list is the correct answer", prompt);
+        Assert.DoesNotContain("aim for 2–3 tags", prompt);
+        Assert.DoesNotContain("the meeting type (e.g. \"1:1\", \"standup\")", prompt);
+        // V8 keeps V7's grounding + depth and stays the shipping prompt.
+        Assert.Contains("GROUNDING COMES FIRST", prompt);
+        Assert.Contains("THIN TRANSCRIPT", prompt);
+        Assert.DoesNotContain("\"instructionResponses\": [{", prompt);
+        Assert.Equal("analysis@v8", PromptCatalog.V8.Version);
+
+        // The inline /ai instruction path is preserved from V7.
+        var withInstructions = plain with { Instructions = ["draft a thank-you email"] };
+        var instructed = PromptCatalog.V8.Build(withInstructions);
+        Assert.Contains("draft a thank-you email", instructed);
+        Assert.Contains("\"instructionResponses\"", instructed);
+        Assert.Contains("Emit ONLY proper nouns", instructed);
+        Assert.Contains("UNCHANGED by the instructions", instructed);
     }
 
     [Fact]
