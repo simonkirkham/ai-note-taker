@@ -1,10 +1,4 @@
 const STORAGE_KEY = 'id_token'
-// Browser-local evidence that a Google refresh token is on file for this user (BUG-16).
-// signIn forces prompt=consent only when this is absent, so a returning user re-authenticates
-// silently — no fresh consent grant, no Google sign-in email. Set whenever a token is acquired
-// (silent refresh or interactive exchange); cleared when a refresh genuinely fails (token gone),
-// so the next sign-in re-consents and obtains a new refresh token.
-const REFRESH_ESTABLISHED_KEY = 'google_refresh_established'
 
 let _token: string | null = null
 let _onForbidden: (() => void) | null = null
@@ -27,18 +21,6 @@ export function loadPersistedToken(): string | null {
     if (stored) localStorage.removeItem(STORAGE_KEY)
   } catch { /* localStorage unavailable */ }
   return null
-}
-
-export const isRefreshEstablished = (): boolean => {
-  // Fail-safe: if localStorage is unavailable (locked-down browser), report "not established"
-  // so signIn forces consent — the user always gets a refresh token, never a broken session.
-  try { return localStorage.getItem(REFRESH_ESTABLISHED_KEY) === '1' } catch { return false }
-}
-export const markRefreshEstablished = (): void => {
-  try { localStorage.setItem(REFRESH_ESTABLISHED_KEY, '1') } catch { /* ignore */ }
-}
-export const clearRefreshEstablished = (): void => {
-  try { localStorage.removeItem(REFRESH_ESTABLISHED_KEY) } catch { /* ignore */ }
 }
 
 export const getToken = (): string | null => _token
