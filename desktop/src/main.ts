@@ -1,7 +1,8 @@
-import { app, BrowserWindow } from 'electron'
+import { app, BrowserWindow, session, desktopCapturer, screen } from 'electron'
 import { existsSync, readFileSync } from 'node:fs'
 import path from 'node:path'
 import { startBundleServer } from './server'
+import { pickDisplayMediaResponse } from './displayMedia'
 
 // Phase 31-A — Windows bundle-shell.
 // Serve the compiled web/ frontend from a localhost loopback origin and proxy
@@ -40,6 +41,37 @@ function createWindow(): void {
   void win.loadURL(`http://localhost:${PORT}/`)
 }
 
+// 31-B — pin the system-audio grant. Without this, getDisplayMedia relies on Electron's
+// implicit default (works today on Windows, but undocumented and could regress on an
+// Electron upgrade to mic-only — silently, because the renderer's catch swallows it).
+// Answer every request deterministically with the primary screen + Windows loopback audio,
+// no OS picker. Log every grant/denial so a regression is visible, not silent.
+function registerDisplayMediaHandler(): void {
+  session.defaultSession.setDisplayMediaRequestHandler(
+    (_request, callback) => {
+      desktopCapturer
+        .getSources({ types: ['screen'] })
+        .then((sources) => {
+          const primaryId = String(screen.getPrimaryDisplay().id)
+          const selection = pickDisplayMediaResponse(sources, primaryId)
+          if (selection) {
+            const where = selection.matchedPrimary ? 'matched primary' : `no primary match, fell back to first of ${sources.length}`
+            console.log(`[desktop] display-media granted: screen ${selection.grant.video.id} (${where}) + loopback audio`)
+            callback(selection.grant)
+          } else {
+            console.warn('[desktop] display-media denied: no screen source — renderer falls back to mic-only')
+            callback({})
+          }
+        })
+        .catch((err) => {
+          console.error('[desktop] display-media handler failed; denying (mic-only):', err)
+          callback({})
+        })
+    },
+    { useSystemPicker: false },
+  )
+}
+
 function logBuildSha(): void {
   const shaFile = path.join(WEB_DIST, 'build-sha.txt')
   const sha = existsSync(shaFile) ? readFileSync(shaFile, 'utf8').trim() : 'unknown'
@@ -48,6 +80,7 @@ function logBuildSha(): void {
 
 void app.whenReady().then(async () => {
   await startBundleServer(PORT, PROD_ORIGIN, WEB_DIST)
+  registerDisplayMediaHandler()
   logBuildSha()
   createWindow()
   app.on('activate', () => {

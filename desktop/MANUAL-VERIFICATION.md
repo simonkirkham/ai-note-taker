@@ -1,8 +1,10 @@
-# 31-A manual verification (Windows)
+# Desktop manual verification (Windows)
 
 The automated `npm run test:e2e` proves the shell launches and renders the bundled
 frontend. The items below need **real Google OAuth + a real Windows machine** and
-cannot run in CI — verify by hand on Windows before marking 31-A Done.
+cannot run in CI — verify by hand on Windows before marking a slice Done.
+
+## 31-A — shell + in-window sign-in
 
 **One-time setup (external):**
 1. In Google Cloud Console → the existing OAuth **Web** client, add `http://localhost:5180` to **Authorized JavaScript origins** *and* **Authorized redirect URIs** (the app serves itself on `http://localhost:5180`; `redirect_uri = window.location.origin`).
@@ -20,6 +22,17 @@ cannot run in CI — verify by hand on Windows before marking 31-A Done.
 | 4 | Given CloudFront is unreachable (e.g. block its host), When I launch, Then the shell **still renders** (assets are local) — only live API calls fail. | ☐ not yet tested |
 
 Record the build SHA shown on launch (31-A AC: stamp the bundled commit) next to the result.
+
+## 31-B — deterministic system-audio grant
+
+`pickDisplayMediaResponse` (primary-screen selection + `audio:'loopback'`) is unit-tested headlessly in `tests/displayMedia.spec.ts`. The grant only *fires* against a real display + audio stack on Windows, so verify by hand. **Re-run #1–#2 after any `electron` upgrade** — that is the whole point of 31-B (the implicit Electron default could regress; the explicit handler should not).
+
+| # | Given / When / Then | Pass? |
+|---|---------------------|-------|
+| 1 | **Silent-mic system-audio:** Given another app is playing audio (a video/call) and I do **not** speak, When I record ~15 s, Then the transcript reflects the **system** audio (not empty). | ☐ |
+| 2 | **No picker, no consent:** Given I click record, Then capture starts immediately — **no** screen-source picker dialog and **no** per-meeting consent prompt. | ☐ |
+| 3 | **Deterministic-grant log:** Given the app console (terminal running `npm start`), When I record, Then it logs `[desktop] display-media granted: screen <id> + loopback audio` — proving the *explicit* handler fired, not the Electron default. | ☐ |
+| 4 | **Mic+system mix unchanged:** Given I both speak and play system audio, When I record, Then both are transcribed (mix path identical to the web app). | ☐ |
 
 ## Troubleshooting
 
