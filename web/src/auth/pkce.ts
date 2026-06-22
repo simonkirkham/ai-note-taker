@@ -21,7 +21,6 @@ export function buildAuthUrl(
   redirectUri: string,
   codeChallenge: string,
   state: string,
-  forceConsent: boolean,
 ): string {
   const params = new URLSearchParams({
     client_id: clientId,
@@ -35,11 +34,10 @@ export function buildAuthUrl(
     // cookie and refreshes the session without the fragile third-party-cookie iframe).
     access_type: 'offline',
   })
-  // prompt=consent forces a fresh consent grant — which is what makes Google return a refresh
-  // token AND send the "info you shared" email. Force it only when the client has no refresh
-  // token on file (first auth, or after the token expired/was revoked). A returning user omits
-  // prompt, so Google re-authenticates silently — no consent grant, no email (BUG-16).
-  if (forceConsent) params.set('prompt', 'consent')
+  // We never send prompt=consent. The first-ever authorization shows consent because Google
+  // forces it on a not-yet-granted scope (and returns the refresh token 30-A persists); every
+  // later sign-in omits prompt → silent re-auth, no consent grant, no Google email (BUG-16).
+  // Token loss is recovered from the server-side store (30-A), not by re-forcing consent (30-B).
   return `https://accounts.google.com/o/oauth2/v2/auth?${params}`
 }
 
