@@ -22,7 +22,7 @@ public class PromptCatalogTests
 
         // The proper-noun-only tag rule replaces V6/V7's "aim for 2–3 tags / meeting type" wording.
         Assert.Contains("Emit ONLY proper nouns", prompt);
-        Assert.Contains("ALWAYS tag every named organisation or client mentioned", prompt);
+        Assert.Contains("ALWAYS tag the primary entity the meeting is about", prompt);
         Assert.Contains("an empty list is the correct answer", prompt);
         Assert.DoesNotContain("aim for 2–3 tags", prompt);
         Assert.DoesNotContain("the meeting type (e.g. \"1:1\", \"standup\")", prompt);

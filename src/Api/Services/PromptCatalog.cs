@@ -368,13 +368,12 @@ public static class PromptCatalog
 
         var tagRule = """
             - "newTags": tags exist for ONE purpose — so the user can later find OTHER notes about the same organisation, person, product, or project. Emit ONLY proper nouns and nothing else:
-              - Tag the NAMED entities the meeting is actually about: organisations (companies, clients, vendors), the specific person a 1:1 or review is ABOUT, and named products, projects, or work-streams (e.g. "snowflake", "checkout-redesign", "search-relevance").
-              - ALWAYS tag every named organisation or client mentioned — if a company like "acme" or "globex" is named, it MUST be a tag, every time, so all notes about that company group together. This is the most important tag to get right.
-              - Do NOT tag meeting types ("1:1", "standup", "qbr", "sync", "retro", "review", "all-hands", "postmortem") — these are not entities and group nothing useful.
-              - Do NOT tag generic topics, themes, or activities ("onboarding", "renewal", "hiring", "growth", "fundraising", "reorg", "observability", "budget") — tag a topic only when it is a SPECIFIC named product or project, never a generic activity.
-              - Do NOT tag a person who is merely a participant or speaker; tag a person only when the meeting is ABOUT them (a 1:1's subject, a candidate, the owner under review).
-              - Keep it SMALL: most meetings yield 1–3 proper-noun tags, and many yield just one (the client). If a meeting names no organisation, person-subject, or named product/project, return NO tags — an empty list is the correct answer, never filler.
-              - Lowercase each tag and join multi-word names with hyphens (e.g. "Wayne Enterprises" → "wayne-enterprises"). Never tag an entity that was not named in the source.
+              - ALWAYS tag the primary entity the meeting is about — whichever applies: the named organisation/client/vendor, OR, when no organisation is named, the specific named product, project, incident, or work-stream (e.g. "payments-outage", "q3-launch", "checkout-redesign", "search-relevance"). Every meeting with a named subject gets at least this one tag, every time, so all of its notes group together. This is the most important tag to get right.
+              - Also tag any OTHER named organisation/client and the specific person a 1:1 or review is ABOUT (not mere participants or speakers).
+              - Do NOT tag meeting types ("1:1", "standup", "qbr", "sync", "retro", "review", "all-hands", "postmortem", "board-meeting") — these are not entities and group nothing useful.
+              - Do NOT tag generic topics, themes, or activities ("onboarding", "renewal", "hiring", "growth", "fundraising", "reorg", "observability", "budget", "planning") — tag a topic only when it is a SPECIFIC named product, project, or incident, never a generic activity (tag "payments-outage", the specific incident; do NOT tag "postmortem", the meeting type).
+              - Keep it SMALL: most meetings yield 1–3 proper-noun tags, and many yield just one. If a meeting truly names no organisation, person-subject, product, project, or incident, return NO tags — an empty list is the correct answer, never filler.
+              - Lowercase each tag and join multi-word names with hyphens (e.g. "Wayne Enterprises" → "wayne-enterprises", "Umbrella Corp" → "umbrella-corp"). Never tag an entity that was not named in the source.
             """;
 
         if (request.Instructions is not { Count: > 0 } instructions)
