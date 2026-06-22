@@ -1,0 +1,22 @@
+{
+  "appId": "com.simonkirkham.ainotetaker",
+  "productName": "AI Note Taker",
+  "directories": {
+    "output": "release"
+  },
+  "files": [
+    "dist/**/*",
+    "web-dist/**/*",
+    "package.json"
+  ],
+  "asar": true,
+  "win": {
+    "target": ["nsis"]
+  },
+  "nsis": {
+    "oneClick": true,
+    "perMachine": false,
+    "createDesktopShortcut": true,
+    "shortcutName": "AI Note Taker"
+  }
+}

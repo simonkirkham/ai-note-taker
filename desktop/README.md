@@ -8,13 +8,37 @@ capturing system audio. See [`docs/phases/phase-31.md`](../docs/phases/phase-31.
 **Not in the prod deploy pipeline.** This is a separate, manually-built artifact —
 nothing here runs in `deploy.yml` or `cdk deploy`. Deploy-time impact on prod: none.
 
-## Build & run (after Pip lands 31-A)
+## Easiest: install the packaged app (recommended)
+
+Build a Windows installer once, then launch from the Start menu like any app — no
+terminal, no rebuild to run it.
+
+```powershell
+# one-time deps (run on Windows so node_modules has Windows-native binaries)
+npm install
+npm --prefix ../web install
+
+npm run package          # → release/AI Note Taker Setup <version>.exe
+```
+
+Double-click the `.exe` in `release/` to install (one-click, per-user, no admin). It adds
+a Start-menu + desktop shortcut and launches. **Rebuild the installer only when the app
+code changes** (`npm run package` again, then reinstall). The Google client id is baked in
+— no environment variable needed.
+
+> **Windows, not WSL.** Build and run on Windows. `node_modules` carries OS-native binaries
+> (esbuild, Electron); installing under WSL then running on Windows (or vice-versa) breaks
+> the build — reinstall in `web/` and `desktop/` if you ever switch.
+
+## Run from source (dev loop)
 
 ```bash
-npm install
-npm run build      # build:web (vite build + copy to web-dist) then build:main (tsc)
-npm start          # launch the Electron app
+npm install              # once (+ npm --prefix ../web install)
+npm run app              # rebuild web + main, then launch — one command
 ```
+
+`npm run app` = `npm run build && npm start`. Use it while iterating; use `npm run package`
+when you want the installed app.
 
 ## Test
 
