@@ -34,9 +34,14 @@
 **Capability:** Launch a Windows desktop window that loads the bundled frontend, completes Google sign-in, and shows the user's notes from the prod API — functionally identical to the web app, in a window.
 
 **Design:**
-- New `desktop/` Electron app: `main.ts` (creates the `BrowserWindow`, loads the bundled `web/dist` from disk via a custom protocol or `loadFile`), `preload.ts` (contextIsolation on), and a build script that runs `vite build` in `web/` and copies the output in.
-- API base URL points at the **prod API Gateway** (same value the deployed frontend uses).
-- Resolve the OAuth flow in-window: Google redirect URI must be reachable from the Electron-loaded origin; confirm the `rt` refresh-token cookie persists across an app restart. This is the slice's de-risking target.
+- New `desktop/` Electron app: `main.ts`, `preload.ts` (contextIsolation on), and a build script that runs `vite build` in `web/` and copies the output to `desktop/web-dist`.
+- **`http://localhost:<port>` loopback origin (NOT `loadFile`, NOT a custom scheme).** Two constraints fix this:
+  1. The frontend calls **relative** `/api/*` (`web/src/api/client.ts` → `base = "/api"`); prod serves SPA + `/api/*` from **one origin** (`https://note-taker-ai.com`, confirmed `NoteTakerStack.cs:1297–1319`) with the httpOnly `rt` cookie scoped to it. A `file://` load makes `/api` resolve to `file:///api` (dead).
+  2. `redirect_uri = window.location.origin` (`AuthContext.tsx:145,192`), and **Google OAuth (Web client) accepts `http://localhost`/`127.0.0.1` redirect URIs but rejects custom schemes** (`app://`) and non-https. Since the origin *is* the redirect URI and `web/` must not change, the origin must be Google-acceptable → **localhost**.
+- So `main.ts` runs a tiny loopback server on `127.0.0.1:<fixed-port>`: serves `web-dist/` assets (SPA fallback to `index.html`) and **proxies `/api/*` → `https://note-taker-ai.com/api/*`** via Electron's `session.fetch` with the session cookie jar, so the httpOnly `rt` cookie round-trips and persists across restart (persistent session). `BrowserWindow` loads `http://localhost:<port>`. Renderer keeps relative `/api`, **no `web/` change**.
+- **One-time external step:** register `http://localhost:<port>` as an Authorized redirect URI (and JS origin) on the existing Google OAuth Web client. Captured in `desktop/MANUAL-VERIFICATION.md`.
+- **Why not absolute `base` or `app://`:** absolute `https://…/api` from a local page is cross-origin → CORS + SameSite-cookie breakage; `app://` is rejected by Google as a redirect URI. Loopback keeps it same-origin and Google-compatible.
+- De-risking target: confirm Google sign-in completes in the localhost window and the `rt` cookie persists across an app restart.
 
 **Scenarios (GWT):**
 - Given the bundled desktop app When I launch it Then the frontend renders from local assets (no CloudFront fetch) and the notes list loads from the prod API.
