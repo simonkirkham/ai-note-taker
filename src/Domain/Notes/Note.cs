@@ -38,10 +38,10 @@ public sealed class Note : IAggregate
                 _deleted = true;
                 break;
             case NoteTagged e:
-                _tags.Add(e.Tag);
+                _tags.Add(NormalizeTag(e.Tag));
                 break;
             case NoteUntagged e:
-                _tags.Remove(e.Tag);
+                _tags.Remove(NormalizeTag(e.Tag));
                 break;
             case NoteFiledInFolder e:
                 _folderId = e.FolderId;
@@ -140,19 +140,27 @@ public sealed class Note : IAggregate
     {
         if (!_exists || _deleted)
             throw new InvalidOperationException($"Note {cmd.NoteId} does not exist.");
-        if (_tags.Contains(cmd.Tag))
-            throw new InvalidOperationException($"Tag '{cmd.Tag}' is already present on note {cmd.NoteId}.");
-        return [new NoteTagged(cmd.NoteId, cmd.Tag)];
+        var tag = NormalizeTag(cmd.Tag);
+        if (_tags.Contains(tag))
+            throw new InvalidOperationException($"Tag '{tag}' is already present on note {cmd.NoteId}.");
+        return [new NoteTagged(cmd.NoteId, tag)];
     }
 
     IReadOnlyList<IDomainEvent> HandleUntagNote(UntagNote cmd)
     {
         if (!_exists || _deleted)
             throw new InvalidOperationException($"Note {cmd.NoteId} does not exist.");
-        if (!_tags.Contains(cmd.Tag))
-            throw new InvalidOperationException($"Tag '{cmd.Tag}' is not present on note {cmd.NoteId}.");
-        return [new NoteUntagged(cmd.NoteId, cmd.Tag)];
+        var tag = NormalizeTag(cmd.Tag);
+        if (!_tags.Contains(tag))
+            throw new InvalidOperationException($"Tag '{tag}' is not present on note {cmd.NoteId}.");
+        return [new NoteUntagged(cmd.NoteId, tag)];
     }
+
+    // Tags are case-insensitive (CHANGE-17): normalise to trimmed lowercase so "Foo",
+    // "foo", and "  FOO " are one tag everywhere. The aggregate is the single source of
+    // truth — emitted events carry the normalised value; the fold normalises again so
+    // legacy mixed-case history dedupes into one tag.
+    static string NormalizeTag(string tag) => tag.Trim().ToLowerInvariant();
 
     IReadOnlyList<IDomainEvent> HandleMoveToFolder(MoveNoteToFolder cmd)
     {

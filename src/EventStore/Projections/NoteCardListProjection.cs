@@ -74,10 +74,15 @@ public sealed class NoteCardListProjection
                 };
                 break;
             case NoteTagged e when _cards.TryGetValue(e.NoteId, out var c):
-                _cards[e.NoteId] = c with { Tags = (c.Tags ?? []).Append(e.Tag).ToList().AsReadOnly(), LastModifiedAt = envelope.OccurredAt };
+                // Lowercase + dedupe on fold (CHANGE-17) so legacy mixed-case events
+                // ("Foo" then "foo") collapse to one tag on rebuild.
+                var addTag = NormalizeTag(e.Tag);
+                var withTag = (c.Tags ?? []).Contains(addTag) ? (c.Tags ?? []) : (c.Tags ?? []).Append(addTag).ToList().AsReadOnly();
+                _cards[e.NoteId] = c with { Tags = withTag, LastModifiedAt = envelope.OccurredAt };
                 break;
             case NoteUntagged e when _cards.TryGetValue(e.NoteId, out var c):
-                _cards[e.NoteId] = c with { Tags = (c.Tags ?? []).Where(t => t != e.Tag).ToList().AsReadOnly(), LastModifiedAt = envelope.OccurredAt };
+                var removeTag = NormalizeTag(e.Tag);
+                _cards[e.NoteId] = c with { Tags = (c.Tags ?? []).Where(t => t != removeTag).ToList().AsReadOnly(), LastModifiedAt = envelope.OccurredAt };
                 break;
             case NoteFiledInFolder e when _cards.TryGetValue(e.NoteId, out var c):
                 _cards[e.NoteId] = c with { FolderId = e.FolderId, LastModifiedAt = envelope.OccurredAt };
@@ -98,4 +103,6 @@ public sealed class NoteCardListProjection
             .OrderByDescending(c => c.CreatedAt)
             .ToList()
             .AsReadOnly();
+
+    static string NormalizeTag(string tag) => tag.Trim().ToLowerInvariant();
 }
