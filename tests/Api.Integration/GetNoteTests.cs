@@ -79,6 +79,31 @@ public sealed class GetNoteTests(ApiFactory factory) : IClassFixture<ApiFactory>
             e.Message.Contains("latencyMs="));
     }
 
+    // A note read by a different user 404s; the row IS present, so the result is WrongOwner
+    // (distinct from Absent) — confirms the cross-owner read is observable as itself, not as a
+    // missing projection, when triaging the BUG-31 stall in prod.
+    [Fact]
+    public async Task GetNote_wrong_owner_logs_result_WrongOwner()
+    {
+        var captured = new CapturingLoggerProvider();
+        var host = _factory.WithWebHostBuilder(b => b.ConfigureTestServices(s =>
+            s.AddSingleton<ILoggerProvider>(captured)));
+        var owner = host.CreateClient();
+        owner.DefaultRequestHeaders.Add("X-Test-User-Id", FakeCurrentUser.TestUserId);
+        var other = host.CreateClient();
+        other.DefaultRequestHeaders.Add("X-Test-User-Id", ApiFactory.OtherTestUserId);
+
+        var noteId = await CreateAndNameNoteAsync("Owner's note", owner);
+        var resp = await other.GetAsync($"/notes/{noteId}");
+
+        Assert.Equal(HttpStatusCode.NotFound, resp.StatusCode);
+        Assert.Contains(captured.Entries, e =>
+            e.Message.Contains("NoteDetail read") &&
+            e.Message.Contains(noteId) &&
+            e.Message.Contains("result=WrongOwner") &&
+            e.Message.Contains("latencyMs="));
+    }
+
     private async Task<string> CreateAndNameNoteAsync(string title)
         => await CreateAndNameNoteAsync(title, _client);
 

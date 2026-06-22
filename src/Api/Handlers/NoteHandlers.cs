@@ -98,13 +98,16 @@ public static class NoteHandlers
         var consistency = await gate.WaitAsync(http.Request.Headers["If-Consistent-With"], ct).ConfigureAwait(false);
         if (consistency.IsStale) http.Response.Headers["X-Consistency"] = "stale";
 
+        // Single emit point so the two call sites (404 vs hit) can't drift the format apart.
+        void LogRead(string result) => logger.LogInformation(
+            "NoteDetail read {NoteId} outcome={Outcome} result={Result} latencyMs={LatencyMs}",
+            noteId, consistency.Outcome, result, stopwatch.Elapsed.TotalMilliseconds);
+
         var detail = await noteDetailStore.GetAsync(new NoteId(noteId));
         if (detail is null || detail.UserId != currentUser.UserId)
         {
             stopwatch.Stop();
-            logger.LogInformation(
-                "NoteDetail read {NoteId} outcome={Outcome} result={Result} latencyMs={LatencyMs}",
-                noteId, consistency.Outcome, detail is null ? "Absent" : "WrongOwner", stopwatch.Elapsed.TotalMilliseconds);
+            LogRead(detail is null ? "Absent" : "WrongOwner");
             return Results.NotFound();
         }
         var calendarLink = await calendarLinkStore.GetByNoteIdAsync(noteId.ToString());
@@ -127,9 +130,7 @@ public static class NoteHandlers
             ? new { text = draft.Text, capturedAt = draft.CapturedAt }
             : null;
         stopwatch.Stop();
-        logger.LogInformation(
-            "NoteDetail read {NoteId} outcome={Outcome} result={Result} latencyMs={LatencyMs}",
-            noteId, consistency.Outcome, "Hit", stopwatch.Elapsed.TotalMilliseconds);
+        LogRead("Hit");
         return Results.Ok(new
         {
             noteId = detail.NoteId.Value,
