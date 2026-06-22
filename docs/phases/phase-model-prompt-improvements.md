@@ -19,6 +19,7 @@
 | MPI-5 | Programmatic note-grounding for the judge — prompt-level grounding proved insufficient; exclude note/gold entities from the fabrication check | Done (`run-78385`) — allowlist (#257) fixed sparse-fixture content (0.20→0.70–0.90) | MPI-4 |
 | MPI-6 | Improve note tags — reword the prompt to ask for fewer, sharper tags (tagging is the AI's weakest output: 0.53–0.72 vs 0.85+ elsewhere) | Done (`run-286900`) — `analysis@v6` ships; tags +0.125 mean, Quality +0.028, no regression | MPI-2 |
 | MPI-7 | `analysis@v7` — execute inline `/ai` instructions (Phase 29-A). Neutral-by-construction: no separate eval run | Done — ships (no eval run; see below) | MPI-6, Phase 29-A |
+| MPI-8 | `analysis@v8` — narrow tags to **proper nouns only** (named orgs/clients, the person a meeting is ABOUT, named products/projects); always-tag the named org for consistency; drop meeting-types + topic keywords. Gold tags re-cut to the new bar | Done (`run-83741`) — `analysis@v8` ships; atomic tag F1 +0.49 to +0.63 per model, precision 3–7×, tags/note ~2.7→~1.1, no regression | MPI-6 |
 
 Further items are appended as each eval run surfaces the next weakest dimension. The `eval-run` skill proposes them (see [How items are added](#how-items-are-added)).
 
@@ -212,3 +213,42 @@ So v4 must chase **depth where the source supports it and restraint where it doe
 - [x] New `/ai` path covered by Domain.Specs + Api.Integration + vitest (not eval)
 
 **Depends on:** MPI-6 (today's live prompt `analysis@v6` — the path `v7` delegates to), Phase 29-A.
+
+---
+
+## MPI-8 — `analysis@v8`: proper-noun-only tags
+
+**Status:** Done — `analysis@v8` ships (`run-83741`, [report](../eval-runs/2026-06-22-mpi8-proper-noun-tags.md)); `PromptCatalog.Current` → `V8`. Atomic tag F1 up on every keep model (Opus 0.48→0.97, Sonnet 0.38→0.93, Mistral 0.19→0.82, Nova Lite 0.16→0.70), precision 3–7×, tags/note ~2.7→~1.1, no regression on content/actions/faithfulness. The raw `report.md` "Tags" column (the judge's holistic `qualityTags`) is mixed because the judge mildly penalises sparse sets — the deterministic atomic tagF1 is authoritative and matches the fewer-but-useful preference. One iteration was needed: `run-63567` had two gold typos + a v8 that over-anchored on orgs (dropping named incidents/projects); both fixed for `run-83741`.
+
+**Proposal:** Narrow the tag rule from "person/company/team/project **or meeting-type or topic keyword**" (v6/v7) to **proper nouns only** — named organisations/clients/vendors, the specific person a meeting is *about*, and named products/projects/work-streams — and make the named organisation a **must-tag** so a given client groups across every note.
+
+**The user-reported problem:** tags are too many, and the same company is not tagged consistently (e.g. not every Crosslake/OGI call is tagged as such).
+
+**Why v6's rule causes both:**
+- v6 permits **three different kinds** of tag — a proper noun, a meeting-type (`1:1`, `standup`, `qbr`), *and* a short topic keyword (`auth`, `hiring`). A fuzzy, three-category target over-generates and varies run-to-run.
+- Nothing makes the named client mandatory, so it competes against a meeting-type for the "2–3 tag" budget and is sometimes dropped — the inconsistency.
+
+**The change (wording only, no model/behaviour change):**
+- Tag **only** proper nouns: named orgs/clients/vendors; the person a 1:1/review is *about* (not mere participants/speakers); named products/projects/work-streams.
+- **Always** tag every named organisation — the most important tag, so all of a client's notes group together.
+- Explicitly **drop** meeting-types and generic topics/activities (`onboarding`, `renewal`, `reorg`, `observability`, …).
+- An **empty** tag list is the correct answer when no proper noun is named.
+- v8 keeps v7's `/ai` instruction path verbatim and becomes `Current`.
+
+**Why the gold tags must be re-cut first:** the 22 fixtures' gold tags themselves mix in meeting-types and topic keywords (`standup`, `1:1`, `qbr`, `renewal`, `growth`, `data-pipeline`). Scored as-is, a correct proper-noun-only prompt loses recall on those and the F1 scorer reports a **false regression**. So the gold set is re-cut to the proper-noun-only definition (orgs/people-subjects/named products) — 20 of 22 carry ≥1 proper-noun tag; `01-standup`/`02-one-on-one` name no proper noun and become intentional **empty/restraint** fixtures. The judge's grounded-entity allowlist is unaffected (every note-only org name — `stark-industries`, `cyberdyne`, `wayne-enterprises` — is retained).
+
+**Cost:** Prompt + fixture wording + one eval run (`EVAL_PRESET=keep`, `Prompts=[v6, v8]`). Nothing ships unless tags rise on the new bar with no regression elsewhere. Deploy-time impact: **neutral** (prompt-string change only).
+
+**Commands in scope:** none · **Events in scope:** none
+
+### Scope
+- `PromptCatalog.V8` (`analysis@v8`) — v7 body, tag rule rewritten to proper-nouns-only; `Current → V8`. Added to the eval `AllPrompts`.
+- Re-cut `expected.tags` in all 22 fixtures to proper nouns only; relax `FixtureCorpusTests` to allow deliberate empty-tag restraint fixtures and to assert tags are lowercase+hyphenated.
+- Run `EVAL_PROMPT_VERSIONS=analysis@v6,analysis@v8 EVAL_PRESET=keep make eval`; read `report.md`. Ship v8 if it wins.
+
+- [x] `analysis@v8` proper-noun-only tag rule added; `Current → v8`; `/ai` path preserved
+- [x] Gold tags re-cut to proper-nouns-only across all 22 fixtures; offline harness green
+- [x] v8 tag F1 beats v6 on the keep-set against the re-cut bar (+0.49 to +0.63 atomic tagF1 per model), with no drop in summary / decisions / action-item quality
+- [x] Decision recorded in `docs/eval-runs/` + `test-matrix.md` updated — [report](../eval-runs/2026-06-22-mpi8-proper-noun-tags.md), matrix v7
+
+**Depends on:** MPI-6 (today's live prompt `analysis@v6` — the starting point `v8` edits).

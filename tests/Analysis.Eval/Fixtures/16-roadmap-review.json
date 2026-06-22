@@ -4,7 +4,7 @@
   "existingContent": "Search relevance roadmap review",
   "currentUserName": "Felix",
   "expected": {
-    "tags": ["roadmap-review", "search-relevance", "anna"],
+    "tags": ["search-relevance"],
     "actionItems": ["Scope a spike on the reranking model"],
     "contentMustMention": [
       "Anna will groom the search backlog before planning",

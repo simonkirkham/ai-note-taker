@@ -4,7 +4,7 @@
   "existingContent": "Weekly 1:1 with Tom",
   "currentUserName": "Priya",
   "expected": {
-    "tags": ["1:1", "tom", "onboarding"],
+    "tags": ["tom"],
     "actionItems": ["Complete the security training by Friday"],
     "contentMustMention": ["Tom will arrange a mentor from the platform team this week"]
   }
