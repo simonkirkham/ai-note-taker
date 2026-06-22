@@ -88,6 +88,79 @@ describe('TagFilter — isolated', () => {
   })
 })
 
+describe('TagFilter — tag-search box (CHANGE-18)', () => {
+  const manyTags = [
+    'work',
+    'workshop',
+    'home',
+    'meeting',
+    'action',
+    'idea',
+    'personal',
+    'urgent',
+    'review',
+  ] // 9 tags → >8
+
+  function renderWith(tags: string[], selectedTags: string[] = []) {
+    return render(
+      <TagFilter
+        tags={tags}
+        selectedTags={selectedTags}
+        mode="AND"
+        onToggle={() => {}}
+        onModeChange={() => {}}
+        onClear={() => {}}
+      />,
+    )
+  }
+
+  it('renders a search input when there are more than 8 tags', () => {
+    renderWith(manyTags)
+    expect(screen.getByTestId('tag-filter-search')).toBeInTheDocument()
+  })
+
+  it('does not render a search input with 8 or fewer tags', () => {
+    renderWith(manyTags.slice(0, 8))
+    expect(screen.queryByTestId('tag-filter-search')).not.toBeInTheDocument()
+  })
+
+  it('typing filters the displayed pills case-insensitively', async () => {
+    renderWith(manyTags)
+    await userEvent.type(screen.getByTestId('tag-filter-search'), 'wo')
+    expect(screen.getByTestId('tag-filter-pill-work')).toBeInTheDocument()
+    expect(screen.getByTestId('tag-filter-pill-workshop')).toBeInTheDocument()
+    expect(screen.queryByTestId('tag-filter-pill-meeting')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('tag-filter-pill-home')).not.toBeInTheDocument()
+  })
+
+  it('clearing the search restores all pills', async () => {
+    renderWith(manyTags)
+    const input = screen.getByTestId('tag-filter-search')
+    await userEvent.type(input, 'wo')
+    expect(screen.queryByTestId('tag-filter-pill-meeting')).not.toBeInTheDocument()
+    await userEvent.clear(input)
+    expect(screen.getByTestId('tag-filter-pill-meeting')).toBeInTheDocument()
+    expect(screen.getByTestId('tag-filter-pill-work')).toBeInTheDocument()
+  })
+
+  it('keeps a selected tag selected even when the search hides it', async () => {
+    renderWith(manyTags, ['meeting'])
+    // meeting is selected and visible…
+    expect(screen.getByTestId('tag-filter-pill-meeting')).toHaveClass(/Active/)
+    // …searching "wo" hides it, but Clear (acting on all selected tags) stays present
+    await userEvent.type(screen.getByTestId('tag-filter-search'), 'wo')
+    expect(screen.queryByTestId('tag-filter-pill-meeting')).not.toBeInTheDocument()
+    expect(screen.getByTestId('tag-filter-clear')).toBeInTheDocument()
+  })
+
+  it('the search input has an accessible label', () => {
+    renderWith(manyTags)
+    expect(
+      screen.getByRole('textbox', { name: /search tags/i }),
+    ).toBeInTheDocument()
+  })
+})
+
 describe('TagFilter — filtering cards via ListView', () => {
   // Dated today so both are visible in the home view by default; these tests
   // exercise tag filtering, not the today/older date filter.

@@ -227,3 +227,75 @@ describe('ListView — home today/older date filter', () => {
     expect(screen.queryByRole('checkbox', { name: /show older notes/i })).not.toBeInTheDocument()
   })
 })
+
+describe('ListView — auto-show older on tag filter (CHANGE-19)', () => {
+  // A today note and an old note, both tagged "work", so a tag filter alone
+  // would hide the old one unless "Show older" is auto-enabled.
+  function workCards(): NoteCard[] {
+    return [
+      makeCard({ noteId: 't', title: 'Today work', date: plusDays(0), tags: ['work'] }),
+      makeCard({
+        noteId: 'o',
+        title: 'Old work',
+        date: plusDays(-7),
+        lastModifiedAt: isoAtLocalNoon(-7),
+        tags: ['work'],
+      }),
+    ]
+  }
+
+  beforeEach(() => {
+    server.use(
+      http.get('/api/tags', () =>
+        HttpResponse.json({ tags: [{ tag: 'work', noteCount: 2, noteIds: ['t', 'o'] }] }),
+      ),
+    )
+  })
+
+  it('selecting the first tag auto-includes older notes and ticks the checkbox', async () => {
+    renderHome(workCards())
+    await userEvent.click(screen.getByRole('button', { name: /^filters/i }))
+    // Before filtering: older note hidden, checkbox unticked.
+    expect(screen.queryByText('Old work')).not.toBeInTheDocument()
+    expect(screen.getByRole('checkbox', { name: /show older notes/i })).not.toBeChecked()
+    await userEvent.click(await screen.findByTestId('tag-filter-pill-work'))
+    expect(await screen.findByText('Old work')).toBeInTheDocument()
+    expect(screen.getByRole('checkbox', { name: /show older notes/i })).toBeChecked()
+  })
+
+  it('clearing the filter reverts the auto-enabled older state', async () => {
+    renderHome(workCards())
+    await userEvent.click(screen.getByRole('button', { name: /^filters/i }))
+    await userEvent.click(await screen.findByTestId('tag-filter-pill-work'))
+    expect(await screen.findByText('Old work')).toBeInTheDocument()
+    await userEvent.click(screen.getByTestId('tag-filter-clear'))
+    await waitFor(() => expect(screen.queryByText('Old work')).not.toBeInTheDocument())
+    expect(screen.getByRole('checkbox', { name: /show older notes/i })).not.toBeChecked()
+  })
+
+  it('respects a manual untick while filtering (does not re-force older on)', async () => {
+    renderHome(workCards())
+    await userEvent.click(screen.getByRole('button', { name: /^filters/i }))
+    await userEvent.click(await screen.findByTestId('tag-filter-pill-work'))
+    const checkbox = screen.getByRole('checkbox', { name: /show older notes/i })
+    expect(checkbox).toBeChecked()
+    await userEvent.click(checkbox)
+    expect(checkbox).not.toBeChecked()
+    await waitFor(() => expect(screen.queryByText('Old work')).not.toBeInTheDocument())
+    // Today note still visible (filter still active).
+    expect(screen.getByText('Today work')).toBeInTheDocument()
+  })
+
+  it('keeps a pre-existing user "older ON" preference after applying then clearing a filter', async () => {
+    renderHome(workCards())
+    const checkbox = await olderToggle()
+    await userEvent.click(checkbox) // user turns older ON before any filter
+    expect(checkbox).toBeChecked()
+    await userEvent.click(await screen.findByTestId('tag-filter-pill-work'))
+    expect(screen.getByText('Old work')).toBeInTheDocument()
+    await userEvent.click(screen.getByTestId('tag-filter-clear'))
+    // Older stays ON because the user set it, not the filter.
+    expect(screen.getByRole('checkbox', { name: /show older notes/i })).toBeChecked()
+    expect(screen.getByText('Old work')).toBeInTheDocument()
+  })
+})
