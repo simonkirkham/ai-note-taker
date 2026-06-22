@@ -192,6 +192,36 @@ public sealed class NoteCardListProjectionSpec
     }
 
     [Fact]
+    public void NoteTagged_lowercases_and_dedupes_card_tags()
+    {
+        // Legacy data: a card tagged "Foo" then "foo" (two distinct events under the old
+        // case-sensitive aggregate). After the lowercase fold the card carries one "foo".
+        var projection = new NoteCardListProjection();
+        projection.Handle(NoteEnv(1, nameof(NoteCreated),
+            JsonSerializer.Serialize(new NoteCreated(NoteId1))));
+        projection.Handle(NoteEnv(2, nameof(NoteTagged),
+            JsonSerializer.Serialize(new NoteTagged(NoteId1, "Foo"))));
+        projection.Handle(NoteEnv(3, nameof(NoteTagged),
+            JsonSerializer.Serialize(new NoteTagged(NoteId1, "foo"))));
+
+        Assert.Equal(new[] { "foo" }, projection.GetAll()[0].Tags);
+    }
+
+    [Fact]
+    public void NoteUntagged_removes_card_tag_case_insensitively()
+    {
+        var projection = new NoteCardListProjection();
+        projection.Handle(NoteEnv(1, nameof(NoteCreated),
+            JsonSerializer.Serialize(new NoteCreated(NoteId1))));
+        projection.Handle(NoteEnv(2, nameof(NoteTagged),
+            JsonSerializer.Serialize(new NoteTagged(NoteId1, "Foo"))));
+        projection.Handle(NoteEnv(3, nameof(NoteUntagged),
+            JsonSerializer.Serialize(new NoteUntagged(NoteId1, "FOO"))));
+
+        Assert.Empty(projection.GetAll()[0].Tags ?? []);
+    }
+
+    [Fact]
     public void GetAll_orders_by_createdAt_descending()
     {
         var noteId2 = new NoteId(Guid.Parse("00000000-0000-0000-0000-000000000002"));
