@@ -19,7 +19,7 @@
 | MPI-5 | Programmatic note-grounding for the judge — prompt-level grounding proved insufficient; exclude note/gold entities from the fabrication check | Done (`run-78385`) — allowlist (#257) fixed sparse-fixture content (0.20→0.70–0.90) | MPI-4 |
 | MPI-6 | Improve note tags — reword the prompt to ask for fewer, sharper tags (tagging is the AI's weakest output: 0.53–0.72 vs 0.85+ elsewhere) | Done (`run-286900`) — `analysis@v6` ships; tags +0.125 mean, Quality +0.028, no regression | MPI-2 |
 | MPI-7 | `analysis@v7` — execute inline `/ai` instructions (Phase 29-A). Neutral-by-construction: no separate eval run | Done — ships (no eval run; see below) | MPI-6, Phase 29-A |
-| MPI-8 | `analysis@v8` — narrow tags to **proper nouns only** (named orgs/clients, the person a meeting is ABOUT, named products/projects); always-tag the named org for consistency; drop meeting-types + topic keywords. Gold tags re-cut to the new bar | In Progress | MPI-6 |
+| MPI-8 | `analysis@v8` — narrow tags to **proper nouns only** (named orgs/clients, the person a meeting is ABOUT, named products/projects); always-tag the named org for consistency; drop meeting-types + topic keywords. Gold tags re-cut to the new bar | Done (`run-83741`) — `analysis@v8` ships; atomic tag F1 +0.49 to +0.63 per model, precision 3–7×, tags/note ~2.7→~1.1, no regression | MPI-6 |
 
 Further items are appended as each eval run surfaces the next weakest dimension. The `eval-run` skill proposes them (see [How items are added](#how-items-are-added)).
 
@@ -218,7 +218,7 @@ So v4 must chase **depth where the source supports it and restraint where it doe
 
 ## MPI-8 — `analysis@v8`: proper-noun-only tags
 
-**Status:** In Progress — `analysis@v8` built; gold tags re-cut; offline harness green. Eval run pending.
+**Status:** Done — `analysis@v8` ships (`run-83741`, [report](../eval-runs/2026-06-22-mpi8-proper-noun-tags.md)); `PromptCatalog.Current` → `V8`. Atomic tag F1 up on every keep model (Opus 0.48→0.97, Sonnet 0.38→0.93, Mistral 0.19→0.82, Nova Lite 0.16→0.70), precision 3–7×, tags/note ~2.7→~1.1, no regression on content/actions/faithfulness. The raw `report.md` "Tags" column (the judge's holistic `qualityTags`) is mixed because the judge mildly penalises sparse sets — the deterministic atomic tagF1 is authoritative and matches the fewer-but-useful preference. One iteration was needed: `run-63567` had two gold typos + a v8 that over-anchored on orgs (dropping named incidents/projects); both fixed for `run-83741`.
 
 **Proposal:** Narrow the tag rule from "person/company/team/project **or meeting-type or topic keyword**" (v6/v7) to **proper nouns only** — named organisations/clients/vendors, the specific person a meeting is *about*, and named products/projects/work-streams — and make the named organisation a **must-tag** so a given client groups across every note.
 
@@ -247,8 +247,8 @@ So v4 must chase **depth where the source supports it and restraint where it doe
 - Run `EVAL_PROMPT_VERSIONS=analysis@v6,analysis@v8 EVAL_PRESET=keep make eval`; read `report.md`. Ship v8 if it wins.
 
 - [x] `analysis@v8` proper-noun-only tag rule added; `Current → v8`; `/ai` path preserved
-- [x] Gold tags re-cut to proper-nouns-only across all 22 fixtures; offline harness green (`Analysis.Eval` 110 passed)
-- [ ] v8 tag F1 beats v6 on the keep-set against the re-cut bar, with no drop in summary / decisions / action-item quality
-- [ ] Decision recorded in `docs/eval-runs/` + `test-matrix.md` updated
+- [x] Gold tags re-cut to proper-nouns-only across all 22 fixtures; offline harness green
+- [x] v8 tag F1 beats v6 on the keep-set against the re-cut bar (+0.49 to +0.63 atomic tagF1 per model), with no drop in summary / decisions / action-item quality
+- [x] Decision recorded in `docs/eval-runs/` + `test-matrix.md` updated — [report](../eval-runs/2026-06-22-mpi8-proper-noun-tags.md), matrix v7
 
 **Depends on:** MPI-6 (today's live prompt `analysis@v6` — the starting point `v8` edits).
