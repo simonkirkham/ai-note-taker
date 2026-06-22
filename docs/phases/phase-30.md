@@ -6,7 +6,7 @@
 
 | Slice | Summary | Status | Depends on |
 |-------|---------|--------|------------|
-| 30-A | Server-side refresh-token store; persist on sign-in and **restore from it** when Google returns no refresh token (returning, prompt-less login) | Not Started | — |
+| 30-A | Server-side refresh-token store; persist on sign-in and **restore from it** when Google returns no refresh token (returning, prompt-less login) | Done (PR #301, deploy #603) | — |
 | 30-B | Stop forcing `prompt=consent` on returning sign-ins — frontend always omits it (first-ever authorization still consents once, via Google) | Not Started | 30-A |
 | 30-C | BUG-33 fix — warm-tab refresh paths try the refresh before signing out on idle-return (visibility handler + scheduler) | Not Started | — |
 | 30-D | `/auth/refresh` falls back to the server-side store when the cookie is absent (extends durability to the in-app 401-retry path) | Not Started | 30-A |
