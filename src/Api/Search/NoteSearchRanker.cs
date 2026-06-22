@@ -15,9 +15,7 @@ public static partial class NoteSearchRanker
 {
     private const double TitleWeight = 1.5;
     private const double ScoreThreshold = 70;
-    private const int TokenMatchThreshold = 70;
     private const int MaxTerms = 3;
-    private const int MinTokenLength = 3;
     private const int MaxResults = 50;
     private const int SnippetLength = 120;
 
@@ -111,24 +109,29 @@ public static partial class NoteSearchRanker
         double best = 0;
         foreach (var token in tokens)
         {
-            double score;
-            if (string.Equals(token, term, StringComparison.OrdinalIgnoreCase))
-                score = 100;
-            else if (term.Length >= PrefixMinTermLength && token.Length > term.Length
-                     && token.StartsWith(term, StringComparison.OrdinalIgnoreCase))
-                score = PrefixScore;
-            else if (term.Length >= FuzzyMinTermLength)
-            {
-                var ratio = Fuzz.Ratio(lowerTerm, token.ToLowerInvariant());
-                score = ratio >= FuzzyTokenFloor ? ratio : 0;
-            }
-            else
-                score = 0;
-
+            var score = TermTokenScore(term, lowerTerm, token);
             if (score > best) best = score;
             if (best >= 100) break;
         }
         return best;
+    }
+
+    // The single definition of "query term matches document token", shared by the
+    // inclusion gate (BestTokenScore) and the highlight/snippet path (TopMatches) so
+    // the term shown to the user is always one that could have qualified the note.
+    private static double TermTokenScore(string term, string lowerTerm, string token)
+    {
+        if (string.Equals(token, term, StringComparison.OrdinalIgnoreCase))
+            return 100;
+        if (term.Length >= PrefixMinTermLength && token.Length > term.Length
+            && token.StartsWith(term, StringComparison.OrdinalIgnoreCase))
+            return PrefixScore;
+        if (term.Length >= FuzzyMinTermLength)
+        {
+            var ratio = Fuzz.Ratio(lowerTerm, token.ToLowerInvariant());
+            return ratio >= FuzzyTokenFloor ? ratio : 0;
+        }
+        return 0;
     }
 
     private static List<string> Tokenize(string text) =>
@@ -136,33 +139,46 @@ public static partial class NoteSearchRanker
             ? []
             : TokenPattern().Split(text).Where(t => t.Length > 0).ToList();
 
-    private static IReadOnlyList<string> MatchedTokens(string query, string fieldText)
+    private static IReadOnlyList<string> MatchedTokens(string query, string fieldText) =>
+        TopMatches(query, Tokenize(fieldText));
+
+    // Tags are tokenized to match the gate, which scores tags word-by-word — so a note
+    // admitted on the second word of a multi-word tag ("corp" in "acme corp") still
+    // surfaces that word as the highlighted term rather than an empty match.
+    private static IReadOnlyList<string> MatchedTags(string query, IReadOnlyList<string> tags) =>
+        TopMatches(query, tags.SelectMany(Tokenize).ToList());
+
+    // Highest-scoring candidates by the same word-level matcher the gate uses. Each
+    // candidate (a field token, or a whole tag) is scored against every query term;
+    // those clearing the gate floor are returned, strongest first.
+    private static IReadOnlyList<string> TopMatches(string query, IReadOnlyList<string> candidates)
     {
-        if (string.IsNullOrWhiteSpace(fieldText)) return [];
+        if (candidates.Count == 0) return [];
+        var terms = Tokenize(query);
+        if (terms.Count == 0) return [];
+        var lowerTerms = terms.Select(t => t.ToLowerInvariant()).ToArray();
 
-        var tokens = TokenPattern().Split(fieldText)
-            .Where(t => t.Length >= MinTokenLength)
+        return candidates
             .Distinct(StringComparer.OrdinalIgnoreCase)
-            .ToList();
-        if (tokens.Count == 0) return [];
-
-        return Process.ExtractTop(query, tokens, limit: MaxTerms)
-            .Where(r => r.Score >= TokenMatchThreshold)
-            .Select(r => r.Value)
+            .Select(c => (Value: c, Score: BestTermScore(terms, lowerTerms, c)))
+            .Where(x => x.Score >= ScoreThreshold)
+            .OrderByDescending(x => x.Score)
+            .Take(MaxTerms)
+            .Select(x => x.Value)
             .ToList()
             .AsReadOnly();
     }
 
-    private static IReadOnlyList<string> MatchedTags(string query, IReadOnlyList<string> tags)
+    private static double BestTermScore(IReadOnlyList<string> terms, string[] lowerTerms, string candidate)
     {
-        if (tags.Count == 0) return [];
-
-        return Process.ExtractTop(query, tags, limit: MaxTerms)
-            .Where(r => r.Score >= TokenMatchThreshold)
-            .Select(r => r.Value)
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .ToList()
-            .AsReadOnly();
+        double best = 0;
+        for (var i = 0; i < terms.Count; i++)
+        {
+            var score = TermTokenScore(terms[i], lowerTerms[i], candidate);
+            if (score > best) best = score;
+            if (best >= 100) break;
+        }
+        return best;
     }
 
     private static string BuildSnippet(string query, NoteSearchView note, IReadOnlyList<string> matchedTerms)
