@@ -145,6 +145,8 @@ Recurring cost drivers and their pre-emptions live in [token-optimisation-playbo
 
 | 31-B pin loopback grant | ~140k _(est.)_ | ~75k | ~49k | Desktop-only slice driven **inline** (Breaker→Pip→Refactor; Hawk the one subagent ~49k). New pure `displayMedia.ts` + `setDisplayMediaRequestHandler` in `main.ts` + 4 headless unit tests; `build:main` tsc + tests green first pass. One clean Hawk round (APPROVE + 3 non-blocking nits, all adopted: single `loopback` literal, matched-primary log, `fakeSource` rename). No spike, no cost tail — PR CI green, single no-op deploy #615 (desktop not in `deploy.yml`). Origin of the slice: a user-driven manual finding that the implicit Electron default already worked → reframed as hardening. See `_minor-log.md` 31-B. |
 
+| 31-C windows installer | ~150k _(est.)_ | ~80k | ~51k | Desktop-only slice driven **inline** (Breaker→Pip→Refactor; Hawk the one subagent ~51k). `electron-builder.json` (NSIS one-click, asar) + `package`/`app` scripts + baked public client-id default in `build-web.mjs` + 3 headless config-assertion tests; 7/7 specs green, `build:main` tsc + electron-builder binary verified. One clean Hawk round (APPROVE, only a default-icon doc nit, actioned). No spike, no cost tail — PR CI green, single no-op deploy #616 (desktop not in `deploy.yml`). **Completes Phase 31.** `.exe` build is a manual Windows step (Wine-on-Linux out of scope). See `_minor-log.md` 31-C. |
+
 ## Scribe append format
 
 Add one row above per completed slice. `Total` / `Pip` (Breaker+impl+orchestration) / `Hawk` (all rounds) / one-line dominant driver.

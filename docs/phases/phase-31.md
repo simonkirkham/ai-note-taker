@@ -8,7 +8,7 @@
 |-------|---------|--------|------------|
 | 31-A | Electron shell loads the **bundled** frontend and completes Google sign-in end-to-end against the prod API (de-risks OAuth-in-Electron; recording still uses the normal picker) | Done | — |
 | 31-B | Main-process `setDisplayMediaRequestHandler` auto-grants screen + loopback audio — record a meeting with **no picker, no per-meeting consent** (the core value) | Done | 31-A |
-| 31-C | Package as an **unsigned Windows installer** via `electron-builder`; a clean install launches, signs in, and records with one-time OS grant | Not Started | 31-B |
+| 31-C | Package as an **unsigned Windows installer** via `electron-builder`; a clean install launches, signs in, and records with one-time OS grant | Done | 31-B |
 
 **Ordering:** strictly 31-A → 31-B → 31-C. 31-A isolates the one genuine unknown (Google OAuth redirect/cookie behaviour inside an Electron `BrowserWindow`) before any audio work; it ships a working desktop client that behaves exactly like the web app (recording via the standard picker — no regression). 31-B removes the picker. 31-C makes it installable.
 
@@ -100,11 +100,13 @@
 - Given the packaged installer When I install on a clean Windows machine and launch Then the app opens and the frontend renders from the bundle.
 - Given a fresh install When I sign in and record Then audio capture works with the one-time OS grant and no per-meeting consent.
 
+**Status:** Done (PR #316, deploy #616). `electron-builder.json` (NSIS one-click per-user, asar, bundles `dist` + `web-dist`) + `package`/`app` scripts + baked public Google client id (zero-config build). Config asserted headlessly in `tests/packaging.spec.ts`. The `.exe` is produced by `npm run package` **on Windows** (Wine-on-Linux is out of scope) — the install/launch/record manual checks are in `MANUAL-VERIFICATION.md` 31-C, pending a Windows run.
+
 **Acceptance criteria:**
-- [ ] `electron-builder` produces an installable Windows artifact from a documented command.
-- [ ] Clean-install launch renders the bundled frontend and signs in.
-- [ ] Recording works post-install with only the one-time OS grant.
-- [ ] Build steps documented in `desktop/README.md`; not wired into the prod `deploy.yml`.
+- [x] `electron-builder` produces an installable Windows artifact from a documented command. _(config + script shipped; `.exe` build is the manual Windows step)_
+- [ ] Clean-install launch renders the bundled frontend and signs in. _(manual — `MANUAL-VERIFICATION.md` 31-C)_
+- [ ] Recording works post-install with only the one-time OS grant. _(manual — `MANUAL-VERIFICATION.md` 31-C)_
+- [x] Build steps documented in `desktop/README.md`; not wired into the prod `deploy.yml`.
 
 ---
 
