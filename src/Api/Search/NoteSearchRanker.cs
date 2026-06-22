@@ -14,20 +14,30 @@ public sealed record NoteSearchResult(
 public static partial class NoteSearchRanker
 {
     private const double TitleWeight = 1.5;
-    private const double ScoreThreshold = 60;
+    private const double ScoreThreshold = 70;
     private const int TokenMatchThreshold = 70;
     private const int MaxTerms = 3;
     private const int MinTokenLength = 3;
     private const int MaxResults = 50;
     private const int SnippetLength = 120;
 
+    // Token-level match tuning. Search is word-based, not substring-based: a query
+    // term matches a document token only by whole-word equality, prefix, or a tight
+    // whole-token fuzzy ratio — never by a shared substring (which made "Andrew"
+    // match the word "and").
+    private const int PrefixMinTermLength = 3;   // "Andrew" → "Andrews"; too short to prefix-match below this
+    private const int FuzzyMinTermLength = 4;    // only fuzzy-match terms long enough to be typo-bearing
+    private const double PrefixScore = 92;
+    private const double FuzzyTokenFloor = 85;   // "planing" vs "planning" ≈ 93; "and" vs "andrew" ≈ 67 (rejected)
+
     public static IReadOnlyList<NoteSearchResult> Rank(string query, IReadOnlyList<NoteSearchView> notes)
     {
         var trimmed = query.Trim();
+        var terms = Tokenize(trimmed);
         var ranked = new List<NoteSearchResult>();
         foreach (var note in notes)
         {
-            var best = BestField(trimmed, note);
+            var best = BestField(trimmed, terms, note);
             if (best.Score >= ScoreThreshold)
                 ranked.Add(best);
         }
@@ -39,13 +49,13 @@ public static partial class NoteSearchRanker
             .AsReadOnly();
     }
 
-    private static NoteSearchResult BestField(string query, NoteSearchView note)
+    private static NoteSearchResult BestField(string query, IReadOnlyList<string> terms, NoteSearchView note)
     {
-        var title = Score(query, note.Title) * TitleWeight;
-        var body = Score(query, note.Body);
-        var finalNotes = Score(query, note.FinalNotesText);
-        var actions = Score(query, note.ActionItemsText);
-        var tags = note.Tags.Count == 0 ? 0 : note.Tags.Max(t => Score(query, t));
+        var title = Score(terms, note.Title) * TitleWeight;
+        var body = Score(terms, note.Body);
+        var finalNotes = Score(terms, note.FinalNotesText);
+        var actions = Score(terms, note.ActionItemsText);
+        var tags = note.Tags.Count == 0 ? 0 : note.Tags.Max(t => Score(terms, t));
 
         var candidates = new (double Score, string Field, string Source)[]
         {
@@ -64,11 +74,51 @@ public static partial class NoteSearchRanker
         return new NoteSearchResult(note, winner.Score, winner.Field, snippet, matchedTerms);
     }
 
-    private static double Score(string query, string text)
+    // Mean per-term best-token score over the field's tokens. Whole-text fuzzy
+    // ratios (PartialRatio/TokenSetRatio) are deliberately not used — they match on
+    // any shared substring window, so a 6-char query found "and…" windows in long
+    // bodies and scored above threshold against unrelated notes.
+    private static double Score(IReadOnlyList<string> terms, string text)
     {
-        if (string.IsNullOrWhiteSpace(text)) return 0;
-        return Math.Max(Fuzz.PartialRatio(query, text), Fuzz.TokenSetRatio(query, text));
+        if (terms.Count == 0 || string.IsNullOrWhiteSpace(text)) return 0;
+        var tokens = Tokenize(text);
+        if (tokens.Count == 0) return 0;
+
+        double total = 0;
+        foreach (var term in terms)
+            total += BestTokenScore(term, tokens);
+        return total / terms.Count;
     }
+
+    private static double BestTokenScore(string term, IReadOnlyList<string> tokens)
+    {
+        double best = 0;
+        foreach (var token in tokens)
+        {
+            double score;
+            if (string.Equals(token, term, StringComparison.OrdinalIgnoreCase))
+                score = 100;
+            else if (term.Length >= PrefixMinTermLength && token.Length > term.Length
+                     && token.StartsWith(term, StringComparison.OrdinalIgnoreCase))
+                score = PrefixScore;
+            else if (term.Length >= FuzzyMinTermLength)
+            {
+                var ratio = Fuzz.Ratio(term.ToLowerInvariant(), token.ToLowerInvariant());
+                score = ratio >= FuzzyTokenFloor ? ratio : 0;
+            }
+            else
+                score = 0;
+
+            if (score > best) best = score;
+            if (best >= 100) break;
+        }
+        return best;
+    }
+
+    private static List<string> Tokenize(string text) =>
+        string.IsNullOrWhiteSpace(text)
+            ? []
+            : TokenPattern().Split(text).Where(t => t.Length > 0).ToList();
 
     private static IReadOnlyList<string> MatchedTokens(string query, string fieldText)
     {
