@@ -46,7 +46,10 @@ var workspaceListTableName = Environment.GetEnvironmentVariable("PROJ_WORKSPACEL
 var projPositionTableName = Environment.GetEnvironmentVariable("PROJ_POSITION_TABLE_NAME")
     ?? throw new InvalidOperationException("PROJ_POSITION_TABLE_NAME is not set.");
 
-var app = Builder.BuildApp(args, eventTableName, projTableName, noteDetailTableName, noteActionsTableName, todoListTableName, noteCardListTableName, folderTreeTableName, tagIndexTableName, tagFeedbackTableName, actionFeedbackTableName, calendarLinkTableName, noteSearchViewTableName, draftTranscriptionTableName, workspaceListTableName, projPositionTableName);
+var authTokensTableName = Environment.GetEnvironmentVariable("AUTH_TOKENS_TABLE_NAME")
+    ?? throw new InvalidOperationException("AUTH_TOKENS_TABLE_NAME is not set.");
+
+var app = Builder.BuildApp(args, eventTableName, projTableName, noteDetailTableName, noteActionsTableName, todoListTableName, noteCardListTableName, folderTreeTableName, tagIndexTableName, tagFeedbackTableName, actionFeedbackTableName, calendarLinkTableName, noteSearchViewTableName, draftTranscriptionTableName, workspaceListTableName, projPositionTableName, authTokensTableName);
 
 LoggingConfig.UseCorrelationId(app);
 

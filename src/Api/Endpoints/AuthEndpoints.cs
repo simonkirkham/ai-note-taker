@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Api.Auth;
 
 namespace Api.Endpoints;
@@ -11,8 +12,10 @@ public static class AuthEndpoints
 
     public static void MapAuthEndpoints(this WebApplication app)
     {
-        app.MapPost("/auth/token", async (TokenExchangeRequest req, HttpContext ctx, IGoogleOAuthClient google) =>
+        app.MapPost("/auth/token", async (TokenExchangeRequest req, HttpContext ctx, IGoogleOAuthClient google, IRefreshTokenStore tokenStore, ILoggerFactory loggerFactory) =>
         {
+            var log = loggerFactory.CreateLogger("Api.Auth.Token");
+
             if (string.IsNullOrEmpty(req.Code) || string.IsNullOrEmpty(req.CodeVerifier) || string.IsNullOrEmpty(req.RedirectUri))
                 return Results.BadRequest();
 
@@ -27,8 +30,38 @@ public static class AuthEndpoints
                 if (result.Tokens?.IdToken is null)
                     return Results.Problem("No id_token in Google response");
 
+                var sub = TryGetSub(result.Tokens.IdToken);
+
                 if (!string.IsNullOrEmpty(result.Tokens.RefreshToken))
+                {
+                    // First-ever sign-in (or any consent): Google issued a refresh token. Persist
+                    // the durable server-side copy keyed by `sub`, then set the cookie from it.
+                    if (!string.IsNullOrEmpty(sub))
+                    {
+                        try
+                        {
+                            await tokenStore.UpsertAsync(sub, result.Tokens.RefreshToken, ctx.RequestAborted);
+                        }
+                        catch (Exception ex)
+                        {
+                            // The cookie still works for this session; durability is what is lost.
+                            // Surface it rather than failing the sign-in.
+                            log.LogWarning(ex, "Refresh-token store write failed for sub {Sub}", sub);
+                        }
+                    }
                     SetRefreshCookie(ctx, result.Tokens.RefreshToken);
+                }
+                else if (!string.IsNullOrEmpty(sub))
+                {
+                    // Returning, prompt-less sign-in: Google returned no refresh token. Restore the
+                    // cookie from the server-side store so the session stays long-lived without consent.
+                    var stored = await tokenStore.GetAsync(sub, ctx.RequestAborted);
+                    if (!string.IsNullOrEmpty(stored))
+                    {
+                        SetRefreshCookie(ctx, stored);
+                        log.LogDebug("Session restored from server-side token for sub {Sub}", sub);
+                    }
+                }
 
                 return Results.Ok(new { id_token = result.Tokens.IdToken });
             }
@@ -42,8 +75,10 @@ public static class AuthEndpoints
             }
         }).AllowAnonymous();
 
-        app.MapPost("/auth/refresh", async (HttpContext ctx, IGoogleOAuthClient google) =>
+        app.MapPost("/auth/refresh", async (HttpContext ctx, IGoogleOAuthClient google, IRefreshTokenStore tokenStore, ILoggerFactory loggerFactory) =>
         {
+            var log = loggerFactory.CreateLogger("Api.Auth.Refresh");
+
             var refreshToken = ctx.Request.Cookies[RefreshCookieName];
             if (string.IsNullOrEmpty(refreshToken))
                 return Results.Unauthorized();
@@ -51,18 +86,63 @@ public static class AuthEndpoints
             if (!SecretsConfigured())
                 return Results.StatusCode(503);
 
+            // Resolve the user's `sub` from the request's id_token (if present) so a revoked
+            // token can be evicted from the store, and a rotated one persisted. The store is
+            // keyed by `sub`; without it we can still serve the session but cannot touch the store.
+            var sub = TryGetSubFromAuthorization(ctx);
+
             try
             {
                 var result = await google.RefreshAsync(refreshToken, ctx.RequestAborted);
                 // A failed refresh means the session is genuinely over — surface 401, not 500.
                 if (!result.Success || result.Tokens?.IdToken is null)
+                {
+                    // Google rejected the token (revoked/expired). Evict the durable copy so the
+                    // next sign-in legitimately re-consents instead of restoring a dead token —
+                    // but ONLY when the rejected cookie token IS the stored copy. This endpoint is
+                    // anonymous and `sub` is decoded without signature validation, so a forged `sub`
+                    // must not be able to delete another user's token. Requiring the presented token
+                    // to match the stored one proves the caller actually held the credential being
+                    // evicted (an attacker cannot know the victim's refresh token).
+                    if (!string.IsNullOrEmpty(sub))
+                    {
+                        try
+                        {
+                            var stored = await tokenStore.GetAsync(sub, ctx.RequestAborted);
+                            if (!string.IsNullOrEmpty(stored) && string.Equals(stored, refreshToken, StringComparison.Ordinal))
+                            {
+                                await tokenStore.DeleteAsync(sub, ctx.RequestAborted);
+                                log.LogInformation("Stored refresh token revoked; deleted for sub {Sub}", sub);
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            // Never turn a 401 into a 500 over a best-effort cleanup.
+                            log.LogWarning(ex, "Failed to delete revoked refresh token for sub {Sub}", sub);
+                        }
+                    }
                     return Results.Unauthorized();
+                }
 
                 // Re-issue the cookie on every successful refresh to slide its 30-day window
                 // forward. Google usually omits a rotated refresh_token on grant_type=refresh_token,
                 // so reuse the existing one; otherwise an active session would still be force-signed
                 // out at the original 30-day mark. Persist a rotated token if Google sent one.
-                SetRefreshCookie(ctx, string.IsNullOrEmpty(result.Tokens.RefreshToken) ? refreshToken : result.Tokens.RefreshToken);
+                var newRefreshToken = string.IsNullOrEmpty(result.Tokens.RefreshToken) ? refreshToken : result.Tokens.RefreshToken;
+                SetRefreshCookie(ctx, newRefreshToken);
+
+                // Keep the durable copy current when Google rotated the token.
+                if (!string.IsNullOrEmpty(sub) && !string.IsNullOrEmpty(result.Tokens.RefreshToken))
+                {
+                    try
+                    {
+                        await tokenStore.UpsertAsync(sub, result.Tokens.RefreshToken, ctx.RequestAborted);
+                    }
+                    catch (Exception ex)
+                    {
+                        log.LogWarning(ex, "Refresh-token store write failed on rotation for sub {Sub}", sub);
+                    }
+                }
 
                 return Results.Ok(new { id_token = result.Tokens.IdToken });
             }
@@ -90,6 +170,69 @@ public static class AuthEndpoints
             Path = RefreshCookiePath,
             MaxAge = TimeSpan.FromDays(30),
         });
+
+    private static string? TryGetSubFromAuthorization(HttpContext ctx)
+    {
+        var header = ctx.Request.Headers.Authorization.ToString();
+        const string prefix = "Bearer ";
+        if (string.IsNullOrEmpty(header) || !header.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+            return null;
+        return TryGetSub(header[prefix.Length..].Trim());
+    }
+
+    // Decodes the `sub` claim from a JWT payload WITHOUT signature validation. The id_token is
+    // either fetched directly from Google's token endpoint over TLS (token exchange) or already
+    // validated by the bearer middleware on every other request — so it is trusted for the store
+    // key only. Any malformed input yields null; this never throws.
+    private static string? TryGetSub(string? jwt)
+    {
+        if (string.IsNullOrEmpty(jwt))
+            return null;
+
+        var firstDot = jwt.IndexOf('.');
+        if (firstDot < 0)
+            return null;
+        var secondDot = jwt.IndexOf('.', firstDot + 1);
+        if (secondDot < 0)
+            return null;
+
+        var payload = jwt.AsSpan(firstDot + 1, secondDot - firstDot - 1);
+        var bytes = DecodeBase64Url(payload);
+        if (bytes is null)
+            return null;
+
+        try
+        {
+            using var doc = JsonDocument.Parse(bytes);
+            return doc.RootElement.TryGetProperty("sub", out var subEl) && subEl.ValueKind == JsonValueKind.String
+                ? subEl.GetString()
+                : null;
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
+    }
+
+    private static byte[]? DecodeBase64Url(ReadOnlySpan<char> value)
+    {
+        // base64url → base64: swap chars and pad to a multiple of 4.
+        var normalized = new string(value.ToArray()).Replace('-', '+').Replace('_', '/');
+        switch (normalized.Length % 4)
+        {
+            case 2: normalized += "=="; break;
+            case 3: normalized += "="; break;
+            case 1: return null;
+        }
+        try
+        {
+            return Convert.FromBase64String(normalized);
+        }
+        catch (FormatException)
+        {
+            return null;
+        }
+    }
 }
 
 record TokenExchangeRequest(string Code, string CodeVerifier, string RedirectUri);

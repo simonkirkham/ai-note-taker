@@ -35,6 +35,7 @@ public class ApiFactory : WebApplicationFactory<Program>
         Environment.SetEnvironmentVariable("DRAFT_TRANSCRIPTION_TABLE_NAME", "test-draft-transcription");
         Environment.SetEnvironmentVariable("PROJ_WORKSPACELIST_TABLE_NAME", "test-proj-workspacelist");
         Environment.SetEnvironmentVariable("PROJ_POSITION_TABLE_NAME", "test-proj-position");
+        Environment.SetEnvironmentVariable("AUTH_TOKENS_TABLE_NAME", "test-auth-tokens");
         Environment.SetEnvironmentVariable("ALLOWED_USER_SUBS", "test-user-123,other-user-456");
         Environment.SetEnvironmentVariable("GOOGLE_CLIENT_ID", "test-client-id");
         Environment.SetEnvironmentVariable("GOOGLE_CLIENT_SECRET", "test-client-secret");
@@ -57,6 +58,9 @@ public class ApiFactory : WebApplicationFactory<Program>
             services.RemoveAll<IGoogleOAuthClient>();
             services.AddSingleton<FakeGoogleOAuthClient>();
             services.AddSingleton<IGoogleOAuthClient>(sp => sp.GetRequiredService<FakeGoogleOAuthClient>());
+            services.RemoveAll<IRefreshTokenStore>();
+            services.AddSingleton<InMemoryRefreshTokenStore>();
+            services.AddSingleton<IRefreshTokenStore>(sp => sp.GetRequiredService<InMemoryRefreshTokenStore>());
             services.RemoveAll<IEventStore>();
             services.RemoveAll<INoteTitleListStore>();
             services.RemoveAll<INoteDetailStore>();

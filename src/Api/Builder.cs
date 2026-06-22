@@ -21,7 +21,7 @@ namespace Api;
 
 public static class Builder
 {
-    internal static WebApplication BuildApp(string[] args, string eventTableName, string projTableName, string noteDetailTableName, string noteActionsTableName, string todoListTableName, string noteCardListTableName, string folderTreeTableName, string tagIndexTableName, string tagFeedbackTableName, string actionFeedbackTableName, string calendarLinkTableName, string noteSearchViewTableName, string draftTranscriptionTableName, string workspaceListTableName, string projPositionTableName)
+    internal static WebApplication BuildApp(string[] args, string eventTableName, string projTableName, string noteDetailTableName, string noteActionsTableName, string todoListTableName, string noteCardListTableName, string folderTreeTableName, string tagIndexTableName, string tagFeedbackTableName, string actionFeedbackTableName, string calendarLinkTableName, string noteSearchViewTableName, string draftTranscriptionTableName, string workspaceListTableName, string projPositionTableName, string authTokensTableName)
     {
         var builder = WebApplication.CreateBuilder(args);
 
@@ -186,6 +186,8 @@ public static class Builder
         else
             builder.Services.AddSingleton<IGoogleCalendarClient, GoogleCalendarClient>();
         builder.Services.AddHttpClient<IGoogleOAuthClient, GoogleOAuthClient>(c => c.Timeout = TimeSpan.FromSeconds(10));
+        builder.Services.AddSingleton<IRefreshTokenStore>(sp =>
+            new DynamoDbRefreshTokenStore(sp.GetRequiredService<IAmazonDynamoDB>(), authTokensTableName));
         builder.Services.AddAWSService<IAmazonSecurityTokenService>();
         builder.Services.AddSingleton<IStsCredentialService, StsCredentialService>();
         builder.Services.AddAWSService<IAmazonBedrockRuntime>();
