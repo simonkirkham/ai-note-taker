@@ -145,15 +145,32 @@ export function useTranscription(noteId: string): UseTranscriptionResult {
   // recording is live or starting up (requestingCredentials) — the in-flight
   // tail since the last checkpoint would be lost. Only armed during those two
   // phases so it never blocks normal navigation.
+  //
+  // pagehide also keepalive-flushes the finalised tail to the loss-tolerant DRAFT
+  // (BUG-34). The fire-and-forget unmount commit is aborted when the page is torn
+  // down (tab close / cross-document nav), so a real exit lost everything since the
+  // last 15 s checkpoint. A keepalive PUT outlives the teardown; it writes the DRAFT
+  // (recoverable/continuable on reopen), never a premature TranscriptionCompleted —
+  // so a bfcache restore that keeps recording is unaffected.
   useEffect(() => {
     if (status !== 'recording' && status !== 'requestingCredentials') return;
-    const handler = (e: BeforeUnloadEvent) => {
+    const onBeforeUnload = (e: BeforeUnloadEvent) => {
       e.preventDefault();
       e.returnValue = '';
     };
-    window.addEventListener('beforeunload', handler);
-    return () => window.removeEventListener('beforeunload', handler);
-  }, [status]);
+    const onPageHide = () => {
+      const text = finalizedRef.current;
+      if (!text || text === resumePrefixRef.current) return;
+      const elapsed = Math.floor((Date.now() - startTimeRef.current) / 1000);
+      void saveTranscriptionDraft(noteId, text, elapsed, { keepalive: true }).catch(() => {});
+    };
+    window.addEventListener('beforeunload', onBeforeUnload);
+    window.addEventListener('pagehide', onPageHide);
+    return () => {
+      window.removeEventListener('beforeunload', onBeforeUnload);
+      window.removeEventListener('pagehide', onPageHide);
+    };
+  }, [status, noteId]);
 
   const startRecording = useCallback((includeCallAudio: boolean, resumeFrom?: string) => {
     stoppedRef.current = false;

@@ -384,6 +384,7 @@ function NoteRoute({
       noteId={noteId}
       initialTitle={navState?.initialTitle ?? notes.find((n) => n.noteId === noteId)?.title ?? ""}
       onBack={onBack}
+      onExit={() => void navigate(`/w/${wsId}`)}
       onDelete={onDelete}
       onDateSet={onDateSet}
       onOpenNote={onOpenNote}
