@@ -195,15 +195,20 @@ describe('CHANGE-6 — collapsible Filters on the home view', () => {
     // Expand filters and select "work".
     await userEvent.click(filtersToggle())
     await userEvent.click(await screen.findByTestId('tag-filter-pill-work'))
-    // Date filter still applies: the past-dated work note is hidden by default…
+    // CHANGE-19: selecting the first tag auto-enables "show older", so both work
+    // notes are revealed; the untagged note is filtered out by the tag.
     expect(screen.getByText('Work today')).toBeInTheDocument()
-    expect(screen.queryByText('Work last week')).not.toBeInTheDocument()
+    expect(await screen.findByText('Work last week')).toBeInTheDocument()
     await waitFor(() =>
       expect(screen.queryByText('Other today')).not.toBeInTheDocument(),
     )
-    // …and revealed once "Show older notes" is on (still tag-filtered).
+    // Manually unticking "Show older" re-applies the date filter on top of the
+    // tag filter: the past-dated work note hides, today's stays.
     await userEvent.click(screen.getByRole('checkbox', { name: /show older notes/i }))
-    expect(await screen.findByText('Work last week')).toBeInTheDocument()
+    await waitFor(() =>
+      expect(screen.queryByText('Work last week')).not.toBeInTheDocument(),
+    )
+    expect(screen.getByText('Work today')).toBeInTheDocument()
     expect(screen.queryByText('Other today')).not.toBeInTheDocument()
   })
 
