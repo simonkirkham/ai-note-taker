@@ -158,6 +158,9 @@ export function useTranscription(noteId: string): UseTranscriptionResult {
       e.preventDefault();
       e.returnValue = '';
     };
+    // Best-effort: if the access token is already expired, apiFetch awaits a silent
+    // refresh that won't complete during teardown, so this flush can no-op. The 15 s
+    // checkpoint (saveCheckpoint) is the floor — worst case loses the last <15 s tail.
     const onPageHide = () => {
       const text = finalizedRef.current;
       if (!text || text === resumePrefixRef.current) return;

@@ -181,7 +181,10 @@ export default function NoteView({
   // catch — it silently unmounted the note mid-recording and the transcript was lost.
   // While recording, push a trap history entry and re-arm it on each back, surfacing the
   // same leave-confirm the in-app Save button shows. "Leave & save" exits via onExit (a
-  // fresh route), so the trap entry is never navigated back onto.
+  // fresh route), so the trap entry is never navigated back onto. Trade-off: after a
+  // normal Stop (recording ends without leaving) the trap entry lingers, so the next
+  // browser-back lands on the same URL and a second press is needed to leave — accepted
+  // over the alternative (popping it on cleanup would make Stop itself navigate away).
   useEffect(() => {
     if (!isRecording) return;
     window.history.pushState(null, "", window.location.href);
