@@ -4,7 +4,7 @@ import { useState } from 'react'
 import NoteView from '../components/NoteView'
 import { ToastProvider } from '../components/ToastProvider'
 import type { TranscriptionStatus, UseTranscriptionResult } from '../hooks/useTranscription'
-import { render, screen, waitFor, fireEvent } from '../test/render'
+import { act, render, screen, waitFor, fireEvent } from '../test/render'
 import { server } from '../test/setup'
 
 // NoteView renders the editor through LazyNoteEditor (19-I1: React.lazy + Suspense
@@ -44,7 +44,15 @@ vi.mock('../hooks/useTranscription', () => ({
 }))
 
 vi.mock('../components/RecordControl', () => ({
-  default: ({ transcription }: { transcription: UseTranscriptionResult }) => (
+  default: ({
+    transcription,
+    hasInitialTranscript,
+    initialTranscript,
+  }: {
+    transcription: UseTranscriptionResult
+    hasInitialTranscript?: boolean
+    initialTranscript?: string | null
+  }) => (
     <div data-testid="record-control-mock">
       <button data-testid="transcription-record-button" onClick={() => transcription.startRecording(true)}>
         Record
@@ -52,6 +60,8 @@ vi.mock('../components/RecordControl', () => ({
       <button data-testid="mock-start-recording" onClick={() => transcription.startRecording(true)}>
         Start recording
       </button>
+      <span data-testid="mock-has-initial-transcript">{String(hasInitialTranscript ?? false)}</span>
+      <span data-testid="mock-initial-transcript">{initialTranscript ?? ''}</span>
     </div>
   ),
 }))
@@ -756,10 +766,11 @@ describe('NoteView', () => {
       expect(screen.queryByTestId('confirm-leave-button')).toBeNull()
       expect(onBack).not.toHaveBeenCalled()
 
-      // Confirming leaves.
+      // Confirming leaves. BUG-34: leave routes through the popstate guard's
+      // confirmLeave, which pops its sentinel (async popstate) before navigating.
       await userEvent.click(screen.getByTestId('save-button'))
       await userEvent.click(screen.getByTestId('confirm-leave-button'))
-      expect(onBack).toHaveBeenCalledOnce()
+      await waitFor(() => expect(onBack).toHaveBeenCalledOnce())
     })
 
     it('note with only a transcript (blank title/content/tags) shows Save and Delete', async () => {
@@ -930,6 +941,75 @@ describe('NoteView', () => {
       await userEvent.click(screen.getByTestId('mock-start-recording'))
       // No callback exists for the child to fire after unmount; unmount is clean.
       expect(() => unmount()).not.toThrow()
+    })
+  })
+
+  // BUG-34: an in-progress transcript was lost on browser-back (Alt+←) because
+  // popstate was unguarded, and a re-record could not recover the drafted capture
+  // because Continue only continued a *committed* transcript.
+  describe('BUG-34: browser-back guard and draft-resume', () => {
+    it('a browser Back press (popstate) while recording shows the leave-confirm, not a silent leave', async () => {
+      const onBack = vi.fn()
+      renderNoteView({ onBack })
+      await screen.findByLabelText('Note content')
+
+      await userEvent.click(screen.getByTestId('mock-start-recording'))
+
+      // Simulate Alt+← (browser Back): popstate fires. The guard must intercept it
+      // and route through the same leave-confirm dialog, never unmounting silently.
+      act(() => { window.dispatchEvent(new PopStateEvent('popstate')) })
+
+      expect(await screen.findByTestId('confirm-leave-button')).toBeInTheDocument()
+      expect(onBack).not.toHaveBeenCalled()
+    })
+
+    it('does NOT intercept a browser Back press when not recording', async () => {
+      renderNoteView()
+      await screen.findByLabelText('Note content')
+
+      // Not recording: popstate must pass through (no leave-confirm dialog appears).
+      act(() => { window.dispatchEvent(new PopStateEvent('popstate')) })
+
+      expect(screen.queryByTestId('confirm-leave-button')).toBeNull()
+    })
+
+    it('offers Continue/Re-record (resumable) for a note whose only capture is an uncommitted draft', async () => {
+      server.use(
+        http.get('/api/notes/:noteId', () =>
+          HttpResponse.json({
+            noteId: 'note-1', title: 'T', content: '', date: null, tags: [],
+            transcriptText: null,
+            transcriptDraft: { text: 'Speaker 1: first half', capturedAt: '2026-06-22T13:00:00Z' },
+          }),
+        ),
+      )
+      renderNoteView()
+      await screen.findByLabelText('Note content')
+
+      // The drafted (interrupted) capture must be treated as resumable: Record offers
+      // Continue/Re-record (hasInitialTranscript), seeded from the draft text — so a
+      // fresh recording never silently overwrites then deletes it.
+      await waitFor(() =>
+        expect(screen.getByTestId('mock-has-initial-transcript')).toHaveTextContent('true'))
+      expect(screen.getByTestId('mock-initial-transcript')).toHaveTextContent('Speaker 1: first half')
+    })
+
+    it('prefers the committed transcript over the draft when both exist', async () => {
+      server.use(
+        http.get('/api/notes/:noteId', () =>
+          HttpResponse.json({
+            noteId: 'note-1', title: 'T', content: '', date: null, tags: [],
+            transcriptText: 'Speaker 1: committed',
+            transcriptDraft: { text: 'Speaker 1: stale draft', capturedAt: '2026-06-22T13:00:00Z' },
+          }),
+        ),
+      )
+      renderNoteView()
+      await screen.findByLabelText('Note content')
+
+      await waitFor(() =>
+        expect(screen.getByTestId('mock-has-initial-transcript')).toHaveTextContent('true'))
+      expect(screen.getByTestId('mock-initial-transcript')).toHaveTextContent('Speaker 1: committed')
     })
   })
 

@@ -122,20 +122,23 @@ export function useTranscription(noteId: string): UseTranscriptionResult {
   // (POST) — once per recording, on a clean exit (Stop, natural end, intentional
   // unmount/navigation). The backend deletes the draft on commit, so no recovery
   // is offered afterwards. On failure the one-shot guard is released to retry.
-  const commitTranscript = useCallback(() => {
+  // keepalive (BUG-34): set on the unmount/leave commit so a true page teardown
+  // (tab close, refresh, OS back gesture) doesn't abort the in-flight POST and lose
+  // the capture. Omitted on Stop, where the page stays and the normal retry applies.
+  const commitTranscript = useCallback((keepalive = false) => {
     if (committedRef.current) return;
     const text = finalizedRef.current;
     if (!text) return;
     committedRef.current = true;
     const elapsed = Math.floor((Date.now() - startTimeRef.current) / 1000);
-    void completeTranscription(noteId, text, elapsed).catch(() => {
+    void completeTranscription(noteId, text, elapsed, keepalive).catch(() => {
       committedRef.current = false;
     });
   }, [noteId]);
 
   useEffect(
     () => () => {
-      commitTranscript();
+      commitTranscript(true);
       cleanup();
     },
     [cleanup, commitTranscript],

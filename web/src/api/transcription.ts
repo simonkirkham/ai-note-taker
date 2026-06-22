@@ -12,15 +12,21 @@ export function getTranscriptionCredentials(): Promise<TranscriptionCredentials>
   return request<TranscriptionCredentials>(`/transcription/credentials`);
 }
 
+// keepalive lets the request outlive the page on a true teardown (tab close /
+// refresh / OS back gesture) — without it the browser aborts the in-flight POST and
+// the captured transcript is lost (BUG-34). Set it for the commit fired on
+// unmount/leave; omit it for normal Stop where the page is staying.
 export function completeTranscription(
   noteId: string,
   transcriptText: string,
-  durationSeconds: number
+  durationSeconds: number,
+  keepalive = false
 ): Promise<void> {
   return requestVoid(`/notes/${noteId}/transcription`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ transcriptText, durationSeconds }),
+    keepalive,
   });
 }
 
@@ -29,12 +35,14 @@ export function completeTranscription(
 export function saveTranscriptionDraft(
   noteId: string,
   transcriptText: string,
-  durationSeconds: number
+  durationSeconds: number,
+  keepalive = false
 ): Promise<void> {
   return requestVoid(`/notes/${noteId}/transcription/draft`, {
     method: 'PUT',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({ transcriptText, durationSeconds }),
+    keepalive,
   });
 }
 

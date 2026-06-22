@@ -259,6 +259,46 @@ it('persists the in-progress transcript when unmounted mid-recording (navigating
   )
 })
 
+it('uses keepalive for the commit fired on unmount so a true page teardown does not abort it (BUG-34)', async () => {
+  stubBrowserApis()
+  let keepaliveOnCommit: boolean | null = null
+  server.use(
+    http.post('/api/notes/note-1/transcription', ({ request }) => {
+      keepaliveOnCommit = request.keepalive
+      return new HttpResponse(null, { status: 204 })
+    }),
+  )
+
+  const view = renderControl()
+  await userEvent.click(screen.getByRole('button', { name: 'Record' }))
+  await waitFor(() => expect(screen.getByRole('button', { name: 'Stop' })).toBeInTheDocument())
+  emitTranscriptResult('Half a meeting')
+  await waitFor(() => expect(screen.getByRole('button', { name: 'Stop' })).toBeInTheDocument())
+
+  view.unmount()
+
+  await waitFor(() => expect(keepaliveOnCommit).toBe(true))
+})
+
+it('does NOT use keepalive for a normal Stop (the page is staying)', async () => {
+  stubBrowserApis()
+  let keepaliveOnCommit: boolean | null = null
+  server.use(
+    http.post('/api/notes/note-1/transcription', ({ request }) => {
+      keepaliveOnCommit = request.keepalive
+      return new HttpResponse(null, { status: 204 })
+    }),
+  )
+
+  renderControl()
+  await userEvent.click(screen.getByRole('button', { name: 'Record' }))
+  await waitFor(() => expect(screen.getByRole('button', { name: 'Stop' })).toBeInTheDocument())
+  emitTranscriptResult('Whole meeting')
+  await userEvent.click(screen.getByRole('button', { name: 'Stop' }))
+
+  await waitFor(() => expect(keepaliveOnCommit).toBe(false))
+})
+
 it('autosaves the transcript to the draft on the periodic checkpoint while still recording', async () => {
   stubBrowserApis()
   // Capture the checkpoint interval's callback so we can fire it deterministically

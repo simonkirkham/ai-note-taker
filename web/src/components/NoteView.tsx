@@ -9,6 +9,7 @@ import { useActions } from "../hooks/useActions";
 import { useCreateNoteFromNextOccurrence, useLinkNoteToCalendar } from "../hooks/useMeetingMutations";
 import { useNoteDetail } from "../hooks/useNoteDetail";
 import { useAnalyseNote, useEditContent, useRenameNoteDetail, useSetNoteDate } from "../hooks/useNoteDetailMutations";
+import { usePopstateGuard } from "../hooks/usePopstateGuard";
 import { useTagNote, useUntagNote } from "../hooks/useTagMutations";
 import { useTags } from "../hooks/useTags";
 import { useTranscription } from "../hooks/useTranscription";
@@ -127,6 +128,10 @@ export default function NoteView({
 
   const isRecording =
     transcription.status === "recording" || transcription.status === "requestingCredentials";
+  // BUG-34: Alt+← (browser Back) was unguarded — it unmounted the note and aborted
+  // the in-progress transcript's commit. Route a Back press while recording through
+  // the same leave-confirm dialog as the in-app back button.
+  const { confirmLeave } = usePopstateGuard(isRecording, () => setConfirmingLeave(true));
   // Preserve the status-gate the old RecordControl effect applied: only surface the
   // live transcript while requesting/recording/just-stopped, never at idle/error.
   const liveTranscript =
@@ -136,6 +141,12 @@ export default function NoteView({
       ? transcription.transcript
       : null;
   const displayedTranscript = liveTranscript ?? transcriptText;
+  // BUG-34: a recording interrupted by a leave commits nothing but leaves a draft.
+  // Treat that draft as resumable so Record offers Continue (append) / Re-record
+  // instead of silently starting fresh — which previously overwrote then deleted the
+  // draft, losing the captured half. Prefer the committed/live transcript; fall back
+  // to the draft. Null when there is nothing to continue (a brand-new note).
+  const resumableTranscript = displayedTranscript ?? transcriptDraft?.text ?? null;
 
   // An in-progress or just-finished recording counts as content: leaving the
   // note must "Save" (keep it) and never show "Cancel"/delete, so the captured
@@ -381,7 +392,15 @@ export default function NoteView({
               <span className={styles.leaveConfirmText}>Still recording —</span>
               <button
                 data-testid="confirm-leave-button"
-                onClick={() => { setConfirmingLeave(false); handleSaveContent(); onBack(); }}
+                onClick={() => {
+                  setConfirmingLeave(false);
+                  handleSaveContent();
+                  // Stop the capture so its transcript is committed before leaving,
+                  // then leave via the guard so the pushed sentinel is cleaned up and
+                  // the navigation lands on the previous screen (BUG-34).
+                  transcription.stopRecording();
+                  confirmLeave(onBack);
+                }}
                 className={styles.saveButton}
               >
                 Leave &amp; save
@@ -542,8 +561,8 @@ export default function NoteView({
               <RecordControl
                 noteId={noteId}
                 noteHasContent={content.trim().length > 0}
-                hasInitialTranscript={transcriptText !== null}
-                initialTranscript={displayedTranscript}
+                hasInitialTranscript={resumableTranscript !== null}
+                initialTranscript={resumableTranscript}
                 transcription={transcription}
                 onAnalysisComplete={refreshNote}
               />
