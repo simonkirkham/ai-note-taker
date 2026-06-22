@@ -34,9 +34,10 @@
 **Capability:** Launch a Windows desktop window that loads the bundled frontend, completes Google sign-in, and shows the user's notes from the prod API — functionally identical to the web app, in a window.
 
 **Design:**
-- New `desktop/` Electron app: `main.ts` (creates the `BrowserWindow`, loads the bundled `web/dist` from disk via a custom protocol or `loadFile`), `preload.ts` (contextIsolation on), and a build script that runs `vite build` in `web/` and copies the output in.
-- API base URL points at the **prod API Gateway** (same value the deployed frontend uses).
-- Resolve the OAuth flow in-window: Google redirect URI must be reachable from the Electron-loaded origin; confirm the `rt` refresh-token cookie persists across an app restart. This is the slice's de-risking target.
+- New `desktop/` Electron app: `main.ts`, `preload.ts` (contextIsolation on), and a build script that runs `vite build` in `web/` and copies the output to `desktop/web-dist`.
+- **Single-origin custom scheme (NOT `loadFile`).** The frontend calls **relative** `/api/*` (`web/src/api/client.ts` → `base = "/api"`); in prod CloudFront serves the SPA and proxies `/api/*` to API Gateway from **one origin**, and the httpOnly `rt` cookie is scoped to it (confirmed `NoteTakerStack.cs:1297–1319`). A `file://` load would make `/api` resolve to `file:///api` (dead) and orphan the cookie. So `main.ts` registers a **privileged custom scheme** (e.g. `app://`) via `protocol.handle`: asset paths are served from `web-dist/` on disk; `/api/*` requests are **proxied to `https://<prod-cloudfront>/api/*`**, relaying `Cookie`/`Set-Cookie`. The renderer sees one `app://` origin and keeps issuing relative `/api` calls with **no `web/` change**.
+- **Why not absolute `base`:** pointing `base` at `https://cloudfront/api` from a custom-scheme page is cross-origin → CORS (null/file origin) + SameSite-cookie breakage. The proxy keeps it same-origin and mirrors CloudFront.
+- OAuth + cookie persistence in-window is the de-risking target: confirm Google sign-in completes in the `app://` origin and the `rt` cookie persists across an app restart (Electron session partition).
 
 **Scenarios (GWT):**
 - Given the bundled desktop app When I launch it Then the frontend renders from local assets (no CloudFront fetch) and the notes list loads from the prod API.
