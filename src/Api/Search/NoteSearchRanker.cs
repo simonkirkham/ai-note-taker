@@ -142,8 +142,11 @@ public static partial class NoteSearchRanker
     private static IReadOnlyList<string> MatchedTokens(string query, string fieldText) =>
         TopMatches(query, Tokenize(fieldText));
 
+    // Tags are tokenized to match the gate, which scores tags word-by-word — so a note
+    // admitted on the second word of a multi-word tag ("corp" in "acme corp") still
+    // surfaces that word as the highlighted term rather than an empty match.
     private static IReadOnlyList<string> MatchedTags(string query, IReadOnlyList<string> tags) =>
-        TopMatches(query, tags);
+        TopMatches(query, tags.SelectMany(Tokenize).ToList());
 
     // Highest-scoring candidates by the same word-level matcher the gate uses. Each
     // candidate (a field token, or a whole tag) is scored against every query term;

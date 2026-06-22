@@ -350,6 +350,20 @@ public sealed class SearchNotesTests : IClassFixture<ApiFactory>
         Assert.DoesNotContain("and", terms, StringComparer.OrdinalIgnoreCase);
     }
 
+    // Scenario (CHANGE-20): a note matched on the second word of a multi-word tag highlights that word
+    [Fact]
+    public async Task Search_MatchedTerms_MultiWordTagMatchesAnyWord()
+    {
+        var noteId = await CreateNoteAsync();
+        await PutContentAsync(noteId, "Unrelated body text.");
+        await PostAsync($"/notes/{noteId}/tags", new { tag = "acme corp" });
+
+        var item = await SearchItemAsync("corp", noteId);
+
+        Assert.Equal("tag", item.GetProperty("matchedField").GetString());
+        Assert.Contains("corp", TermsOf(item), StringComparer.OrdinalIgnoreCase);
+    }
+
     private async Task<JsonElement> SearchItemAsync(string query, string noteId)
     {
         var resp = await _client.GetAsync($"/notes/search?q={Uri.EscapeDataString(query)}");
