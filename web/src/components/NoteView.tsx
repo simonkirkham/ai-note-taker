@@ -36,6 +36,7 @@ export default function NoteView({
   noteId,
   initialTitle,
   onBack,
+  onExit,
   onDelete,
   onDateSet,
   onOpenNote,
@@ -45,6 +46,11 @@ export default function NoteView({
   noteId: string;
   initialTitle: string;
   onBack: () => void;
+  // Where "Leave & save" goes after confirming a leave mid-recording. A deterministic
+  // destination (workspace home), NOT navigate(-1): the popstate guard pushes a trap
+  // history entry, so a relative back would land back on the note (BUG-34). Defaults
+  // to onBack for tests/callers that don't record.
+  onExit?: () => void;
   onDelete: (noteId: string) => Promise<void>;
   onDateSet: (noteId: string, date: string) => void;
   onOpenNote: (noteId: string, title?: string, isNew?: boolean) => void;
@@ -170,6 +176,25 @@ export default function NoteView({
   useEffect(() => {
     if (!loadingDetail && !notFound) inputRef.current?.focus();
   }, [loadingDetail, notFound]);
+
+  // BUG-34: browser back (Alt+←) fires popstate, which the beforeunload warning cannot
+  // catch — it silently unmounted the note mid-recording and the transcript was lost.
+  // While recording, push a trap history entry and re-arm it on each back, surfacing the
+  // same leave-confirm the in-app Save button shows. "Leave & save" exits via onExit (a
+  // fresh route), so the trap entry is never navigated back onto. Trade-off: after a
+  // normal Stop (recording ends without leaving) the trap entry lingers, so the next
+  // browser-back lands on the same URL and a second press is needed to leave — accepted
+  // over the alternative (popping it on cleanup would make Stop itself navigate away).
+  useEffect(() => {
+    if (!isRecording) return;
+    window.history.pushState(null, "", window.location.href);
+    const onPopState = () => {
+      window.history.pushState(null, "", window.location.href);
+      setConfirmingLeave(true);
+    };
+    window.addEventListener("popstate", onPopState);
+    return () => window.removeEventListener("popstate", onPopState);
+  }, [isRecording]);
 
   // Refetch the regenerated summary/discussion/decisions and any extracted actions.
   function refreshNote() {
@@ -339,6 +364,17 @@ export default function NoteView({
     onBack();
   }
 
+  // Confirmed leave mid-recording (in-app Save or the popstate guard): stop+commit the
+  // capture and flush any pending content, then exit to a fresh route via onExit — never
+  // navigate(-1), which the popstate trap entry would absorb (BUG-34). Stopping here
+  // guarantees the commit even if the navigation is best-effort.
+  function handleConfirmedLeave() {
+    setConfirmingLeave(false);
+    transcription.stopRecording();
+    handleSaveContent();
+    (onExit ?? onBack)();
+  }
+
   // Cancel is only reachable when !hasContent (blank note)
   async function handleCancel() {
     if (isNew) {
@@ -381,7 +417,7 @@ export default function NoteView({
               <span className={styles.leaveConfirmText}>Still recording —</span>
               <button
                 data-testid="confirm-leave-button"
-                onClick={() => { setConfirmingLeave(false); handleSaveContent(); onBack(); }}
+                onClick={handleConfirmedLeave}
                 className={styles.saveButton}
               >
                 Leave &amp; save
@@ -542,8 +578,8 @@ export default function NoteView({
               <RecordControl
                 noteId={noteId}
                 noteHasContent={content.trim().length > 0}
-                hasInitialTranscript={transcriptText !== null}
-                initialTranscript={displayedTranscript}
+                hasInitialTranscript={transcriptText !== null || transcriptDraft !== null}
+                initialTranscript={displayedTranscript ?? transcriptDraft?.text ?? null}
                 transcription={transcription}
                 onAnalysisComplete={refreshNote}
               />

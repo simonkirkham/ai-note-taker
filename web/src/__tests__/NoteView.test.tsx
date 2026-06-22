@@ -44,8 +44,20 @@ vi.mock('../hooks/useTranscription', () => ({
 }))
 
 vi.mock('../components/RecordControl', () => ({
-  default: ({ transcription }: { transcription: UseTranscriptionResult }) => (
-    <div data-testid="record-control-mock">
+  default: ({
+    transcription,
+    hasInitialTranscript,
+    initialTranscript,
+  }: {
+    transcription: UseTranscriptionResult
+    hasInitialTranscript?: boolean
+    initialTranscript?: string | null
+  }) => (
+    <div
+      data-testid="record-control-mock"
+      data-has-initial-transcript={hasInitialTranscript ? 'true' : 'false'}
+      data-initial-transcript={initialTranscript ?? ''}
+    >
       <button data-testid="transcription-record-button" onClick={() => transcription.startRecording(true)}>
         Record
       </button>
@@ -762,6 +774,32 @@ describe('NoteView', () => {
       expect(onBack).toHaveBeenCalledOnce()
     })
 
+    // BUG-34: Alt+← (browser back) fires popstate, which the beforeunload warning
+    // cannot catch and which the in-app Save button's confirm never sees — so it
+    // silently unmounted the note mid-recording and the transcript was lost. While
+    // recording, popstate must surface the same leave-confirm instead of navigating.
+    it('browser back (popstate) while recording warns instead of leaving silently', async () => {
+      const onBack = vi.fn()
+      renderNoteView({ onBack })
+      await screen.findByLabelText('Note content')
+      await userEvent.click(screen.getByTestId('mock-start-recording'))
+
+      // Simulate the browser Back button — NOT the in-app Save button.
+      fireEvent.popState(window)
+
+      expect(screen.getByTestId('confirm-leave-button')).toBeInTheDocument()
+      expect(onBack).not.toHaveBeenCalled()
+    })
+
+    it('browser back (popstate) when NOT recording does not show the leave warning', async () => {
+      renderNoteView()
+      await screen.findByLabelText('Note content')
+
+      fireEvent.popState(window)
+
+      expect(screen.queryByTestId('confirm-leave-button')).toBeNull()
+    })
+
     it('note with only a transcript (blank title/content/tags) shows Save and Delete', async () => {
       server.use(
         http.get('/api/notes/:noteId', () =>
@@ -832,6 +870,29 @@ describe('NoteView', () => {
       await userEvent.click(await screen.findByTestId('discard-transcript-button'))
       await waitFor(() => expect(discarded).toBe(true))
       expect(screen.queryByTestId('transcript-recovery-banner')).toBeNull()
+    })
+
+    // BUG-34: an interrupted recording leaves a draft but no committed transcript.
+    // "Continue (append)" keyed only off the committed transcript, so re-recording
+    // started fresh and the new commit overwrote+deleted the draft — the prior half
+    // was lost. The draft must be continuable: Record offers Continue, seeded from it.
+    it('makes Record continue from an interrupted draft (no committed transcript)', async () => {
+      withDraft()
+      renderNoteView()
+      const control = await screen.findByTestId('record-control-mock')
+      await waitFor(() => expect(control).toHaveAttribute('data-has-initial-transcript', 'true'))
+      expect(control).toHaveAttribute('data-initial-transcript', 'Speaker 1: recovered words')
+    })
+
+    it('a note with neither a transcript nor a draft starts recording fresh (no continue)', async () => {
+      server.use(
+        http.get('/api/notes/:noteId', () =>
+          HttpResponse.json({ noteId: 'note-1', title: 'T', content: '', date: null, tags: [] }),
+        ),
+      )
+      renderNoteView()
+      const control = await screen.findByTestId('record-control-mock')
+      expect(control).toHaveAttribute('data-has-initial-transcript', 'false')
     })
   })
 
