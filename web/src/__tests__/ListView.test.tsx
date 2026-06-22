@@ -198,6 +198,26 @@ describe('ListView — home today/older date filter', () => {
     await waitFor(() => expect(screen.queryByText('Other today')).not.toBeInTheDocument())
   })
 
+  it('matches a legacy mixed-case card tag via the lowercase filter pill (CHANGE-17)', async () => {
+    // Until the prod projection rebuild lands, a card may still carry a mixed-case
+    // tag ("Work") while the /tags index already serves lowercase. The filter must
+    // compare case-insensitively so the card is still found.
+    server.use(
+      http.get('/api/tags', () =>
+        HttpResponse.json({ tags: [{ tag: 'work', noteCount: 1, noteIds: ['w'] }] }),
+      ),
+    )
+    renderHome([
+      makeCard({ noteId: 'w', title: 'Work today', date: plusDays(0), tags: ['Work'] }),
+      makeCard({ noteId: 'x', title: 'Other today', date: plusDays(0), tags: [] }),
+    ])
+    await userEvent.click(screen.getByRole('button', { name: /^filters/i }))
+    const pill = await screen.findByTestId('tag-filter-pill-work')
+    await userEvent.click(pill)
+    expect(screen.getByText('Work today')).toBeInTheDocument()
+    await waitFor(() => expect(screen.queryByText('Other today')).not.toBeInTheDocument())
+  })
+
   it('does not date-filter or show the toggle in folder view', () => {
     renderHome(
       [makeCard({ noteId: 'p', title: 'Past in folder', date: plusDays(-30), folderId: 'f-1', lastModifiedAt: isoAtLocalNoon(-30) })],

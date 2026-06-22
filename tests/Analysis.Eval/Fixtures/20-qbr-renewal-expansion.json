@@ -4,7 +4,7 @@
   "existingContent": "Wayne Enterprises Q2 business review",
   "currentUserName": "Owen",
   "expected": {
-    "tags": ["qbr", "wayne-enterprises", "renewal"],
+    "tags": ["wayne-enterprises"],
     "actionItems": [
       "Send the renewal proposal with the multi-year option by Friday",
       "Loop in the solutions engineer to scope the Okta SSO integration",

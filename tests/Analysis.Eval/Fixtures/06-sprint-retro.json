@@ -4,7 +4,7 @@
   "existingContent": "Sprint 14 retrospective",
   "currentUserName": "Lena",
   "expected": {
-    "tags": ["sprint-retro", "checkout-redesign", "raj"],
+    "tags": ["checkout-redesign"],
     "actionItems": ["Write up a ticket to quarantine the flaky checkout tests"],
     "contentMustMention": [
       "Raj will pair with the CI team on the runner timeouts",

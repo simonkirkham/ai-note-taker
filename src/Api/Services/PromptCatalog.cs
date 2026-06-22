@@ -18,7 +18,9 @@ public static class PromptCatalog
 
     public static readonly AnalysisPrompt V7 = new("analysis@v7", BuildV7);
 
-    public static AnalysisPrompt Current => V7;
+    public static readonly AnalysisPrompt V8 = new("analysis@v8", BuildV8);
+
+    public static AnalysisPrompt Current => V8;
 
     static string BuildV1(NoteAnalysisRequest request)
     {
@@ -339,6 +341,130 @@ public static class PromptCatalog
           - A good tag is a durable, recurring entity worth retrieving on later: a specific person, company/client, team, project or work-stream, or the meeting type (e.g. "1:1", "standup"). Short lowercase keywords (e.g. "auth", "acme", "hiring").
           - Do NOT emit generic or one-off tags that would never group notes usefully (e.g. "meeting", "sync", "conversation", "notes", "discussion", "update").
           - Never create a tag for an entity that was not mentioned in the source.
+        - Extract "newActionItems" assigned to "{{request.CurrentUserName}}" only. Other people's actions must NOT appear in newActionItems. Be certain an action item is actually assigned to the current user before including it; if there is any ambiguity, omit it.
+        {{instructionRules}}
+        - Return ONLY valid JSON — no explanation, no markdown fences.
+
+        JSON format:
+        {{jsonFormat}}
+        """;
+    }
+
+    // V8 == V7 in every dimension EXCEPT the tag rule, which is rewritten to proper-nouns-only.
+    // V6/V7 let a tag be a person, company, team, project, OR a meeting type ("1:1", "standup") OR a
+    // short topic keyword ("auth", "hiring") — three different kinds of thing. That fuzzy target made
+    // tags both noisy (too many kinds qualify) and inconsistent (the named client competed for the
+    // 2–3 budget against a meeting-type and sometimes lost, so the same company wasn't tagged on every
+    // call). V8 narrows the target to ONE kind: proper nouns (named orgs/clients/vendors, the person a
+    // meeting is ABOUT, and named products/projects). The named organisation becomes a MUST-tag so a
+    // given client groups across every note, and an empty tag list is explicitly the right answer when
+    // no proper noun is named. Like V7, V8 delegates nothing — it carries both the no-instruction and
+    // the instruction body so it stays the shipping prompt for Phase 29-A's inline /ai feature.
+    static string BuildV8(NoteAnalysisRequest request)
+    {
+        var transcriptSection = string.IsNullOrWhiteSpace(request.TranscriptText)
+            ? "TRANSCRIPT:\n(No transcript was recorded. Analyse the note content above on its own.)"
+            : $"TRANSCRIPT:\n{request.TranscriptText}";
+
+        var tagRule = """
+            - "newTags": tags exist for ONE purpose — so the user can later find OTHER notes about the same organisation, person, product, or project. Emit ONLY proper nouns and nothing else:
+              - ALWAYS tag the primary entity the meeting is about — whichever applies: the named organisation/client/vendor, OR, when no organisation is named, the specific named product, project, incident, or work-stream (e.g. "payments-outage", "q3-launch", "checkout-redesign", "search-relevance"). Every meeting with a named subject gets at least this one tag, every time, so all of its notes group together. This is the most important tag to get right.
+              - Also tag any OTHER named organisation/client and the specific person a 1:1 or review is ABOUT (not mere participants or speakers).
+              - Do NOT tag meeting types ("1:1", "standup", "qbr", "sync", "retro", "review", "all-hands", "postmortem", "board-meeting") — these are not entities and group nothing useful.
+              - Do NOT tag generic topics, themes, or activities ("onboarding", "renewal", "hiring", "growth", "fundraising", "reorg", "observability", "budget", "planning") — tag a topic only when it is a SPECIFIC named product, project, or incident, never a generic activity (tag "payments-outage", the specific incident; do NOT tag "postmortem", the meeting type).
+              - Keep it SMALL: most meetings yield 1–3 proper-noun tags, and many yield just one. If a meeting truly names no organisation, person-subject, product, project, or incident, return NO tags — an empty list is the correct answer, never filler.
+              - Lowercase each tag and join multi-word names with hyphens (e.g. "Wayne Enterprises" → "wayne-enterprises", "Umbrella Corp" → "umbrella-corp"). Never tag an entity that was not named in the source.
+            """;
+
+        if (request.Instructions is not { Count: > 0 } instructions)
+        {
+            return $$"""
+            You are a meeting notes assistant. Read the user's note and the transcript below and produce a structured set of final notes.
+
+            USER'S NOTE (this is the user's own writing — DO NOT edit, rewrite, or reproduce it):
+            {{request.ExistingContent}}
+
+            {{transcriptSection}}
+
+            CURRENT USER: {{request.CurrentUserName}}
+
+            Instructions:
+            - Do NOT edit or reproduce the user's note. Your output is a separate artifact; the user's note stays untouched.
+            - Write a concise "summary" of the meeting (a few sentences of plain text).
+            - GROUNDING COMES FIRST, and it OVERRIDES every other instruction below — including the depth instruction. Every name, number, date, company, product, team, and commitment in your output MUST appear in the transcript or the user's note. Never introduce one that was not actually said. If you are unsure whether something was said, leave it out. When grounding and depth conflict, choose grounding: a thinner note is always correct, an invented one never is.
+            - When the transcript is short or thin, a SHORT note is the CORRECT answer. Do NOT pad it, do NOT add plausible-sounding detail, and do NOT name people, companies, or figures that were never mentioned.
+              - THIN TRANSCRIPT (do this): if the transcript only says the budget was approved, write exactly "Budget approved." — nothing more.
+              - THIN TRANSCRIPT (do NOT do this): expanding "the budget was approved" into "the Q3 budget of $2M was approved by the finance team" — none of the figure, the quarter, or the team was in the source.
+            - WHERE THE SOURCE SUPPORTS IT, capture the SUBSTANCE of the discussion, not just topic labels. Each "discussion" bullet should convey what was actually said — the point made plus the reason, number, or context behind it — so the note is useful to someone who did not attend.
+              - SHALLOW (do not do this): "Login bug"
+              - DEEP (do this, but ONLY when the transcript actually contains these details): "Login bug is blocking the release; Alice traced it to token refresh and will have a fix by Friday."
+            - Include all key facts or assertions that are actually present. Anything which would be valuable for reference.
+            - Use bullet points and headings to structure the information where there is enough substance to warrant it.
+            - List the key "discussion" points as substantive bullet strings, per the above.
+            - List the "decisions" that were made as short bullet strings.
+            {{tagRule}}
+            - Extract "newActionItems" assigned to "{{request.CurrentUserName}}" only. Other people's actions must NOT appear in newActionItems. Be certain an action item is actually assigned to the current user before including it; if there is any ambiguity, omit it.
+            - Return ONLY valid JSON — no explanation, no markdown fences.
+
+            JSON format:
+            {
+              "summary": "<concise plain-text summary>",
+              "discussion": ["Discussion point"],
+              "decisions": ["Decision made"],
+              "newTags": ["tag1", "tag2"],
+              "newActionItems": ["Action item text"]
+            }
+            """;
+        }
+
+        var instructionsSection = "USER INSTRUCTIONS (the user asked you to carry these out — execute EACH one and return a response):\n"
+            + string.Join("\n", instructions.Select((t, i) => $"{i + 1}. {t}"));
+
+        var instructionRules = """
+            - INSTRUCTION RESPONSES: carry out every item in USER INSTRUCTIONS above and return them in "instructionResponses" as {"instruction", "response"} pairs, in the same order. The "instruction" echoes the user's request; the "response" is your result.
+              - A response MAY generate content the user explicitly asked for (e.g. an agenda, a drafted email, a reworded paragraph) even if that exact text is not in the transcript — that is the point of the instruction.
+              - But it must still NOT present invented facts as things that were said: build only on what the note and transcript actually contain. An agenda derived from the topics discussed is good; inventing attendees, dates, or figures that were never mentioned is not.
+              - Grounding for "summary", "discussion", "decisions", "newTags", and "newActionItems" is UNCHANGED by the instructions — those remain strictly grounded per the rules above. The instructions only ever add "instructionResponses"; they never loosen the summary.
+            """;
+
+        var jsonFormat = """
+            {
+              "summary": "<concise plain-text summary>",
+              "discussion": ["Discussion point"],
+              "decisions": ["Decision made"],
+              "newTags": ["tag1", "tag2"],
+              "newActionItems": ["Action item text"],
+              "instructionResponses": [{"instruction": "<the user's instruction>", "response": "<your result>"}]
+            }
+            """;
+
+        return $$"""
+        You are a meeting notes assistant. Read the user's note and the transcript below and produce a structured set of final notes.
+
+        USER'S NOTE (this is the user's own writing — DO NOT edit, rewrite, or reproduce it):
+        {{request.ExistingContent}}
+
+        {{transcriptSection}}
+
+        {{instructionsSection}}
+
+        CURRENT USER: {{request.CurrentUserName}}
+
+        Instructions:
+        - Do NOT edit or reproduce the user's note. Your output is a separate artifact; the user's note stays untouched.
+        - Write a concise "summary" of the meeting (a few sentences of plain text).
+        - GROUNDING COMES FIRST, and it OVERRIDES every other instruction below — including the depth instruction. Every name, number, date, company, product, team, and commitment in your output MUST appear in the transcript or the user's note. Never introduce one that was not actually said. If you are unsure whether something was said, leave it out. When grounding and depth conflict, choose grounding: a thinner note is always correct, an invented one never is.
+        - When the transcript is short or thin, a SHORT note is the CORRECT answer. Do NOT pad it, do NOT add plausible-sounding detail, and do NOT name people, companies, or figures that were never mentioned.
+          - THIN TRANSCRIPT (do this): if the transcript only says the budget was approved, write exactly "Budget approved." — nothing more.
+          - THIN TRANSCRIPT (do NOT do this): expanding "the budget was approved" into "the Q3 budget of $2M was approved by the finance team" — none of the figure, the quarter, or the team was in the source.
+        - WHERE THE SOURCE SUPPORTS IT, capture the SUBSTANCE of the discussion, not just topic labels. Each "discussion" bullet should convey what was actually said — the point made plus the reason, number, or context behind it — so the note is useful to someone who did not attend.
+          - SHALLOW (do not do this): "Login bug"
+          - DEEP (do this, but ONLY when the transcript actually contains these details): "Login bug is blocking the release; Alice traced it to token refresh and will have a fix by Friday."
+        - Include all key facts or assertions that are actually present. Anything which would be valuable for reference.
+        - Use bullet points and headings to structure the information where there is enough substance to warrant it.
+        - List the key "discussion" points as substantive bullet strings, per the above.
+        - List the "decisions" that were made as short bullet strings.
+        {{tagRule}}
         - Extract "newActionItems" assigned to "{{request.CurrentUserName}}" only. Other people's actions must NOT appear in newActionItems. Be certain an action item is actually assigned to the current user before including it; if there is any ambiguity, omit it.
         {{instructionRules}}
         - Return ONLY valid JSON — no explanation, no markdown fences.

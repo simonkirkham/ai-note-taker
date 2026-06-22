@@ -73,6 +73,27 @@ public sealed class TagFeedbackIntegrationTests : IClassFixture<ApiFactory>
         Assert.Equal(1, feedback!.SuggestedCount);
     }
 
+    // Scenario (CHANGE-17): a mixed-case AI suggestion and a lowercase removal must record a
+    // rejection LIVE — not only on rebuild — so the live path matches the (normalised) rebuild.
+    [Fact]
+    public async Task MixedCaseSuggestion_LowercaseRemoval_RecordsRejection_LiveAndRebuild()
+    {
+        var noteId = await AnalyseWithTagsAsync("Tf-Mixed");
+        await _client.DeleteAsync($"/notes/{noteId}/tags/tf-mixed");
+
+        var live = await FeedbackAsync(FakeCurrentUser.TestUserId, "tf-mixed");
+        Assert.NotNull(live);
+        Assert.Equal(1, live!.SuggestedCount);
+        Assert.Equal(1, live.RejectedCount);
+
+        (await _client.PostAsync("/admin/projections/rebuild", null)).EnsureSuccessStatusCode();
+
+        var rebuilt = await FeedbackAsync(FakeCurrentUser.TestUserId, "tf-mixed");
+        Assert.NotNull(rebuilt);
+        Assert.Equal(1, rebuilt!.SuggestedCount);
+        Assert.Equal(1, rebuilt.RejectedCount);
+    }
+
     // Scenario: The projection rebuilds from the event stream with identical counts
     [Fact]
     public async Task Rebuild_ReproducesLiveCounts()

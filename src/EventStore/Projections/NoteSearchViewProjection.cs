@@ -32,10 +32,15 @@ public sealed class NoteSearchViewProjection
                 _items[e.NoteId] = c with { FinalNotesText = ComposeFinalNotes(e), LastModifiedAt = envelope.OccurredAt };
                 break;
             case NoteTagged e when _items.TryGetValue(e.NoteId, out var c):
-                _items[e.NoteId] = c with { Tags = c.Tags.Append(e.Tag).ToList().AsReadOnly(), LastModifiedAt = envelope.OccurredAt };
+                // Lowercase + dedupe on fold (CHANGE-17) so legacy mixed-case tags normalise on
+                // rebuild and a lowercase search token still matches.
+                var addTag = TagNormalization.Normalize(e.Tag);
+                var withTag = c.Tags.Contains(addTag) ? c.Tags : c.Tags.Append(addTag).ToList().AsReadOnly();
+                _items[e.NoteId] = c with { Tags = withTag, LastModifiedAt = envelope.OccurredAt };
                 break;
             case NoteUntagged e when _items.TryGetValue(e.NoteId, out var c):
-                _items[e.NoteId] = c with { Tags = c.Tags.Where(t => t != e.Tag).ToList().AsReadOnly(), LastModifiedAt = envelope.OccurredAt };
+                var removeTag = TagNormalization.Normalize(e.Tag);
+                _items[e.NoteId] = c with { Tags = c.Tags.Where(t => t != removeTag).ToList().AsReadOnly(), LastModifiedAt = envelope.OccurredAt };
                 break;
             case NoteDeleted e when _items.TryGetValue(e.NoteId, out var c):
                 _items[e.NoteId] = c with { Deleted = true, LastModifiedAt = envelope.OccurredAt };

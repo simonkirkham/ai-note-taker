@@ -4,7 +4,7 @@
   "existingContent": "Weekly checkout redesign sync",
   "currentUserName": "Sana",
   "expected": {
-    "tags": ["weekly-sync", "checkout-redesign", "stripe"],
+    "tags": ["checkout-redesign", "stripe"],
     "actionItems": [
       "Enable the payment intent flag for the internal beta cohort today",
       "Write up the error-state spec for engineering and design"

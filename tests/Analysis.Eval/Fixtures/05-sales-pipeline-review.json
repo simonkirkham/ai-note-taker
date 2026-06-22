@@ -4,7 +4,7 @@
   "existingContent": "Weekly sales pipeline review",
   "currentUserName": "Marco",
   "expected": {
-    "tags": ["sales-pipeline-review", "acme", "globex"],
+    "tags": ["acme", "globex"],
     "actionItems": ["Send the Acme proposal by end of day"],
     "contentMustMention": [
       "Dana will follow up with Globex on their procurement timeline",

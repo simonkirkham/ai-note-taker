@@ -2,7 +2,7 @@
 
 The canonical, versioned set of **models** and **prompts** the analysis eval should sweep. Maintained by the [`eval-run`](../../.claude/skills/eval-run/SKILL.md) skill — bump the version and append a changelog line after every run. Rows are never deleted; cut ones are marked `dropped`/`retired` with a reason so the history of what was tried survives.
 
-**Version:** 6 · updated 2026-06-13 · reflects `run-286900` ([report](2026-06-13-mpi6-tags-v6.md))
+**Version:** 7 · updated 2026-06-22 · reflects `run-83741` ([report](2026-06-22-mpi8-proper-noun-tags.md))
 
 ## Models under test
 
@@ -30,7 +30,9 @@ The canonical, versioned set of **models** and **prompts** the analysis eval sho
 | `analysis@v3` | superseded by v5 (`run-551897`) | Was current best; lifted Opus (+0.06), fixed Opus tags (0.51→0.71). Beaten by v5 on prod (+0.066 Quality) and overall. |
 | `analysis@v4` | tested, not shipped (`run-532442`, `run-551897`) | Depth attempt; its "fabrication regression" was a **judge error** (user-note entities mis-flagged), and it dropped Tags. A stepping stone — v5 dominates it. |
 | `analysis@v5` | superseded by v6 (`run-286900`) | V4's depth + a grounding-dominant clamp + restored tags. Was current; beaten by v6 on tags + overall Quality on every model. |
-| `analysis@v6` | **shipping (MPI-6, `run-286900`)** | v5 with only the tag rule tightened (aim 2–3, ≤5, high-signal, retrieval rationale). Tags +0.125 mean (+0.05 to +0.20 per model); overall Quality +0.028 mean; no regression. |
+| `analysis@v6` | superseded by v8 (`run-83741`) | v5 with the tag rule tightened (aim 2–3, ≤5). Was current; beaten by v8 on tags — v6 permitted meeting-types + topic keywords, so it over-tagged (~2.7 tags/note, precision 0.11–0.38) and dropped the named client inconsistently. |
+| `analysis@v7` | folded into v8 | v6 + the inline `/ai` instruction path (MPI-7). Never the sole current prompt for tags; v8 carries the `/ai` path forward verbatim with the new tag rule. |
+| `analysis@v8` | **shipping (MPI-8, `run-83741`)** | Tags narrowed to **proper nouns only** (named orgs/clients, person-subject, named products/projects/incidents); always-tag the named entity. Atomic tag F1 up on every model (+0.49 to +0.63), precision 3–7×, tags/note ~2.7 → ~1.1, no regression elsewhere. Gold tags re-cut to the proper-noun bar in the same change. `Current` → v8. |
 
 ## Judge
 
@@ -40,6 +42,7 @@ The canonical, versioned set of **models** and **prompts** the analysis eval sho
 
 ## Changelog
 
+- **v7** (2026-06-22, `run-83741`): MPI-8 proper-noun-only tags. `analysis@v8` (v6/v7 body, tag rule narrowed to proper nouns only — named orgs/clients, person-subject, named products/projects/incidents; always-tag the named entity) **wins and ships** — atomic tag F1 up on every model (Opus 0.48→0.97, Sonnet 0.38→0.93, Mistral 0.19→0.82, Nova Lite 0.16→0.70), precision 3–7×, tags/note ~2.7→~1.1, no regression on content/actions/faithfulness. The 22 fixtures' gold tags were re-cut to the proper-noun bar in the same change (v6's gold mixed in meeting-types/topics, which would have false-flagged the new prompt). `analysis@v6`/`v7` superseded; `Current` → v8. Note: the `report.md` "Tags" column is the judge's holistic `qualityTags` (mixed for v8 because it dislikes sparse sets) — the deterministic **atomic tagF1** is authoritative and matches the user's fewer-but-useful preference. Model set unchanged.
 - **v1** (2026-06-04, `run-468475`): initial matrix from the frontier `analysis@v2`-vs-`v3` sweep. Kept Opus 4.6 / Claude 3 Sonnet / Mistral Large / Nova Lite; dropped Nova Pro (beaten by cheaper Nova Lite) and Llama 3 70B (weakest). `v3 > v2` → shipping via 10-O; `v4` planned for content depth (10-P).
 - **v2** (2026-06-04, `run-532442`): `analysis@v3`-vs-`v4` on the keep-set (clean run, all 22 fixtures per cell). `v4` lifted Content on the weaker models (Nova Lite **+0.10**, Sonnet +0.05) but regressed the strong ones (Mistral −0.05 Quality), dropped Tags on all four, and **worsened fabrication on thin transcripts** — so `v4` is **not shipped**; `v3` stays current. `v5` planned to keep the depth win and fix grounding. Model set unchanged; **`anthropic.claude-sonnet-4-6`** flagged as a candidate to replace the aged `claude-3-sonnet-20240229` in a future model sweep.
 - **v3** (2026-06-04, `run-551897`): `analysis@v3`-vs-`v4`-vs-`v5` on the keep-set, all three in one sweep. **`v5` wins and ships** — prod (Nova Lite) Quality +0.066 / Content +0.089 vs v3, Tags restored (+0.025 vs v3), and **no fabrication**. Notably, v2's "v4 fabrication regression" was found to be a **judge error**: the flagged entities ("Cyberdyne"/"Stark Industries") are in the fixtures' user-note and gold tags, so emitting them is correct — the judge ignored the note. Model set unchanged. **Anthropic access confirmed live in prod** (Opus/Sonnet-4-6 invocable on-demand), unblocking MPI-3. Next item targets the **judge/rubric** (terseness penalty + note-blindness), not the prompt.
