@@ -82,16 +82,34 @@ public static class NoteHandlers
         return Results.NoContent();
     }
 
-    public static async Task<IResult> GetNote(Guid noteId, INoteDetailStore noteDetailStore, ICalendarLinkIndexStore calendarLinkStore, ITranscriptionDraftStore draftStore, ICurrentUser currentUser, IConsistencyGate gate, HttpContext http, CancellationToken ct)
+    public static async Task<IResult> GetNote(Guid noteId, INoteDetailStore noteDetailStore, ICalendarLinkIndexStore calendarLinkStore, ITranscriptionDraftStore draftStore, ICurrentUser currentUser, IConsistencyGate gate, ILoggerFactory loggerFactory, HttpContext http, CancellationToken ct)
     {
-        // Read-your-writes: if the client presents the write token from its last note write, wait
-        // (bounded) until the async projector has applied it before reading. Absent token → no
-        // wait. On timeout the read still returns, flagged X-Consistency: stale.
+        // BUG-31 layer 3: the note-detail read sometimes leaves NoteView's Save button disabled
+        // (`disabled={loadingDetail}`) for ~30s on reopen, hanging the E2E save click to its
+        // actionability timeout. Code analysis bounds the read at ~7s (gate cap 2s + client gated
+        // retries), so a 30s stall can only be a genuinely slow/missing projection in the deployed
+        // env — invisible because GetNote had NO log line. Record per-read: the RYW gate outcome
+        // (Proceed/Fresh/Stale), whether the projection row was found (hit / absent → 404 / wrong
+        // owner → 404), and total latency. {Outcome}=Stale + {Result}=Absent that climbs to Hit on
+        // a later attempt = a lagging projector; {Result}=Absent that persists = the write never
+        // landed for this stream. No note content/title is logged (meeting notes are sensitive).
+        var logger = loggerFactory.CreateLogger("Api.Handlers.NoteHandlers.Read");
+        var stopwatch = Stopwatch.StartNew();
         var consistency = await gate.WaitAsync(http.Request.Headers["If-Consistent-With"], ct).ConfigureAwait(false);
         if (consistency.IsStale) http.Response.Headers["X-Consistency"] = "stale";
 
+        // Single emit point so the two call sites (404 vs hit) can't drift the format apart.
+        void LogRead(string result) => logger.LogInformation(
+            "NoteDetail read {NoteId} outcome={Outcome} result={Result} latencyMs={LatencyMs}",
+            noteId, consistency.Outcome, result, stopwatch.Elapsed.TotalMilliseconds);
+
         var detail = await noteDetailStore.GetAsync(new NoteId(noteId));
-        if (detail is null || detail.UserId != currentUser.UserId) return Results.NotFound();
+        if (detail is null || detail.UserId != currentUser.UserId)
+        {
+            stopwatch.Stop();
+            LogRead(detail is null ? "Absent" : "WrongOwner");
+            return Results.NotFound();
+        }
         var calendarLink = await calendarLinkStore.GetByNoteIdAsync(noteId.ToString());
         var linkedMeeting = calendarLink is null ? null : new
         {
@@ -111,6 +129,8 @@ public static class NoteHandlers
         var transcriptDraft = draft is not null && IsUncommittedDraft(draft.Text, detail.TranscriptText)
             ? new { text = draft.Text, capturedAt = draft.CapturedAt }
             : null;
+        stopwatch.Stop();
+        LogRead("Hit");
         return Results.Ok(new
         {
             noteId = detail.NoteId.Value,
