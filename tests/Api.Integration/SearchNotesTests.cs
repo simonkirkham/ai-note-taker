@@ -338,6 +338,18 @@ public sealed class SearchNotesTests : IClassFixture<ApiFactory>
         Assert.Contains(terms[0], snippet, StringComparison.OrdinalIgnoreCase);
     }
 
+    // Scenario (CHANGE-20): a prefix match highlights the actual longer word, not a substring
+    [Fact]
+    public async Task Search_MatchedTerms_PrefixReturnsLongerWord()
+    {
+        var noteId = await CreateNoteWithBodyAsync("Met the Andrews family yesterday.");
+
+        var terms = await MatchedTermsAsync("Andrew", noteId);
+
+        Assert.Contains("Andrews", terms, StringComparer.OrdinalIgnoreCase);
+        Assert.DoesNotContain("and", terms, StringComparer.OrdinalIgnoreCase);
+    }
+
     private async Task<JsonElement> SearchItemAsync(string query, string noteId)
     {
         var resp = await _client.GetAsync($"/notes/search?q={Uri.EscapeDataString(query)}");
