@@ -63,9 +63,13 @@
 
 **Capability:** Start a meeting recording in the desktop app and capture mic + system audio with **no source-picker dialog and no per-meeting consent**.
 
+> **Finding (2026-06-22, on Windows):** the 31-A shell **already** captures system audio with no picker/consent — `getDisplayMedia` resolves with a loopback audio track via **Electron 33's implicit default**, with **no** `setDisplayMediaRequestHandler` in our code (manually confirmed: silent-mic test produced a non-empty transcript from system audio). So 31-B is **no longer "make it work" — it is "lock it in."** We are currently depending on an undocumented Electron default that (a) could change/tighten on any `electron` upgrade → silent regression to mic-only (the renderer's `catch` at `useTranscription.ts:204` swallows the failure — no error, no prompt), (b) may not reproduce on a clean 31-C install, and (c) leaves the screen choice + `audio:'loopback'` implicit. 31-B makes the grant **explicit, deterministic, and guarded**.
+
 **Design:**
-- In `desktop/main.ts`, register `session.setDisplayMediaRequestHandler((request, callback) => callback({ video: <primary screen>, audio: 'loopback' }))`.
+- In `desktop/main.ts`, register `session.defaultSession.setDisplayMediaRequestHandler((request, callback) => callback({ video: <primary screen via desktopCapturer.getSources>, audio: 'loopback' }), { useSystemPicker: false })` — pin the behaviour rather than rely on the Electron default.
+- Extract the source-selection logic into a pure, unit-testable function (e.g. `desktop/src/displayMedia.ts` → pick primary screen, return `{ video, audio: 'loopback' }`) so CI proves the selection without a real display.
 - The renderer's existing `getDisplayMedia({audio:true, video:true})` call (in `useTranscription.ts`) resolves against the handler — spike-confirmed to need **no renderer change**. Video track is captured to satisfy the handler and discarded; only the loopback audio is mixed with the mic.
+- **Guard (observability):** assert/log a non-empty loopback audio track on record start; surface if absent so a future Electron-default change can't silently degrade to mic-only. (Decide renderer-side vs main-process at slice design — keep `web/` change minimal per the phase guardrail.)
 - Verify the existing mix → PCM worklet → AWS Transcribe streaming path is byte-for-byte the same as the web app.
 
 **Scenarios (GWT):**
