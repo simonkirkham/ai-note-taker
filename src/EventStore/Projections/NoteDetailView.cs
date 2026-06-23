@@ -19,4 +19,5 @@ public record NoteDetailView(
     string? SummaryPromptVersion = null,
     string? WorkspaceId = null,
     IReadOnlyList<InstructionResponse>? InstructionResponses = null,
-    string? RecordingAudioKey = null);
+    string? RecordingAudioKey = null,
+    bool TranscriptIsDiarized = false);
