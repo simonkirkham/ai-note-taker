@@ -1,0 +1,169 @@
+# Phase 34 — Per-workspace calendars (in-app connect, multi-account)
+
+**Goal:** let each **workspace** back its meetings list with its own connected calendar account and provider — workspace A on a Google account, workspace B on Outlook — instead of one global calendar for the whole app. Get there by first replacing the out-of-band SSM refresh token with an **in-app "Connect calendar" OAuth flow** whose refresh token is stored **server-side per entity** (this graduates **[TI-47](../technical-improvements.md)**), then **keying that token + provider choice by workspace**, then making provider selection **per-request**. Strangle the global single-calendar model flow-by-flow — never a big-bang auth cutover.
+
+## Summary
+
+| Slice | Summary | Status | Depends on |
+|-------|---------|--------|------------|
+| 34-A | **Connect Google Calendar in-app → server-side per-user token** (keystone; TI-47 core). A "Connect calendar" button runs auth-code+PKCE; backend stores the refresh token server-side; the meetings read uses it (SSM fallback while unconnected). Google only, per-user. | Not Started | — |
+| 34-B | **Key the calendar connection by workspace.** `WorkspaceCalendarConnected` event; connect associates with the current workspace; token + read resolve by `workspaceId`. Two workspaces → two different Google accounts. | Not Started | 34-A |
+| 34-C | **Add Microsoft as a connectable provider per workspace + per-request resolution.** In-app connect for Outlook; `ICalendarClientFactory.For(workspaceId)` resolves google/microsoft from the workspace's connection; drop the global `CALENDAR_PROVIDER` env. A=Google, B=Outlook. | Not Started | 34-B |
+| 34-D | **Retire the out-of-band SSM token path + mint scripts** (strangle cleanup). Remove `CALENDAR_PROVIDER`, the SSM grants/paths, and the mint scripts once every flow is in-app. | Not Started | 34-C |
+
+Strictly sequential — this is a **strangle** of the calendar-auth model (CLAUDE.md guardrail: prove the new path on one real call, then migrate flow-by-flow with old+new coexisting until the last flow moves). 34-A proves in-app-connect + server-side token on one real Google read; 34-B/C scale it to workspace-keyed and multi-provider; 34-D removes the old path only after nothing depends on it.
+
+### Locked decisions
+
+1. **In-app OAuth (auth-code + PKCE), not device-code/CLI.** A "Connect calendar" button redirects to the provider's consent; the backend exchanges the code and persists the **refresh token**. The Phase 32 device-code mint scripts stay only as a break-glass fallback until 34-D removes them.
+2. **Server-side token store keyed by `(workspaceId, provider)`**, extending the existing `DynamoDbRefreshTokenStore` / auth-tokens table pattern (Phase 30 direction). 34-A keys by `sub` as the interim; 34-B re-keys by `workspaceId`. Encrypted at rest.
+3. **Provider chosen per workspace via a new `WorkspaceCalendarConnected(workspaceId, provider, accountRef)` event** on the `Workspace` aggregate (purely additive); `WorkspaceCalendarDisconnected` clears it. Replaces the global `CALENDAR_PROVIDER` env. **One provider per workspace at a time** (merged calendars remain out of scope).
+4. **Reuse, don't rebuild:** Phase 8's Google OAuth client + Phase 32's `MicrosoftCalendarClient`/Graph path are unchanged — only the *token source* (`ICalendarClient` already abstracts the rest) and *provider resolution* change.
+5. **Each strangle step keeps old+new coexisting and every prior read flow reload-tolerant** (RYW: a freshly connected calendar must render on the next load; a freshly disconnected one must clear). Existing E2E journeys that read meetings stay green throughout.
+
+### Deploy-time impact
+
+**Neutral to slightly positive.** No new always-on infra; the per-entity token store reuses the existing auth-tokens table. 34-D *removes* SSM grants + env vars. No bake/canary. One-time prerequisite: register the in-app OAuth **redirect URI** for the calendar scope in Google Cloud Console (Phase 8 client) and the Entra app registration.
+
+---
+
+## Slice 34-A — Connect Google Calendar in-app → server-side per-user token
+
+**Status:** Not Started.
+
+**User value:** the owner clicks "Connect calendar", signs in once in-app (no CLI, no SSM), and their Google meetings appear on Home — the token now lives server-side, refreshed automatically.
+
+**How (mechanics):** add a `GET /calendar/connect/google` (auth-code + PKCE, `calendar.readonly` + `offline_access`) and a `…/callback` that exchanges the code server-side and persists the refresh token in a `CalendarTokenStore` keyed by user `sub`. `GoogleCalendarClient`'s token source reads the stored token first, falling back to the existing SSM token while unconnected. A "Connect calendar" affordance shows when no token is stored; "Connected as …" when it is.
+
+### Scenarios
+```
+Scenario: Connect Google Calendar in-app
+  Given I have not connected a calendar
+  When  I click "Connect calendar" and grant Google consent
+  Then  my refresh token is stored server-side and my meetings render on Home
+
+Scenario: Reads use the stored token, not SSM
+  Given I have connected my Google calendar in-app
+  When  the meetings list loads
+  Then  the access token is minted from the stored refresh token (SSM is not read)
+
+Scenario: Falls back to SSM while unconnected (coexistence)
+  Given I have not connected in-app but an SSM token exists
+  When  the meetings list loads
+  Then  behaviour is identical to Phase 9 (no regression)
+
+Scenario: Expired/revoked stored token degrades gracefully
+  Given my stored refresh token is revoked
+  When  the meetings list loads
+  Then  the response is calendar_unavailable and the UI offers "Reconnect" (no 500)
+```
+
+### Acceptance criteria
+1. `GET /calendar/connect/google` starts auth-code+PKCE for `calendar.readonly offline_access`; the callback exchanges the code **server-side** and stores the refresh token in `CalendarTokenStore` keyed by `sub` (encrypted at rest).
+2. `GoogleCalendarClient` resolves its refresh token from `CalendarTokenStore` first, then the SSM path (coexistence); the bound source is logged.
+3. `invalid_grant` on the stored token → `calendar_unavailable` + a "Reconnect" affordance; never a 500 (mirrors Phase 32 self-heal, minus the SSM reload).
+4. A connection-status read (`GET /calendar/connection`) drives "Connect calendar" vs "Connected as {email}"; reload-tolerant (RYW) so it reflects a just-completed connect.
+5. No frontend secret; PKCE verifier + state held server-side per the Phase 8 pattern; the calendar redirect URI is registered.
+
+### Observability
+| Silent failure | Make visible |
+|---|---|
+| Code exchange fails (bad redirect/scope) | log the provider error code + body; surface "couldn't connect", not a blank state |
+| Stored token revoked | structured warn on `invalid_grant` naming the store key + user; UI "Reconnect" |
+| Read silently falls back to SSM when in-app expected | log which source served the token (stored vs ssm) |
+
+---
+
+## Slice 34-B — Key the calendar connection by workspace
+
+**Status:** Not Started.
+
+**User value:** different workspaces show different calendars — connect a work Google account in one workspace and a personal one in another.
+
+**How (mechanics):** add `WorkspaceCalendarConnected(workspaceId, provider, accountRef)` + `WorkspaceCalendarDisconnected` to the `Workspace` aggregate; the connect callback records the event for the current workspace and stores the token keyed by `workspaceId`; the meetings read resolves the token by the request's workspace. `accountRef` (email) drives "Connected as …".
+
+### Scenarios
+```
+Scenario: Two workspaces hold two different calendars
+  Given workspace A is connected to calendar-a@gmail and workspace B to calendar-b@gmail
+  When  I view meetings in A, then switch to B
+  Then  A shows calendar-a's meetings and B shows calendar-b's
+
+Scenario: Disconnect clears one workspace only
+  Given both A and B are connected
+  When  I disconnect the calendar in A
+  Then  A shows "Connect calendar" and B is unaffected
+
+Scenario: A workspace with no connection
+  Given workspace C has never connected a calendar
+  When  I view meetings in C
+  Then  I see "Connect calendar" (not another workspace's meetings)
+```
+
+### Acceptance criteria
+1. `WorkspaceCalendarConnected`/`Disconnected` events on the `Workspace` aggregate (additive, versioned-safe); a projection exposes per-workspace connection status.
+2. The connect callback writes the event for the **current** workspace and stores the token keyed by `workspaceId`; the read resolves by `workspaceId` (never leaks another workspace's calendar — authorize from the strongly-consistent source, not an async projection — cf. CLAUDE.md authz guardrail).
+3. Disconnect removes the token + records the event for that workspace only.
+4. Connection status + meetings reads are workspace-scoped and reload-tolerant (RYW across workspace switch).
+
+### Observability
+| Silent failure | Make visible |
+|---|---|
+| Cross-workspace token leak | assert workspace ownership at read; log workspace + resolved account |
+| Connect recorded against the wrong workspace | log `workspaceId` at connect; status read confirms |
+
+---
+
+## Slice 34-C — Microsoft as a connectable provider per workspace + per-request resolution
+
+**Status:** Not Started.
+
+**User value:** a workspace can be backed by **Outlook** instead of Google, chosen at connect time — A on Google, B on Outlook, simultaneously.
+
+**How (mechanics):** add in-app connect for Microsoft (auth-code+PKCE, `Calendars.Read offline_access`); replace the startup-bound singleton `ICalendarClient` + global `CALENDAR_PROVIDER` with `ICalendarClientFactory.For(workspaceId)` that resolves google/microsoft from the workspace's `WorkspaceCalendarConnected` provider and the workspace-keyed token. The CHANGE-21 source label now reflects each workspace.
+
+### Scenarios
+```
+Scenario: Connect Outlook in one workspace, Google in another
+  Given workspace A is connected to Google and workspace B connects to Outlook
+  When  I view meetings in each
+  Then  A reads via Graph-less Google and B via Microsoft Graph, labelled accordingly
+
+Scenario: Provider resolved per request, not per process
+  Given A=google and B=microsoft
+  When  requests for A and B are served by the same warm Lambda
+  Then  each resolves its own provider + token (no global state)
+```
+
+### Acceptance criteria
+1. `GET /calendar/connect/microsoft` mirrors the Google connect (auth-code+PKCE, server-side exchange, token keyed by `workspaceId`).
+2. `ICalendarClientFactory.For(workspaceId)` returns a Google- or MS-backed `ICalendarClient` per the workspace's connected provider + token; the global `CALENDAR_PROVIDER` env is removed; `STUB_CALENDAR_JSON` still forces the stub.
+3. Handlers resolve the client via the factory per request; the provider label (CHANGE-21) reflects the workspace's provider.
+4. Recurring next-occurrence (32-B) and create-note flows work for whichever provider the workspace uses.
+
+### Observability
+| Silent failure | Make visible |
+|---|---|
+| Wrong provider resolved for a workspace | log resolved provider + workspace per request |
+| Factory falls back to a default on misconfig | log the resolution decision; never silently pick a provider |
+
+---
+
+## Slice 34-D — Retire the out-of-band SSM token path + mint scripts
+
+**Status:** Not Started.
+
+**User value:** none directly — removes the legacy single-calendar plumbing so the model is purely in-app + per-workspace (operability + security: no long-lived SSM secret, least-privilege).
+
+**How (mechanics):** once every calendar flow is in-app server-side, remove the SSM fallback in the token sources, the `GOOGLE_/MICROSOFT_REFRESH_TOKEN_SSM_PATH` env vars + their conditional SSM grants, and the mint scripts/guides (or archive them). Verify no flow reads SSM.
+
+### Acceptance criteria
+1. Token sources read only `CalendarTokenStore`; the SSM fallback is gone.
+2. CDK drops the SSM `GetParameter` grants + the `*_REFRESH_TOKEN_SSM_PATH` env vars (infra assertion updated).
+3. Mint scripts + the Google/Microsoft token guides are removed or clearly archived as break-glass-only.
+4. Prod verified: no calendar read touches SSM (logs/metrics over a real read on each provider).
+
+### Observability
+| Silent failure | Make visible |
+|---|---|
+| A flow still silently depends on SSM after removal | a real read per provider in prod confirms `calendar_unavailable` does not appear; alarm on it |

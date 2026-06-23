@@ -334,6 +334,16 @@ Slices and acceptance criteria: [docs/phases/phase-33.md](phases/phase-33.md)
 
 ---
 
+## Phase 34 — Per-workspace calendars (in-app connect, multi-account) _(Not Started)_
+
+Let each **workspace** back its meetings list with its own connected calendar account and provider — workspace A on a Google account, workspace B on Outlook — instead of one global calendar. Reached by **strangling** the single-calendar model: first replace the out-of-band SSM refresh token with an **in-app "Connect calendar" OAuth flow** (auth-code+PKCE, token exchanged + stored **server-side per entity** — this graduates **TI-47**), then **key the token + provider choice by workspace** via a new `WorkspaceCalendarConnected` event on the `Workspace` aggregate, then make provider selection **per-request** via an `ICalendarClientFactory.For(workspaceId)` (dropping the global `CALENDAR_PROVIDER` env), then retire the SSM path + mint scripts. Reuses Phase 8's Google OAuth and Phase 32's Microsoft Graph client unchanged — only the token source and provider resolution change. Four sequential slices: **34-A** in-app Google connect → server-side per-user token (keystone, SSM fallback during coexistence); **34-B** key the connection by workspace; **34-C** add Outlook as a connectable provider + per-request resolution; **34-D** retire the SSM path. Deploy-time impact: **neutral** (reuses the auth-tokens table; 34-D removes SSM grants/env). One-time prerequisite: register the calendar redirect URI in Google Cloud Console + Entra.
+
+**Goal:** each workspace independently connects and shows its own calendar (Google or Outlook), with all calendar auth done in-app and stored server-side per workspace.
+
+Slices and acceptance criteria: [docs/phases/phase-34.md](phases/phase-34.md)
+
+---
+
 ## Standing tracks and planning docs
 
 Alongside the numbered phases above, work is tracked in five standing docs. The roadmap summarises them; each doc owns its content.

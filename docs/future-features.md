@@ -66,16 +66,4 @@ Each entry records what it is, why it isn't scheduled yet, and where it was rais
 
 **Raised in:** User question, 2026-06-23 — "how do other apps like Chrome handle updates?" — after Phase 31 shipped the manual-reinstall installer.
 
----
-
-## Per-workspace calendars (different calendar per workspace)
-
-**What:** Let each **workspace** use its own calendar account and provider — e.g. workspace A backed by a Google calendar, workspace B by an Outlook/M365 calendar — instead of one calendar for the whole app. Today the provider is global (`CALENDAR_PROVIDER` env, read once at startup, binding a single `ICalendarClient`) and credentials are a single SSM refresh token per provider, so every workspace sees the same calendar. Workspace context already reaches the calendar handlers (`ICurrentWorkspace`; `CreateNoteFromMeeting` uses it), so the request already knows which workspace it's in — what's missing is per-workspace *config* and *credentials*. Scope to design when broken down:
-- **Per-request provider resolution** — replace the startup-bound singleton `ICalendarClient` with a resolver keyed by workspace (e.g. `ICalendarClientFactory.For(workspaceId)`), returning a Google- or MS-backed client with that workspace's credentials.
-- **Per-workspace credentials** — one refresh token per `(workspace, provider)` rather than one global SSM value. This is **TI-47** with `workspaceId` as the store key.
-- **New domain state** — a workspace records its calendar choice, e.g. a `WorkspaceCalendarConnected(workspaceId, provider, accountRef)` event on the Workspace aggregate (purely additive).
-- **In-app connect flow** — minting a token per workspace via a CLI doesn't scale to N workspaces; this wants the in-app OAuth "Connect calendar" flow (also TI-47).
-
-**Why it isn't scheduled yet:** Depends on **[TI-47](technical-improvements.md)** (in-app OAuth + a per-entity server-side refresh-token store) landing first — building a per-workspace SSM scheme before that would be throwaway work. The correct sequencing is TI-47 → then per-workspace rides on top cheaply (key the store by `workspaceId`, add the `WorkspaceCalendarConnected` event). This also generalizes Phase 32's deliberate "one provider at a time" single-user decision to the multi-context case.
-
-**Raised in:** User question, 2026-06-23 — "what if I want different calendars in different workspaces?" — after Phase 32-A shipped the global Outlook/Google provider switch.
+_(Per-workspace calendars graduated to **[Phase 34](phases/phase-34.md)** on 2026-06-23 — it absorbs TI-47 as its in-app-OAuth foundation.)_
