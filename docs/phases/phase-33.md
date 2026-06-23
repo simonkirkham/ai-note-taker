@@ -7,9 +7,10 @@
 | Slice | Summary | Status | Depends on |
 |-------|---------|--------|------------|
 | 33-A | **Save the call recording.** Tee the live 16 kHz mono PCM into a WAV; on Stop, upload it to a new `notetaker-recordings` S3 bucket (presigned PUT, 7-day lifecycle expiry). Exposes a "Download recording" link on the note. Standalone value (audio safety net) + the audio-retention contract 33-B consumes. | Done (#324, deploy #624) | — |
-| 33-B | **Diarized transcript replaces the streamed one.** New endpoint starts a Transcribe **batch** job (`ShowSpeakerLabels`) on the uploaded audio; job completion (EventBridge → Command Lambda) parses speaker turns → new `TranscriptionDiarized` event → transcript replaced + analysis re-runs. UX: a "Refining transcript…" indicator that resolves to the speaker-labelled transcript. | Not Started | 33-A |
+| 33-B1 | **Diarized transcript replaces the streamed one (async path, no re-analysis).** New `POST /notes/{id}/transcription/diarize` starts a Transcribe **batch** job (`ShowSpeakerLabels`) on the uploaded audio; job completion arrives via **EventBridge → a new dedicated completion Lambda** that fetches the result, parses speaker turns → new `TranscriptionDiarized` event → transcript replaced in `NoteDetail`. UX: a "Refining transcript…" chip that resolves to the speaker-labelled transcript (reload-tolerant poll). | Not Started | 33-A |
+| 33-B2 | **Re-analysis on the diarized transcript.** Extract the analysis flow (`AnalyseNote`) into a callable service that runs without HTTP scope; the completion Lambda invokes it after appending `TranscriptionDiarized` so summary/tags/actions are gap-filled on the cleaner transcript. | Not Started | 33-B1 |
 
-> **Slice order.** 33-A ships the genuinely new infra (audio retention + S3 upload) and is independently shippable/verifiable (the recording appears in S3 and is downloadable). 33-B adds the async batch lifecycle on top. The cross-cutting contract to prove first is the **async job → event → re-analysis** path (33-B); 33-A de-risks it by isolating audio upload.
+> **Slice order.** 33-A (Done) shipped the audio retention + S3 upload. **33-B1 proves the cross-cutting async contract on one real call** — job → EventBridge → completion Lambda → `TranscriptionDiarized` → transcript replaced — with **no re-analysis**, so the hard part (the async job→event→read loop, exactly the shape behind the 27-C revert) is surfaced and shippable alone. **33-B2** then scales it: extract analysis into a non-HTTP callable and re-run it from the completion handler. Never one big-bang slice.
 
 ## Decision record (spike, 2026-06-23)
 
@@ -28,7 +29,7 @@ Recorded so it survives deletion of the throwaway spike (`spike-diarisation/`, g
 ## Event model changes (added at implementation time)
 
 - **New event `RecordingUploaded` (v1)** on the Note aggregate (33-A): `{ AudioKey }`. Latest-wins (re-record overwrites). New deserializer arm; `NoteDetailView` folds it into `RecordingAudioKey`.
-- **New event `TranscriptionDiarized` (v1)** on the Note aggregate (33-B): `{ Text, SpeakerCount, JobId, SourceAudioKey }`. Latest-wins over `TranscriptionCompleted` for the note's transcript; re-triggers Bedrock analysis exactly like `TranscriptionCompleted`. New deserializer arm; `NoteDetailProjection` folds it into `TranscriptText`.
+- **New event `TranscriptionDiarized` (v1)** on the Note aggregate (33-B1): `{ Text, SpeakerCount, JobId, SourceAudioKey }`. Latest-wins over `TranscriptionCompleted` for the note's transcript. New deserializer arm; `NoteDetailProjection` folds `Text` into `TranscriptText` **and sets `TranscriptIsDiarized = true`** (the flag the frontend polls to clear the "Refining…" chip). Re-analysis is **33-B2**, not the fold.
 - No change to `TranscriptionCompleted` (immutable). Streaming still appends it; the diarized event supersedes it when the batch lands.
 
 ## 33-A scenarios & acceptance criteria
@@ -58,6 +59,53 @@ Decisions (2026-06-23): buffer all PCM in memory + single presigned PUT on Stop 
 **Observability:** structured log on save; frontend metric `recording.upload.failed` on the upload error path.
 
 **Acceptance:** recording captured → uploaded to S3 → downloadable from the note; optimistic link; non-owner blocked; objects expire after 7 days.
+
+## 33-B1 scenarios & acceptance criteria
+
+Decisions (2026-06-23): completion handler is a **new dedicated non-HTTP Lambda** (`src/TranscribeCompletion/`, modelled on `src/Projector/`), driven by an EventBridge "Transcribe Job State Change" rule — not the Command Lambda multiplexing HTTP + async. **No re-analysis in B1** (that is B2). Diarization is **auto-triggered after a successful recording upload** (the whole point is a better transcript); the job name encodes the noteId so completion maps back. Backend mirrors the frontend `speakerSegments.ts` assembly to turn items+speaker_labels into `Speaker N:` text.
+
+**Domain** (`tests/Domain.Specs`)
+- Given a note, When `RecordDiarizedTranscription(text, speakerCount, jobId, sourceAudioKey)`, Then a `TranscriptionDiarized` event is appended.
+- Given a note with a `TranscriptionCompleted`, When `TranscriptionDiarized` is applied, Then the aggregate's transcript is the diarized text (latest wins).
+- Given a note, When the diarized text is blank, Then rejected (never blank the note).
+- Projection: `NoteDetailProjection` folds `TranscriptionDiarized` → `TranscriptText = Text`, `TranscriptIsDiarized = true`, `LastModifiedAt` updated.
+
+**API — diarize trigger** (`tests/Api.Integration`, Command Lambda)
+- `POST /notes/{id}/transcription/diarize` with the `recordings/{noteId}/...` key → starts a Transcribe batch job (`StartTranscriptionJob`, `ShowSpeakerLabels`, `MaxSpeakerLabels`, `en-GB`, output to the recordings bucket); returns 202. Ownership authorized **from the event stream**; 404 non-owner; 400 key outside the note prefix.
+- The job is named/tagged so the completion handler recovers the noteId (e.g. `diarize-{noteId}-{guid}`).
+- `GET /notes/{id}` exposes `transcriptIsDiarized` (false until the diarized event lands).
+
+**Completion handler** (new Lambda; `tests/` — unit-level on the parse + append, since it is non-HTTP)
+- On a COMPLETED event: `GetTranscriptionJob` → fetch result JSON from S3 → parse `results.items` + `results.speaker_labels` into `Speaker N:` text → append `TranscriptionDiarized`. Owner/workspace read from the note's `history[0].Metadata` (no HTTP scope).
+- On a FAILED event: structured log + metric `transcribe.batch.failed`; the streamed transcript is left intact (never blanked).
+- Parse error on the result JSON: log + keep the streamed transcript.
+
+**Frontend** (`web`)
+- After a successful recording upload, trigger diarization and show a "Refining transcript with speaker labels…" chip.
+- Poll `GET /notes/{id}` (reload-tolerant, RYW-gated) until `transcriptIsDiarized` is true, then show the speaker-labelled transcript and clear the chip.
+- On job failure/timeout: clear the chip, keep the streamed transcript, surface a non-blocking notice.
+
+**Infra** (`src/Infrastructure`, CDK)
+- New `TranscribeCompletion` Lambda host (own log group, longer timeout) — handler for the EventBridge event; granted `transcribe:GetTranscriptionJob`, S3 read on the recordings bucket, and event-store read+append.
+- EventBridge rule: source `aws.transcribe`, detail-type "Transcribe Job State Change", `TranscriptionJobStatus` ∈ {COMPLETED, FAILED} → target the completion Lambda.
+- Command Lambda granted `transcribe:StartTranscriptionJob`.
+- **Deploy-time:** one-off infra add (new Lambda + EventBridge rule + IAM); recurring delta **neutral**.
+
+**Observability:** metric `transcribe.batch.completed` with duration; log job id + note id on every transition; alarm on `transcribe.batch.failed`.
+
+**Acceptance:** stop a recording → batch job runs → on completion the transcript becomes speaker-labelled and the chip clears, **proven on one real call**; a failed job leaves the streamed transcript intact; non-owner cannot diarize.
+
+> **RYW/async guardrail (mandatory):** the diarized transcript is read from the async projection with **no consistency token the frontend holds** (the event is appended seconds-to-minutes later by the completion Lambda). The frontend read must be a reload-tolerant poll, and the E2E journey must both (a) wrap the post-completion assertion in a reload-to-re-gate helper and (b) warm/drain the projector. This is the 27-C lesson — surface the async-read contract on this slice, not in production.
+
+## 33-B2 scenarios & acceptance criteria
+
+**Goal:** re-run analysis on the diarized transcript so summary/tags/actions reflect the cleaner text.
+
+- **Refactor (no behaviour change):** extract the body of `TranscriptionHandlers.AnalyseNote` into a callable `INoteAnalysisService.AnalyseAsync(noteId, userId, workspaceId)` that takes owner/workspace explicitly (no `ICurrentUser`/`ICurrentWorkspace`/HTTP scope). The existing `POST /analyse` endpoint becomes a thin wrapper over it — its current Api.Integration tests stay green unchanged.
+- The completion Lambda, after appending `TranscriptionDiarized`, calls `INoteAnalysisService.AnalyseAsync` with the owner/workspace from `history[0].Metadata` — gap-filling `AnalysisSummaryRecorded`/tags/actions exactly as a manual analyse would.
+- Scenario: Given a diarized transcript lands, When the completion handler runs, Then analysis is re-run and `AnalysisSummaryRecorded` reflects the diarized text.
+- Scenario: re-analysis failure does not roll back the transcript (the diarized transcript still shows; analysis error follows the existing path).
+- **Acceptance:** after diarization completes, the Final notes reflect the speaker-labelled transcript without a manual "Analyse" click; a Bedrock failure degrades gracefully (transcript updated, analysis retried/surfaced via the existing path).
 
 ## Architecture notes
 
