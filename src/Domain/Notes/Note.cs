@@ -58,6 +58,8 @@ public sealed class Note : IAggregate
             case TranscriptionCompleted e:
                 _transcriptText = e.TranscriptText;
                 break;
+            case RecordingUploaded:
+                break;
             case AnalysisSummaryRecorded e:
                 _summary = e.Summary;
                 break;
@@ -88,6 +90,7 @@ public sealed class Note : IAggregate
             UnfileNote cmd => HandleUnfile(cmd),
             LinkNoteToCalendarEvent cmd => HandleLinkToCalendarEvent(cmd),
             CompleteTranscription cmd => HandleCompleteTranscription(cmd),
+            SaveRecording cmd => HandleSaveRecording(cmd),
             RecordTagSuggestions cmd => HandleRecordTagSuggestions(cmd),
             RecordActionItemSuggestions cmd => HandleRecordActionItemSuggestions(cmd),
             RecordAnalysisSummary cmd => HandleRecordAnalysisSummary(cmd),
@@ -200,6 +203,15 @@ public sealed class Note : IAggregate
         if (!_exists || _deleted)
             throw new InvalidOperationException($"Note {cmd.NoteId} does not exist.");
         return [new TranscriptionCompleted(cmd.NoteId, cmd.TranscriptText, cmd.DurationSeconds)];
+    }
+
+    IReadOnlyList<IDomainEvent> HandleSaveRecording(SaveRecording cmd)
+    {
+        if (!_exists || _deleted)
+            throw new InvalidOperationException($"Note {cmd.NoteId} does not exist.");
+        if (string.IsNullOrWhiteSpace(cmd.AudioKey))
+            throw new ArgumentException("Recording audio key must not be blank.", nameof(cmd));
+        return [new RecordingUploaded(cmd.NoteId, cmd.AudioKey)];
     }
 
     IReadOnlyList<IDomainEvent> HandleRecordTagSuggestions(RecordTagSuggestions cmd)

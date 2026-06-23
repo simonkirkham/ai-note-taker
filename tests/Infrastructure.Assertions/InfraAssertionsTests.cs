@@ -1512,6 +1512,74 @@ public class InfraAssertionsTests
         _template.HasResourceProperties("AWS::IAM::Policy", PolicyWithObjectAction("s3:DeleteObject*"));
     }
 
+    // ── Recordings bucket (Phase 33-A) ───────────────────────────────
+    // Working-artefact bucket: DESTROY + 7-day lifecycle expiry (not durable user
+    // data, unlike the RETAIN images bucket). ExpirationInDays=7 is unique to it
+    // (web bucket = 30, images bucket has no expiration), so it uniquely identifies
+    // the recordings bucket.
+
+    [Fact]
+    public void RecordingsBucket_ExpiresObjectsAfterSevenDays()
+    {
+        _template.HasResourceProperties("AWS::S3::Bucket", Match.ObjectLike(new Dictionary<string, object>
+        {
+            ["PublicAccessBlockConfiguration"] = Match.ObjectLike(new Dictionary<string, object>
+            {
+                ["BlockPublicAcls"] = true,
+                ["BlockPublicPolicy"] = true,
+                ["IgnorePublicAcls"] = true,
+                ["RestrictPublicBuckets"] = true
+            }),
+            ["LifecycleConfiguration"] = Match.ObjectLike(new Dictionary<string, object>
+            {
+                ["Rules"] = Match.ArrayWith(new object[]
+                {
+                    Match.ObjectLike(new Dictionary<string, object>
+                    {
+                        ["Status"] = "Enabled",
+                        ["ExpirationInDays"] = 7
+                    })
+                })
+            })
+        }));
+    }
+
+    [Fact]
+    public void RecordingsBucket_IsDestroyedOnTeardown()
+    {
+        // DESTROY removal policy → DeletionPolicy "Delete". Identified by the 7-day
+        // lifecycle so it cannot match the RETAIN images bucket or the web bucket.
+        _template.HasResource("AWS::S3::Bucket", Match.ObjectLike(new Dictionary<string, object>
+        {
+            ["DeletionPolicy"] = "Delete",
+            ["Properties"] = Match.ObjectLike(new Dictionary<string, object>
+            {
+                ["LifecycleConfiguration"] = Match.ObjectLike(new Dictionary<string, object>
+                {
+                    ["Rules"] = Match.ArrayWith(new object[]
+                    {
+                        Match.ObjectLike(new Dictionary<string, object> { ["ExpirationInDays"] = 7 })
+                    })
+                })
+            })
+        }));
+    }
+
+    [Fact]
+    public void Lambda_HasRecordingsBucketEnvVar()
+    {
+        _template.HasResourceProperties("AWS::Lambda::Function", Match.ObjectLike(new Dictionary<string, object>
+        {
+            ["Environment"] = Match.ObjectLike(new Dictionary<string, object>
+            {
+                ["Variables"] = Match.ObjectLike(new Dictionary<string, object>
+                {
+                    ["RECORDINGS_BUCKET_NAME"] = Match.AnyValue()
+                })
+            })
+        }));
+    }
+
     // ── Phase 27-B: DynamoDB stream + async Projector Lambda ─────────────
 
     [Fact]

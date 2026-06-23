@@ -18,4 +18,5 @@ public record NoteDetailView(
     string? SummaryModelId = null,
     string? SummaryPromptVersion = null,
     string? WorkspaceId = null,
-    IReadOnlyList<InstructionResponse>? InstructionResponses = null);
+    IReadOnlyList<InstructionResponse>? InstructionResponses = null,
+    string? RecordingAudioKey = null);

@@ -114,6 +114,9 @@ public class ApiFactory : WebApplicationFactory<Program>
             services.RemoveAll<Api.Services.INoteImageStore>();
             services.AddSingleton<FakeNoteImageStore>();
             services.AddSingleton<Api.Services.INoteImageStore>(sp => sp.GetRequiredService<FakeNoteImageStore>());
+            services.RemoveAll<Api.Services.INoteRecordingStore>();
+            services.AddSingleton<FakeNoteRecordingStore>();
+            services.AddSingleton<Api.Services.INoteRecordingStore>(sp => sp.GetRequiredService<FakeNoteRecordingStore>());
         });
     }
 

@@ -57,6 +57,10 @@ public sealed class NoteDetailProjection
                 if (_items.TryGetValue(e.NoteId, out var transcribed))
                     _items[e.NoteId] = transcribed with { TranscriptText = e.TranscriptText };
                 break;
+            case RecordingUploaded e:
+                if (_items.TryGetValue(e.NoteId, out var recorded))
+                    _items[e.NoteId] = recorded with { RecordingAudioKey = e.AudioKey, LastModifiedAt = envelope.OccurredAt };
+                break;
             case AnalysisSummaryRecorded e:
                 if (_items.TryGetValue(e.NoteId, out var analysed))
                     _items[e.NoteId] = analysed with
