@@ -1,5 +1,3 @@
-using Amazon.SimpleSystemsManagement;
-using Amazon.SimpleSystemsManagement.Model;
 using Google.Apis.Auth.OAuth2;
 using Google.Apis.Auth.OAuth2.Flows;
 using Google.Apis.Auth.OAuth2.Responses;
@@ -9,24 +7,22 @@ using Microsoft.Extensions.Logging;
 
 namespace Api.Services;
 
+// Phase 34-A: the refresh token now comes from IGoogleCalendarTokenSource (per-user in-app
+// connection, store-first; SSM fallback during coexistence). On invalid_grant we force-reload
+// from the source once and retry — which heals the SSM fallback after a re-mint, and (for a
+// genuinely dead per-user stored token) returns it unchanged so we give up and the UI offers
+// "Reconnect". Scoped, because the token is now per-request/per-user.
 public sealed class GoogleCalendarClient : ICalendarClient
 {
     private readonly ILogger<GoogleCalendarClient> _logger;
+    private readonly IGoogleCalendarTokenSource _tokenSource;
     private readonly string _clientId;
     private readonly string _clientSecret;
 
-    // Cached for the Lambda process lifetime (survives SnapStart warm invocations).
-    // No TTL by design. When Google rejects the token with invalid_grant, ExecuteWithRetryAsync
-    // force-reloads it from SSM once and retries, so updating the SSM parameter heals a running
-    // instance on its next call without a redeploy. See docs/guides/google-calendar-token.md.
-    // NOTE: if the SSM parameter uses a customer-managed KMS key (CMK), the Lambda execution role
-    // must also have kms:Decrypt on that key in addition to ssm:GetParameter.
-    private static string? _refreshToken;
-    private static readonly SemaphoreSlim _initLock = new(1, 1);
-
-    public GoogleCalendarClient(ILogger<GoogleCalendarClient> logger)
+    public GoogleCalendarClient(ILogger<GoogleCalendarClient> logger, IGoogleCalendarTokenSource tokenSource)
     {
         _logger = logger;
+        _tokenSource = tokenSource;
         _clientId = Environment.GetEnvironmentVariable("GOOGLE_CLIENT_ID") ?? "";
         _clientSecret = Environment.GetEnvironmentVariable("GOOGLE_CLIENT_SECRET") ?? "";
     }
@@ -105,13 +101,14 @@ public sealed class GoogleCalendarClient : ICalendarClient
         });
 
     // Runs a Calendar API call, and if Google rejects the refresh token with invalid_grant,
-    // force-reloads the token from SSM once and retries. This lets an operator heal a running
-    // Lambda by updating the SSM parameter (re-mint) without a redeploy. Any other failure, or a
-    // second invalid_grant, reports calendar_unavailable (returns null).
+    // force-reloads the token from the source once and retries. For the SSM fallback this heals a
+    // re-mint without a redeploy; for a per-user in-app token it returns unchanged, so we give up
+    // and report calendar_unavailable (the UI offers "Reconnect"). Any other failure also returns
+    // null.
     private async Task<T?> ExecuteWithRetryAsync<T>(string operation, Func<CalendarService, Task<T?>> action)
         where T : class
     {
-        var refreshToken = await GetRefreshTokenAsync();
+        var refreshToken = await _tokenSource.LoadAsync(forceReload: false);
         if (refreshToken is null)
             return null;
 
@@ -148,10 +145,10 @@ public sealed class GoogleCalendarClient : ICalendarClient
                 if (attempt == 1)
                 {
                     _logger.LogWarning(ex,
-                        "Google rejected the calendar refresh token (invalid_grant: {Description}) during {Operation}. The cached token is expired or revoked; reloading from SSM and retrying once.",
+                        "Google rejected the calendar refresh token (invalid_grant: {Description}) during {Operation}. Reloading from the token source and retrying once.",
                         ex.Error?.ErrorDescription, operation);
 
-                    var reloaded = await GetRefreshTokenAsync(forceReload: true);
+                    var reloaded = await _tokenSource.LoadAsync(forceReload: true);
                     if (reloaded is not null && reloaded != refreshToken)
                     {
                         refreshToken = reloaded;
@@ -159,12 +156,12 @@ public sealed class GoogleCalendarClient : ICalendarClient
                     }
 
                     _logger.LogError(
-                        "Calendar refresh token in SSM is unchanged and still invalid (invalid_grant); reporting calendar_unavailable. Re-mint the token — see docs/guides/google-calendar-token.md.");
+                        "Calendar refresh token unchanged and still invalid (invalid_grant); reporting calendar_unavailable. Reconnect the calendar (or re-mint the SSM token).");
                     return null;
                 }
 
                 _logger.LogError(ex,
-                    "Calendar refresh token still invalid (invalid_grant) after reloading from SSM during {Operation}; reporting calendar_unavailable. Re-mint the token — see docs/guides/google-calendar-token.md.",
+                    "Calendar refresh token still invalid (invalid_grant) after reload during {Operation}; reporting calendar_unavailable.",
                     operation);
                 return null;
             }
@@ -176,47 +173,5 @@ public sealed class GoogleCalendarClient : ICalendarClient
         }
 
         return null;
-    }
-
-    private async Task<string?> GetRefreshTokenAsync(bool forceReload = false)
-    {
-        if (!forceReload && _refreshToken is not null)
-            return _refreshToken;
-
-        await _initLock.WaitAsync();
-        try
-        {
-            if (!forceReload && _refreshToken is not null)
-                return _refreshToken;
-
-            var ssmPath = Environment.GetEnvironmentVariable("GOOGLE_REFRESH_TOKEN_SSM_PATH");
-            if (string.IsNullOrEmpty(ssmPath))
-            {
-                _logger.LogWarning(
-                    "GOOGLE_REFRESH_TOKEN_SSM_PATH is not set; Google Calendar integration is disabled and will report calendar_unavailable");
-                return null;
-            }
-
-            _logger.LogInformation("Loading Google refresh token from SSM path {Path}", ssmPath);
-
-            using var ssm = new AmazonSimpleSystemsManagementClient();
-            var response = await ssm.GetParameterAsync(new GetParameterRequest
-            {
-                Name = ssmPath,
-                WithDecryption = true
-            });
-            _refreshToken = response.Parameter.Value;
-            return _refreshToken;
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Failed to load Google refresh token from SSM path {Path}",
-                Environment.GetEnvironmentVariable("GOOGLE_REFRESH_TOKEN_SSM_PATH"));
-            return null;
-        }
-        finally
-        {
-            _initLock.Release();
-        }
     }
 }
