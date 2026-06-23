@@ -115,6 +115,11 @@ Decision (2026-06-23): **defer to a single analysis.** When the frontend trigger
 - Scenario: re-analysis failure does not roll back the transcript (the diarized transcript still shows; analysis error follows the existing path).
 - **Acceptance:** exactly one analysis per recorded note — diarized on success, streamed on failure; no flicker; manual analyse always immediate; a Bedrock failure degrades gracefully (transcript intact).
 
+**Observability (analysis timing + failures — user-requested 2026-06-23).** Instrument `INoteAnalysisService.AnalyseAsync` so it covers **every** analysis path (manual `POST /analyse`, on-Stop auto-analyse, and the diarization-triggered re-analyse) from one place:
+- `IDomainMetrics.AnalysisCompleted(double milliseconds)` → EMF `AnalysisDurationMs` (Milliseconds unit, dimensionless like `ProjectionRebuildDuration`) so the dashboard tracks p50/p95 analysis latency and a slow-analysis alarm is possible.
+- `IDomainMetrics.AnalysisFailed()` → EMF `AnalysisFailed` count (alarmable), plus a **structured log carrying the noteId** (and `Trigger` = manual|autoStop|diarize, model id, exception type) — never as a metric dimension (alarms reject varying dimensions; ids stay in logs, per the search/rebuild-metric convention). The log line is the queryable "which notes failed analysis" list in CloudWatch Logs Insights.
+- Add the `AnalysisDurationMs` widget + `AnalysisFailed` alarm to the `notetaker-ops` dashboard.
+
 ## Architecture notes
 
 - **Audio source (33-A):** tee the existing 16 kHz mono PCM the streaming path already produces into a WAV buffer; upload on Stop. No second AudioContext, no 48 kHz/stereo (the spike's stereo was only for the offline comparison). Single presigned-PUT upload; **long-recording memory** handled later by multipart/chunked upload (noted, out of MVP scope).
