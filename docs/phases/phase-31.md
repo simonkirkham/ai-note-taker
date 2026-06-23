@@ -77,7 +77,7 @@
 - Given a meeting playing system audio When I record Then the live transcript reflects **system** audio (not just mic).
 - Given mic + system both active When I record Then both streams are transcribed, exactly as in the web app.
 
-**Status:** Done (PR #315, deploy #615). The deterministic handler (`displayMedia.ts` + `main.ts`) is unit-tested headlessly and logs every grant/denial. The no-picker + system-audio + mix **behaviour was manually confirmed on Windows 2026-06-22** (silent-mic test → non-empty transcript); 31-B pins that behaviour so it survives an Electron upgrade. Re-confirm the explicit-handler grant log (`MANUAL-VERIFICATION.md` 31-B #3) after the next desktop rebuild.
+**Status:** Done (PR #315, deploy #615). The deterministic handler (`displayMedia.ts` + `main.ts`) is unit-tested headlessly and logs every grant/denial. **All four 31-B manual checks pass on Windows** — no-picker + system-audio (2026-06-22), and the explicit-handler grant log `[desktop] display-media granted: screen screen:0:0 (matched primary) + loopback audio` + mic/system mix (2026-06-23, build `eeac518`). The grant now provably comes from the pinned handler, not Electron's implicit default.
 
 **Acceptance criteria:**
 - [x] No source-picker dialog and no per-meeting consent on record. _(manual, confirmed 2026-06-22)_

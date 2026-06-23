@@ -29,10 +29,10 @@ Record the build SHA shown on launch (31-A AC: stamp the bundled commit) next to
 
 | # | Given / When / Then | Pass? |
 |---|---------------------|-------|
-| 1 | **Silent-mic system-audio:** Given another app is playing audio (a video/call) and I do **not** speak, When I record ~15 s, Then the transcript reflects the **system** audio (not empty). | ☐ |
-| 2 | **No picker, no consent:** Given I click record, Then capture starts immediately — **no** screen-source picker dialog and **no** per-meeting consent prompt. | ☐ |
-| 3 | **Deterministic-grant log:** Given the app console (terminal running `npm start`), When I record, Then it logs `[desktop] display-media granted: screen <id> + loopback audio` — proving the *explicit* handler fired, not the Electron default. | ☐ |
-| 4 | **Mic+system mix unchanged:** Given I both speak and play system audio, When I record, Then both are transcribed (mix path identical to the web app). | ☐ |
+| 1 | **Silent-mic system-audio:** Given another app is playing audio (a video/call) and I do **not** speak, When I record ~15 s, Then the transcript reflects the **system** audio (not empty). | ✅ 2026-06-22 |
+| 2 | **No picker, no consent:** Given I click record, Then capture starts immediately — **no** screen-source picker dialog and **no** per-meeting consent prompt. | ✅ 2026-06-22 |
+| 3 | **Deterministic-grant log:** Given the app console (terminal running `npm start`), When I record, Then it logs `[desktop] display-media granted: screen <id> (matched primary) + loopback audio` — proving the *explicit* handler fired, not the Electron default. | ✅ 2026-06-23 (`screen screen:0:0 (matched primary)`) |
+| 4 | **Mic+system mix unchanged:** Given I both speak and play system audio, When I record, Then both are transcribed (mix path identical to the web app). | ✅ 2026-06-23 |
 
 ## 31-C — packaged Windows installer
 
