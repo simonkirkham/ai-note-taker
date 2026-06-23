@@ -11,7 +11,7 @@ import { server } from '../test/setup'
 function makeNote(tags: string[]): NoteDetail {
   return {
     noteId: 'n1', title: 'T', content: '', date: null, tags,
-    transcriptText: null, transcriptDraft: null, summary: null,
+    transcriptText: null, transcriptDraft: null, recordingAudioKey: null, summary: null,
     discussionPoints: [], decisions: [], instructionResponses: [], summaryModelId: null,
     summaryPromptVersion: null, recurringSeriesId: null, isRecurring: false,
     linkedMeeting: null,

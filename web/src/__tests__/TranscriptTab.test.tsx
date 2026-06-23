@@ -1,4 +1,6 @@
 import { render, screen } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
+import { vi } from 'vitest'
 import TranscriptTab from '../components/TranscriptTab'
 
 it('renders the transcript text', () => {
@@ -26,4 +28,29 @@ it('shows a listening placeholder when recording with no transcript yet', () => 
   const listening = screen.getByText('Listening…')
   expect(listening).toBeInTheDocument()
   expect(listening).toHaveAttribute('role', 'status') // 19-F1
+})
+
+// 33-A: the "Download recording" affordance.
+it('shows no recording bar when there is no recording', () => {
+  render(<TranscriptTab transcript="words" recordingStatus="none" />)
+  expect(screen.queryByTestId('recording-bar')).toBeNull()
+})
+
+it('shows the download button and fires onDownloadRecording when available', async () => {
+  const onDownload = vi.fn()
+  render(<TranscriptTab transcript="words" recordingStatus="available" onDownloadRecording={onDownload} />)
+  const button = screen.getByTestId('recording-download-button')
+  await userEvent.click(button)
+  expect(onDownload).toHaveBeenCalledOnce()
+})
+
+it('shows an optimistic saving hint while the recording uploads', () => {
+  render(<TranscriptTab transcript="words" recordingStatus="uploading" />)
+  expect(screen.getByTestId('recording-uploading')).toBeInTheDocument()
+  expect(screen.queryByTestId('recording-download-button')).toBeNull()
+})
+
+it('shows an error when the recording upload failed', () => {
+  render(<TranscriptTab transcript="words" recordingStatus="failed" />)
+  expect(screen.getByTestId('recording-failed')).toHaveAttribute('role', 'alert')
 })

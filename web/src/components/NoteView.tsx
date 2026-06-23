@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { type CalendarMeeting } from "../api/meetings";
 import type { NoteDetail } from "../api/notes";
 import { keys } from "../api/queryKeys";
+import { presignRecordingDownload } from "../api/recordings";
 import { completeTranscription, discardTranscriptionDraft } from "../api/transcription";
 import { useActions } from "../hooks/useActions";
 import { useCreateNoteFromNextOccurrence, useLinkNoteToCalendar } from "../hooks/useMeetingMutations";
@@ -22,7 +23,7 @@ import RecordControl from "./RecordControl";
 import ShortcutsPanel from "./ShortcutsPanel";
 import TagsSection from "./TagsSection";
 import { useToast } from "./toastContext";
-import TranscriptTab from "./TranscriptTab";
+import TranscriptTab, { type RecordingDownloadStatus } from "./TranscriptTab";
 
 type NoteTab = "quick" | "transcript" | "final";
 
@@ -142,6 +143,28 @@ export default function NoteView({
       ? transcription.transcript
       : null;
   const displayedTranscript = liveTranscript ?? transcriptText;
+
+  // 33-A: the "Download recording" affordance. Optimistic — the upload fires on Stop, so
+  // 'uploading' shows the link immediately (as "Saving recording…") and resolves to
+  // 'available' once saved, reconciling to hidden on failure. A reload with a recording
+  // already saved (detail.recordingAudioKey) shows the link straight away.
+  const recordingStatus: RecordingDownloadStatus =
+    transcription.recordingUpload === "uploading"
+      ? "uploading"
+      : transcription.recordingUpload === "failed"
+        ? "failed"
+        : transcription.recordingUpload === "uploaded" || detail?.recordingAudioKey
+          ? "available"
+          : "none";
+
+  const handleDownloadRecording = async () => {
+    try {
+      const url = await presignRecordingDownload(noteId);
+      window.open(url, "_blank", "noopener");
+    } catch {
+      showError("Could not download the recording. Please try again.");
+    }
+  };
 
   // An in-progress or just-finished recording counts as content: leaving the
   // note must "Save" (keep it) and never show "Cancel"/delete, so the captured
@@ -637,7 +660,12 @@ export default function NoteView({
             hidden={activeTab !== "transcript"}
             className={tabStyles.panel}
           >
-            <TranscriptTab transcript={displayedTranscript} isRecording={isRecording} />
+            <TranscriptTab
+              transcript={displayedTranscript}
+              isRecording={isRecording}
+              recordingStatus={recordingStatus}
+              onDownloadRecording={() => void handleDownloadRecording()}
+            />
           </div>
 
           <div
