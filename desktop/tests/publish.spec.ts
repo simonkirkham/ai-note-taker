@@ -55,3 +55,12 @@ test('npm run update skips the download when already on the latest published bui
   expect(script).toContain('build-sha.txt')
   expect(script).toMatch(/up to date|already.*latest|already.*current/i)
 })
+
+test('update.ps1 is pure ASCII so Windows PowerShell 5.1 parses it correctly', () => {
+  // Windows PowerShell 5.1 reads a no-BOM .ps1 as the ANSI codepage (Windows-1252), not UTF-8.
+  // A UTF-8 em-dash's third byte (0x94) then decodes to a `"` that closes a string early and
+  // breaks parsing (the "term 'silent' is not recognized" failure). Keep the script ASCII-only.
+  const script = read('desktop/scripts/update.ps1')
+  const nonAscii = [...script].filter((ch) => ch.charCodeAt(0) > 127)
+  expect(nonAscii).toEqual([])
+})
