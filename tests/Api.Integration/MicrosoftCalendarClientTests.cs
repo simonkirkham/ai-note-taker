@@ -189,14 +189,67 @@ public sealed class MicrosoftCalendarClientTests
     }
 
     [Fact]
-    public async Task GetNextOccurrenceAsync_ReturnsNullUntil32B()
+    public async Task GetNextOccurrenceAsync_ReturnsFirstFutureNonCancelledInstance()
     {
-        var handler = new StubHandler((req, body) => Ok(TokenOk("a")));
+        // Ordered by start; the first instance is cancelled and must be skipped.
+        var value = """
+        [
+          { "id": "occ-cancelled", "subject": "Standup", "isCancelled": true, "seriesMasterId": "series-9",
+            "start": { "dateTime": "2026-06-24T09:00:00.0000000", "timeZone": "UTC" },
+            "end":   { "dateTime": "2026-06-24T09:15:00.0000000", "timeZone": "UTC" } },
+          { "id": "occ-1", "subject": "Standup", "isCancelled": false, "seriesMasterId": "series-9",
+            "start": { "dateTime": "2026-06-25T09:00:00.0000000", "timeZone": "UTC" },
+            "end":   { "dateTime": "2026-06-25T09:15:00.0000000", "timeZone": "UTC" } }
+        ]
+        """;
+        var handler = new StubHandler((req, body) =>
+            req.RequestUri!.AbsolutePath.EndsWith(TokenPath) ? Ok(TokenOk("a")) : Ok(CalendarViewBody(value)));
         var client = Build(handler, new FakeRefreshTokenSource("rt-1"));
 
-        var result = await client.GetNextOccurrenceAsync("series-9", DateTimeOffset.UtcNow);
+        var result = await client.GetNextOccurrenceAsync("series-9", new DateTimeOffset(2026, 6, 23, 0, 0, 0, TimeSpan.Zero));
 
-        Assert.Null(result);
+        Assert.NotNull(result);
+        Assert.Equal("occ-1", result!.CalendarEventId);
+        Assert.Equal("Standup", result.Title);
+        Assert.Equal(new DateTimeOffset(2026, 6, 25, 9, 0, 0, TimeSpan.Zero), result.StartTime);
+        Assert.Equal(new DateTimeOffset(2026, 6, 25, 9, 15, 0, TimeSpan.Zero), result.EndTime);
+        Assert.True(result.IsRecurring);
+        Assert.Equal("series-9", result.RecurringSeriesId);
+    }
+
+    [Fact]
+    public async Task GetNextOccurrenceAsync_QueriesSeriesInstancesWindowWithPreferUtcAndBearer()
+    {
+        HttpRequestMessage? graphReq = null;
+        var handler = new StubHandler((req, body) =>
+        {
+            if (req.RequestUri!.AbsolutePath.EndsWith(TokenPath)) return Ok(TokenOk("access-NN"));
+            graphReq = req;
+            return Ok(CalendarViewBody("[]"));
+        });
+        var client = Build(handler, new FakeRefreshTokenSource("rt-1"));
+
+        await client.GetNextOccurrenceAsync("series-9", new DateTimeOffset(2026, 6, 23, 0, 0, 0, TimeSpan.Zero));
+
+        Assert.NotNull(graphReq);
+        Assert.Contains("/me/events/series-9/instances", graphReq!.RequestUri!.AbsoluteUri);
+        Assert.Contains("startDateTime=2026-06-23T00:00:00", graphReq.RequestUri!.AbsoluteUri);
+        Assert.Contains("endDateTime=", graphReq.RequestUri!.AbsoluteUri);
+        Assert.Equal("Bearer", graphReq.Headers.Authorization!.Scheme);
+        Assert.Equal("access-NN", graphReq.Headers.Authorization.Parameter);
+        Assert.Contains(graphReq.Headers.GetValues("Prefer"), v => v.Contains("outlook.timezone=\"UTC\""));
+    }
+
+    [Fact]
+    public async Task GetNextOccurrenceAsync_NoFutureInstance_ReturnsNull()
+    {
+        var handler = new StubHandler((req, body) =>
+            req.RequestUri!.AbsolutePath.EndsWith(TokenPath) ? Ok(TokenOk("a")) : Ok(CalendarViewBody("[]")));
+        var client = Build(handler, new FakeRefreshTokenSource("rt-1"));
+
+        var result = await client.GetNextOccurrenceAsync("series-9", new DateTimeOffset(2026, 6, 23, 0, 0, 0, TimeSpan.Zero));
+
+        Assert.Null(result); // no occurrences in the lookahead → no note offered, no error
     }
 
     private static HttpResponseMessage Ok(string json) =>
