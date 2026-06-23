@@ -19,6 +19,11 @@ public sealed class MicrosoftCalendarClient : ICalendarClient
     private const string GraphScope = "https://graph.microsoft.com/Calendars.Read offline_access";
     private const string PreferUtc = "outlook.timezone=\"UTC\"";
 
+    // Bounded lookahead for the next occurrence of a recurring series. The Graph instances
+    // endpoint requires an explicit end window; ~400 days covers weekly/monthly/annual series
+    // while keeping the result set tiny.
+    private const int NextOccurrenceLookaheadDays = 400;
+
     private readonly ILogger<MicrosoftCalendarClient> _logger;
     private readonly HttpClient _http;
     private readonly IMicrosoftRefreshTokenSource _tokenSource;
@@ -106,15 +111,66 @@ public sealed class MicrosoftCalendarClient : ICalendarClient
         }
     }
 
-    // Not implemented until Phase 32-B (recurring next-occurrence via Graph series
-    // instances). Returns null (logged) so the existing endpoint degrades to "no next
-    // occurrence" rather than 500-ing.
-    public Task<CalendarEvent?> GetNextOccurrenceAsync(string recurringSeriesId, DateTimeOffset after)
+    // Returns the next future instance of a recurring series via the Graph instances endpoint
+    // (/me/events/{seriesMasterId}/instances), which expands the series over a bounded window.
+    // Skips cancelled instances and returns null when none fall in the lookahead — the handler
+    // maps null to no_future_occurrences (404), never a 500.
+    public async Task<CalendarEvent?> GetNextOccurrenceAsync(string recurringSeriesId, DateTimeOffset after)
     {
+        var windowStart = after.ToUniversalTime();
+        var windowEnd = windowStart.AddDays(NextOccurrenceLookaheadDays);
+
         _logger.LogInformation(
-            "GetNextOccurrence for Microsoft series {SeriesId} is not implemented until Phase 32-B; returning null",
-            recurringSeriesId);
-        return Task.FromResult<CalendarEvent?>(null);
+            "Fetching next Microsoft occurrence for series {SeriesId}: window {Start:o}–{End:o}",
+            recurringSeriesId, windowStart, windowEnd);
+
+        var accessToken = await AcquireAccessTokenAsync($"GetNextOccurrence series {recurringSeriesId}");
+        if (accessToken is null)
+            return null;
+
+        var url = $"https://graph.microsoft.com/v1.0/me/events/{Uri.EscapeDataString(recurringSeriesId)}/instances"
+            + $"?startDateTime={ToGraphUtc(windowStart)}&endDateTime={ToGraphUtc(windowEnd)}"
+            + "&$select=id,subject,start,end,isAllDay,isCancelled,seriesMasterId"
+            // $orderby ascending + take the first non-cancelled instance = the next occurrence.
+            // $top=10 assumes fewer than 10 leading cancellations at the window start (implausible
+            // for a next-occurrence query); we do not page beyond it.
+            + "&$orderby=start/dateTime&$top=10";
+
+        using var request = new HttpRequestMessage(HttpMethod.Get, url);
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
+        request.Headers.TryAddWithoutValidation("Prefer", PreferUtc);
+
+        HttpResponseMessage response;
+        try
+        {
+            response = await _http.SendAsync(request);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Microsoft Graph series-instances request failed (transport)");
+            return null;
+        }
+
+        using (response)
+        {
+            var body = await response.Content.ReadAsStringAsync();
+            if (!response.IsSuccessStatusCode)
+            {
+                _logger.LogError("Microsoft Graph series-instances returned {Status}: {Body}",
+                    (int)response.StatusCode, body);
+                return null;
+            }
+
+            try
+            {
+                return ParseFirstInstance(body, recurringSeriesId);
+            }
+            catch (JsonException ex)
+            {
+                _logger.LogError(ex, "Failed to parse Microsoft Graph series-instances response body");
+                return null;
+            }
+        }
     }
 
     private IReadOnlyList<CalendarEvent> ParseCalendarView(string body)
@@ -126,39 +182,69 @@ public sealed class MicrosoftCalendarClient : ICalendarClient
 
         foreach (var item in value.EnumerateArray())
         {
-            if (item.TryGetProperty("isCancelled", out var cancelled) &&
-                cancelled.ValueKind == JsonValueKind.True)
-                continue;
-
-            var id = item.TryGetProperty("id", out var idEl) ? idEl.GetString() : null;
-            if (string.IsNullOrEmpty(id))
-                continue;
-
-            var title = item.TryGetProperty("subject", out var subj) && subj.ValueKind == JsonValueKind.String
-                ? subj.GetString()!
-                : "(No title)";
-
-            var start = ParseGraphDateTime(item, "start");
-            var end = ParseGraphDateTime(item, "end");
-            if (start is null || end is null)
-                continue;
-
-            var seriesId = item.TryGetProperty("seriesMasterId", out var series) &&
-                           series.ValueKind == JsonValueKind.String
-                ? series.GetString()
-                : null;
-            var isRecurring = !string.IsNullOrEmpty(seriesId);
-
-            events.Add(new CalendarEvent(
-                CalendarEventId: id,
-                Title: title,
-                StartTime: start.Value,
-                EndTime: end.Value,
-                IsRecurring: isRecurring,
-                RecurringSeriesId: isRecurring ? seriesId : null));
+            var mapped = TryMapEvent(item);
+            if (mapped is not null)
+                events.Add(mapped);
         }
 
         return events;
+    }
+
+    // First non-cancelled instance of a series (the list is $orderby start/dateTime). The series
+    // id is forced onto the result so the created note links back to the series, not just the
+    // instance.
+    private CalendarEvent? ParseFirstInstance(string body, string recurringSeriesId)
+    {
+        using var doc = JsonDocument.Parse(body);
+        if (!doc.RootElement.TryGetProperty("value", out var value) || value.ValueKind != JsonValueKind.Array)
+            return null;
+
+        foreach (var item in value.EnumerateArray())
+        {
+            var mapped = TryMapEvent(item, recurringSeriesId);
+            if (mapped is not null)
+                return mapped;
+        }
+
+        return null;
+    }
+
+    // Maps one Graph event/instance to a CalendarEvent, or null if cancelled or missing
+    // id/start/end. recurringSeriesIdOverride forces the series link to the known master id
+    // (used for instances) so the result is recurring even if an instance omits seriesMasterId;
+    // when null the event's own seriesMasterId is used (day view).
+    private static CalendarEvent? TryMapEvent(JsonElement item, string? recurringSeriesIdOverride = null)
+    {
+        if (item.TryGetProperty("isCancelled", out var cancelled) &&
+            cancelled.ValueKind == JsonValueKind.True)
+            return null;
+
+        var id = item.TryGetProperty("id", out var idEl) ? idEl.GetString() : null;
+        if (string.IsNullOrEmpty(id))
+            return null;
+
+        var title = item.TryGetProperty("subject", out var subj) && subj.ValueKind == JsonValueKind.String
+            ? subj.GetString()!
+            : "(No title)";
+
+        var start = ParseGraphDateTime(item, "start");
+        var end = ParseGraphDateTime(item, "end");
+        if (start is null || end is null)
+            return null;
+
+        var seriesId = recurringSeriesIdOverride
+            ?? (item.TryGetProperty("seriesMasterId", out var series) && series.ValueKind == JsonValueKind.String
+                ? series.GetString()
+                : null);
+        var isRecurring = !string.IsNullOrEmpty(seriesId);
+
+        return new CalendarEvent(
+            CalendarEventId: id,
+            Title: title,
+            StartTime: start.Value,
+            EndTime: end.Value,
+            IsRecurring: isRecurring,
+            RecurringSeriesId: isRecurring ? seriesId : null);
     }
 
     // Graph returns { dateTime: "2026-06-22T08:30:00.0000000", timeZone: "UTC" }. We sent
