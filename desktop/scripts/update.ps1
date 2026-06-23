@@ -15,6 +15,7 @@ $exe = Get-ChildItem $dir -Filter '*.exe' | Select-Object -First 1
 if (-not $exe) { throw 'No installer (.exe) found in the desktop-latest release.' }
 
 Write-Host 'Closing the running app (if any)...'
+# Process name tracks electron-builder.json productName; shortcut below tracks nsis.shortcutName.
 Get-Process 'AI Note Taker' -ErrorAction SilentlyContinue | Stop-Process -Force
 
 Write-Host "Installing $($exe.Name) (silent)..."

@@ -30,8 +30,12 @@ jobs:
       - name: Did the frontend or desktop change?
         id: changed
         shell: bash
+        env:
+          EVENT: ${{ github.event_name }}
         run: |
-          if git diff --name-only HEAD~1 HEAD | grep -qE '^(web/|desktop/)'; then
+          # Manual runs always build; auto runs build only when the frontend/desktop changed
+          # (a backend/docs-only deploy leaves the installer unchanged — don't burn a runner).
+          if [ "$EVENT" = "workflow_dispatch" ] || git diff --name-only HEAD~1 HEAD | grep -qE '^(web/|desktop/)'; then
             echo "build=true" >> "$GITHUB_OUTPUT"
           else
             echo "No web/ or desktop/ change — the installer is unchanged; skipping build."
