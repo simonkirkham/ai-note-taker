@@ -6,7 +6,7 @@
 
 | Slice | Summary | Status | Depends on |
 |-------|---------|--------|------------|
-| 33-A | **Save the call recording.** Tee the live 16 kHz mono PCM into a WAV; on Stop, upload it to a new `notetaker-recordings` S3 bucket (presigned PUT, 7-day lifecycle expiry). Exposes a "Download recording" link on the note. Standalone value (audio safety net) + the audio-retention contract 33-B consumes. | Not Started | — |
+| 33-A | **Save the call recording.** Tee the live 16 kHz mono PCM into a WAV; on Stop, upload it to a new `notetaker-recordings` S3 bucket (presigned PUT, 7-day lifecycle expiry). Exposes a "Download recording" link on the note. Standalone value (audio safety net) + the audio-retention contract 33-B consumes. | Done (#324, deploy #624) | — |
 | 33-B | **Diarized transcript replaces the streamed one.** New endpoint starts a Transcribe **batch** job (`ShowSpeakerLabels`) on the uploaded audio; job completion (EventBridge → Command Lambda) parses speaker turns → new `TranscriptionDiarized` event → transcript replaced + analysis re-runs. UX: a "Refining transcript…" indicator that resolves to the speaker-labelled transcript. | Not Started | 33-A |
 
 > **Slice order.** 33-A ships the genuinely new infra (audio retention + S3 upload) and is independently shippable/verifiable (the recording appears in S3 and is downloadable). 33-B adds the async batch lifecycle on top. The cross-cutting contract to prove first is the **async job → event → re-analysis** path (33-B); 33-A de-risks it by isolating audio upload.

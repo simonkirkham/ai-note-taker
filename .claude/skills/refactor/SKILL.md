@@ -101,6 +101,8 @@ These are the findings Hawk has raised in *round one* most often across the slic
 - [ ] Every write-then-read on the same stream/projection sets `ConsistentRead = true` (except GSI queries).
 - [ ] Every new `.cs` file has a `namespace` declaration.
 - [ ] Every command handler catches both the domain `*NotFoundException` and `InvalidOperationException` where a race is possible.
+- [ ] Every **new published event** has a row in `docs/event-model.md` (command + trigger) **and** a wire shape in `docs/event-schemas.md` — land them with the slice, not as a Scribe afterthought (33-A Hawk should-fix).
+- [ ] Every **new CDK IAM grant** has an infra assertion that matches the scoped **Resource** (e.g. `recordings/*`), not just the action — an action-only assertion (`PolicyWithObjectAction`) passes even if the grant is bucket-wide or on the wrong bucket (33-A Hawk should-fix; see `PolicyWithObjectActionOnPrefix`).
 
 **Frontend (React/TS):**
 - [ ] Every async prop call inside an event handler is awaited.

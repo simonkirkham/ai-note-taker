@@ -324,7 +324,7 @@ Slices and acceptance criteria: [docs/phases/phase-32.md](phases/phase-32.md)
 
 ---
 
-## Phase 33 — Higher-quality speaker-labelled transcripts via Amazon Transcribe batch _(Not Started)_
+## Phase 33 — Higher-quality speaker-labelled transcripts via Amazon Transcribe batch _(In Progress — 33-A done)_
 
 After a recording stops, produce a cleaner, **speaker-diarized** transcript than live streaming gives by running an **Amazon Transcribe batch** job (`ShowSpeakerLabels`) over the captured audio, replacing the streamed transcript and re-analysing. Live streaming stays for the in-call experience; batch is a **post-call refinement** that coexists with it (no big-bang cutover). A 2026-06-23 spike compared engines on a real recording and **chose Transcribe batch** (cleaner separation *and* tighter text than WhisperX-`small`+pyannote, no local ML stack); it **rejected** channel-ID and offline echo cancellation for local/remote separation — on a speakers setup the mic re-captures the system audio, and a delay-aligned FDAF/NLMS AEC failed to remove the bleed (~1 dB ERLE, transcript unchanged). Two slices: **33-A** — *save the call recording* (tee the live 16 kHz mono PCM to a WAV, upload to a 7-day-expiry `notetaker-recordings` S3 bucket, downloadable; the audio-retention enabler with standalone value); **33-B** — *diarized transcript replaces the streamed one* (batch job → EventBridge completion → new `TranscriptionDiarized` event → transcript replaced + re-analysis, with a "Refining…" indicator). Deploy-time impact: **neutral** (one-off infra add: S3 bucket + EventBridge rule + IAM; no traffic-shifting). Runtime cost ≈ $0.024/min of audio per recording.
 
