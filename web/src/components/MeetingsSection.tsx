@@ -83,6 +83,7 @@ export function MeetingsSection({ onOpenNote }: { onOpenNote: (noteId: string, t
   const displayQuery = useMeetings(selectedDate);
 
   const displayState: State = toState(displayQuery);
+  const sourceLabel = displayState.status === "loaded" ? providerLabel(displayState.provider) : null;
 
   // Reminders are anchored to the real today — fed only by the today query.
   const reminderMeetings =
@@ -193,9 +194,13 @@ export function MeetingsSection({ onOpenNote }: { onOpenNote: (noteId: string, t
         <div className={styles.meetingsHeader}>
           <div className={styles.meetingsHeadingGroup}>
             <h2 data-testid="meetings-heading" className={styles.meetingsHeading}>{headingFor(selectedDate, today)}</h2>
-            {displayState.status === "loaded" && providerLabel(displayState.provider) && (
-              <span data-testid="calendar-source-label" className={styles.calendarSource}>
-                <CalendarIcon size={12} /> {providerLabel(displayState.provider)}
+            {sourceLabel && (
+              <span
+                data-testid="calendar-source-label"
+                className={styles.calendarSource}
+                aria-label={`Calendar source: ${sourceLabel}`}
+              >
+                <CalendarIcon size={12} /> {sourceLabel}
               </span>
             )}
           </div>
