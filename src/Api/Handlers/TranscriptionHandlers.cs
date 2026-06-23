@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Text.RegularExpressions;
 using Amazon.BedrockRuntime;
 using Amazon.SecurityToken;
@@ -8,6 +9,7 @@ using Api.Contracts;
 using Api.Services;
 using EventStore.Projections;
 using Api.Auth;
+using Api.Observability;
 using Microsoft.Extensions.Logging;
 
 namespace Api.Handlers;
@@ -95,6 +97,7 @@ public static class TranscriptionHandlers
         INoteActionsStore noteActionsStore,
         IBedrockAnalysisService bedrockAnalysis,
         ICurrentUser currentUser,
+        IDomainMetrics metrics,
         ILogger<IBedrockAnalysisService> logger,
         CancellationToken ct)
     {
@@ -107,14 +110,22 @@ public static class TranscriptionHandlers
             return Results.UnprocessableEntity();
 
         NoteAnalysisResult result;
+        // Time just the Bedrock inference — the variable, dominant cost of "how long analysis
+        // takes". On failure, emit the alarmable AnalysisFailed metric and log the note id so
+        // "which notes failed analysis" is a CloudWatch Logs Insights query (id in the log, not
+        // a metric dimension — alarms reject varying dimensions).
+        var analysisStopwatch = Stopwatch.StartNew();
         try
         {
             result = await bedrockAnalysis.AnalyseAsync(
                 new NoteAnalysisRequest(content, detail.TranscriptText, currentUser.Name, instructions), ct);
+            metrics.AnalysisCompleted(analysisStopwatch.Elapsed.TotalMilliseconds);
         }
         catch (Exception ex) when (ex is AmazonBedrockRuntimeException or InvalidOperationException)
         {
-            logger.LogError(ex, "Bedrock analysis failed: {ExceptionType} {Message}", ex.GetType().Name, ex.Message);
+            metrics.AnalysisFailed();
+            logger.LogError(ex, "Analysis failed for note {NoteId} after {ElapsedMs}ms: {ExceptionType} {Message}",
+                noteId, analysisStopwatch.Elapsed.TotalMilliseconds, ex.GetType().Name, ex.Message);
             return Results.Problem(statusCode: 503, title: "Analysis service unavailable", detail: ex.Message);
         }
 

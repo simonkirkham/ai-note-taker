@@ -43,6 +43,16 @@ public sealed class PowertoolsDomainMetrics : IDomainMetrics
         Metrics.PushSingleMetric("ProjectionRebuildFault", 1, MetricUnit.Count,
             nameSpace: MetricNamespace, service: ServiceName);
 
+    // Dimensionless (Service only), like the rebuild metrics — a single concrete metric
+    // an alarm can target. The failing note's id lives in the structured log, not a dimension.
+    public void AnalysisCompleted(double milliseconds) =>
+        Metrics.PushSingleMetric("AnalysisDurationMs", milliseconds, MetricUnit.Milliseconds,
+            nameSpace: MetricNamespace, service: ServiceName);
+
+    public void AnalysisFailed() =>
+        Metrics.PushSingleMetric("AnalysisFailed", 1, MetricUnit.Count,
+            nameSpace: MetricNamespace, service: ServiceName);
+
     // PushSingleMetric emits a self-contained EMF blob with its own dimensions, so no
     // global namespace/flush setup (or the [Metrics] handler decorator) is needed —
     // which suits an ASP.NET-Core-on-Lambda host that has no Lambda handler method.
