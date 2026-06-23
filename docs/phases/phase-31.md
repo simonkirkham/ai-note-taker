@@ -9,8 +9,9 @@
 | 31-A | Electron shell loads the **bundled** frontend and completes Google sign-in end-to-end against the prod API (de-risks OAuth-in-Electron; recording still uses the normal picker) | Done | — |
 | 31-B | Main-process `setDisplayMediaRequestHandler` auto-grants screen + loopback audio — record a meeting with **no picker, no per-meeting consent** (the core value) | Done | 31-A |
 | 31-C | Package as an **unsigned Windows installer** via `electron-builder`; a clean install launches, signs in, and records with one-time OS grant | Done | 31-B |
+| 31-D | CI builds + **publishes the installer to GitHub Releases** after a successful prod deploy; `npm run update` pulls + installs it (no local rebuild) | Done | 31-C |
 
-**Ordering:** strictly 31-A → 31-B → 31-C. 31-A isolates the one genuine unknown (Google OAuth redirect/cookie behaviour inside an Electron `BrowserWindow`) before any audio work; it ships a working desktop client that behaves exactly like the web app (recording via the standard picker — no regression). 31-B removes the picker. 31-C makes it installable.
+**Ordering:** strictly 31-A → 31-B → 31-C → 31-D. 31-A isolates the one genuine unknown (Google OAuth redirect/cookie behaviour inside an Electron `BrowserWindow`) before any audio work; it ships a working desktop client that behaves exactly like the web app (recording via the standard picker — no regression). 31-B removes the picker. 31-C makes it installable. 31-D makes updating it a one-command pull (CI publishes the artifact). 31-D was added 2026-06-23 after 31-C shipped, when "make updating as easy as possible" became the goal.
 
 ## Decisions (locked 2026-06-22)
 
@@ -107,6 +108,26 @@
 - [ ] Clean-install launch renders the bundled frontend and signs in. _(manual — `MANUAL-VERIFICATION.md` 31-C)_
 - [ ] Recording works post-install with only the one-time OS grant. _(manual — `MANUAL-VERIFICATION.md` 31-C)_
 - [x] Build steps documented in `desktop/README.md`; not wired into the prod `deploy.yml`.
+
+---
+
+## 31-D — CI-published installer + one-command update
+
+**Capability:** Update the installed app by **pulling** a CI-built installer — no local rebuild, no `node_modules`, no Wine. Keeps the desktop's bundled frontend in lockstep with the latest *successfully-deployed* prod version.
+
+**Design:**
+- New workflow `.github/workflows/publish-desktop.yml` on a **`windows-latest`** runner, triggered by **`Deploy` success** (`workflow_run`) + `workflow_dispatch`. Checks out the **deployed commit** (`workflow_run.head_sha`), gated to **frontend/desktop changes** (`git diff HEAD~1 HEAD` for `web/`|`desktop/`; manual dispatch always builds), runs `npm run package`, and uploads the `.exe` to a rolling **`desktop-latest`** GitHub Release tagged to that commit. `permissions: contents: write`; unsigned (`CSC_IDENTITY_AUTO_DISCOVERY: false`).
+- **Deploy-time impact: neutral** — separate workflow, runs *after* Deploy, never gates or slows it. Only burns a Windows runner when the frontend/desktop actually changed.
+- `npm run update` (`desktop/scripts/update.ps1`): `gh release download desktop-latest` → close app → silent `/S` install → relaunch. `electron-builder.json` `artifactName` set to a no-space name for clean globbing.
+- **No secrets in the artifact** — the only baked value is the public `VITE_GOOGLE_CLIENT_ID` (already in the live site's JS); client secret / AWS creds / user tokens are server-side or runtime-fetched.
+
+**Status:** Done (PR #317, deploy #617). **Self-verified in CI** — the merge triggered Deploy #617 → Publish Desktop Installer run #1, which built the installer on Windows and published `desktop-latest` with `AINoteTaker-Setup-0.0.0.exe` (82 MB, commit `b2bfd6f`). Wiring asserted in `tests/publish.spec.ts`.
+
+**Acceptance criteria:**
+- [x] CI builds + publishes the installer to a GitHub Release after a successful prod deploy. _(verified — `desktop-latest` published by run #1, 2026-06-23)_
+- [x] Only builds on frontend/desktop changes (backend/docs deploys skip). _(changed-paths gate)_
+- [ ] `npm run update` pulls + installs the published build on Windows. _(manual — `MANUAL-VERIFICATION.md` 31-D)_
+- [x] Deploy-time neutral; no secrets in the published artifact.
 
 ---
 
