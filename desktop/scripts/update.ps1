@@ -11,21 +11,30 @@ New-Item -ItemType Directory -Force -Path $dir | Out-Null
 # Records the commit SHA we last installed, so we can skip a re-download when unchanged.
 $stateFile = Join-Path $env:LOCALAPPDATA 'ai-note-taker-update\installed-sha.txt'
 
-# 1. Pull just the tiny SHA marker and compare to what we last installed.
+# 1. Pull just the tiny SHA marker and compare to what we last installed. A release without
+# the marker (older release, or a download hiccup) → treat as unknown and fall back to a
+# normal install rather than erroring out.
 $shaPath = Join-Path $dir 'build-sha.txt'
 Remove-Item $shaPath -ErrorAction SilentlyContinue
-gh release download desktop-latest --repo $repo --pattern 'build-sha.txt' --dir $dir --clobber
-$publishedSha = (Get-Content $shaPath -Raw).Trim()
+$publishedSha = ''
+try {
+  gh release download desktop-latest --repo $repo --pattern 'build-sha.txt' --dir $dir --clobber 2>$null
+  if (Test-Path $shaPath) { $publishedSha = (Get-Content $shaPath -Raw).Trim() }
+} catch {
+  $publishedSha = ''
+}
 $installedSha = if (Test-Path $stateFile) { (Get-Content $stateFile -Raw).Trim() } else { '' }
 
-if ($publishedSha -eq $installedSha) {
+# Skip only when we have a KNOWN published SHA that matches what we installed.
+if ($publishedSha -and $publishedSha -eq $installedSha) {
   Write-Host "Already up to date (build $($publishedSha.Substring(0, [Math]::Min(7, $publishedSha.Length)))). Nothing to download."
   return
 }
 
-# 2. Newer build — pull the installer and install it.
+# 2. Newer (or unknown) build — pull the installer and install it.
 Get-ChildItem $dir -Filter '*.exe' -ErrorAction SilentlyContinue | Remove-Item -Force
-Write-Host "New build $($publishedSha.Substring(0, [Math]::Min(7, $publishedSha.Length))) available — downloading installer..."
+$label = if ($publishedSha) { $publishedSha.Substring(0, [Math]::Min(7, $publishedSha.Length)) } else { 'latest' }
+Write-Host "Build $label available — downloading installer..."
 gh release download desktop-latest --repo $repo --pattern '*.exe' --dir $dir --clobber
 
 $exe = Get-ChildItem $dir -Filter '*.exe' | Select-Object -First 1
@@ -39,8 +48,12 @@ Write-Host "Installing $($exe.Name) (silent)..."
 Start-Process -FilePath $exe.FullName -ArgumentList '/S' -Wait
 
 # Record the installed SHA only after a successful install, so a failed run retries next time.
-New-Item -ItemType Directory -Force -Path (Split-Path $stateFile) | Out-Null
-Set-Content -Path $stateFile -Value $publishedSha
+# Skip when the published SHA was unknown (marker absent) — leave the state so the next run
+# re-checks once a marker-bearing release exists.
+if ($publishedSha) {
+  New-Item -ItemType Directory -Force -Path (Split-Path $stateFile) | Out-Null
+  Set-Content -Path $stateFile -Value $publishedSha -Encoding ascii
+}
 
 # /S installs silently but does not relaunch — open the installed app via its shortcut.
 $shortcut = Join-Path ([Environment]::GetFolderPath('Desktop')) 'AI Note Taker.lnk'
