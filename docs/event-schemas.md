@@ -76,6 +76,7 @@ public record InstructionResponsesRecorded(                   // AI responses to
     IReadOnlyList<InstructionResponse> Responses,
     string ModelId,
     string PromptVersion) : NoteEvent;
+public record RecordingUploaded(NoteId NoteId, string AudioKey) : NoteEvent;  // S3 key of the saved call recording (33-A); full snapshot, latest wins
 public record NoteDeleted(NoteId NoteId)                       : NoteEvent;
 ```
 
