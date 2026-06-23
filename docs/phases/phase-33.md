@@ -93,19 +93,27 @@ Decisions (2026-06-23): completion handler is a **new dedicated non-HTTP Lambda*
 
 **Observability:** metric `transcribe.batch.completed` with duration; log job id + note id on every transition; alarm on `transcribe.batch.failed`.
 
+**Analysis is untouched in B1.** The existing on-Stop auto-analyse still runs once on the *streamed* transcript; B1 adds **no** second analyse, so there is no double-analysis within B1 (the diarized event only replaces the transcript text — the Final notes reflect the streamed transcript until B2). Single-analysis deferral is **33-B2**, which introduces the only other analyse.
+
 **Acceptance:** stop a recording → batch job runs → on completion the transcript becomes speaker-labelled and the chip clears, **proven on one real call**; a failed job leaves the streamed transcript intact; non-owner cannot diarize.
 
 > **RYW/async guardrail (mandatory):** the diarized transcript is read from the async projection with **no consistency token the frontend holds** (the event is appended seconds-to-minutes later by the completion Lambda). The frontend read must be a reload-tolerant poll, and the E2E journey must both (a) wrap the post-completion assertion in a reload-to-re-gate helper and (b) warm/drain the projector. This is the 27-C lesson — surface the async-read contract on this slice, not in production.
 
 ## 33-B2 scenarios & acceptance criteria
 
-**Goal:** re-run analysis on the diarized transcript so summary/tags/actions reflect the cleaner text.
+**Goal:** analyse exactly **once** per recording, on the *winning* transcript — the diarized one when the batch job succeeds, the streamed one when it fails. No double-analysis, no Final-notes flicker.
+
+Decision (2026-06-23): **defer to a single analysis.** When the frontend triggers diarization it **suppresses the on-Stop auto-analyse**; the one analyse then runs server-side on whichever transcript wins. Manual "Analyse" (auto-analyse toggle OFF, or the explicit button) is unaffected — it is always honoured immediately.
 
 - **Refactor (no behaviour change):** extract the body of `TranscriptionHandlers.AnalyseNote` into a callable `INoteAnalysisService.AnalyseAsync(noteId, userId, workspaceId)` that takes owner/workspace explicitly (no `ICurrentUser`/`ICurrentWorkspace`/HTTP scope). The existing `POST /analyse` endpoint becomes a thin wrapper over it — its current Api.Integration tests stay green unchanged.
-- The completion Lambda, after appending `TranscriptionDiarized`, calls `INoteAnalysisService.AnalyseAsync` with the owner/workspace from `history[0].Metadata` — gap-filling `AnalysisSummaryRecorded`/tags/actions exactly as a manual analyse would.
-- Scenario: Given a diarized transcript lands, When the completion handler runs, Then analysis is re-run and `AnalysisSummaryRecorded` reflects the diarized text.
+- **Frontend defer:** when diarization is auto-triggered (recording upload succeeded → diarize started), the on-Stop auto-analyse is **held** — the note is not analysed on the streamed transcript. (If the upload/diarize did not start, the on-Stop auto-analyse fires as today.)
+- **Success path:** the completion Lambda, after appending `TranscriptionDiarized`, calls `INoteAnalysisService.AnalyseAsync` with owner/workspace from `history[0].Metadata` → one analyse on the diarized text.
+- **Failure path (fallback):** on a FAILED job the completion Lambda calls `AnalyseAsync` on the **streamed** transcript, so a note whose auto-analyse was deferred is still analysed exactly once.
+- Scenario: Given diarization was triggered (auto-analyse deferred), When the job COMPLETES, Then analysis runs once on the diarized transcript and `AnalysisSummaryRecorded` reflects it.
+- Scenario: Given diarization was triggered (auto-analyse deferred), When the job FAILS, Then analysis runs once on the streamed transcript (fallback) — the note is never left un-analysed.
+- Scenario: Given auto-analyse is OFF, When the user clicks Analyse, Then analysis runs immediately on the current transcript regardless of diarization state (manual is never deferred).
 - Scenario: re-analysis failure does not roll back the transcript (the diarized transcript still shows; analysis error follows the existing path).
-- **Acceptance:** after diarization completes, the Final notes reflect the speaker-labelled transcript without a manual "Analyse" click; a Bedrock failure degrades gracefully (transcript updated, analysis retried/surfaced via the existing path).
+- **Acceptance:** exactly one analysis per recorded note — diarized on success, streamed on failure; no flicker; manual analyse always immediate; a Bedrock failure degrades gracefully (transcript intact).
 
 ## Architecture notes
 
