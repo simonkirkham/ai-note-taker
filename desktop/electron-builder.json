@@ -1,6 +1,7 @@
 {
   "appId": "com.simonkirkham.ainotetaker",
   "productName": "AI Note Taker",
+  "artifactName": "AINoteTaker-Setup-${version}.${ext}",
   "directories": {
     "output": "release"
   },

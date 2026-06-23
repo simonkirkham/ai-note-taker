@@ -8,23 +8,37 @@ capturing system audio. See [`docs/phases/phase-31.md`](../docs/phases/phase-31.
 **Not in the prod deploy pipeline.** This is a separate, manually-built artifact —
 nothing here runs in `deploy.yml` or `cdk deploy`. Deploy-time impact on prod: none.
 
-## Easiest: install the packaged app (recommended)
+## Easiest: pull the published installer (recommended)
 
-Build a Windows installer once, then launch from the Start menu like any app — no
-terminal, no rebuild to run it.
+CI builds the Windows installer and publishes it to **GitHub Releases** after every
+successful prod deploy that changed the frontend/desktop (workflow:
+[`publish-desktop.yml`](../.github/workflows/publish-desktop.yml)). To update, just pull
+and install it — **no local build, no `node_modules`, no Wine**:
+
+```powershell
+npm run update           # gh release download → close app → silent install → relaunch
+```
+
+Requires the **GitHub CLI** (`gh`) installed and signed in. The artifact always tracks the
+**latest successfully-deployed** version (the workflow runs on `Deploy` success), so this
+keeps the desktop's bundled frontend in lockstep with the live site. First run on a machine
+shows a one-time SmartScreen prompt (unsigned build).
+
+## Build the installer locally
+
+Only needed if you don't want to wait for CI, or `gh` isn't available:
 
 ```powershell
 # one-time deps (run on Windows so node_modules has Windows-native binaries)
 npm install
 npm --prefix ../web install
 
-npm run package          # → release/AI Note Taker Setup <version>.exe
+npm run package          # → release/AINoteTaker-Setup-<version>.exe
 ```
 
 Double-click the `.exe` in `release/` to install (one-click, per-user, no admin). It adds
-a Start-menu + desktop shortcut and launches. **Rebuild the installer only when the app
-code changes** (`npm run package` again, then reinstall). The Google client id is baked in
-— no environment variable needed.
+a Start-menu + desktop shortcut and launches. The Google client id is baked in — no
+environment variable needed.
 
 > **Windows, not WSL.** Build and run on Windows. `node_modules` carries OS-native binaries
 > (esbuild, Electron); installing under WSL then running on Windows (or vice-versa) breaks

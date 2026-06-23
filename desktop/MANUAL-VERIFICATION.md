@@ -41,18 +41,29 @@ the `.exe` needs Windows (`electron-builder --win` uses Wine on Linux), so build
 
 ```powershell
 npm install ; npm --prefix ../web install   # one-time
-npm run package                              # → release/AI Note Taker Setup <version>.exe
+npm run package                              # → release/AINoteTaker-Setup-<version>.exe
 ```
 
 | # | Given / When / Then | Pass? |
 |---|---------------------|-------|
-| 1 | **Installer is produced:** Given `npm run package` on Windows, Then `release/AI Note Taker Setup <version>.exe` is created (no signing). | ☐ |
+| 1 | **Installer is produced:** Given `npm run package` on Windows, Then `release/AINoteTaker-Setup-<version>.exe` is created (no signing). | ☐ |
 | 2 | **Clean install launches:** Given a machine without the app, When I run the `.exe`, Then it installs (one-click, no admin), adds a Start-menu/desktop shortcut, and the window opens rendering the **bundled** frontend. | ☐ |
 | 3 | **Sign-in works post-install:** Given the installed app (no env var, no dev server), When I sign in with Google, Then it completes in-window and my prod notes load (client id baked into the bundle). | ☐ |
 | 4 | **Records with one-time OS grant:** Given the installed app, When I record, Then system + mic audio are captured with no per-meeting picker/consent (one-time OS grant only). | ☐ |
 | 5 | **Relaunch from Start menu:** Given I closed the app, When I launch it from the Start-menu shortcut, Then it opens and I am still signed in (no rebuild, no terminal). | ☐ |
 
 > **Note:** no app icon is set, so the installer/app/shortcut use electron-builder's default Electron icon (a warning at build time, not an error). Add an `icon` to `electron-builder.json` later if a branded icon is wanted.
+
+## 31-D — CI-published installer + `npm run update`
+
+CI builds the installer on a Windows runner and publishes it to the rolling `desktop-latest` GitHub Release after a successful prod deploy that changed the frontend/desktop ([`publish-desktop.yml`](../.github/workflows/publish-desktop.yml)). Updating is then `npm run update` (pull + install). Wiring is asserted in `tests/publish.spec.ts`; the end-to-end run is verified by hand.
+
+| # | Given / When / Then | Pass? |
+|---|---------------------|-------|
+| 1 | **CI publishes on a frontend deploy:** Given a frontend/desktop change deploys to prod, When `publish-desktop.yml` runs, Then the `desktop-latest` Release exists with an `AINoteTaker-Setup-*.exe` asset tagged to that commit. | ☐ |
+| 2 | **Backend/docs deploy doesn't republish:** Given a backend-only or docs-only deploy, Then the publish workflow skips the build (the changed-paths gate is `false`), leaving the existing installer. | ☐ |
+| 3 | **`npm run update` installs the published build:** Given `gh` is signed in, When I run `npm run update`, Then it downloads `desktop-latest`, closes the running app, silently installs, and relaunches — no local build. | ☐ |
+| 4 | **Manual trigger works:** Given I run the workflow via `workflow_dispatch`, Then it builds + publishes regardless of the last deploy. | ☐ |
 
 ## Troubleshooting
 
