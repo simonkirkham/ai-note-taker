@@ -48,6 +48,6 @@ public sealed class CalendarProviderSelectionTests
 
     [Fact]
     public void StubJson_AlwaysWins_EvenWithMicrosoftProvider() =>
-        Assert.IsType<StubGoogleCalendarClient>(
+        Assert.IsType<StubCalendarClient>(
             Resolve(provider: "microsoft", stubJson: """[]"""));
 }

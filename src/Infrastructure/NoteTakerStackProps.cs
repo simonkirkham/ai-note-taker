@@ -10,4 +10,8 @@ public sealed class NoteTakerStackProps : StackProps
     public string? AllowedUserSubs { get; init; }
     public string? GoogleRefreshTokenSsmPath { get; init; }
     public string? BedrockModelId { get; init; }
+    public string? CalendarProvider { get; init; }
+    public string? MicrosoftClientId { get; init; }
+    public string? MicrosoftTenantId { get; init; }
+    public string? MicrosoftRefreshTokenSsmPath { get; init; }
 }

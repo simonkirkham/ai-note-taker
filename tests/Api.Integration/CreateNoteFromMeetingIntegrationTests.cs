@@ -11,14 +11,14 @@ public sealed class CreateNoteFromMeetingIntegrationTests : IClassFixture<ApiFac
     private readonly HttpClient _client;
     private readonly HttpClient _otherClient;
     private readonly HttpClient _unauthClient;
-    private readonly FakeGoogleCalendarClient _fakeCalendar;
+    private readonly FakeCalendarClient _fakeCalendar;
 
     public CreateNoteFromMeetingIntegrationTests(ApiFactory factory)
     {
         _client = factory.CreateClient();
         _otherClient = factory.CreateClientAsOtherUser();
         _unauthClient = factory.CreateUnauthenticatedClient();
-        _fakeCalendar = factory.Services.GetRequiredService<FakeGoogleCalendarClient>();
+        _fakeCalendar = factory.Services.GetRequiredService<FakeCalendarClient>();
         _fakeCalendar.Reset();
     }
 

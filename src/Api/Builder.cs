@@ -181,10 +181,7 @@ public static class Builder
         builder.Services.AddScoped<IProjectionRebuildHandler, ProjectionRebuildHandler>();
         builder.Services.AddSingleton<IDynamoHealthCheck>(sp =>
             new DynamoDbHealthCheck(sp.GetRequiredService<IAmazonDynamoDB>(), eventTableName));
-        if (!string.IsNullOrEmpty(Environment.GetEnvironmentVariable("STUB_CALENDAR_JSON")))
-            builder.Services.AddSingleton<IGoogleCalendarClient, StubGoogleCalendarClient>();
-        else
-            builder.Services.AddSingleton<IGoogleCalendarClient, GoogleCalendarClient>();
+        Api.Services.CalendarClientRegistration.Register(builder.Services);
         builder.Services.AddHttpClient<IGoogleOAuthClient, GoogleOAuthClient>(c => c.Timeout = TimeSpan.FromSeconds(10));
         builder.Services.AddSingleton<IRefreshTokenStore>(sp =>
             new DynamoDbRefreshTokenStore(sp.GetRequiredService<IAmazonDynamoDB>(), authTokensTableName));

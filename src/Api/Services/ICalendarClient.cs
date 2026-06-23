@@ -1,6 +1,6 @@
 namespace Api.Services;
 
-public interface IGoogleCalendarClient
+public interface ICalendarClient
 {
     Task<IReadOnlyList<CalendarEvent>?> GetEventsForDayAsync(DateOnly date, string ianaTimezone);
     Task<CalendarEvent?> GetNextOccurrenceAsync(string recurringSeriesId, DateTimeOffset after);

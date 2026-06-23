@@ -9,7 +9,7 @@ using Microsoft.Extensions.Logging;
 
 namespace Api.Services;
 
-public sealed class GoogleCalendarClient : IGoogleCalendarClient
+public sealed class GoogleCalendarClient : ICalendarClient
 {
     private readonly ILogger<GoogleCalendarClient> _logger;
     private readonly string _clientId;

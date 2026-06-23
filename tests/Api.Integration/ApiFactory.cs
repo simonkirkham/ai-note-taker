@@ -52,9 +52,9 @@ public class ApiFactory : WebApplicationFactory<Program>
             // including `WithWebHostBuilder`-derived ones, which bypass a per-client handler.
             // Set the `X-Test-No-Prefix` header to opt out (used to assert rootless paths 404).
             services.AddSingleton<IStartupFilter, WorkspacePrefixStartupFilter>();
-            services.RemoveAll<IGoogleCalendarClient>();
-            services.AddSingleton<FakeGoogleCalendarClient>();
-            services.AddSingleton<IGoogleCalendarClient>(sp => sp.GetRequiredService<FakeGoogleCalendarClient>());
+            services.RemoveAll<ICalendarClient>();
+            services.AddSingleton<FakeCalendarClient>();
+            services.AddSingleton<ICalendarClient>(sp => sp.GetRequiredService<FakeCalendarClient>());
             services.RemoveAll<IGoogleOAuthClient>();
             services.AddSingleton<FakeGoogleOAuthClient>();
             services.AddSingleton<IGoogleOAuthClient>(sp => sp.GetRequiredService<FakeGoogleOAuthClient>());

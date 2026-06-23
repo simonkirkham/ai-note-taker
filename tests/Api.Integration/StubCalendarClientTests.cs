@@ -3,12 +3,12 @@ using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Api.Integration;
 
-public class StubGoogleCalendarClientTests
+public class StubCalendarClientTests
 {
-    private static StubGoogleCalendarClient Build(string json)
+    private static StubCalendarClient Build(string json)
     {
         Environment.SetEnvironmentVariable("STUB_CALENDAR_JSON", json);
-        try { return new StubGoogleCalendarClient(NullLogger<StubGoogleCalendarClient>.Instance); }
+        try { return new StubCalendarClient(NullLogger<StubCalendarClient>.Instance); }
         finally { Environment.SetEnvironmentVariable("STUB_CALENDAR_JSON", null); }
     }
 
