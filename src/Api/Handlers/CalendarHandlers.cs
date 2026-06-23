@@ -82,7 +82,7 @@ public static class CalendarHandlers
                 : null
         });
 
-        return Results.Ok(new { meetings });
+        return Results.Ok(new { meetings, provider = calendar.ProviderName });
     }
 
     public static async Task<IResult> CreateNoteFromMeeting(

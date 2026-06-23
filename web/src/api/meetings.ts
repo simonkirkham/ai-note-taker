@@ -13,7 +13,7 @@ export interface CalendarMeeting {
 }
 
 export type MeetingsResult =
-  | { meetings: CalendarMeeting[] }
+  | { meetings: CalendarMeeting[]; provider: string }
   | { error: string };
 
 // date is an ISO YYYY-MM-DD local day; the caller owns "which day", the server owns the

@@ -22,7 +22,17 @@ const CalendarIcon = ({ className, size = 36 }: { className?: string; size?: num
 type State =
   | { status: "loading" }
   | { status: "unavailable" }
-  | { status: "loaded"; meetings: CalendarMeeting[] };
+  | { status: "loaded"; meetings: CalendarMeeting[]; provider: string };
+
+// Friendly name for the active calendar provider, or null to show no label
+// (stub/local or an unknown provider).
+function providerLabel(provider: string): string | null {
+  switch (provider) {
+    case "microsoft": return "Outlook";
+    case "google": return "Google Calendar";
+    default: return null;
+  }
+}
 
 function headingFor(selectedDate: string, today: string): string {
   const delta = dayDelta(today, selectedDate);
@@ -45,7 +55,7 @@ function toState(query: UseQueryResult<MeetingsResult>): State {
   if (query.isLoading) return { status: "loading" };
   const data = query.data;
   if (!data || "error" in data) return { status: "unavailable" };
-  return { status: "loaded", meetings: data.meetings };
+  return { status: "loaded", meetings: data.meetings, provider: data.provider };
 }
 
 export function MeetingsSection({ onOpenNote }: { onOpenNote: (noteId: string, title?: string, isNew?: boolean) => void }) {
@@ -82,7 +92,7 @@ export function MeetingsSection({ onOpenNote }: { onOpenNote: (noteId: string, t
   // Optimistically patch the displayed day's meetings in the cache (create-note flows).
   function updateDisplayedMeetings(updater: (meetings: CalendarMeeting[]) => CalendarMeeting[]) {
     qc.setQueryData<MeetingsResult>(keys.meetings(selectedDate), (old) =>
-      old && "meetings" in old ? { meetings: updater(old.meetings) } : old);
+      old && "meetings" in old ? { ...old, meetings: updater(old.meetings) } : old);
   }
 
   const showBanner =
@@ -181,7 +191,14 @@ export function MeetingsSection({ onOpenNote }: { onOpenNote: (noteId: string, t
       )}
       <section data-testid="meetings-section" className={styles.meetingsSection} aria-label="Meetings">
         <div className={styles.meetingsHeader}>
-          <h2 data-testid="meetings-heading" className={styles.meetingsHeading}>{headingFor(selectedDate, today)}</h2>
+          <div className={styles.meetingsHeadingGroup}>
+            <h2 data-testid="meetings-heading" className={styles.meetingsHeading}>{headingFor(selectedDate, today)}</h2>
+            {displayState.status === "loaded" && providerLabel(displayState.provider) && (
+              <span data-testid="calendar-source-label" className={styles.calendarSource}>
+                <CalendarIcon size={12} /> {providerLabel(displayState.provider)}
+              </span>
+            )}
+          </div>
           <div className={styles.meetingsNav}>
             <button
               data-testid="meetings-prev-day"

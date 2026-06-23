@@ -9,10 +9,13 @@ public sealed class FakeCalendarClient : ICalendarClient
 
     public DateOnly? LastRequestedDate { get; private set; }
 
+    // Defaults to "google" (the Phase 9 baseline); tests that assert the label set it explicitly.
+    public string ProviderName { get; set; } = "google";
+
     public void SetEvents(IReadOnlyList<CalendarEvent> events) => _events = events;
     public void SetUnavailable() => _events = null;
     public void SetNextOccurrence(string seriesId, CalendarEvent? occurrence) => _nextOccurrences[seriesId] = occurrence;
-    public void Reset() { _events = new List<CalendarEvent>(); _nextOccurrences.Clear(); LastRequestedDate = null; }
+    public void Reset() { _events = new List<CalendarEvent>(); _nextOccurrences.Clear(); LastRequestedDate = null; ProviderName = "google"; }
 
     public Task<IReadOnlyList<CalendarEvent>?> GetEventsForDayAsync(DateOnly date, string ianaTimezone)
     {

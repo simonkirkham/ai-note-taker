@@ -84,6 +84,47 @@ describe('MeetingsSection — meetings data', () => {
     )
   })
 
+  it('labels the active calendar source (Outlook for microsoft)', async () => {
+    server.use(
+      http.get('/api/calendar/:date', () =>
+        HttpResponse.json({ meetings: [meeting1], provider: 'microsoft' }),
+      ),
+    )
+
+    renderSection()
+
+    const label = await screen.findByTestId('calendar-source-label')
+    expect(label).toHaveTextContent('Outlook')
+  })
+
+  it('labels Google Calendar for the google provider', async () => {
+    server.use(
+      http.get('/api/calendar/:date', () =>
+        HttpResponse.json({ meetings: [meeting1], provider: 'google' }),
+      ),
+    )
+
+    renderSection()
+
+    const label = await screen.findByTestId('calendar-source-label')
+    expect(label).toHaveTextContent('Google Calendar')
+  })
+
+  it('shows no source label for an unknown/stub provider', async () => {
+    server.use(
+      http.get('/api/calendar/:date', () =>
+        HttpResponse.json({ meetings: [meeting1], provider: 'stub' }),
+      ),
+    )
+
+    renderSection()
+
+    await waitFor(() =>
+      expect(screen.getByTestId('meetings-list')).toBeInTheDocument(),
+    )
+    expect(screen.queryByTestId('calendar-source-label')).not.toBeInTheDocument()
+  })
+
   it('shows error message when calendar is unavailable', async () => {
     server.use(
       http.get('/api/calendar/:date', () =>

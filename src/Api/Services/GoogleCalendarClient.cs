@@ -31,6 +31,8 @@ public sealed class GoogleCalendarClient : ICalendarClient
         _clientSecret = Environment.GetEnvironmentVariable("GOOGLE_CLIENT_SECRET") ?? "";
     }
 
+    public string ProviderName => "google";
+
     public Task<IReadOnlyList<CalendarEvent>?> GetEventsForDayAsync(DateOnly date, string ianaTimezone) =>
         ExecuteWithRetryAsync<IReadOnlyList<CalendarEvent>>($"GetEventsForDay {date:yyyy-MM-dd}", async service =>
         {
