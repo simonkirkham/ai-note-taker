@@ -64,6 +64,7 @@ CI builds the installer on a Windows runner and publishes it to the rolling `des
 | 2 | **Backend/docs deploy doesn't republish:** Given a backend-only or docs-only deploy, Then the publish workflow skips the build (the changed-paths gate is `false`), leaving the existing installer. | ☐ |
 | 3 | **`npm run update` installs the published build:** Given `gh` is signed in, When I run `npm run update`, Then it downloads `desktop-latest`, closes the running app, silently installs, and relaunches — no local build. | ☐ |
 | 4 | **Manual trigger works:** Given I run the workflow via `workflow_dispatch`, Then it builds + publishes regardless of the last deploy. | ☐ |
+| 5 | **Update skips when current (31-E):** Given I just updated, When I run `npm run update` again, Then it prints "already up to date" and exits without downloading the installer; after a new published build it downloads + installs. | ☐ |
 
 ## Troubleshooting
 

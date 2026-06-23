@@ -31,6 +31,13 @@ test('publish workflow packages the installer and uploads it to a Release', () =
   expect(wf).toMatch(/web\/\|desktop\/|desktop\/\|web\//)
 })
 
+test('publish workflow uploads build-sha.txt so the update script can version-check', () => {
+  const wf = read('.github/workflows/publish-desktop.yml')
+  // 31-E: the tiny SHA marker rides alongside the .exe so `npm run update` can compare
+  // versions without downloading the 82 MB installer.
+  expect(wf).toContain('build-sha.txt')
+})
+
 test('npm run update pulls the published installer and installs it', () => {
   const pkg = JSON.parse(read('desktop/package.json')) as { scripts?: Record<string, string> }
   expect(pkg.scripts?.update).toBeTruthy()
@@ -39,4 +46,12 @@ test('npm run update pulls the published installer and installs it', () => {
   const script = read('desktop/scripts/update.ps1')
   expect(script).toContain('gh release download')
   expect(script).toContain('/S') // silent NSIS install
+})
+
+test('npm run update skips the download when already on the latest published build', () => {
+  const script = read('desktop/scripts/update.ps1')
+  // 31-E: fetch the tiny SHA marker, compare to the recorded installed SHA, and exit early
+  // when they match — no 82 MB re-download.
+  expect(script).toContain('build-sha.txt')
+  expect(script).toMatch(/up to date|already.*latest|already.*current/i)
 })

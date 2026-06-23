@@ -67,6 +67,8 @@ jobs:
         run: |
           SHA=$(git rev-parse --short HEAD)
           gh release delete desktop-latest --yes --cleanup-tag || true
-          gh release create desktop-latest desktop/release/*.exe \
+          # Upload build-sha.txt (the bundled commit marker) alongside the .exe so
+          # `npm run update` can version-check by pulling a tiny file, not the 82 MB installer.
+          gh release create desktop-latest desktop/release/*.exe desktop/web-dist/build-sha.txt \
             --title "AI Note Taker desktop ($SHA)" \
             --notes "Unsigned Windows installer built from $SHA (latest successful prod deploy). Update with \`npm run update\`. SmartScreen may warn on first run."

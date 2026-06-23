@@ -16,12 +16,15 @@ successful prod deploy that changed the frontend/desktop (workflow:
 and install it — **no local build, no `node_modules`, no Wine**:
 
 ```powershell
-npm run update           # gh release download → close app → silent install → relaunch
+npm run update           # version-check → (if newer) download → close app → silent install → relaunch
 ```
 
-Requires the **GitHub CLI** (`gh`) installed and signed in. The artifact always tracks the
-**latest successfully-deployed** version (the workflow runs on `Deploy` success), so this
-keeps the desktop's bundled frontend in lockstep with the live site. First run on a machine
+It **version-checks first**: pulls a tiny `build-sha.txt`, compares it to the build you last
+installed, and prints "already up to date" and exits if they match — so running it when
+nothing changed is instant (no 82 MB download). Requires the **GitHub CLI** (`gh`) installed
+and signed in. The artifact always tracks the **latest successfully-deployed** version (the
+workflow runs on `Deploy` success), so this keeps the desktop's bundled frontend in lockstep
+with the live site. First run on a machine
 shows a one-time SmartScreen prompt (unsigned build).
 
 ## Build the installer locally
