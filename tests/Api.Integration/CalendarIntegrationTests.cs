@@ -54,6 +54,18 @@ public sealed class CalendarIntegrationTests : IClassFixture<ApiFactory>
     }
 
     [Fact]
+    public async Task GetMeetingsForDate_IncludesActiveProvider()
+    {
+        _fake.ProviderName = "microsoft";
+
+        var resp = await _client.GetAsync($"/calendar/{Today}?tz=UTC");
+
+        resp.EnsureSuccessStatusCode();
+        var body = await resp.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("microsoft", body.GetProperty("provider").GetString());
+    }
+
+    [Fact]
     public async Task GetMeetingsForDate_OrderedByStartTime()
     {
         var base_ = DateTimeOffset.UtcNow.Date;

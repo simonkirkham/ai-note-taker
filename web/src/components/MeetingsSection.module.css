@@ -2,6 +2,22 @@
   min-width: 0;
 }
 
+.meetingsHeadingGroup {
+  display: flex;
+  flex-direction: column;
+  gap: 0.125rem;
+  min-width: 0;
+}
+.calendarSource {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  font-size: 0.7rem;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+  color: var(--color-text-muted);
+  opacity: 0.8;
+}
 .meetingsHeader {
   display: flex;
   align-items: center;

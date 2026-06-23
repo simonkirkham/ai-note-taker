@@ -46,6 +46,8 @@ public sealed class MicrosoftCalendarClient : ICalendarClient
         _tenantId = Environment.GetEnvironmentVariable("MS_TENANT_ID") is { Length: > 0 } t ? t : "consumers";
     }
 
+    public string ProviderName => "microsoft";
+
     public async Task<IReadOnlyList<CalendarEvent>?> GetEventsForDayAsync(DateOnly date, string ianaTimezone)
     {
         var tz = TimeZoneInfo.FindSystemTimeZoneById(ianaTimezone);

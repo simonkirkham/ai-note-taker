@@ -41,6 +41,8 @@ public sealed class StubCalendarClient : ICalendarClient
         }
     }
 
+    public string ProviderName => "stub";
+
     public Task<IReadOnlyList<CalendarEvent>?> GetEventsForDayAsync(DateOnly date, string ianaTimezone)
     {
         var tz = TimeZoneInfo.FindSystemTimeZoneById(ianaTimezone);
