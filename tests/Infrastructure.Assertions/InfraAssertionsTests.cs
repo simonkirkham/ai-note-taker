@@ -972,14 +972,34 @@ public class InfraAssertionsTests
     }
 
     [Fact]
+    public void Alarms_AnalysisFailedAlarmWiredToTopic()
+    {
+        _template.HasResourceProperties("AWS::CloudWatch::Alarm", Match.ObjectLike(new Dictionary<string, object>
+        {
+            ["AlarmName"] = "notetaker-analysis-failed",
+            ["Namespace"] = "NoteTaker/Domain",
+            ["MetricName"] = "AnalysisFailed",
+            ["Statistic"] = "Sum",
+            ["Threshold"] = 0,
+            ["ComparisonOperator"] = "GreaterThanThreshold",
+            ["Dimensions"] = Match.ArrayWith(new object[]
+            {
+                Match.ObjectLike(new Dictionary<string, object> { ["Name"] = "Service", ["Value"] = "note-taker" })
+            }),
+            ["AlarmActions"] = Match.AnyValue()
+        }));
+    }
+
+    [Fact]
     public void Alarms_AllExpectedAlarmsExist()
     {
-        // Seven alarms: error-rate, P99 latency, projection-rebuild-fault,
-        // projection-rebuild-duration, and the three 27-B projector alarms
-        // (projector-error, projector-dlq-depth, projector-iterator-age).
+        // Eight alarms: error-rate, P99 latency, projection-rebuild-fault,
+        // projection-rebuild-duration, the three 27-B projector alarms
+        // (projector-error, projector-dlq-depth, projector-iterator-age), and
+        // analysis-failed (CHANGE-22).
         // A concurrency-conflict alarm is deferred — it would need SUM(SEARCH(...)), which CloudWatch
         // rejects on metric alarms (only allowed on dashboard widgets). See phase-12 12-E.
-        _template.ResourceCountIs("AWS::CloudWatch::Alarm", 7);
+        _template.ResourceCountIs("AWS::CloudWatch::Alarm", 8);
     }
 
     [Fact]

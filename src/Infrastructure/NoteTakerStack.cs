@@ -822,6 +822,16 @@ public sealed class NoteTakerStack : Stack
                 Period = Duration.Minutes(5)
             });
 
+        Amazon.CDK.AWS.CloudWatch.IMetric AnalysisDuration(string statistic) =>
+            new Amazon.CDK.AWS.CloudWatch.Metric(new Amazon.CDK.AWS.CloudWatch.MetricProps
+            {
+                Namespace = "NoteTaker/Domain",
+                MetricName = "AnalysisDurationMs",
+                DimensionsMap = new Dictionary<string, string> { ["Service"] = "note-taker" },
+                Statistic = statistic,
+                Period = Duration.Minutes(5)
+            });
+
         dashboard.AddWidgets(
             new Amazon.CDK.AWS.CloudWatch.LogQueryWidget(new Amazon.CDK.AWS.CloudWatch.LogQueryWidgetProps
             {
@@ -878,6 +888,18 @@ public sealed class NoteTakerStack : Stack
                     DomainTotal("CommandHandled"),
                     DomainTotal("ConcurrencyConflict")
                 },
+                Width = 12
+            }),
+            // CHANGE-22: how long analysis takes (p50/p99) + failures.
+            new Amazon.CDK.AWS.CloudWatch.GraphWidget(new Amazon.CDK.AWS.CloudWatch.GraphWidgetProps
+            {
+                Title = "Analysis duration p50/p99 vs failures",
+                Left = new[]
+                {
+                    AnalysisDuration("p50"),
+                    AnalysisDuration("p99")
+                },
+                Right = new[] { DomainTotal("AnalysisFailed") },
                 Width = 12
             }));
 
@@ -1119,6 +1141,30 @@ public sealed class NoteTakerStack : Stack
             TreatMissingData = Amazon.CDK.AWS.CloudWatch.TreatMissingData.NOT_BREACHING
         });
         rebuildDurationAlarm.AddAlarmAction(alarmAction);
+
+        // ── Analysis (Bedrock) alarm (CHANGE-22) ─────────────────────────
+        // Analysis runs async to the user's intent (auto-analyse on Stop, later the
+        // diarization re-analyse), so a Bedrock failure is otherwise only a 503 the user
+        // may not notice. Single dimensionless metric → alarmable; the failing note id is
+        // in the structured log, not a dimension.
+        var analysisFailedAlarm = new Amazon.CDK.AWS.CloudWatch.Alarm(this, "AnalysisFailedAlarm", new Amazon.CDK.AWS.CloudWatch.AlarmProps
+        {
+            AlarmName = "notetaker-analysis-failed",
+            AlarmDescription = "A note analysis (Bedrock) failed in the last 5 minutes",
+            Metric = new Amazon.CDK.AWS.CloudWatch.Metric(new Amazon.CDK.AWS.CloudWatch.MetricProps
+            {
+                Namespace = "NoteTaker/Domain",
+                MetricName = "AnalysisFailed",
+                DimensionsMap = new Dictionary<string, string> { ["Service"] = "note-taker" },
+                Statistic = "Sum",
+                Period = Duration.Minutes(5)
+            }),
+            Threshold = 0,
+            EvaluationPeriods = 1,
+            ComparisonOperator = Amazon.CDK.AWS.CloudWatch.ComparisonOperator.GREATER_THAN_THRESHOLD,
+            TreatMissingData = Amazon.CDK.AWS.CloudWatch.TreatMissingData.NOT_BREACHING
+        });
+        analysisFailedAlarm.AddAlarmAction(alarmAction);
 
         // ── Projector alarms (27-B) ──────────────────────────────────────
         // Async projection failure is invisible by construction (no synchronous 500), so
