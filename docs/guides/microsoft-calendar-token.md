@@ -38,6 +38,37 @@ In the app registration matching `MS_CLIENT_ID`:
    GUID or `organizations`. `MS_TENANT_ID` must match what the deployed Lambda uses.
 3. **API permissions** → delegated → Microsoft Graph → **`Calendars.Read`** (+ `offline_access`).
 
+## Business / work-school (Entra ID) accounts
+
+The runtime code is **identical** for a work/school account — only configuration changes. But
+whether it actually works depends on the organisation's Entra policies, which you may not control.
+
+**Config changes vs a personal account:**
+
+| Setting | Personal (`@outlook.com` / MSA) | Work/school |
+|---|---|---|
+| `MS_TENANT_ID` | `consumers` | `organizations`, or the specific **tenant GUID** |
+| App registration → *Supported account types* | personal MS accounts | must include **work/school** (multi-tenant, or register the app **inside the work tenant**) |
+| `Calendars.Read` consent | self-service | may require **admin consent** (many orgs disable user consent) |
+
+Set `MS_TENANT_ID` explicitly (it is **not** `consumers` for a work account) — both the mint
+script and the runtime client must use the same value, or the refresh exchange fails with
+`invalid_grant`.
+
+**Org policies that can block it (not a code problem):**
+
+1. **Conditional Access blocking the device-code grant.** Many tenants disable device-code flow by
+   policy (it's a phishing vector), and Microsoft increasingly blocks it by default. If yours does,
+   `mint-microsoft-refresh-token.mjs` won't complete. Fallback: in-app auth-code + PKCE
+   (technical-improvements **TI-47**), or have an admin grant consent / approve the app.
+2. **Token-lifetime / sign-in-frequency policies.** Work tenants can force periodic re-auth, so the
+   "mint once, lasts weeks" model degrades to re-minting more often. The `invalid_grant` self-heal
+   handles the failure gracefully — you just re-run the mint more frequently.
+3. **App approval.** Some tenants require an admin to approve any app before users can sign in.
+
+If device-code is blocked in your tenant, that is the signal to prioritise **TI-47** (in-app OAuth),
+which is also the prerequisite for per-workspace calendars.
+
 ## Minting the token (and writing it to SSM in one step)
 
 From the repo root, with `MS_CLIENT_ID` (the same value the deploy workflow uses). Set
