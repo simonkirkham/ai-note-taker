@@ -6,7 +6,7 @@
 
 | Slice | Summary | Status | Depends on |
 |-------|---------|--------|------------|
-| 32-A | **See your Outlook meetings on Home and create a note from one** (the day's M365 calendar, one-click note linked to the meeting). | Not Started | — |
+| 32-A | **See your Outlook meetings on Home and create a note from one** (the day's M365 calendar, one-click note linked to the meeting). | Done | — |
 | 32-B | **Create a note for the next occurrence of a recurring Outlook meeting** (parity with Google recurring meetings). | Not Started | 32-A |
 
 Spike already done (2026-06-22/23): MSAL device-code auth + a real `GET /me/calendarView` returned a real event for `simon.kirkham@outlook.com` (personal MSA), confirming the auth path, the `Calendars.Read` scope, and the field mapping. See [Spike findings](#spike-findings).
@@ -56,7 +56,7 @@ Proven: personal MSA works with delegated `Calendars.Read`, no admin consent. Un
 
 ## Slice 32-A — See your Outlook meetings on Home and create a note from one
 
-**Status:** Not Started.
+**Status:** Done (PR #320, deploy #620). Ships dark: `CALENDAR_PROVIDER` defaults to `google`; set it to `microsoft` and mint a token (see [guide](../guides/microsoft-calendar-token.md)) to activate.
 
 **User value:** the owner opens Home and sees today's Outlook/M365 meetings in the existing meetings list, and clicks one to create a linked note — exactly the Phase 9 Google experience, now backed by their Microsoft calendar.
 
