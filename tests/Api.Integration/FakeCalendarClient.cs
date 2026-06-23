@@ -2,7 +2,7 @@ using Api.Services;
 
 namespace Api.Integration;
 
-public sealed class FakeGoogleCalendarClient : IGoogleCalendarClient
+public sealed class FakeCalendarClient : ICalendarClient
 {
     private IReadOnlyList<CalendarEvent>? _events = new List<CalendarEvent>();
     private readonly Dictionary<string, CalendarEvent?> _nextOccurrences = new();

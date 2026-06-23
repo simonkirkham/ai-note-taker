@@ -5,9 +5,9 @@ using Microsoft.Extensions.Logging;
 namespace Api.Services;
 
 /// <summary>
-/// Calendar client driven by the STUB_CALENDAR_JSON env var.
+/// Provider-agnostic calendar client driven by the STUB_CALENDAR_JSON env var.
 /// Set that var to a JSON array of CalendarEventDto objects to inject
-/// fake meetings without real Google credentials.
+/// fake meetings without real calendar credentials (Google or Microsoft).
 ///
 /// Note: GetEventsForDayAsync returns the stub events whose start time falls on
 /// the requested date in the caller's timezone. Populate STUB_CALENDAR_JSON with
@@ -16,12 +16,12 @@ namespace Api.Services;
 /// Example value:
 /// [{"calendarEventId":"s1_20260527T090000Z","title":"Weekly Sync","startTime":"2026-05-27T09:00:00Z","endTime":"2026-05-27T09:30:00Z","isRecurring":true,"recurringSeriesId":"s1"}]
 /// </summary>
-public sealed class StubGoogleCalendarClient : IGoogleCalendarClient
+public sealed class StubCalendarClient : ICalendarClient
 {
     private readonly IReadOnlyList<CalendarEvent> _events;
-    private readonly ILogger<StubGoogleCalendarClient> _logger;
+    private readonly ILogger<StubCalendarClient> _logger;
 
-    public StubGoogleCalendarClient(ILogger<StubGoogleCalendarClient> logger)
+    public StubCalendarClient(ILogger<StubCalendarClient> logger)
     {
         _logger = logger;
         var json = Environment.GetEnvironmentVariable("STUB_CALENDAR_JSON") ?? "[]";
@@ -32,7 +32,7 @@ public sealed class StubGoogleCalendarClient : IGoogleCalendarClient
             _events = dtos.Select(d => new CalendarEvent(
                 d.CalendarEventId, d.Title, d.StartTime, d.EndTime, d.IsRecurring, d.RecurringSeriesId
             )).ToList();
-            _logger.LogInformation("StubGoogleCalendarClient loaded {Count} stub events", _events.Count);
+            _logger.LogInformation("StubCalendarClient loaded {Count} stub events", _events.Count);
         }
         catch (Exception ex)
         {

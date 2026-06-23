@@ -9,12 +9,12 @@ namespace Api.Integration;
 public sealed class RecurringNextOccurrenceTests : IClassFixture<ApiFactory>
 {
     private readonly HttpClient _client;
-    private readonly FakeGoogleCalendarClient _fakeCalendar;
+    private readonly FakeCalendarClient _fakeCalendar;
 
     public RecurringNextOccurrenceTests(ApiFactory factory)
     {
         _client = factory.CreateClient();
-        _fakeCalendar = factory.Services.GetRequiredService<FakeGoogleCalendarClient>();
+        _fakeCalendar = factory.Services.GetRequiredService<FakeCalendarClient>();
         _fakeCalendar.Reset();
     }
 

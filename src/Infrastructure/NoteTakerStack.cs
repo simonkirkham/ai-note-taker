@@ -294,6 +294,12 @@ public sealed class NoteTakerStack : Stack
             ["GOOGLE_CLIENT_SECRET"] = props.GoogleClientSecret ?? "",
             ["ALLOWED_USER_SUBS"] = props.AllowedUserSubs ?? "",
             ["GOOGLE_REFRESH_TOKEN_SSM_PATH"] = props.GoogleRefreshTokenSsmPath ?? "",
+            // Phase 32-A: Microsoft 365 (Outlook) calendar. CALENDAR_PROVIDER (google|microsoft)
+            // selects the client; the MS values back the Graph path. Public client, no secret.
+            ["CALENDAR_PROVIDER"] = props.CalendarProvider ?? "",
+            ["MS_CLIENT_ID"] = props.MicrosoftClientId ?? "",
+            ["MS_TENANT_ID"] = props.MicrosoftTenantId ?? "",
+            ["MICROSOFT_REFRESH_TOKEN_SSM_PATH"] = props.MicrosoftRefreshTokenSsmPath ?? "",
             ["PROJ_CALENDARLINKINDEX_TABLE_NAME"] = calendarLinkIndexTable.TableName,
             ["PROJ_NOTESEARCHVIEW_TABLE_NAME"] = noteSearchViewTable.TableName,
             ["DRAFT_TRANSCRIPTION_TABLE_NAME"] = draftTranscriptionTable.TableName,
@@ -444,6 +450,24 @@ public sealed class NoteTakerStack : Stack
             {
                 Actions = new[] { "ssm:GetParameter" },
                 Resources = new[] { ssmArn }
+            }));
+        }
+
+        // Phase 32-A: same conditional grant for the Microsoft (Outlook) refresh token.
+        // Calendar GETs route to the Command function (alongside the Google grant above),
+        // so the MS SSM read lives here too. Same no-alias function — no CurrentVersion freeze.
+        if (!string.IsNullOrEmpty(props.MicrosoftRefreshTokenSsmPath))
+        {
+            var msSsmArn = Arn.Format(new ArnComponents
+            {
+                Service = "ssm",
+                Resource = "parameter",
+                ResourceName = props.MicrosoftRefreshTokenSsmPath.TrimStart('/')
+            }, this);
+            commandFunction.AddToRolePolicy(new PolicyStatement(new PolicyStatementProps
+            {
+                Actions = new[] { "ssm:GetParameter" },
+                Resources = new[] { msSsmArn }
             }));
         }
 

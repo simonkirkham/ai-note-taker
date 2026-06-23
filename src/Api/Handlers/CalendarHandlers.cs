@@ -12,7 +12,7 @@ namespace Api.Handlers;
 
 public static class CalendarHandlers
 {
-    public static async Task<IResult> GetMeetingsForDate(string date, string? tz, IGoogleCalendarClient calendar, ICalendarLinkIndexStore calendarLinkStore, ICurrentUser currentUser, ILoggerFactory loggerFactory)
+    public static async Task<IResult> GetMeetingsForDate(string date, string? tz, ICalendarClient calendar, ICalendarLinkIndexStore calendarLinkStore, ICurrentUser currentUser, ILoggerFactory loggerFactory)
     {
         if (!DateOnly.TryParseExact(date, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var selectedDate))
         {
@@ -108,7 +108,7 @@ public static class CalendarHandlers
 
     public static async Task<IResult> CreateNoteFromNextOccurrence(
         CreateNoteFromNextOccurrenceRequest req,
-        IGoogleCalendarClient calendar,
+        ICalendarClient calendar,
         INoteCommandHandler handler,
         ICalendarLinkIndexStore calendarLinkStore,
         ICurrentUser currentUser,

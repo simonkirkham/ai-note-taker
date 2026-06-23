@@ -10,7 +10,7 @@ public sealed class CalendarIntegrationTests : IClassFixture<ApiFactory>
 {
     private readonly HttpClient _client;
     private readonly HttpClient _unauthClient;
-    private readonly FakeGoogleCalendarClient _fake;
+    private readonly FakeCalendarClient _fake;
 
     private static string Today => DateOnly.FromDateTime(DateTime.UtcNow).ToString("yyyy-MM-dd");
 
@@ -18,7 +18,7 @@ public sealed class CalendarIntegrationTests : IClassFixture<ApiFactory>
     {
         _client = factory.CreateClient();
         _unauthClient = factory.CreateUnauthenticatedClient();
-        _fake = factory.Services.GetRequiredService<FakeGoogleCalendarClient>();
+        _fake = factory.Services.GetRequiredService<FakeCalendarClient>();
         _fake.Reset();
     }
 
