@@ -36,6 +36,8 @@ public sealed class DynamoDbNoteDetailStore(IAmazonDynamoDB dynamo, string table
             item["SummaryPromptVersion"] = new AttributeValue { S = detail.SummaryPromptVersion };
         if (!string.IsNullOrEmpty(detail.WorkspaceId))
             item["WorkspaceId"] = new AttributeValue { S = detail.WorkspaceId };
+        if (!string.IsNullOrEmpty(detail.RecordingAudioKey))
+            item["RecordingAudioKey"] = new AttributeValue { S = detail.RecordingAudioKey };
         if (detail.InstructionResponses is { Count: > 0 })
             item["InstructionResponses"] = new AttributeValue
             {
@@ -142,7 +144,8 @@ public sealed class DynamoDbNoteDetailStore(IAmazonDynamoDB dynamo, string table
             SummaryModelId: summaryModelId,
             SummaryPromptVersion: summaryPromptVersion,
             WorkspaceId: item.TryGetValue("WorkspaceId", out var wsAttr) ? wsAttr.S : null,
-            InstructionResponses: ReadInstructionResponses(item));
+            InstructionResponses: ReadInstructionResponses(item),
+            RecordingAudioKey: item.TryGetValue("RecordingAudioKey", out var recAttr) ? recAttr.S : null);
     }
 
     private static IReadOnlyList<InstructionResponse>? ReadInstructionResponses(Dictionary<string, AttributeValue> item) =>

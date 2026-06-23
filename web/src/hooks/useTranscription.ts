@@ -1,7 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { presignRecordingUpload, saveRecording } from '../api/recordings';
 import { completeTranscription, getTranscriptionCredentials, saveTranscriptionDraft } from '../api/transcription';
 import { PcmChunker } from './pcm';
 import { SpeakerTranscript } from './speakerSegments';
+import { encodeWav } from './wav';
+
+const RECORDING_CONTENT_TYPE = 'audio/wav' as const;
 
 const LANGUAGE_CODE = 'en-GB' as const;
 
@@ -41,11 +45,18 @@ export type TranscriptionStatus =
   | 'stopped'
   | 'error';
 
+// Lifecycle of the call-recording upload that fires on Stop (Phase 33-A). The
+// captured WAV is uploaded to S3 and its key saved to the note, independently of
+// the transcript commit. 'uploading' drives the optimistic "Download recording"
+// affordance the moment recording stops; it resolves to 'uploaded' or 'failed'.
+export type RecordingUploadStatus = 'idle' | 'uploading' | 'uploaded' | 'failed';
+
 export interface UseTranscriptionResult {
   status: TranscriptionStatus;
   transcript: string;
   elapsedSeconds: number;
   error: string | undefined;
+  recordingUpload: RecordingUploadStatus;
   // resumeFrom: an existing committed transcript to continue. When set, the new
   // session's finalised turns are appended after it (with a "— resumed —"
   // separator); when omitted, recording starts fresh and replaces. See Phase 18-C.
@@ -59,6 +70,7 @@ export function useTranscription(noteId: string): UseTranscriptionResult {
   const [transcript, setTranscript] = useState('');
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const [error, setError] = useState<string | undefined>();
+  const [recordingUpload, setRecordingUpload] = useState<RecordingUploadStatus>('idle');
 
   const stoppedRef = useRef(false);
   const wakeupRef = useRef<(() => void) | null>(null);
@@ -76,6 +88,12 @@ export function useTranscription(noteId: string): UseTranscriptionResult {
   // prepended to every finalised result so the new turns append rather than
   // replace. Empty for a fresh recording. See Phase 18-C.
   const resumePrefixRef = useRef('');
+  // 33-A: the captured 16-bit PCM chunks (the same ones streamed to Transcribe),
+  // teed here so a WAV can be assembled and uploaded on Stop. Buffered in memory
+  // for the whole recording (multipart upload for very long meetings is future).
+  const recordedChunksRef = useRef<Uint8Array[]>([]);
+  const recordedSampleRateRef = useRef(16000);
+  const recordingUploadedRef = useRef(false);
 
   const cleanup = useCallback(() => {
     stoppedRef.current = true;
@@ -133,6 +151,39 @@ export function useTranscription(noteId: string): UseTranscriptionResult {
     });
   }, [noteId]);
 
+  // Assemble the captured PCM into a WAV and upload it to S3, then save its key to
+  // the note (33-A). Fire-and-forget on Stop / natural end — independent of the
+  // transcript commit. One-shot guarded so a Stop after a natural end can't double
+  // upload; failures surface as 'failed' (the optimistic link reconciles to hidden).
+  const uploadRecording = useCallback(() => {
+    if (recordingUploadedRef.current) return;
+    const chunks = recordedChunksRef.current;
+    if (chunks.length === 0) return;
+    recordingUploadedRef.current = true;
+    recordedChunksRef.current = [];
+    setRecordingUpload('uploading');
+    void (async () => {
+      try {
+        const blob = encodeWav(chunks, recordedSampleRateRef.current);
+        const presign = await presignRecordingUpload(noteId, {
+          contentType: RECORDING_CONTENT_TYPE,
+          contentLength: blob.size,
+        });
+        const put = await fetch(presign.uploadUrl, {
+          method: 'PUT',
+          headers: { 'Content-Type': RECORDING_CONTENT_TYPE },
+          body: blob,
+        });
+        if (!put.ok) throw new Error(`recording upload failed: ${put.status}`);
+        await saveRecording(noteId, presign.key);
+        setRecordingUpload('uploaded');
+      } catch {
+        recordingUploadedRef.current = false;
+        setRecordingUpload('failed');
+      }
+    })();
+  }, [noteId]);
+
   useEffect(
     () => () => {
       commitTranscript();
@@ -183,9 +234,12 @@ export function useTranscription(noteId: string): UseTranscriptionResult {
     lastPartialAtRef.current = 0;
     lastDraftRef.current = null;
     committedRef.current = false;
+    recordedChunksRef.current = [];
+    recordingUploadedRef.current = false;
     setTranscript(resumePrefix);
     setElapsedSeconds(0);
     setError(undefined);
+    setRecordingUpload('idle');
     setStatus('requestingCredentials');
 
     void (async () => {
@@ -227,6 +281,9 @@ export function useTranscription(noteId: string): UseTranscriptionResult {
 
         const audioContext = new AudioContext({ sampleRate: 16000 });
         audioContextRef.current = audioContext;
+        // The browser may not honour the requested 16 kHz exactly; record the actual
+        // rate so the WAV header matches the captured PCM.
+        recordedSampleRateRef.current = audioContext.sampleRate;
         await audioContext.audioWorklet.addModule(WORKLET_DATA_URL);
         const workletNode = new AudioWorkletNode(audioContext, 'pcm-processor');
 
@@ -250,7 +307,11 @@ export function useTranscription(noteId: string): UseTranscriptionResult {
           if (stoppedRef.current) return;
           const chunks = chunker.push(e.data as Float32Array);
           if (chunks.length === 0) return;
-          for (const chunk of chunks) audioQueue.push(chunk);
+          for (const chunk of chunks) {
+            audioQueue.push(chunk);
+            // Tee the same PCM chunk into the recording buffer for the WAV upload (33-A).
+            recordedChunksRef.current.push(chunk);
+          }
           wakeupRef.current?.();
           wakeupRef.current = null;
         };
@@ -336,6 +397,7 @@ export function useTranscription(noteId: string): UseTranscriptionResult {
 
         if (!stoppedRef.current) {
           commitTranscript();
+          uploadRecording();
           cleanup();
           setStatus('stopped');
         }
@@ -346,13 +408,14 @@ export function useTranscription(noteId: string): UseTranscriptionResult {
         setStatus('error');
       }
     })();
-  }, [cleanup, saveCheckpoint, commitTranscript]);
+  }, [cleanup, saveCheckpoint, commitTranscript, uploadRecording]);
 
   const stopRecording = useCallback(() => {
     commitTranscript();
+    uploadRecording();
     cleanup();
     setStatus('stopped');
-  }, [cleanup, commitTranscript]);
+  }, [cleanup, commitTranscript, uploadRecording]);
 
   const reset = useCallback(() => {
     cleanup();
@@ -360,12 +423,15 @@ export function useTranscription(noteId: string): UseTranscriptionResult {
     resumePrefixRef.current = '';
     lastDraftRef.current = null;
     committedRef.current = false;
+    recordedChunksRef.current = [];
+    recordingUploadedRef.current = false;
     setStatus('idle');
     setTranscript('');
     setElapsedSeconds(0);
     setError(undefined);
+    setRecordingUpload('idle');
     stoppedRef.current = false;
   }, [cleanup]);
 
-  return { status, transcript, elapsedSeconds, error, startRecording, stopRecording, reset };
+  return { status, transcript, elapsedSeconds, error, recordingUpload, startRecording, stopRecording, reset };
 }

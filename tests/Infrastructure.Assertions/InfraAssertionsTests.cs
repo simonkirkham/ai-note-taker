@@ -1512,6 +1512,86 @@ public class InfraAssertionsTests
         _template.HasResourceProperties("AWS::IAM::Policy", PolicyWithObjectAction("s3:DeleteObject*"));
     }
 
+    // ── Recordings bucket (Phase 33-A) ───────────────────────────────
+    // Working-artefact bucket: DESTROY + 7-day lifecycle expiry (not durable user
+    // data, unlike the RETAIN images bucket). ExpirationInDays=7 is unique to it
+    // (web bucket = 30, images bucket has no expiration), so it uniquely identifies
+    // the recordings bucket.
+
+    [Fact]
+    public void RecordingsBucket_ExpiresObjectsAfterSevenDays()
+    {
+        _template.HasResourceProperties("AWS::S3::Bucket", Match.ObjectLike(new Dictionary<string, object>
+        {
+            ["PublicAccessBlockConfiguration"] = Match.ObjectLike(new Dictionary<string, object>
+            {
+                ["BlockPublicAcls"] = true,
+                ["BlockPublicPolicy"] = true,
+                ["IgnorePublicAcls"] = true,
+                ["RestrictPublicBuckets"] = true
+            }),
+            ["LifecycleConfiguration"] = Match.ObjectLike(new Dictionary<string, object>
+            {
+                ["Rules"] = Match.ArrayWith(new object[]
+                {
+                    Match.ObjectLike(new Dictionary<string, object>
+                    {
+                        ["Status"] = "Enabled",
+                        ["ExpirationInDays"] = 7
+                    })
+                })
+            })
+        }));
+    }
+
+    [Fact]
+    public void RecordingsBucket_IsDestroyedOnTeardown()
+    {
+        // DESTROY removal policy → DeletionPolicy "Delete". Identified by the 7-day
+        // lifecycle so it cannot match the RETAIN images bucket or the web bucket.
+        _template.HasResource("AWS::S3::Bucket", Match.ObjectLike(new Dictionary<string, object>
+        {
+            ["DeletionPolicy"] = "Delete",
+            ["Properties"] = Match.ObjectLike(new Dictionary<string, object>
+            {
+                ["LifecycleConfiguration"] = Match.ObjectLike(new Dictionary<string, object>
+                {
+                    ["Rules"] = Match.ArrayWith(new object[]
+                    {
+                        Match.ObjectLike(new Dictionary<string, object> { ["ExpirationInDays"] = 7 })
+                    })
+                })
+            })
+        }));
+    }
+
+    [Fact]
+    public void Lambda_HasScopedS3PermissionsForRecordings()
+    {
+        // Guardrail: the recordings grant must use the resource-grant path scoped to the
+        // recordings/ prefix (bucket.GrantReadWrite(fn, "recordings/*")), not a bare
+        // AddToRolePolicy. The object-action statement's Resource is the bucket ARN joined
+        // with "/recordings/*"; matching that literal uniquely identifies this grant
+        // (the images grant is scoped to "/notes/*").
+        _template.HasResourceProperties("AWS::IAM::Policy", PolicyWithObjectActionOnPrefix("s3:PutObject", "/recordings/*"));
+        _template.HasResourceProperties("AWS::IAM::Policy", PolicyWithObjectActionOnPrefix("s3:GetObject*", "/recordings/*"));
+    }
+
+    [Fact]
+    public void Lambda_HasRecordingsBucketEnvVar()
+    {
+        _template.HasResourceProperties("AWS::Lambda::Function", Match.ObjectLike(new Dictionary<string, object>
+        {
+            ["Environment"] = Match.ObjectLike(new Dictionary<string, object>
+            {
+                ["Variables"] = Match.ObjectLike(new Dictionary<string, object>
+                {
+                    ["RECORDINGS_BUCKET_NAME"] = Match.AnyValue()
+                })
+            })
+        }));
+    }
+
     // ── Phase 27-B: DynamoDB stream + async Projector Lambda ─────────────
 
     [Fact]
@@ -1842,6 +1922,35 @@ public class InfraAssertionsTests
                     {
                         ["Action"] = Match.ArrayWith(new object[] { action }),
                         ["Effect"] = "Allow"
+                    })
+                })
+            })
+        });
+
+    // Like PolicyWithObjectAction but also requires the statement's Resource to be the
+    // bucket ARN joined with the given object-key prefix (e.g. "/recordings/*") — proving
+    // the grant is scoped to that prefix, not bucket-wide.
+    private static object PolicyWithObjectActionOnPrefix(string action, string keyPrefix) =>
+        Match.ObjectLike(new Dictionary<string, object>
+        {
+            ["PolicyDocument"] = Match.ObjectLike(new Dictionary<string, object>
+            {
+                ["Statement"] = Match.ArrayWith(new object[]
+                {
+                    Match.ObjectLike(new Dictionary<string, object>
+                    {
+                        ["Action"] = Match.ArrayWith(new object[] { action }),
+                        ["Effect"] = "Allow",
+                        ["Resource"] = Match.ArrayWith(new object[]
+                        {
+                            Match.ObjectLike(new Dictionary<string, object>
+                            {
+                                ["Fn::Join"] = Match.ArrayWith(new object[]
+                                {
+                                    Match.ArrayWith(new object[] { keyPrefix })
+                                })
+                            })
+                        })
                     })
                 })
             })

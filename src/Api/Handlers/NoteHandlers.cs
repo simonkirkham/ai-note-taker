@@ -142,6 +142,7 @@ public static class NoteHandlers
             lastModifiedAt = detail.LastModifiedAt,
             transcriptText = detail.TranscriptText,
             transcriptDraft,
+            recordingAudioKey = detail.RecordingAudioKey,
             summary = detail.Summary,
             discussionPoints = detail.DiscussionPoints ?? [],
             decisions = detail.Decisions ?? [],

@@ -59,6 +59,10 @@ export interface NoteDetail {
   // An uncommitted transcript left by an interrupted recording (crash/tab close),
   // surfaced for recovery. Null on the happy path. See ADR 0011 / Phase 18.
   transcriptDraft: TranscriptionDraft | null;
+  // The S3 key of the saved call recording (Phase 33-A), or null if none was
+  // captured. Presence drives the "Download recording" link; the URL itself is
+  // fetched lazily via POST /recording/presign-download on click.
+  recordingAudioKey: string | null;
   summary: string | null;
   discussionPoints: string[];
   decisions: string[];

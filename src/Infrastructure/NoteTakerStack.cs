@@ -230,6 +230,39 @@ public sealed class NoteTakerStack : Stack
             }
         });
 
+        // ── Call recordings (Phase 33-A) ─────────────────────────────────
+        // Working artefact, NOT durable user data: the captured WAV is uploaded on Stop so a
+        // later batch-diarization job (33-B) can run over it. DESTROY + AutoDeleteObjects so a
+        // stack teardown takes the bucket with it, and a 7-day lifecycle expiry so recordings
+        // self-purge (cost-bounded; the transcript is the durable record, not the audio). CORS
+        // PUT/GET for the browser's presigned upload + download. Created before the Lambda so its
+        // name rides the constructor Environment dict (part of the hashed config).
+        var recordingsBucket = new Bucket(this, "NoteRecordingsBucket", new BucketProps
+        {
+            RemovalPolicy = RemovalPolicy.DESTROY,
+            AutoDeleteObjects = true,
+            BlockPublicAccess = BlockPublicAccess.BLOCK_ALL,
+            Encryption = BucketEncryption.S3_MANAGED,
+            Cors = new[]
+            {
+                new CorsRule
+                {
+                    AllowedMethods = new[] { HttpMethods.PUT, HttpMethods.GET },
+                    AllowedOrigins = new[] { "*" },
+                    AllowedHeaders = new[] { "*" },
+                    MaxAge = 3000
+                }
+            },
+            LifecycleRules = new[]
+            {
+                new LifecycleRule
+                {
+                    Expiration = Duration.Days(7),
+                    AbortIncompleteMultipartUploadAfter = Duration.Days(1)
+                }
+            }
+        });
+
         // ── API Lambda ───────────────────────────────────────────────────
         var lambdaAssetPath = (string?)this.Node.TryGetContext("lambdaAssetPath")
             ?? "src/Api/bin/Release/net10.0/publish";
@@ -305,6 +338,7 @@ public sealed class NoteTakerStack : Stack
             ["DRAFT_TRANSCRIPTION_TABLE_NAME"] = draftTranscriptionTable.TableName,
             ["AUTH_TOKENS_TABLE_NAME"] = authTokensTable.TableName,
             ["IMAGE_BUCKET_NAME"] = imagesBucket.BucketName,
+            ["RECORDINGS_BUCKET_NAME"] = recordingsBucket.BucketName,
             ["PROJ_WORKSPACELIST_TABLE_NAME"] = workspaceListTable.TableName,
             // RYW-1: the consistency gate reads the projector's processed-position table to
             // wait until a just-written stream has been applied. Rides the constructor dict
@@ -404,6 +438,10 @@ public sealed class NoteTakerStack : Stack
         // Note images: object read/write scoped to the note image prefix. Uses the
         // bucket grant (not a bespoke AddToRolePolicy statement) as a matter of habit.
         imagesBucket.GrantReadWrite(commandFunction, "notes/*");
+        // Call recordings (33-A): object read/write scoped to the recordings prefix. Presign
+        // upload/download + the save command all run on the Command function. Resource-grant
+        // path (never a bespoke AddToRolePolicy — see the CurrentVersion-hash guardrail).
+        recordingsBucket.GrantReadWrite(commandFunction, "recordings/*");
 
         // The Command function is invoked via $LATEST (no alias) — it has no SnapStart,
         // so there is no published-version snapshot to route to. Dropping the alias also

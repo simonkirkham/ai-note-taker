@@ -198,6 +198,9 @@ public static class Builder
         var imageBucketName = Environment.GetEnvironmentVariable("IMAGE_BUCKET_NAME") ?? "";
         builder.Services.AddSingleton<INoteImageStore>(sp =>
             new S3NoteImageStore(sp.GetRequiredService<IAmazonS3>(), imageBucketName));
+        var recordingsBucketName = Environment.GetEnvironmentVariable("RECORDINGS_BUCKET_NAME") ?? "";
+        builder.Services.AddSingleton<INoteRecordingStore>(sp =>
+            new S3NoteRecordingStore(sp.GetRequiredService<IAmazonS3>(), recordingsBucketName));
         builder.Services.AddAWSLambdaHosting(LambdaEventSource.HttpApi);
 
         return builder.Build();
