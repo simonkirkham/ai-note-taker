@@ -33,6 +33,7 @@
 | CHANGE-19 | Auto-show "older notes" when a tag filter is applied; revert when the filter is cleared | Done | — |
 | CHANGE-20 | Search highlight uses the same word-level matcher as the gate — `MatchedTokens`/`MatchedTags` still pick displayed terms via FuzzySharp `Process.ExtractTop` (substring) while inclusion uses BUG-35's word-level rules; reuse `BestTokenScore` so the highlighted term/snippet always reflects why the note matched | Done | BUG-35 |
 | CHANGE-21 | Label the active calendar source on the Home meetings list — `ICalendarClient.ProviderName` surfaced on `GET /calendar/{date}` as `provider`; a small "Outlook"/"Google Calendar" badge under the meetings heading (stub/unknown → no label) | Done | Phase 32 |
+| CHANGE-22 | Analysis observability — `IDomainMetrics.AnalysisCompleted(ms)`/`AnalysisFailed()` (EMF `AnalysisDurationMs`/`AnalysisFailed`, dimensionless); `AnalyseNote` times the Bedrock call and logs the failing note id; `notetaker-analysis-failed` alarm + a "p50/p99 vs failures" dashboard widget. Covers manual + on-Stop auto-analyse; carries into the 33-B2 analysis service | Done | — |
 
 Open: none.
 

@@ -115,10 +115,7 @@ Decision (2026-06-23): **defer to a single analysis.** When the frontend trigger
 - Scenario: re-analysis failure does not roll back the transcript (the diarized transcript still shows; analysis error follows the existing path).
 - **Acceptance:** exactly one analysis per recorded note — diarized on success, streamed on failure; no flicker; manual analyse always immediate; a Bedrock failure degrades gracefully (transcript intact).
 
-**Observability (analysis timing + failures — user-requested 2026-06-23).** Instrument `INoteAnalysisService.AnalyseAsync` so it covers **every** analysis path (manual `POST /analyse`, on-Stop auto-analyse, and the diarization-triggered re-analyse) from one place:
-- `IDomainMetrics.AnalysisCompleted(double milliseconds)` → EMF `AnalysisDurationMs` (Milliseconds unit, dimensionless like `ProjectionRebuildDuration`) so the dashboard tracks p50/p95 analysis latency and a slow-analysis alarm is possible.
-- `IDomainMetrics.AnalysisFailed()` → EMF `AnalysisFailed` count (alarmable), plus a **structured log carrying the noteId** (and `Trigger` = manual|autoStop|diarize, model id, exception type) — never as a metric dimension (alarms reject varying dimensions; ids stay in logs, per the search/rebuild-metric convention). The log line is the queryable "which notes failed analysis" list in CloudWatch Logs Insights.
-- Add the `AnalysisDurationMs` widget + `AnalysisFailed` alarm to the `notetaker-ops` dashboard.
+**Observability (analysis timing + failures) — shipped ahead of B2 as [CHANGE-22](phase-minor-changes.md) (PR #325, deploy #625, 2026-06-23).** `IDomainMetrics.AnalysisCompleted(ms)`/`AnalysisFailed()` (EMF `AnalysisDurationMs`/`AnalysisFailed`, dimensionless), the per-note failure log, the `notetaker-analysis-failed` alarm and the "p50/p99 vs failures" widget already exist on the current `AnalyseNote` path. **B2 only needs to carry that instrumentation into the extracted `INoteAnalysisService.AnalyseAsync`** (it moves with the handler body) so the diarization-triggered re-analyse is covered too — no new metrics to design.
 
 ## Architecture notes
 
