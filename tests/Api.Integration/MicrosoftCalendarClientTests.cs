@@ -234,7 +234,10 @@ public sealed class MicrosoftCalendarClientTests
         Assert.NotNull(graphReq);
         Assert.Contains("/me/events/series-9/instances", graphReq!.RequestUri!.AbsoluteUri);
         Assert.Contains("startDateTime=2026-06-23T00:00:00", graphReq.RequestUri!.AbsoluteUri);
-        Assert.Contains("endDateTime=", graphReq.RequestUri!.AbsoluteUri);
+        // endDateTime = after + 400-day lookahead; locks the window math.
+        Assert.Contains("endDateTime=2027-07-28T00:00:00", graphReq.RequestUri!.AbsoluteUri);
+        // "first future instance" relies on server-side ordering — assert it's requested.
+        Assert.Contains("orderby=start/dateTime", graphReq.RequestUri!.AbsoluteUri);
         Assert.Equal("Bearer", graphReq.Headers.Authorization!.Scheme);
         Assert.Equal("access-NN", graphReq.Headers.Authorization.Parameter);
         Assert.Contains(graphReq.Headers.GetValues("Prefer"), v => v.Contains("outlook.timezone=\"UTC\""));

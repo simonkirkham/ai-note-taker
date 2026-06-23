@@ -131,6 +131,9 @@ public sealed class MicrosoftCalendarClient : ICalendarClient
         var url = $"https://graph.microsoft.com/v1.0/me/events/{Uri.EscapeDataString(recurringSeriesId)}/instances"
             + $"?startDateTime={ToGraphUtc(windowStart)}&endDateTime={ToGraphUtc(windowEnd)}"
             + "&$select=id,subject,start,end,isAllDay,isCancelled,seriesMasterId"
+            // $orderby ascending + take the first non-cancelled instance = the next occurrence.
+            // $top=10 assumes fewer than 10 leading cancellations at the window start (implausible
+            // for a next-occurrence query); we do not page beyond it.
             + "&$orderby=start/dateTime&$top=10";
 
         using var request = new HttpRequestMessage(HttpMethod.Get, url);
@@ -207,8 +210,9 @@ public sealed class MicrosoftCalendarClient : ICalendarClient
     }
 
     // Maps one Graph event/instance to a CalendarEvent, or null if cancelled or missing
-    // id/start/end. recurringSeriesIdOverride forces the series link (used for instances, whose
-    // own seriesMasterId equals the master anyway); when null the event's own seriesMasterId is used.
+    // id/start/end. recurringSeriesIdOverride forces the series link to the known master id
+    // (used for instances) so the result is recurring even if an instance omits seriesMasterId;
+    // when null the event's own seriesMasterId is used (day view).
     private static CalendarEvent? TryMapEvent(JsonElement item, string? recurringSeriesIdOverride = null)
     {
         if (item.TryGetProperty("isCancelled", out var cancelled) &&
