@@ -26,6 +26,10 @@ export const handlers = [
   ...scoped('post', '/todos/:todoId/complete', () => new HttpResponse(null, { status: 204 })),
   ...scoped('post', '/todos/:todoId/reopen', () => new HttpResponse(null, { status: 204 })),
   ...scoped('delete', '/todos/:todoId', () => new HttpResponse(null, { status: 204 })),
+  // Must precede /api/calendar/:date (":date" would otherwise match "connection"). Neutral
+  // default: connected with no email → header falls back to the provider label, unavailable
+  // shows the generic "Cannot connect" (tests override per-case).
+  http.get('/api/calendar/connection', () => HttpResponse.json({ status: 'connected', provider: 'google', email: null })),
   http.get('/api/calendar/:date', () => HttpResponse.json({ meetings: [] })),
   ...scoped('get', '/notes/:noteId', () =>
     HttpResponse.json({

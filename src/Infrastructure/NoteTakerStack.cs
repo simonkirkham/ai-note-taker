@@ -202,6 +202,19 @@ public sealed class NoteTakerStack : Stack
             RemovalPolicy = RemovalPolicy.RETAIN
         });
 
+        // 34-A: per-user calendar refresh tokens from the in-app "Connect calendar" flow.
+        // (sub, provider) key so one user can connect Google + Microsoft independently. A durable
+        // credential, not a projection → RETAIN, encrypted, never auto-deleted.
+        var calendarTokensTable = new Table(this, "CalendarTokensTable", new TableProps
+        {
+            TableName = "notetaker-calendar-tokens",
+            PartitionKey = new Amazon.CDK.AWS.DynamoDB.Attribute { Name = "sub", Type = AttributeType.STRING },
+            SortKey = new Amazon.CDK.AWS.DynamoDB.Attribute { Name = "provider", Type = AttributeType.STRING },
+            BillingMode = BillingMode.PAY_PER_REQUEST,
+            Encryption = TableEncryption.AWS_MANAGED,
+            RemovalPolicy = RemovalPolicy.RETAIN
+        });
+
         // ── Note images (user-uploaded blobs) ────────────────────────────
         // Private bucket: the browser uploads/downloads directly via presigned URLs,
         // so CORS must allow PUT/GET. RETAIN — user data is never auto-deleted on a
@@ -337,6 +350,7 @@ public sealed class NoteTakerStack : Stack
             ["PROJ_NOTESEARCHVIEW_TABLE_NAME"] = noteSearchViewTable.TableName,
             ["DRAFT_TRANSCRIPTION_TABLE_NAME"] = draftTranscriptionTable.TableName,
             ["AUTH_TOKENS_TABLE_NAME"] = authTokensTable.TableName,
+            ["CALENDAR_TOKENS_TABLE_NAME"] = calendarTokensTable.TableName,
             ["IMAGE_BUCKET_NAME"] = imagesBucket.BucketName,
             ["RECORDINGS_BUCKET_NAME"] = recordingsBucket.BucketName,
             ["PROJ_WORKSPACELIST_TABLE_NAME"] = workspaceListTable.TableName,
@@ -475,6 +489,7 @@ public sealed class NoteTakerStack : Stack
         // Auth refresh-token store (30-A): only the Command Lambda touches it (the /auth/*
         // endpoints route there). Resource-grant path, RW; the Query Lambda gets NO grant.
         authTokensTable.GrantReadWriteData(commandFunction);
+        calendarTokensTable.GrantReadWriteData(commandFunction);
 
         if (!string.IsNullOrEmpty(props.GoogleRefreshTokenSsmPath))
         {
@@ -712,6 +727,14 @@ public sealed class NoteTakerStack : Stack
         httpApi.AddRoutes(new Amazon.CDK.AWS.Apigatewayv2.AddRoutesOptions
         {
             Path = "/calendar/{date}",
+            Methods = new[] { Amazon.CDK.AWS.Apigatewayv2.HttpMethod.GET },
+            Integration = commandIntegration
+        });
+        // 34-A: calendar connection status read hits the calendar-token store (granted to Command,
+        // not Query). Pinned explicitly so it never routes to the Query function.
+        httpApi.AddRoutes(new Amazon.CDK.AWS.Apigatewayv2.AddRoutesOptions
+        {
+            Path = "/calendar/connection",
             Methods = new[] { Amazon.CDK.AWS.Apigatewayv2.HttpMethod.GET },
             Integration = commandIntegration
         });

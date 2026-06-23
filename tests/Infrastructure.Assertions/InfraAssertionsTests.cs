@@ -1297,6 +1297,39 @@ public class InfraAssertionsTests
     }
 
     [Fact]
+    public void Lambda_HasCalendarTokensTableEnvVar()
+    {
+        _template.HasResourceProperties("AWS::Lambda::Function", Match.ObjectLike(new Dictionary<string, object>
+        {
+            ["Environment"] = Match.ObjectLike(new Dictionary<string, object>
+            {
+                ["Variables"] = Match.ObjectLike(new Dictionary<string, object>
+                {
+                    ["CALENDAR_TOKENS_TABLE_NAME"] = Match.AnyValue()
+                })
+            })
+        }));
+    }
+
+    [Fact]
+    public void CalendarTokensTable_ExistsWithProviderSortKeyAndRetain()
+    {
+        _template.HasResource("AWS::DynamoDB::Table", Match.ObjectLike(new Dictionary<string, object>
+        {
+            ["DeletionPolicy"] = "Retain",
+            ["Properties"] = Match.ObjectLike(new Dictionary<string, object>
+            {
+                ["TableName"] = "notetaker-calendar-tokens",
+                ["KeySchema"] = Match.ArrayWith(new object[]
+                {
+                    Match.ObjectLike(new Dictionary<string, object> { ["AttributeName"] = "sub", ["KeyType"] = "HASH" }),
+                    Match.ObjectLike(new Dictionary<string, object> { ["AttributeName"] = "provider", ["KeyType"] = "RANGE" })
+                })
+            })
+        }));
+    }
+
+    [Fact]
     public void CommandLambda_HasReadWriteGrantOnAuthTokensTable()
     {
         // Resource-grant path → standard DynamoDB RW action set on the table.

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { connectGoogleCalendar } from '../api/calendarAuth'
 import { AuthContext, type AuthState } from './context'
 import { buildAuthUrl, exchangeCode, generateCodeChallenge, generateCodeVerifier } from './pkce'
 import { attemptSilentRefresh } from './silentRefresh'
@@ -33,7 +34,12 @@ export function AuthProvider({
   const hasOAuthCode = clientId !== '' && typeof window !== 'undefined'
     && new URLSearchParams(window.location.search).has('code')
   const shouldBootstrapRefresh = clientId !== '' && !initialToken && !persisted && !hasOAuthCode
-  const [authLoading, setAuthLoading] = useState(shouldBootstrapRefresh)
+  // Returning from the in-app calendar consent (a `code` plus our calendar_state marker). Keep the
+  // gate in a loading state while we restore the session and POST the connect, so the sign-in
+  // screen never flashes mid-connect.
+  const isCalendarConnectReturn = hasOAuthCode && typeof window !== 'undefined'
+    && sessionStorage.getItem('calendar_state') != null
+  const [authLoading, setAuthLoading] = useState(shouldBootstrapRefresh || isCalendarConnectReturn)
   const [forbidden, setForbidden] = useState(false)
   const [sessionExpired, setSessionExpired] = useState(false)
   const mounted = useRef(false)
@@ -133,6 +139,29 @@ export function AuthProvider({
     const params = new URLSearchParams(window.location.search)
     const code = params.get('code')
     const returnedState = params.get('state')
+
+    // Calendar-connect return (34-A): a `code` with our calendar_state marker. Restore the session
+    // (the redirect dropped the in-memory token) so the connect call is authenticated, POST the
+    // code to the connect endpoint, THEN reveal the app — setting the token store before setIdToken
+    // means the connection query doesn't fire (and read needs_auth) until the connect persisted.
+    const calState = sessionStorage.getItem('calendar_state')
+    const calVerifier = sessionStorage.getItem('calendar_verifier')
+    if (code && returnedState && calState && returnedState === calState && calVerifier) {
+      sessionStorage.removeItem('calendar_state')
+      sessionStorage.removeItem('calendar_verifier')
+      window.history.replaceState({}, '', window.location.pathname)
+      void (async () => {
+        const token = await attemptSilentRefresh().catch(() => null)
+        if (token) setToken(token)
+        try {
+          await connectGoogleCalendar(window.location.origin, code, calVerifier)
+        } catch { /* a failed connect surfaces as needs_auth on the next connection read */ }
+        if (token) setIdToken(token)
+        setAuthLoading(false)
+      })()
+      return
+    }
+
     const verifier = sessionStorage.getItem('pkce_code_verifier')
     const storedState = sessionStorage.getItem('pkce_state')
 
