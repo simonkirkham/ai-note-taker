@@ -314,7 +314,7 @@ Slices and acceptance criteria: [docs/phases/phase-31.md](phases/phase-31.md)
 
 ---
 
-## Phase 32 — Microsoft 365 (Outlook) Calendar Integration _(In Progress — 32-A done)_
+## Phase 32 — Microsoft 365 (Outlook) Calendar Integration _(Done)_
 
 Back the home-screen meetings list with the owner's **Microsoft 365 / Outlook** calendar instead of Google, reusing every existing calendar consumer (create-note-from-meeting, reminders, recurring next-occurrence) unchanged. Mirrors Phase 9's Google model: a refresh token minted out-of-band and stored in SSM, exchanged for an access token per call, read via Microsoft Graph `/me/calendarView` (which expands recurrences server-side, the Graph equivalent of Google's `SingleEvents=true`). A 2026-06-22/23 spike proved the auth path, the `Calendars.Read` scope, and the field mapping on one real call against a personal Outlook account. Locked: **one provider at a time** via a `CALENDAR_PROVIDER` env switch (default `google`; merged calendars out of scope); **token minted out-of-band** (the MSAL device-code spike promoted to a one-shot minting tool → SSM, no in-app consent UI); **public client, no client secret**; **force UTC** via `Prefer: outlook.timezone="UTC"`. Two slices: **32-A** — *see your Outlook meetings on Home and create a note from one* (keystone, core value); **32-B** — *create a note for the next occurrence of a recurring Outlook meeting*. Deploy-time impact: **neutral** (env vars + one IAM grant; no new table, no projection backfill).
 

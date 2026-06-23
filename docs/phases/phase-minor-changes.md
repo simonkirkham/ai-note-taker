@@ -32,6 +32,7 @@
 | CHANGE-18 | Tag-search box in the home Filters panel that filters the displayed tag pills (lists >8 tags) | Done | — |
 | CHANGE-19 | Auto-show "older notes" when a tag filter is applied; revert when the filter is cleared | Done | — |
 | CHANGE-20 | Search highlight uses the same word-level matcher as the gate — `MatchedTokens`/`MatchedTags` still pick displayed terms via FuzzySharp `Process.ExtractTop` (substring) while inclusion uses BUG-35's word-level rules; reuse `BestTokenScore` so the highlighted term/snippet always reflects why the note matched | Done | BUG-35 |
+| CHANGE-21 | Label the active calendar source on the Home meetings list — `ICalendarClient.ProviderName` surfaced on `GET /calendar/{date}` as `provider`; a small "Outlook"/"Google Calendar" badge under the meetings heading (stub/unknown → no label) | Done | Phase 32 |
 
 Open: none.
 

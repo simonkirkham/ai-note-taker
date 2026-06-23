@@ -7,7 +7,7 @@
 | Slice | Summary | Status | Depends on |
 |-------|---------|--------|------------|
 | 32-A | **See your Outlook meetings on Home and create a note from one** (the day's M365 calendar, one-click note linked to the meeting). | Done | — |
-| 32-B | **Create a note for the next occurrence of a recurring Outlook meeting** (parity with Google recurring meetings). | Not Started | 32-A |
+| 32-B | **Create a note for the next occurrence of a recurring Outlook meeting** (parity with Google recurring meetings). | Done | 32-A |
 
 Spike already done (2026-06-22/23): MSAL device-code auth + a real `GET /me/calendarView` returned a real event for `simon.kirkham@outlook.com` (personal MSA), confirming the auth path, the `Calendars.Read` scope, and the field mapping. See [Spike findings](#spike-findings).
 
@@ -115,7 +115,7 @@ Scenario: Missing Calendars.Read scope is not silently empty
 
 ## Slice 32-B — Create a note for the next occurrence of a recurring Outlook meeting
 
-**Status:** Not Started.
+**Status:** Done (PR #322, deploy #620/#622). **Phase 32 complete** — Outlook live in prod (`CALENDAR_PROVIDER=microsoft`).
 
 **User value:** inside a recurring-meeting note, the owner clicks "next occurrence" and gets a note for the meeting's next future instance — the Phase 9 affordance, now working for Outlook recurring meetings.
 
@@ -139,7 +139,7 @@ Scenario: Series with no future instance
 
 1. `GetNextOccurrenceAsync(seriesMasterId, after)` queries Graph for the series' next instance after `after` (e.g. `/me/events/{seriesMasterId}/instances?startDateTime=…&endDateTime=…` over a bounded lookahead, ordered, first future instance), with `Prefer: outlook.timezone="UTC"`, mapped to `CalendarEvent`.
 2. Returns `null` (not an error) when the series has no future instance within the lookahead.
-3. Lookahead window + `ShowDeleted`/cancelled handling guard against the cancelled-instance 404 trap (cf. the Google `Instances` guardrail in CLAUDE.md).
+3. Cancelled instances are filtered **client-side** via `isCancelled` (the Graph instances endpoint has no `ShowDeleted` equivalent, unlike Google), and the bounded lookahead + skip-cancelled guard against the cancelled-instance 404 trap (cf. the Google `Instances` guardrail in CLAUDE.md). `$top=10` assumes fewer than 10 leading cancellations.
 4. The guarded `NotSupportedException` from 32-A is removed.
 
 ### Observability
