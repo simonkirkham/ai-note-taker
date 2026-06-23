@@ -6,8 +6,8 @@
 
 | Slice | Summary | Status | Depends on |
 |-------|---------|--------|------------|
-| 32-A | Generalise `IGoogleCalendarClient` → `ICalendarClient`; add `MicrosoftCalendarClient` day-view (`/me/calendarView`); `CALENDAR_PROVIDER` switch; CDK env vars + MS SSM read grant; token-minting guide. **Keystone + core value.** | Not Started | — |
-| 32-B | M365 recurring meetings: implement `GetNextOccurrenceAsync` via Graph series instances. | Not Started | 32-A |
+| 32-A | **See your Outlook meetings on Home and create a note from one** (the day's M365 calendar, one-click note linked to the meeting). | Not Started | — |
+| 32-B | **Create a note for the next occurrence of a recurring Outlook meeting** (parity with Google recurring meetings). | Not Started | 32-A |
 
 Spike already done (2026-06-22/23): MSAL device-code auth + a real `GET /me/calendarView` returned a real event for `simon.kirkham@outlook.com` (personal MSA), confirming the auth path, the `Calendars.Read` scope, and the field mapping. See [Spike findings](#spike-findings).
 
@@ -54,11 +54,13 @@ Proven: personal MSA works with delegated `Calendars.Read`, no admin consent. Un
 
 ---
 
-## Slice 32-A — Generalise the calendar seam + read M365 day view
+## Slice 32-A — See your Outlook meetings on Home and create a note from one
 
 **Status:** Not Started.
 
-Extract a provider-agnostic `ICalendarClient` from `IGoogleCalendarClient` (keep the `CalendarEvent` record), add a Microsoft-backed implementation of the day-view read, and select the provider by env var. `GetNextOccurrenceAsync` on the Microsoft client throws a guarded `NotSupportedException` until 32-B (recurring create-note button is hidden/disabled for Outlook events in the meantime, or the call is caught and reported `calendar_unavailable`).
+**User value:** the owner opens Home and sees today's Outlook/M365 meetings in the existing meetings list, and clicks one to create a linked note — exactly the Phase 9 Google experience, now backed by their Microsoft calendar.
+
+**How (mechanics):** extract a provider-agnostic `ICalendarClient` from `IGoogleCalendarClient` (keep the `CalendarEvent` record), add a Microsoft-backed day-view implementation, and select the provider by env var. `GetNextOccurrenceAsync` on the Microsoft client throws a guarded `NotSupportedException` until 32-B (the recurring create-note button is hidden for Outlook events meanwhile, or the call is caught and reported `calendar_unavailable`).
 
 ### Scenarios
 
@@ -111,11 +113,13 @@ Scenario: Missing Calendars.Read scope is not silently empty
 
 ---
 
-## Slice 32-B — M365 recurring meetings: next-occurrence note
+## Slice 32-B — Create a note for the next occurrence of a recurring Outlook meeting
 
 **Status:** Not Started.
 
-Implement `MicrosoftCalendarClient.GetNextOccurrenceAsync` so the existing "create note for the next occurrence" control works for Outlook recurring meetings, matching Google's behaviour.
+**User value:** inside a recurring-meeting note, the owner clicks "next occurrence" and gets a note for the meeting's next future instance — the Phase 9 affordance, now working for Outlook recurring meetings.
+
+**How (mechanics):** implement `MicrosoftCalendarClient.GetNextOccurrenceAsync` via Graph series instances, and remove the 32-A guard.
 
 ### Scenarios
 
