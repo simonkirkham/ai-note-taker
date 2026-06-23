@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Text.RegularExpressions;
 using Amazon.BedrockRuntime;
 using Amazon.SecurityToken;
@@ -113,7 +114,7 @@ public static class TranscriptionHandlers
         // takes". On failure, emit the alarmable AnalysisFailed metric and log the note id so
         // "which notes failed analysis" is a CloudWatch Logs Insights query (id in the log, not
         // a metric dimension — alarms reject varying dimensions).
-        var analysisStopwatch = System.Diagnostics.Stopwatch.StartNew();
+        var analysisStopwatch = Stopwatch.StartNew();
         try
         {
             result = await bedrockAnalysis.AnalyseAsync(
