@@ -6,7 +6,7 @@
 
 | Slice | Summary | Status | Depends on |
 |-------|---------|--------|------------|
-| 34-A | **Connect Google Calendar in-app → server-side per-user token** (keystone; TI-47 core). A "Connect calendar" button runs auth-code+PKCE; backend stores the refresh token server-side; the meetings read uses it (SSM fallback while unconnected). Google only, per-user. | Not Started | — |
+| 34-A | **Connect Google Calendar in-app → server-side per-user token** (keystone; TI-47 core). A "Connect calendar" button runs auth-code+PKCE; backend stores the refresh token server-side; the meetings read uses it (SSM fallback while unconnected). Google only, per-user. | Done | — |
 | 34-B | **Key the calendar connection by workspace.** `WorkspaceCalendarConnected` event; connect associates with the current workspace; token + read resolve by `workspaceId`. Two workspaces → two different Google accounts. | Not Started | 34-A |
 | 34-C | **Add Microsoft as a connectable provider per workspace + per-request resolution.** In-app connect for Outlook; `ICalendarClientFactory.For(workspaceId)` resolves google/microsoft from the workspace's connection; drop the global `CALENDAR_PROVIDER` env. A=Google, B=Outlook. | Not Started | 34-B |
 | 34-D | **Retire the out-of-band SSM token path + mint scripts** (strangle cleanup). Remove `CALENDAR_PROVIDER`, the SSM grants/paths, and the mint scripts once every flow is in-app. | Not Started | 34-C |
@@ -29,7 +29,19 @@ Strictly sequential — this is a **strangle** of the calendar-auth model (CLAUD
 
 ## Slice 34-A — Connect Google Calendar in-app → server-side per-user token
 
-**Status:** Not Started.
+**Status:** Done (PR #326, deploy #626). Ships dark — prod stays on Outlook
+(`CALENDAR_PROVIDER=microsoft`); exercise the Google in-app connect by temporarily setting
+`CALENDAR_PROVIDER=google`. Table `notetaker-calendar-tokens` verified ACTIVE in prod.
+
+**Follow-ups surfaced in review (non-blocking):**
+- If the cold-session silent refresh fails during a calendar-connect return, the connect POST is
+  issued unauthenticated (401, swallowed) and the user falls to sign-in — the connect intent is
+  silently lost (graceful, no bad state). A later slice could short-circuit to sign-in before the
+  wasted POST and preserve intent.
+- `GoogleCalendarTokenSource._ssmToken` is a process-wide `static` cache — correct for the single
+  global SSM token during coexistence, but **34-B must not extend this class without revisiting**
+  (it becomes a cross-workspace footgun once tokens key by workspace). Self-resolves at 34-D when
+  the SSM path is removed.
 
 **User value:** the owner clicks "Connect calendar", signs in once in-app (no CLI, no SSM), and their Google meetings appear on Home — the token now lives server-side, refreshed automatically.
 
