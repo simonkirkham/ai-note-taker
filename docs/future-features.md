@@ -55,3 +55,13 @@ Each entry records what it is, why it isn't scheduled yet, and where it was rais
 ## Desktop app to remove per-meeting audio-share consent
 
 > _Graduated to a numbered phase — now **[Phase 31](phases/phase-31.md)** (2026-06-22). Locked: Windows-only, bundle-shell, unsigned `electron-builder` build. Feasibility de-risked by the 2026-06-03 Windows spike; full scope, slices, and spike reference live in the phase doc._
+
+---
+
+## Desktop app auto-update (Chrome-style)
+
+**What:** Make the installed desktop app update itself instead of requiring a manual `npm run package` + reinstall. Phase 31 shipped the installer with **no auto-update** by design (a single-user personal build). This adds the standard Electron update path: publish each release to a feed (GitHub Releases / S3 — `electron-builder` already generates the `latest.yml` manifest + `.blockmap` delta), have the app `autoUpdater.checkForUpdates()` on launch, download in the background, and `quitAndInstall()` on next restart (install-alongside, swap-on-restart — you cannot overwrite a running binary). Reuses `electron-updater`, which ships with the `electron-builder` already in `desktop/`. Note this only matters for **frontend/desktop-shell** changes — backend/API changes already reach the app live via the `/api` proxy with no rebuild.
+
+**Why it isn't scheduled yet:** Not worth it for a single user who has the repo and can `npm run package`. Auto-update's machinery exists to distribute to **many untrusted machines**, which doesn't apply today. The real cost is **code signing** — on Windows an unsigned auto-update triggers SmartScreen friction (or you disable electron-updater's signature check and lose the security property); on macOS an Apple Developer cert is effectively mandatory. Schedule this only if the app is ever shared beyond the author. When picked up it's a self-contained slice: publish feed → check-on-launch → relaunch-to-apply (+ a signing decision).
+
+**Raised in:** User question, 2026-06-23 — "how do other apps like Chrome handle updates?" — after Phase 31 shipped the manual-reinstall installer.
