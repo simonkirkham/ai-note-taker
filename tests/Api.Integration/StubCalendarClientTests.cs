@@ -3,6 +3,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Api.Integration;
 
+[Collection("CalendarEnv")]
 public class StubCalendarClientTests
 {
     private static StubCalendarClient Build(string json)

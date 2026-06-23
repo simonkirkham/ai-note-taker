@@ -6,6 +6,7 @@ namespace Api.Integration;
 
 // Phase 32-A: CALENDAR_PROVIDER selects which ICalendarClient is bound.
 // STUB_CALENDAR_JSON (test/local) always wins. Default is Google (Phase 9 behaviour).
+[Collection("CalendarEnv")]
 public sealed class CalendarProviderSelectionTests
 {
     private static ICalendarClient Resolve(string? provider, string? stubJson)

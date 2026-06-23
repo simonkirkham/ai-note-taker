@@ -34,7 +34,11 @@ public sealed class MicrosoftCalendarClient : ICalendarClient
         _http = http;
         _tokenSource = tokenSource;
         _clientId = Environment.GetEnvironmentVariable("MS_CLIENT_ID") ?? "";
-        _tenantId = Environment.GetEnvironmentVariable("MS_TENANT_ID") is { Length: > 0 } t ? t : "common";
+        // Default to "consumers" (personal Microsoft accounts) — the proven case for this app, and
+        // the same default the mint script (scripts/mint-microsoft-refresh-token.mjs) uses. A token
+        // minted against one tenant alias but refreshed against another yields invalid_grant, so the
+        // two defaults MUST match. Set MS_TENANT_ID explicitly for a work/school tenant.
+        _tenantId = Environment.GetEnvironmentVariable("MS_TENANT_ID") is { Length: > 0 } t ? t : "consumers";
     }
 
     public async Task<IReadOnlyList<CalendarEvent>?> GetEventsForDayAsync(DateOnly date, string ianaTimezone)
@@ -54,6 +58,8 @@ public sealed class MicrosoftCalendarClient : ICalendarClient
         if (accessToken is null)
             return null;
 
+        // $top=100 caps a single day's events; we do not follow @odata.nextLink. A day with >100
+        // calendar entries would silently truncate — acceptable for a single-user day view.
         var url = "https://graph.microsoft.com/v1.0/me/calendarView"
             + $"?startDateTime={ToGraphUtc(startOfDay)}&endDateTime={ToGraphUtc(endOfDay)}"
             + "&$select=id,subject,start,end,isAllDay,isCancelled,seriesMasterId"
@@ -86,7 +92,17 @@ public sealed class MicrosoftCalendarClient : ICalendarClient
                 return null;
             }
 
-            return ParseCalendarView(body);
+            try
+            {
+                return ParseCalendarView(body);
+            }
+            catch (JsonException ex)
+            {
+                // A malformed/non-JSON 200 body (e.g. an HTML response from an intermediary) must
+                // degrade to calendar_unavailable, never bubble a 500 out of the GET handler.
+                _logger.LogError(ex, "Failed to parse Microsoft Graph calendarView response body");
+                return null;
+            }
         }
     }
 
@@ -170,15 +186,17 @@ public sealed class MicrosoftCalendarClient : ICalendarClient
     // reloads the token from SSM once and retries (heals re-minting without a redeploy).
     private async Task<string?> AcquireAccessTokenAsync(string operation)
     {
-        var refreshToken = await _tokenSource.LoadAsync(forceReload: false);
-        if (refreshToken is null)
-            return null;
-
+        // Check config before paying an SSM round-trip: a deploy with no client id can't mint a
+        // token regardless of what SSM holds.
         if (string.IsNullOrEmpty(_clientId))
         {
             _logger.LogWarning("MS_CLIENT_ID is empty; reporting calendar_unavailable");
             return null;
         }
+
+        var refreshToken = await _tokenSource.LoadAsync(forceReload: false);
+        if (refreshToken is null)
+            return null;
 
         for (var attempt = 1; attempt <= 2; attempt++)
         {
@@ -240,23 +258,40 @@ public sealed class MicrosoftCalendarClient : ICalendarClient
         using (response)
         {
             var body = await response.Content.ReadAsStringAsync();
-            using var doc = JsonDocument.Parse(body);
-            var root = doc.RootElement;
+            JsonElement root;
+            JsonDocument? doc = null;
+            try
+            {
+                doc = JsonDocument.Parse(body);
+                root = doc.RootElement;
+            }
+            catch (JsonException ex)
+            {
+                // A non-JSON error body (e.g. an HTML 5xx from a proxy) must not throw out of the
+                // retry loop and become a 500 — report a non-recoverable token error gracefully.
+                doc?.Dispose();
+                _logger.LogError(ex, "Microsoft token endpoint returned a non-JSON body ({Status})",
+                    (int)response.StatusCode);
+                return (null, false);
+            }
 
-            if (response.IsSuccessStatusCode &&
-                root.TryGetProperty("access_token", out var at) &&
-                at.ValueKind == JsonValueKind.String)
-                return (at.GetString(), false);
+            using (doc)
+            {
+                if (response.IsSuccessStatusCode &&
+                    root.TryGetProperty("access_token", out var at) &&
+                    at.ValueKind == JsonValueKind.String)
+                    return (at.GetString(), false);
 
-            var error = root.TryGetProperty("error", out var err) && err.ValueKind == JsonValueKind.String
-                ? err.GetString()
-                : null;
-            if (error == "invalid_grant")
-                return (null, true);
+                var error = root.TryGetProperty("error", out var err) && err.ValueKind == JsonValueKind.String
+                    ? err.GetString()
+                    : null;
+                if (error == "invalid_grant")
+                    return (null, true);
 
-            _logger.LogError("Microsoft token endpoint returned {Status} error={Error}: {Body}",
-                (int)response.StatusCode, error, body);
-            return (null, false);
+                _logger.LogError("Microsoft token endpoint returned {Status} error={Error}: {Body}",
+                    (int)response.StatusCode, error, body);
+                return (null, false);
+            }
         }
     }
 }

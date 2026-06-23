@@ -60,7 +60,7 @@ Proven: personal MSA works with delegated `Calendars.Read`, no admin consent. Un
 
 **User value:** the owner opens Home and sees today's Outlook/M365 meetings in the existing meetings list, and clicks one to create a linked note — exactly the Phase 9 Google experience, now backed by their Microsoft calendar.
 
-**How (mechanics):** extract a provider-agnostic `ICalendarClient` from `IGoogleCalendarClient` (keep the `CalendarEvent` record), add a Microsoft-backed day-view implementation, and select the provider by env var. `GetNextOccurrenceAsync` on the Microsoft client throws a guarded `NotSupportedException` until 32-B (the recurring create-note button is hidden for Outlook events meanwhile, or the call is caught and reported `calendar_unavailable`).
+**How (mechanics):** extract a provider-agnostic `ICalendarClient` from `IGoogleCalendarClient` (keep the `CalendarEvent` record), add a Microsoft-backed day-view implementation, and select the provider by env var. `GetNextOccurrenceAsync` on the Microsoft client returns `null` (logged) until 32-B; the existing handler maps `null` to `no_future_occurrences` (404), so the recurring create-note path degrades gracefully with no unhandled 500.
 
 ### Scenarios
 
@@ -97,8 +97,8 @@ Scenario: Missing Calendars.Read scope is not silently empty
 2. `MicrosoftCalendarClient.GetEventsForDayAsync` calls `/me/calendarView` with the day window in the caller's tz, `Prefer: outlook.timezone="UTC"`, maps every field per the table above, filters cancelled instances.
 3. Refresh-token exchange mirrors Google: cached for process lifetime, force-reloaded from SSM once on `invalid_grant`, never crashes the request (`calendar_unavailable` on any auth/transport failure).
 4. Provider selected by `CALENDAR_PROVIDER` (`google` default); DI binds exactly one `ICalendarClient`; the bound provider is logged at startup.
-5. CDK: `MS_CLIENT_ID`, `MS_TENANT_ID`, `MICROSOFT_REFRESH_TOKEN_SSM_PATH`, `CALENDAR_PROVIDER` env vars; SSM `GetParameter` grant on the MS token path via the resource-grant path (not a bare `AddToRolePolicy`).
-6. `GetNextOccurrenceAsync` on the MS client is guarded (throws `NotSupportedException`, caught by the handler → `calendar_unavailable`); no unhandled 500.
+5. CDK: `MS_CLIENT_ID`, `MS_TENANT_ID`, `MICROSOFT_REFRESH_TOKEN_SSM_PATH`, `CALENDAR_PROVIDER` env vars; conditional SSM `GetParameter` grant scoped to the MS token-path ARN on the Command function, mirroring the existing Google grant (`AddToRolePolicy` is correct here — the Command function has no alias, so the `CurrentVersion`-hash freeze that motivates resource-grants elsewhere does not apply).
+6. `GetNextOccurrenceAsync` on the MS client returns `null` (logged) until 32-B; the existing handler maps it to `no_future_occurrences` (404), so there is no unhandled 500.
 7. `docs/guides/microsoft-calendar-token.md` documents minting the refresh token (run the committed device-code tool → `aws ssm put-parameter --overwrite`) and re-minting on `invalid_grant`, mirroring the Google guide.
 
 ### Observability

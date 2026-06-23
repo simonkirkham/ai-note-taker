@@ -8,16 +8,30 @@ namespace Api.Integration;
 // Unit tests for the Microsoft Graph-backed calendar client (Phase 32-A).
 // Drives a mocked HttpClient (token endpoint + Graph) and a fake refresh-token
 // source, mirroring GoogleCalendarClient's SSM + invalid_grant heal behaviour.
+[Collection("CalendarEnv")]
 public sealed class MicrosoftCalendarClientTests
 {
     private const string TokenPath = "/oauth2/v2.0/token";
 
     private static MicrosoftCalendarClient Build(StubHandler handler, FakeRefreshTokenSource source)
     {
-        Environment.SetEnvironmentVariable("MS_CLIENT_ID", "client-123");
-        Environment.SetEnvironmentVariable("MS_TENANT_ID", "common");
-        var http = new HttpClient(handler);
-        return new MicrosoftCalendarClient(NullLogger<MicrosoftCalendarClient>.Instance, http, source);
+        // The client captures MS_CLIENT_ID / MS_TENANT_ID in its constructor, so set them only for
+        // the construction and restore immediately — never leak these process-wide vars into the
+        // rest of the test run / CI (the snapshot-restore guardrail).
+        var prevClientId = Environment.GetEnvironmentVariable("MS_CLIENT_ID");
+        var prevTenantId = Environment.GetEnvironmentVariable("MS_TENANT_ID");
+        try
+        {
+            Environment.SetEnvironmentVariable("MS_CLIENT_ID", "client-123");
+            Environment.SetEnvironmentVariable("MS_TENANT_ID", "consumers");
+            var http = new HttpClient(handler);
+            return new MicrosoftCalendarClient(NullLogger<MicrosoftCalendarClient>.Instance, http, source);
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable("MS_CLIENT_ID", prevClientId);
+            Environment.SetEnvironmentVariable("MS_TENANT_ID", prevTenantId);
+        }
     }
 
     private static string CalendarViewBody(string valueJson) =>
