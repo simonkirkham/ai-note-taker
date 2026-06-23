@@ -181,6 +181,10 @@ jobs:
           ALLOWED_USER_SUBS: ${{ secrets.ALLOWED_USER_SUBS }}
           GOOGLE_REFRESH_TOKEN_SSM_PATH: ${{ secrets.GOOGLE_REFRESH_TOKEN_SSM_PATH }}
           BEDROCK_MODEL_ID: ${{ secrets.BEDROCK_MODEL_ID }}
+          CALENDAR_PROVIDER: ${{ secrets.CALENDAR_PROVIDER }}
+          MS_CLIENT_ID: ${{ secrets.MS_CLIENT_ID }}
+          MS_TENANT_ID: ${{ secrets.MS_TENANT_ID }}
+          MICROSOFT_REFRESH_TOKEN_SSM_PATH: ${{ secrets.MICROSOFT_REFRESH_TOKEN_SSM_PATH }}
 
       - name: Resolve stack outputs
         # describe-stacks (not the cdk --outputs-file) so outputs resolve whether
@@ -520,6 +524,10 @@ jobs:
           ALLOWED_USER_SUBS: ${{ secrets.ALLOWED_USER_SUBS }}
           GOOGLE_REFRESH_TOKEN_SSM_PATH: ${{ secrets.GOOGLE_REFRESH_TOKEN_SSM_PATH }}
           BEDROCK_MODEL_ID: ${{ secrets.BEDROCK_MODEL_ID }}
+          CALENDAR_PROVIDER: ${{ secrets.CALENDAR_PROVIDER }}
+          MS_CLIENT_ID: ${{ secrets.MS_CLIENT_ID }}
+          MS_TENANT_ID: ${{ secrets.MS_TENANT_ID }}
+          MICROSOFT_REFRESH_TOKEN_SSM_PATH: ${{ secrets.MICROSOFT_REFRESH_TOKEN_SSM_PATH }}
 
       - name: Resolve stack outputs
         # describe-stacks (not the cdk --outputs-file) so outputs resolve whether
