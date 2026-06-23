@@ -148,14 +148,10 @@ export default function NoteView({
   // 'uploading' shows the link immediately (as "Saving recording…") and resolves to
   // 'available' once saved, reconciling to hidden on failure. A reload with a recording
   // already saved (detail.recordingAudioKey) shows the link straight away.
-  const recordingStatus: RecordingDownloadStatus =
-    transcription.recordingUpload === "uploading"
-      ? "uploading"
-      : transcription.recordingUpload === "failed"
-        ? "failed"
-        : transcription.recordingUpload === "uploaded" || detail?.recordingAudioKey
-          ? "available"
-          : "none";
+  const recordingStatus = deriveRecordingStatus(
+    transcription.recordingUpload,
+    !!detail?.recordingAudioKey,
+  );
 
   const handleDownloadRecording = async () => {
     try {
@@ -696,6 +692,16 @@ export default function NoteView({
       </div>
     </main>
   );
+}
+
+function deriveRecordingStatus(
+  upload: ReturnType<typeof useTranscription>["recordingUpload"],
+  hasSavedRecording: boolean,
+): RecordingDownloadStatus {
+  if (upload === "uploading") return "uploading";
+  if (upload === "failed") return "failed";
+  if (upload === "uploaded" || hasSavedRecording) return "available";
+  return "none";
 }
 
 function formatDraftWhen(capturedAt: string): string {
