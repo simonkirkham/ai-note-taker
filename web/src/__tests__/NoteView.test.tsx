@@ -37,6 +37,7 @@ vi.mock('../hooks/useTranscription', () => ({
       elapsedSeconds: 0,
       error: undefined,
       recordingUpload: 'idle',
+      diarization: 'idle',
       startRecording: () => { setStatus('recording'); setTranscript('live words') },
       stopRecording: () => setStatus('stopped'),
       reset: () => { setStatus('idle'); setTranscript('') },

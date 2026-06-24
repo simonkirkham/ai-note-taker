@@ -40,6 +40,7 @@ export const handlers = [
       content: '',
       date: null,
       tags: [],
+      transcriptIsDiarized: false,
     }),
   ),
   ...scoped('put', '/notes/:noteId/content', () => new HttpResponse(null, { status: 204 })),
@@ -65,5 +66,6 @@ export const handlers = [
     }),
   ),
   ...scoped('post', '/notes/:noteId/transcription', () => new HttpResponse(null, { status: 204 })),
+  ...scoped('post', '/notes/:noteId/transcription/diarize', () => new HttpResponse(null, { status: 202 })),
   ...scoped('post', '/notes/:noteId/analyse', () => new HttpResponse(null, { status: 204 })),
 ]

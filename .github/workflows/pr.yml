@@ -66,6 +66,11 @@ jobs:
       - name: Publish Projector Lambda
         run: dotnet publish src/Projector/Projector.csproj -c Release -o src/Projector/bin/Release/net10.0/publish
 
+      # 33-B1: the batch-diarization completion Lambda is a third CDK asset; its publish
+      # dir must hold a real build before `cdk synth` validates the Code.FromAsset path.
+      - name: Publish TranscribeCompletion Lambda
+        run: dotnet publish src/TranscribeCompletion/TranscribeCompletion.csproj -c Release -o src/TranscribeCompletion/bin/Release/net10.0/publish
+
       # No AWS credentials needed: the CDK app does no context lookups
       # (no FromLookup / ValueFromLookup). If a future change adds one,
       # restore the configure-aws-credentials step + environment: Test.

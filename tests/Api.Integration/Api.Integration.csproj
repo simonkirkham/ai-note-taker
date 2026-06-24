@@ -21,6 +21,7 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\Api\Api.csproj" />
     <ProjectReference Include="..\..\src\Projector\Projector.csproj" />
+    <ProjectReference Include="..\..\src\TranscribeCompletion\TranscribeCompletion.csproj" />
   </ItemGroup>
 
 </Project>

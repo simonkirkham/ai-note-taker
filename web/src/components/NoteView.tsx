@@ -23,7 +23,7 @@ import RecordControl from "./RecordControl";
 import ShortcutsPanel from "./ShortcutsPanel";
 import TagsSection from "./TagsSection";
 import { useToast } from "./toastContext";
-import TranscriptTab, { type RecordingDownloadStatus } from "./TranscriptTab";
+import TranscriptTab, { type RecordingDownloadStatus, type DiarizationDisplayStatus } from "./TranscriptTab";
 
 type NoteTab = "quick" | "transcript" | "final";
 
@@ -59,7 +59,16 @@ export default function NoteView({
   isNew?: boolean;
 }) {
   const qc = useQueryClient();
-  const { data: detail, isLoading: loadingDetail, isError, error } = useNoteDetail(noteId);
+  // 19-E2: the streaming transcription hook lives in the common parent so its state flows DOWN as
+  // props to RecordControl (controlled). Declared before useNoteDetail so its diarization status
+  // can drive the note poll (33-B1). Exactly one instance — a second would start a second session.
+  const transcription = useTranscription(noteId);
+  // 33-B1: while a batch diarization job is refining the transcript, poll the note until
+  // transcriptIsDiarized flips true (then useNoteDetail stops itself).
+  const { data: detail, isLoading: loadingDetail, isError, error } = useNoteDetail(
+    noteId,
+    transcription.diarization === "refining",
+  );
   const { data: allTags = [] } = useTags();
   // 19-E: read the action count from this note's own useActions query (same
   // queryKey as ActionsSection → deduped, no extra request) instead of the
@@ -73,11 +82,6 @@ export default function NoteView({
   const setNoteDateM = useSetNoteDate(noteId);
   const renameM = useRenameNoteDetail(noteId);
   const analyseM = useAnalyseNote(noteId);
-  // 19-E2: the streaming transcription hook lives in the common parent so its
-  // state flows DOWN as props to RecordControl (controlled), instead of the child
-  // pushing status/transcript UP via effect-fired callbacks (YMNNAE). A second
-  // instance would start a second recording session, so there is exactly one.
-  const transcription = useTranscription(noteId);
 
   // Draft pattern: displayed = draft ?? server value. While a draft is non-null the
   // user has unsaved edits, so a refetch never clobbers in-flight typing; the draft
@@ -152,6 +156,18 @@ export default function NoteView({
     transcription.recordingUpload,
     !!detail?.recordingAudioKey,
   );
+
+  // 33-B1: the speaker-labelling chip. Once the note is diarized the chip clears (the transcript
+  // already shows the speaker-labelled text); while the job runs it shows "Refining…"; on a
+  // trigger error or timeout it resolves to a non-blocking notice. The streamed transcript stays
+  // throughout — diarization only ever replaces it on success.
+  const diarizationStatus: DiarizationDisplayStatus = detail?.transcriptIsDiarized
+    ? "none"
+    : transcription.diarization === "refining"
+      ? "refining"
+      : transcription.diarization === "failed"
+        ? "failed"
+        : "none";
 
   const handleDownloadRecording = async () => {
     try {
@@ -660,6 +676,7 @@ export default function NoteView({
               transcript={displayedTranscript}
               isRecording={isRecording}
               recordingStatus={recordingStatus}
+              diarizationStatus={diarizationStatus}
               onDownloadRecording={() => void handleDownloadRecording()}
             />
           </div>

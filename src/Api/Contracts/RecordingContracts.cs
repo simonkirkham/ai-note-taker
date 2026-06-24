@@ -5,3 +5,5 @@ public record RecordingPresignUploadResponse(string Key, string UploadUrl, strin
 public record SaveRecordingRequest(string Key);
 
 public record RecordingPresignDownloadResponse(string DownloadUrl);
+
+public record DiarizeRequest(string Key);

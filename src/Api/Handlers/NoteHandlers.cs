@@ -143,6 +143,7 @@ public static class NoteHandlers
             transcriptText = detail.TranscriptText,
             transcriptDraft,
             recordingAudioKey = detail.RecordingAudioKey,
+            transcriptIsDiarized = detail.TranscriptIsDiarized,
             summary = detail.Summary,
             discussionPoints = detail.DiscussionPoints ?? [],
             decisions = detail.Decisions ?? [],

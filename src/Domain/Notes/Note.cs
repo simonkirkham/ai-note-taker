@@ -58,6 +58,9 @@ public sealed class Note : IAggregate
             case TranscriptionCompleted e:
                 _transcriptText = e.TranscriptText;
                 break;
+            case TranscriptionDiarized e:
+                _transcriptText = e.Text;
+                break;
             case RecordingUploaded:
                 break;
             case AnalysisSummaryRecorded e:
@@ -90,6 +93,7 @@ public sealed class Note : IAggregate
             UnfileNote cmd => HandleUnfile(cmd),
             LinkNoteToCalendarEvent cmd => HandleLinkToCalendarEvent(cmd),
             CompleteTranscription cmd => HandleCompleteTranscription(cmd),
+            RecordDiarizedTranscription cmd => HandleRecordDiarizedTranscription(cmd),
             SaveRecording cmd => HandleSaveRecording(cmd),
             RecordTagSuggestions cmd => HandleRecordTagSuggestions(cmd),
             RecordActionItemSuggestions cmd => HandleRecordActionItemSuggestions(cmd),
@@ -212,6 +216,16 @@ public sealed class Note : IAggregate
         if (string.IsNullOrWhiteSpace(cmd.AudioKey))
             throw new ArgumentException("Recording audio key must not be blank.", nameof(cmd));
         return [new RecordingUploaded(cmd.NoteId, cmd.AudioKey)];
+    }
+
+    IReadOnlyList<IDomainEvent> HandleRecordDiarizedTranscription(RecordDiarizedTranscription cmd)
+    {
+        if (!_exists || _deleted)
+            throw new InvalidOperationException($"Note {cmd.NoteId} does not exist.");
+        // Never blank the note with a failed/empty diarization — the streamed transcript stays.
+        if (string.IsNullOrWhiteSpace(cmd.Text))
+            throw new ArgumentException("Diarized transcript text must not be blank.", nameof(cmd));
+        return [new TranscriptionDiarized(cmd.NoteId, cmd.Text, cmd.SpeakerCount, cmd.JobId, cmd.SourceAudioKey)];
     }
 
     IReadOnlyList<IDomainEvent> HandleRecordTagSuggestions(RecordTagSuggestions cmd)

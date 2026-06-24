@@ -99,6 +99,17 @@ Decisions (2026-06-23): completion handler is a **new dedicated non-HTTP Lambda*
 
 > **RYW/async guardrail (mandatory):** the diarized transcript is read from the async projection with **no consistency token the frontend holds** (the event is appended seconds-to-minutes later by the completion Lambda). The frontend read must be a reload-tolerant poll, and the E2E journey must both (a) wrap the post-completion assertion in a reload-to-re-gate helper and (b) warm/drain the projector. This is the 27-C lesson — surface the async-read contract on this slice, not in production.
 
+### E2E scope decision (implementation, 2026-06-24)
+
+**No deploy-gate E2E journey for the full diarization round-trip.** Rationale (CLAUDE.md *deploy-time is a first-class cost*):
+| Reason | Detail |
+|---|---|
+| No recording E2E infra exists | The streaming/recording path itself has **no** Browser.E2E journey (real mic + Transcribe streaming is impractical to drive headlessly); there is nothing to extend, and the only existing journey is `NoteTabsJourney`. |
+| A real round-trip is minutes long | A genuine batch job (record → upload → `StartTranscriptionJob` → completion) takes **seconds-to-minutes**; a blocking gate journey waiting for it would add minutes to **every** deploy — exactly the recurring per-deploy cost the guardrail forbids introducing silently. |
+| The guardrail's specific failure mode doesn't apply | The guardrail mandates making **pre-existing** sync-read journeys reload-tolerant when a read flips async. This slice **adds** a new diarized read consumed only by **new** frontend code that already polls reload-tolerantly; it does not flip any pre-existing journey's read (the streamed-transcript read was already async since RYW). |
+
+**Coverage instead:** the async loop is unit-tested (`TranscribeCompletionFunctionTests` — COMPLETED/FAILED/empty/poison/note-gone, plus `TranscribeResultParserTests`), the trigger is integration-tested (`NoteRecordingsIntegrationTests` — 202/400/404), the frontend chip/poll is unit-tested (`TranscriptTab.test.tsx`), and the one-real-call acceptance is a **mandatory Scribe post-deploy verification** (record a short call → confirm the transcript becomes speaker-labelled and `transcribe.batch.completed` fires). Re-evaluate a gate journey if/when a headless recording harness exists.
+
 ## 33-B2 scenarios & acceptance criteria
 
 **Goal:** analyse exactly **once** per recording, on the *winning* transcript — the diarized one when the batch job succeeds, the streamed one when it fails. No double-analysis, no Final-notes flicker.

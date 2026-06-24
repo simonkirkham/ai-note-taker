@@ -129,6 +129,9 @@ public class ApiFactory : WebApplicationFactory<Program>
             services.RemoveAll<Api.Services.INoteRecordingStore>();
             services.AddSingleton<FakeNoteRecordingStore>();
             services.AddSingleton<Api.Services.INoteRecordingStore>(sp => sp.GetRequiredService<FakeNoteRecordingStore>());
+            services.RemoveAll<Api.Services.ITranscriptionJobStarter>();
+            services.AddSingleton<FakeTranscriptionJobStarter>();
+            services.AddSingleton<Api.Services.ITranscriptionJobStarter>(sp => sp.GetRequiredService<FakeTranscriptionJobStarter>());
         });
     }
 

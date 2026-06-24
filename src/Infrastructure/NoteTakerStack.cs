@@ -287,6 +287,11 @@ public sealed class NoteTakerStack : Stack
         var projectorAssetPath = (string?)this.Node.TryGetContext("projectorAssetPath")
             ?? "src/Projector/bin/Release/net10.0/publish";
 
+        // Batch-diarization completion Lambda asset (33-B1). Same context-key indirection so the
+        // Infrastructure.Assertions tests synth against a real directory without a publish.
+        var transcribeCompletionAssetPath = (string?)this.Node.TryGetContext("transcribeCompletionAssetPath")
+            ?? "src/TranscribeCompletion/bin/Release/net10.0/publish";
+
         // Explicit log groups so retention is managed (and cost-bounded) rather
         // than letting the runtime auto-create an unmanaged, never-expiring group.
         // 27-D: the single request Lambda is split into a Command and a Query function,
@@ -456,6 +461,30 @@ public sealed class NoteTakerStack : Stack
         // upload/download + the save command all run on the Command function. Resource-grant
         // path (never a bespoke AddToRolePolicy — see the CurrentVersion-hash guardrail).
         recordingsBucket.GrantReadWrite(commandFunction, "recordings/*");
+        // Batch diarization trigger (33-B1): the diarize endpoint starts a Transcribe batch job.
+        // No DataAccessRole is passed, so Transcribe reads the input WAV and writes the result JSON
+        // (under recordings/transcripts/, covered by the grant above) as THIS function's identity.
+        // Scoped to our diarization job-name prefix (least privilege). Added as a DEDICATED policy
+        // resource rather than commandFunction.AddToRolePolicy: the role's auto-generated
+        // DefaultPolicy is already at the 6144-byte size limit, so growing it splits statements into
+        // an overflow ManagedPolicy (which shuffles unrelated grants between resources and breaks the
+        // SSM/Bedrock template assertions). A standalone Policy keeps DefaultPolicy — and every
+        // existing grant assertion — unchanged.
+        new Policy(this, "CommandStartTranscriptionPolicy", new PolicyProps
+        {
+            Roles = new[] { commandFunction.Role! },
+            Statements = new[]
+            {
+                new PolicyStatement(new PolicyStatementProps
+                {
+                    Actions = new[] { "transcribe:StartTranscriptionJob" },
+                    Resources = new[]
+                    {
+                        Arn.Format(new ArnComponents { Service = "transcribe", Resource = "transcription-job", ResourceName = "diarize-*" }, this)
+                    }
+                })
+            }
+        });
 
         // The Command function is invoked via $LATEST (no alias) — it has no SnapStart,
         // so there is no published-version snapshot to route to. Dropping the alias also
@@ -675,6 +704,72 @@ public sealed class NoteTakerStack : Stack
             ParallelizationFactor = 1,
             OnFailure = new Amazon.CDK.AWS.Lambda.EventSources.SqsDlq(projectorDlq)
         }));
+
+        // ── Transcribe batch-diarization completion Lambda (33-B1) ───────────
+        // Dedicated non-HTTP handler for the EventBridge "Transcribe Job State Change" rule. On a
+        // COMPLETED job it fetches the result, parses speaker turns and APPENDS TranscriptionDiarized
+        // (replacing the streamed transcript); on FAILED/empty/poison it leaves the streamed transcript
+        // intact and emits a failure metric. Modelled on the Projector host but with the opposite
+        // event-store boundary: it must WRITE the log (append the diarized event), so it gets
+        // GrantReadWriteData + TransactWriteItems — not the projector's read-only stance.
+        var transcribeCompletionLogGroup = new Amazon.CDK.AWS.Logs.LogGroup(this, "TranscribeCompletionFunctionLogGroup", new Amazon.CDK.AWS.Logs.LogGroupProps
+        {
+            Retention = Amazon.CDK.AWS.Logs.RetentionDays.ONE_MONTH,
+            RemovalPolicy = RemovalPolicy.DESTROY
+        });
+
+        var transcribeCompletionFunction = new Amazon.CDK.AWS.Lambda.Function(this, "TranscribeCompletionFunction", new Amazon.CDK.AWS.Lambda.FunctionProps
+        {
+            Runtime = Amazon.CDK.AWS.Lambda.Runtime.DOTNET_10,
+            Handler = "TranscribeCompletion::TranscribeCompletion.TranscribeCompletionFunction::Handle",
+            Description = "AI Note Taker batch-diarization completion (Transcribe job → diarized transcript)",
+            Code = Amazon.CDK.AWS.Lambda.Code.FromAsset(transcribeCompletionAssetPath),
+            // GetTranscriptionJob + S3 result fetch + parse + append; 60s/512MB gives headroom over
+            // the 29s request cap for a large result JSON.
+            Timeout = Duration.Seconds(60),
+            MemorySize = 512,
+            LogGroup = transcribeCompletionLogGroup,
+            Tracing = Amazon.CDK.AWS.Lambda.Tracing.ACTIVE,
+            Environment = new Dictionary<string, string>
+            {
+                ["AWS_XRAY_CONTEXT_MISSING"] = "LOG_ERROR",
+                ["EVENTS_TABLE_NAME"] = eventsTable.TableName
+            }
+        });
+
+        // Least-privilege completion role (resource-GrantX path for everything scopable):
+        //  - events table: read + WRITE (loads the stream, appends TranscriptionDiarized via a
+        //    TransactWriteItems optimistic-concurrency append — same as the Command function),
+        //  - recordings bucket: read-only on recordings/* (fetch the result JSON the job wrote),
+        //  - transcribe:GetTranscriptionJob: not resource-scopable → a single AddToRolePolicy on a
+        //    no-alias function (no CurrentVersion freeze).
+        eventsTable.GrantReadWriteData(transcribeCompletionFunction);
+        eventsTable.Grant(transcribeCompletionFunction, "dynamodb:TransactWriteItems");
+        recordingsBucket.GrantRead(transcribeCompletionFunction, "recordings/*");
+        transcribeCompletionFunction.AddToRolePolicy(new PolicyStatement(new PolicyStatementProps
+        {
+            Actions = new[] { "transcribe:GetTranscriptionJob" },
+            Resources = new[] { "*" }
+        }));
+
+        // EventBridge rule: Transcribe emits a "Transcribe Job State Change" event when a batch job
+        // settles. Filter to terminal states so the handler only runs once per job (COMPLETED →
+        // diarize; FAILED → record failure, keep streamed transcript). The job-name prefix
+        // (diarize-…) is re-checked in the handler, so a non-diarization job is ignored cheaply.
+        new Amazon.CDK.AWS.Events.Rule(this, "TranscribeJobStateChangeRule", new Amazon.CDK.AWS.Events.RuleProps
+        {
+            Description = "Route completed/failed Transcribe batch jobs to the diarization completion Lambda",
+            EventPattern = new Amazon.CDK.AWS.Events.EventPattern
+            {
+                Source = new[] { "aws.transcribe" },
+                DetailType = new[] { "Transcribe Job State Change" },
+                Detail = new Dictionary<string, object>
+                {
+                    ["TranscriptionJobStatus"] = new[] { "COMPLETED", "FAILED" }
+                }
+            },
+            Targets = new[] { new Amazon.CDK.AWS.Events.Targets.LambdaFunction(transcribeCompletionFunction) }
+        });
 
         // ── API Gateway ──────────────────────────────────────────────────
         // CORS is handled by ASP.NET Core UseCors middleware in the Lambda, not at
@@ -931,6 +1026,17 @@ public sealed class NoteTakerStack : Stack
                     AnalysisDuration("p99")
                 },
                 Right = new[] { DomainTotal("AnalysisFailed") },
+                Width = 12
+            }),
+            // 33-B1: batch-diarization jobs completed vs failed (both async — invisible without this).
+            new Amazon.CDK.AWS.CloudWatch.GraphWidget(new Amazon.CDK.AWS.CloudWatch.GraphWidgetProps
+            {
+                Title = "Diarization jobs completed vs failed",
+                Left = new[]
+                {
+                    DomainTotal("TranscribeBatchCompleted"),
+                    DomainTotal("TranscribeBatchFailed")
+                },
                 Width = 12
             }));
 
@@ -1196,6 +1302,29 @@ public sealed class NoteTakerStack : Stack
             TreatMissingData = Amazon.CDK.AWS.CloudWatch.TreatMissingData.NOT_BREACHING
         });
         analysisFailedAlarm.AddAlarmAction(alarmAction);
+
+        // 33-B1: a batch-diarization job that FAILED (or a fetch/parse error that left the streamed
+        // transcript intact) is invisible by construction — the completion Lambda is async (no
+        // synchronous 500). TranscribeBatchFailed drives this alarm. Service dimension is
+        // note-taker-transcribe (the completion handler's Powertools service).
+        var transcribeFailedAlarm = new Amazon.CDK.AWS.CloudWatch.Alarm(this, "TranscribeBatchFailedAlarm", new Amazon.CDK.AWS.CloudWatch.AlarmProps
+        {
+            AlarmName = "notetaker-transcribe-failed",
+            AlarmDescription = "A batch-diarization job failed or its result could not be applied in the last 5 minutes",
+            Metric = new Amazon.CDK.AWS.CloudWatch.Metric(new Amazon.CDK.AWS.CloudWatch.MetricProps
+            {
+                Namespace = "NoteTaker/Domain",
+                MetricName = "TranscribeBatchFailed",
+                DimensionsMap = new Dictionary<string, string> { ["Service"] = "note-taker-transcribe" },
+                Statistic = "Sum",
+                Period = Duration.Minutes(5)
+            }),
+            Threshold = 0,
+            EvaluationPeriods = 1,
+            ComparisonOperator = Amazon.CDK.AWS.CloudWatch.ComparisonOperator.GREATER_THAN_THRESHOLD,
+            TreatMissingData = Amazon.CDK.AWS.CloudWatch.TreatMissingData.NOT_BREACHING
+        });
+        transcribeFailedAlarm.AddAlarmAction(alarmAction);
 
         // ── Projector alarms (27-B) ──────────────────────────────────────
         // Async projection failure is invisible by construction (no synchronous 500), so

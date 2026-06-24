@@ -1,6 +1,8 @@
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
+using Api.Services;
+using Microsoft.Extensions.DependencyInjection;
 using Xunit;
 
 namespace Api.Integration;
@@ -130,6 +132,42 @@ public class NoteRecordingsIntegrationTests : IClassFixture<ApiFactory>
         await _client.PostAsJsonAsync($"/notes/{noteId}/recording", new { key = $"recordings/{noteId}/take.wav" });
         var other = _factory.CreateClientAsOtherUser();
         var resp = await other.PostAsync($"/notes/{noteId}/recording/presign-download", null);
+        Assert.Equal(HttpStatusCode.NotFound, resp.StatusCode);
+    }
+
+    [Fact]
+    public async Task Diarize_Owner_Returns202AndStartsJobEncodingNoteId()
+    {
+        var noteId = await CreateNoteAsync();
+        var key = $"recordings/{noteId}/take.wav";
+
+        var resp = await _client.PostAsJsonAsync($"/notes/{noteId}/transcription/diarize", new { key });
+        Assert.Equal(HttpStatusCode.Accepted, resp.StatusCode);
+
+        var starter = _factory.Services.GetRequiredService<FakeTranscriptionJobStarter>();
+        var started = Assert.Single(starter.Started, s => s.AudioKey == key);
+        Assert.True(DiarizationJobNames.TryGetNoteId(started.JobName, out var recovered));
+        Assert.Equal(noteId, recovered);
+    }
+
+    [Fact]
+    public async Task Diarize_KeyOutsideNotePrefix_Returns400()
+    {
+        var noteId = await CreateNoteAsync();
+        var resp = await _client.PostAsJsonAsync($"/notes/{noteId}/transcription/diarize",
+            new { key = "recordings/some-other-note/take.wav" });
+
+        Assert.Equal(HttpStatusCode.BadRequest, resp.StatusCode);
+    }
+
+    [Fact]
+    public async Task Diarize_NonOwner_Returns404()
+    {
+        var noteId = await CreateNoteAsync();
+        var other = _factory.CreateClientAsOtherUser();
+        var resp = await other.PostAsJsonAsync($"/notes/{noteId}/transcription/diarize",
+            new { key = $"recordings/{noteId}/take.wav" });
+
         Assert.Equal(HttpStatusCode.NotFound, resp.StatusCode);
     }
 }

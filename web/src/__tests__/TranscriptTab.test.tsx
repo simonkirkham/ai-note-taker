@@ -54,3 +54,23 @@ it('shows an error when the recording upload failed', () => {
   render(<TranscriptTab transcript="words" recordingStatus="failed" />)
   expect(screen.getByTestId('recording-failed')).toHaveAttribute('role', 'alert')
 })
+
+// 33-B1: the speaker-labelling chip.
+it('shows the refining chip while diarization is in progress', () => {
+  render(<TranscriptTab transcript="words" diarizationStatus="refining" />)
+  const chip = screen.getByTestId('diarization-refining')
+  expect(chip).toHaveTextContent('Refining transcript with speaker labels…')
+  expect(chip).toHaveAttribute('role', 'status')
+})
+
+it('shows a non-blocking notice (transcript intact) when diarization fails', () => {
+  render(<TranscriptTab transcript="the live transcript" diarizationStatus="failed" />)
+  expect(screen.getByTestId('diarization-failed')).toBeInTheDocument()
+  // The streamed transcript still shows — diarization failure never blanks it.
+  expect(screen.getByTestId('transcription-text')).toHaveTextContent('the live transcript')
+})
+
+it('shows no diarization chip when status is none', () => {
+  render(<TranscriptTab transcript="words" diarizationStatus="none" />)
+  expect(screen.queryByTestId('diarization-bar')).toBeNull()
+})
