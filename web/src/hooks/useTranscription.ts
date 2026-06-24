@@ -57,11 +57,13 @@ export type TranscriptionStatus =
 // affordance the moment recording stops; it resolves to 'uploaded' or 'failed'.
 export type RecordingUploadStatus = 'idle' | 'uploading' | 'uploaded' | 'failed';
 
-// 33-B1: state of the post-upload batch diarization. 'refining' is shown as a chip while the
-// async job runs; it clears when the note's transcriptIsDiarized flips true (observed by the
-// caller via the note query). 'failed' means the trigger errored or the job never landed in time
-// — a non-blocking notice; the streamed transcript stays.
-export type DiarizationStatus = 'idle' | 'refining' | 'failed';
+// 33-B1/B2: state of the post-upload batch diarization. Set 'refining' SYNCHRONOUSLY on Stop (a
+// recording will be uploaded + diarized) so the on-Stop auto-analyse can defer to the server without
+// racing the async trigger. 'timedOut' = the job started (got 202) but never landed in time — the
+// server still owns the one analyse, so the caller keeps deferring. 'failed' = the trigger never
+// started (upload/POST failed) — the caller falls back to a local analyse. 'refining'/'timedOut'
+// show the chip/notice; the streamed transcript always stays until the diarized event lands.
+export type DiarizationStatus = 'idle' | 'refining' | 'timedOut' | 'failed';
 
 export interface UseTranscriptionResult {
   status: TranscriptionStatus;
@@ -70,10 +72,11 @@ export interface UseTranscriptionResult {
   error: string | undefined;
   recordingUpload: RecordingUploadStatus;
   diarization: DiarizationStatus;
-  // resumeFrom: an existing committed transcript to continue. When set, the new
-  // session's finalised turns are appended after it (with a "— resumed —"
-  // separator); when omitted, recording starts fresh and replaces. See Phase 18-C.
-  startRecording: (includeCallAudio: boolean, resumeFrom?: string) => void;
+  // autoAnalyse: the caller's auto-analyse toggle at record time — carried to the diarization
+  // trigger so the completion Lambda re-analyses on the winning transcript (33-B2). resumeFrom: an
+  // existing committed transcript to continue (new finalised turns appended after a "— resumed —"
+  // separator); omitted → start fresh and replace. See Phase 18-C.
+  startRecording: (includeCallAudio: boolean, autoAnalyse: boolean, resumeFrom?: string) => void;
   stopRecording: () => void;
   reset: () => void;
 }
@@ -88,6 +91,9 @@ export function useTranscription(noteId: string): UseTranscriptionResult {
 
   const stoppedRef = useRef(false);
   const diarizationTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // 33-B2: the auto-analyse toggle captured at record start (the toggle is hidden during recording,
+  // so it can't change), carried into the diarization trigger so the completion Lambda re-analyses.
+  const analyseOnCompletionRef = useRef(false);
   const wakeupRef = useRef<(() => void) | null>(null);
   const mediaStreamRef = useRef<MediaStream | null>(null);
   const displayStreamRef = useRef<MediaStream | null>(null);
@@ -177,6 +183,10 @@ export function useTranscription(noteId: string): UseTranscriptionResult {
     recordingUploadedRef.current = true;
     recordedChunksRef.current = [];
     setRecordingUpload('uploading');
+    // 33-B2: a recording WILL be uploaded + diarized — set 'refining' SYNCHRONOUSLY (before the
+    // async upload) so the on-Stop auto-analyse, which runs the instant status becomes 'stopped',
+    // sees the in-flight diarization and defers to the server instead of racing the 202.
+    setDiarization('refining');
     void (async () => {
       let savedKey: string;
       try {
@@ -197,18 +207,20 @@ export function useTranscription(noteId: string): UseTranscriptionResult {
       } catch {
         recordingUploadedRef.current = false;
         setRecordingUpload('failed');
+        // Trigger never started → 'failed' tells the caller to fall back to a local analyse.
+        setDiarization('failed');
         return;
       }
-      // 33-B1: recording is safely uploaded — kick off batch diarization (best-effort, separate
-      // from the upload's success). On 202 show the "Refining…" chip and arm a timeout that
-      // resolves it to a non-blocking notice if the job never lands; the caller clears 'refining'
-      // when the note's transcriptIsDiarized flips true.
+      // Kick off the batch job. analyseOnCompletion carries the auto-analyse intent so the
+      // completion Lambda re-analyses on the winning transcript (33-B2). Stays 'refining' on 202;
+      // a timeout becomes 'timedOut' (the server still owns the analyse — keep deferring); a start
+      // failure becomes 'failed' (never started → local fallback analyse).
       try {
-        await startDiarization(noteId, savedKey);
+        await startDiarization(noteId, savedKey, analyseOnCompletionRef.current);
         setDiarization('refining');
         if (diarizationTimerRef.current) clearTimeout(diarizationTimerRef.current);
         diarizationTimerRef.current = setTimeout(
-          () => setDiarization((s) => (s === 'refining' ? 'failed' : s)),
+          () => setDiarization((s) => (s === 'refining' ? 'timedOut' : s)),
           DIARIZATION_TIMEOUT_MS,
         );
       } catch {
@@ -260,8 +272,9 @@ export function useTranscription(noteId: string): UseTranscriptionResult {
     };
   }, [status, noteId]);
 
-  const startRecording = useCallback((includeCallAudio: boolean, resumeFrom?: string) => {
+  const startRecording = useCallback((includeCallAudio: boolean, autoAnalyse: boolean, resumeFrom?: string) => {
     stoppedRef.current = false;
+    analyseOnCompletionRef.current = autoAnalyse;
     const resumePrefix = resumeFrom ? `${resumeFrom}\n${RESUME_SEPARATOR}\n` : '';
     resumePrefixRef.current = resumePrefix;
     finalizedRef.current = resumePrefix;

@@ -40,7 +40,10 @@ export default function RecordControl({
   function begin(resumeFrom?: string) {
     setConfirmingResume(false);
     setHasRecordedThisSession(true);
-    startRecording(includeCallAudio, resumeFrom);
+    // Capture the auto-analyse toggle at record start (it's hidden during recording, so it can't
+    // change) — carried to the diarization trigger so the server re-analyses on the winning
+    // transcript (33-B2).
+    startRecording(includeCallAudio, autoAnalyse, resumeFrom);
   }
 
   // Record on a note that already has a committed transcript asks whether to
@@ -85,12 +88,18 @@ export default function RecordControl({
       hasRecordedThisSession &&
       transcript.trim().length > 0 &&
       !autoAnalyseFiredRef.current &&
-      !isAnalysing
+      !isAnalysing &&
+      // 33-B2: defer to the server while a diarization job is in flight ('refining') or started but
+      // slow ('timedOut') — the completion Lambda re-analyses on the winning transcript. Only fall
+      // back to a local analyse when the job never STARTED ('failed') or there's no diarization
+      // ('idle', e.g. a content-only note), so the note is still analysed exactly once.
+      transcription.diarization !== "refining" &&
+      transcription.diarization !== "timedOut"
     ) {
       autoAnalyseFiredRef.current = true;
       void handleAnalyse();
     }
-  }, [status, autoAnalyse, hasRecordedThisSession, transcript, isAnalysing, handleAnalyse]);
+  }, [status, autoAnalyse, hasRecordedThisSession, transcript, isAnalysing, transcription.diarization, handleAnalyse]);
 
   return (
     <div className={styles.recordControl} data-testid="record-control">

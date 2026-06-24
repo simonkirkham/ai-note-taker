@@ -173,8 +173,8 @@ export default function NoteView({
     ? "none"
     : transcription.diarization === "refining"
       ? "refining"
-      : transcription.diarization === "failed"
-        ? "failed"
+      : transcription.diarization === "failed" || transcription.diarization === "timedOut"
+        ? "failed" // 33-B2: 'timedOut' (started but slow) shows the same non-blocking notice
         : "none";
 
   const handleDownloadRecording = async () => {
