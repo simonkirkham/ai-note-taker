@@ -16,6 +16,11 @@ public sealed class CalendarProviderSelectionTests
         public string Name => "Test";
     }
 
+    private sealed class StubCurrentWorkspace : ICurrentWorkspace
+    {
+        public string WorkspaceId => Domain.Workspaces.WorkspaceId.DefaultValue;
+    }
+
     private static ICalendarClient Resolve(string? provider, string? stubJson)
     {
         var prevProvider = Environment.GetEnvironmentVariable("CALENDAR_PROVIDER");
@@ -27,9 +32,11 @@ public sealed class CalendarProviderSelectionTests
 
             var services = new ServiceCollection();
             services.AddLogging(b => b.AddProvider(Microsoft.Extensions.Logging.Abstractions.NullLoggerProvider.Instance));
-            // 34-A: the Google client is now scoped and resolves a per-user token source
-            // (ICurrentUser + ICalendarTokenStore), so register those and resolve within a scope.
+            // 34-A/34-B: the Google client is scoped and resolves a per-(user,workspace) token source
+            // (ICurrentUser + ICurrentWorkspace + ICalendarTokenStore), so register those and resolve
+            // within a scope.
             services.AddScoped<ICurrentUser, StubCurrentUser>();
+            services.AddScoped<ICurrentWorkspace, StubCurrentWorkspace>();
             services.AddSingleton<ICalendarTokenStore, InMemoryCalendarTokenStore>();
             CalendarClientRegistration.Register(services);
             using var sp = services.BuildServiceProvider();

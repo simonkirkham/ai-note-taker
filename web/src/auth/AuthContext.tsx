@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { connectGoogleCalendar } from '../api/calendarAuth'
+import { setWorkspaceId } from '../workspace/workspaceStore'
 import { AuthContext, type AuthState } from './context'
 import { buildAuthUrl, exchangeCode, generateCodeChallenge, generateCodeVerifier } from './pkce'
 import { attemptSilentRefresh } from './silentRefresh'
@@ -149,7 +150,13 @@ export function AuthProvider({
     if (code && returnedState && calState && returnedState === calState && calVerifier) {
       sessionStorage.removeItem('calendar_state')
       sessionStorage.removeItem('calendar_verifier')
-      window.history.replaceState({}, '', window.location.pathname)
+      // 34-B: restore the workspace the connect was started from (the OAuth redirect dropped the
+      // `/w/:wsId` path). Set the store BEFORE the connect POST so the api client scopes it to the
+      // right workspace, and restore the URL so the app lands back in that workspace.
+      const calWorkspace = sessionStorage.getItem('calendar_workspace')
+      sessionStorage.removeItem('calendar_workspace')
+      if (calWorkspace) setWorkspaceId(calWorkspace)
+      window.history.replaceState({}, '', calWorkspace ? `/w/${calWorkspace}` : window.location.pathname)
       void (async () => {
         const token = await attemptSilentRefresh().catch(() => null)
         if (token) setToken(token)

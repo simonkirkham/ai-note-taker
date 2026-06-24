@@ -724,17 +724,19 @@ public sealed class NoteTakerStack : Stack
         });
 
         // Side-service GETs that need write-path credentials, not projections → Command.
+        // 34-B: calendar reads are now workspace-scoped under `/w/{workspaceId}/calendar/...`, so the
+        // pins move to the prefixed paths (the bare `/calendar/...` routes no longer exist). The
+        // meetings GET needs the Google/SSM-backed ICalendarClient; the connection GET hits the
+        // calendar-token store — both granted to Command, not Query.
         httpApi.AddRoutes(new Amazon.CDK.AWS.Apigatewayv2.AddRoutesOptions
         {
-            Path = "/calendar/{date}",
+            Path = "/w/{workspaceId}/calendar/{date}",
             Methods = new[] { Amazon.CDK.AWS.Apigatewayv2.HttpMethod.GET },
             Integration = commandIntegration
         });
-        // 34-A: calendar connection status read hits the calendar-token store (granted to Command,
-        // not Query). Pinned explicitly so it never routes to the Query function.
         httpApi.AddRoutes(new Amazon.CDK.AWS.Apigatewayv2.AddRoutesOptions
         {
-            Path = "/calendar/connection",
+            Path = "/w/{workspaceId}/calendar/connection",
             Methods = new[] { Amazon.CDK.AWS.Apigatewayv2.HttpMethod.GET },
             Integration = commandIntegration
         });

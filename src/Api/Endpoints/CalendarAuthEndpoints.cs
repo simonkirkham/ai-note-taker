@@ -1,20 +1,27 @@
 using Api.Auth;
+using Api.CommandHandlers;
+using Domain.Workspaces;
 
 namespace Api.Endpoints;
 
-// Phase 34-A: in-app "Connect Google Calendar" — auth-code+PKCE exchanged server-side, the refresh
-// token persisted per user in ICalendarTokenStore (keyed by sub, provider "google"). The browser
-// runs the consent redirect (reusing the sign-in PKCE machinery with a calendar scope) and POSTs the
-// code here. All routes require auth: `sub` comes from the validated bearer, never request input.
+// In-app "Connect Google Calendar" — auth-code+PKCE exchanged server-side, the refresh token
+// persisted in ICalendarTokenStore. 34-A keyed it by user; 34-B keys it by (user, workspace) and
+// records a WorkspaceCalendarConnected/Disconnected event on the workspace's aggregate so the
+// connection (and its provider) is per workspace. Mounted under `/w/{workspaceId}` so the browser's
+// active workspace scopes the connect. All routes require auth: `userId` comes from the validated
+// bearer, `workspaceId` from the validated route prefix — never request input.
 public static class CalendarAuthEndpoints
 {
     private const string Provider = "google";
 
     public static void MapCalendarAuthEndpoints(this WebApplication app)
     {
-        app.MapPost("/calendar/connect/google", async (
+        var scoped = app.MapGroup("/w/{workspaceId}").AddEndpointFilter<WorkspaceValidationFilter>();
+
+        scoped.MapPost("/calendar/connect/google", async (
             CalendarConnectRequest req, IGoogleOAuthClient google, ICalendarTokenStore store,
-            ICurrentUser currentUser, ILoggerFactory loggerFactory, CancellationToken ct) =>
+            ICurrentUser currentUser, ICurrentWorkspace currentWorkspace, IWorkspaceCommandHandler workspaceHandler,
+            ILoggerFactory loggerFactory, CancellationToken ct) =>
         {
             var log = loggerFactory.CreateLogger("Api.Calendar.Connect");
 
@@ -46,30 +53,72 @@ public static class CalendarAuthEndpoints
                 return Results.BadRequest(new { error = "reconsent_required" });
             }
 
+            var workspaceId = currentWorkspace.WorkspaceId;
             var email = JwtClaims.TryGetClaim(result.Tokens.IdToken, "email");
-            await store.UpsertAsync(currentUser.UserId, Provider, result.Tokens.RefreshToken, email, ct);
-            log.LogInformation("Connected Google calendar for the current user (email present: {HasEmail})", email is not null);
+            // The token store is the source of truth for reads — write it first.
+            await store.UpsertAsync(currentUser.UserId, workspaceId, Provider, result.Tokens.RefreshToken, email, ct);
+            await RecordConnectionEventAsync(workspaceHandler, workspaceId, email, log, ct);
+            log.LogInformation(
+                "Connected Google calendar (workspace {WorkspaceId}, email present: {HasEmail})", workspaceId, email is not null);
 
             return Results.Ok(new { connected = true, provider = Provider, email });
         }).RequireAuthorization();
 
-        app.MapGet("/calendar/connection", async (
-            ICalendarTokenStore store, ICurrentUser currentUser, CancellationToken ct) =>
+        scoped.MapGet("/calendar/connection", async (
+            ICalendarTokenStore store, ICurrentUser currentUser, ICurrentWorkspace currentWorkspace, CancellationToken ct) =>
         {
-            // Strongly-consistent point read of the token store (NOT an async projection) — authz is
-            // the bearer's `sub`, so this never leaks another user's connection.
-            var token = await store.GetAsync(currentUser.UserId, Provider, ct);
+            // Strongly-consistent point read of the token store (NOT an async projection), keyed by
+            // (user, workspace), so it never leaks another user's or workspace's connection and
+            // reflects a just-completed connect without waiting on the projector (RYW).
+            var token = await store.GetAsync(currentUser.UserId, currentWorkspace.WorkspaceId, Provider, ct);
             return token is null
                 ? Results.Ok(new { status = "needs_auth", provider = Provider, email = (string?)null })
                 : Results.Ok(new { status = "connected", provider = Provider, email = token.Email });
         }).RequireAuthorization();
 
-        app.MapPost("/calendar/disconnect/google", async (
-            ICalendarTokenStore store, ICurrentUser currentUser, CancellationToken ct) =>
+        scoped.MapPost("/calendar/disconnect/google", async (
+            ICalendarTokenStore store, ICurrentUser currentUser, ICurrentWorkspace currentWorkspace,
+            IWorkspaceCommandHandler workspaceHandler, ILoggerFactory loggerFactory, CancellationToken ct) =>
         {
-            await store.DeleteAsync(currentUser.UserId, Provider, ct);
+            var log = loggerFactory.CreateLogger("Api.Calendar.Connect");
+            var workspaceId = currentWorkspace.WorkspaceId;
+            await store.DeleteAsync(currentUser.UserId, workspaceId, Provider, ct);
+            await RecordDisconnectionEventAsync(workspaceHandler, workspaceId, log, ct);
             return Results.Ok(new { status = "needs_auth", provider = Provider });
         }).RequireAuthorization();
+    }
+
+    // The domain event records the per-workspace connection (provider + account) for 34-C's
+    // provider resolution. It is NOT recorded for the reserved default workspace — its `__default__`
+    // stream is shared across users, so it has no per-user aggregate instance; the token store alone
+    // carries the default workspace's connection. Best-effort: the token (written first) is the
+    // source of truth for reads, so a failed event append must not fail the connect.
+    private static async Task RecordConnectionEventAsync(
+        IWorkspaceCommandHandler workspaceHandler, string workspaceId, string? email, ILogger log, CancellationToken ct)
+    {
+        if (workspaceId == WorkspaceId.DefaultValue) return;
+        try
+        {
+            await workspaceHandler.HandleAsync(new ConnectWorkspaceCalendar(new WorkspaceId(workspaceId), Provider, email), ct);
+        }
+        catch (Exception ex)
+        {
+            log.LogWarning(ex, "Calendar connected for workspace {WorkspaceId} but recording the domain event failed", workspaceId);
+        }
+    }
+
+    private static async Task RecordDisconnectionEventAsync(
+        IWorkspaceCommandHandler workspaceHandler, string workspaceId, ILogger log, CancellationToken ct)
+    {
+        if (workspaceId == WorkspaceId.DefaultValue) return;
+        try
+        {
+            await workspaceHandler.HandleAsync(new DisconnectWorkspaceCalendar(new WorkspaceId(workspaceId)), ct);
+        }
+        catch (Exception ex)
+        {
+            log.LogWarning(ex, "Calendar disconnected for workspace {WorkspaceId} but recording the domain event failed", workspaceId);
+        }
     }
 }
 
