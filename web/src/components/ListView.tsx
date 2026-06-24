@@ -68,7 +68,10 @@ export default function ListView({
   // a note (a push navigation) and pressing Back restores the URL — and with it
   // the populated filters. The four filters are derived from `searchParams` and
   // every setter writes them back with `replace: true`, so typing/filtering does
-  // not spam the history stack (only opening a note pushes).
+  // not spam the history stack (only opening a note pushes). Filters are per-view:
+  // the App navigation handlers route to bare paths (no query string), so
+  // switching folder or going Home intentionally clears them — Back still restores
+  // them because it replays the prior history entry, query string included.
   const [searchParams, setSearchParams] = useSearchParams();
   const query = searchParams.get("q") ?? "";
   const selectedTags = searchParams.getAll("tag");
@@ -78,7 +81,11 @@ export default function ListView({
   // applying a tag filter (CHANGE-19), as opposed to a user ticking the box.
   // Only an auto-enable is reverted when the filter clears; a pre-existing user
   // preference, or a manual untick while filtering, is left untouched. Stays
-  // local: it is an internal CHANGE-19 detail, not a user-facing filter value.
+  // local: it is an internal CHANGE-19 detail, not a user-facing filter value, so
+  // it is intentionally NOT persisted in the URL. Consequence: after a Back
+  // restores `older=1`, this flag is false, so clearing the filter then leaves
+  // "show older" ON rather than auto-reverting — an accepted edge (the auto-enable
+  // is a courtesy; the user can still untick).
   const [olderAutoEnabled, setOlderAutoEnabled] = useState(false);
   const [filtersOpen, setFiltersOpen] = useState(false);
 

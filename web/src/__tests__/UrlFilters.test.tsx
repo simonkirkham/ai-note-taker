@@ -162,6 +162,51 @@ describe('CHANGE-23 — home filters persist in the URL', () => {
     )
   })
 
+  it('writes the AND/OR mode to ?mode when toggled', async () => {
+    tagsReturn(['a', 'b'])
+    renderHome([
+      makeCard({ noteId: 'a', title: 'Alpha', tags: ['a'] }),
+      makeCard({ noteId: 'b', title: 'Beta', tags: ['b'] }),
+    ])
+
+    await openFilters()
+    // The AND/OR toggle only renders once 2+ tags are selected.
+    await userEvent.click(await screen.findByTestId('tag-filter-pill-a'))
+    await userEvent.click(await screen.findByTestId('tag-filter-pill-b'))
+    await userEvent.click(await screen.findByTestId('tag-filter-mode-toggle'))
+
+    await waitFor(() =>
+      expect(new URLSearchParams(lastSearch).get('mode')).toBe('OR'),
+    )
+  })
+
+  it('writes ?older=1 when show-older is ticked', async () => {
+    renderHome([makeCard({ noteId: 'a', title: 'Today note' })])
+
+    await openFilters()
+    await userEvent.click(
+      await screen.findByRole('checkbox', { name: /show older notes/i }),
+    )
+
+    await waitFor(() =>
+      expect(new URLSearchParams(lastSearch).get('older')).toBe('1'),
+    )
+  })
+
+  it('CHANGE-19: applying the first tag writes ?older=1 alongside the tag', async () => {
+    tagsReturn(['work'])
+    renderHome([makeCard({ noteId: 'w', title: 'Work note', tags: ['work'] })])
+
+    await openFilters()
+    await userEvent.click(await screen.findByTestId('tag-filter-pill-work'))
+
+    await waitFor(() => {
+      const params = new URLSearchParams(lastSearch)
+      expect(params.getAll('tag')).toContain('work')
+      expect(params.get('older')).toBe('1')
+    })
+  })
+
   it('restores AND/OR mode from ?mode (OR widens the match)', async () => {
     renderHome(
       [

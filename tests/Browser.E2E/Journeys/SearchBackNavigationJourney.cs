@@ -50,7 +50,11 @@ public sealed class SearchBackNavigationJourney(BrowserFixture browser) : IAsync
         // Browser Back → the SPA restores /?q=<title>; the search box (and its results) repopulate.
         await _app.GoBackAsync();
 
+        // Assert the box value FIRST, before any reload — this proves the Back-restore itself
+        // (a reload would re-derive the box from the URL, so it must come before reloading).
         await _app.AssertSearchQueryAsync(title);
-        await _app.AssertNoteVisibleInListAsync(title);
+        // The /notes/search read is projector-built and ungated; assert the result reload-tolerantly
+        // (a reload re-sends ?q so the search re-runs) so a cold projector can't flake the gate.
+        await _app.AssertNoteVisibleInListAfterReloadAsync(title);
     }
 }
