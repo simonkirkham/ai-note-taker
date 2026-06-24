@@ -26,12 +26,25 @@
 - MCP **tool calls** are JSON-RPC over **POST** but are **read-only** — they must hit the **Query Lambda** (read-only projection grants). This **overrides** the default POST→Command routing, so `/w/{wsId}/mcp` (tool-call path) is **pinned to the Query integration** in API Gateway, exactly as calendar GETs are pinned to Command today.
 - MCP **OAuth endpoints** (`/authorize`, `/token`, metadata) need the **Google OAuth client** + SSM/secret access, which the Query Lambda lacks — so they are **pinned to the Command Lambda** (mirrors how calendar auth lives there). Confirm the exact endpoint set against the MCP auth spec in 35-A.
 
-### Open questions (resolve in 35-A via `source-driven-development` against modelcontextprotocol.io)
+### Resolved — source-driven research (2026-06-24, MCP spec 2025-11-25; see learnings)
 
-1. Exact **transport** — Streamable HTTP version; whether Cowork requires the SSE (`GET`) stream or request/response POST suffices.
-2. Exact **auth spec** — protected-resource + authorization-server metadata (`/.well-known/...`); **dynamic client registration (RFC 7591)** vs. the connector UI accepting a pasted client id/secret; PKCE.
-3. **Reachability** — server must be public from Anthropic's IP ranges (the AWS API is already public; confirm no WAF/allowlist blocks it).
-4. **Deploy-time impact** — expected **neutral** (new route group + one pinned integration + reuse of existing tables; no bake/canary, no new always-on infra). Confirm and state the delta in the 35-A PR.
+| Question | Answer | Source |
+|----------|--------|--------|
+| Transport | Single `/mcp` endpoint; **POST → `application/json`, GET → 405**. Server-initiated SSE is **not** required for a tool-only server → no Lambda response-streaming. | spec/transports |
+| Method set | `initialize` → `notifications/initialized` (202) → `tools/list` → `tools/call`; plus `ping`. No resources/prompts capability. | spec 2025-11-25/server/tools |
+| Headers | Honour `MCP-Protocol-Version` (400 on unsupported); validate `Origin` (DNS-rebind); stay **stateless** (don't issue `Mcp-Session-Id`). | spec/transports |
+| SDK | Use **`ModelContextProtocol.AspNetCore`** (official C# SDK, stable v1.0 Mar 2026, full 2025-11-25 + OAuth 2.1). Do **not** hand-roll JSON-RPC/transport. | github.com/modelcontextprotocol/csharp-sdk |
+| Auth model | Our server **must be the OAuth 2.1 Resource Server**; the AS may be separate. **Cannot** delegate raw to Google — tokens must be **audience-bound** to our server (RFC 8707). "Reuse Google" = a **thin AS broker** that runs Google sign-in upstream and mints our own token. | spec/authorization |
+| Client registration | **Pre-registration (paste client_id/secret in Claude's Advanced settings)**. DCR (RFC 7591) is deprecated, not required. PKCE S256 required. | spec/client-registration |
+| Metadata endpoints | RS serves `/.well-known/oauth-protected-resource`; AS serves `/.well-known/oauth-authorization-server`. 401 challenge via `WWW-Authenticate: Bearer resource_metadata="…"`. | spec/authorization |
+| Claude redirect URI | `https://claude.ai/api/mcp/auth_callback` (hosted/Cowork) — register against **our AS**, not Google. | claude.com/docs/connectors/building |
+| Reachability | Public from Anthropic IP ranges, HTTPS. AWS API Gateway satisfies this; optionally IP-allowlist Anthropic ranges. | support.claude.com |
+
+**Manual gates (cannot be automated — owner action):**
+1. **Live Cowork handshake** is the literal 35-A acceptance ("a real Cowork client connects") — only the owner can add the connector in the Cowork GUI and confirm. The pipeline ships the server + full integration-test coverage of the MCP protocol; the owner does the final connect.
+2. **OAuth approach** (below) determines whether a **Google Cloud Console redirect-URI registration** + **pasting client creds into Cowork** are also required owner steps.
+
+**Deploy-time impact:** expected **neutral** (new route group + reuse of existing tables; no bake/canary, no new always-on infra). Confirm and state the delta in the 35-A PR.
 
 ### Deploy-time impact
 
