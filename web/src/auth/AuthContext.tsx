@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
-import { connectGoogleCalendar } from '../api/calendarAuth'
+import { connectGoogleCalendar, connectMicrosoftCalendar } from '../api/calendarAuth'
 import { setWorkspaceId } from '../workspace/workspaceStore'
 import { AuthContext, type AuthState } from './context'
 import { buildAuthUrl, exchangeCode, generateCodeChallenge, generateCodeVerifier } from './pkce'
@@ -155,13 +155,17 @@ export function AuthProvider({
       // right workspace, and restore the URL so the app lands back in that workspace.
       const calWorkspace = sessionStorage.getItem('calendar_workspace')
       sessionStorage.removeItem('calendar_workspace')
+      // 34-C: POST the code to the provider the connect was started for (Google or Outlook).
+      const calProvider = sessionStorage.getItem('calendar_provider')
+      sessionStorage.removeItem('calendar_provider')
       if (calWorkspace) setWorkspaceId(calWorkspace)
       window.history.replaceState({}, '', calWorkspace ? `/w/${calWorkspace}` : window.location.pathname)
       void (async () => {
         const token = await attemptSilentRefresh().catch(() => null)
         if (token) setToken(token)
         try {
-          await connectGoogleCalendar(window.location.origin, code, calVerifier)
+          if (calProvider === 'microsoft') await connectMicrosoftCalendar(window.location.origin, code, calVerifier)
+          else await connectGoogleCalendar(window.location.origin, code, calVerifier)
         } catch { /* a failed connect surfaces as needs_auth on the next connection read */ }
         if (token) setIdToken(token)
         setAuthLoading(false)

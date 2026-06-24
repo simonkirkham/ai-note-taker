@@ -141,6 +141,14 @@ Scenario: A workspace with no connection
 
 **Status:** Not Started.
 
+**As-built decisions (refine the ACs; agreed with user):**
+1. **`CALENDAR_PROVIDER` is kept as the *unconnected* fallback, not dropped (deviates from AC2).** Prod is dark — it serves Microsoft via the global SSM token with zero in-app connections; dropping it now would break Home meetings. `ICalendarClientFactory.ForAsync` resolves: STUB → in-app Microsoft token → in-app Google token → `CALENDAR_PROVIDER` fallback. **34-D** removes it with the SSM path (strangle coexistence).
+2. **Provider resolved from the token store, not the aggregate** (the 34-B best-effort-event caveat) — the in-app connection is authoritative.
+3. **One provider per workspace enforced at connect time** (decision #3): connecting one provider deletes the other's token.
+4. **Generic `POST …/calendar/disconnect`** (replaces the per-provider `…/disconnect/google`) — clears whichever provider the workspace holds. `GET …/calendar/connection` is now provider-aware (`provider` is null when unconnected).
+5. **No new domain events** — 34-B's `ConnectWorkspaceCalendar(workspaceId, provider, accountRef)` already carries the provider string.
+6. **The Microsoft in-app connect ships dark** — needs an Entra **SPA redirect URI** registered in the Azure app + `VITE_MS_CLIENT_ID` (reuses the backend `MS_CLIENT_ID` secret) to exercise. The factory + per-workspace resolution + coexistence fallback are fully tested.
+
 **Carried over from 34-B review:** 34-B records `WorkspaceCalendarConnected` **best-effort** (the token store is written first and is the source of truth for reads; a failed event append only logs). So a workspace can exist where the token store says "connected" but the aggregate has no connection event. 34-C's `ICalendarClientFactory.For(workspaceId)` must therefore resolve the provider from the **token store** (authoritative), or treat a missing aggregate connection as a re-emit trigger — never assume the event is present whenever a token is.
 
 **User value:** a workspace can be backed by **Outlook** instead of Google, chosen at connect time — A on Google, B on Outlook, simultaneously.

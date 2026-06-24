@@ -235,6 +235,10 @@ jobs:
         run: npm ci && npm run build
         env:
           VITE_GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
+          # 34-C: Microsoft public client id for the in-app "Connect Outlook" flow (reuses the
+          # backend MS_CLIENT_ID). Empty when unset → the Outlook connect is a no-op.
+          VITE_MS_CLIENT_ID: ${{ secrets.MS_CLIENT_ID }}
+          VITE_MS_TENANT_ID: ${{ secrets.MS_TENANT_ID }}
 
       - name: Inject RUM snippet
         working-directory: web
@@ -578,6 +582,10 @@ jobs:
         run: npm ci && npm run build
         env:
           VITE_GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
+          # 34-C: Microsoft public client id for the in-app "Connect Outlook" flow (reuses the
+          # backend MS_CLIENT_ID). Empty when unset → the Outlook connect is a no-op.
+          VITE_MS_CLIENT_ID: ${{ secrets.MS_CLIENT_ID }}
+          VITE_MS_TENANT_ID: ${{ secrets.MS_TENANT_ID }}
 
       - name: Inject RUM snippet
         working-directory: web

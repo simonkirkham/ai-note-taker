@@ -12,7 +12,7 @@ namespace Api.Handlers;
 
 public static class CalendarHandlers
 {
-    public static async Task<IResult> GetMeetingsForDate(string date, string? tz, ICalendarClient calendar, ICalendarLinkIndexStore calendarLinkStore, ICurrentUser currentUser, ILoggerFactory loggerFactory)
+    public static async Task<IResult> GetMeetingsForDate(string date, string? tz, ICalendarClientFactory calendarFactory, ICurrentWorkspace currentWorkspace, ICalendarLinkIndexStore calendarLinkStore, ICurrentUser currentUser, ILoggerFactory loggerFactory)
     {
         if (!DateOnly.TryParseExact(date, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var selectedDate))
         {
@@ -26,6 +26,7 @@ public static class CalendarHandlers
         try { TimeZoneInfo.FindSystemTimeZoneById(tz); }
         catch (TimeZoneNotFoundException) { return Results.BadRequest(new { error = "invalid_timezone" }); }
 
+        var calendar = await calendarFactory.ForAsync(currentWorkspace.WorkspaceId);
         var events = await calendar.GetEventsForDayAsync(selectedDate, tz);
         if (events is null)
             return Results.Ok(new { error = "calendar_unavailable" });
@@ -108,7 +109,7 @@ public static class CalendarHandlers
 
     public static async Task<IResult> CreateNoteFromNextOccurrence(
         CreateNoteFromNextOccurrenceRequest req,
-        ICalendarClient calendar,
+        ICalendarClientFactory calendarFactory,
         INoteCommandHandler handler,
         ICalendarLinkIndexStore calendarLinkStore,
         ICurrentUser currentUser,
@@ -118,6 +119,7 @@ public static class CalendarHandlers
         if (string.IsNullOrWhiteSpace(req.RecurringSeriesId))
             return Results.BadRequest(new { error = "recurring_series_id_required" });
 
+        var calendar = await calendarFactory.ForAsync(currentWorkspace.WorkspaceId, ct);
         var next = await calendar.GetNextOccurrenceAsync(req.RecurringSeriesId, DateTimeOffset.UtcNow);
         if (next is null)
             return Results.NotFound(new { error = "no_future_occurrences" });

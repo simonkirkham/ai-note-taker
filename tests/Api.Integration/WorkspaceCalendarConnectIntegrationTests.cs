@@ -15,6 +15,7 @@ public sealed class WorkspaceCalendarConnectIntegrationTests : IClassFixture<Api
 {
     private readonly HttpClient _client;
     private readonly FakeGoogleOAuthClient _oauth;
+    private readonly FakeMicrosoftOAuthClient _msOauth;
     private readonly InMemoryCalendarTokenStore _store;
     private readonly IEventStore _events;
 
@@ -24,9 +25,11 @@ public sealed class WorkspaceCalendarConnectIntegrationTests : IClassFixture<Api
     {
         _client = factory.CreateClient();
         _oauth = factory.Services.GetRequiredService<FakeGoogleOAuthClient>();
+        _msOauth = factory.Services.GetRequiredService<FakeMicrosoftOAuthClient>();
         _store = factory.Services.GetRequiredService<InMemoryCalendarTokenStore>();
         _events = factory.Services.GetRequiredService<IEventStore>();
         _oauth.Reset();
+        _msOauth.Reset();
         _store.Clear();
     }
 
@@ -62,11 +65,24 @@ public sealed class WorkspaceCalendarConnectIntegrationTests : IClassFixture<Api
         resp.EnsureSuccessStatusCode();
     }
 
+    private async Task ConnectMicrosoftAsync(string wsId, string email, string refreshToken)
+    {
+        _msOauth.ExchangeResult = FakeMicrosoftOAuthClient.Success(refreshToken, email);
+        var resp = await _client.PostAsync($"/w/{wsId}/calendar/connect/microsoft", ConnectBody());
+        resp.EnsureSuccessStatusCode();
+    }
+
     private async Task<(string status, string? email)> ConnectionAsync(string wsId)
     {
         var body = await (await _client.GetAsync($"/w/{wsId}/calendar/connection")).Content.ReadFromJsonAsync<JsonElement>();
         return (body.GetProperty("status").GetString()!,
             body.GetProperty("email").ValueKind == JsonValueKind.Null ? null : body.GetProperty("email").GetString());
+    }
+
+    private async Task<string?> ConnectionProviderAsync(string wsId)
+    {
+        var body = await (await _client.GetAsync($"/w/{wsId}/calendar/connection")).Content.ReadFromJsonAsync<JsonElement>();
+        return body.GetProperty("provider").ValueKind == JsonValueKind.Null ? null : body.GetProperty("provider").GetString();
     }
 
     private async Task<int> CalendarConnectedEventsAsync(string wsId)
@@ -98,7 +114,7 @@ public sealed class WorkspaceCalendarConnectIntegrationTests : IClassFixture<Api
         await ConnectAsync(wsA, "a@gmail.com", "rt-a");
         await ConnectAsync(wsB, "b@gmail.com", "rt-b");
 
-        (await _client.PostAsync($"/w/{wsA}/calendar/disconnect/google", null)).EnsureSuccessStatusCode();
+        (await _client.PostAsync($"/w/{wsA}/calendar/disconnect", null)).EnsureSuccessStatusCode();
 
         Assert.Equal("needs_auth", (await ConnectionAsync(wsA)).status);
         Assert.Equal(("connected", "b@gmail.com"), await ConnectionAsync(wsB));
@@ -141,5 +157,44 @@ public sealed class WorkspaceCalendarConnectIntegrationTests : IClassFixture<Api
 
         Assert.True(_store.Has(TestUser, WorkspaceId.DefaultValue, "google"));
         Assert.Equal(0, await CalendarConnectedEventsAsync(WorkspaceId.DefaultValue));
+    }
+
+    // ── 34-C: Microsoft as a connectable provider per workspace ──────────────────────────
+
+    [Fact]
+    public async Task ConnectMicrosoft_StoredAndReadAsMicrosoft()
+    {
+        var wsA = await CreateWorkspaceAsync("A");
+        await ConnectMicrosoftAsync(wsA, "owner@outlook.com", "rt-ms");
+
+        Assert.Equal("microsoft", await ConnectionProviderAsync(wsA));
+        Assert.Equal(("connected", "owner@outlook.com"), await ConnectionAsync(wsA));
+        Assert.Equal("rt-ms", _store.Peek(TestUser, wsA, "microsoft")!.RefreshToken);
+    }
+
+    [Fact]
+    public async Task TwoWorkspaces_OneGoogleOneOutlook()
+    {
+        var wsA = await CreateWorkspaceAsync("A");
+        var wsB = await CreateWorkspaceAsync("B");
+        await ConnectAsync(wsA, "a@gmail.com", "rt-a");
+        await ConnectMicrosoftAsync(wsB, "b@outlook.com", "rt-b");
+
+        Assert.Equal("google", await ConnectionProviderAsync(wsA));
+        Assert.Equal("microsoft", await ConnectionProviderAsync(wsB));
+    }
+
+    [Fact]
+    public async Task ConnectingSecondProvider_ReplacesFirst_OneProviderPerWorkspace()
+    {
+        // Connect Google, then Outlook on the SAME workspace → the Google token is cleared and only
+        // Microsoft remains (decision #3: one provider per workspace).
+        var wsA = await CreateWorkspaceAsync("A");
+        await ConnectAsync(wsA, "a@gmail.com", "rt-a");
+        await ConnectMicrosoftAsync(wsA, "a@outlook.com", "rt-ms");
+
+        Assert.Equal("microsoft", await ConnectionProviderAsync(wsA));
+        Assert.True(_store.Has(TestUser, wsA, "microsoft"));
+        Assert.False(_store.Has(TestUser, wsA, "google"));
     }
 }

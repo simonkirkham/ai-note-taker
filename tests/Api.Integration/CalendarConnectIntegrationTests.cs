@@ -89,7 +89,9 @@ public sealed class CalendarConnectIntegrationTests : IClassFixture<ApiFactory>
     {
         var body = await (await _client.GetAsync("/calendar/connection")).Content.ReadFromJsonAsync<JsonElement>();
         Assert.Equal("needs_auth", body.GetProperty("status").GetString());
-        Assert.Equal("google", body.GetProperty("provider").GetString());
+        // 34-C: provider is null when unconnected (no longer a fixed "google") — the workspace has no
+        // connected provider until one is chosen at connect time.
+        Assert.Equal(JsonValueKind.Null, body.GetProperty("provider").ValueKind);
     }
 
     [Fact]
@@ -108,7 +110,7 @@ public sealed class CalendarConnectIntegrationTests : IClassFixture<ApiFactory>
     {
         _store.Seed(TestUser, DefaultWs, "google", "rt-x", "owner@example.com");
 
-        var disconnect = await _client.PostAsync("/calendar/disconnect/google", content: null);
+        var disconnect = await _client.PostAsync("/calendar/disconnect", content: null);
         disconnect.EnsureSuccessStatusCode();
 
         Assert.False(_store.Has(TestUser, DefaultWs, "google"));
