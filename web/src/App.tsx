@@ -341,6 +341,8 @@ function AppContent({ signOut }: { signOut: () => void }) {
                 onDelete={handleDelete}
                 onDateSet={handleDateSet}
                 onOpenNote={openNote}
+                otherWorkspaces={otherWorkspaces}
+                onMoveNoteToWorkspace={(noteId, workspaceId) => moveNoteToWorkspaceM.mutate({ noteId, workspaceId })}
               />
             }
           />
@@ -357,12 +359,16 @@ function NoteRoute({
   onDelete,
   onDateSet,
   onOpenNote,
+  otherWorkspaces,
+  onMoveNoteToWorkspace,
 }: {
   notes: { noteId: string; title: string }[];
   onBack: () => void;
   onDelete: (noteId: string) => Promise<void>;
   onDateSet: (noteId: string, date: string) => void;
   onOpenNote: (noteId: string, title?: string, isNew?: boolean) => void;
+  otherWorkspaces: { workspaceId: string; name: string }[];
+  onMoveNoteToWorkspace: (noteId: string, workspaceId: string) => void;
 }) {
   const { noteId } = useParams();
   const location = useLocation();
@@ -390,6 +396,13 @@ function NoteRoute({
       onOpenNote={onOpenNote}
       onNotFound={handleNotFound}
       isNew={navState?.isNew}
+      otherWorkspaces={otherWorkspaces}
+      // Moving from the note page navigates home: the note has left this workspace,
+      // so it no longer belongs on this page (mirrors the card's optimistic removal).
+      onMoveToWorkspace={(workspaceId) => {
+        onMoveNoteToWorkspace(noteId, workspaceId);
+        void navigate(`/w/${wsId}`);
+      }}
     />
   );
 }

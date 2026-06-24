@@ -35,6 +35,7 @@
 | CHANGE-21 | Label the active calendar source on the Home meetings list — `ICalendarClient.ProviderName` surfaced on `GET /calendar/{date}` as `provider`; a small "Outlook"/"Google Calendar" badge under the meetings heading (stub/unknown → no label) | Done | Phase 32 |
 | CHANGE-22 | Analysis observability — `IDomainMetrics.AnalysisCompleted(ms)`/`AnalysisFailed()` (EMF `AnalysisDurationMs`/`AnalysisFailed`, dimensionless); `AnalyseNote` times the Bedrock call and logs the failing note id; `notetaker-analysis-failed` alarm + a "p50/p99 vs failures" dashboard widget. Covers manual + on-Stop auto-analyse; carries into the 33-B2 analysis service | Done | — |
 | CHANGE-23 | Persist home list filters in the URL so Back from a note restores them — search query + selected tags + AND/OR mode + show-older move from `ListView` local state to `?q=&tags=&mode=&older=` via `useSearchParams`; filter writes use `replace`, opening a note pushes | Open | — |
+| CHANGE-24 | Surface the "Move to workspace" control on the note detail page (not just the card) — reuse `MoveToWorkspaceMenu` in `NoteView`'s header next to Delete; gated on `hasContent` + other workspaces existing; moving navigates back to the workspace home (the note has left this workspace) | In Progress | 23-F |
 
 Open: CHANGE-23.
 

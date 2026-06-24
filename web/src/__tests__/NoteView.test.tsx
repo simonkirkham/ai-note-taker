@@ -77,8 +77,8 @@ afterEach(() => {
   vi.useRealTimers()
 })
 
-function renderNoteView(props: { noteId?: string; initialTitle?: string; onBack?: () => void; onDelete?: (noteId: string) => Promise<void>; onOpenNote?: (noteId: string, title?: string, isNew?: boolean) => void; isNew?: boolean } = {}) {
-  const { noteId = 'note-1', initialTitle = 'Test Note', onBack = noop, onDelete = asyncNoop, onOpenNote = noop, isNew } = props
+function renderNoteView(props: { noteId?: string; initialTitle?: string; onBack?: () => void; onDelete?: (noteId: string) => Promise<void>; onOpenNote?: (noteId: string, title?: string, isNew?: boolean) => void; isNew?: boolean; otherWorkspaces?: { workspaceId: string; name: string }[]; onMoveToWorkspace?: (workspaceId: string) => void } = {}) {
+  const { noteId = 'note-1', initialTitle = 'Test Note', onBack = noop, onDelete = asyncNoop, onOpenNote = noop, isNew, otherWorkspaces, onMoveToWorkspace } = props
   return render(
     <ToastProvider>
       <NoteView
@@ -89,6 +89,8 @@ function renderNoteView(props: { noteId?: string; initialTitle?: string; onBack?
         onDateSet={noop}
         onOpenNote={onOpenNote}
         isNew={isNew}
+        otherWorkspaces={otherWorkspaces}
+        onMoveToWorkspace={onMoveToWorkspace}
       />
     </ToastProvider>,
   )
@@ -1083,6 +1085,28 @@ describe('NoteView', () => {
       expect(await screen.findByRole('alert')).toBeInTheDocument()
       // The typed title must not be reset to the stale server copy on failure.
       expect(titleInput).toHaveValue('New title')
+    })
+  })
+
+  describe('move to another workspace (CHANGE-24)', () => {
+    it('shows a Move control and fires onMoveToWorkspace with the chosen workspace', async () => {
+      const onMoveToWorkspace = vi.fn()
+      renderNoteView({
+        otherWorkspaces: [
+          { workspaceId: 'ws-clients', name: 'Clients' },
+          { workspaceId: 'ws-personal', name: 'Personal' },
+        ],
+        onMoveToWorkspace,
+      })
+      await userEvent.click(await screen.findByRole('button', { name: 'Move "Test Note" to another workspace' }))
+      await userEvent.click(screen.getByTestId('move-workspace-option-ws-clients'))
+      expect(onMoveToWorkspace).toHaveBeenCalledWith('ws-clients')
+    })
+
+    it('shows no Move control when there are no other workspaces', async () => {
+      renderNoteView({ otherWorkspaces: [], onMoveToWorkspace: noop })
+      await screen.findByLabelText('Note content')
+      expect(screen.queryByRole('button', { name: /Move "Test Note"/ })).not.toBeInTheDocument()
     })
   })
 })
