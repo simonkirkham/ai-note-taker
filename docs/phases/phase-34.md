@@ -7,7 +7,7 @@
 | Slice | Summary | Status | Depends on |
 |-------|---------|--------|------------|
 | 34-A | **Connect Google Calendar in-app → server-side per-user token** (keystone; TI-47 core). A "Connect calendar" button runs auth-code+PKCE; backend stores the refresh token server-side; the meetings read uses it (SSM fallback while unconnected). Google only, per-user. | Done | — |
-| 34-B | **Key the calendar connection by workspace.** `WorkspaceCalendarConnected` event; connect associates with the current workspace; token + read resolve by `workspaceId`. Two workspaces → two different Google accounts. | Not Started | 34-A |
+| 34-B | **Key the calendar connection by workspace.** `WorkspaceCalendarConnected` event; connect associates with the current workspace; token + read resolve by `(userId, workspaceId)`. Two workspaces → two different Google accounts. | Done | 34-A |
 | 34-C | **Add Microsoft as a connectable provider per workspace + per-request resolution.** In-app connect for Outlook; `ICalendarClientFactory.For(workspaceId)` resolves google/microsoft from the workspace's connection; drop the global `CALENDAR_PROVIDER` env. A=Google, B=Outlook. | Not Started | 34-B |
 | 34-D | **Retire the out-of-band SSM token path + mint scripts** (strangle cleanup). Remove `CALENDAR_PROVIDER`, the SSM grants/paths, and the mint scripts once every flow is in-app. | Not Started | 34-C |
 
@@ -88,7 +88,12 @@ Scenario: Expired/revoked stored token degrades gracefully
 
 ## Slice 34-B — Key the calendar connection by workspace
 
-**Status:** Not Started.
+**Status:** Done (PRs #327 + #329 + #330, deploy #629). Shipped via three deploys — see
+[`docs/learnings/phase-34b-workspace-calendar.md`](../learnings/phase-34b-workspace-calendar.md):
+#327's deploy flaked at the frontend gate (un-`scoped()` calendar msw handlers), and the web-only
+flake-fix shipped the frontend without the backend (404 in prod) until a backend push (#330) carried
+the route pins. Prod verified: `/w/{workspaceId}/calendar/*` routes live (401 auth-gated), old
+`/calendar/*` removed.
 
 **As-built decisions (refine the locked decisions; agreed with user):**
 1. **Token key is `(userId, workspaceId, provider)`, not `(workspaceId, provider)`.** The default workspace id `__default__` is shared across users, so keying purely by workspace would leak the default workspace's calendar between users. Physical DynamoDB schema unchanged (SK holds `{workspaceId}#{provider}`) to avoid a RETAIN-table replacement.
