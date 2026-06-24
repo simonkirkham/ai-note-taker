@@ -329,6 +329,9 @@ public sealed class NoteTakerStack : Stack
             // Defensive: with active tracing the Lambda runtime always provides a
             // segment, but log rather than throw if the X-Ray context is ever absent.
             ["AWS_XRAY_CONTEXT_MISSING"] = "LOG_ERROR",
+            // 35-A no-auth MCP endpoint disabled in prod until 35-E adds OAuth. Flip to "true"
+            // (with auth in place) to re-enable. Defaults ON in code so tests/local stay mapped.
+            ["MCP_ENABLED"] = "false",
             ["EVENTS_TABLE_NAME"] = eventsTable.TableName,
             ["PROJ_NOTETITLELIST_TABLE_NAME"] = projTable.TableName,
             ["PROJ_NOTEDETAIL_TABLE_NAME"] = noteDetailTable.TableName,

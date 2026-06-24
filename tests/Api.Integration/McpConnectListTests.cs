@@ -89,6 +89,18 @@ public sealed class McpConnectListTests(ApiFactory factory) : IClassFixture<ApiF
     }
 
     [Fact]
+    public async Task WhenMcpDisabled_Endpoint_Returns404()
+    {
+        using var factory = _factory.WithWebHostBuilder(b => b.ConfigureAppConfiguration(c =>
+            c.AddInMemoryCollection(new Dictionary<string, string?> { ["MCP_ENABLED"] = "false" })));
+
+        var resp = await factory.CreateClient()
+            .SendAsync(NewPost(McpPath(WorkspaceA), Envelope("initialize", InitializeParams())));
+
+        Assert.Equal(HttpStatusCode.NotFound, resp.StatusCode);
+    }
+
+    [Fact]
     public async Task Get_OnMcpEndpoint_Returns405()
     {
         var client = _factory.CreateUnauthenticatedClient();

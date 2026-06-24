@@ -77,7 +77,12 @@ app.MapWorkspaceEndpoints();
 // group — no auth this slice. The {workspaceId} route value scopes list_notes (read via
 // IHttpContextAccessor). Tool calls are read-only, so this path is pinned to the Query Lambda in
 // API Gateway (see NoteTakerStack).
-app.MapMcp("/w/{workspaceId}/mcp");
+// Kill switch: the no-auth endpoint is disabled in prod (MCP_ENABLED=false) until 35-E adds
+// OAuth. Defaults ON so tests/local keep it mapped; prod sets it OFF. When unmapped, ASP.NET has
+// no matching endpoint (there is no MapFallback) so the API-Gateway-forwarded POST gets a genuine
+// 404 — not a 500 or a fallthrough that still serves.
+if (app.Configuration.GetValue("MCP_ENABLED", true))
+    app.MapMcp("/w/{workspaceId}/mcp");
 
 Builder.RegisterSnapStartPriming(app);
 

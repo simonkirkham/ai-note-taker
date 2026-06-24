@@ -74,6 +74,24 @@ public class InfraAssertionsTests
     }
 
     [Fact]
+    public void Lambda_McpDisabledOnQueryFunction()
+    {
+        var resources = ToDict(TemplateJson()["Resources"]);
+        var disabled = new List<string>();
+        foreach (var (logicalId, raw) in resources)
+        {
+            var res = ToDict(raw);
+            if ((res.TryGetValue("Type", out var t) ? t as string : null) != "AWS::Lambda::Function") continue;
+            if (!ToDict(res["Properties"]).TryGetValue("Environment", out var envRaw)) continue;
+            if (!ToDict(envRaw).TryGetValue("Variables", out var varsRaw)) continue;
+            if (ToDict(varsRaw).TryGetValue("MCP_ENABLED", out var v) && v as string == "false")
+                disabled.Add(logicalId);
+        }
+
+        Assert.Contains(disabled, k => k.Contains("QueryFunction", StringComparison.Ordinal));
+    }
+
+    [Fact]
     public void EventsTable_HasRetainDeletionPolicy()
     {
         _template.HasResource("AWS::DynamoDB::Table", Match.ObjectLike(new Dictionary<string, object>
