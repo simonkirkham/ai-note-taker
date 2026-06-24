@@ -36,6 +36,7 @@
 | CHANGE-22 | Analysis observability — `IDomainMetrics.AnalysisCompleted(ms)`/`AnalysisFailed()` (EMF `AnalysisDurationMs`/`AnalysisFailed`, dimensionless); `AnalyseNote` times the Bedrock call and logs the failing note id; `notetaker-analysis-failed` alarm + a "p50/p99 vs failures" dashboard widget. Covers manual + on-Stop auto-analyse; carries into the 33-B2 analysis service | Done | — |
 | CHANGE-23 | Persist home list filters in the URL so Back from a note restores them — search query + selected tags + AND/OR mode + show-older move from `ListView` local state to `?q=&tag=&mode=&older=` via `useSearchParams`; filter writes use `replace`, opening a note pushes | Done | — |
 | CHANGE-24 | Surface the "Move to workspace" control on the note detail page (not just the card) — reuse `MoveToWorkspaceMenu` in `NoteView`'s header next to Delete; gated on `hasContent` + other workspaces existing; moving navigates back to the workspace home (the note has left this workspace) | Done | 23-F |
+| CHANGE-25 | Always-available calendar connect/change/disconnect — a gear "Calendar settings" toggle in the Meetings header opens an inline panel (Connect Google / Connect Outlook / Disconnect). Previously the connect buttons rendered **only** in the meetings-"unavailable" state, which the SSM fallback hides in prod → in-app connect was unreachable. Disconnect is optimistic + invalidates the connection/meetings queries. | In Progress | 34-C |
 
 Open: none.
 

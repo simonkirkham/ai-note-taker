@@ -1,5 +1,6 @@
 import { useQueryClient, type UseQueryResult } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
+import { disconnectCalendar, type CalendarConnection } from "../api/calendarAuth";
 import { CalendarMeeting, type MeetingsResult } from "../api/meetings";
 import { keys } from "../api/queryKeys";
 import { startCalendarConnect } from "../auth/pkce";
@@ -18,6 +19,13 @@ const CalendarIcon = ({ className, size = 36 }: { className?: string; size?: num
     <line x1="16" y1="2" x2="16" y2="6"/>
     <line x1="8" y1="2" x2="8" y2="6"/>
     <line x1="3" y1="10" x2="21" y2="10"/>
+  </svg>
+);
+
+const GearIcon = ({ size = 18 }: { size?: number }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <circle cx="12" cy="12" r="3"/>
+    <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
   </svg>
 );
 
@@ -66,6 +74,7 @@ export function MeetingsSection({ onOpenNote }: { onOpenNote: (noteId: string, t
   const [today] = useState(() => todayInTz(tz));
   const [selectedDate, setSelectedDate] = useState(today);
   const [pickerOpen, setPickerOpen] = useState(false);
+  const [calendarMenuOpen, setCalendarMenuOpen] = useState(false);
   const [bannerDismissed, setBannerDismissed] = useState(false);
   const [creating, setCreating] = useState<Set<string>>(new Set());
   const [createErrors, setCreateErrors] = useState<Map<string, string>>(new Map());
@@ -162,6 +171,20 @@ export function MeetingsSection({ onOpenNote }: { onOpenNote: (noteId: string, t
     void displayQuery.refetch();
   }
 
+  // Disconnect the workspace's in-app calendar. Optimistically flip the connection to needs_auth so
+  // the header updates immediately, then refetch meetings (they may still load via the legacy SSM
+  // fallback until 34-D). A failed disconnect reconciles on the next connection refetch.
+  async function handleDisconnect() {
+    setCalendarMenuOpen(false);
+    qc.setQueryData<CalendarConnection>(keys.calendarConnection, { status: "needs_auth", provider: null, email: null });
+    try {
+      await disconnectCalendar();
+    } finally {
+      void qc.invalidateQueries({ queryKey: keys.calendarConnection });
+      void qc.invalidateQueries({ queryKey: keys.meetings(selectedDate) });
+    }
+  }
+
   function handlePickDate(value: string) {
     if (value) setSelectedDate(value);
     setPickerOpen(false);
@@ -243,8 +266,55 @@ export function MeetingsSection({ onOpenNote }: { onOpenNote: (noteId: string, t
             >
               ›
             </button>
+            <button
+              data-testid="calendar-settings-toggle"
+              className={styles.meetingsNavBtn}
+              aria-label="Calendar settings"
+              aria-expanded={calendarMenuOpen}
+              aria-controls="calendar-menu-panel"
+              onClick={() => setCalendarMenuOpen((open) => !open)}
+            >
+              <GearIcon size={16} />
+            </button>
           </div>
         </div>
+
+        {/* CHANGE-25: always-available connect/change/disconnect — reachable even when meetings load
+            (via an in-app connection or the legacy SSM fallback), not only in the unavailable state. */}
+        {calendarMenuOpen && (
+          <div id="calendar-menu-panel" data-testid="calendar-menu" className={styles.calendarMenu} role="group" aria-label="Calendar connection">
+            <p className={styles.calendarMenuStatus}>
+              {connectedEmail
+                ? `Connected as ${connectedEmail}`
+                : sourceLabel
+                  ? `Using ${sourceLabel}`
+                  : "No calendar connected"}
+            </p>
+            <button
+              data-testid="menu-connect-google"
+              className={styles.meetingsRetryLink}
+              onClick={() => void startCalendarConnect("google")}
+            >
+              Connect Google Calendar
+            </button>
+            <button
+              data-testid="menu-connect-outlook"
+              className={styles.meetingsRetryLink}
+              onClick={() => void startCalendarConnect("microsoft")}
+            >
+              Connect Outlook
+            </button>
+            {connectedEmail && (
+              <button
+                data-testid="menu-disconnect"
+                className={styles.meetingsRetryLink}
+                onClick={() => void handleDisconnect()}
+              >
+                Disconnect
+              </button>
+            )}
+          </div>
+        )}
 
         {pickerOpen && (
           <input
