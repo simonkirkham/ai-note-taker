@@ -26,11 +26,13 @@ export const handlers = [
   ...scoped('post', '/todos/:todoId/complete', () => new HttpResponse(null, { status: 204 })),
   ...scoped('post', '/todos/:todoId/reopen', () => new HttpResponse(null, { status: 204 })),
   ...scoped('delete', '/todos/:todoId', () => new HttpResponse(null, { status: 204 })),
-  // Must precede /api/calendar/:date (":date" would otherwise match "connection"). Neutral
-  // default: connected with no email → header falls back to the provider label, unavailable
-  // shows the generic "Cannot connect" (tests override per-case).
-  http.get('/api/calendar/connection', () => HttpResponse.json({ status: 'connected', provider: 'google', email: null })),
-  http.get('/api/calendar/:date', () => HttpResponse.json({ meetings: [] })),
+  // 34-B: calendar is workspace-scoped, so register BOTH forms via scoped() — full-App routing
+  // tests hit `/api/w/:wsId/calendar/...`, component tests hit the rootless form. `connection` must
+  // precede `:date` (":date" would otherwise match "connection"); scoped() preserves that order
+  // within each form. Neutral default: connected with no email → header falls back to the provider
+  // label, unavailable shows the generic "Cannot connect" (tests override per-case).
+  ...scoped('get', '/calendar/connection', () => HttpResponse.json({ status: 'connected', provider: 'google', email: null })),
+  ...scoped('get', '/calendar/:date', () => HttpResponse.json({ meetings: [] })),
   ...scoped('get', '/notes/:noteId', () =>
     HttpResponse.json({
       noteId: 'note-1',
