@@ -192,7 +192,7 @@ Scenario: Provider resolved per request, not per process
 
 ### Slice 34-D1 — Retire the Google SSM token path
 
-**Status:** Done (PR #TBD). Google in-app connect verified working in prod, so the Google SSM fallback is dead and removed.
+**Status:** Done (PR #339, deploy #640). Google in-app connect verified working in prod, so the Google SSM fallback is dead and removed. Prod verified: the command Lambda's env no longer has `GOOGLE_REFRESH_TOKEN_SSM_PATH` (the Microsoft one remains). The deploy first flaked on an unrelated `NoteReadYourWritesJourney` E2E (the chronic TI-42/TI-39 cold-projector flake); a `gh run rerun --failed` cleared it.
 
 - `GoogleCalendarTokenSource` reads only `CalendarTokenStore` (store-only; SSM fallback + static cache gone).
 - CDK drops the `GOOGLE_REFRESH_TOKEN_SSM_PATH` env var + its conditional `ssm:GetParameter` grant; `deploy.yml` stops passing it; infra assertions updated (env absent; the remaining SSM grant is Microsoft's).
