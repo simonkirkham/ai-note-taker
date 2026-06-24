@@ -8,7 +8,7 @@
 
 | Slice | Summary | Status | Depends on |
 |-------|---------|--------|------------|
-| 35-A | **Connect & list — no-auth proof.** Remote MCP server at `/w/{wsId}/mcp` (official `ModelContextProtocol.AspNetCore` SDK) speaking the MCP transport (initialize / tools/list / tools/call); **no-auth** (unguessable workspace-id URL + Anthropic-IP allowlist); one tool — `list_notes` — returns the workspace's note titles/ids from `NoteCardList`. Proves transport + Cowork handshake + workspace-scoped read on one real call. | Not Started | — |
+| 35-A | **Connect & list — no-auth proof.** Remote MCP server at `/w/{wsId}/mcp` (official `ModelContextProtocol.AspNetCore` SDK) speaking the MCP transport (initialize / tools/list / tools/call); **no-auth** (unguessable workspace-id URL + Anthropic-IP allowlist); one tool — `list_notes` — returns the workspace's note titles/ids from `NoteCardList`. Proves transport + Cowork handshake + workspace-scoped read on one real call. | Done | — |
 | 35-B | **`get_note`.** Tool returns a note's full digest — content, summary, discussion points, decisions, tags, action items — from `NoteDetail` + `NoteActions`. This is the slice that lets Cowork actually digest a meeting. | Not Started | 35-A |
 | 35-C | **`search_notes`.** Tool queries across the workspace (`NoteSearchView`: title/body/final-notes/tags/actions) so Cowork can find relevant notes before digesting ("summarise my Acme meetings"). | Not Started | 35-A |
 | 35-D | **`get_action_items`.** Tool lists the workspace's open to-dos from `TodoList` so Cowork can pull "what's outstanding". | Not Started | 35-A |
@@ -234,4 +234,8 @@ Silent failure modes per slice (from `observability-brief`) — what must be vis
 
 ## Status log
 
-_(Scribe updates the Summary `Status` cells and appends per-slice deploy notes here as slices land.)_
+**35-A — Done** (PR #335, deploy #636, 2026-06-24). Prod route `POST /w/{workspaceId}/mcp` verified live on api `z5a9ffln2j` (`aws apigatewayv2 get-routes --profile prod`). No new projection → no backfill. Three Hawk rounds: (1) flagged the IP allowlist reading the wrong IP + default-workspace dropping legacy notes; (2) caught that the XFF "fix" was a spoofable security regression — reverted to `RemoteIpAddress` (= AWS `sourceIp`, non-spoofable for this regional HTTP API); (3) APPROVE. See [phase-35a-mcp-connect-list](../learnings/phase-35a-mcp-connect-list.md).
+
+**Owner manual gate (outstanding):** add the connector in Cowork and confirm `list_notes`. Connector URL (no auth): `https://z5a9ffln2j.execute-api.eu-west-2.amazonaws.com/w/__default__/mcp` — the **`execute-api`** URL, **not** the app/CloudFront domain (CloudFront only fronts `/api/*`; the app domain would 404). Optionally set `MCP_ALLOWED_CIDRS` to Anthropic's IP ranges (default empty = open).
+
+> **35-E note:** the IP allowlist relies on the route being on the raw HTTP API (so `RemoteIpAddress` = the real `sourceIp`). If 35-E ever fronts the MCP path with CloudFront, `sourceIp` becomes a CloudFront edge IP and the allowlist breaks — keep it on the HTTP API or change the IP source.
