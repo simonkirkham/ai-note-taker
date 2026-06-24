@@ -81,7 +81,7 @@ public static class NoteRecordingHandlers
         if (!await authorizer.OwnsNoteAsync(new NoteId(noteId), currentUser.UserId))
             return Results.NotFound();
 
-        var jobName = DiarizationJobNames.For(noteId.ToString());
+        var jobName = DiarizationJobNames.For(noteId.ToString(), req.AnalyseOnCompletion);
         try
         {
             await jobStarter.StartAsync(jobName, req.Key);

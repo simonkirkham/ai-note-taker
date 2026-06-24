@@ -148,6 +148,22 @@ public class NoteRecordingsIntegrationTests : IClassFixture<ApiFactory>
         var started = Assert.Single(starter.Started, s => s.AudioKey == key);
         Assert.True(DiarizationJobNames.TryGetNoteId(started.JobName, out var recovered));
         Assert.Equal(noteId, recovered);
+        Assert.False(DiarizationJobNames.ShouldAnalyse(started.JobName)); // analyseOnCompletion omitted → diarize only
+    }
+
+    [Fact]
+    public async Task Diarize_WithAnalyseOnCompletion_EncodesAnalyseFlagInJobName()
+    {
+        var noteId = await CreateNoteAsync();
+        var key = $"recordings/{noteId}/analyse.wav";
+
+        var resp = await _client.PostAsJsonAsync($"/notes/{noteId}/transcription/diarize",
+            new { key, analyseOnCompletion = true });
+        Assert.Equal(HttpStatusCode.Accepted, resp.StatusCode);
+
+        var starter = _factory.Services.GetRequiredService<FakeTranscriptionJobStarter>();
+        var started = Assert.Single(starter.Started, s => s.AudioKey == key);
+        Assert.True(DiarizationJobNames.ShouldAnalyse(started.JobName)); // the completion Lambda re-analyses
     }
 
     [Fact]
