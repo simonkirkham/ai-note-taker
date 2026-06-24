@@ -10,7 +10,11 @@ public sealed class McpAllowlistMiddleware(RequestDelegate next)
 {
     public async Task InvokeAsync(HttpContext context, IConfiguration config)
     {
-        if (IsMcpPath(context.Request.Path) && !IsAllowed(ClientIp(context), config["MCP_ALLOWED_CIDRS"]))
+        // RemoteIpAddress is the AWS-computed sourceIp: Amazon.Lambda.AspNetCoreServer sets it from
+        // requestContext.http.sourceIp, the real TCP peer for this regional API Gateway endpoint. It
+        // is NOT spoofable via X-Forwarded-For (API Gateway appends the peer rather than trusting the
+        // client's XFF), so do not read XFF here — that would be attacker-controlled.
+        if (IsMcpPath(context.Request.Path) && !IsAllowed(context.Connection.RemoteIpAddress, config["MCP_ALLOWED_CIDRS"]))
         {
             context.Response.StatusCode = StatusCodes.Status403Forbidden;
             return;
@@ -21,18 +25,6 @@ public sealed class McpAllowlistMiddleware(RequestDelegate next)
 
     private static bool IsMcpPath(PathString path) =>
         path.StartsWithSegments("/w", out var rest) && rest.Value?.EndsWith("/mcp", StringComparison.Ordinal) == true;
-
-    // Behind API Gateway/CloudFront the connection IP is the proxy, not the caller; the real
-    // client is the left-most X-Forwarded-For hop. Fall back to the connection IP locally.
-    private static IPAddress? ClientIp(HttpContext context)
-    {
-        var forwarded = context.Request.Headers["X-Forwarded-For"].ToString();
-        var first = forwarded.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-            .FirstOrDefault();
-        return first is not null && IPAddress.TryParse(first, out var parsed)
-            ? parsed
-            : context.Connection.RemoteIpAddress;
-    }
 
     private static bool IsAllowed(IPAddress? clientIp, string? configuredCidrs)
     {

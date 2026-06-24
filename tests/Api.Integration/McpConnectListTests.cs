@@ -6,6 +6,7 @@ using Domain.Folders;
 using Domain.Notes;
 using Domain.Workspaces;
 using EventStore.Projections;
+using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.Configuration;
@@ -118,7 +119,7 @@ public sealed class McpConnectListTests(ApiFactory factory) : IClassFixture<ApiF
     {
         using var factory = WithAllowlist("203.0.113.0/24");
         var req = NewPost(McpPath(WorkspaceA), Envelope("initialize", InitializeParams()));
-        req.Headers.Add("X-Forwarded-For", "198.51.100.7");
+        req.Headers.Add(TestSourceIpStartupFilter.Header, "198.51.100.7");
 
         var resp = await factory.CreateClient().SendAsync(req);
 
@@ -130,7 +131,7 @@ public sealed class McpConnectListTests(ApiFactory factory) : IClassFixture<ApiF
     {
         using var factory = WithAllowlist("203.0.113.0/24");
         var req = NewPost(McpPath(WorkspaceA), Envelope("initialize", InitializeParams()));
-        req.Headers.Add("X-Forwarded-For", "203.0.113.42");
+        req.Headers.Add(TestSourceIpStartupFilter.Header, "203.0.113.42");
 
         var resp = await factory.CreateClient().SendAsync(req);
 
@@ -141,9 +142,16 @@ public sealed class McpConnectListTests(ApiFactory factory) : IClassFixture<ApiF
 
     private static string McpPath(string workspaceId) => $"/w/{workspaceId}/mcp";
 
+    // Sets MCP_ALLOWED_CIDRS via config (no process-global env mutation) and installs a startup
+    // filter that maps a test header onto Connection.RemoteIpAddress — standing in for the
+    // AWS-computed sourceIp the Lambda host sets in prod, which the allowlist reads.
     private WebApplicationFactory<Program> WithAllowlist(string cidrs) =>
-        _factory.WithWebHostBuilder(b => b.ConfigureAppConfiguration(c =>
-            c.AddInMemoryCollection(new Dictionary<string, string?> { ["MCP_ALLOWED_CIDRS"] = cidrs })));
+        _factory.WithWebHostBuilder(b =>
+        {
+            b.ConfigureAppConfiguration(c =>
+                c.AddInMemoryCollection(new Dictionary<string, string?> { ["MCP_ALLOWED_CIDRS"] = cidrs }));
+            b.ConfigureServices(s => s.AddSingleton<IStartupFilter, TestSourceIpStartupFilter>());
+        });
 
     private HttpClient NewClient()
     {
@@ -240,4 +248,21 @@ public sealed class McpConnectListTests(ApiFactory factory) : IClassFixture<ApiF
         }
         return sb.ToString();
     }
+}
+
+internal sealed class TestSourceIpStartupFilter : IStartupFilter
+{
+    public const string Header = "X-Test-Source-Ip";
+
+    public Action<IApplicationBuilder> Configure(Action<IApplicationBuilder> next) => app =>
+    {
+        app.Use(async (context, nextMiddleware) =>
+        {
+            var ip = context.Request.Headers[Header].ToString();
+            if (!string.IsNullOrEmpty(ip) && IPAddress.TryParse(ip, out var parsed))
+                context.Connection.RemoteIpAddress = parsed;
+            await nextMiddleware();
+        });
+        next(app);
+    };
 }
