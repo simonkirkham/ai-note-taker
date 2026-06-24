@@ -70,16 +70,4 @@ _(Per-workspace calendars graduated to **[Phase 34](phases/phase-34.md)** on 202
 
 ---
 
-## Claude Cowork connector — read-only MCP server, workspace-scoped
-
-**What:** Let Claude clients (Cowork, Claude Desktop, claude.ai) connect to the note-taker as a **custom connector** and digest notes in the user's own Claude session — summarise a meeting, answer questions, synthesise across meetings. For Cowork/Desktop a custom connector **is a remote MCP server** (the only native mechanism — those clients can't call a plain REST API, unlike Claude Code), so this is a small read-only MCP server hosted on the existing AWS stack. Scope to design when broken down:
-- **Remote MCP server** as a new route/Lambda on the current stack, wrapping existing note read-projections. Must be reachable over the public internet from Anthropic's IP ranges (not behind VPN/firewall) — the app is already public on AWS, so this fits. Pick the transport (e.g. Streamable HTTP) during breakdown.
-- **Read-only tool surface, 3–5 tools** (the documented sweet spot, and it sidesteps the context-bloat critique of large MCP servers): e.g. `list_notes`, `get_note`, `search_notes`, `get_action_items`.
-- **Workspace-scoped** — a connector is bound to a single workspace and its tools return only that workspace's notes (builds on the Phase 34 `/w/{wsId}` routing). Open design question: a connector URL per workspace (`/w/{wsId}/mcp`) vs. resolving the workspace from the authenticated identity.
-- **Auth via the custom-connector OAuth flow** ("add URL → authenticate") — reuse the existing Google OAuth identity; no new credential type to mint/store/revoke.
-
-**Why it isn't scheduled yet:** Needs Scout breakdown into a numbered phase — new MCP server (protocol/transport choice, tool descriptions), connector OAuth, the workspace-scoped tool surface, and whether it reuses or extends the existing read projections. **Read+write** (Claude creating/editing notes or action items) is explicitly **out of scope for the first phase** — read-only digest first, add mutation later only if wanted.
-
-**Decided so far (2026-06-24):** read-only first; scoped by workspace; target client is **Claude Cowork** on Claude Desktop; mechanism confirmed as a remote MCP server (custom connector) per Anthropic's current connector docs. The app already does its own internal Bedrock/Nova Lite analysis — this feature is about *external* Claude tooling reading the notes, not changing internal analysis.
-
-**Raised in:** User feature idea, 2026-06-24 — "connect the note taker to AI tooling (like Claude) so it can digest the notes." Mechanism web-verified the same day against Anthropic's Cowork/connector docs.
+_(Claude Cowork connector — read-only, workspace-scoped MCP server — graduated to **[Phase 35](phases/phase-35.md)** on 2026-06-24. Locked: read-only first, per-workspace connector URL `/w/{wsId}/mcp`, OAuth reusing the Google identity, no new events. Full scope and slices live in the phase doc.)_
