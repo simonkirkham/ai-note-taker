@@ -482,3 +482,51 @@ describe('MeetingsSection — next occurrence Create Note button', () => {
     await waitFor(() => expect(onOpenNote).toHaveBeenCalledWith('next-note-456', '1:1 with Bill', true))
   })
 })
+
+describe('MeetingsSection — calendar connection (34-A)', () => {
+  beforeEach(() => stubNotificationPermission('granted'))
+
+  it('offers "Connect calendar" when the calendar needs auth', async () => {
+    server.use(
+      http.get('/api/calendar/connection', () =>
+        HttpResponse.json({ status: 'needs_auth', provider: 'google', email: null }),
+      ),
+      http.get('/api/calendar/:date', () => HttpResponse.json({ error: 'calendar_unavailable' })),
+    )
+
+    renderSection()
+
+    const connect = await screen.findByTestId('connect-calendar')
+    expect(connect).toHaveTextContent('Connect calendar')
+    expect(screen.queryByText('Retry')).not.toBeInTheDocument()
+  })
+
+  it('shows "Connected as {email}" in the header when connected', async () => {
+    server.use(
+      http.get('/api/calendar/connection', () =>
+        HttpResponse.json({ status: 'connected', provider: 'google', email: 'owner@example.com' }),
+      ),
+      http.get('/api/calendar/:date', () => HttpResponse.json({ meetings: [meeting2], provider: 'google' })),
+    )
+
+    renderSection()
+
+    const label = await screen.findByTestId('calendar-connected-as')
+    expect(label).toHaveTextContent('Connected as owner@example.com')
+  })
+
+  it('offers "Reconnect" + Retry when connected but the read is failing', async () => {
+    server.use(
+      http.get('/api/calendar/connection', () =>
+        HttpResponse.json({ status: 'connected', provider: 'google', email: 'owner@example.com' }),
+      ),
+      http.get('/api/calendar/:date', () => HttpResponse.json({ error: 'calendar_unavailable' })),
+    )
+
+    renderSection()
+
+    const reconnect = await screen.findByTestId('connect-calendar')
+    expect(reconnect).toHaveTextContent('Reconnect')
+    expect(screen.getByText('Retry')).toBeInTheDocument()
+  })
+})

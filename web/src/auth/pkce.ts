@@ -41,6 +41,45 @@ export function buildAuthUrl(
   return `https://accounts.google.com/o/oauth2/v2/auth?${params}`
 }
 
+// Phase 34-A: the in-app "Connect calendar" consent. Unlike sign-in, it requests the
+// calendar.readonly scope and forces prompt=consent so Google returns a refresh token the backend
+// can store server-side (a prior grant would otherwise omit it). Redirects back to the app origin;
+// the callback is distinguished from sign-in by a separate `calendar_state` marker.
+export function buildCalendarAuthUrl(
+  clientId: string,
+  redirectUri: string,
+  codeChallenge: string,
+  state: string,
+): string {
+  const params = new URLSearchParams({
+    client_id: clientId,
+    redirect_uri: redirectUri,
+    response_type: 'code',
+    scope: 'openid email https://www.googleapis.com/auth/calendar.readonly',
+    code_challenge: codeChallenge,
+    code_challenge_method: 'S256',
+    state,
+    access_type: 'offline',
+    prompt: 'consent',
+    include_granted_scopes: 'true',
+  })
+  return `https://accounts.google.com/o/oauth2/v2/auth?${params}`
+}
+
+// Starts the in-app calendar consent redirect. Stashes its own verifier/state markers (separate
+// from sign-in) so AuthProvider's callback can tell a calendar connect from a sign-in. No-op when
+// no client id is configured (dev/E2E).
+export async function startCalendarConnect(): Promise<void> {
+  const clientId = import.meta.env.VITE_GOOGLE_CLIENT_ID ?? ''
+  if (!clientId) return
+  const verifier = generateCodeVerifier()
+  const challenge = await generateCodeChallenge(verifier)
+  const state = generateCodeVerifier()
+  sessionStorage.setItem('calendar_verifier', verifier)
+  sessionStorage.setItem('calendar_state', state)
+  window.location.href = buildCalendarAuthUrl(clientId, window.location.origin, challenge, state)
+}
+
 // Token exchange goes through our backend so the client_secret never touches the browser.
 export async function exchangeCode(
   redirectUri: string,

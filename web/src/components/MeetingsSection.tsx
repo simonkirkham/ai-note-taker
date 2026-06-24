@@ -2,6 +2,8 @@ import { useQueryClient, type UseQueryResult } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
 import { CalendarMeeting, type MeetingsResult } from "../api/meetings";
 import { keys } from "../api/queryKeys";
+import { startCalendarConnect } from "../auth/pkce";
+import { useCalendarConnection } from "../hooks/useCalendarConnection";
 import { useCreateNoteFromMeeting, useCreateNoteFromNextOccurrence } from "../hooks/useMeetingMutations";
 import { MeetingReminder, useMeetingReminders } from "../hooks/useMeetingReminders";
 import { useMeetings } from "../hooks/useMeetings";
@@ -84,6 +86,9 @@ export function MeetingsSection({ onOpenNote }: { onOpenNote: (noteId: string, t
 
   const displayState: State = toState(displayQuery);
   const sourceLabel = displayState.status === "loaded" ? providerLabel(displayState.provider) : null;
+  const connection = useCalendarConnection();
+  const connectedEmail = connection.data?.status === "connected" ? connection.data.email : null;
+  const needsAuth = connection.data?.status === "needs_auth";
 
   // Reminders are anchored to the real today — fed only by the today query.
   const reminderMeetings =
@@ -194,7 +199,15 @@ export function MeetingsSection({ onOpenNote }: { onOpenNote: (noteId: string, t
         <div className={styles.meetingsHeader}>
           <div className={styles.meetingsHeadingGroup}>
             <h2 data-testid="meetings-heading" className={styles.meetingsHeading}>{headingFor(selectedDate, today)}</h2>
-            {sourceLabel && (
+            {connectedEmail ? (
+              <span
+                data-testid="calendar-connected-as"
+                className={styles.calendarSource}
+                aria-label={`Connected calendar: ${connectedEmail}`}
+              >
+                <CalendarIcon size={12} /> Connected as {connectedEmail}
+              </span>
+            ) : sourceLabel && (
               <span
                 data-testid="calendar-source-label"
                 className={styles.calendarSource}
@@ -251,8 +264,19 @@ export function MeetingsSection({ onOpenNote }: { onOpenNote: (noteId: string, t
         {displayState.status === "unavailable" && (
           <div data-testid="meetings-unavailable" className={styles.meetingsStatusState} role="alert">
             <CalendarIcon className={styles.meetingsStatusIcon} />
-            <p className={styles.meetingsStatusText}>Cannot connect to calendar</p>
-            <button className={styles.meetingsRetryLink} onClick={handleRetry}>Retry</button>
+            <p className={styles.meetingsStatusText}>
+              {needsAuth ? "Connect your calendar to see your meetings" : "Cannot connect to calendar"}
+            </p>
+            <button
+              data-testid="connect-calendar"
+              className={styles.meetingsRetryLink}
+              onClick={() => void startCalendarConnect()}
+            >
+              {needsAuth ? "Connect calendar" : "Reconnect"}
+            </button>
+            {!needsAuth && (
+              <button className={styles.meetingsRetryLink} onClick={handleRetry}>Retry</button>
+            )}
           </div>
         )}
 

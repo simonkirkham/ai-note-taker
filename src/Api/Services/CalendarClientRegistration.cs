@@ -13,6 +13,9 @@ public static class CalendarClientRegistration
         // Always available; only consumed by the Microsoft client. The SSM read is lazy,
         // so registering this needs no AWS credentials/region.
         services.AddSingleton<IMicrosoftRefreshTokenSource, SsmMicrosoftRefreshTokenSource>();
+        // 34-A: the Google token source resolves the per-user in-app token (store-first) then the
+        // SSM fallback. Scoped because it reads ICurrentUser.
+        services.AddScoped<IGoogleCalendarTokenSource, GoogleCalendarTokenSource>();
 
         if (!string.IsNullOrEmpty(Environment.GetEnvironmentVariable("STUB_CALENDAR_JSON")))
         {
@@ -34,6 +37,7 @@ public static class CalendarClientRegistration
         // misconfigured provider is diagnosable rather than silently falling through.
         Logger.LogInformation(
             "Calendar provider bound: {Provider} (CALENDAR_PROVIDER={Raw})", "google", provider ?? "");
-        services.AddSingleton<ICalendarClient, GoogleCalendarClient>();
+        // Scoped (34-A): the refresh token is now per-user via IGoogleCalendarTokenSource.
+        services.AddScoped<ICalendarClient, GoogleCalendarClient>();
     }
 }

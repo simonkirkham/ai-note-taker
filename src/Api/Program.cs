@@ -49,7 +49,10 @@ var projPositionTableName = Environment.GetEnvironmentVariable("PROJ_POSITION_TA
 var authTokensTableName = Environment.GetEnvironmentVariable("AUTH_TOKENS_TABLE_NAME")
     ?? throw new InvalidOperationException("AUTH_TOKENS_TABLE_NAME is not set.");
 
-var app = Builder.BuildApp(args, eventTableName, projTableName, noteDetailTableName, noteActionsTableName, todoListTableName, noteCardListTableName, folderTreeTableName, tagIndexTableName, tagFeedbackTableName, actionFeedbackTableName, calendarLinkTableName, noteSearchViewTableName, draftTranscriptionTableName, workspaceListTableName, projPositionTableName, authTokensTableName);
+var calendarTokensTableName = Environment.GetEnvironmentVariable("CALENDAR_TOKENS_TABLE_NAME")
+    ?? throw new InvalidOperationException("CALENDAR_TOKENS_TABLE_NAME is not set.");
+
+var app = Builder.BuildApp(args, eventTableName, projTableName, noteDetailTableName, noteActionsTableName, todoListTableName, noteCardListTableName, folderTreeTableName, tagIndexTableName, tagFeedbackTableName, actionFeedbackTableName, calendarLinkTableName, noteSearchViewTableName, draftTranscriptionTableName, workspaceListTableName, projPositionTableName, authTokensTableName, calendarTokensTableName);
 
 LoggingConfig.UseCorrelationId(app);
 
@@ -64,6 +67,7 @@ NoteEndpoints.MapNoteEndpoints(app);
 app.MapFolderEndpoints();
 app.MapAuthEndpoints();
 app.MapCalendarEndpoints();
+app.MapCalendarAuthEndpoints();
 app.MapTranscriptionEndpoints();
 app.MapTodoEndpoints();
 app.MapWorkspaceEndpoints();

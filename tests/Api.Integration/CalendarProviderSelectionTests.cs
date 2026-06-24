@@ -1,3 +1,4 @@
+using Api.Auth;
 using Api.Services;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -9,6 +10,12 @@ namespace Api.Integration;
 [Collection("CalendarEnv")]
 public sealed class CalendarProviderSelectionTests
 {
+    private sealed class StubCurrentUser : ICurrentUser
+    {
+        public string UserId => "test-user";
+        public string Name => "Test";
+    }
+
     private static ICalendarClient Resolve(string? provider, string? stubJson)
     {
         var prevProvider = Environment.GetEnvironmentVariable("CALENDAR_PROVIDER");
@@ -20,9 +27,14 @@ public sealed class CalendarProviderSelectionTests
 
             var services = new ServiceCollection();
             services.AddLogging(b => b.AddProvider(Microsoft.Extensions.Logging.Abstractions.NullLoggerProvider.Instance));
+            // 34-A: the Google client is now scoped and resolves a per-user token source
+            // (ICurrentUser + ICalendarTokenStore), so register those and resolve within a scope.
+            services.AddScoped<ICurrentUser, StubCurrentUser>();
+            services.AddSingleton<ICalendarTokenStore, InMemoryCalendarTokenStore>();
             CalendarClientRegistration.Register(services);
             using var sp = services.BuildServiceProvider();
-            return sp.GetRequiredService<ICalendarClient>();
+            using var scope = sp.CreateScope();
+            return scope.ServiceProvider.GetRequiredService<ICalendarClient>();
         }
         finally
         {
