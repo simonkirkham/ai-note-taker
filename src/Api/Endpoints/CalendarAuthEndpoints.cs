@@ -130,9 +130,14 @@ public static class CalendarAuthEndpoints
         ICalendarTokenStore store, IWorkspaceCommandHandler workspaceHandler, string userId, string workspaceId,
         string provider, string refreshToken, string? email, ILogger log, CancellationToken ct)
     {
-        await store.UpsertAsync(userId, workspaceId, provider, refreshToken, email, ct);
+        // Clear the OTHER provider's token BEFORE writing the new one (decision #3: one provider per
+        // workspace). Delete-first matters because resolution is Microsoft-first: if we upserted
+        // Google then a delete of a stale Microsoft token failed, the stale token would shadow the
+        // new Google connection. Delete-first means a failure leaves the workspace unconnected
+        // (clean needs_auth) rather than serving the wrong calendar.
         var other = provider == Google ? Microsoft : Google;
         await store.DeleteAsync(userId, workspaceId, other, ct);
+        await store.UpsertAsync(userId, workspaceId, provider, refreshToken, email, ct);
         await RecordConnectionEventAsync(workspaceHandler, workspaceId, provider, email, log, ct);
         log.LogInformation(
             "Connected {Provider} calendar (workspace {WorkspaceId}, email present: {HasEmail})", provider, workspaceId, email is not null);
