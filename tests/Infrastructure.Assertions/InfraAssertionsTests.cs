@@ -74,6 +74,21 @@ public class InfraAssertionsTests
     }
 
     [Fact]
+    public void Lambda_McpDisabledInProd()
+    {
+        _template.HasResourceProperties("AWS::Lambda::Function", Match.ObjectLike(new Dictionary<string, object>
+        {
+            ["Environment"] = Match.ObjectLike(new Dictionary<string, object>
+            {
+                ["Variables"] = Match.ObjectLike(new Dictionary<string, object>
+                {
+                    ["MCP_ENABLED"] = "false"
+                })
+            })
+        }));
+    }
+
+    [Fact]
     public void EventsTable_HasRetainDeletionPolicy()
     {
         _template.HasResource("AWS::DynamoDB::Table", Match.ObjectLike(new Dictionary<string, object>
