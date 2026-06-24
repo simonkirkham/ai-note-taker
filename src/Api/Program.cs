@@ -57,6 +57,7 @@ var app = Builder.BuildApp(args, eventTableName, projTableName, noteDetailTableN
 LoggingConfig.UseCorrelationId(app);
 
 app.UseCors(p => p.AllowAnyOrigin().AllowAnyMethod().AllowAnyHeader());
+app.UseMiddleware<Api.Mcp.McpAllowlistMiddleware>();
 app.UseAuthentication();
 app.UseMiddleware<Api.Auth.AllowlistMiddleware>();
 app.UseAuthorization();
@@ -71,6 +72,12 @@ app.MapCalendarAuthEndpoints();
 app.MapTranscriptionEndpoints();
 app.MapTodoEndpoints();
 app.MapWorkspaceEndpoints();
+
+// 35-A: read-only MCP server, mapped OUTSIDE the WorkspaceValidationFilter/RequireAuthorization
+// group — no auth this slice. The {workspaceId} route value scopes list_notes (read via
+// IHttpContextAccessor). Tool calls are read-only, so this path is pinned to the Query Lambda in
+// API Gateway (see NoteTakerStack).
+app.MapMcp("/w/{workspaceId}/mcp");
 
 Builder.RegisterSnapStartPriming(app);
 

@@ -2200,6 +2200,14 @@ public class InfraAssertionsTests
         Assert.True(RouteTargetsFunction("GET /transcription/credentials", "CommandFunction"));
     }
 
+    [Fact]
+    public void Routing_McpPost_TargetsQuery_NotCommand()
+    {
+        // 35-A: MCP tool calls are POST but read-only (NoteCardList projection only), so the
+        // /w/{workspaceId}/mcp path is pinned to Query — overriding the default POST→Command rule.
+        Assert.True(RouteTargetsFunction("POST /w/{workspaceId}/mcp", "QueryFunction"));
+    }
+
     // ── Least privilege: Query is read-only, no event store ──────────────
 
     [Fact]
