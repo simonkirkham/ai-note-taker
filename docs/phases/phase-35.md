@@ -1,30 +1,33 @@
 # Phase 35 — Claude Cowork connector (read-only MCP server)
 
-**Goal:** a **read-only remote MCP server** that lets Claude **Cowork / Desktop / claude.ai** connect to a workspace as a **custom connector** and digest its notes — list, read, search, and pull action items — in the user's own Claude session. For these clients a custom connector **is** a remote MCP server (the only native mechanism; they cannot call a plain REST API). Authenticated as the existing Google identity; **scoped to one workspace per connector URL** (`/w/{wsId}/mcp`). Read-only this phase — Claude reasons over the notes, never mutates them. No new aggregates or events: the server is a new query + auth surface over the **existing** read projections.
+**Goal:** a **read-only remote MCP server** that lets Claude **Cowork / Desktop / claude.ai** connect to a workspace as a **custom connector** and digest its notes — list, read, search, and pull action items — in the user's own Claude session. For these clients a custom connector **is** a remote MCP server (the only native mechanism; they cannot call a plain REST API). **Scoped to one workspace per connector URL** (`/w/{wsId}/mcp`). Read-only this phase — Claude reasons over the notes, never mutates them. No new aggregates or events: the server is a new query (and, in 35-E, auth) surface over the **existing** read projections.
+
+**Auth is staged — prove first, harden second (owner decision, 2026-06-24).** 35-A ships **no-auth** (unguessable per-workspace URL + Anthropic-IP allowlist) to prove the transport + Cowork handshake + workspace-scoped read on one real call; 35-B–D add the remaining read tools on that proven pattern; **35-E adds the OAuth 2.1 broker over Google** that flips the connector to authenticated. OAuth is **required** before the connector is considered production-complete — it is deferred past the proof, not dropped.
 
 ## Summary
 
 | Slice | Summary | Status | Depends on |
 |-------|---------|--------|------------|
-| 35-A | **Connect & list (end-to-end proof).** Remote MCP server at `/w/{wsId}/mcp` speaking the MCP transport (initialize / tools/list / tools/call); connector **OAuth** reusing the Google identity; one tool — `list_notes` — returns the workspace's note titles/ids from `NoteCardList`. Proves transport + connector-OAuth + workspace-scoped read on one real Cowork call. | Not Started | — |
+| 35-A | **Connect & list — no-auth proof.** Remote MCP server at `/w/{wsId}/mcp` (official `ModelContextProtocol.AspNetCore` SDK) speaking the MCP transport (initialize / tools/list / tools/call); **no-auth** (unguessable workspace-id URL + Anthropic-IP allowlist); one tool — `list_notes` — returns the workspace's note titles/ids from `NoteCardList`. Proves transport + Cowork handshake + workspace-scoped read on one real call. | Not Started | — |
 | 35-B | **`get_note`.** Tool returns a note's full digest — content, summary, discussion points, decisions, tags, action items — from `NoteDetail` + `NoteActions`. This is the slice that lets Cowork actually digest a meeting. | Not Started | 35-A |
 | 35-C | **`search_notes`.** Tool queries across the workspace (`NoteSearchView`: title/body/final-notes/tags/actions) so Cowork can find relevant notes before digesting ("summarise my Acme meetings"). | Not Started | 35-A |
 | 35-D | **`get_action_items`.** Tool lists the workspace's open to-dos from `TodoList` so Cowork can pull "what's outstanding". | Not Started | 35-A |
+| 35-E | **OAuth 2.1 broker over Google (harden auth).** Add the Resource-Server + thin AS that brokers Google sign-in and mints audience-bound tokens; flip the connector from no-auth to authenticated (`.well-known` metadata, `/authorize`, `/token`, PKCE-S256, 401 challenge). **Required before production-complete.** | Not Started | 35-A |
 
-**35-A is the high-risk proving slice** — the hard part is the cross-cutting contract (MCP transport + connector OAuth handshake with a real Cowork client), not any one tool. Prove it on `list_notes` first, then **35-B/C/D are independent tool additions on the proven pattern** — any order, each shippable alone. Recommend a throwaway **spike against a live Cowork client** (no-auth local server → confirm Cowork connects and round-trips one tool call) before committing 35-A's auth + infra, mirroring the Phase 31 Windows spike and the Phase 33 engine spike.
+**35-A is the high-risk proving slice** — the hard part is the cross-cutting contract (MCP transport + Cowork handshake against our Lambda-hosted server), not any one tool. Shipping it **no-auth** makes it the *smallest* slice that proves that contract on one real call (the unguessable workspace-id URL is the access control; Anthropic-IP allowlist is defence-in-depth). Then **35-B/C/D are independent tool additions on the proven pattern** — any order, each shippable alone — and **35-E hardens auth** with the OAuth broker. 35-E depends only on 35-A (it can land before or after the extra tools), but should not be deferred indefinitely.
 
 ### Locked decisions
 
 1. **Per-workspace connector URL `/w/{wsId}/mcp`.** Matches the existing Phase 23/34 `/w/{wsId}` routing; the user adds **one connector per workspace**, so workspace scoping is baked into the URL and there is **no in-protocol workspace selection** to build. (Honours "scoped by workspace" from slice 1.)
 2. **Read-only.** Tools are `list_notes`, `get_note`, `search_notes`, `get_action_items` — no write/mutate tools this phase. Read+write (Claude creating notes/action items) is a **future phase**, not in scope.
-3. **Reuse the Google OAuth identity** via the connector's OAuth flow — no new user-facing credential type. Recommended model: our server acts as the OAuth **authorization server delegating to Google**, reusing the existing `GoogleOAuthClient` + redirect handling from `AuthEndpoints` / `CalendarAuthEndpoints`. (Resource-server-validates-Google-id-token is the fallback if the MCP auth spec requires our own AS — confirm during 35-A.)
-4. **No event-model changes.** No new commands/events/aggregates. The server reads existing projections only. The single net-new persisted state is whatever the MCP OAuth flow needs (client registration / token), which extends the existing auth-tokens store pattern — not the event store.
+3. **Auth is staged: no-auth proof (35-A) → OAuth broker (35-E).** 35-A relies on the unguessable per-workspace URL + Anthropic-IP allowlist (no user identity, no consent screen). 35-E adds the real auth: our server is the OAuth 2.1 **Resource Server** plus a **thin AS broker** that runs Google sign-in upstream (reusing the existing `GoogleOAuthClient` + redirect handling) and mints **audience-bound** tokens (RFC 8707) — you **cannot** point Claude directly at Google. Client creds are **pre-registered** (pasted into Cowork's Advanced settings); DCR is deprecated.
+4. **No event-model changes.** No new commands/events/aggregates. The server reads existing projections only. The single net-new persisted state is whatever 35-E's OAuth flow needs (registered client / minted token), which extends the existing auth-tokens store pattern — not the event store.
 5. **≤5 tools, terse tool descriptions.** Keeps the connector clear of the 2026 MCP context-bloat critique (large multi-tool servers tax every prompt). A 4-tool read-only server is the documented sweet spot.
 
 ### Routing & Lambda split (infra note)
 
-- MCP **tool calls** are JSON-RPC over **POST** but are **read-only** — they must hit the **Query Lambda** (read-only projection grants). This **overrides** the default POST→Command routing, so `/w/{wsId}/mcp` (tool-call path) is **pinned to the Query integration** in API Gateway, exactly as calendar GETs are pinned to Command today.
-- MCP **OAuth endpoints** (`/authorize`, `/token`, metadata) need the **Google OAuth client** + SSM/secret access, which the Query Lambda lacks — so they are **pinned to the Command Lambda** (mirrors how calendar auth lives there). Confirm the exact endpoint set against the MCP auth spec in 35-A.
+- MCP **tool calls** are JSON-RPC over **POST** but are **read-only** — they must hit the **Query Lambda** (read-only projection grants). This **overrides** the default POST→Command routing, so `/w/{wsId}/mcp` (tool-call path) is **pinned to the Query integration** in API Gateway, exactly as calendar GETs are pinned to Command today. (Applies from 35-A.)
+- **35-E only:** the OAuth endpoints (`/authorize`, `/token`, `.well-known/*`) need the **Google OAuth client** + secret access, which the Query Lambda lacks — so they are **pinned to the Command Lambda** (mirrors how calendar auth lives there). 35-A has no such endpoints.
 
 ### Resolved — source-driven research (2026-06-24, MCP spec 2025-11-25; see learnings)
 
@@ -52,48 +55,50 @@
 
 ---
 
-## Slice 35-A — Connect & list (end-to-end proof)
+## Slice 35-A — Connect & list (no-auth proof)
 
-**User value:** the owner pastes `https://<app>/w/<wsId>/mcp` into Cowork's *Add custom connector*, signs in once with Google, and Cowork can list that workspace's notes — the foundation for every later digest.
+**User value:** the owner pastes `https://<app>/w/<wsId>/mcp` into Cowork's *Add custom connector* (no auth), and Cowork can list that workspace's notes — proving the whole pipe before any OAuth is built.
 
-**How (mechanics):** a new `McpEndpoints` route group at `/w/{wsId}/mcp` handling the MCP JSON-RPC methods `initialize`, `tools/list`, `tools/call`; one tool `list_notes` reading `NoteCardList` filtered to `(userId, workspaceId)` (id, title, date, preview). Connector OAuth endpoints delegate to Google (reuse `GoogleOAuthClient`). Tool-call path pinned to the **Query** Lambda; OAuth path pinned to **Command**. Ownership enforced by the existing `WorkspaceValidationFilter` (or an equivalent on the MCP group).
+**How (mechanics):** add the official **`ModelContextProtocol.AspNetCore`** SDK to `src/Api`; map its Streamable-HTTP MCP endpoint under `/w/{workspaceId}/mcp` (POST → `application/json`, GET → 405, stateless — no `Mcp-Session-Id`, validate `Origin`). One tool `list_notes` reads `NoteCardList` for the `workspaceId` taken from the route, returning id, title, date, preview. **No OAuth** — the workspace id in the URL is the access token; an **Anthropic-IP allowlist** (Lambda-side check of source IP, or WAF/API-GW) is defence-in-depth. Tool-call path pinned to the **Query** Lambda. Note: with no user identity, the read is scoped by `workspaceId` alone (single-user app) — `userId` scoping returns with OAuth in 35-E.
+
+> **Security note (accepted, owner decision):** for the no-auth window the workspace's note titles/previews are readable by anyone who both knows the unguessable URL **and** reaches it from an Anthropic IP range. Accepted for a single-user app as the proving step; 35-E closes it.
 
 ### Scenarios
 ```
-Scenario: Add the connector and authorize
-  Given I am signed in and my workspace has notes
-  When  I add the /w/{wsId}/mcp connector in Cowork and complete Google OAuth
+Scenario: Add the connector (no auth) and list tools
+  Given my workspace has notes
+  When  I add the /w/{wsId}/mcp connector in Cowork
   Then  Cowork lists the server's tools including list_notes
 
 Scenario: List the workspace's notes
-  Given the connector is authorized for my workspace
+  Given the connector is added for my workspace
   When  Cowork calls list_notes
   Then  it returns that workspace's note titles, ids, dates and previews
 
 Scenario: Workspace isolation
-  Given my workspace and another user's workspace both have notes
-  When  Cowork calls list_notes on my connector
-  Then  only my workspace's notes are returned — never another workspace's or user's
+  Given two workspaces each with notes
+  When  Cowork calls list_notes on /w/{wsA}/mcp
+  Then  only workspace A's notes are returned — never workspace B's
 
-Scenario: Unauthorized / expired token re-challenges
-  Given my connector token is missing or expired
-  When  Cowork makes any MCP request
-  Then  the server returns the MCP auth challenge and Cowork re-runs OAuth
+Scenario: Wrong HTTP verb on the MCP endpoint
+  Given the MCP endpoint at /w/{wsId}/mcp
+  When  a GET request is made (no SSE)
+  Then  the server responds 405 Method Not Allowed
 
-Scenario: Ownership enforced
-  Given a workspace I do not own
-  When  OAuth completes and a tool is called against /w/{thatWsId}/mcp
-  Then  the call is rejected (no notes returned)
+Scenario: Unsupported protocol version
+  Given a request with an unsupported MCP-Protocol-Version
+  When  it reaches the server
+  Then  the server responds 400
 ```
 
 ### Acceptance criteria
-- Server speaks the current MCP transport (`initialize` / `tools/list` / `tools/call`) — verified against modelcontextprotocol.io at build, not assumed.
-- A real Cowork client connects, authorizes via Google, and round-trips `list_notes` against the deployed server.
-- `list_notes` reads `NoteCardList` filtered to `(userId, workspaceId)`; returns id, title, date, preview.
-- Tool-call path resolves on the **Query** Lambda; OAuth path on the **Command** Lambda; both asserted in `Infrastructure.Assertions`.
-- Cross-workspace and cross-user reads are impossible (server-side scope enforced; covered by a spec).
-- Tool count ≤5, descriptions terse.
-- PR + phase doc state the deploy-time delta.
+- MCP endpoint speaks the current transport via `ModelContextProtocol.AspNetCore` (`initialize` / `notifications/initialized` / `tools/list` / `tools/call` / `ping`); POST→`application/json`, GET→405, stateless, `Origin` validated.
+- A **real Cowork client connects (no auth) and round-trips `list_notes`** against the deployed server (owner-run manual gate).
+- `list_notes` reads `NoteCardList` scoped to the route `workspaceId`; returns id, title, date, preview.
+- Tool-call path resolves on the **Query** Lambda (asserted in `Infrastructure.Assertions`).
+- Cross-workspace reads are impossible (scope enforced from the route; covered by a spec).
+- Inbound restricted to Anthropic IP ranges (mechanism Breaker's choice); the no-auth exposure is documented in the PR.
+- Tool count ≤5, descriptions terse. PR + phase doc state the deploy-time delta.
 
 ---
 
@@ -172,17 +177,58 @@ Scenario: None open
 
 ---
 
+## Slice 35-E — OAuth 2.1 broker over Google (harden auth)
+
+**User value:** the connector stops being open-behind-a-URL — adding it requires Google sign-in, and tool calls are authorised against the owner's identity. Closes the 35-A no-auth window.
+
+**How (mechanics):** make the MCP endpoint an OAuth 2.1 **Resource Server** (reject any request without a valid audience-bound bearer; 401 with `WWW-Authenticate: Bearer resource_metadata="…"`). Stand up a **thin Authorization Server** on the **Command** Lambda: serve `/.well-known/oauth-protected-resource` (RS) and `/.well-known/oauth-authorization-server` (AS); `/authorize` runs Google sign-in upstream (reuse `GoogleOAuthClient`), `/token` exchanges the PKCE-S256 code and mints **our own** token with `aud` = the MCP server `resource` URI (RFC 8707). Client is **pre-registered** (creds pasted into Cowork's Advanced settings). Re-scope every tool read to `(userId, workspaceId)` once identity is present, and re-add ownership enforcement.
+
+### Scenarios
+```
+Scenario: Unauthenticated request is challenged
+  Given the connector has no token
+  When  Cowork makes any MCP request
+  Then  the server returns 401 with a WWW-Authenticate resource_metadata pointer
+
+Scenario: Authorize via Google and call a tool
+  Given I add the connector with the pre-registered client creds
+  When  I complete Google sign-in and Cowork exchanges the code for a token
+  Then  tool calls succeed and are scoped to my (userId, workspaceId)
+
+Scenario: Token for another resource is rejected
+  Given a bearer token whose audience is not this MCP server
+  When  it is presented to a tool call
+  Then  the server rejects it (401) — audience-bound per RFC 8707
+
+Scenario: Ownership enforced
+  Given a workspace I do not own
+  When  I complete auth and call a tool against /w/{thatWsId}/mcp
+  Then  the call is rejected — no notes returned
+```
+
+### Acceptance criteria
+- Every MCP request requires a valid **audience-bound** bearer; missing/invalid → 401 with the RFC 9728 `resource_metadata` challenge; wrong-audience token rejected.
+- `.well-known` RS + AS metadata served; `/authorize` + `/token` implement auth-code + **PKCE S256**, brokering Google upstream and minting our own token.
+- OAuth endpoints resolve on the **Command** Lambda; the Google redirect URI is registered in Google Cloud Console (owner one-time step) and Claude's `https://claude.ai/api/mcp/auth_callback` is the registered client redirect.
+- All tools re-scoped to `(userId, workspaceId)`; cross-user **and** cross-workspace reads impossible (spec-covered).
+- A **real Cowork client** completes Google auth and round-trips a tool (owner-run manual gate).
+- Deploy-time delta stated; no bake/canary.
+
+---
+
 ## Observability
 
 Silent failure modes per slice (from `observability-brief`) — what must be visible in prod, since every failure here is invisible to the owner (Cowork just shows "couldn't connect" or "no results"):
 
 | Slice | Silent failure | Instrumentation |
 |-------|----------------|-----------------|
-| 35-A | Connector OAuth fails (authorize/token error) — user sees only "couldn't connect" | Structured log + metric on every authorize/token outcome; alarm on token-exchange failure rate |
 | 35-A | MCP handshake fails (`initialize`/`tools/list` malformed) — Cowork silently drops the connector | Log each MCP method + outcome + workspace; metric on method error rate |
-| 35-A | **Cross-workspace/user leak** — a scoping bug returns another user's notes with no error | Spec asserts isolation; log `workspaceId` + `userId` on every tool call for audit |
+| 35-A | **Cross-workspace leak** — a scoping bug returns another workspace's notes with no error | Spec asserts isolation; log `workspaceId` on every tool call for audit |
+| 35-A | Non-Anthropic IP reaches the no-auth endpoint | Log + metric source IP vs allowlist; alarm on allowlist miss |
 | 35-A–D | Tool returns empty due to **projector lag** (RYW) — looks identical to "no data" | Metric distinguishing empty-no-data vs empty-stale; reuse the `proj-position` gate |
 | 35-B–D | A tool throws and returns a raw 500 Cowork can't interpret | Each tool emits a structured log (tool, workspace, arg summary, result count, latency); errors return a proper **MCP error payload**, not a 500 |
+| 35-E | OAuth authorize/token fails — user sees only "couldn't connect" | Structured log + metric on every authorize/token outcome; alarm on token-exchange failure rate |
+| 35-E | Wrong-audience or expired token silently accepted (**confused-deputy**) | Log every token validation outcome (aud, exp, result); metric + alarm on validation failures |
 
 ---
 
