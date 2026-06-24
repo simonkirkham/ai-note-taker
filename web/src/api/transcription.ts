@@ -45,3 +45,14 @@ export function saveTranscriptionDraft(
 export function discardTranscriptionDraft(noteId: string): Promise<void> {
   return requestVoid(`/notes/${noteId}/transcription/draft`, { method: 'DELETE' });
 }
+
+// Kick off a batch Amazon Transcribe diarization job over the uploaded recording (Phase 33-B1).
+// Fire-and-forget: returns 202 and the job completes asynchronously (EventBridge → completion
+// Lambda appends the diarized transcript). The frontend then polls the note's transcriptIsDiarized.
+export function startDiarization(noteId: string, recordingKey: string): Promise<void> {
+  return requestVoid(`/notes/${noteId}/transcription/diarize`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ key: recordingKey }),
+  });
+}

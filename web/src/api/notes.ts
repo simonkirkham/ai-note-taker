@@ -63,6 +63,10 @@ export interface NoteDetail {
   // captured. Presence drives the "Download recording" link; the URL itself is
   // fetched lazily via POST /recording/presign-download on click.
   recordingAudioKey: string | null;
+  // True once the batch-diarization job has replaced the streamed transcript with the
+  // speaker-labelled one (Phase 33-B1). Drives the "Refining transcript…" chip: the frontend
+  // polls this flag after triggering diarization and clears the chip when it flips true.
+  transcriptIsDiarized: boolean;
   summary: string | null;
   discussionPoints: string[];
   decisions: string[];

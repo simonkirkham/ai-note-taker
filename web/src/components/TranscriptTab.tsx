@@ -3,15 +3,21 @@ import styles from "./TranscriptTab.module.css";
 
 export type RecordingDownloadStatus = "none" | "uploading" | "available" | "failed";
 
+// 33-B1: the speaker-labelling chip state. 'refining' shows while the batch job runs; 'failed' is
+// a non-blocking notice (trigger error or timeout); 'none' hides it (idle or already diarized).
+export type DiarizationDisplayStatus = "none" | "refining" | "failed";
+
 export default function TranscriptTab({
   transcript,
   isRecording = false,
   recordingStatus = "none",
+  diarizationStatus = "none",
   onDownloadRecording,
 }: {
   transcript: string | null;
   isRecording?: boolean;
   recordingStatus?: RecordingDownloadStatus;
+  diarizationStatus?: DiarizationDisplayStatus;
   onDownloadRecording?: () => void;
 }) {
   const bodyRef = useRef<HTMLDivElement>(null);
@@ -47,6 +53,19 @@ export default function TranscriptTab({
           )}
         </div>
       )}
+      {diarizationStatus === "refining" ? (
+        <div className={styles.diarizationBar} data-testid="diarization-bar">
+          <span className={styles.diarizationChip} data-testid="diarization-refining" role="status">
+            Refining transcript with speaker labels…
+          </span>
+        </div>
+      ) : diarizationStatus === "failed" ? (
+        <div className={styles.diarizationBar} data-testid="diarization-bar">
+          <span className={styles.recordingHint} data-testid="diarization-failed" role="status">
+            Couldn’t refine speaker labels — showing the live transcript.
+          </span>
+        </div>
+      ) : null}
       <div className={styles.body} ref={bodyRef} data-testid="transcription-body">
         {hasTranscript ? (
           <p className={styles.text} data-testid="transcription-text">

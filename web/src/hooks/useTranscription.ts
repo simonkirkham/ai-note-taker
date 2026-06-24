@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { presignRecordingUpload, saveRecording } from '../api/recordings';
-import { completeTranscription, getTranscriptionCredentials, saveTranscriptionDraft } from '../api/transcription';
+import { completeTranscription, getTranscriptionCredentials, saveTranscriptionDraft, startDiarization } from '../api/transcription';
 import { PcmChunker } from './pcm';
 import { SpeakerTranscript } from './speakerSegments';
 import { encodeWav } from './wav';
@@ -25,6 +25,12 @@ export const CHECKPOINT_INTERVAL_MS = 15000;
 // transcript (Phase 18-C). Speaker labels reset per session, so this is the
 // honest visual cue that "Speaker 1" below may be a different person.
 const RESUME_SEPARATOR = '— resumed —';
+
+// 33-B1: after the recording uploads we trigger a batch diarization job, then wait for the
+// note's transcriptIsDiarized flag to flip. The job is async (seconds to minutes). If it never
+// lands within this window the chip resolves to a non-blocking "couldn't refine" notice and the
+// streamed transcript stays — the job may have failed server-side (no flag is ever set on failure).
+const DIARIZATION_TIMEOUT_MS = 5 * 60 * 1000;
 
 const WORKLET_CODE = `
 class PcmProcessor extends AudioWorkletProcessor {
@@ -51,12 +57,19 @@ export type TranscriptionStatus =
 // affordance the moment recording stops; it resolves to 'uploaded' or 'failed'.
 export type RecordingUploadStatus = 'idle' | 'uploading' | 'uploaded' | 'failed';
 
+// 33-B1: state of the post-upload batch diarization. 'refining' is shown as a chip while the
+// async job runs; it clears when the note's transcriptIsDiarized flips true (observed by the
+// caller via the note query). 'failed' means the trigger errored or the job never landed in time
+// — a non-blocking notice; the streamed transcript stays.
+export type DiarizationStatus = 'idle' | 'refining' | 'failed';
+
 export interface UseTranscriptionResult {
   status: TranscriptionStatus;
   transcript: string;
   elapsedSeconds: number;
   error: string | undefined;
   recordingUpload: RecordingUploadStatus;
+  diarization: DiarizationStatus;
   // resumeFrom: an existing committed transcript to continue. When set, the new
   // session's finalised turns are appended after it (with a "— resumed —"
   // separator); when omitted, recording starts fresh and replaces. See Phase 18-C.
@@ -71,8 +84,10 @@ export function useTranscription(noteId: string): UseTranscriptionResult {
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const [error, setError] = useState<string | undefined>();
   const [recordingUpload, setRecordingUpload] = useState<RecordingUploadStatus>('idle');
+  const [diarization, setDiarization] = useState<DiarizationStatus>('idle');
 
   const stoppedRef = useRef(false);
+  const diarizationTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const wakeupRef = useRef<(() => void) | null>(null);
   const mediaStreamRef = useRef<MediaStream | null>(null);
   const displayStreamRef = useRef<MediaStream | null>(null);
@@ -163,6 +178,7 @@ export function useTranscription(noteId: string): UseTranscriptionResult {
     recordedChunksRef.current = [];
     setRecordingUpload('uploading');
     void (async () => {
+      let savedKey: string;
       try {
         const blob = encodeWav(chunks, recordedSampleRateRef.current);
         const presign = await presignRecordingUpload(noteId, {
@@ -176,10 +192,27 @@ export function useTranscription(noteId: string): UseTranscriptionResult {
         });
         if (!put.ok) throw new Error(`recording upload failed: ${put.status}`);
         await saveRecording(noteId, presign.key);
+        savedKey = presign.key;
         setRecordingUpload('uploaded');
       } catch {
         recordingUploadedRef.current = false;
         setRecordingUpload('failed');
+        return;
+      }
+      // 33-B1: recording is safely uploaded — kick off batch diarization (best-effort, separate
+      // from the upload's success). On 202 show the "Refining…" chip and arm a timeout that
+      // resolves it to a non-blocking notice if the job never lands; the caller clears 'refining'
+      // when the note's transcriptIsDiarized flips true.
+      try {
+        await startDiarization(noteId, savedKey);
+        setDiarization('refining');
+        if (diarizationTimerRef.current) clearTimeout(diarizationTimerRef.current);
+        diarizationTimerRef.current = setTimeout(
+          () => setDiarization((s) => (s === 'refining' ? 'failed' : s)),
+          DIARIZATION_TIMEOUT_MS,
+        );
+      } catch {
+        setDiarization('failed');
       }
     })();
   }, [noteId]);
@@ -188,6 +221,7 @@ export function useTranscription(noteId: string): UseTranscriptionResult {
     () => () => {
       commitTranscript();
       cleanup();
+      if (diarizationTimerRef.current) clearTimeout(diarizationTimerRef.current);
     },
     [cleanup, commitTranscript],
   );
@@ -236,10 +270,15 @@ export function useTranscription(noteId: string): UseTranscriptionResult {
     committedRef.current = false;
     recordedChunksRef.current = [];
     recordingUploadedRef.current = false;
+    if (diarizationTimerRef.current) {
+      clearTimeout(diarizationTimerRef.current);
+      diarizationTimerRef.current = null;
+    }
     setTranscript(resumePrefix);
     setElapsedSeconds(0);
     setError(undefined);
     setRecordingUpload('idle');
+    setDiarization('idle');
     setStatus('requestingCredentials');
 
     void (async () => {
@@ -425,13 +464,18 @@ export function useTranscription(noteId: string): UseTranscriptionResult {
     committedRef.current = false;
     recordedChunksRef.current = [];
     recordingUploadedRef.current = false;
+    if (diarizationTimerRef.current) {
+      clearTimeout(diarizationTimerRef.current);
+      diarizationTimerRef.current = null;
+    }
     setStatus('idle');
     setTranscript('');
     setElapsedSeconds(0);
     setError(undefined);
     setRecordingUpload('idle');
+    setDiarization('idle');
     stoppedRef.current = false;
   }, [cleanup]);
 
-  return { status, transcript, elapsedSeconds, error, recordingUpload, startRecording, stopRecording, reset };
+  return { status, transcript, elapsedSeconds, error, recordingUpload, diarization, startRecording, stopRecording, reset };
 }
