@@ -1019,6 +1019,17 @@ public sealed class NoteTakerStack : Stack
                 },
                 Right = new[] { DomainTotal("AnalysisFailed") },
                 Width = 12
+            }),
+            // 33-B1: batch-diarization jobs completed vs failed (both async — invisible without this).
+            new Amazon.CDK.AWS.CloudWatch.GraphWidget(new Amazon.CDK.AWS.CloudWatch.GraphWidgetProps
+            {
+                Title = "Diarization jobs completed vs failed",
+                Left = new[]
+                {
+                    DomainTotal("TranscribeBatchCompleted"),
+                    DomainTotal("TranscribeBatchFailed")
+                },
+                Width = 12
             }));
 
         new CfnOutput(this, "DashboardUrl", new CfnOutputProps
@@ -1283,6 +1294,29 @@ public sealed class NoteTakerStack : Stack
             TreatMissingData = Amazon.CDK.AWS.CloudWatch.TreatMissingData.NOT_BREACHING
         });
         analysisFailedAlarm.AddAlarmAction(alarmAction);
+
+        // 33-B1: a batch-diarization job that FAILED (or a fetch/parse error that left the streamed
+        // transcript intact) is invisible by construction — the completion Lambda is async (no
+        // synchronous 500). TranscribeBatchFailed drives this alarm. Service dimension is
+        // note-taker-transcribe (the completion handler's Powertools service).
+        var transcribeFailedAlarm = new Amazon.CDK.AWS.CloudWatch.Alarm(this, "TranscribeBatchFailedAlarm", new Amazon.CDK.AWS.CloudWatch.AlarmProps
+        {
+            AlarmName = "notetaker-transcribe-failed",
+            AlarmDescription = "A batch-diarization job failed or its result could not be applied in the last 5 minutes",
+            Metric = new Amazon.CDK.AWS.CloudWatch.Metric(new Amazon.CDK.AWS.CloudWatch.MetricProps
+            {
+                Namespace = "NoteTaker/Domain",
+                MetricName = "TranscribeBatchFailed",
+                DimensionsMap = new Dictionary<string, string> { ["Service"] = "note-taker-transcribe" },
+                Statistic = "Sum",
+                Period = Duration.Minutes(5)
+            }),
+            Threshold = 0,
+            EvaluationPeriods = 1,
+            ComparisonOperator = Amazon.CDK.AWS.CloudWatch.ComparisonOperator.GREATER_THAN_THRESHOLD,
+            TreatMissingData = Amazon.CDK.AWS.CloudWatch.TreatMissingData.NOT_BREACHING
+        });
+        transcribeFailedAlarm.AddAlarmAction(alarmAction);
 
         // ── Projector alarms (27-B) ──────────────────────────────────────
         // Async projection failure is invisible by construction (no synchronous 500), so

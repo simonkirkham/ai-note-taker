@@ -716,6 +716,17 @@ public class InfraAssertionsTests
     }
 
     [Fact]
+    public void TranscribeBatchFailedAlarm_Exists()
+    {
+        _template.HasResourceProperties("AWS::CloudWatch::Alarm", Match.ObjectLike(new Dictionary<string, object>
+        {
+            ["AlarmName"] = "notetaker-transcribe-failed",
+            ["MetricName"] = "TranscribeBatchFailed",
+            ["Namespace"] = "NoteTaker/Domain"
+        }));
+    }
+
+    [Fact]
     public void TranscribeJobStateChangeRule_RoutesTerminalStatesToCompletionLambda()
     {
         _template.HasResourceProperties("AWS::Events::Rule", Match.ObjectLike(new Dictionary<string, object>
@@ -1060,13 +1071,13 @@ public class InfraAssertionsTests
     [Fact]
     public void Alarms_AllExpectedAlarmsExist()
     {
-        // Eight alarms: error-rate, P99 latency, projection-rebuild-fault,
+        // Nine alarms: error-rate, P99 latency, projection-rebuild-fault,
         // projection-rebuild-duration, the three 27-B projector alarms
-        // (projector-error, projector-dlq-depth, projector-iterator-age), and
-        // analysis-failed (CHANGE-22).
+        // (projector-error, projector-dlq-depth, projector-iterator-age),
+        // analysis-failed (CHANGE-22), and transcribe-failed (33-B1).
         // A concurrency-conflict alarm is deferred — it would need SUM(SEARCH(...)), which CloudWatch
         // rejects on metric alarms (only allowed on dashboard widgets). See phase-12 12-E.
-        _template.ResourceCountIs("AWS::CloudWatch::Alarm", 8);
+        _template.ResourceCountIs("AWS::CloudWatch::Alarm", 9);
     }
 
     [Fact]

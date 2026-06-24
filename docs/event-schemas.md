@@ -77,6 +77,12 @@ public record InstructionResponsesRecorded(                   // AI responses to
     string ModelId,
     string PromptVersion) : NoteEvent;
 public record RecordingUploaded(NoteId NoteId, string AudioKey) : NoteEvent;  // S3 key of the saved call recording (33-A); full snapshot, latest wins
+public record TranscriptionDiarized(                          // batch Transcribe ShowSpeakerLabels result (33-B1); replaces TranscriptionCompleted, latest wins; appended async by TranscribeCompletion Lambda
+    NoteId NoteId,
+    string Text,
+    int SpeakerCount,
+    string JobId,
+    string SourceAudioKey) : NoteEvent;
 public record NoteDeleted(NoteId NoteId)                       : NoteEvent;
 ```
 

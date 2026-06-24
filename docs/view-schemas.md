@@ -151,7 +151,8 @@ public record NoteDetail(
     DateOnly? Date,
     DateTimeOffset CreatedAt,
     DateTimeOffset LastModifiedAt,
-    string? TranscriptText,                       // raw speech-to-text; null until a transcript is completed
+    string? TranscriptText,                       // raw speech-to-text; null until a transcript is completed; replaced by the diarized text when a batch job lands (33-B1)
+    bool TranscriptIsDiarized,                    // true once TranscriptionDiarized replaced the streamed transcript (33-B1); drives the frontend "Refining…" chip poll
     string? Summary,                              // AI Final notes; null = never analysed (a normal empty state, not an error)
     IReadOnlyList<string> DiscussionPoints,       // [] when none
     IReadOnlyList<string> Decisions,              // [] when none

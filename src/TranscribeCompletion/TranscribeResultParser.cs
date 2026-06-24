@@ -12,13 +12,21 @@ public sealed record DiarizedTranscript(string Text, int SpeakerCount);
 // `speaker_labels.segments[].items[]` rather than carried on the item itself.
 public static class TranscribeResultParser
 {
+    // A mutable speaker run being accumulated (a reference type so segments[^1].Text += … updates
+    // the run in place as consecutive words/punctuation attach).
+    private sealed class Segment(string speaker, string text)
+    {
+        public string Speaker { get; } = speaker;
+        public string Text { get; set; } = text;
+    }
+
     public static DiarizedTranscript Parse(string resultJson)
     {
         using var doc = JsonDocument.Parse(resultJson);
         var results = doc.RootElement.GetProperty("results");
 
         var speakerByStart = BuildSpeakerByStart(results);
-        var segments = new List<(string Speaker, string Text)>();
+        var segments = new List<Segment>();
         var speakers = new HashSet<string>();
 
         foreach (var item in results.GetProperty("items").EnumerateArray())
@@ -34,8 +42,7 @@ public static class TranscribeResultParser
             if (isPunctuation)
             {
                 if (segments.Count == 0) continue; // nothing to attach to → drop
-                ref var lastP = ref System.Runtime.InteropServices.CollectionsMarshal.AsSpan(segments)[^1];
-                lastP.Text += content;
+                segments[^1].Text += content;
                 continue;
             }
 
@@ -45,14 +52,9 @@ public static class TranscribeResultParser
                 : "?";
             speakers.Add(speaker);
             if (segments.Count > 0 && segments[^1].Speaker == speaker)
-            {
-                ref var last = ref System.Runtime.InteropServices.CollectionsMarshal.AsSpan(segments)[^1];
-                last.Text += $" {content}";
-            }
+                segments[^1].Text += $" {content}";
             else
-            {
-                segments.Add((speaker, content));
-            }
+                segments.Add(new Segment(speaker, content));
         }
 
         var text = string.Join("\n", segments.Select(seg => $"{Label(seg.Speaker)}: {seg.Text}"));
