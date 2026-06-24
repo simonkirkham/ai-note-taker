@@ -81,7 +81,8 @@ public sealed class TranscribeCompletionFunction
 
         if (result is null)
         {
-            _metrics.BatchFailed();
+            // COMPLETED but no transcript URI — anomalous but not a fault to page on (no data lost;
+            // the streamed transcript stays). Log only, don't trip the failure alarm.
             _logger.LogWarning("transcribe: no result for COMPLETED job {Job} note {Note}", jobName, noteId);
             return;
         }
@@ -102,8 +103,10 @@ public sealed class TranscribeCompletionFunction
 
         if (string.IsNullOrWhiteSpace(parsed.Text))
         {
-            _metrics.BatchFailed();
-            _logger.LogWarning("transcribe: empty diarized text for {Job} note {Note} — keeping streamed transcript", jobName, noteId);
+            // A recording of silence (or a very short clip) legitimately diarizes to empty text —
+            // a benign success, not a fault. Log only; the streamed transcript stays and the
+            // failure alarm is reserved for genuine faults (FAILED job, fetch error, poison JSON).
+            _logger.LogInformation("transcribe: empty diarized text for {Job} note {Note} — keeping streamed transcript", jobName, noteId);
             return;
         }
 

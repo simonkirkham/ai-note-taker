@@ -74,7 +74,7 @@ public sealed class TranscribeCompletionFunctionTests
     }
 
     [Fact]
-    public async Task Completed_EmptyDiarizedText_KeepsStreamedTranscript()
+    public async Task Completed_EmptyDiarizedText_KeepsStreamedTranscript_WithoutFailingAlarm()
     {
         var noteId = await SeedStreamedNoteAsync();
         var job = DiarizationJobNames.For(noteId.ToString());
@@ -82,8 +82,11 @@ public sealed class TranscribeCompletionFunctionTests
 
         await NewFunction().Handle(Event(job, "COMPLETED"), null!);
 
+        // Silence/short clip → empty text is a benign success: no event appended, streamed
+        // transcript stays, and the failure alarm is NOT tripped (reserved for genuine faults).
         Assert.Empty(await DiarizedEnvelopes(noteId));
-        Assert.Equal(1, _metrics.Failed);
+        Assert.Equal(0, _metrics.Failed);
+        Assert.Equal(0, _metrics.Completed);
     }
 
     [Fact]
