@@ -90,6 +90,12 @@ Scenario: Expired/revoked stored token degrades gracefully
 
 **Status:** Not Started.
 
+**As-built decisions (refine the locked decisions; agreed with user):**
+1. **Token key is `(userId, workspaceId, provider)`, not `(workspaceId, provider)`.** The default workspace id `__default__` is shared across users, so keying purely by workspace would leak the default workspace's calendar between users. Physical DynamoDB schema unchanged (SK holds `{workspaceId}#{provider}`) to avoid a RETAIN-table replacement.
+2. **No new read projection (deviates from AC1).** Connection status + meetings resolve from the strongly-consistent `CalendarTokenStore` (RYW-safe); the `WorkspaceCalendarConnected/Disconnected` events are still recorded for the per-workspace provider choice 34-C needs.
+3. **Events recorded for NON-default workspaces only** — the default has no per-user aggregate stream. Best-effort: token written first (source of truth for reads), event append swallowed-and-logged on failure.
+4. Calendar routes moved under `/w/{workspaceId}` (incl. `/notes/from-meeting`, `/notes/from-next-occurrence`); the Command-pinned calendar GET routes updated in CDK so they don't fall through to the Query Lambda.
+
 **User value:** different workspaces show different calendars — connect a work Google account in one workspace and a personal one in another.
 
 **How (mechanics):** add `WorkspaceCalendarConnected(workspaceId, provider, accountRef)` + `WorkspaceCalendarDisconnected` to the `Workspace` aggregate; the connect callback records the event for the current workspace and stores the token keyed by `workspaceId`; the meetings read resolves the token by the request's workspace. `accountRef` (email) drives "Connected as …".
@@ -129,6 +135,8 @@ Scenario: A workspace with no connection
 ## Slice 34-C — Microsoft as a connectable provider per workspace + per-request resolution
 
 **Status:** Not Started.
+
+**Carried over from 34-B review:** 34-B records `WorkspaceCalendarConnected` **best-effort** (the token store is written first and is the source of truth for reads; a failed event append only logs). So a workspace can exist where the token store says "connected" but the aggregate has no connection event. 34-C's `ICalendarClientFactory.For(workspaceId)` must therefore resolve the provider from the **token store** (authoritative), or treat a missing aggregate connection as a re-emit trigger — never assume the event is present whenever a token is.
 
 **User value:** a workspace can be backed by **Outlook** instead of Google, chosen at connect time — A on Google, B on Outlook, simultaneously.
 

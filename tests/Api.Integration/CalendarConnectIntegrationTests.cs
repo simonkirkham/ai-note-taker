@@ -119,13 +119,19 @@ public sealed class CalendarConnectIntegrationTests : IClassFixture<ApiFactory>
     [Fact]
     public async Task Connect_IsolatedPerUser()
     {
-        // Connect as the default user, then a different user sees needs_auth.
+        // Two users share the default workspace id (`__default__`), so this is the load-bearing
+        // check that the token key's userId partition prevents a cross-user leak there. Assert at
+        // the HTTP `connection` read (not just the store) in BOTH directions.
         _oauth.ExchangeResult = FakeGoogleOAuthClient.Success(Jwt(new { sub = TestUser, email = "a@example.com" }), "rt-a");
         (await _client.PostAsync("/calendar/connect/google", ConnectBody())).EnsureSuccessStatusCode();
 
+        var mine = await (await _client.GetAsync("/calendar/connection")).Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("connected", mine.GetProperty("status").GetString());
+
         var other = _factory.CreateClientAsOtherUser();
-        var body = await (await other.GetAsync("/calendar/connection")).Content.ReadFromJsonAsync<JsonElement>();
-        Assert.Equal("needs_auth", body.GetProperty("status").GetString());
+        var theirs = await (await other.GetAsync("/calendar/connection")).Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("needs_auth", theirs.GetProperty("status").GetString());
+
         Assert.True(_store.Has(TestUser, DefaultWs, "google"));
         Assert.False(_store.Has(ApiFactory.OtherTestUserId, DefaultWs, "google"));
     }
