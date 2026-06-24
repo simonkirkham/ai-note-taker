@@ -848,6 +848,17 @@ public sealed class NoteTakerStack : Stack
             Integration = commandIntegration
         });
 
+        // 35-A: the MCP tool-call path is JSON-RPC over POST but READ-ONLY (it reads the
+        // NoteCardList projection only), so it must hit the Query Lambda — overriding the default
+        // POST→Command routing above. Pinned to Query like the calendar GETs are pinned to Command.
+        // This pin is a backend artifact: it reaches prod only via a `cdk deploy` (backend=true).
+        httpApi.AddRoutes(new Amazon.CDK.AWS.Apigatewayv2.AddRoutesOptions
+        {
+            Path = "/w/{workspaceId}/mcp",
+            Methods = new[] { Amazon.CDK.AWS.Apigatewayv2.HttpMethod.POST },
+            Integration = queryIntegration
+        });
+
         // ── Frontend (S3 + CloudFront) ───────────────────────────────────
         var webBucket = new Bucket(this, "WebBucket", new BucketProps
         {
