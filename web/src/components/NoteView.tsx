@@ -17,6 +17,7 @@ import ActionsSection from "./ActionsSection";
 import FinalNotesView from "./FinalNotesView";
 import LazyNoteEditor from "./LazyNoteEditor";
 import MeetingPicker from "./MeetingPicker";
+import MoveToWorkspaceMenu from "./MoveToWorkspaceMenu";
 import tabStyles from "./NoteTabs.module.css";
 import styles from "./NoteView.module.css";
 import RecordControl from "./RecordControl";
@@ -43,6 +44,8 @@ export default function NoteView({
   onOpenNote,
   onNotFound,
   isNew,
+  otherWorkspaces,
+  onMoveToWorkspace,
 }: {
   noteId: string;
   initialTitle: string;
@@ -57,6 +60,11 @@ export default function NoteView({
   onOpenNote: (noteId: string, title?: string, isNew?: boolean) => void;
   onNotFound?: () => void;
   isNew?: boolean;
+  // Move targets = the caller's workspaces minus the current one. When empty/absent
+  // the control is hidden (you cannot move to nowhere). onMoveToWorkspace drives the
+  // move + navigation home in the parent (CHANGE-24).
+  otherWorkspaces?: { workspaceId: string; name: string }[];
+  onMoveToWorkspace?: (workspaceId: string) => void;
 }) {
   const qc = useQueryClient();
   const { data: detail, isLoading: loadingDetail, isError, error } = useNoteDetail(noteId);
@@ -504,6 +512,13 @@ export default function NoteView({
               aria-label="Meeting date"
             />
           </div>
+          {hasContent && onMoveToWorkspace && otherWorkspaces && otherWorkspaces.length > 0 && (
+            <MoveToWorkspaceMenu
+              title={title}
+              workspaces={otherWorkspaces}
+              onMove={onMoveToWorkspace}
+            />
+          )}
           {hasContent && (
             <button
               data-testid="delete-note-button"
