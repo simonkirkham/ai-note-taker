@@ -25,11 +25,22 @@ public sealed class GoogleCalendarTokenSource(
 
     public async Task<string?> LoadAsync(bool forceReload, CancellationToken ct = default)
     {
-        var stored = await store.GetAsync(currentUser.UserId, currentWorkspace.WorkspaceId, Provider, ct).ConfigureAwait(false);
-        if (stored is not null)
+        // A transient store failure must degrade to calendar_unavailable (null), never a 500 — the
+        // GET handler maps null gracefully but has no catch for a thrown exception. Mirrors
+        // MicrosoftCalendarTokenSource.
+        try
         {
-            logger.LogInformation("Google calendar token source: store (in-app connected, workspace {WorkspaceId})", currentWorkspace.WorkspaceId);
-            return stored.RefreshToken;
+            var stored = await store.GetAsync(currentUser.UserId, currentWorkspace.WorkspaceId, Provider, ct).ConfigureAwait(false);
+            if (stored is not null)
+            {
+                logger.LogInformation("Google calendar token source: store (in-app connected, workspace {WorkspaceId})", currentWorkspace.WorkspaceId);
+                return stored.RefreshToken;
+            }
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "Calendar token store read failed; reporting calendar_unavailable");
+            return null;
         }
 
         logger.LogInformation("No in-app Google calendar token for workspace {WorkspaceId}; reporting calendar_unavailable", currentWorkspace.WorkspaceId);

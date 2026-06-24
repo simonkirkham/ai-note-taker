@@ -4,8 +4,9 @@ The Lambda reads the owner's Microsoft 365 / Outlook calendar using a long-lived
 token** stored in SSM Parameter Store at the path given by `MICROSOFT_REFRESH_TOKEN_SSM_PATH`.
 When that token dies, calendar reads fail and the UI shows "Cannot connect to calendar".
 
-This is the Microsoft counterpart of [`google-calendar-token.md`](google-calendar-token.md).
-It applies only when `CALENDAR_PROVIDER=microsoft`.
+It applies only while `CALENDAR_PROVIDER=microsoft` and the workspace has no in-app Outlook
+connection (the SSM fallback). The Google equivalent was retired in 34-D1 (Google is fully in-app);
+this Microsoft path retires in 34-D2 once in-app Outlook connect is verified.
 
 ## How it works
 

@@ -42,6 +42,27 @@ public sealed class GoogleCalendarTokenSourceTests
     }
 
     [Fact]
+    public async Task LoadAsync_StoreThrows_ReturnsNull()
+    {
+        // A transient store failure must degrade to calendar_unavailable (null), not a 500.
+        var source = new GoogleCalendarTokenSource(
+            new StubCurrentUser("user-1"), new StubCurrentWorkspace(Ws), new ThrowingCalendarTokenStore(),
+            NullLogger<GoogleCalendarTokenSource>.Instance);
+
+        Assert.Null(await source.LoadAsync(forceReload: false));
+    }
+
+    private sealed class ThrowingCalendarTokenStore : ICalendarTokenStore
+    {
+        public Task UpsertAsync(string userId, string workspaceId, string provider, string refreshToken, string? email, CancellationToken ct = default)
+            => throw new InvalidOperationException("store down");
+        public Task<CalendarToken?> GetAsync(string userId, string workspaceId, string provider, CancellationToken ct = default)
+            => throw new InvalidOperationException("store down");
+        public Task DeleteAsync(string userId, string workspaceId, string provider, CancellationToken ct = default)
+            => throw new InvalidOperationException("store down");
+    }
+
+    [Fact]
     public async Task LoadAsync_StoredTokenIsPerUser()
     {
         var store = new InMemoryCalendarTokenStore();
