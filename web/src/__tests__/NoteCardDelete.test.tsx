@@ -6,7 +6,7 @@ import { AuthProvider } from '../auth/AuthContext'
 import { clearToken } from '../auth/tokenStore'
 import ListView from '../components/ListView'
 import { localTodayISO } from '../dates'
-import { render, screen, waitFor } from '../test/render'
+import { render, renderWithRouter, screen, waitFor } from '../test/render'
 import { server } from '../test/setup'
 
 // Dated today so both render in the home view by default; these tests exercise
@@ -50,12 +50,12 @@ const defaultProps = {
 
 describe('NoteCard — delete affordance', () => {
   it('each note card shows a delete button', () => {
-    render(<ListView {...defaultProps} />)
+    renderWithRouter(<ListView {...defaultProps} />)
     expect(screen.getByRole('button', { name: /delete "Team sync"/i })).toBeInTheDocument()
   })
 
   it('clicking delete shows an inline confirmation — note not yet removed', async () => {
-    render(<ListView {...defaultProps} />)
+    renderWithRouter(<ListView {...defaultProps} />)
     await userEvent.click(screen.getByRole('button', { name: /delete "Team sync"/i }))
     expect(screen.getByRole('button', { name: /confirm delete/i })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /cancel/i })).toBeInTheDocument()
@@ -63,7 +63,7 @@ describe('NoteCard — delete affordance', () => {
   })
 
   it('clicking Cancel dismisses the confirmation and leaves the note', async () => {
-    render(<ListView {...defaultProps} />)
+    renderWithRouter(<ListView {...defaultProps} />)
     await userEvent.click(screen.getByRole('button', { name: /delete "Team sync"/i }))
     await userEvent.click(screen.getByRole('button', { name: /cancel/i }))
     expect(screen.queryByRole('button', { name: /confirm delete/i })).not.toBeInTheDocument()
@@ -71,7 +71,7 @@ describe('NoteCard — delete affordance', () => {
   })
 
   it('clicking delete on one card does not show confirmation on another card', async () => {
-    render(<ListView {...defaultProps} cards={[card, card2]} />)
+    renderWithRouter(<ListView {...defaultProps} cards={[card, card2]} />)
     await userEvent.click(screen.getByRole('button', { name: /delete "Team sync"/i }))
     expect(screen.getAllByRole('button', { name: /confirm delete/i })).toHaveLength(1)
     expect(screen.getByRole('button', { name: /delete "Project brief"/i })).toBeInTheDocument()
@@ -79,7 +79,7 @@ describe('NoteCard — delete affordance', () => {
 
   it('confirming removes the note optimistically and calls onDeleteNote', async () => {
     const onDeleteNote = vi.fn()
-    render(<ListView {...defaultProps} onDeleteNote={onDeleteNote} />)
+    renderWithRouter(<ListView {...defaultProps} onDeleteNote={onDeleteNote} />)
     await userEvent.click(screen.getByRole('button', { name: /delete "Team sync"/i }))
     await userEvent.click(screen.getByRole('button', { name: /confirm delete/i }))
     expect(screen.queryByText('Team sync')).not.toBeInTheDocument()

@@ -4,7 +4,7 @@ import type { NoteCard } from '../api/notes'
 import ListView from '../components/ListView'
 import TagFilter from '../components/TagFilter'
 import { localTodayISO } from '../dates'
-import { render, screen, waitFor } from '../test/render'
+import { renderWithRouter as render, screen, waitFor } from '../test/render'
 import { server } from '../test/setup'
 
 describe('TagFilter — isolated', () => {
