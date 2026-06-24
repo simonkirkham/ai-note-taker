@@ -1,27 +1,16 @@
-using System.Diagnostics;
-using System.Text.RegularExpressions;
-using Amazon.BedrockRuntime;
 using Amazon.SecurityToken;
-using Domain.ActionItems;
 using Domain.Notes;
 using Api.CommandHandlers;
 using Api.Contracts;
 using Api.Services;
 using EventStore.Projections;
 using Api.Auth;
-using Api.Observability;
 using Microsoft.Extensions.Logging;
 
 namespace Api.Handlers;
 
 public static class TranscriptionHandlers
 {
-    // Images are stored and displayed but never analysed this phase; strip the markdown
-    // image syntax so it doesn't pollute the model prompt or burn tokens. Assumes
-    // paren-free URLs — 25-A persists stable keys (notes/{id}/{guid}.png), never URLs.
-    private static readonly Regex ImageMarkdown = new(@"!\[[^\]]*\]\([^)]*\)", RegexOptions.Compiled);
-
-    private static string StripImageMarkdown(string content) => ImageMarkdown.Replace(content, "");
 
     public static async Task<IResult> CompleteTranscription(
         Guid noteId,
@@ -89,86 +78,28 @@ public static class TranscriptionHandlers
         return Results.NoContent();
     }
 
+    // Thin wrapper over INoteAnalysisService (33-B2): authorize ownership (404) here, then delegate
+    // the Bedrock + record flow to the service with the scoped identity. The same service is invoked
+    // headless by the TranscribeCompletion Lambda after diarization. Manual analyse is never deferred.
     public static async Task<IResult> AnalyseNote(
         Guid noteId,
-        INoteCommandHandler noteHandler,
-        IActionItemCommandHandler actionHandler,
+        INoteAnalysisService analysis,
         INoteDetailStore noteDetailStore,
-        INoteActionsStore noteActionsStore,
-        IBedrockAnalysisService bedrockAnalysis,
         ICurrentUser currentUser,
-        IDomainMetrics metrics,
-        ILogger<IBedrockAnalysisService> logger,
+        ICurrentWorkspace currentWorkspace,
         CancellationToken ct)
     {
         var detail = await noteDetailStore.GetAsync(new NoteId(noteId), ct);
         if (detail is null || detail.UserId != currentUser.UserId) return Results.NotFound();
 
-        var (rawContent, instructions) = InstructionExtractor.Extract(detail.Content ?? "");
-        var content = StripImageMarkdown(rawContent);
-        if (string.IsNullOrWhiteSpace(detail.TranscriptText) && string.IsNullOrWhiteSpace(content) && instructions.Count == 0)
-            return Results.UnprocessableEntity();
-
-        NoteAnalysisResult result;
-        // Time just the Bedrock inference — the variable, dominant cost of "how long analysis
-        // takes". On failure, emit the alarmable AnalysisFailed metric and log the note id so
-        // "which notes failed analysis" is a CloudWatch Logs Insights query (id in the log, not
-        // a metric dimension — alarms reject varying dimensions).
-        var analysisStopwatch = Stopwatch.StartNew();
-        try
+        var outcome = await analysis.AnalyseAsync(new NoteId(noteId), currentUser.UserId,
+            currentWorkspace.WorkspaceId, currentUser.Name, transcriptOverride: null, ct);
+        return outcome switch
         {
-            result = await bedrockAnalysis.AnalyseAsync(
-                new NoteAnalysisRequest(content, detail.TranscriptText, currentUser.Name, instructions), ct);
-            metrics.AnalysisCompleted(analysisStopwatch.Elapsed.TotalMilliseconds);
-        }
-        catch (Exception ex) when (ex is AmazonBedrockRuntimeException or InvalidOperationException)
-        {
-            metrics.AnalysisFailed();
-            logger.LogError(ex, "Analysis failed for note {NoteId} after {ElapsedMs}ms: {ExceptionType} {Message}",
-                noteId, analysisStopwatch.Elapsed.TotalMilliseconds, ex.GetType().Name, ex.Message);
-            return Results.Problem(statusCode: 503, title: "Analysis service unavailable", detail: ex.Message);
-        }
-
-        await noteHandler.HandleAsync(new RecordAnalysisSummary(
-            new NoteId(noteId), result.Summary, result.DiscussionPoints, result.Decisions,
-            result.ModelId, result.PromptVersion), ct);
-
-        var instructionResponses = result.InstructionResponses ?? [];
-        if (instructions.Count > instructionResponses.Count)
-            logger.LogWarning(
-                "Instruction responses missing: {Extracted} /ai instruction(s) extracted but model returned {Returned} response(s) for note {NoteId}",
-                instructions.Count, instructionResponses.Count, noteId);
-        // Record when there is something to show, or to CLEAR previously-recorded responses on a re-run
-        // that no longer has any (latest wins). A note that never had instructions writes no event.
-        var hadResponses = (detail.InstructionResponses?.Count ?? 0) > 0;
-        if (instructionResponses.Count > 0 || hadResponses)
-            await noteHandler.HandleAsync(new RecordInstructionResponses(
-                new NoteId(noteId), instructionResponses, result.ModelId, result.PromptVersion), ct);
-
-        var existingTags = detail.Tags ?? [];
-        var appliedTags = result.NewTags
-            .Where(t => !existingTags.Contains(t, StringComparer.OrdinalIgnoreCase))
-            .ToList();
-        if (appliedTags.Count > 0)
-            await noteHandler.HandleAsync(new RecordTagSuggestions(new NoteId(noteId), appliedTags, result.ModelId, result.PromptVersion), ct);
-        foreach (var tag in appliedTags)
-            await noteHandler.HandleAsync(new TagNote(new NoteId(noteId), tag), ct);
-
-        var existingActionsView = await noteActionsStore.QueryByNoteAsync(new NoteId(noteId), ct);
-        var existingDescriptions = existingActionsView.Actions
-            .Select(a => a.Description)
-            .ToHashSet(StringComparer.OrdinalIgnoreCase);
-        var createdActionIds = new List<Guid>();
-        foreach (var action in result.NewActionItems.Where(a => !existingDescriptions.Contains(a)))
-        {
-            var actionId = Guid.NewGuid();
-            await actionHandler.HandleAsync(new AddActionItem(new ActionId(actionId), new NoteId(noteId), action), ct);
-            createdActionIds.Add(actionId);
-        }
-        if (createdActionIds.Count > 0)
-            await noteHandler.HandleAsync(new RecordActionItemSuggestions(new NoteId(noteId), createdActionIds, result.ModelId, result.PromptVersion), ct);
-
-        return Results.NoContent();
+            AnalysisOutcome.NothingToAnalyse => Results.UnprocessableEntity(),
+            AnalysisOutcome.ServiceUnavailable => Results.Problem(statusCode: 503, title: "Analysis service unavailable"),
+            _ => Results.NoContent(),
+        };
     }
 
     public static async Task<IResult> GetCredentials(IStsCredentialService sts, ILogger<IStsCredentialService> logger)

@@ -38,11 +38,22 @@ public sealed class NoteCommandHandler(
     private static readonly TimeSpan AppendRetryBaseDelay = TimeSpan.FromMilliseconds(20);
 
     public Task<long> HandleAsync(NoteCommand cmd, CancellationToken ct = default) =>
-        CommandInstrumentation.RunAsync(metrics, logger, cmd.GetType().Name, "Note", () =>
-            ExecuteAsync(cmd.NoteId, note => note.Handle(cmd), ct, mustExist: cmd.MustExist));
+        Run(cmd, currentUser.UserId, currentWorkspace.WorkspaceId, currentUser.Name, ct);
 
-    private async Task<long> ExecuteAsync(NoteId noteId, Func<Note, IReadOnlyList<IDomainEvent>> handle, CancellationToken ct,
-        bool mustExist = true)
+    // Identity-explicit overload (33-B2): lets a non-HTTP caller (the TranscribeCompletion Lambda's
+    // INoteAnalysisService) persist with an explicit owner/workspace instead of the scoped
+    // ICurrentUser/ICurrentWorkspace. No display name (the Lambda has none) — the note's owner name
+    // was stamped by the HTTP create. The HTTP path delegates with the scoped identity + name, so its
+    // behaviour — and every existing test — is unchanged.
+    public Task<long> HandleAsync(NoteCommand cmd, string userId, string? workspaceId, CancellationToken ct = default) =>
+        Run(cmd, userId, workspaceId, userName: null, ct);
+
+    private Task<long> Run(NoteCommand cmd, string userId, string? workspaceId, string? userName, CancellationToken ct) =>
+        CommandInstrumentation.RunAsync(metrics, logger, cmd.GetType().Name, "Note", () =>
+            ExecuteAsync(cmd.NoteId, note => note.Handle(cmd), userId, workspaceId, userName, ct, mustExist: cmd.MustExist));
+
+    private async Task<long> ExecuteAsync(NoteId noteId, Func<Note, IReadOnlyList<IDomainEvent>> handle,
+        string userId, string? workspaceId, string? userName, CancellationToken ct, bool mustExist = true)
     {
         var streamId = noteId.ToStreamId();
         // Read → rebuild → handle → append is retried as a unit: each attempt re-reads
@@ -63,14 +74,14 @@ public sealed class NoteCommandHandler(
             // stamped on the note's events; a non-null owner that isn't the caller is a 404 (don't leak
             // existence). A null owner is a legacy pre-Phase-8 single-user note → not enforced.
             if (mustExist && history.Count > 0 && history[0].Metadata.UserId is { } ownerId
-                && ownerId != currentUser.UserId)
+                && ownerId != userId)
                 throw new NoteNotFoundException(noteId);
             var newEvents = handle(note);
             // No-op command (e.g. a re-tag the aggregate ignored): nothing appended, so the write
             // token is the current version — a read carrying it waits on an already-applied mark.
             if (newEvents.Count == 0) return history.Count;
 
-            var envelopes = ToEnvelopes(streamId, newEvents, currentUser.UserId, currentWorkspace.WorkspaceId);
+            var envelopes = ToEnvelopes(streamId, newEvents, userId, workspaceId, userName);
             try
             {
                 await store.AppendAsync(streamId, history.Count, envelopes, ct).ConfigureAwait(false);
@@ -109,7 +120,7 @@ public sealed class NoteCommandHandler(
         return note;
     }
 
-    private static List<EventEnvelope> ToEnvelopes(string streamId, IReadOnlyList<IDomainEvent> events, string userId, string? workspaceId) =>
+    private static List<EventEnvelope> ToEnvelopes(string streamId, IReadOnlyList<IDomainEvent> events, string userId, string? workspaceId, string? userName) =>
         events.Select(e =>
         {
             // Versioned events are persisted under their logical (v1) EventType name with a bumped
@@ -128,6 +139,6 @@ public sealed class NoteCommandHandler(
             return new EventEnvelope(
                 StreamId: streamId, SequenceNumber: 0, EventType: type, EventVersion: version,
                 OccurredAt: DateTimeOffset.UtcNow, Payload: payload,
-                Metadata: new EventMetadata(Guid.NewGuid(), userId, null, null, workspaceId));
+                Metadata: new EventMetadata(Guid.NewGuid(), userId, null, null, workspaceId, userName));
         }).ToList();
 }

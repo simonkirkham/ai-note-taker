@@ -31,6 +31,13 @@ public sealed class ActionItemCommandHandler(
     ILogger<ActionItemCommandHandler> logger) : IActionItemCommandHandler
 {
     public Task<long> HandleAsync(AddActionItem cmd, CancellationToken ct = default) =>
+        HandleAsync(cmd, currentUser.UserId, ct);
+
+    // Identity-explicit overload (33-B2): the TranscribeCompletion Lambda's analysis re-run adds AI
+    // action items with no scoped ICurrentUser. Action-item events carry only UserId (workspace is
+    // transitive via the parent note — view-schemas), so just the owner is threaded. The HTTP
+    // overload delegates here with the scoped identity, leaving existing behaviour unchanged.
+    public Task<long> HandleAsync(AddActionItem cmd, string userId, CancellationToken ct = default) =>
         CommandInstrumentation.RunAsync(metrics, logger, nameof(AddActionItem), "ActionItem", async () =>
         {
             // Note existence is a strongly-consistent decision — read the note's EVENT STREAM
@@ -48,7 +55,7 @@ public sealed class ActionItemCommandHandler(
             var history = await store.ReadAsync(streamId, ct).ConfigureAwait(false);
             var newEvents = RebuildAggregate(history).Handle(cmd);
 
-            var envelopes = ToEnvelopes(streamId, newEvents);
+            var envelopes = EventEnvelopeFactory.CreateEnvelopes(streamId, newEvents, userId);
             await store.AppendAsync(streamId, history.Count, envelopes, ct).ConfigureAwait(false);
             return (long)(history.Count + envelopes.Count);
         });

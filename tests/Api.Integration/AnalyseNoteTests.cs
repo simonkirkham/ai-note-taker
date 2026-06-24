@@ -67,6 +67,25 @@ public sealed class AnalyseNoteTests : IClassFixture<ApiFactory>
         Assert.Contains(actions, a => a.GetProperty("description").GetString()!.Contains("Fix login bug"));
     }
 
+    // 33-B2 / Hawk: the async re-analysis (TranscribeCompletion Lambda) has no ICurrentUser, so it
+    // calls AnalyseAsync with userName "". The owner name folded into NoteDetail from the create
+    // event must reach the Bedrock prompt so action-item attribution survives — and the passed
+    // transcriptOverride (the diarized text) is analysed, not the stored streamed transcript.
+    [Fact]
+    public async Task AnalyseAsync_HeadlessWithEmptyName_FallsBackToOwnerNameAndUsesTranscriptOverride()
+    {
+        var noteId = await CreateNoteWithTranscriptAsync(content: "Notes.", transcript: "streamed text");
+
+        using var scope = _factory.Services.CreateScope();
+        var analysis = scope.ServiceProvider.GetRequiredService<INoteAnalysisService>();
+        var outcome = await analysis.AnalyseAsync(new NoteId(Guid.Parse(noteId)),
+            FakeCurrentUser.TestUserId, "__default__", userName: "", transcriptOverride: "diarized text");
+
+        Assert.Equal(AnalysisOutcome.Analysed, outcome);
+        Assert.Equal(FakeCurrentUser.TestUserName, _fakeBedrock.LastRequest!.CurrentUserName);
+        Assert.Equal("diarized text", _fakeBedrock.LastRequest!.TranscriptText);
+    }
+
     // Scenario: Re-running analysis replaces the Final notes (latest wins), both events remain in the stream
     [Fact]
     public async Task PostAnalyse_RerunReplacesSummary_LatestWins()

@@ -733,7 +733,13 @@ public sealed class NoteTakerStack : Stack
             Environment = new Dictionary<string, string>
             {
                 ["AWS_XRAY_CONTEXT_MISSING"] = "LOG_ERROR",
-                ["EVENTS_TABLE_NAME"] = eventsTable.TableName
+                ["EVENTS_TABLE_NAME"] = eventsTable.TableName,
+                // 33-B2: the re-analysis graph needs the Bedrock model + the read-model tables it
+                // reads as analysis input (content/tags/existing actions; the hot diarized transcript
+                // is passed in, not read).
+                ["BEDROCK_MODEL_ID"] = bedrockModelId,
+                ["PROJ_NOTEDETAIL_TABLE_NAME"] = noteDetailTable.TableName,
+                ["PROJ_NOTEACTIONS_TABLE_NAME"] = noteActionsTable.TableName
             }
         });
 
@@ -751,6 +757,25 @@ public sealed class NoteTakerStack : Stack
             Actions = new[] { "transcribe:GetTranscriptionJob" },
             Resources = new[] { "*" }
         }));
+        // 33-B2 re-analysis: read the note's content/tags (NoteDetail) and existing actions
+        // (NoteActions) projections as analysis input, and invoke Bedrock. InvokeModel is added as a
+        // DEDICATED Policy (the same bedrockResources scope the Command function uses) rather than
+        // AddToRolePolicy, so the role's DefaultPolicy stays small and the GetTranscriptionJob
+        // assertion can't be shuffled into an overflow ManagedPolicy.
+        noteDetailTable.GrantReadData(transcribeCompletionFunction);
+        noteActionsTable.GrantReadData(transcribeCompletionFunction);
+        new Policy(this, "TranscribeCompletionBedrockPolicy", new PolicyProps
+        {
+            Roles = new[] { transcribeCompletionFunction.Role! },
+            Statements = new[]
+            {
+                new PolicyStatement(new PolicyStatementProps
+                {
+                    Actions = new[] { "bedrock:InvokeModel" },
+                    Resources = bedrockResources
+                })
+            }
+        });
 
         // EventBridge rule: Transcribe emits a "Transcribe Job State Change" event when a batch job
         // settles. Filter to terminal states so the handler only runs once per job (COMPLETED →

@@ -29,7 +29,8 @@ public record EventMetadata(
     string? UserId,         // null until Phase 7 auth lands
     string? CorrelationId,  // trace id from the API request
     string? CausationId,    // event id of the event that caused this one (if any)
-    string? WorkspaceId = null  // Phase 23-B: workspace the write happened in; null on pre-23-B events
+    string? WorkspaceId = null, // Phase 23-B: workspace the write happened in; null on pre-23-B events
+    string? UserName = null     // Phase 33-B2: writer's display name (HTTP path) → folded into NoteDetail.OwnerName so the async re-analysis can attribute action items; null on pre-33-B2 events / non-HTTP writes
 );
 ```
 

@@ -60,10 +60,10 @@ vi.mock('../components/RecordControl', () => ({
       data-has-initial-transcript={hasInitialTranscript ? 'true' : 'false'}
       data-initial-transcript={initialTranscript ?? ''}
     >
-      <button data-testid="transcription-record-button" onClick={() => transcription.startRecording(true)}>
+      <button data-testid="transcription-record-button" onClick={() => transcription.startRecording(true, true)}>
         Record
       </button>
-      <button data-testid="mock-start-recording" onClick={() => transcription.startRecording(true)}>
+      <button data-testid="mock-start-recording" onClick={() => transcription.startRecording(true, true)}>
         Start recording
       </button>
     </div>

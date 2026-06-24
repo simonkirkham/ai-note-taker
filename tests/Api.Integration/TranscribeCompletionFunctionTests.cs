@@ -21,6 +21,7 @@ public sealed class TranscribeCompletionFunctionTests
     private readonly InMemoryEventStore _events = new();
     private readonly FakeResultFetcher _fetcher = new();
     private readonly CountingMetrics _metrics = new();
+    private readonly FakeNoteAnalysisService _analysis = new();
 
     private TranscribeCompletionFunction NewFunction()
     {
@@ -28,10 +29,14 @@ public sealed class TranscribeCompletionFunctionTests
         services.AddSingleton<ITranscriptionResultFetcher>(_fetcher);
         services.AddSingleton<IDiarizedTranscriptWriter>(new DiarizedTranscriptWriter(_events));
         services.AddSingleton<ITranscribeCompletionMetrics>(_metrics);
-        services.AddSingleton(NullLogger<TranscribeCompletionFunction>.Instance);
+        services.AddSingleton<EventStore.IEventStore>(_events);
+        services.AddSingleton<INoteAnalysisService>(_analysis);
         services.AddSingleton<Microsoft.Extensions.Logging.ILogger<TranscribeCompletionFunction>>(NullLogger<TranscribeCompletionFunction>.Instance);
         return new TranscribeCompletionFunction(services.BuildServiceProvider());
     }
+
+    // Job name with the 33-B2 analyse flag (default off → no re-analysis, isolating transcript behaviour).
+    private static string Job(NoteId noteId, bool analyse = false) => DiarizationJobNames.For(noteId.ToString(), analyse);
 
     private async Task<NoteId> SeedStreamedNoteAsync()
     {
@@ -49,7 +54,7 @@ public sealed class TranscribeCompletionFunctionTests
     public async Task Completed_AppendsDiarizedTranscript_ReplacingStreamed()
     {
         var noteId = await SeedStreamedNoteAsync();
-        var job = DiarizationJobNames.For(noteId.ToString());
+        var job = Job(noteId);
         _fetcher.Result = new TranscribeJobResult(TwoSpeakerJson, $"recordings/{noteId}/take.wav", 1500);
 
         await NewFunction().Handle(Event(job, "COMPLETED"), null!);
@@ -64,7 +69,7 @@ public sealed class TranscribeCompletionFunctionTests
     public async Task Failed_KeepsStreamedTranscript_AndRecordsFailure()
     {
         var noteId = await SeedStreamedNoteAsync();
-        var job = DiarizationJobNames.For(noteId.ToString());
+        var job = Job(noteId);
 
         await NewFunction().Handle(Event(job, "FAILED"), null!);
 
@@ -77,7 +82,7 @@ public sealed class TranscribeCompletionFunctionTests
     public async Task Completed_EmptyDiarizedText_KeepsStreamedTranscript_WithoutFailingAlarm()
     {
         var noteId = await SeedStreamedNoteAsync();
-        var job = DiarizationJobNames.For(noteId.ToString());
+        var job = Job(noteId);
         _fetcher.Result = new TranscribeJobResult("""{ "results": { "items": [] } }""", $"recordings/{noteId}/take.wav", 100);
 
         await NewFunction().Handle(Event(job, "COMPLETED"), null!);
@@ -93,7 +98,7 @@ public sealed class TranscribeCompletionFunctionTests
     public async Task Completed_PoisonResultJson_DoesNotThrow_KeepsStreamedTranscript()
     {
         var noteId = await SeedStreamedNoteAsync();
-        var job = DiarizationJobNames.For(noteId.ToString());
+        var job = Job(noteId);
         _fetcher.Result = new TranscribeJobResult("not json at all", $"recordings/{noteId}/take.wav", 100);
 
         var ex = await Record.ExceptionAsync(() => NewFunction().Handle(Event(job, "COMPLETED"), null!));
@@ -112,6 +117,67 @@ public sealed class TranscribeCompletionFunctionTests
         Assert.Null(ex);
         Assert.Equal(0, _metrics.Completed);
         Assert.Equal(0, _metrics.Failed);
+    }
+
+    // ── 33-B2: re-analysis on the winning transcript ──────────────────────────────
+    [Fact]
+    public async Task Completed_WithAnalyseFlag_AnalysesOnDiarizedText()
+    {
+        var noteId = await SeedStreamedNoteAsync();
+        var job = Job(noteId, analyse: true);
+        _fetcher.Result = new TranscribeJobResult(TwoSpeakerJson, $"recordings/{noteId}/take.wav", 1500);
+
+        await NewFunction().Handle(Event(job, "COMPLETED"), null!);
+
+        var call = Assert.Single(_analysis.Calls);
+        Assert.Equal(noteId.ToString(), call.NoteId);
+        Assert.Equal(UserId, call.UserId);
+        Assert.Equal(WorkspaceId, call.WorkspaceId);
+        Assert.Equal("Speaker 1: Hello there.\nSpeaker 2: Hi", call.TranscriptOverride); // the diarized text, not stale projection
+    }
+
+    [Fact]
+    public async Task Failed_WithAnalyseFlag_AnalysesOnStreamedTranscript_AsFallback()
+    {
+        var noteId = await SeedStreamedNoteAsync();
+        var job = Job(noteId, analyse: true);
+
+        await NewFunction().Handle(Event(job, "FAILED"), null!);
+
+        // No diarized event (job failed), but the deferred analyse still runs — on the streamed
+        // transcript (null override → the service reads the stored transcript). Analysed exactly once.
+        Assert.Empty(await DiarizedEnvelopes(noteId));
+        var call = Assert.Single(_analysis.Calls);
+        Assert.Null(call.TranscriptOverride);
+        Assert.Equal(UserId, call.UserId);
+    }
+
+    [Fact]
+    public async Task Completed_WithoutAnalyseFlag_DoesNotAnalyse()
+    {
+        var noteId = await SeedStreamedNoteAsync();
+        var job = Job(noteId, analyse: false); // auto-analyse was OFF — diarize only
+        _fetcher.Result = new TranscribeJobResult(TwoSpeakerJson, $"recordings/{noteId}/take.wav", 1500);
+
+        await NewFunction().Handle(Event(job, "COMPLETED"), null!);
+
+        Assert.Single(await DiarizedEnvelopes(noteId)); // transcript still diarized
+        Assert.Empty(_analysis.Calls);                  // but NOT analysed
+    }
+
+    [Fact]
+    public async Task Completed_AnalysisThrows_DiarizedTranscriptStillPersisted()
+    {
+        var noteId = await SeedStreamedNoteAsync();
+        var job = Job(noteId, analyse: true);
+        _fetcher.Result = new TranscribeJobResult(TwoSpeakerJson, $"recordings/{noteId}/take.wav", 1500);
+        _analysis.Throw = true;
+
+        var ex = await Record.ExceptionAsync(() => NewFunction().Handle(Event(job, "COMPLETED"), null!));
+
+        Assert.Null(ex); // re-analysis is best-effort — never rolls back the transcript
+        Assert.Single(await DiarizedEnvelopes(noteId));
+        Assert.Equal(1, _metrics.Completed);
     }
 
     private async Task<string> DiarizedTranscriptOf(NoteId noteId)
@@ -167,5 +233,19 @@ public sealed class TranscribeCompletionFunctionTests
         public int Failed;
         public void BatchCompleted(double durationMs) => Completed++;
         public void BatchFailed() => Failed++;
+    }
+
+    private sealed class FakeNoteAnalysisService : INoteAnalysisService
+    {
+        public readonly List<(string NoteId, string UserId, string? WorkspaceId, string? TranscriptOverride)> Calls = [];
+        public bool Throw;
+
+        public Task<AnalysisOutcome> AnalyseAsync(NoteId noteId, string userId, string? workspaceId,
+            string userName, string? transcriptOverride, CancellationToken ct = default)
+        {
+            if (Throw) throw new InvalidOperationException("analysis boom");
+            Calls.Add((noteId.ToString(), userId, workspaceId, transcriptOverride));
+            return Task.FromResult(AnalysisOutcome.Analysed);
+        }
     }
 }
