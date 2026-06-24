@@ -1,5 +1,6 @@
 import clsx from "clsx";
 import { useDeferredValue, useMemo, useState } from "react";
+import { useSearchParams } from "react-router";
 import { NoteCard as NoteCardData, SearchResult } from "../api/notes";
 import { effectiveDate, isEditedToday, localTodayISO } from "../dates";
 import { type SearchState, useNoteSearch } from "../hooks/useNoteSearch";
@@ -63,16 +64,52 @@ export default function ListView({
   onMoveNoteToWorkspace?: (noteId: string, workspaceId: string) => void;
 }) {
   const { data: tagEntries = [] } = useTags();
-  const [selectedTags, setSelectedTags] = useState<string[]>([]);
-  const [filterMode, setFilterMode] = useState<"AND" | "OR">("AND");
-  const [showOlder, setShowOlder] = useState(false);
+  // CHANGE-23: every home-list filter lives in the URL query string, so opening
+  // a note (a push navigation) and pressing Back restores the URL — and with it
+  // the populated filters. The four filters are derived from `searchParams` and
+  // every setter writes them back with `replace: true`, so typing/filtering does
+  // not spam the history stack (only opening a note pushes).
+  const [searchParams, setSearchParams] = useSearchParams();
+  const query = searchParams.get("q") ?? "";
+  const selectedTags = searchParams.getAll("tag");
+  const filterMode: "AND" | "OR" = searchParams.get("mode") === "OR" ? "OR" : "AND";
+  const showOlder = searchParams.get("older") === "1";
   // Tracks that the current "show older" ON-state was turned on automatically by
   // applying a tag filter (CHANGE-19), as opposed to a user ticking the box.
   // Only an auto-enable is reverted when the filter clears; a pre-existing user
-  // preference, or a manual untick while filtering, is left untouched.
+  // preference, or a manual untick while filtering, is left untouched. Stays
+  // local: it is an internal CHANGE-19 detail, not a user-facing filter value.
   const [olderAutoEnabled, setOlderAutoEnabled] = useState(false);
   const [filtersOpen, setFiltersOpen] = useState(false);
-  const [query, setQuery] = useState("");
+
+  // Write a partial filter update back to the URL, preserving any unrelated
+  // params. Omitted keys keep their current value; `replace` avoids a history
+  // entry per keystroke/toggle.
+  function writeFilters(next: {
+    query?: string;
+    tags?: string[];
+    mode?: "AND" | "OR";
+    older?: boolean;
+  }) {
+    const params = new URLSearchParams(searchParams);
+    const q = next.query ?? query;
+    if (q) params.set("q", q);
+    else params.delete("q");
+    const tags = next.tags ?? selectedTags;
+    params.delete("tag");
+    tags.forEach((t) => params.append("tag", t));
+    const mode = next.mode ?? filterMode;
+    if (mode === "OR") params.set("mode", "OR");
+    else params.delete("mode");
+    const older = next.older ?? showOlder;
+    if (older) params.set("older", "1");
+    else params.delete("older");
+    setSearchParams(params, { replace: true });
+  }
+
+  const setQuery = (value: string) => writeFilters({ query: value });
+  const setFilterMode = (mode: "AND" | "OR") => writeFilters({ mode });
+
   // The input stays bound to `query` (updates synchronously on every keystroke);
   // the expensive search fetch + list re-derivation run off the deferred copy as
   // a non-urgent update, so typing never blocks on the heavy work (19-I3).
@@ -136,38 +173,40 @@ export default function ListView({
   }, [filteredCards, showOlder]);
 
   // CHANGE-19: applying the first tag auto-enables "show older"; removing the
-  // last tag reverts an auto-enable. The older state is adjusted on the 0↔non-0
-  // selection transition in the user-action handler (not an effect) so a manual
-  // untick or a pre-existing preference is kept.
-  function applyOlderForSelection(prevCount: number, nextCount: number) {
+  // last tag reverts an auto-enable. Returns the next "show older" value for the
+  // 0↔non-0 selection transition so the caller can write tags + older to the URL
+  // in one update; computed in the user-action handler (not an effect) so a
+  // manual untick or a pre-existing preference is kept.
+  function nextOlderForSelection(prevCount: number, nextCount: number): boolean {
     if (prevCount === 0 && nextCount > 0 && !showOlder) {
-      setShowOlder(true);
       setOlderAutoEnabled(true);
-    } else if (nextCount === 0 && olderAutoEnabled) {
-      setShowOlder(false);
-      setOlderAutoEnabled(false);
+      return true;
     }
+    if (nextCount === 0 && olderAutoEnabled) {
+      setOlderAutoEnabled(false);
+      return false;
+    }
+    return showOlder;
   }
 
   function toggleTag(tag: string) {
     const next = selectedTags.includes(tag)
       ? selectedTags.filter((t) => t !== tag)
       : [...selectedTags, tag];
-    applyOlderForSelection(selectedTags.length, next.length);
-    setSelectedTags(next);
+    const older = nextOlderForSelection(selectedTags.length, next.length);
+    writeFilters({ tags: next, older });
   }
 
   function clearFilter() {
-    applyOlderForSelection(selectedTags.length, 0);
-    setSelectedTags([]);
-    setFilterMode("AND");
+    const older = nextOlderForSelection(selectedTags.length, 0);
+    writeFilters({ tags: [], mode: "AND", older });
   }
 
   function handleShowOlderChange(checked: boolean) {
-    setShowOlder(checked);
     // Any manual change makes the state user-driven, so a later filter-clear
     // must not revert it.
     setOlderAutoEnabled(false);
+    writeFilters({ older: checked });
   }
 
   const isInFolder = !!currentFolderId;

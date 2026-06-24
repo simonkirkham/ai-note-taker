@@ -422,6 +422,24 @@ public sealed class AppPage
         }
     }
 
+    // CHANGE-23: the home search box (type=search → role searchbox). Filling it writes the
+    // term to the URL (?q=…), so the search survives a reload or a Back navigation.
+    private ILocator SearchBox => page.GetByRole(AriaRole.Searchbox, new() { Name = "Search notes" });
+
+    public async Task SearchAsync(string query)
+    {
+        await SearchBox.FillAsync(query);
+    }
+
+    // Assert the search box currently holds `query` — the CHANGE-23 proof that a filter
+    // survives Back. Auto-waits, so it tolerates the brief re-render after navigation.
+    public Task AssertSearchQueryAsync(string query) =>
+        Assertions.Expect(SearchBox).ToHaveValueAsync(query);
+
+    // Browser Back (history.back). Distinct from a hard GotoPath — exercises the SPA's own
+    // history entry, which carries the CHANGE-23 ?q/?tag/?older query string.
+    public async Task GoBackAsync() => await page.GoBackAsync();
+
     // Reload-tolerant: the card's tag pill is projector-built (async) since RYW-2, so the post-save
     // gated read can be `stale` on a cold projector — reload to re-gate until the pill shows.
     public Task AssertCardTagVisibleAfterReloadAsync(string cardTitle, string tag) =>
