@@ -170,6 +170,13 @@ jobs:
         run: dotnet publish src/Projector/Projector.csproj -c Release -o
           src/Projector/bin/Release/net10.0/publish
 
+      # 33-B1: the batch-diarization completion Lambda is a third asset; its publish dir
+      # must hold a real build before `cdk synth`/`cdk deploy` or it ships an empty asset.
+      - name: Publish TranscribeCompletion Lambda
+        if: needs.detect-changes.outputs.backend == 'true'
+        run: dotnet publish src/TranscribeCompletion/TranscribeCompletion.csproj -c Release -o
+          src/TranscribeCompletion/bin/Release/net10.0/publish
+
       - name: Deploy infrastructure
         if: needs.detect-changes.outputs.backend == 'true'
         run: cdk deploy --all --require-approval never
@@ -512,6 +519,13 @@ jobs:
         if: needs.detect-changes.outputs.backend == 'true'
         run: dotnet publish src/Projector/Projector.csproj -c Release -o
           src/Projector/bin/Release/net10.0/publish
+
+      # 33-B1: the batch-diarization completion Lambda is a third asset; its publish dir
+      # must hold a real build before `cdk synth`/`cdk deploy` or it ships an empty asset.
+      - name: Publish TranscribeCompletion Lambda
+        if: needs.detect-changes.outputs.backend == 'true'
+        run: dotnet publish src/TranscribeCompletion/TranscribeCompletion.csproj -c Release -o
+          src/TranscribeCompletion/bin/Release/net10.0/publish
 
       - name: Deploy infrastructure
         if: needs.detect-changes.outputs.backend == 'true'

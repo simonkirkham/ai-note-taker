@@ -13,7 +13,8 @@ public class InfraAssertionsTests
     private static Dictionary<string, object> AssetContext() => new()
     {
         ["lambdaAssetPath"] = AppContext.BaseDirectory,
-        ["projectorAssetPath"] = AppContext.BaseDirectory
+        ["projectorAssetPath"] = AppContext.BaseDirectory,
+        ["transcribeCompletionAssetPath"] = AppContext.BaseDirectory
     };
 
     private static Template BuildTemplate()
@@ -660,6 +661,72 @@ public class InfraAssertionsTests
                         ["Action"] = "bedrock:InvokeModel",
                         ["Effect"] = "Allow"
                     })
+                })
+            })
+        }));
+    }
+
+    [Fact]
+    public void CommandFunction_HasStartTranscriptionJobPermission()
+    {
+        // 33-B1: the diarize endpoint starts a batch job. No DataAccessRole is passed, so
+        // Transcribe acts as the Command function's identity (which already holds recordings/* RW).
+        _template.HasResourceProperties("AWS::IAM::Policy", Match.ObjectLike(new Dictionary<string, object>
+        {
+            ["PolicyDocument"] = Match.ObjectLike(new Dictionary<string, object>
+            {
+                ["Statement"] = Match.ArrayWith(new object[]
+                {
+                    Match.ObjectLike(new Dictionary<string, object>
+                    {
+                        ["Action"] = "transcribe:StartTranscriptionJob",
+                        ["Effect"] = "Allow"
+                    })
+                })
+            })
+        }));
+    }
+
+    [Fact]
+    public void TranscribeCompletionFunction_Exists()
+    {
+        _template.HasResourceProperties("AWS::Lambda::Function", Match.ObjectLike(new Dictionary<string, object>
+        {
+            ["Handler"] = "TranscribeCompletion::TranscribeCompletion.TranscribeCompletionFunction::Handle"
+        }));
+    }
+
+    [Fact]
+    public void TranscribeCompletionFunction_HasGetTranscriptionJobPermission()
+    {
+        _template.HasResourceProperties("AWS::IAM::Policy", Match.ObjectLike(new Dictionary<string, object>
+        {
+            ["PolicyDocument"] = Match.ObjectLike(new Dictionary<string, object>
+            {
+                ["Statement"] = Match.ArrayWith(new object[]
+                {
+                    Match.ObjectLike(new Dictionary<string, object>
+                    {
+                        ["Action"] = "transcribe:GetTranscriptionJob",
+                        ["Effect"] = "Allow"
+                    })
+                })
+            })
+        }));
+    }
+
+    [Fact]
+    public void TranscribeJobStateChangeRule_RoutesTerminalStatesToCompletionLambda()
+    {
+        _template.HasResourceProperties("AWS::Events::Rule", Match.ObjectLike(new Dictionary<string, object>
+        {
+            ["EventPattern"] = Match.ObjectLike(new Dictionary<string, object>
+            {
+                ["source"] = new[] { "aws.transcribe" },
+                ["detail-type"] = new[] { "Transcribe Job State Change" },
+                ["detail"] = Match.ObjectLike(new Dictionary<string, object>
+                {
+                    ["TranscriptionJobStatus"] = new[] { "COMPLETED", "FAILED" }
                 })
             })
         }));

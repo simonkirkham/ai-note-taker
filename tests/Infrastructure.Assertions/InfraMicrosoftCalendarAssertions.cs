@@ -14,7 +14,8 @@ public class InfraMicrosoftCalendarAssertions
     private static Dictionary<string, object> AssetContext() => new()
     {
         ["lambdaAssetPath"] = AppContext.BaseDirectory,
-        ["projectorAssetPath"] = AppContext.BaseDirectory
+        ["projectorAssetPath"] = AppContext.BaseDirectory,
+        ["transcribeCompletionAssetPath"] = AppContext.BaseDirectory
     };
 
     private static Template Build(NoteTakerStackProps props)

@@ -21,7 +21,10 @@ public sealed class TranscribeBatchJobStarter(IAmazonTranscribeService transcrib
             MediaFormat = MediaFormat.Wav,
             Media = new Media { MediaFileUri = $"s3://{bucketName}/{audioKey}" },
             OutputBucketName = bucketName,
-            OutputKey = $"transcripts/{jobName}.json",
+            // Output under recordings/ so the Command Lambda's existing recordings/* S3 grant covers
+            // the write (no DataAccessRole → Transcribe writes as the caller's identity), and the
+            // 7-day bucket lifecycle expires the result JSON alongside the audio.
+            OutputKey = $"recordings/transcripts/{jobName}.json",
             Settings = new Settings
             {
                 ShowSpeakerLabels = true,
