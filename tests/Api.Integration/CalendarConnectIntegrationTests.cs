@@ -6,7 +6,9 @@ using Microsoft.Extensions.DependencyInjection;
 
 namespace Api.Integration;
 
-// Phase 34-A: in-app "Connect Google Calendar" → server-side per-user token store.
+// Phase 34-A: in-app "Connect Google Calendar" → server-side token store. These exercise the
+// default workspace (the harness rewrites un-prefixed `/calendar/*` to `/w/__default__/...`);
+// per-workspace keying + isolation is covered in WorkspaceCalendarConnectIntegrationTests.
 public sealed class CalendarConnectIntegrationTests : IClassFixture<ApiFactory>
 {
     private readonly ApiFactory _factory;
@@ -15,6 +17,7 @@ public sealed class CalendarConnectIntegrationTests : IClassFixture<ApiFactory>
     private readonly InMemoryCalendarTokenStore _store;
 
     private const string TestUser = FakeCurrentUser.TestUserId;
+    private const string DefaultWs = Domain.Workspaces.WorkspaceId.DefaultValue;
 
     public CalendarConnectIntegrationTests(ApiFactory factory)
     {
@@ -55,7 +58,7 @@ public sealed class CalendarConnectIntegrationTests : IClassFixture<ApiFactory>
         Assert.True(body.GetProperty("connected").GetBoolean());
         Assert.Equal("owner@example.com", body.GetProperty("email").GetString());
 
-        var stored = _store.Peek(TestUser, "google");
+        var stored = _store.Peek(TestUser, DefaultWs, "google");
         Assert.NotNull(stored);
         Assert.Equal("rt-google-123", stored!.RefreshToken);
         Assert.Equal("owner@example.com", stored.Email);
@@ -71,7 +74,7 @@ public sealed class CalendarConnectIntegrationTests : IClassFixture<ApiFactory>
         Assert.Equal(HttpStatusCode.BadRequest, resp.StatusCode);
         var body = await resp.Content.ReadFromJsonAsync<JsonElement>();
         Assert.Equal("reconsent_required", body.GetProperty("error").GetString());
-        Assert.False(_store.Has(TestUser, "google"));
+        Assert.False(_store.Has(TestUser, DefaultWs, "google"));
     }
 
     [Fact]
@@ -86,13 +89,15 @@ public sealed class CalendarConnectIntegrationTests : IClassFixture<ApiFactory>
     {
         var body = await (await _client.GetAsync("/calendar/connection")).Content.ReadFromJsonAsync<JsonElement>();
         Assert.Equal("needs_auth", body.GetProperty("status").GetString());
-        Assert.Equal("google", body.GetProperty("provider").GetString());
+        // 34-C: provider is null when unconnected (no longer a fixed "google") — the workspace has no
+        // connected provider until one is chosen at connect time.
+        Assert.Equal(JsonValueKind.Null, body.GetProperty("provider").ValueKind);
     }
 
     [Fact]
     public async Task Connection_Connected_WithEmail_AfterConnect()
     {
-        _store.Seed(TestUser, "google", "rt-x", "owner@example.com");
+        _store.Seed(TestUser, DefaultWs, "google", "rt-x", "owner@example.com");
 
         var body = await (await _client.GetAsync("/calendar/connection")).Content.ReadFromJsonAsync<JsonElement>();
 
@@ -103,12 +108,12 @@ public sealed class CalendarConnectIntegrationTests : IClassFixture<ApiFactory>
     [Fact]
     public async Task Disconnect_RemovesToken_AndConnectionReadsNeedsAuth()
     {
-        _store.Seed(TestUser, "google", "rt-x", "owner@example.com");
+        _store.Seed(TestUser, DefaultWs, "google", "rt-x", "owner@example.com");
 
-        var disconnect = await _client.PostAsync("/calendar/disconnect/google", content: null);
+        var disconnect = await _client.PostAsync("/calendar/disconnect", content: null);
         disconnect.EnsureSuccessStatusCode();
 
-        Assert.False(_store.Has(TestUser, "google"));
+        Assert.False(_store.Has(TestUser, DefaultWs, "google"));
         var body = await (await _client.GetAsync("/calendar/connection")).Content.ReadFromJsonAsync<JsonElement>();
         Assert.Equal("needs_auth", body.GetProperty("status").GetString());
     }
@@ -116,14 +121,20 @@ public sealed class CalendarConnectIntegrationTests : IClassFixture<ApiFactory>
     [Fact]
     public async Task Connect_IsolatedPerUser()
     {
-        // Connect as the default user, then a different user sees needs_auth.
+        // Two users share the default workspace id (`__default__`), so this is the load-bearing
+        // check that the token key's userId partition prevents a cross-user leak there. Assert at
+        // the HTTP `connection` read (not just the store) in BOTH directions.
         _oauth.ExchangeResult = FakeGoogleOAuthClient.Success(Jwt(new { sub = TestUser, email = "a@example.com" }), "rt-a");
         (await _client.PostAsync("/calendar/connect/google", ConnectBody())).EnsureSuccessStatusCode();
 
+        var mine = await (await _client.GetAsync("/calendar/connection")).Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("connected", mine.GetProperty("status").GetString());
+
         var other = _factory.CreateClientAsOtherUser();
-        var body = await (await other.GetAsync("/calendar/connection")).Content.ReadFromJsonAsync<JsonElement>();
-        Assert.Equal("needs_auth", body.GetProperty("status").GetString());
-        Assert.True(_store.Has(TestUser, "google"));
-        Assert.False(_store.Has(ApiFactory.OtherTestUserId, "google"));
+        var theirs = await (await other.GetAsync("/calendar/connection")).Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("needs_auth", theirs.GetProperty("status").GetString());
+
+        Assert.True(_store.Has(TestUser, DefaultWs, "google"));
+        Assert.False(_store.Has(ApiFactory.OtherTestUserId, DefaultWs, "google"));
     }
 }

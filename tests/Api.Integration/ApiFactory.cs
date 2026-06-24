@@ -53,12 +53,20 @@ public class ApiFactory : WebApplicationFactory<Program>
             // including `WithWebHostBuilder`-derived ones, which bypass a per-client handler.
             // Set the `X-Test-No-Prefix` header to opt out (used to assert rootless paths 404).
             services.AddSingleton<IStartupFilter, WorkspacePrefixStartupFilter>();
-            services.RemoveAll<ICalendarClient>();
+            // 34-C: handlers resolve the calendar client via ICalendarClientFactory, so override the
+            // factory (not a single ICalendarClient) to always return the FakeCalendarClient. Tests
+            // resolve FakeCalendarClient directly to stage events; provider-resolution logic is
+            // covered separately in CalendarClientFactoryTests.
             services.AddSingleton<FakeCalendarClient>();
-            services.AddSingleton<ICalendarClient>(sp => sp.GetRequiredService<FakeCalendarClient>());
+            services.RemoveAll<ICalendarClientFactory>();
+            services.AddSingleton<ICalendarClientFactory>(sp =>
+                new FixedCalendarClientFactory(sp.GetRequiredService<FakeCalendarClient>()));
             services.RemoveAll<IGoogleOAuthClient>();
             services.AddSingleton<FakeGoogleOAuthClient>();
             services.AddSingleton<IGoogleOAuthClient>(sp => sp.GetRequiredService<FakeGoogleOAuthClient>());
+            services.RemoveAll<IMicrosoftOAuthClient>();
+            services.AddSingleton<FakeMicrosoftOAuthClient>();
+            services.AddSingleton<IMicrosoftOAuthClient>(sp => sp.GetRequiredService<FakeMicrosoftOAuthClient>());
             services.RemoveAll<IRefreshTokenStore>();
             services.AddSingleton<InMemoryRefreshTokenStore>();
             services.AddSingleton<IRefreshTokenStore>(sp => sp.GetRequiredService<InMemoryRefreshTokenStore>());
@@ -164,10 +172,12 @@ public class ApiFactory : WebApplicationFactory<Program>
     // Runs in the test server pipeline, so it covers every client (incl. WithWebHostBuilder).
     private sealed class WorkspacePrefixStartupFilter : IStartupFilter
     {
-        private static readonly string[] ScopedPrefixes = ["/notes", "/folders", "/todos", "/tags"];
-        // `/notes/*` paths that are NOT workspace-scoped (mapped globally) — mirror the
-        // frontend's GLOBAL_PATH_PREFIXES so they are never rewritten.
-        private static readonly string[] GlobalExceptions = ["/notes/from-meeting", "/notes/from-next-occurrence"];
+        // 34-B: `/calendar/*` (meetings + connect/connection/disconnect) and the meeting-note
+        // creation routes are now workspace-scoped, so they are rewritten like the rest.
+        private static readonly string[] ScopedPrefixes = ["/notes", "/folders", "/todos", "/tags", "/calendar"];
+        // No global `/notes/*` exceptions remain since 34-B moved from-meeting/from-next-occurrence
+        // under `/w/{workspaceId}`. Kept as an explicit (empty) seam for future global routes.
+        private static readonly string[] GlobalExceptions = [];
 
         public Action<IApplicationBuilder> Configure(Action<IApplicationBuilder> next) => app =>
         {

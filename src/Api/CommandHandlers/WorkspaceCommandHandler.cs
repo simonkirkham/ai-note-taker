@@ -58,6 +58,31 @@ public sealed class WorkspaceCommandHandler(
             return (long)(history.Count + envelopes.Count);
         });
 
+    // 34-B: connect/disconnect a calendar account for a workspace. Only ever called for a NON-default
+    // workspace (the endpoint skips the default, whose `__default__` stream is shared across users and
+    // has no per-user aggregate instance — its connection lives only in the token store).
+    public Task<long> HandleAsync(ConnectWorkspaceCalendar cmd, CancellationToken ct = default) =>
+        CommandInstrumentation.RunAsync(metrics, logger, nameof(ConnectWorkspaceCalendar), "Workspace", async () =>
+        {
+            var streamId = cmd.WorkspaceId.ToStreamId();
+            var history = await store.ReadAsync(streamId, ct).ConfigureAwait(false);
+            if (history.Count == 0) throw new WorkspaceNotFoundException(cmd.WorkspaceId);
+            var newEvents = Rebuild(history).Handle(cmd);
+            if (newEvents.Count == 0) return (long)history.Count;
+            return await PersistAsync(streamId, history, newEvents, ct).ConfigureAwait(false);
+        });
+
+    public Task<long> HandleAsync(DisconnectWorkspaceCalendar cmd, CancellationToken ct = default) =>
+        CommandInstrumentation.RunAsync(metrics, logger, nameof(DisconnectWorkspaceCalendar), "Workspace", async () =>
+        {
+            var streamId = cmd.WorkspaceId.ToStreamId();
+            var history = await store.ReadAsync(streamId, ct).ConfigureAwait(false);
+            if (history.Count == 0) throw new WorkspaceNotFoundException(cmd.WorkspaceId);
+            var newEvents = Rebuild(history).Handle(cmd);
+            if (newEvents.Count == 0) return (long)history.Count;
+            return await PersistAsync(streamId, history, newEvents, ct).ConfigureAwait(false);
+        });
+
     private async Task<long> PersistAsync(string streamId, IReadOnlyList<EventEnvelope> history, IReadOnlyList<IDomainEvent> newEvents, CancellationToken ct)
     {
         var envelopes = ToEnvelopes(streamId, newEvents);

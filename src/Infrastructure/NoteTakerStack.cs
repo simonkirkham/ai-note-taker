@@ -819,17 +819,25 @@ public sealed class NoteTakerStack : Stack
         });
 
         // Side-service GETs that need write-path credentials, not projections → Command.
+        // 34-B: calendar reads are now workspace-scoped under `/w/{workspaceId}/calendar/...`, so the
+        // pins move to the prefixed paths (the bare `/calendar/...` routes no longer exist). The
+        // meetings GET needs the Google/SSM-backed ICalendarClient; the connection GET hits the
+        // calendar-token store — both granted to Command, not Query.
+        // NOTE (deploy ordering): these route pins are part of the backend artifact, so they only
+        // reach prod via a `cdk deploy` (detect-changes backend=true). The matching frontend change
+        // (the api client now sends `/w/{wsId}/calendar/...`) ships independently as a web asset, so
+        // a deploy that carries the frontend but skips the backend leaves the new calls hitting the
+        // generic `/{proxy+}`→Query route (404). Frontend and these pins must land in the SAME
+        // backend deploy — see docs/learnings/phase-34b-workspace-calendar.md.
         httpApi.AddRoutes(new Amazon.CDK.AWS.Apigatewayv2.AddRoutesOptions
         {
-            Path = "/calendar/{date}",
+            Path = "/w/{workspaceId}/calendar/{date}",
             Methods = new[] { Amazon.CDK.AWS.Apigatewayv2.HttpMethod.GET },
             Integration = commandIntegration
         });
-        // 34-A: calendar connection status read hits the calendar-token store (granted to Command,
-        // not Query). Pinned explicitly so it never routes to the Query function.
         httpApi.AddRoutes(new Amazon.CDK.AWS.Apigatewayv2.AddRoutesOptions
         {
-            Path = "/calendar/connection",
+            Path = "/w/{workspaceId}/calendar/connection",
             Methods = new[] { Amazon.CDK.AWS.Apigatewayv2.HttpMethod.GET },
             Integration = commandIntegration
         });

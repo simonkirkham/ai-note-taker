@@ -183,6 +183,7 @@ public static class Builder
             new DynamoDbHealthCheck(sp.GetRequiredService<IAmazonDynamoDB>(), eventTableName));
         Api.Services.CalendarClientRegistration.Register(builder.Services);
         builder.Services.AddHttpClient<IGoogleOAuthClient, GoogleOAuthClient>(c => c.Timeout = TimeSpan.FromSeconds(10));
+        builder.Services.AddHttpClient<IMicrosoftOAuthClient, MicrosoftOAuthClient>(c => c.Timeout = TimeSpan.FromSeconds(10));
         builder.Services.AddSingleton<IRefreshTokenStore>(sp =>
             new DynamoDbRefreshTokenStore(sp.GetRequiredService<IAmazonDynamoDB>(), authTokensTableName));
         builder.Services.AddSingleton<ICalendarTokenStore>(sp =>

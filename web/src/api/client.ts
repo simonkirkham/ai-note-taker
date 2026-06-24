@@ -11,10 +11,9 @@ export const base = "/api";
 // subtree without the router (msw intercepts those, so the removed rootless backend
 // routes are never reached).
 const GLOBAL_PATH_PREFIXES = [
-  '/calendar',
+  // 34-B moved /calendar/* and the meeting-note creation routes under /w/{wsId} (each
+  // workspace has its own calendar connection), so they are NO LONGER global.
   '/transcription/credentials',
-  '/notes/from-meeting',
-  '/notes/from-next-occurrence',
   '/workspaces',
   '/admin',
 ];

@@ -3,9 +3,11 @@ using Amazon.DynamoDBv2.Model;
 
 namespace Api.Auth;
 
-// (sub, provider)-keyed calendar token store — mirrors DynamoDbRefreshTokenStore but with a
-// provider sort key so one user can connect Google and Microsoft independently (34-C) and the
-// key can later widen to workspace (34-B). Table: notetaker-calendar-tokens (PK sub, SK provider).
+// Calendar token store keyed by (userId, workspaceId, provider) since 34-B. The physical DynamoDB
+// schema is unchanged from 34-A — PK "sub" (= userId), SK "provider" — to avoid a RETAIN-table
+// replacement (the SK now holds a "{workspaceId}#{provider}" composite). Keeping userId as the
+// partition key isolates the shared default workspace (`__default__`) between users; the workspace
+// scopes the connection within a user. Table: notetaker-calendar-tokens.
 public sealed class DynamoDbCalendarTokenStore(IAmazonDynamoDB dynamo, string tableName) : ICalendarTokenStore
 {
     private const string PartitionKey = "sub";
@@ -13,12 +15,14 @@ public sealed class DynamoDbCalendarTokenStore(IAmazonDynamoDB dynamo, string ta
     private const string TokenAttribute = "refreshToken";
     private const string EmailAttribute = "email";
 
-    public async Task UpsertAsync(string sub, string provider, string refreshToken, string? email, CancellationToken ct = default)
+    private static string Sort(string workspaceId, string provider) => $"{workspaceId}#{provider}";
+
+    public async Task UpsertAsync(string userId, string workspaceId, string provider, string refreshToken, string? email, CancellationToken ct = default)
     {
         var item = new Dictionary<string, AttributeValue>
         {
-            [PartitionKey] = new() { S = sub },
-            [SortKey] = new() { S = provider },
+            [PartitionKey] = new() { S = userId },
+            [SortKey] = new() { S = Sort(workspaceId, provider) },
             [TokenAttribute] = new() { S = refreshToken }
         };
         if (!string.IsNullOrEmpty(email))
@@ -28,15 +32,15 @@ public sealed class DynamoDbCalendarTokenStore(IAmazonDynamoDB dynamo, string ta
             .ConfigureAwait(false);
     }
 
-    public async Task<CalendarToken?> GetAsync(string sub, string provider, CancellationToken ct = default)
+    public async Task<CalendarToken?> GetAsync(string userId, string workspaceId, string provider, CancellationToken ct = default)
     {
         var response = await dynamo.GetItemAsync(new GetItemRequest
         {
             TableName = tableName,
             Key = new Dictionary<string, AttributeValue>
             {
-                [PartitionKey] = new() { S = sub },
-                [SortKey] = new() { S = provider }
+                [PartitionKey] = new() { S = userId },
+                [SortKey] = new() { S = Sort(workspaceId, provider) }
             },
             ConsistentRead = true
         }, ct).ConfigureAwait(false);
@@ -48,15 +52,15 @@ public sealed class DynamoDbCalendarTokenStore(IAmazonDynamoDB dynamo, string ta
         return new CalendarToken(token.S, email);
     }
 
-    public async Task DeleteAsync(string sub, string provider, CancellationToken ct = default)
+    public async Task DeleteAsync(string userId, string workspaceId, string provider, CancellationToken ct = default)
     {
         await dynamo.DeleteItemAsync(new DeleteItemRequest
         {
             TableName = tableName,
             Key = new Dictionary<string, AttributeValue>
             {
-                [PartitionKey] = new() { S = sub },
-                [SortKey] = new() { S = provider }
+                [PartitionKey] = new() { S = userId },
+                [SortKey] = new() { S = Sort(workspaceId, provider) }
             }
         }, ct).ConfigureAwait(false);
     }

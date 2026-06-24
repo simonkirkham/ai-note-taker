@@ -334,13 +334,23 @@ Slices and acceptance criteria: [docs/phases/phase-33.md](phases/phase-33.md)
 
 ---
 
-## Phase 34 — Per-workspace calendars (in-app connect, multi-account) _(In Progress — 34-A done)_
+## Phase 34 — Per-workspace calendars (in-app connect, multi-account) _(In Progress — 34-A, 34-B, 34-C done)_
 
 Let each **workspace** back its meetings list with its own connected calendar account and provider — workspace A on a Google account, workspace B on Outlook — instead of one global calendar. Reached by **strangling** the single-calendar model: first replace the out-of-band SSM refresh token with an **in-app "Connect calendar" OAuth flow** (auth-code+PKCE, token exchanged + stored **server-side per entity** — this graduates **TI-47**), then **key the token + provider choice by workspace** via a new `WorkspaceCalendarConnected` event on the `Workspace` aggregate, then make provider selection **per-request** via an `ICalendarClientFactory.For(workspaceId)` (dropping the global `CALENDAR_PROVIDER` env), then retire the SSM path + mint scripts. Reuses Phase 8's Google OAuth and Phase 32's Microsoft Graph client unchanged — only the token source and provider resolution change. Four sequential slices: **34-A** in-app Google connect → server-side per-user token (keystone, SSM fallback during coexistence); **34-B** key the connection by workspace; **34-C** add Outlook as a connectable provider + per-request resolution; **34-D** retire the SSM path. Deploy-time impact: **neutral** (reuses the auth-tokens table; 34-D removes SSM grants/env). One-time prerequisite: register the calendar redirect URI in Google Cloud Console + Entra.
 
 **Goal:** each workspace independently connects and shows its own calendar (Google or Outlook), with all calendar auth done in-app and stored server-side per workspace.
 
 Slices and acceptance criteria: [docs/phases/phase-34.md](phases/phase-34.md)
+
+---
+
+## Phase 35 — Claude Cowork connector (read-only MCP server) _(Not Started)_
+
+A **read-only remote MCP server** that lets Claude **Cowork / Desktop / claude.ai** connect to a workspace as a **custom connector** and digest its notes — list, read, search, pull action items — in the user's own Claude session. For these clients a custom connector **is** a remote MCP server (the only native mechanism; they can't call a plain REST API), so this is a thin read-only MCP server over the **existing** read projections — **no new aggregates or events**. Scoped to **one workspace per connector URL** (`/w/{wsId}/mcp`, matching the Phase 23/34 routing — no in-protocol workspace selection), authenticated by **reusing the Google identity** through the connector's OAuth flow. Four slices: **35-A** *connect & list* — the end-to-end proof (MCP transport + connector OAuth + workspace-scoped read on one real Cowork call, tool `list_notes`; the high-risk slice — spike against a live Cowork client first); then independent tool additions on the proven pattern — **35-B** `get_note` (full content/summary/decisions/action items), **35-C** `search_notes`, **35-D** `get_action_items`. **Read-only this phase** — read+write (Claude creating notes) is a later phase. Infra: tool-call POSTs pin to the **Query** Lambda (read-only), OAuth endpoints to the **Command** Lambda (Google client). Deploy-time impact: **neutral** (route group + reuse of existing tables; no bake/canary), to confirm in 35-A.
+
+**Goal:** the owner adds a per-workspace connector URL in Cowork, signs in once with Google, and Claude can digest that workspace's notes — read-only, isolated to that workspace.
+
+Slices and acceptance criteria: [docs/phases/phase-35.md](phases/phase-35.md)
 
 ---
 

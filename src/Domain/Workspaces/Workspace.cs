@@ -5,6 +5,8 @@ public sealed class Workspace : IAggregate
     bool _exists;
     bool _deleted;
     string _name = string.Empty;
+    string? _calendarProvider;
+    string? _calendarAccountRef;
 
     public void Apply(IDomainEvent @event)
     {
@@ -20,6 +22,14 @@ public sealed class Workspace : IAggregate
             case WorkspaceDeleted:
                 _deleted = true;
                 break;
+            case WorkspaceCalendarConnected e:
+                _calendarProvider = e.Provider;
+                _calendarAccountRef = e.AccountRef;
+                break;
+            case WorkspaceCalendarDisconnected:
+                _calendarProvider = null;
+                _calendarAccountRef = null;
+                break;
             default:
                 break;
         }
@@ -30,6 +40,8 @@ public sealed class Workspace : IAggregate
         CreateWorkspace cmd => HandleCreate(cmd),
         RenameWorkspace cmd => HandleRename(cmd),
         DeleteWorkspace cmd => HandleDelete(cmd),
+        ConnectWorkspaceCalendar cmd => HandleConnectCalendar(cmd),
+        DisconnectWorkspaceCalendar cmd => HandleDisconnectCalendar(cmd),
         _ => throw new ArgumentOutOfRangeException(nameof(command))
     };
 
@@ -60,5 +72,27 @@ public sealed class Workspace : IAggregate
         if (!_exists || _deleted)
             throw new InvalidOperationException("Workspace does not exist.");
         return [new WorkspaceDeleted(cmd.WorkspaceId)];
+    }
+
+    IReadOnlyList<IDomainEvent> HandleConnectCalendar(ConnectWorkspaceCalendar cmd)
+    {
+        if (!_exists || _deleted)
+            throw new InvalidOperationException("Workspace does not exist.");
+        if (string.IsNullOrWhiteSpace(cmd.Provider))
+            throw new InvalidOperationException("Calendar provider must not be empty.");
+        // Reconnecting the same provider+account is a no-op (a deliberate reconnect to a different
+        // account or provider re-emits to update the stored reference).
+        if (_calendarProvider == cmd.Provider && _calendarAccountRef == cmd.AccountRef)
+            return [];
+        return [new WorkspaceCalendarConnected(cmd.WorkspaceId, cmd.Provider, cmd.AccountRef)];
+    }
+
+    IReadOnlyList<IDomainEvent> HandleDisconnectCalendar(DisconnectWorkspaceCalendar cmd)
+    {
+        if (!_exists || _deleted)
+            throw new InvalidOperationException("Workspace does not exist.");
+        if (_calendarProvider is null)
+            return [];
+        return [new WorkspaceCalendarDisconnected(cmd.WorkspaceId)];
     }
 }

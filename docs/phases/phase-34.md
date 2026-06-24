@@ -7,8 +7,8 @@
 | Slice | Summary | Status | Depends on |
 |-------|---------|--------|------------|
 | 34-A | **Connect Google Calendar in-app → server-side per-user token** (keystone; TI-47 core). A "Connect calendar" button runs auth-code+PKCE; backend stores the refresh token server-side; the meetings read uses it (SSM fallback while unconnected). Google only, per-user. | Done | — |
-| 34-B | **Key the calendar connection by workspace.** `WorkspaceCalendarConnected` event; connect associates with the current workspace; token + read resolve by `workspaceId`. Two workspaces → two different Google accounts. | Not Started | 34-A |
-| 34-C | **Add Microsoft as a connectable provider per workspace + per-request resolution.** In-app connect for Outlook; `ICalendarClientFactory.For(workspaceId)` resolves google/microsoft from the workspace's connection; drop the global `CALENDAR_PROVIDER` env. A=Google, B=Outlook. | Not Started | 34-B |
+| 34-B | **Key the calendar connection by workspace.** `WorkspaceCalendarConnected` event; connect associates with the current workspace; token + read resolve by `(userId, workspaceId)`. Two workspaces → two different Google accounts. | Done | 34-A |
+| 34-C | **Add Microsoft as a connectable provider per workspace + per-request resolution.** In-app connect for Outlook; `ICalendarClientFactory.ForAsync(workspaceId)` resolves google/microsoft from the workspace's connection (`CALENDAR_PROVIDER` kept as the unconnected fallback → removed in 34-D). A=Google, B=Outlook. | Done | 34-B |
 | 34-D | **Retire the out-of-band SSM token path + mint scripts** (strangle cleanup). Remove `CALENDAR_PROVIDER`, the SSM grants/paths, and the mint scripts once every flow is in-app. | Not Started | 34-C |
 
 Strictly sequential — this is a **strangle** of the calendar-auth model (CLAUDE.md guardrail: prove the new path on one real call, then migrate flow-by-flow with old+new coexisting until the last flow moves). 34-A proves in-app-connect + server-side token on one real Google read; 34-B/C scale it to workspace-keyed and multi-provider; 34-D removes the old path only after nothing depends on it.
@@ -88,7 +88,18 @@ Scenario: Expired/revoked stored token degrades gracefully
 
 ## Slice 34-B — Key the calendar connection by workspace
 
-**Status:** Not Started.
+**Status:** Done (PRs #327 + #329 + #330, deploy #629). Shipped via three deploys — see
+[`docs/learnings/phase-34b-workspace-calendar.md`](../learnings/phase-34b-workspace-calendar.md):
+#327's deploy flaked at the frontend gate (un-`scoped()` calendar msw handlers), and the web-only
+flake-fix shipped the frontend without the backend (404 in prod) until a backend push (#330) carried
+the route pins. Prod verified: `/w/{workspaceId}/calendar/*` routes live (401 auth-gated), old
+`/calendar/*` removed.
+
+**As-built decisions (refine the locked decisions; agreed with user):**
+1. **Token key is `(userId, workspaceId, provider)`, not `(workspaceId, provider)`.** The default workspace id `__default__` is shared across users, so keying purely by workspace would leak the default workspace's calendar between users. Physical DynamoDB schema unchanged (SK holds `{workspaceId}#{provider}`) to avoid a RETAIN-table replacement.
+2. **No new read projection (deviates from AC1).** Connection status + meetings resolve from the strongly-consistent `CalendarTokenStore` (RYW-safe); the `WorkspaceCalendarConnected/Disconnected` events are still recorded for the per-workspace provider choice 34-C needs.
+3. **Events recorded for NON-default workspaces only** — the default has no per-user aggregate stream. Best-effort: token written first (source of truth for reads), event append swallowed-and-logged on failure.
+4. Calendar routes moved under `/w/{workspaceId}` (incl. `/notes/from-meeting`, `/notes/from-next-occurrence`); the Command-pinned calendar GET routes updated in CDK so they don't fall through to the Query Lambda.
 
 **User value:** different workspaces show different calendars — connect a work Google account in one workspace and a personal one in another.
 
@@ -128,7 +139,20 @@ Scenario: A workspace with no connection
 
 ## Slice 34-C — Microsoft as a connectable provider per workspace + per-request resolution
 
-**Status:** Not Started.
+**Status:** Done (PR #331, deploy #630). Backend + frontend shipped together in one deploy (the 34-B
+route-contract lesson held); new routes verified live in prod (401 unauth, not 404). Ships dark —
+the MS in-app connect needs an Entra SPA redirect URI. See
+[`docs/learnings/phase-34c-ms-provider.md`](../learnings/phase-34c-ms-provider.md).
+
+**As-built decisions (refine the ACs; agreed with user):**
+1. **`CALENDAR_PROVIDER` is kept as the *unconnected* fallback, not dropped (deviates from AC2).** Prod is dark — it serves Microsoft via the global SSM token with zero in-app connections; dropping it now would break Home meetings. `ICalendarClientFactory.ForAsync` resolves: STUB → in-app Microsoft token → in-app Google token → `CALENDAR_PROVIDER` fallback. **34-D** removes it with the SSM path (strangle coexistence).
+2. **Provider resolved from the token store, not the aggregate** (the 34-B best-effort-event caveat) — the in-app connection is authoritative.
+3. **One provider per workspace enforced at connect time** (decision #3): connecting one provider deletes the other's token.
+4. **Generic `POST …/calendar/disconnect`** (replaces the per-provider `…/disconnect/google`) — clears whichever provider the workspace holds. `GET …/calendar/connection` is now provider-aware (`provider` is null when unconnected).
+5. **No new domain events** — 34-B's `ConnectWorkspaceCalendar(workspaceId, provider, accountRef)` already carries the provider string.
+6. **The Microsoft in-app connect ships dark** — needs an Entra **SPA redirect URI** registered in the Azure app + `VITE_MS_CLIENT_ID` (reuses the backend `MS_CLIENT_ID` secret) to exercise. The factory + per-workspace resolution + coexistence fallback are fully tested.
+
+**Carried over from 34-B review:** 34-B records `WorkspaceCalendarConnected` **best-effort** (the token store is written first and is the source of truth for reads; a failed event append only logs). So a workspace can exist where the token store says "connected" but the aggregate has no connection event. 34-C's `ICalendarClientFactory.For(workspaceId)` must therefore resolve the provider from the **token store** (authoritative), or treat a missing aggregate connection as a re-emit trigger — never assume the event is present whenever a token is.
 
 **User value:** a workspace can be backed by **Outlook** instead of Google, chosen at connect time — A on Google, B on Outlook, simultaneously.
 

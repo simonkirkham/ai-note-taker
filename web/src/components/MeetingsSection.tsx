@@ -267,12 +267,21 @@ export function MeetingsSection({ onOpenNote }: { onOpenNote: (noteId: string, t
             <p className={styles.meetingsStatusText}>
               {needsAuth ? "Connect your calendar to see your meetings" : "Cannot connect to calendar"}
             </p>
+            {/* 34-C: choose the calendar provider. Re-running either connect overwrites the
+                workspace's connection, so both buttons serve the "Reconnect" case too. */}
             <button
               data-testid="connect-calendar"
               className={styles.meetingsRetryLink}
-              onClick={() => void startCalendarConnect()}
+              onClick={() => void startCalendarConnect("google")}
             >
-              {needsAuth ? "Connect calendar" : "Reconnect"}
+              {needsAuth ? "Connect Google Calendar" : "Reconnect Google"}
+            </button>
+            <button
+              data-testid="connect-outlook"
+              className={styles.meetingsRetryLink}
+              onClick={() => void startCalendarConnect("microsoft")}
+            >
+              {needsAuth ? "Connect Outlook" : "Reconnect Outlook"}
             </button>
             {!needsAuth && (
               <button className={styles.meetingsRetryLink} onClick={handleRetry}>Retry</button>

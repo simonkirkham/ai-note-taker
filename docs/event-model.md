@@ -111,6 +111,10 @@ A named partition of a user's content (e.g. *Work* / *Personal*). A second isola
 | `CreateWorkspace(workspaceId, name)` | WorkspaceId does not exist; name non-empty | `WorkspaceCreated` |
 | `RenameWorkspace(workspaceId, newName)` | Workspace exists, not deleted; new name non-empty and differs | `WorkspaceRenamed` |
 | `DeleteWorkspace(workspaceId)` | Not the default (`__default__`); workspace exists, not deleted | `WorkspaceDeleted` |
+| `ConnectWorkspaceCalendar(workspaceId, provider, accountRef)` *(34-B)* | Workspace exists, not deleted; provider non-empty; no-op if same provider+account | `WorkspaceCalendarConnected` |
+| `DisconnectWorkspaceCalendar(workspaceId)` *(34-B)* | Workspace exists, not deleted; no-op if not connected | `WorkspaceCalendarDisconnected` |
+
+> **Calendar connect/disconnect (34-B) is recorded for NON-default workspaces only.** The reserved default workspace (`__default__`) has no per-user aggregate stream (it is synthesised, never stored, and its stream id is shared across users), so the connect endpoint skips the event for it. The authoritative per-(user, workspace) calendar credential lives in the `CalendarTokenStore` either way; the event records the provider choice for per-workspace provider resolution (34-C) plus an audit trail. Recording is best-effort — the token (written first) is the source of truth for reads.
 
 > Deleting `__default__` is rejected in the aggregate (`DefaultWorkspaceUndeletableException` → `409`). The **block-if-non-empty** pre-condition (23-C) is enforced in `WorkspaceCommandHandler` (the aggregate can't query notes): it checks the caller's active (non-deleted) note count in the target workspace via `INoteCardListStore` and throws `WorkspaceNotEmptyException` → `409`.
 >
@@ -162,6 +166,8 @@ A named partition of a user's content (e.g. *Work* / *Personal*). A second isola
 - `WorkspaceCreated { WorkspaceId, Name }`
 - `WorkspaceRenamed { WorkspaceId, NewName }`
 - `WorkspaceDeleted { WorkspaceId }` — hard-removes the `WorkspaceList` row; the stream retains the event
+- `WorkspaceCalendarConnected { WorkspaceId, Provider, AccountRef }` *(34-B)* — a calendar account is connected to the workspace; `AccountRef` is the account email (nullable). Folded by the aggregate (enforces connect/disconnect invariants); no read projection folds it (connection status is read from the strongly-consistent `CalendarTokenStore`). Never recorded for `__default__`.
+- `WorkspaceCalendarDisconnected { WorkspaceId }` *(34-B)* — clears the workspace's calendar connection.
 
 ---
 

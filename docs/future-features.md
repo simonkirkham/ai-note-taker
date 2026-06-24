@@ -67,3 +67,7 @@ Each entry records what it is, why it isn't scheduled yet, and where it was rais
 **Raised in:** User question, 2026-06-23 — "how do other apps like Chrome handle updates?" — after Phase 31 shipped the manual-reinstall installer.
 
 _(Per-workspace calendars graduated to **[Phase 34](phases/phase-34.md)** on 2026-06-23 — it absorbs TI-47 as its in-app-OAuth foundation.)_
+
+---
+
+_(Claude Cowork connector — read-only, workspace-scoped MCP server — graduated to **[Phase 35](phases/phase-35.md)** on 2026-06-24. Locked: read-only first, per-workspace connector URL `/w/{wsId}/mcp`, OAuth reusing the Google identity, no new events. Full scope and slices live in the phase doc.)_
