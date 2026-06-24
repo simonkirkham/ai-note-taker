@@ -12,7 +12,8 @@ public sealed class NoteDetailProjection
         {
             case NoteCreated e:
                 _items[e.NoteId] = new NoteDetailView(e.NoteId, string.Empty, string.Empty,
-                    envelope.OccurredAt, envelope.OccurredAt, UserId: envelope.Metadata.UserId ?? "");
+                    envelope.OccurredAt, envelope.OccurredAt, UserId: envelope.Metadata.UserId ?? "",
+                    OwnerName: envelope.Metadata.UserName ?? "");
                 break;
             case NoteRenamed e:
                 if (_items.TryGetValue(e.NoteId, out var existing))

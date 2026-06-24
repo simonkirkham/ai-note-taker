@@ -37,6 +37,10 @@ public sealed class NoteAnalysisService(
         // The transcript is the only field the diarization-completion caller has hotter than the
         // projection, so it may be overridden; content/tags/actions are warm in the projection.
         var transcript = transcriptOverride ?? detail.TranscriptText;
+        // The Bedrock prompt attributes action items to the current user by name. The HTTP caller
+        // passes the live name; the async re-analysis (Lambda) has none, so fall back to the owner
+        // name folded into the projection (stamped on the note's creation event) — 33-B2.
+        var currentUserName = string.IsNullOrWhiteSpace(userName) ? detail.OwnerName : userName;
         var (rawContent, instructions) = InstructionExtractor.Extract(detail.Content ?? "");
         var content = StripImageMarkdown(rawContent);
         if (string.IsNullOrWhiteSpace(transcript) && string.IsNullOrWhiteSpace(content) && instructions.Count == 0)
@@ -49,7 +53,7 @@ public sealed class NoteAnalysisService(
         try
         {
             result = await bedrockAnalysis.AnalyseAsync(
-                new NoteAnalysisRequest(content, transcript, userName, instructions), ct);
+                new NoteAnalysisRequest(content, transcript, currentUserName, instructions), ct);
             metrics.AnalysisCompleted(analysisStopwatch.Elapsed.TotalMilliseconds);
         }
         catch (Exception ex) when (ex is AmazonBedrockRuntimeException or InvalidOperationException)

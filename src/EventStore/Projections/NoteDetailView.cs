@@ -20,4 +20,7 @@ public record NoteDetailView(
     string? WorkspaceId = null,
     IReadOnlyList<InstructionResponse>? InstructionResponses = null,
     string? RecordingAudioKey = null,
-    bool TranscriptIsDiarized = false);
+    bool TranscriptIsDiarized = false,
+    // 33-B2: the owner's display name, folded from the NoteCreated event metadata. Lets the async
+    // re-analysis (TranscribeCompletion Lambda, no ICurrentUser) pass the name to the Bedrock prompt.
+    string OwnerName = "");
