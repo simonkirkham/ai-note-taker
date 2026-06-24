@@ -427,7 +427,13 @@ describe('pre-flight expiry guard in apiFetch', () => {
       screen.getByTestId('new-note-button').click()
     })
 
-    expect(fetchSpy).not.toHaveBeenCalled()
+    // Assert the guard blocked the user's action (POST /notes), not "no fetch at all":
+    // App boot fires calendar GETs whose retry backoffs can land after the spy is installed,
+    // which made the bare not-toHaveBeenCalled() assertion flake under slower CI timing (a
+    // "no-fetch-fires" claim is inherently racy in jsdom). Scoping to /notes keeps the intent —
+    // the pre-flight expiry guard short-circuits the New Note request — without the race.
+    const newNoteCall = fetchSpy.mock.calls.find(([url]) => String(url).includes('/notes'))
+    expect(newNoteCall).toBeUndefined()
     expect(screen.getByRole('button', { name: /sign in again/i })).toBeInTheDocument()
   })
 })

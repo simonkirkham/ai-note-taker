@@ -28,9 +28,13 @@ export const handlers = [
   ...scoped('delete', '/todos/:todoId', () => new HttpResponse(null, { status: 204 })),
   // Must precede /api/calendar/:date (":date" would otherwise match "connection"). Neutral
   // default: connected with no email → header falls back to the provider label, unavailable
-  // shows the generic "Cannot connect" (tests override per-case).
-  http.get('/api/calendar/connection', () => HttpResponse.json({ status: 'connected', provider: 'google', email: null })),
-  http.get('/api/calendar/:date', () => HttpResponse.json({ meetings: [] })),
+  // shows the generic "Cannot connect" (tests override per-case). Registered via scoped() for
+  // BOTH the rootless and /w/:wsId forms — the full-App boot calls these workspace-scoped
+  // (/api/w/__default__/calendar/...), so the rootless-only registration left them unhandled,
+  // flooding console with retry warnings that raced the fetch-spy (TokenRefresh) and worker
+  // teardown (Auth) under CI timing. scoped() keeps connection's pair ahead of :date's pair.
+  ...scoped('get', '/calendar/connection', () => HttpResponse.json({ status: 'connected', provider: 'google', email: null })),
+  ...scoped('get', '/calendar/:date', () => HttpResponse.json({ meetings: [] })),
   ...scoped('get', '/notes/:noteId', () =>
     HttpResponse.json({
       noteId: 'note-1',
