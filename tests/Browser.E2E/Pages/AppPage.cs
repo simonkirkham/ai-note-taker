@@ -422,19 +422,27 @@ public sealed class AppPage
         }
     }
 
-    // CHANGE-23: the home search box (type=search → role searchbox). Filling it writes the
-    // term to the URL (?q=…), so the search survives a reload or a Back navigation.
-    private ILocator SearchBox => page.GetByRole(AriaRole.Searchbox, new() { Name = "Search notes" });
+    // CHANGE-23: home filters live in the URL (?q/?tag/?older), so they survive a Back navigation.
+    // The E2E proves this with the "show older notes" filter — it filters the GATED home-card list
+    // client-side, so the proof needs no ungated async-search projection (which can lag past the
+    // reload window and flake the gate). The checkbox's checked-state is pure URL-derived state.
+    private ILocator ShowOlderCheckbox => page.GetByRole(AriaRole.Checkbox, new() { Name = "Show older notes" });
 
-    public async Task SearchAsync(string query)
+    public async Task OpenHomeFiltersAsync()
     {
-        await SearchBox.FillAsync(query);
+        // The collapsed "Filters" control (accessible name "Filters"; the chevron span is aria-hidden).
+        await page.GetByRole(AriaRole.Button, new() { Name = "Filters" }).ClickAsync();
     }
 
-    // Assert the search box currently holds `query` — the CHANGE-23 proof that a filter
-    // survives Back. Auto-waits, so it tolerates the brief re-render after navigation.
-    public Task AssertSearchQueryAsync(string query) =>
-        Assertions.Expect(SearchBox).ToHaveValueAsync(query);
+    public async Task ToggleShowOlderAsync()
+    {
+        await ShowOlderCheckbox.ClickAsync();
+    }
+
+    // Assert "show older" is ticked — the CHANGE-23 proof that the ?older=1 filter survives Back.
+    // Auto-waits, tolerating the brief re-render after navigation. URL-derived, no projector read.
+    public Task AssertShowOlderCheckedAsync() =>
+        Assertions.Expect(ShowOlderCheckbox).ToBeCheckedAsync();
 
     // Browser Back (history.back). Distinct from a hard GotoPath — exercises the SPA's own
     // history entry, which carries the CHANGE-23 ?q/?tag/?older query string.
