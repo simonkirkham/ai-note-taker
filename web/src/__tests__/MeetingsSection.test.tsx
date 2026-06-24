@@ -530,3 +530,56 @@ describe('MeetingsSection — calendar connection (34-A)', () => {
     expect(screen.getByText('Retry')).toBeInTheDocument()
   })
 })
+
+describe('MeetingsSection — calendar settings menu (CHANGE-25)', () => {
+  beforeEach(() => stubNotificationPermission('granted'))
+
+  it('the settings toggle is available even when meetings load (so connect is reachable without the error state)', async () => {
+    server.use(
+      http.get('/api/calendar/connection', () =>
+        HttpResponse.json({ status: 'needs_auth', provider: null, email: null }),
+      ),
+      // Meetings LOAD (e.g. via the SSM fallback) → no "unavailable" state, no inline connect buttons.
+      http.get('/api/calendar/:date', () => HttpResponse.json({ meetings: [], provider: 'microsoft' })),
+    )
+
+    renderSection()
+
+    await screen.findByTestId('meetings-empty')
+    expect(screen.queryByTestId('connect-calendar')).not.toBeInTheDocument()
+
+    // The settings menu is the always-available entry point.
+    await userEvent.click(screen.getByTestId('calendar-settings-toggle'))
+    expect(screen.getByTestId('menu-connect-google')).toHaveTextContent('Connect Google Calendar')
+    expect(screen.getByTestId('menu-connect-outlook')).toHaveTextContent('Connect Outlook')
+    expect(screen.queryByTestId('menu-disconnect')).not.toBeInTheDocument()
+  })
+
+  it('offers Disconnect when connected, and clears the connection on click', async () => {
+    let disconnectCalled = false
+    server.use(
+      // Stateful: the server reports the connection gone once disconnect is called, so the
+      // post-disconnect refetch confirms what the optimistic update already showed.
+      http.get('/api/calendar/connection', () =>
+        HttpResponse.json(disconnectCalled
+          ? { status: 'needs_auth', provider: null, email: null }
+          : { status: 'connected', provider: 'google', email: 'owner@example.com' }),
+      ),
+      http.get('/api/calendar/:date', () => HttpResponse.json({ meetings: [], provider: 'google' })),
+      http.post('/api/calendar/disconnect', () => {
+        disconnectCalled = true
+        return HttpResponse.json({ status: 'needs_auth', provider: null })
+      }),
+    )
+
+    renderSection()
+
+    await screen.findByTestId('calendar-connected-as')
+    await userEvent.click(screen.getByTestId('calendar-settings-toggle'))
+    await userEvent.click(screen.getByTestId('menu-disconnect'))
+
+    await waitFor(() => expect(disconnectCalled).toBe(true))
+    // Optimistic: the "Connected as" header clears immediately.
+    await waitFor(() => expect(screen.queryByTestId('calendar-connected-as')).not.toBeInTheDocument())
+  })
+})
