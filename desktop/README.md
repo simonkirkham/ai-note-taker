@@ -36,8 +36,13 @@ Only needed if you don't want to wait for CI, or `gh` isn't available:
 npm install
 npm --prefix ../web install
 
-npm run package          # → release/AINoteTaker-Setup-<version>.exe
+npm run package          # → release/AINoteTaker-Setup-<version>-{x64,arm64}.exe
 ```
+
+`package` builds **two** installers — native **x64** and **arm64** — so Windows-on-ARM
+machines get a native build instead of x64 emulation. The shell has no native Node
+modules, so the arm64 build needs no extra rebuild step. Pick the installer matching your
+CPU; an x64 build still runs on ARM via emulation if you grab the wrong one.
 
 Double-click the `.exe` in `release/` to install (one-click, per-user, no admin). It adds
 a Start-menu + desktop shortcut and launches. The Google client id is baked in — no

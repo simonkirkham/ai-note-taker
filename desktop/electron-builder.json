@@ -1,7 +1,7 @@
 {
   "appId": "com.simonkirkham.ainotetaker",
   "productName": "AI Note Taker",
-  "artifactName": "AINoteTaker-Setup-${version}.${ext}",
+  "artifactName": "AINoteTaker-Setup-${version}-${arch}.${ext}",
   "directories": {
     "output": "release"
   },
@@ -12,7 +12,12 @@
   ],
   "asar": true,
   "win": {
-    "target": ["nsis"]
+    "target": [
+      {
+        "target": "nsis",
+        "arch": ["x64", "arm64"]
+      }
+    ]
   },
   "nsis": {
     "oneClick": true,
