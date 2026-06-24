@@ -71,3 +71,29 @@ _(Per-workspace calendars graduated to **[Phase 34](phases/phase-34.md)** on 202
 ---
 
 _(Claude Cowork connector — read-only, workspace-scoped MCP server — graduated to **[Phase 35](phases/phase-35.md)** on 2026-06-24. Locked: read-only first, per-workspace connector URL `/w/{wsId}/mcp`, OAuth reusing the Google identity, no new events. Full scope and slices live in the phase doc.)_
+
+---
+
+## In-app microphone selector
+
+**What:** Let the user choose which input device the recorder uses, instead of silently taking the OS/browser default. Today `useTranscription.startRecording` calls `navigator.mediaDevices.getUserMedia({ audio: true })` (`web/src/hooks/useTranscription.ts:314`) with no `deviceId` constraint and no UI — so whichever device is the system default at record time is captured, with no visibility or override. Scope when broken down:
+- Enumerate inputs (`navigator.mediaDevices.enumerateDevices()`, audioinput kind) and offer a picker near the Record control; pass the chosen `deviceId` as a `getUserMedia` constraint.
+- Persist the last choice (localStorage) so it survives reloads; fall back to default if the device is gone.
+- A small live input-level meter would help the user confirm the right mic is hot before recording (optional sub-slice).
+
+**Why it isn't scheduled yet:** Frontend-only capability that needs a small UX design (where the picker lives, level meter or not) and device-permission/edge-case handling (device removed mid-session, permission prompts). Not a tweak to existing behaviour — it's a new control surface.
+
+**Raised in:** User question, 2026-06-24 — "how will it determine which mic to select?" — after a back-filled diarization surfaced a poor-quality recording (mic was the OS default; remote participants captured acoustically through speakers).
+
+---
+
+## Meeting-capture audio quality mode (raw mic + steer to clean call audio)
+
+**What:** A capture mode tuned for recording **meetings**, not headset voice calls. Two problems combine to garble recordings today: (1) `getUserMedia({ audio: true })` applies Chrome's defaults — echo cancellation, noise suppression, auto-gain are all **on** — and AEC actively suppresses remote participants whose audio is played through the speakers (it treats them as "echo"); (2) when "include call audio" is off, the far end exists only as distant acoustic bleed in the mic. Scope when broken down:
+- A constraint preset that disables the voice-call DSP for meeting capture (`echoCancellation: false, noiseSuppression: false, autoGainControl: false`) — A/B against the defaults on a real recording before defaulting it on.
+- Make the clean path discoverable: surface/strongly recommend **"include call audio"** (the existing `getDisplayMedia({ audio: true })` system-audio mix, `useTranscription.ts:296`) when a call is being recorded, so remote voices come in digitally rather than through the room. Possibly default it on, with a clear "share system/tab audio" prompt.
+- Optional: detect likely-poor capture (very low input level / heavy AGC) and warn before/after recording.
+
+**Why it isn't scheduled yet:** Needs empirical tuning (the DSP-off preset can help *or* hurt depending on room/mic, so it must be measured, not assumed) plus a UX decision on defaults. Distinct from the mic-selector feature: that picks the *device*; this changes how the chosen device's stream is *captured and mixed*. Ties into the Phase 33 diarization quality goal — diarization can only be as good as the captured audio.
+
+**Raised in:** User observation, 2026-06-24 — "on the second one the audio quality seems really poor" — single-mic capture of a speaker-played call, the diarization spike's known hardest input.
