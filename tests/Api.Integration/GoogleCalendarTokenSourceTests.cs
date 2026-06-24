@@ -4,9 +4,9 @@ using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Api.Integration;
 
-// The Google token source resolves store-first (the in-app connection, keyed by user+workspace
-// since 34-B) then the SSM fallback. The SSM-success path hits real AWS (the legacy Phase 9 path)
-// and isn't unit tested here; these cover store-first behaviour and the no-token boundary.
+// 34-D1: the Google token source resolves the in-app connection only (CalendarTokenStore, keyed by
+// user+workspace) — the legacy SSM fallback is gone. A workspace with no stored token → null →
+// calendar_unavailable.
 public sealed class GoogleCalendarTokenSourceTests
 {
     private const string Ws = "ws-1";
@@ -26,34 +26,40 @@ public sealed class GoogleCalendarTokenSourceTests
         new(new StubCurrentUser(userId), new StubCurrentWorkspace(workspaceId), store, NullLogger<GoogleCalendarTokenSource>.Instance);
 
     [Fact]
-    public async Task LoadAsync_ReturnsStoredToken_StoreFirst()
+    public async Task LoadAsync_ReturnsStoredToken()
     {
         var store = new InMemoryCalendarTokenStore();
         store.Seed("user-1", Ws, "google", "rt-stored", "owner@example.com");
-        var source = Build("user-1", Ws, store);
 
-        var token = await source.LoadAsync(forceReload: false);
-
-        Assert.Equal("rt-stored", token);
+        Assert.Equal("rt-stored", await Build("user-1", Ws, store).LoadAsync(forceReload: false));
     }
 
     [Fact]
-    public async Task LoadAsync_NoStoredTokenAndNoSsmPath_ReturnsNull()
+    public async Task LoadAsync_NoStoredToken_ReturnsNull()
     {
-        var prev = Environment.GetEnvironmentVariable("GOOGLE_REFRESH_TOKEN_SSM_PATH");
-        try
-        {
-            Environment.SetEnvironmentVariable("GOOGLE_REFRESH_TOKEN_SSM_PATH", null);
-            var source = Build("user-1", Ws, new InMemoryCalendarTokenStore());
+        // No SSM fallback since 34-D1 — an unconnected workspace reports calendar_unavailable.
+        Assert.Null(await Build("user-1", Ws, new InMemoryCalendarTokenStore()).LoadAsync(forceReload: true));
+    }
 
-            var token = await source.LoadAsync(forceReload: true);
+    [Fact]
+    public async Task LoadAsync_StoreThrows_ReturnsNull()
+    {
+        // A transient store failure must degrade to calendar_unavailable (null), not a 500.
+        var source = new GoogleCalendarTokenSource(
+            new StubCurrentUser("user-1"), new StubCurrentWorkspace(Ws), new ThrowingCalendarTokenStore(),
+            NullLogger<GoogleCalendarTokenSource>.Instance);
 
-            Assert.Null(token); // no in-app token, no SSM fallback configured → calendar_unavailable
-        }
-        finally
-        {
-            Environment.SetEnvironmentVariable("GOOGLE_REFRESH_TOKEN_SSM_PATH", prev);
-        }
+        Assert.Null(await source.LoadAsync(forceReload: false));
+    }
+
+    private sealed class ThrowingCalendarTokenStore : ICalendarTokenStore
+    {
+        public Task UpsertAsync(string userId, string workspaceId, string provider, string refreshToken, string? email, CancellationToken ct = default)
+            => throw new InvalidOperationException("store down");
+        public Task<CalendarToken?> GetAsync(string userId, string workspaceId, string provider, CancellationToken ct = default)
+            => throw new InvalidOperationException("store down");
+        public Task DeleteAsync(string userId, string workspaceId, string provider, CancellationToken ct = default)
+            => throw new InvalidOperationException("store down");
     }
 
     [Fact]
@@ -61,18 +67,9 @@ public sealed class GoogleCalendarTokenSourceTests
     {
         var store = new InMemoryCalendarTokenStore();
         store.Seed("user-1", Ws, "google", "rt-1");
-        var prev = Environment.GetEnvironmentVariable("GOOGLE_REFRESH_TOKEN_SSM_PATH");
-        try
-        {
-            Environment.SetEnvironmentVariable("GOOGLE_REFRESH_TOKEN_SSM_PATH", null);
-            // A different user with no stored token + no SSM falls through to null.
-            var token = await Build("user-2", Ws, store).LoadAsync(forceReload: true);
-            Assert.Null(token);
-        }
-        finally
-        {
-            Environment.SetEnvironmentVariable("GOOGLE_REFRESH_TOKEN_SSM_PATH", prev);
-        }
+
+        // A different user has no stored token → null (no cross-user bleed).
+        Assert.Null(await Build("user-2", Ws, store).LoadAsync(forceReload: false));
     }
 
     [Fact]
@@ -80,18 +77,10 @@ public sealed class GoogleCalendarTokenSourceTests
     {
         var store = new InMemoryCalendarTokenStore();
         store.Seed("user-1", "ws-a", "google", "rt-a");
-        var prev = Environment.GetEnvironmentVariable("GOOGLE_REFRESH_TOKEN_SSM_PATH");
-        try
-        {
-            Environment.SetEnvironmentVariable("GOOGLE_REFRESH_TOKEN_SSM_PATH", null);
-            // Same user, different workspace with no token + no SSM → null (no cross-workspace bleed).
-            Assert.Null(await Build("user-1", "ws-b", store).LoadAsync(forceReload: true));
-            // The connected workspace still resolves its own token.
-            Assert.Equal("rt-a", await Build("user-1", "ws-a", store).LoadAsync(forceReload: false));
-        }
-        finally
-        {
-            Environment.SetEnvironmentVariable("GOOGLE_REFRESH_TOKEN_SSM_PATH", prev);
-        }
+
+        // Same user, different workspace with no token → null (no cross-workspace bleed).
+        Assert.Null(await Build("user-1", "ws-b", store).LoadAsync(forceReload: false));
+        // The connected workspace still resolves its own token.
+        Assert.Equal("rt-a", await Build("user-1", "ws-a", store).LoadAsync(forceReload: false));
     }
 }

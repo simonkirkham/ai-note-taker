@@ -9,7 +9,8 @@
 | 34-A | **Connect Google Calendar in-app → server-side per-user token** (keystone; TI-47 core). A "Connect calendar" button runs auth-code+PKCE; backend stores the refresh token server-side; the meetings read uses it (SSM fallback while unconnected). Google only, per-user. | Done | — |
 | 34-B | **Key the calendar connection by workspace.** `WorkspaceCalendarConnected` event; connect associates with the current workspace; token + read resolve by `(userId, workspaceId)`. Two workspaces → two different Google accounts. | Done | 34-A |
 | 34-C | **Add Microsoft as a connectable provider per workspace + per-request resolution.** In-app connect for Outlook; `ICalendarClientFactory.ForAsync(workspaceId)` resolves google/microsoft from the workspace's connection (`CALENDAR_PROVIDER` kept as the unconnected fallback → removed in 34-D). A=Google, B=Outlook. | Done | 34-B |
-| 34-D | **Retire the out-of-band SSM token path + mint scripts** (strangle cleanup). Remove `CALENDAR_PROVIDER`, the SSM grants/paths, and the mint scripts once every flow is in-app. | Not Started | 34-C |
+| 34-D1 | **Retire the Google SSM token path** — Google is fully in-app + proven, so drop the Google SSM fallback (`GoogleCalendarTokenSource` store-only), its `GOOGLE_REFRESH_TOKEN_SSM_PATH` env + conditional grant, and the Google mint script + guide. | Done | 34-C |
+| 34-D2 | **Retire the Microsoft SSM path + `CALENDAR_PROVIDER` + remaining mint scripts** — the rest of the strangle cleanup. **Blocked until Outlook in-app connect is verified in prod** (Entra SPA redirect URI pending); removing the MS SSM fallback before then would strand Outlook-backed workspaces. | Not Started | 34-D1, Outlook in-app verified |
 
 Strictly sequential — this is a **strangle** of the calendar-auth model (CLAUDE.md guardrail: prove the new path on one real call, then migrate flow-by-flow with old+new coexisting until the last flow moves). 34-A proves in-app-connect + server-side token on one real Google read; 34-B/C scale it to workspace-keyed and multi-provider; 34-D removes the old path only after nothing depends on it.
 
@@ -187,17 +188,26 @@ Scenario: Provider resolved per request, not per process
 
 ## Slice 34-D — Retire the out-of-band SSM token path + mint scripts
 
-**Status:** Not Started.
+**Re-sliced into 34-D1 (Google, done) + 34-D2 (Microsoft, blocked).** The retirement must be done provider-by-provider: a provider's SSM path can only be removed once its in-app connect is *proven*, per the strangle guardrail. Google in-app is verified; Outlook in-app is not (Entra SPA redirect URI pending), so removing the Microsoft SSM fallback now would strand Outlook-backed workspaces.
 
-**User value:** none directly — removes the legacy single-calendar plumbing so the model is purely in-app + per-workspace (operability + security: no long-lived SSM secret, least-privilege).
+### Slice 34-D1 — Retire the Google SSM token path
 
-**How (mechanics):** once every calendar flow is in-app server-side, remove the SSM fallback in the token sources, the `GOOGLE_/MICROSOFT_REFRESH_TOKEN_SSM_PATH` env vars + their conditional SSM grants, and the mint scripts/guides (or archive them). Verify no flow reads SSM.
+**Status:** Done (PR #TBD). Google in-app connect verified working in prod, so the Google SSM fallback is dead and removed.
 
-### Acceptance criteria
-1. Token sources read only `CalendarTokenStore`; the SSM fallback is gone.
-2. CDK drops the SSM `GetParameter` grants + the `*_REFRESH_TOKEN_SSM_PATH` env vars (infra assertion updated).
-3. Mint scripts + the Google/Microsoft token guides are removed or clearly archived as break-glass-only.
-4. Prod verified: no calendar read touches SSM (logs/metrics over a real read on each provider).
+- `GoogleCalendarTokenSource` reads only `CalendarTokenStore` (store-only; SSM fallback + static cache gone).
+- CDK drops the `GOOGLE_REFRESH_TOKEN_SSM_PATH` env var + its conditional `ssm:GetParameter` grant; `deploy.yml` stops passing it; infra assertions updated (env absent; the remaining SSM grant is Microsoft's).
+- `scripts/remint-google-refresh-token.mjs` + `docs/guides/google-calendar-token.md` removed (git history retains them as break-glass reference).
+- An unconnected workspace under `CALENDAR_PROVIDER=google` now cleanly returns `calendar_unavailable` (no SSM). Prod is `CALENDAR_PROVIDER=microsoft`, so this path is unconnected-Google only.
+
+### Slice 34-D2 — Retire the Microsoft SSM path + `CALENDAR_PROVIDER` + remaining mint scripts
+
+**Status:** Not Started. **Blocked on:** Outlook in-app connect verified in prod (needs the Entra SPA redirect URI registered + a real connect). Until then the Microsoft SSM token is the live fallback for unconnected workspaces and must stay.
+
+### Acceptance criteria (34-D2)
+1. `MicrosoftCalendarTokenSource` reads only `CalendarTokenStore`; the SSM fallback (`SsmMicrosoftRefreshTokenSource`) is gone.
+2. The factory's `CALENDAR_PROVIDER` fallback branch is removed — an unconnected workspace returns `calendar_unavailable`. The `CALENDAR_PROVIDER` env + the Microsoft SSM grant/env are dropped (infra assertion updated).
+3. `scripts/mint-microsoft-refresh-token.mjs` + the Microsoft token guide removed/archived.
+4. Prod verified: no calendar read on either provider touches SSM.
 
 ### Observability
 | Silent failure | Make visible |

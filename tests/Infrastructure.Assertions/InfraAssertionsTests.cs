@@ -36,10 +36,12 @@ public class InfraAssertionsTests
 
     private static Template BuildCalendarTemplate()
     {
+        // 34-D1 retired the Google SSM path; the Microsoft SSM grant is the remaining conditional one
+        // (until 34-D2). This template exercises that grant.
         var app = new App(new AppProps { Context = AssetContext() });
         return Template.FromStack(new NoteTakerStack(app, "TestStack", new NoteTakerStackProps
         {
-            GoogleRefreshTokenSsmPath = "/test/google-refresh-token"
+            MicrosoftRefreshTokenSsmPath = "/test/microsoft-refresh-token"
         }));
     }
 
@@ -433,18 +435,21 @@ public class InfraAssertionsTests
     }
 
     [Fact]
-    public void Lambda_HasGoogleRefreshTokenSsmPathEnvVar()
+    public void Lambda_HasNoGoogleRefreshTokenSsmPathEnvVar()
     {
-        _template.HasResourceProperties("AWS::Lambda::Function", Match.ObjectLike(new Dictionary<string, object>
-        {
-            ["Environment"] = Match.ObjectLike(new Dictionary<string, object>
+        // 34-D1: the Google SSM env var is gone — Google is fully in-app.
+        var thrown = Record.Exception(() =>
+            _calendarTemplate.HasResourceProperties("AWS::Lambda::Function", Match.ObjectLike(new Dictionary<string, object>
             {
-                ["Variables"] = Match.ObjectLike(new Dictionary<string, object>
+                ["Environment"] = Match.ObjectLike(new Dictionary<string, object>
                 {
-                    ["GOOGLE_REFRESH_TOKEN_SSM_PATH"] = Match.AnyValue()
+                    ["Variables"] = Match.ObjectLike(new Dictionary<string, object>
+                    {
+                        ["GOOGLE_REFRESH_TOKEN_SSM_PATH"] = Match.AnyValue()
+                    })
                 })
-            })
-        }));
+            })));
+        Assert.NotNull(thrown);
     }
 
     [Fact]
@@ -513,7 +518,8 @@ public class InfraAssertionsTests
     [Fact]
     public void Lambda_HasSsmGetParameterPermission_WhenRefreshTokenPathConfigured()
     {
-        // Resource is a Fn::Join intrinsic; assert the specific parameter path is embedded in it
+        // 34-D1: the Microsoft SSM grant is the remaining conditional one (the Google grant is gone).
+        // Resource is a Fn::Join intrinsic; assert the specific parameter path is embedded in it.
         _calendarTemplate.HasResourceProperties("AWS::IAM::Policy", Match.ObjectLike(new Dictionary<string, object>
         {
             ["PolicyDocument"] = Match.ObjectLike(new Dictionary<string, object>
@@ -530,7 +536,7 @@ public class InfraAssertionsTests
                             {
                                 Match.ArrayWith(new object[]
                                 {
-                                    Match.StringLikeRegexp(".*parameter/test/google-refresh-token$")
+                                    Match.StringLikeRegexp(".*parameter/test/microsoft-refresh-token$")
                                 })
                             })
                         })

@@ -8,7 +8,6 @@ public sealed class NoteTakerStackProps : StackProps
     public string? GoogleClientId { get; init; }
     public string? GoogleClientSecret { get; init; }
     public string? AllowedUserSubs { get; init; }
-    public string? GoogleRefreshTokenSsmPath { get; init; }
     public string? BedrockModelId { get; init; }
     public string? CalendarProvider { get; init; }
     public string? MicrosoftClientId { get; init; }

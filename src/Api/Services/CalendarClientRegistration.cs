@@ -10,11 +10,12 @@ public static class CalendarClientRegistration
 {
     public static void Register(IServiceCollection services)
     {
-        // SSM fallbacks (singletons; lazy SSM read needs no AWS creds to register). The store-first
-        // token sources delegate to these for an unconnected workspace during coexistence (→ 34-D).
+        // Microsoft SSM fallback (singleton; lazy SSM read needs no AWS creds to register). The MS
+        // token source delegates to it for an unconnected workspace during coexistence (→ 34-D2). The
+        // Google SSM fallback was retired in 34-D1 — Google is store-only.
         services.AddSingleton<SsmMicrosoftRefreshTokenSource>();
-        // Store-first token sources (scoped — they read ICurrentUser + ICurrentWorkspace), each
-        // resolving the per-(user,workspace) in-app token then its SSM fallback.
+        // Token sources (scoped — they read ICurrentUser + ICurrentWorkspace): Google resolves the
+        // per-(user,workspace) in-app token only; Microsoft resolves it then its SSM fallback.
         services.AddScoped<IGoogleCalendarTokenSource, GoogleCalendarTokenSource>();
         services.AddScoped<IMicrosoftRefreshTokenSource, MicrosoftCalendarTokenSource>();
 

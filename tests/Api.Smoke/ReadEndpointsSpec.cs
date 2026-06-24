@@ -7,7 +7,7 @@ namespace Api.Smoke;
 [Collection("Deployed API")]
 public sealed class ReadEndpointsSpec(DeployedApiFixture fixture)
 {
-    private const string AuthRequired = "SMOKE_TEST_TOKEN not configured — add GOOGLE_REFRESH_TOKEN_SSM_PATH secret to the GitHub environment to enable auth smoke tests";
+    private const string AuthRequired = "SMOKE_TEST_TOKEN not configured — add the SMOKE_TEST_GOOGLE_REFRESH_TOKEN secret to the GitHub environment to enable auth smoke tests";
 
     [SkippableFact]
     public async Task GetNotes_returns_200_with_items_array()
