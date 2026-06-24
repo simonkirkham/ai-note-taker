@@ -1,43 +1,29 @@
-using AWS.Lambda.Powertools.Logging;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace Api.Services;
 
-// Phase 32-A: binds ICalendarClient to a provider chosen by CALENDAR_PROVIDER
-// (google | microsoft; default google). STUB_CALENDAR_JSON (test/local) always wins.
-// Keeping all calendar DI here makes provider selection independently testable.
+// Calendar DI. 34-C: provider is no longer bound at startup by CALENDAR_PROVIDER — both clients are
+// registered and ICalendarClientFactory.ForAsync(workspaceId) picks per request (Google or Microsoft
+// per the workspace's in-app connection, else the legacy CALENDAR_PROVIDER fallback). Handlers
+// resolve the client via the factory, never a single bound ICalendarClient.
 public static class CalendarClientRegistration
 {
     public static void Register(IServiceCollection services)
     {
-        // Always available; only consumed by the Microsoft client. The SSM read is lazy,
-        // so registering this needs no AWS credentials/region.
-        services.AddSingleton<IMicrosoftRefreshTokenSource, SsmMicrosoftRefreshTokenSource>();
-        // 34-A: the Google token source resolves the per-user in-app token (store-first) then the
-        // SSM fallback. Scoped because it reads ICurrentUser.
+        // SSM fallbacks (singletons; lazy SSM read needs no AWS creds to register). The store-first
+        // token sources delegate to these for an unconnected workspace during coexistence (→ 34-D).
+        services.AddSingleton<SsmMicrosoftRefreshTokenSource>();
+        // Store-first token sources (scoped — they read ICurrentUser + ICurrentWorkspace), each
+        // resolving the per-(user,workspace) in-app token then its SSM fallback.
         services.AddScoped<IGoogleCalendarTokenSource, GoogleCalendarTokenSource>();
+        services.AddScoped<IMicrosoftRefreshTokenSource, MicrosoftCalendarTokenSource>();
 
-        if (!string.IsNullOrEmpty(Environment.GetEnvironmentVariable("STUB_CALENDAR_JSON")))
-        {
-            Logger.LogInformation("Calendar provider bound: {Provider}", "stub");
-            services.AddSingleton<ICalendarClient, StubCalendarClient>();
-            return;
-        }
+        // Concrete clients the factory resolves. Google uses the Google SDK (no HttpClient);
+        // Microsoft is a typed HttpClient. Stub is forced by STUB_CALENDAR_JSON in the factory.
+        services.AddScoped<GoogleCalendarClient>();
+        services.AddHttpClient<MicrosoftCalendarClient>(c => c.Timeout = TimeSpan.FromSeconds(10));
+        services.AddSingleton<StubCalendarClient>();
 
-        var provider = Environment.GetEnvironmentVariable("CALENDAR_PROVIDER");
-        if (string.Equals(provider, "microsoft", StringComparison.OrdinalIgnoreCase))
-        {
-            Logger.LogInformation("Calendar provider bound: {Provider}", "microsoft");
-            services.AddHttpClient<ICalendarClient, MicrosoftCalendarClient>(c =>
-                c.Timeout = TimeSpan.FromSeconds(10));
-            return;
-        }
-
-        // Default (incl. an unset/typo'd CALENDAR_PROVIDER) is Google — log the raw value so a
-        // misconfigured provider is diagnosable rather than silently falling through.
-        Logger.LogInformation(
-            "Calendar provider bound: {Provider} (CALENDAR_PROVIDER={Raw})", "google", provider ?? "");
-        // Scoped (34-A): the refresh token is now per-user via IGoogleCalendarTokenSource.
-        services.AddScoped<ICalendarClient, GoogleCalendarClient>();
+        services.AddScoped<ICalendarClientFactory, CalendarClientFactory>();
     }
 }

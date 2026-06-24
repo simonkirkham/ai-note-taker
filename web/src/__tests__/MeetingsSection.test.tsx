@@ -486,18 +486,18 @@ describe('MeetingsSection — next occurrence Create Note button', () => {
 describe('MeetingsSection — calendar connection (34-A)', () => {
   beforeEach(() => stubNotificationPermission('granted'))
 
-  it('offers "Connect calendar" when the calendar needs auth', async () => {
+  it('offers a Google AND an Outlook connect choice when the calendar needs auth (34-C)', async () => {
     server.use(
       http.get('/api/calendar/connection', () =>
-        HttpResponse.json({ status: 'needs_auth', provider: 'google', email: null }),
+        HttpResponse.json({ status: 'needs_auth', provider: null, email: null }),
       ),
       http.get('/api/calendar/:date', () => HttpResponse.json({ error: 'calendar_unavailable' })),
     )
 
     renderSection()
 
-    const connect = await screen.findByTestId('connect-calendar')
-    expect(connect).toHaveTextContent('Connect calendar')
+    expect(await screen.findByTestId('connect-calendar')).toHaveTextContent('Connect Google Calendar')
+    expect(screen.getByTestId('connect-outlook')).toHaveTextContent('Connect Outlook')
     expect(screen.queryByText('Retry')).not.toBeInTheDocument()
   })
 

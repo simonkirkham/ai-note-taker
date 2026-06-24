@@ -53,12 +53,20 @@ public class ApiFactory : WebApplicationFactory<Program>
             // including `WithWebHostBuilder`-derived ones, which bypass a per-client handler.
             // Set the `X-Test-No-Prefix` header to opt out (used to assert rootless paths 404).
             services.AddSingleton<IStartupFilter, WorkspacePrefixStartupFilter>();
-            services.RemoveAll<ICalendarClient>();
+            // 34-C: handlers resolve the calendar client via ICalendarClientFactory, so override the
+            // factory (not a single ICalendarClient) to always return the FakeCalendarClient. Tests
+            // resolve FakeCalendarClient directly to stage events; provider-resolution logic is
+            // covered separately in CalendarClientFactoryTests.
             services.AddSingleton<FakeCalendarClient>();
-            services.AddSingleton<ICalendarClient>(sp => sp.GetRequiredService<FakeCalendarClient>());
+            services.RemoveAll<ICalendarClientFactory>();
+            services.AddSingleton<ICalendarClientFactory>(sp =>
+                new FixedCalendarClientFactory(sp.GetRequiredService<FakeCalendarClient>()));
             services.RemoveAll<IGoogleOAuthClient>();
             services.AddSingleton<FakeGoogleOAuthClient>();
             services.AddSingleton<IGoogleOAuthClient>(sp => sp.GetRequiredService<FakeGoogleOAuthClient>());
+            services.RemoveAll<IMicrosoftOAuthClient>();
+            services.AddSingleton<FakeMicrosoftOAuthClient>();
+            services.AddSingleton<IMicrosoftOAuthClient>(sp => sp.GetRequiredService<FakeMicrosoftOAuthClient>());
             services.RemoveAll<IRefreshTokenStore>();
             services.AddSingleton<InMemoryRefreshTokenStore>();
             services.AddSingleton<IRefreshTokenStore>(sp => sp.GetRequiredService<InMemoryRefreshTokenStore>());
