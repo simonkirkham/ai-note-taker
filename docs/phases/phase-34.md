@@ -8,7 +8,7 @@
 |-------|---------|--------|------------|
 | 34-A | **Connect Google Calendar in-app → server-side per-user token** (keystone; TI-47 core). A "Connect calendar" button runs auth-code+PKCE; backend stores the refresh token server-side; the meetings read uses it (SSM fallback while unconnected). Google only, per-user. | Done | — |
 | 34-B | **Key the calendar connection by workspace.** `WorkspaceCalendarConnected` event; connect associates with the current workspace; token + read resolve by `(userId, workspaceId)`. Two workspaces → two different Google accounts. | Done | 34-A |
-| 34-C | **Add Microsoft as a connectable provider per workspace + per-request resolution.** In-app connect for Outlook; `ICalendarClientFactory.For(workspaceId)` resolves google/microsoft from the workspace's connection; drop the global `CALENDAR_PROVIDER` env. A=Google, B=Outlook. | Not Started | 34-B |
+| 34-C | **Add Microsoft as a connectable provider per workspace + per-request resolution.** In-app connect for Outlook; `ICalendarClientFactory.ForAsync(workspaceId)` resolves google/microsoft from the workspace's connection (`CALENDAR_PROVIDER` kept as the unconnected fallback → removed in 34-D). A=Google, B=Outlook. | Done | 34-B |
 | 34-D | **Retire the out-of-band SSM token path + mint scripts** (strangle cleanup). Remove `CALENDAR_PROVIDER`, the SSM grants/paths, and the mint scripts once every flow is in-app. | Not Started | 34-C |
 
 Strictly sequential — this is a **strangle** of the calendar-auth model (CLAUDE.md guardrail: prove the new path on one real call, then migrate flow-by-flow with old+new coexisting until the last flow moves). 34-A proves in-app-connect + server-side token on one real Google read; 34-B/C scale it to workspace-keyed and multi-provider; 34-D removes the old path only after nothing depends on it.
@@ -139,7 +139,10 @@ Scenario: A workspace with no connection
 
 ## Slice 34-C — Microsoft as a connectable provider per workspace + per-request resolution
 
-**Status:** Not Started.
+**Status:** Done (PR #331, deploy #630). Backend + frontend shipped together in one deploy (the 34-B
+route-contract lesson held); new routes verified live in prod (401 unauth, not 404). Ships dark —
+the MS in-app connect needs an Entra SPA redirect URI. See
+[`docs/learnings/phase-34c-ms-provider.md`](../learnings/phase-34c-ms-provider.md).
 
 **As-built decisions (refine the ACs; agreed with user):**
 1. **`CALENDAR_PROVIDER` is kept as the *unconnected* fallback, not dropped (deviates from AC2).** Prod is dark — it serves Microsoft via the global SSM token with zero in-app connections; dropping it now would break Home meetings. `ICalendarClientFactory.ForAsync` resolves: STUB → in-app Microsoft token → in-app Google token → `CALENDAR_PROVIDER` fallback. **34-D** removes it with the SSM path (strangle coexistence).
