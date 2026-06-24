@@ -728,6 +728,12 @@ public sealed class NoteTakerStack : Stack
         // pins move to the prefixed paths (the bare `/calendar/...` routes no longer exist). The
         // meetings GET needs the Google/SSM-backed ICalendarClient; the connection GET hits the
         // calendar-token store — both granted to Command, not Query.
+        // NOTE (deploy ordering): these route pins are part of the backend artifact, so they only
+        // reach prod via a `cdk deploy` (detect-changes backend=true). The matching frontend change
+        // (the api client now sends `/w/{wsId}/calendar/...`) ships independently as a web asset, so
+        // a deploy that carries the frontend but skips the backend leaves the new calls hitting the
+        // generic `/{proxy+}`→Query route (404). Frontend and these pins must land in the SAME
+        // backend deploy — see docs/learnings/phase-34b-workspace-calendar.md.
         httpApi.AddRoutes(new Amazon.CDK.AWS.Apigatewayv2.AddRoutesOptions
         {
             Path = "/w/{workspaceId}/calendar/{date}",
