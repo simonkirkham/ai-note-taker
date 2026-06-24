@@ -1,3 +1,5 @@
+import { getWorkspaceId } from '../workspace/workspaceStore'
+
 export function generateCodeVerifier(): string {
   const array = new Uint8Array(32)
   crypto.getRandomValues(array)
@@ -67,8 +69,10 @@ export function buildCalendarAuthUrl(
 }
 
 // Starts the in-app calendar consent redirect. Stashes its own verifier/state markers (separate
-// from sign-in) so AuthProvider's callback can tell a calendar connect from a sign-in. No-op when
-// no client id is configured (dev/E2E).
+// from sign-in) so AuthProvider's callback can tell a calendar connect from a sign-in, plus the
+// active workspace (34-B) — the OAuth redirect returns to the origin root and drops the `/w/:wsId`
+// path, so the callback must restore which workspace the connect was for. No-op when no client id
+// is configured (dev/E2E).
 export async function startCalendarConnect(): Promise<void> {
   const clientId = import.meta.env.VITE_GOOGLE_CLIENT_ID ?? ''
   if (!clientId) return
@@ -77,6 +81,7 @@ export async function startCalendarConnect(): Promise<void> {
   const state = generateCodeVerifier()
   sessionStorage.setItem('calendar_verifier', verifier)
   sessionStorage.setItem('calendar_state', state)
+  sessionStorage.setItem('calendar_workspace', getWorkspaceId())
   window.location.href = buildCalendarAuthUrl(clientId, window.location.origin, challenge, state)
 }
 

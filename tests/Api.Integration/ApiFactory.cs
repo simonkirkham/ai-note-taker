@@ -161,10 +161,12 @@ public class ApiFactory : WebApplicationFactory<Program>
     // Runs in the test server pipeline, so it covers every client (incl. WithWebHostBuilder).
     private sealed class WorkspacePrefixStartupFilter : IStartupFilter
     {
-        private static readonly string[] ScopedPrefixes = ["/notes", "/folders", "/todos", "/tags"];
-        // `/notes/*` paths that are NOT workspace-scoped (mapped globally) — mirror the
-        // frontend's GLOBAL_PATH_PREFIXES so they are never rewritten.
-        private static readonly string[] GlobalExceptions = ["/notes/from-meeting", "/notes/from-next-occurrence"];
+        // 34-B: `/calendar/*` (meetings + connect/connection/disconnect) and the meeting-note
+        // creation routes are now workspace-scoped, so they are rewritten like the rest.
+        private static readonly string[] ScopedPrefixes = ["/notes", "/folders", "/todos", "/tags", "/calendar"];
+        // No global `/notes/*` exceptions remain since 34-B moved from-meeting/from-next-occurrence
+        // under `/w/{workspaceId}`. Kept as an explicit (empty) seam for future global routes.
+        private static readonly string[] GlobalExceptions = [];
 
         public Action<IApplicationBuilder> Configure(Action<IApplicationBuilder> next) => app =>
         {

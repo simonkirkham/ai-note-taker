@@ -5,12 +5,12 @@ using Microsoft.Extensions.Logging;
 
 namespace Api.Services;
 
-// Resolves the Google Calendar refresh token for the current user, store-first then SSM-fallback.
-// Phase 34-A: the in-app "Connect calendar" flow writes a per-user token to ICalendarTokenStore;
-// this returns it when present, else the out-of-band SSM token (Phase 9 coexistence — removed in
-// 34-D). Mirrors IMicrosoftRefreshTokenSource. forceReload (after invalid_grant) only re-reads SSM;
-// a stored token is always read fresh, so an invalid stored token returns unchanged → the client
-// gives up and the UI offers "Reconnect".
+// Resolves the Google Calendar refresh token for the current user + workspace, store-first then
+// SSM-fallback. 34-A wrote a per-user token; 34-B keys the stored token by (user, workspace) so each
+// workspace resolves its own calendar. Returns it when present, else the out-of-band SSM token
+// (Phase 9 coexistence — removed in 34-D). Mirrors IMicrosoftRefreshTokenSource. forceReload (after
+// invalid_grant) only re-reads SSM; a stored token is always read fresh, so an invalid stored token
+// returns unchanged → the client gives up and the UI offers "Reconnect".
 public interface IGoogleCalendarTokenSource
 {
     Task<string?> LoadAsync(bool forceReload, CancellationToken ct = default);
@@ -18,13 +18,16 @@ public interface IGoogleCalendarTokenSource
 
 public sealed class GoogleCalendarTokenSource(
     ICurrentUser currentUser,
+    ICurrentWorkspace currentWorkspace,
     ICalendarTokenStore store,
     ILogger<GoogleCalendarTokenSource> logger) : IGoogleCalendarTokenSource
 {
     private const string Provider = "google";
 
-    // SSM fallback is cached for the process lifetime (forceReload bypasses it); the per-user
-    // stored token is read fresh each call (a cheap DynamoDB GetItem).
+    // The static cache holds ONLY the single global SSM fallback token (the same value for every
+    // user/workspace during coexistence), so caching it process-wide is safe — it is never keyed by
+    // user or workspace. The per-(user,workspace) stored token is read fresh each call (a cheap
+    // DynamoDB GetItem), so it cannot leak across workspaces. forceReload bypasses the SSM cache.
     private static string? _ssmToken;
     private static readonly SemaphoreSlim _ssmLock = new(1, 1);
 
@@ -32,10 +35,10 @@ public sealed class GoogleCalendarTokenSource(
     {
         try
         {
-            var stored = await store.GetAsync(currentUser.UserId, Provider, ct).ConfigureAwait(false);
+            var stored = await store.GetAsync(currentUser.UserId, currentWorkspace.WorkspaceId, Provider, ct).ConfigureAwait(false);
             if (stored is not null)
             {
-                logger.LogInformation("Google calendar token source: store (in-app connected)");
+                logger.LogInformation("Google calendar token source: store (in-app connected, workspace {WorkspaceId})", currentWorkspace.WorkspaceId);
                 return stored.RefreshToken;
             }
         }

@@ -2104,7 +2104,15 @@ public class InfraAssertionsTests
     public void Routing_CalendarGet_TargetsCommand_NotQuery()
     {
         // GET, but needs Google + SSM — pinned to Command so Query stays projection-only.
-        Assert.True(RouteTargetsFunction("GET /calendar/{date}", "CommandFunction"));
+        // 34-B: calendar reads are workspace-scoped under `/w/{workspaceId}/calendar/...`.
+        Assert.True(RouteTargetsFunction("GET /w/{workspaceId}/calendar/{date}", "CommandFunction"));
+    }
+
+    [Fact]
+    public void Routing_CalendarConnectionGet_TargetsCommand_NotQuery()
+    {
+        // GET, but hits the calendar-token store (Command-granted only) — pinned to Command (34-B).
+        Assert.True(RouteTargetsFunction("GET /w/{workspaceId}/calendar/connection", "CommandFunction"));
     }
 
     [Fact]
