@@ -271,6 +271,7 @@ export function MeetingsSection({ onOpenNote }: { onOpenNote: (noteId: string, t
               className={styles.meetingsNavBtn}
               aria-label="Calendar settings"
               aria-expanded={calendarMenuOpen}
+              aria-controls="calendar-menu-panel"
               onClick={() => setCalendarMenuOpen((open) => !open)}
             >
               <GearIcon size={16} />
@@ -281,15 +282,13 @@ export function MeetingsSection({ onOpenNote }: { onOpenNote: (noteId: string, t
         {/* CHANGE-25: always-available connect/change/disconnect — reachable even when meetings load
             (via an in-app connection or the legacy SSM fallback), not only in the unavailable state. */}
         {calendarMenuOpen && (
-          <div data-testid="calendar-menu" className={styles.calendarMenu} role="group" aria-label="Calendar connection">
+          <div id="calendar-menu-panel" data-testid="calendar-menu" className={styles.calendarMenu} role="group" aria-label="Calendar connection">
             <p className={styles.calendarMenuStatus}>
               {connectedEmail
                 ? `Connected as ${connectedEmail}`
-                : needsAuth
-                  ? "No calendar connected"
-                  : sourceLabel
-                    ? `Using ${sourceLabel}`
-                    : "No calendar connected"}
+                : sourceLabel
+                  ? `Using ${sourceLabel}`
+                  : "No calendar connected"}
             </p>
             <button
               data-testid="menu-connect-google"
