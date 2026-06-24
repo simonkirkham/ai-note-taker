@@ -7,7 +7,6 @@ var hostedZoneId = System.Environment.GetEnvironmentVariable("HOSTED_ZONE_ID");
 var googleClientId = System.Environment.GetEnvironmentVariable("GOOGLE_CLIENT_ID");
 var googleClientSecret = System.Environment.GetEnvironmentVariable("GOOGLE_CLIENT_SECRET");
 var allowedUserSubs = System.Environment.GetEnvironmentVariable("ALLOWED_USER_SUBS");
-var googleRefreshTokenSsmPath = System.Environment.GetEnvironmentVariable("GOOGLE_REFRESH_TOKEN_SSM_PATH");
 var bedrockModelId = System.Environment.GetEnvironmentVariable("BEDROCK_MODEL_ID");
 var calendarProvider = System.Environment.GetEnvironmentVariable("CALENDAR_PROVIDER");
 var microsoftClientId = System.Environment.GetEnvironmentVariable("MS_CLIENT_ID");
@@ -44,7 +43,6 @@ new NoteTakerStack(app, "NoteTakerStack", new NoteTakerStackProps
     GoogleClientId = googleClientId,
     GoogleClientSecret = googleClientSecret,
     AllowedUserSubs = allowedUserSubs,
-    GoogleRefreshTokenSsmPath = googleRefreshTokenSsmPath,
     BedrockModelId = bedrockModelId,
     CalendarProvider = calendarProvider,
     MicrosoftClientId = microsoftClientId,

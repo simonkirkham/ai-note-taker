@@ -347,7 +347,8 @@ public sealed class NoteTakerStack : Stack
             ["GOOGLE_CLIENT_ID"] = props.GoogleClientId ?? "",
             ["GOOGLE_CLIENT_SECRET"] = props.GoogleClientSecret ?? "",
             ["ALLOWED_USER_SUBS"] = props.AllowedUserSubs ?? "",
-            ["GOOGLE_REFRESH_TOKEN_SSM_PATH"] = props.GoogleRefreshTokenSsmPath ?? "",
+            // 34-D1: the Google calendar SSM fallback is retired — Google is fully in-app. The MS SSM
+            // path stays until Outlook in-app connect is verified (34-D2).
             // Phase 32-A: Microsoft 365 (Outlook) calendar. CALENDAR_PROVIDER (google|microsoft)
             // selects the client; the MS values back the Graph path. Public client, no secret.
             ["CALENDAR_PROVIDER"] = props.CalendarProvider ?? "",
@@ -523,24 +524,11 @@ public sealed class NoteTakerStack : Stack
         authTokensTable.GrantReadWriteData(commandFunction);
         calendarTokensTable.GrantReadWriteData(commandFunction);
 
-        if (!string.IsNullOrEmpty(props.GoogleRefreshTokenSsmPath))
-        {
-            var ssmArn = Arn.Format(new ArnComponents
-            {
-                Service = "ssm",
-                Resource = "parameter",
-                ResourceName = props.GoogleRefreshTokenSsmPath.TrimStart('/')
-            }, this);
-            commandFunction.AddToRolePolicy(new PolicyStatement(new PolicyStatementProps
-            {
-                Actions = new[] { "ssm:GetParameter" },
-                Resources = new[] { ssmArn }
-            }));
-        }
-
-        // Phase 32-A: same conditional grant for the Microsoft (Outlook) refresh token.
-        // Calendar GETs route to the Command function (alongside the Google grant above),
-        // so the MS SSM read lives here too. Same no-alias function — no CurrentVersion freeze.
+        // 34-D1: the Google calendar SSM grant is retired (Google is fully in-app). The Microsoft
+        // SSM grant below stays until Outlook in-app connect is verified (34-D2).
+        // Phase 32-A: conditional grant for the Microsoft (Outlook) refresh token. Calendar GETs
+        // route to the Command function, so the MS SSM read lives here. The command function has no
+        // alias/CurrentVersion freeze, so AddToRolePolicy is safe here.
         if (!string.IsNullOrEmpty(props.MicrosoftRefreshTokenSsmPath))
         {
             var msSsmArn = Arn.Format(new ArnComponents

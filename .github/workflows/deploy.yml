@@ -186,7 +186,6 @@ jobs:
           GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
           GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
           ALLOWED_USER_SUBS: ${{ secrets.ALLOWED_USER_SUBS }}
-          GOOGLE_REFRESH_TOKEN_SSM_PATH: ${{ secrets.GOOGLE_REFRESH_TOKEN_SSM_PATH }}
           BEDROCK_MODEL_ID: ${{ secrets.BEDROCK_MODEL_ID }}
           CALENDAR_PROVIDER: ${{ secrets.CALENDAR_PROVIDER }}
           MS_CLIENT_ID: ${{ secrets.MS_CLIENT_ID }}
@@ -540,7 +539,6 @@ jobs:
           GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
           GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
           ALLOWED_USER_SUBS: ${{ secrets.ALLOWED_USER_SUBS }}
-          GOOGLE_REFRESH_TOKEN_SSM_PATH: ${{ secrets.GOOGLE_REFRESH_TOKEN_SSM_PATH }}
           BEDROCK_MODEL_ID: ${{ secrets.BEDROCK_MODEL_ID }}
           CALENDAR_PROVIDER: ${{ secrets.CALENDAR_PROVIDER }}
           MS_CLIENT_ID: ${{ secrets.MS_CLIENT_ID }}
