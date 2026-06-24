@@ -38,11 +38,18 @@ public sealed class NoteCommandHandler(
     private static readonly TimeSpan AppendRetryBaseDelay = TimeSpan.FromMilliseconds(20);
 
     public Task<long> HandleAsync(NoteCommand cmd, CancellationToken ct = default) =>
-        CommandInstrumentation.RunAsync(metrics, logger, cmd.GetType().Name, "Note", () =>
-            ExecuteAsync(cmd.NoteId, note => note.Handle(cmd), ct, mustExist: cmd.MustExist));
+        HandleAsync(cmd, currentUser.UserId, currentWorkspace.WorkspaceId, ct);
 
-    private async Task<long> ExecuteAsync(NoteId noteId, Func<Note, IReadOnlyList<IDomainEvent>> handle, CancellationToken ct,
-        bool mustExist = true)
+    // Identity-explicit overload (33-B2): lets a non-HTTP caller (the TranscribeCompletion Lambda's
+    // INoteAnalysisService) persist with an explicit owner/workspace instead of the scoped
+    // ICurrentUser/ICurrentWorkspace. The HTTP path delegates here with the scoped identity, so its
+    // behaviour — and every existing test — is unchanged.
+    public Task<long> HandleAsync(NoteCommand cmd, string userId, string? workspaceId, CancellationToken ct = default) =>
+        CommandInstrumentation.RunAsync(metrics, logger, cmd.GetType().Name, "Note", () =>
+            ExecuteAsync(cmd.NoteId, note => note.Handle(cmd), userId, workspaceId, ct, mustExist: cmd.MustExist));
+
+    private async Task<long> ExecuteAsync(NoteId noteId, Func<Note, IReadOnlyList<IDomainEvent>> handle,
+        string userId, string? workspaceId, CancellationToken ct, bool mustExist = true)
     {
         var streamId = noteId.ToStreamId();
         // Read → rebuild → handle → append is retried as a unit: each attempt re-reads
@@ -63,14 +70,14 @@ public sealed class NoteCommandHandler(
             // stamped on the note's events; a non-null owner that isn't the caller is a 404 (don't leak
             // existence). A null owner is a legacy pre-Phase-8 single-user note → not enforced.
             if (mustExist && history.Count > 0 && history[0].Metadata.UserId is { } ownerId
-                && ownerId != currentUser.UserId)
+                && ownerId != userId)
                 throw new NoteNotFoundException(noteId);
             var newEvents = handle(note);
             // No-op command (e.g. a re-tag the aggregate ignored): nothing appended, so the write
             // token is the current version — a read carrying it waits on an already-applied mark.
             if (newEvents.Count == 0) return history.Count;
 
-            var envelopes = ToEnvelopes(streamId, newEvents, currentUser.UserId, currentWorkspace.WorkspaceId);
+            var envelopes = ToEnvelopes(streamId, newEvents, userId, workspaceId);
             try
             {
                 await store.AppendAsync(streamId, history.Count, envelopes, ct).ConfigureAwait(false);
