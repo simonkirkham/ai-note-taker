@@ -697,6 +697,25 @@ public class InfraAssertionsTests
     }
 
     [Fact]
+    public void TranscribeCompletionFunction_HasReanalysisEnvVars()
+    {
+        // 33-B2: the re-analysis graph needs the Bedrock model + the read-model projection tables.
+        _template.HasResourceProperties("AWS::Lambda::Function", Match.ObjectLike(new Dictionary<string, object>
+        {
+            ["Handler"] = "TranscribeCompletion::TranscribeCompletion.TranscribeCompletionFunction::Handle",
+            ["Environment"] = Match.ObjectLike(new Dictionary<string, object>
+            {
+                ["Variables"] = Match.ObjectLike(new Dictionary<string, object>
+                {
+                    ["BEDROCK_MODEL_ID"] = Match.AnyValue(),
+                    ["PROJ_NOTEDETAIL_TABLE_NAME"] = Match.AnyValue(),
+                    ["PROJ_NOTEACTIONS_TABLE_NAME"] = Match.AnyValue()
+                })
+            })
+        }));
+    }
+
+    [Fact]
     public void TranscribeCompletionFunction_HasGetTranscriptionJobPermission()
     {
         _template.HasResourceProperties("AWS::IAM::Policy", Match.ObjectLike(new Dictionary<string, object>
