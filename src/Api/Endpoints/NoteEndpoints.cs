@@ -48,6 +48,7 @@ public static class NoteEndpoints
         routes.MapPost("/notes/{noteId}/recording/presign-upload", NoteRecordingHandlers.PresignUpload).RequireAuthorization();
         routes.MapPost("/notes/{noteId}/recording", NoteRecordingHandlers.SaveRecording).RequireAuthorization();
         routes.MapPost("/notes/{noteId}/recording/presign-download", NoteRecordingHandlers.PresignDownload).RequireAuthorization();
+        routes.MapPost("/notes/{noteId}/transcription/diarize", NoteRecordingHandlers.Diarize).RequireAuthorization();
         routes.MapGet("/tags", TagHandlers.GetTags).RequireAuthorization();
     }
 }

@@ -1,4 +1,5 @@
 using Amazon.S3;
+using Amazon.TranscribeService;
 using Domain.Notes;
 using EventStore.Projections;
 using Api.Auth;
@@ -62,6 +63,34 @@ public static class NoteRecordingHandlers
         catch (NoteNotFoundException) { return Results.NotFound(); }
         response.Headers["X-Consistency-Token"] = $"{new NoteId(noteId).ToStreamId()}@{version}";
         return Results.NoContent();
+    }
+
+    public static async Task<IResult> Diarize(
+        Guid noteId,
+        DiarizeRequest req,
+        INoteAuthorizer authorizer,
+        ITranscriptionJobStarter jobStarter,
+        ICurrentUser currentUser)
+    {
+        // Same ownership boundary as SaveRecording: the key must live under this note's
+        // recordings/ prefix, and ownership is authorized from the EVENT STREAM (never the async
+        // projection — RYW/authz guardrail), since the completion handler will append a diarized
+        // transcript event on the back of this job.
+        if (string.IsNullOrWhiteSpace(req.Key) || !NoteRecordingKeys.IsUnderNote(req.Key, noteId.ToString()))
+            return Results.BadRequest(new { error = "key_outside_note" });
+        if (!await authorizer.OwnsNoteAsync(new NoteId(noteId), currentUser.UserId))
+            return Results.NotFound();
+
+        var jobName = DiarizationJobNames.For(noteId.ToString());
+        try
+        {
+            await jobStarter.StartAsync(jobName, req.Key);
+            return Results.Accepted();
+        }
+        catch (AmazonTranscribeServiceException)
+        {
+            return Results.Problem(statusCode: StatusCodes.Status503ServiceUnavailable);
+        }
     }
 
     public static async Task<IResult> PresignDownload(

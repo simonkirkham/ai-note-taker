@@ -203,6 +203,10 @@ public static class Builder
         var recordingsBucketName = Environment.GetEnvironmentVariable("RECORDINGS_BUCKET_NAME") ?? "";
         builder.Services.AddSingleton<INoteRecordingStore>(sp =>
             new S3NoteRecordingStore(sp.GetRequiredService<IAmazonS3>(), recordingsBucketName));
+        builder.Services.AddAWSService<Amazon.TranscribeService.IAmazonTranscribeService>();
+        builder.Services.AddSingleton<ITranscriptionJobStarter>(sp =>
+            new TranscribeBatchJobStarter(
+                sp.GetRequiredService<Amazon.TranscribeService.IAmazonTranscribeService>(), recordingsBucketName));
         builder.Services.AddAWSLambdaHosting(LambdaEventSource.HttpApi);
 
         return builder.Build();
