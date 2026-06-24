@@ -1,16 +1,16 @@
 using System.Net;
-using System.Net.Sockets;
 
 namespace Api.Mcp;
 
 // 35-A defence-in-depth: restrict the no-auth MCP endpoint to a CIDR allowlist read from
-// MCP_ALLOWED_CIDRS (comma-separated). Empty/unset = allow all (no-op until ops populates the
-// Anthropic IP ranges). Only the /w/{wsId}/mcp path is gated.
+// MCP_ALLOWED_CIDRS (via IConfiguration, so the Lambda env var flows in prod but tests can
+// override without mutating process-global state). Empty/unset = allow all (no-op until ops
+// populates the Anthropic IP ranges). Only the /w/{wsId}/mcp path is gated.
 public sealed class McpAllowlistMiddleware(RequestDelegate next)
 {
-    public async Task InvokeAsync(HttpContext context)
+    public async Task InvokeAsync(HttpContext context, IConfiguration config)
     {
-        if (IsMcpPath(context.Request.Path) && !IsAllowed(context.Connection.RemoteIpAddress))
+        if (IsMcpPath(context.Request.Path) && !IsAllowed(ClientIp(context), config["MCP_ALLOWED_CIDRS"]))
         {
             context.Response.StatusCode = StatusCodes.Status403Forbidden;
             return;
@@ -22,16 +22,28 @@ public sealed class McpAllowlistMiddleware(RequestDelegate next)
     private static bool IsMcpPath(PathString path) =>
         path.StartsWithSegments("/w", out var rest) && rest.Value?.EndsWith("/mcp", StringComparison.Ordinal) == true;
 
-    private static bool IsAllowed(IPAddress? remoteIp)
+    // Behind API Gateway/CloudFront the connection IP is the proxy, not the caller; the real
+    // client is the left-most X-Forwarded-For hop. Fall back to the connection IP locally.
+    private static IPAddress? ClientIp(HttpContext context)
     {
-        var ranges = (Environment.GetEnvironmentVariable("MCP_ALLOWED_CIDRS") ?? "")
+        var forwarded = context.Request.Headers["X-Forwarded-For"].ToString();
+        var first = forwarded.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .FirstOrDefault();
+        return first is not null && IPAddress.TryParse(first, out var parsed)
+            ? parsed
+            : context.Connection.RemoteIpAddress;
+    }
+
+    private static bool IsAllowed(IPAddress? clientIp, string? configuredCidrs)
+    {
+        var ranges = (configuredCidrs ?? "")
             .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
         if (ranges.Length == 0)
             return true;
-        if (remoteIp is null)
+        if (clientIp is null)
             return false;
 
-        return ranges.Any(cidr => InCidr(remoteIp, cidr));
+        return ranges.Any(cidr => InCidr(clientIp, cidr));
     }
 
     private static bool InCidr(IPAddress address, string cidr)

@@ -1,5 +1,6 @@
 using System.ComponentModel;
 using System.Text.Json;
+using Api.Auth;
 using Api.Utilities;
 using EventStore.Projections;
 using ModelContextProtocol.Server;
@@ -18,7 +19,7 @@ public sealed class NoteMcpTools(INoteCardListStore cards, IHttpContextAccessor 
         var workspaceId = WorkspaceIdFromRoute();
         var all = await cards.QueryAllAsync(ct).ConfigureAwait(false);
         var notes = all
-            .Where(c => !c.Deleted && c.WorkspaceId == workspaceId)
+            .Where(c => !c.Deleted && WorkspaceScopeExtensions.Matches(workspaceId, c.WorkspaceId))
             .OrderByDescending(c => c.CreatedAt)
             .Select(c => new
             {
@@ -41,7 +42,7 @@ public sealed class NoteMcpTools(INoteCardListStore cards, IHttpContextAccessor 
     {
         var stripped = MarkdownStripper.Strip(content);
         return stripped.Length > MaxPreviewLength
-            ? stripped[..(MaxPreviewLength - 1)] + "…"
+            ? stripped[..MaxPreviewLength] + "…"
             : stripped;
     }
 }

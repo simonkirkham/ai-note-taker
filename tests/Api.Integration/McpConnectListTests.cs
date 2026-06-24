@@ -4,7 +4,11 @@ using System.Text;
 using System.Text.Json;
 using Domain.Folders;
 using Domain.Notes;
+using Domain.Workspaces;
 using EventStore.Projections;
+using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace Api.Integration;
@@ -22,6 +26,7 @@ public sealed class McpConnectListTests(ApiFactory factory) : IClassFixture<ApiF
     private static readonly Guid NoteB1 = new("22222222-2222-2222-2222-222222222222");
     private static readonly Guid NoteA2 = new("33333333-3333-3333-3333-333333333333");
     private static readonly Guid NoteB2 = new("44444444-4444-4444-4444-444444444444");
+    private static readonly Guid NoteLegacy = new("55555555-5555-5555-5555-555555555555");
 
     private readonly ApiFactory _factory = factory;
 
@@ -71,6 +76,18 @@ public sealed class McpConnectListTests(ApiFactory factory) : IClassFixture<ApiF
     }
 
     [Fact]
+    public async Task ListNotes_OnDefaultWorkspace_IncludesLegacyNullWorkspaceNotes()
+    {
+        SeedCard(null, NoteLegacy, "Pre-workspace note", null, "written before workspaces existed");
+
+        var client = NewClient();
+        var result = await CallToolAsync(client, McpPath(WorkspaceId.DefaultValue), "list_notes");
+
+        var ids = ParseListNotes(result).Select(n => n.GetProperty("id").GetString()).ToList();
+        Assert.Contains(NoteLegacy.ToString(), ids);
+    }
+
+    [Fact]
     public async Task Get_OnMcpEndpoint_Returns405()
     {
         var client = _factory.CreateUnauthenticatedClient();
@@ -97,28 +114,36 @@ public sealed class McpConnectListTests(ApiFactory factory) : IClassFixture<ApiF
     }
 
     [Fact]
-    public async Task BlockedSourceIp_Returns403()
+    public async Task SourceIpOutsideAllowlist_Returns403()
     {
-        var blockedFactory = _factory.WithWebHostBuilder(_ =>
-            Environment.SetEnvironmentVariable("MCP_ALLOWED_CIDRS", "203.0.113.0/24"));
-        try
-        {
-            var client = blockedFactory.CreateClient();
-            var req = NewPost(McpPath(WorkspaceA), Envelope("initialize", InitializeParams()));
+        using var factory = WithAllowlist("203.0.113.0/24");
+        var req = NewPost(McpPath(WorkspaceA), Envelope("initialize", InitializeParams()));
+        req.Headers.Add("X-Forwarded-For", "198.51.100.7");
 
-            var resp = await client.SendAsync(req);
+        var resp = await factory.CreateClient().SendAsync(req);
 
-            Assert.Equal(HttpStatusCode.Forbidden, resp.StatusCode);
-        }
-        finally
-        {
-            Environment.SetEnvironmentVariable("MCP_ALLOWED_CIDRS", null);
-        }
+        Assert.Equal(HttpStatusCode.Forbidden, resp.StatusCode);
+    }
+
+    [Fact]
+    public async Task SourceIpInsideAllowlist_IsNotBlocked()
+    {
+        using var factory = WithAllowlist("203.0.113.0/24");
+        var req = NewPost(McpPath(WorkspaceA), Envelope("initialize", InitializeParams()));
+        req.Headers.Add("X-Forwarded-For", "203.0.113.42");
+
+        var resp = await factory.CreateClient().SendAsync(req);
+
+        Assert.NotEqual(HttpStatusCode.Forbidden, resp.StatusCode);
     }
 
     // ── Helpers ──────────────────────────────────────────────────────────
 
     private static string McpPath(string workspaceId) => $"/w/{workspaceId}/mcp";
+
+    private WebApplicationFactory<Program> WithAllowlist(string cidrs) =>
+        _factory.WithWebHostBuilder(b => b.ConfigureAppConfiguration(c =>
+            c.AddInMemoryCollection(new Dictionary<string, string?> { ["MCP_ALLOWED_CIDRS"] = cidrs })));
 
     private HttpClient NewClient()
     {
@@ -127,7 +152,7 @@ public sealed class McpConnectListTests(ApiFactory factory) : IClassFixture<ApiF
         return client;
     }
 
-    private void SeedCard(string workspaceId, Guid noteId, string title, DateOnly? date, string content)
+    private void SeedCard(string? workspaceId, Guid noteId, string title, DateOnly? date, string content)
     {
         var store = (InMemoryNoteCardListStore)_factory.Services.GetRequiredService<INoteCardListStore>();
         store.UpsertAsync(new NoteCardView(

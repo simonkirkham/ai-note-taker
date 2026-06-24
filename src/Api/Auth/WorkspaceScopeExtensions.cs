@@ -8,5 +8,8 @@ public static class WorkspaceScopeExtensions
     // matches — treating a missing workspace (historical rows written before 23-B) as
     // the reserved default (decision #5).
     public static bool Includes(this ICurrentWorkspace currentWorkspace, string? rowWorkspaceId) =>
-        (string.IsNullOrEmpty(rowWorkspaceId) ? DomainWorkspaceId.DefaultValue : rowWorkspaceId) == currentWorkspace.WorkspaceId;
+        Matches(currentWorkspace.WorkspaceId, rowWorkspaceId);
+
+    public static bool Matches(string workspaceId, string? rowWorkspaceId) =>
+        (string.IsNullOrEmpty(rowWorkspaceId) ? DomainWorkspaceId.DefaultValue : rowWorkspaceId) == workspaceId;
 }

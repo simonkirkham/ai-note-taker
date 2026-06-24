@@ -35,7 +35,7 @@
 |----------|--------|--------|
 | Transport | Single `/mcp` endpoint; **POST → `application/json`, GET → 405**. Server-initiated SSE is **not** required for a tool-only server → no Lambda response-streaming. | spec/transports |
 | Method set | `initialize` → `notifications/initialized` (202) → `tools/list` → `tools/call`; plus `ping`. No resources/prompts capability. | spec 2025-11-25/server/tools |
-| Headers | Honour `MCP-Protocol-Version` (400 on unsupported); validate `Origin` (DNS-rebind); stay **stateless** (don't issue `Mcp-Session-Id`). | spec/transports |
+| Headers | Honour `MCP-Protocol-Version` (400 on unsupported); stay **stateless** (don't issue `Mcp-Session-Id`). (`Origin`/DNS-rebind validation is a localhost-server concern; not separately wired — this server is no-auth + IP-allowlisted.) | spec/transports |
 | SDK | Use **`ModelContextProtocol.AspNetCore`** (official C# SDK, stable v1.0 Mar 2026, full 2025-11-25 + OAuth 2.1). Do **not** hand-roll JSON-RPC/transport. | github.com/modelcontextprotocol/csharp-sdk |
 | Auth model | Our server **must be the OAuth 2.1 Resource Server**; the AS may be separate. **Cannot** delegate raw to Google — tokens must be **audience-bound** to our server (RFC 8707). "Reuse Google" = a **thin AS broker** that runs Google sign-in upstream and mints our own token. | spec/authorization |
 | Client registration | **Pre-registration (paste client_id/secret in Claude's Advanced settings)**. DCR (RFC 7591) is deprecated, not required. PKCE S256 required. | spec/client-registration |
@@ -59,7 +59,7 @@
 
 **User value:** the owner pastes `https://<app>/w/<wsId>/mcp` into Cowork's *Add custom connector* (no auth), and Cowork can list that workspace's notes — proving the whole pipe before any OAuth is built.
 
-**How (mechanics):** add the official **`ModelContextProtocol.AspNetCore`** SDK to `src/Api`; map its Streamable-HTTP MCP endpoint under `/w/{workspaceId}/mcp` (POST → `application/json`, GET → 405, stateless — no `Mcp-Session-Id`, validate `Origin`). One tool `list_notes` reads `NoteCardList` for the `workspaceId` taken from the route, returning id, title, date, preview. **No OAuth** — the workspace id in the URL is the access token; an **Anthropic-IP allowlist** (Lambda-side check of source IP, or WAF/API-GW) is defence-in-depth. Tool-call path pinned to the **Query** Lambda. Note: with no user identity, the read is scoped by `workspaceId` alone (single-user app) — `userId` scoping returns with OAuth in 35-E.
+**How (mechanics):** add the official **`ModelContextProtocol.AspNetCore`** SDK to `src/Api`; map its Streamable-HTTP MCP endpoint under `/w/{workspaceId}/mcp` (POST → `application/json`, GET → 405, stateless — no `Mcp-Session-Id`). One tool `list_notes` reads `NoteCardList` for the `workspaceId` taken from the route, returning id, title, date, preview. **No OAuth** — the workspace id in the URL is the access token; an **Anthropic-IP allowlist** (Lambda-side check of source IP, or WAF/API-GW) is defence-in-depth. Tool-call path pinned to the **Query** Lambda. Note: with no user identity, the read is scoped by `workspaceId` alone (single-user app) — `userId` scoping returns with OAuth in 35-E.
 
 > **Security note (accepted, owner decision):** for the no-auth window the workspace's note titles/previews are readable by anyone who both knows the unguessable URL **and** reaches it from an Anthropic IP range. Accepted for a single-user app as the proving step; 35-E closes it.
 
@@ -92,7 +92,7 @@ Scenario: Unsupported protocol version
 ```
 
 ### Acceptance criteria
-- MCP endpoint speaks the current transport via `ModelContextProtocol.AspNetCore` (`initialize` / `notifications/initialized` / `tools/list` / `tools/call` / `ping`); POST→`application/json`, GET→405, stateless, `Origin` validated.
+- MCP endpoint speaks the current transport via `ModelContextProtocol.AspNetCore` (`initialize` / `notifications/initialized` / `tools/list` / `tools/call` / `ping`); POST→`application/json`, GET→405, stateless.
 - A **real Cowork client connects (no auth) and round-trips `list_notes`** against the deployed server (owner-run manual gate).
 - `list_notes` reads `NoteCardList` scoped to the route `workspaceId`; returns id, title, date, preview.
 - Tool-call path resolves on the **Query** Lambda (asserted in `Infrastructure.Assertions`).
