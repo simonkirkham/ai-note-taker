@@ -101,6 +101,12 @@
 
 .discussedButton {
   position: absolute;
+  /* The editor content (.contentInput) is position:relative for inline-image
+     positioning, so it is a positioned sibling in the same stacking layer and,
+     coming later in the DOM, paints over this absolutely-positioned button —
+     swallowing the click so "mark as discussed" did nothing (BUG-37). A positive
+     z-index lifts the button above the content so the click lands on it. */
+  z-index: 1;
   right: 4px;
   width: 1.4rem;
   height: 1.4rem;
