@@ -36,13 +36,10 @@ public class InfraAssertionsTests
 
     private static Template BuildCalendarTemplate()
     {
-        // 34-D1 retired the Google SSM path; the Microsoft SSM grant is the remaining conditional one
-        // (until 34-D2). This template exercises that grant.
+        // 34-D retired all calendar SSM paths (Google + Microsoft) — calendars are fully in-app, so
+        // no SSM-path props remain. Kept as a default-props template for the no-SSM assertions below.
         var app = new App(new AppProps { Context = AssetContext() });
-        return Template.FromStack(new NoteTakerStack(app, "TestStack", new NoteTakerStackProps
-        {
-            MicrosoftRefreshTokenSsmPath = "/test/microsoft-refresh-token"
-        }));
+        return Template.FromStack(new NoteTakerStack(app, "TestStack", new NoteTakerStackProps()));
     }
 
     [Fact]
@@ -501,40 +498,9 @@ public class InfraAssertionsTests
     }
 
     [Fact]
-    public void Lambda_HasSsmGetParameterPermission_WhenRefreshTokenPathConfigured()
-    {
-        // 34-D1: the Microsoft SSM grant is the remaining conditional one (the Google grant is gone).
-        // Resource is a Fn::Join intrinsic; assert the specific parameter path is embedded in it.
-        _calendarTemplate.HasResourceProperties("AWS::IAM::Policy", Match.ObjectLike(new Dictionary<string, object>
-        {
-            ["PolicyDocument"] = Match.ObjectLike(new Dictionary<string, object>
-            {
-                ["Statement"] = Match.ArrayWith(new object[]
-                {
-                    Match.ObjectLike(new Dictionary<string, object>
-                    {
-                        ["Action"] = "ssm:GetParameter",
-                        ["Effect"] = "Allow",
-                        ["Resource"] = Match.ObjectLike(new Dictionary<string, object>
-                        {
-                            ["Fn::Join"] = Match.ArrayWith(new object[]
-                            {
-                                Match.ArrayWith(new object[]
-                                {
-                                    Match.StringLikeRegexp(".*parameter/test/microsoft-refresh-token$")
-                                })
-                            })
-                        })
-                    })
-                })
-            })
-        }));
-    }
-
-    [Fact]
     public void Lambda_HasNoSsmPermission_WhenRefreshTokenPathNotConfigured()
     {
-        // _template has no GoogleRefreshTokenSsmPath — the conditional grant must not fire
+        // 34-D: no calendar SSM grant remains on any function (Google + Microsoft both in-app).
         var thrown = Record.Exception(() =>
             _template.HasResourceProperties("AWS::IAM::Policy", Match.ObjectLike(new Dictionary<string, object>
             {

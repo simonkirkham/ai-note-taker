@@ -389,14 +389,11 @@ public sealed class NoteTakerStack : Stack
             ["GOOGLE_CLIENT_ID"] = props.GoogleClientId ?? "",
             ["GOOGLE_CLIENT_SECRET"] = props.GoogleClientSecret ?? "",
             ["ALLOWED_USER_SUBS"] = props.AllowedUserSubs ?? "",
-            // 34-D1: the Google calendar SSM fallback is retired — Google is fully in-app. The MS SSM
-            // path stays until Outlook in-app connect is verified (34-D2).
-            // Phase 32-A: Microsoft 365 (Outlook) calendar. CALENDAR_PROVIDER (google|microsoft)
-            // selects the client; the MS values back the Graph path. Public client, no secret.
-            ["CALENDAR_PROVIDER"] = props.CalendarProvider ?? "",
+            // 34-D: the calendar SSM fallback + CALENDAR_PROVIDER are retired — calendars are fully
+            // in-app per workspace. MS_CLIENT_ID/MS_TENANT_ID stay (the in-app Outlook OAuth + Graph
+            // token exchange). Public client, no secret.
             ["MS_CLIENT_ID"] = props.MicrosoftClientId ?? "",
             ["MS_TENANT_ID"] = props.MicrosoftTenantId ?? "",
-            ["MICROSOFT_REFRESH_TOKEN_SSM_PATH"] = props.MicrosoftRefreshTokenSsmPath ?? "",
             ["PROJ_CALENDARLINKINDEX_TABLE_NAME"] = calendarLinkIndexTable.TableName,
             ["PROJ_NOTESEARCHVIEW_TABLE_NAME"] = noteSearchViewTable.TableName,
             ["DRAFT_TRANSCRIPTION_TABLE_NAME"] = draftTranscriptionTable.TableName,
@@ -580,25 +577,8 @@ public sealed class NoteTakerStack : Stack
         mcpRefreshTokenTable.GrantReadWriteData(commandFunction);
         mcpJwtSecret.GrantRead(commandFunction);
 
-        // 34-D1: the Google calendar SSM grant is retired (Google is fully in-app). The Microsoft
-        // SSM grant below stays until Outlook in-app connect is verified (34-D2).
-        // Phase 32-A: conditional grant for the Microsoft (Outlook) refresh token. Calendar GETs
-        // route to the Command function, so the MS SSM read lives here. The command function has no
-        // alias/CurrentVersion freeze, so AddToRolePolicy is safe here.
-        if (!string.IsNullOrEmpty(props.MicrosoftRefreshTokenSsmPath))
-        {
-            var msSsmArn = Arn.Format(new ArnComponents
-            {
-                Service = "ssm",
-                Resource = "parameter",
-                ResourceName = props.MicrosoftRefreshTokenSsmPath.TrimStart('/')
-            }, this);
-            commandFunction.AddToRolePolicy(new PolicyStatement(new PolicyStatementProps
-            {
-                Actions = new[] { "ssm:GetParameter" },
-                Resources = new[] { msSsmArn }
-            }));
-        }
+        // 34-D: the calendar SSM grants are fully retired (both Google and Microsoft are in-app), so
+        // the command function holds no ssm:GetParameter grant.
 
         // ── Query function (reads only — projection tables read-only) ────────
         // Serves every GET except the two side-service GETs pinned to Command. Keeps
