@@ -3,9 +3,9 @@ import clsx from "clsx";
 import { useState } from "react";
 import { keys } from "../api/queryKeys";
 import { TodoItem } from "../api/todos";
-import { useCompleteTodo, useReopenTodo, useDeleteTodo } from "../hooks/useTodoMutations";
+import { useCompleteTodo, useReopenTodo, useDeleteTodo, useReorderTodos } from "../hooks/useTodoMutations";
 import { useTodos } from "../hooks/useTodos";
-import { TrashIcon } from "./icons";
+import { TrashIcon, ChevronUpIcon, ChevronDownIcon, GripVerticalIcon } from "./icons";
 import QuickCaptureTodoInput from "./QuickCaptureTodoInput";
 import styles from "./TodoSection.module.css";
 
@@ -19,17 +19,46 @@ function isToday(isoString: string): boolean {
   );
 }
 
+function arrayMove<T>(arr: T[], from: number, to: number): T[] {
+  const next = [...arr];
+  const [moved] = next.splice(from, 1);
+  next.splice(to, 0, moved);
+  return next;
+}
+
 export default function TodoSection() {
   const qc = useQueryClient();
   const { data: items = [], isLoading: loading } = useTodos();
   const complete = useCompleteTodo();
   const reopen = useReopenTodo();
   const remove = useDeleteTodo();
+  const reorder = useReorderTodos();
   const [busy, setBusy] = useState<Set<string>>(new Set());
   const [doneOpen, setDoneOpen] = useState(false);
+  const [draggedId, setDraggedId] = useState<string | null>(null);
 
   const openItems = items.filter((i) => i.completedAt === null);
   const doneItems = items.filter((i) => i.completedAt !== null && isToday(i.completedAt));
+
+  // Reorder the open items, optimistically and persisted. Pass the full new id order.
+  function reorderTo(orderedIds: string[]) {
+    if (orderedIds.length > 1) reorder.mutate(orderedIds);
+  }
+
+  function moveOpen(index: number, delta: number) {
+    const to = index + delta;
+    if (to < 0 || to >= openItems.length) return;
+    reorderTo(arrayMove(openItems.map((i) => i.itemId), index, to));
+  }
+
+  function handleDrop(targetId: string) {
+    const ids = openItems.map((i) => i.itemId);
+    const from = draggedId ? ids.indexOf(draggedId) : -1;
+    const to = ids.indexOf(targetId);
+    setDraggedId(null);
+    if (from < 0 || to < 0 || from === to) return;
+    reorderTo(arrayMove(ids, from, to));
+  }
 
   function addBusy(id: string) {
     setBusy((prev) => new Set(prev).add(id));
@@ -112,8 +141,19 @@ export default function TodoSection() {
         <>
           {openItems.length > 0 && (
             <ul data-testid="todo-list" className={styles.todoList}>
-              {openItems.map((item) => (
-                <li key={item.itemId} className={styles.todoItem}>
+              {openItems.map((item, index) => (
+                <li
+                  key={item.itemId}
+                  className={clsx(styles.todoItem, draggedId === item.itemId && styles.todoItemDragging)}
+                  draggable
+                  onDragStart={() => setDraggedId(item.itemId)}
+                  onDragEnd={() => setDraggedId(null)}
+                  onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = "move"; }}
+                  onDrop={(e) => { e.preventDefault(); handleDrop(item.itemId); }}
+                >
+                  <span className={styles.todoDragHandle} aria-hidden="true" title="Drag to reorder">
+                    <GripVerticalIcon />
+                  </span>
                   <input
                     type="checkbox"
                     className={styles.todoCheckbox}
@@ -125,6 +165,24 @@ export default function TodoSection() {
                   <div className={styles.todoItemContent}>
                     <span className={styles.todoDescription}>{item.description}</span>
                     {item.noteTitle && <span className={styles.todoNoteTitle}>{item.noteTitle}</span>}
+                  </div>
+                  <div className={styles.todoReorderButtons}>
+                    <button
+                      className="icon-btn"
+                      aria-label={`Move "${item.description}" up`}
+                      disabled={index === 0}
+                      onClick={() => moveOpen(index, -1)}
+                    >
+                      <ChevronUpIcon />
+                    </button>
+                    <button
+                      className="icon-btn"
+                      aria-label={`Move "${item.description}" down`}
+                      disabled={index === openItems.length - 1}
+                      onClick={() => moveOpen(index, 1)}
+                    >
+                      <ChevronDownIcon />
+                    </button>
                   </div>
                   <button
                     className="icon-btn icon-btn--danger"

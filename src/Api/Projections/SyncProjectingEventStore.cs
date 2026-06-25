@@ -27,7 +27,7 @@ public sealed class SyncProjectingEventStore(IEventStore inner, StreamProjector 
 {
     // Stream prefixes whose inline projection write has been removed (so the projector is their
     // sole in-process writer). Grows as flows migrate.
-    private static readonly string[] MigratedPrefixes = ["todo#", "note#", "action#", "folder-", "workspace-"];
+    private static readonly string[] MigratedPrefixes = ["todo#", "todo-order#", "note#", "action#", "folder-", "workspace-"];
 
     public async Task AppendAsync(string streamId, long expectedVersion, IReadOnlyList<EventEnvelope> events, CancellationToken ct = default)
     {

@@ -254,7 +254,8 @@ public record TodoItem(
     NoteId NoteId,
     string NoteTitle,
     string Description,
-    DateTimeOffset AddedAt);
+    DateTimeOffset AddedAt,
+    int? Position = null);   // 37 — explicit drag order; sort Position ?? max, then AddedAt
 
 public record TodoListView(
     IReadOnlyList<TodoItem> Items);   // empty list → UI shows "Your ToDo list is clear."
@@ -277,8 +278,10 @@ public record TodoListView(
 
 **Storage row** (table `notetaker-proj-todolist`):
 
-| PK (ActionId) | NoteId  | NoteTitle    | Description       | AddedAt |
-|---------------|---------|--------------|-------------------|---------|
+| PK (ActionId) | NoteId  | NoteTitle    | Description       | AddedAt | Position? |
+|---------------|---------|--------------|-------------------|---------|-----------|
+
+`Position` (37) is an additive numeric attribute set by `TodoListReordered` (full-order snapshot per workspace, stream `todo-order#<workspaceId>`); a `SET Position = :pos` UpdateItem guarded by `attribute_exists(PK)` so a stale snapshot id never upserts a phantom row. Absent → row sorts after positioned ones by `AddedAt`. No backfill (existing rows keep `Position` null until first reordered).
 
 Only **open** action items are stored — `ActionItemCompleted` removes the row, `ActionItemReopened` reinstates it. Keeps reads cheap (no filter) and the table small.
 
