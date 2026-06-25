@@ -9,6 +9,7 @@ using Amazon.CDK.AWS.Route53;
 using Amazon.CDK.AWS.Route53.Targets;
 using Amazon.CDK.AWS.RUM;
 using Amazon.CDK.AWS.S3;
+using Amazon.CDK.AWS.SecretsManager;
 using Constructs;
 
 public sealed class NoteTakerStack : Stack
@@ -215,6 +216,47 @@ public sealed class NoteTakerStack : Stack
             RemovalPolicy = RemovalPolicy.RETAIN
         });
 
+        // 35-E: MCP OAuth broker state.
+        // Auth-code table: the short-lived OAuth state (pending-Google record + our issued
+        // authorization code), single-use and TTL-reaped. Working state, not durable user data →
+        // DESTROY, with TTL on the "TTL" attribute so DynamoDB self-purges expired rows.
+        var mcpAuthCodeTable = new Table(this, "McpAuthCodeTable", new TableProps
+        {
+            TableName = "notetaker-mcp-auth-code",
+            PartitionKey = new Amazon.CDK.AWS.DynamoDB.Attribute { Name = "id", Type = AttributeType.STRING },
+            BillingMode = BillingMode.PAY_PER_REQUEST,
+            Encryption = TableEncryption.AWS_MANAGED,
+            TimeToLiveAttribute = "TTL",
+            RemovalPolicy = RemovalPolicy.DESTROY
+        });
+
+        // Refresh-token table: rotating MCP refresh tokens (a durable credential keyed by the opaque
+        // token) → RETAIN, encrypted. Single-use rotation is enforced in code (read-and-delete).
+        var mcpRefreshTokenTable = new Table(this, "McpRefreshTokenTable", new TableProps
+        {
+            TableName = "notetaker-mcp-refresh-token",
+            PartitionKey = new Amazon.CDK.AWS.DynamoDB.Attribute { Name = "token", Type = AttributeType.STRING },
+            BillingMode = BillingMode.PAY_PER_REQUEST,
+            Encryption = TableEncryption.AWS_MANAGED,
+            RemovalPolicy = RemovalPolicy.RETAIN
+        });
+
+        // HMAC (HS256) signing key for the MCP access tokens. CDK generates a random secret value;
+        // the Command Lambda signs with it and the Query Lambda validates with it (GrantRead to both).
+        // RETAIN so a stack teardown never invalidates live connectors. The secret NAME (not value)
+        // rides the constructor env dict; the function fetches the value from Secrets Manager at boot.
+        var mcpJwtSecret = new Secret(this, "McpJwtSigningSecret", new SecretProps
+        {
+            SecretName = "notetaker-mcp-jwt-signing-key",
+            Description = "HMAC HS256 key the MCP OAuth broker signs/validates access tokens with",
+            GenerateSecretString = new SecretStringGenerator
+            {
+                PasswordLength = 64,
+                ExcludePunctuation = true
+            },
+            RemovalPolicy = RemovalPolicy.RETAIN
+        });
+
         // ── Note images (user-uploaded blobs) ────────────────────────────
         // Private bucket: the browser uploads/downloads directly via presigned URLs,
         // so CORS must allow PUT/GET. RETAIN — user data is never auto-deleted on a
@@ -329,9 +371,9 @@ public sealed class NoteTakerStack : Stack
             // Defensive: with active tracing the Lambda runtime always provides a
             // segment, but log rather than throw if the X-Ray context is ever absent.
             ["AWS_XRAY_CONTEXT_MISSING"] = "LOG_ERROR",
-            // 35-A no-auth MCP endpoint disabled in prod until 35-E adds OAuth. Flip to "true"
-            // (with auth in place) to re-enable. Defaults ON in code so tests/local stay mapped.
-            ["MCP_ENABLED"] = "false",
+            // 35-E: the MCP endpoint is re-enabled in prod WITH OAuth in place (the Resource Server
+            // rejects any request without a valid audience-bound bearer). It is never live without auth.
+            ["MCP_ENABLED"] = "true",
             ["EVENTS_TABLE_NAME"] = eventsTable.TableName,
             ["PROJ_NOTETITLELIST_TABLE_NAME"] = projTable.TableName,
             ["PROJ_NOTEDETAIL_TABLE_NAME"] = noteDetailTable.TableName,
@@ -360,6 +402,14 @@ public sealed class NoteTakerStack : Stack
             ["DRAFT_TRANSCRIPTION_TABLE_NAME"] = draftTranscriptionTable.TableName,
             ["AUTH_TOKENS_TABLE_NAME"] = authTokensTable.TableName,
             ["CALENDAR_TOKENS_TABLE_NAME"] = calendarTokensTable.TableName,
+            // 35-E MCP OAuth broker: the two store table names + the signing-secret NAME (never the
+            // value) + the issuer/client config. All ride the constructor dict so they are part of the
+            // function-config hash (CurrentVersion), matching the env-var-on-constructor-dict guardrail.
+            ["MCP_AUTH_CODE_TABLE_NAME"] = mcpAuthCodeTable.TableName,
+            ["MCP_REFRESH_TOKEN_TABLE_NAME"] = mcpRefreshTokenTable.TableName,
+            ["MCP_JWT_SECRET_NAME"] = mcpJwtSecret.SecretName,
+            ["MCP_OAUTH_ISSUER"] = props.McpOAuthIssuer ?? "",
+            ["MCP_OAUTH_CLIENT_ID"] = props.McpOAuthClientId ?? "",
             ["IMAGE_BUCKET_NAME"] = imagesBucket.BucketName,
             ["RECORDINGS_BUCKET_NAME"] = recordingsBucket.BucketName,
             ["PROJ_WORKSPACELIST_TABLE_NAME"] = workspaceListTable.TableName,
@@ -523,6 +573,12 @@ public sealed class NoteTakerStack : Stack
         // endpoints route there). Resource-grant path, RW; the Query Lambda gets NO grant.
         authTokensTable.GrantReadWriteData(commandFunction);
         calendarTokensTable.GrantReadWriteData(commandFunction);
+        // 35-E: the AS broker (authorize/callback/token) runs on Command — it writes/reads the auth-code
+        // + refresh-token stores and SIGNS access tokens with the HMAC secret. Resource grants (not
+        // AddToRolePolicy) so they route through role.addToPrincipalPolicy.
+        mcpAuthCodeTable.GrantReadWriteData(commandFunction);
+        mcpRefreshTokenTable.GrantReadWriteData(commandFunction);
+        mcpJwtSecret.GrantRead(commandFunction);
 
         // 34-D1: the Google calendar SSM grant is retired (Google is fully in-app). The Microsoft
         // SSM grant below stays until Outlook in-app connect is verified (34-D2).
@@ -592,6 +648,10 @@ public sealed class NoteTakerStack : Stack
         // /health probes DynamoDB reachability via DescribeTable on the events table —
         // a control-plane metadata call only; it grants no access to event-store DATA.
         eventsTable.Grant(queryFunction, "dynamodb:DescribeTable");
+        // 35-E: the MCP tool path is on Query, so the Resource Server VALIDATES the HS256 token here —
+        // it needs to read (never write) the same HMAC secret Command signs with. Resource grant only;
+        // Query gets NO access to the OAuth code/refresh tables (it never runs the AS flow).
+        mcpJwtSecret.GrantRead(queryFunction);
 
         // ── Projector Lambda (27-B → 27-RYW: sole read-model writer) ─────────────────────────
         // Async read-model writer driven by the events-table DynamoDB stream. Mirrors the
@@ -873,6 +933,31 @@ public sealed class NoteTakerStack : Stack
             Path = "/w/{workspaceId}/mcp",
             Methods = new[] { Amazon.CDK.AWS.Apigatewayv2.HttpMethod.POST },
             Integration = queryIntegration
+        });
+
+        // 35-E: the OAuth Authorization-Server endpoints need the Google client + the HMAC secret +
+        // the auth-code/refresh stores, which only the Command function holds — so they are pinned to
+        // Command (mirrors the calendar GETs). The token endpoint is a POST (default → Command anyway,
+        // but pinned explicitly for clarity); authorize/callback/AS-metadata are GETs that would
+        // otherwise fall to Query. The protected-resource metadata (`/.well-known/oauth-protected-
+        // resource…`, a GET served by the MCP SDK) and the `/w/{ws}/mcp` tool path stay on Query.
+        // This whole route group is a BACKEND artifact: it reaches prod only via a `cdk deploy`
+        // (detect-changes backend=true). A frontend-only deploy that skips the backend would leave a
+        // new request path falling through to `/{proxy+}` → 404 (route-contract guardrail).
+        foreach (var oauthGet in new[] { "/oauth/authorize", "/oauth/google/callback", "/.well-known/oauth-authorization-server" })
+        {
+            httpApi.AddRoutes(new Amazon.CDK.AWS.Apigatewayv2.AddRoutesOptions
+            {
+                Path = oauthGet,
+                Methods = new[] { Amazon.CDK.AWS.Apigatewayv2.HttpMethod.GET },
+                Integration = commandIntegration
+            });
+        }
+        httpApi.AddRoutes(new Amazon.CDK.AWS.Apigatewayv2.AddRoutesOptions
+        {
+            Path = "/oauth/token",
+            Methods = new[] { Amazon.CDK.AWS.Apigatewayv2.HttpMethod.POST },
+            Integration = commandIntegration
         });
 
         // ── Frontend (S3 + CloudFront) ───────────────────────────────────

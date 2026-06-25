@@ -37,6 +37,13 @@ public class ApiFactory : WebApplicationFactory<Program>
         Environment.SetEnvironmentVariable("PROJ_POSITION_TABLE_NAME", "test-proj-position");
         Environment.SetEnvironmentVariable("AUTH_TOKENS_TABLE_NAME", "test-auth-tokens");
         Environment.SetEnvironmentVariable("CALENDAR_TOKENS_TABLE_NAME", "test-calendar-tokens");
+        Environment.SetEnvironmentVariable("MCP_AUTH_CODE_TABLE_NAME", "test-mcp-auth-code");
+        Environment.SetEnvironmentVariable("MCP_REFRESH_TOKEN_TABLE_NAME", "test-mcp-refresh-token");
+        // 35-E: a known HS256 secret + issuer + client id so tests can mint/validate real tokens and
+        // exercise the AS broker without Secrets Manager. MCP_JWT_SECRET overrides the SM fetch.
+        Environment.SetEnvironmentVariable("MCP_JWT_SECRET", McpTestTokens.SigningSecret);
+        Environment.SetEnvironmentVariable("MCP_OAUTH_ISSUER", McpTestTokens.Issuer);
+        Environment.SetEnvironmentVariable("MCP_OAUTH_CLIENT_ID", McpTestTokens.ClientId);
         Environment.SetEnvironmentVariable("ALLOWED_USER_SUBS", "test-user-123,other-user-456");
         Environment.SetEnvironmentVariable("GOOGLE_CLIENT_ID", "test-client-id");
         Environment.SetEnvironmentVariable("GOOGLE_CLIENT_SECRET", "test-client-secret");
@@ -73,6 +80,12 @@ public class ApiFactory : WebApplicationFactory<Program>
             services.RemoveAll<ICalendarTokenStore>();
             services.AddSingleton<InMemoryCalendarTokenStore>();
             services.AddSingleton<ICalendarTokenStore>(sp => sp.GetRequiredService<InMemoryCalendarTokenStore>());
+            // 35-E: in-memory MCP OAuth stores so the AS broker + RS tests run without DynamoDB.
+            services.RemoveAll<Api.Mcp.OAuth.IMcpAuthCodeStore>();
+            services.AddSingleton<Api.Mcp.OAuth.IMcpAuthCodeStore>(sp =>
+                new InMemoryMcpAuthCodeStore(sp.GetRequiredService<Api.Mcp.OAuth.McpOAuthOptions>()));
+            services.RemoveAll<Api.Mcp.OAuth.IMcpRefreshTokenStore>();
+            services.AddSingleton<Api.Mcp.OAuth.IMcpRefreshTokenStore, InMemoryMcpRefreshTokenStore>();
             services.RemoveAll<IEventStore>();
             services.RemoveAll<INoteTitleListStore>();
             services.RemoveAll<INoteDetailStore>();
