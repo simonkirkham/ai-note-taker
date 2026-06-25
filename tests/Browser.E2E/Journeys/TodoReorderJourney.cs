@@ -43,8 +43,13 @@ public sealed class TodoReorderJourney(BrowserFixture browser) : IAsyncLifetime
         await _app.AddTodoAsync(first);
         await _app.AddTodoAsync(second);
 
-        // Baseline order is AddedAt: first, then second. Move `second` up so the order becomes
-        // [second, first], then prove it survived the server round-trip via the gated reload.
+        // Establish a deterministic starting order first. The optimistic add PREPENDS each new
+        // item, so the live list briefly shows [second, first] (second on top) — clicking "Move
+        // second up" then hangs on a disabled button. Reload to drop the optimistic order and read
+        // the gated AddedAt order [first, second]; only then is `second` below `first`.
+        await _app.AssertTodoOrderAfterReloadAsync(first, second);
+
+        // Move `second` up so the order becomes [second, first]; prove it survived the round-trip.
         await _app.MoveTodoUpAsync(second);
         await _app.AssertTodoOrderAfterReloadAsync(second, first);
     }
