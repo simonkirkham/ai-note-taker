@@ -121,6 +121,26 @@ public static class TodoHandlers
         var item = await store.GetByIdAsync(todoId.ToString(), ct).ConfigureAwait(false);
         return item is not null && item.UserId == currentUser.UserId;
     }
+
+    public static async Task<IResult> ReorderTodos(
+        ReorderTodosRequest body,
+        ITodoOrderCommandHandler handler,
+        ICurrentWorkspace currentWorkspace,
+        CancellationToken ct)
+    {
+        if (body.OrderedItemIds is null || body.OrderedItemIds.Count == 0)
+            return Results.BadRequest(new { error = "orderedItemIds is required." });
+
+        // Records ordering only (a list of item ids) — no ownership read against the async
+        // projection, so it can't 404 on projector lag. Snapshot ids that no longer exist are
+        // ignored when positions are applied.
+        var version = await handler.HandleAsync(
+            new ReorderTodos(currentWorkspace.WorkspaceId, body.OrderedItemIds, DateTimeOffset.UtcNow), ct).ConfigureAwait(false);
+        var streamId = TodoOrdering.StreamId(currentWorkspace.WorkspaceId);
+        return Results.Ok(new { consistencyToken = $"{streamId}@{version}" });
+    }
 }
 
 public record AddTodoRequest(string Description, string? Priority);
+
+public record ReorderTodosRequest(IReadOnlyList<string> OrderedItemIds);

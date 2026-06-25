@@ -404,6 +404,17 @@ public sealed class ProjectionUpdater(
             }
     }
 
+    public async Task ApplyTodoOrderEventsAsync(IReadOnlyList<IDomainEvent> newEvents, CancellationToken ct)
+    {
+        foreach (var domainEvent in newEvents)
+            if (domainEvent is TodoListReordered e)
+            {
+                logger.LogInformation("Projector: applying TodoListReordered for workspace {WorkspaceId} ({Count} items)",
+                    e.WorkspaceId, e.OrderedItemIds.Count);
+                await todoListStore.UpdatePositionsAsync(e.OrderedItemIds, ct).ConfigureAwait(false);
+            }
+    }
+
     public async Task ApplyFolderEventsAsync(List<EventEnvelope> newEnvelopes, CancellationToken ct)
     {
         foreach (var envelope in newEnvelopes)

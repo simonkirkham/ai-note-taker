@@ -215,4 +215,61 @@ public sealed class TodoListProjectionSpec
 
         Assert.Equal("ws-home", projection.GetAllItems()[0].WorkspaceId);
     }
+
+    static readonly TodoId TodoA = new(Guid.Parse("00000000-0000-0000-0000-0000000000a1"));
+    static readonly TodoId TodoB = new(Guid.Parse("00000000-0000-0000-0000-0000000000b2"));
+    static readonly TodoId TodoC = new(Guid.Parse("00000000-0000-0000-0000-0000000000c3"));
+
+    static EventEnvelope TodoEnvAt(TodoId id, IDomainEvent e, DateTimeOffset at) =>
+        new(id.ToStreamId(), 1, e.GetType().Name, 1, at,
+            JsonSerializer.Serialize(e, e.GetType()), new EventMetadata(Guid.NewGuid(), null, null, null, "ws-1"));
+
+    static EventEnvelope OrderEnv(string ws, params string[] ids) =>
+        new($"todo-order#{ws}", 1, nameof(TodoListReordered), 1, DateTimeOffset.UtcNow,
+            JsonSerializer.Serialize(new TodoListReordered(ws, ids, DateTimeOffset.UtcNow)),
+            new EventMetadata(Guid.NewGuid(), null, null, null, ws));
+
+    static DateTimeOffset T(int min) => new(2026, 6, 25, 9, min, 0, TimeSpan.Zero);
+
+    [Fact]
+    public void Reorder_SnapshotSetsExplicitOrder()
+    {
+        var projection = new TodoListProjection();
+        projection.Handle(TodoEnvAt(TodoA, new TodoAdded(TodoA, "u", "A", null), T(1)));
+        projection.Handle(TodoEnvAt(TodoB, new TodoAdded(TodoB, "u", "B", null), T(2)));
+        projection.Handle(TodoEnvAt(TodoC, new TodoAdded(TodoC, "u", "C", null), T(3)));
+
+        projection.Handle(OrderEnv("ws-1", TodoC.Value.ToString(), TodoA.Value.ToString(), TodoB.Value.ToString()));
+
+        Assert.Equal(new[] { "C", "A", "B" }, projection.GetAllItems().Select(i => i.Description));
+    }
+
+    [Fact]
+    public void Reorder_UnpositionedItemAppendsByAddedAt()
+    {
+        var projection = new TodoListProjection();
+        projection.Handle(TodoEnvAt(TodoA, new TodoAdded(TodoA, "u", "A", null), T(1)));
+        projection.Handle(TodoEnvAt(TodoB, new TodoAdded(TodoB, "u", "B", null), T(2)));
+        projection.Handle(TodoEnvAt(TodoC, new TodoAdded(TodoC, "u", "C", null), T(3)));
+        // Only C and A are positioned; B stays unpositioned and sorts after, by AddedAt.
+        projection.Handle(OrderEnv("ws-1", TodoC.Value.ToString(), TodoA.Value.ToString()));
+
+        Assert.Equal(new[] { "C", "A", "B" }, projection.GetAllItems().Select(i => i.Description));
+    }
+
+    [Fact]
+    public void Reorder_OnlyAffectsItemsInTheSnapshot()
+    {
+        var projection = new TodoListProjection();
+        projection.Handle(TodoEnvAt(TodoA, new TodoAdded(TodoA, "u", "A", null), T(1)));
+        projection.Handle(TodoEnvAt(TodoB, new TodoAdded(TodoB, "u", "B", null), T(2)));
+        projection.Handle(TodoEnvAt(TodoC, new TodoAdded(TodoC, "u", "C", null), T(3)));
+
+        projection.Handle(OrderEnv("ws-1", TodoB.Value.ToString(), TodoA.Value.ToString()));
+
+        var byId = projection.GetAllItems().ToDictionary(i => i.Description, i => i.Position);
+        Assert.Equal(0, byId["B"]);
+        Assert.Equal(1, byId["A"]);
+        Assert.Null(byId["C"]);
+    }
 }

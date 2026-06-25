@@ -51,5 +51,17 @@ internal sealed class InMemoryTodoListStore : ITodoListStore
         Task.FromResult(_items.GetValueOrDefault(itemId));
 
     public Task<TodoListView> QueryAllAsync(CancellationToken ct = default) =>
-        Task.FromResult(new TodoListView(_items.Values.OrderBy(i => i.AddedAt).ToList().AsReadOnly()));
+        Task.FromResult(new TodoListView(_items.Values
+            .OrderBy(i => i.Position ?? int.MaxValue)
+            .ThenBy(i => i.AddedAt)
+            .ToList()
+            .AsReadOnly()));
+
+    public Task UpdatePositionsAsync(IReadOnlyList<string> orderedItemIds, CancellationToken ct = default)
+    {
+        for (var i = 0; i < orderedItemIds.Count; i++)
+            if (_items.TryGetValue(orderedItemIds[i], out var item))
+                _items[orderedItemIds[i]] = item with { Position = i };
+        return Task.CompletedTask;
+    }
 }

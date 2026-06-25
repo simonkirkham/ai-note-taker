@@ -27,6 +27,8 @@ public sealed class DynamoDbTodoListStore(IAmazonDynamoDB dynamo, string tableNa
             attrs["CompletedAt"] = new() { S = item.CompletedAt.Value.ToString("O") };
         if (!string.IsNullOrEmpty(item.WorkspaceId))
             attrs["WorkspaceId"] = new() { S = item.WorkspaceId };
+        if (item.Position is not null)
+            attrs["Position"] = new() { N = item.Position.Value.ToString() };
 
         await dynamo.PutItemAsync(new PutItemRequest
         {
@@ -152,7 +154,36 @@ public sealed class DynamoDbTodoListStore(IAmazonDynamoDB dynamo, string tableNa
         }
         while (lastKey is not null);
 
-        return new TodoListView(items.OrderBy(i => i.AddedAt).ToList().AsReadOnly());
+        return new TodoListView(items
+            .OrderBy(i => i.Position ?? int.MaxValue)
+            .ThenBy(i => i.AddedAt)
+            .ToList()
+            .AsReadOnly());
+    }
+
+    public Task UpdatePositionsAsync(IReadOnlyList<string> orderedItemIds, CancellationToken ct = default) =>
+        // Each item is an independent key — update them together rather than sequentially.
+        Task.WhenAll(orderedItemIds.Select((itemId, index) => SetPositionAsync(itemId, index, ct)));
+
+    private async Task SetPositionAsync(string itemId, int position, CancellationToken ct)
+    {
+        try
+        {
+            await dynamo.UpdateItemAsync(new UpdateItemRequest
+            {
+                TableName = tableName,
+                Key = new Dictionary<string, AttributeValue> { ["PK"] = new() { S = itemId } },
+                UpdateExpression = "SET #pos = :pos",
+                // Guard against upserting a phantom row for an id completed/deleted since the read.
+                ConditionExpression = "attribute_exists(PK)",
+                ExpressionAttributeNames = new Dictionary<string, string> { ["#pos"] = "Position" },
+                ExpressionAttributeValues = new Dictionary<string, AttributeValue> { [":pos"] = new() { N = position.ToString() } }
+            }, ct).ConfigureAwait(false);
+        }
+        catch (ConditionalCheckFailedException)
+        {
+            // Stale snapshot id (no longer exists) — ignore; surviving items still get positioned.
+        }
     }
 
     private static TodoItem ToTodoItem(Dictionary<string, AttributeValue> row) =>
@@ -165,7 +196,8 @@ public sealed class DynamoDbTodoListStore(IAmazonDynamoDB dynamo, string tableNa
             AddedAt: DateTimeOffset.Parse(row["AddedAt"].S),
             CompletedAt: row.TryGetValue("CompletedAt", out var ca) ? DateTimeOffset.Parse(ca.S) : null,
             UserId: row.TryGetValue("UserId", out var uid) ? uid.S : "",
-            WorkspaceId: row.TryGetValue("WorkspaceId", out var ws) ? ws.S : null);
+            WorkspaceId: row.TryGetValue("WorkspaceId", out var ws) ? ws.S : null,
+            Position: row.TryGetValue("Position", out var pos) ? int.Parse(pos.N) : null);
 
     private async Task<List<string>> QueryItemIdsByNoteAsync(NoteId noteId, CancellationToken ct)
     {

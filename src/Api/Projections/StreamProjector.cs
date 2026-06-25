@@ -81,6 +81,11 @@ public sealed class StreamProjector(
             await updater.ApplyActionItemEventsAsync(noteId, history, Deserialize(newEnvelopes), newEnvelopes, ct).ConfigureAwait(false);
             return true;
         }
+        if (streamId.StartsWith("todo-order#", StringComparison.Ordinal))
+        {
+            await updater.ApplyTodoOrderEventsAsync(Deserialize(newEnvelopes), ct).ConfigureAwait(false);
+            return true;
+        }
         if (streamId.StartsWith("todo#", StringComparison.Ordinal))
         {
             await updater.ApplyTodoEventsAsync(Deserialize(newEnvelopes), newEnvelopes, ct).ConfigureAwait(false);
