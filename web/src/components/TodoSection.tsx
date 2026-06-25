@@ -5,7 +5,7 @@ import { keys } from "../api/queryKeys";
 import { TodoItem } from "../api/todos";
 import { useCompleteTodo, useReopenTodo, useDeleteTodo, useReorderTodos } from "../hooks/useTodoMutations";
 import { useTodos } from "../hooks/useTodos";
-import { TrashIcon } from "./icons";
+import { TrashIcon, ChevronUpIcon, ChevronDownIcon, GripVerticalIcon } from "./icons";
 import QuickCaptureTodoInput from "./QuickCaptureTodoInput";
 import styles from "./TodoSection.module.css";
 
@@ -151,7 +151,9 @@ export default function TodoSection() {
                   onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = "move"; }}
                   onDrop={(e) => { e.preventDefault(); handleDrop(item.itemId); }}
                 >
-                  <span className={styles.todoDragHandle} aria-hidden="true" title="Drag to reorder">⋮⋮</span>
+                  <span className={styles.todoDragHandle} aria-hidden="true" title="Drag to reorder">
+                    <GripVerticalIcon />
+                  </span>
                   <input
                     type="checkbox"
                     className={styles.todoCheckbox}
@@ -171,7 +173,7 @@ export default function TodoSection() {
                       disabled={index === 0}
                       onClick={() => moveOpen(index, -1)}
                     >
-                      ↑
+                      <ChevronUpIcon />
                     </button>
                     <button
                       className="icon-btn"
@@ -179,7 +181,7 @@ export default function TodoSection() {
                       disabled={index === openItems.length - 1}
                       onClick={() => moveOpen(index, 1)}
                     >
-                      ↓
+                      <ChevronDownIcon />
                     </button>
                   </div>
                   <button
