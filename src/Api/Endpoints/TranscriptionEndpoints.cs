@@ -15,6 +15,10 @@ public static class TranscriptionEndpoints
         // other content route. These were previously rootless-only; 23-G brings them into
         // the prefixed group (the validation filter rejects another user's workspace).
         var scoped = app.MapGroup("/w/{workspaceId}").AddEndpointFilter<WorkspaceValidationFilter>();
+        // Phase 38: paste-a-transcript import. A literal segment, so it never collides with the
+        // `/notes/{noteId:guid}/…` routes below.
+        scoped.MapPost("/notes/import-transcript", TranscriptionHandlers.ImportTranscript)
+           .RequireAuthorization();
         scoped.MapPost("/notes/{noteId:guid}/transcription", TranscriptionHandlers.CompleteTranscription)
            .RequireAuthorization();
         scoped.MapPut("/notes/{noteId:guid}/transcription/draft", TranscriptionHandlers.SaveDraft)

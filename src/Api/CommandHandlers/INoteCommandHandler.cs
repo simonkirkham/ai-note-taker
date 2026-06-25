@@ -14,4 +14,10 @@ public interface INoteCommandHandler
     // analysis re-run) that have no scoped ICurrentUser/ICurrentWorkspace — owner/workspace are
     // passed in (read from the note's history[0].Metadata). The HTTP overload delegates to this.
     Task<long> HandleAsync(NoteCommand cmd, string userId, string? workspaceId, CancellationToken ct = default);
+
+    // The note stream's current version, with NO append (a read). Used to surface a consistency
+    // token after a flow that appends across several handler calls — the Phase 38 transcript import
+    // appends create + transcript + analysis events, then reads the final version here so the
+    // client's first gated read waits for the whole analysed note, not just the transcript.
+    Task<long> GetCurrentVersionAsync(NoteId noteId, CancellationToken ct = default);
 }

@@ -32,16 +32,20 @@ public sealed class NoteAnalysisService(
         string userName, string? transcriptOverride, CancellationToken ct = default)
     {
         var detail = await noteDetailStore.GetAsync(noteId, ct);
-        if (detail is null) return AnalysisOutcome.NothingToAnalyse;
+        // A freshly-imported transcript (Phase 38) is analysed in the SAME request it is created, so
+        // the async projector has not built its NoteDetail row yet — a null projection with a
+        // non-empty override is valid: analyse the override with empty content/tags. The recorded
+        // path still requires the projection (null + no override = genuinely nothing to read).
+        if (detail is null && string.IsNullOrWhiteSpace(transcriptOverride)) return AnalysisOutcome.NothingToAnalyse;
 
         // The transcript is the only field the diarization-completion caller has hotter than the
         // projection, so it may be overridden; content/tags/actions are warm in the projection.
-        var transcript = transcriptOverride ?? detail.TranscriptText;
+        var transcript = transcriptOverride ?? detail?.TranscriptText;
         // The Bedrock prompt attributes action items to the current user by name. The HTTP caller
         // passes the live name; the async re-analysis (Lambda) has none, so fall back to the owner
         // name folded into the projection (stamped on the note's creation event) — 33-B2.
-        var currentUserName = string.IsNullOrWhiteSpace(userName) ? detail.OwnerName : userName;
-        var (rawContent, instructions) = InstructionExtractor.Extract(detail.Content ?? "");
+        var currentUserName = string.IsNullOrWhiteSpace(userName) ? detail?.OwnerName ?? "" : userName;
+        var (rawContent, instructions) = InstructionExtractor.Extract(detail?.Content ?? "");
         var content = StripImageMarkdown(rawContent);
         if (string.IsNullOrWhiteSpace(transcript) && string.IsNullOrWhiteSpace(content) && instructions.Count == 0)
             return AnalysisOutcome.NothingToAnalyse;
@@ -75,12 +79,12 @@ public sealed class NoteAnalysisService(
                 instructions.Count, instructionResponses.Count, noteId.Value);
         // Record when there is something to show, or to CLEAR previously-recorded responses on a
         // re-run that no longer has any (latest wins). A note that never had instructions writes none.
-        var hadResponses = (detail.InstructionResponses?.Count ?? 0) > 0;
+        var hadResponses = (detail?.InstructionResponses?.Count ?? 0) > 0;
         if (instructionResponses.Count > 0 || hadResponses)
             await noteHandler.HandleAsync(new RecordInstructionResponses(
                 noteId, instructionResponses, result.ModelId, result.PromptVersion), userId, workspaceId, ct);
 
-        var existingTags = detail.Tags ?? [];
+        var existingTags = detail?.Tags ?? [];
         var appliedTags = result.NewTags
             .Where(t => !existingTags.Contains(t, StringComparer.OrdinalIgnoreCase))
             .ToList();

@@ -102,6 +102,29 @@ public static class TranscriptionHandlers
         };
     }
 
+    // Phase 38: create a note from pasted transcript text and analyse it in one server-side flow.
+    // Returns 201 + the note id + the post-analysis consistency token; a Bedrock outage still
+    // returns 201 (the transcript is saved, the note opens re-analysable). Empty text → 400.
+    public static async Task<IResult> ImportTranscript(
+        ImportTranscriptRequest req,
+        HttpResponse response,
+        ITranscriptImportService import,
+        ILoggerFactory loggerFactory,
+        CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(req.TranscriptText))
+        {
+            loggerFactory.CreateLogger("Api.Handlers.TranscriptionHandlers")
+                .LogWarning("Rejected transcript import: empty transcript text");
+            return Results.BadRequest();
+        }
+
+        var result = await import.ImportAsync(req.TranscriptText, ct);
+        response.Headers["X-Consistency-Token"] =
+            $"{new NoteId(result.NoteId).ToStreamId()}@{result.Version}";
+        return Results.Created($"/notes/{result.NoteId}", new { noteId = result.NoteId });
+    }
+
     public static async Task<IResult> GetCredentials(IStsCredentialService sts, ILogger<IStsCredentialService> logger)
     {
         try
