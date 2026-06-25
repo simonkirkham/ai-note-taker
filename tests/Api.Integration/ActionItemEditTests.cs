@@ -72,6 +72,22 @@ public sealed class ActionItemEditTests(ApiFactory factory) : IClassFixture<ApiF
         Assert.True(action.GetProperty("completed").GetBoolean());
     }
 
+    [Fact]
+    public async Task EditAction_AfterComplete_PreservesEditedTextAndCompletion()
+    {
+        var (noteId, actionId) = await CreateNoteWithActionAsync();
+        await _client.PostAsync($"/notes/{noteId}/actions/{actionId}/complete", null);
+        await _client.PutAsJsonAsync($"/notes/{noteId}/actions/{actionId}", new { description = "Chase Acme invoice" });
+
+        var view = await _client.GetAsync($"/notes/{noteId}/actions");
+        view.EnsureSuccessStatusCode();
+        var body = await view.Content.ReadFromJsonAsync<JsonElement>();
+        var action = body.GetProperty("actions").EnumerateArray().First();
+
+        Assert.Equal("Chase Acme invoice", action.GetProperty("description").GetString());
+        Assert.True(action.GetProperty("completed").GetBoolean());
+    }
+
     private async Task<(string noteId, Guid actionId)> CreateNoteWithActionAsync()
     {
         var noteResp = await _client.PostAsync("/notes", null);

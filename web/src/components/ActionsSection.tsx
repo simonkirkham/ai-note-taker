@@ -1,5 +1,5 @@
 import clsx from "clsx";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { ActionItem } from "../api/actions";
 import {
   useAddAction,
@@ -30,6 +30,9 @@ export default function ActionsSection({
   const [deleting, setDeleting] = useState<Set<string>>(new Set());
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editText, setEditText] = useState("");
+  // Tracks the row being edited synchronously, so a native blur fired as the input
+  // unmounts on Enter can't re-enter commitEdit and send a duplicate PUT.
+  const editingRef = useRef<string | null>(null);
 
   async function handleToggle(item: ActionItem) {
     if (toggling.has(item.actionId)) return;
@@ -65,17 +68,20 @@ export default function ActionsSection({
   }
 
   function startEdit(item: ActionItem) {
+    editingRef.current = item.actionId;
     setEditingId(item.actionId);
     setEditText(item.description);
   }
 
   function cancelEdit() {
+    editingRef.current = null;
     setEditingId(null);
     setEditText("");
   }
 
   async function commitEdit(item: ActionItem) {
-    if (editingId !== item.actionId) return;
+    if (editingRef.current !== item.actionId) return;
+    editingRef.current = null;
     const description = editText.trim();
     setEditingId(null);
     if (!description || description === item.description) return;
