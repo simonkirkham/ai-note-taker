@@ -19,6 +19,7 @@ public static class TodoEndpoints
         routes.MapPost("/todos/reorder", TodoHandlers.ReorderTodos).RequireAuthorization();
         routes.MapPost("/todos/{todoId:guid}/complete", TodoHandlers.CompleteTodo).RequireAuthorization();
         routes.MapPost("/todos/{todoId:guid}/reopen", TodoHandlers.ReopenTodo).RequireAuthorization();
+        routes.MapPut("/todos/{todoId:guid}", TodoHandlers.EditTodo).RequireAuthorization();
         routes.MapDelete("/todos/{todoId:guid}", TodoHandlers.DeleteTodo).RequireAuthorization();
     }
 }

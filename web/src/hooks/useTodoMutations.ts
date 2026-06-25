@@ -1,7 +1,7 @@
 import { useMutation, useQueryClient, type QueryClient } from "@tanstack/react-query";
-import { completeAction, reopenAction, deleteAction } from "../api/actions";
+import { completeAction, reopenAction, editAction, deleteAction } from "../api/actions";
 import { keys } from "../api/queryKeys";
-import { completeTodo, reopenTodo, deleteTodo, reorderTodos } from "../api/todos";
+import { completeTodo, reopenTodo, editTodo, deleteTodo, reorderTodos } from "../api/todos";
 import type { TodoItem } from "../api/todos";
 
 type Ctx = { previous?: TodoItem[] };
@@ -73,6 +73,19 @@ export function useReorderTodos() {
     mutationFn: (orderedItemIds) => reorderTodos(orderedItemIds),
     onMutate: (orderedItemIds) => optimistic(qc, (items) => applyOrder(items, orderedItemIds)),
     onError: (_e, _ids, ctx) => rollback(qc, ctx),
+  });
+}
+
+export function useEditTodo() {
+  const qc = useQueryClient();
+  return useMutation<void, Error, { item: TodoItem; description: string }, Ctx>({
+    mutationFn: ({ item, description }) =>
+      item.type === "action" ? editAction(item.noteId, item.itemId, description) : editTodo(item.itemId, description),
+    onMutate: ({ item, description }) =>
+      optimistic(qc, (items) =>
+        items.map((i) => (i.itemId === item.itemId ? { ...i, description } : i))),
+    onError: (_e, _v, ctx) => rollback(qc, ctx),
+    onSettled: (_d, _e, { item }) => settleAction(qc, item),
   });
 }
 

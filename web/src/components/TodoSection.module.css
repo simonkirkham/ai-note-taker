@@ -93,6 +93,38 @@
   overflow-wrap: anywhere;
 }
 
+.todoDescriptionButton {
+  text-align: left;
+  background: none;
+  border: none;
+  padding: 0;
+  margin: 0;
+  font: inherit;
+  color: var(--color-text);
+  overflow-wrap: anywhere;
+  cursor: text;
+}
+
+.todoDescriptionButton:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+  border-radius: var(--radius);
+}
+
+.todoDescriptionButton[disabled] {
+  cursor: default;
+}
+
+.editTodoInput {
+  width: 100%;
+  font: inherit;
+  color: var(--color-text);
+  padding: 0.125rem 0.25rem;
+  border: 1px solid var(--color-primary);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+}
+
 .todoNoteTitle {
   color: var(--color-text-muted);
   font-size: 0.8125rem;

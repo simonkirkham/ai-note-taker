@@ -4,7 +4,7 @@ import { delay, http, HttpResponse } from 'msw'
 import { afterEach } from 'vitest'
 import { clearPendingTodoToken } from '../api/consistencyTokens'
 import TodoSection from '../components/TodoSection'
-import { render, screen, waitFor } from '../test/render'
+import { render, screen, waitFor, act } from '../test/render'
 import { server } from '../test/setup'
 
 // The RYW pending-token store is module-global; clear it between tests.
@@ -232,6 +232,82 @@ describe('TodoSection — open items', () => {
     await userEvent.click(screen.getByRole('button', { name: /delete "Buy milk"/i }))
     await waitFor(() => expect(called).toBe(true))
     expect(screen.queryByText('Buy milk')).not.toBeInTheDocument()
+  })
+})
+
+describe('TodoSection — edit', () => {
+  it('editing a standalone todo saves via PUT /todos/:id and shows it optimistically', async () => {
+    let putBody: unknown
+    server.use(
+      http.get('/api/todos', () => HttpResponse.json({ items: [openTodo] })),
+      http.put('/api/todos/:todoId', async ({ request }) => { putBody = await request.json(); return new HttpResponse(null, { status: 204 }) }),
+    )
+    render(<TodoSection />)
+    await userEvent.click(await screen.findByTestId('todo-description-t-1'))
+    const input = await screen.findByTestId('edit-todo-input-t-1')
+    await userEvent.clear(input)
+    await userEvent.type(input, 'Buy oat milk{Enter}')
+    await waitFor(() => expect(putBody).toEqual({ description: 'Buy oat milk' }))
+    expect(await screen.findByTestId('todo-description-t-1')).toHaveTextContent('Buy oat milk')
+  })
+
+  it('editing a note action from the todo list saves via the action endpoint', async () => {
+    let called = false
+    server.use(
+      http.get('/api/todos', () => HttpResponse.json({ items: [openAction] })),
+      http.put('/api/notes/:noteId/actions/:actionId', () => { called = true; return new HttpResponse(null, { status: 200 }) }),
+    )
+    render(<TodoSection />)
+    await userEvent.click(await screen.findByTestId('todo-description-a-1'))
+    const input = await screen.findByTestId('edit-todo-input-a-1')
+    await userEvent.clear(input)
+    await userEvent.type(input, 'Chase the invoice{Enter}')
+    await waitFor(() => expect(called).toBe(true))
+  })
+
+  it('Escape cancels editing without calling PUT', async () => {
+    let called = false
+    server.use(
+      http.get('/api/todos', () => HttpResponse.json({ items: [openTodo] })),
+      http.put('/api/todos/:todoId', () => { called = true; return new HttpResponse(null, { status: 204 }) }),
+    )
+    render(<TodoSection />)
+    await userEvent.click(await screen.findByTestId('todo-description-t-1'))
+    await userEvent.type(await screen.findByTestId('edit-todo-input-t-1'), ' extra{Escape}')
+    expect(called).toBe(false)
+    expect(await screen.findByTestId('todo-description-t-1')).toHaveTextContent('Buy milk')
+  })
+
+  it('clearing to empty does not call PUT', async () => {
+    let called = false
+    server.use(
+      http.get('/api/todos', () => HttpResponse.json({ items: [openTodo] })),
+      http.put('/api/todos/:todoId', () => { called = true; return new HttpResponse(null, { status: 204 }) }),
+    )
+    render(<TodoSection />)
+    await userEvent.click(await screen.findByTestId('todo-description-t-1'))
+    const input = await screen.findByTestId('edit-todo-input-t-1')
+    await userEvent.clear(input)
+    await userEvent.type(input, '{Enter}')
+    expect(called).toBe(false)
+    expect(await screen.findByTestId('todo-description-t-1')).toHaveTextContent('Buy milk')
+  })
+
+  it('edit reverts to the original text when the request fails', async () => {
+    let rejectPut!: () => void
+    server.use(
+      http.get('/api/todos', () => HttpResponse.json({ items: [openTodo] })),
+      http.put('/api/todos/:todoId', () => new Promise<Response>((res) => { rejectPut = () => res(new HttpResponse(null, { status: 500 })) })),
+    )
+    render(<TodoSection />)
+    await userEvent.click(await screen.findByTestId('todo-description-t-1'))
+    const input = await screen.findByTestId('edit-todo-input-t-1')
+    await userEvent.clear(input)
+    await userEvent.type(input, 'New text{Enter}')
+    expect(await screen.findByText('New text')).toBeInTheDocument()
+    await act(async () => { rejectPut() })
+    await waitFor(() => expect(screen.queryByText('New text')).not.toBeInTheDocument())
+    expect(screen.getByText('Buy milk')).toBeInTheDocument()
   })
 })
 

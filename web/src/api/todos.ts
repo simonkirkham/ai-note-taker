@@ -84,3 +84,11 @@ export function reopenTodo(todoId: string): Promise<void> {
 export function deleteTodo(todoId: string): Promise<void> {
   return requestVoid(`/todos/${todoId}`, { method: "DELETE" });
 }
+
+export function editTodo(todoId: string, description: string): Promise<void> {
+  return requestVoid(`/todos/${todoId}`, {
+    method: "PUT",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ description }),
+  });
+}

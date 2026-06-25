@@ -417,6 +417,9 @@ public sealed class ProjectionUpdater(
                 case TodoReopened e:
                     await todoListStore.UpdateCompletedAtAsync(e.TodoId.Value.ToString(), null, ct).ConfigureAwait(false);
                     break;
+                case TodoEdited e:
+                    await todoListStore.UpdateDescriptionAsync(e.TodoId.Value.ToString(), e.NewDescription, ct).ConfigureAwait(false);
+                    break;
                 case TodoDeleted e:
                     await todoListStore.DeleteAsync(e.TodoId.Value.ToString(), ct).ConfigureAwait(false);
                     break;
