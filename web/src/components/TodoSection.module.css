@@ -41,6 +41,31 @@
   gap: 0.125rem;
 }
 
+.todoDragHandle {
+  flex-shrink: 0;
+  cursor: grab;
+  user-select: none;
+  align-self: center;
+  letter-spacing: -2px;
+  color: var(--color-text-muted);
+  opacity: 0.5;
+  transition: opacity 150ms ease;
+}
+
+.todoItem:hover .todoDragHandle {
+  opacity: 0.9;
+}
+
+.todoItemDragging {
+  opacity: 0.5;
+}
+
+.todoReorderButtons {
+  display: flex;
+  flex-shrink: 0;
+  align-self: center;
+}
+
 .todoItem:last-child {
   border-bottom: none;
 }
