@@ -321,6 +321,21 @@ public sealed class AppPage
         await Assertions.Expect(page.GetByTestId("actions-empty")).ToBeVisibleAsync();
     }
 
+    // 39-A: click the action's description (a button, aria-label `Edit "<text>"`) to enter the
+    // inline editor (a textbox with the same accessible name), replace the text, and Enter to save.
+    public async Task EditActionItemAsync(string oldDescription, string newDescription)
+    {
+        await OpenActionsPopoverAsync();
+        await page.GetByTestId("actions-list")
+            .GetByRole(AriaRole.Button, new() { Name = $"Edit \"{oldDescription}\"" }).ClickAsync();
+        var input = page.GetByRole(AriaRole.Textbox, new() { Name = $"Edit \"{oldDescription}\"" });
+        await input.FillAsync(newDescription);
+        var putDone = page.WaitForResponseAsync(r =>
+            r.Url.Contains("/actions/") && r.Request.Method == "PUT");
+        await input.PressAsync("Enter");
+        await putDone;
+    }
+
     public async Task AddFolderAsync(string name)
     {
         var viewport = page.ViewportSize;
@@ -509,6 +524,61 @@ public sealed class AppPage
     // Browser Back (history.back). Distinct from a hard GotoPath — exercises the SPA's own
     // history entry, which carries the CHANGE-23 ?q/?tag/?older query string.
     public async Task GoBackAsync() => await page.GoBackAsync();
+
+    // 36-A — per-workspace theme. Open the sidebar (mobile), open the workspace switcher, create a
+    // fresh non-default workspace, and wait for the app to navigate into it (`/w/{id}`, not __default__).
+    // A fresh workspace starts with no stored theme → teal (the :root default, no data-theme attr).
+    public async Task CreateWorkspaceAsync(string name)
+    {
+        var viewport = page.ViewportSize;
+        if (viewport is { Width: < 640 })
+            await page.GetByTestId("sidebar-toggle").ClickAsync();
+        await page.GetByTestId("workspace-switcher-trigger").ClickAsync();
+        await page.GetByTestId("workspace-create").ClickAsync();
+        var input = page.GetByLabel("New workspace name");
+        await input.FillAsync(name);
+        await input.PressAsync("Enter");
+        // Navigation into the new workspace — URL leaves __default__ for a real workspace id.
+        await page.WaitForURLAsync(u => u.Contains("/w/") && !u.Contains("__default__"));
+    }
+
+    // Pick a theme from the sidebar Theme picker, awaiting the per-workspace PATCH so the write (and
+    // its X-Consistency-Token) is committed before we reload — the post-reload GET /workspaces carries
+    // the token and gates on the projector. Records only the synchronous request URL/method.
+    public async Task SelectWorkspaceThemeAsync(string theme)
+    {
+        var viewport = page.ViewportSize;
+        if (viewport is { Width: < 640 })
+            await page.GetByTestId("sidebar-toggle").ClickAsync();
+        var patchDone = page.WaitForResponseAsync(r =>
+            r.Url.Contains("/theme") && r.Request.Method == "PATCH");
+        await page.GetByLabel("Theme").SelectOptionAsync(new SelectOptionValue { Value = theme });
+        await patchDone;
+    }
+
+    // The per-workspace-theme read-your-writes proof: reload FIRST (drops the optimistically-applied
+    // data-theme, so the attribute can only come back via the workspaces query), then assert. The
+    // index.html bootstrap paints the GLOBAL theme first; the workspace theme is applied once the
+    // gated GET /workspaces resolves (it carries the persisted consistency token, so it waits for the
+    // async projector). Reload-loop so a still-warming projector re-polls until the attribute matches.
+    public async Task AssertHtmlThemeAfterReloadAsync(string theme, int timeoutMs = 30000)
+    {
+        var deadline = DateTime.UtcNow.AddMilliseconds(timeoutMs);
+        while (true)
+        {
+            await page.ReloadAsync();
+            try
+            {
+                await Assertions.Expect(page.Locator("html")).ToHaveAttributeAsync(
+                    "data-theme", theme, new() { Timeout = 2500 });
+                return;
+            }
+            catch (PlaywrightException) when (DateTime.UtcNow < deadline)
+            {
+                // re-loop: reload + recheck until the gated workspaces read applies the theme or we time out
+            }
+        }
+    }
 
     // Reload-tolerant: the card's tag pill is projector-built (async) since RYW-2, so the post-save
     // gated read can be `stale` on a cold projector — reload to re-gate until the pill shows.

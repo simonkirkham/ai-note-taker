@@ -41,6 +41,7 @@ public static class NoteEndpoints
         routes.MapPost("/notes/{noteId}/actions", ActionItemHandlers.AddActionItem).RequireAuthorization();
         routes.MapPost("/notes/{noteId}/actions/{actionId}/complete", ActionItemHandlers.CompleteActionItem).RequireAuthorization();
         routes.MapPost("/notes/{noteId}/actions/{actionId}/reopen", ActionItemHandlers.ReopenActionItem).RequireAuthorization();
+        routes.MapPut("/notes/{noteId}/actions/{actionId}", ActionItemHandlers.EditActionItem).RequireAuthorization();
         routes.MapDelete("/notes/{noteId}/actions/{actionId}", ActionItemHandlers.DeleteActionItem).RequireAuthorization();
         routes.MapGet("/notes/{noteId}/actions", ActionItemHandlers.GetActions).RequireAuthorization();
         routes.MapPost("/notes/{noteId}/images/presign-upload", NoteImageHandlers.PresignUpload).RequireAuthorization();

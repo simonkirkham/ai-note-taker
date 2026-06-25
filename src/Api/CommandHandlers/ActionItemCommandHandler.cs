@@ -68,6 +68,10 @@ public sealed class ActionItemCommandHandler(
         CommandInstrumentation.RunAsync(metrics, logger, nameof(ReopenActionItem), "ActionItem", () =>
             ExecuteAppendAsync(cmd.ActionId, cmd, ct));
 
+    public Task<long> HandleAsync(EditActionItem cmd, CancellationToken ct = default) =>
+        CommandInstrumentation.RunAsync(metrics, logger, nameof(EditActionItem), "ActionItem", () =>
+            ExecuteAppendAsync(cmd.ActionId, cmd, ct));
+
     public Task<long> HandleAsync(DeleteActionItem cmd, CancellationToken ct = default) =>
         CommandInstrumentation.RunAsync(metrics, logger, nameof(DeleteActionItem), "ActionItem", () =>
             ExecuteAppendAsync(cmd.ActionId, cmd, ct));

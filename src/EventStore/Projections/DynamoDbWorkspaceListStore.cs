@@ -15,6 +15,8 @@ public sealed class DynamoDbWorkspaceListStore(IAmazonDynamoDB dynamo, string ta
             ["CreatedAt"] = new() { S = workspace.CreatedAt.ToString("O") },
             ["UserId"] = new() { S = workspace.UserId }
         };
+        if (!string.IsNullOrEmpty(workspace.Theme))
+            attrs["Theme"] = new() { S = workspace.Theme };
 
         await dynamo.PutItemAsync(new PutItemRequest { TableName = tableName, Item = attrs }, ct)
             .ConfigureAwait(false);
@@ -54,5 +56,6 @@ public sealed class DynamoDbWorkspaceListStore(IAmazonDynamoDB dynamo, string ta
             WorkspaceId: new WorkspaceId(row["PK"].S),
             Name: row["Name"].S,
             CreatedAt: DateTimeOffset.Parse(row["CreatedAt"].S),
-            UserId: row.TryGetValue("UserId", out var uidAttr) ? uidAttr.S : "");
+            UserId: row.TryGetValue("UserId", out var uidAttr) ? uidAttr.S : "",
+            Theme: row.TryGetValue("Theme", out var themeAttr) ? themeAttr.S : null);
 }

@@ -33,6 +33,7 @@ public sealed class ActionItem : IAggregate
             AddActionItem cmd => HandleAdd(cmd),
             CompleteActionItem cmd => HandleComplete(cmd),
             ReopenActionItem cmd => HandleReopen(cmd),
+            EditActionItem cmd => HandleEdit(cmd),
             DeleteActionItem cmd => HandleDelete(cmd),
             _ => throw new ArgumentOutOfRangeException(nameof(command))
         };
@@ -56,6 +57,15 @@ public sealed class ActionItem : IAggregate
         if (_deleted || !_completed)
             throw new InvalidOperationException($"Action item {cmd.ActionId} cannot be reopened.");
         return [new ActionItemReopened(cmd.ActionId, cmd.ReopenedAt)];
+    }
+
+    IReadOnlyList<IDomainEvent> HandleEdit(EditActionItem cmd)
+    {
+        if (!_exists || _deleted)
+            throw new InvalidOperationException($"Action item {cmd.ActionId} cannot be edited.");
+        if (string.IsNullOrWhiteSpace(cmd.NewDescription))
+            throw new ArgumentException("Description must not be empty.", nameof(cmd));
+        return [new ActionItemEdited(cmd.ActionId, cmd.NewDescription, cmd.EditedAt)];
     }
 
     IReadOnlyList<IDomainEvent> HandleDelete(DeleteActionItem cmd)

@@ -44,6 +44,42 @@ public sealed class NoteActionsProjectionSpec
     }
 
     [Fact]
+    public void ActionItemEdited_UpdatesDescription()
+    {
+        var projection = new NoteActionsProjection();
+
+        projection.Handle(Envelope(ActionId.ToStreamId(), 1, nameof(ActionItemAdded),
+            JsonSerializer.Serialize(new ActionItemAdded(ActionId, NoteId, "Chase invoice"))));
+        projection.Handle(Envelope(ActionId.ToStreamId(), 2, nameof(ActionItemEdited),
+            JsonSerializer.Serialize(new ActionItemEdited(ActionId, "Chase Acme invoice", DateTimeOffset.UtcNow))));
+
+        var view = projection.GetView(NoteId);
+        Assert.Single(view.Actions);
+        Assert.Equal("Chase Acme invoice", view.Actions[0].Description);
+        Assert.False(view.Actions[0].Completed);
+    }
+
+    [Fact]
+    public void ActionItemEdited_PreservesCompletedState()
+    {
+        var completedAt = new DateTimeOffset(2024, 1, 1, 12, 0, 0, TimeSpan.Zero);
+        var projection = new NoteActionsProjection();
+
+        projection.Handle(Envelope(ActionId.ToStreamId(), 1, nameof(ActionItemAdded),
+            JsonSerializer.Serialize(new ActionItemAdded(ActionId, NoteId, "Chase invoice"))));
+        projection.Handle(Envelope(ActionId.ToStreamId(), 2, nameof(ActionItemCompleted),
+            JsonSerializer.Serialize(new ActionItemCompleted(ActionId, completedAt))));
+        projection.Handle(Envelope(ActionId.ToStreamId(), 3, nameof(ActionItemEdited),
+            JsonSerializer.Serialize(new ActionItemEdited(ActionId, "Chase Acme invoice", DateTimeOffset.UtcNow))));
+
+        var view = projection.GetView(NoteId);
+        Assert.Single(view.Actions);
+        Assert.Equal("Chase Acme invoice", view.Actions[0].Description);
+        Assert.True(view.Actions[0].Completed);
+        Assert.Equal(completedAt, view.Actions[0].CompletedAt);
+    }
+
+    [Fact]
     public void EmptyProjectionReturnsNoActionsForNote()
     {
         var projection = new NoteActionsProjection();
