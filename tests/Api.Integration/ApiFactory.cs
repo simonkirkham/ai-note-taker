@@ -80,6 +80,12 @@ public class ApiFactory : WebApplicationFactory<Program>
             services.RemoveAll<ICalendarTokenStore>();
             services.AddSingleton<InMemoryCalendarTokenStore>();
             services.AddSingleton<ICalendarTokenStore>(sp => sp.GetRequiredService<InMemoryCalendarTokenStore>());
+            // 34-E: the connect/ics endpoint does a one-time validation fetch via the "ics-validate"
+            // named HttpClient. Stub its handler so tests never hit the network: a URL whose path
+            // contains "bad-feed" returns garbage (→ invalid_feed); everything else returns a valid
+            // ICS body (→ connected). The SSRF guard still runs unstubbed, so test feed URLs use a
+            // public literal host.
+            services.AddHttpClient("ics-validate").ConfigurePrimaryHttpMessageHandler(() => new FakeIcsValidationHandler());
             // 35-E: in-memory MCP OAuth stores so the AS broker + RS tests run without DynamoDB.
             services.RemoveAll<Api.Mcp.OAuth.IMcpAuthCodeStore>();
             services.AddSingleton<Api.Mcp.OAuth.IMcpAuthCodeStore>(sp =>

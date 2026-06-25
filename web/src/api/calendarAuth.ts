@@ -31,6 +31,19 @@ export function connectMicrosoftCalendar(
   })
 }
 
+// 34-E: connect via a published ICS feed URL (e.g. Outlook "Publish a calendar") — no OAuth, so it
+// bypasses the Microsoft admin-consent wall. The URL is the only credential; the backend validates
+// it (SSRF guard + a one-time parse) before storing it as the workspace's "ics" connection.
+export function connectIcsCalendar(
+  url: string,
+): Promise<{ connected: boolean; provider: string }> {
+  return request('/calendar/connect/ics', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ url }),
+  })
+}
+
 export function getCalendarConnection(): Promise<CalendarConnection> {
   return request<CalendarConnection>('/calendar/connection')
 }

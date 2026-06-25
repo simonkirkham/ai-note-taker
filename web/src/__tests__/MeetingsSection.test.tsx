@@ -583,3 +583,55 @@ describe('MeetingsSection — calendar settings menu (CHANGE-25)', () => {
     await waitFor(() => expect(screen.queryByTestId('calendar-connected-as')).not.toBeInTheDocument())
   })
 })
+
+describe('MeetingsSection — connect calendar feed (ICS, 34-E)', () => {
+  beforeEach(() => stubNotificationPermission('granted'))
+
+  it('exposes the ICS connect input and Save calls the endpoint, then refetches connection', async () => {
+    let connectedIcs = false
+    let postedUrl: string | null = null
+    server.use(
+      http.get('/api/calendar/connection', () =>
+        HttpResponse.json(connectedIcs
+          ? { status: 'connected', provider: 'ics', email: null }
+          : { status: 'needs_auth', provider: null, email: null }),
+      ),
+      http.get('/api/calendar/:date', () => HttpResponse.json({ error: 'calendar_unavailable' })),
+      http.post('/api/calendar/connect/ics', async ({ request }) => {
+        const body = (await request.json()) as { url: string }
+        postedUrl = body.url
+        connectedIcs = true
+        return HttpResponse.json({ connected: true, provider: 'ics' })
+      }),
+    )
+
+    renderSection()
+
+    await userEvent.click(screen.getByTestId('calendar-settings-toggle'))
+    // The ICS affordance is present and reveals the input on click.
+    expect(screen.getByTestId('menu-connect-ics')).toHaveTextContent('Connect calendar feed (ICS)')
+    await userEvent.click(screen.getByTestId('menu-connect-ics'))
+
+    const input = screen.getByTestId('ics-feed-input')
+    expect(input).toHaveAttribute('aria-label', 'Calendar feed URL')
+    await userEvent.type(input, 'https://feeds.example.com/cal.ics')
+    await userEvent.click(screen.getByTestId('ics-feed-save'))
+
+    await waitFor(() => expect(postedUrl).toBe('https://feeds.example.com/cal.ics'))
+  })
+
+  it('Save is disabled until a URL is entered', async () => {
+    server.use(
+      http.get('/api/calendar/connection', () =>
+        HttpResponse.json({ status: 'needs_auth', provider: null, email: null }),
+      ),
+      http.get('/api/calendar/:date', () => HttpResponse.json({ error: 'calendar_unavailable' })),
+    )
+
+    renderSection()
+
+    await userEvent.click(screen.getByTestId('calendar-settings-toggle'))
+    await userEvent.click(screen.getByTestId('menu-connect-ics'))
+    expect(screen.getByTestId('ics-feed-save')).toBeDisabled()
+  })
+})

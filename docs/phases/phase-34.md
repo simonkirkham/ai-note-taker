@@ -11,8 +11,9 @@
 | 34-C | **Add Microsoft as a connectable provider per workspace + per-request resolution.** In-app connect for Outlook; `ICalendarClientFactory.ForAsync(workspaceId)` resolves google/microsoft from the workspace's connection (`CALENDAR_PROVIDER` kept as the unconnected fallback → removed in 34-D). A=Google, B=Outlook. | Done | 34-B |
 | 34-D1 | **Retire the Google SSM token path** — Google is fully in-app + proven, so drop the Google SSM fallback (`GoogleCalendarTokenSource` store-only), its `GOOGLE_REFRESH_TOKEN_SSM_PATH` env + conditional grant, and the Google mint script + guide. | Done | 34-C |
 | 34-D2 | **Retire the Microsoft SSM path + `CALENDAR_PROVIDER` + remaining mint scripts** — the rest of the strangle cleanup. Unconnected workspace → `UnavailableCalendarClient` → "Connect calendar". | Done | 34-D1, Outlook in-app verified |
+| 34-E | **ICS calendar feed provider** — connect a calendar via a published ICS feed URL (e.g. Outlook "Publish a calendar"), bypassing the M365 admin-consent wall. Third provider (`ics`) reusing the token store, factory, connect/connection/disconnect, and the CHANGE-25 menu. No new domain events. SSRF-guarded. | In Progress | 34-C |
 
-Strictly sequential — this is a **strangle** of the calendar-auth model (CLAUDE.md guardrail: prove the new path on one real call, then migrate flow-by-flow with old+new coexisting until the last flow moves). 34-A proves in-app-connect + server-side token on one real Google read; 34-B/C scale it to workspace-keyed and multi-provider; 34-D removes the old path only after nothing depends on it.
+Strictly sequential through 34-D (34-E is a follow-on provider, added after the strangle completed) — this is a **strangle** of the calendar-auth model (CLAUDE.md guardrail: prove the new path on one real call, then migrate flow-by-flow with old+new coexisting until the last flow moves). 34-A proves in-app-connect + server-side token on one real Google read; 34-B/C scale it to workspace-keyed and multi-provider; 34-D removes the old path only after nothing depends on it.
 
 ### Locked decisions
 
@@ -213,3 +214,68 @@ Scenario: Provider resolved per request, not per process
 | Silent failure | Make visible |
 |---|---|
 | A flow still silently depends on SSM after removal | a real read per provider in prod confirms `calendar_unavailable` does not appear; alarm on it |
+
+---
+
+## Slice 34-E — ICS calendar feed provider
+
+**Status:** In Progress.
+
+**Goal:** connect a workspace's calendar via a **published ICS feed URL** (e.g. Outlook "Publish a calendar") instead of OAuth — bypassing the Microsoft admin-consent wall that blocks `connect/microsoft` for locked-down M365 tenants. A third provider (`ics`) alongside `google`/`microsoft`, reusing **all** existing machinery: the token store, the factory, connect/connection/disconnect, and the CHANGE-25 Calendar-settings menu.
+
+**User value:** a user whose IT won't grant Graph consent pastes their calendar's public ICS link into Calendar settings → Save, and their meetings appear on Home — no admin, no OAuth.
+
+### As-built decisions
+1. **No new domain events.** `provider` is already a free string (34-C), so the `ics` token rides the existing `(userId, workspaceId, provider)` store and `WorkspaceCalendarConnected(workspaceId, "ics", null)` event. The feed URL is stored as the token's `RefreshToken`; `Email` is null (a feed carries no account identity).
+2. **One provider per workspace generalised to three.** Connecting *any* provider deletes the other two of `{google, microsoft, ics}` (delete-first, before the upsert).
+3. **SSRF guard (`IcsUrlValidator`) + client hardening.** The feed URL is user-supplied and fetched server-side. `IsAllowed`: absolute **https** only; host resolved via DNS; reject if *any* resolved address is loopback / RFC1918 private / link-local (incl. `169.254.169.254` metadata) / unique-local / CGNAT / 0.0.0.0/8 / 240.0.0.0/4. Applied at connect time **and** before every fetch. Both ICS HttpClients set **`AllowAutoRedirect = false`** (a feed can't `302` to an internal/metadata address — a 3xx fails the success check → `calendar_unavailable`/`invalid_feed`) and a **5 MB `MaxResponseContentBufferSize`** (a giant/streaming feed can't OOM the Lambda). **Known accepted residual (single-user app):** `IsAllowed` is a check-then-fetch (TOCTOU) — HttpClient re-resolves DNS for the actual GET, so a DNS-rebinding host that answers public at validation and private at fetch is not fully closed. Fully closing it needs a `SocketsHttpHandler.ConnectCallback` that validates the connected IP and dials it directly — a documented follow-up (Hawk #2, accepted for now).
+4. **Graceful degradation.** Any fetch/parse/HTTP error in `IcsFeedCalendarClient` returns null (→ `calendar_unavailable`), never throws — the meetings GET handler maps null but has no catch (the 34-D1 lesson).
+5. **v1 fetch-per-request, no caching** (10s typed-HttpClient timeout); per-request caching is a possible follow-up (noted in code).
+6. **Occurrence mapping (Ical.Net 5.2.3):** `Calendar.Load` parses the feed; `calendar.GetOccurrences(windowStart)` lazily expands recurrences ascending by start — iterate, stop at the first occurrence `>=` the window end. Each occurrence's `Source` is the VEVENT: `CalendarEventId = "{UID}::{occurrenceStartUtc:yyyyMMddTHHmmssZ}"` (a single UID is shared by all instances, so the start makes it unique); `Title = Summary` or `"(No title)"`; Start/End from `Period.StartTime.AsUtc` / `Period.EffectiveEndTime.AsUtc` (the occurrence `EndTime` is null — `EffectiveEndTime` derives it from the source duration); skip `STATUS:CANCELLED` (occurrences are still emitted for cancelled sources, so filter by `Source.Status`); `IsRecurring`/`RecurringSeriesId = UID` when the source has an RRULE or RDATEs. Timezone: the local-day window is computed in the requested IANA zone (mirrors the Microsoft client) and compared against each occurrence's UTC instant.
+7. **`GetNextOccurrenceAsync`:** expand over `[after, after+400d]`, return the first non-cancelled occurrence whose `Source.Uid == recurringSeriesId`, `RecurringSeriesId` forced to the UID; else null.
+8. **Connect validation fetch.** `POST /calendar/connect/ics` does a one-time fetch+parse so a connect either yields a usable feed or fails loudly (`invalid_feed`, 400) instead of silently at the next read; a URL rejected by the SSRF guard returns `invalid_request` (400).
+
+### Scenarios
+```
+Scenario: Connect a calendar feed via ICS URL
+  Given my workspace has no calendar connected
+  When  I open Calendar settings, paste a public ICS feed URL, and click Save
+  Then  the URL is stored as my "ics" connection and my meetings render on Home
+
+Scenario: Connecting ICS replaces any existing provider
+  Given my workspace is connected to Google
+  When  I connect a calendar feed (ICS)
+  Then  the Google token is cleared and the connection reads provider = ics
+
+Scenario: A private/loopback/metadata URL is refused
+  When  I submit an http, loopback, RFC1918, or 169.254.169.254 URL
+  Then  connect returns 400 invalid_request and nothing is stored
+
+Scenario: An unparseable feed is refused at connect
+  When  I submit an https URL that does not return valid ICS
+  Then  connect returns 400 invalid_feed and nothing is stored
+
+Scenario: Recurring events expand for the viewed day
+  Given my ICS feed has a weekly series and a one-off, with one cancelled instance
+  When  I view a day the series falls on
+  Then  the series instance and the one-off appear; the cancelled instance does not
+
+Scenario: A failing feed degrades gracefully
+  Given my "ics" feed URL later 404s or returns garbage
+  When  the meetings list loads
+  Then  it shows calendar_unavailable, never a 500
+```
+
+### Acceptance criteria
+1. `IcsFeedCalendarClient` resolves the feed URL from the `ics` token, expands occurrences for the local day, skips cancelled, flags recurring with `RecurringSeriesId = UID`, and returns null on any fetch/parse failure (never throws).
+2. `IcsUrlValidator` rejects non-https/non-absolute/unresolvable/loopback/private/link-local/metadata URLs and accepts a public https URL; applied at connect and per-fetch.
+3. `POST /calendar/connect/ics` validates (SSRF → 400 `invalid_request`; parse → 400 `invalid_feed`), stores the URL, clears the other two providers, records `ConnectWorkspaceCalendar(..., "ics", null)` for non-default workspaces, returns `{ connected, provider = "ics" }`.
+4. `GET /calendar/connection` returns `provider = "ics"` when set (order: microsoft, google, ics); `POST /calendar/disconnect` clears the `ics` token; the factory resolves a stored `ics` token to `IcsFeedCalendarClient`.
+5. Frontend: the Calendar-settings menu exposes "Connect calendar feed (ICS)" → URL input + Save (`connectIcsCalendar`), invalidating the connection + meetings queries; `providerLabel('ics') = "Calendar feed"`; Disconnect shows for any connected provider (ICS has no email).
+
+### Observability
+| Silent failure | Make visible |
+|---|---|
+| Feed URL fetch fails (timeout, 404, garbage) | client logs a warning per failure with the operation + status; read returns `calendar_unavailable` (not a 500) |
+| A stored feed later resolves to a private/metadata address (DNS rebinding) | per-fetch SSRF re-validation logs a warning and refuses; never fetched |
+| Connect rejected | endpoint logs whether it was the SSRF guard (`invalid_request`) or the parse (`invalid_feed`) |

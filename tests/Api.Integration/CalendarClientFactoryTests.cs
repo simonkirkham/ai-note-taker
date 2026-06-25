@@ -69,6 +69,11 @@ public sealed class CalendarClientFactoryTests
             await ResolveAsync(stubJson: null, seed: s => s.Seed(User, Ws, "google", "rt-g")));
 
     [Fact]
+    public async Task StoredIcsToken_ResolvesIcsFeedClient()
+        => Assert.IsType<IcsFeedCalendarClient>(
+            await ResolveAsync(stubJson: null, seed: s => s.Seed(User, Ws, "ics", "https://feeds.example.com/cal.ics")));
+
+    [Fact]
     public async Task Unconnected_ResolvesUnavailable()
         // No in-app connection + no SSM/CALENDAR_PROVIDER fallback (34-D2) → calendar_unavailable.
         => Assert.IsType<UnavailableCalendarClient>(await ResolveAsync(stubJson: null));
