@@ -10,7 +10,13 @@ import {
 import { useActions } from "../hooks/useActions";
 import styles from "./ActionsSection.module.css";
 
-export default function ActionsSection({ noteId }: { noteId: string }) {
+export default function ActionsSection({
+  noteId,
+  showHeading = true,
+}: {
+  noteId: string;
+  showHeading?: boolean;
+}) {
   const { data: actions = [] } = useActions(noteId);
   const addAction = useAddAction(noteId);
   const completeAction = useCompleteAction(noteId);
@@ -69,7 +75,7 @@ export default function ActionsSection({ noteId }: { noteId: string }) {
 
   return (
     <section className={styles.actionsSection} data-testid="actions-section" aria-label="Action items">
-      <h2 className={styles.actionsHeading}>Actions</h2>
+      {showHeading && <h2 className={styles.actionsHeading}>Actions</h2>}
       {actions.length === 0 ? (
         <p data-testid="actions-empty" className="empty" role="status">No action items yet</p>
       ) : (

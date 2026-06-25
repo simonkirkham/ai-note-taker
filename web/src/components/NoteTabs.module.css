@@ -1,15 +1,5 @@
 .tabLayout {
-  display: grid;
-  grid-template-columns: 1fr 320px;
-  gap: var(--space-5);
-  align-items: stretch;
   margin-top: var(--space-4);
-}
-
-@media (max-width: 767px) {
-  .tabLayout {
-    grid-template-columns: 1fr;
-  }
 }
 
 .main {
@@ -102,13 +92,3 @@
   color: var(--color-text-muted);
 }
 
-.sidebar {
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-4);
-}
-
-.actions {
-  flex-shrink: 0;
-}
