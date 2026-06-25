@@ -291,3 +291,16 @@ Phase 25-B shipped (then fixed) an **ordering bug** that every unit test passed 
 **Deploy-time delta:** none yet (investigation).
 **Raised in:** BUG-31 layer-3 evidence (deploy #599), 2026-06-17.
 **Depends on:** —
+
+---
+
+## TI-45. MCP `/mcp` connector — per-`sub` rate limiting + bound the per-call projection scans
+
+From the 35-F dual security review (both APPROVE; these were the two non-blocking LOW findings):
+
+1. **Per-`sub` rate limiting.** `POST /mcp` is gated by OAuth + an optional IP allowlist (`MCP_ALLOWED_CIDRS`, currently empty = allow-all in prod). An allowlisted token can issue unbounded `tools/call`s. Add a lightweight ASP.NET `RateLimiter` keyed on the `sub` claim on the `/mcp` route, **and** populate `MCP_ALLOWED_CIDRS` with Anthropic's egress ranges in prod (the `McpAllowlistMiddleware` already supports it — it's a no-op until ops fills it in).
+2. **Bound the per-call scans.** `NoteMcpTools.list_notes`/`get_action_items` call `QueryAllAsync` (full-table `Scan` + in-process `UserId`/workspace filter) on every call — O(all users) per request, the practical abuse path combined with (1). `search_notes` already uses the per-user GSI (`QueryByUserIdAsync`). **Folds into [TI-33](#ti-33-notecardlist-reads-via-full-table-scan-with-consistentread-not-a-per-userworkspace-gsi--query) / TI-20** (same `Scan`→`Query` change on the same tables) — adding a `QueryByUserIdAsync` there fixes the MCP tools too. The filter is correct (confidentiality is not at risk); this is cost/latency.
+
+**Deploy-time delta:** none material (a rate-limiter middleware + a GSI-backed query; the GSI backfill is the TI-33/20 cost).
+**Raised in:** 35-F security audit (PR #345), 2026-06-25.
+**Depends on:** TI-33 / TI-20 for item 2.

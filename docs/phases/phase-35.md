@@ -9,7 +9,7 @@
 | Slice | Summary | Status | Depends on |
 |-------|---------|--------|------------|
 | 35-A | **Connect & list — no-auth proof.** Remote MCP server at `/w/{wsId}/mcp` (official `ModelContextProtocol.AspNetCore` SDK) speaking the MCP transport (initialize / tools/list / tools/call); **no-auth** (unguessable workspace-id URL + Anthropic-IP allowlist); one tool — `list_notes` — returns the workspace's note titles/ids from `NoteCardList`. Proves transport + Cowork handshake + workspace-scoped read on one real call. | Done | — |
-| 35-F | **All-workspaces connector + full read-tool set (supersedes the per-workspace URL model; absorbs 35-B/C/D).** A single `/mcp` endpoint (no workspace in the path); `list_workspaces` (id+name) lets Claude resolve a workspace by name ("OGI"); read tools each take a `workspaceId` arg: `list_notes`, `get_note`, `search_notes`, `get_action_items`. Per-call authorization — every tool reads the token `sub` and verifies it owns the requested workspace (default always allowed); reads scope by `(userId=sub, workspaceId)`. Token aud = the single `/mcp` resource (replaces per-workspace audience binding). | Not Started | 35-E |
+| 35-F | **All-workspaces connector + full read-tool set (supersedes the per-workspace URL model; absorbs 35-B/C/D).** A single `/mcp` endpoint (no workspace in the path); `list_workspaces` (id+name) lets Claude resolve a workspace by name ("OGI"); read tools each take a `workspaceId` arg: `list_notes`, `get_note`, `search_notes`, `get_action_items`. Per-call authorization — every tool reads the token `sub` and verifies it owns the requested workspace (default always allowed); reads scope by `(userId=sub, workspaceId)`. Token aud = the single `/mcp` resource (replaces per-workspace audience binding). | Done — live (2026-06-25) | 35-E |
 | ~~35-B/C/D~~ | *(absorbed into 35-F — the read tools are built workspace-parameterized on the all-workspaces model rather than per-URL.)* | — | — |
 | 35-E | **OAuth 2.1 broker over Google (harden auth).** Add the Resource-Server + thin AS that brokers Google sign-in and mints audience-bound tokens; flip the connector from no-auth to authenticated (`.well-known` metadata, `/authorize`, `/token`, PKCE-S256, 401 challenge). **Required before production-complete.** | Done — live (Cowork connected w/ OAuth, 2026-06-25) | 35-A |
 
@@ -271,6 +271,12 @@ Scenario: get_note rejects a note outside the named workspace
 - Owner step: re-point the Cowork connector to `/mcp` (the per-workspace URL stops being served).
 
 ---
+
+## Status log — 35-F
+
+**35-F — Done (PR #345, deploy #646, 2026-06-25). Phase 35 complete.** Single `/mcp` all-workspaces connector replaced the per-workspace URL: `list_workspaces` (name→id) + `list_notes`/`get_note`/`search_notes`/`get_action_items` each taking `workspaceId`, with **per-call ownership auth** (token `sub` must own the workspace; default always allowed) and `(userId, workspaceId)`-scoped reads. Token `aud` collapsed to `{issuer}/mcp` (tightened to exact match). **Dual review both APPROVE** (security-auditor: 0 Critical/High/Medium; the per-call model is the sole cross-workspace control now and is airtight; audience *tightened* not weakened). Domain 245 / Api 547 / Infra 159. **Prod verified:** `POST /mcp` → 401, old `POST /w/{workspaceId}/mcp` → 404 (gone). Owner re-points the Cowork connector URL to `…/mcp` (one-time).
+
+Two non-blocking auditor findings filed as technical-improvements: (1) `list_notes`/`get_action_items` use `QueryAllAsync` (full scan + in-proc filter) — bound via a `UserId`-indexed query like `search_notes` (folds into the existing NoteCardList/WorkspaceList scan-removal TI); (2) add per-`sub` rate limiting on `/mcp` + populate `MCP_ALLOWED_CIDRS` with Anthropic egress ranges in prod (currently allow-all).
 
 ## Observability
 
