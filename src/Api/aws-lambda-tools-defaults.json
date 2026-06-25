@@ -1,5 +1,0 @@
-{
-  "framework": "net10.0",
-  "function-handler": "Api",
-  "function-runtime": "dotnet10"
-}

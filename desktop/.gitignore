@@ -1,7 +1,0 @@
-node_modules/
-dist/
-web-dist/
-out/
-release/
-test-results/
-playwright-report/
