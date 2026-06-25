@@ -33,7 +33,7 @@ public sealed class NoteMcpTools(INoteCardListStore cards, IHttpContextAccessor 
     }
 
     // The workspace the tool may read. The route id (not request input) scopes the read. Belt-and-
-    // braces: RequireMcpAudienceFilter already 403s any request whose token `aud` is not bound to this
+    // braces: McpAudienceMiddleware already 403s any request whose token `aud` is not bound to this
     // workspace BEFORE the tool runs; this re-checks the same binding at the data-access point so a
     // future mapping that forgets the filter still cannot leak across workspaces. Skipped only in the
     // no-auth proving config (no authenticated principal), where the route id alone scopes the read.

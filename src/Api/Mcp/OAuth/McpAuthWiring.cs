@@ -37,7 +37,7 @@ public static class McpAuthWiring
         // The validator only confirms the token is one OF OURS (signed by the secret, issued by us, and
         // bearing a well-formed `…/w/{ws}/mcp` aud on the issuer host). It CANNOT see the request route,
         // so the EXACT per-workspace aud→path binding (the RFC 8707 confused-deputy guard) is enforced
-        // separately by RequireMcpAudienceFilter on the endpoint, after authentication.
+        // separately by McpAudienceMiddleware on the endpoint, after authentication.
         //
         // When the secret is ABSENT, key off a fresh per-process random 32 bytes that is never known to
         // any caller — so NO token validates (fail closed), rather than keying off a predictable value.
@@ -92,7 +92,7 @@ public static class McpAuthWiring
 // RFC 8707 server-level audience validation: the token's `aud` must be a well-formed MCP resource URI
 // ON THE ISSUER HOST (a token for some OTHER server is rejected → 401). This runs in the JWT pipeline
 // and CANNOT see the request route, so it does NOT bind the token to a single workspace — that EXACT
-// route↔aud match is RequireMcpAudienceFilter's job, after authentication (→ 403 on mismatch).
+// route↔aud match is McpAudienceMiddleware's job, after authentication (→ 403 on mismatch).
 internal static class McpAudienceValidator
 {
     public static bool Validate(IEnumerable<string>? audiences, McpOAuthOptions options)
@@ -133,14 +133,20 @@ public sealed class McpAudienceMiddleware(RequestDelegate next, McpOAuthOptions 
         await next(context).ConfigureAwait(false);
     }
 
-    // Matches exactly "/w/{workspaceId}/mcp" (the tool path), not the PRM well-known path.
+    // Matches exactly "/w/{workspaceId}/mcp" (the tool path), not the PRM well-known path. The `w`
+    // and `mcp` literals are compared case-INSENSITIVELY to mirror ASP.NET route matching — routing
+    // serves "/w/{ws}/MCP" and "/W/{ws}/mcp", so a case-sensitive parse here would let those reach
+    // the tool endpoint while skipping the aud→workspace binding.
     private static bool TryGetMcpWorkspace(PathString path, out string? workspaceId)
     {
         workspaceId = null;
         var value = path.Value;
         if (string.IsNullOrEmpty(value)) return false;
         var segments = value.Trim('/').Split('/');
-        if (segments.Length == 3 && segments[0] == "w" && segments[2] == "mcp" && !string.IsNullOrEmpty(segments[1]))
+        if (segments.Length == 3
+            && string.Equals(segments[0], "w", StringComparison.OrdinalIgnoreCase)
+            && string.Equals(segments[2], "mcp", StringComparison.OrdinalIgnoreCase)
+            && !string.IsNullOrEmpty(segments[1]))
         {
             workspaceId = segments[1];
             return true;

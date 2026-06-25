@@ -98,7 +98,7 @@ app.MapMcpOAuthEndpoints();
 // 35-E: the MCP tool endpoint now REQUIRES an audience-bound bearer carrying the mcp:tools scope.
 // RequireAuthorization wires the McpToolPolicy (→ McpBearer HS256 validation + scope check); a
 // missing/invalid token yields 401 with the WWW-Authenticate: Bearer resource_metadata challenge,
-// and a token without the scope yields 403. RequireMcpAudienceFilter then enforces the EXACT
+// and a token without the scope yields 403. McpAudienceMiddleware then enforces the EXACT
 // token-aud↔route-workspace binding (→ 403 on a cross-workspace token) for EVERY MCP method
 // (initialize/tools/list/tools/call), not just the tool body. The MCP_ENABLED gate (re-enabled in
 // prod for 35-E) and the McpAllowlistMiddleware both still apply.

@@ -311,7 +311,10 @@ public static class McpOAuthEndpoints
         if (!string.Equals($"{uri.Scheme}://{uri.Authority}", options.IssuerAuthority, StringComparison.OrdinalIgnoreCase))
             return null;
         var segments = uri.AbsolutePath.Trim('/').Split('/');
-        if (segments.Length == 3 && segments[0] == "w" && segments[2] == "mcp" && !string.IsNullOrEmpty(segments[1]))
+        if (segments.Length == 3
+            && string.Equals(segments[0], "w", StringComparison.OrdinalIgnoreCase)
+            && string.Equals(segments[2], "mcp", StringComparison.OrdinalIgnoreCase)
+            && !string.IsNullOrEmpty(segments[1]))
             return segments[1];
         return null;
     }

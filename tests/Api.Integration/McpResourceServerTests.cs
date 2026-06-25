@@ -68,6 +68,22 @@ public sealed class McpResourceServerTests(ApiFactory factory) : IClassFixture<A
         Assert.Equal(HttpStatusCode.Forbidden, toolResp.StatusCode);
     }
 
+    [Theory]
+    [InlineData("/w/{ws}/MCP")]
+    [InlineData("/W/{ws}/mcp")]
+    public async Task TokenForAnotherWorkspace_IsForbidden_OnNonCanonicalCasePath(string template)
+    {
+        // ASP.NET route literals match case-insensitively, so /w/{ws}/MCP and /W/{ws}/mcp also reach
+        // the tool endpoint — the aud→workspace binding must too, or a cross-workspace token slips past.
+        var client = _factory.CreateUnauthenticatedClient();
+        var path = template.Replace("{ws}", Workspace);
+        var otherWsToken = McpTestTokens.Valid("ws-other");
+
+        var resp = await PostWith(client, path, Envelope("initialize", InitializeParams()), otherWsToken);
+
+        Assert.Equal(HttpStatusCode.Forbidden, resp.StatusCode);
+    }
+
     [Fact]
     public async Task ValidToken_ToolCallSucceeds()
     {
