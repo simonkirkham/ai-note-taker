@@ -364,6 +364,16 @@ Slices and acceptance criteria: [docs/phases/phase-36.md](phases/phase-36.md)
 
 ---
 
+## Phase 37 — Reorder the home To Do list (drag-and-drop) _(Done)_
+
+Drag (or keyboard Move up/down) the home **To Do** open items into any order, persisted per workspace. Scope is the home page list only; per-note action ordering is out of scope. The list interleaves two aggregates (`Todo`, `ActionItem`), so ordering lives in a dedicated per-workspace stream (`todo-order#<workspaceId>` + `TodoOrdering` aggregate) emitting a full-order-snapshot `TodoListReordered` event — item aggregates untouched. The projection folds it into a nullable `Position` on `TodoItem` (sort `Position ?? max`, then `AddedAt`); reorder is optimistic and RYW-correct via the order-stream consistency token. No DnD library (reuses the native `FolderTree` drag pattern); keyboard reordering via Move up/down buttons keeps the jsx-a11y gate green. Deploy-time impact: neutral (no new table, no backfill — `Position` is a new attribute on the existing `TodoList` table). Single slice **37-A** (shipped). Graduated from the "Drag-and-drop to reorder to-do / action items" future-features idea.
+
+**Goal:** reorder the home To Do open items; the order persists per workspace and survives reload.
+
+Slices and acceptance criteria: [docs/phases/phase-37.md](phases/phase-37.md)
+
+---
+
 ## Phase 39 — Edit the text of a to-do / action item _(In progress — 39-A done; 39-B remaining)_
 
 Let the user **edit the text** of an existing action item (on a note) or standalone home to-do — today the text is fixed once created (only complete/reopen/delete exist), so a mis-captured or AI-extracted item can only be fixed by delete-and-recreate. The design was already in the event model (`EditActionItem`/`ActionItemEdited`, documented but unimplemented), and `Description` already exists on every read view, so it's a projection *fold*, not a schema change — **no new aggregate/table/backfill/CDK; deploy-time neutral.** Two slices: **39-A** *edit a note action item* (keystone — new event/command, `PUT /notes/{noteId}/actions/{actionId}` with the RYW token, all four rebuild projections + the async `ProjectionUpdater` folding the edit into `NoteActions`/card rollup/search/`TodoList` action row, inline optimistic click-to-edit) — **done, live 2026-06-25**; **39-B** *edit a standalone to-do* (same pattern on the `Todo` aggregate) — remaining. Graduated from the "Rename to-do / action items" future-features item.

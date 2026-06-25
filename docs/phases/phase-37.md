@@ -6,7 +6,7 @@
 
 | Slice | Summary | Status | Depends on |
 | --- | --- | --- | --- |
-| 37-A | Drag-and-drop + keyboard reorder of the home To Do open-items list, persisted per workspace via a new `TodoListReordered` event; optimistic UI, async-projector + RYW correct | Not Started | — |
+| 37-A | Drag-and-drop + keyboard reorder of the home To Do open-items list, persisted per workspace via a new `TodoListReordered` event; optimistic UI, async-projector + RYW correct | Done | — |
 
 Single thin vertical slice. Breaker layer-splits the implementation: **pass 1** domain + projection + endpoint + store (BDD/API/EventStore.Integration green), **pass 2** frontend DnD + optimistic UI + E2E.
 
