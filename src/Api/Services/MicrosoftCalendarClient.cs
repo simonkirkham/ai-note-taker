@@ -40,11 +40,11 @@ public sealed class MicrosoftCalendarClient : ICalendarClient
         _http = http;
         _tokenSource = tokenSource;
         _clientId = Environment.GetEnvironmentVariable("MS_CLIENT_ID") ?? "";
-        // Default to "consumers" (personal Microsoft accounts) — the proven case for this app, and
-        // the same default the in-app connect uses (buildMicrosoftAuthUrl). A token granted against
-        // one tenant alias but refreshed against another yields invalid_grant, so the consent tenant
-        // and this default MUST match. Set MS_TENANT_ID explicitly for a work/school tenant.
-        _tenantId = Environment.GetEnvironmentVariable("MS_TENANT_ID") is { Length: > 0 } t ? t : "consumers";
+        // CHANGE-26: default "common" (work/school + personal accounts) — the same default the in-app
+        // connect uses (buildMicrosoftAuthUrl). A token granted against one tenant alias but refreshed
+        // against another yields invalid_grant, so the consent tenant and this default MUST match. Set
+        // MS_TENANT_ID explicitly to pin a single tenant.
+        _tenantId = Environment.GetEnvironmentVariable("MS_TENANT_ID") is { Length: > 0 } t ? t : "common";
     }
 
     public string ProviderName => "microsoft";
