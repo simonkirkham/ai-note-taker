@@ -126,6 +126,47 @@ _(Claude Cowork connector — read-only, workspace-scoped MCP server — graduat
 
 ---
 
+## Drag-and-drop to reorder to-do / action items
+
+**What:** Let the user set the order of to-do / action items by dragging them, instead of the fixed creation-time order they have today. Currently both lists are ordered only by add time — `ActionsSection.tsx` renders `NoteActions` ordered `.OrderBy(a => a.AddedAt)` (`DynamoDbNoteActionsStore`) and `TodoSection`/`TodoList` orders by `AddedAt` (`DynamoDbTodoListStore`); there is **no position field** on `NoteCardActionItem`, `NoteAction`, or the todo view. Scope when broken down:
+- A **position/order** dimension on the item — a new additive event (e.g. `ActionItemReordered` / `TodoReordered` carrying the new ordering, or a fractional-rank/`Position` per item) on the relevant aggregate(s). Keep existing events untouched.
+- Projection change to store and sort by the explicit position (fall back to `AddedAt` for items with none).
+- Drag-and-drop UI in `ActionsSection`/`TodoSection` with **optimistic reorder** (reflect the drag immediately, reconcile on error) and keyboard-accessible reordering (don't regress the jsx-a11y gate — see CHANGE-15).
+- Decide scope: per-note action items, the cross-note home to-do list, or both — and whether ordering is shared or per-view.
+
+**Why it isn't scheduled yet:** Genuinely new capability (not a tweak) with real event-model work — a persisted ordering across an event-sourced projection, kept correct under optimistic UI and the async projector (RYW). Needs Scout to design the event(s) and the position model. Pairs with the to-do due-date/grouping feature above (both add structure to the to-do list) and with [[#rename-to-do--action-items]].
+
+**Raised in:** User feature idea, 2026-06-25.
+
+---
+
+## Rename to-do / action items
+
+**What:** Let the user edit the text of an existing to-do / action item. Today an action's description is fixed once created — the only operations are complete, reopen, and delete (no edit command/event exists). This adds in-place renaming so a mis-captured or auto-extracted action can be corrected without delete-and-recreate. Scope when broken down:
+- A new additive event/command (e.g. `ActionItemDescriptionEdited` / `TodoRenamed`) on the action-item / todo aggregate; existing events untouched.
+- Projection update to fold the new text into `NoteActions` / the todo view.
+- Inline-edit UI in `ActionsSection`/`TodoSection` (click-to-edit or an edit affordance) with **optimistic update** and error reconcile.
+
+**Why it isn't scheduled yet:** It introduces new capability (editing is impossible today), so it's a feature not a minor tweak — but it's **small and well-bounded**: one new event + projection fold + an inline-edit control. A good candidate for a single thin slice when picked up. Related: [[#drag-and-drop-to-reorder-to-do--action-items]].
+
+**Raised in:** User feature idea, 2026-06-25.
+
+---
+
+## Redefine note "topics" as a concept separate from headings
+
+**What:** Make agenda **topics** a first-class concept distinct from markdown **headings**. Today the two are the same thing: a topic *is* a `##`/`###` heading in the note content, and the ✓ "Mark as discussed" tick strikes the heading through (Phase 7-B — "headings double as agenda topics"; the discussed state round-trips as `~~…~~` inside `ContentEditedV2`, no separate topic entity exists). This conflates document structure (headings used purely for formatting) with meeting agenda items, so every heading becomes a tickable "topic" whether or not it's an agenda point, and topic state is entangled with content markdown. This feature separates them — topics become their own thing (own list/markers/state), decoupled from how headings are used to structure the note body. Scope to design when broken down:
+- Decide the model: a dedicated topic entity/event (topics tracked apart from content) vs. an explicit "this heading is a topic" opt-in marker — and how "discussed" state is stored once it's no longer just heading strikethrough.
+- Migration/back-compat for existing notes whose topics are encoded as struck-through headings.
+- UX for adding/marking/completing topics independently of typing headings in the body.
+- Interaction with BUG-37 (the heading-tick regression) — likely supersedes or reshapes that interaction; sequence accordingly.
+
+**Why it isn't scheduled yet:** A redesign of an existing interaction with real event-model implications (a new topic representation, plus migrating notes that currently encode topics as heading strikethrough). Needs Scout to decide the model before implementation. Related: [[#bug-37]] is the current heading-tick defect on the existing design.
+
+**Raised in:** User feature idea, 2026-06-25 — "change how topics are defined in the note (separate them from headers)."
+
+---
+
 ## Connect to external transcript tools (Zoom, Teams, etc.)
 
 **What:** Import meeting transcripts automatically from third-party meeting tools (Zoom first; Teams, Google Meet, etc. later) instead of recording in-app or pasting by hand. The connector pulls a finished meeting's transcript from the provider and creates a note that runs through the same analysis pipeline. Scope when broken down:
