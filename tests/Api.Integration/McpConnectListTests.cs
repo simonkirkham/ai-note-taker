@@ -2,7 +2,6 @@ using System.Net;
 using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
-using Domain.Folders;
 using Domain.Notes;
 using Domain.Workspaces;
 using EventStore.Projections;
@@ -14,81 +13,208 @@ using Microsoft.Extensions.DependencyInjection;
 
 namespace Api.Integration;
 
-// 35-A/35-E: read-only remote MCP server at /w/{workspaceId}/mcp. Drives the real MCP transport
-// (initialize → tools/list → tools/call) with raw JSON-RPC envelopes, asserting list_notes returns
-// the route workspace's note cards and never another's. Since 35-E the endpoint requires an
-// audience-bound HS256 bearer (McpToolPolicy), so the authed calls attach a valid token minted by
-// McpTestTokens; the routing-level cases (GET→405, disabled→404) need no token.
+// 35-F: single identity-scoped MCP server at /mcp. Drives the real MCP transport (initialize →
+// tools/list → tools/call) with raw JSON-RPC envelopes, asserting the parameterized read tools scope
+// by (sub, workspaceId) and that a tool call for an unowned workspace is rejected as an MCP error —
+// never data. Every authed call attaches a token minted by McpTestTokens (aud = the single /mcp
+// resource); the routing-level cases (GET→405, disabled→404, IP allowlist) need no token.
 public sealed class McpConnectListTests(ApiFactory factory) : IClassFixture<ApiFactory>
 {
     private const string ProtocolVersion = "2025-06-18";
     private const string WorkspaceA = "ws-alpha";
     private const string WorkspaceB = "ws-beta";
+    private const string Owner = "test-user-123";        // allowlisted sub (FakeCurrentUser.TestUserId)
+    private const string OtherUser = "other-user-456";   // also allowlisted, owns nothing here
 
     private static readonly Guid NoteA1 = new("11111111-1111-1111-1111-111111111111");
     private static readonly Guid NoteB1 = new("22222222-2222-2222-2222-222222222222");
     private static readonly Guid NoteA2 = new("33333333-3333-3333-3333-333333333333");
-    private static readonly Guid NoteB2 = new("44444444-4444-4444-4444-444444444444");
     private static readonly Guid NoteLegacy = new("55555555-5555-5555-5555-555555555555");
 
     private readonly ApiFactory _factory = factory;
 
     [Fact]
-    public async Task ToolsList_IncludesListNotes()
+    public async Task ToolsList_IncludesAllReadTools()
     {
-        var client = NewClient();
-
-        var result = await CallAsync(client, McpPath(WorkspaceA), "tools/list", new { });
+        var client = _factory.CreateUnauthenticatedClient();
+        var result = await CallAsync(client, "tools/list", new { }, McpTestTokens.Valid());
 
         var names = result.GetProperty("tools").EnumerateArray()
             .Select(t => t.GetProperty("name").GetString())
             .ToList();
+        Assert.Contains("list_workspaces", names);
         Assert.Contains("list_notes", names);
+        Assert.Contains("get_note", names);
+        Assert.Contains("search_notes", names);
+        Assert.Contains("get_action_items", names);
     }
 
     [Fact]
-    public async Task ListNotes_ReturnsOnlyRouteWorkspaceNotes()
+    public async Task ListWorkspaces_ReturnsOnlyCallersWorkspaces_PlusDefault()
     {
-        SeedCard(WorkspaceA, NoteA1, "Acme kickoff", new DateOnly(2026, 4, 1), "Discussed the Acme rollout plan");
-        SeedCard(WorkspaceB, NoteB1, "Beta retro", new DateOnly(2026, 4, 2), "Beta team retrospective notes");
+        SeedWorkspace(Owner, WorkspaceA, "OGI");
+        SeedWorkspace(OtherUser, "ws-other-user", "Not Mine");
 
-        var client = NewClient();
-        var result = await CallToolAsync(client, McpPath(WorkspaceA), "list_notes");
+        var client = _factory.CreateUnauthenticatedClient();
+        var result = await CallToolAsync(client, "list_workspaces", new { }, McpTestTokens.Valid(Owner));
 
-        var notes = ParseListNotes(result);
+        var workspaces = ParsePayload(result).GetProperty("workspaces").EnumerateArray().ToList();
+        var ids = workspaces.Select(w => w.GetProperty("id").GetString()).ToList();
+        Assert.Contains(WorkspaceId.DefaultValue, ids);
+        Assert.Contains(WorkspaceA, ids);
+        Assert.DoesNotContain("ws-other-user", ids);
+        // "OGI" can be resolved to its id by name.
+        Assert.Equal(WorkspaceA, workspaces.Single(w => w.GetProperty("name").GetString() == "OGI").GetProperty("id").GetString());
+    }
+
+    [Fact]
+    public async Task ListNotes_ScopedToUserAndWorkspace()
+    {
+        SeedWorkspace(Owner, WorkspaceA, "Alpha");
+        SeedCard(Owner, WorkspaceA, NoteA1, "Acme kickoff", new DateOnly(2026, 4, 1), "Discussed the Acme rollout plan");
+        SeedCard(Owner, WorkspaceB, NoteB1, "Beta retro", null, "beta content");
+
+        var client = _factory.CreateUnauthenticatedClient();
+        var result = await CallToolAsync(client, "list_notes", new { workspaceId = WorkspaceA }, McpTestTokens.Valid(Owner));
+
+        var notes = ParseNotes(result);
         Assert.Single(notes);
-        var note = notes[0];
-        Assert.Equal(NoteA1.ToString(), note.GetProperty("id").GetString());
-        Assert.Equal("Acme kickoff", note.GetProperty("title").GetString());
-        Assert.Equal("2026-04-01", note.GetProperty("date").GetString());
-        Assert.Contains("Acme rollout", note.GetProperty("preview").GetString());
-    }
-
-    [Fact]
-    public async Task ListNotes_NeverReturnsOtherWorkspaceNotes()
-    {
-        SeedCard(WorkspaceA, NoteA2, "Workspace A note", null, "alpha content");
-        SeedCard(WorkspaceB, NoteB2, "Workspace B note", null, "beta content");
-
-        var client = NewClient();
-        var result = await CallToolAsync(client, McpPath(WorkspaceB), "list_notes");
-
-        var ids = ParseListNotes(result).Select(n => n.GetProperty("id").GetString()).ToList();
-        Assert.Contains(NoteB2.ToString(), ids);
-        Assert.DoesNotContain(NoteA2.ToString(), ids);
+        Assert.Equal(NoteA1.ToString(), notes[0].GetProperty("id").GetString());
+        Assert.Equal("Acme kickoff", notes[0].GetProperty("title").GetString());
+        Assert.Equal("2026-04-01", notes[0].GetProperty("date").GetString());
+        Assert.Contains("Acme rollout", notes[0].GetProperty("preview").GetString());
     }
 
     [Fact]
     public async Task ListNotes_OnDefaultWorkspace_IncludesLegacyNullWorkspaceNotes()
     {
-        SeedCard(null, NoteLegacy, "Pre-workspace note", null, "written before workspaces existed");
+        SeedCard(Owner, null, NoteLegacy, "Pre-workspace note", null, "written before workspaces existed");
 
-        var client = NewClient();
-        var result = await CallToolAsync(client, McpPath(WorkspaceId.DefaultValue), "list_notes");
+        var client = _factory.CreateUnauthenticatedClient();
+        var result = await CallToolAsync(client, "list_notes",
+            new { workspaceId = WorkspaceId.DefaultValue }, McpTestTokens.Valid(Owner));
 
-        var ids = ParseListNotes(result).Select(n => n.GetProperty("id").GetString()).ToList();
+        var ids = ParseNotes(result).Select(n => n.GetProperty("id").GetString()).ToList();
         Assert.Contains(NoteLegacy.ToString(), ids);
     }
+
+    [Fact]
+    public async Task Reads_AreUserScoped_TwoUsersShareDefaultWorkspace()
+    {
+        // Both users have a note in the default workspace; each sees only their own.
+        var mine = new Guid("aaaaaaaa-0000-0000-0000-000000000001");
+        var theirs = new Guid("bbbbbbbb-0000-0000-0000-000000000002");
+        SeedCard(Owner, WorkspaceId.DefaultValue, mine, "My default note", null, "mine");
+        SeedCard(OtherUser, WorkspaceId.DefaultValue, theirs, "Their default note", null, "theirs");
+
+        var client = _factory.CreateUnauthenticatedClient();
+        var result = await CallToolAsync(client, "list_notes",
+            new { workspaceId = WorkspaceId.DefaultValue }, McpTestTokens.Valid(Owner));
+
+        var ids = ParseNotes(result).Select(n => n.GetProperty("id").GetString()).ToList();
+        Assert.Contains(mine.ToString(), ids);
+        Assert.DoesNotContain(theirs.ToString(), ids);
+    }
+
+    [Fact]
+    public async Task ToolCall_ForUnownedWorkspace_IsRejected_NoData()
+    {
+        // A note exists in WorkspaceA owned by Owner; OtherUser does not own WorkspaceA → MCP error.
+        SeedWorkspace(Owner, WorkspaceA, "Alpha");
+        SeedCard(Owner, WorkspaceA, NoteA2, "Secret note", null, "alpha secret");
+
+        var client = _factory.CreateUnauthenticatedClient();
+        var result = await CallToolAsync(client, "list_notes", new { workspaceId = WorkspaceA }, McpTestTokens.Valid(OtherUser));
+
+        Assert.True(IsToolError(result));
+        Assert.DoesNotContain(NoteA2.ToString(), RawText(result));
+    }
+
+    [Fact]
+    public async Task SubThatOwnsNothing_OnlyDefaultWorks()
+    {
+        SeedWorkspace(Owner, WorkspaceA, "Alpha");
+        var client = _factory.CreateUnauthenticatedClient();
+        var token = McpTestTokens.Valid(OtherUser);
+
+        // The default workspace is always permitted.
+        var defaultResult = await CallToolAsync(client, "list_notes",
+            new { workspaceId = WorkspaceId.DefaultValue }, token);
+        Assert.False(IsToolError(defaultResult));
+
+        // Any non-default workspace they do not own is rejected.
+        var rejected = await CallToolAsync(client, "list_notes", new { workspaceId = WorkspaceA }, token);
+        Assert.True(IsToolError(rejected));
+    }
+
+    [Fact]
+    public async Task GetNote_RejectsNoteOutsideTheNamedWorkspace()
+    {
+        SeedWorkspace(Owner, WorkspaceA, "Alpha");
+        // Note lives in the default workspace, not WorkspaceA.
+        var noteId = new Guid("cccccccc-0000-0000-0000-000000000003");
+        SeedDetail(Owner, WorkspaceId.DefaultValue, noteId, "Default-workspace note", "body");
+
+        var client = _factory.CreateUnauthenticatedClient();
+        var result = await CallToolAsync(client, "get_note",
+            new { workspaceId = WorkspaceA, noteId = noteId.ToString() }, McpTestTokens.Valid(Owner));
+
+        Assert.True(IsToolError(result));
+        Assert.DoesNotContain("Default-workspace note", RawText(result));
+    }
+
+    [Fact]
+    public async Task GetNote_HappyPath_ReturnsContentAndActions()
+    {
+        var noteId = new Guid("dddddddd-0000-0000-0000-000000000004");
+        SeedDetail(Owner, WorkspaceId.DefaultValue, noteId, "Roadmap review", "We agreed the Q3 plan");
+
+        var client = _factory.CreateUnauthenticatedClient();
+        var result = await CallToolAsync(client, "get_note",
+            new { workspaceId = WorkspaceId.DefaultValue, noteId = noteId.ToString() }, McpTestTokens.Valid(Owner));
+
+        Assert.False(IsToolError(result));
+        var payload = ParsePayload(result);
+        Assert.Equal(noteId.ToString(), payload.GetProperty("id").GetString());
+        Assert.Equal("Roadmap review", payload.GetProperty("title").GetString());
+        Assert.Contains("Q3 plan", payload.GetProperty("content").GetString());
+    }
+
+    [Fact]
+    public async Task SearchNotes_HappyPath_ReturnsRankedMatch()
+    {
+        var noteId = new Guid("eeeeeeee-0000-0000-0000-000000000005");
+        SeedSearchView(Owner, WorkspaceId.DefaultValue, noteId, "Budget planning", "the annual budget review");
+
+        var client = _factory.CreateUnauthenticatedClient();
+        var result = await CallToolAsync(client, "search_notes",
+            new { workspaceId = WorkspaceId.DefaultValue, query = "budget" }, McpTestTokens.Valid(Owner));
+
+        Assert.False(IsToolError(result));
+        var ids = ParsePayload(result).GetProperty("results").EnumerateArray()
+            .Select(r => r.GetProperty("id").GetString()).ToList();
+        Assert.Contains(noteId.ToString(), ids);
+    }
+
+    [Fact]
+    public async Task GetActionItems_ReturnsOpenItemsForUserAndWorkspace()
+    {
+        var noteId = new Guid("ffffffff-0000-0000-0000-000000000006");
+        SeedTodo(Owner, WorkspaceId.DefaultValue, "open-1", noteId, "Send the deck", completed: false);
+        SeedTodo(Owner, WorkspaceId.DefaultValue, "done-1", noteId, "Already done", completed: true);
+
+        var client = _factory.CreateUnauthenticatedClient();
+        var result = await CallToolAsync(client, "get_action_items",
+            new { workspaceId = WorkspaceId.DefaultValue }, McpTestTokens.Valid(Owner));
+
+        Assert.False(IsToolError(result));
+        var descriptions = ParsePayload(result).GetProperty("actionItems").EnumerateArray()
+            .Select(i => i.GetProperty("description").GetString()).ToList();
+        Assert.Contains("Send the deck", descriptions);
+        Assert.DoesNotContain("Already done", descriptions);
+    }
+
+    // ── Routing-level (no token) ─────────────────────────────────────────
 
     [Fact]
     public async Task WhenMcpDisabled_Endpoint_Returns404()
@@ -97,7 +223,7 @@ public sealed class McpConnectListTests(ApiFactory factory) : IClassFixture<ApiF
             c.AddInMemoryCollection(new Dictionary<string, string?> { ["MCP_ENABLED"] = "false" })));
 
         var resp = await factory.CreateClient()
-            .SendAsync(NewPost(McpPath(WorkspaceA), Envelope("initialize", InitializeParams())));
+            .SendAsync(NewPost("/mcp", Envelope("initialize", InitializeParams())));
 
         Assert.Equal(HttpStatusCode.NotFound, resp.StatusCode);
     }
@@ -106,7 +232,7 @@ public sealed class McpConnectListTests(ApiFactory factory) : IClassFixture<ApiF
     public async Task Get_OnMcpEndpoint_Returns405()
     {
         var client = _factory.CreateUnauthenticatedClient();
-        var req = new HttpRequestMessage(HttpMethod.Get, McpPath(WorkspaceA));
+        var req = new HttpRequestMessage(HttpMethod.Get, "/mcp");
         req.Headers.Add("MCP-Protocol-Version", ProtocolVersion);
         req.Headers.Accept.ParseAdd("application/json, text/event-stream");
 
@@ -121,7 +247,7 @@ public sealed class McpConnectListTests(ApiFactory factory) : IClassFixture<ApiF
         // A valid bearer so the request reaches the SDK transport handler (which enforces the
         // protocol-version 400); without it RequireAuthorization would short-circuit to 401 first.
         var client = _factory.CreateUnauthenticatedClient();
-        var req = NewPost(McpPath(WorkspaceA), Envelope("initialize", InitializeParams()), McpTestTokens.Valid(WorkspaceA));
+        var req = NewPost("/mcp", Envelope("initialize", InitializeParams()), McpTestTokens.Valid());
         req.Headers.Remove("MCP-Protocol-Version");
         req.Headers.Add("MCP-Protocol-Version", "1999-01-01");
 
@@ -134,7 +260,7 @@ public sealed class McpConnectListTests(ApiFactory factory) : IClassFixture<ApiF
     public async Task SourceIpOutsideAllowlist_Returns403()
     {
         using var factory = WithAllowlist("203.0.113.0/24");
-        var req = NewPost(McpPath(WorkspaceA), Envelope("initialize", InitializeParams()));
+        var req = NewPost("/mcp", Envelope("initialize", InitializeParams()));
         req.Headers.Add(TestSourceIpStartupFilter.Header, "198.51.100.7");
 
         var resp = await factory.CreateClient().SendAsync(req);
@@ -146,7 +272,7 @@ public sealed class McpConnectListTests(ApiFactory factory) : IClassFixture<ApiF
     public async Task SourceIpInsideAllowlist_IsNotBlocked()
     {
         using var factory = WithAllowlist("203.0.113.0/24");
-        var req = NewPost(McpPath(WorkspaceA), Envelope("initialize", InitializeParams()));
+        var req = NewPost("/mcp", Envelope("initialize", InitializeParams()));
         req.Headers.Add(TestSourceIpStartupFilter.Header, "203.0.113.42");
 
         var resp = await factory.CreateClient().SendAsync(req);
@@ -156,11 +282,6 @@ public sealed class McpConnectListTests(ApiFactory factory) : IClassFixture<ApiF
 
     // ── Helpers ──────────────────────────────────────────────────────────
 
-    private static string McpPath(string workspaceId) => $"/w/{workspaceId}/mcp";
-
-    // Sets MCP_ALLOWED_CIDRS via config (no process-global env mutation) and installs a startup
-    // filter that maps a test header onto Connection.RemoteIpAddress — standing in for the
-    // AWS-computed sourceIp the Lambda host sets in prod, which the allowlist reads.
     private WebApplicationFactory<Program> WithAllowlist(string cidrs) =>
         _factory.WithWebHostBuilder(b =>
         {
@@ -169,66 +290,81 @@ public sealed class McpConnectListTests(ApiFactory factory) : IClassFixture<ApiF
             b.ConfigureServices(s => s.AddSingleton<IStartupFilter, TestSourceIpStartupFilter>());
         });
 
-    private HttpClient NewClient()
+    private void SeedWorkspace(string userId, string workspaceId, string name)
     {
-        var client = _factory.CreateUnauthenticatedClient();
-        client.DefaultRequestHeaders.Add("X-Test-No-Prefix", "1");
-        return client;
+        var store = _factory.Services.GetRequiredService<IWorkspaceListStore>();
+        store.UpsertAsync(new WorkspaceListView(
+            new WorkspaceId(workspaceId), name, DateTimeOffset.UtcNow, userId)).GetAwaiter().GetResult();
     }
 
-    private void SeedCard(string? workspaceId, Guid noteId, string title, DateOnly? date, string content)
+    private void SeedCard(string userId, string? workspaceId, Guid noteId, string title, DateOnly? date, string content)
     {
         var store = (InMemoryNoteCardListStore)_factory.Services.GetRequiredService<INoteCardListStore>();
         store.UpsertAsync(new NoteCardView(
-            new NoteId(noteId),
-            title,
-            content,
-            Array.Empty<NoteCardActionItem>(),
-            date,
-            DateTimeOffset.UtcNow,
-            DateTimeOffset.UtcNow,
-            Deleted: false,
-            Tags: null,
-            FolderId: null,
-            UserId: "any-user",
-            WorkspaceId: workspaceId)).GetAwaiter().GetResult();
+            new Domain.Notes.NoteId(noteId), title, content, Array.Empty<NoteCardActionItem>(),
+            date, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow, Deleted: false,
+            Tags: null, FolderId: null, UserId: userId, WorkspaceId: workspaceId)).GetAwaiter().GetResult();
     }
 
-    private static List<JsonElement> ParseListNotes(JsonElement toolResult)
+    private void SeedDetail(string userId, string? workspaceId, Guid noteId, string title, string content)
     {
-        var text = toolResult.GetProperty("content").EnumerateArray()
+        var store = _factory.Services.GetRequiredService<INoteDetailStore>();
+        store.UpsertAsync(new NoteDetailView(
+            new Domain.Notes.NoteId(noteId), title, content, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow,
+            UserId: userId, WorkspaceId: workspaceId)).GetAwaiter().GetResult();
+    }
+
+    private void SeedSearchView(string userId, string? workspaceId, Guid noteId, string title, string body)
+    {
+        var store = _factory.Services.GetRequiredService<INoteSearchViewStore>();
+        store.UpsertAsync(new NoteSearchView(
+            new Domain.Notes.NoteId(noteId), userId, title, body, FinalNotesText: "",
+            Tags: Array.Empty<string>(), ActionItemsText: "", Deleted: false,
+            LastModifiedAt: DateTimeOffset.UtcNow, WorkspaceId: workspaceId)).GetAwaiter().GetResult();
+    }
+
+    private void SeedTodo(string userId, string? workspaceId, string itemId, Guid noteId, string description, bool completed)
+    {
+        var store = _factory.Services.GetRequiredService<ITodoListStore>();
+        store.PutAsync(new TodoItem(
+            itemId, noteId.ToString(), "Note", "action", description, DateTimeOffset.UtcNow,
+            completed ? DateTimeOffset.UtcNow : null, userId, workspaceId)).GetAwaiter().GetResult();
+    }
+
+    // The inner JSON the tool returns as its single text content block.
+    private static JsonElement ParsePayload(JsonElement toolResult)
+    {
+        using var doc = JsonDocument.Parse(RawText(toolResult));
+        return doc.RootElement.Clone();
+    }
+
+    private static List<JsonElement> ParseNotes(JsonElement toolResult) =>
+        ParsePayload(toolResult).GetProperty("notes").EnumerateArray().Select(e => e.Clone()).ToList();
+
+    private static string RawText(JsonElement toolResult) =>
+        toolResult.GetProperty("content").EnumerateArray()
             .First(c => c.GetProperty("type").GetString() == "text")
             .GetProperty("text").GetString()!;
-        using var doc = JsonDocument.Parse(text);
-        return doc.RootElement.GetProperty("notes").EnumerateArray()
-            .Select(e => e.Clone()).ToList();
-    }
 
-    private async Task<JsonElement> CallToolAsync(HttpClient client, string path, string toolName)
-    {
-        return await CallAsync(client, path, "tools/call", new { name = toolName, arguments = new { } });
-    }
+    // A tool that throws (ownership rejection, not-found) comes back as a tool result with isError=true.
+    private static bool IsToolError(JsonElement toolResult) =>
+        toolResult.TryGetProperty("isError", out var e) && e.ValueKind == JsonValueKind.True;
 
-    // POSTs initialize then the target method (both with a valid bearer for the path's workspace);
-    // returns the parsed JSON-RPC `result` of the target.
-    private async Task<JsonElement> CallAsync(HttpClient client, string path, string method, object @params)
+    private async Task<JsonElement> CallToolAsync(HttpClient client, string toolName, object arguments, string token) =>
+        await CallAsync(client, "tools/call", new { name = toolName, arguments }, token);
+
+    // POSTs initialize then the target method (both with the bearer); returns the parsed JSON-RPC
+    // `result` of the target.
+    private async Task<JsonElement> CallAsync(HttpClient client, string method, object @params, string token)
     {
-        var token = TokenForPath(path);
-        await PostAsync(client, path, Envelope("initialize", InitializeParams()), token);
-        var resp = await PostAsync(client, path, Envelope(method, @params), token);
+        await PostAsync(client, Envelope("initialize", InitializeParams()), token);
+        var resp = await PostAsync(client, Envelope(method, @params), token);
         resp.EnsureSuccessStatusCode();
         return await ReadResultAsync(resp);
     }
 
-    // The audience is per-workspace, so mint a token whose aud matches the path's workspace.
-    private static string? TokenForPath(string path)
-    {
-        var parts = path.Trim('/').Split('/');
-        return parts.Length >= 2 && parts[0] == "w" ? McpTestTokens.Valid(parts[1]) : null;
-    }
-
-    private static async Task<HttpResponseMessage> PostAsync(HttpClient client, string path, string json, string? bearer = null) =>
-        await client.SendAsync(NewPost(path, json, bearer));
+    private static async Task<HttpResponseMessage> PostAsync(HttpClient client, string json, string? bearer = null) =>
+        await client.SendAsync(NewPost("/mcp", json, bearer));
 
     private static HttpRequestMessage NewPost(string path, string json, string? bearer = null)
     {
@@ -255,8 +391,6 @@ public sealed class McpConnectListTests(ApiFactory factory) : IClassFixture<ApiF
         clientInfo = new { name = "test-client", version = "1.0" }
     };
 
-    // Streamable HTTP may return the JSON-RPC body either as application/json or as an
-    // SSE `data:` frame depending on negotiation; parse both.
     private static async Task<JsonElement> ReadResultAsync(HttpResponseMessage resp)
     {
         var body = await resp.Content.ReadAsStringAsync();

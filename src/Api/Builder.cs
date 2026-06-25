@@ -213,12 +213,12 @@ public static class Builder
                 sp.GetRequiredService<Amazon.TranscribeService.IAmazonTranscribeService>(), recordingsBucketName));
         builder.Services.AddAWSLambdaHosting(LambdaEventSource.HttpApi);
 
-        // 35-A: read-only remote MCP server. Stateless so each POST is independent (no
-        // Mcp-Session-Id) — suits Lambda and lets the tool read the route workspaceId via
+        // 35-A/35-F: read-only remote MCP server. Stateless so each POST is independent (no
+        // Mcp-Session-Id) — suits Lambda and lets each tool read the authenticated `sub` via
         // IHttpContextAccessor (default PerSessionExecutionContext=false runs tools on the
         // request's execution context). GET→405 and MCP-Protocol-Version 400 are enforced by
-        // the SDK's StreamableHttpHandler. The endpoint is mapped in Program.cs under
-        // /w/{workspaceId}/mcp; 35-E guards it with RequireAuthorization (the OAuth wiring below).
+        // the SDK's StreamableHttpHandler. The endpoint is mapped in Program.cs under a single
+        // /mcp path, guarded by RequireAuthorization (the OAuth wiring below).
         builder.Services
             .AddMcpServer()
             .WithHttpTransport(options => options.Stateless = true)

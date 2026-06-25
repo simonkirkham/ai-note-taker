@@ -2,10 +2,10 @@ using System.Net;
 
 namespace Api.Mcp;
 
-// 35-A defence-in-depth: restrict the no-auth MCP endpoint to a CIDR allowlist read from
-// MCP_ALLOWED_CIDRS (via IConfiguration, so the Lambda env var flows in prod but tests can
-// override without mutating process-global state). Empty/unset = allow all (no-op until ops
-// populates the Anthropic IP ranges). Only the /w/{wsId}/mcp path is gated.
+// 35-A defence-in-depth: restrict the MCP endpoint to a CIDR allowlist read from MCP_ALLOWED_CIDRS
+// (via IConfiguration, so the Lambda env var flows in prod but tests can override without mutating
+// process-global state). Empty/unset = allow all (no-op until ops populates the Anthropic IP ranges).
+// 35-F: the endpoint moved to a single /mcp path, so only /mcp is gated.
 public sealed class McpAllowlistMiddleware(RequestDelegate next)
 {
     public async Task InvokeAsync(HttpContext context, IConfiguration config)
@@ -24,7 +24,7 @@ public sealed class McpAllowlistMiddleware(RequestDelegate next)
     }
 
     private static bool IsMcpPath(PathString path) =>
-        path.StartsWithSegments("/w", out var rest) && rest.Value?.EndsWith("/mcp", StringComparison.Ordinal) == true;
+        path.StartsWithSegments("/mcp");
 
     private static bool IsAllowed(IPAddress? clientIp, string? configuredCidrs)
     {

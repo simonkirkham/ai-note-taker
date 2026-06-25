@@ -8,7 +8,8 @@ namespace Api.Integration;
 // Mints HS256 access tokens for the MCP Resource Server tests, signed with the SAME secret the
 // in-process host validates against (MCP_JWT_SECRET). The defaults produce a valid token; the
 // overloads let a test forge a wrong audience, an expired token, or drop the scope to assert the
-// 401/403 paths.
+// 401/403 paths. 35-F: there is one resource `{issuer}/mcp` for every workspace; the token's `sub`
+// (not its audience) carries identity, so a per-user overload mints for an arbitrary sub.
 public static class McpTestTokens
 {
     public const string SigningSecret = "test-mcp-hs256-signing-secret-at-least-32-bytes-long";
@@ -16,19 +17,20 @@ public static class McpTestTokens
     public const string ClientId = "test-claude-client";
     public const string ToolScope = "mcp:tools";
 
-    public static string Resource(string workspaceId) => $"{Issuer}/w/{workspaceId}/mcp";
+    // The single MCP resource URI (RFC 8707 audience) — no workspace in it.
+    public static string Resource => $"{Issuer}/mcp";
 
-    public static string Valid(string workspaceId, string userId = "test-user-123") =>
-        Mint(userId, Resource(workspaceId), ToolScope, TimeSpan.FromHours(1));
+    public static string Valid(string userId = "test-user-123") =>
+        Mint(userId, Resource, ToolScope, TimeSpan.FromHours(1));
 
     public static string WrongAudience(string userId = "test-user-123") =>
-        Mint(userId, "https://attacker.example.com/w/ws/mcp", ToolScope, TimeSpan.FromHours(1));
+        Mint(userId, "https://attacker.example.com/mcp", ToolScope, TimeSpan.FromHours(1));
 
-    public static string Expired(string workspaceId, string userId = "test-user-123") =>
-        Mint(userId, Resource(workspaceId), ToolScope, TimeSpan.FromHours(-1));
+    public static string Expired(string userId = "test-user-123") =>
+        Mint(userId, Resource, ToolScope, TimeSpan.FromHours(-1));
 
-    public static string MissingScope(string workspaceId, string userId = "test-user-123") =>
-        Mint(userId, Resource(workspaceId), scope: null, TimeSpan.FromHours(1));
+    public static string MissingScope(string userId = "test-user-123") =>
+        Mint(userId, Resource, scope: null, TimeSpan.FromHours(1));
 
     private static string Mint(string userId, string audience, string? scope, TimeSpan lifetime)
     {

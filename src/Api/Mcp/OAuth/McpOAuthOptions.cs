@@ -49,14 +49,10 @@ public sealed class McpOAuthOptions
     // so a leaked token cannot be replayed indefinitely. The owner re-runs Google sign-in to renew.
     public TimeSpan RefreshTokenLifetime { get; init; } = TimeSpan.FromDays(30);
 
-    // The per-workspace MCP resource URI (RFC 8707 audience) for a given workspace. The token's `aud`
-    // is bound to this exact value; a token minted for one workspace will not validate against another.
-    public string ResourceUri(string workspaceId) => $"{Issuer}/w/{workspaceId}/mcp";
-
-    // The issuer's scheme+authority (e.g. "https://host"), used to require a requested `resource` to
-    // live on the issuer host before its workspace is extracted — never stamp an attacker-chosen host.
-    public string IssuerAuthority =>
-        Uri.TryCreate(Issuer, UriKind.Absolute, out var u) ? $"{u.Scheme}://{u.Authority}" : Issuer;
+    // 35-F: the single MCP resource URI (RFC 8707 audience). There is one /mcp endpoint for every
+    // workspace, so the token `aud` is bound to this one value; per-workspace access is enforced per
+    // tool call against the token `sub`, not by the audience.
+    public string ResourceUri => $"{Issuer}/mcp";
 
     public bool IsConfigured => !string.IsNullOrEmpty(SigningSecret) && !string.IsNullOrEmpty(ClientId);
 

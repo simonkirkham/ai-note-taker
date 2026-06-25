@@ -907,13 +907,16 @@ public sealed class NoteTakerStack : Stack
             Integration = commandIntegration
         });
 
-        // 35-A: the MCP tool-call path is JSON-RPC over POST but READ-ONLY (it reads the
-        // NoteCardList projection only), so it must hit the Query Lambda — overriding the default
-        // POST→Command routing above. Pinned to Query like the calendar GETs are pinned to Command.
-        // This pin is a backend artifact: it reaches prod only via a `cdk deploy` (backend=true).
+        // 35-A/35-F: the MCP tool-call path is JSON-RPC over POST but READ-ONLY (it reads projection
+        // tables only), so it must hit the Query Lambda — overriding the default POST→Command routing
+        // above. 35-F replaced the per-workspace `/w/{workspaceId}/mcp` path with a single `/mcp`
+        // endpoint (identity-scoped, per-call workspace authorization). Pinned to Query like the
+        // calendar GETs are pinned to Command. This pin is a backend artifact: it reaches prod only via
+        // a `cdk deploy` (backend=true) — a frontend-only deploy would leave the new `/mcp` path
+        // falling through to `/{proxy+}` → 404 (route-contract guardrail).
         httpApi.AddRoutes(new Amazon.CDK.AWS.Apigatewayv2.AddRoutesOptions
         {
-            Path = "/w/{workspaceId}/mcp",
+            Path = "/mcp",
             Methods = new[] { Amazon.CDK.AWS.Apigatewayv2.HttpMethod.POST },
             Integration = queryIntegration
         });
@@ -923,7 +926,7 @@ public sealed class NoteTakerStack : Stack
         // Command (mirrors the calendar GETs). The token endpoint is a POST (default → Command anyway,
         // but pinned explicitly for clarity); authorize/callback/AS-metadata are GETs that would
         // otherwise fall to Query. The protected-resource metadata (`/.well-known/oauth-protected-
-        // resource…`, a GET served by the MCP SDK) and the `/w/{ws}/mcp` tool path stay on Query.
+        // resource…`, a GET served by the MCP SDK) and the `/mcp` tool path stay on Query.
         // This whole route group is a BACKEND artifact: it reaches prod only via a `cdk deploy`
         // (detect-changes backend=true). A frontend-only deploy that skips the backend would leave a
         // new request path falling through to `/{proxy+}` → 404 (route-contract guardrail).

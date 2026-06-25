@@ -34,10 +34,9 @@ public static class McpAuthWiring
         var authBuilder = services.AddAuthentication();
 
         // Resource Server token validation. Symmetric HS256 key = the Secrets-Manager-backed secret.
-        // The validator only confirms the token is one OF OURS (signed by the secret, issued by us, and
-        // bearing a well-formed `…/w/{ws}/mcp` aud on the issuer host). It CANNOT see the request route,
-        // so the EXACT per-workspace aud→path binding (the RFC 8707 confused-deputy guard) is enforced
-        // separately by McpAudienceMiddleware on the endpoint, after authentication.
+        // 35-F: the token `aud` must equal the single resource `{issuer}/mcp` exactly (RFC 8707
+        // confused-deputy guard) — a token minted for any other server is rejected. There is no
+        // per-workspace audience any more; workspace access is authorized per tool call against `sub`.
         //
         // When the secret is ABSENT, key off a fresh per-process random 32 bytes that is never known to
         // any caller — so NO token validates (fail closed), rather than keying off a predictable value.
@@ -71,6 +70,7 @@ public static class McpAuthWiring
             mcp.ForwardAuthenticate = BearerScheme;
             mcp.ResourceMetadata = new ProtectedResourceMetadata
             {
+                Resource = options.ResourceUri,
                 BearerMethodsSupported = { "header" },
                 ScopesSupported = { McpOAuthOptions.ToolScope },
                 AuthorizationServers = { options.Issuer },
@@ -89,68 +89,16 @@ public static class McpAuthWiring
     }
 }
 
-// RFC 8707 server-level audience validation: the token's `aud` must be a well-formed MCP resource URI
-// ON THE ISSUER HOST (a token for some OTHER server is rejected → 401). This runs in the JWT pipeline
-// and CANNOT see the request route, so it does NOT bind the token to a single workspace — that EXACT
-// route↔aud match is McpAudienceMiddleware's job, after authentication (→ 403 on mismatch).
+// 35-F RFC 8707 server-level audience validation: the token's `aud` must equal the single resource
+// `{issuer}/mcp` EXACTLY (a token for any other server — or any other path — is rejected → 401). There
+// is no per-workspace audience: workspace access is authorized per tool call against the token `sub`
+// (NoteMcpTools.AuthorizeAsync), so no after-authentication audience→route middleware is needed.
 internal static class McpAudienceValidator
 {
     public static bool Validate(IEnumerable<string>? audiences, McpOAuthOptions options)
     {
         if (audiences is null) return false;
-        var authority = options.IssuerAuthority;
-        return audiences.Any(a =>
-            !string.IsNullOrEmpty(a)
-            && a.StartsWith(authority + "/w/", StringComparison.Ordinal)
-            && a.EndsWith("/mcp", StringComparison.Ordinal));
-    }
-}
-
-// Per-request audience→workspace binding (HIGH-2). Runs AFTER authentication+authorization, scoped to
-// the /w/{workspaceId}/mcp path — so initialize / tools/list / tools/call are ALL covered, not just
-// list_notes. For an AUTHENTICATED MCP request it requires the validated token's `aud` to equal
-// options.ResourceUri(routeWorkspaceId); a token minted for a DIFFERENT workspace is a valid token of
-// ours but is rejected here with 403. Unauthenticated requests are left to the endpoint's
-// RequireAuthorization (401 challenge); the no-auth proving config has no authenticated principal, so
-// this is a pass-through there. The workspace id comes from the path (not yet a route value at
-// middleware time) by parsing /w/{ws}/mcp.
-public sealed class McpAudienceMiddleware(RequestDelegate next, McpOAuthOptions options)
-{
-    public async Task InvokeAsync(HttpContext context)
-    {
-        if (TryGetMcpWorkspace(context.Request.Path, out var workspaceId)
-            && context.User.Identity?.IsAuthenticated == true)
-        {
-            var expected = options.ResourceUri(workspaceId!);
-            var audMatches = context.User.FindAll("aud").Select(c => c.Value).Contains(expected, StringComparer.Ordinal);
-            if (!audMatches)
-            {
-                context.Response.StatusCode = StatusCodes.Status403Forbidden;
-                return;
-            }
-        }
-
-        await next(context).ConfigureAwait(false);
-    }
-
-    // Matches exactly "/w/{workspaceId}/mcp" (the tool path), not the PRM well-known path. The `w`
-    // and `mcp` literals are compared case-INSENSITIVELY to mirror ASP.NET route matching — routing
-    // serves "/w/{ws}/MCP" and "/W/{ws}/mcp", so a case-sensitive parse here would let those reach
-    // the tool endpoint while skipping the aud→workspace binding.
-    private static bool TryGetMcpWorkspace(PathString path, out string? workspaceId)
-    {
-        workspaceId = null;
-        var value = path.Value;
-        if (string.IsNullOrEmpty(value)) return false;
-        var segments = value.Trim('/').Split('/');
-        if (segments.Length == 3
-            && string.Equals(segments[0], "w", StringComparison.OrdinalIgnoreCase)
-            && string.Equals(segments[2], "mcp", StringComparison.OrdinalIgnoreCase)
-            && !string.IsNullOrEmpty(segments[1]))
-        {
-            workspaceId = segments[1];
-            return true;
-        }
-        return false;
+        var expected = options.ResourceUri;
+        return audiences.Any(a => string.Equals(a, expected, StringComparison.Ordinal));
     }
 }

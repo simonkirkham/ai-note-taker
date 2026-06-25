@@ -5,8 +5,9 @@ using System.Text.Json;
 using System.Web;
 using Api.Auth;
 using Microsoft.AspNetCore.Hosting;
-using Microsoft.Extensions.Configuration;
+using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.IdentityModel.JsonWebTokens;
 using Microsoft.IdentityModel.Tokens;
 
@@ -19,11 +20,10 @@ namespace Api.Integration;
 // allowlisted sub.
 public sealed class McpAuthorizationServerTests(ApiFactory factory) : IClassFixture<ApiFactory>
 {
-    private const string Workspace = "ws-as";
     private const string AllowedSub = "test-user-123";
     private readonly ApiFactory _factory = factory;
 
-    private static string Resource => McpTestTokens.Resource(Workspace);
+    private static string Resource => McpTestTokens.Resource;
     private const string ClaudeRedirect = "https://claude.ai/api/mcp/auth_callback";
 
     [Fact]
@@ -120,7 +120,6 @@ public sealed class McpAuthorizationServerTests(ApiFactory factory) : IClassFixt
     public async Task FullFlow_TokenMintsAudBoundTokenThatValidatesAtRs()
     {
         SetGoogleSub(AllowedSub);
-        SeedOwnership(AllowedSub, Workspace);
         var verifier = NewVerifier();
         var (code, _) = await RunAuthorizeAndCallback(verifier);
         Assert.NotNull(code);
@@ -138,7 +137,6 @@ public sealed class McpAuthorizationServerTests(ApiFactory factory) : IClassFixt
     public async Task Token_ReusedCode_IsRejected()
     {
         SetGoogleSub(AllowedSub);
-        SeedOwnership(AllowedSub, Workspace);
         var verifier = NewVerifier();
         var (code, _) = await RunAuthorizeAndCallback(verifier);
 
@@ -153,7 +151,6 @@ public sealed class McpAuthorizationServerTests(ApiFactory factory) : IClassFixt
     public async Task Token_WrongVerifier_IsRejected()
     {
         SetGoogleSub(AllowedSub);
-        SeedOwnership(AllowedSub, Workspace);
         var verifier = NewVerifier();
         var (code, _) = await RunAuthorizeAndCallback(verifier);
 
@@ -168,7 +165,6 @@ public sealed class McpAuthorizationServerTests(ApiFactory factory) : IClassFixt
     {
         // HIGH-7: client_id AND redirect_uri are REQUIRED with exact equality — no optional skip.
         SetGoogleSub(AllowedSub);
-        SeedOwnership(AllowedSub, Workspace);
         var verifier = NewVerifier();
         var (code, _) = await RunAuthorizeAndCallback(verifier);
 
@@ -203,7 +199,7 @@ public sealed class McpAuthorizationServerTests(ApiFactory factory) : IClassFixt
         // Seed an already-expired refresh token directly, then attempt grant_type=refresh_token.
         var store = _factory.Services.GetRequiredService<Api.Mcp.OAuth.IMcpRefreshTokenStore>();
         var expired = new Api.Mcp.OAuth.McpRefreshToken(
-            "expired-rt", McpTestTokens.ClientId, Resource, Workspace, AllowedSub,
+            "expired-rt", McpTestTokens.ClientId, Resource, AllowedSub,
             DateTimeOffset.UtcNow.AddMinutes(-1));
         await store.PutAsync(expired);
 
@@ -222,7 +218,7 @@ public sealed class McpAuthorizationServerTests(ApiFactory factory) : IClassFixt
         // A live refresh token (within max lifetime) re-mints an access token that validates at the RS.
         var store = _factory.Services.GetRequiredService<Api.Mcp.OAuth.IMcpRefreshTokenStore>();
         var live = new Api.Mcp.OAuth.McpRefreshToken(
-            "live-rt", McpTestTokens.ClientId, Resource, Workspace, AllowedSub,
+            "live-rt", McpTestTokens.ClientId, Resource, AllowedSub,
             DateTimeOffset.UtcNow.AddDays(10));
         await store.PutAsync(live);
 
@@ -240,11 +236,24 @@ public sealed class McpAuthorizationServerTests(ApiFactory factory) : IClassFixt
     [Fact]
     public async Task GoogleCallback_EmptyAllowlist_DeniesEveryone()
     {
-        // HIGH-3 fail-closed: an empty ALLOWED_USER_SUBS denies the mint path entirely. Override the
-        // allowlist to empty via config (no process-global env mutation) on a dedicated factory, and
-        // drive one authorize→callback round-trip on a single client of THAT factory.
-        using var factory = _factory.WithWebHostBuilder(b => b.ConfigureAppConfiguration(c =>
-            c.AddInMemoryCollection(new Dictionary<string, string?> { ["ALLOWED_USER_SUBS"] = "" })));
+        // HIGH-3 fail-closed: an empty ALLOWED_USER_SUBS denies the mint path entirely. The options
+        // singleton is built from IConfiguration at host-build time (before ConfigureAppConfiguration
+        // layers apply), so replace the registered McpOAuthOptions with an empty-allowlist copy via
+        // ConfigureTestServices (which runs after BuildApp) — no process-global env mutation.
+        using var factory = _factory.WithWebHostBuilder(b => b.ConfigureTestServices(s =>
+        {
+            s.RemoveAll<Api.Mcp.OAuth.McpOAuthOptions>();
+            s.AddSingleton(new Api.Mcp.OAuth.McpOAuthOptions
+            {
+                Issuer = McpTestTokens.Issuer,
+                ClientId = McpTestTokens.ClientId,
+                ClaudeRedirectUri = ClaudeRedirect,
+                GoogleRedirectUri = $"{McpTestTokens.Issuer}/oauth/google/callback",
+                GoogleClientId = "test-client-id",
+                AllowedUserSubs = new HashSet<string>(),
+                SigningSecret = McpTestTokens.SigningSecret,
+            });
+        }));
         factory.Services.GetRequiredService<FakeGoogleOAuthClient>().ExchangeResult =
             FakeGoogleOAuthClient.Success(UnsignedJwtWithSub(AllowedSub), refreshToken: null);
 
@@ -254,20 +263,6 @@ public sealed class McpAuthorizationServerTests(ApiFactory factory) : IClassFixt
         var googleState = HttpUtility.ParseQueryString(authorizeResp.Headers.Location!.Query)["state"]!;
         var callbackResp = await client.GetAsync($"/oauth/google/callback?code=g&state={Uri.EscapeDataString(googleState)}");
 
-        Assert.Equal(HttpStatusCode.Redirect, callbackResp.StatusCode);
-        Assert.Contains("error=access_denied", callbackResp.Headers.Location!.Query);
-    }
-
-    [Fact]
-    public async Task GoogleCallback_AllowlistedUserWhoDoesNotOwnWorkspace_IsDenied()
-    {
-        // HIGH-4: an allowlisted user may NOT mint a token for a workspace they do not own. No
-        // ownership is seeded for AllowedSub on ws-as → the callback denies even though sub is allowed.
-        SetGoogleSub(AllowedSub);
-        var verifier = NewVerifier();
-        var (code, callbackResp) = await RunAuthorizeAndCallback(verifier);
-
-        Assert.Null(code);
         Assert.Equal(HttpStatusCode.Redirect, callbackResp.StatusCode);
         Assert.Contains("error=access_denied", callbackResp.Headers.Location!.Query);
     }
@@ -331,7 +326,7 @@ public sealed class McpAuthorizationServerTests(ApiFactory factory) : IClassFixt
     {
         async Task<HttpResponseMessage> Send(string json)
         {
-            var req = new HttpRequestMessage(HttpMethod.Post, $"/w/{Workspace}/mcp")
+            var req = new HttpRequestMessage(HttpMethod.Post, "/mcp")
             {
                 Content = new StringContent(json, Encoding.UTF8, "application/json")
             };
@@ -341,7 +336,7 @@ public sealed class McpAuthorizationServerTests(ApiFactory factory) : IClassFixt
             return await client.SendAsync(req);
         }
         await Send(JsonSerializer.Serialize(new { jsonrpc = "2.0", id = 1, method = "initialize", @params = new { protocolVersion = "2025-06-18", capabilities = new { }, clientInfo = new { name = "t", version = "1" } } }));
-        return await Send(JsonSerializer.Serialize(new { jsonrpc = "2.0", id = 2, method = "tools/call", @params = new { name = "list_notes", arguments = new { } } }));
+        return await Send(JsonSerializer.Serialize(new { jsonrpc = "2.0", id = 2, method = "tools/call", @params = new { name = "list_notes", arguments = new { workspaceId = Domain.Workspaces.WorkspaceId.DefaultValue } } }));
     }
 
     // Set the FakeGoogleOAuthClient's exchange to return an (unsigned) id_token carrying the given sub.
@@ -349,15 +344,6 @@ public sealed class McpAuthorizationServerTests(ApiFactory factory) : IClassFixt
     {
         var fake = _factory.Services.GetRequiredService<FakeGoogleOAuthClient>();
         fake.ExchangeResult = FakeGoogleOAuthClient.Success(UnsignedJwtWithSub(sub), refreshToken: null);
-    }
-
-    // Record that `sub` owns `workspaceId` so the callback's ownership binding (HIGH-4) is satisfied.
-    private void SeedOwnership(string sub, string workspaceId)
-    {
-        var store = _factory.Services.GetRequiredService<EventStore.Projections.IWorkspaceListStore>();
-        store.UpsertAsync(new EventStore.Projections.WorkspaceListView(
-            new Domain.Workspaces.WorkspaceId(workspaceId), "Test WS", DateTimeOffset.UtcNow, sub))
-            .GetAwaiter().GetResult();
     }
 
     // The SAME underlying server (shared singleton stores) with auto-redirect off, so the whole

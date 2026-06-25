@@ -71,11 +71,10 @@ public static class McpOAuthEndpoints
             if (string.IsNullOrEmpty(codeChallenge) || !string.Equals(codeChallengeMethod, "S256", StringComparison.Ordinal))
                 return Redirect(redirectUri, state, "invalid_request");
 
-            // Derive the workspace this connector is for from the requested resource URI (…/w/{ws}/mcp).
-            // The resource MUST be on the issuer host (scheme+authority) — never stamp an attacker-
-            // chosen `aud` host into the issued code/token.
-            var workspaceId = ResourceWorkspace(resource, options);
-            if (workspaceId is null)
+            // 35-F: the requested resource must equal the single MCP resource `{issuer}/mcp` EXACTLY —
+            // never stamp an attacker-chosen `aud` into the issued code/token. There is no per-workspace
+            // resource any more; workspace access is authorized per tool call against `sub`.
+            if (!string.Equals(resource, options.ResourceUri, StringComparison.Ordinal))
                 return Redirect(redirectUri, state, "invalid_target");
 
             // Start OUR upstream Google leg with our OWN PKCE + state (never reuse Claude's).
@@ -84,7 +83,7 @@ public static class McpOAuthEndpoints
             var googleState = McpTokenService.NewOpaqueToken();
 
             await store.PutPendingAsync(new McpPendingAuth(
-                googleState, googleVerifier, clientId, redirectUri, codeChallenge, state, resource, workspaceId),
+                googleState, googleVerifier, clientId, redirectUri, codeChallenge, state, resource),
                 time.GetUtcNow(), ct).ConfigureAwait(false);
 
             var googleUrl = $"{GoogleAuthUrl}?{ToQuery(new Dictionary<string, string>
@@ -104,8 +103,7 @@ public static class McpOAuthEndpoints
 
         app.MapGet("/oauth/google/callback", async (
             HttpContext ctx, McpOAuthOptions options, IMcpAuthCodeStore store, IGoogleOAuthClient google,
-            EventStore.Projections.IWorkspaceListStore workspaces, TimeProvider time,
-            ILoggerFactory loggerFactory, CancellationToken ct) =>
+            TimeProvider time, ILoggerFactory loggerFactory, CancellationToken ct) =>
         {
             var log = loggerFactory.CreateLogger("Api.Mcp.OAuth.GoogleCallback");
             var code = ctx.Request.Query["code"].ToString();
@@ -148,21 +146,16 @@ public static class McpOAuthEndpoints
                 log.LogWarning("MCP google callback: user not on allowlist");
                 return Redirect(pending.RedirectUri, pending.State, "access_denied");
             }
-            // Bind the authenticated identity to the requested workspace: an allowlisted user may only
-            // mint a token for a workspace they OWN (the shared default workspace is always permitted).
-            // Without this, any allowlisted user could obtain a token for any workspace id.
-            if (!await UserOwnsWorkspaceAsync(workspaces, sub, pending.WorkspaceId, ct).ConfigureAwait(false))
-            {
-                log.LogWarning("MCP google callback: user does not own requested workspace");
-                return Redirect(pending.RedirectUri, pending.State, "access_denied");
-            }
+            // 35-F: the token is no longer bound to a workspace at mint time — the single /mcp resource
+            // serves every workspace, and per-workspace access is authorized per tool call against
+            // `sub`. The allowlist above is the mint-time gate; ownership is enforced at read time.
 
             // Issue OUR single-use authorization code, bound to the client, redirect, PKCE challenge,
             // resource and resolved user. Redirect back to Claude with the code + Claude's original state.
             var ourCode = McpTokenService.NewOpaqueToken();
             await store.PutCodeAsync(new McpAuthCode(
-                ourCode, pending.ClientId, pending.RedirectUri, pending.CodeChallenge, pending.Resource,
-                pending.WorkspaceId, sub), time.GetUtcNow(), ct).ConfigureAwait(false);
+                ourCode, pending.ClientId, pending.RedirectUri, pending.CodeChallenge, pending.Resource, sub),
+                time.GetUtcNow(), ct).ConfigureAwait(false);
 
             return Redirect(pending.RedirectUri, pending.State, error: null, code: ourCode);
         }).AllowAnonymous();
@@ -221,7 +214,7 @@ public static class McpOAuthEndpoints
         }
 
         return await IssueTokensAsync(
-            options, refreshStore, tokens, time, stored.UserId, stored.Resource, stored.WorkspaceId, stored.ClientId, ct)
+            options, refreshStore, tokens, time, stored.UserId, stored.Resource, stored.ClientId, ct)
             .ConfigureAwait(false);
     }
 
@@ -243,19 +236,19 @@ public static class McpOAuthEndpoints
 
         // Preserve the ORIGINAL absolute expiry across rotation — a refresh cannot extend the cap.
         return await IssueTokensAsync(
-            options, refreshStore, tokens, time, stored.UserId, stored.Resource, stored.WorkspaceId, stored.ClientId, ct,
+            options, refreshStore, tokens, time, stored.UserId, stored.Resource, stored.ClientId, ct,
             existingExpiry: stored.ExpiresAt).ConfigureAwait(false);
     }
 
     private static async Task<IResult> IssueTokensAsync(
         McpOAuthOptions options, IMcpRefreshTokenStore refreshStore, McpTokenService tokens, TimeProvider time,
-        string userId, string resource, string workspaceId, string clientId, CancellationToken ct,
+        string userId, string resource, string clientId, CancellationToken ct,
         DateTimeOffset? existingExpiry = null)
     {
         var accessToken = tokens.CreateAccessToken(userId, resource);
         var refreshToken = McpTokenService.NewOpaqueToken();
         var expiresAt = existingExpiry ?? time.GetUtcNow().Add(options.RefreshTokenLifetime);
-        await refreshStore.PutAsync(new McpRefreshToken(refreshToken, clientId, resource, workspaceId, userId, expiresAt), ct)
+        await refreshStore.PutAsync(new McpRefreshToken(refreshToken, clientId, resource, userId, expiresAt), ct)
             .ConfigureAwait(false);
 
         return Results.Json(new Dictionary<string, object?>
@@ -288,36 +281,6 @@ public static class McpOAuthEndpoints
     // AllowlistMiddleware — the broker never falls open. The owner's sub MUST be allow-listed.
     private static bool IsAllowedUser(string sub, McpOAuthOptions options) =>
         options.AllowedUserSubs.Count > 0 && options.AllowedUserSubs.Contains(sub);
-
-    // True if the authenticated user owns the requested workspace. The shared default workspace is
-    // always permitted (it has no per-user aggregate). Mirrors WorkspaceValidationFilter's ownership
-    // lookup (GetAllAsync filtered by WorkspaceId + UserId).
-    private static async Task<bool> UserOwnsWorkspaceAsync(
-        EventStore.Projections.IWorkspaceListStore workspaces, string sub, string workspaceId, CancellationToken ct)
-    {
-        if (workspaceId == Domain.Workspaces.WorkspaceId.DefaultValue)
-            return true;
-        var all = await workspaces.GetAllAsync(ct).ConfigureAwait(false);
-        return all.Any(w => w.WorkspaceId.Value == workspaceId && w.UserId == sub);
-    }
-
-    // Pull {workspaceId} out of a "…/w/{workspaceId}/mcp" resource URI. Returns null unless the resource
-    // is a well-formed MCP resource path ON THE ISSUER HOST (scheme+authority must match) — so a token
-    // is never minted for an off-pattern or attacker-chosen audience.
-    private static string? ResourceWorkspace(string? resource, McpOAuthOptions options)
-    {
-        if (string.IsNullOrEmpty(resource) || !Uri.TryCreate(resource, UriKind.Absolute, out var uri))
-            return null;
-        if (!string.Equals($"{uri.Scheme}://{uri.Authority}", options.IssuerAuthority, StringComparison.OrdinalIgnoreCase))
-            return null;
-        var segments = uri.AbsolutePath.Trim('/').Split('/');
-        if (segments.Length == 3
-            && string.Equals(segments[0], "w", StringComparison.OrdinalIgnoreCase)
-            && string.Equals(segments[2], "mcp", StringComparison.OrdinalIgnoreCase)
-            && !string.IsNullOrEmpty(segments[1]))
-            return segments[1];
-        return null;
-    }
 
     private static string ToQuery(IDictionary<string, string> values) =>
         string.Join("&", values.Select(kv => $"{Uri.EscapeDataString(kv.Key)}={Uri.EscapeDataString(kv.Value)}"));
