@@ -1,15 +1,11 @@
 using Amazon.CDK;
 using Amazon.CDK.Assertions;
 
-// Phase 32-A: Microsoft 365 calendar env vars + conditional SSM grant.
+// Microsoft 365 calendar env vars. 34-D2 retired CALENDAR_PROVIDER + the Microsoft SSM grant/env —
+// Outlook is fully in-app. MS_CLIENT_ID/MS_TENANT_ID remain (the in-app OAuth + Graph token exchange).
 public class InfraMicrosoftCalendarAssertions
 {
     private static readonly Template _template = Build(new NoteTakerStackProps());
-    private static readonly Template _microsoftTemplate = Build(new NoteTakerStackProps
-    {
-        CalendarProvider = "microsoft",
-        MicrosoftRefreshTokenSsmPath = "/test/microsoft-refresh-token"
-    });
 
     private static Dictionary<string, object> AssetContext() => new()
     {
@@ -36,6 +32,12 @@ public class InfraMicrosoftCalendarAssertions
             })
         }));
 
+    private static void AssertEnvVarAbsent(Template template, string name)
+    {
+        var thrown = Record.Exception(() => AssertEnvVarPresent(template, name));
+        Assert.NotNull(thrown);
+    }
+
     [Fact]
     public void Lambda_HasMicrosoftClientIdEnvVar() => AssertEnvVarPresent(_template, "MS_CLIENT_ID");
 
@@ -43,45 +45,15 @@ public class InfraMicrosoftCalendarAssertions
     public void Lambda_HasMicrosoftTenantIdEnvVar() => AssertEnvVarPresent(_template, "MS_TENANT_ID");
 
     [Fact]
-    public void Lambda_HasCalendarProviderEnvVar() => AssertEnvVarPresent(_template, "CALENDAR_PROVIDER");
+    public void Lambda_HasNoCalendarProviderEnvVar() => AssertEnvVarAbsent(_template, "CALENDAR_PROVIDER");
 
     [Fact]
-    public void Lambda_HasMicrosoftRefreshTokenSsmPathEnvVar() =>
-        AssertEnvVarPresent(_microsoftTemplate, "MICROSOFT_REFRESH_TOKEN_SSM_PATH");
+    public void Lambda_HasNoMicrosoftRefreshTokenSsmPathEnvVar() => AssertEnvVarAbsent(_template, "MICROSOFT_REFRESH_TOKEN_SSM_PATH");
 
     [Fact]
-    public void Lambda_HasSsmGetParameterPermission_WhenMicrosoftTokenPathConfigured()
+    public void Lambda_HasNoSsmGetParameterPermission()
     {
-        _microsoftTemplate.HasResourceProperties("AWS::IAM::Policy", Match.ObjectLike(new Dictionary<string, object>
-        {
-            ["PolicyDocument"] = Match.ObjectLike(new Dictionary<string, object>
-            {
-                ["Statement"] = Match.ArrayWith(new object[]
-                {
-                    Match.ObjectLike(new Dictionary<string, object>
-                    {
-                        ["Action"] = "ssm:GetParameter",
-                        ["Effect"] = "Allow",
-                        ["Resource"] = Match.ObjectLike(new Dictionary<string, object>
-                        {
-                            ["Fn::Join"] = Match.ArrayWith(new object[]
-                            {
-                                Match.ArrayWith(new object[]
-                                {
-                                    Match.StringLikeRegexp(".*parameter/test/microsoft-refresh-token$")
-                                })
-                            })
-                        })
-                    })
-                })
-            })
-        }));
-    }
-
-    [Fact]
-    public void Lambda_HasNoMicrosoftSsmPermission_WhenTokenPathNotConfigured()
-    {
-        // _template has no MicrosoftRefreshTokenSsmPath — the conditional grant must not fire for it.
+        // 34-D2: no calendar SSM grant remains on any function.
         var thrown = Record.Exception(() =>
             _template.HasResourceProperties("AWS::IAM::Policy", Match.ObjectLike(new Dictionary<string, object>
             {
@@ -91,17 +63,7 @@ public class InfraMicrosoftCalendarAssertions
                     {
                         Match.ObjectLike(new Dictionary<string, object>
                         {
-                            ["Action"] = "ssm:GetParameter",
-                            ["Resource"] = Match.ObjectLike(new Dictionary<string, object>
-                            {
-                                ["Fn::Join"] = Match.ArrayWith(new object[]
-                                {
-                                    Match.ArrayWith(new object[]
-                                    {
-                                        Match.StringLikeRegexp(".*parameter/test/microsoft-refresh-token$")
-                                    })
-                                })
-                            })
+                            ["Action"] = "ssm:GetParameter"
                         })
                     })
                 })

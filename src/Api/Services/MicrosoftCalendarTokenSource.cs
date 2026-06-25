@@ -3,16 +3,16 @@ using Microsoft.Extensions.Logging;
 
 namespace Api.Services;
 
-// 34-C: resolves the Microsoft refresh token for the current user + workspace, store-first then the
-// legacy SSM fallback — the Microsoft mirror of GoogleCalendarTokenSource. The in-app "Connect
-// Outlook" flow writes a per-(user,workspace) token to ICalendarTokenStore; this returns it when
-// present, else delegates to the global SSM token (Phase 32 coexistence — removed in 34-D).
-// forceReload (after Entra invalid_grant) only re-reads SSM; a stored token is always read fresh.
+// Resolves the Microsoft refresh token for the current user + workspace from the in-app connection
+// (CalendarTokenStore, keyed by (user, workspace)) — the Microsoft mirror of GoogleCalendarTokenSource.
+// 34-D2 removed the legacy SSM fallback: Outlook is fully in-app, so a workspace with no stored token
+// resolves to null → calendar_unavailable. forceReload is a no-op retained for interface
+// compatibility (the stored token is read fresh each call). A store failure degrades to null, never
+// a 500 (the GET handler maps null gracefully but has no catch).
 public sealed class MicrosoftCalendarTokenSource(
     ICurrentUser currentUser,
     ICurrentWorkspace currentWorkspace,
     ICalendarTokenStore store,
-    SsmMicrosoftRefreshTokenSource ssmFallback,
     ILogger<MicrosoftCalendarTokenSource> logger) : IMicrosoftRefreshTokenSource
 {
     private const string Provider = "microsoft";
@@ -30,9 +30,11 @@ public sealed class MicrosoftCalendarTokenSource(
         }
         catch (Exception ex)
         {
-            logger.LogWarning(ex, "Calendar token store read failed; falling back to SSM");
+            logger.LogWarning(ex, "Calendar token store read failed; reporting calendar_unavailable");
+            return null;
         }
 
-        return await ssmFallback.LoadAsync(forceReload).ConfigureAwait(false);
+        logger.LogInformation("No in-app Microsoft calendar token for workspace {WorkspaceId}; reporting calendar_unavailable", currentWorkspace.WorkspaceId);
+        return null;
     }
 }
