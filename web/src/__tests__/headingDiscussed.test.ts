@@ -1,7 +1,7 @@
 import { Editor } from '@tiptap/core';
 import StarterKit from '@tiptap/starter-kit';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { Markdown } from 'tiptap-markdown';
+import { afterEach, describe, expect, it } from 'vitest';
 import { markHeadingDiscussed } from '../lib/headingDiscussed';
 
 // The ✓ "Mark as discussed" tick fires markHeadingDiscussed with only a CARET
