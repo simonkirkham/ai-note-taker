@@ -4,8 +4,10 @@ import {
   createWorkspace,
   renameWorkspace,
   deleteWorkspace,
+  setWorkspaceTheme,
   type Workspace,
 } from "../api/workspaces";
+import { type Theme } from "./useTheme";
 
 type Ctx = { previous?: Workspace[] };
 
@@ -43,6 +45,17 @@ export function useRenameWorkspace() {
     mutationFn: ({ workspaceId, name }) => renameWorkspace(workspaceId, name),
     onMutate: ({ workspaceId, name }) =>
       optimistic(qc, (list) => list.map((w) => (w.workspaceId === workspaceId ? { ...w, name } : w))),
+    onError: (_e, _v, ctx) => rollback(qc, ctx),
+    onSettled: () => invalidate(qc),
+  });
+}
+
+export function useSetWorkspaceTheme() {
+  const qc = useQueryClient();
+  return useMutation<void, Error, { workspaceId: string; theme: Theme }, Ctx>({
+    mutationFn: ({ workspaceId, theme }) => setWorkspaceTheme(workspaceId, theme),
+    onMutate: ({ workspaceId, theme }) =>
+      optimistic(qc, (list) => list.map((w) => (w.workspaceId === workspaceId ? { ...w, theme } : w))),
     onError: (_e, _v, ctx) => rollback(qc, ctx),
     onSettled: () => invalidate(qc),
   });

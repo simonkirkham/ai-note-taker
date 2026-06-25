@@ -193,6 +193,23 @@ public record ActionItemDeleted(ActionId ActionId, DateTimeOffset DeletedAt)    
 
 ---
 
+## Workspace events
+
+```csharp
+public record WorkspaceThemeSet(WorkspaceId WorkspaceId, string Theme) : WorkspaceEvent; // 36-A
+```
+
+`WorkspaceThemeSet` records the per-workspace UI theme (latest-wins). Folded by the `Workspace` aggregate and by `WorkspaceList` (carries `Theme` to `GET /workspaces`). Never recorded for the reserved default workspace.
+
+### Serialised payload example
+
+`WorkspaceThemeSet`:
+```json
+{ "workspaceId": "8a3c...", "theme": "midnight" }
+```
+
+---
+
 ## DynamoDB row shape
 
 What actually lands in the single-table store (see [`dynamodb-event-append`](../dot-claude/skills/dynamodb-event-append/SKILL.md) skill for the append algorithm).

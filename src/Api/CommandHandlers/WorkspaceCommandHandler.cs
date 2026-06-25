@@ -83,6 +83,17 @@ public sealed class WorkspaceCommandHandler(
             return await PersistAsync(streamId, history, newEvents, ct).ConfigureAwait(false);
         });
 
+    public Task<long> HandleAsync(SetWorkspaceTheme cmd, CancellationToken ct = default) =>
+        CommandInstrumentation.RunAsync(metrics, logger, nameof(SetWorkspaceTheme), "Workspace", async () =>
+        {
+            var streamId = cmd.WorkspaceId.ToStreamId();
+            var history = await store.ReadAsync(streamId, ct).ConfigureAwait(false);
+            if (history.Count == 0) throw new WorkspaceNotFoundException(cmd.WorkspaceId);
+            var newEvents = Rebuild(history).Handle(cmd);
+            if (newEvents.Count == 0) return (long)history.Count;
+            return await PersistAsync(streamId, history, newEvents, ct).ConfigureAwait(false);
+        });
+
     private async Task<long> PersistAsync(string streamId, IReadOnlyList<EventEnvelope> history, IReadOnlyList<IDomainEvent> newEvents, CancellationToken ct)
     {
         var envelopes = ToEnvelopes(streamId, newEvents);

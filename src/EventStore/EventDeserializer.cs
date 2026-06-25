@@ -50,6 +50,7 @@ public static class EventDeserializer
         (nameof(WorkspaceDeleted), _) => JsonSerializer.Deserialize<WorkspaceDeleted>(envelope.Payload)!,
         (nameof(WorkspaceCalendarConnected), _) => JsonSerializer.Deserialize<WorkspaceCalendarConnected>(envelope.Payload)!,
         (nameof(WorkspaceCalendarDisconnected), _) => JsonSerializer.Deserialize<WorkspaceCalendarDisconnected>(envelope.Payload)!,
+        (nameof(WorkspaceThemeSet), _) => JsonSerializer.Deserialize<WorkspaceThemeSet>(envelope.Payload)!,
         _ => throw new InvalidOperationException($"Unknown event type/version: {envelope.EventType} v{envelope.EventVersion}")
     };
 }

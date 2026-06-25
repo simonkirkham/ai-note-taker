@@ -7,6 +7,7 @@ public sealed class Workspace : IAggregate
     string _name = string.Empty;
     string? _calendarProvider;
     string? _calendarAccountRef;
+    string? _theme;
 
     public void Apply(IDomainEvent @event)
     {
@@ -30,6 +31,9 @@ public sealed class Workspace : IAggregate
                 _calendarProvider = null;
                 _calendarAccountRef = null;
                 break;
+            case WorkspaceThemeSet e:
+                _theme = e.Theme;
+                break;
             default:
                 break;
         }
@@ -42,6 +46,7 @@ public sealed class Workspace : IAggregate
         DeleteWorkspace cmd => HandleDelete(cmd),
         ConnectWorkspaceCalendar cmd => HandleConnectCalendar(cmd),
         DisconnectWorkspaceCalendar cmd => HandleDisconnectCalendar(cmd),
+        SetWorkspaceTheme cmd => HandleSetTheme(cmd),
         _ => throw new ArgumentOutOfRangeException(nameof(command))
     };
 
@@ -94,5 +99,16 @@ public sealed class Workspace : IAggregate
         if (_calendarProvider is null)
             return [];
         return [new WorkspaceCalendarDisconnected(cmd.WorkspaceId)];
+    }
+
+    IReadOnlyList<IDomainEvent> HandleSetTheme(SetWorkspaceTheme cmd)
+    {
+        if (!_exists || _deleted)
+            throw new InvalidOperationException("Workspace does not exist.");
+        if (string.IsNullOrWhiteSpace(cmd.Theme))
+            throw new InvalidOperationException("Theme must not be empty.");
+        if (cmd.Theme == _theme)
+            return [];
+        return [new WorkspaceThemeSet(cmd.WorkspaceId, cmd.Theme)];
     }
 }

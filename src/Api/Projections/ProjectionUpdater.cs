@@ -458,6 +458,9 @@ public sealed class ProjectionUpdater(
                 case WorkspaceRenamed e:
                     await ApplyWorkspaceRenamedAsync(e, ct).ConfigureAwait(false);
                     break;
+                case WorkspaceThemeSet e:
+                    await ApplyWorkspaceThemeSetAsync(e, ct).ConfigureAwait(false);
+                    break;
                 case WorkspaceDeleted e:
                     await workspaceListStore.DeleteAsync(e.WorkspaceId, ct).ConfigureAwait(false);
                     break;
@@ -471,5 +474,13 @@ public sealed class ProjectionUpdater(
         var existing = all.FirstOrDefault(w => w.WorkspaceId == e.WorkspaceId);
         if (existing is null) return;
         await workspaceListStore.UpsertAsync(existing with { Name = e.NewName }, ct).ConfigureAwait(false);
+    }
+
+    private async Task ApplyWorkspaceThemeSetAsync(WorkspaceThemeSet e, CancellationToken ct)
+    {
+        var all = await workspaceListStore.GetAllAsync(ct).ConfigureAwait(false);
+        var existing = all.FirstOrDefault(w => w.WorkspaceId == e.WorkspaceId);
+        if (existing is null) return;
+        await workspaceListStore.UpsertAsync(existing with { Theme = e.Theme }, ct).ConfigureAwait(false);
     }
 }
