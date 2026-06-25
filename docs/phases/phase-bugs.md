@@ -48,7 +48,7 @@
 | BUG-34 | In-progress transcript lost on browser-back (Alt+←) and a re-record can't recover it — popstate is unguarded so the leave-commit is aborted; "Continue" only continues a *committed* transcript, never a draft; and starting a fresh recording overwrites then deletes the note-keyed draft. | Done | BUG-18, ADR-0011 |
 | BUG-35 | Search over-matches — `NoteSearchRanker` scored whole fields with FuzzySharp `PartialRatio`/`TokenSetRatio`, which match any shared substring window, so "Andrew" matched the word "and" across unrelated notes. Replaced with word-level matching (exact / prefix / tight whole-token fuzzy). | Done | 22-A |
 | BUG-36 | `npm run update` crashes on Windows with "the term 'silent' is not recognized" — `update.ps1` had UTF-8 em-dashes/arrows but no BOM, so Windows PowerShell 5.1 read it as Windows-1252; the em-dash byte `0x94` decoded to a `"` that closed a string early and broke parsing. Rewrote the script ASCII-only; added a `publish.spec.ts` guard that fails on any non-ASCII byte. | Done | 31-E |
-| BUG-37 | The ✓ "Mark as discussed" tick on a note heading no longer works — clicking it does not toggle strikethrough on the topic/heading. | Open | 7-B |
+| BUG-37 | The ✓ "Mark as discussed" tick on a note heading no longer works — clicking it does not toggle strikethrough on the topic/heading. | Done | 7-B |
 
 Further bugs will be appended as they are identified.
 
@@ -106,23 +106,3 @@ Chrome throttles/freezes background-tab timers, so the proactive refresh schedul
 **Key files:** `web/src/auth/AuthContext.tsx` (visibility handler), `web/src/auth/useGoogleAuth.ts` (`scheduleRefresh`); tests `web/src/__tests__/TokenRefresh.test.tsx`. Related: [BUG-11] (refresh-token flow), [BUG-15] (cold-start bootstrap refresh), [BUG-16] (per-login consent).
 
 **Tracking:** this frontend fix is scheduled as **slice 30-C** in [Phase 30 — Durable sign-in](phase-30.md). It is the immediate symptom-reducer; the *proper* fix for the re-authorise complaint (a server-side refresh-token store so the consent screen is shown once, ever) is the rest of Phase 30 (30-A/B/D). Empirically confirmed during diagnosis: the OAuth app is **Published** (the calendar refresh token has worked 15 days, past the 7-day Testing-mode expiry), so token expiry is not a contributing factor.
-
----
-## BUG-37 — The ✓ "Mark as discussed" tick on a note heading no longer works
-
-**Status:** Open (reported 2026-06-25).
-
-**Severity:** Medium — a working feature (Phase 7-B) has regressed; the heading-as-discussed-topic interaction is unusable, but no data is lost and editing otherwise works.
-
-**Symptom:** In a note, clicking the floating ✓ tick that appears next to a heading no longer toggles strikethrough on that heading/topic. Either the tick does not respond, or it does not persist the discussed (struck-through) state.
-
-**Where (for the reproduce-before-fix investigation, not yet root-caused):**
-- The tick is the floating ✓ button rendered when the cursor is inside a heading — `web/src/components/NoteEditor.tsx:296-308` (visibility gated on `updateButton` → `ed.isActive('heading')`, `web/src/components/NoteEditor.tsx:70-79`).
-- Its action is `onMouseDown` → `editor.commands.toggleStrike()` (`web/src/components/NoteEditor.tsx:300-303`), aria-label `"Mark as discussed"`.
-- The discussed state round-trips as `~~…~~` markdown inside the existing `ContentEditedV2` event (no new event) — see Phase 7-B spec, [phase-7.md](phase-7.md).
-
-**Candidate causes to check (unconfirmed):** the button no longer appears (`isActive('heading')` not firing after a TipTap/StarterKit bump), `toggleStrike()` no longer applying (Strike extension removed/renamed by a dependency upgrade), the strikethrough no longer persisting through the markdown serialise/parse round-trip, or a button-mount/positioning regression. A recent dependency bump touching `@tiptap/*` is the prime suspect — confirm which by reproducing first.
-
-**Reproduce-before-fix:** add a red test (component/E2E) that places the cursor in a heading, clicks the ✓, and asserts the heading text becomes struck-through **and** survives a content save + reopen (`~~…~~` in the persisted markdown). Then localise to one of the candidate causes above before fixing.
-
-**Raised in:** User bug report, 2026-06-25 — "the tick for topics/headers no longer works."
