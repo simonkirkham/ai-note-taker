@@ -22,6 +22,9 @@ public sealed class NoteActionsProjection
             case ActionItemReopened e when _noteByAction.TryGetValue(e.ActionId, out var noteId):
                 _items[(noteId, e.ActionId)] = _items[(noteId, e.ActionId)] with { Completed = false, CompletedAt = null };
                 break;
+            case ActionItemEdited e when _noteByAction.TryGetValue(e.ActionId, out var noteId):
+                _items[(noteId, e.ActionId)] = _items[(noteId, e.ActionId)] with { Description = e.NewDescription };
+                break;
             case ActionItemDeleted e when _noteByAction.TryGetValue(e.ActionId, out var noteId):
                 _items.Remove((noteId, e.ActionId));
                 _noteByAction.Remove(e.ActionId);

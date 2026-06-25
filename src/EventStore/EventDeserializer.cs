@@ -27,6 +27,7 @@ public static class EventDeserializer
         (nameof(ActionItemAdded), _) => JsonSerializer.Deserialize<ActionItemAdded>(envelope.Payload)!,
         (nameof(ActionItemCompleted), _) => JsonSerializer.Deserialize<ActionItemCompleted>(envelope.Payload)!,
         (nameof(ActionItemReopened), _) => JsonSerializer.Deserialize<ActionItemReopened>(envelope.Payload)!,
+        (nameof(ActionItemEdited), _) => JsonSerializer.Deserialize<ActionItemEdited>(envelope.Payload)!,
         (nameof(ActionItemDeleted), _) => JsonSerializer.Deserialize<ActionItemDeleted>(envelope.Payload)!,
         (nameof(FolderCreated), _) => JsonSerializer.Deserialize<FolderCreated>(envelope.Payload)!,
         (nameof(FolderRenamed), _) => JsonSerializer.Deserialize<FolderRenamed>(envelope.Payload)!,
