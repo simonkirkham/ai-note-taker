@@ -37,7 +37,7 @@
 | CHANGE-23 | Persist home list filters in the URL so Back from a note restores them — search query + selected tags + AND/OR mode + show-older move from `ListView` local state to `?q=&tag=&mode=&older=` via `useSearchParams`; filter writes use `replace`, opening a note pushes | Done | — |
 | CHANGE-24 | Surface the "Move to workspace" control on the note detail page (not just the card) — reuse `MoveToWorkspaceMenu` in `NoteView`'s header next to Delete; gated on `hasContent` + other workspaces existing; moving navigates back to the workspace home (the note has left this workspace) | Done | 23-F |
 | CHANGE-25 | Always-available calendar connect/change/disconnect — a gear "Calendar settings" toggle in the Meetings header opens an inline panel (Connect Google / Connect Outlook / Disconnect). Previously the connect buttons rendered **only** in the meetings-"unavailable" state, which the SSM fallback hides in prod → in-app connect was unreachable. Disconnect is optimistic + invalidates the connection/meetings queries. | Done | 34-C |
-| CHANGE-26 | Outlook connect supports **work/school** M365 accounts + an account picker — default the MS tenant `consumers` (personal-only) → `common` (work + personal) in `buildMicrosoftAuthUrl` + `MicrosoftOAuthClient` + `MicrosoftCalendarClient`, and switch `prompt=consent` → `prompt=select_account` so a different account can be chosen even when the browser already has a Microsoft session. `MS_TENANT_ID`/`VITE_MS_TENANT_ID` still override. Requires the Entra app "Supported account types" = any-tenant + personal (already set). | In Progress | 34-C |
+| CHANGE-26 | Outlook connect supports **work/school** M365 accounts + an account picker — default the MS tenant `consumers` (personal-only) → `common` (work + personal) in `buildMicrosoftAuthUrl` + `MicrosoftOAuthClient` + `MicrosoftCalendarClient`, and switch `prompt=consent` → `prompt=select_account` so a different account can be chosen even when the browser already has a Microsoft session. `MS_TENANT_ID`/`VITE_MS_TENANT_ID` still override. Requires the Entra app "Supported account types" = any-tenant + personal (already set). | Done | 34-C |
 
 Open: none.
 
@@ -48,6 +48,8 @@ New tweaks are appended as a one-line shipped record below once Done. The full s
 ## Shipped
 
 Each line: **item — what shipped — PR / deploy.** Learnings (where captured) are in [docs/learnings/_archive.md](../learnings/_archive.md).
+
+- **CHANGE-26** — Outlook connect now works for **work/school** M365 accounts and shows an account picker. MS tenant default `consumers` (personal-only) → `common` (work + personal) across `buildMicrosoftAuthUrl` + `MicrosoftOAuthClient` + `MicrosoftCalendarClient` (all three must agree or refresh → `invalid_grant`); `prompt=consent` → `prompt=select_account`. `MS_TENANT_ID`/`VITE_MS_TENANT_ID` still override. No secret needed — the Entra app was already "Any Entra ID Tenant + Personal Microsoft accounts". New `microsoftAuthUrl.test.ts` guards tenant + prompt + offline_access. PR #342, deployed 2026-06-25.
 
 - **CHANGE-1** — Single-spaced note lines (`.content-input p { margin: 0 }`; pure styling, no event change). PR #98, deployed 2026-06-02.
 - **CHANGE-2** — Theme selection (Teal / Forest / Midnight). PR #102, deployed 2026-06-02.
