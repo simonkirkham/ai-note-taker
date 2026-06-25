@@ -23,8 +23,19 @@ export function useWorkspaceTheme() {
       : (current?.theme ?? DEFAULT_THEME);
 
   useEffect(() => {
-    if (effective !== null) applyTheme(effective);
-  }, [effective]);
+    if (effective === null) return;
+    applyTheme(effective);
+    if (!isDefault) {
+      // Cache the resolved theme keyed by workspace so the index.html bootstrap can paint it
+      // pre-mount on a cold load (36-B), avoiding a flash of the global/default theme. Key format
+      // `note-taker-theme:<wsId>` is mirrored in index.html's bootstrap — keep the two in sync.
+      try {
+        localStorage.setItem(`note-taker-theme:${workspaceId}`, effective);
+      } catch {
+        /* localStorage unavailable */
+      }
+    }
+  }, [effective, isDefault, workspaceId]);
 
   const setTheme = useCallback(
     (next: Theme) => {
