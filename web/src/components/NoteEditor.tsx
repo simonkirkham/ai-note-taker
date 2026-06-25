@@ -5,6 +5,7 @@ import StarterKit from '@tiptap/starter-kit';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Markdown } from 'tiptap-markdown';
 import { presignUpload, resolveImages } from '../api/notes';
+import { markHeadingDiscussed } from '../lib/headingDiscussed';
 import { hasDisallowedScheme } from '../lib/linkScheme';
 import {
   dropUnresolvedImages,
@@ -299,7 +300,7 @@ export default function NoteEditor({ noteId, value, onChange, onBlur }: NoteEdit
           style={{ top: buttonY }}
           onMouseDown={(e) => {
             e.preventDefault();
-            editor.commands.toggleStrike();
+            markHeadingDiscussed(editor);
           }}
           aria-label="Mark as discussed"
         >
