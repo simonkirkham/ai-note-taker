@@ -1,0 +1,26 @@
+name: Clear test data
+description: Delete all items from the DynamoDB test tables
+runs:
+  using: composite
+  steps:
+    - name: Clear DynamoDB test tables
+      shell: bash
+      run: |
+        python3 << 'EOF'
+        import boto3
+        dynamodb = boto3.resource('dynamodb')
+        for name in ['notetaker-events', 'notetaker-proj-notetitlelist', 'notetaker-proj-notedetail', 'notetaker-proj-noteactions', 'notetaker-proj-todolist', 'notetaker-proj-notecardlist', 'notetaker-proj-tagindex', 'notetaker-proj-foldertree']:
+            table = dynamodb.Table(name)
+            keys = {k['AttributeName'] for k in table.key_schema}
+            deleted = 0
+            scan = table.scan()
+            while True:
+                with table.batch_writer() as batch:
+                    for item in scan['Items']:
+                        batch.delete_item(Key={k: v for k, v in item.items() if k in keys})
+                deleted += scan['Count']
+                if 'LastEvaluatedKey' not in scan:
+                    break
+                scan = table.scan(ExclusiveStartKey=scan['LastEvaluatedKey'])
+            print(f'Deleted {deleted} items from {name}')
+        EOF

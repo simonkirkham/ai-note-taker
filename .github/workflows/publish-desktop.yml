@@ -1,0 +1,74 @@
+name: Publish Desktop Installer
+
+# Build the Windows installer and publish it to GitHub Releases AFTER a successful prod
+# deploy, so the desktop app updates by *pulling* the artifact (`npm run update`) — no local
+# rebuild. Separate from the Deploy workflow: it runs after Deploy and never gates or slows
+# it (deploy-time impact: neutral). Only (re)builds when the frontend or desktop changed, so
+# backend/docs-only deploys don't burn a Windows runner.
+
+on:
+  workflow_run:
+    workflows: ["Deploy"]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch: {}
+
+permissions:
+  contents: write # publish a Release
+
+jobs:
+  publish:
+    # Only after a green Deploy (so the artifact == a version that actually went live), or manual.
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.workflow_run.head_sha || github.sha }}
+          fetch-depth: 2
+
+      - name: Did the frontend or desktop change?
+        id: changed
+        shell: bash
+        env:
+          EVENT: ${{ github.event_name }}
+        run: |
+          # Manual runs always build; auto runs build only when the frontend/desktop changed
+          # (a backend/docs-only deploy leaves the installer unchanged — don't burn a runner).
+          if [ "$EVENT" = "workflow_dispatch" ] || git diff --name-only HEAD~1 HEAD | grep -qE '^(web/|desktop/)'; then
+            echo "build=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "No web/ or desktop/ change — the installer is unchanged; skipping build."
+            echo "build=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/setup-node@v6
+        if: steps.changed.outputs.build == 'true'
+        with:
+          node-version: "24"
+
+      - name: Install dependencies
+        if: steps.changed.outputs.build == 'true'
+        run: |
+          npm --prefix web ci
+          npm --prefix desktop ci
+
+      - name: Build the Windows installer
+        if: steps.changed.outputs.build == 'true'
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: "false" # unsigned build — do not attempt code signing
+        run: npm --prefix desktop run package
+
+      - name: Publish to GitHub Releases (rolling 'desktop-latest')
+        if: steps.changed.outputs.build == 'true'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          SHA=$(git rev-parse --short HEAD)
+          gh release delete desktop-latest --yes --cleanup-tag || true
+          # Upload build-sha.txt (the bundled commit marker) alongside the .exe so
+          # `npm run update` can version-check by pulling a tiny file, not the 82 MB installer.
+          gh release create desktop-latest desktop/release/*.exe desktop/web-dist/build-sha.txt \
+            --title "AI Note Taker desktop ($SHA)" \
+            --notes "Unsigned Windows installer built from $SHA (latest successful prod deploy). Update with \`npm run update\`. SmartScreen may warn on first run."

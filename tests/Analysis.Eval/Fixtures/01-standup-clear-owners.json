@@ -1,0 +1,11 @@
+{
+  "id": "01-standup-clear-owners",
+  "transcriptText": "Alice: I'll fix the login bug by Friday. Bob: I'll update the docs.",
+  "existingContent": "Standup notes",
+  "currentUserName": "Alice",
+  "expected": {
+    "tags": [],
+    "actionItems": ["Fix the login bug by Friday"],
+    "contentMustMention": ["Bob will update the docs"]
+  }
+}

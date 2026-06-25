@@ -1,0 +1,711 @@
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - "docs/**" # all project documentation
+      - "**/*.md" # README, CLAUDE.md, ADRs, learnings — anywhere in the tree
+      - "LICENSE"
+      - ".gitignore"
+      - ".gitattributes"
+      - ".githooks/**" # local git hooks, never run in CI
+      - ".claude/**" # agent skills/config, never built or deployed
+      - "scripts/**" # dev/ops scripts, never built or deployed
+      - "tests/Analysis.Eval/**" # LLM eval harness, run only by eval.yml, never deployed
+
+jobs:
+  # Did this push touch the deploy artifact? The Lambda asset (src/Api + its
+  # project refs) and the CDK template (src/Infrastructure) both live under
+  # src/**, so a push with no src/** change produces a byte-identical stack —
+  # the backend publish + `cdk deploy` (dominated by the ~2 min SnapStart
+  # snapshot republish) is pure waste. Frontend-only pushes skip it and resolve
+  # stack outputs via describe-stacks instead. pr.yml is untouched, so the
+  # merge-gate checks still run full backend+frontend on every PR.
+  detect-changes:
+    runs-on: ubuntu-latest
+    outputs:
+      backend: ${{ steps.filter.outputs.backend }}
+    steps:
+      # fetch-depth: 0 so paths-filter always has the diff base on a push event
+      # (github.event.before). On the all-zeros base of a first push / history
+      # rewrite it then falls back to "everything changed" → full deploy, the
+      # safe default. A shallow checkout could leave the base commit absent.
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      # backend = the complete set of paths that change the deploy artifact:
+      #   src/**          Lambda asset (src/Api + refs) AND CDK template (src/Infrastructure)
+      #   cdk.json        CDK app command + context/feature flags → alters synth
+      #   ai-note-taker.sln  build inputs (defensive; rarely changes alone)
+      # Anything else (web/**, docs already filtered at trigger) is frontend-only.
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            backend:
+              - 'src/**'
+              - 'cdk.json'
+              - 'ai-note-taker.sln'
+
+  validate-frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+          cache: "npm"
+          cache-dependency-path: web/package-lock.json
+
+      - name: Install frontend dependencies
+        working-directory: web
+        run: npm ci
+
+      - name: Lint frontend
+        working-directory: web
+        run: npm run lint
+
+      - name: Typecheck frontend
+        working-directory: web
+        run: npm exec -- tsc -p tsconfig.app.json --noEmit
+
+      - name: Typecheck tests
+        working-directory: web
+        run: npm exec -- tsc -p tsconfig.test.json --noEmit
+
+      - name: Test (component)
+        working-directory: web
+        run: npm run test
+
+  validate-backend:
+    runs-on: ubuntu-latest
+    env:
+      DYNAMO_TIMEOUT_SECONDS: "3"
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/cache@v5
+        with:
+          path: ~/.nuget/packages
+          key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj') }}
+          restore-keys: nuget-${{ runner.os }}-
+
+      - uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: "10.0.x"
+
+      - name: Build .NET solution
+        run: dotnet build ai-note-taker.sln -p:TreatWarningsAsErrors=true --nologo -v quiet
+
+      - name: Domain specs
+        run: dotnet test tests/Domain.Specs/Domain.Specs.csproj --nologo -v quiet
+
+      - name: API integration tests
+        run: dotnet test tests/Api.Integration/Api.Integration.csproj --nologo -v quiet
+
+      - name: Infra assertions
+        run: dotnet test tests/Infrastructure.Assertions/Infrastructure.Assertions.csproj --nologo -v quiet
+
+  deploy-test:
+    needs: [validate-frontend, validate-backend, detect-changes]
+    runs-on: ubuntu-latest
+    environment:
+      name: Test
+      url: ${{ steps.outputs.outputs.frontend-url }}
+    concurrency:
+      group: deploy
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/cache@v5
+        with:
+          path: ~/.nuget/packages
+          key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj') }}
+          restore-keys: nuget-${{ runner.os }}-
+
+      - uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: "10.0.x"
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+          cache: "npm"
+          cache-dependency-path: web/package-lock.json
+
+      - name: Install CDK CLI
+        if: needs.detect-changes.outputs.backend == 'true'
+        run: npm install -g aws-cdk@2
+
+      - name: Configure AWS credentials
+        # Fail fast instead of hanging: this step (which validates the static keys via
+        # sts:GetCallerIdentity) has intermittently stalled for 30+ min on a transient
+        # STS/network blip, silently blocking the deploy. A tight cap turns that into a
+        # quick failure that a rerun recovers. See technical-improvements.md.
+        timeout-minutes: 5
+        uses: aws-actions/configure-aws-credentials@v6
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Publish Lambda
+        if: needs.detect-changes.outputs.backend == 'true'
+        # -r linux-x64 --self-contained false enables ReadyToRun (TI-35): the csproj
+        # turns on PublishReadyToRun only when a RID is supplied. Framework-dependent
+        # (Lambda's DOTNET_10 managed runtime provides the shared framework); R2R
+        # AOT-precompiles our + NuGet assemblies to cut first-request JIT after a
+        # SnapStart restore. -o keeps the asset path the CDK Code.FromAsset expects.
+        run: dotnet publish src/Api/Api.csproj -c Release -r linux-x64 --self-contained false -o
+          src/Api/bin/Release/net10.0/publish
+
+      # 27-B: the Projector Lambda is a second asset; its publish dir must hold a real
+      # build before `cdk synth`/`cdk deploy` or the projector ships an empty asset.
+      - name: Publish Projector Lambda
+        if: needs.detect-changes.outputs.backend == 'true'
+        run: dotnet publish src/Projector/Projector.csproj -c Release -o
+          src/Projector/bin/Release/net10.0/publish
+
+      # 33-B1: the batch-diarization completion Lambda is a third asset; its publish dir
+      # must hold a real build before `cdk synth`/`cdk deploy` or it ships an empty asset.
+      - name: Publish TranscribeCompletion Lambda
+        if: needs.detect-changes.outputs.backend == 'true'
+        run: dotnet publish src/TranscribeCompletion/TranscribeCompletion.csproj -c Release -o
+          src/TranscribeCompletion/bin/Release/net10.0/publish
+
+      - name: Deploy infrastructure
+        if: needs.detect-changes.outputs.backend == 'true'
+        run: cdk deploy --all --require-approval never
+        env:
+          DOMAIN_NAME: ${{ secrets.DOMAIN_NAME }}
+          HOSTED_ZONE_ID: ${{ secrets.HOSTED_ZONE_ID }}
+          GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
+          GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
+          ALLOWED_USER_SUBS: ${{ secrets.ALLOWED_USER_SUBS }}
+          BEDROCK_MODEL_ID: ${{ secrets.BEDROCK_MODEL_ID }}
+          MS_CLIENT_ID: ${{ secrets.MS_CLIENT_ID }}
+          MS_TENANT_ID: ${{ secrets.MS_TENANT_ID }}
+          # 35-E MCP OAuth broker: the pre-registered Claude client id (secret) + the execute-api
+          # issuer host (var). Without these the AS is unconfigured → /oauth/* returns 503.
+          MCP_OAUTH_CLIENT_ID: ${{ secrets.MCP_OAUTH_CLIENT_ID }}
+          MCP_OAUTH_ISSUER: ${{ vars.MCP_OAUTH_ISSUER }}
+
+      - name: Resolve stack outputs
+        # describe-stacks (not the cdk --outputs-file) so outputs resolve whether
+        # or not this run deployed — on a frontend-only push the backend steps are
+        # skipped, but the live stack still holds the outputs the frontend needs.
+        # All six are CfnOutputs on NoteTakerStack (see src/Infrastructure/Program.cs
+        # for the stack name) in the configured region; the per-environment AWS
+        # creds scope this to the right account.
+        id: outputs
+        run: |
+          set -euo pipefail
+          OUTS=$(aws cloudformation describe-stacks --stack-name NoteTakerStack \
+            --query 'Stacks[0].Outputs' --output json)
+          # Assign each into a var first: with `set -e` a failed command
+          # substitution in an assignment aborts the step, whereas `echo "$(get …)"`
+          # would mask a missing output (echo succeeds) and emit an empty value.
+          get() {
+            local v
+            v=$(echo "$OUTS" | jq -r --arg k "$1" '.[] | select(.OutputKey==$k) | .OutputValue')
+            if [ -z "$v" ] || [ "$v" = "null" ]; then
+              echo "::error::Stack output '$1' missing or empty — refusing to continue with an unresolved output" >&2
+              return 1
+            fi
+            printf '%s' "$v"
+          }
+          API_URL=$(get ApiUrl)
+          FRONTEND_URL=$(get WebUrl)
+          BUCKET=$(get WebBucketName)
+          DISTRIBUTION_ID=$(get DistributionId)
+          RUM_MONITOR_ID=$(get RumMonitorId)
+          RUM_IDENTITY_POOL_ID=$(get RumIdentityPoolId)
+          {
+            echo "api-url=$API_URL"
+            echo "frontend-url=$FRONTEND_URL"
+            echo "bucket=$BUCKET"
+            echo "distribution-id=$DISTRIBUTION_ID"
+            echo "rum-monitor-id=$RUM_MONITOR_ID"
+            echo "rum-identity-pool-id=$RUM_IDENTITY_POOL_ID"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Print deployment URLs
+        run: |
+          echo "API URL:      ${{ steps.outputs.outputs.api-url }}"
+          echo "Frontend URL: ${{ steps.outputs.outputs.frontend-url }}"
+
+      - name: Build frontend
+        working-directory: web
+        run: npm ci && npm run build
+        env:
+          VITE_GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
+          # 34-C: Microsoft public client id for the in-app "Connect Outlook" flow (reuses the
+          # backend MS_CLIENT_ID). Empty when unset → the Outlook connect is a no-op.
+          VITE_MS_CLIENT_ID: ${{ secrets.MS_CLIENT_ID }}
+          VITE_MS_TENANT_ID: ${{ secrets.MS_TENANT_ID }}
+
+      - name: Inject RUM snippet
+        working-directory: web
+        env:
+          RUM_MONITOR_ID: ${{ steps.outputs.outputs.rum-monitor-id }}
+          RUM_IDENTITY_POOL_ID: ${{ steps.outputs.outputs.rum-identity-pool-id }}
+          RUM_REGION: ${{ secrets.AWS_REGION }}
+        run: |
+          # GitHub passes unset secrets as "" and jq on a missing key returns "null";
+          # refuse to ship an unmonitored frontend if either RUM output is absent.
+          if [ -z "$RUM_MONITOR_ID" ] || [ "$RUM_MONITOR_ID" = "null" ] \
+             || [ -z "$RUM_IDENTITY_POOL_ID" ] || [ "$RUM_IDENTITY_POOL_ID" = "null" ]; then
+            echo "::error::RUM stack outputs missing — refusing to deploy frontend without monitoring"
+            exit 1
+          fi
+          # Literal string-replace the empty placeholder in the BUILT artifact only
+          # (dist/index.html), never the source web/index.html. Node avoids sed/regex
+          # escaping pain with the snippet's slashes and braces.
+          # NB: the cwr.js loader CDN is GLOBAL (us-east-1 only); only the data-plane
+          # endpoint is regional. A client.rum.{region} loader host does not resolve.
+          node -e '
+            const fs = require("fs");
+            const id = process.env.RUM_MONITOR_ID;
+            const pool = process.env.RUM_IDENTITY_POOL_ID;
+            const region = process.env.RUM_REGION;
+            const snippet =
+              `<script id="rum-snippet">(function(n,i,v,r,s,c,u,x,z){`
+              + `x=window.AwsRumClient={q:[],n:n,i:i,v:v,r:r,c:c,u:u};`
+              + `window[n]=function(c,p){x.q.push({c:c,p:p});};`
+              + `z=document.createElement("script");z.async=true;z.src=s;`
+              + `document.head.insertBefore(z,document.getElementsByTagName("script")[0]);`
+              + `})("cwr","${id}","1.0.0","${region}",`
+              + `"https://client.rum.us-east-1.amazonaws.com/3.x/cwr.js",`
+              + `{sessionSampleRate:1,identityPoolId:"${pool}",`
+              + `endpoint:"https://dataplane.rum.${region}.amazonaws.com",`
+              + `telemetries:["errors","performance",["http",{addXRayTraceIdHeader:true}]],`
+              + `allowCookies:true,enableXRay:true});</script>`;
+            const file = "dist/index.html";
+            const html = fs.readFileSync(file, "utf8");
+            const placeholder = `<script id="rum-snippet"></script>`;
+            if (!html.includes(placeholder)) {
+              console.error("::error::rum-snippet placeholder not found in dist/index.html");
+              process.exit(1);
+            }
+            fs.writeFileSync(file, html.replace(placeholder, snippet));
+            console.log("Injected RUM snippet for monitor " + id);
+          '
+
+      - name: Deploy frontend
+        # Zero-downtime upload (Phase 26-A): no `--delete`, so a browser/CDN still on
+        # the previous index.html keeps finding its hashed assets. Two passes:
+        #   1. Hashed assets — immutable, cached for a year at the edge and the browser.
+        #   2. index.html (+ unhashed root files) — no-cache, always revalidated so the
+        #      next load picks up the new entry point. Uploaded last so it never points
+        #      at an asset that has not landed yet. Superseded assets are GC'd by the
+        #      WebBucket lifecycle rule (assets/, 30 days), not at deploy time.
+        # LOAD-BEARING: the lifecycle GC is only safe because a fresh, uncached
+        # `npm run build` writes every asset with a newer mtime each deploy, so the
+        # default `s3 sync` re-uploads even byte-identical hashed files and refreshes
+        # their LastModified — keeping still-referenced assets out of the 30-day window.
+        # Do NOT cache web/dist between runs, and do NOT add `--size-only` here, or a
+        # still-referenced asset could age out and 404 (the exact break this slice fixes).
+        run: |
+          aws s3 sync web/dist/assets/ s3://${{ steps.outputs.outputs.bucket }}/assets/ \
+            --cache-control "public,max-age=31536000,immutable"
+          aws s3 sync web/dist/ s3://${{ steps.outputs.outputs.bucket }}/ \
+            --exclude "assets/*" --cache-control "no-cache"
+
+      - name: Invalidate CloudFront cache
+        # Only the entry point needs invalidating — hashed assets are immutable and
+        # change name when they change, so the edge can keep serving the old ones.
+        run: aws cloudfront create-invalidation --distribution-id ${{
+          steps.outputs.outputs.distribution-id }} --paths "/index.html" "/"
+
+      - name: Get smoke test token
+        id: smoke-token
+        env:
+          REFRESH_TOKEN: ${{ secrets.SMOKE_TEST_GOOGLE_REFRESH_TOKEN }}
+          CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
+          CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
+        run: |
+          if [ -z "$REFRESH_TOKEN" ]; then
+            echo "::warning::SMOKE_TEST_GOOGLE_REFRESH_TOKEN not configured — smoke tests requiring auth will be skipped."
+            echo "id_token=" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          RESPONSE=$(curl -s -X POST "https://oauth2.googleapis.com/token" \
+            -d "client_id=$CLIENT_ID" \
+            -d "client_secret=$CLIENT_SECRET" \
+            -d "refresh_token=$REFRESH_TOKEN" \
+            -d "grant_type=refresh_token")
+          ID_TOKEN=$(echo "$RESPONSE" | jq -r '.id_token // empty')
+          if [ -z "$ID_TOKEN" ]; then
+            ERROR=$(echo "$RESPONSE" | jq -r '.error // "unknown"')
+            echo "::warning::Google token exchange failed (error: $ERROR) — smoke tests requiring auth will be skipped."
+            echo "id_token=" >> "$GITHUB_OUTPUT"
+          else
+            echo "id_token=$ID_TOKEN" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Acceptance specs
+        run: dotnet test tests/Api.Smoke/Api.Smoke.csproj
+        env:
+          API_BASE_URL: ${{ steps.outputs.outputs.api-url }}
+          FRONTEND_URL: ${{ steps.outputs.outputs.frontend-url }}
+          DYNAMO_TIMEOUT_SECONDS: "3"
+          SMOKE_TEST_TOKEN: ${{ steps.smoke-token.outputs.id_token }}
+
+      - name: Build E2E project
+        run: dotnet build tests/Browser.E2E/Browser.E2E.csproj -c Release
+
+      - name: Cache Playwright browsers
+        uses: actions/cache@v5
+        with:
+          # Playwright .NET shells to the same default browser cache as JS Playwright.
+          path: ~/.cache/ms-playwright
+          # Keyed on the pinned Microsoft.Playwright version (csproj) — a browser
+          # bump changes the key and forces a fresh download. No restore-keys: a
+          # prefix fallback would only restore the OLD browser revision (useless —
+          # the bumped version re-downloads regardless) as dead disk.
+          key: playwright-${{ runner.os }}-${{ hashFiles('tests/Browser.E2E/Browser.E2E.csproj') }}
+
+      # On a cache hit the browser download is skipped; --with-deps still installs
+      # the OS apt libraries (not cached — the runner is ephemeral).
+      - name: Install Playwright browsers
+        run: pwsh tests/Browser.E2E/bin/Release/net10.0/playwright.ps1 install --with-deps chromium
+
+      - name: Warm the API + projector before E2E
+        # A fresh deploy publishes a new SnapStart version + flips the alias, so the first request
+        # pays a cold restore (+ ASP.NET pipeline priming) and the Projector Lambda's first stream
+        # fold runs on a cold env. When that one-off latency lands on a journey's first read it pushes
+        # a locator past its timeout and reds the deploy gate on a cold start unrelated to the change
+        # (BUG-26 / TI-39). Warm both before the (sequentially-run) journeys: ping /health until it
+        # answers fast, then do one throwaway authenticated write so the projector folds at least once
+        # warm. The warm-up todo is wiped by the "Clear test data (pre-E2E)" step below, so E2E still
+        # starts from a clean state. Best-effort — a warm-up hiccup must never red the gate.
+        env:
+          API_URL: ${{ steps.outputs.outputs.api-url }}
+          TOKEN: ${{ steps.smoke-token.outputs.id_token }}
+        run: |
+          base="${API_URL%/}"
+          warmed=0
+          for i in $(seq 1 30); do
+            start=$(date +%s%3N)
+            code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 30 "$base/health" || echo 000)
+            ms=$(( $(date +%s%3N) - start ))
+            echo "health ping $i: HTTP $code in ${ms}ms"
+            if [ "$code" = "200" ] && [ "$ms" -lt 800 ]; then
+              echo "API warm after $i ping(s)."
+              warmed=1
+              break
+            fi
+            sleep 1
+          done
+          [ "$warmed" = 1 ] || echo "::warning::/health did not reach <800ms in 30 pings — proceeding best-effort (E2E asserts have a 15s buffer)."
+          # Warm AND drain the Projector Lambda to the stream head. A cold/idle projector can be far
+          # behind (high iterator age), so on the next deploy it must chew a backlog before folding a
+          # journey's just-written event — which blew even the 20-30s reload-tolerant waits (the
+          # ActionReadYourWrites flake on deploy #566). One throwaway write gives us a consistency
+          # token; poll GET /todos with it until the gate stops returning `X-Consistency: stale`, i.e.
+          # the projector has applied everything up to that write (= the head at warm-up time). This
+          # runs *before* the pre-E2E clear, so the warm-up todo is wiped and the now-warm projector
+          # folds the clear's deletes fast — journeys then assert against a caught-up, hot projector.
+          # Todos are workspace-scoped under /w/{workspaceId}; the reserved default workspace
+          # `__default__` is synthesised per user and always valid (WorkspaceId.DefaultValue), so a
+          # bare /todos 404s — use the scoped path, the same one the frontend's request() builds.
+          todos="$base/w/__default__/todos"
+          if [ -n "${TOKEN:-}" ]; then
+            # `|| ...=""` on each assignment: the step runs under `bash -eo pipefail`, so an
+            # unguarded curl timeout or a `jq` parse failure on a non-JSON error body (e.g. an API
+            # Gateway 502/503) would abort the whole step — defeating "best-effort, never red the
+            # gate." The guards make a warm-up hiccup fall through to the no-token warning instead.
+            resp=$(curl -s -w '\n%{http_code}' -X POST "$todos" \
+              -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+              -d '{"description":"warmup-ti39"}' --max-time 30) || resp=""
+            status=$(printf '%s' "$resp" | tail -n1)
+            tok=$(printf '%s' "$resp" | sed '$d' | jq -r '.consistencyToken // empty' 2>/dev/null) || tok=""
+            echo "warm-up POST $todos -> HTTP $status, token: ${tok:-<none>}"
+            if [ -n "$tok" ]; then
+              for i in $(seq 1 40); do
+                if curl -s -D - -o /dev/null --max-time 30 \
+                     -H "Authorization: Bearer $TOKEN" -H "If-Consistent-With: $tok" \
+                     "$todos" | grep -qi '^X-Consistency:[[:space:]]*stale'; then
+                  echo "projector draining (stale) — poll $i"; sleep 1
+                else
+                  echo "projector caught up to head after $i poll(s)."; break
+                fi
+              done
+            else
+              echo "::warning::warm-up write returned no token (HTTP $status) — projector drain-wait skipped (API still warmed)."
+            fi
+          else
+            echo "::warning::no smoke token — projector warm-up skipped (API still warmed via /health)."
+          fi
+
+      - name: Clear test data (pre-E2E)
+        uses: ./.github/actions/clear-test-data
+
+      - name: E2E journey tests
+        run: dotnet test tests/Browser.E2E/Browser.E2E.csproj -c Release
+        env:
+          FRONTEND_URL: ${{ steps.outputs.outputs.frontend-url }}
+          API_URL: ${{ steps.outputs.outputs.api-url }}
+          E2E_GOOGLE_ID_TOKEN: ${{ steps.smoke-token.outputs.id_token }}
+
+      - name: Clear test data
+        if: always()
+        uses: ./.github/actions/clear-test-data
+
+      - name: Upload Playwright trace
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: playwright-trace
+          path: "**/trace.zip"
+          if-no-files-found: ignore
+
+  deploy-production:
+    needs: [deploy-test, detect-changes]
+    runs-on: ubuntu-latest
+    environment:
+      name: Production
+      url: ${{ steps.outputs.outputs.frontend-url }}
+    concurrency:
+      group: deploy-production
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/cache@v5
+        with:
+          path: ~/.nuget/packages
+          key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj') }}
+          restore-keys: nuget-${{ runner.os }}-
+
+      - uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: "10.0.x"
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+          cache: "npm"
+          cache-dependency-path: web/package-lock.json
+
+      - name: Install CDK CLI
+        if: needs.detect-changes.outputs.backend == 'true'
+        run: npm install -g aws-cdk@2
+
+      - name: Configure AWS credentials
+        # Fail fast instead of hanging: this step (which validates the static keys via
+        # sts:GetCallerIdentity) has intermittently stalled for 30+ min on a transient
+        # STS/network blip, silently blocking the deploy. A tight cap turns that into a
+        # quick failure that a rerun recovers. See technical-improvements.md.
+        timeout-minutes: 5
+        uses: aws-actions/configure-aws-credentials@v6
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Publish Lambda
+        if: needs.detect-changes.outputs.backend == 'true'
+        # -r linux-x64 --self-contained false enables ReadyToRun (TI-35): the csproj
+        # turns on PublishReadyToRun only when a RID is supplied. Framework-dependent
+        # (Lambda's DOTNET_10 managed runtime provides the shared framework); R2R
+        # AOT-precompiles our + NuGet assemblies to cut first-request JIT after a
+        # SnapStart restore. -o keeps the asset path the CDK Code.FromAsset expects.
+        run: dotnet publish src/Api/Api.csproj -c Release -r linux-x64 --self-contained false -o
+          src/Api/bin/Release/net10.0/publish
+
+      # 27-B: the Projector Lambda is a second asset; its publish dir must hold a real
+      # build before `cdk synth`/`cdk deploy` or the projector ships an empty asset.
+      - name: Publish Projector Lambda
+        if: needs.detect-changes.outputs.backend == 'true'
+        run: dotnet publish src/Projector/Projector.csproj -c Release -o
+          src/Projector/bin/Release/net10.0/publish
+
+      # 33-B1: the batch-diarization completion Lambda is a third asset; its publish dir
+      # must hold a real build before `cdk synth`/`cdk deploy` or it ships an empty asset.
+      - name: Publish TranscribeCompletion Lambda
+        if: needs.detect-changes.outputs.backend == 'true'
+        run: dotnet publish src/TranscribeCompletion/TranscribeCompletion.csproj -c Release -o
+          src/TranscribeCompletion/bin/Release/net10.0/publish
+
+      - name: Deploy infrastructure
+        if: needs.detect-changes.outputs.backend == 'true'
+        run: cdk deploy --all --require-approval never
+        env:
+          DOMAIN_NAME: ${{ secrets.DOMAIN_NAME }}
+          HOSTED_ZONE_ID: ${{ secrets.HOSTED_ZONE_ID }}
+          GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
+          GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
+          ALLOWED_USER_SUBS: ${{ secrets.ALLOWED_USER_SUBS }}
+          BEDROCK_MODEL_ID: ${{ secrets.BEDROCK_MODEL_ID }}
+          MS_CLIENT_ID: ${{ secrets.MS_CLIENT_ID }}
+          MS_TENANT_ID: ${{ secrets.MS_TENANT_ID }}
+          # 35-E MCP OAuth broker: the pre-registered Claude client id (secret) + the execute-api
+          # issuer host (var). Without these the AS is unconfigured → /oauth/* returns 503.
+          MCP_OAUTH_CLIENT_ID: ${{ secrets.MCP_OAUTH_CLIENT_ID }}
+          MCP_OAUTH_ISSUER: ${{ vars.MCP_OAUTH_ISSUER }}
+
+      - name: Resolve stack outputs
+        # describe-stacks (not the cdk --outputs-file) so outputs resolve whether
+        # or not this run deployed — on a frontend-only push the backend steps are
+        # skipped, but the live stack still holds the outputs the frontend needs.
+        # All six are CfnOutputs on NoteTakerStack (see src/Infrastructure/Program.cs
+        # for the stack name) in the configured region; the per-environment AWS
+        # creds scope this to the right account.
+        id: outputs
+        run: |
+          set -euo pipefail
+          OUTS=$(aws cloudformation describe-stacks --stack-name NoteTakerStack \
+            --query 'Stacks[0].Outputs' --output json)
+          # Assign each into a var first: with `set -e` a failed command
+          # substitution in an assignment aborts the step, whereas `echo "$(get …)"`
+          # would mask a missing output (echo succeeds) and emit an empty value.
+          get() {
+            local v
+            v=$(echo "$OUTS" | jq -r --arg k "$1" '.[] | select(.OutputKey==$k) | .OutputValue')
+            if [ -z "$v" ] || [ "$v" = "null" ]; then
+              echo "::error::Stack output '$1' missing or empty — refusing to continue with an unresolved output" >&2
+              return 1
+            fi
+            printf '%s' "$v"
+          }
+          API_URL=$(get ApiUrl)
+          FRONTEND_URL=$(get WebUrl)
+          BUCKET=$(get WebBucketName)
+          DISTRIBUTION_ID=$(get DistributionId)
+          RUM_MONITOR_ID=$(get RumMonitorId)
+          RUM_IDENTITY_POOL_ID=$(get RumIdentityPoolId)
+          {
+            echo "api-url=$API_URL"
+            echo "frontend-url=$FRONTEND_URL"
+            echo "bucket=$BUCKET"
+            echo "distribution-id=$DISTRIBUTION_ID"
+            echo "rum-monitor-id=$RUM_MONITOR_ID"
+            echo "rum-identity-pool-id=$RUM_IDENTITY_POOL_ID"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Print deployment URLs
+        run: |
+          echo "API URL:      ${{ steps.outputs.outputs.api-url }}"
+          echo "Frontend URL: ${{ steps.outputs.outputs.frontend-url }}"
+
+      - name: Build frontend
+        working-directory: web
+        run: npm ci && npm run build
+        env:
+          VITE_GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
+          # 34-C: Microsoft public client id for the in-app "Connect Outlook" flow (reuses the
+          # backend MS_CLIENT_ID). Empty when unset → the Outlook connect is a no-op.
+          VITE_MS_CLIENT_ID: ${{ secrets.MS_CLIENT_ID }}
+          VITE_MS_TENANT_ID: ${{ secrets.MS_TENANT_ID }}
+
+      - name: Inject RUM snippet
+        working-directory: web
+        env:
+          RUM_MONITOR_ID: ${{ steps.outputs.outputs.rum-monitor-id }}
+          RUM_IDENTITY_POOL_ID: ${{ steps.outputs.outputs.rum-identity-pool-id }}
+          RUM_REGION: ${{ secrets.AWS_REGION }}
+        run: |
+          # GitHub passes unset secrets as "" and jq on a missing key returns "null";
+          # refuse to ship an unmonitored frontend if either RUM output is absent.
+          if [ -z "$RUM_MONITOR_ID" ] || [ "$RUM_MONITOR_ID" = "null" ] \
+             || [ -z "$RUM_IDENTITY_POOL_ID" ] || [ "$RUM_IDENTITY_POOL_ID" = "null" ]; then
+            echo "::error::RUM stack outputs missing — refusing to deploy frontend without monitoring"
+            exit 1
+          fi
+          # Literal string-replace the empty placeholder in the BUILT artifact only
+          # (dist/index.html), never the source web/index.html. Node avoids sed/regex
+          # escaping pain with the snippet's slashes and braces.
+          # NB: the cwr.js loader CDN is GLOBAL (us-east-1 only); only the data-plane
+          # endpoint is regional. A client.rum.{region} loader host does not resolve.
+          node -e '
+            const fs = require("fs");
+            const id = process.env.RUM_MONITOR_ID;
+            const pool = process.env.RUM_IDENTITY_POOL_ID;
+            const region = process.env.RUM_REGION;
+            const snippet =
+              `<script id="rum-snippet">(function(n,i,v,r,s,c,u,x,z){`
+              + `x=window.AwsRumClient={q:[],n:n,i:i,v:v,r:r,c:c,u:u};`
+              + `window[n]=function(c,p){x.q.push({c:c,p:p});};`
+              + `z=document.createElement("script");z.async=true;z.src=s;`
+              + `document.head.insertBefore(z,document.getElementsByTagName("script")[0]);`
+              + `})("cwr","${id}","1.0.0","${region}",`
+              + `"https://client.rum.us-east-1.amazonaws.com/3.x/cwr.js",`
+              + `{sessionSampleRate:1,identityPoolId:"${pool}",`
+              + `endpoint:"https://dataplane.rum.${region}.amazonaws.com",`
+              + `telemetries:["errors","performance",["http",{addXRayTraceIdHeader:true}]],`
+              + `allowCookies:true,enableXRay:true});</script>`;
+            const file = "dist/index.html";
+            const html = fs.readFileSync(file, "utf8");
+            const placeholder = `<script id="rum-snippet"></script>`;
+            if (!html.includes(placeholder)) {
+              console.error("::error::rum-snippet placeholder not found in dist/index.html");
+              process.exit(1);
+            }
+            fs.writeFileSync(file, html.replace(placeholder, snippet));
+            console.log("Injected RUM snippet for monitor " + id);
+          '
+
+      - name: Deploy frontend
+        # Zero-downtime upload (Phase 26-A): no `--delete`, so a browser/CDN still on
+        # the previous index.html keeps finding its hashed assets. Two passes:
+        #   1. Hashed assets — immutable, cached for a year at the edge and the browser.
+        #   2. index.html (+ unhashed root files) — no-cache, always revalidated so the
+        #      next load picks up the new entry point. Uploaded last so it never points
+        #      at an asset that has not landed yet. Superseded assets are GC'd by the
+        #      WebBucket lifecycle rule (assets/, 30 days), not at deploy time.
+        # LOAD-BEARING: the lifecycle GC is only safe because a fresh, uncached
+        # `npm run build` writes every asset with a newer mtime each deploy, so the
+        # default `s3 sync` re-uploads even byte-identical hashed files and refreshes
+        # their LastModified — keeping still-referenced assets out of the 30-day window.
+        # Do NOT cache web/dist between runs, and do NOT add `--size-only` here, or a
+        # still-referenced asset could age out and 404 (the exact break this slice fixes).
+        run: |
+          aws s3 sync web/dist/assets/ s3://${{ steps.outputs.outputs.bucket }}/assets/ \
+            --cache-control "public,max-age=31536000,immutable"
+          aws s3 sync web/dist/ s3://${{ steps.outputs.outputs.bucket }}/ \
+            --exclude "assets/*" --cache-control "no-cache"
+
+      - name: Invalidate CloudFront cache
+        # Only the entry point needs invalidating — hashed assets are immutable and
+        # change name when they change, so the edge can keep serving the old ones.
+        run: aws cloudfront create-invalidation --distribution-id ${{
+          steps.outputs.outputs.distribution-id }} --paths "/index.html" "/"
+
+      - name: Get smoke test token
+        id: smoke-token
+        env:
+          REFRESH_TOKEN: ${{ secrets.SMOKE_TEST_GOOGLE_REFRESH_TOKEN }}
+          CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
+          CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
+        run: |
+          if [ -z "$REFRESH_TOKEN" ]; then
+            echo "::warning::SMOKE_TEST_GOOGLE_REFRESH_TOKEN not configured — smoke tests requiring auth will be skipped."
+            echo "id_token=" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          RESPONSE=$(curl -s -X POST "https://oauth2.googleapis.com/token" \
+            -d "client_id=$CLIENT_ID" \
+            -d "client_secret=$CLIENT_SECRET" \
+            -d "refresh_token=$REFRESH_TOKEN" \
+            -d "grant_type=refresh_token")
+          ID_TOKEN=$(echo "$RESPONSE" | jq -r '.id_token // empty')
+          if [ -z "$ID_TOKEN" ]; then
+            ERROR=$(echo "$RESPONSE" | jq -r '.error // "unknown"')
+            echo "::warning::Google token exchange failed (error: $ERROR) — smoke tests requiring auth will be skipped."
+            echo "id_token=" >> "$GITHUB_OUTPUT"
+          else
+            echo "id_token=$ID_TOKEN" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Acceptance specs
+        run: dotnet test tests/Api.Smoke/Api.Smoke.csproj
+        env:
+          API_BASE_URL: ${{ steps.outputs.outputs.api-url }}
+          FRONTEND_URL: ${{ steps.outputs.outputs.frontend-url }}
+          DYNAMO_TIMEOUT_SECONDS: "3"
+          SMOKE_TEST_TOKEN: ${{ steps.smoke-token.outputs.id_token }}

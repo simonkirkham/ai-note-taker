@@ -1,0 +1,91 @@
+# Phase 1 — Walking Skeleton with Event Sourcing
+
+**Goal:** event sourcing plumbing works end-to-end and is covered by event-model-driven specs. By the end of this phase you can create a note, give it a title, and see it in a list — deployed, pipeline green, specs covering every layer.
+
+## Summary
+
+| Slice | Summary | Status | Depends on |
+|-------|---------|--------|------------|
+| 1-A | Note aggregate: CreateNote + RenameNote | Done | — |
+| 1-B | DynamoDB event store | Done | — |
+| 1-C | Create Note API endpoint | Done | — |
+| 1-D | RenameNote endpoint + NoteTitleList projection + GET /notes | Done | — |
+| 1-E | React scaffold + create/list notes UI | Done | — |
+
+## Slice 1-A — Note aggregate: CreateNote + RenameNote
+**Status:** Done
+
+**Acceptance criteria:**
+- [x] `NoteId` is a strongly-typed record struct wrapping `Guid` (per event-schemas.md)
+- [x] `NoteCreated` and `NoteRenamed` C# records match the shapes in `event-schemas.md`
+- [x] `Note` aggregate is pure: no constructor dependencies, no I/O, no clock
+- [x] BDD spec — `CreateNote` happy path: `Given()` no prior events `.When(CreateNote)` `.Then(NoteCreated)`
+- [x] BDD spec — `CreateNote` guard: `.ThenThrows<InvalidOperationException>()` when note already exists
+- [x] BDD spec — `RenameNote` happy path: `Given(NoteCreated)` `.When(RenameNote)` `.Then(NoteRenamed)`
+- [x] BDD spec — `RenameNote` guard: `.ThenThrows<InvalidOperationException>()` when note does not exist
+- [x] BDD spec — `RenameNote` no-op: no event emitted when new title equals current title
+- [x] `dotnet test` passes green; `dotnet build` 0 warnings
+
+---
+
+## Slice 1-B — DynamoDB event store
+**Status:** Done
+
+**Acceptance criteria:**
+- [x] `IEventStore` interface defined with `AppendAsync(streamId, expectedVersion, events)` and `ReadAsync(streamId)`
+- [x] `EventEnvelope` C# record matches `event-schemas.md`
+- [x] DynamoDB implementation appends events using the row shape in `event-schemas.md` (PK `note#<id>`, SK `v00000001`, META row for current version)
+- [x] Optimistic concurrency: append fails with a typed exception (`ConcurrencyException`) if the stream's current version does not match `expectedVersion`
+- [x] BDD spec — append to empty stream succeeds, sequence numbers start at 1
+- [x] BDD spec — append with correct expected version succeeds
+- [x] BDD spec — append with stale expected version throws `ConcurrencyException`
+- [x] BDD spec — read returns events in sequence order
+- [x] CDK stack updated: `notetaker-events` DynamoDB table added (PK `PK` String, SK `SK` String, `PAY_PER_REQUEST`)
+- [x] `cdk synth` exits 0 (verified in CI — not runnable locally without publish); `dotnet test` passes green
+
+---
+
+## Slice 1-C — Create Note API endpoint
+**Status:** Done
+
+**Acceptance criteria:**
+- [x] `POST /notes` returns `201 Created` with body `{ "noteId": "<guid>" }`
+- [x] `NoteCreated` event is appended to the `notetaker-events` table
+- [x] Calling `POST /notes` twice with the same `noteId` returns `409 Conflict`
+- [x] BDD acceptance spec: `Given` the Lambda is deployed, `When` `POST /notes` is called, `Then` `201` with a `noteId`
+- [x] Acceptance spec runs in the deploy pipeline (gated by `API_BASE_URL`)
+- [x] `dotnet test` passes green; deploy pipeline green
+
+---
+
+## Slice 1-D — RenameNote endpoint + NoteTitleList projection + GET /notes
+**Status:** Done
+
+**Acceptance criteria:**
+- [x] `PATCH /notes/{id}/title` with body `{ "title": "..." }` appends `NoteRenamed`, returns `200`
+- [x] `PATCH /notes/{id}/title` with the same title as current is a no-op: returns `200`, no event appended
+- [x] `PATCH /notes/{id}/title` for a non-existent note returns `404`
+- [x] `NoteTitleList` projection subscribes to `NoteCreated` and `NoteRenamed` and matches the shape in `view-schemas.md`
+- [x] Projection stored in a dedicated DynamoDB table (`notetaker-proj-notetitlelist`)
+- [x] `GET /notes` returns `NoteTitleListView` JSON ordered by `lastModifiedAt` descending
+- [x] BDD spec for the `NoteTitleList` projection fold (unit — no DynamoDB)
+- [x] BDD acceptance specs for `PATCH /notes/{id}/title` and `GET /notes` (gated by `API_BASE_URL`)
+- [x] CDK stack updated: projection table provisioned
+- [x] `cdk synth` exits 0 (verified in CI); `dotnet test` passes green; deploy pipeline green
+
+---
+
+## Slice 1-E — React scaffold + create/list notes UI
+**Status:** Done
+
+**Acceptance criteria:**
+- [x] Vite + React + TypeScript app in `web/` with `npm run dev` serving on `localhost:5173`
+- [x] `npm run build` produces a `dist/` folder with no errors (verified in CI)
+- [x] UI: "New Note" button calls `POST /notes` and navigates to a rename input
+- [x] UI: typing in the rename input and blurring calls `PATCH /notes/{id}/title`
+- [x] UI: note list on home page calls `GET /notes` and renders titles
+- [x] CDK stack updated: S3 bucket + CloudFront distribution serving `web/dist/` (OAC pattern)
+- [x] Deployed app reachable at the CloudFront URL — verified by `FrontendSmokeSpec` in `tests/Acceptance/`
+- [x] PR workflow extended: `npm install && npm run build` added to the checks (no lockfile; `npm ci` requires one)
+- [x] Deploy workflow extended: frontend built with `VITE_API_URL` from CDK outputs then synced to S3
+- [x] CORS configured on the API Gateway (`CorsPreflightOptions` with `AllowOrigins = "*"`)

@@ -1,0 +1,139 @@
+.wrapper {
+  position: relative;
+  display: inline-block;
+  max-width: 100%;
+  margin: var(--space-2) 0;
+  line-height: 0;
+}
+
+/* Two classes (0,2,0) so this beats the global `.contentInput img` rule and
+   owns the in-wrapper image styling without fighting source order. */
+.wrapper .image {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  margin: 0;
+  border-radius: var(--radius);
+}
+
+.wrapper.selected .image {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
+/* Shown while an image's src is still an unresolved S3 key, before resolveImages
+   swaps in a presigned URL — rendering the bare key as an <img> would fetch it as
+   a relative URL and 403 (BUG-19). Matches the image's block layout. */
+.wrapper .placeholder {
+  display: block;
+  width: 12rem;
+  max-width: 100%;
+  aspect-ratio: 4 / 3;
+  border-radius: var(--radius);
+  background: var(--color-surface-sunken, var(--color-overlay-scrim));
+  line-height: normal;
+}
+
+.removeButton {
+  position: absolute;
+  top: var(--space-1);
+  right: var(--space-1);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.75rem;
+  height: 1.75rem;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: var(--color-overlay-scrim);
+  color: var(--color-on-overlay);
+  font-size: 0.9rem;
+  line-height: 1;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.12s ease;
+}
+
+.wrapper:hover .removeButton,
+.removeButton:focus-visible {
+  opacity: 1;
+}
+
+.removeButton:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
+/* Size control: revealed alongside the remove control on hover / focus-within /
+   selection, mirroring removeButton's reveal so the two affordances behave alike. */
+.sizeControl {
+  position: absolute;
+  bottom: var(--space-1);
+  left: 50%;
+  transform: translateX(-50%);
+  display: inline-flex;
+  gap: 1px;
+  padding: 2px;
+  border-radius: var(--radius);
+  background: var(--color-overlay-scrim);
+  line-height: 0;
+  opacity: 0;
+  transition: opacity 0.12s ease;
+}
+
+.wrapper:hover .sizeControl,
+.wrapper.selected .sizeControl,
+.sizeControl:focus-within {
+  opacity: 1;
+}
+
+.sizeButton {
+  min-width: 1.5rem;
+  height: 1.5rem;
+  padding: 0 var(--space-1);
+  border: none;
+  border-radius: calc(var(--radius) - 2px);
+  background: transparent;
+  color: var(--color-on-overlay);
+  font-size: 0.75rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.sizeButton:hover {
+  background: var(--color-on-overlay-faint, rgba(255, 255, 255, 0.18));
+}
+
+.sizeButton:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 1px;
+}
+
+/* Corner drag-resize handle: revealed on hover / selection like the other controls.
+   Pointer-only affordance (the preset control is the keyboard path), so it is not a
+   focus target and has no focus styling. Sits at the bottom-right corner of the image. */
+.resizeHandle {
+  position: absolute;
+  right: -4px;
+  bottom: -4px;
+  width: 14px;
+  height: 14px;
+  border: 2px solid var(--color-on-overlay);
+  border-radius: 3px;
+  background: var(--color-overlay-scrim);
+  cursor: nwse-resize;
+  opacity: 0;
+  /* Hidden handles must not catch pointer events — opacity:0 alone still intercepts,
+     so the handle steals hover/clicks aimed at the image (it fully covers a tiny one,
+     failing the remove-image journey). Only the revealed handle is interactive. */
+  pointer-events: none;
+  transition: opacity 0.12s ease;
+  touch-action: none;
+}
+
+.wrapper:hover .resizeHandle,
+.wrapper.selected .resizeHandle {
+  opacity: 1;
+  pointer-events: auto;
+}

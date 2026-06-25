@@ -1,0 +1,14 @@
+{
+  "id": "12-design-review",
+  "transcriptText": "Beth: Design review for the mobile navigation redesign. I'll revise the prototype to use a bottom tab bar. Carlos: I'll run a usability test with five users next week. Beth: We chose the bottom-bar direction over the hamburger menu.",
+  "existingContent": "Mobile navigation design review",
+  "currentUserName": "Beth",
+  "expected": {
+    "tags": ["mobile-navigation-redesign"],
+    "actionItems": ["Revise the prototype to use a bottom tab bar"],
+    "contentMustMention": [
+      "Carlos will run a usability test with five users next week",
+      "The team chose the bottom-bar direction over the hamburger menu"
+    ]
+  }
+}

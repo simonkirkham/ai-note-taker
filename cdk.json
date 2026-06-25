@@ -1,0 +1,4 @@
+{
+  "app": "dotnet run --project src/Infrastructure",
+  "context": {}
+}

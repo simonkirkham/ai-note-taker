@@ -1,0 +1,90 @@
+.transcriptTab {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  flex: 1;
+}
+
+.body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: var(--space-4);
+  border: 1.5px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+}
+
+.text {
+  margin: 0;
+  color: var(--color-text);
+  line-height: 1.6;
+  white-space: pre-wrap;
+}
+
+.placeholder {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-style: italic;
+}
+
+.recordingBar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-bottom: var(--space-3);
+  min-height: 2rem;
+}
+
+.downloadButton {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-4);
+  font-family: inherit;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--color-accent);
+  background: var(--color-surface);
+  border: 1.5px solid var(--color-border);
+  border-radius: var(--radius);
+  cursor: pointer;
+  transition: border-color 200ms, background-color 200ms;
+}
+
+.downloadButton:hover {
+  border-color: var(--color-accent);
+  background: var(--color-surface-hover);
+}
+
+.recordingHint {
+  color: var(--color-text-muted);
+  font-size: 0.85rem;
+  font-style: italic;
+}
+
+.recordingError {
+  color: var(--color-danger);
+  font-size: 0.85rem;
+}
+
+/* 33-B1: batch-diarization status row, sits above the transcript body. */
+.diarizationBar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-bottom: var(--space-3);
+  min-height: 2rem;
+}
+
+.diarizationChip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-1) var(--space-3);
+  font-size: 0.85rem;
+  color: var(--color-accent);
+  background: var(--color-surface);
+  border: 1.5px solid var(--color-border);
+  border-radius: 999px;
+}

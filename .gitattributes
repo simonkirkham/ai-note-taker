@@ -1,0 +1,22 @@
+# Line-ending policy.
+#
+# This working tree lives on a Windows path (C:\code\ai-note-taker) and is
+# accessed by BOTH Git for Windows (system autocrlf=true) and Git inside WSL
+# (autocrlf unset, i.e. false). Without a fixed policy the two disagree: one
+# checks out CRLF, the other flags every line as changed — producing phantom
+# whole-file diffs that show in one tool but not the other.
+#
+# Forcing LF in the index AND the working tree keeps both Gits in agreement.
+# `text=auto` lets Git auto-detect binary files and leave them untouched.
+* text=auto eol=lf
+
+# Common binary assets — never normalize or diff as text.
+*.png  binary
+*.jpg  binary
+*.jpeg binary
+*.gif  binary
+*.ico  binary
+*.svg  text eol=lf
+*.woff  binary
+*.woff2 binary
+*.pdf  binary

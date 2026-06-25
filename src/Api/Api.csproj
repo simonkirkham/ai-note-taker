@@ -1,0 +1,42 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <!-- ReadyToRun (TI-35): AOT-precompile our + dependency assemblies (AWS SDK, JwtBearer,
+       Google API libs) to native images so the first request after a SnapStart restore does
+       not JIT them. Only active when a RID is supplied (the CI publish passes -r linux-x64,
+       matching the x86_64 Lambda); a plain `dotnet build`/`test`/local publish stays portable IL. -->
+  <PropertyGroup Condition="'$(RuntimeIdentifier)' != ''">
+    <PublishReadyToRun>true</PublishReadyToRun>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Amazon.Lambda.AspNetCoreServer.Hosting" Version="2.1.0" />
+    <PackageReference Include="Amazon.Lambda.Core" Version="3.1.0" />
+    <PackageReference Include="AWS.Lambda.Powertools.Logging" Version="3.2.2" />
+    <PackageReference Include="AWS.Lambda.Powertools.Metrics" Version="3.2.2" />
+    <PackageReference Include="AWSSDK.BedrockRuntime" Version="4.0.20.5" />
+    <PackageReference Include="AWSSDK.S3" Version="4.0.24.3" />
+    <PackageReference Include="AWSSDK.SecretsManager" Version="4.0.4" />
+    <PackageReference Include="AWSXRayRecorder.Handlers.AwsSdk" Version="2.14.0" />
+    <PackageReference Include="AWSSDK.Extensions.NETCore.Setup" Version="4.0.4.6" />
+    <PackageReference Include="AWSSDK.SecurityToken" Version="4.0.7.3" />
+    <PackageReference Include="AWSSDK.SimpleSystemsManagement" Version="4.0.8.3" />
+    <PackageReference Include="AWSSDK.TranscribeService" Version="4.0.7.8" />
+    <PackageReference Include="FuzzySharp" Version="2.0.2" />
+    <PackageReference Include="Google.Apis.Calendar.v3" Version="1.74.0.4154" />
+    <PackageReference Include="Ical.Net" Version="5.2.3" />
+    <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="10.0.9" />
+    <PackageReference Include="ModelContextProtocol.AspNetCore" Version="1.4.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Domain\Domain.csproj" />
+    <ProjectReference Include="..\EventStore\EventStore.csproj" />
+  </ItemGroup>
+
+</Project>

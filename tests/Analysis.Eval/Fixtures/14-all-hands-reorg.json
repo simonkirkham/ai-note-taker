@@ -1,0 +1,14 @@
+{
+  "id": "14-all-hands-reorg",
+  "transcriptText": "Yuki: All-hands follow-up on the reorg. I'll update the team page with the new reporting lines. Pepper: I'll publish the new org chart to the wiki. Yuki: The platform and product groups are merging.",
+  "existingContent": "Stark Industries all-hands follow-up",
+  "currentUserName": "Yuki",
+  "expected": {
+    "tags": ["stark-industries"],
+    "actionItems": ["Update the team page with the new reporting lines"],
+    "contentMustMention": [
+      "Pepper will publish the new org chart to the wiki",
+      "The platform and product groups are merging"
+    ]
+  }
+}

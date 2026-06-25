@@ -1,0 +1,14 @@
+{
+  "id": "11-incident-review",
+  "transcriptText": "Ahmed: Postmortem for the payments outage. Root cause was queue backpressure. I'll add an alarm on the payments queue depth. Chen: I'll write up the incident timeline document. Ahmed: We agreed this was a Sev1 lasting forty-two minutes.",
+  "existingContent": "Payments outage postmortem",
+  "currentUserName": "Ahmed",
+  "expected": {
+    "tags": ["payments-outage"],
+    "actionItems": ["Add an alarm on the payments queue depth"],
+    "contentMustMention": [
+      "Chen will write up the incident timeline document",
+      "The outage was a Sev1 lasting forty-two minutes"
+    ]
+  }
+}

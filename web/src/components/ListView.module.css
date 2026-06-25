@@ -1,0 +1,254 @@
+/* ── Note summary cards ─────────────────────────────────────────── */
+.noteCardsSection {
+  margin-top: 2.5rem;
+  border-top: 2px solid var(--color-border);
+  padding-top: 1.5rem;
+}
+
+/* CHANGE-10: on the home view, drop the divider and top-align the Notes
+   heading with "Today's Meetings" in the right column — no blank band under
+   the Home title. Folder view keeps the base spacing/divider above. */
+.homeLeft .noteCardsSection {
+  margin-top: 0;
+  padding-top: 0;
+  border-top: none;
+}
+
+.noteCardsHeading {
+  margin: 0 0 1.25rem;
+  font-size: 1rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--color-text-muted);
+}
+
+.noteCardsHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  /* CHANGE-9: header now holds only the heading; tighten the gap to the
+     Filters control that follows. */
+  margin-bottom: 0.6rem;
+}
+
+.noteCardsHeader .noteCardsHeading {
+  margin: 0;
+}
+
+.showOlderToggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.85rem;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  user-select: none;
+}
+
+.noteCardsEmpty {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: 0.9rem;
+}
+
+.noteCards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 1rem;
+}
+
+/* ── Folder breadcrumb in ListView ──────────────────────────────── */
+.headerTitleGroup {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.folderBreadcrumbBack {
+  background: none;
+  border: none;
+  padding: 0;
+  font-family: inherit;
+  font-size: 0.8125rem;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  text-align: left;
+  transition: color var(--transition);
+}
+
+.folderBreadcrumbBack:hover {
+  color: var(--color-primary);
+}
+
+/* ── Home two-column layout ─────────────────────────────────────── */
+.homeLayout {
+  display: grid;
+  grid-template-columns: 1fr 320px;
+  gap: 2rem;
+  align-items: start;
+}
+
+.homeLeft {
+  min-width: 0;
+}
+
+.homeRightPanel {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+  min-width: 0;
+}
+
+@media (max-width: 1023px) {
+  .homeLayout {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* === CHANGE-6: collapsible home Filters control (start) === */
+/* CHANGE-9: tightened to remove the dead gap between the control and the notes. */
+.filtersSection {
+  margin-top: 0.5rem;
+  margin-bottom: 1rem;
+}
+
+.filtersToggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.4rem 0.65rem;
+  background: var(--color-surface);
+  border: 1.5px solid var(--color-border);
+  border-radius: 8px;
+  font-family: inherit;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  transition: background var(--transition), color var(--transition),
+    border-color var(--transition);
+}
+
+.filtersToggle:hover {
+  color: var(--color-text);
+  border-color: var(--color-primary);
+}
+
+.filtersToggle:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
+.filtersToggleActive {
+  color: var(--color-primary);
+  border-color: var(--color-primary);
+}
+
+.filtersToggleChevron {
+  display: inline-block;
+  font-size: 0.7rem;
+  line-height: 1;
+  transition: transform var(--transition);
+}
+
+.filtersToggleOpen .filtersToggleChevron {
+  transform: rotate(90deg);
+}
+
+.filtersToggleSummary {
+  font-weight: 700;
+}
+
+/* `.filters-panel` is kept GLOBAL (not hashed): TagFilter.module.css overrides
+   it via `:global(.filters-panel) .tagFilter { … }`, and the test/E2E read it by
+   id. ListView applies it as a plain `className="filters-panel"` string. */
+:global(.filters-panel)[hidden] {
+  display: none;
+}
+
+/* CHANGE-9 (Option D): the expanded panel is a card of labelled groups —
+   a "Tags" group and an "Other" group holding the Show-older toggle. */
+:global(.filters-panel):not([hidden]) {
+  margin-top: 0.5rem;
+  padding: 0.7rem 0.8rem;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+}
+
+.filtersGroupLabel {
+  display: block;
+  font-size: 0.6875rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--color-text-muted);
+  margin-bottom: 0.4rem;
+}
+
+.filtersGroup + .filtersGroup {
+  margin-top: 0.7rem;
+  padding-top: 0.7rem;
+  border-top: 1px solid var(--color-border);
+}
+/* === CHANGE-6 + CHANGE-9: collapsible home Filters control (end) === */
+
+/* ── 22-B: home search states ───────────────────────────────────── */
+.filtersToggle:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.filtersPausedHint {
+  margin: 0.4rem 0 0;
+  font-size: 0.75rem;
+  font-style: italic;
+  color: var(--color-text-muted);
+}
+
+.searchStatus {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: 0.9rem;
+}
+
+.searchError {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.6rem;
+  padding: 0.9rem 1rem;
+  background: var(--color-surface);
+  border: 1.5px solid var(--color-error);
+  border-radius: 10px;
+  color: var(--color-error);
+  font-size: 0.9rem;
+}
+
+.searchError p {
+  margin: 0;
+}
+
+.searchRetry {
+  padding: 0.35rem 0.85rem;
+  font-family: inherit;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--color-surface);
+  background: var(--color-error);
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: opacity var(--transition);
+}
+
+.searchRetry:hover {
+  opacity: 0.88;
+}
+
+.searchRetry:focus-visible {
+  outline: 2px solid var(--color-error);
+  outline-offset: 2px;
+}
