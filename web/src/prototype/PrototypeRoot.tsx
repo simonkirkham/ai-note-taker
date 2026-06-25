@@ -68,27 +68,37 @@ function TagPills({ d }: { d: D }) {
   );
 }
 
+// crisp inline icons (no emoji) — inherit currentColor
+const TagIcon = () => (<svg className="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20.59 13.41 13.42 20.59a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82Z"/><circle cx="7" cy="7" r="1.2" fill="currentColor"/></svg>);
+const CheckIcon = () => (<svg className="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>);
+const ChevronIcon = ({ open }: { open: boolean }) => (<svg className="icon" style={{ width: "0.75rem", height: "0.75rem", transition: "transform 150ms ease", transform: open ? "rotate(180deg)" : "none" }} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 12 15 18 9"/></svg>);
+const PlusIcon = () => (<svg className="icon" style={{ width: "0.8rem", height: "0.8rem" }} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>);
+
 // ---------- 4: COMMAND BAR ----------
 function CommandBar({ d }: { d: D }) {
   const [adding, setAdding] = useState(false);
   const [pop, setPop] = useState(false);
+  const allDone = d.acts.length > 0 && d.open === 0;
   return (
     <div className="pbar">
       <div className="pbarLeft">
-        <span className="pbarGlyph">🏷</span>
-        {d.tags.map((t) => <span key={t} className="pill">{t}<button className="pillX" onClick={() => d.removeTag(t)}>×</button></span>)}
+        <span className="pbarGlyph"><TagIcon /></span>
+        {d.tags.map((t) => <span key={t} className="pbarChip">{t}<button className="pillX" onClick={() => d.removeTag(t)}>×</button></span>)}
         {adding ? <InlineAdd cls="stripInput" placeholder="Add tag…" onAdd={d.addTag} onClose={() => setAdding(false)} />
-          : <button className="addTagChip" onClick={() => setAdding(true)}>＋ tag</button>}
+          : <button className="addTagChip" onClick={() => setAdding(true)}><PlusIcon /> Tag</button>}
       </div>
       <div className="pbarRight">
-        <button className={`actionsPill${pop ? " actionsPillActive" : ""}`} onClick={() => setPop((o) => !o)}>
-          ✓ Actions <span className="actionsPillCount">· {d.done}/{d.acts.length}</span>
-          <span className={`chev${pop ? " chevDown" : ""}`}>⌄</span>
+        <button className={`actionsPill${pop ? " actionsPillActive" : ""}${allDone ? " actionsPillDone" : ""}`} onClick={() => setPop((o) => !o)}>
+          <span className="actionsPillIcon" style={allDone ? { color: "var(--color-primary)" } : undefined}><CheckIcon /></span>
+          Actions <span className="actionsPillCount">· {d.done}/{d.acts.length}</span>
+          <ChevronIcon open={pop} />
         </button>
         {pop && (
           <div className="popover">
-            <div className="popHeader"><span>Actions</span><span>{d.done}/{d.acts.length}</span></div>
-            <div className="popBody"><Checklist d={d} addPlaceholder="Add an action item…" /></div>
+            <div className="popHeader"><span>Actions</span><span className={`popHeaderCount${allDone ? " popHeaderCountDone" : ""}`}>{d.done}/{d.acts.length}</span></div>
+            {d.acts.length === 0
+              ? <div className="popBody"><div className="popEmpty">No action items yet</div><InlineAdd cls="addRowInput" placeholder="Add an action item…" onAdd={d.addAct} onClose={() => {}} /></div>
+              : <div className="popBody"><Checklist d={d} addPlaceholder="Add an action item…" /></div>}
           </div>
         )}
       </div>
@@ -227,7 +237,7 @@ function EditorColumn() {
 }
 
 const DESIGNS = {
-  bar: { label: "4 · Command Bar", blurb: <><strong>Unified Command Bar.</strong> One slim 40px line under the title: tags as inline chips on the left, an "✓ Actions · 2/4" pill on the right that opens a popover checklist. Editor full-width below. Nothing ever adds page height — the popover floats.</> },
+  bar: { label: "4 · Command Bar", blurb: <><strong>Unified Command Bar (polished).</strong> One slim line under the title: tags as inline chips (left), an "✓ Actions · 2/4" pill (right) that opens a floating popover checklist. Crisp SVG icons, no emoji. Tick all actions done → the pill turns teal. Editor full-width below; the popover never adds page height.</> },
   pin: { label: "5 · Pinboard", blurb: <><strong>Pinboard drawer.</strong> Editor is full-width at all times. A top-right pin shows live counts (🏷 4 · ✓ 2/4); click it to slide a properties drawer over the note with the full tags + actions. Closes on ×, scrim, or Esc.</> },
   band: { label: "6 · Property Band", blurb: <><strong>Property Band.</strong> A tidy two-up header above the notes — Tags left, Actions right, side by side — costing a few rows instead of a tall stack. Collapses to one summary line. Notes run full-width below.</> },
   dock: { label: "3 · Strip + Dock", blurb: <><strong>Strip + Dock (your earlier pick, for reference).</strong> Tags strip under the title; actions in a collapsible dock under the editor.</> },
