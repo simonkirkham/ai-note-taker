@@ -47,6 +47,17 @@ describe("WorkspaceTheme (36-A)", () => {
     expect(screen.getByLabelText("Theme")).toHaveValue("midnight");
   });
 
+  it("caches the workspace's resolved theme under note-taker-theme:<wsId> for the cold-load bootstrap (36-B)", async () => {
+    renderPicker("ws-work");
+    await waitFor(() => expect(localStorage.getItem("note-taker-theme:ws-work")).toBe("midnight"));
+  });
+
+  it("does not write a per-workspace cache key for the default workspace (36-B)", async () => {
+    renderPicker("__default__");
+    await waitFor(() => expect(screen.getByLabelText("Theme")).toBeInTheDocument());
+    expect(localStorage.getItem("note-taker-theme:__default__")).toBeNull();
+  });
+
   it("selecting a theme paints optimistically and PATCHes the workspace theme endpoint", async () => {
     let patched: { id: string | readonly string[] | undefined; theme: string } | null = null;
     let workTheme = "midnight";
