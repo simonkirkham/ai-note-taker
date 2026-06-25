@@ -55,4 +55,12 @@ describe('markHeadingDiscussed (BUG-37)', () => {
     markHeadingDiscussed(editor);
     expect(md(editor)).toBe('## ~~Budget review~~\n\nSome notes');
   });
+
+  it('is a no-op (no throw) on an empty heading — the button still renders there', () => {
+    editor = new Editor({ extensions: [StarterKit.configure({ link: false }), Markdown] });
+    editor.commands.setContent('<h2></h2>');
+    editor.commands.setTextSelection(1); // caret inside the empty heading (from === to)
+    expect(editor.isActive('heading')).toBe(true);
+    expect(() => markHeadingDiscussed(editor)).not.toThrow();
+  });
 });
