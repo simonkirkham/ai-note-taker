@@ -10,7 +10,7 @@
 | 34-B | **Key the calendar connection by workspace.** `WorkspaceCalendarConnected` event; connect associates with the current workspace; token + read resolve by `(userId, workspaceId)`. Two workspaces → two different Google accounts. | Done | 34-A |
 | 34-C | **Add Microsoft as a connectable provider per workspace + per-request resolution.** In-app connect for Outlook; `ICalendarClientFactory.ForAsync(workspaceId)` resolves google/microsoft from the workspace's connection (`CALENDAR_PROVIDER` kept as the unconnected fallback → removed in 34-D). A=Google, B=Outlook. | Done | 34-B |
 | 34-D1 | **Retire the Google SSM token path** — Google is fully in-app + proven, so drop the Google SSM fallback (`GoogleCalendarTokenSource` store-only), its `GOOGLE_REFRESH_TOKEN_SSM_PATH` env + conditional grant, and the Google mint script + guide. | Done | 34-C |
-| 34-D2 | **Retire the Microsoft SSM path + `CALENDAR_PROVIDER` + remaining mint scripts** — the rest of the strangle cleanup. **Blocked until Outlook in-app connect is verified in prod** (Entra SPA redirect URI pending); removing the MS SSM fallback before then would strand Outlook-backed workspaces. | Not Started | 34-D1, Outlook in-app verified |
+| 34-D2 | **Retire the Microsoft SSM path + `CALENDAR_PROVIDER` + remaining mint scripts** — the rest of the strangle cleanup. Unconnected workspace → `UnavailableCalendarClient` → "Connect calendar". | Done | 34-D1, Outlook in-app verified |
 
 Strictly sequential — this is a **strangle** of the calendar-auth model (CLAUDE.md guardrail: prove the new path on one real call, then migrate flow-by-flow with old+new coexisting until the last flow moves). 34-A proves in-app-connect + server-side token on one real Google read; 34-B/C scale it to workspace-keyed and multi-provider; 34-D removes the old path only after nothing depends on it.
 
@@ -201,7 +201,7 @@ Scenario: Provider resolved per request, not per process
 
 ### Slice 34-D2 — Retire the Microsoft SSM path + `CALENDAR_PROVIDER` + remaining mint scripts
 
-**Status:** Done (PR #TBD). Outlook in-app connect verified in prod, so the last SSM fallback is removed — **Phase 34 is complete** (calendars fully in-app, per workspace, multi-provider, no long-lived SSM secret).
+**Status:** Done (PR #340, deploy #641). Outlook in-app connect verified in prod, so the last SSM fallback is removed — **Phase 34 is complete** (calendars fully in-app, per workspace, multi-provider, no long-lived SSM secret). Prod verified: command Lambda env has no `CALENDAR_PROVIDER`/`MICROSOFT_REFRESH_TOKEN_SSM_PATH` (MS_CLIENT_ID retained); no `ssm:GetParameter` grant.
 
 ### Acceptance criteria (34-D2)
 1. ✅ `MicrosoftCalendarTokenSource` reads only `CalendarTokenStore`; `SsmMicrosoftRefreshTokenSource` deleted. Store failure degrades to null (calendar_unavailable), mirroring Google (34-D1).
