@@ -68,9 +68,6 @@ app.UseMiddleware<Api.Mcp.McpAllowlistMiddleware>();
 app.UseAuthentication();
 app.UseMiddleware<Api.Auth.AllowlistMiddleware>();
 app.UseAuthorization();
-// 35-E: bind an authenticated MCP request's token `aud` to the route workspace (403 on a cross-
-// workspace token), covering EVERY MCP method — runs after authentication so the principal is set.
-app.UseMiddleware<Api.Mcp.OAuth.McpAudienceMiddleware>();
 
 LoggingConfig.AddLogging(app);
 
@@ -87,23 +84,19 @@ app.MapWorkspaceEndpoints();
 // resource metadata/challenge) is wired in Builder via AddMcpOAuth and applied to MapMcp below.
 app.MapMcpOAuthEndpoints();
 
-// 35-A: read-only MCP server, mapped OUTSIDE the WorkspaceValidationFilter/RequireAuthorization
-// group — no auth this slice. The {workspaceId} route value scopes list_notes (read via
-// IHttpContextAccessor). Tool calls are read-only, so this path is pinned to the Query Lambda in
-// API Gateway (see NoteTakerStack).
-// Kill switch: the no-auth endpoint is disabled in prod (MCP_ENABLED=false) until 35-E adds
-// OAuth. Defaults ON so tests/local keep it mapped; prod sets it OFF. When unmapped, ASP.NET has
-// no matching endpoint (there is no MapFallback) so the API-Gateway-forwarded POST gets a genuine
+// 35-F: a single identity-scoped MCP server at /mcp (no workspace in the path). Each tool takes a
+// workspaceId argument and authorizes it per call against the token `sub` (NoteMcpTools), reading the
+// authenticated user via IHttpContextAccessor. Tool calls are read-only, so this path is pinned to
+// the Query Lambda in API Gateway (see NoteTakerStack).
+// Kill switch: MCP_ENABLED defaults ON for tests/local; prod sets it from the GitHub env. When
+// unmapped, ASP.NET has no matching endpoint (no MapFallback) so the forwarded POST gets a genuine
 // 404 — not a 500 or a fallthrough that still serves.
-// 35-E: the MCP tool endpoint now REQUIRES an audience-bound bearer carrying the mcp:tools scope.
+// The endpoint REQUIRES an audience-bound bearer (aud = {issuer}/mcp) carrying the mcp:tools scope.
 // RequireAuthorization wires the McpToolPolicy (→ McpBearer HS256 validation + scope check); a
-// missing/invalid token yields 401 with the WWW-Authenticate: Bearer resource_metadata challenge,
-// and a token without the scope yields 403. McpAudienceMiddleware then enforces the EXACT
-// token-aud↔route-workspace binding (→ 403 on a cross-workspace token) for EVERY MCP method
-// (initialize/tools/list/tools/call), not just the tool body. The MCP_ENABLED gate (re-enabled in
-// prod for 35-E) and the McpAllowlistMiddleware both still apply.
+// missing/invalid token yields 401 with the WWW-Authenticate: Bearer resource_metadata challenge, and
+// a token without the scope yields 403. The McpAllowlistMiddleware also still applies.
 if (app.Configuration.GetValue("MCP_ENABLED", true))
-    app.MapMcp("/w/{workspaceId}/mcp").RequireAuthorization(Api.Mcp.OAuth.McpAuthWiring.ToolPolicy);
+    app.MapMcp("/mcp").RequireAuthorization(Api.Mcp.OAuth.McpAuthWiring.ToolPolicy);
 
 Builder.RegisterSnapStartPriming(app);
 

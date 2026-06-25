@@ -2197,9 +2197,9 @@ public class InfraAssertionsTests
     [Fact]
     public void Routing_McpPost_TargetsQuery_NotCommand()
     {
-        // 35-A: MCP tool calls are POST but read-only (NoteCardList projection only), so the
-        // /w/{workspaceId}/mcp path is pinned to Query — overriding the default POST→Command rule.
-        Assert.True(RouteTargetsFunction("POST /w/{workspaceId}/mcp", "QueryFunction"));
+        // 35-A/35-F: MCP tool calls are POST but read-only, so the /mcp path is pinned to Query —
+        // overriding the default POST→Command rule. 35-F replaced the per-workspace path with /mcp.
+        Assert.True(RouteTargetsFunction("POST /mcp", "QueryFunction"));
     }
 
     // ── 35-E: MCP OAuth broker ───────────────────────────────────────────
@@ -2220,7 +2220,7 @@ public class InfraAssertionsTests
     public void McpOAuth_McpToolPathStaysOnQuery()
     {
         // The Resource Server (tool path) stays on Query; only the AS endpoints move to Command.
-        Assert.True(RouteTargetsFunction("POST /w/{workspaceId}/mcp", "QueryFunction"));
+        Assert.True(RouteTargetsFunction("POST /mcp", "QueryFunction"));
     }
 
     [Fact]

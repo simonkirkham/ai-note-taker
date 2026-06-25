@@ -1,26 +1,58 @@
 using System.ComponentModel;
+using System.Security.Claims;
 using System.Text.Json;
 using Api.Auth;
-using Api.Mcp.OAuth;
+using Api.Search;
 using Api.Utilities;
+using Domain.Notes;
+using Domain.Workspaces;
 using EventStore.Projections;
+using ModelContextProtocol;
 using ModelContextProtocol.Server;
 
 namespace Api.Mcp;
 
+// 35-F: read-only MCP tools on the single identity-scoped /mcp endpoint. There is no workspace in the
+// path; every workspace-scoped tool takes a workspaceId argument and authorizes it per call against
+// the authenticated token's `sub` BEFORE returning data (Authorize). Reads are scoped by
+// (userId=sub, workspaceId) so two users sharing the default workspace never see each other's notes.
 [McpServerToolType]
-public sealed class NoteMcpTools(INoteCardListStore cards, IHttpContextAccessor httpContextAccessor)
+public sealed class NoteMcpTools(
+    INoteCardListStore cards,
+    INoteDetailStore details,
+    INoteActionsStore actions,
+    INoteSearchViewStore searchView,
+    ITodoListStore todos,
+    IWorkspaceListStore workspaces,
+    IHttpContextAccessor httpContextAccessor)
 {
     private const int MaxPreviewLength = 120;
 
-    [McpServerTool(Name = "list_notes", ReadOnly = true)]
-    [Description("List the note cards in this workspace: id, title, date and a short content preview.")]
-    public async Task<string> ListNotes(CancellationToken ct)
+    [McpServerTool(Name = "list_workspaces", ReadOnly = true)]
+    [Description("List the caller's workspaces (id and name), including the default workspace, so a workspace can be resolved by name.")]
+    public async Task<string> ListWorkspaces(CancellationToken ct)
     {
-        var workspaceId = AuthorizedWorkspace();
+        var userId = AuthenticatedUserId();
+        var all = await workspaces.GetAllAsync(ct).ConfigureAwait(false);
+        var owned = all
+            .Where(w => w.UserId == userId)
+            .Select(w => new { id = w.WorkspaceId.Value, name = w.Name })
+            .ToList();
+        var result = new List<object> { new { id = WorkspaceId.DefaultValue, name = "Default" } };
+        result.AddRange(owned);
+        return JsonSerializer.Serialize(new { workspaces = result });
+    }
+
+    [McpServerTool(Name = "list_notes", ReadOnly = true)]
+    [Description("List note cards in a workspace: id, title, date and a short content preview.")]
+    public async Task<string> ListNotes(
+        [Description("The workspace id to list notes from (use list_workspaces to resolve a name).")] string workspaceId,
+        CancellationToken ct)
+    {
+        var userId = await AuthorizeAsync(workspaceId, ct).ConfigureAwait(false);
         var all = await cards.QueryAllAsync(ct).ConfigureAwait(false);
         var notes = all
-            .Where(c => !c.Deleted && WorkspaceScopeExtensions.Matches(workspaceId, c.WorkspaceId))
+            .Where(c => !c.Deleted && c.UserId == userId && WorkspaceScopeExtensions.Matches(workspaceId, c.WorkspaceId))
             .OrderByDescending(c => c.CreatedAt)
             .Select(c => new
             {
@@ -32,27 +64,125 @@ public sealed class NoteMcpTools(INoteCardListStore cards, IHttpContextAccessor 
         return JsonSerializer.Serialize(new { notes });
     }
 
-    // The workspace the tool may read. The route id (not request input) scopes the read. Belt-and-
-    // braces: McpAudienceMiddleware already 403s any request whose token `aud` is not bound to this
-    // workspace BEFORE the tool runs; this re-checks the same binding at the data-access point so a
-    // future mapping that forgets the filter still cannot leak across workspaces. Skipped only in the
-    // no-auth proving config (no authenticated principal), where the route id alone scopes the read.
-    private string AuthorizedWorkspace()
+    [McpServerTool(Name = "get_note", ReadOnly = true)]
+    [Description("Get a note's full content plus its action items. Rejects a note that is not in the given workspace.")]
+    public async Task<string> GetNote(
+        [Description("The workspace id the note belongs to.")] string workspaceId,
+        [Description("The note id (a GUID) to fetch.")] string noteId,
+        CancellationToken ct)
+    {
+        var userId = await AuthorizeAsync(workspaceId, ct).ConfigureAwait(false);
+        if (!Guid.TryParse(noteId, out var guid))
+            throw new McpException("Note not found.");
+        var id = new NoteId(guid);
+
+        var detail = await details.GetAsync(id, ct).ConfigureAwait(false);
+        if (detail is null
+            || detail.UserId != userId
+            || !WorkspaceScopeExtensions.Matches(workspaceId, detail.WorkspaceId))
+            throw new McpException("Note not found.");
+
+        var noteActions = await actions.QueryByNoteAsync(id, ct).ConfigureAwait(false);
+        return JsonSerializer.Serialize(new
+        {
+            id = detail.NoteId.Value.ToString(),
+            title = detail.Title,
+            date = detail.Date?.ToString("yyyy-MM-dd"),
+            content = detail.Content,
+            summary = detail.Summary,
+            decisions = detail.Decisions,
+            discussionPoints = detail.DiscussionPoints,
+            tags = detail.Tags,
+            actionItems = noteActions.Actions.Select(a => new
+            {
+                id = a.ActionId.Value.ToString(),
+                description = a.Description,
+                completed = a.Completed
+            })
+        });
+    }
+
+    [McpServerTool(Name = "search_notes", ReadOnly = true)]
+    [Description("Fuzzy full-text search of the caller's notes in a workspace; returns ranked matches with a snippet.")]
+    public async Task<string> SearchNotes(
+        [Description("The workspace id to search within.")] string workspaceId,
+        [Description("The search query.")] string query,
+        CancellationToken ct)
+    {
+        var userId = await AuthorizeAsync(workspaceId, ct).ConfigureAwait(false);
+        if (string.IsNullOrWhiteSpace(query))
+            return JsonSerializer.Serialize(new { results = Array.Empty<object>() });
+
+        var docs = await searchView.QueryByUserIdAsync(userId, ct).ConfigureAwait(false);
+        var searchable = docs
+            .Where(d => !d.Deleted && WorkspaceScopeExtensions.Matches(workspaceId, d.WorkspaceId))
+            .ToList();
+        var ranked = NoteSearchRanker.Rank(query, searchable);
+        var results = ranked.Select(r => new
+        {
+            id = r.View.NoteId.Value.ToString(),
+            title = r.View.Title,
+            field = r.MatchedField,
+            snippet = r.Snippet
+        });
+        return JsonSerializer.Serialize(new { results });
+    }
+
+    [McpServerTool(Name = "get_action_items", ReadOnly = true)]
+    [Description("List the caller's open (incomplete) action items in a workspace.")]
+    public async Task<string> GetActionItems(
+        [Description("The workspace id to list open action items from.")] string workspaceId,
+        CancellationToken ct)
+    {
+        var userId = await AuthorizeAsync(workspaceId, ct).ConfigureAwait(false);
+        var view = await todos.QueryAllAsync(ct).ConfigureAwait(false);
+        var items = view.Items
+            .Where(i => i.UserId == userId && WorkspaceScopeExtensions.Matches(workspaceId, i.WorkspaceId))
+            .Where(i => i.CompletedAt is null)
+            .OrderByDescending(i => i.AddedAt)
+            .Select(i => new
+            {
+                id = i.ItemId,
+                description = i.Description,
+                noteId = i.NoteId,
+                noteTitle = i.NoteTitle
+            });
+        return JsonSerializer.Serialize(new { actionItems = items });
+    }
+
+    // The authenticated user id (the token `sub`). JwtBearer's default inbound mapping turns `sub`
+    // into ClaimTypes.NameIdentifier, but read both so the tool is robust to mapping being disabled.
+    // No principal / no sub → an MCP error (the endpoint already 401s an unauthenticated request, so
+    // this only fires if the policy is ever loosened).
+    private string AuthenticatedUserId()
     {
         var ctx = httpContextAccessor.HttpContext
             ?? throw new InvalidOperationException("No HTTP context.");
-        var workspaceId = ctx.Request.RouteValues["workspaceId"] as string
-            ?? throw new InvalidOperationException("workspaceId route value is missing.");
+        var sub = ctx.User.FindFirst(ClaimTypes.NameIdentifier)?.Value
+            ?? ctx.User.FindFirst("sub")?.Value;
+        if (string.IsNullOrEmpty(sub))
+            throw new McpException("Not authenticated.");
+        return sub;
+    }
 
-        var options = ctx.RequestServices.GetService(typeof(McpOAuthOptions)) as McpOAuthOptions;
-        if (options is not null && ctx.User.Identity?.IsAuthenticated == true)
-        {
-            var expected = options.ResourceUri(workspaceId);
-            if (!ctx.User.FindAll("aud").Select(c => c.Value).Contains(expected, StringComparer.Ordinal))
-                throw new UnauthorizedAccessException("Token audience is not bound to this workspace.");
-        }
+    // Per-call authorization (the security core). Returns the authenticated `sub` once it is confirmed
+    // to own the requested workspace: the shared default workspace is always allowed; any other
+    // workspace requires an IWorkspaceList membership row for (userId=sub, workspaceId). Failure throws
+    // an McpException — the SDK returns a tool error result (isError), never data and never a 500.
+    private async Task<string> AuthorizeAsync(string workspaceId, CancellationToken ct)
+    {
+        var userId = AuthenticatedUserId();
+        if (!await UserOwnsWorkspaceAsync(userId, workspaceId, ct).ConfigureAwait(false))
+            throw new McpException("Workspace not found or access denied.");
+        return userId;
+    }
 
-        return workspaceId;
+    private async Task<bool> UserOwnsWorkspaceAsync(string userId, string workspaceId, CancellationToken ct)
+    {
+        if (workspaceId == WorkspaceId.DefaultValue)
+            return true;
+        var all = await workspaces.GetAllAsync(ct).ConfigureAwait(false);
+        return all.Any(w => w.WorkspaceId.Value == workspaceId && w.UserId == userId);
     }
 
     private static string BuildPreview(string content)
