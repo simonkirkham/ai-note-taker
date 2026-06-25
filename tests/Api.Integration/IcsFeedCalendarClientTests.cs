@@ -191,6 +191,22 @@ public sealed class IcsFeedCalendarClientTests
     }
 
     [Fact]
+    public async Task GetEventsForDay_RedirectResponse_ReturnsNull_NotFollowed()
+    {
+        // SSRF defense: the real HttpClient is configured AllowAutoRedirect=false, so a feed that
+        // 302s to an internal/metadata address surfaces here AS a 3xx (not the followed target). The
+        // client must treat a non-2xx as calendar_unavailable. (The DI client never follows; this
+        // proves the status handling.)
+        var redirect = new HttpResponseMessage(HttpStatusCode.Redirect);
+        redirect.Headers.Location = new Uri("http://169.254.169.254/latest/meta-data/");
+        var client = Build(new StubHandler(_ => redirect));
+
+        var result = await client.GetEventsForDayAsync(new DateOnly(2026, 6, 22), "UTC");
+
+        Assert.Null(result);
+    }
+
+    [Fact]
     public async Task GetEventsForDay_TransportException_ReturnsNull()
     {
         var handler = new StubHandler(_ => throw new HttpRequestException("boom"));

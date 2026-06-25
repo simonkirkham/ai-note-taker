@@ -2,7 +2,7 @@ namespace Api.Services;
 
 public interface ICalendarClient
 {
-    // Stable identifier of the backing calendar provider ("google" | "microsoft" | "stub").
+    // Stable identifier of the backing calendar provider ("google" | "microsoft" | "ics" | "stub" | "none").
     // Surfaced on the meetings response so the UI can label which calendar it is showing.
     string ProviderName { get; }
 

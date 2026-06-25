@@ -130,9 +130,11 @@ public sealed class IcsFeedCalendarClient : ICalendarClient
         return null;
     }
 
-    // Fetches the stored feed URL and parses it into a Calendar, or null on any failure. Re-validates
-    // the URL through the SSRF guard before each fetch (defense in depth vs DNS rebinding — a host
-    // that passed at connect time may now resolve to a private address).
+    // Fetches the stored feed URL and parses it into a Calendar, or null on any failure. Re-runs the
+    // SSRF guard before each fetch (best-effort — a stored URL could predate a guard tightening; note
+    // the documented rebinding TOCTOU residual in IcsUrlValidator). The typed HttpClient is configured
+    // with AllowAutoRedirect=false + a body-size cap, so a 3xx-to-internal can't bypass the guard and a
+    // giant feed can't OOM the Lambda.
     private async Task<Calendar?> FetchAndParseAsync(string operation)
     {
         CalendarToken? token;

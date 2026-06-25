@@ -9,9 +9,13 @@ namespace Api.Services;
 // to read credentials. IsAllowed enforces: absolute https only, host resolvable, and EVERY resolved
 // address public (no loopback / RFC1918 private / link-local / unique-local / metadata).
 //
-// Applied at BOTH connect time AND before every fetch in IcsFeedCalendarClient — defense in depth
-// against DNS rebinding (a host that resolved public at connect time can later resolve to a private
-// address). DNS resolution happens once here; the same host is re-resolved per fetch by re-calling.
+// Applied at connect time AND before every fetch in IcsFeedCalendarClient as a best-effort pre-check.
+// KNOWN RESIDUAL (accepted for this single-user app): this is a check-then-fetch (TOCTOU) — the URL's
+// host is resolved here, but HttpClient resolves DNS independently for the actual GET, so a rebinding
+// host that answers public here and private at fetch time is NOT fully closed by this validator. The
+// redirect vector IS closed (clients set AllowAutoRedirect=false). Fully closing rebinding needs a
+// SocketsHttpHandler.ConnectCallback that validates the resolved IP at connect and dials it directly —
+// a documented follow-up. See docs/phases/phase-34.md (34-E).
 public static class IcsUrlValidator
 {
     public static bool IsAllowed(string? url)
@@ -66,6 +70,8 @@ public static class IcsUrlValidator
             if (b[0] == 100 && b[1] >= 64 && b[1] <= 127) return false;
             // 0.0.0.0/8 "this host"
             if (b[0] == 0) return false;
+            // 240.0.0.0/4 reserved + 255.255.255.255 broadcast
+            if (b[0] >= 240) return false;
             return true;
         }
 
