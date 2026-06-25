@@ -39,6 +39,7 @@ import {
   useMoveNoteToWorkspace,
 } from "./hooks/useNoteMutations";
 import { useWorkspaces } from "./hooks/useWorkspaces";
+import { PrototypeRoot } from "./prototype/PrototypeRoot";
 import { recordRumEvent } from "./rum";
 import { useCurrentWorkspace } from "./workspace/context";
 import { WorkspaceProvider } from "./workspace/WorkspaceContext";
@@ -49,7 +50,11 @@ type NoteNavState = { isNew?: boolean; initialTitle?: string };
 export default function App() {
   return (
     <BrowserRouter>
-      <AppGate />
+      <Routes>
+        {/* Temporary — prototype branch only, never reaches main. Bypasses auth. */}
+        <Route path="/prototype" element={<PrototypeRoot />} />
+        <Route path="*" element={<AppGate />} />
+      </Routes>
     </BrowserRouter>
   );
 }

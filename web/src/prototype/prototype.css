@@ -1,0 +1,56 @@
+/* Throwaway prototype — never merged. CHANGE-28 notes-body typography playground. */
+
+.protoPage { min-height: 100vh; background: var(--color-bg); color: var(--color-text); }
+
+.switcher {
+  position: sticky; top: 0; z-index: 50;
+  display: flex; align-items: center; gap: var(--space-3); flex-wrap: wrap;
+  padding: var(--space-3) var(--space-5);
+  background: var(--color-surface); border-bottom: 1px solid var(--color-border);
+}
+.switcherTitle { font-weight: 700; font-size: 0.95rem; margin-right: var(--space-2); }
+.presetLabel { font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: var(--color-text-muted); }
+.segBtn {
+  border: 1px solid var(--color-border); background: var(--color-surface);
+  color: var(--color-text-muted); font: inherit; font-size: 0.82rem; font-weight: 600;
+  padding: 0.3rem 0.7rem; border-radius: 9999px; cursor: pointer; transition: all var(--transition);
+}
+.segBtn:hover { border-color: var(--color-primary); color: var(--color-primary); }
+.segActive { background: var(--color-primary); border-color: var(--color-primary); color: #fff; }
+.segActive:hover { color: #fff; }
+.switcherNote { margin-left: auto; font-size: 0.78rem; color: var(--color-text-muted); }
+
+.shell { max-width: 1100px; margin: 0 auto; padding: var(--space-5) var(--space-5) 6rem; }
+.playWrap { display: grid; grid-template-columns: 250px 1fr; gap: var(--space-5); align-items: start; }
+@media (max-width: 800px) { .playWrap { grid-template-columns: 1fr; } }
+
+.controls {
+  border: 1px solid var(--color-border); border-radius: var(--radius);
+  background: var(--color-surface); padding: var(--space-4); position: sticky; top: 72px;
+}
+.ctrlGroup { margin-bottom: 1.15rem; }
+.ctrlGroup:last-of-type { margin-bottom: 0.5rem; }
+.ctrlLabel { display: block; font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: var(--color-text-muted); margin-bottom: 0.45rem; }
+.ctrlValue { color: var(--color-primary); }
+.ctrlGroup select { width: 100%; padding: 0.4rem; border: 1px solid var(--color-border); border-radius: var(--radius); background: var(--color-surface); color: var(--color-text); font: inherit; font-size: 0.85rem; }
+.ctrlGroup input[type=range] { width: 100%; accent-color: var(--color-primary); }
+.resetBtn { margin-top: 0.4rem; width: 100%; padding: 0.45rem; border: 1px solid var(--color-border); border-radius: var(--radius); background: var(--color-bg); cursor: pointer; font: inherit; font-size: 0.82rem; color: var(--color-text); }
+.resetBtn:hover { border-color: var(--color-primary); color: var(--color-primary); }
+.currentNote { font-size: 0.74rem; color: var(--color-text-muted); margin-top: 0.85rem; line-height: 1.5; padding-top: 0.7rem; border-top: 1px dashed var(--color-border); }
+.isCurrent { color: var(--color-primary); font-weight: 600; }
+
+/* the note-detail editor card, faithful to the real screen */
+.noteCard { background: var(--color-surface); border: 1px solid var(--color-border); border-radius: var(--radius); padding: var(--space-5); }
+.capturedLabel { font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: var(--color-text-muted); margin-bottom: var(--space-3); }
+
+/* ── notes body — mirrors NoteEditor .contentInput exactly ── */
+.body { color: var(--color-text); }            /* font-size + line-height + font-family set inline */
+.body p { margin: 0; }                          /* single-spaced (CHANGE-1) */
+.body h1, .body h2, .body h3 { margin-top: 0.75rem; margin-bottom: 0.25rem; font-weight: 700; }
+.body h1 { font-size: 1.6em; }
+.body h2 { font-size: 1.3em; }
+.body h3 { font-size: 1.1em; }
+.body ul { padding-left: 1.4em; margin: 0; }
+.body li { margin: 0; }
+.body strong { font-weight: 700; }
+.body em { font-style: italic; }
