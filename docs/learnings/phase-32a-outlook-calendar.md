@@ -1,8 +1,8 @@
 # Phase 32-A — Microsoft 365 (Outlook) calendar provider
 
-**Shipped:** PR #320, deploy #620 (2026-06-23). Ships **dark** — `CALENDAR_PROVIDER` defaults to
-`google`; activate by setting it to `microsoft` and minting a token (see
-[microsoft-calendar-token.md](../guides/microsoft-calendar-token.md)).
+**Shipped:** PR #320, deploy #620 (2026-06-23). Shipped **dark** — `CALENDAR_PROVIDER` defaulted to
+`google`; activated by setting it to `microsoft` and minting an SSM token. _(Superseded by Phase 34:
+calendars are in-app per workspace; `CALENDAR_PROVIDER` + the SSM token/guide were removed in 34-D2.)_
 
 **What:** a provider-agnostic `ICalendarClient` (renamed from `IGoogleCalendarClient`) with a
 Microsoft-Graph-backed implementation selected by a `CALENDAR_PROVIDER` env switch, mirroring the

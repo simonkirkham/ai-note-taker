@@ -201,13 +201,13 @@ Scenario: Provider resolved per request, not per process
 
 ### Slice 34-D2 — Retire the Microsoft SSM path + `CALENDAR_PROVIDER` + remaining mint scripts
 
-**Status:** Not Started. **Blocked on:** Outlook in-app connect verified in prod (needs the Entra SPA redirect URI registered + a real connect). Until then the Microsoft SSM token is the live fallback for unconnected workspaces and must stay.
+**Status:** Done (PR #TBD). Outlook in-app connect verified in prod, so the last SSM fallback is removed — **Phase 34 is complete** (calendars fully in-app, per workspace, multi-provider, no long-lived SSM secret).
 
 ### Acceptance criteria (34-D2)
-1. `MicrosoftCalendarTokenSource` reads only `CalendarTokenStore`; the SSM fallback (`SsmMicrosoftRefreshTokenSource`) is gone.
-2. The factory's `CALENDAR_PROVIDER` fallback branch is removed — an unconnected workspace returns `calendar_unavailable`. The `CALENDAR_PROVIDER` env + the Microsoft SSM grant/env are dropped (infra assertion updated).
-3. `scripts/mint-microsoft-refresh-token.mjs` + the Microsoft token guide removed/archived.
-4. Prod verified: no calendar read on either provider touches SSM.
+1. ✅ `MicrosoftCalendarTokenSource` reads only `CalendarTokenStore`; `SsmMicrosoftRefreshTokenSource` deleted. Store failure degrades to null (calendar_unavailable), mirroring Google (34-D1).
+2. ✅ Factory's `CALENDAR_PROVIDER` fallback removed — an unconnected workspace resolves to `UnavailableCalendarClient` → `calendar_unavailable` → the CHANGE-25 "Connect calendar" menu. `CALENDAR_PROVIDER` env + the Microsoft SSM grant/env dropped from CDK; `MS_CLIENT_ID`/`MS_TENANT_ID` kept (in-app OAuth + Graph exchange). Infra assertions assert no SSM grant + `CALENDAR_PROVIDER` absent.
+3. ✅ `scripts/mint-microsoft-refresh-token.mjs` + `docs/guides/microsoft-calendar-token.md` removed (git history retains them).
+4. Prod verified at Scribe: the command Lambda env has no `CALENDAR_PROVIDER`/`MICROSOFT_REFRESH_TOKEN_SSM_PATH` and its role has no `ssm:GetParameter`.
 
 ### Observability
 | Silent failure | Make visible |

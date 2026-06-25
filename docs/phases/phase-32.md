@@ -56,7 +56,7 @@ Proven: personal MSA works with delegated `Calendars.Read`, no admin consent. Un
 
 ## Slice 32-A — See your Outlook meetings on Home and create a note from one
 
-**Status:** Done (PR #320, deploy #620). Ships dark: `CALENDAR_PROVIDER` defaults to `google`; set it to `microsoft` and mint a token (see [guide](../guides/microsoft-calendar-token.md)) to activate.
+**Status:** Done (PR #320, deploy #620). Ships dark: `CALENDAR_PROVIDER` defaults to `google`; set it to `microsoft` and mint a token to activate. _(Superseded by Phase 34: calendars are now in-app per workspace; `CALENDAR_PROVIDER` + the SSM mint guide were removed in 34-D2 — see git history.)_
 
 **User value:** the owner opens Home and sees today's Outlook/M365 meetings in the existing meetings list, and clicks one to create a linked note — exactly the Phase 9 Google experience, now backed by their Microsoft calendar.
 
@@ -99,7 +99,7 @@ Scenario: Missing Calendars.Read scope is not silently empty
 4. Provider selected by `CALENDAR_PROVIDER` (`google` default); DI binds exactly one `ICalendarClient`; the bound provider is logged at startup.
 5. CDK: `MS_CLIENT_ID`, `MS_TENANT_ID`, `MICROSOFT_REFRESH_TOKEN_SSM_PATH`, `CALENDAR_PROVIDER` env vars; conditional SSM `GetParameter` grant scoped to the MS token-path ARN on the Command function, mirroring the existing Google grant (`AddToRolePolicy` is correct here — the Command function has no alias, so the `CurrentVersion`-hash freeze that motivates resource-grants elsewhere does not apply).
 6. `GetNextOccurrenceAsync` on the MS client returns `null` (logged) until 32-B; the existing handler maps it to `no_future_occurrences` (404), so there is no unhandled 500.
-7. `docs/guides/microsoft-calendar-token.md` documents minting the refresh token (run the committed device-code tool → `aws ssm put-parameter --overwrite`) and re-minting on `invalid_grant`, mirroring the Google guide.
+7. `docs/guides/microsoft-calendar-token.md` documented minting the refresh token (device-code tool → `aws ssm put-parameter --overwrite`) and re-minting on `invalid_grant`. _(Removed in 34-D2 with the SSM path; in git history.)_
 
 ### Observability
 
