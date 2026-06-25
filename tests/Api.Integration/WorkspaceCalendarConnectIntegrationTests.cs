@@ -72,6 +72,17 @@ public sealed class WorkspaceCalendarConnectIntegrationTests : IClassFixture<Api
         resp.EnsureSuccessStatusCode();
     }
 
+    // 34-E: a public-host feed URL (passes the SSRF guard offline) whose validation fetch is stubbed
+    // by FakeIcsValidationHandler to return a valid ICS.
+    private const string GoodIcsUrl = "https://8.8.8.8/cal.ics";
+
+    private async Task ConnectIcsAsync(string wsId, string url)
+    {
+        var resp = await _client.PostAsync($"/w/{wsId}/calendar/connect/ics",
+            JsonContent.Create(new { url }));
+        resp.EnsureSuccessStatusCode();
+    }
+
     private async Task<(string status, string? email)> ConnectionAsync(string wsId)
     {
         var body = await (await _client.GetAsync($"/w/{wsId}/calendar/connection")).Content.ReadFromJsonAsync<JsonElement>();
@@ -196,5 +207,82 @@ public sealed class WorkspaceCalendarConnectIntegrationTests : IClassFixture<Api
         Assert.Equal("microsoft", await ConnectionProviderAsync(wsA));
         Assert.True(_store.Has(TestUser, wsA, "microsoft"));
         Assert.False(_store.Has(TestUser, wsA, "google"));
+    }
+
+    // ── 34-E: ICS feed as a connectable provider per workspace ───────────────────────────
+
+    [Fact]
+    public async Task ConnectIcs_StoresUrlAndReadsAsIcs()
+    {
+        var wsA = await CreateWorkspaceAsync("A");
+        await ConnectIcsAsync(wsA, GoodIcsUrl);
+
+        Assert.Equal("ics", await ConnectionProviderAsync(wsA));
+        // ICS feeds carry no account identity → email is null.
+        Assert.Equal(("connected", (string?)null), await ConnectionAsync(wsA));
+        Assert.Equal(GoodIcsUrl, _store.Peek(TestUser, wsA, "ics")!.RefreshToken);
+    }
+
+    [Fact]
+    public async Task ConnectingIcs_ClearsAPreExistingGoogleToken()
+    {
+        var wsA = await CreateWorkspaceAsync("A");
+        await ConnectAsync(wsA, "a@gmail.com", "rt-a");
+        await ConnectIcsAsync(wsA, GoodIcsUrl);
+
+        Assert.Equal("ics", await ConnectionProviderAsync(wsA));
+        Assert.True(_store.Has(TestUser, wsA, "ics"));
+        Assert.False(_store.Has(TestUser, wsA, "google"));
+    }
+
+    [Fact]
+    public async Task ConnectingGoogle_ClearsAPreExistingIcsToken()
+    {
+        var wsA = await CreateWorkspaceAsync("A");
+        await ConnectIcsAsync(wsA, GoodIcsUrl);
+        await ConnectAsync(wsA, "a@gmail.com", "rt-a");
+
+        Assert.Equal("google", await ConnectionProviderAsync(wsA));
+        Assert.True(_store.Has(TestUser, wsA, "google"));
+        Assert.False(_store.Has(TestUser, wsA, "ics"));
+    }
+
+    [Fact]
+    public async Task ConnectIcs_SsrfRejectedUrl_Returns400_AndStoresNothing()
+    {
+        var wsA = await CreateWorkspaceAsync("A");
+        var resp = await _client.PostAsync($"/w/{wsA}/calendar/connect/ics",
+            JsonContent.Create(new { url = "http://169.254.169.254/latest/meta-data/" }));
+
+        Assert.Equal(HttpStatusCode.BadRequest, resp.StatusCode);
+        var body = await resp.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("invalid_request", body.GetProperty("error").GetString());
+        Assert.False(_store.Has(TestUser, wsA, "ics"));
+    }
+
+    [Fact]
+    public async Task ConnectIcs_UnparseableFeed_Returns400_AndStoresNothing()
+    {
+        var wsA = await CreateWorkspaceAsync("A");
+        // FakeIcsValidationHandler returns non-ICS for a "bad-feed" path → invalid_feed.
+        var resp = await _client.PostAsync($"/w/{wsA}/calendar/connect/ics",
+            JsonContent.Create(new { url = "https://8.8.8.8/bad-feed.ics" }));
+
+        Assert.Equal(HttpStatusCode.BadRequest, resp.StatusCode);
+        var body = await resp.Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("invalid_feed", body.GetProperty("error").GetString());
+        Assert.False(_store.Has(TestUser, wsA, "ics"));
+    }
+
+    [Fact]
+    public async Task Disconnect_ClearsIcsToken()
+    {
+        var wsA = await CreateWorkspaceAsync("A");
+        await ConnectIcsAsync(wsA, GoodIcsUrl);
+
+        (await _client.PostAsync($"/w/{wsA}/calendar/disconnect", null)).EnsureSuccessStatusCode();
+
+        Assert.Equal("needs_auth", (await ConnectionAsync(wsA)).status);
+        Assert.False(_store.Has(TestUser, wsA, "ics"));
     }
 }

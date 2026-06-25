@@ -11,9 +11,10 @@ namespace Api.Services;
 //   1. STUB_CALENDAR_JSON set → the stub (test/local), regardless of workspace.
 //   2. A stored Microsoft token for (user, workspace) → Microsoft.
 //   3. A stored Google token for (user, workspace) → Google.
-//   4. No in-app connection → UnavailableCalendarClient (→ calendar_unavailable → "Connect calendar").
-// One provider per workspace is enforced at connect time (connecting one deletes the other's token),
-// so at most one of steps 2/3 matches.
+//   4. A stored ICS feed URL for (user, workspace) → IcsFeedCalendarClient (34-E).
+//   5. No in-app connection → UnavailableCalendarClient (→ calendar_unavailable → "Connect calendar").
+// One provider per workspace is enforced at connect time (connecting one deletes the other two
+// tokens), so at most one of steps 2/3/4 matches.
 public interface ICalendarClientFactory
 {
     Task<ICalendarClient> ForAsync(string workspaceId, CancellationToken ct = default);
@@ -38,6 +39,11 @@ public sealed class CalendarClientFactory(
         {
             Logger.LogInformation("Calendar client resolved: google (workspace {WorkspaceId})", workspaceId);
             return services.GetRequiredService<GoogleCalendarClient>();
+        }
+        if (await store.GetAsync(currentUser.UserId, workspaceId, "ics", ct).ConfigureAwait(false) is not null)
+        {
+            Logger.LogInformation("Calendar client resolved: ics (workspace {WorkspaceId})", workspaceId);
+            return services.GetRequiredService<IcsFeedCalendarClient>();
         }
 
         Logger.LogInformation("No calendar connected for workspace {WorkspaceId}; reporting calendar_unavailable", workspaceId);

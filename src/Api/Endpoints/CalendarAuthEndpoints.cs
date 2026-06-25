@@ -1,6 +1,8 @@
 using Api.Auth;
 using Api.CommandHandlers;
+using Api.Services;
 using Domain.Workspaces;
+using Ical.Net;
 
 namespace Api.Endpoints;
 
@@ -15,6 +17,8 @@ public static class CalendarAuthEndpoints
 {
     private const string Google = "google";
     private const string Microsoft = "microsoft";
+    private const string Ics = "ics";
+    private static readonly string[] AllProviders = [Google, Microsoft, Ics];
 
     public static void MapCalendarAuthEndpoints(this WebApplication app)
     {
@@ -93,19 +97,66 @@ public static class CalendarAuthEndpoints
                 Microsoft, result.Tokens.RefreshToken, result.Tokens.Email, log, ct);
         }).RequireAuthorization();
 
+        // 34-E: connect via a published ICS feed URL (no OAuth — bypasses the M365 admin-consent
+        // wall). The URL is the credential, stored as the "ics" token's RefreshToken (Email null).
+        scoped.MapPost("/calendar/connect/ics", async (
+            IcsConnectRequest req, ICalendarTokenStore store, IHttpClientFactory httpClientFactory,
+            ICurrentUser currentUser, ICurrentWorkspace currentWorkspace, IWorkspaceCommandHandler workspaceHandler,
+            ILoggerFactory loggerFactory, CancellationToken ct) =>
+        {
+            var log = loggerFactory.CreateLogger("Api.Calendar.Connect");
+            var url = req.Url?.Trim();
+
+            // SSRF guard FIRST (absolute https + no private/loopback/metadata host) — never fetch a
+            // URL that fails it. invalid_request because the URL itself is rejected.
+            if (!IcsUrlValidator.IsAllowed(url))
+            {
+                log.LogWarning("ICS connect rejected by the SSRF guard (workspace {WorkspaceId})", currentWorkspace.WorkspaceId);
+                return Results.BadRequest(new { error = "invalid_request" });
+            }
+
+            // One-time validation fetch+parse: confirm the URL really serves a parseable ICS before
+            // storing it, so a connect either yields meetings or fails loudly here (not silently at
+            // the next meetings read). Uses a short-timeout client; any failure → invalid_feed.
+            var http = httpClientFactory.CreateClient("ics-validate");
+            try
+            {
+                using var resp = await http.GetAsync(url, ct);
+                if (!resp.IsSuccessStatusCode)
+                {
+                    log.LogWarning("ICS connect validation fetch returned {Status} (workspace {WorkspaceId})", (int)resp.StatusCode, currentWorkspace.WorkspaceId);
+                    return Results.BadRequest(new { error = "invalid_feed" });
+                }
+                var body = await resp.Content.ReadAsStringAsync(ct);
+                _ = Calendar.Load(body);
+            }
+            catch (Exception ex)
+            {
+                log.LogWarning(ex, "ICS connect validation failed (fetch/parse) (workspace {WorkspaceId})", currentWorkspace.WorkspaceId);
+                return Results.BadRequest(new { error = "invalid_feed" });
+            }
+
+            return await CompleteConnectAsync(
+                store, workspaceHandler, currentUser.UserId, currentWorkspace.WorkspaceId,
+                Ics, url!, email: null, log, ct);
+        }).RequireAuthorization();
+
         scoped.MapGet("/calendar/connection", async (
             ICalendarTokenStore store, ICurrentUser currentUser, ICurrentWorkspace currentWorkspace, CancellationToken ct) =>
         {
             // Strongly-consistent point reads of the token store (NOT an async projection), keyed by
             // (user, workspace), so it never leaks another user's/workspace's connection and reflects
             // a just-completed connect without waiting on the projector (RYW). Single-provider, so at
-            // most one of these is set; check Microsoft first, then Google.
+            // most one of these is set; check Microsoft, then Google, then ICS.
             var ms = await store.GetAsync(currentUser.UserId, currentWorkspace.WorkspaceId, Microsoft, ct);
             if (ms is not null)
                 return Results.Ok(new { status = "connected", provider = Microsoft, email = ms.Email });
             var google = await store.GetAsync(currentUser.UserId, currentWorkspace.WorkspaceId, Google, ct);
-            return google is not null
-                ? Results.Ok(new { status = "connected", provider = Google, email = google.Email })
+            if (google is not null)
+                return Results.Ok(new { status = "connected", provider = Google, email = google.Email });
+            var ics = await store.GetAsync(currentUser.UserId, currentWorkspace.WorkspaceId, Ics, ct);
+            return ics is not null
+                ? Results.Ok(new { status = "connected", provider = Ics, email = ics.Email })
                 : Results.Ok(new { status = "needs_auth", provider = (string?)null, email = (string?)null });
         }).RequireAuthorization();
 
@@ -116,8 +167,8 @@ public static class CalendarAuthEndpoints
         {
             var log = loggerFactory.CreateLogger("Api.Calendar.Connect");
             var workspaceId = currentWorkspace.WorkspaceId;
-            await store.DeleteAsync(currentUser.UserId, workspaceId, Google, ct);
-            await store.DeleteAsync(currentUser.UserId, workspaceId, Microsoft, ct);
+            foreach (var provider in AllProviders)
+                await store.DeleteAsync(currentUser.UserId, workspaceId, provider, ct);
             await RecordDisconnectionEventAsync(workspaceHandler, workspaceId, log, ct);
             return Results.Ok(new { status = "needs_auth", provider = (string?)null });
         }).RequireAuthorization();
@@ -130,13 +181,14 @@ public static class CalendarAuthEndpoints
         ICalendarTokenStore store, IWorkspaceCommandHandler workspaceHandler, string userId, string workspaceId,
         string provider, string refreshToken, string? email, ILogger log, CancellationToken ct)
     {
-        // Clear the OTHER provider's token BEFORE writing the new one (decision #3: one provider per
-        // workspace). Delete-first matters because resolution is Microsoft-first: if we upserted
-        // Google then a delete of a stale Microsoft token failed, the stale token would shadow the
-        // new Google connection. Delete-first means a failure leaves the workspace unconnected
-        // (clean needs_auth) rather than serving the wrong calendar.
-        var other = provider == Google ? Microsoft : Google;
-        await store.DeleteAsync(userId, workspaceId, other, ct);
+        // Clear the OTHER providers' tokens BEFORE writing the new one (decision #3: one provider per
+        // workspace, now {google, microsoft, ics}). Delete-first matters because resolution is
+        // Microsoft→Google→ICS: if we upserted a lower-priority provider then a delete of a stale
+        // higher-priority token failed, the stale token would shadow the new connection. Delete-first
+        // means a failure leaves the workspace unconnected (clean needs_auth), never serving the
+        // wrong calendar.
+        foreach (var other in AllProviders.Where(p => p != provider))
+            await store.DeleteAsync(userId, workspaceId, other, ct);
         await store.UpsertAsync(userId, workspaceId, provider, refreshToken, email, ct);
         await RecordConnectionEventAsync(workspaceHandler, workspaceId, provider, email, log, ct);
         log.LogInformation(
@@ -179,3 +231,6 @@ public static class CalendarAuthEndpoints
 }
 
 record CalendarConnectRequest(string Code, string CodeVerifier, string RedirectUri);
+
+// 34-E: the published ICS feed URL is the only credential — no auth code/PKCE.
+record IcsConnectRequest(string? Url);

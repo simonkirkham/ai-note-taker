@@ -1,6 +1,6 @@
 import { useQueryClient, type UseQueryResult } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
-import { disconnectCalendar, type CalendarConnection } from "../api/calendarAuth";
+import { connectIcsCalendar, disconnectCalendar, type CalendarConnection } from "../api/calendarAuth";
 import { CalendarMeeting, type MeetingsResult } from "../api/meetings";
 import { keys } from "../api/queryKeys";
 import { startCalendarConnect } from "../auth/pkce";
@@ -40,6 +40,7 @@ function providerLabel(provider: string): string | null {
   switch (provider) {
     case "microsoft": return "Outlook";
     case "google": return "Google Calendar";
+    case "ics": return "Calendar feed";
     default: return null;
   }
 }
@@ -75,6 +76,11 @@ export function MeetingsSection({ onOpenNote }: { onOpenNote: (noteId: string, t
   const [selectedDate, setSelectedDate] = useState(today);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [calendarMenuOpen, setCalendarMenuOpen] = useState(false);
+  // 34-E: ICS feed connect — the input reveals on demand inside the calendar menu.
+  const [icsFormOpen, setIcsFormOpen] = useState(false);
+  const [icsUrl, setIcsUrl] = useState("");
+  const [icsSaving, setIcsSaving] = useState(false);
+  const [icsError, setIcsError] = useState<string | null>(null);
   const [bannerDismissed, setBannerDismissed] = useState(false);
   const [creating, setCreating] = useState<Set<string>>(new Set());
   const [createErrors, setCreateErrors] = useState<Map<string, string>>(new Map());
@@ -97,6 +103,12 @@ export function MeetingsSection({ onOpenNote }: { onOpenNote: (noteId: string, t
   const sourceLabel = displayState.status === "loaded" ? providerLabel(displayState.provider) : null;
   const connection = useCalendarConnection();
   const connectedEmail = connection.data?.status === "connected" ? connection.data.email : null;
+  // 34-E: an ICS feed connection has no email, so "is connected" can't key off connectedEmail alone.
+  const isConnected = connection.data?.status === "connected";
+  // Friendly label from the connection's own provider (covers ICS, which carries no email and may
+  // have no loaded-meetings provider to fall back on).
+  const connectionLabel =
+    connection.data?.status === "connected" ? providerLabel(connection.data.provider) : null;
   const needsAuth = connection.data?.status === "needs_auth";
 
   // Reminders are anchored to the real today — fed only by the today query.
@@ -182,6 +194,27 @@ export function MeetingsSection({ onOpenNote }: { onOpenNote: (noteId: string, t
     } finally {
       void qc.invalidateQueries({ queryKey: keys.calendarConnection });
       void qc.invalidateQueries({ queryKey: keys.meetings(selectedDate) });
+    }
+  }
+
+  // 34-E: connect a published ICS feed URL. On success, invalidate the connection + meetings queries
+  // (mirrors handleDisconnect) so the header and list reflect the new feed.
+  async function handleConnectIcs() {
+    const url = icsUrl.trim();
+    if (!url) return;
+    setIcsSaving(true);
+    setIcsError(null);
+    try {
+      await connectIcsCalendar(url);
+      setIcsFormOpen(false);
+      setIcsUrl("");
+      setCalendarMenuOpen(false);
+      void qc.invalidateQueries({ queryKey: keys.calendarConnection });
+      void qc.invalidateQueries({ queryKey: keys.meetings(selectedDate) });
+    } catch {
+      setIcsError("Could not connect that feed. Check the URL is a public ICS link.");
+    } finally {
+      setIcsSaving(false);
     }
   }
 
@@ -286,8 +319,8 @@ export function MeetingsSection({ onOpenNote }: { onOpenNote: (noteId: string, t
             <p className={styles.calendarMenuStatus}>
               {connectedEmail
                 ? `Connected as ${connectedEmail}`
-                : sourceLabel
-                  ? `Using ${sourceLabel}`
+                : (connectionLabel ?? sourceLabel)
+                  ? `Using ${connectionLabel ?? sourceLabel}`
                   : "No calendar connected"}
             </p>
             <button
@@ -304,7 +337,40 @@ export function MeetingsSection({ onOpenNote }: { onOpenNote: (noteId: string, t
             >
               Connect Outlook
             </button>
-            {connectedEmail && (
+            <button
+              data-testid="menu-connect-ics"
+              className={styles.meetingsRetryLink}
+              aria-expanded={icsFormOpen}
+              aria-controls="ics-feed-form"
+              onClick={() => setIcsFormOpen((open) => !open)}
+            >
+              Connect calendar feed (ICS)
+            </button>
+            {icsFormOpen && (
+              <div id="ics-feed-form" className={styles.icsForm}>
+                <input
+                  type="url"
+                  data-testid="ics-feed-input"
+                  aria-label="Calendar feed URL"
+                  placeholder="https://…/calendar.ics"
+                  className={styles.icsInput}
+                  value={icsUrl}
+                  onChange={(e) => setIcsUrl(e.target.value)}
+                />
+                <button
+                  data-testid="ics-feed-save"
+                  className={styles.meetingsRetryLink}
+                  disabled={icsSaving || !icsUrl.trim()}
+                  onClick={() => void handleConnectIcs()}
+                >
+                  {icsSaving ? "Saving…" : "Save"}
+                </button>
+                {icsError && (
+                  <p data-testid="ics-feed-error" role="alert" className={styles.icsError}>{icsError}</p>
+                )}
+              </div>
+            )}
+            {isConnected && (
               <button
                 data-testid="menu-disconnect"
                 className={styles.meetingsRetryLink}

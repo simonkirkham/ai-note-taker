@@ -20,8 +20,14 @@ public static class CalendarClientRegistration
         // unconnected-workspace client.
         services.AddScoped<GoogleCalendarClient>();
         services.AddHttpClient<MicrosoftCalendarClient>(c => c.Timeout = TimeSpan.FromSeconds(10));
+        // 34-E: ICS feed client — typed HttpClient (10s timeout, fetch-per-request), scoped (reads
+        // ICurrentUser/ICurrentWorkspace + the token store to resolve the feed URL).
+        services.AddHttpClient<IcsFeedCalendarClient>(c => c.Timeout = TimeSpan.FromSeconds(10));
         services.AddSingleton<StubCalendarClient>();
         services.AddSingleton<UnavailableCalendarClient>();
+
+        // 34-E: short-timeout client used by the connect/ics endpoint's one-time validation fetch.
+        services.AddHttpClient("ics-validate", c => c.Timeout = TimeSpan.FromSeconds(10));
 
         services.AddScoped<ICalendarClientFactory, CalendarClientFactory>();
     }
