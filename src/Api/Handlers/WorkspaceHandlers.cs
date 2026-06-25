@@ -38,7 +38,8 @@ public static class WorkspaceHandlers
         {
             workspaceId = w.WorkspaceId.Value,
             name = w.Name,
-            isDefault = w.WorkspaceId.IsDefault
+            isDefault = w.WorkspaceId.IsDefault,
+            theme = w.Theme
         });
         return Results.Ok(new { workspaces });
     }
@@ -110,6 +111,29 @@ public static class WorkspaceHandlers
 
         SetConsistencyToken(response, id, version);
         return Results.NoContent();
+    }
+
+    public static async Task<IResult> SetWorkspaceTheme(string workspaceId, SetWorkspaceThemeRequest req, HttpResponse response, IWorkspaceCommandHandler handler, IWorkspaceListStore store, ICurrentUser currentUser, CancellationToken ct)
+    {
+        var id = new WorkspaceId(workspaceId);
+        if (!await OwnsAsync(store, currentUser, id, ct).ConfigureAwait(false))
+            return Results.NotFound();
+        long version;
+        try
+        {
+            version = await handler.HandleAsync(new SetWorkspaceTheme(id, req.Theme), ct);
+        }
+        catch (WorkspaceNotFoundException)
+        {
+            return Results.NotFound();
+        }
+        catch (InvalidOperationException)
+        {
+            return Results.BadRequest();
+        }
+
+        SetConsistencyToken(response, id, version);
+        return Results.Ok();
     }
 
     private static async Task<bool> OwnsAsync(IWorkspaceListStore store, ICurrentUser currentUser, WorkspaceId id, CancellationToken ct)

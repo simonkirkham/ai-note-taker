@@ -15,7 +15,7 @@ export type Theme =
   | "plum";
 
 const STORAGE_KEY = "note-taker-theme";
-const THEMES: readonly Theme[] = [
+export const THEMES: readonly Theme[] = [
   "teal",
   "indigo",
   "rose",
@@ -29,7 +29,7 @@ const THEMES: readonly Theme[] = [
   "carbon",
   "plum",
 ];
-const DEFAULT_THEME: Theme = "teal";
+export const DEFAULT_THEME: Theme = "teal";
 
 // Reads the persisted theme, falling back to Teal for a missing or
 // unrecognised value. Mirrors the inline bootstrap in index.html.
@@ -47,7 +47,7 @@ export function readStoredTheme(): Theme {
 
 // Teal is the :root default, so it carries no data-theme attribute; the other
 // themes set it. This swaps the whole palette through the CSS cascade.
-function applyTheme(theme: Theme): void {
+export function applyTheme(theme: Theme): void {
   if (theme === DEFAULT_THEME) {
     delete document.documentElement.dataset.theme;
   } else {

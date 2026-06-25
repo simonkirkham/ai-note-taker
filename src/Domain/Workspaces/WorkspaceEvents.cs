@@ -10,3 +10,7 @@ public record WorkspaceDeleted(WorkspaceId WorkspaceId) : WorkspaceEvent;
 // the reserved default workspace, which has no per-user aggregate stream (see WorkspaceCommandHandler).
 public record WorkspaceCalendarConnected(WorkspaceId WorkspaceId, string Provider, string? AccountRef) : WorkspaceEvent;
 public record WorkspaceCalendarDisconnected(WorkspaceId WorkspaceId) : WorkspaceEvent;
+
+// 36-A: the per-workspace UI theme. Additive — never recorded for the reserved default workspace,
+// which has no per-user aggregate stream (see WorkspaceCommandHandler).
+public record WorkspaceThemeSet(WorkspaceId WorkspaceId, string Theme) : WorkspaceEvent;

@@ -1,6 +1,6 @@
-import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import ThemePicker from '../components/ThemePicker'
+import { render, screen } from '../test/render'
 
 beforeEach(() => {
   localStorage.clear()
