@@ -114,20 +114,7 @@ _(Claude Cowork connector — read-only, workspace-scoped MCP server — graduat
 - Drag-and-drop UI in `ActionsSection`/`TodoSection` with **optimistic reorder** (reflect the drag immediately, reconcile on error) and keyboard-accessible reordering (don't regress the jsx-a11y gate — see CHANGE-15).
 - Decide scope: per-note action items, the cross-note home to-do list, or both — and whether ordering is shared or per-view.
 
-**Why it isn't scheduled yet:** Genuinely new capability (not a tweak) with real event-model work — a persisted ordering across an event-sourced projection, kept correct under optimistic UI and the async projector (RYW). Needs Scout to design the event(s) and the position model. Pairs with the to-do due-date/grouping feature above (both add structure to the to-do list) and with [[#rename-to-do--action-items]].
-
-**Raised in:** User feature idea, 2026-06-25.
-
----
-
-## Rename to-do / action items
-
-**What:** Let the user edit the text of an existing to-do / action item. Today an action's description is fixed once created — the only operations are complete, reopen, and delete (no edit command/event exists). This adds in-place renaming so a mis-captured or auto-extracted action can be corrected without delete-and-recreate. Scope when broken down:
-- A new additive event/command (e.g. `ActionItemDescriptionEdited` / `TodoRenamed`) on the action-item / todo aggregate; existing events untouched.
-- Projection update to fold the new text into `NoteActions` / the todo view.
-- Inline-edit UI in `ActionsSection`/`TodoSection` (click-to-edit or an edit affordance) with **optimistic update** and error reconcile.
-
-**Why it isn't scheduled yet:** It introduces new capability (editing is impossible today), so it's a feature not a minor tweak — but it's **small and well-bounded**: one new event + projection fold + an inline-edit control. A good candidate for a single thin slice when picked up. Related: [[#drag-and-drop-to-reorder-to-do--action-items]].
+**Why it isn't scheduled yet:** Genuinely new capability (not a tweak) with real event-model work — a persisted ordering across an event-sourced projection, kept correct under optimistic UI and the async projector (RYW). Needs Scout to design the event(s) and the position model. Pairs with the to-do due-date/grouping feature above (both add structure to the to-do list) and with the edit-text feature (graduated to **[Phase 39](phases/phase-39.md)**).
 
 **Raised in:** User feature idea, 2026-06-25.
 
