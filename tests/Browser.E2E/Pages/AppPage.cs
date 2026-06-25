@@ -474,6 +474,45 @@ public sealed class AppPage
             page.GetByTestId("todo-section").GetByText(description)
         ).ToBeVisibleAsync(new() { Timeout = 15000 });
 
+    // 37-A: move an open to-do up one position via the keyboard-accessible Move button. Waits for
+    // the POST /todos/reorder so the write (and its consistency token) is committed before asserting.
+    public async Task MoveTodoUpAsync(string description)
+    {
+        var post = page.WaitForResponseAsync(r => r.Url.Contains("/todos/reorder") && r.Request.Method == "POST");
+        await page.GetByRole(AriaRole.Button, new() { Name = $"Move \"{description}\" up" }).ClickAsync();
+        await post;
+    }
+
+    // 37-A read-your-writes for reorder: reload FIRST (drops the optimistic cache), then assert
+    // `first` precedes `second` in the gated to-do list. The post-reload GET /todos carries the
+    // token so the async projector is gated to head; reload-loop while a warming projector lags.
+    public async Task AssertTodoOrderAfterReloadAsync(string first, string second, int timeoutMs = 30000)
+    {
+        var deadline = DateTime.UtcNow.AddMilliseconds(timeoutMs);
+        while (true)
+        {
+            await page.ReloadAsync();
+            try
+            {
+                var list = page.GetByTestId("todo-list");
+                await Assertions.Expect(list.GetByText(first)).ToBeVisibleAsync(new() { Timeout = 2500 });
+                await Assertions.Expect(list.GetByText(second)).ToBeVisibleAsync(new() { Timeout = 2500 });
+
+                var texts = (await list.Locator("li").AllInnerTextsAsync()).ToList();
+                var iFirst = texts.FindIndex(t => t.Contains(first));
+                var iSecond = texts.FindIndex(t => t.Contains(second));
+                if (iFirst >= 0 && iSecond >= 0 && iFirst < iSecond)
+                    return;
+                if (DateTime.UtcNow >= deadline)
+                    throw new Exception($"Order not [{first} < {second}] after reload: {string.Join(" | ", texts)}");
+            }
+            catch (PlaywrightException) when (DateTime.UtcNow < deadline)
+            {
+                // re-loop: reload + recheck until the gated read returns the new order or we time out
+            }
+        }
+    }
+
     // The real read-your-writes proof: reload FIRST (drops the optimistic cache, so the
     // todo can only come from the server), then assert. The post-reload GET /todos carries
     // the sessionStorage-persisted token, so the gate waits for the async projector — the

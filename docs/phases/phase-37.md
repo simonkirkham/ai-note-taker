@@ -42,7 +42,7 @@ Single thin vertical slice. Breaker layer-splits the implementation: **pass 1** 
 - **Snapshot sets position** — Given todos `a, b, c` (AddedAt a<b<c) in `w1`, When `TodoListReordered(w1, [c, a, b])` is folded, Then `GET /w1/todos` returns open items ordered `c, a, b`.
 - **Unpositioned item appends by AddedAt** — Given the order `[c, a]` applied and a new todo `d` added afterwards, Then the list is `c, a, b, d` (b and d unpositioned → after positioned, by AddedAt).
 - **Ordering is per-workspace** — Given `TodoListReordered(w1, …)`, Then items in `w2` keep `AddedAt` order (unaffected).
-- **Rebuild reproduces order** — Given the full stream replayed by `ProjectionRebuildHandler`, Then the persisted `Position` matches the live fold.
+- **`TodoListProjection` folds the snapshot** — the in-memory fold sets `Position` (unit-covered). Note: the whole `TodoList` read model is **projector-maintained only** — it is not wired into `ProjectionRebuildHandler` today (a pre-existing gap, not introduced here), so there is no rebuild path to re-derive `Position`; logged as a technical-improvement.
 
 ### API + store
 

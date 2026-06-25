@@ -194,6 +194,7 @@ public sealed class ProjectorTests
         public Task ApplyNoteEventsAsync(NoteId noteId, IReadOnlyList<EventEnvelope> history, List<EventEnvelope> newEnvelopes, CancellationToken ct) => throw new InvalidOperationException("boom");
         public Task ApplyActionItemEventsAsync(NoteId noteId, IReadOnlyList<EventEnvelope> history, IReadOnlyList<IDomainEvent> newEvents, List<EventEnvelope> newEnvelopes, CancellationToken ct) => throw new InvalidOperationException("boom");
         public Task ApplyTodoEventsAsync(IReadOnlyList<IDomainEvent> newEvents, List<EventEnvelope> newEnvelopes, CancellationToken ct) => throw new InvalidOperationException("boom");
+        public Task ApplyTodoOrderEventsAsync(IReadOnlyList<IDomainEvent> newEvents, CancellationToken ct) => throw new InvalidOperationException("boom");
         public Task ApplyFolderEventsAsync(List<EventEnvelope> newEnvelopes, CancellationToken ct) => throw new InvalidOperationException("boom");
         public Task ApplyWorkspaceEventsAsync(List<EventEnvelope> newEnvelopes, CancellationToken ct) => throw new InvalidOperationException("boom");
     }

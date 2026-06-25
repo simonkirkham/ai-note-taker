@@ -49,12 +49,29 @@
 | BUG-35 | Search over-matches — `NoteSearchRanker` scored whole fields with FuzzySharp `PartialRatio`/`TokenSetRatio`, which match any shared substring window, so "Andrew" matched the word "and" across unrelated notes. Replaced with word-level matching (exact / prefix / tight whole-token fuzzy). | Done | 22-A |
 | BUG-36 | `npm run update` crashes on Windows with "the term 'silent' is not recognized" — `update.ps1` had UTF-8 em-dashes/arrows but no BOM, so Windows PowerShell 5.1 read it as Windows-1252; the em-dash byte `0x94` decoded to a `"` that closed a string early and broke parsing. Rewrote the script ASCII-only; added a `publish.spec.ts` guard that fails on any non-ASCII byte. | Done | 31-E |
 | BUG-37 | The ✓ "Mark as discussed" tick on a note heading no longer works — clicking it does not toggle strikethrough on the topic/heading. | Done | 7-B |
+| BUG-38 | `TagsJourney.AddTag_PersistsAfterNavigation` transiently red-gated the 39-A deploy — `tag-input` never became visible in 30 s (a basic always-present element → the app/page failed to load, not a projector lag). Passed on rerun; the two immediately-prior deploys (36-A, CHANGE-28) were green, so it is a chronic cold-start gate flake, not a 36-A/CHANGE-28 regression. The journeys also captured **zero** `[browser]` console output, so the failure gave no root-cause signal. | Open | TI-39 |
 
 Further bugs will be appended as they are identified.
 
 ---
 
 > **Fixed bugs are condensed in [phase-bugs-archive.md](phase-bugs-archive.md)** (one terse entry each, anchors preserved). The Summary table above stays the full index; only **open** defects keep a detailed section below.
+
+---
+
+## BUG-38 — `TagsJourney` transiently red-gated a deploy (cold-start app-load flake) + journeys give no diagnostic
+
+**Status:** Open — fast-follow. Surfaced during the 39-A deploy (run 28197938887, attempt 1, 2026-06-25). Not caused by 39-A.
+
+**Symptom:** `TagsJourney.AddTag_PersistsAfterNavigation` failed waiting 30 s for `GetByTestId("tag-input")` (`AppPage.AddTagAsync`). `tag-input` is a static, always-present element on a note, so a 30 s miss means the page/app did not render in time — a cold frontend/app-load stall, not projector lag.
+
+**Why it's a flake, not a regression:** the two deploys immediately before (36-A `3bf37fb5`, CHANGE-28 `6fdb3206`) were both green (their E2E gate, incl. `TagsJourney`, passed), and the rerun (attempt 2) passed `TagsJourney`. So neither 36-A's theme bootstrap nor CHANGE-28 broke app-load. Chronic cold-start gate flakiness (TI-39 family; cf. BUG-26).
+
+**Second, separate finding (real, fixed):** the same run deterministically failed `ActionEditJourney` (39-A's own new journey) — a **temp-id race**: the journey edited the action before the optimistic add reconciled its `temp-…` id to the real server id, so the edit PUT hit `/actions/temp-…` → 404 → rolled back. Fixed in the same PR by reconciling through a gated reload before editing. (Latent product edge: editing within the sub-second add-reconcile window loses the edit — shared with complete/delete, left consistent.)
+
+**Diagnostic gap (the durable lesson):** the run captured **zero** `[browser …]` console lines — xUnit swallows `Console.WriteLine` from the journeys, so an app-load failure produced only a bare Playwright timeout with no cause. Per the CLAUDE.md E2E guardrail, the action/tag reload-assert helpers should surface evidence through the **thrown exception message** (page.Url, rendered state, recorded sync request URLs) so the next occurrence is diagnosable.
+
+**Next step:** add thrown-message diagnostics to the shared reload-tolerant assert helpers; re-evaluate whether the cold app-load needs a warm-up or a more tolerant initial wait once a diagnosable failure is captured.
 
 ---
 

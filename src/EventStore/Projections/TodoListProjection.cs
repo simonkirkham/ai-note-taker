@@ -7,6 +7,10 @@ namespace EventStore.Projections;
 public sealed class TodoListProjection
 {
     private readonly Dictionary<NoteId, string> _noteTitles = new();
+    // Explicit per-item position from the latest TodoListReordered snapshot (keyed by item id;
+    // item ids are globally unique across todos and action items). Items absent from any snapshot
+    // sort after positioned ones by AddedAt.
+    private readonly Dictionary<string, int> _positions = new();
     // Action-item rows inherit their note's workspace (from the note's NoteAssignedToWorkspace);
     // standalone todos use the write's metadata. On rebuild, ReadAllStreamsAsync orders by
     // StreamId, so an `action#…` stream is replayed BEFORE its `note#…` stream — the map is
@@ -73,6 +77,10 @@ public sealed class TodoListProjection
             case TodoDeleted e:
                 _state.Remove(e.TodoId.Value.ToString());
                 break;
+            case TodoListReordered e:
+                for (var i = 0; i < e.OrderedItemIds.Count; i++)
+                    _positions[e.OrderedItemIds[i]] = i;
+                break;
         }
     }
 
@@ -87,8 +95,10 @@ public sealed class TodoListProjection
                 kvp.Value.AddedAt,
                 kvp.Value.CompletedAt,
                 kvp.Value.UserId,
-                kvp.Value.WorkspaceId))
-            .OrderBy(i => i.AddedAt)
+                kvp.Value.WorkspaceId,
+                _positions.TryGetValue(kvp.Key, out var pos) ? pos : null))
+            .OrderBy(i => i.Position ?? int.MaxValue)
+            .ThenBy(i => i.AddedAt)
             .ToList()
             .AsReadOnly();
 }
