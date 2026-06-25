@@ -9,9 +9,8 @@
 | Slice | Summary | Status | Depends on |
 |-------|---------|--------|------------|
 | 35-A | **Connect & list — no-auth proof.** Remote MCP server at `/w/{wsId}/mcp` (official `ModelContextProtocol.AspNetCore` SDK) speaking the MCP transport (initialize / tools/list / tools/call); **no-auth** (unguessable workspace-id URL + Anthropic-IP allowlist); one tool — `list_notes` — returns the workspace's note titles/ids from `NoteCardList`. Proves transport + Cowork handshake + workspace-scoped read on one real call. | Done | — |
-| 35-B | **`get_note`.** Tool returns a note's full digest — content, summary, discussion points, decisions, tags, action items — from `NoteDetail` + `NoteActions`. This is the slice that lets Cowork actually digest a meeting. | Not Started | 35-A |
-| 35-C | **`search_notes`.** Tool queries across the workspace (`NoteSearchView`: title/body/final-notes/tags/actions) so Cowork can find relevant notes before digesting ("summarise my Acme meetings"). | Not Started | 35-A |
-| 35-D | **`get_action_items`.** Tool lists the workspace's open to-dos from `TodoList` so Cowork can pull "what's outstanding". | Not Started | 35-A |
+| 35-F | **All-workspaces connector + full read-tool set (supersedes the per-workspace URL model; absorbs 35-B/C/D).** A single `/mcp` endpoint (no workspace in the path); `list_workspaces` (id+name) lets Claude resolve a workspace by name ("OGI"); read tools each take a `workspaceId` arg: `list_notes`, `get_note`, `search_notes`, `get_action_items`. Per-call authorization — every tool reads the token `sub` and verifies it owns the requested workspace (default always allowed); reads scope by `(userId=sub, workspaceId)`. Token aud = the single `/mcp` resource (replaces per-workspace audience binding). | Not Started | 35-E |
+| ~~35-B/C/D~~ | *(absorbed into 35-F — the read tools are built workspace-parameterized on the all-workspaces model rather than per-URL.)* | — | — |
 | 35-E | **OAuth 2.1 broker over Google (harden auth).** Add the Resource-Server + thin AS that brokers Google sign-in and mints audience-bound tokens; flip the connector from no-auth to authenticated (`.well-known` metadata, `/authorize`, `/token`, PKCE-S256, 401 challenge). **Required before production-complete.** | Done — live (Cowork connected w/ OAuth, 2026-06-25) | 35-A |
 
 **35-A is the high-risk proving slice** — the hard part is the cross-cutting contract (MCP transport + Cowork handshake against our Lambda-hosted server), not any one tool. Shipping it **no-auth** makes it the *smallest* slice that proves that contract on one real call (the unguessable workspace-id URL is the access control; Anthropic-IP allowlist is defence-in-depth). Then **35-B/C/D are independent tool additions on the proven pattern** — any order, each shippable alone — and **35-E hardens auth** with the OAuth broker. 35-E depends only on 35-A (it can land before or after the extra tools), but should not be deferred indefinitely.
@@ -213,6 +212,63 @@ Scenario: Ownership enforced
 - All tools re-scoped to `(userId, workspaceId)`; cross-user **and** cross-workspace reads impossible (spec-covered).
 - A **real Cowork client** completes Google auth and round-trips a tool (owner-run manual gate).
 - Deploy-time delta stated; no bake/canary.
+
+---
+
+## Slice 35-F — All-workspaces connector + full read-tool set
+
+**User value:** one connector for everything. The owner says "list all notes in the **OGI** workspace" / "summarise my Acme meetings" and Claude resolves the workspace by name and reads it — no per-workspace connectors, no ids to copy.
+
+**Supersedes** the per-workspace `/w/{wsId}/mcp` model (35-A/35-E): replaced by a **single `/mcp` endpoint**. The owner re-points the Cowork connector URL once (`…/w/__default__/mcp` → `…/mcp`).
+
+**How (mechanics):**
+- **Endpoint:** map the MCP server at `/mcp` (no `{workspaceId}` in the path). Remove the `/w/{workspaceId}/mcp` mapping + `McpAudienceMiddleware` (the per-workspace audience binding). Pinned to the **Query** Lambda.
+- **OAuth:** the resource becomes `{issuer}/mcp` (single resource); token `aud = {issuer}/mcp`. The AS `/authorize` no longer derives a workspace from `resource`; the user-↔-workspace check moves to **per tool call** (below). PRM/AS metadata + the `McpBearer` HS256 validation otherwise unchanged from 35-E.
+- **Identity-scoped reads:** every tool reads the authenticated `sub` from the token (the RS principal) and uses it as the `userId`. This replaces 35-A's workspace-only scoping with proper `(userId, workspaceId)` scoping.
+- **Per-call authorization (the security core):** each workspace-scoped tool, before returning anything, verifies the `sub` may access the requested `workspaceId` — allow if `workspaceId == WorkspaceId.DefaultValue`, else require `IWorkspaceListStore` membership for that `(userId, workspaceId)`. Reject → MCP error (not data). Reuse 35-E's `UserOwnsWorkspaceAsync`, now invoked on every call.
+- **Tools** (≤5, terse descriptions):
+  - `list_workspaces()` → the caller's workspaces `[{id, name}]` (from `WorkspaceList` for `sub`; include the default). Lets Claude map "OGI" → id.
+  - `list_notes(workspaceId)` → `NoteCardList` for `(sub, workspaceId)`.
+  - `get_note(workspaceId, noteId)` → `NoteDetail` (+ `NoteActions`); reject a `noteId` outside the workspace.
+  - `search_notes(workspaceId, query)` → `NoteSearchView` for the user, workspace-filtered, fuzzy-ranked (now has `userId`, so the richer search projection is usable — not just card scan).
+  - `get_action_items(workspaceId)` → `TodoList` open items for `(sub, workspaceId)`.
+
+### Scenarios
+```
+Scenario: Resolve a workspace by name and list its notes
+  Given I am connected (one /mcp connector) and own a workspace named "OGI"
+  When  I ask Claude to "list all notes in the OGI workspace"
+  Then  Claude calls list_workspaces, maps "OGI" to its id, and list_notes returns OGI's notes
+
+Scenario: list_workspaces returns only my workspaces
+  Given my account and another user's account each own workspaces
+  When  list_workspaces is called with my token
+  Then  it returns only my workspaces (id + name), including the default
+
+Scenario: A tool call for a workspace I don't own is rejected
+  Given a workspaceId I do not own (not my WorkspaceList, not the default)
+  When  any read tool is called with it
+  Then  the call is rejected (MCP error) — no notes returned
+
+Scenario: Reads are user-scoped
+  Given two users with notes in their respective default workspaces
+  When  list_notes(workspaceId=default) is called with my token
+  Then  only my notes are returned (scoped by sub, not workspace alone)
+
+Scenario: get_note rejects a note outside the named workspace
+  Given a noteId belonging to a different workspace than the workspaceId arg
+  When  get_note(workspaceId, noteId) is called
+  Then  it returns a not-found/forbidden MCP error
+```
+
+### Acceptance criteria
+- Single `/mcp` endpoint (Query Lambda); `/w/{workspaceId}/mcp` mapping + per-workspace audience middleware removed; token `aud` = `{issuer}/mcp`.
+- `list_workspaces` returns the caller's workspaces (id+name, incl. default) from `WorkspaceList` scoped to `sub`.
+- All four read tools take `workspaceId`; each enforces per-call ownership (default allowed; else `WorkspaceList` membership) and scopes reads by `(sub, workspaceId)`; out-of-workspace `noteId` rejected.
+- Cross-user and unowned-workspace access impossible — spec-covered (incl. a `sub` that owns nothing).
+- OAuth otherwise unchanged (PKCE-S256, single-use codes, fail-closed allowlist + signing key, refresh TTL).
+- Existing 35-A/E MCP tests updated to the `/mcp` + parameterized-tool shape; build + `cdk synth` green.
+- Owner step: re-point the Cowork connector to `/mcp` (the per-workspace URL stops being served).
 
 ---
 
