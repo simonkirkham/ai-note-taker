@@ -1,6 +1,8 @@
 # Phase 38 — Import a transcript manually
 
-**Goal:** let the user create a note from a transcript they already have — **paste raw text** captured in an external tool — instead of recording live in-app. The pasted transcript feeds the **same analysis pipeline** (summary, action items, tags) as a recorded one, so imported transcripts are first-class equals downstream. This is the **manual-paste ingestion path** that de-risks the analyse-an-imported-transcript flow before any third-party connector (Zoom/Teams — [future-features](../future-features.md)). **Reuses the recorded-note events minus audio** (`NoteCreated` → `TranscriptionCompleted` → analysis events); **no new command or event**.
+**Value:** today only meetings you record *live in the app* get summarised, action-itemed, and tagged. Plenty of meetings aren't captured that way — a colleague sends you the Zoom/Teams transcript, you recorded on another device, or the meeting already happened. This lets you **paste any transcript and get the same AI analysis**, so the app works for *every* meeting you have a transcript for, not just the ones recorded in-app. It also de-risks the bigger Zoom/Teams auto-connector (future-features): manual paste proves the import-and-analyse flow before any third-party integration.
+
+**Goal:** let the user create a note from a transcript they already have — **paste raw text** captured in an external tool — instead of recording live in-app. The pasted transcript feeds the **same analysis pipeline** (summary, action items, tags) as a recorded one, so imported transcripts are first-class equals downstream. **Reuses the recorded-note events minus audio** (`NoteCreated` → `TranscriptionCompleted` → analysis events); **no new command or event**.
 
 ## Summary
 

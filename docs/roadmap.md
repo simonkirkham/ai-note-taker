@@ -364,7 +364,19 @@ Slices and acceptance criteria: [docs/phases/phase-36.md](phases/phase-36.md)
 
 ---
 
+## Phase 37 — Reorder the home To Do list (drag-and-drop) _(Not started)_
+
+Let the user set the order of the home **To Do** list by dragging items (and via keyboard Move up/down), instead of the fixed `AddedAt` order today. Scope is the **home page list only** (`TodoSection`), which mixes standalone to-dos and note-derived action items; per-note action ordering is out of scope. The list interleaves two aggregates (`Todo`, `ActionItem`), so ordering lives in a **dedicated per-workspace stream** (`todo-order#<workspaceId>` + `TodoOrdering` aggregate) emitting a full-order-snapshot `TodoListReordered` event — item aggregates untouched. The projection folds it into a nullable `Position` on `TodoItem` (sort `Position ?? max, then AddedAt`); reorder is optimistic and RYW-correct via the order-stream consistency token. No DnD library (reuses the native `FolderTree` drag pattern); keyboard reordering via Move up/down buttons keeps the jsx-a11y gate green. Deploy-time impact: **neutral** (no new table, no backfill — `Position` is a new attribute on the existing `TodoList` table). Graduated from the "Drag-and-drop to reorder to-do / action items" future-features idea, scoped to the home list.
+
+**Goal:** drag (or keyboard-move) the home To Do open items into any order; it persists per workspace and re-appears on reload.
+
+Slices and acceptance criteria: [docs/phases/phase-37.md](phases/phase-37.md)
+
+---
+
 ## Phase 38 — Import a transcript manually _(Not started)_
+
+**Value:** today only meetings recorded *live in the app* get summarised, action-itemed, and tagged — so a Zoom/Teams transcript a colleague sends you, or a meeting recorded on another device, can't benefit. This lets the user **paste any transcript and get the same AI analysis**, making the app useful for *every* meeting they have a transcript for. Also de-risks the bigger Zoom/Teams auto-connector (manual paste proves import-and-analyse first).
 
 Let the user create a note from a transcript they **already have** — paste raw text captured in an external tool — instead of recording live in-app. The pasted transcript feeds the **same analysis pipeline** (summary, action items, tags) as a recorded one, so imported and recorded notes are first-class equals downstream. **Reuses the recorded-note events minus audio** (`NoteCreated` → `TranscriptionCompleted` → analysis events) — **no new command or event**. Single slice **38-A** (the whole MVP): a new `POST /w/{ws}/notes/import-transcript` on the Command Lambda creates the note, appends the transcript, and runs analysis passing the pasted text as `transcriptOverride` — one server-side call so it sidesteps the Phase 27-RYW async-projection race (a client-orchestrated create→set-transcript→analyse would 422 on a not-yet-built projection); plus an **Import transcript** modal that navigates to the finished, analysed note. Plain text only; title/date/attendees and speaker-labelled formats are deferred sub-slices. This is the **manual-paste ingestion path** that de-risks analyse-an-imported-transcript before any third-party connector (Zoom/Teams). Deploy-time impact: **neutral** (one route on the existing Command Lambda; no new event/projection/table/infra/backfill).
 
