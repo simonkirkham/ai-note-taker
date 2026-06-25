@@ -354,6 +354,16 @@ Slices and acceptance criteria: [docs/phases/phase-35.md](phases/phase-35.md)
 
 ---
 
+## Phase 36 — Theme per workspace _(Not started)_
+
+Let each **workspace** carry its own visual theme, so the active workspace's look switches automatically on workspace change — a quick way to tell a client workspace from a personal one at a glance. Theme today is **global** (one `[data-theme]` on `<html>`, 12 themes in `tokens.css`, persisted in localStorage). This phase makes it a **server-stored, per-workspace setting** via a new additive `WorkspaceThemeSet` event on the existing `Workspace` aggregate, folded into `WorkspaceListView` and read over the existing `GET /workspaces` — reusing the existing 12 themes and `ThemePicker` wholesale (no accent-only token split, no new component). Two slices: **36-A** *set & apply per-workspace theme* (keystone — event → projection field → `PATCH /workspaces/{id}/theme` → the sidebar picker becomes workspace-scoped, applies on switch); **36-B** *FOUC-free cold load* (bootstrap reads the cached per-workspace theme from the URL `wsId` pre-mount). The **default** workspace keeps today's global localStorage theme (its stream is shared across users — same constraint Phase 34 hit). Builds on the Phase 34 per-workspace pattern. Deploy-time impact: **neutral** (additive event + one field on an existing projection/table; no new infra, no backfill).
+
+**Goal:** in a workspace, pick a theme; it applies instantly, persists server-side, and re-appears on return — while other workspaces keep their own.
+
+Slices and acceptance criteria: [docs/phases/phase-36.md](phases/phase-36.md)
+
+---
+
 ## Standing tracks and planning docs
 
 Alongside the numbered phases above, work is tracked in five standing docs. The roadmap summarises them; each doc owns its content.

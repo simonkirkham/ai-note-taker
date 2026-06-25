@@ -100,19 +100,6 @@ _(Claude Cowork connector — read-only, workspace-scoped MCP server — graduat
 
 ---
 
-## Theme per workspace
-
-**What:** Let each workspace carry its own visual theme so the active workspace's look (colour palette / accent, light-dark choice, possibly typography) switches automatically when the user changes workspace. Today theming is global to the app (CSS Modules design tokens; see the theming notes in the `frontend-react` skill). This makes the theme a **per-workspace setting** — a quick way to tell workspaces apart at a glance and to brand a client/personal workspace differently. Scope when broken down:
-- Where the theme is stored — a per-workspace setting (a new event on the workspace aggregate, e.g. `WorkspaceThemeSet`, purely additive) vs. client-only localStorage keyed by workspace id. Cross-device consistency argues for the event/projection path.
-- A theme picker in workspace settings (pick from a fixed palette set; reuse the existing design tokens rather than free-form colour).
-- Apply the active workspace's tokens on workspace switch, with a sensible default for workspaces that have none set.
-
-**Why it isn't scheduled yet:** Needs a small design pass (which theme attributes are workspace-scoped — accent only, or full palette/dark-mode) and an event-model decision (server-stored vs. client-only). Builds on the existing workspace model (Phase 34 per-workspace calendars) and the design-token theming already in `web/`.
-
-**Raised in:** User feature idea, 2026-06-25.
-
----
-
 ## Add a transcript manually from an external tool
 
 **What:** Let the user create a note from a transcript they already have — paste or upload transcript text captured elsewhere — instead of recording live in-app. The pasted transcript feeds the **same analysis pipeline** (summary, action items, tags) as a recorded one, so existing recordings and imported transcripts are first-class equals downstream. Scope when broken down:
