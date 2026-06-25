@@ -293,6 +293,33 @@ describe('TodoSection — edit', () => {
     expect(await screen.findByTestId('todo-description-t-1')).toHaveTextContent('Buy milk')
   })
 
+  it('Enter saves with exactly one PUT (editingRef guards a blur double-commit)', async () => {
+    let puts = 0
+    server.use(
+      http.get('/api/todos', () => HttpResponse.json({ items: [openTodo] })),
+      http.put('/api/todos/:todoId', () => { puts++; return new HttpResponse(null, { status: 204 }) }),
+    )
+    render(<TodoSection />)
+    await userEvent.click(await screen.findByTestId('todo-description-t-1'))
+    const input = await screen.findByTestId('edit-todo-input-t-1')
+    await userEvent.clear(input)
+    await userEvent.type(input, 'Buy oat milk{Enter}')
+    await waitFor(() => expect(puts).toBe(1))
+    expect(puts).toBe(1)
+  })
+
+  it('committing unchanged text does not call PUT', async () => {
+    let called = false
+    server.use(
+      http.get('/api/todos', () => HttpResponse.json({ items: [openTodo] })),
+      http.put('/api/todos/:todoId', () => { called = true; return new HttpResponse(null, { status: 204 }) }),
+    )
+    render(<TodoSection />)
+    await userEvent.click(await screen.findByTestId('todo-description-t-1'))
+    await userEvent.type(await screen.findByTestId('edit-todo-input-t-1'), '{Enter}')
+    expect(called).toBe(false)
+  })
+
   it('edit reverts to the original text when the request fails', async () => {
     let rejectPut!: () => void
     server.use(
