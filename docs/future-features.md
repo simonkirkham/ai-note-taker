@@ -102,14 +102,7 @@ _(Claude Cowork connector — read-only, workspace-scoped MCP server — graduat
 
 ## Add a transcript manually from an external tool
 
-**What:** Let the user create a note from a transcript they already have — paste or upload transcript text captured elsewhere — instead of recording live in-app. The pasted transcript feeds the **same analysis pipeline** (summary, action items, tags) as a recorded one, so existing recordings and imported transcripts are first-class equals downstream. Scope when broken down:
-- An entry point ("Add transcript" / "Paste transcript") that takes raw text (and optional title/date/attendees) and creates a note whose transcript is the supplied text — no audio, no live transcription.
-- Reuse the existing post-transcription analysis path so the imported transcript is summarised/tagged/action-itemed identically; confirm the note's event sequence is consistent with a recorded note minus the audio/streaming events.
-- Decide the transcript shape accepted (plain text first; speaker-labelled / timestamped formats are a later sub-slice and tie into diarization).
-
-**Why it isn't scheduled yet:** Needs the event-model decision on how a transcript-only note is created (a new command/event vs. reusing the recorded-note path with empty audio) and a small UX for the paste/upload surface. It's a genuine new ingestion path, not a tweak. Natural precursor to — and smaller than — the Zoom/external-tool connector below (manual paste proves the import-and-analyse flow before any third-party integration).
-
-**Raised in:** User feature idea, 2026-06-25.
+> _Graduated to a numbered phase — now **[Phase 38](phases/phase-38.md)** (2026-06-25). Locked: reuse the recorded-note events minus audio (`NoteCreated` → `TranscriptionCompleted` → analysis), **no new event/command**; a single server-side `POST /w/{ws}/notes/import-transcript` that analyses via `transcriptOverride` to sidestep the RYW async-projection race; plain text only (title/date/attendees deferred). Full scope and slice live in the phase doc._
 
 ---
 

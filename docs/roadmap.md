@@ -364,6 +364,16 @@ Slices and acceptance criteria: [docs/phases/phase-36.md](phases/phase-36.md)
 
 ---
 
+## Phase 38 — Import a transcript manually _(Not started)_
+
+Let the user create a note from a transcript they **already have** — paste raw text captured in an external tool — instead of recording live in-app. The pasted transcript feeds the **same analysis pipeline** (summary, action items, tags) as a recorded one, so imported and recorded notes are first-class equals downstream. **Reuses the recorded-note events minus audio** (`NoteCreated` → `TranscriptionCompleted` → analysis events) — **no new command or event**. Single slice **38-A** (the whole MVP): a new `POST /w/{ws}/notes/import-transcript` on the Command Lambda creates the note, appends the transcript, and runs analysis passing the pasted text as `transcriptOverride` — one server-side call so it sidesteps the Phase 27-RYW async-projection race (a client-orchestrated create→set-transcript→analyse would 422 on a not-yet-built projection); plus an **Import transcript** modal that navigates to the finished, analysed note. Plain text only; title/date/attendees and speaker-labelled formats are deferred sub-slices. This is the **manual-paste ingestion path** that de-risks analyse-an-imported-transcript before any third-party connector (Zoom/Teams). Deploy-time impact: **neutral** (one route on the existing Command Lambda; no new event/projection/table/infra/backfill).
+
+**Goal:** paste a transcript, get a created, analysed note opened — identical to a recorded one minus audio.
+
+Slices and acceptance criteria: [docs/phases/phase-38.md](phases/phase-38.md)
+
+---
+
 ## Standing tracks and planning docs
 
 Alongside the numbered phases above, work is tracked in five standing docs. The roadmap summarises them; each doc owns its content.
