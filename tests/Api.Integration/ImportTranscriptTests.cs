@@ -98,6 +98,19 @@ public sealed class ImportTranscriptTests : IClassFixture<ApiFactory>
         Assert.False(resp.Headers.Contains("X-Consistency-Token"));
     }
 
+    // An over-long paste (beyond the ~350 KB cap) is a clean 400, not an unhandled 500 at the
+    // DynamoDB ~400 KB item limit — and no note is created.
+    [Fact]
+    public async Task Import_TranscriptOverByteCap_Returns400_NoNoteCreated()
+    {
+        var huge = new string('a', 360_000); // 360 KB of ASCII > the 350 KB byte cap
+        var resp = await _client.PostAsync("/notes/import-transcript",
+            Json(new { transcriptText = huge }));
+
+        Assert.Equal(HttpStatusCode.BadRequest, resp.StatusCode);
+        Assert.False(resp.Headers.Contains("X-Consistency-Token"));
+    }
+
     // Scenario 4: Bedrock failure still saves the note (201) with its transcript and no analysis.
     [Fact]
     public async Task Import_WhenBedrockThrows_StillCreatesNote_WithTranscript_NoAnalysis()

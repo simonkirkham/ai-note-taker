@@ -102,9 +102,14 @@ public static class TranscriptionHandlers
         };
     }
 
+    // A pasted transcript is appended whole as one DynamoDB event (~400 KB item limit). Cap the raw
+    // bytes well under that so an over-long paste is a clean 400, not an unhandled 500 at AppendAsync.
+    // ~350 KB leaves headroom for the event envelope/metadata; ~2 hours of dense transcript fits.
+    private const int MaxTranscriptBytes = 350_000;
+
     // Phase 38: create a note from pasted transcript text and analyse it in one server-side flow.
     // Returns 201 + the note id + the post-analysis consistency token; a Bedrock outage still
-    // returns 201 (the transcript is saved, the note opens re-analysable). Empty text → 400.
+    // returns 201 (the transcript is saved, the note opens re-analysable). Empty or over-long text → 400.
     public static async Task<IResult> ImportTranscript(
         ImportTranscriptRequest req,
         HttpResponse response,
@@ -116,6 +121,12 @@ public static class TranscriptionHandlers
         {
             loggerFactory.CreateLogger("Api.Handlers.TranscriptionHandlers")
                 .LogWarning("Rejected transcript import: empty transcript text");
+            return Results.BadRequest();
+        }
+        if (System.Text.Encoding.UTF8.GetByteCount(req.TranscriptText) > MaxTranscriptBytes)
+        {
+            loggerFactory.CreateLogger("Api.Handlers.TranscriptionHandlers")
+                .LogWarning("Rejected transcript import: transcript exceeds {MaxBytes} bytes", MaxTranscriptBytes);
             return Results.BadRequest();
         }
 

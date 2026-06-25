@@ -101,6 +101,7 @@ function ImportTranscriptModal({
           onChange={(e) => setText(e.target.value)}
           placeholder="Paste transcript text here…"
           rows={12}
+          maxLength={350000}
           disabled={importM.isPending}
         />
         {importM.isError && (

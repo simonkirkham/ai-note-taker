@@ -78,8 +78,11 @@ public sealed class AppPage
             await page.GetByTestId("sidebar-toggle").ClickAsync();
         await page.GetByTestId("import-transcript-button").ClickAsync();
         await page.GetByTestId("import-transcript-textarea").FillAsync(transcript);
-        var importDone = page.WaitForResponseAsync(r =>
-            r.Url.Contains("/notes/import-transcript") && r.Request.Method == "POST");
+        // The import POST runs analysis (Bedrock) synchronously, so it can outlast Playwright's
+        // default 30 s response wait. Give it most of the [E2EFact] 120 s budget.
+        var importDone = page.WaitForResponseAsync(
+            r => r.Url.Contains("/notes/import-transcript") && r.Request.Method == "POST",
+            new() { Timeout = 90_000 });
         await page.GetByTestId("import-transcript-submit").ClickAsync();
         await importDone;
     }
