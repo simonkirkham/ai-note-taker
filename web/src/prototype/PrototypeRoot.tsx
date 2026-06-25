@@ -1,6 +1,6 @@
 // Throwaway UX prototype for CHANGE-27 — never merged. Frontend-only, no API, no auth.
 // FOUR full-width-editor designs for relocating Tags + Actions out of the side panel.
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import "./prototype.css";
 
 type Act = { id: string; text: string; done: boolean };
@@ -79,6 +79,18 @@ function CommandBar({ d }: { d: D }) {
   const [adding, setAdding] = useState(false);
   const [pop, setPop] = useState(false);
   const allDone = d.acts.length > 0 && d.open === 0;
+  // Close the actions popover on any click outside it, or on Escape.
+  const popRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!pop) return;
+    function onDown(e: MouseEvent) {
+      if (popRef.current && !popRef.current.contains(e.target as Node)) setPop(false);
+    }
+    function onKey(e: KeyboardEvent) { if (e.key === "Escape") setPop(false); }
+    document.addEventListener("mousedown", onDown);
+    document.addEventListener("keydown", onKey);
+    return () => { document.removeEventListener("mousedown", onDown); document.removeEventListener("keydown", onKey); };
+  }, [pop]);
   return (
     <div className="pbar">
       <div className="pbarLeft">
@@ -87,7 +99,7 @@ function CommandBar({ d }: { d: D }) {
         {adding ? <InlineAdd cls="stripInput" placeholder="Add tag…" onAdd={d.addTag} onClose={() => setAdding(false)} />
           : <button className="addTagChip" onClick={() => setAdding(true)}><PlusIcon /> Tag</button>}
       </div>
-      <div className="pbarRight">
+      <div className="pbarRight" ref={popRef}>
         <button className={`actionsPill${pop ? " actionsPillActive" : ""}${allDone ? " actionsPillDone" : ""}`} onClick={() => setPop((o) => !o)}>
           <span className="actionsPillIcon" style={allDone ? { color: "var(--color-primary)" } : undefined}><CheckIcon /></span>
           Actions <span className="actionsPillCount">· {d.done}/{d.acts.length}</span>
