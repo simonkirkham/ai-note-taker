@@ -39,9 +39,9 @@
 | CHANGE-25 | Always-available calendar connect/change/disconnect — a gear "Calendar settings" toggle in the Meetings header opens an inline panel (Connect Google / Connect Outlook / Disconnect). Previously the connect buttons rendered **only** in the meetings-"unavailable" state, which the SSM fallback hides in prod → in-app connect was unreachable. Disconnect is optimistic + invalidates the connection/meetings queries. | Done | 34-C |
 | CHANGE-26 | Outlook connect supports **work/school** M365 accounts + an account picker — default the MS tenant `consumers` (personal-only) → `common` (work + personal) in `buildMicrosoftAuthUrl` + `MicrosoftOAuthClient` + `MicrosoftCalendarClient`, and switch `prompt=consent` → `prompt=select_account` so a different account can be chosen even when the browser already has a Microsoft session. `MS_TENANT_ID`/`VITE_MS_TENANT_ID` still override. Requires the Entra app "Supported account types" = any-tenant + personal (already set). | Done | 34-C |
 | CHANGE-27 | Redesign the note-detail Tags + Actions area as a **Command Bar** so the editor goes **full-width** (320px sidebar deleted): inline tag chips + autocomplete, an `✓ Actions` pill opening a floating popover (closes on outside-click/Esc, teal when all done). | Done | — |
-| CHANGE-28 | Note **body text is too big** — editor `.contentInput` is 16px (1rem) / line-height 1.75. **Prototype** a smaller size, tighter line-height, alternate font(s), then apply. Appearance only. | Open | — |
+| CHANGE-28 | Note body text was too big — shrink the editor `.contentInput` from **16px (1rem) / 1.75 → 14px (0.875rem) / 1.7**, font unchanged (Plus Jakarta Sans); headings keep em-relative sizes and scale down proportionally. CSS-only; values confirmed via prototype `prototype/notes-text-typography`. | In Progress | — |
 
-Open: CHANGE-28 (notes body text — needs prototype).
+Open: CHANGE-28 (notes body text — in progress).
 
 New tweaks are appended as a one-line shipped record below once Done. The full spec/Value/Approach for each lived in this doc during the slice and remains in git history; the durable *why* (where any) is in the learnings archive. CHANGE-1 to CHANGE-4 were moved here from the former "Phase 13 — UI Polish II" once it was clear they were minor tweaks rather than a distinct phase.
 
