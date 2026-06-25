@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Domain.ActionItems;
 using Domain.Notes;
 using EventStore;
 using EventStore.Projections;
@@ -8,10 +9,30 @@ namespace Domain.Specs.Projections;
 public sealed class NoteSearchViewTagSpec
 {
     static readonly NoteId NoteId1 = new(Guid.Parse("00000000-0000-0000-0000-000000000001"));
+    static readonly ActionId ActionId1 = new(Guid.Parse("00000000-0000-0000-0000-000000000010"));
 
     static EventEnvelope NoteEnv(long seq, string type, string payload) =>
         new($"note#{NoteId1.Value}", seq, type, 1, DateTimeOffset.UtcNow, payload,
             new EventMetadata(Guid.NewGuid(), null, null, null));
+
+    static EventEnvelope ActionEnv(ActionId actionId, long seq, string type, string payload) =>
+        new(actionId.ToStreamId(), seq, type, 1, DateTimeOffset.UtcNow, payload,
+            new EventMetadata(Guid.NewGuid(), null, null, null));
+
+    [Fact]
+    public void ActionItemEdited_updates_searchable_action_text()
+    {
+        var projection = new NoteSearchViewProjection();
+        projection.Handle(NoteEnv(1, nameof(NoteCreated),
+            JsonSerializer.Serialize(new NoteCreated(NoteId1))));
+        projection.Handle(ActionEnv(ActionId1, 1, nameof(ActionItemAdded),
+            JsonSerializer.Serialize(new ActionItemAdded(ActionId1, NoteId1, "Chase invoice"))));
+
+        projection.Handle(ActionEnv(ActionId1, 2, nameof(ActionItemEdited),
+            JsonSerializer.Serialize(new ActionItemEdited(ActionId1, "Chase Acme invoice", DateTimeOffset.UtcNow))));
+
+        Assert.Equal("Chase Acme invoice", projection.GetAll().Single().ActionItemsText);
+    }
 
     [Fact]
     public void NoteTagged_lowercases_and_dedupes_search_tags()

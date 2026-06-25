@@ -354,23 +354,13 @@ Slices and acceptance criteria: [docs/phases/phase-35.md](phases/phase-35.md)
 
 ---
 
-## Phase 36 — Theme per workspace _(Not started)_
+## Phase 36 — Theme per workspace _(In progress — 36-A done; 36-B remaining)_
 
 Let each **workspace** carry its own visual theme, so the active workspace's look switches automatically on workspace change — a quick way to tell a client workspace from a personal one at a glance. Theme today is **global** (one `[data-theme]` on `<html>`, 12 themes in `tokens.css`, persisted in localStorage). This phase makes it a **server-stored, per-workspace setting** via a new additive `WorkspaceThemeSet` event on the existing `Workspace` aggregate, folded into `WorkspaceListView` and read over the existing `GET /workspaces` — reusing the existing 12 themes and `ThemePicker` wholesale (no accent-only token split, no new component). Two slices: **36-A** *set & apply per-workspace theme* (keystone — event → projection field → `PATCH /workspaces/{id}/theme` → the sidebar picker becomes workspace-scoped, applies on switch); **36-B** *FOUC-free cold load* (bootstrap reads the cached per-workspace theme from the URL `wsId` pre-mount). The **default** workspace keeps today's global localStorage theme (its stream is shared across users — same constraint Phase 34 hit). Builds on the Phase 34 per-workspace pattern. Deploy-time impact: **neutral** (additive event + one field on an existing projection/table; no new infra, no backfill).
 
 **Goal:** in a workspace, pick a theme; it applies instantly, persists server-side, and re-appears on return — while other workspaces keep their own.
 
 Slices and acceptance criteria: [docs/phases/phase-36.md](phases/phase-36.md)
-
----
-
-## Phase 38 — Import a transcript manually _(Not started)_
-
-Let the user create a note from a transcript they **already have** — paste raw text captured in an external tool — instead of recording live in-app. The pasted transcript feeds the **same analysis pipeline** (summary, action items, tags) as a recorded one, so imported and recorded notes are first-class equals downstream. **Reuses the recorded-note events minus audio** (`NoteCreated` → `TranscriptionCompleted` → analysis events) — **no new command or event**. Single slice **38-A** (the whole MVP): a new `POST /w/{ws}/notes/import-transcript` on the Command Lambda creates the note, appends the transcript, and runs analysis passing the pasted text as `transcriptOverride` — one server-side call so it sidesteps the Phase 27-RYW async-projection race (a client-orchestrated create→set-transcript→analyse would 422 on a not-yet-built projection); plus an **Import transcript** modal that navigates to the finished, analysed note. Plain text only; title/date/attendees and speaker-labelled formats are deferred sub-slices. This is the **manual-paste ingestion path** that de-risks analyse-an-imported-transcript before any third-party connector (Zoom/Teams). Deploy-time impact: **neutral** (one route on the existing Command Lambda; no new event/projection/table/infra/backfill).
-
-**Goal:** paste a transcript, get a created, analysed note opened — identical to a recorded one minus audio.
-
-Slices and acceptance criteria: [docs/phases/phase-38.md](phases/phase-38.md)
 
 ---
 
@@ -388,7 +378,7 @@ Currently open: _(none)_. Fixed: **BUG-1** blank screen on 401 _(done 2026-06-02
 
 ### Minor Changes _(Ongoing)_
 
-An unnumbered, standing phase for small tweaks and changes to existing behaviour that don't warrant a numbered phase and aren't defects. Shipped: single-spaced note lines, theme selection, home screen shows today's notes by default, to-do rows that wrap cleanly with long text, sign-in screen visual polish, a collapsible "Filters" control for home tags, 12 colour schemes (Forest dropped as a Teal duplicate), the theme picker and Sign out always visible without scrolling, the restructured home Filters panel (Option D), the home Notes list top-aligned with Today's Meetings (divider dropped), the preview pull-out `»`/`«` reflecting whether its panel is open, a home-screen refinement pass (icon card/to-do actions, hidden tag labels, boxless filter tags, no card action lists, lighter Today's Meetings), a "Next occurrence" control inside a recurring-meeting note (parity with the home Today's Meetings affordance), the transcription audio toggle relabelled from "Call audio" to "Record screen-share audio", keyboard access for `FolderPreviewPanel` note rows (real `<button>`, drag preserved), `@tiptap/extension-link` pinned as a direct dependency, a tag-search box in the home Filters panel (for long tag lists), auto-showing older notes when a tag filter is applied, and a Command Bar redesign of the note-detail tags+actions (full-width editor; tags as inline chips, actions in a floating popover). Open: CHANGE-28 (notes body text size — needs prototype).
+An unnumbered, standing phase for small tweaks and changes to existing behaviour that don't warrant a numbered phase and aren't defects. Shipped: single-spaced note lines, theme selection, home screen shows today's notes by default, to-do rows that wrap cleanly with long text, sign-in screen visual polish, a collapsible "Filters" control for home tags, 12 colour schemes (Forest dropped as a Teal duplicate), the theme picker and Sign out always visible without scrolling, the restructured home Filters panel (Option D), the home Notes list top-aligned with Today's Meetings (divider dropped), the preview pull-out `»`/`«` reflecting whether its panel is open, a home-screen refinement pass (icon card/to-do actions, hidden tag labels, boxless filter tags, no card action lists, lighter Today's Meetings), a "Next occurrence" control inside a recurring-meeting note (parity with the home Today's Meetings affordance), the transcription audio toggle relabelled from "Call audio" to "Record screen-share audio", keyboard access for `FolderPreviewPanel` note rows (real `<button>`, drag preserved), `@tiptap/extension-link` pinned as a direct dependency, a tag-search box in the home Filters panel (for long tag lists), auto-showing older notes when a tag filter is applied, a Command Bar redesign of the note-detail tags+actions (full-width editor; tags as inline chips, actions in a floating popover), and smaller notes body text (14px / 1.7). Open: none.
 
 → [docs/phases/phase-minor-changes.md](phases/phase-minor-changes.md)
 

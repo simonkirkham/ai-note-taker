@@ -63,6 +63,20 @@ public sealed class DynamoDbTodoListStore(IAmazonDynamoDB dynamo, string tableNa
         }
     }
 
+    public async Task UpdateDescriptionAsync(string itemId, string newDescription, CancellationToken ct = default)
+    {
+        await dynamo.UpdateItemAsync(new UpdateItemRequest
+        {
+            TableName = tableName,
+            Key = new Dictionary<string, AttributeValue> { ["PK"] = new() { S = itemId } },
+            UpdateExpression = "SET Description = :d",
+            ExpressionAttributeValues = new Dictionary<string, AttributeValue>
+            {
+                [":d"] = new() { S = newDescription }
+            }
+        }, ct).ConfigureAwait(false);
+    }
+
     public async Task DeleteAsync(string itemId, CancellationToken ct = default)
     {
         await dynamo.DeleteItemAsync(new DeleteItemRequest

@@ -442,24 +442,25 @@ The `UserId-index` GSI (ProjectionType.ALL) lets the search endpoint `Query` all
 ### 10. `WorkspaceList` *(Phase 23-A)*
 
 **Consumed by:** `GET /workspaces` — the caller's named workspaces for the switcher. One row per created workspace.
-**Source events:** `WorkspaceCreated`, `WorkspaceRenamed`, `WorkspaceDeleted` (on the `Workspace` stream).
+**Source events:** `WorkspaceCreated`, `WorkspaceRenamed`, `WorkspaceThemeSet`, `WorkspaceDeleted` (on the `Workspace` stream).
 
 ```csharp
 public record WorkspaceListView(
     WorkspaceId WorkspaceId,
     string Name,
     DateTimeOffset CreatedAt,
-    string UserId = "");
+    string UserId = "",
+    string? Theme = null);   // 36-A: per-workspace UI theme; null when never set
 ```
 
 **Storage row** (table `notetaker-proj-workspacelist`, partition key `PK` = WorkspaceId):
 
-| PK (WorkspaceId) | Name | CreatedAt | UserId |
-|------------------|------|-----------|--------|
+| PK (WorkspaceId) | Name | CreatedAt | UserId | Theme (optional) |
+|------------------|------|-----------|--------|------------------|
 
 **Default workspace is virtual.** The reserved default (`__default__`, name "Personal") is **never persisted** — `GetWorkspaces` synthesises it per-user at read time when no `__default__` row exists, sorted first. It is non-deletable (`DELETE /workspaces/__default__` → `409`). Persisted workspace ids are globally-unique GUIDs (`N` format), so `PK = WorkspaceId` needs no per-user composite key; `UserId` is filtered in the handler (as `FolderTree` does).
 
-**Event handlers (live, inline in `WorkspaceCommandHandler`):** `WorkspaceCreated` → upsert; `WorkspaceRenamed` → upsert with new name; `WorkspaceDeleted` → delete the row.
+**Event handlers (async projector, `ProjectionUpdater.ApplyWorkspaceEventsAsync`):** `WorkspaceCreated` → upsert; `WorkspaceRenamed` → upsert with new name; `WorkspaceThemeSet` → upsert with new theme (36-A); `WorkspaceDeleted` → delete the row.
 
 ### Workspace scoping of folders + to-dos *(Phase 23-C)*
 

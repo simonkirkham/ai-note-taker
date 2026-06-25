@@ -48,8 +48,10 @@
   border-top: 2px solid transparent;
   padding: 0.5rem 0 0;
   font-family: inherit;
-  font-size: 1rem;
-  line-height: 1.75;
+  /* CHANGE-28: smaller, tighter notes body (was 1rem / 1.75 — too big). Headings
+     keep their em-relative UA sizes and scale down proportionally. */
+  font-size: 0.875rem;
+  line-height: 1.7;
   color: var(--color-text);
   resize: none;
   outline: none;

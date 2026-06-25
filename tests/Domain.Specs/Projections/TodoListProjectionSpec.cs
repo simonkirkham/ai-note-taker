@@ -75,6 +75,20 @@ public sealed class TodoListProjectionSpec
     }
 
     [Fact]
+    public void ActionItemEdited_UpdatesDescriptionOnActionRow()
+    {
+        var projection = new TodoListProjection();
+        projection.Handle(NoteEnv(NoteId1, 1, new NoteCreated(NoteId1)));
+        projection.Handle(ActionEnv(ActionId1, 1, new ActionItemAdded(ActionId1, NoteId1, "Book venue")));
+        projection.Handle(ActionEnv(ActionId1, 2, new ActionItemEdited(ActionId1, "Book the venue", DateTimeOffset.UtcNow)));
+
+        var items = projection.GetAllItems();
+        Assert.Single(items);
+        Assert.Equal("Book the venue", items[0].Description);
+        Assert.Equal("action", items[0].Type);
+    }
+
+    [Fact]
     public void NoteRenamed_UpdatesTitleOnExistingItems()
     {
         var projection = new TodoListProjection();

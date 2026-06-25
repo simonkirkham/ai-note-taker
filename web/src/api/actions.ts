@@ -56,6 +56,15 @@ export async function reopenAction(noteId: string, actionId: string): Promise<vo
   captureActionToken(noteId, response);
 }
 
+export async function editAction(noteId: string, actionId: string, description: string): Promise<void> {
+  const response = await requestVoidWithResponse(`/notes/${noteId}/actions/${actionId}`, {
+    method: 'PUT',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ description }),
+  });
+  captureActionToken(noteId, response);
+}
+
 export async function deleteAction(noteId: string, actionId: string): Promise<void> {
   const response = await requestVoidWithResponse(`/notes/${noteId}/actions/${actionId}`, { method: 'DELETE' });
   captureActionToken(noteId, response);

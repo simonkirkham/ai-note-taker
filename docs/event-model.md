@@ -121,6 +121,7 @@ A named partition of a user's content (e.g. *Work* / *Personal*). A second isola
 | `DeleteWorkspace(workspaceId)` | Not the default (`__default__`); workspace exists, not deleted | `WorkspaceDeleted` |
 | `ConnectWorkspaceCalendar(workspaceId, provider, accountRef)` *(34-B)* | Workspace exists, not deleted; provider non-empty; no-op if same provider+account | `WorkspaceCalendarConnected` |
 | `DisconnectWorkspaceCalendar(workspaceId)` *(34-B)* | Workspace exists, not deleted; no-op if not connected | `WorkspaceCalendarDisconnected` |
+| `SetWorkspaceTheme(workspaceId, theme)` *(36-A)* | Workspace exists, not deleted; theme non-empty; no-op if unchanged | `WorkspaceThemeSet` |
 
 > **Calendar connect/disconnect (34-B) is recorded for NON-default workspaces only.** The reserved default workspace (`__default__`) has no per-user aggregate stream (it is synthesised, never stored, and its stream id is shared across users), so the connect endpoint skips the event for it. The authoritative per-(user, workspace) calendar credential lives in the `CalendarTokenStore` either way; the event records the provider choice for per-workspace provider resolution (34-C) plus an audit trail. Recording is best-effort — the token (written first) is the source of truth for reads.
 
@@ -177,6 +178,7 @@ A named partition of a user's content (e.g. *Work* / *Personal*). A second isola
 - `WorkspaceDeleted { WorkspaceId }` — hard-removes the `WorkspaceList` row; the stream retains the event
 - `WorkspaceCalendarConnected { WorkspaceId, Provider, AccountRef }` *(34-B)* — a calendar account is connected to the workspace; `AccountRef` is the account email (nullable). Folded by the aggregate (enforces connect/disconnect invariants); no read projection folds it (connection status is read from the strongly-consistent `CalendarTokenStore`). Never recorded for `__default__`.
 - `WorkspaceCalendarDisconnected { WorkspaceId }` *(34-B)* — clears the workspace's calendar connection.
+- `WorkspaceThemeSet { WorkspaceId, Theme }` *(36-A)* — the per-workspace UI theme; latest-wins. Folded by the aggregate and by `WorkspaceList` (carries `Theme` to `GET /workspaces`). Never recorded for `__default__`.
 
 ---
 
@@ -202,7 +204,7 @@ The Home view's richness pushes us toward denormalized read models — `NoteCard
 | `TodoList` | All ActionItem events (all notes) + all Todo events + `TodoListReordered` | Home view's TO DO List section. Returns open items plus items completed today. Each row carries a `type` discriminator (`"action"` / `"todo"`), a plain-string `ItemId`, nullable `NoteId`/`NoteTitle`, nullable `CompletedAt`, and a nullable `Position` (37 — explicit drag order; rows sort `Position ?? max`, then `AddedAt`). Empty state: "Your ToDo list is clear." |
 | `TagIndex` | `NoteTagged`, `NoteUntagged`, `NoteDeleted` | Tag-based filtering (Phase 4) |
 | `NoteSearchView` | All Note events (title/content/summary/tags) + `ActionItem*`; **transcript excluded** | Fuzzy free-text search (`GET /notes/search?q=`); `UserId-index` GSI, ranked in-Lambda (Phase 22-A) |
-| `WorkspaceList` | `WorkspaceCreated`, `WorkspaceRenamed`, `WorkspaceDeleted` | The workspace switcher (`GET /workspaces`); default `__default__` synthesised at read time (Phase 23-A) |
+| `WorkspaceList` | `WorkspaceCreated`, `WorkspaceRenamed`, `WorkspaceThemeSet`, `WorkspaceDeleted` | The workspace switcher (`GET /workspaces`); carries each workspace's `Theme` (36-A); default `__default__` synthesised at read time (Phase 23-A) |
 
 **Implication for milestones:** the `TodoList` projection is now visible in the Home view from day one (empty state initially), so the projection scaffold lands in Phase 1 even though the action-item events that populate it land in Phase 3. Easier to scaffold an empty projection early than to retrofit the Home view later.
 

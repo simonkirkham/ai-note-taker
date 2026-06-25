@@ -4,9 +4,11 @@ using EventStore.Projections;
 
 namespace EventStore.Integration;
 
-// The in-memory Api.Integration double keeps the whole TodoItem by reference, so a new field like
-// Position round-trips for free there. Only DynamoDB Local proves the explicit attribute mapping
-// (PutAsync write + ToTodoItem read) and the conditional UpdateItem in UpdatePositionsAsync.
+// The in-memory Api.Integration double keeps the whole TodoItem by reference, so a new field
+// (Position — 37-A) or a field-level update (UpdateDescriptionAsync — 39-A) round-trips for free
+// there. Only DynamoDB Local proves the explicit attribute mapping (PutAsync write + ToTodoItem
+// read), the conditional UpdateItem in UpdatePositionsAsync, and that the SET Description
+// UpdateExpression is well-formed and survives.
 public sealed class DynamoDbTodoListStoreTests(DynamoDbFixture fixture) : IClassFixture<DynamoDbFixture>
 {
     private readonly IAmazonDynamoDB _dynamo = fixture.DynamoDb;
@@ -48,6 +50,39 @@ public sealed class DynamoDbTodoListStoreTests(DynamoDbFixture fixture) : IClass
         Assert.Single(items);
         Assert.Equal("real", items[0].ItemId);
         Assert.Equal(1, items[0].Position);
+    }
+
+    [Fact]
+    public async Task UpdateDescription_OverwritesText_AndSurvivesRoundTrip()
+    {
+        var store = await NewStoreAsync();
+        var itemId = Guid.NewGuid().ToString();
+        await store.PutAsync(new TodoItem(itemId, null, null, "todo", "Original text", DateTimeOffset.UtcNow, null, "user-1"));
+
+        await store.UpdateDescriptionAsync(itemId, "Edited text");
+
+        var item = await store.GetByIdAsync(itemId);
+        Assert.NotNull(item);
+        Assert.Equal("Edited text", item!.Description);
+    }
+
+    [Fact]
+    public async Task UpdateDescription_LeavesOtherFieldsIntact()
+    {
+        var store = await NewStoreAsync();
+        var itemId = Guid.NewGuid().ToString();
+        var completedAt = new DateTimeOffset(2024, 1, 1, 12, 0, 0, TimeSpan.Zero);
+        await store.PutAsync(new TodoItem(itemId, "note-1", "Planning", "action", "Original", DateTimeOffset.UtcNow, completedAt, "user-1", "ws-1"));
+
+        await store.UpdateDescriptionAsync(itemId, "Edited");
+
+        var item = await store.GetByIdAsync(itemId);
+        Assert.NotNull(item);
+        Assert.Equal("Edited", item!.Description);
+        Assert.Equal("action", item.Type);
+        Assert.Equal("Planning", item.NoteTitle);
+        Assert.Equal(completedAt, item.CompletedAt);
+        Assert.Equal("ws-1", item.WorkspaceId);
     }
 
     private static DateTimeOffset T(int min) => new(2026, 6, 25, 9, min, 0, TimeSpan.Zero);

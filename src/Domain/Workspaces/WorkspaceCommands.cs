@@ -5,3 +5,4 @@ public record RenameWorkspace(WorkspaceId WorkspaceId, string NewName) : Workspa
 public record DeleteWorkspace(WorkspaceId WorkspaceId) : WorkspaceCommand;
 public record ConnectWorkspaceCalendar(WorkspaceId WorkspaceId, string Provider, string? AccountRef) : WorkspaceCommand;
 public record DisconnectWorkspaceCalendar(WorkspaceId WorkspaceId) : WorkspaceCommand;
+public record SetWorkspaceTheme(WorkspaceId WorkspaceId, string Theme) : WorkspaceCommand;
