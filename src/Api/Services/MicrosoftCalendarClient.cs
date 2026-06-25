@@ -5,15 +5,16 @@ using Microsoft.Extensions.Logging;
 
 namespace Api.Services;
 
-// Microsoft Graph-backed calendar client (Phase 32-A). Reads the owner's M365 /
+// Microsoft Graph-backed calendar client (Phase 32-A). Reads the workspace's M365 /
 // Outlook calendar via /me/calendarView, which expands recurring series into
 // instances server-side (the Graph equivalent of Google's SingleEvents=true).
 //
-// Auth mirrors GoogleCalendarClient: a refresh token (minted out-of-band, stored
-// in SSM) is exchanged for a short-lived Graph access token per call. On Entra
-// invalid_grant the token is reloaded from SSM once and retried, so re-minting
-// heals a running Lambda without a redeploy. Public client => no client secret.
-// See docs/guides/microsoft-calendar-token.md.
+// Auth mirrors GoogleCalendarClient: the per-(user,workspace) in-app refresh token
+// (IMicrosoftRefreshTokenSource → CalendarTokenStore since 34-D2) is exchanged for a
+// short-lived Graph access token per call. On Entra invalid_grant the token source is
+// re-read once and retried; for an in-app token that re-read returns the same value, so
+// the client gives up and the UI offers "Reconnect" (CHANGE-25). Public client => no
+// client secret.
 public sealed class MicrosoftCalendarClient : ICalendarClient
 {
     private const string GraphScope = "https://graph.microsoft.com/Calendars.Read offline_access";
@@ -40,9 +41,9 @@ public sealed class MicrosoftCalendarClient : ICalendarClient
         _tokenSource = tokenSource;
         _clientId = Environment.GetEnvironmentVariable("MS_CLIENT_ID") ?? "";
         // Default to "consumers" (personal Microsoft accounts) — the proven case for this app, and
-        // the same default the mint script (scripts/mint-microsoft-refresh-token.mjs) uses. A token
-        // minted against one tenant alias but refreshed against another yields invalid_grant, so the
-        // two defaults MUST match. Set MS_TENANT_ID explicitly for a work/school tenant.
+        // the same default the in-app connect uses (buildMicrosoftAuthUrl). A token granted against
+        // one tenant alias but refreshed against another yields invalid_grant, so the consent tenant
+        // and this default MUST match. Set MS_TENANT_ID explicitly for a work/school tenant.
         _tenantId = Environment.GetEnvironmentVariable("MS_TENANT_ID") is { Length: > 0 } t ? t : "consumers";
     }
 
@@ -298,7 +299,7 @@ public sealed class MicrosoftCalendarClient : ICalendarClient
             if (attempt == 1)
             {
                 _logger.LogWarning(
-                    "Entra rejected the calendar refresh token (invalid_grant) during {Operation}. Reloading from SSM and retrying once.",
+                    "Entra rejected the calendar refresh token (invalid_grant) during {Operation}. Re-reading the token source and retrying once.",
                     operation);
                 var reloaded = await _tokenSource.LoadAsync(forceReload: true);
                 if (reloaded is not null && reloaded != refreshToken)
@@ -308,12 +309,12 @@ public sealed class MicrosoftCalendarClient : ICalendarClient
                 }
 
                 _logger.LogError(
-                    "Microsoft refresh token in SSM is unchanged and still invalid (invalid_grant); reporting calendar_unavailable. Re-mint the token — see docs/guides/microsoft-calendar-token.md.");
+                    "Microsoft in-app calendar token is unchanged and still invalid (invalid_grant); reporting calendar_unavailable. The user must reconnect Outlook (Calendar settings → Connect Outlook).");
                 return null;
             }
 
             _logger.LogError(
-                "Microsoft refresh token still invalid (invalid_grant) after reloading from SSM during {Operation}; reporting calendar_unavailable.",
+                "Microsoft in-app calendar token still invalid (invalid_grant) after re-read during {Operation}; reporting calendar_unavailable.",
                 operation);
             return null;
         }
