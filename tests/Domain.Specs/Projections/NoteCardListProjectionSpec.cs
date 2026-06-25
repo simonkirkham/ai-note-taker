@@ -145,6 +145,23 @@ public sealed class NoteCardListProjectionSpec
     }
 
     [Fact]
+    public void ActionItemEdited_updates_action_description()
+    {
+        var projection = new NoteCardListProjection();
+        projection.Handle(NoteEnv(1, nameof(NoteCreated),
+            JsonSerializer.Serialize(new NoteCreated(NoteId1))));
+        projection.Handle(ActionEnv(ActionId1, 1, nameof(ActionItemAdded),
+            JsonSerializer.Serialize(new ActionItemAdded(ActionId1, NoteId1, "Send agenda"))));
+
+        projection.Handle(ActionEnv(ActionId1, 2, nameof(ActionItemEdited),
+            JsonSerializer.Serialize(new ActionItemEdited(ActionId1, "Send the agenda", DateTimeOffset.UtcNow))));
+
+        var action = Assert.Single(projection.GetAll()[0].ActionItems);
+        Assert.Equal("Send the agenda", action.Description);
+        Assert.False(action.Completed);
+    }
+
+    [Fact]
     public void ActionItemCompleted_marks_action_completed()
     {
         var projection = new NoteCardListProjection();

@@ -9,6 +9,7 @@ using Api.Exceptions;
 using AddActionItemCmd = Domain.ActionItems.AddActionItem;
 using CompleteActionItemCmd = Domain.ActionItems.CompleteActionItem;
 using ReopenActionItemCmd = Domain.ActionItems.ReopenActionItem;
+using EditActionItemCmd = Domain.ActionItems.EditActionItem;
 using DeleteActionItemCmd = Domain.ActionItems.DeleteActionItem;
 
 namespace Api.Handlers;
@@ -78,6 +79,28 @@ public static class ActionItemHandlers
         {
             version = await handler.HandleAsync(new ReopenActionItemCmd(new ActionId(actionId), DateTimeOffset.UtcNow));
         }
+        catch (ActionItemNotFoundException) { return Results.NotFound(); }
+        catch (InvalidOperationException) { return Results.Conflict(); }
+        SetConsistencyToken(response, new ActionId(actionId), version);
+        return Results.Ok();
+    }
+
+    public static async Task<IResult> EditActionItem(
+        Guid noteId,
+        Guid actionId,
+        EditActionItemRequest req,
+        HttpResponse response,
+        IActionItemCommandHandler handler,
+        INoteAuthorizer noteAuthorizer,
+        ICurrentUser currentUser)
+    {
+        if (!await noteAuthorizer.OwnsNoteAsync(new NoteId(noteId), currentUser.UserId)) return Results.NotFound();
+        long version;
+        try
+        {
+            version = await handler.HandleAsync(new EditActionItemCmd(new ActionId(actionId), req.Description, DateTimeOffset.UtcNow));
+        }
+        catch (ArgumentException) { return Results.BadRequest(); }
         catch (ActionItemNotFoundException) { return Results.NotFound(); }
         catch (InvalidOperationException) { return Results.Conflict(); }
         SetConsistencyToken(response, new ActionId(actionId), version);

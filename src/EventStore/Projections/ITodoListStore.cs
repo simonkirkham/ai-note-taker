@@ -6,6 +6,7 @@ public interface ITodoListStore
 {
     Task PutAsync(TodoItem item, CancellationToken ct = default);
     Task UpdateCompletedAtAsync(string itemId, DateTimeOffset? completedAt, CancellationToken ct = default);
+    Task UpdateDescriptionAsync(string itemId, string newDescription, CancellationToken ct = default);
     Task DeleteAsync(string itemId, CancellationToken ct = default);
     Task DeleteByNoteAsync(NoteId noteId, CancellationToken ct = default);
     Task UpdateNoteTitleAsync(NoteId noteId, string newTitle, CancellationToken ct = default);

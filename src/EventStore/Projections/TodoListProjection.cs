@@ -55,6 +55,9 @@ public sealed class TodoListProjection
             case ActionItemReopened e when _state.TryGetValue(e.ActionId.Value.ToString(), out var reopen):
                 _state[e.ActionId.Value.ToString()] = reopen with { CompletedAt = null };
                 break;
+            case ActionItemEdited e when _state.TryGetValue(e.ActionId.Value.ToString(), out var edited):
+                _state[e.ActionId.Value.ToString()] = edited with { Description = e.NewDescription };
+                break;
             case ActionItemDeleted e:
                 _state.Remove(e.ActionId.Value.ToString());
                 break;

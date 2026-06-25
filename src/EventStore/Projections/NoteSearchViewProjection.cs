@@ -53,6 +53,10 @@ public sealed class NoteSearchViewProjection
                 Actions(e.NoteId)[e.ActionId] = e.Description;
                 _items[e.NoteId] = c with { ActionItemsText = ComposeActions(e.NoteId), LastModifiedAt = envelope.OccurredAt };
                 break;
+            case ActionItemEdited e when _noteByAction.TryGetValue(e.ActionId, out var noteId) && _items.TryGetValue(noteId, out var c):
+                Actions(noteId)[e.ActionId] = e.NewDescription;
+                _items[noteId] = c with { ActionItemsText = ComposeActions(noteId), LastModifiedAt = envelope.OccurredAt };
+                break;
             case ActionItemDeleted e when _noteByAction.TryGetValue(e.ActionId, out var noteId) && _items.TryGetValue(noteId, out var c):
                 _noteByAction.Remove(e.ActionId);
                 Actions(noteId).Remove(e.ActionId);
