@@ -11,6 +11,8 @@ using EventStore.Projections;
 using Api.Auth;
 using Api.CommandHandlers;
 using Api.Consistency;
+using Api.Mcp.OAuth;
+using Amazon.SecretsManager;
 using Api.HealthChecks;
 using Api.Observability;
 using Api.Projections;
@@ -21,7 +23,7 @@ namespace Api;
 
 public static class Builder
 {
-    internal static WebApplication BuildApp(string[] args, string eventTableName, string projTableName, string noteDetailTableName, string noteActionsTableName, string todoListTableName, string noteCardListTableName, string folderTreeTableName, string tagIndexTableName, string tagFeedbackTableName, string actionFeedbackTableName, string calendarLinkTableName, string noteSearchViewTableName, string draftTranscriptionTableName, string workspaceListTableName, string projPositionTableName, string authTokensTableName, string calendarTokensTableName)
+    internal static WebApplication BuildApp(string[] args, string eventTableName, string projTableName, string noteDetailTableName, string noteActionsTableName, string todoListTableName, string noteCardListTableName, string folderTreeTableName, string tagIndexTableName, string tagFeedbackTableName, string actionFeedbackTableName, string calendarLinkTableName, string noteSearchViewTableName, string draftTranscriptionTableName, string workspaceListTableName, string projPositionTableName, string authTokensTableName, string calendarTokensTableName, string mcpAuthCodeTableName, string mcpRefreshTokenTableName)
     {
         var builder = WebApplication.CreateBuilder(args);
 
@@ -216,11 +218,30 @@ public static class Builder
         // IHttpContextAccessor (default PerSessionExecutionContext=false runs tools on the
         // request's execution context). GET→405 and MCP-Protocol-Version 400 are enforced by
         // the SDK's StreamableHttpHandler. The endpoint is mapped in Program.cs under
-        // /w/{workspaceId}/mcp, outside the authorized route group (no auth this slice).
+        // /w/{workspaceId}/mcp; 35-E guards it with RequireAuthorization (the OAuth wiring below).
         builder.Services
             .AddMcpServer()
             .WithHttpTransport(options => options.Stateless = true)
             .WithTools<Api.Mcp.NoteMcpTools>();
+
+        // 35-E: MCP OAuth 2.1 broker. The Resource Server validates OUR audience-bound HS256 bearer;
+        // the thin Authorization Server (endpoints in Program.cs, Command Lambda) brokers Google
+        // sign-in and mints those tokens. The HS256 secret comes from Secrets Manager by NAME
+        // (MCP_JWT_SECRET_NAME); MCP_JWT_SECRET overrides it directly for tests/local (no AWS call).
+        // TimeProvider is registered by AddMcpOAuth (TryAddSingleton).
+        var mcpSecret = builder.Configuration["MCP_JWT_SECRET"];
+        if (string.IsNullOrEmpty(mcpSecret) && !string.IsNullOrEmpty(Environment.GetEnvironmentVariable("MCP_JWT_SECRET_NAME")))
+        {
+            using var bootstrapLog = LoggerFactory.Create(b => b.AddPowertoolsLogger());
+            using var secrets = new AmazonSecretsManagerClient();
+            mcpSecret = McpSigningSecretProvider.Resolve(secrets, bootstrapLog.CreateLogger("Api.Mcp.OAuth.Secret"));
+        }
+        var mcpOAuthOptions = McpOAuthOptions.FromConfiguration(builder.Configuration, mcpSecret ?? "");
+        builder.Services.AddMcpOAuth(mcpOAuthOptions);
+        builder.Services.AddSingleton<IMcpAuthCodeStore>(sp =>
+            new DynamoDbMcpAuthCodeStore(sp.GetRequiredService<IAmazonDynamoDB>(), mcpAuthCodeTableName, mcpOAuthOptions));
+        builder.Services.AddSingleton<IMcpRefreshTokenStore>(sp =>
+            new DynamoDbMcpRefreshTokenStore(sp.GetRequiredService<IAmazonDynamoDB>(), mcpRefreshTokenTableName));
 
         return builder.Build();
     }

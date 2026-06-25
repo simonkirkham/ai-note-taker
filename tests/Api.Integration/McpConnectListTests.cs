@@ -14,9 +14,11 @@ using Microsoft.Extensions.DependencyInjection;
 
 namespace Api.Integration;
 
-// 35-A: read-only remote MCP server at /w/{workspaceId}/mcp (no auth this slice). Drives the real
-// MCP transport (initialize → tools/list → tools/call) with raw JSON-RPC envelopes, asserting the
-// list_notes tool returns the route workspace's note cards and never another workspace's.
+// 35-A/35-E: read-only remote MCP server at /w/{workspaceId}/mcp. Drives the real MCP transport
+// (initialize → tools/list → tools/call) with raw JSON-RPC envelopes, asserting list_notes returns
+// the route workspace's note cards and never another's. Since 35-E the endpoint requires an
+// audience-bound HS256 bearer (McpToolPolicy), so the authed calls attach a valid token minted by
+// McpTestTokens; the routing-level cases (GET→405, disabled→404) need no token.
 public sealed class McpConnectListTests(ApiFactory factory) : IClassFixture<ApiFactory>
 {
     private const string ProtocolVersion = "2025-06-18";
@@ -116,8 +118,10 @@ public sealed class McpConnectListTests(ApiFactory factory) : IClassFixture<ApiF
     [Fact]
     public async Task UnsupportedProtocolVersion_Returns400()
     {
+        // A valid bearer so the request reaches the SDK transport handler (which enforces the
+        // protocol-version 400); without it RequireAuthorization would short-circuit to 401 first.
         var client = _factory.CreateUnauthenticatedClient();
-        var req = NewPost(McpPath(WorkspaceA), Envelope("initialize", InitializeParams()));
+        var req = NewPost(McpPath(WorkspaceA), Envelope("initialize", InitializeParams()), McpTestTokens.Valid(WorkspaceA));
         req.Headers.Remove("MCP-Protocol-Version");
         req.Headers.Add("MCP-Protocol-Version", "1999-01-01");
 
@@ -205,19 +209,28 @@ public sealed class McpConnectListTests(ApiFactory factory) : IClassFixture<ApiF
         return await CallAsync(client, path, "tools/call", new { name = toolName, arguments = new { } });
     }
 
-    // POSTs initialize then the target method; returns the parsed JSON-RPC `result` of the target.
+    // POSTs initialize then the target method (both with a valid bearer for the path's workspace);
+    // returns the parsed JSON-RPC `result` of the target.
     private async Task<JsonElement> CallAsync(HttpClient client, string path, string method, object @params)
     {
-        await PostAsync(client, path, Envelope("initialize", InitializeParams()));
-        var resp = await PostAsync(client, path, Envelope(method, @params));
+        var token = TokenForPath(path);
+        await PostAsync(client, path, Envelope("initialize", InitializeParams()), token);
+        var resp = await PostAsync(client, path, Envelope(method, @params), token);
         resp.EnsureSuccessStatusCode();
         return await ReadResultAsync(resp);
     }
 
-    private static async Task<HttpResponseMessage> PostAsync(HttpClient client, string path, string json) =>
-        await client.SendAsync(NewPost(path, json));
+    // The audience is per-workspace, so mint a token whose aud matches the path's workspace.
+    private static string? TokenForPath(string path)
+    {
+        var parts = path.Trim('/').Split('/');
+        return parts.Length >= 2 && parts[0] == "w" ? McpTestTokens.Valid(parts[1]) : null;
+    }
 
-    private static HttpRequestMessage NewPost(string path, string json)
+    private static async Task<HttpResponseMessage> PostAsync(HttpClient client, string path, string json, string? bearer = null) =>
+        await client.SendAsync(NewPost(path, json, bearer));
+
+    private static HttpRequestMessage NewPost(string path, string json, string? bearer = null)
     {
         var req = new HttpRequestMessage(HttpMethod.Post, path)
         {
@@ -227,6 +240,8 @@ public sealed class McpConnectListTests(ApiFactory factory) : IClassFixture<ApiF
         req.Headers.Accept.Clear();
         req.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
         req.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("text/event-stream"));
+        if (bearer is not null)
+            req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", bearer);
         return req;
     }
 

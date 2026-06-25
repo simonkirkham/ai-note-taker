@@ -72,23 +72,8 @@ public class InfraAssertionsTests
         }));
     }
 
-    [Fact]
-    public void Lambda_McpDisabledOnQueryFunction()
-    {
-        var resources = ToDict(TemplateJson()["Resources"]);
-        var disabled = new List<string>();
-        foreach (var (logicalId, raw) in resources)
-        {
-            var res = ToDict(raw);
-            if ((res.TryGetValue("Type", out var t) ? t as string : null) != "AWS::Lambda::Function") continue;
-            if (!ToDict(res["Properties"]).TryGetValue("Environment", out var envRaw)) continue;
-            if (!ToDict(envRaw).TryGetValue("Variables", out var varsRaw)) continue;
-            if (ToDict(varsRaw).TryGetValue("MCP_ENABLED", out var v) && v as string == "false")
-                disabled.Add(logicalId);
-        }
-
-        Assert.Contains(disabled, k => k.Contains("QueryFunction", StringComparison.Ordinal));
-    }
+    // 35-E flipped MCP_ENABLED false→true on the request functions (the endpoint is re-enabled WITH
+    // OAuth in place). The "MCP_ENABLED=true on Query" assertion now lives in McpEnabled_IsTrueOnQueryFunction.
 
     [Fact]
     public void EventsTable_HasRetainDeletionPolicy()
@@ -2215,6 +2200,179 @@ public class InfraAssertionsTests
         // 35-A: MCP tool calls are POST but read-only (NoteCardList projection only), so the
         // /w/{workspaceId}/mcp path is pinned to Query — overriding the default POST→Command rule.
         Assert.True(RouteTargetsFunction("POST /w/{workspaceId}/mcp", "QueryFunction"));
+    }
+
+    // ── 35-E: MCP OAuth broker ───────────────────────────────────────────
+
+    [Theory]
+    [InlineData("GET /oauth/authorize")]
+    [InlineData("GET /oauth/google/callback")]
+    [InlineData("GET /.well-known/oauth-authorization-server")]
+    [InlineData("POST /oauth/token")]
+    public void Routing_OAuthEndpoints_TargetCommand(string routeKey)
+    {
+        // The AS broker needs the Google client + the HMAC secret + the OAuth stores, which only
+        // Command holds — so authorize/callback/token + AS metadata are pinned to Command.
+        Assert.True(RouteTargetsFunction(routeKey, "CommandFunction"));
+    }
+
+    [Fact]
+    public void McpOAuth_McpToolPathStaysOnQuery()
+    {
+        // The Resource Server (tool path) stays on Query; only the AS endpoints move to Command.
+        Assert.True(RouteTargetsFunction("POST /w/{workspaceId}/mcp", "QueryFunction"));
+    }
+
+    [Fact]
+    public void McpEnabled_IsTrueOnQueryFunction()
+    {
+        // 35-E re-enables the endpoint WITH auth: MCP_ENABLED flips false→true on the request functions.
+        var resources = ToDict(TemplateJson()["Resources"]);
+        var enabledOnQuery = false;
+        foreach (var (logicalId, raw) in resources)
+        {
+            var res = ToDict(raw);
+            if ((res.TryGetValue("Type", out var t) ? t as string : null) != "AWS::Lambda::Function") continue;
+            if (!logicalId.Contains("QueryFunction", StringComparison.Ordinal)) continue;
+            if (!ToDict(res["Properties"]).TryGetValue("Environment", out var envRaw)) continue;
+            if (!ToDict(envRaw).TryGetValue("Variables", out var varsRaw)) continue;
+            if (ToDict(varsRaw).TryGetValue("MCP_ENABLED", out var v) && v as string == "true")
+                enabledOnQuery = true;
+        }
+        Assert.True(enabledOnQuery, "MCP_ENABLED must be \"true\" on the Query function for 35-E");
+    }
+
+    [Fact]
+    public void McpJwtSigningSecret_Exists_WithRetain()
+    {
+        _template.HasResource("AWS::SecretsManager::Secret", Match.ObjectLike(new Dictionary<string, object>
+        {
+            ["DeletionPolicy"] = "Retain",
+            ["Properties"] = Match.ObjectLike(new Dictionary<string, object>
+            {
+                ["Name"] = "notetaker-mcp-jwt-signing-key"
+            })
+        }));
+    }
+
+    [Fact]
+    public void McpJwtSecret_IsGrantReadToBothRequestFunctions()
+    {
+        // Command SIGNS, Query VALIDATES — both need secretsmanager:GetSecretValue on the secret, and
+        // neither needs a write verb on it. Walk each request role's statements that reference the secret.
+        var secretLogicalId = McpSecretLogicalId();
+        foreach (var rolePrefix in new[] { "CommandFunctionServiceRole", "QueryFunctionServiceRole" })
+        {
+            var reads = RoleStatements(rolePrefix)
+                .Where(s => StatementReferencesLogicalId(s, secretLogicalId))
+                .SelectMany(ActionsOf)
+                .ToHashSet();
+            Assert.Contains("secretsmanager:GetSecretValue", reads);
+            Assert.DoesNotContain("secretsmanager:PutSecretValue", reads);
+            Assert.DoesNotContain("secretsmanager:UpdateSecret", reads);
+        }
+    }
+
+    [Fact]
+    public void McpAuthCodeTable_Exists_WithDestroyAndTtl()
+    {
+        _template.HasResource("AWS::DynamoDB::Table", Match.ObjectLike(new Dictionary<string, object>
+        {
+            ["DeletionPolicy"] = "Delete",
+            ["Properties"] = Match.ObjectLike(new Dictionary<string, object>
+            {
+                ["TableName"] = "notetaker-mcp-auth-code",
+                ["TimeToLiveSpecification"] = Match.ObjectLike(new Dictionary<string, object>
+                {
+                    ["AttributeName"] = "TTL",
+                    ["Enabled"] = true
+                })
+            })
+        }));
+    }
+
+    [Fact]
+    public void McpRefreshTokenTable_Exists_WithRetainAndTtl()
+    {
+        // IMPORTANT-6: refresh tokens carry a bounded absolute lifetime, TTL-reaped on the "TTL" attr.
+        _template.HasResource("AWS::DynamoDB::Table", Match.ObjectLike(new Dictionary<string, object>
+        {
+            ["DeletionPolicy"] = "Retain",
+            ["Properties"] = Match.ObjectLike(new Dictionary<string, object>
+            {
+                ["TableName"] = "notetaker-mcp-refresh-token",
+                ["TimeToLiveSpecification"] = Match.ObjectLike(new Dictionary<string, object>
+                {
+                    ["AttributeName"] = "TTL",
+                    ["Enabled"] = true
+                })
+            })
+        }));
+    }
+
+    [Fact]
+    public void McpOAuthTables_AreGrantedToCommandOnly_NotQuery()
+    {
+        // The AS flow (read/write the code + refresh stores) runs on Command. Query never touches them.
+        var codeId = TableLogicalId("notetaker-mcp-auth-code");
+        var refreshId = TableLogicalId("notetaker-mcp-refresh-token");
+
+        foreach (var tableId in new[] { codeId, refreshId })
+        {
+            var commandRefs = RoleStatements("CommandFunctionServiceRole")
+                .Any(s => StatementReferencesLogicalId(s, tableId));
+            Assert.True(commandRefs, "Command role must reference the MCP OAuth table");
+
+            var queryRefs = RoleStatements("QueryFunctionServiceRole")
+                .Any(s => StatementReferencesLogicalId(s, tableId));
+            Assert.False(queryRefs, "Query role must NOT reference the MCP OAuth tables");
+        }
+    }
+
+    [Fact]
+    public void Lambda_HasMcpOAuthEnvVars()
+    {
+        _template.HasResourceProperties("AWS::Lambda::Function", Match.ObjectLike(new Dictionary<string, object>
+        {
+            ["Handler"] = "Api",
+            ["Environment"] = Match.ObjectLike(new Dictionary<string, object>
+            {
+                ["Variables"] = Match.ObjectLike(new Dictionary<string, object>
+                {
+                    ["MCP_AUTH_CODE_TABLE_NAME"] = Match.AnyValue(),
+                    ["MCP_REFRESH_TOKEN_TABLE_NAME"] = Match.AnyValue(),
+                    ["MCP_JWT_SECRET_NAME"] = Match.AnyValue()
+                })
+            })
+        }));
+    }
+
+    private static string McpSecretLogicalId()
+    {
+        var resources = ToDict(TemplateJson()["Resources"]);
+        foreach (var (logicalId, raw) in resources)
+        {
+            var res = ToDict(raw);
+            if ((res.TryGetValue("Type", out var t) ? t as string : null) != "AWS::SecretsManager::Secret") continue;
+            var props = ToDict(res["Properties"]);
+            if (props.TryGetValue("Name", out var name) && name as string == "notetaker-mcp-jwt-signing-key")
+                return logicalId;
+        }
+        throw new Xunit.Sdk.XunitException("MCP JWT signing secret not found in template");
+    }
+
+    private static string TableLogicalId(string tableName)
+    {
+        var resources = ToDict(TemplateJson()["Resources"]);
+        foreach (var (logicalId, raw) in resources)
+        {
+            var res = ToDict(raw);
+            if ((res.TryGetValue("Type", out var t) ? t as string : null) != "AWS::DynamoDB::Table") continue;
+            var props = ToDict(res["Properties"]);
+            if (props.TryGetValue("TableName", out var name) && name as string == tableName)
+                return logicalId;
+        }
+        throw new Xunit.Sdk.XunitException($"table '{tableName}' not found in template");
     }
 
     // ── Least privilege: Query is read-only, no event store ──────────────
