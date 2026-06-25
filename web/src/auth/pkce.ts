@@ -70,15 +70,18 @@ export function buildCalendarAuthUrl(
 
 // Phase 34-C: the in-app "Connect Outlook" consent against the Microsoft identity platform
 // (auth-code + PKCE, public client). Scopes mirror MicrosoftCalendarClient (Calendars.Read +
-// offline_access) plus openid/email so the id_token carries the account. Tenant defaults to
-// "consumers" (personal accounts) unless VITE_MS_TENANT_ID is set — matching the backend default.
+// offline_access) plus openid/email so the id_token carries the account. CHANGE-26: tenant defaults
+// to "common" (work/school AND personal accounts; was "consumers" = personal-only) unless
+// VITE_MS_TENANT_ID overrides — matching the backend default. The Entra app's "Supported account
+// types" must allow this audience. prompt=select_account always shows the account picker so a
+// different account can be chosen even when the browser already has a Microsoft session.
 export function buildMicrosoftAuthUrl(
   clientId: string,
   redirectUri: string,
   codeChallenge: string,
   state: string,
 ): string {
-  const tenant = import.meta.env.VITE_MS_TENANT_ID || 'consumers'
+  const tenant = import.meta.env.VITE_MS_TENANT_ID || 'common'
   const params = new URLSearchParams({
     client_id: clientId,
     redirect_uri: redirectUri,
@@ -88,7 +91,7 @@ export function buildMicrosoftAuthUrl(
     code_challenge: codeChallenge,
     code_challenge_method: 'S256',
     state,
-    prompt: 'consent',
+    prompt: 'select_account',
   })
   return `https://login.microsoftonline.com/${tenant}/oauth2/v2.0/authorize?${params}`
 }

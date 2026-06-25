@@ -11,7 +11,8 @@ public sealed class MicrosoftOAuthClient(HttpClient http) : IMicrosoftOAuthClien
 
     public async Task<MicrosoftTokenResult> ExchangeAuthCodeAsync(string code, string codeVerifier, string redirectUri, CancellationToken ct = default)
     {
-        var tenant = Environment.GetEnvironmentVariable("MS_TENANT_ID") is { Length: > 0 } t ? t : "consumers";
+        // CHANGE-26: default "common" (work/school + personal) — must match the authorize tenant.
+        var tenant = Environment.GetEnvironmentVariable("MS_TENANT_ID") is { Length: > 0 } t ? t : "common";
         var tokenUrl = $"https://login.microsoftonline.com/{tenant}/oauth2/v2.0/token";
         var form = new Dictionary<string, string>
         {
