@@ -53,7 +53,7 @@ export default function CommandBar({
 
   return (
     <div className={styles.commandBar} data-testid="command-bar">
-      <div data-testid="tags-section" className={styles.tagsRegion} aria-label="Tags">
+      <div data-testid="tags-section" className={styles.tagsRegion} role="group" aria-label="Tags">
         <span className={styles.tagGlyph} aria-hidden="true">
           <TagIcon />
         </span>
