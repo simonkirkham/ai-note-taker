@@ -205,12 +205,18 @@ describe('NoteView', () => {
     expect(document.activeElement).toBe(screen.getByLabelText('Note title'))
   })
 
-  it('Tab from title input reaches the tab list (via the Link to meeting control on an unlinked note)', async () => {
+  it('Tab from title input reaches the tab list (via Link to meeting + the Command Bar)', async () => {
     renderNoteView()
     await screen.findByLabelText('Note content')
     screen.getByLabelText('Note title').focus()
     await userEvent.tab()
     expect(document.activeElement).toBe(screen.getByTestId('link-meeting-button'))
+    // CHANGE-27: the Command Bar (＋ Tag ghost, then the Actions pill) sits between the
+    // link-meeting control and the tab row.
+    await userEvent.tab()
+    expect(document.activeElement).toBe(screen.getByTestId('add-tag-button'))
+    await userEvent.tab()
+    expect(document.activeElement).toBe(screen.getByTestId('actions-pill'))
     await userEvent.tab()
     expect(document.activeElement).toBe(screen.getByTestId('note-tab-quick'))
   })
@@ -263,20 +269,23 @@ describe('NoteView', () => {
       expect(screen.getByTestId('generate-final-notes-button')).toBeInTheDocument()
     })
 
-    it('keeps Tags and Action items visible on every tab', async () => {
+    it('keeps the Tags + Actions command bar visible on every tab', async () => {
       renderNoteView()
       await screen.findByLabelText('Note content')
+      // The Command Bar sits above the tabs, so it stays visible regardless of tab.
       // Quick notes (default)
+      expect(screen.getByTestId('command-bar')).toBeVisible()
       expect(screen.getByTestId('tags-section')).toBeVisible()
-      expect(screen.getByTestId('tag-input')).toBeVisible()
+      expect(screen.getByTestId('add-tag-button')).toBeVisible()
+      expect(screen.getByTestId('actions-pill')).toBeVisible()
       // Transcript tab
       await userEvent.click(screen.getByTestId('note-tab-transcript'))
-      expect(screen.getByTestId('tags-section')).toBeVisible()
-      expect(screen.getByTestId('tag-input')).toBeVisible()
+      expect(screen.getByTestId('command-bar')).toBeVisible()
+      expect(screen.getByTestId('actions-pill')).toBeVisible()
       // Final notes tab
       await userEvent.click(screen.getByTestId('note-tab-final'))
-      expect(screen.getByTestId('tags-section')).toBeVisible()
-      expect(screen.getByTestId('tag-input')).toBeVisible()
+      expect(screen.getByTestId('command-bar')).toBeVisible()
+      expect(screen.getByTestId('actions-pill')).toBeVisible()
     })
 
     it('renders the record control on the tab row', async () => {
@@ -698,7 +707,8 @@ describe('NoteView', () => {
     it('adding a tag on a blank note reveals Save and Delete', async () => {
       renderEmptyNoteView()
       await screen.findByLabelText('Note content')
-      const tagInput = screen.getByTestId('tag-input')
+      await userEvent.click(screen.getByTestId('add-tag-button'))
+      const tagInput = await screen.findByTestId('tag-input')
       await userEvent.type(tagInput, 'planning')
       fireEvent.blur(tagInput)
       await waitFor(() => expect(screen.queryByTestId('save-button')).toBeInTheDocument())
@@ -915,7 +925,8 @@ describe('NoteView', () => {
       await userEvent.type(textarea, 'my unsaved words')
       // Trigger a keys.note refetch path (adding a tag invalidates the index and the
       // note cache via optimistic patch); the unsaved draft must survive.
-      const tagInput = screen.getByTestId('tag-input')
+      await userEvent.click(screen.getByTestId('add-tag-button'))
+      const tagInput = await screen.findByTestId('tag-input')
       await userEvent.type(tagInput, 'planning')
       fireEvent.blur(tagInput)
       await waitFor(() => expect(screen.queryByTestId('tag-pill-planning')).toBeInTheDocument())
@@ -943,6 +954,8 @@ describe('NoteView', () => {
         http.post('/api/notes/:noteId/tags', async () => { await delay(60); return new HttpResponse(null, { status: 500 }) }),
       )
       renderNoteView()
+      await screen.findByLabelText('Note content')
+      await userEvent.click(screen.getByTestId('add-tag-button'))
       const tagInput = await screen.findByTestId('tag-input')
       await userEvent.type(tagInput, 'planning')
       fireEvent.blur(tagInput)

@@ -13,7 +13,7 @@ import { useAnalyseNote, useEditContent, useRenameNoteDetail, useSetNoteDate } f
 import { useTagNote, useUntagNote } from "../hooks/useTagMutations";
 import { useTags } from "../hooks/useTags";
 import { useTranscription } from "../hooks/useTranscription";
-import ActionsSection from "./ActionsSection";
+import CommandBar from "./CommandBar";
 import FinalNotesView from "./FinalNotesView";
 import LazyNoteEditor from "./LazyNoteEditor";
 import MeetingPicker from "./MeetingPicker";
@@ -22,7 +22,6 @@ import tabStyles from "./NoteTabs.module.css";
 import styles from "./NoteView.module.css";
 import RecordControl from "./RecordControl";
 import ShortcutsPanel from "./ShortcutsPanel";
-import TagsSection from "./TagsSection";
 import { useToast } from "./toastContext";
 import TranscriptTab, { type RecordingDownloadStatus, type DiarizationDisplayStatus } from "./TranscriptTab";
 
@@ -614,6 +613,13 @@ export default function NoteView({
           onClose={() => setPickerOpen(false)}
         />
       )}
+      <CommandBar
+        noteId={noteId}
+        tags={tags}
+        allTags={allTags}
+        onAddTags={handleAddTags}
+        onRemoveTag={handleRemoveTag}
+      />
       <div className={tabStyles.tabLayout}>
         <div className={tabStyles.main}>
           <div className={tabStyles.tabRow}>
@@ -714,13 +720,6 @@ export default function NoteView({
             />
           </div>
         </div>
-
-        <aside className={tabStyles.sidebar} aria-label="Tags and action items">
-          <TagsSection tags={tags} allTags={allTags} onAdd={handleAddTags} onRemove={handleRemoveTag} />
-          <div className={tabStyles.actions}>
-            <ActionsSection key={noteId} noteId={noteId} />
-          </div>
-        </aside>
       </div>
     </main>
   );

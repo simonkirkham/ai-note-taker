@@ -252,8 +252,22 @@ public sealed class AppPage
                 .Filter(new LocatorFilterOptions { HasText = title })
         ).Not.ToBeVisibleAsync();
 
+    // CHANGE-27: actions moved from the always-visible sidebar into a popover under the
+    // Command Bar's "Actions" pill. Open it (idempotent: no-op if already open) before
+    // touching action-input/actions-list/actions-empty. The popover stays open through
+    // add/toggle/delete and after adding, so a single open covers a whole interaction.
+    public async Task OpenActionsPopoverAsync()
+    {
+        var popover = page.GetByTestId("actions-popover");
+        if (await popover.IsVisibleAsync())
+            return;
+        await page.GetByTestId("actions-pill").ClickAsync();
+        await Assertions.Expect(popover).ToBeVisibleAsync();
+    }
+
     public async Task AddActionItemAsync(string description)
     {
+        await OpenActionsPopoverAsync();
         var input = page.GetByTestId("action-input");
         await input.FillAsync(description);
         var postDone = page.WaitForResponseAsync(r =>
@@ -262,8 +276,11 @@ public sealed class AppPage
         await postDone;
     }
 
-    public Task AssertActionsEmptyAsync() =>
-        Assertions.Expect(page.GetByTestId("actions-empty")).ToBeVisibleAsync();
+    public async Task AssertActionsEmptyAsync()
+    {
+        await OpenActionsPopoverAsync();
+        await Assertions.Expect(page.GetByTestId("actions-empty")).ToBeVisibleAsync();
+    }
 
     public async Task AddFolderAsync(string name)
     {
@@ -315,6 +332,8 @@ public sealed class AppPage
             await page.ReloadAsync();
             try
             {
+                // CHANGE-27: a reload closes the actions popover — re-open it before asserting.
+                await page.GetByTestId("actions-pill").ClickAsync(new() { Timeout = 2500 });
                 await Assertions.Expect(page.GetByTestId("actions-list").GetByText(description))
                     .ToBeVisibleAsync(new() { Timeout = 2500 });
                 return;
@@ -328,7 +347,11 @@ public sealed class AppPage
     public async Task AddTagAsync(string tagInput)
     {
         var tagCount = tagInput.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries).Length;
+        // CHANGE-27: the tag combobox is hidden behind the "＋ Tag" ghost button in the
+        // Command Bar — reveal it before filling. No-op if already revealed.
         var input = page.GetByTestId("tag-input");
+        if (!await input.IsVisibleAsync())
+            await page.GetByTestId("add-tag-button").ClickAsync();
         await input.FillAsync(tagInput);
 
         // WaitForResponseAsync handlers all fire on the same response event, so

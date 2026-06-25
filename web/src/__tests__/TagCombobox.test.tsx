@@ -1,7 +1,7 @@
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type { TagIndexEntry } from '../api/tags'
-import TagsSection from '../components/TagsSection'
+import TagCombobox from '../components/TagCombobox'
 
 function mkTag(tag: string, noteCount: number, noteIds: string[] = []): TagIndexEntry {
   return { tag, noteCount, noteIds }
@@ -11,37 +11,20 @@ function renderTags(props: {
   tags?: string[]
   allTags?: TagIndexEntry[]
   onAdd?: (t: string) => void
-  onRemove?: (t: string) => void
 } = {}) {
   const onAdd = props.onAdd ?? vi.fn()
-  const onRemove = props.onRemove ?? vi.fn()
   render(
-    <TagsSection
+    <TagCombobox
       tags={props.tags ?? []}
       allTags={props.allTags ?? []}
       onAdd={onAdd}
-      onRemove={onRemove}
     />,
   )
   const input = screen.getByTestId('tag-input')
-  return { input, onAdd, onRemove }
+  return { input, onAdd }
 }
 
-describe('TagsSection — existing behavior', () => {
-  it('displays applied tag pills', () => {
-    renderTags({ tags: ['Work', 'Personal'] })
-    expect(screen.getByTestId('tag-pill-Work')).toBeInTheDocument()
-    expect(screen.getByTestId('tag-pill-Personal')).toBeInTheDocument()
-  })
-
-  it('remove button calls onRemove with the correct tag', async () => {
-    const onRemove = vi.fn()
-    renderTags({ tags: ['Work', 'Personal'], onRemove })
-    await userEvent.click(screen.getByLabelText('Remove tag Work'))
-    expect(onRemove).toHaveBeenCalledWith('Work')
-    expect(onRemove).toHaveBeenCalledTimes(1)
-  })
-
+describe('TagCombobox — existing behavior', () => {
   it('blurring the input submits the typed text (lowercased)', async () => {
     const user = userEvent.setup()
     const onAdd = vi.fn()
@@ -59,7 +42,7 @@ describe('TagsSection — existing behavior', () => {
   })
 })
 
-describe('TagsSection — case-insensitive add (CHANGE-17)', () => {
+describe('TagCombobox — case-insensitive add (CHANGE-17)', () => {
   it('lowercases a mixed-case tag before calling onAdd', async () => {
     const user = userEvent.setup()
     const onAdd = vi.fn()
@@ -78,7 +61,7 @@ describe('TagsSection — case-insensitive add (CHANGE-17)', () => {
   })
 })
 
-describe('TagsSection — typing suggestions', () => {
+describe('TagCombobox — typing suggestions', () => {
   it('prefix matches appear before substring matches', async () => {
     const allTags = [
       mkTag('Hunting', 3),
@@ -121,7 +104,7 @@ describe('TagsSection — typing suggestions', () => {
   })
 })
 
-describe('TagsSection — empty focus state', () => {
+describe('TagCombobox — empty focus state', () => {
   it('shows Common heading with top tags by noteCount on empty focus', async () => {
     const allTags = [
       mkTag('Work', 5),
@@ -209,7 +192,7 @@ describe('TagsSection — empty focus state', () => {
   })
 })
 
-describe('TagsSection — keyboard navigation', () => {
+describe('TagCombobox — keyboard navigation', () => {
   it('ArrowDown highlights the first suggestion', async () => {
     const allTags = [mkTag('Work', 5), mkTag('Personal', 3)]
     const { input } = renderTags({ allTags })
@@ -321,7 +304,7 @@ describe('TagsSection — keyboard navigation', () => {
   })
 })
 
-describe('TagsSection — mouse interaction', () => {
+describe('TagCombobox — mouse interaction', () => {
   it('clicking a suggestion submits it immediately', async () => {
     const onAdd = vi.fn()
     const allTags = [mkTag('Design', 3)]
