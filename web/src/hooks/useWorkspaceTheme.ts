@@ -32,7 +32,8 @@ export function useWorkspaceTheme() {
         setGlobalTheme(next);
         return;
       }
-      applyTheme(next); // optimistic immediate paint
+      // The optimistic cache write (mutation onMutate) drives `effective`, and the effect is the
+      // sole writer of the DOM theme — so a rollback on error reliably re-applies the prior theme.
       setWorkspaceThemeMutation.mutate({ workspaceId, theme: next });
     },
     [isDefault, workspaceId, setGlobalTheme, setWorkspaceThemeMutation],

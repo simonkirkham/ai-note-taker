@@ -97,6 +97,21 @@ describe("WorkspaceTheme (36-A)", () => {
     expect(themePatchHit).toBe(false);
   });
 
+  it("rolls back to the prior theme when the PATCH fails", async () => {
+    server.use(
+      http.patch("/api/workspaces/:id/theme", () => new HttpResponse(null, { status: 500 })),
+    );
+
+    renderPicker("ws-work");
+    await waitFor(() => expect(document.documentElement.dataset.theme).toBe("midnight"));
+
+    await userEvent.selectOptions(screen.getByLabelText("Theme"), "plum");
+
+    // the failed write reconciles: the optimistic cache rolls back and the prior theme stays applied
+    await waitFor(() => expect(document.documentElement.dataset.theme).toBe("midnight"));
+    expect(screen.getByLabelText("Theme")).toHaveValue("midnight");
+  });
+
   it("applies the default theme for a non-default workspace with no stored theme", async () => {
     renderPicker("ws-clients");
     // teal is the :root default → no data-theme attribute, and the picker shows teal.
