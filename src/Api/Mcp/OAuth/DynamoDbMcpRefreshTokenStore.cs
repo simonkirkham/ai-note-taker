@@ -5,8 +5,10 @@ using Amazon.DynamoDBv2.Model;
 namespace Api.Mcp.OAuth;
 
 // DynamoDB-backed rotating refresh-token store. PK "token" (the opaque refresh token); "payload" is
-// the bound identity/audience JSON. Single-use rotation is enforced by DeleteItem(ReturnValues=ALL_OLD):
-// the take reads AND removes the row, so a replayed (already-rotated) token finds nothing.
+// the bound identity/audience JSON; "TTL" is a Unix-seconds expiry DynamoDB reaps. Single-use rotation
+// is enforced by DeleteItem(ReturnValues=ALL_OLD): the take reads AND removes the row, so a replayed
+// (already-rotated) token finds nothing. The stored expiry is ALSO re-checked on read because DynamoDB
+// TTL deletion lags minutes behind the timestamp.
 public sealed class DynamoDbMcpRefreshTokenStore(IAmazonDynamoDB dynamo, string tableName) : IMcpRefreshTokenStore
 {
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
@@ -16,12 +18,13 @@ public sealed class DynamoDbMcpRefreshTokenStore(IAmazonDynamoDB dynamo, string 
         var item = new Dictionary<string, AttributeValue>
         {
             ["token"] = new() { S = token.Token },
-            ["payload"] = new() { S = JsonSerializer.Serialize(token, Json) }
+            ["payload"] = new() { S = JsonSerializer.Serialize(token, Json) },
+            ["TTL"] = new() { N = token.ExpiresAt.ToUnixTimeSeconds().ToString() }
         };
         await dynamo.PutItemAsync(new PutItemRequest { TableName = tableName, Item = item }, ct).ConfigureAwait(false);
     }
 
-    public async Task<McpRefreshToken?> TakeAsync(string token, CancellationToken ct = default)
+    public async Task<McpRefreshToken?> TakeAsync(string token, DateTimeOffset now, CancellationToken ct = default)
     {
         var response = await dynamo.DeleteItemAsync(new DeleteItemRequest
         {
@@ -35,6 +38,9 @@ public sealed class DynamoDbMcpRefreshTokenStore(IAmazonDynamoDB dynamo, string 
             || string.IsNullOrEmpty(payload.S))
             return null;
 
-        return JsonSerializer.Deserialize<McpRefreshToken>(payload.S, Json);
+        var stored = JsonSerializer.Deserialize<McpRefreshToken>(payload.S, Json);
+        if (stored is null || now > stored.ExpiresAt)
+            return null;
+        return stored;
     }
 }

@@ -46,6 +46,9 @@ public sealed class InMemoryMcpRefreshTokenStore : IMcpRefreshTokenStore
         return Task.CompletedTask;
     }
 
-    public Task<McpRefreshToken?> TakeAsync(string token, CancellationToken ct = default) =>
-        Task.FromResult(_items.TryRemove(token, out var t) ? t : null);
+    public Task<McpRefreshToken?> TakeAsync(string token, DateTimeOffset now, CancellationToken ct = default)
+    {
+        if (!_items.TryRemove(token, out var t)) return Task.FromResult<McpRefreshToken?>(null);
+        return Task.FromResult(now > t.ExpiresAt ? null : t);
+    }
 }

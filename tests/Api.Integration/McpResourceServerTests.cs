@@ -52,18 +52,20 @@ public sealed class McpResourceServerTests(ApiFactory factory) : IClassFixture<A
     }
 
     [Fact]
-    public async Task TokenForAnotherWorkspace_DoesNotReturnNotes()
+    public async Task TokenForAnotherWorkspace_IsForbidden_OnEveryMethod()
     {
-        // A valid token of ours, but minted for a DIFFERENT workspace's resource — the per-workspace
-        // half of the aud binding: presenting it on this workspace's path must not yield notes.
+        // HIGH-2: a valid token of ours minted for a DIFFERENT workspace's resource is rejected with
+        // 403 by the audience→route binding middleware — for EVERY method (initialize AND tools/call),
+        // not just the tool body — so it can never reach a workspace read.
         var client = _factory.CreateUnauthenticatedClient();
-        var initResp = await PostWith(client, McpPath(Workspace), Envelope("initialize", InitializeParams()), McpTestTokens.Valid("ws-other"));
-        // initialize may succeed (no workspace read yet); the tool call must NOT return notes.
-        var toolResp = await PostWith(client, McpPath(Workspace),
-            Envelope("tools/call", new { name = "list_notes", arguments = new { } }), McpTestTokens.Valid("ws-other"));
+        var otherWsToken = McpTestTokens.Valid("ws-other");
 
-        var body = await toolResp.Content.ReadAsStringAsync();
-        Assert.DoesNotContain("\"notes\"", body, StringComparison.Ordinal);
+        var initResp = await PostWith(client, McpPath(Workspace), Envelope("initialize", InitializeParams()), otherWsToken);
+        Assert.Equal(HttpStatusCode.Forbidden, initResp.StatusCode);
+
+        var toolResp = await PostWith(client, McpPath(Workspace),
+            Envelope("tools/call", new { name = "list_notes", arguments = new { } }), otherWsToken);
+        Assert.Equal(HttpStatusCode.Forbidden, toolResp.StatusCode);
     }
 
     [Fact]

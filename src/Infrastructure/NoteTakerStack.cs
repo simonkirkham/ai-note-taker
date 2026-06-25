@@ -231,13 +231,16 @@ public sealed class NoteTakerStack : Stack
         });
 
         // Refresh-token table: rotating MCP refresh tokens (a durable credential keyed by the opaque
-        // token) → RETAIN, encrypted. Single-use rotation is enforced in code (read-and-delete).
+        // token) → RETAIN, encrypted. Single-use rotation is enforced in code (read-and-delete); a
+        // bounded absolute lifetime is enforced in code AND TTL-reaped on the "TTL" attribute, so a
+        // leaked/abandoned token cannot live forever.
         var mcpRefreshTokenTable = new Table(this, "McpRefreshTokenTable", new TableProps
         {
             TableName = "notetaker-mcp-refresh-token",
             PartitionKey = new Amazon.CDK.AWS.DynamoDB.Attribute { Name = "token", Type = AttributeType.STRING },
             BillingMode = BillingMode.PAY_PER_REQUEST,
             Encryption = TableEncryption.AWS_MANAGED,
+            TimeToLiveAttribute = "TTL",
             RemovalPolicy = RemovalPolicy.RETAIN
         });
 

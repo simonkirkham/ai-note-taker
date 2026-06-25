@@ -51,9 +51,11 @@ public static class McpOAuthEndpoints
                 log.LogError("MCP OAuth not configured (missing signing secret/client id)");
                 return Results.StatusCode(503);
             }
-            // Validate the client. An unknown client_id or a redirect_uri that is not an EXACT match
-            // for the one pre-registered value is rejected WITHOUT redirecting (open-redirect guard).
-            if (clientId != options.ClientId)
+            // Validate the client. An empty or unknown client_id, or a redirect_uri that is not an EXACT
+            // match for the one pre-registered value, is rejected WITHOUT redirecting (open-redirect
+            // guard). The empty check is explicit so an empty configured ClientId can never match an
+            // empty request (IsConfigured already 503s on empty config, but defence-in-depth).
+            if (string.IsNullOrEmpty(clientId) || clientId != options.ClientId)
             {
                 log.LogWarning("MCP authorize rejected: unknown client_id");
                 return Results.BadRequest(new { error = "unauthorized_client" });
@@ -70,7 +72,9 @@ public static class McpOAuthEndpoints
                 return Redirect(redirectUri, state, "invalid_request");
 
             // Derive the workspace this connector is for from the requested resource URI (…/w/{ws}/mcp).
-            var workspaceId = ResourceWorkspace(resource);
+            // The resource MUST be on the issuer host (scheme+authority) — never stamp an attacker-
+            // chosen `aud` host into the issued code/token.
+            var workspaceId = ResourceWorkspace(resource, options);
             if (workspaceId is null)
                 return Redirect(redirectUri, state, "invalid_target");
 
@@ -83,10 +87,9 @@ public static class McpOAuthEndpoints
                 googleState, googleVerifier, clientId, redirectUri, codeChallenge, state, resource, workspaceId),
                 time.GetUtcNow(), ct).ConfigureAwait(false);
 
-            var googleClientId = Environment.GetEnvironmentVariable("GOOGLE_CLIENT_ID") ?? "";
             var googleUrl = $"{GoogleAuthUrl}?{ToQuery(new Dictionary<string, string>
             {
-                ["client_id"] = googleClientId,
+                ["client_id"] = options.GoogleClientId,
                 ["redirect_uri"] = options.GoogleRedirectUri,
                 ["response_type"] = "code",
                 ["scope"] = "openid email",
@@ -101,7 +104,8 @@ public static class McpOAuthEndpoints
 
         app.MapGet("/oauth/google/callback", async (
             HttpContext ctx, McpOAuthOptions options, IMcpAuthCodeStore store, IGoogleOAuthClient google,
-            TimeProvider time, ILoggerFactory loggerFactory, CancellationToken ct) =>
+            EventStore.Projections.IWorkspaceListStore workspaces, TimeProvider time,
+            ILoggerFactory loggerFactory, CancellationToken ct) =>
         {
             var log = loggerFactory.CreateLogger("Api.Mcp.OAuth.GoogleCallback");
             var code = ctx.Request.Query["code"].ToString();
@@ -139,9 +143,17 @@ public static class McpOAuthEndpoints
             var sub = JwtClaims.TryGetClaim(result.Tokens.IdToken, "sub");
             if (string.IsNullOrEmpty(sub))
                 return Redirect(pending.RedirectUri, pending.State, "access_denied");
-            if (!IsAllowedUser(sub))
+            if (!IsAllowedUser(sub, options))
             {
                 log.LogWarning("MCP google callback: user not on allowlist");
+                return Redirect(pending.RedirectUri, pending.State, "access_denied");
+            }
+            // Bind the authenticated identity to the requested workspace: an allowlisted user may only
+            // mint a token for a workspace they OWN (the shared default workspace is always permitted).
+            // Without this, any allowlisted user could obtain a token for any workspace id.
+            if (!await UserOwnsWorkspaceAsync(workspaces, sub, pending.WorkspaceId, ct).ConfigureAwait(false))
+            {
+                log.LogWarning("MCP google callback: user does not own requested workspace");
                 return Redirect(pending.RedirectUri, pending.State, "access_denied");
             }
 
@@ -168,9 +180,9 @@ public static class McpOAuthEndpoints
             var grantType = form["grant_type"].ToString();
 
             if (grantType == "authorization_code")
-                return await ExchangeCodeAsync(form, options, codeStore, refreshStore, tokens, log, ct).ConfigureAwait(false);
+                return await ExchangeCodeAsync(form, options, codeStore, refreshStore, tokens, time, log, ct).ConfigureAwait(false);
             if (grantType == "refresh_token")
-                return await RefreshAsync(form, options, refreshStore, tokens, log, ct).ConfigureAwait(false);
+                return await RefreshAsync(form, options, refreshStore, tokens, time, log, ct).ConfigureAwait(false);
 
             return TokenError("unsupported_grant_type");
         }).AllowAnonymous();
@@ -178,27 +190,29 @@ public static class McpOAuthEndpoints
 
     private static async Task<IResult> ExchangeCodeAsync(
         IFormCollection form, McpOAuthOptions options, IMcpAuthCodeStore codeStore,
-        IMcpRefreshTokenStore refreshStore, McpTokenService tokens, ILogger log, CancellationToken ct)
+        IMcpRefreshTokenStore refreshStore, McpTokenService tokens, TimeProvider time, ILogger log, CancellationToken ct)
     {
         var code = form["code"].ToString();
         var redirectUri = form["redirect_uri"].ToString();
         var clientId = form["client_id"].ToString();
         var codeVerifier = form["code_verifier"].ToString();
 
-        if (string.IsNullOrEmpty(code) || string.IsNullOrEmpty(codeVerifier))
+        // client_id, redirect_uri, code and code_verifier are all REQUIRED — no optional skips.
+        if (string.IsNullOrEmpty(code) || string.IsNullOrEmpty(codeVerifier)
+            || string.IsNullOrEmpty(clientId) || string.IsNullOrEmpty(redirectUri))
             return TokenError("invalid_request");
 
         // Single-use: TakeCodeAsync reads-and-deletes. A reused or expired code returns null.
-        var stored = await codeStore.TakeCodeAsync(code, DateTimeOffset.UtcNow, ct).ConfigureAwait(false);
+        var stored = await codeStore.TakeCodeAsync(code, time.GetUtcNow(), ct).ConfigureAwait(false);
         if (stored is null)
         {
             log.LogWarning("MCP token: invalid/reused/expired authorization code");
             return TokenError("invalid_grant");
         }
-        // Re-bind every parameter the code was issued against.
-        if (!string.Equals(stored.ClientId, clientId, StringComparison.Ordinal) && !string.IsNullOrEmpty(clientId))
+        // Re-bind every parameter the code was issued against — exact equality, unconditionally.
+        if (!string.Equals(stored.ClientId, clientId, StringComparison.Ordinal))
             return TokenError("invalid_grant");
-        if (!string.IsNullOrEmpty(redirectUri) && !string.Equals(stored.RedirectUri, redirectUri, StringComparison.Ordinal))
+        if (!string.Equals(stored.RedirectUri, redirectUri, StringComparison.Ordinal))
             return TokenError("invalid_grant");
         if (!McpTokenService.VerifyPkceS256(codeVerifier, stored.CodeChallenge))
         {
@@ -207,38 +221,41 @@ public static class McpOAuthEndpoints
         }
 
         return await IssueTokensAsync(
-            options, refreshStore, tokens, stored.UserId, stored.Resource, stored.WorkspaceId, stored.ClientId, ct)
+            options, refreshStore, tokens, time, stored.UserId, stored.Resource, stored.WorkspaceId, stored.ClientId, ct)
             .ConfigureAwait(false);
     }
 
     private static async Task<IResult> RefreshAsync(
         IFormCollection form, McpOAuthOptions options, IMcpRefreshTokenStore refreshStore,
-        McpTokenService tokens, ILogger log, CancellationToken ct)
+        McpTokenService tokens, TimeProvider time, ILogger log, CancellationToken ct)
     {
         var presented = form["refresh_token"].ToString();
         if (string.IsNullOrEmpty(presented))
             return TokenError("invalid_request");
 
-        // Rotating: TakeAsync reads-and-deletes the presented token; we issue a fresh one below.
-        var stored = await refreshStore.TakeAsync(presented, ct).ConfigureAwait(false);
+        // Rotating: TakeAsync reads-and-deletes the presented token; an expired one also returns null.
+        var stored = await refreshStore.TakeAsync(presented, time.GetUtcNow(), ct).ConfigureAwait(false);
         if (stored is null)
         {
-            log.LogWarning("MCP token: invalid/rotated refresh token");
+            log.LogWarning("MCP token: invalid/expired/rotated refresh token");
             return TokenError("invalid_grant");
         }
 
+        // Preserve the ORIGINAL absolute expiry across rotation — a refresh cannot extend the cap.
         return await IssueTokensAsync(
-            options, refreshStore, tokens, stored.UserId, stored.Resource, stored.WorkspaceId, stored.ClientId, ct)
-            .ConfigureAwait(false);
+            options, refreshStore, tokens, time, stored.UserId, stored.Resource, stored.WorkspaceId, stored.ClientId, ct,
+            existingExpiry: stored.ExpiresAt).ConfigureAwait(false);
     }
 
     private static async Task<IResult> IssueTokensAsync(
-        McpOAuthOptions options, IMcpRefreshTokenStore refreshStore, McpTokenService tokens,
-        string userId, string resource, string workspaceId, string clientId, CancellationToken ct)
+        McpOAuthOptions options, IMcpRefreshTokenStore refreshStore, McpTokenService tokens, TimeProvider time,
+        string userId, string resource, string workspaceId, string clientId, CancellationToken ct,
+        DateTimeOffset? existingExpiry = null)
     {
         var accessToken = tokens.CreateAccessToken(userId, resource);
         var refreshToken = McpTokenService.NewOpaqueToken();
-        await refreshStore.PutAsync(new McpRefreshToken(refreshToken, clientId, resource, workspaceId, userId), ct)
+        var expiresAt = existingExpiry ?? time.GetUtcNow().Add(options.RefreshTokenLifetime);
+        await refreshStore.PutAsync(new McpRefreshToken(refreshToken, clientId, resource, workspaceId, userId, expiresAt), ct)
             .ConfigureAwait(false);
 
         return Results.Json(new Dictionary<string, object?>
@@ -266,20 +283,32 @@ public static class McpOAuthEndpoints
     private static IResult TokenError(string error) =>
         Results.Json(new { error }, statusCode: 400);
 
-    private static bool IsAllowedUser(string sub)
+    // Fail CLOSED: an unset/empty allowlist denies the mint path entirely. Minting a long-lived token
+    // for the MCP connector is a far higher-stakes action than serving a browser request, so — unlike
+    // AllowlistMiddleware — the broker never falls open. The owner's sub MUST be allow-listed.
+    private static bool IsAllowedUser(string sub, McpOAuthOptions options) =>
+        options.AllowedUserSubs.Count > 0 && options.AllowedUserSubs.Contains(sub);
+
+    // True if the authenticated user owns the requested workspace. The shared default workspace is
+    // always permitted (it has no per-user aggregate). Mirrors WorkspaceValidationFilter's ownership
+    // lookup (GetAllAsync filtered by WorkspaceId + UserId).
+    private static async Task<bool> UserOwnsWorkspaceAsync(
+        EventStore.Projections.IWorkspaceListStore workspaces, string sub, string workspaceId, CancellationToken ct)
     {
-        var allowed = (Environment.GetEnvironmentVariable("ALLOWED_USER_SUBS") ?? "")
-            .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-        // No allowlist configured = open (mirrors AllowlistMiddleware): the broker still requires a
-        // valid Google sign-in, so this only widens WHICH Google identities may complete it.
-        return allowed.Length == 0 || allowed.Contains(sub);
+        if (workspaceId == Domain.Workspaces.WorkspaceId.DefaultValue)
+            return true;
+        var all = await workspaces.GetAllAsync(ct).ConfigureAwait(false);
+        return all.Any(w => w.WorkspaceId.Value == workspaceId && w.UserId == sub);
     }
 
-    // Pull {workspaceId} out of a "…/w/{workspaceId}/mcp" resource URI. Returns null if the resource is
-    // not a well-formed MCP resource path (so a token can never be minted for an off-pattern audience).
-    private static string? ResourceWorkspace(string? resource)
+    // Pull {workspaceId} out of a "…/w/{workspaceId}/mcp" resource URI. Returns null unless the resource
+    // is a well-formed MCP resource path ON THE ISSUER HOST (scheme+authority must match) — so a token
+    // is never minted for an off-pattern or attacker-chosen audience.
+    private static string? ResourceWorkspace(string? resource, McpOAuthOptions options)
     {
         if (string.IsNullOrEmpty(resource) || !Uri.TryCreate(resource, UriKind.Absolute, out var uri))
+            return null;
+        if (!string.Equals($"{uri.Scheme}://{uri.Authority}", options.IssuerAuthority, StringComparison.OrdinalIgnoreCase))
             return null;
         var segments = uri.AbsolutePath.Trim('/').Split('/');
         if (segments.Length == 3 && segments[0] == "w" && segments[2] == "mcp" && !string.IsNullOrEmpty(segments[1]))

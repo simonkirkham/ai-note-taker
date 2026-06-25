@@ -10,6 +10,10 @@ var allowedUserSubs = System.Environment.GetEnvironmentVariable("ALLOWED_USER_SU
 var bedrockModelId = System.Environment.GetEnvironmentVariable("BEDROCK_MODEL_ID");
 var microsoftClientId = System.Environment.GetEnvironmentVariable("MS_CLIENT_ID");
 var microsoftTenantId = System.Environment.GetEnvironmentVariable("MS_TENANT_ID");
+// 35-E: the MCP OAuth broker's pre-registered Claude client id (secret) + issuer host (var). Without
+// these the AS is unconfigured and /oauth/authorize+/token return 503, so they MUST be deployed.
+var mcpOAuthClientId = System.Environment.GetEnvironmentVariable("MCP_OAUTH_CLIENT_ID");
+var mcpOAuthIssuer = System.Environment.GetEnvironmentVariable("MCP_OAUTH_ISSUER");
 
 string? certificateArn = null;
 
@@ -43,7 +47,9 @@ new NoteTakerStack(app, "NoteTakerStack", new NoteTakerStackProps
     AllowedUserSubs = allowedUserSubs,
     BedrockModelId = bedrockModelId,
     MicrosoftClientId = microsoftClientId,
-    MicrosoftTenantId = microsoftTenantId
+    MicrosoftTenantId = microsoftTenantId,
+    McpOAuthClientId = mcpOAuthClientId,
+    McpOAuthIssuer = mcpOAuthIssuer
 });
 
 app.Synth();

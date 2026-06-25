@@ -68,6 +68,9 @@ app.UseMiddleware<Api.Mcp.McpAllowlistMiddleware>();
 app.UseAuthentication();
 app.UseMiddleware<Api.Auth.AllowlistMiddleware>();
 app.UseAuthorization();
+// 35-E: bind an authenticated MCP request's token `aud` to the route workspace (403 on a cross-
+// workspace token), covering EVERY MCP method — runs after authentication so the principal is set.
+app.UseMiddleware<Api.Mcp.OAuth.McpAudienceMiddleware>();
 
 LoggingConfig.AddLogging(app);
 
@@ -95,8 +98,10 @@ app.MapMcpOAuthEndpoints();
 // 35-E: the MCP tool endpoint now REQUIRES an audience-bound bearer carrying the mcp:tools scope.
 // RequireAuthorization wires the McpToolPolicy (→ McpBearer HS256 validation + scope check); a
 // missing/invalid token yields 401 with the WWW-Authenticate: Bearer resource_metadata challenge,
-// and a token without the scope yields 403. The MCP_ENABLED gate (re-enabled in prod for 35-E) and
-// the McpAllowlistMiddleware both still apply.
+// and a token without the scope yields 403. RequireMcpAudienceFilter then enforces the EXACT
+// token-aud↔route-workspace binding (→ 403 on a cross-workspace token) for EVERY MCP method
+// (initialize/tools/list/tools/call), not just the tool body. The MCP_ENABLED gate (re-enabled in
+// prod for 35-E) and the McpAllowlistMiddleware both still apply.
 if (app.Configuration.GetValue("MCP_ENABLED", true))
     app.MapMcp("/w/{workspaceId}/mcp").RequireAuthorization(Api.Mcp.OAuth.McpAuthWiring.ToolPolicy);
 

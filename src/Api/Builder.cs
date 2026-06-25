@@ -228,7 +228,7 @@ public static class Builder
         // the thin Authorization Server (endpoints in Program.cs, Command Lambda) brokers Google
         // sign-in and mints those tokens. The HS256 secret comes from Secrets Manager by NAME
         // (MCP_JWT_SECRET_NAME); MCP_JWT_SECRET overrides it directly for tests/local (no AWS call).
-        builder.Services.AddSingleton<TimeProvider>(TimeProvider.System);
+        // TimeProvider is registered by AddMcpOAuth (TryAddSingleton).
         var mcpSecret = builder.Configuration["MCP_JWT_SECRET"];
         if (string.IsNullOrEmpty(mcpSecret) && !string.IsNullOrEmpty(Environment.GetEnvironmentVariable("MCP_JWT_SECRET_NAME")))
         {

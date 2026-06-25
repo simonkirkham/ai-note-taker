@@ -2292,14 +2292,20 @@ public class InfraAssertionsTests
     }
 
     [Fact]
-    public void McpRefreshTokenTable_Exists_WithRetain()
+    public void McpRefreshTokenTable_Exists_WithRetainAndTtl()
     {
+        // IMPORTANT-6: refresh tokens carry a bounded absolute lifetime, TTL-reaped on the "TTL" attr.
         _template.HasResource("AWS::DynamoDB::Table", Match.ObjectLike(new Dictionary<string, object>
         {
             ["DeletionPolicy"] = "Retain",
             ["Properties"] = Match.ObjectLike(new Dictionary<string, object>
             {
-                ["TableName"] = "notetaker-mcp-refresh-token"
+                ["TableName"] = "notetaker-mcp-refresh-token",
+                ["TimeToLiveSpecification"] = Match.ObjectLike(new Dictionary<string, object>
+                {
+                    ["AttributeName"] = "TTL",
+                    ["Enabled"] = true
+                })
             })
         }));
     }

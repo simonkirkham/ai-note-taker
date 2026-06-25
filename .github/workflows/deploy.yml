@@ -189,6 +189,10 @@ jobs:
           BEDROCK_MODEL_ID: ${{ secrets.BEDROCK_MODEL_ID }}
           MS_CLIENT_ID: ${{ secrets.MS_CLIENT_ID }}
           MS_TENANT_ID: ${{ secrets.MS_TENANT_ID }}
+          # 35-E MCP OAuth broker: the pre-registered Claude client id (secret) + the execute-api
+          # issuer host (var). Without these the AS is unconfigured → /oauth/* returns 503.
+          MCP_OAUTH_CLIENT_ID: ${{ secrets.MCP_OAUTH_CLIENT_ID }}
+          MCP_OAUTH_ISSUER: ${{ vars.MCP_OAUTH_ISSUER }}
 
       - name: Resolve stack outputs
         # describe-stacks (not the cdk --outputs-file) so outputs resolve whether
@@ -540,6 +544,10 @@ jobs:
           BEDROCK_MODEL_ID: ${{ secrets.BEDROCK_MODEL_ID }}
           MS_CLIENT_ID: ${{ secrets.MS_CLIENT_ID }}
           MS_TENANT_ID: ${{ secrets.MS_TENANT_ID }}
+          # 35-E MCP OAuth broker: the pre-registered Claude client id (secret) + the execute-api
+          # issuer host (var). Without these the AS is unconfigured → /oauth/* returns 503.
+          MCP_OAUTH_CLIENT_ID: ${{ secrets.MCP_OAUTH_CLIENT_ID }}
+          MCP_OAUTH_ISSUER: ${{ vars.MCP_OAUTH_ISSUER }}
 
       - name: Resolve stack outputs
         # describe-stacks (not the cdk --outputs-file) so outputs resolve whether

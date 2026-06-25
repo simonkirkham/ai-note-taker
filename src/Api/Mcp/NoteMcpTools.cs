@@ -1,5 +1,4 @@
 using System.ComponentModel;
-using System.Security.Claims;
 using System.Text.Json;
 using Api.Auth;
 using Api.Mcp.OAuth;
@@ -33,11 +32,11 @@ public sealed class NoteMcpTools(INoteCardListStore cards, IHttpContextAccessor 
         return JsonSerializer.Serialize(new { notes });
     }
 
-    // The workspace the tool may read. Since 35-E the request carries a validated audience-bound
-    // bearer, so this enforces (a) the token's `aud` is bound to THIS workspace's resource URI — a
-    // token minted for another workspace is rejected here even though it is a valid token of ours
-    // (the per-workspace half of the RFC 8707 confused-deputy guard) — before returning the route
-    // workspace id. The route id (not request input) scopes the read.
+    // The workspace the tool may read. The route id (not request input) scopes the read. Belt-and-
+    // braces: RequireMcpAudienceFilter already 403s any request whose token `aud` is not bound to this
+    // workspace BEFORE the tool runs; this re-checks the same binding at the data-access point so a
+    // future mapping that forgets the filter still cannot leak across workspaces. Skipped only in the
+    // no-auth proving config (no authenticated principal), where the route id alone scopes the read.
     private string AuthorizedWorkspace()
     {
         var ctx = httpContextAccessor.HttpContext
@@ -46,15 +45,10 @@ public sealed class NoteMcpTools(INoteCardListStore cards, IHttpContextAccessor 
             ?? throw new InvalidOperationException("workspaceId route value is missing.");
 
         var options = ctx.RequestServices.GetService(typeof(McpOAuthOptions)) as McpOAuthOptions;
-        // When OAuth is wired (prod/35-E and the RS tests), require the token's audience to be bound
-        // to this exact workspace. When it is not wired (the no-auth proving config), skip — the route
-        // id alone scopes the read, exactly as in 35-A.
         if (options is not null && ctx.User.Identity?.IsAuthenticated == true)
         {
             var expected = options.ResourceUri(workspaceId);
-            var audiences = ctx.User.FindAll("aud").Select(c => c.Value)
-                .Concat(ctx.User.FindAll(ClaimTypes.Uri).Select(c => c.Value));
-            if (!audiences.Contains(expected, StringComparer.Ordinal))
+            if (!ctx.User.FindAll("aud").Select(c => c.Value).Contains(expected, StringComparer.Ordinal))
                 throw new UnauthorizedAccessException("Token audience is not bound to this workspace.");
         }
 
