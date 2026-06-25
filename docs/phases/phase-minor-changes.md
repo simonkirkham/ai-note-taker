@@ -38,10 +38,49 @@
 | CHANGE-24 | Surface the "Move to workspace" control on the note detail page (not just the card) — reuse `MoveToWorkspaceMenu` in `NoteView`'s header next to Delete; gated on `hasContent` + other workspaces existing; moving navigates back to the workspace home (the note has left this workspace) | Done | 23-F |
 | CHANGE-25 | Always-available calendar connect/change/disconnect — a gear "Calendar settings" toggle in the Meetings header opens an inline panel (Connect Google / Connect Outlook / Disconnect). Previously the connect buttons rendered **only** in the meetings-"unavailable" state, which the SSM fallback hides in prod → in-app connect was unreachable. Disconnect is optimistic + invalidates the connection/meetings queries. | Done | 34-C |
 | CHANGE-26 | Outlook connect supports **work/school** M365 accounts + an account picker — default the MS tenant `consumers` (personal-only) → `common` (work + personal) in `buildMicrosoftAuthUrl` + `MicrosoftOAuthClient` + `MicrosoftCalendarClient`, and switch `prompt=consent` → `prompt=select_account` so a different account can be chosen even when the browser already has a Microsoft session. `MS_TENANT_ID`/`VITE_MS_TENANT_ID` still override. Requires the Entra app "Supported account types" = any-tenant + personal (already set). | Done | 34-C |
+| CHANGE-27 | Redesign the note-detail Tags + Actions area as a **Command Bar** so the editor goes **full-width** (the fixed 320px sidebar is deleted). One slim bar under the title: tags as inline chips + autocomplete (left), an `✓ Actions · done/total` pill (right) that opens a **floating popover** checklist. Pill turns teal when all done; popover closes on outside-click/Esc, stays open on inner edits. Design locked via prototype `prototype/tags-actions-sidebar` (Command Bar). See confirmed GWT below. | Not Started | — |
+| CHANGE-28 | Note **body text is too big** — editor `.contentInput` is 16px (1rem) / line-height 1.75. **Prototype** a smaller size, tighter line-height, alternate font(s), then apply. Appearance only. | Open | — |
 
-Open: none.
+Open: CHANGE-27 (Command Bar — design locked, ready to implement), CHANGE-28 (notes body text — needs prototype).
 
 New tweaks are appended as a one-line shipped record below once Done. The full spec/Value/Approach for each lived in this doc during the slice and remains in git history; the durable *why* (where any) is in the learnings archive. CHANGE-1 to CHANGE-4 were moved here from the former "Phase 13 — UI Polish II" once it was clear they were minor tweaks rather than a distinct phase.
+
+---
+
+## CHANGE-27 — Command Bar (confirmed design)
+
+**Value:** the note-detail editor reclaims the full width (the 320px right sidebar dominated the screen and made tags+actions feel heavier than the note). Tags and actions move to one slim bar under the title; nothing pushes page height.
+
+**Design (locked via prototype `prototype/tags-actions-sidebar`, "Command Bar"):**
+1. Delete the `1fr 320px` grid in the note-detail layout → single full-width editor column.
+2. A **Command Bar** sits directly under the title, above the tabs: one line, `space-between`.
+   - **Left — Tags:** a tag glyph + inline removable chips (`× `), then a dashed `＋ Tag` ghost that becomes the existing tag combobox input (autocomplete, lowercase-normalised per CHANGE-17) on click. Many tags → the row scrolls horizontally; the bar stays one line.
+   - **Right — Actions:** a pill `✓ Actions · {done}/{total}`. The count is always visible. Click → a floating popover (absolute, anchored to the pill, internal scroll, `max-height` capped) holding the checklist (toggle / delete) + an add-input.
+3. **All-done state:** when `total > 0` and `open === 0`, the pill renders in primary-teal (icon + count), and the popover header count is teal too.
+4. **Popover dismissal:** closes on click outside it and on `Esc`; clicks inside (toggle/add/delete) keep it open; it stays open after adding so several items can be entered.
+5. Crisp inline SVG icons (tag / check / chevron / plus) — no emoji.
+6. **Mobile** (narrow widths): the popover renders as a bottom sheet rather than a floating anchor.
+
+**Implementation notes:** pure frontend relocation — reuse `TagsSection` combobox logic (`useTagSuggestions`, `onAdd`/`onRemove`) and `ActionsSection` data/mutations (`useActions`, `useActionMutations`) verbatim; no API, event-model, or projection changes. Remove the `<aside>` sidebar + grid in `NoteView`/`NoteTabs.module.css`; new `CommandBar`/actions-popover components. Optimistic updates retained (tag pill + action toggle reflect immediately; pill count derives from the same query so it moves optimistically). No `localStorage`.
+
+**GWT scenarios:**
+- **Full-width editor:** Given a note is open, When it renders, Then the editor spans the full content width and no 320px sidebar exists.
+- **Tags visible + add:** Given a note has tags, When the bar renders, Then each tag shows as a chip with a remove ×; When I click `＋ Tag` and type, Then the autocomplete suggests existing tags and Enter adds the (lowercased) tag as a chip optimistically.
+- **Remove tag:** Given a tag chip, When I click its ×, Then the chip disappears immediately (optimistic) and reconciles on the server response.
+- **Actions count always visible:** Given a note with N actions (M done), When the bar renders, Then the pill reads `✓ Actions · M/N` without opening anything.
+- **Open/close popover:** Given the pill, When I click it, Then the actions popover opens anchored to it; When I click outside the popover or press Esc, Then it closes; When I click a checkbox/add/delete inside it, Then it stays open.
+- **Toggle + add + delete:** Given the popover is open, When I tick an item, Then it strikes through and the pill count updates; When I add an item, Then it appears and the popover stays open; When I delete an item, Then it is removed optimistically.
+- **All-done state:** Given all actions are complete (`total > 0`), When the last one is ticked, Then the pill and popover-header count render in primary-teal; When one is reopened, Then they revert to neutral.
+
+**Acceptance criteria:**
+- Editor is full-width on the note-detail screen; the right sidebar is removed.
+- Tag add/remove and action toggle/add/delete are optimistic (BDD must assert the optimistic update).
+- Pill count is always visible and updates without opening the popover.
+- Popover closes on outside-click and Esc; stays open on inner interactions and after adding.
+- All-done teal state toggles correctly with `open === 0 && total > 0`.
+- No backend/event-model/projection change; existing tag + action endpoints reused.
+
+Confirmed UX detail captured in the prototype's `web/src/prototype/REFERENCE.md` (on `prototype/tags-actions-sidebar`). Real implementation rebuilds fresh on a `slice/` branch from these GWTs — it does not copy prototype code.
 
 ---
 
