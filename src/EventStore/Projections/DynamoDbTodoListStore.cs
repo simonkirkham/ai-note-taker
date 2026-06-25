@@ -182,7 +182,10 @@ public sealed class DynamoDbTodoListStore(IAmazonDynamoDB dynamo, string tableNa
         }
         catch (ConditionalCheckFailedException)
         {
-            // Stale snapshot id (no longer exists) — ignore; surviving items still get positioned.
+            // The id's row does not exist: either a stale snapshot id (completed/deleted) or — in
+            // the narrow case where the item's add and this reorder land in the same projector batch
+            // with the order stream applied first — a not-yet-projected row. Either way skip it; the
+            // surviving items still get positioned, and the next reorder re-sends the full order.
         }
     }
 

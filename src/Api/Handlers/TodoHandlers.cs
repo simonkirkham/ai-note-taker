@@ -130,6 +130,10 @@ public static class TodoHandlers
     {
         if (body.OrderedItemIds is null || body.OrderedItemIds.Count == 0)
             return Results.BadRequest(new { error = "orderedItemIds is required." });
+        // Sanity cap — the home list is small; a huge payload is a client bug, and each id fans
+        // into a parallel UpdateItem in the projector.
+        if (body.OrderedItemIds.Count > 1000)
+            return Results.BadRequest(new { error = "Too many items to reorder." });
 
         // Records ordering only (a list of item ids) — no ownership read against the async
         // projection, so it can't 404 on projector lag. Snapshot ids that no longer exist are
