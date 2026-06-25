@@ -282,6 +282,21 @@ public sealed class AppPage
         await Assertions.Expect(page.GetByTestId("actions-empty")).ToBeVisibleAsync();
     }
 
+    // 39-A: click the action's description (a button, aria-label `Edit "<text>"`) to enter the
+    // inline editor (a textbox with the same accessible name), replace the text, and Enter to save.
+    public async Task EditActionItemAsync(string oldDescription, string newDescription)
+    {
+        await OpenActionsPopoverAsync();
+        await page.GetByTestId("actions-list")
+            .GetByRole(AriaRole.Button, new() { Name = $"Edit \"{oldDescription}\"" }).ClickAsync();
+        var input = page.GetByRole(AriaRole.Textbox, new() { Name = $"Edit \"{oldDescription}\"" });
+        await input.FillAsync(newDescription);
+        var putDone = page.WaitForResponseAsync(r =>
+            r.Url.Contains("/actions/") && r.Request.Method == "PUT");
+        await input.PressAsync("Enter");
+        await putDone;
+    }
+
     public async Task AddFolderAsync(string name)
     {
         var viewport = page.ViewportSize;

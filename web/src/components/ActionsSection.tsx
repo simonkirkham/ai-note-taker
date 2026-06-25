@@ -5,6 +5,7 @@ import {
   useAddAction,
   useCompleteAction,
   useReopenAction,
+  useEditAction,
   useDeleteAction,
 } from "../hooks/useActionMutations";
 import { useActions } from "../hooks/useActions";
@@ -21,11 +22,14 @@ export default function ActionsSection({
   const addAction = useAddAction(noteId);
   const completeAction = useCompleteAction(noteId);
   const reopenAction = useReopenAction(noteId);
+  const editActionM = useEditAction(noteId);
   const deleteActionM = useDeleteAction(noteId);
   const [newAction, setNewAction] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [toggling, setToggling] = useState<Set<string>>(new Set());
   const [deleting, setDeleting] = useState<Set<string>>(new Set());
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editText, setEditText] = useState("");
 
   async function handleToggle(item: ActionItem) {
     if (toggling.has(item.actionId)) return;
@@ -57,6 +61,28 @@ export default function ActionsSection({
         next.delete(item.actionId);
         return next;
       });
+    }
+  }
+
+  function startEdit(item: ActionItem) {
+    setEditingId(item.actionId);
+    setEditText(item.description);
+  }
+
+  function cancelEdit() {
+    setEditingId(null);
+    setEditText("");
+  }
+
+  async function commitEdit(item: ActionItem) {
+    if (editingId !== item.actionId) return;
+    const description = editText.trim();
+    setEditingId(null);
+    if (!description || description === item.description) return;
+    try {
+      await editActionM.mutateAsync({ actionId: item.actionId, description });
+    } catch {
+      // optimistic update already rolled back in the mutation's onError
     }
   }
 
@@ -93,9 +119,34 @@ export default function ActionsSection({
                 disabled={toggling.has(item.actionId) || deleting.has(item.actionId)}
                 onChange={() => void handleToggle(item)}
               />
-              <span data-testid={`action-description-${item.actionId}`}>
-                {item.description}
-              </span>
+              {editingId === item.actionId ? (
+                // autoFocus is intentional: the edit input appears in direct
+                // response to the user choosing to edit, so focusing it is expected.
+                // eslint-disable-next-line jsx-a11y/no-autofocus
+                <input autoFocus
+                  data-testid={`edit-action-input-${item.actionId}`}
+                  className={styles.editActionInput}
+                  value={editText}
+                  onChange={(e) => setEditText(e.target.value)}
+                  onBlur={() => void commitEdit(item)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") { e.preventDefault(); void commitEdit(item); }
+                    if (e.key === "Escape") { e.preventDefault(); cancelEdit(); }
+                  }}
+                  aria-label={`Edit "${item.description}"`}
+                />
+              ) : (
+                <button
+                  type="button"
+                  data-testid={`action-description-${item.actionId}`}
+                  className={styles.actionDescription}
+                  aria-label={`Edit "${item.description}"`}
+                  disabled={toggling.has(item.actionId) || deleting.has(item.actionId)}
+                  onClick={() => startEdit(item)}
+                >
+                  {item.description}
+                </button>
+              )}
               <button
                 data-testid={`delete-action-${item.actionId}`}
                 className={styles.deleteActionButton}

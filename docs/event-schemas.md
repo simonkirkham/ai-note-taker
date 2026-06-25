@@ -169,7 +169,7 @@ public record ActionItemAdded(
 
 public record ActionItemCompleted(ActionId ActionId)                       : ActionItemEvent;
 public record ActionItemReopened(ActionId ActionId)                        : ActionItemEvent;
-public record ActionItemEdited(ActionId ActionId, string NewDescription)        : ActionItemEvent;
+public record ActionItemEdited(ActionId ActionId, string NewDescription, DateTimeOffset EditedAt) : ActionItemEvent;
 public record ActionItemDeleted(ActionId ActionId, DateTimeOffset DeletedAt)    : ActionItemEvent;
 ```
 
