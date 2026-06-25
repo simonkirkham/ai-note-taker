@@ -6,7 +6,7 @@ public sealed record MicrosoftTokenResult(bool Success, int StatusCode, Microsof
 
 // In-app Microsoft (Entra) OAuth — auth-code + PKCE exchanged server-side for the calendar
 // connect (34-C), mirroring IGoogleOAuthClient. Public client (no secret), same tenant default as
-// MicrosoftCalendarClient ("consumers" unless MS_TENANT_ID is set).
+// MicrosoftCalendarClient ("common" since CHANGE-26 — work/school + personal — unless MS_TENANT_ID is set).
 public interface IMicrosoftOAuthClient
 {
     Task<MicrosoftTokenResult> ExchangeAuthCodeAsync(string code, string codeVerifier, string redirectUri, CancellationToken ct = default);
