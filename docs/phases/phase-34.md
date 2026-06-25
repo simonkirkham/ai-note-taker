@@ -11,7 +11,7 @@
 | 34-C | **Add Microsoft as a connectable provider per workspace + per-request resolution.** In-app connect for Outlook; `ICalendarClientFactory.ForAsync(workspaceId)` resolves google/microsoft from the workspace's connection (`CALENDAR_PROVIDER` kept as the unconnected fallback → removed in 34-D). A=Google, B=Outlook. | Done | 34-B |
 | 34-D1 | **Retire the Google SSM token path** — Google is fully in-app + proven, so drop the Google SSM fallback (`GoogleCalendarTokenSource` store-only), its `GOOGLE_REFRESH_TOKEN_SSM_PATH` env + conditional grant, and the Google mint script + guide. | Done | 34-C |
 | 34-D2 | **Retire the Microsoft SSM path + `CALENDAR_PROVIDER` + remaining mint scripts** — the rest of the strangle cleanup. Unconnected workspace → `UnavailableCalendarClient` → "Connect calendar". | Done | 34-D1, Outlook in-app verified |
-| 34-E | **ICS calendar feed provider** — connect a calendar via a published ICS feed URL (e.g. Outlook "Publish a calendar"), bypassing the M365 admin-consent wall. Third provider (`ics`) reusing the token store, factory, connect/connection/disconnect, and the CHANGE-25 menu. No new domain events. SSRF-guarded. | In Progress | 34-C |
+| 34-E | **ICS calendar feed provider** — connect a calendar via a published ICS feed URL (e.g. Outlook "Publish a calendar"), bypassing the M365 admin-consent wall. Third provider (`ics`) reusing the token store, factory, connect/connection/disconnect, and the CHANGE-25 menu. No new domain events. SSRF-guarded. | Done | 34-C |
 
 Strictly sequential through 34-D (34-E is a follow-on provider, added after the strangle completed) — this is a **strangle** of the calendar-auth model (CLAUDE.md guardrail: prove the new path on one real call, then migrate flow-by-flow with old+new coexisting until the last flow moves). 34-A proves in-app-connect + server-side token on one real Google read; 34-B/C scale it to workspace-keyed and multi-provider; 34-D removes the old path only after nothing depends on it.
 
@@ -219,7 +219,7 @@ Scenario: Provider resolved per request, not per process
 
 ## Slice 34-E — ICS calendar feed provider
 
-**Status:** In Progress.
+**Status:** Done (PR #343, deploy #644). Prod route `POST /w/{workspaceId}/calendar/connect/ics` verified live (401 unauth). Hawk caught + fixed a real SSRF redirect bypass (`AllowAutoRedirect=false`) + an OOM vector (5 MB body cap); the DNS-rebinding TOCTOU is an accepted, documented residual (ConnectCallback follow-up). Adds the `Ical.Net` dependency.
 
 **Goal:** connect a workspace's calendar via a **published ICS feed URL** (e.g. Outlook "Publish a calendar") instead of OAuth — bypassing the Microsoft admin-consent wall that blocks `connect/microsoft` for locked-down M365 tenants. A third provider (`ics`) alongside `google`/`microsoft`, reusing **all** existing machinery: the token store, the factory, connect/connection/disconnect, and the CHANGE-25 Calendar-settings menu.
 
