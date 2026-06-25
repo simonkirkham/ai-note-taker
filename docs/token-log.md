@@ -6,6 +6,7 @@ Recurring cost drivers and their pre-emptions live in [token-optimisation-playbo
 
 | Slice | Total | Pip | Hawk | Dominant cost driver |
 |-------|------:|----:|-----:|----------------------|
+| CHANGE-27 Command Bar (tags+actions redesign) | ~720k _(est.)_ | ~145k _(build subagent)_ | ~90k _(1 round)_ | **Cost driver = prototype-first UX exploration:** 6 design subagents across 2 rounds (~55–70k each ≈ 370k) generated divergent directions (3 sidebar-preserving → rejected, then 3 full-width → user picked "Command Bar") before any real code. Build delegated to one frontend subagent (~145k, one shot — all 4 gates green: build/tsc-tests/lint/662 vitest). Hawk APPROVE first pass (1 a11y nit, `role=group`). **Deploy tail:** #647 took 3 attempts — attempts 1 & 2 failed on *different* cold async-projector journeys (ActionItem save-button via slow `useNoteDetail`; FilterBackNav empty cards) unrelated to the change; attempt 3 green. Frontend-only relocation; no backend. See [_minor-log](learnings/_minor-log.md). |
 | 3-A Add action items | 183k | 95k | 35k | First cross-aggregate slice; context compaction; 2 Hawk rounds |
 | 3-B Complete/reopen | 86k | 55k | 8k | Pure extension; no Hawk rework |
 | 3-C View open todos (home) | 113k | 62k | 6k | First cross-projection; layer-split kept Pip under 65k |
