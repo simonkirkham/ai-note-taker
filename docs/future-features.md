@@ -97,3 +97,42 @@ _(Claude Cowork connector — read-only, workspace-scoped MCP server — graduat
 **Why it isn't scheduled yet:** Needs empirical tuning (the DSP-off preset can help *or* hurt depending on room/mic, so it must be measured, not assumed) plus a UX decision on defaults. Distinct from the mic-selector feature: that picks the *device*; this changes how the chosen device's stream is *captured and mixed*. Ties into the Phase 33 diarization quality goal — diarization can only be as good as the captured audio.
 
 **Raised in:** User observation, 2026-06-24 — "on the second one the audio quality seems really poor" — single-mic capture of a speaker-played call, the diarization spike's known hardest input.
+
+---
+
+## Theme per workspace
+
+**What:** Let each workspace carry its own visual theme so the active workspace's look (colour palette / accent, light-dark choice, possibly typography) switches automatically when the user changes workspace. Today theming is global to the app (CSS Modules design tokens; see the theming notes in the `frontend-react` skill). This makes the theme a **per-workspace setting** — a quick way to tell workspaces apart at a glance and to brand a client/personal workspace differently. Scope when broken down:
+- Where the theme is stored — a per-workspace setting (a new event on the workspace aggregate, e.g. `WorkspaceThemeSet`, purely additive) vs. client-only localStorage keyed by workspace id. Cross-device consistency argues for the event/projection path.
+- A theme picker in workspace settings (pick from a fixed palette set; reuse the existing design tokens rather than free-form colour).
+- Apply the active workspace's tokens on workspace switch, with a sensible default for workspaces that have none set.
+
+**Why it isn't scheduled yet:** Needs a small design pass (which theme attributes are workspace-scoped — accent only, or full palette/dark-mode) and an event-model decision (server-stored vs. client-only). Builds on the existing workspace model (Phase 34 per-workspace calendars) and the design-token theming already in `web/`.
+
+**Raised in:** User feature idea, 2026-06-25.
+
+---
+
+## Add a transcript manually from an external tool
+
+**What:** Let the user create a note from a transcript they already have — paste or upload transcript text captured elsewhere — instead of recording live in-app. The pasted transcript feeds the **same analysis pipeline** (summary, action items, tags) as a recorded one, so existing recordings and imported transcripts are first-class equals downstream. Scope when broken down:
+- An entry point ("Add transcript" / "Paste transcript") that takes raw text (and optional title/date/attendees) and creates a note whose transcript is the supplied text — no audio, no live transcription.
+- Reuse the existing post-transcription analysis path so the imported transcript is summarised/tagged/action-itemed identically; confirm the note's event sequence is consistent with a recorded note minus the audio/streaming events.
+- Decide the transcript shape accepted (plain text first; speaker-labelled / timestamped formats are a later sub-slice and tie into diarization).
+
+**Why it isn't scheduled yet:** Needs the event-model decision on how a transcript-only note is created (a new command/event vs. reusing the recorded-note path with empty audio) and a small UX for the paste/upload surface. It's a genuine new ingestion path, not a tweak. Natural precursor to — and smaller than — the Zoom/external-tool connector below (manual paste proves the import-and-analyse flow before any third-party integration).
+
+**Raised in:** User feature idea, 2026-06-25.
+
+---
+
+## Connect to external transcript tools (Zoom, Teams, etc.)
+
+**What:** Import meeting transcripts automatically from third-party meeting tools (Zoom first; Teams, Google Meet, etc. later) instead of recording in-app or pasting by hand. The connector pulls a finished meeting's transcript from the provider and creates a note that runs through the same analysis pipeline. Scope when broken down:
+- Per-provider OAuth/connection (Zoom's cloud-recording + transcript API first), likely reusing the in-app OAuth foundation from Phase 34 and the per-workspace connection model.
+- Fetch the transcript (and meeting metadata — title, time, attendees) for a completed meeting and create a transcript-only note from it (shares the **manual transcript import** ingestion path above).
+- Decide pull model: on-demand "import from Zoom" picker vs. webhook/poll for new recordings; attendee → tag/diarization-name mapping is a later enhancement.
+
+**Why it isn't scheduled yet:** Substantial — per-provider API integration, OAuth scopes, and a sync/poll model, all of which want the manual-transcript ingestion path to exist first. Best sequenced **after** "Add a transcript manually" (which de-risks the analyse-an-imported-transcript flow) and after the in-app OAuth work it can reuse. Related: [[#add-a-transcript-manually-from-an-external-tool]].
+
+**Raised in:** User feature idea, 2026-06-25.
