@@ -1,0 +1,161 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Topics vs Headers — 9 design prototypes</title>
+<style>
+  :root{
+    --teal:#0d9488; --teal-dark:#0f766e; --teal-bg:#ccfbf1;
+    --text:#1f2937; --muted:#6b7280; --border:#e5e7eb; --surface:#fff; --bg:#f8fafc;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;color:var(--text);background:var(--bg);line-height:1.5}
+  header{background:linear-gradient(135deg,var(--teal),var(--teal-dark));color:#fff;padding:32px 28px}
+  header h1{margin:0 0 6px;font-size:1.5rem}
+  header p{margin:4px 0;opacity:.95;max-width:70ch}
+  .problem{background:rgba(255,255,255,.14);border:1px solid rgba(255,255,255,.3);border-radius:8px;padding:12px 14px;margin-top:14px;font-style:italic;max-width:80ch}
+  main{max-width:1100px;margin:0 auto;padding:28px}
+  .lens{margin:28px 0}
+  .lens-head{display:flex;align-items:baseline;gap:10px;border-bottom:2px solid var(--teal-bg);padding-bottom:6px;margin-bottom:14px}
+  .lens-head h2{margin:0;font-size:1.15rem;color:var(--teal-dark)}
+  .lens-head span{color:var(--muted);font-size:.9rem}
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:16px}
+  .card{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:16px;display:flex;flex-direction:column;box-shadow:0 1px 2px rgba(0,0,0,.04)}
+  .card h3{margin:0 0 4px;font-size:1.05rem}
+  .card .num{display:inline-block;background:var(--teal-bg);color:var(--teal-dark);font-weight:700;font-size:.72rem;border-radius:6px;padding:1px 7px;margin-right:6px;vertical-align:middle}
+  .card .one{color:var(--text);font-size:.92rem;margin:6px 0 10px}
+  .card .gesture{background:var(--teal-bg);border-radius:6px;padding:8px 10px;font-size:.82rem;color:var(--teal-dark);margin-bottom:12px}
+  .card .gesture b{color:var(--teal-dark)}
+  .needs{font-size:.8rem;color:var(--muted);margin:0 0 14px;padding-left:16px}
+  .needs li{margin:2px 0}
+  .card a.open{margin-top:auto;text-align:center;background:var(--teal);color:#fff;text-decoration:none;font-weight:600;padding:9px;border-radius:8px;font-size:.9rem}
+  .card a.open:hover{background:var(--teal-dark)}
+  .tradeoff{font-size:.8rem;color:#b45309;margin:0 0 12px}
+  table{border-collapse:collapse;width:100%;margin-top:14px;font-size:.85rem;background:var(--surface);border:1px solid var(--border);border-radius:8px;overflow:hidden}
+  th,td{border-bottom:1px solid var(--border);padding:8px 10px;text-align:left}
+  th{background:var(--teal-bg);color:var(--teal-dark)}
+  tr:last-child td{border-bottom:none}
+  .note{color:var(--muted);font-size:.85rem;margin-top:24px;border-top:1px solid var(--border);padding-top:14px}
+  code{background:#f1f5f9;padding:1px 5px;border-radius:4px;font-size:.85em}
+</style>
+</head>
+<body>
+<header>
+  <h1>Topics vs Headers — 9 design prototypes</h1>
+  <p>Exploring how to record meeting topics ahead of time, tick them off as they come up, and still end with logically-structured notes — without jumping around.</p>
+  <div class="problem">“How to record topics ahead of time which need discussing, mark them off in conversation as they come up but also allow notes to be structured in a way which is logical based upon the conversation. The user shouldn't have to jump around too much to do this.”</div>
+  <p style="margin-top:14px;font-size:.9rem">Each prototype uses the same sample meeting (<b>Weekly Team Sync</b>, agenda discussed out of order — Hiring before Budget) so you compare the <b>interaction</b>, not the styling. Open each, try the <b>key gesture</b>, then come back.</p>
+</header>
+<main>
+
+  <section class="lens">
+    <div class="lens-head"><h2>Lens A — Frictionless single surface</h2><span>agenda &amp; notes are one text stream; keyboard-first; no panels</span></div>
+    <div class="grid">
+      <div class="card">
+        <h3><span class="num">1</span>Checkline</h3>
+        <div class="one">Every line can become a tickable topic by starting it with <code>[]</code>; notes you type below auto-nest under it.</div>
+        <div class="gesture">Try: click <b>Hiring</b>, Enter+Tab to add nested notes, then <b>Ctrl+Enter</b> to tick &amp; collapse — or hit “Auto-play”.</div>
+        <ul class="needs"><li><b>Pre-record:</b> dump <code>[]</code> topic lines</li><li><b>Mark-off:</b> Ctrl+Enter flips <code>[]</code>→<code>[x]</code>, collapses, timestamps</li><li><b>Structure:</b> indented lines nest as the topic's notes</li><li><b>Low friction:</b> cursor never leaves the text stream</li></ul>
+        <div class="tradeoff">Trade-off: the <code>[]</code> syntax is a learned convention.</div>
+        <a class="open" href="idea-1-checkline.html" target="_blank">Open prototype →</a>
+      </div>
+      <div class="card">
+        <h3><span class="num">2</span>Slash-Topic + Fold</h3>
+        <div class="one">Summon foldable topic headers with <code>/topic</code>; ticking a topic folds its body out of the way.</div>
+        <div class="gesture">Try: <b>Ctrl+.</b> (or click the ◯) on a topic = mark discussed → folds to a “▸ N notes” summary &amp; jumps to the next.</div>
+        <ul class="needs"><li><b>Pre-record:</b> <code>/topic Name</code> drops a foldable header</li><li><b>Mark-off:</b> ◯→● + auto-fold body</li><li><b>Structure:</b> each header owns the lines beneath it; reorder carries the body</li><li><b>Low friction:</b> slash + toggle + fold, all keystrokes</li></ul>
+        <div class="tradeoff">Trade-off: fold state hides notes — needs clear “N notes” affordance.</div>
+        <a class="open" href="idea-2-slash-fold.html" target="_blank">Open prototype →</a>
+      </div>
+      <div class="card">
+        <h3><span class="num">3</span>BuJo Migrate</h3>
+        <div class="one">Bullet-journal style: pre-write <code>•</code> topics, then “migrate” each down into the log as it's actually raised.</div>
+        <div class="gesture">Try: focus a pool bullet, press <b>Ctrl+↓</b> (or “↓ migrate”) — it flies down into spoken order; click a glyph to cycle •→✓→→→✕.</div>
+        <ul class="needs"><li><b>Pre-record:</b> flat list of <code>•</code> topic bullets</li><li><b>Mark-off:</b> glyph cycle (✓ done, → carried, ✕ dropped)</li><li><b>Structure:</b> agenda drains into conversation order with notes beneath</li><li><b>Low friction:</b> one key migrates; one click sets status</li></ul>
+        <div class="tradeoff">Trade-off: final note no longer matches the planned order.</div>
+        <a class="open" href="idea-3-bujo-migrate.html" target="_blank">Open prototype →</a>
+      </div>
+    </div>
+  </section>
+
+  <section class="lens">
+    <div class="lens-head"><h2>Lens B — Agenda as a control panel</h2><span>steer from a persistent, glanceable agenda beside the notes</span></div>
+    <div class="grid">
+      <div class="card">
+        <h3><span class="num">4</span>Cockpit Rail</h3>
+        <div class="one">Left rail = agenda checklist; a “now discussing →” pointer auto-files everything you type under the active topic.</div>
+        <div class="gesture">Try: click <b>Hiring</b> (or press its number key) — pointer + coloured spine move there; type, and notes file themselves. Toggle Live/Grouped.</div>
+        <ul class="needs"><li><b>Pre-record:</b> type topics into the left rail</li><li><b>Mark-off:</b> checkbox = discussed + timestamp</li><li><b>Structure:</b> notes auto-section in the order topics were raised</li><li><b>Low friction:</b> one peripheral click; never leave the notes pane</li></ul>
+        <div class="tradeoff">Trade-off: forget to switch topics → notes pile under the wrong one.</div>
+        <a class="open" href="idea-4-cockpit-rail.html" target="_blank">Open prototype →</a>
+      </div>
+      <div class="card">
+        <h3><span class="num">5</span>Run-of-Show Strip</h3>
+        <div class="one">A top strip of topic chips doubles as a coverage meter; notes stream flat, a toggle re-flows them by topic.</div>
+        <div class="gesture">Try: tap a chip (active→done), type into the flat stream, then flip <b>“Group by topic”</b> to watch it reflow into sections.</div>
+        <ul class="needs"><li><b>Pre-record:</b> add chips L→R; drag to set running order</li><li><b>Mark-off:</b> tap = active, tap again = done; progress “3/6”</li><li><b>Structure:</b> deferred — “Group by topic” reflows on demand</li><li><b>Low friction:</b> active chip persists; tap only at transitions</li></ul>
+        <div class="tradeoff">Trade-off: strip crowds past ~6–7 topics; structure isn't live.</div>
+        <a class="open" href="idea-5-runofshow-strip.html" target="_blank">Open prototype →</a>
+      </div>
+      <div class="card">
+        <h3><span class="num">6</span>Split-Pane Facilitator</h3>
+        <div class="one">Side-by-side: check a topic on the left → its section expands + focuses on the right; drag stray notes to re-file.</div>
+        <div class="gesture">Try: <b>check a topic</b> on the left (it expands + focuses on the right, others collapse); drag the “Unsorted” line onto a topic.</div>
+        <ul class="needs"><li><b>Pre-record:</b> left-pane topic accordions</li><li><b>Mark-off:</b> checkbox = done (dim + ✓)</li><li><b>Structure:</b> notes live literally inside their topic's body</li><li><b>Low friction:</b> check does expand+focus for you; drag to correct</li></ul>
+        <div class="tradeoff">Trade-off: one section at a time; drag-refile is mouse-heavy.</div>
+        <a class="open" href="idea-6-split-facilitator.html" target="_blank">Open prototype →</a>
+      </div>
+    </div>
+  </section>
+
+  <section class="lens">
+    <div class="lens-head"><h2>Lens C — Conversation-led reflow</h2><span>capture chronologically; reorganise by topic with little/no effort</span></div>
+    <div class="grid">
+      <div class="card">
+        <h3><span class="num">7</span>Tickertape</h3>
+        <div class="one">Type in one chronological stream + one-tap a topic chip per line; a live right rail mirrors it grouped by topic.</div>
+        <div class="gesture">Try: type a line, <b>tap a topic chip</b> under the input — it gets a colour border AND flies into its group on the right. Or “▶ Play meeting script”.</div>
+        <ul class="needs"><li><b>Pre-record:</b> agenda chips in the left rail</li><li><b>Mark-off:</b> first line filed → chip marks topic discussed</li><li><b>Structure:</b> right rail assembles by-topic live; middle stays chronological</li><li><b>Low friction:</b> last chip pre-selects; hands stay by the input</li></ul>
+        <div class="tradeoff">Trade-off: a tap per line — light but constant.</div>
+        <a class="open" href="idea-7-tickertape.html" target="_blank">Open prototype →</a>
+      </div>
+      <div class="card">
+        <h3><span class="num">8</span>Listen &amp; Suggest</h3>
+        <div class="one">The live transcript guesses the current topic — “Now discussing: X?” — and one tap confirms &amp; back-files recent lines.</div>
+        <div class="gesture">Try: hit <b>▶ Play</b>, then <b>✓/✕</b> the mic pills as they appear (one suggestion is wrong — dismiss it).</div>
+        <ul class="needs"><li><b>Pre-record:</b> agenda cards seed match keywords</li><li><b>Mark-off:</b> confirm a suggestion → topic ticked</li><li><b>Structure:</b> confirming back-files lines into the auto-outline</li><li><b>Low friction:</b> only gesture is accept/dismiss a pill</li></ul>
+        <div class="tradeoff">Trade-off: quality hinges on transcript-match accuracy.</div>
+        <a class="open" href="idea-8-listen-suggest.html" target="_blank">Open prototype →</a>
+      </div>
+      <div class="card">
+        <h3><span class="num">9</span>Reflow Scrubber</h3>
+        <div class="one">Capture a pure flat stream during the call; one “Reflow” pull auto-groups it by topic with a scrubbable timeline.</div>
+        <div class="gesture">Try: pull <b>“↡ Reflow by topic”</b> — lines animate into groups, agenda auto-ticks; drag the ⚠ mis-filed line to fix it; drag the scrubber.</div>
+        <ul class="needs"><li><b>Pre-record:</b> agenda checklist (reference only)</li><li><b>Mark-off:</b> deferred — auto-ticks on reflow</li><li><b>Structure:</b> one pull clusters chronological notes by topic</li><li><b>Low friction:</b> zero in-call interaction; one gesture at the end</li></ul>
+        <div class="tradeoff">Trade-off: no live sense of what's covered until the end.</div>
+        <a class="open" href="idea-9-reflow-scrubber.html" target="_blank">Open prototype →</a>
+      </div>
+    </div>
+  </section>
+
+  <section class="lens">
+    <div class="lens-head"><h2>Compare at a glance</h2></div>
+    <table>
+      <tr><th>Idea</th><th>Where topics live</th><th>Mark-off gesture</th><th>When structure forms</th><th>In-call effort</th><th>Uses transcript</th></tr>
+      <tr><td>1 Checkline</td><td>inline in the note</td><td>Ctrl+Enter</td><td>live (nesting)</td><td>low</td><td>no</td></tr>
+      <tr><td>2 Slash-Fold</td><td>inline headers</td><td>Ctrl+. (fold)</td><td>live (headers)</td><td>low</td><td>no</td></tr>
+      <tr><td>3 BuJo Migrate</td><td>inline (pool→log)</td><td>glyph cycle</td><td>live (migrate)</td><td>low–medium</td><td>no</td></tr>
+      <tr><td>4 Cockpit Rail</td><td>left rail</td><td>checkbox + pointer</td><td>live (auto-file)</td><td>very low</td><td>no</td></tr>
+      <tr><td>5 Run-of-Show Strip</td><td>top strip</td><td>tap chip</td><td>on toggle</td><td>very low</td><td>no</td></tr>
+      <tr><td>6 Split Facilitator</td><td>left pane</td><td>checkbox</td><td>live (literal)</td><td>low (+drag)</td><td>no</td></tr>
+      <tr><td>7 Tickertape</td><td>chip-bar + rails</td><td>tap chip / line</td><td>live (mirror)</td><td>tap per line</td><td>optional</td></tr>
+      <tr><td>8 Listen &amp; Suggest</td><td>agenda cards</td><td>confirm a guess</td><td>live (on confirm)</td><td>accept/dismiss</td><td>core</td></tr>
+      <tr><td>9 Reflow Scrubber</td><td>agenda checklist</td><td>auto (on reflow)</td><td>end of meeting</td><td>none in-call</td><td>core</td></tr>
+    </table>
+  </section>
+
+  <p class="note">9 throwaway UX prototypes — vanilla HTML/CSS/JS, no backend. From 3 ideation agents (3 design lenses × 3 ideas). Not implemented in the app; reference material for picking a direction. Once you favour one (or a hybrid), Scout breaks it into a numbered phase.</p>
+</main>
+</body>
+</html>

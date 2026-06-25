@@ -1,0 +1,435 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Reflow Scrubber</title>
+<style>
+  :root{
+    --teal:#0d9488; --accent-dark:#0f766e; --accent-bg:#ccfbf1;
+    --text:#1f2937; --muted:#6b7280; --border:#e5e7eb; --surface:#fff; --page-bg:#f8fafc;
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0; font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+    background:var(--page-bg); color:var(--text); line-height:1.45;
+  }
+  .wrap{max-width:840px; margin:0 auto; padding:0 18px 40px}
+
+  /* banner */
+  .banner{
+    background:linear-gradient(90deg,var(--accent-dark),var(--teal));
+    color:#fff; padding:14px 20px; border-radius:0 0 10px 10px;
+  }
+  .banner h1{margin:0; font-size:18px; letter-spacing:.2px}
+  .banner .lens{font-size:12.5px; opacity:.92; margin-top:2px; font-weight:600}
+  .banner .concept{font-size:12.5px; opacity:.88; margin-top:3px}
+
+  /* try-this hint */
+  .hint{
+    display:flex; gap:8px; align-items:flex-start;
+    background:var(--accent-bg); border:1px solid #99f6e4; color:var(--accent-dark);
+    border-radius:8px; padding:9px 12px; font-size:13px; margin:16px 0 14px;
+  }
+  .hint b{font-weight:700}
+
+  /* agenda checklist */
+  .agenda{
+    background:var(--surface); border:1px solid var(--border); border-radius:10px;
+    padding:12px 14px; margin-bottom:14px; box-shadow:0 1px 2px rgba(0,0,0,.04);
+  }
+  .agenda .lbl{font-size:11px; text-transform:uppercase; letter-spacing:.6px; color:var(--muted); font-weight:700; margin-bottom:8px}
+  .agenda-items{display:flex; flex-wrap:wrap; gap:8px}
+  .ag{
+    display:flex; align-items:center; gap:7px; font-size:13px;
+    border:1px solid var(--border); border-radius:20px; padding:4px 11px 4px 8px;
+    background:var(--page-bg); transition:all .35s ease;
+  }
+  .ag .box{
+    width:16px; height:16px; border:2px solid #cbd5e1; border-radius:5px;
+    display:inline-flex; align-items:center; justify-content:center;
+    font-size:11px; color:#fff; transition:all .3s ease; flex:none;
+  }
+  .ag.ticked{background:var(--accent-bg); border-color:var(--teal); color:var(--accent-dark); font-weight:600}
+  .ag.ticked .box{background:var(--teal); border-color:var(--teal); transform:scale(1)}
+  .ag.ticked .box::after{content:"✓"}
+
+  /* scrubber */
+  .scrubber-zone{
+    background:var(--surface); border:1px solid var(--border); border-radius:10px;
+    padding:13px 16px 16px; margin-bottom:14px; box-shadow:0 1px 2px rgba(0,0,0,.04);
+    max-height:0; opacity:0; overflow:hidden; padding-top:0; padding-bottom:0;
+    transition:max-height .5s ease,opacity .4s ease,padding .4s ease; border-width:0;
+  }
+  .scrubber-zone.show{max-height:140px; opacity:1; padding-top:13px; padding-bottom:16px; border-width:1px}
+  .scrubber-zone .lbl{font-size:11px; text-transform:uppercase; letter-spacing:.6px; color:var(--muted); font-weight:700; margin-bottom:10px}
+  .track{position:relative; height:8px; background:#e2e8f0; border-radius:6px; margin:18px 6px 6px}
+  .track .fill{position:absolute; left:0; top:0; bottom:0; background:var(--accent-bg); border-radius:6px; width:0}
+  .ticks{position:absolute; top:-15px; left:0; right:0; height:12px}
+  .tk{position:absolute; width:2px; height:8px; background:#94a3b8; top:4px; transform:translateX(-50%)}
+  .handle{
+    position:absolute; top:50%; width:20px; height:20px; border-radius:50%;
+    background:var(--teal); border:3px solid #fff; box-shadow:0 1px 4px rgba(0,0,0,.3);
+    transform:translate(-50%,-50%); cursor:grab; touch-action:none;
+  }
+  .handle:active{cursor:grabbing}
+  .scrub-time{font-size:12px; color:var(--accent-dark); font-weight:700; margin-top:8px; text-align:center}
+
+  /* stream / notes panel */
+  .panel{
+    background:var(--surface); border:1px solid var(--border); border-radius:10px;
+    box-shadow:0 1px 2px rgba(0,0,0,.04); overflow:hidden;
+  }
+  .panel-head{
+    display:flex; justify-content:space-between; align-items:center;
+    padding:11px 16px; border-bottom:1px solid var(--border); background:#fbfdfd;
+  }
+  .panel-head .t{font-weight:700; font-size:14px}
+  .panel-head .mode{font-size:11px; color:var(--muted); font-weight:600}
+
+  .notes{padding:8px 8px 4px; position:relative; min-height:60px}
+
+  /* a note line */
+  .line{
+    display:flex; gap:10px; align-items:flex-start; padding:8px 10px;
+    border-radius:8px; margin:3px 0; background:var(--surface);
+    border:1px solid transparent; transition:background .3s,border-color .3s,box-shadow .25s,opacity .3s,transform .3s;
+  }
+  .line .time{font-variant-numeric:tabular-nums; font-size:11.5px; color:var(--muted); font-weight:600; width:42px; flex:none; padding-top:1px}
+  .line .text{font-size:13.5px}
+  .line.in-window{background:var(--accent-bg); border-color:#5eead4}
+  .line.dimmed{opacity:.32}
+  .line.draggable{cursor:grab; border-color:var(--border); background:#fff}
+  .line.draggable:hover{box-shadow:0 1px 4px rgba(0,0,0,.08)}
+  .line.dragging{opacity:.55; cursor:grabbing; box-shadow:0 4px 14px rgba(0,0,0,.18)}
+  .line.mis::before{content:"⚠"; color:#d97706; font-size:12px; margin-right:-4px}
+
+  /* grouped headings */
+  .grp{margin:4px 4px 10px; border:1px dashed transparent; border-radius:8px; transition:border-color .2s,background .2s}
+  .grp.dropzone{border-color:var(--teal); background:var(--accent-bg)}
+  .grp-h{
+    display:flex; align-items:center; gap:8px; font-size:12px; font-weight:700;
+    text-transform:uppercase; letter-spacing:.5px; color:var(--accent-dark);
+    padding:6px 10px 4px; border-bottom:1px solid var(--accent-bg);
+  }
+  .grp-h .cnt{font-weight:600; color:var(--muted); text-transform:none; letter-spacing:0; font-size:11px}
+  .grp.empty .grp-h{color:#9ca3af}
+  .grp.empty .grp-body::after{content:"— no notes captured"; font-size:12px; color:#b6bcc6; font-style:italic; display:block; padding:4px 12px 8px}
+
+  /* add line row */
+  .addrow{display:flex; gap:8px; padding:10px 14px 14px; border-top:1px solid var(--border); background:#fbfdfd}
+  .addrow input{
+    flex:1; font:inherit; font-size:13.5px; padding:8px 11px; border:1px solid var(--border);
+    border-radius:8px; outline:none;
+  }
+  .addrow input:focus{border-color:var(--teal); box-shadow:0 0 0 3px var(--accent-bg)}
+  .btn{
+    font:inherit; font-size:13px; font-weight:600; border:none; border-radius:8px;
+    padding:8px 14px; cursor:pointer; transition:transform .1s,filter .2s;
+  }
+  .btn:active{transform:translateY(1px)}
+  .btn-ghost{background:var(--page-bg); color:var(--accent-dark); border:1px solid var(--border)}
+
+  /* the big reflow handle */
+  .reflow-bar{margin-top:14px; text-align:center}
+  .reflow{
+    width:100%; font:inherit; font-size:15px; font-weight:700; color:#fff;
+    background:linear-gradient(90deg,var(--teal),var(--accent-dark));
+    border:none; border-radius:10px; padding:14px; cursor:pointer;
+    box-shadow:0 3px 10px rgba(13,148,136,.32); transition:transform .12s,box-shadow .2s,filter .2s;
+    position:relative; overflow:hidden;
+  }
+  .reflow:hover{filter:brightness(1.05)}
+  .reflow:active{transform:translateY(2px)}
+  .reflow .arrow{display:inline-block; animation:bob 1.4s ease-in-out infinite}
+  @keyframes bob{0%,100%{transform:translateY(0)}50%{transform:translateY(4px)}}
+  .reflow.done{background:#f1f5f9; color:var(--accent-dark); box-shadow:none; cursor:default; border:1px solid var(--border)}
+  .reflow.done .arrow{animation:none}
+  .reset{margin-top:10px; background:none; border:none; color:var(--muted); font:inherit; font-size:12.5px; text-decoration:underline; cursor:pointer}
+
+  /* legend */
+  .legend{margin-top:22px; border:1px solid var(--border); border-radius:10px; background:var(--surface); overflow:hidden}
+  .legend summary{cursor:pointer; padding:11px 16px; font-size:13px; font-weight:700; color:var(--accent-dark); list-style:none}
+  .legend summary::-webkit-details-marker{display:none}
+  .legend summary::before{content:"▸ "; color:var(--teal)}
+  .legend[open] summary::before{content:"▾ "}
+  .legend ul{margin:0; padding:4px 18px 14px 34px; font-size:12.5px; color:var(--text)}
+  .legend li{margin:5px 0}
+  .legend b{color:var(--accent-dark)}
+</style>
+</head>
+<body>
+  <div class="banner">
+    <h1>Reflow Scrubber</h1>
+    <div class="lens">Lens C — Conversation-led reflow</div>
+    <div class="concept">Capture is a flat chronological stream during the call; one pull reflows every line under its topic.</div>
+  </div>
+
+  <div class="wrap">
+    <div class="hint">
+      <span>▶</span>
+      <span><b>Try this:</b> type one more line, hit <b>Add</b>, then pull <b>↡ Reflow by topic</b>. Watch lines fly into topic groups &amp; the agenda tick itself. Then drag the <b>⚠ mis-filed</b> line to its right heading, and drag the scrubber to spotlight a moment.</span>
+    </div>
+
+    <!-- agenda (reference only) -->
+    <div class="agenda">
+      <div class="lbl">Agenda — reference only (no filing during the call)</div>
+      <div class="agenda-items" id="agenda"></div>
+    </div>
+
+    <!-- scrubber (appears after reflow) -->
+    <div class="scrubber-zone" id="scrubZone">
+      <div class="lbl">Timeline scrubber — drag to spotlight a moment's notes</div>
+      <div class="track" id="track">
+        <div class="fill" id="fill"></div>
+        <div class="ticks" id="ticks"></div>
+        <div class="handle" id="handle"></div>
+      </div>
+      <div class="scrub-time" id="scrubTime">drag the dot →</div>
+    </div>
+
+    <!-- notes panel -->
+    <div class="panel">
+      <div class="panel-head">
+        <div class="t">Weekly Team Sync</div>
+        <div class="mode" id="modeLabel">● live — flat capture</div>
+      </div>
+      <div class="notes" id="notes"></div>
+      <div class="addrow">
+        <input id="addInput" placeholder="Type a note as it's said… (e.g. &quot;Dan flags vendor renewal date&quot;)" />
+        <button class="btn btn-ghost" id="addBtn">Add line</button>
+      </div>
+    </div>
+
+    <div class="reflow-bar">
+      <button class="reflow" id="reflowBtn"><span class="arrow">↡</span> &nbsp;Reflow by topic</button>
+      <br><button class="reset" id="resetBtn" style="display:none">↺ back to live flat capture</button>
+    </div>
+
+    <details class="legend">
+      <summary>How it serves the 4 needs</summary>
+      <ul>
+        <li><b>Pre-record:</b> the agenda checklist is loaded up front as reference — visible but never interactive during the call.</li>
+        <li><b>Mark off:</b> deferred &amp; automatic — agenda boxes tick themselves on reflow for every topic that got notes (AOB had none → stays unticked).</li>
+        <li><b>Logically structured:</b> the flat stream reflows under inferred topic headings in one gesture — captured order, organised view.</li>
+        <li><b>Low-friction move:</b> drag any line between headings to correct the inferred topic; nothing else to touch.</li>
+      </ul>
+    </details>
+  </div>
+
+<script>
+(function(){
+  // ---- model: topics + chronological note stream ----
+  const TOPICS = [
+    {id:"budget",  label:"Budget (Q3)"},
+    {id:"hiring",  label:"Hiring backfill"},
+    {id:"roadmap", label:"Roadmap"},
+    {id:"risks",   label:"Risks / blockers"},
+    {id:"aob",     label:"AOB"},
+  ];
+  // notes in CHRONOLOGICAL spoken order (hiring discussed before budget).
+  // `topic` = the topic the app "infers" on reflow. One line is intentionally mis-filed.
+  let notes = [
+    {id:1, time:"09:02", text:"Backfill the 2 SDR roles",              topic:"hiring"},
+    {id:2, time:"09:05", text:"Priya to approve reqs by Fri",         topic:"hiring"},
+    {id:3, time:"09:09", text:"Q3 over by 12%",                       topic:"budget"},
+    // mis-filed on purpose: spoken under Budget, app guessed "roadmap"
+    {id:4, time:"09:12", text:"Dan to recut the forecast",            topic:"roadmap", correct:"budget", mis:true},
+    {id:5, time:"09:18", text:"Ship date slips ~2 weeks",             topic:"roadmap"},
+    {id:6, time:"09:24", text:"Vendor SLA needs checking",            topic:"risks"},
+  ];
+  let nextId = 7;
+  let reflowed = false;
+
+  const $ = s=>document.querySelector(s);
+  const notesEl = $("#notes"), agendaEl = $("#agenda");
+  const reflowBtn = $("#reflowBtn"), resetBtn = $("#resetBtn"), modeLabel = $("#modeLabel");
+
+  // ---- agenda render ----
+  function renderAgenda(){
+    agendaEl.innerHTML = "";
+    const tickedTopics = reflowed ? new Set(notes.map(n=>n.topic)) : new Set();
+    TOPICS.forEach(t=>{
+      const d = document.createElement("div");
+      d.className = "ag" + (tickedTopics.has(t.id) ? " ticked" : "");
+      d.innerHTML = `<span class="box"></span>${t.label}`;
+      agendaEl.appendChild(d);
+    });
+  }
+
+  // ---- time helpers (for scrubber) ----
+  function toMin(t){const[h,m]=t.split(":").map(Number);return h*60+m;}
+  function timeBounds(){
+    const ts = notes.map(n=>toMin(n.time));
+    return {lo:Math.min(...ts), hi:Math.max(...ts)};
+  }
+
+  // ---- render notes (flat or grouped) ----
+  function render(){
+    notesEl.innerHTML = "";
+    if(!reflowed){
+      // FLAT chronological stream
+      [...notes].sort((a,b)=>toMin(a.time)-toMin(b.time)).forEach(n=>{
+        notesEl.appendChild(lineEl(n,false));
+      });
+    } else {
+      // GROUPED by inferred topic
+      TOPICS.forEach(t=>{
+        const mine = notes.filter(n=>n.topic===t.id).sort((a,b)=>toMin(a.time)-toMin(b.time));
+        const grp = document.createElement("div");
+        grp.className = "grp" + (mine.length?"":" empty");
+        grp.dataset.topic = t.id;
+        const cnt = mine.length ? `${mine.length} note${mine.length>1?"s":""}` : "";
+        grp.innerHTML = `<div class="grp-h">${t.label} <span class="cnt">${cnt}</span></div>`;
+        const body = document.createElement("div");
+        body.className = "grp-body";
+        mine.forEach(n=> body.appendChild(lineEl(n,true)));
+        grp.appendChild(body);
+        // drop target wiring
+        grp.addEventListener("dragover", e=>{ e.preventDefault(); grp.classList.add("dropzone"); });
+        grp.addEventListener("dragleave", ()=> grp.classList.remove("dropzone"));
+        grp.addEventListener("drop", e=>{
+          e.preventDefault(); grp.classList.remove("dropzone");
+          const id = +e.dataTransfer.getData("text/plain");
+          const note = notes.find(n=>n.id===id);
+          if(note && note.topic!==t.id){ note.topic = t.id; note.mis = false; renderAll(); }
+        });
+        notesEl.appendChild(grp);
+      });
+    }
+    applyScrubHighlight();
+  }
+
+  function lineEl(n, draggable){
+    const el = document.createElement("div");
+    el.className = "line" + (draggable?" draggable":"") + (n.mis?" mis":"");
+    el.dataset.id = n.id;
+    el.dataset.time = n.time;
+    el.innerHTML = `<span class="time">${n.time}</span><span class="text">${n.text}</span>`;
+    if(draggable){
+      el.draggable = true;
+      el.addEventListener("dragstart", e=>{ e.dataTransfer.setData("text/plain", n.id); el.classList.add("dragging"); });
+      el.addEventListener("dragend", ()=> el.classList.remove("dragging"));
+    }
+    return el;
+  }
+
+  function renderAll(){ renderAgenda(); render(); }
+
+  // ---- add a live line ----
+  $("#addBtn").addEventListener("click", addLine);
+  $("#addInput").addEventListener("keydown", e=>{ if(e.key==="Enter") addLine(); });
+  function addLine(){
+    const inp = $("#addInput");
+    const txt = inp.value.trim();
+    if(!txt) return;
+    // fake inference: this user line lands under "risks"
+    const {hi} = timeBounds();
+    const m = hi + 6; const time = String(Math.floor(m/60)).padStart(2,"0")+":"+String(m%60).padStart(2,"0");
+    notes.push({id:nextId++, time, text:txt, topic:"risks"});
+    inp.value="";
+    if(reflowed){ reflowed=false; afterReflowUI(false); } // new capture returns to flat
+    renderAll();
+    // flash the new line
+    requestAnimationFrame(()=>{
+      const el = [...notesEl.querySelectorAll(".line")].find(e=>e.dataset.time===time);
+      if(el){ el.style.background="var(--accent-bg)"; el.style.borderColor="#5eead4";
+        setTimeout(()=>{ el.style.background=""; el.style.borderColor=""; }, 900); }
+    });
+  }
+
+  // ---- the reflow gesture (animated) ----
+  reflowBtn.addEventListener("click", ()=>{
+    if(reflowed) return;
+    // capture current flat positions
+    const flat = [...notesEl.querySelectorAll(".line")];
+    const firstRects = new Map();
+    flat.forEach(el=> firstRects.set(el.dataset.id, el.getBoundingClientRect()));
+    // switch to grouped
+    reflowed = true;
+    renderAll();
+    afterReflowUI(true);
+    // FLIP animation: animate each line from old → new position
+    const after = [...notesEl.querySelectorAll(".line")];
+    after.forEach((el,i)=>{
+      const first = firstRects.get(el.dataset.id);
+      if(!first) return;
+      const last = el.getBoundingClientRect();
+      const dx = first.left - last.left, dy = first.top - last.top;
+      el.style.transition="none";
+      el.style.transform=`translate(${dx}px,${dy}px)`;
+      el.style.opacity="0.4";
+      requestAnimationFrame(()=>{
+        el.style.transition="transform .55s cubic-bezier(.22,.61,.36,1), opacity .4s ease";
+        el.style.transitionDelay=(i*60)+"ms";
+        el.style.transform="translate(0,0)";
+        el.style.opacity="1";
+      });
+    });
+  });
+
+  resetBtn.addEventListener("click", ()=>{ reflowed=false; afterReflowUI(false); renderAll(); resetScrub(); });
+
+  function afterReflowUI(on){
+    reflowBtn.classList.toggle("done", on);
+    reflowBtn.innerHTML = on ? '✓ &nbsp;Reflowed by topic' : '<span class="arrow">↡</span> &nbsp;Reflow by topic';
+    resetBtn.style.display = on ? "inline" : "none";
+    modeLabel.textContent = on ? "▦ organised — grouped by topic" : "● live — flat capture";
+    $("#scrubZone").classList.toggle("show", on);
+    if(on) buildScrubTicks(); else resetScrub();
+  }
+
+  // ===== SCRUBBER =====
+  const track=$("#track"), handle=$("#handle"), fill=$("#fill"), ticksEl=$("#ticks"), scrubTime=$("#scrubTime");
+  let scrubFrac = null; // 0..1, null = inactive
+  const WINDOW = 6; // minutes either side spotlighted
+
+  function buildScrubTicks(){
+    ticksEl.innerHTML="";
+    const {lo,hi}=timeBounds();
+    notes.forEach(n=>{
+      const f = (toMin(n.time)-lo)/Math.max(1,(hi-lo));
+      const tk=document.createElement("div"); tk.className="tk"; tk.style.left=(f*100)+"%";
+      ticksEl.appendChild(tk);
+    });
+  }
+  function resetScrub(){ scrubFrac=null; handle.style.left="0%"; fill.style.width="0%"; scrubTime.textContent="drag the dot →"; applyScrubHighlight(); }
+
+  function setScrub(frac){
+    scrubFrac=Math.max(0,Math.min(1,frac));
+    handle.style.left=(scrubFrac*100)+"%";
+    fill.style.width=(scrubFrac*100)+"%";
+    const {lo,hi}=timeBounds();
+    const m = Math.round(lo + scrubFrac*(hi-lo));
+    scrubTime.textContent = "spotlight ~ " + String(Math.floor(m/60)).padStart(2,"0")+":"+String(m%60).padStart(2,"0");
+    applyScrubHighlight();
+  }
+  function applyScrubHighlight(){
+    const lines=[...notesEl.querySelectorAll(".line")];
+    if(scrubFrac===null || !reflowed){ lines.forEach(l=>l.classList.remove("in-window","dimmed")); return; }
+    const {lo,hi}=timeBounds();
+    const center = lo + scrubFrac*(hi-lo);
+    lines.forEach(l=>{
+      const m=toMin(l.dataset.time);
+      const inW = Math.abs(m-center) <= WINDOW;
+      l.classList.toggle("in-window", inW);
+      l.classList.toggle("dimmed", !inW);
+    });
+  }
+  function pointerFrac(clientX){
+    const r=track.getBoundingClientRect();
+    return (clientX - r.left)/r.width;
+  }
+  let dragging=false;
+  function startDrag(e){ dragging=true; handle.setPointerCapture && e.pointerId!=null && handle.setPointerCapture(e.pointerId); setScrub(pointerFrac(e.clientX)); e.preventDefault(); }
+  handle.addEventListener("pointerdown", startDrag);
+  track.addEventListener("pointerdown", e=>{ if(e.target!==handle) startDrag(e); });
+  window.addEventListener("pointermove", e=>{ if(dragging) setScrub(pointerFrac(e.clientX)); });
+  window.addEventListener("pointerup", ()=> dragging=false);
+
+  // ---- boot ----
+  renderAll();
+})();
+</script>
+</body>
+</html>

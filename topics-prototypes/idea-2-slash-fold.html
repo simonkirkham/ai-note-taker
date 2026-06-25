@@ -1,0 +1,395 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Slash-Topic + Fold</title>
+<style>
+  :root{
+    --accent:#0d9488; --accent-dark:#0f766e; --accent-bg:#ccfbf1;
+    --text:#1f2937; --muted:#6b7280; --border:#e5e7eb; --surface:#fff; --page:#f8fafc;
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0; font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+    background:var(--page); color:var(--text); line-height:1.5;
+  }
+  .banner{
+    background:linear-gradient(90deg,var(--accent),var(--accent-dark));
+    color:#fff; padding:10px 20px;
+  }
+  .banner h1{margin:0; font-size:16px; font-weight:700}
+  .banner .lens{font-size:12px; opacity:.92; margin-top:2px}
+  .banner .concept{font-size:12px; opacity:.85}
+  .wrap{max-width:760px; margin:18px auto; padding:0 16px}
+  .doc{
+    background:var(--surface); border:1px solid var(--border); border-radius:10px;
+    box-shadow:0 1px 3px rgba(0,0,0,.06); padding:18px 8px 18px 8px; min-height:340px;
+  }
+  .doc-title{font-size:20px; font-weight:700; padding:0 14px 10px 14px; border-bottom:1px solid var(--border); margin-bottom:8px}
+
+  /* rows */
+  .row{display:flex; align-items:flex-start; gap:6px; padding:1px 14px; border-radius:6px}
+  .row:hover{background:#f8fafc}
+  .row.dragover{box-shadow:inset 0 2px 0 var(--accent)}
+
+  .handle{
+    cursor:grab; color:#cbd5e1; font-size:14px; width:14px; text-align:center;
+    user-select:none; opacity:0; transition:opacity .12s; line-height:26px;
+  }
+  .topic:hover .handle{opacity:1}
+  .handle:active{cursor:grabbing}
+
+  /* topic header */
+  .topic{
+    margin-top:10px; border-left:3px solid var(--accent); background:var(--accent-bg);
+    border-radius:0 8px 8px 0; padding:4px 10px 4px 4px;
+  }
+  .topic.done{background:#f1f5f9; border-left-color:#94a3b8}
+  .topic .tri{cursor:pointer; width:16px; text-align:center; color:var(--accent-dark); user-select:none; line-height:26px; font-size:11px}
+  .topic.done .tri{color:#94a3b8}
+  .dot{
+    cursor:pointer; font-size:15px; line-height:26px; width:18px; text-align:center;
+    color:var(--accent-dark); user-select:none; transition:transform .15s;
+  }
+  .topic.done .dot{color:#475569}
+  .dot:hover{transform:scale(1.25)}
+  .topic .tname{font-weight:700; color:var(--accent-dark); line-height:26px; flex:1}
+  .topic.done .tname{color:#475569}
+  .summary{color:var(--muted); font-size:13px; line-height:26px; font-style:italic; margin-left:6px}
+
+  /* note rows */
+  .note{margin-left:32px; color:var(--text)}
+  .note .bullet{color:var(--accent); line-height:26px; user-select:none}
+  .note .ntext{
+    flex:1; outline:none; line-height:26px; min-height:26px; padding:0 2px; border-radius:4px;
+  }
+  .note .ntext:focus{background:#ecfeff}
+  .note .ntext:empty:before{content:attr(data-ph); color:#cbd5e1}
+
+  .hidden{display:none}
+  .scrolltarget{animation:flash 1.2s ease}
+  @keyframes flash{0%{background:#fef9c3}60%{background:#fef9c3}100%{background:transparent}}
+
+  /* slash menu */
+  .slashmenu{
+    position:absolute; background:var(--surface); border:1px solid var(--border);
+    border-radius:8px; box-shadow:0 6px 20px rgba(0,0,0,.14); padding:4px; z-index:30; width:230px;
+  }
+  .slashmenu .item{padding:6px 8px; border-radius:6px; cursor:pointer; font-size:13px}
+  .slashmenu .item:hover,.slashmenu .item.sel{background:var(--accent-bg)}
+  .slashmenu .item b{color:var(--accent-dark)}
+  .slashmenu .item small{color:var(--muted); display:block}
+
+  .toolbar{display:flex; gap:8px; flex-wrap:wrap; margin:10px 0 4px; padding:0 4px}
+  .pill{
+    background:var(--surface); border:1px solid var(--border); border-radius:20px;
+    padding:4px 12px; font-size:12px; color:var(--muted); cursor:pointer;
+  }
+  .pill:hover{border-color:var(--accent); color:var(--accent-dark)}
+  kbd{background:#f1f5f9; border:1px solid var(--border); border-bottom-width:2px; border-radius:4px; padding:0 5px; font-size:11px; font-family:ui-monospace,monospace}
+
+  .try{
+    background:#fffbeb; border:1px solid #fde68a; border-radius:8px; padding:10px 14px;
+    font-size:13px; margin:14px 0;
+  }
+  .try b{color:#b45309}
+  .legend{margin:14px 0}
+  .legend summary{cursor:pointer; font-weight:600; font-size:13px; color:var(--accent-dark)}
+  .legend table{width:100%; border-collapse:collapse; margin-top:8px; font-size:12.5px}
+  .legend td{border:1px solid var(--border); padding:6px 8px; vertical-align:top}
+  .legend td:first-child{font-weight:600; width:140px; color:var(--text); background:#f8fafc}
+</style>
+</head>
+<body>
+<div class="banner">
+  <h1>Slash-Topic + Fold</h1>
+  <div class="lens">Lens A — Frictionless single surface</div>
+  <div class="concept">One document. Type <kbd>/topic</kbd> to summon a foldable topic header; mark it done to auto-fold and jump to the next.</div>
+</div>
+
+<div class="wrap">
+  <div class="try">
+    <b>▶ Try this</b>
+    <div>1. Click a note line under <b>Hiring</b>, type a note, hit <kbd>Enter</kbd>. Then <kbd>Ctrl</kbd>+<kbd>.</kbd> (or click the ◯) to mark discussed — it folds and scrolls to the next ◯.</div>
+    <div>2. On a fresh line type <kbd>/</kbd> then <kbd>topic Extra item</kbd> + <kbd>Enter</kbd> to add a new foldable topic. Use the ⠿ handle (or <kbd>Alt</kbd>+<kbd>↑/↓</kbd>) to move a topic — its notes follow.</div>
+  </div>
+
+  <div class="doc" id="doc">
+    <div class="doc-title">Weekly Team Sync</div>
+    <div id="rows"></div>
+  </div>
+
+  <div class="toolbar">
+    <span class="pill" id="addBtn">+ /topic — add a topic</span>
+    <span class="pill" id="resetBtn">↺ Reset demo</span>
+  </div>
+
+  <details class="legend">
+    <summary>How it serves the 4 needs</summary>
+    <table>
+      <tr><td>Pre-record</td><td>The 5 agenda topics are typed up front as <kbd>/topic</kbd> headers (each a ◯), building the agenda before the meeting starts.</td></tr>
+      <tr><td>Mark-off</td><td><kbd>Ctrl</kbd>+<kbd>.</kbd> or clicking the ◯ flips it to ● and folds the body to a one-line summary, then scrolls the next undiscussed ◯ to view.</td></tr>
+      <tr><td>Logical structure</td><td>Each header owns the lines beneath it; reordering a header (drag handle / <kbd>Alt</kbd>+arrows) carries its whole note block, so structure follows the jumpy conversation.</td></tr>
+      <tr><td>Low friction</td><td>One keyboard-first surface — no panes, no modes. <kbd>/</kbd> summons a topic, <kbd>Enter</kbd> adds notes, <kbd>Ctrl</kbd>+<kbd>.</kbd> closes one out. Folded topics show "▸ N notes" so nothing feels lost.</td></tr>
+    </table>
+  </details>
+</div>
+
+<script>
+"use strict";
+
+// ---- model -------------------------------------------------------------
+// A block list. Topic blocks own following note blocks until the next topic.
+let nextId = 1;
+const uid = () => "b" + (nextId++);
+
+function seed(){
+  return [
+    topic("Budget (Q3)"),
+    topic("Hiring backfill"),
+    topic("Roadmap"),
+    topic("Risks / blockers"),
+    topic("AOB"),
+  ];
+}
+function topic(name){
+  return { id:uid(), type:"topic", name, done:false, folded:false, time:null, notes:[] };
+}
+
+let blocks = seed();
+
+// ---- render ------------------------------------------------------------
+const rowsEl = document.getElementById("rows");
+
+function noteCount(t){ return t.notes.filter(n=>n.text.trim()!=="").length; }
+
+function render(focusInfo){
+  rowsEl.innerHTML = "";
+  blocks.forEach((t)=>{
+    rowsEl.appendChild(renderTopic(t));
+    if(!t.folded){
+      t.notes.forEach((n)=> rowsEl.appendChild(renderNote(t,n)));
+      // trailing empty input line for this topic
+      rowsEl.appendChild(renderNoteInput(t));
+    }
+  });
+  if(focusInfo) restoreFocus(focusInfo);
+}
+
+function renderTopic(t){
+  const row = document.createElement("div");
+  row.className = "row topic" + (t.done?" done":"");
+  row.dataset.id = t.id;
+  row.draggable = false;
+
+  const handle = el("span","handle","⠿");
+  handle.title = "Drag to reorder (carries notes)";
+  handle.draggable = true;
+  wireDrag(handle, t);
+
+  const tri = el("span","tri", t.folded?"▸":"▾");
+  tri.title = "Fold / unfold";
+  tri.onclick = ()=>{ t.folded = !t.folded; render(); };
+
+  const dot = el("span","dot", t.done?"●":"◯");
+  dot.title = "Mark discussed (Ctrl+.)";
+  dot.onclick = ()=> markDone(t);
+
+  const name = el("span","tname", t.name);
+
+  row.append(handle, tri, dot, name);
+
+  if(t.folded){
+    const time = t.time ? " · "+t.time : "";
+    const sum = el("span","summary", "— "+noteCount(t)+" note"+(noteCount(t)===1?"":"s")+time);
+    row.appendChild(sum);
+  }
+  return row;
+}
+
+function renderNote(t,n){
+  const row = document.createElement("div");
+  row.className="row note";
+  row.dataset.id = t.id; row.dataset.note = n.id;
+  row.append(el("span","bullet","•"));
+  const txt = document.createElement("div");
+  txt.className="ntext"; txt.contentEditable="true"; txt.textContent=n.text;
+  txt.dataset.ph="";
+  txt.addEventListener("input",()=>{ n.text = txt.textContent; });
+  txt.addEventListener("keydown",(e)=> onNoteKey(e,t,n,txt));
+  row.appendChild(txt);
+  return row;
+}
+
+function renderNoteInput(t){
+  const row = document.createElement("div");
+  row.className="row note input";
+  row.dataset.id=t.id; row.dataset.note="new";
+  row.append(el("span","bullet","•"));
+  const txt = document.createElement("div");
+  txt.className="ntext"; txt.contentEditable="true";
+  txt.dataset.ph = "type a note, or "+'"'+"/topic …"+'"'+"  ·  Enter";
+  txt.addEventListener("keydown",(e)=> onInputKey(e,t,txt));
+  txt.addEventListener("input",()=> maybeSlash(txt));
+  row.appendChild(txt);
+  return row;
+}
+
+function el(tag,cls,txt){ const e=document.createElement(tag); e.className=cls; if(txt!=null)e.textContent=txt; return e; }
+
+// ---- behaviours --------------------------------------------------------
+function markDone(t){
+  t.done = true; t.folded = true;
+  t.time = new Date().toLocaleTimeString([], {hour:"2-digit",minute:"2-digit"});
+  render();
+  // scroll next undiscussed topic to top
+  const next = blocks.find(b=>!b.done);
+  if(next){
+    const row = rowsEl.querySelector('.topic[data-id="'+next.id+'"]');
+    if(row){ row.classList.add("scrolltarget"); row.scrollIntoView({behavior:"smooth",block:"center"}); }
+  }
+}
+
+function onNoteKey(e,t,n,txt){
+  if(e.key==="Enter"){
+    e.preventDefault();
+    n.text = txt.textContent;
+    // insert a new empty note after this one, focus it
+    const idx = t.notes.indexOf(n);
+    const fresh = { id:uid(), text:"" };
+    t.notes.splice(idx+1,0,fresh);
+    render({topic:t.id, note:fresh.id});
+  } else if(e.key==="Backspace" && txt.textContent===""){
+    e.preventDefault();
+    const idx = t.notes.indexOf(n);
+    t.notes.splice(idx,1);
+    render(idx>0 ? {topic:t.id, note:t.notes[idx-1] && t.notes[idx-1].id, end:true} : {topic:t.id, note:"new"});
+  } else moveTopicKeys(e,t);
+}
+
+function onInputKey(e,t,txt){
+  if(e.key==="Enter"){
+    e.preventDefault();
+    const raw = txt.textContent.trim();
+    const m = raw.match(/^\/(?:topic|t)\s+(.+)/i);
+    if(m){
+      // new topic AFTER this topic's block
+      const newT = topic(m[1].trim());
+      const idx = blocks.indexOf(t);
+      blocks.splice(idx+1,0,newT);
+      render({topic:newT.id, note:"new"});
+      return;
+    }
+    if(raw===""){ moveTopicKeys(e,t); return; }
+    const fresh = { id:uid(), text:raw };
+    t.notes.push(fresh);
+    render({topic:t.id, note:"new"});
+  } else moveTopicKeys(e,t);
+}
+
+function moveTopicKeys(e,t){
+  if(e.altKey && (e.key==="ArrowUp"||e.key==="ArrowDown")){
+    e.preventDefault();
+    moveTopic(t, e.key==="ArrowUp"?-1:1);
+  }
+}
+
+function moveTopic(t,dir){
+  const idx = blocks.indexOf(t);
+  const j = idx+dir;
+  if(j<0||j>=blocks.length) return;
+  blocks.splice(idx,1);
+  blocks.splice(j,0,t);
+  render();
+  const row = rowsEl.querySelector('.topic[data-id="'+t.id+'"]');
+  if(row){ row.classList.add("scrolltarget"); row.scrollIntoView({block:"center"}); }
+}
+
+// slash popup
+let menuEl=null;
+function maybeSlash(txt){
+  closeMenu();
+  if(txt.textContent==="/" ){
+    const r = txt.getBoundingClientRect();
+    menuEl = document.createElement("div");
+    menuEl.className="slashmenu";
+    menuEl.style.left=(r.left+window.scrollX)+"px";
+    menuEl.style.top=(r.bottom+window.scrollY+4)+"px";
+    menuEl.innerHTML='<div class="item sel"><b>/topic &lt;name&gt;</b><small>Insert a foldable topic header (◯)</small></div>';
+    menuEl.querySelector(".item").onclick=()=>{
+      txt.textContent="/topic "; closeMenu(); placeCaretEnd(txt);
+    };
+    document.body.appendChild(menuEl);
+  }
+}
+function closeMenu(){ if(menuEl){ menuEl.remove(); menuEl=null; } }
+document.addEventListener("click",(e)=>{ if(menuEl && !menuEl.contains(e.target)) closeMenu(); });
+
+// drag reorder (topic carries its body because notes live inside the block)
+let dragT=null;
+function wireDrag(handle, t){
+  handle.addEventListener("dragstart",(e)=>{ dragT=t; e.dataTransfer.effectAllowed="move"; });
+  handle.addEventListener("dragend",()=>{ dragT=null; clearDragOver(); });
+}
+rowsEl.addEventListener("dragover",(e)=>{
+  if(!dragT) return; e.preventDefault();
+  const row = e.target.closest(".topic");
+  clearDragOver();
+  if(row) row.classList.add("dragover");
+});
+rowsEl.addEventListener("drop",(e)=>{
+  if(!dragT) return; e.preventDefault();
+  const row = e.target.closest(".topic");
+  clearDragOver();
+  if(!row) return;
+  const target = blocks.find(b=>b.id===row.dataset.id);
+  if(!target || target===dragT) return;
+  const from = blocks.indexOf(dragT);
+  blocks.splice(from,1);
+  const to = blocks.indexOf(target);
+  blocks.splice(to,0,dragT);
+  render();
+});
+function clearDragOver(){ rowsEl.querySelectorAll(".dragover").forEach(r=>r.classList.remove("dragover")); }
+
+// global Ctrl/Cmd+. → mark the topic of the focused row
+document.addEventListener("keydown",(e)=>{
+  if((e.ctrlKey||e.metaKey) && e.key==="."){
+    e.preventDefault();
+    const t = currentTopic();
+    if(t && !t.done) markDone(t);
+  }
+});
+function currentTopic(){
+  const a = document.activeElement;
+  const row = a && a.closest && a.closest(".row");
+  if(row && row.dataset.id) return blocks.find(b=>b.id===row.dataset.id);
+  // fallback: first undiscussed
+  return blocks.find(b=>!b.done);
+}
+
+// focus helpers
+function restoreFocus(info){
+  let sel;
+  if(info.note==="new") sel = rowsEl.querySelector('.note.input[data-id="'+info.topic+'"] .ntext');
+  else sel = rowsEl.querySelector('.note[data-id="'+info.topic+'"][data-note="'+info.note+'"] .ntext');
+  if(sel){ sel.focus(); placeCaretEnd(sel); }
+}
+function placeCaretEnd(node){
+  const r=document.createRange(); r.selectNodeContents(node); r.collapse(false);
+  const s=window.getSelection(); s.removeAllRanges(); s.addRange(r);
+}
+
+// toolbar
+document.getElementById("addBtn").onclick=()=>{
+  const last = blocks[blocks.length-1];
+  const input = rowsEl.querySelector('.note.input[data-id="'+last.id+'"] .ntext');
+  if(input){ input.focus(); input.textContent="/topic "; placeCaretEnd(input); }
+};
+document.getElementById("resetBtn").onclick=()=>{ blocks=seed(); render(); };
+
+render();
+</script>
+</body>
+</html>

@@ -1,0 +1,320 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Cockpit Rail — Topics Prototype</title>
+<style>
+  :root{
+    --teal:#0d9488; --accent-dark:#0f766e; --accent-bg:#ccfbf1;
+    --text:#1f2937; --muted:#6b7280; --border:#e5e7eb; --surface:#fff; --page-bg:#f8fafc;
+    /* per-topic spine colours */
+    --c-hiring:#0d9488; --c-budget:#d97706; --c-roadmap:#7c3aed; --c-risks:#dc2626; --c-aob:#2563eb;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;color:var(--text);background:var(--page-bg)}
+  .banner{background:linear-gradient(90deg,var(--accent-dark),var(--teal));color:#fff;padding:10px 18px}
+  .banner h1{margin:0;font-size:16px;letter-spacing:.3px}
+  .banner .lens{font-size:12px;opacity:.92;margin-top:2px}
+  .banner .concept{font-size:12px;opacity:.85;margin-top:2px;font-style:italic}
+
+  .try{margin:14px 18px 0;display:inline-block;background:var(--accent-bg);border:1px solid var(--teal);
+    color:var(--accent-dark);font-size:12.5px;padding:7px 11px;border-radius:8px}
+  .try b{font-weight:700}
+
+  .wrap{display:flex;gap:16px;padding:14px 18px 24px;align-items:flex-start}
+
+  /* LEFT RAIL */
+  .rail{flex:0 0 280px;background:var(--surface);border:1px solid var(--border);border-radius:10px;
+    padding:12px;box-shadow:0 1px 3px rgba(0,0,0,.05);position:sticky;top:14px}
+  .rail h2{margin:0 0 4px;font-size:13px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted)}
+  .rail .sub{font-size:11.5px;color:var(--muted);margin-bottom:10px}
+  .topic{display:flex;align-items:center;gap:8px;padding:8px 8px;border-radius:8px;cursor:pointer;
+    border:1px solid transparent;position:relative;margin-bottom:4px;transition:background .12s}
+  .topic:hover{background:#f1f5f9}
+  .topic.active{background:var(--accent-bg);border-color:var(--teal)}
+  .topic .key{flex:0 0 18px;height:18px;border:1px solid var(--border);border-radius:4px;font-size:11px;
+    display:flex;align-items:center;justify-content:center;color:var(--muted);background:#fff}
+  .topic.active .key{background:var(--teal);color:#fff;border-color:var(--teal)}
+  .topic .cb{width:16px;height:16px;cursor:pointer;accent-color:var(--teal);flex:0 0 auto}
+  .topic .ttl{flex:1;font-size:13.5px}
+  .topic.done .ttl{text-decoration:line-through;color:var(--muted)}
+  .topic .ts{font-size:10.5px;color:var(--muted);white-space:nowrap}
+  .topic .ptr{position:absolute;left:-12px;color:var(--teal);font-weight:700;font-size:14px;
+    opacity:0;transition:opacity .12s}
+  .topic.active .ptr{opacity:1}
+  .topic .swatch{width:4px;height:18px;border-radius:2px;flex:0 0 auto}
+
+  .addrow{display:flex;gap:6px;margin-top:10px}
+  .addrow input{flex:1;padding:7px 9px;border:1px solid var(--border);border-radius:7px;font-size:13px}
+  .addrow input:focus{outline:none;border-color:var(--teal);box-shadow:0 0 0 2px var(--accent-bg)}
+  .addrow button{background:var(--teal);color:#fff;border:none;border-radius:7px;padding:0 12px;font-size:13px;cursor:pointer}
+  .nowline{margin-top:12px;font-size:12px;color:var(--accent-dark);background:var(--accent-bg);
+    border-radius:7px;padding:7px 9px;border:1px solid var(--teal)}
+
+  /* MAIN PANE */
+  .pane{flex:1;background:var(--surface);border:1px solid var(--border);border-radius:10px;
+    box-shadow:0 1px 3px rgba(0,0,0,.05);min-height:480px;display:flex;flex-direction:column}
+  .pane .head{display:flex;align-items:center;justify-content:space-between;padding:12px 16px;border-bottom:1px solid var(--border)}
+  .pane .head .t{font-size:15px;font-weight:600}
+  .toggle{display:flex;gap:0;border:1px solid var(--border);border-radius:7px;overflow:hidden}
+  .toggle button{background:#fff;border:none;padding:6px 12px;font-size:12px;cursor:pointer;color:var(--muted)}
+  .toggle button.on{background:var(--teal);color:#fff}
+
+  .editor{flex:1;padding:8px 10px;overflow:auto}
+  /* a contiguous run of notes for one topic, with a coloured spine */
+  .run{position:relative;margin:6px 0;padding:6px 10px 6px 16px;border-radius:0 8px 8px 0}
+  .run::before{content:"";position:absolute;left:0;top:4px;bottom:4px;width:4px;border-radius:2px;background:var(--spine,#ccc)}
+  .run .runhdr{font-size:11px;text-transform:uppercase;letter-spacing:.4px;color:var(--muted);margin-bottom:2px}
+  .run .note{font-size:14px;padding:3px 0;line-height:1.35}
+  .typed{padding:10px 12px;border-top:1px dashed var(--border)}
+  .typed .inhint{font-size:11.5px;color:var(--muted);margin-bottom:5px}
+  .typed .inhint b{color:var(--accent-dark)}
+  .typed textarea{width:100%;min-height:54px;border:1px solid var(--border);border-radius:8px;
+    padding:9px 11px;font-size:14px;font-family:inherit;resize:vertical;border-left:4px solid var(--spine,var(--teal))}
+  .typed textarea:focus{outline:none;box-shadow:0 0 0 2px var(--accent-bg)}
+  .typed .filed{font-size:11.5px;color:var(--muted);margin-top:5px}
+
+  /* grouped view */
+  .group{margin:10px;border:1px solid var(--border);border-radius:9px;overflow:hidden}
+  .group .ghdr{display:flex;align-items:center;gap:8px;padding:8px 12px;font-size:13.5px;font-weight:600;
+    border-left:5px solid var(--spine,#ccc);background:#fafafa}
+  .group .gbody{padding:6px 14px 10px}
+  .group .gnote{font-size:14px;padding:3px 0}
+  .group .empty{font-size:12.5px;color:var(--muted);font-style:italic;padding:2px 0}
+  .badge{font-size:10.5px;padding:1px 7px;border-radius:10px;background:var(--accent-bg);color:var(--accent-dark)}
+  .badge.undisc{background:#f3f4f6;color:var(--muted)}
+
+  .legend{margin:0 18px 22px;background:var(--surface);border:1px solid var(--border);border-radius:9px}
+  .legend summary{cursor:pointer;padding:10px 14px;font-size:13px;font-weight:600}
+  .legend .body{padding:0 14px 12px;font-size:12.5px;color:var(--muted)}
+  .legend .body div{padding:2px 0}
+  .legend b{color:var(--text)}
+</style>
+</head>
+<body>
+  <div class="banner">
+    <h1>Cockpit Rail</h1>
+    <div class="lens">Lens B — Agenda as control panel</div>
+    <div class="concept">Steer from the rail: one click sets the active topic, everything you type is silently filed under it.</div>
+  </div>
+
+  <div class="try">▶ <b>Try this:</b> click <b>Hiring backfill</b> in the rail (or press <b>2</b>), type a note below, then tick its box. Notes file in the order topics are actually raised — flip to <b>Grouped</b> to see the assembled result.</div>
+
+  <div class="wrap">
+    <!-- LEFT RAIL -->
+    <div class="rail">
+      <h2>Agenda</h2>
+      <div class="sub">Click a row or press 1–5 to set what you're discussing now.</div>
+      <div id="railList"></div>
+      <div class="addrow">
+        <input id="addInput" placeholder="Add a topic + Enter…" autocomplete="off">
+        <button id="addBtn">Add</button>
+      </div>
+      <div class="nowline">Now discussing: <b id="nowLabel">—</b></div>
+    </div>
+
+    <!-- MAIN PANE -->
+    <div class="pane">
+      <div class="head">
+        <div class="t">Weekly Team Sync — Notes</div>
+        <div class="toggle">
+          <button id="vFlow" class="on">Live</button>
+          <button id="vGroup">Grouped</button>
+        </div>
+      </div>
+
+      <div id="editor" class="editor"></div>
+
+      <div class="typed" id="typedBox">
+        <div class="inhint">Typing into → <b id="activeHint">—</b>. Press Enter to file the note (Shift+Enter for a line break).</div>
+        <textarea id="noteInput" placeholder="Type a note… it's filed under the active topic automatically."></textarea>
+        <div class="filed" id="filedMsg"></div>
+      </div>
+    </div>
+  </div>
+
+  <details class="legend">
+    <summary>How it serves the 4 needs</summary>
+    <div class="body">
+      <div><b>1 · Pre-record:</b> the 5 topics live in the rail before the meeting; add more by typing + Enter.</div>
+      <div><b>2 · Mark off:</b> tick a topic's checkbox → strikethrough + timestamp, no leaving the notes.</div>
+      <div><b>3 · Logically structured:</b> every note inherits the active topic, so the record auto-sections by topic (Grouped view) regardless of typing order.</div>
+      <div><b>4 · Low-friction move:</b> one peripheral click / number-key switches topic + moves the green pointer and coloured spine — you never leave the editor.</div>
+    </div>
+  </details>
+
+<script>
+  const COLOURS = ['var(--c-hiring)','var(--c-budget)','var(--c-roadmap)','var(--c-risks)','var(--c-aob)'];
+  let topicId = 0;
+  // pre-populate 5 topics (in planned agenda order)
+  const topics = [
+    {id:topicId++, title:'Budget (Q3)',      done:false, ts:null, colour:'var(--c-budget)'},
+    {id:topicId++, title:'Hiring backfill',  done:false, ts:null, colour:'var(--c-hiring)'},
+    {id:topicId++, title:'Roadmap',          done:false, ts:null, colour:'var(--c-roadmap)'},
+    {id:topicId++, title:'Risks / blockers', done:false, ts:null, colour:'var(--c-risks)'},
+    {id:topicId++, title:'AOB',              done:false, ts:null, colour:'var(--c-aob)'},
+  ];
+  let activeId = topics[0].id;
+  // notes: ordered list of {topicId, text} — empty to start; viewer fills it
+  const notes = [];
+  let view = 'flow';
+
+  const railList = document.getElementById('railList');
+  const editor   = document.getElementById('editor');
+  const nowLabel = document.getElementById('nowLabel');
+  const activeHint = document.getElementById('activeHint');
+  const noteInput  = document.getElementById('noteInput');
+  const filedMsg   = document.getElementById('filedMsg');
+  const typedBox   = document.getElementById('typedBox');
+
+  function topicById(id){ return topics.find(t=>t.id===id); }
+  function nowTs(){ return new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}); }
+
+  function setActive(id){
+    activeId = id;
+    render();
+    noteInput.focus();
+  }
+
+  function renderRail(){
+    railList.innerHTML = '';
+    topics.forEach((t, i)=>{
+      const row = document.createElement('div');
+      row.className = 'topic' + (t.id===activeId?' active':'') + (t.done?' done':'');
+      row.innerHTML = `
+        <span class="ptr">▶</span>
+        <span class="swatch" style="background:${t.colour}"></span>
+        <input type="checkbox" class="cb" ${t.done?'checked':''} title="Mark discussed">
+        <span class="key">${i<9? i+1 : '·'}</span>
+        <span class="ttl">${t.title}</span>
+        ${t.done && t.ts ? `<span class="ts">${t.ts}</span>` : ''}
+      `;
+      // click row body -> set active (but not when clicking the checkbox)
+      row.addEventListener('click', (e)=>{
+        if(e.target.classList.contains('cb')) return;
+        setActive(t.id);
+      });
+      row.querySelector('.cb').addEventListener('change', (e)=>{
+        t.done = e.target.checked;
+        t.ts = t.done ? nowTs() : null;
+        render();
+      });
+      railList.appendChild(row);
+    });
+    const a = topicById(activeId);
+    nowLabel.textContent = a ? a.title : '—';
+    nowLabel.style.color = a ? a.colour : '';
+    activeHint.textContent = a ? a.title : '—';
+    activeHint.style.color = a ? a.colour : '';
+    noteInput.style.setProperty('--spine', a ? a.colour : 'var(--teal)');
+  }
+
+  function renderFlow(){
+    editor.innerHTML = '';
+    if(notes.length===0){
+      editor.innerHTML = `<div style="color:var(--muted);font-size:13px;padding:14px;text-align:center">
+        No notes yet. Set a topic on the rail, then type below — notes appear here grouped by the active-topic spine.</div>`;
+      return;
+    }
+    // build contiguous runs by topicId
+    let i=0;
+    while(i<notes.length){
+      const tid = notes[i].topicId;
+      const run = [];
+      while(i<notes.length && notes[i].topicId===tid){ run.push(notes[i]); i++; }
+      const t = topicById(tid);
+      const div = document.createElement('div');
+      div.className='run';
+      div.style.setProperty('--spine', t.colour);
+      div.style.background = colourTint(t.colour);
+      div.innerHTML = `<div class="runhdr" style="color:${t.colour}">${t.title}${t.done?' ✓':''}</div>` +
+        run.map(n=>`<div class="note">${escapeHtml(n.text)}</div>`).join('');
+      editor.appendChild(div);
+    }
+  }
+
+  function renderGrouped(){
+    editor.innerHTML = '';
+    topics.forEach(t=>{
+      const mine = notes.filter(n=>n.topicId===t.id);
+      const div = document.createElement('div');
+      div.className='group';
+      div.style.setProperty('--spine', t.colour);
+      const badge = t.done
+        ? `<span class="badge">discussed ${t.ts?'· '+t.ts:''}</span>`
+        : `<span class="badge undisc">${mine.length?'open':'undiscussed'}</span>`;
+      const body = mine.length
+        ? mine.map(n=>`<div class="gnote">• ${escapeHtml(n.text)}</div>`).join('')
+        : `<div class="empty">no notes</div>`;
+      div.innerHTML = `<div class="ghdr"><span style="color:${t.colour}">${t.title}</span>${badge}</div>
+                       <div class="gbody">${body}</div>`;
+      editor.appendChild(div);
+    });
+  }
+
+  function render(){
+    renderRail();
+    if(view==='flow'){ renderFlow(); typedBox.style.display=''; }
+    else { renderGrouped(); typedBox.style.display='none'; }
+    document.getElementById('vFlow').classList.toggle('on', view==='flow');
+    document.getElementById('vGroup').classList.toggle('on', view==='group');
+  }
+
+  function colourTint(c){
+    // map known spine colours to a faint tint background
+    const map = {
+      'var(--c-hiring)':'#f0fdfa','var(--c-budget)':'#fffbeb','var(--c-roadmap)':'#faf5ff',
+      'var(--c-risks)':'#fef2f2','var(--c-aob)':'#eff6ff'
+    };
+    return map[c] || '#fafafa';
+  }
+  function escapeHtml(s){ return s.replace(/[&<>]/g, m=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[m])); }
+
+  // file a note under the active topic
+  function fileNote(text){
+    text = text.trim();
+    if(!text) return;
+    const t = topicById(activeId);
+    notes.push({topicId:activeId, text});
+    filedMsg.innerHTML = `Filed under <b style="color:${t.colour}">${t.title}</b>.`;
+    render();
+    setTimeout(()=>{ filedMsg.textContent=''; }, 2200);
+  }
+
+  noteInput.addEventListener('keydown', (e)=>{
+    if(e.key==='Enter' && !e.shiftKey){
+      e.preventDefault();
+      fileNote(noteInput.value);
+      noteInput.value='';
+    }
+  });
+
+  // number keys 1-5 set active topic (when not typing in a text field)
+  document.addEventListener('keydown', (e)=>{
+    const tag = document.activeElement.tagName;
+    if(tag==='INPUT' || tag==='TEXTAREA') return;
+    const n = parseInt(e.key,10);
+    if(n>=1 && n<=topics.length){ setActive(topics[n-1].id); }
+  });
+
+  // add a topic
+  const addInput = document.getElementById('addInput');
+  function addTopic(){
+    const v = addInput.value.trim();
+    if(!v) return;
+    topics.push({id:topicId++, title:v, done:false, ts:null, colour:COLOURS[(topics.length)%COLOURS.length]});
+    addInput.value='';
+    render();
+  }
+  document.getElementById('addBtn').addEventListener('click', addTopic);
+  addInput.addEventListener('keydown', (e)=>{ if(e.key==='Enter'){ e.preventDefault(); addTopic(); }});
+
+  // view toggle
+  document.getElementById('vFlow').addEventListener('click', ()=>{ view='flow'; render(); });
+  document.getElementById('vGroup').addEventListener('click', ()=>{ view='group'; render(); });
+
+  render();
+</script>
+</body>
+</html>

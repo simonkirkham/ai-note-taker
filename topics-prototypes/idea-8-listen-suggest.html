@@ -1,0 +1,375 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Listen &amp; Suggest — Lens C</title>
+<style>
+  :root{
+    --teal:#0d9488; --accent-dark:#0f766e; --accent-bg:#ccfbf1;
+    --text:#1f2937; --muted:#6b7280; --border:#e5e7eb;
+    --surface:#fff; --page-bg:#f8fafc;
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0; font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+    background:var(--page-bg); color:var(--text); line-height:1.45;
+  }
+  .wrap{max-width:1040px; margin:0 auto; padding:0 16px 120px}
+
+  /* banner */
+  .banner{
+    background:linear-gradient(90deg,var(--accent-dark),var(--teal));
+    color:#fff; padding:14px 18px; border-radius:0 0 10px 10px;
+    display:flex; flex-wrap:wrap; align-items:baseline; gap:10px;
+  }
+  .banner h1{font-size:18px; margin:0}
+  .banner .lens{font-size:12px; background:rgba(255,255,255,.18); padding:2px 8px; border-radius:20px}
+  .banner .concept{font-size:13px; opacity:.92; width:100%; margin-top:2px}
+
+  /* controls */
+  .controls{
+    display:flex; flex-wrap:wrap; gap:8px; align-items:center;
+    margin:16px 0; padding:10px 12px; background:var(--surface);
+    border:1px solid var(--border); border-radius:10px;
+  }
+  button{
+    font:inherit; cursor:pointer; border-radius:8px; border:1px solid var(--border);
+    background:var(--surface); color:var(--text); padding:7px 14px;
+    transition:.12s; font-size:13px;
+  }
+  button:hover{border-color:var(--teal)}
+  button.primary{background:var(--teal); color:#fff; border-color:var(--teal)}
+  button.primary:hover{background:var(--accent-dark)}
+  button:disabled{opacity:.5; cursor:default; border-color:var(--border)}
+  .controls .status{margin-left:auto; font-size:12px; color:var(--muted)}
+
+  /* try hint */
+  .tryhint{
+    display:flex; gap:8px; align-items:flex-start;
+    background:var(--accent-bg); border:1px solid #99f6e4;
+    border-radius:8px; padding:8px 12px; font-size:13px; color:var(--accent-dark);
+    margin-bottom:16px;
+  }
+  .tryhint b{color:var(--accent-dark)}
+
+  /* panes */
+  .panes{display:grid; grid-template-columns:1fr 1fr; gap:14px}
+  @media(max-width:780px){.panes{grid-template-columns:1fr}}
+  .pane{
+    background:var(--surface); border:1px solid var(--border);
+    border-radius:10px; padding:12px 14px; min-height:340px;
+    box-shadow:0 1px 2px rgba(0,0,0,.03);
+  }
+  .pane h2{font-size:13px; text-transform:uppercase; letter-spacing:.04em; color:var(--muted); margin:0 0 4px}
+  .pane .sub{font-size:11px; color:var(--muted); margin:0 0 10px}
+
+  /* chronological stream */
+  .line{
+    padding:7px 10px; border-radius:7px; margin-bottom:6px; font-size:14px;
+    border:1px solid var(--border); background:#fafafa;
+    display:flex; align-items:center; gap:8px;
+    animation:slideIn .35s ease;
+  }
+  @keyframes slideIn{from{opacity:0; transform:translateY(6px)} to{opacity:1; transform:none}}
+  .line .dot{width:8px; height:8px; border-radius:50%; background:#cbd5e1; flex:0 0 auto}
+  .line.filed{background:var(--accent-bg); border-color:#99f6e4}
+  .line.filed .dot{background:var(--teal)}
+  .line .tag{
+    margin-left:auto; font-size:10px; padding:1px 7px; border-radius:20px;
+    background:var(--teal); color:#fff; white-space:nowrap;
+    animation:pop .3s ease;
+  }
+  .line .unfiled{margin-left:auto; font-size:10px; color:var(--muted); font-style:italic}
+  @keyframes pop{from{transform:scale(.7)} to{transform:scale(1)}}
+  .empty{color:var(--muted); font-size:13px; font-style:italic; padding:8px 4px}
+
+  /* agenda / outline */
+  .topic{
+    border:1px solid var(--border); border-radius:8px; margin-bottom:8px; overflow:hidden;
+  }
+  .topic .thead{
+    display:flex; align-items:center; gap:8px; padding:8px 10px; font-size:14px; font-weight:600;
+    background:#fafafa;
+  }
+  .topic.suggested .thead{background:#fff7ed}
+  .topic.discussed .thead{background:var(--accent-bg)}
+  .topic.active .thead{box-shadow:inset 3px 0 0 var(--teal)}
+  .topic .state{
+    margin-left:auto; font-size:11px; padding:2px 8px; border-radius:20px;
+    background:#e5e7eb; color:var(--muted); white-space:nowrap;
+  }
+  .topic.suggested .state{background:#fed7aa; color:#9a3412}
+  .topic.discussed .state{background:var(--teal); color:#fff}
+  .topic .tbody{padding:2px 10px 8px 28px}
+  .topic .tbody .item{
+    font-size:13px; color:var(--text); padding:3px 0;
+    border-bottom:1px dashed var(--border); animation:slideIn .3s ease;
+  }
+  .topic .tbody .item:last-child{border-bottom:none}
+  .topic .tbody .none{font-size:12px; color:#cbd5e1; font-style:italic; padding:3px 0}
+
+  /* pill */
+  #pill{
+    position:fixed; left:50%; bottom:-120px; transform:translateX(-50%);
+    width:min(440px,92vw); background:var(--text); color:#fff;
+    border-radius:12px; padding:13px 14px; box-shadow:0 10px 30px rgba(0,0,0,.28);
+    display:flex; align-items:center; gap:10px; z-index:40;
+    transition:bottom .35s cubic-bezier(.2,.8,.2,1);
+  }
+  #pill.up{bottom:24px}
+  #pill .mic{font-size:20px}
+  #pill .txt{font-size:13.5px; flex:1}
+  #pill .txt b{color:#5eead4}
+  #pill button{padding:6px 12px; font-size:14px; font-weight:600}
+  #pill button.yes{background:var(--teal); color:#fff; border-color:var(--teal)}
+  #pill button.no{background:transparent; color:#fff; border-color:rgba(255,255,255,.35)}
+
+  /* legend */
+  .legend{margin-top:22px; border:1px solid var(--border); border-radius:10px; background:var(--surface)}
+  .legend summary{cursor:pointer; padding:11px 14px; font-size:13px; font-weight:600; color:var(--accent-dark)}
+  .legend .body{padding:0 16px 14px; font-size:12.5px; color:var(--muted)}
+  .legend .body div{padding:3px 0}
+  .legend .body b{color:var(--text)}
+  .toast{
+    position:fixed; bottom:24px; right:24px; background:var(--accent-dark); color:#fff;
+    padding:9px 14px; border-radius:8px; font-size:13px; opacity:0; transform:translateY(8px);
+    transition:.25s; z-index:50;
+  }
+  .toast.show{opacity:1; transform:none}
+</style>
+</head>
+<body>
+<div class="banner">
+  <h1>Listen &amp; Suggest</h1>
+  <span class="lens">Lens C — Conversation-led reflow</span>
+  <div class="concept">You jot notes in order; a simulated live transcript surfaces a pill guessing the current topic — tap ✓ to back-file your recent lines, ✕ to dismiss.</div>
+</div>
+
+<div class="wrap">
+  <div class="tryhint">
+    <span>▶</span>
+    <div><b>Try this:</b> hit <b>Play conversation</b>. Watch raw lines land on the left, then accept (✓) or dismiss (✕) each pill that slides up. One guess is deliberately wrong — dismiss it to see rejection. Accepting back-files recent lines into the topic on the right.</div>
+  </div>
+
+  <div class="controls">
+    <button class="primary" id="play">▶ Play conversation</button>
+    <button id="step">Step ▸</button>
+    <button id="reset">↺ Reset</button>
+    <span class="status" id="status">Pre-record idle — nothing captured yet</span>
+  </div>
+
+  <div class="panes">
+    <div class="pane">
+      <h2>① Capture stream (chronological)</h2>
+      <p class="sub">Raw jots in the order you typed them — out of order is fine.</p>
+      <div id="stream"><div class="empty">Press Play. Lines arrive here as the conversation flows.</div></div>
+    </div>
+    <div class="pane">
+      <h2>③ Auto-outline by topic · ② agenda state</h2>
+      <p class="sub">Accepted guesses slot lines here and flip the agenda chip.</p>
+      <div id="outline"></div>
+    </div>
+  </div>
+
+  <details class="legend">
+    <summary>How it serves the 4 needs ▾</summary>
+    <div class="body">
+      <div><b>① Pre-record:</b> the capture stream logs every line as it happens — no need to choose a topic up front.</div>
+      <div><b>② Mark off agenda:</b> accepting a pill flips that agenda chip to <b>✓ discussed</b>; a live guess shows <b>◔ suggested</b>.</div>
+      <div><b>③ Logically structured:</b> the right pane auto-assembles notes under their real topic, regardless of capture order.</div>
+      <div><b>④ Low-friction move:</b> the only gesture is ✓ / ✕ on a pill — one tap back-files several recent lines at once.</div>
+    </div>
+  </details>
+</div>
+
+<div id="pill">
+  <span class="mic">🎙</span>
+  <div class="txt" id="pillText"></div>
+  <button class="yes" id="pillYes">✓</button>
+  <button class="no" id="pillNo">✕</button>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const TOPICS = [
+  {id:'budget',  label:'Budget (Q3)'},
+  {id:'hiring',  label:'Hiring backfill'},
+  {id:'roadmap', label:'Roadmap'},
+  {id:'risks',   label:'Risks / blockers'},
+  {id:'aob',     label:'AOB'},
+];
+
+// Scripted timeline. note = chronological jot. suggest = pill (topicId, wrong?).
+// Notes captured OUT OF ORDER (hiring before budget) per the sample.
+const TIMELINE = [
+  {type:'note', text:'backfill the 2 SDR roles'},
+  {type:'note', text:'Priya to approve reqs by Fri'},
+  {type:'suggest', topic:'hiring'},
+  {type:'note', text:'Q3 over by 12%'},
+  {type:'suggest', topic:'aob', wrong:true},   // deliberately wrong guess — dismiss it
+  {type:'note', text:'Dan to recut the forecast'},
+  {type:'suggest', topic:'budget'},
+  {type:'note', text:'ship date slips ~2 weeks'},
+  {type:'suggest', topic:'roadmap'},
+  {type:'note', text:'vendor SLA needs checking'},
+  {type:'suggest', topic:'risks'},
+];
+
+let notes = [];           // {text, topicId|null, el}
+let agenda = {};          // id -> 'todo'|'suggested'|'discussed'
+let activeTopic = null;
+let pendingSuggest = null;// topic id awaiting ✓/✕
+let stepIdx = 0;
+let playTimer = null;
+let playing = false;
+
+const $ = id => document.getElementById(id);
+const streamEl = $('stream'), outlineEl = $('outline');
+const pillEl = $('pill'), pillText = $('pillText'), statusEl = $('status'), toastEl = $('toast');
+
+function topicLabel(id){ return TOPICS.find(t=>t.id===id).label; }
+
+function reset(){
+  clearTimeout(playTimer); playTimer=null; playing=false;
+  notes=[]; activeTopic=null; pendingSuggest=null; stepIdx=0;
+  agenda={}; TOPICS.forEach(t=>agenda[t.id]='todo');
+  pillEl.classList.remove('up');
+  $('play').disabled=false; $('step').disabled=false;
+  $('play').textContent='▶ Play conversation';
+  render();
+  setStatus('Pre-record idle — nothing captured yet');
+}
+
+function setStatus(s){ statusEl.textContent = s; }
+
+function toast(msg){
+  toastEl.textContent=msg; toastEl.classList.add('show');
+  setTimeout(()=>toastEl.classList.remove('show'),1600);
+}
+
+function render(){
+  // left stream
+  if(notes.length===0){
+    streamEl.innerHTML='<div class="empty">Press Play. Lines arrive here as the conversation flows.</div>';
+  } else {
+    streamEl.innerHTML='';
+    notes.forEach(n=>{
+      const d=document.createElement('div');
+      d.className='line'+(n.topicId?' filed':'');
+      const filedTag = n.topicId
+        ? `<span class="tag">→ ${topicLabel(n.topicId)}</span>`
+        : `<span class="unfiled">unfiled</span>`;
+      d.innerHTML=`<span class="dot"></span><span>${n.text}</span>${filedTag}`;
+      streamEl.appendChild(d);
+    });
+  }
+  // right outline + agenda state
+  outlineEl.innerHTML='';
+  TOPICS.forEach(t=>{
+    const state=agenda[t.id];
+    const items=notes.filter(n=>n.topicId===t.id);
+    const stateLabel = state==='discussed'?'✓ discussed'
+      : state==='suggested'?'◔ suggested' : 'to discuss';
+    const div=document.createElement('div');
+    div.className='topic '+state+(activeTopic===t.id?' active':'');
+    div.innerHTML=`
+      <div class="thead">${t.label}<span class="state">${stateLabel}</span></div>
+      <div class="tbody">
+        ${items.length
+          ? items.map(i=>`<div class="item">${i.text}</div>`).join('')
+          : '<div class="none">— no notes filed yet —</div>'}
+      </div>`;
+    outlineEl.appendChild(div);
+  });
+}
+
+function showPill(topicId, wrong){
+  pendingSuggest=topicId;
+  agenda[topicId]='suggested';
+  const hint = wrong ? ' <span style="opacity:.6">(does this fit?)</span>' : '';
+  pillText.innerHTML=`Sounds like <b>${topicLabel(topicId)}</b>${hint} — confirm to file recent lines.`;
+  pillEl.classList.add('up');
+  setStatus(`◔ Suggesting “${topicLabel(topicId)}” — awaiting your ✓ / ✕`);
+  render();
+}
+
+function hidePill(){ pillEl.classList.remove('up'); }
+
+function acceptPill(){
+  if(!pendingSuggest) return;
+  const id=pendingSuggest;
+  activeTopic=id;
+  agenda[id]='discussed';
+  // BACK-FILE: every still-unfiled note goes to this topic.
+  let n=0;
+  notes.forEach(note=>{ if(note.topicId===null){ note.topicId=id; n++; } });
+  toast(`✓ ${topicLabel(id)} — back-filed ${n} line${n===1?'':'s'}`);
+  setStatus(`✓ Marked “${topicLabel(id)}” discussed · ${n} line(s) filed`);
+  pendingSuggest=null; hidePill(); render();
+  if(playing) scheduleNext(700);
+}
+
+function dismissPill(){
+  if(!pendingSuggest) return;
+  const id=pendingSuggest;
+  // decay back to todo (guess rejected); lines stay unfiled.
+  agenda[id]='todo';
+  toast(`✕ Dismissed “${topicLabel(id)}” — lines stay unfiled`);
+  setStatus(`✕ Rejected “${topicLabel(id)}” — guess decayed; capture continues`);
+  pendingSuggest=null; hidePill(); render();
+  if(playing) scheduleNext(700);
+}
+
+function runStep(){
+  if(stepIdx>=TIMELINE.length){
+    setStatus('Conversation ended — reconcile any unfiled lines anytime');
+    playing=false; $('play').textContent='▶ Play conversation';
+    return false;
+  }
+  const ev=TIMELINE[stepIdx++];
+  if(ev.type==='note'){
+    notes.push({text:ev.text, topicId:null});
+    setStatus(`✎ Captured: “${ev.text}”`);
+    render();
+    return 'note';
+  } else { // suggest — blocks for user input
+    showPill(ev.topic, ev.wrong);
+    return 'suggest';
+  }
+}
+
+function scheduleNext(delay){
+  clearTimeout(playTimer);
+  playTimer=setTimeout(()=>{
+    const kind=runStep();
+    if(kind==='note'){ scheduleNext(1100); }       // keep flowing
+    // if 'suggest', we STOP and wait for accept/dismiss
+    else if(kind===false){ /* done */ }
+  }, delay);
+}
+
+$('play').addEventListener('click',()=>{
+  if(stepIdx>=TIMELINE.length) reset();
+  if(pendingSuggest){ toast('Answer the pill first ✓ / ✕'); return; }
+  playing=true;
+  $('play').textContent='⏸ Playing…';
+  scheduleNext(300);
+});
+
+$('step').addEventListener('click',()=>{
+  if(pendingSuggest){ toast('Answer the pill first ✓ / ✕'); return; }
+  playing=false; clearTimeout(playTimer);
+  $('play').textContent='▶ Play conversation';
+  runStep();
+});
+
+$('reset').addEventListener('click',reset);
+$('pillYes').addEventListener('click',acceptPill);
+$('pillNo').addEventListener('click',dismissPill);
+
+reset();
+</script>
+</body>
+</html>

@@ -1,0 +1,451 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Checkline — Topics Prototype</title>
+<style>
+  :root{
+    --teal:#0d9488; --teal-dark:#0f766e; --teal-bg:#ccfbf1;
+    --text:#1f2937; --muted:#6b7280; --border:#e5e7eb;
+    --surface:#fff; --page:#f8fafc;
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0; background:var(--page); color:var(--text);
+    font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+    font-size:15px; line-height:1.45;
+  }
+  .wrap{max-width:720px; margin:0 auto; padding:0 20px 60px}
+
+  /* Banner */
+  .banner{
+    background:linear-gradient(90deg,var(--teal-bg),#fff);
+    border:1px solid var(--border); border-left:4px solid var(--teal);
+    border-radius:10px; padding:12px 16px; margin:18px 0 14px;
+  }
+  .banner .name{font-weight:700; font-size:18px; color:var(--teal-dark)}
+  .banner .lens{font-size:12px; color:var(--teal-dark); font-weight:600; text-transform:uppercase; letter-spacing:.04em; margin-top:2px}
+  .banner .concept{font-size:13px; color:var(--muted); margin-top:4px}
+
+  /* Try-this hint */
+  .hint{
+    display:flex; gap:8px; align-items:flex-start;
+    background:#fff; border:1px dashed var(--teal); border-radius:8px;
+    padding:9px 12px; margin-bottom:16px; font-size:13px; color:var(--teal-dark);
+  }
+  .hint b{color:var(--teal-dark)}
+  kbd{
+    font-family:ui-monospace,Menlo,Consolas,monospace; font-size:11px;
+    background:#f1f5f9; border:1px solid var(--border); border-bottom-width:2px;
+    border-radius:4px; padding:1px 5px; color:var(--text);
+  }
+
+  /* Doc surface */
+  .doc-head{display:flex; align-items:baseline; justify-content:space-between; margin-bottom:6px}
+  .doc-title{font-weight:700; font-size:16px}
+  .doc-meta{font-size:12px; color:var(--muted)}
+  .surface{
+    background:var(--surface); border:1px solid var(--border); border-radius:10px;
+    box-shadow:0 1px 3px rgba(0,0,0,.05); padding:8px 6px; min-height:300px;
+  }
+
+  /* Rows */
+  .row{
+    display:flex; align-items:flex-start; gap:0;
+    border-radius:6px; padding:2px 6px; position:relative;
+    transition:background .15s, opacity .25s;
+  }
+  .row:hover{background:#f8fafc}
+  .row.focused{background:var(--teal-bg)}
+  .gutter{
+    width:54px; flex:0 0 54px; text-align:right; padding-right:8px;
+    font-size:11px; color:var(--muted); font-family:ui-monospace,Menlo,monospace;
+    padding-top:5px; user-select:none;
+  }
+  .indent{flex:0 0 0; transition:flex-basis .2s}
+  .mark{
+    flex:0 0 22px; width:22px; text-align:center; padding-top:3px;
+    font-family:ui-monospace,Menlo,monospace; font-weight:700; color:var(--teal);
+    cursor:pointer; user-select:none;
+  }
+  .row.child .mark{color:var(--muted); font-weight:400}
+  .line{
+    flex:1; border:none; outline:none; background:transparent;
+    font:inherit; color:inherit; padding:3px 2px; resize:none;
+    min-width:0; line-height:1.4;
+  }
+  .row.topic .line{font-weight:600}
+  .row.child .line{color:#374151}
+
+  /* Ticked block (collapsed) */
+  .row.ticked{opacity:.55}
+  .row.ticked .mark{color:var(--teal)}
+  .row.ticked .line{text-decoration:line-through; text-decoration-color:#9ca3af}
+  .row.collapsed-child{display:none}
+  .collapse-toggle{
+    position:absolute; right:8px; top:3px; font-size:11px; color:var(--teal-dark);
+    background:var(--teal-bg); border-radius:10px; padding:0 7px; cursor:pointer;
+    border:1px solid #99f6e4;
+  }
+
+  .uncovered{
+    margin-top:10px; font-size:12px; color:#b45309;
+    background:#fffbeb; border:1px solid #fde68a; border-radius:8px;
+    padding:6px 10px; display:none;
+  }
+
+  /* Footer legend */
+  .legend{margin-top:22px}
+  .legend summary{
+    cursor:pointer; font-size:13px; color:var(--muted); font-weight:600;
+    list-style:none; padding:6px 0;
+  }
+  .legend summary::-webkit-details-marker{display:none}
+  .legend summary::before{content:"▸ "; color:var(--teal)}
+  .legend[open] summary::before{content:"▾ "}
+  .legend table{border-collapse:collapse; width:100%; font-size:13px; margin-top:4px}
+  .legend td{padding:5px 8px; border-top:1px solid var(--border); vertical-align:top}
+  .legend td:first-child{font-weight:600; color:var(--teal-dark); white-space:nowrap; width:140px}
+
+  .toolbar{display:flex; gap:8px; margin:10px 0 0; flex-wrap:wrap}
+  .toolbar button{
+    font:inherit; font-size:12px; border:1px solid var(--border); background:#fff;
+    color:var(--text); border-radius:7px; padding:5px 11px; cursor:pointer;
+  }
+  .toolbar button:hover{border-color:var(--teal); color:var(--teal-dark)}
+  .toast{
+    position:fixed; bottom:20px; left:50%; transform:translateX(-50%) translateY(20px);
+    background:var(--teal-dark); color:#fff; padding:8px 16px; border-radius:8px;
+    font-size:13px; opacity:0; pointer-events:none; transition:all .25s;
+  }
+  .toast.show{opacity:1; transform:translateX(-50%) translateY(0)}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="banner">
+    <div class="name">Checkline</div>
+    <div class="lens">Lens A — Frictionless single surface</div>
+    <div class="concept">One outliner where agenda and notes are the same list: a <code>[]</code> line is a topic, indented lines are its notes, Ctrl+Enter ticks &amp; collapses it.</div>
+  </div>
+
+  <div class="hint">
+    <span>▶</span>
+    <div>
+      <b>Try this:</b> Click into the <b>Hiring backfill</b> line, press <kbd>Enter</kbd> + <kbd>Tab</kbd> to add nested notes, then <kbd>Ctrl</kbd>+<kbd>Enter</kbd> to tick it — it collapses, timestamps, and the cursor jumps to the next topic. <kbd>[</kbd> on an empty line makes a new topic.
+    </div>
+  </div>
+
+  <div class="doc-head">
+    <div class="doc-title">Weekly Team Sync</div>
+    <div class="doc-meta" id="clock">live · cursor stays in the stream</div>
+  </div>
+
+  <div class="surface" id="surface"></div>
+
+  <div class="uncovered" id="uncovered">⚠ <b>AOB</b> never got ticked — one topic left un-covered, visible at a glance.</div>
+
+  <div class="toolbar">
+    <button id="btnDemo">⤵ Auto-play out-of-order flow</button>
+    <button id="btnReset">↺ Reset to pre-meeting</button>
+  </div>
+
+  <details class="legend">
+    <summary>How it serves the 4 needs</summary>
+    <table>
+      <tr><td>Pre-record</td><td>Agenda is just five <code>[]</code> topic lines, entered before the meeting — type <kbd>[</kbd> on a blank line to add another.</td></tr>
+      <tr><td>Mark-off</td><td><kbd>Ctrl</kbd>+<kbd>Enter</kbd> flips <code>[]</code>→<code>[x]</code>, dims + collapses the block, stamps a gutter timestamp.</td></tr>
+      <tr><td>Logical structure</td><td>Indented lines auto-nest under the nearest topic, so the doc self-organises into topic → notes with no headings to manage.</td></tr>
+      <tr><td>Low friction</td><td>One surface, keyboard-first; ticking auto-advances the cursor to the next un-ticked topic — you never jump around or lose your place.</td></tr>
+    </table>
+  </details>
+
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+(function(){
+  const surface = document.getElementById('surface');
+  const toastEl = document.getElementById('toast');
+  const uncovered = document.getElementById('uncovered');
+
+  // Data model: ordered list of rows.
+  // {id, type:'topic'|'child', text, ticked, ts, collapsed}
+  let nextId = 1;
+  const mk = (type,text)=>({id:nextId++, type, text, ticked:false, ts:null, collapsed:false});
+
+  const initial = () => ([
+    mk('topic','Budget (Q3)'),
+    mk('topic','Hiring backfill'),
+    mk('topic','Roadmap'),
+    mk('topic','Risks / blockers'),
+    mk('topic','AOB'),
+  ]);
+
+  let rows = initial();
+  let focusId = null;
+
+  function stamp(){
+    const d = new Date();
+    return d.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
+  }
+  function toast(msg){
+    toastEl.textContent = msg; toastEl.classList.add('show');
+    clearTimeout(toast._t); toast._t = setTimeout(()=>toastEl.classList.remove('show'),1600);
+  }
+
+  // find the topic that owns a given index
+  function topicOf(idx){
+    for(let i=idx;i>=0;i--) if(rows[i].type==='topic') return i;
+    return -1;
+  }
+  // range [start..end] of a topic block (topic + its children)
+  function blockRange(topicIdx){
+    let end = topicIdx;
+    for(let i=topicIdx+1;i<rows.length;i++){
+      if(rows[i].type==='topic') break;
+      end = i;
+    }
+    return [topicIdx, end];
+  }
+
+  function render(){
+    surface.innerHTML='';
+    rows.forEach((r, idx)=>{
+      const div = document.createElement('div');
+      div.className = 'row ' + r.type;
+      div.dataset.id = r.id;
+      if(r.ticked) div.classList.add('ticked');
+      if(r.id===focusId) div.classList.add('focused');
+
+      // collapsed children of a ticked+collapsed topic are hidden
+      if(r.type==='child'){
+        const t = rows[topicOf(idx)];
+        if(t && t.ticked && t.collapsed) div.classList.add('collapsed-child');
+      }
+
+      // gutter (timestamp on ticked topics)
+      const gut = document.createElement('div');
+      gut.className='gutter';
+      gut.textContent = (r.type==='topic' && r.ticked && r.ts) ? r.ts : '';
+      div.appendChild(gut);
+
+      // indent spacer for children
+      const ind = document.createElement('div');
+      ind.className='indent';
+      ind.style.flexBasis = (r.type==='child' ? '26px' : '0');
+      div.appendChild(ind);
+
+      // mark
+      const mark = document.createElement('div');
+      mark.className='mark';
+      if(r.type==='topic'){
+        mark.textContent = r.ticked ? '[x]' : '[]';
+        mark.title = 'Ctrl+Enter to tick / click to toggle';
+        mark.addEventListener('click',()=>toggleTick(idx));
+      } else {
+        mark.textContent = '·';
+      }
+      div.appendChild(mark);
+
+      // editable line
+      const inp = document.createElement('textarea');
+      inp.className='line'; inp.rows=1; inp.value = r.text;
+      inp.spellcheck=false;
+      autoSize(inp);
+      inp.addEventListener('input',e=>{ r.text=e.target.value; autoSize(inp); });
+      inp.addEventListener('focus',()=>{ focusId=r.id; highlightFocus(); });
+      inp.addEventListener('keydown',e=>onKey(e, r, idx, inp));
+      div.appendChild(inp);
+
+      // collapse/expand toggle on a ticked topic
+      if(r.type==='topic' && r.ticked){
+        const [s,end]=blockRange(idx);
+        if(end>s){ // has children
+          const tog=document.createElement('div');
+          tog.className='collapse-toggle';
+          tog.textContent = r.collapsed ? `▸ ${end-s} note${end-s>1?'s':''}` : '▾ collapse';
+          tog.addEventListener('click',()=>{ r.collapsed=!r.collapsed; render(); });
+          div.appendChild(tog);
+        }
+      }
+
+      surface.appendChild(div);
+    });
+    checkUncovered();
+  }
+
+  function autoSize(ta){ ta.style.height='auto'; ta.style.height=(ta.scrollHeight)+'px'; }
+
+  function highlightFocus(){
+    document.querySelectorAll('.row').forEach(el=>{
+      el.classList.toggle('focused', el.dataset.id == focusId);
+    });
+  }
+
+  function focusRow(id, atEnd){
+    focusId=id;
+    requestAnimationFrame(()=>{
+      const el = surface.querySelector(`.row[data-id="${id}"] .line`);
+      if(el){ el.focus(); if(atEnd){ const n=el.value.length; el.setSelectionRange(n,n);} }
+      highlightFocus();
+    });
+  }
+
+  function toggleTick(topicIdx){
+    const t = rows[topicIdx];
+    if(t.type!=='topic') return;
+    t.ticked = !t.ticked;
+    if(t.ticked){
+      t.ts = stamp();
+      t.collapsed = true;
+      toast(`✓ ${t.text} ticked at ${t.ts}`);
+      // advance cursor to next un-ticked topic
+      const next = nextUntickedTopic(topicIdx);
+      render();
+      if(next>=0) focusRow(rows[next].id, true);
+      else render();
+    } else {
+      t.ts=null; t.collapsed=false; render();
+    }
+  }
+
+  function nextUntickedTopic(fromIdx){
+    for(let i=fromIdx+1;i<rows.length;i++) if(rows[i].type==='topic' && !rows[i].ticked) return i;
+    for(let i=0;i<fromIdx;i++) if(rows[i].type==='topic' && !rows[i].ticked) return i;
+    return -1;
+  }
+
+  function checkUncovered(){
+    const anyUn = rows.some(r=>r.type==='topic' && !r.ticked);
+    const anyTicked = rows.some(r=>r.type==='topic' && r.ticked);
+    uncovered.style.display = (anyUn && anyTicked) ? 'block' : 'none';
+  }
+
+  function onKey(e, r, idx, inp){
+    // Ctrl/Cmd+Enter => tick the owning topic
+    if(e.key==='Enter' && (e.ctrlKey||e.metaKey)){
+      e.preventDefault();
+      const t = topicOf(idx);
+      if(t>=0) toggleTick(t);
+      return;
+    }
+    // Enter (plain) => new line below; inherits child-ness if under a topic
+    if(e.key==='Enter' && !e.shiftKey){
+      e.preventDefault();
+      const ownerType = (r.type==='child') ? 'child' : 'child'; // new lines under a topic default to child note
+      // but if current row is a topic with no text typed, keep it a topic context
+      const nr = mk(r.type==='topic' ? 'child' : r.type, '');
+      rows.splice(idx+1,0,nr);
+      render();
+      focusRow(nr.id, true);
+      return;
+    }
+    // Tab => indent (promote to child note)
+    if(e.key==='Tab' && !e.shiftKey){
+      e.preventDefault();
+      if(r.type==='topic'){
+        // only indent if it isn't the first/only-topic guard: convert to child of previous topic
+        const prevTopic = topicOf(idx-1);
+        if(prevTopic>=0 && prevTopic!==idx){ r.type='child'; render(); focusRow(r.id,true); }
+        else toast('Need a topic above to nest under');
+      }
+      return;
+    }
+    // Shift+Tab => outdent (promote child back to topic)
+    if(e.key==='Tab' && e.shiftKey){
+      e.preventDefault();
+      if(r.type==='child'){ r.type='topic'; r.ticked=false; r.ts=null; render(); focusRow(r.id,true); }
+      return;
+    }
+    // "[" at start of empty line => make it a topic with "[] " feel
+    if(e.key==='[' ){
+      if(inp.value===''){
+        e.preventDefault();
+        r.type='topic'; r.ticked=false;
+        render(); focusRow(r.id,true);
+        toast('New topic line ([])');
+      }
+      return;
+    }
+    // Backspace on empty line => delete row, focus previous
+    if(e.key==='Backspace' && inp.value==='' && rows.length>1){
+      e.preventDefault();
+      const prev = rows[idx-1];
+      rows.splice(idx,1);
+      render();
+      if(prev) focusRow(prev.id,true);
+      return;
+    }
+    // Arrow up/down move between lines
+    if(e.key==='ArrowDown' && idx<rows.length-1){
+      e.preventDefault(); focusRow(rows[idx+1].id,true);
+    }
+    if(e.key==='ArrowUp' && idx>0){
+      e.preventDefault(); focusRow(rows[idx-1].id,true);
+    }
+  }
+
+  // ---- Auto-play the out-of-order demo ----
+  let playing=false;
+  function autoplay(){
+    if(playing) return; playing=true;
+    rows = initial(); render();
+    const hiringIdx = rows.findIndex(r=>r.text==='Hiring backfill');
+    const steps=[];
+
+    // helper to push a typed child under a topic
+    function addChildren(topicText, notes){
+      steps.push(()=>{
+        const ti = rows.findIndex(r=>r.text===topicText);
+        let insertAt = ti;
+        notes.forEach(n=>{
+          const nr = mk('child', n);
+          insertAt++;
+          rows.splice(insertAt,0,nr);
+        });
+        render();
+        focusRow(rows[insertAt].id,true);
+      });
+    }
+    function tick(topicText){
+      steps.push(()=>{
+        const ti = rows.findIndex(r=>r.text===topicText);
+        toggleTick(ti);
+      });
+    }
+
+    // 1) jump to Hiring first (out of order), add notes, tick
+    addChildren('Hiring backfill', ['backfill the 2 SDR roles','Priya to approve reqs by Fri']);
+    tick('Hiring backfill');
+    // 2) Budget next
+    addChildren('Budget (Q3)', ['Q3 over by 12%','Dan to recut the forecast']);
+    tick('Budget (Q3)');
+    // 3) Roadmap
+    addChildren('Roadmap', ['ship date slips ~2 weeks']);
+    tick('Roadmap');
+    // 4) Risks
+    addChildren('Risks / blockers', ['vendor SLA needs checking']);
+    tick('Risks / blockers');
+    // AOB left un-ticked on purpose
+
+    let i=0;
+    (function run(){
+      if(i>=steps.length){ playing=false; toast('AOB left un-covered ✓'); return; }
+      steps[i++]();
+      setTimeout(run, 850);
+    })();
+  }
+
+  document.getElementById('btnDemo').addEventListener('click', autoplay);
+  document.getElementById('btnReset').addEventListener('click', ()=>{
+    playing=false; rows=initial(); focusId=null; render(); toast('Reset to pre-meeting agenda');
+  });
+
+  render();
+})();
+</script>
+</body>
+</html>

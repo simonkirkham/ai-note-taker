@@ -1,0 +1,311 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Split-Pane Facilitator</title>
+<style>
+  :root{
+    --teal:#0d9488; --accent-dark:#0f766e; --accent-bg:#ccfbf1;
+    --text:#1f2937; --muted:#6b7280; --border:#e5e7eb; --surface:#fff; --page:#f8fafc;
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0; font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+    color:var(--text); background:var(--page); line-height:1.45;
+  }
+  /* banner */
+  .banner{
+    background:linear-gradient(90deg,var(--accent-dark),var(--teal));
+    color:#fff; padding:12px 20px; border-left:6px solid #0b5e57;
+  }
+  .banner h1{margin:0;font-size:18px;letter-spacing:.2px}
+  .banner .lens{font-size:12px;opacity:.92;margin-top:2px}
+  .banner .concept{font-size:12.5px;opacity:.95;margin-top:4px}
+
+  .wrap{max-width:1080px;margin:18px auto;padding:0 18px}
+
+  .try{
+    display:inline-flex;align-items:flex-start;gap:8px;
+    background:var(--accent-bg);border:1px solid #99f6e4;color:var(--accent-dark);
+    border-radius:8px;padding:9px 12px;font-size:12.5px;margin-bottom:14px;max-width:760px;
+  }
+  .try b{color:var(--accent-dark)}
+
+  .panes{display:grid;grid-template-columns:330px 1fr;gap:16px;align-items:start}
+  @media(max-width:760px){.panes{grid-template-columns:1fr}}
+
+  .pane{background:var(--surface);border:1px solid var(--border);border-radius:10px;
+    box-shadow:0 1px 3px rgba(0,0,0,.05);overflow:hidden}
+  .pane-head{padding:10px 14px;border-bottom:1px solid var(--border);
+    font-size:12px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.6px;
+    display:flex;justify-content:space-between;align-items:center}
+  .meeting-title{font-size:15px;font-weight:700;color:var(--text);text-transform:none;letter-spacing:0}
+
+  /* LEFT checklist */
+  .left ul{list-style:none;margin:0;padding:6px}
+  .topic-row{
+    display:flex;align-items:center;gap:10px;padding:10px 10px;border-radius:8px;cursor:pointer;
+    border:1px solid transparent;transition:background .12s,border-color .12s,opacity .12s;
+  }
+  .topic-row:hover{background:#f1f5f9}
+  .topic-row.active{background:var(--accent-bg);border-color:#5eead4}
+  .topic-row.done{opacity:.5}
+  .topic-row.done .t-title{text-decoration:line-through}
+  .topic-row.dropok{outline:2px dashed var(--teal);outline-offset:-2px;background:#ecfeff}
+  .cbox{
+    width:18px;height:18px;border:2px solid var(--muted);border-radius:5px;flex:0 0 auto;
+    display:flex;align-items:center;justify-content:center;color:#fff;font-size:12px;background:#fff;
+  }
+  .topic-row.done .cbox{background:var(--teal);border-color:var(--teal)}
+  .t-title{font-size:14px;font-weight:600;flex:1}
+  .t-count{font-size:11px;color:var(--muted);background:#f1f5f9;border-radius:999px;padding:1px 8px}
+  .add-topic{display:flex;gap:6px;padding:8px}
+  .add-topic input{flex:1;border:1px solid var(--border);border-radius:7px;padding:8px;font-size:13px}
+  .add-topic button{border:none;background:var(--teal);color:#fff;border-radius:7px;padding:8px 12px;
+    font-size:13px;font-weight:600;cursor:pointer}
+  .add-topic button:hover{background:var(--accent-dark)}
+
+  /* RIGHT accordions */
+  .acc{border-bottom:1px solid var(--border)}
+  .acc:last-child{border-bottom:none}
+  .acc-head{display:flex;align-items:center;gap:8px;padding:11px 14px;cursor:pointer;background:#fff;user-select:none}
+  .acc-head:hover{background:#f8fafc}
+  .acc.open .acc-head{background:var(--accent-bg)}
+  .acc.done .acc-head .acc-name{color:var(--muted);text-decoration:line-through}
+  .chev{transition:transform .15s;color:var(--muted);font-size:12px;width:12px}
+  .acc.open .chev{transform:rotate(90deg)}
+  .acc-name{font-size:14px;font-weight:600;flex:1}
+  .acc-check{color:var(--teal);font-size:13px;font-weight:700}
+  .acc-count{font-size:11px;color:var(--muted)}
+  .acc-body{display:none;padding:6px 14px 14px 30px;background:#fcfdfd}
+  .acc.open .acc-body{display:block}
+  .acc.unsorted .acc-head{background:#fff7ed}
+  .acc.unsorted.open .acc-head{background:#ffedd5}
+  .acc.unsorted .acc-name{color:#9a3412}
+
+  .note-line{display:flex;align-items:flex-start;gap:8px;padding:5px 6px;border-radius:6px;font-size:13.5px}
+  .note-line:hover{background:#f1f5f9}
+  .handle{cursor:grab;color:#9ca3af;font-size:14px;line-height:1.2;flex:0 0 auto;user-select:none}
+  .handle:active{cursor:grabbing}
+  .note-line.dragging{opacity:.4}
+  .note-txt{flex:1}
+  .empty{font-size:12.5px;color:var(--muted);font-style:italic;padding:4px 6px}
+  .composer{display:flex;gap:6px;margin-top:8px}
+  .composer input{flex:1;border:1px solid var(--border);border-radius:7px;padding:8px;font-size:13.5px}
+  .composer input:focus{outline:2px solid #5eead4;border-color:var(--teal)}
+  .composer button{border:none;background:#f1f5f9;color:var(--text);border-radius:7px;padding:8px 11px;
+    font-size:13px;cursor:pointer}
+  .composer button:hover{background:#e2e8f0}
+  .activehint{font-size:11px;color:var(--accent-dark);margin:0 0 6px;font-weight:600}
+
+  /* legend */
+  .legend{margin:22px auto 40px;max-width:1080px;padding:0 18px}
+  .legend details{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:4px 14px}
+  .legend summary{cursor:pointer;font-size:13px;font-weight:600;padding:8px 0;color:var(--accent-dark)}
+  .legend ul{margin:6px 0 12px;padding-left:18px;font-size:12.5px;color:var(--text)}
+  .legend li{margin:3px 0}
+  .pulse{animation:pulse 1s ease}
+  @keyframes pulse{0%{background:#fde68a}100%{background:transparent}}
+</style>
+</head>
+<body>
+  <div class="banner">
+    <h1>Split-Pane Facilitator</h1>
+    <div class="lens">Lens B — Agenda as control panel</div>
+    <div class="concept">Side-by-side: check a topic on the left to mark it done and auto-expand + focus its notes on the right. Drag stray lines to re-file.</div>
+  </div>
+
+  <div class="wrap">
+    <div class="try">
+      <span>▶</span>
+      <span><b>Try this:</b> Check <b>Hiring backfill</b> (left) — its notes pane opens and others collapse, cursor ready. Type its 2 notes. Then check <b>Budget (Q3)</b> — focus jumps. Finally drag the ⠿ line out of <b>Unsorted</b> onto <b>Risks / blockers</b> to re-file it.</span>
+    </div>
+
+    <div class="panes">
+      <!-- LEFT -->
+      <div class="pane left">
+        <div class="pane-head"><span class="meeting-title">Weekly Team Sync</span><span>Agenda</span></div>
+        <ul id="checklist"></ul>
+        <div class="add-topic">
+          <input id="newTopic" placeholder="Pre-record a topic…" aria-label="new topic">
+          <button id="addBtn">+ Add</button>
+        </div>
+      </div>
+
+      <!-- RIGHT -->
+      <div class="pane">
+        <div class="pane-head"><span>Notes — structured by topic</span><span id="rightHint">no topic active</span></div>
+        <div id="accordions"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="legend">
+    <details open>
+      <summary>How it serves the 4 needs</summary>
+      <ul>
+        <li><b>1 · Pre-record agenda:</b> 5 topics pre-loaded as the left outline; “+ Add” pre-records a new one before it’s discussed.</li>
+        <li><b>2 · Mark off:</b> checking the box dims + strikes the header and adds ✓ — discussed-state lives on the control panel.</li>
+        <li><b>3 · Logically structured:</b> notes live literally inside their topic’s accordion on the right, never a flat stream.</li>
+        <li><b>4 · Low-friction move:</b> check = expand-that + collapse-others + focus its body; drag a ⠿ line onto any left topic to re-file.</li>
+      </ul>
+    </details>
+  </div>
+
+<script>
+(function(){
+  // state: topics with notes; index 5 reserved as Unsorted bucket
+  const topics = [
+    {title:"Budget (Q3)",      done:false, notes:[]},
+    {title:"Hiring backfill",  done:false, notes:[]},
+    {title:"Roadmap",          done:false, notes:[]},
+    {title:"Risks / blockers", done:false, notes:[]},
+    {title:"AOB",              done:false, notes:[]},
+    {title:"Unsorted",         done:false, notes:["vendor SLA needs checking"], unsorted:true},
+  ];
+  let activeIdx = null; // which accordion is open/focused
+
+  const checklist  = document.getElementById('checklist');
+  const accordions = document.getElementById('accordions');
+  const rightHint  = document.getElementById('rightHint');
+
+  function isUnsorted(i){ return !!topics[i].unsorted; }
+
+  /* ---------- LEFT render ---------- */
+  function renderLeft(){
+    checklist.innerHTML = '';
+    topics.forEach((t,i)=>{
+      if(isUnsorted(i)) return; // unsorted not in agenda checklist
+      const li = document.createElement('li');
+      li.className = 'topic-row' + (t.done?' done':'') + (i===activeIdx?' active':'');
+      li.innerHTML =
+        `<span class="cbox">${t.done?'✓':''}</span>`+
+        `<span class="t-title">${t.title}</span>`+
+        `<span class="t-count">${t.notes.length}</span>`;
+      // click box toggles done; click row focuses
+      li.querySelector('.cbox').addEventListener('click',(e)=>{ e.stopPropagation(); toggleDone(i); });
+      li.addEventListener('click',()=>focusTopic(i));
+
+      // drop target for re-filing
+      li.addEventListener('dragover',(e)=>{ e.preventDefault(); li.classList.add('dropok'); });
+      li.addEventListener('dragleave',()=> li.classList.remove('dropok'));
+      li.addEventListener('drop',(e)=>{ e.preventDefault(); li.classList.remove('dropok'); handleDrop(i); });
+      checklist.appendChild(li);
+    });
+  }
+
+  /* ---------- RIGHT render ---------- */
+  function renderRight(){
+    accordions.innerHTML = '';
+    topics.forEach((t,i)=>{
+      const open = (i===activeIdx);
+      const acc = document.createElement('div');
+      acc.className = 'acc' + (open?' open':'') + (t.done?' done':'') + (t.unsorted?' unsorted':'');
+      acc.dataset.idx = i;
+
+      const head = document.createElement('div');
+      head.className='acc-head';
+      head.innerHTML =
+        `<span class="chev">▶</span>`+
+        `<span class="acc-name">${t.title}</span>`+
+        (t.done?`<span class="acc-check">✓ done</span>`:'')+
+        `<span class="acc-count">${t.notes.length} note${t.notes.length===1?'':'s'}</span>`;
+      head.addEventListener('click',()=>focusTopic(i));
+      acc.appendChild(head);
+
+      const body = document.createElement('div');
+      body.className='acc-body';
+      if(open) body.innerHTML = `<div class="activehint">${t.unsorted?'Catch-all — drag a line onto a left topic to file it':'Active — typing here adds to this topic'}</div>`;
+      // notes
+      if(t.notes.length===0){
+        const e=document.createElement('div'); e.className='empty'; e.textContent='No notes yet.';
+        body.appendChild(e);
+      } else {
+        t.notes.forEach((n,ni)=>{
+          const line=document.createElement('div');
+          line.className='note-line'; line.draggable=true;
+          line.innerHTML=`<span class="handle">⠿</span><span class="note-txt">${n}</span>`;
+          line.addEventListener('dragstart',(e)=>{ dragSrc={topic:i,note:ni}; line.classList.add('dragging');
+            e.dataTransfer.effectAllowed='move'; e.dataTransfer.setData('text/plain',n); });
+          line.addEventListener('dragend',()=> line.classList.remove('dragging'));
+          body.appendChild(line);
+        });
+      }
+      // composer (only when open and not done... allow even if done for demo? keep on open)
+      if(open){
+        const c=document.createElement('div'); c.className='composer';
+        const inp=document.createElement('input');
+        inp.placeholder = t.unsorted? 'Type a stray note (lands here)…' : `Add a note to "${t.title}"…`;
+        inp.dataset.idx=i;
+        const btn=document.createElement('button'); btn.textContent='Add';
+        const commit=()=>{ const v=inp.value.trim(); if(!v) return; t.notes.push(v); inp.value=''; render(); refocusComposer(i,true); };
+        btn.addEventListener('click',commit);
+        inp.addEventListener('keydown',(e)=>{ if(e.key==='Enter') commit(); });
+        c.appendChild(inp); c.appendChild(btn); body.appendChild(c);
+      }
+      acc.appendChild(body);
+      accordions.appendChild(acc);
+    });
+  }
+
+  /* ---------- interactions ---------- */
+  function focusTopic(i){
+    activeIdx = i;                       // expand this, collapse others (single open)
+    render();
+    rightHint.textContent = 'active: ' + topics[i].title;
+    refocusComposer(i,false);
+  }
+
+  function toggleDone(i){
+    topics[i].done = !topics[i].done;
+    if(topics[i].done){ activeIdx = i; }  // checking navigates: expand + focus
+    render();
+    if(topics[i].done) refocusComposer(i,false);
+    rightHint.textContent = activeIdx!==null ? 'active: ' + topics[activeIdx].title : 'no topic active';
+  }
+
+  function refocusComposer(i, atEnd){
+    // park cursor inside the active topic body
+    requestAnimationFrame(()=>{
+      const inp = accordions.querySelector(`.composer input[data-idx="${i}"]`);
+      if(inp){ inp.focus(); }
+    });
+  }
+
+  /* drag-to-refile */
+  let dragSrc=null;
+  function handleDrop(destIdx){
+    if(!dragSrc) return;
+    const src = topics[dragSrc.topic];
+    const [moved] = src.notes.splice(dragSrc.note,1);
+    if(moved===undefined){ dragSrc=null; return; }
+    topics[destIdx].notes.push(moved);
+    dragSrc=null;
+    activeIdx = destIdx;     // reveal where it landed
+    render();
+    // highlight the moved line
+    requestAnimationFrame(()=>{
+      const body = accordions.querySelector(`.acc[data-idx="${destIdx}"] .acc-body`);
+      if(body){ const lines=body.querySelectorAll('.note-line'); const last=lines[lines.length-1];
+        if(last) last.classList.add('pulse'); }
+    });
+    rightHint.textContent = 'refiled into: ' + topics[destIdx].title;
+  }
+
+  /* add topic */
+  document.getElementById('addBtn').addEventListener('click',addTopic);
+  document.getElementById('newTopic').addEventListener('keydown',(e)=>{ if(e.key==='Enter') addTopic(); });
+  function addTopic(){
+    const inp=document.getElementById('newTopic'); const v=inp.value.trim(); if(!v) return;
+    // insert before Unsorted (last)
+    topics.splice(topics.length-1,0,{title:v,done:false,notes:[]});
+    inp.value=''; render();
+  }
+
+  function render(){ renderLeft(); renderRight(); }
+  render();
+})();
+</script>
+</body>
+</html>

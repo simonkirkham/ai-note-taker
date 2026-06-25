@@ -1,0 +1,406 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tickertape — Topics Prototype</title>
+<style>
+  :root{
+    --teal:#0d9488; --accent-dark:#0f766e; --accent-bg:#ccfbf1;
+    --text:#1f2937; --muted:#6b7280; --border:#e5e7eb;
+    --surface:#fff; --page:#f8fafc;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%}
+  body{
+    font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+    background:var(--page); color:var(--text);
+    display:flex; flex-direction:column; min-height:100vh;
+  }
+  /* banner */
+  .banner{
+    background:linear-gradient(90deg,var(--accent-dark),var(--teal));
+    color:#fff; padding:10px 18px;
+  }
+  .banner h1{margin:0; font-size:18px; letter-spacing:.3px}
+  .banner .lens{font-size:12px; opacity:.92; margin-top:2px}
+  .banner .concept{font-size:12px; opacity:.85; margin-top:1px}
+
+  /* try-this hint */
+  .try{
+    margin:12px 18px 0; background:var(--accent-bg); border:1px solid #99f6e4;
+    color:var(--accent-dark); border-radius:8px; padding:8px 12px;
+    font-size:12.5px; display:inline-flex; align-items:flex-start; gap:6px; max-width:760px;
+  }
+  .try b{font-weight:700}
+
+  /* 3-column layout */
+  .cols{
+    flex:1; display:grid; grid-template-columns:200px 1fr 320px;
+    gap:14px; padding:14px 18px; min-height:0;
+  }
+  .panel{
+    background:var(--surface); border:1px solid var(--border); border-radius:10px;
+    display:flex; flex-direction:column; min-height:0; box-shadow:0 1px 2px rgba(0,0,0,.04);
+  }
+  .panel > .head{
+    padding:10px 12px; border-bottom:1px solid var(--border);
+    font-size:12px; font-weight:700; color:var(--muted); text-transform:uppercase; letter-spacing:.5px;
+  }
+  .panel > .body{padding:10px 12px; overflow:auto; flex:1; min-height:0}
+
+  /* LEFT agenda rail */
+  .agendaChip{
+    display:flex; align-items:center; gap:8px; padding:8px 10px; margin-bottom:8px;
+    border-radius:8px; border:1px dashed var(--border); background:#fafafa;
+    color:var(--muted); font-size:13px; transition:all .25s; position:relative;
+  }
+  .agendaChip .dot{
+    width:10px;height:10px;border-radius:50%;background:#d1d5db; flex:0 0 auto; transition:background .25s;
+  }
+  .agendaChip .name{flex:1; font-weight:500}
+  .agendaChip .count{
+    font-size:11px; min-width:20px; text-align:center; padding:1px 6px; border-radius:10px;
+    background:#e5e7eb; color:var(--muted);
+  }
+  .agendaChip.discussed{
+    border-style:solid; border-color:transparent; color:#fff; font-weight:600;
+  }
+  .agendaChip.discussed .dot{background:rgba(255,255,255,.85)}
+  .agendaChip.discussed .count{background:rgba(255,255,255,.28); color:#fff}
+  .badge{
+    margin-left:6px; font-size:10px; background:rgba(255,255,255,.25); color:#fff;
+    padding:1px 5px; border-radius:6px;
+  }
+  .empty-note{font-size:11px;color:var(--muted);margin-top:6px;font-style:italic}
+
+  /* MIDDLE stream */
+  .middle{position:relative}
+  .stream{flex:1; overflow:auto; padding:10px 12px; min-height:0}
+  .line{
+    background:#fff; border:1px solid var(--border); border-left:4px solid #d1d5db;
+    border-radius:6px; padding:8px 10px; margin-bottom:8px; font-size:13.5px;
+    animation:pop .25s ease;
+  }
+  .line.unfiled{border-left:3px dashed #cbd5e1; background:#fcfcfd}
+  .line .meta{display:flex; gap:8px; align-items:center; margin-bottom:3px}
+  .line .time{font-size:10.5px; color:var(--muted); font-variant-numeric:tabular-nums}
+  .line .topicTag{
+    font-size:10px; padding:1px 7px; border-radius:8px; color:#fff; font-weight:600;
+  }
+  .line .topicTag.none{background:#e5e7eb;color:var(--muted)}
+  @keyframes pop{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+
+  .composer{
+    border-top:1px solid var(--border); padding:10px 12px; background:#fbfdfd;
+  }
+  .composer .row{display:flex; gap:8px}
+  .composer input[type=text]{
+    flex:1; padding:9px 11px; border:1px solid var(--border); border-radius:8px;
+    font-size:13.5px; font-family:inherit; outline:none;
+  }
+  .composer input[type=text]:focus{border-color:var(--teal); box-shadow:0 0 0 3px var(--accent-bg)}
+  .composer .add{
+    padding:9px 14px; border:none; border-radius:8px; background:var(--teal); color:#fff;
+    font-weight:600; cursor:pointer; font-size:13.5px;
+  }
+  .composer .add:hover{background:var(--accent-dark)}
+  .chipbarLabel{font-size:11px;color:var(--muted);margin:8px 0 5px}
+  .chipbar{display:flex; flex-wrap:wrap; gap:6px}
+  .fileChip{
+    padding:5px 11px; border:1.5px solid var(--border); border-radius:16px;
+    background:#fff; cursor:pointer; font-size:12.5px; color:var(--muted);
+    transition:all .15s; user-select:none;
+  }
+  .fileChip:hover{border-color:var(--teal); color:var(--accent-dark)}
+  .fileChip.active{box-shadow:0 0 0 2px var(--accent-bg)}
+  .fileChip .c{font-size:10px;opacity:.8;margin-left:4px}
+
+  /* RIGHT grouped rail */
+  .group{margin-bottom:14px}
+  .group .ghead{
+    display:flex; align-items:center; gap:7px; font-size:12px; font-weight:700;
+    color:#fff; padding:4px 9px; border-radius:6px; margin-bottom:6px;
+  }
+  .group.empty .ghead{background:#f3f4f6; color:var(--muted); border:1px dashed var(--border)}
+  .group .gline{
+    font-size:12.5px; padding:5px 9px; margin:0 0 5px 8px; border-left:3px solid;
+    border-radius:0 5px 5px 0; background:#fafafa; animation:fly .35s ease;
+  }
+  @keyframes fly{from{opacity:0;transform:translateX(14px)}to{opacity:1;transform:none}}
+  .group .gempty{font-size:11.5px; color:var(--muted); font-style:italic; margin-left:8px}
+  .undisc{font-size:10px; background:#f3f4f6; color:var(--muted); padding:1px 6px; border-radius:6px; margin-left:auto}
+
+  /* footer legend */
+  .legend{border-top:1px solid var(--border); background:var(--surface)}
+  .legend summary{
+    cursor:pointer; padding:10px 18px; font-size:13px; font-weight:600; color:var(--accent-dark);
+    list-style:none;
+  }
+  .legend summary::-webkit-details-marker{display:none}
+  .legend summary::before{content:"▸ "; color:var(--teal)}
+  .legend[open] summary::before{content:"▾ "}
+  .legend .needs{padding:0 18px 14px; font-size:12.5px; color:var(--text)}
+  .legend .needs div{padding:3px 0; border-bottom:1px dashed var(--border)}
+  .legend .needs b{color:var(--accent-dark)}
+</style>
+</head>
+<body>
+  <div class="banner">
+    <h1>Tickertape</h1>
+    <div class="lens">Lens C — Conversation-led reflow</div>
+    <div class="concept">Capture chronologically as people talk; one tap files each line by topic — and the by-topic view assembles itself live.</div>
+  </div>
+
+  <div class="try">
+    <span>▶</span><div><b>Try this:</b> Click <b>Play meeting script</b> to add lines in spoken order (Hiring first, Budget second…). Or type a line, then tap a topic chip below the input to file it — watch the right rail re-stack by topic while the middle stays chronological.</div>
+  </div>
+
+  <div class="cols">
+    <!-- LEFT -->
+    <div class="panel">
+      <div class="head">Agenda</div>
+      <div class="body" id="agendaRail"></div>
+    </div>
+
+    <!-- MIDDLE -->
+    <div class="panel middle">
+      <div class="head">Capture stream <span style="text-transform:none;font-weight:400;color:var(--muted)">· chronological</span></div>
+      <div class="stream" id="stream"></div>
+      <div class="composer">
+        <div class="row">
+          <input id="noteInput" type="text" placeholder="Type what was said…" autocomplete="off">
+          <button class="add" id="addBtn">Add</button>
+        </div>
+        <div class="chipbarLabel">File this line under a topic:</div>
+        <div class="chipbar" id="chipbar"></div>
+        <div style="margin-top:8px">
+          <button class="add" id="playBtn" style="background:var(--accent-dark)">▶ Play meeting script</button>
+          <button class="add" id="resetBtn" style="background:#9ca3af">Reset</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- RIGHT -->
+    <div class="panel">
+      <div class="head">By topic <span style="text-transform:none;font-weight:400;color:var(--muted)">· live mirror</span></div>
+      <div class="body" id="grouped"></div>
+    </div>
+  </div>
+
+  <details class="legend">
+    <summary>How it serves the 4 needs</summary>
+    <div class="needs">
+      <div><b>Pre-record:</b> the 5 agenda topics are seeded as chips before the meeting — left rail + file-chip bar.</div>
+      <div><b>Mark off:</b> the first line filed to a topic flips its left-rail chip grey→solid and stamps it "discussed".</div>
+      <div><b>Logically structured:</b> the right rail re-stacks every line under its topic, so out-of-order capture reads as a clean by-topic record.</div>
+      <div><b>Low-friction move:</b> one tap on a chip files a line — hands stay on the input + chip-bar; the last chip pre-selects for runs of same-topic lines.</div>
+    </div>
+  </details>
+
+<script>
+(function(){
+  "use strict";
+
+  var TOPICS = [
+    {id:"budget",  name:"Budget (Q3)",      color:"#0d9488"},
+    {id:"hiring",  name:"Hiring backfill",  color:"#7c3aed"},
+    {id:"roadmap", name:"Roadmap",          color:"#2563eb"},
+    {id:"risks",   name:"Risks / blockers", color:"#dc2626"},
+    {id:"aob",     name:"AOB",              color:"#d97706"}
+  ];
+  function topic(id){ for(var i=0;i<TOPICS.length;i++) if(TOPICS[i].id===id) return TOPICS[i]; return null; }
+
+  // ordered notes — spoken order (Hiring before Budget), demonstrating out-of-order capture
+  var SCRIPT = [
+    {text:"backfill the 2 SDR roles",        topicId:"hiring"},
+    {text:"Priya to approve reqs by Fri",    topicId:"hiring"},
+    {text:"Q3 over by 12%",                  topicId:"budget"},
+    {text:"Dan to recut the forecast",       topicId:"budget"},
+    {text:"ship date slips ~2 weeks",        topicId:"roadmap"},
+    {text:"vendor SLA needs checking",       topicId:"risks"}
+  ];
+
+  var notes = [];          // [{text, topicId|null, time}]
+  var selectedChip = null; // last-used / pre-selected topic id
+  var clock = 0;
+
+  var elAgenda  = document.getElementById("agendaRail");
+  var elStream  = document.getElementById("stream");
+  var elChipbar = document.getElementById("chipbar");
+  var elGrouped = document.getElementById("grouped");
+  var elInput   = document.getElementById("noteInput");
+
+  function nextTime(){
+    clock += 1;
+    var base = 9*60 + 2; // 09:02 start
+    var m = base + clock*1;
+    var hh = Math.floor(m/60), mm = m%60;
+    return String(hh).padStart(2,"0")+":"+String(mm).padStart(2,"0");
+  }
+  function counts(){
+    var c = {}; TOPICS.forEach(function(t){c[t.id]=0;});
+    notes.forEach(function(n){ if(n.topicId) c[n.topicId]++; });
+    return c;
+  }
+
+  // ---- LEFT agenda rail ----
+  function renderAgenda(){
+    var c = counts();
+    elAgenda.innerHTML = "";
+    TOPICS.forEach(function(t){
+      var discussed = c[t.id] > 0;
+      var div = document.createElement("div");
+      div.className = "agendaChip" + (discussed ? " discussed" : "");
+      if(discussed) div.style.background = t.color;
+      div.innerHTML =
+        '<span class="dot"></span>' +
+        '<span class="name">'+t.name+'</span>' +
+        (discussed ? '<span class="badge">discussed</span>' : '') +
+        '<span class="count">'+c[t.id]+'</span>';
+      elAgenda.appendChild(div);
+    });
+    var allDisc = TOPICS.every(function(t){return c[t.id]>0;});
+    if(!allDisc){
+      var hint = document.createElement("div");
+      hint.className="empty-note";
+      var undisc = TOPICS.filter(function(t){return c[t.id]===0;}).map(function(t){return t.name;}).join(", ");
+      hint.textContent = "Not yet discussed: " + undisc;
+      elAgenda.appendChild(hint);
+    }
+  }
+
+  // ---- MIDDLE chronological stream ----
+  function renderStream(){
+    elStream.innerHTML = "";
+    if(notes.length===0){
+      var ph = document.createElement("div");
+      ph.className="empty-note";
+      ph.textContent = "No notes yet — type a line below, then tap a topic chip to file it.";
+      elStream.appendChild(ph);
+      return;
+    }
+    notes.forEach(function(n){
+      var t = n.topicId ? topic(n.topicId) : null;
+      var div = document.createElement("div");
+      div.className = "line" + (n.topicId ? "" : " unfiled");
+      if(t) div.style.borderLeftColor = t.color;
+      div.innerHTML =
+        '<div class="meta">' +
+          '<span class="time">'+n.time+'</span>' +
+          (t
+            ? '<span class="topicTag" style="background:'+t.color+'">'+t.name+'</span>'
+            : '<span class="topicTag none">unfiled — tap a chip</span>') +
+        '</div>' +
+        '<div>'+escapeHtml(n.text)+'</div>';
+      elStream.appendChild(div);
+    });
+    elStream.scrollTop = elStream.scrollHeight;
+  }
+
+  // ---- file-chip bar ----
+  function renderChipbar(){
+    var c = counts();
+    elChipbar.innerHTML = "";
+    TOPICS.forEach(function(t){
+      var chip = document.createElement("div");
+      chip.className = "fileChip" + (selectedChip===t.id ? " active":"");
+      chip.style.borderColor = (selectedChip===t.id) ? t.color : "";
+      if(selectedChip===t.id) chip.style.color = t.color;
+      chip.innerHTML = t.name + '<span class="c">'+c[t.id]+'</span>';
+      chip.addEventListener("click", function(){ fileChipTapped(t.id); });
+      elChipbar.appendChild(chip);
+    });
+  }
+
+  // ---- RIGHT grouped mirror ----
+  function renderGrouped(){
+    elGrouped.innerHTML = "";
+    TOPICS.forEach(function(t){
+      var lines = notes.filter(function(n){return n.topicId===t.id;});
+      var grp = document.createElement("div");
+      grp.className = "group" + (lines.length? "":" empty");
+      var head = '<div class="ghead"'+(lines.length?' style="background:'+t.color+'"':'')+'>'+
+                 t.name +
+                 (lines.length? '' : '<span class="undisc">undiscussed</span>')+
+                 '</div>';
+      var bodyHtml = "";
+      if(lines.length){
+        lines.forEach(function(n){
+          bodyHtml += '<div class="gline" style="border-left-color:'+t.color+'">'+escapeHtml(n.text)+'</div>';
+        });
+      } else {
+        bodyHtml = '<div class="gempty">— nothing captured —</div>';
+      }
+      grp.innerHTML = head + bodyHtml;
+      elGrouped.appendChild(grp);
+    });
+  }
+
+  function renderAll(){ renderAgenda(); renderStream(); renderChipbar(); renderGrouped(); }
+
+  // ---- interactions ----
+  function fileChipTapped(topicId){
+    selectedChip = topicId;
+    // file the most recent UNFILED note, if any; otherwise just pre-select the chip
+    for(var i=notes.length-1; i>=0; i--){
+      if(notes[i].topicId === null){
+        notes[i].topicId = topicId;
+        renderAll();
+        return;
+      }
+    }
+    renderChipbar(); // just update selection highlight
+  }
+
+  function addNote(fileTo){
+    var txt = elInput.value.trim();
+    if(!txt) return;
+    var tId = (fileTo !== undefined) ? fileTo
+            : (selectedChip || null); // pre-select last-used chip
+    notes.push({ text:txt, topicId:tId, time:nextTime() });
+    if(tId) selectedChip = tId;
+    elInput.value = "";
+    elInput.focus();
+    renderAll();
+  }
+
+  document.getElementById("addBtn").addEventListener("click", function(){ addNote(); });
+  elInput.addEventListener("keydown", function(e){ if(e.key==="Enter") addNote(); });
+
+  // play the meeting script (spoken / out-of-order)
+  var playing = false;
+  document.getElementById("playBtn").addEventListener("click", function(){
+    if(playing) return; playing = true;
+    var i = 0;
+    (function step(){
+      if(i>=SCRIPT.length){ playing=false; return; }
+      var s = SCRIPT[i++];
+      // first add as UNFILED, then file it one beat later to show the gesture
+      notes.push({ text:s.text, topicId:null, time:nextTime() });
+      renderAll();
+      setTimeout(function(){
+        notes[notes.length-1].topicId = s.topicId;
+        selectedChip = s.topicId;
+        renderAll();
+        setTimeout(step, 520);
+      }, 360);
+    })();
+  });
+
+  document.getElementById("resetBtn").addEventListener("click", function(){
+    notes = []; selectedChip = null; clock = 0; playing = false;
+    elInput.value=""; renderAll();
+  });
+
+  function escapeHtml(s){
+    return s.replace(/[&<>"']/g, function(c){
+      return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c];
+    });
+  }
+
+  renderAll();
+})();
+</script>
+</body>
+</html>
