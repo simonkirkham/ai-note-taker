@@ -5,6 +5,7 @@ import StarterKit from '@tiptap/starter-kit';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Markdown } from 'tiptap-markdown';
 import { presignUpload, resolveImages } from '../api/notes';
+import { BlankLineParagraph } from '../lib/blankLineParagraph';
 import { markHeadingDiscussed } from '../lib/headingDiscussed';
 import { hasDisallowedScheme } from '../lib/linkScheme';
 import {
@@ -82,7 +83,11 @@ export default function NoteEditor({ noteId, value, onChange, onBlur }: NoteEdit
   const editor = useEditor({
     immediatelyRender: false,
     extensions: [
-      StarterKit.configure({ link: false }),
+      // BUG-40: swap StarterKit's paragraph for BlankLineParagraph so blank lines a user
+      // leaves between sections survive the markdown round-trip (the default serializer drops
+      // empty paragraphs, condensing the note on save).
+      StarterKit.configure({ link: false, paragraph: false }),
+      BlankLineParagraph,
       Markdown,
       ImageWithResize,
       Link.configure({
