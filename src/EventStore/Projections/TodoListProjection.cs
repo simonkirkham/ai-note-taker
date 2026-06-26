@@ -74,6 +74,9 @@ public sealed class TodoListProjection
             case TodoReopened e when _state.TryGetValue(e.TodoId.Value.ToString(), out var tr):
                 _state[e.TodoId.Value.ToString()] = tr with { CompletedAt = null };
                 break;
+            case TodoEdited e when _state.TryGetValue(e.TodoId.Value.ToString(), out var ted):
+                _state[e.TodoId.Value.ToString()] = ted with { Description = e.NewDescription };
+                break;
             case TodoDeleted e:
                 _state.Remove(e.TodoId.Value.ToString());
                 break;

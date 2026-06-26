@@ -98,6 +98,27 @@ public static class TodoHandlers
         catch (InvalidOperationException) { return Results.Conflict(); }
     }
 
+    public static async Task<IResult> EditTodo(
+        Guid todoId,
+        EditTodoRequest body,
+        ITodoCommandHandler handler,
+        ITodoListStore store,
+        ICurrentUser currentUser,
+        CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(body.Description))
+            return Results.BadRequest(new { error = "Description is required." });
+        if (!await OwnsTodoAsync(store, todoId, currentUser, ct).ConfigureAwait(false))
+            return Results.NotFound();
+
+        try
+        {
+            await handler.HandleAsync(new EditTodo(new TodoId(todoId), body.Description.Trim(), DateTimeOffset.UtcNow), ct).ConfigureAwait(false);
+            return Results.NoContent();
+        }
+        catch (InvalidOperationException) { return Results.Conflict(); }
+    }
+
     public static async Task<IResult> DeleteTodo(
         Guid todoId,
         ITodoCommandHandler handler,
@@ -146,5 +167,7 @@ public static class TodoHandlers
 }
 
 public record AddTodoRequest(string Description, string? Priority);
+
+public record EditTodoRequest(string Description);
 
 public record ReorderTodosRequest(IReadOnlyList<string> OrderedItemIds);

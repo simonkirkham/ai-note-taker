@@ -155,6 +155,34 @@ public sealed class TodoListProjectionSpec
     }
 
     [Fact]
+    public void TodoEdited_UpdatesDescription()
+    {
+        var projection = new TodoListProjection();
+        projection.Handle(TodoEnv(TodoId1, 1, new TodoAdded(TodoId1, "user-1", "Buy milk", null)));
+        projection.Handle(TodoEnv(TodoId1, 2, new TodoEdited(TodoId1, "Buy oat milk", DateTimeOffset.UtcNow)));
+
+        var items = projection.GetAllItems();
+        Assert.Single(items);
+        Assert.Equal("Buy oat milk", items[0].Description);
+        Assert.Equal("todo", items[0].Type);
+    }
+
+    [Fact]
+    public void TodoEdited_PreservesCompletedState()
+    {
+        var completedAt = new DateTimeOffset(2024, 1, 1, 12, 0, 0, TimeSpan.Zero);
+        var projection = new TodoListProjection();
+        projection.Handle(TodoEnv(TodoId1, 1, new TodoAdded(TodoId1, "user-1", "Buy milk", null)));
+        projection.Handle(TodoEnv(TodoId1, 2, new TodoCompleted(TodoId1, completedAt)));
+        projection.Handle(TodoEnv(TodoId1, 3, new TodoEdited(TodoId1, "Buy oat milk", DateTimeOffset.UtcNow)));
+
+        var items = projection.GetAllItems();
+        Assert.Single(items);
+        Assert.Equal("Buy oat milk", items[0].Description);
+        Assert.Equal(completedAt, items[0].CompletedAt);
+    }
+
+    [Fact]
     public void TodoCompleted_RetainedWithCompletedAt()
     {
         var completedAt = new DateTimeOffset(2024, 1, 1, 12, 0, 0, TimeSpan.Zero);

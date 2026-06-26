@@ -1,9 +1,9 @@
 import { useQueryClient } from "@tanstack/react-query";
 import clsx from "clsx";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { keys } from "../api/queryKeys";
 import { TodoItem } from "../api/todos";
-import { useCompleteTodo, useReopenTodo, useDeleteTodo, useReorderTodos } from "../hooks/useTodoMutations";
+import { useCompleteTodo, useReopenTodo, useEditTodo, useDeleteTodo, useReorderTodos } from "../hooks/useTodoMutations";
 import { useTodos } from "../hooks/useTodos";
 import { TrashIcon, ChevronUpIcon, ChevronDownIcon, GripVerticalIcon } from "./icons";
 import QuickCaptureTodoInput from "./QuickCaptureTodoInput";
@@ -31,11 +31,17 @@ export default function TodoSection() {
   const { data: items = [], isLoading: loading } = useTodos();
   const complete = useCompleteTodo();
   const reopen = useReopenTodo();
+  const edit = useEditTodo();
   const remove = useDeleteTodo();
   const reorder = useReorderTodos();
   const [busy, setBusy] = useState<Set<string>>(new Set());
   const [doneOpen, setDoneOpen] = useState(false);
   const [draggedId, setDraggedId] = useState<string | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editText, setEditText] = useState("");
+  // Tracks the row being edited synchronously, so a native blur fired as the input
+  // unmounts on Enter can't re-enter commitEdit and send a duplicate PUT.
+  const editingRef = useRef<string | null>(null);
 
   const openItems = items.filter((i) => i.completedAt === null);
   const doneItems = items.filter((i) => i.completedAt !== null && isToday(i.completedAt));
@@ -113,6 +119,31 @@ export default function TodoSection() {
     }
   }
 
+  function startEdit(item: TodoItem) {
+    editingRef.current = item.itemId;
+    setEditingId(item.itemId);
+    setEditText(item.description);
+  }
+
+  function cancelEdit() {
+    editingRef.current = null;
+    setEditingId(null);
+    setEditText("");
+  }
+
+  async function commitEdit(item: TodoItem) {
+    if (editingRef.current !== item.itemId) return;
+    editingRef.current = null;
+    const description = editText.trim();
+    setEditingId(null);
+    if (!description || description === item.description) return;
+    try {
+      await edit.mutateAsync({ item, description });
+    } catch {
+      // optimistic update already rolled back in the mutation's onError
+    }
+  }
+
   async function handleDelete(item: TodoItem) {
     if (busy.has(item.itemId)) return;
     addBusy(item.itemId);
@@ -163,7 +194,34 @@ export default function TodoSection() {
                     onChange={() => void handleComplete(item)}
                   />
                   <div className={styles.todoItemContent}>
-                    <span className={styles.todoDescription}>{item.description}</span>
+                    {editingId === item.itemId ? (
+                      // autoFocus is intentional: the edit input appears in direct response to the
+                      // user choosing to edit, so focusing it is expected.
+                      // eslint-disable-next-line jsx-a11y/no-autofocus
+                      <input autoFocus
+                        data-testid={`edit-todo-input-${item.itemId}`}
+                        className={styles.editTodoInput}
+                        value={editText}
+                        onChange={(e) => setEditText(e.target.value)}
+                        onBlur={() => void commitEdit(item)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") { e.preventDefault(); void commitEdit(item); }
+                          if (e.key === "Escape") { e.preventDefault(); cancelEdit(); }
+                        }}
+                        aria-label={`Edit "${item.description}"`}
+                      />
+                    ) : (
+                      <button
+                        type="button"
+                        data-testid={`todo-description-${item.itemId}`}
+                        className={styles.todoDescriptionButton}
+                        aria-label={`Edit "${item.description}"`}
+                        disabled={busy.has(item.itemId)}
+                        onClick={() => startEdit(item)}
+                      >
+                        {item.description}
+                      </button>
+                    )}
                     {item.noteTitle && <span className={styles.todoNoteTitle}>{item.noteTitle}</span>}
                   </div>
                   <div className={styles.todoReorderButtons}>

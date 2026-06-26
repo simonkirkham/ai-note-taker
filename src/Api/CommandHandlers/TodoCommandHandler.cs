@@ -32,6 +32,10 @@ public sealed class TodoCommandHandler(
         CommandInstrumentation.RunAsync(metrics, logger, nameof(ReopenTodo), "Todo", () =>
             ExecuteAppendAsync(cmd.TodoId, cmd, ct));
 
+    public Task HandleAsync(EditTodo cmd, CancellationToken ct = default) =>
+        CommandInstrumentation.RunAsync(metrics, logger, nameof(EditTodo), "Todo", () =>
+            ExecuteAppendAsync(cmd.TodoId, cmd, ct));
+
     public Task HandleAsync(DeleteTodo cmd, CancellationToken ct = default) =>
         CommandInstrumentation.RunAsync(metrics, logger, nameof(DeleteTodo), "Todo", () =>
             ExecuteAppendAsync(cmd.TodoId, cmd, ct));

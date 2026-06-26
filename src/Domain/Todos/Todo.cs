@@ -31,6 +31,7 @@ public sealed class Todo : IAggregate
             AddTodo cmd => HandleAdd(cmd),
             CompleteTodo cmd => HandleComplete(cmd),
             ReopenTodo cmd => HandleReopen(cmd),
+            EditTodo cmd => HandleEdit(cmd),
             DeleteTodo cmd => HandleDelete(cmd),
             _ => throw new ArgumentOutOfRangeException(nameof(command))
         };
@@ -56,6 +57,15 @@ public sealed class Todo : IAggregate
         if (!_exists || _deleted || !_completed)
             throw new InvalidOperationException($"Todo {cmd.TodoId} cannot be reopened.");
         return [new TodoReopened(cmd.TodoId, cmd.ReopenedAt)];
+    }
+
+    IReadOnlyList<IDomainEvent> HandleEdit(EditTodo cmd)
+    {
+        if (!_exists || _deleted)
+            throw new InvalidOperationException($"Todo {cmd.TodoId} cannot be edited.");
+        if (string.IsNullOrWhiteSpace(cmd.NewDescription))
+            throw new ArgumentException("Description must not be empty.", nameof(cmd));
+        return [new TodoEdited(cmd.TodoId, cmd.NewDescription, cmd.EditedAt)];
     }
 
     IReadOnlyList<IDomainEvent> HandleDelete(DeleteTodo cmd)
