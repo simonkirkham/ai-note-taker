@@ -9,8 +9,8 @@ beforeEach(() => {
 
 // Teal stays on :root (no data-theme). Light + dark themes offered beyond Teal.
 // The old CHANGE-7 'forest' remains removed (a new dark green ships as 'pine').
-const LIGHT_THEMES = ['indigo', 'rose', 'amber', 'violet', 'sky', 'sepia', 'contrast', 'emerald', 'fuchsia', 'lime']
-const DARK_THEMES = ['midnight', 'slate', 'carbon', 'plum', 'pine', 'ocean', 'ember']
+const LIGHT_THEMES = ['indigo', 'rose', 'amber', 'violet', 'sky', 'emerald', 'steel']
+const DARK_THEMES = ['midnight', 'slate', 'plum', 'pine', 'ocean', 'ember', 'obsidian', 'graphite', 'deepsea']
 const NEW_THEMES = [...LIGHT_THEMES, ...DARK_THEMES]
 
 describe('ThemePicker', () => {
@@ -58,10 +58,19 @@ describe('ThemePicker', () => {
 
   it('keeps the selection across a remount', async () => {
     const { unmount } = render(<ThemePicker />)
-    await userEvent.selectOptions(screen.getByLabelText('Theme'), 'sepia')
+    await userEvent.selectOptions(screen.getByLabelText('Theme'), 'steel')
     unmount()
     render(<ThemePicker />)
-    expect(screen.getByLabelText('Theme')).toHaveValue('sepia')
+    expect(screen.getByLabelText('Theme')).toHaveValue('steel')
+  })
+
+  it('falls back to Teal for a previously-saved, now-removed theme value', () => {
+    // Sepia/Contrast/Fuchsia/Lime/Carbon were removed in this change — a stored value
+    // for any of them is no longer valid and must fall back to the default.
+    localStorage.setItem('note-taker-theme', 'sepia')
+    render(<ThemePicker />)
+    expect(screen.getByLabelText('Theme')).toHaveValue('teal')
+    expect(document.documentElement.dataset.theme).toBeUndefined()
   })
 
   it('falls back to Teal for an unrecognised stored value', () => {
