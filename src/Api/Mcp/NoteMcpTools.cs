@@ -33,6 +33,7 @@ public sealed class NoteMcpTools(
     INoteCommandHandler noteCommands,
     IActionItemCommandHandler actionCommands,
     INoteAuthorizer noteAuthorizer,
+    IActionItemAuthorizer actionAuthorizer,
     IHttpContextAccessor httpContextAccessor,
     ILogger<NoteMcpTools> logger)
 {
@@ -207,12 +208,12 @@ public sealed class NoteMcpTools(
         return JsonSerializer.Serialize(new { noteId = noteId.Value.ToString(), version });
     }
 
-    // 41-B: action-item writes. Every action operation is note-scoped, so all three authorize the same
-    // way the HTTP handlers do — INoteAuthorizer.OwnsNoteAsync, which reads the note's EVENT STREAM
-    // (strongly consistent, BUG-30-safe) rather than the async NoteDetail projection. Claude already
-    // holds the noteId for any open item (get_action_items returns it per item), so passing it costs
-    // nothing and lets the existing event-stream auth be reused verbatim. A failed ownership check is
-    // logged for audit, exactly like create_note.
+    // 41-B: action-item writes. add_action_item is NOTE-scoped (it attaches to a note), so it authorizes
+    // note ownership (INoteAuthorizer, event-stream — BUG-30-safe). complete/reopen are ACTION-scoped:
+    // they must prove ownership of the ACTION they mutate, not a caller-supplied note (authorizing an
+    // arbitrary owned note while mutating a foreign action is an IDOR). So they authorize the action's
+    // OWN owner (IActionItemAuthorizer, the UserId stamped on its first event) and take only the
+    // actionId — the note is irrelevant. Rejections are logged for audit, like create_note.
     [McpServerTool(Name = "add_action_item")]
     [Description("Add an open action item (to-do) to a note the caller owns. Returns the new action item id.")]
     public async Task<string> AddActionItem(
@@ -220,78 +221,67 @@ public sealed class NoteMcpTools(
         [Description("The action item description.")] string description,
         CancellationToken ct)
     {
-        var (userId, note) = await AuthorizeNoteWriteAsync("add_action_item", noteId, ct).ConfigureAwait(false);
+        var stopwatch = Stopwatch.StartNew();
+        var userId = AuthenticatedUserId();
+        if (!Guid.TryParse(noteId, out var guid) || !await noteAuthorizer.OwnsNoteAsync(new NoteId(guid), userId, ct).ConfigureAwait(false))
+        {
+            logger.LogWarning("mcp_write_rejected tool=add_action_item sub={Sub} noteId={NoteId} reason=unauthorized", userId, noteId);
+            throw new McpException("Note not found or access denied.");
+        }
         if (string.IsNullOrWhiteSpace(description))
             throw new McpException("Provide a description for the action item.");
 
+        var note = new NoteId(guid);
         var actionId = new ActionId(Guid.NewGuid());
-        var version = await actionCommands
-            .HandleAsync(new AddActionItem(actionId, note, description.Trim()), userId, ct)
-            .ConfigureAwait(false);
-        logger.LogInformation("mcp_write tool=add_action_item sub={Sub} noteId={NoteId} actionId={ActionId}",
-            userId, note.Value, actionId.Value);
+        var version = await RunActionWriteAsync(
+            () => actionCommands.HandleAsync(new AddActionItem(actionId, note, description.Trim()), userId, ct)).ConfigureAwait(false);
+        logger.LogInformation("mcp_write tool=add_action_item sub={Sub} noteId={NoteId} actionId={ActionId} latencyMs={LatencyMs}",
+            userId, note.Value, actionId.Value, stopwatch.Elapsed.TotalMilliseconds);
         return JsonSerializer.Serialize(new { actionId = actionId.Value.ToString(), version });
     }
 
     [McpServerTool(Name = "complete_action_item")]
-    [Description("Mark an open action item on a note the caller owns as complete.")]
-    public async Task<string> CompleteActionItem(
-        [Description("The id of the note the action item belongs to (a GUID).")] string noteId,
+    [Description("Mark one of the caller's open action items as complete.")]
+    public Task<string> CompleteActionItem(
         [Description("The action item id to complete (a GUID).")] string actionId,
-        CancellationToken ct)
-    {
-        var (userId, note) = await AuthorizeNoteWriteAsync("complete_action_item", noteId, ct).ConfigureAwait(false);
-        var id = ParseActionId(actionId);
-        var version = await RunActionWriteAsync(
-            () => actionCommands.HandleAsync(new CompleteActionItem(id, DateTimeOffset.UtcNow), userId, ct)).ConfigureAwait(false);
-        logger.LogInformation("mcp_write tool=complete_action_item sub={Sub} noteId={NoteId} actionId={ActionId}",
-            userId, note.Value, id.Value);
-        return JsonSerializer.Serialize(new { actionId = id.Value.ToString(), version });
-    }
+        CancellationToken ct) =>
+        MutateOwnedActionAsync("complete_action_item", actionId,
+            (id, userId) => actionCommands.HandleAsync(new CompleteActionItem(id, DateTimeOffset.UtcNow), userId, ct), ct);
 
     [McpServerTool(Name = "reopen_action_item")]
-    [Description("Reopen a completed action item on a note the caller owns.")]
-    public async Task<string> ReopenActionItem(
-        [Description("The id of the note the action item belongs to (a GUID).")] string noteId,
+    [Description("Reopen one of the caller's completed action items.")]
+    public Task<string> ReopenActionItem(
         [Description("The action item id to reopen (a GUID).")] string actionId,
-        CancellationToken ct)
+        CancellationToken ct) =>
+        MutateOwnedActionAsync("reopen_action_item", actionId,
+            (id, userId) => actionCommands.HandleAsync(new ReopenActionItem(id, DateTimeOffset.UtcNow), userId, ct), ct);
+
+    // Authorizes the action's OWN owner (not a caller-supplied note) against the event stream, then
+    // runs the mutation. A non-GUID / unowned / missing action is an MCP error, logged.
+    private async Task<string> MutateOwnedActionAsync(string tool, string actionId, Func<ActionId, string, Task<long>> mutate, CancellationToken ct)
     {
-        var (userId, note) = await AuthorizeNoteWriteAsync("reopen_action_item", noteId, ct).ConfigureAwait(false);
-        var id = ParseActionId(actionId);
-        var version = await RunActionWriteAsync(
-            () => actionCommands.HandleAsync(new ReopenActionItem(id, DateTimeOffset.UtcNow), userId, ct)).ConfigureAwait(false);
-        logger.LogInformation("mcp_write tool=reopen_action_item sub={Sub} noteId={NoteId} actionId={ActionId}",
-            userId, note.Value, id.Value);
+        var stopwatch = Stopwatch.StartNew();
+        var userId = AuthenticatedUserId();
+        if (!Guid.TryParse(actionId, out var guid) || !await actionAuthorizer.OwnsActionAsync(new ActionId(guid), userId, ct).ConfigureAwait(false))
+        {
+            logger.LogWarning("mcp_write_rejected tool={Tool} sub={Sub} actionId={ActionId} reason=unauthorized", tool, userId, actionId);
+            throw new McpException("Action item not found or access denied.");
+        }
+        var id = new ActionId(guid);
+        var version = await RunActionWriteAsync(() => mutate(id, userId)).ConfigureAwait(false);
+        logger.LogInformation("mcp_write tool={Tool} sub={Sub} actionId={ActionId} latencyMs={LatencyMs}",
+            tool, userId, id.Value, stopwatch.Elapsed.TotalMilliseconds);
         return JsonSerializer.Serialize(new { actionId = id.Value.ToString(), version });
     }
 
-    // Resolves the token `sub`, parses the noteId, and authorizes note ownership against the event
-    // stream before any write. A rejected (unowned / missing / non-GUID) note is an MCP error, logged.
-    private async Task<(string UserId, NoteId Note)> AuthorizeNoteWriteAsync(string tool, string noteId, CancellationToken ct)
-    {
-        var userId = AuthenticatedUserId();
-        if (!Guid.TryParse(noteId, out var guid))
-            throw new McpException("Note not found.");
-        var note = new NoteId(guid);
-        if (!await noteAuthorizer.OwnsNoteAsync(note, userId, ct).ConfigureAwait(false))
-        {
-            logger.LogWarning("mcp_write_rejected tool={Tool} sub={Sub} noteId={NoteId} reason=unauthorized",
-                tool, userId, note.Value);
-            throw new McpException("Note not found or access denied.");
-        }
-        return (userId, note);
-    }
-
-    private static ActionId ParseActionId(string actionId) =>
-        Guid.TryParse(actionId, out var guid) ? new ActionId(guid) : throw new McpException("Action item not found.");
-
-    // Maps the aggregate's domain failures to clean MCP errors instead of a raw 500: a missing action
-    // is not-found; an illegal transition (complete an already-complete item, reopen an open one) is a
-    // conflict the client can interpret.
+    // Maps the aggregate's domain failures to clean MCP errors instead of a raw 500: a missing note or
+    // action is not-found; an illegal transition (complete an already-complete item, reopen an open
+    // one) is a conflict the client can interpret.
     private static async Task<long> RunActionWriteAsync(Func<Task<long>> write)
     {
         try { return await write().ConfigureAwait(false); }
         catch (Api.Exceptions.ActionItemNotFoundException) { throw new McpException("Action item not found."); }
+        catch (Api.Exceptions.NoteNotFoundException) { throw new McpException("Note not found."); }
         catch (InvalidOperationException ex) { throw new McpException(ex.Message); }
     }
 

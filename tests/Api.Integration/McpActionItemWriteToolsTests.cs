@@ -45,13 +45,13 @@ public sealed class McpActionItemWriteToolsTests(ApiFactory factory) : IClassFix
 
         // Complete — the item is now complete.
         var completed = await CallToolAsync(client, "complete_action_item",
-            new { noteId, actionId }, McpTestTokens.Valid(Owner));
+            new { actionId }, McpTestTokens.Valid(Owner));
         Assert.False(IsToolError(completed));
         Assert.Equal((true, "Send the deck"), await ActionStateAsync(client, noteId, actionId));
 
         // Reopen — the item is open again.
         var reopened = await CallToolAsync(client, "reopen_action_item",
-            new { noteId, actionId }, McpTestTokens.Valid(Owner));
+            new { actionId }, McpTestTokens.Valid(Owner));
         Assert.False(IsToolError(reopened));
         Assert.Equal((false, "Send the deck"), await ActionStateAsync(client, noteId, actionId));
     }
@@ -73,19 +73,31 @@ public sealed class McpActionItemWriteToolsTests(ApiFactory factory) : IClassFix
     }
 
     [Fact]
-    public async Task CompleteActionItem_OnNoteIDoNotOwn_IsRejected()
+    public async Task CompleteActionItem_OnAnotherUsersAction_IsRejected()
     {
+        // Object-level auth: another user knowing the actionId still cannot complete it — ownership is
+        // bound to the ACTION's own stamped owner, not to any note the caller happens to own.
         var client = _factory.CreateUnauthenticatedClient();
         var noteId = await CreateNoteAsync(client, Owner, "Owner's note");
         var actionId = ParsePayload(await CallToolAsync(client, "add_action_item",
             new { noteId, description = "owner task" }, McpTestTokens.Valid(Owner))).GetProperty("actionId").GetString()!;
 
         var result = await CallToolAsync(client, "complete_action_item",
-            new { noteId, actionId }, McpTestTokens.Valid(OtherUser));
+            new { actionId }, McpTestTokens.Valid(OtherUser));
 
         Assert.True(IsToolError(result));
         // Still open — the cross-user complete did not land.
         Assert.Equal((false, "owner task"), await ActionStateAsync(client, noteId, actionId));
+    }
+
+    [Fact]
+    public async Task CompleteActionItem_UnknownActionId_IsCleanError_NotA500()
+    {
+        var client = _factory.CreateUnauthenticatedClient();
+        var result = await CallToolAsync(client, "complete_action_item",
+            new { actionId = Guid.NewGuid().ToString() }, McpTestTokens.Valid(Owner));
+
+        Assert.True(IsToolError(result));
     }
 
     [Fact]
@@ -110,7 +122,7 @@ public sealed class McpActionItemWriteToolsTests(ApiFactory factory) : IClassFix
 
         // The item is open; reopening it is an illegal transition → a clean MCP error, not a 500.
         var result = await CallToolAsync(client, "reopen_action_item",
-            new { noteId, actionId }, McpTestTokens.Valid(Owner));
+            new { actionId }, McpTestTokens.Valid(Owner));
 
         Assert.True(IsToolError(result));
     }

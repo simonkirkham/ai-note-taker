@@ -149,6 +149,9 @@ public static class Builder
         // Strongly-consistent note ownership for note-scoped handlers (event-stream, not the async
         // projection). Scoped to match IEventStore's per-request lifetime.
         builder.Services.AddScoped<Api.Auth.INoteAuthorizer, Api.Auth.NoteAuthorizer>();
+        // 41-B: strongly-consistent action-item ownership (event-stream) — the object-level auth the
+        // MCP complete/reopen tools need to bind a mutation to the action's real owner.
+        builder.Services.AddScoped<Api.Auth.IActionItemAuthorizer, Api.Auth.ActionItemAuthorizer>();
         builder.Services.AddSingleton<INoteTitleListStore>(sp =>
             new NoteTitleListStore(sp.GetRequiredService<IAmazonDynamoDB>(), projTableName));
         builder.Services.AddSingleton<INoteDetailStore>(sp =>
