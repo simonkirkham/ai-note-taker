@@ -21,11 +21,13 @@ Each piece of work is handled by agents in sequence. No agent does another's job
 
 - Updated `docs/event-model.md` (new commands, events, projections if any)
 - Updated `docs/event-schemas.md` if new event shapes are introduced
-- `docs/phases/phase-N.md` — phase breakdown file with one section per slice, each containing:
-  - Phase goal and scope note at the top
-  - One section per slice with: status (`Not Started`), value statement, commands/events in scope, and BDD scenarios
-  - Each slice must open with a one-sentence **value statement** written from the user's perspective. Write it before any technical detail. It must not mention aggregates, projections, events, or endpoints — if it does, rewrite it. Bad: _"Introduces the TagIndex projection and wires the filter bar."_ Good: _"I can click a tag to see only the notes that have it."_ If you can't state the value in plain user terms, the slice isn't ready to build.
-  - **Acceptance criteria must be written as user behaviour** — what the user does and sees. Not API contracts: _"User opens a note — content is displayed"_, not _"GET /notes/{id} returns 200"_. API-level detail belongs in the implementation, not the spec.
+- `docs/phases/phase-N.md` — phase breakdown file, split into a **review surface** (the human reads this) and **build notes** (agents read this), divided by a `---`. **Start from `docs/phases/_template.md`**; see the phase-doc-structure convention in `CLAUDE.md` for the rules. In order:
+  - `**Goal:**` — **one** user-facing sentence: what the user can now do. No history, no implementation.
+  - `## Summary` table — `Slice | What the user gets | Status | Depends on`; the value column is one line in user terms (never an aggregate/event/projection/endpoint name).
+  - `## Slices` — the review surface. Per slice: `**User value:**` (one line) + `**How it works:**` (bullets — what the user does and sees, the interaction, key UX) + `**Scenarios (GWT):**` (one Given/When/Then line each). **No technical artefact named anywhere in this section.** Bullets, not prose.
+  - `---` then `## Build notes _(implementation — skip when reviewing)_` — per slice: acceptance criteria, commands/events in scope, projections, API routes, tests, scoping decisions, plus `Observability` and `Deploy-time`. This is where every technical detail goes.
+  - The value statement gates the slice: if you can't state the value in plain user terms, the slice isn't ready to build. Bad: _"Introduces the TagIndex projection and wires the filter bar."_ Good: _"I can click a tag to see only the notes that have it."_
+  - **Acceptance criteria** (in Build notes) are written as user behaviour where possible — what the user does and sees — but may reference API contracts/types since they are below the divider for Breaker, not the human.
 - Updated `docs/roadmap.md` — link to the new phase file and mark phase as `_(In Progress)_`
 - A feature brief covering: objective, commands/events affected, projections affected, open questions
 
