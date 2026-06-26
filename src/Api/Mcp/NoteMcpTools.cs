@@ -1,4 +1,5 @@
 using System.ComponentModel;
+using System.Diagnostics;
 using System.Security.Claims;
 using System.Text.Json;
 using Api.Auth;
@@ -29,7 +30,8 @@ public sealed class NoteMcpTools(
     ITodoListStore todos,
     IWorkspaceListStore workspaces,
     INoteCommandHandler noteCommands,
-    IHttpContextAccessor httpContextAccessor)
+    IHttpContextAccessor httpContextAccessor,
+    ILogger<NoteMcpTools> logger)
 {
     private const int MaxPreviewLength = 120;
 
@@ -162,17 +164,31 @@ public sealed class NoteMcpTools(
     // and the stream version (the RYW write token); a subsequent read tool may briefly lag the async
     // projector before the note is visible.
     [McpServerTool(Name = "create_note")]
-    [Description("Create a new note in a workspace the caller owns, with an optional title and content. Returns the new note id.")]
+    [Description("Create a new note in a workspace the caller owns, with an optional title and content. Returns the new note id and stream version.")]
     public async Task<string> CreateNote(
         [Description("The workspace id to create the note in (use list_workspaces to resolve a name).")] string workspaceId,
         [Description("The note title. Optional if content is provided.")] string? title,
         [Description("The note body as markdown. Optional if a title is provided.")] string? content,
         CancellationToken ct)
     {
-        var userId = await AuthorizeAsync(workspaceId, ct).ConfigureAwait(false);
+        // The first MUTATING tool, so the rejection is logged for audit (a write leak mutates, not just
+        // leaks). The sub is known (authenticated) even when it does not own the workspace; log it +
+        // the attempted workspace, never any note content/title (meeting notes are sensitive).
+        var userId = AuthenticatedUserId();
+        if (!await UserOwnsWorkspaceAsync(userId, workspaceId, ct).ConfigureAwait(false))
+        {
+            logger.LogWarning("mcp_write_rejected tool=create_note sub={Sub} workspaceId={WorkspaceId} reason=unauthorized",
+                userId, workspaceId);
+            throw new McpException("Workspace not found or access denied.");
+        }
         if (string.IsNullOrWhiteSpace(title) && string.IsNullOrWhiteSpace(content))
             throw new McpException("Provide a title or content for the note.");
 
+        // Three independent appends (CreateNote → RenameNote → EditContent), mirroring the HTTP flow's
+        // non-atomicity: a fault after CreateNote lands leaves an orphaned partial note while the tool
+        // returns an error. Accepted (same as the HTTP separate-call flow); the underlying command
+        // handler surfaces a retriable 503 on persistent contention.
+        var stopwatch = Stopwatch.StartNew();
         var noteId = new NoteId(Guid.NewGuid());
         await noteCommands.HandleAsync(new CreateNote(noteId, new WorkspaceId(workspaceId)), userId, workspaceId, ct).ConfigureAwait(false);
         if (!string.IsNullOrWhiteSpace(title))
@@ -183,6 +199,8 @@ public sealed class NoteMcpTools(
         // The flow appends across several handler calls, so read the final stream version for the RYW
         // write token (the Phase 38 import pattern), rather than the version of whichever command ran last.
         var version = await noteCommands.GetCurrentVersionAsync(noteId, ct).ConfigureAwait(false);
+        logger.LogInformation("mcp_write tool=create_note sub={Sub} workspaceId={WorkspaceId} noteId={NoteId} latencyMs={LatencyMs}",
+            userId, workspaceId, noteId.Value, stopwatch.Elapsed.TotalMilliseconds);
         return JsonSerializer.Serialize(new { noteId = noteId.Value.ToString(), version });
     }
 
