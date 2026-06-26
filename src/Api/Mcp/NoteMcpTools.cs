@@ -222,22 +222,42 @@ public sealed class NoteMcpTools(
         CancellationToken ct)
     {
         var stopwatch = Stopwatch.StartNew();
-        var userId = AuthenticatedUserId();
-        if (!Guid.TryParse(noteId, out var guid) || !await noteAuthorizer.OwnsNoteAsync(new NoteId(guid), userId, ct).ConfigureAwait(false))
-        {
-            logger.LogWarning("mcp_write_rejected tool=add_action_item sub={Sub} noteId={NoteId} reason=unauthorized", userId, noteId);
-            throw new McpException("Note not found or access denied.");
-        }
+        var (userId, note) = await AuthorizeOwnedNoteAsync("add_action_item", noteId, ct).ConfigureAwait(false);
         if (string.IsNullOrWhiteSpace(description))
             throw new McpException("Provide a description for the action item.");
 
-        var note = new NoteId(guid);
         var actionId = new ActionId(Guid.NewGuid());
         var version = await RunActionWriteAsync(
             () => actionCommands.HandleAsync(new AddActionItem(actionId, note, description.Trim()), userId, ct)).ConfigureAwait(false);
         logger.LogInformation("mcp_write tool=add_action_item sub={Sub} noteId={NoteId} actionId={ActionId} latencyMs={LatencyMs}",
             userId, note.Value, actionId.Value, stopwatch.Elapsed.TotalMilliseconds);
         return JsonSerializer.Serialize(new { actionId = actionId.Value.ToString(), version });
+    }
+
+    // 41-C: replace a note's body. Note-scoped, so it authorizes note ownership against the event
+    // stream (same as add_action_item) and routes the EditContent command through the command handler's
+    // identity-explicit overload (token `sub` = owner). Workspace is passed null: ContentEdited never
+    // carries workspace — every note projection preserves the existing view's WorkspaceId on this fold.
+    [McpServerTool(Name = "edit_note")]
+    [Description("Replace the body content of a note the caller owns with new markdown. Returns the note's new stream version.")]
+    public async Task<string> EditNote(
+        [Description("The id of the note to edit (a GUID).")] string noteId,
+        [Description("The new note body as markdown — replaces the existing content.")] string content,
+        CancellationToken ct)
+    {
+        var stopwatch = Stopwatch.StartNew();
+        var (userId, note) = await AuthorizeOwnedNoteAsync("edit_note", noteId, ct).ConfigureAwait(false);
+        if (string.IsNullOrWhiteSpace(content))
+            throw new McpException("Provide content for the note (clearing a note is not supported).");
+
+        // edit_note targets an EXISTING stream, so contention (a concurrent write) and a TOCTOU delete
+        // (note removed between the ownership auth and the append) are both plausible — map them to
+        // clean MCP errors instead of leaking a raw 503/500.
+        var version = await RunNoteWriteAsync(
+            () => noteCommands.HandleAsync(new EditContent(note, content), userId, null, ct)).ConfigureAwait(false);
+        logger.LogInformation("mcp_write tool=edit_note sub={Sub} noteId={NoteId} latencyMs={LatencyMs}",
+            userId, note.Value, stopwatch.Elapsed.TotalMilliseconds);
+        return JsonSerializer.Serialize(new { noteId = note.Value.ToString(), version });
     }
 
     [McpServerTool(Name = "complete_action_item")]
@@ -255,6 +275,21 @@ public sealed class NoteMcpTools(
         CancellationToken ct) =>
         MutateOwnedActionAsync("reopen_action_item", actionId,
             (id, userId) => actionCommands.HandleAsync(new ReopenActionItem(id, DateTimeOffset.UtcNow), userId, ct), ct);
+
+    // Resolves the token `sub` and authorizes ownership of an EXISTING note against the event stream
+    // (BUG-30-safe) before a note-scoped write (add_action_item, edit_note). A non-GUID / unowned /
+    // missing note is a logged MCP error. (create_note authorizes the workspace, not a note — it has
+    // none yet.)
+    private async Task<(string UserId, NoteId Note)> AuthorizeOwnedNoteAsync(string tool, string noteId, CancellationToken ct)
+    {
+        var userId = AuthenticatedUserId();
+        if (!Guid.TryParse(noteId, out var guid) || !await noteAuthorizer.OwnsNoteAsync(new NoteId(guid), userId, ct).ConfigureAwait(false))
+        {
+            logger.LogWarning("mcp_write_rejected tool={Tool} sub={Sub} noteId={NoteId} reason=unauthorized", tool, userId, noteId);
+            throw new McpException("Note not found or access denied.");
+        }
+        return (userId, new NoteId(guid));
+    }
 
     // Authorizes the action's OWN owner (not a caller-supplied note) against the event stream, then
     // runs the mutation. A non-GUID / unowned / missing action is an MCP error, logged.
@@ -283,6 +318,15 @@ public sealed class NoteMcpTools(
         catch (Api.Exceptions.ActionItemNotFoundException) { throw new McpException("Action item not found."); }
         catch (Api.Exceptions.NoteNotFoundException) { throw new McpException("Note not found."); }
         catch (InvalidOperationException ex) { throw new McpException(ex.Message); }
+    }
+
+    // Same, for a note write: a TOCTOU-deleted note is not-found; persistent write contention is a
+    // retriable conflict the client can interpret instead of a raw 503/500.
+    private static async Task<long> RunNoteWriteAsync(Func<Task<long>> write)
+    {
+        try { return await write().ConfigureAwait(false); }
+        catch (Api.Exceptions.NoteNotFoundException) { throw new McpException("Note not found."); }
+        catch (WriteContentionException) { throw new McpException("The note is being modified concurrently — please retry."); }
     }
 
     // The authenticated user id (the token `sub`). JwtBearer's default inbound mapping turns `sub`
