@@ -177,6 +177,63 @@
   --color-banner-text:  #FFFFFF;
 }
 
+/* Emerald — true green primary with an orange CTA, light. */
+[data-theme="emerald"] {
+  --color-primary:      #059669;
+  --color-primary-dark: #047857;
+  --color-primary-bg:   rgba(5, 150, 105, 0.06);
+  --color-cta:          #F97316;
+  --color-cta-dark:     #EA6C0A;
+  --color-bg:           #ECFDF5;
+  --color-surface:      #FFFFFF;
+  --color-text:         #064E3B;
+  --color-text-muted:   #475569;
+  --color-border:       #A7F3D0;
+  --color-error:        #DC2626;
+  --color-error-bg:     #FEE2E2;
+  --color-error-border: #FCA5A5;
+  --color-banner:       #1E40AF;
+  --color-banner-text:  #FFFFFF;
+}
+
+/* Fuchsia — vivid magenta primary with a teal CTA, light. */
+[data-theme="fuchsia"] {
+  --color-primary:      #C026D3;
+  --color-primary-dark: #A21CAF;
+  --color-primary-bg:   rgba(192, 38, 211, 0.06);
+  --color-cta:          #0D9488;
+  --color-cta-dark:     #0F766E;
+  --color-bg:           #FDF4FF;
+  --color-surface:      #FFFFFF;
+  --color-text:         #4A044E;
+  --color-text-muted:   #4B5563;
+  --color-border:       #F5D0FE;
+  --color-error:        #DC2626;
+  --color-error-bg:     #FEE2E2;
+  --color-error-border: #FCA5A5;
+  --color-banner:       #1E40AF;
+  --color-banner-text:  #FFFFFF;
+}
+
+/* Lime — fresh yellow-green primary with a violet CTA, light. */
+[data-theme="lime"] {
+  --color-primary:      #65A30D;
+  --color-primary-dark: #4D7C0F;
+  --color-primary-bg:   rgba(101, 163, 13, 0.06);
+  --color-cta:          #7C3AED;
+  --color-cta-dark:     #6D28D9;
+  --color-bg:           #F7FEE7;
+  --color-surface:      #FFFFFF;
+  --color-text:         #1A2E05;
+  --color-text-muted:   #4B5563;
+  --color-border:       #D9F99D;
+  --color-error:        #DC2626;
+  --color-error-bg:     #FEE2E2;
+  --color-error-border: #FCA5A5;
+  --color-banner:       #1E40AF;
+  --color-banner-text:  #FFFFFF;
+}
+
 /* ── Dark themes ───────────────────────────────────────────────── */
 /* Each reuses the dark semantic error tokens so no hardcoded light
    background leaks through (see CHANGE-2 dark-mode audit). */
@@ -253,6 +310,63 @@
   --color-error:        #FDA4AF;
   --color-error-bg:     #3F1D29;
   --color-error-border: rgba(253, 164, 175, 0.40);
+  --color-banner:       #1E40AF;
+  --color-banner-text:  #FFFFFF;
+}
+
+/* Pine — emerald-green primary on a deep green-black, dark. */
+[data-theme="pine"] {
+  --color-primary:      #34D399;
+  --color-primary-dark: #10B981;
+  --color-primary-bg:   rgba(52, 211, 153, 0.10);
+  --color-cta:          #FB923C;
+  --color-cta-dark:     #F97316;
+  --color-bg:           #0C1A12;
+  --color-surface:      #14241B;
+  --color-text:         #D1FAE5;
+  --color-text-muted:   #94A3B8;
+  --color-border:       #1F3A2C;
+  --color-error:        #F87171;
+  --color-error-bg:     rgba(248, 113, 113, 0.15);
+  --color-error-border: rgba(248, 113, 113, 0.40);
+  --color-banner:       #1E40AF;
+  --color-banner-text:  #FFFFFF;
+}
+
+/* Ocean — sky-blue primary on a deep navy, dark. */
+[data-theme="ocean"] {
+  --color-primary:      #38BDF8;
+  --color-primary-dark: #0EA5E9;
+  --color-primary-bg:   rgba(56, 189, 248, 0.10);
+  --color-cta:          #FB923C;
+  --color-cta-dark:     #F97316;
+  --color-bg:           #0B1220;
+  --color-surface:      #111A2E;
+  --color-text:         #DBEAFE;
+  --color-text-muted:   #94A3B8;
+  --color-border:       #1E3A5F;
+  --color-error:        #F87171;
+  --color-error-bg:     rgba(248, 113, 113, 0.15);
+  --color-error-border: rgba(248, 113, 113, 0.40);
+  --color-banner:       #1E40AF;
+  --color-banner-text:  #FFFFFF;
+}
+
+/* Ember — warm amber primary on a warm-dark brown, with a cool sky CTA, dark. */
+[data-theme="ember"] {
+  --color-primary:      #FBBF24;
+  --color-primary-dark: #F59E0B;
+  --color-primary-bg:   rgba(251, 191, 36, 0.10);
+  --color-cta:          #38BDF8;
+  --color-cta-dark:     #0EA5E9;
+  --color-bg:           #1A1206;
+  --color-surface:      #261A0C;
+  --color-text:         #FEF3C7;
+  --color-text-muted:   #A8A29E;
+  --color-border:       #3A2A12;
+  --color-error:        #F87171;
+  --color-error-bg:     rgba(248, 113, 113, 0.15);
+  --color-error-border: rgba(248, 113, 113, 0.40);
   --color-banner:       #1E40AF;
   --color-banner-text:  #FFFFFF;
 }

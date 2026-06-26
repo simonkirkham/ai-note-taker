@@ -12,6 +12,9 @@ const LIGHT_THEMES: { value: Theme; label: string }[] = [
   { value: "sky", label: "Sky" },
   { value: "sepia", label: "Sepia" },
   { value: "contrast", label: "Contrast" },
+  { value: "emerald", label: "Emerald" },
+  { value: "fuchsia", label: "Fuchsia" },
+  { value: "lime", label: "Lime" },
 ];
 
 const DARK_THEMES: { value: Theme; label: string }[] = [
@@ -19,6 +22,9 @@ const DARK_THEMES: { value: Theme; label: string }[] = [
   { value: "slate", label: "Slate" },
   { value: "carbon", label: "Carbon" },
   { value: "plum", label: "Plum" },
+  { value: "pine", label: "Pine" },
+  { value: "ocean", label: "Ocean" },
+  { value: "ember", label: "Ember" },
 ];
 
 export default function ThemePicker() {

@@ -7,10 +7,10 @@ beforeEach(() => {
   delete document.documentElement.dataset.theme
 })
 
-// The full set CHANGE-7 ships: Teal stays on :root (no data-theme), 7 more
-// light themes, and 4 dark themes. Forest is removed.
-const LIGHT_THEMES = ['indigo', 'rose', 'amber', 'violet', 'sky', 'sepia', 'contrast']
-const DARK_THEMES = ['midnight', 'slate', 'carbon', 'plum']
+// Teal stays on :root (no data-theme). Light + dark themes offered beyond Teal.
+// The old CHANGE-7 'forest' remains removed (a new dark green ships as 'pine').
+const LIGHT_THEMES = ['indigo', 'rose', 'amber', 'violet', 'sky', 'sepia', 'contrast', 'emerald', 'fuchsia', 'lime']
+const DARK_THEMES = ['midnight', 'slate', 'carbon', 'plum', 'pine', 'ocean', 'ember']
 const NEW_THEMES = [...LIGHT_THEMES, ...DARK_THEMES]
 
 describe('ThemePicker', () => {
