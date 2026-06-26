@@ -36,10 +36,11 @@ public sealed class TodoReorderJourney(BrowserFixture browser) : IAsyncLifetime
     // QUARANTINED (BUG-39): deterministic deploy-gate failure (3/3 + 2 reruns) — a reorder reverts
     // after reload in the DEPLOYED env. In-process Api.Integration (TodoReorderTests) passes because
     // the in-memory TodoListStore + synchronous projector can't reproduce the deployed DynamoDB /
-    // async-cross-stream behaviour. Quarantined to unblock the shared deploy gate (it was blocking
-    // every slice + parallel session); the real per-item-Position fragility is tracked in BUG-39 with
-    // a recommended order-snapshot fix. Un-quarantine once that lands and the journey is green.
-    [E2EFact(Skip = "BUG-39: reorder reverts after reload in deployed env (per-item Position lost); see phase-bugs.md")]
+    // async-cross-stream behaviour. BUG-39 was root-caused (2026-06-26) to the clear-test-data harness
+    // NOT clearing notetaker-proj-position: the stable-id todo-order#__default__ stream's stale
+    // processed-position made the projector skip the re-appended reorder (position_guard). Fixed in
+    // clear-test-data; un-quarantined. See phase-bugs.md BUG-39.
+    [E2EFact]
     public async Task Reordered_todos_persist_after_reload()
     {
         var first = $"AAA {Guid.NewGuid():N}"[..16];
