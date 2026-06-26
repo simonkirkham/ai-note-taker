@@ -1,0 +1,244 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Gutter Dot × Markdown — topics as a block overlay</title>
+<style>
+  :root{
+    --teal:#0d9488; --teal-dark:#0f766e; --teal-bg:#ccfbf1;
+    --text:#1f2937; --muted:#6b7280; --border:#e5e7eb; --surface:#fff; --bg:#f8fafc;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;color:var(--text);background:var(--bg);line-height:1.5}
+  header.top{background:linear-gradient(135deg,var(--teal),var(--teal-dark));color:#fff;padding:18px 24px}
+  header.top h1{margin:0 0 3px;font-size:1.15rem}
+  header.top p{margin:0;opacity:.95;font-size:.9rem;max-width:80ch}
+  .wrap{max-width:1180px;margin:0 auto;padding:20px 24px;display:grid;grid-template-columns:1fr;gap:16px}
+  .hint{background:var(--teal-bg);border:1px solid var(--teal);border-radius:8px;padding:10px 14px;font-size:.86rem;color:var(--teal-dark)}
+  .hint b{color:var(--teal-dark)}
+  .stage{display:grid;grid-template-columns:1fr 360px;gap:16px;align-items:start}
+  @media(max-width:900px){.stage{grid-template-columns:1fr}}
+  .card{background:var(--surface);border:1px solid var(--border);border-radius:10px;box-shadow:0 1px 3px rgba(0,0,0,.05);position:relative}
+  .card-h{display:flex;align-items:center;justify-content:space-between;padding:10px 14px;border-bottom:1px solid var(--border)}
+  .card-h .name{font-weight:600;font-size:.82rem;color:var(--muted);letter-spacing:.02em;text-transform:uppercase}
+  .pill{display:inline-flex;align-items:center;gap:8px;background:var(--teal-bg);color:var(--teal-dark);font-weight:600;font-size:.8rem;border-radius:20px;padding:4px 12px;transition:transform .15s}
+  .pill .bar{width:54px;height:6px;background:#fff;border-radius:4px;overflow:hidden}
+  .pill .bar > i{display:block;height:100%;background:var(--teal);width:0;transition:width .3s}
+  .pill.bump{transform:scale(1.08)}
+  .doc{padding:10px 14px 16px}
+  /* block row = [gutter dot][content] */
+  .row{display:flex;align-items:flex-start;gap:6px;border-radius:6px;padding:1px 4px;transition:background .12s}
+  .row:hover{background:#f9fafb}
+  .gutter{flex:0 0 22px;display:flex;justify-content:center;padding-top:.35em}
+  .dot{width:15px;height:15px;border-radius:50%;border:1.6px solid #cbd5e1;background:transparent;cursor:pointer;padding:0;display:flex;align-items:center;justify-content:center;font-size:10px;line-height:1;color:#fff;transition:all .15s;opacity:0}
+  .row:hover .dot{opacity:.55}                         /* ◌ appears on hover for any line */
+  .dot.topic{opacity:1;border-color:var(--teal);background:var(--teal)}      /* ● topic */
+  .dot.topic::after{content:""}
+  .dot.done{opacity:1;border-color:var(--teal-dark);background:var(--teal-dark)} /* ✓ done */
+  .dot.done::after{content:"\2713";font-size:9px}
+  .dot:hover{transform:scale(1.15)}
+  .content{flex:1;min-width:0;padding:2px 0;outline:none}
+  .content.h1{font-size:1.5rem;font-weight:700;margin:6px 0 2px}
+  .content.h3{font-size:1.08rem;font-weight:650;margin:10px 0 1px;color:#111827}
+  .content.p{font-size:.96rem;margin:1px 0}
+  .content.li{font-size:.96rem;margin:0;padding-left:18px;position:relative}
+  .content.li::before{content:"\2022";color:var(--muted);position:absolute;left:4px}
+  .content.li.sub{margin-left:14px}
+  /* topic emphasis (subtle) + done strike IN PLACE (nothing moves) */
+  .row.is-topic .content{}
+  .row.is-done .content{text-decoration:line-through;text-decoration-color:#9ca3af;color:#9ca3af;transition:color .2s}
+  .row.is-done .content strong{color:#9ca3af}
+  .uncovered{margin-top:10px;font-size:.82rem;color:#b45309;display:none}
+  .uncovered.show{display:block}
+  .addrow{display:flex;gap:8px;margin-top:10px;padding-left:26px}
+  .addrow input{flex:1;border:1px solid var(--border);border-radius:7px;padding:8px 10px;font:inherit;font-size:.93rem}
+  .addrow input:focus{outline:none;border-color:var(--teal)}
+  /* markdown panel */
+  .md-card .card-h{cursor:default}
+  pre.md{margin:0;padding:14px;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:.8rem;line-height:1.7;white-space:pre-wrap;word-break:break-word;color:#334155;max-height:62vh;overflow:auto}
+  pre.md .mk{color:#94a3b8}                 /* markdown punctuation */
+  pre.md .tp{color:var(--teal-dark);font-weight:600}  /* topic marker */
+  pre.md .dn{color:#9ca3af;text-decoration:line-through} /* struck (done) */
+  .legend{font-size:.84rem;color:var(--muted)}
+  .legend table{border-collapse:collapse;width:100%;margin-top:6px}
+  .legend td{padding:3px 6px;border-bottom:1px solid var(--border);vertical-align:top}
+  .legend td:first-child{white-space:nowrap;color:var(--teal-dark);font-weight:600}
+  details.foot{margin-top:4px;background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:10px 14px}
+  details.foot summary{cursor:pointer;font-weight:600;font-size:.86rem;color:var(--teal-dark)}
+  .keycap{display:inline-block;background:#f1f5f9;border:1px solid var(--border);border-bottom-width:2px;border-radius:5px;padding:0 5px;font-size:.78rem;font-family:ui-monospace,monospace}
+  .tagline{font-size:.8rem;color:var(--muted);margin:2px 0 0}
+</style>
+</head>
+<body>
+<header class="top">
+  <h1>Gutter Dot × Markdown <span style="opacity:.8;font-weight:400">— topics as a block overlay (Option B)</span></h1>
+  <p>A topic is an <b>attribute on any block</b> — a <code>### header</code>, a paragraph, or a bullet — not a special line type. Marking and ticking never change the note's markdown structure. Toggle the Markdown panel to see how it round-trips.</p>
+</header>
+
+<div class="wrap">
+  <div class="hint">
+    <b>▶ Try this:</b>
+    &nbsp;1) Hover any line → a <b>gutter dot</b> appears. Click it to make that line a topic (●), click again to tick it <b>discussed</b> (✓ — it strikes through <b>in place</b>, nothing moves).
+    &nbsp;2) Note <b>“Agenda”</b> &amp; <b>“Parking lot”</b> are <code>###</code> headers with <b>no dot</b> — headers that aren't topics.
+    &nbsp;3) Click the dot on the <b>“rename the staging env”</b> bullet — a <b>non-header</b> line becomes a topic. Topics ≠ headers, both ways.
+    &nbsp;4) Hit <b>⌁ Markdown</b> to watch the encoding (<code>~~done~~</code> + an invisible <code>&lt;!--topic--&gt;</code>).
+  </div>
+
+  <div class="stage">
+    <div class="card">
+      <div class="card-h">
+        <span class="name">Weekly Team Sync</span>
+        <span class="pill" id="pill"><span id="pillTxt">0 / 0 covered</span><span class="bar"><i id="pillBar"></i></span></span>
+      </div>
+      <div class="doc" id="doc"></div>
+      <div class="uncovered" id="uncov">⚠ <span id="uncovList"></span> not yet covered.</div>
+      <div class="addrow">
+        <input id="addInput" placeholder="type a note, press Enter…  (then dot it to make it a topic)" />
+      </div>
+    </div>
+
+    <div class="card md-card">
+      <div class="card-h">
+        <span class="name">What gets stored (markdown)</span>
+        <button class="pill" id="mdToggle" style="cursor:pointer;border:none">⌁ Markdown</button>
+      </div>
+      <pre class="md" id="md" style="display:none"></pre>
+      <div class="doc legend" id="mdLegend">
+        <div>Topic-ness is a block <b>attribute</b>, persisted with a tiny invisible marker; “discussed” reuses standard strikethrough. So the note stays clean, portable markdown — and a header is still a header.</div>
+        <table>
+          <tr><td>### Budget &lt;!--topic--&gt;</td><td>a header that's a topic (open)</td></tr>
+          <tr><td>### ~~Budget~~ &lt;!--topic--&gt;</td><td>topic header, discussed</td></tr>
+          <tr><td>### Agenda</td><td>a header that's <b>not</b> a topic</td></tr>
+          <tr><td>- vendor SLA… &lt;!--topic--&gt;</td><td>a <b>bullet</b> that's a topic</td></tr>
+        </table>
+        <div class="tagline">Press <span class="keycap">⌁ Markdown</span> to see the live document encoded.</div>
+      </div>
+    </div>
+  </div>
+
+  <details class="foot">
+    <summary>How it serves the 4 needs — and why it works with other markdown</summary>
+    <table style="border-collapse:collapse;width:100%;margin-top:8px;font-size:.86rem">
+      <tr><td style="padding:3px 6px;color:var(--teal-dark);font-weight:600;white-space:nowrap">Pre-record</td><td style="padding:3px 6px">Write your agenda however you like — headers, bullets, plain lines — and dot the ones that are topics.</td></tr>
+      <tr><td style="padding:3px 6px;color:var(--teal-dark);font-weight:600">Mark-off</td><td style="padding:3px 6px">One click on the gutter dot ticks a topic discussed; it strikes through in place, nothing collapses or jumps.</td></tr>
+      <tr><td style="padding:3px 6px;color:var(--teal-dark);font-weight:600">Structure</td><td style="padding:3px 6px">The note keeps your real markdown structure (headers, bold, lists); topic-ness is just an overlay, and the pill tracks coverage.</td></tr>
+      <tr><td style="padding:3px 6px;color:var(--teal-dark);font-weight:600">Low friction</td><td style="padding:3px 6px">No syntax to learn, no second pane, nothing reflows — same single surface you already type in.</td></tr>
+      <tr><td style="padding:3px 6px;color:var(--teal-dark);font-weight:600">Works w/ markdown</td><td style="padding:3px 6px">Because topic/done are attributes, not a block type, a <code>### header</code> can be a topic OR just a header, and any paragraph/bullet can be a topic too — unlike a checkbox list, which can't also be a heading.</td></tr>
+    </table>
+  </details>
+</div>
+
+<script>
+// Block model: topic/done are attributes layered on ANY block type.
+let nextId = 1;
+const B = (type, text, topic=false, done=false, sub=false) => ({ id: nextId++, type, text, topic, done, sub });
+let blocks = [
+  B('h1', 'Weekly Team Sync'),
+  B('h3', 'Agenda'),                                   // header, NOT a topic
+  B('h3', 'Budget (Q3)', true),                        // header that IS a topic
+  B('li', 'Q3 over by **12%**', false, false, true),
+  B('li', 'Dan to recut the forecast', false, false, true),
+  B('h3', 'Hiring backfill', true),
+  B('li', 'backfill the 2 SDR roles', false, false, true),
+  B('li', 'Priya to approve reqs by Fri', false, false, true),
+  B('h3', 'Roadmap', true),
+  B('p', 'ship date slips ~2 weeks'),
+  B('h3', 'Risks / blockers', true),
+  B('li', 'vendor SLA needs checking', false, false, true),
+  B('li', 'rename the staging env', false, false, true), // a bullet you can make a topic (non-header topic)
+  B('h3', 'AOB', true),                                 // topic, undiscussed
+  B('h3', 'Parking lot'),                               // header, NOT a topic
+  B('p', '(off-agenda items land here)'),
+];
+
+const doc = document.getElementById('doc');
+const esc = s => s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+const inlineToHtml = s => esc(s).replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+
+function cycle(b){
+  // ◌ none -> ● topic -> ✓ done -> ◌ none
+  if(!b.topic){ b.topic = true; b.done = false; }
+  else if(!b.done){ b.done = true; }
+  else { b.topic = false; b.done = false; }
+  render(); bumpPill();
+}
+
+function render(){
+  doc.innerHTML = '';
+  blocks.forEach(b => {
+    const row = document.createElement('div');
+    row.className = 'row' + (b.topic?' is-topic':'') + (b.done?' is-done':'');
+    const g = document.createElement('div'); g.className='gutter';
+    const dot = document.createElement('button');
+    dot.className = 'dot' + (b.done?' done':(b.topic?' topic':''));
+    dot.title = b.done ? 'Discussed — click to clear' : (b.topic ? 'Topic — click to mark discussed' : 'Click to make this a topic');
+    dot.onclick = () => cycle(b);
+    g.appendChild(dot);
+    const c = document.createElement('div');
+    c.className = 'content ' + b.type + (b.sub?' sub':'');
+    c.contentEditable = 'true'; c.spellcheck = false;
+    c.innerHTML = inlineToHtml(b.text);
+    c.oninput = () => { b.text = c.innerText; updateMd(); };
+    row.appendChild(g); row.appendChild(c);
+    doc.appendChild(row);
+  });
+  updatePill(); updateMd();
+}
+
+function topicStats(){
+  const topics = blocks.filter(b=>b.topic);
+  const done = topics.filter(b=>b.done);
+  return { total: topics.length, done: done.length, open: topics.filter(b=>!b.done) };
+}
+function updatePill(){
+  const s = topicStats();
+  document.getElementById('pillTxt').textContent = `${s.done} / ${s.total} covered`;
+  document.getElementById('pillBar').style.width = s.total ? (100*s.done/s.total)+'%' : '0%';
+  const uncov = document.getElementById('uncov');
+  if(s.open.length && s.done>0){
+    uncov.classList.add('show');
+    document.getElementById('uncovList').textContent = s.open.map(b=>b.text.replace(/\*\*/g,'')).join(', ');
+  } else uncov.classList.remove('show');
+}
+function bumpPill(){ const p=document.getElementById('pill'); p.classList.add('bump'); setTimeout(()=>p.classList.remove('bump'),160); }
+
+// ---- markdown serialization (the round-trip story) ----
+const PREFIX = { h1:'# ', h3:'### ', p:'', li:'- ' };
+function blockToMd(b){
+  let inner = b.text;                                  // keeps **bold**
+  let parts = [];
+  parts.push('<span class="mk">'+esc(PREFIX[b.type].trimEnd()===''?'':PREFIX[b.type])+'</span>');
+  let body = esc(inner).replace(/\*\*(.+?)\*\*/g,'<span class="mk">**</span>$1<span class="mk">**</span>');
+  if(b.done) body = '<span class="mk">~~</span><span class="dn">'+body+'</span><span class="mk">~~</span>';
+  parts.push(body);
+  if(b.topic) parts.push(' <span class="tp">&lt;!--topic--&gt;</span>');
+  return parts.join('');
+}
+function updateMd(){
+  const pre = document.getElementById('md');
+  if(pre.style.display==='none') return;
+  pre.innerHTML = blocks.map(blockToMd).join('\n');
+}
+document.getElementById('mdToggle').onclick = () => {
+  const pre = document.getElementById('md'), leg = document.getElementById('mdLegend');
+  const showing = pre.style.display!=='none';
+  pre.style.display = showing ? 'none' : 'block';
+  leg.style.display = showing ? 'block' : 'none';
+  document.getElementById('mdToggle').textContent = showing ? '⌁ Markdown' : '✕ Hide markdown';
+  updateMd();
+};
+
+// add a line -> a plain paragraph you can then dot into a topic (non-header topic)
+const addInput = document.getElementById('addInput');
+addInput.addEventListener('keydown', e => {
+  if(e.key==='Enter' && addInput.value.trim()){
+    blocks.push(B('p', addInput.value.trim()));
+    addInput.value=''; render();
+  }
+});
+
+render();
+</script>
+</body>
+</html>
