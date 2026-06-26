@@ -7,7 +7,7 @@
 | Slice | Summary | Status | Depends on |
 |-------|---------|--------|------------|
 | 36-A | **Set & apply per-workspace theme (keystone).** `WorkspaceThemeSet` event + `SetWorkspaceTheme` command on `Workspace`; `Theme` folded into `WorkspaceListView` (mapped in **both** stores + round-trip test); `PATCH /workspaces/{id}/theme`; the existing sidebar `ThemePicker` becomes workspace-scoped — picking a theme optimistically applies it and persists it to the active **non-default** workspace; switching workspace applies that workspace's stored theme. Proves the full event→projection→route→apply flow on one real call. | Done | — |
-| 36-B | **FOUC-free cold load.** Cache each workspace's resolved theme client-side keyed by `wsId`; the `index.html` bootstrap reads `wsId` from the URL and applies the cached theme before React mounts — removes the brief default-theme flash 36-A leaves on a hard reload of a themed workspace. Pure refinement on the proven pattern. | Not Started | 36-A |
+| 36-B | **FOUC-free cold load.** Cache each workspace's resolved theme client-side keyed by `wsId`; the `index.html` bootstrap reads `wsId` from the URL and applies the cached theme before React mounts — removes the brief default-theme flash 36-A leaves on a hard reload of a themed workspace. Pure refinement on the proven pattern. | Done | 36-A |
 
 **36-A is the keystone** — the cross-cutting contract is "a workspace-scoped setting read from an **async** projection and applied to the global `<html>` theme attribute on switch", proven on one workspace. 36-B is an independent polish (cold-load flash) and ships alone.
 
