@@ -77,7 +77,37 @@ public sealed class McpEditNoteToolTests(ApiFactory factory) : IClassFixture<Api
         Assert.True(IsToolError(result));
     }
 
+    [Fact]
+    public async Task EditNote_InNamedWorkspace_KeepsTheNoteScopedToThatWorkspace()
+    {
+        // The null workspace passed on EditContent must not drop the note out of its named workspace —
+        // the projections preserve WorkspaceId on the ContentEdited fold.
+        const string workspace = "ws-acme";
+        SeedWorkspace(Owner, workspace, "Acme");
+        var client = _factory.CreateUnauthenticatedClient();
+        var created = await CallToolAsync(client, "create_note",
+            new { workspaceId = workspace, title = "Acme plan", content = "v1" }, McpTestTokens.Valid(Owner));
+        var noteId = ParsePayload(created).GetProperty("noteId").GetString()!;
+
+        var edited = await CallToolAsync(client, "edit_note",
+            new { noteId, content = "v2 rewritten" }, McpTestTokens.Valid(Owner));
+        Assert.False(IsToolError(edited));
+
+        // Still readable in its named workspace, with the new body.
+        var fetched = await CallToolAsync(client, "get_note",
+            new { workspaceId = workspace, noteId }, McpTestTokens.Valid(Owner));
+        Assert.False(IsToolError(fetched));
+        Assert.Equal("v2 rewritten", ParsePayload(fetched).GetProperty("content").GetString());
+    }
+
     // ── Helpers ──────────────────────────────────────────────────────────
+
+    private void SeedWorkspace(string userId, string workspaceId, string name)
+    {
+        var store = _factory.Services.GetRequiredService<IWorkspaceListStore>();
+        store.UpsertAsync(new WorkspaceListView(
+            new WorkspaceId(workspaceId), name, DateTimeOffset.UtcNow, userId)).GetAwaiter().GetResult();
+    }
 
     private async Task<string> CreateNoteAsync(HttpClient client, string user, string title, string content)
     {

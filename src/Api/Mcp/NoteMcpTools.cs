@@ -250,7 +250,11 @@ public sealed class NoteMcpTools(
         if (string.IsNullOrWhiteSpace(content))
             throw new McpException("Provide content for the note (clearing a note is not supported).");
 
-        var version = await noteCommands.HandleAsync(new EditContent(note, content), userId, null, ct).ConfigureAwait(false);
+        // edit_note targets an EXISTING stream, so contention (a concurrent write) and a TOCTOU delete
+        // (note removed between the ownership auth and the append) are both plausible — map them to
+        // clean MCP errors instead of leaking a raw 503/500.
+        var version = await RunNoteWriteAsync(
+            () => noteCommands.HandleAsync(new EditContent(note, content), userId, null, ct)).ConfigureAwait(false);
         logger.LogInformation("mcp_write tool=edit_note sub={Sub} noteId={NoteId} latencyMs={LatencyMs}",
             userId, note.Value, stopwatch.Elapsed.TotalMilliseconds);
         return JsonSerializer.Serialize(new { noteId = note.Value.ToString(), version });
@@ -314,6 +318,15 @@ public sealed class NoteMcpTools(
         catch (Api.Exceptions.ActionItemNotFoundException) { throw new McpException("Action item not found."); }
         catch (Api.Exceptions.NoteNotFoundException) { throw new McpException("Note not found."); }
         catch (InvalidOperationException ex) { throw new McpException(ex.Message); }
+    }
+
+    // Same, for a note write: a TOCTOU-deleted note is not-found; persistent write contention is a
+    // retriable conflict the client can interpret instead of a raw 503/500.
+    private static async Task<long> RunNoteWriteAsync(Func<Task<long>> write)
+    {
+        try { return await write().ConfigureAwait(false); }
+        catch (Api.Exceptions.NoteNotFoundException) { throw new McpException("Note not found."); }
+        catch (WriteContentionException) { throw new McpException("The note is being modified concurrently — please retry."); }
     }
 
     // The authenticated user id (the token `sub`). JwtBearer's default inbound mapping turns `sub`
