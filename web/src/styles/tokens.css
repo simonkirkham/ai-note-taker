@@ -139,44 +139,6 @@
   --color-banner-text:  #FFFFFF;
 }
 
-/* Sepia — warm paper-toned primary with a teal CTA, light. */
-[data-theme="sepia"] {
-  --color-primary:      #B45309;
-  --color-primary-dark: #92400E;
-  --color-primary-bg:   rgba(180, 83, 9, 0.06);
-  --color-cta:          #0D9488;
-  --color-cta-dark:     #0F766E;
-  --color-bg:           #FAF6EF;
-  --color-surface:      #FFFDF8;
-  --color-text:         #44372A;
-  --color-text-muted:   #6B5A45;
-  --color-border:       #E8DCC8;
-  --color-error:        #DC2626;
-  --color-error-bg:     #FEE2E2;
-  --color-error-border: #FCA5A5;
-  --color-banner:       #1E40AF;
-  --color-banner-text:  #FFFFFF;
-}
-
-/* Contrast — maximum-contrast light theme (black text on white). */
-[data-theme="contrast"] {
-  --color-primary:      #1D4ED8;
-  --color-primary-dark: #1E3A8A;
-  --color-primary-bg:   rgba(29, 78, 216, 0.06);
-  --color-cta:          #B91C1C;
-  --color-cta-dark:     #991B1B;
-  --color-bg:           #FFFFFF;
-  --color-surface:      #FFFFFF;
-  --color-text:         #000000;
-  --color-text-muted:   #374151;
-  --color-border:       #1F2937;
-  --color-error:        #DC2626;
-  --color-error-bg:     #FEE2E2;
-  --color-error-border: #FCA5A5;
-  --color-banner:       #1E40AF;
-  --color-banner-text:  #FFFFFF;
-}
-
 /* Emerald — true green primary with an orange CTA, light. */
 [data-theme="emerald"] {
   --color-primary:      #059669;
@@ -196,37 +158,18 @@
   --color-banner-text:  #FFFFFF;
 }
 
-/* Fuchsia — vivid magenta primary with a teal CTA, light. */
-[data-theme="fuchsia"] {
-  --color-primary:      #C026D3;
-  --color-primary-dark: #A21CAF;
-  --color-primary-bg:   rgba(192, 38, 211, 0.06);
-  --color-cta:          #0D9488;
-  --color-cta-dark:     #0F766E;
-  --color-bg:           #FDF4FF;
+/* Steel — cool blue-grey primary with a sky CTA, light. Minimal/professional. */
+[data-theme="steel"] {
+  --color-primary:      #475569;
+  --color-primary-dark: #334155;
+  --color-primary-bg:   rgba(71, 85, 105, 0.06);
+  --color-cta:          #0EA5E9;
+  --color-cta-dark:     #0284C7;
+  --color-bg:           #F1F5F9;
   --color-surface:      #FFFFFF;
-  --color-text:         #4A044E;
-  --color-text-muted:   #4B5563;
-  --color-border:       #F5D0FE;
-  --color-error:        #DC2626;
-  --color-error-bg:     #FEE2E2;
-  --color-error-border: #FCA5A5;
-  --color-banner:       #1E40AF;
-  --color-banner-text:  #FFFFFF;
-}
-
-/* Lime — fresh yellow-green primary with a violet CTA, light. */
-[data-theme="lime"] {
-  --color-primary:      #65A30D;
-  --color-primary-dark: #4D7C0F;
-  --color-primary-bg:   rgba(101, 163, 13, 0.06);
-  --color-cta:          #7C3AED;
-  --color-cta-dark:     #6D28D9;
-  --color-bg:           #F7FEE7;
-  --color-surface:      #FFFFFF;
-  --color-text:         #1A2E05;
-  --color-text-muted:   #4B5563;
-  --color-border:       #D9F99D;
+  --color-text:         #1E293B;
+  --color-text-muted:   #64748B;
+  --color-border:       #CBD5E1;
   --color-error:        #DC2626;
   --color-error-bg:     #FEE2E2;
   --color-error-border: #FCA5A5;
@@ -271,25 +214,6 @@
   --color-border:       #334155;
   --color-error:        #F87171;
   --color-error-bg:     #3F1D1D;
-  --color-error-border: rgba(248, 113, 113, 0.40);
-  --color-banner:       #1E40AF;
-  --color-banner-text:  #FFFFFF;
-}
-
-/* Carbon — warm amber-on-stone dark mode. */
-[data-theme="carbon"] {
-  --color-primary:      #F59E0B;
-  --color-primary-dark: #D97706;
-  --color-primary-bg:   rgba(245, 158, 11, 0.10);
-  --color-cta:          #38BDF8;
-  --color-cta-dark:     #0EA5E9;
-  --color-bg:           #1C1917;
-  --color-surface:      #292524;
-  --color-text:         #F5F5F4;
-  --color-text-muted:   #A8A29E;
-  --color-border:       #44403C;
-  --color-error:        #F87171;
-  --color-error-bg:     #3A201C;
   --color-error-border: rgba(248, 113, 113, 0.40);
   --color-banner:       #1E40AF;
   --color-banner-text:  #FFFFFF;
@@ -364,6 +288,63 @@
   --color-text:         #FFEDD5;
   --color-text-muted:   #B5A79A;
   --color-border:       #44291A;
+  --color-error:        #F87171;
+  --color-error-bg:     rgba(248, 113, 113, 0.15);
+  --color-error-border: rgba(248, 113, 113, 0.40);
+  --color-banner:       #1E40AF;
+  --color-banner-text:  #FFFFFF;
+}
+
+/* Obsidian — stark pure-black (OLED) with a near-white accent + cyan CTA, dark. */
+[data-theme="obsidian"] {
+  --color-primary:      #E5E7EB;
+  --color-primary-dark: #CBD5E1;
+  --color-primary-bg:   rgba(229, 231, 235, 0.10);
+  --color-cta:          #06B6D4;
+  --color-cta-dark:     #0891B2;
+  --color-bg:           #000000;
+  --color-surface:      #0D0D0D;
+  --color-text:         #E5E7EB;
+  --color-text-muted:   #9CA3AF;
+  --color-border:       #262626;
+  --color-error:        #F87171;
+  --color-error-bg:     rgba(248, 113, 113, 0.15);
+  --color-error-border: rgba(248, 113, 113, 0.40);
+  --color-banner:       #1E40AF;
+  --color-banner-text:  #FFFFFF;
+}
+
+/* Graphite — neutral charcoal with a blue accent + orange CTA, dark. */
+[data-theme="graphite"] {
+  --color-primary:      #60A5FA;
+  --color-primary-dark: #3B82F6;
+  --color-primary-bg:   rgba(96, 165, 250, 0.12);
+  --color-cta:          #FB923C;
+  --color-cta-dark:     #F97316;
+  --color-bg:           #18181B;
+  --color-surface:      #27272A;
+  --color-text:         #E4E4E7;
+  --color-text-muted:   #A1A1AA;
+  --color-border:       #3F3F46;
+  --color-error:        #F87171;
+  --color-error-bg:     rgba(248, 113, 113, 0.15);
+  --color-error-border: rgba(248, 113, 113, 0.40);
+  --color-banner:       #1E40AF;
+  --color-banner-text:  #FFFFFF;
+}
+
+/* Deep Sea — cyan accent on a very dark teal, warm-orange CTA, dark. */
+[data-theme="deepsea"] {
+  --color-primary:      #22D3EE;
+  --color-primary-dark: #06B6D4;
+  --color-primary-bg:   rgba(34, 211, 238, 0.12);
+  --color-cta:          #FB923C;
+  --color-cta-dark:     #F97316;
+  --color-bg:           #06141A;
+  --color-surface:      #0C2029;
+  --color-text:         #CFFAFE;
+  --color-text-muted:   #7CA0AB;
+  --color-border:       #163945;
   --color-error:        #F87171;
   --color-error-bg:     rgba(248, 113, 113, 0.15);
   --color-error-border: rgba(248, 113, 113, 0.40);
