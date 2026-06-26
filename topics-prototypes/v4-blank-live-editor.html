@@ -1,0 +1,252 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Gutter Dot — blank live editor</title>
+<style>
+  :root{
+    --teal:#0d9488; --teal-dark:#0f766e; --teal-bg:#ccfbf1;
+    --text:#1f2937; --muted:#6b7280; --border:#e5e7eb; --surface:#fff; --bg:#f8fafc;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;color:var(--text);background:var(--bg);line-height:1.5}
+  header.top{background:linear-gradient(135deg,var(--teal),var(--teal-dark));color:#fff;padding:16px 24px}
+  header.top h1{margin:0 0 3px;font-size:1.1rem}
+  header.top p{margin:0;opacity:.95;font-size:.88rem;max-width:88ch}
+  .wrap{max-width:1140px;margin:0 auto;padding:18px 24px}
+  .hint{font-size:.86rem;color:var(--muted);margin:0 0 14px}
+  .hint b{color:var(--teal-dark)}
+  code{background:#f1f5f9;padding:1px 6px;border-radius:4px;font-size:.85em}
+
+  .stage{display:grid;grid-template-columns:minmax(0,1fr);gap:16px;align-items:start}
+  .stage.md-on{grid-template-columns:minmax(0,1fr) 340px}
+  @media(max-width:820px){.stage.md-on{grid-template-columns:minmax(0,1fr)}}
+
+  .card{background:var(--surface);border:1px solid var(--border);border-radius:12px;box-shadow:0 1px 3px rgba(0,0,0,.05)}
+  .toolbar{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 16px;border-bottom:1px solid var(--border)}
+  .toolbar .title{font-weight:650;font-size:.95rem;border:none;outline:none;color:var(--text)}
+  .toolbar .right{display:flex;align-items:center;gap:10px}
+  .pill{display:inline-flex;align-items:center;gap:8px;background:var(--teal-bg);color:var(--teal-dark);font-weight:600;font-size:.8rem;border-radius:20px;padding:4px 12px;transition:transform .15s}
+  .pill .bar{width:48px;height:6px;background:#fff;border-radius:4px;overflow:hidden}
+  .pill .bar > i{display:block;height:100%;background:var(--teal);width:0;transition:width .3s}
+  .pill.bump{transform:scale(1.09)}
+  .btn{border:1px solid var(--border);background:#fff;color:var(--muted);font:inherit;font-size:.8rem;font-weight:600;border-radius:8px;padding:5px 11px;cursor:pointer}
+  .btn:hover{border-color:var(--teal);color:var(--teal-dark)}
+
+  .doc{padding:10px 16px 18px;min-height:320px}
+
+  .row{display:grid;grid-template-columns:26px minmax(0,1fr);align-items:start;border-radius:7px}
+  .row.h1{--fs:1.6rem}
+  .row.h2{--fs:1.28rem;margin-top:16px}
+  .row.h3{--fs:1.08rem;margin-top:12px}
+  .row.p{--fs:.98rem;margin-top:2px}
+  .row.li{--fs:.98rem}
+  .gutter{font-size:var(--fs)}
+  .dotbox{height:1.5em;display:flex;align-items:center;justify-content:center}
+  .dot{width:14px;height:14px;border-radius:50%;border:1.7px solid #cbd5e1;background:transparent;cursor:pointer;padding:0;display:flex;align-items:center;justify-content:center;font-size:9px;color:#fff;opacity:0;transition:opacity .12s,transform .12s,background .15s,border-color .15s}
+  .row:hover .dot{opacity:.5}
+  .dot.topic{opacity:1;border-color:var(--teal);background:var(--teal)}
+  .dot.done{opacity:1;border-color:var(--teal-dark);background:var(--teal-dark)}
+  .dot.done::after{content:"\2713"}
+  .dot:hover{transform:scale(1.18);opacity:1}
+
+  .content{font-size:var(--fs);line-height:1.5;outline:none;min-width:0;word-break:break-word}
+  .content.h1{font-weight:700}
+  .content.h2{font-weight:680}
+  .content.h3{font-weight:650;color:#111827}
+  .content.li{padding-left:16px;position:relative}
+  .content.li::before{content:"\2022";color:#9ca3af;position:absolute;left:3px}
+  .content.p:empty::before{content:attr(data-ph);color:#cbd5e1;pointer-events:none}
+
+  .row.is-topic{box-shadow:inset 2px 0 0 var(--teal)}
+  .row.is-done{box-shadow:inset 2px 0 0 #cbd5e1}
+  .row.is-done .content{color:#9ca3af;text-decoration:line-through;text-decoration-color:#b6bdc7}
+  .row.is-done .content strong{color:#9ca3af}
+
+  pre.md{margin:0;padding:14px;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:.8rem;line-height:1.75;white-space:pre-wrap;word-break:break-word;color:#334155;max-height:64vh;overflow:auto;min-height:60px}
+  pre.md .mk{color:#94a3b8}
+  pre.md .tp{color:var(--teal-dark);font-weight:600}
+  pre.md .dn{color:#9ca3af}
+  .md-note{padding:0 14px 12px;font-size:.8rem;color:var(--muted)}
+</style>
+</head>
+<body>
+<header class="top">
+  <h1>Gutter Dot — blank live editor</h1>
+  <p>An empty note that behaves like the real page. Type <code>## </code> for a heading, <code>- </code> for a bullet, <kbd>Enter</kbd> for a new line, <kbd>Ctrl/⌘+B</kbd> to bold. Hover any line and click its <b>dot</b> to make it a topic; click again to tick it discussed.</p>
+</header>
+
+<div class="wrap">
+  <p class="hint"><b>Start typing below.</b> Everything is real and editable — the dot rides on top of whatever you write, without changing its formatting.</p>
+
+  <div class="stage" id="stage">
+    <div class="card">
+      <div class="toolbar">
+        <input class="title" id="title" placeholder="Untitled note" />
+        <span class="right">
+          <span class="pill" id="pill"><span id="pillTxt">0 / 0</span> covered<span class="bar"><i id="pillBar"></i></span></span>
+          <button class="btn" id="mdToggle">⌁ Markdown</button>
+        </span>
+      </div>
+      <div class="doc" id="doc"></div>
+    </div>
+
+    <div class="card" id="mdCard" style="display:none">
+      <div class="toolbar"><span class="title" style="color:var(--muted);font-size:.82rem;text-transform:uppercase;letter-spacing:.02em">Stored markdown</span></div>
+      <pre class="md" id="md"></pre>
+      <div class="md-note">Done = <code>~~strikethrough~~</code>; topic = an invisible <code>&lt;!--topic--&gt;</code> flag. A header stays a header.</div>
+    </div>
+  </div>
+</div>
+
+<script>
+const doc = document.getElementById('doc');
+const esc = s => s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+
+// ---- caret helpers ----
+function caretOffset(el){
+  const sel=window.getSelection(); if(!sel.rangeCount) return 0;
+  const r=sel.getRangeAt(0); const pre=r.cloneRange(); pre.selectNodeContents(el); pre.setEnd(r.endContainer, r.endOffset);
+  return pre.toString().length;
+}
+function setCaret(el, offset){
+  el.focus();
+  const sel=window.getSelection(); const range=document.createRange();
+  const walker=document.createTreeWalker(el, NodeFilter.SHOW_TEXT); let n,count=0,target=null,toff=0;
+  while(n=walker.nextNode()){ const len=n.textContent.length; if(count+len>=offset){ target=n; toff=offset-count; break;} count+=len; }
+  if(target){ range.setStart(target,toff); range.collapse(true);} else { range.selectNodeContents(el); range.collapse(false);}
+  sel.removeAllRanges(); sel.addRange(range);
+}
+
+// ---- inline (DOM) -> markdown string ----
+function inlineMd(content){
+  let out='';
+  content.childNodes.forEach(node=>{
+    if(node.nodeType===3) out+=node.textContent;
+    else if(node.nodeName==='STRONG'||node.nodeName==='B') out+='**'+node.textContent+'**';
+    else if(node.nodeName==='BR') out+='\n';
+    else out+=node.textContent;
+  });
+  return out;
+}
+
+// ---- a block row ----
+function setType(row, type){
+  ['h1','h2','h3','p','li'].forEach(t=>{ row.classList.toggle(t, t===type); row.querySelector('.content').classList.toggle(t, t===type); });
+  row.dataset.type=type;
+  const c=row.querySelector('.content'); c.dataset.ph = type==='p' ? 'type a line…  (## heading, - bullet)' : '';
+}
+function makeRow(type='p', text=''){
+  const row=document.createElement('div');
+  row.className='row';
+  row.dataset.type=type; row.dataset.topic='0'; row.dataset.done='0';
+  const g=document.createElement('div'); g.className='gutter';
+  const box=document.createElement('div'); box.className='dotbox';
+  const dot=document.createElement('button'); dot.className='dot';
+  dot.title='Make this a topic';
+  dot.onclick=()=>cycle(row);
+  box.appendChild(dot); g.appendChild(box);
+  const c=document.createElement('div'); c.className='content'; c.contentEditable='true'; c.spellcheck=false;
+  if(text) c.textContent=text;
+  c.addEventListener('keydown', e=>onKey(e,row));
+  c.addEventListener('input', ()=>onInput(row));
+  row.appendChild(g); row.appendChild(c);
+  setType(row,type);
+  return row;
+}
+function focusRow(row, offset=0){ setCaret(row.querySelector('.content'), offset); }
+
+function cycle(row){
+  const topic=row.dataset.topic==='1', done=row.dataset.done==='1';
+  if(!topic){ row.dataset.topic='1'; row.dataset.done='0'; }
+  else if(!done){ row.dataset.done='1'; }
+  else { row.dataset.topic='0'; row.dataset.done='0'; }
+  paint(row); bump(); updatePill(); updateMd();
+}
+function paint(row){
+  const topic=row.dataset.topic==='1', done=row.dataset.done==='1';
+  row.classList.toggle('is-topic', topic && !done);
+  row.classList.toggle('is-done', done);
+  const dot=row.querySelector('.dot');
+  dot.className='dot'+(done?' done':(topic?' topic':''));
+  dot.title = done?'Discussed — click to clear':(topic?'Topic — click to tick discussed':'Make this a topic');
+}
+
+// ---- editing behaviour ----
+function onKey(e,row){
+  const c=row.querySelector('.content');
+  if(e.key==='Enter' && !e.shiftKey){
+    e.preventDefault();
+    const off=caretOffset(c); const full=c.textContent;
+    const before=full.slice(0,off), after=full.slice(off);
+    c.textContent=before;
+    const nr=makeRow('p', after); row.after(nr); focusRow(nr,0);
+    updatePill(); updateMd();
+  } else if((e.ctrlKey||e.metaKey) && (e.key==='b'||e.key==='B')){
+    e.preventDefault(); document.execCommand('bold'); updateMd();
+  } else if(e.key==='Backspace'){
+    const off=caretOffset(c); const sel=window.getSelection();
+    if(off===0 && sel.isCollapsed){
+      if(row.dataset.type!=='p'){ e.preventDefault(); setType(row,'p'); updateMd(); return; }
+      const prev=row.previousElementSibling;
+      if(!prev){ e.preventDefault(); return; }
+      e.preventDefault();
+      const pc=prev.querySelector('.content'); const plen=pc.textContent.length;
+      pc.textContent = pc.textContent + c.textContent;
+      row.remove(); setCaret(pc, plen); updatePill(); updateMd();
+    }
+  }
+}
+function onInput(row){
+  const c=row.querySelector('.content');
+  if(row.dataset.type==='p'){
+    const t=c.textContent; let m;
+    if(m=t.match(/^(#{1,3})\s([\s\S]*)$/)){ setType(row,'h'+m[1].length); c.textContent=m[2]; setCaret(c,0); }
+    else if(m=t.match(/^[-*]\s([\s\S]*)$/)){ setType(row,'li'); c.textContent=m[1]; setCaret(c,0); }
+  }
+  updateMd();
+}
+
+// ---- coverage ----
+function rows(){ return [...doc.querySelectorAll('.row')]; }
+function updatePill(){
+  const t=rows().filter(r=>r.dataset.topic==='1'); const done=t.filter(r=>r.dataset.done==='1').length;
+  document.getElementById('pillTxt').textContent=`${done} / ${t.length}`;
+  document.getElementById('pillBar').style.width = t.length ? (100*done/t.length)+'%' : '0%';
+}
+function bump(){ const p=document.getElementById('pill'); p.classList.add('bump'); setTimeout(()=>p.classList.remove('bump'),160); }
+
+// ---- markdown view ----
+const PREFIX={h1:'# ',h2:'## ',h3:'### ',p:'',li:'- '};
+function blockMd(row){
+  const type=row.dataset.type, topic=row.dataset.topic==='1', done=row.dataset.done==='1';
+  const raw=inlineMd(row.querySelector('.content'));
+  let parts=[];
+  if(PREFIX[type]) parts.push('<span class="mk">'+esc(PREFIX[type])+'</span>');
+  let body=esc(raw).replace(/\*\*([\s\S]+?)\*\*/g,'<span class="mk">**</span>$1<span class="mk">**</span>');
+  if(done) body='<span class="mk">~~</span><span class="dn">'+body+'</span><span class="mk">~~</span>';
+  parts.push(body);
+  if(topic) parts.push(' <span class="tp">&lt;!--topic--&gt;</span>');
+  return parts.join('');
+}
+function updateMd(){
+  if(document.getElementById('mdCard').style.display==='none') return;
+  const title=document.getElementById('title').value.trim();
+  const head = title ? '<span class="mk"># </span>'+esc(title)+'\n\n' : '';
+  document.getElementById('md').innerHTML = head + rows().map(blockMd).join('\n');
+}
+document.getElementById('mdToggle').onclick=()=>{
+  const card=document.getElementById('mdCard'), stage=document.getElementById('stage'), btn=document.getElementById('mdToggle');
+  const on=card.style.display==='none';
+  card.style.display=on?'block':'none'; stage.classList.toggle('md-on',on);
+  btn.textContent=on?'✕ Hide markdown':'⌁ Markdown'; updateMd();
+};
+document.getElementById('title').addEventListener('input',updateMd);
+
+// ---- start blank, focused ----
+const first=makeRow('p',''); doc.appendChild(first); updatePill();
+setTimeout(()=>focusRow(first,0), 30);
+</script>
+</body>
+</html>
