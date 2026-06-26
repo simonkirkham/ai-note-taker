@@ -6,7 +6,7 @@
 
 | Slice | Summary | Status | Depends on |
 |-------|---------|--------|------------|
-| 36-A | **Set & apply per-workspace theme (keystone).** `WorkspaceThemeSet` event + `SetWorkspaceTheme` command on `Workspace`; `Theme` folded into `WorkspaceListView` (mapped in **both** stores + round-trip test); `PATCH /workspaces/{id}/theme`; the existing sidebar `ThemePicker` becomes workspace-scoped — picking a theme optimistically applies it and persists it to the active **non-default** workspace; switching workspace applies that workspace's stored theme. Proves the full event→projection→route→apply flow on one real call. | Not Started | — |
+| 36-A | **Set & apply per-workspace theme (keystone).** `WorkspaceThemeSet` event + `SetWorkspaceTheme` command on `Workspace`; `Theme` folded into `WorkspaceListView` (mapped in **both** stores + round-trip test); `PATCH /workspaces/{id}/theme`; the existing sidebar `ThemePicker` becomes workspace-scoped — picking a theme optimistically applies it and persists it to the active **non-default** workspace; switching workspace applies that workspace's stored theme. Proves the full event→projection→route→apply flow on one real call. | Done | — |
 | 36-B | **FOUC-free cold load.** Cache each workspace's resolved theme client-side keyed by `wsId`; the `index.html` bootstrap reads `wsId` from the URL and applies the cached theme before React mounts — removes the brief default-theme flash 36-A leaves on a hard reload of a themed workspace. Pure refinement on the proven pattern. | Not Started | 36-A |
 
 **36-A is the keystone** — the cross-cutting contract is "a workspace-scoped setting read from an **async** projection and applied to the global `<html>` theme attribute on switch", proven on one workspace. 36-B is an independent polish (cold-load flash) and ships alone.
@@ -29,7 +29,7 @@
 |-------|--------------------|-----------------|
 | 36-A | `Theme` field not mapped in `DynamoDbWorkspaceListStore` → evaporates at the DynamoDB boundary, in-memory tests stay green (the documented `*View` guardrail). | Mandatory `EventStore.Integration` round-trip test (set → `UpsertAsync` → `GetAsync` → assert `Theme` survived). Map in **both** `UpsertAsync` and `MapItemTo…`. |
 | 36-A | Theme PATCH lands but the async projection lags → picker/list shows the prior theme briefly. | Expected RYW lag — `PATCH` sets `X-Consistency-Token`, `GET /workspaces` is consistency-gated (existing pattern). Optimistic UI hides it for the actor. |
-| 36-A | Ownership check for `PATCH …/theme` reads the **async** `WorkspaceListView` → 404s while the projector lags right after workspace create (BUG-30 class). | Authorize existence/ownership from the **event stream** on the Command Lambda, not the projection. |
+| 36-A | Ownership check for `PATCH …/theme` reads the **async** `WorkspaceListView` → could 404 while the projector lags right after workspace create (BUG-30 class). | **Shipped:** mirrors `RenameWorkspace`/`DeleteWorkspace` (fail-closed projection `OwnsAsync` + event-stream existence check); UI gates the picker behind the consistency-gated `GET /workspaces`, so the window isn't reachable. Cross-cutting event-stream-ownership migration tracked in `technical-improvements.md`. |
 | 36-A | A theme PATCHes but never visibly applies (apply-on-switch silently no-ops). | Structured log on theme apply (`workspaceId`, `theme`) in `useTheme`/the workspace-switch path; surfaces in RUM. |
 
 ---
@@ -55,7 +55,7 @@
 
 **API**
 - Given a workspace the caller owns, When `PATCH /workspaces/{id}/theme {theme:"midnight"}`, Then `200` + `X-Consistency-Token`; a consistency-gated `GET /workspaces` shows `theme:"midnight"`.
-- Given a workspace the caller does **not** own (or unknown id), When `PATCH …/theme`, Then `404` (ownership verified from the event stream, not the projection).
+- Given a workspace the caller does **not** own (or unknown id), When `PATCH …/theme`, Then `404` (ownership mirrors the existing `RenameWorkspace`/`DeleteWorkspace` handlers — see the ownership note in Acceptance criteria).
 - Given an empty/missing `theme` body, When `PATCH …/theme`, Then `400`.
 
 **Frontend (web/)**
@@ -73,7 +73,7 @@
 - Event added to `docs/event-model.md`; wire shape to `docs/event-schemas.md`; the `Theme` view field to `docs/view-schemas.md`.
 - `Theme` mapped in **both** `InMemoryWorkspaceListStore` and `DynamoDbWorkspaceListStore` (`UpsertAsync` + `MapItemTo…`), with the round-trip integration test above.
 - `PATCH /workspaces/{id}/theme` follows the existing workspace-mutation pattern (auth, `X-Consistency-Token`); the endpoint does HTTP only, the `WorkspaceCommandHandler` owns orchestration and updates the projection inline per the command-handler convention.
-- Ownership/existence for the PATCH is checked against a strongly-consistent source (event stream on the Command Lambda), never the async projection.
+- Ownership/existence for the PATCH **mirrors the existing `RenameWorkspace`/`DeleteWorkspace` handlers** (shipped): projection-based `OwnsAsync` (`IWorkspaceListStore`) **plus** the command handler's event-stream existence check (`history.Count == 0 → WorkspaceNotFoundException`). The projection check is **fail-closed** (a lagging projector can only false-*deny*, never cross-user-grant) and in the real flow the picker only enables after the consistency-gated `GET /workspaces` resolves, so the racy-404 window isn't reachable via the UI. Migrating all three workspace-mutation handlers to pure event-stream ownership is tracked as a cross-cutting technical-improvement (do not diverge one handler) — see `docs/technical-improvements.md`. *(Original AC required event-stream-only ownership; relaxed to codebase parity per Hawk review on PR #351.)*
 - **Optimistic UI** (mandatory): theme applies before the API responds; reconcile on error — mirror the nearest existing workspace mutation in `useWorkspaceMutations`.
 - No backfill (unset theme = default).
 - Deploy-time delta stated in the PR (expected neutral).

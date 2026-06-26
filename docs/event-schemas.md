@@ -169,7 +169,7 @@ public record ActionItemAdded(
 
 public record ActionItemCompleted(ActionId ActionId)                       : ActionItemEvent;
 public record ActionItemReopened(ActionId ActionId)                        : ActionItemEvent;
-public record ActionItemEdited(ActionId ActionId, string NewDescription)        : ActionItemEvent;
+public record ActionItemEdited(ActionId ActionId, string NewDescription, DateTimeOffset EditedAt) : ActionItemEvent;
 public record ActionItemDeleted(ActionId ActionId, DateTimeOffset DeletedAt)    : ActionItemEvent;
 ```
 
@@ -189,6 +189,23 @@ public record ActionItemDeleted(ActionId ActionId, DateTimeOffset DeletedAt)    
 `ActionItemCompleted`:
 ```json
 { "actionId": "9c1d4e2a-7b8f-4c3d-a1e6-5f9b2c8d3e7a" }
+```
+
+---
+
+## Workspace events
+
+```csharp
+public record WorkspaceThemeSet(WorkspaceId WorkspaceId, string Theme) : WorkspaceEvent; // 36-A
+```
+
+`WorkspaceThemeSet` records the per-workspace UI theme (latest-wins). Folded by the `Workspace` aggregate and by `WorkspaceList` (carries `Theme` to `GET /workspaces`). Never recorded for the reserved default workspace.
+
+### Serialised payload example
+
+`WorkspaceThemeSet`:
+```json
+{ "workspaceId": "8a3c...", "theme": "midnight" }
 ```
 
 ---

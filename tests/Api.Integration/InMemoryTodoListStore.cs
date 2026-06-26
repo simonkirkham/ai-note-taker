@@ -20,6 +20,13 @@ internal sealed class InMemoryTodoListStore : ITodoListStore
         return Task.CompletedTask;
     }
 
+    public Task UpdateDescriptionAsync(string itemId, string newDescription, CancellationToken ct = default)
+    {
+        if (_items.TryGetValue(itemId, out var item))
+            _items[itemId] = item with { Description = newDescription };
+        return Task.CompletedTask;
+    }
+
     public Task DeleteAsync(string itemId, CancellationToken ct = default)
     {
         _items.Remove(itemId);

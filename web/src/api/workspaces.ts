@@ -1,3 +1,4 @@
+import { type Theme } from "../hooks/useTheme";
 import { apiFetch, base, requestWithResponse } from "./client";
 import { clearLatestToken, getLatestToken, setLatestToken } from "./consistencyTokens";
 import { gatedRead } from "./gatedRead";
@@ -18,6 +19,9 @@ export type Workspace = {
   workspaceId: string;
   name: string;
   isDefault: boolean;
+  // 36-A — per-workspace theme. Absent/null when unset (the synthesised default workspace
+  // has no server row and keeps the global localStorage theme).
+  theme?: Theme;
 };
 
 // Thrown when DELETE /workspaces/{id} returns 409 (the workspace still holds an
@@ -55,6 +59,16 @@ export async function renameWorkspace(workspaceId: string, name: string): Promis
     body: JSON.stringify({ name }),
   });
   if (!res.ok) throw new Error(`PATCH /workspaces/${workspaceId} failed: ${res.status}`);
+  captureWorkspaceToken(res);
+}
+
+export async function setWorkspaceTheme(workspaceId: string, theme: string): Promise<void> {
+  const res = await apiFetch(`${base}/workspaces/${workspaceId}/theme`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ theme }),
+  });
+  if (!res.ok) throw new Error(`PATCH /workspaces/${workspaceId}/theme failed: ${res.status}`);
   captureWorkspaceToken(res);
 }
 

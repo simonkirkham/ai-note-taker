@@ -48,8 +48,10 @@
   border-top: 2px solid transparent;
   padding: 0.5rem 0 0;
   font-family: inherit;
-  font-size: 1rem;
-  line-height: 1.75;
+  /* CHANGE-28: smaller, tighter notes body (was 1rem / 1.75 — too big). Headings
+     keep their em-relative UA sizes and scale down proportionally. */
+  font-size: 0.875rem;
+  line-height: 1.7;
   color: var(--color-text);
   resize: none;
   outline: none;
@@ -101,6 +103,12 @@
 
 .discussedButton {
   position: absolute;
+  /* The editor content (.contentInput) is position:relative for inline-image
+     positioning, so it is a positioned sibling in the same stacking layer and,
+     coming later in the DOM, paints over this absolutely-positioned button —
+     swallowing the click so "mark as discussed" did nothing (BUG-37). A positive
+     z-index lifts the button above the content so the click lands on it. */
+  z-index: 1;
   right: 4px;
   width: 1.4rem;
   height: 1.4rem;

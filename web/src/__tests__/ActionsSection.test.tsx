@@ -188,6 +188,79 @@ describe('ActionsSection', () => {
     expect(await screen.findByText('Book meeting')).toBeInTheDocument()
   })
 
+  it('editing an action saves the new text via PUT and shows it optimistically', async () => {
+    let putBody: unknown
+    server.use(
+      http.get(`/api/notes/${NOTE_ID}/actions`, () => HttpResponse.json({ actions: [action1] })),
+      http.put(`/api/notes/${NOTE_ID}/actions/:actionId`, async ({ request }) => {
+        putBody = await request.json()
+        return new HttpResponse(null, { status: 200 })
+      }),
+    )
+    renderActions()
+    await userEvent.click(await screen.findByTestId('action-description-a-1'))
+    const input = await screen.findByTestId('edit-action-input-a-1')
+    await userEvent.clear(input)
+    await userEvent.type(input, 'Book the big room{Enter}')
+    await waitFor(() => expect(putBody).toEqual({ description: 'Book the big room' }))
+    expect(await screen.findByTestId('action-description-a-1')).toHaveTextContent('Book the big room')
+  })
+
+  it('keyboard: focusing the description and pressing Enter opens the editor', async () => {
+    server.use(http.get(`/api/notes/${NOTE_ID}/actions`, () => HttpResponse.json({ actions: [action1] })))
+    renderActions()
+    const desc = await screen.findByRole('button', { name: /Edit "Book meeting"/i })
+    desc.focus()
+    await userEvent.keyboard('{Enter}')
+    expect(await screen.findByTestId('edit-action-input-a-1')).toBeInTheDocument()
+  })
+
+  it('Escape cancels editing without calling PUT and keeps the original text', async () => {
+    let putCalled = false
+    server.use(
+      http.get(`/api/notes/${NOTE_ID}/actions`, () => HttpResponse.json({ actions: [action1] })),
+      http.put(`/api/notes/${NOTE_ID}/actions/:actionId`, () => { putCalled = true; return new HttpResponse(null, { status: 200 }) }),
+    )
+    renderActions()
+    await userEvent.click(await screen.findByTestId('action-description-a-1'))
+    await userEvent.type(await screen.findByTestId('edit-action-input-a-1'), ' extra{Escape}')
+    expect(putCalled).toBe(false)
+    expect(await screen.findByTestId('action-description-a-1')).toHaveTextContent('Book meeting')
+  })
+
+  it('clearing the text to empty does not call PUT', async () => {
+    let putCalled = false
+    server.use(
+      http.get(`/api/notes/${NOTE_ID}/actions`, () => HttpResponse.json({ actions: [action1] })),
+      http.put(`/api/notes/${NOTE_ID}/actions/:actionId`, () => { putCalled = true; return new HttpResponse(null, { status: 200 }) }),
+    )
+    renderActions()
+    await userEvent.click(await screen.findByTestId('action-description-a-1'))
+    const input = await screen.findByTestId('edit-action-input-a-1')
+    await userEvent.clear(input)
+    await userEvent.type(input, '{Enter}')
+    expect(putCalled).toBe(false)
+    expect(await screen.findByTestId('action-description-a-1')).toHaveTextContent('Book meeting')
+  })
+
+  it('edit reverts to the original text when the request fails', async () => {
+    let rejectPut!: () => void
+    server.use(
+      http.get(`/api/notes/${NOTE_ID}/actions`, () => HttpResponse.json({ actions: [action1] })),
+      http.put(`/api/notes/${NOTE_ID}/actions/:actionId`, () =>
+        new Promise<Response>((res) => { rejectPut = () => res(new HttpResponse(null, { status: 500 })) })),
+    )
+    renderActions()
+    await userEvent.click(await screen.findByTestId('action-description-a-1'))
+    const input = await screen.findByTestId('edit-action-input-a-1')
+    await userEvent.clear(input)
+    await userEvent.type(input, 'New text{Enter}')
+    expect(await screen.findByText('New text')).toBeInTheDocument()
+    await act(async () => { rejectPut() })
+    await waitFor(() => expect(screen.queryByText('New text')).not.toBeInTheDocument())
+    expect(screen.getByText('Book meeting')).toBeInTheDocument()
+  })
+
   it('completing an action in a note updates the home to-do list (cross-view)', async () => {
     let completed = false
     const todo = { itemId: 'a-1', type: 'action', noteId: NOTE_ID, description: 'Book meeting', noteTitle: 'Note', completedAt: null }

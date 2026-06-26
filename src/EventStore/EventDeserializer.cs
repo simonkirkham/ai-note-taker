@@ -27,6 +27,7 @@ public static class EventDeserializer
         (nameof(ActionItemAdded), _) => JsonSerializer.Deserialize<ActionItemAdded>(envelope.Payload)!,
         (nameof(ActionItemCompleted), _) => JsonSerializer.Deserialize<ActionItemCompleted>(envelope.Payload)!,
         (nameof(ActionItemReopened), _) => JsonSerializer.Deserialize<ActionItemReopened>(envelope.Payload)!,
+        (nameof(ActionItemEdited), _) => JsonSerializer.Deserialize<ActionItemEdited>(envelope.Payload)!,
         (nameof(ActionItemDeleted), _) => JsonSerializer.Deserialize<ActionItemDeleted>(envelope.Payload)!,
         (nameof(FolderCreated), _) => JsonSerializer.Deserialize<FolderCreated>(envelope.Payload)!,
         (nameof(FolderRenamed), _) => JsonSerializer.Deserialize<FolderRenamed>(envelope.Payload)!,
@@ -50,6 +51,7 @@ public static class EventDeserializer
         (nameof(WorkspaceDeleted), _) => JsonSerializer.Deserialize<WorkspaceDeleted>(envelope.Payload)!,
         (nameof(WorkspaceCalendarConnected), _) => JsonSerializer.Deserialize<WorkspaceCalendarConnected>(envelope.Payload)!,
         (nameof(WorkspaceCalendarDisconnected), _) => JsonSerializer.Deserialize<WorkspaceCalendarDisconnected>(envelope.Payload)!,
+        (nameof(WorkspaceThemeSet), _) => JsonSerializer.Deserialize<WorkspaceThemeSet>(envelope.Payload)!,
         _ => throw new InvalidOperationException($"Unknown event type/version: {envelope.EventType} v{envelope.EventVersion}")
     };
 }

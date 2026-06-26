@@ -16,6 +16,9 @@ public sealed class WorkspaceListProjection
             case WorkspaceRenamed e when _workspaces.TryGetValue(e.WorkspaceId, out var w):
                 _workspaces[e.WorkspaceId] = w with { Name = e.NewName };
                 break;
+            case WorkspaceThemeSet e when _workspaces.TryGetValue(e.WorkspaceId, out var wt):
+                _workspaces[e.WorkspaceId] = wt with { Theme = e.Theme };
+                break;
             case WorkspaceDeleted e:
                 _workspaces.Remove(e.WorkspaceId);
                 break;

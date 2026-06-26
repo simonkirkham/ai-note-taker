@@ -62,6 +62,16 @@ public sealed class NoteCardListProjection
                     LastModifiedAt = envelope.OccurredAt
                 };
                 break;
+            case ActionItemEdited e when _noteByAction.TryGetValue(e.ActionId, out var noteId)
+                && _cards.TryGetValue(noteId, out var ec):
+                _cards[noteId] = ec with
+                {
+                    ActionItems = ec.ActionItems
+                        .Select(a => a.ActionId == e.ActionId ? a with { Description = e.NewDescription } : a)
+                        .ToList().AsReadOnly(),
+                    LastModifiedAt = envelope.OccurredAt
+                };
+                break;
             case ActionItemDeleted e when _noteByAction.TryGetValue(e.ActionId, out var noteId)
                 && _cards.TryGetValue(noteId, out var dc):
                 _noteByAction.Remove(e.ActionId);

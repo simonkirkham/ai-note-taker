@@ -9,4 +9,5 @@ public interface IWorkspaceCommandHandler
     Task<long> HandleAsync(DeleteWorkspace cmd, CancellationToken ct = default);
     Task<long> HandleAsync(ConnectWorkspaceCalendar cmd, CancellationToken ct = default);
     Task<long> HandleAsync(DisconnectWorkspaceCalendar cmd, CancellationToken ct = default);
+    Task<long> HandleAsync(SetWorkspaceTheme cmd, CancellationToken ct = default);
 }

@@ -1,4 +1,5 @@
-import { Theme, useTheme } from "../hooks/useTheme";
+import { Theme } from "../hooks/useTheme";
+import { useWorkspaceTheme } from "../hooks/useWorkspaceTheme";
 
 import styles from "./ThemePicker.module.css";
 
@@ -21,7 +22,7 @@ const DARK_THEMES: { value: Theme; label: string }[] = [
 ];
 
 export default function ThemePicker() {
-  const { theme, setTheme } = useTheme();
+  const { theme, setTheme } = useWorkspaceTheme();
 
   return (
     <div className={styles.themePicker}>

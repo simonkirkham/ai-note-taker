@@ -3,6 +3,7 @@ import {
   addAction,
   completeAction,
   reopenAction,
+  editAction,
   deleteAction,
   type ActionItem,
 } from "../api/actions";
@@ -76,6 +77,18 @@ export function useReopenAction(noteId: string) {
       optimistic(qc, noteId, (items) =>
         items.map((a) => (a.actionId === actionId ? { ...a, completed: false, completedAt: null } : a))),
     onError: (_e, _id, ctx) => rollback(qc, noteId, ctx),
+    onSettled: () => invalidateTodos(qc),
+  });
+}
+
+export function useEditAction(noteId: string) {
+  const qc = useQueryClient();
+  return useMutation<void, Error, { actionId: string; description: string }, Ctx>({
+    mutationFn: ({ actionId, description }) => editAction(noteId, actionId, description),
+    onMutate: ({ actionId, description }) =>
+      optimistic(qc, noteId, (items) =>
+        items.map((a) => (a.actionId === actionId ? { ...a, description } : a))),
+    onError: (_e, _v, ctx) => rollback(qc, noteId, ctx),
     onSettled: () => invalidateTodos(qc),
   });
 }

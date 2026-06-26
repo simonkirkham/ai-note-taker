@@ -300,12 +300,21 @@ public sealed class ProjectionUpdater(
         var addedEnvelope = history.First(e => e.EventType == nameof(ActionItemAdded));
         var addedEvent = (ActionItemAdded)EventDeserializer.Deserialize(addedEnvelope);
 
+        // The NoteAction row is reconstructed wholesale on each state change, so it must carry the
+        // CURRENT description — the latest ActionItemEdited in the stream, else the original. Using
+        // addedEvent.Description here would reset an edit-then-complete back to the original text.
+        var currentDescription = history
+            .Select(EventDeserializer.Deserialize)
+            .OfType<ActionItemEdited>()
+            .LastOrDefault()?.NewDescription
+            ?? addedEvent.Description;
+
         foreach (var (domainEvent, envelope) in newEvents.Zip(newEnvelopes))
             switch (domainEvent)
             {
                 case ActionItemCompleted e:
                     await noteActionsStore.UpsertAsync(addedEvent.NoteId,
-                        new NoteAction(e.ActionId, addedEvent.Description, true, addedEnvelope.OccurredAt, e.CompletedAt), ct).ConfigureAwait(false);
+                        new NoteAction(e.ActionId, currentDescription, true, addedEnvelope.OccurredAt, e.CompletedAt), ct).ConfigureAwait(false);
                     await todoListStore.UpdateCompletedAtAsync(e.ActionId.Value.ToString(), e.CompletedAt, ct).ConfigureAwait(false);
                     await UpdateCardActionItemsAsync(addedEvent.NoteId,
                         items => items.Select(a => a.ActionId == e.ActionId ? a with { Completed = true } : a).ToList().AsReadOnly(),
@@ -314,11 +323,23 @@ public sealed class ProjectionUpdater(
                     break;
                 case ActionItemReopened e:
                     await noteActionsStore.UpsertAsync(addedEvent.NoteId,
-                        new NoteAction(e.ActionId, addedEvent.Description, false, addedEnvelope.OccurredAt, null), ct).ConfigureAwait(false);
+                        new NoteAction(e.ActionId, currentDescription, false, addedEnvelope.OccurredAt, null), ct).ConfigureAwait(false);
                     await todoListStore.UpdateCompletedAtAsync(e.ActionId.Value.ToString(), null, ct).ConfigureAwait(false);
                     await UpdateCardActionItemsAsync(addedEvent.NoteId,
                         items => items.Select(a => a.ActionId == e.ActionId ? a with { Completed = false } : a).ToList().AsReadOnly(),
                         envelope.OccurredAt, ct).ConfigureAwait(false);
+                    break;
+                case ActionItemEdited e:
+                    {
+                        var existing = (await noteActionsStore.QueryByNoteAsync(addedEvent.NoteId, ct).ConfigureAwait(false))
+                            .Actions.FirstOrDefault(a => a.ActionId == e.ActionId);
+                        await noteActionsStore.UpsertAsync(addedEvent.NoteId,
+                            new NoteAction(e.ActionId, e.NewDescription, existing?.Completed ?? false, addedEnvelope.OccurredAt, existing?.CompletedAt), ct).ConfigureAwait(false);
+                        await todoListStore.UpdateDescriptionAsync(e.ActionId.Value.ToString(), e.NewDescription, ct).ConfigureAwait(false);
+                        await UpdateCardActionItemsAsync(addedEvent.NoteId,
+                            items => items.Select(a => a.ActionId == e.ActionId ? a with { Description = e.NewDescription } : a).ToList().AsReadOnly(),
+                            envelope.OccurredAt, ct).ConfigureAwait(false);
+                    }
                     break;
                 case ActionItemDeleted e:
                     await noteActionsStore.DeleteAsync(addedEvent.NoteId, e.ActionId, ct).ConfigureAwait(false);
@@ -458,6 +479,9 @@ public sealed class ProjectionUpdater(
                 case WorkspaceRenamed e:
                     await ApplyWorkspaceRenamedAsync(e, ct).ConfigureAwait(false);
                     break;
+                case WorkspaceThemeSet e:
+                    await ApplyWorkspaceThemeSetAsync(e, ct).ConfigureAwait(false);
+                    break;
                 case WorkspaceDeleted e:
                     await workspaceListStore.DeleteAsync(e.WorkspaceId, ct).ConfigureAwait(false);
                     break;
@@ -471,5 +495,13 @@ public sealed class ProjectionUpdater(
         var existing = all.FirstOrDefault(w => w.WorkspaceId == e.WorkspaceId);
         if (existing is null) return;
         await workspaceListStore.UpsertAsync(existing with { Name = e.NewName }, ct).ConfigureAwait(false);
+    }
+
+    private async Task ApplyWorkspaceThemeSetAsync(WorkspaceThemeSet e, CancellationToken ct)
+    {
+        var all = await workspaceListStore.GetAllAsync(ct).ConfigureAwait(false);
+        var existing = all.FirstOrDefault(w => w.WorkspaceId == e.WorkspaceId);
+        if (existing is null) return;
+        await workspaceListStore.UpsertAsync(existing with { Theme = e.Theme }, ct).ConfigureAwait(false);
     }
 }
