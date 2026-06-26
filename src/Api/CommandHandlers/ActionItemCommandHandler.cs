@@ -61,29 +61,35 @@ public sealed class ActionItemCommandHandler(
         });
 
     public Task<long> HandleAsync(CompleteActionItem cmd, CancellationToken ct = default) =>
+        HandleAsync(cmd, currentUser.UserId, ct);
+
+    public Task<long> HandleAsync(CompleteActionItem cmd, string userId, CancellationToken ct = default) =>
         CommandInstrumentation.RunAsync(metrics, logger, nameof(CompleteActionItem), "ActionItem", () =>
-            ExecuteAppendAsync(cmd.ActionId, cmd, ct));
+            ExecuteAppendAsync(cmd.ActionId, cmd, userId, ct));
 
     public Task<long> HandleAsync(ReopenActionItem cmd, CancellationToken ct = default) =>
+        HandleAsync(cmd, currentUser.UserId, ct);
+
+    public Task<long> HandleAsync(ReopenActionItem cmd, string userId, CancellationToken ct = default) =>
         CommandInstrumentation.RunAsync(metrics, logger, nameof(ReopenActionItem), "ActionItem", () =>
-            ExecuteAppendAsync(cmd.ActionId, cmd, ct));
+            ExecuteAppendAsync(cmd.ActionId, cmd, userId, ct));
 
     public Task<long> HandleAsync(EditActionItem cmd, CancellationToken ct = default) =>
         CommandInstrumentation.RunAsync(metrics, logger, nameof(EditActionItem), "ActionItem", () =>
-            ExecuteAppendAsync(cmd.ActionId, cmd, ct));
+            ExecuteAppendAsync(cmd.ActionId, cmd, currentUser.UserId, ct));
 
     public Task<long> HandleAsync(DeleteActionItem cmd, CancellationToken ct = default) =>
         CommandInstrumentation.RunAsync(metrics, logger, nameof(DeleteActionItem), "ActionItem", () =>
-            ExecuteAppendAsync(cmd.ActionId, cmd, ct));
+            ExecuteAppendAsync(cmd.ActionId, cmd, currentUser.UserId, ct));
 
-    async Task<long> ExecuteAppendAsync(ActionId actionId, ICommand command, CancellationToken ct)
+    async Task<long> ExecuteAppendAsync(ActionId actionId, ICommand command, string userId, CancellationToken ct)
     {
         var streamId = actionId.ToStreamId();
         var history = await store.ReadAsync(streamId, ct).ConfigureAwait(false);
         if (history.Count == 0) throw new ActionItemNotFoundException(actionId);
 
         var newEvents = RebuildAggregate(history).Handle(command);
-        var envelopes = ToEnvelopes(streamId, newEvents);
+        var envelopes = EventEnvelopeFactory.CreateEnvelopes(streamId, newEvents, userId);
         await store.AppendAsync(streamId, history.Count, envelopes, ct).ConfigureAwait(false);
         return history.Count + envelopes.Count;
     }
@@ -95,7 +101,4 @@ public sealed class ActionItemCommandHandler(
             aggregate.Apply(EventDeserializer.Deserialize(e));
         return aggregate;
     }
-
-    List<EventEnvelope> ToEnvelopes(string streamId, IReadOnlyList<IDomainEvent> events) =>
-        EventEnvelopeFactory.CreateEnvelopes(streamId, events, currentUser.UserId);
 }
