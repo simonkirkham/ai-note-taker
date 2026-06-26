@@ -352,18 +352,18 @@
   --color-banner-text:  #FFFFFF;
 }
 
-/* Ember — warm amber primary on a warm-dark brown, with a cool sky CTA, dark. */
+/* Ember — fiery orange primary on a warm-dark brown, with a cool teal CTA, dark. */
 [data-theme="ember"] {
-  --color-primary:      #FBBF24;
-  --color-primary-dark: #F59E0B;
-  --color-primary-bg:   rgba(251, 191, 36, 0.10);
-  --color-cta:          #38BDF8;
-  --color-cta-dark:     #0EA5E9;
-  --color-bg:           #1A1206;
-  --color-surface:      #261A0C;
-  --color-text:         #FEF3C7;
-  --color-text-muted:   #A8A29E;
-  --color-border:       #3A2A12;
+  --color-primary:      #F97316;
+  --color-primary-dark: #EA580C;
+  --color-primary-bg:   rgba(249, 115, 22, 0.12);
+  --color-cta:          #2DD4BF;
+  --color-cta-dark:     #14B8A6;
+  --color-bg:           #1A0F08;
+  --color-surface:      #2A1810;
+  --color-text:         #FFEDD5;
+  --color-text-muted:   #B5A79A;
+  --color-border:       #44291A;
   --color-error:        #F87171;
   --color-error-bg:     rgba(248, 113, 113, 0.15);
   --color-error-border: rgba(248, 113, 113, 0.40);
