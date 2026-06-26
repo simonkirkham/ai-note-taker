@@ -50,13 +50,32 @@
 | BUG-36 | `npm run update` crashes on Windows with "the term 'silent' is not recognized" — `update.ps1` had UTF-8 em-dashes/arrows but no BOM, so Windows PowerShell 5.1 read it as Windows-1252; the em-dash byte `0x94` decoded to a `"` that closed a string early and broke parsing. Rewrote the script ASCII-only; added a `publish.spec.ts` guard that fails on any non-ASCII byte. | Done | 31-E |
 | BUG-37 | The ✓ "Mark as discussed" tick on a note heading no longer works — clicking it does not toggle strikethrough on the topic/heading. | Done | 7-B |
 | BUG-38 | `TagsJourney.AddTag_PersistsAfterNavigation` transiently red-gated the 39-A deploy — `tag-input` never became visible in 30 s (a basic always-present element → the app/page failed to load, not a projector lag). Passed on rerun; the two immediately-prior deploys (36-A, CHANGE-28) were green, so it is a chronic cold-start gate flake, not a 36-A/CHANGE-28 regression. The journeys also captured **zero** `[browser]` console output, so the failure gave no root-cause signal. | Open | TI-39 |
-| BUG-39 | `TodoReorderJourney.Reordered_todos_persist_after_reload` **deterministically** red-gated deploy #656 (all **3/3** attempts) — after dragging BBB above AAA and reloading, the order reverted to the original `AAA, BBB` (assert is `AssertTodoOrderAfterReloadAsync`, **reload-tolerant** → the reorder write was *lost*, not merely lagging). The reorder code is byte-identical to #655 (the commit directly below), which **passed** the journey, so it is either a real 37-A reorder-persistence bug or a severe reorder-projector cold lag the reload-retries can't outlast. **Distinct from BUG-38** (that is element-render/cold-start; this is order-not-persisted). Blocks the shared deploy gate — held 36-B (a frontend-only theme slice that cannot touch todo order) out of prod despite 3 re-runs. High priority: 37-A was marked Done on the lucky-green #655. | Open | 37-A |
+| BUG-39 | `TodoReorderJourney` — a reorder reverts after reload in the **deployed** env (deterministic, 5/5 attempts incl. 2 further reruns). **Quarantined** (skipped) to unblock the shared deploy gate; real fix outstanding (per-item `Position` is lost — recommend an order-snapshot redesign). Detail below. | Open (quarantined) | 37-A |
 
 Further bugs will be appended as they are identified.
 
 ---
 
 > **Fixed bugs are condensed in [phase-bugs-archive.md](phase-bugs-archive.md)** (one terse entry each, anchors preserved). The Summary table above stays the full index; only **open** defects keep a detailed section below.
+
+---
+
+## BUG-39 — Todo reorder reverts after reload (deployed only); journey quarantined to unblock the gate
+
+**Status:** Open — **quarantined** (`TodoReorderJourney` `[E2EFact(Skip=…)]`) to unblock the shared deploy gate, which was blocking every slice + parallel session. Real fix outstanding; owner = 37-A. Filed by the 37-A session; root-caused deeper here while driving the red gate green (2026-06-26).
+
+**Symptom:** drag BBB above AAA → reload → order reverts to `AAA, BBB`. The assert is reload-tolerant (30 s), so the reorder write is **lost**, not lagging. Deterministic: 3/3 on deploy #656 + 2 further reruns = **5/5**.
+
+**Deployed-only — the in-memory double masks it.** `Api.Integration.TodoReorderTests` (`Reorder_PersistsTheNewOrder`, `Reorder_NewTodoAppendsAfterOrderedItems`) cover the exact scenario and **pass**, because the in-process `SyncProjectingEventStore` applies events synchronously in append order and `InMemoryTodoListStore` has no `attribute_exists`/PutItem semantics. So no test below the deploy-gate E2E can catch it — the documented "in-memory double hides the DynamoDB gap" guardrail.
+
+**Why the per-item `Position` design is fragile (the real fault, even if the exact trigger needs a deployed trace):**
+- Order is stored as a `Position` int **on each `TodoItem` row**, set by `DynamoDbTodoListStore.SetPositionAsync` with `ConditionExpression = "attribute_exists(PK)"` — which **silently swallows `ConditionalCheckFailedException`** (a row not yet projected when the `todo-order#` reorder is processed → that item's position is **permanently dropped**; the comment's "the next reorder re-sends" never happens for a one-shot reorder).
+- `DynamoDbTodoListStore.PutAsync` (the `TodoAdded` fold) is a **full `PutItem`** that only writes `Position` when non-null → any re-projection / out-of-order `todo#` fold after a reorder **clobbers** the position back to null.
+- The `todo-order#` reorder stream and the `todo#`/`action#` item streams are **independent** (DynamoDB Streams give no cross-key order), so the projector can fold the reorder before/after the items in ways the synchronous in-process test never exercises.
+
+**Recommended fix (order-snapshot, list-level — matches the `TodoOrdering` aggregate's own design comment):** store the full ordered id list on a **per-workspace ordering projection row** (keyed by `todo-order#{wsId}`), fold `TodoListReordered` into that single row, and order items in `GET /todos` by their index in the stored list (ids absent from the list → end, by `AddedAt`). Immune to all three fragilities: an add can't clobber the order (it's not on the item row), a reorder referencing a not-yet-projected id still records the full order (the id slots in when it appears), and there's no per-item write to lose. Replaces `Position`/`SetPositionAsync`/`UpdatePositionsAsync`. Add a DynamoDB-Local (`EventStore.Integration`) round-trip + a `ProjectorTests` cross-stream-order test so it's covered below the deploy gate.
+
+**Un-quarantine** once the fix lands and the journey is green across a few deploys.
 
 ---
 
