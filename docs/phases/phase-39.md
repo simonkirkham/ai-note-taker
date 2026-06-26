@@ -1,4 +1,6 @@
-# Phase 39 — Edit the text of a to-do / action item
+# Phase 39 — Edit the text of a to-do / action item _(Done)_
+
+**Phase complete — both slices live in prod 2026-06-26.** 39-A (note action items, PR #349 + #354) and 39-B (standalone to-dos, PR #356). 39-B's deploy was held by an unrelated shared-gate failure (the 37-A reorder journey, [BUG-39](phase-bugs.md#bug-39)) — quarantined to unblock, then properly fixed by the 37-A session (a test-env `clear-test-data`/`proj-position` gap, not a product bug).
 
 **Goal:** Let the user **edit the text** of an existing action item (on a note) or standalone home to-do. Today the text is fixed once created — the only operations are complete, reopen, and delete — so a mis-captured or AI-auto-extracted item can only be fixed by delete-and-recreate. This adds in-place text editing. The design is **already in the event model** (`EditActionItem`/`ActionItemEdited` are documented in [event-model.md](../event-model.md) and [event-schemas.md](../event-schemas.md) but were never implemented), and the `Description` field **already exists** on every read view (`NoteAction`, `NoteCardActionItem`, `TodoItem`), so projections need a *fold case*, not a schema change. **No new aggregate, no new table, no projection backfill, no CDK change → deploy-time neutral.** Graduated from the "Rename to-do / action items" item in `future-features.md`.
 
@@ -7,7 +9,7 @@
 | Slice | Summary | Status | Depends on |
 |-------|---------|--------|------------|
 | 39-A | **Edit a note action item's text (keystone).** New `EditActionItem`/`ActionItemEdited` (additive); aggregate edit guard (exists & not deleted; reject empty); command handler + `PUT /notes/{noteId}/actions/{actionId}` returning the RYW token; both rebuild projections + the async `ProjectionUpdater` fold the new text into `NoteActions`, the card action-item rollup, the search view, and the `TodoList` action row (via a new `ITodoListStore.UpdateDescriptionAsync`); inline click-to-edit UI in `ActionsSection`, optimistic. Proves the whole flow end-to-end. | Done | — |
-| 39-B | **Edit a standalone to-do's text (scale).** Same pattern on the `Todo` aggregate: `EditTodo`/`TodoEdited`, command handler + `PUT /todos/{todoId}`, `ProjectionUpdater` + rebuild fold via the (39-A) `UpdateDescriptionAsync`, inline edit in `TodoSection`, optimistic. | Not Started | 39-A |
+| 39-B | **Edit a standalone to-do's text (scale).** Same pattern on the `Todo` aggregate: `EditTodo`/`TodoEdited`, command handler + `PUT /todos/{todoId}`, `ProjectionUpdater` + rebuild fold via the (39-A) `UpdateDescriptionAsync`, inline edit in `TodoSection`, optimistic. | Done | 39-A |
 
 > **39-A is the whole feature end-to-end** on the richer path (3 projection views + the RYW token) and carries the design risk. **39-B reuses the proven event/projection/optimistic-edit pattern** on the simpler Todo path (one projection view). Ship 39-A first; branch 39-B only after 39-A deploys green.
 
