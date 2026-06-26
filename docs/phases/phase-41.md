@@ -8,7 +8,7 @@ Phase 35 shipped a **read-only** connector (locked decision #2 explicitly deferr
 
 | Slice | What the user gets | Status | Depends on |
 |-------|--------------------|--------|------------|
-| 41-A | **Move `/mcp` to the Command Lambda + `create_note`.** Claude saves a new note into a workspace the owner owns; the five read tools keep working unchanged. Proves the whole write pipe on one real call. | Not Started | — |
+| 41-A | **Move `/mcp` to the Command Lambda + `create_note`.** Claude saves a new note into a workspace the owner owns; the five read tools keep working unchanged. Proves the whole write pipe on one real call. | Done — live (2026-06-26) | — |
 | 41-B | **`add_action_item` + `complete_action_item` / `reopen_action_item`.** Claude adds a to-do to a note and ticks open ones off (or reopens them). | Not Started | 41-A |
 | 41-C | **`edit_note`.** Claude appends to or rewrites a note's body. | Not Started | 41-A |
 
@@ -35,6 +35,14 @@ Phase 35 shipped a **read-only** connector (locked decision #2 explicitly deferr
 ### Read-your-writes note
 
 Projections are written **inline** by the command handler (same request) today, but reads are gated through the async projector cursor since RYW. After a write tool returns, a *subsequent* read tool (`list_notes`, `get_note`) may briefly miss the new state if it reads a lagging projection. The write tools return the new stream **version** (the RYW token) in their result so Claude — and the specs — can reason about it; the specs assert the write event was appended, not that an immediate read reflects it.
+
+---
+
+## Status log
+
+**41-A — Done (PR #362, deploy #665, 2026-06-26).** `create_note(workspaceId, title?, content?)` is the first MCP write tool: authorizes workspace ownership (existing per-call check, fail-closed), then `CreateNote → RenameNote → EditContent` via the command handler's identity-explicit overload (token `sub` = owner); returns `{ noteId, version }`. `/mcp` POST route moved Query → **Command** Lambda (every `tools/call` hits one POST path, so the whole endpoint had to move; Command holds the projection read grants, so the five read tools keep working). Hawk APPROVE (re-confirmed after adding the committed write-tool observability — `mcp_write` success log + `mcp_write_rejected` cross-workspace audit log, no note content logged). Api.Integration 579 / Infra 159 green. **Prod verified:** `POST /mcp` → 401 (alive), route integration URI = `NoteTakerStack-CommandFunction…` (move is live). No new projection → no backfill.
+
+**Owner manual gate — PENDING:** a real Claude session round-trips `create_note` against the live connector (the human adds nothing — the existing OAuth connector now exposes `create_note` in tools/list). The pipeline cannot self-confirm this.
 
 ---
 
