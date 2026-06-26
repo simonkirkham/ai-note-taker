@@ -13,6 +13,7 @@ Runs as part of Scribe after deploy, but can be invoked independently at any poi
 
 - The completed slice (files changed, git diff, or a description)
 - Any token spike observations passed from the `token-log` skill
+- Any **`Avoidable? = Yes` human-input rows** passed from the [`human-input-log`](../human-input-log/SKILL.md) skill — each names a fix (allow-list entry, guardrail, spec-template field, automation); execute it this turn like any other Done action
 - Any agent hand-off notes that mention friction, rework, or unexpected steps
 
 ## Step 1 — Run the permission audit

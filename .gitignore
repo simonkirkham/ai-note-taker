@@ -38,6 +38,9 @@ coverage/
 # Claude Code scheduled-task lock (transient runtime artifact: pid/sessionId)
 .claude/scheduled_tasks.lock
 
+# Live human-input capture (drained into docs/human-input-log.md by Scribe)
+.claude/human-input-pending.jsonl
+
 # Temp PR body file (written by Write tool, passed to gh pr create --body-file)
 .pr-body.md
 
