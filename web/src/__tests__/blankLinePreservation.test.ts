@@ -61,4 +61,31 @@ describe('blank line preservation (BUG-40)', () => {
     editor = editorWith('<h2>Topic</h2><p></p><p>body</p>');
     expect(md(editor)).toBe('## Topic\n\n\u00A0\n\nbody');
   });
+
+  // Edge cases: the placeholder is only for an empty paragraph that is NOT the last child of
+  // its parent, so the editor's auto-trailing paragraph and a fully-cleared note stay clean.
+  it('a fully cleared note serializes to an empty string, not a placeholder', () => {
+    editor = editorWith('<p></p>');
+    expect(md(editor)).toBe('');
+  });
+
+  it('preserves a leading blank line', () => {
+    editor = editorWith('<p></p><p>A</p>');
+    expect(md(editor)).toBe('\u00A0\n\nA');
+  });
+
+  it('drops a trailing blank line (insignificant in markdown / editor caret affordance)', () => {
+    editor = editorWith('<p>A</p><p></p>');
+    expect(md(editor)).toBe('A');
+  });
+
+  it('does not append a stray placeholder after a note that ends in a list', () => {
+    editor = editorWith('<ul><li><p>A</p></li><li><p>B</p></li></ul>');
+    expect(md(editor)).toBe('- A\n\n- B');
+  });
+
+  it('preserves a blank line inside a blockquote without a stray trailing placeholder', () => {
+    editor = editorWith('<blockquote><p>A</p><p></p><p>B</p></blockquote>');
+    expect(md(editor)).toBe('> A\n>\n> \u00A0\n>\n> B');
+  });
 });

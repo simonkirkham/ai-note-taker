@@ -10,6 +10,13 @@ import Paragraph from '@tiptap/extension-paragraph';
 // reload tiptap normalises it back to a genuinely empty paragraph -- so the user sees a real
 // blank line, not a visible character, and re-saving is idempotent. Non-empty paragraphs use
 // the default serializer unchanged, so ordinary content gains no stray placeholder.
+//
+// Caveat handled below: the placeholder is only emitted for an empty paragraph that is NOT the
+// last child of its parent. A *trailing* empty paragraph is the editor's cursor affordance
+// (tiptap keeps one after a list/blockquote/etc so you can place the caret past the block), not
+// user-intended structure -- emitting a placeholder there would persist a stray U+00A0 after
+// such notes, and would turn a fully-cleared note into a `\u00A0` body instead of an empty one.
+// Trailing blank lines are insignificant in markdown anyway, so dropping them matches norms.
 const EMPTY_PARAGRAPH_PLACEHOLDER = '\u00A0';
 
 // The slice of prosemirror-markdown's MarkdownSerializerState we use. tiptap-markdown is plain
@@ -21,6 +28,10 @@ interface SerializerState {
   renderInline: (node: unknown) => void;
 }
 
+interface ParentNode {
+  childCount: number;
+}
+
 // Drop-in replacement for StarterKit's bundled Paragraph (registered via
 // `StarterKit.configure({ paragraph: false })` + this extension). Only the markdown
 // serialization is overridden; all paragraph behaviour, commands, and shortcuts are inherited.
@@ -30,8 +41,14 @@ export const BlankLineParagraph = Paragraph.extend({
   addStorage() {
     return {
       markdown: {
-        serialize(state: SerializerState, node: { content: { size: number } }) {
-          if (node.content.size === 0) {
+        serialize(
+          state: SerializerState,
+          node: { content: { size: number } },
+          parent: ParentNode | undefined,
+          index: number
+        ) {
+          const isLastChild = parent ? index === parent.childCount - 1 : true;
+          if (node.content.size === 0 && !isLastChild) {
             state.write(EMPTY_PARAGRAPH_PLACEHOLDER);
             state.closeBlock(node);
             return;
