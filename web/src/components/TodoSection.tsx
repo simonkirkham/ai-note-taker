@@ -5,7 +5,7 @@ import { keys } from "../api/queryKeys";
 import { TodoItem } from "../api/todos";
 import { useCompleteTodo, useReopenTodo, useEditTodo, useDeleteTodo, useReorderTodos } from "../hooks/useTodoMutations";
 import { useTodos } from "../hooks/useTodos";
-import { TrashIcon, ChevronUpIcon, ChevronDownIcon, GripVerticalIcon } from "./icons";
+import { TrashIcon, GripVerticalIcon } from "./icons";
 import QuickCaptureTodoInput from "./QuickCaptureTodoInput";
 import styles from "./TodoSection.module.css";
 
@@ -49,12 +49,6 @@ export default function TodoSection() {
   // Reorder the open items, optimistically and persisted. Pass the full new id order.
   function reorderTo(orderedIds: string[]) {
     if (orderedIds.length > 1) reorder.mutate(orderedIds);
-  }
-
-  function moveOpen(index: number, delta: number) {
-    const to = index + delta;
-    if (to < 0 || to >= openItems.length) return;
-    reorderTo(arrayMove(openItems.map((i) => i.itemId), index, to));
   }
 
   function handleDrop(targetId: string) {
@@ -172,7 +166,7 @@ export default function TodoSection() {
         <>
           {openItems.length > 0 && (
             <ul data-testid="todo-list" className={styles.todoList}>
-              {openItems.map((item, index) => (
+              {openItems.map((item) => (
                 <li
                   key={item.itemId}
                   className={clsx(styles.todoItem, draggedId === item.itemId && styles.todoItemDragging)}
@@ -223,24 +217,6 @@ export default function TodoSection() {
                       </button>
                     )}
                     {item.noteTitle && <span className={styles.todoNoteTitle}>{item.noteTitle}</span>}
-                  </div>
-                  <div className={styles.todoReorderButtons}>
-                    <button
-                      className="icon-btn"
-                      aria-label={`Move "${item.description}" up`}
-                      disabled={index === 0}
-                      onClick={() => moveOpen(index, -1)}
-                    >
-                      <ChevronUpIcon />
-                    </button>
-                    <button
-                      className="icon-btn"
-                      aria-label={`Move "${item.description}" down`}
-                      disabled={index === openItems.length - 1}
-                      onClick={() => moveOpen(index, 1)}
-                    >
-                      <ChevronDownIcon />
-                    </button>
                   </div>
                   <button
                     className="icon-btn icon-btn--danger"

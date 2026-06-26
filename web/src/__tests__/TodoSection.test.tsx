@@ -408,58 +408,24 @@ describe('TodoSection — Done section', () => {
   })
 })
 
-describe('TodoSection — reorder', () => {
+describe('TodoSection — reorder (CHANGE-29: drag-only, no keyboard arrows)', () => {
   const mkTodo = (id: string, description: string, addedAt: string) => ({
     itemId: id, type: 'todo' as const, noteId: null, noteTitle: null, description, addedAt, completedAt: null,
   })
   const alpha = mkTodo('t-a', 'Alpha', '2026-01-01T00:00:00Z')
   const bravo = mkTodo('t-b', 'Bravo', '2026-01-01T00:00:01Z')
-  const charlie = mkTodo('t-c', 'Charlie', '2026-01-01T00:00:02Z')
 
-  function openOrder() {
-    return within(screen.getByTestId('todo-list'))
-      .getAllByText(/Alpha|Bravo|Charlie/)
-      .map((e) => e.textContent)
-  }
-
-  it('keyboard Move down reorders optimistically and posts the full new order', async () => {
-    let posted: string[] | null = null
-    server.use(
-      http.get('/api/todos', () => HttpResponse.json({ items: [alpha, bravo, charlie] })),
-      http.post('/api/todos/reorder', async ({ request }) => {
-        posted = ((await request.json()) as { orderedItemIds: string[] }).orderedItemIds
-        return HttpResponse.json({ consistencyToken: 'todo-order#__default__@1' })
-      }),
-    )
+  it('renders no Move up/down arrow buttons; rows stay draggable for pointer reorder', async () => {
+    server.use(http.get('/api/todos', () => HttpResponse.json({ items: [alpha, bravo] })))
     render(<TodoSection />)
     await screen.findByText('Alpha')
 
-    await userEvent.click(screen.getByRole('button', { name: /move "Alpha" down/i }))
+    // CHANGE-29: the keyboard reorder arrows are removed (a11y tradeoff accepted — reorder is
+    // pointer-only via the drag handle).
+    expect(screen.queryByRole('button', { name: /move .* up/i })).toBeNull()
+    expect(screen.queryByRole('button', { name: /move .* down/i })).toBeNull()
 
-    expect(openOrder()).toEqual(['Bravo', 'Alpha', 'Charlie'])
-    await waitFor(() => expect(posted).toEqual(['t-b', 't-a', 't-c']))
-  })
-
-  it('Move up is disabled on the first item and Move down on the last', async () => {
-    server.use(http.get('/api/todos', () => HttpResponse.json({ items: [alpha, bravo, charlie] })))
-    render(<TodoSection />)
-    await screen.findByText('Alpha')
-
-    expect(screen.getByRole('button', { name: /move "Alpha" up/i })).toBeDisabled()
-    expect(screen.getByRole('button', { name: /move "Charlie" down/i })).toBeDisabled()
-  })
-
-  it('rolls back the optimistic reorder on API failure', async () => {
-    server.use(
-      http.get('/api/todos', () => HttpResponse.json({ items: [alpha, bravo, charlie] })),
-      http.post('/api/todos/reorder', async () => { await delay(20); return new HttpResponse(null, { status: 500 }) }),
-    )
-    render(<TodoSection />)
-    await screen.findByText('Alpha')
-
-    await userEvent.click(screen.getByRole('button', { name: /move "Alpha" down/i }))
-    expect(openOrder()).toEqual(['Bravo', 'Alpha', 'Charlie'])
-
-    await waitFor(() => expect(openOrder()).toEqual(['Alpha', 'Bravo', 'Charlie']))
+    const rows = within(screen.getByTestId('todo-list')).getAllByRole('listitem')
+    expect(rows[0]).toHaveAttribute('draggable', 'true')
   })
 })
