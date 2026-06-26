@@ -907,18 +907,20 @@ public sealed class NoteTakerStack : Stack
             Integration = commandIntegration
         });
 
-        // 35-A/35-F: the MCP tool-call path is JSON-RPC over POST but READ-ONLY (it reads projection
-        // tables only), so it must hit the Query Lambda — overriding the default POST→Command routing
-        // above. 35-F replaced the per-workspace `/w/{workspaceId}/mcp` path with a single `/mcp`
-        // endpoint (identity-scoped, per-call workspace authorization). Pinned to Query like the
-        // calendar GETs are pinned to Command. This pin is a backend artifact: it reaches prod only via
-        // a `cdk deploy` (backend=true) — a frontend-only deploy would leave the new `/mcp` path
-        // falling through to `/{proxy+}` → 404 (route-contract guardrail).
+        // 41-A: the MCP tool-call path now carries WRITE tools (create_note, …) alongside the reads.
+        // Every `tools/call` hits this one POST path, so tools cannot be split per-Lambda by routing —
+        // any write forces the whole endpoint onto the Command Lambda (the sole holder of event-store
+        // access). Command also holds read-write on every projection table the read tools use, so the
+        // reads keep working. This supersedes the 35-A/35-F pin to Query. The Query Lambda keeps its
+        // `mcpJwtSecret` GrantRead (harmless once /mcp leaves Query; removing it would reshuffle the
+        // DefaultPolicy and break unrelated grant assertions — 33-B1). This pin is a backend artifact:
+        // it reaches prod only via a `cdk deploy` (backend=true) — a frontend-only deploy would leave
+        // the `/mcp` integration on the old Lambda (route-contract guardrail).
         httpApi.AddRoutes(new Amazon.CDK.AWS.Apigatewayv2.AddRoutesOptions
         {
             Path = "/mcp",
             Methods = new[] { Amazon.CDK.AWS.Apigatewayv2.HttpMethod.POST },
-            Integration = queryIntegration
+            Integration = commandIntegration
         });
 
         // 35-E: the OAuth Authorization-Server endpoints need the Google client + the HMAC secret +

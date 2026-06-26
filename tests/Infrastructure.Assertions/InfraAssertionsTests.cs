@@ -2195,11 +2195,13 @@ public class InfraAssertionsTests
     }
 
     [Fact]
-    public void Routing_McpPost_TargetsQuery_NotCommand()
+    public void Routing_McpPost_TargetsCommand_NotQuery()
     {
-        // 35-A/35-F: MCP tool calls are POST but read-only, so the /mcp path is pinned to Query —
-        // overriding the default POST→Command rule. 35-F replaced the per-workspace path with /mcp.
-        Assert.True(RouteTargetsFunction("POST /mcp", "QueryFunction"));
+        // 41-A: the /mcp tool path now carries WRITE tools (create_note, …). Every tools/call hits
+        // this one POST path, so the whole endpoint moves to Command — the sole holder of event-store
+        // access — superseding the 35-A/35-F pin to Query. Command also reads the projection tables, so
+        // the read tools keep working.
+        Assert.True(RouteTargetsFunction("POST /mcp", "CommandFunction"));
     }
 
     // ── 35-E: MCP OAuth broker ───────────────────────────────────────────
@@ -2217,10 +2219,12 @@ public class InfraAssertionsTests
     }
 
     [Fact]
-    public void McpOAuth_McpToolPathStaysOnQuery()
+    public void McpOAuth_McpToolPath_TargetsCommand()
     {
-        // The Resource Server (tool path) stays on Query; only the AS endpoints move to Command.
-        Assert.True(RouteTargetsFunction("POST /mcp", "QueryFunction"));
+        // 41-A: the tool path (Resource Server + write tools) moved to Command; the AS endpoints were
+        // already on Command. The Query Lambda still validates the same HS256 token elsewhere, so it
+        // keeps its mcpJwtSecret GrantRead.
+        Assert.True(RouteTargetsFunction("POST /mcp", "CommandFunction"));
     }
 
     [Fact]

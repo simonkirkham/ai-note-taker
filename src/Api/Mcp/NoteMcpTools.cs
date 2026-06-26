@@ -2,6 +2,7 @@ using System.ComponentModel;
 using System.Security.Claims;
 using System.Text.Json;
 using Api.Auth;
+using Api.CommandHandlers;
 using Api.Search;
 using Api.Utilities;
 using Domain.Notes;
@@ -16,6 +17,9 @@ namespace Api.Mcp;
 // path; every workspace-scoped tool takes a workspaceId argument and authorizes it per call against
 // the authenticated token's `sub` BEFORE returning data (Authorize). Reads are scoped by
 // (userId=sub, workspaceId) so two users sharing the default workspace never see each other's notes.
+// 41-A: write tools join the reads. Every tools/call hits one POST path, so the whole /mcp endpoint is
+// now served by the Command Lambda (the sole holder of event-store access). Writes go through the
+// command handlers' identity-explicit overloads (the token `sub` is the owner), never the store.
 [McpServerToolType]
 public sealed class NoteMcpTools(
     INoteCardListStore cards,
@@ -24,6 +28,7 @@ public sealed class NoteMcpTools(
     INoteSearchViewStore searchView,
     ITodoListStore todos,
     IWorkspaceListStore workspaces,
+    INoteCommandHandler noteCommands,
     IHttpContextAccessor httpContextAccessor)
 {
     private const int MaxPreviewLength = 120;
@@ -148,6 +153,37 @@ public sealed class NoteMcpTools(
                 noteTitle = i.NoteTitle
             });
         return JsonSerializer.Serialize(new { actionItems = items });
+    }
+
+    // 41-A: the first write tool. Authorizes workspace ownership (the same per-call check the reads
+    // use), then creates the note via the command handler's identity-explicit overload so the token
+    // `sub` is the stamped owner — title/content are applied as follow-up commands on the same stream,
+    // mirroring the HTTP create flow (CreateNote → RenameNote → EditContent). Returns the new note id
+    // and the stream version (the RYW write token); a subsequent read tool may briefly lag the async
+    // projector before the note is visible.
+    [McpServerTool(Name = "create_note")]
+    [Description("Create a new note in a workspace the caller owns, with an optional title and content. Returns the new note id.")]
+    public async Task<string> CreateNote(
+        [Description("The workspace id to create the note in (use list_workspaces to resolve a name).")] string workspaceId,
+        [Description("The note title. Optional if content is provided.")] string? title,
+        [Description("The note body as markdown. Optional if a title is provided.")] string? content,
+        CancellationToken ct)
+    {
+        var userId = await AuthorizeAsync(workspaceId, ct).ConfigureAwait(false);
+        if (string.IsNullOrWhiteSpace(title) && string.IsNullOrWhiteSpace(content))
+            throw new McpException("Provide a title or content for the note.");
+
+        var noteId = new NoteId(Guid.NewGuid());
+        await noteCommands.HandleAsync(new CreateNote(noteId, new WorkspaceId(workspaceId)), userId, workspaceId, ct).ConfigureAwait(false);
+        if (!string.IsNullOrWhiteSpace(title))
+            await noteCommands.HandleAsync(new RenameNote(noteId, title.Trim()), userId, workspaceId, ct).ConfigureAwait(false);
+        if (!string.IsNullOrWhiteSpace(content))
+            await noteCommands.HandleAsync(new EditContent(noteId, content), userId, workspaceId, ct).ConfigureAwait(false);
+
+        // The flow appends across several handler calls, so read the final stream version for the RYW
+        // write token (the Phase 38 import pattern), rather than the version of whichever command ran last.
+        var version = await noteCommands.GetCurrentVersionAsync(noteId, ct).ConfigureAwait(false);
+        return JsonSerializer.Serialize(new { noteId = noteId.Value.ToString(), version });
     }
 
     // The authenticated user id (the token `sub`). JwtBearer's default inbound mapping turns `sub`
