@@ -1,0 +1,508 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sticky Topic — Topics Prototype</title>
+<style>
+  :root{
+    --teal:#0d9488; --teal-dark:#0f766e; --teal-bg:#ccfbf1;
+    --text:#1f2937; --muted:#6b7280; --border:#e5e7eb;
+    --surface:#fff; --page:#f8fafc;
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0; background:var(--page); color:var(--text);
+    font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+    font-size:15px; line-height:1.45;
+  }
+  .wrap{max-width:720px; margin:0 auto; padding:0 20px 60px}
+
+  /* Banner */
+  .banner{
+    background:linear-gradient(90deg,var(--teal-bg),#fff);
+    border:1px solid var(--border); border-left:4px solid var(--teal);
+    border-radius:10px; padding:12px 16px; margin:18px 0 14px;
+  }
+  .banner .name{font-weight:700; font-size:18px; color:var(--teal-dark)}
+  .banner .lens{font-size:12px; color:var(--teal-dark); font-weight:600; text-transform:uppercase; letter-spacing:.04em; margin-top:2px}
+  .banner .concept{font-size:13px; color:var(--muted); margin-top:4px}
+
+  /* Try-this hint */
+  .hint{
+    display:flex; gap:8px; align-items:flex-start;
+    background:#fff; border:1px dashed var(--teal); border-radius:8px;
+    padding:9px 12px; margin-bottom:16px; font-size:13px; color:var(--teal-dark);
+  }
+  .hint b{color:var(--teal-dark)}
+  kbd{
+    font-family:ui-monospace,Menlo,Consolas,monospace; font-size:11px;
+    background:#f1f5f9; border:1px solid var(--border); border-bottom-width:2px;
+    border-radius:4px; padding:1px 5px; color:var(--text);
+  }
+
+  /* Doc surface */
+  .doc-head{display:flex; align-items:baseline; justify-content:space-between; margin-bottom:6px}
+  .doc-title{font-weight:700; font-size:16px}
+  .doc-meta{font-size:12px; color:var(--muted)}
+
+  /* Surface is a fixed-height scroller so the sticky header has something to stick over */
+  .surface{
+    position:relative;
+    background:var(--surface); border:1px solid var(--border); border-radius:10px;
+    box-shadow:0 1px 3px rgba(0,0,0,.05);
+    height:420px; overflow:hidden;
+  }
+  .scroller{
+    height:100%; overflow-y:auto; padding:0 6px 220px;
+    scroll-behavior:smooth;
+  }
+
+  /* Sticky header that swaps as you scroll between topic sections */
+  .sticky-head{
+    position:absolute; top:0; left:0; right:0; z-index:5;
+    display:flex; align-items:center; gap:8px;
+    background:linear-gradient(180deg,#f0fdfa,#fff);
+    border-bottom:1px solid var(--border);
+    padding:9px 12px 9px 10px;
+    box-shadow:0 2px 6px rgba(0,0,0,.05);
+  }
+  .sticky-head .sh-mark{
+    flex:0 0 24px; width:24px; text-align:center;
+    font-family:ui-monospace,Menlo,monospace; font-weight:700; color:var(--teal);
+    cursor:pointer; user-select:none; font-size:15px;
+  }
+  .sticky-head .sh-mark:hover{transform:scale(1.12)}
+  .sticky-head .sh-label{font-size:11px; color:var(--muted); text-transform:uppercase; letter-spacing:.05em; margin-right:2px}
+  .sticky-head .sh-title{font-weight:700; font-size:15px; color:var(--teal-dark); min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+  .sticky-head.done .sh-title{text-decoration:line-through; text-decoration-color:#9ca3af; color:var(--muted)}
+  .sticky-head .sh-pos{margin-left:auto; font-size:11px; color:var(--muted); font-family:ui-monospace,Menlo,monospace; white-space:nowrap}
+
+  /* Rows */
+  .scroller .pad-top{height:46px} /* room beneath the sticky header for the first rows */
+  .row{
+    display:flex; align-items:flex-start; gap:0;
+    border-radius:6px; padding:2px 6px; position:relative;
+    transition:background .15s, opacity .25s;
+    scroll-margin-top:52px;
+  }
+  .row:hover{background:#f8fafc}
+  .row.focused{background:var(--teal-bg)}
+  .mark{
+    flex:0 0 24px; width:24px; text-align:center; padding-top:3px;
+    font-family:ui-monospace,Menlo,monospace; font-weight:700; color:var(--teal);
+    cursor:pointer; user-select:none;
+  }
+  .row.child .mark{color:var(--muted); font-weight:400}
+  .indent{flex:0 0 0}
+  .line{
+    flex:1; border:none; outline:none; background:transparent;
+    font:inherit; color:inherit; padding:3px 2px; resize:none;
+    min-width:0; line-height:1.4;
+  }
+  .row.topic{margin-top:8px; padding-top:5px; border-top:1px dashed #f1f5f9}
+  .row.topic:first-child{border-top:none; margin-top:0}
+  .row.topic .line{font-weight:700}
+  .row.child .line{color:#374151}
+
+  .row.ticked{opacity:.6}
+  .row.ticked .mark{color:var(--teal)}
+  .row.ticked .line{text-decoration:line-through; text-decoration-color:#9ca3af}
+  .ts{
+    font-size:10px; color:var(--teal-dark); background:var(--teal-bg);
+    border-radius:8px; padding:0 7px; margin-left:6px; align-self:center;
+    border:1px solid #99f6e4; white-space:nowrap;
+  }
+
+  /* Corner coverage pill */
+  .pill{
+    position:absolute; right:12px; bottom:12px; z-index:6;
+    display:flex; align-items:center; gap:7px;
+    background:var(--teal-dark); color:#fff; border:none;
+    border-radius:20px; padding:7px 13px; cursor:pointer; font:inherit; font-size:13px;
+    box-shadow:0 3px 10px rgba(13,148,136,.35);
+  }
+  .pill:hover{background:var(--teal)}
+  .pill .dot{
+    display:inline-block; width:8px; height:8px; border-radius:50%;
+    background:#5eead4;
+  }
+  .pill.all-done .dot{background:#bbf7d0}
+  .pill .chev{font-size:10px; opacity:.85}
+
+  /* Quick-jump popover (transient, not a panel) */
+  .jump{
+    position:absolute; right:12px; bottom:54px; z-index:7;
+    width:260px; background:#fff; border:1px solid var(--border);
+    border-radius:10px; box-shadow:0 8px 28px rgba(0,0,0,.16);
+    overflow:hidden; display:none;
+  }
+  .jump.open{display:block}
+  .jump-hd{font-size:11px; color:var(--muted); text-transform:uppercase; letter-spacing:.05em; padding:9px 12px 5px}
+  .jump-item{
+    display:flex; align-items:center; gap:9px; padding:8px 12px; cursor:pointer;
+    border-top:1px solid #f1f5f9; font-size:14px;
+  }
+  .jump-item:hover{background:var(--teal-bg)}
+  .jump-item .ji-mark{
+    flex:0 0 20px; font-family:ui-monospace,Menlo,monospace; font-weight:700;
+    color:var(--teal); text-align:center;
+  }
+  .jump-item.done .ji-title{text-decoration:line-through; color:var(--muted)}
+  .jump-item.done .ji-mark{color:var(--teal)}
+  .jump-item .ji-title{flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+  .jump-item .ji-tag{font-size:10px; color:#b45309; background:#fffbeb; border:1px solid #fde68a; border-radius:8px; padding:0 6px; white-space:nowrap}
+  .jump-foot{font-size:11px; color:var(--muted); padding:7px 12px; border-top:1px solid #f1f5f9}
+
+  /* Footer legend */
+  .legend{margin-top:22px}
+  .legend summary{
+    cursor:pointer; font-size:13px; color:var(--muted); font-weight:600;
+    list-style:none; padding:6px 0;
+  }
+  .legend summary::-webkit-details-marker{display:none}
+  .legend summary::before{content:"▸ "; color:var(--teal)}
+  .legend[open] summary::before{content:"▾ "}
+  .legend table{border-collapse:collapse; width:100%; font-size:13px; margin-top:4px}
+  .legend td{padding:5px 8px; border-top:1px solid var(--border); vertical-align:top}
+  .legend td:first-child{font-weight:600; color:var(--teal-dark); white-space:nowrap; width:140px}
+
+  .toolbar{display:flex; gap:8px; margin:10px 0 0; flex-wrap:wrap}
+  .toolbar button{
+    font:inherit; font-size:12px; border:1px solid var(--border); background:#fff;
+    color:var(--text); border-radius:7px; padding:5px 11px; cursor:pointer;
+  }
+  .toolbar button:hover{border-color:var(--teal); color:var(--teal-dark)}
+  .toast{
+    position:fixed; bottom:20px; left:50%; transform:translateX(-50%) translateY(20px);
+    background:var(--teal-dark); color:#fff; padding:8px 16px; border-radius:8px;
+    font-size:13px; opacity:0; pointer-events:none; transition:all .25s; z-index:50;
+  }
+  .toast.show{opacity:1; transform:translateX(-50%) translateY(0)}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="banner">
+    <div class="name">Sticky Topic</div>
+    <div class="lens">Variation on "Checkline" — single surface, type-first</div>
+    <div class="concept">Same one editable stream of <code>[]</code> topics + notes — but as you scroll, the <b>topic you're in stays pinned to the top</b> with its ✓, and a corner pill tracks coverage. Context without a side panel.</div>
+  </div>
+
+  <div class="hint">
+    <span>▶</span>
+    <div>
+      <b>Try this:</b> <b>Scroll the note area</b> — watch the pinned topic header swap between Hiring → Budget → Roadmap. Tick the <b>current</b> topic straight from that sticky header (no scrolling back up). Click the corner pill (or press <kbd>Ctrl</kbd>+<kbd>K</kbd>) to quick-jump to a remaining topic.
+    </div>
+  </div>
+
+  <div class="doc-head">
+    <div class="doc-title">Weekly Team Sync</div>
+    <div class="doc-meta" id="meta">single surface · current topic pinned</div>
+  </div>
+
+  <div class="surface" id="surface">
+    <div class="sticky-head" id="stickyHead">
+      <div class="sh-mark" id="shMark" title="Tick this topic from here">[]</div>
+      <span class="sh-label">in:</span>
+      <span class="sh-title" id="shTitle">—</span>
+      <span class="sh-pos" id="shPos"></span>
+    </div>
+
+    <div class="scroller" id="scroller"></div>
+
+    <div class="jump" id="jump">
+      <div class="jump-hd">Quick jump · remaining first</div>
+      <div id="jumpList"></div>
+      <div class="jump-foot">Esc to close · click a topic to scroll to it</div>
+    </div>
+
+    <button class="pill" id="pill">
+      <span class="dot"></span><span id="pillText">0 of 5 covered</span><span class="chev">▲</span>
+    </button>
+  </div>
+
+  <div class="toolbar">
+    <button id="btnReset">↺ Reset to pre-meeting</button>
+    <button id="btnFill">⤵ Re-fill sample notes</button>
+  </div>
+
+  <details class="legend">
+    <summary>How it serves the 4 needs</summary>
+    <table>
+      <tr><td>Pre-record</td><td>Agenda is five <code>[]</code> topic lines typed before the meeting — <kbd>[</kbd> on a blank line starts another.</td></tr>
+      <tr><td>Mark-off</td><td>Tick from the topic's own line <i>or</i> the pinned sticky header — soft strike + timestamp, and the coverage pill increments.</td></tr>
+      <tr><td>Logical structure</td><td>Notes nest under the topic above them; the sticky header always names which topic the notes you're reading belong to.</td></tr>
+      <tr><td>Low friction</td><td>One scrolling surface; the current topic + its ✓ follow you, and the corner pill flags what's still un-covered (AOB) without a panel.</td></tr>
+    </table>
+  </details>
+
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+(function(){
+  const scroller  = document.getElementById('scroller');
+  const stickyHead= document.getElementById('stickyHead');
+  const shMark    = document.getElementById('shMark');
+  const shTitle   = document.getElementById('shTitle');
+  const shPos     = document.getElementById('shPos');
+  const pill      = document.getElementById('pill');
+  const pillText  = document.getElementById('pillText');
+  const jump      = document.getElementById('jump');
+  const jumpList  = document.getElementById('jumpList');
+  const toastEl   = document.getElementById('toast');
+
+  // ---- Data model: ordered rows. {id,type:'topic'|'child',text,ticked,ts} ----
+  let nextId = 1;
+  const mk = (type,text)=>({id:nextId++, type, text, ticked:false, ts:null});
+
+  // Sample meeting (topics + notes), notes out of order: Hiring before Budget.
+  function initial(withNotes){
+    const rows = [];
+    const T = t => rows.push(mk('topic', t));
+    const N = n => rows.push(mk('child', n));
+    T('Budget (Q3)');
+    if(withNotes){ N('Q3 over by 12%'); N('Dan to recut the forecast'); N('Marketing line item flagged for review'); N('Carry-over from Q2 still unspent'); }
+    T('Hiring backfill');
+    if(withNotes){ N('backfill the 2 SDR roles'); N('Priya to approve reqs by Fri'); N('Recruiter contract renews next month'); N('Onboarding buddy needed for new starters'); }
+    T('Roadmap');
+    if(withNotes){ N('ship date slips ~2 weeks'); N('Beta cohort waiting on the auth work'); N('Cut scope on the export feature?'); }
+    T('Risks / blockers');
+    if(withNotes){ N('vendor SLA needs checking'); N('Single owner on the billing service — bus factor'); }
+    T('AOB');
+    if(withNotes){ N('(nothing raised yet)'); }
+    return rows;
+  }
+
+  let rows = initial(true);
+  let focusId = null;
+
+  const stamp = ()=> new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
+  function toast(msg){
+    toastEl.textContent = msg; toastEl.classList.add('show');
+    clearTimeout(toast._t); toast._t = setTimeout(()=>toastEl.classList.remove('show'),1700);
+  }
+  const topics = ()=> rows.filter(r=>r.type==='topic');
+  function topicOf(idx){ for(let i=idx;i>=0;i--) if(rows[i].type==='topic') return i; return -1; }
+
+  // ---------- render the editable stream ----------
+  function render(){
+    // preserve scroll position across re-renders
+    const keepScroll = scroller.scrollTop;
+    scroller.innerHTML = '';
+
+    const pad = document.createElement('div'); pad.className='pad-top'; scroller.appendChild(pad);
+
+    rows.forEach((r, idx)=>{
+      const div = document.createElement('div');
+      div.className = 'row ' + r.type;
+      div.dataset.id = r.id;
+      if(r.ticked) div.classList.add('ticked');
+      if(r.id===focusId) div.classList.add('focused');
+
+      const mark = document.createElement('div');
+      mark.className='mark';
+      if(r.type==='topic'){
+        mark.textContent = r.ticked ? '[x]' : '[]';
+        mark.title = 'Click to mark this topic discussed';
+        mark.addEventListener('click',()=>toggleTick(idx));
+      } else {
+        mark.textContent = '·';
+      }
+      div.appendChild(mark);
+
+      if(r.type==='child'){
+        const ind=document.createElement('div'); ind.className='indent'; ind.style.flexBasis='26px';
+        div.appendChild(ind);
+      }
+
+      const inp = document.createElement('textarea');
+      inp.className='line'; inp.rows=1; inp.value=r.text; inp.spellcheck=false;
+      autoSize(inp);
+      inp.addEventListener('input',e=>{ r.text=e.target.value; autoSize(inp); refreshSticky(); });
+      inp.addEventListener('focus',()=>{ focusId=r.id; highlightFocus(); });
+      inp.addEventListener('keydown',e=>onKey(e,r,idx,inp));
+      div.appendChild(inp);
+
+      if(r.type==='topic' && r.ticked && r.ts){
+        const ts=document.createElement('span'); ts.className='ts'; ts.textContent='✓ '+r.ts;
+        div.appendChild(ts);
+      }
+      scroller.appendChild(div);
+    });
+
+    scroller.scrollTop = keepScroll;
+    refreshSticky();
+    refreshPill();
+    if(jump.classList.contains('open')) buildJump();
+  }
+
+  function autoSize(ta){ ta.style.height='auto'; ta.style.height=(ta.scrollHeight)+'px'; }
+  function highlightFocus(){
+    scroller.querySelectorAll('.row').forEach(el=>el.classList.toggle('focused', el.dataset.id==focusId));
+  }
+
+  // ---------- sticky header: find topmost visible topic section ----------
+  function currentTopicIdx(){
+    // The "current" topic is the last topic whose row top is at/above the
+    // sticky line (just below the header). Falls back to the first topic.
+    const stickyBottom = scroller.getBoundingClientRect().top + 50;
+    let current = -1;
+    rows.forEach((r,idx)=>{
+      if(r.type!=='topic') return;
+      const el = scroller.querySelector(`.row[data-id="${r.id}"]`);
+      if(!el) return;
+      const top = el.getBoundingClientRect().top;
+      if(top <= stickyBottom + 4) current = idx; // topmost topic scrolled to/under the header
+    });
+    if(current===-1){ // before the first topic – show the first
+      const fi = rows.findIndex(r=>r.type==='topic');
+      current = fi;
+    }
+    return current;
+  }
+
+  let stickyIdx = -1;
+  function refreshSticky(){
+    const idx = currentTopicIdx();
+    stickyIdx = idx;
+    if(idx<0){ shTitle.textContent='—'; return; }
+    const t = rows[idx];
+    shTitle.textContent = t.text || '(untitled topic)';
+    shMark.textContent = t.ticked ? '[x]' : '[]';
+    stickyHead.classList.toggle('done', t.ticked);
+    // position among topics
+    const tps = topics();
+    const order = tps.indexOf(t)+1;
+    shPos.textContent = `${order} / ${tps.length}` + (t.ticked ? ' · ✓ discussed' : '');
+  }
+
+  shMark.addEventListener('click', ()=>{ if(stickyIdx>=0) toggleTick(stickyIdx); });
+  scroller.addEventListener('scroll', refreshSticky, {passive:true});
+
+  // ---------- mark discussed ----------
+  function toggleTick(topicIdx){
+    const t = rows[topicIdx];
+    if(!t || t.type!=='topic') return;
+    t.ticked = !t.ticked;
+    t.ts = t.ticked ? stamp() : null;
+    if(t.ticked) toast(`✓ ${t.text || 'topic'} discussed at ${t.ts}`);
+    render();
+  }
+
+  // ---------- coverage pill ----------
+  function refreshPill(){
+    const tps = topics();
+    const done = tps.filter(t=>t.ticked).length;
+    pillText.textContent = `${done} of ${tps.length} covered`;
+    pill.classList.toggle('all-done', done===tps.length && tps.length>0);
+  }
+
+  // ---------- quick-jump popover ----------
+  function buildJump(){
+    const tps = topics();
+    // remaining (un-ticked) first, then done — each keeps original order
+    const remaining = tps.filter(t=>!t.ticked);
+    const done = tps.filter(t=>t.ticked);
+    jumpList.innerHTML='';
+    [...remaining, ...done].forEach(t=>{
+      const idx = rows.indexOf(t);
+      const item=document.createElement('div');
+      item.className='jump-item' + (t.ticked?' done':'');
+      item.innerHTML =
+        `<span class="ji-mark">${t.ticked?'[x]':'[]'}</span>`+
+        `<span class="ji-title"></span>`+
+        (t.ticked?'':'<span class="ji-tag">remaining</span>');
+      item.querySelector('.ji-title').textContent = t.text || '(untitled)';
+      item.addEventListener('click',()=>{ closeJump(); scrollToTopic(idx); });
+      jumpList.appendChild(item);
+    });
+  }
+  function openJump(){ buildJump(); jump.classList.add('open'); }
+  function closeJump(){ jump.classList.remove('open'); }
+  function toggleJump(){ jump.classList.contains('open') ? closeJump() : openJump(); }
+
+  function scrollToTopic(idx){
+    const el = scroller.querySelector(`.row[data-id="${rows[idx].id}"]`);
+    if(!el) return;
+    const target = el.offsetTop - 46; // sit just under the sticky header
+    scroller.scrollTo({top:Math.max(0,target), behavior:'smooth'});
+    focusId = rows[idx].id;
+    setTimeout(()=>{ const ln=el.querySelector('.line'); if(ln) ln.focus({preventScroll:true}); refreshSticky(); }, 350);
+    toast(`Jumped to "${rows[idx].text}"`);
+  }
+
+  pill.addEventListener('click', toggleJump);
+  document.addEventListener('keydown', e=>{
+    if((e.ctrlKey||e.metaKey) && (e.key==='k'||e.key==='K')){ e.preventDefault(); toggleJump(); }
+    if(e.key==='Escape') closeJump();
+  });
+  // click outside the popover closes it
+  document.addEventListener('click', e=>{
+    if(!jump.classList.contains('open')) return;
+    if(jump.contains(e.target) || pill.contains(e.target)) return;
+    closeJump();
+  });
+
+  // ---------- editing keys (single-surface, type-first) ----------
+  function onKey(e, r, idx, inp){
+    // Ctrl/Cmd+Enter => tick the owning topic
+    if(e.key==='Enter' && (e.ctrlKey||e.metaKey)){
+      e.preventDefault(); const t=topicOf(idx); if(t>=0) toggleTick(t); return;
+    }
+    // Enter => new note line below (a topic's Enter starts a child note)
+    if(e.key==='Enter' && !e.shiftKey){
+      e.preventDefault();
+      const nr = mk(r.type==='topic' ? 'child' : 'child', '');
+      rows.splice(idx+1,0,nr); render(); focusRow(nr.id,true); return;
+    }
+    // "[" on an empty line => promote to a new topic
+    if(e.key==='['){
+      if(inp.value===''){ e.preventDefault(); r.type='topic'; r.ticked=false; r.ts=null; render(); focusRow(r.id,true); toast('New topic line ([])'); }
+      return;
+    }
+    // Tab / Shift+Tab => demote/promote between note and topic
+    if(e.key==='Tab' && !e.shiftKey){
+      e.preventDefault();
+      if(r.type==='topic'){ const pt=topicOf(idx-1); if(pt>=0 && pt!==idx){ r.type='child'; r.ticked=false; r.ts=null; render(); focusRow(r.id,true);} else toast('Need a topic above to nest under'); }
+      return;
+    }
+    if(e.key==='Tab' && e.shiftKey){
+      e.preventDefault();
+      if(r.type==='child'){ r.type='topic'; render(); focusRow(r.id,true); }
+      return;
+    }
+    // Backspace on empty line => delete, focus previous
+    if(e.key==='Backspace' && inp.value==='' && rows.length>1){
+      e.preventDefault(); const prev=rows[idx-1]; rows.splice(idx,1); render(); if(prev) focusRow(prev.id,true); return;
+    }
+    if(e.key==='ArrowDown' && idx<rows.length-1){ e.preventDefault(); focusRow(rows[idx+1].id,true); }
+    if(e.key==='ArrowUp' && idx>0){ e.preventDefault(); focusRow(rows[idx-1].id,true); }
+  }
+
+  function focusRow(id, atEnd){
+    focusId=id;
+    requestAnimationFrame(()=>{
+      const el = scroller.querySelector(`.row[data-id="${id}"] .line`);
+      if(el){ el.focus({preventScroll:true}); if(atEnd){ const n=el.value.length; el.setSelectionRange(n,n);} }
+      highlightFocus();
+    });
+  }
+
+  // ---------- toolbar ----------
+  document.getElementById('btnReset').addEventListener('click', ()=>{
+    rows = initial(false); focusId=null; closeJump(); render(); scroller.scrollTop=0; refreshSticky();
+    toast('Reset to pre-meeting agenda (5 topics, no notes)');
+  });
+  document.getElementById('btnFill').addEventListener('click', ()=>{
+    rows = initial(true); focusId=null; closeJump(); render(); scroller.scrollTop=0; refreshSticky();
+    toast('Sample notes re-filled — scroll to see the header swap');
+  });
+
+  render();
+})();
+</script>
+</body>
+</html>

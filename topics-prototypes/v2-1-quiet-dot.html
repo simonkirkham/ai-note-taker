@@ -1,0 +1,437 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Quiet Dot — Topics Prototype</title>
+<style>
+  :root{
+    --teal:#0d9488; --teal-dark:#0f766e; --teal-bg:#ccfbf1;
+    --text:#1f2937; --muted:#6b7280; --border:#e5e7eb;
+    --surface:#fff; --page:#f8fafc;
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0; background:var(--page); color:var(--text);
+    font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+    font-size:15px; line-height:1.45;
+  }
+  .wrap{max-width:720px; margin:0 auto; padding:0 20px 60px}
+
+  /* Banner */
+  .banner{
+    background:linear-gradient(90deg,var(--teal-bg),#fff);
+    border:1px solid var(--border); border-left:4px solid var(--teal);
+    border-radius:10px; padding:12px 16px; margin:18px 0 14px;
+  }
+  .banner .name{font-weight:700; font-size:18px; color:var(--teal-dark)}
+  .banner .lens{font-size:12px; color:var(--teal-dark); font-weight:600; text-transform:uppercase; letter-spacing:.04em; margin-top:2px}
+  .banner .concept{font-size:13px; color:var(--muted); margin-top:4px}
+
+  /* Try-this hint */
+  .hint{
+    display:flex; gap:8px; align-items:flex-start;
+    background:#fff; border:1px dashed var(--teal); border-radius:8px;
+    padding:9px 12px; margin-bottom:16px; font-size:13px; color:var(--teal-dark);
+  }
+  .hint b{color:var(--teal-dark)}
+  kbd{
+    font-family:ui-monospace,Menlo,Consolas,monospace; font-size:11px;
+    background:#f1f5f9; border:1px solid var(--border); border-bottom-width:2px;
+    border-radius:4px; padding:1px 5px; color:var(--text);
+  }
+
+  /* Doc surface */
+  .doc-head{display:flex; align-items:baseline; justify-content:space-between; margin-bottom:6px}
+  .doc-title{font-weight:700; font-size:16px}
+  .doc-meta{font-size:12px; color:var(--muted)}
+  .surface{
+    background:var(--surface); border:1px solid var(--border); border-radius:10px;
+    box-shadow:0 1px 3px rgba(0,0,0,.05); padding:8px 6px; min-height:320px;
+  }
+
+  /* Rows */
+  .row{
+    display:flex; align-items:flex-start; gap:0;
+    border-radius:6px; padding:1px 6px; position:relative;
+    transition:background .15s;
+  }
+  .row:hover{background:#f8fafc}
+  .row.focused{background:var(--teal-bg)}
+
+  /* Gutter dot affordance */
+  .dot{
+    flex:0 0 30px; width:30px; text-align:center; padding-top:4px;
+    font-size:15px; line-height:1.2; cursor:pointer; user-select:none;
+    color:#cbd5e1; opacity:0; transition:opacity .15s, color .15s, transform .1s;
+  }
+  .row:hover .dot, .row.focused .dot{opacity:1}            /* hollow dot on hover/focus of any line */
+  .row.topic .dot{opacity:1; color:var(--teal)}            /* promoted line: always-visible solid dot */
+  .dot:hover{transform:scale(1.25)}
+  .dot:active{transform:scale(.9)}
+  .row.topic.done .dot{color:var(--teal-dark)}
+
+  /* Spine: a hairline left tint marking a topic's owned group */
+  .spine{
+    flex:0 0 3px; width:3px; align-self:stretch; margin:1px 6px 1px 0;
+    border-radius:2px; background:transparent;
+  }
+  .row.in-group .spine{background:var(--teal-bg)}
+  .row.topic.in-group .spine{background:var(--teal)}
+  .row.topic.done.in-group .spine{background:#a7f3d0}
+
+  /* Editable line */
+  .line{
+    flex:1; border:none; outline:none; background:transparent;
+    font:inherit; color:inherit; padding:3px 2px; resize:none;
+    min-width:0; line-height:1.45; overflow:hidden;
+  }
+  .row.topic .line{font-weight:600; color:var(--text)}
+  .row.note .line{color:#374151}
+
+  /* Done topic: strike + desaturate IN PLACE — no collapse, no reflow */
+  .row.topic.done .line{
+    text-decoration:line-through; text-decoration-color:#9ca3af;
+    color:#9aa3af; font-weight:600;
+    transition:color .3s;
+  }
+  .ts{
+    flex:0 0 auto; align-self:center; font-size:10px; color:var(--teal-dark);
+    background:var(--teal-bg); border:1px solid #99f6e4; border-radius:9px;
+    padding:0 7px; margin-left:8px; white-space:nowrap; user-select:none;
+  }
+
+  .uncovered{
+    margin-top:10px; font-size:12px; color:#b45309;
+    background:#fffbeb; border:1px solid #fde68a; border-radius:8px;
+    padding:6px 10px; display:none;
+  }
+
+  .toolbar{display:flex; gap:8px; margin:10px 0 0; flex-wrap:wrap}
+  .toolbar button{
+    font:inherit; font-size:12px; border:1px solid var(--border); background:#fff;
+    color:var(--text); border-radius:7px; padding:5px 11px; cursor:pointer;
+  }
+  .toolbar button:hover{border-color:var(--teal); color:var(--teal-dark)}
+
+  /* Footer legend */
+  .legend{margin-top:22px}
+  .legend summary{
+    cursor:pointer; font-size:13px; color:var(--muted); font-weight:600;
+    list-style:none; padding:6px 0;
+  }
+  .legend summary::-webkit-details-marker{display:none}
+  .legend summary::before{content:"▸ "; color:var(--teal)}
+  .legend[open] summary::before{content:"▾ "}
+  .legend table{border-collapse:collapse; width:100%; font-size:13px; margin-top:4px}
+  .legend td{padding:5px 8px; border-top:1px solid var(--border); vertical-align:top}
+  .legend td:first-child{font-weight:600; color:var(--teal-dark); white-space:nowrap; width:140px}
+
+  .toast{
+    position:fixed; bottom:20px; left:50%; transform:translateX(-50%) translateY(20px);
+    background:var(--teal-dark); color:#fff; padding:8px 16px; border-radius:8px;
+    font-size:13px; opacity:0; pointer-events:none; transition:all .25s;
+  }
+  .toast.show{opacity:1; transform:translateX(-50%) translateY(0)}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="banner">
+    <div class="name">Quiet Dot</div>
+    <div class="lens">Variation on "Checkline" — single surface, type-first</div>
+    <div class="concept">No syntax to learn: just type. A faint gutter dot <b>◌</b> on the live line; click it (or <kbd>Ctrl</kbd>+<kbd>.</kbd>) to promote that line to a topic <b>●</b>, again to mark it <b>✓</b> discussed — struck through <i>in place</i>. Nothing ever collapses or moves.</div>
+  </div>
+
+  <div class="hint">
+    <span>▶</span>
+    <div>
+      <b>Try this:</b> Click into a blank line, type a note, then click the gutter <b>◌</b> (or <kbd>Ctrl</kbd>+<kbd>.</kbd>) to make it a <b>topic</b>. Click the <b>●</b> again to tick it <b>✓</b> discussed — watch the line strike through where it sits, with <i>nothing on the page jumping</i>.
+    </div>
+  </div>
+
+  <div class="doc-head">
+    <div class="doc-title">Weekly Team Sync</div>
+    <div class="doc-meta" id="meta">live · the page never moves under you</div>
+  </div>
+
+  <div class="surface" id="surface"></div>
+
+  <div class="uncovered" id="uncovered">⚠ <span id="uncoveredCount">1</span> topic not yet covered — <b>AOB</b> is still open.</div>
+
+  <div class="toolbar">
+    <button id="btnDemo">⤵ Auto-play out-of-order flow</button>
+    <button id="btnReset">↺ Reset to pre-meeting</button>
+  </div>
+
+  <details class="legend">
+    <summary>How it serves the 4 needs</summary>
+    <table>
+      <tr><td>Pre-record</td><td>The five agenda topics are pre-promoted <b>●</b> lines before the meeting — add another by typing a line and tapping its dot.</td></tr>
+      <tr><td>Mark-off</td><td>Click a topic's <b>●</b> (or <kbd>Ctrl</kbd>+<kbd>.</kbd>) to flip it to <b>✓</b>: strike-through + desaturate <i>in place</i>, timestamp appended — no collapse, no cursor jump.</td></tr>
+      <tr><td>Logical structure</td><td>A topic owns the plain lines beneath it until the next topic; a hairline teal spine shows each group without forcing any indent.</td></tr>
+      <tr><td>Low friction</td><td>Zero syntax — you just type. Topic-ness lives in the quiet gutter, so notes never fight markup and the surface stays still.</td></tr>
+    </table>
+  </details>
+
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+(function(){
+  const surface = document.getElementById('surface');
+  const toastEl = document.getElementById('toast');
+  const uncovered = document.getElementById('uncovered');
+  const uncoveredCount = document.getElementById('uncoveredCount');
+
+  // Row model: each row = {id, text, isTopic, done, ts}
+  let nextId = 1;
+  const mk = (text, isTopic=false) => ({id:nextId++, text, isTopic, done:false, ts:null});
+
+  // Pre-meeting state: 5 agenda topics pre-promoted, blank note lines seeded between for typing.
+  function initial(){
+    return [
+      mk('Budget (Q3)', true),
+      mk('', false),
+      mk('Hiring backfill', true),
+      mk('', false),
+      mk('Roadmap', true),
+      mk('', false),
+      mk('Risks / blockers', true),
+      mk('', false),
+      mk('AOB', true),
+      mk('', false),
+    ];
+  }
+
+  let rows = initial();
+  let focusId = null;
+
+  function stamp(){
+    const d = new Date();
+    return d.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
+  }
+  function toast(msg){
+    toastEl.textContent = msg; toastEl.classList.add('show');
+    clearTimeout(toast._t); toast._t = setTimeout(()=>toastEl.classList.remove('show'),1700);
+  }
+  function autoSize(ta){ ta.style.height='auto'; ta.style.height=(ta.scrollHeight)+'px'; }
+
+  // The topic index that owns row idx (nearest topic at-or-above).
+  function topicOf(idx){
+    for(let i=idx;i>=0;i--) if(rows[i].isTopic) return i;
+    return -1;
+  }
+
+  function render(){
+    surface.innerHTML='';
+    rows.forEach((r, idx)=>{
+      const div = document.createElement('div');
+      div.className = 'row ' + (r.isTopic ? 'topic' : 'note');
+      div.dataset.id = r.id;
+      if(r.done) div.classList.add('done');
+      if(r.id===focusId) div.classList.add('focused');
+      // a row is "in-group" if it belongs to some topic (topic itself, or a note under one)
+      if(r.isTopic || topicOf(idx) >= 0) div.classList.add('in-group');
+
+      // Gutter dot — the only topic affordance. ◌ hollow / ● solid / ✓ done.
+      const dot = document.createElement('div');
+      dot.className='dot';
+      dot.textContent = r.isTopic ? (r.done ? '✓' : '●') : '◌';
+      dot.title = r.isTopic
+        ? (r.done ? 'Discussed — click to reopen' : 'Topic — click to mark discussed (Ctrl+.)')
+        : 'Click to make this line a topic (Ctrl+.)';
+      dot.addEventListener('mousedown', e=>e.preventDefault()); // keep editor focus
+      dot.addEventListener('click', ()=>cycleDot(idx));
+      div.appendChild(dot);
+
+      // Hairline spine showing the topic's owned group.
+      const spine = document.createElement('div');
+      spine.className='spine';
+      div.appendChild(spine);
+
+      // Editable line.
+      const inp = document.createElement('textarea');
+      inp.className='line'; inp.rows=1; inp.value=r.text; inp.spellcheck=false;
+      inp.placeholder = idx===rows.length-1 ? 'type a note…' : '';
+      inp.addEventListener('input', e=>{ r.text=e.target.value; autoSize(inp); });
+      inp.addEventListener('focus', ()=>{ focusId=r.id; highlightFocus(); });
+      inp.addEventListener('keydown', e=>onKey(e, r, idx, inp));
+      div.appendChild(inp);
+      requestAnimationFrame(()=>autoSize(inp));
+
+      // Timestamp pill on a ticked topic (appended in place, no reflow of structure).
+      if(r.isTopic && r.done && r.ts){
+        const ts = document.createElement('div');
+        ts.className='ts'; ts.textContent = '✓ '+r.ts;
+        div.appendChild(ts);
+      }
+
+      surface.appendChild(div);
+    });
+    checkUncovered();
+  }
+
+  function highlightFocus(){
+    document.querySelectorAll('.row').forEach(el=>{
+      el.classList.toggle('focused', el.dataset.id == focusId);
+    });
+  }
+
+  function focusRow(id, atEnd){
+    focusId=id;
+    requestAnimationFrame(()=>{
+      const el = surface.querySelector(`.row[data-id="${id}"] .line`);
+      if(el){ el.focus(); if(atEnd){ const n=el.value.length; el.setSelectionRange(n,n); } }
+      highlightFocus();
+    });
+  }
+
+  // The gutter dot is a tri-state cycle on a line — and CRUCIALLY does not move anything.
+  // plain note  ->  promote to topic (●)
+  // topic ●     ->  mark discussed (✓), strike in place
+  // topic ✓     ->  reopen (●)
+  function cycleDot(idx){
+    const r = rows[idx];
+    if(!r.isTopic){
+      r.isTopic = true; r.done=false; r.ts=null;
+      renderInPlace();                       // promote: dot solid, line gains weight; row stays put
+      toast('● Promoted to topic');
+    } else if(!r.done){
+      r.done = true; r.ts = stamp();
+      renderInPlace();                       // tick: strike in place, timestamp appended; NOTHING jumps
+      toast(`✓ ${r.text || 'Topic'} marked discussed`);
+    } else {
+      // a second click on ✓ demotes back to a plain note (full demote requires reopen first)
+      r.done = false; r.ts=null;
+      renderInPlace();
+      toast('● Reopened');
+    }
+  }
+
+  // Re-render but deliberately preserve scroll + cursor so the surface stays visually still.
+  function renderInPlace(){
+    const active = document.activeElement;
+    const wasLine = active && active.classList && active.classList.contains('line');
+    const selStart = wasLine ? active.selectionStart : null;
+    const scrollY = window.scrollY;
+    render();
+    window.scrollTo(0, scrollY);             // never let the page move under the user
+    if(wasLine && focusId!=null){
+      requestAnimationFrame(()=>{
+        const el = surface.querySelector(`.row[data-id="${focusId}"] .line`);
+        if(el){ el.focus(); if(selStart!=null){ el.setSelectionRange(selStart, selStart); } }
+      });
+    }
+  }
+
+  function checkUncovered(){
+    const topics = rows.filter(r=>r.isTopic);
+    const open = topics.filter(r=>!r.done).length;
+    const anyDone = topics.some(r=>r.done);
+    if(open>0 && anyDone){
+      uncovered.style.display='block';
+      uncoveredCount.textContent = open;
+      const openTitles = topics.filter(r=>!r.done).map(r=>r.text||'(untitled)');
+      uncovered.querySelector('b').textContent = openTitles.join(', ');
+    } else {
+      uncovered.style.display='none';
+    }
+  }
+
+  function onKey(e, r, idx, inp){
+    // Ctrl/Cmd+.  => the keyboard equivalent of clicking the gutter dot.
+    if(e.key==='.' && (e.ctrlKey||e.metaKey)){
+      e.preventDefault();
+      cycleDot(idx);
+      return;
+    }
+    // Enter => new plain line below (inherits nothing — topic-ness is opt-in via the dot).
+    if(e.key==='Enter' && !e.shiftKey){
+      e.preventDefault();
+      const nr = mk('', false);
+      rows.splice(idx+1,0,nr);
+      render();
+      focusRow(nr.id, true);
+      return;
+    }
+    // Backspace on empty line => delete row, focus previous.
+    if(e.key==='Backspace' && inp.value==='' && rows.length>1){
+      e.preventDefault();
+      const prev = rows[idx-1];
+      rows.splice(idx,1);
+      render();
+      if(prev) focusRow(prev.id, true);
+      return;
+    }
+    // Arrow nav between lines.
+    if(e.key==='ArrowDown' && idx<rows.length-1){
+      e.preventDefault(); focusRow(rows[idx+1].id, true);
+    }
+    if(e.key==='ArrowUp' && idx>0){
+      e.preventDefault(); focusRow(rows[idx-1].id, true);
+    }
+  }
+
+  // ---- Auto-play the out-of-order flow (Hiring before Budget) ----
+  let playing=false;
+  function autoplay(){
+    if(playing) return; playing=true;
+    rows = initial(); focusId=null; render();
+    const steps=[];
+
+    // Type notes onto the blank line beneath a named topic, char-free (instant set).
+    function addNotes(topicText, notes){
+      steps.push(()=>{
+        const ti = rows.findIndex(r=>r.isTopic && r.text===topicText);
+        // first blank note line after the topic; create more as needed
+        let insertAt = ti;
+        notes.forEach((n, k)=>{
+          const slot = insertAt+1;
+          if(rows[slot] && !rows[slot].isTopic && rows[slot].text===''){
+            rows[slot].text = n; insertAt = slot;
+          } else {
+            const nr = mk(n, false); rows.splice(insertAt+1,0,nr); insertAt = insertAt+1;
+          }
+        });
+        renderInPlace();
+        focusRow(rows[insertAt].id, true);
+      });
+    }
+    function tick(topicText){
+      steps.push(()=>{
+        const ti = rows.findIndex(r=>r.isTopic && r.text===topicText);
+        if(ti>=0){ rows[ti].done=true; rows[ti].ts=stamp(); renderInPlace(); toast(`✓ ${topicText}`); }
+      });
+    }
+
+    // Conversation jumps order: Hiring first, then Budget.
+    addNotes('Hiring backfill', ['backfill the 2 SDR roles','Priya to approve reqs by Fri']);
+    tick('Hiring backfill');
+    addNotes('Budget (Q3)', ['Q3 over by 12%','Dan to recut the forecast']);
+    tick('Budget (Q3)');
+    addNotes('Roadmap', ['ship date slips ~2 weeks']);
+    tick('Roadmap');
+    addNotes('Risks / blockers', ['vendor SLA needs checking']);
+    tick('Risks / blockers');
+    // AOB intentionally left open & un-ticked.
+
+    let i=0;
+    (function run(){
+      if(i>=steps.length){ playing=false; toast('AOB left un-covered ✓'); return; }
+      steps[i++]();
+      setTimeout(run, 800);
+    })();
+  }
+
+  document.getElementById('btnDemo').addEventListener('click', autoplay);
+  document.getElementById('btnReset').addEventListener('click', ()=>{
+    playing=false; rows=initial(); focusId=null; render(); toast('Reset to pre-meeting agenda');
+  });
+
+  render();
+})();
+</script>
+</body>
+</html>
