@@ -42,6 +42,15 @@ public sealed class ActionEditJourney(BrowserFixture browser) : IAsyncLifetime
         await _app.GotoAsync();
         await _app.ClickNewNoteAsync();
         await _app.AddActionItemAsync(original);
+
+        // Reconcile the optimistic add to its real server id BEFORE editing. The add renders the row
+        // with a temp id (`temp-…`) and swaps it for the real id only on the onSettled refetch; in the
+        // slow deploy env that lag means an immediate edit would PUT to `/actions/temp-…` → 404 → the
+        // edit is silently rolled back and the new text never appears (the deterministic failure this
+        // journey hit). Reloading first re-reads the action from the server with its real id (CLAUDE.md:
+        // drive a post-write action through a gated read, not optimistic state).
+        await _app.AssertActionVisibleAfterReloadAsync(original);
+
         await _app.EditActionItemAsync(original, edited);
 
         // Reload drops the optimistic edit; the new text can only reappear via the token-gated server

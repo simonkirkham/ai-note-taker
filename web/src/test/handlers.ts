@@ -23,6 +23,7 @@ export const handlers = [
   ...scoped('get', '/tags', () => HttpResponse.json({ tags: [] })),
   ...scoped('get', '/todos', () => HttpResponse.json({ items: [] })),
   ...scoped('post', '/todos', () => HttpResponse.json({ todoId: 'new-todo-id' })),
+  ...scoped('post', '/todos/reorder', () => HttpResponse.json({ consistencyToken: 'todo-order#__default__@1' })),
   ...scoped('post', '/todos/:todoId/complete', () => new HttpResponse(null, { status: 204 })),
   ...scoped('post', '/todos/:todoId/reopen', () => new HttpResponse(null, { status: 204 })),
   ...scoped('delete', '/todos/:todoId', () => new HttpResponse(null, { status: 204 })),

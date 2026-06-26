@@ -13,4 +13,8 @@ public interface ITodoListStore
     Task UpdateNoteWorkspaceAsync(NoteId noteId, string workspaceId, CancellationToken ct = default);
     Task<TodoItem?> GetByIdAsync(string itemId, CancellationToken ct = default);
     Task<TodoListView> QueryAllAsync(CancellationToken ct = default);
+
+    // Apply a reorder snapshot: set each listed item's Position to its index in the list.
+    // Items not listed keep their existing position (the client always sends the full open-list order).
+    Task UpdatePositionsAsync(IReadOnlyList<string> orderedItemIds, CancellationToken ct = default);
 }

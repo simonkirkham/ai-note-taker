@@ -1,7 +1,7 @@
 import { useMutation, useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { completeAction, reopenAction, deleteAction } from "../api/actions";
 import { keys } from "../api/queryKeys";
-import { completeTodo, reopenTodo, deleteTodo } from "../api/todos";
+import { completeTodo, reopenTodo, deleteTodo, reorderTodos } from "../api/todos";
 import type { TodoItem } from "../api/todos";
 
 type Ctx = { previous?: TodoItem[] };
@@ -53,6 +53,26 @@ export function useReopenTodo() {
         items.map((i) => (i.itemId === item.itemId ? { ...i, completedAt: null } : i))),
     onError: (_e, _item, ctx) => rollback(qc, ctx),
     onSettled: (_d, _e, item) => settleAction(qc, item),
+  });
+}
+
+// Reorder the open items into the given full id order. Optimistic: arrange the open items in the
+// cache to match immediately; done items (and any open item not in the order) keep their place at
+// the end. Reconcile on error. The mutation input is the complete ordered list of open item ids.
+function applyOrder(items: TodoItem[], orderedItemIds: string[]): TodoItem[] {
+  const byId = new Map(items.map((i) => [i.itemId, i]));
+  const ordered = orderedItemIds.map((id) => byId.get(id)).filter((i): i is TodoItem => i !== undefined);
+  const orderedIds = new Set(orderedItemIds);
+  const rest = items.filter((i) => !orderedIds.has(i.itemId));
+  return [...ordered, ...rest];
+}
+
+export function useReorderTodos() {
+  const qc = useQueryClient();
+  return useMutation<void, Error, string[], Ctx>({
+    mutationFn: (orderedItemIds) => reorderTodos(orderedItemIds),
+    onMutate: (orderedItemIds) => optimistic(qc, (items) => applyOrder(items, orderedItemIds)),
+    onError: (_e, _ids, ctx) => rollback(qc, ctx),
   });
 }
 

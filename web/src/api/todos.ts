@@ -62,6 +62,17 @@ export async function addTodo(
   return result;
 }
 
+// Persist a new order for the home To Do open-items list (full-order snapshot of item ids).
+// Captures the write token so the next GET /todos reads-your-writes past the async projector.
+export async function reorderTodos(orderedItemIds: string[]): Promise<void> {
+  const result = await request<{ consistencyToken: string }>(`/todos/reorder`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ orderedItemIds }),
+  });
+  setPendingTodoToken(result.consistencyToken);
+}
+
 export function completeTodo(todoId: string): Promise<void> {
   return requestVoid(`/todos/${todoId}/complete`, { method: "POST" });
 }

@@ -46,6 +46,7 @@ public static class EventDeserializer
         (nameof(TodoCompleted), _) => JsonSerializer.Deserialize<TodoCompleted>(envelope.Payload)!,
         (nameof(TodoReopened), _) => JsonSerializer.Deserialize<TodoReopened>(envelope.Payload)!,
         (nameof(TodoDeleted), _) => JsonSerializer.Deserialize<TodoDeleted>(envelope.Payload)!,
+        (nameof(TodoListReordered), _) => JsonSerializer.Deserialize<TodoListReordered>(envelope.Payload)!,
         (nameof(WorkspaceCreated), _) => JsonSerializer.Deserialize<WorkspaceCreated>(envelope.Payload)!,
         (nameof(WorkspaceRenamed), _) => JsonSerializer.Deserialize<WorkspaceRenamed>(envelope.Payload)!,
         (nameof(WorkspaceDeleted), _) => JsonSerializer.Deserialize<WorkspaceDeleted>(envelope.Payload)!,
