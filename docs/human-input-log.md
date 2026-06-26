@@ -22,7 +22,8 @@ One row per interruption. Newest slices at the top.
 
 | Slice | Type | What was asked | Why it stopped | Avoidable? | Fix / where it landed |
 |-------|------|----------------|----------------|:----------:|-----------------------|
-| _(none yet — capture begins on the next slice)_ | | | | | |
+| human-input-log (tooling) | Decision | Capture mechanism: live hook, Scribe transcript scan, or both | Genuine design fork for a net-new feature; no established default | No | — (legitimate; batched with the row below into one prompt) |
+| human-input-log (tooling) | Decision | Analysis loop: auto-graduate via process-improvements, or periodic manual review | Same fork; changed what was built | No | — (legitimate; both asks resolved in a single `AskUserQuestion` call → 1 interruption, not 2) |
 
 ## Analysis
 
