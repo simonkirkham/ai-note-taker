@@ -8,9 +8,11 @@
 
 | Slice | Summary | Status | Depends on |
 |-------|---------|--------|------------|
-| 38-A | **Paste a transcript → analysed note (keystone, whole MVP).** New `POST /w/{ws}/notes/import-transcript` on the Command Lambda: in one handler creates the note (`NoteCreated`), appends `TranscriptionCompleted`, then runs analysis passing the pasted text as `transcriptOverride` and identity from the auth context — returns `201 { noteId }` + `X-Consistency-Token` at the post-analysis version. Frontend: an **Import transcript** modal (textarea + button) launched near the new-note control; on submit shows an importing state and navigates to the finished, analysed note. Proves the full import-and-analyse flow on one real call. | Not Started | — |
+| 38-A | **Paste a transcript → analysed note (keystone, whole MVP).** New `POST /w/{ws}/notes/import-transcript` on the Command Lambda: in one handler creates the note (`NoteCreated`), appends `TranscriptionCompleted`, then runs analysis passing the pasted text as `transcriptOverride` and identity from the auth context — returns `201 { noteId }` + `X-Consistency-Token` at the post-analysis version. Frontend: an **Import transcript** modal (textarea + button) launched near the new-note control; on submit shows an importing state and navigates to the finished, analysed note. Proves the full import-and-analyse flow on one real call. | Done | — |
 
 **38-A is the whole feature.** Plain text only — title, meeting date, attendees, and speaker-labelled/timestamped formats are deferred sub-slices (see *Deferred* below), each additive on the proven pattern.
+
+> **Done** — shipped in PR #352, deploy #658 (2026-06-26); prod route verified live. Design whys (server-side import to dodge the async-projection race; the focus-trap/`useCallback` bug; red-shared-gate handling) in [learnings/phase-38a-import-transcript.md](../learnings/phase-38a-import-transcript.md).
 
 ### Locked decisions
 

@@ -374,7 +374,7 @@ Slices and acceptance criteria: [docs/phases/phase-37.md](phases/phase-37.md)
 
 ---
 
-## Phase 38 — Import a transcript manually _(Not started)_
+## Phase 38 — Import a transcript manually _(Done)_
 
 **Value:** today only meetings recorded *live in the app* get summarised, action-itemed, and tagged — so a Zoom/Teams transcript a colleague sends you, or a meeting recorded on another device, can't benefit. This lets the user **paste any transcript and get the same AI analysis**, making the app useful for *every* meeting they have a transcript for. Also de-risks the bigger Zoom/Teams auto-connector (manual paste proves import-and-analyse first).
 
