@@ -5,17 +5,15 @@ using System.Text.Json;
 using Api.Services;
 using Domain.Notes;
 using EventStore;
-using EventStore.Projections;
-using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 
 namespace Api.Integration;
 
-// Phase 38-A — import a transcript manually. POST /notes/import-transcript creates a note from
-// pasted text and runs the SAME analysis pipeline as a recording, reusing the recorded-note events
-// minus audio. (Paths are un-prefixed; ApiFactory rewrites them to the default workspace.)
+// Phase 38-B — paste a transcript INTO an existing note. POST /notes/{noteId}/import-transcript
+// replaces the note's transcript and runs the SAME analysis pipeline as a recording (analysing the
+// pasted text via transcriptOverride). (Paths are un-prefixed; ApiFactory rewrites to the default ws.)
 public sealed class ImportTranscriptTests : IClassFixture<ApiFactory>
 {
     private readonly HttpClient _client;
@@ -30,90 +28,119 @@ public sealed class ImportTranscriptTests : IClassFixture<ApiFactory>
         _fakeBedrock.NextResult = new NoteAnalysisResult("", [], [], [], []);
     }
 
-    // Scenario 1 + 5: import creates an analysed note via the recorded-note events minus audio.
+    // Sets the transcript on an existing note and analyses it (summary/tags/actions), 204 + token.
     [Fact]
-    public async Task Import_NonEmptyTranscript_CreatesAnalysedNote_WithRecordedEventSequenceMinusAudio()
+    public async Task Import_IntoExistingNote_SetsTranscript_AndAnalyses_204()
     {
         _fakeBedrock.NextResult = new NoteAnalysisResult(
             Summary: "The team agreed to ship the login fix on Friday.",
-            DiscussionPoints: ["Login fails on Friday"],
-            Decisions: ["Ship Friday"],
-            NewTags: ["login"],
-            NewActionItems: ["Fix login bug by Friday"],
-            ModelId: "amazon.nova-lite-v1:0",
-            PromptVersion: "analysis@v8");
+            DiscussionPoints: ["Login fails on Friday"], Decisions: ["Ship Friday"],
+            NewTags: ["login"], NewActionItems: ["Fix login bug by Friday"],
+            ModelId: "amazon.nova-lite-v1:0", PromptVersion: "analysis@v8");
 
-        var noteId = await ImportAsync("We agreed to fix login by Friday. Alice will own it.");
+        var noteId = await CreateNoteAsync();
+        var resp = await ImportAsync(noteId, "We agreed to fix login by Friday. Alice will own it.");
+
+        Assert.Equal(HttpStatusCode.NoContent, resp.StatusCode);
+        var token = Assert.Single(resp.Headers.GetValues("X-Consistency-Token"));
+        Assert.StartsWith($"note#{noteId}@", token);
 
         var detail = await GetNoteAsync(noteId);
         Assert.Equal("We agreed to fix login by Friday. Alice will own it.",
             detail.GetProperty("transcriptText").GetString());
         Assert.Equal("The team agreed to ship the login fix on Friday.", detail.GetProperty("summary").GetString());
-        var tags = detail.GetProperty("tags").EnumerateArray().Select(t => t.GetString()).ToList();
-        Assert.Contains("login", tags);
+        Assert.Contains("login", detail.GetProperty("tags").EnumerateArray().Select(t => t.GetString()));
         var actions = await GetActionsAsync(noteId);
         Assert.Contains(actions, a => a.GetProperty("description").GetString()!.Contains("Fix login bug"));
 
         var events = await ReadStreamAsync(noteId);
-        Assert.Single(events, e => e.EventType == nameof(NoteCreated));
         Assert.Single(events, e => e.EventType == nameof(TranscriptionCompleted));
         Assert.Single(events, e => e.EventType == nameof(AnalysisSummaryRecorded));
-        // The recorded path minus audio: no recording-upload or diarization events.
-        Assert.DoesNotContain(events, e => e.EventType == nameof(RecordingUploaded));
-        Assert.DoesNotContain(events, e => e.EventType == nameof(TranscriptionDiarized));
+        // The token's version is the final stream version (covers the analysis appends).
+        Assert.Equal(events.Count, long.Parse(token.Split('@')[1]));
     }
 
-    // Scenario 2: 201 with { noteId } and an X-Consistency-Token at the post-analysis version.
+    // Pasting replaces an existing transcript (e.g. from a recording) and analyses the NEW text.
     [Fact]
-    public async Task Import_Returns201_WithNoteId_AndPostAnalysisConsistencyToken()
+    public async Task Import_ReplacesExistingTranscript_AndAnalysesTheNewText()
     {
-        _fakeBedrock.NextResult = new NoteAnalysisResult("a summary", [], [], ["meeting"], []);
+        _fakeBedrock.NextResult = new NoteAnalysisResult("a summary", [], [], [], []);
+        var noteId = await CreateNoteAsync();
+        // Existing transcript (as a recording would leave it).
+        await _client.PostAsync($"/notes/{noteId}/transcription",
+            Json(new { transcriptText = "OLD recorded transcript", durationSeconds = 30 }));
 
-        var resp = await _client.PostAsync("/notes/import-transcript",
-            Json(new { transcriptText = "Some meeting transcript." }));
+        var resp = await ImportAsync(noteId, "NEW pasted transcript");
 
-        Assert.Equal(HttpStatusCode.Created, resp.StatusCode);
-        var noteId = (await resp.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("noteId").GetString()!;
-        Assert.False(string.IsNullOrEmpty(noteId));
-
-        var token = Assert.Single(resp.Headers.GetValues("X-Consistency-Token"));
-        Assert.StartsWith($"note#{noteId}@", token);
-        // The token version is the FINAL stream version — it covers the analysis appends, not just
-        // the transcript (so the first gated read shows the finished, analysed note).
-        var version = long.Parse(token.Split('@')[1]);
-        var events = await ReadStreamAsync(noteId);
-        Assert.Equal(events.Count, version);
-        Assert.Contains(events, e => e.EventType == nameof(AnalysisSummaryRecorded));
+        Assert.Equal(HttpStatusCode.NoContent, resp.StatusCode);
+        Assert.Equal("NEW pasted transcript", (await GetNoteAsync(noteId)).GetProperty("transcriptText").GetString());
+        // Analysis ran on the pasted text, not the stale projection transcript.
+        Assert.Equal("NEW pasted transcript", _fakeBedrock.LastRequest!.TranscriptText);
     }
 
-    // Scenario 3: whitespace-only transcript → 400, no note created.
+    // The note's typed content is preserved and passed to analysis alongside the pasted transcript.
     [Fact]
-    public async Task Import_WhitespaceTranscript_Returns400_NoNoteCreated()
+    public async Task Import_KeepsNoteContent_AndAnalysesContentPlusTranscript()
     {
-        var resp = await _client.PostAsync("/notes/import-transcript",
-            Json(new { transcriptText = "   " }));
+        _fakeBedrock.NextResult = new NoteAnalysisResult("unchanged", [], [], [], []);
+        var noteId = await CreateNoteAsync();
+        await _client.PutAsync($"/notes/{noteId}/content", Json(new { content = "My typed notes." }));
 
-        Assert.Equal(HttpStatusCode.BadRequest, resp.StatusCode);
-        // Nothing was created, so there is no consistency token to surface.
-        Assert.False(resp.Headers.Contains("X-Consistency-Token"));
+        await ImportAsync(noteId, "Pasted meeting transcript.");
+
+        Assert.Equal("My typed notes.", (await GetNoteAsync(noteId)).GetProperty("content").GetString());
+        Assert.Equal("My typed notes.", _fakeBedrock.LastRequest!.ExistingContent);
+        Assert.Equal("Pasted meeting transcript.", _fakeBedrock.LastRequest.TranscriptText);
     }
 
-    // An over-long paste (beyond the ~350 KB cap) is a clean 400, not an unhandled 500 at the
-    // DynamoDB ~400 KB item limit — and no note is created.
     [Fact]
-    public async Task Import_TranscriptOverByteCap_Returns400_NoNoteCreated()
+    public async Task Import_WhitespaceTranscript_Returns400()
     {
-        var huge = new string('a', 360_000); // 360 KB of ASCII > the 350 KB byte cap
-        var resp = await _client.PostAsync("/notes/import-transcript",
-            Json(new { transcriptText = huge }));
-
+        var noteId = await CreateNoteAsync();
+        var resp = await ImportAsync(noteId, "   ");
         Assert.Equal(HttpStatusCode.BadRequest, resp.StatusCode);
         Assert.False(resp.Headers.Contains("X-Consistency-Token"));
     }
 
-    // Scenario 4: Bedrock failure still saves the note (201) with its transcript and no analysis.
     [Fact]
-    public async Task Import_WhenBedrockThrows_StillCreatesNote_WithTranscript_NoAnalysis()
+    public async Task Import_TranscriptOverByteCap_Returns400()
+    {
+        var noteId = await CreateNoteAsync();
+        var resp = await ImportAsync(noteId, new string('a', 360_000)); // > 350 KB cap
+        Assert.Equal(HttpStatusCode.BadRequest, resp.StatusCode);
+        Assert.False(resp.Headers.Contains("X-Consistency-Token"));
+    }
+
+    [Fact]
+    public async Task Import_NonexistentNote_Returns404()
+    {
+        var resp = await ImportAsync(Guid.NewGuid().ToString(), "some transcript");
+        Assert.Equal(HttpStatusCode.NotFound, resp.StatusCode);
+    }
+
+    [Fact]
+    public async Task Import_OtherUsersNote_Returns404()
+    {
+        var noteId = await CreateNoteAsync();
+        var other = _factory.CreateClientAsOtherUser();
+        var resp = await other.PostAsync($"/notes/{noteId}/import-transcript",
+            Json(new { transcriptText = "intruder text" }));
+        Assert.Equal(HttpStatusCode.NotFound, resp.StatusCode);
+    }
+
+    [Fact]
+    public async Task Import_Unauthenticated_Returns401()
+    {
+        var noteId = await CreateNoteAsync();
+        var unauth = _factory.CreateUnauthenticatedClient();
+        var resp = await unauth.PostAsync($"/notes/{noteId}/import-transcript",
+            Json(new { transcriptText = "x" }));
+        Assert.Equal(HttpStatusCode.Unauthorized, resp.StatusCode);
+    }
+
+    // Bedrock failure still saves the pasted transcript (204) with no analysis recorded.
+    [Fact]
+    public async Task Import_WhenBedrockThrows_StillSavesTranscript_NoAnalysis()
     {
         var throwingFactory = _factory.WithWebHostBuilder(b => b.ConfigureTestServices(s =>
         {
@@ -123,81 +150,31 @@ public sealed class ImportTranscriptTests : IClassFixture<ApiFactory>
         var client = throwingFactory.CreateClient();
         client.DefaultRequestHeaders.Add("X-Test-User-Id", FakeCurrentUser.TestUserId);
 
-        var resp = await client.PostAsync("/notes/import-transcript",
-            Json(new { transcriptText = "An external transcript that cannot be analysed right now." }));
+        var noteResp = await client.PostAsync("/notes", null);
+        var noteId = (await noteResp.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("noteId").GetString()!;
+        var resp = await client.PostAsync($"/notes/{noteId}/import-transcript",
+            Json(new { transcriptText = "transcript that can't be analysed now" }));
 
-        Assert.Equal(HttpStatusCode.Created, resp.StatusCode);
-        var noteId = (await resp.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("noteId").GetString()!;
-        var events = await ReadStreamAsync(noteId, throwingFactory);
+        Assert.Equal(HttpStatusCode.NoContent, resp.StatusCode);
+        var store = throwingFactory.Services.GetRequiredService<IEventStore>();
+        var events = await store.ReadAsync($"note#{noteId}");
         Assert.Single(events, e => e.EventType == nameof(TranscriptionCompleted));
         Assert.DoesNotContain(events, e => e.EventType == nameof(AnalysisSummaryRecorded));
     }
 
-    // Scenario 5: an imported note is a first-class note — it shows on the home cards list.
-    [Fact]
-    public async Task Import_ImportedNote_AppearsInNoteCards()
+    private Task<HttpResponseMessage> ImportAsync(string noteId, string transcriptText) =>
+        _client.PostAsync($"/notes/{noteId}/import-transcript", Json(new { transcriptText }));
+
+    private async Task<string> CreateNoteAsync()
     {
-        _fakeBedrock.NextResult = new NoteAnalysisResult("a summary", [], [], [], []);
-
-        var noteId = await ImportAsync("A standup happened and we synced on progress.");
-
-        var resp = await _client.GetAsync("/notes/cards");
-        resp.EnsureSuccessStatusCode();
-        var cards = (await resp.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("cards");
-        Assert.Contains(cards.EnumerateArray(), c => c.GetProperty("noteId").GetString() == noteId);
-    }
-
-    // Scenario: import requires authentication.
-    [Fact]
-    public async Task Import_Unauthenticated_Returns401()
-    {
-        var unauth = _factory.CreateUnauthenticatedClient();
-        var resp = await unauth.PostAsync("/notes/import-transcript",
-            Json(new { transcriptText = "x" }));
-        Assert.Equal(HttpStatusCode.Unauthorized, resp.StatusCode);
-    }
-
-    // Acceptance criterion 2: analysis reads the pasted text via transcriptOverride and NEVER the
-    // async projection. With a NoteDetail projection that always lags (GetAsync → null), a
-    // projection-reading analyse would 422; the override branch still analyses the supplied text.
-    [Fact]
-    public async Task Import_WhenProjectionLags_StillAnalysesViaOverride()
-    {
-        var laggingFactory = _factory.WithWebHostBuilder(b => b.ConfigureTestServices(s =>
-        {
-            s.RemoveAll<INoteDetailStore>();
-            s.AddSingleton<InMemoryNoteDetailStore>();
-            s.AddSingleton<INoteDetailStore>(sp =>
-                new LaggingNoteDetailStore(sp.GetRequiredService<InMemoryNoteDetailStore>()));
-        }));
-        var client = laggingFactory.CreateClient();
-        client.DefaultRequestHeaders.Add("X-Test-User-Id", FakeCurrentUser.TestUserId);
-        var bedrock = laggingFactory.Services.GetRequiredService<FakeBedrockAnalysisService>();
-        bedrock.NextResult = new NoteAnalysisResult("a summary from the override", [], [], ["imported"], []);
-
-        var resp = await client.PostAsync("/notes/import-transcript",
-            Json(new { transcriptText = "pasted transcript content" }));
-
-        Assert.Equal(HttpStatusCode.Created, resp.StatusCode);
-        var noteId = (await resp.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("noteId").GetString()!;
-        // Bedrock saw the override text, despite the projection returning null throughout.
-        Assert.Equal("pasted transcript content", bedrock.LastRequest!.TranscriptText);
-        var events = await ReadStreamAsync(noteId, laggingFactory);
-        Assert.Single(events, e => e.EventType == nameof(AnalysisSummaryRecorded));
-    }
-
-    private async Task<string> ImportAsync(string transcriptText)
-    {
-        var resp = await _client.PostAsync("/notes/import-transcript", Json(new { transcriptText }));
+        var resp = await _client.PostAsync("/notes", null);
         resp.EnsureSuccessStatusCode();
         return (await resp.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("noteId").GetString()!;
     }
 
-    private Task<IReadOnlyList<EventEnvelope>> ReadStreamAsync(string noteId) => ReadStreamAsync(noteId, _factory);
-
-    private static async Task<IReadOnlyList<EventEnvelope>> ReadStreamAsync(string noteId, WebApplicationFactory<Program> factory)
+    private async Task<IReadOnlyList<EventEnvelope>> ReadStreamAsync(string noteId)
     {
-        var store = factory.Services.GetRequiredService<IEventStore>();
+        var store = _factory.Services.GetRequiredService<IEventStore>();
         return await store.ReadAsync($"note#{noteId}");
     }
 
@@ -218,17 +195,4 @@ public sealed class ImportTranscriptTests : IClassFixture<ApiFactory>
 
     private static StringContent Json(object body) =>
         new(JsonSerializer.Serialize(body), Encoding.UTF8, "application/json");
-}
-
-// Simulates the async projector never having caught up: writes are applied to the inner store, but
-// GetAsync always returns null — exactly the prod window where a just-imported note's NoteDetail row
-// does not exist yet. Proves AnalyseAsync's transcriptOverride branch never depends on the projection.
-internal sealed class LaggingNoteDetailStore(InMemoryNoteDetailStore inner) : INoteDetailStore
-{
-    public Task UpsertAsync(NoteDetailView detail, CancellationToken ct = default) => inner.UpsertAsync(detail, ct);
-    public Task DeleteAsync(NoteId noteId, CancellationToken ct = default) => inner.DeleteAsync(noteId, ct);
-    public Task DeleteAllAsync(CancellationToken ct = default) => inner.DeleteAllAsync(ct);
-    public Task<NoteDetailView?> GetAsync(NoteId noteId, CancellationToken ct = default) =>
-        Task.FromResult<NoteDetailView?>(null);
-    public Task<IReadOnlyList<NoteDetailView>> QueryAllAsync(CancellationToken ct = default) => inner.QueryAllAsync(ct);
 }

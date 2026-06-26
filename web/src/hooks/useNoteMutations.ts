@@ -1,6 +1,6 @@
 import { useMutation, useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { moveNoteToFolder, moveNoteToWorkspace, unfileNote } from "../api/folders";
-import { createNote, deleteNote, importTranscript, type NoteCard } from "../api/notes";
+import { createNote, deleteNote, importTranscriptIntoNote, type NoteCard } from "../api/notes";
 import { keys } from "../api/queryKeys";
 
 type Ctx = { previous?: NoteCard[] };
@@ -44,13 +44,13 @@ export function useCreateNote() {
   });
 }
 
-// Phase 38: import a pasted transcript. The server creates + analyses the note in one call, so we
-// invalidate the cards to surface the new analysed card on return to the home list. Navigation to
-// the note keys off the returned id (the caller does it).
-export function useImportTranscript() {
+// Phase 38-B: import a pasted transcript into an existing note (replace + re-analyse). Invalidate
+// the cards (the note's preview/tags change); the note-detail refresh is the caller's `onImported`
+// (the NoteView's refreshNote), mirroring how RecordControl reconciles after analysis.
+export function useImportTranscriptIntoNote(noteId: string) {
   const qc = useQueryClient();
-  return useMutation<{ noteId: string }, Error, { transcriptText: string }>({
-    mutationFn: ({ transcriptText }) => importTranscript(transcriptText),
+  return useMutation<void, Error, { transcriptText: string }>({
+    mutationFn: ({ transcriptText }) => importTranscriptIntoNote(noteId, transcriptText),
     onSuccess: () => invalidate(qc),
   });
 }

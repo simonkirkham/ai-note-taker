@@ -5,7 +5,6 @@ import { NoteCard as NoteCardData, SearchResult } from "../api/notes";
 import { effectiveDate, isEditedToday, localTodayISO } from "../dates";
 import { type SearchState, useNoteSearch } from "../hooks/useNoteSearch";
 import { useTags } from "../hooks/useTags";
-import ImportTranscript from "./ImportTranscript";
 import styles from "./ListView.module.css";
 import MeetingsSection from "./MeetingsSection";
 import NoteCard from "./NoteCard";
@@ -241,16 +240,13 @@ export default function ListView({
           )}
           <h1 className="title">{heading}</h1>
         </div>
-        <div className={styles.listActions}>
-          <ImportTranscript onImported={(noteId) => onOpenNote(noteId)} />
-          <button
-            className="new-note-button"
-            onClick={onNewNote}
-            disabled={creating}
-          >
-            {creating ? "Creating…" : "New Note"}
-          </button>
-        </div>
+        <button
+          className="new-note-button"
+          onClick={onNewNote}
+          disabled={creating}
+        >
+          {creating ? "Creating…" : "New Note"}
+        </button>
       </div>
       {createError && (
         <p data-testid="create-error" className="error" role="alert">

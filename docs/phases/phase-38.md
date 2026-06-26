@@ -9,8 +9,9 @@
 | Slice | Summary | Status | Depends on |
 |-------|---------|--------|------------|
 | 38-A | **Paste a transcript → analysed note (keystone, whole MVP).** New `POST /w/{ws}/notes/import-transcript` on the Command Lambda: in one handler creates the note (`NoteCreated`), appends `TranscriptionCompleted`, then runs analysis passing the pasted text as `transcriptOverride` and identity from the auth context — returns `201 { noteId }` + `X-Consistency-Token` at the post-analysis version. Frontend: an **Import transcript** modal (textarea + button) launched near the new-note control; on submit shows an importing state and navigates to the finished, analysed note. Proves the full import-and-analyse flow on one real call. | Done | — |
+| 38-B | **Paste a transcript into an *existing* note (replaces 38-A's entry point).** Per user feedback, import targets the note you have open, not a brand-new one. Endpoint becomes note-scoped `POST /w/{ws}/notes/{noteId}/import-transcript` → `CompleteTranscription` (replaces any existing transcript) + `AnalyseAsync(transcriptOverride)` → `204` + token; `404` for a missing/non-owned note (event-stream authz). Frontend: the home **Import transcript** button is removed; a **Paste transcript** button + modal lives on the note's Transcript tab next to Record; if the note already has a transcript the modal warns and the button reads **Replace & analyse**. Reuses 38-A's import-and-analyse machinery. | Done | 38-A |
 
-**38-A is the whole feature.** Plain text only — title, meeting date, attendees, and speaker-labelled/timestamped formats are deferred sub-slices (see *Deferred* below), each additive on the proven pattern.
+**38-B is the current entry point.** Plain text only — title, meeting date, attendees, and speaker-labelled/timestamped formats are deferred sub-slices (see *Deferred* below), each additive on the proven pattern.
 
 > **Done** — shipped in PR #352, deploy #658 (2026-06-26); prod route verified live. Design whys (server-side import to dodge the async-projection race; the focus-trap/`useCallback` bug; red-shared-gate handling) in [learnings/phase-38a-import-transcript.md](../learnings/phase-38a-import-transcript.md).
 
@@ -74,13 +75,47 @@ E2E (`Browser.E2E`, gated read — drive the gated `/notes/cards`/note read, **n
 6. Optimistic UI: immediate **Importing…** feedback, auto-navigate on success (no refresh), pasted text preserved on error.
 7. Deploy-time delta stated in the PR (expected: neutral).
 
-### Deferred (future sub-slices, not in 38-A)
+### Deferred (future sub-slices)
 
-- **38-B (later):** optional **title** on import (`RenameNote` after create).
-- **38-C (later):** meeting **date** + **attendees** (`SetNoteDate`, attendee handling).
+- **38-C (later):** meeting **date** + **attendees** on the imported note (`SetNoteDate`, attendee handling).
 - **Later:** speaker-labelled / timestamped transcript formats (ties into Phase 33 diarization).
 
 ---
+
+## Slice 38-B — Paste a transcript into an existing note
+
+**Capability:** paste a transcript into the note you have open (next to Record), replacing any existing transcript and re-analysing — instead of always creating a new note (38-A). Chosen per user feedback after 38-A shipped.
+
+### Locked decisions
+
+1. **Note-scoped, single server-side call.** `POST /w/{ws}/notes/{noteId}/import-transcript` → `CompleteTranscription(noteId, text, 0)` then `AnalyseAsync(transcriptOverride: text)` in one Command-Lambda handler. The override is still required: the just-appended transcript hasn't reached the async `NoteDetail` projection, so reading it back would analyse the *old* transcript. Returns `204` + post-analysis `X-Consistency-Token`.
+2. **Authorize from the event stream.** The scoped command handler 404s a missing/non-owned note (`history[0].Metadata.UserId` check) — never the async projection.
+3. **Replace, with a frontend confirm.** `CompleteTranscription` replaces `_transcriptText`. When the note already has a transcript the modal shows a warning and the primary button reads **Replace & analyse** (the deliberate confirm); the backend overwrites unconditionally.
+4. **Entry point on the Transcript tab, home button removed.** The 38-A home **Import transcript** (create-new) button is deleted; a **Paste transcript** button sits in the always-visible tab-row controls beside Record. Bedrock failure still saves the transcript (`204`, re-analysable); empty/over-cap → `400`.
+
+### Scenarios (GWT)
+
+API (`Api.Integration`, stubbed Bedrock):
+1. Given an existing note, When `POST .../{noteId}/import-transcript` with text, Then the note's transcript is that text, summary/tags/actions are recorded, and the stream gains `TranscriptionCompleted` + `AnalysisSummaryRecorded`; response `204` + token at the final version.
+2. Given a note with an existing (recorded) transcript, When import, Then the transcript is replaced by the pasted text and analysis runs on the pasted text (not the stale projection transcript).
+3. Given a note with typed content, When import, Then content is preserved and passed to analysis alongside the transcript.
+4. Whitespace / over-350 KB text → `400`. Missing note → `404`. Another user's note → `404`. Unauthenticated → `401`. Bedrock throws → `204`, transcript saved, no analysis.
+
+Frontend (`vitest`):
+5. The **Paste transcript** button opens the modal; submit calls the note-scoped import once and shows **Importing…**; on success `onImported` (refreshNote) fires.
+6. When the note has a transcript → a replace warning shows and the button reads **Replace & analyse**; no transcript → no warning, **Import & analyse**.
+7. Empty textarea disables submit; an error keeps the modal open with the pasted text preserved.
+
+E2E (`Browser.E2E`, gated, reload-tolerant): open a note → paste a transcript → the Transcript tab shows the pasted text (assert text presence only, not AI output).
+
+### Acceptance criteria
+
+1. Endpoint is note-scoped, reuses `CompleteTranscription` + analysis events — no new event/command; analysis reads the pasted text via `transcriptOverride`, never the async projection.
+2. Replaces an existing transcript; ownership/existence authorized from the event stream (404), not the projection.
+3. Home **Import transcript** (create-new) button removed; **Paste transcript** lives on the Transcript tab with a replace-confirm when a transcript exists.
+4. Optimistic UI: immediate **Importing…**, note refreshes on success (gated), pasted text preserved on error.
+5. Bedrock failure → transcript saved (`204`); empty/over-cap → `400`.
+6. Deploy-time delta stated in the PR (expected: neutral — one route signature change on the existing Command Lambda).
 
 ## Observability
 

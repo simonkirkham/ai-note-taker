@@ -1,13 +1,15 @@
+using Domain.Notes;
+
 namespace Api.Services;
 
-// Phase 38: create a note from a pasted transcript and analyse it in ONE server-side flow on the
-// Command Lambda, so the analyse step never races the async NoteDetail projection — it feeds Bedrock
-// the supplied text via transcriptOverride instead of reading the (not-yet-built) projection.
+// 38-B: import a pasted transcript into an EXISTING note (replace its transcript + re-analyse) in ONE
+// server-side flow on the Command Lambda, so the analyse step feeds Bedrock the supplied text via
+// transcriptOverride instead of reading the just-replaced (still-lagging) async NoteDetail projection.
 public interface ITranscriptImportService
 {
-    Task<TranscriptImportResult> ImportAsync(string transcriptText, CancellationToken ct = default);
+    Task<TranscriptImportResult> ImportIntoNoteAsync(NoteId noteId, string transcriptText, CancellationToken ct = default);
 }
 
-// NoteId of the created note, the post-analysis stream Version (the consistency token), and the
-// analysis Outcome (Analysed, or ServiceUnavailable when Bedrock failed but the note was kept).
-public readonly record struct TranscriptImportResult(Guid NoteId, long Version, AnalysisOutcome Analysis);
+// The post-analysis stream Version (the consistency token) and the analysis Outcome (Analysed, or
+// ServiceUnavailable when Bedrock failed but the transcript was kept).
+public readonly record struct TranscriptImportResult(long Version, AnalysisOutcome Analysis);
