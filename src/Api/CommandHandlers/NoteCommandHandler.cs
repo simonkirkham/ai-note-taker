@@ -48,6 +48,14 @@ public sealed class NoteCommandHandler(
     public Task<long> HandleAsync(NoteCommand cmd, string userId, string? workspaceId, CancellationToken ct = default) =>
         Run(cmd, userId, workspaceId, userName: null, ct);
 
+    // A no-append read of the stream's current version (Phase 38): the import flow appends across
+    // several handler calls, so it reads the post-analysis version here for its consistency token.
+    public async Task<long> GetCurrentVersionAsync(NoteId noteId, CancellationToken ct = default)
+    {
+        var history = await store.ReadAsync(noteId.ToStreamId(), ct).ConfigureAwait(false);
+        return history.Count;
+    }
+
     private Task<long> Run(NoteCommand cmd, string userId, string? workspaceId, string? userName, CancellationToken ct) =>
         CommandInstrumentation.RunAsync(metrics, logger, cmd.GetType().Name, "Note", () =>
             ExecuteAsync(cmd.NoteId, note => note.Handle(cmd), userId, workspaceId, userName, ct, mustExist: cmd.MustExist));

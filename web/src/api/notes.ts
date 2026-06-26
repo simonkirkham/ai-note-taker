@@ -125,6 +125,19 @@ export async function createNote(): Promise<{ noteId: string }> {
   return body;
 }
 
+// Phase 38: create a note from a pasted transcript in one server-side call (create + transcript +
+// analyse). Captures the post-analysis token so the subsequent note read shows the finished,
+// analysed note. Returns the new note id to navigate to.
+export async function importTranscript(transcriptText: string): Promise<{ noteId: string }> {
+  const { body, response } = await requestWithResponse<{ noteId: string }>(`/notes/import-transcript`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ transcriptText }),
+  });
+  captureNoteToken(body.noteId, response);
+  return body;
+}
+
 export async function renameNote(noteId: string, title: string): Promise<void> {
   const response = await requestVoidWithResponse(`/notes/${noteId}/title`, {
     method: 'PATCH',

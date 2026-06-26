@@ -180,6 +180,7 @@ public static class Builder
         builder.Services.AddScoped<ITodoCommandHandler, TodoCommandHandler>();
         builder.Services.AddScoped<ITodoOrderCommandHandler, TodoOrderCommandHandler>();
         builder.Services.AddScoped<INoteAnalysisService, NoteAnalysisService>();
+        builder.Services.AddScoped<ITranscriptImportService, TranscriptImportService>();
         builder.Services.AddScoped<IFolderCommandHandler, FolderCommandHandler>();
         builder.Services.AddScoped<IWorkspaceCommandHandler, WorkspaceCommandHandler>();
         builder.Services.AddScoped<IProjectionRebuildHandler, ProjectionRebuildHandler>();

@@ -1,6 +1,6 @@
 import { useMutation, useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { moveNoteToFolder, moveNoteToWorkspace, unfileNote } from "../api/folders";
-import { createNote, deleteNote, type NoteCard } from "../api/notes";
+import { createNote, deleteNote, importTranscript, type NoteCard } from "../api/notes";
 import { keys } from "../api/queryKeys";
 
 type Ctx = { previous?: NoteCard[] };
@@ -41,6 +41,17 @@ export function useCreateNote() {
         ...old,
       ]);
     },
+  });
+}
+
+// Phase 38: import a pasted transcript. The server creates + analyses the note in one call, so we
+// invalidate the cards to surface the new analysed card on return to the home list. Navigation to
+// the note keys off the returned id (the caller does it).
+export function useImportTranscript() {
+  const qc = useQueryClient();
+  return useMutation<{ noteId: string }, Error, { transcriptText: string }>({
+    mutationFn: ({ transcriptText }) => importTranscript(transcriptText),
+    onSuccess: () => invalidate(qc),
   });
 }
 

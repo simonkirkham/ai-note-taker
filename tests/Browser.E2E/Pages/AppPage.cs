@@ -69,6 +69,45 @@ public sealed class AppPage
         await noteDone;
     }
 
+    // Phase 38: paste a transcript via the Import-transcript modal. The POST is synchronous (it runs
+    // analysis server-side), so awaiting its response is the "imported + navigated" signal.
+    public async Task ImportTranscriptAsync(string transcript)
+    {
+        var viewport = page.ViewportSize;
+        if (viewport is { Width: < 640 })
+            await page.GetByTestId("sidebar-toggle").ClickAsync();
+        await page.GetByTestId("import-transcript-button").ClickAsync();
+        await page.GetByTestId("import-transcript-textarea").FillAsync(transcript);
+        // The import POST runs analysis (Bedrock) synchronously, so it can outlast Playwright's
+        // default 30 s response wait. Give it most of the [E2EFact] 120 s budget.
+        var importDone = page.WaitForResponseAsync(
+            r => r.Url.Contains("/notes/import-transcript") && r.Request.Method == "POST",
+            new() { Timeout = 90_000 });
+        await page.GetByTestId("import-transcript-submit").ClickAsync();
+        await importDone;
+    }
+
+    // Reload-tolerant: the imported note's detail read is projector-gated. The note opens on the
+    // Quick-notes tab, so re-click the Transcript tab each attempt (a reload resets the active tab).
+    public async Task AssertImportedTranscriptVisibleAfterReloadAsync(string transcript, int timeoutMs = 30000)
+    {
+        var deadline = DateTime.UtcNow.AddMilliseconds(timeoutMs);
+        while (true)
+        {
+            try
+            {
+                await page.GetByTestId("note-tab-transcript").ClickAsync(new() { Timeout = 2500 });
+                await Assertions.Expect(page.GetByTestId("transcription-text"))
+                    .ToContainTextAsync(transcript, new() { Timeout = 2500 });
+                return;
+            }
+            catch (PlaywrightException) when (DateTime.UtcNow < deadline)
+            {
+                await page.ReloadAsync();
+            }
+        }
+    }
+
     public async Task EnterTitleAsync(string title)
     {
         var input = page.GetByTestId("note-title-input");
