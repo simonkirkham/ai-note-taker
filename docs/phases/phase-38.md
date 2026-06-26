@@ -86,6 +86,8 @@ E2E (`Browser.E2E`, gated read — drive the gated `/notes/cards`/note read, **n
 
 **Capability:** paste a transcript into the note you have open (next to Record), replacing any existing transcript and re-analysing — instead of always creating a new note (38-A). Chosen per user feedback after 38-A shipped.
 
+> **Done** — shipped in PR #360, deploy #662 (2026-06-26); route change verified live in prod (new note-scoped `401`, old workspace-scoped `405`). Reuses 38-A's machinery + focus-trap fix; see [learnings/phase-38a-import-transcript.md](../learnings/phase-38a-import-transcript.md) and `_minor-log` (2026-06-26).
+
 ### Locked decisions
 
 1. **Note-scoped, single server-side call.** `POST /w/{ws}/notes/{noteId}/import-transcript` → `CompleteTranscription(noteId, text, 0)` then `AnalyseAsync(transcriptOverride: text)` in one Command-Lambda handler. The override is still required: the just-appended transcript hasn't reached the async `NoteDetail` projection, so reading it back would analyse the *old* transcript. Returns `204` + post-analysis `X-Consistency-Token`.
