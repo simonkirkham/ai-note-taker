@@ -396,6 +396,16 @@ Slices and acceptance criteria: [docs/phases/phase-39.md](phases/phase-39.md)
 
 ---
 
+## Phase 40 — Home notes: richer default, date-range filter, and sort _(Not Started — prototype-gated)_
+
+Replace the home-screen notes model the user dislikes — "today's notes only + an opt-in *show older* toggle" — with **more notes by default**, an explicit **date-range filter**, and a **sort** control (by date and title, both directions). The disliked *show older* toggle (CHANGE-19) and today-only default (CHANGE-3) are retired and replaced by the date-range filter's default window. **Frontend-only:** the home card list already loads the full card set and filters/sorts client-side (`useNoteCards()` → `GET /notes/cards`; `ListView.tsx`), so default-window, date-range, and sort are all client-side over the loaded set — **no new event, command, projection, endpoint, or CDK change → deploy-time neutral.** Server-side date/sort over a *paginated* set is explicitly out of scope (that is the separate "Scalable note loading" future-feature; this phase must not pre-empt it). **Prototype-gated** because the UX is uncertain: a throwaway frontend prototype (40-P) settles the default window, the date-range control shape, and the sort control before implementation. Three steps: **40-P** prototype; **40-A** new default + date-range filter (keystone — retires *show older*, URL-persisted so Back/reload/share restore the view); **40-B** sort control. The save-button "return to where I came from" was considered and **dropped** — the existing `navigate(-1)` + URL-persisted filters already do this.
+
+**Goal:** show more notes by default, filter by date range, and sort the home list — a UX-uncertain redesign settled by a throwaway prototype, kept client-side and URL-addressable while honouring the boundary against the pagination future-feature.
+
+Slices and acceptance criteria: [docs/phases/phase-40.md](phases/phase-40.md)
+
+---
+
 ## Standing tracks and planning docs
 
 Alongside the numbered phases above, work is tracked in five standing docs. The roadmap summarises them; each doc owns its content.
