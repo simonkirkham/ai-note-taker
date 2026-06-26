@@ -10,7 +10,7 @@ Phase 35 shipped a **read-only** connector (locked decision #2 explicitly deferr
 |-------|--------------------|--------|------------|
 | 41-A | **Move `/mcp` to the Command Lambda + `create_note`.** Claude saves a new note into a workspace the owner owns; the five read tools keep working unchanged. Proves the whole write pipe on one real call. | Done — live (2026-06-26) | — |
 | 41-B | **`add_action_item` + `complete_action_item` / `reopen_action_item`.** Claude adds a to-do to a note and ticks open ones off (or reopens them). | Done — live (2026-06-26) | 41-A |
-| 41-C | **`edit_note`.** Claude appends to or rewrites a note's body. | Not Started | 41-A |
+| 41-C | **`edit_note`.** Claude rewrites a note's body. | Done — live (2026-06-26) | 41-A |
 
 **41-A is the proving slice** — the hard part is the cross-cutting contract (the `/mcp` integration swap Query→Command without breaking reads + writing through a command handler from inside an MCP tool), not any one tool. `create_note` is the smallest write that proves it: it reuses the *existing* per-call workspace-ownership auth (`UserOwnsWorkspaceAsync`) with no new note-level authorization. 41-B/C then scale the proven pattern, adding note-scoped write authorization.
 
@@ -20,7 +20,7 @@ Phase 35 shipped a **read-only** connector (locked decision #2 explicitly deferr
 2. **No event-model changes.** All four writes reuse existing commands/events. The connector gains write *tools*, the domain gains nothing.
 3. **Writes go through the command handlers, never the store directly.** MCP tools inject `INoteCommandHandler` / `IActionItemCommandHandler` and call the **identity-explicit overloads** (pass the token `sub` as `userId`), exactly as the non-HTTP analysis re-run does (33-B2) — never relying on the HTTP-scoped `ICurrentUser`.
 4. **Per-call authorization extends to writes, and a write must prove ownership of what it mutates.** `create_note` checks workspace ownership (existing). Note-scoped writes (`add_action_item`, `edit_note`, `complete`/`reopen`) must verify the target note/action belongs to `(sub, workspaceId)` against a **strongly-consistent** source before mutating — authorize on the Command Lambda's event stream, never on an async projection (BUG-30 guardrail). Reject → MCP error, never a silent no-op and never a 500.
-5. **Phase 35's ≤5-tool guideline is relaxed to ≤9.** Write tools are net-new capability, not context bloat. Descriptions stay terse; `ReadOnly = true` is dropped on write tools (and `Destructive`/`Idempotent` hints set per the SDK) so the client renders the right consent affordance.
+5. **Phase 35's ≤5-tool guideline is relaxed to ≤10** (the four write tools land on top of the five reads + `list_workspaces`). Write tools are net-new capability, not context bloat — each description stays one terse line. `ReadOnly = true` is dropped on write tools so the client renders the right consent affordance.
 
 ### Routing & Lambda split (infra note)
 
@@ -47,6 +47,10 @@ Projections are written **inline** by the command handler (same request) today, 
 **41-B — Done (PR #364, deploy #667, 2026-06-26).** Three note/action write tools: `add_action_item(noteId, description)`, `complete_action_item(actionId)`, `reopen_action_item(actionId)`. **Design refinement vs the original build-notes sketch:** complete/reopen take **only `actionId`** (not a `noteId`) and authorize the **action's own owner** via a new `IActionItemAuthorizer.OwnsActionAsync` (event-stream, BUG-30-safe) — Hawk's first round caught that authorizing a caller-supplied `noteId` left the action↔note binding unchecked (an IDOR: own any note + know any actionId → mutate it). `add_action_item` stays note-scoped (`OwnsNoteAsync`). Complete/Reopen gained identity-explicit handler overloads (token `sub` = owner). Domain failures → clean MCP errors, not 500s. Hawk: REQUEST CHANGES → fixed → APPROVE. Api.Integration 586 / Domain.Specs 272 green. Deploy #667 flaked once at the E2E gate on the unrelated `CreateAndListNoteJourney` ([BUG-42]); green on rerun, `deploy-production` success. **The same object-level gap exists on the pre-existing HTTP action endpoints — filed as [BUG-41]** (high-priority fast-follow; the new `IActionItemAuthorizer` is the fix).
 
 **Owner manual gate — PENDING:** a real Claude session round-trips add/complete/reopen against the live connector.
+
+**41-C — Done (PR #365, deploy #668, 2026-06-26). Phase 41 complete.** `edit_note(noteId, content)` replaces a note's body via `EditContent` (note-ownership auth, the shared `AuthorizeOwnedNoteAsync` helper refactored out of `add_action_item`). Passes **null** workspace to the handler — `ContentEdited` never carries workspace and all three note projections (`NoteDetail`/`NoteCardList`/`NoteSearchView`) preserve the existing view's `WorkspaceId` on the fold (Hawk verified against the projection code; a named-workspace test proves scoping survives). Blank content rejected; contention/TOCTOU mapped to clean MCP errors (`RunNoteWriteAsync`). Hawk APPROVE (two Low fixes folded in). Api.Integration 592 green. **Connector now exposes 10 tools** (5 read + `create_note` + `add_action_item` + `complete_action_item` + `reopen_action_item` + `edit_note`).
+
+**Owner manual gate — PENDING:** a real Claude session round-trips `edit_note` against the live connector.
 
 ---
 
