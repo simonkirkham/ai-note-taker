@@ -230,7 +230,7 @@ Scenario: Card disappears when note is deleted
 
 ## Slice 4-F — Expandable completed todos
 
-**Status:** Not Started
+**Status:** Done
 
 ### Scenarios
 

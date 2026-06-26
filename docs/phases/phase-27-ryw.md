@@ -131,15 +131,20 @@
 - Frontend drops optimism-for-correctness (keep it only for instant feel where chosen).
 - `architecture.md` + ADR 0009 updated: async is live; RYW is the read-after-write contract; the projector is sole writer.
 
-### RYW-D — (Optional) Real-time "poke" (SSE)
+### RYW-D — Real-time "poke" (SSE) _(optional polish — Not Started)_
 
-**User value:** the UI refreshes reactively when projections update, shrinking the moments a read would otherwise wait.
+- **User value:** when a note or list I'm looking at updates server-side, the screen refreshes on its own — no manual reload, and the brief read-wait disappears.
+- **How it works:**
+  - The client holds a lightweight live channel open for whatever I'm currently viewing.
+  - When the server finishes applying an update to that data, it pokes the client.
+  - The client silently refetches just the affected query — no spinner, no action from me.
+- **Scenarios (GWT):**
+  - Given I'm viewing a stream and the projector applies an event for it, when the server pokes the client, then the client refetches that query and the view updates on its own.
 
-**Scenarios (GWT):**
-- Given the projector applies an event for a stream the client is viewing, then the server pokes the client (SSE), which refetches that query.
+> **Below the divider — build notes.** (This doc predates the review-surface/build-notes split; only this still-unbuilt slice is in the new shape.)
 
-**Acceptance criteria:**
-- A lightweight SSE/"poke" channel (the sync-engine pattern); the client invalidates the relevant query on poke. Deferred — the token gate is the core; this is UX polish.
+- **Mechanism:** a lightweight SSE/"poke" channel (the sync-engine pattern); the client invalidates the relevant query on poke.
+- **Deferred:** the RYW token gate (RYW-1…4) is the core read-your-writes mechanism and is already live; this slice is UX polish only and may never be built.
 
 ---
 
