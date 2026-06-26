@@ -1,33 +1,40 @@
 import { useCallback, useRef, useState } from "react";
 import { useFocusTrap } from "../hooks/useFocusTrap";
-import { useImportTranscript } from "../hooks/useNoteMutations";
-import styles from "./ImportTranscript.module.css";
+import { useImportTranscriptIntoNote } from "../hooks/useNoteMutations";
+import styles from "./PasteTranscript.module.css";
 
-// Phase 38: paste a transcript captured in an external tool to create an analysed note. The trigger
-// button opens a modal (mounted only while open, so the focus trap activates); on submit the server
-// creates + analyses the note in one call and the caller navigates to it.
-export default function ImportTranscript({
+// Phase 38-B: paste a transcript captured in an external tool INTO the open note — it runs the same
+// analysis as a recording. The trigger sits next to Record on the Transcript tab; the modal is
+// mounted only while open so the focus trap activates. If the note already has a transcript, the
+// modal warns and the primary button reads "Replace & analyse" (the deliberate replace-confirm).
+export default function PasteTranscript({
+  noteId,
+  hasTranscript,
   onImported,
 }: {
-  onImported: (noteId: string) => void;
+  noteId: string;
+  hasTranscript: boolean;
+  onImported: () => void;
 }) {
   const [open, setOpen] = useState(false);
   return (
     <>
       <button
         type="button"
-        className="new-note-button"
-        data-testid="import-transcript-button"
+        className={styles.trigger}
+        data-testid="paste-transcript-button"
         onClick={() => setOpen(true)}
       >
-        Import Transcript
+        Paste transcript
       </button>
       {open && (
-        <ImportTranscriptModal
+        <PasteTranscriptModal
+          noteId={noteId}
+          hasTranscript={hasTranscript}
           onClose={() => setOpen(false)}
-          onImported={(noteId) => {
+          onImported={() => {
             setOpen(false);
-            onImported(noteId);
+            onImported();
           }}
         />
       )}
@@ -37,16 +44,20 @@ export default function ImportTranscript({
 
 // Optimistic feedback: the submit button flips to "Importing…" immediately; on error the modal stays
 // open with the pasted text preserved (never cleared) and shows an inline error.
-function ImportTranscriptModal({
+function PasteTranscriptModal({
+  noteId,
+  hasTranscript,
   onClose,
   onImported,
 }: {
+  noteId: string;
+  hasTranscript: boolean;
   onClose: () => void;
-  onImported: (noteId: string) => void;
+  onImported: () => void;
 }) {
   const [text, setText] = useState("");
   const dialogRef = useRef<HTMLDivElement>(null);
-  const importM = useImportTranscript();
+  const importM = useImportTranscriptIntoNote(noteId);
   const isPending = importM.isPending;
   // Block close (Escape/backdrop) mid-import so a stray key can't abandon the in-flight request.
   // Stable identity (useCallback) so the focus trap's effect does not re-run — and steal focus back
@@ -57,10 +68,10 @@ function ImportTranscriptModal({
   useFocusTrap(dialogRef, { onClose: requestClose });
 
   async function submit() {
-    if (!text.trim() || importM.isPending) return;
+    if (!text.trim() || isPending) return;
     try {
-      const { noteId } = await importM.mutateAsync({ transcriptText: text });
-      onImported(noteId);
+      await importM.mutateAsync({ transcriptText: text });
+      onImported();
     } catch {
       // Error surfaced inline below; the modal stays open with the pasted text preserved.
     }
@@ -72,20 +83,20 @@ function ImportTranscriptModal({
       className={styles.overlay}
       role="dialog"
       aria-modal="true"
-      aria-label="Import transcript"
+      aria-label="Paste transcript"
       onClick={(e) => {
         if (e.target === e.currentTarget) requestClose();
       }}
     >
-      <div ref={dialogRef} className={styles.dialog} data-testid="import-transcript-dialog">
+      <div ref={dialogRef} className={styles.dialog} data-testid="paste-transcript-dialog">
         <header className={styles.header}>
-          <h2 className={styles.title}>Import transcript</h2>
+          <h2 className={styles.title}>Paste transcript</h2>
           <button
             type="button"
             aria-label="Close"
             className={styles.closeBtn}
             onClick={requestClose}
-            disabled={importM.isPending}
+            disabled={isPending}
           >
             ✕
           </button>
@@ -94,33 +105,38 @@ function ImportTranscriptModal({
           Paste a transcript from another tool. It runs through the same analysis as a recording —
           summary, action items, and tags.
         </p>
+        {hasTranscript && (
+          <p className={styles.warning} role="alert" data-testid="paste-transcript-replace-warning">
+            This note already has a transcript — importing will replace it.
+          </p>
+        )}
         <textarea
           className={styles.textarea}
-          data-testid="import-transcript-textarea"
+          data-testid="paste-transcript-textarea"
           value={text}
           onChange={(e) => setText(e.target.value)}
           placeholder="Paste transcript text here…"
           rows={12}
           maxLength={350000}
-          disabled={importM.isPending}
+          disabled={isPending}
         />
         {importM.isError && (
-          <p className={styles.error} role="alert" data-testid="import-transcript-error">
+          <p className={styles.error} role="alert" data-testid="paste-transcript-error">
             Couldn’t import the transcript. Please try again.
           </p>
         )}
         <div className={styles.actions}>
-          <button type="button" className={styles.cancelBtn} onClick={requestClose} disabled={importM.isPending}>
+          <button type="button" className={styles.cancelBtn} onClick={requestClose} disabled={isPending}>
             Cancel
           </button>
           <button
             type="button"
             className={styles.submitBtn}
-            data-testid="import-transcript-submit"
+            data-testid="paste-transcript-submit"
             onClick={() => void submit()}
-            disabled={!text.trim() || importM.isPending}
+            disabled={!text.trim() || isPending}
           >
-            {importM.isPending ? "Importing…" : "Import & analyse"}
+            {isPending ? "Importing…" : hasTranscript ? "Replace & analyse" : "Import & analyse"}
           </button>
         </div>
       </div>

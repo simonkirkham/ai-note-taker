@@ -20,6 +20,7 @@ import MeetingPicker from "./MeetingPicker";
 import MoveToWorkspaceMenu from "./MoveToWorkspaceMenu";
 import tabStyles from "./NoteTabs.module.css";
 import styles from "./NoteView.module.css";
+import PasteTranscript from "./PasteTranscript";
 import RecordControl from "./RecordControl";
 import ShortcutsPanel from "./ShortcutsPanel";
 import { useToast } from "./toastContext";
@@ -641,6 +642,11 @@ export default function NoteView({
               ))}
             </div>
             <div className={tabStyles.tabRowControls}>
+              <PasteTranscript
+                noteId={noteId}
+                hasTranscript={transcriptText !== null}
+                onImported={refreshNote}
+              />
               <RecordControl
                 noteId={noteId}
                 noteHasContent={content.trim().length > 0}

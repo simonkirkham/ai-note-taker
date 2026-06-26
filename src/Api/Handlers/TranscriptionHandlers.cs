@@ -107,10 +107,12 @@ public static class TranscriptionHandlers
     // ~350 KB leaves headroom for the event envelope/metadata; ~2 hours of dense transcript fits.
     private const int MaxTranscriptBytes = 350_000;
 
-    // Phase 38: create a note from pasted transcript text and analyse it in one server-side flow.
-    // Returns 201 + the note id + the post-analysis consistency token; a Bedrock outage still
-    // returns 201 (the transcript is saved, the note opens re-analysable). Empty or over-long text → 400.
+    // 38-B: import pasted transcript text INTO an existing note — replace its transcript and
+    // re-analyse in one server-side flow. 204 + the post-analysis consistency token; a Bedrock outage
+    // still returns 204 (the transcript is saved, re-analysable); empty/over-long → 400; a missing or
+    // non-owned note → 404 (authorized from the event stream by the command handler).
     public static async Task<IResult> ImportTranscript(
+        Guid noteId,
         ImportTranscriptRequest req,
         HttpResponse response,
         ITranscriptImportService import,
@@ -130,10 +132,14 @@ public static class TranscriptionHandlers
             return Results.BadRequest();
         }
 
-        var result = await import.ImportAsync(req.TranscriptText, ct);
-        response.Headers["X-Consistency-Token"] =
-            $"{new NoteId(result.NoteId).ToStreamId()}@{result.Version}";
-        return Results.Created($"/notes/{result.NoteId}", new { noteId = result.NoteId });
+        try
+        {
+            var result = await import.ImportIntoNoteAsync(new NoteId(noteId), req.TranscriptText, ct);
+            response.Headers["X-Consistency-Token"] = $"{new NoteId(noteId).ToStreamId()}@{result.Version}";
+            return Results.NoContent();
+        }
+        catch (Exceptions.NoteNotFoundException) { return Results.NotFound(); }
+        catch (InvalidOperationException) { return Results.NotFound(); }
     }
 
     public static async Task<IResult> GetCredentials(IStsCredentialService sts, ILogger<IStsCredentialService> logger)
