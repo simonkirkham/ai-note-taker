@@ -139,7 +139,13 @@
   - When the server finishes applying an update to that data, it pokes the client.
   - The client silently refetches just the affected query — no spinner, no action from me.
 - **Scenarios (GWT):**
-  - Given I'm viewing a stream and the projector applies an event for it, when the server pokes the client, then the client refetches that query and the view updates on its own.
+
+```
+Scenario: Live refresh on server-side update
+  Given I'm viewing a stream and the projector applies an event for it
+  When  the server pokes the client
+  Then  the client refetches that query and the view updates on its own
+```
 
 > **Below the divider — build notes.** (This doc predates the review-surface/build-notes split; only this still-unbuilt slice is in the new shape.)
 

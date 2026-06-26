@@ -36,13 +36,39 @@
   - The chosen range lives in the URL, so Back from a note, reload, and sharing all restore the same view.
   - Tags and date range apply together. The old *show older* toggle is gone.
 - **Scenarios (GWT):** _(provisional — finalised by the prototype)_
-  - Given I load the home screen with no filter, then I see the default window of notes, not only today's.
-  - Given the home list, when I pick a preset (e.g. Last 30 days), then only notes whose date falls in that range show.
-  - Given the home list, when I set a custom from–to range, then only notes in that range show; "All" shows every loaded note.
-  - Given a date range is set, when I open a note and press Save/Back, then the home list restores the same range.
-  - Given a date range that matches no notes, then a clear empty state is shown.
-  - Given a tag filter and a date range, then both apply together.
-  - Given the old *show older* toggle, then it no longer exists and the today-only default no longer applies.
+
+```
+Scenario: Default window on load
+  Given I load the home screen with no filter set
+  Then  I see the default window of notes, not only today's
+
+Scenario: Date-range preset
+  Given the home list
+  When  I pick a preset (e.g. Last 30 days)
+  Then  only notes whose date falls in that range are shown
+
+Scenario: Custom from–to range and the All escape hatch
+  Given the home list
+  When  I set a custom from–to range
+  Then  only notes in that range are shown, and "All" shows every loaded note
+
+Scenario: Range survives opening a note
+  Given a date range is set
+  When  I open a note and press Save/Back
+  Then  the home list restores the same range
+
+Scenario: Empty state
+  Given a date range that matches no notes
+  Then  a clear empty state is shown
+
+Scenario: Tags and date range compose
+  Given a tag filter and a date range
+  Then  both apply together
+
+Scenario: Show older is retired
+  Given the redesigned home screen
+  Then  the old "show older" toggle no longer exists and the today-only default no longer applies
+```
 
 ### Slice 40-B — Sort control (scale)
 
@@ -52,11 +78,32 @@
   - Sort by date (ascending / descending) or by title (A–Z / Z–A).
   - The chosen sort lives in the URL and restores on return; it composes with the date range and tags.
 - **Scenarios (GWT):** _(provisional — finalised by the prototype)_
-  - Given the home list, when I sort by date descending, then the newest note is first.
-  - Given the home list, when I sort by date ascending, then the oldest note is first.
-  - Given the home list, when I sort by title A–Z (or Z–A), then notes order case-insensitively by title.
-  - Given I chose a sort, when I open a note and return, then the same sort is restored.
-  - Given a sort, a date range, and tags, then all compose (filter then sort).
+
+```
+Scenario: Sort by date, newest first
+  Given the home list
+  When  I sort by date descending
+  Then  the newest note is first
+
+Scenario: Sort by date, oldest first
+  Given the home list
+  When  I sort by date ascending
+  Then  the oldest note is first
+
+Scenario: Sort by title
+  Given the home list
+  When  I sort by title A–Z (or Z–A)
+  Then  notes order case-insensitively by title
+
+Scenario: Sort survives opening a note
+  Given I chose a sort
+  When  I open a note and return
+  Then  the same sort is restored
+
+Scenario: Sort composes with filters
+  Given a sort, a date range, and tags
+  Then  all compose (filter then sort)
+```
 
 ---
 

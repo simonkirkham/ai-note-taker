@@ -23,8 +23,18 @@
   - <what they see / the interaction>
   - <key UX: optimistic update, keyboard, undo, etc.>
 - **Scenarios (GWT):**
-  - Given <state>, when <action>, then <observable outcome>.
-  - Given <edge case>, when <action>, then <outcome>.
+
+```
+Scenario: <happy path name>
+  Given <observable state>
+  When  <user action>
+  Then  <observable outcome>
+
+Scenario: <edge case name>
+  Given <state>
+  When  <action>
+  Then  <outcome>
+```
 
 ### Slice N-B — <Title>
 
