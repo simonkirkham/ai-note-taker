@@ -50,6 +50,8 @@
 | BUG-36 | `npm run update` crashes on Windows with "the term 'silent' is not recognized" — `update.ps1` had UTF-8 em-dashes/arrows but no BOM, so Windows PowerShell 5.1 read it as Windows-1252; the em-dash byte `0x94` decoded to a `"` that closed a string early and broke parsing. Rewrote the script ASCII-only; added a `publish.spec.ts` guard that fails on any non-ASCII byte. | Done | 31-E |
 | BUG-37 | The ✓ "Mark as discussed" tick on a note heading no longer works — clicking it does not toggle strikethrough on the topic/heading. | Done | 7-B |
 | BUG-38 | `TagsJourney` cold-start flake: `tag-input` never becomes visible in 30 s (a basic always-present element → the app/page failed to load, not projector lag). Hit `AddTag_PersistsAfterNavigation` on the 39-A deploy and `AddTag_PillAppearsOnNoteScreen` on deploy #666 (BUG-40) — both passed on rerun; surrounding deploys green, so a chronic cold-start gate flake, not a regression. Journeys capture **zero** `[browser]` console output, so the failure gives no root-cause signal. | Open | TI-39 |
+| BUG-42 | `CreateAndListNoteJourney.Create_a_note_name_it_and_see_it_in_the_list` E2E flake — the post-create assert (the new note card visible in the list) races the async projector with a bare 15 s `ToBeVisible` and **no reload-tolerance**; failed deploy #667 attempt 1, passed on rerun. Same class as [BUG-25]/[BUG-26] (post-write visibility vs projector lag), not the BUG-38 cold-start app-load stall. Make the create→list assert reload-tolerant (re-gating wait), like the tag journeys. | Open | BUG-26 |
+| BUG-41 | HTTP action-item endpoints have an object-level auth gap (IDOR) — `POST /notes/{noteId}/actions/{actionId}/complete\|reopen`, `PATCH …/edit`, `DELETE …` authorize the **route `noteId`** via `OwnsNoteAsync` but never bind it to the action: owning *any* note + knowing a foreign `actionId` lets you mutate that action (it stamps your `sub`). Gated by the unguessable random `actionId` (not enumerable — `get_actions`/`GetActionItems` filter to your own), so low exploitability, but it is broken object-level auth. Fix: authorize the action's own owner via the new `IActionItemAuthorizer.OwnsActionAsync` (added in 41-B for the MCP tools). | Open | 41-B |
 | BUG-40 | Blank lines a user adds for structure are stripped on save — note content is stored as markdown, whose serializer collapsed every run of consecutive blank lines / empty paragraphs to one, condensing the note. Fixed by a `BlankLineParagraph` extension that serializes a *non-trailing* empty paragraph as a U+00A0 line so the structure survives the markdown round-trip (#363, deploy #666 `70c87c4`). | Done | 25-D |
 | BUG-39 | `TodoReorderJourney` reorder reverts after reload (deployed, deterministic 5/5). **Real root cause (test-env projector logs): `clear-test-data` wiped `notetaker-events` + projection tables but NOT `notetaker-proj-position`** → `Projector skip todo-order#__default__ at 1: position_guard`: the default workspace's stable-id order stream is reused every run; a prior run's processed-position (seq 1) survives the clear, so the next run's re-appended reorder (seq 1, events re-numbered from 0) is `≤` the stale mark and skipped as a duplicate → positions never applied. Stable-id streams collide; `note#`/`todo#<guid>` dodge it (fresh guids). **Not a product bug, not 36-B** (the 36-B correlation was coincidental — #655 first set the mark). Fix: `clear-test-data` now clears `proj-position` + all projection tables; journey **un-quarantined**. The per-item-`Position` fragilities the 37-A session noted (ConditionalCheckFailed swallow, PutItem clobber, cross-stream order) are real but latent — not the trigger here — tracked as an order-snapshot redesign follow-up (see detail). | Done | — |
 
@@ -58,6 +60,38 @@ Further bugs will be appended as they are identified.
 ---
 
 > **Fixed bugs are condensed in [phase-bugs-archive.md](phase-bugs-archive.md)** (one terse entry each, anchors preserved). The Summary table above stays the full index; only **open** defects keep a detailed section below.
+
+---
+
+## BUG-41 — HTTP action-item endpoints: object-level auth gap (IDOR)
+
+**Status:** Open. Found by Hawk during the 41-B review (the MCP equivalent was fixed in that slice; the HTTP surface was deliberately left to keep the slice tight).
+
+**Severity:** Medium — broken object-level authorization, but practically gated: `actionId` is an unguessable random GUID and every action-listing endpoint filters to the caller's own items, so a foreign id is not enumerable through the API. Not a regression (the gap has always existed on the HTTP surface).
+
+**Symptom:** A user who owns note `N1` can mutate an action item `A2` that belongs to another user's note `N2` by calling `POST /notes/N1/actions/A2/complete` (or `reopen`/`edit`/`delete`). The mutation lands and is stamped with the caller's `sub`.
+
+**Root cause:** `ActionItemHandlers.{Complete,Reopen,Edit,Delete}ActionItem` authorize `noteAuthorizer.OwnsNoteAsync(routeNoteId, sub)` then call the command handler with **only** the `actionId`. `ActionItemCommandHandler.ExecuteAppendAsync` reads only the action stream — it never checks the action's recorded owning note (`ActionItemAdded.NoteId`) or stamped owner against the authorized note/user. So the route `noteId` is validated-but-unbound.
+
+**Fix:** authorize the action's own owner via `IActionItemAuthorizer.OwnsActionAsync(actionId, sub)` (added in 41-B, `src/Api/Auth/ActionItemAuthorizer.cs`) in each of the four handlers — or assert the action's `ActionItemAdded.NoteId` equals the authorized route note. Reproduce-before-fix: an `Api.Integration` test where user A owns N1, user B owns N2+A2, and `POST /notes/N1/actions/A2/complete` with A's token currently succeeds (should 404).
+
+**Key files:** `src/Api/Handlers/ActionItemHandlers.cs`, `src/Api/CommandHandlers/ActionItemCommandHandler.cs`, `src/Api/Auth/ActionItemAuthorizer.cs`.
+
+---
+
+## BUG-42 — `CreateAndListNoteJourney` E2E flake — post-create list assert races the projector
+
+**Status:** Open. Hit on deploy #667 (41-B merge `ea96b55`) attempt 1; passed on rerun (`gh run rerun --failed`). Unrelated to 41-B's change (which touches only the MCP tools + action-item handler/authorizer, not the HTTP note-create or card-list path).
+
+**Severity:** High (deploy-gate flake — a red shared gate blocks every slice; also skips `deploy-production`, so a slice reaches the test env but not prod until a rerun goes green).
+
+**Symptom:** `CreateAndListNoteJourney.Create_a_note_name_it_and_see_it_in_the_list` fails: `Locator expected to be visible` — `GetByTestId("note-cards").Locator("[data-testid='note-card']").Filter(HasText = "Journey note …")` not visible within 15 s, no reload in the wait.
+
+**Root cause (class):** since RYW the home card list (`GET /notes/cards`) is projector-built and eventually consistent. The journey creates a note then asserts the card is visible with a single 15 s `ToBeVisibleAsync` and **no reload** — a cold/lagging projector misses the window. Same class as [BUG-25]/[BUG-26] (post-write visibility vs projector lag), **not** the [BUG-38] cold-start `tag-input` app-load stall.
+
+**Fix:** wrap the create→list assert in a reload-tolerant, re-gating wait (reload while not-yet-visible → free when warm), as the tag journeys do; confirm the deploy gate's projector warm/drain (TI-39) covers `NoteCardList`. Reproduce-before-fix is impractical (timing); the guard is the reload-tolerant assert.
+
+**Key files:** `tests/Browser.E2E/Journeys/CreateAndListNoteJourney.cs:43`.
 
 ---
 

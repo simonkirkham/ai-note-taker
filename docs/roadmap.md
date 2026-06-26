@@ -406,7 +406,7 @@ Slices and acceptance criteria: [docs/phases/phase-40.md](phases/phase-40.md)
 
 ---
 
-## Phase 41 — MCP write tools (Claude can create & update notes and to-dos) _(In Progress — 41-A done)_
+## Phase 41 — MCP write tools (Claude can create & update notes and to-dos) _(In Progress — 41-A, 41-B done; 41-C remaining)_
 
 The Phase 35 connector is read-only (its locked decision #2 deferred writes to "a future phase"); this is that phase. From a connected Claude session the owner can create a note, add/complete/reopen a to-do, and edit a note's body — Claude writes back through MCP, not just reads. **No event-model changes:** every write reuses an existing command (`CreateNote`, `AddActionItem`, `Complete`/`ReopenActionItem`, `ContentEdited`). The one cross-cutting change is infra — `/mcp` POST moves from the **Query** Lambda to the **Command** Lambda (only Command has event-store access; it already holds the projection grants the read tools need, so reads keep working). **Deploy-time neutral.** Three slices: **41-A** moves the endpoint + `create_note` (proves the write pipe on one real call), **41-B** action-item writes, **41-C** `edit_note`.
 
