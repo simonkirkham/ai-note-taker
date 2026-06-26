@@ -9,10 +9,16 @@ export type Theme =
   | "sky"
   | "sepia"
   | "contrast"
+  | "emerald"
+  | "fuchsia"
+  | "lime"
   | "midnight"
   | "slate"
   | "carbon"
-  | "plum";
+  | "plum"
+  | "pine"
+  | "ocean"
+  | "ember";
 
 const STORAGE_KEY = "note-taker-theme";
 export const THEMES: readonly Theme[] = [
@@ -24,10 +30,16 @@ export const THEMES: readonly Theme[] = [
   "sky",
   "sepia",
   "contrast",
+  "emerald",
+  "fuchsia",
+  "lime",
   "midnight",
   "slate",
   "carbon",
   "plum",
+  "pine",
+  "ocean",
+  "ember",
 ];
 export const DEFAULT_THEME: Theme = "teal";
 
