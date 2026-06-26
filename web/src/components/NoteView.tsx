@@ -644,7 +644,7 @@ export default function NoteView({
             <div className={tabStyles.tabRowControls}>
               <PasteTranscript
                 noteId={noteId}
-                hasTranscript={transcriptText !== null}
+                hasTranscript={transcriptText !== null || transcriptDraft !== null}
                 onImported={refreshNote}
               />
               <RecordControl

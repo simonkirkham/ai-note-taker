@@ -108,6 +108,7 @@ public sealed class ImportTranscriptTests : IClassFixture<ApiFactory>
         var noteId = await CreateNoteAsync();
         var resp = await ImportAsync(noteId, new string('a', 360_000)); // > 350 KB cap
         Assert.Equal(HttpStatusCode.BadRequest, resp.StatusCode);
+        Assert.False(resp.Headers.Contains("X-Consistency-Token"));
     }
 
     [Fact]

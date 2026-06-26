@@ -138,8 +138,11 @@ public static class TranscriptionHandlers
             response.Headers["X-Consistency-Token"] = $"{new NoteId(noteId).ToStreamId()}@{result.Version}";
             return Results.NoContent();
         }
+        // 404 only for a missing/non-owned note (the command handler's event-stream authz throws this
+        // BEFORE the aggregate runs). Do NOT also catch InvalidOperationException: that would mask a
+        // genuine analyse-phase failure (e.g. a TagNote race against the lagging projection) as a 404
+        // after the transcript was already committed — an honest 500 is correct there.
         catch (Exceptions.NoteNotFoundException) { return Results.NotFound(); }
-        catch (InvalidOperationException) { return Results.NotFound(); }
     }
 
     public static async Task<IResult> GetCredentials(IStsCredentialService sts, ILogger<IStsCredentialService> logger)
