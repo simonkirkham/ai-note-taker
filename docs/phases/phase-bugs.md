@@ -50,6 +50,7 @@
 | BUG-36 | `npm run update` crashes on Windows with "the term 'silent' is not recognized" — `update.ps1` had UTF-8 em-dashes/arrows but no BOM, so Windows PowerShell 5.1 read it as Windows-1252; the em-dash byte `0x94` decoded to a `"` that closed a string early and broke parsing. Rewrote the script ASCII-only; added a `publish.spec.ts` guard that fails on any non-ASCII byte. | Done | 31-E |
 | BUG-37 | The ✓ "Mark as discussed" tick on a note heading no longer works — clicking it does not toggle strikethrough on the topic/heading. | Done | 7-B |
 | BUG-38 | `TagsJourney.AddTag_PersistsAfterNavigation` transiently red-gated the 39-A deploy — `tag-input` never became visible in 30 s (a basic always-present element → the app/page failed to load, not a projector lag). Passed on rerun; the two immediately-prior deploys (36-A, CHANGE-28) were green, so it is a chronic cold-start gate flake, not a 36-A/CHANGE-28 regression. The journeys also captured **zero** `[browser]` console output, so the failure gave no root-cause signal. | Open | TI-39 |
+| BUG-40 | Blank lines a user adds for structure are stripped on save — note content is stored as markdown, whose serializer collapses every run of consecutive blank lines / empty paragraphs to one, condensing the note and hurting readability. | Open | 25-D |
 | BUG-39 | `TodoReorderJourney` reorder reverts after reload (deployed, deterministic 5/5). **Real root cause (test-env projector logs): `clear-test-data` wiped `notetaker-events` + projection tables but NOT `notetaker-proj-position`** → `Projector skip todo-order#__default__ at 1: position_guard`: the default workspace's stable-id order stream is reused every run; a prior run's processed-position (seq 1) survives the clear, so the next run's re-appended reorder (seq 1, events re-numbered from 0) is `≤` the stale mark and skipped as a duplicate → positions never applied. Stable-id streams collide; `note#`/`todo#<guid>` dodge it (fresh guids). **Not a product bug, not 36-B** (the 36-B correlation was coincidental — #655 first set the mark). Fix: `clear-test-data` now clears `proj-position` + all projection tables; journey **un-quarantined**. The per-item-`Position` fragilities the 37-A session noted (ConditionalCheckFailed swallow, PutItem clobber, cross-stream order) are real but latent — not the trigger here — tracked as an order-snapshot redesign follow-up (see detail). | Done | — |
 
 Further bugs will be appended as they are identified.
@@ -57,6 +58,30 @@ Further bugs will be appended as they are identified.
 ---
 
 > **Fixed bugs are condensed in [phase-bugs-archive.md](phase-bugs-archive.md)** (one terse entry each, anchors preserved). The Summary table above stays the full index; only **open** defects keep a detailed section below.
+
+---
+
+## BUG-40 — Blank lines a user adds for structure are stripped on save
+
+**Status:** Open. Reported 2026-06-26. Root cause confirmed locally.
+
+**Severity:** Medium — no data loss, but every note the user spaces out for readability is silently condensed on the next save; the structure they typed is gone and cannot be recovered.
+
+**Symptom:** User types a note with blank lines between sections to make it readable. On save the blank lines disappear and the content is condensed into a single tight block.
+
+**Root cause (confirmed):** Note content is persisted as **markdown**, serialized from the Tiptap doc by `ed.storage.markdown.getMarkdown()` (`web/src/components/NoteEditor.tsx:67`). Markdown represents a paragraph break as exactly one blank line; it has **no representation for an empty paragraph or multiple consecutive blank lines**, so the serializer collapses every run of them to one. The collapse therefore happens client-side at serialize time — nothing downstream (API handler, `ContentEdited`/`ContentEditedV2`, projection, DynamoDB) trims; they all store the already-condensed string faithfully.
+
+**Reproduction (local, tiptap-markdown round-trip):** `setContent` then `getMarkdown` on `"Section A\n\n\nSection B\n\n\n\nSection C"` returns `"Section A\n\nSection B\n\nSection C"`. Empty paragraphs entered as `<p>A</p><p></p><p></p><p>B</p>` collapse the same way.
+
+**Reproduce-before-fix:** add a red round-trip test (a `web/src/__tests__/*.test.ts` exercising `setContent` → `getMarkdown` like `headingDiscussed.test.ts`) asserting that a user's blank lines survive a save round-trip.
+
+**Fix direction (design decision — Scout/Breaker to settle before implementation):** make a user-inserted blank line survive the markdown round-trip. Candidate approaches:
+1. Serialize/parse an empty paragraph to a stable placeholder that markdown *can* round-trip (e.g. `<br>` or `&nbsp;`-bearing line), via a tiptap-markdown serializer/parser override.
+2. Treat in-paragraph blank lines as hard breaks rather than separate empty paragraphs.
+3. Persist the editor doc as HTML/JSON instead of markdown for the content field (larger change; touches `ContentEdited` versioning and every reader).
+Pick the smallest approach that preserves intentional spacing without breaking existing markdown features (headings, the discussed-strike, inline images).
+
+**Key files:** `web/src/components/NoteEditor.tsx` (serialize at :67, editor config at :82-97). No backend change expected if the fix stays in serialization.
 
 ---
 
