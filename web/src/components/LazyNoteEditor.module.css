@@ -1,0 +1,51 @@
+/* Skeleton placeholder while the editor chunk loads. The reserved min-height
+   (set inline on the element to mirror the editor's editable area) keeps the
+   layout from shifting when the editor mounts (CLS ≤ 0.1). */
+.loading {
+  width: 100%;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+}
+
+.error {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-3);
+  padding: var(--space-5);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+  color: var(--color-text);
+}
+
+.error button {
+  min-height: 2.875rem;
+  padding: var(--space-3) var(--space-5);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+  color: var(--color-text);
+  font-family: inherit;
+  font-size: 0.9375rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background var(--transition), border-color var(--transition);
+}
+
+.error button:hover {
+  background: var(--color-primary-bg);
+  border-color: var(--color-primary);
+}
+
+.error button:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .error button {
+    transition: none;
+  }
+}

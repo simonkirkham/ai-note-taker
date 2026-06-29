@@ -1,0 +1,14 @@
+{
+  "id": "05-sales-pipeline-review",
+  "transcriptText": "Dana: Let's walk the pipeline. Acme is at proposal stage. Marco: I'll send the Acme proposal by end of day. Dana: I'll follow up with Globex on their procurement timeline. Marco: Noted — Globex has slipped to next quarter.",
+  "existingContent": "Weekly sales pipeline review",
+  "currentUserName": "Marco",
+  "expected": {
+    "tags": ["acme", "globex"],
+    "actionItems": ["Send the Acme proposal by end of day"],
+    "contentMustMention": [
+      "Dana will follow up with Globex on their procurement timeline",
+      "Globex has slipped to next quarter"
+    ]
+  }
+}

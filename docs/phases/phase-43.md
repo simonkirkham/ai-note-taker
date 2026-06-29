@@ -42,7 +42,6 @@ Decide in 43-A (run `event-modelling`): model agenda items as **events on the No
 ## Slices
 
 ### 43-A — Add an agenda item
-**Value:** before (or during) a meeting, jot a thing you need to discuss onto the note and have it stick — your first real agenda item, captured in seconds without touching the notes.
 ```
 Given a note
 When  the owner adds an agenda item "Budget (Q3)"
@@ -60,7 +59,6 @@ Acceptance:
 - [ ] New projection **backfilled** post-deploy (`POST /admin/projections/rebuild`) and verified non-empty in prod (Scribe step).
 
 ### 43-B — Tick / untick an item
-**Value:** tick a topic off the moment it's covered and see at a glance how much of the agenda is left ("2 / 5") — so nothing gets missed and you know when you're done.
 ```
 Given an agenda item "Budget (Q3)"
 When  the owner ticks it
@@ -74,7 +72,6 @@ Acceptance:
 - [ ] Coverage count + "what's left" derive from `AgendaView`.
 
 ### 43-C — Edit text + remove
-**Value:** fix a typo in an agenda item, reword it, or drop one that's no longer relevant — keep the list tidy and accurate.
 ```
 When  the owner edits an item's text   → AgendaItemTextEdited; new text persists
 When  the owner removes an item         → AgendaItemRemoved; it disappears and stays gone on reload
@@ -84,7 +81,6 @@ Acceptance:
 - [ ] Removing a ticked item updates the coverage count.
 
 ### 43-D — Collapsible header agenda strip + polish
-**Value:** the agenda stays glanceable at the top of the note while you write, and folds away to a single "Agenda · 2/5" line when you want the note to be the focus — never stealing note space or a side column.
 ```
 Given a note's header agenda
 Then  it is expanded by default
@@ -98,7 +94,6 @@ Acceptance:
 - [ ] Verified to add **no** side-panel column; tags/actions layout unaffected.
 
 ### 43-E — Retire the legacy heading-✓ "mark as discussed"
-**Value:** one clear, predictable way to track topics — the old per-heading ✓ that confused "is this a topic?" with "is this a heading?" (and broke in BUG-37) is gone, so the feature is no longer ambiguous.
 ```
 Given the agenda now owns "topics to discuss"
 Then  the floating ✓ on headings is removed (markHeadingDiscussed + the floating control)

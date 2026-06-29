@@ -1,0 +1,137 @@
+.actionsSection {
+  border-top: none;
+  padding-top: 0;
+}
+
+.actionsHeading {
+  margin: 0 0 1rem;
+  font-size: 1rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--color-text-muted);
+}
+
+.actionsList {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 1rem;
+}
+
+.actionItem {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0;
+  border-bottom: 1px solid var(--color-border);
+  font-size: 0.9375rem;
+  color: var(--color-text);
+  transition: color var(--transition);
+}
+
+.actionItem:last-child {
+  border-bottom: none;
+}
+
+.actionItemDone {
+  color: var(--color-text-muted);
+  text-decoration: line-through;
+}
+
+.actionDescription {
+  flex: 1;
+  min-width: 0;
+  text-align: left;
+  background: none;
+  border: none;
+  padding: 0;
+  margin: 0;
+  font: inherit;
+  color: inherit;
+  text-decoration: inherit;
+  cursor: text;
+}
+
+.actionDescription:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+  border-radius: var(--radius);
+}
+
+.actionDescription[disabled] {
+  cursor: default;
+}
+
+.editActionInput {
+  flex: 1;
+  min-width: 0;
+  font: inherit;
+  color: var(--color-text);
+  padding: 0.125rem 0.25rem;
+  border: 1px solid var(--color-primary);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+}
+
+.actionCheckbox {
+  cursor: pointer;
+  flex-shrink: 0;
+  accent-color: var(--color-primary);
+  width: 1rem;
+  height: 1rem;
+}
+
+.actionCheckbox:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.actionInput {
+  display: block;
+  width: 100%;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  padding: 0.375rem 0.75rem;
+  font-family: inherit;
+  font-size: 0.9375rem;
+  color: var(--color-text);
+  background: var(--color-surface);
+  outline: none;
+  transition: border-color var(--transition);
+}
+
+.actionInput:focus-visible {
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 3px rgba(13, 148, 136, 0.15);
+}
+
+.actionInput::placeholder {
+  color: var(--color-text-muted);
+}
+
+.deleteActionButton {
+  background: none;
+  border: none;
+  padding: 0 0.25rem;
+  font-size: 1.125rem;
+  line-height: 1;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: color var(--transition);
+}
+
+.deleteActionButton:hover:not([disabled]) {
+  color: var(--color-error);
+}
+
+.deleteActionButton:focus-visible {
+  outline: 2px solid var(--color-error);
+  outline-offset: 2px;
+  border-radius: var(--radius);
+}
+
+.deleteActionButton[disabled] {
+  opacity: 0.35;
+  cursor: not-allowed;
+}

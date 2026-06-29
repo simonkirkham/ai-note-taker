@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <title>Note Taker</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+    <script>
+      // Apply the saved theme before React mounts so a themed user never sees a
+      // flash of the default Teal palette. 36-B: a non-default workspace (URL
+      // /w/<wsId>) carries its own theme, cached under "note-taker-theme:<wsId>"
+      // by useWorkspaceTheme — read that first so a cold load paints the active
+      // workspace's theme. The default workspace falls back to the global
+      // "note-taker-theme". Teal is :root, so it needs no data-theme attribute.
+      // Keep the valid set + key format in sync with useTheme/useWorkspaceTheme.
+      (function () {
+        var themes = [
+          "indigo", "rose", "amber", "violet", "sky", "emerald", "steel",
+          "midnight", "slate", "plum", "pine", "ocean", "ember",
+          "obsidian", "graphite", "deepsea"
+        ];
+        function apply(t) {
+          if (t === "teal") { delete document.documentElement.dataset.theme; return true; }
+          if (themes.indexOf(t) !== -1) { document.documentElement.dataset.theme = t; return true; }
+          return false;
+        }
+        try {
+          var m = location.pathname.match(/\/w\/([^/]+)/);
+          if (m && m[1] && m[1] !== "__default__") {
+            var wt = localStorage.getItem("note-taker-theme:" + m[1]);
+            if (wt !== null && apply(wt)) return; // per-workspace cache wins (incl. teal)
+          }
+          apply(localStorage.getItem("note-taker-theme")); // default workspace / uncached fallback
+        } catch (e) {
+          /* localStorage unavailable — fall back to the default theme */
+        }
+      })();
+    </script>
+    <!-- CloudWatch RUM web client. Left empty in source so the AppMonitor ID is
+         never committed and so localhost / PR-preview builds load no RUM client.
+         deploy.yml populates this for the deployed build only. -->
+    <script id="rum-snippet"></script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

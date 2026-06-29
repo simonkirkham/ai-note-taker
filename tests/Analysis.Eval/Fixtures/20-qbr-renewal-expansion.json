@@ -1,0 +1,22 @@
+{
+  "id": "20-qbr-renewal-expansion",
+  "transcriptText": "Owen: Thanks for joining the Q2 business review. I'll walk through adoption, then renewal and a couple of open items. Adoption first - monthly active users at Wayne Enterprises are up thirty-five percent since Q1. Bruce: That matches what we're seeing internally. The analytics module has been a hit with our finance team. Owen: Glad to hear it. On renewal, your contract is up in seventy-five days. I'll send over the renewal proposal with the multi-year option by Friday. Bruce: Appreciated. I'll take the multi-year option to our procurement committee next week. Lucius: Before renewal I need to flag a security item - we still don't have SSO through our Okta tenant. Owen: Understood. I'll loop in our solutions engineer to scope the Okta SSO integration. Lucius: I'll send you our Okta metadata and the security questionnaire today. Bruce: There's also the expansion conversation - we're interested in the API tier for the data team. Owen: I'll prepare a pricing sheet for the API tier as well. Bruce: Good. One concern - we had two support tickets last month that took over a week to resolve. Owen: That's not the experience we want. I'll escalate both tickets with our support lead and get you a written root-cause analysis. Lucius: Our finance team will also need updated SOC 2 documentation for the renewal. Bruce: We agreed to target signing the renewal before the contract lapses, contingent on the SSO work being scoped. Owen: Perfect.",
+  "existingContent": "Wayne Enterprises Q2 business review",
+  "currentUserName": "Owen",
+  "expected": {
+    "tags": ["wayne-enterprises"],
+    "actionItems": [
+      "Send the renewal proposal with the multi-year option by Friday",
+      "Loop in the solutions engineer to scope the Okta SSO integration",
+      "Prepare a pricing sheet for the API tier",
+      "Escalate the two support tickets with the support lead and provide a written root-cause analysis"
+    ],
+    "contentMustMention": [
+      "Bruce will take the multi-year option to his procurement committee next week",
+      "Lucius will send the Okta metadata and the security questionnaire today",
+      "Wayne Enterprises monthly active users are up thirty-five percent since Q1",
+      "The renewal is contingent on the Okta SSO work being scoped",
+      "Finance requires updated SOC 2 documentation for the renewal"
+    ]
+  }
+}

@@ -1,0 +1,521 @@
+using Domain;
+using Domain.ActionItems;
+using Domain.Folders;
+using Domain.Notes;
+using Domain.Todos;
+using Domain.Workspaces;
+using EventStore;
+using EventStore.Projections;
+using Api.Exceptions;
+using Api.Services;
+
+namespace Api.Projections;
+
+// Holds all read-model write logic lifted out of the 5 command handlers (27-A). Each handler
+// still calls the matching method inline, at the same point in its flow, so a single apply is
+// byte-identical to the previous inline behaviour. This is a facade over the projection stores;
+// its many dependencies are deliberate — they are the union of what the 5 handlers used to inject.
+public sealed class ProjectionUpdater(
+    INoteTitleListStore noteTitleStore,
+    INoteDetailStore noteDetailStore,
+    ITodoListStore todoListStore,
+    INoteCardListStore noteCardListStore,
+    INoteActionsStore noteActionsStore,
+    ITagIndexStore tagIndexStore,
+    ITagFeedbackStore tagFeedbackStore,
+    IActionItemFeedbackStore actionItemFeedbackStore,
+    ICalendarLinkIndexStore calendarLinkIndexStore,
+    INoteSearchViewStore noteSearchViewStore,
+    IFolderTreeStore folderTreeStore,
+    IWorkspaceListStore workspaceListStore,
+    INoteImageStore noteImageStore,
+    ILogger<ProjectionUpdater> logger) : IProjectionUpdater
+{
+    public async Task ApplyNoteEventsAsync(NoteId noteId, IReadOnlyList<EventEnvelope> history, List<EventEnvelope> newEnvelopes, CancellationToken ct)
+    {
+        if (newEnvelopes.Any(e => e.EventType == nameof(NoteDeleted)))
+        {
+            // Classify tag feedback for the batch before dropping provenance, so an untag that
+            // shares a batch with the delete is recorded as a rejection exactly as a rebuild would.
+            await UpdateTagFeedbackForNewEventsAsync(newEnvelopes, ct).ConfigureAwait(false);
+            await DeleteAllProjections(noteId, ct).ConfigureAwait(false);
+            // Purge the note's S3 image blobs — best-effort cleanup that must NEVER fail
+            // the delete (the note is already gone; orphaned objects are a tolerable,
+            // logged cost). Broad catch is deliberate: any S3 fault (incl. AmazonClient/
+            // ServiceException for network/throttle) is swallowed; only cancellation propagates.
+            try
+            {
+                await noteImageStore.PurgeNoteAsync(noteId.ToString(), ct).ConfigureAwait(false);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                logger.LogWarning(ex, "Failed to purge images for deleted note {NoteId}", noteId.ToString());
+            }
+            var existingCard = await noteCardListStore.GetByNoteAsync(noteId, ct).ConfigureAwait(false);
+            if (existingCard is null) return;
+            // Note-owned field (Deleted) — field-level so a concurrent action write is not clobbered.
+            await noteCardListStore.UpsertNoteFieldsAsync(
+                existingCard with { Deleted = true, LastModifiedAt = newEnvelopes[0].OccurredAt }, ct).ConfigureAwait(false);
+            return;
+        }
+
+        var (item, noteDetail) = RebuildTitleAndDetailProjections(noteId, history, newEnvelopes);
+        await noteTitleStore.UpsertAsync(item, ct).ConfigureAwait(false);
+        await noteDetailStore.UpsertAsync(noteDetail, ct).ConfigureAwait(false);
+        await UpdateSearchViewAsync(noteId, noteDetail, ct).ConfigureAwait(false);
+
+        if (newEnvelopes.Any(e => e.EventType == nameof(NoteRenamed)))
+            await todoListStore.UpdateNoteTitleAsync(noteId, item.Title, ct).ConfigureAwait(false);
+
+        var card = await noteCardListStore.GetByNoteAsync(noteId, ct).ConfigureAwait(false);
+        // Note events own only the note fields of the (cross-aggregate) card row; write them
+        // field-level so a concurrent action-item write to the same row commutes (RYW-2).
+        await noteCardListStore.UpsertNoteFieldsAsync(
+            ApplyNoteEventsToCard(card, noteId, newEnvelopes), ct).ConfigureAwait(false);
+
+        // Tag rows inherit the note's CURRENT workspace (from the rebuilt detail), not the
+        // request route's workspace — so the live write matches what a rebuild would produce
+        // even if a note is tagged via a different workspace's route.
+        await UpdateTagIndexForNewEventsAsync(noteDetail.WorkspaceId, newEnvelopes, ct).ConfigureAwait(false);
+        await UpdateTagFeedbackForNewEventsAsync(newEnvelopes, ct).ConfigureAwait(false);
+        await UpdateActionItemFeedbackForNewEventsAsync(newEnvelopes, ct).ConfigureAwait(false);
+        await UpdateCalendarLinkIndexForNewEventsAsync(noteId, newEnvelopes, ct).ConfigureAwait(false);
+        await RebucketWorkspaceForMoveAsync(noteId, noteDetail, newEnvelopes, ct).ConfigureAwait(false);
+    }
+
+    // A move re-emits NoteAssignedToWorkspace for an existing note. The card row is
+    // re-stamped in ApplyNoteEventsToCard and title/detail/search rebuild from full
+    // history, but the note's TodoList action rows and TagIndex rows are keyed
+    // independently and must be re-stamped to the new workspace here so the live write
+    // matches what a rebuild produces. At create there are no such rows (the batch
+    // carries NoteCreated), so skip the extra store round-trips.
+    private async Task RebucketWorkspaceForMoveAsync(NoteId noteId, NoteDetailView noteDetail, List<EventEnvelope> newEnvelopes, CancellationToken ct)
+    {
+        var moveEnvelope = newEnvelopes.FirstOrDefault(e => e.EventType == nameof(NoteAssignedToWorkspace));
+        var isMove = moveEnvelope is not null
+            && !newEnvelopes.Any(e => e.EventType == nameof(NoteCreated));
+        if (!isMove || noteDetail.WorkspaceId is null) return;
+
+        // Source userId from the move event's own envelope so the re-stamped tag rows carry
+        // the same user a rebuild would write — the projector applies per-event, with no
+        // request-scoped current user.
+        var userId = moveEnvelope!.Metadata.UserId ?? "";
+        // The todo re-stamp and each tag re-stamp are independent writes — run together.
+        var noteKey = noteId.Value.ToString("N");
+        var restamps = (noteDetail.Tags ?? [])
+            .Select(tag => tagIndexStore.PutAsync(tag, noteKey, userId, noteDetail.WorkspaceId, ct))
+            .Append(todoListStore.UpdateNoteWorkspaceAsync(noteId, noteDetail.WorkspaceId, ct));
+        await Task.WhenAll(restamps).ConfigureAwait(false);
+    }
+
+    private async Task UpdateSearchViewAsync(NoteId noteId, NoteDetailView detail, CancellationToken ct)
+    {
+        var existing = await noteSearchViewStore.GetByNoteIdAsync(noteId, ct).ConfigureAwait(false);
+        var actionItemsText = existing?.ActionItemsText ?? string.Empty;
+        var finalNotes = ComposeFinalNotes(detail);
+        var view = new NoteSearchView(noteId, detail.UserId, detail.Title, detail.Content, finalNotes,
+            detail.Tags ?? [], actionItemsText, false, detail.LastModifiedAt, detail.WorkspaceId);
+        await noteSearchViewStore.UpsertAsync(view, ct).ConfigureAwait(false);
+    }
+
+    private static string ComposeFinalNotes(NoteDetailView detail) =>
+        string.Join(" ", new[] { detail.Summary ?? string.Empty }
+            .Concat(detail.DiscussionPoints ?? [])
+            .Concat(detail.Decisions ?? [])
+            .Where(s => !string.IsNullOrWhiteSpace(s)));
+
+    private async Task UpdateActionItemFeedbackForNewEventsAsync(List<EventEnvelope> newEnvelopes, CancellationToken ct)
+    {
+        foreach (var envelope in newEnvelopes)
+        {
+            var userId = envelope.Metadata.UserId ?? "";
+            switch (EventDeserializer.Deserialize(envelope))
+            {
+                case ActionItemsSuggestedV2 e:
+                    await RecordActionSuggestionsAsync(userId, e.ActionItemIds, e.PromptVersion, ct).ConfigureAwait(false);
+                    break;
+                case ActionItemsSuggested e:
+                    await RecordActionSuggestionsAsync(userId, e.ActionItemIds, ActionItemFeedbackProjection.UnknownPromptVersion, ct).ConfigureAwait(false);
+                    break;
+                default:
+                    break;
+            }
+        }
+    }
+
+    private async Task RecordActionSuggestionsAsync(string userId, IReadOnlyList<Guid> actionItemIds, string promptVersion, CancellationToken ct)
+    {
+        foreach (var actionItemId in actionItemIds)
+            await actionItemFeedbackStore.RecordSuggestionAsync(userId, actionItemId.ToString(), promptVersion, ct).ConfigureAwait(false);
+    }
+
+    private async Task UpdateTagFeedbackForNewEventsAsync(List<EventEnvelope> newEnvelopes, CancellationToken ct)
+    {
+        foreach (var envelope in newEnvelopes)
+        {
+            var userId = envelope.Metadata.UserId ?? "";
+            switch (EventDeserializer.Deserialize(envelope))
+            {
+                case TagsSuggestedV2 e:
+                    await RecordTagSuggestionsAsync(userId, e.NoteId, e.Tags, e.PromptVersion, ct).ConfigureAwait(false);
+                    break;
+                case TagsSuggested e:
+                    await RecordTagSuggestionsAsync(userId, e.NoteId, e.Tags, TagFeedbackProjection.UnknownPromptVersion, ct).ConfigureAwait(false);
+                    break;
+                case NoteUntagged e:
+                    await tagFeedbackStore.TryRecordRejectionAsync(e.NoteId.Value.ToString("N"), TagNormalization.Normalize(e.Tag), ct).ConfigureAwait(false);
+                    break;
+                default:
+                    break;
+            }
+        }
+    }
+
+    private async Task RecordTagSuggestionsAsync(string userId, NoteId noteId, IReadOnlyList<string> tags, string promptVersion, CancellationToken ct)
+    {
+        // Normalise suggested tags (CHANGE-17) so the live feedback key matches the now-lowercase
+        // NoteUntagged rejection lookup — otherwise a mixed-case AI suggestion records no rejection
+        // live, diverging from the (normalised) rebuild.
+        foreach (var tag in tags)
+            await tagFeedbackStore.RecordSuggestionAsync(userId, noteId.Value.ToString("N"), TagNormalization.Normalize(tag), promptVersion, ct).ConfigureAwait(false);
+    }
+
+    private static (NoteTitleListItem TitleItem, NoteDetailView Detail) RebuildTitleAndDetailProjections(
+        NoteId noteId, IReadOnlyList<EventEnvelope> history, List<EventEnvelope> newEnvelopes)
+    {
+        var titleList = new NoteTitleListProjection();
+        var detail = new NoteDetailProjection();
+        foreach (var e in history) { titleList.Handle(e); detail.Handle(e); }
+        foreach (var e in newEnvelopes) { titleList.Handle(e); detail.Handle(e); }
+
+        var item = titleList.GetView().Items.FirstOrDefault(i => i.NoteId == noteId)
+            ?? throw new NoteNotFoundException(noteId);
+        var noteDetail = detail.GetDetail(noteId)
+            ?? throw new NoteNotFoundException(noteId);
+        return (item, noteDetail);
+    }
+
+    private async Task UpdateTagIndexForNewEventsAsync(string? noteWorkspaceId, List<EventEnvelope> newEnvelopes, CancellationToken ct)
+    {
+        foreach (var envelope in newEnvelopes)
+        {
+            switch (EventDeserializer.Deserialize(envelope))
+            {
+                case NoteTagged e:
+                    await tagIndexStore.PutAsync(e.Tag, e.NoteId.Value.ToString("N"), envelope.Metadata.UserId ?? "", noteWorkspaceId, ct).ConfigureAwait(false);
+                    break;
+                case NoteUntagged e:
+                    await tagIndexStore.DeleteAsync(e.Tag, e.NoteId.Value.ToString("N"), ct).ConfigureAwait(false);
+                    break;
+                default:
+                    break;
+            }
+        }
+    }
+
+    private async Task UpdateCalendarLinkIndexForNewEventsAsync(NoteId noteId, List<EventEnvelope> newEnvelopes, CancellationToken ct)
+    {
+        foreach (var envelope in newEnvelopes)
+        {
+            if (EventDeserializer.Deserialize(envelope) is NoteLinkedToCalendarEvent e)
+                await calendarLinkIndexStore.UpsertAsync(
+                    new CalendarLinkView(e.CalendarEventId, noteId.Value.ToString(), e.RecurringSeriesId, e.StartTime, e.EndTime, e.CalendarEventTitle, envelope.Metadata.UserId ?? ""), ct)
+                    .ConfigureAwait(false);
+        }
+    }
+
+    private async Task DeleteAllProjections(NoteId noteId, CancellationToken ct)
+    {
+        await noteTitleStore.DeleteAsync(noteId, ct).ConfigureAwait(false);
+        await noteDetailStore.DeleteAsync(noteId, ct).ConfigureAwait(false);
+        await todoListStore.DeleteByNoteAsync(noteId, ct).ConfigureAwait(false);
+        await tagIndexStore.DeleteByNoteAsync(noteId.Value.ToString("N"), ct).ConfigureAwait(false);
+        await tagFeedbackStore.DeleteProvenanceByNoteAsync(noteId.Value.ToString("N"), ct).ConfigureAwait(false);
+        await calendarLinkIndexStore.DeleteByNoteIdAsync(noteId.Value.ToString(), ct).ConfigureAwait(false);
+        await noteSearchViewStore.DeleteAsync(noteId, ct).ConfigureAwait(false);
+    }
+
+    private static NoteCardView ApplyNoteEventsToCard(NoteCardView? existing, NoteId noteId, List<EventEnvelope> envelopes)
+    {
+        var card = existing;
+        foreach (var envelope in envelopes)
+        {
+            switch (EventDeserializer.Deserialize(envelope))
+            {
+                case NoteCreated:
+                    card = new NoteCardView(noteId, string.Empty, string.Empty,
+                        Array.Empty<NoteCardActionItem>(), null,
+                        envelope.OccurredAt, envelope.OccurredAt, false,
+                        UserId: envelope.Metadata.UserId ?? "");
+                    break;
+                case NoteRenamed e when card is not null:
+                    card = card with { Title = e.NewTitle, LastModifiedAt = envelope.OccurredAt };
+                    break;
+                case ContentEditedV2 e when card is not null:
+                    var content = e.NewContent.Length > NoteCardListProjection.MaxStoredContentLength ? e.NewContent[..NoteCardListProjection.MaxStoredContentLength] : e.NewContent;
+                    card = card with { Content = content, LastModifiedAt = envelope.OccurredAt };
+                    break;
+                case NoteDateSet e when card is not null:
+                    card = card with { Date = e.Date, LastModifiedAt = envelope.OccurredAt };
+                    break;
+                // Append-if-absent so a redelivered NoteTagged does not duplicate the tag on the
+                // card (27-A idempotency). For apply-once this is identical to a plain append.
+                case NoteTagged e when card is not null:
+                    card = (card.Tags ?? []).Contains(e.Tag)
+                        ? card with { LastModifiedAt = envelope.OccurredAt }
+                        : card with { Tags = (card.Tags ?? []).Append(e.Tag).ToList().AsReadOnly(), LastModifiedAt = envelope.OccurredAt };
+                    break;
+                case NoteUntagged e when card is not null:
+                    card = card with { Tags = (card.Tags ?? []).Where(t => t != e.Tag).ToList().AsReadOnly(), LastModifiedAt = envelope.OccurredAt };
+                    break;
+                case NoteFiledInFolder e when card is not null:
+                    card = card with { FolderId = e.FolderId, LastModifiedAt = envelope.OccurredAt };
+                    break;
+                case NoteUnfiled when card is not null:
+                    card = card with { FolderId = null, LastModifiedAt = envelope.OccurredAt };
+                    break;
+                case NoteAssignedToWorkspace e when card is not null:
+                    // Only the card row is re-stamped here. Safe today because this event is
+                    // emitted only at create (no action items yet). When a move command (23-F)
+                    // re-emits it for an existing note, the live path must ALSO re-stamp the
+                    // note's TodoList action rows (the rebuild TodoListProjection already
+                    // back-fills them) — otherwise live and rebuild diverge for moved notes.
+                    card = card with { WorkspaceId = e.WorkspaceId.Value };
+                    break;
+                default:
+                    break;
+            }
+        }
+        return card ?? throw new NoteNotFoundException(noteId);
+    }
+
+    public async Task ApplyActionItemEventsAsync(NoteId noteId, IReadOnlyList<EventEnvelope> history, IReadOnlyList<IDomainEvent> newEvents, List<EventEnvelope> newEnvelopes, CancellationToken ct)
+    {
+        if (newEnvelopes.Any(e => e.EventType == nameof(ActionItemAdded)))
+        {
+            await ApplyActionItemAddedAsync(noteId, newEvents, newEnvelopes, ct).ConfigureAwait(false);
+            return;
+        }
+
+        var addedEnvelope = history.First(e => e.EventType == nameof(ActionItemAdded));
+        var addedEvent = (ActionItemAdded)EventDeserializer.Deserialize(addedEnvelope);
+
+        // The NoteAction row is reconstructed wholesale on each state change, so it must carry the
+        // CURRENT description — the latest ActionItemEdited in the stream, else the original. Using
+        // addedEvent.Description here would reset an edit-then-complete back to the original text.
+        var currentDescription = history
+            .Select(EventDeserializer.Deserialize)
+            .OfType<ActionItemEdited>()
+            .LastOrDefault()?.NewDescription
+            ?? addedEvent.Description;
+
+        foreach (var (domainEvent, envelope) in newEvents.Zip(newEnvelopes))
+            switch (domainEvent)
+            {
+                case ActionItemCompleted e:
+                    await noteActionsStore.UpsertAsync(addedEvent.NoteId,
+                        new NoteAction(e.ActionId, currentDescription, true, addedEnvelope.OccurredAt, e.CompletedAt), ct).ConfigureAwait(false);
+                    await todoListStore.UpdateCompletedAtAsync(e.ActionId.Value.ToString(), e.CompletedAt, ct).ConfigureAwait(false);
+                    await UpdateCardActionItemsAsync(addedEvent.NoteId,
+                        items => items.Select(a => a.ActionId == e.ActionId ? a with { Completed = true } : a).ToList().AsReadOnly(),
+                        envelope.OccurredAt, ct).ConfigureAwait(false);
+                    await actionItemFeedbackStore.TryRecordCompletionAsync(e.ActionId.Value.ToString(), ct).ConfigureAwait(false);
+                    break;
+                case ActionItemReopened e:
+                    await noteActionsStore.UpsertAsync(addedEvent.NoteId,
+                        new NoteAction(e.ActionId, currentDescription, false, addedEnvelope.OccurredAt, null), ct).ConfigureAwait(false);
+                    await todoListStore.UpdateCompletedAtAsync(e.ActionId.Value.ToString(), null, ct).ConfigureAwait(false);
+                    await UpdateCardActionItemsAsync(addedEvent.NoteId,
+                        items => items.Select(a => a.ActionId == e.ActionId ? a with { Completed = false } : a).ToList().AsReadOnly(),
+                        envelope.OccurredAt, ct).ConfigureAwait(false);
+                    break;
+                case ActionItemEdited e:
+                    {
+                        var existing = (await noteActionsStore.QueryByNoteAsync(addedEvent.NoteId, ct).ConfigureAwait(false))
+                            .Actions.FirstOrDefault(a => a.ActionId == e.ActionId);
+                        await noteActionsStore.UpsertAsync(addedEvent.NoteId,
+                            new NoteAction(e.ActionId, e.NewDescription, existing?.Completed ?? false, addedEnvelope.OccurredAt, existing?.CompletedAt), ct).ConfigureAwait(false);
+                        await todoListStore.UpdateDescriptionAsync(e.ActionId.Value.ToString(), e.NewDescription, ct).ConfigureAwait(false);
+                        await UpdateCardActionItemsAsync(addedEvent.NoteId,
+                            items => items.Select(a => a.ActionId == e.ActionId ? a with { Description = e.NewDescription } : a).ToList().AsReadOnly(),
+                            envelope.OccurredAt, ct).ConfigureAwait(false);
+                    }
+                    break;
+                case ActionItemDeleted e:
+                    await noteActionsStore.DeleteAsync(addedEvent.NoteId, e.ActionId, ct).ConfigureAwait(false);
+                    await todoListStore.DeleteAsync(e.ActionId.Value.ToString(), ct).ConfigureAwait(false);
+                    await UpdateCardActionItemsAsync(addedEvent.NoteId,
+                        items => items.Where(a => a.ActionId != e.ActionId).ToList().AsReadOnly(),
+                        envelope.OccurredAt, ct).ConfigureAwait(false);
+                    await actionItemFeedbackStore.TryRecordDeletionAsync(e.ActionId.Value.ToString(), ct).ConfigureAwait(false);
+                    break;
+                default:
+                    break;
+            }
+    }
+
+    private async Task ApplyActionItemAddedAsync(NoteId noteId, IReadOnlyList<IDomainEvent> newEvents, List<EventEnvelope> newEnvelopes, CancellationToken ct)
+    {
+        var noteDetail = await noteDetailStore.GetAsync(noteId, ct).ConfigureAwait(false);
+        if (noteDetail is null) throw new NoteNotFoundException(noteId);
+
+        foreach (var (domainEvent, envelope) in newEvents.Zip(newEnvelopes))
+        {
+            if (domainEvent is not ActionItemAdded e) continue;
+            var action = new NoteAction(e.ActionId, e.Description, false, envelope.OccurredAt, null);
+            await noteActionsStore.UpsertAsync(noteId, action, ct).ConfigureAwait(false);
+            await todoListStore.PutAsync(
+                new TodoItem(e.ActionId.Value.ToString(), e.NoteId.Value.ToString(), noteDetail.Title,
+                    "action", e.Description, envelope.OccurredAt, null, envelope.Metadata.UserId ?? "", noteDetail.WorkspaceId), ct).ConfigureAwait(false);
+            // Add-if-absent so a redelivered ActionItemAdded does not duplicate the card row
+            // (27-A idempotency). For apply-once this is identical to a plain append.
+            await UpdateCardActionItemsAsync(noteId,
+                items => items.Any(a => a.ActionId == e.ActionId)
+                    ? items
+                    : items.Append(new NoteCardActionItem(e.ActionId, e.Description, false)).ToList().AsReadOnly(),
+                envelope.OccurredAt, ct).ConfigureAwait(false);
+        }
+    }
+
+    private async Task UpdateCardActionItemsAsync(NoteId noteId,
+        Func<IReadOnlyList<NoteCardActionItem>, IReadOnlyList<NoteCardActionItem>> update,
+        DateTimeOffset occurredAt,
+        CancellationToken ct)
+    {
+        var card = await noteCardListStore.GetByNoteAsync(noteId, ct).ConfigureAwait(false);
+        if (card is not { Deleted: false }) return;
+        var updatedItems = update(card.ActionItems);
+        // Action events own only the ActionItems of the (cross-aggregate) card row; write them
+        // field-level so a concurrent note-field write to the same row commutes (RYW-2).
+        await noteCardListStore.UpdateActionItemsAsync(noteId, updatedItems, occurredAt, ct).ConfigureAwait(false);
+        await UpdateSearchViewActionsAsync(noteId, updatedItems, occurredAt, ct).ConfigureAwait(false);
+    }
+
+    private async Task UpdateSearchViewActionsAsync(NoteId noteId, IReadOnlyList<NoteCardActionItem> items,
+        DateTimeOffset occurredAt, CancellationToken ct)
+    {
+        var existing = await noteSearchViewStore.GetByNoteIdAsync(noteId, ct).ConfigureAwait(false);
+        if (existing is null) return;
+        var actionItemsText = string.Join(" ", items.Select(i => i.Description));
+        await noteSearchViewStore.UpsertAsync(
+            existing with { ActionItemsText = actionItemsText, LastModifiedAt = occurredAt }, ct).ConfigureAwait(false);
+    }
+
+    public async Task ApplyTodoEventsAsync(IReadOnlyList<IDomainEvent> newEvents, List<EventEnvelope> newEnvelopes, CancellationToken ct)
+    {
+        foreach (var (domainEvent, envelope) in newEvents.Zip(newEnvelopes))
+            switch (domainEvent)
+            {
+                case TodoAdded e:
+                    await todoListStore.PutAsync(
+                        new TodoItem(e.TodoId.Value.ToString(), null, null, "todo",
+                            e.Description, envelope.OccurredAt, null, envelope.Metadata.UserId ?? "", envelope.Metadata.WorkspaceId), ct).ConfigureAwait(false);
+                    break;
+                case TodoCompleted e:
+                    await todoListStore.UpdateCompletedAtAsync(e.TodoId.Value.ToString(), e.CompletedAt, ct).ConfigureAwait(false);
+                    break;
+                case TodoReopened e:
+                    await todoListStore.UpdateCompletedAtAsync(e.TodoId.Value.ToString(), null, ct).ConfigureAwait(false);
+                    break;
+                case TodoEdited e:
+                    await todoListStore.UpdateDescriptionAsync(e.TodoId.Value.ToString(), e.NewDescription, ct).ConfigureAwait(false);
+                    break;
+                case TodoDeleted e:
+                    await todoListStore.DeleteAsync(e.TodoId.Value.ToString(), ct).ConfigureAwait(false);
+                    break;
+                default:
+                    break;
+            }
+    }
+
+    public async Task ApplyTodoOrderEventsAsync(IReadOnlyList<IDomainEvent> newEvents, CancellationToken ct)
+    {
+        foreach (var domainEvent in newEvents)
+            if (domainEvent is TodoListReordered e)
+            {
+                logger.LogInformation("Projector: applying TodoListReordered for workspace {WorkspaceId} ({Count} items)",
+                    e.WorkspaceId, e.OrderedItemIds.Count);
+                await todoListStore.UpdatePositionsAsync(e.OrderedItemIds, ct).ConfigureAwait(false);
+            }
+    }
+
+    public async Task ApplyFolderEventsAsync(List<EventEnvelope> newEnvelopes, CancellationToken ct)
+    {
+        foreach (var envelope in newEnvelopes)
+        {
+            switch (EventDeserializer.Deserialize(envelope))
+            {
+                case FolderCreated e:
+                    await folderTreeStore.UpsertAsync(
+                        new FolderTreeView(e.FolderId, e.Name, e.ParentFolderId, envelope.OccurredAt, envelope.Metadata.UserId ?? "", envelope.Metadata.WorkspaceId), ct)
+                        .ConfigureAwait(false);
+                    break;
+                case FolderRenamed e:
+                    await ApplyFolderRenamedToProjectionAsync(e, ct).ConfigureAwait(false);
+                    break;
+                case FolderMoved e:
+                    await ApplyFolderMovedToProjectionAsync(e, ct).ConfigureAwait(false);
+                    break;
+                case FolderDeleted e:
+                    await folderTreeStore.DeleteAsync(e.FolderId, ct).ConfigureAwait(false);
+                    break;
+            }
+        }
+    }
+
+    private async Task ApplyFolderRenamedToProjectionAsync(FolderRenamed e, CancellationToken ct)
+    {
+        var allFolders = await folderTreeStore.GetAllAsync(ct).ConfigureAwait(false);
+        var existing = allFolders.FirstOrDefault(f => f.FolderId == e.FolderId);
+        if (existing is null) return;
+        await folderTreeStore.UpsertAsync(existing with { Name = e.NewName }, ct).ConfigureAwait(false);
+    }
+
+    private async Task ApplyFolderMovedToProjectionAsync(FolderMoved e, CancellationToken ct)
+    {
+        var allFolders = await folderTreeStore.GetAllAsync(ct).ConfigureAwait(false);
+        var existing = allFolders.FirstOrDefault(f => f.FolderId == e.FolderId);
+        if (existing is null) return;
+        await folderTreeStore.UpsertAsync(existing with { ParentFolderId = e.NewParentFolderId }, ct).ConfigureAwait(false);
+    }
+
+    public async Task ApplyWorkspaceEventsAsync(List<EventEnvelope> newEnvelopes, CancellationToken ct)
+    {
+        foreach (var envelope in newEnvelopes)
+        {
+            switch (EventDeserializer.Deserialize(envelope))
+            {
+                case WorkspaceCreated e:
+                    await workspaceListStore.UpsertAsync(
+                        new WorkspaceListView(e.WorkspaceId, e.Name, envelope.OccurredAt, envelope.Metadata.UserId ?? ""), ct)
+                        .ConfigureAwait(false);
+                    break;
+                case WorkspaceRenamed e:
+                    await ApplyWorkspaceRenamedAsync(e, ct).ConfigureAwait(false);
+                    break;
+                case WorkspaceThemeSet e:
+                    await ApplyWorkspaceThemeSetAsync(e, ct).ConfigureAwait(false);
+                    break;
+                case WorkspaceDeleted e:
+                    await workspaceListStore.DeleteAsync(e.WorkspaceId, ct).ConfigureAwait(false);
+                    break;
+            }
+        }
+    }
+
+    private async Task ApplyWorkspaceRenamedAsync(WorkspaceRenamed e, CancellationToken ct)
+    {
+        var all = await workspaceListStore.GetAllAsync(ct).ConfigureAwait(false);
+        var existing = all.FirstOrDefault(w => w.WorkspaceId == e.WorkspaceId);
+        if (existing is null) return;
+        await workspaceListStore.UpsertAsync(existing with { Name = e.NewName }, ct).ConfigureAwait(false);
+    }
+
+    private async Task ApplyWorkspaceThemeSetAsync(WorkspaceThemeSet e, CancellationToken ct)
+    {
+        var all = await workspaceListStore.GetAllAsync(ct).ConfigureAwait(false);
+        var existing = all.FirstOrDefault(w => w.WorkspaceId == e.WorkspaceId);
+        if (existing is null) return;
+        await workspaceListStore.UpsertAsync(existing with { Theme = e.Theme }, ct).ConfigureAwait(false);
+    }
+}

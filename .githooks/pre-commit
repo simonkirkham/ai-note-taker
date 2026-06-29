@@ -1,0 +1,62 @@
+#!/bin/sh
+set -e
+
+# Gate scoped to what is actually staged, so docs-only and single-stack
+# commits don't pay for the whole suite. Backend builds once and reuses the
+# output for all three test runs (--no-build); the frontend block runs only
+# when web/ is touched (and node_modules is present).
+
+staged=$(git diff --cached --name-only --diff-filter=ACMR)
+
+echo "$staged" | grep -Eq '^(src/|tests/)|\.(sln|csproj|props|targets)$' && backend=1 || backend=0
+echo "$staged" | grep -Eq '^web/' && frontend=1 || frontend=0
+# cdk synth is slow (needs a Release publish of the API first), so gate it to
+# infra-affecting changes only: the CDK app, the API it packages, or any
+# build/project/cdk config. Docs-only, web-only, and tests-only commits skip it.
+echo "$staged" | grep -Eq '^(src/Infrastructure/|src/Api/)|\.(sln|csproj|props|targets)$|^cdk\.json$' && infra=1 || infra=0
+
+if [ "$backend" = 0 ] && [ "$frontend" = 0 ]; then
+  echo "→ no src/tests/web changes staged — skipping build/test gate"
+  echo "✓ pre-commit checks passed"
+  exit 0
+fi
+
+if [ "$backend" = 1 ]; then
+  echo "→ build (warnings as errors)..."
+  dotnet build ai-note-taker.sln -p:TreatWarningsAsErrors=true --nologo -v quiet
+
+  echo "→ domain specs..."
+  dotnet test tests/Domain.Specs/Domain.Specs.csproj --no-build --nologo -v quiet
+
+  echo "→ API integration tests..."
+  dotnet test tests/Api.Integration/Api.Integration.csproj --no-build --nologo -v quiet
+
+  echo "→ infra assertions..."
+  dotnet test tests/Infrastructure.Assertions/Infrastructure.Assertions.csproj --no-build --nologo -v quiet
+fi
+
+if [ "$infra" = 1 ]; then
+  echo "→ publish API for cdk synth..."
+  dotnet publish src/Api/Api.csproj -c Release -o src/Api/bin/Release/net10.0/publish --nologo -v quiet
+
+  echo "→ cdk synth..."
+  cdk synth --quiet
+fi
+
+if [ "$frontend" = 1 ]; then
+  if [ ! -d web/node_modules ]; then
+    echo "→ web/ changed but web/node_modules is absent — skipping frontend gate"
+    echo "  (run 'npm --prefix web install' in this worktree to enable lint/typecheck/tests)"
+  else
+    echo "→ frontend lint..."
+    npm --prefix web run lint
+
+    echo "→ frontend typecheck..."
+    npm --prefix web exec -- tsc -p web/tsconfig.app.json --noEmit
+
+    echo "→ component tests..."
+    npm --prefix web run test
+  fi
+fi
+
+echo "✓ pre-commit checks passed"

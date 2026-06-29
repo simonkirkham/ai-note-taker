@@ -1,0 +1,25 @@
+{
+  "name": "ai-note-taker-desktop",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Windows desktop shell (Electron) for AI Note Taker — bundle-shell: ships the compiled web/ frontend, calls the live prod API.",
+  "author": "Simon Kirkham",
+  "main": "dist/main.js",
+  "scripts": {
+    "build:web": "node scripts/build-web.mjs",
+    "build:main": "tsc -p tsconfig.json",
+    "build": "npm run build:web && npm run build:main",
+    "start": "electron .",
+    "app": "npm run build && npm start",
+    "test:e2e": "playwright test",
+    "test:server": "playwright test server.spec.ts",
+    "package": "npm run build && electron-builder --win",
+    "update": "powershell -ExecutionPolicy Bypass -File scripts/update.ps1"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.49.0",
+    "electron": "^33.2.0",
+    "electron-builder": "^25.1.8",
+    "typescript": "^5.7.2"
+  }
+}

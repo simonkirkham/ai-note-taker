@@ -1,0 +1,53 @@
+# .NET
+bin/
+obj/
+*.user
+.vs/
+*.suo
+*.userprefs
+.idea/
+
+# EF Core / SQLite - never commit the dev database
+*.db
+*.db-shm
+*.db-wal
+
+# Node / Vite
+node_modules/
+dist/
+.vite/
+
+# CDK
+cdk.out/
+
+# dotnet publish output (Lambda deployment artifact)
+**/publish/
+
+# Test results and coverage
+TestResults/
+coverage/
+
+# Environment / secrets
+.env
+.env.local
+.env*.local
+
+# Claude Code agent worktrees (ephemeral, WSL/Windows path conflicts)
+.claude/worktrees/
+
+# Claude Code scheduled-task lock (transient runtime artifact: pid/sessionId)
+.claude/scheduled_tasks.lock
+
+# Live human-input capture (drained into docs/human-input-log.md by Scribe)
+.claude/human-input-pending.jsonl
+
+# Temp PR body file (written by Write tool, passed to gh pr create --body-file)
+.pr-body.md
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Real meeting data extracted for eval fixtures — REAL USER DATA, never commit (public repo).
+# scripts/extract-prod-fixtures.sh writes here; the dir also self-protects with its own .gitignore.
+eval-fixtures-real/

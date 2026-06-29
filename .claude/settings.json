@@ -1,0 +1,45 @@
+{
+  "permissions": {
+    "allow": [
+      "Write",
+      "Read",
+      "Read(/mnt/c/code/ai-note-taker-slices/**)",
+      "Write(/mnt/c/code/ai-note-taker-slices/**)",
+      "Edit(/mnt/c/code/ai-note-taker-slices/**)",
+      "Bash(dotnet test tests/*)",
+      "Bash(dotnet build *)",
+      "Bash(dotnet restore *)",
+      "Bash(npm --prefix /mnt/c/code/ai-note-taker-slices/*)",
+      "Bash(git -C * status*)",
+      "Bash(git -C * log*)",
+      "Bash(git -C * diff*)",
+      "Bash(git -C * worktree list*)",
+      "Bash(git fetch)",
+      "Bash(git fetch *)",
+      "Bash(git check-ignore *)",
+      "Bash(gh run watch *)",
+      "Bash(cdk synth*)",
+      "Bash(scripts/deploy-status.sh)",
+      "Bash(scripts/deploy-status.sh *)",
+      "Bash(scripts/merge-gate.sh *)",
+      "Bash(scripts/ci-logs.sh)",
+      "Bash(scripts/ci-logs.sh *)",
+      "Bash(scripts/eval-status.sh)",
+      "Bash(scripts/eval-status.sh *)",
+      "Bash(python3 scripts/log-human-input.py*)"
+    ]
+  },
+  "hooks": {
+    "Notification": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"$CLAUDE_PROJECT_DIR/scripts/log-human-input.py\""
+          }
+        ]
+      }
+    ]
+  }
+}

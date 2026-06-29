@@ -1,0 +1,14 @@
+{
+  "id": "09-vendor-sync-observability",
+  "transcriptText": "Nadia: Vendor sync with Datadog on our observability rollout. I'll file the access request for the new APM seats. Greg: I'll send over the enterprise pricing and a trial extension. Nadia: We're standardising dashboards next month.",
+  "existingContent": "Datadog vendor sync",
+  "currentUserName": "Nadia",
+  "expected": {
+    "tags": ["datadog"],
+    "actionItems": ["File the access request for the new APM seats"],
+    "contentMustMention": [
+      "Greg will send the enterprise pricing and a trial extension",
+      "Dashboards will be standardised next month"
+    ]
+  }
+}
