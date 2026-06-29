@@ -21,7 +21,7 @@ public interface ICalendarClientFactory
 }
 
 public sealed class CalendarClientFactory(
-    ICurrentUser currentUser,
+    ICalendarScope scope,
     ICalendarTokenStore store,
     IServiceProvider services) : ICalendarClientFactory
 {
@@ -30,17 +30,17 @@ public sealed class CalendarClientFactory(
         if (!string.IsNullOrEmpty(Environment.GetEnvironmentVariable("STUB_CALENDAR_JSON")))
             return services.GetRequiredService<StubCalendarClient>();
 
-        if (await store.GetAsync(currentUser.UserId, workspaceId, "microsoft", ct).ConfigureAwait(false) is not null)
+        if (await store.GetAsync(scope.UserId, workspaceId, "microsoft", ct).ConfigureAwait(false) is not null)
         {
             Logger.LogInformation("Calendar client resolved: microsoft (workspace {WorkspaceId})", workspaceId);
             return services.GetRequiredService<MicrosoftCalendarClient>();
         }
-        if (await store.GetAsync(currentUser.UserId, workspaceId, "google", ct).ConfigureAwait(false) is not null)
+        if (await store.GetAsync(scope.UserId, workspaceId, "google", ct).ConfigureAwait(false) is not null)
         {
             Logger.LogInformation("Calendar client resolved: google (workspace {WorkspaceId})", workspaceId);
             return services.GetRequiredService<GoogleCalendarClient>();
         }
-        if (await store.GetAsync(currentUser.UserId, workspaceId, "ics", ct).ConfigureAwait(false) is not null)
+        if (await store.GetAsync(scope.UserId, workspaceId, "ics", ct).ConfigureAwait(false) is not null)
         {
             Logger.LogInformation("Calendar client resolved: ics (workspace {WorkspaceId})", workspaceId);
             return services.GetRequiredService<IcsFeedCalendarClient>();

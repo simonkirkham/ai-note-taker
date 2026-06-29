@@ -16,8 +16,7 @@ public interface IGoogleCalendarTokenSource
 }
 
 public sealed class GoogleCalendarTokenSource(
-    ICurrentUser currentUser,
-    ICurrentWorkspace currentWorkspace,
+    ICalendarScope scope,
     ICalendarTokenStore store,
     ILogger<GoogleCalendarTokenSource> logger) : IGoogleCalendarTokenSource
 {
@@ -30,10 +29,10 @@ public sealed class GoogleCalendarTokenSource(
         // MicrosoftCalendarTokenSource.
         try
         {
-            var stored = await store.GetAsync(currentUser.UserId, currentWorkspace.WorkspaceId, Provider, ct).ConfigureAwait(false);
+            var stored = await store.GetAsync(scope.UserId, scope.WorkspaceId, Provider, ct).ConfigureAwait(false);
             if (stored is not null)
             {
-                logger.LogInformation("Google calendar token source: store (in-app connected, workspace {WorkspaceId})", currentWorkspace.WorkspaceId);
+                logger.LogInformation("Google calendar token source: store (in-app connected, workspace {WorkspaceId})", scope.WorkspaceId);
                 return stored.RefreshToken;
             }
         }
@@ -43,7 +42,7 @@ public sealed class GoogleCalendarTokenSource(
             return null;
         }
 
-        logger.LogInformation("No in-app Google calendar token for workspace {WorkspaceId}; reporting calendar_unavailable", currentWorkspace.WorkspaceId);
+        logger.LogInformation("No in-app Google calendar token for workspace {WorkspaceId}; reporting calendar_unavailable", scope.WorkspaceId);
         return null;
     }
 }
