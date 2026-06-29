@@ -1,0 +1,143 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Free-form notes + agenda in the header</title>
+<style>
+  :root{
+    --teal:#0d9488; --teal-dark:#0f766e; --teal-bg:#ccfbf1;
+    --text:#1f2937; --muted:#6b7280; --border:#e5e7eb; --surface:#fff; --bg:#f8fafc;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;color:var(--text);background:var(--bg);line-height:1.5}
+  header.top{background:linear-gradient(135deg,var(--teal),var(--teal-dark));color:#fff;padding:16px 24px}
+  header.top h1{margin:0 0 3px;font-size:1.1rem}
+  header.top p{margin:0;opacity:.95;font-size:.88rem;max-width:92ch}
+  header.top code{background:rgba(255,255,255,.2);border:1px solid rgba(255,255,255,.35);color:#fff;padding:1px 6px;border-radius:4px;font-size:.85em}
+  .wrap{max-width:880px;margin:0 auto;padding:18px 24px}
+  .hint{font-size:.86rem;color:var(--muted);margin:0 0 14px}
+  .hint b{color:var(--teal-dark)}
+
+  .card{background:var(--surface);border:1px solid var(--border);border-radius:12px;box-shadow:0 1px 3px rgba(0,0,0,.05)}
+
+  /* ---------- page header area: title + agenda ---------- */
+  .pagehead{padding:14px 18px 12px;margin-bottom:14px}
+  .head-top{display:flex;align-items:center;gap:12px}
+  .ptitle{flex:1;font-size:1.4rem;font-weight:700;border:none;outline:none;color:var(--text);background:transparent;min-width:0}
+  .meta{font-size:.8rem;color:var(--muted);white-space:nowrap}
+  .ahead{display:flex;align-items:center;gap:10px;margin:12px 0 0}
+  .caret{color:var(--teal-dark);font-size:.78rem;width:12px;cursor:pointer;transition:transform .15s}
+  .agenda.collapsed .caret{transform:rotate(-90deg)}
+  .alabel{font-weight:700;font-size:.72rem;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);cursor:pointer}
+  .pill{display:inline-flex;align-items:center;gap:7px;background:var(--teal-bg);color:var(--teal-dark);font-weight:600;font-size:.76rem;border-radius:20px;padding:2px 10px;white-space:nowrap}
+  .pill .bar{width:40px;height:5px;background:#fff;border-radius:4px;overflow:hidden}
+  .pill .bar>i{display:block;height:100%;background:var(--teal);width:0;transition:width .3s}
+  .peek{flex:1;min-width:0;color:#9ca3af;font-size:.84rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .agenda:not(.collapsed) .peek{display:none}
+  .abody{display:flex;flex-wrap:wrap;gap:7px;margin-top:9px}
+  .agenda.collapsed .abody{display:none}
+  .chip{display:inline-flex;align-items:center;gap:7px;background:#fff;border:1px solid var(--border);border-radius:18px;padding:4px 11px 4px 7px;font-size:.88rem;transition:background .12s}
+  .chip:hover{border-color:#cbd5e1}
+  .check{width:17px;height:17px;border:2px solid #cbd5e1;border-radius:5px;background:#fff;cursor:pointer;display:flex;align-items:center;justify-content:center;color:#fff;font-size:11px;padding:0;transition:all .14s}
+  .check:hover{border-color:var(--teal)}
+  .chip.done{background:#f6f7f9;border-color:#eceef1}
+  .chip.done .check{background:var(--teal);border-color:var(--teal)}
+  .chip.done .check::after{content:"\2713"}
+  .chip .label{outline:none}
+  .chip.done .label{color:#9ca3af;text-decoration:line-through;text-decoration-color:#c2c8d0}
+  .chip .x{border:none;background:none;color:#cbd5e1;cursor:pointer;font-size:.8rem;padding:0 0 0 2px;opacity:0}
+  .chip:hover .x{opacity:1}
+  .chip .x:hover{color:#ef4444}
+  .addchip{display:inline-flex;align-items:center;border:1px dashed var(--border);border-radius:18px;padding:3px 8px}
+  .addchip input{border:none;outline:none;font:inherit;font-size:.86rem;width:128px;background:transparent}
+  .addchip:focus-within{border-style:solid;border-color:var(--teal)}
+
+  /* ---------- free-form note body ---------- */
+  .doc{padding:16px 18px 28px;min-height:340px}
+  .nrow{margin:1px 0}
+  .nrow.h1{--fs:1.6rem} .nrow.h2{--fs:1.28rem;margin-top:14px} .nrow.h3{--fs:1.08rem;margin-top:10px}
+  .nrow.p{--fs:.98rem} .nrow.li{--fs:.98rem}
+  .content{font-size:var(--fs);line-height:1.55;outline:none;word-break:break-word}
+  .content.h1{font-weight:700} .content.h2{font-weight:680} .content.h3{font-weight:650;color:#111827}
+  .content.li{padding-left:18px;position:relative}
+  .content.li::before{content:"\2022";color:#9ca3af;position:absolute;left:4px}
+  .content:empty::before{content:attr(data-ph);color:#cbd5e1;pointer-events:none}
+</style>
+</head>
+<body>
+<header class="top">
+  <h1>Free-form notes + agenda in the header</h1>
+  <p>The agenda lives in the note's <b>header area</b> (with the title), <b>expanded</b> — so it costs no side space (tags &amp; actions keep that) and you never look sideways. Below it, the note body is full-width and free-form (<code>## </code> heading, <code>- </code> bullet, Enter, bold).</p>
+</header>
+
+<div class="wrap">
+  <p class="hint"><b>Try:</b> add &amp; tick items in the header agenda, then type your notes full-width below. The agenda can be collapsed from the <b>Agenda</b> label, but starts open.</p>
+
+  <!-- header area: title + agenda -->
+  <div class="card pagehead">
+    <div class="head-top">
+      <input class="ptitle" id="title" value="Weekly Team Sync" />
+      <span class="meta">Mon 29 Jun · 30 min</span>
+    </div>
+    <div class="agenda" id="agenda">
+      <div class="ahead">
+        <span class="caret" id="caret">▾</span>
+        <span class="alabel" id="alabel">Agenda</span>
+        <span class="pill"><span id="pillTxt">0 / 0</span><span class="bar"><i id="pillBar"></i></span></span>
+        <span class="peek" id="peek"></span>
+      </div>
+      <div class="abody" id="abody"></div>
+    </div>
+  </div>
+
+  <!-- free-form note body -->
+  <div class="card">
+    <div class="doc" id="doc"></div>
+  </div>
+</div>
+
+<script>
+/* ---------- agenda in header ---------- */
+const abody=document.getElementById('abody');
+function stats(){ const c=[...abody.querySelectorAll('.chip')]; return {all:c, done:c.filter(x=>x.classList.contains('done'))}; }
+function refresh(){
+  const s=stats();
+  document.getElementById('pillTxt').textContent=`${s.done.length} / ${s.all.length}`;
+  document.getElementById('pillBar').style.width=s.all.length?(100*s.done.length/s.all.length)+'%':'0%';
+  const left=s.all.filter(x=>!x.classList.contains('done')).map(x=>x.querySelector('.label').textContent.trim());
+  document.getElementById('peek').textContent=left.length?('left: '+left.join(', ')):'all covered ✓';
+}
+function makeChip(text,done=false){
+  const chip=document.createElement('span'); chip.className='chip'+(done?' done':'');
+  const cb=document.createElement('button'); cb.className='check'; cb.title='Tick when discussed';
+  cb.onclick=()=>{ chip.classList.toggle('done'); refresh(); };
+  const lb=document.createElement('span'); lb.className='label'; lb.contentEditable='true'; lb.spellcheck=false; lb.textContent=text;
+  lb.addEventListener('keydown',e=>{ if(e.key==='Enter'){e.preventDefault(); lb.blur();} });
+  const x=document.createElement('button'); x.className='x'; x.textContent='✕'; x.title='Remove'; x.onclick=()=>{chip.remove(); refresh();};
+  chip.append(cb,lb,x); return chip;
+}
+const addChip=document.createElement('span'); addChip.className='addchip';
+const addInput=document.createElement('input'); addInput.placeholder='+ add item…';
+addInput.addEventListener('keydown',e=>{ if(e.key==='Enter'&&addInput.value.trim()){ abody.insertBefore(makeChip(addInput.value.trim()), addChip); addInput.value=''; refresh(); } });
+addChip.appendChild(addInput);
+['Budget (Q3)','Hiring backfill','Roadmap','Risks / blockers','AOB'].forEach(t=>abody.appendChild(makeChip(t)));
+abody.appendChild(addChip);
+function toggleAgenda(){ document.getElementById('agenda').classList.toggle('collapsed'); }
+document.getElementById('caret').onclick=toggleAgenda;
+document.getElementById('alabel').onclick=toggleAgenda;
+refresh();
+
+/* ---------- free-form note body (reused editor) ---------- */
+const doc=document.getElementById('doc');
+function caretOffset(el){const s=window.getSelection();if(!s.rangeCount)return 0;const r=s.getRangeAt(0),pre=r.cloneRange();pre.selectNodeContents(el);pre.setEnd(r.endContainer,r.endOffset);return pre.toString().length;}
+function setCaret(el,off){el.focus();const s=window.getSelection(),range=document.createRange(),w=document.createTreeWalker(el,NodeFilter.SHOW_TEXT);let n,c=0,t=null,to=0;while(n=w.nextNode()){const l=n.textContent.length;if(c+l>=off){t=n;to=off-c;break;}c+=l;}if(t){range.setStart(t,to);range.collapse(true);}else{range.selectNodeContents(el);range.collapse(false);}s.removeAllRanges();s.addRange(range);}
+function setType(row,type){['h1','h2','h3','p','li'].forEach(t=>{row.classList.toggle(t,t===type);row.querySelector('.content').classList.toggle(t,t===type);});row.dataset.type=type;const c=row.querySelector('.content');c.dataset.ph=type==='p'?'type a line…  (## heading, - bullet)':'';}
+function makeRow(type='p',text=''){const row=document.createElement('div');row.className='nrow';row.dataset.type=type;const c=document.createElement('div');c.className='content';c.contentEditable='true';c.spellcheck=false;if(text)c.textContent=text;c.addEventListener('keydown',e=>onKey(e,row));c.addEventListener('input',()=>onInput(row));row.appendChild(c);setType(row,type);return row;}
+function onKey(e,row){const c=row.querySelector('.content');if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();const off=caretOffset(c),f=c.textContent;c.textContent=f.slice(0,off);const nr=makeRow('p',f.slice(off));row.after(nr);setCaret(nr.querySelector('.content'),0);}else if((e.ctrlKey||e.metaKey)&&(e.key==='b'||e.key==='B')){e.preventDefault();document.execCommand('bold');}else if(e.key==='Backspace'){const off=caretOffset(c),s=window.getSelection();if(off===0&&s.isCollapsed){if(row.dataset.type!=='p'){e.preventDefault();setType(row,'p');return;}const prev=row.previousElementSibling;if(!prev){e.preventDefault();return;}e.preventDefault();const pc=prev.querySelector('.content'),pl=pc.textContent.length;pc.textContent=pc.textContent+c.textContent;row.remove();setCaret(pc,pl);}}}
+function onInput(row){const c=row.querySelector('.content');if(row.dataset.type==='p'){const t=c.textContent;let m;if(m=t.match(/^(#{1,3})\s([\s\S]*)$/)){setType(row,'h'+m[1].length);c.textContent=m[2];setCaret(c,0);}else if(m=t.match(/^[-*]\s([\s\S]*)$/)){setType(row,'li');c.textContent=m[1];setCaret(c,0);}}}
+const first=makeRow('p','');first.querySelector('.content').dataset.ph='Start typing your notes…';doc.appendChild(first);
+setTimeout(()=>setCaret(first.querySelector('.content'),0),30);
+</script>
+</body>
+</html>
