@@ -114,15 +114,7 @@ _(Claude Cowork connector — read-only, workspace-scoped MCP server — graduat
 
 ## Redefine note "topics" as a concept separate from headings
 
-**What:** Make agenda **topics** a first-class concept distinct from markdown **headings**. Today the two are the same thing: a topic *is* a `##`/`###` heading in the note content, and the ✓ "Mark as discussed" tick strikes the heading through (Phase 7-B — "headings double as agenda topics"; the discussed state round-trips as `~~…~~` inside `ContentEditedV2`, no separate topic entity exists). This conflates document structure (headings used purely for formatting) with meeting agenda items, so every heading becomes a tickable "topic" whether or not it's an agenda point, and topic state is entangled with content markdown. This feature separates them — topics become their own thing (own list/markers/state), decoupled from how headings are used to structure the note body. Scope to design when broken down:
-- Decide the model: a dedicated topic entity/event (topics tracked apart from content) vs. an explicit "this heading is a topic" opt-in marker — and how "discussed" state is stored once it's no longer just heading strikethrough.
-- Migration/back-compat for existing notes whose topics are encoded as struck-through headings.
-- UX for adding/marking/completing topics independently of typing headings in the body.
-- Interaction with BUG-37 (the heading-tick regression) — likely supersedes or reshapes that interaction; sequence accordingly.
-
-**Why it isn't scheduled yet:** A redesign of an existing interaction with real event-model implications (a new topic representation, plus migrating notes that currently encode topics as heading strikethrough). Needs Scout to decide the model before implementation. Related: [[#bug-37]] is the current heading-tick defect on the existing design.
-
-**Raised in:** User feature idea, 2026-06-25 — "change how topics are defined in the note (separate them from headers)."
+> _Graduated to a numbered phase — now **[Phase 43](phases/phase-43.md)** (2026-06-29). Resolved via the `prototype/topics-explore` exploration (final: `v7-agenda-in-header.html`): the answer is a separate **meeting agenda** in the note header (its own data, not encoded in markdown), 2-state items, no side space — not an inline marker on headings. The body stays free-form; the legacy heading-✓ is retired in 43-E. Full scope and slices live in the phase doc._
 
 ---
 
