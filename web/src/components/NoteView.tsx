@@ -13,6 +13,7 @@ import { useAnalyseNote, useEditContent, useRenameNoteDetail, useSetNoteDate } f
 import { useTagNote, useUntagNote } from "../hooks/useTagMutations";
 import { useTags } from "../hooks/useTags";
 import { useTranscription } from "../hooks/useTranscription";
+import AgendaSection from "./AgendaSection";
 import CommandBar from "./CommandBar";
 import FinalNotesView from "./FinalNotesView";
 import LazyNoteEditor from "./LazyNoteEditor";
@@ -558,6 +559,7 @@ export default function NoteView({
         className={styles.titleInput}
         aria-label="Note title"
       />
+      <AgendaSection noteId={noteId} />
       {transcriptDraft && (
         <div
           data-testid="transcript-recovery-banner"

@@ -151,6 +151,9 @@ public static class NoteHandlers
                 .Select(r => new { instruction = r.Instruction, response = r.Response }),
             summaryModelId = detail.SummaryModelId,
             summaryPromptVersion = detail.SummaryPromptVersion,
+            agenda = (detail.Agenda ?? [])
+                .OrderBy(a => a.Position)
+                .Select(a => new { itemId = a.ItemId, text = a.Text, discussed = a.Discussed, position = a.Position }),
             recurringSeriesId = calendarLink?.RecurringSeriesId,
             isRecurring = calendarLink?.RecurringSeriesId is not null,
             linkedMeeting
@@ -205,6 +208,24 @@ public static class NoteHandlers
         catch (InvalidOperationException) { return Results.NotFound(); }
         SetConsistencyToken(response, noteId, version);
         return Results.NoContent();
+    }
+
+    public static async Task<IResult> PostAgendaItem(Guid noteId, AddAgendaItemRequest req, HttpResponse response, INoteCommandHandler handler, INoteDetailStore noteDetailStore, ICurrentUser currentUser)
+    {
+        // Ownership pre-check is best-effort only: a positive owner-mismatch 404s, but a null
+        // detail (projector lag right after create) does NOT — the command handler then authorizes
+        // from the strongly-consistent event stream (BUG-30 pattern, mirrors PostTag).
+        var detail = await noteDetailStore.GetAsync(new NoteId(noteId));
+        if (detail is not null && detail.UserId != currentUser.UserId) return Results.NotFound();
+        // The server mints the item id so the response can return it; the client adds optimistically
+        // under a temp id and reconciles to the real ids on its next note read.
+        var itemId = Guid.NewGuid();
+        long version;
+        try { version = await handler.HandleAsync(new AddAgendaItem(new NoteId(noteId), itemId, req.Text)); }
+        catch (NoteNotFoundException) { return Results.NotFound(); }
+        catch (ArgumentException) { return Results.BadRequest(); }
+        SetConsistencyToken(response, noteId, version);
+        return Results.Created($"/notes/{noteId}/agenda-items/{itemId}", new { itemId });
     }
 
     public static async Task<IResult> MoveNoteToFolder(Guid noteId, MoveNoteToFolderRequest req, INoteCommandHandler handler, INoteDetailStore noteDetailStore, IFolderTreeStore folderTreeStore, ICurrentUser currentUser, CancellationToken ct)

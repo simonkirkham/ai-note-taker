@@ -23,4 +23,7 @@ public record NoteDetailView(
     bool TranscriptIsDiarized = false,
     // 33-B2: the owner's display name, folded from the NoteCreated event metadata. Lets the async
     // re-analysis (TranscribeCompletion Lambda, no ICurrentUser) pass the name to the Bedrock prompt.
-    string OwnerName = "");
+    string OwnerName = "",
+    // 43-A: the meeting agenda — topics to discuss, in capture order. Folded from AgendaItemAdded;
+    // stored separately from the free-form Content (the clean break from "a topic = a heading").
+    IReadOnlyList<AgendaItemView>? Agenda = null);
