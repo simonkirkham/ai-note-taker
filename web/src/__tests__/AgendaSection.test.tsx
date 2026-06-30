@@ -108,4 +108,41 @@ describe('AgendaSection', () => {
     expect(posted).toBe(false)
     expect(screen.queryByTestId('agenda-item')).toBeNull()
   })
+
+  it('shows the coverage count and updates it as items are ticked optimistically', async () => {
+    server.use(
+      http.put(`/api/notes/${NOTE_ID}/agenda-items/:itemId/discussed`, () => new HttpResponse(null, { status: 204 })),
+      http.get(`/api/notes/${NOTE_ID}`, () =>
+        HttpResponse.json(noteWith([
+          { itemId: 'i-1', text: 'Budget (Q3)', discussed: true, position: 0 },
+          { itemId: 'i-2', text: 'Hiring backfill', discussed: false, position: 1 },
+        ]))),
+    )
+    renderAgenda([
+      { itemId: 'i-1', text: 'Budget (Q3)', discussed: false, position: 0 },
+      { itemId: 'i-2', text: 'Hiring backfill', discussed: false, position: 1 },
+    ])
+    expect(screen.getByTestId('agenda-coverage')).toHaveTextContent('0 / 2')
+
+    const firstCheck = screen.getAllByTestId('agenda-item-check')[0]
+    await userEvent.click(firstCheck)
+
+    // Optimistic: coverage and the checkbox reflect the tick immediately.
+    await waitFor(() => expect(screen.getByTestId('agenda-coverage')).toHaveTextContent('1 / 2'))
+    expect(screen.getAllByTestId('agenda-item-check')[0]).toBeChecked()
+  })
+
+  it('rolls a tick back when the server rejects it', async () => {
+    server.use(
+      http.put(`/api/notes/${NOTE_ID}/agenda-items/:itemId/discussed`, () => new HttpResponse(null, { status: 500 })),
+      http.get(`/api/notes/${NOTE_ID}`, () =>
+        HttpResponse.json(noteWith([{ itemId: 'i-1', text: 'Budget (Q3)', discussed: false, position: 0 }]))),
+    )
+    renderAgenda([{ itemId: 'i-1', text: 'Budget (Q3)', discussed: false, position: 0 }])
+
+    await userEvent.click(screen.getByTestId('agenda-item-check'))
+
+    await waitFor(() => expect(screen.getByTestId('agenda-item-check')).not.toBeChecked())
+    expect(screen.getByTestId('agenda-coverage')).toHaveTextContent('0 / 1')
+  })
 })

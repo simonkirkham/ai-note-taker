@@ -35,6 +35,7 @@ public static class NoteEndpoints
         routes.MapPost("/notes/{noteId}/tags", NoteHandlers.PostTag).RequireAuthorization();
         routes.MapDelete("/notes/{noteId}/tags/{tag}", NoteHandlers.DeleteTag).RequireAuthorization();
         routes.MapPost("/notes/{noteId}/agenda-items", NoteHandlers.PostAgendaItem).RequireAuthorization();
+        routes.MapPut("/notes/{noteId}/agenda-items/{itemId}/discussed", NoteHandlers.PutAgendaItemDiscussed).RequireAuthorization();
         routes.MapPut("/notes/{noteId}/folder", NoteHandlers.MoveNoteToFolder).RequireAuthorization();
         routes.MapDelete("/notes/{noteId}/folder", NoteHandlers.UnfileNote).RequireAuthorization();
         routes.MapPut("/notes/{noteId}/workspace", NoteHandlers.MoveNoteToWorkspace).RequireAuthorization();

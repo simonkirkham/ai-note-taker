@@ -12,7 +12,7 @@ public sealed class Note : IAggregate
     FolderId? _folderId;
     string? _calendarEventId;
     readonly HashSet<string> _tags = [];
-    int _agendaItemCount;
+    readonly Dictionary<Guid, bool> _agendaItems = [];
     string? _transcriptText;
     string? _summary;
     WorkspaceId _workspaceId = WorkspaceId.Default;
@@ -44,8 +44,12 @@ public sealed class Note : IAggregate
             case NoteUntagged e:
                 _tags.Remove(TagNormalization.Normalize(e.Tag));
                 break;
-            case AgendaItemAdded:
-                _agendaItemCount++;
+            case AgendaItemAdded e:
+                _agendaItems[e.ItemId] = false;
+                break;
+            case AgendaItemDiscussedSet e:
+                if (_agendaItems.ContainsKey(e.ItemId))
+                    _agendaItems[e.ItemId] = e.Discussed;
                 break;
             case NoteFiledInFolder e:
                 _folderId = e.FolderId;
@@ -96,6 +100,7 @@ public sealed class Note : IAggregate
             TagNote cmd => HandleTagNote(cmd),
             UntagNote cmd => HandleUntagNote(cmd),
             AddAgendaItem cmd => HandleAddAgendaItem(cmd),
+            SetAgendaItemDiscussed cmd => HandleSetAgendaItemDiscussed(cmd),
             MoveNoteToFolder cmd => HandleMoveToFolder(cmd),
             MoveNoteToWorkspace cmd => HandleMoveToWorkspace(cmd),
             UnfileNote cmd => HandleUnfile(cmd),
@@ -180,7 +185,19 @@ public sealed class Note : IAggregate
             throw new ArgumentException("Agenda item text must not be blank.", nameof(cmd));
         // Position is the item's index at add time (capture order), so the agenda is rebuildable
         // from the stream in the order items were added.
-        return [new AgendaItemAdded(cmd.NoteId, cmd.ItemId, text, _agendaItemCount)];
+        return [new AgendaItemAdded(cmd.NoteId, cmd.ItemId, text, _agendaItems.Count)];
+    }
+
+    IReadOnlyList<IDomainEvent> HandleSetAgendaItemDiscussed(SetAgendaItemDiscussed cmd)
+    {
+        if (!_exists || _deleted)
+            throw new InvalidOperationException($"Note {cmd.NoteId} does not exist.");
+        if (!_agendaItems.TryGetValue(cmd.ItemId, out var current))
+            throw new InvalidOperationException($"Agenda item {cmd.ItemId} does not exist on note {cmd.NoteId}.");
+        // 2-state and idempotent: setting the state it already has emits nothing.
+        if (current == cmd.Discussed)
+            return [];
+        return [new AgendaItemDiscussedSet(cmd.NoteId, cmd.ItemId, cmd.Discussed)];
     }
 
     IReadOnlyList<IDomainEvent> HandleMoveToFolder(MoveNoteToFolder cmd)
