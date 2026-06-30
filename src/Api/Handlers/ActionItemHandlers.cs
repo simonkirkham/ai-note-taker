@@ -53,6 +53,8 @@ public static class ActionItemHandlers
         IActionItemAuthorizer actionAuthorizer,
         ICurrentUser currentUser)
     {
+        // noteId is the route segment only; authority is the action's own stamped owner (BUG-41), not
+        // the route note — owning any note + a foreign actionId must not mutate it.
         if (!await actionAuthorizer.OwnsActionAsync(new ActionId(actionId), currentUser.UserId)) return Results.NotFound();
         long version;
         try
@@ -73,6 +75,8 @@ public static class ActionItemHandlers
         IActionItemAuthorizer actionAuthorizer,
         ICurrentUser currentUser)
     {
+        // noteId is the route segment only; authority is the action's own stamped owner (BUG-41), not
+        // the route note — owning any note + a foreign actionId must not mutate it.
         if (!await actionAuthorizer.OwnsActionAsync(new ActionId(actionId), currentUser.UserId)) return Results.NotFound();
         long version;
         try
@@ -94,6 +98,8 @@ public static class ActionItemHandlers
         IActionItemAuthorizer actionAuthorizer,
         ICurrentUser currentUser)
     {
+        // noteId is the route segment only; authority is the action's own stamped owner (BUG-41), not
+        // the route note — owning any note + a foreign actionId must not mutate it.
         if (!await actionAuthorizer.OwnsActionAsync(new ActionId(actionId), currentUser.UserId)) return Results.NotFound();
         long version;
         try
@@ -115,6 +121,8 @@ public static class ActionItemHandlers
         IActionItemAuthorizer actionAuthorizer,
         ICurrentUser currentUser)
     {
+        // noteId is the route segment only; authority is the action's own stamped owner (BUG-41), not
+        // the route note — owning any note + a foreign actionId must not mutate it.
         if (!await actionAuthorizer.OwnsActionAsync(new ActionId(actionId), currentUser.UserId)) return Results.NotFound();
         long version;
         try
