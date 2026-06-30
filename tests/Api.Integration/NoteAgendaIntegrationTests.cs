@@ -144,7 +144,7 @@ public sealed class NoteAgendaIntegrationTests(ApiFactory factory) : IClassFixtu
         Assert.Equal(HttpStatusCode.NoContent, resp.StatusCode);
 
         var agenda = await GetAgendaAsync(noteId);
-        Assert.Equal(["Keep"], agenda.Select(a => a.GetProperty("text").GetString()).ToArray());
+        Assert.Equal(["Keep"], agenda.Select(a => a.GetProperty("text").GetString()!).ToArray());
         Assert.Contains(keep, agenda.Select(a => a.GetProperty("itemId").GetString()));
     }
 
@@ -176,7 +176,7 @@ public sealed class NoteAgendaIntegrationTests(ApiFactory factory) : IClassFixtu
         var agenda = await GetAgendaAsync(noteId);
         var positions = agenda.Select(x => x.GetProperty("position").GetInt32()).ToArray();
         Assert.Equal(positions.Length, positions.Distinct().Count()); // no duplicate positions
-        Assert.Equal(["B", "C"], agenda.Select(x => x.GetProperty("text").GetString()).ToArray());
+        Assert.Equal(["B", "C"], agenda.Select(x => x.GetProperty("text").GetString()!).ToArray());
     }
 
     [Fact]
