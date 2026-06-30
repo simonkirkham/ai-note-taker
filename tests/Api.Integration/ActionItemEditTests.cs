@@ -46,14 +46,17 @@ public sealed class ActionItemEditTests(ApiFactory factory) : IClassFixture<ApiF
     }
 
     [Fact]
-    public async Task EditAction_DeletedItem_Returns409()
+    public async Task EditAction_DeletedItem_Returns404()
     {
+        // BUG-41: object-level auth (IActionItemAuthorizer.OwnsActionAsync) treats a deleted action as
+        // gone, so editing it is 404 (not the old 409). A deleted action no longer exists — 404 is the
+        // honest answer and matches the MCP action-item tools, which reject a deleted action the same way.
         var (noteId, actionId) = await CreateNoteWithActionAsync();
         await _client.DeleteAsync($"/notes/{noteId}/actions/{actionId}");
 
         var resp = await _client.PutAsJsonAsync($"/notes/{noteId}/actions/{actionId}", new { description = "Chase Acme invoice" });
 
-        Assert.Equal(HttpStatusCode.Conflict, resp.StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, resp.StatusCode);
     }
 
     [Fact]

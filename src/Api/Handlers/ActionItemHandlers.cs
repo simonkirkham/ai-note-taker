@@ -50,10 +50,10 @@ public static class ActionItemHandlers
         Guid actionId,
         HttpResponse response,
         IActionItemCommandHandler handler,
-        INoteAuthorizer noteAuthorizer,
+        IActionItemAuthorizer actionAuthorizer,
         ICurrentUser currentUser)
     {
-        if (!await noteAuthorizer.OwnsNoteAsync(new NoteId(noteId), currentUser.UserId)) return Results.NotFound();
+        if (!await actionAuthorizer.OwnsActionAsync(new ActionId(actionId), currentUser.UserId)) return Results.NotFound();
         long version;
         try
         {
@@ -70,10 +70,10 @@ public static class ActionItemHandlers
         Guid actionId,
         HttpResponse response,
         IActionItemCommandHandler handler,
-        INoteAuthorizer noteAuthorizer,
+        IActionItemAuthorizer actionAuthorizer,
         ICurrentUser currentUser)
     {
-        if (!await noteAuthorizer.OwnsNoteAsync(new NoteId(noteId), currentUser.UserId)) return Results.NotFound();
+        if (!await actionAuthorizer.OwnsActionAsync(new ActionId(actionId), currentUser.UserId)) return Results.NotFound();
         long version;
         try
         {
@@ -91,10 +91,10 @@ public static class ActionItemHandlers
         EditActionItemRequest req,
         HttpResponse response,
         IActionItemCommandHandler handler,
-        INoteAuthorizer noteAuthorizer,
+        IActionItemAuthorizer actionAuthorizer,
         ICurrentUser currentUser)
     {
-        if (!await noteAuthorizer.OwnsNoteAsync(new NoteId(noteId), currentUser.UserId)) return Results.NotFound();
+        if (!await actionAuthorizer.OwnsActionAsync(new ActionId(actionId), currentUser.UserId)) return Results.NotFound();
         long version;
         try
         {
@@ -112,10 +112,10 @@ public static class ActionItemHandlers
         Guid actionId,
         HttpResponse response,
         IActionItemCommandHandler handler,
-        INoteAuthorizer noteAuthorizer,
+        IActionItemAuthorizer actionAuthorizer,
         ICurrentUser currentUser)
     {
-        if (!await noteAuthorizer.OwnsNoteAsync(new NoteId(noteId), currentUser.UserId)) return Results.NotFound();
+        if (!await actionAuthorizer.OwnsActionAsync(new ActionId(actionId), currentUser.UserId)) return Results.NotFound();
         long version;
         try
         {
