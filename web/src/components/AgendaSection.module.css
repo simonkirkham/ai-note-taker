@@ -1,9 +1,48 @@
 .agenda {
   display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin-top: var(--space-3);
+}
+
+/* The toggle row: caret + "Agenda" + coverage + (when collapsed) the remaining-items peek. */
+.head {
+  display: flex;
   align-items: center;
   flex-wrap: wrap;
   gap: var(--space-2);
-  margin-top: var(--space-3);
+  min-width: 0;
+}
+
+.toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  border: none;
+  background: none;
+  padding: 0;
+  cursor: pointer;
+  border-radius: var(--radius);
+}
+
+/* Match CommandBar's keyboard focus ring for header controls. */
+.toggle:focus-visible,
+.itemText:focus-visible,
+.itemTextDone:focus-visible,
+.remove:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
+.caret,
+.caretCollapsed {
+  font-size: 0.7rem;
+  color: var(--color-primary);
+  transition: transform var(--transition);
+}
+
+.caretCollapsed {
+  transform: rotate(-90deg);
 }
 
 .label {
@@ -13,6 +52,16 @@
   text-transform: uppercase;
   color: var(--color-text-muted);
   flex-shrink: 0;
+}
+
+.peek {
+  font-size: 0.8125rem;
+  color: var(--color-text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+  flex: 1;
 }
 
 .coverage {

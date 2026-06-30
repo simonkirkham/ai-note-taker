@@ -9,18 +9,23 @@ import {
 import { useNoteDetail } from "../hooks/useNoteDetail";
 import styles from "./AgendaSection.module.css";
 
-// Phase 43-A/B/C: the meeting agenda lives in the note header (with the title), expanded. 43-A added
-// add + display; 43-B added tick/untick (2-state) + a "X / Y" coverage count; 43-C adds inline edit
-// of an item's text and remove. Collapse is 43-D. Items show in capture order; every mutation is
-// optimistic (the change shows immediately, before the API responds). Reads the agenda from the
-// shared note-detail cache (like ActionsSection reads useActions) so optimistic patches reflect here.
+// Phase 43-A/B/C/D: the meeting agenda lives in the note header (with the title), expanded by
+// default. 43-A add+display; 43-B tick/untick + "X / Y" coverage; 43-C inline edit + remove; 43-D
+// makes the strip collapsible — collapsed it shows one line (the "Agenda" label, the "X / Y"
+// coverage pill, and a peek of the remaining open items) and costs no side space in either state
+// (the note body stays full-width below). The
+// collapse toggle only appears once there are items (nothing to fold on an empty agenda). Every
+// mutation is optimistic; the agenda is read from the shared note-detail cache.
 export default function AgendaSection({ noteId }: { noteId: string }) {
   const { data: detail } = useNoteDetail(noteId);
   const agenda = detail?.agenda ?? [];
   const addItem = useAddAgendaItem();
   const [text, setText] = useState("");
+  const [collapsed, setCollapsed] = useState(false);
 
   const done = agenda.filter((a) => a.discussed).length;
+  const hasItems = agenda.length > 0;
+  const remaining = agenda.filter((a) => !a.discussed).map((a) => a.text);
 
   function submit() {
     const trimmed = text.trim();
@@ -31,39 +36,64 @@ export default function AgendaSection({ noteId }: { noteId: string }) {
 
   return (
     <div className={styles.agenda} data-testid="agenda-section" role="group" aria-label="Agenda">
-      <span className={styles.label}>Agenda</span>
-      {agenda.length > 0 && (
-        <span
-          className={styles.coverage}
-          data-testid="agenda-coverage"
-          aria-label={`${done} of ${agenda.length} agenda items covered`}
-        >
-          {done} / {agenda.length}
-        </span>
+      <div className={styles.head}>
+        {hasItems ? (
+          <button
+            type="button"
+            className={styles.toggle}
+            onClick={() => setCollapsed((c) => !c)}
+            aria-expanded={!collapsed}
+            // Only reference the body while it's actually mounted (it unmounts when collapsed),
+            // so aria-controls never points at a missing id.
+            aria-controls={collapsed ? undefined : `agenda-body-${noteId}`}
+            data-testid="agenda-toggle"
+          >
+            <span className={collapsed ? styles.caretCollapsed : styles.caret} aria-hidden="true">▾</span>
+            <span className={styles.label}>Agenda</span>
+          </button>
+        ) : (
+          <span className={styles.label}>Agenda</span>
+        )}
+        {hasItems && (
+          <span
+            className={styles.coverage}
+            data-testid="agenda-coverage"
+            aria-label={`${done} of ${agenda.length} agenda items covered`}
+          >
+            {done} / {agenda.length}
+          </span>
+        )}
+        {collapsed && hasItems && (
+          <span className={styles.peek} data-testid="agenda-peek">
+            {remaining.length > 0 ? `left: ${remaining.join(", ")}` : "all covered ✓"}
+          </span>
+        )}
+      </div>
+      {!collapsed && (
+        <ul className={styles.items} id={`agenda-body-${noteId}`} data-testid="agenda-body">
+          {agenda.map((item) => (
+            <AgendaItemRow key={item.itemId} noteId={noteId} item={item} />
+          ))}
+          <li className={styles.addRow}>
+            <input
+              type="text"
+              value={text}
+              onChange={(e) => setText(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  submit();
+                }
+              }}
+              onBlur={submit}
+              placeholder="+ add item…"
+              className={styles.addInput}
+              aria-label="Add agenda item"
+              data-testid="agenda-add-input"
+            />
+          </li>
+        </ul>
       )}
-      <ul className={styles.items}>
-        {agenda.map((item) => (
-          <AgendaItemRow key={item.itemId} noteId={noteId} item={item} />
-        ))}
-        <li className={styles.addRow}>
-          <input
-            type="text"
-            value={text}
-            onChange={(e) => setText(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") {
-                e.preventDefault();
-                submit();
-              }
-            }}
-            onBlur={submit}
-            placeholder="+ add item…"
-            className={styles.addInput}
-            aria-label="Add agenda item"
-            data-testid="agenda-add-input"
-          />
-        </li>
-      </ul>
     </div>
   );
 }
