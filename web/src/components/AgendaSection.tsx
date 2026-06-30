@@ -11,8 +11,9 @@ import styles from "./AgendaSection.module.css";
 
 // Phase 43-A/B/C/D: the meeting agenda lives in the note header (with the title), expanded by
 // default. 43-A add+display; 43-B tick/untick + "X / Y" coverage; 43-C inline edit + remove; 43-D
-// makes the strip collapsible — collapsed it shows one line ("Agenda · X / Y" + the remaining open
-// items) and costs no side space in either state (the note body stays full-width below). The
+// makes the strip collapsible — collapsed it shows one line (the "Agenda" label, the "X / Y"
+// coverage pill, and a peek of the remaining open items) and costs no side space in either state
+// (the note body stays full-width below). The
 // collapse toggle only appears once there are items (nothing to fold on an empty agenda). Every
 // mutation is optimistic; the agenda is read from the shared note-detail cache.
 export default function AgendaSection({ noteId }: { noteId: string }) {
@@ -42,7 +43,9 @@ export default function AgendaSection({ noteId }: { noteId: string }) {
             className={styles.toggle}
             onClick={() => setCollapsed((c) => !c)}
             aria-expanded={!collapsed}
-            aria-controls={`agenda-body-${noteId}`}
+            // Only reference the body while it's actually mounted (it unmounts when collapsed),
+            // so aria-controls never points at a missing id.
+            aria-controls={collapsed ? undefined : `agenda-body-${noteId}`}
             data-testid="agenda-toggle"
           >
             <span className={collapsed ? styles.caretCollapsed : styles.caret} aria-hidden="true">▾</span>
