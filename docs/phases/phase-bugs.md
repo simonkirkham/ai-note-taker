@@ -51,6 +51,7 @@
 | BUG-37 | The ✓ "Mark as discussed" tick on a note heading no longer works — clicking it does not toggle strikethrough on the topic/heading. | Done | 7-B |
 | BUG-38 | `TagsJourney` cold-start flake: `tag-input` never becomes visible in 30 s (a basic always-present element → the app/page failed to load, not projector lag). Hit `AddTag_PersistsAfterNavigation` on the 39-A deploy and `AddTag_PillAppearsOnNoteScreen` on deploy #666 (BUG-40) — both passed on rerun; surrounding deploys green, so a chronic cold-start gate flake, not a regression. Journeys capture **zero** `[browser]` console output, so the failure gives no root-cause signal. | Open | TI-39 |
 | BUG-42 | `CreateAndListNoteJourney.Create_a_note_name_it_and_see_it_in_the_list` E2E flake — the post-create assert (the new note card visible in the list) races the async projector with a bare 15 s `ToBeVisible` and **no reload-tolerance**; failed deploy #667 attempt 1, passed on rerun. Same class as [BUG-25]/[BUG-26] (post-write visibility vs projector lag), not the BUG-38 cold-start app-load stall. Fixed (#371, deploy #673): both create→list asserts (`CreateAndListNoteJourney` + `NoteDeleteJourney`, the latter red-gated #672 the same way) now use the reload-tolerant `AssertNoteVisibleInListAfterReloadAsync`; the bare racy helper was removed. | Done | BUG-26 |
+| BUG-43 | Query Lambda 500s on the first request after a SnapStart restore — the AWS SDK's cached credentials are captured in the snapshot and are stale on restore (`AmazonDynamoDBException: "The security token included in the request is invalid"`, `cold_start: true`). The priming hook registers `RegisterBeforeSnapshot` but no `RegisterAfterRestore` to reset credentials. 1× in 30 days (GET `/w/__default__/todos`), transient (next request succeeds). | Open | 27-D |
 | BUG-41 | HTTP action-item endpoints have an object-level auth gap (IDOR) — `POST /notes/{noteId}/actions/{actionId}/complete\|reopen`, `PATCH …/edit`, `DELETE …` authorize the **route `noteId`** via `OwnsNoteAsync` but never bind it to the action: owning *any* note + knowing a foreign `actionId` lets you mutate that action (it stamps your `sub`). Gated by the unguessable random `actionId` (not enumerable — `get_actions`/`GetActionItems` filter to your own), so low exploitability, but it is broken object-level auth. Fix: authorize the action's own owner via the new `IActionItemAuthorizer.OwnsActionAsync` (added in 41-B for the MCP tools). | Open | 41-B |
 | BUG-40 | Blank lines a user adds for structure are stripped on save — note content is stored as markdown, whose serializer collapsed every run of consecutive blank lines / empty paragraphs to one, condensing the note. Fixed by a `BlankLineParagraph` extension that serializes a *non-trailing* empty paragraph as a U+00A0 line so the structure survives the markdown round-trip (#363, deploy #666 `70c87c4`). | Done | 25-D |
 | BUG-39 | `TodoReorderJourney` reorder reverts after reload (deployed, deterministic 5/5). **Real root cause (test-env projector logs): `clear-test-data` wiped `notetaker-events` + projection tables but NOT `notetaker-proj-position`** → `Projector skip todo-order#__default__ at 1: position_guard`: the default workspace's stable-id order stream is reused every run; a prior run's processed-position (seq 1) survives the clear, so the next run's re-appended reorder (seq 1, events re-numbered from 0) is `≤` the stale mark and skipped as a duplicate → positions never applied. Stable-id streams collide; `note#`/`todo#<guid>` dodge it (fresh guids). **Not a product bug, not 36-B** (the 36-B correlation was coincidental — #655 first set the mark). Fix: `clear-test-data` now clears `proj-position` + all projection tables; journey **un-quarantined**. The per-item-`Position` fragilities the 37-A session noted (ConditionalCheckFailed swallow, PutItem clobber, cross-stream order) are real but latent — not the trigger here — tracked as an order-snapshot redesign follow-up (see detail). | Done | — |
@@ -60,6 +61,30 @@ Further bugs will be appended as they are identified.
 ---
 
 > **Fixed bugs are condensed in [phase-bugs-archive.md](phase-bugs-archive.md)** (one terse entry each, anchors preserved). The Summary table above stays the full index; only **open** defects keep a detailed section below.
+
+---
+
+## BUG-43 — Query Lambda 500 on first request after a SnapStart restore (stale SDK credentials)
+
+**Status:** Open. **Severity:** Low — 1 occurrence in 30 days; transient (the next request after restore succeeds).
+
+**Symptom:** A user-facing read returns **500**. Observed: `GET /w/__default__/todos` on a cold start.
+
+**Prod evidence (`--profile prod`, Query Lambda log group):**
+- `2026-06-22 20:07:36.963Z` — `level=Error`, logger `Api`, `cold_start: true`, fired immediately after a `RESTORE_START` (SnapStart restore) at `20:07:34`.
+- `exception.type` = `Amazon.DynamoDBv2.AmazonDynamoDBException`, `exception.message` = `"The security token included in the request is invalid."`, `source` = `AWSSDK.Core`; stack originates in `Amazon.Runtime.Internal.HttpErrorResponseExceptionHandler`.
+- `xray_trace_id` / `correlation_id` = `Root=1-6a399606-27e2fcb67b46077a6e89442f`.
+- Count over 30 days (all five Lambda log groups): **1** match for the message, on this one path.
+
+**Root cause:** SnapStart captures the snapshot at end-of-init. The AWS SDK credential chain is exercised during init (the `RegisterBeforeSnapshot` priming hook in `src/Api/Builder.cs:264` calls `IDynamoHealthCheck.CheckAsync` to warm it), so a security token is cached **in the snapshot**. On a later restore that token can be expired/invalid → the first DynamoDB call 500s. There is **no `RegisterAfterRestore` hook** to reset credentials after restore — only the before-snapshot priming hook exists (`Builder.cs:259–288`). Only the Query function uses SnapStart (`SnapStartConf.ON_PUBLISHED_VERSIONS`, `NoteTakerStack.cs:603`), which is why this is Query-only.
+
+**Observable?** Yes — logged at Error and would trip `notetaker-error-rate` if it became frequent. Today it is too rare (1/30d) to breach the 1%-over-5-min threshold, so it is invisible at the alarm level but visible in logs.
+
+**Fix direction:**
+1. Register `Amazon.Lambda.Core.SnapshotRestore.RegisterAfterRestore(...)` alongside the existing before-snapshot hook, and in it reset the SDK credential cache (`Amazon.Runtime.FallbackCredentialsFactory.Reset()`) so the first post-restore request resolves fresh credentials. Lowest-risk, matches AWS SnapStart .NET guidance.
+2. Alternatively, resolve credentials lazily per-request rather than warming/caching them before the snapshot.
+
+**Reproduce-before-fix:** hard to reproduce on demand (needs a restore from a snapshot whose captured token has expired). Add a unit/integration assertion that an after-restore hook is registered, and verify in prod that the Error message stops recurring after the fix ships.
 
 ---
 
@@ -168,6 +193,10 @@ Further bugs will be appended as they are identified.
 **Where it stands:** The test is switched off again (PR #298) with all three causes recorded, because the real app behaviour (remove an image → it stays gone) is verified working — only the test itself is unreliable.
 
 **Next step:** Add logging to the note-data read to find out *why* it hangs ~30 seconds on reopen (a slow/stuck request, a retry storm, or the test matching the wrong Save button), fix that, and switch the test back on.
+
+**Prod evidence (2026-06-30 observability-review) — the production manifestation of cause 3.** The `ConsistencyGate` (RYW) caps its wait at **2000 ms** (`src/Api/Consistency/ConsistencyGate.cs:24`) and then proceeds stale/absent. Over 14 days the gate timed out **11×**, all at the full `elapsedMs=2000` cap, in two shapes:
+- Benign near-miss (`gap=1`, projector one version behind) — caught up moments later.
+- The worst shape recurs ~weekly at **morning low-traffic hours** (06-17 08:36, 06-23 08:02, 06-26 09:37): `RYW gate STALE … reqVersion=3 lastSeq=-1 gap=4` immediately followed by `RYW presence gate ABSENT … elapsedMs=2000` for the **same** note. `lastSeq=-1` = the projector had recorded **no position at all** for that stream within budget — a **cold projector** (scaled-to-zero overnight) whose first-event start exceeds the 2 s RYW budget. The read then returns absent → a freshly-written note reads missing/stale on first load. This is the same cold-projector lag the test's ~30 s reopen hang exhibits. Fix directions for cause 3 should target the projector cold-start (e.g. provisioned concurrency / keep-warm) and/or a longer presence-gate budget, plus frontend reload-tolerance — not the test alone.
 
 ---
 ## BUG-33 — Forced through full Google consent after inactivity (warm-tab refresh skips the `rt` cookie)
