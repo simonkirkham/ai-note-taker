@@ -1,4 +1,4 @@
-# Phase 44 — Change or remove a note's linked meeting _(Not Started)_
+# Phase 44 — Change or remove a note's linked meeting _(In Progress — 44-A done 2026-06-30)_
 
 **Goal:** move a note to a different meeting, or detach it from its meeting entirely, when the meeting gets rescheduled, replaced, or the notes turn out to fit a different meeting.
 
@@ -6,7 +6,7 @@
 
 | Slice | What the user gets | Status | Depends on |
 |-------|--------------------|--------|------------|
-| 44-A  | Change a note's meeting — re-pick any meeting and the note moves to it | Not Started | — |
+| 44-A  | Change a note's meeting — re-pick any meeting and the note moves to it | Done | — |
 | 44-B  | Unlink a note from its meeting — it goes back to a standalone note | Not Started | 44-A |
 
 44-A is the thin vertical that proves the whole flow (a linked note can be re-pointed at a different meeting, old meeting freed, new one claimed). 44-B exposes "no meeting" as a destination, reusing the same link-removal plumbing 44-A introduces.
@@ -17,7 +17,7 @@
 
 <!-- REVIEW SURFACE — read this and stop. No technical artefact named below the slice headings. -->
 
-### Slice 44-A — Change a note's meeting
+### Slice 44-A — Change a note's meeting _(Done — #367, deployed #672 2026-06-30)_
 
 - **User value:** you prepped a note for one meeting, the plan changed, and now those notes belong to a different meeting — re-point the note in two clicks instead of copy-pasting into a new note.
 - **How it works:**
@@ -124,12 +124,16 @@ Scenario: Optimistic unlink
   - `Api.Integration`: re-link endpoint returns 200 and `GET /notes/{id}` shows the new meeting; picking a meeting already owned by another note stays rejected.
   - `Browser.E2E`: link → change → reload, reload-tolerant assert on the new badge (async projector).
 - **Acceptance criteria:**
-  - [ ] BDD spec first; event-model decision (unlink+link vs single change event) recorded in the spec.
-  - [ ] Already-linked guard in `Note` relaxed; re-link emits unlink+link in one append.
-  - [ ] `NoteUnlinkedFromCalendarEvent` projection arm clears **both** `CalendarLinkView` keys; rebuild path wired in `ProjectionRebuildHandler`.
-  - [ ] `RecurringSeriesId`/`IsRecurring` updated to the new meeting on re-link.
-  - [ ] Optimistic badge swap + reconcile-on-error in `NoteView.tsx`.
-  - [ ] Reload-tolerant E2E covering the change-and-reload journey.
+  - [x] BDD spec first; chose **unlink+link** (one new event `NoteUnlinkedFromCalendarEvent`, reuse the link event) over a single change event — recorded in `LinkNoteToCalendarEventSpec`.
+  - [x] Already-linked guard relaxed; re-link emits unlink+link in one append; **no-op when re-linking to the same meeting**.
+  - [x] `NoteUnlinkedFromCalendarEvent` deletes the freed row (frees the old meeting); handled in the live `ProjectionUpdater` **and** the rebuild `CalendarLinkIndexProjection`.
+  - [x] `RecurringSeriesId`/`IsRecurring` updated to the new meeting on re-link (Api.Integration cross-series test).
+  - [x] Optimistic badge swap + reconcile-on-error — reuses the existing `useLinkNoteToCalendar` hook; "Change" button opens `MeetingPicker` defaulted to the linked meeting's day.
+
+  As-built deviations:
+  - **API:** reused `POST /notes/{noteId}/calendar-link` (made idempotent, dropped the already-linked 409) instead of a new `PUT` — fewer moving parts, frontend already wired.
+  - **Replay safety (Hawk):** the unlink delete is **ownership-checked** (`DeleteForNoteAsync`, DynamoDB `ConditionExpression NoteId=:noteId`) so a stale/replayed unlink can't clobber a link another note has since made to the freed meeting; proven by a DynamoDB-Local test (the in-memory double can't).
+  - **E2E consciously skipped:** the meeting picker needs Google OAuth not present in the E2E gate (why no calendar journey exists). The badge swap is client-optimistic and the only projector-backed read affected (the meetings list's `linkedNoteId`) is pre-existing — so no *new* async read flow was introduced. Covered by Api.Integration (re-link, old-meeting-freed, idempotent, cross-series) + vitest.
 
 ### 44-B — Unlink a note from its meeting
 - **Commands/events:** `UnlinkNoteFromCalendarEvent` → `NoteUnlinkedFromCalendarEvent` (reuses the event added in 44-A). Idempotent when already unlinked.
