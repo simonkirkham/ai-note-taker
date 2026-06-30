@@ -252,12 +252,13 @@ public sealed class NoteMcpTools(
 
         var existing = await ExistingLinkForCallerAsync(calendarEventId, userId, ct).ConfigureAwait(false);
         if (existing is not null)
-            return await AlreadyExistsAsync(existing.NoteId, calendarEventId, start, end, ct).ConfigureAwait(false);
+            return await AlreadyExistsAsync(existing, ct).ConfigureAwait(false);
 
+        var stopwatch = Stopwatch.StartNew();
         var (noteId, version) = await CreateLinkedNoteAsync(
             userId, workspaceId, calendarEventId, title, start, end, isRecurring, recurringSeriesId, ct).ConfigureAwait(false);
-        logger.LogInformation("mcp_write tool=create_note_from_meeting sub={Sub} workspaceId={WorkspaceId} noteId={NoteId} calendarEventId={CalendarEventId}",
-            userId, workspaceId, noteId, calendarEventId);
+        logger.LogInformation("mcp_write tool=create_note_from_meeting sub={Sub} workspaceId={WorkspaceId} noteId={NoteId} calendarEventId={CalendarEventId} latencyMs={LatencyMs}",
+            userId, workspaceId, noteId, calendarEventId, stopwatch.Elapsed.TotalMilliseconds);
         return JsonSerializer.Serialize(new { noteId, version, alreadyExists = false, calendarEventId, startTime = start, endTime = end });
     }
 
@@ -288,12 +289,13 @@ public sealed class NoteMcpTools(
 
         var existing = await ExistingLinkForCallerAsync(next.CalendarEventId, userId, ct).ConfigureAwait(false);
         if (existing is not null)
-            return await AlreadyExistsAsync(existing.NoteId, next.CalendarEventId, next.StartTime, next.EndTime, ct).ConfigureAwait(false);
+            return await AlreadyExistsAsync(existing, ct).ConfigureAwait(false);
 
+        var stopwatch = Stopwatch.StartNew();
         var (noteId, version) = await CreateLinkedNoteAsync(
             userId, workspaceId, next.CalendarEventId, next.Title, next.StartTime, next.EndTime, next.IsRecurring, next.RecurringSeriesId, ct).ConfigureAwait(false);
-        logger.LogInformation("mcp_write tool=create_note_from_next_occurrence sub={Sub} workspaceId={WorkspaceId} noteId={NoteId} calendarEventId={CalendarEventId}",
-            userId, workspaceId, noteId, next.CalendarEventId);
+        logger.LogInformation("mcp_write tool=create_note_from_next_occurrence sub={Sub} workspaceId={WorkspaceId} noteId={NoteId} calendarEventId={CalendarEventId} latencyMs={LatencyMs}",
+            userId, workspaceId, noteId, next.CalendarEventId, stopwatch.Elapsed.TotalMilliseconds);
         return JsonSerializer.Serialize(new { noteId, version, alreadyExists = false, calendarEventId = next.CalendarEventId, startTime = next.StartTime, endTime = next.EndTime });
     }
 
@@ -527,11 +529,23 @@ public sealed class NoteMcpTools(
         return link is not null && link.UserId == userId ? link : null;
     }
 
-    private async Task<string> AlreadyExistsAsync(string noteId, string calendarEventId,
-        DateTimeOffset start, DateTimeOffset end, CancellationToken ct)
+    // Reports the caller's existing note for an event instead of creating a duplicate. Echoes the times
+    // from the stored link (authoritative), not the caller's input. The noteId rides the same payload so
+    // a reload is immediately actionable; a malformed stored id degrades to version 0 rather than a 500.
+    private async Task<string> AlreadyExistsAsync(CalendarLinkView link, CancellationToken ct)
     {
-        var version = await noteCommands.GetCurrentVersionAsync(new NoteId(Guid.Parse(noteId)), ct).ConfigureAwait(false);
-        return JsonSerializer.Serialize(new { noteId, version, alreadyExists = true, calendarEventId, startTime = start, endTime = end });
+        var version = Guid.TryParse(link.NoteId, out var guid)
+            ? await noteCommands.GetCurrentVersionAsync(new NoteId(guid), ct).ConfigureAwait(false)
+            : 0;
+        return JsonSerializer.Serialize(new
+        {
+            noteId = link.NoteId,
+            version,
+            alreadyExists = true,
+            calendarEventId = link.CalendarEventId,
+            startTime = link.StartTime,
+            endTime = link.EndTime
+        });
     }
 
     // The shared create flow (mirrors CalendarHandlers): CreateNote → RenameNote → SetNoteDate →

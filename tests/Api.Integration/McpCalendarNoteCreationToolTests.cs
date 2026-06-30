@@ -101,6 +101,33 @@ public sealed class McpCalendarNoteCreationToolTests(ApiFactory factory) : IClas
     }
 
     [Fact]
+    public async Task CreateNoteFromMeeting_DifferentUser_SameEvent_IsNotBlockedByAnothersLink()
+    {
+        // Per-sub conflict scoping: Owner linking an event must not block OtherUser from creating
+        // their OWN note for the same event (mirrors the HTTP DifferentUser_SameEventId test). Both
+        // call the shared default workspace, which every allowlisted sub owns.
+        var client = _factory.CreateUnauthenticatedClient();
+        object Args(string id) => new
+        {
+            workspaceId = WorkspaceId.DefaultValue,
+            calendarEventId = id,
+            title = "Shared meeting",
+            startTime = "2026-07-09T09:00:00Z",
+            endTime = "2026-07-09T09:30:00Z"
+        };
+
+        var ownerResult = ParsePayload(await CallToolAsync(client, "create_note_from_meeting", Args("evt-42b-shared"), McpTestTokens.Valid(Owner)));
+        var ownerNoteId = ownerResult.GetProperty("noteId").GetString()!;
+
+        var otherResult = await CallToolAsync(client, "create_note_from_meeting", Args("evt-42b-shared"), McpTestTokens.Valid(OtherUser));
+        Assert.False(IsToolError(otherResult));
+        var other = ParsePayload(otherResult);
+        // OtherUser's call proceeds (not reported as an existing-note duplicate of Owner's).
+        Assert.False(other.GetProperty("alreadyExists").GetBoolean());
+        Assert.NotEqual(ownerNoteId, other.GetProperty("noteId").GetString());
+    }
+
+    [Fact]
     public async Task CreateNoteFromMeeting_ForUnownedWorkspace_IsRejected()
     {
         SeedWorkspace(Owner, "ws-private-meeting", "Private");
