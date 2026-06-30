@@ -28,7 +28,11 @@ export default function AgendaSection({ noteId }: { noteId: string }) {
     <div className={styles.agenda} data-testid="agenda-section" role="group" aria-label="Agenda">
       <span className={styles.label}>Agenda</span>
       {agenda.length > 0 && (
-        <span className={styles.coverage} data-testid="agenda-coverage">
+        <span
+          className={styles.coverage}
+          data-testid="agenda-coverage"
+          aria-label={`${done} of ${agenda.length} agenda items covered`}
+        >
           {done} / {agenda.length}
         </span>
       )}
