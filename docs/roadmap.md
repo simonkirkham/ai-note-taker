@@ -432,6 +432,14 @@ Give each note a first-class **agenda** — a short checklist of things to discu
 
 Slices and acceptance criteria: [docs/phases/phase-43.md](phases/phase-43.md)
 
+## Phase 44 — Change or remove a note's linked meeting _(Not Started)_
+
+Let a note that's already tied to a meeting be **re-pointed at a different meeting** or **detached entirely**, for when the plan changes — the meeting gets replaced, or the prep notes turn out to fit another meeting. Today the Note aggregate hard-blocks re-linking (throws when already linked) and there is no unlink at all. Reframing from scouting: a *rescheduled* meeting usually keeps the same calendar event ID, so "the meeting moved" is often just a stale cached time (auto-refresh — deferred to *Later*); this phase covers the cases that need a user to act. Two slices: **44-A** change the meeting (re-pick any free meeting; old meeting freed, new one claimed; optimistic swap), **44-B** unlink (note becomes standalone, content untouched). Leans on the existing `CalendarLinkView` projection — one new event (`NoteUnlinkedFromCalendarEvent`), no new table, no backfill, neutral deploy-time.
+
+**Goal:** move a note to a different meeting, or detach it from its meeting entirely, when the meeting gets rescheduled, replaced, or the notes turn out to fit a different meeting.
+
+Slices and acceptance criteria: [docs/phases/phase-44.md](phases/phase-44.md)
+
 ---
 
 ## Standing tracks and planning docs
