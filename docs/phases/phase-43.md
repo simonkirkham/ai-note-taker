@@ -7,7 +7,7 @@
 | Slice | Summary | Status | Depends on |
 |-------|---------|--------|------------|
 | 43-A | Add an agenda item to a note; it persists and shows in the header (locks the event model on one real call) | Done | — |
-| 43-B | Tick / untick an item; header shows "X / Y covered" | Not Started | 43-A |
+| 43-B | Tick / untick an item; header shows "X / Y covered" | Done | 43-A |
 | 43-C | Edit an item's text; remove an item | Not Started | 43-A |
 | 43-D | Collapsible header agenda strip (expanded default, collapses to one line + what's left); Stylist polish | Not Started | 43-A, 43-B |
 | 43-E | Retire the legacy heading-✓ "mark as discussed" (now redundant) | Not Started | 43-D |
@@ -30,7 +30,7 @@ Reorder (drag) is deferred — not needed to ship value; item order is capture o
 | Event | Payload | When | Slice |
 |-------|---------|------|-------|
 | `AgendaItemAdded` | `itemId`, `text`, `position` | add an item | 43-A ✅ |
-| `AgendaItemDiscussedSet` | `itemId`, `discussed` (bool) | tick / untick | 43-B |
+| `AgendaItemDiscussedSet` | `itemId`, `discussed` (bool) | tick / untick | 43-B ✅ |
 | `AgendaItemTextEdited` | `itemId`, `text` | edit text | 43-C |
 | `AgendaItemRemoved` | `itemId` | remove | 43-C |
 
@@ -72,8 +72,10 @@ When  the owner unticks it
 Then  it returns to open and the count decrements
 ```
 Acceptance:
-- [ ] 2-state only (open/ticked); optimistic; persists across reload.
-- [ ] Coverage count + "what's left" derive from `AgendaView`.
+- [x] 2-state only (open/ticked); optimistic; persists across reload. `AgendaItemDiscussedSet` is idempotent (setting the current state is a no-op); unknown item → 404.
+- [x] Coverage count derives from the composed `NoteDetailView.Agenda` (done / total), shown as a "X / Y" pill in the header (aria-label "X of Y agenda items covered").
+
+_(Done — PR #373, deploy run 28474505369 (carried with #372 after an E2E cold-start flake re-run), live.)_
 
 ### 43-C — Edit text + remove
 **Value:** fix a typo in an agenda item, reword it, or drop one that's no longer relevant — keep the list tidy and accurate.

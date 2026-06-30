@@ -164,7 +164,7 @@ public record NoteDetail(
     long Version);                                // current stream sequence number
 
 // AgendaItem (Phase 43): a topic to discuss, stored on NoteDetail (NOT a separate projection —
-// it is only ever read with the note). discussed is always false until 43-B adds tick/untick.
+// it is only ever read with the note). `discussed` is toggled by AgendaItemDiscussedSet (43-B).
 public sealed record AgendaItem(Guid ItemId, string Text, bool Discussed, int Position);
 ```
 
