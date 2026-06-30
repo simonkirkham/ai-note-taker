@@ -100,39 +100,3 @@
   outline: 2px solid var(--color-primary);
   outline-offset: 2px;
 }
-
-.discussedButton {
-  position: absolute;
-  /* The editor content (.contentInput) is position:relative for inline-image
-     positioning, so it is a positioned sibling in the same stacking layer and,
-     coming later in the DOM, paints over this absolutely-positioned button —
-     swallowing the click so "mark as discussed" did nothing (BUG-37). A positive
-     z-index lifts the button above the content so the click lands on it. */
-  z-index: 1;
-  right: 4px;
-  width: 1.4rem;
-  height: 1.4rem;
-  border-radius: 50%;
-  border: 1.5px solid var(--color-primary);
-  background: transparent;
-  color: var(--color-primary);
-  font-size: 0.7rem;
-  font-weight: 700;
-  cursor: pointer;
-  padding: 0;
-  line-height: 1;
-  transition:
-    background var(--transition),
-    color var(--transition);
-  transform: translateY(-50%);
-}
-
-.discussedButton:hover {
-  background: var(--color-primary);
-  color: #fff;
-}
-
-.discussedButton:focus-visible {
-  outline: 2px solid var(--color-primary);
-  outline-offset: 2px;
-}

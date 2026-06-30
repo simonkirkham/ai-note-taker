@@ -33,7 +33,9 @@ describe('ShortcutsPanel', () => {
     const table = screen.getByRole('table')
     expect(table).toHaveTextContent('## + Space')
     expect(table).toHaveTextContent('Ctrl+B')
-    expect(table).toHaveTextContent('✓ button')
+    // 43-E: the legacy "✓ button — Mark heading as discussed" shortcut is retired (the agenda
+    // now owns "topics to discuss"); the panel must no longer list it.
+    expect(table).not.toHaveTextContent('Mark heading as discussed')
   })
 
   it('documents the /ai instruction shortcut (29-B)', async () => {
