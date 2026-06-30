@@ -27,6 +27,42 @@ export async function addAgendaItem(noteId: string, text: string): Promise<void>
   }
 }
 
+// Edit an agenda item's text (43-C). 404 (missing note/item) is accepted as a no-op (matches the
+// tick/remove pattern — the optimistic edit reconciles on the next refetch); 503 is retried.
+export async function editAgendaItemText(noteId: string, itemId: string, text: string): Promise<void> {
+  for (let attempt = 0; ; attempt++) {
+    const last = attempt >= MAX_CONTENTION_RETRIES
+    const response = await requestVoidWithResponse(
+      `/notes/${noteId}/agenda-items/${itemId}`,
+      {
+        method: 'PUT',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ text }),
+      },
+      last ? [404] : [404, 503],
+    )
+    if (response.status === 503) { await sleep(backoffMs(attempt + 1)); continue }
+    captureNoteToken(noteId, response)
+    return
+  }
+}
+
+// Remove an agenda item (43-C). 404 is accepted as a no-op — removing an already-gone item (double
+// click, or a temp id not yet reconciled) matches intent; must not roll the optimistic removal back.
+export async function removeAgendaItem(noteId: string, itemId: string): Promise<void> {
+  for (let attempt = 0; ; attempt++) {
+    const last = attempt >= MAX_CONTENTION_RETRIES
+    const response = await requestVoidWithResponse(
+      `/notes/${noteId}/agenda-items/${itemId}`,
+      { method: 'DELETE' },
+      last ? [404] : [404, 503],
+    )
+    if (response.status === 503) { await sleep(backoffMs(attempt + 1)); continue }
+    captureNoteToken(noteId, response)
+    return
+  }
+}
+
 // Tick / untick an agenda item (43-B). 404 is accepted as a no-op for two cases: the item was
 // concurrently removed (the onSettled refetch drops it), or it is a just-added item whose temp id
 // hasn't yet reconciled to the server id (ticking inside that brief window PUTs the temp id → 404 →

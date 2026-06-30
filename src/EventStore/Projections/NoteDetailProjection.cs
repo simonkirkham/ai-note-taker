@@ -65,6 +65,22 @@ public sealed class NoteDetailProjection
                     _items[e.NoteId] = withTick with { Agenda = updated, LastModifiedAt = envelope.OccurredAt };
                 }
                 break;
+            case AgendaItemTextEdited e:
+                if (_items.TryGetValue(e.NoteId, out var withEdit) && withEdit.Agenda is { } editItems)
+                {
+                    var updated = editItems
+                        .Select(a => a.ItemId == e.ItemId ? a with { Text = e.Text } : a)
+                        .ToList().AsReadOnly();
+                    _items[e.NoteId] = withEdit with { Agenda = updated, LastModifiedAt = envelope.OccurredAt };
+                }
+                break;
+            case AgendaItemRemoved e:
+                if (_items.TryGetValue(e.NoteId, out var withRemove) && withRemove.Agenda is { } removeItems)
+                {
+                    var updated = removeItems.Where(a => a.ItemId != e.ItemId).ToList().AsReadOnly();
+                    _items[e.NoteId] = withRemove with { Agenda = updated, LastModifiedAt = envelope.OccurredAt };
+                }
+                break;
             case NoteDeleted e:
                 _items.Remove(e.NoteId);
                 break;

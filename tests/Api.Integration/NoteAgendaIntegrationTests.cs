@@ -110,12 +110,96 @@ public sealed class NoteAgendaIntegrationTests(ApiFactory factory) : IClassFixtu
         Assert.Equal(HttpStatusCode.NotFound, resp.StatusCode);
     }
 
+    [Fact]
+    public async Task PutText_EditsItemTextAndPersists()
+    {
+        var noteId = await CreateNoteAsync();
+        var itemId = await AddAndGetItemIdAsync(noteId, "Budget");
+
+        var resp = await PutTextAsync(noteId, itemId, "Budget (Q3)");
+        Assert.Equal(HttpStatusCode.NoContent, resp.StatusCode);
+
+        Assert.Equal("Budget (Q3)", (await GetAgendaAsync(noteId)).Single().GetProperty("text").GetString());
+    }
+
+    [Fact]
+    public async Task PutText_BlankReturns400()
+    {
+        var noteId = await CreateNoteAsync();
+        var itemId = await AddAndGetItemIdAsync(noteId, "Budget");
+
+        var resp = await PutTextAsync(noteId, itemId, "   ");
+
+        Assert.Equal(HttpStatusCode.BadRequest, resp.StatusCode);
+    }
+
+    [Fact]
+    public async Task Delete_RemovesItemAndItStaysGone()
+    {
+        var noteId = await CreateNoteAsync();
+        var keep = await AddAndGetItemIdAsync(noteId, "Keep");
+        var drop = await AddAndGetItemIdAsync(noteId, "Drop");
+
+        var resp = await _client.DeleteAsync($"/notes/{noteId}/agenda-items/{drop}");
+        Assert.Equal(HttpStatusCode.NoContent, resp.StatusCode);
+
+        var agenda = await GetAgendaAsync(noteId);
+        Assert.Equal(["Keep"], agenda.Select(a => a.GetProperty("text").GetString()).ToArray());
+        Assert.Contains(keep, agenda.Select(a => a.GetProperty("itemId").GetString()));
+    }
+
+    [Fact]
+    public async Task Delete_TickedItem_UpdatesCoverage()
+    {
+        var noteId = await CreateNoteAsync();
+        var a = await AddAndGetItemIdAsync(noteId, "A");
+        var b = await AddAndGetItemIdAsync(noteId, "B");
+        await PutDiscussedAsync(noteId, a, true);
+        await PutDiscussedAsync(noteId, b, true); // 2 / 2 covered
+
+        await _client.DeleteAsync($"/notes/{noteId}/agenda-items/{a}");
+
+        var agenda = await GetAgendaAsync(noteId);
+        Assert.Single(agenda);
+        Assert.True(agenda[0].GetProperty("discussed").GetBoolean()); // surviving ticked item → 1 / 1
+    }
+
+    [Fact]
+    public async Task AddAfterRemove_DoesNotCollidePosition()
+    {
+        var noteId = await CreateNoteAsync();
+        var a = await AddAndGetItemIdAsync(noteId, "A");
+        await AddAndGetItemIdAsync(noteId, "B");
+        await _client.DeleteAsync($"/notes/{noteId}/agenda-items/{a}"); // remove A (pos 0)
+        await AddAndGetItemIdAsync(noteId, "C"); // must get a position after B, not collide
+
+        var agenda = await GetAgendaAsync(noteId);
+        var positions = agenda.Select(x => x.GetProperty("position").GetInt32()).ToArray();
+        Assert.Equal(positions.Length, positions.Distinct().Count()); // no duplicate positions
+        Assert.Equal(["B", "C"], agenda.Select(x => x.GetProperty("text").GetString()).ToArray());
+    }
+
+    [Fact]
+    public async Task Delete_UnknownItemReturns404()
+    {
+        var noteId = await CreateNoteAsync();
+
+        var resp = await _client.DeleteAsync($"/notes/{noteId}/agenda-items/{Guid.NewGuid()}");
+
+        Assert.Equal(HttpStatusCode.NotFound, resp.StatusCode);
+    }
+
     private async Task<string> CreateNoteAsync()
     {
         var resp = await _client.PostAsync("/notes", null);
         var body = await resp.Content.ReadFromJsonAsync<JsonElement>();
         return body.GetProperty("noteId").GetString()!;
     }
+
+    private Task<HttpResponseMessage> PutTextAsync(string noteId, string itemId, string text) =>
+        _client.PutAsync(
+            $"/notes/{noteId}/agenda-items/{itemId}",
+            new StringContent(JsonSerializer.Serialize(new { text }), Encoding.UTF8, "application/json"));
 
     private async Task<string> AddAndGetItemIdAsync(string noteId, string text)
     {

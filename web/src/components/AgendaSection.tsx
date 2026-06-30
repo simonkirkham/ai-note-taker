@@ -1,18 +1,23 @@
-import { useState } from "react";
-import { useAddAgendaItem, useSetAgendaItemDiscussed } from "../hooks/useAgendaMutations";
+import { useEffect, useRef, useState } from "react";
+import type { AgendaItem } from "../api/notes";
+import {
+  useAddAgendaItem,
+  useEditAgendaItemText,
+  useRemoveAgendaItem,
+  useSetAgendaItemDiscussed,
+} from "../hooks/useAgendaMutations";
 import { useNoteDetail } from "../hooks/useNoteDetail";
 import styles from "./AgendaSection.module.css";
 
-// Phase 43-A/B: the meeting agenda lives in the note header (with the title), expanded. 43-A added
-// add + display; 43-B adds tick/untick (2-state) + a "X / Y" coverage count. Edit/remove is 43-C,
-// collapse is 43-D. Items show in capture order; add and tick are both optimistic (the change shows
-// immediately, before the API responds). Reads the agenda from the shared note-detail cache (like
-// ActionsSection reads useActions) so the optimistic cache patch reflects here without prop-drilling.
+// Phase 43-A/B/C: the meeting agenda lives in the note header (with the title), expanded. 43-A added
+// add + display; 43-B added tick/untick (2-state) + a "X / Y" coverage count; 43-C adds inline edit
+// of an item's text and remove. Collapse is 43-D. Items show in capture order; every mutation is
+// optimistic (the change shows immediately, before the API responds). Reads the agenda from the
+// shared note-detail cache (like ActionsSection reads useActions) so optimistic patches reflect here.
 export default function AgendaSection({ noteId }: { noteId: string }) {
   const { data: detail } = useNoteDetail(noteId);
   const agenda = detail?.agenda ?? [];
   const addItem = useAddAgendaItem();
-  const setDiscussed = useSetAgendaItemDiscussed();
   const [text, setText] = useState("");
 
   const done = agenda.filter((a) => a.discussed).length;
@@ -38,19 +43,7 @@ export default function AgendaSection({ noteId }: { noteId: string }) {
       )}
       <ul className={styles.items}>
         {agenda.map((item) => (
-          <li key={item.itemId} className={styles.item} data-testid="agenda-item">
-            <label className={styles.itemLabel}>
-              <input
-                type="checkbox"
-                className={styles.check}
-                checked={item.discussed}
-                onChange={(e) => setDiscussed.mutate({ noteId, itemId: item.itemId, discussed: e.target.checked })}
-                aria-label={`Mark "${item.text}" discussed`}
-                data-testid="agenda-item-check"
-              />
-              <span className={item.discussed ? styles.itemTextDone : styles.itemText}>{item.text}</span>
-            </label>
-          </li>
+          <AgendaItemRow key={item.itemId} noteId={noteId} item={item} />
         ))}
         <li className={styles.addRow}>
           <input
@@ -72,5 +65,87 @@ export default function AgendaSection({ noteId }: { noteId: string }) {
         </li>
       </ul>
     </div>
+  );
+}
+
+function AgendaItemRow({ noteId, item }: { noteId: string; item: AgendaItem }) {
+  const setDiscussed = useSetAgendaItemDiscussed();
+  const editText = useEditAgendaItemText();
+  const removeItem = useRemoveAgendaItem();
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(item.text);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  // Focus the edit field when entering edit mode (replaces autoFocus — jsx-a11y/no-autofocus).
+  // Effect only calls focus(), never setState, so it doesn't trip react-hooks/set-state-in-effect.
+  useEffect(() => {
+    if (editing) inputRef.current?.focus();
+  }, [editing]);
+
+  function startEditing() {
+    setDraft(item.text);
+    setEditing(true);
+  }
+
+  function commit() {
+    setEditing(false);
+    const trimmed = draft.trim();
+    // Empty or unchanged → don't send a write (the backend rejects blank with 400, and an
+    // unchanged edit is a pointless event); just reconcile the field back to the current text.
+    if (!trimmed || trimmed === item.text) return;
+    editText.mutate({ noteId, itemId: item.itemId, text: trimmed });
+  }
+
+  return (
+    <li className={styles.item} data-testid="agenda-item">
+      <input
+        type="checkbox"
+        className={styles.check}
+        checked={item.discussed}
+        onChange={(e) => setDiscussed.mutate({ noteId, itemId: item.itemId, discussed: e.target.checked })}
+        aria-label={`Mark "${item.text}" discussed`}
+        data-testid="agenda-item-check"
+      />
+      {editing ? (
+        <input
+          ref={inputRef}
+          type="text"
+          className={styles.editInput}
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              commit();
+            } else if (e.key === "Escape") {
+              e.preventDefault();
+              setEditing(false);
+            }
+          }}
+          onBlur={commit}
+          aria-label={`Edit agenda item "${item.text}"`}
+          data-testid="agenda-item-edit-input"
+        />
+      ) : (
+        <button
+          type="button"
+          className={item.discussed ? styles.itemTextDone : styles.itemText}
+          onClick={startEditing}
+          aria-label={`Edit "${item.text}"`}
+          data-testid="agenda-item-text"
+        >
+          {item.text}
+        </button>
+      )}
+      <button
+        type="button"
+        className={styles.remove}
+        onClick={() => removeItem.mutate({ noteId, itemId: item.itemId })}
+        aria-label={`Remove "${item.text}"`}
+        data-testid="agenda-item-remove"
+      >
+        ×
+      </button>
+    </li>
   );
 }

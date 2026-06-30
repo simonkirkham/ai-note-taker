@@ -13,6 +13,10 @@ public sealed class Note : IAggregate
     string? _calendarEventId;
     readonly HashSet<string> _tags = [];
     readonly Dictionary<Guid, bool> _agendaItems = [];
+    // Monotonic count of agenda items ever ADDED (never decremented on remove). Used as the next
+    // item's Position so a removal never makes a later add collide with a surviving item's position
+    // (43-C). For a stream with no removals this equals _agendaItems.Count (43-A/B behaviour).
+    int _agendaAddCount;
     string? _transcriptText;
     string? _summary;
     WorkspaceId _workspaceId = WorkspaceId.Default;
@@ -46,10 +50,14 @@ public sealed class Note : IAggregate
                 break;
             case AgendaItemAdded e:
                 _agendaItems[e.ItemId] = false;
+                _agendaAddCount++;
                 break;
             case AgendaItemDiscussedSet e:
                 if (_agendaItems.ContainsKey(e.ItemId))
                     _agendaItems[e.ItemId] = e.Discussed;
+                break;
+            case AgendaItemRemoved e:
+                _agendaItems.Remove(e.ItemId);
                 break;
             case NoteFiledInFolder e:
                 _folderId = e.FolderId;
@@ -101,6 +109,8 @@ public sealed class Note : IAggregate
             UntagNote cmd => HandleUntagNote(cmd),
             AddAgendaItem cmd => HandleAddAgendaItem(cmd),
             SetAgendaItemDiscussed cmd => HandleSetAgendaItemDiscussed(cmd),
+            EditAgendaItemText cmd => HandleEditAgendaItemText(cmd),
+            RemoveAgendaItem cmd => HandleRemoveAgendaItem(cmd),
             MoveNoteToFolder cmd => HandleMoveToFolder(cmd),
             MoveNoteToWorkspace cmd => HandleMoveToWorkspace(cmd),
             UnfileNote cmd => HandleUnfile(cmd),
@@ -185,7 +195,7 @@ public sealed class Note : IAggregate
             throw new ArgumentException("Agenda item text must not be blank.", nameof(cmd));
         // Position is the item's index at add time (capture order), so the agenda is rebuildable
         // from the stream in the order items were added.
-        return [new AgendaItemAdded(cmd.NoteId, cmd.ItemId, text, _agendaItems.Count)];
+        return [new AgendaItemAdded(cmd.NoteId, cmd.ItemId, text, _agendaAddCount)];
     }
 
     IReadOnlyList<IDomainEvent> HandleSetAgendaItemDiscussed(SetAgendaItemDiscussed cmd)
@@ -198,6 +208,27 @@ public sealed class Note : IAggregate
         if (current == cmd.Discussed)
             return [];
         return [new AgendaItemDiscussedSet(cmd.NoteId, cmd.ItemId, cmd.Discussed)];
+    }
+
+    IReadOnlyList<IDomainEvent> HandleEditAgendaItemText(EditAgendaItemText cmd)
+    {
+        if (!_exists || _deleted)
+            throw new InvalidOperationException($"Note {cmd.NoteId} does not exist.");
+        if (!_agendaItems.ContainsKey(cmd.ItemId))
+            throw new InvalidOperationException($"Agenda item {cmd.ItemId} does not exist on note {cmd.NoteId}.");
+        var text = cmd.Text.Trim();
+        if (string.IsNullOrEmpty(text))
+            throw new ArgumentException("Agenda item text must not be blank.", nameof(cmd));
+        return [new AgendaItemTextEdited(cmd.NoteId, cmd.ItemId, text)];
+    }
+
+    IReadOnlyList<IDomainEvent> HandleRemoveAgendaItem(RemoveAgendaItem cmd)
+    {
+        if (!_exists || _deleted)
+            throw new InvalidOperationException($"Note {cmd.NoteId} does not exist.");
+        if (!_agendaItems.ContainsKey(cmd.ItemId))
+            throw new InvalidOperationException($"Agenda item {cmd.ItemId} does not exist on note {cmd.NoteId}.");
+        return [new AgendaItemRemoved(cmd.NoteId, cmd.ItemId)];
     }
 
     IReadOnlyList<IDomainEvent> HandleMoveToFolder(MoveNoteToFolder cmd)

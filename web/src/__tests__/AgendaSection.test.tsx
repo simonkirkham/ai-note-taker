@@ -23,7 +23,11 @@ function noteWith(agenda: NoteDetail['agenda']): NoteDetail {
 // Renders with a QueryClient whose keys.note(NOTE_ID) cache is pre-seeded, so AgendaSection reads
 // the agenda from the shared note-detail cache exactly as it does mounted under NoteView.
 function renderAgenda(agenda: NoteDetail['agenda'] = []) {
-  const qc = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } })
+  // staleTime: Infinity so useNoteDetail trusts the seeded cache and does not refetch on mount
+  // (an on-mount refetch hitting the default no-agenda GET handler would race and wipe the seed).
+  // A mutation's onSettled invalidateQueries still forces a refetch regardless, so reconciliation
+  // paths are exercised; this only removes the spurious mount refetch.
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity }, mutations: { retry: false } } })
   qc.setQueryData(keys.note(NOTE_ID), noteWith(agenda))
   const Wrapper = ({ children }: { children: ReactNode }) => (
     <QueryClientProvider client={qc}>{children}</QueryClientProvider>
@@ -37,8 +41,8 @@ describe('AgendaSection', () => {
       { itemId: 'i-1', text: 'Budget (Q3)', discussed: false, position: 0 },
       { itemId: 'i-2', text: 'Hiring backfill', discussed: false, position: 1 },
     ])
-    const items = screen.getAllByTestId('agenda-item')
-    expect(items.map((i) => i.textContent)).toEqual(['Budget (Q3)', 'Hiring backfill'])
+    const texts = screen.getAllByTestId('agenda-item-text')
+    expect(texts.map((t) => t.textContent)).toEqual(['Budget (Q3)', 'Hiring backfill'])
   })
 
   it('shows an empty, add-ready agenda for a note with no items', () => {
@@ -144,5 +148,85 @@ describe('AgendaSection', () => {
 
     await waitFor(() => expect(screen.getByTestId('agenda-item-check')).not.toBeChecked())
     expect(screen.getByTestId('agenda-coverage')).toHaveTextContent('0 / 1')
+  })
+
+  it('edits an item text inline and patches optimistically', async () => {
+    let put: { itemId?: string; text?: string } = {}
+    server.use(
+      http.put(`/api/notes/${NOTE_ID}/agenda-items/:itemId`, async ({ params, request }) => {
+        put = { itemId: params.itemId as string, text: ((await request.json()) as { text: string }).text }
+        return new HttpResponse(null, { status: 204 })
+      }),
+      http.get(`/api/notes/${NOTE_ID}`, () =>
+        HttpResponse.json(noteWith([{ itemId: 'i-1', text: 'Budget (Q3)', discussed: false, position: 0 }]))),
+    )
+    renderAgenda([{ itemId: 'i-1', text: 'Budget', discussed: false, position: 0 }])
+
+    await userEvent.click(screen.getByTestId('agenda-item-text'))
+    const input = screen.getByTestId('agenda-item-edit-input')
+    await userEvent.clear(input)
+    await userEvent.type(input, 'Budget (Q3){Enter}')
+
+    // Optimistic: the new text shows immediately; the PUT carried the trimmed text.
+    expect(await screen.findByText('Budget (Q3)')).toBeInTheDocument()
+    await waitFor(() => expect(put).toEqual({ itemId: 'i-1', text: 'Budget (Q3)' }))
+  })
+
+  it('does not send an edit when the text is unchanged', async () => {
+    let putCalled = false
+    server.use(
+      http.put(`/api/notes/${NOTE_ID}/agenda-items/:itemId`, () => {
+        putCalled = true
+        return new HttpResponse(null, { status: 204 })
+      }),
+    )
+    renderAgenda([{ itemId: 'i-1', text: 'Budget', discussed: false, position: 0 }])
+
+    await userEvent.click(screen.getByTestId('agenda-item-text'))
+    const input = screen.getByTestId('agenda-item-edit-input')
+    await userEvent.type(input, '{Enter}') // commit unchanged
+
+    expect(putCalled).toBe(false)
+    expect(screen.getByTestId('agenda-item-text')).toHaveTextContent('Budget')
+  })
+
+  it('removes an item optimistically', async () => {
+    let deleted = false
+    server.use(
+      http.delete(`/api/notes/${NOTE_ID}/agenda-items/:itemId`, () => {
+        deleted = true
+        return new HttpResponse(null, { status: 204 })
+      }),
+      http.get(`/api/notes/${NOTE_ID}`, () =>
+        HttpResponse.json(noteWith([{ itemId: 'i-2', text: 'Keep', discussed: false, position: 1 }]))),
+    )
+    renderAgenda([
+      { itemId: 'i-1', text: 'Drop', discussed: false, position: 0 },
+      { itemId: 'i-2', text: 'Keep', discussed: false, position: 1 },
+    ])
+
+    await userEvent.click(screen.getByRole('button', { name: 'Remove "Drop"' }))
+
+    // Optimistic: the dropped item disappears immediately, the kept one stays.
+    await waitFor(() => expect(screen.queryByText('Drop')).not.toBeInTheDocument())
+    expect(screen.getByText('Keep')).toBeInTheDocument()
+    await waitFor(() => expect(deleted).toBe(true))
+  })
+
+  it('removing a ticked item drops the covered count', async () => {
+    server.use(
+      http.delete(`/api/notes/${NOTE_ID}/agenda-items/:itemId`, () => new HttpResponse(null, { status: 204 })),
+      http.get(`/api/notes/${NOTE_ID}`, () =>
+        HttpResponse.json(noteWith([{ itemId: 'i-2', text: 'B', discussed: false, position: 1 }]))),
+    )
+    renderAgenda([
+      { itemId: 'i-1', text: 'A', discussed: true, position: 0 },
+      { itemId: 'i-2', text: 'B', discussed: false, position: 1 },
+    ])
+    expect(screen.getByTestId('agenda-coverage')).toHaveTextContent('1 / 2')
+
+    await userEvent.click(screen.getByRole('button', { name: 'Remove "A"' }))
+
+    await waitFor(() => expect(screen.getByTestId('agenda-coverage')).toHaveTextContent('0 / 1'))
   })
 })
