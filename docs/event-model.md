@@ -72,6 +72,8 @@ A named partition of a user's content (e.g. *Work* / *Personal*). A second isola
 | `SetNoteDate(noteId, date, setAt)` | Note exists, not deleted | `NoteDateSet` |
 | `AddAgendaItem(noteId, itemId, text)` | Note exists, not deleted; blank text rejected (API 400 + aggregate guard) | `AgendaItemAdded` |
 | `SetAgendaItemDiscussed(noteId, itemId, discussed)` | Note exists, not deleted; item exists (else 404); idempotent — no event when already in that state | `AgendaItemDiscussedSet` |
+| `EditAgendaItemText(noteId, itemId, text)` | Note exists, not deleted; item exists (else 404); blank text rejected (API 400 + aggregate guard) | `AgendaItemTextEdited` |
+| `RemoveAgendaItem(noteId, itemId)` | Note exists, not deleted; item exists (else 404, accepted as no-op by clients) | `AgendaItemRemoved` |
 | `RecordTagSuggestions(noteId, tags, modelId, promptVersion)` | Note exists, not deleted; empty tag list emits nothing | `TagsSuggestedV2` |
 | `RecordActionItemSuggestions(noteId, actionItemIds, modelId, promptVersion)` | Note exists, not deleted; empty list emits nothing | `ActionItemsSuggestedV2` |
 | `RecordAnalysisSummary(noteId, summary, discussionPoints, decisions, modelId, promptVersion)` | Note exists, not deleted | `AnalysisSummaryRecorded` |
@@ -147,6 +149,8 @@ A named partition of a user's content (e.g. *Work* / *Personal*). A second isola
 - `NoteDateSet { NoteId, Date }` — user-specified `DateOnly`; can be set or changed at any time while the note is active
 - `AgendaItemAdded { NoteId, ItemId, Text, Position }` — a meeting-agenda item (Phase 43); `Position` = capture order; folded onto `NoteDetail.Agenda` (no separate projection)
 - `AgendaItemDiscussedSet { NoteId, ItemId, Discussed }` — tick / untick (43-B); folded onto the matching `NoteDetail.Agenda` item; idempotent
+- `AgendaItemTextEdited { NoteId, ItemId, Text }` — edit an item's text (43-C)
+- `AgendaItemRemoved { NoteId, ItemId }` — remove an item (43-C); `AgendaItemAdded.Position` derives from a monotonic add-counter so a post-removal add never reuses a surviving item's position
 - `TagsSuggested { NoteId, Tags[] }` (v1) / `TagsSuggestedV2 { NoteId, Tags[], ModelId, PromptVersion }` (v2, 10-M) — AI provenance; records the tags an analysis run contributed (the post-dedup applied set), so a later `NoteUntagged` of one can be classified as a rejected AI suggestion. v2 stamps `ModelId`/`PromptVersion` so the correction ties to the exact prompt/model. The aggregate emits **v2**; v1 remains for streams written before 10-M. No aggregate state change
 - `ActionItemsSuggested { NoteId, ActionItemIds[] }` (v1) / `ActionItemsSuggestedV2 { NoteId, ActionItemIds[], ModelId, PromptVersion }` (v2, 10-M) — AI provenance; records (by id) the action items an analysis run created, so a later `ActionItemDeleted`/`ActionItemCompleted` can be attributed to the AI. v2 stamps `ModelId`/`PromptVersion`. The aggregate emits **v2**; v1 remains for pre-10-M streams. No aggregate state change
 - `AnalysisSummaryRecorded { NoteId, Summary, DiscussionPoints[], Decisions[], ModelId, PromptVersion }` — the AI's Final notes artifact; full snapshot, latest wins (like `ContentEdited`). `ModelId`/`PromptVersion` attribute who/what generated it. Folds into `NoteDetail.summary`/`discussionPoints`/`decisions`/`summaryModelId`/`summaryPromptVersion`

@@ -62,6 +62,8 @@ public record NoteUntagged(NoteId NoteId, string Tag)          : NoteEvent;
 public record NoteDateSet(NoteId NoteId, DateOnly? Date)       : NoteEvent;  // null = cleared
 public record AgendaItemAdded(NoteId NoteId, Guid ItemId, string Text, int Position) : NoteEvent;  // meeting agenda (Phase 43); Position = capture order
 public record AgendaItemDiscussedSet(NoteId NoteId, Guid ItemId, bool Discussed) : NoteEvent;  // tick / untick an agenda item (43-B)
+public record AgendaItemTextEdited(NoteId NoteId, Guid ItemId, string Text) : NoteEvent;  // edit an agenda item's text (43-C)
+public record AgendaItemRemoved(NoteId NoteId, Guid ItemId) : NoteEvent;  // remove an agenda item (43-C)
 public record TagsSuggested(NoteId NoteId, IReadOnlyList<string> Tags) : NoteEvent;  // AI provenance (v1)
 public record TagsSuggestedV2(NoteId NoteId, IReadOnlyList<string> Tags, string ModelId, string PromptVersion) : NoteEvent;  // AI provenance (v2, 10-M)
 public record ActionItemsSuggested(NoteId NoteId, IReadOnlyList<Guid> ActionItemIds) : NoteEvent;  // AI provenance (v1)

@@ -8,7 +8,7 @@
 |-------|---------|--------|------------|
 | 43-A | Add an agenda item to a note; it persists and shows in the header (locks the event model on one real call) | Done | — |
 | 43-B | Tick / untick an item; header shows "X / Y covered" | Done | 43-A |
-| 43-C | Edit an item's text; remove an item | Not Started | 43-A |
+| 43-C | Edit an item's text; remove an item | Done | 43-A |
 | 43-D | Collapsible header agenda strip (expanded default, collapses to one line + what's left); Stylist polish | Not Started | 43-A, 43-B |
 | 43-E | Retire the legacy heading-✓ "mark as discussed" (now redundant) | Not Started | 43-D |
 
@@ -31,8 +31,8 @@ Reorder (drag) is deferred — not needed to ship value; item order is capture o
 |-------|---------|------|-------|
 | `AgendaItemAdded` | `itemId`, `text`, `position` | add an item | 43-A ✅ |
 | `AgendaItemDiscussedSet` | `itemId`, `discussed` (bool) | tick / untick | 43-B ✅ |
-| `AgendaItemTextEdited` | `itemId`, `text` | edit text | 43-C |
-| `AgendaItemRemoved` | `itemId` | remove | 43-C |
+| `AgendaItemTextEdited` | `itemId`, `text` | edit text | 43-C ✅ |
+| `AgendaItemRemoved` | `itemId` | remove | 43-C ✅ |
 
 - **Read model** = `NoteDetailView.Agenda` (ordered `[{itemId, text, discussed, position}]`), folded in `NoteDetailProjection`; rebuilds via the existing NoteDetail rebuild path (no separate projection to wire). `AgendaItemView` carries `discussed`/`position` from 43-A so 43-B/C add no view-shape change.
 - The new `Agenda` field is mapped in **both** `InMemoryNoteDetailStore` (by reference) **and** `DynamoDbNoteDetailStore` (`UpsertAsync` write + `MapItemToNoteDetailView`/`ReadAgenda` read), plus an `EventStore.Integration` round-trip test — the in-memory double structurally hides an unmapped DynamoDB attribute (guardrail).
@@ -84,8 +84,11 @@ When  the owner edits an item's text   → AgendaItemTextEdited; new text persis
 When  the owner removes an item         → AgendaItemRemoved; it disappears and stays gone on reload
 ```
 Acceptance:
-- [ ] Inline edit + remove, both optimistic.
-- [ ] Removing a ticked item updates the coverage count.
+- [x] Inline edit (click text → input; Enter/blur commits, Esc cancels, blank/unchanged sends nothing) + remove (×), both optimistic. Edit blank → 400; unknown item → 404; remove 404 accepted as no-op.
+- [x] Removing a ticked item updates the (derived) coverage count.
+- [x] Position now derives from a **monotonic add-counter** so an add after a remove never reuses a surviving item's position (the 43-B forward-flag).
+
+_(Done — PR #374, deploy run 28477668516, live. Esc-cancel guard mirrors `ActionsSection`'s `editingRef` — a real-browser blur-on-unmount bug jsdom can't catch.)_
 
 ### 43-D — Collapsible header agenda strip + polish
 **Value:** the agenda stays glanceable at the top of the note while you write, and folds away to a single "Agenda · 2/5" line when you want the note to be the focus — never stealing note space or a side column.

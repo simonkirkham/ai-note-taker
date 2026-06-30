@@ -54,6 +54,8 @@ For each slice, follow CLAUDE.md `## Workflow` steps 1–15. Steps 1–3 are gat
    Immediately schedule a CI monitor (`gh pr checks <n>` every 60s).
 7. **Hawk** — spawn `agent-skills:code-reviewer` on the PR *the moment it opens*, in parallel with CI. Do not wait for CI.
 8. Hawk requests changes → fix every finding, then re-run `tsc --noEmit` + `npm run lint` **after this fix commit too** (not only after the first implementation pass — post-merge lint/type breaks have repeatedly come from an unchecked later fix commit), push, re-run Hawk. Hawk approves → check both merge gates, then merge.
+
+> **Build the backend locally the way CI does — `dotnet build ai-note-taker.sln -p:TreatWarningsAsErrors=true`.** CI's backend job uses that flag; a plain `dotnet build` only *warns* on e.g. CS8631 (`string?` in `Assert.Equal(span, array)` — null-forgive with `!`), so it greens locally then red-fails CI (recurred 43-A → 43-C, a wasted round-trip each time). For frontend, `npm run lint` locally is unreliable under WSL — trust the CI `frontend` check as the final word but still run it.
 9. Merge → remove the worktree, monitor the main deploy.
 10. Deploy green → **Scribe** (runs the whole post-deploy sequence unasked). Deploy red → read `gh run view <id> --log-failed`, fix, push.
 
