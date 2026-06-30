@@ -82,18 +82,32 @@ function AgendaItemRow({ noteId, item }: { noteId: string; item: AgendaItem }) {
     if (editing) inputRef.current?.focus();
   }, [editing]);
 
+  // editingRef guards the commit against the blur-on-unmount that fires in a REAL browser when the
+  // edit input is removed (jsdom doesn't fire it, so this is unprovable in unit tests — mirrors the
+  // proven ActionsSection guard). On Enter the keydown commits then clears the ref, so the unmount
+  // blur is a no-op; on Escape we clear the ref first so the blur commits nothing (Esc truly cancels).
+  const editingRef = useRef(false);
+
   function startEditing() {
     setDraft(item.text);
+    editingRef.current = true;
     setEditing(true);
   }
 
   function commit() {
+    if (!editingRef.current) return; // already committed (Enter) or cancelled (Escape) — suppress the unmount blur
+    editingRef.current = false;
     setEditing(false);
     const trimmed = draft.trim();
     // Empty or unchanged → don't send a write (the backend rejects blank with 400, and an
     // unchanged edit is a pointless event); just reconcile the field back to the current text.
     if (!trimmed || trimmed === item.text) return;
     editText.mutate({ noteId, itemId: item.itemId, text: trimmed });
+  }
+
+  function cancel() {
+    editingRef.current = false;
+    setEditing(false);
   }
 
   return (
@@ -119,7 +133,7 @@ function AgendaItemRow({ noteId, item }: { noteId: string; item: AgendaItem }) {
               commit();
             } else if (e.key === "Escape") {
               e.preventDefault();
-              setEditing(false);
+              cancel();
             }
           }}
           onBlur={commit}
