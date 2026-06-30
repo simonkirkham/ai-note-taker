@@ -226,6 +226,79 @@ public sealed class NoteMcpTools(
         return JsonSerializer.Serialize(new { calendarConnected = true, provider = calendar.ProviderName, meetings });
     }
 
+    // 42-B: calendar-linked note creation over MCP. Mirrors CalendarHandlers.CreateNoteFromMeeting /
+    // CreateNoteFromNextOccurrence, but resolves identity from (sub, workspaceId) like list_meetings, not
+    // the route. Authorizes workspace ownership first (a write into a foreign workspace is logged for
+    // audit), conflict-checks the caller's own link (no duplicate note per (event, sub)), then creates +
+    // dates + links via the identity-explicit overload. `alreadyExists` carries the existing noteId so a
+    // reload is immediately actionable; the meeting fields come straight from list_meetings.
+    [McpServerTool(Name = "create_note_from_meeting")]
+    [Description("Create a note linked to a calendar meeting in a workspace the caller owns (pass the meeting fields from list_meetings). If a note already exists for that meeting, returns it instead of creating a duplicate.")]
+    public async Task<string> CreateNoteFromMeeting(
+        [Description("The workspace id (use list_workspaces to resolve a name).")] string workspaceId,
+        [Description("The calendar event id, from list_meetings.")] string calendarEventId,
+        [Description("The meeting title — becomes the note title.")] string title,
+        [Description("The meeting start as ISO-8601, from list_meetings.")] string startTime,
+        [Description("The meeting end as ISO-8601, from list_meetings.")] string endTime,
+        CancellationToken ct,
+        [Description("Whether the meeting recurs.")] bool isRecurring = false,
+        [Description("The recurring series id, if any.")] string? recurringSeriesId = null)
+    {
+        var userId = await AuthorizeWriteAsync("create_note_from_meeting", workspaceId, ct).ConfigureAwait(false);
+        if (string.IsNullOrWhiteSpace(calendarEventId))
+            throw new McpException("calendarEventId is required.");
+        var start = ParseOffset(startTime, nameof(startTime));
+        var end = ParseOffset(endTime, nameof(endTime));
+
+        var existing = await ExistingLinkForCallerAsync(calendarEventId, userId, ct).ConfigureAwait(false);
+        if (existing is not null)
+            return await AlreadyExistsAsync(existing, ct).ConfigureAwait(false);
+
+        var stopwatch = Stopwatch.StartNew();
+        var (noteId, version) = await CreateLinkedNoteAsync(
+            userId, workspaceId, calendarEventId, title, start, end, isRecurring, recurringSeriesId, ct).ConfigureAwait(false);
+        logger.LogInformation("mcp_write tool=create_note_from_meeting sub={Sub} workspaceId={WorkspaceId} noteId={NoteId} calendarEventId={CalendarEventId} latencyMs={LatencyMs}",
+            userId, workspaceId, noteId, calendarEventId, stopwatch.Elapsed.TotalMilliseconds);
+        return JsonSerializer.Serialize(new { noteId, version, alreadyExists = false, calendarEventId, startTime = start, endTime = end });
+    }
+
+    // 42-B: resolves the next future occurrence of a recurring series off the route-explicit scope, then
+    // creates + links a note for it. A series with no upcoming occurrence is a normal result
+    // (noFutureOccurrence), not an error — same philosophy as 42-A's calendar_unavailable.
+    [McpServerTool(Name = "create_note_from_next_occurrence")]
+    [Description("Create a note linked to the next future occurrence of a recurring meeting series in a workspace the caller owns. Returns an existing note if one is already linked, or a clear no-future-occurrence result if the series has ended.")]
+    public async Task<string> CreateNoteFromNextOccurrence(
+        [Description("The workspace id (use list_workspaces to resolve a name).")] string workspaceId,
+        [Description("The recurring series id, from list_meetings' recurringSeriesId.")] string recurringSeriesId,
+        CancellationToken ct)
+    {
+        var userId = await AuthorizeWriteAsync("create_note_from_next_occurrence", workspaceId, ct).ConfigureAwait(false);
+        if (string.IsNullOrWhiteSpace(recurringSeriesId))
+            throw new McpException("recurringSeriesId is required.");
+
+        // Resolve the calendar for THIS (sub, workspaceId), not the route's default workspace.
+        calendarScope.Set(userId, workspaceId);
+        var calendar = await calendarFactory.ForAsync(workspaceId, ct).ConfigureAwait(false);
+        var next = await calendar.GetNextOccurrenceAsync(recurringSeriesId, DateTimeOffset.UtcNow).ConfigureAwait(false);
+        if (next is null)
+        {
+            logger.LogInformation("mcp_write tool=create_note_from_next_occurrence sub={Sub} workspaceId={WorkspaceId} recurringSeriesId={SeriesId} result=no_future_occurrence",
+                userId, workspaceId, recurringSeriesId);
+            return JsonSerializer.Serialize(new { noFutureOccurrence = true });
+        }
+
+        var existing = await ExistingLinkForCallerAsync(next.CalendarEventId, userId, ct).ConfigureAwait(false);
+        if (existing is not null)
+            return await AlreadyExistsAsync(existing, ct).ConfigureAwait(false);
+
+        var stopwatch = Stopwatch.StartNew();
+        var (noteId, version) = await CreateLinkedNoteAsync(
+            userId, workspaceId, next.CalendarEventId, next.Title, next.StartTime, next.EndTime, next.IsRecurring, next.RecurringSeriesId, ct).ConfigureAwait(false);
+        logger.LogInformation("mcp_write tool=create_note_from_next_occurrence sub={Sub} workspaceId={WorkspaceId} noteId={NoteId} calendarEventId={CalendarEventId} latencyMs={LatencyMs}",
+            userId, workspaceId, noteId, next.CalendarEventId, stopwatch.Elapsed.TotalMilliseconds);
+        return JsonSerializer.Serialize(new { noteId, version, alreadyExists = false, calendarEventId = next.CalendarEventId, startTime = next.StartTime, endTime = next.EndTime });
+    }
+
     // 41-A: the first write tool. Authorizes workspace ownership (the same per-call check the reads
     // use), then creates the note via the command handler's identity-explicit overload so the token
     // `sub` is the stamped owner — title/content are applied as follow-up commands on the same stream,
@@ -240,16 +313,9 @@ public sealed class NoteMcpTools(
         [Description("The note body as markdown. Optional if a title is provided.")] string? content,
         CancellationToken ct)
     {
-        // The first MUTATING tool, so the rejection is logged for audit (a write leak mutates, not just
-        // leaks). The sub is known (authenticated) even when it does not own the workspace; log it +
-        // the attempted workspace, never any note content/title (meeting notes are sensitive).
-        var userId = AuthenticatedUserId();
-        if (!await UserOwnsWorkspaceAsync(userId, workspaceId, ct).ConfigureAwait(false))
-        {
-            logger.LogWarning("mcp_write_rejected tool=create_note sub={Sub} workspaceId={WorkspaceId} reason=unauthorized",
-                userId, workspaceId);
-            throw new McpException("Workspace not found or access denied.");
-        }
+        // Authorize the workspace before mutating; the rejection is logged for audit (a write into a
+        // foreign workspace mutates, not just leaks — never log any note content/title).
+        var userId = await AuthorizeWriteAsync("create_note", workspaceId, ct).ConfigureAwait(false);
         if (string.IsNullOrWhiteSpace(title) && string.IsNullOrWhiteSpace(content))
             throw new McpException("Provide a title or content for the note.");
 
@@ -434,6 +500,70 @@ public sealed class NoteMcpTools(
             return true;
         var all = await workspaces.GetAllAsync(ct).ConfigureAwait(false);
         return all.Any(w => w.WorkspaceId.Value == workspaceId && w.UserId == userId);
+    }
+
+    // Write-side authorization: like AuthorizeAsync but logs mcp_write_rejected (a write into a foreign
+    // workspace mutates, not just leaks). Returns the authenticated sub once it owns the workspace.
+    private async Task<string> AuthorizeWriteAsync(string tool, string workspaceId, CancellationToken ct)
+    {
+        var userId = AuthenticatedUserId();
+        if (!await UserOwnsWorkspaceAsync(userId, workspaceId, ct).ConfigureAwait(false))
+        {
+            logger.LogWarning("mcp_write_rejected tool={Tool} sub={Sub} workspaceId={WorkspaceId} reason=unauthorized",
+                tool, userId, workspaceId);
+            throw new McpException("Workspace not found or access denied.");
+        }
+        return userId;
+    }
+
+    private static DateTimeOffset ParseOffset(string value, string field) =>
+        DateTimeOffset.TryParse(value, CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind, out var parsed)
+            ? parsed
+            : throw new McpException($"Invalid {field} — expected ISO-8601.");
+
+    // The link index is keyed by calendar event id but holds links for ALL users; a note is a duplicate
+    // only when the CALLER already owns one for the event (per the 9-D per-(event,sub) rule).
+    private async Task<CalendarLinkView?> ExistingLinkForCallerAsync(string calendarEventId, string userId, CancellationToken ct)
+    {
+        var link = await calendarLinks.GetByCalendarEventIdAsync(calendarEventId, ct).ConfigureAwait(false);
+        return link is not null && link.UserId == userId ? link : null;
+    }
+
+    // Reports the caller's existing note for an event instead of creating a duplicate. Echoes the times
+    // from the stored link (authoritative), not the caller's input. The noteId rides the same payload so
+    // a reload is immediately actionable; a malformed stored id degrades to version 0 rather than a 500.
+    private async Task<string> AlreadyExistsAsync(CalendarLinkView link, CancellationToken ct)
+    {
+        var version = Guid.TryParse(link.NoteId, out var guid)
+            ? await noteCommands.GetCurrentVersionAsync(new NoteId(guid), ct).ConfigureAwait(false)
+            : 0;
+        return JsonSerializer.Serialize(new
+        {
+            noteId = link.NoteId,
+            version,
+            alreadyExists = true,
+            calendarEventId = link.CalendarEventId,
+            startTime = link.StartTime,
+            endTime = link.EndTime
+        });
+    }
+
+    // The shared create flow (mirrors CalendarHandlers): CreateNote → RenameNote → SetNoteDate →
+    // LinkNoteToCalendarEvent on one stream, via the identity-explicit overload so `sub` is the stamped
+    // owner. The date is the meeting's start day (local, matching the HTTP handler). Non-atomic like the
+    // HTTP flow — a fault mid-sequence leaves a partial note; the handler surfaces a retriable 503 on
+    // persistent contention. Returns the new note id + final stream version (the RYW write token).
+    private async Task<(string NoteId, long Version)> CreateLinkedNoteAsync(string userId, string workspaceId,
+        string calendarEventId, string title, DateTimeOffset start, DateTimeOffset end, bool isRecurring,
+        string? recurringSeriesId, CancellationToken ct)
+    {
+        var noteId = new NoteId(Guid.NewGuid());
+        await noteCommands.HandleAsync(new CreateNote(noteId, new WorkspaceId(workspaceId)), userId, workspaceId, ct).ConfigureAwait(false);
+        await noteCommands.HandleAsync(new RenameNote(noteId, title), userId, workspaceId, ct).ConfigureAwait(false);
+        await noteCommands.HandleAsync(new SetNoteDate(noteId, DateOnly.FromDateTime(start.LocalDateTime)), userId, workspaceId, ct).ConfigureAwait(false);
+        await noteCommands.HandleAsync(new LinkNoteToCalendarEvent(noteId, calendarEventId, title, start, end, isRecurring, recurringSeriesId), userId, workspaceId, ct).ConfigureAwait(false);
+        var version = await noteCommands.GetCurrentVersionAsync(noteId, ct).ConfigureAwait(false);
+        return (noteId.Value.ToString(), version);
     }
 
     private static string BuildPreview(string content)
