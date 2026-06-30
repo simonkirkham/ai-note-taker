@@ -9,7 +9,7 @@
 | 43-A | Add an agenda item to a note; it persists and shows in the header (locks the event model on one real call) | Done | — |
 | 43-B | Tick / untick an item; header shows "X / Y covered" | Done | 43-A |
 | 43-C | Edit an item's text; remove an item | Done | 43-A |
-| 43-D | Collapsible header agenda strip (expanded default, collapses to one line + what's left); Stylist polish | Not Started | 43-A, 43-B |
+| 43-D | Collapsible header agenda strip (expanded default, collapses to one line + what's left); Stylist polish | Done | 43-A, 43-B |
 | 43-E | Retire the legacy heading-✓ "mark as discussed" (now redundant) | Not Started | 43-D |
 
 Reorder (drag) is deferred — not needed to ship value; item order is capture order for now. 43-A is the thin vertical that proves the whole pipe and locks the event-model shape; 43-B/C extend the same model; 43-D is UI polish; 43-E removes the superseded mechanism.
@@ -100,9 +100,11 @@ Then  it shows one line: "Agenda · X / Y" + the remaining items
 And   the note body stays full-width (no side space) in both states
 ```
 Acceptance:
-- [ ] Header component; expanded default; collapse-to-one-line showing the remaining items.
-- [ ] Stylist pass (`ui-ux-pro-max`); matches the note header.
-- [ ] Verified to add **no** side-panel column; tags/actions layout unaffected.
+- [x] Expanded by default; a caret/label toggle collapses to one line (coverage pill + remaining-items peek, or "all covered ✓"); toggle only shows when there are items. `aria-expanded`/`aria-controls`.
+- [x] Stylist pass (`ui-ux-pro-max` vs `design-system/ai-note-taker/MASTER.md`); focus-visible rings match CommandBar; caret reduced-motion handled globally; token-based.
+- [x] Full-width in both states; **no** side-panel column; tags/actions (CommandBar) layout unaffected; new-note tab order unchanged.
+
+_(Done — PR #375, deploy run 28479345632, live. Frontend-only; no events/backend/CDK.)_
 
 ### 43-E — Retire the legacy heading-✓ "mark as discussed"
 **Value:** one clear, predictable way to track topics — the old per-heading ✓ that confused "is this a topic?" with "is this a heading?" (and broke in BUG-37) is gone, so the feature is no longer ambiguous.
