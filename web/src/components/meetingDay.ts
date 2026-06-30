@@ -6,6 +6,12 @@ export function todayInTz(tz: string): string {
   return new Intl.DateTimeFormat("en-CA", { timeZone: tz }).format(new Date());
 }
 
+// The local day (YYYY-MM-DD) an instant falls on in tz — used to open the meeting picker
+// on the day of the meeting a note is already linked to when changing it (Phase 44).
+export function dayInTz(iso: string, tz: string): string {
+  return new Intl.DateTimeFormat("en-CA", { timeZone: tz }).format(new Date(iso));
+}
+
 // Step an ISO YYYY-MM-DD day by n, calculating in UTC so no DST/midnight shift moves the date.
 export function addDays(isoDate: string, n: number): string {
   const d = new Date(`${isoDate}T00:00:00Z`);

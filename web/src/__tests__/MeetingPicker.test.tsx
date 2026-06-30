@@ -46,6 +46,17 @@ describe('MeetingPicker', () => {
     expect(onSelect).toHaveBeenCalledWith(expect.objectContaining({ calendarEventId: 'evt_1' }))
   })
 
+  it('opens on initialDate when provided (Phase 44 — change meeting)', async () => {
+    let requestedDate: string | null = null
+    server.use(http.get('/api/calendar/:date', ({ params }) => {
+      requestedDate = params.date as string
+      return HttpResponse.json({ meetings: [meeting()] })
+    }))
+    render(<MeetingPicker onSelect={noop} onClose={noop} linkingEventId={null} initialDate="2026-05-14" />)
+    await screen.findByTestId('picker-link-evt_1')
+    expect(requestedDate).toBe('2026-05-14')
+  })
+
   it('shows a meeting already linked to another note as not selectable', async () => {
     server.use(http.get('/api/calendar/:date', () => HttpResponse.json({ meetings: [meeting({ linkedNoteId: 'other-note' })] })))
     render(<MeetingPicker onSelect={noop} onClose={noop} linkingEventId={null} />)

@@ -102,6 +102,25 @@ public sealed class DynamoDbCalendarLinkIndexStore(IAmazonDynamoDB dynamo, strin
         }, ct).ConfigureAwait(false);
     }
 
+    public async Task DeleteForNoteAsync(string calendarEventId, string noteId, CancellationToken ct = default)
+    {
+        try
+        {
+            await dynamo.DeleteItemAsync(new DeleteItemRequest
+            {
+                TableName = tableName,
+                Key = new Dictionary<string, AttributeValue> { ["CalendarEventId"] = new() { S = calendarEventId } },
+                ConditionExpression = "NoteId = :noteId",
+                ExpressionAttributeValues = new Dictionary<string, AttributeValue> { [":noteId"] = new() { S = noteId } }
+            }, ct).ConfigureAwait(false);
+        }
+        catch (ConditionalCheckFailedException)
+        {
+            // The row no longer belongs to this note — another note has since linked to this meeting,
+            // or the row is already gone. A stale/replayed unlink; leave the current owner's link intact.
+        }
+    }
+
     public async Task DeleteByNoteIdAsync(string noteId, CancellationToken ct = default)
     {
         Dictionary<string, AttributeValue>? lastKey = null;

@@ -35,14 +35,18 @@ export default function MeetingPicker({
   onSelect,
   onClose,
   linkingEventId,
+  initialDate,
 }: {
   onSelect: (meeting: CalendarMeeting) => void;
   onClose: () => void;
   linkingEventId: string | null;
+  // When changing an already-linked note's meeting, open on the day of its current meeting
+  // rather than today (Phase 44). Day labels ("Today"/"Tomorrow") still anchor to today.
+  initialDate?: string;
 }) {
   const tz = useMemo(() => Intl.DateTimeFormat().resolvedOptions().timeZone, []);
   const [today] = useState(() => todayInTz(tz));
-  const [selectedDate, setSelectedDate] = useState(today);
+  const [selectedDate, setSelectedDate] = useState(initialDate ?? today);
   const [dateInputOpen, setDateInputOpen] = useState(false);
   const dialogRef = useRef<HTMLDivElement>(null);
   // Escape-to-close is owned by the focus trap (onClose), not a separate

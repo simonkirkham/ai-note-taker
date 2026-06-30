@@ -673,6 +673,61 @@ describe('NoteView', () => {
     })
   })
 
+  describe('change meeting (Phase 44)', () => {
+    function linkedToStandup() {
+      server.use(
+        http.get('/api/notes/:noteId', () =>
+          HttpResponse.json({
+            noteId: 'note-1', title: 'T', content: 'c', date: null, tags: [],
+            linkedMeeting: { calendarEventId: 'evt_1', title: 'Standup', startTime: '2026-05-14T09:00:00Z', endTime: '2026-05-14T09:15:00Z', recurringSeriesId: null, isRecurring: false },
+          }),
+        ),
+      )
+    }
+
+    const otherMeeting = {
+      calendarEventId: 'evt_9', title: 'Budget review',
+      startTime: '2026-05-14T10:00:00Z', endTime: '2026-05-14T10:30:00Z',
+      isRecurring: false, recurringSeriesId: null,
+      linkedNoteId: null, hasNextOccurrenceNote: false, nextOccurrenceNoteId: null,
+    }
+
+    it('shows a Change button on the linked-meeting badge', async () => {
+      linkedToStandup()
+      renderNoteView()
+      await screen.findByTestId('linked-meeting-badge')
+      expect(screen.getByTestId('change-meeting-button')).toBeInTheDocument()
+    })
+
+    it('Change opens the meeting picker', async () => {
+      linkedToStandup()
+      server.use(http.get('/api/calendar/:date', () => HttpResponse.json({ meetings: [otherMeeting] })))
+      renderNoteView()
+      await userEvent.click(await screen.findByTestId('change-meeting-button'))
+      expect(await screen.findByTestId('meeting-picker')).toBeInTheDocument()
+      expect(await screen.findByTestId('picker-link-evt_9')).toBeInTheDocument()
+    })
+
+    it('picking a different meeting swaps the badge optimistically and POSTs the new meeting', async () => {
+      linkedToStandup()
+      let posted: string | null = null
+      server.use(
+        http.get('/api/calendar/:date', () => HttpResponse.json({ meetings: [otherMeeting] })),
+        http.post('/api/notes/:noteId/calendar-link', async ({ request }) => {
+          const body = await request.json() as { calendarEventId: string }
+          posted = body.calendarEventId
+          return new HttpResponse(null, { status: 204 })
+        }),
+      )
+      renderNoteView()
+      await userEvent.click(await screen.findByTestId('change-meeting-button'))
+      await userEvent.click(await screen.findByTestId('picker-link-evt_9'))
+      const badge = await screen.findByTestId('linked-meeting-badge')
+      expect(badge).toHaveTextContent(/Budget review/)
+      await waitFor(() => expect(posted).toBe('evt_9'))
+    })
+  })
+
   describe('adaptive action buttons', () => {
     it('blank note shows only Cancel — Save and Delete are not in the DOM', async () => {
       renderEmptyNoteView()
