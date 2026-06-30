@@ -158,9 +158,14 @@ public record NoteDetail(
     IReadOnlyList<string> DiscussionPoints,       // [] when none
     IReadOnlyList<string> Decisions,              // [] when none
     IReadOnlyList<InstructionResponse> InstructionResponses,  // [] when none; AI replies to inline /ai instructions (Phase 29)
+    IReadOnlyList<AgendaItem> Agenda,             // meeting agenda items in capture order (Phase 43); [] when none
     string? SummaryModelId,                       // attribution: which model wrote the summary
     string? SummaryPromptVersion,                 // attribution: which prompt version produced it
     long Version);                                // current stream sequence number
+
+// AgendaItem (Phase 43): a topic to discuss, stored on NoteDetail (NOT a separate projection —
+// it is only ever read with the note). discussed is always false until 43-B adds tick/untick.
+public sealed record AgendaItem(Guid ItemId, string Text, bool Discussed, int Position);
 ```
 
 `Version` is returned so the client can include it on the next command for optimistic concurrency (see [`dynamodb-event-append`](../dot-claude/skills/dynamodb-event-append/SKILL.md)).
@@ -184,11 +189,16 @@ The **Final notes** fields (`summary`/`discussionPoints`/`decisions`/`summaryMod
   "discussionPoints": ["API integration timeline", "Outstanding spec questions"],
   "decisions": ["Bill sends specs by Friday"],
   "instructionResponses": [],
+  "agenda": [
+    { "itemId": "a1b2...", "text": "Budget (Q3)", "discussed": false, "position": 0 }
+  ],
   "summaryModelId": "amazon.nova-lite-v1:0",
   "summaryPromptVersion": "analysis@v2",
   "version": 7
 }
 ```
+
+The `agenda` array is folded from `AgendaItemAdded` events (Phase 43) — stored as part of `NoteDetail` (a DynamoDB `L`-of-`M` attribute), not a separate projection, since it is only ever read with the note. `[]` when the note has no agenda.
 
 **Storage row** (table `notetaker-proj-notedetail`, one row per note):
 

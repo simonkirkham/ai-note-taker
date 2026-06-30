@@ -71,7 +71,7 @@ If either gate is not met, stop and wait/investigate.
 **Do parallelise:**
 - **Independent slices.** Read the phase doc's `## Summary` table `Depends on` column. Slices with `—` (or whose deps are already merged) run concurrently, each in **its own worktree** (CLAUDE.md `## Worktrees`). Launch them in one batch; batch the human gate confirmations per stage.
 - **Hawk ∥ CI.** Hawk starts at PR-open, alongside CI — never serialised behind it.
-- **Background monitors.** CI checks and deploy polling run as scheduled background loops, not blocking foreground waits.
+- **Background monitors.** CI checks and deploy polling run as scheduled background loops, not blocking foreground waits. **Do NOT use the `Monitor` tool for this — it needs a per-launch approval and reads as "forcing permissions" (43-A interruption).** Use the read-only helper scripts as **single** Bash calls (`scripts/deploy-status.sh`, `scripts/merge-gate.sh <pr>`, `scripts/ci-logs.sh`) or a `run_in_background` Bash with an `until` loop (one completion notification) — both covered by `Bash(*)`, no prompt.
 - **Independent read/research** within a slice (e.g. fanning out exploration) via subagents.
 
 **Do NOT parallelise:**

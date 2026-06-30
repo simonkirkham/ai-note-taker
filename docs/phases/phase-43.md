@@ -6,7 +6,7 @@
 
 | Slice | Summary | Status | Depends on |
 |-------|---------|--------|------------|
-| 43-A | Add an agenda item to a note; it persists and shows in the header (locks the event model on one real call) | Not Started | — |
+| 43-A | Add an agenda item to a note; it persists and shows in the header (locks the event model on one real call) | Done | — |
 | 43-B | Tick / untick an item; header shows "X / Y covered" | Not Started | 43-A |
 | 43-C | Edit an item's text; remove an item | Not Started | 43-A |
 | 43-D | Collapsible header agenda strip (expanded default, collapses to one line + what's left); Stylist polish | Not Started | 43-A, 43-B |
@@ -25,18 +25,18 @@ Reorder (drag) is deferred — not needed to ship value; item order is capture o
 
 ## Event model
 
-Decide in 43-A (run `event-modelling`): model agenda items as **events on the Note stream** (per-note, lightweight, like tags; handled by `NoteCommandHandler`) vs. a dedicated aggregate. Lean note-stream. New events — purely additive, never edit a shipped shape:
+**Decided in 43-A:** agenda items are **events on the Note stream** (per-note, lightweight, like tags; handled by `NoteCommandHandler`), and the read model is **composed onto `NoteDetailView`** (a new `Agenda` field, folded in `NoteDetailProjection`) — **not** a dedicated aggregate or a dedicated `AgendaView` store/table. Rationale: agenda is note-scoped, always read with the note, never queried across notes, so a dedicated table + backfill would be over-engineering; composing also sidesteps the async-projection authz/lag pitfalls (BUG-30) and is deploy-time neutral (no new CDK resource, no backfill). New events — purely additive, never edit a shipped shape:
 
-| Event | Payload | When |
-|-------|---------|------|
-| `AgendaItemAdded` | `itemId`, `text`, `position` | add an item |
-| `AgendaItemDiscussedSet` | `itemId`, `discussed` (bool) | tick / untick |
-| `AgendaItemTextEdited` | `itemId`, `text` | edit text |
-| `AgendaItemRemoved` | `itemId` | remove |
+| Event | Payload | When | Slice |
+|-------|---------|------|-------|
+| `AgendaItemAdded` | `itemId`, `text`, `position` | add an item | 43-A ✅ |
+| `AgendaItemDiscussedSet` | `itemId`, `discussed` (bool) | tick / untick | 43-B |
+| `AgendaItemTextEdited` | `itemId`, `text` | edit text | 43-C |
+| `AgendaItemRemoved` | `itemId` | remove | 43-C |
 
-- **Projection** `AgendaView` keyed by `noteId` → ordered `[{itemId, text, discussed, position}]`; rebuildable from the stream; updated **inline** in the command handler (no dispatcher); wired into `ProjectionRebuildHandler`.
-- Map every field in **both** `InMemoryAgendaStore` and `DynamoDbAgendaStore`, plus an `EventStore.Integration` round-trip test (set → Upsert → Get → assert) — the in-memory double structurally hides an unmapped DynamoDB attribute (guardrail).
-- Surface on `GET /notes/{id}` (compose an `agenda` field) or a dedicated `GET /notes/{id}/agenda`.
+- **Read model** = `NoteDetailView.Agenda` (ordered `[{itemId, text, discussed, position}]`), folded in `NoteDetailProjection`; rebuilds via the existing NoteDetail rebuild path (no separate projection to wire). `AgendaItemView` carries `discussed`/`position` from 43-A so 43-B/C add no view-shape change.
+- The new `Agenda` field is mapped in **both** `InMemoryNoteDetailStore` (by reference) **and** `DynamoDbNoteDetailStore` (`UpsertAsync` write + `MapItemToNoteDetailView`/`ReadAgenda` read), plus an `EventStore.Integration` round-trip test — the in-memory double structurally hides an unmapped DynamoDB attribute (guardrail).
+- Surfaced on `GET /notes/{id}` (composed `agenda` array). Add route: `POST /notes/{id}/agenda-items`.
 - **Optimistic UI** for every mutation (add/tick/edit/remove) — mandatory acceptance criterion on every slice with frontend changes.
 
 ## Slices
@@ -53,11 +53,13 @@ Given a note with no agenda
 Then  the header shows an empty, expanded agenda with an "add item" affordance
 ```
 Acceptance:
-- [ ] BDD spec first; event-model decision (note-stream vs aggregate) recorded in the spec.
-- [ ] `AgendaItemAdded` + `AgendaView` projection; rebuild path wired in `ProjectionRebuildHandler`.
-- [ ] Field mapped in InMemory **and** DynamoDb stores + an `EventStore.Integration` round-trip test.
-- [ ] Optimistic add in the header UI.
-- [ ] New projection **backfilled** post-deploy (`POST /admin/projections/rebuild`) and verified non-empty in prod (Scribe step).
+- [x] BDD spec first; event-model decision (note-stream events, composed onto `NoteDetailView`) recorded in the spec.
+- [x] `AgendaItemAdded` + read model composed onto `NoteDetailView` (folded in `NoteDetailProjection`; rebuilds via the existing NoteDetail path — no dedicated `AgendaView` store/table, by the decision above).
+- [x] `Agenda` field mapped in InMemory **and** DynamoDb note-detail stores + an `EventStore.Integration` round-trip test.
+- [x] Optimistic add in the header UI (`AgendaSection` + `useAddAgendaItem`).
+- [x] No new projection table → **no backfill needed** (existing notes correctly have empty agendas; no historical `AgendaItemAdded` events). Deploy-time neutral.
+
+_(Done — PR #368, deploy #671 / run 28468842329, live. See [phase-43a-agenda-add](../learnings/phase-43a-agenda-add.md).)_
 
 ### 43-B — Tick / untick an item
 **Value:** tick a topic off the moment it's covered and see at a glance how much of the agenda is left ("2 / 5") — so nothing gets missed and you know when you're done.
@@ -115,7 +117,7 @@ Run `observability-brief` to finalise. Silent failure modes to instrument:
 - An add/tick that **200s but doesn't persist** — projection not updated, or a new `AgendaView` field unmapped in `DynamoDbAgendaStore` (the in-memory double hides it). → round-trip test + a structured log on each agenda mutation (`noteId`, `itemId`, op).
 - **Agenda missing on reload** — projection lag or not composed into the note read. → inline projection update; compose/gate at read.
 - **Optimistic update masks a failed write** — reconcile on error; surface a toast.
-- New projection ships **empty** — backfill after the 43-A deploy and verify item count in prod.
+- ~~New projection ships **empty** — backfill after the 43-A deploy~~ — **N/A** (43-A composed onto `NoteDetailView`, no new table; nothing to backfill).
 
 ## Out of scope / later
 - Reorder (drag) agenda items.

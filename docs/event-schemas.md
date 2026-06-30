@@ -60,6 +60,7 @@ public record ContentEdited(NoteId NoteId, string Content)     : NoteEvent;  // 
 public record NoteTagged(NoteId NoteId, string Tag)            : NoteEvent;
 public record NoteUntagged(NoteId NoteId, string Tag)          : NoteEvent;
 public record NoteDateSet(NoteId NoteId, DateOnly? Date)       : NoteEvent;  // null = cleared
+public record AgendaItemAdded(NoteId NoteId, Guid ItemId, string Text, int Position) : NoteEvent;  // meeting agenda (Phase 43); Position = capture order
 public record TagsSuggested(NoteId NoteId, IReadOnlyList<string> Tags) : NoteEvent;  // AI provenance (v1)
 public record TagsSuggestedV2(NoteId NoteId, IReadOnlyList<string> Tags, string ModelId, string PromptVersion) : NoteEvent;  // AI provenance (v2, 10-M)
 public record ActionItemsSuggested(NoteId NoteId, IReadOnlyList<Guid> ActionItemIds) : NoteEvent;  // AI provenance (v1)
@@ -115,6 +116,11 @@ public record NoteDeleted(NoteId NoteId)                       : NoteEvent;
 `NoteDateSet`:
 ```json
 { "noteId": "7f3a9c2b-1e4d-4a8f-9c0d-2b1f3a4e5c6d", "date": "2026-04-29" }
+```
+
+`AgendaItemAdded` (a meeting-agenda item; Phase 43; `position` = the item's index at add time = capture order):
+```json
+{ "noteId": "7f3a9c2b-1e4d-4a8f-9c0d-2b1f3a4e5c6d", "itemId": "a1b2c3d4-5e6f-7a8b-9c0d-1e2f3a4b5c6d", "text": "Budget (Q3)", "position": 0 }
 ```
 
 `TagsSuggestedV2` (the post-dedup set of tags an analysis run applied; provenance only; stored under `EventType` `TagsSuggested`, `EventVersion` 2). v1 (`EventVersion` 1) is the same payload without `modelId`/`promptVersion`:
