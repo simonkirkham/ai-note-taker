@@ -416,7 +416,7 @@ Slices and acceptance criteria: [docs/phases/phase-41.md](phases/phase-41.md)
 
 ---
 
-## Phase 42 — Calendar access through the MCP _(In Progress)_
+## Phase 42 — Calendar access through the MCP _(Done)_
 
 Extends the MCP connector (Phases 35/41) to the **calendar**. From a connected Claude session the owner can list a workspace's meetings for a date and create calendar-linked notes (from a meeting, or the next occurrence of a recurring series). **No event-model changes:** the read reuses the existing calendar client chain; the writes reuse `CreateNote`/`RenameNote`/`SetNoteDate`/`LinkNoteToCalendarEvent` through the generic identity-explicit handler overload. The one cross-cutting change is identity/workspace resolution — the calendar chain resolves the workspace from the **URL route** (`ICurrentWorkspace`), which the `/mcp` path lacks, so a scoped `ICalendarScope` lets the tools resolve the calendar for an explicit `(sub, workspaceId)`. **No infra change** (calendar services already on the Command Lambda that serves `/mcp`); deploy-time neutral. Two slices: **42-A** `list_meetings` + the off-route resolution (proves the pipe), **42-B** the two calendar-linked note-creation tools.
 

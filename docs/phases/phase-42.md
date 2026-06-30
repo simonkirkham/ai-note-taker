@@ -9,7 +9,7 @@ Phase 41 made the connector read+write for notes/to-dos. This adds the **calenda
 | Slice | What the user gets | Status | Depends on |
 |-------|--------------------|--------|------------|
 | 42-A | **`list_meetings(workspaceId, date)` + calendar resolution off the route.** Claude lists a workspace's meetings for a date (title, time, whether a note is linked). Proves the whole MCP→calendar pipe on one real read. | Done _(#366, deploy #670)_ | — |
-| 42-B | **`create_note_from_meeting` + `create_note_from_next_occurrence`.** Claude creates a note linked to a specific meeting, or to the next occurrence of a recurring series. | Not Started | 42-A |
+| 42-B | **`create_note_from_meeting` + `create_note_from_next_occurrence`.** Claude creates a note linked to a specific meeting, or to the next occurrence of a recurring series. | Done _(#369, deploy #677)_ | 42-A |
 
 **42-A is the proving slice** — the hard part is the cross-cutting contract (resolving the calendar for an explicit `(sub, workspaceId)` instead of the route's `ICurrentWorkspace`), not the tool. `list_meetings` is the smallest capability that proves it end-to-end on one real call. 42-B then scales to the calendar-linked writes on the proven resolution.
 
