@@ -39,7 +39,9 @@ public sealed class CreateAndListNoteJourney(BrowserFixture browser) : IAsyncLif
         await _app.EnterTitleAsync(title);
         await _app.SaveAndReturnAsync();
 
-        // Then the named note appears in the list
-        await _app.AssertNoteVisibleInListAsync(title);
+        // Then the named note appears in the list. Reload-tolerant (BUG-42): the post-create
+        // GET /notes/cards can serve stale while the async projector folds the new card, so a bare
+        // ToBeVisible races it. Reload + re-gate on the persisted note token until the card appears.
+        await _app.AssertNoteVisibleInListAfterReloadAsync(title);
     }
 }
