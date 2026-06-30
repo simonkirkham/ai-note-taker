@@ -311,16 +311,9 @@ public sealed class NoteMcpTools(
         [Description("The note body as markdown. Optional if a title is provided.")] string? content,
         CancellationToken ct)
     {
-        // The first MUTATING tool, so the rejection is logged for audit (a write leak mutates, not just
-        // leaks). The sub is known (authenticated) even when it does not own the workspace; log it +
-        // the attempted workspace, never any note content/title (meeting notes are sensitive).
-        var userId = AuthenticatedUserId();
-        if (!await UserOwnsWorkspaceAsync(userId, workspaceId, ct).ConfigureAwait(false))
-        {
-            logger.LogWarning("mcp_write_rejected tool=create_note sub={Sub} workspaceId={WorkspaceId} reason=unauthorized",
-                userId, workspaceId);
-            throw new McpException("Workspace not found or access denied.");
-        }
+        // Authorize the workspace before mutating; the rejection is logged for audit (a write into a
+        // foreign workspace mutates, not just leaks — never log any note content/title).
+        var userId = await AuthorizeWriteAsync("create_note", workspaceId, ct).ConfigureAwait(false);
         if (string.IsNullOrWhiteSpace(title) && string.IsNullOrWhiteSpace(content))
             throw new McpException("Provide a title or content for the note.");
 
