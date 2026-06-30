@@ -22,6 +22,7 @@ One row per interruption. Newest slices at the top.
 
 | Slice | Type | What was asked | Why it stopped | Avoidable? | Fix / where it landed |
 |-------|------|----------------|----------------|:----------:|-----------------------|
+| 42-A | Permission | Repeated tool-approval prompts during the finish (build/test/git) — user twice said "stop asking permissions" | `dotnet build`/`test` write `~/.dotnet`, `~/.aspnet`, `~/.templateengine` (first-run sentinels/telemetry) outside the worktree; not in sandbox `allowWrite` → escaped sandbox → prompted | Yes | Added those paths (+`~/.local`/`~/.config`/`~/.cache`) to `sandbox.filesystem.allowWrite` + `DOTNET_*` telemetry opt-out env in `settings.local.json`; extended [[reference_sandbox_escape_hatch_prompts]] memory |
 | human-input-log (tooling) | Decision | Capture mechanism: live hook, Scribe transcript scan, or both | Genuine design fork for a net-new feature; no established default | No | — (legitimate; batched with the row below into one prompt) |
 | human-input-log (tooling) | Decision | Analysis loop: auto-graduate via process-improvements, or periodic manual review | Same fork; changed what was built | No | — (legitimate; both asks resolved in a single `AskUserQuestion` call → 1 interruption, not 2) |
 
