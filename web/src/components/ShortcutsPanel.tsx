@@ -3,12 +3,11 @@ import { useEffect, useRef, useState } from "react";
 import styles from "./ShortcutsPanel.module.css";
 
 const SHORTCUTS = [
-  { keys: "## + Space", description: "H2 heading (agenda topic)" },
-  { keys: "### + Space", description: "H3 heading (sub-topic)" },
+  { keys: "## + Space", description: "H2 heading" },
+  { keys: "### + Space", description: "H3 heading" },
   { keys: "**text**", description: "Bold" },
   { keys: "Ctrl+B", description: "Toggle bold" },
   { keys: "- + Space", description: "Bullet list" },
-  { keys: "✓ button", description: "Mark heading as discussed" },
   { keys: "/ai …", description: "AI carries out the instruction on Generate" },
 ];
 

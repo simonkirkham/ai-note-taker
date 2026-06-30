@@ -6,7 +6,6 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Markdown } from 'tiptap-markdown';
 import { presignUpload, resolveImages } from '../api/notes';
 import { BlankLineParagraph } from '../lib/blankLineParagraph';
-import { markHeadingDiscussed } from '../lib/headingDiscussed';
 import { hasDisallowedScheme } from '../lib/linkScheme';
 import {
   dropUnresolvedImages,
@@ -37,9 +36,7 @@ const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
 const ALLOWED_LINK_PROTOCOLS = ['http', 'https', 'mailto'];
 
 export default function NoteEditor({ noteId, value, onChange, onBlur }: NoteEditorProps) {
-  const containerRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const [buttonY, setButtonY] = useState<number | null>(null);
   const { showError } = useToast();
 
   // Mirrors the editor's editability for the toolbar UI (the editor itself is driven
@@ -68,17 +65,6 @@ export default function NoteEditor({ noteId, value, onChange, onBlur }: NoteEdit
       dropUnresolvedImages(srcsToKeys(ed.storage.markdown.getMarkdown(), displaySrcToKey.current)),
     []
   );
-
-  const updateButton = useCallback((ed: Editor) => {
-    if (!ed.isActive('heading') || !containerRef.current) {
-      setButtonY(null);
-      return;
-    }
-    const { from } = ed.state.selection;
-    const coords = ed.view.coordsAtPos(from);
-    const rect = containerRef.current.getBoundingClientRect();
-    setButtonY((coords.top + coords.bottom) / 2 - rect.top);
-  }, []);
 
   const editor = useEditor({
     immediatelyRender: false,
@@ -124,12 +110,8 @@ export default function NoteEditor({ noteId, value, onChange, onBlur }: NoteEdit
     },
     onUpdate: ({ editor: ed }) => {
       onChange(serialize(ed));
-      updateButton(ed);
     },
-    onSelectionUpdate: ({ editor: ed }) => updateButton(ed),
-    onFocus: ({ editor: ed }) => updateButton(ed),
     onBlur: () => {
-      setButtonY(null);
       onBlur();
     },
   });
@@ -272,7 +254,7 @@ export default function NoteEditor({ noteId, value, onChange, onBlur }: NoteEdit
   }, [editor, noteId]);
 
   return (
-    <div ref={containerRef} className={styles.noteEditorContainer}>
+    <div className={styles.noteEditorContainer}>
       <div className={styles.toolbar}>
         <button
           type="button"
@@ -299,19 +281,6 @@ export default function NoteEditor({ noteId, value, onChange, onBlur }: NoteEdit
           }}
         />
       </div>
-      {buttonY !== null && editor && (
-        <button
-          className={styles.discussedButton}
-          style={{ top: buttonY }}
-          onMouseDown={(e) => {
-            e.preventDefault();
-            markHeadingDiscussed(editor);
-          }}
-          aria-label="Mark as discussed"
-        >
-          ✓
-        </button>
-      )}
       <EditorContent editor={editor} />
     </div>
   );
