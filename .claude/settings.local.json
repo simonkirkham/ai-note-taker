@@ -97,7 +97,12 @@
         "registry.npmjs.org",
         "*.npmjs.org",
         "api.nuget.org",
-        "*.nuget.org"
+        "*.nuget.org",
+        "registry-1.docker.io",
+        "auth.docker.io",
+        "*.docker.io",
+        "*.docker.com",
+        "production.cloudflare.docker.com"
       ]
     },
     "filesystem": {
@@ -112,7 +117,9 @@
         "~/.local",
         "~/.config",
         "~/.cache",
-        "/tmp"
+        "/tmp",
+        "/var/run/docker.sock",
+        "/run/docker.sock"
       ]
     }
   }
