@@ -16,7 +16,12 @@ public sealed class CalendarLinkIndexProjection
                     e.StartTime, e.EndTime, e.CalendarEventTitle, envelope.Metadata.UserId ?? "");
                 break;
             case NoteUnlinkedFromCalendarEvent e:
-                _byCalendarEventId.Remove(e.PreviousCalendarEventId);
+                // Ownership-checked to mirror the live projector: only drop the row if this note still
+                // owns it (ordered replay makes this always true here, but the guard documents intent
+                // and stays correct if event order ever changes).
+                if (_byCalendarEventId.TryGetValue(e.PreviousCalendarEventId, out var owned)
+                    && owned.NoteId == e.NoteId.Value.ToString())
+                    _byCalendarEventId.Remove(e.PreviousCalendarEventId);
                 break;
             case NoteDeleted e:
                 var noteId = e.NoteId.Value.ToString();

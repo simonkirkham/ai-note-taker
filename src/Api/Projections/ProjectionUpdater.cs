@@ -228,7 +228,9 @@ public sealed class ProjectionUpdater(
                         .ConfigureAwait(false);
                     break;
                 case NoteUnlinkedFromCalendarEvent e:
-                    await calendarLinkIndexStore.DeleteAsync(e.PreviousCalendarEventId, ct).ConfigureAwait(false);
+                    // Ownership-checked: a redelivered/stale unlink must not delete a row another note
+                    // has since claimed for this meeting (the projector is at-least-once).
+                    await calendarLinkIndexStore.DeleteForNoteAsync(e.PreviousCalendarEventId, noteId.Value.ToString(), ct).ConfigureAwait(false);
                     break;
                 default:
                     break;
