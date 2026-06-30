@@ -229,4 +229,46 @@ describe('AgendaSection', () => {
 
     await waitFor(() => expect(screen.getByTestId('agenda-coverage')).toHaveTextContent('0 / 1'))
   })
+
+  it('is expanded by default — items and the add field are visible, no peek', () => {
+    renderAgenda([{ itemId: 'i-1', text: 'Budget', discussed: false, position: 0 }])
+    expect(screen.getByTestId('agenda-body')).toBeInTheDocument()
+    expect(screen.getByTestId('agenda-add-input')).toBeInTheDocument()
+    expect(screen.queryByTestId('agenda-peek')).toBeNull()
+    expect(screen.getByTestId('agenda-toggle')).toHaveAttribute('aria-expanded', 'true')
+  })
+
+  it('collapses to one line showing coverage + the remaining items, then expands again', async () => {
+    renderAgenda([
+      { itemId: 'i-1', text: 'Budget', discussed: true, position: 0 },
+      { itemId: 'i-2', text: 'Hiring', discussed: false, position: 1 },
+      { itemId: 'i-3', text: 'Roadmap', discussed: false, position: 2 },
+    ])
+
+    await userEvent.click(screen.getByTestId('agenda-toggle'))
+
+    // Collapsed: body (items + add field) hidden; coverage + remaining-items peek shown on one line.
+    expect(screen.queryByTestId('agenda-body')).toBeNull()
+    expect(screen.queryByTestId('agenda-add-input')).toBeNull()
+    expect(screen.getByTestId('agenda-coverage')).toHaveTextContent('1 / 3')
+    expect(screen.getByTestId('agenda-peek')).toHaveTextContent('left: Hiring, Roadmap')
+    expect(screen.getByTestId('agenda-toggle')).toHaveAttribute('aria-expanded', 'false')
+
+    await userEvent.click(screen.getByTestId('agenda-toggle'))
+
+    expect(screen.getByTestId('agenda-body')).toBeInTheDocument()
+    expect(screen.queryByTestId('agenda-peek')).toBeNull()
+  })
+
+  it('peek reads "all covered" when every item is ticked', async () => {
+    renderAgenda([{ itemId: 'i-1', text: 'Budget', discussed: true, position: 0 }])
+    await userEvent.click(screen.getByTestId('agenda-toggle'))
+    expect(screen.getByTestId('agenda-peek')).toHaveTextContent('all covered')
+  })
+
+  it('shows no collapse toggle when the agenda is empty', () => {
+    renderAgenda([])
+    expect(screen.queryByTestId('agenda-toggle')).toBeNull()
+    expect(screen.getByTestId('agenda-add-input')).toBeInTheDocument()
+  })
 })
