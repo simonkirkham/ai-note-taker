@@ -38,22 +38,80 @@ public sealed class CalendarLinkIntegrationTests : IClassFixture<ApiFactory>
     }
 
     [Fact]
-    public async Task PostCalendarLink_AlreadyLinked_Returns409()
+    public async Task PostCalendarLink_Relink_MovesNoteToNewMeeting()
     {
         var noteId = await CreateNoteAsync();
-        await LinkNoteAsync(noteId, "evt_abc123");
+        await LinkNoteAsync(noteId, "evt_old");
 
         var resp = await _client.PostAsJsonAsync($"/notes/{noteId}/calendar-link", new
         {
-            calendarEventId = "evt_other",
-            calendarEventTitle = "Another Meeting",
+            calendarEventId = "evt_new",
+            calendarEventTitle = "Budget review",
             startTime = "2026-05-14T10:00:00Z",
             endTime = "2026-05-14T10:30:00Z",
             isRecurring = false,
             recurringSeriesId = (string?)null
         });
 
-        Assert.Equal(HttpStatusCode.Conflict, resp.StatusCode);
+        Assert.Equal(HttpStatusCode.NoContent, resp.StatusCode);
+
+        var note = await (await _client.GetAsync($"/notes/{noteId}")).Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("evt_new", note.GetProperty("linkedMeeting").GetProperty("calendarEventId").GetString());
+    }
+
+    [Fact]
+    public async Task PostCalendarLink_Relink_FreesTheOldMeetingAndClaimsTheNew()
+    {
+        var noteId = await CreateNoteAsync();
+        await LinkNoteAsync(noteId, "evt_old");
+        await LinkNoteAsync(noteId, "evt_new");
+
+        _fakeCalendar.SetEvents(new[]
+        {
+            new CalendarEvent("evt_old", "Old Meeting", DateTimeOffset.UtcNow, DateTimeOffset.UtcNow.AddMinutes(30), false, null),
+            new CalendarEvent("evt_new", "New Meeting", DateTimeOffset.UtcNow.AddHours(1), DateTimeOffset.UtcNow.AddHours(2), false, null)
+        });
+
+        var body = await (await _client.GetAsync($"/calendar/{DateOnly.FromDateTime(DateTime.UtcNow):yyyy-MM-dd}?tz=UTC")).Content.ReadFromJsonAsync<JsonElement>();
+        var meetings = body.GetProperty("meetings");
+        var old = meetings.EnumerateArray().First(m => m.GetProperty("calendarEventId").GetString() == "evt_old");
+        var @new = meetings.EnumerateArray().First(m => m.GetProperty("calendarEventId").GetString() == "evt_new");
+
+        Assert.Equal(JsonValueKind.Null, old.GetProperty("linkedNoteId").ValueKind);
+        Assert.Equal(noteId.ToString(), @new.GetProperty("linkedNoteId").GetString());
+    }
+
+    [Fact]
+    public async Task PostCalendarLink_RelinkToSameMeeting_IsIdempotent()
+    {
+        var noteId = await CreateNoteAsync();
+        await LinkNoteAsync(noteId, "evt_abc123");
+
+        var resp = await _client.PostAsJsonAsync($"/notes/{noteId}/calendar-link", new
+        {
+            calendarEventId = "evt_abc123",
+            calendarEventTitle = "1:1 with Bill",
+            startTime = "2026-05-14T09:00:00Z",
+            endTime = "2026-05-14T09:30:00Z",
+            isRecurring = false,
+            recurringSeriesId = (string?)null
+        });
+
+        Assert.Equal(HttpStatusCode.NoContent, resp.StatusCode);
+        var note = await (await _client.GetAsync($"/notes/{noteId}")).Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("evt_abc123", note.GetProperty("linkedMeeting").GetProperty("calendarEventId").GetString());
+    }
+
+    [Fact]
+    public async Task PostCalendarLink_RelinkAcrossSeries_UpdatesSeriesLink()
+    {
+        var noteId = await CreateNoteAsync();
+        await LinkNoteAsync(noteId, "evt_occurrence_1", recurringSeriesId: "series_42", isRecurring: true);
+        await LinkNoteAsync(noteId, "evt_occurrence_9", recurringSeriesId: "series_99", isRecurring: true);
+
+        var note = await (await _client.GetAsync($"/notes/{noteId}")).Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("evt_occurrence_9", note.GetProperty("linkedMeeting").GetProperty("calendarEventId").GetString());
+        Assert.Equal("series_99", note.GetProperty("recurringSeriesId").GetString());
     }
 
     [Fact]

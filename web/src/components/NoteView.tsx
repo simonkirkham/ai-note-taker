@@ -17,6 +17,7 @@ import AgendaSection from "./AgendaSection";
 import CommandBar from "./CommandBar";
 import FinalNotesView from "./FinalNotesView";
 import LazyNoteEditor from "./LazyNoteEditor";
+import { dayInTz } from "./meetingDay";
 import MeetingPicker from "./MeetingPicker";
 import MoveToWorkspaceMenu from "./MoveToWorkspaceMenu";
 import tabStyles from "./NoteTabs.module.css";
@@ -596,6 +597,14 @@ export default function NoteView({
             Linked to <strong>{linkedMeeting.title}</strong>
             <span className={styles.linkedMeetingWhen}> · {formatMeetingWhen(linkedMeeting.startTime)}</span>
           </span>
+          <button
+            type="button"
+            data-testid="change-meeting-button"
+            className={styles.changeMeetingButton}
+            onClick={() => setPickerOpen(true)}
+          >
+            Change
+          </button>
         </div>
       )}
       {!loadingDetail && !notFound && !linkedMeeting && (
@@ -612,6 +621,7 @@ export default function NoteView({
       {pickerOpen && (
         <MeetingPicker
           linkingEventId={linkingEventId}
+          initialDate={linkedMeeting ? dayInTz(linkedMeeting.startTime, Intl.DateTimeFormat().resolvedOptions().timeZone) : undefined}
           onSelect={handleLinkMeeting}
           onClose={() => setPickerOpen(false)}
         />

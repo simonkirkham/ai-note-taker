@@ -215,12 +215,26 @@ public sealed class ProjectionUpdater(
 
     private async Task UpdateCalendarLinkIndexForNewEventsAsync(NoteId noteId, List<EventEnvelope> newEnvelopes, CancellationToken ct)
     {
+        // A re-link batch (Phase 44) carries the unlink before the link, so the previous meeting's
+        // row is deleted before the new one is upserted — the freed meeting returns to "Create Note"
+        // and the new meeting claims this note. Both keys are distinct, so order is not load-bearing.
         foreach (var envelope in newEnvelopes)
         {
-            if (EventDeserializer.Deserialize(envelope) is NoteLinkedToCalendarEvent e)
-                await calendarLinkIndexStore.UpsertAsync(
-                    new CalendarLinkView(e.CalendarEventId, noteId.Value.ToString(), e.RecurringSeriesId, e.StartTime, e.EndTime, e.CalendarEventTitle, envelope.Metadata.UserId ?? ""), ct)
-                    .ConfigureAwait(false);
+            switch (EventDeserializer.Deserialize(envelope))
+            {
+                case NoteLinkedToCalendarEvent e:
+                    await calendarLinkIndexStore.UpsertAsync(
+                        new CalendarLinkView(e.CalendarEventId, noteId.Value.ToString(), e.RecurringSeriesId, e.StartTime, e.EndTime, e.CalendarEventTitle, envelope.Metadata.UserId ?? ""), ct)
+                        .ConfigureAwait(false);
+                    break;
+                case NoteUnlinkedFromCalendarEvent e:
+                    // Ownership-checked: a redelivered/stale unlink must not delete a row another note
+                    // has since claimed for this meeting (the projector is at-least-once).
+                    await calendarLinkIndexStore.DeleteForNoteAsync(e.PreviousCalendarEventId, noteId.Value.ToString(), ct).ConfigureAwait(false);
+                    break;
+                default:
+                    break;
+            }
         }
     }
 
