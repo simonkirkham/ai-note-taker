@@ -34,8 +34,16 @@ public sealed class AppPage
             if (r.Url.Contains("/notes/cards", StringComparison.OrdinalIgnoreCase))
                 cardsRequestLog.Enqueue($"{r.Status} {r.Url}");
         };
-        page.Console += (_, m) => consoleLog.Enqueue($"[{m.Type}] {m.Text}");
-        page.PageError += (_, e) => pageErrors.Enqueue(e);
+        page.Console += (_, m) => CappedEnqueue(consoleLog, $"[{m.Type}] {m.Text}");
+        page.PageError += (_, e) => CappedEnqueue(pageErrors, e);
+    }
+
+    // Bounded enqueue so a page stuck in a console-logging loop can't grow the queue without limit
+    // (the dump only ever reads the tail). Drop-oldest past a generous cap.
+    private static void CappedEnqueue(System.Collections.Concurrent.ConcurrentQueue<string> queue, string item)
+    {
+        queue.Enqueue(item);
+        while (queue.Count > 200) queue.TryDequeue(out _);
     }
 
     public async Task GotoAsync()
@@ -431,12 +439,13 @@ public sealed class AppPage
                 await page.GetByTestId("add-tag-button").ClickAsync();
             await input.FillAsync(tagInput);
         }
-        catch (PlaywrightException)
+        catch (PlaywrightException ex)
         {
             // BUG-38: the tag UI never appeared — the note screen failed to load. Replace the opaque
             // action timeout with sync-only page state (url + captured console/page errors) so the
-            // next cold-start failure tells us WHY. Only Playwright timeouts get the enriched message.
-            throw new Exception(DescribePageState("tag-input / add-tag-button", page.Url));
+            // next cold-start failure tells us WHY. Only Playwright timeouts get the enriched message;
+            // keep the original as the inner exception — it names which locator timed out.
+            throw new Exception(DescribePageState("tag-input / add-tag-button", page.Url), ex);
         }
 
         // WaitForResponseAsync handlers all fire on the same response event, so
