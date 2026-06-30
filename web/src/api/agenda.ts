@@ -26,3 +26,23 @@ export async function addAgendaItem(noteId: string, text: string): Promise<void>
     return
   }
 }
+
+// Tick / untick an agenda item (43-B). 404 is accepted as a no-op — toggling an item that was
+// concurrently removed matches intent (the onSettled refetch drops it); 503 is retried like the add.
+export async function setAgendaItemDiscussed(noteId: string, itemId: string, discussed: boolean): Promise<void> {
+  for (let attempt = 0; ; attempt++) {
+    const last = attempt >= MAX_CONTENTION_RETRIES
+    const response = await requestVoidWithResponse(
+      `/notes/${noteId}/agenda-items/${itemId}/discussed`,
+      {
+        method: 'PUT',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ discussed }),
+      },
+      last ? [404] : [404, 503],
+    )
+    if (response.status === 503) { await sleep(backoffMs(attempt + 1)); continue }
+    captureNoteToken(noteId, response)
+    return
+  }
+}

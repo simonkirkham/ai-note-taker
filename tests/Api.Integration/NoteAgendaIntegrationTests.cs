@@ -77,12 +77,57 @@ public sealed class NoteAgendaIntegrationTests(ApiFactory factory) : IClassFixtu
         Assert.Equal(HttpStatusCode.NotFound, resp.StatusCode);
     }
 
+    [Fact]
+    public async Task PutDiscussed_TicksAndUnticksAnItem()
+    {
+        var noteId = await CreateNoteAsync();
+        var itemId = await AddAndGetItemIdAsync(noteId, "Budget (Q3)");
+
+        var tick = await PutDiscussedAsync(noteId, itemId, true);
+        Assert.Equal(HttpStatusCode.NoContent, tick.StatusCode);
+        Assert.True((await GetAgendaAsync(noteId)).Single().GetProperty("discussed").GetBoolean());
+
+        var untick = await PutDiscussedAsync(noteId, itemId, false);
+        Assert.Equal(HttpStatusCode.NoContent, untick.StatusCode);
+        Assert.False((await GetAgendaAsync(noteId)).Single().GetProperty("discussed").GetBoolean());
+    }
+
+    [Fact]
+    public async Task PutDiscussed_UnknownItemReturns404()
+    {
+        var noteId = await CreateNoteAsync();
+
+        var resp = await PutDiscussedAsync(noteId, Guid.NewGuid().ToString(), true);
+
+        Assert.Equal(HttpStatusCode.NotFound, resp.StatusCode);
+    }
+
+    [Fact]
+    public async Task PutDiscussed_NonExistentNoteReturns404()
+    {
+        var resp = await PutDiscussedAsync(Guid.NewGuid().ToString(), Guid.NewGuid().ToString(), true);
+
+        Assert.Equal(HttpStatusCode.NotFound, resp.StatusCode);
+    }
+
     private async Task<string> CreateNoteAsync()
     {
         var resp = await _client.PostAsync("/notes", null);
         var body = await resp.Content.ReadFromJsonAsync<JsonElement>();
         return body.GetProperty("noteId").GetString()!;
     }
+
+    private async Task<string> AddAndGetItemIdAsync(string noteId, string text)
+    {
+        var resp = await PostAgendaItemAsync(noteId, text);
+        var body = await resp.Content.ReadFromJsonAsync<JsonElement>();
+        return body.GetProperty("itemId").GetString()!;
+    }
+
+    private Task<HttpResponseMessage> PutDiscussedAsync(string noteId, string itemId, bool discussed) =>
+        _client.PutAsync(
+            $"/notes/{noteId}/agenda-items/{itemId}/discussed",
+            new StringContent(JsonSerializer.Serialize(new { discussed }), Encoding.UTF8, "application/json"));
 
     private Task<HttpResponseMessage> PostAgendaItemAsync(string noteId, string text) =>
         _client.PostAsync(

@@ -228,6 +228,22 @@ public static class NoteHandlers
         return Results.Created($"/notes/{noteId}/agenda-items/{itemId}", new { itemId });
     }
 
+    public static async Task<IResult> PutAgendaItemDiscussed(Guid noteId, Guid itemId, SetAgendaItemDiscussedRequest req, HttpResponse response, INoteCommandHandler handler, INoteDetailStore noteDetailStore, ICurrentUser currentUser)
+    {
+        var detail = await noteDetailStore.GetAsync(new NoteId(noteId));
+        if (detail is not null && detail.UserId != currentUser.UserId) return Results.NotFound();
+        long version;
+        // Both a missing note (NoteNotFoundException, raised by the handler from the event stream)
+        // and an unknown agenda item (InvalidOperationException from the aggregate) are 404 — the
+        // toggle targets something that isn't there. A redundant set (already in the requested
+        // state) is a no-op in the aggregate, so it still returns 200 with the current version.
+        try { version = await handler.HandleAsync(new SetAgendaItemDiscussed(new NoteId(noteId), itemId, req.Discussed)); }
+        catch (NoteNotFoundException) { return Results.NotFound(); }
+        catch (InvalidOperationException) { return Results.NotFound(); }
+        SetConsistencyToken(response, noteId, version);
+        return Results.NoContent();
+    }
+
     public static async Task<IResult> MoveNoteToFolder(Guid noteId, MoveNoteToFolderRequest req, INoteCommandHandler handler, INoteDetailStore noteDetailStore, IFolderTreeStore folderTreeStore, ICurrentUser currentUser, CancellationToken ct)
     {
         var detail = await noteDetailStore.GetAsync(new NoteId(noteId));
