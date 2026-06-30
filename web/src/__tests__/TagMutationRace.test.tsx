@@ -13,7 +13,7 @@ function makeNote(tags: string[]): NoteDetail {
     noteId: 'n1', title: 'T', content: '', date: null, tags,
     transcriptText: null, transcriptDraft: null, recordingAudioKey: null, transcriptIsDiarized: false, summary: null,
     discussionPoints: [], decisions: [], instructionResponses: [], summaryModelId: null,
-    summaryPromptVersion: null, recurringSeriesId: null, isRecurring: false,
+    summaryPromptVersion: null, agenda: [], recurringSeriesId: null, isRecurring: false,
     linkedMeeting: null,
   }
 }

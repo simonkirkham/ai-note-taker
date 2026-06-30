@@ -49,6 +49,15 @@ export interface InstructionResponse {
   response: string;
 }
 
+// A meeting agenda item (Phase 43): a topic to discuss, stored separately from the free-form note
+// body. `discussed` is always false until 43-B adds tick/untick. `position` is capture order.
+export interface AgendaItem {
+  itemId: string;
+  text: string;
+  discussed: boolean;
+  position: number;
+}
+
 export interface NoteDetail {
   noteId: string;
   title: string;
@@ -74,6 +83,8 @@ export interface NoteDetail {
   instructionResponses: InstructionResponse[];
   summaryModelId: string | null;
   summaryPromptVersion: string | null;
+  // The meeting agenda — topics to discuss, in capture order (Phase 43).
+  agenda: AgendaItem[];
   recurringSeriesId: string | null;
   isRecurring: boolean;
   linkedMeeting: LinkedMeeting | null;

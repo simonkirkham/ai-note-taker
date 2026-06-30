@@ -205,10 +205,14 @@ describe('NoteView', () => {
     expect(document.activeElement).toBe(screen.getByLabelText('Note title'))
   })
 
-  it('Tab from title input reaches the tab list (via Link to meeting + the Command Bar)', async () => {
+  it('Tab from title input reaches the tab list (via the agenda, Link to meeting + the Command Bar)', async () => {
     renderNoteView()
     await screen.findByLabelText('Note content')
     screen.getByLabelText('Note title').focus()
+    await userEvent.tab()
+    // 43-A: the agenda lives in the header (with the title), so its add-item input is the first
+    // stop after the title.
+    expect(document.activeElement).toBe(screen.getByTestId('agenda-add-input'))
     await userEvent.tab()
     expect(document.activeElement).toBe(screen.getByTestId('link-meeting-button'))
     // CHANGE-27: the Command Bar (＋ Tag ghost, then the Actions pill) sits between the

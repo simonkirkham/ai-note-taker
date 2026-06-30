@@ -56,6 +56,7 @@ export const handlers = [
   ...scoped('delete', '/notes/:noteId/actions/:actionId', () => new HttpResponse(null, { status: 204 })),
   ...scoped('post', '/notes/:noteId/tags', () => new HttpResponse(null, { status: 204 })),
   ...scoped('delete', '/notes/:noteId/tags/:tag', () => new HttpResponse(null, { status: 204 })),
+  ...scoped('post', '/notes/:noteId/agenda-items', () => HttpResponse.json({ itemId: 'new-agenda-item-id' }, { status: 201 })),
   ...scoped('put', '/notes/:noteId/folder', () => new HttpResponse(null, { status: 204 })),
   http.get('/api/transcription/credentials', () =>
     HttpResponse.json({

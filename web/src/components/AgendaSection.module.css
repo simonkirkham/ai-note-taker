@@ -1,0 +1,58 @@
+.agenda {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-top: var(--space-3);
+}
+
+.label {
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--color-text-muted);
+  flex-shrink: 0;
+}
+
+.items {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  flex: 1;
+  min-width: 0;
+}
+
+.item {
+  display: inline-flex;
+  align-items: center;
+  background: var(--color-primary-bg);
+  color: var(--color-primary);
+  border: 1px solid var(--color-border);
+  border-radius: 9999px;
+  padding: 0.15rem 0.65rem;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.addInput {
+  flex: 1;
+  min-width: 8rem;
+  border: 1px dashed var(--color-border);
+  border-radius: 9999px;
+  padding: 0.15rem 0.65rem;
+  font-family: inherit;
+  font-size: 0.8125rem;
+  color: var(--color-text);
+  background: var(--color-surface);
+  transition: border-color var(--transition);
+}
+
+.addInput:focus-visible {
+  outline: none;
+  border-style: solid;
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 3px var(--color-primary-bg);
+}

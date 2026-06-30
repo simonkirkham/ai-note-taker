@@ -47,6 +47,15 @@ public sealed class NoteDetailProjection
                     _items[e.NoteId] = untagged with { Tags = (untagged.Tags ?? []).Where(t => t != removeTag).ToList().AsReadOnly(), LastModifiedAt = envelope.OccurredAt };
                 }
                 break;
+            case AgendaItemAdded e:
+                if (_items.TryGetValue(e.NoteId, out var withAgenda))
+                {
+                    var agenda = (withAgenda.Agenda ?? [])
+                        .Append(new AgendaItemView(e.ItemId, e.Text, false, e.Position))
+                        .ToList().AsReadOnly();
+                    _items[e.NoteId] = withAgenda with { Agenda = agenda, LastModifiedAt = envelope.OccurredAt };
+                }
+                break;
             case NoteDeleted e:
                 _items.Remove(e.NoteId);
                 break;

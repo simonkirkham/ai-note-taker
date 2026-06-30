@@ -20,6 +20,7 @@ public static class EventDeserializer
         (nameof(NoteDateSet), _) => JsonSerializer.Deserialize<NoteDateSet>(envelope.Payload)!,
         (nameof(NoteTagged), _) => JsonSerializer.Deserialize<NoteTagged>(envelope.Payload)!,
         (nameof(NoteUntagged), _) => JsonSerializer.Deserialize<NoteUntagged>(envelope.Payload)!,
+        (nameof(AgendaItemAdded), _) => JsonSerializer.Deserialize<AgendaItemAdded>(envelope.Payload)!,
         (nameof(TagsSuggested), 1) => JsonSerializer.Deserialize<TagsSuggested>(envelope.Payload)!,
         (nameof(TagsSuggested), 2) => JsonSerializer.Deserialize<TagsSuggestedV2>(envelope.Payload)!,
         (nameof(ActionItemsSuggested), 1) => JsonSerializer.Deserialize<ActionItemsSuggested>(envelope.Payload)!,

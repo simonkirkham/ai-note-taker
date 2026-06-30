@@ -54,6 +54,20 @@ public sealed class DynamoDbNoteDetailStore(IAmazonDynamoDB dynamo, string table
                     }
                 }).ToList()
             };
+        if (detail.Agenda is { Count: > 0 })
+            item["Agenda"] = new AttributeValue
+            {
+                L = detail.Agenda.Select(a => new AttributeValue
+                {
+                    M = new Dictionary<string, AttributeValue>
+                    {
+                        ["ItemId"] = new() { S = a.ItemId.ToString() },
+                        ["Text"] = new() { S = a.Text },
+                        ["Discussed"] = new() { BOOL = a.Discussed },
+                        ["Position"] = new() { N = a.Position.ToString() }
+                    }
+                }).ToList()
+            };
 
         await dynamo.PutItemAsync(new PutItemRequest { TableName = tableName, Item = item }, ct)
             .ConfigureAwait(false);
@@ -151,8 +165,19 @@ public sealed class DynamoDbNoteDetailStore(IAmazonDynamoDB dynamo, string table
             InstructionResponses: ReadInstructionResponses(item),
             RecordingAudioKey: item.TryGetValue("RecordingAudioKey", out var recAttr) ? recAttr.S : null,
             TranscriptIsDiarized: item.TryGetValue("TranscriptIsDiarized", out var diaAttr) && diaAttr.BOOL == true,
-            OwnerName: item.TryGetValue("OwnerName", out var ownAttr) ? ownAttr.S : "");
+            OwnerName: item.TryGetValue("OwnerName", out var ownAttr) ? ownAttr.S : "",
+            Agenda: ReadAgenda(item));
     }
+
+    private static IReadOnlyList<AgendaItemView>? ReadAgenda(Dictionary<string, AttributeValue> item) =>
+        item.TryGetValue("Agenda", out var attr) && attr.L?.Count > 0
+            ? attr.L.Select(v => new AgendaItemView(
+                v.M.TryGetValue("ItemId", out var id) ? Guid.Parse(id.S) : Guid.Empty,
+                v.M.TryGetValue("Text", out var t) ? t.S : "",
+                v.M.TryGetValue("Discussed", out var d) && d.BOOL == true,
+                v.M.TryGetValue("Position", out var p) && int.TryParse(p.N, out var pos) ? pos : 0))
+                .ToList().AsReadOnly()
+            : null;
 
     private static IReadOnlyList<InstructionResponse>? ReadInstructionResponses(Dictionary<string, AttributeValue> item) =>
         item.TryGetValue("InstructionResponses", out var attr) && attr.L?.Count > 0
