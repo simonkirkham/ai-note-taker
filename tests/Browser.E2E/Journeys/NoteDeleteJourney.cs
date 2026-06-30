@@ -49,7 +49,9 @@ public sealed class NoteDeleteJourney(BrowserFixture browser) : IAsyncLifetime
         await _app.EnterTitleAsync(title);
         await _app.SaveAndReturnAsync();
 
-        await _app.AssertNoteVisibleInListAsync(title);
+        // Reload-tolerant (BUG-42): the post-create GET /notes/cards can serve stale while the async
+        // projector folds the new card, so a bare ToBeVisible races it (red-gated deploy #672).
+        await _app.AssertNoteVisibleInListAfterReloadAsync(title);
 
         await _app.ClickNoteInListAsync(title);
         await _app.DeleteNoteAsync();

@@ -129,13 +129,6 @@ public sealed class AppPage
         await Assertions.Expect(page.GetByTestId("new-note-button")).ToBeVisibleAsync();
     }
 
-    public Task AssertNoteVisibleInListAsync(string title) =>
-        Assertions.Expect(
-            page.GetByTestId("note-cards")
-                .Locator("[data-testid='note-card']")
-                .Filter(new LocatorFilterOptions { HasText = title })
-        ).ToBeVisibleAsync();
-
     // The note read-your-writes proof (RYW-2): reload FIRST (drops the optimistic cards cache, so
     // the renamed card can only come from the server), then assert. The post-reload GET /notes/cards
     // carries the sessionStorage-persisted note token, so the gate waits for the async projector and
