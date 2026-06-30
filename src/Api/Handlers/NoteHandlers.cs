@@ -244,6 +244,34 @@ public static class NoteHandlers
         return Results.NoContent();
     }
 
+    public static async Task<IResult> PutAgendaItemText(Guid noteId, Guid itemId, EditAgendaItemTextRequest req, HttpResponse response, INoteCommandHandler handler, INoteDetailStore noteDetailStore, ICurrentUser currentUser)
+    {
+        var detail = await noteDetailStore.GetAsync(new NoteId(noteId));
+        if (detail is not null && detail.UserId != currentUser.UserId) return Results.NotFound();
+        long version;
+        // Missing note or unknown item → 404; blank text → 400 (aggregate ArgumentException).
+        try { version = await handler.HandleAsync(new EditAgendaItemText(new NoteId(noteId), itemId, req.Text)); }
+        catch (NoteNotFoundException) { return Results.NotFound(); }
+        catch (ArgumentException) { return Results.BadRequest(); }
+        catch (InvalidOperationException) { return Results.NotFound(); }
+        SetConsistencyToken(response, noteId, version);
+        return Results.NoContent();
+    }
+
+    public static async Task<IResult> DeleteAgendaItem(Guid noteId, Guid itemId, HttpResponse response, INoteCommandHandler handler, INoteDetailStore noteDetailStore, ICurrentUser currentUser)
+    {
+        var detail = await noteDetailStore.GetAsync(new NoteId(noteId));
+        if (detail is not null && detail.UserId != currentUser.UserId) return Results.NotFound();
+        long version;
+        // Removing a missing note or an already-gone item is a 404 the client accepts as a no-op
+        // (matches DeleteTag): the optimistic removal must not roll back into a phantom item.
+        try { version = await handler.HandleAsync(new RemoveAgendaItem(new NoteId(noteId), itemId)); }
+        catch (NoteNotFoundException) { return Results.NotFound(); }
+        catch (InvalidOperationException) { return Results.NotFound(); }
+        SetConsistencyToken(response, noteId, version);
+        return Results.NoContent();
+    }
+
     public static async Task<IResult> MoveNoteToFolder(Guid noteId, MoveNoteToFolderRequest req, INoteCommandHandler handler, INoteDetailStore noteDetailStore, IFolderTreeStore folderTreeStore, ICurrentUser currentUser, CancellationToken ct)
     {
         var detail = await noteDetailStore.GetAsync(new NoteId(noteId));

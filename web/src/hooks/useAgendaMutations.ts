@@ -1,5 +1,5 @@
 import { useMutation, useQueryClient, type QueryClient } from "@tanstack/react-query";
-import { addAgendaItem, setAgendaItemDiscussed } from "../api/agenda";
+import { addAgendaItem, editAgendaItemText, removeAgendaItem, setAgendaItemDiscussed } from "../api/agenda";
 import type { AgendaItem, NoteDetail } from "../api/notes";
 import { keys } from "../api/queryKeys";
 
@@ -50,6 +50,46 @@ export function useSetAgendaItemDiscussed() {
       const ctx = await snapshotNote(qc, noteId);
       qc.setQueryData<NoteDetail>(keys.note(noteId), (old) =>
         old ? { ...old, agenda: old.agenda.map((a) => (a.itemId === itemId ? { ...a, discussed } : a)) } : old);
+      return ctx;
+    },
+    onError: (_e, { noteId }, ctx) => {
+      if (ctx?.previous) qc.setQueryData(keys.note(noteId), ctx.previous);
+    },
+    onSettled: (_d, _e, { noteId }) => {
+      void qc.invalidateQueries({ queryKey: keys.note(noteId) });
+    },
+  });
+}
+
+// Edit text (43-C): optimistically patch the matching item's text; roll back on error; reconcile.
+export function useEditAgendaItemText() {
+  const qc = useQueryClient();
+  return useMutation<void, Error, { noteId: string; itemId: string; text: string }, Ctx>({
+    mutationFn: ({ noteId, itemId, text }) => editAgendaItemText(noteId, itemId, text.trim()),
+    onMutate: async ({ noteId, itemId, text }) => {
+      const ctx = await snapshotNote(qc, noteId);
+      qc.setQueryData<NoteDetail>(keys.note(noteId), (old) =>
+        old ? { ...old, agenda: old.agenda.map((a) => (a.itemId === itemId ? { ...a, text: text.trim() } : a)) } : old);
+      return ctx;
+    },
+    onError: (_e, { noteId }, ctx) => {
+      if (ctx?.previous) qc.setQueryData(keys.note(noteId), ctx.previous);
+    },
+    onSettled: (_d, _e, { noteId }) => {
+      void qc.invalidateQueries({ queryKey: keys.note(noteId) });
+    },
+  });
+}
+
+// Remove (43-C): optimistically drop the item from the list; roll back on error; reconcile.
+export function useRemoveAgendaItem() {
+  const qc = useQueryClient();
+  return useMutation<void, Error, { noteId: string; itemId: string }, Ctx>({
+    mutationFn: ({ noteId, itemId }) => removeAgendaItem(noteId, itemId),
+    onMutate: async ({ noteId, itemId }) => {
+      const ctx = await snapshotNote(qc, noteId);
+      qc.setQueryData<NoteDetail>(keys.note(noteId), (old) =>
+        old ? { ...old, agenda: old.agenda.filter((a) => a.itemId !== itemId) } : old);
       return ctx;
     },
     onError: (_e, { noteId }, ctx) => {

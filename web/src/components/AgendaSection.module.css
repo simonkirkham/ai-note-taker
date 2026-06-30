@@ -40,26 +40,30 @@
 .item {
   display: inline-flex;
   align-items: center;
+  gap: var(--space-2);
   background: var(--color-primary-bg);
   border: 1px solid var(--color-border);
   border-radius: 9999px;
-  padding: 0.1rem 0.65rem 0.1rem 0.5rem;
+  padding: 0.1rem 0.5rem;
   font-size: 0.8125rem;
   font-weight: 500;
   white-space: nowrap;
-}
-
-.itemLabel {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-2);
-  cursor: pointer;
 }
 
 .check {
   margin: 0;
   cursor: pointer;
   accent-color: var(--color-primary);
+}
+
+/* Text is a button so it can be clicked to edit in place. */
+.itemText,
+.itemTextDone {
+  border: none;
+  background: none;
+  padding: 0;
+  font: inherit;
+  cursor: text;
 }
 
 .itemText {
@@ -69,6 +73,39 @@
 .itemTextDone {
   color: var(--color-text-muted);
   text-decoration: line-through;
+}
+
+.editInput {
+  border: 1px solid var(--color-primary);
+  border-radius: var(--radius);
+  padding: 0 0.25rem;
+  font: inherit;
+  color: var(--color-text);
+  background: var(--color-surface);
+  min-width: 6rem;
+}
+
+.editInput:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--color-primary-bg);
+}
+
+.remove {
+  border: none;
+  background: none;
+  padding: 0;
+  margin-left: 0.1rem;
+  font-size: 1rem;
+  line-height: 1;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  opacity: 0.55;
+  transition: opacity var(--transition), color var(--transition);
+}
+
+.remove:hover {
+  opacity: 1;
+  color: var(--color-danger, #dc2626);
 }
 
 .addRow {
