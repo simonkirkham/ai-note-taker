@@ -15,6 +15,15 @@ public sealed class AppPage
     // "cards read scoped to the wrong workspace on reload" hypothesis. Surfaced in the failure message.
     private readonly System.Collections.Concurrent.ConcurrentQueue<string> cardsRequestLog = new();
 
+    // BUG-38: a cold-start flake where an always-present element (e.g. tag-input) never appears means
+    // the app/page failed to load — but the journeys captured ZERO browser signal, so the failure gave
+    // no root cause. Capture console messages + uncaught page errors here (per-page, alongside the
+    // cards log) and surface them through the THROWN exception message — xUnit swallows Console.WriteLine
+    // on passing tests and never flushes a hung one. Both reads are synchronous (the .Type/.Text/error
+    // string), never a response body — the 44-min-hang lesson (PR #291).
+    private readonly System.Collections.Concurrent.ConcurrentQueue<string> consoleLog = new();
+    private readonly System.Collections.Concurrent.ConcurrentQueue<string> pageErrors = new();
+
     public AppPage(IPage page, string baseUrl, string? authToken = null)
     {
         this.page = page;
@@ -25,6 +34,16 @@ public sealed class AppPage
             if (r.Url.Contains("/notes/cards", StringComparison.OrdinalIgnoreCase))
                 cardsRequestLog.Enqueue($"{r.Status} {r.Url}");
         };
+        page.Console += (_, m) => CappedEnqueue(consoleLog, $"[{m.Type}] {m.Text}");
+        page.PageError += (_, e) => CappedEnqueue(pageErrors, e);
+    }
+
+    // Bounded enqueue so a page stuck in a console-logging loop can't grow the queue without limit
+    // (the dump only ever reads the tail). Drop-oldest past a generous cap.
+    private static void CappedEnqueue(System.Collections.Concurrent.ConcurrentQueue<string> queue, string item)
+    {
+        queue.Enqueue(item);
+        while (queue.Count > 200) queue.TryDequeue(out _);
     }
 
     public async Task GotoAsync()
@@ -185,6 +204,18 @@ public sealed class AppPage
         return $"TI-42: card '{title}' not in cards list after {timeoutMs}ms. " +
                $"page.Url={url} | rendered cards({cardTitles.Count})=[{string.Join(" | ", cardTitles)}] | " +
                $"last cards requests=[{string.Join(" ;; ", recentRequests)}]";
+    }
+
+    // BUG-38: hang-proof page-state diagnostic for a cold-start element-never-visible failure. Reads
+    // only synchronous state — the SPA route plus the captured console/page-error queues — never a
+    // response body. Surfaced through the thrown exception (visible in `--log-failed`).
+    private string DescribePageState(string what, string url)
+    {
+        var errors = pageErrors.TakeLast(5).ToList();
+        var console = consoleLog.TakeLast(15).ToList();
+        return $"BUG-38: '{what}' never appeared (note screen failed to load). page.Url={url} | " +
+               $"pageErrors({errors.Count})=[{string.Join(" ;; ", errors)}] | " +
+               $"console(last {console.Count})=[{string.Join(" ;; ", console)}]";
     }
 
     public async Task ClickNoteInListAsync(string title)
@@ -395,9 +426,20 @@ public sealed class AppPage
         // CHANGE-27: the tag combobox is hidden behind the "＋ Tag" ghost button in the
         // Command Bar — reveal it before filling. No-op if already revealed.
         var input = page.GetByTestId("tag-input");
-        if (!await input.IsVisibleAsync())
-            await page.GetByTestId("add-tag-button").ClickAsync();
-        await input.FillAsync(tagInput);
+        try
+        {
+            if (!await input.IsVisibleAsync())
+                await page.GetByTestId("add-tag-button").ClickAsync();
+            await input.FillAsync(tagInput);
+        }
+        catch (PlaywrightException ex)
+        {
+            // BUG-38: the tag UI never appeared — the note screen failed to load. Replace the opaque
+            // action timeout with sync-only page state (url + captured console/page errors) so the
+            // next cold-start failure tells us WHY. Only Playwright timeouts get the enriched message;
+            // keep the original as the inner exception — it names which locator timed out.
+            throw new Exception(DescribePageState("tag-input / add-tag-button", page.Url), ex);
+        }
 
         // WaitForResponseAsync handlers all fire on the same response event, so
         // N parallel tasks can resolve to the same single response. Use an atomic
