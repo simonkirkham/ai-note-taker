@@ -55,6 +55,9 @@ public sealed class Note : IAggregate
             case NoteLinkedToCalendarEvent e:
                 _calendarEventId = e.CalendarEventId;
                 break;
+            case NoteUnlinkedFromCalendarEvent:
+                _calendarEventId = null;
+                break;
             case TranscriptionCompleted e:
                 _transcriptText = e.TranscriptText;
                 break;
@@ -196,10 +199,16 @@ public sealed class Note : IAggregate
     {
         if (!_exists || _deleted)
             throw new InvalidOperationException($"Note {cmd.NoteId} does not exist.");
-        if (_calendarEventId is not null)
-            throw new InvalidOperationException($"Note {cmd.NoteId} is already linked to a calendar event.");
-        return [new NoteLinkedToCalendarEvent(cmd.NoteId, cmd.CalendarEventId, cmd.CalendarEventTitle,
-            cmd.StartTime, cmd.EndTime, cmd.IsRecurring, cmd.RecurringSeriesId)];
+        // Re-link is allowed (Phase 44). Linking to the meeting it is already on is a no-op;
+        // linking to a different meeting unlinks the old one first, then links the new, so the
+        // calendar-link projection frees the previous meeting and claims the new one in one append.
+        if (_calendarEventId == cmd.CalendarEventId)
+            return [];
+        var link = new NoteLinkedToCalendarEvent(cmd.NoteId, cmd.CalendarEventId, cmd.CalendarEventTitle,
+            cmd.StartTime, cmd.EndTime, cmd.IsRecurring, cmd.RecurringSeriesId);
+        return _calendarEventId is null
+            ? [link]
+            : [new NoteUnlinkedFromCalendarEvent(cmd.NoteId, _calendarEventId), link];
     }
 
     IReadOnlyList<IDomainEvent> HandleCompleteTranscription(CompleteTranscription cmd)

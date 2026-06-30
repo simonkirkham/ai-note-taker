@@ -15,6 +15,9 @@ public sealed class CalendarLinkIndexProjection
                     e.CalendarEventId, e.NoteId.Value.ToString(), e.RecurringSeriesId,
                     e.StartTime, e.EndTime, e.CalendarEventTitle, envelope.Metadata.UserId ?? "");
                 break;
+            case NoteUnlinkedFromCalendarEvent e:
+                _byCalendarEventId.Remove(e.PreviousCalendarEventId);
+                break;
             case NoteDeleted e:
                 var noteId = e.NoteId.Value.ToString();
                 foreach (var key in _byCalendarEventId

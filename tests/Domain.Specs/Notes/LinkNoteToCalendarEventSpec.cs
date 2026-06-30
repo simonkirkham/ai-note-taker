@@ -40,13 +40,26 @@ public sealed class LinkNoteToCalendarEventSpec
     }
 
     [Fact]
-    public void RejectsLinkWhenNoteAlreadyLinked()
+    public void RelinksToDifferentEventByUnlinkingTheOldOneFirst()
     {
         Spec
             .Given<Note>(
                 new NoteCreated(Id),
                 new NoteLinkedToCalendarEvent(Id, "other_event", "Other Meeting", Start, End, false, null))
             .When(LinkCmd("evt_abc123"))
-            .ThenThrows<InvalidOperationException>();
+            .Then(
+                new NoteUnlinkedFromCalendarEvent(Id, "other_event"),
+                new NoteLinkedToCalendarEvent(Id, "evt_abc123", "1:1 with Bill", Start, End, false, null));
+    }
+
+    [Fact]
+    public void NoOpWhenRelinkingToTheSameEvent()
+    {
+        Spec
+            .Given<Note>(
+                new NoteCreated(Id),
+                new NoteLinkedToCalendarEvent(Id, "evt_abc123", "1:1 with Bill", Start, End, false, null))
+            .When(LinkCmd("evt_abc123"))
+            .Then();
     }
 }

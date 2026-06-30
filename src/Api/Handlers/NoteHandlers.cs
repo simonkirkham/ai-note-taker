@@ -252,6 +252,9 @@ public static class NoteHandlers
         var card = await noteCardListStore.GetByNoteAsync(new NoteId(noteId), ct);
         if (card is null || card.UserId != currentUser.UserId) return Results.NotFound();
         if (card.Deleted) return Results.Conflict();
+        // Re-link is allowed (Phase 44): the same endpoint links a fresh note or moves an already-linked
+        // note to a different meeting. The aggregate no-ops a re-link to the same meeting, so this is
+        // idempotent and never conflicts on "already linked".
         try
         {
             await handler.HandleAsync(new LinkNoteToCalendarEvent(new NoteId(noteId),
@@ -259,7 +262,6 @@ public static class NoteHandlers
                 req.IsRecurring, req.RecurringSeriesId), ct);
         }
         catch (NoteNotFoundException) { return Results.NotFound(); }
-        catch (InvalidOperationException) { return Results.Conflict(); }
         return Results.NoContent();
     }
 
