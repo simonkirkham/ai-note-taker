@@ -10,8 +10,7 @@ namespace Api.Services;
 // compatibility (the stored token is read fresh each call). A store failure degrades to null, never
 // a 500 (the GET handler maps null gracefully but has no catch).
 public sealed class MicrosoftCalendarTokenSource(
-    ICurrentUser currentUser,
-    ICurrentWorkspace currentWorkspace,
+    ICalendarScope scope,
     ICalendarTokenStore store,
     ILogger<MicrosoftCalendarTokenSource> logger) : IMicrosoftRefreshTokenSource
 {
@@ -21,10 +20,10 @@ public sealed class MicrosoftCalendarTokenSource(
     {
         try
         {
-            var stored = await store.GetAsync(currentUser.UserId, currentWorkspace.WorkspaceId, Provider).ConfigureAwait(false);
+            var stored = await store.GetAsync(scope.UserId, scope.WorkspaceId, Provider).ConfigureAwait(false);
             if (stored is not null)
             {
-                logger.LogInformation("Microsoft calendar token source: store (in-app connected, workspace {WorkspaceId})", currentWorkspace.WorkspaceId);
+                logger.LogInformation("Microsoft calendar token source: store (in-app connected, workspace {WorkspaceId})", scope.WorkspaceId);
                 return stored.RefreshToken;
             }
         }
@@ -34,7 +33,7 @@ public sealed class MicrosoftCalendarTokenSource(
             return null;
         }
 
-        logger.LogInformation("No in-app Microsoft calendar token for workspace {WorkspaceId}; reporting calendar_unavailable", currentWorkspace.WorkspaceId);
+        logger.LogInformation("No in-app Microsoft calendar token for workspace {WorkspaceId}; reporting calendar_unavailable", scope.WorkspaceId);
         return null;
     }
 }

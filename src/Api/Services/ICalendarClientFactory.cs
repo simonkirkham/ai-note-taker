@@ -21,26 +21,36 @@ public interface ICalendarClientFactory
 }
 
 public sealed class CalendarClientFactory(
-    ICurrentUser currentUser,
+    ICalendarScope scope,
     ICalendarTokenStore store,
     IServiceProvider services) : ICalendarClientFactory
 {
     public async Task<ICalendarClient> ForAsync(string workspaceId, CancellationToken ct = default)
     {
+        // The factory selects the provider using `scope.UserId` + this `workspaceId`, but the client it
+        // returns loads its token via the token source keyed on `scope.WorkspaceId`. Those must be the
+        // same workspace or the factory would check workspace A's token yet the client would load B's.
+        // Every caller satisfies this (HTTP passes `currentWorkspace`, with scope defaulting to it; the
+        // MCP tool sets scope to the same arg it passes), so a mismatch is a programming error — fail
+        // closed rather than resolve a cross-workspace client.
+        if (workspaceId != scope.WorkspaceId)
+            throw new InvalidOperationException(
+                $"Calendar scope workspace '{scope.WorkspaceId}' does not match requested '{workspaceId}'.");
+
         if (!string.IsNullOrEmpty(Environment.GetEnvironmentVariable("STUB_CALENDAR_JSON")))
             return services.GetRequiredService<StubCalendarClient>();
 
-        if (await store.GetAsync(currentUser.UserId, workspaceId, "microsoft", ct).ConfigureAwait(false) is not null)
+        if (await store.GetAsync(scope.UserId, workspaceId, "microsoft", ct).ConfigureAwait(false) is not null)
         {
             Logger.LogInformation("Calendar client resolved: microsoft (workspace {WorkspaceId})", workspaceId);
             return services.GetRequiredService<MicrosoftCalendarClient>();
         }
-        if (await store.GetAsync(currentUser.UserId, workspaceId, "google", ct).ConfigureAwait(false) is not null)
+        if (await store.GetAsync(scope.UserId, workspaceId, "google", ct).ConfigureAwait(false) is not null)
         {
             Logger.LogInformation("Calendar client resolved: google (workspace {WorkspaceId})", workspaceId);
             return services.GetRequiredService<GoogleCalendarClient>();
         }
-        if (await store.GetAsync(currentUser.UserId, workspaceId, "ics", ct).ConfigureAwait(false) is not null)
+        if (await store.GetAsync(scope.UserId, workspaceId, "ics", ct).ConfigureAwait(false) is not null)
         {
             Logger.LogInformation("Calendar client resolved: ics (workspace {WorkspaceId})", workspaceId);
             return services.GetRequiredService<IcsFeedCalendarClient>();

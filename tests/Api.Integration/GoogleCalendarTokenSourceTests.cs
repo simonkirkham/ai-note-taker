@@ -11,19 +11,14 @@ public sealed class GoogleCalendarTokenSourceTests
 {
     private const string Ws = "ws-1";
 
-    private sealed class StubCurrentUser(string userId) : ICurrentUser
+    private sealed class StubCalendarScope(string userId, string workspaceId) : ICalendarScope
     {
         public string UserId { get; } = userId;
-        public string Name => "Test";
-    }
-
-    private sealed class StubCurrentWorkspace(string workspaceId) : ICurrentWorkspace
-    {
         public string WorkspaceId { get; } = workspaceId;
     }
 
     private static GoogleCalendarTokenSource Build(string userId, string workspaceId, InMemoryCalendarTokenStore store) =>
-        new(new StubCurrentUser(userId), new StubCurrentWorkspace(workspaceId), store, NullLogger<GoogleCalendarTokenSource>.Instance);
+        new(new StubCalendarScope(userId, workspaceId), store, NullLogger<GoogleCalendarTokenSource>.Instance);
 
     [Fact]
     public async Task LoadAsync_ReturnsStoredToken()
@@ -46,7 +41,7 @@ public sealed class GoogleCalendarTokenSourceTests
     {
         // A transient store failure must degrade to calendar_unavailable (null), not a 500.
         var source = new GoogleCalendarTokenSource(
-            new StubCurrentUser("user-1"), new StubCurrentWorkspace(Ws), new ThrowingCalendarTokenStore(),
+            new StubCalendarScope("user-1", Ws), new ThrowingCalendarTokenStore(),
             NullLogger<GoogleCalendarTokenSource>.Instance);
 
         Assert.Null(await source.LoadAsync(forceReload: false));

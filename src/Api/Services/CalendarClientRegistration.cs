@@ -21,8 +21,14 @@ public static class CalendarClientRegistration
 
     public static void Register(IServiceCollection services)
     {
-        // Token sources (scoped — they read ICurrentUser + ICurrentWorkspace): each resolves the
-        // per-(user,workspace) in-app token only (no SSM fallback since 34-D1/34-D2).
+        // 42-A: the identity/workspace a calendar resolution is for. Defaults to the HTTP route +
+        // claims; the MCP tools override it (the /mcp path has no workspace in the URL). The interface
+        // and the concrete settable type resolve to the SAME scoped instance.
+        services.AddScoped<CalendarScope>();
+        services.AddScoped<ICalendarScope>(sp => sp.GetRequiredService<CalendarScope>());
+
+        // Token sources (scoped — they read ICalendarScope, = route/claims by default): each resolves
+        // the per-(user,workspace) in-app token only (no SSM fallback since 34-D1/34-D2).
         services.AddScoped<IGoogleCalendarTokenSource, GoogleCalendarTokenSource>();
         services.AddScoped<IMicrosoftRefreshTokenSource, MicrosoftCalendarTokenSource>();
 

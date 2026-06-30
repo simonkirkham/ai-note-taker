@@ -18,14 +18,9 @@ public sealed class IcsFeedCalendarClientTests
     // intercepts the request regardless of host, so the address is never actually contacted.
     private const string FeedUrl = "https://8.8.8.8/cal.ics";
 
-    private sealed class StubCurrentUser : ICurrentUser
+    private sealed class StubCalendarScope : ICalendarScope
     {
         public string UserId => User;
-        public string Name => "Test";
-    }
-
-    private sealed class StubCurrentWorkspace : ICurrentWorkspace
-    {
         public string WorkspaceId => Ws;
     }
 
@@ -36,7 +31,7 @@ public sealed class IcsFeedCalendarClientTests
             store.Seed(User, Ws, "ics", url!);
         var http = new HttpClient(handler);
         return new IcsFeedCalendarClient(
-            NullLogger<IcsFeedCalendarClient>.Instance, http, new StubCurrentUser(), new StubCurrentWorkspace(), store);
+            NullLogger<IcsFeedCalendarClient>.Instance, http, new StubCalendarScope(), store);
     }
 
     private static string Ics(string vevents) =>

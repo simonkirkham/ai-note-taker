@@ -14,7 +14,7 @@ namespace Api.Services;
 //
 // Graceful degradation mirrors the other clients: ANY fetch/parse/HTTP error returns null
 // (→ calendar_unavailable), never throws — the GET meetings handler maps null but has NO catch
-// (the 34-D1 lesson). Scoped (reads ICurrentUser/ICurrentWorkspace).
+// (the 34-D1 lesson). Scoped (reads ICalendarScope — 42-A).
 //
 // v1 fetches the feed per request with the typed HttpClient's 10s timeout and no caching. A busy
 // day view re-downloads the feed each navigation; per-request caching (keyed by URL+date with a
@@ -29,21 +29,18 @@ public sealed class IcsFeedCalendarClient : ICalendarClient
 
     private readonly ILogger<IcsFeedCalendarClient> _logger;
     private readonly HttpClient _http;
-    private readonly ICurrentUser _currentUser;
-    private readonly ICurrentWorkspace _currentWorkspace;
+    private readonly ICalendarScope _scope;
     private readonly ICalendarTokenStore _store;
 
     public IcsFeedCalendarClient(
         ILogger<IcsFeedCalendarClient> logger,
         HttpClient http,
-        ICurrentUser currentUser,
-        ICurrentWorkspace currentWorkspace,
+        ICalendarScope scope,
         ICalendarTokenStore store)
     {
         _logger = logger;
         _http = http;
-        _currentUser = currentUser;
-        _currentWorkspace = currentWorkspace;
+        _scope = scope;
         _store = store;
     }
 
@@ -140,7 +137,7 @@ public sealed class IcsFeedCalendarClient : ICalendarClient
         CalendarToken? token;
         try
         {
-            token = await _store.GetAsync(_currentUser.UserId, _currentWorkspace.WorkspaceId, Provider);
+            token = await _store.GetAsync(_scope.UserId, _scope.WorkspaceId, Provider);
         }
         catch (Exception ex)
         {
@@ -151,13 +148,13 @@ public sealed class IcsFeedCalendarClient : ICalendarClient
         var url = token?.RefreshToken;
         if (string.IsNullOrEmpty(url))
         {
-            _logger.LogInformation("No ICS feed configured for workspace {WorkspaceId}; reporting calendar_unavailable", _currentWorkspace.WorkspaceId);
+            _logger.LogInformation("No ICS feed configured for workspace {WorkspaceId}; reporting calendar_unavailable", _scope.WorkspaceId);
             return null;
         }
 
         if (!IcsUrlValidator.IsAllowed(url))
         {
-            _logger.LogWarning("Stored ICS feed URL failed the SSRF guard during {Operation} (workspace {WorkspaceId}); reporting calendar_unavailable", operation, _currentWorkspace.WorkspaceId);
+            _logger.LogWarning("Stored ICS feed URL failed the SSRF guard during {Operation} (workspace {WorkspaceId}); reporting calendar_unavailable", operation, _scope.WorkspaceId);
             return null;
         }
 

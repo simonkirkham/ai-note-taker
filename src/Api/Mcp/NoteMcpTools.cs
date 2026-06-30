@@ -1,10 +1,12 @@
 using System.ComponentModel;
 using System.Diagnostics;
+using System.Globalization;
 using System.Security.Claims;
 using System.Text.Json;
 using Api.Auth;
 using Api.CommandHandlers;
 using Api.Search;
+using Api.Services;
 using Api.Utilities;
 using Domain.ActionItems;
 using Domain.Notes;
@@ -34,6 +36,9 @@ public sealed class NoteMcpTools(
     IActionItemCommandHandler actionCommands,
     INoteAuthorizer noteAuthorizer,
     IActionItemAuthorizer actionAuthorizer,
+    ICalendarClientFactory calendarFactory,
+    CalendarScope calendarScope,
+    ICalendarLinkIndexStore calendarLinks,
     IHttpContextAccessor httpContextAccessor,
     ILogger<NoteMcpTools> logger)
 {
@@ -60,7 +65,7 @@ public sealed class NoteMcpTools(
         [Description("The workspace id to list notes from (use list_workspaces to resolve a name).")] string workspaceId,
         CancellationToken ct)
     {
-        var userId = await AuthorizeAsync(workspaceId, ct).ConfigureAwait(false);
+        var userId = await AuthorizeAsync("list_notes", workspaceId, ct).ConfigureAwait(false);
         var all = await cards.QueryAllAsync(ct).ConfigureAwait(false);
         var notes = all
             .Where(c => !c.Deleted && c.UserId == userId && WorkspaceScopeExtensions.Matches(workspaceId, c.WorkspaceId))
@@ -82,7 +87,7 @@ public sealed class NoteMcpTools(
         [Description("The note id (a GUID) to fetch.")] string noteId,
         CancellationToken ct)
     {
-        var userId = await AuthorizeAsync(workspaceId, ct).ConfigureAwait(false);
+        var userId = await AuthorizeAsync("get_note", workspaceId, ct).ConfigureAwait(false);
         if (!Guid.TryParse(noteId, out var guid))
             throw new McpException("Note not found.");
         var id = new NoteId(guid);
@@ -120,7 +125,7 @@ public sealed class NoteMcpTools(
         [Description("The search query.")] string query,
         CancellationToken ct)
     {
-        var userId = await AuthorizeAsync(workspaceId, ct).ConfigureAwait(false);
+        var userId = await AuthorizeAsync("search_notes", workspaceId, ct).ConfigureAwait(false);
         if (string.IsNullOrWhiteSpace(query))
             return JsonSerializer.Serialize(new { results = Array.Empty<object>() });
 
@@ -145,7 +150,7 @@ public sealed class NoteMcpTools(
         [Description("The workspace id to list open action items from.")] string workspaceId,
         CancellationToken ct)
     {
-        var userId = await AuthorizeAsync(workspaceId, ct).ConfigureAwait(false);
+        var userId = await AuthorizeAsync("get_action_items", workspaceId, ct).ConfigureAwait(false);
         var view = await todos.QueryAllAsync(ct).ConfigureAwait(false);
         var items = view.Items
             .Where(i => i.UserId == userId && WorkspaceScopeExtensions.Matches(workspaceId, i.WorkspaceId))
@@ -159,6 +164,66 @@ public sealed class NoteMcpTools(
                 noteTitle = i.NoteTitle
             });
         return JsonSerializer.Serialize(new { actionItems = items });
+    }
+
+    // 42-A: read a workspace's calendar. The calendar chain resolves its (user, workspace) from the
+    // HTTP route, which the /mcp path lacks — so set the scoped CalendarScope to (sub, workspaceId)
+    // before resolving the client. Authorizes workspace ownership first (meeting titles are sensitive).
+    // calendar_unavailable (no connected calendar) is a normal result, not an error — mirrors the HTTP
+    // GetMeetingsForDate. `timezone` only sets the day boundary; event times are absolute.
+    [McpServerTool(Name = "list_meetings", ReadOnly = true)]
+    [Description("List the caller's meetings in a workspace on a given date (yyyy-MM-dd). Shows title, time, and whether a note is already linked.")]
+    public async Task<string> ListMeetings(
+        [Description("The workspace id whose calendar to read (use list_workspaces to resolve a name).")] string workspaceId,
+        [Description("The date to list meetings for, as yyyy-MM-dd.")] string date,
+        // CancellationToken precedes the optional `timezone` so `timezone` can carry a C# default — the
+        // MCP SDK keys a parameter's optionality off its default value, and the SDK injects the
+        // CancellationToken by type regardless of position (it is never a tool argument).
+        CancellationToken ct,
+        [Description("Optional IANA timezone for the day boundary (e.g. Europe/London). Defaults to UTC.")] string? timezone = null)
+    {
+        var userId = await AuthorizeAsync("list_meetings", workspaceId, ct).ConfigureAwait(false);
+        if (!DateOnly.TryParseExact(date, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var day))
+            throw new McpException("Invalid date — expected yyyy-MM-dd.");
+        var tz = string.IsNullOrWhiteSpace(timezone) ? "Etc/UTC" : timezone;
+        try { TimeZoneInfo.FindSystemTimeZoneById(tz); }
+        catch (TimeZoneNotFoundException) { throw new McpException($"Unknown timezone '{tz}'."); }
+
+        var stopwatch = Stopwatch.StartNew();
+        // Resolve the calendar for THIS (sub, workspaceId), not the route's default workspace.
+        calendarScope.Set(userId, workspaceId);
+        var calendar = await calendarFactory.ForAsync(workspaceId, ct).ConfigureAwait(false);
+        var events = await calendar.GetEventsForDayAsync(day, tz).ConfigureAwait(false);
+        if (events is null)
+        {
+            logger.LogInformation("mcp_read tool=list_meetings sub={Sub} workspaceId={WorkspaceId} provider={Provider} result=unavailable",
+                userId, workspaceId, calendar.ProviderName);
+            return JsonSerializer.Serialize(new { calendarConnected = false, provider = calendar.ProviderName, meetings = Array.Empty<object>() });
+        }
+
+        // Per-event linked-note lookup, scoped to the caller (a benign per-event failure → no link).
+        var links = await Task.WhenAll(events.Select(async e =>
+        {
+            try { return await calendarLinks.GetByCalendarEventIdAsync(e.CalendarEventId, ct).ConfigureAwait(false); }
+            catch { return null; }
+        })).ConfigureAwait(false);
+        var linkMap = links
+            .Where(l => l is not null && l.UserId == userId)
+            .ToDictionary(l => l!.CalendarEventId, l => l!.NoteId);
+
+        var meetings = events.OrderBy(e => e.StartTime).Select(e => new
+        {
+            calendarEventId = e.CalendarEventId,
+            title = e.Title,
+            startTime = e.StartTime,
+            endTime = e.EndTime,
+            isRecurring = e.IsRecurring,
+            recurringSeriesId = e.RecurringSeriesId,
+            linkedNoteId = linkMap.GetValueOrDefault(e.CalendarEventId)
+        }).ToList();
+        logger.LogInformation("mcp_read tool=list_meetings sub={Sub} workspaceId={WorkspaceId} provider={Provider} count={Count} latencyMs={LatencyMs}",
+            userId, workspaceId, calendar.ProviderName, meetings.Count, stopwatch.Elapsed.TotalMilliseconds);
+        return JsonSerializer.Serialize(new { calendarConnected = true, provider = calendar.ProviderName, meetings });
     }
 
     // 41-A: the first write tool. Authorizes workspace ownership (the same per-call check the reads
@@ -348,11 +413,18 @@ public sealed class NoteMcpTools(
     // to own the requested workspace: the shared default workspace is always allowed; any other
     // workspace requires an IWorkspaceList membership row for (userId=sub, workspaceId). Failure throws
     // an McpException — the SDK returns a tool error result (isError), never data and never a 500.
-    private async Task<string> AuthorizeAsync(string workspaceId, CancellationToken ct)
+    // The rejection is logged for audit (a cross-workspace read leaks sensitive data — meeting titles,
+    // note content); mirror the write tools' mcp_write_rejected. Log the sub + attempted workspace only,
+    // never any content.
+    private async Task<string> AuthorizeAsync(string tool, string workspaceId, CancellationToken ct)
     {
         var userId = AuthenticatedUserId();
         if (!await UserOwnsWorkspaceAsync(userId, workspaceId, ct).ConfigureAwait(false))
+        {
+            logger.LogWarning("mcp_read_rejected tool={Tool} sub={Sub} workspaceId={WorkspaceId} reason=unauthorized",
+                tool, userId, workspaceId);
             throw new McpException("Workspace not found or access denied.");
+        }
         return userId;
     }
 
