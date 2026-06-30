@@ -424,11 +424,9 @@ Extends the MCP connector (Phases 35/41) to the **calendar**. From a connected C
 
 Slices and acceptance criteria: [docs/phases/phase-42.md](phases/phase-42.md)
 
-## Phase 43 — Meeting agenda (topics to discuss, separate from the note body) _(Not Started)_
+## Phase 43 — Meeting agenda (topics to discuss, separate from the note body) _(Done)_
 
-Give each note a first-class **agenda** — a short checklist of things to discuss that the owner adds before/during a meeting and ticks off as covered. It lives in the note **header** (expanded, collapsible), costs **no side space** (tags & actions keep theirs), and is stored **separately** from the free-form markdown note. This is the clean break from "a topic = a heading" (the conflation behind the old heading-✓, BUG-37): the body stays free-form and untouched; agenda items are their own data with their own events. Validated by the `prototype/topics-explore` branch (final: `v7-agenda-in-header.html`). Locked: agenda separate from content; header area, expanded by default, collapsible; items 2-state (open/ticked); add/tick/edit/remove (reorder later). Five slices: **43-A** add an item (proves the pipe + locks the event model), **43-B** tick/untick + coverage, **43-C** edit text + remove, **43-D** collapsible header strip + polish, **43-E** retire the now-redundant heading-✓.
-
-**Goal:** add a short list of topics to a note, tick them off as they're discussed, without touching the free-form note body or taking side space.
+Each note has a first-class **agenda** — a checklist of topics the owner adds before/during a meeting and ticks off as covered. It lives in the note **header** (expanded by default, collapsible to one "X / Y" line), costs **no side space**, and is stored **separately** from the free-form markdown body — the clean break from "a topic = a heading" (the conflation behind the old heading-✓, BUG-37). Implemented as `AgendaItem*` events on the Note stream composed onto `NoteDetailView` (no dedicated store/table; deploy-time neutral). All 5 slices live: **43-A** add, **43-B** tick/untick + coverage, **43-C** edit/remove, **43-D** collapsible strip + Stylist, **43-E** retired the legacy heading-✓. Detail: [docs/phases/phase-43.md](phases/phase-43.md).
 
 Slices and acceptance criteria: [docs/phases/phase-43.md](phases/phase-43.md)
 

@@ -114,9 +114,11 @@ Then  the floating ✓ on headings is removed (markHeadingDiscussed + the floati
 And   existing notes whose headings contain ~~strikethrough~~ keep that text as ordinary markdown (no migration)
 ```
 Acceptance:
-- [ ] Remove the heading-✓ control + `web/src/lib/headingDiscussed.ts` + its unit tests + the `DiscussedTickJourney` E2E.
-- [ ] Confirm no regression to the free-form editor (headings/bold/lists still work).
-- [ ] Learnings note: the heading-as-topic experiment (Phase 7-B → BUG-37) is superseded by the separate agenda.
+- [x] Removed the heading-✓ control (floating ✓ + `buttonY`/`updateButton`/`containerRef` wiring + `.discussedButton` CSS) + `web/src/lib/headingDiscussed.ts` + its unit tests + the `DiscussedTickJourney` E2E. ShortcutsPanel ✓ row removed; headings relabelled plain.
+- [x] No regression to the free-form editor (headings/bold/lists come from StarterKit, untouched). Existing `~~strikethrough~~` headings stay as ordinary markdown (no migration).
+- [x] Learnings: [phase-43e-retire-heading-tick](../learnings/phase-43e-retire-heading-tick.md) — heading-as-topic (Phase 7-B → BUG-37/37b) superseded by the separate agenda.
+
+_(Done — PR #376, deploy run 28480430234, live. **Phase 43 complete.**)_
 
 ## Observability (Scout brief)
 
