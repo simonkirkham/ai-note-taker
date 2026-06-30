@@ -23,6 +23,9 @@ public sealed class CalendarScope(ICurrentUser currentUser, ICurrentWorkspace cu
 
     // Override the scope for the rest of this request (the MCP tools call this with the token `sub`
     // and the workspaceId argument). Scoped lifetime, so the override never leaks across requests.
+    // Assumes one tool call per DI scope: a Set followed by its own resolve. The CalendarClientFactory
+    // guards this fail-closed (it throws if a resolve's workspaceId != this scope's), so a hypothetical
+    // concurrent second Set within one scope errors rather than serving cross-workspace data.
     public void Set(string userId, string workspaceId)
     {
         _userId = userId;

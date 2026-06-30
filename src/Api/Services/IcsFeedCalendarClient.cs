@@ -14,7 +14,7 @@ namespace Api.Services;
 //
 // Graceful degradation mirrors the other clients: ANY fetch/parse/HTTP error returns null
 // (→ calendar_unavailable), never throws — the GET meetings handler maps null but has NO catch
-// (the 34-D1 lesson). Scoped (reads ICurrentUser/ICurrentWorkspace).
+// (the 34-D1 lesson). Scoped (reads ICalendarScope — 42-A).
 //
 // v1 fetches the feed per request with the typed HttpClient's 10s timeout and no caching. A busy
 // day view re-downloads the feed each navigation; per-request caching (keyed by URL+date with a

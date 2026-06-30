@@ -65,7 +65,7 @@ public sealed class NoteMcpTools(
         [Description("The workspace id to list notes from (use list_workspaces to resolve a name).")] string workspaceId,
         CancellationToken ct)
     {
-        var userId = await AuthorizeAsync(workspaceId, ct).ConfigureAwait(false);
+        var userId = await AuthorizeAsync("list_notes", workspaceId, ct).ConfigureAwait(false);
         var all = await cards.QueryAllAsync(ct).ConfigureAwait(false);
         var notes = all
             .Where(c => !c.Deleted && c.UserId == userId && WorkspaceScopeExtensions.Matches(workspaceId, c.WorkspaceId))
@@ -87,7 +87,7 @@ public sealed class NoteMcpTools(
         [Description("The note id (a GUID) to fetch.")] string noteId,
         CancellationToken ct)
     {
-        var userId = await AuthorizeAsync(workspaceId, ct).ConfigureAwait(false);
+        var userId = await AuthorizeAsync("get_note", workspaceId, ct).ConfigureAwait(false);
         if (!Guid.TryParse(noteId, out var guid))
             throw new McpException("Note not found.");
         var id = new NoteId(guid);
@@ -125,7 +125,7 @@ public sealed class NoteMcpTools(
         [Description("The search query.")] string query,
         CancellationToken ct)
     {
-        var userId = await AuthorizeAsync(workspaceId, ct).ConfigureAwait(false);
+        var userId = await AuthorizeAsync("search_notes", workspaceId, ct).ConfigureAwait(false);
         if (string.IsNullOrWhiteSpace(query))
             return JsonSerializer.Serialize(new { results = Array.Empty<object>() });
 
@@ -150,7 +150,7 @@ public sealed class NoteMcpTools(
         [Description("The workspace id to list open action items from.")] string workspaceId,
         CancellationToken ct)
     {
-        var userId = await AuthorizeAsync(workspaceId, ct).ConfigureAwait(false);
+        var userId = await AuthorizeAsync("get_action_items", workspaceId, ct).ConfigureAwait(false);
         var view = await todos.QueryAllAsync(ct).ConfigureAwait(false);
         var items = view.Items
             .Where(i => i.UserId == userId && WorkspaceScopeExtensions.Matches(workspaceId, i.WorkspaceId))
@@ -182,7 +182,7 @@ public sealed class NoteMcpTools(
         CancellationToken ct,
         [Description("Optional IANA timezone for the day boundary (e.g. Europe/London). Defaults to UTC.")] string? timezone = null)
     {
-        var userId = await AuthorizeAsync(workspaceId, ct).ConfigureAwait(false);
+        var userId = await AuthorizeAsync("list_meetings", workspaceId, ct).ConfigureAwait(false);
         if (!DateOnly.TryParseExact(date, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var day))
             throw new McpException("Invalid date — expected yyyy-MM-dd.");
         var tz = string.IsNullOrWhiteSpace(timezone) ? "Etc/UTC" : timezone;
@@ -413,11 +413,18 @@ public sealed class NoteMcpTools(
     // to own the requested workspace: the shared default workspace is always allowed; any other
     // workspace requires an IWorkspaceList membership row for (userId=sub, workspaceId). Failure throws
     // an McpException — the SDK returns a tool error result (isError), never data and never a 500.
-    private async Task<string> AuthorizeAsync(string workspaceId, CancellationToken ct)
+    // The rejection is logged for audit (a cross-workspace read leaks sensitive data — meeting titles,
+    // note content); mirror the write tools' mcp_write_rejected. Log the sub + attempted workspace only,
+    // never any content.
+    private async Task<string> AuthorizeAsync(string tool, string workspaceId, CancellationToken ct)
     {
         var userId = AuthenticatedUserId();
         if (!await UserOwnsWorkspaceAsync(userId, workspaceId, ct).ConfigureAwait(false))
+        {
+            logger.LogWarning("mcp_read_rejected tool={Tool} sub={Sub} workspaceId={WorkspaceId} reason=unauthorized",
+                tool, userId, workspaceId);
             throw new McpException("Workspace not found or access denied.");
+        }
         return userId;
     }
 
