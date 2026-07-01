@@ -9,6 +9,7 @@ using Api.Search;
 using Api.Services;
 using Api.Utilities;
 using Domain.ActionItems;
+using Domain.Folders;
 using Domain.Notes;
 using Domain.Workspaces;
 using EventStore.Projections;
@@ -31,9 +32,11 @@ public sealed class NoteMcpTools(
     INoteActionsStore actions,
     INoteSearchViewStore searchView,
     ITodoListStore todos,
+    IFolderTreeStore folderTree,
     IWorkspaceListStore workspaces,
     INoteCommandHandler noteCommands,
     IActionItemCommandHandler actionCommands,
+    IFolderCommandHandler folderCommands,
     INoteAuthorizer noteAuthorizer,
     IActionItemAuthorizer actionAuthorizer,
     ICalendarClientFactory calendarFactory,
@@ -337,6 +340,59 @@ public sealed class NoteMcpTools(
         logger.LogInformation("mcp_write tool=create_note sub={Sub} workspaceId={WorkspaceId} noteId={NoteId} latencyMs={LatencyMs}",
             userId, workspaceId, noteId.Value, stopwatch.Elapsed.TotalMilliseconds);
         return JsonSerializer.Serialize(new { noteId = noteId.Value.ToString(), version });
+    }
+
+    [McpServerTool(Name = "list_folders", ReadOnly = true)]
+    [Description("List the folders in a workspace the caller owns — each folder's id, name, and parentId (null for a top-level folder). Use before filing a note or creating a subfolder.")]
+    public async Task<string> ListFolders(
+        [Description("The workspace id whose folders to list (use list_workspaces to resolve a name).")] string workspaceId,
+        CancellationToken ct)
+    {
+        var userId = await AuthorizeAsync("list_folders", workspaceId, ct).ConfigureAwait(false);
+        var all = await folderTree.GetAllAsync(ct).ConfigureAwait(false);
+        var folders = all
+            .Where(f => f.UserId == userId && WorkspaceScopeExtensions.Matches(workspaceId, f.WorkspaceId))
+            .Select(f => new { id = f.FolderId.Value.ToString(), name = f.Name, parentId = f.ParentFolderId?.Value.ToString() })
+            .ToList();
+        return JsonSerializer.Serialize(new { folders });
+    }
+
+    [McpServerTool(Name = "create_folder")]
+    [Description("Create a folder in a workspace the caller owns, optionally nested under a parent folder. Returns the new folder id and stream version.")]
+    public async Task<string> CreateFolder(
+        [Description("The workspace id to create the folder in (use list_workspaces to resolve a name).")] string workspaceId,
+        [Description("The folder name.")] string name,
+        CancellationToken ct,
+        // CancellationToken precedes the optional `parentId` so it can carry a C# default (the MCP
+        // binder treats a defaulted parameter as optional).
+        [Description("Optional parent folder id to nest under (use list_folders to resolve). Omit for a top-level folder.")] string? parentId = null)
+    {
+        var userId = await AuthorizeWriteAsync("create_folder", workspaceId, ct).ConfigureAwait(false);
+        if (string.IsNullOrWhiteSpace(name))
+            throw new McpException("Provide a folder name.");
+        FolderId? parentFolderId = null;
+        if (!string.IsNullOrWhiteSpace(parentId))
+        {
+            if (!Guid.TryParse(parentId, out var parentGuid))
+                throw new McpException("Invalid parent folder id.");
+            parentFolderId = new FolderId(parentGuid);
+        }
+
+        var folderId = new FolderId(Guid.NewGuid());
+        long version;
+        try
+        {
+            version = await folderCommands.HandleAsync(
+                new Domain.Folders.CreateFolder(folderId, name.Trim(), parentFolderId, DateTimeOffset.UtcNow),
+                userId, workspaceId, ct).ConfigureAwait(false);
+        }
+        catch (InvalidOperationException ex)
+        {
+            throw new McpException(ex.Message);
+        }
+        logger.LogInformation("mcp_write tool=create_folder sub={Sub} workspaceId={WorkspaceId} folderId={FolderId}",
+            userId, workspaceId, folderId.Value);
+        return JsonSerializer.Serialize(new { folderId = folderId.Value.ToString(), version });
     }
 
     // 41-B: action-item writes. add_action_item is NOTE-scoped (it attaches to a note), so it authorizes
