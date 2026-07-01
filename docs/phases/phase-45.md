@@ -1,4 +1,4 @@
-# Phase 45 — Data backup & durability hardening _(In Progress — 45-A done 2026-07-01)_
+# Phase 45 — Data backup & durability hardening _(In Progress — 45-B done 2026-07-01)_
 
 **Goal:** The owner's data survives an accidental delete or bad write, not just a stack teardown — every irreplaceable store has point-in-time recovery, versioning, or a scheduled backup behind it.
 
@@ -7,7 +7,7 @@
 | Slice | What the user gets | Status | Depends on |
 |-------|--------------------|--------|------------|
 | 45-A  | A mistaken deletion or corrupting write to their notes is recoverable — the note history can be restored to any point in the last 35 days | Done | — |
-| 45-B  | An image they overwrote or deleted in a note can be recovered | Not Started | — |
+| 45-B  | An image they overwrote or deleted in a note can be recovered | Done | — |
 | 45-C  | A stray table drop can't wipe their calendar/sign-in connections — the core token tables are protected from deletion | Not Started | — |
 | 45-D  | Faster recovery after an incident — read views restore in seconds instead of a full history replay | Not Started | 45-A |
 | 45-E  | A documented, tested way back after a disaster — scheduled off-table backups plus a written restore runbook with recovery targets | Not Started | 45-A, 45-C |
@@ -39,7 +39,7 @@ Scenario: Teardown protection is unchanged
   Then  it still retains its data on stack deletion
 ```
 
-### Slice 45-B — Versioning for uploaded note images
+### Slice 45-B — Versioning for uploaded note images _(Done — 2026-07-01, PR #387, deploy #691)_
 
 - **User value:** An image a user uploads into a note is the only copy. The bucket keeps just the latest object, so an accidental overwrite or a cleanup-bug delete is currently unrecoverable — permanent loss of the user's own content. Versioning keeps prior copies so any object can be rolled back.
 - **How it works:**
@@ -134,14 +134,14 @@ Context: this is pure infrastructure — no aggregates, events, projections, or 
 - **Deploy-time:** neutral (one-off table update; PITR enabled in-place, no replacement).
 - **Scribe (infra live-check):** ✅ verified live in prod 2026-07-01 — `describe-continuous-backups` → `PointInTimeRecoveryStatus: ENABLED`, `RecoveryPeriodInDays: 35`.
 
-### 45-B
-- **Change:** `NoteImagesBucket` — `Versioned = true`; add a `LifecycleRule` with `NoncurrentVersionExpiration = Duration.Days(<N>)` (choose a bounded window, e.g. 30–90 days) alongside the existing incomplete-multipart-abort rule. `RemovalPolicy.RETAIN` / `AutoDeleteObjects = false` unchanged.
-- **Tests:** assert the bucket has `VersioningConfiguration.Status = Enabled` and a non-current-version expiration lifecycle rule.
+### 45-B _(Done — 2026-07-01, PR #387, deploy #691)_
+- **Change:** `NoteImagesBucket` — `Versioned = true`; add a `LifecycleRule` with `NoncurrentVersionExpiration = Duration.Days(90)` + `ExpiredObjectDeleteMarker = true` alongside the existing incomplete-multipart-abort rule. `RemovalPolicy.RETAIN` / `AutoDeleteObjects = false` unchanged.
+- **Tests:** `NoteImagesBucket_HasVersioningEnabled` + `NoteImagesBucket_ExpiresNoncurrentVersionsAfterWindow` (both pinned to the images bucket via `DeletionPolicy: Retain` + CORS — unique vs web (no CORS) and recordings (Delete)).
 - **Acceptance criteria:**
-  - [ ] `NoteImagesBucket` synthesises with versioning enabled.
-  - [ ] Non-current versions expire after the bounded window.
+  - [x] `NoteImagesBucket` synthesises with versioning enabled.
+  - [x] Non-current versions expire after 90 days (+ lone delete markers reaped).
 - **Deploy-time:** neutral. (`RecordingsBucket` deliberately excluded — ephemeral working artefact, DESTROY + 7-day expiry.)
-- **Scribe (infra live-check):** after deploy, verify in prod: `aws s3api get-bucket-versioning --bucket <NoteImagesBucket name> --profile prod --region eu-west-2` shows `Status: Enabled`.
+- **Scribe (infra live-check):** ✅ verified live in prod 2026-07-01 — `get-bucket-versioning` → `Status: Enabled`; lifecycle rule `NoncurrentVersionExpiration.NoncurrentDays = 90` + `ExpiredObjectDeleteMarker = true`. Deploy #691 first failed on the known cold-projector RYW E2E flake (`Renamed_note_appears_in_the_cards_list`, TI-42/BUG-31 — unrelated to this S3 change); `gh run rerun --failed` went green and carried it live.
 
 ### 45-C
 - **Change:** add `DeletionProtection = true` to `notetaker-events` + `notetaker-auth-tokens`, `notetaker-calendar-tokens`, `notetaker-mcp-refresh-token`; add PITR to the three token tables.
