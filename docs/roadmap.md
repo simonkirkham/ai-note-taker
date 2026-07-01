@@ -440,6 +440,16 @@ Slices and acceptance criteria: [docs/phases/phase-44.md](phases/phase-44.md)
 
 ---
 
+## Phase 45 — Data backup & durability hardening _(In Progress — 45-A shipping)_
+
+Make the owner's data survive an accidental delete or corrupting write, not just a stack teardown. Today only `RemovalPolicy.RETAIN` guards the stores — that stops a `cdk destroy` but not a bad write, a mis-run migration, or a stray `DeleteTable`; and only the (rebuildable) calendar-link projection has point-in-time recovery. The event store is the sole source of truth (projections rebuild from it; nothing rebuilds it), so it comes first. Five slices, all pure infra (spec'd as `Infrastructure.Assertions` template checks, deploy-time neutral): **45-A** PITR on the event store (keystone, shipping now); **45-B** PITR + `DeletionProtection` on the irreplaceable token tables (auth/calendar/MCP) and the event store; **45-C** S3 versioning + non-current expiry on the note-images bucket; **45-D** PITR on the rebuildable projection tables (restore-speed only, lower priority); **45-E** a scheduled AWS Backup plan/vault for longer-retention off-table recovery plus a DR runbook stating RPO/RTO. 45-E's off-table/cross-region scope is a confirm-at-slice-start decision — match resilience cost to a single-user app.
+
+**Goal:** every irreplaceable store has point-in-time recovery, versioning, or a scheduled backup behind it — so a mistaken delete or bad write is recoverable, not permanent.
+
+Slices and acceptance criteria: [docs/phases/phase-45.md](phases/phase-45.md)
+
+---
+
 ## Standing tracks and planning docs
 
 Alongside the numbered phases above, work is tracked in five standing docs. The roadmap summarises them; each doc owns its content.
