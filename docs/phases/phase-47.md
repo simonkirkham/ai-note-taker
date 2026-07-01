@@ -7,7 +7,7 @@
 | Slice | What the user gets | Status | Depends on |
 |-------|--------------------|--------|------------|
 | 47-A | Claude lists a workspace's folders and creates new ones | Done _(#385, deploy #689)_ | — |
-| 47-B | Claude files a note into a folder (and moves it between folders) | Not Started | 47-A |
+| 47-B | Claude files a note into a folder (and moves it between folders) | Done _(#388, deploy #692)_ | 47-A |
 | 47-C | Claude renames and deletes folders | Not Started | 47-A |
 | 47-D | Claude reparents a folder to reorganise the tree | Not Started | 47-C |
 
