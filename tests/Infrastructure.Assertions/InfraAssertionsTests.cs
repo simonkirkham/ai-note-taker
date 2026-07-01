@@ -1542,8 +1542,8 @@ public class InfraAssertionsTests
     }
 
     // ── Note images bucket (Phase 25-A) ──────────────────────────────
-    // The images bucket is the only bucket with a CorsConfiguration, so matching on
-    // its presence uniquely identifies it (the web bucket has none).
+    // Identify the images bucket by DeletionPolicy=Retain + a CorsConfiguration:
+    // web is Retain but has no CORS; recordings has CORS (since 33-A) but DeletionPolicy=Delete.
 
     [Fact]
     public void NoteImagesBucket_HasRetainAndBlocksPublicAccess()
@@ -1577,6 +1577,55 @@ public class InfraAssertionsTests
                     Match.ObjectLike(new Dictionary<string, object>
                     {
                         ["AllowedMethods"] = Match.ArrayWith(new object[] { "PUT" })
+                    })
+                })
+            })
+        }));
+    }
+
+    // 45-B: a user-uploaded image is the sole copy — versioning makes an accidental
+    // overwrite/delete recoverable, with a non-current-version expiry bounding cost.
+    // DeletionPolicy=Retain + a CORS rule uniquely identify the images bucket
+    // (web is Retain but has no CORS; recordings has CORS but DeletionPolicy=Delete).
+
+    [Fact]
+    public void NoteImagesBucket_HasVersioningEnabled()
+    {
+        _template.HasResource("AWS::S3::Bucket", Match.ObjectLike(new Dictionary<string, object>
+        {
+            ["DeletionPolicy"] = "Retain",
+            ["Properties"] = Match.ObjectLike(new Dictionary<string, object>
+            {
+                ["CorsConfiguration"] = Match.AnyValue(),
+                ["VersioningConfiguration"] = Match.ObjectLike(new Dictionary<string, object>
+                {
+                    ["Status"] = "Enabled"
+                })
+            })
+        }));
+    }
+
+    [Fact]
+    public void NoteImagesBucket_ExpiresNoncurrentVersionsAfterWindow()
+    {
+        _template.HasResource("AWS::S3::Bucket", Match.ObjectLike(new Dictionary<string, object>
+        {
+            ["DeletionPolicy"] = "Retain",
+            ["Properties"] = Match.ObjectLike(new Dictionary<string, object>
+            {
+                ["CorsConfiguration"] = Match.AnyValue(),
+                ["LifecycleConfiguration"] = Match.ObjectLike(new Dictionary<string, object>
+                {
+                    ["Rules"] = Match.ArrayWith(new object[]
+                    {
+                        Match.ObjectLike(new Dictionary<string, object>
+                        {
+                            ["Status"] = "Enabled",
+                            ["NoncurrentVersionExpiration"] = Match.ObjectLike(new Dictionary<string, object>
+                            {
+                                ["NoncurrentDays"] = 90
+                            })
+                        })
                     })
                 })
             })

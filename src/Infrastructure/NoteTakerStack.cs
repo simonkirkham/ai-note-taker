@@ -272,12 +272,17 @@ public sealed class NoteTakerStack : Stack
         // stack teardown. Created before the Lambda so its name goes in the function's
         // constructor Environment dict (a token there is part of the hashed config,
         // exactly like the table names) rather than a post-construction AddEnvironment.
+        // 45-B: a user-uploaded image is the sole copy — unversioned, an accidental
+        // overwrite or delete is permanent. Versioning keeps prior copies so any object
+        // can be rolled back; a non-current-version expiry bounds the storage cost at
+        // 90 days (the recovery window). Current objects are never expired.
         var imagesBucket = new Bucket(this, "NoteImagesBucket", new BucketProps
         {
             RemovalPolicy = RemovalPolicy.RETAIN,
             BlockPublicAccess = BlockPublicAccess.BLOCK_ALL,
             AutoDeleteObjects = false,
             Encryption = BucketEncryption.S3_MANAGED,
+            Versioned = true,
             Cors = new[]
             {
                 new CorsRule
@@ -290,7 +295,12 @@ public sealed class NoteTakerStack : Stack
             },
             LifecycleRules = new[]
             {
-                new LifecycleRule { AbortIncompleteMultipartUploadAfter = Duration.Days(1) }
+                new LifecycleRule { AbortIncompleteMultipartUploadAfter = Duration.Days(1) },
+                new LifecycleRule
+                {
+                    NoncurrentVersionExpiration = Duration.Days(90),
+                    ExpiredObjectDeleteMarker = true
+                }
             }
         });
 
