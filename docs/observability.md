@@ -122,8 +122,10 @@ Powertools emits **snake_case** keys — use these exact names in Logs Insights 
 | Field | Set by |
 |-------|--------|
 | `level`, `message`, `timestamp`, `service`, `xray_trace_id`, `correlation_id`, `name` | every line (12-A; `xray_trace_id` from 12-C; `correlation_id` = the `x-correlation-id` header, BUG-8) |
+| `user_agent`, `source_ip` | every line — caller fingerprint (obs-review 2026-07-01). `source_ip` = `Connection.RemoteIpAddress` (the AWS-computed peer), **not** `X-Forwarded-For` (spoofable, phase-35a) |
+| `sub` | every line of the **authenticated** portion of a request (post-auth) — the caller's subject claim (= a command's `UserId`); empty for anonymous/pre-auth lines (obs-review 2026-07-01) |
 | `command_type`, `aggregate` | "Command received …" (12-B) |
 | `stream_id`, `version`, `count` | "Events appended …" (12-B) |
 | `exception_type` | "Command failed …" (Warning, 12-B) |
 
-The bearer token / `Authorization` header is never logged (12-A).
+The bearer token / `Authorization` header is never logged (12-A). To attribute an unknown/automated client (e.g. the phantom-command bursts the 2026-06-30 sweep found), group the offending lines by `user_agent` + `source_ip` + `sub`.
