@@ -1583,6 +1583,55 @@ public class InfraAssertionsTests
         }));
     }
 
+    // 45-B: a user-uploaded image is the sole copy — versioning makes an accidental
+    // overwrite/delete recoverable, with a non-current-version expiry bounding cost.
+    // DeletionPolicy=Retain + a CORS rule uniquely identify the images bucket
+    // (web is Retain but has no CORS; recordings has CORS but DeletionPolicy=Delete).
+
+    [Fact]
+    public void NoteImagesBucket_HasVersioningEnabled()
+    {
+        _template.HasResource("AWS::S3::Bucket", Match.ObjectLike(new Dictionary<string, object>
+        {
+            ["DeletionPolicy"] = "Retain",
+            ["Properties"] = Match.ObjectLike(new Dictionary<string, object>
+            {
+                ["CorsConfiguration"] = Match.AnyValue(),
+                ["VersioningConfiguration"] = Match.ObjectLike(new Dictionary<string, object>
+                {
+                    ["Status"] = "Enabled"
+                })
+            })
+        }));
+    }
+
+    [Fact]
+    public void NoteImagesBucket_ExpiresNoncurrentVersionsAfterWindow()
+    {
+        _template.HasResource("AWS::S3::Bucket", Match.ObjectLike(new Dictionary<string, object>
+        {
+            ["DeletionPolicy"] = "Retain",
+            ["Properties"] = Match.ObjectLike(new Dictionary<string, object>
+            {
+                ["CorsConfiguration"] = Match.AnyValue(),
+                ["LifecycleConfiguration"] = Match.ObjectLike(new Dictionary<string, object>
+                {
+                    ["Rules"] = Match.ArrayWith(new object[]
+                    {
+                        Match.ObjectLike(new Dictionary<string, object>
+                        {
+                            ["Status"] = "Enabled",
+                            ["NoncurrentVersionExpiration"] = Match.ObjectLike(new Dictionary<string, object>
+                            {
+                                ["NoncurrentDays"] = 90
+                            })
+                        })
+                    })
+                })
+            })
+        }));
+    }
+
     // ── Web bucket asset GC (Phase 26-A) ─────────────────────────────
     // Zero-downtime deploys stop deleting superseded hashed assets at deploy
     // time (no more `s3 sync --delete`); instead a lifecycle rule expires them
