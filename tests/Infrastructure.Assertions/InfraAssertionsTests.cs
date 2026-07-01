@@ -1542,8 +1542,8 @@ public class InfraAssertionsTests
     }
 
     // ── Note images bucket (Phase 25-A) ──────────────────────────────
-    // The images bucket is the only bucket with a CorsConfiguration, so matching on
-    // its presence uniquely identifies it (the web bucket has none).
+    // Identify the images bucket by DeletionPolicy=Retain + a CorsConfiguration:
+    // web is Retain but has no CORS; recordings has CORS (since 33-A) but DeletionPolicy=Delete.
 
     [Fact]
     public void NoteImagesBucket_HasRetainAndBlocksPublicAccess()

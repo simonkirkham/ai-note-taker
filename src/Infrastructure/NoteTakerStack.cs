@@ -296,7 +296,11 @@ public sealed class NoteTakerStack : Stack
             LifecycleRules = new[]
             {
                 new LifecycleRule { AbortIncompleteMultipartUploadAfter = Duration.Days(1) },
-                new LifecycleRule { NoncurrentVersionExpiration = Duration.Days(90) }
+                new LifecycleRule
+                {
+                    NoncurrentVersionExpiration = Duration.Days(90),
+                    ExpiredObjectDeleteMarker = true
+                }
             }
         });
 
