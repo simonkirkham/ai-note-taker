@@ -16,4 +16,5 @@ public interface IFolderCommandHandler
     Task<long> HandleAsync(CreateFolder cmd, string userId, string? workspaceId, CancellationToken ct = default);
     Task<long> HandleAsync(RenameFolder cmd, string userId, string? workspaceId, CancellationToken ct = default);
     Task<long> HandleAsync(DeleteFolder cmd, string userId, string? workspaceId, CancellationToken ct = default);
+    Task<long> HandleAsync(MoveFolder cmd, string userId, string? workspaceId, CancellationToken ct = default);
 }

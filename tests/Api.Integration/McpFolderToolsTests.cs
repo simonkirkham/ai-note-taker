@@ -261,6 +261,86 @@ public sealed class McpFolderToolsTests(ApiFactory factory) : IClassFixture<ApiF
         Assert.Contains(folders, f => f.GetProperty("id").GetString() == folderId);
     }
 
+    // ── 47-D: move_folder (reparent) ──────────────────────────────────────
+
+    [Fact]
+    public async Task ToolsList_IncludesMoveFolder()
+    {
+        var client = _factory.CreateUnauthenticatedClient();
+        var names = (await CallAsync(client, "tools/list", new { }, McpTestTokens.Valid()))
+            .GetProperty("tools").EnumerateArray().Select(t => t.GetProperty("name").GetString()).ToList();
+        Assert.Contains("move_folder", names);
+    }
+
+    [Fact]
+    public async Task MoveFolder_ReparentsUnderNewParent()
+    {
+        var client = _factory.CreateUnauthenticatedClient();
+        var acme = await CreateFolderAsync(client, WorkspaceId.DefaultValue, "Acme", Owner);
+        var keyClients = await CreateFolderAsync(client, WorkspaceId.DefaultValue, "Key Clients", Owner);
+
+        var moved = await CallToolAsync(client, "move_folder",
+            new { workspaceId = WorkspaceId.DefaultValue, folderId = acme, newParentId = keyClients }, McpTestTokens.Valid(Owner));
+
+        Assert.False(IsToolError(moved), RawText(moved));
+        var folders = await ListFoldersAsync(client, WorkspaceId.DefaultValue, Owner);
+        Assert.Equal(keyClients, ParentIdOf(folders, acme));
+    }
+
+    [Fact]
+    public async Task MoveFolder_ToTopLevel()
+    {
+        var client = _factory.CreateUnauthenticatedClient();
+        var parent = await CreateFolderAsync(client, WorkspaceId.DefaultValue, "Parent", Owner);
+        var acme = ParsePayload(await CallToolAsync(client, "create_folder",
+            new { workspaceId = WorkspaceId.DefaultValue, name = "Acme", parentId = parent }, McpTestTokens.Valid(Owner)))
+            .GetProperty("folderId").GetString()!;
+
+        var moved = await CallToolAsync(client, "move_folder",
+            new { workspaceId = WorkspaceId.DefaultValue, folderId = acme }, McpTestTokens.Valid(Owner));   // newParentId omitted → top level
+
+        Assert.False(IsToolError(moved), RawText(moved));
+        var folders = await ListFoldersAsync(client, WorkspaceId.DefaultValue, Owner);
+        Assert.Null(ParentIdOf(folders, acme));
+    }
+
+    [Fact]
+    public async Task MoveFolder_Cycle_IsRejected_AndTreeUnchanged()
+    {
+        var client = _factory.CreateUnauthenticatedClient();
+        var parent = await CreateFolderAsync(client, WorkspaceId.DefaultValue, "Parent", Owner);
+        var child = ParsePayload(await CallToolAsync(client, "create_folder",
+            new { workspaceId = WorkspaceId.DefaultValue, name = "Child", parentId = parent }, McpTestTokens.Valid(Owner)))
+            .GetProperty("folderId").GetString()!;
+
+        var result = await CallToolAsync(client, "move_folder",
+            new { workspaceId = WorkspaceId.DefaultValue, folderId = parent, newParentId = child }, McpTestTokens.Valid(Owner));
+
+        Assert.True(IsToolError(result));
+        var folders = await ListFoldersAsync(client, WorkspaceId.DefaultValue, Owner);
+        Assert.Null(ParentIdOf(folders, parent));           // parent still top-level
+        Assert.Equal(parent, ParentIdOf(folders, child));   // child still under parent
+    }
+
+    [Fact]
+    public async Task MoveFolder_ForeignFolder_IsRejected()
+    {
+        var client = _factory.CreateUnauthenticatedClient();
+        await CreateFolderAsync(client, WorkspaceId.DefaultValue, "Mine", Owner);   // caller owns a folder (BUG-41 shape)
+        var foreign = await CreateFolderAsync(client, WorkspaceId.DefaultValue, "Owned", OtherUser);
+
+        var result = await CallToolAsync(client, "move_folder",
+            new { workspaceId = WorkspaceId.DefaultValue, folderId = foreign }, McpTestTokens.Valid(Owner));
+
+        Assert.True(IsToolError(result));
+    }
+
+    private static string? ParentIdOf(List<JsonElement> folders, string id)
+    {
+        var p = folders.Single(f => f.GetProperty("id").GetString() == id).GetProperty("parentId");
+        return p.ValueKind == JsonValueKind.Null ? null : p.GetString();
+    }
+
     // ── Helpers ──────────────────────────────────────────────────────────
 
     private async Task<string> CreateNoteAsync(HttpClient client, string user)

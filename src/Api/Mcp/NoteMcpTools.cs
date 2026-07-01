@@ -464,6 +464,32 @@ public sealed class NoteMcpTools(
         return JsonSerializer.Serialize(new { version });
     }
 
+    [McpServerTool(Name = "move_folder")]
+    [Description("Move a folder (with its contents) under a different parent folder, or to the top level. Rejects a move that would create a cycle (a folder into itself or one of its descendants). Returns the folder's new stream version.")]
+    public async Task<string> MoveFolder(
+        [Description("The workspace id the folder is in (use list_workspaces to resolve a name).")] string workspaceId,
+        [Description("The id of the folder to move (use list_folders to resolve).")] string folderId,
+        CancellationToken ct,
+        [Description("Optional new parent folder id (use list_folders to resolve). Omit or pass null to move the folder to the top level.")] string? newParentId = null)
+    {
+        var userId = await AuthorizeWriteAsync("move_folder", workspaceId, ct).ConfigureAwait(false);
+        var folder = await AuthorizeFolderAsync("move_folder", folderId, userId, ct).ConfigureAwait(false);
+        FolderId? newParent = null;
+        if (!string.IsNullOrWhiteSpace(newParentId))
+        {
+            if (!Guid.TryParse(newParentId, out var parentGuid))
+                throw new McpException("Invalid parent folder id.");
+            newParent = new FolderId(parentGuid);
+        }
+        // A cycle (moving a folder into itself/a descendant) surfaces as CycleDetectedException, which is
+        // an InvalidOperationException → RunFolderWriteAsync maps it to its message.
+        var version = await RunFolderWriteAsync(
+            () => folderCommands.HandleAsync(new Domain.Folders.MoveFolder(folder, newParent), userId, workspaceId, ct)).ConfigureAwait(false);
+        logger.LogInformation("mcp_write tool=move_folder sub={Sub} workspaceId={WorkspaceId} folderId={FolderId} newParentId={NewParentId}",
+            userId, workspaceId, folder.Value, newParent?.Value);
+        return JsonSerializer.Serialize(new { version });
+    }
+
     // Object-level folder authorization: parse + bind the mutation to the folder's own owner from the
     // event stream (BUG-41 / BUG-30). Rejects an unparseable, missing, deleted, or foreign folder.
     private async Task<FolderId> AuthorizeFolderAsync(string tool, string folderId, string userId, CancellationToken ct)
