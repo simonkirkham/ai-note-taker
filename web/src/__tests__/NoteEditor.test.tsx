@@ -158,3 +158,31 @@ describe('NoteEditor resolve-before-parse (BUG-24)', () => {
     expect(resolveImages).not.toHaveBeenCalled()
   })
 })
+
+// 46-A: a GFM pipe table in note markdown must render as a real grid in the actual
+// editor, not collapse to a run-on paragraph. The round-trip test proves the
+// extension config; this proves NoteEditor is wired to use it.
+describe('NoteEditor GFM tables (46-A)', () => {
+  function tableCells() {
+    return Array.from(document.querySelectorAll('[data-testid="note-content"] td'))
+  }
+
+  it('renders a pipe table as a real grid with separate cells', async () => {
+    renderEditor('| Fruit | Qty |\n| --- | --- |\n| Apple | 3 |')
+    await screen.findByTestId('note-content')
+    await waitFor(() =>
+      expect(document.querySelector('[data-testid="note-content"] table')).toBeTruthy(),
+    )
+    const cellText = tableCells().map((c) => c.textContent)
+    expect(cellText).toContain('Apple')
+    expect(cellText).toContain('3')
+  })
+
+  it('applies per-column alignment to the rendered cells', async () => {
+    renderEditor('| L | R |\n| :--- | ---: |\n| a | b |')
+    await screen.findByTestId('note-content')
+    await waitFor(() => expect(tableCells().length).toBe(2))
+    const right = tableCells().find((c) => c.textContent === 'b') as HTMLElement | undefined
+    expect((right?.getAttribute('style') ?? '')).toContain('text-align: right')
+  })
+})

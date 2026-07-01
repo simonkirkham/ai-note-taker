@@ -1,4 +1,5 @@
 import Link from '@tiptap/extension-link';
+import { TableCell, TableHeader, TableRow } from '@tiptap/extension-table';
 import { useEditor, EditorContent } from '@tiptap/react';
 import type { Editor } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
@@ -7,6 +8,7 @@ import { Markdown } from 'tiptap-markdown';
 import { presignUpload, resolveImages } from '../api/notes';
 import { BlankLineParagraph } from '../lib/blankLineParagraph';
 import { hasDisallowedScheme } from '../lib/linkScheme';
+import { MarkdownTable } from '../lib/markdownTable';
 import {
   dropUnresolvedImages,
   extractImageKeys,
@@ -75,6 +77,13 @@ export default function NoteEditor({ noteId, value, onChange, onBlur }: NoteEdit
       StarterKit.configure({ link: false, paragraph: false }),
       BlankLineParagraph,
       Markdown,
+      // 46-A: GFM tables. MarkdownTable overrides tiptap-markdown's default table
+      // serializer to preserve column alignment on save (resizable off — notes don't
+      // need column-drag handles). Row/header/cell are the standard schema nodes.
+      MarkdownTable.configure({ resizable: false }),
+      TableRow,
+      TableHeader,
+      TableCell,
       ImageWithResize,
       Link.configure({
         protocols: ALLOWED_LINK_PROTOCOLS,
