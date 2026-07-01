@@ -395,6 +395,41 @@ public sealed class NoteMcpTools(
         return JsonSerializer.Serialize(new { folderId = folderId.Value.ToString(), version });
     }
 
+    [McpServerTool(Name = "move_note_to_folder")]
+    [Description("File a note into a folder the caller owns (moving it there if it was in another folder). Both the note and the destination folder must belong to the caller. Returns the note's new stream version.")]
+    public async Task<string> MoveNoteToFolder(
+        [Description("The workspace id the note and folder are in (use list_workspaces to resolve a name).")] string workspaceId,
+        [Description("The id of the note to file.")] string noteId,
+        [Description("The id of the destination folder (use list_folders to resolve).")] string folderId,
+        CancellationToken ct)
+    {
+        var userId = await AuthorizeWriteAsync("move_note_to_folder", workspaceId, ct).ConfigureAwait(false);
+        if (!Guid.TryParse(noteId, out var noteGuid))
+            throw new McpException("Invalid note id.");
+        if (!Guid.TryParse(folderId, out var folderGuid))
+            throw new McpException("Invalid folder id.");
+
+        // The note is the mutated object — authorize its own owner from the event stream (BUG-30-safe),
+        // like the other note write tools.
+        var note = new NoteId(noteGuid);
+        if (!await noteAuthorizer.OwnsNoteAsync(note, userId, ct).ConfigureAwait(false))
+            throw new McpException("Note not found or access denied.");
+        // The destination folder must belong to the caller in this workspace (mirrors the HTTP
+        // file-in-folder check). Read model, matching HTTP; the event-stream folder authorizer lands in 47-C.
+        var target = new FolderId(folderGuid);
+        var folders = await folderTree.GetAllAsync(ct).ConfigureAwait(false);
+        if (!folders.Any(f => f.FolderId == target && f.UserId == userId && WorkspaceScopeExtensions.Matches(workspaceId, f.WorkspaceId)))
+            throw new McpException("Folder not found or access denied.");
+
+        // Map retriable contention → a clear retry message (and a TOCTOU delete → not-found), matching
+        // edit_note rather than leaking a generic invocation error (CLAUDE.md retriable-contention guardrail).
+        var version = await RunNoteWriteAsync(
+            () => noteCommands.HandleAsync(new Domain.Notes.MoveNoteToFolder(note, target), userId, workspaceId, ct)).ConfigureAwait(false);
+        logger.LogInformation("mcp_write tool=move_note_to_folder sub={Sub} workspaceId={WorkspaceId} noteId={NoteId} folderId={FolderId}",
+            userId, workspaceId, noteGuid, folderGuid);
+        return JsonSerializer.Serialize(new { version });
+    }
+
     // 41-B: action-item writes. add_action_item is NOTE-scoped (it attaches to a note), so it authorizes
     // note ownership (INoteAuthorizer, event-stream — BUG-30-safe). complete/reopen are ACTION-scoped:
     // they must prove ownership of the ACTION they mutate, not a caller-supplied note (authorizing an
