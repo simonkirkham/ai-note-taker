@@ -19,9 +19,21 @@ public sealed class ConsistencyGate(
 {
     private readonly Func<TimeSpan, CancellationToken, Task> _delay = delay ?? Task.Delay;
 
-    // Production defaults: 50ms poll, 2000ms cap (Postgres WAIT FOR LSN ... TIMEOUT '2s').
+    // Production defaults: 50ms poll, 8000ms cap.
+    public static readonly TimeSpan DefaultPollInterval = TimeSpan.FromMilliseconds(50);
+
+    // BUG-31: raised from 2000ms. The stream-triggered projector has no SnapStart/keep-warm, so
+    // after an idle gap its first invocation cold-starts ~7s — longer than the old 2s cap, so a
+    // fresh read gave up (Stale/Absent) before a cold projector caught up and the note looked
+    // missing/broken (11 gate timeouts/14d in prod, at morning low-traffic hours). An 8s cap lets
+    // the reader tolerate the cold start: a one-off slow-but-correct read after idle. The cap only
+    // delays a read when the projector is actually behind — a warm projector still returns
+    // immediately on the first poll. Keeping the projector warm to make cold reads fast (instead of
+    // slow) is the deferred durable alternative: TI-52.
+    public static readonly TimeSpan DefaultCap = TimeSpan.FromMilliseconds(8000);
+
     public ConsistencyGate(IProcessedPositionStore positions, ILogger<ConsistencyGate>? logger = null)
-        : this(positions, TimeSpan.FromMilliseconds(50), TimeSpan.FromMilliseconds(2000), delay: null, logger: logger) { }
+        : this(positions, DefaultPollInterval, DefaultCap, delay: null, logger: logger) { }
 
     public async Task<ConsistencyResult> WaitAsync(string? ifConsistentWith, CancellationToken ct = default)
     {
