@@ -136,6 +136,64 @@ public sealed class CorrelationIdLoggingTests(ApiFactory factory) : IClassFixtur
             return null;
         }
     }
+
+    // Obs-review 2026-06-30: the request log scope must carry the caller's identity — `sub`
+    // (authenticated subject), `user_agent`, and `source_ip` — so an automated/unknown HTTP client
+    // firing commands at the API can be identified in CloudWatch. The bearer token must NEVER be logged.
+    [Fact]
+    public async Task EmittedLogLine_CarriesCallerIdentity_AndNeverTheBearerToken()
+    {
+        const string userAgent = "ObsReviewProbe/9.9 (identity-test)";
+        const string bearerSentinel = "SENSITIVE-BEARER-TOKEN-DO-NOT-LOG-abc123";
+        var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Add("X-Test-User-Id", FakeCurrentUser.TestUserId);
+        client.DefaultRequestHeaders.Add("User-Agent", userAgent);
+        client.DefaultRequestHeaders.Add("Authorization", $"Bearer {bearerSentinel}");
+
+        var capture = new StringWriter();
+        var original = Console.Out;
+        Console.SetOut(TextWriter.Synchronized(capture));
+        HttpResponseMessage resp;
+        try
+        {
+            resp = await client.PostAsync("/folders",
+                new StringContent("{\"name\":\"Identity folder\"}", System.Text.Encoding.UTF8, "application/json"));
+        }
+        finally
+        {
+            Console.SetOut(original);
+        }
+
+        resp.EnsureSuccessStatusCode();
+        var output = capture.ToString();
+
+        // The authenticated request's log lines carry sub + user_agent, and the source_ip key is
+        // always present (its value is empty under TestServer, which has no real peer connection).
+        var identityLine = output
+            .Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Select(TryParseLine)
+            .FirstOrDefault(e => e is { } line
+                && line.TryGetProperty("sub", out var sub)
+                && sub.GetString() == FakeCurrentUser.TestUserId);
+        Assert.True(identityLine is not null, "no log line carried the authenticated sub");
+        Assert.Equal(userAgent, identityLine!.Value.GetProperty("user_agent").GetString());
+        Assert.True(identityLine.Value.TryGetProperty("source_ip", out _), "source_ip field missing");
+
+        // The bearer token must never appear in ANY log line.
+        Assert.DoesNotContain(bearerSentinel, output);
+    }
+
+    private static JsonElement? TryParseLine(string line)
+    {
+        try
+        {
+            return JsonDocument.Parse(line).RootElement.Clone();
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
+    }
 }
 
 [CollectionDefinition(Name, DisableParallelization = true)]

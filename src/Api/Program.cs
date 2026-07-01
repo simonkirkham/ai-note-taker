@@ -69,6 +69,9 @@ app.UseAuthentication();
 app.UseMiddleware<Api.Auth.AllowlistMiddleware>();
 app.UseAuthorization();
 
+// After auth so ctx.User is populated: appends `sub` to the request log scope (caller identity).
+LoggingConfig.UseCallerIdentity(app);
+
 LoggingConfig.AddLogging(app);
 
 NoteEndpoints.MapNoteEndpoints(app);
