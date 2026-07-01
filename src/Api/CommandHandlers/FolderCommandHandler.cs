@@ -29,12 +29,17 @@ public sealed class FolderCommandHandler(
     ILogger<FolderCommandHandler> logger) : IFolderCommandHandler
 {
     public Task<long> HandleAsync(CreateFolder cmd, CancellationToken ct = default) =>
+        HandleAsync(cmd, currentUser.UserId, currentWorkspace.WorkspaceId, ct);
+
+    // Identity-explicit overload (47-A): stamp the folder events with the caller-supplied owner +
+    // workspace (the MCP token `sub`) instead of the scoped ICurrentUser/ICurrentWorkspace.
+    public Task<long> HandleAsync(CreateFolder cmd, string userId, string? workspaceId, CancellationToken ct = default) =>
         CommandInstrumentation.RunAsync(metrics, logger, nameof(CreateFolder), "Folder", async () =>
         {
             var streamId = cmd.FolderId.ToStreamId();
             var history = await store.ReadAsync(streamId, ct).ConfigureAwait(false);
             var newEvents = RebuildFolder(history).Handle(cmd);
-            return await PersistFolderAsync(streamId, history, newEvents, ct).ConfigureAwait(false);
+            return await PersistFolderAsync(streamId, history, newEvents, userId, workspaceId, ct).ConfigureAwait(false);
         });
 
     public Task<long> HandleAsync(RenameFolder cmd, CancellationToken ct = default) =>
@@ -46,7 +51,7 @@ public sealed class FolderCommandHandler(
             var newEvents = RebuildFolder(history).Handle(cmd);
             // No-op command: nothing appended, so the write token is the current version.
             if (newEvents.Count == 0) return (long)history.Count;
-            return await PersistFolderAsync(streamId, history, newEvents, ct).ConfigureAwait(false);
+            return await PersistFolderAsync(streamId, history, newEvents, currentUser.UserId, currentWorkspace.WorkspaceId, ct).ConfigureAwait(false);
         });
 
     public Task<long> HandleAsync(DeleteFolder cmd, CancellationToken ct = default) =>
@@ -69,7 +74,7 @@ public sealed class FolderCommandHandler(
 
             // Delete the target folder — the projector removes its tree row off the appended event.
             var newEvents = RebuildFolder(history).Handle(cmd);
-            var envelopes = ToEnvelopes(streamId, newEvents);
+            var envelopes = ToEnvelopes(streamId, newEvents, currentUser.UserId, currentWorkspace.WorkspaceId);
             await store.AppendAsync(streamId, history.Count, envelopes, ct).ConfigureAwait(false);
             return (long)(history.Count + envelopes.Count);
         });
@@ -91,7 +96,7 @@ public sealed class FolderCommandHandler(
             }
 
             var newEvents = RebuildFolder(history).Handle(cmd);
-            return await PersistFolderAsync(streamId, history, newEvents, ct).ConfigureAwait(false);
+            return await PersistFolderAsync(streamId, history, newEvents, currentUser.UserId, currentWorkspace.WorkspaceId, ct).ConfigureAwait(false);
         });
 
     private async Task UnfileNotesInFolderAsync(FolderId folderId, CancellationToken ct)
@@ -108,13 +113,13 @@ public sealed class FolderCommandHandler(
         var history = await store.ReadAsync(streamId, ct).ConfigureAwait(false);
         if (history.Count == 0) return;
         var newEvents = RebuildFolder(history).Handle(new DeleteFolder(folderId));
-        var envelopes = ToEnvelopes(streamId, newEvents);
+        var envelopes = ToEnvelopes(streamId, newEvents, currentUser.UserId, currentWorkspace.WorkspaceId);
         await store.AppendAsync(streamId, history.Count, envelopes, ct).ConfigureAwait(false);
     }
 
-    private async Task<long> PersistFolderAsync(string streamId, IReadOnlyList<EventEnvelope> history, IReadOnlyList<IDomainEvent> newEvents, CancellationToken ct)
+    private async Task<long> PersistFolderAsync(string streamId, IReadOnlyList<EventEnvelope> history, IReadOnlyList<IDomainEvent> newEvents, string userId, string? workspaceId, CancellationToken ct)
     {
-        var envelopes = ToEnvelopes(streamId, newEvents);
+        var envelopes = ToEnvelopes(streamId, newEvents, userId, workspaceId);
         await store.AppendAsync(streamId, history.Count, envelopes, ct).ConfigureAwait(false);
         return history.Count + envelopes.Count;
     }
@@ -145,6 +150,6 @@ public sealed class FolderCommandHandler(
         return folder;
     }
 
-    private List<EventEnvelope> ToEnvelopes(string streamId, IReadOnlyList<IDomainEvent> events) =>
-        EventEnvelopeFactory.CreateEnvelopes(streamId, events, currentUser.UserId, currentWorkspace.WorkspaceId);
+    private static List<EventEnvelope> ToEnvelopes(string streamId, IReadOnlyList<IDomainEvent> events, string userId, string? workspaceId) =>
+        EventEnvelopeFactory.CreateEnvelopes(streamId, events, userId, workspaceId);
 }
