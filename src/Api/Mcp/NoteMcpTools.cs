@@ -480,6 +480,10 @@ public sealed class NoteMcpTools(
             if (!Guid.TryParse(newParentId, out var parentGuid))
                 throw new McpException("Invalid parent folder id.");
             newParent = new FolderId(parentGuid);
+            // Match the HTTP MoveFolder handler: the destination parent must belong to the caller —
+            // else a foreign/absent parent would orphan the folder under a phantom node.
+            if (!await folderAuthorizer.OwnsFolderAsync(newParent.Value, userId, ct).ConfigureAwait(false))
+                throw new McpException("Parent folder not found or access denied.");
         }
         // A cycle (moving a folder into itself/a descendant) surfaces as CycleDetectedException, which is
         // an InvalidOperationException → RunFolderWriteAsync maps it to its message.

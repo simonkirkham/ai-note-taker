@@ -323,6 +323,35 @@ public sealed class McpFolderToolsTests(ApiFactory factory) : IClassFixture<ApiF
     }
 
     [Fact]
+    public async Task MoveFolder_IntoItself_IsRejected_AndTreeUnchanged()
+    {
+        var client = _factory.CreateUnauthenticatedClient();
+        var folderId = await CreateFolderAsync(client, WorkspaceId.DefaultValue, "Solo", Owner);
+
+        var result = await CallToolAsync(client, "move_folder",
+            new { workspaceId = WorkspaceId.DefaultValue, folderId, newParentId = folderId }, McpTestTokens.Valid(Owner));
+
+        Assert.True(IsToolError(result));
+        var folders = await ListFoldersAsync(client, WorkspaceId.DefaultValue, Owner);
+        Assert.Null(ParentIdOf(folders, folderId));
+    }
+
+    [Fact]
+    public async Task MoveFolder_UnderForeignParent_IsRejected()
+    {
+        var client = _factory.CreateUnauthenticatedClient();
+        var mine = await CreateFolderAsync(client, WorkspaceId.DefaultValue, "Mine", Owner);
+        var foreignParent = await CreateFolderAsync(client, WorkspaceId.DefaultValue, "Theirs", OtherUser);
+
+        var result = await CallToolAsync(client, "move_folder",
+            new { workspaceId = WorkspaceId.DefaultValue, folderId = mine, newParentId = foreignParent }, McpTestTokens.Valid(Owner));
+
+        Assert.True(IsToolError(result));
+        var folders = await ListFoldersAsync(client, WorkspaceId.DefaultValue, Owner);
+        Assert.Null(ParentIdOf(folders, mine));   // not orphaned under the foreign parent
+    }
+
+    [Fact]
     public async Task MoveFolder_ForeignFolder_IsRejected()
     {
         var client = _factory.CreateUnauthenticatedClient();
