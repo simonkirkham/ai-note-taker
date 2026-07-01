@@ -24,6 +24,12 @@ public sealed class NoteTakerStack : Stack
             SortKey = new Amazon.CDK.AWS.DynamoDB.Attribute { Name = "SK", Type = AttributeType.STRING },
             BillingMode = BillingMode.PAY_PER_REQUEST,
             RemovalPolicy = RemovalPolicy.RETAIN,
+            // 45-A: the event store is the sole source of truth (projections rebuild from it,
+            // nothing rebuilds it). PITR gives a 35-day continuous restore window so an
+            // accidental delete / bad write is recoverable — RETAIN alone only guards a
+            // stack teardown. One-off stack-update cost, negligible recurring spend on a
+            // PAY_PER_REQUEST table.
+            PointInTimeRecoverySpecification = new PointInTimeRecoverySpecification { PointInTimeRecoveryEnabled = true },
             // 27-B: fan-out transport for the async Projector Lambda. NEW_IMAGE is enough
             // to re-fold a stream — the projector reads the stream id off the new image and
             // replays the event store, it does not need the OLD image. Enabling a stream is
