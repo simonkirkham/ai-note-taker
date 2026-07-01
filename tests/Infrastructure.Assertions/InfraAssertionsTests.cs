@@ -1733,6 +1733,34 @@ public class InfraAssertionsTests
     }
 
     [Fact]
+    public void EventsTable_HasPointInTimeRecovery()
+    {
+        // 45-A: the source-of-truth event store must have PITR for accidental-delete recovery.
+        _template.HasResourceProperties("AWS::DynamoDB::Table", Match.ObjectLike(new Dictionary<string, object>
+        {
+            ["TableName"] = "notetaker-events",
+            ["PointInTimeRecoverySpecification"] = Match.ObjectLike(new Dictionary<string, object>
+            {
+                ["PointInTimeRecoveryEnabled"] = true
+            })
+        }));
+    }
+
+    [Fact]
+    public void EventsTable_RetainsOnStackDeletion()
+    {
+        // PITR complements RETAIN; it does not replace it. Keep asserting both.
+        _template.HasResource("AWS::DynamoDB::Table", Match.ObjectLike(new Dictionary<string, object>
+        {
+            ["DeletionPolicy"] = "Retain",
+            ["Properties"] = Match.ObjectLike(new Dictionary<string, object>
+            {
+                ["TableName"] = "notetaker-events"
+            })
+        }));
+    }
+
+    [Fact]
     public void ProjPositionTable_ExistsWithDestroyDeletionPolicy()
     {
         // Reconstructible by replay — DESTROY (CloudFormation "Delete").
