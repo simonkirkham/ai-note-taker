@@ -70,7 +70,37 @@ describe('GFM table markdown round-trip', () => {
     expect(roundTrip(once)).toBe(once);
   });
 
+  // A table almost never stands alone in a real note. The serializer renders each
+  // cell via renderInline, which clears the pending block-close from the preceding
+  // block; if that isn't restored the table's first line glues onto the previous
+  // paragraph/heading — invalid GFM that collapses back to a run-on on reload.
+  it('keeps a blank line between a preceding paragraph and the table', () => {
+    const md = 'Intro paragraph.\n\n| A | B |\n| --- | --- |\n| 1 | 2 |';
+    expect(roundTrip(md)).toBe(md);
+  });
+
+  it('keeps a blank line between a preceding heading and the table', () => {
+    const md = '## Results\n\n| A | B |\n| --- | --- |\n| 1 | 2 |';
+    expect(roundTrip(md)).toBe(md);
+  });
+
+  it('keeps a blank line between the table and following content', () => {
+    const md = '| A | B |\n| --- | --- |\n| 1 | 2 |\n\nAfter the table.';
+    expect(roundTrip(md)).toBe(md);
+  });
+
+  it('separates two back-to-back tables', () => {
+    const md =
+      '| A | B |\n| --- | --- |\n| 1 | 2 |\n\n| C | D |\n| --- | --- |\n| 3 | 4 |';
+    expect(roundTrip(md)).toBe(md);
+  });
+
   it('does not throw on a malformed / unbalanced table', () => {
     expect(() => roundTrip('| A | B |\n| --- |\n| 1 |')).not.toThrow();
+  });
+
+  it('round-trips a table with an empty cell', () => {
+    const md = '| A | B |\n| --- | --- |\n|  | 2 |';
+    expect(roundTrip(md)).toBe(md);
   });
 });
