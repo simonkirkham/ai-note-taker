@@ -6,13 +6,43 @@ namespace Api.Integration;
 // RYW-1 consistency gate: parse the If-Consistent-With token and bounded-poll the processed-
 // position store until the stream's applied sequence reaches the requested version. The poll
 // interval, cap, and delay func are injected so these tests advance virtual time, not the wall
-// clock — no test sleeps the real 2s bound.
+// clock — no test sleeps the real 8s bound.
 public sealed class ConsistencyGateTests
 {
     private const string Stream = "todo#abc";
 
+    // Inject the SAME interval/cap the production default constructor uses (50ms / 8000ms) with a
+    // virtual-time delay, so these tests exercise real production timing without sleeping the 8s bound.
     private static ConsistencyGate Gate(IProcessedPositionStore positions, Func<TimeSpan, CancellationToken, Task> delay) =>
-        new(positions, TimeSpan.FromMilliseconds(50), TimeSpan.FromMilliseconds(2000), delay);
+        new(positions, ConsistencyGate.DefaultPollInterval, ConsistencyGate.DefaultCap, delay);
+
+    // BUG-31 guard: the production cap must stay at 8s so a fresh read tolerates the ~7s projector
+    // cold start. A drop back to 2s would re-break read-your-writes after an idle gap.
+    [Fact]
+    public void Production_defaults_are_50ms_poll_and_8s_cap()
+    {
+        Assert.Equal(TimeSpan.FromMilliseconds(50), ConsistencyGate.DefaultPollInterval);
+        Assert.Equal(TimeSpan.FromMilliseconds(8000), ConsistencyGate.DefaultCap);
+    }
+
+    // BUG-31: a projector that only catches up at ~7s (a cold start) must still return Fresh under the
+    // 8s cap — the exact case the old 2s cap failed. 7000ms / 50ms = catches up on the 140th poll.
+    [Fact]
+    public async Task Cold_projector_catching_up_at_7s_returns_Fresh_under_the_8s_cap()
+    {
+        var positions = new InMemoryProcessedPositionStore();
+        var polls = 0;
+        Func<TimeSpan, CancellationToken, Task> delay = async (_, _) =>
+        {
+            polls++;
+            if (polls == 140) await positions.SetLastSeqAsync(Stream, 3);
+        };
+
+        var result = await Gate(positions, delay).WaitAsync($"{Stream}@3");
+
+        Assert.Equal(ConsistencyOutcome.Fresh, result.Outcome);
+        Assert.Equal(140, polls);
+    }
 
     [Fact]
     public async Task Caught_up_returns_Fresh_immediately_without_delaying()
@@ -56,8 +86,8 @@ public sealed class ConsistencyGateTests
             .WaitAsync($"{Stream}@9");
 
         Assert.Equal(ConsistencyOutcome.Stale, result.Outcome);
-        // 2000ms cap / 50ms interval = 40 polls before the cap is reached.
-        Assert.Equal(40, polls);
+        // 8000ms cap / 50ms interval = 160 polls before the cap is reached.
+        Assert.Equal(160, polls);
     }
 
     [Theory]
@@ -135,7 +165,7 @@ public sealed class ConsistencyGateTests
         var value = await gate.WaitForPresenceAsync(_ => Task.FromResult<string?>(null));
 
         Assert.Null(value);
-        // 2000ms cap / 50ms interval = 40 polls before the cap is reached.
-        Assert.Equal(40, polls);
+        // 8000ms cap / 50ms interval = 160 polls before the cap is reached.
+        Assert.Equal(160, polls);
     }
 }
