@@ -443,12 +443,8 @@ public sealed class NoteMcpTools(
         if (string.IsNullOrWhiteSpace(name))
             throw new McpException("Provide a folder name.");
         var folder = await AuthorizeFolderAsync("rename_folder", folderId, userId, ct).ConfigureAwait(false);
-        long version;
-        try
-        {
-            version = await folderCommands.HandleAsync(new Domain.Folders.RenameFolder(folder, name.Trim()), userId, workspaceId, ct).ConfigureAwait(false);
-        }
-        catch (InvalidOperationException ex) { throw new McpException(ex.Message); }
+        var version = await RunFolderWriteAsync(
+            () => folderCommands.HandleAsync(new Domain.Folders.RenameFolder(folder, name.Trim()), userId, workspaceId, ct)).ConfigureAwait(false);
         logger.LogInformation("mcp_write tool=rename_folder sub={Sub} workspaceId={WorkspaceId} folderId={FolderId}", userId, workspaceId, folder.Value);
         return JsonSerializer.Serialize(new { version });
     }
@@ -462,12 +458,8 @@ public sealed class NoteMcpTools(
     {
         var userId = await AuthorizeWriteAsync("delete_folder", workspaceId, ct).ConfigureAwait(false);
         var folder = await AuthorizeFolderAsync("delete_folder", folderId, userId, ct).ConfigureAwait(false);
-        long version;
-        try
-        {
-            version = await folderCommands.HandleAsync(new Domain.Folders.DeleteFolder(folder), userId, workspaceId, ct).ConfigureAwait(false);
-        }
-        catch (InvalidOperationException ex) { throw new McpException(ex.Message); }
+        var version = await RunFolderWriteAsync(
+            () => folderCommands.HandleAsync(new Domain.Folders.DeleteFolder(folder), userId, workspaceId, ct)).ConfigureAwait(false);
         logger.LogInformation("mcp_write tool=delete_folder sub={Sub} workspaceId={WorkspaceId} folderId={FolderId}", userId, workspaceId, folder.Value);
         return JsonSerializer.Serialize(new { version });
     }
@@ -606,6 +598,18 @@ public sealed class NoteMcpTools(
         try { return await write().ConfigureAwait(false); }
         catch (Api.Exceptions.NoteNotFoundException) { throw new McpException("Note not found."); }
         catch (WriteContentionException) { throw new McpException("The note is being modified concurrently — please retry."); }
+    }
+
+    // Folder writes: map domain errors (folder missing / illegal state) to a clean message, and BOTH
+    // retriable-contention shapes to a retry signal — the folder handler appends unwrapped (raw
+    // EventStore.ConcurrencyException) and its delete cascade calls the note handler (WriteContentionException).
+    // Leaving contention as a generic invocation error is the BUG-27 anti-pattern.
+    private static async Task<long> RunFolderWriteAsync(Func<Task<long>> write)
+    {
+        try { return await write().ConfigureAwait(false); }
+        catch (InvalidOperationException ex) { throw new McpException(ex.Message); }
+        catch (WriteContentionException) { throw new McpException("The folder is being modified concurrently — please retry."); }
+        catch (EventStore.ConcurrencyException) { throw new McpException("The folder is being modified concurrently — please retry."); }
     }
 
     // The authenticated user id (the token `sub`). JwtBearer's default inbound mapping turns `sub`

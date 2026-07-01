@@ -213,6 +213,7 @@ public sealed class McpFolderToolsTests(ApiFactory factory) : IClassFixture<ApiF
     public async Task RenameFolder_ForeignFolder_IsRejected_AndNameUnchanged()
     {
         var client = _factory.CreateUnauthenticatedClient();
+        await CreateFolderAsync(client, WorkspaceId.DefaultValue, "Mine", Owner);   // caller owns a folder (exact BUG-41 shape)
         var folderId = await CreateFolderAsync(client, WorkspaceId.DefaultValue, "Owned", OtherUser);
 
         var result = await CallToolAsync(client, "rename_folder",
@@ -249,6 +250,7 @@ public sealed class McpFolderToolsTests(ApiFactory factory) : IClassFixture<ApiF
     public async Task DeleteFolder_ForeignFolder_IsRejected_AndFolderRemains()
     {
         var client = _factory.CreateUnauthenticatedClient();
+        await CreateFolderAsync(client, WorkspaceId.DefaultValue, "Mine", Owner);   // caller owns a folder (exact BUG-41 shape)
         var folderId = await CreateFolderAsync(client, WorkspaceId.DefaultValue, "Owned", OtherUser);
 
         var result = await CallToolAsync(client, "delete_folder",
