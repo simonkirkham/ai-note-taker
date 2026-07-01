@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import NoteEditor from '../components/NoteEditor'
 import { ToastProvider } from '../components/ToastProvider'
-import { render, screen, waitFor } from '../test/render'
+import { fireEvent, render, screen, waitFor } from '../test/render'
 
 const resolveImages = vi.fn()
 vi.mock('../api/notes', () => ({
@@ -184,5 +184,58 @@ describe('NoteEditor GFM tables (46-A)', () => {
     await waitFor(() => expect(tableCells().length).toBe(2))
     const right = tableCells().find((c) => c.textContent === 'b') as HTMLElement | undefined
     expect((right?.getAttribute('style') ?? '')).toContain('text-align: right')
+  })
+})
+
+// 46-B: task-list markdown must render as clickable checkboxes in the real editor,
+// and toggling a checkbox must reach the save path. The round-trip test proves the
+// serializer; this proves NoteEditor is wired and the toggle updates the doc.
+describe('NoteEditor task lists (46-B)', () => {
+  function checkboxes() {
+    return Array.from(
+      document.querySelectorAll<HTMLInputElement>(
+        '[data-testid="note-content"] input[type="checkbox"]',
+      ),
+    )
+  }
+
+  it('renders checklist items as checkboxes with no literal brackets', async () => {
+    renderEditor('- [ ] buy milk\n- [x] send invoice')
+    const content = await screen.findByTestId('note-content')
+    await waitFor(() => expect(checkboxes().length).toBe(2))
+    expect(content.textContent).not.toContain('[ ]')
+    expect(content.textContent).not.toContain('[x]')
+    expect(checkboxes()[1].checked).toBe(true)
+    expect(checkboxes()[0].checked).toBe(false)
+  })
+
+  it('toggles a checkbox and pushes the change to onChange as [x]', async () => {
+    let latest = '- [ ] buy milk'
+    function Harness() {
+      const [value, setValue] = useState('- [ ] buy milk')
+      return (
+        <NoteEditor
+          noteId="note-1"
+          value={value}
+          onChange={(md) => {
+            latest = md
+            setValue(md)
+          }}
+          onBlur={() => {}}
+        />
+      )
+    }
+    render(
+      <ToastProvider>
+        <Harness />
+      </ToastProvider>,
+    )
+    await screen.findByTestId('note-content')
+    await waitFor(() => expect(checkboxes().length).toBe(1))
+
+    fireEvent.click(checkboxes()[0])
+
+    await waitFor(() => expect(latest).toContain('[x]'))
+    expect(checkboxes()[0].checked).toBe(true)
   })
 })

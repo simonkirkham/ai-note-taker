@@ -1,5 +1,6 @@
 import Link from '@tiptap/extension-link';
 import { TableCell, TableHeader, TableRow } from '@tiptap/extension-table';
+import { TaskItem } from '@tiptap/extension-task-item';
 import { useEditor, EditorContent } from '@tiptap/react';
 import type { Editor } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
@@ -9,6 +10,7 @@ import { presignUpload, resolveImages } from '../api/notes';
 import { BlankLineParagraph } from '../lib/blankLineParagraph';
 import { hasDisallowedScheme } from '../lib/linkScheme';
 import { MarkdownTable } from '../lib/markdownTable';
+import { MarkdownTaskList } from '../lib/markdownTaskList';
 import {
   dropUnresolvedImages,
   extractImageKeys,
@@ -84,6 +86,11 @@ export default function NoteEditor({ noteId, value, onChange, onBlur }: NoteEdit
       TableRow,
       TableHeader,
       TableCell,
+      // 46-B: interactive task lists. MarkdownTaskList serialises tight (no blank line
+      // between items) to match bulletList; TaskItem renders the clickable checkbox and
+      // nests. A checkbox toggle updates the doc, so onUpdate fires and the note saves.
+      MarkdownTaskList,
+      TaskItem.configure({ nested: true }),
       ImageWithResize,
       Link.configure({
         protocols: ALLOWED_LINK_PROTOCOLS,
