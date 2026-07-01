@@ -46,7 +46,10 @@ public sealed class AppPage
                 // the missing signal that disambiguates the flake: a `stale` here means the read WAS
                 // gated but the projector is genuinely behind the cap; its absence on an empty list
                 // means the read was ungated (raced). Header read is synchronous — never the body.
-                var consistency = r.Headers.TryGetValue("x-consistency", out var c) ? c : "fresh";
+                // The server sets X-Consistency only on a STALE read (NoteHandlers), so an absent
+                // header means fresh-or-ungated — labelled "none/fresh"; the injectedToken field below
+                // disambiguates (with the re-gate the read is always gated, so absent ⟹ fresh).
+                var consistency = r.Headers.TryGetValue("x-consistency", out var c) ? c : "none/fresh";
                 cardsRequestLog.Enqueue($"{r.Status} X-Consistency={consistency} {r.Url}");
             }
             // Capture the latest note-write token so the re-gate can wait on it after a reload.
@@ -182,6 +185,10 @@ public sealed class AppPage
     // every cards read, so the server gate WAITS for the projector to fold the write; (2) the per-attempt
     // timeout is raised above the 8s server gate cap so a reload no longer aborts the gated read before
     // it can converge (2.5s < 8s was self-defeating). The reload-loop still re-gates across the deadline.
+    //
+    // PRECONDITION: single note under assertion. The re-gate injects the LATEST note-write token
+    // (`latestNoteToken`), so a journey that writes note B then asserts note A's card would gate the
+    // wrong stream and re-flake. Every caller today is create→title→(save)→assert one note; keep it so.
     public async Task AssertNoteVisibleInListAfterReloadAsync(string title, int timeoutMs = 30000)
     {
         await page.RouteAsync("**/notes/cards*", RegateCardsRead);
