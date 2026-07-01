@@ -411,7 +411,8 @@ public sealed class NoteMcpTools(
 
         // The note is the mutated object — authorize its own owner from the event stream (BUG-30-safe),
         // like the other note write tools.
-        if (!await noteAuthorizer.OwnsNoteAsync(new NoteId(noteGuid), userId, ct).ConfigureAwait(false))
+        var note = new NoteId(noteGuid);
+        if (!await noteAuthorizer.OwnsNoteAsync(note, userId, ct).ConfigureAwait(false))
             throw new McpException("Note not found or access denied.");
         // The destination folder must belong to the caller in this workspace (mirrors the HTTP
         // file-in-folder check). Read model, matching HTTP; the event-stream folder authorizer lands in 47-C.
@@ -420,8 +421,10 @@ public sealed class NoteMcpTools(
         if (!folders.Any(f => f.FolderId == target && f.UserId == userId && WorkspaceScopeExtensions.Matches(workspaceId, f.WorkspaceId)))
             throw new McpException("Folder not found or access denied.");
 
-        var version = await noteCommands.HandleAsync(
-            new Domain.Notes.MoveNoteToFolder(new NoteId(noteGuid), target), userId, workspaceId, ct).ConfigureAwait(false);
+        // Map retriable contention → a clear retry message (and a TOCTOU delete → not-found), matching
+        // edit_note rather than leaking a generic invocation error (CLAUDE.md retriable-contention guardrail).
+        var version = await RunNoteWriteAsync(
+            () => noteCommands.HandleAsync(new Domain.Notes.MoveNoteToFolder(note, target), userId, workspaceId, ct)).ConfigureAwait(false);
         logger.LogInformation("mcp_write tool=move_note_to_folder sub={Sub} workspaceId={WorkspaceId} noteId={NoteId} folderId={FolderId}",
             userId, workspaceId, noteGuid, folderGuid);
         return JsonSerializer.Serialize(new { version });
