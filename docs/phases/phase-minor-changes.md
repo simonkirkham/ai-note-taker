@@ -41,8 +41,10 @@
 | CHANGE-27 | Redesign the note-detail Tags + Actions area as a **Command Bar** so the editor goes **full-width** (320px sidebar deleted): inline tag chips + autocomplete, an `✓ Actions` pill opening a floating popover (closes on outside-click/Esc, teal when all done). | Done | — |
 | CHANGE-28 | Note body text was too big — shrink the editor `.contentInput` from **16px (1rem) / 1.75 → 14px (0.875rem) / 1.7**, font unchanged (Plus Jakarta Sans); headings keep em-relative sizes and scale down proportionally. CSS-only; values confirmed via prototype `prototype/notes-text-typography`. | Done | — |
 | CHANGE-29 | Removed the up/down "Move up"/"Move down" arrow buttons from the home To Do rows (`TodoSection`) — reorder is now pointer-only via the drag handle. **A11y tradeoff accepted by the user** (no keyboard reorder). The reorder **E2E journey was removed** (it drove reorder via the now-gone arrows; native HTML5 DnD isn't reliably Playwright-testable — 37-A's reason for the keyboard path); reorder *persistence* stays covered by `Api.Integration.TodoReorderTests`. | Done | 37-A |
+| CHANGE-30 | Blockquote visual polish in the note editor — a `>` quote currently indents with no visual marker. Add a left border/bar + muted colour, and style nested `>>` deeper. CSS-only, scoped to `.contentInput blockquote` in `NoteEditor.module.css`. (P2 polish split out of [Phase 46](phase-46.md).) | Open | — |
+| CHANGE-31 | Image alt-text on load failure — when a note image fails to load, show its alt text rather than a broken-image icon (in `ImageNodeView`). Confirm remote + relative paths still load. (P2 polish split out of [Phase 46](phase-46.md).) | Open | — |
 
-Open: none.
+Open: CHANGE-30, CHANGE-31.
 
 New tweaks are appended as a one-line shipped record below once Done. The full spec/Value/Approach for each lived in this doc during the slice and remains in git history; the durable *why* (where any) is in the learnings archive. CHANGE-1 to CHANGE-4 were moved here from the former "Phase 13 — UI Polish II" once it was clear they were minor tweaks rather than a distinct phase.
 

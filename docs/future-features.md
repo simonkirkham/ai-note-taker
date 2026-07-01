@@ -128,3 +128,13 @@ _(Claude Cowork connector — read-only, workspace-scoped MCP server — graduat
 **Why it isn't scheduled yet:** Substantial — per-provider API integration, OAuth scopes, and a sync/poll model, all of which want the manual-transcript ingestion path to exist first. Best sequenced **after** "Add a transcript manually" (which de-risks the analyse-an-imported-transcript flow) and after the in-app OAuth work it can reuse. Related: [[#add-a-transcript-manually-from-an-external-tool]].
 
 **Raised in:** User feature idea, 2026-06-25.
+
+---
+
+## Advanced markdown: footnotes, math (KaTeX), definition lists
+
+**What:** The remaining markdown features that authors sometimes use but the note editor does not yet support: **footnotes** (`[^1]` reference + `[^1]:` definition, rendered as a superscript link plus a footnotes section), **math** (inline `$…$` and block `$$…$$` rendered via KaTeX), and **definition lists** (`Term` / `: Definition`). Split out of [Phase 46](phases/phase-46.md), which shipped the low-cost markdown gaps (tables, task lists, emoji).
+
+**Why it isn't scheduled yet:** Unlike tables/task lists, none of these has a built-in Tiptap node, and the source analysis's "just add a markdown-it/remark plugin" recommendation does not apply — the notes editor is a Tiptap WYSIWYG where markdown is only the storage format, so each needs a **custom Tiptap node with bespoke markdown parse + serialize** and is awkward to *edit* in a WYSIWYG (`tiptap-markdown` 0.9 also exposes no markdown-it-plugin hook). Math additionally pulls in KaTeX and a custom node. Per the source analysis, math is "lower priority unless notes become technical"; definition lists are "niche". Deferred by the user 2026-07-01 when scoping Phase 46 — revisit if notes trend technical or footnotes become common in the OGI notes.
+
+**Raised in:** User markdown-support analysis, 2026-07-01 (Phase 46 scoping).
