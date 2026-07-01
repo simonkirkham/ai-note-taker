@@ -1,4 +1,4 @@
-# Phase 47 — Folder administration via the MCP _(Not Started)_
+# Phase 47 — Folder administration via the MCP _(In Progress — 47-A done 2026-07-01)_
 
 **Goal:** You can have Claude create, rename, delete, and reorganise folders and file notes into them straight from the MCP connector — folder admin that until now needed the web app.
 
@@ -6,7 +6,7 @@
 
 | Slice | What the user gets | Status | Depends on |
 |-------|--------------------|--------|------------|
-| 47-A | Claude lists a workspace's folders and creates new ones | Not Started | — |
+| 47-A | Claude lists a workspace's folders and creates new ones | Done _(#385, deploy #689)_ | — |
 | 47-B | Claude files a note into a folder (and moves it between folders) | Not Started | 47-A |
 | 47-C | Claude renames and deletes folders | Not Started | 47-A |
 | 47-D | Claude reparents a folder to reorganise the tree | Not Started | 47-C |
