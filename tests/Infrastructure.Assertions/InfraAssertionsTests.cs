@@ -2130,6 +2130,44 @@ public class InfraAssertionsTests
     }
 
     [Fact]
+    public void Split_QueryFunction_HasSnapStartContainerCredsFlag()
+    {
+        // BUG-43: the Query (SnapStart) function swaps to fresh container credentials after a restore;
+        // the SNAPSTART_CONTAINER_CREDS flag gates that behaviour and must ride THIS function.
+        _template.HasResourceProperties("AWS::Lambda::Function", Match.ObjectLike(new Dictionary<string, object>
+        {
+            ["Description"] = QueryDescription,
+            ["Environment"] = Match.ObjectLike(new Dictionary<string, object>
+            {
+                ["Variables"] = Match.ObjectLike(new Dictionary<string, object>
+                {
+                    ["SNAPSTART_CONTAINER_CREDS"] = "1"
+                })
+            })
+        }));
+    }
+
+    [Fact]
+    public void Split_CommandFunction_HasNoSnapStartContainerCredsFlag()
+    {
+        // The Command function has no SnapStart, so it must NOT get the container-creds swap flag —
+        // its credential resolution stays the unchanged default chain.
+        var thrown = Record.Exception(() =>
+            _template.HasResourceProperties("AWS::Lambda::Function", Match.ObjectLike(new Dictionary<string, object>
+            {
+                ["Description"] = CommandDescription,
+                ["Environment"] = Match.ObjectLike(new Dictionary<string, object>
+                {
+                    ["Variables"] = Match.ObjectLike(new Dictionary<string, object>
+                    {
+                        ["SNAPSTART_CONTAINER_CREDS"] = Match.AnyValue()
+                    })
+                })
+            })));
+        Assert.NotNull(thrown);
+    }
+
+    [Fact]
     public void Split_ExactlyTwoRequestFunctions_PlusProjector()
     {
         // Two request functions (Handler "Api") + one projector. FindResources counts
