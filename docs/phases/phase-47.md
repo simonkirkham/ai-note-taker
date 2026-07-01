@@ -1,4 +1,4 @@
-# Phase 47 — Folder administration via the MCP _(In Progress — 47-A done 2026-07-01)_
+# Phase 47 — Folder administration via the MCP _(Done — 2026-07-01)_
 
 **Goal:** You can have Claude create, rename, delete, and reorganise folders and file notes into them straight from the MCP connector — folder admin that until now needed the web app.
 
@@ -9,7 +9,7 @@
 | 47-A | Claude lists a workspace's folders and creates new ones | Done _(#385, deploy #689)_ | — |
 | 47-B | Claude files a note into a folder (and moves it between folders) | Done _(#388, deploy #692)_ | 47-A |
 | 47-C | Claude renames and deletes folders | Done _(#389, deploy #693)_ | 47-A |
-| 47-D | Claude reparents a folder to reorganise the tree | Not Started | 47-C |
+| 47-D | Claude reparents a folder to reorganise the tree | Done _(#391, deploy #695)_ | 47-C |
 
 > 47-A is the thin vertical that proves the whole Claude→folder pipe on one real create and makes the result visible (list); it establishes the identity-explicit folder-write contract the other write slices reuse. 47-B reuses the existing note-filing path, so it's independent of the folder-write work. 47-C scales the proven pattern; 47-D is optional and can land last.
 
