@@ -7,7 +7,7 @@
 | Slice | What the user gets | Status | Depends on |
 |-------|--------------------|--------|------------|
 | 46-A | Tables in a note show as a real grid with rows, columns, and alignment — not one run-on line | Done _(#381, deploy #686)_ | — |
-| 46-B | Checklist items render as checkboxes you can tick, and the tick is saved | Not Started | — |
+| 46-B | Checklist items render as checkboxes you can tick, and the tick is saved | Done _(#383, deploy #687)_ | — |
 | 46-C | Emoji shortcodes like `:tada:` appear as 🎉 | Not Started | — |
 
 46-A and 46-B are independent P0 fixes for markdown that renders unusably today — do the highest-impact tables first, then task lists. 46-C is a lower-priority P1 nicety and depends on neither.
@@ -124,15 +124,15 @@ Scenario: Typing a shortcode converts it live
 ### 46-B
 - **Events/commands / Projections / API:** none — frontend only.
 - **Extensions:** wire the **already-installed** `@tiptap/extension-task-list` (`TaskList`) and `@tiptap/extension-task-item` (`TaskItem.configure({ nested: true })`) into the `extensions` array — they are in `package.json` today but never imported.
-- **Parse/serialize:** `tiptap-markdown` bundles `markdown-it-task-lists` (parse) and has `taskList` / `taskItem` serialize specs — round-trips `- [ ]` / `- [x]` with no extra config.
-- **Optimistic UI:** toggling a checkbox fires the editor's existing `onUpdate` → `serialize` → `onChange` save path; the checkbox flips in the editor immediately (Tiptap local state) and the save reconciles — satisfies the optimistic-update rule with no new handler.
-- **CSS:** scoped `.contentInput ul[data-type="taskList"]` rules — remove the list bullet, lay the checkbox beside its label, style the checkbox; indent nested lists.
-- **Tests:** round-trip `- [ ]` / `- [x]`; render assertion — a checkbox `input` (not literal brackets) is present and reflects checked state; toggle test — clicking flips the serialized `[ ]`↔`[x]`.
+- **Parse/serialize:** `tiptap-markdown` parses via bundled `markdown-it-task-lists` and reuses `bulletList`'s serializer for `taskList`. **Deviation from plan:** that serializer emits a *loose* list (blank line between items) for taskList because — unlike bulletList — the taskList node has no `tight` attr, so it falls back to loose (and `Markdown.configure({tightLists})` doesn't reach it). Left as-is this silently double-spaces every checklist on the first edit-save. Fix: `MarkdownTaskList` (in `web/src/lib/markdownTaskList.ts`) adds a `tight` attr (default `true`, `rendered:false`) so the existing serializer emits a tight list matching bulletList — no serialize override needed (cleaner than 46-A's table override).
+- **Optimistic UI:** clicking a checkbox updates the doc → `onUpdate` → `onChange` save path; the box flips immediately (Tiptap local state) and the save reconciles — no new handler.
+- **CSS:** scoped `.contentInput ul[data-type="taskList"]` rules (element/attribute selectors, not CSS-Module-hashed) — no bullet, checkbox beside label, nested indent.
+- **Tests:** `taskListMarkdownRoundTrip.test.ts` (checkbox render, checked-state preserved, tight flat + nested, blank lines around embedded list, idempotency); `NoteEditor.test.tsx` render + toggle gate (click pushes `[x]` to onChange).
 - **Acceptance criteria:**
-  - [ ] `- [ ]` / `- [x]` render as unchecked/checked boxes, no literal brackets.
-  - [ ] Clicking a checkbox toggles it and the change reaches the save path immediately.
-  - [ ] Checked state round-trips through save + reopen.
-  - [ ] Nested task lists indent.
+  - [x] `- [ ]` / `- [x]` render as unchecked/checked boxes, no literal brackets.
+  - [x] Clicking a checkbox toggles it and the change reaches the save path immediately.
+  - [x] Checked state round-trips through save + reopen.
+  - [x] Nested task lists indent.
 
 ### 46-C
 - **Events/commands / Projections / API:** none — frontend only.
