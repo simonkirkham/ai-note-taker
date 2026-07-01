@@ -448,7 +448,7 @@ Make the owner's data survive an accidental delete or corrupting write, not just
 
 Slices and acceptance criteria: [docs/phases/phase-45.md](phases/phase-45.md)
 
-## Phase 46 — Richer markdown in notes: tables, task lists, emoji _(Not Started)_
+## Phase 46 — Richer markdown in notes: tables, task lists, emoji _(Done — 2026-07-01)_
 
 Close the gap between the markdown authors write and what a note renders. Tables collapse into a run-on line, `- [ ]`/`- [x]` show as literal brackets, and `:shortcode:` emoji stay raw. This is **frontend-only**: notes are edited in a Tiptap WYSIWYG editor where markdown is just the storage format (via `tiptap-markdown`, which wraps markdown-it) — there is no separate renderer to swap. The P0 breakage is a missing ProseMirror schema node, not a missing parser: `tiptap-markdown` already parses and serializes tables and task lists, so both round-trip once the matching Tiptap node extensions are wired in. Three slices, no backend/event/projection change, deploy-time neutral: **46-A** GFM tables render as a real grid with alignment (install `@tiptap/extension-table*`); **46-B** interactive task-list checkboxes (wire the already-installed `TaskList`/`TaskItem`), toggle saves optimistically; **46-C** `:shortcode:` → emoji via a load-time transform + a typing input rule. Footnotes, math (KaTeX), and definition lists are deferred as high-cost custom-node work (→ future-features); blockquote polish + image alt-on-failure are logged as CHANGE-30/31.
 

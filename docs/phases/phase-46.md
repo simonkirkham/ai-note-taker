@@ -1,4 +1,4 @@
-# Phase 46 — Richer markdown in notes: tables, task lists, emoji _(Not Started)_
+# Phase 46 — Richer markdown in notes: tables, task lists, emoji _(Done — 2026-07-01)_
 
 **Goal:** A note's markdown renders GFM tables as a real grid, `- [ ]` / `- [x]` as clickable checkboxes, and `:shortcode:` emoji as the glyph — instead of a collapsed run-on line, literal `[]`/`[x]` text, or raw `:code:`.
 
@@ -8,7 +8,7 @@
 |-------|--------------------|--------|------------|
 | 46-A | Tables in a note show as a real grid with rows, columns, and alignment — not one run-on line | Done _(#381, deploy #686)_ | — |
 | 46-B | Checklist items render as checkboxes you can tick, and the tick is saved | Done _(#383, deploy #687)_ | — |
-| 46-C | Emoji shortcodes like `:tada:` appear as 🎉 | Not Started | — |
+| 46-C | Emoji shortcodes like `:tada:` appear as 🎉 | Done _(#386, deploy #690)_ | — |
 
 46-A and 46-B are independent P0 fixes for markdown that renders unusably today — do the highest-impact tables first, then task lists. 46-C is a lower-priority P1 nicety and depends on neither.
 
@@ -137,15 +137,15 @@ Scenario: Typing a shortcode converts it live
 ### 46-C
 - **Events/commands / Projections / API:** none — frontend only.
 - **Approach:** `tiptap-markdown` 0.9 exposes **no** markdown-it-plugin injection hook, so emoji is not a parser plugin here. Implement two paths, sharing one curated `:shortcode:` → unicode map:
-  1. **Load path** — transform the incoming markdown string (replace known shortcodes with the glyph) before it reaches the editor (alongside the existing content pipeline in `NoteEditor.tsx`).
-  2. **Type path** — a Tiptap `InputRule` that converts a completed `:shortcode:` to the glyph as the user types.
-- **Serialization:** emoji persists as **unicode**, not the original shortcode (there is no reverse map) — an accepted, documented tradeoff; unicode → unicode is stable across round-trips.
-- **Map source:** prefer a small curated common-set map to avoid a heavy dependency; if a library table is used (e.g. the data behind `markdown-it-emoji` / `node-emoji`), pin it and match the lockfile to CI's npm. Unknown codes pass through untouched.
-- **Tests:** map converts known codes; leaves unknown codes verbatim; the input rule converts on completion; a round-trip keeps the glyph.
+  1. **Load path** — `emojifyMarkdown` (in `web/src/lib/emoji.ts`) transforms the incoming markdown string at both `NoteEditor` content-entry points (initial `content:` and the image-resolve `setContent`). It **only** touches prose: a capturing-group `split` keeps fenced/inline code, markdown link/image destinations `](url)`, autolinks, and bare `http(s)://` URLs verbatim (a `:word:` inside a URL must not be emojified — that would silently corrupt the link on the next save; Hawk caught this). Link labels and image alt text still convert.
+  2. **Type path** — `EmojiShortcode` (`web/src/lib/emojiExtension.ts`), a Tiptap `InputRule` that converts a completed `:shortcode:` as typed, guarded to skip code blocks (`parent.type.spec.code`) and inline code (`rangeHasMark`).
+- **Serialization:** emoji persists as **unicode**, not the original shortcode (no reverse map) — accepted, documented; unicode → unicode is stable. A numeric shortcode in prose (e.g. `:100:` in "1:100:2") converts too — an accepted quirk of shortcode emoji, noted in code.
+- **Map source:** a small curated common-set map (~70 entries), **dependency-free**. Unknown codes pass through untouched.
+- **Tests:** `emojiShortcode.test.ts` — `emojifyMarkdown` (known/unknown, `+1`/`-1`, code + URL + unterminated-fence protection), the InputRule via simulated typing (converts, leaves unknown, skips inline code); `NoteEditor.test.tsx` render gates (loaded `:tada:` → 🎉, unknown literal, inline-code literal).
 - **Acceptance criteria:**
-  - [ ] A known `:shortcode:` in loaded content renders as its emoji.
-  - [ ] An unknown `:shortcode:` is left unchanged.
-  - [ ] Typing a known shortcode converts it live.
+  - [x] A known `:shortcode:` in loaded content renders as its emoji.
+  - [x] An unknown `:shortcode:` is left unchanged.
+  - [x] Typing a known shortcode converts it live.
 
 ### Observability
 - Frontend-only rendering; no server-side signal to add. The one silent failure mode is a parser edge case (a malformed table or task line) throwing and blanking the editor — guarded by the 46-A malformed-table test and covered in prod by the existing RUM JS-error capture. No new instrumentation code.
