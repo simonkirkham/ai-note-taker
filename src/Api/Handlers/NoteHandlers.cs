@@ -176,13 +176,17 @@ public static class NoteHandlers
         return Results.Ok();
     }
 
-    public static async Task<IResult> DeleteNote(Guid noteId, INoteCommandHandler handler, INoteDetailStore noteDetailStore, ICurrentUser currentUser)
+    public static async Task<IResult> DeleteNote(Guid noteId, HttpResponse response, INoteCommandHandler handler, INoteDetailStore noteDetailStore, ICurrentUser currentUser)
     {
         var detail = await noteDetailStore.GetAsync(new NoteId(noteId));
         if (detail is not null && detail.UserId != currentUser.UserId) return Results.NotFound();
-        try { await handler.HandleAsync(new Domain.Notes.DeleteNote(new NoteId(noteId))); }
+        long version;
+        try { version = await handler.HandleAsync(new Domain.Notes.DeleteNote(new NoteId(noteId))); }
         catch (NoteNotFoundException) { return Results.NotFound(); }
         catch (InvalidOperationException) { return Results.NotFound(); }
+        // BUG-44: surface the delete's write token so the client can gate its cards refetch on the
+        // projector applying NoteDeleted — otherwise the deleted card reappears from the stale projection.
+        SetConsistencyToken(response, noteId, version);
         return Results.NoContent();
     }
 

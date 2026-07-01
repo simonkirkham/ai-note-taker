@@ -8,7 +8,7 @@ import {
   setLatestToken,
   setStreamToken,
 } from '../api/consistencyTokens'
-import { editContent, getNoteCards, getNoteDetail, renameNote } from '../api/notes'
+import { deleteNote, editContent, getNoteCards, getNoteDetail, renameNote } from '../api/notes'
 import { tagNote } from '../api/tags'
 import { server } from '../test/setup'
 
@@ -55,6 +55,26 @@ describe('notes read-your-writes (RYW-2)', () => {
     await getNoteCards()
 
     expect(sentToken).toBe(`note#${NOTE_ID}@8`)
+  })
+
+  // BUG-44: a delete is a note write too — it must capture its token so the cards refetch that
+  // follows (useDeleteNote's onSettled) waits for the projector to drop the note. Without this the
+  // deleted card reappears from the stale projection and stays openable.
+  it('GET /notes/cards after a delete carries the delete write token', async () => {
+    let sentToken: string | null = null
+    server.use(
+      http.delete(`/api/notes/${NOTE_ID}`, () =>
+        new HttpResponse(null, { status: 204, headers: { 'X-Consistency-Token': `note#${NOTE_ID}@7` } })),
+      http.get('/api/notes/cards', ({ request }) => {
+        sentToken = request.headers.get('If-Consistent-With')
+        return HttpResponse.json({ cards: [] })
+      }),
+    )
+
+    await deleteNote(NOTE_ID)
+    await getNoteCards()
+
+    expect(sentToken).toBe(`note#${NOTE_ID}@7`)
   })
 
   it('a stale note-detail read clears nothing and keeps the token for the next read', async () => {

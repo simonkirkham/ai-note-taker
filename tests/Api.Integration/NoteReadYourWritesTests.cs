@@ -44,6 +44,44 @@ public sealed class NoteReadYourWritesTests(ApiFactory factory) : IClassFixture<
         Assert.Equal(createVersion + 1, version);
     }
 
+    // BUG-44: delete must surface its write token like every other note write, so the client can
+    // gate the cards refetch on the projector applying NoteDeleted — otherwise the just-deleted
+    // card reappears from the not-yet-updated projection.
+    [Fact]
+    public async Task DeleteNote_ReturnsConsistencyTokenHeader_AtNextVersion()
+    {
+        var (noteId, createToken) = await CreateNoteAsync();
+        var (_, createVersion) = ParseToken(createToken);
+
+        var deleteResp = await _client.DeleteAsync($"/notes/{noteId}");
+        deleteResp.EnsureSuccessStatusCode();
+
+        var token = Assert.Single(deleteResp.Headers.GetValues("X-Consistency-Token"));
+        var (stream, version) = ParseToken(token);
+        Assert.Equal($"note#{noteId}", stream);
+        // Delete appends exactly one event (NoteDeleted) on top of the create batch.
+        Assert.Equal(createVersion + 1, version);
+    }
+
+    // The BUG-44 defect proper: a cards read carrying the delete's token must NOT list the note —
+    // the gate waits until the projector has applied NoteDeleted, so the deleted card is gone.
+    [Fact]
+    public async Task GetNoteCards_WithDeleteToken_ExcludesTheDeletedNote()
+    {
+        var (noteId, _) = await CreateNoteAsync();
+        var deleteResp = await _client.DeleteAsync($"/notes/{noteId}");
+        var token = Assert.Single(deleteResp.Headers.GetValues("X-Consistency-Token"));
+
+        var req = new HttpRequestMessage(HttpMethod.Get, "/notes/cards");
+        req.Headers.Add("If-Consistent-With", token);
+        var getResp = await _client.SendAsync(req);
+
+        getResp.EnsureSuccessStatusCode();
+        Assert.False(getResp.Headers.Contains("X-Consistency"));
+        var cards = (await getResp.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("cards").EnumerateArray();
+        Assert.DoesNotContain(cards, c => c.GetProperty("noteId").GetString() == noteId);
+    }
+
     private static (string Stream, long Version) ParseToken(string token)
     {
         var at = token.LastIndexOf('@');

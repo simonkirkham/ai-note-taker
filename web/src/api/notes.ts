@@ -175,8 +175,12 @@ export async function setNoteDate(noteId: string, date: string | null): Promise<
   captureNoteToken(noteId, response);
 }
 
-export function deleteNote(noteId: string): Promise<void> {
-  return requestVoid(`/notes/${noteId}`, { method: 'DELETE' });
+export async function deleteNote(noteId: string): Promise<void> {
+  // BUG-44: capture the delete's write token (like every other note write) so the cards refetch in
+  // useDeleteNote's onSettled waits for the projector to drop the note — else the deleted card
+  // reappears from the not-yet-updated projection and stays openable.
+  const response = await requestVoidWithResponse(`/notes/${noteId}`, { method: 'DELETE' });
+  captureNoteToken(noteId, response);
 }
 
 export async function getNoteCards(): Promise<NoteCard[]> {
