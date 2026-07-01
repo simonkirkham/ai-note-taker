@@ -1,4 +1,4 @@
-# Phase 45 — Data backup & durability hardening _(In Progress — 45-A shipping)_
+# Phase 45 — Data backup & durability hardening _(In Progress — 45-A done 2026-07-01)_
 
 **Goal:** The owner's data survives an accidental delete or bad write, not just a stack teardown — every irreplaceable store has point-in-time recovery, versioning, or a scheduled backup behind it.
 
@@ -6,7 +6,7 @@
 
 | Slice | What the user gets | Status | Depends on |
 |-------|--------------------|--------|------------|
-| 45-A  | A mistaken deletion or corrupting write to their notes is recoverable — the note history can be restored to any point in the last 35 days | In Progress | — |
+| 45-A  | A mistaken deletion or corrupting write to their notes is recoverable — the note history can be restored to any point in the last 35 days | Done | — |
 | 45-B  | Their Google/Outlook/MCP sign-ins survive a data-loss incident — no forced re-consent for everyone; core tables can't be dropped by accident | Not Started | — |
 | 45-C  | An image they overwrote or deleted in a note can be recovered | Not Started | — |
 | 45-D  | Faster recovery after an incident — read views restore in seconds instead of a full history replay | Not Started | 45-A |
@@ -18,7 +18,7 @@
 
 <!-- REVIEW SURFACE — the human reads this and stops. No technical artefact named below. -->
 
-### Slice 45-A — Point-in-time recovery for the note history _(shipping in this change)_
+### Slice 45-A — Point-in-time recovery for the note history _(Done — 2026-07-01, PR #380, deploy #684)_
 
 - **User value:** The complete record of every note, to-do, and edit is the one thing that can't be regenerated. Today only a full infrastructure teardown is guarded against; an accidental delete or a bad migration would be permanent. This makes the last 35 days recoverable to any second.
 - **How it works:**
@@ -124,15 +124,15 @@ Scenario: Recovery is documented
 
 Context: this is pure infrastructure — no aggregates, events, projections, or API routes. The "spec" for each slice is a set of `Infrastructure.Assertions` CDK-template assertions. Every slice touches the deploy path via `cdk deploy`; state the deploy-time delta in the PR. Enabling PITR / versioning / a backup plan is a **one-off stack-update cost**, negligible recurring spend on PAY_PER_REQUEST tables — no bake/canary, deploy-time impact **neutral**.
 
-### 45-A _(shipping — branch `slice/45-a-event-store-pitr`)_
+### 45-A _(Done — 2026-07-01, PR #380, deploy #684)_
 - **Change:** `src/Infrastructure/NoteTakerStack.cs` — add `PointInTimeRecoverySpecification { PointInTimeRecoveryEnabled = true }` to `EventsTable` (`notetaker-events`). `RemovalPolicy.RETAIN` and the `NEW_IMAGE` stream unchanged.
-- **Tests:** `InfraAssertionsTests.EventsTable_HasPointInTimeRecovery` + `EventsTable_RetainsOnStackDeletion` (assert PITR true and DeletionPolicy still `Retain`).
+- **Tests:** `InfraAssertionsTests.EventsTable_HasPointInTimeRecovery` (asserts PITR true; the pre-existing `EventsTable_HasRetainDeletionPolicy` already covers `DeletionPolicy: Retain`).
 - **Acceptance criteria:**
-  - [ ] `notetaker-events` synthesises with `PointInTimeRecoverySpecification.PointInTimeRecoveryEnabled = true`.
-  - [ ] `notetaker-events` retains `DeletionPolicy: Retain`.
-  - [ ] Full `Infrastructure.Assertions` suite green; `cdk synth` succeeds.
-- **Deploy-time:** neutral (one-off table update; PITR is enabled in-place, no replacement).
-- **Scribe (infra live-check):** confirm the shipping deploy had `backend=true`, then verify in prod: `aws dynamodb describe-continuous-backups --table-name notetaker-events --profile prod --region eu-west-2` shows `PointInTimeRecoveryStatus: ENABLED`.
+  - [x] `notetaker-events` synthesises with `PointInTimeRecoverySpecification.PointInTimeRecoveryEnabled = true`.
+  - [x] `notetaker-events` retains `DeletionPolicy: Retain`.
+  - [x] Full `Infrastructure.Assertions` suite green (161 tests); `cdk synth` succeeds.
+- **Deploy-time:** neutral (one-off table update; PITR enabled in-place, no replacement).
+- **Scribe (infra live-check):** ✅ verified live in prod 2026-07-01 — `describe-continuous-backups` → `PointInTimeRecoveryStatus: ENABLED`, `RecoveryPeriodInDays: 35`.
 
 ### 45-B
 - **Change:** add PITR to `notetaker-auth-tokens`, `notetaker-calendar-tokens`, `notetaker-mcp-refresh-token`; add `DeletionProtection = true` to those three plus `notetaker-events`.
