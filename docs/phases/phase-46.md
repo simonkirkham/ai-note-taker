@@ -6,7 +6,7 @@
 
 | Slice | What the user gets | Status | Depends on |
 |-------|--------------------|--------|------------|
-| 46-A | Tables in a note show as a real grid with rows, columns, and alignment — not one run-on line | Not Started | — |
+| 46-A | Tables in a note show as a real grid with rows, columns, and alignment — not one run-on line | Done _(#381, deploy #686)_ | — |
 | 46-B | Checklist items render as checkboxes you can tick, and the tick is saved | Not Started | — |
 | 46-C | Emoji shortcodes like `:tada:` appear as 🎉 | Not Started | — |
 
@@ -111,15 +111,15 @@ Scenario: Typing a shortcode converts it live
 ### 46-A
 - **Events/commands / Projections / API:** none — frontend only.
 - **Extensions:** install `@tiptap/extension-table`, `@tiptap/extension-table-row`, `@tiptap/extension-table-header`, `@tiptap/extension-table-cell`, **pinned to the same 3.23.x line as the other `@tiptap/*`** (avoid the Tiptap ERESOLVE / lockfile skew — see the `package-lock` and Tiptap-exact-pin guardrails; regenerate the lockfile incrementally on CI's npm version). Add `Table.configure({ resizable: false })`, `TableRow`, `TableHeader`, `TableCell` to the `extensions` array in `NoteEditor.tsx`.
-- **Parse/serialize:** handled by `tiptap-markdown` once the nodes exist (verified: dist has `table` + `tableHeader` serialize specs; markdown-it enables GFM tables by default). Alignment survives as the cell's generated align attribute.
-- **CSS:** add scoped `.contentInput table / th / td` rules to `NoteEditor.module.css` (`border-collapse`, cell borders via `var(--color-border)`, header background, cell padding; respect per-cell text-align). Keep the "Tiptap/ProseMirror vendor overrides" comment convention already in that file.
-- **Tests:** vitest round-trip in the style of `imageMarkdownRoundTrip.test.ts` — table markdown → `setContent` → `getMarkdown()` returns an equivalent pipe table (incl. alignment). Render assertion in `NoteEditor.test.tsx` — cells become distinct `<td>`/`<th>`. Malformed-table test — no throw, content preserved.
+- **Parse/serialize:** As shipped, `@tiptap/extension-table` v3 has **no default export** — use the named `Table`/`TableRow`/`TableHeader`/`TableCell` (the single package supplies all four, so the three separate `-row`/`-header`/`-cell` packages are not needed). tiptap-markdown parses tables (markdown-it default) but its **default serializer drops column alignment** (`| --- |`); `MarkdownTable` (in `web/src/lib/markdownTable.ts`) overrides only the `serialize` half of the table markdown spec via `addStorage().markdown.serialize` (tiptap-markdown merges `{...default, ...mine}`, so the default parser is preserved) to emit `:---`/`:---:`/`---:` from each column's `align` attr. Inline marks and escaped pipes round-trip too.
+- **CSS:** scoped `.contentInput table / th / td` rules in `NoteEditor.module.css` (`border-collapse`, cell borders via `var(--color-border)`, header background, cell padding; per-cell `text-align` comes from the extension's inline style). ProseMirror runtime classes (e.g. `selectedCell`) are deliberately **not** styled — CSS Modules would hash them.
+- **Tests:** `tableMarkdownRoundTrip.test.ts` (grid structure, alignment round-trip, inline-mark + escaped-pipe fidelity, idempotency, tables-in-context, empty cell, malformed no-throw); render gate in `NoteEditor.test.tsx` (pipe table → `<table>` with separate cells + per-column `text-align`).
 - **Acceptance criteria:**
-  - [ ] A GFM pipe table renders as `<table>` with one cell per pipe-delimited value, header row distinct.
-  - [ ] `:---:` / `---:` alignment is applied per column.
-  - [ ] Editing a cell and re-serializing yields a valid pipe table with the edit.
-  - [ ] A malformed table does not crash the editor or blank the note.
-- **Decisions:** minimal table UX this slice — render + in-cell text edit + round-trip only; no insert/remove row-column chrome (Tiptap commands exist but adding toolbar UI is deferred). `resizable: false` to avoid column-resize handles the notes UX doesn't need.
+  - [x] A GFM pipe table renders as `<table>` with one cell per pipe-delimited value, header row distinct.
+  - [x] `:---:` / `---:` alignment is applied per column.
+  - [x] Editing a cell and re-serializing yields a valid pipe table with the edit.
+  - [x] A malformed table does not crash the editor or blank the note.
+- **Decisions:** minimal table UX this slice — render + in-cell text edit + round-trip only; no insert/remove row-column chrome. `resizable: false`. **Went beyond the spec's "alignment survives as the align attr" assumption** — the default serializer silently strips alignment on the first edit-save, so a custom serialize override was required (Hawk caught a `state.closed` side-effect bug in it: cell rendering cleared the pending block-close, gluing a table onto the preceding block → fixed by snapshot/restore, with tables-in-context tests added).
 
 ### 46-B
 - **Events/commands / Projections / API:** none — frontend only.
