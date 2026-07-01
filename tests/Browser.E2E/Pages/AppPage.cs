@@ -24,6 +24,15 @@ public sealed class AppPage
     private readonly System.Collections.Concurrent.ConcurrentQueue<string> consoleLog = new();
     private readonly System.Collections.Concurrent.ConcurrentQueue<string> pageErrors = new();
 
+    // TI-42 re-gate: the most recent note-write consistency token, captured from the write's
+    // `X-Consistency-Token` response header. After a reload the app has usually already consumed and
+    // CLEARED the sessionStorage RYW token (the pre-reload home fetch), so its cards GET goes out
+    // UNGATED and merely races the async projector. AssertNoteVisibleInListAfterReloadAsync re-injects
+    // this token as `If-Consistent-With` so every post-reload read WAITS for the projector to fold the
+    // write instead of racing it. Only note writes return the header; GETs don't. `volatile` because
+    // the Response event fires on a Playwright dispatcher thread, read on the test thread.
+    private volatile string? latestNoteToken;
+
     public AppPage(IPage page, string baseUrl, string? authToken = null)
     {
         this.page = page;
@@ -32,7 +41,21 @@ public sealed class AppPage
         page.Response += (_, r) =>
         {
             if (r.Url.Contains("/notes/cards", StringComparison.OrdinalIgnoreCase))
-                cardsRequestLog.Enqueue($"{r.Status} {r.Url}");
+            {
+                // Record the X-Consistency response header (fresh vs stale) alongside the URL. This is
+                // the missing signal that disambiguates the flake: a `stale` here means the read WAS
+                // gated but the projector is genuinely behind the cap; its absence on an empty list
+                // means the read was ungated (raced). Header read is synchronous — never the body.
+                var consistency = r.Headers.TryGetValue("x-consistency", out var c) ? c : "fresh";
+                cardsRequestLog.Enqueue($"{r.Status} X-Consistency={consistency} {r.Url}");
+            }
+            // Capture the latest note-write token so the re-gate can wait on it after a reload.
+            if (r.Url.Contains("/notes", StringComparison.OrdinalIgnoreCase)
+                && r.Headers.TryGetValue("x-consistency-token", out var token)
+                && !string.IsNullOrEmpty(token))
+            {
+                latestNoteToken = token;
+            }
         };
         page.Console += (_, m) => CappedEnqueue(consoleLog, $"[{m.Type}] {m.Text}");
         page.PageError += (_, e) => CappedEnqueue(pageErrors, e);
@@ -149,37 +172,67 @@ public sealed class AppPage
     }
 
     // The note read-your-writes proof (RYW-2): reload FIRST (drops the optimistic cards cache, so
-    // the renamed card can only come from the server), then assert. The post-reload GET /notes/cards
-    // carries the sessionStorage-persisted note token, so the gate waits for the async projector and
-    // the card appears deterministically. Reload-loop so a still-warming projector re-polls (each
-    // reload re-sends the token and re-gates) rather than getting stuck on one stale fetch.
+    // the renamed card can only come from the server), then assert.
+    //
+    // TI-42 fix: the post-reload GET /notes/cards is NOT reliably gated on its own. The app's RYW token
+    // lives in sessionStorage, but the pre-reload home fetch usually consumes and CLEARS it, so the
+    // reload's cards read goes out UNGATED and merely races the async projector — which is the whole
+    // flake (logs showed `200`/empty, correct workspace, for the full 30s). Two changes make it
+    // deterministic: (1) a route re-injects the captured note-write token as `If-Consistent-With` on
+    // every cards read, so the server gate WAITS for the projector to fold the write; (2) the per-attempt
+    // timeout is raised above the 8s server gate cap so a reload no longer aborts the gated read before
+    // it can converge (2.5s < 8s was self-defeating). The reload-loop still re-gates across the deadline.
     public async Task AssertNoteVisibleInListAfterReloadAsync(string title, int timeoutMs = 30000)
     {
-        var deadline = DateTime.UtcNow.AddMilliseconds(timeoutMs);
-        while (true)
+        await page.RouteAsync("**/notes/cards*", RegateCardsRead);
+        try
         {
-            await page.ReloadAsync();
-            try
+            var deadline = DateTime.UtcNow.AddMilliseconds(timeoutMs);
+            while (true)
             {
-                await Assertions.Expect(
-                    page.GetByTestId("note-cards")
-                        .Locator("[data-testid='note-card']")
-                        .Filter(new LocatorFilterOptions { HasText = title })
-                ).ToBeVisibleAsync(new() { Timeout = 2500 });
-                return;
-            }
-            catch (PlaywrightException) when (DateTime.UtcNow < deadline)
-            {
-                // re-loop: reload + recheck until the gated read returns the card or we time out
-            }
-            catch (PlaywrightException)
-            {
-                // Deadline exceeded — the TI-42 flake. Replace the opaque "locator not visible" timeout
-                // with synchronous diagnostics (no body reads, no hang) so the failure tells us WHY.
-                // Only Playwright timeouts get the enriched message; any other exception propagates raw.
-                throw new Exception(await DescribeMissingCardAsync(title, timeoutMs));
+                await page.ReloadAsync();
+                try
+                {
+                    await Assertions.Expect(
+                        page.GetByTestId("note-cards")
+                            .Locator("[data-testid='note-card']")
+                            .Filter(new LocatorFilterOptions { HasText = title })
+                    ).ToBeVisibleAsync(new() { Timeout = 9000 });
+                    return;
+                }
+                catch (PlaywrightException) when (DateTime.UtcNow < deadline)
+                {
+                    // re-loop: reload + re-gate until the gated read returns the card or we time out
+                }
+                catch (PlaywrightException)
+                {
+                    // Deadline exceeded — the TI-42 flake. Replace the opaque "locator not visible"
+                    // timeout with synchronous diagnostics (no body reads, no hang) so the failure tells
+                    // us WHY. Only Playwright timeouts get the enriched message; others propagate raw.
+                    throw new Exception(await DescribeMissingCardAsync(title, timeoutMs));
+                }
             }
         }
+        finally
+        {
+            await page.UnrouteAsync("**/notes/cards*", RegateCardsRead);
+        }
+    }
+
+    // Re-inject the latest note-write consistency token on a cards read so the server gate waits for the
+    // projector (see the token capture in the ctor). Playwright's ContinueAsync(Headers) REPLACES the
+    // whole header set, so start from the request's own headers and add ours — never drop Authorization.
+    private async Task RegateCardsRead(IRoute route)
+    {
+        var token = latestNoteToken;
+        if (string.IsNullOrEmpty(token))
+        {
+            await route.ContinueAsync();
+            return;
+        }
+        var headers = await route.Request.AllHeadersAsync();
+        headers["if-consistent-with"] = token;
+        await route.ContinueAsync(new() { Headers = headers });
     }
 
     // Hang-proof failure diagnostics for the cards list: reads only already-resolved page state plus
@@ -202,7 +255,8 @@ public sealed class AppPage
 
         var recentRequests = cardsRequestLog.TakeLast(5).ToList();
         return $"TI-42: card '{title}' not in cards list after {timeoutMs}ms. " +
-               $"page.Url={url} | rendered cards({cardTitles.Count})=[{string.Join(" | ", cardTitles)}] | " +
+               $"page.Url={url} | injectedToken={latestNoteToken ?? "<none>"} | " +
+               $"rendered cards({cardTitles.Count})=[{string.Join(" | ", cardTitles)}] | " +
                $"last cards requests=[{string.Join(" ;; ", recentRequests)}]";
     }
 
