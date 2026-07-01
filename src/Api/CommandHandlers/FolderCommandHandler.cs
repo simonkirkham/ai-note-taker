@@ -86,6 +86,9 @@ public sealed class FolderCommandHandler(
         });
 
     public Task<long> HandleAsync(MoveFolder cmd, CancellationToken ct = default) =>
+        HandleAsync(cmd, currentUser.UserId, currentWorkspace.WorkspaceId, ct);
+
+    public Task<long> HandleAsync(MoveFolder cmd, string userId, string? workspaceId, CancellationToken ct = default) =>
         CommandInstrumentation.RunAsync(metrics, logger, nameof(MoveFolder), "Folder", async () =>
         {
             var streamId = cmd.FolderId.ToStreamId();
@@ -102,7 +105,7 @@ public sealed class FolderCommandHandler(
             }
 
             var newEvents = RebuildFolder(history).Handle(cmd);
-            return await PersistFolderAsync(streamId, history, newEvents, currentUser.UserId, currentWorkspace.WorkspaceId, ct).ConfigureAwait(false);
+            return await PersistFolderAsync(streamId, history, newEvents, userId, workspaceId, ct).ConfigureAwait(false);
         });
 
     private async Task UnfileNotesInFolderAsync(FolderId folderId, string userId, string? workspaceId, CancellationToken ct)
