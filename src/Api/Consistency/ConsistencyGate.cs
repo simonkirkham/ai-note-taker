@@ -9,7 +9,7 @@ namespace Api.Consistency;
 // throws, so a client that sends nothing keeps the pre-RYW behaviour.
 //
 // Poll interval + cap are injectable (and the delay is a func) so unit tests advance virtual
-// time instead of sleeping the real ~2s bound.
+// time instead of sleeping the real ~8s bound.
 public sealed class ConsistencyGate(
     IProcessedPositionStore positions,
     TimeSpan pollInterval,

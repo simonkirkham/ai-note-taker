@@ -6,7 +6,7 @@ namespace Api.Integration;
 // RYW-1 consistency gate: parse the If-Consistent-With token and bounded-poll the processed-
 // position store until the stream's applied sequence reaches the requested version. The poll
 // interval, cap, and delay func are injected so these tests advance virtual time, not the wall
-// clock — no test sleeps the real 2s bound.
+// clock — no test sleeps the real 8s bound.
 public sealed class ConsistencyGateTests
 {
     private const string Stream = "todo#abc";
