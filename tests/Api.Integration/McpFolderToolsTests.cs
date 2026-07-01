@@ -100,7 +100,102 @@ public sealed class McpFolderToolsTests(ApiFactory factory) : IClassFixture<ApiF
         Assert.True(IsToolError(result));
     }
 
+    // ── 47-B: move_note_to_folder ─────────────────────────────────────────
+
+    [Fact]
+    public async Task ToolsList_IncludesMoveNoteToFolder()
+    {
+        var client = _factory.CreateUnauthenticatedClient();
+        var names = (await CallAsync(client, "tools/list", new { }, McpTestTokens.Valid()))
+            .GetProperty("tools").EnumerateArray().Select(t => t.GetProperty("name").GetString()).ToList();
+        Assert.Contains("move_note_to_folder", names);
+    }
+
+    [Fact]
+    public async Task MoveNoteToFolder_FilesNoteIntoFolder()
+    {
+        var client = _factory.CreateUnauthenticatedClient();
+        var noteId = await CreateNoteAsync(client, Owner);
+        var folderId = await CreateFolderAsync(client, WorkspaceId.DefaultValue, "Clients", Owner);
+
+        var moved = await CallToolAsync(client, "move_note_to_folder",
+            new { workspaceId = WorkspaceId.DefaultValue, noteId, folderId }, McpTestTokens.Valid(Owner));
+
+        Assert.False(IsToolError(moved), RawText(moved));
+        Assert.Equal(folderId, NoteFolderId(noteId));
+    }
+
+    [Fact]
+    public async Task MoveNoteToFolder_ReFile_MovesToNewFolder()
+    {
+        var client = _factory.CreateUnauthenticatedClient();
+        var noteId = await CreateNoteAsync(client, Owner);
+        var folderA = await CreateFolderAsync(client, WorkspaceId.DefaultValue, "A", Owner);
+        var folderB = await CreateFolderAsync(client, WorkspaceId.DefaultValue, "B", Owner);
+        await CallToolAsync(client, "move_note_to_folder",
+            new { workspaceId = WorkspaceId.DefaultValue, noteId, folderId = folderA }, McpTestTokens.Valid(Owner));
+
+        await CallToolAsync(client, "move_note_to_folder",
+            new { workspaceId = WorkspaceId.DefaultValue, noteId, folderId = folderB }, McpTestTokens.Valid(Owner));
+
+        Assert.Equal(folderB, NoteFolderId(noteId));
+    }
+
+    [Fact]
+    public async Task MoveNoteToFolder_ForeignNote_IsRejected_AndDoesNotMove()
+    {
+        var client = _factory.CreateUnauthenticatedClient();
+        var ownersNote = await CreateNoteAsync(client, Owner);
+        var intrudersFolder = await CreateFolderAsync(client, WorkspaceId.DefaultValue, "Intruder", OtherUser);
+
+        var result = await CallToolAsync(client, "move_note_to_folder",
+            new { workspaceId = WorkspaceId.DefaultValue, noteId = ownersNote, folderId = intrudersFolder },
+            McpTestTokens.Valid(OtherUser));
+
+        Assert.True(IsToolError(result));
+        Assert.Null(NoteFolderId(ownersNote));
+    }
+
+    [Fact]
+    public async Task MoveNoteToFolder_IntoUnownedFolder_IsRejected_AndDoesNotMove()
+    {
+        var client = _factory.CreateUnauthenticatedClient();
+        var note = await CreateNoteAsync(client, Owner);
+        var otherUsersFolder = await CreateFolderAsync(client, WorkspaceId.DefaultValue, "Theirs", OtherUser);
+
+        var result = await CallToolAsync(client, "move_note_to_folder",
+            new { workspaceId = WorkspaceId.DefaultValue, noteId = note, folderId = otherUsersFolder },
+            McpTestTokens.Valid(Owner));
+
+        Assert.True(IsToolError(result));
+        Assert.Null(NoteFolderId(note));
+    }
+
     // ── Helpers ──────────────────────────────────────────────────────────
+
+    private async Task<string> CreateNoteAsync(HttpClient client, string user)
+    {
+        var created = await CallToolAsync(client, "create_note",
+            new { workspaceId = WorkspaceId.DefaultValue, title = "Note", content = "body" }, McpTestTokens.Valid(user));
+        Assert.False(IsToolError(created), RawText(created));
+        return ParsePayload(created).GetProperty("noteId").GetString()!;
+    }
+
+    private async Task<string> CreateFolderAsync(HttpClient client, string workspaceId, string name, string user)
+    {
+        var created = await CallToolAsync(client, "create_folder",
+            new { workspaceId, name }, McpTestTokens.Valid(user));
+        Assert.False(IsToolError(created), RawText(created));
+        return ParsePayload(created).GetProperty("folderId").GetString()!;
+    }
+
+    // The note's folder is card state — read it back through the card projection (no MCP read exposes it).
+    private string? NoteFolderId(string noteId)
+    {
+        var cards = _factory.Services.GetRequiredService<INoteCardListStore>();
+        var card = cards.QueryAllAsync().GetAwaiter().GetResult().Single(c => c.NoteId.Value.ToString() == noteId);
+        return card.FolderId?.Value.ToString();
+    }
 
     private async Task<List<JsonElement>> ListFoldersAsync(HttpClient client, string workspaceId, string user)
     {
