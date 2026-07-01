@@ -458,6 +458,16 @@ Slices and acceptance criteria: [docs/phases/phase-46.md](phases/phase-46.md)
 
 ---
 
+## Phase 47 — Folder administration via the MCP _(Not Started)_
+
+Extend the MCP write tools so Claude administers folders over the connector — the folder admin that until now needed the web app. Reuses the Phase 5 folder aggregate + FolderTree projection and the Phase 41/42 workspace-authorized tool pattern; the one new contract is an identity-explicit `IFolderCommandHandler` overload (note-handler style, 33-B2) so the tools call it off the HTTP route. Four slices, deploy-time neutral (new tools on the existing `/mcp` Command-Lambda endpoint, no CDK change): **47-A** list + create folders (proves the pipe, adds the overload); **47-B** file a note into a folder (reuses the existing note-filing command); **47-C** rename + delete (delete cascades, unfiling notes); **47-D** reparent, optional (rejects cycles). Adding the tools crosses the Phase-42 ≤13 tool cap → raise it. Folder-write authorization binds the folder's own owner (BUG-41) via the event stream, not the async projection (BUG-30).
+
+**Goal:** you can have Claude create, rename, delete, and reorganise folders and file notes into them straight from the MCP connector — folder admin that until now needed the web app.
+
+Slices and acceptance criteria: [docs/phases/phase-47.md](phases/phase-47.md)
+
+---
+
 ## Standing tracks and planning docs
 
 Alongside the numbered phases above, work is tracked in five standing docs. The roadmap summarises them; each doc owns its content.

@@ -152,15 +152,4 @@ _(Claude Cowork connector — read-only, workspace-scoped MCP server — graduat
 
 **Raised in:** User request, 2026-07-01 — "split out the notes from meetings (raw notes) from structured notes generated via AI"; clarified to a **list/browse-level** distinction (not an internal note restructure).
 
----
-
-## Folder administration via the MCP
-
-**What:** Extend the MCP write tools so Claude can **administer folders** over the connector — the same way it can already create/update notes and to-dos (Phase 41). Today the MCP exposes note/to-do writes (Phase 41), calendar reads (Phase 42), and workspace listing, but **no folder operations**; folders are managed only in the web UI (Phase 5). Likely tools to scope when broken down:
-- `create_folder(workspaceId, name, parentId?)`, `rename_folder`, `delete_folder`, `move_note_to_folder(noteId, folderId)`, and possibly `move_folder`/reparent + `list_folders`.
-- Each workspace-parameterized and ownership-authorized like every Phase 41/42 tool; reuse the existing folder aggregate/commands + `FolderTree` projection (Phase 5) via identity-explicit handler overloads (as Phase 42 did for calendar).
-- Mind the MCP tool-count cap (raised to ≤13 in Phase 42) — folder tools push past it; decide the cap/grouping.
-
-**Why it isn't scheduled yet:** Needs Scout to pick the exact tool set + argument shapes and confirm the folder commands expose identity-explicit overloads, then break into a numbered phase. Clear extension of the proven MCP-write pattern, but net-new tools.
-
-**Raised in:** User request, 2026-07-01 — "support folder administration via the MCP."
+_(Folder administration via the MCP graduated to **[Phase 47](phases/phase-47.md)** on 2026-07-01.)_
