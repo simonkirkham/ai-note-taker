@@ -1,6 +1,7 @@
-import { requestVoid, requestVoidWithResponse, requestWithResponse } from './client'
+import { requestVoidWithResponse, requestWithResponse } from './client'
 import { clearLatestToken, getLatestToken, setLatestToken } from './consistencyTokens'
 import { gatedRead } from './gatedRead'
+import { captureNoteToken } from './notes'
 
 // Read-your-writes (RYW-3b): the folder flows are async (the projector builds the folder tree). A
 // folder write returns its write token in `X-Consistency-Token`; the next `GET /folders` echoes it
@@ -63,23 +64,28 @@ export async function moveFolder(folderId: string, parentFolderId: string | null
 }
 
 // Note-aggregate flows (not the folder tree): a note's folder/workspace assignment lives on the
-// note stream, surfaced via the note card — unchanged by RYW-3b.
-export function moveNoteToFolder(noteId: string, folderId: string): Promise<void> {
-  return requestVoid(`/notes/${noteId}/folder`, {
+// note stream, surfaced via the note card. BUG-45: these are cards-list writes — capture the write
+// token via `captureNoteToken` (the note-cards scope) so `useMoveNote*`'s onSettled cards refetch
+// gates on the projector applying the move; else the moved note reappears in the source list.
+export async function moveNoteToFolder(noteId: string, folderId: string): Promise<void> {
+  const response = await requestVoidWithResponse(`/notes/${noteId}/folder`, {
     method: "PUT",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ folderId }),
   })
+  captureNoteToken(noteId, response)
 }
 
-export function unfileNote(noteId: string): Promise<void> {
-  return requestVoid(`/notes/${noteId}/folder`, { method: "DELETE" })
+export async function unfileNote(noteId: string): Promise<void> {
+  const response = await requestVoidWithResponse(`/notes/${noteId}/folder`, { method: "DELETE" })
+  captureNoteToken(noteId, response)
 }
 
-export function moveNoteToWorkspace(noteId: string, workspaceId: string): Promise<void> {
-  return requestVoid(`/notes/${noteId}/workspace`, {
+export async function moveNoteToWorkspace(noteId: string, workspaceId: string): Promise<void> {
+  const response = await requestVoidWithResponse(`/notes/${noteId}/workspace`, {
     method: "PUT",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ workspaceId }),
   })
+  captureNoteToken(noteId, response)
 }

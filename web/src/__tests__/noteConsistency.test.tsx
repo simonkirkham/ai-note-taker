@@ -8,6 +8,7 @@ import {
   setLatestToken,
   setStreamToken,
 } from '../api/consistencyTokens'
+import { moveNoteToFolder, moveNoteToWorkspace, unfileNote } from '../api/folders'
 import { deleteNote, editContent, getNoteCards, getNoteDetail, renameNote } from '../api/notes'
 import { tagNote } from '../api/tags'
 import { server } from '../test/setup'
@@ -75,6 +76,33 @@ describe('notes read-your-writes (RYW-2)', () => {
     await getNoteCards()
 
     expect(sentToken).toBe(`note#${NOTE_ID}@7`)
+  })
+
+  // BUG-45: the note-move writes are cards-list writes too (optimistic drop/patch + onSettled
+  // refetch), so each must capture + thread its token or the moved note reappears in the source
+  // list (move-to-workspace) / the folder placement flickers.
+  it.each([
+    ['moveNoteToWorkspace', () => moveNoteToWorkspace(NOTE_ID, 'ws-2'), 'put', '/workspace'],
+    ['moveNoteToFolder', () => moveNoteToFolder(NOTE_ID, 'folder-2'), 'put', '/folder'],
+    ['unfileNote', () => unfileNote(NOTE_ID), 'delete', '/folder'],
+  ] as const)('GET /notes/cards after %s carries the move write token', async (_name, move, method, suffix) => {
+    let sentToken: string | null = null
+    const handler = () =>
+      new HttpResponse(null, { status: 204, headers: { 'X-Consistency-Token': `note#${NOTE_ID}@9` } })
+    server.use(
+      method === 'put'
+        ? http.put(`/api/notes/${NOTE_ID}${suffix}`, handler)
+        : http.delete(`/api/notes/${NOTE_ID}${suffix}`, handler),
+      http.get('/api/notes/cards', ({ request }) => {
+        sentToken = request.headers.get('If-Consistent-With')
+        return HttpResponse.json({ cards: [] })
+      }),
+    )
+
+    await move()
+    await getNoteCards()
+
+    expect(sentToken).toBe(`note#${NOTE_ID}@9`)
   })
 
   it('a stale note-detail read clears nothing and keeps the token for the next read', async () => {

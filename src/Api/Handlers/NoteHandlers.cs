@@ -276,7 +276,7 @@ public static class NoteHandlers
         return Results.NoContent();
     }
 
-    public static async Task<IResult> MoveNoteToFolder(Guid noteId, MoveNoteToFolderRequest req, INoteCommandHandler handler, INoteDetailStore noteDetailStore, IFolderTreeStore folderTreeStore, ICurrentUser currentUser, CancellationToken ct)
+    public static async Task<IResult> MoveNoteToFolder(Guid noteId, MoveNoteToFolderRequest req, HttpResponse response, INoteCommandHandler handler, INoteDetailStore noteDetailStore, IFolderTreeStore folderTreeStore, ICurrentUser currentUser, CancellationToken ct)
     {
         var detail = await noteDetailStore.GetAsync(new NoteId(noteId));
         if (detail is not null && detail.UserId != currentUser.UserId) return Results.NotFound();
@@ -284,12 +284,16 @@ public static class NoteHandlers
         var allFolders = await folderTreeStore.GetAllAsync(ct).ConfigureAwait(false);
         if (!allFolders.Any(f => f.FolderId == targetId && f.UserId == currentUser.UserId))
             return Results.NotFound();
-        try { await handler.HandleAsync(new Domain.Notes.MoveNoteToFolder(new NoteId(noteId), targetId), ct); }
+        long version;
+        try { version = await handler.HandleAsync(new Domain.Notes.MoveNoteToFolder(new NoteId(noteId), targetId), ct); }
         catch (NoteNotFoundException) { return Results.NotFound(); }
+        // BUG-45: surface the move's write token so the client can gate its cards refetch on the
+        // projector applying the move (else the card's folder placement flickers back).
+        SetConsistencyToken(response, noteId, version);
         return Results.NoContent();
     }
 
-    public static async Task<IResult> MoveNoteToWorkspace(Guid noteId, MoveNoteToWorkspaceRequest req, INoteCommandHandler handler, INoteDetailStore noteDetailStore, IWorkspaceListStore workspaceListStore, ICurrentUser currentUser, CancellationToken ct)
+    public static async Task<IResult> MoveNoteToWorkspace(Guid noteId, MoveNoteToWorkspaceRequest req, HttpResponse response, INoteCommandHandler handler, INoteDetailStore noteDetailStore, IWorkspaceListStore workspaceListStore, ICurrentUser currentUser, CancellationToken ct)
     {
         var detail = await noteDetailStore.GetAsync(new NoteId(noteId));
         if (detail is not null && detail.UserId != currentUser.UserId) return Results.NotFound();
@@ -302,17 +306,24 @@ public static class NoteHandlers
             if (!all.Any(w => w.WorkspaceId.Value == req.WorkspaceId && w.UserId == currentUser.UserId))
                 return Results.NotFound();
         }
-        try { await handler.HandleAsync(new Domain.Notes.MoveNoteToWorkspace(new NoteId(noteId), new WorkspaceId(req.WorkspaceId)), ct); }
+        long version;
+        try { version = await handler.HandleAsync(new Domain.Notes.MoveNoteToWorkspace(new NoteId(noteId), new WorkspaceId(req.WorkspaceId)), ct); }
         catch (NoteNotFoundException) { return Results.NotFound(); }
+        // BUG-45: surface the move's write token so the client can gate its cards refetch on the
+        // projector applying the move — else the moved note reappears in the source workspace's list.
+        SetConsistencyToken(response, noteId, version);
         return Results.NoContent();
     }
 
-    public static async Task<IResult> UnfileNote(Guid noteId, INoteCommandHandler handler, INoteDetailStore noteDetailStore, ICurrentUser currentUser, CancellationToken ct)
+    public static async Task<IResult> UnfileNote(Guid noteId, HttpResponse response, INoteCommandHandler handler, INoteDetailStore noteDetailStore, ICurrentUser currentUser, CancellationToken ct)
     {
         var detail = await noteDetailStore.GetAsync(new NoteId(noteId));
         if (detail is not null && detail.UserId != currentUser.UserId) return Results.NotFound();
-        try { await handler.HandleAsync(new Domain.Notes.UnfileNote(new NoteId(noteId)), ct); }
+        long version;
+        try { version = await handler.HandleAsync(new Domain.Notes.UnfileNote(new NoteId(noteId)), ct); }
         catch (NoteNotFoundException) { return Results.NotFound(); }
+        // BUG-45: surface the move's write token so the client can gate its cards refetch on the projector.
+        SetConsistencyToken(response, noteId, version);
         return Results.NoContent();
     }
 
