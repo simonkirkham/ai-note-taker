@@ -602,7 +602,10 @@ public sealed class NoteTakerStack : Stack
             LogGroup = queryLogGroup,
             SnapStart = Amazon.CDK.AWS.Lambda.SnapStartConf.ON_PUBLISHED_VERSIONS,
             Tracing = Amazon.CDK.AWS.Lambda.Tracing.ACTIVE,
-            Environment = new Dictionary<string, string>(requestEnvironment)
+            // BUG-43: only this (SnapStart) function must swap to fresh container credentials after a
+            // restore. The flag rides the constructor dict so it is part of the hashed config (never
+            // AddEnvironment after CurrentVersion is read). The Command function omits it → unchanged.
+            Environment = new Dictionary<string, string>(requestEnvironment) { ["SNAPSTART_CONTAINER_CREDS"] = "1" }
         });
 
         var queryAlias = new Amazon.CDK.AWS.Lambda.Alias(this, "QueryFunctionLiveAlias", new Amazon.CDK.AWS.Lambda.AliasProps

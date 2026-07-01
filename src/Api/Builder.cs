@@ -83,6 +83,15 @@ public static class Builder
         var awsServiceUrl = Environment.GetEnvironmentVariable("DYNAMO_SERVICE_URL") ?? builder.Configuration["AWS:ServiceURL"];
         var awsRegion = Environment.GetEnvironmentVariable("AWS_REGION") ?? builder.Configuration["AWS:AuthenticationRegion"] ?? Environment.GetEnvironmentVariable("AWS_DEFAULT_REGION");
 
+        // BUG-43: only the Query function runs under SnapStart (flagged SNAPSTART_CONTAINER_CREDS by the
+        // CDK). Its env-var session token is resolved at init and frozen in the snapshot → invalid after
+        // restore. Bind DynamoDB to a swappable credentials holder that RegisterSnapStartPriming flips to
+        // the fresh container endpoint on restore. Real AWS only — never the DynamoDB-Local path (no
+        // container endpoint), and never the Command function (flag unset → unchanged default creds).
+        var useContainerCredsOnRestore =
+            Environment.GetEnvironmentVariable("SNAPSTART_CONTAINER_CREDS") == "1"
+            && string.IsNullOrWhiteSpace(awsServiceUrl);
+
         if (!string.IsNullOrWhiteSpace(awsServiceUrl) || !string.IsNullOrWhiteSpace(awsRegion))
         {
             if (!string.IsNullOrWhiteSpace(awsServiceUrl))
@@ -90,7 +99,19 @@ public static class Builder
             if (!string.IsNullOrWhiteSpace(awsRegion))
                 dynamoConfig.AuthenticationRegion = awsRegion;
 
-            builder.Services.AddSingleton<IAmazonDynamoDB>(sp => new AmazonDynamoDBClient(dynamoConfig));
+            if (useContainerCredsOnRestore)
+            {
+                // Seed the holder with the default chain for the brief pre-snapshot init window; the
+                // after-restore hook swaps it to GenericContainerCredentials.
+                builder.Services.AddSingleton(_ => new Api.Aws.SnapStartRefreshableCredentials(
+                    Amazon.Runtime.Credentials.DefaultAWSCredentialsIdentityResolver.GetCredentials()));
+                builder.Services.AddSingleton<IAmazonDynamoDB>(sp =>
+                    new AmazonDynamoDBClient(sp.GetRequiredService<Api.Aws.SnapStartRefreshableCredentials>(), dynamoConfig));
+            }
+            else
+            {
+                builder.Services.AddSingleton<IAmazonDynamoDB>(sp => new AmazonDynamoDBClient(dynamoConfig));
+            }
         }
         else
         {
@@ -284,6 +305,28 @@ public static class Builder
                 // broken warm path in CloudWatch rather than swallowing it silently.
                 app.Logger.LogWarning(ex, "SnapStart priming hook failed; cold-start latency may regress.");
             }
+        });
+
+        // BUG-43: after a restore, swap DynamoDB credentials to the fresh container endpoint. The
+        // env-var session token resolved during priming is frozen in the snapshot and rejected after
+        // restore ("security token invalid", cold_start:true). GenericContainerCredentials reads
+        // AWS_CONTAINER_CREDENTIALS_FULL_URI (fresh on restore) and refreshes. No-op when the swappable
+        // holder isn't registered (Command function / local) — only the Query function sets the flag.
+        Amazon.Lambda.Core.SnapshotRestore.RegisterAfterRestore(() =>
+        {
+            try
+            {
+                app.Services.GetService<Api.Aws.SnapStartRefreshableCredentials>()?.UseContainerCredentials();
+            }
+            catch (Exception ex)
+            {
+                // Best-effort so the restore never fails — but this is the SOLE recovery path, so a
+                // failure is serious: the holder keeps the frozen env-var chain, which does NOT
+                // self-heal, so every request on this restored instance 500s until it is recycled.
+                // Log at Error (findable when the downstream 500s trip the error-rate alarm).
+                app.Logger.LogError(ex, "SnapStart after-restore credential swap failed; requests on this instance will fail until it is recycled.");
+            }
+            return ValueTask.CompletedTask;
         });
     }
 
