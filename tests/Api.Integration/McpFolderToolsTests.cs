@@ -171,6 +171,94 @@ public sealed class McpFolderToolsTests(ApiFactory factory) : IClassFixture<ApiF
         Assert.Null(NoteFolderId(note));
     }
 
+    // ── 47-C: rename_folder + delete_folder ───────────────────────────────
+
+    [Fact]
+    public async Task ToolsList_IncludesRenameAndDeleteFolder()
+    {
+        var client = _factory.CreateUnauthenticatedClient();
+        var names = (await CallAsync(client, "tools/list", new { }, McpTestTokens.Valid()))
+            .GetProperty("tools").EnumerateArray().Select(t => t.GetProperty("name").GetString()).ToList();
+        Assert.Contains("rename_folder", names);
+        Assert.Contains("delete_folder", names);
+    }
+
+    [Fact]
+    public async Task RenameFolder_ChangesName()
+    {
+        var client = _factory.CreateUnauthenticatedClient();
+        var folderId = await CreateFolderAsync(client, WorkspaceId.DefaultValue, "Clients", Owner);
+
+        var renamed = await CallToolAsync(client, "rename_folder",
+            new { workspaceId = WorkspaceId.DefaultValue, folderId, name = "Key Clients" }, McpTestTokens.Valid(Owner));
+
+        Assert.False(IsToolError(renamed), RawText(renamed));
+        var folders = await ListFoldersAsync(client, WorkspaceId.DefaultValue, Owner);
+        Assert.Equal("Key Clients", folders.Single(f => f.GetProperty("id").GetString() == folderId).GetProperty("name").GetString());
+    }
+
+    [Fact]
+    public async Task RenameFolder_BlankName_IsRejected()
+    {
+        var client = _factory.CreateUnauthenticatedClient();
+        var folderId = await CreateFolderAsync(client, WorkspaceId.DefaultValue, "Clients", Owner);
+
+        var result = await CallToolAsync(client, "rename_folder",
+            new { workspaceId = WorkspaceId.DefaultValue, folderId, name = "   " }, McpTestTokens.Valid(Owner));
+
+        Assert.True(IsToolError(result));
+    }
+
+    [Fact]
+    public async Task RenameFolder_ForeignFolder_IsRejected_AndNameUnchanged()
+    {
+        var client = _factory.CreateUnauthenticatedClient();
+        var folderId = await CreateFolderAsync(client, WorkspaceId.DefaultValue, "Owned", OtherUser);
+
+        var result = await CallToolAsync(client, "rename_folder",
+            new { workspaceId = WorkspaceId.DefaultValue, folderId, name = "Hijacked" }, McpTestTokens.Valid(Owner));
+
+        Assert.True(IsToolError(result));
+        var folders = await ListFoldersAsync(client, WorkspaceId.DefaultValue, OtherUser);
+        Assert.Equal("Owned", folders.Single(f => f.GetProperty("id").GetString() == folderId).GetProperty("name").GetString());
+    }
+
+    [Fact]
+    public async Task DeleteFolder_RemovesFolderAndSubfolders_AndUnfilesNotes()
+    {
+        var client = _factory.CreateUnauthenticatedClient();
+        var parent = await CreateFolderAsync(client, WorkspaceId.DefaultValue, "Clients", Owner);
+        var child = ParsePayload(await CallToolAsync(client, "create_folder",
+            new { workspaceId = WorkspaceId.DefaultValue, name = "Acme", parentId = parent }, McpTestTokens.Valid(Owner)))
+            .GetProperty("folderId").GetString()!;
+        var noteId = await CreateNoteAsync(client, Owner);
+        await CallToolAsync(client, "move_note_to_folder",
+            new { workspaceId = WorkspaceId.DefaultValue, noteId, folderId = parent }, McpTestTokens.Valid(Owner));
+
+        var deleted = await CallToolAsync(client, "delete_folder",
+            new { workspaceId = WorkspaceId.DefaultValue, folderId = parent }, McpTestTokens.Valid(Owner));
+
+        Assert.False(IsToolError(deleted), RawText(deleted));
+        var folders = await ListFoldersAsync(client, WorkspaceId.DefaultValue, Owner);
+        Assert.DoesNotContain(folders, f => f.GetProperty("id").GetString() == parent);
+        Assert.DoesNotContain(folders, f => f.GetProperty("id").GetString() == child);
+        Assert.Null(NoteFolderId(noteId));   // unfiled, not deleted
+    }
+
+    [Fact]
+    public async Task DeleteFolder_ForeignFolder_IsRejected_AndFolderRemains()
+    {
+        var client = _factory.CreateUnauthenticatedClient();
+        var folderId = await CreateFolderAsync(client, WorkspaceId.DefaultValue, "Owned", OtherUser);
+
+        var result = await CallToolAsync(client, "delete_folder",
+            new { workspaceId = WorkspaceId.DefaultValue, folderId }, McpTestTokens.Valid(Owner));
+
+        Assert.True(IsToolError(result));
+        var folders = await ListFoldersAsync(client, WorkspaceId.DefaultValue, OtherUser);
+        Assert.Contains(folders, f => f.GetProperty("id").GetString() == folderId);
+    }
+
     // ── Helpers ──────────────────────────────────────────────────────────
 
     private async Task<string> CreateNoteAsync(HttpClient client, string user)

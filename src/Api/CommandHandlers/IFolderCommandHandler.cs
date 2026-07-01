@@ -14,4 +14,6 @@ public interface IFolderCommandHandler
     // route's scoped ICurrentUser/ICurrentWorkspace. Mirrors INoteCommandHandler (33-B2). Rename/Delete/
     // Move gain their overloads when their MCP tools land (47-C/47-D).
     Task<long> HandleAsync(CreateFolder cmd, string userId, string? workspaceId, CancellationToken ct = default);
+    Task<long> HandleAsync(RenameFolder cmd, string userId, string? workspaceId, CancellationToken ct = default);
+    Task<long> HandleAsync(DeleteFolder cmd, string userId, string? workspaceId, CancellationToken ct = default);
 }

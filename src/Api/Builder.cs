@@ -173,6 +173,9 @@ public static class Builder
         // 41-B: strongly-consistent action-item ownership (event-stream) — the object-level auth the
         // MCP complete/reopen tools need to bind a mutation to the action's real owner.
         builder.Services.AddScoped<Api.Auth.IActionItemAuthorizer, Api.Auth.ActionItemAuthorizer>();
+        // 47-C: strongly-consistent folder ownership (event-stream) — the object-level auth the MCP
+        // rename/delete/move folder tools need to bind a mutation to the folder's real owner.
+        builder.Services.AddScoped<Api.Auth.IFolderAuthorizer, Api.Auth.FolderAuthorizer>();
         builder.Services.AddSingleton<INoteTitleListStore>(sp =>
             new NoteTitleListStore(sp.GetRequiredService<IAmazonDynamoDB>(), projTableName));
         builder.Services.AddSingleton<INoteDetailStore>(sp =>

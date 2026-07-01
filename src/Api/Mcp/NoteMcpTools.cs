@@ -39,6 +39,7 @@ public sealed class NoteMcpTools(
     IFolderCommandHandler folderCommands,
     INoteAuthorizer noteAuthorizer,
     IActionItemAuthorizer actionAuthorizer,
+    IFolderAuthorizer folderAuthorizer,
     ICalendarClientFactory calendarFactory,
     CalendarScope calendarScope,
     ICalendarLinkIndexStore calendarLinks,
@@ -428,6 +429,62 @@ public sealed class NoteMcpTools(
         logger.LogInformation("mcp_write tool=move_note_to_folder sub={Sub} workspaceId={WorkspaceId} noteId={NoteId} folderId={FolderId}",
             userId, workspaceId, noteGuid, folderGuid);
         return JsonSerializer.Serialize(new { version });
+    }
+
+    [McpServerTool(Name = "rename_folder")]
+    [Description("Rename a folder the caller owns. Returns the folder's new stream version.")]
+    public async Task<string> RenameFolder(
+        [Description("The workspace id the folder is in (use list_workspaces to resolve a name).")] string workspaceId,
+        [Description("The id of the folder to rename (use list_folders to resolve).")] string folderId,
+        [Description("The new folder name.")] string name,
+        CancellationToken ct)
+    {
+        var userId = await AuthorizeWriteAsync("rename_folder", workspaceId, ct).ConfigureAwait(false);
+        if (string.IsNullOrWhiteSpace(name))
+            throw new McpException("Provide a folder name.");
+        var folder = await AuthorizeFolderAsync("rename_folder", folderId, userId, ct).ConfigureAwait(false);
+        long version;
+        try
+        {
+            version = await folderCommands.HandleAsync(new Domain.Folders.RenameFolder(folder, name.Trim()), userId, workspaceId, ct).ConfigureAwait(false);
+        }
+        catch (InvalidOperationException ex) { throw new McpException(ex.Message); }
+        logger.LogInformation("mcp_write tool=rename_folder sub={Sub} workspaceId={WorkspaceId} folderId={FolderId}", userId, workspaceId, folder.Value);
+        return JsonSerializer.Serialize(new { version });
+    }
+
+    [McpServerTool(Name = "delete_folder")]
+    [Description("Delete a folder the caller owns and everything nested inside it. Notes filed in the deleted folders are unfiled (not deleted). Returns the folder's new stream version.")]
+    public async Task<string> DeleteFolder(
+        [Description("The workspace id the folder is in (use list_workspaces to resolve a name).")] string workspaceId,
+        [Description("The id of the folder to delete (use list_folders to resolve).")] string folderId,
+        CancellationToken ct)
+    {
+        var userId = await AuthorizeWriteAsync("delete_folder", workspaceId, ct).ConfigureAwait(false);
+        var folder = await AuthorizeFolderAsync("delete_folder", folderId, userId, ct).ConfigureAwait(false);
+        long version;
+        try
+        {
+            version = await folderCommands.HandleAsync(new Domain.Folders.DeleteFolder(folder), userId, workspaceId, ct).ConfigureAwait(false);
+        }
+        catch (InvalidOperationException ex) { throw new McpException(ex.Message); }
+        logger.LogInformation("mcp_write tool=delete_folder sub={Sub} workspaceId={WorkspaceId} folderId={FolderId}", userId, workspaceId, folder.Value);
+        return JsonSerializer.Serialize(new { version });
+    }
+
+    // Object-level folder authorization: parse + bind the mutation to the folder's own owner from the
+    // event stream (BUG-41 / BUG-30). Rejects an unparseable, missing, deleted, or foreign folder.
+    private async Task<FolderId> AuthorizeFolderAsync(string tool, string folderId, string userId, CancellationToken ct)
+    {
+        if (!Guid.TryParse(folderId, out var guid))
+            throw new McpException("Invalid folder id.");
+        var id = new FolderId(guid);
+        if (!await folderAuthorizer.OwnsFolderAsync(id, userId, ct).ConfigureAwait(false))
+        {
+            logger.LogWarning("mcp_write_rejected tool={Tool} sub={Sub} folderId={FolderId} reason=unauthorized", tool, userId, folderId);
+            throw new McpException("Folder not found or access denied.");
+        }
+        return id;
     }
 
     // 41-B: action-item writes. add_action_item is NOTE-scoped (it attaches to a note), so it authorizes
