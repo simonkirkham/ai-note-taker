@@ -8,6 +8,8 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Markdown } from 'tiptap-markdown';
 import { presignUpload, resolveImages } from '../api/notes';
 import { BlankLineParagraph } from '../lib/blankLineParagraph';
+import { emojifyMarkdown } from '../lib/emoji';
+import { EmojiShortcode } from '../lib/emojiExtension';
 import { hasDisallowedScheme } from '../lib/linkScheme';
 import { MarkdownTable } from '../lib/markdownTable';
 import { MarkdownTaskList } from '../lib/markdownTaskList';
@@ -91,6 +93,10 @@ export default function NoteEditor({ noteId, value, onChange, onBlur }: NoteEdit
       // nests. A checkbox toggle updates the doc, so onUpdate fires and the note saves.
       MarkdownTaskList,
       TaskItem.configure({ nested: true }),
+      // 46-C: convert :shortcode: to emoji as the user types (load-time content is
+      // converted via emojifyMarkdown below). Unknown codes and codes in code spans
+      // are left as-is.
+      EmojiShortcode,
       ImageWithResize,
       Link.configure({
         protocols: ALLOWED_LINK_PROTOCOLS,
@@ -108,7 +114,7 @@ export default function NoteEditor({ noteId, value, onChange, onBlur }: NoteEdit
     // stripped (text shows instantly); the resolve effect below re-inserts the images as
     // presigned URLs via setContent — so the only image the parser ever sees is a
     // presigned URL (→ the desired `?X-Amz-…` 200 GET), never a bare key.
-    content: stripImageKeys(value),
+    content: emojifyMarkdown(stripImageKeys(value)),
     // While image keys are pending resolve the doc has them stripped out; keep the editor
     // read-only until resolve re-inserts them, so a fast edit-then-save in that sub-second
     // window can't persist the stripped (image-less) content. Re-enabled in the resolve
@@ -252,7 +258,9 @@ export default function NoteEditor({ noteId, value, onChange, onBlur }: NoteEdit
         }
         // emitUpdate:false so the resolve doesn't dirty the draft; the resolved markdown
         // has no bare-key src, so this setContent never triggers the BUG-24 fetch.
-        editor.commands.setContent(keysToSrcs(initial, urls), { emitUpdate: false });
+        editor.commands.setContent(emojifyMarkdown(keysToSrcs(initial, urls)), {
+          emitUpdate: false,
+        });
         editor.setEditable(true);
         setCanInsert(true);
       })

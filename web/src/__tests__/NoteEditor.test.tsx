@@ -239,3 +239,28 @@ describe('NoteEditor task lists (46-B)', () => {
     expect(checkboxes()[0].checked).toBe(true)
   })
 })
+
+// 46-C: a :shortcode: in loaded note markdown renders as its emoji glyph. The unit
+// test proves the transform; this proves NoteEditor applies it to loaded content.
+describe('NoteEditor emoji shortcodes (46-C)', () => {
+  it('renders a known shortcode in loaded content as its emoji', async () => {
+    renderEditor('Great work :tada:')
+    const content = await screen.findByTestId('note-content')
+    await waitFor(() => expect(content.textContent).toContain('🎉'))
+    expect(content.textContent).not.toContain(':tada:')
+  })
+
+  it('leaves an unknown shortcode as literal text', async () => {
+    renderEditor('status :not_a_real_code: here')
+    const content = await screen.findByTestId('note-content')
+    await waitFor(() => expect(content.textContent).toContain('status'))
+    expect(content.textContent).toContain(':not_a_real_code:')
+  })
+
+  it('does not emojify a shortcode inside inline code', async () => {
+    renderEditor('type `:tada:` verbatim')
+    const content = await screen.findByTestId('note-content')
+    await waitFor(() => expect(content.textContent).toContain(':tada:'))
+    expect(content.textContent).not.toContain('🎉')
+  })
+})
