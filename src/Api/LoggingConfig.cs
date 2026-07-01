@@ -72,10 +72,10 @@ public static class LoggingConfig
     }
 
     // Appends the authenticated subject (`sub` = ClaimTypes.NameIdentifier, the same value stamped as
-    // a command's UserId) to the request log scope. Registered AFTER UseAuthentication/UseAuthorization
-    // (see Program.cs) so ctx.User is populated — appending it in UseCorrelationId (the first
-    // middleware) would always see an anonymous principal. Unauthenticated requests log "" rather than
-    // throwing. Only the resolved subject claim is logged — never the bearer token / Authorization
+    // a command's UserId) to the request log scope. Registered AFTER UseAuthentication (see Program.cs)
+    // so ctx.User is populated — appending it in UseCorrelationId (the first middleware) would always
+    // see an anonymous principal — and BEFORE the allowlist middleware so an authenticated-but-rejected
+    // caller's 403 lines still carry `sub`. Unauthenticated requests log "" rather than throwing. Only the resolved subject claim is logged — never the bearer token / Authorization
     // header (the token is not put into any log key). AsyncLocal-scoped like correlation_id: removed on
     // unwind so it never leaks to a later request on a warm Lambda.
     internal static void UseCallerIdentity(WebApplication app)
