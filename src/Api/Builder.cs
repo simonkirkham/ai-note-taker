@@ -320,9 +320,11 @@ public static class Builder
             }
             catch (Exception ex)
             {
-                // If the container endpoint can't be resolved, keep the existing provider — the first
-                // request may 500 (self-heals on the next), but the restore itself must never fail.
-                app.Logger.LogWarning(ex, "SnapStart after-restore credential swap failed.");
+                // Best-effort so the restore never fails — but this is the SOLE recovery path, so a
+                // failure is serious: the holder keeps the frozen env-var chain, which does NOT
+                // self-heal, so every request on this restored instance 500s until it is recycled.
+                // Log at Error (findable when the downstream 500s trip the error-rate alarm).
+                app.Logger.LogError(ex, "SnapStart after-restore credential swap failed; requests on this instance will fail until it is recycled.");
             }
             return ValueTask.CompletedTask;
         });
