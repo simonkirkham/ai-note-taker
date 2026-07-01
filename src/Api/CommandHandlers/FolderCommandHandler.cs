@@ -43,6 +43,9 @@ public sealed class FolderCommandHandler(
         });
 
     public Task<long> HandleAsync(RenameFolder cmd, CancellationToken ct = default) =>
+        HandleAsync(cmd, currentUser.UserId, currentWorkspace.WorkspaceId, ct);
+
+    public Task<long> HandleAsync(RenameFolder cmd, string userId, string? workspaceId, CancellationToken ct = default) =>
         CommandInstrumentation.RunAsync(metrics, logger, nameof(RenameFolder), "Folder", async () =>
         {
             var streamId = cmd.FolderId.ToStreamId();
@@ -51,10 +54,13 @@ public sealed class FolderCommandHandler(
             var newEvents = RebuildFolder(history).Handle(cmd);
             // No-op command: nothing appended, so the write token is the current version.
             if (newEvents.Count == 0) return (long)history.Count;
-            return await PersistFolderAsync(streamId, history, newEvents, currentUser.UserId, currentWorkspace.WorkspaceId, ct).ConfigureAwait(false);
+            return await PersistFolderAsync(streamId, history, newEvents, userId, workspaceId, ct).ConfigureAwait(false);
         });
 
     public Task<long> HandleAsync(DeleteFolder cmd, CancellationToken ct = default) =>
+        HandleAsync(cmd, currentUser.UserId, currentWorkspace.WorkspaceId, ct);
+
+    public Task<long> HandleAsync(DeleteFolder cmd, string userId, string? workspaceId, CancellationToken ct = default) =>
         CommandInstrumentation.RunAsync(metrics, logger, nameof(DeleteFolder), "Folder", async () =>
         {
             var streamId = cmd.FolderId.ToStreamId();
@@ -66,15 +72,15 @@ public sealed class FolderCommandHandler(
 
             // Unfile notes in descendants + root folder (order doesn't matter for unfiling)
             foreach (var folderId in subtreeIds.Concat([cmd.FolderId]))
-                await UnfileNotesInFolderAsync(folderId, ct).ConfigureAwait(false);
+                await UnfileNotesInFolderAsync(folderId, userId, workspaceId, ct).ConfigureAwait(false);
 
             // Delete descendant folders bottom-up (subtreeIds already in bottom-up order)
             foreach (var folderId in subtreeIds)
-                await DeleteOneFolderAsync(folderId, ct).ConfigureAwait(false);
+                await DeleteOneFolderAsync(folderId, userId, workspaceId, ct).ConfigureAwait(false);
 
             // Delete the target folder — the projector removes its tree row off the appended event.
             var newEvents = RebuildFolder(history).Handle(cmd);
-            var envelopes = ToEnvelopes(streamId, newEvents, currentUser.UserId, currentWorkspace.WorkspaceId);
+            var envelopes = ToEnvelopes(streamId, newEvents, userId, workspaceId);
             await store.AppendAsync(streamId, history.Count, envelopes, ct).ConfigureAwait(false);
             return (long)(history.Count + envelopes.Count);
         });
@@ -99,21 +105,21 @@ public sealed class FolderCommandHandler(
             return await PersistFolderAsync(streamId, history, newEvents, currentUser.UserId, currentWorkspace.WorkspaceId, ct).ConfigureAwait(false);
         });
 
-    private async Task UnfileNotesInFolderAsync(FolderId folderId, CancellationToken ct)
+    private async Task UnfileNotesInFolderAsync(FolderId folderId, string userId, string? workspaceId, CancellationToken ct)
     {
         var allCards = await noteCardListStore.QueryAllAsync(ct).ConfigureAwait(false);
-        var notesInFolder = allCards.Where(c => c.FolderId == folderId && !c.Deleted && c.UserId == currentUser.UserId).ToList();
+        var notesInFolder = allCards.Where(c => c.FolderId == folderId && !c.Deleted && c.UserId == userId).ToList();
         foreach (var card in notesInFolder)
-            await noteCommandHandler.HandleAsync(new UnfileNote(card.NoteId), ct).ConfigureAwait(false);
+            await noteCommandHandler.HandleAsync(new UnfileNote(card.NoteId), userId, workspaceId, ct).ConfigureAwait(false);
     }
 
-    private async Task DeleteOneFolderAsync(FolderId folderId, CancellationToken ct)
+    private async Task DeleteOneFolderAsync(FolderId folderId, string userId, string? workspaceId, CancellationToken ct)
     {
         var streamId = folderId.ToStreamId();
         var history = await store.ReadAsync(streamId, ct).ConfigureAwait(false);
         if (history.Count == 0) return;
         var newEvents = RebuildFolder(history).Handle(new DeleteFolder(folderId));
-        var envelopes = ToEnvelopes(streamId, newEvents, currentUser.UserId, currentWorkspace.WorkspaceId);
+        var envelopes = ToEnvelopes(streamId, newEvents, userId, workspaceId);
         await store.AppendAsync(streamId, history.Count, envelopes, ct).ConfigureAwait(false);
     }
 
