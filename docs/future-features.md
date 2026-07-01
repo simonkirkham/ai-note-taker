@@ -138,3 +138,29 @@ _(Claude Cowork connector — read-only, workspace-scoped MCP server — graduat
 **Why it isn't scheduled yet:** Unlike tables/task lists, none of these has a built-in Tiptap node, and the source analysis's "just add a markdown-it/remark plugin" recommendation does not apply — the notes editor is a Tiptap WYSIWYG where markdown is only the storage format, so each needs a **custom Tiptap node with bespoke markdown parse + serialize** and is awkward to *edit* in a WYSIWYG (`tiptap-markdown` 0.9 also exposes no markdown-it-plugin hook). Math additionally pulls in KaTeX and a custom node. Per the source analysis, math is "lower priority unless notes become technical"; definition lists are "niche". Deferred by the user 2026-07-01 when scoping Phase 46 — revisit if notes trend technical or footnotes become common in the OGI notes.
 
 **Raised in:** User markdown-support analysis, 2026-07-01 (Phase 46 scoping).
+
+---
+
+## Distinguish raw meeting notes from AI-structured notes when browsing
+
+**What:** At the **home/list level**, let the user tell apart — and filter to — **raw meeting notes** (notes captured from/around a meeting: transcript + quick notes) versus **AI-generated structured notes** (notes whose content is the AI analysis / Final Notes). This is a **browse-level** distinction — a filter, segment, or separate sections on the note list — **not** a change to a note's internal structure (the Phase 15 Transcript / Quick notes / Final Notes tabs stay as-is). Scope to design when broken down:
+- **The taxonomy** *(the crux)* — a clear, projectable rule for what makes a note "raw" vs "AI-structured": e.g. has a linked meeting / transcript, has AI analysis populated, or origin (meeting/transcribed vs AI/MCP-created). Scout must nail this first.
+- **Browse UX** — a filter/segment on the home list alongside the existing tag/date filters, or two sections; how it composes with those filters and the URL-persisted filter state (CHANGE-23).
+- **Data** — surface whatever the taxonomy needs on the note-card projection so the split is a server-side filter (aligns with the scalable-note-loading direction), not client-only.
+
+**Why it isn't scheduled yet:** Needs Scout to define the raw-vs-AI taxonomy and the browse UX, then break it into a numbered phase. New browse capability, not a tweak.
+
+**Raised in:** User request, 2026-07-01 — "split out the notes from meetings (raw notes) from structured notes generated via AI"; clarified to a **list/browse-level** distinction (not an internal note restructure).
+
+---
+
+## Folder administration via the MCP
+
+**What:** Extend the MCP write tools so Claude can **administer folders** over the connector — the same way it can already create/update notes and to-dos (Phase 41). Today the MCP exposes note/to-do writes (Phase 41), calendar reads (Phase 42), and workspace listing, but **no folder operations**; folders are managed only in the web UI (Phase 5). Likely tools to scope when broken down:
+- `create_folder(workspaceId, name, parentId?)`, `rename_folder`, `delete_folder`, `move_note_to_folder(noteId, folderId)`, and possibly `move_folder`/reparent + `list_folders`.
+- Each workspace-parameterized and ownership-authorized like every Phase 41/42 tool; reuse the existing folder aggregate/commands + `FolderTree` projection (Phase 5) via identity-explicit handler overloads (as Phase 42 did for calendar).
+- Mind the MCP tool-count cap (raised to ≤13 in Phase 42) — folder tools push past it; decide the cap/grouping.
+
+**Why it isn't scheduled yet:** Needs Scout to pick the exact tool set + argument shapes and confirm the folder commands expose identity-explicit overloads, then break into a numbered phase. Clear extension of the proven MCP-write pattern, but net-new tools.
+
+**Raised in:** User request, 2026-07-01 — "support folder administration via the MCP."
