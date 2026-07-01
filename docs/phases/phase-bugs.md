@@ -55,7 +55,7 @@
 | BUG-41 | HTTP action-item endpoints have an object-level auth gap (IDOR) — `POST /notes/{noteId}/actions/{actionId}/complete\|reopen`, `PATCH …/edit`, `DELETE …` authorize the **route `noteId`** via `OwnsNoteAsync` but never bind it to the action: owning *any* note + knowing a foreign `actionId` lets you mutate that action (it stamps your `sub`). Gated by the unguessable random `actionId` (not enumerable — `get_actions`/`GetActionItems` filter to your own), so low exploitability, but it is broken object-level auth. Fix: authorize the action's own owner via the new `IActionItemAuthorizer.OwnsActionAsync` (added in 41-B for the MCP tools). Fixed (#370, deploy #674): the 4 mutation handlers authorize `OwnsActionAsync` (Command Lambda, event-stream read) instead of the route `noteId`; a foreign or deleted action returns 404 (the latter was 409). | Done | 41-B |
 | BUG-40 | Blank lines a user adds for structure are stripped on save — note content is stored as markdown, whose serializer collapsed every run of consecutive blank lines / empty paragraphs to one, condensing the note. Fixed by a `BlankLineParagraph` extension that serializes a *non-trailing* empty paragraph as a U+00A0 line so the structure survives the markdown round-trip (#363, deploy #666 `70c87c4`). | Done | 25-D |
 | BUG-39 | `TodoReorderJourney` reorder reverts after reload (deployed, deterministic 5/5). **Real root cause (test-env projector logs): `clear-test-data` wiped `notetaker-events` + projection tables but NOT `notetaker-proj-position`** → `Projector skip todo-order#__default__ at 1: position_guard`: the default workspace's stable-id order stream is reused every run; a prior run's processed-position (seq 1) survives the clear, so the next run's re-appended reorder (seq 1, events re-numbered from 0) is `≤` the stale mark and skipped as a duplicate → positions never applied. Stable-id streams collide; `note#`/`todo#<guid>` dodge it (fresh guids). **Not a product bug, not 36-B** (the 36-B correlation was coincidental — #655 first set the mark). Fix: `clear-test-data` now clears `proj-position` + all projection tables; journey **un-quarantined**. The per-item-`Position` fragilities the 37-A session noted (ConditionalCheckFailed swallow, PutItem clobber, cross-stream order) are real but latent — not the trigger here — tracked as an order-snapshot redesign follow-up (see detail). | Done | — |
-| BUG-44 | Deleting a note races an in-flight content save → the note vanishes and the save 404s with a misleading "try again" that can never succeed (data loss). A calendar note was created, then a `DELETE` committed ~3 s before the debounced content `PUT` landed; the save hit the deleted note → 404 → *"Couldn't save your note. We kept your text — try again."* The kept text is unrecoverable (the note is gone). No delete confirmation/undo, and delete does not wait for a pending save. Confirmed in prod (2026-07-01 07:30 UTC, note `996cf435`). | Open | — |
+| BUG-44 | A deleted note reappears in the list and stays openable → opening + saving it 404s ("couldn't be saved") and it then vanishes. Root cause: `deleteNote` never captures the delete's `X-Consistency-Token` (the endpoint doesn't even emit one), so `useDeleteNote`'s `onSettled` cards refetch runs *ungated* against the async projector before `NoteDeleted` is applied → the optimistically-removed card comes back. Reproducible (user-confirmed); matches prod (2026-07-01 07:30 UTC, note `996cf435`). Secondary: a save against a deleted note shows a *retriable* "try again" that can never succeed. | Open | RYW-2, BUG-30 |
 
 Further bugs will be appended as they are identified.
 
@@ -65,28 +65,34 @@ Further bugs will be appended as they are identified.
 
 ---
 
-## BUG-44 — Delete races an in-flight content save → note vanishes, save 404s, text lost
+## BUG-44 — Deleted note reappears in the list (delete not consistency-gated) → reopen+save 404s and it vanishes
 
-**Status:** Open. **Severity:** High — silent data loss (user's typed content is destroyed and unrecoverable).
+**Status:** Open. **Severity:** High — a deleted note is still openable and editable; the eventual failure loses the user's typed content.
 
-**Symptom (user report):** Created a note from a calendar meeting, edited it, hit Save → *"couldn't be saved"* error → the note then disappeared.
+**Symptom:** Delete a note → it **reappears in the notes list and can be reopened** (user-confirmed, reproducible). Opening the reappeared note, editing, and hitting Save → *"Couldn't save your note…"* → the note then disappears. The user does not knowingly delete — they just find a note they thought was gone, open it, and the save fails.
+
+**Root cause — the delete's read-model removal is never gated on the async projector:**
+- Every note write surfaces a read-your-writes token: the handler sets `X-Consistency-Token = note#{id}@{version}` (`NoteHandlers.cs:27`), the client captures it (`captureNoteToken`, e.g. `setNoteDate` uses `requestVoidWithResponse` — `web/src/api/notes.ts:170`), and the next `GET /notes/cards` passes it as `If-Consistent-With` so the gate waits for the projector to apply that version (`GetNoteCards`, `NoteHandlers.cs:358-368`).
+- **The delete path skips all of this.** `DeleteNote` (`NoteHandlers.cs:179`) does **not** take `HttpResponse` and **emits no `X-Consistency-Token`** (contrast `DeleteTag`, `:201`, which does). And `deleteNote` (`web/src/api/notes.ts:178`) uses plain `requestVoid`, discarding the response — so no token is captured.
+- `useDeleteNote` optimistically removes the card (`onMutate`) but then `onSettled: invalidate(noteCards)` (`web/src/hooks/useNoteMutations.ts:58-66`) refetches the cards **immediately**. With no delete token, `getNoteCards` sends a *stale* token, the gate returns without waiting, and the **async NoteCards projection still contains the note** (`NoteDeleted` not yet applied) → the deleted card **comes back**.
+- Reopening the reappeared card and saving issues `EditContent` against the event store, which *is* deleted → `NoteNotFoundException` → 404. The failure handler keeps the draft and says *"…try again"* (`NoteView.tsx:279`) — a dead end, since retry also 404s.
 
 **Prod evidence (`--profile prod`, 2026-07-01, note `996cf435-5f6f-48e5-a03f-7c5a6082860f`):**
-- Command Lambda: `07:30:11` `CreateNote`+`RenameNote`+`SetNoteDate`+`LinkNoteToCalendarEvent` (from-meeting); `07:30:30.879` `DeleteNote` handled → `NoteDeleted` v7; `07:30:33.802` `EditContent` received → `07:30:33.820` **`NoteNotFoundException` — Note … not found** (`CommandFailed`).
-- Projector Lambda: `NoteDeleted` applied to `996cf435` v7.
-- Browser RUM (session `1d17a697…`): `07:30:15 POST …/from-meeting 201` → user bounces note↔list ~5× in 20 s → `07:30:34 DELETE …/notes/996cf435 204` → `07:30:36 PUT …/notes/996cf435/content 404` (captured as an `http_event` error). The `PUT` is the save; it 404s because the `DELETE` already committed.
+- Command Lambda: `07:30:30.879` `DeleteNote` → `NoteDeleted` v7; `07:30:33.802` `EditContent` → `07:30:33.820` **`NoteNotFoundException`** (`CommandFailed`).
+- Projector Lambda: `NoteDeleted` applied to `996cf435` v7 (async, after the delete returned).
+- Browser RUM (session `1d17a697…`): `DELETE …/notes/996cf435 204`, then `GET …/notes/cards 200` fired repeatedly right after, then `PUT …/notes/996cf435/content 404` (`http_event`). Same class as [BUG-30] (reads against the async projection) and the RYW-2 token-threading bugs ([BUG-22]/[BUG-27]).
 
-**Root cause:** two independent client actions on the same note are uncoordinated and raced.
-1. **A `DELETE` was issued** for the note. No auto-delete/empty-draft-cleanup path exists in code — every delete is an explicit affordance: the trash button (`web/src/components/NoteView.tsx:543`) or the "Cancel" on a blank *new* note (`handleCancel`, `NoteView.tsx:434`, deletes when `isNew && !hasContent`). A calendar note always has a title, so `hasContent` is true (`NoteView.tsx:194`) and the **trash button** was the affordance shown. Easy to hit while rapidly navigating; no confirmation, no undo.
-2. **The content save flushes on blur/navigate-away** (`handleSaveContent`, `NoteView.tsx:269`; unmount flush `:287`) and landed *after* the delete committed → 404. The failure handler keeps the draft and shows *"…We kept your text — try again."* (`:279`) — but retry is a dead end: the note no longer exists, so every retry 404s and the text is lost.
+**Observable?** Partly — the `EditContent` 404 logs at Warning (`NoteNotFoundException`, `CommandFailed`) on the Command Lambda and RUM records the 404 `http_event`; nothing flags the "deleted card came back" itself.
 
-**Observable?** Partly — the `EditContent` failure logs at Warning (`NoteNotFoundException`, `CommandFailed` metric) on the Command Lambda, and RUM records the 404 `http_event`. Nothing links the delete and the failed save as a single incident.
+**Fix (primary — gate the delete like every other write):**
+1. **Backend:** `DeleteNote` injects `HttpResponse` and sets `X-Consistency-Token = note#{id}@{version}` from the append (mirror `DeleteTag`/`NoteHandlers.cs:27`).
+2. **Frontend:** `deleteNote` uses `requestVoidWithResponse` + `captureNoteToken(noteId, response)`; the `onSettled` cards refetch then waits on the projector applying `NoteDeleted`, so the card does not reappear.
 
-**Fix directions (pick per priority):**
-1. **Accidental-delete guard:** confirmation + undo on delete (at minimum when the note has content); consider not showing a destructive control on a just-created note until detail loads.
-2. **Race / misleading-error fix:** block delete while a content save is pending (or cancel the pending save on delete), and map a save-against-a-deleted-note to a terminal *"this note was deleted"* message instead of the retriable "try again".
+**Fix (secondary — fail safe if a deleted note is still opened):** map a save/edit against a deleted note to a *terminal* "this note was deleted" state instead of the retriable "try again"; optionally a delete confirmation/undo. (Note: a `DELETE` was issued client-side in the incident — only the trash button `NoteView.tsx:543` or blank-new-note "Cancel" `:434` can do that — but the actionable defect is the reappearance, not the delete trigger.)
 
-**Reproduce-before-fix:** an `Api.Integration`/frontend test where a note is deleted and a subsequent `EditContent`/`PUT …/content` for it returns the terminal outcome (not a retriable one), plus a component test that a delete does not fire while a content save is in flight.
+**Reproduce-before-fix:**
+- `Api.Integration`: `DELETE /notes/{id}` returns an `X-Consistency-Token`; and a subsequent `EditContent` on a deleted note returns a terminal outcome (not retriable).
+- Frontend: after a delete, a cards refetch is issued with the delete's token as `If-Consistent-With` (asserts the token is captured + threaded).
 
 ---
 
