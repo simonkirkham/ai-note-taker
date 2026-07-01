@@ -1,3 +1,4 @@
+using System.Security.Claims;
 using Api.CommandHandlers;
 using Api.Exceptions;
 using AWS.Lambda.Powertools.Logging;
@@ -15,6 +16,14 @@ public static class LoggingConfig
     // the same value returned in the x-correlation-id header. Powertools emits it as the
     // snake_case field "correlation_id" (matching xray_trace_id, command_type, etc.).
     private const string CorrelationIdLogKey = "CorrelationId";
+
+    // Caller-fingerprint keys so an automated / unknown client can be identified in CloudWatch (a
+    // 2026-06-30 obs-review found ~12 phantom command bursts/day from an unidentified HTTP client —
+    // the "Command received" line carried no caller identity). Powertools emits these snake_case:
+    // "user_agent", "source_ip", "sub".
+    private const string UserAgentLogKey = "UserAgent";
+    private const string SourceIpLogKey = "SourceIp";
+    private const string SubLogKey = "Sub";
 
     // Stamps every response with the request's correlation ID and the X-Ray trace
     // ID. Registered as the first middleware so even short-circuited responses
@@ -43,13 +52,44 @@ public static class LoggingConfig
             });
 
             Logger.AppendKey(CorrelationIdLogKey, ctx.TraceIdentifier);
+            // User-Agent + client IP are available from the raw request before auth runs, so they
+            // ride EVERY line (including pre-auth 401 short-circuits). Source IP MUST be the
+            // AWS-computed peer (Connection.RemoteIpAddress) — behind API Gateway HTTP API the
+            // left-most X-Forwarded-For is client-supplied and spoofable, so reading it would let a
+            // caller forge its own IP in the logs (phase-35a). `sub` is appended later, post-auth,
+            // by UseCallerIdentity — it is not known this early.
+            Logger.AppendKey(UserAgentLogKey, ctx.Request.Headers.UserAgent.ToString());
+            Logger.AppendKey(SourceIpLogKey, ctx.Connection.RemoteIpAddress?.ToString() ?? "");
             try
             {
                 await next();
             }
             finally
             {
-                Logger.RemoveKeys(CorrelationIdLogKey);
+                Logger.RemoveKeys(CorrelationIdLogKey, UserAgentLogKey, SourceIpLogKey);
+            }
+        });
+    }
+
+    // Appends the authenticated subject (`sub` = ClaimTypes.NameIdentifier, the same value stamped as
+    // a command's UserId) to the request log scope. Registered AFTER UseAuthentication (see Program.cs)
+    // so ctx.User is populated — appending it in UseCorrelationId (the first middleware) would always
+    // see an anonymous principal — and BEFORE the allowlist middleware so an authenticated-but-rejected
+    // caller's 403 lines still carry `sub`. Unauthenticated requests log "" rather than throwing. Only the resolved subject claim is logged — never the bearer token / Authorization
+    // header (the token is not put into any log key). AsyncLocal-scoped like correlation_id: removed on
+    // unwind so it never leaks to a later request on a warm Lambda.
+    internal static void UseCallerIdentity(WebApplication app)
+    {
+        app.Use(async (ctx, next) =>
+        {
+            Logger.AppendKey(SubLogKey, ctx.User.FindFirst(ClaimTypes.NameIdentifier)?.Value ?? "");
+            try
+            {
+                await next();
+            }
+            finally
+            {
+                Logger.RemoveKeys(SubLogKey);
             }
         });
     }

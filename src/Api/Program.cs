@@ -66,6 +66,9 @@ LoggingConfig.UseCorrelationId(app);
 app.UseCors(p => p.AllowAnyOrigin().AllowAnyMethod().AllowAnyHeader());
 app.UseMiddleware<Api.Mcp.McpAllowlistMiddleware>();
 app.UseAuthentication();
+// After UseAuthentication so ctx.User is populated — placed BEFORE the allowlist so an
+// authenticated-but-not-allowlisted caller's 403 lines also carry `sub` (attribution is the goal).
+LoggingConfig.UseCallerIdentity(app);
 app.UseMiddleware<Api.Auth.AllowlistMiddleware>();
 app.UseAuthorization();
 
