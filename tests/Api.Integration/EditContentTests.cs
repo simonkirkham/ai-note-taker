@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.Http.Json;
 using System.Text;
 using System.Text.Json;
+using Domain.Notes;
 
 namespace Api.Integration;
 
@@ -61,6 +62,75 @@ public sealed class EditContentTests(ApiFactory factory) : IClassFixture<ApiFact
         var body = await resp.Content.ReadFromJsonAsync<JsonElement>();
         Assert.Equal("", body.GetProperty("content").GetString());
     }
+
+    // BUG-47: a content edit whose declared base hash no longer matches the current content (the
+    // client edited a stale/empty view) is a terminal conflict → 409 `stale_content`, and the real
+    // content is NOT overwritten.
+    [Fact]
+    public async Task PutContent_StaleBaseHash_Returns409StaleContentAndDoesNotOverwrite()
+    {
+        var noteId = await CreateNoteAsync();
+        await PutContentAsync(noteId, "The full original meeting note.");
+
+        // The client thought the note was empty (stale/empty projection) and retyped a fragment.
+        var resp = await PutContentAsync(noteId, "fragment the user retyped",
+            expectedBaseContentHash: NoteContentHash.Compute(""));
+
+        Assert.Equal(HttpStatusCode.Conflict, resp.StatusCode);
+        var error = (await resp.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("error").GetString();
+        Assert.Equal("stale_content", error);
+
+        var body = await (await _client.GetAsync($"/notes/{noteId}")).Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("The full original meeting note.", body.GetProperty("content").GetString());
+    }
+
+    // A legitimate edit carries the hash of the content the user actually saw → accepted.
+    [Fact]
+    public async Task PutContent_MatchingBaseHash_Returns204AndUpdates()
+    {
+        var noteId = await CreateNoteAsync();
+        await PutContentAsync(noteId, "The full original meeting note.");
+
+        var resp = await PutContentAsync(noteId, "The full original meeting note. Plus a new line.",
+            expectedBaseContentHash: NoteContentHash.Compute("The full original meeting note."));
+
+        Assert.Equal(HttpStatusCode.NoContent, resp.StatusCode);
+        var body = await (await _client.GetAsync($"/notes/{noteId}")).Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("The full original meeting note. Plus a new line.", body.GetProperty("content").GetString());
+    }
+
+    // A deliberate delete-all still works when the base hash matches what the user saw.
+    [Fact]
+    public async Task PutContent_MatchingBaseHash_DeleteAll_Returns204()
+    {
+        var noteId = await CreateNoteAsync();
+        await PutContentAsync(noteId, "The full original meeting note.");
+
+        var resp = await PutContentAsync(noteId, "",
+            expectedBaseContentHash: NoteContentHash.Compute("The full original meeting note."));
+
+        Assert.Equal(HttpStatusCode.NoContent, resp.StatusCode);
+        var body = await (await _client.GetAsync($"/notes/{noteId}")).Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("", body.GetProperty("content").GetString());
+    }
+
+    // Backward compatibility: a request without a base hash skips the guard (unchanged behaviour).
+    [Fact]
+    public async Task PutContent_NoBaseHash_OverwritesAsBefore()
+    {
+        var noteId = await CreateNoteAsync();
+        await PutContentAsync(noteId, "The full original meeting note.");
+
+        var resp = await PutContentAsync(noteId, "fragment");
+
+        Assert.Equal(HttpStatusCode.NoContent, resp.StatusCode);
+        var body = await (await _client.GetAsync($"/notes/{noteId}")).Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("fragment", body.GetProperty("content").GetString());
+    }
+
+    private Task<HttpResponseMessage> PutContentAsync(string noteId, string content, string? expectedBaseContentHash = null) =>
+        _client.PutAsync($"/notes/{noteId}/content",
+            JsonContent.Create(new { content, expectedBaseContentHash }));
 
     private async Task<string> CreateNoteAsync()
     {

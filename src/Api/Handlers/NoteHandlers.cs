@@ -76,8 +76,12 @@ public static class NoteHandlers
         var detail = await noteDetailStore.GetAsync(new NoteId(noteId));
         if (detail is not null && detail.UserId != currentUser.UserId) return Results.NotFound();
         long version;
-        try { version = await handler.HandleAsync(new EditContentCmd(new NoteId(noteId), req.Content)); }
+        try { version = await handler.HandleAsync(new EditContentCmd(new NoteId(noteId), req.Content, req.ExpectedBaseContentHash)); }
         catch (NoteNotFoundException) { return Results.NotFound(); }
+        // BUG-47: the client edited a stale/empty view whose base hash no longer matches the current
+        // content. A terminal conflict — return 409 with a distinct code so the client keeps the typed
+        // text, reloads the real content, and offers the typed text back (never a silent overwrite).
+        catch (StaleContentEditException) { return Results.Conflict(new { error = "stale_content" }); }
         SetConsistencyToken(response, noteId, version);
         return Results.NoContent();
     }

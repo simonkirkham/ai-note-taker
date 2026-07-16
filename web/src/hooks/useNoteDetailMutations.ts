@@ -11,11 +11,15 @@ import { keys } from "../api/queryKeys";
 // the summary/discussion/decisions (and may extract actions), so it must refetch
 // keys.note + keys.actions (the latter replaces the old actionsKey remount).
 
+// BUG-47: the save carries `expectedBaseContentHash` — the hash of the content the editor loaded —
+// so the server can reject an edit made against a stale/empty view (which would overwrite real
+// content). onSuccess only patches keys.note on the success path, so a rejected (409) save never
+// writes the stale content into the cache.
 export function useEditContent(noteId: string) {
   const qc = useQueryClient();
-  return useMutation<void, Error, string>({
-    mutationFn: (content) => editContent(noteId, content),
-    onSuccess: (_d, content) =>
+  return useMutation<void, Error, { content: string; expectedBaseContentHash?: string }>({
+    mutationFn: ({ content, expectedBaseContentHash }) => editContent(noteId, content, expectedBaseContentHash),
+    onSuccess: (_d, { content }) =>
       qc.setQueryData<NoteDetail>(keys.note(noteId), (old) => (old ? { ...old, content } : old)),
     onSettled: () => qc.invalidateQueries({ queryKey: keys.noteCards }),
   });

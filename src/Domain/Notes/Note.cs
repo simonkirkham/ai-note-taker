@@ -147,6 +147,14 @@ public sealed class Note : IAggregate
     {
         if (!_exists || _deleted)
             throw new InvalidOperationException($"Note {cmd.NoteId} does not exist.");
+        // BUG-47: optimistic-concurrency guard. When the caller declares the content it edited from
+        // (ExpectedBaseContentHash), reject the edit if it no longer matches the current content — the
+        // caller loaded a stale/empty view (e.g. a just-returned note whose async projection lagged)
+        // and would silently overwrite real content. A deliberate edit/delete carries the matching
+        // hash of what the user saw, so it passes; only a stale-base overwrite is blocked.
+        if (cmd.ExpectedBaseContentHash is { } expected
+            && NoteContentHash.Compute(_content) != expected)
+            throw new StaleContentEditException(cmd.NoteId);
         if (cmd.Content == _content)
             return [];
         return [new ContentEdited(cmd.NoteId, cmd.Content)];

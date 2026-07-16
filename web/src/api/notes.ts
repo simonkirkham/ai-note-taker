@@ -157,12 +157,33 @@ export async function renameNote(noteId: string, title: string): Promise<void> {
   captureNoteToken(noteId, response);
 }
 
-export async function editContent(noteId: string, content: string): Promise<void> {
-  const response = await requestVoidWithResponse(`/notes/${noteId}/content`, {
-    method: 'PUT',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ content }),
-  });
+// BUG-47: PUT /notes/{id}/content returns 409 `stale_content` when `expectedBaseContentHash` no
+// longer matches the note's current content — the caller edited a stale/empty view and would
+// overwrite real content. Surfaced as a typed error so the note view can keep the typed text and
+// offer to load the latest content, never a silent overwrite.
+export class StaleContentError extends Error {
+  constructor() {
+    super('stale_content');
+    this.name = 'StaleContentError';
+  }
+}
+
+export async function editContent(
+  noteId: string,
+  content: string,
+  expectedBaseContentHash?: string,
+): Promise<void> {
+  // 409 is expected (a stale-base conflict), so it must not throw as a generic failure — handle it.
+  const response = await requestVoidWithResponse(
+    `/notes/${noteId}/content`,
+    {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ content, expectedBaseContentHash }),
+    },
+    [409],
+  );
+  if (response.status === 409) throw new StaleContentError();
   captureNoteToken(noteId, response);
 }
 
