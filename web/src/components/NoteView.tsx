@@ -299,7 +299,8 @@ export default function NoteView({
     // Capture the in-flight save so handleGenerateFinalNotes can await it (BUG-32). The
     // promise always resolves (errors are handled here), so awaiting it never throws.
     const save = editContentM.mutateAsync({ content: draft, expectedBaseContentHash: baseContentHashRef.current ?? undefined })
-      .then(() => { setContentDraft(null); })
+      // Clear any lingering stale-conflict banner — a successful save means the base is current again.
+      .then(() => { setContentDraft(null); setStaleConflict(null); })
       // Restore the ref on failure so a later leave/unmount retries the kept text
       // rather than silently dropping it (the text stays in contentDraft state too).
       .catch((err) => {
@@ -733,13 +734,13 @@ export default function NoteView({
                 <div
                   data-testid="stale-conflict-banner"
                   role="alertdialog"
-                  aria-label="This note has newer content"
+                  aria-label="A newer version of this note exists"
                   className={styles.recoveryBanner}
                 >
                   <div className={styles.recoveryText}>
-                    <strong>This note has newer content saved elsewhere.</strong> To avoid overwriting
-                    it, your last change wasn’t saved. Copy anything you need below, then load the
-                    latest content.
+                    <strong>A newer version of this note exists.</strong> To avoid overwriting it,
+                    your last change wasn’t saved. Copy anything you need below, then load the latest
+                    content.
                     <textarea
                       data-testid="stale-conflict-text"
                       className={styles.staleConflictText}

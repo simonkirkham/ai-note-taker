@@ -81,6 +81,20 @@ public sealed class EditContentSpec
             .Then(new ContentEdited(Id, "First content typed into a blank note."));
     }
 
+    // BUG-47: an interleaved tag write bumps the stream version but does not change content, so a
+    // later content edit carrying the pre-tag base hash must NOT false-conflict — the guard hashes
+    // content only, never the stream version. (Regression guard against a refactor that folds other
+    // state into the content hash.)
+    [Fact]
+    public void AllowsEditWhenAnInterleavedTagWriteBumpedTheStream()
+    {
+        Spec
+            .Given<Note>(new NoteCreated(Id), new ContentEdited(Id, "The plan"), new NoteTagged(Id, "acme"))
+            .When(new EditContent(Id, "The plan, revised",
+                ExpectedBaseContentHash: NoteContentHash.Compute("The plan")))
+            .Then(new ContentEdited(Id, "The plan, revised"));
+    }
+
     // Backward compatibility: callers that don't opt in (MCP edit_note, the analysis Lambda) send no
     // base hash, so the guard is skipped and their content writes behave exactly as before.
     [Fact]
