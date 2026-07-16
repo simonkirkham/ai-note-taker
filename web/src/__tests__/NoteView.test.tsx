@@ -138,6 +138,66 @@ describe('NoteView', () => {
     await waitFor(() => expect(savedContent).toBe('New content'))
   })
 
+  // BUG-47: a save rejected as stale (409) must not silently drop the typed text — the conflict
+  // banner surfaces it (copyable) and offers to load the note's newer content.
+  it('shows the stale-conflict banner keeping the typed text when a save is rejected as stale', async () => {
+    server.use(
+      http.get('/api/notes/:noteId', () =>
+        HttpResponse.json({ noteId: 'note-1', title: 'T', content: '', date: null, tags: [] })),
+      http.put('/api/notes/:noteId/content', () =>
+        HttpResponse.json({ error: 'stale_content' }, { status: 409 })),
+    )
+    renderNoteView()
+    const textarea = await screen.findByLabelText('Note content')
+    await userEvent.type(textarea, 'fragment I retyped')
+    await userEvent.tab()
+
+    await screen.findByTestId('stale-conflict-banner')
+    expect(screen.getByTestId('stale-conflict-text')).toHaveValue('fragment I retyped')
+  })
+
+  it('load-latest reseeds the editor with the refetched server content after a stale conflict', async () => {
+    let getCount = 0
+    server.use(
+      http.get('/api/notes/:noteId', () => {
+        getCount += 1
+        return HttpResponse.json({
+          noteId: 'note-1', title: 'T', date: null, tags: [],
+          content: getCount === 1 ? '' : 'The full server note',
+        })
+      }),
+      http.put('/api/notes/:noteId/content', () =>
+        HttpResponse.json({ error: 'stale_content' }, { status: 409 })),
+    )
+    renderNoteView()
+    const textarea = await screen.findByLabelText('Note content')
+    await userEvent.type(textarea, 'fragment')
+    await userEvent.tab()
+    await screen.findByTestId('stale-conflict-banner')
+
+    await userEvent.click(screen.getByTestId('load-latest-content-button'))
+    await waitFor(() =>
+      expect(screen.getByLabelText('Note content')).toHaveValue('The full server note'))
+  })
+
+  it('dismiss hides the stale-conflict banner and keeps the typed text in the editor', async () => {
+    server.use(
+      http.get('/api/notes/:noteId', () =>
+        HttpResponse.json({ noteId: 'note-1', title: 'T', content: '', date: null, tags: [] })),
+      http.put('/api/notes/:noteId/content', () =>
+        HttpResponse.json({ error: 'stale_content' }, { status: 409 })),
+    )
+    renderNoteView()
+    const textarea = await screen.findByLabelText('Note content')
+    await userEvent.type(textarea, 'my fragment')
+    await userEvent.tab()
+    await screen.findByTestId('stale-conflict-banner')
+
+    await userEvent.click(screen.getByTestId('dismiss-stale-conflict-button'))
+    await waitFor(() => expect(screen.queryByTestId('stale-conflict-banner')).toBeNull())
+    expect(screen.getByLabelText('Note content')).toHaveValue('my fragment')
+  })
+
   it('date defaults to today when API returns no date and auto-PATCHes the default date', async () => {
     let patchCalled = false
     server.use(

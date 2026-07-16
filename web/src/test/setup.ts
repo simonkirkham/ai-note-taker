@@ -1,8 +1,16 @@
 import '@testing-library/jest-dom'
+import { webcrypto } from 'node:crypto'
 import { setupServer } from 'msw/node'
 import { retryConfig } from '../api/client'
 import { resetWorkspaceForTests } from '../workspace/workspaceStore'
 import { handlers } from './handlers'
+
+// BUG-47: jsdom's `crypto` stub has no `subtle`, so `crypto.subtle.digest` (the content hash) is
+// undefined under vitest. Real browsers run in a secure context (HTTPS/localhost) where it exists;
+// restore Node's Web Crypto in tests so the content-hash guard is exercised as it is in the browser.
+if (!globalThis.crypto?.subtle) {
+  Object.defineProperty(globalThis, 'crypto', { value: webcrypto, configurable: true, writable: true })
+}
 
 export const server = setupServer(...handlers)
 

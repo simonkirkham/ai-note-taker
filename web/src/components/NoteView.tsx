@@ -1,8 +1,9 @@
 import { useQueryClient } from "@tanstack/react-query";
 import clsx from "clsx";
 import { useEffect, useRef, useState } from "react";
+import { contentHash } from "../api/contentHash";
 import { type CalendarMeeting } from "../api/meetings";
-import type { NoteDetail } from "../api/notes";
+import { StaleContentError, type NoteDetail } from "../api/notes";
 import { keys } from "../api/queryKeys";
 import { presignRecordingDownload } from "../api/recordings";
 import { completeTranscription, discardTranscriptionDraft } from "../api/transcription";
@@ -108,6 +109,12 @@ export default function NoteView({
   const [openingNext, setOpeningNext] = useState(false);
   const [noNextOccurrence, setNoNextOccurrence] = useState(false);
   const [confirmingLeave, setConfirmingLeave] = useState(false);
+  // BUG-47: the typed text of a content save the server rejected as stale (409) — the note had newer
+  // content than the editor loaded. Non-null shows the conflict banner offering to load the latest
+  // content while keeping the typed text copyable, so neither version is silently lost.
+  const [staleConflict, setStaleConflict] = useState<string | null>(null);
+  // Bumped to remount the (uncontrolled) editor onto freshly-refetched content after a stale conflict.
+  const [editorReseedKey, setEditorReseedKey] = useState(0);
   const { showError } = useToast();
   const inputRef = useRef<HTMLInputElement>(null);
   const dateDefaultedFor = useRef<string | null>(null);
@@ -117,6 +124,11 @@ export default function NoteView({
   // the latest draft into a ref and flush it when leaving the note; skip on delete.
   const contentDraftRef = useRef<string | null>(null);
   useEffect(() => { contentDraftRef.current = contentDraft; }, [contentDraft]);
+  // BUG-47: precompute the base-content hash (async Web Crypto) into a ref whenever the loaded
+  // content changes, so a save can fire synchronously with the guard hash already ready. Computing
+  // it inside the save would defer the write a microtask — enough to break the same-tick fire on
+  // blur/unmount (and to leak a still-pending write past a test boundary).
+  const baseContentHashRef = useRef<string | null>(null);
   const deletingRef = useRef(false);
   // BUG-32: the content save fired on editor blur is fire-and-forget, so clicking
   // Generate/Re-process raced it — analysis read the previously-saved content and a
@@ -129,6 +141,15 @@ export default function NoteView({
   // Editable fields via the draft pattern; read-only fields straight from the cache.
   const title = titleDraft ?? detail?.title ?? initialTitle;
   const content = contentDraft ?? detail?.content ?? "";
+  // BUG-47: keep baseContentHashRef current with the loaded server content (the base a save is
+  // checked against). Recomputed only when the server content changes — an in-progress draft edit
+  // never moves the base, and after a successful save the patched content becomes the new base.
+  const serverContent = detail?.content ?? "";
+  useEffect(() => {
+    let cancelled = false;
+    void contentHash(serverContent).then((h) => { if (!cancelled) baseContentHashRef.current = h; });
+    return () => { cancelled = true; };
+  }, [serverContent]);
   const date = dateDraft ?? detail?.date ?? today;
   const tags = detail?.tags ?? [];
   const summary = detail?.summary ?? null;
@@ -270,16 +291,39 @@ export default function NoteView({
     const draft = contentDraftRef.current;
     if (draft == null) return;
     contentDraftRef.current = null;
+    // BUG-47: send the precomputed hash of the content this edit was based on (the server copy the
+    // editor loaded). The server rejects the write (409 → StaleContentError) if it no longer matches
+    // — the editor had a stale/empty view and would overwrite real content. A deliberate edit/delete
+    // carries the matching hash of what the user saw, so it is accepted. Fires synchronously so the
+    // blur/unmount flush is a same-tick write.
     // Capture the in-flight save so handleGenerateFinalNotes can await it (BUG-32). The
     // promise always resolves (errors are handled here), so awaiting it never throws.
-    const save = editContentM.mutateAsync(draft)
+    const save = editContentM.mutateAsync({ content: draft, expectedBaseContentHash: baseContentHashRef.current ?? undefined })
       .then(() => { setContentDraft(null); })
       // Restore the ref on failure so a later leave/unmount retries the kept text
       // rather than silently dropping it (the text stays in contentDraft state too).
-      .catch(() => { contentDraftRef.current = draft; showError("Couldn't save your note. We kept your text — try again."); })
+      .catch((err) => {
+        contentDraftRef.current = draft;
+        // A stale conflict is not a transient failure — retrying the same stale write cannot succeed.
+        // Surface the conflict banner (keep the typed text, offer to load the newer content) instead
+        // of the generic "try again" toast, which would just re-conflict.
+        if (err instanceof StaleContentError) setStaleConflict(draft);
+        else showError("Couldn't save your note. We kept your text — try again.");
+      })
       // Clear once settled so the ref never reports a stale "save in flight".
       .finally(() => { if (pendingContentSaveRef.current === save) pendingContentSaveRef.current = null; });
     pendingContentSaveRef.current = save;
+  }
+
+  // BUG-47: resolve a stale conflict by loading the note's newer content. Drop the local draft,
+  // refetch the current content, and remount the editor onto it (it seeds content at mount). The
+  // typed text stays visible in the conflict banner until dismissed, so nothing is lost without the
+  // user's choice.
+  async function handleLoadLatestContent() {
+    setContentDraft(null);
+    contentDraftRef.current = null;
+    await qc.invalidateQueries({ queryKey: keys.note(noteId) });
+    setEditorReseedKey((k) => k + 1);
   }
   const saveContentRef = useRef(handleSaveContent);
   useEffect(() => { saveContentRef.current = handleSaveContent; });
@@ -685,11 +729,47 @@ export default function NoteView({
                 </span>
                 <ShortcutsPanel />
               </div>
+              {staleConflict !== null && (
+                <div
+                  data-testid="stale-conflict-banner"
+                  role="alertdialog"
+                  aria-label="This note has newer content"
+                  className={styles.recoveryBanner}
+                >
+                  <div className={styles.recoveryText}>
+                    <strong>This note has newer content saved elsewhere.</strong> To avoid overwriting
+                    it, your last change wasn’t saved. Copy anything you need below, then load the
+                    latest content.
+                    <textarea
+                      data-testid="stale-conflict-text"
+                      className={styles.staleConflictText}
+                      readOnly
+                      value={staleConflict}
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    data-testid="load-latest-content-button"
+                    onClick={() => void handleLoadLatestContent()}
+                    className={styles.saveButton}
+                  >
+                    Load latest content
+                  </button>
+                  <button
+                    type="button"
+                    data-testid="dismiss-stale-conflict-button"
+                    onClick={() => setStaleConflict(null)}
+                    className={styles.backButton}
+                  >
+                    Dismiss
+                  </button>
+                </div>
+              )}
               {loadingDetail ? (
                 <p data-testid="note-loading" className="loading" role="status">Loading…</p>
               ) : (
                 <LazyNoteEditor
-                  key={noteId}
+                  key={`${noteId}:${editorReseedKey}`}
                   noteId={noteId}
                   value={content}
                   onChange={(md) => setContentDraft(md)}
