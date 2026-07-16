@@ -58,12 +58,48 @@
 | BUG-44 | A deleted note reappears in the list and stays openable → opening + saving it 404s ("couldn't be saved") and it then vanishes. Root cause: `deleteNote` never captured the delete's `X-Consistency-Token` (the endpoint didn't even emit one), so `useDeleteNote`'s `onSettled` cards refetch ran *ungated* against the async projector before `NoteDeleted` was applied → the optimistically-removed card came back. Fixed (#382, deploy #685): `DeleteNote` emits the token and `deleteNote` threads it via `captureNoteToken`, so the cards refetch gates on the projector dropping the note. Secondary (save-against-deleted shows a *retriable* "try again"): out of scope, not carried. | Done | RYW-2, BUG-30 |
 | BUG-45 | A note moved to another workspace can reappear in the source workspace's list (and folder moves can flicker) — same ungated-cards-refetch defect class as [BUG-44], different trigger. The `moveNoteToWorkspace`/`moveNoteToFolder`/`unfileNote` api fns used plain `requestVoid` and the handlers never emitted a token, so `useMoveNote*`'s `onSettled` cards refetch ran ungated against the async projector. Found by Hawk reviewing #382. Fixed (#384, deploy #689): all three handlers emit `X-Consistency-Token` and the api fns thread it via `captureNoteToken`, so the refetch gates on the projector applying the move. | Done | BUG-44, RYW-2 |
 | BUG-46 | Deleting a **folder** can briefly leave its notes shown under the (now-gone) folder in the cards list — the same ungated-cards-refetch class as [BUG-44]/[BUG-45], on the folder-delete cascade. `FolderCommandHandler.DeleteFolder` cascades `UnfileNote` (note-stream writes) to each contained note, but `deleteFolder`/`useDeleteFolder` only capture the folder-tree token (`captureFolderToken`/`FOLDERS_SCOPE`), not the note-cards token — so the `onSettled` `getNoteCards` refetch is ungated w.r.t. those unfile writes. Low severity (the folder is correctly gone from the tree; only the notes' placement in the cards list lags). Found by Hawk reviewing #384. **Nuance:** a folder delete is *N* note-stream writes, and the single-token list-gate (design #7) can't cleanly cover all N — the fix is not a straight copy of BUG-44/45 (needs the highest/last unfile token, or a per-list drain). | Open | BUG-45, RYW-2 |
+| BUG-47 | **Data loss** — returning to a just-edited note within the projector-lag window loads **stale-empty** content; the uncontrolled editor seeds from it on remount and the next save silently overwrites the real note with **no conflict raised**. Reproduced in prod: note `c7b3b612` wiped 2134→30 chars (v5→v6, 8 s apart); the user, seeing an empty note, retyped a remembered fragment which became the overwrite. Content recovered from the event stream (v5) and restored (v11). Root: async-projection read can return stale (8 s gate cap / 2-retry client / ungated when no token) **+** editor seeds `detail?.content` at remount (`NoteView.tsx:131`, `NoteEditor.tsx:117`) **+** no version guard on `EditContentCmd`. Fix: **optimistic concurrency on content edits** — client sends the content version it loaded; server 409s a save based on a stale version (never blocks a real edit/delete, which carry the current version) — plus don't seed the editor from a `stale` read. | In Progress | BUG-30, 27-RYW |
 
 Further bugs will be appended as they are identified.
 
 ---
 
 > **Fixed bugs are condensed in [phase-bugs-archive.md](phase-bugs-archive.md)** (one terse entry each, anchors preserved). The Summary table above stays the full index; only **open** defects keep a detailed section below.
+
+---
+
+## BUG-47 — Stale-read note edit silently overwrites real content (no version guard) → data loss
+
+**Status:** In Progress. **Severity:** High — real data loss (a full note wiped in prod). Mitigated for the reported note (content recovered from the event stream and restored). Same family as [BUG-30]/[BUG-27] (async-projection read races) but with silent overwrite rather than a surfaced error.
+
+**Symptom:** A user edits a note, navigates away (browser back / Alt+←) and returns; the note shows **empty**; the user retypes what they remember; on save, their full original note is replaced by the fragment. No warning, no conflict.
+
+**Prod evidence (`--profile prod`, `notetaker-events`, stream `note#c7b3b612-1137-471c-a250-24cb1e2a6bb7`):**
+- `v5` `ContentEdited` @ 09:04:06 — full note, **2134 chars**.
+- `v6` `ContentEdited` @ 09:04:14 (8 s later) — **30 chars**, ` \n\n \n\n \n\nNot for all pipelines` (a fragment the user retyped from memory, verbatim the last bullet of v5).
+- v5 was durably saved the whole time; only the read model reflected v6. Recovered v5 and restored it as `v11` via `edit_note`.
+
+**Root cause (three combining gaps, confirmed in code):**
+1. **The content read can return stale/empty.** GET note-detail is served by the async `DynamoDbNoteDetailStore` (Projector-built, Query Lambda) behind a best-effort RYW gate: `ConsistencyGate.WaitAsync` caps at 8 s then serves the *current* projection + `stale` header (`src/Api/Handlers/NoteHandlers.cs:98–106`, `src/Api/Consistency/ConsistencyGate.cs:33,58–69`); the client `gatedRead` retries only 2×/300 ms then **returns the stale body anyway** (`web/src/api/gatedRead.ts:25`); a missing token → ungated read (`ConsistencyGate.cs:40`).
+2. **The editor is uncontrolled and reseeds on remount.** Tiptap takes content once at `useEditor` construction with no later value-sync (`web/src/components/NoteEditor.tsx:117`); `LazyNoteEditor` is keyed by `noteId`, so navigate-back **remounts** and reseeds from `content = contentDraft ?? detail?.content ?? ""` (`web/src/components/NoteView.tsx:131,692`). A stale-empty `detail.content` at remount becomes the editable baseline.
+3. **No conflict check on write.** `handleSaveContent` persists the draft unconditionally (`NoteView.tsx:269–283`); `EditContent`/`EditContentCmd` appends with no check that the client saw the latest content (`src/Api/Handlers/NoteHandlers.cs:74–83`). The event store's append-level optimistic concurrency checks the *store* version, not the version the *client* was looking at, so the overwrite appends cleanly.
+
+**Fix — optimistic concurrency on content edits (version-based, not size-based):**
+- A size/shrink heuristic is rejected: it can't distinguish a legitimate select-all-delete from an accidental stale wipe, and would block real edits. Instead, condition the write on the content version the editor loaded.
+- **Backend (spine):** the content-edit command carries `expectedContentVersion`; the handler compares to the version at which content was last set — equal → accept (covers a deliberate delete-all); behind → **409 terminal conflict** (not 503 — retry won't help, per [BUG-27]); no prior content → accept. `ContentEdited` **event shape unchanged** (command-level check) → no event versioning, no new projection, no prod backfill.
+- **Frontend:** the note-detail read exposes the content version; the editor sends it back on save. On 409: **keep the user's typed text**, refetch the real content into the editor, surface the typed text in a dismissible recover banner — never silently overwrite, never drop either side.
+- **Frontend (prevention):** don't seed the editor from a `stale` read — hold the loading state until fresh; version-guard the `keys.note` cache so a late stale refetch can't regress freshly-cached content. Makes the 409 path the backstop, not the everyday path.
+- **Not autosave:** a server autosave would persist stale-empty state *faster* and worsen this bug; explicitly dropped. A safe "never lose in-flight text" belt (localStorage local-only draft, offered back on return, never auto-overwriting the server) is a separate optional future item.
+
+**Version choice (settle in the spec):** content-specific version (recommended — no false conflicts from an interleaved tag/date write, but adds a `contentVersion` field to `NoteDetail` → must map in **both** InMemory + DynamoDb stores + a round-trip test per the store-mapping guardrail) vs. reuse the whole-stream consistency token (no new field, but risks false conflicts).
+
+**Reproduce-before-fix:**
+- Domain spec (`EditNoteContentSpecs`): edit from a stale (behind-latest) `expectedContentVersion` → rejected; from the current version → accepted; delete-all from the current version → accepted; first content (no base) → accepted.
+- `Api.Integration`: `PUT /notes/{id}/content` with a stale base version → 409 (distinct from the 503 retriable path); current base → 200.
+- Frontend: the editor does not seed from a `stale` gated read; a 409 on save keeps the typed text and restores server content; the `keys.note` cache does not regress on a late stale refetch.
+- E2E (reload-tolerant, gated read only — not `/notes/search`, per the async-projector E2E guardrails): edit → navigate away → return → content is intact, not empty.
+
+**Deploy-time:** backend + frontend → full `cdk deploy`; no new infra, no new projection → neutral, no per-deploy cost added.
 
 ---
 
