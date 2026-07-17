@@ -377,7 +377,16 @@ public sealed class AppPage
         {
             try
             {
-                await Assertions.Expect(page.GetByTestId("save-button")).ToBeEnabledAsync(new() { Timeout = 2500 });
+                // save-button gets a 9000ms per-attempt window (NOT the 2500ms the absent-helper
+                // uses): this assert waits for the gated note-detail READ to COMPLETE (save enabled ==
+                // loadingDetail=false), and that read can hold up to the 8s RYW gate cap. A 2.5s window
+                // would ReloadAsync() mid-flight and abort the in-flight gated read before it can finish,
+                // re-issuing it forever on a cold projector — the self-defeating pattern
+                // AssertNoteVisibleInListAfterReloadAsync documents (it uses 9000ms for the same reason).
+                // 9000ms also costs nothing warm (returns the instant the button enables). The image
+                // assert stays 2.5s: it is a post-read resolve round-trip, not a gated wait (mirrors the
+                // absent helper) — do NOT "align" the two timeouts.
+                await Assertions.Expect(page.GetByTestId("save-button")).ToBeEnabledAsync(new() { Timeout = 9000 });
                 await Assertions.Expect(img).ToBeVisibleAsync(new() { Timeout = 2500 });
                 return;
             }
