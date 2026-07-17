@@ -122,7 +122,10 @@ export default function ListView({
   // them because it replays the prior history entry, query string included.
   const [searchParams, setSearchParams] = useSearchParams();
   const query = searchParams.get("q") ?? "";
-  const selectedTags = searchParams.getAll("tag");
+  // Memoized so it keeps a stable identity across renders (a fresh `getAll`
+  // array each render breaks the downstream `filteredCards` memo — the compiler
+  // can't preserve a memo whose dependency is recreated every render).
+  const selectedTags = useMemo(() => searchParams.getAll("tag"), [searchParams]);
   const filterMode: "AND" | "OR" = searchParams.get("mode") === "OR" ? "OR" : "AND";
   // Date range (40-A). A custom `?from=&to=` pair takes precedence; otherwise a
   // `?range=` preset id; otherwise the default window (last 30 days). "Last 30

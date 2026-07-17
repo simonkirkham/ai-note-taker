@@ -1,5 +1,5 @@
-import userEvent from '@testing-library/user-event'
 import { fireEvent } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { http, HttpResponse } from 'msw'
 import { useEffect } from 'react'
 import { MemoryRouter, useLocation } from 'react-router'
