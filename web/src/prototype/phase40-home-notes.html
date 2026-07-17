@@ -1,0 +1,604 @@
+<title>Phase 40 · Home notes — default, date range & sort</title>
+<style>
+  :root {
+    --bg: #f5f8f7;
+    --surface: #ffffff;
+    --surface-2: #eef3f2;
+    --border: #e0e8e6;
+    --border-strong: #cdd8d6;
+    --text: #14201e;
+    --muted: #5b6c69;
+    --faint: #8a9996;
+    --accent: #0f766e;
+    --accent-ink: #0b544e;
+    --accent-soft: #d8ece9;
+    --accent-softer: #eaf4f2;
+    --danger: #b4472b;
+    --shadow: 0 1px 2px rgba(20,32,30,.05), 0 4px 14px rgba(20,32,30,.05);
+    --radius: 12px;
+    --radius-sm: 8px;
+    --pad: 20px;
+    --fs-body: 14px;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0d1413;
+      --surface: #151f1d;
+      --surface-2: #1a2523;
+      --border: #263230;
+      --border-strong: #33413e;
+      --text: #e7efed;
+      --muted: #9aaba8;
+      --faint: #6f807d;
+      --accent: #2dd4bf;
+      --accent-ink: #7ee7d8;
+      --accent-soft: #123a35;
+      --accent-softer: #10201d;
+      --danger: #f0876a;
+      --shadow: 0 1px 2px rgba(0,0,0,.3), 0 6px 18px rgba(0,0,0,.3);
+    }
+  }
+  :root[data-theme="light"] {
+    --bg: #f5f8f7; --surface: #ffffff; --surface-2: #eef3f2; --border: #e0e8e6;
+    --border-strong: #cdd8d6; --text: #14201e; --muted: #5b6c69; --faint: #8a9996;
+    --accent: #0f766e; --accent-ink: #0b544e; --accent-soft: #d8ece9;
+    --accent-softer: #eaf4f2; --danger: #b4472b;
+    --shadow: 0 1px 2px rgba(20,32,30,.05), 0 4px 14px rgba(20,32,30,.05);
+  }
+  :root[data-theme="dark"] {
+    --bg: #0d1413; --surface: #151f1d; --surface-2: #1a2523; --border: #263230;
+    --border-strong: #33413e; --text: #e7efed; --muted: #9aaba8; --faint: #6f807d;
+    --accent: #2dd4bf; --accent-ink: #7ee7d8; --accent-soft: #123a35;
+    --accent-softer: #10201d; --danger: #f0876a;
+    --shadow: 0 1px 2px rgba(0,0,0,.3), 0 6px 18px rgba(0,0,0,.3);
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: "Plus Jakarta Sans", -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: var(--fs-body);
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 1080px; margin: 0 auto; padding: 28px 24px 80px; }
+
+  /* --- Prototype ribbon --- */
+  .ribbon {
+    display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+    background: repeating-linear-gradient(135deg, var(--accent-softer), var(--accent-softer) 12px, var(--accent-soft) 12px, var(--accent-soft) 24px);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    padding: 10px 14px; margin-bottom: 22px; font-size: 12.5px; color: var(--muted);
+  }
+  .ribbon strong { color: var(--accent-ink); font-weight: 700; letter-spacing: .02em; }
+  .ribbon .spacer { flex: 1; }
+  .theme-toggle {
+    border: 1px solid var(--border-strong); background: var(--surface); color: var(--text);
+    border-radius: 999px; padding: 5px 12px; font-size: 12px; cursor: pointer; font-family: inherit;
+  }
+  .theme-toggle:hover { border-color: var(--accent); color: var(--accent-ink); }
+
+  /* --- Page head --- */
+  .head { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; margin-bottom: 4px; }
+  h1 { font-size: 26px; font-weight: 800; letter-spacing: -.01em; margin: 0; text-wrap: balance; }
+  .count { color: var(--muted); font-size: 13px; font-variant-numeric: tabular-nums; }
+  .count b { color: var(--text); font-weight: 700; }
+  .sub { color: var(--faint); font-size: 12.5px; margin: 2px 0 22px; }
+
+  /* --- Controls --- */
+  .controls {
+    background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+    box-shadow: var(--shadow); padding: 14px 16px; margin-bottom: 8px;
+    display: flex; flex-direction: column; gap: 12px;
+  }
+  .row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .row-label {
+    font-size: 11px; text-transform: uppercase; letter-spacing: .07em; color: var(--faint);
+    width: 66px; flex-shrink: 0; font-weight: 700;
+  }
+  .search {
+    flex: 1; min-width: 180px; display: flex; align-items: center; gap: 8px;
+    background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius-sm);
+    padding: 8px 12px;
+  }
+  .search input { border: 0; background: transparent; color: var(--text); font: inherit; width: 100%; outline: none; }
+  .search svg { color: var(--faint); flex-shrink: 0; }
+
+  .chips { display: flex; gap: 6px; flex-wrap: wrap; }
+  .chip {
+    border: 1px solid var(--border-strong); background: var(--surface); color: var(--muted);
+    border-radius: 999px; padding: 6px 12px; font-size: 12.5px; cursor: pointer; font-family: inherit;
+    transition: all .12s ease; white-space: nowrap;
+  }
+  .chip:hover { border-color: var(--accent); color: var(--accent-ink); }
+  .chip[aria-pressed="true"] {
+    background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600;
+  }
+  @media (prefers-color-scheme: dark) { .chip[aria-pressed="true"] { color: #06110f; } }
+  :root[data-theme="dark"] .chip[aria-pressed="true"] { color: #06110f; }
+
+  .tag-chip[aria-pressed="true"] { background: var(--accent-soft); border-color: var(--accent); color: var(--accent-ink); }
+
+  select, .date-input {
+    border: 1px solid var(--border-strong); background: var(--surface); color: var(--text);
+    border-radius: var(--radius-sm); padding: 7px 10px; font: inherit; font-size: 12.5px; cursor: pointer;
+  }
+  .date-input { cursor: text; font-variant-numeric: tabular-nums; }
+  select:focus, .date-input:focus, .chip:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+  .custom-range { display: none; align-items: center; gap: 8px; }
+  .custom-range.show { display: flex; }
+  .custom-range span { color: var(--faint); font-size: 12px; }
+
+  .divider { height: 1px; background: var(--border); margin: 2px 0; }
+
+  .active-summary {
+    display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+    font-size: 12.5px; color: var(--muted); padding: 0 2px; min-height: 20px;
+  }
+  .pill {
+    display: inline-flex; align-items: center; gap: 6px; background: var(--accent-softer);
+    border: 1px solid var(--accent-soft); color: var(--accent-ink); border-radius: 999px;
+    padding: 3px 6px 3px 10px; font-size: 12px; font-weight: 600;
+  }
+  .pill button { border: 0; background: transparent; color: inherit; cursor: pointer; font-size: 14px; line-height: 1; padding: 0 2px; }
+  .clear-all { border: 0; background: transparent; color: var(--accent-ink); cursor: pointer; font: inherit; font-size: 12.5px; text-decoration: underline; }
+
+  /* --- Cards --- */
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 12px; margin-top: 18px; }
+  .card {
+    background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+    padding: 14px 15px; box-shadow: var(--shadow); cursor: pointer; transition: transform .1s ease, border-color .12s ease;
+    display: flex; flex-direction: column; gap: 8px; min-height: 116px;
+  }
+  .card:hover { transform: translateY(-1px); border-color: var(--border-strong); }
+  .card-date { font-size: 11.5px; color: var(--accent-ink); font-weight: 700; letter-spacing: .01em; font-variant-numeric: tabular-nums; }
+  .card-title { font-size: 15px; font-weight: 700; letter-spacing: -.005em; margin: 0; line-height: 1.25; }
+  .card-preview { font-size: 12.5px; color: var(--muted); line-height: 1.45; flex: 1; }
+  .card-tags { display: flex; gap: 5px; flex-wrap: wrap; margin-top: auto; }
+  .card-tag { font-size: 11px; color: var(--faint); background: var(--surface-2); border-radius: 5px; padding: 2px 7px; font-weight: 600; }
+
+  .month-head { grid-column: 1 / -1; font-size: 12px; text-transform: uppercase; letter-spacing: .08em; color: var(--faint); font-weight: 700; margin: 12px 2px 0; padding-top: 8px; border-top: 1px dashed var(--border); }
+  .month-head:first-child { border-top: 0; padding-top: 0; margin-top: 0; }
+
+  /* --- Empty --- */
+  .empty {
+    text-align: center; padding: 56px 24px; color: var(--muted);
+    background: var(--surface); border: 1px dashed var(--border-strong); border-radius: var(--radius); margin-top: 18px;
+  }
+  .empty h3 { margin: 0 0 6px; font-size: 16px; color: var(--text); font-weight: 700; }
+  .empty p { margin: 0 0 14px; font-size: 13px; }
+  .empty button { border: 1px solid var(--accent); background: var(--accent); color: #fff; border-radius: var(--radius-sm); padding: 8px 16px; font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; }
+  :root[data-theme="dark"] .empty button { color: #06110f; }
+  @media (prefers-color-scheme: dark) { .empty button { color: #06110f; } }
+
+  /* --- Design options panel --- */
+  .opts { margin-top: 34px; border: 1px dashed var(--border-strong); border-radius: var(--radius); background: var(--surface); overflow: hidden; }
+  .opts > summary {
+    list-style: none; cursor: pointer; padding: 13px 16px; font-size: 13px; font-weight: 700; color: var(--accent-ink);
+    display: flex; align-items: center; gap: 8px; background: var(--accent-softer);
+  }
+  .opts > summary::-webkit-details-marker { display: none; }
+  .opts > summary .tag { font-size: 10.5px; text-transform: uppercase; letter-spacing: .06em; background: var(--accent); color: #fff; padding: 2px 7px; border-radius: 4px; }
+  :root[data-theme="dark"] .opts > summary .tag { color: #06110f; }
+  @media (prefers-color-scheme: dark) { .opts > summary .tag { color: #06110f; } }
+  .opts-body { padding: 6px 16px 18px; display: flex; flex-direction: column; gap: 18px; }
+  .opt-group { display: flex; flex-direction: column; gap: 8px; }
+  .opt-group > .q { font-size: 13px; font-weight: 700; color: var(--text); }
+  .opt-group > .hint { font-size: 12px; color: var(--muted); margin-top: -4px; }
+  .seg { display: flex; gap: 6px; flex-wrap: wrap; }
+  .seg button {
+    border: 1px solid var(--border-strong); background: var(--surface-2); color: var(--muted);
+    border-radius: var(--radius-sm); padding: 7px 12px; font: inherit; font-size: 12.5px; cursor: pointer;
+  }
+  .seg button[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
+  :root[data-theme="dark"] .seg button[aria-pressed="true"] { color: #06110f; }
+  @media (prefers-color-scheme: dark) { .seg button[aria-pressed="true"] { color: #06110f; } }
+
+  .url-bar {
+    margin-top: 10px; font-size: 11.5px; color: var(--faint); font-family: ui-monospace, "SF Mono", Menlo, monospace;
+    background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 8px 12px;
+    overflow-x: auto; white-space: nowrap;
+  }
+  .url-bar b { color: var(--accent-ink); }
+</style>
+
+<div class="wrap">
+  <div class="ribbon">
+    <strong>PROTOTYPE · 40-P</strong>
+    <span>Throwaway — settling the home-notes UX before specs. Data is mock. Nothing here is production code.</span>
+    <span class="spacer"></span>
+    <button class="theme-toggle" id="themeBtn">◐ Theme</button>
+  </div>
+
+  <div class="head">
+    <h1>Notes</h1>
+    <div class="count" id="count"></div>
+  </div>
+  <div class="sub" id="windowNote"></div>
+
+  <div class="controls">
+    <div class="row">
+      <div class="search">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+        <input id="search" type="search" placeholder="Search notes…" aria-label="Search notes" />
+      </div>
+      <select id="sort" aria-label="Sort order">
+        <option value="date-desc">Newest first</option>
+        <option value="date-asc">Oldest first</option>
+        <option value="title-asc">Title A–Z</option>
+        <option value="title-desc">Title Z–A</option>
+      </select>
+    </div>
+
+    <div class="divider"></div>
+
+    <div class="row">
+      <span class="row-label">When</span>
+      <div class="chips" id="rangeChips"></div>
+    </div>
+    <div class="row custom-range" id="customRow">
+      <span class="row-label"></span>
+      <input class="date-input" type="date" id="fromDate" aria-label="From date" />
+      <span>to</span>
+      <input class="date-input" type="date" id="toDate" aria-label="To date" />
+    </div>
+
+    <div class="divider"></div>
+
+    <div class="row">
+      <span class="row-label">Tags</span>
+      <div class="chips" id="tagChips"></div>
+    </div>
+  </div>
+
+  <div class="active-summary" id="summary"></div>
+  <div class="url-bar" id="urlBar"></div>
+
+  <div id="results"></div>
+
+  <details class="opts">
+    <summary><span class="tag">Decide</span> Prototype options — the choices 40-P exists to settle (not part of the real UI)</summary>
+    <div class="opts-body">
+      <div class="opt-group">
+        <div class="q">1 · Default window (what shows on load, before you touch anything)</div>
+        <div class="hint">Replaces today-only + “show older”. Pick the default that feels right at real note volume.</div>
+        <div class="seg" id="defWindow"></div>
+      </div>
+      <div class="opt-group">
+        <div class="q">2 · Date-range control shape</div>
+        <div class="hint">Which “When” controls appear above.</div>
+        <div class="seg" id="rangeShape"></div>
+      </div>
+      <div class="opt-group">
+        <div class="q">3 · Group results by month?</div>
+        <div class="hint">Month headers help when browsing a wide range; noise for a short one.</div>
+        <div class="seg" id="grouping"></div>
+      </div>
+    </div>
+  </details>
+</div>
+
+<script>
+(function () {
+  "use strict";
+
+  // ---------- theme ----------
+  const rootEl = document.documentElement;
+  document.getElementById("themeBtn").addEventListener("click", () => {
+    const cur = rootEl.getAttribute("data-theme")
+      || (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+    rootEl.setAttribute("data-theme", cur === "dark" ? "light" : "dark");
+  });
+
+  // ---------- mock data ----------
+  const MS_DAY = 86400000;
+  const today = new Date(); today.setHours(0,0,0,0);
+  const iso = (d) => {
+    const y = d.getFullYear(), m = String(d.getMonth()+1).padStart(2,"0"), day = String(d.getDate()).padStart(2,"0");
+    return `${y}-${m}-${day}`;
+  };
+  const TODAY = iso(today);
+
+  const orgs = ["Crosslake","OGI","Acme","Northwind","Meridian","Vantage","Helios","Brightpath","Solstice","Cobalt","Redwood","Kestrel"];
+  const kinds = [
+    ["Weekly sync", 0.9], ["1:1 with", 0.7], ["QBR", 0.3], ["Discovery call", 0.5],
+    ["Roadmap review", 0.4], ["Standup", 0.8], ["Retro", 0.4], ["Kickoff", 0.3],
+    ["Onboarding", 0.3], ["Renewal review", 0.25], ["Incident review", 0.2], ["Design review", 0.4],
+    ["Budget planning", 0.2], ["Board update", 0.15], ["Support escalation", 0.3], ["Contract review", 0.2]
+  ];
+  const people = ["Sam","Priya","Marcus","Lena","Devon","Aisha","Tom","Nadia","Chris","Elena","Raj","Mo"];
+  const snippets = [
+    "Agreed to ship the pilot by end of month; Sam to send the revised SOW.",
+    "Pricing pushback on tier 2 — regroup after finance signs off.",
+    "Migration blocked on the SSO change; escalated to the platform team.",
+    "Good signal on renewal; procurement wants a security questionnaire first.",
+    "Action items captured, owners assigned, follow-up scheduled for Thursday.",
+    "Scope creep on the integration — parked the extra connector for phase 2.",
+    "Positive demo; they want a sandbox by Friday to trial with two users.",
+    "Discussed the outage postmortem; three fixes landing this sprint.",
+    "Headcount plan reviewed; two reqs approved, one deferred to Q3.",
+    "Contract redlines mostly minor; legal to turn around by Wednesday."
+  ];
+
+  // Weighted pick
+  let seed = 20260717;
+  const rnd = () => { seed = (seed * 1103515245 + 12345) & 0x7fffffff; return seed / 0x7fffffff; };
+  const pick = (a) => a[Math.floor(rnd()*a.length)];
+
+  const notes = [];
+  let id = 0;
+  // Distribution: dense in last 30d, tapering back ~430 days.
+  const buckets = [
+    { days: 3, count: 5 },     // last few days incl today
+    { days: 30, count: 22 },   // this month
+    { days: 90, count: 34 },   // last quarter
+    { days: 200, count: 40 },  // older
+    { days: 430, count: 34 }   // up to ~14 months
+  ];
+  let lo = 1;
+  for (const b of buckets) {
+    for (let i = 0; i < b.count; i++) {
+      const back = lo + Math.floor(rnd() * (b.days - lo));
+      const d = new Date(today.getTime() - back * MS_DAY);
+      const [kind] = pick(kinds);
+      let title, tags = [];
+      const org = pick(orgs);
+      if (kind === "1:1 with") { const p = pick(people); title = `1:1 with ${p}`; tags = rnd() < .5 ? [org.toLowerCase()] : []; }
+      else if (kind === "Standup" || kind === "Retro") { title = `${kind}`; tags = rnd() < .4 ? [org.toLowerCase()] : []; }
+      else { title = `${org} — ${kind.toLowerCase()}`; tags = [org.toLowerCase()]; if (rnd() < .3) tags.push(pick(orgs).toLowerCase()); }
+      tags = [...new Set(tags)];
+      notes.push({ id: ++id, title, date: iso(d), tsMod: d.getTime() + Math.floor(rnd()*MS_DAY), preview: pick(snippets), tags });
+    }
+    lo = b.days;
+  }
+  // ensure a couple dated exactly today
+  notes.push({ id: ++id, title: "Crosslake — weekly sync", date: TODAY, tsMod: today.getTime()+3600000, preview: pick(snippets), tags: ["crosslake"] });
+  notes.push({ id: ++id, title: "1:1 with Priya", date: TODAY, tsMod: today.getTime()+7200000, preview: pick(snippets), tags: [] });
+
+  const allTags = [...new Set(notes.flatMap(n => n.tags))].sort();
+  const tagCounts = {}; notes.forEach(n => n.tags.forEach(t => tagCounts[t] = (tagCounts[t]||0)+1));
+  const topTags = allTags.sort((a,b)=>tagCounts[b]-tagCounts[a]).slice(0,10);
+
+  // ---------- state ----------
+  const state = {
+    q: "",
+    range: "default",     // default | today | 7 | 30 | month | all | custom
+    from: "", to: "",
+    tags: [],
+    sort: "date-desc",
+    // prototype options
+    defWindow: "30",      // 7 | 14 | 30 | 60 | all
+    rangeShape: "both",   // presets | both
+    grouping: "auto"      // off | auto | on
+  };
+
+  // ---------- helpers ----------
+  const daysAgoISO = (n) => iso(new Date(today.getTime() - n*MS_DAY));
+  const monthStartISO = () => { const d = new Date(today.getFullYear(), today.getMonth(), 1); return iso(d); };
+  const fmtDate = (s) => {
+    const [y,m,dd] = s.split("-").map(Number);
+    const d = new Date(y, m-1, dd);
+    if (s === TODAY) return "Today";
+    if (s === daysAgoISO(1)) return "Yesterday";
+    const within7 = d.getTime() > today.getTime() - 7*MS_DAY;
+    if (within7) return d.toLocaleDateString(undefined, { weekday: "long" });
+    const sameYear = y === today.getFullYear();
+    return d.toLocaleDateString(undefined, { day: "numeric", month: "short", year: sameYear ? undefined : "numeric" });
+  };
+  const monthLabel = (s) => { const [y,m] = s.split("-").map(Number); return new Date(y, m-1, 1).toLocaleDateString(undefined, { month: "long", year: "numeric" }); };
+
+  function activeWindow() {
+    // Returns {from, to} inclusive ISO bounds for the current range selection, or null = all.
+    switch (state.range) {
+      case "today": return { from: TODAY, to: TODAY };
+      case "7": return { from: daysAgoISO(6), to: TODAY };
+      case "30": return { from: daysAgoISO(29), to: TODAY };
+      case "month": return { from: monthStartISO(), to: TODAY };
+      case "all": return null;
+      case "custom": return { from: state.from || "0000-01-01", to: state.to || "9999-12-31" };
+      case "default":
+      default:
+        if (state.defWindow === "all") return null;
+        return { from: daysAgoISO(Number(state.defWindow) - 1), to: TODAY };
+    }
+  }
+
+  function computeResults() {
+    const win = activeWindow();
+    const q = state.q.trim().toLowerCase();
+    let list = notes.filter(n => {
+      if (win && (n.date < win.from || n.date > win.to)) return false;
+      if (state.tags.length && !state.tags.some(t => n.tags.includes(t))) return false;
+      if (q && !(n.title.toLowerCase().includes(q) || n.preview.toLowerCase().includes(q) || n.tags.some(t=>t.includes(q)))) return false;
+      return true;
+    });
+    const [key, dir] = state.sort.split("-");
+    list.sort((a,b) => {
+      let c;
+      if (key === "title") c = a.title.localeCompare(b.title, undefined, { sensitivity: "base" });
+      else { c = a.date < b.date ? -1 : a.date > b.date ? 1 : (a.tsMod - b.tsMod); }
+      return dir === "asc" ? c : -c;
+    });
+    return list;
+  }
+
+  // ---------- render ----------
+  const rangeDefs = [
+    { v: "default", label: "Default" },
+    { v: "today", label: "Today" },
+    { v: "7", label: "Last 7 days" },
+    { v: "30", label: "Last 30 days" },
+    { v: "month", label: "This month" },
+    { v: "all", label: "All" },
+    { v: "custom", label: "Custom…" }
+  ];
+
+  function renderControls() {
+    // range chips
+    const rc = document.getElementById("rangeChips");
+    const shapeAllowsCustom = state.rangeShape === "both";
+    rc.innerHTML = "";
+    rangeDefs.filter(r => r.v !== "custom" || shapeAllowsCustom).forEach(r => {
+      const b = document.createElement("button");
+      b.className = "chip"; b.textContent = r.label;
+      b.setAttribute("aria-pressed", state.range === r.v);
+      b.onclick = () => { state.range = r.v; if (r.v !== "custom") { document.getElementById("customRow").classList.remove("show"); } else { document.getElementById("customRow").classList.add("show"); } render(); };
+      rc.appendChild(b);
+    });
+    document.getElementById("customRow").classList.toggle("show", state.range === "custom" && shapeAllowsCustom);
+
+    // tags
+    const tc = document.getElementById("tagChips");
+    tc.innerHTML = "";
+    topTags.forEach(t => {
+      const b = document.createElement("button");
+      b.className = "chip tag-chip"; b.textContent = `${t} · ${tagCounts[t]}`;
+      b.setAttribute("aria-pressed", state.tags.includes(t));
+      b.onclick = () => { state.tags = state.tags.includes(t) ? state.tags.filter(x=>x!==t) : [...state.tags, t]; render(); };
+      tc.appendChild(b);
+    });
+
+    document.getElementById("sort").value = state.sort;
+
+    // option segments
+    seg("defWindow", [["7","Last 7 days"],["14","Last 14 days"],["30","Last 30 days"],["60","Last 60 days"],["all","All notes"]], state.defWindow, v => { state.defWindow = v; });
+    seg("rangeShape", [["presets","Presets only"],["both","Presets + custom range"]], state.rangeShape, v => { state.rangeShape = v; });
+    seg("grouping", [["off","Never"],["auto","Auto (wide ranges only)"],["on","Always"]], state.grouping, v => { state.grouping = v; });
+  }
+
+  function seg(elId, opts, cur, set) {
+    const el = document.getElementById(elId);
+    el.innerHTML = "";
+    opts.forEach(([v,label]) => {
+      const b = document.createElement("button");
+      b.textContent = label; b.setAttribute("aria-pressed", cur === v);
+      b.onclick = () => { set(v); render(); };
+      el.appendChild(b);
+    });
+  }
+
+  function groupingActive(list) {
+    if (state.grouping === "on") return true;
+    if (state.grouping === "off") return false;
+    // auto: group when the visible span exceeds ~45 days and sorted by date
+    if (!state.sort.startsWith("date") || !list.length) return false;
+    const span = (new Date(list[0].date) - new Date(list[list.length-1].date)) / MS_DAY;
+    return Math.abs(span) > 45;
+  }
+
+  function renderResults() {
+    const list = computeResults();
+    const results = document.getElementById("results");
+    const win = activeWindow();
+
+    // count + window note
+    document.getElementById("count").innerHTML = `<b>${list.length}</b> of ${notes.length} notes`;
+    const wn = document.getElementById("windowNote");
+    if (state.range === "default") wn.textContent = state.defWindow === "all"
+      ? "Showing all notes (default window: All)."
+      : `Showing your last ${state.defWindow} days by default. Use When to widen or narrow.`;
+    else if (win) wn.textContent = `Showing ${win.from === win.to ? fmtDate(win.from) : `${win.from} → ${win.to}`}.`;
+    else wn.textContent = "Showing all notes.";
+
+    // summary pills
+    renderSummary();
+    renderUrl();
+
+    if (!list.length) {
+      results.innerHTML = "";
+      const e = document.createElement("div");
+      e.className = "empty";
+      let msg = "No notes match these filters.";
+      if (state.q) msg = `No notes match “${state.q}”.`;
+      else if (state.tags.length) msg = `No notes tagged ${state.tags.map(t=>`“${t}”`).join(" or ")} in this range.`;
+      else if (win) msg = "No notes in this date range.";
+      e.innerHTML = `<h3>Nothing here</h3><p>${msg}</p><button id="resetBtn">Clear filters</button>`;
+      results.appendChild(e);
+      document.getElementById("resetBtn").onclick = resetAll;
+      return;
+    }
+
+    const grid = document.createElement("div");
+    grid.className = "grid";
+    const grouped = groupingActive(list);
+    let curMonth = "";
+    list.forEach(n => {
+      if (grouped) {
+        const mk = n.date.slice(0,7);
+        if (mk !== curMonth) {
+          curMonth = mk;
+          const h = document.createElement("div");
+          h.className = "month-head"; h.textContent = monthLabel(n.date);
+          grid.appendChild(h);
+        }
+      }
+      const c = document.createElement("div");
+      c.className = "card"; c.tabIndex = 0;
+      c.innerHTML = `
+        <div class="card-date">${fmtDate(n.date)}</div>
+        <div class="card-title">${escapeHtml(n.title)}</div>
+        <div class="card-preview">${escapeHtml(n.preview)}</div>
+        <div class="card-tags">${n.tags.map(t=>`<span class="card-tag">${escapeHtml(t)}</span>`).join("")}</div>`;
+      grid.appendChild(c);
+    });
+    results.innerHTML = "";
+    results.appendChild(grid);
+  }
+
+  function renderSummary() {
+    const s = document.getElementById("summary");
+    const parts = [];
+    if (state.range !== "default") {
+      const label = state.range === "custom" ? `${state.from||"…"} → ${state.to||"…"}` : (rangeDefs.find(r=>r.v===state.range)||{}).label;
+      parts.push(pillHtml(`When: ${label}`, "range"));
+    }
+    state.tags.forEach(t => parts.push(pillHtml(`#${t}`, "tag:"+t)));
+    if (state.q) parts.push(pillHtml(`“${state.q}”`, "q"));
+    s.innerHTML = parts.length
+      ? parts.join("") + `<button class="clear-all" id="clearAll">Clear all</button>`
+      : `<span style="color:var(--faint)">No filters — showing your default window.</span>`;
+    s.querySelectorAll("[data-clear]").forEach(b => b.onclick = () => clearOne(b.getAttribute("data-clear")));
+    const ca = document.getElementById("clearAll"); if (ca) ca.onclick = resetAll;
+  }
+  function pillHtml(label, key) { return `<span class="pill">${escapeHtml(label)}<button data-clear="${key}" aria-label="Remove">×</button></span>`; }
+
+  function renderUrl() {
+    const p = [];
+    if (state.q) p.push(`q=${encodeURIComponent(state.q)}`);
+    if (state.range === "custom") { if (state.from) p.push(`from=${state.from}`); if (state.to) p.push(`to=${state.to}`); }
+    else if (state.range !== "default") p.push(`range=${state.range}`);
+    state.tags.forEach(t => p.push(`tag=${t}`));
+    if (state.sort !== "date-desc") p.push(`sort=${state.sort}`);
+    const qs = p.join("&");
+    document.getElementById("urlBar").innerHTML = `<b>URL</b>&nbsp; /notes${qs ? "?" + escapeHtml(qs) : ""}`;
+  }
+
+  function clearOne(key) {
+    if (key === "range") state.range = "default";
+    else if (key === "q") { state.q = ""; document.getElementById("search").value = ""; }
+    else if (key.startsWith("tag:")) state.tags = state.tags.filter(t => t !== key.slice(4));
+    render();
+  }
+  function resetAll() {
+    state.q = ""; state.range = "default"; state.tags = []; state.from = ""; state.to = "";
+    document.getElementById("search").value = "";
+    document.getElementById("customRow").classList.remove("show");
+    render();
+  }
+
+  function escapeHtml(s){ return String(s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c])); }
+
+  // ---------- events ----------
+  document.getElementById("search").addEventListener("input", e => { state.q = e.target.value; renderResults(); });
+  document.getElementById("sort").addEventListener("change", e => { state.sort = e.target.value; renderResults(); });
+  document.getElementById("fromDate").addEventListener("change", e => { state.from = e.target.value; renderResults(); });
+  document.getElementById("toDate").addEventListener("change", e => { state.to = e.target.value; renderResults(); });
+
+  function render() { renderControls(); renderResults(); }
+  render();
+})();
+</script>
