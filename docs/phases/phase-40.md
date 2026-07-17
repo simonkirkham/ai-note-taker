@@ -1,108 +1,123 @@
-# Phase 40 — Home notes: richer default, date-range filter, and sort _(Not Started — prototype-gated)_
+# Phase 40 — Home notes: richer default, date-range filter, and sort _(In Progress — 40-P prototype done)_
 
-**Goal:** Replace the home screen's "today's notes only, plus a *show older* toggle" with a richer browse — more notes shown by default, an explicit date-range filter, and sorting by date or title.
+**Goal:** Replace the home screen's "today's notes only, plus a *show older* toggle" with a richer browse — the last 30 days shown by default, an explicit date-range filter, and sorting by date or title.
 
 ## Summary
 
 | Slice | What the user gets | Status | Depends on |
 |-------|--------------------|--------|------------|
-| 40-P | **Prototype (throwaway).** Try the redesigned home list to settle the default window, the date-range control, the sort control, and the empty states before anything is built for real. | Not Started | — |
-| 40-A | **Richer default + date-range filter.** The home screen shows more than just today, and you can pick a date range — replacing the disliked *show older* toggle. | Not Started | 40-P |
-| 40-B | **Sort control.** Order the home list newest/oldest first, or by title. | Not Started | 40-A |
+| 40-P | **Prototype (throwaway).** Settle the default window, the date-range control, the sort control, month grouping, and empty states before building. | Done | — |
+| 40-A | **Richer default + date-range filter.** The home screen shows the last 30 days by default, and you can pick a date range (presets or a custom from–to) — replacing the disliked *show older* toggle. | Not Started | 40-P |
+| 40-B | **Sort control + month grouping.** Order the home list newest/oldest first or by title; a wide date-sorted view groups under month headers. | Not Started | 40-A |
 
-> **40-A is the keystone** — it removes the mechanism the user dislikes and proves the redesigned filter pipeline end-to-end. **40-B layers sort on top.** Ship 40-A first; branch 40-B only after it deploys green.
+> **40-A is the keystone** — it removes the mechanism the user dislikes and proves the redesigned filter pipeline end-to-end. **40-B layers sort (and month grouping) on top.** Ship 40-A first; branch 40-B only after it deploys green.
+>
+> **Decisions settled by the 40-P prototype (2026-07-17):** default window = **rolling last 30 days**; date-range control = **presets + Custom…**; sort default = **Newest first**; month grouping = **Auto** (rides 40-B). Full record: `web/src/prototype/REFERENCE.md` on `prototype/40-home-notes-filter-sort`.
 
 ## Slices
 
 <!-- REVIEW SURFACE — the human reads this and stops. No technical artefact named below. -->
 
-### Slice 40-P — Prototype (throwaway, frontend-only)
-
-- **Purpose:** Settle the UX before any spec or real code — a quick throwaway prototype over mock notes at realistic volumes (a day, a month, a year of notes). On approval it rewrites 40-A/40-B's scenarios in this doc; real work starts from the updated doc, not the prototype code.
-- **What the prototype settles:**
-  - **Default window** — "show more" = rolling last-N-days (7 / 14 / 30), last-N-notes, or all.
-  - **Date-range control** — quick presets (Today / Last 7 / Last 30 / This month / All), a custom from–to picker, or both; whether "All" stays a one-click escape hatch.
-  - **Sort control** — which keys (date, title), default direction, where it sits.
-  - **Retiring *show older*** — confirm the toggle and its auto-enable-on-tag-filter are fully removed, not left alongside the new model.
-  - **Search + tags interaction** — sort/date-range apply to browsing; in active search, relevance still wins; tags + range + sort compose.
-  - **Empty-state copy** when a range or tag yields no notes.
-
 ### Slice 40-A — Richer default + date-range filter (keystone)
 
-- **User value:** The home screen shows more than just today by default, and the user can pick an explicit date range — replacing the disliked *show older* toggle.
+- **User value:** The home screen shows the **last 30 days** by default instead of only today, and the user can pick an explicit date range — replacing the disliked *show older* toggle.
 - **How it works:**
-  - On load, the home list shows the default window (settled in 40-P), not just today's notes.
-  - A date-range control (presets and/or a custom from–to) narrows the list; an "All" option shows everything.
-  - The chosen range lives in the URL, so Back from a note, reload, and sharing all restore the same view.
-  - Tags and date range apply together. The old *show older* toggle is gone.
-- **Scenarios (GWT):** _(provisional — finalised by the prototype)_
+  - On load, with no filter set, the home list shows notes from the **last 30 days** (rolling), not just today's.
+  - A **When** control narrows the list: quick presets — *Today*, *Last 7 days*, *Last 30 days*, *This month*, *All* — plus **Custom…**, which reveals a from–to date picker. *All* is a one-click escape hatch showing every note.
+  - Clearing the range returns to the default 30-day window.
+  - The chosen range lives in the URL (`?range=` or `?from=&to=`), so Back from a note, reload, and sharing all restore the same view. Filter changes replace history; opening a note pushes — so Back lands on the populated list.
+  - Tags and date range apply together. The old *show older* toggle — and its auto-enable-when-a-tag-is-picked behaviour — are gone.
+  - A range (or tag) that matches nothing shows a clear empty state with a **Clear filters** action.
+- **Scenarios (GWT):**
 
 ```
 Scenario: Default window on load
-  Given I load the home screen with no filter set
-  Then  I see the default window of notes, not only today's
+  Given I open the home screen with no filter set
+  Then  I see notes from the last 30 days
+  And   I do not see notes older than 30 days
+  And   there is no "show older" toggle
 
-Scenario: Date-range preset
-  Given the home list
-  When  I pick a preset (e.g. Last 30 days)
-  Then  only notes whose date falls in that range are shown
+Scenario: Preset narrows to today
+  Given the home list showing the default window
+  When  I pick the "Today" preset
+  Then  only notes dated today are shown
 
-Scenario: Custom from–to range and the All escape hatch
+Scenario: Preset widens to all
+  Given the home list showing the default window
+  When  I pick the "All" preset
+  Then  every note is shown regardless of date
+
+Scenario: Custom from-to range
   Given the home list
-  When  I set a custom from–to range
-  Then  only notes in that range are shown, and "All" shows every loaded note
+  When  I choose "Custom" and set a from and to date
+  Then  only notes whose effective date falls within that range are shown
+
+Scenario: Clearing the range returns to the default window
+  Given a date-range preset is applied
+  When  I clear the range
+  Then  the list returns to the last-30-days default window
 
 Scenario: Range survives opening a note
   Given a date range is set
-  When  I open a note and press Save/Back
-  Then  the home list restores the same range
+  When  I open a note and press Save or Back
+  Then  the home list restores the same range from the URL
 
 Scenario: Empty state
   Given a date range that matches no notes
-  Then  a clear empty state is shown
+  Then  a clear empty state with a "Clear filters" action is shown
 
 Scenario: Tags and date range compose
-  Given a tag filter and a date range
-  Then  both apply together
+  Given a tag filter and a date range are both set
+  Then  only notes matching the tag selection AND falling in the range are shown
 
 Scenario: Show older is retired
   Given the redesigned home screen
-  Then  the old "show older" toggle no longer exists and the today-only default no longer applies
+  Then  the old "show older" toggle no longer exists
+  And   picking a tag no longer auto-reveals older notes
+  And   the today-only default no longer applies
 ```
 
-### Slice 40-B — Sort control (scale)
+### Slice 40-B — Sort control + month grouping (scale)
 
-- **User value:** Order the home list the way the user wants — newest/oldest first, or by title.
+- **User value:** Order the home list the way the user wants — newest or oldest first, or by title — and, when browsing a wide span, see it broken up by month.
 - **How it works:**
-  - An explicit sort control sets the order; the default is settled in 40-P.
-  - Sort by date (ascending / descending) or by title (A–Z / Z–A).
-  - The chosen sort lives in the URL and restores on return; it composes with the date range and tags.
-- **Scenarios (GWT):** _(provisional — finalised by the prototype)_
+  - A **sort** control offers: *Newest first* (default), *Oldest first*, *Title A–Z*, *Title Z–A*. Title sort is case-insensitive.
+  - When the list is sorted by date **and** the visible span is wide (more than ~45 days — e.g. a *This month*+ / *All* / long custom range), cards group under **month headers**; short or non-date-sorted views stay a flat grid.
+  - The chosen sort lives in the URL (`?sort=`) and restores on return; it composes with the date range and tags (filter, then sort).
+- **Scenarios (GWT):**
 
 ```
 Scenario: Sort by date, newest first
   Given the home list
-  When  I sort by date descending
-  Then  the newest note is first
+  When  I sort by "Newest first"
+  Then  the note with the most recent effective date is first
 
 Scenario: Sort by date, oldest first
   Given the home list
-  When  I sort by date ascending
-  Then  the oldest note is first
+  When  I sort by "Oldest first"
+  Then  the note with the oldest effective date is first
 
 Scenario: Sort by title
   Given the home list
-  When  I sort by title A–Z (or Z–A)
-  Then  notes order case-insensitively by title
+  When  I sort by "Title A-Z"
+  Then  notes are ordered case-insensitively by title, A to Z
 
 Scenario: Sort survives opening a note
-  Given I chose a sort
+  Given I chose a sort order
   When  I open a note and return
-  Then  the same sort is restored
+  Then  the same sort order is restored from the URL
 
 Scenario: Sort composes with filters
-  Given a sort, a date range, and tags
-  Then  all compose (filter then sort)
+  Given a sort order, a date range, and a tag filter
+  Then  the list is filtered by range and tag, then ordered by the sort
+
+Scenario: Month grouping on a wide date-sorted range
+  Given the list is sorted by date and a wide range (e.g. All) is applied
+  Then  cards are grouped under month headers
+
+Scenario: No month grouping on a short or title-sorted view
+  Given the default 30-day window, or a title sort
+  Then  cards are shown as a flat grid with no month headers
 ```
 
 ---
@@ -110,30 +125,31 @@ Scenario: Sort composes with filters
 ## Build notes _(implementation — skip when reviewing)_
 
 ### Scope & constraints
-- **Frontend-only, client-side over the already-loaded `cards` set.** The home list already loads the full card set (`useNoteCards()` → `GET /notes/cards`) and filters/sorts in the browser (`ListView.tsx`); default-window, date-range, and sort are all client-side. No new event, command, projection, endpoint, or CDK change.
+- **Frontend-only, client-side over the already-loaded `cards` set.** The home list already loads the full card set (`useNoteCards()` → `GET /notes/cards`) and filters/sorts in the browser (`ListView.tsx`); default-window, date-range, sort, and grouping are all client-side. No new event, command, projection, endpoint, or CDK change.
 - **Out of scope:** server-side date/sort over a *paginated* set — that is the separate ["Scalable note loading (pagination) + server-side filtering"](../future-features.md) future-feature; this phase must not pre-empt it.
-- **Filter + sort state in URL params**, extending the existing `?q=&tag=&mode=` scheme (CHANGE-23): replace `?older=1` with date-range param(s) (e.g. `?from=&to=` or `?range=`) and a `?sort=` param. Back/reload/share restore the exact view for free.
+- **Filter + sort state in URL params**, extending the existing `?q=&tag=&mode=` scheme (CHANGE-23): replace `?older=1` with the range params (`?range=` for presets, `?from=&to=` for custom) and a `?sort=` param. Back/reload/share restore the exact view for free.
 - **`show older` (CHANGE-19) and today-only default (CHANGE-3) are removed**, not kept in parallel — including CHANGE-19's auto-enable-on-tag-filter.
 - The save-button "return to where I came from" is **not** in scope — the existing `navigate(-1)` + URL-persisted filters already cover it.
 
 ### 40-A
-- `ListView.tsx` default-visibility logic replaced: the today-only + `showOlder` branch (~lines 162–181) gives way to the default-window + date-range filter over `effectiveDate(card)`.
-- Date-range state read/written via URL params (extend `writeFilters`); `?older=1` removed; CHANGE-19 auto-enable-on-tag-filter removed.
-- Date math reuses `src/dates.ts` (`effectiveDate`, `localTodayISO`) — compare `YYYY-MM-DD` strings; no UTC drift; no hardcoded absolute dates (time-bomb guardrail).
-- Tests: vitest/RTL for default window, each preset, custom range, "All", empty state, tag+range compose, URL restore. Run `npm run lint`.
-- Browser.E2E (if a journey is warranted): a filtered home list survives a note open→Save→Back via the **gated** home-card path, not ungated search (CHANGE-23 deploy-#633 lesson).
+- `ListView.tsx` default-visibility logic replaced: the today-only + `showOlder` branch (~lines 161–181) and `nextOlderForSelection` auto-enable are deleted, replaced by a default-window + date-range filter over `effectiveDate(card)`.
+- **Default window:** no `range`/`from`/`to` param ⇒ show notes with `effectiveDate(card)` in `[daysAgo(29), today]` (rolling last 30 days).
+- **Presets** computed relative to `localTodayISO()`: `today` = `[today, today]`; `7` = `[today−6, today]`; `30` = `[today−29, today]`; `month` = `[firstOfMonth, today]`; `all` = unbounded; `custom` = `[from, to]` (open-ended if one side blank).
+- Range state read/written via URL params (extend `writeFilters`); `?older=1` removed.
+- Date math reuses `src/dates.ts` (`effectiveDate`, `localTodayISO`, `localDateISO`) — compare `YYYY-MM-DD` strings; no UTC drift; no hardcoded absolute dates (time-bomb guardrail).
+- **Optimistic-UI n/a** (no mutation) — but the acceptance set still asserts URL-restore round-trips.
+- Tests: vitest/RTL for default window, each preset, custom range, "All", clearing-returns-to-default, empty state, tag+range compose, URL restore. Run `npm run lint`.
+- Browser.E2E (warranted): a filtered home list survives a note open→Save→Back via the **gated** home-card path, not ungated search (CHANGE-23 deploy-#633 lesson). Reuse/extend `FilterBackNavigationJourney`.
 
 ### 40-B
-- `ListView.tsx` sort parameterised: the fixed reverse-chronological sort (~lines 171–180) becomes driven by a `?sort=` URL param (default settled in 40-P).
-- Sort control keyboard-accessible (real control; satisfies the jsx-a11y gate).
-- Tests: vitest/RTL for each sort key+direction, default, compose-with-filter, URL restore. Run `npm run lint`.
+- `ListView.tsx` sort parameterised: the fixed reverse-chronological sort (~lines 171–180) becomes driven by a `?sort=` URL param, default `date-desc`. Keys: `date-desc`, `date-asc`, `title-asc`, `title-desc`; title via `localeCompare(…, { sensitivity: "base" })`; date keeps the `lastModifiedAt` tiebreak.
+- **Month grouping:** when `sort` starts with `date` **and** the visible span (`effectiveDate` of first vs last result) exceeds ~45 days, render month-group headers (`YYYY-MM` label); else a flat grid. Grouping is display-only over the already-sorted list.
+- Sort control keyboard-accessible (real `<select>` or button group; satisfies the jsx-a11y gate).
+- Tests: vitest/RTL for each sort key+direction, default, compose-with-filter, URL restore, grouping-on-wide-range, no-grouping-on-short/title view. Run `npm run lint`.
 
-### Decisions locked (2026-06-26)
-- New numbered phase, prototype-gated (user).
-- Frontend-only, client-side over the loaded `cards` set; server-side/paginated filtering stays the separate future-feature.
-- Filter + sort state in URL params (extends CHANGE-23).
-- `show older` (CHANGE-19) + today-only default (CHANGE-3) superseded and removed.
-- Save-button "return to origin" dropped from scope.
+### Decisions locked
+- **2026-06-26 (scoping):** new numbered phase, prototype-gated; frontend-only client-side over the loaded `cards` set; filter+sort state in URL (extends CHANGE-23); `show older` + today-only default removed; save-button "return to origin" dropped.
+- **2026-07-17 (40-P prototype):** default window = **rolling last 30 days**; date-range control = **presets + Custom…** with *All* escape hatch; sort default = **Newest first** (4 options); **month grouping = Auto**, folded into **40-B** (coupled to date sort); empty state = single card, message tailored to the narrowest active filter, with a *Clear filters* action.
 
 ### Observability
 Frontend-only, client-side filtering/sorting over data already loaded — no new backend call, table, or external dependency, so **no new silent backend failure mode and no new instrumentation** (flagged, not added):
