@@ -21,13 +21,3 @@ export function effectiveDate(card: Pick<NoteCard, "date" | "createdAt">): strin
   if (card.date) return card.date;
   return localDateISO(new Date(card.createdAt));
 }
-
-// True when the note was last modified on the given local calendar day
-// (today by default). Compared as YYYY-MM-DD strings to avoid time-of-day
-// and timezone drift.
-export function isEditedToday(
-  card: Pick<NoteCard, "lastModifiedAt">,
-  today: string = localTodayISO(),
-): boolean {
-  return localDateISO(new Date(card.lastModifiedAt)) === today;
-}

@@ -2,7 +2,7 @@ import clsx from "clsx";
 import { useDeferredValue, useMemo, useState } from "react";
 import { useSearchParams } from "react-router";
 import { NoteCard as NoteCardData, SearchResult } from "../api/notes";
-import { effectiveDate, localDateISO, localTodayISO } from "../dates";
+import { effectiveDate, localDateISO } from "../dates";
 import { type SearchState, useNoteSearch } from "../hooks/useNoteSearch";
 import { useTags } from "../hooks/useTags";
 import styles from "./ListView.module.css";
@@ -64,20 +64,22 @@ function firstOfMonthISO(today: Date = new Date()): string {
 }
 
 // Inclusive [lo, hi] date bounds for a preset; "" means unbounded on that side.
+// A single `now` anchors every bound so all sides agree on "today".
 function presetBounds(preset: RangePreset): { lo: string; hi: string } {
-  const today = localTodayISO();
+  const now = new Date();
+  const today = localDateISO(now);
   switch (preset) {
     case "today":
       return { lo: today, hi: today };
     case "7":
-      return { lo: daysAgoISO(6), hi: today };
+      return { lo: daysAgoISO(6, now), hi: today };
     case "month":
-      return { lo: firstOfMonthISO(), hi: today };
+      return { lo: firstOfMonthISO(now), hi: today };
     case "all":
       return { lo: "", hi: "" };
     case "30":
     default:
-      return { lo: daysAgoISO(29), hi: today };
+      return { lo: daysAgoISO(29, now), hi: today };
   }
 }
 
@@ -298,6 +300,9 @@ export default function ListView({
     .filter(Boolean)
     .join(" · ");
   const showActiveSummary = !filtersOpen && filterSummary.length > 0;
+  // Gates the empty-state "Clear filters" button. Deliberately omits `query`:
+  // the empty state only renders when `!searching`, so a query is never the
+  // reason the home list is empty here.
   const hasActiveFilter = !isDefaultRange || tagCount > 0;
 
   return (
