@@ -427,10 +427,10 @@ export default function ListView({
                 </h2>
                 {!searching && (
                   <label className={styles.sortControl}>
+                    {/* The wrapping label's "Sort" text is the select's accessible name. */}
                     <span className={styles.sortControlLabel}>Sort</span>
                     <select
                       data-testid="sort-select"
-                      aria-label="Sort notes"
                       value={activeSort}
                       onChange={(e) => setSort(e.target.value as SortKey)}
                     >
@@ -570,7 +570,12 @@ export default function ListView({
                     return (
                       <Fragment key={card.noteId}>
                         {showHeader && (
-                          <div className={styles.monthHeader} data-testid="month-header">
+                          <div
+                            className={styles.monthHeader}
+                            data-testid="month-header"
+                            role="separator"
+                            aria-label={monthLabel(month)}
+                          >
                             {monthLabel(month)}
                           </div>
                         )}
