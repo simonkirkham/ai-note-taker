@@ -1,5 +1,5 @@
 import clsx from "clsx";
-import { useDeferredValue, useMemo, useState } from "react";
+import { Fragment, useDeferredValue, useMemo, useState } from "react";
 import { useSearchParams } from "react-router";
 import { NoteCard as NoteCardData, SearchResult } from "../api/notes";
 import { effectiveDate, localDateISO } from "../dates";
@@ -50,6 +50,32 @@ const RANGE_PRESETS: { id: RangePreset; label: string }[] = [
 ];
 
 const DEFAULT_RANGE: RangePreset = "30";
+
+// Phase 40-B: an explicit sort control over the home list, persisted in `?sort=`.
+// Newest-first is the default, so it is never written to the URL.
+type SortKey = "date-desc" | "date-asc" | "title-asc" | "title-desc";
+
+const SORT_OPTIONS: { id: SortKey; label: string }[] = [
+  { id: "date-desc", label: "Newest first" },
+  { id: "date-asc", label: "Oldest first" },
+  { id: "title-asc", label: "Title A–Z" },
+  { id: "title-desc", label: "Title Z–A" },
+];
+
+const DEFAULT_SORT: SortKey = "date-desc";
+
+// When the list is sorted by date and spans a wide window, group cards under
+// month headers (40-B). Short or title-sorted views stay a flat grid.
+const MONTH_GROUP_SPAN_DAYS = 45;
+
+// "2026-07" → "July 2026".
+function monthLabel(yyyyMm: string): string {
+  const [y, m] = yyyyMm.split("-").map(Number);
+  return new Date(y, m - 1, 1).toLocaleDateString(undefined, {
+    month: "long",
+    year: "numeric",
+  });
+}
 
 // N days before `today` as a local YYYY-MM-DD string (0 = today).
 function daysAgoISO(n: number, today: Date = new Date()): string {
@@ -140,6 +166,11 @@ export default function ListView({
   const activePreset: RangePreset = RANGE_PRESETS.some((p) => p.id === rangeParam)
     ? (rangeParam as RangePreset)
     : DEFAULT_RANGE;
+  // Sort order (40-B); newest-first is the default (absence of the param).
+  const sortParam = searchParams.get("sort");
+  const activeSort: SortKey = SORT_OPTIONS.some((o) => o.id === sortParam)
+    ? (sortParam as SortKey)
+    : DEFAULT_SORT;
   const isDefaultRange = !isCustomRange && (rangeParam === null || rangeParam === DEFAULT_RANGE);
   const [filtersOpen, setFiltersOpen] = useState(false);
   // Whether the custom from–to inputs are revealed. The user opens them via
@@ -158,6 +189,7 @@ export default function ListView({
     range?: RangePreset | null;
     from?: string | null;
     to?: string | null;
+    sort?: SortKey;
   }) {
     const params = new URLSearchParams(searchParams);
     const q = next.query ?? query;
@@ -182,11 +214,17 @@ export default function ListView({
       if (next.to) params.set("to", next.to);
       else params.delete("to");
     }
+    if ("sort" in next) {
+      // Newest-first is the default, so it is never pinned in the URL.
+      if (next.sort && next.sort !== DEFAULT_SORT) params.set("sort", next.sort);
+      else params.delete("sort");
+    }
     setSearchParams(params, { replace: true });
   }
 
   const setQuery = (value: string) => writeFilters({ query: value });
   const setFilterMode = (mode: "AND" | "OR") => writeFilters({ mode });
+  const setSort = (sort: SortKey) => writeFilters({ sort });
 
   // Picking a preset clears any custom range and closes the custom inputs.
   function selectPreset(preset: RangePreset) {
@@ -254,16 +292,33 @@ export default function ListView({
       return true;
     });
     return [...visible].sort((a, b) => {
-      const ea = effectiveDate(a);
-      const eb = effectiveDate(b);
-      if (ea !== eb) return ea < eb ? 1 : -1; // newest effective date first
-      // tiebreak: most recently modified first. Lexicographic string compare is
+      if (activeSort === "title-asc" || activeSort === "title-desc") {
+        const c = a.title.localeCompare(b.title, undefined, { sensitivity: "base" });
+        return activeSort === "title-asc" ? c : -c;
+      }
+      // Date sort. Compute an ascending comparison (older first), then flip for
+      // descending. The lastModifiedAt tiebreak follows the same direction, so
+      // it stays a consistent secondary key. Lexicographic string compare is
       // valid because both the backend (DateTimeOffset) and the optimistic card
       // (new Date().toISOString()) emit canonical UTC ISO-8601 (Z-suffixed).
-      if (a.lastModifiedAt === b.lastModifiedAt) return 0;
-      return a.lastModifiedAt < b.lastModifiedAt ? 1 : -1;
+      const ea = effectiveDate(a);
+      const eb = effectiveDate(b);
+      let c: number;
+      if (ea !== eb) c = ea < eb ? -1 : 1;
+      else if (a.lastModifiedAt !== b.lastModifiedAt) c = a.lastModifiedAt < b.lastModifiedAt ? -1 : 1;
+      else c = 0;
+      return activeSort === "date-asc" ? c : -c;
     });
-  }, [filteredCards, isCustomRange, rangeFrom, rangeTo, activePreset]);
+  }, [filteredCards, isCustomRange, rangeFrom, rangeTo, activePreset, activeSort]);
+
+  // Month grouping (40-B): only when sorted by date and the visible span is wide.
+  const groupByMonth = useMemo(() => {
+    if (!activeSort.startsWith("date") || homeCards.length === 0) return false;
+    const first = effectiveDate(homeCards[0]);
+    const last = effectiveDate(homeCards[homeCards.length - 1]);
+    const spanDays = Math.abs(Date.parse(first) - Date.parse(last)) / 86_400_000;
+    return spanDays > MONTH_GROUP_SPAN_DAYS;
+  }, [homeCards, activeSort]);
 
   function toggleTag(tag: string) {
     const next = selectedTags.includes(tag)
@@ -370,6 +425,23 @@ export default function ListView({
                       }`
                     : "Notes"}
                 </h2>
+                {!searching && (
+                  <label className={styles.sortControl}>
+                    {/* The wrapping label's "Sort" text is the select's accessible name. */}
+                    <span className={styles.sortControlLabel}>Sort</span>
+                    <select
+                      data-testid="sort-select"
+                      value={activeSort}
+                      onChange={(e) => setSort(e.target.value as SortKey)}
+                    >
+                      {SORT_OPTIONS.map((o) => (
+                        <option key={o.id} value={o.id}>
+                          {o.label}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                )}
               </div>
               <SearchBar value={query} onChange={setQuery} onClear={() => setQuery("")} />
               <div className={styles.filtersSection}>
@@ -490,16 +562,33 @@ export default function ListView({
                 />
               ) : homeCards.length > 0 ? (
                 <div className={styles.noteCards} data-testid="note-cards">
-                  {homeCards.map((card) => (
-                    <NoteCard
-                      key={card.noteId}
-                      card={card}
-                      onEdit={onEditNote}
-                      onDelete={onDeleteNote ? () => onDeleteNote(card.noteId) : undefined}
-                      otherWorkspaces={otherWorkspaces}
-                      onMoveToWorkspace={onMoveNoteToWorkspace}
-                    />
-                  ))}
+                  {homeCards.map((card, i) => {
+                    const month = effectiveDate(card).slice(0, 7);
+                    const showHeader =
+                      groupByMonth &&
+                      (i === 0 || effectiveDate(homeCards[i - 1]).slice(0, 7) !== month);
+                    return (
+                      <Fragment key={card.noteId}>
+                        {showHeader && (
+                          <div
+                            className={styles.monthHeader}
+                            data-testid="month-header"
+                            role="separator"
+                            aria-label={monthLabel(month)}
+                          >
+                            {monthLabel(month)}
+                          </div>
+                        )}
+                        <NoteCard
+                          card={card}
+                          onEdit={onEditNote}
+                          onDelete={onDeleteNote ? () => onDeleteNote(card.noteId) : undefined}
+                          otherWorkspaces={otherWorkspaces}
+                          onMoveToWorkspace={onMoveNoteToWorkspace}
+                        />
+                      </Fragment>
+                    );
+                  })}
                 </div>
               ) : (
                 <div className={styles.emptyState}>
