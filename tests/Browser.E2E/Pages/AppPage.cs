@@ -359,6 +359,35 @@ public sealed class AppPage
         }
     }
 
+    // Reload-tolerant "note fully loaded, image present" check for use at REOPEN — the safe mirror
+    // of AssertNoteImageAbsentAfterReloadAsync (BUG-31 layer 3). The note-detail read is gated
+    // (gatedRead) and can serve `stale` up to ~3×8s across its stale-retries on a cold projector;
+    // while it is in flight `loadingDetail` is true, so the editor is unmounted AND the save button
+    // is `disabled` (NoteView.tsx) — the exact cause of the historical post-removal-save 30s hang.
+    // Wait for the save button to be enabled (loadingDetail=false) AND the inline image to resolve;
+    // reload to re-issue the gated read and give the projector more wall-clock to warm, until both
+    // hold or the deadline. Reloading is safe here ONLY because it runs at reopen, before any unsaved
+    // edit — never call this after an in-editor change. Reloads ONLY while not-yet-loaded, so a warm
+    // projector costs no reload.
+    public async Task AssertNoteImageVisibleAfterReloadAsync(int timeoutMs = 30000)
+    {
+        var deadline = DateTime.UtcNow.AddMilliseconds(timeoutMs);
+        var img = page.GetByTestId("note-content").Locator("img");
+        while (true)
+        {
+            try
+            {
+                await Assertions.Expect(page.GetByTestId("save-button")).ToBeEnabledAsync(new() { Timeout = 2500 });
+                await Assertions.Expect(img).ToBeVisibleAsync(new() { Timeout = 2500 });
+                return;
+            }
+            catch (PlaywrightException) when (DateTime.UtcNow < deadline)
+            {
+                await page.ReloadAsync();
+            }
+        }
+    }
+
     public async Task DeleteNoteAsync()
     {
         var deleteDone = page.WaitForResponseAsync(r =>
