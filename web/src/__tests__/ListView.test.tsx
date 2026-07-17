@@ -1,3 +1,4 @@
+import { fireEvent } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { http, HttpResponse } from 'msw'
 import type { NoteCard } from '../api/notes'
@@ -53,14 +54,17 @@ function renderHome(cards: NoteCard[], extra: Record<string, unknown> = {}) {
   )
 }
 
-// CHANGE-9 (Option D): "Show older notes" now lives inside the collapsed
-// Filters panel, so expand it first before reaching the checkbox.
-async function olderToggle() {
+async function openFilters() {
   const btn = screen.getByRole('button', { name: /^filters/i })
   if (btn.getAttribute('aria-expanded') !== 'true') {
     await userEvent.click(btn)
   }
-  return screen.getByRole('checkbox', { name: /show older notes/i })
+}
+
+// Expand the Filters panel and pick a date-range preset (40-A).
+async function selectRange(id: string) {
+  await openFilters()
+  await userEvent.click(screen.getByTestId(`range-preset-${id}`))
 }
 
 function cardTitlesInOrder(): string[] {
@@ -70,7 +74,7 @@ function cardTitlesInOrder(): string[] {
     .map((h) => h.textContent ?? '')
 }
 
-describe('ListView — home today/older date filter', () => {
+describe('ListView — home default window + date-range filter (40-A)', () => {
   it('announces a create-note failure as an alert (19-F1)', () => {
     renderHome([], { createError: 'Could not create note. Please try again.' })
     expect(screen.getByRole('alert')).toHaveTextContent(
@@ -78,78 +82,96 @@ describe('ListView — home today/older date filter', () => {
     )
   })
 
-  it('shows today’s notes by default and hides last week’s', () => {
+  it('shows the last 30 days by default and hides notes older than 30 days', () => {
     renderHome([
       makeCard({ noteId: 't', title: 'Today note', date: plusDays(0) }),
-      makeCard({
-        noteId: 'o',
-        title: 'Old note',
-        date: plusDays(-7),
-        lastModifiedAt: isoAtLocalNoon(-7),
-      }),
+      makeCard({ noteId: 'r', title: 'Recent note', date: plusDays(-20), lastModifiedAt: isoAtLocalNoon(-20) }),
+      makeCard({ noteId: 'o', title: 'Old note', date: plusDays(-40), lastModifiedAt: isoAtLocalNoon(-40) }),
     ])
     expect(screen.getByText('Today note')).toBeInTheDocument()
+    expect(screen.getByText('Recent note')).toBeInTheDocument()
     expect(screen.queryByText('Old note')).not.toBeInTheDocument()
   })
 
-  it('shows a note edited today even if it is dated earlier', () => {
-    renderHome([
-      makeCard({
-        noteId: 'e',
-        title: 'Edited today',
-        date: plusDays(-7),
-        lastModifiedAt: isoAtLocalNoon(0),
-      }),
-    ])
-    expect(screen.getByText('Edited today')).toBeInTheDocument()
+  it('has no "show older" toggle anymore', async () => {
+    renderHome([makeCard({ noteId: 't', title: 'Today note', date: plusDays(0) })])
+    await openFilters()
+    expect(
+      screen.queryByRole('checkbox', { name: /show older notes/i }),
+    ).not.toBeInTheDocument()
   })
 
-  it('hides a note dated and edited before today by default', () => {
+  it('narrows to today with the Today preset', async () => {
     renderHome([
-      makeCard({
-        noteId: 'p',
-        title: 'Stale note',
-        date: plusDays(-7),
-        lastModifiedAt: isoAtLocalNoon(-7),
-      }),
+      makeCard({ noteId: 't', title: 'Today note', date: plusDays(0) }),
+      makeCard({ noteId: 'r', title: 'Recent note', date: plusDays(-10), lastModifiedAt: isoAtLocalNoon(-10) }),
     ])
-    expect(screen.queryByText('Stale note')).not.toBeInTheDocument()
+    expect(screen.getByText('Recent note')).toBeInTheDocument()
+    await selectRange('today')
+    expect(screen.getByText('Today note')).toBeInTheDocument()
+    await waitFor(() =>
+      expect(screen.queryByText('Recent note')).not.toBeInTheDocument(),
+    )
   })
 
-  it('hides future-dated notes in both toggle states', async () => {
+  it('widens to every note with the All preset', async () => {
     renderHome([
-      makeCard({
-        noteId: 'f',
-        title: 'Future note',
-        date: plusDays(7),
-        lastModifiedAt: isoAtLocalNoon(0), // even though edited today
-      }),
+      makeCard({ noteId: 't', title: 'Today note', date: plusDays(0) }),
+      makeCard({ noteId: 'o', title: 'Old note', date: plusDays(-200), lastModifiedAt: isoAtLocalNoon(-200) }),
     ])
-    expect(screen.queryByText('Future note')).not.toBeInTheDocument()
-    await userEvent.click(await olderToggle())
-    expect(screen.queryByText('Future note')).not.toBeInTheDocument()
+    expect(screen.queryByText('Old note')).not.toBeInTheDocument()
+    await selectRange('all')
+    expect(await screen.findByText('Old note')).toBeInTheDocument()
+    expect(screen.getByText('Today note')).toBeInTheDocument()
   })
 
-  it('lists visible notes newest-first', async () => {
+  it('filters to a custom from–to range', async () => {
+    renderHome([
+      makeCard({ noteId: 'in', title: 'In range', date: plusDays(-7), lastModifiedAt: isoAtLocalNoon(-7) }),
+      makeCard({ noteId: 'before', title: 'Before range', date: plusDays(-20), lastModifiedAt: isoAtLocalNoon(-20) }),
+      makeCard({ noteId: 'after', title: 'After range', date: plusDays(-1), lastModifiedAt: isoAtLocalNoon(-1) }),
+    ])
+    await openFilters()
+    await userEvent.click(screen.getByTestId('range-preset-custom'))
+    fireEvent.change(screen.getByTestId('range-from'), { target: { value: plusDays(-10) } })
+    fireEvent.change(screen.getByTestId('range-to'), { target: { value: plusDays(-5) } })
+    expect(await screen.findByText('In range')).toBeInTheDocument()
+    await waitFor(() => {
+      expect(screen.queryByText('Before range')).not.toBeInTheDocument()
+      expect(screen.queryByText('After range')).not.toBeInTheDocument()
+    })
+  })
+
+  it('returns to the default window when the range is reset to Last 30 days', async () => {
+    renderHome([
+      makeCard({ noteId: 't', title: 'Today note', date: plusDays(0) }),
+      makeCard({ noteId: 'o', title: 'Old note', date: plusDays(-200), lastModifiedAt: isoAtLocalNoon(-200) }),
+    ])
+    await selectRange('all')
+    expect(await screen.findByText('Old note')).toBeInTheDocument()
+    await userEvent.click(screen.getByTestId('range-preset-30'))
+    await waitFor(() =>
+      expect(screen.queryByText('Old note')).not.toBeInTheDocument(),
+    )
+    expect(screen.getByText('Today note')).toBeInTheDocument()
+  })
+
+  it('lists visible notes newest-first', () => {
     renderHome([
       makeCard({ noteId: 'b', title: 'Yesterday', date: plusDays(-1), lastModifiedAt: isoAtLocalNoon(-1) }),
       makeCard({ noteId: 'a', title: 'Today', date: plusDays(0) }),
       makeCard({ noteId: 'c', title: 'TwoDaysAgo', date: plusDays(-2), lastModifiedAt: isoAtLocalNoon(-2) }),
     ])
-    await userEvent.click(await olderToggle())
     expect(cardTitlesInOrder()).toEqual(['Today', 'Yesterday', 'TwoDaysAgo'])
   })
 
-  it('toggling Show older notes reveals then hides past notes', async () => {
+  it('hides future-dated notes in the default window but the All preset reveals them', async () => {
     renderHome([
-      makeCard({ noteId: 't', title: 'Today note', date: plusDays(0) }),
-      makeCard({ noteId: 'o', title: 'Old note', date: plusDays(-7), lastModifiedAt: isoAtLocalNoon(-7) }),
+      makeCard({ noteId: 'f', title: 'Future note', date: plusDays(7), lastModifiedAt: isoAtLocalNoon(0) }),
     ])
-    expect(screen.queryByText('Old note')).not.toBeInTheDocument()
-    await userEvent.click(await olderToggle())
-    expect(screen.getByText('Old note')).toBeInTheDocument()
-    await userEvent.click(await olderToggle())
-    expect(screen.queryByText('Old note')).not.toBeInTheDocument()
+    expect(screen.queryByText('Future note')).not.toBeInTheDocument()
+    await selectRange('all')
+    expect(await screen.findByText('Future note')).toBeInTheDocument()
   })
 
   it('falls back to the createdAt calendar date when date is null', async () => {
@@ -158,29 +180,36 @@ describe('ListView — home today/older date filter', () => {
         noteId: 'n',
         title: 'No explicit date',
         date: null,
-        createdAt: isoAtLocalNoon(-1), // created yesterday
-        lastModifiedAt: isoAtLocalNoon(-1),
+        createdAt: isoAtLocalNoon(-200), // created long ago
+        lastModifiedAt: isoAtLocalNoon(-200),
       }),
     ])
-    // Yesterday → hidden by default…
+    // Long ago → hidden by the 30-day default…
     expect(screen.queryByText('No explicit date')).not.toBeInTheDocument()
-    // …and revealed as a past note when older is shown.
-    await userEvent.click(await olderToggle())
-    expect(screen.getByText('No explicit date')).toBeInTheDocument()
+    // …and revealed by All (which uses the same effective date).
+    await selectRange('all')
+    expect(await screen.findByText('No explicit date')).toBeInTheDocument()
   })
 
-  it('keeps the Filters control available and shows empty copy when nothing matches today', async () => {
+  it('shows an empty state with a Clear filters action when a range matches nothing', async () => {
     renderHome([
-      makeCard({ noteId: 'o', title: 'Old note', date: plusDays(-5), lastModifiedAt: isoAtLocalNoon(-5) }),
+      makeCard({ noteId: 'o', title: 'Old note', date: plusDays(-200), lastModifiedAt: isoAtLocalNoon(-200) }),
     ])
-    expect(screen.getByText('No notes today')).toBeInTheDocument()
-    // The Filters control is always available; expanding it reveals "Show older".
-    expect(screen.getByRole('button', { name: /^filters/i })).toBeInTheDocument()
-    await userEvent.click(await olderToggle())
-    expect(screen.getByText('Old note')).toBeInTheDocument()
+    // Default 30-day window matches nothing here; no active filter yet ⇒ no Clear button.
+    expect(screen.getByText('No notes here yet.')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /clear filters/i })).not.toBeInTheDocument()
+    // Pick "Today" — still empty, but now a non-default range is active ⇒ Clear appears.
+    await selectRange('today')
+    expect(await screen.findByText('No notes in this date range.')).toBeInTheDocument()
+    const clear = screen.getByRole('button', { name: /clear filters/i })
+    await userEvent.click(clear)
+    // Clearing returns to the default window (still empty here, but back to default copy).
+    await waitFor(() =>
+      expect(screen.getByText('No notes here yet.')).toBeInTheDocument(),
+    )
   })
 
-  it('composes the date filter with the tag filter', async () => {
+  it('composes the date range with the tag filter', async () => {
     server.use(
       http.get('/api/tags', () =>
         HttpResponse.json({ tags: [{ tag: 'work', noteCount: 1, noteIds: ['w'] }] }),
@@ -190,8 +219,7 @@ describe('ListView — home today/older date filter', () => {
       makeCard({ noteId: 'w', title: 'Work today', date: plusDays(0), tags: ['work'] }),
       makeCard({ noteId: 'x', title: 'Other today', date: plusDays(0), tags: [] }),
     ])
-    // Home filters default to collapsed (CHANGE-6) — expand first.
-    await userEvent.click(screen.getByRole('button', { name: /^filters/i }))
+    await openFilters()
     const pill = await screen.findByTestId('tag-filter-pill-work')
     await userEvent.click(pill)
     expect(screen.getByText('Work today')).toBeInTheDocument()
@@ -199,9 +227,6 @@ describe('ListView — home today/older date filter', () => {
   })
 
   it('matches a legacy mixed-case card tag via the lowercase filter pill (CHANGE-17)', async () => {
-    // Until the prod projection rebuild lands, a card may still carry a mixed-case
-    // tag ("Work") while the /tags index already serves lowercase. The filter must
-    // compare case-insensitively so the card is still found.
     server.use(
       http.get('/api/tags', () =>
         HttpResponse.json({ tags: [{ tag: 'work', noteCount: 1, noteIds: ['w'] }] }),
@@ -211,91 +236,19 @@ describe('ListView — home today/older date filter', () => {
       makeCard({ noteId: 'w', title: 'Work today', date: plusDays(0), tags: ['Work'] }),
       makeCard({ noteId: 'x', title: 'Other today', date: plusDays(0), tags: [] }),
     ])
-    await userEvent.click(screen.getByRole('button', { name: /^filters/i }))
+    await openFilters()
     const pill = await screen.findByTestId('tag-filter-pill-work')
     await userEvent.click(pill)
     expect(screen.getByText('Work today')).toBeInTheDocument()
     await waitFor(() => expect(screen.queryByText('Other today')).not.toBeInTheDocument())
   })
 
-  it('does not date-filter or show the toggle in folder view', () => {
+  it('does not date-filter or show the range control in folder view', () => {
     renderHome(
-      [makeCard({ noteId: 'p', title: 'Past in folder', date: plusDays(-30), folderId: 'f-1', lastModifiedAt: isoAtLocalNoon(-30) })],
+      [makeCard({ noteId: 'p', title: 'Past in folder', date: plusDays(-200), folderId: 'f-1', lastModifiedAt: isoAtLocalNoon(-200) })],
       { currentFolderId: 'f-1' },
     )
     expect(screen.getByText('Past in folder')).toBeInTheDocument()
-    expect(screen.queryByRole('checkbox', { name: /show older notes/i })).not.toBeInTheDocument()
-  })
-})
-
-describe('ListView — auto-show older on tag filter (CHANGE-19)', () => {
-  // A today note and an old note, both tagged "work", so a tag filter alone
-  // would hide the old one unless "Show older" is auto-enabled.
-  function workCards(): NoteCard[] {
-    return [
-      makeCard({ noteId: 't', title: 'Today work', date: plusDays(0), tags: ['work'] }),
-      makeCard({
-        noteId: 'o',
-        title: 'Old work',
-        date: plusDays(-7),
-        lastModifiedAt: isoAtLocalNoon(-7),
-        tags: ['work'],
-      }),
-    ]
-  }
-
-  beforeEach(() => {
-    server.use(
-      http.get('/api/tags', () =>
-        HttpResponse.json({ tags: [{ tag: 'work', noteCount: 2, noteIds: ['t', 'o'] }] }),
-      ),
-    )
-  })
-
-  it('selecting the first tag auto-includes older notes and ticks the checkbox', async () => {
-    renderHome(workCards())
-    await userEvent.click(screen.getByRole('button', { name: /^filters/i }))
-    // Before filtering: older note hidden, checkbox unticked.
-    expect(screen.queryByText('Old work')).not.toBeInTheDocument()
-    expect(screen.getByRole('checkbox', { name: /show older notes/i })).not.toBeChecked()
-    await userEvent.click(await screen.findByTestId('tag-filter-pill-work'))
-    expect(await screen.findByText('Old work')).toBeInTheDocument()
-    expect(screen.getByRole('checkbox', { name: /show older notes/i })).toBeChecked()
-  })
-
-  it('clearing the filter reverts the auto-enabled older state', async () => {
-    renderHome(workCards())
-    await userEvent.click(screen.getByRole('button', { name: /^filters/i }))
-    await userEvent.click(await screen.findByTestId('tag-filter-pill-work'))
-    expect(await screen.findByText('Old work')).toBeInTheDocument()
-    await userEvent.click(screen.getByTestId('tag-filter-clear'))
-    await waitFor(() => expect(screen.queryByText('Old work')).not.toBeInTheDocument())
-    expect(screen.getByRole('checkbox', { name: /show older notes/i })).not.toBeChecked()
-  })
-
-  it('respects a manual untick while filtering (does not re-force older on)', async () => {
-    renderHome(workCards())
-    await userEvent.click(screen.getByRole('button', { name: /^filters/i }))
-    await userEvent.click(await screen.findByTestId('tag-filter-pill-work'))
-    const checkbox = screen.getByRole('checkbox', { name: /show older notes/i })
-    expect(checkbox).toBeChecked()
-    await userEvent.click(checkbox)
-    expect(checkbox).not.toBeChecked()
-    await waitFor(() => expect(screen.queryByText('Old work')).not.toBeInTheDocument())
-    // Today note still visible (filter still active).
-    expect(screen.getByText('Today work')).toBeInTheDocument()
-  })
-
-  it('keeps a pre-existing user "older ON" preference after applying then clearing a filter', async () => {
-    renderHome(workCards())
-    const checkbox = await olderToggle()
-    await userEvent.click(checkbox) // user turns older ON before any filter
-    expect(checkbox).toBeChecked()
-    await userEvent.click(await screen.findByTestId('tag-filter-pill-work'))
-    expect(screen.getByText('Old work')).toBeInTheDocument()
-    await userEvent.click(screen.getByTestId('tag-filter-clear'))
-    // Older stays ON because the user set it, not the filter.
-    expect(screen.getByRole('checkbox', { name: /show older notes/i })).toBeChecked()
-    expect(screen.getByText('Old work')).toBeInTheDocument()
+    expect(screen.queryByTestId('range-preset-today')).not.toBeInTheDocument()
   })
 })

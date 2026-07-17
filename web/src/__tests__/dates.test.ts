@@ -1,4 +1,4 @@
-import { effectiveDate, isEditedToday, localDateISO, localTodayISO } from "../dates";
+import { effectiveDate, localDateISO, localTodayISO } from "../dates";
 
 describe("dates helpers", () => {
   describe("localDateISO", () => {
@@ -31,18 +31,6 @@ describe("dates helpers", () => {
       // Build an ISO string for local midday so the local-date fallback is stable.
       const created = new Date(2026, 2, 15, 12, 0).toISOString();
       expect(effectiveDate({ date: null, createdAt: created })).toBe("2026-03-15");
-    });
-  });
-
-  describe("isEditedToday", () => {
-    it("is true when lastModifiedAt is on the given local day", () => {
-      const modified = new Date(2026, 5, 2, 8, 0).toISOString();
-      expect(isEditedToday({ lastModifiedAt: modified }, "2026-06-02")).toBe(true);
-    });
-
-    it("is false when lastModifiedAt is on a different day", () => {
-      const modified = new Date(2026, 5, 1, 8, 0).toISOString();
-      expect(isEditedToday({ lastModifiedAt: modified }, "2026-06-02")).toBe(false);
     });
   });
 });

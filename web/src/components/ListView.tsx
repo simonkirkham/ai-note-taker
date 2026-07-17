@@ -2,7 +2,7 @@ import clsx from "clsx";
 import { useDeferredValue, useMemo, useState } from "react";
 import { useSearchParams } from "react-router";
 import { NoteCard as NoteCardData, SearchResult } from "../api/notes";
-import { effectiveDate, isEditedToday, localTodayISO } from "../dates";
+import { effectiveDate, localDateISO } from "../dates";
 import { type SearchState, useNoteSearch } from "../hooks/useNoteSearch";
 import { useTags } from "../hooks/useTags";
 import styles from "./ListView.module.css";
@@ -32,6 +32,55 @@ function resultToCard(
     tags: [],
     folderId: null,
   };
+}
+
+// Phase 40-A: the home list shows a rolling default window (the last 30 days)
+// instead of today-only, with an explicit date-range control that replaces the
+// retired "show older" toggle (CHANGE-3/CHANGE-19). A preset id in the URL
+// `?range=` (or a `?from=&to=` pair) overrides the default; nothing in the URL
+// means the default window. All client-side over the already-loaded cards.
+type RangePreset = "today" | "7" | "30" | "month" | "all";
+
+const RANGE_PRESETS: { id: RangePreset; label: string }[] = [
+  { id: "today", label: "Today" },
+  { id: "7", label: "Last 7 days" },
+  { id: "30", label: "Last 30 days" },
+  { id: "month", label: "This month" },
+  { id: "all", label: "All" },
+];
+
+const DEFAULT_RANGE: RangePreset = "30";
+
+// N days before `today` as a local YYYY-MM-DD string (0 = today).
+function daysAgoISO(n: number, today: Date = new Date()): string {
+  const d = new Date(today);
+  d.setDate(d.getDate() - n);
+  return localDateISO(d);
+}
+
+// First calendar day of the current local month, YYYY-MM-DD.
+function firstOfMonthISO(today: Date = new Date()): string {
+  return localDateISO(new Date(today.getFullYear(), today.getMonth(), 1));
+}
+
+// Inclusive [lo, hi] date bounds for a preset; "" means unbounded on that side.
+// A single `now` anchors every bound so all sides agree on "today".
+function presetBounds(preset: RangePreset): { lo: string; hi: string } {
+  const now = new Date();
+  const today = localDateISO(now);
+  switch (preset) {
+    case "today":
+      return { lo: today, hi: today };
+    case "7":
+      return { lo: daysAgoISO(6, now), hi: today };
+    case "month":
+      return { lo: firstOfMonthISO(now), hi: today };
+    case "all":
+      return { lo: "", hi: "" };
+    case "30":
+    default:
+      return { lo: daysAgoISO(29, now), hi: today };
+  }
 }
 
 export default function ListView({
@@ -64,39 +113,51 @@ export default function ListView({
   onMoveNoteToWorkspace?: (noteId: string, workspaceId: string) => void;
 }) {
   const { data: tagEntries = [] } = useTags();
-  // CHANGE-23: every home-list filter lives in the URL query string, so opening
-  // a note (a push navigation) and pressing Back restores the URL — and with it
-  // the populated filters. The four filters are derived from `searchParams` and
-  // every setter writes them back with `replace: true`, so typing/filtering does
-  // not spam the history stack (only opening a note pushes). Filters are per-view:
+  // CHANGE-23 + 40-A: every home-list filter lives in the URL query string, so
+  // opening a note (a push navigation) and pressing Back restores the URL — and
+  // with it the populated filters. All filters (query, tags, mode, date range)
+  // are derived from `searchParams` and every setter writes them back with
+  // `replace: true`, so typing/filtering does not spam the history stack (only
+  // opening a note pushes). Filters are per-view:
   // the App navigation handlers route to bare paths (no query string), so
   // switching folder or going Home intentionally clears them — Back still restores
   // them because it replays the prior history entry, query string included.
   const [searchParams, setSearchParams] = useSearchParams();
   const query = searchParams.get("q") ?? "";
-  const selectedTags = searchParams.getAll("tag");
+  // Memoized so it keeps a stable identity across renders (a fresh `getAll`
+  // array each render breaks the downstream `filteredCards` memo — the compiler
+  // can't preserve a memo whose dependency is recreated every render).
+  const selectedTags = useMemo(() => searchParams.getAll("tag"), [searchParams]);
   const filterMode: "AND" | "OR" = searchParams.get("mode") === "OR" ? "OR" : "AND";
-  const showOlder = searchParams.get("older") === "1";
-  // Tracks that the current "show older" ON-state was turned on automatically by
-  // applying a tag filter (CHANGE-19), as opposed to a user ticking the box.
-  // Only an auto-enable is reverted when the filter clears; a pre-existing user
-  // preference, or a manual untick while filtering, is left untouched. Stays
-  // local: it is an internal CHANGE-19 detail, not a user-facing filter value, so
-  // it is intentionally NOT persisted in the URL. Consequence: after a Back
-  // restores `older=1`, this flag is false, so clearing the filter then leaves
-  // "show older" ON rather than auto-reverting — an accepted edge (the auto-enable
-  // is a courtesy; the user can still untick).
-  const [olderAutoEnabled, setOlderAutoEnabled] = useState(false);
+  // Date range (40-A). A custom `?from=&to=` pair takes precedence; otherwise a
+  // `?range=` preset id; otherwise the default window (last 30 days). "Last 30
+  // days" is the default, so selecting it clears the param rather than pinning
+  // range=30 in the URL — default and range=30 are the same window.
+  const rangeFrom = searchParams.get("from") ?? "";
+  const rangeTo = searchParams.get("to") ?? "";
+  const isCustomRange = rangeFrom !== "" || rangeTo !== "";
+  const rangeParam = searchParams.get("range");
+  const activePreset: RangePreset = RANGE_PRESETS.some((p) => p.id === rangeParam)
+    ? (rangeParam as RangePreset)
+    : DEFAULT_RANGE;
+  const isDefaultRange = !isCustomRange && (rangeParam === null || rangeParam === DEFAULT_RANGE);
   const [filtersOpen, setFiltersOpen] = useState(false);
+  // Whether the custom from–to inputs are revealed. The user opens them via
+  // "Custom…" before entering dates; they are also implicitly open whenever a
+  // custom range is present in the URL (e.g. restored by Back without a remount).
+  const [customOpen, setCustomOpen] = useState(isCustomRange);
+  const customActive = customOpen || isCustomRange;
 
   // Write a partial filter update back to the URL, preserving any unrelated
-  // params. Omitted keys keep their current value; `replace` avoids a history
-  // entry per keystroke/toggle.
+  // params. Keys absent from `next` keep their current value; a key present with
+  // a falsy value clears it. `replace` avoids a history entry per keystroke/toggle.
   function writeFilters(next: {
     query?: string;
     tags?: string[];
     mode?: "AND" | "OR";
-    older?: boolean;
+    range?: RangePreset | null;
+    from?: string | null;
+    to?: string | null;
   }) {
     const params = new URLSearchParams(searchParams);
     const q = next.query ?? query;
@@ -108,14 +169,38 @@ export default function ListView({
     const mode = next.mode ?? filterMode;
     if (mode === "OR") params.set("mode", "OR");
     else params.delete("mode");
-    const older = next.older ?? showOlder;
-    if (older) params.set("older", "1");
-    else params.delete("older");
+    if ("range" in next) {
+      // The default window is the absence of a param, so range=30 is never written.
+      if (next.range && next.range !== DEFAULT_RANGE) params.set("range", next.range);
+      else params.delete("range");
+    }
+    if ("from" in next) {
+      if (next.from) params.set("from", next.from);
+      else params.delete("from");
+    }
+    if ("to" in next) {
+      if (next.to) params.set("to", next.to);
+      else params.delete("to");
+    }
     setSearchParams(params, { replace: true });
   }
 
   const setQuery = (value: string) => writeFilters({ query: value });
   const setFilterMode = (mode: "AND" | "OR") => writeFilters({ mode });
+
+  // Picking a preset clears any custom range and closes the custom inputs.
+  function selectPreset(preset: RangePreset) {
+    setCustomOpen(false);
+    writeFilters({ range: preset, from: null, to: null });
+  }
+  // "Custom…" reveals the from–to inputs and drops any active preset (custom is
+  // driven purely by the from/to params).
+  function openCustom() {
+    setCustomOpen(true);
+    writeFilters({ range: null });
+  }
+  const setFrom = (value: string) => writeFilters({ range: null, from: value || null });
+  const setTo = (value: string) => writeFilters({ range: null, to: value || null });
 
   // The input stays bound to `query` (updates synchronously on every keystroke);
   // the expensive search fetch + list re-derivation run off the deferred copy as
@@ -153,19 +238,20 @@ export default function ListView({
     });
   }, [cards, selectedTags, filterMode, currentFolderId]);
 
-  // Home note list: today's notes (effective date today) plus anything edited
-  // today, always hiding future-dated notes. "Show older notes" additionally
-  // reveals past notes. Sorted reverse-chronologically by effective date, with
+  // Home note list: notes whose effective date falls inside the active date
+  // window — the default rolling last-30-days, a chosen preset, or a custom
+  // from–to range (40-A). Sorted reverse-chronologically by effective date, with
   // lastModifiedAt descending as the tiebreaker. The folder view does not use
   // this — it keeps showing all notes via filteredCards.
   const homeCards = useMemo(() => {
-    const today = localTodayISO();
+    const { lo, hi } = isCustomRange
+      ? { lo: rangeFrom, hi: rangeTo }
+      : presetBounds(activePreset);
     const visible = filteredCards.filter((c) => {
       const eff = effectiveDate(c);
-      if (eff > today) return false; // future-dated notes are always hidden
-      if (eff === today) return true; // today
-      if (isEditedToday(c, today)) return true; // edited today, dated earlier
-      return showOlder; // past notes only when the toggle is on
+      if (lo && eff < lo) return false;
+      if (hi && eff > hi) return false;
+      return true;
     });
     return [...visible].sort((a, b) => {
       const ea = effectiveDate(a);
@@ -177,57 +263,47 @@ export default function ListView({
       if (a.lastModifiedAt === b.lastModifiedAt) return 0;
       return a.lastModifiedAt < b.lastModifiedAt ? 1 : -1;
     });
-  }, [filteredCards, showOlder]);
-
-  // CHANGE-19: applying the first tag auto-enables "show older"; removing the
-  // last tag reverts an auto-enable. Returns the next "show older" value for the
-  // 0↔non-0 selection transition so the caller can write tags + older to the URL
-  // in one update; computed in the user-action handler (not an effect) so a
-  // manual untick or a pre-existing preference is kept.
-  function nextOlderForSelection(prevCount: number, nextCount: number): boolean {
-    if (prevCount === 0 && nextCount > 0 && !showOlder) {
-      setOlderAutoEnabled(true);
-      return true;
-    }
-    if (nextCount === 0 && olderAutoEnabled) {
-      setOlderAutoEnabled(false);
-      return false;
-    }
-    return showOlder;
-  }
+  }, [filteredCards, isCustomRange, rangeFrom, rangeTo, activePreset]);
 
   function toggleTag(tag: string) {
     const next = selectedTags.includes(tag)
       ? selectedTags.filter((t) => t !== tag)
       : [...selectedTags, tag];
-    const older = nextOlderForSelection(selectedTags.length, next.length);
-    writeFilters({ tags: next, older });
+    writeFilters({ tags: next });
   }
 
   function clearFilter() {
-    const older = nextOlderForSelection(selectedTags.length, 0);
-    writeFilters({ tags: [], mode: "AND", older });
+    writeFilters({ tags: [], mode: "AND" });
   }
 
-  function handleShowOlderChange(checked: boolean) {
-    // Any manual change makes the state user-driven, so a later filter-clear
-    // must not revert it.
-    setOlderAutoEnabled(false);
-    writeFilters({ older: checked });
+  // Empty-state escape hatch: reset every home filter (query, tags, range) to
+  // the default view.
+  function clearAllFilters() {
+    setCustomOpen(false);
+    writeFilters({ query: "", tags: [], mode: "AND", range: null, from: null, to: null });
   }
 
   const isInFolder = !!currentFolderId;
   const heading = folderPath && folderPath.length > 0 ? folderPath.join(" → ") : "Home";
   // CHANGE-9 (Option D): the collapsed Filters control summarises every active
-  // filter — selected tags and/or "show older" — e.g. "Filters · 2 tags · older".
+  // filter — a non-default date range and/or selected tags — e.g.
+  // "Filters · Last 7 days · 2 tags". The default 30-day window is the no-filter
+  // state, so it is never summarised.
   const tagCount = selectedTags.length;
+  const rangeLabel = isCustomRange
+    ? "Custom range"
+    : (RANGE_PRESETS.find((p) => p.id === activePreset)?.label ?? "");
   const filterSummary = [
+    !isDefaultRange ? rangeLabel : null,
     tagCount > 0 ? `${tagCount} ${tagCount === 1 ? "tag" : "tags"}` : null,
-    showOlder ? "older" : null,
   ]
     .filter(Boolean)
     .join(" · ");
   const showActiveSummary = !filtersOpen && filterSummary.length > 0;
+  // Gates the empty-state "Clear filters" button. Deliberately omits `query`:
+  // the empty state only renders when `!searching`, so a query is never the
+  // reason the home list is empty here.
+  const hasActiveFilter = !isDefaultRange || tagCount > 0;
 
   return (
     <main className="container">
@@ -331,6 +407,62 @@ export default function ListView({
                   {filtersOpen && !searching && (
                     <>
                       <div className={styles.filtersGroup}>
+                        <span className={styles.filtersGroupLabel} id="when-filter-label">
+                          When
+                        </span>
+                        <div
+                          className={styles.rangePresets}
+                          role="group"
+                          aria-labelledby="when-filter-label"
+                        >
+                          {RANGE_PRESETS.map((preset) => (
+                            <button
+                              key={preset.id}
+                              type="button"
+                              className={styles.rangePreset}
+                              data-testid={`range-preset-${preset.id}`}
+                              aria-pressed={!customActive && activePreset === preset.id}
+                              onClick={() => selectPreset(preset.id)}
+                            >
+                              {preset.label}
+                            </button>
+                          ))}
+                          <button
+                            type="button"
+                            className={styles.rangePreset}
+                            data-testid="range-preset-custom"
+                            aria-pressed={customActive}
+                            onClick={openCustom}
+                          >
+                            Custom…
+                          </button>
+                        </div>
+                        {customActive && (
+                          <div className={styles.customRange}>
+                            <label className={styles.customRangeField}>
+                              <span>From</span>
+                              <input
+                                type="date"
+                                data-testid="range-from"
+                                value={rangeFrom}
+                                max={rangeTo || undefined}
+                                onChange={(e) => setFrom(e.target.value)}
+                              />
+                            </label>
+                            <label className={styles.customRangeField}>
+                              <span>To</span>
+                              <input
+                                type="date"
+                                data-testid="range-to"
+                                value={rangeTo}
+                                min={rangeFrom || undefined}
+                                onChange={(e) => setTo(e.target.value)}
+                              />
+                            </label>
+                          </div>
+                        )}
+                      </div>
+                      <div className={styles.filtersGroup}>
                         <span className={styles.filtersGroupLabel}>Tags</span>
                         <TagFilter
                           tags={availableTags}
@@ -340,17 +472,6 @@ export default function ListView({
                           onModeChange={setFilterMode}
                           onClear={clearFilter}
                         />
-                      </div>
-                      <div className={styles.filtersGroup}>
-                        <span className={styles.filtersGroupLabel}>Other</span>
-                        <label className={styles.showOlderToggle}>
-                          <input
-                            type="checkbox"
-                            checked={showOlder}
-                            onChange={(e) => handleShowOlderChange(e.target.checked)}
-                          />
-                          Show older notes
-                        </label>
                       </div>
                     </>
                   )}
@@ -381,9 +502,24 @@ export default function ListView({
                   ))}
                 </div>
               ) : (
-                <p className={styles.noteCardsEmpty} role="status">
-                  {showOlder ? "No notes" : "No notes today"}
-                </p>
+                <div className={styles.emptyState}>
+                  <p className={styles.noteCardsEmpty} role="status">
+                    {tagCount > 0
+                      ? "No notes match those tags in this range."
+                      : !isDefaultRange
+                        ? "No notes in this date range."
+                        : "No notes here yet."}
+                  </p>
+                  {hasActiveFilter && (
+                    <button
+                      type="button"
+                      className={styles.clearFiltersButton}
+                      onClick={clearAllFilters}
+                    >
+                      Clear filters
+                    </button>
+                  )}
+                </div>
               )}
             </section>
           </div>

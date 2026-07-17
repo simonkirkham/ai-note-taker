@@ -593,11 +593,12 @@ public sealed class AppPage
         }
     }
 
-    // CHANGE-23: home filters live in the URL (?q/?tag/?older), so they survive a Back navigation.
-    // The E2E proves this with the "show older notes" filter — it filters the GATED home-card list
-    // client-side, so the proof needs no ungated async-search projection (which can lag past the
-    // reload window and flake the gate). The checkbox's checked-state is pure URL-derived state.
-    private ILocator ShowOlderCheckbox => page.GetByRole(AriaRole.Checkbox, new() { Name = "Show older notes" });
+    // CHANGE-23 + 40-A: home filters live in the URL (?q/?tag/?range), so they survive a Back
+    // navigation. The E2E proves this with the "All" date-range preset — it filters the GATED
+    // home-card list client-side, so the proof needs no ungated async-search projection (which can
+    // lag past the reload window and flake the gate). The preset's pressed-state is pure URL-derived
+    // state (aria-pressed reflects ?range=all).
+    private ILocator RangeAllPreset => page.GetByTestId("range-preset-all");
 
     public async Task OpenHomeFiltersAsync()
     {
@@ -605,18 +606,19 @@ public sealed class AppPage
         await page.GetByRole(AriaRole.Button, new() { Name = "Filters" }).ClickAsync();
     }
 
-    public async Task ToggleShowOlderAsync()
+    // Apply the "All" date-range preset → writes ?range=all to the URL (a non-default range).
+    public async Task SelectRangeAllAsync()
     {
-        await ShowOlderCheckbox.ClickAsync();
+        await RangeAllPreset.ClickAsync();
     }
 
-    // Assert "show older" is ticked — the CHANGE-23 proof that the ?older=1 filter survives Back.
-    // Auto-waits, tolerating the brief re-render after navigation. URL-derived, no projector read.
-    public Task AssertShowOlderCheckedAsync() =>
-        Assertions.Expect(ShowOlderCheckbox).ToBeCheckedAsync();
+    // Assert the "All" range preset is active — the CHANGE-23/40-A proof that ?range=all survives
+    // Back. Auto-waits, tolerating the brief re-render after navigation. URL-derived, no projector read.
+    public Task AssertRangeAllSelectedAsync() =>
+        Assertions.Expect(RangeAllPreset).ToHaveAttributeAsync("aria-pressed", "true");
 
     // Browser Back (history.back). Distinct from a hard GotoPath — exercises the SPA's own
-    // history entry, which carries the CHANGE-23 ?q/?tag/?older query string.
+    // history entry, which carries the CHANGE-23/40-A ?q/?tag/?range query string.
     public async Task GoBackAsync() => await page.GoBackAsync();
 
     // 36-A — per-workspace theme. Open the sidebar (mobile), open the workspace switcher, create a
