@@ -134,19 +134,19 @@ public sealed class NoteImageJourney(BrowserFixture browser) : IAsyncLifetime
             $"Expected no bare-key image request on open; saw: {string.Join("; ", badRequests)}");
     }
 
-    // QUARANTINED — BUG-31 has THREE stacked flake causes (like TI-39); two are fixed, one remains:
+    // BUG-31 had THREE stacked flake causes (like TI-39), all now addressed:
     //   1. (FIXED) "image reappears" — the original symptom — resolved by the RYW systemic changes
-    //      (TI-39 projector warm-up/drain + BUG-30 auth-from-event-stream); un-quarantined under #294
-    //      proved the image-absent assert now passes.
+    //      (TI-39 projector warm-up/drain + BUG-30 auth-from-event-stream).
     //   2. (FIXED, PR #297) SaveAndReturnAsync awaited a GET /notes/cards that React Query can serve
     //      from cache → no request → 30 s timeout. Now waits on home navigation instead.
-    //   3. (OPEN) After fix #2, deploy #599 attempt 4 still failed ~1/4 at the post-removal save:
-    //      ClickAsync("save-button") timed out 30 s because the button is `disabled={loadingDetail}`
-    //      (NoteView.tsx) and the useNoteDetail query was stuck `isLoading` for 30 s after reopen+edit.
-    //      A stuck note-detail read (RYW/async-projection class) — needs test-env evidence on why
-    //      loadingDetail hangs, not more test-side patching. Tracked as the remaining BUG-31 layer.
-    // Re-quarantined to keep the gate green; the SaveAndReturn navigation fix (#297) stays in.
-    [E2EFact(Skip = "BUG-31 layer 3: post-removal save-button stuck disabled (loadingDetail isLoading hangs 30s after reopen+edit); needs test-env detail-read trace")]
+    //   3. (FIXED) post-removal save-button stuck disabled: the note-detail read (gatedRead) can take
+    //      up to ~3×8s across its stale-retries on a cold projector, so at REOPEN `loadingDetail`
+    //      stayed true past the bare 15 s image-visible wait → the editor never mounted / the save
+    //      button stayed disabled (NoteView.tsx). Root mitigated in prod by the 2s→8s RYW gate cap
+    //      (#377); here the reopen wait is made reload-tolerant (AssertNoteImageVisibleAfterReloadAsync)
+    //      so a cold read converges instead of red-gating. Reopen runs before any unsaved edit, so
+    //      reloading is safe; the post-removal save is never reloaded (a reload would drop the edit).
+    [E2EFact]
     public async Task Remove_an_image_drops_it_from_the_note_and_it_stays_gone_after_reload()
     {
         var title = $"Remove img {Guid.NewGuid():N}"[..30];
@@ -181,11 +181,11 @@ public sealed class NoteImageJourney(BrowserFixture browser) : IAsyncLifetime
         await _app.SaveAndReturnAsync();
         await imageSaved;
 
+        // Reopen — wait (reload-tolerant) for the editor to be fully loaded (save button enabled,
+        // image resolved) BEFORE editing, so a cold-projector note-detail read cannot leave the save
+        // button disabled at the post-removal save below. Safe to reload: no unsaved edit yet.
         await _app.ClickNoteInListAsync(title);
-        var resolveDone = _page.WaitForResponseAsync(r =>
-            r.Url.Contains("/images/resolve") && r.Request.Method == "POST");
-        await resolveDone;
-        await Assertions.Expect(editorImage).ToBeVisibleAsync(new() { Timeout = 15000 });
+        await _app.AssertNoteImageVisibleAfterReloadAsync();
 
         // When I activate the image's remove control
         await editorImage.HoverAsync();
