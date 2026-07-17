@@ -3,14 +3,15 @@ using Microsoft.Playwright;
 
 namespace Browser.E2E.Journeys;
 
-// CHANGE-23: a home filter set before opening a note must survive browser Back — the SPA stores
-// filters in the URL (?q/?tag/?older), so Back replays the prior history entry with the filter intact.
-// This is the real-browser proof a jsdom unit test cannot give (no genuine history-back + remount).
+// CHANGE-23 + 40-A: a home filter set before opening a note must survive browser Back — the SPA
+// stores filters in the URL (?q/?tag/?range), so Back replays the prior history entry with the filter
+// intact. This is the real-browser proof a jsdom unit test cannot give (no genuine history-back +
+// remount).
 //
-// The "show older notes" filter is used as the representative filter because it filters the GATED
+// The "All" date-range preset is used as the representative filter because it filters the GATED
 // home-card list client-side, so the proof depends on no ungated async-search projection (which can
-// lag past the reload window and flake the gate). The unit specs cover the URL mechanics of all four
-// filters; this proves the end-to-end Back round trip on one of them.
+// lag past the reload window and flake the gate). The unit specs cover the URL mechanics of every
+// filter; this proves the end-to-end Back round trip on one of them.
 [Collection("E2E Journeys")]
 public sealed class FilterBackNavigationJourney(BrowserFixture browser) : IAsyncLifetime
 {
@@ -48,22 +49,22 @@ public sealed class FilterBackNavigationJourney(BrowserFixture browser) : IAsync
         // before we filter/click.
         await _app.AssertNoteVisibleInListAfterReloadAsync(title);
 
-        // Apply the "show older" filter → writes ?older=1 to the URL.
+        // Apply the "All" date-range preset → writes ?range=all to the URL.
         await _app.OpenHomeFiltersAsync();
-        await _app.ToggleShowOlderAsync();
+        await _app.SelectRangeAllAsync();
 
         // Open the (today-dated, still-visible) note. Opening pushes a history entry on top of the
-        // filtered home, so Back will return to the ?older=1 entry.
+        // filtered home, so Back will return to the ?range=all entry.
         await _app.ClickNoteInListAsync(title);
         await _app.AssertNoteScreenLoadedAsync();
 
-        // Browser Back → the SPA restores /?older=1.
+        // Browser Back → the SPA restores /?range=all.
         await _app.GoBackAsync();
         await _app.AssertHomeLoadedAsync();
 
         // The filters panel (local UI state) re-collapses on remount, but the filter itself is
-        // URL-derived and still active — re-open the panel and confirm the box is still ticked.
+        // URL-derived and still active — re-open the panel and confirm the "All" preset is still active.
         await _app.OpenHomeFiltersAsync();
-        await _app.AssertShowOlderCheckedAsync();
+        await _app.AssertRangeAllSelectedAsync();
     }
 }

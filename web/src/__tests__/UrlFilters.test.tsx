@@ -1,4 +1,5 @@
 import userEvent from '@testing-library/user-event'
+import { fireEvent } from '@testing-library/react'
 import { http, HttpResponse } from 'msw'
 import { useEffect } from 'react'
 import { MemoryRouter, useLocation } from 'react-router'
@@ -8,8 +9,8 @@ import { localDateISO } from '../dates'
 import { render, screen, waitFor, within } from '../test/render'
 import { server } from '../test/setup'
 
-// CHANGE-23: the home list filters (search query, selected tags, AND/OR mode,
-// show-older) live in the URL query string, so navigating into a note and
+// CHANGE-23 + 40-A: the home list filters (search query, selected tags, AND/OR
+// mode, date range) live in the URL query string, so navigating into a note and
 // pressing Back restores them. These specs prove the URL is the source of truth
 // both directions: filters are read from the URL on mount, and writing a filter
 // updates the URL.
@@ -180,20 +181,48 @@ describe('CHANGE-23 — home filters persist in the URL', () => {
     )
   })
 
-  it('writes ?older=1 when show-older is ticked', async () => {
+  it('writes ?range when a non-default preset is picked', async () => {
     renderHome([makeCard({ noteId: 'a', title: 'Today note' })])
 
     await openFilters()
-    await userEvent.click(
-      await screen.findByRole('checkbox', { name: /show older notes/i }),
-    )
+    await userEvent.click(await screen.findByTestId('range-preset-today'))
 
     await waitFor(() =>
-      expect(new URLSearchParams(lastSearch).get('older')).toBe('1'),
+      expect(new URLSearchParams(lastSearch).get('range')).toBe('today'),
     )
   })
 
-  it('CHANGE-19: applying the first tag writes ?older=1 alongside the tag', async () => {
+  it('writes ?from and ?to for a custom range and drops ?range', async () => {
+    renderHome([makeCard({ noteId: 'a', title: 'Today note' })])
+
+    await openFilters()
+    await userEvent.click(await screen.findByTestId('range-preset-custom'))
+    fireEvent.change(screen.getByTestId('range-from'), { target: { value: plusDays(-10) } })
+    fireEvent.change(screen.getByTestId('range-to'), { target: { value: plusDays(-5) } })
+
+    await waitFor(() => {
+      const params = new URLSearchParams(lastSearch)
+      expect(params.get('from')).toBe(plusDays(-10))
+      expect(params.get('to')).toBe(plusDays(-5))
+      expect(params.get('range')).toBeNull()
+    })
+  })
+
+  it('does not write ?range for the default Last 30 days preset', async () => {
+    renderHome([makeCard({ noteId: 'a', title: 'Today note' })])
+
+    await openFilters()
+    await userEvent.click(await screen.findByTestId('range-preset-all'))
+    await waitFor(() =>
+      expect(new URLSearchParams(lastSearch).get('range')).toBe('all'),
+    )
+    await userEvent.click(screen.getByTestId('range-preset-30'))
+    await waitFor(() =>
+      expect(new URLSearchParams(lastSearch).get('range')).toBeNull(),
+    )
+  })
+
+  it('applying a tag does not touch the date range (CHANGE-19 retired)', async () => {
     tagsReturn(['work'])
     renderHome([makeCard({ noteId: 'w', title: 'Work note', tags: ['work'] })])
 
@@ -203,7 +232,8 @@ describe('CHANGE-23 — home filters persist in the URL', () => {
     await waitFor(() => {
       const params = new URLSearchParams(lastSearch)
       expect(params.getAll('tag')).toContain('work')
-      expect(params.get('older')).toBe('1')
+      expect(params.get('range')).toBeNull()
+      expect(params.get('older')).toBeNull()
     })
   })
 
@@ -221,34 +251,49 @@ describe('CHANGE-23 — home filters persist in the URL', () => {
     expect(within(cards).getByText('Beta')).toBeInTheDocument()
   })
 
-  it('restores show-older from ?older=1', async () => {
+  it('restores a wide range from ?range=all', async () => {
     renderHome(
       [
         makeCard({
           noteId: 'old',
           title: 'Old note',
-          date: plusDays(-10),
-          createdAt: isoAtLocalNoon(-10),
-          lastModifiedAt: isoAtLocalNoon(-10),
+          date: plusDays(-200),
+          createdAt: isoAtLocalNoon(-200),
+          lastModifiedAt: isoAtLocalNoon(-200),
         }),
       ],
-      { entries: ['/?older=1'] },
+      { entries: ['/?range=all'] },
     )
 
     expect(await screen.findByText('Old note')).toBeInTheDocument()
   })
 
-  it('hides older notes without ?older (baseline)', async () => {
+  it('restores a custom range from ?from&?to', async () => {
+    renderHome(
+      [
+        makeCard({ noteId: 'in', title: 'In range', date: plusDays(-7), lastModifiedAt: isoAtLocalNoon(-7) }),
+        makeCard({ noteId: 'out', title: 'Out of range', date: plusDays(0) }),
+      ],
+      { entries: [`/?from=${plusDays(-10)}&to=${plusDays(-5)}`] },
+    )
+
+    expect(await screen.findByText('In range')).toBeInTheDocument()
+    expect(screen.queryByText('Out of range')).not.toBeInTheDocument()
+  })
+
+  it('shows the last 30 days by default and hides >30-day-old notes (baseline)', async () => {
     renderHome([
+      makeCard({ noteId: 'recent', title: 'Recent note', date: plusDays(-10), lastModifiedAt: isoAtLocalNoon(-10) }),
       makeCard({
         noteId: 'old',
         title: 'Old note',
-        date: plusDays(-10),
-        createdAt: isoAtLocalNoon(-10),
-        lastModifiedAt: isoAtLocalNoon(-10),
+        date: plusDays(-40),
+        createdAt: isoAtLocalNoon(-40),
+        lastModifiedAt: isoAtLocalNoon(-40),
       }),
     ])
 
+    expect(await screen.findByText('Recent note')).toBeInTheDocument()
     expect(screen.queryByText('Old note')).not.toBeInTheDocument()
   })
 })

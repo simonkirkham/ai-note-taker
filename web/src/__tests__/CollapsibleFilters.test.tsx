@@ -142,28 +142,24 @@ describe('CHANGE-6 — collapsible Filters on the home view', () => {
     expect(screen.getByText('Work today')).toBeInTheDocument()
   })
 
-  it('show older notes lives inside the expanded panel, not the Notes header', async () => {
+  it('the When date-range control lives inside the expanded panel (40-A)', async () => {
     useWorkTag()
     renderView([makeCard({ noteId: 'a', title: 'Today note', tags: ['work'] })])
-    // Collapsed: the toggle is not rendered yet.
-    expect(
-      screen.queryByRole('checkbox', { name: /show older notes/i }),
-    ).not.toBeInTheDocument()
-    // Expand: it appears inside the Filters panel.
+    // Collapsed: the range presets are not rendered yet.
+    expect(screen.queryByTestId('range-preset-today')).not.toBeInTheDocument()
+    // Expand: they appear inside the Filters panel.
     await userEvent.click(filtersToggle())
-    const older = await screen.findByRole('checkbox', { name: /show older notes/i })
-    expect(document.getElementById('home-filters-panel')).toContainElement(older)
+    const preset = await screen.findByTestId('range-preset-today')
+    expect(document.getElementById('home-filters-panel')).toContainElement(preset)
   })
 
-  it('collapsed summary reflects "show older" too (Option D)', async () => {
+  it('collapsed summary reflects a non-default date range (Option D + 40-A)', async () => {
     useWorkTag()
     renderView([makeCard({ noteId: 'a', title: 'Today note', tags: ['work'] })])
     await userEvent.click(filtersToggle())
-    await userEvent.click(
-      await screen.findByRole('checkbox', { name: /show older notes/i }),
-    )
+    await userEvent.click(await screen.findByTestId('range-preset-today'))
     await userEvent.click(filtersToggle()) // collapse
-    expect(filtersToggle()).toHaveTextContent(/filters · older/i)
+    expect(filtersToggle()).toHaveTextContent(/filters · today/i)
   })
 
   it('does not show a count when collapsed with no tags selected', () => {
@@ -175,7 +171,7 @@ describe('CHANGE-6 — collapsible Filters on the home view', () => {
     expect(toggle).not.toHaveAccessibleName(/\(/)
   })
 
-  it('filtering still composes with the CHANGE-3 today/older date filter', async () => {
+  it('filtering composes the tag filter with the date-range control (40-A)', async () => {
     server.use(
       http.get('/api/tags', () =>
         HttpResponse.json({ tags: [{ tag: 'work', noteCount: 2, noteIds: ['w1', 'w2'] }] }),
@@ -192,19 +188,18 @@ describe('CHANGE-6 — collapsible Filters on the home view', () => {
       }),
       makeCard({ noteId: 'x', title: 'Other today', date: plusDays(0), tags: [] }),
     ])
-    // Expand filters and select "work".
+    // Expand filters and select "work". The default 30-day window already shows
+    // both work notes; the untagged note is filtered out by the tag.
     await userEvent.click(filtersToggle())
     await userEvent.click(await screen.findByTestId('tag-filter-pill-work'))
-    // CHANGE-19: selecting the first tag auto-enables "show older", so both work
-    // notes are revealed; the untagged note is filtered out by the tag.
     expect(screen.getByText('Work today')).toBeInTheDocument()
     expect(await screen.findByText('Work last week')).toBeInTheDocument()
     await waitFor(() =>
       expect(screen.queryByText('Other today')).not.toBeInTheDocument(),
     )
-    // Manually unticking "Show older" re-applies the date filter on top of the
-    // tag filter: the past-dated work note hides, today's stays.
-    await userEvent.click(screen.getByRole('checkbox', { name: /show older notes/i }))
+    // Narrowing the range to Today re-applies the date filter on top of the tag:
+    // the past-dated work note hides, today's stays.
+    await userEvent.click(screen.getByTestId('range-preset-today'))
     await waitFor(() =>
       expect(screen.queryByText('Work last week')).not.toBeInTheDocument(),
     )
