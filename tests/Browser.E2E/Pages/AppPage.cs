@@ -359,44 +359,6 @@ public sealed class AppPage
         }
     }
 
-    // Reload-tolerant "note fully loaded, image present" check for use at REOPEN — the safe mirror
-    // of AssertNoteImageAbsentAfterReloadAsync (BUG-31 layer 3). The note-detail read is gated
-    // (gatedRead) and can serve `stale` up to ~3×8s across its stale-retries on a cold projector;
-    // while it is in flight `loadingDetail` is true, so the editor is unmounted AND the save button
-    // is `disabled` (NoteView.tsx) — the exact cause of the historical post-removal-save 30s hang.
-    // Wait for the save button to be enabled (loadingDetail=false) AND the inline image to resolve;
-    // reload to re-issue the gated read and give the projector more wall-clock to warm, until both
-    // hold or the deadline. Reloading is safe here ONLY because it runs at reopen, before any unsaved
-    // edit — never call this after an in-editor change. Reloads ONLY while not-yet-loaded, so a warm
-    // projector costs no reload.
-    public async Task AssertNoteImageVisibleAfterReloadAsync(int timeoutMs = 30000)
-    {
-        var deadline = DateTime.UtcNow.AddMilliseconds(timeoutMs);
-        var img = page.GetByTestId("note-content").Locator("img");
-        while (true)
-        {
-            try
-            {
-                // save-button gets a 9000ms per-attempt window (NOT the 2500ms the absent-helper
-                // uses): this assert waits for the gated note-detail READ to COMPLETE (save enabled ==
-                // loadingDetail=false), and that read can hold up to the 8s RYW gate cap. A 2.5s window
-                // would ReloadAsync() mid-flight and abort the in-flight gated read before it can finish,
-                // re-issuing it forever on a cold projector — the self-defeating pattern
-                // AssertNoteVisibleInListAfterReloadAsync documents (it uses 9000ms for the same reason).
-                // 9000ms also costs nothing warm (returns the instant the button enables). The image
-                // assert stays 2.5s: it is a post-read resolve round-trip, not a gated wait (mirrors the
-                // absent helper) — do NOT "align" the two timeouts.
-                await Assertions.Expect(page.GetByTestId("save-button")).ToBeEnabledAsync(new() { Timeout = 9000 });
-                await Assertions.Expect(img).ToBeVisibleAsync(new() { Timeout = 2500 });
-                return;
-            }
-            catch (PlaywrightException) when (DateTime.UtcNow < deadline)
-            {
-                await page.ReloadAsync();
-            }
-        }
-    }
-
     public async Task DeleteNoteAsync()
     {
         var deleteDone = page.WaitForResponseAsync(r =>
