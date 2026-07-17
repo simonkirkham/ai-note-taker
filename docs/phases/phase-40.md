@@ -1,4 +1,4 @@
-# Phase 40 — Home notes: richer default, date-range filter, and sort _(In Progress — 40-A done)_
+# Phase 40 — Home notes: richer default, date-range filter, and sort _(Done)_
 
 **Goal:** Replace the home screen's "today's notes only, plus a *show older* toggle" with a richer browse — the last 30 days shown by default, an explicit date-range filter, and sorting by date or title.
 
@@ -8,7 +8,7 @@
 |-------|--------------------|--------|------------|
 | 40-P | **Prototype (throwaway).** Settle the default window, the date-range control, the sort control, month grouping, and empty states before building. | Done | — |
 | 40-A | **Richer default + date-range filter.** The home screen shows the last 30 days by default, and you can pick a date range (presets or a custom from–to) — replacing the disliked *show older* toggle. | Done (PR #394, deploy #699) | 40-P |
-| 40-B | **Sort control + month grouping.** Order the home list newest/oldest first or by title; a wide date-sorted view groups under month headers. | Not Started | 40-A |
+| 40-B | **Sort control + month grouping.** Order the home list newest/oldest first or by title; a wide date-sorted view groups under month headers. | Done (PR #396, deploy #700) | 40-A |
 
 > **40-A is the keystone** — it removes the mechanism the user dislikes and proves the redesigned filter pipeline end-to-end. **40-B layers sort (and month grouping) on top.** Ship 40-A first; branch 40-B only after it deploys green.
 >
