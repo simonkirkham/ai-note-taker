@@ -359,6 +359,43 @@ public sealed class AppPage
         }
     }
 
+    // Reload-tolerant "note fully loaded, image present" check for use at REOPEN — the safe mirror
+    // of AssertNoteImageAbsentAfterReloadAsync (BUG-31). The note-detail read is gated (gatedRead)
+    // and can serve `stale` up to the 8s RYW gate cap on a cold projector; while it is in flight
+    // `loadingDetail` is true, so the editor is unmounted and the save button absent. Wait for the
+    // save button (proves loadingDetail=false, editor mounted) AND the inline image (resolve done);
+    // reload to re-issue the gated read and let the projector warm, until both hold or the deadline.
+    // Reloading is safe ONLY because this runs at reopen, before any unsaved edit — never call it
+    // after an in-editor change. Reloads ONLY while not-yet-loaded, so a warm projector costs none.
+    public async Task AssertNoteImageVisibleAfterReloadAsync(int timeoutMs = 30000)
+    {
+        var deadline = DateTime.UtcNow.AddMilliseconds(timeoutMs);
+        var img = page.GetByTestId("note-content").Locator("img");
+        while (true)
+        {
+            try
+            {
+                // save-button ENABLED proves the gated note-detail read completed (loadingDetail=false,
+                // editor mounted): on a hard reload the button is ABSENT (cancel-button shown) until the
+                // read lands; on a soft-nav it can be present-but-disabled while loading. Either way
+                // ToBeEnabled waits for the loaded state. 9000ms > the 8s RYW gate cap so a reload cannot
+                // abort the in-flight gated read mid-flight (the self-defeating pattern
+                // AssertNoteVisibleInListAfterReloadAsync documents).
+                await Assertions.Expect(page.GetByTestId("save-button")).ToBeEnabledAsync(new() { Timeout = 9000 });
+                // The image needs a POST /images/resolve round-trip + fetch/render; a cold resolve
+                // Lambda can exceed a couple of seconds, so give it the same 15s the no-reload sibling
+                // image journeys allow (Pick/Resize/Drag) — a tight window here would reload-loop and
+                // abort the resolve on a cold Lambda if this journey runs before the others.
+                await Assertions.Expect(img).ToBeVisibleAsync(new() { Timeout = 15000 });
+                return;
+            }
+            catch (PlaywrightException) when (DateTime.UtcNow < deadline)
+            {
+                await page.ReloadAsync();
+            }
+        }
+    }
+
     public async Task DeleteNoteAsync()
     {
         var deleteDone = page.WaitForResponseAsync(r =>

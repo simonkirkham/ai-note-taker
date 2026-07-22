@@ -134,27 +134,36 @@ public sealed class NoteImageJourney(BrowserFixture browser) : IAsyncLifetime
             $"Expected no bare-key image request on open; saw: {string.Join("; ", badRequests)}");
     }
 
-    // QUARANTINED — BUG-31 has THREE stacked flake causes (like TI-39); two are fixed, one remains:
-    //   1. (FIXED) "image reappears" — the original symptom — resolved by the RYW systemic changes
-    //      (TI-39 projector warm-up/drain + BUG-30 auth-from-event-stream); un-quarantined under #294
-    //      proved the image-absent assert now passes.
-    //   2. (FIXED, PR #297) SaveAndReturnAsync awaited a GET /notes/cards that React Query can serve
-    //      from cache → no request → 30 s timeout. Now waits on home navigation instead.
-    //   3. (OPEN) After fix #2, deploy #599 attempt 4 still failed ~1/4 at the post-removal save:
-    //      ClickAsync("save-button") timed out 30 s because the button is `disabled={loadingDetail}`
-    //      (NoteView.tsx) and the useNoteDetail query was stuck `isLoading` for 30 s after reopen+edit.
-    //      A stuck note-detail read (RYW/async-projection class) — needs test-env evidence on why
-    //      loadingDetail hangs, not more test-side patching. Tracked as the remaining BUG-31 layer.
-    // Re-quarantined to keep the gate green; the SaveAndReturn navigation fix (#297) stays in.
-    [E2EFact(Skip = "BUG-31 layer 3: post-removal save-button stuck disabled (loadingDetail isLoading hangs 30s after reopen+edit); needs test-env detail-read trace")]
+    // BUG-31: removing an inline image persists (BUG-18) and stays gone after reopen. Previously
+    // quarantined; the last flake cause was NOT a slow load but the note reading *blank* after the
+    // removal: the note held ONLY the image, so removing it left content empty, and a stale
+    // note-detail refetch could transiently blank the title too → hasContent=false → the header
+    // renders `cancel-button` INSTEAD OF `save-button` (by design — NoteView.test.tsx blank-note
+    // cases), so SaveAndReturnAsync's `save-button` click never resolved (30 s timeout, deploy #697).
+    // Fix: the note also carries durable body TEXT. `content = contentDraft ?? detail.content`, and
+    // the draft pattern shields a non-null contentDraft from a refetch clobber — so after removing
+    // the image the local contentDraft is the surviving text (non-empty) → hasContent stays true →
+    // save-button stays present, immune to the stale detail read. Reopen uses the reload-tolerant
+    // convergence wait (a cold-projector reopen no longer misses the 15 s window). The residual
+    // stale-refetch-blanks-an-existing-note's-title is filed separately (BUG-48).
+    [E2EFact]
     public async Task Remove_an_image_drops_it_from_the_note_and_it_stays_gone_after_reload()
     {
         var title = $"Remove img {Guid.NewGuid():N}"[..30];
+        const string bodyText = "Keep this line after the image is removed";
 
-        // Given a note whose *persisted* content contains an inline image
+        // Given a note whose *persisted* content is durable body text PLUS an inline image
         await _app.GotoAsync();
         await _app.ClickNewNoteAsync();
         await _app.EnterTitleAsync(title);
+
+        // Type the body text first, into the empty editor (safe — no image node to select), then a
+        // newline so the image lands on its own line. This text is what keeps the note non-blank
+        // once the image is removed, so the leave control stays "Save" regardless of detail-read lag.
+        var editor = _page.GetByTestId("note-content");
+        await editor.ClickAsync();
+        await editor.PressSequentiallyAsync(bodyText);
+        await _page.Keyboard.PressAsync("Enter");
 
         // A normally-sized image (not the 1x1 PngBytes): the 28-B corner resize handle is
         // 14px, so on a 1x1 image it blankets the whole image and intercepts the HoverAsync
@@ -181,18 +190,22 @@ public sealed class NoteImageJourney(BrowserFixture browser) : IAsyncLifetime
         await _app.SaveAndReturnAsync();
         await imageSaved;
 
+        // Reopen and wait (reload-tolerant) for the editor to be fully loaded — the body text AND
+        // the resolved image visible — before editing. Reloading is safe here: no unsaved edit yet.
         await _app.ClickNoteInListAsync(title);
-        var resolveDone = _page.WaitForResponseAsync(r =>
-            r.Url.Contains("/images/resolve") && r.Request.Method == "POST");
-        await resolveDone;
-        await Assertions.Expect(editorImage).ToBeVisibleAsync(new() { Timeout = 15000 });
+        await _app.AssertNoteImageVisibleAfterReloadAsync();
+        await Assertions.Expect(_page.GetByTestId("note-content"))
+            .ToContainTextAsync(bodyText, new() { Timeout = 15000 });
 
         // When I activate the image's remove control
         await editorImage.HoverAsync();
         await _page.GetByTestId("remove-image-button").ClickAsync();
 
-        // Then the image is removed from the note body immediately
+        // Then the image is removed from the note body immediately, and the body text remains — so
+        // the note is not blank and the leave control is still Save (this is what BUG-31 tripped on).
         await Assertions.Expect(editorImage).ToHaveCountAsync(0);
+        await Assertions.Expect(_page.GetByTestId("note-content")).ToContainTextAsync(bodyText);
+        await Assertions.Expect(_page.GetByTestId("save-button")).ToBeVisibleAsync();
 
         // And after saving and reopening, the removal persisted — the key was dropped from
         // server content (BUG-18: the save fires on leave even though removing the image
