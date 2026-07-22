@@ -52,6 +52,12 @@ export function linkNoteToCalendar(noteId: string, meeting: CalendarMeeting): Pr
   });
 }
 
+// 44-B: detach a note from its meeting. Idempotent server-side (204 even if the
+// note is not currently linked).
+export function unlinkNoteFromCalendar(noteId: string): Promise<void> {
+  return requestVoid(`/notes/${noteId}/calendar-link`, { method: "DELETE" });
+}
+
 export type CreateNoteFromNextOccurrenceResult =
   | { noteId: string; alreadyExists: true }
   | { noteId: string; nextOccurrence: { calendarEventId: string; startTime: string; endTime: string } };

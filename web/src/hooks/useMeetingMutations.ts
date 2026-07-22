@@ -3,6 +3,7 @@ import {
   createNoteFromMeeting,
   createNoteFromNextOccurrence,
   linkNoteToCalendar,
+  unlinkNoteFromCalendar,
   type CalendarMeeting,
   type CreateNoteFromNextOccurrenceResult,
 } from "../api/meetings";
@@ -70,6 +71,27 @@ export function useLinkNoteToCalendar() {
     },
     // keys.note is patched optimistically above (single consumer == server), so we
     // only invalidate the meetings list (the linked-note state changed there).
+    onSettled: () => invalidateMeetings(qc),
+  });
+}
+
+export function useUnlinkNoteFromCalendar() {
+  const qc = useQueryClient();
+  return useMutation<void, Error, { noteId: string }, LinkCtx>({
+    mutationFn: ({ noteId }) => unlinkNoteFromCalendar(noteId),
+    // Optimistically clear the open note's linkedMeeting/recurringSeriesId; roll back
+    // on error. The badge reads from keys.note, so this is the unlink optimism.
+    onMutate: async ({ noteId }) => {
+      await qc.cancelQueries({ queryKey: keys.note(noteId) });
+      const previous = qc.getQueryData<NoteDetail>(keys.note(noteId));
+      qc.setQueryData<NoteDetail>(keys.note(noteId), (old) =>
+        old ? { ...old, linkedMeeting: null, recurringSeriesId: null } : old);
+      return { previous };
+    },
+    onError: (_e, { noteId }, ctx) => {
+      if (ctx?.previous) qc.setQueryData(keys.note(noteId), ctx.previous);
+    },
+    // Freeing the meeting changes the linked-note state in the meetings list.
     onSettled: () => invalidateMeetings(qc),
   });
 }

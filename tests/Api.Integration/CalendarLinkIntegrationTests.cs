@@ -300,6 +300,85 @@ public sealed class CalendarLinkIntegrationTests : IClassFixture<ApiFactory>
         Assert.Equal("Test Meeting", linked.GetProperty("title").GetString());
     }
 
+    // ── 44-B: unlink a note from its meeting ──────────────────────────────
+
+    [Fact]
+    public async Task DeleteCalendarLink_UnlinksNote_Returns204AndClearsLinkedMeeting()
+    {
+        var noteId = await CreateNoteAsync();
+        await LinkNoteAsync(noteId, "evt_to_unlink");
+
+        var resp = await _client.DeleteAsync($"/notes/{noteId}/calendar-link");
+
+        Assert.Equal(HttpStatusCode.NoContent, resp.StatusCode);
+        var note = await (await _client.GetAsync($"/notes/{noteId}")).Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal(JsonValueKind.Null, note.GetProperty("linkedMeeting").ValueKind);
+    }
+
+    [Fact]
+    public async Task DeleteCalendarLink_FreesTheMeeting()
+    {
+        var noteId = await CreateNoteAsync();
+        await LinkNoteAsync(noteId, "evt_freed");
+        await _client.DeleteAsync($"/notes/{noteId}/calendar-link");
+
+        _fakeCalendar.SetEvents(new[]
+        {
+            new CalendarEvent("evt_freed", "Freed Meeting", DateTimeOffset.UtcNow, DateTimeOffset.UtcNow.AddMinutes(30), false, null)
+        });
+
+        var body = await (await _client.GetAsync($"/calendar/{DateOnly.FromDateTime(DateTime.UtcNow):yyyy-MM-dd}?tz=UTC")).Content.ReadFromJsonAsync<JsonElement>();
+        var meeting = body.GetProperty("meetings")[0];
+        Assert.Equal(JsonValueKind.Null, meeting.GetProperty("linkedNoteId").ValueKind);
+    }
+
+    [Fact]
+    public async Task DeleteCalendarLink_PreservesNoteContentAndTags()
+    {
+        var noteId = await CreateNoteAsync();
+        await _client.PutAsJsonAsync($"/notes/{noteId}/content", new { content = "Notes worth keeping." });
+        await _client.PostAsJsonAsync($"/notes/{noteId}/tags", new { tag = "keep" });
+        await LinkNoteAsync(noteId, "evt_temp");
+
+        await _client.DeleteAsync($"/notes/{noteId}/calendar-link");
+
+        var note = await (await _client.GetAsync($"/notes/{noteId}")).Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal(JsonValueKind.Null, note.GetProperty("linkedMeeting").ValueKind);
+        Assert.Equal("Notes worth keeping.", note.GetProperty("content").GetString());
+        Assert.Contains("keep", note.GetProperty("tags").EnumerateArray().Select(t => t.GetString()));
+    }
+
+    [Fact]
+    public async Task DeleteCalendarLink_WhenNotLinked_IsIdempotent204()
+    {
+        var noteId = await CreateNoteAsync();
+
+        var first = await _client.DeleteAsync($"/notes/{noteId}/calendar-link");
+        Assert.Equal(HttpStatusCode.NoContent, first.StatusCode);
+
+        // A repeat delete on an already-unlinked note is still a no-op 204.
+        var second = await _client.DeleteAsync($"/notes/{noteId}/calendar-link");
+        Assert.Equal(HttpStatusCode.NoContent, second.StatusCode);
+    }
+
+    [Fact]
+    public async Task DeleteCalendarLink_DeletedNote_Returns409()
+    {
+        var noteId = await CreateNoteAsync();
+        await LinkNoteAsync(noteId, "evt_x");
+        await _client.DeleteAsync($"/notes/{noteId}");
+
+        var resp = await _client.DeleteAsync($"/notes/{noteId}/calendar-link");
+        Assert.Equal(HttpStatusCode.Conflict, resp.StatusCode);
+    }
+
+    [Fact]
+    public async Task DeleteCalendarLink_UnknownNote_Returns404()
+    {
+        var resp = await _client.DeleteAsync($"/notes/{Guid.NewGuid()}/calendar-link");
+        Assert.Equal(HttpStatusCode.NotFound, resp.StatusCode);
+    }
+
     private async Task<Guid> CreateNoteAsync()
     {
         var resp = await _client.PostAsync("/notes", null);

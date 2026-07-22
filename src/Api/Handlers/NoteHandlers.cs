@@ -349,6 +349,22 @@ public static class NoteHandlers
         return Results.NoContent();
     }
 
+    public static async Task<IResult> UnlinkNoteFromCalendar(Guid noteId, INoteCommandHandler handler, INoteCardListStore noteCardListStore, ICurrentUser currentUser, CancellationToken ct)
+    {
+        var card = await noteCardListStore.GetByNoteAsync(new NoteId(noteId), ct);
+        if (card is null || card.UserId != currentUser.UserId) return Results.NotFound();
+        if (card.Deleted) return Results.Conflict();
+        // Idempotent (Phase 44-B): unlinking frees the linked meeting; unlinking a note
+        // that is not currently linked is a no-op (the aggregate emits nothing), so a
+        // repeat DELETE still returns 204.
+        try
+        {
+            await handler.HandleAsync(new UnlinkNoteFromCalendarEvent(new NoteId(noteId)), ct);
+        }
+        catch (NoteNotFoundException) { return Results.NotFound(); }
+        return Results.NoContent();
+    }
+
     public static async Task<IResult> SearchNotes(string? q, INoteSearchViewStore searchStore, ICurrentUser currentUser, ICurrentWorkspace currentWorkspace, IDomainMetrics metrics, CancellationToken ct)
     {
         if (string.IsNullOrWhiteSpace(q))

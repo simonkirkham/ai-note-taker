@@ -42,6 +42,7 @@ public static class NoteEndpoints
         routes.MapDelete("/notes/{noteId}/folder", NoteHandlers.UnfileNote).RequireAuthorization();
         routes.MapPut("/notes/{noteId}/workspace", NoteHandlers.MoveNoteToWorkspace).RequireAuthorization();
         routes.MapPost("/notes/{noteId}/calendar-link", NoteHandlers.LinkNoteToCalendar).RequireAuthorization();
+        routes.MapDelete("/notes/{noteId}/calendar-link", NoteHandlers.UnlinkNoteFromCalendar).RequireAuthorization();
         routes.MapPost("/notes/{noteId}/actions", ActionItemHandlers.AddActionItem).RequireAuthorization();
         routes.MapPost("/notes/{noteId}/actions/{actionId}/complete", ActionItemHandlers.CompleteActionItem).RequireAuthorization();
         routes.MapPost("/notes/{noteId}/actions/{actionId}/reopen", ActionItemHandlers.ReopenActionItem).RequireAuthorization();
