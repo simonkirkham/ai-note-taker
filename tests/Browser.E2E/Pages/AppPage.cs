@@ -375,14 +375,18 @@ public sealed class AppPage
         {
             try
             {
-                // 9000ms (not the 2500ms the absent-helper uses): this waits for the gated read to
-                // COMPLETE (save-button present == loadingDetail=false), which can hold up to the 8s
-                // gate cap. A 2.5s window would ReloadAsync() mid-flight and abort the in-flight read,
-                // re-issuing it forever on a cold projector (the self-defeating pattern
-                // AssertNoteVisibleInListAfterReloadAsync documents). The image assert stays 2.5s — a
-                // post-read resolve round-trip, not a gated wait — do NOT align the two timeouts.
-                await Assertions.Expect(page.GetByTestId("save-button")).ToBeVisibleAsync(new() { Timeout = 9000 });
-                await Assertions.Expect(img).ToBeVisibleAsync(new() { Timeout = 2500 });
+                // save-button ENABLED proves the gated note-detail read completed (loadingDetail=false,
+                // editor mounted): on a hard reload the button is ABSENT (cancel-button shown) until the
+                // read lands; on a soft-nav it can be present-but-disabled while loading. Either way
+                // ToBeEnabled waits for the loaded state. 9000ms > the 8s RYW gate cap so a reload cannot
+                // abort the in-flight gated read mid-flight (the self-defeating pattern
+                // AssertNoteVisibleInListAfterReloadAsync documents).
+                await Assertions.Expect(page.GetByTestId("save-button")).ToBeEnabledAsync(new() { Timeout = 9000 });
+                // The image needs a POST /images/resolve round-trip + fetch/render; a cold resolve
+                // Lambda can exceed a couple of seconds, so give it the same 15s the no-reload sibling
+                // image journeys allow (Pick/Resize/Drag) — a tight window here would reload-loop and
+                // abort the resolve on a cold Lambda if this journey runs before the others.
+                await Assertions.Expect(img).ToBeVisibleAsync(new() { Timeout = 15000 });
                 return;
             }
             catch (PlaywrightException) when (DateTime.UtcNow < deadline)
