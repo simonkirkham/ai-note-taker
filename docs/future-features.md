@@ -80,7 +80,9 @@ _(Claude Cowork connector — read-only, workspace-scoped MCP server — graduat
 
 **Why now — cost:** measured from the prod bill (2026-07-22), realized marginal rates are ~$0.60/hr live + ~$0.36/hr batch diarization (≈ $0.96/hr diarized); AWS list is ~3× higher and the realized rate may drift toward it at volume. At today's trickle (~$3–9/mo) local wasn't worth the effort. At the user's target of **~3 hours/day**, cloud projects to **~$40–86/mo realized, up to ~$130–260/mo at list** ($500–$3,000/yr). Local is **$0 marginal and does not scale with usage** — it removes the cost worry entirely. This is the *"on-device becomes a requirement"* trigger Phase 33 named when it parked local diarization. Interim cloud guardrail in place: a **$25/mo Amazon Transcribe AWS Budgets alarm** (email alerts at 80%/100%/forecast), created 2026-07-22.
 
-**Spike first — go/no-go before any build.** Prove on **one real meeting** inside the Electron shell:
+**Spike — findings so far:** Step 1 (quality + final-pass speed) **PASSED** on a real 22-min meeting (2026-07-22) — `whisper-medium.en` runs 1.54× realtime on a GPU-less CPU and agrees ~88% with Amazon Transcribe (divergence is filler/punctuation, not meaning; all proper nouns survive). Full write-up: [docs/spikes/local-whisper-transcription.md](spikes/local-whisper-transcription.md). Remaining unknowns need the Windows/Electron shell — chiefly **diarization** (whisper.cpp gives transcript only, no speaker labels).
+
+**Spike — go/no-go before any build.** Prove on **one real meeting** inside the Electron shell:
 1. **Quality** — local transcript vs. Amazon Transcribe on the same audio: is word accuracy acceptable? (spot-check WER)
 2. **Live latency** — small/medium model streaming: does the partial transcript keep pace with speech on target hardware (no growing lag)?
 3. **Final-pass speed** — large-v3 over a 1-hr recording: faster-than-realtime on CPU, or is a GPU required?
