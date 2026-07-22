@@ -214,8 +214,8 @@
 }
 
 .unlinkMeetingButton:hover {
-  border-color: var(--color-danger, #b4472b);
-  color: var(--color-danger, #b4472b);
+  border-color: #c0392b;
+  color: #c0392b;
 }
 
 .linkMeetingButton {

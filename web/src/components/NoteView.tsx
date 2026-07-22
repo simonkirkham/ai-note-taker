@@ -664,6 +664,7 @@ export default function NoteView({
             type="button"
             data-testid="unlink-meeting-button"
             className={styles.unlinkMeetingButton}
+            aria-label="Remove meeting link"
             onClick={handleUnlinkMeeting}
           >
             Remove
