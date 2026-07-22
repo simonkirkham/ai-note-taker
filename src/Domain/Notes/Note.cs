@@ -115,6 +115,7 @@ public sealed class Note : IAggregate
             MoveNoteToWorkspace cmd => HandleMoveToWorkspace(cmd),
             UnfileNote cmd => HandleUnfile(cmd),
             LinkNoteToCalendarEvent cmd => HandleLinkToCalendarEvent(cmd),
+            UnlinkNoteFromCalendarEvent cmd => HandleUnlinkFromCalendarEvent(cmd),
             CompleteTranscription cmd => HandleCompleteTranscription(cmd),
             RecordDiarizedTranscription cmd => HandleRecordDiarizedTranscription(cmd),
             SaveRecording cmd => HandleSaveRecording(cmd),
@@ -282,6 +283,18 @@ public sealed class Note : IAggregate
         return _calendarEventId is null
             ? [link]
             : [new NoteUnlinkedFromCalendarEvent(cmd.NoteId, _calendarEventId), link];
+    }
+
+    IReadOnlyList<IDomainEvent> HandleUnlinkFromCalendarEvent(UnlinkNoteFromCalendarEvent cmd)
+    {
+        if (!_exists || _deleted)
+            throw new InvalidOperationException($"Note {cmd.NoteId} does not exist.");
+        // Idempotent: unlinking a note that carries no link is a no-op, so a double
+        // DELETE (or an unlink of a never-linked note) neither throws nor corrupts the
+        // calendar-link index.
+        if (_calendarEventId is null)
+            return [];
+        return [new NoteUnlinkedFromCalendarEvent(cmd.NoteId, _calendarEventId)];
     }
 
     IReadOnlyList<IDomainEvent> HandleCompleteTranscription(CompleteTranscription cmd)

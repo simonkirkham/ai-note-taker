@@ -652,6 +652,28 @@ describe('NoteView', () => {
       await screen.findByLabelText('Note content')
       expect(screen.queryByTestId('linked-meeting-badge')).toBeNull()
     })
+
+    it('removes the meeting link when Remove is clicked (optimistic, 44-B)', async () => {
+      server.use(
+        http.get('/api/notes/:noteId', () =>
+          HttpResponse.json({
+            noteId: 'note-1', title: 'T', content: 'c', date: null, tags: [],
+            linkedMeeting: {
+              calendarEventId: 'evt_1', title: 'Design Review',
+              startTime: '2026-05-14T09:00:00Z', endTime: '2026-05-14T09:30:00Z',
+              recurringSeriesId: null, isRecurring: false,
+            },
+          }),
+        ),
+        http.delete('/api/notes/:noteId/calendar-link', () => new HttpResponse(null, { status: 204 })),
+      )
+      renderNoteView()
+      await screen.findByTestId('linked-meeting-badge')
+      await userEvent.click(screen.getByTestId('unlink-meeting-button'))
+      // Optimistic: the badge clears and the Link-to-meeting button returns.
+      await waitFor(() => expect(screen.queryByTestId('linked-meeting-badge')).toBeNull())
+      expect(await screen.findByTestId('link-meeting-button')).toBeInTheDocument()
+    })
   })
 
   describe('link to meeting', () => {

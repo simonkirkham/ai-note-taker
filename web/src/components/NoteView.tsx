@@ -8,7 +8,7 @@ import { keys } from "../api/queryKeys";
 import { presignRecordingDownload } from "../api/recordings";
 import { completeTranscription, discardTranscriptionDraft } from "../api/transcription";
 import { useActions } from "../hooks/useActions";
-import { useCreateNoteFromNextOccurrence, useLinkNoteToCalendar } from "../hooks/useMeetingMutations";
+import { useCreateNoteFromNextOccurrence, useLinkNoteToCalendar, useUnlinkNoteFromCalendar } from "../hooks/useMeetingMutations";
 import { useNoteDetail } from "../hooks/useNoteDetail";
 import { useAnalyseNote, useEditContent, useRenameNoteDetail, useSetNoteDate } from "../hooks/useNoteDetailMutations";
 import { useTagNote, useUntagNote } from "../hooks/useTagMutations";
@@ -88,6 +88,7 @@ export default function NoteView({
   const tagNoteM = useTagNote();
   const untagNoteM = useUntagNote();
   const linkMeetingM = useLinkNoteToCalendar();
+  const unlinkMeetingM = useUnlinkNoteFromCalendar();
   const nextOccurrenceM = useCreateNoteFromNextOccurrence();
   const editContentM = useEditContent(noteId);
   const setNoteDateM = useSetNoteDate(noteId);
@@ -387,6 +388,15 @@ export default function NoteView({
     });
   }
 
+  function handleUnlinkMeeting() {
+    // Optimistic linkedMeeting clear + rollback live in the mutation (it owns
+    // keys.note); the badge reverts to "Link to meeting" immediately. Only the
+    // meeting link is removed — title/body/tags/to-dos are untouched.
+    unlinkMeetingM.mutate({ noteId }, {
+      onError: () => showError("Couldn't remove the meeting link. Please try again."),
+    });
+  }
+
   function handleAddTags(raw: string) {
     // Tags are case-insensitive (CHANGE-17): normalise each token and dedupe both
     // against the already-applied tags and within the paste, so a case variant doesn't
@@ -649,6 +659,15 @@ export default function NoteView({
             onClick={() => setPickerOpen(true)}
           >
             Change
+          </button>
+          <button
+            type="button"
+            data-testid="unlink-meeting-button"
+            className={styles.unlinkMeetingButton}
+            aria-label="Remove meeting link"
+            onClick={handleUnlinkMeeting}
+          >
+            Remove
           </button>
         </div>
       )}

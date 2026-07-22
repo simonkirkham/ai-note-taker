@@ -145,10 +145,13 @@ Scenario: Optimistic unlink
   - `Api.Integration`: `DELETE` clears the link; `GET /notes/{id}` shows no meeting; note content unchanged.
   - `Browser.E2E`: link → unlink → reload, reload-tolerant assert badge gone.
 - **Acceptance criteria:**
-  - [ ] BDD spec first.
-  - [ ] `UnlinkNoteFromCalendarEvent` command + `DELETE` endpoint; idempotent.
-  - [ ] Optimistic unlink + reconcile-on-error.
-  - [ ] Note content provably untouched (assert title/body/tags/to-dos).
+  - [x] BDD spec first — `UnlinkNoteFromCalendarEventSpec` (unlink emits `NoteUnlinkedFromCalendarEvent`; no-op when unlinked / never-linked; rejects when not-exists / deleted).
+  - [x] `UnlinkNoteFromCalendarEvent` command + `DELETE /notes/{noteId}/calendar-link`; idempotent (204 even when not currently linked; repeat DELETE stays 204). Reuses 44-A's `NoteUnlinkedFromCalendarEvent` event + projection arm (delete row, clear both keys) — no new event, no new table, no backfill.
+  - [x] Optimistic unlink + reconcile-on-error — `useUnlinkNoteFromCalendar` clears `linkedMeeting`/`recurringSeriesId` on `keys.note` and rolls back on error; the badge reverts to "Link to meeting". A "Remove" action sits beside "Change" on the badge.
+  - [x] Note content provably untouched — `Api.Integration` asserts `content` + `tags` survive the unlink; the hook test asserts `title` + `tags` survive. Structurally guaranteed: the aggregate emits only `NoteUnlinkedFromCalendarEvent` (touches only `_calendarEventId`).
+
+  As-built deviations:
+  - **E2E consciously skipped** (mirrors 44-A): the linked-meeting flow needs Google OAuth absent from the E2E gate, and unlink introduces **no new projector-backed read** (the badge is client-optimistic; the meetings list's `linkedNoteId` is the pre-existing 44-A read). Covered by Domain.Specs + Api.Integration (unlink, freed-meeting, content-preserved, idempotent, 404/409) + vitest (hook optimism/rollback + badge Remove).
 
 ### Observability (run `observability-brief` to finalise)
 
