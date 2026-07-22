@@ -359,6 +359,39 @@ public sealed class AppPage
         }
     }
 
+    // Reload-tolerant "note fully loaded, image present" check for use at REOPEN — the safe mirror
+    // of AssertNoteImageAbsentAfterReloadAsync (BUG-31). The note-detail read is gated (gatedRead)
+    // and can serve `stale` up to the 8s RYW gate cap on a cold projector; while it is in flight
+    // `loadingDetail` is true, so the editor is unmounted and the save button absent. Wait for the
+    // save button (proves loadingDetail=false, editor mounted) AND the inline image (resolve done);
+    // reload to re-issue the gated read and let the projector warm, until both hold or the deadline.
+    // Reloading is safe ONLY because this runs at reopen, before any unsaved edit — never call it
+    // after an in-editor change. Reloads ONLY while not-yet-loaded, so a warm projector costs none.
+    public async Task AssertNoteImageVisibleAfterReloadAsync(int timeoutMs = 30000)
+    {
+        var deadline = DateTime.UtcNow.AddMilliseconds(timeoutMs);
+        var img = page.GetByTestId("note-content").Locator("img");
+        while (true)
+        {
+            try
+            {
+                // 9000ms (not the 2500ms the absent-helper uses): this waits for the gated read to
+                // COMPLETE (save-button present == loadingDetail=false), which can hold up to the 8s
+                // gate cap. A 2.5s window would ReloadAsync() mid-flight and abort the in-flight read,
+                // re-issuing it forever on a cold projector (the self-defeating pattern
+                // AssertNoteVisibleInListAfterReloadAsync documents). The image assert stays 2.5s — a
+                // post-read resolve round-trip, not a gated wait — do NOT align the two timeouts.
+                await Assertions.Expect(page.GetByTestId("save-button")).ToBeVisibleAsync(new() { Timeout = 9000 });
+                await Assertions.Expect(img).ToBeVisibleAsync(new() { Timeout = 2500 });
+                return;
+            }
+            catch (PlaywrightException) when (DateTime.UtcNow < deadline)
+            {
+                await page.ReloadAsync();
+            }
+        }
+    }
+
     public async Task DeleteNoteAsync()
     {
         var deleteDone = page.WaitForResponseAsync(r =>
