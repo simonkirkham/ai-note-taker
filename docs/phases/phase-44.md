@@ -1,4 +1,4 @@
-# Phase 44 — Change or remove a note's linked meeting _(In Progress — 44-A done 2026-06-30)_
+# Phase 44 — Change or remove a note's linked meeting _(Done)_
 
 **Goal:** move a note to a different meeting, or detach it from its meeting entirely, when the meeting gets rescheduled, replaced, or the notes turn out to fit a different meeting.
 
@@ -7,7 +7,7 @@
 | Slice | What the user gets | Status | Depends on |
 |-------|--------------------|--------|------------|
 | 44-A  | Change a note's meeting — re-pick any meeting and the note moves to it | Done | — |
-| 44-B  | Unlink a note from its meeting — it goes back to a standalone note | Not Started | 44-A |
+| 44-B  | Unlink a note from its meeting — it goes back to a standalone note | Done (PR #398, deploy #702) | 44-A |
 
 44-A is the thin vertical that proves the whole flow (a linked note can be re-pointed at a different meeting, old meeting freed, new one claimed). 44-B exposes "no meeting" as a destination, reusing the same link-removal plumbing 44-A introduces.
 
