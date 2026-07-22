@@ -87,11 +87,11 @@ _(Claude Cowork connector — read-only, workspace-scoped MCP server — graduat
 4. **Diarization** — is source-based (mic/loopback) labelling good enough, or is a local pyannote pass needed (at what cost/complexity)?
 5. **Packaging** — binary + model (~1–3 GB) bundled vs. downloaded on first run; installer-size impact.
 
-Success = acceptable quality **and** live keeps pace **and** final pass ≤ recording length on the author's machine. Any fail → stay on cloud (+ the interim on-demand-diarization mitigation below).
+Success = acceptable quality **and** live keeps pace **and** final pass ≤ recording length on the author's machine. Any fail → stay on cloud.
 
 **Scope boundaries:** desktop-only — the **web app keeps cloud Transcribe** (no browser-side local model); the cloud path stays as fallback. Reuses Phase 33 findings (its `FINDINGS.md` was deleted with the spike branch; only the summary in `phase-33.md` survives — re-derive during the spike).
 
-**Interim cloud mitigation (independent, cheaper, shippable now):** make **batch diarization on-demand** (a button, not auto-on-every-meeting) to drop the ~$0.36/hr batch layer — ~35% off the cloud bill — while the spike runs. Could be filed as a minor-change.
+**No interim cloud mitigation:** making batch diarization on-demand was ruled out (2026-07-22) — speaker labels are wanted on **every** meeting, so opt-in degrades the product. There is no cheap cloud half-measure; the cost fix is the local path itself. Until it lands, the cloud bill stands (guarded by the $25/mo budget alarm).
 
 **Why it isn't scheduled yet:** Needs the spike above to de-risk quality/latency/packaging before Scout breaks it into a numbered phase. It reopens Phase 33's engine decision, so the go/no-go gate is mandatory.
 
