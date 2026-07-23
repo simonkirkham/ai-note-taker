@@ -403,27 +403,6 @@ export function useTranscription(noteId: string): UseTranscriptionResult {
           }
         }
 
-        // 48-C: 1:1 source separation — in local mode with call audio, also capture mic ("me") and
-        // loopback ("them") as SEPARATE buffers (in addition to the mixed live stream), so the
-        // stop-time pass can diarize by source. Two extra worklets tap the existing sources.
-        if (useLocal && systemSource) {
-          diarizeActiveRef.current = true;
-          const meChunker = new PcmChunker();
-          const themChunker = new PcmChunker();
-          const meWorklet = new AudioWorkletNode(audioContext, 'pcm-processor');
-          const themWorklet = new AudioWorkletNode(audioContext, 'pcm-processor');
-          micSource.connect(meWorklet);
-          systemSource.connect(themWorklet);
-          meWorklet.port.onmessage = (e: MessageEvent) => {
-            if (stoppedRef.current) return;
-            for (const c of meChunker.push(e.data as Float32Array)) meChunksRef.current.push(c);
-          };
-          themWorklet.port.onmessage = (e: MessageEvent) => {
-            if (stoppedRef.current) return;
-            for (const c of themChunker.push(e.data as Float32Array)) themChunksRef.current.push(c);
-          };
-        }
-
         workletNode.port.onmessage = (e: MessageEvent) => {
           if (stoppedRef.current) return;
           const chunks = chunker.push(e.data as Float32Array);
@@ -485,6 +464,26 @@ export function useTranscription(noteId: string): UseTranscriptionResult {
         }
 
         if (useLocal) {
+          // 48-C: only now that local is CONFIRMED active (start() succeeded) do we attach the
+          // source-separation worklets — otherwise a start-failure → cloud fallback would leave
+          // them buffering mic/loopback into me/them for the whole recording, never consumed.
+          if (systemSource) {
+            diarizeActiveRef.current = true;
+            const meChunker = new PcmChunker();
+            const themChunker = new PcmChunker();
+            const meWorklet = new AudioWorkletNode(audioContext, 'pcm-processor');
+            const themWorklet = new AudioWorkletNode(audioContext, 'pcm-processor');
+            micSource.connect(meWorklet);
+            systemSource.connect(themWorklet);
+            meWorklet.port.onmessage = (e: MessageEvent) => {
+              if (stoppedRef.current) return;
+              for (const c of meChunker.push(e.data as Float32Array)) meChunksRef.current.push(c);
+            };
+            themWorklet.port.onmessage = (e: MessageEvent) => {
+              if (stoppedRef.current) return;
+              for (const c of themChunker.push(e.data as Float32Array)) themChunksRef.current.push(c);
+            };
+          }
           setStatus('recording');
           startTimeRef.current = Date.now();
           timerRef.current = setInterval(() => {
@@ -632,6 +631,10 @@ export function useTranscription(noteId: string): UseTranscriptionResult {
           }
         } catch (err) {
           console.warn('Local transcription finish/diarization failed on stop.', err);
+        } finally {
+          // Guarantee the main-process live session is released even if an IPC call threw before
+          // finish()/discard() ran (no-op when already discarded/finished).
+          window.desktop?.local.discard();
         }
         localCleanupRef.current?.();
         localCleanupRef.current = null;

@@ -73,7 +73,9 @@ export async function transcribeWindow(
 // stream is ~half silence) and interleave into a Me/Them transcript. Uses the final model
 // (medium.en) when available, else the live model. Returns null if VAD isn't available or there
 // is no speech — the caller then keeps the single-stream transcript. Passes run sequentially to
-// bound CPU (VAD makes each ~half-length, so it's ≈ one full pass).
+// bound CPU; each spans the whole recording (VAD skips non-speech but the stream is still
+// full-length), so worst-case wall-clock is ~2x a single final pass — runWhisper's length-scaled
+// timeout still bounds a hang.
 export async function diarizeStreams(
   meAudio: Buffer,
   themAudio: Buffer,
