@@ -5,9 +5,49 @@ namespace Analysis.Eval.Tests;
 public class PromptCatalogTests
 {
     [Fact]
-    public void Current_is_v8()
+    public void Current_is_v9()
     {
-        Assert.Equal("analysis@v8", PromptCatalog.Current.Version);
+        Assert.Equal("analysis@v9", PromptCatalog.Current.Version);
+    }
+
+    [Fact]
+    public void V9_adds_the_style_rewrite_and_keeps_v8_grounding_tags_and_instruction_path()
+    {
+        var plain = new NoteAnalysisRequest(
+            ExistingContent: "existing notes",
+            TranscriptText: "a transcript",
+            CurrentUserName: "Alice");
+
+        var prompt = PromptCatalog.V9.Build(plain);
+
+        // The MPI-9 style additions are all present.
+        Assert.Contains("LONGER BUT TERSER", prompt);
+        Assert.Contains("SUBJECT-FIRST", prompt);
+        Assert.Contains("The team discussed", prompt); // the banned-opener example
+        Assert.Contains("REACTIONS, NOT JUDGEMENT", prompt);
+        Assert.Contains("SPELLING AUTHORITY", prompt);
+        Assert.Contains("NEVER output \"Speaker 1\"", prompt);
+        Assert.Contains("A decision CLOSES an option", prompt);
+
+        // V8's grounding, thin-transcript clamp, and proper-noun tag rule are carried forward.
+        Assert.Contains("GROUNDING COMES FIRST", prompt);
+        Assert.Contains("THIN TRANSCRIPT", prompt);
+        Assert.Contains("Emit ONLY proper nouns", prompt);
+        Assert.Contains("an empty list is the correct answer", prompt);
+
+        // No new output fields in this slice (openQuestions/notableQuotes are MPI-9b).
+        Assert.DoesNotContain("openQuestions", prompt);
+        Assert.DoesNotContain("notableQuotes", prompt);
+        Assert.DoesNotContain("\"instructionResponses\": [{", prompt);
+        Assert.Equal("analysis@v9", PromptCatalog.V9.Version);
+
+        // The inline /ai instruction path is preserved from V8.
+        var withInstructions = plain with { Instructions = ["draft a thank-you email"] };
+        var instructed = PromptCatalog.V9.Build(withInstructions);
+        Assert.Contains("draft a thank-you email", instructed);
+        Assert.Contains("\"instructionResponses\"", instructed);
+        Assert.Contains("SUBJECT-FIRST", instructed);
+        Assert.Contains("UNCHANGED by the instructions", instructed);
     }
 
     [Fact]
