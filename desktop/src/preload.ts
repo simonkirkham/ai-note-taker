@@ -1,8 +1,41 @@
-import { contextBridge } from 'electron'
+import { contextBridge, ipcRenderer } from 'electron'
+import type { WhisperSegment } from './whisperParse'
 
-// Minimal, sandbox-safe bridge. Exposes only a desktop marker so the frontend
-// can feature-detect the shell later (e.g. 31-B). No Node, no IPC surface yet.
+// 48-A — extend the sandbox-safe bridge with a local-transcription surface. The renderer
+// streams PCM to the main process (which runs whisper-cli) and receives parsed segments back.
+// Only ipcRenderer is used here (sandbox: true) — no Node. Contract mirrors phase-48.md:151.
+
+export type LocalStatus = { modelReady: boolean; downloading: boolean; progress: number }
+
 contextBridge.exposeInMainWorld('desktop', {
   isDesktop: true,
   platform: process.platform,
+  local: {
+    // Ask the main process to background-download models (idempotent). Called when the user
+    // selects local mode, so cloud-only users never pull the weights.
+    prepare: (): void => ipcRenderer.send('local:prepare'),
+    // Current model-provisioning state.
+    getStatus: (): Promise<LocalStatus> => ipcRenderer.invoke('local:status'),
+    onStatus: (cb: (s: LocalStatus) => void) => {
+      const h = (_e: unknown, s: LocalStatus) => cb(s)
+      ipcRenderer.on('local:status', h)
+      return () => ipcRenderer.removeListener('local:status', h)
+    },
+    // Begin a recording's local transcription session (one at a time).
+    start: (): Promise<void> => ipcRenderer.invoke('local:start'),
+    // Stream captured 16-bit PCM (transferred as an ArrayBuffer).
+    pushPcm: (pcm: ArrayBuffer): void => ipcRenderer.send('local:pcm', pcm),
+    // Flush the tail and wait for all windows to finish; resolves before commit.
+    finish: (): Promise<void> => ipcRenderer.invoke('local:finish'),
+    onSegments: (cb: (segs: WhisperSegment[]) => void) => {
+      const h = (_e: unknown, segs: WhisperSegment[]) => cb(segs)
+      ipcRenderer.on('local:segments', h)
+      return () => ipcRenderer.removeListener('local:segments', h)
+    },
+    onError: (cb: (message: string) => void) => {
+      const h = (_e: unknown, message: string) => cb(message)
+      ipcRenderer.on('local:error', h)
+      return () => ipcRenderer.removeListener('local:error', h)
+    },
+  },
 })

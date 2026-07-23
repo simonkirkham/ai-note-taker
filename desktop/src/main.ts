@@ -3,6 +3,7 @@ import { existsSync, readFileSync } from 'node:fs'
 import path from 'node:path'
 import { startBundleServer } from './server'
 import { pickDisplayMediaResponse } from './displayMedia'
+import { registerLocalTranscription } from './localTranscriptionIpc'
 
 // Phase 31-A — Windows bundle-shell.
 // Serve the compiled web/ frontend from a localhost loopback origin and proxy
@@ -15,6 +16,9 @@ import { pickDisplayMediaResponse } from './displayMedia'
 const PORT = 5180 // MUST match the http://localhost:5180 redirect URI registered in Google Cloud Console
 const PROD_ORIGIN = 'https://note-taker-ai.com'
 const WEB_DIST = path.join(__dirname, '..', 'web-dist') // __dirname = desktop/dist → desktop/web-dist
+
+// Current window, for the main process to push local-transcription events to the renderer.
+let mainWindow: BrowserWindow | null = null
 
 function createWindow(): void {
   const win = new BrowserWindow({
@@ -38,6 +42,10 @@ function createWindow(): void {
     if (!allowed) event.preventDefault()
   })
 
+  win.on('closed', () => {
+    if (mainWindow === win) mainWindow = null
+  })
+  mainWindow = win
   void win.loadURL(`http://localhost:${PORT}/`)
 }
 
@@ -81,6 +89,11 @@ function logBuildSha(): void {
 void app.whenReady().then(async () => {
   await startBundleServer(PORT, PROD_ORIGIN, WEB_DIST)
   registerDisplayMediaHandler()
+  registerLocalTranscription({
+    userDataDir: app.getPath('userData'),
+    resourcesPath: process.resourcesPath,
+    getWindow: () => mainWindow,
+  })
   logBuildSha()
   createWindow()
   app.on('activate', () => {

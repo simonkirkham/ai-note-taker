@@ -5,3 +5,8 @@ out/
 release/
 test-results/
 playwright-report/
+resources/whisper/*.exe
+resources/whisper/*.dll
+resources/whisper/*.so
+.whisper-bin/
+.whisper-bin.zip

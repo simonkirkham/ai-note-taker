@@ -10,6 +10,12 @@
     "web-dist/**/*",
     "package.json"
   ],
+  "extraResources": [
+    {
+      "from": "resources/whisper",
+      "to": "whisper"
+    }
+  ],
   "asar": true,
   "win": {
     "target": [
