@@ -3,6 +3,7 @@ import { presignRecordingUpload, saveRecording } from '../api/recordings';
 import { completeTranscription, getTranscriptionCredentials, saveTranscriptionDraft, startDiarization } from '../api/transcription';
 import { PcmChunker } from './pcm';
 import { SpeakerTranscript } from './speakerSegments';
+import { readStoredKeepAudioLocal } from './useKeepAudioLocal';
 import { readStoredMode } from './useTranscriptionMode';
 import { encodeWav } from './wav';
 
@@ -602,10 +603,10 @@ export function useTranscription(noteId: string): UseTranscriptionResult {
     void (async () => {
       if (localActiveRef.current) {
         localActiveRef.current = false;
-        // Persist the audio NOW — the WAV upload is independent of the transcript text, and the
-        // final/diarization pass can run for minutes; don't let a crash during finalising lose it.
         // 48-C: local mode archives the WAV but diarizes on-device — no cloud batch job (pass false).
-        uploadRecording(false);
+        // 48-E: unless "keep recordings on this device only" is on (default), in which case the audio
+        // never leaves the machine — skip the upload entirely. Transcript + analysis still happen.
+        if (!readStoredKeepAudioLocal()) uploadRecording(false);
         setStatus('finalising');
         try {
           let finalText: string | null = null;
