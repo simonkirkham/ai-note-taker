@@ -20,7 +20,7 @@
 | MPI-6 | Improve note tags — reword the prompt to ask for fewer, sharper tags (tagging is the AI's weakest output: 0.53–0.72 vs 0.85+ elsewhere) | Done (`run-286900`) — `analysis@v6` ships; tags +0.125 mean, Quality +0.028, no regression | MPI-2 |
 | MPI-7 | `analysis@v7` — execute inline `/ai` instructions (Phase 29-A). Neutral-by-construction: no separate eval run | Done — ships (no eval run; see below) | MPI-6, Phase 29-A |
 | MPI-8 | `analysis@v8` — narrow tags to **proper nouns only** (named orgs/clients, the person a meeting is ABOUT, named products/projects); always-tag the named org for consistency; drop meeting-types + topic keywords. Gold tags re-cut to the new bar | Done (`run-83741`) — `analysis@v8` ships; atomic tag F1 +0.49 to +0.63 per model, precision 3–7×, tags/note ~2.7→~1.1, no regression | MPI-6 |
-| MPI-9 | `analysis@v9` — capture notes the way the user does: subject-first facts (ban "The team discussed X"), the user's note as the spelling/vocabulary authority, add `openQuestions` + `notableQuotes` fields, tighten `decisions` (a decision closes an option) + dedup, and name speakers instead of "Speaker N". From the 2026-07-23 manual-vs-generated corpus review | Not Started | MPI-8, MPI-10, Phase 29-A |
+| MPI-9 | `analysis@v9` — "longer but terser": denser subject-first fact capture (current-state-first, headers+nested bullets, no filler; ban "The team discussed X") as the #1 lever, plus name speakers, a learned per-workspace spelling vocabulary, flag reactions (not judgement), `notableQuotes` + user-authored `openQuestions`, and `decisions`-closes-an-option + dedup. From the 2026-07-23 corpus review + user priorities | Not Started | MPI-8, MPI-10, Phase 29-A |
 | MPI-10 | Eval fixtures from the real corpus — add 3–4 long, multi-party, anonymous-speaker, jargon-dense fixtures with the user's own note as gold, plus a "matches the user's style" judge dimension. Gates measuring MPI-9 | Not Started | 10-G |
 
 Further items are appended as each eval run surfaces the next weakest dimension. The `eval-run` skill proposes them (see [How items are added](#how-items-are-added)).
@@ -261,41 +261,50 @@ So v4 must chase **depth where the source supports it and restraint where it doe
 
 **Status:** Not Started — from the 2026-07-23 manual-vs-generated corpus review (40 notes, 2026-07-02→07-22; 12 had generated content to compare against the user's own).
 
-**Proposal:** Rewrite the analysis prompt so a generated note reads like the user's own — subject-first facts, the user's spelling, named speakers, open questions and verbatim quotes preserved — instead of neutral third-party minutes.
+**Proposal:** Rewrite the analysis prompt to capture the way the user writes — **longer but terser: maximum coverage of facts, minimum words, no filler, structured with headers + bullets** — subject-first factual bullets, the user's spelling, named speakers.
 
-**The root cause (one sentence):** the user's note and the generated note answer different questions — the user's answers *"what do I now know, think, and need to chase?"*; `analysis@v8` answers *"what happened in this meeting?"* and is optimised for faithful minutes, which the user does not write.
+**The user's north star (2026-07-23 feedback):** *"Longer but terser is exactly what I am going for. I want more coverage of topics and facts but with less words. I don't need filler. Structuring them with headers/bullets helps keep them dense."* The goal is **not** better prose — it is denser fact capture. The user's own note is the gold standard (avg 255 words, 40 lines, **63% of lines bulleted**; the generated note is ~30 words of prose + ~6 flat bullets, and its length is *uncorrelated* with how much the user wrote — 366-word note → 12-word summary; 21-word note → 17 padded bullets).
 
-**Why it's worth doing** — every gap below is evidenced in the 12 compared pairs:
-- **"The team discussed X" boilerplate.** Bullets open with the meeting/the team as subject (`5c414838`: 6/6 bullets); the user writes the fact subject-first ("Teams in Value Streams own Core and Mobius", "7 ADMs to 5", "£50 per day").
-- **Anonymous speakers.** Diarization emits "Speaker 1/Speaker 2"; the user attributes by name ("Jennifer — not bought in"; "Craig — no clear view of what fits each team"). Without names the notes lose their point.
-- **The note is ignored as the vocabulary source.** v8 says *"DO NOT edit, rewrite, or reproduce it"*, which the model reads as *ignore it* → domain terms mis-spelled/invented (Sofija→Sophia, Crosslake→Cross Lake, TDM→"Technical Debt Managers", BCPL→Monarch).
-- **Open questions and verbatim quotes are dropped.** The schema has nowhere to put either; the user captures both ("Is Tech Lead now responsible?"; "A little bit of stay in your lane").
-- **`decisions` is malformed.** Duplicates `discussionPoints` (`e58e3aa0`: 3 "decisions" are the same 3 sentences reworded), or lists open questions as decisions (`ab0a4b1c`: "Determine the status of…"). Exact-duplicate bullets appear (`b0f4c248`: 6 of 17).
-- **Judgement sanitised out.** The user's read ("Feels like a trap"; "danger this is being done to teams not by them") flattens to neutral prose. **Not** fixed by asking the model to editorialise — preserving verbatim quotes recovers most of the value without inventing opinions.
+**The change (prompt-level `analysis@v9`, measured against MPI-10 fixtures), in the user's priority order:**
+1. **Subject-first factual bullets — the #1 lever (user: "the most important in my eyes").** Every bullet starts with the subject of the fact — a person, a system, a number. Banned openers: "The team", "The meeting", "There is a need to", "focusing on". Prefer short fragments over sentences; drop filler verbs/connectives. Include a ✗/✓ contrast pair. Evidence: `5c414838` opened 6/6 bullets with "The team discussed…"; the user writes "Teams in Value Streams own Core and Mobius", "7 ADMs to 5", "£50 per day".
+   - **Capture current state, then options.** Meetings discuss the current state before moving into options; capture that current-state/factual layer as fully as possible in short facts — this is where coverage matters most.
+   - **Structure for density.** Group facts under short headers with nested bullets (not one flat list), mirroring how the user structures notes.
+   - **Length tracks the source.** Coverage scales with how much substance the transcript holds — never pad a thin meeting, never compress a dense one to a sentence.
+2. **Name speakers (high value).** Never emit "Speaker N"; map speakers to names where the transcript makes them unambiguous (self-intros, being addressed); leave the rest "unknown". The **data half** — calendar attendee list into the analysis input + reliable diarization — is a dependency (see *Depends on*), so naming quality is capped until attendees are wired in.
+3. **The user's note + workspace vocabulary is the spelling authority.** Replace v8's *"DO NOT edit, rewrite, or reproduce it"* (the model reads it as *ignore it*): spell every person/company/product/acronym exactly as the note spells it; note wins over transcript on conflict; never expand an acronym the note leaves unexpanded. Fixed misspellings like Sofija→Sophia, Crosslake→Cross Lake, TDM→"Technical Debt Managers", BCPL→Monarch. Fed by a **learned per-workspace vocabulary** (see the vocabulary sub-item below).
+4. **Flag reactions, not judgement (user: "my judgement so no need for AI — but flag people's reactions").** Do **not** editorialise or infer opinions. Do capture *observable* reactions grounded in the transcript — "Jennifer pushed back", "Craig unconvinced", agreement/disagreement/hesitation — as facts, attributed.
+5. **Notable quotes where useful (user: "good where useful… hard for AI but let's try").** A `notableQuotes` field, verbatim + who said it, used with **restraint** — only genuinely notable lines, never a quota. Recovers judgement value without inventing opinions.
+6. **`decisions` defined properly + dedup.** A decision closes an option: names what was chosen and, where stated, who; nothing closed → empty list. Add "no two bullets may state the same fact" across `decisions`/`discussionPoints`. Evidence: `e58e3aa0` (3 "decisions" = same 3 sentences reworded), `ab0a4b1c` ("decisions" that are open questions), `b0f4c248` (6 of 17 duplicate bullets).
+7. **`openQuestions` — a field the USER authors (user: "I expect to add these mostly — it's my interpretation").** Add the field for manual capture; the AI may surface only questions *explicitly asked and left hanging* in the transcript, and must never invent them. Low AI effort — this is primarily a place for the user to add their own questions.
 
-**The change (prompt-level `analysis@v9`, measured against MPI-10 fixtures):**
-1. **Subject-first rule + rewrite pair.** Every bullet starts with the subject of the fact — a person, a system, a number. Banned openers: "The team", "The meeting", "There is a need to". Include a ✗/✓ contrast pair in the prompt.
-2. **Note is the vocabulary authority.** Replace the "do not reproduce" wording with: spell every person, company, product and acronym exactly as the note spells it; the note wins over the transcript on any conflict; never expand an acronym the note leaves unexpanded. Feed the OGI-workspace **Glossary** note in as a workspace entity list where present.
-3. **Two new output fields** — `openQuestions` (grounded: questions actually asked or left hanging, never invented) and `notableQuotes` (verbatim + who said it). Additive to the structured output.
-4. **`decisions` defined properly** — a decision closes an option: names what was chosen and, where stated, who; nothing closed → empty list. Add an explicit "no two bullets may state the same fact" dedup rule (applies across `decisions` and `discussionPoints`).
-5. **Speaker naming (prompt half).** Never emit "Speaker N"; map speakers to names where the transcript makes them unambiguous (self-intros, being addressed); leave the rest "unknown". The **data half** — passing the calendar attendee list into the analysis input, and reliable diarization — is a dependency (see *Depends on*), so v9's naming quality is capped until attendees are wired in.
+**Dropped from v9 vs the original filing:** facilitator/coaching feedback (user: "don't worry about feedback too much — that's my judgement"). The coaching angle moves entirely to the deprioritised note-lens feature.
 
-**Cost:** Prompt-string rewrite + schema fields + one eval run — but only measurable once MPI-10 fixtures exist (current fixtures are short, single-party, named-speaker; none exercise the failure modes above). Deploy-time impact: **neutral** (prompt + additive schema fields). Adding `openQuestions`/`notableQuotes` is additive to `AnalysisResult` and its projections — no event-shape change.
+#### Learned per-workspace vocabulary (feeds change 3)
+The user asked for ideas on how the AI learns domain spellings. Cheapest-first:
+- **Seed from the user's Glossary note** (already maintained in OGI) — feed verbatim as the canonical spelling list.
+- **Mine the user's own note bodies** — a workspace projection accumulates proper nouns (names/companies/products/acronyms) from *the user's* notes (not transcripts) with frequency + the user's spelling as canonical; feed the top ~50 into each analysis prompt as "known vocabulary — use exactly these spellings". Self-reinforcing.
+- **Calendar attendees → canonical people spellings.**
+- **Learn from corrections** *(bigger, later)* — when the user edits a generated name (Cross Lake→Crosslake), capture the pair as a vocabulary correction.
+
+The first three are prompt-input + one projection; the last is a feature. Speaker naming (change 2) and this vocabulary share the calendar-attendees plumbing.
+
+**Cost:** Prompt-string rewrite + `openQuestions`/`notableQuotes` schema fields + a workspace-vocabulary projection + one eval run — only measurable once MPI-10 fixtures exist. Deploy-time impact: **neutral** for the prompt; the vocabulary projection is a new read model (ships empty → needs a backfill). New fields are additive to `AnalysisResult` — no event-shape change.
 
 **Commands in scope:** none · **Events in scope:** none (re-analysis re-runs the prompt; new fields flow through the existing analysis-completed path)
 
 ### Scope
-- `PromptCatalog.V9` (`analysis@v9`) — v8 body plus the five changes above; `Current → V9` only if it wins on the MPI-10 fixtures with no regression on the existing 22.
-- Extend the analysis structured output with `openQuestions: string[]` and `notableQuotes: {quote, speaker}[]`; surface them in `AnalysisResult`, the note-detail view/projection, and the note UI.
-- Feed workspace glossary + calendar attendees into the prompt input where available (attendees may land as a dependency slice first).
-- Compare via the harness: `Prompts = [V8, V9]`, on the MPI-10 corpus + the existing keep-set; target subject-first / naming / spelling / decisions-dedup improving with no drop on tags/actions/faithfulness.
+- `PromptCatalog.V9` (`analysis@v9`) — v8 body plus changes 1–7 above; `Current → V9` only if it wins on the MPI-10 fixtures with no regression on the existing 22. Emphasis order: subject-first density (1) first, then naming (2) and vocabulary (3).
+- Extend the analysis structured output with `openQuestions: string[]` and `notableQuotes: {quote, speaker}[]`; add a `reactions`/attribution treatment inside discussion capture; surface them in `AnalysisResult`, the note-detail view/projection (**both** stores), and the note UI.
+- Workspace-vocabulary source: glossary note + a proper-noun projection over the user's own notes + calendar attendees, fed into the prompt input (may land as a dependency slice first; ships empty → backfill).
+- Compare via the harness: `Prompts = [V8, V9]`, on the MPI-10 corpus + the existing keep-set; target denser subject-first coverage / naming / spelling / decisions-dedup improving with no drop on tags/actions/faithfulness.
 
-- [ ] `analysis@v9` written; subject-first rule, note-as-vocabulary-authority, decisions-closes-an-option + dedup, speaker-naming (prompt half) all present with ✗/✓ examples
-- [ ] `openQuestions` + `notableQuotes` added to the output schema, projections (both stores), and UI
-- [ ] Beats v8 on the MPI-10 corpus (subject-first, spelling fidelity, decisions well-formed, no duplicate bullets) with no regression on the existing 22 fixtures
+- [ ] `analysis@v9` written; subject-first density rule (short facts, current-state-first, headers+nested bullets, no filler, length-tracks-source), speaker-naming, note+vocabulary spelling authority, reactions-not-judgement, decisions-closes-an-option + dedup — all present with ✗/✓ examples
+- [ ] `openQuestions` (user-authored) + `notableQuotes` added to the output schema, projections (both stores), and UI
+- [ ] Learned per-workspace vocabulary wired into the prompt input (glossary + own-note proper nouns + attendees)
+- [ ] Beats v8 on the MPI-10 corpus (denser fact coverage, fewer words, subject-first, spelling fidelity, decisions well-formed, no duplicate bullets) with no regression on the existing 22 fixtures
 - [ ] Decision recorded in `docs/eval-runs/` + `test-matrix.md` updated
 
-**Depends on:** MPI-8 (`analysis@v8` — the prompt v9 edits), **MPI-10** (fixtures — nothing here is measurable without them), Phase 29-A (`/ai` inline-instruction path preserved). Speaker *naming quality* additionally depends on calendar-attendees-into-analysis plumbing and diarization (see the diarization spike).
+**Depends on:** MPI-8 (`analysis@v8` — the prompt v9 edits), **MPI-10** (fixtures — nothing here is measurable without them), Phase 29-A (`/ai` inline-instruction path preserved). Speaker naming + learned vocabulary additionally depend on calendar-attendees-into-analysis plumbing and diarization (see the diarization spike).
 
 ---
 
@@ -307,11 +316,11 @@ So v4 must chase **depth where the source supports it and restraint where it doe
 
 **Why it's worth doing:**
 - None of the current 22 fixtures are 60-minute, multi-party, anonymous-speaker, or jargon-dense — the exact shape of the user's real notes. Every MPI-9 claim (subject-first, spelling fidelity, decisions-dedup, naming) is **unmeasurable** against them.
-- The current gold notes are model-friendly minutes; the user's gold is subject-first facts with judgement and open questions. Scoring MPI-9 against minutes-shaped gold would report a false regression, exactly as MPI-8 needed its gold tags re-cut first.
+- The current gold notes are model-friendly minutes; the user's gold is dense, subject-first fact capture. Scoring MPI-9 against minutes-shaped gold would report a false regression, exactly as MPI-8 needed its gold tags re-cut first.
 
 **The change:**
 - Add 3–4 fixtures from real transcripts/notes (anonymise names/companies as the existing fixtures do), each with the user's own note as `expected`.
-- Add a Quality judge dimension — "matches the user's style" — scoring subject-first phrasing, name attribution, preserved open questions/quotes, and correct spelling of domain terms.
+- Add a Quality judge dimension — "matches the user's style" — scoring **fact coverage per word** (longer-but-terser: many facts, few words, no filler), subject-first phrasing, name attribution, and correct spelling of domain terms.
 - Update `test-matrix.md` to record the enlarged corpus.
 
 **Cost:** Fixture authoring + one judge-prompt addition. No prompt/model ships from this item — it is pure measurement infrastructure that MPI-9 consumes. Deploy-time impact: **none** (offline harness only).

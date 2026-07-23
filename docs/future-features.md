@@ -185,9 +185,11 @@ _(Folder administration via the MCP graduated to **[Phase 47](phases/phase-47.md
 
 ## Per-note analysis "lens" (Minutes / Coaching feedback / 1:1)
 
+**Priority: low / parked** — on 2026-07-23 the user deprioritised the coaching-feedback driver ("don't worry about feedback too much — that's my judgement"). The facilitator-coaching case that motivated this is something the user prefers to write themselves, so the lens's main pull is gone. Kept as a register entry, not scheduled.
+
 **What:** Let a note be analysed through a chosen **lens** instead of the single "faithful minutes" prompt that every note gets today. A lens is a different prompt + output shape: **Minutes** (today's behaviour), **Coaching feedback** (feedback on a facilitator — energy, pacing, technique — not the workshop *content*), **1:1**, etc. Selectable per note, or defaulted per calendar series so a recurring meeting always uses the right lens.
 
-**Why it matters (evidence):** In the 2026-07-23 manual-vs-generated corpus review, the user's single most common recorded meeting type was *observing someone else facilitate* — 7 of the compared notes were **entirely** coaching feedback on the facilitator (Steven/Tracey/Risto/Paul: "Use a timer for post-its", pacing, energy). The current prompt summarised the workshop content instead — a **100% miss** on those notes (`ceb2f50d`, `3e697d11`). No amount of prompt tuning to the minutes prompt fixes this; the note needs a structurally different output.
+**Why it was raised (evidence):** In the 2026-07-23 manual-vs-generated corpus review, the user's single most common recorded meeting type was *observing someone else facilitate* — 7 of the compared notes were **entirely** coaching feedback on the facilitator (Steven/Tracey/Risto/Paul: "Use a timer for post-its", pacing, energy). The current prompt summarised the workshop content instead — a **100% miss** on those notes (`ceb2f50d`, `3e697d11`). A structurally different output would capture them — but the user would rather author that judgement manually, hence the low priority.
 
 **Scope to design when broken down:**
 - The lens set and each lens's prompt + output schema (Minutes reuses `analysis@vN`; Coaching feedback and 1:1 are new shapes).
