@@ -104,6 +104,17 @@ For a 1:1 call in local mode, the mic ("Me") and system audio ("Them") are captu
 | 5 | **Graceful fallback:** Given the VAD model hasn't downloaded, When I stop a 1:1 local recording, Then it falls back to the single-stream transcript (no error, no cloud diarize). | ☐ |
 | 6 | **Mic-only unaffected:** Given local mode with **no** call audio, When I record + stop, Then the single-stream local transcript is saved (no diarization needed) and no cloud diarize runs. | ☐ |
 
+## 48-E — keep recordings on this device only
+
+A desktop setting (sidebar footer, default **on** — privacy-first). With it on, a locally-transcribed meeting uploads **no** audio to S3 — only the transcript is stored. Off = uploads as before. Only affects local-mode recordings; cloud transcription still uploads (ignores the setting).
+
+| # | Given / When / Then | Pass? |
+|---|---------------------|-------|
+| 1 | **Audio stays on-device:** Given the setting is on and Transcription = On device, When I record + stop, Then **no** `…/recording/presign-upload` request is made (DevTools Network) and the note still has its transcript + analysis. | ☐ |
+| 2 | **No download affordance:** Given a kept-local recording, Then the note shows no "Download recording" link (nothing was uploaded). | ☐ |
+| 3 | **Opt back into upload:** Given the setting is off, When I record locally + stop, Then the audio uploads as before and the recording is downloadable. | ☐ |
+| 4 | **Cloud unaffected:** Given Transcription = Cloud, When I record, Then the WAV uploads regardless of this setting (cloud needs it). | ☐ |
+
 ## Troubleshooting
 
 - **`Error 400: redirect_uri_mismatch` immediately after adding `http://localhost:5180`** — the value is correct (`redirect_uri = window.location.origin = http://localhost:5180`: no trailing slash, `localhost` not `127.0.0.1`, port `5180`, `http` not `https`). The cause is **Google propagation lag** — a freshly added+saved redirect URI is not live immediately; it can take **~5 min to a few hours**. Confirm the running app's `window.location.origin` (DevTools console) reads exactly `http://localhost:5180`, then wait and retry. **No code change.** Hit and confirmed 2026-06-22: config was right on the first attempt; the URI simply had not propagated.

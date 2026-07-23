@@ -4,6 +4,7 @@ import { FolderNode } from "../api/folders";
 import { UNFILED_ID } from "../constants";
 import FolderTree from "./FolderTree";
 import folderTreeStyles from "./FolderTree.module.css";
+import KeepAudioLocalToggle from "./KeepAudioLocalToggle";
 import styles from "./Sidebar.module.css";
 import ThemePicker from "./ThemePicker";
 import TranscriptionModeToggle from "./TranscriptionModeToggle";
@@ -160,6 +161,7 @@ export default function Sidebar({
       </div>
       <div className={styles.sidebarFooter}>
         <TranscriptionModeToggle />
+        <KeepAudioLocalToggle />
         <ThemePicker />
         {onSignOut && (
           <button
