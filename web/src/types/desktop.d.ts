@@ -20,6 +20,10 @@ export interface DesktopBridge {
     pushPcm(pcm: ArrayBuffer): void;
     // Resolves with the higher-quality final-pass transcript (or null → keep the live text).
     finish(): Promise<string | null>;
+    // 48-C: diarize a 1:1 call from separate mic/loopback recordings → Me/Them transcript (or null).
+    diarize(me: ArrayBuffer, them: ArrayBuffer): Promise<string | null>;
+    // 48-C: drop the live session without its final pass (diarization produced the transcript).
+    discard(): void;
     onSegments(cb: (segs: LocalWhisperSegment[]) => void): () => void;
     onError(cb: (message: string) => void): () => void;
   };

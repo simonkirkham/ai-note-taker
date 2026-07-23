@@ -5,8 +5,8 @@
 import { ipcMain, type BrowserWindow } from 'electron'
 import { existsSync } from 'node:fs'
 import path from 'node:path'
-import { LocalTranscriptionSession } from './localTranscription'
-import { ensureModels, modelsDir, whisperBinPath, finalModelFile, MANIFEST } from './modelStore'
+import { LocalTranscriptionSession, diarizeStreams } from './localTranscription'
+import { ensureModels, modelsDir, whisperBinPath, finalModelFile, vadModelFile, MANIFEST } from './modelStore'
 import { isLive } from './models'
 import type { LocalStatus } from './preload'
 
@@ -73,6 +73,12 @@ export function registerLocalTranscription(deps: Deps): void {
     session?.pushPcm(Buffer.from(pcm))
   })
 
+  // 48-C: drop the live (mixed) session without running its single-stream final pass — used when
+  // source-separation diarization produced the transcript instead. Releases the retained audio.
+  ipcMain.on('local:discard', () => {
+    session = null
+  })
+
   // Flush the live tail, then run the higher-quality final pass (48-B). Returns the final
   // transcript text (or null → renderer keeps the live text). Runs before the renderer commits.
   ipcMain.handle('local:finish', async (): Promise<string | null> => {
@@ -84,6 +90,34 @@ export function registerLocalTranscription(deps: Deps): void {
       return await s.runFinalPass()
     } catch (err) {
       console.error('[desktop] final pass failed; keeping live transcript:', (err as Error).message)
+      return null
+    }
+  })
+
+  // 48-C — 1:1 diarization by source separation. The renderer sends the separate mic ("me") and
+  // loopback ("them") recordings; transcribe each with VAD and interleave into a Me/Them transcript.
+  // Stateless (independent of the live session). Returns null when VAD/models are missing or there
+  // is no speech → the renderer keeps the single-stream transcript.
+  ipcMain.handle('local:diarize', async (_e, me: ArrayBuffer, them: ArrayBuffer): Promise<string | null> => {
+    const dir = modelsDir(deps.userDataDir)
+    const binPath = whisperBinPath(deps.resourcesPath)
+    const liveSpec = MANIFEST.models.find(isLive)
+    if (!liveSpec || !existsSync(binPath)) return null
+    const modelPath = path.join(dir, liveSpec.file)
+    const finalPath = finalModelFile() ? path.join(dir, finalModelFile()) : ''
+    const vadPath = vadModelFile() ? path.join(dir, vadModelFile()) : ''
+    // VAD is mandatory for source separation; without it, fall back to the single-stream path.
+    if (!vadPath || !existsSync(vadPath)) return null
+    if (!existsSync(modelPath)) return null
+    try {
+      return await diarizeStreams(Buffer.from(me), Buffer.from(them), {
+        binPath,
+        modelPath,
+        finalModelPath: finalPath && existsSync(finalPath) ? finalPath : undefined,
+        vadModelPath: vadPath,
+      })
+    } catch (err) {
+      console.error('[desktop] diarization failed; keeping single-stream transcript:', (err as Error).message)
       return null
     }
   })

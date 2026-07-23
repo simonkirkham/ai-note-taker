@@ -91,6 +91,19 @@ With local transcription on, the live transcript uses the fast `base.en`; on sto
 | 3 | **Final pass keeps up:** Given a recording of length N, When the final pass runs, Then it finishes in less than N and the note is not stuck "Finalising". | ☐ |
 | 4 | **Graceful degrade:** Given `medium.en` has not finished downloading, When I stop a local recording, Then the live `base.en` text is committed (no error, no indefinite wait). | ☐ |
 
+## 48-C — 1:1 who-said-what (source separation)
+
+For a 1:1 call in local mode, the mic ("Me") and system audio ("Them") are captured separately, transcribed on-device with VAD, and interleaved into a `Me:`/`Them:` transcript — replacing the cloud diarization. Structurally exactly 2 speakers (two physical channels). Needs the `silero-vad` model (865 KB, downloads after `base.en`).
+
+| # | Given / When / Then | Pass? |
+|---|---------------------|-------|
+| 1 | **Exactly Me/Them for a 1:1:** Given local mode + a 1:1 call (system audio captured), When I stop, Then the saved transcript is labelled `Me:` / `Them:` with **exactly two** speakers — never a spurious third (the cloud-diarization symptom this fixes). | ☐ |
+| 2 | **No cloud diarization request:** Given local mode, When I stop, Then no `…/transcription/diarize` call is made (DevTools Network) — diarization is on-device; the note is **not** re-refined by the server. | ☐ |
+| 3 | **Attribution is reasonable:** Given a natural back-and-forth, Then turns are attributed to the right side (mic vs. system), with errors only on short overlaps. | ☐ |
+| 4 | **Quiet side isn't fabricated:** Given long stretches where only one person talks, Then the silent side contributes no invented/looped text (VAD working). | ☐ |
+| 5 | **Graceful fallback:** Given the VAD model hasn't downloaded, When I stop a 1:1 local recording, Then it falls back to the single-stream transcript (no error, no cloud diarize). | ☐ |
+| 6 | **Mic-only unaffected:** Given local mode with **no** call audio, When I record + stop, Then the single-stream local transcript is saved (no diarization needed) and no cloud diarize runs. | ☐ |
+
 ## Troubleshooting
 
 - **`Error 400: redirect_uri_mismatch` immediately after adding `http://localhost:5180`** — the value is correct (`redirect_uri = window.location.origin = http://localhost:5180`: no trailing slash, `localhost` not `127.0.0.1`, port `5180`, `http` not `https`). The cause is **Google propagation lag** — a freshly added+saved redirect URI is not live immediately; it can take **~5 min to a few hours**. Confirm the running app's `window.location.origin` (DevTools console) reads exactly `http://localhost:5180`, then wait and retry. **No code change.** Hit and confirmed 2026-06-22: config was right on the first attempt; the URI simply had not propagated.

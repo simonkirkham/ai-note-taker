@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test'
 import { readFileSync } from 'node:fs'
-import { LocalTranscriptionSession, transcribeWindow, encodeWav } from '../src/localTranscription'
+import { LocalTranscriptionSession, transcribeWindow, encodeWav, diarizeStreams } from '../src/localTranscription'
 import type { WhisperSegment } from '../src/whisperParse'
 
 // 48-A — end-to-end proof of the local engine against a REAL whisper-cli binary + model.
@@ -11,6 +11,7 @@ import type { WhisperSegment } from '../src/whisperParse'
 const BIN = process.env.WHISPER_TEST_BIN
 const MODEL = process.env.WHISPER_TEST_MODEL
 const WAV = process.env.WHISPER_TEST_WAV
+const VAD = process.env.WHISPER_TEST_VAD // 48-C: silero VAD model
 const ready = Boolean(BIN && MODEL && WAV)
 
 // Read 16 kHz mono 16-bit PCM out of a WAV (skip the 44-byte header).
@@ -84,5 +85,28 @@ test.describe('real whisper-cli', () => {
     session.pushPcm(pcmFromWav(WAV!).subarray(0, 16000 * 2 * 3))
     await session.finish()
     expect(await session.runFinalPass()).toBeNull()
+  })
+})
+
+// 48-C — source-separation diarization against the real binary + VAD model. Uses two different
+// slices of the meeting as the "me" and "them" streams (real 2-channel capture is manual-Windows).
+test.describe('real whisper-cli diarization (48-C)', () => {
+  test.skip(!(ready && VAD), 'set WHISPER_TEST_VAD (+ the others) to run')
+
+  test('diarizeStreams merges two streams into a Me/Them transcript', async () => {
+    const pcm = pcmFromWav(WAV!)
+    const me = pcm.subarray(0, 16000 * 2 * 10) // 0–10 s
+    const them = pcm.subarray(16000 * 2 * 10, 16000 * 2 * 20) // 10–20 s
+    const text = await diarizeStreams(me, them, { binPath: BIN!, modelPath: MODEL!, vadModelPath: VAD!, threads: 8 })
+    expect(text).not.toBeNull()
+    expect(text!).toMatch(/^(Me|Them): /m) // at least one labelled line
+    expect(text!).toContain('Me:')
+    expect(text!).toContain('Them:')
+  })
+
+  test('diarizeStreams returns null without a VAD model (VAD is mandatory)', async () => {
+    const me = pcmFromWav(WAV!).subarray(0, 16000 * 2 * 3)
+    const text = await diarizeStreams(me, Buffer.alloc(0), { binPath: BIN!, modelPath: MODEL!, threads: 8 })
+    expect(text).toBeNull()
   })
 })
