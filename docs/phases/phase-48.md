@@ -1,4 +1,4 @@
-# Phase 48 — Local on-device transcription & diarization _(In Progress — 48-A, 48-B done 2026-07-23)_
+# Phase 48 — Local on-device transcription & diarization _(In Progress — 48-A, 48-B, 48-C done 2026-07-23)_
 
 **Goal:** Record a meeting in the desktop app and get the live transcript, the final transcript, and speaker labels produced entirely on your machine — no per-minute cloud transcription or diarization cost.
 
@@ -8,7 +8,7 @@
 |-------|--------------------|--------|------------|
 | 48-A | A desktop setting to transcribe locally; recording shows a live transcript with no cloud transcription cost | Done _(#400, deploy #703; installer `desktop-latest`)_ | — |
 | 48-B | The saved transcript is upgraded to higher quality on stop | Done _(#401, deploy 213d8f3c)_ | 48-A |
-| 48-C | 1:1 calls show who said what (me vs. the other person), computed on-device | Not Started | 48-A |
+| 48-C | 1:1 calls show who said what (me vs. the other person), computed on-device | Done _(#402, deploy 0e8f4645)_ | 48-A |
 | 48-D | Group calls show who said what across all remote speakers, computed on-device | Not Started | 48-C |
 | 48-E | A setting to keep meeting audio fully on your machine (no upload) | Not Started | 48-A |
 
@@ -174,10 +174,12 @@ Scenario: Opt back into upload
 - **Still pending (manual-on-Windows, `MANUAL-VERIFICATION.md §48-B`):** real `medium.en` quality uplift + final-pass latency (final ≤ recording length) + graceful degrade when `medium.en` not yet downloaded.
 - Original plan: On stop, main re-runs whisper with `medium.en` over the full captured audio; result replaces the live text before `completeTranscription`. "Finalising transcript…" transient state.
 
-**48-C — 2-party diarization (source separation + VAD)**
-- Capture mic and loopback as **separate** buffers (they are distinct sources before the existing mix); transcribe each with `whisper.cpp --vad` (silero, 865 KB — **mandatory**, or the silent side loops ×N, spike Step 4) and interleave by timestamp → `Me:`/`Them:`.
-- Commit the labelled transcript through the existing path; skip `startDiarization`.
-- AC: 1:1 transcript labelled; silent-side produces no fabricated text (unit-testable on the merge/VAD gating with a fixture); real-audio label quality manual-Windows.
+**48-C — 2-party diarization (source separation + VAD)** _(Done — #402, deploy 0e8f4645; installer auto-rebuilt)_
+- **As shipped:** two extra AudioWorklets tap the mic + loopback sources separately (only in confirmed-local + call-audio mode); on stop the buffers go to `local:diarize`, which VAD-transcribes each (silero, role `vad`) with the final model and interleaves (`diarizeMerge`, pure) into `Me:`/`Them:`. `local:discard` drops the live session's single-stream final pass when diarization produced the transcript. Engine proven vs the real binary + VAD.
+- **Local mode now skips cloud diarization for ALL recordings** (`uploadRecording(triggerCloudDiarization=false)`): the on-device transcript is committed and no longer overwritten by the Amazon Transcribe batch — this **unmasks 48-B** and removes the cloud diarization cost/error. **Motivated by real-call feedback:** the user's 1:1 showed 3 speakers because cloud diarization still ran; source separation is structurally exactly 2 (two physical channels).
+- **Product decision (explicit):** mic-only local commits the single-stream transcript with no diarization (one-speaker assumption). In-person multi-speaker on a single mic loses diarization — a future N-way-on-mic case (48-D covers group *calls* via the loopback). Cloud path + the mixed live view untouched.
+- **Still pending (manual-on-Windows, `MANUAL-VERIFICATION.md §48-C`):** exactly-2-speakers on a real 1:1, no `…/diarize` request, attribution quality, quiet-side no-fabrication, VAD-missing + mic-only fallbacks.
+- Original plan: capture mic/loopback separately; `whisper.cpp --vad` per stream; interleave → `Me:`/`Them:`; skip `startDiarization`.
 
 **48-D — N-way diarization (sherpa-onnx + TitaNet-large)**
 - Route by attendee count (from the note's calendar meeting link): ≤2 → 48-C source separation; >2 → run `sherpa-onnx` `OfflineSpeakerDiarization` (pyannote **segmentation-3.0 ONNX** 5.8 MB + **NeMo TitaNet-large** 97 MB) on the **loopback** stream with `FastClusteringConfig(num_clusters=<remote attendee count>)`, merge with mic="Me".
