@@ -2,16 +2,16 @@
 
 The canonical, versioned set of **models** and **prompts** the analysis eval should sweep. Maintained by the [`eval-run`](../../.claude/skills/eval-run/SKILL.md) skill — bump the version and append a changelog line after every run. Rows are never deleted; cut ones are marked `dropped`/`retired` with a reason so the history of what was tried survives.
 
-**Version:** 8 · updated 2026-07-23 · reflects the MPI-10 style baseline ([report](2026-07-23-mpi10-style-baseline.md))
+**Version:** 9 · updated 2026-07-23 · reflects MPI-11 (prod → Opus 4.6) + MPI-9 (`analysis@v9`) ([report](2026-07-23-mpi9-mpi11-opus46-v9.md))
 
 ## Models under test
 
 | Model | Status | Notes |
 | --- | --- | --- |
 | `anthropic.claude-sonnet-4-6` | **keep** | New value pick (MPI-3, `run-28225`): top model on `analysis@v5` (Quality 0.850), beats the 2024 Sonnet +0.030 and Opus +0.039 at lower cost. |
-| `anthropic.claude-opus-4-6-v1` | **keep** | Quality ceiling reference. Expensive; now beaten by Sonnet-4-6. |
+| `anthropic.claude-opus-4-6-v1` | **keep** | **PRODUCTION model (MPI-11, 2026-07-23).** Highest style/quality of any model the account can invoke — on the user's own notes, style 0.75 / quality 0.84 vs Nova Lite 0.30 / 0.38. The true frontier (Opus 4.7/4.8, Sonnet 5, Fable 5) returns Bedrock AccessDenied for this account. |
 | `mistral.mistral-large-2402-v1:0` | **keep** | Only non-Anthropic; weak-tags outlier (0.591) — future drop candidate. |
-| `amazon.nova-lite-v1:0` | **keep** | Cheap production baseline; now −0.036 behind Sonnet-4-6 (prod-upgrade candidate). |
+| `amazon.nova-lite-v1:0` | **keep** | Ex-production baseline (retired from prod at MPI-11 — model-gated style: 0.30 vs Opus 4.6 0.75). Kept as the cheap comparison floor. |
 | `anthropic.claude-3-sonnet-20240229-v1:0` | dropped (2026-06-10) | Aged value pick; beaten by same-vendor `claude-sonnet-4-6` on Quality (0.820 vs 0.850), `run-28225`. |
 | `amazon.nova-pro-v1:0` | dropped (2026-06-04) | Loses to the cheaper Nova Lite on quality. |
 | `meta.llama3-70b-instruct-v1:0` | dropped (2026-06-04) | Consistently weakest (content 0.54). |
@@ -32,7 +32,8 @@ The canonical, versioned set of **models** and **prompts** the analysis eval sho
 | `analysis@v5` | superseded by v6 (`run-286900`) | V4's depth + a grounding-dominant clamp + restored tags. Was current; beaten by v6 on tags + overall Quality on every model. |
 | `analysis@v6` | superseded by v8 (`run-83741`) | v5 with the tag rule tightened (aim 2–3, ≤5). Was current; beaten by v8 on tags — v6 permitted meeting-types + topic keywords, so it over-tagged (~2.7 tags/note, precision 0.11–0.38) and dropped the named client inconsistently. |
 | `analysis@v7` | folded into v8 | v6 + the inline `/ai` instruction path (MPI-7). Never the sole current prompt for tags; v8 carries the `/ai` path forward verbatim with the new tag rule. |
-| `analysis@v8` | **shipping (MPI-8, `run-83741`)** | Tags narrowed to **proper nouns only** (named orgs/clients, person-subject, named products/projects/incidents); always-tag the named entity. Atomic tag F1 up on every model (+0.49 to +0.63), precision 3–7×, tags/note ~2.7 → ~1.1, no regression elsewhere. Gold tags re-cut to the proper-noun bar in the same change. `Current` → v8. |
+| `analysis@v8` | superseded by v9 (MPI-9) | Proper-noun-only tags (MPI-8). Carried forward into v9 verbatim (grounding + tags + `/ai`); v8's style is prose-leaning, beaten by v9 on the capable model. |
+| `analysis@v9` | **shipping (MPI-9, 2026-07-23)** | v8 + a style rewrite: subject-first dense bullets (bans "The team discussed X"), named attribution (never "Speaker N"), reactions-not-judgement, decisions-close-an-option + dedup, note-as-spelling-authority. On Opus 4.6 (the user's 4 real notes): style +0.15, actions +0.10, decisions +0.10 vs v8, faithfulness 1.0. `Current` → v9. Deferred: `openQuestions`/`notableQuotes` fields, learned vocabulary, speaker-naming data half. |
 
 ## Judge
 
@@ -48,6 +49,7 @@ The canonical, versioned set of **models** and **prompts** the analysis eval sho
 
 ## Changelog
 
+- **v9** (2026-07-23, MPI-11 #404 + MPI-9 #405): prod analysis model swapped Nova Lite → Opus 4.6, and `Current` → `analysis@v9`. Key finding: the "capture my style" gap is model-gated — on the user's own notes, Nova Lite style 0.30 → Opus 4.6 0.75 (quality 0.38 → 0.84) on the *unchanged* prompt; v9 then adds a further +0.15 style on Opus 4.6. Nova Lite retired from prod (kept as the comparison floor); Opus 4.6 is the invocable ceiling (Opus 4.7/4.8, Sonnet 5, Fable 5 all AccessDenied for the account). Report: [2026-07-23-mpi9-mpi11-opus46-v9.md](2026-07-23-mpi9-mpi11-opus46-v9.md).
 - **v8** (2026-07-23, MPI-10, #399): added a `style` judge dimension + 4 real, local-only fixtures with the user's own note as the style gold. No prompt or model change — this is measurement infrastructure for MPI-9. Baseline `analysis@v8` on Nova Lite scores **style 0.20** on the real corpus (faithfulness 1.00), the floor `analysis@v9` must raise. Dimension inert on the synthetic corpus (no gold note). Model set unchanged.
 - **v7** (2026-06-22, `run-83741`): MPI-8 proper-noun-only tags. `analysis@v8` (v6/v7 body, tag rule narrowed to proper nouns only — named orgs/clients, person-subject, named products/projects/incidents; always-tag the named entity) **wins and ships** — atomic tag F1 up on every model (Opus 0.48→0.97, Sonnet 0.38→0.93, Mistral 0.19→0.82, Nova Lite 0.16→0.70), precision 3–7×, tags/note ~2.7→~1.1, no regression on content/actions/faithfulness. The 22 fixtures' gold tags were re-cut to the proper-noun bar in the same change (v6's gold mixed in meeting-types/topics, which would have false-flagged the new prompt). `analysis@v6`/`v7` superseded; `Current` → v8. Note: the `report.md` "Tags" column is the judge's holistic `qualityTags` (mixed for v8 because it dislikes sparse sets) — the deterministic **atomic tagF1** is authoritative and matches the user's fewer-but-useful preference. Model set unchanged.
 - **v1** (2026-06-04, `run-468475`): initial matrix from the frontier `analysis@v2`-vs-`v3` sweep. Kept Opus 4.6 / Claude 3 Sonnet / Mistral Large / Nova Lite; dropped Nova Pro (beaten by cheaper Nova Lite) and Llama 3 70B (weakest). `v3 > v2` → shipping via 10-O; `v4` planned for content depth (10-P).

@@ -123,7 +123,7 @@ Slices and acceptance criteria: [docs/phases/phase-9.md](phases/phase-9.md)
 
 Build a high-quality AI analysis of meeting notes — and the means to keep it high quality: better input, measurement, and a durable correction signal that feeds prompt/model refinement. Slices 10-I → 10-M were absorbed from the former Phase 13 ("Feedback capture for AI suggestions") so that building, measuring, and refining analysis quality live in one phase.
 
-Core flow: record audio (Transcribe Streaming via STS creds) → `TranscriptionCompleted` → Bedrock (Nova Lite) gap-fills content/tags/actions; auto-analyse on stop; the 10-G offline eval harness (versioned `PromptCatalog` + LLM-as-judge, nightly `eval.yml`); and additive `TagsSuggested`/`ActionItemsSuggested` feedback projections stamped with model/prompt version.
+Core flow: record audio (Transcribe Streaming via STS creds) → `TranscriptionCompleted` → Bedrock (Opus 4.6, `analysis@v9`) gap-fills content/tags/actions; auto-analyse on stop; the 10-G offline eval harness (versioned `PromptCatalog` + LLM-as-judge, nightly `eval.yml`); and additive `TagsSuggested`/`ActionItemsSuggested` feedback projections stamped with model/prompt version.
 
 The feedback track (10-I → 10-L) is complete: the correction signal is durable, queryable, and rebuildable. 10-G shipped the eval harness + versioned prompts; 10-N moved the analyse path to the model-agnostic Bedrock **Converse** API, so any accessible model can be evaluated/run; 10-M stamps `modelId`/`promptVersion` onto the `*Suggested` events; 10-O shipped `analysis@v3` as the production prompt. All 15 slices (10-A → 10-O) are done.
 
@@ -498,7 +498,7 @@ An unnumbered, standing phase for small tweaks and changes to existing behaviour
 
 ### Model & Prompt Improvements _(Ongoing)_
 
-An unnumbered, standing phase for iterative improvements to the AI analysis — new `analysis@vN` prompts, model swaps, judge changes — each justified by an eval delta from the 10-G harness. Open-ended by design: as long as quality can be pushed higher, items are added, measured with `make eval`, and shipped. The [`eval-run`](../.claude/skills/eval-run/SKILL.md) skill appends the next suggested item after each run (with the user's go-ahead) and maintains the companion [`docs/eval-runs/`](eval-runs/) reports and [`test-matrix.md`](eval-runs/test-matrix.md). Currently open: **MPI-1** `analysis@v4` to deepen note content (the universal weak dimension), moved here from the former Phase 10-P.
+An unnumbered, standing phase for iterative improvements to the AI analysis — new `analysis@vN` prompts, model swaps, judge changes — each justified by an eval delta from the 10-G harness. Open-ended by design: as long as quality can be pushed higher, items are added, measured with `make eval`, and shipped. The [`eval-run`](../.claude/skills/eval-run/SKILL.md) skill appends the next suggested item after each run (with the user's go-ahead) and maintains the companion [`docs/eval-runs/`](eval-runs/) reports and [`test-matrix.md`](eval-runs/test-matrix.md). Latest (2026-07-23): **MPI-11** swapped the prod model to **Opus 4.6** and **MPI-9** shipped **`analysis@v9`** — the biggest analysis-quality jump so far (the "capture my style" gap was model-gated, not prompt-gated), from the manual-vs-generated corpus review. See [`phase-model-prompt-improvements.md`](phases/phase-model-prompt-improvements.md).
 
 → [docs/phases/phase-model-prompt-improvements.md](phases/phase-model-prompt-improvements.md)
 

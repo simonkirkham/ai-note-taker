@@ -20,7 +20,8 @@
 | MPI-6 | Improve note tags — reword the prompt to ask for fewer, sharper tags (tagging is the AI's weakest output: 0.53–0.72 vs 0.85+ elsewhere) | Done (`run-286900`) — `analysis@v6` ships; tags +0.125 mean, Quality +0.028, no regression | MPI-2 |
 | MPI-7 | `analysis@v7` — execute inline `/ai` instructions (Phase 29-A). Neutral-by-construction: no separate eval run | Done — ships (no eval run; see below) | MPI-6, Phase 29-A |
 | MPI-8 | `analysis@v8` — narrow tags to **proper nouns only** (named orgs/clients, the person a meeting is ABOUT, named products/projects); always-tag the named org for consistency; drop meeting-types + topic keywords. Gold tags re-cut to the new bar | Done (`run-83741`) — `analysis@v8` ships; atomic tag F1 +0.49 to +0.63 per model, precision 3–7×, tags/note ~2.7→~1.1, no regression | MPI-6 |
-| MPI-9 | `analysis@v9` — "longer but terser": denser subject-first fact capture (current-state-first, headers+nested bullets, no filler; ban "The team discussed X") as the #1 lever, plus name speakers, a learned per-workspace spelling vocabulary, flag reactions (not judgement), `notableQuotes` + user-authored `openQuestions`, and `decisions`-closes-an-option + dedup. From the 2026-07-23 corpus review + user priorities | Not Started | MPI-8, MPI-10, Phase 29-A |
+| MPI-9 | `analysis@v9` — subject-first "longer but terser" prompt: ban "The team discussed X", named attribution (never "Speaker N"), reactions-not-judgement, `decisions`-closes-an-option + dedup, note-as-spelling-authority. Ships **with MPI-11 (Opus 4.6)**. New output fields (`openQuestions`/`notableQuotes`), a learned per-workspace vocabulary, and the speaker-naming *data* half (attendees) were **deferred** — see detail | Done (#405, deploy #708) — on Opus 4.6, v9 beats v8: **style +0.15, actions +0.10, decisions +0.10**, quality +0.075, faithfulness 1.0 | MPI-8, MPI-10, MPI-11, Phase 29-A |
+| MPI-11 | Prod analysis model **Nova Lite → Opus 4.6** — the "capture my style" win is **model-gated, not prompt-gated**. One CDK single-source-of-truth change drives both the `BEDROCK_MODEL_ID` env var and the `InvokeModel` IAM grant | Done (#404, deploy #707) — on the user's own notes, Nova Lite/v8 **style 0.30 / quality 0.38 → Opus 4.6 style 0.63 / quality 0.79** (with v9: 0.775 / 0.86), faithfulness 1.0. Frontier (Opus 4.7/4.8, Sonnet 5, Fable 5) return Bedrock **AccessDenied** — Opus 4.6 is the invocable ceiling | 10-G |
 | MPI-10 | Eval fixtures from the real corpus — 4 real meetings with the user's own note as gold (local, git-ignored) + a "matches the user's style" judge dimension. Gates measuring MPI-9 | Done (#399) — style dimension shipped; baseline v8/Nova Lite **style 0.20** on the real corpus (faithfulness 1.0) — the floor MPI-9 must raise | 10-G |
 
 Further items are appended as each eval run surfaces the next weakest dimension. The `eval-run` skill proposes them (see [How items are added](#how-items-are-added)).
@@ -259,7 +260,9 @@ So v4 must chase **depth where the source supports it and restraint where it doe
 
 ## MPI-9 — `analysis@v9`: capture notes the way the user writes them
 
-**Status:** Not Started — from the 2026-07-23 manual-vs-generated corpus review (40 notes, 2026-07-02→07-22; 12 had generated content to compare against the user's own).
+**Status:** Done (#405, deploy #708, 2026-07-23) — `PromptCatalog.Current → V9`. Shipped **the prompt-only style rewrite**: subject-first bullets (bans "The team discussed X"), "longer but terser" density, named attribution (never "Speaker N"), reactions-not-judgement, `decisions`-closes-an-option + dedup, and the user's note as spelling authority. Keeps v8's grounding clamp, proper-noun tags, and the `/ai` path byte-identical. Validated on the prod combo (Opus 4.6 + the user's 4 real notes, note-as-input): v9 beats v8 — **style 0.625→0.775 (+0.15), actions 0.70→0.80 (+0.10), decisions 0.80→0.90 (+0.10)**, quality 0.79→0.86, faithfulness 1.0. The Nova-Lite actions regression seen pre-model-swap did **not** reproduce on the capable model. Report: [`2026-07-23-mpi9-mpi11-opus46-v9.md`](../eval-runs/2026-07-23-mpi9-mpi11-opus46-v9.md). **Deferred (not in v9):** the new output fields (`openQuestions`/`notableQuotes`), the learned per-workspace vocabulary, and the speaker-naming *data* half (calendar attendees into the analysis input) — all still future work; the shipped v9 is the prompt levers only.
+
+_(Original scope below, kept for the deferred items.)_
 
 **Proposal:** Rewrite the analysis prompt to capture the way the user writes — **longer but terser: maximum coverage of facts, minimum words, no filler, structured with headers + bullets** — subject-first factual bullets, the user's spelling, named speakers.
 
@@ -339,5 +342,37 @@ The first three are prompt-input + one projection; the last is a feature. Speake
 - **Input = transcript only** (`existingContent` empty), **gold = the user's note** — measures whether the prompt reproduces the user's dense style from the transcript, not whether it echoes a note handed to it as input.
 - The style rubric **does not penalise** omitting the user's private judgement/questions absent from the transcript (the user authors those) — it scores style + transcript-grounded fact coverage only.
 - Style is **nullable**; the report averages it only over gold-note fixtures, so the synthetic committed corpus shows "—", not a diluting 0.
+
+**Depends on:** 10-G (the eval harness).
+
+---
+
+## MPI-11 — prod analysis model: Nova Lite → Opus 4.6
+
+**Status:** Done (#404, deploy #707, 2026-07-23) — prod Command + TranscribeCompletion Lambdas confirmed `BEDROCK_MODEL_ID = anthropic.claude-opus-4-6-v1`.
+
+**The finding:** the "capture my style" gap is **model-gated, not prompt-gated**. Measured on the user's own 4 notes with the note passed as input (real prod conditions), current prompt `analysis@v8`:
+
+| Model | Style | Quality | Faithfulness |
+| --- | --- | --- | --- |
+| `amazon.nova-lite-v1:0` (prod before) | 0.30 | 0.38 | 1.00 |
+| `anthropic.claude-sonnet-4-6` | 0.50 | 0.70 | 1.00 |
+| **`anthropic.claude-opus-4-6-v1`** (prod now) | **0.75** | **0.84** | 1.00 |
+
+Prompt changes (`analysis@v9`) added a further +0.15 style on Opus 4.6 but were near-neutral vs the model jump — the model is the dominant lever (this is why the earlier `analysis@v9`-only sweeps on Nova Lite looked flat/regressive: a weak model can't adopt the style, a capable one already does).
+
+**Ceiling is Opus 4.6 — the account can't invoke the true frontier.** Opus 4.7/4.8, Sonnet 5, and Fable 5 are listed as Bedrock inference profiles in eu-west-2 but return `AccessDeniedException: not available for this account` on invoke (each newer Anthropic model is a separate AWS-Marketplace product needing a first enabling invoke by a Marketplace-permissioned principal — the deploy user isn't one). Opus 4.6 / Sonnet 4.6 were enabled earlier (MPI-3) and are invocable. To test/use the frontier: a human enables it via the Bedrock Model catalog playground, **or** test off-Bedrock with a first-party Anthropic API key (Claude Max is chat-only — no API access).
+
+**Cost:** Opus-tier is ~80–100× Nova Lite per token; at single-user, few-notes-a-day volume, cents/day. Deploy-time: **neutral** (env-var + IAM-scope change, no bake window).
+
+**Commands in scope:** none · **Events in scope:** none (per-note re-analysis; historical events keep their originally-stamped `modelId`)
+
+### Scope
+- `NoteTakerStack.cs` default `bedrockModelId` `amazon.nova-lite-v1:0` → `anthropic.claude-opus-4-6-v1` — single source of truth for the env var **and** the `bedrock:InvokeModel` IAM grant (the ARN re-derives; direct foundation-model id → foundation-model ARN branch).
+- `InfraAssertionsTests.cs` default-model assertion updated; 164/164 CDK assertions green.
+
+- [x] Prod model swapped; both Lambdas verified live on Opus 4.6
+- [x] IAM grant re-scoped automatically (no separate edit); frontier-access limitation documented
+- [x] Decision recorded in `docs/eval-runs/` + `test-matrix.md`
 
 **Depends on:** 10-G (the eval harness).
