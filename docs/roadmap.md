@@ -468,6 +468,16 @@ Slices and acceptance criteria: [docs/phases/phase-47.md](phases/phase-47.md)
 
 ---
 
+## Phase 48 — Local on-device transcription & diarization _(Not Started)_
+
+Graduate the *Local on-device transcription* future-feature into a phase now the spike has cleared its go/no-go. Run speech-to-text and speaker diarization **entirely on the machine** inside the existing [Phase 31](phases/phase-31.md) desktop shell, driving marginal transcription cost to $0 (cloud projects to ~$40–260/mo at the user's ~3 hr/day target). Reuses the shell's mic+loopback capture and the existing transcript→note path — aims for zero backend/CDK/event-model change (desktop + a desktop-only setting only); the web app keeps cloud Transcribe. Engines run in the Electron main process (`whisper.cpp` CLI + `sherpa-onnx` diarization, no torch/HF), models download in the background on first launch (installer stays ~82 MB), cloud is the fallback until ready. Five slices: **48-A** live local transcription behind an on/off setting (proves the flow end-to-end + the live-latency unknown); **48-B** higher-quality `medium.en` pass on stop; **48-C** 1:1 who-said-what via source separation + VAD; **48-D** group who-said-what via sherpa-onnx + TitaNet-large, speaker count from calendar attendees (spike ~14% DER); **48-E** a privacy setting to keep audio fully on-device. Spike: [docs/spikes/local-whisper-transcription.md](spikes/local-whisper-transcription.md).
+
+**Goal:** record a meeting in the desktop app and get the live transcript, the final transcript, and speaker labels produced entirely on your machine — no per-minute cloud transcription or diarization cost.
+
+Slices and acceptance criteria: [docs/phases/phase-48.md](phases/phase-48.md)
+
+---
+
 ## Standing tracks and planning docs
 
 Alongside the numbered phases above, work is tracked in five standing docs. The roadmap summarises them; each doc owns its content.
