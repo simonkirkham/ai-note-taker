@@ -375,7 +375,7 @@ public sealed class NoteTakerStack : Stack
         // literal here and deploy (the decision is recorded in docs/eval-runs/). An
         // optional BEDROCK_MODEL_ID override is still honoured if ever set.
         var bedrockModelId = string.IsNullOrEmpty(props.BedrockModelId)
-            ? "amazon.nova-lite-v1:0"
+            ? "anthropic.claude-opus-4-6-v1"
             : props.BedrockModelId;
 
         // Shared request-environment for both the Command and Query functions. They run

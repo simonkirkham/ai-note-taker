@@ -740,13 +740,17 @@ public class InfraAssertionsTests
     [Fact]
     public void Lambda_UsesDefaultBedrockModelId_WhenNotConfigured()
     {
+        // Prod analysis model. Swapped Nova Lite → Opus 4.6 (MPI-11): the eval showed style/quality
+        // on the user's own notes is model-gated (Nova Lite style ~0.30 → Opus 4.6 ~0.75, quality
+        // 0.38 → 0.84), with prompt changes near-neutral. Opus 4.6 is the strongest model the account
+        // can invoke (4.7/4.8/Sonnet-5 return Bedrock AccessDenied). See docs/eval-runs/.
         _template.HasResourceProperties("AWS::Lambda::Function", Match.ObjectLike(new Dictionary<string, object>
         {
             ["Environment"] = Match.ObjectLike(new Dictionary<string, object>
             {
                 ["Variables"] = Match.ObjectLike(new Dictionary<string, object>
                 {
-                    ["BEDROCK_MODEL_ID"] = "amazon.nova-lite-v1:0"
+                    ["BEDROCK_MODEL_ID"] = "anthropic.claude-opus-4-6-v1"
                 })
             })
         }));
