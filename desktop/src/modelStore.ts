@@ -5,7 +5,7 @@
 
 import { createHash } from 'node:crypto'
 import { createWriteStream } from 'node:fs'
-import { mkdir, rename, stat, readFile } from 'node:fs/promises'
+import { mkdir, rename, stat, readFile, rm } from 'node:fs/promises'
 import { Readable } from 'node:stream'
 import path from 'node:path'
 import { missingModels, allPresent, type ModelManifest, type PresentModels, type ModelSpec } from './models'
@@ -33,14 +33,17 @@ async function sha256File(file: string): Promise<string> {
   return hash.digest('hex')
 }
 
-// Compute what is present-and-valid on disk (filename → sha256), for missingModels().
+// Compute what is present on disk, for missingModels(). Gates on file SIZE, not a full re-hash:
+// the sha256 is verified once at download time (below), and re-hashing a 1.5 GB model on every
+// launch would stall startup. A size match is treated as the (already-verified) expected hash; a
+// truly corrupt same-size file is the accepted tradeoff for fast launches.
 async function readPresent(dir: string, manifest: ModelManifest): Promise<PresentModels> {
   const present: PresentModels = {}
   for (const m of manifest.models) {
     const file = path.join(dir, m.file)
     try {
-      await stat(file)
-      present[m.file] = { sha256: await sha256File(file) }
+      const st = await stat(file)
+      if (st.size === m.bytes) present[m.file] = { sha256: m.sha256 }
     } catch {
       /* absent */
     }
@@ -60,7 +63,10 @@ async function download(spec: ModelSpec, dir: string): Promise<void> {
     out.on('error', reject)
   })
   const got = await sha256File(tmp)
-  if (got !== spec.sha256) throw new Error(`checksum mismatch for ${spec.name}: expected ${spec.sha256}, got ${got}`)
+  if (got !== spec.sha256) {
+    await rm(tmp, { force: true }) // don't leave a large corrupt .part lingering
+    throw new Error(`checksum mismatch for ${spec.name}: expected ${spec.sha256}, got ${got}`)
+  }
   await rename(tmp, dest) // atomic: a half-written file never looks "present"
 }
 

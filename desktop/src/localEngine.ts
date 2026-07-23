@@ -1,20 +1,7 @@
-// 48-A — pure local-transcription logic (no electron, no child_process), unit-tested
-// headlessly. The real whisper spawn lives in localTranscription.ts and is manual-on-Windows.
-
-export type TranscriptionMode = 'local' | 'cloud'
-
-// Which STT engine to actually run. Cloud is the always-available safe path; local is
-// used only when the user selected it AND the model is present AND it hasn't failed this
-// session. Mirrors displayMedia's "fall back to the safe option when the preferred one
-// isn't available" so a missing model or a mid-recording crash never yields no transcript.
-export function chooseEngine(opts: {
-  mode: TranscriptionMode
-  modelReady: boolean
-  localFailed: boolean
-}): TranscriptionMode {
-  if (opts.mode === 'local' && opts.modelReady && !opts.localFailed) return 'local'
-  return 'cloud'
-}
+// 48-A — pure PCM windowing (no electron, no child_process), unit-tested headlessly. The real
+// whisper spawn lives in localTranscription.ts and is manual-on-Windows. The engine-selection
+// decision (local vs cloud) lives renderer-side in useTranscriptionMode/useTranscription, where
+// it is tested against localStorage + the desktop model-ready status.
 
 type Window = { pcm: Buffer; baseMs: number }
 

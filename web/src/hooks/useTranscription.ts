@@ -380,8 +380,9 @@ export function useTranscription(noteId: string): UseTranscriptionResult {
             audioQueue.push(chunk);
             // Tee the same PCM chunk into the recording buffer for the WAV upload (33-A).
             recordedChunksRef.current.push(chunk);
-            // 48-A: and, in local mode, stream it to the on-device whisper engine. Copy into a
-            // fresh ArrayBuffer (chunk may be a view over a pooled/shared buffer).
+            // 48-A: and, in local mode, stream it to the on-device whisper engine. Pass a
+            // standalone ArrayBuffer of exactly this chunk's bytes (defensive against chunk
+            // being a subarray view; ipcRenderer structured-clones it across to main).
             if (useLocal && desktopLocal) {
               desktopLocal.pushPcm(new Uint8Array(chunk).buffer);
             }
@@ -396,7 +397,11 @@ export function useTranscription(noteId: string): UseTranscriptionResult {
         if (useLocal && desktopLocal) {
           const parts: string[] = [];
           const offSegments = desktopLocal.onSegments((segs) => {
-            if (stoppedRef.current) return;
+            // Gate on committedRef, NOT stoppedRef: stopRecording sets stoppedRef before awaiting
+            // finish(), and finish() is what produces the flushed tail window — so a stoppedRef
+            // guard here would discard exactly the last window we are flushing. committedRef flips
+            // only after finish() resolves, so tail segments still land before the commit.
+            if (committedRef.current) return;
             for (const s of segs) {
               const t = s.text.trim();
               if (t) parts.push(t);

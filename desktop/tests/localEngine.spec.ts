@@ -1,26 +1,9 @@
 import { test, expect } from '@playwright/test'
-import { chooseEngine, PcmWindower } from '../src/localEngine'
+import { PcmWindower } from '../src/localEngine'
 
-// 48-A — the fallback decision and the live-window slicing are pure so they unit-test
-// headlessly (the real whisper spawn is manual-on-Windows). chooseEngine mirrors
-// pickDisplayMediaResponse's "return the safe fallback when the preferred path is
-// unavailable" shape: cloud is always the safe path.
-
-test('chooseEngine: local only when selected, model ready, and not failed', () => {
-  expect(chooseEngine({ mode: 'local', modelReady: true, localFailed: false })).toBe('local')
-})
-
-test('chooseEngine: cloud when the user chose cloud', () => {
-  expect(chooseEngine({ mode: 'cloud', modelReady: true, localFailed: false })).toBe('cloud')
-})
-
-test('chooseEngine: cloud when the model is not yet downloaded (Preparing…)', () => {
-  expect(chooseEngine({ mode: 'local', modelReady: false, localFailed: false })).toBe('cloud')
-})
-
-test('chooseEngine: cloud fallback after a local engine failure', () => {
-  expect(chooseEngine({ mode: 'local', modelReady: true, localFailed: true })).toBe('cloud')
-})
+// 48-A — the live-window slicing is pure so it unit-tests headlessly (the real whisper spawn is
+// manual-on-Windows). The engine-selection decision is renderer-side and covered by the web
+// useTranscriptionMode tests.
 
 // PcmWindower slices the incoming 16-bit PCM stream into consecutive fixed-length
 // windows (each transcribed independently by a whisper pass), tracking the base offset
