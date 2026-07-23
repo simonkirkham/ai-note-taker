@@ -25,8 +25,9 @@ contextBridge.exposeInMainWorld('desktop', {
     start: (): Promise<void> => ipcRenderer.invoke('local:start'),
     // Stream captured 16-bit PCM (transferred as an ArrayBuffer).
     pushPcm: (pcm: ArrayBuffer): void => ipcRenderer.send('local:pcm', pcm),
-    // Flush the tail and wait for all windows to finish; resolves before commit.
-    finish: (): Promise<void> => ipcRenderer.invoke('local:finish'),
+    // Flush the tail, run the higher-quality final pass, and resolve with the final transcript
+    // text (or null → keep the live text). Resolves before the renderer commits.
+    finish: (): Promise<string | null> => ipcRenderer.invoke('local:finish'),
     onSegments: (cb: (segs: WhisperSegment[]) => void) => {
       const h = (_e: unknown, segs: WhisperSegment[]) => cb(segs)
       ipcRenderer.on('local:segments', h)

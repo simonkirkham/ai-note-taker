@@ -57,4 +57,32 @@ test.describe('real whisper-cli', () => {
     for (let i = 1; i < got.length; i++) expect(got[i].startMs).toBeGreaterThanOrEqual(got[i - 1].startMs)
     expect(got.some((s) => s.startMs >= 5000)).toBe(true)
   })
+
+  // 48-B — the stop-time final pass re-transcribes the WHOLE recording with the final model.
+  // Uses base.en as the final-model stand-in (medium.en is 1.5 GB; real quality is manual-Windows) —
+  // this proves the mechanism: finish() then runFinalPass() returns the full-recording transcript.
+  test('runFinalPass re-transcribes the full recording and returns joined text', async () => {
+    const pcm = pcmFromWav(WAV!).subarray(0, 16000 * 2 * 12) // 12s
+    const session = new LocalTranscriptionSession(
+      { binPath: BIN!, modelPath: MODEL!, finalModelPath: MODEL!, windowSeconds: 5, threads: 8 },
+      () => {},
+      () => {},
+    )
+    for (let off = 0; off < pcm.length; off += 16000 * 2) session.pushPcm(pcm.subarray(off, off + 16000 * 2))
+    await session.finish()
+    const finalText = await session.runFinalPass()
+    expect(finalText).not.toBeNull()
+    expect(finalText!.length).toBeGreaterThan(20)
+  })
+
+  test('runFinalPass returns null when no final model is configured (keep the live text)', async () => {
+    const session = new LocalTranscriptionSession(
+      { binPath: BIN!, modelPath: MODEL!, threads: 8 }, // no finalModelPath
+      () => {},
+      () => {},
+    )
+    session.pushPcm(pcmFromWav(WAV!).subarray(0, 16000 * 2 * 3))
+    await session.finish()
+    expect(await session.runFinalPass()).toBeNull()
+  })
 })

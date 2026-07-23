@@ -8,10 +8,14 @@ import { createWriteStream } from 'node:fs'
 import { mkdir, rename, stat, readFile, rm } from 'node:fs/promises'
 import { Readable } from 'node:stream'
 import path from 'node:path'
-import { missingModels, allPresent, type ModelManifest, type PresentModels, type ModelSpec } from './models'
+import { missingModels, allPresent, liveReady, type ModelManifest, type PresentModels, type ModelSpec } from './models'
 
-// 48-A ships the live model (base.en). 48-B/C/D add medium.en / VAD / diarization specs here.
-export const MANIFEST_48A: ModelManifest = {
+// Model set for local transcription. base.en drives the live transcript (role 'live' → gates
+// readiness); medium.en drives the higher-quality stop-time final pass (role 'final' → best-effort,
+// downloaded too but local mode is usable before it lands). 48-C/D add VAD / diarization specs here.
+// NOTE (Hawk 48-A): bytes is load-bearing for the launch size-gate — keep bytes + sha256 paired to
+// the true file whenever a model is added/changed, or the size-gate loops on re-download.
+export const MANIFEST: ModelManifest = {
   models: [
     {
       name: 'base.en',
@@ -19,8 +23,23 @@ export const MANIFEST_48A: ModelManifest = {
       sha256: 'a03779c86df3323075f5e796cb2ce5029f00ec8869eee3fdfb897afe36c6d002',
       bytes: 147964211,
       url: 'https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.en.bin',
+      role: 'live',
+    },
+    {
+      name: 'medium.en',
+      file: 'ggml-medium.en.bin',
+      sha256: 'cc37e93478338ec7700281a7ac30a10128929eb8f427dda2e865faa8f6da4356',
+      bytes: 1533774781,
+      url: 'https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-medium.en.bin',
+      role: 'final',
     },
   ],
+}
+
+// The higher-quality model the stop-time final pass uses (medium.en), or null if not present yet.
+export function finalModelFile(): string {
+  const spec = MANIFEST.models.find((m) => m.role === 'final')
+  return spec ? spec.file : ''
 }
 
 export function modelsDir(userDataDir: string): string {
@@ -81,20 +100,23 @@ export async function ensureModels(
 ): Promise<void> {
   const dir = modelsDir(userDataDir)
   await mkdir(dir, { recursive: true })
-  const present = await readPresent(dir, manifest)
-  const todo = missingModels(manifest, present)
+  let present = await readPresent(dir, manifest)
+  const todo = missingModels(manifest, present) // live-first order
   if (todo.length === 0) {
     onProgress({ downloading: false, modelReady: true, progress: 1 })
     return
   }
-  onProgress({ downloading: true, modelReady: false, progress: 0 })
+  onProgress({ downloading: true, modelReady: liveReady(manifest, present), progress: 0 })
   let done = 0
   for (const spec of todo) {
     await download(spec, dir)
     done += 1
-    onProgress({ downloading: done < todo.length, modelReady: false, progress: done / todo.length })
+    // Re-read presence so modelReady flips true as soon as the LIVE model(s) land — recording
+    // becomes possible before the large final (medium.en) model finishes downloading.
+    present = await readPresent(dir, manifest)
+    onProgress({ downloading: done < todo.length, modelReady: liveReady(manifest, present), progress: done / todo.length })
   }
-  onProgress({ downloading: false, modelReady: allPresent(manifest, await readPresent(dir, manifest)), progress: 1 })
+  onProgress({ downloading: false, modelReady: allPresent(manifest, present), progress: 1 })
 }
 
 // Resolve the bundled whisper-cli binary. Prod: under resources/whisper/; dev/test: WHISPER_BIN.

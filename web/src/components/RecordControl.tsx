@@ -110,6 +110,13 @@ export default function RecordControl({
         </span>
       )}
 
+      {status === "finalising" && (
+        <span className={styles.timer} data-testid="transcription-finalising" aria-live="polite">
+          <span className={styles.dot} aria-hidden="true" />
+          Finalising transcript…
+        </span>
+      )}
+
       {status === "error" && (
         <span className={styles.error} data-testid="transcription-error" role="alert">
           {error ?? "Cannot connect to transcription service."}
