@@ -42,8 +42,7 @@ it('renders nothing in the web app (not desktop)', () => {
 it('renders a checked toggle by default in the desktop shell', () => {
   fakeDesktop()
   render(<KeepAudioLocalToggle />)
-  const toggle = screen.getByTestId('keep-audio-local-toggle') as HTMLInputElement
-  expect(toggle.checked).toBe(true)
+  expect(screen.getByTestId('keep-audio-local-toggle')).toBeChecked()
 })
 
 it('unchecking it opts back into upload', () => {
