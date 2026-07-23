@@ -11,7 +11,10 @@ contextBridge.exposeInMainWorld('desktop', {
   isDesktop: true,
   platform: process.platform,
   local: {
-    // Current model-provisioning state (models download on first launch).
+    // Ask the main process to background-download models (idempotent). Called when the user
+    // selects local mode, so cloud-only users never pull the weights.
+    prepare: (): void => ipcRenderer.send('local:prepare'),
+    // Current model-provisioning state.
     getStatus: (): Promise<LocalStatus> => ipcRenderer.invoke('local:status'),
     onStatus: (cb: (s: LocalStatus) => void) => {
       const h = (_e: unknown, s: LocalStatus) => cb(s)

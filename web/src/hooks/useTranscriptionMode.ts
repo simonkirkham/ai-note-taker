@@ -50,6 +50,13 @@ export function useTranscriptionMode() {
     return bridge.onStatus(setStatus);
   }, []);
 
+  // Kick off the one-time background model download as soon as the user is in local mode
+  // (on launch if already selected, or the moment they switch) — ahead of any recording, so a
+  // record never waits on a download, and cloud-only users never trigger it.
+  useEffect(() => {
+    if (mode === "local") window.desktop?.local?.prepare();
+  }, [mode]);
+
   // Local is only usable on desktop once the model is present; otherwise the effective engine
   // is cloud (the caller uses this to fall back and to label the toggle "Preparing…").
   const localReady = isDesktop() && status.modelReady;

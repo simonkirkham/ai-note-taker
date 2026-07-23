@@ -17,20 +17,28 @@ type Deps = {
 export function registerLocalTranscription(deps: Deps): void {
   let status: LocalStatus = { modelReady: false, downloading: false, progress: 0 }
   let session: LocalTranscriptionSession | null = null
+  let preparing = false // guards against starting the download more than once
 
   const send = (channel: string, payload: unknown) => deps.getWindow()?.webContents.send(channel, payload)
 
-  // Fetch models in the background — never blocks the window. Local mode stays "Preparing…"
-  // (renderer falls back to cloud) until modelReady flips true.
-  void ensureModels(deps.userDataDir, MANIFEST_48A, (s) => {
-    status = s
-    send('local:status', status)
-  }).catch((err: Error) => {
-    console.error('[desktop] model download failed; local transcription unavailable:', err.message)
-    status = { modelReady: false, downloading: false, progress: 0 }
-    send('local:status', status)
-  })
+  // Download models in the background — never blocks the window. Triggered by the renderer only
+  // when the user has selected local mode (via 'local:prepare'), so cloud-only users never pull
+  // the weights. Local mode stays "Preparing…" (renderer falls back to cloud) until modelReady.
+  const prepare = () => {
+    if (preparing || status.modelReady) return
+    preparing = true
+    void ensureModels(deps.userDataDir, MANIFEST_48A, (s) => {
+      status = s
+      send('local:status', status)
+    }).catch((err: Error) => {
+      console.error('[desktop] model download failed; local transcription unavailable:', err.message)
+      preparing = false
+      status = { modelReady: false, downloading: false, progress: 0 }
+      send('local:status', status)
+    })
+  }
 
+  ipcMain.on('local:prepare', prepare)
   ipcMain.handle('local:status', () => status)
 
   ipcMain.handle('local:start', () => {

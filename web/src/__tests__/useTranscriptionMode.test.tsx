@@ -10,6 +10,7 @@ function fakeDesktop(status: LocalTranscriptionStatus) {
     isDesktop: true,
     platform: 'win32',
     local: {
+      prepare: () => {},
       getStatus: () => Promise.resolve(status),
       onStatus: () => () => {},
       start: () => Promise.resolve(),

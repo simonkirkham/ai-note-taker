@@ -13,6 +13,7 @@ export interface DesktopBridge {
   isDesktop: true;
   platform: string;
   local: {
+    prepare(): void;
     getStatus(): Promise<LocalTranscriptionStatus>;
     onStatus(cb: (s: LocalTranscriptionStatus) => void): () => void;
     start(): Promise<void>;

@@ -10,6 +10,7 @@ function fakeDesktop(status: LocalTranscriptionStatus) {
     isDesktop: true,
     platform: 'win32',
     local: {
+      prepare: () => {},
       getStatus: () => Promise.resolve(status),
       onStatus: () => () => {},
       start: () => Promise.resolve(),
@@ -34,8 +35,7 @@ it('renders nothing in the web app (not desktop)', () => {
 it('renders the Local/Cloud select in the desktop shell', () => {
   fakeDesktop({ modelReady: true, downloading: false, progress: 1 })
   render(<TranscriptionModeToggle />)
-  const select = screen.getByTestId('transcription-mode-select') as HTMLSelectElement
-  expect(select.value).toBe('cloud')
+  expect(screen.getByTestId('transcription-mode-select')).toHaveValue('cloud')
   expect(screen.getByRole('option', { name: 'On device' })).toBeInTheDocument()
 })
 
