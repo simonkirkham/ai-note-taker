@@ -1,4 +1,4 @@
-# Phase 48 — Local on-device transcription & diarization _(In Progress — 48-A, 48-B, 48-C done 2026-07-23)_
+# Phase 48 — Local on-device transcription & diarization _(In Progress — 48-A/B/C/E done 2026-07-23; only 48-D remains)_
 
 **Goal:** Record a meeting in the desktop app and get the live transcript, the final transcript, and speaker labels produced entirely on your machine — no per-minute cloud transcription or diarization cost.
 
@@ -10,7 +10,7 @@
 | 48-B | The saved transcript is upgraded to higher quality on stop | Done _(#401, deploy 213d8f3c)_ | 48-A |
 | 48-C | 1:1 calls show who said what (me vs. the other person), computed on-device | Done _(#402, deploy 0e8f4645)_ | 48-A |
 | 48-D | Group calls show who said what across all remote speakers, computed on-device | Not Started | 48-C |
-| 48-E | A setting to keep meeting audio fully on your machine (no upload) | Not Started | 48-A |
+| 48-E | A setting to keep meeting audio fully on your machine (no upload) | Done _(#403, deploy 52c2f20a)_ | 48-A |
 
 Ordering: 48-A proves the whole capture→local-engine→live-transcript→saved-note flow on one real call (and answers the live-latency unknown); 48-B/C/D scale it — better final quality, then 1:1 labels, then group labels; 48-E is the privacy setting and is independent of the diarization slices. Models download in the background on first app launch (below the divider); a slice is unavailable until its model is present, with cloud transcription as the fallback.
 
@@ -187,9 +187,11 @@ Scenario: Opt back into upload
 - Engine binding: sherpa-onnx C API / prebuilt Node addon in main (no torch, no HF login — spike-confirmed). Fall back to 48-C labelling when attendee count is unavailable.
 - AC: >2-attendee transcript separates remote speakers (manual-Windows against a real group call); fallback to Me/Them without attendee data (unit-testable routing).
 
-**48-E — Keep-audio-on-device setting**
-- Setting (default **on**) gates the `presignRecordingUpload`+`saveRecording` calls for **local-mode** recordings only; transcript commit + analysis unaffected. Cloud mode ignores the setting (upload still required).
-- AC: setting on + local → no upload, note still complete; setting off → uploads as today; cloud mode unaffected.
+**48-E — Keep-audio-on-device setting** _(Done — #403, deploy 52c2f20a; installer auto-rebuilt)_
+- **As shipped:** `useKeepAudioLocal` (localStorage, default **on** — privacy-first) + desktop-only `KeepAudioLocalToggle` in the sidebar footer. `useTranscription`'s local stop branch skips `uploadRecording` when on (reads the setting at stop-time, so a mid-recording toggle is honoured); frees the retained PCM buffer in that branch (Hawk). Transcript + analysis unaffected. Cloud mode + the two cloud upload call sites untouched.
+- **Privacy trade-off (explicit):** with keep-local on, **no recording is retained for recovery** — but local mode already skips cloud diarization (48-C), so the WAV was only an archive/download affordance, not something the local pipeline consumed. The note's transcript + analysis are still committed.
+- **Still pending (manual-on-Windows, `MANUAL-VERIFICATION.md §48-E`):** no `presign-upload` request when on; no download affordance; opt-in uploads; cloud unaffected.
+- Original plan: setting (default on) gates the upload calls for local-mode recordings only; cloud mode ignores it.
 
 ### Observability
 - No CloudWatch reach into the client — surface to the renderer console / in-app at minimum (Phase 31 pattern).
