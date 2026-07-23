@@ -261,7 +261,10 @@ export function useTranscription(noteId: string): UseTranscriptionResult {
   // (recoverable/continuable on reopen), never a premature TranscriptionCompleted —
   // so a bfcache restore that keeps recording is unaffected.
   useEffect(() => {
-    if (status !== 'recording' && status !== 'requestingCredentials') return;
+    // 48-B: 'finalising' is an active session (the minutes-long medium.en pass) — keep the
+    // unsaved-changes warning + keepalive draft flush armed through it too, per the same
+    // "finalising is active" principle applied in NoteView.
+    if (status !== 'recording' && status !== 'requestingCredentials' && status !== 'finalising') return;
     const onBeforeUnload = (e: BeforeUnloadEvent) => {
       e.preventDefault();
       e.returnValue = '';
