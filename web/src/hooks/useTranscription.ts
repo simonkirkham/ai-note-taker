@@ -607,6 +607,7 @@ export function useTranscription(noteId: string): UseTranscriptionResult {
         // 48-E: unless "keep recordings on this device only" is on (default), in which case the audio
         // never leaves the machine — skip the upload entirely. Transcript + analysis still happen.
         if (!readStoredKeepAudioLocal()) uploadRecording(false);
+        else recordedChunksRef.current = []; // keep-local: free the retained PCM (nothing uploads it)
         setStatus('finalising');
         try {
           let finalText: string | null = null;
