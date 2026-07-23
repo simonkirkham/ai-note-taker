@@ -40,4 +40,28 @@ public class ReportTests : IDisposable
         Assert.Contains("Prompt", report);
         Assert.Contains("Model", report);
     }
+
+    // MPI-10: Style is averaged only over rows that carry a style score (the real corpus). A
+    // group whose rows have null qualityStyle must render "—", never a fabricated 0.000 that
+    // would dilute a real average — that's the whole reason Style is nullable.
+    [Fact]
+    public void Style_column_averages_only_gold_note_rows_and_shows_dash_when_none()
+    {
+        var jsonl = string.Join("\n",
+            // Group A: both rows carry a style score → the column shows their mean (0.400).
+            """{"runId":"r1","fixtureId":"real-a","modelId":"nova-lite","promptVersion":"analysis@v8","tagF1":0.5,"actionF1":0.5,"contentScore":0.5,"qualityStyle":0.2}""",
+            """{"runId":"r1","fixtureId":"real-b","modelId":"nova-lite","promptVersion":"analysis@v8","tagF1":0.5,"actionF1":0.5,"contentScore":0.5,"qualityStyle":0.6}""",
+            // Group B: no style scores (synthetic corpus) → the Style cell must be "—".
+            """{"runId":"r1","fixtureId":"syn-1","modelId":"nova-pro","promptVersion":"analysis@v8","tagF1":0.5,"actionF1":0.5,"contentScore":0.5}""");
+        File.WriteAllText(Path.Combine(_resultsDir, "r1.jsonl"), jsonl);
+
+        var report = Report.Render(_resultsDir);
+        var lines = report.Split('\n');
+
+        var groupA = Assert.Single(lines, l => l.Contains("nova-lite"));
+        Assert.Contains("0.400", groupA);
+        // Style must be the em-dash placeholder, not a fabricated 0.000, for the no-gold group.
+        var groupB = Assert.Single(lines, l => l.Contains("nova-pro"));
+        Assert.Contains("—", groupB);
+    }
 }

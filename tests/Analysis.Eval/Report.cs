@@ -22,8 +22,8 @@ public static class Report
             : [];
 
         var sb = new StringBuilder();
-        sb.AppendLine("| Prompt | Model | Quality | Tags | Actions | Decisions | Content | Faithfulness | Fixtures |");
-        sb.AppendLine("| --- | --- | --- | --- | --- | --- | --- | --- | --- |");
+        sb.AppendLine("| Prompt | Model | Quality | Tags | Actions | Decisions | Content | Style | Faithfulness | Fixtures |");
+        sb.AppendLine("| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |");
 
         // Headline is the rubric-based Quality; rows ordered best-first so the table reads
         // as a ranking. The atomic scores (TagF1/ActionF1/ContentScore) stay in the jsonl.
@@ -42,6 +42,9 @@ public static class Report
                 "|", Mean(group.Select(r => r.QualityActions)),
                 "|", Mean(group.Select(r => r.QualityDecisions)),
                 "|", Mean(group.Select(r => r.QualityContent)),
+                // Style is averaged only over fixtures that carry a gold note (the real corpus);
+                // "—" when the group has none, so the synthetic corpus doesn't show a fake 0.
+                "|", Mean(group.Select(r => r.QualityStyle).OfType<double>()),
                 "|", Mean(group.Select(r => r.FaithfulnessScore)),
                 "|", group.Count().ToString(CultureInfo.InvariantCulture),
                 "|"));

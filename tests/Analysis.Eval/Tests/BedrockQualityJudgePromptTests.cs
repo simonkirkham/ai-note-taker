@@ -13,7 +13,8 @@ public class BedrockQualityJudgePromptTests
     static QualityJudgeInput Input(
         string transcript = "T",
         string existingContent = "N",
-        IReadOnlyList<string>? groundedEntities = null) =>
+        IReadOnlyList<string>? groundedEntities = null,
+        string? goldNote = null) =>
         new(
             Transcript: transcript,
             ExistingContent: existingContent,
@@ -23,7 +24,8 @@ public class BedrockQualityJudgePromptTests
             Decisions: ["dec"],
             Tags: ["t"],
             Actions: ["a"],
-            GroundedEntities: groundedEntities ?? []);
+            GroundedEntities: groundedEntities ?? [],
+            GoldNote: goldNote);
 
     [Fact]
     public void Prompt_names_the_existing_note_as_valid_grounding()
@@ -97,5 +99,52 @@ public class BedrockQualityJudgePromptTests
         var prompt = BedrockQualityJudge.BuildPrompt(Input(groundedEntities: []));
 
         Assert.DoesNotContain("GROUNDED ENTITIES", prompt);
+    }
+
+    // MPI-10: when the fixture carries the user's own note as a gold exemplar, the judge scores
+    // a `style` dimension against it. The block — and the `style` JSON field — appear only then.
+    [Fact]
+    public void Prompt_adds_a_style_dimension_and_renders_the_gold_note_when_present()
+    {
+        var prompt = BedrockQualityJudge.BuildPrompt(Input(goldNote: "MY-OWN-NOTE-BODY"));
+
+        Assert.Contains("STYLE GOLD", prompt);
+        Assert.Contains("MY-OWN-NOTE-BODY", prompt);
+        Assert.Contains("- style:", prompt);
+        // The style rubric encodes the user's "longer but terser" steer + subject-first rule.
+        Assert.Contains("subject-first", prompt);
+        Assert.Contains("longer but terser", prompt);
+        Assert.Contains("The team discussed", prompt);
+        // The returned JSON must ask for a style score so Parse can read it.
+        Assert.Contains("\"style\":0.0", prompt);
+    }
+
+    [Fact]
+    public void Style_rubric_does_not_penalise_omitting_the_users_private_judgement()
+    {
+        var prompt = BedrockQualityJudge.BuildPrompt(Input(goldNote: "MY-OWN-NOTE-BODY"));
+
+        // The gold note contains the user's private opinions/questions absent from the transcript;
+        // the AI must not be marked down for leaving those out (the user's #4/#5 steer).
+        Assert.Contains("Do NOT penalise the generated note for omitting the user's private judgement", prompt);
+    }
+
+    [Fact]
+    public void Prompt_omits_the_style_dimension_when_there_is_no_gold_note()
+    {
+        var prompt = BedrockQualityJudge.BuildPrompt(Input(goldNote: null));
+
+        Assert.DoesNotContain("STYLE GOLD", prompt);
+        Assert.DoesNotContain("- style:", prompt);
+        Assert.DoesNotContain("\"style\":0.0", prompt);
+    }
+
+    [Fact]
+    public void Prompt_omits_the_style_dimension_when_the_gold_note_is_blank()
+    {
+        var prompt = BedrockQualityJudge.BuildPrompt(Input(goldNote: "   "));
+
+        Assert.DoesNotContain("STYLE GOLD", prompt);
+        Assert.DoesNotContain("- style:", prompt);
     }
 }

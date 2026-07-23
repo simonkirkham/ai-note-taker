@@ -95,12 +95,43 @@ public sealed class BedrockQualityJudge : IQualityJudge
               detail added to look thorough. Reward depth where the source supports it; require the note
               to be faithful (light inference OK, no facts absent from the source), to flag uncertainty
               rather than guess, and to be well-organised (tight wording, bullets, headers).
-            - overall: your holistic 0.0–1.0 usefulness of this note to {{x.CurrentUserName}}, weighting
+            {{StyleRubric(x)}}- overall: your holistic 0.0–1.0 usefulness of this note to {{x.CurrentUserName}}, weighting
               the preferences above.
 
             Return ONLY JSON, no other text:
-            {"tags":0.0,"actions":0.0,"decisions":0.0,"content":0.0,"overall":0.0,"rationale":"one short sentence"}
+            {{ReturnJsonSpec(x)}}
             """;
+
+    static bool HasGold(QualityJudgeInput x) => !string.IsNullOrWhiteSpace(x.GoldNote);
+
+    // MPI-10: the style dimension only exists when the fixture carries the user's own note as a
+    // gold exemplar. Rendered inline so the gold note sits next to the rubric that references it.
+    // Omitted entirely (empty string) on the synthetic corpus, where no style score is returned.
+    static string StyleRubric(QualityJudgeInput x) =>
+        !HasGold(x)
+            ? ""
+            : $$"""
+                USER'S OWN NOTE for this meeting ({{x.CurrentUserName}} wrote it — this is the STYLE GOLD,
+                the target voice and shape; it is grounding, never fabrication):
+                {{x.GoldNote}}
+
+                - style: how closely the GENERATED NOTE matches the STYLE of {{x.CurrentUserName}}'s OWN NOTE
+                  above — NOT whether it reproduces the same words. REWARD: subject-first factual bullets (a
+                  person, a system, or a number leads — NEVER "The team discussed…", "The meeting…", "There is
+                  a need to"); maximum fact coverage in minimum words with NO filler ("longer but terser");
+                  structure via short headers + nested bullets; named attribution where the transcript supports
+                  it; the user's own spelling of names/companies/acronyms. PENALISE: neutral third-party
+                  minutes prose, "The team discussed X" openers, padding, and losing the dense factual voice.
+                  Do NOT penalise the generated note for omitting the user's private judgement, opinions, or
+                  questions that are absent from the transcript — those are the user's to add; score STYLE and
+                  transcript-grounded fact coverage, not reproduction of personal interpretation.
+
+                """;
+
+    static string ReturnJsonSpec(QualityJudgeInput x) =>
+        HasGold(x)
+            ? """{"tags":0.0,"actions":0.0,"decisions":0.0,"content":0.0,"style":0.0,"overall":0.0,"rationale":"one short sentence"}"""
+            : """{"tags":0.0,"actions":0.0,"decisions":0.0,"content":0.0,"overall":0.0,"rationale":"one short sentence"}""";
 
     static QualityScore Parse(string text)
     {
@@ -117,7 +148,12 @@ public sealed class BedrockQualityJudge : IQualityJudge
             Actions: ReadScore(r, "actions"),
             Decisions: ReadScore(r, "decisions"),
             Content: ReadScore(r, "content"),
-            Rationale: r.TryGetProperty("rationale", out var ra) && ra.ValueKind == JsonValueKind.String ? ra.GetString() ?? "" : "");
+            Rationale: r.TryGetProperty("rationale", out var ra) && ra.ValueKind == JsonValueKind.String ? ra.GetString() ?? "" : "",
+            // MPI-10: null when the judge returned no `style` (no gold note in the fixture), so the
+            // report averages it only over real-corpus fixtures rather than diluting with a 0.0.
+            Style: r.TryGetProperty("style", out var st) && st.ValueKind == JsonValueKind.Number
+                ? Math.Clamp(st.GetDouble(), 0.0, 1.0)
+                : null);
     }
 
     static double ReadScore(JsonElement root, string name) =>
