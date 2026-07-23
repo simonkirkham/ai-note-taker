@@ -9,12 +9,14 @@ import { mkdtemp, writeFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { PcmWindower } from './localEngine'
+import { mergeDiarized, turnsToText } from './diarizeMerge'
 import { parseWhisperOutput, type WhisperSegment } from './whisperParse'
 
 export type LocalTranscriberOptions = {
   binPath: string
   modelPath: string // live model (base.en) for the streaming windows
   finalModelPath?: string // 48-B: higher-quality model (medium.en) for the stop-time full-recording pass
+  vadModelPath?: string // 48-C: silero VAD model — strips silence per stream before source-separation transcription
   sampleRate?: number // default 16000
   windowSeconds?: number // default 5 — live cadence
   threads?: number // default 8
@@ -66,10 +68,34 @@ export async function transcribeWindow(
   }
 }
 
+// 48-C — 1:1 diarization by source separation. The renderer captures "me" (mic) and "them"
+// (loopback) as SEPARATE streams that share t=0; transcribe each with VAD (mandatory — each
+// stream is ~half silence) and interleave into a Me/Them transcript. Uses the final model
+// (medium.en) when available, else the live model. Returns null if VAD isn't available or there
+// is no speech — the caller then keeps the single-stream transcript. Passes run sequentially to
+// bound CPU; each spans the whole recording (VAD skips non-speech but the stream is still
+// full-length), so worst-case wall-clock is ~2x a single final pass — runWhisper's length-scaled
+// timeout still bounds a hang.
+export async function diarizeStreams(
+  meAudio: Buffer,
+  themAudio: Buffer,
+  opts: LocalTranscriberOptions,
+): Promise<string | null> {
+  if (!opts.vadModelPath) return null
+  const streamOpts: LocalTranscriberOptions = { ...opts, modelPath: opts.finalModelPath ?? opts.modelPath }
+  const me = meAudio.length ? await transcribeWindow(meAudio, 0, streamOpts) : []
+  const them = themAudio.length ? await transcribeWindow(themAudio, 0, streamOpts) : []
+  const text = turnsToText(mergeDiarized(me, them))
+  return text.length ? text : null
+}
+
 function runWhisper(wavPath: string, opts: LocalTranscriberOptions, timeoutMs: number): Promise<string> {
   return new Promise((resolve, reject) => {
     // -np = print nothing but the timestamped results (clean stdout for the parser).
     const args = ['-m', opts.modelPath, '-f', wavPath, '-t', String(opts.threads ?? 8), '-np']
+    // 48-C: VAD strips non-speech before transcription — mandatory for source separation, where
+    // each stream is ~half silence (the other party's turns) and whisper otherwise loops on it.
+    if (opts.vadModelPath) args.push('--vad', '-vm', opts.vadModelPath)
     const proc = spawn(opts.binPath, args)
     let out = ''
     let err = ''

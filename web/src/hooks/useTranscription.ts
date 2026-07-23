@@ -83,6 +83,18 @@ export interface UseTranscriptionResult {
   reset: () => void;
 }
 
+// 48-C: concatenate captured 16-bit PCM chunks into one ArrayBuffer to hand to the diarizer.
+function concatPcm(chunks: Uint8Array[]): ArrayBuffer {
+  const total = chunks.reduce((n, c) => n + c.byteLength, 0);
+  const out = new Uint8Array(total);
+  let offset = 0;
+  for (const c of chunks) {
+    out.set(c, offset);
+    offset += c.byteLength;
+  }
+  return out.buffer;
+}
+
 export function useTranscription(noteId: string): UseTranscriptionResult {
   const [status, setStatus] = useState<TranscriptionStatus>('idle');
   const [transcript, setTranscript] = useState('');
@@ -122,6 +134,11 @@ export function useTranscription(noteId: string): UseTranscriptionResult {
   // listeners; localActiveRef gates the stop-time flush.
   const localActiveRef = useRef(false);
   const localCleanupRef = useRef<(() => void) | null>(null);
+  // 48-C: for a 1:1 call in local mode, the mic ("me") and loopback ("them") are captured as
+  // SEPARATE buffers so the stop-time pass can diarize by source. diarizeActiveRef gates that path.
+  const meChunksRef = useRef<Uint8Array[]>([]);
+  const themChunksRef = useRef<Uint8Array[]>([]);
+  const diarizeActiveRef = useRef(false);
 
   const cleanup = useCallback(() => {
     stoppedRef.current = true;
@@ -131,6 +148,10 @@ export function useTranscription(noteId: string): UseTranscriptionResult {
     localCleanupRef.current?.();
     localCleanupRef.current = null;
     localActiveRef.current = false;
+    // 48-C: release the source-separation buffers (already consumed by diarize on stop).
+    meChunksRef.current = [];
+    themChunksRef.current = [];
+    diarizeActiveRef.current = false;
     if (timerRef.current) {
       clearInterval(timerRef.current);
       timerRef.current = null;
@@ -187,7 +208,10 @@ export function useTranscription(noteId: string): UseTranscriptionResult {
   // the note (33-A). Fire-and-forget on Stop / natural end — independent of the
   // transcript commit. One-shot guarded so a Stop after a natural end can't double
   // upload; failures surface as 'failed' (the optimistic link reconciles to hidden).
-  const uploadRecording = useCallback(() => {
+  // triggerCloudDiarization=false (48-C local mode): upload the WAV but DON'T start the cloud
+  // batch diarization — the on-device diarization has already produced the committed transcript,
+  // so diarization stays 'idle' and the auto-analyse runs locally on it (no server refine).
+  const uploadRecording = useCallback((triggerCloudDiarization = true) => {
     if (recordingUploadedRef.current) return;
     const chunks = recordedChunksRef.current;
     if (chunks.length === 0) return;
@@ -197,7 +221,7 @@ export function useTranscription(noteId: string): UseTranscriptionResult {
     // 33-B2: a recording WILL be uploaded + diarized — set 'refining' SYNCHRONOUSLY (before the
     // async upload) so the on-Stop auto-analyse, which runs the instant status becomes 'stopped',
     // sees the in-flight diarization and defers to the server instead of racing the 202.
-    setDiarization('refining');
+    if (triggerCloudDiarization) setDiarization('refining');
     void (async () => {
       let savedKey: string;
       try {
@@ -226,6 +250,8 @@ export function useTranscription(noteId: string): UseTranscriptionResult {
       // completion Lambda re-analyses on the winning transcript (33-B2). Stays 'refining' on 202;
       // a timeout becomes 'timedOut' (the server still owns the analyse — keep deferring); a start
       // failure becomes 'failed' (never started → local fallback analyse).
+      // 48-C: local mode diarizes on-device, so the WAV is archived but no cloud batch job runs.
+      if (!triggerCloudDiarization) return;
       try {
         await startDiarization(noteId, savedKey, analyseOnCompletionRef.current);
         setDiarization('refining');
@@ -348,9 +374,10 @@ export function useTranscription(noteId: string): UseTranscriptionResult {
         const workletNode = new AudioWorkletNode(audioContext, 'pcm-processor');
 
         const micSource = audioContext.createMediaStreamSource(stream);
+        let systemSource: MediaStreamAudioSourceNode | null = null;
         if (displayStream && displayStream.getAudioTracks().length > 0) {
           // Sum mic + system audio into a single mono mix before the worklet sees it.
-          const systemSource = audioContext.createMediaStreamSource(displayStream);
+          systemSource = audioContext.createMediaStreamSource(displayStream);
           const mixer = audioContext.createGain();
           micSource.connect(mixer);
           systemSource.connect(mixer);
@@ -437,6 +464,26 @@ export function useTranscription(noteId: string): UseTranscriptionResult {
         }
 
         if (useLocal) {
+          // 48-C: only now that local is CONFIRMED active (start() succeeded) do we attach the
+          // source-separation worklets — otherwise a start-failure → cloud fallback would leave
+          // them buffering mic/loopback into me/them for the whole recording, never consumed.
+          if (systemSource) {
+            diarizeActiveRef.current = true;
+            const meChunker = new PcmChunker();
+            const themChunker = new PcmChunker();
+            const meWorklet = new AudioWorkletNode(audioContext, 'pcm-processor');
+            const themWorklet = new AudioWorkletNode(audioContext, 'pcm-processor');
+            micSource.connect(meWorklet);
+            systemSource.connect(themWorklet);
+            meWorklet.port.onmessage = (e: MessageEvent) => {
+              if (stoppedRef.current) return;
+              for (const c of meChunker.push(e.data as Float32Array)) meChunksRef.current.push(c);
+            };
+            themWorklet.port.onmessage = (e: MessageEvent) => {
+              if (stoppedRef.current) return;
+              for (const c of themChunker.push(e.data as Float32Array)) themChunksRef.current.push(c);
+            };
+          }
           setStatus('recording');
           startTimeRef.current = Date.now();
           timerRef.current = setInterval(() => {
@@ -556,17 +603,38 @@ export function useTranscription(noteId: string): UseTranscriptionResult {
       if (localActiveRef.current) {
         localActiveRef.current = false;
         // Persist the audio NOW — the WAV upload is independent of the transcript text, and the
-        // final pass can run for minutes; don't let a crash during finalising lose the recording.
-        uploadRecording();
+        // final/diarization pass can run for minutes; don't let a crash during finalising lose it.
+        // 48-C: local mode archives the WAV but diarizes on-device — no cloud batch job (pass false).
+        uploadRecording(false);
         setStatus('finalising');
         try {
-          const finalText = await window.desktop?.local.finish();
+          let finalText: string | null = null;
+          // 48-C: 1:1 call → diarize by source separation (mic vs loopback). If it produces a
+          // Me/Them transcript, discard the live (mixed) session's single-stream final pass.
+          if (
+            diarizeActiveRef.current &&
+            meChunksRef.current.length > 0 &&
+            themChunksRef.current.length > 0 &&
+            window.desktop?.local.diarize
+          ) {
+            const me = concatPcm(meChunksRef.current);
+            const them = concatPcm(themChunksRef.current);
+            finalText = await window.desktop.local.diarize(me, them);
+            if (finalText) window.desktop.local.discard();
+          }
+          // 48-B fallback: single-stream medium.en final pass (mic-only local, or diarization
+          // unavailable/empty). finish() returns null if the session was already discarded.
+          if (!finalText) finalText = (await window.desktop?.local.finish()) ?? null;
           if (finalText) {
             finalizedRef.current = resumePrefixRef.current + finalText;
             setTranscript(finalizedRef.current);
           }
         } catch (err) {
-          console.warn('Local transcription finish/final-pass failed on stop.', err);
+          console.warn('Local transcription finish/diarization failed on stop.', err);
+        } finally {
+          // Guarantee the main-process live session is released even if an IPC call threw before
+          // finish()/discard() ran (no-op when already discarded/finished).
+          window.desktop?.local.discard();
         }
         localCleanupRef.current?.();
         localCleanupRef.current = null;

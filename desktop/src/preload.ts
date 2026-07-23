@@ -28,6 +28,12 @@ contextBridge.exposeInMainWorld('desktop', {
     // Flush the tail, run the higher-quality final pass, and resolve with the final transcript
     // text (or null → keep the live text). Resolves before the renderer commits.
     finish: (): Promise<string | null> => ipcRenderer.invoke('local:finish'),
+    // 48-C: diarize a 1:1 call from the separate mic ("me") + loopback ("them") recordings,
+    // resolving with a Me/Them transcript (or null → keep the single-stream text).
+    diarize: (me: ArrayBuffer, them: ArrayBuffer): Promise<string | null> =>
+      ipcRenderer.invoke('local:diarize', me, them),
+    // 48-C: drop the live session without its final pass (diarization produced the transcript).
+    discard: (): void => ipcRenderer.send('local:discard'),
     onSegments: (cb: (segs: WhisperSegment[]) => void) => {
       const h = (_e: unknown, segs: WhisperSegment[]) => cb(segs)
       ipcRenderer.on('local:segments', h)

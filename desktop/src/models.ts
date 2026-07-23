@@ -3,11 +3,12 @@
 // on first launch, writing into app.getPath('userData')/models. Keeps the installer ~82 MB
 // (models are fetched at runtime, not bundled — phase-48 decision).
 
-// 48-B — a model's role. 'live' models gate local readiness (the small base.en, needed to
-// record at all); 'final' models (the large medium.en) are best-effort — downloaded too, but
-// local mode is usable before they arrive, and the stop-time final pass is simply skipped until
-// they're present. Undefined role is treated as 'live' (48-A's single base.en).
-export type ModelRole = 'live' | 'final'
+// 48-B/C — a model's role. 'live' models gate local readiness (the small base.en, needed to
+// record at all); 'final' (the large medium.en) and 'vad' (48-C silero, for source-separation
+// diarization) are best-effort — downloaded too, but local mode is usable before they arrive, and
+// the stop-time final/diarization pass is simply skipped until they're present. Undefined role is
+// treated as 'live' (48-A's single base.en).
+export type ModelRole = 'live' | 'final' | 'vad'
 
 export type ModelSpec = {
   name: string // logical id, e.g. 'base.en'

@@ -33,12 +33,26 @@ export const MANIFEST: ModelManifest = {
       url: 'https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-medium.en.bin',
       role: 'final',
     },
+    {
+      name: 'silero-vad',
+      file: 'ggml-silero-v5.1.2.bin',
+      sha256: '29940d98d42b91fbd05ce489f3ecf7c72f0a42f027e4875919a28fb4c04ea2cf',
+      bytes: 885098,
+      url: 'https://huggingface.co/ggml-org/whisper-vad/resolve/main/ggml-silero-v5.1.2.bin',
+      role: 'vad',
+    },
   ],
 }
 
-// The higher-quality model the stop-time final pass uses (medium.en), or null if not present yet.
+// The higher-quality model the stop-time final pass uses (medium.en), or '' if not present yet.
 export function finalModelFile(): string {
   const spec = MANIFEST.models.find((m) => m.role === 'final')
+  return spec ? spec.file : ''
+}
+
+// The VAD model for 48-C source-separation diarization, or '' if none configured.
+export function vadModelFile(): string {
+  const spec = MANIFEST.models.find((m) => m.role === 'vad')
   return spec ? spec.file : ''
 }
 
