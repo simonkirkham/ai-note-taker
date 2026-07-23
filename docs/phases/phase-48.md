@@ -1,4 +1,4 @@
-# Phase 48 — Local on-device transcription & diarization _(Not Started)_
+# Phase 48 — Local on-device transcription & diarization _(In Progress — 48-A done 2026-07-23)_
 
 **Goal:** Record a meeting in the desktop app and get the live transcript, the final transcript, and speaker labels produced entirely on your machine — no per-minute cloud transcription or diarization cost.
 
@@ -6,7 +6,7 @@
 
 | Slice | What the user gets | Status | Depends on |
 |-------|--------------------|--------|------------|
-| 48-A | A desktop setting to transcribe locally; recording shows a live transcript with no cloud transcription cost | Not Started | — |
+| 48-A | A desktop setting to transcribe locally; recording shows a live transcript with no cloud transcription cost | Done _(#400, deploy #703; installer `desktop-latest`)_ | — |
 | 48-B | The saved transcript is upgraded to higher quality on stop | Not Started | 48-A |
 | 48-C | 1:1 calls show who said what (me vs. the other person), computed on-device | Not Started | 48-A |
 | 48-D | Group calls show who said what across all remote speakers, computed on-device | Not Started | 48-C |
@@ -158,8 +158,12 @@ Scenario: Opt back into upload
 
 ### Per-slice
 
-**48-A — Live local transcription**
-- Bundle/download `whisper.cpp` binary (Windows) + a live model (`base.en` ≈3.6× realtime, or `small.en` ≈2.3× — pick during the slice against real live-latency on the target Windows machine; Step 2).
+**48-A — Live local transcription** _(Done — #400, deploy #703, installer built + published to `desktop-latest` via `publish-desktop` dispatch)_
+- **As shipped:** whisper-cli **binary bundled** in the installer (fetched per-platform at package time by `desktop/scripts/fetch-whisper-bin.mjs`, sha256-verified; x64 installer 82→88 MB); the `base.en` **weights download in the background on first local-mode selection** (not launch — cloud-only users never pull them), sha256-verified, cached in `%APPDATA%/…/models`. Engine runs in the Electron main process (`localTranscription.ts` spawns whisper-cli per 5 s PCM window); pure modules (`whisperParse`, `localEngine.PcmWindower`, `models`) unit-tested; the spawn proven against a real binary in `localTranscription.integration.spec.ts` (env-gated, CI-skipped).
+- **Live model = `base.en`** (shipped); confirm base-vs-small against real Windows latency during the manual check.
+- **Still pending (manual-on-Windows, `MANUAL-VERIFICATION.md §48-A`):** live latency keeps pace (Step 2), real capture produces on-device transcript with no cloud STT request, tail flushed on stop. Automated coverage: desktop tsc + specs, web tsc/lint/vitest all green in CI.
+- **arm64 gap:** `fetch-whisper-bin.mjs` provisions only the x64 whisper binary; the arm64 installer bundles it too, so on arm64 Windows the spawn fails → clean cloud fallback (local unavailable). Fine for now; provision an arm64 binary if arm64 becomes a target.
+- Original plan: Bundle/download `whisper.cpp` binary (Windows) + a live model (`base.en` ≈3.6× realtime, or `small.en` ≈2.3× — pick during the slice against real live-latency on the target Windows machine; Step 2).
 - IPC: renderer tees the existing 16-bit PCM chunks (already buffered at `useTranscription.ts` for the WAV) to main; main feeds whisper streaming; partials/finals returned and merged into `finalizedRef` via the existing coalescing logic.
 - Setting persisted in renderer local state/localStorage; default **Cloud**.
 - ACs: local partials appear with no cloud STT request (assert no `getTranscriptionCredentials`/Transcribe socket); cloud path byte-identical when setting=Cloud; engine-failure falls back to cloud; model-not-ready hides Local. Live-latency AC (partials keep pace, no growing lag) is **manual-on-Windows** (`desktop/MANUAL-VERIFICATION.md`), like Phase 31's real-capture checks.
