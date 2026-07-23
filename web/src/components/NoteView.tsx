@@ -168,13 +168,21 @@ export default function NoteView({
   const is404 = isError && error instanceof Error && error.message.includes("404");
   const notFound = is404 && !onNotFound;
 
+  // 'finalising' (48-B, local mode) is an ACTIVE, in-progress session that runs for the whole
+  // medium.en final pass — minutes, not the sub-second tail flush 48-A had. It must count as
+  // "recording-like" everywhere, or the note is unprotected during it: hasContent would drop to
+  // false (Cancel deletes a fresh note), the back-trap would disarm (orphaning the final text),
+  // and the live transcript would blank until commit.
   const isRecording =
-    transcription.status === "recording" || transcription.status === "requestingCredentials";
+    transcription.status === "recording" ||
+    transcription.status === "requestingCredentials" ||
+    transcription.status === "finalising";
   // Preserve the status-gate the old RecordControl effect applied: only surface the
-  // live transcript while requesting/recording/just-stopped, never at idle/error.
+  // live transcript while requesting/recording/finalising/just-stopped, never at idle/error.
   const liveTranscript =
     transcription.status === "requestingCredentials" ||
     transcription.status === "recording" ||
+    transcription.status === "finalising" ||
     transcription.status === "stopped"
       ? transcription.transcript
       : null;

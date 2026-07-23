@@ -54,24 +54,46 @@ export async function transcribeWindow(
   const wav = path.join(dir, 'w.wav')
   try {
     await writeFile(wav, encodeWav(pcm, sampleRate))
-    const stdout = await runWhisper(wav, opts)
+    // Wall-clock cap so a hung/pathologically-slow child can't wedge the pass forever. Scaled to
+    // the audio length (whisper runs faster-than-realtime, so ~6× realtime is a generous floor
+    // even on a slow CPU), with a 2-minute minimum for short clips.
+    const audioSeconds = pcm.length / 2 / sampleRate
+    const timeoutMs = Math.max(120_000, Math.ceil(audioSeconds * 6) * 1000)
+    const stdout = await runWhisper(wav, opts, timeoutMs)
     return parseWhisperOutput(stdout, baseMs)
   } finally {
     await rm(dir, { recursive: true, force: true })
   }
 }
 
-function runWhisper(wavPath: string, opts: LocalTranscriberOptions): Promise<string> {
+function runWhisper(wavPath: string, opts: LocalTranscriberOptions, timeoutMs: number): Promise<string> {
   return new Promise((resolve, reject) => {
     // -np = print nothing but the timestamped results (clean stdout for the parser).
     const args = ['-m', opts.modelPath, '-f', wavPath, '-t', String(opts.threads ?? 8), '-np']
     const proc = spawn(opts.binPath, args)
     let out = ''
     let err = ''
+    let settled = false
+    const timer = setTimeout(() => {
+      if (settled) return
+      settled = true
+      proc.kill()
+      reject(new Error(`whisper timed out after ${timeoutMs}ms`))
+    }, timeoutMs)
     proc.stdout.on('data', (d) => (out += d.toString()))
     proc.stderr.on('data', (d) => (err += d.toString()))
-    proc.on('error', reject)
-    proc.on('close', (code) => (code === 0 ? resolve(out) : reject(new Error(`whisper exit ${code}: ${err.slice(-500)}`))))
+    proc.on('error', (e) => {
+      if (settled) return
+      settled = true
+      clearTimeout(timer)
+      reject(e)
+    })
+    proc.on('close', (code) => {
+      if (settled) return
+      settled = true
+      clearTimeout(timer)
+      code === 0 ? resolve(out) : reject(new Error(`whisper exit ${code}: ${err.slice(-500)}`))
+    })
   })
 }
 
@@ -119,6 +141,7 @@ export class LocalTranscriptionSession {
   async runFinalPass(): Promise<string | null> {
     if (!this.opts.finalModelPath || this.fullAudio.length === 0) return null
     const audio = Buffer.concat(this.fullAudio)
+    this.fullAudio.length = 0 // release the retained chunks; the concatenated copy is enough now
     const segs = await transcribeWindow(audio, 0, { ...this.opts, modelPath: this.opts.finalModelPath })
     if (segs.length === 0) return null
     return segs.map((s) => s.text).join(' ')

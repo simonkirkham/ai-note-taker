@@ -47,7 +47,8 @@ export function registerLocalTranscription(deps: Deps): void {
     const binPath = whisperBinPath(deps.resourcesPath)
     const dir = modelsDir(deps.userDataDir)
     const liveSpec = MANIFEST.models.find(isLive)
-    const modelPath = path.join(dir, liveSpec ? liveSpec.file : '')
+    if (!liveSpec) throw new Error('no live model configured in the manifest')
+    const modelPath = path.join(dir, liveSpec.file)
     // 48-B: the medium.en final model is best-effort — pass its path only if it has downloaded,
     // so runFinalPass runs when present and is skipped (live text kept) when it isn't.
     const finalPath = path.join(dir, finalModelFile())

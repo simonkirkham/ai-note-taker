@@ -552,6 +552,9 @@ export function useTranscription(noteId: string): UseTranscriptionResult {
     void (async () => {
       if (localActiveRef.current) {
         localActiveRef.current = false;
+        // Persist the audio NOW — the WAV upload is independent of the transcript text, and the
+        // final pass can run for minutes; don't let a crash during finalising lose the recording.
+        uploadRecording();
         setStatus('finalising');
         try {
           const finalText = await window.desktop?.local.finish();
@@ -564,6 +567,10 @@ export function useTranscription(noteId: string): UseTranscriptionResult {
         }
         localCleanupRef.current?.();
         localCleanupRef.current = null;
+        commitTranscript();
+        cleanup();
+        setStatus('stopped');
+        return;
       }
       commitTranscript();
       uploadRecording();
