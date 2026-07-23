@@ -21,6 +21,8 @@ public sealed record EvalRow(
     double QualityActions,
     double QualityDecisions,
     double QualityContent,
+    // MPI-10: matches-the-user's-style score; null on fixtures without a gold note.
+    double? QualityStyle = null,
     string QualityRationale = "");
 
 public static class EvalRunner
@@ -88,7 +90,10 @@ public static class EvalRunner
             Actions: result.NewActionItems,
             // Deterministic grounding allowlist (MPI-5): the fixture's gold tags are grounded
             // by definition, so the judge cannot flag them as fabrication.
-            GroundedEntities: GroundedEntities.From(fixture)), ct);
+            GroundedEntities: GroundedEntities.From(fixture),
+            // MPI-10: the user's own note as the style gold (empty on the synthetic corpus →
+            // the style dimension is omitted and quality.Style is null).
+            GoldNote: fixture.Expected.GoldNote), ct);
 
         var row = new EvalRow(
             RunId: runId,
@@ -104,6 +109,7 @@ public static class EvalRunner
             QualityActions: quality.Actions,
             QualityDecisions: quality.Decisions,
             QualityContent: quality.Content,
+            QualityStyle: quality.Style,
             QualityRationale: quality.Rationale);
 
         // All rows in one process share {runId}.jsonl. The concurrent appends are
@@ -126,7 +132,8 @@ public static class EvalRunner
     {
         var sb = new StringBuilder();
         sb.AppendLine($"## {row.FixtureId} — {row.ModelId} [{row.PromptVersion}]");
-        sb.AppendLine($"**Quality {row.Quality:F2}** (tags={row.QualityTags:F2} actions={row.QualityActions:F2} decisions={row.QualityDecisions:F2} content={row.QualityContent:F2}) — {row.QualityRationale}");
+        var styleCell = row.QualityStyle is { } s ? $" style={s:F2}" : "";
+        sb.AppendLine($"**Quality {row.Quality:F2}** (tags={row.QualityTags:F2} actions={row.QualityActions:F2} decisions={row.QualityDecisions:F2} content={row.QualityContent:F2}{styleCell}) — {row.QualityRationale}");
         sb.AppendLine($"_atomic: tagF1={row.TagF1:F2} · actionF1={row.ActionF1:F2} · content={row.ContentScore:F2} · faithfulness={row.FaithfulnessScore:F2}_");
         sb.AppendLine();
         sb.AppendLine($"**Summary:** {result.Summary}");

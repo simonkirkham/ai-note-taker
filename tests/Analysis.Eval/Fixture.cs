@@ -13,7 +13,13 @@ public sealed record Fixture(
 public sealed record FixtureExpected(
     IReadOnlyList<string> Tags,
     IReadOnlyList<string> ActionItems,
-    IReadOnlyList<string> ContentMustMention);
+    IReadOnlyList<string> ContentMustMention,
+    // MPI-10: the user's OWN note for this meeting, verbatim — the STYLE gold. When present,
+    // the quality judge scores a `style` dimension: does the generated note read like the
+    // user's own (dense subject-first facts, headers/bullets, named attribution, the user's
+    // spelling)? Null/empty on the synthetic Fixtures/ corpus (no real user note) — the style
+    // dimension is then omitted. Only the real, git-ignored corpus carries a gold note.
+    string? GoldNote = null);
 
 public static class FixtureLoader
 {
