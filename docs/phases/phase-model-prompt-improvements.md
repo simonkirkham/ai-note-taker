@@ -21,7 +21,7 @@
 | MPI-7 | `analysis@v7` — execute inline `/ai` instructions (Phase 29-A). Neutral-by-construction: no separate eval run | Done — ships (no eval run; see below) | MPI-6, Phase 29-A |
 | MPI-8 | `analysis@v8` — narrow tags to **proper nouns only** (named orgs/clients, the person a meeting is ABOUT, named products/projects); always-tag the named org for consistency; drop meeting-types + topic keywords. Gold tags re-cut to the new bar | Done (`run-83741`) — `analysis@v8` ships; atomic tag F1 +0.49 to +0.63 per model, precision 3–7×, tags/note ~2.7→~1.1, no regression | MPI-6 |
 | MPI-9 | `analysis@v9` — "longer but terser": denser subject-first fact capture (current-state-first, headers+nested bullets, no filler; ban "The team discussed X") as the #1 lever, plus name speakers, a learned per-workspace spelling vocabulary, flag reactions (not judgement), `notableQuotes` + user-authored `openQuestions`, and `decisions`-closes-an-option + dedup. From the 2026-07-23 corpus review + user priorities | Not Started | MPI-8, MPI-10, Phase 29-A |
-| MPI-10 | Eval fixtures from the real corpus — add 3–4 long, multi-party, anonymous-speaker, jargon-dense fixtures with the user's own note as gold, plus a "matches the user's style" judge dimension. Gates measuring MPI-9 | Not Started | 10-G |
+| MPI-10 | Eval fixtures from the real corpus — 4 real meetings with the user's own note as gold (local, git-ignored) + a "matches the user's style" judge dimension. Gates measuring MPI-9 | Done (#399) — style dimension shipped; baseline v8/Nova Lite **style 0.20** on the real corpus (faithfulness 1.0) — the floor MPI-9 must raise | 10-G |
 
 Further items are appended as each eval run surfaces the next weakest dimension. The `eval-run` skill proposes them (see [How items are added](#how-items-are-added)).
 
@@ -310,7 +310,7 @@ The first three are prompt-input + one projection; the last is a feature. Speake
 
 ## MPI-10 — Eval fixtures that look like the user's real corpus
 
-**Status:** Not Started — from the 2026-07-23 manual-vs-generated corpus review. Gates MPI-9.
+**Status:** Done (#399, merged 2026-07-23) — a `style` dimension ships on the quality judge; 4 real fixtures with the user's own note as gold live in the git-ignored `eval-fixtures-real/` (real data, public repo — never committed). Baseline `analysis@v8` on Nova Lite scores **style 0.20** on the real corpus (faithfulness 1.0), the judge naming the exact gap ("prose paragraphs instead of Simon's bullet style", "misses Simon's bullet-heavy note style"). Eval-harness-only change — never deployed. Report: [`docs/eval-runs/2026-07-23-mpi10-style-baseline.md`](../eval-runs/2026-07-23-mpi10-style-baseline.md). Gates MPI-9.
 
 **Proposal:** Add 3–4 fixtures drawn from the user's actual meetings, with the user's own note as the gold answer, plus a judge dimension that scores "does this read like the user's note?".
 
@@ -331,8 +331,13 @@ The first three are prompt-input + one projection; the last is a feature. Speake
 - 3–4 new fixtures under the eval corpus with real-shaped transcripts + user-note gold; `FixtureCorpusTests` stays green.
 - New judge dimension in the Quality rubric; `test-matrix.md` updated.
 
-- [ ] 3–4 real-corpus fixtures added with the user's own note as gold; offline harness green
-- [ ] "Matches the user's style" judge dimension added and calibrated
-- [ ] `test-matrix.md` records the enlarged corpus
+- [x] 4 real-corpus fixtures added with the user's own note as gold (local, git-ignored); offline harness green (115/115)
+- [x] "Matches the user's style" judge dimension added and calibrated — baseline discriminates cleanly (style 0.20 vs content 0.63 vs faithfulness 1.0), rationales on-target
+- [x] `test-matrix.md` records the enlarged corpus + the style dimension
+
+**Design decisions (build notes):**
+- **Input = transcript only** (`existingContent` empty), **gold = the user's note** — measures whether the prompt reproduces the user's dense style from the transcript, not whether it echoes a note handed to it as input.
+- The style rubric **does not penalise** omitting the user's private judgement/questions absent from the transcript (the user authors those) — it scores style + transcript-grounded fact coverage only.
+- Style is **nullable**; the report averages it only over gold-note fixtures, so the synthetic committed corpus shows "—", not a diluting 0.
 
 **Depends on:** 10-G (the eval harness).

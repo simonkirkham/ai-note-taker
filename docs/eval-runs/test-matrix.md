@@ -2,7 +2,7 @@
 
 The canonical, versioned set of **models** and **prompts** the analysis eval should sweep. Maintained by the [`eval-run`](../../.claude/skills/eval-run/SKILL.md) skill — bump the version and append a changelog line after every run. Rows are never deleted; cut ones are marked `dropped`/`retired` with a reason so the history of what was tried survives.
 
-**Version:** 7 · updated 2026-06-22 · reflects `run-83741` ([report](2026-06-22-mpi8-proper-noun-tags.md))
+**Version:** 8 · updated 2026-07-23 · reflects the MPI-10 style baseline ([report](2026-07-23-mpi10-style-baseline.md))
 
 ## Models under test
 
@@ -39,9 +39,16 @@ The canonical, versioned set of **models** and **prompts** the analysis eval sho
 - Quality judge: `anthropic.claude-3-7-sonnet-20250219-v1:0` (neutral, held out of candidates). Confirm any Anthropic-candidate lead with a non-Anthropic judge before treating it as settled.
 - **MPI-4 (`run-28225`):** rubric reworded so the user's existing note is valid grounding (not fabrication) and so thinness is judged relative to the source (a faithful-terse note on a thin transcript is no longer auto-capped at ≤0.4). The terseness fix works; the note-grounding fix was only partial at the prompt level.
 - **MPI-5 (`run-78385`, #257) — note-grounding now fixed:** the judge receives the fixture's gold tags (humanised) as a deterministic `GROUNDED ENTITIES — never flag as fabrication` allowlist. Closed the note-blindness prompt wording couldn't: `14-all-hands-reorg` content **0.20 → 0.70–0.90** across all keep models, now consistent with faithfulness (1.00). Sparse-fixture content scores are trustworthy per-cell again.
+- **MPI-10 (#399) — new `style` dimension:** when a fixture carries a gold note (the user's own note for that meeting), the judge scores how closely the generated note matches the user's style — dense subject-first facts, headers/bullets, named attribution, the user's spelling ("longer but terser") — and does not penalise omitting the user's private judgement absent from the transcript. Nullable; averaged only over gold-note fixtures.
+
+## Corpus
+
+- **Synthetic (committed):** 22 fixtures in `tests/Analysis.Eval/Fixtures/` — anonymised, hand-authored tag/action/content gold. No gold note, so the `style` dimension is inert here.
+- **Real (local, git-ignored):** 4 fixtures in `eval-fixtures-real/` from the user's actual meetings, with the user's own note as the `style` gold. Real data, public repo — **never committed**. Run with `EVAL_FIXTURES_DIR=eval-fixtures-real AWS_PROFILE=prod`. Faithfulness + `style` are the meaningful signals here (no tag/action/content gold).
 
 ## Changelog
 
+- **v8** (2026-07-23, MPI-10, #399): added a `style` judge dimension + 4 real, local-only fixtures with the user's own note as the style gold. No prompt or model change — this is measurement infrastructure for MPI-9. Baseline `analysis@v8` on Nova Lite scores **style 0.20** on the real corpus (faithfulness 1.00), the floor `analysis@v9` must raise. Dimension inert on the synthetic corpus (no gold note). Model set unchanged.
 - **v7** (2026-06-22, `run-83741`): MPI-8 proper-noun-only tags. `analysis@v8` (v6/v7 body, tag rule narrowed to proper nouns only — named orgs/clients, person-subject, named products/projects/incidents; always-tag the named entity) **wins and ships** — atomic tag F1 up on every model (Opus 0.48→0.97, Sonnet 0.38→0.93, Mistral 0.19→0.82, Nova Lite 0.16→0.70), precision 3–7×, tags/note ~2.7→~1.1, no regression on content/actions/faithfulness. The 22 fixtures' gold tags were re-cut to the proper-noun bar in the same change (v6's gold mixed in meeting-types/topics, which would have false-flagged the new prompt). `analysis@v6`/`v7` superseded; `Current` → v8. Note: the `report.md` "Tags" column is the judge's holistic `qualityTags` (mixed for v8 because it dislikes sparse sets) — the deterministic **atomic tagF1** is authoritative and matches the user's fewer-but-useful preference. Model set unchanged.
 - **v1** (2026-06-04, `run-468475`): initial matrix from the frontier `analysis@v2`-vs-`v3` sweep. Kept Opus 4.6 / Claude 3 Sonnet / Mistral Large / Nova Lite; dropped Nova Pro (beaten by cheaper Nova Lite) and Llama 3 70B (weakest). `v3 > v2` → shipping via 10-O; `v4` planned for content depth (10-P).
 - **v2** (2026-06-04, `run-532442`): `analysis@v3`-vs-`v4` on the keep-set (clean run, all 22 fixtures per cell). `v4` lifted Content on the weaker models (Nova Lite **+0.10**, Sonnet +0.05) but regressed the strong ones (Mistral −0.05 Quality), dropped Tags on all four, and **worsened fabrication on thin transcripts** — so `v4` is **not shipped**; `v3` stays current. `v5` planned to keep the depth win and fix grounding. Model set unchanged; **`anthropic.claude-sonnet-4-6`** flagged as a candidate to replace the aged `claude-3-sonnet-20240229` in a future model sweep.
