@@ -13,7 +13,8 @@ import { parseWhisperOutput, type WhisperSegment } from './whisperParse'
 
 export type LocalTranscriberOptions = {
   binPath: string
-  modelPath: string
+  modelPath: string // live model (base.en) for the streaming windows
+  finalModelPath?: string // 48-B: higher-quality model (medium.en) for the stop-time full-recording pass
   sampleRate?: number // default 16000
   windowSeconds?: number // default 5 — live cadence
   threads?: number // default 8
@@ -80,6 +81,9 @@ export class LocalTranscriptionSession {
   private readonly windower: PcmWindower
   private queue: Promise<void> = Promise.resolve()
   private failed = false
+  // 48-B: retain the whole recording so the stop-time final pass can re-transcribe it at higher
+  // quality (medium.en). Same PCM the live windows saw; ~2.6 MB/min at 16 kHz mono 16-bit.
+  private readonly fullAudio: Buffer[] = []
 
   constructor(
     private readonly opts: LocalTranscriberOptions,
@@ -91,6 +95,7 @@ export class LocalTranscriptionSession {
 
   pushPcm(chunk: Buffer): void {
     if (this.failed) return
+    this.fullAudio.push(chunk)
     this.windower.push(chunk)
     let win = this.windower.takeWindow()
     while (win) {
@@ -99,13 +104,24 @@ export class LocalTranscriptionSession {
     }
   }
 
-  // Flush the tail and wait for all windows to finish — called on stop, before commit.
+  // Flush the tail and wait for all live windows to finish — called on stop, before the final pass.
   async finish(): Promise<void> {
     if (!this.failed) {
       const tail = this.windower.flush()
       if (tail) this.enqueue(tail)
     }
     await this.queue
+  }
+
+  // 48-B: re-transcribe the whole recording with the higher-quality final model, returning the
+  // full transcript text. Returns null when no final model is configured/available (caller keeps
+  // the live text) or the recording is empty. Run after finish().
+  async runFinalPass(): Promise<string | null> {
+    if (!this.opts.finalModelPath || this.fullAudio.length === 0) return null
+    const audio = Buffer.concat(this.fullAudio)
+    const segs = await transcribeWindow(audio, 0, { ...this.opts, modelPath: this.opts.finalModelPath })
+    if (segs.length === 0) return null
+    return segs.map((s) => s.text).join(' ')
   }
 
   private enqueue(win: { pcm: Buffer; baseMs: number }): void {

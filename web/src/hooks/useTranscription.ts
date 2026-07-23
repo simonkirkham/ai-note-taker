@@ -49,6 +49,7 @@ export type TranscriptionStatus =
   | 'idle'
   | 'requestingCredentials'
   | 'recording'
+  | 'finalising' // 48-B: local mode only — running the higher-quality medium.en pass on stop
   | 'stopped'
   | 'error';
 
@@ -546,14 +547,20 @@ export function useTranscription(noteId: string): UseTranscriptionResult {
   const stopRecording = useCallback(() => {
     stoppedRef.current = true;
     // 48-A: in local mode, flush the on-device engine's final window before committing so the
-    // last few seconds aren't lost. finish() resolves once all pending windows are transcribed.
+    // last few seconds aren't lost. 48-B: finish() also runs the higher-quality medium.en pass over
+    // the whole recording and resolves with that transcript (or null → keep the live base.en text).
     void (async () => {
       if (localActiveRef.current) {
         localActiveRef.current = false;
+        setStatus('finalising');
         try {
-          await window.desktop?.local.finish();
+          const finalText = await window.desktop?.local.finish();
+          if (finalText) {
+            finalizedRef.current = resumePrefixRef.current + finalText;
+            setTranscript(finalizedRef.current);
+          }
         } catch (err) {
-          console.warn('Local transcription flush failed on stop.', err);
+          console.warn('Local transcription finish/final-pass failed on stop.', err);
         }
         localCleanupRef.current?.();
         localCleanupRef.current = null;

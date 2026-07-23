@@ -18,7 +18,8 @@ export interface DesktopBridge {
     onStatus(cb: (s: LocalTranscriptionStatus) => void): () => void;
     start(): Promise<void>;
     pushPcm(pcm: ArrayBuffer): void;
-    finish(): Promise<void>;
+    // Resolves with the higher-quality final-pass transcript (or null → keep the live text).
+    finish(): Promise<string | null>;
     onSegments(cb: (segs: LocalWhisperSegment[]) => void): () => void;
     onError(cb: (message: string) => void): () => void;
   };

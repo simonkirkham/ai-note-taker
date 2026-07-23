@@ -80,6 +80,17 @@ The desktop app can transcribe locally via a bundled `whisper-cli.exe` (fetched 
 | 6 | **Not-ready falls back to cloud:** Given the model is still downloading, When I record, Then recording uses cloud Transcribe (the setting shows "Preparing…"). | ☐ |
 | 7 | **Cloud unchanged:** Given Transcription = Cloud, When I record, Then behaviour is identical to before (no regression). | ☐ |
 
+## 48-B — higher-quality final pass on stop
+
+With local transcription on, the live transcript uses the fast `base.en`; on stop the app re-transcribes the whole recording once with `medium.en` (1.5 GB, downloaded in the background after `base.en`) and saves that higher-quality text. Best-effort: if `medium.en` hasn't finished downloading, the live text is kept.
+
+| # | Given / When / Then | Pass? |
+|---|---------------------|-------|
+| 1 | **Final model downloads after live:** Given local mode selected, Then `base.en` lands first (recording becomes available) and `medium.en` continues downloading in the background (`%APPDATA%/…/models/ggml-medium.en.bin`, ~1.5 GB). | ☐ |
+| 2 | **Final pass upgrades the transcript:** Given `medium.en` is present, When I record locally and stop, Then a brief "Finalising transcript…" shows and the saved note settles on the higher-quality text (proper nouns/terms more accurate than the live view). | ☐ |
+| 3 | **Final pass keeps up:** Given a recording of length N, When the final pass runs, Then it finishes in less than N and the note is not stuck "Finalising". | ☐ |
+| 4 | **Graceful degrade:** Given `medium.en` has not finished downloading, When I stop a local recording, Then the live `base.en` text is committed (no error, no indefinite wait). | ☐ |
+
 ## Troubleshooting
 
 - **`Error 400: redirect_uri_mismatch` immediately after adding `http://localhost:5180`** — the value is correct (`redirect_uri = window.location.origin = http://localhost:5180`: no trailing slash, `localhost` not `127.0.0.1`, port `5180`, `http` not `https`). The cause is **Google propagation lag** — a freshly added+saved redirect URI is not live immediately; it can take **~5 min to a few hours**. Confirm the running app's `window.location.origin` (DevTools console) reads exactly `http://localhost:5180`, then wait and retry. **No code change.** Hit and confirmed 2026-06-22: config was right on the first attempt; the URI simply had not propagated.

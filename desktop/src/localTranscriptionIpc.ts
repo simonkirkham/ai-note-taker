@@ -6,7 +6,8 @@ import { ipcMain, type BrowserWindow } from 'electron'
 import { existsSync } from 'node:fs'
 import path from 'node:path'
 import { LocalTranscriptionSession } from './localTranscription'
-import { ensureModels, modelsDir, whisperBinPath, MANIFEST_48A } from './modelStore'
+import { ensureModels, modelsDir, whisperBinPath, finalModelFile, MANIFEST } from './modelStore'
+import { isLive } from './models'
 import type { LocalStatus } from './preload'
 
 type Deps = {
@@ -28,7 +29,7 @@ export function registerLocalTranscription(deps: Deps): void {
   const prepare = () => {
     if (preparing || status.modelReady) return
     preparing = true
-    void ensureModels(deps.userDataDir, MANIFEST_48A, (s) => {
+    void ensureModels(deps.userDataDir, MANIFEST, (s) => {
       status = s
       send('local:status', status)
     }).catch((err: Error) => {
@@ -44,15 +45,21 @@ export function registerLocalTranscription(deps: Deps): void {
 
   ipcMain.handle('local:start', () => {
     const binPath = whisperBinPath(deps.resourcesPath)
-    const modelPath = path.join(modelsDir(deps.userDataDir), MANIFEST_48A.models[0].file)
-    // Validate the engine up front so a missing binary/model rejects here — the renderer then
+    const dir = modelsDir(deps.userDataDir)
+    const liveSpec = MANIFEST.models.find(isLive)
+    const modelPath = path.join(dir, liveSpec ? liveSpec.file : '')
+    // 48-B: the medium.en final model is best-effort — pass its path only if it has downloaded,
+    // so runFinalPass runs when present and is skipped (live text kept) when it isn't.
+    const finalPath = path.join(dir, finalModelFile())
+    const finalModelPath = finalModelFile() && existsSync(finalPath) ? finalPath : undefined
+    // Validate the live engine up front so a missing binary/model rejects here — the renderer then
     // takes its clean pre-recording cloud fallback instead of failing mid-recording.
     if (!existsSync(binPath)) throw new Error(`whisper binary not found at ${binPath}`)
     if (!existsSync(modelPath)) throw new Error(`whisper model not found at ${modelPath}`)
     // Discard any prior session (rapid stop→start) so its late segments can't leak in.
     session = null
     session = new LocalTranscriptionSession(
-      { binPath, modelPath },
+      { binPath, modelPath, finalModelPath },
       (segs) => send('local:segments', segs),
       (err) => {
         console.error('[desktop] local transcription failed; renderer falls back to cloud:', err.message)
@@ -65,9 +72,18 @@ export function registerLocalTranscription(deps: Deps): void {
     session?.pushPcm(Buffer.from(pcm))
   })
 
-  ipcMain.handle('local:finish', async () => {
+  // Flush the live tail, then run the higher-quality final pass (48-B). Returns the final
+  // transcript text (or null → renderer keeps the live text). Runs before the renderer commits.
+  ipcMain.handle('local:finish', async (): Promise<string | null> => {
     const s = session
     session = null
-    await s?.finish()
+    if (!s) return null
+    await s.finish()
+    try {
+      return await s.runFinalPass()
+    } catch (err) {
+      console.error('[desktop] final pass failed; keeping live transcript:', (err as Error).message)
+      return null
+    }
   })
 }
