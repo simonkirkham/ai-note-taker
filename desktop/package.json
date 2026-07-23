@@ -13,7 +13,8 @@
     "app": "npm run build && npm start",
     "test:e2e": "playwright test",
     "test:server": "playwright test server.spec.ts",
-    "package": "npm run build && electron-builder --win",
+    "fetch:whisper": "node scripts/fetch-whisper-bin.mjs",
+    "package": "npm run fetch:whisper && npm run build && electron-builder --win",
     "update": "powershell -ExecutionPolicy Bypass -File scripts/update.ps1"
   },
   "devDependencies": {

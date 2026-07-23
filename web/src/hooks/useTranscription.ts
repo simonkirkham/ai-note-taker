@@ -3,6 +3,7 @@ import { presignRecordingUpload, saveRecording } from '../api/recordings';
 import { completeTranscription, getTranscriptionCredentials, saveTranscriptionDraft, startDiarization } from '../api/transcription';
 import { PcmChunker } from './pcm';
 import { SpeakerTranscript } from './speakerSegments';
+import { readStoredMode } from './useTranscriptionMode';
 import { encodeWav } from './wav';
 
 const RECORDING_CONTENT_TYPE = 'audio/wav' as const;
@@ -115,11 +116,20 @@ export function useTranscription(noteId: string): UseTranscriptionResult {
   const recordedChunksRef = useRef<Uint8Array[]>([]);
   const recordedSampleRateRef = useRef(16000);
   const recordingUploadedRef = useRef(false);
+  // 48-A: when the on-device (local) engine is driving the live transcript, its session must
+  // be flushed on Stop before the transcript is committed. localCleanupRef detaches its IPC
+  // listeners; localActiveRef gates the stop-time flush.
+  const localActiveRef = useRef(false);
+  const localCleanupRef = useRef<(() => void) | null>(null);
 
   const cleanup = useCallback(() => {
     stoppedRef.current = true;
     wakeupRef.current?.();
     wakeupRef.current = null;
+    // 48-A: detach the on-device engine's IPC listeners (no-op in cloud mode).
+    localCleanupRef.current?.();
+    localCleanupRef.current = null;
+    localActiveRef.current = false;
     if (timerRef.current) {
       clearInterval(timerRef.current);
       timerRef.current = null;
@@ -318,12 +328,6 @@ export function useTranscription(noteId: string): UseTranscriptionResult {
           }
         }
 
-        const creds = await getTranscriptionCredentials();
-        if (stoppedRef.current) {
-          cleanup();
-          return;
-        }
-
         const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
         mediaStreamRef.current = stream;
         if (stoppedRef.current) {
@@ -355,6 +359,19 @@ export function useTranscription(noteId: string): UseTranscriptionResult {
         const chunker = new PcmChunker();
         const speakerTranscript = new SpeakerTranscript();
 
+        // 48-A: decide the STT engine now that the real capture rate is known. Local runs only
+        // on the desktop shell, when the user selected it, the on-device model is downloaded,
+        // and the browser honoured 16 kHz (whisper needs 16 kHz mono). Anything else → cloud.
+        const desktopLocal = window.desktop?.local;
+        let useLocal = false;
+        if (desktopLocal && readStoredMode() === 'local' && audioContext.sampleRate === 16000) {
+          try {
+            useLocal = (await desktopLocal.getStatus()).modelReady;
+          } catch {
+            useLocal = false;
+          }
+        }
+
         workletNode.port.onmessage = (e: MessageEvent) => {
           if (stoppedRef.current) return;
           const chunks = chunker.push(e.data as Float32Array);
@@ -363,10 +380,69 @@ export function useTranscription(noteId: string): UseTranscriptionResult {
             audioQueue.push(chunk);
             // Tee the same PCM chunk into the recording buffer for the WAV upload (33-A).
             recordedChunksRef.current.push(chunk);
+            // 48-A: and, in local mode, stream it to the on-device whisper engine. Copy into a
+            // fresh ArrayBuffer (chunk may be a view over a pooled/shared buffer).
+            if (useLocal && desktopLocal) {
+              desktopLocal.pushPcm(new Uint8Array(chunk).buffer);
+            }
           }
           wakeupRef.current?.();
           wakeupRef.current = null;
         };
+
+        // 48-A: local engine — the on-device whisper session produces the live transcript.
+        // Its parsed segments feed the same finalizedRef/setTranscript accumulator the cloud
+        // path uses, so draft-autosave, commit, WAV upload and analysis downstream are identical.
+        if (useLocal && desktopLocal) {
+          const parts: string[] = [];
+          const offSegments = desktopLocal.onSegments((segs) => {
+            if (stoppedRef.current) return;
+            for (const s of segs) {
+              const t = s.text.trim();
+              if (t) parts.push(t);
+            }
+            finalizedRef.current = resumePrefixRef.current + parts.join(' ');
+            setTranscript(finalizedRef.current);
+          });
+          const offError = desktopLocal.onError((message) => {
+            // On-device engine crashed mid-recording. Surface it; audio is still captured to the
+            // WAV, so the on-stop upload + diarization backfills the durable transcript (no empty
+            // transcript). Live text simply stops updating.
+            console.error('[local transcription]', message);
+            setError(`On-device transcription failed: ${message}`);
+          });
+          localCleanupRef.current = () => {
+            offSegments();
+            offError();
+          };
+          try {
+            await desktopLocal.start();
+            localActiveRef.current = true;
+          } catch (err) {
+            // Could not start the engine at all → clean up and fall through to the cloud path.
+            localCleanupRef.current?.();
+            localCleanupRef.current = null;
+            console.warn('Local transcription unavailable; falling back to cloud.', err);
+            useLocal = false;
+          }
+        }
+
+        if (useLocal) {
+          setStatus('recording');
+          startTimeRef.current = Date.now();
+          timerRef.current = setInterval(() => {
+            setElapsedSeconds(Math.floor((Date.now() - startTimeRef.current) / 1000));
+          }, 1000);
+          checkpointTimerRef.current = setInterval(saveCheckpoint, CHECKPOINT_INTERVAL_MS);
+          return; // Stop is driven by stopRecording (flush the session, then commit/upload).
+        }
+
+        // Cloud engine (default) — stream PCM to AWS Transcribe.
+        const creds = await getTranscriptionCredentials();
+        if (stoppedRef.current) {
+          cleanup();
+          return;
+        }
 
         async function* audioStream() {
           while (!stoppedRef.current) {
@@ -463,10 +539,25 @@ export function useTranscription(noteId: string): UseTranscriptionResult {
   }, [cleanup, saveCheckpoint, commitTranscript, uploadRecording]);
 
   const stopRecording = useCallback(() => {
-    commitTranscript();
-    uploadRecording();
-    cleanup();
-    setStatus('stopped');
+    stoppedRef.current = true;
+    // 48-A: in local mode, flush the on-device engine's final window before committing so the
+    // last few seconds aren't lost. finish() resolves once all pending windows are transcribed.
+    void (async () => {
+      if (localActiveRef.current) {
+        localActiveRef.current = false;
+        try {
+          await window.desktop?.local.finish();
+        } catch (err) {
+          console.warn('Local transcription flush failed on stop.', err);
+        }
+        localCleanupRef.current?.();
+        localCleanupRef.current = null;
+      }
+      commitTranscript();
+      uploadRecording();
+      cleanup();
+      setStatus('stopped');
+    })();
   }, [cleanup, commitTranscript, uploadRecording]);
 
   const reset = useCallback(() => {

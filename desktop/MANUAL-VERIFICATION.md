@@ -66,6 +66,20 @@ CI builds the installer on a Windows runner and publishes it to the rolling `des
 | 4 | **Manual trigger works:** Given I run the workflow via `workflow_dispatch`, Then it builds + publishes regardless of the last deploy. | ☐ |
 | 5 | **Update skips when current (31-E):** Given I just updated, When I run `npm run update` again, Then it prints "already up to date" and exits without downloading the installer; after a new published build it downloads + installs. | ☐ |
 
+## 48-A — live local (on-device) transcription
+
+The desktop app can transcribe locally via a bundled `whisper-cli.exe` (fetched into `resources/whisper/` at package time by `scripts/fetch-whisper-bin.mjs`) driving `base.en`, which downloads in the background on first launch. Pure logic (parser, PCM windowing, engine-choice, model manifest) is unit-tested headlessly; the real capture + latency is verified here. Set **Transcription → On device** in the sidebar footer.
+
+| # | Given / When / Then | Pass? |
+|---|---------------------|-------|
+| 1 | **Binary bundled:** Given a packaged install, Then `resources/whisper/whisper-cli.exe` + its `*.dll` are present next to the app. | ☐ |
+| 2 | **Model downloads on first launch:** Given a fresh install with the setting on, When I first open the app, Then the toggle shows "Preparing… downloading models" and later flips to ready (model cached under `%APPDATA%/AI Note Taker/models/ggml-base.en.bin`). | ☐ |
+| 3 | **Live transcript is produced on-device:** Given the model is ready and Transcription = On device, When I record and speak, Then a live transcript appears and **no** `/transcription/credentials` request is made (check DevTools Network — cloud STT is not used). | ☐ |
+| 4 | **Live keeps pace (step 2):** Given a several-minute meeting, When I record locally, Then the live transcript keeps up with speech without unbounded growing lag on this machine. | ☐ |
+| 5 | **Saved transcript is complete:** Given I stop, Then the last few seconds appear (the tail window flushed) and the note saves + analyses as normal. | ☐ |
+| 6 | **Not-ready falls back to cloud:** Given the model is still downloading, When I record, Then recording uses cloud Transcribe (the setting shows "Preparing…"). | ☐ |
+| 7 | **Cloud unchanged:** Given Transcription = Cloud, When I record, Then behaviour is identical to before (no regression). | ☐ |
+
 ## Troubleshooting
 
 - **`Error 400: redirect_uri_mismatch` immediately after adding `http://localhost:5180`** — the value is correct (`redirect_uri = window.location.origin = http://localhost:5180`: no trailing slash, `localhost` not `127.0.0.1`, port `5180`, `http` not `https`). The cause is **Google propagation lag** — a freshly added+saved redirect URI is not live immediately; it can take **~5 min to a few hours**. Confirm the running app's `window.location.origin` (DevTools console) reads exactly `http://localhost:5180`, then wait and retry. **No code change.** Hit and confirmed 2026-06-22: config was right on the first attempt; the URI simply had not propagated.

@@ -1,0 +1,2 @@
+# whisper-cli binary + DLLs are fetched at build time by scripts/fetch-whisper-bin.mjs.
+# Do not commit them.

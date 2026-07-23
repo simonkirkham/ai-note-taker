@@ -6,6 +6,7 @@ import FolderTree from "./FolderTree";
 import folderTreeStyles from "./FolderTree.module.css";
 import styles from "./Sidebar.module.css";
 import ThemePicker from "./ThemePicker";
+import TranscriptionModeToggle from "./TranscriptionModeToggle";
 import WorkspaceSwitcher from "./WorkspaceSwitcher";
 
 export default function Sidebar({
@@ -158,6 +159,7 @@ export default function Sidebar({
         )}
       </div>
       <div className={styles.sidebarFooter}>
+        <TranscriptionModeToggle />
         <ThemePicker />
         {onSignOut && (
           <button
