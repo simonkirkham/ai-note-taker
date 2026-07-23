@@ -1,4 +1,4 @@
-# Phase 48 — Local on-device transcription & diarization _(In Progress — 48-A done 2026-07-23)_
+# Phase 48 — Local on-device transcription & diarization _(In Progress — 48-A, 48-B done 2026-07-23)_
 
 **Goal:** Record a meeting in the desktop app and get the live transcript, the final transcript, and speaker labels produced entirely on your machine — no per-minute cloud transcription or diarization cost.
 
@@ -7,7 +7,7 @@
 | Slice | What the user gets | Status | Depends on |
 |-------|--------------------|--------|------------|
 | 48-A | A desktop setting to transcribe locally; recording shows a live transcript with no cloud transcription cost | Done _(#400, deploy #703; installer `desktop-latest`)_ | — |
-| 48-B | The saved transcript is upgraded to higher quality on stop | Not Started | 48-A |
+| 48-B | The saved transcript is upgraded to higher quality on stop | Done _(#401, deploy 213d8f3c)_ | 48-A |
 | 48-C | 1:1 calls show who said what (me vs. the other person), computed on-device | Not Started | 48-A |
 | 48-D | Group calls show who said what across all remote speakers, computed on-device | Not Started | 48-C |
 | 48-E | A setting to keep meeting audio fully on your machine (no upload) | Not Started | 48-A |
@@ -168,10 +168,11 @@ Scenario: Opt back into upload
 - Setting persisted in renderer local state/localStorage; default **Cloud**.
 - ACs: local partials appear with no cloud STT request (assert no `getTranscriptionCredentials`/Transcribe socket); cloud path byte-identical when setting=Cloud; engine-failure falls back to cloud; model-not-ready hides Local. Live-latency AC (partials keep pace, no growing lag) is **manual-on-Windows** (`desktop/MANUAL-VERIFICATION.md`), like Phase 31's real-capture checks.
 
-**48-B — Final-quality pass**
-- On stop, main re-runs whisper with `medium.en` (1.5 GB, ≈1.54× realtime — Step 1/3) over the full captured audio; result replaces the live text before `completeTranscription`.
-- "Finalising transcript…" transient state in the renderer; derive it (don't `setState` in an effect body — lint gate).
-- AC: final ≤ recording length (manual-Windows); note never stuck "Finalising" (timeout → keep live text + surface).
+**48-B — Final-quality pass** _(Done — #401, deploy 213d8f3c; installer auto-rebuilt by publish-desktop)_
+- **As shipped:** on stop the session re-transcribes the whole retained recording with `medium.en` (role `final`); `local:finish` returns the transcript, the renderer applies it before commit behind a transient `'finalising'` status. Best-effort: `medium.en` (1.5 GB) downloads after `base.en` (readiness gates on live only), and the final pass is skipped (live text kept) if it isn't present. Wall-clock timeout on the whisper child (scaled to audio length) prevents an indefinite "Finalising". Audio uploads before the final pass so a crash can't lose it.
+- **`'finalising'` is treated as an active session** everywhere in NoteView (hasContent/Save, back-trap, live transcript) + the beforeunload/keepalive guard — the multi-minute window must not let a fresh note be Cancel-deleted or the transcript blank (Hawk critical, guarded by `NoteViewFinalising.test.tsx`).
+- **Still pending (manual-on-Windows, `MANUAL-VERIFICATION.md §48-B`):** real `medium.en` quality uplift + final-pass latency (final ≤ recording length) + graceful degrade when `medium.en` not yet downloaded.
+- Original plan: On stop, main re-runs whisper with `medium.en` over the full captured audio; result replaces the live text before `completeTranscription`. "Finalising transcript…" transient state.
 
 **48-C — 2-party diarization (source separation + VAD)**
 - Capture mic and loopback as **separate** buffers (they are distinct sources before the existing mix); transcribe each with `whisper.cpp --vad` (silero, 865 KB — **mandatory**, or the silent side loops ×N, spike Step 4) and interleave by timestamp → `Me:`/`Them:`.
