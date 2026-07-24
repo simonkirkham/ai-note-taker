@@ -88,6 +88,7 @@ public static class CalendarHandlers
 
     public static async Task<IResult> CreateNoteFromMeeting(
         CreateNoteFromMeetingRequest req,
+        HttpResponse response,
         INoteCommandHandler handler,
         ICalendarLinkIndexStore calendarLinkStore,
         ICurrentUser currentUser,
@@ -101,14 +102,18 @@ public static class CalendarHandlers
         await handler.HandleAsync(new CreateNote(noteId, new WorkspaceId(currentWorkspace.WorkspaceId)), ct);
         await handler.HandleAsync(new RenameNote(noteId, req.Title), ct);
         await handler.HandleAsync(new SetNoteDate(noteId, DateOnly.FromDateTime(req.StartTime.LocalDateTime)), ct);
-        await handler.HandleAsync(new LinkNoteToCalendarEvent(noteId, req.CalendarEventId, req.Title,
+        var version = await handler.HandleAsync(new LinkNoteToCalendarEvent(noteId, req.CalendarEventId, req.Title,
             req.StartTime, req.EndTime, req.IsRecurring, req.RecurringSeriesId), ct);
 
+        // BUG-50: emit the write token so the client's open-after-create note-detail read gates on
+        // the async projection reaching this write — otherwise it 404s and bounces the user home.
+        response.Headers["X-Consistency-Token"] = $"{noteId.ToStreamId()}@{version}";
         return Results.Created($"/notes/{noteId.Value}", new { noteId = noteId.Value });
     }
 
     public static async Task<IResult> CreateNoteFromNextOccurrence(
         CreateNoteFromNextOccurrenceRequest req,
+        HttpResponse response,
         ICalendarClientFactory calendarFactory,
         INoteCommandHandler handler,
         ICalendarLinkIndexStore calendarLinkStore,
@@ -132,9 +137,11 @@ public static class CalendarHandlers
         await handler.HandleAsync(new CreateNote(noteId, new WorkspaceId(currentWorkspace.WorkspaceId)), ct);
         await handler.HandleAsync(new RenameNote(noteId, next.Title), ct);
         await handler.HandleAsync(new SetNoteDate(noteId, DateOnly.FromDateTime(next.StartTime.LocalDateTime)), ct);
-        await handler.HandleAsync(new LinkNoteToCalendarEvent(noteId, next.CalendarEventId, next.Title,
+        var version = await handler.HandleAsync(new LinkNoteToCalendarEvent(noteId, next.CalendarEventId, next.Title,
             next.StartTime, next.EndTime, next.IsRecurring, next.RecurringSeriesId), ct);
 
+        // BUG-50: emit the write token so the open-after-create read gates on the projector.
+        response.Headers["X-Consistency-Token"] = $"{noteId.ToStreamId()}@{version}";
         return Results.Created($"/notes/{noteId.Value}", new
         {
             noteId = noteId.Value,

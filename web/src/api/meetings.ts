@@ -1,4 +1,5 @@
-import { apiFetch, base, request, requestVoid } from './client'
+import { apiFetch, base, request, requestVoid, requestWithResponse } from './client'
+import { captureNoteToken } from './notes'
 
 export interface CalendarMeeting {
   calendarEventId: string;
@@ -22,8 +23,10 @@ export function getMeetingsForDate(tz: string, date: string): Promise<MeetingsRe
   return request<MeetingsResult>(`/calendar/${date}?tz=${encodeURIComponent(tz)}`);
 }
 
-export function createNoteFromMeeting(meeting: CalendarMeeting): Promise<{ noteId: string }> {
-  return request<{ noteId: string }>(`/notes/from-meeting`, {
+export async function createNoteFromMeeting(meeting: CalendarMeeting): Promise<{ noteId: string }> {
+  // BUG-50: capture the write token so opening the new note gates on the projector catching up
+  // (an ungated read races the async projection → 404 → bounced home despite the note existing).
+  const { body, response } = await requestWithResponse<{ noteId: string }>(`/notes/from-meeting`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -35,6 +38,8 @@ export function createNoteFromMeeting(meeting: CalendarMeeting): Promise<{ noteI
       recurringSeriesId: meeting.recurringSeriesId,
     }),
   });
+  captureNoteToken(body.noteId, response);
+  return body;
 }
 
 export function linkNoteToCalendar(noteId: string, meeting: CalendarMeeting): Promise<void> {
@@ -72,5 +77,8 @@ export async function createNoteFromNextOccurrence(
   });
   if (res.status === 404) throw new Error("no_future_occurrences");
   if (!res.ok) throw new Error(`POST /notes/from-next-occurrence failed: ${res.status}`);
-  return res.json() as Promise<CreateNoteFromNextOccurrenceResult>;
+  const result = (await res.json()) as CreateNoteFromNextOccurrenceResult;
+  // BUG-50: gate the open-after-create read (no-op on the alreadyExists path — no token emitted).
+  captureNoteToken(result.noteId, res);
+  return result;
 }
