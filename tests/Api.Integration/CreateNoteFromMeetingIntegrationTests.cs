@@ -35,6 +35,23 @@ public sealed class CreateNoteFromMeetingIntegrationTests : IClassFixture<ApiFac
     }
 
     [Fact]
+    public async Task PostNotesFromMeeting_EmitsConsistencyToken_SoOpenAfterCreateGatesTheRead()
+    {
+        // BUG-50: without X-Consistency-Token the client opens the new note ungated against the
+        // async NoteDetail projection → 404 → bounced home. The header lets the open-after-create
+        // read wait for the projector. (The in-process sync-projecting store can't reproduce the
+        // 404, so assert the header is emitted; format mirrors NoteRecordingHandlers: streamId@version.)
+        var resp = await _client.PostAsJsonAsync("/notes/from-meeting", MeetingRequest("evt_9d_tok"));
+        resp.EnsureSuccessStatusCode();
+
+        Assert.True(resp.Headers.TryGetValues("X-Consistency-Token", out var values), "X-Consistency-Token header missing");
+        var token = values!.Single();
+        Assert.Contains("@", token);
+        var version = token.Split('@')[^1];
+        Assert.True(long.TryParse(version, out var v) && v > 0, $"token version not a positive number: {token}");
+    }
+
+    [Fact]
     public async Task PostNotesFromMeeting_NoteTitle_IsSetFromMeetingTitle()
     {
         var resp = await _client.PostAsJsonAsync("/notes/from-meeting", MeetingRequest("evt_9d_002", title: "1:1 with Sam"));
