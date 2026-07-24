@@ -32,13 +32,16 @@ if ($publishedSha -and $publishedSha -eq $installedSha) {
 }
 
 # 2. Newer (or unknown) build - pull the installer and install it.
+# Match the HOST architecture: the release carries both x64 and arm64 installers, and an
+# arch-agnostic glob picks the alphabetically-first (arm64), which won't run on an x64 machine.
+$arch = if ($env:PROCESSOR_ARCHITECTURE -eq 'ARM64') { 'arm64' } else { 'x64' }
 Get-ChildItem $dir -Filter '*.exe' -ErrorAction SilentlyContinue | Remove-Item -Force
 $label = if ($publishedSha) { $publishedSha.Substring(0, [Math]::Min(7, $publishedSha.Length)) } else { 'latest' }
-Write-Host "Build $label available - downloading installer..."
-gh release download desktop-latest --repo $repo --pattern '*.exe' --dir $dir --clobber
+Write-Host "Build $label available - downloading $arch installer..."
+gh release download desktop-latest --repo $repo --pattern "*-$arch.exe" --dir $dir --clobber
 
-$exe = Get-ChildItem $dir -Filter '*.exe' | Select-Object -First 1
-if (-not $exe) { throw 'No installer (.exe) found in the desktop-latest release.' }
+$exe = Get-ChildItem $dir -Filter "*-$arch.exe" | Select-Object -First 1
+if (-not $exe) { throw "No $arch installer (.exe) found in the desktop-latest release." }
 
 Write-Host 'Closing the running app (if any)...'
 # Process name tracks electron-builder.json productName; shortcut below tracks nsis.shortcutName.

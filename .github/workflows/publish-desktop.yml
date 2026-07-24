@@ -53,6 +53,19 @@ jobs:
           npm --prefix web ci
           npm --prefix desktop ci
 
+      - name: Version the build (base 1.0.0 + date.run, per build)
+        if: steps.changed.outputs.build == 'true'
+        shell: bash
+        run: |
+          # Each rolling build gets a unique, informative version in the .exe filename: base 1.0.0
+          # + build date + this workflow's run number, e.g. 1.0.0-20260724.118 →
+          # AINoteTaker-Setup-1.0.0-20260724.118-x64.exe. Valid semver (a prerelease of 1.0.0);
+          # precedence is irrelevant here (npm run update dedupes on build-sha.txt, not version).
+          # --no-git-tag-version edits package.json only — no commit/tag; never committed to the repo.
+          VER="1.0.0-$(date +%Y%m%d).${{ github.run_number }}"
+          npm --prefix desktop version --no-git-tag-version --allow-same-version "$VER"
+          echo "Building desktop installer version $VER"
+
       - name: Build the Windows installer
         if: steps.changed.outputs.build == 'true'
         env:
