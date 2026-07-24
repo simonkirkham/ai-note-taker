@@ -18,7 +18,7 @@ const GLOBAL_PATH_PREFIXES = [
   '/admin',
 ];
 
-function scopedPath(path: string): string {
+export function scopedPath(path: string): string {
   const wsId = getWorkspaceId();
   if (!wsId) return path;
   if (GLOBAL_PATH_PREFIXES.some((p) => path === p || path.startsWith(p + '/') || path.startsWith(p + '?'))) {

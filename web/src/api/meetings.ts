@@ -1,4 +1,4 @@
-import { apiFetch, base, request, requestVoid, requestWithResponse } from './client'
+import { apiFetch, base, request, requestVoid, requestWithResponse, scopedPath } from './client'
 import { captureNoteToken } from './notes'
 
 export interface CalendarMeeting {
@@ -70,7 +70,10 @@ export type CreateNoteFromNextOccurrenceResult =
 export async function createNoteFromNextOccurrence(
   recurringSeriesId: string
 ): Promise<CreateNoteFromNextOccurrenceResult> {
-  const res = await apiFetch(`${base}/notes/from-next-occurrence`, {
+  // BUG-51: this route is workspace-scoped (/w/{wsId}/notes/from-next-occurrence); the raw
+  // apiFetch bypassed scopedPath, so the unscoped call 404'd and always reported
+  // "no_future_occurrences". Scope it like createNoteFromMeeting (which goes via request()).
+  const res = await apiFetch(`${base}${scopedPath("/notes/from-next-occurrence")}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ recurringSeriesId }),
