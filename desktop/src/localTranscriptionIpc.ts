@@ -49,7 +49,7 @@ export function registerLocalTranscription(deps: Deps): void {
     const liveSpec = MANIFEST.models.find(isLive)
     if (!liveSpec) throw new Error('no live model configured in the manifest')
     const modelPath = path.join(dir, liveSpec.file)
-    // 48-B: the medium.en final model is best-effort — pass its path only if it has downloaded,
+    // 48-B: the small.en final model is best-effort — pass its path only if it has downloaded,
     // so runFinalPass runs when present and is skipped (live text kept) when it isn't.
     const finalPath = path.join(dir, finalModelFile())
     const finalModelPath = finalModelFile() && existsSync(finalPath) ? finalPath : undefined
@@ -79,7 +79,9 @@ export function registerLocalTranscription(deps: Deps): void {
   // 48-C: drop the live (mixed) session without running its single-stream final pass — used when
   // source-separation diarization produced the transcript instead. Releases the retained audio.
   // BUG-52: also kill any in-flight live-window whisper child so nothing keeps running after stop.
+  // dispose() first so that child's kill-induced non-zero exit doesn't fire a spurious onError.
   ipcMain.on('local:discard', () => {
+    session?.dispose()
     session = null
     killActiveWhisper()
   })

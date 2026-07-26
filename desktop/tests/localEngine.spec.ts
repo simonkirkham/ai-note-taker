@@ -6,12 +6,13 @@ import { PcmWindower, pickThreads } from '../src/localEngine'
 // useTranscriptionMode tests.
 
 // BUG-52 — thread cap: half the cores (min 1) so whisper never pegs the whole machine.
-test('pickThreads defaults to half the cores, minimum 1', () => {
+test('pickThreads defaults to half the cores, minimum 1, capped at 8', () => {
   expect(pickThreads(16)).toBe(8)
   expect(pickThreads(8)).toBe(4)
   expect(pickThreads(4)).toBe(2)
   expect(pickThreads(1)).toBe(1)
   expect(pickThreads(0)).toBe(1) // unknown cpu count → at least 1
+  expect(pickThreads(32)).toBe(8) // capped — whisper scaling plateaus ~8
 })
 
 test('pickThreads honours an explicit positive request', () => {

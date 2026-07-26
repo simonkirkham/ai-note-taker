@@ -129,7 +129,7 @@ export async function ensureModels(
     await download(spec, dir)
     done += 1
     // Re-read presence so modelReady flips true as soon as the LIVE model(s) land — recording
-    // becomes possible before the large final (medium.en) model finishes downloading.
+    // becomes possible before the large final (small.en) model finishes downloading.
     present = await readPresent(dir, manifest)
     onProgress({ downloading: done < todo.length, modelReady: liveReady(manifest, present), progress: done / todo.length })
   }

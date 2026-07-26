@@ -103,7 +103,9 @@ void app.whenReady().then(async () => {
 })
 
 // BUG-52: kill any in-flight whisper child on quit — spawned children orphan on Windows and would
-// otherwise keep pegging the CPU after the app closes.
+// otherwise keep pegging the CPU after the app closes. Runs synchronously so SIGTERM reaches the
+// kernel before teardown. Note: kill() terminates the direct child only (fine — whisper-cli is a
+// leaf); if anyone ever spawns whisper via a shell wrapper, kill the tree instead.
 app.on('before-quit', () => killActiveWhisper())
 
 app.on('window-all-closed', () => {

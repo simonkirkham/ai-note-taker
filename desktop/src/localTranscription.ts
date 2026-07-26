@@ -31,7 +31,7 @@ export type LocalTranscriberOptions = {
   vadModelPath?: string // 48-C: silero VAD model — strips silence per stream before source-separation transcription
   sampleRate?: number // default 16000
   windowSeconds?: number // default 5 — live cadence
-  threads?: number // default 8
+  threads?: number // default: half the cores, capped at 8 (pickThreads); an explicit value wins
 }
 
 const SAMPLE_RATE = 16000
@@ -141,8 +141,12 @@ export class LocalTranscriptionSession {
   private readonly windower: PcmWindower
   private queue: Promise<void> = Promise.resolve()
   private failed = false
+  // BUG-52: set when the session is intentionally torn down (stop/discard, which also kills any
+  // in-flight live-window child). A killed child's non-zero exit must NOT surface as onError — that
+  // would flash a spurious "transcription failed" banner on a normal diarized stop.
+  private disposed = false
   // 48-B: retain the whole recording so the stop-time final pass can re-transcribe it at higher
-  // quality (medium.en). Same PCM the live windows saw; ~2.6 MB/min at 16 kHz mono 16-bit.
+  // quality (small.en). Same PCM the live windows saw; ~2.6 MB/min at 16 kHz mono 16-bit.
   private readonly fullAudio: Buffer[] = []
 
   constructor(
@@ -185,15 +189,22 @@ export class LocalTranscriptionSession {
     return segs.map((s) => s.text).join(' ')
   }
 
+  // Mark the session torn down so a subsequently-killed in-flight child doesn't fire onError.
+  dispose(): void {
+    this.disposed = true
+  }
+
   private enqueue(win: { pcm: Buffer; baseMs: number }): void {
     this.queue = this.queue.then(async () => {
-      if (this.failed) return
+      if (this.failed || this.disposed) return
       try {
         const segs = await transcribeWindow(win.pcm, win.baseMs, this.opts)
-        if (segs.length) this.onSegments(segs)
+        if (segs.length && !this.disposed) this.onSegments(segs)
       } catch (e) {
-        this.failed = true
-        this.onError(e as Error)
+        if (!this.disposed) {
+          this.failed = true
+          this.onError(e as Error)
+        }
       }
     })
   }
