@@ -627,7 +627,10 @@ public static class PromptCatalog
     // hard-omit of small talk / agreement noise / self-intros, "Q:" open-question capture, and clean
     // spelling (do NOT reproduce the user's typos — keep the note's proper-noun spellings only).
     // Everything else — grounding, thin-transcript clamp, proper-noun tags, action rule, the /ai path —
-    // is v9 verbatim. Experiment only; not Current until it beats v9 on the style judge.
+    // is v9 verbatim. Shipped as Current (MPI-12) on HUMAN JUDGMENT — the user judged v10's output reads
+    // more like their own notes — despite a within-n=5-noise -0.04 style-judge delta vs v9; faithfulness
+    // held at 0.994, other dims flat/up. The judge under-credits the dense entity-packing that reads like
+    // this user (see docs/eval-runs/).
     static string BuildV10(NoteAnalysisRequest request)
     {
         var transcriptSection = string.IsNullOrWhiteSpace(request.TranscriptText)
