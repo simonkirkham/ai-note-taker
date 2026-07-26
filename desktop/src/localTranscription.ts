@@ -4,22 +4,34 @@
 // are unit-tested headlessly; this orchestrator is proven against a real binary in
 // localTranscription.integration.spec.ts (Linux) and manually on Windows.
 
-import { spawn } from 'node:child_process'
+import { spawn, type ChildProcess } from 'node:child_process'
 import { mkdtemp, writeFile, rm } from 'node:fs/promises'
-import { tmpdir } from 'node:os'
+import { tmpdir, cpus } from 'node:os'
 import path from 'node:path'
-import { PcmWindower } from './localEngine'
+import { PcmWindower, pickThreads } from './localEngine'
 import { mergeDiarized, turnsToText } from './diarizeMerge'
 import { parseWhisperOutput, type WhisperSegment } from './whisperParse'
+
+// BUG-52: whisper children spawned here were never killed on stop/app-quit, so on Windows they
+// orphaned and ran to completion in the background (a stopped recording still pegged ~50% CPU).
+// Track every live child and expose a kill switch that main.ts calls on stop, new-recording, and
+// app-quit — nothing survives the moment the user stops.
+const activeProcs = new Set<ChildProcess>()
+export function killActiveWhisper(): void {
+  for (const p of activeProcs) {
+    try { p.kill() } catch { /* already gone */ }
+  }
+  activeProcs.clear()
+}
 
 export type LocalTranscriberOptions = {
   binPath: string
   modelPath: string // live model (base.en) for the streaming windows
-  finalModelPath?: string // 48-B: higher-quality model (medium.en) for the stop-time full-recording pass
+  finalModelPath?: string // 48-B: higher-quality model (small.en) for the stop-time full-recording pass
   vadModelPath?: string // 48-C: silero VAD model — strips silence per stream before source-separation transcription
   sampleRate?: number // default 16000
   windowSeconds?: number // default 5 — live cadence
-  threads?: number // default 8
+  threads?: number // default: half the cores, capped at 8 (pickThreads); an explicit value wins
 }
 
 const SAMPLE_RATE = 16000
@@ -71,7 +83,7 @@ export async function transcribeWindow(
 // 48-C — 1:1 diarization by source separation. The renderer captures "me" (mic) and "them"
 // (loopback) as SEPARATE streams that share t=0; transcribe each with VAD (mandatory — each
 // stream is ~half silence) and interleave into a Me/Them transcript. Uses the final model
-// (medium.en) when available, else the live model. Returns null if VAD isn't available or there
+// (small.en) when available, else the live model. Returns null if VAD isn't available or there
 // is no speech — the caller then keeps the single-stream transcript. Passes run sequentially to
 // bound CPU; each spans the whole recording (VAD skips non-speech but the stream is still
 // full-length), so worst-case wall-clock is ~2x a single final pass — runWhisper's length-scaled
@@ -92,34 +104,34 @@ export async function diarizeStreams(
 function runWhisper(wavPath: string, opts: LocalTranscriberOptions, timeoutMs: number): Promise<string> {
   return new Promise((resolve, reject) => {
     // -np = print nothing but the timestamped results (clean stdout for the parser).
-    const args = ['-m', opts.modelPath, '-f', wavPath, '-t', String(opts.threads ?? 8), '-np']
+    // BUG-52: cap threads (default half the cores) so we never peg the whole machine.
+    const threads = pickThreads(cpus().length, opts.threads)
+    const args = ['-m', opts.modelPath, '-f', wavPath, '-t', String(threads), '-np']
     // 48-C: VAD strips non-speech before transcription — mandatory for source separation, where
     // each stream is ~half silence (the other party's turns) and whisper otherwise loops on it.
     if (opts.vadModelPath) args.push('--vad', '-vm', opts.vadModelPath)
     const proc = spawn(opts.binPath, args)
+    activeProcs.add(proc)
     let out = ''
     let err = ''
     let settled = false
-    const timer = setTimeout(() => {
+    const done = (fn: () => void) => {
       if (settled) return
       settled = true
+      clearTimeout(timer)
+      activeProcs.delete(proc)
+      fn()
+    }
+    const timer = setTimeout(() => done(() => {
       proc.kill()
       reject(new Error(`whisper timed out after ${timeoutMs}ms`))
-    }, timeoutMs)
+    }), timeoutMs)
     proc.stdout.on('data', (d) => (out += d.toString()))
     proc.stderr.on('data', (d) => (err += d.toString()))
-    proc.on('error', (e) => {
-      if (settled) return
-      settled = true
-      clearTimeout(timer)
-      reject(e)
-    })
-    proc.on('close', (code) => {
-      if (settled) return
-      settled = true
-      clearTimeout(timer)
-      code === 0 ? resolve(out) : reject(new Error(`whisper exit ${code}: ${err.slice(-500)}`))
-    })
+    proc.on('error', (e) => done(() => reject(e)))
+    proc.on('close', (code) =>
+      done(() => (code === 0 ? resolve(out) : reject(new Error(`whisper exit ${code}: ${err.slice(-500)}`)))),
+    )
   })
 }
 
@@ -129,8 +141,12 @@ export class LocalTranscriptionSession {
   private readonly windower: PcmWindower
   private queue: Promise<void> = Promise.resolve()
   private failed = false
+  // BUG-52: set when the session is intentionally torn down (stop/discard, which also kills any
+  // in-flight live-window child). A killed child's non-zero exit must NOT surface as onError — that
+  // would flash a spurious "transcription failed" banner on a normal diarized stop.
+  private disposed = false
   // 48-B: retain the whole recording so the stop-time final pass can re-transcribe it at higher
-  // quality (medium.en). Same PCM the live windows saw; ~2.6 MB/min at 16 kHz mono 16-bit.
+  // quality (small.en). Same PCM the live windows saw; ~2.6 MB/min at 16 kHz mono 16-bit.
   private readonly fullAudio: Buffer[] = []
 
   constructor(
@@ -173,15 +189,22 @@ export class LocalTranscriptionSession {
     return segs.map((s) => s.text).join(' ')
   }
 
+  // Mark the session torn down so a subsequently-killed in-flight child doesn't fire onError.
+  dispose(): void {
+    this.disposed = true
+  }
+
   private enqueue(win: { pcm: Buffer; baseMs: number }): void {
     this.queue = this.queue.then(async () => {
-      if (this.failed) return
+      if (this.failed || this.disposed) return
       try {
         const segs = await transcribeWindow(win.pcm, win.baseMs, this.opts)
-        if (segs.length) this.onSegments(segs)
+        if (segs.length && !this.disposed) this.onSegments(segs)
       } catch (e) {
-        this.failed = true
-        this.onError(e as Error)
+        if (!this.disposed) {
+          this.failed = true
+          this.onError(e as Error)
+        }
       }
     })
   }
