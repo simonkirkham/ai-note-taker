@@ -5,9 +5,51 @@ namespace Analysis.Eval.Tests;
 public class PromptCatalogTests
 {
     [Fact]
-    public void Current_is_v9()
+    public void Current_is_v10()
     {
-        Assert.Equal("analysis@v9", PromptCatalog.Current.Version);
+        Assert.Equal("analysis@v10", PromptCatalog.Current.Version);
+    }
+
+    [Fact]
+    public void V10_tightens_style_and_keeps_v9_grounding_tags_and_instruction_path()
+    {
+        var plain = new NoteAnalysisRequest(
+            ExistingContent: "existing notes",
+            TranscriptText: "a transcript",
+            CurrentUserName: "Alice");
+
+        var prompt = PromptCatalog.V10.Build(plain);
+
+        // The MPI-12 style additions synthesised from Opus 4.6's reverse-engineering.
+        Assert.Contains("FRAGMENTS, NOT SENTENCES", prompt);
+        Assert.Contains("ENTITY-LED ANNOTATION", prompt);
+        Assert.Contains("COMPACT CONNECTORS", prompt);
+        Assert.Contains("OMIT NON-CONTENT", prompt);
+        Assert.Contains("OPEN QUESTIONS", prompt);
+        // Clean spelling — do NOT reproduce the user's typos (only names follow the note).
+        Assert.Contains("do NOT copy the user's fast-typed typos", prompt);
+        // Still bans the framing opener + never Speaker N (carried from v9).
+        Assert.Contains("The team discussed", prompt);
+        Assert.Contains("Speaker 1", prompt);
+
+        // v9's grounding, thin-transcript clamp, and proper-noun tag rule carried forward.
+        Assert.Contains("GROUNDING COMES FIRST", prompt);
+        Assert.Contains("THIN TRANSCRIPT", prompt);
+        Assert.Contains("Emit ONLY proper nouns", prompt);
+
+        // No new output fields; no leaked instruction schema in the plain branch.
+        Assert.DoesNotContain("openQuestions", prompt);
+        Assert.DoesNotContain("notableQuotes", prompt);
+        Assert.DoesNotContain("\"instructionResponses\": [{", prompt);
+        Assert.Equal("analysis@v10", PromptCatalog.V10.Version);
+
+        // The /ai instruction path is preserved from v9.
+        var withInstructions = plain with { Instructions = ["draft a thank-you email"] };
+        var instructed = PromptCatalog.V10.Build(withInstructions);
+        Assert.Contains("draft a thank-you email", instructed);
+        Assert.Contains("\"instructionResponses\"", instructed);
+        Assert.Contains("ENTITY-LED ANNOTATION", instructed);
+        Assert.Contains("UNCHANGED by the instructions", instructed);
     }
 
     [Fact]

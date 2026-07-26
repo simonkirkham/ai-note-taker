@@ -24,7 +24,7 @@ public class BedrockEvalTheory
     static readonly AnalysisPrompt[] DefaultPrompts = [PromptCatalog.V3, PromptCatalog.V4, PromptCatalog.V5];
 
     static readonly AnalysisPrompt[] AllPrompts =
-        [PromptCatalog.V1, PromptCatalog.V2, PromptCatalog.V3, PromptCatalog.V4, PromptCatalog.V5, PromptCatalog.V6, PromptCatalog.V8, PromptCatalog.V9];
+        [PromptCatalog.V1, PromptCatalog.V2, PromptCatalog.V3, PromptCatalog.V4, PromptCatalog.V5, PromptCatalog.V6, PromptCatalog.V8, PromptCatalog.V9, PromptCatalog.V10];
 
     static readonly AnalysisPrompt[] Prompts = ResolvePrompts();
 

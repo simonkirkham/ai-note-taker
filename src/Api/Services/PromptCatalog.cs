@@ -22,7 +22,9 @@ public static class PromptCatalog
 
     public static readonly AnalysisPrompt V9 = new("analysis@v9", BuildV9);
 
-    public static AnalysisPrompt Current => V9;
+    public static readonly AnalysisPrompt V10 = new("analysis@v10", BuildV10);
+
+    public static AnalysisPrompt Current => V10;
 
     static string BuildV1(NoteAnalysisRequest request)
     {
@@ -521,6 +523,145 @@ public static class PromptCatalog
 
         var discussionDecisions = """
             - "discussion": the substantive facts, subject-first per the STYLE rules above. Each bullet states ONE fact; no two bullets may state the same fact.
+            - "decisions": ONLY actual decisions. A decision CLOSES an option — it names what was chosen and, where stated, who chose it. A topic merely discussed, an open question, or a "we should…" is NOT a decision. If nothing was actually decided, return an EMPTY list. No "decisions" bullet may repeat a "discussion" bullet.
+            """;
+
+        var tagRule = """
+            - "newTags": tags exist for ONE purpose — so the user can later find OTHER notes about the same organisation, person, product, or project. Emit ONLY proper nouns and nothing else:
+              - ALWAYS tag the primary entity the meeting is about — whichever applies: the named organisation/client/vendor, OR, when no organisation is named, the specific named product, project, incident, or work-stream (e.g. "payments-outage", "q3-launch", "checkout-redesign", "search-relevance"). Every meeting with a named subject gets at least this one tag, every time, so all of its notes group together. This is the most important tag to get right.
+              - Also tag any OTHER named organisation/client and the specific person a 1:1 or review is ABOUT (not mere participants or speakers).
+              - Do NOT tag meeting types ("1:1", "standup", "qbr", "sync", "retro", "review", "all-hands", "postmortem", "board-meeting") — these are not entities and group nothing useful.
+              - Do NOT tag generic topics, themes, or activities ("onboarding", "renewal", "hiring", "growth", "fundraising", "reorg", "observability", "budget", "planning") — tag a topic only when it is a SPECIFIC named product, project, or incident, never a generic activity (tag "payments-outage", the specific incident; do NOT tag "postmortem", the meeting type).
+              - Keep it SMALL: most meetings yield 1–3 proper-noun tags, and many yield just one. If a meeting truly names no organisation, person-subject, product, project, or incident, return NO tags — an empty list is the correct answer, never filler.
+              - Lowercase each tag and join multi-word names with hyphens (e.g. "Wayne Enterprises" → "wayne-enterprises", "Umbrella Corp" → "umbrella-corp"). Never tag an entity that was not named in the source.
+            """;
+
+        var actionRule = $"""- Extract "newActionItems" assigned to "{request.CurrentUserName}" only. Other people's actions must NOT appear in newActionItems. Be certain an action item is actually assigned to the current user before including it; if there is any ambiguity, omit it.""";
+
+        if (request.Instructions is not { Count: > 0 } instructions)
+        {
+            return $$"""
+            You are a meeting notes assistant. Read the user's note and the transcript below and produce a structured set of final notes that read the way THIS user writes.
+
+            USER'S NOTE (this is the user's own writing — DO NOT edit, rewrite, or reproduce it):
+            {{request.ExistingContent}}
+
+            {{transcriptSection}}
+
+            CURRENT USER: {{request.CurrentUserName}}
+
+            Instructions:
+            {{noteAuthority}}
+            - Write a brief "summary" — a few plain-text sentences on what the meeting was and its upshot. Keep it short; the value lives in the structured facts below.
+            {{grounding}}
+            {{style}}
+            {{discussionDecisions}}
+            {{tagRule}}
+            {{actionRule}}
+            - Return ONLY valid JSON — no explanation, no markdown fences.
+
+            JSON format:
+            {
+              "summary": "<concise plain-text summary>",
+              "discussion": ["Discussion point"],
+              "decisions": ["Decision made"],
+              "newTags": ["tag1", "tag2"],
+              "newActionItems": ["Action item text"]
+            }
+            """;
+        }
+
+        var instructionsSection = "USER INSTRUCTIONS (the user asked you to carry these out — execute EACH one and return a response):\n"
+            + string.Join("\n", instructions.Select((t, i) => $"{i + 1}. {t}"));
+
+        var instructionRules = """
+            - INSTRUCTION RESPONSES: carry out every item in USER INSTRUCTIONS above and return them in "instructionResponses" as {"instruction", "response"} pairs, in the same order. The "instruction" echoes the user's request; the "response" is your result.
+              - A response MAY generate content the user explicitly asked for (e.g. an agenda, a drafted email, a reworded paragraph) even if that exact text is not in the transcript — that is the point of the instruction.
+              - But it must still NOT present invented facts as things that were said: build only on what the note and transcript actually contain. An agenda derived from the topics discussed is good; inventing attendees, dates, or figures that were never mentioned is not.
+              - Grounding for "summary", "discussion", "decisions", "newTags", and "newActionItems" is UNCHANGED by the instructions — those remain strictly grounded per the rules above. The instructions only ever add "instructionResponses"; they never loosen the summary.
+            """;
+
+        var jsonFormat = """
+            {
+              "summary": "<concise plain-text summary>",
+              "discussion": ["Discussion point"],
+              "decisions": ["Decision made"],
+              "newTags": ["tag1", "tag2"],
+              "newActionItems": ["Action item text"],
+              "instructionResponses": [{"instruction": "<the user's instruction>", "response": "<your result>"}]
+            }
+            """;
+
+        return $$"""
+        You are a meeting notes assistant. Read the user's note and the transcript below and produce a structured set of final notes that read the way THIS user writes.
+
+        USER'S NOTE (this is the user's own writing — DO NOT edit, rewrite, or reproduce it):
+        {{request.ExistingContent}}
+
+        {{transcriptSection}}
+
+        {{instructionsSection}}
+
+        CURRENT USER: {{request.CurrentUserName}}
+
+        Instructions:
+        {{noteAuthority}}
+        - Write a brief "summary" — a few plain-text sentences on what the meeting was and its upshot. Keep it short; the value lives in the structured facts below.
+        {{grounding}}
+        {{style}}
+        {{discussionDecisions}}
+        {{tagRule}}
+        {{actionRule}}
+        {{instructionRules}}
+        - Return ONLY valid JSON — no explanation, no markdown fences.
+
+        JSON format:
+        {{jsonFormat}}
+        """;
+    }
+
+    // V10 == V9 with a TIGHTENED style block, synthesised from Opus 4.6's reverse-engineering of
+    // the user's own notes across 5 real meetings (2026-07-24). The recurring, cross-meeting rules
+    // Opus surfaced that V9 under-encoded: fragments (drop articles/verbs), entity-led "Name - facts"
+    // annotation packing an entity's facts into one dense bullet, compact "->"/"=" connectors,
+    // hard-omit of small talk / agreement noise / self-intros, "Q:" open-question capture, and clean
+    // spelling (do NOT reproduce the user's typos — keep the note's proper-noun spellings only).
+    // Everything else — grounding, thin-transcript clamp, proper-noun tags, action rule, the /ai path —
+    // is v9 verbatim. Experiment only; not Current until it beats v9 on the style judge.
+    static string BuildV10(NoteAnalysisRequest request)
+    {
+        var transcriptSection = string.IsNullOrWhiteSpace(request.TranscriptText)
+            ? "TRANSCRIPT:\n(No transcript was recorded. Analyse the note content above on its own.)"
+            : $"TRANSCRIPT:\n{request.TranscriptText}";
+
+        var noteAuthority = """
+            - Do NOT edit or reproduce the user's note. Your output is a separate artifact; the user's note stays untouched.
+            - The user's note is the SPELLING AUTHORITY for NAMES. Spell every person, company, product, team, and acronym EXACTLY as the user's note spells it; when the note and the transcript disagree on a name, the NOTE wins. Never expand an acronym the note leaves unexpanded, and never rename an entity the note names. (This is about names only — spell ordinary words correctly; do NOT copy the user's fast-typed typos.)
+            """;
+
+        var grounding = """
+            - GROUNDING COMES FIRST, and it OVERRIDES every other instruction below — including the density instruction. Every name, number, date, company, product, team, and commitment in your output MUST appear in the transcript or the user's note. Never introduce one that was not actually said. If you are unsure whether something was said, leave it out. When grounding and density conflict, choose grounding: a thinner note is always correct, an invented one never is.
+            - When the transcript is short or thin, a SHORT note is the CORRECT answer. Do NOT pad it, do NOT add plausible-sounding detail, and do NOT name people, companies, or figures that were never mentioned.
+              - THIN TRANSCRIPT (do this): if the transcript only says the budget was approved, write exactly "Budget approved." — nothing more.
+              - THIN TRANSCRIPT (do NOT do this): expanding "the budget was approved" into "the Q3 budget of $2M was approved by the finance team" — none of the figure, the quarter, or the team was in the source.
+            """;
+
+        var style = """
+            - STYLE — write the way THIS user writes: dense, terse, factual NOTES-TO-SELF — never minutes, never prose. Maximum concrete facts, minimum words.
+            - FRAGMENTS, NOT SENTENCES: drop articles (a/the), auxiliary verbs, and connectives. "OGI for 7 years", not "He has been at OGI for seven years." "Rely on relational DB too much", not "They rely too much on the relational database."
+            - SUBJECT-FIRST: every "discussion" bullet LEADS with the subject of the fact — a person, system, number, team, or company. NEVER open with "The team", "The meeting", "We discussed", "There is a need to", "focusing on".
+              - WRONG: "The team discussed the allocation of support for legacy applications."
+              - RIGHT: "Value-stream teams own Core + Mobius; separate team owns BCPL. Craig - no clear view of what fits where."
+            - ENTITY-LED ANNOTATION: when a bullet is about a person or named thing, lead with the name then " - " then the facts, and pack that entity's related facts into ONE dense bullet: "Kristina - Agile Delivery Lead, OGI 7y, covers Shark Army + Vitruvius", "Andrew Jackson - Head of Engineering".
+            - COMPACT CONNECTORS: use "->" for flow/ownership and "=" for status/equivalence where they compress: "Sonar -> Craig or Kai; needs ADO first", "Islands = not happy", "System down = 24h SLA".
+            - OMIT NON-CONTENT: cut ALL greetings, small talk, pleasantries, agreement noises, self-introductions, banter, and repeated restatements — a meeting's social half produces ZERO bullets. Capture only facts, ownership, process, decisions, and open questions.
+            - ATTRIBUTION, NOT DIALOGUE: state facts as established; attribute to a named person only for ownership, role, or a stated view ("Beti - unconvinced"). NEVER write "X said…", and NEVER output "Speaker 1"/"Speaker 2" — use the name, or "unknown".
+            - OPEN QUESTIONS: capture questions left unanswered that the user would want to chase, as "discussion" bullets prefixed "Q: " — grounded only (a question actually raised or clearly implied), never invented.
+            - REACTIONS, NOT JUDGEMENT: capture OBSERVABLE reactions (pushed back, agreed, hesitated) as facts; add NO opinions or editorial of your own.
+            """;
+
+        var discussionDecisions = """
+            - "discussion": the substantive facts, subject-first / entity-led per the STYLE rules above. Each bullet is ONE coherent unit — a single fact, or one entity's related facts packed densely — and no two bullets may state the same fact.
             - "decisions": ONLY actual decisions. A decision CLOSES an option — it names what was chosen and, where stated, who chose it. A topic merely discussed, an open question, or a "we should…" is NOT a decision. If nothing was actually decided, return an EMPTY list. No "decisions" bullet may repeat a "discussion" bullet.
             """;
 
