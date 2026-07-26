@@ -201,3 +201,21 @@ _(Folder administration via the MCP graduated to **[Phase 47](phases/phase-47.md
 **Why it isn't scheduled yet:** Needs Scout to design the lens taxonomy, the per-note/per-series selection UX, and the prompt set before implementation. It's a genuinely new capability (multiple analysis modes), not a prompt tweak — the prompt-tweak improvements live in [MPI-9](phases/phase-model-prompt-improvements.md).
 
 **Raised in:** 2026-07-23 manual-vs-generated corpus review (item 7).
+
+---
+
+## Freeform structured note output (break the fixed summary/discussion/decisions schema)
+
+**What:** Let AI analysis produce **one freeform markdown `content` field** written in the user's style — headers with nested bullets, `->`/`=` connectors, first-person sections — instead of (or alongside) the fixed `summary` / `discussion[]` / `decisions[]` decomposition. Tags and action items would still be extracted separately for the tag index and to-do projections.
+
+**Why it matters (evidence):** MPI-9→MPI-12 pushed the analysis prompt as far as it goes — style plateaued at ~0.74 on the user's own notes. The residual gap is **structural, not wording**: the user's notes **nest facts under person/topic headers** ("Kristina" → indented facts; `## Pipeline` → steps), and the flat `discussion[]` list of bullet strings physically cannot hold that nesting. Opus 4.6 (which reverse-engineered the prompts from the user's notes) kept producing nesting the schema then flattened. No prompt version can break a schema limit — see [`docs/learnings/mpi12-metaprompt-and-judge-vs-human.md`](learnings/mpi12-metaprompt-and-judge-vs-human.md).
+
+**Scope to design when broken down:**
+- A new additive event + `NoteDetailView` field for the markdown `content` (keep the existing fields for back-compat / existing notes).
+- A prompt version that emits the freeform `content` in the user's style (the MPI-9→12 style rules already exist — they just need a container that allows nesting).
+- Frontend rendering of the markdown note; how it coexists with / replaces the current decomposed cards.
+- Eval: the style judge already compares against the user's gold note — a freeform output should score much higher on style since it can finally match the structure.
+
+**Why it isn't scheduled yet:** genuine feature (schema/event + projection + UI + eval), not a prompt tweak — needs Scout to design the output shape and UI coexistence. Highest-leverage remaining lever for "notes that read like mine."
+
+**Raised in:** MPI-12 (2026-07-26) — the prompt lever hit its structural ceiling.

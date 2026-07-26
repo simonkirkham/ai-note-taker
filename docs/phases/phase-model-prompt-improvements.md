@@ -22,6 +22,7 @@
 | MPI-8 | `analysis@v8` — narrow tags to **proper nouns only** (named orgs/clients, the person a meeting is ABOUT, named products/projects); always-tag the named org for consistency; drop meeting-types + topic keywords. Gold tags re-cut to the new bar | Done (`run-83741`) — `analysis@v8` ships; atomic tag F1 +0.49 to +0.63 per model, precision 3–7×, tags/note ~2.7→~1.1, no regression | MPI-6 |
 | MPI-9 | `analysis@v9` — subject-first "longer but terser" prompt: ban "The team discussed X", named attribution (never "Speaker N"), reactions-not-judgement, `decisions`-closes-an-option + dedup, note-as-spelling-authority. Ships **with MPI-11 (Opus 4.6)**. New output fields (`openQuestions`/`notableQuotes`), a learned per-workspace vocabulary, and the speaker-naming *data* half (attendees) were **deferred** — see detail | Done (#405, deploy #708) — on Opus 4.6, v9 beats v8: **style +0.15, actions +0.10, decisions +0.10**, quality +0.075, faithfulness 1.0 | MPI-8, MPI-10, MPI-11, Phase 29-A |
 | MPI-11 | Prod analysis model **Nova Lite → Opus 4.6** — the "capture my style" win is **model-gated, not prompt-gated**. One CDK single-source-of-truth change drives both the `BEDROCK_MODEL_ID` env var and the `InvokeModel` IAM grant | Done (#404, deploy #707) — on the user's own notes, Nova Lite/v8 **style 0.30 / quality 0.38 → Opus 4.6 style 0.63 / quality 0.79** (with v9: 0.775 / 0.86), faithfulness 1.0. Frontier (Opus 4.7/4.8, Sonnet 5, Fable 5) return Bedrock **AccessDenied** — Opus 4.6 is the invocable ceiling | 10-G |
+| MPI-12 | `analysis@v10` — tighter subject-first style **reverse-engineered by Opus 4.6 from the user's own notes across 5 real meetings**: fragments (drop articles/verbs), entity-led "Name - facts" annotation, `->`/`=` connectors, hard-omit small talk, `Q:` open-questions, clean spelling (no invented typos). `Current` → v10, supersedes v9 as the live prompt | Done (#408, deploy #711) — **shipped on human judgment**: style judge scored v10 0.70 vs v9 0.74 (within n=5 noise), but the user (ground truth for their own style) judged v10's output reads more like their notes; faithfulness 0.994, other dims flat/up. Remaining gap is **structural** — nested-under-headers needs a freeform-content output (future feature) | MPI-9, MPI-11 |
 | MPI-10 | Eval fixtures from the real corpus — 4 real meetings with the user's own note as gold (local, git-ignored) + a "matches the user's style" judge dimension. Gates measuring MPI-9 | Done (#399) — style dimension shipped; baseline v8/Nova Lite **style 0.20** on the real corpus (faithfulness 1.0) — the floor MPI-9 must raise | 10-G |
 
 Further items are appended as each eval run surfaces the next weakest dimension. The `eval-run` skill proposes them (see [How items are added](#how-items-are-added)).
@@ -376,3 +377,35 @@ Prompt changes (`analysis@v9`) added a further +0.15 style on Opus 4.6 but were 
 - [x] Decision recorded in `docs/eval-runs/` + `test-matrix.md`
 
 **Depends on:** 10-G (the eval harness).
+
+---
+
+## MPI-12 — `analysis@v10`: style reverse-engineered by Opus 4.6 from the user's own notes
+
+**Status:** Done (#408, deploy #711, 2026-07-26) — `PromptCatalog.Current → V10`. Report: [`2026-07-26-mpi12-v10-metaprompt.md`](../eval-runs/2026-07-26-mpi12-v10-metaprompt.md).
+
+**How it was built (novel method):** the user picked 5 real meetings (each with a rich hand-written note + transcript). We fed **Opus 4.6** — the prod model — each transcript + the user's own note and asked it to *reverse-engineer the prompt* that would reproduce the user's style. All 5 independently surfaced the same style fingerprint. v10 = v9 + a tightened style block encoding the recurring rules v9 under-specified:
+- **Fragments, not sentences** (drop articles/verbs): "OGI for 7 years", not "He has been at OGI…".
+- **Entity-led annotation**: "Kristina - Agile Delivery Lead, OGI 7y, covers Shark Army + Vitruvius" — one entity's facts packed into one dense bullet.
+- **Compact connectors** `->` (flow/ownership) and `=` (status).
+- **Hard-omit** small talk / agreement noise / self-intros (the social half → zero bullets).
+- **`Q:` open-question capture** (grounded only).
+- **Clean spelling** — do NOT reproduce the user's fast-typed typos; keep the note's proper-noun spellings only.
+
+v9's grounding-first clamp, thin-transcript rule, proper-noun tags, action rule, and the `/ai` path are byte-identical.
+
+**Shipped on human judgment over a noisy metric.** On 5 real notes (Opus 4.6, note-as-input) the style judge scored v10 **0.70 vs v9 0.74** — but that is **within n=5 judge noise (±0.1)**, the judge is under-sensitive to the exact dense entity-packing that reads like this user (same blind-spot as MPI-9/MPI-10), and on the actual side-by-side v10 reads visibly closer to the user's own notes (`Name -` annotation, `+` connectors, first-person "Access needed -" opener). **The user — the ground truth for their own style — chose v10.** Other dims flat/up (decisions +0.10, content +0.02, actions +0.02); faithfulness 0.994. This is the first MPI shipped where human judgment deliberately overrode the automated style score.
+
+**The structural ceiling (not this slice).** The prompt lever has hit its limit (~0.74 style). The remaining gap is structural: the user's notes **nest facts under person/topic headers**, which the flat `discussion[]` schema cannot hold. Going further needs a freeform markdown `content` output field (a feature — schema/event + projection + UI + eval) — see [future-features.md](../future-features.md).
+
+**Commands in scope:** none · **Events in scope:** none
+
+### Scope
+- `PromptCatalog.V10` (`analysis@v10`) — v9 body, `style`/`discussionDecisions`/`noteAuthority` blocks tightened; `Current → V10`. Added to eval `AllPrompts`.
+- `PromptCatalogTests`: `Current_is_v10` + v10 spec test (pins the new rules + the v9 carry-overs + no-new-fields + `/ai`).
+
+- [x] `analysis@v10` written; `Current → v10`; both prod consumers (Builder, TranscribeCompletion) flip
+- [x] Evaluated v9 vs v10 on the 5 real notes (Opus 4.6); human override recorded with the numbers
+- [x] Decision recorded in `docs/eval-runs/` + `test-matrix.md`; structural ceiling logged as future work
+
+**Depends on:** MPI-9 (`analysis@v9` — the prompt v10 edits), MPI-11 (Opus 4.6 — the model it was designed on).
