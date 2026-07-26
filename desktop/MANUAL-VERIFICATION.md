@@ -115,6 +115,17 @@ A desktop setting (sidebar footer, default **on** — privacy-first). With it on
 | 3 | **Opt back into upload:** Given the setting is off, When I record locally + stop, Then the audio uploads as before and the recording is downloadable. | ☐ |
 | 4 | **Cloud unaffected:** Given Transcription = Cloud, When I record, Then the WAV uploads regardless of this setting (cloud needs it). | ☐ |
 
+## BUG-52 — whisper process lifecycle + resource (Step 1 hardening)
+
+Local transcription must never leave a whisper process running or peg the whole machine. (Live-latency is Step 2 — not covered here.)
+
+| # | Given / When / Then | Pass? |
+|---|---------------------|-------|
+| 1 | **No orphan on quit:** Given a local recording is finalising, When I close the app, Then no `whisper-cli.exe` remains in Task Manager (was: it kept running at ~50% CPU). | ☐ |
+| 2 | **No orphan on stop / new recording:** Given I stop and immediately start a new local recording, Then the previous pass's whisper is killed — CPU doesn't stack. | ☐ |
+| 3 | **Machine stays usable:** Given a local final pass runs, Then whisper uses ~half the cores (not all) and the app/OS stay responsive. | ☐ |
+| 4 | **Lighter final pass:** Given `small.en` is the final model, Then the on-stop pass is meaningfully faster/lighter than the old `medium.en` (and `medium.en` is no longer downloaded). | ☐ |
+
 ## Troubleshooting
 
 - **`Error 400: redirect_uri_mismatch` immediately after adding `http://localhost:5180`** — the value is correct (`redirect_uri = window.location.origin = http://localhost:5180`: no trailing slash, `localhost` not `127.0.0.1`, port `5180`, `http` not `https`). The cause is **Google propagation lag** — a freshly added+saved redirect URI is not live immediately; it can take **~5 min to a few hours**. Confirm the running app's `window.location.origin` (DevTools console) reads exactly `http://localhost:5180`, then wait and retry. **No code change.** Hit and confirmed 2026-06-22: config was right on the first attempt; the URI simply had not propagated.

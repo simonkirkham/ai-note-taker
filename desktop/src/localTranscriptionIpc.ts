@@ -5,7 +5,7 @@
 import { ipcMain, type BrowserWindow } from 'electron'
 import { existsSync } from 'node:fs'
 import path from 'node:path'
-import { LocalTranscriptionSession, diarizeStreams } from './localTranscription'
+import { LocalTranscriptionSession, diarizeStreams, killActiveWhisper } from './localTranscription'
 import { ensureModels, modelsDir, whisperBinPath, finalModelFile, vadModelFile, MANIFEST } from './modelStore'
 import { isLive } from './models'
 import type { LocalStatus } from './preload'
@@ -57,8 +57,11 @@ export function registerLocalTranscription(deps: Deps): void {
     // takes its clean pre-recording cloud fallback instead of failing mid-recording.
     if (!existsSync(binPath)) throw new Error(`whisper binary not found at ${binPath}`)
     if (!existsSync(modelPath)) throw new Error(`whisper model not found at ${modelPath}`)
-    // Discard any prior session (rapid stop→start) so its late segments can't leak in.
+    // Discard any prior session (rapid stop→start) so its late segments can't leak in, and
+    // BUG-52: kill any whisper child still running from a previous recording so a new one never
+    // stacks CPU on top of an old (e.g. still-finalising) pass.
     session = null
+    killActiveWhisper()
     session = new LocalTranscriptionSession(
       { binPath, modelPath, finalModelPath },
       (segs) => send('local:segments', segs),
@@ -75,8 +78,10 @@ export function registerLocalTranscription(deps: Deps): void {
 
   // 48-C: drop the live (mixed) session without running its single-stream final pass — used when
   // source-separation diarization produced the transcript instead. Releases the retained audio.
+  // BUG-52: also kill any in-flight live-window whisper child so nothing keeps running after stop.
   ipcMain.on('local:discard', () => {
     session = null
+    killActiveWhisper()
   })
 
   // Flush the live tail, then run the higher-quality final pass (48-B). Returns the final

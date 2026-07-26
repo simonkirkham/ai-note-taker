@@ -4,6 +4,7 @@ import path from 'node:path'
 import { startBundleServer } from './server'
 import { pickDisplayMediaResponse } from './displayMedia'
 import { registerLocalTranscription } from './localTranscriptionIpc'
+import { killActiveWhisper } from './localTranscription'
 
 // Phase 31-A — Windows bundle-shell.
 // Serve the compiled web/ frontend from a localhost loopback origin and proxy
@@ -100,6 +101,10 @@ void app.whenReady().then(async () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()
   })
 })
+
+// BUG-52: kill any in-flight whisper child on quit — spawned children orphan on Windows and would
+// otherwise keep pegging the CPU after the app closes.
+app.on('before-quit', () => killActiveWhisper())
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit()

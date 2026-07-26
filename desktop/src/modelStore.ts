@@ -11,8 +11,8 @@ import path from 'node:path'
 import { missingModels, allPresent, liveReady, type ModelManifest, type PresentModels, type ModelSpec } from './models'
 
 // Model set for local transcription. base.en drives the live transcript (role 'live' → gates
-// readiness); medium.en drives the higher-quality stop-time final pass (role 'final' → best-effort,
-// downloaded too but local mode is usable before it lands). 48-C/D add VAD / diarization specs here.
+// readiness); small.en drives the higher-quality stop-time final/diarization pass (role 'final' →
+// best-effort, downloaded too but local mode is usable before it lands). 48-C adds the VAD spec.
 // NOTE (Hawk 48-A): bytes is load-bearing for the launch size-gate — keep bytes + sha256 paired to
 // the true file whenever a model is added/changed, or the size-gate loops on re-download.
 export const MANIFEST: ModelManifest = {
@@ -26,11 +26,14 @@ export const MANIFEST: ModelManifest = {
       role: 'live',
     },
     {
-      name: 'medium.en',
-      file: 'ggml-medium.en.bin',
-      sha256: 'cc37e93478338ec7700281a7ac30a10128929eb8f427dda2e865faa8f6da4356',
-      bytes: 1533774781,
-      url: 'https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-medium.en.bin',
+      // BUG-52: small.en (not medium.en) for the stop-time final/diarization pass — medium.en was
+      // minutes of full CPU on a laptop (doubled for 1:1 diarization). small.en is ~2.3x realtime
+      // and ~466 MB: much lighter, still clearly better than the base.en live model.
+      name: 'small.en',
+      file: 'ggml-small.en.bin',
+      sha256: 'c6138d6d58ecc8322097e0f987c32f1be8bb0a18532a3f88f734d1bbf9c41e5d',
+      bytes: 487614201,
+      url: 'https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small.en.bin',
       role: 'final',
     },
     {
@@ -44,7 +47,7 @@ export const MANIFEST: ModelManifest = {
   ],
 }
 
-// The higher-quality model the stop-time final pass uses (medium.en), or '' if not present yet.
+// The higher-quality model the stop-time final pass uses (small.en), or '' if not present yet.
 export function finalModelFile(): string {
   const spec = MANIFEST.models.find((m) => m.role === 'final')
   return spec ? spec.file : ''

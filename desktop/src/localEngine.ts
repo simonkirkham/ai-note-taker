@@ -3,6 +3,14 @@
 // decision (local vs cloud) lives renderer-side in useTranscriptionMode/useTranscription, where
 // it is tested against localStorage + the desktop model-ready status.
 
+// BUG-52: cap whisper threads so on-device transcription never pegs the whole machine (it ran
+// at 8 threads, oversubscribing a 4-core laptop → thrash + "used a lot of resource"). Use half
+// the cores (min 1), leaving headroom for the app + the OS. An explicit request still wins.
+export function pickThreads(cpuCount: number, requested?: number): number {
+  if (requested && requested > 0) return requested
+  return Math.max(1, Math.floor((cpuCount || 1) / 2))
+}
+
 type Window = { pcm: Buffer; baseMs: number }
 
 // Slices the incoming 16-bit PCM stream into consecutive fixed-length windows. Each window
