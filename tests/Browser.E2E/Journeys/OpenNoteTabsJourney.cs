@@ -53,9 +53,12 @@ public sealed class OpenNoteTabsJourney(BrowserFixture browser) : IAsyncLifetime
         await _app.SaveAndReturnAsync();
         await _app.AssertNoteVisibleInListAfterReloadAsync(second);
 
-        // Open the first note → one tab.
+        // Open the first note, then normalise: creating each fixture note above also opened
+        // it, so start from exactly one tab rather than assuming a reload cleared them (it
+        // does today; 49-B makes tabs survive a reload and would break that assumption).
         await _app.ClickNoteInListAsync(first);
         await _app.AssertNoteScreenLoadedAsync();
+        await _app.CloseAllTabsExceptAsync(first);
         await _app.AssertOpenTabCountAsync(1);
         await _app.AssertActiveTabAsync(first);
 
@@ -65,6 +68,7 @@ public sealed class OpenNoteTabsJourney(BrowserFixture browser) : IAsyncLifetime
         await _app.ClickNoteInListAsync(second);
         await _app.AssertNoteScreenLoadedAsync();
         await _app.AssertOpenTabCountAsync(2);
+        await _app.AssertOpenTabVisibleAsync(first);
         await _app.AssertActiveTabAsync(second);
         var secondUrl = _app.CurrentUrl;
 

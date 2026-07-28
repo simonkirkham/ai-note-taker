@@ -65,7 +65,7 @@ export default function NoteView({
   // 49-A: lets the parent ask before it navigates somewhere that would unmount this note
   // (switching or closing an open-note tab). Registered only while recording — an in-app
   // navigate never fires the popstate trap below, so without this the capture dies silently.
-  onRegisterLeaveGuard?: (guard: ((proceed: () => void) => boolean) | null) => void;
+  onRegisterLeaveGuard?: (guard: ((proceed: () => void) => void) | null) => void;
   onNotFound?: () => void;
   isNew?: boolean;
   // Move targets = the caller's workspaces minus the current one. When empty/absent
@@ -280,7 +280,6 @@ export default function NoteView({
     onRegisterLeaveGuard((proceed) => {
       pendingLeaveRef.current = proceed;
       setConfirmingLeave(true);
-      return false;
     });
     return () => onRegisterLeaveGuard(null);
   }, [isRecording, onRegisterLeaveGuard]);
@@ -290,6 +289,9 @@ export default function NoteView({
     window.history.pushState(null, "", window.location.href);
     const onPopState = () => {
       window.history.pushState(null, "", window.location.href);
+      // A browser-back while a tab-switch confirm is showing supersedes it: this leave is
+      // self-requested, so it must exit via onExit, not resume the tab that was clicked.
+      pendingLeaveRef.current = null;
       setConfirmingLeave(true);
     };
     window.addEventListener("popstate", onPopState);

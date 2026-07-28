@@ -201,6 +201,65 @@ describe('Open-note tabs (49-A)', () => {
     expect(tabNamed('Standup')).toHaveAttribute('aria-current', 'page')
   })
 
+  // The "next along" branch of neighbourOf — closing the LAST tab falls through to the
+  // previous one, so a two-tab test alone never exercises it.
+  it('closing a middle tab moves to the next one along', async () => {
+    server.use(
+      http.get('/api/w/:wsId/notes/cards', () =>
+        HttpResponse.json({ cards: [STANDUP, CLIENT_CALL, card('note-3', 'Retro')] }),
+      ),
+    )
+    renderApp()
+    await openFromList('Standup')
+    await goHome()
+    await openFromList('Client call')
+    await goHome()
+    await openFromList('Retro')
+    await waitFor(() => expect(tabs()).toHaveLength(3))
+
+    // Make the MIDDLE tab active, then close it.
+    await userEvent.click(tabNamed('Client call'))
+    await waitFor(() => expect(window.location.pathname).toBe('/w/__default__/notes/note-2'))
+    await userEvent.click(screen.getByRole('button', { name: 'Close Client call' }))
+
+    await waitFor(() => expect(window.location.pathname).toBe('/w/__default__/notes/note-3'))
+    expect(tabs()).toHaveLength(2)
+    expect(tabNamed('Retro')).toHaveAttribute('aria-current', 'page')
+  })
+
+  // The note in the URL is always a tab, however it got there — otherwise the bar shows
+  // tabs with no active one, or nothing at all while a note is plainly open.
+  it('a cold deep-link to a note shows it as a tab', async () => {
+    window.history.replaceState({}, '', '/w/__default__/notes/note-1')
+    renderApp()
+    await screen.findByTestId('note-title-input')
+
+    await waitFor(() => expect(tabs()).toHaveLength(1))
+    expect(tabNamed('Standup')).toHaveAttribute('aria-current', 'page')
+  })
+
+  it('going back onto a note whose tab was closed shows it as a tab again', async () => {
+    renderApp()
+    await openFromList('Standup')
+    await goHome()
+    await openFromList('Client call')
+    await waitFor(() => expect(tabs()).toHaveLength(2))
+
+    // Switch to Standup (pushes its entry), then close that tab — which navigates on to the
+    // neighbour. Browser-Back now lands on a note with no tab of its own.
+    await userEvent.click(tabNamed('Standup'))
+    await waitFor(() => expect(window.location.pathname).toBe('/w/__default__/notes/note-1'))
+    await userEvent.click(screen.getByRole('button', { name: 'Close Standup' }))
+    await waitFor(() => expect(window.location.pathname).toBe('/w/__default__/notes/note-2'))
+    expect(tabs()).toHaveLength(1)
+
+    window.history.back()
+
+    await waitFor(() => expect(window.location.pathname).toBe('/w/__default__/notes/note-1'))
+    await waitFor(() => expect(tabs()).toHaveLength(2))
+    expect(tabNamed('Standup')).toHaveAttribute('aria-current', 'page')
+  })
+
   it('closing the last tab returns to the notes list and hides the bar', async () => {
     renderApp()
     await openFromList('Standup')

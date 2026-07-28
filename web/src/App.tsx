@@ -165,18 +165,26 @@ function AppContent({ signOut }: { signOut: () => void }) {
   const { tabs, openTab, closeTab } = useOpenNoteTabs(wsId);
   // Titles follow the note-cards list so a rename re-derives; the title captured at open
   // time covers a note too new to be in the list yet.
-  const openNoteTabs = useMemo(
-    () =>
-      tabs.map((tab) => ({
-        noteId: tab.noteId,
-        title: cards.find((c) => c.noteId === tab.noteId)?.title || tab.title || "Untitled note",
-      })),
-    [tabs, cards],
-  );
+  //
+  // The note in the URL is always shown as a tab, even when nothing opened it through this
+  // app session — a cold deep-link, or Back onto a note whose tab was closed. Without this
+  // the bar would render the wrong thing (tabs with no active one) or nothing at all while
+  // a note is plainly open. Adopting it here rather than in an effect keeps the tab set out
+  // of render-time setState.
+  const openNoteTabs = useMemo(() => {
+    const adopted =
+      !activeNoteId || tabs.some((t) => t.noteId === activeNoteId)
+        ? tabs
+        : [...tabs, { noteId: activeNoteId, title: "" }];
+    return adopted.map((tab) => ({
+      noteId: tab.noteId,
+      title: cards.find((c) => c.noteId === tab.noteId)?.title || tab.title || "Untitled note",
+    }));
+  }, [tabs, cards, activeNoteId]);
   // Set by the mounted NoteView while it is recording; see requestLeave below.
-  const leaveGuardRef = useRef<((proceed: () => void) => boolean) | null>(null);
+  const leaveGuardRef = useRef<((proceed: () => void) => void) | null>(null);
   const registerLeaveGuard = useCallback(
-    (guard: ((proceed: () => void) => boolean) | null) => {
+    (guard: ((proceed: () => void) => void) | null) => {
       leaveGuardRef.current = guard;
     },
     [],
@@ -187,23 +195,27 @@ function AppContent({ signOut }: { signOut: () => void }) {
     if (isNew) state.isNew = true;
     if (title) state.initialTitle = title;
     // 49-A: opening a note adds it to the open set (a no-op if it is already there, so
-    // re-opening focuses the existing tab rather than duplicating it) and navigates.
-    // The count rides the event so an unbounded bar — which would mean the dedupe above
-    // has regressed — is visible without a user reporting it.
-    if (!tabs.some((t) => t.noteId === noteId)) {
-      recordRumEvent("noteTabOpened", { tabCount: tabs.length + 1 });
-    }
-    openTab(noteId, title);
-    void navigate(w(`/notes/${noteId}`), { state });
+    // re-opening focuses the existing tab rather than duplicating it) and navigates. Guarded
+    // like a tab switch: `onOpenNote` is reachable from INSIDE a recording note (the `/ai`
+    // create-note and next-occurrence paths), and it unmounts that note just the same.
+    requestLeave(() => {
+      // The count rides the event so an unbounded bar — which would mean the dedupe above
+      // has regressed — is visible without a user reporting it.
+      if (!tabs.some((t) => t.noteId === noteId)) {
+        recordRumEvent("noteTabOpened", { tabCount: tabs.length + 1 });
+      }
+      openTab(noteId, title);
+      void navigate(w(`/notes/${noteId}`), { state });
+    });
   }
 
   // 49-A: switching or closing a tab is an in-app navigate, which does NOT fire the popstate
   // trap that protects a recording (BUG-34) — so the mounted note gets to intercept the leave
-  // first. It returns false to take over, and calls `proceed` itself once the user confirms.
+  // first. The guard takes ownership of `proceed` and runs it once the user confirms.
   function requestLeave(proceed: () => void) {
     const guard = leaveGuardRef.current;
-    if (guard && !guard(proceed)) return;
-    proceed();
+    if (guard) guard(proceed);
+    else proceed();
   }
 
   function handleSelectTab(noteId: string) {
@@ -212,7 +224,8 @@ function AppContent({ signOut }: { signOut: () => void }) {
   }
 
   function handleCloseTab(noteId: string) {
-    const next = neighbourOf(tabs, noteId);
+    // Neighbour comes from the RENDERED tabs, which include an adopted active note.
+    const next = neighbourOf(openNoteTabs, noteId);
     const doClose = () => {
       closeTab(noteId);
       if (noteId !== activeNoteId) return;
@@ -447,7 +460,7 @@ function NoteRoute({
   onDelete: (noteId: string) => Promise<void>;
   onDateSet: (noteId: string, date: string) => void;
   onOpenNote: (noteId: string, title?: string, isNew?: boolean) => void;
-  onRegisterLeaveGuard: (guard: ((proceed: () => void) => boolean) | null) => void;
+  onRegisterLeaveGuard: (guard: ((proceed: () => void) => void) | null) => void;
   otherWorkspaces: { workspaceId: string; name: string }[];
   onMoveNoteToWorkspace: (noteId: string, workspaceId: string) => void;
 }) {

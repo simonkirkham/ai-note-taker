@@ -327,6 +327,19 @@ public sealed class AppPage
             .GetByTestId("open-note-tab-close").ClickAsync();
     }
 
+    // Creating a note opens it, so a journey's own fixture notes arrive as tabs. Today an
+    // in-memory tab set is wiped by the reload inside AssertNoteVisibleInListAfterReloadAsync;
+    // once 49-B persists tabs that stops being true, and any exact-count assertion silently
+    // becomes wrong. Normalise to a known state instead of depending on either behaviour.
+    public async Task CloseAllTabsExceptAsync(string keepTitle)
+    {
+        while (await OpenNoteTabs.CountAsync() > 1)
+        {
+            var stray = OpenNoteTabs.Filter(new LocatorFilterOptions { HasNotText = keepTitle }).First;
+            await stray.GetByTestId("open-note-tab-close").ClickAsync();
+        }
+    }
+
     // Cards-list reads are async since RYW-2: a just-written card is projector-built, so the gated
     // read can return `stale` while the projector is still catching up (e.g. a cold first
     // invocation, slower than the gate's ~2s bound). Re-check, reloading to re-send the consistency

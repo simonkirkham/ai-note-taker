@@ -195,6 +195,7 @@ Frontend-only phase. **No new commands, events, projections, endpoints or CDK ch
 - **Restore:** hydrate on mount; reconcile against the `cards` list once it loads and drop any `noteId` not present (covers deleted **and** moved-to-another-workspace). Reconcile only *after* cards have loaded — dropping tabs against an empty in-flight list would wipe them on every cold start.
 - **Active tab on restore:** the URL wins when the user cold-links to a note; the stored `activeNoteId` only applies when landing on the note route with no id (i.e. not at all today) or when restoring on the same URL. Keep it simple: restore the *list*, let the route decide active.
 - **Corrupt/legacy value:** parse defensively; any failure → treat as empty.
+- **E2E precondition (from the 49-A review):** creating a note opens it, so a journey's own fixture notes arrive as tabs. Today they are wiped by the reload inside `AssertNoteVisibleInListAfterReloadAsync`; **persisting tabs makes that stop being true**, so any exact tab-count assertion silently becomes wrong. 49-A already normalises via `AppPage.CloseAllTabsExceptAsync` — keep using it, and re-check every tab assertion in `OpenNoteTabsJourney` when the persistence lands.
 - **Tests:** vitest with a mocked/`throw`ing `localStorage` for the unavailable case; restore-drops-deleted-note case seeded via the cards handler. No E2E needed beyond a reload assertion appended to the 49-A journey (reload → tabs still present).
 - **Acceptance criteria:**
   - [ ] Reloading restores the open tabs
