@@ -308,9 +308,10 @@ public sealed class AppPage
     public Task AssertNoOpenTabBarAsync() =>
         Assertions.Expect(page.GetByTestId("open-note-tabs")).ToHaveCountAsync(0);
 
+    // `aria-current` sits on the tab's label button (the nav's "you are here"), not the wrapper.
     public Task AssertActiveTabAsync(string title) =>
         Assertions.Expect(
-            OpenNoteTabs.Filter(new LocatorFilterOptions { HasText = title })
+            OpenNoteTabs.Filter(new LocatorFilterOptions { HasText = title }).GetByTestId("open-note-tab-label")
         ).ToHaveAttributeAsync("aria-current", "page");
 
     public async Task ClickOpenNoteTabAsync(string title)

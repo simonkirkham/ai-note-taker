@@ -132,9 +132,7 @@ async function goHome() {
   await waitFor(() => expect(window.location.pathname).toBe('/w/__default__'))
 }
 
-// Breaker: skipped so the pre-commit hook stays green on the spec-only commit (the vitest
-// equivalent of `[Fact(Skip = "Pip 49-A")]`). Pip removes the `.skip` when implementing.
-describe.skip('Open-note tabs (49-A)', () => {
+describe('Open-note tabs (49-A)', () => {
   it('opening a second note keeps the first open', async () => {
     renderApp()
     await openFromList('Standup')
@@ -276,6 +274,24 @@ describe.skip('Open-note tabs (49-A)', () => {
 
     await waitFor(() => expect(window.location.pathname).toBe('/w/__default__/notes/note-1'))
     expect(tabs()).toHaveLength(2)
+  })
+
+  // A tab pointing at a note that no longer exists here can only reach the dead-link
+  // recovery, so removing the note must remove its tab.
+  it('deleting the open note removes its tab', async () => {
+    server.use(http.delete('/api/w/:wsId/notes/:noteId', () => new HttpResponse(null, { status: 204 })))
+    renderApp()
+    await openFromList('Standup')
+    await goHome()
+    await openFromList('Client call')
+    await waitFor(() => expect(tabs()).toHaveLength(2))
+
+    await userEvent.click(await screen.findByTestId('delete-note-button'))
+
+    await waitFor(() => expect(window.location.pathname).toBe('/w/__default__'))
+    await openFromList('Standup')
+    expect(tabs()).toHaveLength(1)
+    expect(screen.queryByRole('button', { name: 'Close Client call' })).toBeNull()
   })
 
   it('the bar is a labelled landmark and every tab is a real button', async () => {

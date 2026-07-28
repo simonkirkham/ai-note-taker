@@ -45,6 +45,7 @@ export default function NoteView({
   onDelete,
   onDateSet,
   onOpenNote,
+  onRegisterLeaveGuard,
   onNotFound,
   isNew,
   otherWorkspaces,
@@ -61,6 +62,10 @@ export default function NoteView({
   onDelete: (noteId: string) => Promise<void>;
   onDateSet: (noteId: string, date: string) => void;
   onOpenNote: (noteId: string, title?: string, isNew?: boolean) => void;
+  // 49-A: lets the parent ask before it navigates somewhere that would unmount this note
+  // (switching or closing an open-note tab). Registered only while recording — an in-app
+  // navigate never fires the popstate trap below, so without this the capture dies silently.
+  onRegisterLeaveGuard?: (guard: ((proceed: () => void) => boolean) | null) => void;
   onNotFound?: () => void;
   isNew?: boolean;
   // Move targets = the caller's workspaces minus the current one. When empty/absent
@@ -110,6 +115,9 @@ export default function NoteView({
   const [openingNext, setOpeningNext] = useState(false);
   const [noNextOccurrence, setNoNextOccurrence] = useState(false);
   const [confirmingLeave, setConfirmingLeave] = useState(false);
+  // 49-A: where to go once a mid-recording leave is confirmed, when the leave was requested
+  // by the parent (a tab switch/close) rather than by this note's own Save/back.
+  const pendingLeaveRef = useRef<(() => void) | null>(null);
   // BUG-47: the typed text of a content save the server rejected as stale (409) — the note had newer
   // content than the editor loaded. Non-null shows the conflict banner offering to load the latest
   // content while keeping the typed text copyable, so neither version is silently lost.
@@ -260,6 +268,23 @@ export default function NoteView({
   // normal Stop (recording ends without leaving) the trap entry lingers, so the next
   // browser-back lands on the same URL and a second press is needed to leave — accepted
   // over the alternative (popping it on cleanup would make Stop itself navigate away).
+  // 49-A: the same protection for an in-app navigation the popstate trap cannot see (a tab
+  // switch/close). The parent calls the guard, which defers to the confirmation below and
+  // resumes the parent's navigation only once the user agrees.
+  useEffect(() => {
+    if (!onRegisterLeaveGuard) return;
+    if (!isRecording) {
+      onRegisterLeaveGuard(null);
+      return;
+    }
+    onRegisterLeaveGuard((proceed) => {
+      pendingLeaveRef.current = proceed;
+      setConfirmingLeave(true);
+      return false;
+    });
+    return () => onRegisterLeaveGuard(null);
+  }, [isRecording, onRegisterLeaveGuard]);
+
   useEffect(() => {
     if (!isRecording) return;
     window.history.pushState(null, "", window.location.href);
@@ -490,7 +515,12 @@ export default function NoteView({
     setConfirmingLeave(false);
     transcription.stopRecording();
     handleSaveContent();
-    (onExit ?? onBack)();
+    const proceed = pendingLeaveRef.current;
+    pendingLeaveRef.current = null;
+    // A parent-requested leave resumes at the destination the user actually clicked (the
+    // tab); a self-requested one exits to the deterministic onExit route (BUG-34).
+    if (proceed) proceed();
+    else (onExit ?? onBack)();
   }
 
   // Cancel is only reachable when !hasContent (blank note)
@@ -542,7 +572,10 @@ export default function NoteView({
               </button>
               <button
                 data-testid="cancel-leave-button"
-                onClick={() => setConfirmingLeave(false)}
+                onClick={() => {
+                  pendingLeaveRef.current = null;
+                  setConfirmingLeave(false);
+                }}
                 className={styles.backButton}
               >
                 Keep recording
