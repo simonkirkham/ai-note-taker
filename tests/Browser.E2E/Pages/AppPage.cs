@@ -291,6 +291,41 @@ public sealed class AppPage
         await card.Locator("[data-testid='note-card-title']").ClickAsync();
     }
 
+    // 49-A: the open-note tab bar. Tab state is CLIENT-SIDE only — no projection behind it — so
+    // these need no reload-tolerance; the auto-waiting locator is sufficient and a reload here
+    // would (correctly) be a different assertion.
+    public ILocator OpenNoteTabs => page.GetByTestId("open-note-tabs").Locator("[data-testid='open-note-tab']");
+
+    public Task AssertOpenTabCountAsync(int expected) =>
+        Assertions.Expect(OpenNoteTabs).ToHaveCountAsync(expected);
+
+    public Task AssertOpenTabVisibleAsync(string title) =>
+        Assertions.Expect(OpenNoteTabs.Filter(new LocatorFilterOptions { HasText = title })).ToBeVisibleAsync();
+
+    public Task AssertOpenTabAbsentAsync(string title) =>
+        Assertions.Expect(OpenNoteTabs.Filter(new LocatorFilterOptions { HasText = title })).ToHaveCountAsync(0);
+
+    public Task AssertNoOpenTabBarAsync() =>
+        Assertions.Expect(page.GetByTestId("open-note-tabs")).ToHaveCountAsync(0);
+
+    public Task AssertActiveTabAsync(string title) =>
+        Assertions.Expect(
+            OpenNoteTabs.Filter(new LocatorFilterOptions { HasText = title })
+        ).ToHaveAttributeAsync("aria-current", "page");
+
+    public async Task ClickOpenNoteTabAsync(string title)
+    {
+        await OpenNoteTabs.Filter(new LocatorFilterOptions { HasText = title })
+            .GetByTestId("open-note-tab-label").ClickAsync();
+        await AssertNoteScreenLoadedAsync();
+    }
+
+    public async Task CloseOpenNoteTabAsync(string title)
+    {
+        await OpenNoteTabs.Filter(new LocatorFilterOptions { HasText = title })
+            .GetByTestId("open-note-tab-close").ClickAsync();
+    }
+
     // Cards-list reads are async since RYW-2: a just-written card is projector-built, so the gated
     // read can return `stale` while the projector is still catching up (e.g. a cold first
     // invocation, slower than the gate's ~2s bound). Re-check, reloading to re-send the consistency
