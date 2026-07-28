@@ -478,6 +478,16 @@ Slices and acceptance criteria: [docs/phases/phase-48.md](phases/phase-48.md)
 
 ---
 
+## Phase 49 — Open multiple notes at once _(Not Started)_
+
+Graduate the *open multiple notes at once* future-feature into a phase. Today opening a note replaces the one you were on (`/w/:wsId/notes/:noteId` is the whole page), so comparing or working across two notes means bouncing via the notes list. This phase adds an **open-note tab bar** above the note view: several notes open, one visible, click to switch, `×` to close, address bar following the active tab. **Frontend-only — no commands, events, projections, endpoints or CDK**; the open set is client-side and persisted per device (the user ruled out server-side sync). Three slices: **49-A** the tab bar itself (open, switch, close — only the active tab is mounted, so the note lifecycle is unchanged); **49-B** open tabs survive a reload (per-workspace `localStorage`, deleted notes reconciled away); **49-C** a recording keeps running in a background tab (the one slice that changes the mounting model — `useTranscription` must not be torn down, the failure BUG-34 was filed for).
+
+**Goal:** you can keep several notes open at the same time and switch between them from a tab bar, instead of losing the note you were on every time you open another.
+
+Slices and acceptance criteria: [docs/phases/phase-49.md](phases/phase-49.md)
+
+---
+
 ## Standing tracks and planning docs
 
 Alongside the numbered phases above, work is tracked in five standing docs. The roadmap summarises them; each doc owns its content.
