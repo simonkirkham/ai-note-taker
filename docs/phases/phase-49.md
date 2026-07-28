@@ -1,4 +1,4 @@
-# Phase 49 — Open multiple notes at once _(Not Started)_
+# Phase 49 — Open multiple notes at once _(In Progress — 49-A done 2026-07-28)_
 
 **Goal:** you can keep several notes open at the same time and switch between them from a tab bar, instead of losing the note you were on every time you open another.
 
@@ -6,7 +6,7 @@
 
 | Slice | What the user gets | Status | Depends on |
 |-------|--------------------|--------|------------|
-| 49-A  | I can have several notes open at once and click between them in a tab bar | Not Started | — |
+| 49-A  | I can have several notes open at once and click between them in a tab bar | Done | — |
 | 49-B  | My open notes are still there after I reload or come back later | Not Started | 49-A |
 | 49-C  | A recording keeps running while I read another note | Not Started | 49-A |
 
@@ -180,15 +180,20 @@ Frontend-only phase. **No new commands, events, projections, endpoints or CDK ch
   - E2E (primary): open note A from a home card → back → open note B → assert two tabs → click tab A → assert A's content and URL → close A → assert one tab. **Drive it through the home card list (`/notes/cards`, consistency-token gated), never through search** — `/notes/search` has no gate and flakes the deploy gate (CHANGE-23 / deploy #633). Tab state itself is client-side, so no reload-tolerance wrapper is needed for the tab assertions.
   - Component (vitest): `OpenNoteTabs` render/active/close; `useOpenNoteTabs` open/dedupe/close-neighbour/close-last.
   - `App` integration test: opening two notes yields two tabs; the recording guard scenario.
-- **Acceptance criteria:**
-  - [ ] Opening a second note leaves the first open and shows both as tabs
-  - [ ] Clicking a tab shows that note and updates the address bar
-  - [ ] Opening an already-open note focuses its tab instead of duplicating it
-  - [ ] Closing a non-active tab removes it and leaves the current note in place
-  - [ ] Closing the active tab moves to the neighbouring tab; closing the last returns to the notes list
-  - [ ] Content typed in a tab is saved when switching away and is present on return
-  - [ ] Switching tabs while recording shows the existing leave confirmation; declining keeps the recording running
-  - [ ] Tabs are keyboard-navigable and screen-reader labelled
+- **Acceptance criteria:** _(all met — PR #410, deploy 30402913987)_
+  - [x] Opening a second note leaves the first open and shows both as tabs
+  - [x] Clicking a tab shows that note and updates the address bar
+  - [x] Opening an already-open note focuses its tab instead of duplicating it
+  - [x] Closing a non-active tab removes it and leaves the current note in place
+  - [x] Closing the active tab moves to the neighbouring tab; closing the last returns to the notes list
+  - [x] Content typed in a tab is saved when switching away and is present on return
+  - [x] Switching tabs while recording shows the existing leave confirmation; declining keeps the recording running
+  - [x] Tabs are keyboard-navigable and screen-reader labelled
+- **Added during review** (not in the original criteria, found by Hawk):
+  - [x] The note in the URL is always shown as a tab — a cold deep-link, or Back onto a note whose tab was closed, no longer renders a bar with no active tab (or no bar at all)
+  - [x] `openNote` goes through the leave guard too — it is reachable from inside a recording note (`/ai` create, next occurrence)
+  - [x] Tabs keyed per workspace, so a close in one no longer discards another's set
+- **Known accepted trade:** with `openNote` guarded, "Next occurrence" / `/ai` create the note server-side *before* the guard resolves, so declining the leave leaves an unopened note in the list. Preferred over silently killing the recording; revisit if those paths gain their own confirm.
 
 ### 49-B — Persist open tabs
 - **Storage:** `localStorage`, key `notetaker.openTabs.<wsId>` (follows the `useTheme` / `useKeepAudioLocal` pattern — `try/catch` on both read and write, degrade to session-only, never throw: `web/src/hooks/useTheme.ts:48`, `useKeepAudioLocal.ts:14`). Value `{ tabs: [{noteId,title}], activeNoteId }`. Per workspace by key, which satisfies the "each workspace remembers its own tabs" scenario with no extra logic.
