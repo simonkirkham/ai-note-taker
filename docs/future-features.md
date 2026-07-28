@@ -13,6 +13,29 @@ Each entry records what it is, why it isn't scheduled yet, and where it was rais
 
 ---
 
+## Open multiple notes at once (open-note tab bar)
+
+**What:** Let the user keep several notes open simultaneously and switch between them, instead of today's one-note-at-a-time model. Opening a note navigates the whole app to `/w/:wsId/notes/:noteId` (`openNote`, `App.tsx:159`), so opening a second note replaces the first. This feature adds a **tab bar** above the note view: each opened note becomes a tab, clicking a tab switches to it, `×` closes it, and the address bar still points at the active note so deep links and Back keep working.
+
+**Shape confirmed with the user (2026-07-28):**
+- **Tab bar**, not split panes and not separate browser windows — one note visible at a time, several open.
+- **Local persistence only** — the open set lives in the URL + browser storage. **No backend, no new events, no projection, no endpoints.** Reload on the same device restores the open set; it does not follow the user across devices.
+
+**Scope to design when broken down:**
+- **Naming collision (do this first).** `NoteTabs.module.css` already styles the *in-note* Transcript / Quick notes / Final Notes tabs (Phase 15, imported as `tabStyles` in `NoteView.tsx:24`). The new bar is a *second* row of tabs directly above them — it needs a distinct name (e.g. `OpenNoteTabs`) and a visual treatment that reads as clearly different, or the two tab rows will be confusable.
+- **The recording crux.** `NoteView` owns `useTranscription(noteId)` and goes to real lengths not to unmount mid-recording — BUG-34 added a popstate history trap because a silent unmount **lost the transcript** (`NoteView.tsx:263`). Switching tabs away from a recording note must **not** unmount it: either keep inactive tabs mounted-but-hidden, or hoist the recording session above the tab bar. Decide this before anything else; it drives the whole component structure.
+- **Tab state model** — open-note ids + active id, restored from storage on load, reconciled against notes that were deleted or moved to another workspace while closed. Tabs are per workspace.
+- **Title in the tab** — reuse the note-card title; handle the untitled/new-note case and live rename.
+- **Limits and overflow** — max open tabs, and what the bar does when it runs out of width (scroll vs. overflow menu).
+- **Close semantics** — closing the active tab, closing the last tab (back to home?), and the unsaved/recording confirm on close (the same leave-confirm the Back button shows).
+- **Entry points** — every existing `onOpenNote` call site (home card, folder view, search, command bar) needs a decision: replace the active tab or open a new one, plus a modifier/menu for "open in new tab".
+
+**Why it isn't scheduled yet:** Needs Scout to break it into slices. It is frontend-only but not small — the recording-lifecycle question above is a genuine architectural decision in the app's most failure-sensitive component, and the tab bar touches every note entry point.
+
+**Raised in:** User request, 2026-07-28 — "I want to be able to open multiple notes at the same time in the app." Shape (tabs, local-only persistence) confirmed the same day.
+
+---
+
 ## Expand the to-do functionality for today and the future
 
 **What:** Grow the to-do feature beyond today's flat list into something that understands **when** a to-do is due. Today the To Do section (`web/src/components/TodoSection.tsx`, fed by the cross-note todo projection from Phase 3 and the standalone todo aggregate from Phase 11) shows a single undated list of open items plus an expandable Done list. This feature adds a time dimension: to-dos that are scheduled for **today** versus **upcoming/future** dates, so the home screen can show "what's due today" distinctly from "what's coming up", and future-dated to-dos don't clutter today's view until they're relevant. Likely sub-capabilities to scope when broken down:
