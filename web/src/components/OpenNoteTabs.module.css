@@ -1,0 +1,125 @@
+/* 49-A: the OPEN-NOTE bar — the notes you have open. Deliberately styled as raised chips,
+   not underlined text, so it never reads as one control with the in-note Transcript /
+   Quick notes / Final Notes row (NoteTabs.module.css) that sits directly beneath it.
+   Every colour is a token, so all 12 themes (light and dark) reskin through the cascade. */
+
+.bar {
+  display: flex;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: thin;
+  border-bottom: 1px solid var(--color-border);
+  padding: var(--space-2) var(--space-3) 0;
+  gap: var(--space-1);
+}
+
+.list {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--space-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.tab {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  flex: none;
+  min-height: 2.25rem;
+  max-width: 14rem;
+  padding-right: var(--space-1);
+  border: 1px solid var(--color-border);
+  border-bottom: none;
+  border-radius: var(--radius) var(--radius) 0 0;
+  background: transparent;
+  transition: background var(--transition), border-color var(--transition);
+}
+
+.tab:hover {
+  background: var(--color-primary-bg);
+}
+
+/* Active = the page surface with a primary top edge: the classic "this sheet is in
+   front" cue, and legible in dark themes where surface sits above bg. */
+.tabActive,
+.tabActive:hover {
+  background: var(--color-surface);
+  border-color: var(--color-primary);
+  box-shadow: inset 0 2px 0 0 var(--color-primary);
+}
+
+.label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: inherit;
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: var(--color-text-muted);
+  background: none;
+  border: none;
+  padding: var(--space-2) var(--space-1) var(--space-2) var(--space-3);
+  cursor: pointer;
+  transition: color var(--transition);
+}
+
+.tab:hover .label {
+  color: var(--color-text);
+}
+
+.tabActive .label {
+  color: var(--color-text);
+  font-weight: 600;
+}
+
+.close {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.75rem;
+  height: 1.75rem;
+  font-size: 1rem;
+  line-height: 1;
+  color: var(--color-text-muted);
+  background: none;
+  border: none;
+  border-radius: var(--radius);
+  cursor: pointer;
+  transition: background var(--transition), color var(--transition);
+}
+
+.close:hover {
+  background: var(--color-border);
+  color: var(--color-text);
+}
+
+.label:focus-visible,
+.close:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: -2px;
+}
+
+/* Touch: a 28px close target is fine under a mouse but too small for a thumb. */
+@media (pointer: coarse) {
+  .tab {
+    min-height: 2.75rem;
+  }
+
+  .close {
+    width: 2.25rem;
+    height: 2.25rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tab,
+  .label,
+  .close {
+    transition: none;
+  }
+}

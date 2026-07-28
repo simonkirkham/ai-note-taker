@@ -291,6 +291,55 @@ public sealed class AppPage
         await card.Locator("[data-testid='note-card-title']").ClickAsync();
     }
 
+    // 49-A: the open-note tab bar. Tab state is CLIENT-SIDE only — no projection behind it — so
+    // these need no reload-tolerance; the auto-waiting locator is sufficient and a reload here
+    // would (correctly) be a different assertion.
+    public ILocator OpenNoteTabs => page.GetByTestId("open-note-tabs").Locator("[data-testid='open-note-tab']");
+
+    public Task AssertOpenTabCountAsync(int expected) =>
+        Assertions.Expect(OpenNoteTabs).ToHaveCountAsync(expected);
+
+    public Task AssertOpenTabVisibleAsync(string title) =>
+        Assertions.Expect(OpenNoteTabs.Filter(new LocatorFilterOptions { HasText = title })).ToBeVisibleAsync();
+
+    public Task AssertOpenTabAbsentAsync(string title) =>
+        Assertions.Expect(OpenNoteTabs.Filter(new LocatorFilterOptions { HasText = title })).ToHaveCountAsync(0);
+
+    public Task AssertNoOpenTabBarAsync() =>
+        Assertions.Expect(page.GetByTestId("open-note-tabs")).ToHaveCountAsync(0);
+
+    // `aria-current` sits on the tab's label button (the nav's "you are here"), not the wrapper.
+    public Task AssertActiveTabAsync(string title) =>
+        Assertions.Expect(
+            OpenNoteTabs.Filter(new LocatorFilterOptions { HasText = title }).GetByTestId("open-note-tab-label")
+        ).ToHaveAttributeAsync("aria-current", "page");
+
+    public async Task ClickOpenNoteTabAsync(string title)
+    {
+        await OpenNoteTabs.Filter(new LocatorFilterOptions { HasText = title })
+            .GetByTestId("open-note-tab-label").ClickAsync();
+        await AssertNoteScreenLoadedAsync();
+    }
+
+    public async Task CloseOpenNoteTabAsync(string title)
+    {
+        await OpenNoteTabs.Filter(new LocatorFilterOptions { HasText = title })
+            .GetByTestId("open-note-tab-close").ClickAsync();
+    }
+
+    // Creating a note opens it, so a journey's own fixture notes arrive as tabs. Today an
+    // in-memory tab set is wiped by the reload inside AssertNoteVisibleInListAfterReloadAsync;
+    // once 49-B persists tabs that stops being true, and any exact-count assertion silently
+    // becomes wrong. Normalise to a known state instead of depending on either behaviour.
+    public async Task CloseAllTabsExceptAsync(string keepTitle)
+    {
+        while (await OpenNoteTabs.CountAsync() > 1)
+        {
+            var stray = OpenNoteTabs.Filter(new LocatorFilterOptions { HasNotText = keepTitle }).First;
+            await stray.GetByTestId("open-note-tab-close").ClickAsync();
+        }
+    }
+
     // Cards-list reads are async since RYW-2: a just-written card is projector-built, so the gated
     // read can return `stale` while the projector is still catching up (e.g. a cold first
     // invocation, slower than the gate's ~2s bound). Re-check, reloading to re-send the consistency

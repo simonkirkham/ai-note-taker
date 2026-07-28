@@ -1,6 +1,6 @@
 import { useQueryClient } from "@tanstack/react-query";
 import clsx from "clsx";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   BrowserRouter,
   Navigate,
@@ -18,6 +18,7 @@ import styles from "./components/App.module.css";
 import FolderPreviewPanel from "./components/FolderPreviewPanel";
 import ListView from "./components/ListView";
 import NoteView from "./components/NoteView";
+import OpenNoteTabs from "./components/OpenNoteTabs";
 import SessionExpiredBanner from "./components/SessionExpiredBanner";
 import Sidebar from "./components/Sidebar";
 import SignInPage from "./components/SignInPage";
@@ -38,6 +39,7 @@ import {
   useMoveNoteToFolder,
   useMoveNoteToWorkspace,
 } from "./hooks/useNoteMutations";
+import { neighbourOf, useOpenNoteTabs } from "./hooks/useOpenNoteTabs";
 import { useWorkspaces } from "./hooks/useWorkspaces";
 import { recordRumEvent } from "./rum";
 import { useCurrentWorkspace } from "./workspace/context";
@@ -156,11 +158,82 @@ function AppContent({ signOut }: { signOut: () => void }) {
   const [previewFolderId, setPreviewFolderId] = useState<string | null>(null);
   const [previewFolderName, setPreviewFolderName] = useState("");
 
+  // 49-A — the open-note tab bar. The ACTIVE tab is derived from the URL, never stored
+  // twice; the tab set is the only new state.
+  const noteMatch = useMatch("/w/:wsId/notes/:noteId");
+  const activeNoteId = noteMatch?.params.noteId;
+  const { tabs, openTab, closeTab } = useOpenNoteTabs(wsId);
+  // Titles follow the note-cards list so a rename re-derives; the title captured at open
+  // time covers a note too new to be in the list yet.
+  //
+  // The note in the URL is always shown as a tab, even when nothing opened it through this
+  // app session — a cold deep-link, or Back onto a note whose tab was closed. Without this
+  // the bar would render the wrong thing (tabs with no active one) or nothing at all while
+  // a note is plainly open. Adopting it here rather than in an effect keeps the tab set out
+  // of render-time setState.
+  const openNoteTabs = useMemo(() => {
+    const adopted =
+      !activeNoteId || tabs.some((t) => t.noteId === activeNoteId)
+        ? tabs
+        : [...tabs, { noteId: activeNoteId, title: "" }];
+    return adopted.map((tab) => ({
+      noteId: tab.noteId,
+      title: cards.find((c) => c.noteId === tab.noteId)?.title || tab.title || "Untitled note",
+    }));
+  }, [tabs, cards, activeNoteId]);
+  // Set by the mounted NoteView while it is recording; see requestLeave below.
+  const leaveGuardRef = useRef<((proceed: () => void) => void) | null>(null);
+  const registerLeaveGuard = useCallback(
+    (guard: ((proceed: () => void) => void) | null) => {
+      leaveGuardRef.current = guard;
+    },
+    [],
+  );
+
   function openNote(noteId: string, title?: string, isNew?: boolean) {
     const state: NoteNavState = {};
     if (isNew) state.isNew = true;
     if (title) state.initialTitle = title;
-    void navigate(w(`/notes/${noteId}`), { state });
+    // 49-A: opening a note adds it to the open set (a no-op if it is already there, so
+    // re-opening focuses the existing tab rather than duplicating it) and navigates. Guarded
+    // like a tab switch: `onOpenNote` is reachable from INSIDE a recording note (the `/ai`
+    // create-note and next-occurrence paths), and it unmounts that note just the same.
+    requestLeave(() => {
+      // The count rides the event so an unbounded bar — which would mean the dedupe above
+      // has regressed — is visible without a user reporting it.
+      if (!tabs.some((t) => t.noteId === noteId)) {
+        recordRumEvent("noteTabOpened", { tabCount: tabs.length + 1 });
+      }
+      openTab(noteId, title);
+      void navigate(w(`/notes/${noteId}`), { state });
+    });
+  }
+
+  // 49-A: switching or closing a tab is an in-app navigate, which does NOT fire the popstate
+  // trap that protects a recording (BUG-34) — so the mounted note gets to intercept the leave
+  // first. The guard takes ownership of `proceed` and runs it once the user confirms.
+  function requestLeave(proceed: () => void) {
+    const guard = leaveGuardRef.current;
+    if (guard) guard(proceed);
+    else proceed();
+  }
+
+  function handleSelectTab(noteId: string) {
+    if (noteId === activeNoteId) return;
+    requestLeave(() => void navigate(w(`/notes/${noteId}`)));
+  }
+
+  function handleCloseTab(noteId: string) {
+    // Neighbour comes from the RENDERED tabs, which include an adopted active note.
+    const next = neighbourOf(openNoteTabs, noteId);
+    const doClose = () => {
+      closeTab(noteId);
+      if (noteId !== activeNoteId) return;
+      void navigate(next ? w(`/notes/${next}`) : w(""));
+    };
+    // Closing the note being recorded into unmounts it — same protection as switching away.
+    if (noteId === activeNoteId) requestLeave(doClose);
+    else doClose();
   }
 
   async function handleNewNote() {
@@ -187,6 +260,9 @@ function AppContent({ signOut }: { signOut: () => void }) {
   async function handleDelete(noteId: string) {
     try {
       await deleteNote.mutateAsync(noteId);
+      // 49-A: a note that no longer exists must not be left behind as a tab — clicking it
+      // would only reach the dead-link recovery.
+      closeTab(noteId);
       // Destructive: replace so the deleted note is not reachable via Back.
       void navigate(w(""), { replace: true });
     } catch {
@@ -194,9 +270,16 @@ function AppContent({ signOut }: { signOut: () => void }) {
     }
   }
 
+  // A note moved out of this workspace no longer belongs in this workspace's tab bar.
+  function handleMoveNoteToWorkspace(noteId: string, workspaceId: string) {
+    closeTab(noteId);
+    moveNoteToWorkspaceM.mutate({ noteId, workspaceId });
+  }
+
   // NoteCard is presentational; this triggers the delete mutation (optimistic
   // removal from the noteCards cache + DELETE).
   function handleDeleteNote(noteId: string) {
+    closeTab(noteId);
     deleteNote.mutate(noteId);
   }
 
@@ -273,7 +356,7 @@ function AppContent({ signOut }: { signOut: () => void }) {
       currentFolderId={activeFolderId}
       onHome={handleHome}
       otherWorkspaces={otherWorkspaces}
-      onMoveNoteToWorkspace={(noteId, workspaceId) => moveNoteToWorkspaceM.mutate({ noteId, workspaceId })}
+      onMoveNoteToWorkspace={handleMoveNoteToWorkspace}
     />
   );
 
@@ -329,6 +412,14 @@ function AppContent({ signOut }: { signOut: () => void }) {
         onDropNote={(noteId) => handleMoveNoteToFolder(noteId, previewFolderId === UNFILED_ID ? null : previewFolderId)}
       />
       <div className={styles.appMain}>
+        {activeNoteId && (
+          <OpenNoteTabs
+            tabs={openNoteTabs}
+            activeNoteId={activeNoteId}
+            onSelect={handleSelectTab}
+            onClose={handleCloseTab}
+          />
+        )}
         <Routes>
           <Route index element={listView} />
           <Route path="folders/:folderId" element={listView} />
@@ -341,8 +432,9 @@ function AppContent({ signOut }: { signOut: () => void }) {
                 onDelete={handleDelete}
                 onDateSet={handleDateSet}
                 onOpenNote={openNote}
+                onRegisterLeaveGuard={registerLeaveGuard}
                 otherWorkspaces={otherWorkspaces}
-                onMoveNoteToWorkspace={(noteId, workspaceId) => moveNoteToWorkspaceM.mutate({ noteId, workspaceId })}
+                onMoveNoteToWorkspace={handleMoveNoteToWorkspace}
               />
             }
           />
@@ -359,6 +451,7 @@ function NoteRoute({
   onDelete,
   onDateSet,
   onOpenNote,
+  onRegisterLeaveGuard,
   otherWorkspaces,
   onMoveNoteToWorkspace,
 }: {
@@ -367,6 +460,7 @@ function NoteRoute({
   onDelete: (noteId: string) => Promise<void>;
   onDateSet: (noteId: string, date: string) => void;
   onOpenNote: (noteId: string, title?: string, isNew?: boolean) => void;
+  onRegisterLeaveGuard: (guard: ((proceed: () => void) => void) | null) => void;
   otherWorkspaces: { workspaceId: string; name: string }[];
   onMoveNoteToWorkspace: (noteId: string, workspaceId: string) => void;
 }) {
@@ -394,6 +488,7 @@ function NoteRoute({
       onDelete={onDelete}
       onDateSet={onDateSet}
       onOpenNote={onOpenNote}
+      onRegisterLeaveGuard={onRegisterLeaveGuard}
       onNotFound={handleNotFound}
       isNew={navState?.isNew}
       otherWorkspaces={otherWorkspaces}
