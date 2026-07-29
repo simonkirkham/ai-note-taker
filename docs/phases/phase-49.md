@@ -7,7 +7,7 @@
 | Slice | What the user gets | Status | Depends on |
 |-------|--------------------|--------|------------|
 | 49-A  | I can have several notes open at once and click between them in a tab bar | Done | — |
-| 49-B  | My open notes are still there after I reload or come back later | Not Started | 49-A |
+| 49-B  | My open notes are still there after I reload or come back later | Done | 49-A |
 | 49-C  | A recording keeps running while I read another note | Not Started | 49-A |
 
 49-A proves the whole flow (open, switch, close) and is shippable alone. 49-B and 49-C are independent of each other and can run in either order — 49-B is much the cheaper of the two.
@@ -203,10 +203,14 @@ Frontend-only phase. **No new commands, events, projections, endpoints or CDK ch
 - **E2E precondition (from the 49-A review):** creating a note opens it, so a journey's own fixture notes arrive as tabs. Today they are wiped by the reload inside `AssertNoteVisibleInListAfterReloadAsync`; **persisting tabs makes that stop being true**, so any exact tab-count assertion silently becomes wrong. 49-A already normalises via `AppPage.CloseAllTabsExceptAsync` — keep using it, and re-check every tab assertion in `OpenNoteTabsJourney` when the persistence lands.
 - **Tests:** vitest with a mocked/`throw`ing `localStorage` for the unavailable case; restore-drops-deleted-note case seeded via the cards handler. No E2E needed beyond a reload assertion appended to the 49-A journey (reload → tabs still present).
 - **Acceptance criteria:**
-  - [ ] Reloading restores the open tabs
-  - [ ] A tab whose note no longer exists in the workspace is dropped silently on restore
-  - [ ] Tabs are scoped per workspace
-  - [ ] Storage being unavailable or corrupt leaves the app fully working with no tabs restored
+  - [x] Reloading restores the open tabs
+  - [x] A tab whose note no longer exists in the workspace is dropped silently on restore
+  - [x] Tabs are scoped per workspace
+  - [x] Storage being unavailable or corrupt leaves the app fully working with no tabs restored
+- **Reconcile is DERIVED, not stored (changed during build).** Dropping dead tabs by writing state needs an effect, and an effect that runs before `cards` arrives wipes every tab on every cold start — the exact failure the build notes warn about. Filtering in the existing `openNoteTabs` memo, only once `loading` is false, makes that impossible by construction. Cost: storage keeps a dead id until the next write; it is filtered on every restore, so it is never visible.
+- **The note being viewed is never dropped** even if the cards list hasn't caught up — it is open by definition.
+- **Found + fixed en route:** `AppGate`'s `postLoginRedirect` read of `sessionStorage` was unguarded, so a browser that refuses storage (private mode) **crashed the app on mount** — a direct violation of this slice's own "storage unavailable" criterion. Now try/caught (losing the deep-link restore is the right degradation).
+- **Test-isolation fix:** persisting to `localStorage` made it leak between vitest tests (a tab opened in one restored in the next), which red-flagged a 49-A spec. Cleared globally in `web/src/test/setup.ts` alongside the existing URL and workspace resets — the third instance of that same class.
 
 ### 49-C — Recording survives a tab switch
 - **The crux.** This slice changes the mounting model: the recording note's `NoteView` must stay mounted while another tab is active. `useTranscription` (`web/src/hooks/useTranscription.ts:99`) owns the mic stream, the socket and the transcript buffer, and unmounting it is exactly the transcript-loss failure BUG-34 was filed for.

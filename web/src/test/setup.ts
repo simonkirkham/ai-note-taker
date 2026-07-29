@@ -29,5 +29,16 @@ afterEach(() => {
   // The active workspace is module-global state; clear it so a `/w/:wsId` set by a
   // full-App render in one test never leaks the path prefix into the next.
   resetWorkspaceForTests()
+  // Same class again for browser storage — 49-B persists the open-note tabs there, so
+  // without this a tab opened in one test is restored in the next and every count
+  // assertion drifts. Covers the theme and keep-audio-local preferences too.
+  if (typeof window !== 'undefined') {
+    try {
+      localStorage.clear()
+      sessionStorage.clear()
+    } catch {
+      /* a suite may have stubbed storage to throw; nothing to clear then */
+    }
+  }
 })
 afterAll(() => server.close())

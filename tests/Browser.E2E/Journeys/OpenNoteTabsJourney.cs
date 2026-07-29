@@ -72,6 +72,15 @@ public sealed class OpenNoteTabsJourney(BrowserFixture browser) : IAsyncLifetime
         await _app.AssertActiveTabAsync(second);
         var secondUrl = _app.CurrentUrl;
 
+        // 49-B: the open set is remembered per device, so a reload brings both tabs back with
+        // the same one active. This is client-side state (localStorage), not a projector read,
+        // so it needs no reload-tolerant re-gating — one reload is deterministic.
+        await _app.ReloadAsync();
+        await _app.AssertNoteScreenLoadedAsync();
+        await _app.AssertOpenTabCountAsync(2);
+        await _app.AssertOpenTabVisibleAsync(first);
+        await _app.AssertActiveTabAsync(second);
+
         // Switching tabs shows the other note and moves the address bar with it.
         await _app.ClickOpenNoteTabAsync(first);
         await _app.AssertActiveTabAsync(first);

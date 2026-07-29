@@ -64,9 +64,17 @@ function AppGate() {
   // the user originally requested (stashed by signIn in sessionStorage) — 21-C.
   useEffect(() => {
     if (!idToken) return;
-    const dest = sessionStorage.getItem("postLoginRedirect");
+    // A browser that refuses storage (private mode, quota) THROWS here rather than
+    // returning null — unguarded, that took the whole app down on mount. Losing the
+    // deep-link restore is the correct degradation; crashing is not.
+    let dest: string | null;
+    try {
+      dest = sessionStorage.getItem("postLoginRedirect");
+      if (dest) sessionStorage.removeItem("postLoginRedirect");
+    } catch {
+      return;
+    }
     if (!dest) return;
-    sessionStorage.removeItem("postLoginRedirect");
     if (dest !== window.location.pathname + window.location.search) {
       void navigate(dest, { replace: true });
     }
@@ -172,16 +180,26 @@ function AppContent({ signOut }: { signOut: () => void }) {
   // the bar would render the wrong thing (tabs with no active one) or nothing at all while
   // a note is plainly open. Adopting it here rather than in an effect keeps the tab set out
   // of render-time setState.
+  // 49-B: a restored tab whose note has since been deleted — or moved to another workspace —
+  // is dropped rather than shown as a dead tab. Derived, not stored: reconciling by writing
+  // state would need an effect, and an effect that runs before `cards` arrives would wipe
+  // every tab on every cold start. Filtering only once the list has loaded makes that
+  // impossible by construction. The note being VIEWED is never dropped — it is open by
+  // definition, even if the list hasn't caught up with it yet.
   const openNoteTabs = useMemo(() => {
+    const known = new Set(cards.map((c) => c.noteId));
+    const live = loading
+      ? tabs
+      : tabs.filter((t) => t.noteId === activeNoteId || known.has(t.noteId));
     const adopted =
-      !activeNoteId || tabs.some((t) => t.noteId === activeNoteId)
-        ? tabs
-        : [...tabs, { noteId: activeNoteId, title: "" }];
+      !activeNoteId || live.some((t) => t.noteId === activeNoteId)
+        ? live
+        : [...live, { noteId: activeNoteId, title: "" }];
     return adopted.map((tab) => ({
       noteId: tab.noteId,
       title: cards.find((c) => c.noteId === tab.noteId)?.title || tab.title || "Untitled note",
     }));
-  }, [tabs, cards, activeNoteId]);
+  }, [tabs, cards, activeNoteId, loading]);
   // Set by the mounted NoteView while it is recording; see requestLeave below.
   const leaveGuardRef = useRef<((proceed: () => void) => void) | null>(null);
   const registerLeaveGuard = useCallback(

@@ -707,6 +707,9 @@ public sealed class AppPage
     // history entry, which carries the CHANGE-23/40-A ?q/?tag/?range query string.
     public async Task GoBackAsync() => await page.GoBackAsync();
 
+    // 49-B — a real page reload, to prove client-side state that is meant to survive one does.
+    public async Task ReloadAsync() => await page.ReloadAsync();
+
     // 36-A — per-workspace theme. Open the sidebar (mobile), open the workspace switcher, create a
     // fresh non-default workspace, and wait for the app to navigate into it (`/w/{id}`, not __default__).
     // A fresh workspace starts with no stored theme → teal (the :root default, no data-theme attr).
