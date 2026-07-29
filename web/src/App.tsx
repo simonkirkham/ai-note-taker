@@ -16,6 +16,7 @@ import { keys } from "./api/queryKeys";
 import { useAuth } from "./auth/context";
 import styles from "./components/App.module.css";
 import FolderPreviewPanel from "./components/FolderPreviewPanel";
+import { LeaveGuardContext, useRequestLeave } from "./components/leaveGuardContext";
 import ListView from "./components/ListView";
 import NoteView from "./components/NoteView";
 import OpenNoteTabs from "./components/OpenNoteTabs";
@@ -190,7 +191,16 @@ function AppContent({ signOut }: { signOut: () => void }) {
     [],
   );
 
-  function openNote(noteId: string, title?: string, isNew?: boolean) {
+  // `onProceed` is for a caller's own side effect that must not fire if the user declines a
+  // mid-recording leave (e.g. closing the folder preview panel).
+  function openNote(noteId: string, title?: string, isNew?: boolean, onProceed?: () => void) {
+    // Already on this note: the route is unchanged, so nothing unmounts and there is no
+    // recording to protect — asking would stop a capture for a no-op navigation. The
+    // caller's side effect still applies (the preview panel should close either way).
+    if (noteId === activeNoteId) {
+      onProceed?.();
+      return;
+    }
     const state: NoteNavState = {};
     if (isNew) state.isNew = true;
     if (title) state.initialTitle = title;
@@ -206,17 +216,20 @@ function AppContent({ signOut }: { signOut: () => void }) {
       }
       openTab(noteId, title);
       void navigate(w(`/notes/${noteId}`), { state });
+      onProceed?.();
     });
   }
 
   // 49-A: switching or closing a tab is an in-app navigate, which does NOT fire the popstate
   // trap that protects a recording (BUG-34) — so the mounted note gets to intercept the leave
   // first. The guard takes ownership of `proceed` and runs it once the user confirms.
-  function requestLeave(proceed: () => void) {
+  // Stable identity: it reads a ref, so it never needs to change — and it is a context
+  // value, so a new one each render would re-render every consumer.
+  const requestLeave = useCallback((proceed: () => void) => {
     const guard = leaveGuardRef.current;
     if (guard) guard(proceed);
     else proceed();
-  }
+  }, []);
 
   function handleSelectTab(noteId: string) {
     if (noteId === activeNoteId) return;
@@ -293,20 +306,29 @@ function AppContent({ signOut }: { signOut: () => void }) {
     void qc.invalidateQueries({ queryKey: keys.noteCards });
   }
 
+  // BUG-54: these three leave the note screen without being *about* the note, so each must
+  // ask before unmounting a recording.
+  //
+  // Source state vs destination state decides what waits. Closing the sidebar belongs to
+  // the CLICK (source) — on mobile it is an overlay whose scrim would dim and block the
+  // very "Still recording" confirm the guard just raised — so it happens immediately.
+  // Anything belonging to where you are GOING (the folder preview) waits for the leave.
   function handleUnfiledSelect() {
-    void navigate(w("/folders/unfiled"));
     setSidebarOpen(false);
+    requestLeave(() => void navigate(w("/folders/unfiled")));
   }
 
   function handleFolderSelect(folderId: string, folderPath: string[]) {
-    void navigate(w(`/folders/${folderId}`));
     setSidebarOpen(false);
-    setPreviewFolderId(folderId);
-    setPreviewFolderName(folderPath[folderPath.length - 1] ?? "");
+    requestLeave(() => {
+      void navigate(w(`/folders/${folderId}`));
+      setPreviewFolderId(folderId);
+      setPreviewFolderName(folderPath[folderPath.length - 1] ?? "");
+    });
   }
 
   function handleHome() {
-    void navigate(w(""));
+    requestLeave(() => void navigate(w("")));
   }
 
   function handleCreateFolder(name: string, parentFolderId?: string) {
@@ -361,87 +383,96 @@ function AppContent({ signOut }: { signOut: () => void }) {
   );
 
   return (
-    <div className={styles.appLayout}>
-      <button
-        data-testid="sidebar-toggle"
-        className={styles.sidebarToggle}
-        aria-label="Toggle sidebar"
-        onClick={() => setSidebarOpen((o) => !o)}
-      >
-        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
-      </button>
-      {/* Decorative backdrop scrim, hidden from assistive tech; tap-to-close is a
-          pointer convenience. The sidebar is toggled by the keyboard-accessible
-          hamburger button above. */}
-      <div
-        aria-hidden="true"
-        className={clsx(styles.sidebarOverlay, sidebarOpen && styles.sidebarOverlayOpen)}
-        onClick={() => setSidebarOpen(false)}
-      />
-      <Sidebar
-        open={sidebarOpen}
-        onCreate={() => void handleNewNote()}
-        folders={folders}
-        activeFolderId={activeFolderId}
-        onFolderSelect={handleFolderSelect}
-        onCreateFolder={(name) => handleCreateFolder(name)}
-        onRenameFolder={handleRenameFolder}
-        onDeleteFolder={handleDeleteFolder}
-        onCreateChildFolder={(parentId, name) => handleCreateFolder(name, parentId)}
-        onDropNote={handleMoveNoteToFolder}
-        onMoveFolder={handleMoveFolder}
-        onHome={handleHome}
-        onUnfiledSelect={handleUnfiledSelect}
-        isUnfiledActive={activeFolderId === UNFILED_ID}
-        onDropToUnfiled={(noteId) => handleMoveNoteToFolder(noteId, null)}
-        previewFolderId={previewFolderId}
-        onPreview={(folderId, name) => {
-          // CHANGE-11: clicking the preview button toggles — close it if this
-          // folder is already previewed, otherwise open it.
-          setPreviewFolderId((prev) => (prev === folderId ? null : folderId));
-          setPreviewFolderName(name);
-        }}
-        onSignOut={signOut}
-      />
-      <FolderPreviewPanel
-        folderId={previewFolderId}
-        folderName={previewFolderName}
-        cards={cards}
-        onClose={() => setPreviewFolderId(null)}
-        onEditNote={(noteId) => { openNote(noteId); setPreviewFolderId(null); }}
-        onDropNote={(noteId) => handleMoveNoteToFolder(noteId, previewFolderId === UNFILED_ID ? null : previewFolderId)}
-      />
-      <div className={styles.appMain}>
-        {activeNoteId && (
-          <OpenNoteTabs
-            tabs={openNoteTabs}
-            activeNoteId={activeNoteId}
-            onSelect={handleSelectTab}
-            onClose={handleCloseTab}
-          />
-        )}
-        <Routes>
-          <Route index element={listView} />
-          <Route path="folders/:folderId" element={listView} />
-          <Route
-            path="notes/:noteId"
-            element={
-              <NoteRoute
-                notes={cards}
-                onBack={handleBackFromNote}
-                onDelete={handleDelete}
-                onDateSet={handleDateSet}
-                onOpenNote={openNote}
-                onRegisterLeaveGuard={registerLeaveGuard}
-                otherWorkspaces={otherWorkspaces}
-                onMoveNoteToWorkspace={handleMoveNoteToWorkspace}
-              />
-            }
-          />
-          <Route path="*" element={<Navigate to={w("")} replace />} />
-        </Routes>
+    // BUG-54: any descendant that navigates away from the note screen (the workspace
+    // switcher today) consults the recording guard instead of calling `navigate` directly.
+    <LeaveGuardContext value={requestLeave}>
+      <div className={styles.appLayout}>
+        <button
+          data-testid="sidebar-toggle"
+          className={styles.sidebarToggle}
+          aria-label="Toggle sidebar"
+          onClick={() => setSidebarOpen((o) => !o)}
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+        </button>
+        {/* Decorative backdrop scrim, hidden from assistive tech; tap-to-close is a
+            pointer convenience. The sidebar is toggled by the keyboard-accessible
+            hamburger button above. */}
+        <div
+          aria-hidden="true"
+          className={clsx(styles.sidebarOverlay, sidebarOpen && styles.sidebarOverlayOpen)}
+          onClick={() => setSidebarOpen(false)}
+        />
+        <Sidebar
+          open={sidebarOpen}
+          onCreate={() => void handleNewNote()}
+          folders={folders}
+          activeFolderId={activeFolderId}
+          onFolderSelect={handleFolderSelect}
+          onCreateFolder={(name) => handleCreateFolder(name)}
+          onRenameFolder={handleRenameFolder}
+          onDeleteFolder={handleDeleteFolder}
+          onCreateChildFolder={(parentId, name) => handleCreateFolder(name, parentId)}
+          onDropNote={handleMoveNoteToFolder}
+          onMoveFolder={handleMoveFolder}
+          onHome={handleHome}
+          onUnfiledSelect={handleUnfiledSelect}
+          isUnfiledActive={activeFolderId === UNFILED_ID}
+          onDropToUnfiled={(noteId) => handleMoveNoteToFolder(noteId, null)}
+          previewFolderId={previewFolderId}
+          onPreview={(folderId, name) => {
+            // CHANGE-11: clicking the preview button toggles — close it if this
+            // folder is already previewed, otherwise open it.
+            setPreviewFolderId((prev) => (prev === folderId ? null : folderId));
+            setPreviewFolderName(name);
+          }}
+          // BUG-54: signing out unmounts everything, recording included. The confirm's
+          // content flush is awaited before this runs, so the save lands before the token
+          // is cleared.
+          onSignOut={() => requestLeave(signOut)}
+        />
+        <FolderPreviewPanel
+          folderId={previewFolderId}
+          folderName={previewFolderName}
+          cards={cards}
+          onClose={() => setPreviewFolderId(null)}
+          // Closing the preview is the destination's business, so it waits for the leave —
+        // declining must leave the panel exactly as it was.
+        onEditNote={(noteId) => openNote(noteId, undefined, false, () => setPreviewFolderId(null))}
+          onDropNote={(noteId) => handleMoveNoteToFolder(noteId, previewFolderId === UNFILED_ID ? null : previewFolderId)}
+        />
+        <div className={styles.appMain}>
+          {activeNoteId && (
+            <OpenNoteTabs
+              tabs={openNoteTabs}
+              activeNoteId={activeNoteId}
+              onSelect={handleSelectTab}
+              onClose={handleCloseTab}
+            />
+          )}
+          <Routes>
+            <Route index element={listView} />
+            <Route path="folders/:folderId" element={listView} />
+            <Route
+              path="notes/:noteId"
+              element={
+                <NoteRoute
+                  notes={cards}
+                  onBack={handleBackFromNote}
+                  onDelete={handleDelete}
+                  onDateSet={handleDateSet}
+                  onOpenNote={openNote}
+                  onRegisterLeaveGuard={registerLeaveGuard}
+                  otherWorkspaces={otherWorkspaces}
+                  onMoveNoteToWorkspace={handleMoveNoteToWorkspace}
+                />
+              }
+            />
+            <Route path="*" element={<Navigate to={w("")} replace />} />
+          </Routes>
+        </div>
       </div>
-    </div>
+    </LeaveGuardContext>
   );
 }
 
@@ -469,6 +500,7 @@ function NoteRoute({
   const navigate = useNavigate();
   const wsId = useCurrentWorkspace();
   const { showError } = useToast();
+  const requestLeave = useRequestLeave();
   const navState = location.state as NoteNavState | null;
   // A deep-link to a deleted/unknown note recovers to the workspace home with a
   // toast, and emits a RUM event so the rate of dead links is observable (21-C).
@@ -494,10 +526,14 @@ function NoteRoute({
       otherWorkspaces={otherWorkspaces}
       // Moving from the note page navigates home: the note has left this workspace,
       // so it no longer belongs on this page (mirrors the card's optimistic removal).
-      onMoveToWorkspace={(workspaceId) => {
-        onMoveNoteToWorkspace(noteId, workspaceId);
-        void navigate(`/w/${wsId}`);
-      }}
+      // BUG-54: unlike delete, the note SURVIVES the move — so losing the in-flight
+      // transcript to it is pure loss, and the move waits for the leave confirmation.
+      onMoveToWorkspace={(workspaceId) =>
+        requestLeave(() => {
+          onMoveNoteToWorkspace(noteId, workspaceId);
+          void navigate(`/w/${wsId}`);
+        })
+      }
     />
   );
 }

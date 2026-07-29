@@ -9,12 +9,14 @@ import {
 import { useWorkspaces } from "../hooks/useWorkspaces";
 import { useCurrentWorkspace } from "../workspace/context";
 import { DEFAULT_WORKSPACE_ID } from "../workspace/workspaceStore";
+import { useRequestLeave } from "./leaveGuardContext";
 import styles from "./WorkspaceSwitcher.module.css";
 
 // 23-E — sidebar workspace switcher (Variant A dropdown, inline CRUD). Self-contained:
 // reads the workspace list + active id and owns its own popover/edit state.
 export default function WorkspaceSwitcher() {
   const navigate = useNavigate();
+  const requestLeave = useRequestLeave();
   const wsId = useCurrentWorkspace();
   const { data: workspaces = [] } = useWorkspaces();
   const createM = useCreateWorkspace();
@@ -52,10 +54,19 @@ export default function WorkspaceSwitcher() {
     setError(null);
   }
 
+  // BUG-54: switching workspace leaves the note screen, so it asks first when a recording
+  // is running. The popover only closes once the leave is agreed — declining should leave
+  // the user exactly where they were, menu and all.
   function switchTo(id: string) {
     setError(null);
-    if (id !== wsId) void navigate(`/w/${id}`);
-    close();
+    if (id === wsId) {
+      close();
+      return;
+    }
+    requestLeave(() => {
+      void navigate(`/w/${id}`);
+      close();
+    });
   }
 
   async function submitCreate() {
@@ -66,8 +77,13 @@ export default function WorkspaceSwitcher() {
     const tempId = `temp-${crypto.randomUUID()}`;
     try {
       const { workspaceId } = await createM.mutateAsync({ name, tempId });
-      void navigate(`/w/${workspaceId}`); // create + switch into it
-      close();
+      // BUG-54: creating switches INTO the new workspace, so it leaves the note screen
+      // exactly as switchTo does. The create has already succeeded — declining the leave
+      // keeps the new workspace in the list and leaves the user on their recording.
+      requestLeave(() => {
+        void navigate(`/w/${workspaceId}`);
+        close();
+      });
     } catch {
       // rolled back in the mutation's onError; surface a generic error inline
       setError("Couldn't create the workspace. Try again.");

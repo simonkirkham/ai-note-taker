@@ -118,6 +118,12 @@ export default function NoteView({
   // 49-A: where to go once a mid-recording leave is confirmed, when the leave was requested
   // by the parent (a tab switch/close) rather than by this note's own Save/back.
   const pendingLeaveRef = useRef<(() => void) | null>(null);
+  // Latched once a confirmed leave starts, so the in-flight save can't be raced by a
+  // second exit (Save/back, or a double-click on "Leave & save") while it settles.
+  // Never reset: every continuation unmounts this NoteView, so the latch dies with it. A
+  // future continuation that does NOT navigate away would need one, or confirmed-leave
+  // would be dead for the rest of the note's life.
+  const leavingRef = useRef(false);
   // BUG-47: the typed text of a content save the server rejected as stale (409) — the note had newer
   // content than the editor loaded. Non-null shows the conflict banner offering to load the latest
   // content while keeping the typed text copyable, so neither version is silently lost.
@@ -271,6 +277,28 @@ export default function NoteView({
   // 49-A: the same protection for an in-app navigation the popstate trap cannot see (a tab
   // switch/close). The parent calls the guard, which defers to the confirmation below and
   // resumes the parent's navigation only once the user agrees.
+  // A recording that ends by ITSELF (Stop, or a transcription error) while the confirm is
+  // showing would strand it: the banner would still read "Still recording —", and dismissing
+  // it drops the destination the user asked for, so their click silently did nothing.
+  // Nothing is left to protect once recording ends, so drop the confirm and run the pending
+  // navigation. Adjusted during render (React's documented pattern for "reset state when an
+  // input changes") rather than in an effect — a `setState` in an effect body is a lint
+  // guardrail here, and this way the stale banner never paints even for one frame.
+  const [prevIsRecording, setPrevIsRecording] = useState(isRecording);
+  if (prevIsRecording !== isRecording) {
+    setPrevIsRecording(isRecording);
+    if (!isRecording && confirmingLeave) setConfirmingLeave(false);
+  }
+  // Second half of the same transition as the render-adjust above — the banner is dropped
+  // there, the pending navigation runs here (after commit, since it is a side effect).
+  // Keep the two together; splitting them strands one without the other.
+  useEffect(() => {
+    if (isRecording) return;
+    const proceed = pendingLeaveRef.current;
+    pendingLeaveRef.current = null;
+    proceed?.();
+  }, [isRecording]);
+
   useEffect(() => {
     if (!onRegisterLeaveGuard) return;
     if (!isRecording) {
@@ -513,12 +541,20 @@ export default function NoteView({
   // capture and flush any pending content, then exit to a fresh route via onExit — never
   // navigate(-1), which the popstate trap entry would absorb (BUG-34). Stopping here
   // guarantees the commit even if the navigation is best-effort.
-  function handleConfirmedLeave() {
+  async function handleConfirmedLeave() {
+    // The await below restores the Save button (recording has stopped), so without this the
+    // user could click Save and navigate a second time when the save resolves.
+    if (leavingRef.current) return;
+    leavingRef.current = true;
     setConfirmingLeave(false);
     transcription.stopRecording();
     handleSaveContent();
     const proceed = pendingLeaveRef.current;
     pendingLeaveRef.current = null;
+    // BUG-54: await the content flush before handing control over. Most destinations don't
+    // care (the save outlives a route change), but signing out clears the token — an
+    // un-awaited save would then 401 and lose the text.
+    if (pendingContentSaveRef.current) await pendingContentSaveRef.current;
     // A parent-requested leave resumes at the destination the user actually clicked (the
     // tab); a self-requested one exits to the deterministic onExit route (BUG-34).
     if (proceed) proceed();
@@ -567,7 +603,7 @@ export default function NoteView({
               <span className={styles.leaveConfirmText}>Still recording —</span>
               <button
                 data-testid="confirm-leave-button"
-                onClick={handleConfirmedLeave}
+                onClick={() => void handleConfirmedLeave()}
                 className={styles.saveButton}
               >
                 Leave &amp; save
