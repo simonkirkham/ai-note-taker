@@ -300,11 +300,12 @@ function AppContent({ signOut }: { signOut: () => void }) {
   }
 
   // BUG-54: these three leave the note screen without being *about* the note, so each must
-  // ask before unmounting a recording. The side effects (closing the sidebar, opening the
-  // folder preview) belong to the destination, so they run only once the leave is agreed.
-  // Closing the sidebar belongs to the CLICK, not the destination: on mobile it is an
-  // overlay with a full-screen scrim, and leaving it up would dim and block the very
-  // "Still recording" confirm the guard just raised. Everything else waits for the leave.
+  // ask before unmounting a recording.
+  //
+  // Source state vs destination state decides what waits. Closing the sidebar belongs to
+  // the CLICK (source) — on mobile it is an overlay whose scrim would dim and block the
+  // very "Still recording" confirm the guard just raised — so it happens immediately.
+  // Anything belonging to where you are GOING (the folder preview) waits for the leave.
   function handleUnfiledSelect() {
     setSidebarOpen(false);
     requestLeave(() => void navigate(w("/folders/unfiled")));

@@ -173,7 +173,36 @@ describe('BUG-54 — navigating away from a recording note asks first', () => {
   })
 
   // The destination's side effects must wait for the leave too — declining has to leave
-  // the app exactly as it was, not half-navigated.
+  // the app exactly as it was, not half-navigated. This drives the PREVIEW PANEL's own
+  // open-note path (FolderPreviewPanel.onEditNote), which closes the panel as a side
+  // effect: the panel must still be open, showing its folder, after declining.
+  it('declining a note click in the folder preview leaves the panel open', async () => {
+    // The panel lists notes in the folder, so put the note in one.
+    server.use(
+      http.get('/api/w/:wsId/notes/cards', () =>
+        HttpResponse.json({ cards: [{ ...CARD, folderId: 'folder-1' }] }),
+      ),
+    )
+    renderApp()
+    await openNoteAndRecord()
+
+    // Open the preview panel from the sidebar — this does not navigate.
+    await userEvent.click(await screen.findByRole('button', { name: 'Preview folder notes' }))
+    const panel = screen.getByTestId('folder-preview-panel')
+    expect(within(panel).getByText('Standup')).toBeInTheDocument()
+
+    // Clicking a note in the panel opens it AND closes the panel — both must wait.
+    await userEvent.click(within(panel).getByText('Standup'))
+    expect(await screen.findByTestId('confirm-leave-button')).toBeInTheDocument()
+
+    await userEvent.click(screen.getByTestId('cancel-leave-button'))
+
+    // Assert on the note LIST, not the header: the header keeps the last folder name even
+    // when closed, so it stays "Clients" either way and would hide the regression.
+    expect(within(screen.getByTestId('folder-preview-panel')).getByText('Standup')).toBeInTheDocument()
+    expect(window.location.pathname).toBe(NOTE_PATH)
+  })
+
   it('declining a folder click does not open the folder preview panel', async () => {
     renderApp()
     await openNoteAndRecord()
