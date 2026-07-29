@@ -22,4 +22,17 @@ public interface IDomainMetrics
     void AnalysisCompleted(double milliseconds);
 
     void AnalysisFailed();
+
+    // Auth visibility (Phase 30 obs table). No token material or PII ever enters a metric —
+    // only outcome counts. SignInCompleted fires on a successful /auth/token exchange;
+    // consentIssued=true means Google returned a refresh_token, i.e. the user was shown the
+    // full consent screen and a fresh grant was issued (the "forced to re-authorise" signal).
+    // A silent returning sign-in has consentIssued=false.
+    void SignInCompleted(bool consentIssued);
+
+    // Outcome of POST /auth/refresh — the silent session-refresh path. "completed" (session slid
+    // forward), "no_cookie" (rt cookie absent → the client is forced to sign in again), or
+    // "rejected" (Google revoked/expired the token → forced re-consent). A rising no_cookie/rejected
+    // rate is the measurable form of "asked to log in a lot".
+    void SessionRefresh(string outcome);
 }

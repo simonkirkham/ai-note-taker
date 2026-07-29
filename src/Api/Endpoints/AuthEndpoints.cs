@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Api.Auth;
+using Api.Observability;
 
 namespace Api.Endpoints;
 
@@ -12,7 +13,7 @@ public static class AuthEndpoints
 
     public static void MapAuthEndpoints(this WebApplication app)
     {
-        app.MapPost("/auth/token", async (TokenExchangeRequest req, HttpContext ctx, IGoogleOAuthClient google, IRefreshTokenStore tokenStore, ILoggerFactory loggerFactory) =>
+        app.MapPost("/auth/token", async (TokenExchangeRequest req, HttpContext ctx, IGoogleOAuthClient google, IRefreshTokenStore tokenStore, IDomainMetrics metrics, ILoggerFactory loggerFactory) =>
         {
             var log = loggerFactory.CreateLogger("Api.Auth.Token");
 
@@ -63,6 +64,13 @@ public static class AuthEndpoints
                     }
                 }
 
+                // A returned refresh_token means Google issued a fresh grant — i.e. the user was shown
+                // the full consent screen. Logging + counting this is how "asked to log in a lot" becomes
+                // measurable; the token itself is never logged, only the boolean outcome + sub.
+                var consentIssued = !string.IsNullOrEmpty(result.Tokens.RefreshToken);
+                metrics.SignInCompleted(consentIssued);
+                log.LogInformation("Sign-in completed for sub {Sub}; consentIssued={ConsentIssued}", sub, consentIssued);
+
                 return Results.Ok(new { id_token = result.Tokens.IdToken });
             }
             catch (TaskCanceledException)
@@ -75,13 +83,19 @@ public static class AuthEndpoints
             }
         }).AllowAnonymous();
 
-        app.MapPost("/auth/refresh", async (HttpContext ctx, IGoogleOAuthClient google, IRefreshTokenStore tokenStore, ILoggerFactory loggerFactory) =>
+        app.MapPost("/auth/refresh", async (HttpContext ctx, IGoogleOAuthClient google, IRefreshTokenStore tokenStore, IDomainMetrics metrics, ILoggerFactory loggerFactory) =>
         {
             var log = loggerFactory.CreateLogger("Api.Auth.Refresh");
 
             var refreshToken = ctx.Request.Cookies[RefreshCookieName];
             if (string.IsNullOrEmpty(refreshToken))
+            {
+                // No rt cookie → the client cannot slide its session and is forced back to sign-in.
+                // This is the silent forced-login path that leaves no other trace (30-D would close it).
+                metrics.SessionRefresh("no_cookie");
+                log.LogInformation("Session refresh: no rt cookie present; client must sign in again");
                 return Results.Unauthorized();
+            }
 
             if (!SecretsConfigured())
                 return Results.StatusCode(503);
@@ -121,6 +135,9 @@ public static class AuthEndpoints
                             log.LogWarning(ex, "Failed to delete revoked refresh token for sub {Sub}", sub);
                         }
                     }
+                    // Google rejected the token → the session is genuinely over and the next sign-in
+                    // will re-consent. Distinct from no_cookie so the two forced-login causes separate.
+                    metrics.SessionRefresh("rejected");
                     return Results.Unauthorized();
                 }
 
@@ -144,6 +161,9 @@ public static class AuthEndpoints
                     }
                 }
 
+                // Silent success: the session slid forward with no user interaction. The completed vs
+                // no_cookie/rejected split quantifies how often the durable session actually holds.
+                metrics.SessionRefresh("completed");
                 return Results.Ok(new { id_token = result.Tokens.IdToken });
             }
             catch (TaskCanceledException)

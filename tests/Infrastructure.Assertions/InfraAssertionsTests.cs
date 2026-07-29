@@ -852,6 +852,33 @@ public class InfraAssertionsTests
         }));
     }
 
+    [Fact]
+    public void OpsDashboard_IncludesAuthSignInAndRefreshWidget()
+    {
+        // The auth observability widget graphs sign-in consent + session-refresh outcomes so
+        // "asked to log in a lot" is measurable; assert its title and the SessionRefresh search.
+        _template.HasResourceProperties("AWS::CloudWatch::Dashboard", Match.ObjectLike(new Dictionary<string, object>
+        {
+            ["DashboardBody"] = Match.ObjectLike(new Dictionary<string, object>
+            {
+                ["Fn::Join"] = Match.ArrayWith(new object[]
+                {
+                    Match.ArrayWith(new object[] { Match.StringLikeRegexp(".*forced re-auth.*") })
+                })
+            })
+        }));
+        _template.HasResourceProperties("AWS::CloudWatch::Dashboard", Match.ObjectLike(new Dictionary<string, object>
+        {
+            ["DashboardBody"] = Match.ObjectLike(new Dictionary<string, object>
+            {
+                ["Fn::Join"] = Match.ArrayWith(new object[]
+                {
+                    Match.ArrayWith(new object[] { Match.StringLikeRegexp(".*SessionRefresh.*") })
+                })
+            })
+        }));
+    }
+
     [Theory]
     [InlineData("CommandHandled")]
     [InlineData("ConcurrencyConflict")]

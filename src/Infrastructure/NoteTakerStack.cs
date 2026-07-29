@@ -1067,6 +1067,16 @@ public sealed class NoteTakerStack : Stack
                 Period = Duration.Minutes(5)
             });
 
+        // SessionRefresh carries an Outcome dimension, so filter the search per outcome to split
+        // the silent "completed" path from the two forced-login causes (no_cookie / rejected).
+        Amazon.CDK.AWS.CloudWatch.IMetric SessionRefreshOutcome(string outcome) =>
+            new Amazon.CDK.AWS.CloudWatch.MathExpression(new Amazon.CDK.AWS.CloudWatch.MathExpressionProps
+            {
+                Expression = $"SUM(SEARCH('Namespace=\"NoteTaker/Domain\" MetricName=\"SessionRefresh\" Outcome=\"{outcome}\"', 'Sum'))",
+                Label = $"refresh:{outcome}",
+                Period = Duration.Minutes(5)
+            });
+
         Amazon.CDK.AWS.CloudWatch.IMetric AnalysisDuration(string statistic) =>
             new Amazon.CDK.AWS.CloudWatch.Metric(new Amazon.CDK.AWS.CloudWatch.MetricProps
             {
@@ -1145,6 +1155,25 @@ public sealed class NoteTakerStack : Stack
                     AnalysisDuration("p99")
                 },
                 Right = new[] { DomainTotal("AnalysisFailed") },
+                Width = 12
+            }),
+            // Auth: is the user being forced to re-authenticate? SignInConsentIssued rising toward
+            // SignInCompleted = repeated full-consent sign-ins; the refresh no_cookie/rejected lines are
+            // the two forced-login causes (a healthy durable session shows mostly refresh:completed).
+            new Amazon.CDK.AWS.CloudWatch.GraphWidget(new Amazon.CDK.AWS.CloudWatch.GraphWidgetProps
+            {
+                Title = "Sign-ins & forced re-auth (consent + refresh outcomes)",
+                Left = new[]
+                {
+                    DomainTotal("SignInCompleted"),
+                    DomainTotal("SignInConsentIssued")
+                },
+                Right = new[]
+                {
+                    SessionRefreshOutcome("completed"),
+                    SessionRefreshOutcome("no_cookie"),
+                    SessionRefreshOutcome("rejected")
+                },
                 Width = 12
             }),
             // 33-B1: batch-diarization jobs completed vs failed (both async — invisible without this).
