@@ -166,7 +166,10 @@ public static class AuthEndpoints
                     }
                     catch (Exception ex)
                     {
+                        // Same durability-loss failure as the /auth/token upsert — worse here, since a
+                        // stale stored token Google later rejects becomes a future forced re-consent.
                         log.LogWarning(ex, "Refresh-token store write failed on rotation for sub {Sub}", sub);
+                        metrics.RefreshTokenStoreWriteFault();
                     }
                 }
 
