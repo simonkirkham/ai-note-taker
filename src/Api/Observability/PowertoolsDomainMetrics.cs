@@ -53,6 +53,33 @@ public sealed class PowertoolsDomainMetrics : IDomainMetrics
         Metrics.PushSingleMetric("AnalysisFailed", 1, MetricUnit.Count,
             nameSpace: MetricNamespace, service: ServiceName);
 
+    // SignInCompleted is dimensionless (an alarmable baseline of total sign-ins); SignInConsentIssued
+    // is a second dimensionless metric emitted only when Google issued a fresh grant. Comparing the two
+    // gives the consent-issuing rate — a high ratio is "the user keeps being forced to re-authorise".
+    public void SignInCompleted(bool consentIssued)
+    {
+        Metrics.PushSingleMetric("SignInCompleted", 1, MetricUnit.Count,
+            nameSpace: MetricNamespace, service: ServiceName);
+        if (consentIssued)
+            Metrics.PushSingleMetric("SignInConsentIssued", 1, MetricUnit.Count,
+                nameSpace: MetricNamespace, service: ServiceName);
+    }
+
+    // Outcome is low-cardinality ("completed"/"no_cookie"/"rejected"/"error"), so it is safe as a
+    // dimension — one metric graphs the split between silent refreshes and the forced-sign-in paths.
+    public void SessionRefresh(string outcome) =>
+        Push("SessionRefresh", 1, new Dictionary<string, string> { ["Outcome"] = outcome });
+
+    // Dimensionless (Service only), like the rebuild/analysis faults — a single concrete metric an
+    // alarm can target. The sub of the affected user stays in the structured log, never a dimension.
+    public void RefreshTokenStoreWriteFault() =>
+        Metrics.PushSingleMetric("RefreshTokenStoreWriteFault", 1, MetricUnit.Count,
+            nameSpace: MetricNamespace, service: ServiceName);
+
+    public void RefreshTokenRevoked() =>
+        Metrics.PushSingleMetric("RefreshTokenRevoked", 1, MetricUnit.Count,
+            nameSpace: MetricNamespace, service: ServiceName);
+
     // PushSingleMetric emits a self-contained EMF blob with its own dimensions, so no
     // global namespace/flush setup (or the [Metrics] handler decorator) is needed —
     // which suits an ASP.NET-Core-on-Lambda host that has no Lambda handler method.

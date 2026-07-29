@@ -13,6 +13,10 @@ internal sealed class RecordingDomainMetrics : IDomainMetrics
     public int RebuildFaults { get; private set; }
     public List<double> AnalysisDurations { get; } = [];
     public int AnalysisFailures { get; private set; }
+    public List<bool> SignIns { get; } = [];
+    public List<string> SessionRefreshes { get; } = [];
+    public int StoreWriteFaults { get; private set; }
+    public int TokenRevocations { get; private set; }
 
     public void CommandHandled(string commandType, string aggregate) => Handled.Add((commandType, aggregate));
 
@@ -32,4 +36,12 @@ internal sealed class RecordingDomainMetrics : IDomainMetrics
     public void AnalysisCompleted(double milliseconds) => AnalysisDurations.Add(milliseconds);
 
     public void AnalysisFailed() => AnalysisFailures++;
+
+    public void SignInCompleted(bool consentIssued) => SignIns.Add(consentIssued);
+
+    public void SessionRefresh(string outcome) => SessionRefreshes.Add(outcome);
+
+    public void RefreshTokenStoreWriteFault() => StoreWriteFaults++;
+
+    public void RefreshTokenRevoked() => TokenRevocations++;
 }
