@@ -5,7 +5,7 @@ import type { WhisperSegment } from '../src/whisperParse'
 
 // BUG-53 — pure streaming reducer + server-JSON parse. Headless.
 const seg = (startMs: number, endMs: number, text: string): WhisperSegment => ({ startMs, endMs, text })
-const cfg = { stabilityMs: 1500, maxWindowMs: 8000 }
+const cfg = { stabilityMs: 1500, maxWindowMs: 8000, hardWindowMs: 16000 }
 
 test('below the window threshold, nothing commits — the whole window is the live tail', () => {
   const now = 4000 // window 0..4000 < 8000 max → no commit
@@ -34,6 +34,26 @@ test('committed text carries forward across steps and the window re-bases to fin
   const next = reduce(s, [seg(6000, 9000, 'gamma'), seg(9000, 13000, 'delta'), seg(13000, 15000, 'epsilon')], 15000, cfg)
   expect(next.state.committed).toBe('alpha beta gamma delta') // ends 9000,13000 <= 13500 settled
   expect(next.display).toBe('alpha beta gamma delta epsilon')
+})
+
+test('runaway guard: a giant unsettled segment past the hard cap is force-committed and finalizedMs advances', () => {
+  // Continuous speech comes back as ONE segment spanning the whole [0, now] window whose end never
+  // settles. Without the guard nothing commits and the window grows forever. now=17000 >= 16000 hard cap.
+  const now = 17000 // settledEdge = 15500; window 0..17000 spans the hard cap
+  const { state, display } = reduce(init(), [seg(0, 17000, 'a very long continuous utterance')], now, cfg)
+  expect(state.committed).toBe('a very long continuous utterance') // started before settledEdge → forced commit
+  expect(state.finalizedMs).toBe(15500) // advanced to the settled edge, bounding the next window
+  expect(display).toBe('a very long continuous utterance')
+})
+
+test('runaway guard: an all-live window at the hard cap still advances finalizedMs to bound the next window', () => {
+  // No segment starts before the settled edge (silence then a late burst), but the window is past the
+  // hard cap — finalizedMs must still advance so the window can't keep growing.
+  const now = 17000 // settledEdge = 15500
+  const { state, display } = reduce(init(), [seg(16000, 17000, 'late')], now, cfg)
+  expect(state.committed).toBe('') // nothing started before 15500
+  expect(state.finalizedMs).toBe(15500) // forced advance regardless
+  expect(display).toBe('late')
 })
 
 test('empty window keeps the committed text', () => {

@@ -22,9 +22,15 @@ function freePort(): Promise<number> {
   })
 }
 
+// A hung server (accepts the connection but never responds) must not freeze the live view forever —
+// the streaming session's busy-guard would never release. Bound each /inference; an over-run aborts
+// and the session drops that step (and counts it toward its terminal-failure threshold).
+const INFERENCE_TIMEOUT_MS = 20_000
+
 export class WhisperServer {
   private proc: ChildProcess | null = null
   private port = 0
+  private isReady = false
 
   constructor(
     private readonly binPath: string,
@@ -34,6 +40,12 @@ export class WhisperServer {
 
   get running(): boolean {
     return this.proc !== null
+  }
+
+  // True once the model has loaded and the HTTP server first answered — before this, /inference just
+  // errors, so the streaming session skips its steps rather than spamming failures during model load.
+  get ready(): boolean {
+    return this.isReady
   }
 
   // Spawn whisper-server, wait until it accepts requests (poll /), or reject on a startup failure.
@@ -47,12 +59,16 @@ export class WhisperServer {
     proc.on('exit', () => {
       exited = true
       if (this.proc === proc) this.proc = null
+      this.isReady = false
     })
     // Poll until the model has loaded and the HTTP server accepts connections (or time out).
     const deadline = Date.now() + 60_000
     while (Date.now() < deadline) {
       if (exited) throw new Error('whisper-server exited during startup')
-      if (await this.ping()) return
+      if (await this.ping()) {
+        this.isReady = true
+        return
+      }
       await new Promise((r) => setTimeout(r, 250))
     }
     this.kill()
@@ -76,13 +92,18 @@ export class WhisperServer {
     form.append('file', new Blob([new Uint8Array(encodeWav(pcm, sampleRate))], { type: 'audio/wav' }), 'w.wav')
     form.append('response_format', 'verbose_json')
     form.append('temperature', '0')
-    const res = await fetch(`http://127.0.0.1:${this.port}/inference`, { method: 'POST', body: form })
+    const res = await fetch(`http://127.0.0.1:${this.port}/inference`, {
+      method: 'POST',
+      body: form,
+      signal: AbortSignal.timeout(INFERENCE_TIMEOUT_MS),
+    })
     if (!res.ok) throw new Error(`whisper-server /inference ${res.status}`)
     const json = (await res.json()) as { segments?: { start: number; end: number; text: string }[] }
     return parseServerSegments(json, baseMs)
   }
 
   kill(): void {
+    this.isReady = false
     if (this.proc) {
       try {
         this.proc.kill()
@@ -102,7 +123,10 @@ export function parseServerSegments(
   const out: WhisperSegment[] = []
   for (const s of json.segments ?? []) {
     const text = (s.text ?? '').trim()
-    if (!text || /^[[(].*[\])]$/.test(text)) continue // skip [BLANK_AUDIO]/(noise)/empty
+    // Skip empty + fully-bracketed non-speech ([BLANK_AUDIO], (noise), *music*). Intentionally broad:
+    // it also drops a rare wholly-parenthesised utterance — acceptable for a live heuristic (the
+    // authoritative transcript is the stop-time final pass).
+    if (!text || /^[[(].*[\])]$/.test(text)) continue
     out.push({ startMs: baseMs + Math.round(s.start * 1000), endMs: baseMs + Math.round(s.end * 1000), text })
   }
   return out

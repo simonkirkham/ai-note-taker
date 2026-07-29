@@ -137,7 +137,8 @@ The live transcript must appear within a few seconds and keep pace, on the resid
 | 3 | **Model loads once:** Given I stop and start several local recordings, Then the server stays resident between them (no multi-second model-load stall at the start of the 2nd+ recording). | ☐ |
 | 4 | **Server dies on quit:** Given a local recording, When I close the app, Then no `whisper-server.exe` remains in Task Manager. | ☐ |
 | 5 | **Final pass still runs:** Given I stop a local recording, Then the higher-quality `small.en` final pass still replaces the live text (transcript quality improves on stop). | ☐ |
-| 6 | **Server-start failure falls back cleanly:** Given the whisper binary/model is missing, When I start a local recording, Then it falls back to cloud before recording (no mid-recording failure). | ☐ |
+| 6 | **Missing binary/model falls back cleanly:** Given the whisper binary/model is missing, When I start a local recording, Then it falls back to cloud before recording (no mid-recording failure). | ☐ |
+| 7 | **Present-but-unstartable server surfaces a banner:** Given the binary/model exist but the server fails to start (e.g. port/OOM/timeout), When I record locally, Then the on-device-failed banner appears (live view is not silently empty) and the audio is still captured for the stop-time final pass. | ☐ |
 
 ## Troubleshooting
 

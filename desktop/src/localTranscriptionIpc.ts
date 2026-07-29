@@ -45,6 +45,10 @@ export function registerLocalTranscription(deps: Deps): void {
     sharedServer.start().catch((err: Error) => {
       console.error('[desktop] whisper-server failed to start; live transcript unavailable:', err.message)
       sharedServer = null
+      // Surface it: recording began immediately (audio is still captured for the stop-time final pass),
+      // but the live view will never populate — tell the renderer so it shows the on-device-failed
+      // banner rather than sitting silently empty. The captured audio still feeds finish()/diarize.
+      send('local:error', 'On-device live transcription is unavailable (the local engine failed to start).')
     })
     return sharedServer
   }
@@ -92,9 +96,13 @@ export function registerLocalTranscription(deps: Deps): void {
     streaming = new StreamingSession(
       server,
       (text) => send('local:live', text),
-      // Non-fatal: a streaming inference hiccup leaves audio captured for the final pass; don't
-      // surface it as a recording failure. If the server never starts, the live view just stays empty.
-      (err) => console.error('[desktop] live streaming error:', err.message),
+      // Terminal only: StreamingSession calls this after a sustained run of failures against a READY
+      // server (not the transient hiccups it tolerates), so surface it — the live view is dead. Audio
+      // is still captured for the stop-time final pass, so this is a live-view warning, not a hard stop.
+      (err) => {
+        console.error('[desktop] live streaming failed:', err.message)
+        send('local:error', 'On-device live transcription stopped responding.')
+      },
     )
     streaming.start()
   })

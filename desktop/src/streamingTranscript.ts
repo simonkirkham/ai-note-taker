@@ -15,9 +15,10 @@ export type StreamState = {
 export type StreamConfig = {
   stabilityMs: number // a segment ending before now-stabilityMs is "settled"
   maxWindowMs: number // only commit once the window exceeds this (bounds re-transcribe cost)
+  hardWindowMs: number // runaway guard: past this, force-advance even without a settled boundary
 }
 
-export const DEFAULT_STREAM_CONFIG: StreamConfig = { stabilityMs: 1500, maxWindowMs: 8000 }
+export const DEFAULT_STREAM_CONFIG: StreamConfig = { stabilityMs: 1500, maxWindowMs: 8000, hardWindowMs: 16000 }
 
 export function initStreamState(): StreamState {
   return { committed: '', finalizedMs: 0 }
@@ -43,17 +44,23 @@ export function reduceStream(
 
   const windowMs = nowMs - state.finalizedMs
   const settledEdge = nowMs - cfg.stabilityMs
+  // Runaway guard: continuous speech can come back as ONE segment spanning [finalizedMs, now], whose
+  // endMs never settles — so nothing commits, finalizedMs never advances, and the window grows every
+  // step until inference can't keep pace. Once the window blows past the hard cap, force a commit of
+  // anything that STARTED before the settled edge and advance finalizedMs to that edge, bounding it.
+  const forced = windowMs >= cfg.hardWindowMs
 
   for (const s of segments) {
-    // Commit a segment only once the window is long enough AND the segment has settled — otherwise
-    // it stays in the live tail where it can still change as more audio arrives.
-    if (windowMs >= cfg.maxWindowMs && s.endMs <= settledEdge) {
+    const settled = s.endMs <= settledEdge
+    if ((windowMs >= cfg.maxWindowMs && settled) || (forced && s.startMs < settledEdge)) {
       committed = join(committed, s.text)
-      finalizedMs = Math.max(finalizedMs, s.endMs)
+      finalizedMs = Math.max(finalizedMs, settled ? s.endMs : settledEdge)
     } else {
       liveParts.push(s.text)
     }
   }
+  // Guarantee progress even if no segment matched (e.g. an empty/all-live window at the hard cap).
+  if (forced) finalizedMs = Math.max(finalizedMs, settledEdge)
 
   return { state: { committed, finalizedMs }, display: join(committed, liveParts.join(' ')) }
 }

@@ -24,6 +24,7 @@ test.describe('real whisper-server (48-BUG-53)', () => {
     await server.start()
     try {
       expect(server.running).toBe(true)
+      expect(server.ready).toBe(true)
       const pcm = pcmFromWav(WAV!)
       const w1 = pcm.subarray(0, 16000 * 2 * 5) // 0-5s
       const w2 = pcm.subarray(16000 * 2 * 5, 16000 * 2 * 10) // 5-10s
@@ -47,6 +48,7 @@ test.describe('real whisper-server (48-BUG-53)', () => {
     } finally {
       server.kill()
       expect(server.running).toBe(false)
+      expect(server.ready).toBe(false)
     }
   })
 
