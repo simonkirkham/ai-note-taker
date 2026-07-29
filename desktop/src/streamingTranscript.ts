@@ -54,7 +54,10 @@ export function reduceStream(
     const settled = s.endMs <= settledEdge
     if ((windowMs >= cfg.maxWindowMs && settled) || (forced && s.startMs < settledEdge)) {
       committed = join(committed, s.text)
-      finalizedMs = Math.max(finalizedMs, settled ? s.endMs : settledEdge)
+      // Advance past the committed segment's END (not just the settled edge). For a settled segment
+      // endMs <= settledEdge anyway; for a force-committed giant segment this freezes its tail so the
+      // segEnd..settledEdge audio isn't re-transcribed next window (no duplicated words at the boundary).
+      finalizedMs = Math.max(finalizedMs, s.endMs)
     } else {
       liveParts.push(s.text)
     }

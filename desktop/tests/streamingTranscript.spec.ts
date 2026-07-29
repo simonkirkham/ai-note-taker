@@ -42,7 +42,7 @@ test('runaway guard: a giant unsettled segment past the hard cap is force-commit
   const now = 17000 // settledEdge = 15500; window 0..17000 spans the hard cap
   const { state, display } = reduce(init(), [seg(0, 17000, 'a very long continuous utterance')], now, cfg)
   expect(state.committed).toBe('a very long continuous utterance') // started before settledEdge → forced commit
-  expect(state.finalizedMs).toBe(15500) // advanced to the settled edge, bounding the next window
+  expect(state.finalizedMs).toBe(17000) // advanced past the committed segment's end (tail frozen, no re-transcribe overlap)
   expect(display).toBe('a very long continuous utterance')
 })
 

@@ -23,6 +23,7 @@ export class StreamingSession {
   private disposed = false
   private failures = 0 // consecutive step failures; reset on success
   private terminalReported = false // onError fired once — don't spam the banner every step
+  private sawReady = false // the server became ready at least once (so a later !running == a crash)
   // windowSlice cursor: chunks before scanIdx are fully committed (never in a future window). startByte
   // only grows, so advancing this makes each slice O(window) instead of O(whole recording so far).
   private scanIdx = 0
@@ -48,10 +49,20 @@ export class StreamingSession {
 
   private async step(): Promise<void> {
     if (this.busy || this.disposed) return
-    // Skip quietly while the server is still loading its model (not ready) or has died (not running) —
-    // neither is a per-step failure, so they don't count toward the terminal threshold. A dead server
-    // is surfaced by the IPC layer's start-failure handler, not here.
-    if (!this.server.running || !this.server.ready) return
+    if (!this.server.running) {
+      // A server that had become ready and is now gone crashed mid-recording — report it once so the
+      // renderer's banner fires (a start-time failure is surfaced by the IPC layer instead). If it was
+      // never ready, this is the IPC layer's start-failure case → stay quiet here.
+      if (this.sawReady && !this.terminalReported) {
+        this.terminalReported = true
+        this.onError(new Error('whisper-server exited during the recording'))
+      }
+      return
+    }
+    // Skip quietly while the server is still loading its model — not a per-step failure, so it doesn't
+    // count toward the terminal threshold or spam /inference during load.
+    if (!this.server.ready) return
+    this.sawReady = true
     const startByte = this.state.finalizedMs * BYTES_PER_MS
     if (this.byteLen - startByte < MIN_NEW_MS * BYTES_PER_MS) return
     this.busy = true
