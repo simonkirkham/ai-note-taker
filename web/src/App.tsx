@@ -16,6 +16,7 @@ import { keys } from "./api/queryKeys";
 import { useAuth } from "./auth/context";
 import styles from "./components/App.module.css";
 import FolderPreviewPanel from "./components/FolderPreviewPanel";
+import { LeaveGuardContext } from "./components/leaveGuardContext";
 import ListView from "./components/ListView";
 import NoteView from "./components/NoteView";
 import OpenNoteTabs from "./components/OpenNoteTabs";
@@ -293,20 +294,27 @@ function AppContent({ signOut }: { signOut: () => void }) {
     void qc.invalidateQueries({ queryKey: keys.noteCards });
   }
 
+  // BUG-54: these three leave the note screen without being *about* the note, so each must
+  // ask before unmounting a recording. The side effects (closing the sidebar, opening the
+  // folder preview) belong to the destination, so they run only once the leave is agreed.
   function handleUnfiledSelect() {
-    void navigate(w("/folders/unfiled"));
-    setSidebarOpen(false);
+    requestLeave(() => {
+      void navigate(w("/folders/unfiled"));
+      setSidebarOpen(false);
+    });
   }
 
   function handleFolderSelect(folderId: string, folderPath: string[]) {
-    void navigate(w(`/folders/${folderId}`));
-    setSidebarOpen(false);
-    setPreviewFolderId(folderId);
-    setPreviewFolderName(folderPath[folderPath.length - 1] ?? "");
+    requestLeave(() => {
+      void navigate(w(`/folders/${folderId}`));
+      setSidebarOpen(false);
+      setPreviewFolderId(folderId);
+      setPreviewFolderName(folderPath[folderPath.length - 1] ?? "");
+    });
   }
 
   function handleHome() {
-    void navigate(w(""));
+    requestLeave(() => void navigate(w("")));
   }
 
   function handleCreateFolder(name: string, parentFolderId?: string) {
@@ -361,87 +369,91 @@ function AppContent({ signOut }: { signOut: () => void }) {
   );
 
   return (
-    <div className={styles.appLayout}>
-      <button
-        data-testid="sidebar-toggle"
-        className={styles.sidebarToggle}
-        aria-label="Toggle sidebar"
-        onClick={() => setSidebarOpen((o) => !o)}
-      >
-        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
-      </button>
-      {/* Decorative backdrop scrim, hidden from assistive tech; tap-to-close is a
-          pointer convenience. The sidebar is toggled by the keyboard-accessible
-          hamburger button above. */}
-      <div
-        aria-hidden="true"
-        className={clsx(styles.sidebarOverlay, sidebarOpen && styles.sidebarOverlayOpen)}
-        onClick={() => setSidebarOpen(false)}
-      />
-      <Sidebar
-        open={sidebarOpen}
-        onCreate={() => void handleNewNote()}
-        folders={folders}
-        activeFolderId={activeFolderId}
-        onFolderSelect={handleFolderSelect}
-        onCreateFolder={(name) => handleCreateFolder(name)}
-        onRenameFolder={handleRenameFolder}
-        onDeleteFolder={handleDeleteFolder}
-        onCreateChildFolder={(parentId, name) => handleCreateFolder(name, parentId)}
-        onDropNote={handleMoveNoteToFolder}
-        onMoveFolder={handleMoveFolder}
-        onHome={handleHome}
-        onUnfiledSelect={handleUnfiledSelect}
-        isUnfiledActive={activeFolderId === UNFILED_ID}
-        onDropToUnfiled={(noteId) => handleMoveNoteToFolder(noteId, null)}
-        previewFolderId={previewFolderId}
-        onPreview={(folderId, name) => {
-          // CHANGE-11: clicking the preview button toggles — close it if this
-          // folder is already previewed, otherwise open it.
-          setPreviewFolderId((prev) => (prev === folderId ? null : folderId));
-          setPreviewFolderName(name);
-        }}
-        onSignOut={signOut}
-      />
-      <FolderPreviewPanel
-        folderId={previewFolderId}
-        folderName={previewFolderName}
-        cards={cards}
-        onClose={() => setPreviewFolderId(null)}
-        onEditNote={(noteId) => { openNote(noteId); setPreviewFolderId(null); }}
-        onDropNote={(noteId) => handleMoveNoteToFolder(noteId, previewFolderId === UNFILED_ID ? null : previewFolderId)}
-      />
-      <div className={styles.appMain}>
-        {activeNoteId && (
-          <OpenNoteTabs
-            tabs={openNoteTabs}
-            activeNoteId={activeNoteId}
-            onSelect={handleSelectTab}
-            onClose={handleCloseTab}
-          />
-        )}
-        <Routes>
-          <Route index element={listView} />
-          <Route path="folders/:folderId" element={listView} />
-          <Route
-            path="notes/:noteId"
-            element={
-              <NoteRoute
-                notes={cards}
-                onBack={handleBackFromNote}
-                onDelete={handleDelete}
-                onDateSet={handleDateSet}
-                onOpenNote={openNote}
-                onRegisterLeaveGuard={registerLeaveGuard}
-                otherWorkspaces={otherWorkspaces}
-                onMoveNoteToWorkspace={handleMoveNoteToWorkspace}
-              />
-            }
-          />
-          <Route path="*" element={<Navigate to={w("")} replace />} />
-        </Routes>
+    // BUG-54: any descendant that navigates away from the note screen (the workspace
+    // switcher today) consults the recording guard instead of calling `navigate` directly.
+    <LeaveGuardContext value={requestLeave}>
+      <div className={styles.appLayout}>
+        <button
+          data-testid="sidebar-toggle"
+          className={styles.sidebarToggle}
+          aria-label="Toggle sidebar"
+          onClick={() => setSidebarOpen((o) => !o)}
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+        </button>
+        {/* Decorative backdrop scrim, hidden from assistive tech; tap-to-close is a
+            pointer convenience. The sidebar is toggled by the keyboard-accessible
+            hamburger button above. */}
+        <div
+          aria-hidden="true"
+          className={clsx(styles.sidebarOverlay, sidebarOpen && styles.sidebarOverlayOpen)}
+          onClick={() => setSidebarOpen(false)}
+        />
+        <Sidebar
+          open={sidebarOpen}
+          onCreate={() => void handleNewNote()}
+          folders={folders}
+          activeFolderId={activeFolderId}
+          onFolderSelect={handleFolderSelect}
+          onCreateFolder={(name) => handleCreateFolder(name)}
+          onRenameFolder={handleRenameFolder}
+          onDeleteFolder={handleDeleteFolder}
+          onCreateChildFolder={(parentId, name) => handleCreateFolder(name, parentId)}
+          onDropNote={handleMoveNoteToFolder}
+          onMoveFolder={handleMoveFolder}
+          onHome={handleHome}
+          onUnfiledSelect={handleUnfiledSelect}
+          isUnfiledActive={activeFolderId === UNFILED_ID}
+          onDropToUnfiled={(noteId) => handleMoveNoteToFolder(noteId, null)}
+          previewFolderId={previewFolderId}
+          onPreview={(folderId, name) => {
+            // CHANGE-11: clicking the preview button toggles — close it if this
+            // folder is already previewed, otherwise open it.
+            setPreviewFolderId((prev) => (prev === folderId ? null : folderId));
+            setPreviewFolderName(name);
+          }}
+          onSignOut={signOut}
+        />
+        <FolderPreviewPanel
+          folderId={previewFolderId}
+          folderName={previewFolderName}
+          cards={cards}
+          onClose={() => setPreviewFolderId(null)}
+          onEditNote={(noteId) => { openNote(noteId); setPreviewFolderId(null); }}
+          onDropNote={(noteId) => handleMoveNoteToFolder(noteId, previewFolderId === UNFILED_ID ? null : previewFolderId)}
+        />
+        <div className={styles.appMain}>
+          {activeNoteId && (
+            <OpenNoteTabs
+              tabs={openNoteTabs}
+              activeNoteId={activeNoteId}
+              onSelect={handleSelectTab}
+              onClose={handleCloseTab}
+            />
+          )}
+          <Routes>
+            <Route index element={listView} />
+            <Route path="folders/:folderId" element={listView} />
+            <Route
+              path="notes/:noteId"
+              element={
+                <NoteRoute
+                  notes={cards}
+                  onBack={handleBackFromNote}
+                  onDelete={handleDelete}
+                  onDateSet={handleDateSet}
+                  onOpenNote={openNote}
+                  onRegisterLeaveGuard={registerLeaveGuard}
+                  otherWorkspaces={otherWorkspaces}
+                  onMoveNoteToWorkspace={handleMoveNoteToWorkspace}
+                />
+              }
+            />
+            <Route path="*" element={<Navigate to={w("")} replace />} />
+          </Routes>
+        </div>
       </div>
-    </div>
+    </LeaveGuardContext>
   );
 }
 
