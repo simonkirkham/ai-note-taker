@@ -7,8 +7,6 @@ export type LocalTranscriptionStatus = {
   progress: number
 };
 
-export type LocalWhisperSegment = { startMs: number; endMs: number; text: string };
-
 export interface DesktopBridge {
   isDesktop: true;
   platform: string;
@@ -24,7 +22,8 @@ export interface DesktopBridge {
     diarize(me: ArrayBuffer, them: ArrayBuffer): Promise<string | null>;
     // 48-C: drop the live session without its final pass (diarization produced the transcript).
     discard(): void;
-    onSegments(cb: (segs: LocalWhisperSegment[]) => void): () => void;
+    // BUG-53: the current live transcript (a full string, replace-not-append), emitted ~every 1.5s.
+    onLive(cb: (text: string) => void): () => void;
     onError(cb: (message: string) => void): () => void;
   };
 }

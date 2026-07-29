@@ -3,7 +3,7 @@ import { existsSync, readFileSync } from 'node:fs'
 import path from 'node:path'
 import { startBundleServer } from './server'
 import { pickDisplayMediaResponse } from './displayMedia'
-import { registerLocalTranscription } from './localTranscriptionIpc'
+import { registerLocalTranscription, killWhisperServer } from './localTranscriptionIpc'
 import { killActiveWhisper } from './localTranscription'
 
 // Phase 31-A — Windows bundle-shell.
@@ -106,7 +106,10 @@ void app.whenReady().then(async () => {
 // otherwise keep pegging the CPU after the app closes. Runs synchronously so SIGTERM reaches the
 // kernel before teardown. Note: kill() terminates the direct child only (fine — whisper-cli is a
 // leaf); if anyone ever spawns whisper via a shell wrapper, kill the tree instead.
-app.on('before-quit', () => killActiveWhisper())
+app.on('before-quit', () => {
+  killActiveWhisper()
+  killWhisperServer() // BUG-53: tear down the resident whisper-server child on quit
+})
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit()
