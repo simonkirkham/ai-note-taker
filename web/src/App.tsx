@@ -194,6 +194,13 @@ function AppContent({ signOut }: { signOut: () => void }) {
   // `onProceed` is for a caller's own side effect that must not fire if the user declines a
   // mid-recording leave (e.g. closing the folder preview panel).
   function openNote(noteId: string, title?: string, isNew?: boolean, onProceed?: () => void) {
+    // Already on this note: the route is unchanged, so nothing unmounts and there is no
+    // recording to protect — asking would stop a capture for a no-op navigation. The
+    // caller's side effect still applies (the preview panel should close either way).
+    if (noteId === activeNoteId) {
+      onProceed?.();
+      return;
+    }
     const state: NoteNavState = {};
     if (isNew) state.isNew = true;
     if (title) state.initialTitle = title;

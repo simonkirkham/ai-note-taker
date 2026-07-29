@@ -119,7 +119,10 @@ export default function NoteView({
   // by the parent (a tab switch/close) rather than by this note's own Save/back.
   const pendingLeaveRef = useRef<(() => void) | null>(null);
   // Latched once a confirmed leave starts, so the in-flight save can't be raced by a
-  // second exit (Save/back) while it settles.
+  // second exit (Save/back, or a double-click on "Leave & save") while it settles.
+  // Never reset: every continuation unmounts this NoteView, so the latch dies with it. A
+  // future continuation that does NOT navigate away would need one, or confirmed-leave
+  // would be dead for the rest of the note's life.
   const leavingRef = useRef(false);
   // BUG-47: the typed text of a content save the server rejected as stale (409) — the note had newer
   // content than the editor loaded. Non-null shows the conflict banner offering to load the latest

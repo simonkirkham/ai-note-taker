@@ -103,9 +103,12 @@ beforeEach(() => {
 
 afterEach(() => clearToken())
 
-/** Open the note and start recording in it. */
-async function openNoteAndRecord() {
-  await userEvent.click(await screen.findByTestId('note-card-title'))
+/** Open the note (by card title, since some cases render more than one) and record in it. */
+async function openNoteAndRecord(title = 'Standup') {
+  const cards = await screen.findAllByTestId('note-card')
+  const card = cards.find((c) => within(c).queryByText(title))
+  if (!card) throw new Error(`no card titled ${title}`)
+  await userEvent.click(within(card).getByTestId('note-card-title'))
   await screen.findByTestId('note-title-input')
   await userEvent.click(screen.getByTestId('mock-start-recording'))
 }
@@ -177,10 +180,13 @@ describe('BUG-54 — navigating away from a recording note asks first', () => {
   // open-note path (FolderPreviewPanel.onEditNote), which closes the panel as a side
   // effect: the panel must still be open, showing its folder, after declining.
   it('declining a note click in the folder preview leaves the panel open', async () => {
-    // The panel lists notes in the folder, so put the note in one.
+    // The panel lists notes in the folder. Put a SECOND note there and click that one —
+    // clicking the note you are already on is a no-op navigation that unmounts nothing,
+    // so it would not be a genuine leave.
+    const other = { ...CARD, noteId: 'note-2', title: 'Retro', folderId: 'folder-1' }
     server.use(
       http.get('/api/w/:wsId/notes/cards', () =>
-        HttpResponse.json({ cards: [{ ...CARD, folderId: 'folder-1' }] }),
+        HttpResponse.json({ cards: [{ ...CARD, folderId: 'folder-1' }, other] }),
       ),
     )
     renderApp()
@@ -189,18 +195,41 @@ describe('BUG-54 — navigating away from a recording note asks first', () => {
     // Open the preview panel from the sidebar — this does not navigate.
     await userEvent.click(await screen.findByRole('button', { name: 'Preview folder notes' }))
     const panel = screen.getByTestId('folder-preview-panel')
-    expect(within(panel).getByText('Standup')).toBeInTheDocument()
+    expect(within(panel).getByText('Retro')).toBeInTheDocument()
 
     // Clicking a note in the panel opens it AND closes the panel — both must wait.
-    await userEvent.click(within(panel).getByText('Standup'))
+    await userEvent.click(within(panel).getByText('Retro'))
     expect(await screen.findByTestId('confirm-leave-button')).toBeInTheDocument()
 
     await userEvent.click(screen.getByTestId('cancel-leave-button'))
 
     // Assert on the note LIST, not the header: the header keeps the last folder name even
     // when closed, so it stays "Clients" either way and would hide the regression.
-    expect(within(screen.getByTestId('folder-preview-panel')).getByText('Standup')).toBeInTheDocument()
+    expect(within(screen.getByTestId('folder-preview-panel')).getByText('Retro')).toBeInTheDocument()
     expect(window.location.pathname).toBe(NOTE_PATH)
+  })
+
+  // Re-opening the note you are already on changes no route, so nothing unmounts — asking
+  // would stop a recording for a navigation that isn't one.
+  it('clicking the note I am already on does not ask, and still closes the preview', async () => {
+    server.use(
+      http.get('/api/w/:wsId/notes/cards', () =>
+        HttpResponse.json({ cards: [{ ...CARD, folderId: 'folder-1' }] }),
+      ),
+    )
+    renderApp()
+    await openNoteAndRecord()
+    await userEvent.click(await screen.findByRole('button', { name: 'Preview folder notes' }))
+    const panel = screen.getByTestId('folder-preview-panel')
+
+    await userEvent.click(within(panel).getByText('Standup'))
+
+    expect(screen.queryByTestId('confirm-leave-button')).toBeNull()
+    expect(window.location.pathname).toBe(NOTE_PATH)
+    // The panel still closes — the caller's side effect is not conditional on a leave.
+    await waitFor(() =>
+      expect(within(screen.getByTestId('folder-preview-panel')).queryByText('Standup')).toBeNull(),
+    )
   })
 
   it('declining a folder click does not open the folder preview panel', async () => {
