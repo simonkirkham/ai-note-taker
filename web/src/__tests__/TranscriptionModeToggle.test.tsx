@@ -16,7 +16,7 @@ function fakeDesktop(status: LocalTranscriptionStatus) {
       start: () => Promise.resolve(),
       pushPcm: () => {},
       finish: () => Promise.resolve(),
-      onSegments: () => () => {},
+      onLive: () => () => {},
       onError: () => () => {},
     },
   }

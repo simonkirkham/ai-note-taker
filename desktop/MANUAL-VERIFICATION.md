@@ -126,6 +126,19 @@ Local transcription must never leave a whisper process running or peg the whole 
 | 3 | **Machine stays usable:** Given a local final pass runs, Then whisper uses ~half the cores (not all) and the app/OS stay responsive. | ☐ |
 | 4 | **Lighter final pass:** Given `small.en` is the final model, Then the on-stop pass is meaningfully faster/lighter than the old `medium.en` (and `medium.en` is no longer downloaded). | ☐ |
 
+## BUG-53 — low-latency live streaming (Step 2, resident whisper-server)
+
+The live transcript must appear within a few seconds and keep pace, on the resident server (model loaded once), not the old spawn-per-window path (5-7 s + churn).
+
+| # | Given / When / Then | Pass? |
+|---|---------------------|-------|
+| 1 | **Live latency:** Given a local recording, When I speak, Then the live transcript appears within ~3-4 s and keeps pace (no growing backlog). | ☐ |
+| 2 | **One resident process:** Given a local recording is running, Then Task Manager shows a single `whisper-server.exe` (not a new `whisper-cli.exe` per window), and its CPU is bounded (~half the cores). | ☐ |
+| 3 | **Model loads once:** Given I stop and start several local recordings, Then the server stays resident between them (no multi-second model-load stall at the start of the 2nd+ recording). | ☐ |
+| 4 | **Server dies on quit:** Given a local recording, When I close the app, Then no `whisper-server.exe` remains in Task Manager. | ☐ |
+| 5 | **Final pass still runs:** Given I stop a local recording, Then the higher-quality `small.en` final pass still replaces the live text (transcript quality improves on stop). | ☐ |
+| 6 | **Server-start failure falls back cleanly:** Given the whisper binary/model is missing, When I start a local recording, Then it falls back to cloud before recording (no mid-recording failure). | ☐ |
+
 ## Troubleshooting
 
 - **`Error 400: redirect_uri_mismatch` immediately after adding `http://localhost:5180`** — the value is correct (`redirect_uri = window.location.origin = http://localhost:5180`: no trailing slash, `localhost` not `127.0.0.1`, port `5180`, `http` not `https`). The cause is **Google propagation lag** — a freshly added+saved redirect URI is not live immediately; it can take **~5 min to a few hours**. Confirm the running app's `window.location.origin` (DevTools console) reads exactly `http://localhost:5180`, then wait and retry. **No code change.** Hit and confirmed 2026-06-22: config was right on the first attempt; the URI simply had not propagated.

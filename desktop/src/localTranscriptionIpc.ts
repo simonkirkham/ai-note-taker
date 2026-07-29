@@ -4,11 +4,23 @@
 
 import { ipcMain, type BrowserWindow } from 'electron'
 import { existsSync } from 'node:fs'
+import { cpus } from 'node:os'
 import path from 'node:path'
-import { LocalTranscriptionSession, diarizeStreams, killActiveWhisper } from './localTranscription'
+import { transcribeWindow, diarizeStreams, killActiveWhisper } from './localTranscription'
+import { pickThreads } from './localEngine'
+import { StreamingSession } from './streamingSession'
+import { WhisperServer } from './whisperServer'
 import { ensureModels, modelsDir, whisperBinPath, finalModelFile, vadModelFile, MANIFEST } from './modelStore'
 import { isLive } from './models'
 import type { LocalStatus } from './preload'
+
+// BUG-53: the resident whisper-server (loaded with the live model) is shared across recordings and
+// only torn down on app-quit. main.ts calls this from before-quit alongside killActiveWhisper.
+let sharedServer: WhisperServer | null = null
+export function killWhisperServer(): void {
+  sharedServer?.kill()
+  sharedServer = null
+}
 
 type Deps = {
   userDataDir: string
@@ -18,10 +30,24 @@ type Deps = {
 
 export function registerLocalTranscription(deps: Deps): void {
   let status: LocalStatus = { modelReady: false, downloading: false, progress: 0 }
-  let session: LocalTranscriptionSession | null = null
+  let streaming: StreamingSession | null = null
+  let finalOpts: { binPath: string; finalModelPath?: string } | null = null // for the stop-time pass
   let preparing = false // guards against starting the download more than once
 
   const send = (channel: string, payload: unknown) => deps.getWindow()?.webContents.send(channel, payload)
+
+  // BUG-53: lazily start the resident whisper-server with the live model, reused across recordings.
+  // Started in the background on record-start so recording begins immediately; the live transcript
+  // appears once the model has loaded (a few seconds). Kept warm until app-quit.
+  const ensureServer = (binPath: string, liveModelPath: string): WhisperServer => {
+    if (sharedServer?.running) return sharedServer
+    sharedServer = new WhisperServer(binPath, liveModelPath, pickThreads(cpus().length))
+    sharedServer.start().catch((err: Error) => {
+      console.error('[desktop] whisper-server failed to start; live transcript unavailable:', err.message)
+      sharedServer = null
+    })
+    return sharedServer
+  }
 
   // Download models in the background — never blocks the window. Triggered by the renderer only
   // when the user has selected local mode (via 'local:prepare'), so cloud-only users never pull
@@ -50,51 +76,59 @@ export function registerLocalTranscription(deps: Deps): void {
     if (!liveSpec) throw new Error('no live model configured in the manifest')
     const modelPath = path.join(dir, liveSpec.file)
     // 48-B: the small.en final model is best-effort — pass its path only if it has downloaded,
-    // so runFinalPass runs when present and is skipped (live text kept) when it isn't.
+    // so the stop-time final pass runs when present and is skipped (live text kept) when it isn't.
     const finalPath = path.join(dir, finalModelFile())
     const finalModelPath = finalModelFile() && existsSync(finalPath) ? finalPath : undefined
     // Validate the live engine up front so a missing binary/model rejects here — the renderer then
     // takes its clean pre-recording cloud fallback instead of failing mid-recording.
     if (!existsSync(binPath)) throw new Error(`whisper binary not found at ${binPath}`)
     if (!existsSync(modelPath)) throw new Error(`whisper model not found at ${modelPath}`)
-    // Discard any prior session (rapid stop→start) so its late segments can't leak in, and
-    // BUG-52: kill any whisper child still running from a previous recording so a new one never
-    // stacks CPU on top of an old (e.g. still-finalising) pass.
-    session = null
+    // BUG-53: dispose any prior streaming session and kill in-flight CLI passes (final/diarize) —
+    // the resident server stays warm across recordings. Then start a fresh streaming session over it.
+    streaming?.dispose()
     killActiveWhisper()
-    session = new LocalTranscriptionSession(
-      { binPath, modelPath, finalModelPath },
-      (segs) => send('local:segments', segs),
-      (err) => {
-        console.error('[desktop] local transcription failed; renderer falls back to cloud:', err.message)
-        send('local:error', err.message)
-      },
+    finalOpts = { binPath, finalModelPath }
+    const server = ensureServer(binPath, modelPath)
+    streaming = new StreamingSession(
+      server,
+      (text) => send('local:live', text),
+      // Non-fatal: a streaming inference hiccup leaves audio captured for the final pass; don't
+      // surface it as a recording failure. If the server never starts, the live view just stays empty.
+      (err) => console.error('[desktop] live streaming error:', err.message),
     )
+    streaming.start()
   })
 
   ipcMain.on('local:pcm', (_e, pcm: ArrayBuffer) => {
-    session?.pushPcm(Buffer.from(pcm))
+    streaming?.pushPcm(Buffer.from(pcm))
   })
 
-  // 48-C: drop the live (mixed) session without running its single-stream final pass — used when
-  // source-separation diarization produced the transcript instead. Releases the retained audio.
-  // BUG-52: also kill any in-flight live-window whisper child so nothing keeps running after stop.
-  // dispose() first so that child's kill-induced non-zero exit doesn't fire a spurious onError.
+  // 48-C: drop the live streaming session — used when source-separation diarization produced the
+  // transcript instead, and as the stop-flow's guaranteed release. BUG-52: kill any in-flight CLI
+  // final/diarize child; the resident server stays warm for the next recording.
   ipcMain.on('local:discard', () => {
-    session?.dispose()
-    session = null
+    streaming?.dispose()
+    streaming = null
+    finalOpts = null
     killActiveWhisper()
   })
 
-  // Flush the live tail, then run the higher-quality final pass (48-B). Returns the final
-  // transcript text (or null → renderer keeps the live text). Runs before the renderer commits.
+  // Stop streaming, then run the higher-quality small.en final pass over the whole recording (48-B,
+  // via the CLI — unchanged). Returns the final transcript (or null → renderer keeps the live text).
   ipcMain.handle('local:finish', async (): Promise<string | null> => {
-    const s = session
-    session = null
+    const s = streaming
+    const opts = finalOpts
+    streaming = null
+    finalOpts = null
     if (!s) return null
-    await s.finish()
+    s.stop()
+    const audio = s.fullAudio()
+    s.dispose()
+    if (!opts?.finalModelPath || audio.length === 0) return null // keep the live streaming text
     try {
-      return await s.runFinalPass()
+      const segs = await transcribeWindow(audio, 0, { binPath: opts.binPath, modelPath: opts.finalModelPath })
+      const text = segs.map((x) => x.text).join(' ')
+      return text.length ? text : null
     } catch (err) {
       console.error('[desktop] final pass failed; keeping live transcript:', (err as Error).message)
       return null
