@@ -315,3 +315,14 @@ From the 35-F dual security review (both APPROVE; these were the two non-blockin
 **Deploy-time delta:** none material (a rate-limiter middleware + a GSI-backed query; the GSI backfill is the TI-33/20 cost).
 **Raised in:** 35-F security audit (PR #345), 2026-06-25.
 **Depends on:** TI-33 / TI-20 for item 2.
+
+## TI-46. Alarm on `RefreshTokenStoreWriteFault` (sustained > 0)
+
+The `obs-auth-login` slice (PR #411) shipped the `RefreshTokenStoreWriteFault` metric (a durable-token store write failed on `/auth/token` or `/auth/refresh` rotation → the user silently loses long-lived sign-in). The Phase 30 obs table specced an **alarm on sustained > 0**; the metric ships, the alarm was consciously deferred to here to avoid churning the DefaultPolicy/alarm-count infra assertions in the observability slice.
+
+- Add a CloudWatch `Alarm` on `NoteTaker/Domain` `RefreshTokenStoreWriteFault` (Sum, dimensionless), threshold > 0 over ~2×5min, wired to the existing `notetaker-alarms` SNS topic.
+- Guard the alarm-count infra assertion (`InfraAssertionsTests`) — adding an alarm changes the expected count; update it in the same slice.
+- Consider a companion low-severity view: a rising `SessionRefresh{Outcome=no_cookie|rejected}` rate is the "forced to re-authenticate" signal (already graphed on the `notetaker-ops` "Sign-ins & forced re-auth" widget); an alarm here is optional (it is user-experience, not a fault).
+
+**Deploy-time delta:** none material (one alarm construct; no IAM, no traffic-shifting).
+**Raised in:** `obs-auth-login` (PR #411), 2026-07-29 — deferred from the Phase 30 obs table.
