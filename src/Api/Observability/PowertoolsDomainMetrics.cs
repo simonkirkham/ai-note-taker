@@ -65,10 +65,20 @@ public sealed class PowertoolsDomainMetrics : IDomainMetrics
                 nameSpace: MetricNamespace, service: ServiceName);
     }
 
-    // Outcome is low-cardinality ("completed"/"no_cookie"/"rejected"), so it is safe as a dimension —
-    // it lets one metric graph the split between silent refreshes and the two forced-sign-in paths.
+    // Outcome is low-cardinality ("completed"/"no_cookie"/"rejected"/"error"), so it is safe as a
+    // dimension — one metric graphs the split between silent refreshes and the forced-sign-in paths.
     public void SessionRefresh(string outcome) =>
         Push("SessionRefresh", 1, new Dictionary<string, string> { ["Outcome"] = outcome });
+
+    // Dimensionless (Service only), like the rebuild/analysis faults — a single concrete metric an
+    // alarm can target. The sub of the affected user stays in the structured log, never a dimension.
+    public void RefreshTokenStoreWriteFault() =>
+        Metrics.PushSingleMetric("RefreshTokenStoreWriteFault", 1, MetricUnit.Count,
+            nameSpace: MetricNamespace, service: ServiceName);
+
+    public void RefreshTokenRevoked() =>
+        Metrics.PushSingleMetric("RefreshTokenRevoked", 1, MetricUnit.Count,
+            nameSpace: MetricNamespace, service: ServiceName);
 
     // PushSingleMetric emits a self-contained EMF blob with its own dimensions, so no
     // global namespace/flush setup (or the [Metrics] handler decorator) is needed —

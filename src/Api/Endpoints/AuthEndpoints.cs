@@ -33,6 +33,12 @@ public static class AuthEndpoints
 
                 var sub = TryGetSub(result.Tokens.IdToken);
 
+                // A returned refresh_token means Google issued a fresh grant — i.e. the user was shown
+                // the full consent screen; this feeds the SignInConsentIssued signal (the token itself
+                // is never logged). The branch below re-checks inline so nullable flow analysis narrows
+                // RefreshToken to non-null for the store + cookie calls.
+                var consentIssued = !string.IsNullOrEmpty(result.Tokens.RefreshToken);
+
                 if (!string.IsNullOrEmpty(result.Tokens.RefreshToken))
                 {
                     // First-ever sign-in (or any consent): Google issued a refresh token. Persist
@@ -46,8 +52,9 @@ public static class AuthEndpoints
                         catch (Exception ex)
                         {
                             // The cookie still works for this session; durability is what is lost.
-                            // Surface it rather than failing the sign-in.
+                            // Surface it (log + alarmable metric) rather than failing the sign-in.
                             log.LogWarning(ex, "Refresh-token store write failed for sub {Sub}", sub);
+                            metrics.RefreshTokenStoreWriteFault();
                         }
                     }
                     SetRefreshCookie(ctx, result.Tokens.RefreshToken);
@@ -64,10 +71,8 @@ public static class AuthEndpoints
                     }
                 }
 
-                // A returned refresh_token means Google issued a fresh grant — i.e. the user was shown
-                // the full consent screen. Logging + counting this is how "asked to log in a lot" becomes
-                // measurable; the token itself is never logged, only the boolean outcome + sub.
-                var consentIssued = !string.IsNullOrEmpty(result.Tokens.RefreshToken);
+                // Counting sign-ins (and the consent-issuing subset) is how "asked to log in a lot"
+                // becomes measurable; only the boolean outcome + sub are logged, never the token.
                 metrics.SignInCompleted(consentIssued);
                 log.LogInformation("Sign-in completed for sub {Sub}; consentIssued={ConsentIssued}", sub, consentIssued);
 
@@ -98,7 +103,10 @@ public static class AuthEndpoints
             }
 
             if (!SecretsConfigured())
+            {
+                metrics.SessionRefresh("error");
                 return Results.StatusCode(503);
+            }
 
             // Resolve the user's `sub` from the request's id_token (if present) so a revoked
             // token can be evicted from the store, and a rotated one persisted. The store is
@@ -127,6 +135,7 @@ public static class AuthEndpoints
                             {
                                 await tokenStore.DeleteAsync(sub, ctx.RequestAborted);
                                 log.LogInformation("Stored refresh token revoked; deleted for sub {Sub}", sub);
+                                metrics.RefreshTokenRevoked();
                             }
                         }
                         catch (Exception ex)
@@ -168,10 +177,14 @@ public static class AuthEndpoints
             }
             catch (TaskCanceledException)
             {
+                // A Google outage (timeout/transport) also forces the user back to sign-in — count it
+                // as "error" so a sustained upstream failure is visible and never inflates % completed.
+                metrics.SessionRefresh("error");
                 return Results.StatusCode(504);
             }
             catch (HttpRequestException)
             {
+                metrics.SessionRefresh("error");
                 return Results.StatusCode(502);
             }
         }).AllowAnonymous();

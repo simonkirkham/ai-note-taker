@@ -877,6 +877,16 @@ public class InfraAssertionsTests
                 })
             })
         }));
+        _template.HasResourceProperties("AWS::CloudWatch::Dashboard", Match.ObjectLike(new Dictionary<string, object>
+        {
+            ["DashboardBody"] = Match.ObjectLike(new Dictionary<string, object>
+            {
+                ["Fn::Join"] = Match.ArrayWith(new object[]
+                {
+                    Match.ArrayWith(new object[] { Match.StringLikeRegexp(".*SignInConsentIssued.*") })
+                })
+            })
+        }));
     }
 
     [Theory]

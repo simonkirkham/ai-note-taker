@@ -31,8 +31,16 @@ public interface IDomainMetrics
     void SignInCompleted(bool consentIssued);
 
     // Outcome of POST /auth/refresh — the silent session-refresh path. "completed" (session slid
-    // forward), "no_cookie" (rt cookie absent → the client is forced to sign in again), or
-    // "rejected" (Google revoked/expired the token → forced re-consent). A rising no_cookie/rejected
-    // rate is the measurable form of "asked to log in a lot".
+    // forward), "no_cookie" (rt cookie absent → the client is forced to sign in again), "rejected"
+    // (Google revoked/expired the token → forced re-consent), or "error" (a Google outage: 502/504).
+    // A rising no_cookie/rejected/error rate is the measurable form of "asked to log in a lot".
     void SessionRefresh(string outcome);
+
+    // The two Phase 30 obs-table durability signals. RefreshTokenStoreWriteFault: the server-side
+    // durable copy failed to persist (the user silently loses long-lived sign-in) — alarm on sustained
+    // >0. RefreshTokenRevoked: Google rejected a stored token and it was evicted (a genuine session
+    // death). Both dimensionless so an alarm can target them directly; the sub stays in the log only.
+    void RefreshTokenStoreWriteFault();
+
+    void RefreshTokenRevoked();
 }

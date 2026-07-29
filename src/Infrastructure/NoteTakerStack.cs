@@ -1172,7 +1172,8 @@ public sealed class NoteTakerStack : Stack
                 {
                     SessionRefreshOutcome("completed"),
                     SessionRefreshOutcome("no_cookie"),
-                    SessionRefreshOutcome("rejected")
+                    SessionRefreshOutcome("rejected"),
+                    SessionRefreshOutcome("error")
                 },
                 Width = 12
             }),

@@ -99,12 +99,14 @@
 
 ## Observability
 
-| Silent failure mode | Make visible |
-|---|---|
-| Store write fails on `/auth/token` (user silently loses durability) | Warn log + `RefreshTokenStoreWriteFault` metric; alarm on sustained > 0 |
-| Stored token rejected/revoked by Google | Info log on delete-and-reconsent; count `RefreshTokenRevoked` |
-| Restore-from-store path taken | Debug log "session restored from server-side token" (no token value) to confirm the no-consent path in prod |
-| Cross-account caveat | The E2E env is a different AWS account than `--profile prod`; verify the new table + metrics in the env under test, not prod |
+**Implemented by the `obs-auth-login` slice (2026-07-29, PR #411)** — this table was specced with 30-A but the metrics were never built (auth emitted logs only). That slice adds the `RefreshTokenStoreWriteFault` + `RefreshTokenRevoked` metrics below, plus login-frequency signals (`SignInCompleted` / `SignInConsentIssued` / `SessionRefresh{Outcome=completed|no_cookie|rejected|error}`) and a `notetaker-ops` "Sign-ins & forced re-auth" widget, to answer "how often is the user forced to re-authenticate?".
+
+| Silent failure mode | Make visible | Status |
+|---|---|---|
+| Store write fails on `/auth/token` (user silently loses durability) | Warn log + `RefreshTokenStoreWriteFault` metric; alarm on sustained > 0 | Metric ✅; **alarm deferred** → technical-improvements |
+| Stored token rejected/revoked by Google | Info log on delete-and-reconsent; count `RefreshTokenRevoked` | ✅ |
+| Restore-from-store path taken | Debug log "session restored from server-side token" (no token value) to confirm the no-consent path in prod | ✅ (log already present) |
+| Cross-account caveat | The E2E env is a different AWS account than `--profile prod`; verify the new table + metrics in the env under test, not prod | — |
 
 ## Security
 
