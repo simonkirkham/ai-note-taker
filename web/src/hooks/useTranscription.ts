@@ -423,22 +423,19 @@ export function useTranscription(noteId: string): UseTranscriptionResult {
           wakeupRef.current = null;
         };
 
-        // 48-A: local engine — the on-device whisper session produces the live transcript.
-        // Its parsed segments feed the same finalizedRef/setTranscript accumulator the cloud
-        // path uses, so draft-autosave, commit, WAV upload and analysis downstream are identical.
+        // 48-A / BUG-53: local engine — the on-device whisper-server streams the live transcript.
+        // It emits the whole current transcript (committed text + settling tail) as one string,
+        // which replaces (not appends to) finalizedRef — feeding the same finalizedRef/setTranscript
+        // accumulator the cloud path uses, so draft-autosave, commit, WAV upload and analysis
+        // downstream are identical.
         if (useLocal && desktopLocal) {
-          const parts: string[] = [];
-          const offSegments = desktopLocal.onSegments((segs) => {
+          const offLive = desktopLocal.onLive((text) => {
             // Gate on committedRef, NOT stoppedRef: stopRecording sets stoppedRef before awaiting
-            // finish(), and finish() is what produces the flushed tail window — so a stoppedRef
-            // guard here would discard exactly the last window we are flushing. committedRef flips
-            // only after finish() resolves, so tail segments still land before the commit.
+            // finish(), and finish() is what produces the flushed tail — so a stoppedRef guard here
+            // would discard exactly the last update we are flushing. committedRef flips only after
+            // finish() resolves, so a late live update still lands before the commit.
             if (committedRef.current) return;
-            for (const s of segs) {
-              const t = s.text.trim();
-              if (t) parts.push(t);
-            }
-            finalizedRef.current = resumePrefixRef.current + parts.join(' ');
+            finalizedRef.current = resumePrefixRef.current + text;
             setTranscript(finalizedRef.current);
           });
           const offError = desktopLocal.onError((message) => {
@@ -449,7 +446,7 @@ export function useTranscription(noteId: string): UseTranscriptionResult {
             setError(`On-device transcription failed: ${message}`);
           });
           localCleanupRef.current = () => {
-            offSegments();
+            offLive();
             offError();
           };
           try {

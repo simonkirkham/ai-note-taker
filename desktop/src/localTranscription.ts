@@ -1,14 +1,14 @@
-// 48-A — the impure local-transcription engine main.ts drives. Buffers PCM from the
-// renderer, slices it into windows (localEngine.PcmWindower), transcribes each with a
-// whisper-cli child process, and reports parsed segments (whisperParse). The pure pieces
-// are unit-tested headlessly; this orchestrator is proven against a real binary in
+// 48-A / BUG-53 — the impure whisper-cli helpers used for the batch passes (stop-time final
+// transcription and 48-C source-separation diarization). The live streaming path is the resident
+// whisper-server (whisperServer.ts + streamingSession.ts), not this file. Buffers PCM into a WAV,
+// spawns whisper-cli, and reports parsed segments (whisperParse). Proven against a real binary in
 // localTranscription.integration.spec.ts (Linux) and manually on Windows.
 
 import { spawn, type ChildProcess } from 'node:child_process'
 import { mkdtemp, writeFile, rm } from 'node:fs/promises'
 import { tmpdir, cpus } from 'node:os'
 import path from 'node:path'
-import { PcmWindower, pickThreads } from './localEngine'
+import { pickThreads } from './localEngine'
 import { mergeDiarized, turnsToText } from './diarizeMerge'
 import { parseWhisperOutput, type WhisperSegment } from './whisperParse'
 
@@ -30,12 +30,10 @@ export type LocalTranscriberOptions = {
   finalModelPath?: string // 48-B: higher-quality model (small.en) for the stop-time full-recording pass
   vadModelPath?: string // 48-C: silero VAD model — strips silence per stream before source-separation transcription
   sampleRate?: number // default 16000
-  windowSeconds?: number // default 5 — live cadence
   threads?: number // default: half the cores, capped at 8 (pickThreads); an explicit value wins
 }
 
 const SAMPLE_RATE = 16000
-const WINDOW_SECONDS = 5
 
 // Minimal 16-bit mono PCM → WAV. whisper-cli reads WAV; a temp file per window is the
 // simplest robust hand-off (stdin is unreliable across platforms).
@@ -133,79 +131,4 @@ function runWhisper(wavPath: string, opts: LocalTranscriberOptions, timeoutMs: n
       done(() => (code === 0 ? resolve(out) : reject(new Error(`whisper exit ${code}: ${err.slice(-500)}`)))),
     )
   })
-}
-
-// Drives live transcription for one recording: PCM in, parsed segments out (in order).
-// Windows transcribe sequentially (a promise chain) to preserve order and bound CPU.
-export class LocalTranscriptionSession {
-  private readonly windower: PcmWindower
-  private queue: Promise<void> = Promise.resolve()
-  private failed = false
-  // BUG-52: set when the session is intentionally torn down (stop/discard, which also kills any
-  // in-flight live-window child). A killed child's non-zero exit must NOT surface as onError — that
-  // would flash a spurious "transcription failed" banner on a normal diarized stop.
-  private disposed = false
-  // 48-B: retain the whole recording so the stop-time final pass can re-transcribe it at higher
-  // quality (small.en). Same PCM the live windows saw; ~2.6 MB/min at 16 kHz mono 16-bit.
-  private readonly fullAudio: Buffer[] = []
-
-  constructor(
-    private readonly opts: LocalTranscriberOptions,
-    private readonly onSegments: (segs: WhisperSegment[]) => void,
-    private readonly onError: (err: Error) => void,
-  ) {
-    this.windower = new PcmWindower(opts.sampleRate ?? SAMPLE_RATE, opts.windowSeconds ?? WINDOW_SECONDS)
-  }
-
-  pushPcm(chunk: Buffer): void {
-    if (this.failed) return
-    this.fullAudio.push(chunk)
-    this.windower.push(chunk)
-    let win = this.windower.takeWindow()
-    while (win) {
-      this.enqueue(win)
-      win = this.windower.takeWindow()
-    }
-  }
-
-  // Flush the tail and wait for all live windows to finish — called on stop, before the final pass.
-  async finish(): Promise<void> {
-    if (!this.failed) {
-      const tail = this.windower.flush()
-      if (tail) this.enqueue(tail)
-    }
-    await this.queue
-  }
-
-  // 48-B: re-transcribe the whole recording with the higher-quality final model, returning the
-  // full transcript text. Returns null when no final model is configured/available (caller keeps
-  // the live text) or the recording is empty. Run after finish().
-  async runFinalPass(): Promise<string | null> {
-    if (!this.opts.finalModelPath || this.fullAudio.length === 0) return null
-    const audio = Buffer.concat(this.fullAudio)
-    this.fullAudio.length = 0 // release the retained chunks; the concatenated copy is enough now
-    const segs = await transcribeWindow(audio, 0, { ...this.opts, modelPath: this.opts.finalModelPath })
-    if (segs.length === 0) return null
-    return segs.map((s) => s.text).join(' ')
-  }
-
-  // Mark the session torn down so a subsequently-killed in-flight child doesn't fire onError.
-  dispose(): void {
-    this.disposed = true
-  }
-
-  private enqueue(win: { pcm: Buffer; baseMs: number }): void {
-    this.queue = this.queue.then(async () => {
-      if (this.failed || this.disposed) return
-      try {
-        const segs = await transcribeWindow(win.pcm, win.baseMs, this.opts)
-        if (segs.length && !this.disposed) this.onSegments(segs)
-      } catch (e) {
-        if (!this.disposed) {
-          this.failed = true
-          this.onError(e as Error)
-        }
-      }
-    })
-  }
 }
