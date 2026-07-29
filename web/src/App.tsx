@@ -16,7 +16,7 @@ import { keys } from "./api/queryKeys";
 import { useAuth } from "./auth/context";
 import styles from "./components/App.module.css";
 import FolderPreviewPanel from "./components/FolderPreviewPanel";
-import { LeaveGuardContext } from "./components/leaveGuardContext";
+import { LeaveGuardContext, useRequestLeave } from "./components/leaveGuardContext";
 import ListView from "./components/ListView";
 import NoteView from "./components/NoteView";
 import OpenNoteTabs from "./components/OpenNoteTabs";
@@ -191,7 +191,9 @@ function AppContent({ signOut }: { signOut: () => void }) {
     [],
   );
 
-  function openNote(noteId: string, title?: string, isNew?: boolean) {
+  // `onProceed` is for a caller's own side effect that must not fire if the user declines a
+  // mid-recording leave (e.g. closing the folder preview panel).
+  function openNote(noteId: string, title?: string, isNew?: boolean, onProceed?: () => void) {
     const state: NoteNavState = {};
     if (isNew) state.isNew = true;
     if (title) state.initialTitle = title;
@@ -207,17 +209,20 @@ function AppContent({ signOut }: { signOut: () => void }) {
       }
       openTab(noteId, title);
       void navigate(w(`/notes/${noteId}`), { state });
+      onProceed?.();
     });
   }
 
   // 49-A: switching or closing a tab is an in-app navigate, which does NOT fire the popstate
   // trap that protects a recording (BUG-34) — so the mounted note gets to intercept the leave
   // first. The guard takes ownership of `proceed` and runs it once the user confirms.
-  function requestLeave(proceed: () => void) {
+  // Stable identity: it reads a ref, so it never needs to change — and it is a context
+  // value, so a new one each render would re-render every consumer.
+  const requestLeave = useCallback((proceed: () => void) => {
     const guard = leaveGuardRef.current;
     if (guard) guard(proceed);
     else proceed();
-  }
+  }, []);
 
   function handleSelectTab(noteId: string) {
     if (noteId === activeNoteId) return;
@@ -297,17 +302,18 @@ function AppContent({ signOut }: { signOut: () => void }) {
   // BUG-54: these three leave the note screen without being *about* the note, so each must
   // ask before unmounting a recording. The side effects (closing the sidebar, opening the
   // folder preview) belong to the destination, so they run only once the leave is agreed.
+  // Closing the sidebar belongs to the CLICK, not the destination: on mobile it is an
+  // overlay with a full-screen scrim, and leaving it up would dim and block the very
+  // "Still recording" confirm the guard just raised. Everything else waits for the leave.
   function handleUnfiledSelect() {
-    requestLeave(() => {
-      void navigate(w("/folders/unfiled"));
-      setSidebarOpen(false);
-    });
+    setSidebarOpen(false);
+    requestLeave(() => void navigate(w("/folders/unfiled")));
   }
 
   function handleFolderSelect(folderId: string, folderPath: string[]) {
+    setSidebarOpen(false);
     requestLeave(() => {
       void navigate(w(`/folders/${folderId}`));
-      setSidebarOpen(false);
       setPreviewFolderId(folderId);
       setPreviewFolderName(folderPath[folderPath.length - 1] ?? "");
     });
@@ -412,14 +418,19 @@ function AppContent({ signOut }: { signOut: () => void }) {
             setPreviewFolderId((prev) => (prev === folderId ? null : folderId));
             setPreviewFolderName(name);
           }}
-          onSignOut={signOut}
+          // BUG-54: signing out unmounts everything, recording included. The confirm's
+          // content flush is awaited before this runs, so the save lands before the token
+          // is cleared.
+          onSignOut={() => requestLeave(signOut)}
         />
         <FolderPreviewPanel
           folderId={previewFolderId}
           folderName={previewFolderName}
           cards={cards}
           onClose={() => setPreviewFolderId(null)}
-          onEditNote={(noteId) => { openNote(noteId); setPreviewFolderId(null); }}
+          // Closing the preview is the destination's business, so it waits for the leave —
+        // declining must leave the panel exactly as it was.
+        onEditNote={(noteId) => openNote(noteId, undefined, false, () => setPreviewFolderId(null))}
           onDropNote={(noteId) => handleMoveNoteToFolder(noteId, previewFolderId === UNFILED_ID ? null : previewFolderId)}
         />
         <div className={styles.appMain}>
@@ -481,6 +492,7 @@ function NoteRoute({
   const navigate = useNavigate();
   const wsId = useCurrentWorkspace();
   const { showError } = useToast();
+  const requestLeave = useRequestLeave();
   const navState = location.state as NoteNavState | null;
   // A deep-link to a deleted/unknown note recovers to the workspace home with a
   // toast, and emits a RUM event so the rate of dead links is observable (21-C).
@@ -506,10 +518,14 @@ function NoteRoute({
       otherWorkspaces={otherWorkspaces}
       // Moving from the note page navigates home: the note has left this workspace,
       // so it no longer belongs on this page (mirrors the card's optimistic removal).
-      onMoveToWorkspace={(workspaceId) => {
-        onMoveNoteToWorkspace(noteId, workspaceId);
-        void navigate(`/w/${wsId}`);
-      }}
+      // BUG-54: unlike delete, the note SURVIVES the move — so losing the in-flight
+      // transcript to it is pure loss, and the move waits for the leave confirmation.
+      onMoveToWorkspace={(workspaceId) =>
+        requestLeave(() => {
+          onMoveNoteToWorkspace(noteId, workspaceId);
+          void navigate(`/w/${wsId}`);
+        })
+      }
     />
   );
 }

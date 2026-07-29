@@ -17,6 +17,20 @@ export type RequestLeave = (proceed: () => void) => void;
 
 export const LeaveGuardContext = createContext<RequestLeave | null>(null);
 
+// Stable identity so a consumer can safely put it in a dep array.
+const PROCEED: RequestLeave = (proceed) => proceed();
+
 export function useRequestLeave(): RequestLeave {
-  return useContext(LeaveGuardContext) ?? ((proceed) => proceed());
+  const requestLeave = useContext(LeaveGuardContext);
+  // No provider means nothing to protect (a component rendered standalone, as in its own
+  // unit tests). That is the right default, but it fails OPEN — a navigating component
+  // mounted outside the provider by mistake would silently lose recordings, with no type
+  // or lint error to catch it. Say so in dev.
+  if (!requestLeave && import.meta.env.DEV) {
+    console.warn(
+      "useRequestLeave: no LeaveGuardContext provider — navigation will not be guarded. " +
+        "If this component can navigate away from a note, mount it inside AppContent.",
+    );
+  }
+  return requestLeave ?? PROCEED;
 }

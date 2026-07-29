@@ -271,6 +271,26 @@ export default function NoteView({
   // 49-A: the same protection for an in-app navigation the popstate trap cannot see (a tab
   // switch/close). The parent calls the guard, which defers to the confirmation below and
   // resumes the parent's navigation only once the user agrees.
+  // A recording that ends by ITSELF (Stop, or a transcription error) while the confirm is
+  // showing would strand it: the banner would still read "Still recording —", and dismissing
+  // it drops the destination the user asked for, so their click silently did nothing.
+  // Nothing is left to protect once recording ends, so drop the confirm and run the pending
+  // navigation. Adjusted during render (React's documented pattern for "reset state when an
+  // input changes") rather than in an effect — a `setState` in an effect body is a lint
+  // guardrail here, and this way the stale banner never paints even for one frame.
+  const [confirmWasRecording, setConfirmWasRecording] = useState(isRecording);
+  if (confirmWasRecording !== isRecording) {
+    setConfirmWasRecording(isRecording);
+    if (!isRecording && confirmingLeave) setConfirmingLeave(false);
+  }
+  // The continuation itself is a navigation, so it runs after commit.
+  useEffect(() => {
+    if (isRecording) return;
+    const proceed = pendingLeaveRef.current;
+    pendingLeaveRef.current = null;
+    proceed?.();
+  }, [isRecording]);
+
   useEffect(() => {
     if (!onRegisterLeaveGuard) return;
     if (!isRecording) {
@@ -513,12 +533,16 @@ export default function NoteView({
   // capture and flush any pending content, then exit to a fresh route via onExit — never
   // navigate(-1), which the popstate trap entry would absorb (BUG-34). Stopping here
   // guarantees the commit even if the navigation is best-effort.
-  function handleConfirmedLeave() {
+  async function handleConfirmedLeave() {
     setConfirmingLeave(false);
     transcription.stopRecording();
     handleSaveContent();
     const proceed = pendingLeaveRef.current;
     pendingLeaveRef.current = null;
+    // BUG-54: await the content flush before handing control over. Most destinations don't
+    // care (the save outlives a route change), but signing out clears the token — an
+    // un-awaited save would then 401 and lose the text.
+    if (pendingContentSaveRef.current) await pendingContentSaveRef.current;
     // A parent-requested leave resumes at the destination the user actually clicked (the
     // tab); a self-requested one exits to the deterministic onExit route (BUG-34).
     if (proceed) proceed();
@@ -567,7 +591,7 @@ export default function NoteView({
               <span className={styles.leaveConfirmText}>Still recording —</span>
               <button
                 data-testid="confirm-leave-button"
-                onClick={handleConfirmedLeave}
+                onClick={() => void handleConfirmedLeave()}
                 className={styles.saveButton}
               >
                 Leave &amp; save

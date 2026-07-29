@@ -46,9 +46,14 @@ vi.mock('../hooks/useTranscription', () => ({
 
 vi.mock('../components/RecordControl', () => ({
   default: ({ transcription }: { transcription: UseTranscriptionResult }) => (
-    <button data-testid="mock-start-recording" onClick={() => transcription.startRecording(true, true)}>
-      Start recording
-    </button>
+    <>
+      <button data-testid="mock-start-recording" onClick={() => transcription.startRecording(true, true)}>
+        Start recording
+      </button>
+      <button data-testid="mock-stop-recording" onClick={() => transcription.stopRecording()}>
+        Stop recording
+      </button>
+    </>
   ),
 }))
 
@@ -162,6 +167,25 @@ describe('BUG-54 — navigating away from a recording note asks first', () => {
 
     expect(await screen.findByTestId('confirm-leave-button')).toBeInTheDocument()
     expect(window.location.pathname).toBe(NOTE_PATH)
+
+    await userEvent.click(screen.getByTestId('confirm-leave-button'))
+    await waitFor(() => expect(window.location.pathname).toBe('/w/__default__/folders/unfiled'))
+  })
+
+  // The destination's side effects must wait for the leave too — declining has to leave
+  // the app exactly as it was, not half-navigated.
+  it('declining a folder click does not open the folder preview panel', async () => {
+    renderApp()
+    await openNoteAndRecord()
+    await userEvent.click(await screen.findByText('Clients'))
+    await screen.findByTestId('confirm-leave-button')
+
+    await userEvent.click(screen.getByTestId('cancel-leave-button'))
+
+    // The panel element is always in the DOM (it slides open), so assert it never took the
+    // folder: its header title stays empty rather than showing "Clients".
+    expect(within(screen.getByTestId('folder-preview-panel')).queryByText('Clients')).toBeNull()
+    expect(window.location.pathname).toBe(NOTE_PATH)
   })
 
   it('switching workspace while recording asks before leaving', async () => {
@@ -183,6 +207,46 @@ describe('BUG-54 — navigating away from a recording note asks first', () => {
 
     expect(await screen.findByTestId('confirm-leave-button')).toBeInTheDocument()
     expect(window.location.pathname).toBe(NOTE_PATH)
+    // The popover stays open behind the confirm — declining must leave everything as it was.
+    expect(screen.getByTestId('workspace-switcher-menu')).toBeInTheDocument()
+
+    // And the continuation really does run: confirming lands in the other workspace.
+    await userEvent.click(screen.getByTestId('confirm-leave-button'))
+    await waitFor(() => expect(window.location.pathname).toBe('/w/ws-2'))
+  })
+
+  // Signing out unmounts everything, recording included.
+  it('signing out while recording asks before leaving', async () => {
+    renderApp()
+    await openNoteAndRecord()
+
+    await userEvent.click(screen.getByTestId('sign-out-button'))
+
+    expect(await screen.findByTestId('confirm-leave-button')).toBeInTheDocument()
+    expect(window.location.pathname).toBe(NOTE_PATH)
+  })
+
+  // Moving the note elsewhere KEEPS it — so losing the in-flight transcript is pure loss,
+  // unlike delete where the note is going away anyway.
+  it('moving the note to another workspace while recording asks before leaving', async () => {
+    server.use(
+      http.get('/api/workspaces', () =>
+        HttpResponse.json({
+          workspaces: [
+            { workspaceId: '__default__', name: 'Personal', isDefault: true },
+            { workspaceId: 'ws-2', name: 'Work', isDefault: false },
+          ],
+        }),
+      ),
+    )
+    renderApp()
+    await openNoteAndRecord()
+
+    await userEvent.click(await screen.findByRole('button', { name: /^Move "Standup" to another workspace$/ }))
+    await userEvent.click(await screen.findByTestId('move-workspace-option-ws-2'))
+
+    expect(await screen.findByTestId('confirm-leave-button')).toBeInTheDocument()
+    expect(window.location.pathname).toBe(NOTE_PATH)
   })
 
   // The guard must not fire when nothing is being recorded — every one of these is a
@@ -193,6 +257,34 @@ describe('BUG-54 — navigating away from a recording note asks first', () => {
     await screen.findByTestId('note-title-input')
 
     await userEvent.click(within(screen.getByTestId('sidebar')).getByTestId('home-button'))
+
+    await waitFor(() => expect(window.location.pathname).toBe('/w/__default__'))
+    expect(screen.queryByTestId('confirm-leave-button')).toBeNull()
+  })
+
+  // The real teardown risk: a guard registered for a FINISHED recording. The case above
+  // never registers one at all, so it passes either way — this one only passes if the
+  // guard is actually unregistered when recording stops.
+  it('navigating away after a recording has stopped does not ask', async () => {
+    renderApp()
+    await openNoteAndRecord()
+    await userEvent.click(screen.getByTestId('mock-stop-recording'))
+
+    await userEvent.click(within(screen.getByTestId('sidebar')).getByTestId('home-button'))
+
+    await waitFor(() => expect(window.location.pathname).toBe('/w/__default__'))
+    expect(screen.queryByTestId('confirm-leave-button')).toBeNull()
+  })
+
+  // A recording that ends on its own while the confirm is up must not strand the user:
+  // the banner goes, and the destination they asked for is honoured.
+  it('stopping the recording while the confirm is showing completes the navigation', async () => {
+    renderApp()
+    await openNoteAndRecord()
+    await userEvent.click(within(screen.getByTestId('sidebar')).getByTestId('home-button'))
+    await screen.findByTestId('confirm-leave-button')
+
+    await userEvent.click(screen.getByTestId('mock-stop-recording'))
 
     await waitFor(() => expect(window.location.pathname).toBe('/w/__default__'))
     expect(screen.queryByTestId('confirm-leave-button')).toBeNull()

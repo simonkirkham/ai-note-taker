@@ -77,8 +77,13 @@ export default function WorkspaceSwitcher() {
     const tempId = `temp-${crypto.randomUUID()}`;
     try {
       const { workspaceId } = await createM.mutateAsync({ name, tempId });
-      void navigate(`/w/${workspaceId}`); // create + switch into it
-      close();
+      // BUG-54: creating switches INTO the new workspace, so it leaves the note screen
+      // exactly as switchTo does. The create has already succeeded — declining the leave
+      // keeps the new workspace in the list and leaves the user on their recording.
+      requestLeave(() => {
+        void navigate(`/w/${workspaceId}`);
+        close();
+      });
     } catch {
       // rolled back in the mutation's onError; surface a generic error inline
       setError("Couldn't create the workspace. Try again.");
