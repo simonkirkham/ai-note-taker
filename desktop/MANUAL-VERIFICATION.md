@@ -140,6 +140,17 @@ The live transcript must appear within a few seconds and keep pace, on the resid
 | 6 | **Missing binary/model falls back cleanly:** Given the whisper binary/model is missing, When I start a local recording, Then it falls back to cloud before recording (no mid-recording failure). | ☐ |
 | 7 | **Present-but-unstartable server surfaces a banner:** Given the binary/model exist but the server fails to start (e.g. port/OOM/timeout), When I record locally, Then the on-device-failed banner appears (live view is not silently empty) and the audio is still captured for the stop-time final pass. | ☐ |
 
+## CHANGE-36 — window title follows the open note
+
+`BrowserWindow` is constructed with no `title` option, so the Electron window (and its taskbar label) follows `document.title`. Making the browser tab title track the note therefore changes the desktop window title too — intended, but verify it reads sensibly.
+
+| # | Given / When / Then | Pass? |
+|---|---------------------|-------|
+| 1 | **App title on the home screen:** Given the app is open on the notes list, Then the window/taskbar title reads `Note Taker AI` (not the old `Note Taker`). | ☐ |
+| 2 | **Note title while a note is open:** Given I open a note called "Roadmap review", Then the window/taskbar title reads `Roadmap review - Note Taker AI`. | ☐ |
+| 3 | **Reverts on leaving:** Given a note is open, When I go back to the list, Then the window title returns to `Note Taker AI` (the note name is not stranded). | ☐ |
+| 4 | **Untitled note:** Given I open a note with no title, Then the window title reads `Note Taker AI` with no trailing separator. | ☐ |
+
 ## CHANGE-37 — right-click spelling corrections
 
 Electron's spellchecker was already underlining misspellings, but Electron ships no default context menu, so there was no way to act on one. The menu only appears for a misspelled word in an editable field.
