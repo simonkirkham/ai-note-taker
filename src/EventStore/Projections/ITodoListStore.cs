@@ -17,4 +17,9 @@ public interface ITodoListStore
     // Apply a reorder snapshot: set each listed item's Position to its index in the list.
     // Items not listed keep their existing position (the client always sends the full open-list order).
     Task UpdatePositionsAsync(IReadOnlyList<string> orderedItemIds, CancellationToken ct = default);
+
+    // The home To Do list's "Today" line for a workspace: the id of the item the line sits
+    // immediately ABOVE. null means the line is below every item (everything is Today).
+    Task SetTodayLineAsync(string workspaceId, string? anchorItemId, CancellationToken ct = default);
+    Task<string?> GetTodayLineAnchorAsync(string workspaceId, CancellationToken ct = default);
 }

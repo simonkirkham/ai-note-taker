@@ -445,11 +445,20 @@ public sealed class ProjectionUpdater(
     public async Task ApplyTodoOrderEventsAsync(IReadOnlyList<IDomainEvent> newEvents, CancellationToken ct)
     {
         foreach (var domainEvent in newEvents)
-            if (domainEvent is TodoListReordered e)
+            switch (domainEvent)
             {
-                logger.LogInformation("Projector: applying TodoListReordered for workspace {WorkspaceId} ({Count} items)",
-                    e.WorkspaceId, e.OrderedItemIds.Count);
-                await todoListStore.UpdatePositionsAsync(e.OrderedItemIds, ct).ConfigureAwait(false);
+                case TodoListReordered e:
+                    logger.LogInformation("Projector: applying TodoListReordered for workspace {WorkspaceId} ({Count} items)",
+                        e.WorkspaceId, e.OrderedItemIds.Count);
+                    await todoListStore.UpdatePositionsAsync(e.OrderedItemIds, ct).ConfigureAwait(false);
+                    break;
+                case TodayLineSet e:
+                    logger.LogInformation("Projector: applying TodayLineSet for workspace {WorkspaceId} (anchor {AnchorItemId})",
+                        e.WorkspaceId, e.AnchorItemId ?? "(below everything)");
+                    await todoListStore.SetTodayLineAsync(e.WorkspaceId, e.AnchorItemId, ct).ConfigureAwait(false);
+                    break;
+                default:
+                    break;
             }
     }
 

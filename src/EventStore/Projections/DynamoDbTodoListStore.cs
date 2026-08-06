@@ -7,6 +7,9 @@ namespace EventStore.Projections;
 public sealed class DynamoDbTodoListStore(IAmazonDynamoDB dynamo, string tableName) : ITodoListStore
 {
     private const string NoteIdIndex = "NoteId-index";
+    // The Today-line marker shares the item table under a reserved PK prefix. Item ids are GUIDs,
+    // so there is no collision, but the scan in QueryAllAsync must skip these rows.
+    private const string TodayLinePrefix = "todayline#";
 
     public async Task PutAsync(TodoItem item, CancellationToken ct = default)
     {
@@ -163,7 +166,7 @@ public sealed class DynamoDbTodoListStore(IAmazonDynamoDB dynamo, string tableNa
                 ConsistentRead = true
             }, ct).ConfigureAwait(false);
 
-            items.AddRange(scan.Items.Select(ToTodoItem));
+            items.AddRange(scan.Items.Where(IsItemRow).Select(ToTodoItem));
             lastKey = scan.LastEvaluatedKey?.Count > 0 ? scan.LastEvaluatedKey : null;
         }
         while (lastKey is not null);
@@ -174,6 +177,35 @@ public sealed class DynamoDbTodoListStore(IAmazonDynamoDB dynamo, string tableNa
             .ToList()
             .AsReadOnly());
     }
+
+    public async Task SetTodayLineAsync(string workspaceId, string? anchorItemId, CancellationToken ct = default)
+    {
+        var key = new Dictionary<string, AttributeValue> { ["PK"] = new() { S = TodayLinePrefix + workspaceId } };
+        var request = anchorItemId is null
+            ? new UpdateItemRequest { TableName = tableName, Key = key, UpdateExpression = "REMOVE AnchorItemId" }
+            : new UpdateItemRequest
+            {
+                TableName = tableName,
+                Key = key,
+                UpdateExpression = "SET AnchorItemId = :a",
+                ExpressionAttributeValues = new Dictionary<string, AttributeValue> { [":a"] = new() { S = anchorItemId } }
+            };
+        await dynamo.UpdateItemAsync(request, ct).ConfigureAwait(false);
+    }
+
+    public async Task<string?> GetTodayLineAnchorAsync(string workspaceId, CancellationToken ct = default)
+    {
+        var resp = await dynamo.GetItemAsync(new GetItemRequest
+        {
+            TableName = tableName,
+            Key = new Dictionary<string, AttributeValue> { ["PK"] = new() { S = TodayLinePrefix + workspaceId } },
+            ConsistentRead = true
+        }, ct).ConfigureAwait(false);
+        return resp.Item is not null && resp.Item.TryGetValue("AnchorItemId", out var anchor) ? anchor.S : null;
+    }
+
+    private static bool IsItemRow(Dictionary<string, AttributeValue> row) =>
+        !row["PK"].S.StartsWith(TodayLinePrefix, StringComparison.Ordinal);
 
     public Task UpdatePositionsAsync(IReadOnlyList<string> orderedItemIds, CancellationToken ct = default) =>
         // Each item is an independent key — update them together rather than sequentially.

@@ -11,6 +11,9 @@ public sealed class TodoListProjection
     // item ids are globally unique across todos and action items). Items absent from any snapshot
     // sort after positioned ones by AddedAt.
     private readonly Dictionary<string, int> _positions = new();
+    // The "Today" line per workspace: the id of the item the line sits immediately ABOVE.
+    // Absent (or null) means the line is below every item — everything is Today.
+    private readonly Dictionary<string, string?> _todayLineByWorkspace = new();
     // Action-item rows inherit their note's workspace (from the note's NoteAssignedToWorkspace);
     // standalone todos use the write's metadata. On rebuild, ReadAllStreamsAsync orders by
     // StreamId, so an `action#…` stream is replayed BEFORE its `note#…` stream — the map is
@@ -84,8 +87,14 @@ public sealed class TodoListProjection
                 for (var i = 0; i < e.OrderedItemIds.Count; i++)
                     _positions[e.OrderedItemIds[i]] = i;
                 break;
+            case TodayLineSet e:
+                _todayLineByWorkspace[e.WorkspaceId] = e.AnchorItemId;
+                break;
         }
     }
+
+    public string? GetTodayLineAnchor(string workspaceId) =>
+        _todayLineByWorkspace.GetValueOrDefault(workspaceId);
 
     public IReadOnlyList<TodoItem> GetAllItems() =>
         _state

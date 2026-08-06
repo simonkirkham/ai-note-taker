@@ -6,6 +6,7 @@ namespace Api.Integration;
 internal sealed class InMemoryTodoListStore : ITodoListStore
 {
     private readonly Dictionary<string, TodoItem> _items = new();
+    private readonly Dictionary<string, string?> _todayLineByWorkspace = new();
 
     public Task PutAsync(TodoItem item, CancellationToken ct = default)
     {
@@ -63,6 +64,15 @@ internal sealed class InMemoryTodoListStore : ITodoListStore
             .ThenBy(i => i.AddedAt)
             .ToList()
             .AsReadOnly()));
+
+    public Task SetTodayLineAsync(string workspaceId, string? anchorItemId, CancellationToken ct = default)
+    {
+        _todayLineByWorkspace[workspaceId] = anchorItemId;
+        return Task.CompletedTask;
+    }
+
+    public Task<string?> GetTodayLineAnchorAsync(string workspaceId, CancellationToken ct = default) =>
+        Task.FromResult(_todayLineByWorkspace.GetValueOrDefault(workspaceId));
 
     public Task UpdatePositionsAsync(IReadOnlyList<string> orderedItemIds, CancellationToken ct = default)
     {
