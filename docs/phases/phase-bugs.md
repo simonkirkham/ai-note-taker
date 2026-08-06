@@ -71,6 +71,8 @@
 
 | BUG-56 | **On-device transcription shows nothing at all while recording, then takes a very long time to appear after you stop.** Reported 2026-08-06 on real Windows testing — this *is* the BUG-53 Windows validation coming back negative, so the [BUG-53] resident-`whisper-server` live path is **not** delivering its ~3-4 s perceived latency; the user is seeing only the stop-time batch pass. Prime suspect: `StreamingSession.step()` (`desktop/src/streamingSession.ts:64`) returns **quietly** whenever `server.ready` is false, and that path is deliberately excluded from `FAIL_THRESHOLD` — so a `whisper-server` that starts but never reaches ready (model load fails/stalls, binary or model missing from the installer, `/inference` never answers) produces exactly this: no live text, **no error banner**, silence for the whole recording. The long post-stop delay is then just the unchanged BUG-52 final pass — `small.en` over the **entire** recording via the CLI at ~2.3× realtime (a 30 min meeting ≈ 13 min), which is the only thing left producing text. High priority — the headline benefit of 48-A/BUG-52/BUG-53 is absent in the shipped installer, and it fails silently. Needs: reproduce on Windows with the installer, confirm whether `ready` is ever reached, and close the silent-stall hole (a ready-timeout that fires the on-device-failed banner). | Open | BUG-53, BUG-52, 48-A |
 | BUG-57 | **`OpenNoteTabsJourney` red-gated deploy #717 with an empty cards list — ROOT-CAUSED: a vacuous test assertion, not a data problem.** The diagnostic read `rendered cards(0)=[]` with all five `/notes/cards` reads `200 X-Consistency=none/fresh`, and — the tell everyone including me missed — **`page.Url=…/notes/ffbc9c94-…`**. The test was still on the **note screen**; the cards list rendered nothing because it was never on the page. Cause: `data-testid="new-note-button"` lives in the **Sidebar**, which `App.tsx:406` renders *outside* `<Routes>`, so it is visible on every route including a note. `AppPage.AssertHomeLoadedAsync` and `SaveAndReturnAsync` waited only on that button, so both returned **without the navigation having happened**. Compounding it, `handleBackFromNote` uses `navigate(-1)` — a history traversal the spec queues as a later task — so a caller's next `ReloadAsync()` hard-loaded the address bar's current URL (still the note) and discarded the pending traversal; the reload loop then hunted `note-cards` on the note page for 30 s. **All three hypotheses originally filed here — stale `proj-position`, a cold/lagging projector, and a workspace-scoping mismatch — are wrong**, and no amount of consistency-token work could have fixed it. Fix (PR #418): both helpers `WaitForURLAsync` off the note route before asserting; consider a home-only test id. Found by independent root-cause analysis, not by re-running. | In Progress | 49-A |
+| BUG-58 | **"Generate final notes" hangs for 29 s and then fails — the Bedrock analysis call has no timeout, so the Command Lambda is killed instead.** 4 occurrences in 14 days of prod (obs-review 2026-08-06), every one a `Duration: 29000.00 ms … Status: timeout` on the Command Lambda. X-Ray shows the analyse request's three DynamoDB reads finishing inside 150 ms and then **28.9 s of nothing** — `BedrockAnalysisService.ConverseAsync` is awaited with no client-side deadline, and the Lambda's 29 s limit fires first. The user gets a spinner that dies at ~29 s with no honest error, and the note is never analysed. **The failure is nearly invisible:** the process is killed mid-call, so there is no exception, no `Error`/`Warning` log line, no `CommandFailed`/analysis metric, and `notetaker-analysis-failed` stays OK — the "All errors" dashboard widget shows nothing. Only the `notetaker-error-rate` alarm noticed (it did fire, twice). Fix direction: a client-side deadline on the analyse path so exhaustion returns the existing `AnalysisOutcome.ServiceUnavailable` → 503 + a logged Error + metric; plus an alarm on Lambda timeouts so a silent kill is never invisible again. | Open | — |
+| BUG-59 | **Typing into a note that has been deleted tells you to "try again" forever — every save is rejected and the text only ever lives in the browser tab.** Prod evidence (obs-review 2026-08-06): note `b721c995…` was created 2026-07-24 14:34:09, deleted at 14:34:21 (`NoteDeleted` v7), and then took a `RenameNote` at 14:34:33 and five `EditContent` saves at 14:37 → 15:05 — **31 minutes of a real browser session**, all 404. `NoteView.handleSaveContent` maps every save failure to the retriable "Couldn't save your note. We kept your text — try again." toast, but a deleted note is **terminal**: retrying can never succeed, the view never reconciles (the cached detail is not invalidated, so the existing `is404 → onNotFound` bounce never fires), and closing the tab loses the work. Explicitly deferred as out-of-scope by [BUG-44]; now has prod evidence. Fix direction: treat a 404 from a note write as terminal — invalidate the note query and show a "this note was deleted" state that offers the kept text for recovery, instead of "try again". | Open | BUG-44 |
 
 Further bugs will be appended as they are identified.
 
@@ -362,3 +364,75 @@ Chrome throttles/freezes background-tab timers, so the proactive refresh schedul
 3. Only after the live path is confirmed working, consider the post-stop wait separately (it is expected cost, not a defect).
 
 **Deploy-time:** desktop-shell only — no backend, no CDK, no web deploy path touched → neutral.
+
+## BUG-58 — Analyse hangs to the 29 s Lambda timeout; the Bedrock call has no deadline
+
+**Status:** Open. **Severity:** Medium-High — a user-facing action ("Generate final notes") dies after ~29 s with no honest error, and the failure is almost invisible to monitoring.
+
+**Found:** observability-review 2026-08-06, 14-day sweep (window 2026-07-23 → 2026-08-06).
+
+**Symptom:** the analyse spinner runs ~29 s and the note is never analysed. No 503, no "Analysis service unavailable" — the invocation is killed mid-flight.
+
+**Prod evidence** — 4 timeouts in 14 days, all Command Lambda, all exactly at the configured limit:
+
+| UTC | RequestId | REPORT |
+|-----|-----------|--------|
+| 2026-07-30 09:33:41 | `3f703d9c…` | `Duration: 29000.00 ms  Status: timeout` |
+| 2026-07-30 09:37:55 | `322b8dab…` | `Duration: 29000.00 ms  Status: timeout` |
+| 2026-08-04 07:56:28 | `0c747ce2…` | `Duration: 29000.00 ms  Status: timeout` |
+| 2026-08-04 08:03:47 | `a32187bc…` | `Duration: 29000.00 ms  Status: timeout` |
+
+X-Ray (`1-6a719b0f-613f8cff4a03ad2c7def9a63`) fingerprints the request as the analyse route and shows where the time goes:
+
+- `Scan notetaker-proj-workspacelist` (workspace-scope middleware) — 65 ms
+- `GetItem notetaker-proj-notedetail` — 22 ms, **89 908 bytes**
+- `GetItem notetaker-proj-notedetail` — 22 ms, **89 908 bytes** (the same item, twice)
+- then **28.9 s with no subsegment at all**, then the kill.
+
+The two identical note-detail reads are the signature of `POST /w/{ws}/notes/{noteId}/analyse`: `TranscriptionHandlers.AnalyseNote` reads the detail for the ownership check, then `NoteAnalysisService.cs:34` reads it again. The in-flight Bedrock subsegment is never emitted because an unfinished subsegment is not flushed when the process is killed.
+
+**Root cause:** `BedrockAnalysisService.cs:47` awaits `_bedrock.ConverseAsync(converseRequest, ct)` with **no client-side timeout** — `Builder.cs:225` registers `AddAWSService<IAmazonBedrockRuntime>()` on SDK defaults, whose read timeout far exceeds the Lambda's `Timeout = Duration.Seconds(29)` (`NoteTakerStack.cs:453`). A slow or hung Converse therefore always resolves as a Lambda kill rather than as a handled failure. Why Converse stalled on those four calls is **unknown** — no response was ever received, so there is no upstream status to read.
+
+**Observable?** Barely, and that is half the finding:
+
+- No exception, no `Error`/`Warning` log line, no `CommandFailed` or analysis metric — the kill pre-empts every failure path, so `notetaker-analysis-failed` stayed `OK` throughout.
+- The dashboard "All errors (backend + frontend)" widget shows **nothing** for these four requests.
+- The only two signals are the raw `REPORT … Status: timeout` line and the Lambda `Errors` metric — which did trip `notetaker-error-rate` (ALARM 2026-07-30 10:39 BST, and 2026-08-04 09:04 + 09:07 BST) with nothing in the logs to explain it.
+
+**Reproduce-before-fix:** a spec that stubs `IAmazonBedrockRuntime.ConverseAsync` to block past the deadline and asserts the handler returns 503 `AnalysisOutcome.ServiceUnavailable` (rather than hanging) is the regression guard; the prod stall itself is not reproducible on demand.
+
+**Fix direction:**
+1. **Give the analyse path a deadline** — a linked `CancellationTokenSource` (~20 s, comfortably inside the 29 s Lambda limit), or a `Timeout` on the Bedrock client config. An exhausted call then flows through the existing `AnalysisOutcome.ServiceUnavailable` → 503 "Analysis service unavailable", with a logged Error and a failure metric, so the user gets a real message and the dashboard shows the fault.
+2. **Make a silent kill visible** — a metric filter on `Status: timeout` in the Lambda log groups plus an alarm, so a future timeout is not diagnosable only by hand-reading REPORT lines.
+3. **Drop the duplicate read** (minor, do it in the same slice) — `AnalyseNote` and `NoteAnalysisService` each `GetAsync` the same ~90 KB `NoteDetail`; pass the already-loaded detail through.
+
+**Deploy-time:** neutral — a cancellation deadline plus one metric filter/alarm; no traffic-shifting, no IAM change. Note the guardrail on alarms: adding one changes the alarm-count infra assertion, so update `InfraAssertionsTests` in the same slice.
+
+## BUG-59 — A save into a deleted note says "try again" forever
+
+**Status:** Open. **Severity:** Medium — no server-side data loss, but the user's typed text is held only in the tab and is lost when it closes, with the UI insisting a retry will work.
+
+**Found:** observability-review 2026-08-06. Explicitly deferred as secondary by [BUG-44] ("save-against-deleted shows a *retriable* 'try again': out of scope, not carried") — this row carries it with prod evidence.
+
+**Symptom:** the note editor stays open on a note that no longer exists. Every save toasts "Couldn't save your note. We kept your text — try again." The retry can never succeed.
+
+**Prod evidence** — note `b721c995-f1de-442a-8fb9-2d4e6bde176a`, 2026-07-24, one real browser session (`Mozilla/5.0 (Windows NT 10.0)`, not the smoke suite):
+
+| Time (UTC) | What happened |
+|------------|---------------|
+| 14:34:09 | `CreateNote` → v2, then `RenameNote`/`SetNoteDate`/`LinkNoteToCalendarEvent`/`SetNoteDate` → v6 (create-from-meeting flow) |
+| 14:34:21 | `DeleteNote` → **`NoteDeleted` v7** (confirmed as the last event on the stream in `notetaker-events`) |
+| 14:34:33 | `RenameNote` → 404 `NoteNotFoundException` |
+| 14:37:06 / 14:41:34 / 14:53:28 / 14:54:27 / 15:05:51 | `EditContent` → 404 ×5 |
+
+31 minutes of editing, six rejected writes.
+
+**Root cause:** `NoteView.handleSaveContent` (`web/src/components/NoteView.tsx`) has exactly two failure branches — `StaleContentError` → the conflict banner, everything else → the generic retriable toast. A 404 (note deleted) lands in "everything else", which is wrong: it is terminal, not transient. Nothing invalidates the note query on that 404 either, so the cached detail keeps the editor alive and the existing `is404 && onNotFound` bounce (`NoteView.tsx:250`) never fires.
+
+**Observable?** Yes — `Command failed EditContent Note NoteNotFoundException` at Warning. But it is **indistinguishable in the error view from the deliberate 404 probes in `tests/Api.Smoke/ErrorResponsesSpec.cs`**, which fire a `RenameNote`/`EditContent`/`SetNoteDate` triplet against random GUIDs on every deploy (45 of the window's 51 `NoteNotFoundException` warnings). Separate them on `user_agent`: the smoke probes carry `Amazon CloudFront`, a real user carries a browser UA.
+
+**Reproduce-before-fix:** delete a note in one tab while its editor is open in another, then type and save in the second tab — expect the deleted-note state, not the retry toast.
+
+**Fix direction:** treat a 404 from a note write as terminal. Invalidate `keys.note(noteId)` so the existing not-found path takes over, and replace the toast with a "this note was deleted" state that surfaces the kept text for recovery (copy out / recreate) rather than inviting a retry that cannot succeed.
+
+**Deploy-time:** frontend-only → neutral.
