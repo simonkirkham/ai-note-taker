@@ -486,6 +486,22 @@ Graduate the *open multiple notes at once* future-feature into a phase. Today op
 
 Slices and acceptance criteria: [docs/phases/phase-49.md](phases/phase-49.md)
 
+## Phase 50 — The Today line in the To Do list _(Not Started)_
+
+Graduate the *expand the to-do functionality for today and the future* future-feature into a phase — **re-scoped on the way to contain no dates at all**. The original sketch assumed due/scheduled dates and calendar-derived Today/Upcoming/Overdue grouping; the user ruled that out (2026-08-06): today is *"an arbitrary line in the priority"*, drawn wherever they choose. So this phase adds a **user-positioned divider** to the existing ordered To Do list — items above it are Today, items below are Later — persisted as an additive new event on the existing `TodoOrdering` aggregate, with the grouping itself a frontend split of the already-ordered list. Two slices: **50-A** the line exists, drags to any position, and sticks across reloads; **50-B** one-click "Move to Today" / "Move to Later" so an item crosses the line without a drag (also restoring a keyboard reorder path lost in CHANGE-29). Pairs with [CHANGE-34] (send a to-do to the top/bottom) which ships independently on the same list.
+
+**Goal:** you can draw a line anywhere in your To Do list to mark where "today" ends, so the top of the list is what you're actually doing now.
+
+Slices and acceptance criteria: [docs/phases/phase-50.md](phases/phase-50.md)
+
+## Phase 51 — Tabs redesign _(Not Started)_
+
+The note screen stacks **two unrelated tab strips** — Phase 49's open-note bar above the note's own Quick notes / Transcript / Final notes tabs — and the lower strip lies about what the note holds: `NoteView` renders all three tabs unconditionally, so a typed-only note still offers an empty Transcript tab and a Final notes tab you must click to find is empty. This is a design question, so it is **prototype-led**: **51-A** is a throwaway frontend-only spike presenting at least three genuinely different directions (hide-until-populated, always-present-but-visibly-empty, collapse the two strips into one hierarchy); **51-B** ships whichever the user picks and is deliberately left unspecified until the spike's exit procedure rewrites its scenarios into the phase doc. Expected frontend-only — the data needed to drive a conditional or badged tab strip is already loaded in the component.
+
+**Goal:** the tabs on a note screen tell you at a glance what that note actually has in it, instead of showing the same three tabs whether or not there is anything behind them.
+
+Slices and acceptance criteria: [docs/phases/phase-51.md](phases/phase-51.md)
+
 ---
 
 ## Standing tracks and planning docs

@@ -21,15 +21,17 @@ Each entry records what it is, why it isn't scheduled yet, and where it was rais
 
 ## Expand the to-do functionality for today and the future
 
-**What:** Grow the to-do feature beyond today's flat list into something that understands **when** a to-do is due. Today the To Do section (`web/src/components/TodoSection.tsx`, fed by the cross-note todo projection from Phase 3 and the standalone todo aggregate from Phase 11) shows a single undated list of open items plus an expandable Done list. This feature adds a time dimension: to-dos that are scheduled for **today** versus **upcoming/future** dates, so the home screen can show "what's due today" distinctly from "what's coming up", and future-dated to-dos don't clutter today's view until they're relevant. Likely sub-capabilities to scope when broken down:
+> _Graduated to a numbered phase — now **[Phase 50](phases/phase-50.md)** (2026-08-06), and **re-scoped on the way**._
+
+**Re-scoped 2026-08-06 — no dates.** The original sketch below assumed the feature was about **when** a to-do is due: due/scheduled dates, `ActionItemDueDateSet` / `TodoScheduled` events, and Today / Upcoming / Overdue grouping derived from the calendar. The user has since ruled that out: *"No due dates or date created necessary. It's up to the user to decide what falls under today. It's an arbitrary line in the priority."* Phase 50 is therefore a **user-positioned divider in the existing priority order** — no dates of any kind, no date-derived grouping. The date-based design is retained here only as a record of what was rejected and why.
+
+**Original sketch _(rejected — kept for the record)_:** Grow the to-do feature beyond today's flat list into something that understands **when** a to-do is due. Today the To Do section (`web/src/components/TodoSection.tsx`, fed by the cross-note todo projection from Phase 3 and the standalone todo aggregate from Phase 11) shows a single undated list of open items plus an expandable Done list. This feature adds a time dimension: to-dos that are scheduled for **today** versus **upcoming/future** dates, so the home screen can show "what's due today" distinctly from "what's coming up", and future-dated to-dos don't clutter today's view until they're relevant. Likely sub-capabilities to scope when broken down:
 - A **due date** (and/or scheduled date) on a to-do — a new event on the todo aggregate (e.g. `ActionItemDueDateSet` / `TodoScheduled`), kept purely additive so existing events are untouched.
 - Home views/grouping: **Today**, **Upcoming**, and possibly **Overdue**; reuse the local-date discipline from CHANGE-3 (compute "today" as the local calendar date, compare `YYYY-MM-DD` strings, beware timezone/time-bomb pitfalls).
 - A projection (or extension of the existing todo projection) that exposes the due date and supports the today/future grouping.
 - UI to set/clear a due date on both note-derived action items and standalone home-quick-capture to-dos.
 
-**Why it isn't scheduled yet:** Needs breaking down — the event-model additions (new event(s), projection changes) and the UX (grouping, where future to-dos surface, overdue handling) should be designed by Scout into a numbered phase before implementation. It's a genuinely new capability, not a tweak to the existing flat list.
-
-**Raised in:** User request, 2026-06-02 — "we need to expand the to-do functionality for today and future."
+**Raised in:** User request, 2026-06-02 — "we need to expand the to-do functionality for today and future." Re-scoped and scheduled 2026-08-06.
 
 ---
 
