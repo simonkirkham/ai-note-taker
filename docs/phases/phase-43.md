@@ -10,7 +10,7 @@
 | 43-B | Tick / untick an item; header shows "X / Y covered" | Done | 43-A |
 | 43-C | Edit an item's text; remove an item | Done | 43-A |
 | 43-D | Collapsible header agenda strip (expanded default, collapses to one line + what's left); Stylist polish | Done | 43-A, 43-B |
-| 43-E | Retire the legacy heading-✓ "mark as discussed" (now redundant) | Not Started | 43-D |
+| 43-E | Retire the legacy heading-✓ "mark as discussed" (now redundant) | Done | 43-D |
 
 Reorder (drag) is deferred — not needed to ship value; item order is capture order for now. 43-A is the thin vertical that proves the whole pipe and locks the event-model shape; 43-B/C extend the same model; 43-D is UI polish; 43-E removes the superseded mechanism.
 

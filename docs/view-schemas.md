@@ -168,7 +168,7 @@ public record NoteDetail(
 public sealed record AgendaItem(Guid ItemId, string Text, bool Discussed, int Position);
 ```
 
-`Version` is returned so the client can include it on the next command for optimistic concurrency (see [`dynamodb-event-append`](../dot-claude/skills/dynamodb-event-append/SKILL.md)).
+`Version` is returned so the client can include it on the next command for optimistic concurrency (see [`dynamodb-event-append`](../.claude/skills/dynamodb-event-append/SKILL.md)).
 
 The **Final notes** fields (`summary`/`discussionPoints`/`decisions`/`summaryModelId`/`summaryPromptVersion`) are the AI's structured artifact, folded from the latest `AnalysisSummaryRecorded` (latest wins). A note that has **never been analysed** has `summary: null` and empty lists — this is a normal "no final notes yet" state, *not* an error, and is distinct from a failed analysis run (which the API surfaces as a 503 and the UI shows as an error). `content` is the user's own Quick notes and is **never** written by analysis from Phase 15-A onward.
 
@@ -495,7 +495,7 @@ Recommendation: start with (1) for simplicity, switch to (2) if a projection gro
 
 ## Rebuild
 
-Every projection implements `Reset()` and a fold over the full event stream (see [`projection`](../dot-claude/skills/projection/SKILL.md) skill). Storage is per-projection so a rebuild touches one table only — zero blast radius.
+Every projection implements `Reset()` and a fold over the full event stream (see [`projection`](../.claude/skills/projection/SKILL.md) skill). Storage is per-projection so a rebuild touches one table only — zero blast radius.
 
 ```csharp
 public interface IProjection
