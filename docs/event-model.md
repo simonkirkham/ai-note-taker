@@ -113,6 +113,9 @@ A named partition of a user's content (e.g. *Work* / *Personal*). A second isola
 | Command | Pre-conditions | Events emitted |
 |---|---|---|
 | `ReorderTodos(workspaceId, orderedItemIds, reorderedAt)` | `orderedItemIds` non-empty | `TodoListReordered` |
+| `SetTodayLine(workspaceId, anchorItemId, setAt)` | `anchorItemId` is an item id or null (never blank) | `TodayLineSet` |
+
+> **Per-workspace "Today" line (50-A).** The line marks where today's work stops. It is stored as a single anchor — the id of the item the line sits immediately **above** — on the same `todo-order#<workspaceId>` stream, because it is a position *within* the list order, not a property of any item. `null` means the line is below everything (the whole list is Today). Last-write-wins, no state. Like reorder, it records a marker only — no ownership check against the async projection. The anchor is resolved **on read**: a completed or gone anchor falls forward to the first still-open item at or after its place, so the line keeps its visual position with no relocation write.
 
 > **Per-workspace ordering of the home To Do list.** The list interleaves standalone todos and note-derived action items, so ordering is a *list-level* concern keyed by workspace (stream `todo-order#<workspaceId>`) rather than a position on either item aggregate. Each `TodoListReordered` is a full-order snapshot (last-write-wins, no state). The `TodoList` projection folds it into a nullable `Position` per item id; reads sort `Position ?? max`, then `AddedAt`. Records ordering only — no ownership check against the async projection; stale ids in a snapshot are ignored.
 
@@ -178,6 +181,7 @@ A named partition of a user's content (e.g. *Work* / *Personal*). A second isola
 - `TodoReopened { TodoId, ReopenedAt }`
 - `TodoDeleted { TodoId, DeletedAt }`
 - `TodoListReordered { WorkspaceId, OrderedItemIds, ReorderedAt }` *(Phase 37)* — full-order snapshot of the home To Do open-items list for one workspace; on the `todo-order#<workspaceId>` stream
+- `TodayLineSet { WorkspaceId, AnchorItemId?, SetAt }` *(Phase 50-A)* — position of the "Today" line for one workspace; `AnchorItemId` is the item the line sits immediately **above**, `null` = below everything; on the `todo-order#<workspaceId>` stream
 
 ### Workspace *(Phase 23-A)*
 
@@ -209,7 +213,7 @@ The Home view's richness pushes us toward denormalized read models — `NoteCard
 | `NoteCardList` | All Note events + `ActionItemAdded`, `ActionItemCompleted`, `ActionItemReopened`, `ActionItemDeleted` | Home view's Notes section — denormalized cards with title, date, content preview, tags, action items. Filters out soft-deleted notes. |
 | `NoteDetail` | All Note events for a given NoteId | NoteEdit view |
 | `NoteActions` | All ActionItem events filtered by NoteId | Actions panel within a note |
-| `TodoList` | All ActionItem events (all notes) + all Todo events + `TodoListReordered` | Home view's TO DO List section. Returns open items plus items completed today. Each row carries a `type` discriminator (`"action"` / `"todo"`), a plain-string `ItemId`, nullable `NoteId`/`NoteTitle`, nullable `CompletedAt`, and a nullable `Position` (37 — explicit drag order; rows sort `Position ?? max`, then `AddedAt`). Empty state: "Your ToDo list is clear." |
+| `TodoList` | All ActionItem events (all notes) + all Todo events + `TodoListReordered`, `TodayLineSet` | Home view's TO DO List section. Returns open items plus items completed today. Each row carries a `type` discriminator (`"action"` / `"todo"`), a plain-string `ItemId`, nullable `NoteId`/`NoteTitle`, nullable `CompletedAt`, and a nullable `Position` (37 — explicit drag order; rows sort `Position ?? max`, then `AddedAt`). Also holds the per-workspace "Today" line anchor (50-A) as a reserved `todayline#<workspaceId>` row, split into Today/Later groups on read. Empty state: "Your ToDo list is clear." |
 | `TagIndex` | `NoteTagged`, `NoteUntagged`, `NoteDeleted` | Tag-based filtering (Phase 4) |
 | `NoteSearchView` | All Note events (title/content/summary/tags) + `ActionItem*`; **transcript excluded** | Fuzzy free-text search (`GET /notes/search?q=`); `UserId-index` GSI, ranked in-Lambda (Phase 22-A) |
 | `WorkspaceList` | `WorkspaceCreated`, `WorkspaceRenamed`, `WorkspaceThemeSet`, `WorkspaceDeleted` | The workspace switcher (`GET /workspaces`); carries each workspace's `Theme` (36-A); default `__default__` synthesised at read time (Phase 23-A) |

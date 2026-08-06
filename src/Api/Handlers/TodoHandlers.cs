@@ -28,16 +28,17 @@ public static class TodoHandlers
         var itemsTask = store.QueryAllAsync(ct);
         var anchorTask = store.GetTodayLineAnchorAsync(currentWorkspace.WorkspaceId, ct);
         await Task.WhenAll(itemsTask, anchorTask).ConfigureAwait(false);
+        var view = await itemsTask.ConfigureAwait(false);
+        var storedAnchor = await anchorTask.ConfigureAwait(false);
 
         // Extend cutoff to 2 days back so any UTC-offset "today" is covered;
         // the frontend applies its own local-calendar-day filter.
         var cutoff = DateTimeOffset.UtcNow.Date.AddDays(-1);
-        var visible = itemsTask.Result.Items
+        var visible = view.Items
             .Where(i => i.UserId == currentUser.UserId && currentWorkspace.Includes(i.WorkspaceId))
             .Where(i => i.CompletedAt is null || i.CompletedAt.Value.UtcDateTime.Date >= cutoff)
             .ToList();
 
-        var storedAnchor = anchorTask.Result;
         var todayLineAnchorItemId = ResolveTodayLine(visible, storedAnchor);
         if (storedAnchor is not null && todayLineAnchorItemId != storedAnchor)
             logger.LogInformation("Today line relocated on read for workspace {WorkspaceId}: {StoredAnchor} -> {ResolvedAnchor}",
