@@ -228,7 +228,10 @@ public static class Builder
                 sp.GetRequiredService<IAmazonBedrockRuntime>(),
                 sp.GetRequiredService<ILogger<BedrockAnalysisService>>(),
                 PromptCatalog.Current,
-                Environment.GetEnvironmentVariable("BEDROCK_MODEL_ID") ?? ""));
+                Environment.GetEnvironmentVariable("BEDROCK_MODEL_ID") ?? "",
+                // BUG-58: 20s inside the request Lambdas' 29s timeout, leaving budget to record the
+                // failure (503 + AnalysisFailed metric + Error log) instead of being killed silently.
+                TimeSpan.FromSeconds(20)));
         builder.Services.AddAWSService<IAmazonS3>();
         var imageBucketName = Environment.GetEnvironmentVariable("IMAGE_BUCKET_NAME") ?? "";
         builder.Services.AddSingleton<INoteImageStore>(sp =>

@@ -195,9 +195,12 @@ public sealed class TranscribeCompletionFunction
         services.AddSingleton<ICurrentWorkspace, UnavailableCurrentWorkspace>();
         services.AddSingleton<INoteDetailStore>(sp => new DynamoDbNoteDetailStore(sp.GetRequiredService<IAmazonDynamoDB>(), Env("PROJ_NOTEDETAIL_TABLE_NAME")));
         services.AddSingleton<INoteActionsStore>(sp => new DynamoDbNoteActionsStore(sp.GetRequiredService<IAmazonDynamoDB>(), Env("PROJ_NOTEACTIONS_TABLE_NAME")));
+        // BUG-58: deadline sized to THIS host — 45s inside the completion Lambda's 60s limit, leaving
+        // budget to record the failure. (The request Lambdas' 29s limit takes 20s; see Builder.cs.)
         services.AddSingleton<IBedrockAnalysisService>(sp =>
             new BedrockAnalysisService(sp.GetRequiredService<IAmazonBedrockRuntime>(),
-                sp.GetRequiredService<ILogger<BedrockAnalysisService>>(), PromptCatalog.Current, Env("BEDROCK_MODEL_ID")));
+                sp.GetRequiredService<ILogger<BedrockAnalysisService>>(), PromptCatalog.Current, Env("BEDROCK_MODEL_ID"),
+                TimeSpan.FromSeconds(45)));
         services.AddSingleton<INoteCommandHandler>(sp => new NoteCommandHandler(
             sp.GetRequiredService<IEventStore>(), sp.GetRequiredService<ICurrentUser>(),
             sp.GetRequiredService<ICurrentWorkspace>(), sp.GetRequiredService<IDomainMetrics>(),

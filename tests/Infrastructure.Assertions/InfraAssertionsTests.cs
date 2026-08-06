@@ -1104,15 +1104,36 @@ public class InfraAssertionsTests
     }
 
     [Fact]
+    public void Alarms_CommandLambdaTimeoutAlarmWiredToTopic()
+    {
+        // BUG-58: a Lambda killed at its 29s limit emits no error, log, or domain metric — the only
+        // trace is a Duration datapoint pinned at the limit. Alarm on Maximum Duration so a silent
+        // kill is never invisible. The Query function is already covered by notetaker-p99-latency.
+        _template.HasResourceProperties("AWS::CloudWatch::Alarm", Match.ObjectLike(new Dictionary<string, object>
+        {
+            ["AlarmName"] = "notetaker-command-lambda-timeout",
+            ["Namespace"] = "AWS/Lambda",
+            ["MetricName"] = "Duration",
+            ["Statistic"] = "Maximum",
+            ["Threshold"] = 28000,
+            ["EvaluationPeriods"] = 1,
+            ["ComparisonOperator"] = "GreaterThanOrEqualToThreshold",
+            ["TreatMissingData"] = "notBreaching",
+            ["AlarmActions"] = Match.AnyValue()
+        }));
+    }
+
+    [Fact]
     public void Alarms_AllExpectedAlarmsExist()
     {
-        // Nine alarms: error-rate, P99 latency, projection-rebuild-fault,
+        // Ten alarms: error-rate, P99 latency, projection-rebuild-fault,
         // projection-rebuild-duration, the three 27-B projector alarms
         // (projector-error, projector-dlq-depth, projector-iterator-age),
-        // analysis-failed (CHANGE-22), and transcribe-failed (33-B1).
+        // analysis-failed (CHANGE-22), transcribe-failed (33-B1), and
+        // command-lambda-timeout (BUG-58).
         // A concurrency-conflict alarm is deferred — it would need SUM(SEARCH(...)), which CloudWatch
         // rejects on metric alarms (only allowed on dashboard widgets). See phase-12 12-E.
-        _template.ResourceCountIs("AWS::CloudWatch::Alarm", 9);
+        _template.ResourceCountIs("AWS::CloudWatch::Alarm", 10);
     }
 
     [Fact]

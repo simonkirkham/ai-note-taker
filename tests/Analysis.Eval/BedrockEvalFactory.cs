@@ -54,7 +54,10 @@ public static class BedrockEvalFactory
             Runtime.Value,
             NullLogger<BedrockAnalysisService>.Instance,
             prompt,
-            modelId);
+            modelId,
+            // The eval runs on a workstation/CI runner, not a Lambda — no host limit to stay inside,
+            // so the deadline is generous enough that a slow model is measured, not cut short.
+            TimeSpan.FromMinutes(5));
 
     public static IJudgeClient Judge() =>
         new BedrockContentJudgeClient(Runtime.Value, JudgeModelId);

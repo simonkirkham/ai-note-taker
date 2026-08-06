@@ -1385,6 +1385,27 @@ public sealed class NoteTakerStack : Stack
         });
         latencyAlarm.AddAlarmAction(alarmAction);
 
+        // BUG-58: a Lambda killed at its timeout is invisible by construction — the process dies
+        // mid-await, so there is no exception, no Error log, no domain metric and nothing on the
+        // "All errors" widget. The one trace left is a Duration datapoint pinned at the limit, so
+        // alarm on Maximum Duration just under the Command function's 29s cap. Command only: the
+        // Query function's slow path is already caught earlier by notetaker-p99-latency.
+        var commandTimeoutAlarm = new Amazon.CDK.AWS.CloudWatch.Alarm(this, "CommandLambdaTimeoutAlarm", new Amazon.CDK.AWS.CloudWatch.AlarmProps
+        {
+            AlarmName = "notetaker-command-lambda-timeout",
+            AlarmDescription = "Command (write) Lambda ran to within 1s of its 29s timeout — a request was probably killed mid-flight",
+            Metric = commandFunction.MetricDuration(new Amazon.CDK.AWS.CloudWatch.MetricOptions
+            {
+                Statistic = "Maximum",
+                Period = Duration.Minutes(5)
+            }),
+            Threshold = 28000,
+            EvaluationPeriods = 1,
+            ComparisonOperator = Amazon.CDK.AWS.CloudWatch.ComparisonOperator.GREATER_THAN_OR_EQUAL_TO_THRESHOLD,
+            TreatMissingData = Amazon.CDK.AWS.CloudWatch.TreatMissingData.NOT_BREACHING
+        });
+        commandTimeoutAlarm.AddAlarmAction(alarmAction);
+
         // Projection-rebuild operability (24-C). Both metrics carry only the Powertools
         // Service dimension, so each is a single concrete metric an alarm can target (no
         // SEARCH). A fault means a partial/failed rebuild — degraded read models until a
