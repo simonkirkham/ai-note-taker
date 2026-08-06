@@ -8,6 +8,7 @@ import { keys } from "../api/queryKeys";
 import { presignRecordingDownload } from "../api/recordings";
 import { completeTranscription, discardTranscriptionDraft } from "../api/transcription";
 import { useActions } from "../hooks/useActions";
+import { useDocumentTitle } from "../hooks/useDocumentTitle";
 import { useCreateNoteFromNextOccurrence, useLinkNoteToCalendar, useUnlinkNoteFromCalendar } from "../hooks/useMeetingMutations";
 import { useNoteDetail } from "../hooks/useNoteDetail";
 import { useAnalyseNote, useEditContent, useRenameNoteDetail, useSetNoteDate } from "../hooks/useNoteDetailMutations";
@@ -155,6 +156,7 @@ export default function NoteView({
 
   // Editable fields via the draft pattern; read-only fields straight from the cache.
   const title = titleDraft ?? detail?.title ?? initialTitle;
+  useDocumentTitle(title);
   const content = contentDraft ?? detail?.content ?? "";
   // BUG-47: keep baseContentHashRef current with the loaded server content (the base a save is
   // checked against). Recomputed only when the server content changes — an in-progress draft edit
