@@ -164,6 +164,19 @@ Electron's spellchecker was already underlining misspellings, but Electron ships
 | 5 | **No menu on correct text:** Given a correctly-spelled word, When I right-click it, Then no menu appears (unchanged from today). | ☐ |
 | 6 | **No menu outside an editor:** Given the notes list or a heading, When I right-click, Then no menu appears. | ☐ |
 
+## CHANGE-32 — pinned microphone grant
+
+The app now answers Electron's permission requests itself instead of riding the implicit-grant default. It is an allow-list: only the `http://localhost:5180` bundle origin, and only `media` / `display-capture` / `notifications`. Behaviour should be **identical** to before — this verifies nothing was tightened by accident. Every decision is logged (`[desktop] permission request media: granted — …`), so the console is the evidence. Unaffected: the Windows OS-level microphone privacy setting, which still gates everything below.
+
+| # | Given / When / Then | Pass? |
+|---|---------------------|-------|
+| 1 | **Mic still opens:** Given the app is open, When I start a recording, Then it records and the transcript appears — no permission error (the mic stream has no fallback, so a denial would kill recording outright). | ☐ |
+| 2 | **Grant is logged:** Given a recording just started, When I check the console (`npm run app`), Then a line reads `[desktop] permission request media: granted — media granted to the bundle origin`. | ☐ |
+| 3 | **System audio still captured (31-B not regressed):** Given a meeting is playing through the speakers, When I record, Then the other party's speech still lands in the transcript. | ☐ |
+| 4 | **Meeting reminders still fire:** Given a meeting is due, Then the desktop notification still appears (`notifications` is on the allow-list; leaving it off would have broken this). | ☐ |
+| 5 | **Nothing unexpected is being denied:** Given I use the app normally (open notes, edit, record, sign in via Google), Then no `[desktop] permission … denied` warning appears in the console for a feature that used to work. | ☐ |
+| 6 | **OS gate unchanged:** Given Windows microphone access is turned off for desktop apps, When I record, Then it fails at the OS level exactly as before (this pin does not bypass it). | ☐ |
+
 ## Troubleshooting
 
 - **`Error 400: redirect_uri_mismatch` immediately after adding `http://localhost:5180`** — the value is correct (`redirect_uri = window.location.origin = http://localhost:5180`: no trailing slash, `localhost` not `127.0.0.1`, port `5180`, `http` not `https`). The cause is **Google propagation lag** — a freshly added+saved redirect URI is not live immediately; it can take **~5 min to a few hours**. Confirm the running app's `window.location.origin` (DevTools console) reads exactly `http://localhost:5180`, then wait and retry. **No code change.** Hit and confirmed 2026-06-22: config was right on the first attempt; the URI simply had not propagated.

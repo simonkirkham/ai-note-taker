@@ -4,6 +4,7 @@ import path from 'node:path'
 import { startBundleServer } from './server'
 import { pickDisplayMediaResponse } from './displayMedia'
 import { buildSpellCheckMenu } from './spellCheckMenu'
+import { decidePermissionCheck, decidePermissionRequest } from './permissionPolicy'
 import { registerLocalTranscription, killWhisperServer } from './localTranscriptionIpc'
 import { killActiveWhisper } from './localTranscription'
 
@@ -18,6 +19,10 @@ import { killActiveWhisper } from './localTranscription'
 const PORT = 5180 // MUST match the http://localhost:5180 redirect URI registered in Google Cloud Console
 const PROD_ORIGIN = 'https://note-taker-ai.com'
 const WEB_DIST = path.join(__dirname, '..', 'web-dist') // __dirname = desktop/dist → desktop/web-dist
+
+// The only origins allowed to open the mic. createWindow loads `localhost`; 127.0.0.1 is the
+// same bundle server and will-navigate already treats the two as equivalent.
+const BUNDLE_ORIGINS = [`http://localhost:${PORT}`, `http://127.0.0.1:${PORT}`]
 
 // Current window, for the main process to push local-transcription events to the renderer.
 let mainWindow: BrowserWindow | null = null
@@ -139,6 +144,43 @@ function registerDisplayMediaHandler(): void {
   )
 }
 
+// CHANGE-32 — pin the microphone grant. Same reasoning as the display-media pin above: with no
+// handler, getUserMedia({ audio: true }) rides Electron's implicit-grant default, and an
+// upgrade that flipped it to deny would silently kill recording (the mic is the base
+// transcription stream, no fallback). Electron needs BOTH handlers — the request handler
+// answers a prompt, the check handler answers "do I already have it?" (navigator.permissions,
+// enumerateDevices labels, Chromium's pre-flight). The decision itself is pure and lives in
+// permissionPolicy.ts; this only unwraps Electron's two different shapes and logs.
+// Note: this does not touch the Windows OS-level microphone privacy setting.
+function registerPermissionHandlers(): void {
+  session.defaultSession.setPermissionRequestHandler((_webContents, permission, callback, details) => {
+    const decision = decidePermissionRequest(
+      {
+        permission,
+        requestingUrl: details.requestingUrl,
+        mediaTypes: 'mediaTypes' in details ? details.mediaTypes : undefined,
+      },
+      BUNDLE_ORIGINS,
+    )
+    logDecision('request', permission, decision.allow, decision.reason)
+    callback(decision.allow)
+  })
+
+  session.defaultSession.setPermissionCheckHandler((_webContents, permission, requestingOrigin, details) => {
+    const decision = decidePermissionCheck({ permission, requestingOrigin, mediaType: details.mediaType }, BUNDLE_ORIGINS)
+    logDecision('check', permission, decision.allow, decision.reason)
+    return decision.allow
+  })
+}
+
+// Denials are warnings: every one is either an attempt from an origin that should not have the
+// mic, or a feature this app does not know it uses — both worth seeing in the console.
+function logDecision(kind: 'request' | 'check', permission: string, allow: boolean, reason: string): void {
+  const line = `[desktop] permission ${kind} ${permission}: ${allow ? 'granted' : 'denied'} — ${reason}`
+  if (allow) console.log(line)
+  else console.warn(line)
+}
+
 function logBuildSha(): void {
   const shaFile = path.join(WEB_DIST, 'build-sha.txt')
   const sha = existsSync(shaFile) ? readFileSync(shaFile, 'utf8').trim() : 'unknown'
@@ -147,6 +189,7 @@ function logBuildSha(): void {
 
 void app.whenReady().then(async () => {
   await startBundleServer(PORT, PROD_ORIGIN, WEB_DIST)
+  registerPermissionHandlers()
   registerDisplayMediaHandler()
   registerLocalTranscription({
     userDataDir: app.getPath('userData'),
