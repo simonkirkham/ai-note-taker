@@ -11,17 +11,29 @@ import styles from "./OpenNoteTabs.module.css";
 export default function OpenNoteTabs({
   tabs,
   activeNoteId,
+  reconciled,
   onSelect,
   onClose,
 }: {
   tabs: OpenNoteTab[];
   activeNoteId?: string;
+  // 49-B: false until a note-cards read has succeeded. Restored tabs render straight from
+  // storage before that, so the set on screen is provisional and one may still drop when the
+  // list lands. Surfaced as an attribute because that transition is otherwise unobservable:
+  // an E2E count assertion is a coin toss without something to wait on, and "the response
+  // arrived" is not the same as "the reconciled set rendered".
+  reconciled: boolean;
   onSelect: (noteId: string) => void;
   onClose: (noteId: string) => void;
 }) {
   if (tabs.length === 0) return null;
   return (
-    <nav data-testid="open-note-tabs" aria-label="Open notes" className={styles.bar}>
+    <nav
+      data-testid="open-note-tabs"
+      data-tabs-reconciled={reconciled ? "true" : "false"}
+      aria-label="Open notes"
+      className={styles.bar}
+    >
       <ul className={styles.list}>
         {tabs.map((tab) => {
           const isActive = tab.noteId === activeNoteId;

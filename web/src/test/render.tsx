@@ -17,7 +17,11 @@ function customRender(ui: ReactElement, options?: Omit<RenderOptions, "wrapper">
   const Wrapper = ({ children }: { children: ReactNode }) => (
     <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
   );
-  return rtlRender(ui, { wrapper: Wrapper, ...options });
+  // The client is returned so a test can synchronise on real query state
+  // (`getQueryState(key)?.status`) rather than on a timer. A spec that must observe a FAILED
+  // read has no DOM signal to wait for, and a bare setTimeout passes or fails on machine
+  // speed — the flake class TI-54 records against this suite.
+  return { ...rtlRender(ui, { wrapper: Wrapper, ...options }), queryClient };
 }
 
 // Like `render`, but also wraps the tree in a MemoryRouter — for components that

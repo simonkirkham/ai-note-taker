@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { recordRumEvent } from "../rum";
 
 export type OpenNoteTab = { noteId: string; title: string };
 
@@ -11,39 +12,56 @@ const STORAGE_PREFIX = "note-taker-open-tabs-";
 
 const storageKey = (wsId: string) => `${STORAGE_PREFIX}${wsId}`;
 
-// Only a ceiling on RESTORED tabs — normal use never approaches it (there is no cap on
-// opening tabs in-session), so this only bounds a value the app did not write.
-const MAX_RESTORED_TABS = 50;
-
 // Anything unreadable — absent, corrupt JSON, or the wrong shape (a hand-edited value, or a
 // future version's format) — reads as "no tabs" rather than breaking the app.
+//
+// Deliberately NOT capped. A cap was tried and removed on review: restore capped while writes
+// did not, so 60 open tabs became 50 on reload and the persist effect then wrote the truncated
+// list straight back — silent, permanent loss. It also contradicted 49-A's explicit "no tab
+// cap" decision. The only thing a cap defended against was a hand-edited value rendering many
+// buttons, which is self-inflicted, bounded by the cards reconcile, and not worth losing a
+// user's tabs over. The dedupe stays: duplicate ids are a real correctness bug (duplicate
+// React keys, two tabs both marked current), not merely untidy.
 function readStoredTabs(wsId: string): OpenNoteTab[] {
+  let raw: string | null;
   try {
-    const raw = localStorage.getItem(storageKey(wsId));
-    if (!raw) return NO_TABS;
+    raw = localStorage.getItem(storageKey(wsId));
+  } catch {
+    // Storage refused outright (private mode, quota) — the user's tabs are simply not
+    // remembered on this device, which is invisible from the outside without this signal.
+    recordRumEvent("tabRestoreFailed", { reason: "storageUnavailable" });
+    return NO_TABS;
+  }
+  if (!raw) return NO_TABS;
+  try {
     const parsed: unknown = JSON.parse(raw);
     const list = (parsed as { tabs?: unknown })?.tabs;
-    if (!Array.isArray(list)) return NO_TABS;
-    const seen = new Set<string>();
-    const clean = list
-      .filter((t): t is { noteId: string; title?: unknown } =>
-        typeof (t as { noteId?: unknown })?.noteId === "string" && !!(t as { noteId: string }).noteId,
-      )
-      // Duplicates would give React duplicate keys and two tabs both marked current; an
-      // arbitrarily long list (hand-edited or corrupted) would render thousands of buttons.
-      // `openTab` dedupes on write, so both only arise from a value we did not produce.
-      .filter((t) => !seen.has(t.noteId) && (seen.add(t.noteId), true))
-      .slice(0, MAX_RESTORED_TABS)
-      .map((t) => ({ noteId: t.noteId, title: typeof t.title === "string" ? t.title : "" }));
-    return clean.length > 0 ? clean : NO_TABS;
+    if (!Array.isArray(list)) {
+      recordRumEvent("tabRestoreFailed", { reason: "wrongShape" });
+      return NO_TABS;
+    }
+    const byNoteId = new Map<string, OpenNoteTab>();
+    for (const entry of list) {
+      const noteId = (entry as { noteId?: unknown })?.noteId;
+      if (typeof noteId !== "string" || !noteId || byNoteId.has(noteId)) continue;
+      const title = (entry as { title?: unknown })?.title;
+      byNoteId.set(noteId, { noteId, title: typeof title === "string" ? title : "" });
+    }
+    return byNoteId.size > 0 ? [...byNoteId.values()] : NO_TABS;
   } catch {
+    recordRumEvent("tabRestoreFailed", { reason: "corrupt" });
     return NO_TABS;
   }
 }
 
 function writeStoredTabs(wsId: string, tabs: OpenNoteTab[]): void {
   try {
-    localStorage.setItem(storageKey(wsId), JSON.stringify({ tabs }));
+    const key = storageKey(wsId);
+    // Nothing open and nothing remembered — writing `{"tabs":[]}` here would leave an empty
+    // key behind for every workspace the user merely visits. Closing the last tab still
+    // writes (the key exists by then), so "cleared" is still remembered as cleared.
+    if (tabs.length === 0 && localStorage.getItem(key) === null) return;
+    localStorage.setItem(key, JSON.stringify({ tabs }));
   } catch {
     /* storage unavailable — this device just won't remember the set */
   }

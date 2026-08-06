@@ -134,7 +134,18 @@ function AppContent({ signOut }: { signOut: () => void }) {
   const w = (p: string) => `/w/${wsId}${p}`;
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const qc = useQueryClient();
-  const { data: cards = [], isLoading: loading, isSuccess: cardsLoaded } = useNoteCards();
+  const { data: cards = [], isLoading: loading, dataUpdatedAt: cardsUpdatedAt } = useNoteCards();
+  // "Has a cards read ever succeeded?" — NOT `isLoading`, and NOT `isSuccess`.
+  //   !isLoading — a FAILED read also stops loading, with no data, so the reconcile below
+  //                would read every tab as "the note is gone" and collapse the bar on one blip.
+  //   isSuccess  — query-core's error reducer sets status "error" UNCONDITIONALLY, even when
+  //                `data` still holds the last good list. One failed BACKGROUND refetch would
+  //                flip it false while `cards` is perfectly usable, and a tab whose note was
+  //                deleted on another device would reappear until the next success.
+  // `dataUpdatedAt` is stamped only by a success and survives a later error, so the last good
+  // snapshot keeps governing — which is the intent: reconcile against real data, never against
+  // the absence of data.
+  const cardsLoaded = cardsUpdatedAt > 0;
   const createNote = useCreateNote();
   const deleteNote = useDeleteNote();
   const moveNote = useMoveNoteToFolder();
@@ -188,9 +199,8 @@ function AppContent({ signOut }: { signOut: () => void }) {
   // definition, even if the list hasn't caught up with it yet.
   const openNoteTabs = useMemo(() => {
     const titles = new Map(cards.map((c) => [c.noteId, c.title]));
-    // Gate on isSuccess, NOT on !isLoading: a FAILED cards read also stops loading, with no
-    // data — treating that as "the notes are gone" would collapse the bar on one API blip.
-    // Only a read that actually succeeded is evidence a note no longer exists.
+    // Only a read that actually succeeded is evidence a note no longer exists — see
+    // `cardsLoaded` above for why neither `isLoading` nor `isSuccess` says that.
     const live = cardsLoaded
       ? tabs.filter((t) => t.noteId === activeNoteId || titles.has(t.noteId))
       : tabs;
@@ -203,6 +213,34 @@ function AppContent({ signOut }: { signOut: () => void }) {
       title: titles.get(tab.noteId) || tab.title || "Untitled note",
     }));
   }, [tabs, cards, activeNoteId, cardsLoaded]);
+
+  // 49-B observability: the reconcile above is silent by design — a dropped tab looks exactly
+  // like a tab the user never had. A MASS drop, though, means the cards read came back empty
+  // or partial for a reason that is not "the user deleted these" (a workspace-scoping bug, a
+  // projection that lost the notes), and the only symptom is an empty bar the user cannot
+  // explain. Reported from an effect rather than the memo, which must stay pure; the signature
+  // guard keeps a refetch from re-reporting the same drop every poll.
+  const reportedDropRef = useRef("");
+  useEffect(() => {
+    if (!cardsLoaded) return;
+    const known = new Set(cards.map((c) => c.noteId));
+    const dropped = tabs.filter((t) => t.noteId !== activeNoteId && !known.has(t.noteId));
+    if (dropped.length === 0) {
+      reportedDropRef.current = "";
+      return;
+    }
+    const signature = dropped
+      .map((t) => t.noteId)
+      .sort()
+      .join(",");
+    if (signature === reportedDropRef.current) return;
+    reportedDropRef.current = signature;
+    recordRumEvent("tabsDropped", {
+      dropped: dropped.length,
+      remaining: tabs.length - dropped.length,
+    });
+  }, [cardsLoaded, tabs, cards, activeNoteId]);
+
   // Set by the mounted NoteView while it is recording; see requestLeave below.
   const leaveGuardRef = useRef<((proceed: () => void) => void) | null>(null);
   const registerLeaveGuard = useCallback(
@@ -231,9 +269,12 @@ function AppContent({ signOut }: { signOut: () => void }) {
     // create-note and next-occurrence paths), and it unmounts that note just the same.
     requestLeave(() => {
       // The count rides the event so an unbounded bar — which would mean the dedupe above
-      // has regressed — is visible without a user reporting it.
+      // has regressed — is visible without a user reporting it. Count the RECONCILED set,
+      // not the raw one: since 49-B the stored set retains dead ids until the next write, so
+      // `tabs.length` over-reports by exactly the tabs the user cannot see — inflating the
+      // one signal that exists to detect an unbounded bar.
       if (!tabs.some((t) => t.noteId === noteId)) {
-        recordRumEvent("noteTabOpened", { tabCount: tabs.length + 1 });
+        recordRumEvent("noteTabOpened", { tabCount: openNoteTabs.length + 1 });
       }
       openTab(noteId, title);
       void navigate(w(`/notes/${noteId}`), { state });
@@ -467,6 +508,7 @@ function AppContent({ signOut }: { signOut: () => void }) {
             <OpenNoteTabs
               tabs={openNoteTabs}
               activeNoteId={activeNoteId}
+              reconciled={cardsLoaded}
               onSelect={handleSelectTab}
               onClose={handleCloseTab}
             />

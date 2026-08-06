@@ -11,7 +11,10 @@ namespace Browser.E2E.Journeys;
 // created and asserted one at a time so the reload-tolerant helper's single-note-under-assertion
 // precondition holds (it re-gates on the LATEST note-write token).
 //
-// The tab assertions themselves are client-side state, so they need no reload tolerance.
+// Tab assertions were client-side-only in 49-A. They are NOT any more: 49-B reconciles the
+// restored set against the projector-backed cards list, so any count asserted across a reload
+// goes through AssertOpenTabCountAfterReloadAsync (re-gated + reload-tolerant). Only
+// within-page assertions, where no read has intervened, can use the plain helpers.
 [Collection("E2E Journeys")]
 public sealed class OpenNoteTabsJourney(BrowserFixture browser) : IAsyncLifetime
 {
@@ -73,17 +76,11 @@ public sealed class OpenNoteTabsJourney(BrowserFixture browser) : IAsyncLifetime
         var secondUrl = _app.CurrentUrl;
 
         // 49-B: the open set is remembered per device, so a reload brings both tabs back with
-        // the same one active.
-        //
-        // The tab SET comes from localStorage, but which tabs are RENDERED is reconciled
-        // against the projector-backed `/notes/cards` read — a tab whose note the list does
-        // not (yet) contain is dropped. So the naive assertion is a race: it passes during
-        // the pre-fetch window, when tabs render unfiltered straight from storage, and the
-        // tab can then vanish when a lagging read resolves without it. Wait for the cards
-        // read to settle first, so the count asserted is the reconciled one.
-        await _app.ReloadAndAwaitCardsAsync();
+        // the same one active. The count assertion must be the reload-tolerant, re-gating one:
+        // since 49-B a restored tab is dropped when the projector-backed cards list does not
+        // contain its note, so a one-shot count races the projector (see the helper).
+        await _app.AssertOpenTabCountAfterReloadAsync(2);
         await _app.AssertNoteScreenLoadedAsync();
-        await _app.AssertOpenTabCountAsync(2);
         await _app.AssertOpenTabVisibleAsync(first);
         await _app.AssertActiveTabAsync(second);
 
