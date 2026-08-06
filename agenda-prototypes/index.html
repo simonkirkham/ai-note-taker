@@ -1,0 +1,776 @@
+<title>Phase 43 — ticking agenda points in the note body</title>
+<style>
+  /* ── Gallery chrome: a neutral biased toward the app's teal, so the mock
+     note screen (which uses the REAL tokens.css palette) reads as "the app". ── */
+  :root {
+    --g-bg:        #F5F9F8;
+    --g-surface:   #FFFFFF;
+    --g-sunken:    #ECF3F2;
+    --g-text:      #0F2D2B;
+    --g-muted:     #5C7371;
+    --g-line:      #DCE8E6;
+    --g-accent:    #0D9488;
+    --g-accent-bg: rgba(13, 148, 136, 0.08);
+    --g-warn:      #B45309;
+    --g-warn-bg:   rgba(180, 83, 9, 0.10);
+    --g-bad:       #DC2626;
+    --g-bad-bg:    rgba(220, 38, 38, 0.09);
+    --g-shadow:    0 1px 2px rgba(15, 45, 43, .05), 0 8px 24px -12px rgba(15, 45, 43, .18);
+
+    /* The mock app's own tokens — copied verbatim from web/src/styles/tokens.css
+       (:root = the default "teal" theme). */
+    --color-primary:      #0D9488;
+    --color-primary-bg:   rgba(13, 148, 136, 0.06);
+    --color-cta:          #F97316;
+    --color-bg:           #F0FDFA;
+    --color-surface:      #FFFFFF;
+    --color-text:         #134E4A;
+    --color-text-muted:   #64748B;
+    --color-border:       #CCEBE8;
+    --radius:             6px;
+    --transition:         150ms ease;
+
+    --font: ui-sans-serif, system-ui, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    --mono: ui-monospace, "SF Mono", "Cascadia Mono", "JetBrains Mono", Menlo, Consolas, monospace;
+  }
+
+  /* Dark: gallery goes deep teal-black; the mock app switches to the real
+     [data-theme="midnight"] values. */
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --g-bg:        #0A1413;
+      --g-surface:   #14211F;
+      --g-sunken:    #0E1A19;
+      --g-text:      #DEEAE8;
+      --g-muted:     #8CA5A2;
+      --g-line:      #243634;
+      --g-accent:    #2DD4BF;
+      --g-accent-bg: rgba(45, 212, 191, 0.12);
+      --g-warn:      #FBBF24;
+      --g-warn-bg:   rgba(251, 191, 36, 0.12);
+      --g-bad:       #F87171;
+      --g-bad-bg:    rgba(248, 113, 113, 0.13);
+      --g-shadow:    0 1px 2px rgba(0,0,0,.4), 0 8px 24px -12px rgba(0,0,0,.7);
+
+      --color-primary:      #2DD4BF;
+      --color-primary-bg:   rgba(45, 212, 191, 0.10);
+      --color-cta:          #FB923C;
+      --color-bg:           #0F172A;
+      --color-surface:      #1E293B;
+      --color-text:         #E2E8F0;
+      --color-text-muted:   #94A3B8;
+      --color-border:       #334155;
+    }
+  }
+  :root[data-theme="dark"] {
+    --g-bg: #0A1413; --g-surface: #14211F; --g-sunken: #0E1A19;
+    --g-text: #DEEAE8; --g-muted: #8CA5A2; --g-line: #243634;
+    --g-accent: #2DD4BF; --g-accent-bg: rgba(45,212,191,.12);
+    --g-warn: #FBBF24; --g-warn-bg: rgba(251,191,36,.12);
+    --g-bad: #F87171; --g-bad-bg: rgba(248,113,113,.13);
+    --g-shadow: 0 1px 2px rgba(0,0,0,.4), 0 8px 24px -12px rgba(0,0,0,.7);
+    --color-primary: #2DD4BF; --color-primary-bg: rgba(45,212,191,.10);
+    --color-cta: #FB923C; --color-bg: #0F172A; --color-surface: #1E293B;
+    --color-text: #E2E8F0; --color-text-muted: #94A3B8; --color-border: #334155;
+  }
+  :root[data-theme="light"] {
+    --g-bg: #F5F9F8; --g-surface: #FFFFFF; --g-sunken: #ECF3F2;
+    --g-text: #0F2D2B; --g-muted: #5C7371; --g-line: #DCE8E6;
+    --g-accent: #0D9488; --g-accent-bg: rgba(13,148,136,.08);
+    --g-warn: #B45309; --g-warn-bg: rgba(180,83,9,.10);
+    --g-bad: #DC2626; --g-bad-bg: rgba(220,38,38,.09);
+    --g-shadow: 0 1px 2px rgba(15,45,43,.05), 0 8px 24px -12px rgba(15,45,43,.18);
+    --color-primary: #0D9488; --color-primary-bg: rgba(13,148,136,.06);
+    --color-cta: #F97316; --color-bg: #F0FDFA; --color-surface: #FFFFFF;
+    --color-text: #134E4A; --color-text-muted: #64748B; --color-border: #CCEBE8;
+  }
+
+  body {
+    background: var(--g-bg);
+    color: var(--g-text);
+    font-family: var(--font);
+    line-height: 1.55;
+    -webkit-font-smoothing: antialiased;
+  }
+  * { box-sizing: border-box; }
+
+  .wrap { max-width: 1180px; margin: 0 auto; padding: 40px 24px 72px; }
+
+  /* ── Masthead ── */
+  .masthead { display: flex; flex-direction: column; gap: 10px; padding-bottom: 28px; }
+  .eyebrow {
+    font-size: .7rem; font-weight: 700; letter-spacing: .1em; text-transform: uppercase;
+    color: var(--g-accent);
+  }
+  h1 {
+    font-size: clamp(1.6rem, 3.4vw, 2.3rem); font-weight: 720; letter-spacing: -.022em;
+    line-height: 1.12; text-wrap: balance; margin: 0; max-width: 22ch;
+  }
+  .standfirst { color: var(--g-muted); max-width: 68ch; font-size: 1rem; margin: 0; }
+  .standfirst code { font-family: var(--mono); font-size: .87em; }
+
+  /* ── Layout ── */
+  .cols { display: grid; grid-template-columns: 268px minmax(0, 1fr); gap: 24px; align-items: start; }
+  @media (max-width: 900px) { .cols { grid-template-columns: 1fr; } }
+
+  /* ── Variant rail ── */
+  .rail { display: flex; flex-direction: column; gap: 8px; position: sticky; top: 20px; }
+  @media (max-width: 900px) { .rail { position: static; } }
+  .railLabel {
+    font-size: .68rem; font-weight: 700; letter-spacing: .09em; text-transform: uppercase;
+    color: var(--g-muted); padding: 0 4px 2px;
+  }
+  .vBtn {
+    display: flex; flex-direction: column; gap: 5px; text-align: left; width: 100%;
+    background: var(--g-surface); border: 1px solid var(--g-line); border-radius: 10px;
+    padding: 11px 13px; cursor: pointer; font: inherit; color: inherit;
+    transition: border-color var(--transition), box-shadow var(--transition), background var(--transition);
+  }
+  .vBtn:hover { border-color: var(--g-accent); }
+  .vBtn:focus-visible { outline: 2px solid var(--g-accent); outline-offset: 2px; }
+  .vBtn[aria-pressed="true"] {
+    border-color: var(--g-accent); background: var(--g-accent-bg);
+    box-shadow: inset 3px 0 0 var(--g-accent);
+  }
+  .vName { font-weight: 660; font-size: .95rem; letter-spacing: -.008em; }
+  .vGloss { font-size: .8rem; color: var(--g-muted); line-height: 1.4; }
+  .owner {
+    align-self: flex-start; font-size: .63rem; font-weight: 700; letter-spacing: .07em;
+    text-transform: uppercase; padding: 2px 7px; border-radius: 9999px; white-space: nowrap;
+  }
+  .owner.events   { background: var(--g-accent-bg); color: var(--g-accent); }
+  .owner.markdown { background: var(--g-warn-bg);   color: var(--g-warn); }
+
+  /* ── Stage ── */
+  .stage { display: flex; flex-direction: column; gap: 18px; min-width: 0; }
+  .card {
+    background: var(--g-surface); border: 1px solid var(--g-line);
+    border-radius: 12px; box-shadow: var(--g-shadow); overflow: hidden;
+  }
+  .cardHead {
+    display: flex; align-items: baseline; justify-content: space-between; flex-wrap: wrap; gap: 10px;
+    padding: 12px 16px; border-bottom: 1px solid var(--g-line); background: var(--g-sunken);
+  }
+  .cardTitle {
+    font-size: .68rem; font-weight: 700; letter-spacing: .09em; text-transform: uppercase;
+    color: var(--g-muted);
+  }
+  .cardHint { font-size: .8rem; color: var(--g-muted); }
+  .cardHint b { color: var(--g-text); font-weight: 620; }
+
+  /* ── The mock note screen: real app tokens ── */
+  .app {
+    background: var(--color-bg); color: var(--color-text);
+    padding: 18px 20px 22px; border-bottom: 1px solid var(--g-line);
+  }
+  .appPanel {
+    background: var(--color-surface); border: 1px solid var(--color-border);
+    border-radius: var(--radius); padding: 16px 18px 20px;
+  }
+  .noteTitle { font-size: 1.22rem; font-weight: 700; letter-spacing: -.015em; margin: 0; }
+  .noteMeta { font-size: .78rem; color: var(--color-text-muted); margin: 2px 0 0; }
+
+  /* header agenda strip — mirrors AgendaSection.module.css */
+  .agenda { display: flex; flex-direction: column; gap: 8px; margin-top: 12px; }
+  .agHead { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+  .agLabel {
+    font-size: .72rem; font-weight: 700; letter-spacing: .06em; text-transform: uppercase;
+    color: var(--color-text-muted);
+  }
+  .agCoverage {
+    font-size: .72rem; font-weight: 600; color: var(--color-primary);
+    background: var(--color-primary-bg); border-radius: 9999px; padding: .1rem .5rem;
+    font-variant-numeric: tabular-nums;
+  }
+  .agItems { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; list-style: none; margin: 0; padding: 0; }
+  .agItem {
+    display: inline-flex; align-items: center; gap: 8px;
+    background: var(--color-primary-bg); border: 1px solid var(--color-border);
+    border-radius: 9999px; padding: .1rem .55rem; font-size: .8125rem; font-weight: 500;
+  }
+  .agItem input { margin: 0; accent-color: var(--color-primary); cursor: pointer; }
+  .agItem .t { color: var(--color-primary); }
+  .agItem.done .t { color: var(--color-text-muted); text-decoration: line-through; }
+  .agItem .lk {
+    font-size: .62rem; font-weight: 700; letter-spacing: .05em; text-transform: uppercase;
+    color: var(--color-text-muted); opacity: .8;
+  }
+
+  .divider { height: 1px; background: var(--color-border); margin: 16px 0 14px; }
+
+  /* note body */
+  .body { display: flex; flex-direction: column; gap: 9px; }
+  .bodyLabel {
+    font-size: .68rem; font-weight: 700; letter-spacing: .06em; text-transform: uppercase;
+    color: var(--color-text-muted); margin-bottom: 2px;
+  }
+  .blk { display: flex; align-items: flex-start; gap: 9px; position: relative; }
+  .blk h3 {
+    margin: 0; font-size: 1.02rem; font-weight: 680; letter-spacing: -.012em; line-height: 1.35;
+  }
+  .blk p { margin: 0; font-size: .92rem; color: var(--color-text); line-height: 1.6; }
+  .blk .struck { text-decoration: line-through; color: var(--color-text-muted); }
+  .blk .covered {
+    font-size: .63rem; font-weight: 700; letter-spacing: .06em; text-transform: uppercase;
+    color: var(--color-primary); background: var(--color-primary-bg);
+    border-radius: 9999px; padding: 1px 7px; margin-left: 8px; vertical-align: 3px; white-space: nowrap;
+  }
+  .bodyCheck {
+    margin: 5px 0 0; accent-color: var(--color-primary); cursor: pointer; flex-shrink: 0;
+  }
+  .bodyCheck:disabled { cursor: not-allowed; opacity: .45; }
+  .taskCheck { margin: 4px 0 0; }
+  .gutterSlot { width: 15px; flex-shrink: 0; }
+  .tickBtn {
+    border: 1px solid var(--color-border); background: var(--color-surface);
+    color: var(--color-primary); border-radius: var(--radius); cursor: pointer;
+    font-size: .78rem; line-height: 1; padding: 3px 6px; margin-top: 2px; flex-shrink: 0;
+    transition: background var(--transition), border-color var(--transition);
+  }
+  .tickBtn:hover { background: var(--color-primary-bg); border-color: var(--color-primary); }
+  .tickBtn:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 2px; }
+  .chip {
+    display: inline-flex; align-items: center; gap: 6px; vertical-align: baseline;
+    background: var(--color-primary-bg); border: 1px solid var(--color-primary);
+    border-radius: 9999px; padding: 0 .5rem; font-size: .82rem; font-weight: 550;
+    color: var(--color-primary); cursor: pointer; font-family: inherit;
+  }
+  .chip.done { color: var(--color-text-muted); border-color: var(--color-border); }
+  .chip.done .ct { text-decoration: line-through; }
+  .chip:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 2px; }
+  .orphan {
+    font-size: .63rem; font-weight: 700; letter-spacing: .05em; text-transform: uppercase;
+    color: var(--g-bad); background: var(--g-bad-bg); border-radius: 9999px;
+    padding: 1px 7px; margin-left: 8px; vertical-align: 3px; white-space: nowrap;
+  }
+
+  /* ── Stress-test bar ── */
+  .stress { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; padding: 12px 16px; }
+  .stressLabel {
+    font-size: .68rem; font-weight: 700; letter-spacing: .09em; text-transform: uppercase;
+    color: var(--g-muted); margin-right: 2px;
+  }
+  .sBtn {
+    border: 1px solid var(--g-line); background: var(--g-surface); color: var(--g-text);
+    border-radius: 9999px; padding: 5px 12px; font: inherit; font-size: .82rem; cursor: pointer;
+    transition: border-color var(--transition), background var(--transition);
+  }
+  .sBtn:hover { border-color: var(--g-accent); background: var(--g-accent-bg); }
+  .sBtn:focus-visible { outline: 2px solid var(--g-accent); outline-offset: 2px; }
+  .sBtn.reset { margin-left: auto; color: var(--g-muted); }
+
+  /* ── Panels ── */
+  .panels { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+  @media (max-width: 820px) { .panels { grid-template-columns: 1fr; } }
+  .panelBody { padding: 12px 16px 14px; max-height: 232px; overflow: auto; }
+  .mono { font-family: var(--mono); font-size: .78rem; line-height: 1.75; }
+  pre.mono { margin: 0; white-space: pre-wrap; word-break: break-word; color: var(--g-text); }
+  pre .tok { background: var(--g-warn-bg); color: var(--g-warn); border-radius: 3px; padding: 0 3px; }
+  .log { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 5px; }
+  .log li { display: flex; gap: 8px; align-items: baseline; }
+  .evt {
+    font-family: var(--mono); font-size: .73rem; font-weight: 600; border-radius: 4px;
+    padding: 1px 6px; white-space: nowrap; flex-shrink: 0;
+  }
+  .evt.agenda  { background: var(--g-accent-bg); color: var(--g-accent); }
+  .evt.content { background: var(--g-warn-bg);   color: var(--g-warn); }
+  .evt.none    { background: var(--g-bad-bg);    color: var(--g-bad); }
+  .evtNote { font-size: .8rem; color: var(--g-muted); line-height: 1.45; }
+  .empty { font-size: .84rem; color: var(--g-muted); font-style: italic; }
+
+  /* ── Verdict callout inside the stage ── */
+  .verdict { padding: 13px 16px; display: flex; flex-direction: column; gap: 7px; }
+  .vRow { display: flex; gap: 9px; align-items: flex-start; font-size: .875rem; }
+  .vKey {
+    font-size: .63rem; font-weight: 700; letter-spacing: .06em; text-transform: uppercase;
+    padding: 2px 7px; border-radius: 4px; white-space: nowrap; flex-shrink: 0; margin-top: 1px;
+    min-width: 74px; text-align: center;
+  }
+  .vKey.good { background: var(--g-accent-bg); color: var(--g-accent); }
+  .vKey.cost { background: var(--g-warn-bg);   color: var(--g-warn); }
+  .vKey.risk { background: var(--g-bad-bg);    color: var(--g-bad); }
+  .vTxt { color: var(--g-text); }
+  .vTxt code { font-family: var(--mono); font-size: .85em; color: var(--g-muted); }
+
+  /* ── Comparison table ── */
+  .compare { margin-top: 34px; }
+  .tableWrap { overflow-x: auto; border: 1px solid var(--g-line); border-radius: 12px; background: var(--g-surface); }
+  table { border-collapse: collapse; width: 100%; min-width: 720px; font-size: .86rem; }
+  th, td { text-align: left; padding: 10px 14px; border-bottom: 1px solid var(--g-line); vertical-align: top; }
+  thead th {
+    font-size: .66rem; font-weight: 700; letter-spacing: .08em; text-transform: uppercase;
+    color: var(--g-muted); background: var(--g-sunken); white-space: nowrap;
+  }
+  tbody tr:last-child td { border-bottom: none; }
+  tbody th { font-weight: 640; white-space: nowrap; }
+  td .y { color: var(--g-accent); font-weight: 700; }
+  td .n { color: var(--g-bad);    font-weight: 700; }
+  td .m { color: var(--g-warn);   font-weight: 700; }
+  .cap { font-size: .8rem; color: var(--g-muted); margin: 9px 2px 0; max-width: 76ch; }
+  h2 {
+    font-size: 1.1rem; font-weight: 700; letter-spacing: -.015em; margin: 0 0 10px;
+  }
+</style>
+
+<div class="wrap">
+  <div class="masthead">
+    <span class="eyebrow">Phase 43 · prototype gallery</span>
+    <h1>Ticking an agenda point from inside the note</h1>
+    <p class="standfirst">
+      43-E removed the in-body heading&nbsp;✓, leaving the header agenda strip as the only place to tick.
+      Five ways to put ticking back in the body — pick one on the rail, tick things, then use the stress
+      tests to break the link. The two panels show exactly what gets persisted and which events fire.
+    </p>
+  </div>
+
+  <div class="cols">
+    <nav class="rail" aria-label="Prototype variants">
+      <span class="railLabel">Variant</span>
+      <div id="rail"></div>
+    </nav>
+
+    <div class="stage">
+      <section class="card">
+        <div class="cardHead">
+          <span class="cardTitle" id="stageTitle">Task line</span>
+          <span class="cardHint" id="stageHint"></span>
+        </div>
+
+        <div class="app">
+          <div class="appPanel">
+            <h2 class="noteTitle">Ops weekly — 6 Aug</h2>
+            <p class="noteMeta">Meeting note · Google Calendar</p>
+
+            <div class="agenda" role="group" aria-label="Agenda">
+              <div class="agHead">
+                <span class="agLabel">Agenda</span>
+                <span class="agCoverage" id="coverage">0 / 3</span>
+              </div>
+              <ul class="agItems" id="agItems"></ul>
+            </div>
+
+            <div class="divider"></div>
+            <span class="bodyLabel">Notes</span>
+            <div class="body" id="noteBody"></div>
+          </div>
+        </div>
+
+        <div class="stress">
+          <span class="stressLabel">Stress test</span>
+          <button class="sBtn" type="button" data-stress="renameHeading">Reword it in the body</button>
+          <button class="sBtn" type="button" data-stress="renameItem">Reword it in the agenda</button>
+          <button class="sBtn" type="button" data-stress="deleteBody">Delete it from the body</button>
+          <button class="sBtn reset" type="button" data-stress="reset">Reset</button>
+        </div>
+      </section>
+
+      <div class="panels">
+        <section class="card">
+          <div class="cardHead">
+            <span class="cardTitle">Persisted note body</span>
+            <span class="cardHint">the markdown actually stored</span>
+          </div>
+          <div class="panelBody"><pre class="mono" id="md"></pre></div>
+        </section>
+
+        <section class="card">
+          <div class="cardHead">
+            <span class="cardTitle">Events appended</span>
+            <span class="cardHint">newest first</span>
+          </div>
+          <div class="panelBody">
+            <ul class="log" id="log"></ul>
+            <p class="empty" id="logEmpty">Nothing yet — tick something.</p>
+          </div>
+        </section>
+      </div>
+
+      <section class="card">
+        <div class="cardHead"><span class="cardTitle">Where this variant lands</span></div>
+        <div class="verdict" id="verdict"></div>
+      </section>
+    </div>
+  </div>
+
+  <section class="compare">
+    <h2>All five, side by side</h2>
+    <div class="tableWrap">
+      <table>
+        <thead>
+          <tr>
+            <th scope="col">Variant</th>
+            <th scope="col">Ticked state owned by</th>
+            <th scope="col">Survives rewording</th>
+            <th scope="col">Body markdown stays clean</th>
+            <th scope="col">Tick from body</th>
+            <th scope="col">Build cost</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <th scope="row">Task line</th>
+            <td>agenda events</td>
+            <td><span class="y">yes</span> — id token</td>
+            <td><span class="m">token in the line</span></td>
+            <td><span class="y">yes</span></td>
+            <td>medium — reuses 46-B task lists</td>
+          </tr>
+          <tr>
+            <th scope="row">Linked heading</th>
+            <td>agenda events</td>
+            <td><span class="y">yes</span> — id token</td>
+            <td><span class="m">token on the heading</span></td>
+            <td><span class="y">yes</span></td>
+            <td>medium — custom heading attribute</td>
+          </tr>
+          <tr>
+            <th scope="row">Loose&nbsp;✓</th>
+            <td>the markdown</td>
+            <td><span class="y">n/a</span> — nothing to link</td>
+            <td><span class="y">yes</span> — plain <code>~~ ~~</code></td>
+            <td><span class="y">yes</span></td>
+            <td>low — restores deleted 43-E code</td>
+          </tr>
+          <tr>
+            <th scope="row">Name match</th>
+            <td>agenda events</td>
+            <td><span class="n">no</span> — link breaks silently</td>
+            <td><span class="y">yes</span> — nothing added</td>
+            <td><span class="y">yes</span></td>
+            <td>low — text comparison only</td>
+          </tr>
+          <tr>
+            <th scope="row">Inline chip</th>
+            <td>agenda events</td>
+            <td><span class="y">yes</span> — id token</td>
+            <td><span class="m">token mid-sentence</span></td>
+            <td><span class="y">yes</span></td>
+            <td>high — custom node + node view</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="cap">
+      Build cost assumes the header agenda strip (43-A–D) stays exactly as shipped. Only <b>Loose&nbsp;✓</b>
+      leaves two independent counts that can disagree — it is the mechanism 43-E deliberately removed.
+    </p>
+  </section>
+</div>
+
+<script>
+(() => {
+  "use strict";
+
+  const VARIANTS = [
+    {
+      id: "task",
+      name: "Task line",
+      gloss: "The agenda item lives in the body as a GFM task list line.",
+      owner: "events",
+      hint: "Tick the checkbox in the body, or the one in the header — same item.",
+      linked: "token",
+      verdict: [
+        ["good", "Reuses the task-list checkbox already shipped in 46-B — no new interaction to learn."],
+        ["good", "Reword either side: the link is the id, not the words."],
+        ["cost", "A hidden <code>&lt;!--a:id--&gt;</code> rides in the stored markdown. It must be stripped before the analysis prompt and the search index, the way image keys already are in <code>noteImages.ts</code>."],
+        ["risk", "Ordinary task lists and agenda items now look identical in the body. Only the token tells them apart."]
+      ]
+    },
+    {
+      id: "heading",
+      name: "Linked heading",
+      gloss: "A heading that is an agenda item gets a checkbox in the gutter.",
+      owner: "events",
+      hint: "Only headings linked to an agenda item get a checkbox. Plain headings stay plain.",
+      linked: "token",
+      verdict: [
+        ["good", "Closest to the original 7-B mental model — a topic is a heading — without reviving the conflation, since only linked headings get a box."],
+        ["good", "Reword either side: the link is the id."],
+        ["cost", "Markdown has no attribute syntax for headings, so the id rides as a trailing comment on the heading line."],
+        ["cost", "Needs a way to link an existing heading to an item, and to create one from a heading."]
+      ]
+    },
+    {
+      id: "loose",
+      name: "Loose ✓",
+      gloss: "Restores the floating ✓ that 43-E deleted. Pure strikethrough.",
+      owner: "markdown",
+      hint: "The ✓ strikes the heading text. The header agenda is a separate, unrelated list.",
+      linked: "none",
+      verdict: [
+        ["good", "Cheapest by far — <code>headingDiscussed.ts</code>, its tests and the E2E journey are recoverable from the 43-E commit."],
+        ["good", "Body stays plain markdown. Exports and the analysis prompt see nothing unusual."],
+        ["risk", "Two independent counts. Strike every heading and the header still reads <b>0 / 3</b> — the exact ambiguity 43-E removed."],
+        ["risk", "Ticking writes <code>ContentEdited</code>, so a tick is a body edit and collides with concurrent typing."]
+      ]
+    },
+    {
+      id: "match",
+      name: "Name match",
+      gloss: "A heading whose text equals an item's text is that item.",
+      owner: "events",
+      hint: "Nothing extra is stored — the link is the words themselves.",
+      linked: "text",
+      verdict: [
+        ["good", "Nothing added to the markdown, and nothing new to teach the user."],
+        ["risk", "Reword either side and the link is gone with no warning — try the first two stress tests."],
+        ["risk", "Two headings with the same text are indistinguishable; so are two agenda items."],
+        ["cost", "Needs a normalisation rule (case, punctuation, trailing whitespace) that will still surprise people."]
+      ]
+    },
+    {
+      id: "chip",
+      name: "Inline chip",
+      gloss: "A slash command drops a tickable chip anywhere in the prose.",
+      owner: "events",
+      hint: "Type /agenda mid-sentence. The chip is not tied to headings at all.",
+      linked: "token",
+      verdict: [
+        ["good", "The only variant that frees an agenda point from the document outline — it can sit inside a paragraph."],
+        ["good", "Reword either side: the chip renders its text from the agenda, so it cannot drift."],
+        ["cost", "A custom atomic node plus a node view, an input rule and a markdown serialiser — the largest editor change of the five."],
+        ["risk", "A chip is invisible in any plain-markdown view (export, the analysis prompt), where it degrades to a bare token."]
+      ]
+    }
+  ];
+
+  const SEED = () => ({
+    items: [
+      { id: "a1", text: "Budget (Q3)",       discussed: false },
+      { id: "a2", text: "Hiring plan",       discussed: false },
+      { id: "a3", text: "On-call rotation",  discussed: false }
+    ],
+    blocks: [
+      { kind: "h",    itemId: "a1", text: "Budget (Q3)",      struck: false },
+      { kind: "p",    itemId: null, text: "Cloud spend is tracking 8% over. Rob to pull the breakdown before Friday." },
+      { kind: "h",    itemId: "a2", text: "Hiring plan",      struck: false },
+      { kind: "p",    itemId: null, text: "Two open reqs. Agreed to hold the second until the platform work lands." },
+      { kind: "h",    itemId: "a3", text: "On-call rotation", struck: false },
+      { kind: "p",    itemId: null, text: "Weekend cover is thin in September — revisit once the new starter is through onboarding." },
+      { kind: "h",    itemId: null, text: "Any other business", struck: false }
+    ],
+    log: []
+  });
+
+  let variant = VARIANTS[0];
+  let st = SEED();
+
+  const $ = (id) => document.getElementById(id);
+  const esc = (s) => s.replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
+  const item = (id) => st.items.find((i) => i.id === id) || null;
+  const shortId = (id) => id.replace("a", "7f3c-");
+
+  function log(kind, name, note) {
+    st.log.unshift({ kind, name, note });
+  }
+
+  /* Is a body block currently linked to an agenda item, under this variant's rule? */
+  function linkedItem(b) {
+    if (variant.linked === "none") return null;
+    if (variant.linked === "token") return b.itemId ? item(b.itemId) : null;
+    // text match: compare normalised text, ignoring any link the block was seeded with
+    const norm = (s) => s.trim().toLowerCase().replace(/\s+/g, " ");
+    return st.items.find((i) => norm(i.text) === norm(b.text)) || null;
+  }
+
+  /* ── Actions ── */
+  function setDiscussed(id, next, from) {
+    const it = item(id);
+    if (!it || it.discussed === next) return;
+    it.discussed = next;
+    log("agenda", "AgendaItemDiscussedSet",
+      `{ itemId: "${id}", discussed: ${next} } — from the ${from}. The header count and the body redraw from the same field.`);
+    render();
+  }
+
+  function toggleStrike(idx) {
+    const b = st.blocks[idx];
+    b.struck = !b.struck;
+    log("content", "ContentEdited",
+      `the whole note body is rewritten so "${b.text}" is ${b.struck ? "wrapped in ~~ ~~" : "unwrapped"}. The agenda's own count is untouched.`);
+    render();
+  }
+
+  const STRESS = {
+    renameHeading() {
+      const b = st.blocks.find((x) => x.kind === "h" && x.text === "Budget (Q3)")
+             || st.blocks.find((x) => x.kind === "h" && x.text.startsWith("Budget"));
+      if (!b) return;
+      b.text = "Budget — Q3 forecast";
+      log("content", "ContentEdited", `heading reworded to "Budget — Q3 forecast".`);
+      if (variant.linked === "text") {
+        log("none", "link lost", "Nothing recorded it. The body row is now an orphan and the header count silently ignores it.");
+      } else if (variant.linked === "token") {
+        log("agenda", "(link held)", "The id token is untouched, so the row is still the same agenda item.");
+      }
+      render();
+    },
+    renameItem() {
+      const it = item("a1");
+      it.text = it.text === "Budget (Q3)" ? "Q3 budget review" : "Budget (Q3)";
+      log("agenda", "AgendaItemTextEdited", `{ itemId: "a1", text: "${it.text}" }`);
+      if (variant.linked === "text") {
+        log("none", "link lost", "The heading still says the old wording, so the match no longer fires.");
+      }
+      render();
+    },
+    deleteBody() {
+      const i = st.blocks.findIndex((x) => x.kind === "h" && x.text.startsWith("Budget"));
+      if (i < 0) return;
+      st.blocks.splice(i, 2);
+      log("content", "ContentEdited", "the Budget heading and its paragraph are deleted from the body.");
+      if (variant.linked === "none") {
+        log("none", "state lost", "The strikethrough was the only record that it was covered. It is gone.");
+      } else {
+        log("agenda", "(item survives)", "The agenda item is separate data, so it stays in the header — untouched and still tickable.");
+      }
+      render();
+    },
+    reset() { st = SEED(); render(); }
+  };
+
+  /* ── Render ── */
+  function renderRail() {
+    $("rail").innerHTML = VARIANTS.map((v) => `
+      <button class="vBtn" type="button" data-v="${v.id}" aria-pressed="${v.id === variant.id}">
+        <span class="vName">${v.name}</span>
+        <span class="vGloss">${v.gloss}</span>
+        <span class="owner ${v.owner}">${v.owner === "events" ? "agenda events" : "markdown"}</span>
+      </button>`).join("");
+  }
+
+  function renderAgenda() {
+    const done = st.items.filter((i) => i.discussed).length;
+    $("coverage").textContent = `${done} / ${st.items.length}`;
+    $("coverage").setAttribute("aria-label", `${done} of ${st.items.length} agenda items covered`);
+    $("agItems").innerHTML = st.items.map((i) => `
+      <li class="agItem ${i.discussed ? "done" : ""}">
+        <input type="checkbox" ${i.discussed ? "checked" : ""} data-tick="${i.id}"
+               aria-label="Mark &quot;${esc(i.text)}&quot; discussed" />
+        <span class="t">${esc(i.text)}</span>
+      </li>`).join("");
+  }
+
+  function renderBody() {
+    $("noteBody").innerHTML = st.blocks.map((b, idx) => {
+      const it = linkedItem(b);
+      const orphaned = variant.linked === "text" && b.itemId && !it;
+
+      if (variant.id === "task" && it) {
+        return `<div class="blk">
+          <input class="bodyCheck taskCheck" type="checkbox" ${it.discussed ? "checked" : ""}
+                 data-tick="${it.id}" data-from="body" aria-label="Mark &quot;${esc(it.text)}&quot; discussed" />
+          <p><span class="${it.discussed ? "struck" : ""}">${esc(b.text)}</span></p>
+        </div>`;
+      }
+      if (variant.id === "heading" && b.kind === "h" && it) {
+        return `<div class="blk">
+          <input class="bodyCheck" type="checkbox" ${it.discussed ? "checked" : ""}
+                 data-tick="${it.id}" data-from="body" aria-label="Mark &quot;${esc(it.text)}&quot; discussed" />
+          <h3><span class="${it.discussed ? "struck" : ""}">${esc(b.text)}</span></h3>
+        </div>`;
+      }
+      if (variant.id === "match" && b.kind === "h") {
+        const box = it
+          ? `<input class="bodyCheck" type="checkbox" ${it.discussed ? "checked" : ""} data-tick="${it.id}"
+                    data-from="body" aria-label="Mark &quot;${esc(it.text)}&quot; discussed" />`
+          : `<span class="gutterSlot"></span>`;
+        return `<div class="blk">${box}
+          <h3><span class="${it && it.discussed ? "struck" : ""}">${esc(b.text)}</span>${
+            orphaned ? `<span class="orphan">link lost</span>` : ""
+          }</h3>
+        </div>`;
+      }
+      if (variant.id === "loose" && b.kind === "h") {
+        return `<div class="blk">
+          <button class="tickBtn" type="button" data-strike="${idx}"
+                  aria-label="Mark &quot;${esc(b.text)}&quot; discussed">✓</button>
+          <h3><span class="${b.struck ? "struck" : ""}">${esc(b.text)}</span></h3>
+        </div>`;
+      }
+      if (variant.id === "chip" && b.kind === "p" && it === null && b.itemId === null) {
+        // plain paragraph, no chip
+      }
+      if (variant.id === "chip" && b.kind === "h" && it) {
+        // in the chip variant the agenda point sits inside the prose, not on the heading
+        return `<div class="blk"><h3>${esc(b.text)}</h3></div>`;
+      }
+
+      if (b.kind === "h") return `<div class="blk"><h3>${esc(b.text)}</h3></div>`;
+      return `<div class="blk"><p>${esc(b.text)}</p></div>`;
+    }).join("") + (variant.id === "chip" ? chipParagraph() : "");
+  }
+
+  function chipParagraph() {
+    const chips = st.items.map((i) => `
+      <button class="chip ${i.discussed ? "done" : ""}" type="button" data-tick="${i.id}" data-from="body"
+              aria-pressed="${i.discussed}" aria-label="Mark &quot;${esc(i.text)}&quot; discussed">
+        <span aria-hidden="true">${i.discussed ? "✓" : "○"}</span><span class="ct">${esc(i.text)}</span>
+      </button>`).join(" ");
+    return `<div class="blk"><p>Carried over from last week: ${chips} — Rob to confirm the first two before Friday.</p></div>`;
+  }
+
+  function renderMarkdown() {
+    const tok = (id) => `<span class="tok">&lt;!--a:${shortId(id)}--&gt;</span>`;
+    let lines = [];
+
+    if (variant.id === "chip") {
+      lines = st.blocks.map((b) => b.kind === "h" ? `## ${esc(b.text)}` : esc(b.text));
+      lines.push("Carried over from last week: " + st.items.map((i) => tok(i.id)).join(" ") +
+                 " — Rob to confirm the first two before Friday.");
+    } else {
+      lines = st.blocks.map((b) => {
+        const it = linkedItem(b);
+        if (variant.id === "task" && it)                 return `- [${it.discussed ? "x" : " "}] ${esc(b.text)} ${tok(it.id)}`;
+        if (variant.id === "heading" && b.kind === "h" && it) return `## ${esc(b.text)} ${tok(it.id)}`;
+        if (variant.id === "loose" && b.kind === "h" && b.struck) return `## ~~${esc(b.text)}~~`;
+        return b.kind === "h" ? `## ${esc(b.text)}` : esc(b.text);
+      });
+    }
+    $("md").innerHTML = lines.join("\n\n");
+  }
+
+  function renderLog() {
+    const has = st.log.length > 0;
+    $("logEmpty").hidden = has;
+    $("log").innerHTML = st.log.slice(0, 8).map((e) => `
+      <li><span class="evt ${e.kind}">${esc(e.name)}</span><span class="evtNote">${e.note}</span></li>`).join("");
+  }
+
+  function renderVerdict() {
+    $("verdict").innerHTML = variant.verdict.map(([k, t]) => `
+      <div class="vRow">
+        <span class="vKey ${k}">${k === "good" ? "strength" : k === "cost" ? "cost" : "risk"}</span>
+        <span class="vTxt">${t}</span>
+      </div>`).join("");
+  }
+
+  function render() {
+    $("stageTitle").textContent = variant.name;
+    $("stageHint").textContent = variant.hint;
+    renderRail(); renderAgenda(); renderBody(); renderMarkdown(); renderLog(); renderVerdict();
+  }
+
+  /* ── Events ── */
+  document.addEventListener("click", (e) => {
+    const v = e.target.closest("[data-v]");
+    if (v) { variant = VARIANTS.find((x) => x.id === v.dataset.v); st = SEED(); render(); return; }
+
+    const s = e.target.closest("[data-stress]");
+    if (s) { STRESS[s.dataset.stress](); return; }
+
+    const strike = e.target.closest("[data-strike]");
+    if (strike) { toggleStrike(Number(strike.dataset.strike)); return; }
+
+    const chip = e.target.closest("button[data-tick]");
+    if (chip) { const it = item(chip.dataset.tick); setDiscussed(it.id, !it.discussed, "body"); }
+  });
+
+  document.addEventListener("change", (e) => {
+    const box = e.target.closest("input[data-tick]");
+    if (box) setDiscussed(box.dataset.tick, box.checked, box.dataset.from === "body" ? "body" : "header agenda");
+  });
+
+  render();
+})();
+</script>
