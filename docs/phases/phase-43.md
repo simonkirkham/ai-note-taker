@@ -1,29 +1,164 @@
-# Phase 43 — Meeting agenda (topics to discuss, separate from the note body)
+# Phase 43 — Meeting agenda (topics to discuss, separate from the note body) _(Done)_
 
-**Goal:** give each note a first-class **agenda** — a short checklist of things to discuss that the owner adds before/during a meeting and ticks off as covered. It lives in the note **header** (expanded, collapsible), costs **no side space**, and is stored **separately** from the free-form markdown note body. This decouples "a topic to discuss" from "a heading in the notes" — the conflation behind the old heading-✓ (BUG-37) — so the body stays free-form and untouched.
+**Goal:** give each note a short checklist of things you need to discuss, sitting in the note header, that you tick off as you cover them.
 
 ## Summary
 
-| Slice | Summary | Status | Depends on |
-|-------|---------|--------|------------|
-| 43-A | Add an agenda item to a note; it persists and shows in the header (locks the event model on one real call) | Done | — |
-| 43-B | Tick / untick an item; header shows "X / Y covered" | Done | 43-A |
-| 43-C | Edit an item's text; remove an item | Done | 43-A |
-| 43-D | Collapsible header agenda strip (expanded default, collapses to one line + what's left); Stylist polish | Done | 43-A, 43-B |
-| 43-E | Retire the legacy heading-✓ "mark as discussed" (now redundant) | Done | 43-D |
+| Slice | What the user gets | Status | Depends on |
+|-------|--------------------|--------|------------|
+| 43-A | Jot a topic you need to discuss onto a note and have it stick | Done _(#368)_ | — |
+| 43-B | Tick a topic off as it's covered, and see how much is left ("2 / 5") | Done _(#373)_ | 43-A |
+| 43-C | Fix the wording of a topic, or drop one that's no longer relevant | Done _(#374)_ | 43-A |
+| 43-D | Fold the agenda away to a single line when you want the note to be the focus | Done _(#375)_ | 43-A, 43-B |
+| 43-E | One clear way to track topics — the old, ambiguous per-heading ✓ is gone | Done _(#376)_ | 43-D |
 
-Reorder (drag) is deferred — not needed to ship value; item order is capture order for now. 43-A is the thin vertical that proves the whole pipe and locks the event-model shape; 43-B/C extend the same model; 43-D is UI polish; 43-E removes the superseded mechanism.
+43-A is the thin vertical that proves the whole pipe; 43-B/C extend it; 43-D is polish; 43-E removes the superseded mechanism. **Reorder (drag) is deferred** — order is capture order for now.
 
-**Validated by prototype:** branch `prototype/topics-explore` — gallery `topics-prototypes/index.html`; final direction **`v7-agenda-in-header.html`** (reached via 9 Round-1 explorations → Checkline refinements → free-form-note + separate-agenda rounds). Real implementation starts from this doc, not the prototype code.
+**Validated by prototype:** branch `prototype/topics-explore`, gallery `topics-prototypes/index.html`; final direction `v7-agenda-in-header.html`, reached via 9 Round-1 explorations → Checkline refinements → free-form-note + separate-agenda rounds.
 
-**Locked decisions (from the prototype iteration):**
+## Slices
+
+### 43-A — Jot down a topic to discuss
+
+**User value:** before or during a meeting, capture a thing you need to raise onto the note in seconds — without interrupting your notes to do it.
+
+**How it works:**
+- The agenda sits in the note **header**, next to the title, expanded and ready.
+- A note with no agenda yet still shows the strip, empty, with an obvious way to add the first item.
+- A new item appears the instant you add it, before the server confirms.
+- It is still there when you come back to the note.
+- The note body is untouched — the agenda is its own thing, not text in your notes.
+
+**Scenarios (GWT):**
+```
+Scenario: Add the first agenda item
+  Given a note
+  When  I add an agenda item "Budget (Q3)"
+  Then  it appears in the note header straight away
+  And   it is still there when I reload the note
+
+Scenario: A note with no agenda yet
+  Given a note I have not added any topics to
+  Then  the header shows an empty, expanded agenda with a way to add one
+```
+
+### 43-B — Tick topics off as you cover them
+
+**User value:** you can see at a glance how much of the agenda is left, so nothing gets missed and you know when you're done.
+
+**How it works:**
+- Tick an item the moment it's covered; untick it if you tick the wrong one.
+- The header shows a running "X / Y covered" count.
+- Items are simply open or ticked — there's no in-between state to reason about.
+- Ticking is optimistic and survives a reload.
+
+**Scenarios (GWT):**
+```
+Scenario: Tick a topic off
+  Given an agenda item "Budget (Q3)"
+  When  I tick it
+  Then  it shows as ticked
+  And   the header count goes up by one
+
+Scenario: Untick a topic
+  Given a ticked agenda item
+  When  I untick it
+  Then  it is open again and the count goes down by one
+```
+
+### 43-C — Fix or drop a topic
+
+**User value:** keep the list accurate — correct a typo, reword a topic, or remove one that stopped being relevant.
+
+**How it works:**
+- Click a topic's text to edit it in place; **Enter** or clicking away saves, **Esc** cancels.
+- Leaving it blank, or unchanged, saves nothing.
+- A **×** removes an item; it stays gone after a reload.
+- Removing a ticked item updates the "X / Y" count.
+
+**Scenarios (GWT):**
+```
+Scenario: Reword a topic
+  Given an agenda item
+  When  I edit its text and press Enter
+  Then  the new text is shown and survives a reload
+
+Scenario: Cancel an edit
+  Given I am editing an agenda item's text
+  When  I press Esc
+  Then  the original text is kept
+
+Scenario: Remove a topic
+  Given an agenda item
+  When  I remove it
+  Then  it disappears and is still gone after a reload
+
+Scenario: Removing a ticked topic updates the count
+  Given a ticked agenda item on a note showing "2 / 5 covered"
+  When  I remove it
+  Then  the count reflects the shorter list
+```
+
+### 43-D — Fold the agenda away
+
+**User value:** the agenda stays glanceable while you write, and folds to a single line when you want the note to have your full attention — it never steals note width or a side column.
+
+**How it works:**
+- Expanded by default; a caret collapses it to one line — "Agenda · 2 / 5" plus a peek at what's left, or "all covered ✓".
+- The toggle only appears once there is something to collapse.
+- The note body stays full-width in **both** states.
+
+**Scenarios (GWT):**
+```
+Scenario: The agenda is open by default
+  Given a note with agenda items
+  Then  the agenda is expanded
+
+Scenario: Collapse the agenda
+  Given an expanded agenda
+  When  I collapse it
+  Then  it shows one line with the coverage count and what is left
+  And   the note body is still full-width
+
+Scenario: Nothing to collapse
+  Given a note with no agenda items
+  Then  no collapse toggle is shown
+```
+
+### 43-E — One way to track topics
+
+**User value:** the old per-heading ✓ confused "is this a topic?" with "is this a heading?" — and had stopped working ([BUG-37](phase-bugs.md#bug-37)). Removing it leaves one clear, predictable way to track what you've discussed.
+
+**How it works:**
+- The floating ✓ on headings is gone, along with its keyboard-shortcut entry.
+- Notes are unaffected — the editor's headings, bold and lists all behave exactly as before.
+- Old notes whose headings were struck through keep that text as ordinary formatting; nothing is migrated or lost.
+
+**Scenarios (GWT):**
+```
+Scenario: The heading tick is gone
+  Given the agenda now owns "topics to discuss"
+  Then  no floating ✓ appears on a heading
+
+Scenario: Existing struck-through headings are untouched
+  Given a note whose heading was struck through under the old mechanism
+  When  I open it
+  Then  the heading still shows as struck through, as ordinary formatting
+```
+
+---
+
+## Build notes _(implementation — skip when reviewing)_
+
+### Locked decisions (from the prototype iteration)
+
 1. Agenda is **separate data**, not encoded in the note markdown.
 2. Lives in the note **header area** (with the title), **expanded** by default, collapsible to one line.
 3. Items are **2-state**: open or ticked (no intermediate "topic" state).
 4. Operations: add, tick/untick, edit text, remove. **Reorder later.**
 5. **No side space** — tags/actions keep theirs; the note body stays full-width and free-form.
 
-## Event model
+### Event model
 
 **Decided in 43-A:** agenda items are **events on the Note stream** (per-note, lightweight, like tags; handled by `NoteCommandHandler`), and the read model is **composed onto `NoteDetailView`** (a new `Agenda` field, folded in `NoteDetailProjection`) — **not** a dedicated aggregate or a dedicated `AgendaView` store/table. Rationale: agenda is note-scoped, always read with the note, never queried across notes, so a dedicated table + backfill would be over-engineering; composing also sidesteps the async-projection authz/lag pitfalls (BUG-30) and is deploy-time neutral (no new CDK resource, no backfill). New events — purely additive, never edit a shipped shape:
 
@@ -39,20 +174,8 @@ Reorder (drag) is deferred — not needed to ship value; item order is capture o
 - Surfaced on `GET /notes/{id}` (composed `agenda` array). Add route: `POST /notes/{id}/agenda-items`.
 - **Optimistic UI** for every mutation (add/tick/edit/remove) — mandatory acceptance criterion on every slice with frontend changes.
 
-## Slices
+### Slice 43-A — Add an agenda item
 
-### 43-A — Add an agenda item
-**Value:** before (or during) a meeting, jot a thing you need to discuss onto the note and have it stick — your first real agenda item, captured in seconds without touching the notes.
-```
-Given a note
-When  the owner adds an agenda item "Budget (Q3)"
-Then  AgendaItemAdded is appended and the item appears in the note header agenda
-And   it persists across reload (AgendaView)
-
-Given a note with no agenda
-Then  the header shows an empty, expanded agenda with an "add item" affordance
-```
-Acceptance:
 - [x] BDD spec first; event-model decision (note-stream events, composed onto `NoteDetailView`) recorded in the spec.
 - [x] `AgendaItemAdded` + read model composed onto `NoteDetailView` (folded in `NoteDetailProjection`; rebuilds via the existing NoteDetail path — no dedicated `AgendaView` store/table, by the decision above).
 - [x] `Agenda` field mapped in InMemory **and** DynamoDb note-detail stores + an `EventStore.Integration` round-trip test.
@@ -61,74 +184,52 @@ Acceptance:
 
 _(Done — PR #368, deploy #671 / run 28468842329, live. See [phase-43a-agenda-add](../learnings/phase-43a-agenda-add.md).)_
 
-### 43-B — Tick / untick an item
-**Value:** tick a topic off the moment it's covered and see at a glance how much of the agenda is left ("2 / 5") — so nothing gets missed and you know when you're done.
-```
-Given an agenda item "Budget (Q3)"
-When  the owner ticks it
-Then  AgendaItemDiscussedSet(discussed=true) is appended; the item shows ticked
-And   the header shows "1 / N covered"
-When  the owner unticks it
-Then  it returns to open and the count decrements
-```
-Acceptance:
+### Slice 43-B — Tick / untick an item
+
 - [x] 2-state only (open/ticked); optimistic; persists across reload. `AgendaItemDiscussedSet` is idempotent (setting the current state is a no-op); unknown item → 404.
 - [x] Coverage count derives from the composed `NoteDetailView.Agenda` (done / total), shown as a "X / Y" pill in the header (aria-label "X of Y agenda items covered").
 
 _(Done — PR #373, deploy run 28474505369 (carried with #372 after an E2E cold-start flake re-run), live.)_
 
-### 43-C — Edit text + remove
-**Value:** fix a typo in an agenda item, reword it, or drop one that's no longer relevant — keep the list tidy and accurate.
-```
-When  the owner edits an item's text   → AgendaItemTextEdited; new text persists
-When  the owner removes an item         → AgendaItemRemoved; it disappears and stays gone on reload
-```
-Acceptance:
+### Slice 43-C — Edit text + remove
+
 - [x] Inline edit (click text → input; Enter/blur commits, Esc cancels, blank/unchanged sends nothing) + remove (×), both optimistic. Edit blank → 400; unknown item → 404; remove 404 accepted as no-op.
 - [x] Removing a ticked item updates the (derived) coverage count.
 - [x] Position now derives from a **monotonic add-counter** so an add after a remove never reuses a surviving item's position (the 43-B forward-flag).
 
 _(Done — PR #374, deploy run 28477668516, live. Esc-cancel guard mirrors `ActionsSection`'s `editingRef` — a real-browser blur-on-unmount bug jsdom can't catch.)_
 
-### 43-D — Collapsible header agenda strip + polish
-**Value:** the agenda stays glanceable at the top of the note while you write, and folds away to a single "Agenda · 2/5" line when you want the note to be the focus — never stealing note space or a side column.
-```
-Given a note's header agenda
-Then  it is expanded by default
-When  the owner collapses it
-Then  it shows one line: "Agenda · X / Y" + the remaining items
-And   the note body stays full-width (no side space) in both states
-```
-Acceptance:
+### Slice 43-D — Collapsible header agenda strip + polish
+
 - [x] Expanded by default; a caret/label toggle collapses to one line (coverage pill + remaining-items peek, or "all covered ✓"); toggle only shows when there are items. `aria-expanded`/`aria-controls`.
 - [x] Stylist pass (`ui-ux-pro-max` vs `design-system/ai-note-taker/MASTER.md`); focus-visible rings match CommandBar; caret reduced-motion handled globally; token-based.
 - [x] Full-width in both states; **no** side-panel column; tags/actions (CommandBar) layout unaffected; new-note tab order unchanged.
 
 _(Done — PR #375, deploy run 28479345632, live. Frontend-only; no events/backend/CDK.)_
 
-### 43-E — Retire the legacy heading-✓ "mark as discussed"
-**Value:** one clear, predictable way to track topics — the old per-heading ✓ that confused "is this a topic?" with "is this a heading?" (and broke in BUG-37) is gone, so the feature is no longer ambiguous.
-```
-Given the agenda now owns "topics to discuss"
-Then  the floating ✓ on headings is removed (markHeadingDiscussed + the floating control)
-And   existing notes whose headings contain ~~strikethrough~~ keep that text as ordinary markdown (no migration)
-```
-Acceptance:
+### Slice 43-E — Retire the legacy heading-✓ "mark as discussed"
+
 - [x] Removed the heading-✓ control (floating ✓ + `buttonY`/`updateButton`/`containerRef` wiring + `.discussedButton` CSS) + `web/src/lib/headingDiscussed.ts` + its unit tests + the `DiscussedTickJourney` E2E. ShortcutsPanel ✓ row removed; headings relabelled plain.
 - [x] No regression to the free-form editor (headings/bold/lists come from StarterKit, untouched). Existing `~~strikethrough~~` headings stay as ordinary markdown (no migration).
 - [x] Learnings: [phase-43e-retire-heading-tick](../learnings/phase-43e-retire-heading-tick.md) — heading-as-topic (Phase 7-B → BUG-37/37b) superseded by the separate agenda.
 
 _(Done — PR #376, deploy run 28480430234, live. **Phase 43 complete.**)_
 
-## Observability (Scout brief)
+### Observability
 
-Run `observability-brief` to finalise. Silent failure modes to instrument:
-- An add/tick that **200s but doesn't persist** — projection not updated, or a new `AgendaView` field unmapped in `DynamoDbAgendaStore` (the in-memory double hides it). → round-trip test + a structured log on each agenda mutation (`noteId`, `itemId`, op).
-- **Agenda missing on reload** — projection lag or not composed into the note read. → inline projection update; compose/gate at read.
+Silent failure modes considered at Scout time:
+
+- An add/tick that **200s but doesn't persist** — projection not updated, or a new field unmapped in `DynamoDbNoteDetailStore` (the in-memory double hides it). → round-trip test + a structured log on each agenda mutation (`noteId`, `itemId`, op).
+- **Agenda missing on reload** — projector lag, or not composed into the note read. → composed onto `NoteDetailView` and gated at read by the consistency token.
 - **Optimistic update masks a failed write** — reconcile on error; surface a toast.
 - ~~New projection ships **empty** — backfill after the 43-A deploy~~ — **N/A** (43-A composed onto `NoteDetailView`, no new table; nothing to backfill).
 
-## Out of scope / later
+### Deploy-time impact
+
+**Neutral.** No new CDK resource, no new table, no projection backfill — additive events on an existing stream folded into an existing view.
+
+### Out of scope / later
+
 - Reorder (drag) agenda items.
 - Seeding the agenda from the calendar event or a template.
 - Carrying unfinished agenda items to the next occurrence's note.

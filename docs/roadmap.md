@@ -541,3 +541,17 @@ Possible user-facing features not yet committed to a numbered phase. When one is
 Technical, infrastructure, and developer-experience items to address in the future (refactors, upgrades, CI/CD, hardening). **21 open or partly-done.** The ones most likely to bite next: move `WorkspaceList`/`NoteCardList` off full-table `Scan` to a per-user/workspace GSI (**TI-20**/**TI-33**, which also bounds the MCP per-call scans in **TI-55**) · auto-backfill a new projection on deploy (**TI-17**) · wire `TodoList` into `ProjectionRebuildHandler` so it is genuinely rebuildable (**TI-57**) · run the desktop Playwright specs in CI, where today they run nowhere (**TI-53**) · make MCP tool failures diagnosable (**TI-54**) · the Command/Query Lambda naming audit, now actionable since 27-D shipped the split (**TI-34**). The [Summary table](technical-improvements.md#summary) is the full index with a status per row — scan its Status column rather than this paragraph. Phase 27 is complete (only optional RYW-D, an SSE poke channel, remains).
 
 → [docs/technical-improvements.md](technical-improvements.md)
+
+## Reference docs
+
+Not work trackers — the durable descriptions of how the system is built and why.
+
+| Doc | What it holds |
+|-----|---------------|
+| [docs/adr/README.md](adr/README.md) | **The ADR index** — every architecture decision record, its status, and where it bites |
+| [docs/architecture.md](architecture.md) | How the system is built *now* (ADRs say *why*) |
+| [docs/event-model.md](event-model.md) | Commands and events per aggregate — updated **before** any new command is built |
+| [docs/event-schemas.md](event-schemas.md) | Wire shapes for events |
+| [docs/view-schemas.md](view-schemas.md) | Wire shapes for read projections |
+| [docs/observability.md](observability.md) | Runbook — where to see errors, latency, a single request, a frontend crash |
+| [docs/goals.md](goals.md) | What this project is for |
