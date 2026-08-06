@@ -211,6 +211,7 @@ public sealed class McpConnectListTests(ApiFactory factory) : IClassFixture<ApiF
         var payload = ParsePayload(result);
         Assert.Equal(JsonValueKind.Null, payload.GetProperty("transcriptText").ValueKind);
         Assert.False(payload.GetProperty("transcriptIsDiarized").GetBoolean());
+        Assert.False(payload.GetProperty("hasTranscript").GetBoolean());
     }
 
     [Fact]
@@ -230,6 +231,9 @@ public sealed class McpConnectListTests(ApiFactory factory) : IClassFixture<ApiF
         Assert.Equal(JsonValueKind.Null, payload.GetProperty("transcriptText").ValueKind);
         Assert.DoesNotContain("welcome everyone", RawText(result));
         Assert.Contains("my own notes", payload.GetProperty("content").GetString());
+        // The whole point of opting out is to decide later whether the big call is worth it,
+        // so the cheap response must still say a transcript is there to come back for.
+        Assert.True(payload.GetProperty("hasTranscript").GetBoolean());
     }
 
     [Fact]
