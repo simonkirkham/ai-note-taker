@@ -181,6 +181,39 @@ public sealed class McpConnectListTests(ApiFactory factory) : IClassFixture<ApiF
     }
 
     [Fact]
+    public async Task GetNote_ExposesTranscript()
+    {
+        var noteId = new Guid("dddddddd-0000-0000-0000-000000000014");
+        SeedDetail(Owner, WorkspaceId.DefaultValue, noteId, "Recorded standup", "my own notes",
+            transcriptText: "Speaker 1: welcome everyone to the standup", transcriptIsDiarized: true);
+
+        var client = _factory.CreateUnauthenticatedClient();
+        var result = await CallToolAsync(client, "get_note",
+            new { workspaceId = WorkspaceId.DefaultValue, noteId = noteId.ToString() }, McpTestTokens.Valid(Owner));
+
+        Assert.False(IsToolError(result));
+        var payload = ParsePayload(result);
+        Assert.Contains("welcome everyone", payload.GetProperty("transcriptText").GetString());
+        Assert.True(payload.GetProperty("transcriptIsDiarized").GetBoolean());
+    }
+
+    [Fact]
+    public async Task GetNote_WithoutTranscript_ReturnsNullTranscript()
+    {
+        var noteId = new Guid("dddddddd-0000-0000-0000-000000000015");
+        SeedDetail(Owner, WorkspaceId.DefaultValue, noteId, "Typed only", "no meeting was recorded");
+
+        var client = _factory.CreateUnauthenticatedClient();
+        var result = await CallToolAsync(client, "get_note",
+            new { workspaceId = WorkspaceId.DefaultValue, noteId = noteId.ToString() }, McpTestTokens.Valid(Owner));
+
+        Assert.False(IsToolError(result));
+        var payload = ParsePayload(result);
+        Assert.Equal(JsonValueKind.Null, payload.GetProperty("transcriptText").ValueKind);
+        Assert.False(payload.GetProperty("transcriptIsDiarized").GetBoolean());
+    }
+
+    [Fact]
     public async Task SearchNotes_HappyPath_ReturnsRankedMatch()
     {
         var noteId = new Guid("eeeeeeee-0000-0000-0000-000000000005");
@@ -306,12 +339,14 @@ public sealed class McpConnectListTests(ApiFactory factory) : IClassFixture<ApiF
             Tags: null, FolderId: null, UserId: userId, WorkspaceId: workspaceId)).GetAwaiter().GetResult();
     }
 
-    private void SeedDetail(string userId, string? workspaceId, Guid noteId, string title, string content)
+    private void SeedDetail(string userId, string? workspaceId, Guid noteId, string title, string content,
+        string? transcriptText = null, bool transcriptIsDiarized = false)
     {
         var store = _factory.Services.GetRequiredService<INoteDetailStore>();
         store.UpsertAsync(new NoteDetailView(
             new Domain.Notes.NoteId(noteId), title, content, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow,
-            UserId: userId, WorkspaceId: workspaceId)).GetAwaiter().GetResult();
+            UserId: userId, WorkspaceId: workspaceId,
+            TranscriptText: transcriptText, TranscriptIsDiarized: transcriptIsDiarized)).GetAwaiter().GetResult();
     }
 
     private void SeedSearchView(string userId, string? workspaceId, Guid noteId, string title, string body)

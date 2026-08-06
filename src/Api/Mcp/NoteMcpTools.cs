@@ -85,7 +85,7 @@ public sealed class NoteMcpTools(
     }
 
     [McpServerTool(Name = "get_note", ReadOnly = true)]
-    [Description("Get a note's full content plus its action items. Rejects a note that is not in the given workspace.")]
+    [Description("Get a note's full content, meeting transcript (if any), and its action items. Rejects a note that is not in the given workspace.")]
     public async Task<string> GetNote(
         [Description("The workspace id the note belongs to.")] string workspaceId,
         [Description("The note id (a GUID) to fetch.")] string noteId,
@@ -109,6 +109,8 @@ public sealed class NoteMcpTools(
             title = detail.Title,
             date = detail.Date?.ToString("yyyy-MM-dd"),
             content = detail.Content,
+            transcriptText = detail.TranscriptText,
+            transcriptIsDiarized = detail.TranscriptIsDiarized,
             summary = detail.Summary,
             decisions = detail.Decisions,
             discussionPoints = detail.DiscussionPoints,
