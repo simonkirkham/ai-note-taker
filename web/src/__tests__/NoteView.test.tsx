@@ -276,6 +276,36 @@ describe('NoteView', () => {
     expect(document.activeElement).toBe(screen.getByLabelText('Note title'))
   })
 
+  // BUG-38 — guards the autofocus against the "something outside the note screen still holds
+  // focus" case. That is the real shape of an in-app navigation here: the Sidebar owning
+  // `new-note-button` is rendered OUTSIDE <Routes> (App.tsx), so it stays mounted and focused while
+  // NoteView mounts. An earlier revision of this fix skipped the autofocus whenever activeElement
+  // wasn't `body`, which silently killed it on the single most important flow — a brand-new
+  // untitled note created from the sidebar. Mounting NoteView from a click on a sibling button
+  // reproduces that exactly, and this fails against that revision.
+  it('focuses the title even when the control that opened the note keeps focus', async () => {
+    function Harness() {
+      const [open, setOpen] = useState(false)
+      return (
+        <ToastProvider>
+          <button data-testid="outside-opener" onClick={() => setOpen(true)}>New note</button>
+          {open && (
+            <NoteView
+              noteId="note-1" initialTitle="" onBack={noop} onDelete={asyncNoop}
+              onDateSet={noop} onOpenNote={noop}
+            />
+          )}
+        </ToastProvider>
+      )
+    }
+    render(<Harness />)
+    const opener = screen.getByTestId('outside-opener')
+    await userEvent.click(opener)
+    // The click leaves focus on the opener, mirroring the still-mounted sidebar button.
+    const title = await screen.findByTestId('note-title-input')
+    await waitFor(() => expect(document.activeElement).toBe(title))
+  })
+
   // BUG-38 — the regression guard for ~45% of all E2E deploy-gate failures.
   //
   // The title autofocus used to be keyed to the note-detail read resolving. That read is RYW-gated,

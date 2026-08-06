@@ -107,7 +107,9 @@ public sealed class AppPage
     public async Task AssertHomeLoadedAsync()
     {
         await page.WaitForURLAsync(u => !u.Contains("/notes/"));
-        await Assertions.Expect(page.GetByTestId("new-note-button")).ToBeVisibleAsync();
+        // `note-cards` is rendered only by ListView, so unlike `new-note-button` it actually proves
+        // the home list is on screen rather than merely that the app shell is.
+        await Assertions.Expect(page.GetByTestId("note-cards")).ToBeVisibleAsync();
     }
 
     public Task AssertNoteScreenLoadedAsync() =>
@@ -290,7 +292,12 @@ public sealed class AppPage
     {
         var errors = pageErrors.TakeLast(5).ToList();
         var console = consoleLog.TakeLast(15).ToList();
-        return $"BUG-38: '{what}' never appeared (note screen failed to load). page.Url={url} | " +
+        // Deliberately does NOT assert a cause. The old text said "note screen failed to load",
+        // which was a guess baked into the message — and the wrong one: BUG-38 turned out to be a
+        // focus steal unmounting a control that HAD rendered. A diagnostic should report state and
+        // let the reader infer, or it misdirects the next investigator exactly as an opaque
+        // timeout does.
+        return $"BUG-38 diagnostic — failed at: {what}. page.Url={url} | " +
                $"pageErrors({errors.Count})=[{string.Join(" ;; ", errors)}] | " +
                $"console(last {console.Count})=[{string.Join(" ;; ", console)}]";
     }

@@ -278,15 +278,19 @@ export default function NoteView({
   // and the steal lands between them, detaching the element Playwright already resolved.
   //
   // Mount is synchronous and strictly precedes any interaction, so it can never land mid-edit. The
-  // title input renders unconditionally (no loading guard), so the ref is populated at mount. The
-  // activeElement check is defence-in-depth: on in-app navigation the previously focused node is
-  // already unmounted, so activeElement is body and the autofocus still happens.
+  // title input renders unconditionally (no loading guard), so the ref is populated at mount.
+  //
+  // Deliberately NO activeElement guard. An earlier revision skipped the focus when something else
+  // already held it, on the assumption that an in-app navigation leaves activeElement as body —
+  // which is false: the Sidebar (App.tsx renders it OUTSIDE <Routes>) stays mounted, so after
+  // clicking its "+ New Note" the button is still focused at mount and the guard suppressed the
+  // autofocus on the single most important case, a brand-new untitled note. Nothing on the note
+  // screen can hold focus at mount, so the only possible holder is outside it — exactly when taking
+  // focus is right. The ref latch only guards React StrictMode's double-invoke.
   const titleAutofocused = useRef(false);
   useEffect(() => {
     if (titleAutofocused.current) return;
     titleAutofocused.current = true;
-    const active = document.activeElement;
-    if (active && active !== document.body) return;
     inputRef.current?.focus();
   }, []);
 
