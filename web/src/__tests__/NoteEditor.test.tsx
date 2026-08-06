@@ -29,6 +29,17 @@ function anchors() {
   return Array.from(document.querySelectorAll('[data-testid="note-content"] a'))
 }
 
+describe('NoteEditor spell check (CHANGE-37)', () => {
+  // Without this the pin cannot do the job it exists for: a future Tiptap that ignores or
+  // overrides editorProps.attributes.spellcheck would drop the squiggles exactly as
+  // silently as before, which is the regression the attribute was added to prevent.
+  it('renders the editor with spellcheck enabled', async () => {
+    renderEditor('some notes')
+    const editor = await screen.findByTestId('note-content')
+    expect(editor).toHaveAttribute('spellcheck', 'true')
+  })
+})
+
 describe('NoteEditor link-scheme hardening', () => {
   it('does not render a javascript: link as a live anchor', async () => {
     renderEditor('Click [me](javascript:alert(1)) now')

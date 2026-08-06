@@ -65,7 +65,9 @@ function registerSpellCheckMenu(win: BrowserWindow): void {
     const items = buildSpellCheckMenu({
       isEditable: params.isEditable,
       misspelledWord: params.misspelledWord,
-      dictionarySuggestions: params.dictionarySuggestions,
+      // Electron documents dictionarySuggestions as only present when there IS a misspelled
+      // word, while typing it non-optional — defensive against that divergence.
+      dictionarySuggestions: params.dictionarySuggestions ?? [],
     })
     if (!items) return
 
@@ -76,8 +78,28 @@ function registerSpellCheckMenu(win: BrowserWindow): void {
           : {
               label: item.label,
               click: () => {
-                if (item.action.kind === 'replace') win.webContents.replaceMisspelling(item.action.word)
-                else win.webContents.session.addWordToSpellCheckerDictionary(item.action.word)
+                // An already-open menu can outlive its window; touching webContents on a
+                // destroyed BrowserWindow throws an uncaught main-process exception.
+                if (win.isDestroyed()) return
+                const action = item.action
+                switch (action.kind) {
+                  case 'replace':
+                    win.webContents.replaceMisspelling(action.word)
+                    return
+                  case 'addToDictionary': {
+                    // Returns false when the write fails. Log it — same discipline as the
+                    // display-media handler below, so a regression is visible not silent.
+                    const added = win.webContents.session.addWordToSpellCheckerDictionary(action.word)
+                    if (!added) console.warn(`[desktop] spellcheck: failed to add "${action.word}" to the dictionary`)
+                    return
+                  }
+                  default: {
+                    // A new SpellCheckAction kind must be handled explicitly, not fall
+                    // through to the dictionary write.
+                    const never: never = action
+                    console.warn('[desktop] spellcheck: unhandled action', never)
+                  }
+                }
               },
             },
       ),
