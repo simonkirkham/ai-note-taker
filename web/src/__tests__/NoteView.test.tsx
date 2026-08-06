@@ -3,6 +3,7 @@ import { delay, http, HttpResponse } from 'msw'
 import { useState } from 'react'
 import NoteView from '../components/NoteView'
 import { ToastProvider } from '../components/ToastProvider'
+import { APP_TITLE } from '../hooks/useDocumentTitle'
 import type { TranscriptionStatus, UseTranscriptionResult } from '../hooks/useTranscription'
 import { render, screen, waitFor, fireEvent } from '../test/render'
 import { server } from '../test/setup'
@@ -119,6 +120,16 @@ describe('NoteView', () => {
     expect(textarea).toHaveValue('Meeting notes')
     await waitFor(() => expect(fetchCalled).toBe(true))
     expect(screen.queryByTestId('note-loading')).toBeNull()
+  })
+
+  it('sets the browser tab title from the open note', async () => {
+    server.use(
+      http.get('/api/notes/:noteId', () =>
+        HttpResponse.json({ noteId: 'note-1', title: 'Roadmap review', content: 'x', date: null, tags: [] }),
+      ),
+    )
+    renderNoteView()
+    await waitFor(() => expect(document.title).toBe(`Roadmap review - ${APP_TITLE}`))
   })
 
   it('blurring the textarea triggers a PUT to save content', async () => {
