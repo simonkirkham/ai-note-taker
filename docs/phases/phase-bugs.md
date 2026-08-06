@@ -76,202 +76,53 @@ Further bugs will be appended as they are identified.
 
 ---
 
-> **Fixed bugs are condensed in [phase-bugs-archive.md](phase-bugs-archive.md)** (one terse entry each, anchors preserved). The Summary table above stays the full index; only **open** defects keep a detailed section below.
+> **Fixed bugs are condensed in [phase-bugs-archive.md](phase-bugs-archive.md)** (one terse entry each, anchors preserved). The Summary table above stays the full index; only **open** and **in-progress** defects keep a detailed section below.
 
 ---
 
-## BUG-31 — A browser test ("remove an image, reopen the note") randomly fails during deploys
+## BUG-38 — `TagsJourney` deploy-gate flake — a network-timed autofocus steals focus and unmounts the tag input
 
-**Status:** **Done (2026-07-23).** Fixed + re-enabled (PR #397, deploy #701). Confidence bar met: **6/6 clean deploy-gate passes** — `Remove_an_image` ran and passed on #701 (merge), #702 (44-B), #703 (docs), #704 (48-B), #705 (48-C), #706 (48-E), each `Passed: 27, Skipped: 0`, no BUG-38 recurrence. The fix is **deterministic** (durable body text makes `contentDraft` non-null → `hasContent` always true after removal → the stale-refetch race cannot change the outcome), so no active reruns were needed — passes accrued from natural Phase-48 deploy traffic.
+**Status:** In Progress — root-caused 2026-08-06 after ~4 months of wrong theories; fix in PR #418, awaiting the clean-run bar. **Severity:** High — the worst single deploy-gate flake by a wide margin, **and a real user bug**, not a test artefact.
 
-**Root cause of the #697 flake (now fixed):** the failure was **not** a slow reopen. The `SaveAndReturnAsync` timed out waiting for `GetByTestId("save-button")` because a stale gated **refetch** of note detail transiently **blanked** the note (empty title/content) — the [BUG-48] symptom — which flips the header from **Save** to **Cancel** by design (`hasContent` false), so the save-button was genuinely absent. The re-enable fix keeps durable local draft body text so `contentDraft` is non-null and `hasContent` stays true through the removal+save. The underlying blank-flip (BUG-48) is filed separately and deferred.
+**Measured scale (per-attempt scan of deploys #627–#719, 93 deploys):** 58 failing-test occurrences, of which **26 (45%) are `TagsJourney`** — nearly 4× the next worst journey — across 15 deploys and hitting **all six** of its tests (`AddTag_PillAppearsOnNoteScreen` 8, `AddTag_PersistsAfterNavigation` 7, `AddMultipleTags_SpaceSeparated` 4, `AddTag_PillAppearsOnHomeCard` 3, `RemoveTag_PillDisappears` 2, `RemoveTag_GoneAfterNavigation` 2). This doc previously recorded **6** recurrences — the 4× undercount is failures that were re-run into green and never written down, which is why the standing rule is to count per-attempt with `scripts/flake-watch.sh`, never by reading run conclusions.
 
-**Prior history:** cause 3's root cause was mitigated in prod (RYW gate cap 2s→8s, PR #377, deploy #681); two other causes already fixed. The first re-enable attempt (PR #393, reload-tolerant *reopen* wait) flaked 1-pass/1-fail on deploy #697 and was reverted (PR #395, deploy #698) — because reopen-side reload-tolerance addressed the wrong cause (it was the blank-flip at save, above).
+**Symptom:** a `TagsJourney` test times out at 30 s waiting for `GetByTestId("tag-input")` in `AppPage.AddTagAsync`.
 
-**What the test does:** An automated browser test (`NoteImageJourney.Remove`) uploads an image into a note, removes it, saves, reopens the note, and checks the image is gone.
+**Root cause (`web/src/components/NoteView.tsx:267-269`):**
+```
+useEffect(() => { if (!loadingDetail && !notFound) inputRef.current?.focus(); }, [loadingDetail, notFound])
+```
+This focuses the **title** input. It does **not** fire on mount — it fires when the RYW-gated `GET /notes/{id}` resolves, i.e. at an arbitrary wall-clock moment (~150 ms to the 8 s gate cap) while the whole screen, `CommandBar` included, has been interactive the entire time. The tag combobox dismisses itself on blur (`TagCombobox.tsx:107` → `CommandBar.tsx:81` `setAddingTag(false)`), which **unmounts** the input — so the focus grab destroys it mid-interaction. `AddTagAsync` fills then presses Enter as two Playwright round trips; a steal landing between them detaches the element Playwright already resolved, and because `addingTag` is now false, `tag-input` never returns.
 
-**The problem:** It passes most of the time but fails every so often — a "flaky" test. Because it runs as part of the deploy pipeline, one random failure blocks the release of unrelated changes. When we investigated (PR #294 — running it repeatedly with a 120-second safety cap so it couldn't hang forever), it turned out to be **three separate problems stacked on top of each other**:
+**Enter is not the trigger** — Playwright's `press` checks connectedness *before* dispatching the key, so the detach necessarily preceded the keystroke.
 
-1. **The removed image used to reappear after reopening** — the original complaint. ✅ **Fixed** by the wider read-after-write consistency work (the projector "warm-up" from TI-39 and reading ownership from the event stream in BUG-30). Confirmed once early runs showed the image correctly gone.
-2. **A shared test helper waited for a network call that never happened.** The `SaveAndReturnAsync` helper waited for the note-list request (`GET /notes/cards`), but the page can serve that list from its in-memory cache without making a request — so the wait timed out after 30 seconds. ✅ **Fixed (PR #297)** by waiting for the home screen to appear instead. This removed a hidden source of flakiness across the whole test suite, not just this one test.
-3. **The Save button stays disabled too long after reopening.** 🟡 **Root mitigated (PR #377, deploy #681).** After reopening and editing the note, its data sometimes takes a long time to load because the read waits on a cold projector. The Save button is disabled while the note is loading (`NoteView.tsx:401`), so the test clicks Save, nothing happens, and it times out. The 2026-06-30 obs-review confirmed this is the cold-projector RYW lag (see prod evidence below); the fix raises the read gate 2s→8s so the read now waits through a ~7s cold start instead of giving up. **Not yet verified end-to-end:** the test is still off; re-enabling it is the remaining step.
+**Real user impact:** start typing a tag on a freshly-opened note and the box can be ripped away, with your half-typed text silently submitted.
 
-**Where it stands:** The test is switched off again (PR #298) with all three causes recorded, because the real app behaviour (remove an image → it stays gone) is verified working — only the test itself is unreliable.
+**Every previous theory is retired:**
+| Retired theory | Disproved by |
+|---|---|
+| Cold start / idle gap | #649/#652/#654/#656 are same-or-next-day; #719 failed 43 s in, after 27 tests had already passed (warm) |
+| Projector lag / stale gated read | Lag cannot detach a DOM node; the failing call is an **action**, and the assertions were already reload-tolerant |
+| The app never loaded | The #719 log shows the input **resolved**, with `value="1:1s"` |
+| A `notFound` bounce | Not reachable on a note that had already rendered |
 
-**Next step (revised 2026-07-17 after the #393 revert):** the save-button is gone/disabled at the **post-removal save** — narrow to which of three note-view states does it and fix in product code (test-side reload-tolerance is proven insufficient — the hang is post-edit). Candidate roots, in `NoteView.tsx`:
-1. **`loadingDetail` re-enters true** → `save-button` `disabled` (`:537`). Requires the note-detail query to return to `isPending` (no data), i.e. a reset/removeQueries — not just an invalidate (invalidate keeps data, so `isLoading` stays false). Not obviously reachable; check whether the post-removal edit path resets `keys.note(noteId)`.
-2. **`hasContent` flips false** (`:215-222`) → the header renders `cancel-button` **instead of** `save-button` (`:503-542`), so the element is absent → "waiting for save-button" 30s. `hasContent` is an OR incl. `title.trim()`; the removed image was the note's **only body content**, so this fires iff `title` (draft state) is also transiently empty (a BUG-21-class title-sync gap).
-3. **Transient `notFound`/`is404`** on a background refetch (`:487-497` early-return) → a whole different screen, no save-button. Least likely (the note exists and was already read once).
-To disambiguate: the failing run uploads a **per-attempt Playwright trace** artifact (run `29612540741`, but the download only yielded the TagsJourney attempt-1 traces — re-capture on the next reproduction). Faster: add a **thrown-message page-state diagnostic** to `SaveAndReturnAsync` (or a dedicated remove helper) that, on the save-button timeout, reports `page.Url` + which of {save-button, cancel-button, note-loading, note-not-found} is present (synchronous props only, per the E2E-diagnostic guardrail) — one reproduction then names the state. Then fix that state in product code and re-enable. [TI-52] projector keep-warm is orthogonal (it addresses reopen *speed*, not this post-edit save-button gap).
+Lag is the trigger's **timing source**, never the fault — which is why every consistency-token and reload-tolerance fix looked relevant and none worked.
 
-**Prod evidence (2026-06-30 observability-review) — the production manifestation of cause 3.** The `ConsistencyGate` (RYW) caps its wait at **2000 ms** (`src/Api/Consistency/ConsistencyGate.cs:24`) and then proceeds stale/absent. Over 14 days the gate timed out **11×**, all at the full `elapsedMs=2000` cap, in two shapes:
-- Benign near-miss (`gap=1`, projector one version behind) — caught up moments later.
-- The worst shape recurs ~weekly at **morning low-traffic hours** (06-17 08:36, 06-23 08:02, 06-26 09:37): `RYW gate STALE … reqVersion=3 lastSeq=-1 gap=4` immediately followed by `RYW presence gate ABSENT … elapsedMs=2000` for the **same** note. `lastSeq=-1` = the projector had recorded **no position at all** for that stream within budget — a **cold projector** (scaled-to-zero overnight) whose first-event start exceeds the 2 s RYW budget. The read then returns absent → a freshly-written note reads missing/stale on first load. This is the same cold-projector lag the test's ~30 s reopen hang exhibits. **Chosen fix (2026-06-30): raise the `ConsistencyGate` cap 2 s → 8 s** (`ConsistencyGate.cs:24`) so the reader tolerates a cold projector — a cold read becomes a one-off ~7 s slow-success instead of a 2 s failure; zero infra/recurring cost. Keeping the projector warm to make cold reads *fast* (scheduled ping ~$0/mo, or provisioned concurrency ~$5/mo) is deferred as [TI-52].
+**Method note worth keeping:** the breakthrough came from the deploy #719 call log, the first to carry a `locator resolved to …` line. Prior recurrences gave bare timeouts because the enriched diagnostic (#372) wrapped only `FillAsync`, **not** `PressAsync` — an action this row flagged as outstanding for months, and which cost the root cause every time. Confirmed independently by three root-cause agents plus review, each reproducing the unmount in jsdom.
 
----
-## BUG-33 — Forced through full Google consent after inactivity (warm-tab refresh skips the `rt` cookie)
+**Fix (PR #418):**
+1. Make the autofocus **mount-only** — once, and only when nothing else holds focus — so no network-timed `focus()` remains on the note screen.
+2. Widen the `AddTagAsync` catch to cover `PressAsync` + `TimeoutException`.
+3. A regression test that fails against the old effect.
 
-**Status:** Done (2026-06-22) — fixed by **30-C** (both warm-tab paths now attempt a silent refresh against the `rt` cookie before signing out: `onVisibilityChange` collapses the `remaining <= 0` branch into the refresh attempt; `scheduleRefresh` runs an immediate refresh when `delay <= 0`) and **30-B** (the `google_refresh_established` flag forcing was removed entirely — sign-in never sends `prompt=consent`, so even a genuine sign-out no longer re-triggers the consent screen).
+**Same mechanism explains `ActionEditJourney`** (5 occurrences) — `ActionsSection` has the identical blur-to-unmount shape.
 
-**Severity:** Medium — no data loss, but the user is repeatedly bounced through the full Google OAuth approval/consent flow during normal use (~twice a day, after stepping away), despite holding a valid 30-day refresh cookie. Same user-facing symptom as the supposedly-fixed [BUG-15]/[BUG-16].
+**Bar for Done:** per the flake-fix rule, 10 clean deploy runs counted per-attempt with `scripts/flake-watch.sh`, not on merge.
 
-**Symptom:** After a period of inactivity (tab backgrounded), returning to the app shows the Google sign-in **and the full scope-approval/consent screen** again, not a silently-restored session. Reported on Chrome/Edge, ~twice in one day.
-
-**Root cause (confirmed):** Two warm-tab refresh paths treat an expired in-memory token as a dead session and sign the user out **without first attempting a silent refresh against the still-valid `rt` cookie**, and both clear `google_refresh_established` — which forces `prompt=consent` on the next sign-in:
-
-1. `web/src/auth/AuthContext.tsx:117-119` — `onVisibilityChange`: `if (remaining <= 0) handleRefreshFailure()`. `handleRefreshFailure()` clears the token, sets `sessionExpired`, and calls `clearRefreshEstablished()`. It never calls `attemptSilentRefresh()`. Only the `remaining < REFRESH_LEAD_MS` (but `> 0`) branch tries the cookie.
-2. `web/src/auth/useGoogleAuth.ts:42-45` — `scheduleRefresh`: `if (delay <= 0) { onRefreshFailure(); return }` — same anti-pattern when a token is (re)scheduled already at/after expiry.
-
-Chrome throttles/freezes background-tab timers, so the proactive refresh scheduled `REFRESH_LEAD_MS` (5 min) before expiry does not fire while hidden; the ~1h id_token fully expires; on refocus `remaining <= 0` is the common case → path (1) fires. The 30-day `rt` cookie (and the 401-retry recovery in `api.ts`) would have restored the session, but the visibility handler pre-empts them by setting `sessionExpired` first. This is the warm-tab sibling [BUG-15] missed — that fix only added the **cold-load** bootstrap refresh.
-
-**Evidence (prod, Command Lambda `oauth2.googleapis.com/token` calls, 2026-06-16/17):**
-- Every Google `/token` call returns **200** — the refresh token is valid; Google never rejects it.
-- A clean **~55-min** cadence of refreshes (id-token lifetime minus the 5-min lead) — the proactive timer works while the tab stays active.
-- The user's sign-outs produce **no** failed/401 Google call — the failure path short-circuits **client-side** and never reaches `/auth/refresh`.
-
-**Expected behaviour:** Returning to a backgrounded tab whose token expired silently restores the session from the `rt` cookie; the user reaches the Google approval flow only when the refresh token is genuinely absent/expired/revoked.
-
-**Reproduce-before-fix:** add a red test in `web/src/__tests__/TokenRefresh.test.tsx`: tab becomes visible with an already-expired in-memory token but a refresh that **would** succeed → session is restored (currently ends signed-out with the flag cleared).
-
-**Fix:** both paths attempt `attemptSilentRefresh()` first and only fail (and clear the flag) on a null result.
-- `onVisibilityChange`: collapse `remaining <= 0` into the refresh branch — `if (remaining < REFRESH_LEAD_MS) { attemptSilentRefresh().then(t => t ? handleRefreshSuccess(t) : handleRefreshFailure()).catch(handleRefreshFailure) }`.
-- `scheduleRefresh`: when `delay <= 0`, run a silent refresh immediately (adopt on success, `onRefreshFailure()` on null) instead of failing outright.
-
-**Key files:** `web/src/auth/AuthContext.tsx` (visibility handler), `web/src/auth/useGoogleAuth.ts` (`scheduleRefresh`); tests `web/src/__tests__/TokenRefresh.test.tsx`. Related: [BUG-11] (refresh-token flow), [BUG-15] (cold-start bootstrap refresh), [BUG-16] (per-login consent).
-
-**Tracking:** this frontend fix is scheduled as **slice 30-C** in [Phase 30 — Durable sign-in](phase-30.md). It is the immediate symptom-reducer; the *proper* fix for the re-authorise complaint (a server-side refresh-token store so the consent screen is shown once, ever) is the rest of Phase 30 (30-A/B/D). Empirically confirmed during diagnosis: the OAuth app is **Published** (the calendar refresh token has worked 15 days, past the 7-day Testing-mode expiry), so token expiry is not a contributing factor.
+**Key files:** `web/src/components/NoteView.tsx:267-269`, `web/src/components/TagCombobox.tsx:107`, `web/src/components/CommandBar.tsx:81`, `tests/Browser.E2E/AppPage.cs` (`AddTagAsync`).
 
 ---
-## BUG-38 — `TagsJourney` transiently red-gated a deploy (cold-start app-load flake) + journeys give no diagnostic
 
-**Status:** Open — fast-follow. Surfaced during the 39-A deploy (run 28197938887, attempt 1, 2026-06-25). Not caused by 39-A.
-
-**Symptom:** `TagsJourney.AddTag_PersistsAfterNavigation` failed waiting 30 s for `GetByTestId("tag-input")` (`AppPage.AddTagAsync`). `tag-input` is a static, always-present element on a note, so a 30 s miss means the page/app did not render in time — a cold frontend/app-load stall, not projector lag.
-
-**Why it's a flake, not a regression:** the two deploys immediately before (36-A `3bf37fb5`, CHANGE-28 `6fdb3206`) were both green (their E2E gate, incl. `TagsJourney`, passed), and the rerun (attempt 2) passed `TagsJourney`. So neither 36-A's theme bootstrap nor CHANGE-28 broke app-load. Chronic cold-start gate flakiness (TI-39 family; cf. BUG-26).
-
-**Second, separate finding (real, fixed):** the same run deterministically failed `ActionEditJourney` (39-A's own new journey) — a **temp-id race**: the journey edited the action before the optimistic add reconciled its `temp-…` id to the real server id, so the edit PUT hit `/actions/temp-…` → 404 → rolled back. Fixed in the same PR by reconciling through a gated reload before editing. (Latent product edge: editing within the sub-second add-reconcile window loses the edit — shared with complete/delete, left consistent.)
-
-**Diagnostic gap (the durable lesson):** the run captured **zero** `[browser …]` console lines — xUnit swallows `Console.WriteLine` from the journeys, so an app-load failure produced only a bare Playwright timeout with no cause. Per the CLAUDE.md E2E guardrail, the action/tag reload-assert helpers should surface evidence through the **thrown exception message** (page.Url, rendered state, recorded sync request URLs) so the next occurrence is diagnosable.
-
-**Next step:** add thrown-message diagnostics to the shared reload-tolerant assert helpers; re-evaluate whether the cold app-load needs a warm-up or a more tolerant initial wait once a diagnosable failure is captured.
-
-**Recurrence — 2026-06-26, deploy #666 (run 28254628800, attempt 1), BUG-40 merge `70c87c4`.** A **second** `TagsJourney` method now hits the same signature: `TagsJourney.AddTag_PillAppearsOnNoteScreen` failed `System.TimeoutException : Timeout 30000ms exceeded` waiting for `GetByTestId("tag-input")` (`AppPage.AddTagAsync`, `AppPage.cs:407`; `TagsJourney.cs:38`). 26/28 journeys passed (incl. other note-screen journeys that render `NoteEditor`), so not the BUG-40 frontend change — same chronic cold-start app-load stall on the always-present `tag-input`. Re-run via `gh run rerun 28254628800 --failed`. Confirms the flake is **not specific to one test method** — it is any first-note-screen `tag-input` wait on a cold app load. Still **zero** `[browser]` console output, reinforcing the diagnostic-gap next step. Both observed cases are `TagsJourney` because it is the first journey to open a note screen and type into `tag-input`.
-
-**Recurrence — 2026-07-17, deploy #697 (run 29612540741, attempt 1).** Both note-screen `TagsJourney` methods failed together — `AddTag_PillAppearsOnNoteScreen` **and** `AddTag_PillAppearsOnHomeCard`, each `System.TimeoutException: Timeout 30000ms exceeded` waiting for `GetByTestId("tag-input")`. 25/27 passed (unrelated BUG-31 re-enable was the +1 total). Both failing together = the whole note screen failed to render on a cold app load — the documented BUG-38 signature. Passed on the attempt-2 rerun. **Post-BUG-43-fix occurrence** (the SnapStart credential fix shipped #379/deploy #682), so the cold-start app-load stall still recurs even with BUG-43 addressed — BUG-43 was "likely" the common root but is not the whole story. **Then hit the very next deploy too — #698 (the BUG-31 revert, run 29615823762): `AddTag_PersistsAfterNavigation` + `AddTag_PillAppearsOnNoteScreen`, same `tag-input` 30s timeout** (one variant resolved the input to `value="1:1s" aria-expanded="true"` — element present but the combobox wasn't settling), reran green. Two consecutive deploys (#697, #698) blocked by BUG-38 = the chronic gate flake is currently frequent; worth prioritising the diagnostic (thrown-message page-state on the `tag-input` timeout, per the next-step) over further record-only passes. Record-only this pass (still Open) per the standing decision.
-
-**Recurrence — 2026-07-29, deploy #714 (run 30430820767), obs-auth-login merge `c098ad6f` (auth observability — backend metrics + a dashboard widget; cannot touch note/tag rendering).** Two **different** journeys failed across two attempts, then a clean pass on the third: **attempt 1** `TagsJourney.RemoveTag_GoneAfterNavigation` (`tag-input` 30s timeout — classic signature); **attempt 2** `FilterBackNavigationJourney.Filter_OpenNote_Back_RestoresFilter` at `AppPage.AssertNoteVisibleInListAfterReloadAsync` (`AppPage.cs:219` — a note-visible-after-reload convergence, **not** `tag-input`); **attempt 3** `Passed: 28, Skipped: 0` clean → `deploy-production` shipped. Different test each attempt = confirmed chronic cold-start/projector-convergence flake sampling different reads, not a deterministic regression (a real bug would fail the *same* test each attempt). Notable: this occurrence widens the observed signature beyond `tag-input` to the async-projector reload-convergence family — the gate is currently hot across **multiple** cold-start-sensitive reads, reinforcing that BUG-38 is now deploy-blocking often enough to prioritise its fix over record-only reruns. Api.Integration passed 684/684 on the merged code. Still **Open**.
-
----
-## BUG-39 — Todo reorder reverts after reload (deployed only) — FIXED (test-data clear gap)
-
-**Status:** **Done (2026-06-26).** Real root cause found in the test-env projector logs; fixed by clearing `notetaker-proj-position` in `clear-test-data`; journey **un-quarantined** (the `[E2EFact(Skip=…)]` removed). The 37-A session first filed + quarantined this to unblock the gate and hypothesised a per-item-`Position` redesign; the deployed trace shows the trigger was actually a **test-harness** gap, not the product.
-
-**Real root cause (authoritative — from the test-env Projector Lambda log):**
-`Projector skip todo-order#__default__ at 1: position_guard`. `clear-test-data` wiped `notetaker-events` + the projection tables but **not** `notetaker-proj-position` (the projector's per-stream processed-sequence store). The default workspace's order stream `todo-order#__default__` has a **stable id reused every run**. Once any run sets its processed-position to seq 1, every later run re-appends its reorder as seq 1 (the events table was cleared, so it re-numbers from 0), which is `≤` the stale mark → the projector's position guard **skips the reorder as an already-seen duplicate** → positions are never applied → `GET /todos` falls back to `AddedAt` order. Deterministic once the mark is set: #655 (the run that first set it) **passed**; #656 and its 4 reruns over 8 h all **failed** — so the #656/36-B correlation was coincidental (36-B is frontend-only and cannot touch todo order). Entity streams (`note#`/`todo#<guid>`) never collide because each run uses fresh guids; only **stable-id** streams (`todo-order#__default__`, and any default-workspace stream) do.
-
-**Fix:** `clear-test-data` now also clears `notetaker-proj-position` plus the previously-omitted projection tables (`notesearchview`, `workspacelist`, `actionfeedback`, `tagfeedback`, `calendarlinkindex`) — a true clean slate, so a re-appended stable-id stream is re-processed from seq 0. `TodoReorderJourney` un-quarantined.
-
-**Symptom:** drag BBB above AAA → reload → order reverts to `AAA, BBB`. The assert is reload-tolerant (30 s), so the reorder write is **lost**, not lagging. Deterministic: 3/3 on deploy #656 + 2 further reruns = **5/5**.
-
-**Deployed-only — the in-memory double masks it.** `Api.Integration.TodoReorderTests` (`Reorder_PersistsTheNewOrder`, `Reorder_NewTodoAppendsAfterOrderedItems`) cover the exact scenario and **pass**, because the in-process `SyncProjectingEventStore` applies events synchronously in append order and `InMemoryTodoListStore` has no `attribute_exists`/PutItem semantics. So no test below the deploy-gate E2E can catch it — the documented "in-memory double hides the DynamoDB gap" guardrail.
-
-**Latent follow-up (NOT the trigger here, but real — worth an order-snapshot redesign):** the per-item `Position` design is independently fragile. These did not cause BUG-39 (the deployed trace shows a whole-event `position_guard` skip, before any `SetPosition` runs), but are worth hardening:
-- Order is stored as a `Position` int **on each `TodoItem` row**, set by `DynamoDbTodoListStore.SetPositionAsync` with `ConditionExpression = "attribute_exists(PK)"` — which **silently swallows `ConditionalCheckFailedException`** (a row not yet projected when the `todo-order#` reorder is processed → that item's position is **permanently dropped**; the comment's "the next reorder re-sends" never happens for a one-shot reorder).
-- `DynamoDbTodoListStore.PutAsync` (the `TodoAdded` fold) is a **full `PutItem`** that only writes `Position` when non-null → any re-projection / out-of-order `todo#` fold after a reorder **clobbers** the position back to null.
-- The `todo-order#` reorder stream and the `todo#`/`action#` item streams are **independent** (DynamoDB Streams give no cross-key order), so the projector can fold the reorder before/after the items in ways the synchronous in-process test never exercises.
-
-**Optional hardening (order-snapshot, list-level — matches the `TodoOrdering` aggregate's own design comment):** store the full ordered id list on a **per-workspace ordering projection row** (keyed by `todo-order#{wsId}`), fold `TodoListReordered` into that single row, and order items in `GET /todos` by their index in the stored list (ids absent → end, by `AddedAt`). Immune to all three fragilities above. Replaces `Position`/`SetPositionAsync`/`UpdatePositionsAsync`. If pursued, add a DynamoDB-Local (`EventStore.Integration`) round-trip + a `ProjectorTests` cross-stream-order test. **Not required for BUG-39** (the test-data clear fix resolves it) — file as a `technical-improvements.md` item if the latent fragilities are deemed worth the rework.
-
-**Un-quarantined** (2026-06-26): the `[E2EFact(Skip=…)]` on `TodoReorderJourney` is removed now that the clear-test-data fix lands; confirm green across the next couple of deploys.
-
----
-## BUG-40 — Blank lines a user adds for structure are stripped on save — FIXED
-
-**Status:** **Done (2026-06-26).** Shipped in PR #363, deploy #666 (`70c87c4`, `deploy-production` success). Frontend-only.
-
-**Symptom:** User types a note with blank lines between sections to make it readable. On save the blank lines disappeared and the content was condensed into a single tight block.
-
-**Root cause:** Note content is persisted as **markdown**, serialized from the Tiptap doc by `ed.storage.markdown.getMarkdown()`. Markdown represents a paragraph break as exactly one blank line; it has **no representation for an empty paragraph or multiple consecutive blank lines**, so `tiptap-markdown`'s default serializer collapsed every run of them to one. The collapse happened client-side at serialize time — nothing downstream (API handler, `ContentEdited`, projection, DynamoDB) trims.
-
-**Fix:** new `web/src/lib/blankLineParagraph.ts` — `BlankLineParagraph` replaces StarterKit's bundled Paragraph (`StarterKit.configure({ paragraph: false })` + the extension in `NoteEditor.tsx`). It serializes an **empty paragraph that is not the last child of its parent** as a single non-breaking-space (U+00A0) line. That line survives the markdown round-trip and reloads as a genuinely empty paragraph (no visible character); re-saving is idempotent. The *last-child* guard keeps the editor's auto-trailing caret paragraph and a fully-cleared note from persisting a stray U+00A0. Non-empty content is unchanged. Added `@tiptap/extension-paragraph@3.23.4` (exact-pinned to the StarterKit-transitive version, matching the `@tiptap/extension-image` pin, to dodge the tiptap ERESOLVE peer conflict).
-
-**Tests:** `web/src/__tests__/blankLinePreservation.test.ts` (11 cases — single/multiple blank lines preserved, idempotent round-trip, reloaded blank line is empty, dense content untouched, heading/blockquote, cleared-doc → `''`, leading/trailing-blank, no stray placeholder after a list).
-
-**Deferred (cosmetic):** a blank-line note's card preview can carry a literal U+00A0 (`MarkdownStripper` doesn't strip it). Harmless (downstream `IsNullOrWhiteSpace` treats U+00A0 as whitespace); left out to keep the fix frontend-only. File as a minor change if the preview gap is ever noticed.
-
----
-## BUG-41 — HTTP action-item endpoints: object-level auth gap (IDOR)
-
-**Status:** Open. Found by Hawk during the 41-B review (the MCP equivalent was fixed in that slice; the HTTP surface was deliberately left to keep the slice tight).
-
-**Severity:** Medium — broken object-level authorization, but practically gated: `actionId` is an unguessable random GUID and every action-listing endpoint filters to the caller's own items, so a foreign id is not enumerable through the API. Not a regression (the gap has always existed on the HTTP surface).
-
-**Symptom:** A user who owns note `N1` can mutate an action item `A2` that belongs to another user's note `N2` by calling `POST /notes/N1/actions/A2/complete` (or `reopen`/`edit`/`delete`). The mutation lands and is stamped with the caller's `sub`.
-
-**Root cause:** `ActionItemHandlers.{Complete,Reopen,Edit,Delete}ActionItem` authorize `noteAuthorizer.OwnsNoteAsync(routeNoteId, sub)` then call the command handler with **only** the `actionId`. `ActionItemCommandHandler.ExecuteAppendAsync` reads only the action stream — it never checks the action's recorded owning note (`ActionItemAdded.NoteId`) or stamped owner against the authorized note/user. So the route `noteId` is validated-but-unbound.
-
-**Fix:** authorize the action's own owner via `IActionItemAuthorizer.OwnsActionAsync(actionId, sub)` (added in 41-B, `src/Api/Auth/ActionItemAuthorizer.cs`) in each of the four handlers — or assert the action's `ActionItemAdded.NoteId` equals the authorized route note. Reproduce-before-fix: an `Api.Integration` test where user A owns N1, user B owns N2+A2, and `POST /notes/N1/actions/A2/complete` with A's token currently succeeds (should 404).
-
-**Key files:** `src/Api/Handlers/ActionItemHandlers.cs`, `src/Api/CommandHandlers/ActionItemCommandHandler.cs`, `src/Api/Auth/ActionItemAuthorizer.cs`.
-
----
-## BUG-42 — `CreateAndListNoteJourney` E2E flake — post-create list assert races the projector
-
-**Status:** Open. Hit on deploy #667 (41-B merge `ea96b55`) attempt 1; passed on rerun (`gh run rerun --failed`). Unrelated to 41-B's change (which touches only the MCP tools + action-item handler/authorizer, not the HTTP note-create or card-list path).
-
-**Severity:** High (deploy-gate flake — a red shared gate blocks every slice; also skips `deploy-production`, so a slice reaches the test env but not prod until a rerun goes green).
-
-**Symptom:** `CreateAndListNoteJourney.Create_a_note_name_it_and_see_it_in_the_list` fails: `Locator expected to be visible` — `GetByTestId("note-cards").Locator("[data-testid='note-card']").Filter(HasText = "Journey note …")` not visible within 15 s, no reload in the wait.
-
-**Root cause (class):** since RYW the home card list (`GET /notes/cards`) is projector-built and eventually consistent. The journey creates a note then asserts the card is visible with a single 15 s `ToBeVisibleAsync` and **no reload** — a cold/lagging projector misses the window. Same class as [BUG-25]/[BUG-26] (post-write visibility vs projector lag), **not** the [BUG-38] cold-start `tag-input` app-load stall.
-
-**Fix:** wrap the create→list assert in a reload-tolerant, re-gating wait (reload while not-yet-visible → free when warm), as the tag journeys do; confirm the deploy gate's projector warm/drain (TI-39) covers `NoteCardList`. Reproduce-before-fix is impractical (timing); the guard is the reload-tolerant assert.
-
-**Key files:** `tests/Browser.E2E/Journeys/CreateAndListNoteJourney.cs:43`.
-
----
-## BUG-43 — Query Lambda 500 on first request after a SnapStart restore (stale SDK credentials)
-
-**Status:** Fixed (#379, deploy #682) — prod-verified live (`SNAPSTART_CONTAINER_CREDS=1` on the Query function; no `security token` errors post-deploy); pending ~30-day non-recurrence confirmation given the 1×/30d rarity. **Severity:** Low — 1 occurrence in 30 days; transient (the next request after restore succeeds).
-
-**Symptom:** A user-facing read returns **500**. Observed: `GET /w/__default__/todos` on a cold start.
-
-**Prod evidence (`--profile prod`, Query Lambda log group):**
-- `2026-06-22 20:07:36.963Z` — `level=Error`, logger `Api`, `cold_start: true`, fired immediately after a `RESTORE_START` (SnapStart restore) at `20:07:34`.
-- `exception.type` = `Amazon.DynamoDBv2.AmazonDynamoDBException`, `exception.message` = `"The security token included in the request is invalid."`, `source` = `AWSSDK.Core`; stack originates in `Amazon.Runtime.Internal.HttpErrorResponseExceptionHandler`.
-- `xray_trace_id` / `correlation_id` = `Root=1-6a399606-27e2fcb67b46077a6e89442f`.
-- Count over 30 days (all five Lambda log groups): **1** match for the message, on this one path.
-
-**Root cause:** SnapStart captures the snapshot at end-of-init. The AWS SDK credential chain is exercised during init (the `RegisterBeforeSnapshot` priming hook in `src/Api/Builder.cs:264` calls `IDynamoHealthCheck.CheckAsync` to warm it), so a security token is cached **in the snapshot**. On a later restore that token can be expired/invalid → the first DynamoDB call 500s. There is **no `RegisterAfterRestore` hook** to reset credentials after restore — only the before-snapshot priming hook exists (`Builder.cs:259–288`). Only the Query function uses SnapStart (`SnapStartConf.ON_PUBLISHED_VERSIONS`, `NoteTakerStack.cs:603`), which is why this is Query-only.
-
-**Observable?** Yes — logged at Error and would trip `notetaker-error-rate` if it became frequent. Today it is too rare (1/30d) to breach the 1%-over-5-min threshold, so it is invisible at the alarm level but visible in logs.
-
-**Fix direction:**
-1. Register `Amazon.Lambda.Core.SnapshotRestore.RegisterAfterRestore(...)` alongside the existing before-snapshot hook, and in it reset the SDK credential cache (`Amazon.Runtime.FallbackCredentialsFactory.Reset()`) so the first post-restore request resolves fresh credentials. Lowest-risk, matches AWS SnapStart .NET guidance.
-2. Alternatively, resolve credentials lazily per-request rather than warming/caching them before the snapshot.
-
-**Reproduce-before-fix:** hard to reproduce on demand (needs a restore from a snapshot whose captured token has expired). Add a unit/integration assertion that an after-restore hook is registered, and verify in prod that the Error message stops recurring after the fix ships.
-
----
-## BUG-44 — Deleted note reappears in the list (delete not consistency-gated) → reopen+save 404s — FIXED
-
-**Status:** Done (#382, deploy #685, 2026-07-01). **Severity was:** High (silent loss of the user's typed content).
-
-**Was:** deleting a note left it in the list and openable; reopening + saving it 404'd and lost the text. The delete path was the one note write that never surfaced/threaded a read-your-writes token — `DeleteNote` emitted no `X-Consistency-Token` and `deleteNote` used plain `requestVoid` — so `useDeleteNote`'s `onSettled` `/notes/cards` refetch ran *ungated* against the async projector and returned the still-present (not-yet-`NoteDeleted`) card, undoing the optimistic removal. Confirmed in prod (2026-07-01 07:30 UTC, note `996cf435`; RUM showed `DELETE 204` then repeated `GET /notes/cards 200` then `PUT …/content 404`). Same class as [BUG-30]/[BUG-22]/[BUG-27].
-
-**Fix:** `DeleteNote` now captures the append `version` and calls `SetConsistencyToken` (mirrors `DeleteTag`); `deleteNote` uses `requestVoidWithResponse` + `captureNoteToken` so the cards refetch gates on the projector dropping the note. Tests: `NoteReadYourWritesTests.DeleteNote_ReturnsConsistencyTokenHeader_AtNextVersion` + `GetNoteCards_WithDeleteToken_ExcludesTheDeletedNote`; `noteConsistency.test.tsx` "carries the delete write token". Secondary (terminal "this note was deleted" message instead of the retriable "try again") deliberately not carried — the gate stops users reaching that path via the list.
-
----
-## BUG-45 — Move-to-workspace / folder moves not consistency-gated → moved note reappears in the source list — FIXED
-
-**Status:** Done (#384, deploy #689, 2026-07-01). **Severity was:** Medium (move-to-workspace reappeared the note in the source list; folder moves flickered placement — no data loss). Found by Hawk reviewing #382.
-
-**Was:** the same ungated-cards-refetch defect [BUG-44] fixed, on the three note-move paths. `moveNoteToWorkspace`/`moveNoteToFolder`/`unfileNote` used plain `requestVoid` (no token capture) and the `MoveNoteToWorkspace`/`MoveNoteToFolder`/`UnfileNote` handlers never called `SetConsistencyToken`, so `useMoveNote*`'s `onSettled → invalidate → getNoteCards` ran ungated against the async projector.
-
-**Fix:** all three handlers now capture the append `version` and call `SetConsistencyToken` (`HttpResponse` auto-injected); the api fns use `requestVoidWithResponse` + `captureNoteToken` (the note-cards scope `getNoteCards` gates on — not `captureFolderToken`). Tests: `NoteMoveReadYourWritesTests` (token at v+1 per path; token-gated source-workspace cards read excludes the moved note) + `noteConsistency.test.tsx` parametrised over all three fns.
-
----
 ## BUG-46 — Folder delete not note-cards-gated → contained notes briefly shown under the deleted folder
 
 **Status:** Open. **Severity:** Low — the folder is correctly removed from the tree (gated by `FOLDERS_SCOPE`); only the notes' placement in the cards list lags the projector. No data loss. Found by Hawk reviewing #384.
@@ -281,40 +132,6 @@ Chrome throttles/freezes background-tab timers, so the proactive refresh schedul
 **Why not a straight BUG-44/45 copy:** a folder delete produces *N* note-stream writes, but the cards LIST gate holds a **single** stream token (design #7 — "list read waits on the single most-recently-written stream"). Capturing one unfile token gates on one note; the others can still lag. Options: (a) capture the **last/highest** unfile token and accept single-stream gating (matches existing list-gate semantics — cheapest); (b) a per-list projector-drain for the folder-delete case; (c) return the notes' post-cascade positions from the delete response and reconcile the cache directly (no refetch). Decide during the slice.
 
 **Reproduce-before-fix:** `Api.Integration` — `DELETE /folders/{id}` with contained notes returns a note-cards `X-Consistency-Token`, and a token-gated `/notes/cards` shows the contained notes unfiled (not under the deleted folder); frontend — after `deleteFolder`, the cards refetch carries a note-stream token in `If-Consistent-With`.
-
----
-## BUG-47 — Stale-read note edit silently overwrites real content (no version guard) → data loss
-
-**Status:** Fixed (#392, deploy #696) — hash-based optimistic concurrency on content edits; live in prod (`validate-backend` + `deploy-production` green). See [`docs/learnings/phase-bug47-stale-read-content-overwrite.md`](../learnings/phase-bug47-stale-read-content-overwrite.md). **Severity:** High — real data loss (a full note wiped in prod). The reported note was recovered from the event stream and restored. Same family as [BUG-30]/[BUG-27] (async-projection read races) but with silent overwrite rather than a surfaced error.
-
-**Symptom:** A user edits a note, navigates away (browser back / Alt+←) and returns; the note shows **empty**; the user retypes what they remember; on save, their full original note is replaced by the fragment. No warning, no conflict.
-
-**Prod evidence (`--profile prod`, `notetaker-events`, stream `note#c7b3b612-1137-471c-a250-24cb1e2a6bb7`):**
-- `v5` `ContentEdited` @ 09:04:06 — full note, **2134 chars**.
-- `v6` `ContentEdited` @ 09:04:14 (8 s later) — **30 chars**, ` \n\n \n\n \n\nNot for all pipelines` (a fragment the user retyped from memory, verbatim the last bullet of v5).
-- v5 was durably saved the whole time; only the read model reflected v6. Recovered v5 and restored it as `v11` via `edit_note`.
-
-**Root cause (three combining gaps, confirmed in code):**
-1. **The content read can return stale/empty.** GET note-detail is served by the async `DynamoDbNoteDetailStore` (Projector-built, Query Lambda) behind a best-effort RYW gate: `ConsistencyGate.WaitAsync` caps at 8 s then serves the *current* projection + `stale` header (`src/Api/Handlers/NoteHandlers.cs:98–106`, `src/Api/Consistency/ConsistencyGate.cs:33,58–69`); the client `gatedRead` retries only 2×/300 ms then **returns the stale body anyway** (`web/src/api/gatedRead.ts:25`); a missing token → ungated read (`ConsistencyGate.cs:40`).
-2. **The editor is uncontrolled and reseeds on remount.** Tiptap takes content once at `useEditor` construction with no later value-sync (`web/src/components/NoteEditor.tsx:117`); `LazyNoteEditor` is keyed by `noteId`, so navigate-back **remounts** and reseeds from `content = contentDraft ?? detail?.content ?? ""` (`web/src/components/NoteView.tsx:131,692`). A stale-empty `detail.content` at remount becomes the editable baseline.
-3. **No conflict check on write.** `handleSaveContent` persists the draft unconditionally (`NoteView.tsx:269–283`); `EditContent`/`EditContentCmd` appends with no check that the client saw the latest content (`src/Api/Handlers/NoteHandlers.cs:74–83`). The event store's append-level optimistic concurrency checks the *store* version, not the version the *client* was looking at, so the overwrite appends cleanly.
-
-**Fix — optimistic concurrency on content edits (version-based, not size-based):**
-- A size/shrink heuristic is rejected: it can't distinguish a legitimate select-all-delete from an accidental stale wipe, and would block real edits. Instead, condition the write on the content version the editor loaded.
-- **Backend (spine):** the content-edit command carries `expectedContentVersion`; the handler compares to the version at which content was last set — equal → accept (covers a deliberate delete-all); behind → **409 terminal conflict** (not 503 — retry won't help, per [BUG-27]); no prior content → accept. `ContentEdited` **event shape unchanged** (command-level check) → no event versioning, no new projection, no prod backfill.
-- **Frontend:** the note-detail read exposes the content version; the editor sends it back on save. On 409: **keep the user's typed text**, refetch the real content into the editor, surface the typed text in a dismissible recover banner — never silently overwrite, never drop either side.
-- **Frontend (prevention):** don't seed the editor from a `stale` read — hold the loading state until fresh; version-guard the `keys.note` cache so a late stale refetch can't regress freshly-cached content. Makes the 409 path the backstop, not the everyday path.
-- **Not autosave:** a server autosave would persist stale-empty state *faster* and worsen this bug; explicitly dropped. A safe "never lose in-flight text" belt (localStorage local-only draft, offered back on return, never auto-overwriting the server) is a separate optional future item.
-
-**Version choice (as shipped):** **content-hash**, not a version — the caller sends the SHA-256 of the content it loaded and the aggregate compares to a hash of its current `_content`. Chosen over a content-version field (which would need a `NoteDetail` field mapped in both stores + a round-trip test + a projector change) and over the whole-stream token (which false-conflicts on an interleaved tag/date write). The hash conflicts only on a real content change, is pure/aggregate-level, and needs no projection change. Client and server hashes are pinned to standard SHA-256 vectors so they can't drift.
-
-**Reproduce-before-fix:**
-- Domain spec (`EditNoteContentSpecs`): edit from a stale (behind-latest) `expectedContentVersion` → rejected; from the current version → accepted; delete-all from the current version → accepted; first content (no base) → accepted.
-- `Api.Integration`: `PUT /notes/{id}/content` with a stale base version → 409 (distinct from the 503 retriable path); current base → 200.
-- Frontend: the editor does not seed from a `stale` gated read; a 409 on save keeps the typed text and restores server content; the `keys.note` cache does not regress on a late stale refetch.
-- E2E (reload-tolerant, gated read only — not `/notes/search`, per the async-projector E2E guardrails): edit → navigate away → return → content is intact, not empty.
-
-**Deploy-time:** backend + frontend → full `cdk deploy`; no new infra, no new projection → neutral, no per-deploy cost added.
 
 ---
 
@@ -331,6 +148,38 @@ Chrome throttles/freezes background-tab timers, so the proactive refresh schedul
 **Reproduce-before-fix:** a frontend test — seed `keys.note(id)` with a full note, then resolve a *stale* gated refetch returning an empty-title note; assert the cached/displayed title does **not** regress to empty.
 
 **Fix direction:** version/token-guard the `keys.note` cache write so a refetch older than what is cached is dropped (mirror the RYW token already threaded through `gatedRead`). Out of scope for [BUG-31] (which stabilised its E2E by keeping durable local draft content); file-and-defer.
+
+---
+
+## BUG-49 — `NoteDeleteJourney` setup assert times out on an empty cards list (cold projector beats reload-tolerance)
+
+**Status:** Open. Red-gated the **deploy #703** E2E gate (48-A merge, `ff622875`); re-run of the failed jobs kicked off as the immediate unblock. **Severity:** High (deploy-gate flake — a red shared gate blocks every slice, and #703 skipped `deploy-production`).
+
+**Symptom:** `NoteDeleteJourney.Deleted_note_is_not_in_list_after_navigating_back_manually` fails in its **setup**, not its assertion: `AssertNoteVisibleInListAfterReloadAsync` (the reload-tolerant helper [BUG-42] added) times out at 30 s with the thrown-message diagnostic `rendered cards(0)=[]`, `X-Consistency=none/fresh`. The just-created "Del …" note never lands in the cards projection inside the reload window.
+
+**Not caused by 48-A.** That slice is desktop-only and inert in a browser (`window.desktop` undefined → the toggle renders null, `useTranscription` takes the unchanged cloud path). The other 26 journeys passed and the surrounding deploys (#701, #702) were green.
+
+**Root cause (class):** a **cold/lagging projector that reload-tolerance alone cannot beat** — the guardrail's "warm and drain the projector to head before the suite" case. Reload-tolerance re-gates a read that is *going* to converge; it cannot manufacture a projection entry the projector has not started building. Same family as [BUG-25]/[BUG-42], distinct from [BUG-38]'s cold-start app-load stall (there the page never rendered; here the page rendered an empty list).
+
+**Fix direction:** add a projector warm/drain to the deploy gate before the E2E suite — write one event, then poll `proj-position` until it reaches head — per the CLAUDE.md E2E convergence guardrail (b). The reload-tolerant helper is already in place and still lost, so the remaining gap is on the gate side, not the test side.
+
+**Key files:** `tests/Browser.E2E/Journeys/NoteDeleteJourney.cs`, `tests/Browser.E2E/AppPage.cs` (`AssertNoteVisibleInListAfterReloadAsync`), the deploy workflow's pre-E2E step.
+
+---
+
+## BUG-55 — Signing out mid-recording in local transcription mode still loses the transcript
+
+**Status:** Open. Found by Hawk reviewing the [BUG-54] fix. **Severity:** Medium — silent loss of a recorded transcript, but only on the sign-out destination and only in local mode.
+
+**Symptom:** With [BUG-54]'s leave-confirm in place, choosing **"Leave & save"** while recording and then signing out still loses the transcript. Every other destination is fine.
+
+**Root cause:** "Leave & save" awaits the **content** save before proceeding, but the **transcript** commit is fired asynchronously by `stopRecording()`. In cloud mode `commitTranscript()` dispatches immediately (so the request outlives the route change — safe). In local mode it first waits on `window.desktop.local.diarize()/finish()` — the stop-time `small.en` pass at ~2.3× realtime, doubled for 1:1 diarization, so minutes on a long meeting ([BUG-52]; note [BUG-53] fixed the *live* path's latency, not this finalise) — and only then issues an authenticated `completeTranscription` POST. Sign-out clears the token long before that POST, so it **401s**, `committedRef` is released, and nothing retries. Sign-out is the only continuation that clears auth, which is why no other destination reproduces it.
+
+**Fix direction:** gate the sign-out continuation on the transcript commit landing (or on `status !== 'finalising'`), not only on the content flush.
+
+**Not E2E-provable** — reproducing it needs real local audio capture on Windows. Guard with a unit test over the sign-out continuation's await set.
+
+**Key files:** `web/src/hooks/useTranscription.ts` (`stopRecording`, `commitTranscript`), the [BUG-54] leave-confirm continuation in `NoteView.tsx`.
 
 ---
 
@@ -362,6 +211,29 @@ Chrome throttles/freezes background-tab timers, so the proactive refresh schedul
 3. Only after the live path is confirmed working, consider the post-stop wait separately (it is expected cost, not a defect).
 
 **Deploy-time:** desktop-shell only — no backend, no CDK, no web deploy path touched → neutral.
+
+---
+
+## BUG-57 — `OpenNoteTabsJourney` red-gated deploy #717 on an empty cards list — a vacuous test assertion
+
+**Status:** In Progress — root-caused; fix in PR #418, awaiting the clean-run bar. **Severity:** High (deploy-gate flake) — but **not** a product defect.
+
+**Symptom:** `OpenNoteTabsJourney` failed the deploy #717 gate hunting `note-cards` for 30 s. The thrown-message diagnostic read `rendered cards(0)=[]` with all five `/notes/cards` reads `200 X-Consistency=none/fresh` — a healthy backend serving a list the test could not see.
+
+**Root cause (the tell everyone missed): `page.Url=…/notes/ffbc9c94-…`.** The test was still on the **note screen**. The cards list rendered nothing because it was never on the page. Two compounding causes:
+
+1. **The wait was vacuous.** `data-testid="new-note-button"` lives in the **Sidebar**, which `App.tsx:406` renders *outside* `<Routes>` — so it is visible on **every** route, including a note. `AppPage.AssertHomeLoadedAsync` and `SaveAndReturnAsync` waited only on that button, so both returned without the navigation having happened.
+2. **The navigation was discarded.** `handleBackFromNote` uses `navigate(-1)`, a history traversal the spec queues as a later task; a caller's next `ReloadAsync()` hard-loaded the address bar's **current** URL (still the note) and dropped the pending traversal. The reload loop then hunted `note-cards` on the note page until the deadline.
+
+**All three hypotheses originally filed here are wrong** — a stale `proj-position`, a cold/lagging projector, and a workspace-scoping mismatch. No amount of consistency-token work could have fixed this; the assertion never tested what it claimed to.
+
+**Fix (PR #418):** both helpers `WaitForURLAsync` off the note route before asserting. Follow-up worth taking: a **home-only** test id, so an always-rendered chrome element can never again stand in for "the home screen loaded".
+
+**Durable lesson:** an always-visible element is not a route assertion. Root-cause analysis found this; re-running never would have — and the diagnostic that solved it was already in the failure message.
+
+**Key files:** `tests/Browser.E2E/AppPage.cs` (`AssertHomeLoadedAsync`, `SaveAndReturnAsync`), `web/src/App.tsx:406`, `web/src/components/NoteView.tsx` (`handleBackFromNote`).
+
+---
 
 ## BUG-58 — Analyse hangs to the 29 s Lambda timeout; the Bedrock call has no deadline
 
@@ -405,6 +277,8 @@ The two identical note-detail reads are the signature of `POST /w/{ws}/notes/{no
 3. **Drop the duplicate read** (minor, do it in the same slice) — `AnalyseNote` and `NoteAnalysisService` each `GetAsync` the same ~90 KB `NoteDetail`; pass the already-loaded detail through.
 
 **Deploy-time:** neutral — a cancellation deadline plus one metric filter/alarm; no traffic-shifting, no IAM change. Note the guardrail on alarms: adding one changes the alarm-count infra assertion, so update `InfraAssertionsTests` in the same slice.
+
+---
 
 ## BUG-59 — A save into a deleted note says "try again" forever
 
