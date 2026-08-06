@@ -573,31 +573,43 @@ public sealed class AppPage
         // CHANGE-27: the tag combobox is hidden behind the "＋ Tag" ghost button in the
         // Command Bar — reveal it before filling. No-op if already revealed.
         var input = page.GetByTestId("tag-input");
+
+        // WaitForResponseAsync handlers all fire on the same response event, so
+        // N parallel tasks can resolve to the same single response. Use an atomic
+        // counter instead so we require exactly N distinct POST /tags responses.
+        //
+        // BUG-38: subscribe BEFORE revealing/filling, not between fill and Enter. The combobox
+        // submits on blur as well as on Enter, so the POST can fire during the fill — a handler
+        // attached afterwards misses it and then waits forever for a request that already happened.
+        int received = 0;
+        var allDone = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        page.Response += Handler;
         try
         {
             if (!await input.IsVisibleAsync())
                 await page.GetByTestId("add-tag-button").ClickAsync();
             await input.FillAsync(tagInput);
+            await input.PressAsync("Enter");
+            // Bounded so an unsubmitted tag fails with THIS message rather than sitting until the
+            // [E2EFact] 120 s cap, which reports nothing about where it got stuck.
+            await allDone.Task.WaitAsync(TimeSpan.FromSeconds(30));
         }
-        catch (PlaywrightException ex)
+        catch (Exception ex) when (ex is PlaywrightException or TimeoutException)
         {
-            // BUG-38: the tag UI never appeared — the note screen failed to load. Replace the opaque
-            // action timeout with sync-only page state (url + captured console/page errors) so the
-            // next cold-start failure tells us WHY. Only Playwright timeouts get the enriched message;
-            // keep the original as the inner exception — it names which locator timed out.
-            throw new Exception(DescribePageState("tag-input / add-tag-button", page.Url), ex);
+            // BUG-38: the enriched page state (url + captured console/page errors) previously
+            // covered only the reveal/fill. The chronic gate failure was on PressAsync — the
+            // resolved input detached mid-action — so every recurrence produced a bare 30 s timeout
+            // with no root-cause signal. Both Playwright's PlaywrightException (assertion/detach)
+            // and the plain TimeoutException raised by action timeouts and by the wait above are
+            // caught, so no path back to an opaque failure remains.
+            throw new Exception(
+                DescribePageState($"tag-input add of '{tagInput}' ({received}/{tagCount} POST /tags seen)", page.Url),
+                ex);
         }
-
-        // WaitForResponseAsync handlers all fire on the same response event, so
-        // N parallel tasks can resolve to the same single response. Use an atomic
-        // counter instead so we require exactly N distinct POST /tags responses.
-        int received = 0;
-        var allDone = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        page.Response += Handler;
-
-        await input.PressAsync("Enter");
-        await allDone.Task;
-        page.Response -= Handler;
+        finally
+        {
+            page.Response -= Handler;
+        }
 
         void Handler(object? _, IResponse r)
         {
