@@ -151,6 +151,19 @@ The live transcript must appear within a few seconds and keep pace, on the resid
 | 3 | **Reverts on leaving:** Given a note is open, When I go back to the list, Then the window title returns to `Note Taker AI` (the note name is not stranded). | ☐ |
 | 4 | **Untitled note:** Given I open a note with no title, Then the window title reads `Note Taker AI` with no trailing separator. | ☐ |
 
+## CHANGE-37 — right-click spelling corrections
+
+Electron's spellchecker was already underlining misspellings, but Electron ships no default context menu, so there was no way to act on one. The menu only appears for a misspelled word in an editable field.
+
+| # | Given / When / Then | Pass? |
+|---|---------------------|-------|
+| 1 | **Squiggles still there:** Given a note, When I type `teh recieve`, Then both words are underlined. | ☐ |
+| 2 | **Suggestions offered:** Given a misspelled word, When I right-click it, Then a menu lists spelling suggestions. | ☐ |
+| 3 | **Replacement works:** Given that menu, When I click a suggestion, Then it replaces the word in place and the note still saves correctly. | ☐ |
+| 4 | **Add to dictionary:** Given a proper noun the checker flags (e.g. a client name), When I right-click and choose "Add to dictionary", Then the squiggle goes and it stays un-flagged after an app restart. | ☐ |
+| 5 | **No menu on correct text:** Given a correctly-spelled word, When I right-click it, Then no menu appears (unchanged from today). | ☐ |
+| 6 | **No menu outside an editor:** Given the notes list or a heading, When I right-click, Then no menu appears. | ☐ |
+
 ## Troubleshooting
 
 - **`Error 400: redirect_uri_mismatch` immediately after adding `http://localhost:5180`** — the value is correct (`redirect_uri = window.location.origin = http://localhost:5180`: no trailing slash, `localhost` not `127.0.0.1`, port `5180`, `http` not `https`). The cause is **Google propagation lag** — a freshly added+saved redirect URI is not live immediately; it can take **~5 min to a few hours**. Confirm the running app's `window.location.origin` (DevTools console) reads exactly `http://localhost:5180`, then wait and retry. **No code change.** Hit and confirmed 2026-06-22: config was right on the first attempt; the URI simply had not propagated.

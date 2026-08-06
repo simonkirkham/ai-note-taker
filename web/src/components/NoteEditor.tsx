@@ -124,6 +124,11 @@ export default function NoteEditor({ noteId, value, onChange, onBlur }: NoteEdit
       attributes: {
         'aria-label': 'Note content',
         'data-testid': 'note-content',
+        // CHANGE-37: contenteditable defaults to spellcheck on, so the squiggles were already
+        // there — pinned explicitly so a future ProseMirror/Tiptap default can't drop them
+        // silently. Acting on a squiggle needed the desktop context menu (Electron ships no
+        // default one); in the browser the native right-click menu already works.
+        spellcheck: 'true',
         class: styles.contentInput,
       },
       handlePaste: (_view, event): boolean => dataTransferHandlerRef.current(event.clipboardData),
