@@ -98,8 +98,17 @@ public sealed class AppPage
 
     public string CurrentUrl => page.Url;
 
-    public Task AssertHomeLoadedAsync() =>
-        Assertions.Expect(page.GetByTestId("new-note-button")).ToBeVisibleAsync();
+    // BUG-38 (secondary cause): `new-note-button` lives in the Sidebar, which App.tsx renders
+    // OUTSIDE <Routes> — so it is visible on the note screen too. Waiting only on it proved
+    // nothing: the helper returned while still on /notes/{id}, and a caller that then reloaded
+    // and looked for `note-cards` searched the note page for 30 s. That is deploy #717's log
+    // exactly (page.Url=.../notes/…, rendered cards(0)=[]). Assert the ROUTE, which is the thing
+    // actually being claimed; the only note route is notes/:noteId, so "/notes/" discriminates.
+    public async Task AssertHomeLoadedAsync()
+    {
+        await page.WaitForURLAsync(u => !u.Contains("/notes/"));
+        await Assertions.Expect(page.GetByTestId("new-note-button")).ToBeVisibleAsync();
+    }
 
     public Task AssertNoteScreenLoadedAsync() =>
         Assertions.Expect(page.GetByTestId("note-title-input")).ToBeVisibleAsync();
@@ -170,7 +179,14 @@ public sealed class AppPage
         // cards query refetches. Safe for every caller: the just-saved card is added optimistically, so
         // callers' own AssertNoteVisibleInList*/ClickNoteInList asserts (auto-waiting / reload-tolerant)
         // still see it; callers needing the persisted write await their own /content PUT separately.
+        // BUG-38 (secondary cause): `new-note-button` is in the always-mounted Sidebar, so it was
+        // ALREADY visible on the note screen — this returned without the navigation having
+        // happened. Worse, handleBackFromNote uses navigate(-1), a history traversal the spec
+        // queues as a later task, so a caller's next ReloadAsync() hard-loaded the address bar's
+        // current URL (still the note) and discarded the pending traversal. Wait for the route to
+        // actually change; WaitForURLAsync polls the address bar, so it cannot be satisfied early.
         await page.GetByTestId("save-button").ClickAsync();
+        await page.WaitForURLAsync(u => !u.Contains("/notes/"));
         await Assertions.Expect(page.GetByTestId("new-note-button")).ToBeVisibleAsync();
     }
 
@@ -592,7 +608,7 @@ public sealed class AppPage
             await input.PressAsync("Enter");
             // Bounded so an unsubmitted tag fails with THIS message rather than sitting until the
             // [E2EFact] 120 s cap, which reports nothing about where it got stuck.
-            await allDone.Task.WaitAsync(TimeSpan.FromSeconds(30));
+            await allDone.Task.WaitAsync(TimeSpan.FromSeconds(15));
         }
         catch (Exception ex) when (ex is PlaywrightException or TimeoutException)
         {

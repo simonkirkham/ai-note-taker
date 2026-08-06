@@ -264,9 +264,31 @@ export default function NoteView({
     }
   }, [detailLoaded, detailDate, noteId, onDateSet, setNoteDateM]);
 
+  // BUG-38: autofocus the title when the note OPENS — at mount, once, and only if nothing else
+  // already holds focus. It must NOT be keyed to the note-detail read completing.
+  //
+  // That read is RYW-gated, so it resolves at an arbitrary wall-clock moment (from ~150 ms to the
+  // server's 8 s gate cap) while the whole screen — CommandBar included — has been interactive the
+  // entire time. Focusing the title on that event yanks the caret out of whatever the user is
+  // typing in, and every blur-dismissed control on this screen is *destroyed* by it: the tag
+  // combobox (TagCombobox's onBlur -> CommandBar's setAddingTag(false) unmounts the input), and the
+  // inline action/agenda editors. That is a real user bug — start typing a tag on a fresh note and
+  // the box can be ripped away with your half-typed text silently submitted — and it was the source
+  // of ~45% of all E2E deploy-gate failures, because the E2E fills then presses Enter as two calls
+  // and the steal lands between them, detaching the element Playwright already resolved.
+  //
+  // Mount is synchronous and strictly precedes any interaction, so it can never land mid-edit. The
+  // title input renders unconditionally (no loading guard), so the ref is populated at mount. The
+  // activeElement check is defence-in-depth: on in-app navigation the previously focused node is
+  // already unmounted, so activeElement is body and the autofocus still happens.
+  const titleAutofocused = useRef(false);
   useEffect(() => {
-    if (!loadingDetail && !notFound) inputRef.current?.focus();
-  }, [loadingDetail, notFound]);
+    if (titleAutofocused.current) return;
+    titleAutofocused.current = true;
+    const active = document.activeElement;
+    if (active && active !== document.body) return;
+    inputRef.current?.focus();
+  }, []);
 
   // BUG-34: browser back (Alt+←) fires popstate, which the beforeunload warning cannot
   // catch — it silently unmounted the note mid-recording and the transcript was lost.

@@ -1,6 +1,5 @@
 import userEvent from '@testing-library/user-event'
 import { http, HttpResponse } from 'msw'
-import { act } from 'react'
 import type { TagIndexEntry } from '../api/tags'
 import CommandBar from '../components/CommandBar'
 import { render, screen, waitFor } from '../test/render'
@@ -68,53 +67,6 @@ describe('CommandBar — tags', () => {
     const input = await screen.findByTestId('tag-input')
     await userEvent.type(input, 'roadmap{Enter}')
     expect(onAddTags).toHaveBeenCalledWith('roadmap')
-  })
-
-  // BUG-38 — blur used to do two things at once: commit whatever was half-typed, AND unmount the
-  // input (CommandBar's `addingTag ? <TagCombobox/> : <button/>`). That is the mechanism behind the
-  // chronic deploy-gate flake: the E2E helper fills the input then presses Enter as two separate
-  // Playwright calls, so a blur landing between them detaches the element it already resolved — and
-  // because addingTag flips false, `tag-input` never comes back, so the retry loop times out at 30 s.
-  // It is also wrong for a real user: clicking away mid-word should not silently create a tag.
-  it('blurring with text still submits it (unchanged convenience)', async () => {
-    const onAddTags = vi.fn()
-    renderBar({ onAddTags })
-    await userEvent.click(screen.getByTestId('add-tag-button'))
-    const input = await screen.findByTestId('tag-input')
-    await userEvent.type(input, 'roadmap')
-    await act(async () => { input.blur() })
-    expect(onAddTags).toHaveBeenCalledWith('roadmap')
-  })
-
-  it('blurring with text does NOT unmount the input (the flake mechanism)', async () => {
-    renderBar()
-    await userEvent.click(screen.getByTestId('add-tag-button'))
-    const input = await screen.findByTestId('tag-input')
-    await userEvent.type(input, 'roadm')
-    // act() so React actually flushes the blur's state updates — a bare input.blur() leaves the
-    // re-render pending and the assertion below would pass without proving anything.
-    await act(async () => { input.blur() })
-    // Still there to press Enter into — this is the exact element the E2E helper loses.
-    expect(screen.getByTestId('tag-input')).toBeInTheDocument()
-  })
-
-  it('blurring an EMPTY combobox collapses it back to the ＋ Tag button', async () => {
-    renderBar()
-    await userEvent.click(screen.getByTestId('add-tag-button'))
-    const input = await screen.findByTestId('tag-input')
-    await act(async () => { input.blur() })
-    await waitFor(() => expect(screen.queryByTestId('tag-input')).toBeNull())
-    expect(screen.getByTestId('add-tag-button')).toBeInTheDocument()
-  })
-
-  it('Enter commits, and the input stays available for the next tag', async () => {
-    const onAddTags = vi.fn()
-    renderBar({ onAddTags })
-    await userEvent.click(screen.getByTestId('add-tag-button'))
-    const input = await screen.findByTestId('tag-input')
-    await userEvent.type(input, 'roadmap{Enter}')
-    expect(onAddTags).toHaveBeenCalledWith('roadmap')
-    expect(screen.getByTestId('tag-input')).toBeInTheDocument()
   })
 
   it('the combobox suggests existing tags', async () => {

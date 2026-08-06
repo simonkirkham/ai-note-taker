@@ -107,17 +107,8 @@ export default function TagCombobox({
         onBlur={() => {
           setIsOpen(false);
           setHighlightedIndex(-1);
-          const hadText = input.trim().length > 0;
           submitTag(input);
-          // BUG-38: only collapse when there was nothing to submit. Collapsing straight after a
-          // blur-submit unmounts the input *mid-interaction* — the parent renders
-          // `addingTag ? <TagCombobox/> : <button/>`, so an element a caller is already acting on
-          // is destroyed and never comes back. That is the chronic deploy-gate flake: the E2E
-          // helper fills the input and presses Enter as two separate Playwright calls, and a blur
-          // landing between them detaches the resolved element, leaving the retry loop chasing a
-          // node that can no longer exist until the 30 s cap. Staying open after a submit is also
-          // what someone adding several tags in a row wants.
-          if (!hadText) onBlur?.();
+          onBlur?.();
         }}
         onKeyDown={handleKeyDown}
       />
