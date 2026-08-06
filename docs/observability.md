@@ -90,10 +90,23 @@ To trace a request:
 
 ## Did something breach a threshold?
 
-The **`notetaker-alarms`** SNS topic emails the configured address when an alarm fires. Two alarms are live:
+The **`notetaker-alarms`** SNS topic emails the configured address when an alarm fires. Eleven alarms are live:
 
-- **`notetaker-error-rate`** — Lambda error rate > 1% over 5 min (2 periods).
-- **`notetaker-p99-latency`** — Lambda p99 duration > 5 s over 5 min (2 periods).
+| Alarm | Fires when | First thing to check |
+| --- | --- | --- |
+| `notetaker-error-rate` | Lambda error rate > 1% over 5 min (2 periods) | The "All errors" dashboard widget |
+| `notetaker-p99-latency` | Query Lambda p99 duration > 5 s over 5 min (2 periods) | Slow projection reads / cold starts |
+| `notetaker-command-lambda-timeout` | Command Lambda Maximum duration ≥ 28 s (1 period of 5 min) | **Was an operator running `POST /admin/projections/rebuild`?** That is the one known benign cause. If not, a request was killed mid-flight — the process died with no exception, log or metric, so X-Ray is the only trace (BUG-58) |
+| `notetaker-transcribe-completion-timeout` | Completion Lambda Maximum duration ≥ 59 s (1 period of 5 min) | The post-diarization re-analysis was killed; nobody waits on that path, so nothing else surfaces it |
+| `notetaker-analysis-failed` | Any Bedrock analysis failure in 5 min | The per-note `Analysis failed for note {NoteId}` Error log |
+| `notetaker-transcribe-failed` | A batch-diarization job failed in 5 min | The completion Lambda log group |
+| `notetaker-projection-rebuild-fault` | A rebuild faulted (partial/failed) in 5 min | Read models are degraded until a clean re-run |
+| `notetaker-projection-rebuild-duration` | Rebuild > 20 s, approaching the 29 s HTTP limit | Also the benign cause of `notetaker-command-lambda-timeout` |
+| `notetaker-projector-error` | The async projector reported a failure in 5 min | A record is retrying toward the DLQ |
+| `notetaker-projector-dlq-depth` | The projector DLQ holds ≥ 1 parked record | A poison event; read models stay stale for that stream until redriven |
+| `notetaker-projector-iterator-age` | Projector stream iterator age > 60 s | The projector is falling behind the event log |
+
+> A **Lambda killed at its timeout emits no error, log, metric or completed trace** — the process dies mid-await. The two `*-timeout` alarms exist because a `Duration` datapoint pinned at the limit is the only signal that survives. Detection lags the kill by up to ~6 min (5 min period + evaluation).
 
 A concurrency-conflict alarm is **deferred** — CloudWatch rejects `SEARCH` on metric alarms, and `ConcurrencyConflict` is only queryable via SEARCH today (it's emitted with per-`Aggregate` dimensions). Watch it on the dashboard / saved query meanwhile. (See `docs/learnings/_archive.md`.)
 

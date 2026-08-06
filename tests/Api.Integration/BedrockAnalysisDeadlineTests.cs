@@ -3,7 +3,7 @@ using Amazon.BedrockRuntime;
 using Amazon.BedrockRuntime.Model;
 using Amazon.Runtime;
 using Api.Services;
-using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Logging;
 
 namespace Api.Integration;
 
@@ -12,19 +12,27 @@ namespace Api.Integration;
 // The deadline turns that silent kill into a TimeoutException the caller can see and report.
 public sealed class BedrockAnalysisDeadlineTests
 {
-    private static BedrockAnalysisService Service(IAmazonBedrockRuntime bedrock, TimeSpan timeout) =>
-        new(bedrock, NullLogger<BedrockAnalysisService>.Instance, PromptCatalog.Current,
-            "amazon.nova-lite-v1:0", timeout);
+    private readonly CapturingLoggerProvider _logs = new();
+
+    private BedrockAnalysisService Service(IAmazonBedrockRuntime bedrock, TimeSpan timeout)
+    {
+        using var factory = LoggerFactory.Create(b => b.AddProvider(_logs));
+        return new BedrockAnalysisService(bedrock, factory.CreateLogger<BedrockAnalysisService>(),
+            PromptCatalog.Current, "amazon.nova-lite-v1:0", timeout);
+    }
 
     [Fact]
-    public async Task Converse_that_outlives_the_deadline_throws_TimeoutException()
+    public async Task Converse_that_outlives_the_deadline_throws_TimeoutException_and_logs_an_error()
     {
         var service = Service(new DelayingBedrockRuntime(TimeSpan.FromSeconds(30)), TimeSpan.FromMilliseconds(100));
 
         var ex = await Assert.ThrowsAsync<TimeoutException>(() =>
             service.AnalyseAsync(new NoteAnalysisRequest("Notes", "A transcript.", "Alice")));
 
-        Assert.Contains("0.1", ex.Message);
+        // Assert the stable phrase, never the formatted number — interpolating a double uses the
+        // CURRENT culture, so "0.1" is "0,1" under de-DE and the assertion would fail off en-*.
+        Assert.Contains("did not complete within", ex.Message);
+        Assert.Contains(_logs.Entries, e => e.Level == LogLevel.Error && e.Message.Contains("exceeded its"));
     }
 
     [Fact]
@@ -48,6 +56,26 @@ public sealed class BedrockAnalysisDeadlineTests
 
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
             service.AnalyseAsync(new NoteAnalysisRequest("Notes", "A transcript.", "Alice"), caller.Token));
+    }
+
+    // The both-cancelled case: the caller's token AND the deadline are both tripped when the call
+    // unwinds. It must NOT become a TimeoutException (there is no one left to serve a 503 to, and it
+    // is not a Bedrock outage) — but it must never be traceless either, which is the whole point of
+    // BUG-58. Pre-cancelling the caller makes the linked source cancelled on creation, so both are
+    // set with no race. Without the caller arm ordered first, this returns a TimeoutException.
+    [Fact]
+    public async Task Caller_cancellation_that_also_trips_the_deadline_stays_a_cancellation_and_still_logs()
+    {
+        var service = Service(new DelayingBedrockRuntime(TimeSpan.FromSeconds(30)), TimeSpan.Zero);
+        using var caller = new CancellationTokenSource();
+        await caller.CancelAsync();
+
+        var ex = await Record.ExceptionAsync(() =>
+            service.AnalyseAsync(new NoteAnalysisRequest("Notes", "A transcript.", "Alice"), caller.Token));
+
+        Assert.IsNotType<TimeoutException>(ex);
+        Assert.IsAssignableFrom<OperationCanceledException>(ex);
+        Assert.Contains(_logs.Entries, e => e.Level == LogLevel.Warning && e.Message.Contains("abandoned"));
     }
 
     // The SDK client is subclassed rather than the (very wide) interface hand-implemented; the

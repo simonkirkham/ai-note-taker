@@ -7,5 +7,5 @@ namespace Api.Integration;
 public sealed class TimingOutBedrockAnalysisService : IBedrockAnalysisService
 {
     public Task<NoteAnalysisResult> AnalyseAsync(NoteAnalysisRequest request, CancellationToken ct = default) =>
-        throw new TimeoutException("Bedrock analysis did not complete within 20s (BEDROCK_ANALYSIS_TIMEOUT).");
+        throw new TimeoutException("Bedrock analysis did not complete within 20s.");
 }

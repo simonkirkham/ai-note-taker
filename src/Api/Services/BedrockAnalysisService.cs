@@ -66,8 +66,9 @@ public sealed class BedrockAnalysisService : IBedrockAnalysisService
     }
 
     // Bounds the inference so a stalled Bedrock call fails on OUR terms, before the host kills the
-    // process. Only the deadline becomes a TimeoutException — a cancelled CALLER (client disconnect,
-    // host shutdown) keeps propagating as OperationCanceledException, never mis-reported as an outage.
+    // process. The caller arm comes FIRST so the two-tokens-cancelled case is classified, not
+    // dropped: a cancelled caller is not a Bedrock outage, so it must not become a TimeoutException
+    // — but it still logs, because BUG-58 is fundamentally about kills that left no trace at all.
     private async Task<ConverseResponse> ConverseWithDeadlineAsync(ConverseRequest request, CancellationToken ct)
     {
         using var deadline = CancellationTokenSource.CreateLinkedTokenSource(ct);
@@ -76,10 +77,15 @@ public sealed class BedrockAnalysisService : IBedrockAnalysisService
         {
             return await _bedrock.ConverseAsync(request, deadline.Token).ConfigureAwait(false);
         }
-        catch (OperationCanceledException) when (deadline.IsCancellationRequested && !ct.IsCancellationRequested)
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            _logger.LogWarning("Bedrock analysis abandoned — the caller cancelled within its {TimeoutSeconds}s deadline (model {ModelId} prompt {PromptVersion}). Not counted as an analysis failure", _timeout.TotalSeconds, _modelId, _prompt.Version);
+            throw;
+        }
+        catch (OperationCanceledException) when (deadline.IsCancellationRequested)
         {
             _logger.LogError("Bedrock analysis exceeded its {TimeoutSeconds}s deadline for model {ModelId} prompt {PromptVersion}", _timeout.TotalSeconds, _modelId, _prompt.Version);
-            throw new TimeoutException($"Bedrock analysis did not complete within {_timeout.TotalSeconds}s.");
+            throw new TimeoutException(FormattableString.Invariant($"Bedrock analysis did not complete within {_timeout.TotalSeconds}s."));
         }
     }
 }
