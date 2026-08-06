@@ -7,8 +7,14 @@ function Probe({ title }: { title: string | null | undefined }) {
 }
 
 describe('useDocumentTitle', () => {
+  // Deliberately NOT APP_TITLE: seeding the app title would make every fallback assertion
+  // pass whether or not the hook wrote anything (a hook that never writes on the no-title
+  // path survives). Starting from a value the hook can never produce means each assertion
+  // proves a write actually happened.
+  const SENTINEL = 'SENTINEL-not-a-title-the-hook-can-produce'
+
   beforeEach(() => {
-    document.title = APP_TITLE
+    document.title = SENTINEL
   })
 
   it('puts the note title in front of the app name', () => {
@@ -34,6 +40,12 @@ describe('useDocumentTitle', () => {
 
   it('falls back to the app name when there is no note', () => {
     render(<Probe title={null} />)
+    expect(document.title).toBe(APP_TITLE)
+  })
+
+  it('reverts the tab when the user clears an existing title', () => {
+    const { rerender } = render(<Probe title="Roadmap review" />)
+    rerender(<Probe title="" />)
     expect(document.title).toBe(APP_TITLE)
   })
 
