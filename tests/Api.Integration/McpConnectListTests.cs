@@ -214,6 +214,40 @@ public sealed class McpConnectListTests(ApiFactory factory) : IClassFixture<ApiF
     }
 
     [Fact]
+    public async Task GetNote_WithIncludeTranscriptFalse_OmitsTheTranscript()
+    {
+        var noteId = new Guid("dddddddd-0000-0000-0000-000000000016");
+        SeedDetail(Owner, WorkspaceId.DefaultValue, noteId, "Recorded standup", "my own notes",
+            transcriptText: "Speaker 1: welcome everyone to the standup", transcriptIsDiarized: true);
+
+        var client = _factory.CreateUnauthenticatedClient();
+        var result = await CallToolAsync(client, "get_note",
+            new { workspaceId = WorkspaceId.DefaultValue, noteId = noteId.ToString(), includeTranscript = false },
+            McpTestTokens.Valid(Owner));
+
+        Assert.False(IsToolError(result));
+        var payload = ParsePayload(result);
+        Assert.Equal(JsonValueKind.Null, payload.GetProperty("transcriptText").ValueKind);
+        Assert.DoesNotContain("welcome everyone", RawText(result));
+        Assert.Contains("my own notes", payload.GetProperty("content").GetString());
+    }
+
+    [Fact]
+    public async Task GetNote_ForAnotherUsersNote_InSharedDefaultWorkspace_IsRejected()
+    {
+        var noteId = new Guid("dddddddd-0000-0000-0000-000000000017");
+        SeedDetail(OtherUser, WorkspaceId.DefaultValue, noteId, "Their standup", "their notes",
+            transcriptText: "Speaker 1: confidential salary discussion");
+
+        var client = _factory.CreateUnauthenticatedClient();
+        var result = await CallToolAsync(client, "get_note",
+            new { workspaceId = WorkspaceId.DefaultValue, noteId = noteId.ToString() }, McpTestTokens.Valid(Owner));
+
+        Assert.True(IsToolError(result));
+        Assert.DoesNotContain("confidential", RawText(result));
+    }
+
+    [Fact]
     public async Task SearchNotes_HappyPath_ReturnsRankedMatch()
     {
         var noteId = new Guid("eeeeeeee-0000-0000-0000-000000000005");
