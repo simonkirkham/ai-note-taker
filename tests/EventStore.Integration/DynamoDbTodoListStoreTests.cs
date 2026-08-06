@@ -90,9 +90,9 @@ public sealed class DynamoDbTodoListStoreTests(DynamoDbFixture fixture) : IClass
     {
         var store = await NewStoreAsync();
 
-        await store.SetTodayLineAsync("ws-1", "item-b");
+        await store.SetTodayLineAsync("user-1", "ws-1", "item-b");
 
-        Assert.Equal("item-b", await store.GetTodayLineAnchorAsync("ws-1"));
+        Assert.Equal("item-b", await store.GetTodayLineAnchorAsync("user-1", "ws-1"));
     }
 
     [Fact]
@@ -100,7 +100,7 @@ public sealed class DynamoDbTodoListStoreTests(DynamoDbFixture fixture) : IClass
     {
         var store = await NewStoreAsync();
 
-        Assert.Null(await store.GetTodayLineAnchorAsync("ws-1"));
+        Assert.Null(await store.GetTodayLineAnchorAsync("user-1", "ws-1"));
     }
 
     [Fact]
@@ -108,22 +108,36 @@ public sealed class DynamoDbTodoListStoreTests(DynamoDbFixture fixture) : IClass
     {
         var store = await NewStoreAsync();
 
-        await store.SetTodayLineAsync("ws-1", "item-a");
-        await store.SetTodayLineAsync("ws-2", "item-b");
+        await store.SetTodayLineAsync("user-1", "ws-1", "item-a");
+        await store.SetTodayLineAsync("user-1", "ws-2", "item-b");
 
-        Assert.Equal("item-a", await store.GetTodayLineAnchorAsync("ws-1"));
-        Assert.Equal("item-b", await store.GetTodayLineAnchorAsync("ws-2"));
+        Assert.Equal("item-a", await store.GetTodayLineAnchorAsync("user-1", "ws-1"));
+        Assert.Equal("item-b", await store.GetTodayLineAnchorAsync("user-1", "ws-2"));
+    }
+
+    // The rootless workspace resolves to a shared `__default__` id, so a workspace-only key would
+    // let two users silently overwrite each other's line.
+    [Fact]
+    public async Task TodayLine_IsScopedPerUserNotJustPerWorkspace()
+    {
+        var store = await NewStoreAsync();
+
+        await store.SetTodayLineAsync("user-1", "__default__", "item-a");
+        await store.SetTodayLineAsync("user-2", "__default__", "item-b");
+
+        Assert.Equal("item-a", await store.GetTodayLineAnchorAsync("user-1", "__default__"));
+        Assert.Equal("item-b", await store.GetTodayLineAnchorAsync("user-2", "__default__"));
     }
 
     [Fact]
     public async Task TodayLine_ANullAnchorClearsTheStoredValue()
     {
         var store = await NewStoreAsync();
-        await store.SetTodayLineAsync("ws-1", "item-a");
+        await store.SetTodayLineAsync("user-1", "ws-1", "item-a");
 
-        await store.SetTodayLineAsync("ws-1", null);
+        await store.SetTodayLineAsync("user-1", "ws-1", null);
 
-        Assert.Null(await store.GetTodayLineAnchorAsync("ws-1"));
+        Assert.Null(await store.GetTodayLineAnchorAsync("user-1", "ws-1"));
     }
 
     // The line rides the same single-PK table as the item rows, so the marker must never leak
@@ -133,7 +147,7 @@ public sealed class DynamoDbTodoListStoreTests(DynamoDbFixture fixture) : IClass
     {
         var store = await NewStoreAsync();
         await store.PutAsync(Todo("a", "A", T(1)));
-        await store.SetTodayLineAsync("ws-1", "a");
+        await store.SetTodayLineAsync("user-1", "ws-1", "a");
 
         var items = (await store.QueryAllAsync()).Items;
 

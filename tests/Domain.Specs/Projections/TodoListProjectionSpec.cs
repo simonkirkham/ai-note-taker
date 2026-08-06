@@ -315,17 +315,17 @@ public sealed class TodoListProjectionSpec
         Assert.Null(byId["C"]);
     }
 
-    static EventEnvelope TodayLineEnv(string ws, string? anchorItemId) =>
+    static EventEnvelope TodayLineEnv(string ws, string? anchorItemId, string userId = "user-1") =>
         new($"todo-order#{ws}", 2, nameof(TodayLineSet), 1, DateTimeOffset.UtcNow,
             JsonSerializer.Serialize(new TodayLineSet(ws, anchorItemId, DateTimeOffset.UtcNow)),
-            new EventMetadata(Guid.NewGuid(), null, null, null, ws));
+            new EventMetadata(Guid.NewGuid(), userId, null, null, ws));
 
     [Fact]
     public void TodayLine_UnsetByDefault()
     {
         var projection = new TodoListProjection();
 
-        Assert.Null(projection.GetTodayLineAnchor("ws-1"));
+        Assert.Null(projection.GetTodayLineAnchor("user-1", "ws-1"));
     }
 
     [Fact]
@@ -335,7 +335,7 @@ public sealed class TodoListProjectionSpec
 
         projection.Handle(TodayLineEnv("ws-1", TodoB.Value.ToString()));
 
-        Assert.Equal(TodoB.Value.ToString(), projection.GetTodayLineAnchor("ws-1"));
+        Assert.Equal(TodoB.Value.ToString(), projection.GetTodayLineAnchor("user-1", "ws-1"));
     }
 
     [Fact]
@@ -346,8 +346,8 @@ public sealed class TodoListProjectionSpec
         projection.Handle(TodayLineEnv("ws-1", TodoB.Value.ToString()));
         projection.Handle(TodayLineEnv("ws-2", TodoC.Value.ToString()));
 
-        Assert.Equal(TodoB.Value.ToString(), projection.GetTodayLineAnchor("ws-1"));
-        Assert.Equal(TodoC.Value.ToString(), projection.GetTodayLineAnchor("ws-2"));
+        Assert.Equal(TodoB.Value.ToString(), projection.GetTodayLineAnchor("user-1", "ws-1"));
+        Assert.Equal(TodoC.Value.ToString(), projection.GetTodayLineAnchor("user-1", "ws-2"));
     }
 
     [Fact]
@@ -358,7 +358,7 @@ public sealed class TodoListProjectionSpec
 
         projection.Handle(TodayLineEnv("ws-1", null));
 
-        Assert.Null(projection.GetTodayLineAnchor("ws-1"));
+        Assert.Null(projection.GetTodayLineAnchor("user-1", "ws-1"));
     }
 
     [Fact]

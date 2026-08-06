@@ -13,7 +13,7 @@ public static class TodoHandlers
         IConsistencyGate gate,
         ICurrentUser currentUser,
         ICurrentWorkspace currentWorkspace,
-        ILogger<ITodoListStore> logger,
+        ILogger<TodoListView> logger,
         HttpContext http,
         CancellationToken ct)
     {
@@ -26,7 +26,7 @@ public static class TodoHandlers
 
         // Independent reads — the list and the Today-line marker are separate keys.
         var itemsTask = store.QueryAllAsync(ct);
-        var anchorTask = store.GetTodayLineAnchorAsync(currentWorkspace.WorkspaceId, ct);
+        var anchorTask = store.GetTodayLineAnchorAsync(currentUser.UserId, currentWorkspace.WorkspaceId, ct);
         await Task.WhenAll(itemsTask, anchorTask).ConfigureAwait(false);
         var view = await itemsTask.ConfigureAwait(false);
         var storedAnchor = await anchorTask.ConfigureAwait(false);
@@ -40,8 +40,11 @@ public static class TodoHandlers
             .ToList();
 
         var todayLineAnchorItemId = ResolveTodayLine(visible, storedAnchor);
+        // Durable relocation happens in the projector when the anchor stops being open, so a
+        // mismatch here is only the transient window before that lands — Debug, not Information,
+        // or it would log on every home-page poll for as long as the window is open.
         if (storedAnchor is not null && todayLineAnchorItemId != storedAnchor)
-            logger.LogInformation("Today line relocated on read for workspace {WorkspaceId}: {StoredAnchor} -> {ResolvedAnchor}",
+            logger.LogDebug("Today line resolved past its stored anchor for workspace {WorkspaceId}: {StoredAnchor} -> {ResolvedAnchor}",
                 currentWorkspace.WorkspaceId, storedAnchor, todayLineAnchorItemId ?? "(below everything)");
 
         return Results.Ok(new
@@ -60,11 +63,10 @@ public static class TodoHandlers
         });
     }
 
-    // The stored anchor is the item the line sits immediately ABOVE. It may since have been
-    // completed (still listed, but no longer open) or deleted (gone), so the read reports the
-    // first still-OPEN item at or after its place in the order — the line therefore keeps its
-    // visual position without any relocation write. null = the line is below everything.
-    // A deleted anchor leaves no place to resolve from, so the line falls to the bottom.
+    // The stored anchor is the item the line sits immediately ABOVE. The projector relocates it
+    // durably the moment that item stops being open, so this read-side resolution only covers the
+    // transient window before that lands: report the first still-OPEN item at or after the anchor's
+    // place in the order. null = the line is below everything.
     static string? ResolveTodayLine(IReadOnlyList<TodoItem> ordered, string? storedAnchor)
     {
         if (storedAnchor is null)

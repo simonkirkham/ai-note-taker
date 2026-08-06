@@ -7,6 +7,7 @@ import { useCompleteTodo, useReopenTodo, useEditTodo, useDeleteTodo, useReorderT
 import { useTodos } from "../hooks/useTodos";
 import { TrashIcon, GripVerticalIcon } from "./icons";
 import QuickCaptureTodoInput from "./QuickCaptureTodoInput";
+import { useToast } from "./toastContext";
 import styles from "./TodoSection.module.css";
 
 // The Today line is dragged like a row, so it needs its own id in the same drag slot.
@@ -31,6 +32,7 @@ function arrayMove<T>(arr: T[], from: number, to: number): T[] {
 
 export default function TodoSection() {
   const qc = useQueryClient();
+  const { showError } = useToast();
   const { data, isLoading: loading } = useTodos();
   const items = data?.items ?? [];
   const complete = useCompleteTodo();
@@ -60,6 +62,21 @@ export default function TodoSection() {
   const laterItems = openItems.slice(splitAt);
   const draggingLine = draggedId === TODAY_LINE_DRAG_ID;
 
+  // Every Today-line move goes through here. The optimistic update means a failed save would
+  // otherwise just snap the line back with no explanation — say so instead.
+  async function moveLineAsync(anchor: string | null) {
+    try {
+      await setLine.mutateAsync(anchor);
+    } catch {
+      showError("Couldn't move the Today line. It's back where it was.");
+    }
+  }
+
+  // Fire-and-forget for the drag/keyboard paths, where nothing waits on the write landing.
+  function moveLine(anchor: string | null) {
+    void moveLineAsync(anchor);
+  }
+
   // Reorder the open items, optimistically and persisted. Pass the full new id order.
   function reorderTo(orderedIds: string[]) {
     if (orderedIds.length > 1) reorder.mutate(orderedIds);
@@ -71,13 +88,29 @@ export default function TodoSection() {
     setDraggedId(null);
     // Dropping the line on a row puts the line immediately above that row.
     if (dragged === TODAY_LINE_DRAG_ID) {
-      if (targetId !== anchorItemId) setLine.mutate(targetId);
+      if (targetId !== anchorItemId) moveLine(targetId);
       return;
     }
-    const from = dragged ? ids.indexOf(dragged) : -1;
+    if (dragged === null) return;
+    const from = ids.indexOf(dragged);
     const to = ids.indexOf(targetId);
     if (from < 0 || to < 0 || from === to) return;
-    reorderTo(arrayMove(ids, from, to));
+    const nextIds = arrayMove(ids, from, to);
+    reorderTo(nextIds);
+    reanchorIfLineWouldFollow(dragged, nextIds);
+  }
+
+  // The line is anchored to an item ID, so dragging the ANCHOR ITSELF would drag the line with it —
+  // pulling the anchor to the top would empty Today, pushing it to the bottom would promote
+  // everything. The line must stay put: re-anchor it to whichever item now heads the old Later
+  // group (null if the dragged item was the only one left below the line).
+  function reanchorIfLineWouldFollow(draggedItemId: string, nextIds: string[]) {
+    if (draggedItemId !== anchorItemId) return;
+    const stillLater = new Set(
+      openItems.slice(splitAt).map((i) => i.itemId).filter((id) => id !== draggedItemId),
+    );
+    const newAnchor = nextIds.find((id) => stillLater.has(id)) ?? null;
+    if (newAnchor !== anchorItemId) moveLine(newAnchor);
   }
 
   // Dropping a row onto the line itself (or onto an empty Today group) makes it the last
@@ -89,16 +122,33 @@ export default function TodoSection() {
     if (dragged === null || dragged === TODAY_LINE_DRAG_ID) return;
     const from = ids.indexOf(dragged);
     if (from < 0) return;
+    // Dropping the anchor itself on the line moves it into Today: the order is unchanged and only
+    // the line steps down past it.
+    if (dragged === anchorItemId) {
+      reanchorIfLineWouldFollow(dragged, ids);
+      return;
+    }
     const to = from < splitAt ? splitAt - 1 : splitAt;
     if (from === to) return;
     reorderTo(arrayMove(ids, from, to));
+  }
+
+  // Keyboard equivalent of dragging the line: step it over the item above or below.
+  function moveLineByKeyboard(direction: -1 | 1) {
+    if (direction === -1) {
+      if (splitAt === 0) return;
+      moveLine(openItems[splitAt - 1].itemId);
+      return;
+    }
+    if (anchorItemId === null) return;
+    moveLine(openItems[splitAt + 1]?.itemId ?? null);
   }
 
   // The zone past the last row: the only way to send the line back below everything.
   function handleDropAtEnd() {
     const dragged = draggedId;
     setDraggedId(null);
-    if (dragged === TODAY_LINE_DRAG_ID && anchorItemId !== null) setLine.mutate(null);
+    if (dragged === TODAY_LINE_DRAG_ID && anchorItemId !== null) moveLine(null);
   }
 
   function addBusy(id: string) {
@@ -130,6 +180,13 @@ export default function TodoSection() {
 
   function handleAddConfirmed(tempId: string, realId: string) {
     patchItems((prev) => prev.map((i) => i.itemId === tempId ? { ...i, itemId: realId } : i));
+    // A fresh item has no stored Position, and the server sorts unpositioned rows LAST — so
+    // without persisting an order the new to-do jumps to the bottom on the next refetch, landing
+    // under "Later". Pin the order we just rendered.
+    const openIds = (qc.getQueryData<TodoListData>(keys.todos)?.items ?? [])
+      .filter((i) => i.completedAt === null)
+      .map((i) => i.itemId);
+    if (openIds.length > 1) reorder.mutate(openIds);
   }
 
   function handleAddFailed(tempId: string) {
@@ -189,12 +246,14 @@ export default function TodoSection() {
     if (busy.has(item.itemId)) return;
     addBusy(item.itemId);
     try {
-      // Deleting the anchor removes the row the line hangs off, and a deleted row leaves no
-      // place for the server to resolve from — so re-anchor to the next open item first.
-      if (item.itemId === anchorItemId) {
-        const from = openItems.findIndex((i) => i.itemId === item.itemId);
-        await setLine.mutateAsync(openItems[from + 1]?.itemId ?? null);
-      }
+      // Deleting the ANCHOR leaves the line with nothing to hang off: the optimistic cache update
+      // drops it below everything and promotes the whole list to Today until a refetch lands. So
+      // step the line down first, exactly as dragging the anchor away does (reanchorIfLineWouldFollow).
+      // Awaited so the stored anchor never points at a deleted row — but non-fatal, because a failed
+      // line move must not swallow the delete the user actually asked for. The projector relocates a
+      // deleted anchor too (covering the note Actions panel and other devices); it no-ops here
+      // because this write lands first and leaves it nothing to relocate.
+      if (item.itemId === anchorItemId) await moveLineAsync(openItems[splitAt + 1]?.itemId ?? null);
       await remove.mutateAsync(item);
     } catch {
       // rolled back in onError
@@ -299,23 +358,38 @@ export default function TodoSection() {
                   Nothing in today yet.
                 </p>
               )}
+              {/* A FOCUSABLE separator is the ARIA window-splitter widget, not decoration: it takes
+                  a tabIndex, reports its position with aria-valuenow, and is moved with the arrow
+                  keys. Both rules below treat `separator` as always non-interactive, which holds
+                  only for a static divider — this one is genuinely a control. */}
+              {/* eslint-disable jsx-a11y/no-noninteractive-element-interactions, jsx-a11y/no-noninteractive-tabindex */}
               <div
                 data-testid="today-line"
                 role="separator"
-                aria-label="Today line — drag to move"
-                title="Drag to move where today ends"
+                aria-orientation="horizontal"
+                aria-valuenow={todayItems.length}
+                aria-valuemin={0}
+                aria-valuemax={openItems.length}
+                aria-label={`End of today — ${todayItems.length} in today, ${laterItems.length} later. Use the arrow keys to move.`}
+                title="Drag, or focus and use the arrow keys, to move where today ends"
+                tabIndex={0}
                 className={clsx(styles.todayLine, draggingLine && styles.todayLineDragging)}
                 draggable
                 onDragStart={() => setDraggedId(TODAY_LINE_DRAG_ID)}
                 onDragEnd={() => setDraggedId(null)}
                 onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = "move"; }}
                 onDrop={(e) => { e.preventDefault(); handleDropOnLine(); }}
+                onKeyDown={(e) => {
+                  if (e.key === "ArrowUp") { e.preventDefault(); moveLineByKeyboard(-1); }
+                  if (e.key === "ArrowDown") { e.preventDefault(); moveLineByKeyboard(1); }
+                }}
               >
                 <span className={styles.todayLineHandle} aria-hidden="true">
                   <GripVerticalIcon />
                 </span>
                 <span className={styles.todayLineLabel}>End of today</span>
               </div>
+              {/* eslint-enable jsx-a11y/no-noninteractive-element-interactions, jsx-a11y/no-noninteractive-tabindex */}
               {laterItems.length > 0 && (
                 <>
                   <h3 id="todo-later-heading" className={styles.todoGroupHeading}>Later</h3>

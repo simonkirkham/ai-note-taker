@@ -178,27 +178,36 @@ public sealed class DynamoDbTodoListStore(IAmazonDynamoDB dynamo, string tableNa
             .AsReadOnly());
     }
 
-    public async Task SetTodayLineAsync(string workspaceId, string? anchorItemId, CancellationToken ct = default)
+    // Keyed by user AND workspace: a rootless request resolves to the shared `__default__`
+    // workspace, so a workspace-only key would let two users overwrite each other's line.
+    private static Dictionary<string, AttributeValue> TodayLineKey(string userId, string workspaceId) =>
+        new() { ["PK"] = new() { S = $"{TodayLinePrefix}{userId}#{workspaceId}" } };
+
+    public async Task SetTodayLineAsync(string userId, string workspaceId, string? anchorItemId, CancellationToken ct = default)
     {
-        var key = new Dictionary<string, AttributeValue> { ["PK"] = new() { S = TodayLinePrefix + workspaceId } };
-        var request = anchorItemId is null
-            ? new UpdateItemRequest { TableName = tableName, Key = key, UpdateExpression = "REMOVE AnchorItemId" }
-            : new UpdateItemRequest
-            {
-                TableName = tableName,
-                Key = key,
-                UpdateExpression = "SET AnchorItemId = :a",
-                ExpressionAttributeValues = new Dictionary<string, AttributeValue> { [":a"] = new() { S = anchorItemId } }
-            };
-        await dynamo.UpdateItemAsync(request, ct).ConfigureAwait(false);
+        var key = TodayLineKey(userId, workspaceId);
+        if (anchorItemId is null)
+        {
+            // "Below everything" is the absence of a marker — delete the row rather than REMOVE the
+            // attribute, which would leave a key-only row behind.
+            await dynamo.DeleteItemAsync(new DeleteItemRequest { TableName = tableName, Key = key }, ct).ConfigureAwait(false);
+            return;
+        }
+        await dynamo.UpdateItemAsync(new UpdateItemRequest
+        {
+            TableName = tableName,
+            Key = key,
+            UpdateExpression = "SET AnchorItemId = :a",
+            ExpressionAttributeValues = new Dictionary<string, AttributeValue> { [":a"] = new() { S = anchorItemId } }
+        }, ct).ConfigureAwait(false);
     }
 
-    public async Task<string?> GetTodayLineAnchorAsync(string workspaceId, CancellationToken ct = default)
+    public async Task<string?> GetTodayLineAnchorAsync(string userId, string workspaceId, CancellationToken ct = default)
     {
         var resp = await dynamo.GetItemAsync(new GetItemRequest
         {
             TableName = tableName,
-            Key = new Dictionary<string, AttributeValue> { ["PK"] = new() { S = TodayLinePrefix + workspaceId } },
+            Key = TodayLineKey(userId, workspaceId),
             ConsistentRead = true
         }, ct).ConfigureAwait(false);
         return resp.Item is not null && resp.Item.TryGetValue("AnchorItemId", out var anchor) ? anchor.S : null;

@@ -18,8 +18,10 @@ public interface ITodoListStore
     // Items not listed keep their existing position (the client always sends the full open-list order).
     Task UpdatePositionsAsync(IReadOnlyList<string> orderedItemIds, CancellationToken ct = default);
 
-    // The home To Do list's "Today" line for a workspace: the id of the item the line sits
+    // The home To Do list's "Today" line, per user per workspace: the id of the item the line sits
     // immediately ABOVE. null means the line is below every item (everything is Today).
-    Task SetTodayLineAsync(string workspaceId, string? anchorItemId, CancellationToken ct = default);
-    Task<string?> GetTodayLineAnchorAsync(string workspaceId, CancellationToken ct = default);
+    // Keyed by user as well as workspace — a rootless request resolves to the shared `__default__`
+    // workspace, so a workspace-only key would let two users overwrite each other's line.
+    Task SetTodayLineAsync(string userId, string workspaceId, string? anchorItemId, CancellationToken ct = default);
+    Task<string?> GetTodayLineAnchorAsync(string userId, string workspaceId, CancellationToken ct = default);
 }
