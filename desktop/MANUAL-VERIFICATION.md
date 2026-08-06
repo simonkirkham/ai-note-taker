@@ -176,6 +176,9 @@ The app now answers Electron's permission requests itself instead of riding the 
 | 4 | **Meeting reminders still fire:** Given a meeting is due, Then the desktop notification still appears (`notifications` is on the allow-list; leaving it off would have broken this). | ☐ |
 | 5 | **Nothing unexpected is being denied:** Given I use the app normally (open notes, edit, record, sign in via Google), Then no `[desktop] permission … denied` warning appears in the console for a feature that used to work. | ☐ |
 | 6 | **OS gate unchanged:** Given Windows microphone access is turned off for desktop apps, When I record, Then it fails at the OS level exactly as before (this pin does not bypass it). | ☐ |
+| 7 | **The CHECK handler grants, not just the request handler:** Given the app has been open a moment, When I check the console, Then a line reads `[desktop] permission check media: granted — …` and **no** `permission check … denied` line names `media` or `notifications`. | ☐ |
+
+> **Why row 7 exists.** The unit specs assert against the shapes we *believe* Electron passes; they cannot prove the wire format. Review caught the first implementation comparing the check handler's origin raw — Electron hands it a GURL serialised with a **trailing slash** (`http://localhost:5180/`), which never matched the bundle origin, so **every check was denied while all 17 specs passed**. Symptoms if it regresses: meeting reminders fall back to a plain `alert()`, microphone device names show blank in any picker, and Chromium's pre-flight can fail `getUserMedia` before the request handler is ever consulted. Row 7 is the only check that would catch it.
 
 ## Troubleshooting
 

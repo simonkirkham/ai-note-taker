@@ -158,6 +158,7 @@ function registerPermissionHandlers(): void {
       {
         permission,
         requestingUrl: details.requestingUrl,
+        isMainFrame: details.isMainFrame,
         mediaTypes: 'mediaTypes' in details ? details.mediaTypes : undefined,
       },
       BUNDLE_ORIGINS,
@@ -167,15 +168,36 @@ function registerPermissionHandlers(): void {
   })
 
   session.defaultSession.setPermissionCheckHandler((_webContents, permission, requestingOrigin, details) => {
-    const decision = decidePermissionCheck({ permission, requestingOrigin, mediaType: details.mediaType }, BUNDLE_ORIGINS)
+    const decision = decidePermissionCheck(
+      {
+        permission,
+        requestingOrigin,
+        securityOrigin: details.securityOrigin,
+        isMainFrame: details.isMainFrame,
+        mediaType: details.mediaType,
+      },
+      BUNDLE_ORIGINS,
+    )
     logDecision('check', permission, decision.allow, decision.reason)
     return decision.allow
   })
 }
 
+// Checks are polled, not one-shot: Notification.permission is a synchronous getter that
+// round-trips to the browser process on every read, and MeetingsSection reads it in its render
+// body — so logging every check emits a line on every re-render and buries the request-decision
+// lines MANUAL-VERIFICATION #2 and #5 tell the operator to look for. Dedupe on the full decision
+// so a CHANGED outcome still prints; requests are one-shot and always logged.
+const loggedChecks = new Set<string>()
+
 // Denials are warnings: every one is either an attempt from an origin that should not have the
 // mic, or a feature this app does not know it uses — both worth seeing in the console.
 function logDecision(kind: 'request' | 'check', permission: string, allow: boolean, reason: string): void {
+  if (kind === 'check') {
+    const key = `${permission}|${allow}|${reason}`
+    if (loggedChecks.has(key)) return
+    loggedChecks.add(key)
+  }
   const line = `[desktop] permission ${kind} ${permission}: ${allow ? 'granted' : 'denied'} — ${reason}`
   if (allow) console.log(line)
   else console.warn(line)
