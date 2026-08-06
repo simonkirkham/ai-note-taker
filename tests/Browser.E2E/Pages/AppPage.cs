@@ -710,6 +710,19 @@ public sealed class AppPage
     // 49-B — a real page reload, to prove client-side state that is meant to survive one does.
     public async Task ReloadAsync() => await page.ReloadAsync();
 
+    // 49-B — reload and wait for the note-cards read to settle. The open-note tab bar is
+    // restored from localStorage but then RECONCILED against that (projector-backed) list,
+    // so asserting before it resolves samples the unreconciled set and races a tab that is
+    // about to be dropped. Waiting on the response makes the assertion deterministic.
+    public async Task ReloadAndAwaitCardsAsync()
+    {
+        var cardsRead = page.WaitForResponseAsync(
+            r => r.Url.Contains("/notes/cards") && r.Request.Method == "GET",
+            new() { Timeout = 30_000 });
+        await page.ReloadAsync();
+        await cardsRead;
+    }
+
     // 36-A — per-workspace theme. Open the sidebar (mobile), open the workspace switcher, create a
     // fresh non-default workspace, and wait for the app to navigate into it (`/w/{id}`, not __default__).
     // A fresh workspace starts with no stored theme → teal (the :root default, no data-theme attr).

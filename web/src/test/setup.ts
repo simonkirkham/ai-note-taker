@@ -32,12 +32,18 @@ afterEach(() => {
   // Same class again for browser storage — 49-B persists the open-note tabs there, so
   // without this a tab opened in one test is restored in the next and every count
   // assertion drifts. Covers the theme and keep-audio-local preferences too.
+  // Cleared independently: a suite that stubs one of them to throw must not prevent the
+  // other from being reset.
   if (typeof window !== 'undefined') {
     try {
       localStorage.clear()
+    } catch {
+      /* stubbed to throw by the test under way; nothing to clear */
+    }
+    try {
       sessionStorage.clear()
     } catch {
-      /* a suite may have stubbed storage to throw; nothing to clear then */
+      /* ditto */
     }
   }
 })

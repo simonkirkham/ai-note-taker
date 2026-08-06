@@ -134,7 +134,7 @@ function AppContent({ signOut }: { signOut: () => void }) {
   const w = (p: string) => `/w/${wsId}${p}`;
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const qc = useQueryClient();
-  const { data: cards = [], isLoading: loading } = useNoteCards();
+  const { data: cards = [], isLoading: loading, isSuccess: cardsLoaded } = useNoteCards();
   const createNote = useCreateNote();
   const deleteNote = useDeleteNote();
   const moveNote = useMoveNoteToFolder();
@@ -187,19 +187,22 @@ function AppContent({ signOut }: { signOut: () => void }) {
   // impossible by construction. The note being VIEWED is never dropped — it is open by
   // definition, even if the list hasn't caught up with it yet.
   const openNoteTabs = useMemo(() => {
-    const known = new Set(cards.map((c) => c.noteId));
-    const live = loading
-      ? tabs
-      : tabs.filter((t) => t.noteId === activeNoteId || known.has(t.noteId));
+    const titles = new Map(cards.map((c) => [c.noteId, c.title]));
+    // Gate on isSuccess, NOT on !isLoading: a FAILED cards read also stops loading, with no
+    // data — treating that as "the notes are gone" would collapse the bar on one API blip.
+    // Only a read that actually succeeded is evidence a note no longer exists.
+    const live = cardsLoaded
+      ? tabs.filter((t) => t.noteId === activeNoteId || titles.has(t.noteId))
+      : tabs;
     const adopted =
       !activeNoteId || live.some((t) => t.noteId === activeNoteId)
         ? live
         : [...live, { noteId: activeNoteId, title: "" }];
     return adopted.map((tab) => ({
       noteId: tab.noteId,
-      title: cards.find((c) => c.noteId === tab.noteId)?.title || tab.title || "Untitled note",
+      title: titles.get(tab.noteId) || tab.title || "Untitled note",
     }));
-  }, [tabs, cards, activeNoteId, loading]);
+  }, [tabs, cards, activeNoteId, cardsLoaded]);
   // Set by the mounted NoteView while it is recording; see requestLeave below.
   const leaveGuardRef = useRef<((proceed: () => void) => void) | null>(null);
   const registerLeaveGuard = useCallback(

@@ -11,19 +11,29 @@ const STORAGE_PREFIX = "note-taker-open-tabs-";
 
 const storageKey = (wsId: string) => `${STORAGE_PREFIX}${wsId}`;
 
+// Only a ceiling on RESTORED tabs — normal use never approaches it (there is no cap on
+// opening tabs in-session), so this only bounds a value the app did not write.
+const MAX_RESTORED_TABS = 50;
+
 // Anything unreadable — absent, corrupt JSON, or the wrong shape (a hand-edited value, or a
 // future version's format) — reads as "no tabs" rather than breaking the app.
-export function readStoredTabs(wsId: string): OpenNoteTab[] {
+function readStoredTabs(wsId: string): OpenNoteTab[] {
   try {
     const raw = localStorage.getItem(storageKey(wsId));
     if (!raw) return NO_TABS;
     const parsed: unknown = JSON.parse(raw);
     const list = (parsed as { tabs?: unknown })?.tabs;
     if (!Array.isArray(list)) return NO_TABS;
+    const seen = new Set<string>();
     const clean = list
       .filter((t): t is { noteId: string; title?: unknown } =>
         typeof (t as { noteId?: unknown })?.noteId === "string" && !!(t as { noteId: string }).noteId,
       )
+      // Duplicates would give React duplicate keys and two tabs both marked current; an
+      // arbitrarily long list (hand-edited or corrupted) would render thousands of buttons.
+      // `openTab` dedupes on write, so both only arise from a value we did not produce.
+      .filter((t) => !seen.has(t.noteId) && (seen.add(t.noteId), true))
+      .slice(0, MAX_RESTORED_TABS)
       .map((t) => ({ noteId: t.noteId, title: typeof t.title === "string" ? t.title : "" }));
     return clean.length > 0 ? clean : NO_TABS;
   } catch {

@@ -73,9 +73,15 @@ public sealed class OpenNoteTabsJourney(BrowserFixture browser) : IAsyncLifetime
         var secondUrl = _app.CurrentUrl;
 
         // 49-B: the open set is remembered per device, so a reload brings both tabs back with
-        // the same one active. This is client-side state (localStorage), not a projector read,
-        // so it needs no reload-tolerant re-gating — one reload is deterministic.
-        await _app.ReloadAsync();
+        // the same one active.
+        //
+        // The tab SET comes from localStorage, but which tabs are RENDERED is reconciled
+        // against the projector-backed `/notes/cards` read — a tab whose note the list does
+        // not (yet) contain is dropped. So the naive assertion is a race: it passes during
+        // the pre-fetch window, when tabs render unfiltered straight from storage, and the
+        // tab can then vanish when a lagging read resolves without it. Wait for the cards
+        // read to settle first, so the count asserted is the reconciled one.
+        await _app.ReloadAndAwaitCardsAsync();
         await _app.AssertNoteScreenLoadedAsync();
         await _app.AssertOpenTabCountAsync(2);
         await _app.AssertOpenTabVisibleAsync(first);
