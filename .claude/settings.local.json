@@ -82,7 +82,18 @@
       "WebFetch(domain:pabasara-mahindapala.github.io)",
       "WebFetch(domain:octelys.medium.com)",
       "WebFetch(domain:datatracker.ietf.org)",
-      "WebFetch(domain:den.dev)"
+      "WebFetch(domain:den.dev)",
+      "mcp__claude_ai_Claude_Code_Remote__send_later",
+      "mcp__claude_ai_Claude_Code_Remote__list_environments",
+      "mcp__claude_ai_Claude_Code_Remote__create_trigger",
+      "mcp__claude_ai_AI_Note_Taker__get_note",
+      "mcp__claude_ai_AI_Note_Taker__edit_note",
+      "Artifact",
+      "WebFetch(domain:uit.stanford.edu)",
+      "WebFetch(domain:www.recall.ai)",
+      "mcp__claude_ai_AI_Note_Taker__list_workspaces",
+      "mcp__claude_ai_AI_Note_Taker__list_notes",
+      "mcp__claude_ai_AI_Note_Taker__search_notes"
     ]
   },
   "sandbox": {
