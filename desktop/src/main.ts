@@ -1,8 +1,9 @@
-import { app, BrowserWindow, session, desktopCapturer, screen } from 'electron'
+import { app, BrowserWindow, Menu, session, desktopCapturer, screen } from 'electron'
 import { existsSync, readFileSync } from 'node:fs'
 import path from 'node:path'
 import { startBundleServer } from './server'
 import { pickDisplayMediaResponse } from './displayMedia'
+import { buildSpellCheckMenu } from './spellCheckMenu'
 import { registerLocalTranscription, killWhisperServer } from './localTranscriptionIpc'
 import { killActiveWhisper } from './localTranscription'
 
@@ -43,11 +44,46 @@ function createWindow(): void {
     if (!allowed) event.preventDefault()
   })
 
+  registerSpellCheckMenu(win)
+
   win.on('closed', () => {
     if (mainWindow === win) mainWindow = null
   })
   mainWindow = win
   void win.loadURL(`http://localhost:${PORT}/`)
+}
+
+// CHANGE-37 — right-click spelling corrections. Electron's spellchecker is on by default
+// (the squiggles already appeared), but Electron ships NO default context menu, so there
+// was no way to ACT on one. Build the menu from Chromium's own suggestions; the decision
+// of what to show is pure and lives in spellCheckMenu.ts.
+//
+// Only pops for a misspelled word in an editable field — a right-click anywhere else keeps
+// today's behaviour (no menu) rather than showing an empty one.
+function registerSpellCheckMenu(win: BrowserWindow): void {
+  win.webContents.on('context-menu', (_event, params) => {
+    const items = buildSpellCheckMenu({
+      isEditable: params.isEditable,
+      misspelledWord: params.misspelledWord,
+      dictionarySuggestions: params.dictionarySuggestions,
+    })
+    if (!items) return
+
+    const menu = Menu.buildFromTemplate(
+      items.map((item) =>
+        'separator' in item
+          ? { type: 'separator' as const }
+          : {
+              label: item.label,
+              click: () => {
+                if (item.action.kind === 'replace') win.webContents.replaceMisspelling(item.action.word)
+                else win.webContents.session.addWordToSpellCheckerDictionary(item.action.word)
+              },
+            },
+      ),
+    )
+    menu.popup({ window: win })
+  })
 }
 
 // 31-B — pin the system-audio grant. Without this, getDisplayMedia relies on Electron's
