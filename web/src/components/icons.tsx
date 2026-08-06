@@ -86,6 +86,33 @@ export function ChevronDownIcon({ className }: { className?: string }) {
   return <Chevron d="M6 9l6 6 6-6" className={className} />;
 }
 
+function ArrowToLine({ d, className }: { d: string; className?: string }) {
+  return (
+    <svg
+      className={className}
+      viewBox="0 0 24 24"
+      width="15"
+      height="15"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2.2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d={d} />
+    </svg>
+  );
+}
+
+export function SendToTopIcon({ className }: { className?: string }) {
+  return <ArrowToLine d="M5 4h14M12 21V9m-5 5l5-5 5 5" className={className} />;
+}
+
+export function SendToBottomIcon({ className }: { className?: string }) {
+  return <ArrowToLine d="M5 20h14M12 3v12m-5-5l5 5 5-5" className={className} />;
+}
+
 export function GripVerticalIcon({ className }: { className?: string }) {
   return (
     <svg

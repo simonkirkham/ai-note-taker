@@ -65,6 +65,19 @@
   opacity: 0.5;
 }
 
+.todoSendButtons {
+  display: flex;
+  gap: 0.25rem;
+  flex-shrink: 0;
+  align-self: center;
+}
+
+.todoReorderError {
+  margin: 0.5rem 0 0;
+  font-size: 0.875rem;
+  color: var(--color-error);
+}
+
 .todoItem:last-child {
   border-bottom: none;
 }
