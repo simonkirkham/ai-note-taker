@@ -117,7 +117,11 @@ export default function RecordControl({
         </span>
       )}
 
-      {status === "error" && (
+      {/* BUG-56: also render while the recording CONTINUES. The on-device engine reports a dead
+          live view through `error` without moving `status` off "recording" (audio is still captured
+          for the stop-time pass), so gating on status === "error" alone stored the message and never
+          showed it — the user watched an empty transcript with no explanation. */}
+      {(status === "error" || error) && (
         <span className={styles.error} data-testid="transcription-error" role="alert">
           {error ?? "Cannot connect to transcription service."}
         </span>

@@ -56,6 +56,17 @@ export class WhisperServer {
     const proc = spawn(this.binPath, args)
     this.proc = proc
     let exited = false
+    // BUG-56: a ChildProcess 'error' (ENOENT — the binary is absent from the bundle) has no default
+    // handler, so an unhandled 'error' event would throw *inside the Electron main process* rather
+    // than rejecting start(). Capture it so the caller's catch fires the on-device-failed banner.
+    // Held in an object, not a `let`: the assignment happens in a callback the compiler cannot see,
+    // so a plain local narrows to `never` at the check below.
+    const spawn_: { error: Error | null } = { error: null }
+    proc.on('error', (err: Error) => {
+      spawn_.error = err
+      if (this.proc === proc) this.proc = null
+      this.isReady = false
+    })
     proc.on('exit', () => {
       exited = true
       if (this.proc === proc) this.proc = null
@@ -64,6 +75,7 @@ export class WhisperServer {
     // Poll until the model has loaded and the HTTP server accepts connections (or time out).
     const deadline = Date.now() + 60_000
     while (Date.now() < deadline) {
+      if (spawn_.error) throw new Error(`whisper-server could not be started: ${spawn_.error.message}`)
       if (exited) throw new Error('whisper-server exited during startup')
       if (await this.ping()) {
         this.isReady = true

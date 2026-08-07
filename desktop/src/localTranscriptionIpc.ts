@@ -10,7 +10,15 @@ import { transcribeWindow, diarizeStreams, killActiveWhisper } from './localTran
 import { pickThreads } from './localEngine'
 import { StreamingSession } from './streamingSession'
 import { WhisperServer } from './whisperServer'
-import { ensureModels, modelsDir, whisperBinPath, finalModelFile, vadModelFile, MANIFEST } from './modelStore'
+import {
+  ensureModels,
+  modelsDir,
+  whisperBinPath,
+  whisperServerBinPath,
+  finalModelFile,
+  vadModelFile,
+  MANIFEST,
+} from './modelStore'
 import { isLive } from './models'
 import type { LocalStatus } from './preload'
 
@@ -75,6 +83,9 @@ export function registerLocalTranscription(deps: Deps): void {
 
   ipcMain.handle('local:start', () => {
     const binPath = whisperBinPath(deps.resourcesPath)
+    // BUG-56: the resident live path needs whisper-server, NOT the CLI — a distinct binary from
+    // the same bundle. Passing binPath here was the whole defect: whisper-cli exits on --host.
+    const serverBinPath = whisperServerBinPath(deps.resourcesPath)
     const dir = modelsDir(deps.userDataDir)
     const liveSpec = MANIFEST.models.find(isLive)
     if (!liveSpec) throw new Error('no live model configured in the manifest')
@@ -92,7 +103,7 @@ export function registerLocalTranscription(deps: Deps): void {
     streaming?.dispose()
     killActiveWhisper()
     finalOpts = { binPath, finalModelPath }
-    const server = ensureServer(binPath, modelPath)
+    const server = ensureServer(serverBinPath, modelPath)
     streaming = new StreamingSession(
       server,
       (text) => send('local:live', text),

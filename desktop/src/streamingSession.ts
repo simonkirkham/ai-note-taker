@@ -13,6 +13,13 @@ const STEP_MS = 1500
 const BYTES_PER_MS = 32 // 16 kHz * 16-bit mono → 32 bytes/ms
 const MIN_NEW_MS = 500 // don't run inference until at least this much new audio has arrived
 const FAIL_THRESHOLD = 3 // consecutive post-ready /inference failures before we call it terminal
+// BUG-56 — how long the server may stay un-ready before the live view is declared dead. Longer than
+// WhisperServer's own 60s start deadline, so this only fires for the case that deadline cannot see:
+// a server shared from an earlier recording whose start() rejection was reported to a window that
+// has since moved on. Without it, "process alive, never ready" stays silent for the whole meeting.
+const READY_TIMEOUT_MS = 75_000
+
+export type StreamingSessionOptions = { readyTimeoutMs?: number }
 
 export class StreamingSession {
   private readonly chunks: Buffer[] = []
@@ -24,6 +31,7 @@ export class StreamingSession {
   private failures = 0 // consecutive step failures; reset on success
   private terminalReported = false // onError fired once — don't spam the banner every step
   private sawReady = false // the server became ready at least once (so a later !running == a crash)
+  private readyTimer: ReturnType<typeof setTimeout> | null = null
   // windowSlice cursor: chunks before scanIdx are fully committed (never in a future window). startByte
   // only grows, so advancing this makes each slice O(window) instead of O(whole recording so far).
   private scanIdx = 0
@@ -34,11 +42,21 @@ export class StreamingSession {
     private readonly onLive: (text: string) => void,
     private readonly onError: (err: Error) => void,
     private readonly cfg?: StreamConfig,
+    private readonly opts?: StreamingSessionOptions,
   ) {}
 
   start(): void {
     if (this.timer) return
     this.timer = setInterval(() => void this.step(), STEP_MS)
+    // BUG-56: armed on its own one-shot timer rather than checked inside step(), so the deadline is
+    // independent of the step cadence and of whether any step has run yet. Reads server.ready
+    // directly (not sawReady, which only updates on a step) so a server that loaded in time is
+    // never falsely reported.
+    this.readyTimer = setTimeout(() => {
+      if (this.disposed || this.terminalReported || this.server.ready) return
+      this.terminalReported = true
+      this.onError(new Error('whisper-server did not become ready; the live transcript stayed empty'))
+    }, this.opts?.readyTimeoutMs ?? READY_TIMEOUT_MS)
   }
 
   pushPcm(chunk: Buffer): void {
@@ -60,7 +78,8 @@ export class StreamingSession {
       return
     }
     // Skip quietly while the server is still loading its model — not a per-step failure, so it doesn't
-    // count toward the terminal threshold or spam /inference during load.
+    // count toward the terminal threshold or spam /inference during load. A load that never finishes
+    // is caught by the ready deadline armed in start() (BUG-56), not here.
     if (!this.server.ready) return
     this.sawReady = true
     const startByte = this.state.finalizedMs * BYTES_PER_MS
@@ -110,6 +129,8 @@ export class StreamingSession {
   stop(): void {
     if (this.timer) clearInterval(this.timer)
     this.timer = null
+    if (this.readyTimer) clearTimeout(this.readyTimer)
+    this.readyTimer = null
   }
 
   dispose(): void {
