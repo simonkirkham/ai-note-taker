@@ -1,17 +1,91 @@
-# Phase 42 — Calendar access through the MCP
+# Phase 42 — Calendar access through the MCP _(Done)_
 
 **Goal:** from a connected Claude session the owner can ask "what meetings do I have in OGI on Monday?" and "make a note for my next Acme standup" — Claude reads the workspace's connected calendar and creates calendar-linked notes, over the MCP connector.
-
-Phase 41 made the connector read+write for notes/to-dos. This adds the **calendar** surface. No new aggregates or events: the read reuses the existing calendar client chain; the writes reuse the existing `CreateNote`/`RenameNote`/`SetNoteDate`/`LinkNoteToCalendarEvent` commands. The one cross-cutting change is identity/workspace resolution: the calendar chain resolves the workspace from the **URL route** (`ICurrentWorkspace`), but the `/mcp` path has no workspace in it — so 42-A introduces a scoped `ICalendarScope` the MCP tools set from the token `sub` + the `workspaceId` argument.
 
 ## Summary
 
 | Slice | What the user gets | Status | Depends on |
 |-------|--------------------|--------|------------|
-| 42-A | **`list_meetings(workspaceId, date)` + calendar resolution off the route.** Claude lists a workspace's meetings for a date (title, time, whether a note is linked). Proves the whole MCP→calendar pipe on one real read. | Done _(#366, deploy #670)_ | — |
-| 42-B | **`create_note_from_meeting` + `create_note_from_next_occurrence`.** Claude creates a note linked to a specific meeting, or to the next occurrence of a recurring series. | Done _(#369, deploy #677)_ | 42-A |
+| 42-A | Ask Claude what's on a workspace's calendar for a given day, including which meetings already have a note | Done _(#366, deploy #670)_ | — |
+| 42-B | Ask Claude to start a note for a meeting — or for the next occurrence of a repeating one | Done _(#369, deploy #677)_ | 42-A |
 
-**42-A is the proving slice** — the hard part is the cross-cutting contract (resolving the calendar for an explicit `(sub, workspaceId)` instead of the route's `ICurrentWorkspace`), not the tool. `list_meetings` is the smallest capability that proves it end-to-end on one real call. 42-B then scales to the calendar-linked writes on the proven resolution.
+**42-A is the proving slice** — the hard part is working out *which* calendar to read when the request doesn't arrive through a workspace's own page, not the listing itself. Reading one day's meetings is the smallest capability that proves it end-to-end on one real call; 42-B then scales to the calendar-linked writes.
+
+## Slices
+
+### 42-A — Ask Claude what's on your calendar
+
+**User value:** you ask "what meetings do I have in OGI on Monday?" and Claude answers from that workspace's own connected calendar — including which meetings already have a note.
+
+**How it works:**
+- You name a workspace and a date; Claude lists that day's meetings with title, start and end time, whether it repeats, and the note already linked to it (if any).
+- A workspace that isn't yours is refused, and no meetings come back.
+- A workspace with no calendar connected gets a plain "no calendar connected" answer, so Claude can tell you to connect one — it is not treated as a failure.
+- A date Claude can't parse comes back with a clear message about the expected format.
+- You can pass a timezone so "that day" means your day, not UTC's.
+
+**Scenarios (GWT):**
+```
+Scenario: List a workspace's meetings for a date
+  Given I am connected and own a workspace with a connected calendar
+  When  I ask Claude for that workspace's meetings on a date
+  Then  it returns that day's meetings, each with its times, whether it repeats,
+        and any note already linked to it
+
+Scenario: A workspace I do not own
+  Given a workspace that is not mine
+  When  I ask Claude for its meetings
+  Then  the request is refused and no meetings are returned
+
+Scenario: No calendar connected
+  Given a workspace I own with no calendar connected
+  When  I ask Claude for its meetings
+  Then  I am told no calendar is connected, rather than shown an error
+
+Scenario: A date Claude cannot parse
+  Given a date that is not in the expected format
+  When  I ask Claude for meetings on it
+  Then  I get a clear message describing the format to use
+```
+
+### 42-B — Ask Claude to start a note for a meeting
+
+**User value:** you say "make a note for my next Acme standup" and the note is created, dated, and tied to that meeting — no hunting through the calendar yourself.
+
+**How it works:**
+- You pick a meeting (usually one Claude just listed) and ask for a note; the note is created, dated to the meeting, and linked to it.
+- Asking twice for the same meeting hands you back the note you already have instead of creating a duplicate.
+- For a repeating meeting you can ask for "the next one" and Claude finds the next future occurrence and links the note to that.
+- A repeating meeting with nothing upcoming gets a plain "no future occurrence" answer, not a failure.
+
+**Scenarios (GWT):**
+```
+Scenario: Create a note for a meeting
+  Given I own a workspace and have picked one of its meetings
+  When  I ask Claude to make a note for it
+  Then  a note is created, dated to the meeting, and linked to it
+
+Scenario: A meeting that already has a note
+  Given a meeting I already made a note for
+  When  I ask Claude to make a note for it again
+  Then  I am given the existing note rather than a duplicate
+
+Scenario: Create a note for the next occurrence of a repeating meeting
+  Given I own a workspace with a repeating meeting
+  When  I ask Claude to make a note for the next one
+  Then  a note is created and linked to the next future occurrence
+
+Scenario: A repeating meeting with nothing upcoming
+  Given a repeating meeting with no future occurrence
+  When  I ask Claude to make a note for the next one
+  Then  I am told there is no future occurrence, rather than shown an error
+```
+
+---
+
+## Build notes _(implementation — skip when reviewing)_
+
+Phase 41 made the connector read+write for notes/to-dos. This adds the **calendar** surface. No new aggregates or events: the read reuses the existing calendar client chain; the writes reuse the existing `CreateNote`/`RenameNote`/`SetNoteDate`/`LinkNoteToCalendarEvent` commands. The one cross-cutting change is identity/workspace resolution: the calendar chain resolves the workspace from the **URL route** (`ICurrentWorkspace`), but the `/mcp` path has no workspace in it — so 42-A introduces a scoped `ICalendarScope` the MCP tools set from the token `sub` + the `workspaceId` argument.
 
 ### Locked decisions
 
@@ -30,40 +104,7 @@ Phase 41 made the connector read+write for notes/to-dos. This adds the **calenda
 
 **Neutral.** No new routes, tables, or always-on compute — a scoped DI service + three tools on an existing endpoint.
 
----
-
-## Build notes _(implementation — skip when reviewing)_
-
 ### Slice 42-A — `list_meetings` + calendar resolution off the route
-
-**User value:** Claude lists a workspace's meetings for a given date.
-
-**How it works:**
-- Owner asks "what meetings do I have in OGI on 2026-06-29?"; Claude resolves the workspace via `list_workspaces`, then calls `list_meetings(workspaceId, date, timezone?)`.
-- The tool authorizes workspace ownership, resolves that workspace's connected calendar (Google/Microsoft/ICS), and returns the day's meetings.
-
-**Scenarios (GWT):**
-```
-Scenario: List a workspace's meetings for a date
-  Given I am connected and own a workspace with a connected calendar
-  When  Claude calls list_meetings for that workspace and a date
-  Then  it returns that day's meetings (title, start, end, recurring, linked note id)
-
-Scenario: A workspace I do not own is rejected
-  Given a workspaceId I do not own
-  When  Claude calls list_meetings with it
-  Then  the call is rejected (MCP error) and no meetings are returned
-
-Scenario: No calendar connected
-  Given a workspace I own with no connected calendar
-  When  Claude calls list_meetings for it
-  Then  it returns a clear "no calendar connected" result, not an error
-
-Scenario: Malformed date
-  Given a date that is not yyyy-MM-dd
-  When  Claude calls list_meetings with it
-  Then  it returns an MCP error describing the expected format
-```
 
 **Acceptance criteria:**
 - New scoped `ICalendarScope` (default `(ICurrentUser, ICurrentWorkspace)`; settable override). `GoogleCalendarTokenSource`, `MicrosoftCalendarTokenSource`, `IcsFeedCalendarClient`, `CalendarClientFactory` read it instead of `ICurrentUser`/`ICurrentWorkspace`. Existing calendar tests stay green (behaviour-preserving).
@@ -79,31 +120,6 @@ Scenario: Malformed date
 **Observability:** structured log per call (tool, workspaceId, sub, provider, meeting count, latency); cross-workspace rejection logged for audit (read leak of meeting titles — same severity bar as the note reads).
 
 ### Slice 42-B — calendar-linked note creation
-
-**User value:** Claude creates a note linked to a specific meeting, or to the next occurrence of a recurring series.
-
-**Scenarios (GWT):**
-```
-Scenario: Create a note from a meeting
-  Given I own a workspace and have a meeting's details (from list_meetings)
-  When  Claude calls create_note_from_meeting with the workspace and meeting
-  Then  a note is created, dated, and linked to that calendar event
-
-Scenario: A meeting already has a note
-  Given a meeting I already created a note for
-  When  Claude calls create_note_from_meeting for it again
-  Then  the call reports the existing note rather than creating a duplicate
-
-Scenario: Create a note for the next occurrence of a recurring meeting
-  Given I own a workspace with a recurring series
-  When  Claude calls create_note_from_next_occurrence with the series id
-  Then  a note is created and linked to the next future occurrence
-
-Scenario: No future occurrence
-  Given a recurring series with no upcoming occurrence
-  When  Claude calls create_note_from_next_occurrence
-  Then  it returns a clear "no future occurrence" result, not a 500
-```
 
 **Build notes:**
 - `create_note_from_meeting(workspaceId, calendarEventId, title, startTime, endTime, isRecurring?, recurringSeriesId?)` → authorize workspace; conflict-check `ICalendarLinkIndexStore.GetByCalendarEventIdAsync` for `sub`; `CreateNote → RenameNote → SetNoteDate → LinkNoteToCalendarEvent` via the generic identity-explicit overload (token `sub` = owner). Returns `{ noteId, version }`. Mirrors `CalendarHandlers.CreateNoteFromMeeting`.

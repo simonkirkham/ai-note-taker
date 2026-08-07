@@ -226,7 +226,7 @@ public record WorkspaceThemeSet(WorkspaceId WorkspaceId, string Theme) : Workspa
 
 ## DynamoDB row shape
 
-What actually lands in the single-table store (see [`dynamodb-event-append`](../dot-claude/skills/dynamodb-event-append/SKILL.md) skill for the append algorithm).
+What actually lands in the single-table store (see [`dynamodb-event-append`](../.claude/skills/dynamodb-event-append/SKILL.md) skill for the append algorithm).
 
 | PK              | SK            | EventType      | EventVersion | Payload (JSON)                          | OccurredAt           | Metadata (JSON) |
 |-----------------|---------------|----------------|--------------|-----------------------------------------|----------------------|-----------------|

@@ -98,8 +98,19 @@ public sealed class AppPage
 
     public string CurrentUrl => page.Url;
 
-    public Task AssertHomeLoadedAsync() =>
-        Assertions.Expect(page.GetByTestId("new-note-button")).ToBeVisibleAsync();
+    // BUG-38 (secondary cause): `new-note-button` lives in the Sidebar, which App.tsx renders
+    // OUTSIDE <Routes> — so it is visible on the note screen too. Waiting only on it proved
+    // nothing: the helper returned while still on /notes/{id}, and a caller that then reloaded
+    // and looked for `note-cards` searched the note page for 30 s. That is deploy #717's log
+    // exactly (page.Url=.../notes/…, rendered cards(0)=[]). Assert the ROUTE, which is the thing
+    // actually being claimed; the only note route is notes/:noteId, so "/notes/" discriminates.
+    public async Task AssertHomeLoadedAsync()
+    {
+        await page.WaitForURLAsync(u => !u.Contains("/notes/"));
+        // `note-cards` is rendered only by ListView, so unlike `new-note-button` it actually proves
+        // the home list is on screen rather than merely that the app shell is.
+        await Assertions.Expect(page.GetByTestId("note-cards")).ToBeVisibleAsync();
+    }
 
     public Task AssertNoteScreenLoadedAsync() =>
         Assertions.Expect(page.GetByTestId("note-title-input")).ToBeVisibleAsync();
@@ -170,7 +181,14 @@ public sealed class AppPage
         // cards query refetches. Safe for every caller: the just-saved card is added optimistically, so
         // callers' own AssertNoteVisibleInList*/ClickNoteInList asserts (auto-waiting / reload-tolerant)
         // still see it; callers needing the persisted write await their own /content PUT separately.
+        // BUG-38 (secondary cause): `new-note-button` is in the always-mounted Sidebar, so it was
+        // ALREADY visible on the note screen — this returned without the navigation having
+        // happened. Worse, handleBackFromNote uses navigate(-1), a history traversal the spec
+        // queues as a later task, so a caller's next ReloadAsync() hard-loaded the address bar's
+        // current URL (still the note) and discarded the pending traversal. Wait for the route to
+        // actually change; WaitForURLAsync polls the address bar, so it cannot be satisfied early.
         await page.GetByTestId("save-button").ClickAsync();
+        await page.WaitForURLAsync(u => !u.Contains("/notes/"));
         await Assertions.Expect(page.GetByTestId("new-note-button")).ToBeVisibleAsync();
     }
 
@@ -274,7 +292,12 @@ public sealed class AppPage
     {
         var errors = pageErrors.TakeLast(5).ToList();
         var console = consoleLog.TakeLast(15).ToList();
-        return $"BUG-38: '{what}' never appeared (note screen failed to load). page.Url={url} | " +
+        // Deliberately does NOT assert a cause. The old text said "note screen failed to load",
+        // which was a guess baked into the message — and the wrong one: BUG-38 turned out to be a
+        // focus steal unmounting a control that HAD rendered. A diagnostic should report state and
+        // let the reader infer, or it misdirects the next investigator exactly as an opaque
+        // timeout does.
+        return $"BUG-38 diagnostic — failed at: {what}. page.Url={url} | " +
                $"pageErrors({errors.Count})=[{string.Join(" ;; ", errors)}] | " +
                $"console(last {console.Count})=[{string.Join(" ;; ", console)}]";
     }
@@ -577,31 +600,43 @@ public sealed class AppPage
         // CHANGE-27: the tag combobox is hidden behind the "＋ Tag" ghost button in the
         // Command Bar — reveal it before filling. No-op if already revealed.
         var input = page.GetByTestId("tag-input");
+
+        // WaitForResponseAsync handlers all fire on the same response event, so
+        // N parallel tasks can resolve to the same single response. Use an atomic
+        // counter instead so we require exactly N distinct POST /tags responses.
+        //
+        // BUG-38: subscribe BEFORE revealing/filling, not between fill and Enter. The combobox
+        // submits on blur as well as on Enter, so the POST can fire during the fill — a handler
+        // attached afterwards misses it and then waits forever for a request that already happened.
+        int received = 0;
+        var allDone = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        page.Response += Handler;
         try
         {
             if (!await input.IsVisibleAsync())
                 await page.GetByTestId("add-tag-button").ClickAsync();
             await input.FillAsync(tagInput);
+            await input.PressAsync("Enter");
+            // Bounded so an unsubmitted tag fails with THIS message rather than sitting until the
+            // [E2EFact] 120 s cap, which reports nothing about where it got stuck.
+            await allDone.Task.WaitAsync(TimeSpan.FromSeconds(15));
         }
-        catch (PlaywrightException ex)
+        catch (Exception ex) when (ex is PlaywrightException or TimeoutException)
         {
-            // BUG-38: the tag UI never appeared — the note screen failed to load. Replace the opaque
-            // action timeout with sync-only page state (url + captured console/page errors) so the
-            // next cold-start failure tells us WHY. Only Playwright timeouts get the enriched message;
-            // keep the original as the inner exception — it names which locator timed out.
-            throw new Exception(DescribePageState("tag-input / add-tag-button", page.Url), ex);
+            // BUG-38: the enriched page state (url + captured console/page errors) previously
+            // covered only the reveal/fill. The chronic gate failure was on PressAsync — the
+            // resolved input detached mid-action — so every recurrence produced a bare 30 s timeout
+            // with no root-cause signal. Both Playwright's PlaywrightException (assertion/detach)
+            // and the plain TimeoutException raised by action timeouts and by the wait above are
+            // caught, so no path back to an opaque failure remains.
+            throw new Exception(
+                DescribePageState($"tag-input add of '{tagInput}' ({received}/{tagCount} POST /tags seen)", page.Url),
+                ex);
         }
-
-        // WaitForResponseAsync handlers all fire on the same response event, so
-        // N parallel tasks can resolve to the same single response. Use an atomic
-        // counter instead so we require exactly N distinct POST /tags responses.
-        int received = 0;
-        var allDone = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        page.Response += Handler;
-
-        await input.PressAsync("Enter");
-        await allDone.Task;
-        page.Response -= Handler;
+        finally
+        {
+            page.Response -= Handler;
+        }
 
         void Handler(object? _, IResponse r)
         {

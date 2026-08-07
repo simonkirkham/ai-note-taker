@@ -1,4 +1,4 @@
-# Phase 49 — Open multiple notes at once _(In Progress — 49-A done 2026-07-28)_
+# Phase 49 — Open multiple notes at once _(In Progress — 49-A done 2026-07-28; 49-B PR #414 CI-green, awaiting merge)_
 
 **Goal:** you can keep several notes open at the same time and switch between them from a tab bar, instead of losing the note you were on every time you open another.
 
@@ -212,7 +212,7 @@ Frontend-only phase. **No new commands, events, projections, endpoints or CDK ch
   - [x] Reloading restores the open tabs
   - [x] A tab whose note no longer exists in the workspace is dropped silently on restore
   - [x] Tabs are scoped per workspace
-  - [x] Storage being unavailable or corrupt leaves the app fully working with no tabs restored — **scoped to the tab feature and the `AppGate` deep-link restore.** Not ticked for the app as a whole: the auth/calendar paths still have four unguarded storage reads, one of them evaluated during render, so private mode still crashes the tree on an OAuth return ([BUG-58])
+  - [x] Storage being unavailable or corrupt leaves the app fully working with no tabs restored — **scoped to the tab feature and the `AppGate` deep-link restore.** Not ticked for the app as a whole: the auth/calendar paths still have four unguarded storage reads, one of them evaluated during render, so private mode still crashes the tree on an OAuth return ([BUG-60])
   - [x] A failed note-list read does not close the tabs — only a *successful* read is evidence a note is gone
 - **Reconcile is DERIVED, not stored (changed during build).** Dropping dead tabs by writing state needs an effect, and an effect that runs before `cards` arrives wipes every tab on every cold start — the exact failure the build notes warn about. Filtering in the existing `openNoteTabs` memo, only once a cards read has succeeded, makes that impossible by construction. Cost: storage keeps a dead id until the next write; it is filtered on every restore, so it is never visible.
 - **"A read has succeeded" is `dataUpdatedAt > 0` — not `isLoading`, not `isSuccess` (both wrong, in opposite directions).** A *failed* read also stops loading, with no data, so `!isLoading` collapses the whole bar on one API blip. And query-core's error reducer sets status `"error"` unconditionally, even when `data` still holds the last good list — so `isSuccess` stops reconciling after any failed background refetch, and a note deleted on another device reappears as a tab. `dataUpdatedAt` is stamped only by a success and survives a later error, so the last good snapshot keeps governing.

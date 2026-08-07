@@ -264,9 +264,35 @@ export default function NoteView({
     }
   }, [detailLoaded, detailDate, noteId, onDateSet, setNoteDateM]);
 
+  // BUG-38: autofocus the title when the note OPENS — at mount, once, and only if nothing else
+  // already holds focus. It must NOT be keyed to the note-detail read completing.
+  //
+  // That read is RYW-gated, so it resolves at an arbitrary wall-clock moment (from ~150 ms to the
+  // server's 8 s gate cap) while the whole screen — CommandBar included — has been interactive the
+  // entire time. Focusing the title on that event yanks the caret out of whatever the user is
+  // typing in, and every blur-dismissed control on this screen is *destroyed* by it: the tag
+  // combobox (TagCombobox's onBlur -> CommandBar's setAddingTag(false) unmounts the input), and the
+  // inline action/agenda editors. That is a real user bug — start typing a tag on a fresh note and
+  // the box can be ripped away with your half-typed text silently submitted — and it was the source
+  // of ~45% of all E2E deploy-gate failures, because the E2E fills then presses Enter as two calls
+  // and the steal lands between them, detaching the element Playwright already resolved.
+  //
+  // Mount is synchronous and strictly precedes any interaction, so it can never land mid-edit. The
+  // title input renders unconditionally (no loading guard), so the ref is populated at mount.
+  //
+  // Deliberately NO activeElement guard. An earlier revision skipped the focus when something else
+  // already held it, on the assumption that an in-app navigation leaves activeElement as body —
+  // which is false: the Sidebar (App.tsx renders it OUTSIDE <Routes>) stays mounted, so after
+  // clicking its "+ New Note" the button is still focused at mount and the guard suppressed the
+  // autofocus on the single most important case, a brand-new untitled note. Nothing on the note
+  // screen can hold focus at mount, so the only possible holder is outside it — exactly when taking
+  // focus is right. The ref latch only guards React StrictMode's double-invoke.
+  const titleAutofocused = useRef(false);
   useEffect(() => {
-    if (!loadingDetail && !notFound) inputRef.current?.focus();
-  }, [loadingDetail, notFound]);
+    if (titleAutofocused.current) return;
+    titleAutofocused.current = true;
+    inputRef.current?.focus();
+  }, []);
 
   // BUG-34: browser back (Alt+←) fires popstate, which the beforeunload warning cannot
   // catch — it silently unmounted the note mid-recording and the transcript was lost.
