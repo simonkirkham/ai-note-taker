@@ -134,9 +134,24 @@ export async function apiFetch(url: string, init?: RequestInit): Promise<Respons
   return res
 }
 
+// BUG-62: callers used to recover the status by substring-matching this message
+// (`error.message.includes("404")`), which is both fragile — a path or id containing
+// "404" false-positives — and unable to tell 404 from the 400 a malformed route
+// parameter produces. Carry the status on the error instead. The message is
+// deliberately unchanged so anything still reading it keeps working.
+export class ApiError extends Error {
+  constructor(
+    readonly status: number,
+    message: string,
+  ) {
+    super(message)
+    this.name = "ApiError"
+  }
+}
+
 function ensureOk(res: Response, path: string, init: RequestInit | undefined, okStatuses?: number[]): void {
   if (res.ok || okStatuses?.includes(res.status)) return
-  throw new Error(`${init?.method ?? 'GET'} ${path} failed: ${res.status}`)
+  throw new ApiError(res.status, `${init?.method ?? 'GET'} ${path} failed: ${res.status}`)
 }
 
 export async function request<T>(path: string, init?: RequestInit, okStatuses?: number[]): Promise<T> {
