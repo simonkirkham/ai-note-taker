@@ -1,0 +1,318 @@
+name: E2E (on demand)
+
+# Run the Browser.E2E journey suite against the ALREADY-DEPLOYED test environment,
+# N times in a row, without building, publishing or deploying anything.
+#
+# Why: proving a deploy-gate flake is fixed takes 10 clean runs (CLAUDE.md's flake-fix
+# bar), and the only way to get a gate run used to be a full deploy — push-only, ~15 min
+# each, and it pollutes main's history if you push no-op commits to trigger them. This
+# gives the same signal in ~2-3 min per run with no deploy and no commits.
+#
+# It is also the honest way to count: `runs` executions each report their own pass/fail,
+# so "10 consecutive green" is a fact you can read off one run's log rather than something
+# inferred from run conclusions (which hide failures that were re-run into green — exactly
+# how BUG-38 was miscounted as 6 recurrences when the real number was 26).
+
+on:
+  workflow_dispatch:
+    inputs:
+      runs:
+        description: "How many consecutive E2E runs (1-20)"
+        required: true
+        default: "1"
+      filter:
+        description: "Optional dotnet test --filter (e.g. TagsJourney). Blank = whole suite."
+        required: false
+        default: ""
+      stop_on_failure:
+        description: "Stop at the first failing run instead of completing the count"
+        type: boolean
+        required: false
+        default: false
+
+# The E2E suite runs against the SHARED test environment and wipes its DynamoDB tables
+# between runs, so it must never overlap a deploy — the two would corrupt each other's
+# data mid-suite. Sharing the `deploy` concurrency group makes that impossible.
+#
+# TRADE-OFF — read this before raising `runs`: GitHub does NOT queue runs in a busy
+# concurrency group, it CANCELS the previously-pending one (there is only ever one
+# pending slot). So while this workflow holds `deploy`, two merges landing behind it
+# mean the FIRST one's deploy-test is cancelled outright — its deploy never reaches
+# deploy-production, and the next deploy's detect-changes diffs only the newer commit.
+# If the cancelled one was backend and the next is web-only, the backend never ships
+# while the frontend does: the 34-B route-contract regression. The "Refuse to start
+# during a deploy" step below closes the common case; the residual is a merge landing
+# mid-hold, which is why long counts belong in a quiet window.
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: deploy
+  cancel-in-progress: false
+
+jobs:
+  e2e:
+    runs-on: ubuntu-latest
+    # A hang here holds the shared `deploy` group for the job's whole lifetime, and the
+    # default is 360 minutes. E2EFact caps each TEST at 120s, but deploy #592's 44-minute
+    # hang was in teardown, which that cap does not bound. Sized to the input: setup plus
+    # ~4 min per run.
+    timeout-minutes: ${{ fromJSON(inputs.runs) * 4 + 15 }}
+    environment:
+      name: Test
+    steps:
+      - uses: actions/checkout@v6
+
+      # Entering a busy `deploy` group CANCELS the pending deploy rather than queuing behind
+      # it (see the concurrency comment). Refuse to start rather than take that risk.
+      - name: Refuse to start during a deploy
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          busy=$(gh run list --repo "$GITHUB_REPOSITORY" --branch main --workflow deploy.yml \
+            --limit 5 --json status \
+            --jq '[.[] | select(.status == "in_progress" or .status == "queued")] | length')
+          if [ "$busy" != "0" ]; then
+            echo "::error::$busy deploy run(s) in progress or queued on main. Starting now would cancel a pending deploy-test — wait for the queue to drain and re-run."
+            exit 1
+          fi
+          echo "no deploy in flight — safe to hold the deploy group"
+
+      - name: Validate inputs
+        env:
+          RUNS: ${{ inputs.runs }}
+        run: |
+          set -euo pipefail
+          if ! [[ "$RUNS" =~ ^[0-9]+$ ]] || [ "$RUNS" -lt 1 ] || [ "$RUNS" -gt 20 ]; then
+            echo "::error::runs must be a whole number between 1 and 20 (got '$RUNS')"
+            exit 1
+          fi
+
+      - uses: actions/cache@v5
+        with:
+          path: ~/.nuget/packages
+          key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj') }}
+          restore-keys: nuget-${{ runner.os }}-
+
+      - uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: "10.0.x"
+
+      - name: Configure AWS credentials
+        # Same 5-minute cap as the deploy gate: this step has intermittently stalled for
+        # 30+ min on a transient STS blip, and a tight cap turns that into a quick failure.
+        timeout-minutes: 5
+        uses: aws-actions/configure-aws-credentials@v6
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - name: Resolve stack outputs
+        # describe-stacks against the LIVE stack — this workflow never deploys, so the
+        # outputs it reads are whatever is currently deployed. Only the two the suite
+        # needs are required (the deploy gate additionally resolves bucket/CDN/RUM).
+        id: outputs
+        run: |
+          set -euo pipefail
+          OUTS=$(aws cloudformation describe-stacks --stack-name NoteTakerStack \
+            --query 'Stacks[0].Outputs' --output json)
+          get() {
+            local v
+            v=$(echo "$OUTS" | jq -r --arg k "$1" '.[] | select(.OutputKey==$k) | .OutputValue')
+            if [ -z "$v" ] || [ "$v" = "null" ]; then
+              echo "::error::Stack output '$1' missing or empty — refusing to continue with an unresolved output" >&2
+              return 1
+            fi
+            printf '%s' "$v"
+          }
+          API_URL=$(get ApiUrl)
+          FRONTEND_URL=$(get WebUrl)
+          {
+            echo "api-url=$API_URL"
+            echo "frontend-url=$FRONTEND_URL"
+          } >> "$GITHUB_OUTPUT"
+          echo "API URL:      $API_URL"
+          echo "Frontend URL: $FRONTEND_URL"
+
+      - name: Get E2E auth token
+        id: token
+        env:
+          REFRESH_TOKEN: ${{ secrets.SMOKE_TEST_GOOGLE_REFRESH_TOKEN }}
+          CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
+          CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
+          # Turns clear-test-data.py's account check into a hard allowlist when configured.
+          E2E_TEST_ACCOUNT_ID: ${{ vars.TEST_AWS_ACCOUNT_ID }}
+        run: |
+          if [ -z "$REFRESH_TOKEN" ]; then
+            echo "::error::SMOKE_TEST_GOOGLE_REFRESH_TOKEN not configured — the E2E suite cannot sign in."
+            exit 1
+          fi
+          RESPONSE=$(curl -s -X POST "https://oauth2.googleapis.com/token" \
+            -d "client_id=$CLIENT_ID" \
+            -d "client_secret=$CLIENT_SECRET" \
+            -d "refresh_token=$REFRESH_TOKEN" \
+            -d "grant_type=refresh_token")
+          ID_TOKEN=$(echo "$RESPONSE" | jq -r '.id_token // empty')
+          if [ -z "$ID_TOKEN" ]; then
+            ERROR=$(echo "$RESPONSE" | jq -r '.error // "unknown"')
+            echo "::error::Google token exchange failed (error: $ERROR) — cannot run the E2E suite."
+            exit 1
+          fi
+          echo "::add-mask::$ID_TOKEN"
+          echo "id_token=$ID_TOKEN" >> "$GITHUB_OUTPUT"
+
+      - name: Build E2E project
+        run: dotnet build tests/Browser.E2E/Browser.E2E.csproj -c Release
+
+      - name: Cache Playwright browsers
+        uses: actions/cache@v5
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('tests/Browser.E2E/Browser.E2E.csproj') }}
+
+      - name: Install Playwright browsers
+        run: pwsh tests/Browser.E2E/bin/Release/net10.0/playwright.ps1 install --with-deps chromium
+
+      - name: Run the suite N times
+        id: loop
+        env:
+          RUNS: ${{ inputs.runs }}
+          FILTER: ${{ inputs.filter }}
+          STOP_ON_FAILURE: ${{ inputs.stop_on_failure }}
+          API_URL: ${{ steps.outputs.outputs.api-url }}
+          FRONTEND_URL: ${{ steps.outputs.outputs.frontend-url }}
+          E2E_GOOGLE_ID_TOKEN: ${{ steps.token.outputs.id_token }}
+          TOKEN: ${{ steps.token.outputs.id_token }}
+          # Needed by mint_token: a run long enough to outlive the ~1h id_token must be able
+          # to exchange the refresh token again mid-loop.
+          REFRESH_TOKEN: ${{ secrets.SMOKE_TEST_GOOGLE_REFRESH_TOKEN }}
+          CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
+          CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
+        run: |
+          set -uo pipefail
+          filter_args=()
+          [ -n "$FILTER" ] && filter_args=(--filter "$FILTER")
+
+          pass=0; fail=0; attempted=0; results=""
+          declare -A journey_hits=()
+          token_minted_at=$SECONDS
+
+          # A Google id_token lives ~1h. At up to 20 runs x ~3 min this loop outlives one, and the
+          # late runs would fail at sign-in and be counted as hits against the flake under test —
+          # corrupting the exact signal this workflow exists to produce. Re-mint when it ages.
+          mint_token() {
+            local resp id
+            resp=$(curl -s -X POST "https://oauth2.googleapis.com/token" \
+              -d "client_id=$CLIENT_ID" -d "client_secret=$CLIENT_SECRET" \
+              -d "refresh_token=$REFRESH_TOKEN" -d "grant_type=refresh_token")
+            id=$(echo "$resp" | jq -r '.id_token // empty')
+            if [ -z "$id" ]; then
+              echo "::error::Google token re-mint failed ($(echo "$resp" | jq -r '.error // "unknown"'))"
+              return 1
+            fi
+            echo "::add-mask::$id"
+            TOKEN="$id"; export E2E_GOOGLE_ID_TOKEN="$id"
+            token_minted_at=$SECONDS
+          }
+
+          # The summary is the deliverable. Without a trap, a non-zero clear-test-data.py aborts the
+          # step (bash -e is the default shell flag) and the table is lost after the deploy lock has
+          # already been spent.
+          write_summary() {
+            {
+              echo "## E2E re-run results"
+              echo
+              echo "| Metric | Value |"
+              echo "|---|---|"
+              echo "| Runs attempted | $attempted of $RUNS |"
+              echo "| Passed | $pass |"
+              echo "| Failed | $fail |"
+              echo "| Filter | ${FILTER:-<whole suite>} |"
+              echo
+              if [ "${#journey_hits[@]}" -gt 0 ]; then
+                echo "| Failing test | Runs hit |"
+                echo "|---|---|"
+                for k in "${!journey_hits[@]}"; do echo "| \`$k\` | ${journey_hits[$k]} |"; done
+                echo
+              else
+                echo "_No failing tests recorded._"
+                echo
+              fi
+              echo '```'
+              printf '%s' "$results"
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+          }
+          trap write_summary EXIT
+
+          for i in $(seq 1 "$RUNS"); do
+            echo "::group::Run $i of $RUNS"
+            attempted=$((attempted+1))
+
+            # 40 min, comfortably inside the ~1h token lifetime.
+            if [ $((SECONDS - token_minted_at)) -gt 2400 ]; then
+              echo "id_token is $(( (SECONDS - token_minted_at) / 60 ))m old — re-minting"
+              mint_token || { fail=$((fail+1)); results="${results}run ${i}: FAIL (token re-mint)"$'\n'; echo "::endgroup::"; break; }
+            fi
+
+            # Warm + drain BEFORE each run, then clear: the same order the deploy gate uses,
+            # so the warm-up's own todo is wiped and the journeys start from a clean, hot
+            # projector rather than racing a cold one.
+            bash scripts/warm-projector.sh || true
+            python3 scripts/clear-test-data.py
+
+            # trx gives per-test names, so the summary can answer "was EVERY attempt free of
+            # journey X" — the question flake-watch.sh exists to answer. A run-level PASS/FAIL
+            # cannot distinguish "my fix worked" from "a different journey broke".
+            if dotnet test tests/Browser.E2E/Browser.E2E.csproj -c Release "${filter_args[@]}" \
+                 --logger "trx;LogFileName=run-$i.trx" --results-directory "$PWD/trx"; then
+              pass=$((pass+1)); results="${results}run ${i}: PASS"$'\n'
+              echo "run $i: PASS"
+            else
+              fail=$((fail+1))
+              failed_tests=$(python3 scripts/failed-e2e-tests.py "$PWD/trx/run-$i.trx")
+              if [ -n "$failed_tests" ]; then
+                results="${results}run ${i}: FAIL ($failed_tests)"$'\n'
+                echo "run $i: FAIL ($failed_tests)"
+                for t in $failed_tests; do
+                  journey_hits[$t]="${journey_hits[$t]:+${journey_hits[$t]}, }$i"
+                done
+              else
+                results="${results}run ${i}: FAIL (no test-level failure — suite/infra error)"$'\n'
+                echo "run $i: FAIL (no test-level failure — suite/infra error)"
+              fi
+              # Keep the trace from a failing run under a per-run name. NOTE: every journey writes
+              # the same trace.zip path, so this is the LAST-completed journey's trace, not
+              # necessarily the failing one — the trx above is the reliable attribution.
+              find . -name trace.zip -exec cp {} "trace-run-$i.zip" \; 2>/dev/null || true
+              if [ "$STOP_ON_FAILURE" = "true" ]; then
+                echo "::endgroup::"
+                echo "stopping at first failure (stop_on_failure=true)"
+                break
+              fi
+            fi
+            echo "::endgroup::"
+          done
+
+          echo "passed=$pass" >> "$GITHUB_OUTPUT"
+          echo "failed=$fail" >> "$GITHUB_OUTPUT"
+
+          echo "=== $pass passed, $fail failed of $attempted attempted (requested $RUNS) ==="
+          [ "$fail" -eq 0 ]
+
+      - name: Clear test data
+        if: always()
+        uses: ./.github/actions/clear-test-data
+
+      - name: Upload Playwright traces
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: playwright-traces
+          path: |
+            trace-run-*.zip
+            **/trace.zip
+          if-no-files-found: ignore
