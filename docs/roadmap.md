@@ -480,7 +480,7 @@ Slices and acceptance criteria: [docs/phases/phase-48.md](phases/phase-48.md)
 
 ---
 
-## Phase 49 — Open multiple notes at once _(In Progress — 49-A done 2026-07-28; 49-B PR #414 CI-green, awaiting merge)_
+## Phase 49 — Open multiple notes at once _(In Progress — 49-A done 2026-07-28; 49-B done 2026-08-07 (#414, deploy #733); 49-C not started)_
 
 Graduate the *open multiple notes at once* future-feature into a phase. Today opening a note replaces the one you were on (`/w/:wsId/notes/:noteId` is the whole page), so comparing or working across two notes means bouncing via the notes list. This phase adds an **open-note tab bar** above the note view: several notes open, one visible, click to switch, `×` to close, address bar following the active tab. **Frontend-only — no commands, events, projections, endpoints or CDK**; the open set is client-side and persisted per device (the user ruled out server-side sync). Three slices: **49-A** the tab bar itself (open, switch, close — only the active tab is mounted, so the note lifecycle is unchanged); **49-B** open tabs survive a reload (per-workspace `localStorage`, deleted notes reconciled away); **49-C** a recording keeps running in a background tab (the one slice that changes the mounting model — `useTranscription` must not be torn down, the failure BUG-34 was filed for). **49-A shipped 2026-07-28** (#410, deploy 30402913987): the plan's open question resolved the other way — a tab click is a router `navigate`, invisible to the BUG-34 popstate trap, so `NoteView` now registers a leave guard while recording. Review also surfaced [BUG-54] (sidebar/Home navigation kills a recording — pre-existing).
 
@@ -488,7 +488,7 @@ Graduate the *open multiple notes at once* future-feature into a phase. Today op
 
 Slices and acceptance criteria: [docs/phases/phase-49.md](phases/phase-49.md)
 
-## Phase 50 — The Today line in the To Do list _(In Progress — 50-A implemented, PR #423 awaiting CI)_
+## Phase 50 — The Today line in the To Do list _(In Progress — 50-A done 2026-08-07 (#423, deploy #730); 50-B not started)_
 
 Graduate the *expand the to-do functionality for today and the future* future-feature into a phase — **re-scoped on the way to contain no dates at all**. The original sketch assumed due/scheduled dates and calendar-derived Today/Upcoming/Overdue grouping; the user ruled that out (2026-08-06): today is *"an arbitrary line in the priority"*, drawn wherever they choose. So this phase adds a **user-positioned divider** to the existing ordered To Do list — items above it are Today, items below are Later — persisted as an additive new event on the existing `TodoOrdering` aggregate, with the grouping itself a frontend split of the already-ordered list. Two slices: **50-A** the line exists, drags to any position, and sticks across reloads; **50-B** one-click "Move to Today" / "Move to Later" so an item crosses the line without a drag (also restoring a keyboard reorder path lost in CHANGE-29). Pairs with [CHANGE-34] (send a to-do to the top/bottom) which ships independently on the same list. **50-A is implemented and locally green (PR #423), not yet merged**; two design decisions moved during the build — the line is keyed **per user and per workspace** (a workspace-only key let two users overwrite each other via the shared `__default__` workspace), and a lost anchor is relocated **durably in the projector** rather than resolved on read, because a completed anchor ages out of the read window after ~2 days and the read would then silently drop the line to the bottom.
 
@@ -514,8 +514,7 @@ Alongside the numbered phases above, work is tracked in five standing docs. The 
 
 An unnumbered, standing phase capturing defects in the deployed app, tracked to a fix. No learning theme, no fixed sequence.
 
-**Open now (8):** **BUG-38** `TagsJourney` gate flake — root-caused 2026-08-06 to a network-timed title autofocus unmounting the tag combobox mid-interaction (26 of 58 measured gate failures; the cold-start theory retired). Fixed and live 2026-08-07 (#418, deploy #722); open only against the 10-clean-run bar, **7/10** · **BUG-64** `shell.e2e.ts` flakes the new desktop PR gate on a cold Electron launch (fixed in #426; awaiting the 10-clean-run bar) · **BUG-59** a save into a deleted note says "try again" forever · **BUG-58** analyse hangs to the 29 s Lambda timeout (no Bedrock deadline) · **BUG-55** sign-out during a *local* finalise 401s the transcript commit · **BUG-49**, **BUG-48**, **BUG-46**.
-
+**Open bugs live in [phase-bugs.md](phases/phase-bugs.md#summary), not here.** That table is the single source for bug status — this section deliberately does not restate it. A hand-maintained copy went stale within hours of every status change and made the roadmap a conflict magnet for parallel sessions (PR #414 re-conflicted three times on this one line). `scripts/check-doc-ids.sh` fails the commit if an `Open now (N)` list reappears.
 49 bugs are fixed. The [Summary table](phases/phase-bugs.md#summary) is the full index (one row per bug, every status); condensed write-ups of the fixed ones live in [phase-bugs-archive.md](phases/phase-bugs-archive.md). This section deliberately does **not** re-list them — the table is the single source.
 
 → [docs/phases/phase-bugs.md](phases/phase-bugs.md)

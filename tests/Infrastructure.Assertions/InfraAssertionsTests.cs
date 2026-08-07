@@ -1103,16 +1103,52 @@ public class InfraAssertionsTests
         }));
     }
 
+    [Theory]
+    // BUG-58: a Lambda killed at its timeout emits no error, log, or domain metric — the only trace
+    // is a Duration datapoint pinned at the limit. Alarm on Maximum Duration so a silent kill is
+    // never invisible. The Query function is deliberately absent: notetaker-p99-latency catches its
+    // slow path earlier. The FunctionName dimension is asserted because every other property here is
+    // identical across functions — without it the alarm could watch the WRONG Lambda and still pass.
+    [InlineData("notetaker-command-lambda-timeout", 28000, "CommandFunction")]
+    [InlineData("notetaker-transcribe-completion-timeout", 59000, "TranscribeCompletionFunction")]
+    public void Alarms_LambdaTimeoutAlarmWatchesItsOwnFunction(string alarmName, int threshold, string functionLogicalIdPrefix)
+    {
+        _template.HasResourceProperties("AWS::CloudWatch::Alarm", Match.ObjectLike(new Dictionary<string, object>
+        {
+            ["AlarmName"] = alarmName,
+            ["Namespace"] = "AWS/Lambda",
+            ["MetricName"] = "Duration",
+            ["Statistic"] = "Maximum",
+            ["Threshold"] = threshold,
+            ["EvaluationPeriods"] = 1,
+            ["ComparisonOperator"] = "GreaterThanOrEqualToThreshold",
+            ["TreatMissingData"] = "notBreaching",
+            ["Dimensions"] = Match.ArrayWith(new object[]
+            {
+                Match.ObjectLike(new Dictionary<string, object>
+                {
+                    ["Name"] = "FunctionName",
+                    ["Value"] = new Dictionary<string, object>
+                    {
+                        ["Ref"] = Match.StringLikeRegexp($"^{functionLogicalIdPrefix}")
+                    }
+                })
+            }),
+            ["AlarmActions"] = Match.AnyValue()
+        }));
+    }
+
     [Fact]
     public void Alarms_AllExpectedAlarmsExist()
     {
-        // Nine alarms: error-rate, P99 latency, projection-rebuild-fault,
+        // Eleven alarms: error-rate, P99 latency, projection-rebuild-fault,
         // projection-rebuild-duration, the three 27-B projector alarms
         // (projector-error, projector-dlq-depth, projector-iterator-age),
-        // analysis-failed (CHANGE-22), and transcribe-failed (33-B1).
+        // analysis-failed (CHANGE-22), transcribe-failed (33-B1), and the two BUG-58
+        // host-timeout backstops (command-lambda-timeout, transcribe-completion-timeout).
         // A concurrency-conflict alarm is deferred — it would need SUM(SEARCH(...)), which CloudWatch
         // rejects on metric alarms (only allowed on dashboard widgets). See phase-12 12-E.
-        _template.ResourceCountIs("AWS::CloudWatch::Alarm", 9);
+        _template.ResourceCountIs("AWS::CloudWatch::Alarm", 11);
     }
 
     [Fact]

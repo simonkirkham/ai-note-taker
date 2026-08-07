@@ -1118,11 +1118,15 @@ public sealed class NoteTakerStack : Stack
             }),
             new Amazon.CDK.AWS.CloudWatch.GraphWidget(new Amazon.CDK.AWS.CloudWatch.GraphWidgetProps
             {
-                Title = "Lambda duration p50/p99 (command + query)",
+                Title = "Lambda duration p50/p99/max (command + query)",
                 Left = new[]
                 {
                     commandFunction.MetricDuration(new Amazon.CDK.AWS.CloudWatch.MetricOptions { Statistic = "p50" }),
                     commandFunction.MetricDuration(new Amazon.CDK.AWS.CloudWatch.MetricOptions { Statistic = "p99" }),
+                    // BUG-58: the timeout alarms watch Maximum, so Maximum has to be plotted here or
+                    // a responder following the runbook lands on a dashboard that cannot show them
+                    // the metric that fired.
+                    commandFunction.MetricDuration(new Amazon.CDK.AWS.CloudWatch.MetricOptions { Statistic = "Maximum" }),
                     queryFunction.MetricDuration(new Amazon.CDK.AWS.CloudWatch.MetricOptions { Statistic = "p50" }),
                     queryFunction.MetricDuration(new Amazon.CDK.AWS.CloudWatch.MetricOptions { Statistic = "p99" })
                 },
@@ -1384,6 +1388,52 @@ public sealed class NoteTakerStack : Stack
             TreatMissingData = Amazon.CDK.AWS.CloudWatch.TreatMissingData.NOT_BREACHING
         });
         latencyAlarm.AddAlarmAction(alarmAction);
+
+        // BUG-58: a Lambda killed at its timeout is invisible by construction — the process dies
+        // mid-await, so there is no exception, no Error log, no domain metric and nothing on the
+        // "All errors" widget. The one trace left is a Duration datapoint pinned at the limit, so
+        // alarm on Maximum Duration just under each function's cap. The Query function is excluded:
+        // its slow path is already caught earlier, and more cheaply, by notetaker-p99-latency.
+        var commandTimeoutAlarm = new Amazon.CDK.AWS.CloudWatch.Alarm(this, "CommandLambdaTimeoutAlarm", new Amazon.CDK.AWS.CloudWatch.AlarmProps
+        {
+            AlarmName = "notetaker-command-lambda-timeout",
+            // Names the one KNOWN benign cause so a responder isn't sent hunting. POST
+            // /admin/projections/rebuild runs on this function and legitimately reaches tens of
+            // seconds (notetaker-projection-rebuild-duration already warns at 20s), so an
+            // operator-run rebuild — a mandatory Scribe step on projection-adding slices — can trip
+            // this too. Any breach NOT explained by a rebuild is a request killed mid-flight.
+            AlarmDescription = "Command (write) Lambda ran to within 1s of its 29s timeout — a request was killed mid-flight, unless an operator was running a projection rebuild",
+            Metric = commandFunction.MetricDuration(new Amazon.CDK.AWS.CloudWatch.MetricOptions
+            {
+                Statistic = "Maximum",
+                Period = Duration.Minutes(5)
+            }),
+            Threshold = 28000,
+            EvaluationPeriods = 1,
+            ComparisonOperator = Amazon.CDK.AWS.CloudWatch.ComparisonOperator.GREATER_THAN_OR_EQUAL_TO_THRESHOLD,
+            TreatMissingData = Amazon.CDK.AWS.CloudWatch.TreatMissingData.NOT_BREACHING
+        });
+        commandTimeoutAlarm.AddAlarmAction(alarmAction);
+
+        // The same silent kill on the completion Lambda is QUIETER still — that path re-analyses
+        // after diarization with no user waiting on a response, so nothing at all surfaces it. It
+        // runs the same Bedrock call (45s deadline) plus an S3 result fetch, parse and append inside
+        // a 60s cap, so it has a real timeout surface and needs the same backstop.
+        var transcribeCompletionTimeoutAlarm = new Amazon.CDK.AWS.CloudWatch.Alarm(this, "TranscribeCompletionTimeoutAlarm", new Amazon.CDK.AWS.CloudWatch.AlarmProps
+        {
+            AlarmName = "notetaker-transcribe-completion-timeout",
+            AlarmDescription = "Batch-diarization completion Lambda ran to within 1s of its 60s timeout — the re-analysis was probably killed mid-flight",
+            Metric = transcribeCompletionFunction.MetricDuration(new Amazon.CDK.AWS.CloudWatch.MetricOptions
+            {
+                Statistic = "Maximum",
+                Period = Duration.Minutes(5)
+            }),
+            Threshold = 59000,
+            EvaluationPeriods = 1,
+            ComparisonOperator = Amazon.CDK.AWS.CloudWatch.ComparisonOperator.GREATER_THAN_OR_EQUAL_TO_THRESHOLD,
+            TreatMissingData = Amazon.CDK.AWS.CloudWatch.TreatMissingData.NOT_BREACHING
+        });
+        transcribeCompletionTimeoutAlarm.AddAlarmAction(alarmAction);
 
         // Projection-rebuild operability (24-C). Both metrics carry only the Powertools
         // Service dimension, so each is a single concrete metric an alarm can target (no

@@ -1,4 +1,4 @@
-# Phase 50 — The Today line in the To Do list _(In Progress — 50-A implemented, PR #423 awaiting CI)_
+# Phase 50 — The Today line in the To Do list _(In Progress — 50-A done 2026-08-07 (#423, deploy #730); 50-B not started)_
 
 **Goal:** Draw a line anywhere in your To Do list to mark where "today" ends, so the top of the list is what you're actually doing now and everything below it waits its turn.
 
@@ -6,7 +6,7 @@
 
 | Slice | What the user gets | Status | Depends on |
 |-------|--------------------|--------|------------|
-| 50-A | A movable "Today" line in the To Do list that splits it into what's for today and what's for later, and stays where you put it | In Progress | — |
+| 50-A | A movable "Today" line in the To Do list that splits it into what's for today and what's for later, and stays where you put it | Done | — |
 | 50-B | One-click "Move to Today" / "Move to Later" on a to-do, so an item crosses the line without dragging | Not Started | 50-A |
 
 50-A proves the whole flow — draw the line, it persists, the list reads as two groups. 50-B is the convenience layer on top and is worthless without it.
