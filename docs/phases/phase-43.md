@@ -1,6 +1,6 @@
-# Phase 43 — Meeting agenda (topics to discuss, separate from the note body) _(Done)_
+# Phase 43 — Meeting agenda (topics to discuss) _(In Progress — 43-A–E done; 43-F/G/H bring ticking into the notes)_
 
-**Goal:** give each note a short checklist of things you need to discuss, sitting in the note header, that you tick off as you cover them.
+**Goal:** give each note a short checklist of things you need to discuss, which you tick off as you cover them — from the note itself or from the header, wherever your hands already are.
 
 ## Summary
 
@@ -11,10 +11,13 @@
 | 43-C | Fix the wording of a topic, or drop one that's no longer relevant | Done _(#374)_ | 43-A |
 | 43-D | Fold the agenda away to a single line when you want the note to be the focus | Done _(#375)_ | 43-A, 43-B |
 | 43-E | One clear way to track topics — the old, ambiguous per-heading ✓ is gone | Done _(#376)_ | 43-D |
+| 43-F | Tick a topic off in the notes as you type, and watch the count move | Not Started | 43-D |
+| 43-G | Add, reword or drop a topic from the header and have the notes follow | Not Started | 43-F |
+| 43-H | Topics on older notes appear in the notes themselves, like everywhere else | Not Started | 43-F |
 
-43-A is the thin vertical that proves the whole pipe; 43-B/C extend it; 43-D is polish; 43-E removes the superseded mechanism. **Reorder (drag) is deferred** — order is capture order for now.
+43-A is the thin vertical that proves the whole pipe; 43-B/C extend it; 43-D is polish; 43-E removes the superseded mechanism. 43-F–H then move the agenda **into** the note: 43-F reads it from the notes, 43-G makes the header write back, 43-H moves the stragglers over. **Reorder (drag) is deferred** — order is capture order for now.
 
-**Validated by prototype:** branch `prototype/topics-explore`, gallery `topics-prototypes/index.html`; final direction `v7-agenda-in-header.html`, reached via 9 Round-1 explorations → Checkline refinements → free-form-note + separate-agenda rounds.
+**Validated by prototype:** 43-A–E on branch `prototype/topics-explore` (gallery `topics-prototypes/index.html`, direction `v7-agenda-in-header.html`). 43-F–H on branch `prototype/43f-agenda-in-body` (`agenda-prototypes/index.html` static gallery, then `web/src/prototype/` — a real Tiptap editor across five candidate designs; **"Task line" chosen 2026-08-07**).
 
 ## Slices
 
@@ -146,6 +149,114 @@ Scenario: Existing struck-through headings are untouched
   Then  the heading still shows as struck through, as ordinary formatting
 ```
 
+### 43-F — Tick a topic where you're typing
+
+**User value:** meeting notes are running prose, so the checklist you jot in the note *is* the agenda — tick a topic off right where you wrote it, without breaking your typing to reach the header.
+
+**How it works:**
+- Any checklist line in a note is a topic on its agenda. Nothing to promote, no extra step.
+- Ticking the line in the notes moves the header's "X / Y" count straight away.
+- A ticked topic reads struck through in both the notes and the header.
+- Type a new checklist line mid-meeting and the count grows as you type.
+- Topics added the old way still show in the header until 43-H moves them across — nothing disappears in the meantime.
+
+**Scenarios (GWT):**
+```
+Scenario: A checklist line in the notes is a topic
+  Given a note whose notes contain a checklist line "Budget (Q3)"
+  Then  the header agenda shows "Budget (Q3)"
+  And   the coverage count includes it
+
+Scenario: Tick a topic in the notes
+  Given a note with three checklist lines, none of them ticked
+  When  I tick "Budget (Q3)" in the notes
+  Then  it reads struck through
+  And   the header count reads "1 / 3"
+
+Scenario: Type a new topic mid-meeting
+  Given a note with two topics, neither ticked
+  When  I type a new checklist line "Renewals"
+  Then  the header count reads "0 / 3"
+
+Scenario: Untick a topic
+  Given a note with a ticked topic and a count of "1 / 3"
+  When  I untick it in the notes
+  Then  the count reads "0 / 3"
+
+Scenario: Topics added the old way still appear
+  Given a note whose topics were added from the header before this change
+  Then  they still appear in the header agenda with their ticked state
+```
+
+### 43-G — Manage the agenda from the header
+
+**User value:** keep using the header strip when that's where your hands are — add, tick, reword or drop a topic there and the notes follow, without losing your place or anything you've typed.
+
+**How it works:**
+- Adding from the header puts the topic at the end of the note's first checklist; if the note has no checklist yet, one is started at the top.
+- Your cursor never moves — adding a topic mid-meeting doesn't interrupt the sentence you're writing.
+- Ticking, rewording or removing in the header changes the matching line in the notes.
+- **Ctrl+Z** undoes any of them, exactly as if you had edited the line yourself.
+- Typing you haven't saved yet is preserved — a header change merges into your in-flight edits rather than overwriting them.
+
+**Scenarios (GWT):**
+```
+Scenario: Add a topic from the header
+  Given a note whose notes already contain a checklist
+  When  I add "On-call rotation" in the header agenda
+  Then  it appears at the end of that checklist in the notes
+  And   my cursor has not moved
+
+Scenario: Add a topic to a note with no checklist
+  Given a note of running prose with no checklist in it
+  When  I add "Budget (Q3)" in the header agenda
+  Then  a new checklist holding it is started at the top of the notes
+
+Scenario: Reword a topic from the header
+  Given a topic "Budget (Q3)"
+  When  I reword it to "Q3 budget review" in the header
+  Then  the matching line in the notes reads "Q3 budget review"
+
+Scenario: Undo a removal
+  Given I removed a topic using the header
+  When  I press Ctrl+Z
+  Then  the line is back in the notes, where it was
+
+Scenario: A header change keeps unsaved typing
+  Given I have typed into the notes and not saved yet
+  When  I tick a topic in the header
+  Then  my unsaved typing is still there
+  And   the topic is ticked
+```
+
+### 43-H — Older notes' topics move into the notes
+
+**User value:** the handful of notes whose topics were added the old way get them written into the note itself, so every note in the app behaves the same way.
+
+**How it works:**
+- Each affected note gains a checklist of its topics at the top, with the already-covered ones already ticked.
+- Nothing else in those notes changes — no wording, no formatting, no lost text.
+- Afterwards every note's agenda comes from the note itself. One way, everywhere.
+
+**Scenarios (GWT):**
+```
+Scenario: An older note's topics move into the note
+  Given a note whose four topics were added the old way, two of them ticked
+  When  the change ships
+  Then  the note begins with a checklist of those four topics
+  And   the two covered ones read as ticked
+  And   the header agenda still reads "2 / 4"
+
+Scenario: A note that never had topics is left alone
+  Given a note with no topics
+  Then  its notes are unchanged
+
+Scenario: The note's own text is preserved
+  Given an older note with topics and several paragraphs of notes
+  When  the change ships
+  Then  every paragraph is still there, unchanged, below the checklist
+```
+
 ---
 
 ## Build notes _(implementation — skip when reviewing)_
@@ -213,7 +324,58 @@ _(Done — PR #375, deploy run 28479345632, live. Frontend-only; no events/backe
 - [x] No regression to the free-form editor (headings/bold/lists come from StarterKit, untouched). Existing `~~strikethrough~~` headings stay as ordinary markdown (no migration).
 - [x] Learnings: [phase-43e-retire-heading-tick](../learnings/phase-43e-retire-heading-tick.md) — heading-as-topic (Phase 7-B → BUG-37/37b) superseded by the separate agenda.
 
-_(Done — PR #376, deploy run 28480430234, live. **Phase 43 complete.**)_
+_(Done — PR #376, deploy run 28480430234, live. **43-A–E complete.**)_
+
+### Model change — the agenda becomes a reading of the note body (43-F onward)
+
+**Decided 2026-08-07** from the `prototype/43f-agenda-in-body` interview. This **reverses** 43-A's "agenda is separate data" decision. Recorded here rather than as a new phase because it is the same user capability, re-cut.
+
+What changed and why:
+
+| Decision | 43-A–E (shipped) | 43-F onward | Why |
+|---|---|---|---|
+| Where a topic lives | its own events on the Note stream | a task-list line in the note body | notes are running prose; the checklist the user already types *is* the agenda |
+| What makes a line a topic | n/a | **every** task-list line in the note | no promotion step; zero friction (explicitly chosen over an explicit `/agenda` promote) |
+| Canonical surface | the header strip | **the note body** | the header becomes a view over the body |
+| Ticked state | `AgendaItemDiscussedSet` | `- [x]` in the markdown | one writer for one fact |
+| Event appended on tick | `AgendaItemDiscussedSet` | `ContentEdited` | the tick *is* a body edit |
+| Identity token in markdown | n/a | **none** | because the body is canonical and the tick is `- [x]`, there is nothing to link — the line *is* the item |
+
+- **No new events.** `AgendaItem*` stay in the stream and keep being folded until 43-H; nothing is edited or versioned (guardrail: events are immutable).
+- `NoteDetailView.Agenda` is **derived in `NoteDetailProjection`** by parsing task-list items out of the folded content, not from agenda events. Same view shape, same round-trip mapping — `AgendaItemView` already carries `text`/`discussed`/`position`, so no `*View` field is added and the `DynamoDbNoteDetailStore` mapping is untouched.
+- **Strangler ordering is mandatory** — do not flip and migrate in one step (guardrail: never big-bang a cross-cutting cutover). 43-F derives from content **and** keeps folding legacy agenda events (union, dedup by text); 43-H migrates the 9 notes and only then drops the legacy fold and the write endpoints.
+- **The strike renders from the `[x]` state in CSS, never as literal `~~ ~~` in the markdown.** Writing the marks means unticking has to unwrap them, and it tangles with any `~~` the user typed. Same look, clean round-trip.
+
+### Slice 43-F — Topics come from the note body
+
+- [ ] BDD spec first. Fold task-list items out of the content in `NoteDetailProjection` into `NoteDetailView.Agenda`; **union with** the legacy `AgendaItem*` fold (dedup by trimmed text, legacy wins on ticked state) so no shipped note regresses.
+- [ ] Ordering is document order; `position` = index of the task item in the doc.
+- [ ] Frontend: `AgendaSection` reads the same `agenda` array as today — **no change to its read path**. Ticking in the body is already a content edit (46-B `TaskItem` toggles the doc → `onUpdate` → save), so the count moves for free once the projection derives.
+- [ ] Nested task items (46-B `TaskItem.configure({ nested: true })`) — decide and spec: nested children count as topics or not. Recommend **yes, flat** (a topic is a topic).
+- [ ] Round-trip test in `EventStore.Integration`: content with task lines → `UpsertAsync` → `GetAsync` → `Agenda` survives.
+- [ ] E2E: type a task line, assert the coverage pill moves. Reload-tolerant + consistency-gated (guardrail: every projector-backed assertion re-gates).
+- [ ] **Deploy-time: neutral.** No CDK, no new table, no backfill — an extra fold over content already in the view.
+
+### Slice 43-G — The header writes back into the body
+
+- [ ] Every header mutation is applied as an **editor transaction** on the live `NoteEditor` document, not as an API call — so Ctrl+Z undoes it and the change rides the existing content-save path.
+- [ ] **Insert rule (Q7):** append to the note's *first* `taskList` node; if none exists, insert a new `taskList` at position 0. Cursor position is preserved (`focus(undefined, { scrollIntoView: false })`).
+- [ ] **The draft merge is the risky part.** `NoteView.tsx:160` reads `content = contentDraft ?? detail?.content ?? ""`; a header mutation must apply to the *editor's current document* (which reflects unsaved typing) and let the normal autosave flush it — never write `detail.content` back, or unsaved typing is lost.
+- [ ] `AgendaSection` needs access to the editor instance (it currently only reads the note-detail cache). Decide the seam: lift the editor ref into `NoteView` and pass a small command object down, rather than coupling `AgendaSection` to Tiptap.
+- [ ] Retire `useAddAgendaItem` / `useSetAgendaItemDiscussed` / `useEditAgendaItemText` / `useRemoveAgendaItem` — the header no longer calls the API at all.
+- [ ] Optimistic UI is inherent (the editor updates synchronously); the acceptance criterion is that no header action round-trips before the UI moves.
+- [ ] E2E: add from the header while the caret is mid-paragraph → assert the caret has not moved and the line landed in the first checklist.
+- [ ] **Deploy-time: neutral.** Frontend-only.
+
+### Slice 43-H — Migrate the stragglers, then drop the old path
+
+- [ ] **Scope, measured in prod 2026-08-06:** `notetaker-events` holds **39 `AgendaItemAdded` events across 9 notes**. Re-measure before running — a note edited between now and then may already carry its topics.
+- [ ] One-off migration appends a `taskList` at the top of each affected note's content, preserving ticked state, via a normal `EditContent` command (never a direct DynamoDB write — guardrail).
+- [ ] Idempotent: skip a note whose content already contains a task line matching the topic text. Safe to re-run.
+- [ ] Verify per note that the pre-migration paragraph count equals the post-migration paragraph count before dropping the legacy fold.
+- [ ] Only **after** verification: remove the legacy `AgendaItem*` fold from `NoteDetailProjection`, remove the agenda write endpoints (`POST /notes/{id}/agenda-items` and siblings), and remove the command-handler arms. The events stay in the stream, unread — reversible.
+- [ ] `EventDeserializer` keeps its `AgendaItem*` arms; a rebuild must still parse historical events without throwing (guardrail).
+- [ ] **Deploy-time: neutral**, but this is a **data migration** — run it as an authenticated admin action after the deploy, like the projection rebuild, not as a deploy step.
 
 ### Observability
 
@@ -224,12 +386,25 @@ Silent failure modes considered at Scout time:
 - **Optimistic update masks a failed write** — reconcile on error; surface a toast.
 - ~~New projection ships **empty** — backfill after the 43-A deploy~~ — **N/A** (43-A composed onto `NoteDetailView`, no new table; nothing to backfill).
 
+Added for 43-F–H:
+
+- **A task line stops counting** — the derive parses the wrong node type after a Tiptap upgrade, so the agenda silently empties while the note looks fine. → assert a non-empty `Agenda` in the round-trip test; structured log of `agendaItemCount` per note read.
+- **A header write-back eats unsaved typing** — the highest-severity failure in 43-G, and invisible server-side. → log `contentLength` before/after each header mutation; E2E asserts unsaved text survives.
+- **The migration double-appends** — a re-run adds a second checklist. → idempotency check on topic text; log skipped notes.
+
 ### Deploy-time impact
 
-**Neutral.** No new CDK resource, no new table, no projection backfill — additive events on an existing stream folded into an existing view.
+**Neutral throughout.** 43-A–E: additive events on an existing stream folded into an existing view. 43-F: an extra fold over content already in the view. 43-G: frontend-only. 43-H: an admin-invoked data migration, not a deploy step.
+
+### Open decisions (settle at Breaker time)
+
+1. **The count now includes every task line in the note.** A note with twenty checkboxes reads "3 / 20". Options: leave it, cap the pill, or show only what's left. Deliberately unresolved — needs real use first.
+2. **Nested task items** — count as topics, or only top-level? Recommend flat.
+3. **Does the derived agenda belong on the home card?** Seeing uncovered topics without opening the note is real value, but out of scope here.
 
 ### Out of scope / later
 
 - Reorder (drag) agenda items.
 - Seeding the agenda from the calendar event or a template.
 - Carrying unfinished agenda items to the next occurrence's note.
+- Promoting a topic into a first-class action item (the Actions section stays the home for actions — decided 2026-08-07).
