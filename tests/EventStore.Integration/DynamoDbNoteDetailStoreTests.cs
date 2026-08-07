@@ -70,6 +70,33 @@ public sealed class DynamoDbNoteDetailStoreTests(DynamoDbFixture fixture) : ICla
         Assert.Equal(1, read.Agenda[1].Position);
     }
 
+    // 43-F: topics are now DERIVED from the note body rather than carried by AgendaItem* events, so
+    // the round-trip has to hold for a view the projection composed — including the deterministic
+    // ids, which have no event to fall back on if the mapping drops them.
+    [Fact]
+    public async Task AgendaDerivedFromBody_RoundTripsThroughDynamo()
+    {
+        var store = await NewStoreAsync();
+        var noteId = new NoteId(Guid.NewGuid());
+        const string content = "- [x] Budget (Q3)\n- [ ] Hiring plan\n\nRob says cloud spend is 8% over.";
+        var composed = AgendaFromContent.Compose(noteId, content, []);
+
+        await store.UpsertAsync(new NoteDetailView(noteId, "Ops weekly", content,
+            DateTimeOffset.UtcNow, DateTimeOffset.UtcNow, UserId: "user-1", Agenda: composed));
+
+        var read = await store.GetAsync(noteId);
+
+        Assert.NotNull(read!.Agenda);
+        Assert.Equal(2, read.Agenda!.Count);
+        Assert.Equal("Budget (Q3)", read.Agenda[0].Text);
+        Assert.True(read.Agenda[0].Discussed);
+        Assert.Equal("Hiring plan", read.Agenda[1].Text);
+        Assert.False(read.Agenda[1].Discussed);
+        // The derived id is a function of the note + text, so it must survive unchanged.
+        Assert.Equal(composed[0].ItemId, read.Agenda[0].ItemId);
+        Assert.Equal(composed[1].ItemId, read.Agenda[1].ItemId);
+    }
+
     [Fact]
     public async Task Agenda_DefaultsToNull_WhenAbsent()
     {

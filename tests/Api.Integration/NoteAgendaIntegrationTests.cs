@@ -189,6 +189,52 @@ public sealed class NoteAgendaIntegrationTests(ApiFactory factory) : IClassFixtu
         Assert.Equal(HttpStatusCode.NotFound, resp.StatusCode);
     }
 
+    // ── 43-F: topics derived from the note body, through the real API serialization boundary.
+    // The DynamoDB round-trip test covers the store; nothing else covers `derived` on the wire.
+
+    [Fact]
+    public async Task TaskLinesInTheBody_AppearAsDerivedAgendaTopics()
+    {
+        var noteId = await CreateNoteAsync();
+
+        await PutContentAsync(noteId, "- [x] Budget (Q3)\n- [ ] Hiring plan\n\nRob says cloud spend is 8% over.");
+
+        var agenda = await GetAgendaAsync(noteId);
+        Assert.Equal(2, agenda.Count);
+        Assert.Equal("Budget (Q3)", agenda[0].GetProperty("text").GetString());
+        Assert.True(agenda[0].GetProperty("discussed").GetBoolean());
+        Assert.True(agenda[0].GetProperty("derived").GetBoolean());
+        Assert.Equal("Hiring plan", agenda[1].GetProperty("text").GetString());
+        Assert.False(agenda[1].GetProperty("discussed").GetBoolean());
+    }
+
+    [Fact]
+    public async Task TickingInTheBody_MovesTheCoverageCount()
+    {
+        var noteId = await CreateNoteAsync();
+        await PutContentAsync(noteId, "- [ ] Budget (Q3)\n- [ ] Hiring plan");
+        Assert.Equal(0, (await GetAgendaAsync(noteId)).Count(a => a.GetProperty("discussed").GetBoolean()));
+
+        await PutContentAsync(noteId, "- [x] Budget (Q3)\n- [ ] Hiring plan");
+
+        Assert.Equal(1, (await GetAgendaAsync(noteId)).Count(a => a.GetProperty("discussed").GetBoolean()));
+    }
+
+    [Fact]
+    public async Task AnItemAddedFromTheHeader_IsNotMarkedDerived()
+    {
+        var noteId = await CreateNoteAsync();
+        await PostAgendaItemAsync(noteId, "Budget (Q3)");
+
+        var item = Assert.Single(await GetAgendaAsync(noteId));
+        Assert.False(item.GetProperty("derived").GetBoolean());
+    }
+
+    private Task<HttpResponseMessage> PutContentAsync(string noteId, string content) =>
+        _client.PutAsync(
+            $"/notes/{noteId}/content",
+            new StringContent(JsonSerializer.Serialize(new { content }), Encoding.UTF8, "application/json"));
+
     private async Task<string> CreateNoteAsync()
     {
         var resp = await _client.PostAsync("/notes", null);
