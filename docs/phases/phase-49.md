@@ -84,8 +84,9 @@ Scenario: Switching tabs mid-recording asks first
 
 - **User value:** a refresh (or coming back to the app later on the same device) doesn't wipe out the notes I had lined up.
 - **How it works:**
-  - The set of open tabs, and which one was active, is remembered on this device.
-  - Reloading the page brings the tabs back, with the same one active. Opening the app fresh later does the same.
+  - The set of open tabs is remembered on this device.
+  - Reloading the page brings the tabs back, with the same one active (the address bar already names it).
+  - The tab bar shows while you have a note open. Coming back later and landing on the notes list, you see it again as soon as you open any note.
   - A tab whose note has since been deleted, or moved to another workspace, is quietly dropped on restore rather than showing a dead tab.
   - If the browser won't let the app remember anything (private mode, storage full), everything still works — the tabs just start empty.
   - This is per device: it does not follow you to your phone or another browser.
@@ -98,6 +99,11 @@ Scenario: Tabs come back after a reload
   When  I reload the page
   Then  both tabs are still there
   And   "Client call" is still the active one
+
+Scenario: My notes list failing to load does not close my tabs
+  Given I have "Standup" and "Client call" open
+  When  I reload and my notes fail to load
+  Then  both tabs are still there
 
 Scenario: A deleted note does not come back as a tab
   Given I have "Standup" and "Client call" open
@@ -177,7 +183,7 @@ Frontend-only phase. **No new commands, events, projections, endpoints or CDK ch
 - **A11y — NOT ARIA tabs (changed during build).** `role="tab"` obliges a matching `role="tabpanel"`, and the only candidate panel is the note screen's own `<main>` landmark; relabelling that is worse for a screen reader than plain navigation. Shipped as a labelled `<nav aria-label="Open notes">` of real `<button>`s with `aria-current="page"` on the active one — same information, native focus order, no roving-tabindex machinery. Close button is a real `<button>` with `aria-label="Close <title>"`.
 - **Stale tabs:** deleting a note (from the note screen or from a card) and moving one to another workspace both close its tab — a tab pointing at a note no longer in this workspace can only reach the dead-link recovery.
 - **Tests:**
-  - E2E (primary): open note A from a home card → back → open note B → assert two tabs → click tab A → assert A's content and URL → close A → assert one tab. **Drive it through the home card list (`/notes/cards`, consistency-token gated), never through search** — `/notes/search` has no gate and flakes the deploy gate (CHANGE-23 / deploy #633). Tab state itself is client-side, so no reload-tolerance wrapper is needed for the tab assertions.
+  - E2E (primary): open note A from a home card → back → open note B → assert two tabs → click tab A → assert A's content and URL → close A → assert one tab. **Drive it through the home card list (`/notes/cards`, consistency-token gated), never through search** — `/notes/search` has no gate and flakes the deploy gate (CHANGE-23 / deploy #633). Tab state itself is client-side in 49-A, so no reload-tolerance wrapper is needed for the tab assertions. **49-B ends that** — the restored set is reconciled against the projector-backed cards list, so any count asserted across a reload goes through `AssertOpenTabCountAfterReloadAsync` (re-gated + reload-tolerant); only within-page assertions can use the plain helpers.
   - Component (vitest): `OpenNoteTabs` render/active/close; `useOpenNoteTabs` open/dedupe/close-neighbour/close-last.
   - `App` integration test: opening two notes yields two tabs; the recording guard scenario.
 - **Acceptance criteria:** _(all met — PR #410, deploy 30402913987)_
@@ -196,17 +202,27 @@ Frontend-only phase. **No new commands, events, projections, endpoints or CDK ch
 - **Known accepted trade:** with `openNote` guarded, "Next occurrence" / `/ai` create the note server-side *before* the guard resolves, so declining the leave leaves an unopened note in the list. Preferred over silently killing the recording; revisit if those paths gain their own confirm.
 
 ### 49-B — Persist open tabs
-- **Storage:** `localStorage`, key `notetaker.openTabs.<wsId>` (follows the `useTheme` / `useKeepAudioLocal` pattern — `try/catch` on both read and write, degrade to session-only, never throw: `web/src/hooks/useTheme.ts:48`, `useKeepAudioLocal.ts:14`). Value `{ tabs: [{noteId,title}], activeNoteId }`. Per workspace by key, which satisfies the "each workspace remembers its own tabs" scenario with no extra logic.
+- **Storage:** `localStorage`, key `note-taker-open-tabs-<wsId>` (matches the existing `note-taker-theme` / `note-taker-keep-audio-local` naming) (follows the `useTheme` / `useKeepAudioLocal` pattern — `try/catch` on both read and write, degrade to session-only, never throw: `web/src/hooks/useTheme.ts:48`, `useKeepAudioLocal.ts:14`). Value `{ tabs: [{noteId,title}], activeNoteId }`. Per workspace by key, which satisfies the "each workspace remembers its own tabs" scenario with no extra logic.
 - **Restore:** hydrate on mount; reconcile against the `cards` list once it loads and drop any `noteId` not present (covers deleted **and** moved-to-another-workspace). Reconcile only *after* cards have loaded — dropping tabs against an empty in-flight list would wipe them on every cold start.
 - **Active tab on restore:** the URL wins when the user cold-links to a note; the stored `activeNoteId` only applies when landing on the note route with no id (i.e. not at all today) or when restoring on the same URL. Keep it simple: restore the *list*, let the route decide active.
 - **Corrupt/legacy value:** parse defensively; any failure → treat as empty.
 - **E2E precondition (from the 49-A review):** creating a note opens it, so a journey's own fixture notes arrive as tabs. Today they are wiped by the reload inside `AssertNoteVisibleInListAfterReloadAsync`; **persisting tabs makes that stop being true**, so any exact tab-count assertion silently becomes wrong. 49-A already normalises via `AppPage.CloseAllTabsExceptAsync` — keep using it, and re-check every tab assertion in `OpenNoteTabsJourney` when the persistence lands.
 - **Tests:** vitest with a mocked/`throw`ing `localStorage` for the unavailable case; restore-drops-deleted-note case seeded via the cards handler. No E2E needed beyond a reload assertion appended to the 49-A journey (reload → tabs still present).
 - **Acceptance criteria:**
-  - [ ] Reloading restores the open tabs
-  - [ ] A tab whose note no longer exists in the workspace is dropped silently on restore
-  - [ ] Tabs are scoped per workspace
-  - [ ] Storage being unavailable or corrupt leaves the app fully working with no tabs restored
+  - [x] Reloading restores the open tabs
+  - [x] A tab whose note no longer exists in the workspace is dropped silently on restore
+  - [x] Tabs are scoped per workspace
+  - [x] Storage being unavailable or corrupt leaves the app fully working with no tabs restored — **scoped to the tab feature and the `AppGate` deep-link restore.** Not ticked for the app as a whole: the auth/calendar paths still have four unguarded storage reads, one of them evaluated during render, so private mode still crashes the tree on an OAuth return ([BUG-60])
+  - [x] A failed note-list read does not close the tabs — only a *successful* read is evidence a note is gone
+- **Reconcile is DERIVED, not stored (changed during build).** Dropping dead tabs by writing state needs an effect, and an effect that runs before `cards` arrives wipes every tab on every cold start — the exact failure the build notes warn about. Filtering in the existing `openNoteTabs` memo, only once a cards read has succeeded, makes that impossible by construction. Cost: storage keeps a dead id until the next write; it is filtered on every restore, so it is never visible.
+- **"A read has succeeded" is `dataUpdatedAt > 0` — not `isLoading`, not `isSuccess` (both wrong, in opposite directions).** A *failed* read also stops loading, with no data, so `!isLoading` collapses the whole bar on one API blip. And query-core's error reducer sets status `"error"` unconditionally, even when `data` still holds the last good list — so `isSuccess` stops reconciling after any failed background refetch, and a note deleted on another device reappears as a tab. `dataUpdatedAt` is stamped only by a success and survives a later error, so the last good snapshot keeps governing.
+- **No cap on restored tabs (tried and reverted during review).** A 50-tab restore cap was added to bound a hand-edited value, but writes were uncapped — so 60 open tabs became 50 on reload and the persist effect wrote the truncation straight back: silent, permanent loss, and a contradiction of 49-A's explicit "no tab cap" decision. What actually bounds a hostile value is the cards reconcile (unknown ids are dropped anyway). The **dedupe stays** — duplicate ids are a correctness bug (duplicate React keys, two tabs both marked current), not untidiness.
+- **The note being viewed is never dropped** even if the cards list hasn't caught up — it is open by definition.
+- **`data-tabs-reconciled` on the tab bar.** Restored tabs render from storage *before* the cards read lands, so the set on screen is provisional. E2E needs a way to wait for the reconciled set — awaiting the response is not awaiting the render, and a bare count assertion can pass on the pre-reconcile DOM and go red a tick later. The attribute makes that transition observable.
+- **Two browser tabs on one device are last-writer-wins.** Both windows share the storage key and there is no `storage`-event listener, so opening a note in window B can be erased by the next write from window A. Accepted: the feature is explicitly per-device convenience, not synced state, and a listener would add cross-window reconciliation for a case that loses nothing but a tab entry.
+- **Observability (both signals shipped):** `tabRestoreFailed` (`{ reason: storageUnavailable | corrupt | wrongShape }`) fires where the restore gives up, and `tabsDropped` (`{ dropped, remaining }`) fires from an effect — not the memo, which stays pure — when the reconcile removes any tab, de-duplicated by signature so a refetch does not re-report the same drop. Both states are otherwise completely silent; a mass drop is the difference between "the user had no tabs" and "the app lost them".
+- **Found + fixed en route:** `AppGate`'s `postLoginRedirect` read of `sessionStorage` was unguarded, so a browser that refuses storage (private mode) **crashed the app on mount** — a direct violation of this slice's own "storage unavailable" criterion. Now try/caught (losing the deep-link restore is the right degradation).
+- **Test-isolation fix:** persisting to `localStorage` made it leak between vitest tests (a tab opened in one restored in the next), which red-flagged a 49-A spec. Cleared globally in `web/src/test/setup.ts` alongside the existing URL and workspace resets — the third instance of that same class.
 
 ### 49-C — Recording survives a tab switch
 - **The crux.** This slice changes the mounting model: the recording note's `NoteView` must stay mounted while another tab is active. `useTranscription` (`web/src/hooks/useTranscription.ts:99`) owns the mic stream, the socket and the transcript buffer, and unmounting it is exactly the transcript-loss failure BUG-34 was filed for.

@@ -320,9 +320,13 @@ public sealed class AppPage
         await card.Locator("[data-testid='note-card-title']").ClickAsync();
     }
 
-    // 49-A: the open-note tab bar. Tab state is CLIENT-SIDE only — no projection behind it — so
-    // these need no reload-tolerance; the auto-waiting locator is sufficient and a reload here
-    // would (correctly) be a different assertion.
+    // 49-A: the open-note tab bar. These plain helpers are for WITHIN-PAGE assertions only —
+    // no reload, no read in between — where the auto-waiting locator is sufficient.
+    //
+    // 49-B ended the "tab state is client-side only" invariant: the restored set is reconciled
+    // against the projector-backed cards list, so a tab can be dropped by a read. Anything
+    // asserted ACROSS a reload must go through AssertOpenTabCountAfterReloadAsync, which
+    // re-gates the read and retries; a bare count there races the projector.
     public ILocator OpenNoteTabs => page.GetByTestId("open-note-tabs").Locator("[data-testid='open-note-tab']");
 
     public Task AssertOpenTabCountAsync(int expected) =>
@@ -747,6 +751,67 @@ public sealed class AppPage
     // Browser Back (history.back). Distinct from a hard GotoPath — exercises the SPA's own
     // history entry, which carries the CHANGE-23/40-A ?q/?tag/?range query string.
     public async Task GoBackAsync() => await page.GoBackAsync();
+
+    // 49-B — reload, then assert the tab count once the bar is RECONCILED.
+    //
+    // 49-B changed what a tab assertion depends on. The set is restored from localStorage, but
+    // a tab whose note is absent from `/notes/cards` is then dropped — so the count is now
+    // downstream of a projector-backed read, and every guardrail that applies to one applies
+    // here. The first attempt at this waited on a single cards RESPONSE, which was wrong twice:
+    //   (1) it left the read UNGATED. The app's RYW token lives in sessionStorage and the
+    //       pre-reload fetch consumes it (see the TI-42 note on
+    //       AssertNoteVisibleInListAfterReloadAsync), so the reload's read merely races the
+    //       projector. A read returning 1 of 2 notes drops the other tab, and with one reload
+    //       there is nothing left to converge on — a red shared deploy gate, exactly the
+    //       RYW-2 (#255) and CHANGE-23 (#633) precedent.
+    //   (2) a response is not a render. `ToHaveCountAsync` samples the DOM as soon as it is
+    //       asked, so it could pass on the pre-reconcile set and the tab drop a tick later —
+    //       a green test proving nothing.
+    // Both are closed here: RegateCardsRead stays routed across the reload AND the assertion,
+    // so the server gate waits for the projector; and `data-tabs-reconciled` (set from the
+    // cards query in App.tsx) gives a real post-reconcile sync point to wait on before
+    // counting. The reload loop then re-gates until convergence or the deadline.
+    public async Task AssertOpenTabCountAfterReloadAsync(int expected, int timeoutMs = 30000)
+    {
+        await page.RouteAsync("**/notes/cards*", RegateCardsRead);
+        try
+        {
+            var deadline = DateTime.UtcNow.AddMilliseconds(timeoutMs);
+            while (true)
+            {
+                await page.ReloadAsync();
+                try
+                {
+                    await Assertions
+                        .Expect(page.Locator("[data-testid='open-note-tabs'][data-tabs-reconciled='true']"))
+                        .ToBeVisibleAsync(new() { Timeout = 9000 });
+                    await Assertions.Expect(OpenNoteTabs).ToHaveCountAsync(expected, new() { Timeout = 9000 });
+                    return;
+                }
+                catch (PlaywrightException) when (DateTime.UtcNow < deadline)
+                {
+                    // re-loop: reload + re-gate until the reconciled bar holds the expected count
+                }
+                catch (PlaywrightException)
+                {
+                    // Deadline exceeded. Report what was actually on screen — a bare
+                    // "expected 2, got N" says nothing about whether the reconcile ran.
+                    var bar = page.Locator("[data-testid='open-note-tabs']");
+                    var reconciled = await bar.CountAsync() > 0
+                        ? await bar.GetAttributeAsync("data-tabs-reconciled")
+                        : "(no tab bar)";
+                    var labels = await page.GetByTestId("open-note-tab-label").AllTextContentsAsync();
+                    throw new Exception(
+                        $"Expected {expected} open tabs after reload; found {labels.Count} "
+                            + $"[{string.Join(", ", labels)}]. reconciled={reconciled}, page.Url={page.Url}");
+                }
+            }
+        }
+        finally
+        {
+            await page.UnrouteAsync("**/notes/cards*", RegateCardsRead);
+        }
+    }
 
     // 36-A — per-workspace theme. Open the sidebar (mobile), open the workspace switcher, create a
     // fresh non-default workspace, and wait for the app to navigate into it (`/w/{id}`, not __default__).
