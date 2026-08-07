@@ -82,10 +82,17 @@ public sealed class BedrockAnalysisService : IBedrockAnalysisService
             _logger.LogWarning("Bedrock analysis abandoned — the caller cancelled within its {TimeoutSeconds}s deadline (model {ModelId} prompt {PromptVersion}). Not counted as an analysis failure", _timeout.TotalSeconds, _modelId, _prompt.Version);
             throw;
         }
-        catch (OperationCanceledException) when (deadline.IsCancellationRequested)
+        // Deliberately catches Exception, not OperationCanceledException: the AWS SDK may wrap a
+        // cancellation (AmazonClientException) rather than surfacing a bare OCE, and the test double
+        // overrides ConverseAsync so it bypasses the whole SDK pipeline and cannot prove which. If the
+        // filter missed, the deadline would throw nothing catchable — the request would 500 past
+        // NoteAnalysisService's handler and AnalysisFailures would never increment, i.e. exactly the
+        // BUG-58 symptom the deadline exists to remove. Gated on OUR token being the cancelled one, so
+        // a genuine Bedrock fault still propagates unchanged.
+        catch (Exception ex) when (deadline.IsCancellationRequested && !ct.IsCancellationRequested)
         {
-            _logger.LogError("Bedrock analysis exceeded its {TimeoutSeconds}s deadline for model {ModelId} prompt {PromptVersion}", _timeout.TotalSeconds, _modelId, _prompt.Version);
-            throw new TimeoutException(FormattableString.Invariant($"Bedrock analysis did not complete within {_timeout.TotalSeconds}s."));
+            _logger.LogError(ex, "Bedrock analysis exceeded its {TimeoutSeconds}s deadline for model {ModelId} prompt {PromptVersion}", _timeout.TotalSeconds, _modelId, _prompt.Version);
+            throw new TimeoutException(FormattableString.Invariant($"Bedrock analysis did not complete within {_timeout.TotalSeconds}s."), ex);
         }
     }
 }

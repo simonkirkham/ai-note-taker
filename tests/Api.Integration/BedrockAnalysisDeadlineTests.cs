@@ -78,6 +78,46 @@ public sealed class BedrockAnalysisDeadlineTests
         Assert.Contains(_logs.Entries, e => e.Level == LogLevel.Warning && e.Message.Contains("abandoned"));
     }
 
+    // Hawk (PR #424): every other test here throws a BARE OperationCanceledException, because the
+    // double bypasses the SDK pipeline entirely. If the real SDK instead WRAPS the cancellation —
+    // AmazonClientException is the documented shape for a client-side abort — a filter that matched
+    // only OperationCanceledException would let it escape: no TimeoutException, no 503, no
+    // AnalysisFailures increment, i.e. BUG-58 unchanged. This pins the behaviour against the wrapped
+    // shape so the classification cannot regress to being SDK-shape-dependent.
+    [Fact]
+    public async Task A_wrapped_cancellation_from_the_sdk_still_becomes_a_timeout()
+    {
+        var service = Service(new WrappingBedrockRuntime(TimeSpan.FromSeconds(30)), TimeSpan.FromMilliseconds(50));
+
+        var ex = await Record.ExceptionAsync(() =>
+            service.AnalyseAsync(new NoteAnalysisRequest("Notes", "A transcript.", "Alice"), CancellationToken.None));
+
+        var timeout = Assert.IsType<TimeoutException>(ex);
+        Assert.IsType<AmazonClientException>(timeout.InnerException);
+        Assert.Contains(_logs.Entries, e => e.Level == LogLevel.Error && e.Message.Contains("deadline"));
+    }
+
+    // Same delay behaviour as DelayingBedrockRuntime, but wraps the cancellation the way the SDK's
+    // handler pipeline can — the shape the plain double structurally cannot produce.
+    private sealed class WrappingBedrockRuntime(TimeSpan delay) : AmazonBedrockRuntimeClient(
+        new BasicAWSCredentials("test", "test"),
+        new AmazonBedrockRuntimeConfig { RegionEndpoint = RegionEndpoint.EUWest2 })
+    {
+        public override async Task<ConverseResponse> ConverseAsync(
+            ConverseRequest request, CancellationToken cancellationToken = default)
+        {
+            try
+            {
+                await Task.Delay(delay, cancellationToken);
+            }
+            catch (OperationCanceledException ex)
+            {
+                throw new AmazonClientException("Request cancelled by the client.", ex);
+            }
+            throw new InvalidOperationException("unreachable in this test");
+        }
+    }
+
     // The SDK client is subclassed rather than the (very wide) interface hand-implemented; the
     // generated ConverseAsync is virtual and no network call is made.
     private sealed class DelayingBedrockRuntime(TimeSpan delay) : AmazonBedrockRuntimeClient(

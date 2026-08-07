@@ -1118,11 +1118,15 @@ public sealed class NoteTakerStack : Stack
             }),
             new Amazon.CDK.AWS.CloudWatch.GraphWidget(new Amazon.CDK.AWS.CloudWatch.GraphWidgetProps
             {
-                Title = "Lambda duration p50/p99 (command + query)",
+                Title = "Lambda duration p50/p99/max (command + query)",
                 Left = new[]
                 {
                     commandFunction.MetricDuration(new Amazon.CDK.AWS.CloudWatch.MetricOptions { Statistic = "p50" }),
                     commandFunction.MetricDuration(new Amazon.CDK.AWS.CloudWatch.MetricOptions { Statistic = "p99" }),
+                    // BUG-58: the timeout alarms watch Maximum, so Maximum has to be plotted here or
+                    // a responder following the runbook lands on a dashboard that cannot show them
+                    // the metric that fired.
+                    commandFunction.MetricDuration(new Amazon.CDK.AWS.CloudWatch.MetricOptions { Statistic = "Maximum" }),
                     queryFunction.MetricDuration(new Amazon.CDK.AWS.CloudWatch.MetricOptions { Statistic = "p50" }),
                     queryFunction.MetricDuration(new Amazon.CDK.AWS.CloudWatch.MetricOptions { Statistic = "p99" })
                 },
