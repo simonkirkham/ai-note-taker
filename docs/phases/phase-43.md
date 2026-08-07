@@ -353,7 +353,7 @@ What changed and why:
 - [ ] Frontend: `AgendaSection` reads the same `agenda` array as today — **no change to its read path**. Ticking in the body is already a content edit (46-B `TaskItem` toggles the doc → `onUpdate` → save), so the count moves for free once the projection derives.
 - [ ] Nested task items (46-B `TaskItem.configure({ nested: true })`) — decide and spec: nested children count as topics or not. Recommend **yes, flat** (a topic is a topic).
 - [ ] Round-trip test in `EventStore.Integration`: content with task lines → `UpsertAsync` → `GetAsync` → `Agenda` survives.
-- [ ] E2E: type a task line, assert the coverage pill moves. Reload-tolerant + consistency-gated (guardrail: every projector-backed assertion re-gates).
+- [x] ~~E2E: type a task line, assert the coverage pill moves.~~ **Deferred into 43-G's journey** (decided at review, PR #428): one gated journey asserts both — type a task line → pill moves → add from the header → the line lands in the first checklist with the caret unmoved. One journey instead of two is strictly less flake surface in the deploy gate, which is the project's bottleneck (BUG-38/61/62, the 44-min hang and the CHANGE-23 re-cut were all gate journeys). The `Api.Integration` tests cover the composed agenda through the real API boundary in the meantime.
 - [ ] **Deploy-time: neutral**, but a **projection rebuild is MANDATORY after the deploy** — this changes the *fold* of an already-populated projection, so every note written before the deploy keeps its stale (empty) `Agenda` until its next `ContentEdited`. The read path serves `NoteDetailView.Agenda` straight from the store and never re-parses content, so without the rebuild the feature is a silent no-op on every existing note — including the ones that already have task lists from 46-B. Invoke `POST /admin/projections/rebuild` (authenticated) and verify a known note's `agenda` is non-empty. Same class as the "a new projection ships empty" guardrail, which is written for *new* projections and should be widened to cover a fold change on an existing one.
 
 ### Slice 43-G — The header writes back into the body
@@ -364,14 +364,14 @@ What changed and why:
 - [ ] `AgendaSection` needs access to the editor instance (it currently only reads the note-detail cache). Decide the seam: lift the editor ref into `NoteView` and pass a small command object down, rather than coupling `AgendaSection` to Tiptap.
 - [ ] Retire `useAddAgendaItem` / `useSetAgendaItemDiscussed` / `useEditAgendaItemText` / `useRemoveAgendaItem` — the header no longer calls the API at all.
 - [ ] Optimistic UI is inherent (the editor updates synchronously); the acceptance criterion is that no header action round-trips before the UI moves.
-- [ ] E2E: add from the header while the caret is mid-paragraph → assert the caret has not moved and the line landed in the first checklist.
+- [ ] E2E: **one** journey covering 43-F *and* 43-G — type a task line → coverage pill moves → add from the header mid-paragraph → the line lands in the first checklist and the caret has not moved. Reload-tolerant + consistency-gated (guardrail: every projector-backed assertion re-gates). This is the 43-F criterion folded in; do not write a second agenda journey.
 - [ ] **Deploy-time: neutral.** Frontend-only.
 
 ### Slice 43-H — Migrate the stragglers, then drop the old path
 
 - [ ] **Scope, measured in prod 2026-08-06:** `notetaker-events` holds **39 `AgendaItemAdded` events across 9 notes**. Re-measure before running — a note edited between now and then may already carry its topics.
 - [ ] One-off migration appends a `taskList` at the top of each affected note's content, preserving ticked state, via a normal `EditContent` command (never a direct DynamoDB write — guardrail).
-- [ ] Idempotent: skip a note whose content already contains a task line matching the topic text. Safe to re-run.
+- [ ] Idempotent: skip a note whose content already contains a task line matching the topic text. Safe to re-run. **Normalise emphasis before that comparison** — a body line `- [ ] **Budget**` will not match a legacy item `Budget`, and the topic double-lists. 43-F closed the same trap for backslash escapes (`Unescape` in `AgendaFromContent`); emphasis is the other half and is still open.
 - [ ] Verify per note that the pre-migration paragraph count equals the post-migration paragraph count before dropping the legacy fold.
 - [ ] Only **after** verification: remove the legacy `AgendaItem*` fold from `NoteDetailProjection`, remove the agenda write endpoints (`POST /notes/{id}/agenda-items` and siblings), and remove the command-handler arms. The events stay in the stream, unread — reversible.
 - [ ] `EventDeserializer` keeps its `AgendaItem*` arms; a rebuild must still parse historical events without throwing (guardrail).
@@ -400,7 +400,8 @@ Added for 43-F–H:
 
 1. **The count now includes every task line in the note.** A note with twenty checkboxes reads "3 / 20". Options: leave it, cap the pill, or show only what's left. Deliberately unresolved — needs real use first.
 2. **Nested task items** — count as topics, or only top-level? Recommend flat.
-3. **Does the derived agenda belong on the home card?** Seeing uncovered topics without opening the note is real value, but out of scope here.
+3. **Blockquoted task lines are deliberately not topics** — Tiptap renders `> - [ ] Foo` as a real, clickable checkbox, but a blockquote in a meeting note is usually quoted material (someone else's checklist), so counting it as *your* agenda is worse than skipping it. The cost: ticking that checkbox moves nothing, with no explanation. Revisit if real use contradicts it.
+4. **Does the derived agenda belong on the home card?** Seeing uncovered topics without opening the note is real value, but out of scope here.
 
 ### Out of scope / later
 

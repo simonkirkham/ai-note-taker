@@ -86,7 +86,7 @@ export default function AgendaSection({ noteId }: { noteId: string }) {
                 }
               }}
               onBlur={submit}
-              placeholder="+ add item (header-only until 43-G)…"
+              placeholder="+ add item (won't appear in your notes yet)…"
               className={styles.addInput}
               aria-label="Add agenda item"
               data-testid="agenda-add-input"

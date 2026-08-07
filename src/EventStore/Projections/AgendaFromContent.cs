@@ -13,6 +13,10 @@ public static partial class AgendaFromContent
 {
     // GFM task list item: any bullet marker, optional indent (nested items count — a topic is a
     // topic), `[ ]` or `[x]`, then the text. Applied per line so fenced code can be skipped.
+    // A `>`-prefixed (blockquoted) line is deliberately NOT a topic: a blockquote in a meeting note
+    // is usually quoted material — someone else's checklist — and counting it as your agenda is
+    // worse than skipping it. Tiptap still renders it as a clickable checkbox, so ticking one moves
+    // nothing; recorded under phase-43.md "Open decisions".
     [GeneratedRegex(@"^[ \t]*[-*+][ \t]+\[([ xX])\][ \t]+(.+?)[ \t]*$", RegexOptions.None,
         matchTimeoutMilliseconds: 1000)]
     private static partial Regex TaskLine();
