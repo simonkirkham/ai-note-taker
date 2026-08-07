@@ -314,4 +314,63 @@ public sealed class TodoListProjectionSpec
         Assert.Equal(1, byId["A"]);
         Assert.Null(byId["C"]);
     }
+
+    static EventEnvelope TodayLineEnv(string ws, string? anchorItemId, string userId = "user-1") =>
+        new($"todo-order#{ws}", 2, nameof(TodayLineSet), 1, DateTimeOffset.UtcNow,
+            JsonSerializer.Serialize(new TodayLineSet(ws, anchorItemId, DateTimeOffset.UtcNow)),
+            new EventMetadata(Guid.NewGuid(), userId, null, null, ws));
+
+    [Fact]
+    public void TodayLine_UnsetByDefault()
+    {
+        var projection = new TodoListProjection();
+
+        Assert.Null(projection.GetTodayLineAnchor("user-1", "ws-1"));
+    }
+
+    [Fact]
+    public void TodayLine_FoldsTheAnchor()
+    {
+        var projection = new TodoListProjection();
+
+        projection.Handle(TodayLineEnv("ws-1", TodoB.Value.ToString()));
+
+        Assert.Equal(TodoB.Value.ToString(), projection.GetTodayLineAnchor("user-1", "ws-1"));
+    }
+
+    [Fact]
+    public void TodayLine_IsPerWorkspace()
+    {
+        var projection = new TodoListProjection();
+
+        projection.Handle(TodayLineEnv("ws-1", TodoB.Value.ToString()));
+        projection.Handle(TodayLineEnv("ws-2", TodoC.Value.ToString()));
+
+        Assert.Equal(TodoB.Value.ToString(), projection.GetTodayLineAnchor("user-1", "ws-1"));
+        Assert.Equal(TodoC.Value.ToString(), projection.GetTodayLineAnchor("user-1", "ws-2"));
+    }
+
+    [Fact]
+    public void TodayLine_ANullAnchorPutsItBelowEverything()
+    {
+        var projection = new TodoListProjection();
+        projection.Handle(TodayLineEnv("ws-1", TodoB.Value.ToString()));
+
+        projection.Handle(TodayLineEnv("ws-1", null));
+
+        Assert.Null(projection.GetTodayLineAnchor("user-1", "ws-1"));
+    }
+
+    [Fact]
+    public void TodayLine_DoesNotDisturbPositions()
+    {
+        var projection = new TodoListProjection();
+        projection.Handle(TodoEnvAt(TodoA, new TodoAdded(TodoA, "u", "A", null), T(1)));
+        projection.Handle(TodoEnvAt(TodoB, new TodoAdded(TodoB, "u", "B", null), T(2)));
+        projection.Handle(OrderEnv("ws-1", TodoB.Value.ToString(), TodoA.Value.ToString()));
+
+        projection.Handle(TodayLineEnv("ws-1", TodoA.Value.ToString()));
+
+        Assert.Equal(new[] { "B", "A" }, projection.GetAllItems().Select(i => i.Description));
+    }
 }

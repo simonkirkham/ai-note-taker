@@ -1,17 +1,24 @@
 import { useMutation, useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { completeAction, reopenAction, editAction, deleteAction } from "../api/actions";
 import { keys } from "../api/queryKeys";
-import { completeTodo, reopenTodo, editTodo, deleteTodo, reorderTodos } from "../api/todos";
-import type { TodoItem } from "../api/todos";
+import { completeTodo, reopenTodo, editTodo, deleteTodo, reorderTodos, setTodayLine } from "../api/todos";
+import type { TodoItem, TodoListData } from "../api/todos";
 
-type Ctx = { previous?: TodoItem[] };
+type Ctx = { previous?: TodoListData };
+
+const EMPTY: TodoListData = { items: [], todayLineAnchorItemId: null };
 
 // Snapshot the todos cache, apply an optimistic transform, and return the snapshot for rollback.
-async function optimistic(qc: QueryClient, apply: (items: TodoItem[]) => TodoItem[]): Promise<Ctx> {
+async function optimistic(qc: QueryClient, apply: (data: TodoListData) => TodoListData): Promise<Ctx> {
   await qc.cancelQueries({ queryKey: keys.todos });
-  const previous = qc.getQueryData<TodoItem[]>(keys.todos);
-  qc.setQueryData<TodoItem[]>(keys.todos, (old) => apply(old ?? []));
+  const previous = qc.getQueryData<TodoListData>(keys.todos);
+  qc.setQueryData<TodoListData>(keys.todos, (old) => apply(old ?? EMPTY));
   return { previous };
+}
+
+// Most mutations only touch the items; the Today line rides along untouched.
+function mapItems(apply: (items: TodoItem[]) => TodoItem[]) {
+  return (data: TodoListData): TodoListData => ({ ...data, items: apply(data.items) });
 }
 
 function rollback(qc: QueryClient, ctx: Ctx | undefined) {
@@ -35,8 +42,8 @@ export function useCompleteTodo() {
       item.type === "action" ? completeAction(item.noteId, item.itemId) : completeTodo(item.itemId),
     onMutate: (item) => {
       const completedAt = new Date().toISOString();
-      return optimistic(qc, (items) =>
-        items.map((i) => (i.itemId === item.itemId ? { ...i, completedAt } : i)));
+      return optimistic(qc, mapItems((items) =>
+        items.map((i) => (i.itemId === item.itemId ? { ...i, completedAt } : i))));
     },
     onError: (_e, _item, ctx) => rollback(qc, ctx),
     onSettled: (_d, _e, item) => settleAction(qc, item),
@@ -49,8 +56,8 @@ export function useReopenTodo() {
     mutationFn: (item) =>
       item.type === "action" ? reopenAction(item.noteId, item.itemId) : reopenTodo(item.itemId),
     onMutate: (item) =>
-      optimistic(qc, (items) =>
-        items.map((i) => (i.itemId === item.itemId ? { ...i, completedAt: null } : i))),
+      optimistic(qc, mapItems((items) =>
+        items.map((i) => (i.itemId === item.itemId ? { ...i, completedAt: null } : i)))),
     onError: (_e, _item, ctx) => rollback(qc, ctx),
     onSettled: (_d, _e, item) => settleAction(qc, item),
   });
@@ -71,8 +78,19 @@ export function useReorderTodos() {
   const qc = useQueryClient();
   return useMutation<void, Error, string[], Ctx>({
     mutationFn: (orderedItemIds) => reorderTodos(orderedItemIds),
-    onMutate: (orderedItemIds) => optimistic(qc, (items) => applyOrder(items, orderedItemIds)),
+    onMutate: (orderedItemIds) => optimistic(qc, mapItems((items) => applyOrder(items, orderedItemIds))),
     onError: (_e, _ids, ctx) => rollback(qc, ctx),
+  });
+}
+
+// Move the "Today" line. The anchor is the item the line sits immediately above; null puts it
+// below everything. Optimistic so the two groups re-split on release, before the save confirms.
+export function useSetTodayLine() {
+  const qc = useQueryClient();
+  return useMutation<void, Error, string | null, Ctx>({
+    mutationFn: (anchorItemId) => setTodayLine(anchorItemId),
+    onMutate: (anchorItemId) => optimistic(qc, (data) => ({ ...data, todayLineAnchorItemId: anchorItemId })),
+    onError: (_e, _v, ctx) => rollback(qc, ctx),
   });
 }
 
@@ -82,8 +100,8 @@ export function useEditTodo() {
     mutationFn: ({ item, description }) =>
       item.type === "action" ? editAction(item.noteId, item.itemId, description) : editTodo(item.itemId, description),
     onMutate: ({ item, description }) =>
-      optimistic(qc, (items) =>
-        items.map((i) => (i.itemId === item.itemId ? { ...i, description } : i))),
+      optimistic(qc, mapItems((items) =>
+        items.map((i) => (i.itemId === item.itemId ? { ...i, description } : i)))),
     onError: (_e, _v, ctx) => rollback(qc, ctx),
     onSettled: (_d, _e, { item }) => settleAction(qc, item),
   });
@@ -95,7 +113,7 @@ export function useDeleteTodo() {
     mutationFn: (item) =>
       item.type === "action" ? deleteAction(item.noteId, item.itemId) : deleteTodo(item.itemId),
     onMutate: (item) =>
-      optimistic(qc, (items) => items.filter((i) => i.itemId !== item.itemId)),
+      optimistic(qc, mapItems((items) => items.filter((i) => i.itemId !== item.itemId))),
     onError: (_e, _item, ctx) => rollback(qc, ctx),
     onSettled: (_d, _e, item) => settleAction(qc, item),
   });

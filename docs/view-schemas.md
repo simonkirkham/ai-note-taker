@@ -299,6 +299,14 @@ public record TodoListView(
 | PK (ActionId) | NoteId  | NoteTitle    | Description       | AddedAt | Position? |
 |---------------|---------|--------------|-------------------|---------|-----------|
 
+**Today-line row** (50-A) — the same table also holds one reserved marker row per workspace:
+
+| PK                        | AnchorItemId?                                                          |
+|---------------------------|------------------------------------------------------------------------|
+| `todayline#<workspaceId>` | id of the item the line sits immediately **above**; absent = below everything |
+
+Written by `TodayLineSet` (`SET AnchorItemId`, or `REMOVE AnchorItemId` for null). Item PKs are GUIDs, so the `todayline#` prefix cannot collide — but `QueryAllAsync`'s scan filters these rows out. `GET /todos` reads it with `ConsistentRead = true` and returns it as `todayLineAnchorItemId`, resolving a completed or deleted anchor forward to the first still-open item at or after its place (no relocation write).
+
 `Position` (37) is an additive numeric attribute set by `TodoListReordered` (full-order snapshot per workspace, stream `todo-order#<workspaceId>`); a `SET Position = :pos` UpdateItem guarded by `attribute_exists(PK)` so a stale snapshot id never upserts a phantom row. Absent → row sorts after positioned ones by `AddedAt`. No backfill (existing rows keep `Position` null until first reordered).
 
 Only **open** action items are stored — `ActionItemCompleted` removes the row, `ActionItemReopened` reinstates it. Keeps reads cheap (no filter) and the table small.

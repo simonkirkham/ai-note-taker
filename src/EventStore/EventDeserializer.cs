@@ -53,6 +53,7 @@ public static class EventDeserializer
         (nameof(TodoEdited), _) => JsonSerializer.Deserialize<TodoEdited>(envelope.Payload)!,
         (nameof(TodoDeleted), _) => JsonSerializer.Deserialize<TodoDeleted>(envelope.Payload)!,
         (nameof(TodoListReordered), _) => JsonSerializer.Deserialize<TodoListReordered>(envelope.Payload)!,
+        (nameof(TodayLineSet), _) => JsonSerializer.Deserialize<TodayLineSet>(envelope.Payload)!,
         (nameof(WorkspaceCreated), _) => JsonSerializer.Deserialize<WorkspaceCreated>(envelope.Payload)!,
         (nameof(WorkspaceRenamed), _) => JsonSerializer.Deserialize<WorkspaceRenamed>(envelope.Payload)!,
         (nameof(WorkspaceDeleted), _) => JsonSerializer.Deserialize<WorkspaceDeleted>(envelope.Payload)!,
