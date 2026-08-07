@@ -90,6 +90,9 @@ Prefer these read-only wrappers over hand-rolling the underlying `gh`/`aws` comm
 | `scripts/ci-logs.sh [pr\|run-id]` | finding the run id + `gh run view <id> --log-failed` (no arg = main's latest deploy) | failed-step logs |
 | `scripts/eval-status.sh` | per-model progress of the latest eval run | progress table |
 | `scripts/flake-watch.sh <since-deploy-#> [journey-regex]` | hand-counting clean deploy runs to prove a flake fix — scans **every attempt** of every deploy since the cutoff | per-deploy `clean`/`HIT` table + `clean=N` vs the 10-run target |
+| `gh workflow run e2e.yml -f runs=10 [-f filter=TagsJourney]` | needing gate runs **without a deploy** — runs the E2E suite N times against the already-deployed test env (no build, no CDK, no commit) | per-run PASS/FAIL lines + a job-summary table; the job is red if any run failed |
+
+**Proving a flake fix — use `e2e.yml`, not repeated deploys.** The 10-clean-run bar used to need 10 deploys (~15 min each, push-only, so it tempted no-op commits). `gh workflow run e2e.yml -f runs=10` gives the same signal in ~25 min with no deploy and no commits, and each run reports its own PASS/FAIL so the count is a fact you read off one log rather than infer from run conclusions. It shares the `deploy` **concurrency group** — deploys queue behind it, so run long counts when the merge queue is quiet. Deploy-gate runs still count too; this supplements them, and a fix should still be seen surviving real deploys.
 
 ## Conventions
 
