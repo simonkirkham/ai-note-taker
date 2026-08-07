@@ -81,7 +81,13 @@ export default function TodoSection() {
   }
 
   // Reorder the open items, optimistically and persisted. Pass the full new id order.
+  // BUG-65: order is a property of the WHOLE list, so two overlapping reorders are never safe —
+  // each snapshots the cache in onMutate, and a rollback then restores a snapshot taken before the
+  // other applied, leaving the UI showing an order the server never stored (staleTime 30s +
+  // refetchOnWindowFocus off = never corrected). Guarding here rather than in a caller covers every
+  // entry point at once: send-to-top/bottom, drag-drop onto a row, and drop onto the Today line.
   async function reorderTo(orderedIds: string[]) {
+    if (reorder.isPending) return;
     if (orderedIds.length < 2) return;
     setReorderError(null);
     try {
@@ -145,16 +151,32 @@ export default function TodoSection() {
   // CHANGE-34: jump an item to either end of the open list without a long drag — and the only
   // keyboard-operable reorder path (CHANGE-29 removed the up/down arrows). "Top" lands it in
   // Today, "bottom" in Later, since the groups are just the list either side of the line.
-  function sendTo(item: TodoItem, edge: "top" | "bottom") {
+  // BUG-65: the send buttons were disabled only by POSITION, so two DIFFERENT rows stayed clickable
+  // back-to-back and fired concurrent reorders. Each mutation snapshots the cache in onMutate, so a
+  // rollback restores a snapshot taken before the other applied — and with no reconcile the UI keeps
+  // an order the server never stored.
+  // The guard is `reorder.isPending`, NOT the per-item `busy` set: order is a property of the WHOLE
+  // list, so one row being busy says nothing about another row. A per-item lock leaves exactly the
+  // reported hole open (row A saving, row B still clickable) — the regression test below proves it.
+  async function sendTo(item: TodoItem, edge: "top" | "bottom") {
+    if (reorder.isPending || busy.has(item.itemId)) return;
     const ids = openItems.map((i) => i.itemId);
     const from = ids.indexOf(item.itemId);
     const to = edge === "top" ? 0 : ids.length - 1;
     if (from < 0 || from === to) return;
     const nextIds = arrayMove(ids, from, to);
-    void reorderTo(nextIds);
-    // 50-A: sending the ANCHOR itself to an edge would drag the line with it — to the top empties
-    // Today, to the bottom promotes everything. Re-anchor so the line stays where the user put it.
-    reanchorIfLineWouldFollow(item.itemId, nextIds);
+    addBusy(item.itemId);
+    try {
+      // Kick off the save, then re-anchor in the SAME tick before awaiting, preserving the
+      // original ordering: the line must move with the row optimistically, not after the round trip.
+      const saved = reorderTo(nextIds);
+      // 50-A: sending the ANCHOR itself to an edge would drag the line with it — to the top empties
+      // Today, to the bottom promotes everything. Re-anchor so the line stays where the user put it.
+      reanchorIfLineWouldFollow(item.itemId, nextIds);
+      await saved;
+    } finally {
+      removeBusy(item.itemId);
+    }
   }
 
   // Keyboard equivalent of dragging the line: step it over the item above or below.
@@ -349,8 +371,8 @@ export default function TodoSection() {
             className="icon-btn"
             aria-label={`Send "${item.description}" to top`}
             title="Send to top"
-            disabled={openIndex === 0 || busy.has(item.itemId)}
-            onClick={() => sendTo(item, "top")}
+            disabled={openIndex === 0 || busy.has(item.itemId) || reorder.isPending}
+            onClick={() => void sendTo(item, "top")}
           >
             <SendToTopIcon />
           </button>
@@ -359,8 +381,8 @@ export default function TodoSection() {
             className="icon-btn"
             aria-label={`Send "${item.description}" to bottom`}
             title="Send to bottom"
-            disabled={openIndex === openItems.length - 1 || busy.has(item.itemId)}
-            onClick={() => sendTo(item, "bottom")}
+            disabled={openIndex === openItems.length - 1 || busy.has(item.itemId) || reorder.isPending}
+            onClick={() => void sendTo(item, "bottom")}
           >
             <SendToBottomIcon />
           </button>
