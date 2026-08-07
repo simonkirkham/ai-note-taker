@@ -1,6 +1,8 @@
 import { test, expect } from '@playwright/test'
+import { readFileSync } from 'node:fs'
+import path from 'node:path'
 import { StreamingSession } from '../src/streamingSession'
-import type { WhisperServer } from '../src/whisperServer'
+import { SERVER_START_TIMEOUT_MS, type WhisperServer } from '../src/whisperServer'
 
 // BUG-56 — step() returns quietly while the server is not ready, deliberately before the
 // failure accounting. A server that starts but NEVER reaches ready therefore produced no live
@@ -99,7 +101,19 @@ test('a server whose process is GONE stays silent — the start-failure channel 
   expect(errors).toEqual([])
 })
 
-test('a recording shorter than the deadline still reports a never-ready server on stop', async () => {
+// The production deadline must be REACHABLE: WhisperServer.start() kills the child and nulls proc
+// when it gives up, so a ready deadline at or above that timeout can only ever observe a dead
+// process and never fires. The first version of this shipped at 75s against a 60s start timeout —
+// dead code that read as a live safety net. This test is the thing that stops it inverting again.
+test('the ready deadline is reachable — it fires before the server start timeout kills the process', () => {
+  const src = readFileSync(path.join(__dirname, '..', 'src', 'streamingSession.ts'), 'utf8')
+  const declared = /const READY_TIMEOUT_MS = ([0-9_]+)/.exec(src)
+  expect(declared).not.toBeNull()
+  const readyTimeout = Number(declared![1].replace(/_/g, ''))
+  expect(readyTimeout).toBeLessThan(SERVER_START_TIMEOUT_MS)
+})
+
+test('a never-ready server is reported on stop once the recording ran long enough to expect text', async () => {
   // Otherwise a brief recording ends with an empty live view and no explanation — the original
   // silent failure, just shorter.
   const errors: Error[] = []
@@ -108,15 +122,59 @@ test('a recording shorter than the deadline still reports a never-ready server o
     () => {},
     (e) => errors.push(e),
     undefined,
-    { readyTimeoutMs: 60_000 },
+    { readyTimeoutMs: 60_000, minSessionForStopReportMs: 10 },
+  )
+  session.start()
+  session.pushPcm(pcm)
+  await waitMs(60)
+  session.stop()
+
+  expect(errors.length).toBe(1)
+  expect(errors[0].message).toMatch(/did not finish loading/i)
+})
+
+test('a SHORT recording stopped while the model is still loading reports nothing', async () => {
+  // The first local recording after launch legitimately spends seconds loading base.en. A 3s
+  // recording stopping mid-load is not a fault, and a banner here would sit beside a perfectly
+  // good stop-time transcript.
+  const errors: Error[] = []
+  const session = new StreamingSession(
+    stubServer({ running: true, ready: false }),
+    () => {},
+    (e) => errors.push(e),
+    undefined,
+    { readyTimeoutMs: 60_000, minSessionForStopReportMs: 20_000 },
   )
   session.start()
   session.pushPcm(pcm)
   await waitMs(50)
   session.stop()
 
+  expect(errors).toEqual([])
+})
+
+test('a server that was ready and then died is reported on stop, not silently dropped', async () => {
+  // A crash in the last step-interval before stop() would otherwise go unreported: step() never
+  // runs again, and the start-failure channel never fires for a server that DID start.
+  const errors: Error[] = []
+  const server = stubServer({ running: true, ready: true })
+  const session = new StreamingSession(
+    server,
+    () => {},
+    (e) => errors.push(e),
+    undefined,
+    { readyTimeoutMs: 60_000 },
+  )
+  session.start()
+  session.pushPcm(pcm)
+  // A step runs and observes a healthy server, then the process dies.
+  await waitMs(1700)
+  Object.defineProperty(server, 'ready', { value: false, configurable: true })
+  Object.defineProperty(server, 'running', { value: false, configurable: true })
+  session.stop()
+
   expect(errors.length).toBe(1)
-  expect(errors[0].message).toMatch(/did not finish loading/i)
+  expect(errors[0].message).toMatch(/stopped during the recording/i)
 })
 
 test('a healthy short recording reports nothing on stop', async () => {

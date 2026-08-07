@@ -27,6 +27,12 @@ function freePort(): Promise<number> {
 // and the session drops that step (and counts it toward its terminal-failure threshold).
 const INFERENCE_TIMEOUT_MS = 20_000
 
+// How long start() waits for the model to load and the HTTP server to answer before killing the
+// child and rejecting. Exported because StreamingSession's ready deadline must fire BELOW it: once
+// start() gives up it nulls the process, and a deadline above this can only ever observe a dead
+// process — which is exactly how the first attempt at that deadline shipped as dead code.
+export const SERVER_START_TIMEOUT_MS = 60_000
+
 export class WhisperServer {
   private proc: ChildProcess | null = null
   private port = 0
@@ -43,9 +49,13 @@ export class WhisperServer {
   }
 
   // BUG-56: lets a caller reusing this warm server confirm it was built from the binary and model
-  // it expects, rather than assuming.
+  // it expects, rather than assuming — and report what it actually holds when it isn't.
   matches(binPath: string, modelPath: string): boolean {
     return this.binPath === binPath && this.modelPath === modelPath
+  }
+
+  describe(): { binPath: string; modelPath: string } {
+    return { binPath: this.binPath, modelPath: this.modelPath }
   }
 
   // True once the model has loaded and the HTTP server first answered — before this, /inference just
@@ -78,7 +88,7 @@ export class WhisperServer {
       this.isReady = false
     })
     // Poll until the model has loaded and the HTTP server accepts connections (or time out).
-    const deadline = Date.now() + 60_000
+    const deadline = Date.now() + SERVER_START_TIMEOUT_MS
     while (Date.now() < deadline) {
       if (spawnFailure.error) throw new Error(`whisper-server could not be started: ${spawnFailure.error.message}`)
       if (exited) throw new Error('whisper-server exited during startup')
@@ -89,7 +99,7 @@ export class WhisperServer {
       await new Promise((r) => setTimeout(r, 250))
     }
     this.kill()
-    throw new Error('whisper-server did not become ready within 60s')
+    throw new Error(`whisper-server did not become ready within ${SERVER_START_TIMEOUT_MS / 1000}s`)
   }
 
   private async ping(): Promise<boolean> {

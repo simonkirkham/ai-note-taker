@@ -13,13 +13,20 @@ const STEP_MS = 1500
 const BYTES_PER_MS = 32 // 16 kHz * 16-bit mono → 32 bytes/ms
 const MIN_NEW_MS = 500 // don't run inference until at least this much new audio has arrived
 const FAIL_THRESHOLD = 3 // consecutive post-ready /inference failures before we call it terminal
-// BUG-56 — how long the server may stay un-ready before the live view is declared dead. Longer than
-// WhisperServer's own 60s start deadline, so this only fires for the case that deadline cannot see:
-// a server shared from an earlier recording whose start() rejection was reported to a window that
-// has since moved on. Without it, "process alive, never ready" stays silent for the whole meeting.
-const READY_TIMEOUT_MS = 75_000
+// BUG-56 — how long the server may stay un-ready before the live view is declared dead. Must sit
+// BELOW WhisperServer's start deadline: once start() gives up it kills the child and nulls proc, so
+// a longer deadline can only ever observe a dead process and is unreachable by construction. The
+// first version of this was set above it and was dead code — a mechanism that reads as live and is
+// not, which is the very shape of the bug this slice fixes. `readyDeadlineIsReachable` locks it.
+const READY_TIMEOUT_MS = 45_000
 
-export type StreamingSessionOptions = { readyTimeoutMs?: number }
+// Don't accuse the engine of failing to load when the recording barely outlived the model load. The
+// first local recording after launch legitimately spends seconds loading base.en, so a 3s recording
+// stopping mid-load is not a fault — reporting one would put a failure banner beside a perfectly
+// good stop-time transcript. Only applies to the stop path; the deadline itself is time-based.
+const MIN_SESSION_FOR_STOP_REPORT_MS = 20_000
+
+export type StreamingSessionOptions = { readyTimeoutMs?: number; minSessionForStopReportMs?: number }
 
 export class StreamingSession {
   private readonly chunks: Buffer[] = []
@@ -32,6 +39,7 @@ export class StreamingSession {
   private terminalReported = false // onError fired once — don't spam the banner every step
   private sawReady = false // the server became ready at least once (so a later !running == a crash)
   private readyTimer: ReturnType<typeof setTimeout> | null = null
+  private startedAt = 0 // when start() armed the timers — the stop-path grace period runs from here
   // windowSlice cursor: chunks before scanIdx are fully committed (never in a future window). startByte
   // only grows, so advancing this makes each slice O(window) instead of O(whole recording so far).
   private scanIdx = 0
@@ -47,10 +55,11 @@ export class StreamingSession {
 
   start(): void {
     if (this.timer) return
+    this.startedAt = Date.now()
     this.timer = setInterval(() => void this.step(), STEP_MS)
     // BUG-56: armed on its own one-shot timer rather than checked inside step(), so the deadline is
     // independent of the step cadence and of whether any step has run yet.
-    this.readyTimer = setTimeout(() => this.reportNeverReady(), this.opts?.readyTimeoutMs ?? READY_TIMEOUT_MS)
+    this.readyTimer = setTimeout(() => this.reportLiveViewDead(), this.opts?.readyTimeoutMs ?? READY_TIMEOUT_MS)
   }
 
   pushPcm(chunk: Buffer): void {
@@ -120,15 +129,30 @@ export class StreamingSession {
     return Buffer.concat(parts)
   }
 
-  // BUG-56 — the live view never started. Reads server.ready directly (not sawReady, which only
-  // updates on a step) so a server that loaded in time is never falsely reported. Stays silent when
-  // the process is GONE: a failed start() nulls proc, and the start-failure channel (ensureServer's
-  // catch) has already fired an accurate "failed to start" banner — replacing it with "did not
-  // finish loading" 75s later would tell the user the wrong thing. An in-flight start keeps
-  // running === true, which is exactly the case this deadline exists for.
-  private reportNeverReady(): void {
+  // BUG-56 — is the live view dead, and if so can we say something true about it? Reads
+  // server.ready directly (not sawReady, which only updates on a step) so a server that loaded in
+  // time is never falsely reported. `fromStop` marks the on-the-way-out check, which carries a
+  // grace period the time-based deadline does not need.
+  private reportLiveViewDead(fromStop = false): void {
     if (this.disposed || this.terminalReported) return
-    if (this.server.ready || !this.server.running) return
+    if (this.server.ready) {
+      this.sawReady = true
+      return
+    }
+    // The process is GONE. If it had been ready, it crashed — and a crash after the final step
+    // would otherwise go unreported, since step() never runs again. If it was NEVER ready, a failed
+    // start() nulls proc and the start-failure channel (ensureServer's catch) has already shown an
+    // accurate "failed to start" banner; overwriting it here would tell the user the wrong thing.
+    if (!this.server.running) {
+      if (!this.sawReady) return
+      this.terminalReported = true
+      this.onError(new Error('the on-device engine stopped during the recording'))
+      return
+    }
+    // Alive but still loading. On the stop path, only complain if the recording ran long enough
+    // that a live transcript was a reasonable expectation.
+    const grace = this.opts?.minSessionForStopReportMs ?? MIN_SESSION_FOR_STOP_REPORT_MS
+    if (fromStop && Date.now() - this.startedAt < grace) return
     this.terminalReported = true
     this.onError(new Error('the on-device engine did not finish loading; the live transcript stayed empty'))
   }
@@ -138,9 +162,9 @@ export class StreamingSession {
     this.timer = null
     if (this.readyTimer) clearTimeout(this.readyTimer)
     this.readyTimer = null
-    // A recording shorter than the deadline would otherwise end with an empty live view and no
-    // explanation — the original silent failure, just briefer. Check once on the way out.
-    this.reportNeverReady()
+    // A recording that ends before the deadline would otherwise finish with an empty live view and
+    // no explanation — the original silent failure, just briefer. Check once on the way out.
+    this.reportLiveViewDead(true)
   }
 
   dispose(): void {
