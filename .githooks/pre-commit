@@ -15,6 +15,14 @@ echo "$staged" | grep -Eq '^web/' && frontend=1 || frontend=0
 # build/project/cdk config. Docs-only, web-only, and tests-only commits skip it.
 echo "$staged" | grep -Eq '^(src/Infrastructure/|src/Api/)|\.(sln|csproj|props|targets)$|^cdk\.json$' && infra=1 || infra=0
 
+# Tracking-doc id check. Deliberately ABOVE the docs-only early exit below: a docs-only
+# commit is precisely the kind this guards, and pr.yml paths-ignores docs/**, so CI never
+# sees it either. This hook is the only enforcement point. Pure grep, no network.
+if echo "$staged" | grep -Eq '^docs/(phases/phase-(bugs|minor-changes)\.md|technical-improvements\.md|roadmap\.md)$'; then
+  echo "→ tracking-doc ids..."
+  ./scripts/check-doc-ids.sh
+fi
+
 if [ "$backend" = 0 ] && [ "$frontend" = 0 ]; then
   echo "→ no src/tests/web changes staged — skipping build/test gate"
   echo "✓ pre-commit checks passed"

@@ -20,3 +20,23 @@
 *.woff  binary
 *.woff2 binary
 *.pdf  binary
+
+# Append-only tracking tables: resolve concurrent APPENDS automatically.
+#
+# These three docs are append-heavy and edited by parallel agent sessions. Two sessions
+# adding a row each at the end of the same table conflicts every time, purely textually —
+# PR #414 re-conflicted three times in one day and never once on code. `merge=union` keeps
+# both sides instead of stopping, which is exactly right for an append.
+#
+# The trade-off, stated plainly: if two branches EDIT THE SAME ROW (both flip a status),
+# union keeps BOTH copies rather than picking one, leaving two rows with one id. That is
+# why scripts/check-doc-ids.sh runs in the pre-commit hook — it fails on duplicate ids, so
+# union's one bad outcome cannot ship silently. Resolve by keeping one row and folding in
+# whatever the other added.
+#
+# NOT applied to docs/roadmap.md: it is prose, so union would interleave sentences into
+# nonsense. Its conflicts are fixed differently — by deleting the duplicated bug status
+# that lived there (phase-bugs.md is the single source, the roadmap links to it).
+docs/phases/phase-bugs.md          merge=union
+docs/phases/phase-minor-changes.md merge=union
+docs/technical-improvements.md     merge=union

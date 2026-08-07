@@ -514,7 +514,7 @@ Alongside the numbered phases above, work is tracked in five standing docs. The 
 
 An unnumbered, standing phase capturing defects in the deployed app, tracked to a fix. No learning theme, no fixed sequence.
 
-**Open now (8):** **BUG-64** `shell.e2e.ts` flakes the new desktop PR gate on a cold Electron launch (fixed in #426; awaiting the 10-clean-run bar) · **BUG-59** a save into a deleted note says "try again" forever · **BUG-58** analyse hangs to the 29 s Lambda timeout (no Bedrock deadline) · **BUG-60** a browser that refuses storage crashes the app on the auth/calendar paths · **BUG-55** sign-out during a *local* finalise 401s the transcript commit · **BUG-49**, **BUG-48**, **BUG-46**.
+**Open bugs live in [phase-bugs.md](phases/phase-bugs.md#summary), not here.** That table is the single source for bug status — this section deliberately does not restate it. A hand-maintained copy went stale within hours of every status change and made the roadmap a conflict magnet for parallel sessions (PR #414 re-conflicted three times on this one line). `scripts/check-doc-ids.sh` fails the commit if an `Open now (N)` list reappears.
 49 bugs are fixed. The [Summary table](phases/phase-bugs.md#summary) is the full index (one row per bug, every status); condensed write-ups of the fixed ones live in [phase-bugs-archive.md](phases/phase-bugs-archive.md). This section deliberately does **not** re-list them — the table is the single source.
 
 → [docs/phases/phase-bugs.md](phases/phase-bugs.md)
