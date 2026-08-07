@@ -47,6 +47,16 @@ export function registerLocalTranscription(deps: Deps): void {
   // BUG-53: lazily start the resident whisper-server with the live model, reused across recordings.
   // Started in the background on record-start so recording begins immediately; the live transcript
   // appears once the model has loaded (a few seconds). Kept warm until app-quit.
+  // BUG-56: a start failure can land AFTER the renderer has stopped listening. start() gives up at
+  // 60s, but the renderer detaches its local:error listener as soon as finish() resolves — so a
+  // short recording against a permanently-stalled engine would see the failure sent into a window
+  // with no listener and dropped, leaving the original silent symptom for anyone who only records
+  // briefly (exactly how this fix gets tested). Hold it and replay it on the next recording.
+  let pendingStartFailure: string | null = null
+  // Whether THIS recording's session already told the user something. A session message is always
+  // more specific than the generic start failure, so it must not be overwritten by one.
+  let sessionReported = false
+
   const ensureServer = (binPath: string, liveModelPath: string): WhisperServer => {
     // A warm server is reused as-is, so both arguments are IGNORED on that path. No caller varies
     // them today, but silently reusing a server built from a different binary is the exact shape
@@ -56,23 +66,31 @@ export function registerLocalTranscription(deps: Deps): void {
         // Log BOTH sides — knowing only what was wanted can't tell you what you actually got, which
         // is the half you need to diagnose.
         console.error('[desktop] reusing a warm whisper-server started with a DIFFERENT binary/model', {
-          wanted: { binPath, liveModelPath },
+          wanted: { binPath, modelPath: liveModelPath },
           actual: sharedServer.describe(),
         })
       }
       return sharedServer
     }
     sharedServer = new WhisperServer(binPath, liveModelPath, pickThreads(cpus().length))
-    sharedServer.start().catch((err: Error) => {
-      console.error('[desktop] whisper-server failed to start; live transcript unavailable:', err.message)
-      sharedServer = null
-      // Surface it: recording began immediately (audio is still captured for the stop-time final pass),
-      // but the live view will never populate — tell the renderer so it shows the on-device-failed
-      // banner rather than sitting silently empty. The captured audio still feeds finish()/diarize.
-      // Send the bare CAUSE: the renderer frames it ("On-device transcription failed: …"), so a
-      // sentence here reads as "failed: … failed — …".
-      send('local:error', 'the local engine failed to start')
-    })
+    sharedServer
+      .start()
+      .then(() => {
+        pendingStartFailure = null // it came up — nothing left to replay
+      })
+      .catch((err: Error) => {
+        console.error('[desktop] whisper-server failed to start; live transcript unavailable:', err.message)
+        sharedServer = null
+        // Surface it: recording began immediately (audio is still captured for the stop-time final
+        // pass), but the live view will never populate — tell the renderer so it shows the
+        // on-device-failed banner rather than sitting silently empty. The captured audio still feeds
+        // finish()/diarize. Send the bare CAUSE: the renderer frames it ("On-device transcription
+        // failed: …"), so a sentence here reads as "failed: … failed — …".
+        pendingStartFailure = 'the local engine failed to start'
+        // Don't overwrite a more specific message the session already showed — the user's
+        // information must not get vaguer as time passes.
+        if (!sessionReported) send('local:error', pendingStartFailure)
+      })
     return sharedServer
   }
 
@@ -121,10 +139,16 @@ export function registerLocalTranscription(deps: Deps): void {
     // fall back to cloud, streaming this meeting's audio to AWS — the opposite of what someone who
     // chose on-device mode asked for (and at odds with 48-E). Recording continues locally: the live
     // view is dead but the stop-time pass still produces a transcript.
+    sessionReported = false
     const serverPresent = existsSync(serverBinPath)
     if (!serverPresent) {
       console.error('[desktop] whisper-server binary missing at', serverBinPath)
       send('local:error', 'the local engine is missing from this installation')
+      sessionReported = true
+    } else if (pendingStartFailure) {
+      // A previous recording's start failure landed after its window stopped listening. Replay it
+      // now rather than requiring the user to observe the failure live to ever hear about it.
+      send('local:error', pendingStartFailure)
     }
     // BUG-53: dispose any prior streaming session and kill in-flight CLI passes (final/diarize) —
     // the resident server stays warm across recordings. Then start a fresh streaming session over it.
@@ -149,7 +173,9 @@ export function registerLocalTranscription(deps: Deps): void {
       // a fixed string here would have discarded exactly the diagnosis the user needs. Bare cause —
       // the renderer supplies the "On-device transcription failed:" frame.
       (err) => {
-        console.error('[desktop] live streaming failed:', err.message)
+        // The raw transport error rides along as `cause` — kept out of the banner, kept in the log.
+        console.error('[desktop] live streaming failed:', err.message, err.cause ?? '')
+        sessionReported = true
         send('local:error', err.message)
       },
     )

@@ -1,7 +1,5 @@
 import { test, expect } from '@playwright/test'
-import { readFileSync } from 'node:fs'
-import path from 'node:path'
-import { StreamingSession } from '../src/streamingSession'
+import { StreamingSession, READY_TIMEOUT_MS } from '../src/streamingSession'
 import { SERVER_START_TIMEOUT_MS, type WhisperServer } from '../src/whisperServer'
 
 // BUG-56 — step() returns quietly while the server is not ready, deliberately before the
@@ -106,11 +104,7 @@ test('a server whose process is GONE stays silent — the start-failure channel 
 // process and never fires. The first version of this shipped at 75s against a 60s start timeout —
 // dead code that read as a live safety net. This test is the thing that stops it inverting again.
 test('the ready deadline is reachable — it fires before the server start timeout kills the process', () => {
-  const src = readFileSync(path.join(__dirname, '..', 'src', 'streamingSession.ts'), 'utf8')
-  const declared = /const READY_TIMEOUT_MS = ([0-9_]+)/.exec(src)
-  expect(declared).not.toBeNull()
-  const readyTimeout = Number(declared![1].replace(/_/g, ''))
-  expect(readyTimeout).toBeLessThan(SERVER_START_TIMEOUT_MS)
+  expect(READY_TIMEOUT_MS).toBeLessThan(SERVER_START_TIMEOUT_MS)
 })
 
 test('a never-ready server is reported on stop once the recording ran long enough to expect text', async () => {
@@ -151,6 +145,31 @@ test('a SHORT recording stopped while the model is still loading reports nothing
   session.stop()
 
   expect(errors).toEqual([])
+})
+
+test('a mid-recording crash is reported by the STEP timer, with the same wording as the stop path', async () => {
+  // The step()-detected branch is the one that fires while the user is still recording. It must not
+  // produce different text from the stop-detected branch for the identical condition, and must not
+  // name an internal binary.
+  const errors: Error[] = []
+  const server = stubServer({ running: true, ready: true })
+  const session = new StreamingSession(
+    server,
+    () => {},
+    (e) => errors.push(e),
+    undefined,
+    { readyTimeoutMs: 60_000 },
+  )
+  session.start()
+  session.pushPcm(pcm)
+  await waitMs(1700) // one step observes a healthy server → sawReady
+  Object.defineProperty(server, 'running', { value: false, configurable: true })
+  await waitMs(1700) // the next step notices it is gone — no stop() involved
+  session.dispose()
+
+  expect(errors.length).toBe(1)
+  expect(errors[0].message).toMatch(/stopped during the recording/i)
+  expect(errors[0].message).not.toMatch(/whisper/i)
 })
 
 test('a server that was ready and then died is reported on stop, not silently dropped', async () => {

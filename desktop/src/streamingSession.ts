@@ -18,13 +18,19 @@ const FAIL_THRESHOLD = 3 // consecutive post-ready /inference failures before we
 // a longer deadline can only ever observe a dead process and is unreachable by construction. The
 // first version of this was set above it and was dead code — a mechanism that reads as live and is
 // not, which is the very shape of the bug this slice fixes. `readyDeadlineIsReachable` locks it.
-const READY_TIMEOUT_MS = 45_000
+export const READY_TIMEOUT_MS = 45_000
 
 // Don't accuse the engine of failing to load when the recording barely outlived the model load. The
 // first local recording after launch legitimately spends seconds loading base.en, so a 3s recording
 // stopping mid-load is not a fault — reporting one would put a failure banner beside a perfectly
 // good stop-time transcript. Only applies to the stop path; the deadline itself is time-based.
 const MIN_SESSION_FOR_STOP_REPORT_MS = 20_000
+
+// User-facing causes. The renderer supplies the "On-device transcription failed:" frame, so these
+// are bare phrases — and deliberately name no binary or transport detail.
+const LIVE_ENGINE_STOPPED = 'the on-device engine stopped during the recording'
+const LIVE_ENGINE_UNRESPONSIVE = 'the on-device engine stopped responding'
+const LIVE_ENGINE_NEVER_LOADED = 'the on-device engine did not finish loading; the live transcript stayed empty'
 
 export type StreamingSessionOptions = { readyTimeoutMs?: number; minSessionForStopReportMs?: number }
 
@@ -76,7 +82,10 @@ export class StreamingSession {
       // never ready, this is the IPC layer's start-failure case → stay quiet here.
       if (this.sawReady && !this.terminalReported) {
         this.terminalReported = true
-        this.onError(new Error('whisper-server exited during the recording'))
+        // Same wording as the stop-path branch below: one condition must not produce two different
+        // banners depending on which timer happened to notice, and the user-facing text must not
+        // name an internal binary.
+        this.onError(new Error(LIVE_ENGINE_STOPPED))
       }
       return
     }
@@ -104,7 +113,10 @@ export class StreamingSession {
       this.failures++
       if (this.failures >= FAIL_THRESHOLD && !this.terminalReported) {
         this.terminalReported = true
-        this.onError(err as Error)
+        // Never forward the raw transport error: it reaches the banner verbatim, where "The
+        // operation was aborted due to a timeout" or "/inference 500" means nothing to the user.
+        // The original rides along as `cause` so the main process can still log it.
+        this.onError(new Error(LIVE_ENGINE_UNRESPONSIVE, { cause: err }))
       }
     } finally {
       this.busy = false
@@ -146,7 +158,7 @@ export class StreamingSession {
     if (!this.server.running) {
       if (!this.sawReady) return
       this.terminalReported = true
-      this.onError(new Error('the on-device engine stopped during the recording'))
+      this.onError(new Error(LIVE_ENGINE_STOPPED))
       return
     }
     // Alive but still loading. On the stop path, only complain if the recording ran long enough
@@ -154,7 +166,7 @@ export class StreamingSession {
     const grace = this.opts?.minSessionForStopReportMs ?? MIN_SESSION_FOR_STOP_REPORT_MS
     if (fromStop && Date.now() - this.startedAt < grace) return
     this.terminalReported = true
-    this.onError(new Error('the on-device engine did not finish loading; the live transcript stayed empty'))
+    this.onError(new Error(LIVE_ENGINE_NEVER_LOADED))
   }
 
   stop(): void {
