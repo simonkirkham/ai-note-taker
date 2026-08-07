@@ -272,3 +272,41 @@ describe('AgendaSection', () => {
     expect(screen.getByTestId('agenda-add-input')).toBeInTheDocument()
   })
 })
+
+// 43-F: a topic read out of the note body has no event stream behind it, so the agenda-item
+// endpoints would 404 on it. The header shows it and counts it, but routes editing to the notes.
+describe('AgendaSection — topics derived from the note body', () => {
+  it('counts a derived topic in the coverage pill', () => {
+    renderAgenda([
+      { itemId: 'd-1', text: 'Budget (Q3)', discussed: true, position: 0, derived: true },
+      { itemId: 'd-2', text: 'Hiring plan', discussed: false, position: 1, derived: true },
+    ])
+    expect(screen.getByTestId('agenda-coverage').textContent).toContain('1')
+    expect(screen.getByTestId('agenda-coverage').textContent).toContain('2')
+  })
+
+  it('disables the checkbox on a derived topic', () => {
+    renderAgenda([{ itemId: 'd-1', text: 'Budget (Q3)', discussed: false, position: 0, derived: true }])
+    expect(screen.getByTestId('agenda-item-check')).toBeDisabled()
+  })
+
+  it('does not offer remove on a derived topic', () => {
+    renderAgenda([{ itemId: 'd-1', text: 'Budget (Q3)', discussed: false, position: 0, derived: true }])
+    expect(screen.queryByTestId('agenda-item-remove')).toBeNull()
+  })
+
+  it('does not open an inline editor on a derived topic', async () => {
+    const user = userEvent.setup()
+    renderAgenda([{ itemId: 'd-1', text: 'Budget (Q3)', discussed: false, position: 0, derived: true }])
+    await user.click(screen.getByTestId('agenda-item-text'))
+    expect(screen.queryByTestId('agenda-item-edit-input')).toBeNull()
+  })
+
+  it('still allows editing a legacy (non-derived) topic', async () => {
+    const user = userEvent.setup()
+    renderAgenda([{ itemId: 'i-1', text: 'Budget (Q3)', discussed: false, position: 0 }])
+    expect(screen.getByTestId('agenda-item-check')).not.toBeDisabled()
+    await user.click(screen.getByTestId('agenda-item-text'))
+    expect(screen.getByTestId('agenda-item-edit-input')).toBeInTheDocument()
+  })
+})

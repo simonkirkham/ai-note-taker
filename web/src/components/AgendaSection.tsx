@@ -86,7 +86,7 @@ export default function AgendaSection({ noteId }: { noteId: string }) {
                 }
               }}
               onBlur={submit}
-              placeholder="+ add item…"
+              placeholder="+ add item (won't appear in your notes yet)…"
               className={styles.addInput}
               aria-label="Add agenda item"
               data-testid="agenda-add-input"
@@ -146,8 +146,14 @@ function AgendaItemRow({ noteId, item }: { noteId: string; item: AgendaItem }) {
         type="checkbox"
         className={styles.check}
         checked={item.discussed}
+        // 43-F: a derived topic is a task-list line in the note body — the body owns its ticked
+        // state, so tick it there. The agenda-item endpoints have no event stream for it and would
+        // 404. 43-G makes these controls write back through the editor.
+        disabled={item.derived}
         onChange={(e) => setDiscussed.mutate({ noteId, itemId: item.itemId, discussed: e.target.checked })}
-        aria-label={`Mark "${item.text}" discussed`}
+        aria-label={item.derived
+          ? `Mark "${item.text}" discussed — tick this in the notes`
+          : `Mark "${item.text}" discussed`}
         data-testid="agenda-item-check"
       />
       {editing ? (
@@ -171,25 +177,37 @@ function AgendaItemRow({ noteId, item }: { noteId: string; item: AgendaItem }) {
           data-testid="agenda-item-edit-input"
         />
       ) : (
+        item.derived ? (
+          <span
+            className={item.discussed ? styles.itemTextDone : styles.itemText}
+            title="Edit this in the notes"
+            data-testid="agenda-item-text"
+          >
+            {item.text}
+          </span>
+        ) : (
+          <button
+            type="button"
+            className={item.discussed ? styles.itemTextDone : styles.itemText}
+            onClick={startEditing}
+            aria-label={`Edit "${item.text}"`}
+            data-testid="agenda-item-text"
+          >
+            {item.text}
+          </button>
+        )
+      )}
+      {!item.derived && (
         <button
           type="button"
-          className={item.discussed ? styles.itemTextDone : styles.itemText}
-          onClick={startEditing}
-          aria-label={`Edit "${item.text}"`}
-          data-testid="agenda-item-text"
+          className={styles.remove}
+          onClick={() => removeItem.mutate({ noteId, itemId: item.itemId })}
+          aria-label={`Remove "${item.text}"`}
+          data-testid="agenda-item-remove"
         >
-          {item.text}
+          ×
         </button>
       )}
-      <button
-        type="button"
-        className={styles.remove}
-        onClick={() => removeItem.mutate({ noteId, itemId: item.itemId })}
-        aria-label={`Remove "${item.text}"`}
-        data-testid="agenda-item-remove"
-      >
-        ×
-      </button>
     </li>
   );
 }

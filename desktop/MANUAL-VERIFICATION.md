@@ -140,6 +140,19 @@ The live transcript must appear within a few seconds and keep pace, on the resid
 | 6 | **Missing binary/model falls back cleanly:** Given the whisper binary/model is missing, When I start a local recording, Then it falls back to cloud before recording (no mid-recording failure). | ☐ |
 | 7 | **Present-but-unstartable server surfaces a banner:** Given the binary/model exist but the server fails to start (e.g. port/OOM/timeout), When I record locally, Then the on-device-failed banner appears (live view is not silently empty) and the audio is still captured for the stop-time final pass. | ☐ |
 
+## BUG-56 — the live path actually runs, and never fails silently
+
+BUG-53's checklist above was never completed, and the live path shipped dead: `WhisperServer` was spawned with `whisper-cli.exe`, which exits on `--host`. **Row 2 below is the one that would have caught it.** Run against a freshly-installed build, not `npm run dev`.
+
+| # | Given / When / Then | Pass? |
+|---|---------------------|-------|
+| 1 | **The server binary ships:** Given the installed app, Then `%LOCALAPPDATA%\Programs\ai-note-taker-desktop\resources\whisper\` contains **both** `whisper-cli.exe` and `whisper-server.exe`. | ☐ |
+| 2 | **The server actually runs:** Given a local recording, Then Task Manager shows a live `whisper-server.exe` **while recording** — absent before the fix, so this is the regression signal. | ☐ |
+| 3 | **Live text appears:** Given a local recording, When I speak, Then text appears in the transcript within ~3-4 s, during the recording — not only after Stop. | ☐ |
+| 4 | **Failure is visible, not silent:** Given the local engine cannot start (rename `whisper-server.exe` to force it), When I record locally, Then the on-device-failed banner appears **while the recording is still running**, and the stop-time pass still produces a transcript. | ☐ |
+| 5 | **No stale banner:** Given a recording that showed the banner, When I start a new local recording that works, Then the banner is gone. | ☐ |
+| 6 | **Stop is unchanged:** Given I stop a local recording, Then the `small.en` final pass still replaces the live text (slower than live — expected cost, not a defect). | ☐ |
+
 ## CHANGE-36 — window title follows the open note
 
 `BrowserWindow` is constructed with no `title` option, so the Electron window (and its taskbar label) follows `document.title`. Making the browser tab title track the note therefore changes the desktop window title too — intended, but verify it reads sensibly.
@@ -163,6 +176,22 @@ Electron's spellchecker was already underlining misspellings, but Electron ships
 | 4 | **Add to dictionary:** Given a proper noun the checker flags (e.g. a client name), When I right-click and choose "Add to dictionary", Then the squiggle goes and it stays un-flagged after an app restart. | ☐ |
 | 5 | **No menu on correct text:** Given a correctly-spelled word, When I right-click it, Then no menu appears (unchanged from today). | ☐ |
 | 6 | **No menu outside an editor:** Given the notes list or a heading, When I right-click, Then no menu appears. | ☐ |
+
+## CHANGE-32 — pinned microphone grant
+
+The app now answers Electron's permission requests itself instead of riding the implicit-grant default. It is an allow-list: only the `http://localhost:5180` bundle origin, and only `media` / `display-capture` / `notifications`. Behaviour should be **identical** to before — this verifies nothing was tightened by accident. Every decision is logged (`[desktop] permission request media: granted — …`), so the console is the evidence. Unaffected: the Windows OS-level microphone privacy setting, which still gates everything below.
+
+| # | Given / When / Then | Pass? |
+|---|---------------------|-------|
+| 1 | **Mic still opens:** Given the app is open, When I start a recording, Then it records and the transcript appears — no permission error (the mic stream has no fallback, so a denial would kill recording outright). | ☐ |
+| 2 | **Grant is logged:** Given a recording just started, When I check the console (`npm run app`), Then a line reads `[desktop] permission request media: granted — media granted to the bundle origin`. | ☐ |
+| 3 | **System audio still captured (31-B not regressed):** Given a meeting is playing through the speakers, When I record, Then the other party's speech still lands in the transcript. | ☐ |
+| 4 | **Meeting reminders still fire:** Given a meeting is due, Then the desktop notification still appears (`notifications` is on the allow-list; leaving it off would have broken this). | ☐ |
+| 5 | **Nothing unexpected is being denied:** Given I use the app normally (open notes, edit, record, sign in via Google), Then no `[desktop] permission … denied` warning appears in the console for a feature that used to work. | ☐ |
+| 6 | **OS gate unchanged:** Given Windows microphone access is turned off for desktop apps, When I record, Then it fails at the OS level exactly as before (this pin does not bypass it). | ☐ |
+| 7 | **The CHECK handler grants, not just the request handler:** Given the app has been open a moment, When I check the console, Then a line reads `[desktop] permission check media: granted — …` and **no** `permission check … denied` line names `media` or `notifications`. | ☐ |
+
+> **Why row 7 exists.** The unit specs assert against the shapes we *believe* Electron passes; they cannot prove the wire format. Review caught the first implementation comparing the check handler's origin raw — Electron hands it a GURL serialised with a **trailing slash** (`http://localhost:5180/`), which never matched the bundle origin, so **every check was denied while all 17 specs passed**. Symptoms if it regresses: meeting reminders fall back to a plain `alert()`, microphone device names show blank in any picker, and Chromium's pre-flight can fail `getUserMedia` before the request handler is ever consulted. Row 7 is the only check that would catch it.
 
 ## Troubleshooting
 

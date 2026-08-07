@@ -13,6 +13,26 @@ const STEP_MS = 1500
 const BYTES_PER_MS = 32 // 16 kHz * 16-bit mono → 32 bytes/ms
 const MIN_NEW_MS = 500 // don't run inference until at least this much new audio has arrived
 const FAIL_THRESHOLD = 3 // consecutive post-ready /inference failures before we call it terminal
+// BUG-56 — how long the server may stay un-ready before the live view is declared dead. Must sit
+// BELOW WhisperServer's start deadline: once start() gives up it kills the child and nulls proc, so
+// a longer deadline can only ever observe a dead process and is unreachable by construction. The
+// first version of this was set above it and was dead code — a mechanism that reads as live and is
+// not, which is the very shape of the bug this slice fixes. `readyDeadlineIsReachable` locks it.
+export const READY_TIMEOUT_MS = 45_000
+
+// Don't accuse the engine of failing to load when the recording barely outlived the model load. The
+// first local recording after launch legitimately spends seconds loading base.en, so a 3s recording
+// stopping mid-load is not a fault — reporting one would put a failure banner beside a perfectly
+// good stop-time transcript. Only applies to the stop path; the deadline itself is time-based.
+const MIN_SESSION_FOR_STOP_REPORT_MS = 20_000
+
+// User-facing causes. The renderer supplies the "On-device transcription failed:" frame, so these
+// are bare phrases — and deliberately name no binary or transport detail.
+const LIVE_ENGINE_STOPPED = 'the on-device engine stopped during the recording'
+const LIVE_ENGINE_UNRESPONSIVE = 'the on-device engine stopped responding'
+const LIVE_ENGINE_NEVER_LOADED = 'the on-device engine did not finish loading; the live transcript stayed empty'
+
+export type StreamingSessionOptions = { readyTimeoutMs?: number; minSessionForStopReportMs?: number }
 
 export class StreamingSession {
   private readonly chunks: Buffer[] = []
@@ -24,6 +44,8 @@ export class StreamingSession {
   private failures = 0 // consecutive step failures; reset on success
   private terminalReported = false // onError fired once — don't spam the banner every step
   private sawReady = false // the server became ready at least once (so a later !running == a crash)
+  private readyTimer: ReturnType<typeof setTimeout> | null = null
+  private startedAt = 0 // when start() armed the timers — the stop-path grace period runs from here
   // windowSlice cursor: chunks before scanIdx are fully committed (never in a future window). startByte
   // only grows, so advancing this makes each slice O(window) instead of O(whole recording so far).
   private scanIdx = 0
@@ -34,11 +56,16 @@ export class StreamingSession {
     private readonly onLive: (text: string) => void,
     private readonly onError: (err: Error) => void,
     private readonly cfg?: StreamConfig,
+    private readonly opts?: StreamingSessionOptions,
   ) {}
 
   start(): void {
     if (this.timer) return
+    this.startedAt = Date.now()
     this.timer = setInterval(() => void this.step(), STEP_MS)
+    // BUG-56: armed on its own one-shot timer rather than checked inside step(), so the deadline is
+    // independent of the step cadence and of whether any step has run yet.
+    this.readyTimer = setTimeout(() => this.reportLiveViewDead(), this.opts?.readyTimeoutMs ?? READY_TIMEOUT_MS)
   }
 
   pushPcm(chunk: Buffer): void {
@@ -55,12 +82,16 @@ export class StreamingSession {
       // never ready, this is the IPC layer's start-failure case → stay quiet here.
       if (this.sawReady && !this.terminalReported) {
         this.terminalReported = true
-        this.onError(new Error('whisper-server exited during the recording'))
+        // Same wording as the stop-path branch below: one condition must not produce two different
+        // banners depending on which timer happened to notice, and the user-facing text must not
+        // name an internal binary.
+        this.onError(new Error(LIVE_ENGINE_STOPPED))
       }
       return
     }
     // Skip quietly while the server is still loading its model — not a per-step failure, so it doesn't
-    // count toward the terminal threshold or spam /inference during load.
+    // count toward the terminal threshold or spam /inference during load. A load that never finishes
+    // is caught by the ready deadline armed in start() (BUG-56), not here.
     if (!this.server.ready) return
     this.sawReady = true
     const startByte = this.state.finalizedMs * BYTES_PER_MS
@@ -82,7 +113,10 @@ export class StreamingSession {
       this.failures++
       if (this.failures >= FAIL_THRESHOLD && !this.terminalReported) {
         this.terminalReported = true
-        this.onError(err as Error)
+        // Never forward the raw transport error: it reaches the banner verbatim, where "The
+        // operation was aborted due to a timeout" or "/inference 500" means nothing to the user.
+        // The original rides along as `cause` so the main process can still log it.
+        this.onError(new Error(LIVE_ENGINE_UNRESPONSIVE, { cause: err }))
       }
     } finally {
       this.busy = false
@@ -107,9 +141,42 @@ export class StreamingSession {
     return Buffer.concat(parts)
   }
 
+  // BUG-56 — is the live view dead, and if so can we say something true about it? Reads
+  // server.ready directly (not sawReady, which only updates on a step) so a server that loaded in
+  // time is never falsely reported. `fromStop` marks the on-the-way-out check, which carries a
+  // grace period the time-based deadline does not need.
+  private reportLiveViewDead(fromStop = false): void {
+    if (this.disposed || this.terminalReported) return
+    if (this.server.ready) {
+      this.sawReady = true
+      return
+    }
+    // The process is GONE. If it had been ready, it crashed — and a crash after the final step
+    // would otherwise go unreported, since step() never runs again. If it was NEVER ready, a failed
+    // start() nulls proc and the start-failure channel (ensureServer's catch) has already shown an
+    // accurate "failed to start" banner; overwriting it here would tell the user the wrong thing.
+    if (!this.server.running) {
+      if (!this.sawReady) return
+      this.terminalReported = true
+      this.onError(new Error(LIVE_ENGINE_STOPPED))
+      return
+    }
+    // Alive but still loading. On the stop path, only complain if the recording ran long enough
+    // that a live transcript was a reasonable expectation.
+    const grace = this.opts?.minSessionForStopReportMs ?? MIN_SESSION_FOR_STOP_REPORT_MS
+    if (fromStop && Date.now() - this.startedAt < grace) return
+    this.terminalReported = true
+    this.onError(new Error(LIVE_ENGINE_NEVER_LOADED))
+  }
+
   stop(): void {
     if (this.timer) clearInterval(this.timer)
     this.timer = null
+    if (this.readyTimer) clearTimeout(this.readyTimer)
+    this.readyTimer = null
+    // A recording that ends before the deadline would otherwise finish with an empty live view and
+    // no explanation — the original silent failure, just briefer. Check once on the way out.
+    this.reportLiveViewDead(true)
   }
 
   dispose(): void {

@@ -45,19 +45,33 @@ if (gotSha !== expectedSha) {
 
 execSync(`powershell -NoProfile -Command "Expand-Archive -Path '${tmpZip}' -DestinationPath '${tmpDir}' -Force"`, { stdio: 'inherit' })
 
-// The zip lays files under Release/ (whisper-cli.exe + ggml*.dll + whisper.dll). Flatten into
-// resources/whisper/ so whisper-cli.exe finds its DLLs as siblings at runtime.
+// The zip lays files under Release/ (whisper-cli.exe, whisper-server.exe + ggml*.dll + whisper.dll).
+// Flatten into resources/whisper/ so the binaries find their DLLs as siblings at runtime.
+// Both binaries are required and are NOT interchangeable: whisper-cli.exe runs the one-shot batch
+// passes (48-B final, 48-C diarize); whisper-server.exe is the resident live path (BUG-53) and is
+// the only one that accepts --host/--port. Shipping without the server is the BUG-56 failure — a
+// silently empty live transcript.
+const REQUIRED_BINARIES = ['whisper-cli.exe', 'whisper-server.exe']
+
 const releaseDir = path.join(tmpDir, 'Release')
 const src = existsSync(releaseDir) ? releaseDir : tmpDir
 rmSync(outDir, { recursive: true, force: true })
 mkdirSync(outDir, { recursive: true })
+// Copy only the two binaries we actually run, plus every DLL (they are the shared runtime both
+// link against, including the ggml-cpu-* variants whisper.cpp dispatches over at runtime — the
+// dispatch that makes the official build fast, so never prune those). The zip carries ~20 further
+// .exe files (talk-llama, parakeet-*, test-*, wchess…) that nothing here invokes; staging them
+// only bloated the installer and blurred which binary serves which path.
 for (const f of readdirSync(src)) {
-  if (/\.(exe|dll)$/i.test(f)) cpSync(path.join(src, f), path.join(outDir, f))
+  if (/\.dll$/i.test(f) || REQUIRED_BINARIES.includes(f)) cpSync(path.join(src, f), path.join(outDir, f))
 }
 
-if (!existsSync(path.join(outDir, 'whisper-cli.exe'))) {
-  throw new Error('[fetch:whisper] whisper-cli.exe not found after extraction')
+// Fail packaging here rather than on a user's machine.
+for (const required of REQUIRED_BINARIES) {
+  if (!existsSync(path.join(outDir, required))) {
+    throw new Error(`[fetch:whisper] ${required} not found after extraction`)
+  }
 }
 rmSync(tmpZip, { force: true })
 rmSync(tmpDir, { recursive: true, force: true })
-console.log(`[fetch:whisper] staged whisper-cli.exe + DLLs → ${outDir}`)
+console.log(`[fetch:whisper] staged ${REQUIRED_BINARIES.join(' + ')} + DLLs → ${outDir}`)

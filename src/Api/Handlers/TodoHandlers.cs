@@ -13,6 +13,7 @@ public static class TodoHandlers
         IConsistencyGate gate,
         ICurrentUser currentUser,
         ICurrentWorkspace currentWorkspace,
+        ILogger<TodoListView> logger,
         HttpContext http,
         CancellationToken ct)
     {
@@ -23,27 +24,68 @@ public static class TodoHandlers
         if (result.IsStale)
             http.Response.Headers["X-Consistency"] = "stale";
 
-        var view = await store.QueryAllAsync(ct).ConfigureAwait(false);
+        // Independent reads — the list and the Today-line marker are separate keys.
+        var itemsTask = store.QueryAllAsync(ct);
+        var anchorTask = store.GetTodayLineAnchorAsync(currentUser.UserId, currentWorkspace.WorkspaceId, ct);
+        await Task.WhenAll(itemsTask, anchorTask).ConfigureAwait(false);
+        var view = await itemsTask.ConfigureAwait(false);
+        var storedAnchor = await anchorTask.ConfigureAwait(false);
+
         // Extend cutoff to 2 days back so any UTC-offset "today" is covered;
         // the frontend applies its own local-calendar-day filter.
         var cutoff = DateTimeOffset.UtcNow.Date.AddDays(-1);
+        var visible = view.Items
+            .Where(i => i.UserId == currentUser.UserId && currentWorkspace.Includes(i.WorkspaceId))
+            .Where(i => i.CompletedAt is null || i.CompletedAt.Value.UtcDateTime.Date >= cutoff)
+            .ToList();
+
+        var todayLineAnchorItemId = ResolveTodayLine(visible, storedAnchor);
+        // Durable relocation happens in the projector when the anchor stops being open, so a
+        // mismatch here is only the transient window before that lands — Debug, not Information,
+        // or it would log on every home-page poll for as long as the window is open.
+        if (storedAnchor is not null && todayLineAnchorItemId != storedAnchor)
+            logger.LogDebug("Today line resolved past its stored anchor for workspace {WorkspaceId}: {StoredAnchor} -> {ResolvedAnchor}",
+                currentWorkspace.WorkspaceId, storedAnchor, todayLineAnchorItemId ?? "(below everything)");
 
         return Results.Ok(new
         {
-            items = view.Items
-                .Where(i => i.UserId == currentUser.UserId && currentWorkspace.Includes(i.WorkspaceId))
-                .Where(i => i.CompletedAt is null || i.CompletedAt.Value.UtcDateTime.Date >= cutoff)
-                .Select(i => new
-                {
-                    itemId = i.ItemId,
-                    type = i.Type,
-                    noteId = i.NoteId,
-                    noteTitle = i.NoteTitle,
-                    description = i.Description,
-                    addedAt = i.AddedAt,
-                    completedAt = i.CompletedAt
-                })
+            items = visible.Select(i => new
+            {
+                itemId = i.ItemId,
+                type = i.Type,
+                noteId = i.NoteId,
+                noteTitle = i.NoteTitle,
+                description = i.Description,
+                addedAt = i.AddedAt,
+                completedAt = i.CompletedAt
+            }),
+            todayLineAnchorItemId
         });
+    }
+
+    // The stored anchor is the item the line sits immediately ABOVE. The projector relocates it
+    // durably the moment that item stops being open, so this read-side resolution only covers the
+    // transient window before that lands: report the first still-OPEN item at or after the anchor's
+    // place in the order. null = the line is below everything.
+    static string? ResolveTodayLine(IReadOnlyList<TodoItem> ordered, string? storedAnchor)
+    {
+        if (storedAnchor is null)
+            return null;
+
+        var anchorIndex = -1;
+        for (var i = 0; i < ordered.Count; i++)
+            if (ordered[i].ItemId == storedAnchor)
+            {
+                anchorIndex = i;
+                break;
+            }
+        if (anchorIndex < 0)
+            return null;
+
+        for (var i = anchorIndex; i < ordered.Count; i++)
+            if (ordered[i].CompletedAt is null)
+                return ordered[i].ItemId;
+        return null;
     }
 
     public static async Task<IResult> AddTodo(
@@ -164,6 +206,24 @@ public static class TodoHandlers
         var streamId = TodoOrdering.StreamId(currentWorkspace.WorkspaceId);
         return Results.Ok(new { consistencyToken = $"{streamId}@{version}" });
     }
+
+    public static async Task<IResult> SetTodayLine(
+        SetTodayLineRequest body,
+        ITodoOrderCommandHandler handler,
+        ICurrentWorkspace currentWorkspace,
+        CancellationToken ct)
+    {
+        // null is the meaningful "below everything" position; blank is a client bug.
+        if (body.AnchorItemId is not null && string.IsNullOrWhiteSpace(body.AnchorItemId))
+            return Results.BadRequest(new { error = "anchorItemId must be an item id or null." });
+
+        // Records a marker only, so — like reorder — there is no ownership read against the async
+        // projection to 404 on projector lag. An anchor that no longer exists resolves on read.
+        var version = await handler.HandleAsync(
+            new SetTodayLine(currentWorkspace.WorkspaceId, body.AnchorItemId, DateTimeOffset.UtcNow), ct).ConfigureAwait(false);
+        var streamId = TodoOrdering.StreamId(currentWorkspace.WorkspaceId);
+        return Results.Ok(new { consistencyToken = $"{streamId}@{version}" });
+    }
 }
 
 public record AddTodoRequest(string Description, string? Priority);
@@ -171,3 +231,5 @@ public record AddTodoRequest(string Description, string? Priority);
 public record EditTodoRequest(string Description);
 
 public record ReorderTodosRequest(IReadOnlyList<string> OrderedItemIds);
+
+public record SetTodayLineRequest(string? AnchorItemId);

@@ -49,10 +49,10 @@ describe('todos read-your-writes (RYW-1)', () => {
       await addTodo('Buy milk')
       const promise = getTodos()
       await vi.runAllTimersAsync()
-      const items = await promise
+      const data = await promise
 
       expect(gets).toBeGreaterThanOrEqual(2)
-      expect(items).toHaveLength(1)
+      expect(data.items).toHaveLength(1)
     } finally {
       vi.useRealTimers()
     }
@@ -74,11 +74,11 @@ describe('todos read-your-writes (RYW-1)', () => {
       await addTodo('Slow task')
       const promise = getTodos()
       await vi.runAllTimersAsync()
-      const items = await promise
+      const data = await promise
 
       // 1 initial + 2 bounded retries.
       expect(gets).toBe(3)
-      expect(items).toEqual([])
+      expect(data.items).toEqual([])
     } finally {
       vi.useRealTimers()
     }
