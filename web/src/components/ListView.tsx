@@ -361,7 +361,7 @@ export default function ListView({
   const hasActiveFilter = !isDefaultRange || tagCount > 0;
 
   return (
-    <main className="container">
+    <main className="container" data-testid="home-view">
       <div className="header">
         <div className={styles.headerTitleGroup}>
           {folderPath && folderPath.length > 0 && (
