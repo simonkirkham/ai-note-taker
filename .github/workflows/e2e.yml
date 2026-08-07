@@ -33,9 +33,20 @@ on:
 # The E2E suite runs against the SHARED test environment and wipes its DynamoDB tables
 # between runs, so it must never overlap a deploy — the two would corrupt each other's
 # data mid-suite. Sharing the `deploy` concurrency group makes that impossible.
-# TRADE-OFF: while this workflow holds the group, deploys queue behind it. A 10-run
-# invocation blocks deploys for roughly 25-30 minutes, so run long counts when the
-# merge queue is quiet.
+#
+# TRADE-OFF — read this before raising `runs`: GitHub does NOT queue runs in a busy
+# concurrency group, it CANCELS the previously-pending one (there is only ever one
+# pending slot). So while this workflow holds `deploy`, two merges landing behind it
+# mean the FIRST one's deploy-test is cancelled outright — its deploy never reaches
+# deploy-production, and the next deploy's detect-changes diffs only the newer commit.
+# If the cancelled one was backend and the next is web-only, the backend never ships
+# while the frontend does: the 34-B route-contract regression. The "Refuse to start
+# during a deploy" step below closes the common case; the residual is a merge landing
+# mid-hold, which is why long counts belong in a quiet window.
+permissions:
+  contents: read
+  actions: read
+
 concurrency:
   group: deploy
   cancel-in-progress: false
@@ -43,10 +54,31 @@ concurrency:
 jobs:
   e2e:
     runs-on: ubuntu-latest
+    # A hang here holds the shared `deploy` group for the job's whole lifetime, and the
+    # default is 360 minutes. E2EFact caps each TEST at 120s, but deploy #592's 44-minute
+    # hang was in teardown, which that cap does not bound. Sized to the input: setup plus
+    # ~4 min per run.
+    timeout-minutes: ${{ fromJSON(inputs.runs) * 4 + 15 }}
     environment:
       name: Test
     steps:
       - uses: actions/checkout@v6
+
+      # Entering a busy `deploy` group CANCELS the pending deploy rather than queuing behind
+      # it (see the concurrency comment). Refuse to start rather than take that risk.
+      - name: Refuse to start during a deploy
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          busy=$(gh run list --repo "$GITHUB_REPOSITORY" --branch main --workflow deploy.yml \
+            --limit 5 --json status \
+            --jq '[.[] | select(.status == "in_progress" or .status == "queued")] | length')
+          if [ "$busy" != "0" ]; then
+            echo "::error::$busy deploy run(s) in progress or queued on main. Starting now would cancel a pending deploy-test — wait for the queue to drain and re-run."
+            exit 1
+          fi
+          echo "no deploy in flight — safe to hold the deploy group"
 
       - name: Validate inputs
         env:
@@ -111,6 +143,8 @@ jobs:
           REFRESH_TOKEN: ${{ secrets.SMOKE_TEST_GOOGLE_REFRESH_TOKEN }}
           CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
           CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
+          # Turns clear-test-data.py's account check into a hard allowlist when configured.
+          E2E_TEST_ACCOUNT_ID: ${{ vars.TEST_AWS_ACCOUNT_ID }}
         run: |
           if [ -z "$REFRESH_TOKEN" ]; then
             echo "::error::SMOKE_TEST_GOOGLE_REFRESH_TOKEN not configured — the E2E suite cannot sign in."
@@ -127,6 +161,7 @@ jobs:
             echo "::error::Google token exchange failed (error: $ERROR) — cannot run the E2E suite."
             exit 1
           fi
+          echo "::add-mask::$ID_TOKEN"
           echo "id_token=$ID_TOKEN" >> "$GITHUB_OUTPUT"
 
       - name: Build E2E project
@@ -151,14 +186,77 @@ jobs:
           FRONTEND_URL: ${{ steps.outputs.outputs.frontend-url }}
           E2E_GOOGLE_ID_TOKEN: ${{ steps.token.outputs.id_token }}
           TOKEN: ${{ steps.token.outputs.id_token }}
+          # Needed by mint_token: a run long enough to outlive the ~1h id_token must be able
+          # to exchange the refresh token again mid-loop.
+          REFRESH_TOKEN: ${{ secrets.SMOKE_TEST_GOOGLE_REFRESH_TOKEN }}
+          CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
+          CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
         run: |
           set -uo pipefail
           filter_args=()
           [ -n "$FILTER" ] && filter_args=(--filter "$FILTER")
 
-          pass=0; fail=0; results=""
+          pass=0; fail=0; attempted=0; results=""
+          declare -A journey_hits=()
+          token_minted_at=$SECONDS
+
+          # A Google id_token lives ~1h. At up to 20 runs x ~3 min this loop outlives one, and the
+          # late runs would fail at sign-in and be counted as hits against the flake under test —
+          # corrupting the exact signal this workflow exists to produce. Re-mint when it ages.
+          mint_token() {
+            local resp id
+            resp=$(curl -s -X POST "https://oauth2.googleapis.com/token" \
+              -d "client_id=$CLIENT_ID" -d "client_secret=$CLIENT_SECRET" \
+              -d "refresh_token=$REFRESH_TOKEN" -d "grant_type=refresh_token")
+            id=$(echo "$resp" | jq -r '.id_token // empty')
+            if [ -z "$id" ]; then
+              echo "::error::Google token re-mint failed ($(echo "$resp" | jq -r '.error // "unknown"'))"
+              return 1
+            fi
+            echo "::add-mask::$id"
+            TOKEN="$id"; export E2E_GOOGLE_ID_TOKEN="$id"
+            token_minted_at=$SECONDS
+          }
+
+          # The summary is the deliverable. Without a trap, a non-zero clear-test-data.py aborts the
+          # step (bash -e is the default shell flag) and the table is lost after the deploy lock has
+          # already been spent.
+          write_summary() {
+            {
+              echo "## E2E re-run results"
+              echo
+              echo "| Metric | Value |"
+              echo "|---|---|"
+              echo "| Runs attempted | $attempted of $RUNS |"
+              echo "| Passed | $pass |"
+              echo "| Failed | $fail |"
+              echo "| Filter | ${FILTER:-<whole suite>} |"
+              echo
+              if [ "${#journey_hits[@]}" -gt 0 ]; then
+                echo "| Failing test | Runs hit |"
+                echo "|---|---|"
+                for k in "${!journey_hits[@]}"; do echo "| \`$k\` | ${journey_hits[$k]} |"; done
+                echo
+              else
+                echo "_No failing tests recorded._"
+                echo
+              fi
+              echo '```'
+              printf '%s' "$results"
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+          }
+          trap write_summary EXIT
+
           for i in $(seq 1 "$RUNS"); do
             echo "::group::Run $i of $RUNS"
+            attempted=$((attempted+1))
+
+            # 40 min, comfortably inside the ~1h token lifetime.
+            if [ $((SECONDS - token_minted_at)) -gt 2400 ]; then
+              echo "id_token is $(( (SECONDS - token_minted_at) / 60 ))m old — re-minting"
+              mint_token || { fail=$((fail+1)); results="${results}run ${i}: FAIL (token re-mint)"$'\n'; echo "::endgroup::"; break; }
+            fi
 
             # Warm + drain BEFORE each run, then clear: the same order the deploy gate uses,
             # so the warm-up's own todo is wiped and the journeys start from a clean, hot
@@ -166,14 +264,29 @@ jobs:
             bash scripts/warm-projector.sh || true
             python3 scripts/clear-test-data.py
 
-            if dotnet test tests/Browser.E2E/Browser.E2E.csproj -c Release "${filter_args[@]}"; then
+            # trx gives per-test names, so the summary can answer "was EVERY attempt free of
+            # journey X" — the question flake-watch.sh exists to answer. A run-level PASS/FAIL
+            # cannot distinguish "my fix worked" from "a different journey broke".
+            if dotnet test tests/Browser.E2E/Browser.E2E.csproj -c Release "${filter_args[@]}" \
+                 --logger "trx;LogFileName=run-$i.trx" --results-directory "$PWD/trx"; then
               pass=$((pass+1)); results="${results}run ${i}: PASS"$'\n'
               echo "run $i: PASS"
             else
-              fail=$((fail+1)); results="${results}run ${i}: FAIL"$'\n'
-              echo "run $i: FAIL"
-              # Keep the trace from a failing run under a per-run name so a later run
-              # cannot overwrite the only evidence of the failure.
+              fail=$((fail+1))
+              failed_tests=$(python3 scripts/failed-e2e-tests.py "$PWD/trx/run-$i.trx")
+              if [ -n "$failed_tests" ]; then
+                results="${results}run ${i}: FAIL ($failed_tests)"$'\n'
+                echo "run $i: FAIL ($failed_tests)"
+                for t in $failed_tests; do
+                  journey_hits[$t]="${journey_hits[$t]:+${journey_hits[$t]}, }$i"
+                done
+              else
+                results="${results}run ${i}: FAIL (no test-level failure — suite/infra error)"$'\n'
+                echo "run $i: FAIL (no test-level failure — suite/infra error)"
+              fi
+              # Keep the trace from a failing run under a per-run name. NOTE: every journey writes
+              # the same trace.zip path, so this is the LAST-completed journey's trace, not
+              # necessarily the failing one — the trx above is the reliable attribution.
               find . -name trace.zip -exec cp {} "trace-run-$i.zip" \; 2>/dev/null || true
               if [ "$STOP_ON_FAILURE" = "true" ]; then
                 echo "::endgroup::"
@@ -184,25 +297,10 @@ jobs:
             echo "::endgroup::"
           done
 
-          {
-            echo "## E2E re-run results"
-            echo
-            echo "| Metric | Value |"
-            echo "|---|---|"
-            echo "| Requested runs | $RUNS |"
-            echo "| Passed | $pass |"
-            echo "| Failed | $fail |"
-            echo "| Filter | ${FILTER:-<whole suite>} |"
-            echo
-            echo '```'
-            printf '%s' "$results"
-            echo '```'
-          } >> "$GITHUB_STEP_SUMMARY"
-
           echo "passed=$pass" >> "$GITHUB_OUTPUT"
           echo "failed=$fail" >> "$GITHUB_OUTPUT"
 
-          echo "=== $pass passed, $fail failed of $RUNS ==="
+          echo "=== $pass passed, $fail failed of $attempted attempted (requested $RUNS) ==="
           [ "$fail" -eq 0 ]
 
       - name: Clear test data

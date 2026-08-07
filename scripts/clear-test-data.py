@@ -10,6 +10,9 @@ copy leaks stale read-model rows across runs, which is exactly the class of
 cross-run contamination this script exists to prevent.
 """
 
+import os
+import sys
+
 import boto3
 
 # Clear the event store, EVERY projection table, AND notetaker-proj-position.
@@ -22,6 +25,39 @@ import boto3
 # each run uses fresh guids; only stable-id streams collide. Clearing positions alongside the
 # events gives the projector a true clean slate. Every projection table is listed so no stale
 # read-model rows leak across runs either.
+# The production account uses these SAME table names, so the only thing between this script
+# and the live event store is which credentials happen to be in scope. That was tolerable while
+# it ran solely inside the deploy gate; the on-demand E2E workflow makes it manually triggerable,
+# so verify the target account before deleting anything.
+#
+# Set the repo variable TEST_AWS_ACCOUNT_ID (wired into both callers) to turn this into a hard
+# allowlist. It is deliberately WARN-ONLY when unset: the deploy gate already depends on this
+# script at runtime, and failing closed on a missing variable would take the shared gate red for
+# every slice — a worse outcome than the risk it guards. A mismatch always refuses.
+def _assert_test_account() -> None:
+    expected = os.environ.get('E2E_TEST_ACCOUNT_ID', '').strip()
+    try:
+        actual = boto3.client('sts').get_caller_identity()['Account']
+    except Exception as exc:  # noqa: BLE001 - never let the guard itself break the gate
+        print(f'WARNING: could not resolve the caller account ({exc}); proceeding.')
+        return
+
+    if expected:
+        if actual != expected:
+            sys.exit(
+                f'REFUSING to wipe: credentials are for account {actual}, but '
+                f'E2E_TEST_ACCOUNT_ID is {expected}. Nothing was deleted.'
+            )
+        print(f'Target account {actual} matches E2E_TEST_ACCOUNT_ID.')
+        return
+
+    print(
+        f'WARNING: about to delete all items from {len(TABLES)} tables in account {actual}, '
+        'and E2E_TEST_ACCOUNT_ID is not set so the target cannot be verified. '
+        'Set the TEST_AWS_ACCOUNT_ID repo variable to enforce this.'
+    )
+
+
 TABLES = [
     'notetaker-events',
     'notetaker-proj-position',
@@ -41,6 +77,7 @@ TABLES = [
 
 
 def main() -> None:
+    _assert_test_account()
     dynamodb = boto3.resource('dynamodb')
     for name in TABLES:
         table = dynamodb.Table(name)

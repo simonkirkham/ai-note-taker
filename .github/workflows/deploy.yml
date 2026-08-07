@@ -118,6 +118,11 @@ jobs:
     concurrency:
       group: deploy
       cancel-in-progress: false
+    # Job-level so the clear-test-data composite action inherits it: scripts/clear-test-data.py
+    # deletes every row of the event store, and the production account uses the same table names.
+    # Warn-only while the repo variable is unset; a mismatch always refuses.
+    env:
+      E2E_TEST_ACCOUNT_ID: ${{ vars.TEST_AWS_ACCOUNT_ID }}
     steps:
       - uses: actions/checkout@v6
 
