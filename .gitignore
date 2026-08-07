@@ -51,3 +51,4 @@ Thumbs.db
 # Real meeting data extracted for eval fixtures — REAL USER DATA, never commit (public repo).
 # scripts/extract-prod-fixtures.sh writes here; the dir also self-protects with its own .gitignore.
 eval-fixtures-real/
+__pycache__/
