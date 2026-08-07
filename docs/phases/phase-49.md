@@ -1,4 +1,4 @@
-# Phase 49 — Open multiple notes at once _(In Progress — 49-A done 2026-07-28; 49-B PR #414 CI-green, awaiting merge)_
+# Phase 49 — Open multiple notes at once _(In Progress — 49-A done 2026-07-28; 49-B done 2026-08-07 (#414, deploy #733); 49-C not started)_
 
 **Goal:** you can keep several notes open at the same time and switch between them from a tab bar, instead of losing the note you were on every time you open another.
 
@@ -7,7 +7,7 @@
 | Slice | What the user gets | Status | Depends on |
 |-------|--------------------|--------|------------|
 | 49-A  | I can have several notes open at once and click between them in a tab bar | Done | — |
-| 49-B  | My open notes are still there after I reload or come back later | In Progress | 49-A |
+| 49-B  | My open notes are still there after I reload or come back later | Done | 49-A |
 | 49-C  | A recording keeps running while I read another note | Not Started | 49-A |
 
 49-A proves the whole flow (open, switch, close) and is shippable alone. 49-B and 49-C are independent of each other and can run in either order — 49-B is much the cheaper of the two.
