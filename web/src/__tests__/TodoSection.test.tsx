@@ -679,6 +679,38 @@ describe('TodoSection — send to top / bottom (CHANGE-34)', () => {
     expect(openOrder()).toEqual(['Bravo', 'Alpha', 'Charlie'])
   })
 
+  // BUG-65: the send buttons were disabled only by POSITION, never by `busy` — so while one row's
+  // reorder was still in flight a DIFFERENT row stayed clickable. Both mutations snapshot the cache
+  // in onMutate, so a rollback restores a snapshot taken before the other applied and the list keeps
+  // an order the server never stored (staleTime 30s + refetchOnWindowFocus off = never corrected).
+  // Red before the fix: two POSTs, the second built from the pre-first order.
+  it('ignores a second send while the first is still saving', async () => {
+    const bodies: unknown[] = []
+    let release: (() => void) | undefined
+    const gate = new Promise<void>((resolve) => { release = resolve })
+    server.use(
+      http.get('/api/todos', () => HttpResponse.json({ items: [alpha, bravo, charlie] })),
+      http.post('/api/todos/reorder', async ({ request }) => {
+        bodies.push(await request.json())
+        await gate
+        return HttpResponse.json({ consistencyToken: 'todo#t-b@2' })
+      }),
+    )
+    render(<TodoSection />)
+    await screen.findByText('Bravo')
+
+    await userEvent.click(sendToTop('Bravo'))
+    await waitFor(() => expect(bodies).toHaveLength(1))
+    // Charlie is a DIFFERENT row and is NOT at the top, so no position rule disables this control —
+    // only the busy lock can. (Picking sendToBottom('Charlie') would prove nothing: Charlie is
+    // already last, so that button is position-disabled and the test would pass without the fix.)
+    await userEvent.click(sendToTop('Charlie'))
+
+    expect(bodies).toHaveLength(1)
+    release?.()
+    await waitFor(() => expect(bodies).toHaveLength(1))
+  })
+
   it('sends a middle row to the bottom and posts the new order', async () => {
     let body: unknown
     listThenReorder((b) => { body = b })
