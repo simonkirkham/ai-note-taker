@@ -1,4 +1,4 @@
-# Phase 43 — Meeting agenda (topics to discuss) _(In Progress — 43-A–E done; 43-F/G/H bring ticking into the notes)_
+# Phase 43 — Meeting agenda (topics to discuss) _(In Progress — 43-A–F done; 43-G/H remain)_
 
 **Goal:** give each note a short checklist of things you need to discuss, which you tick off as you cover them — from the note itself or from the header, wherever your hands already are.
 
@@ -11,7 +11,7 @@
 | 43-C | Fix the wording of a topic, or drop one that's no longer relevant | Done _(#374)_ | 43-A |
 | 43-D | Fold the agenda away to a single line when you want the note to be the focus | Done _(#375)_ | 43-A, 43-B |
 | 43-E | One clear way to track topics — the old, ambiguous per-heading ✓ is gone | Done _(#376)_ | 43-D |
-| 43-F | Tick a topic off in the notes as you type, and watch the count move | Not Started | 43-D |
+| 43-F | Tick a topic off in the notes as you type, and watch the count move | Done _(#428)_ | 43-D |
 | 43-G | Add, reword or drop a topic from the header and have the notes follow | Not Started | 43-F |
 | 43-H | Topics on older notes appear in the notes themselves, like everywhere else | Not Started | 43-F |
 
@@ -348,13 +348,15 @@ What changed and why:
 
 ### Slice 43-F — Topics come from the note body
 
-- [ ] BDD spec first. Fold task-list items out of the content in `NoteDetailProjection` into `NoteDetailView.Agenda`; **union with** the legacy `AgendaItem*` fold (dedup by trimmed + unescaped text; **the body wins** on a matched pair) so no shipped note regresses. Body-wins is deliberate: legacy-wins would make a migrated topic permanently un-untickable, since 43-H writes `- [x] Foo` into the body and a later untick there would be overridden forever by the old `AgendaItemDiscussedSet(true)`.
-- [ ] Ordering is document order; `position` = index of the task item in the doc.
-- [ ] Frontend: `AgendaSection` reads the same `agenda` array as today — **no change to its read path**. Ticking in the body is already a content edit (46-B `TaskItem` toggles the doc → `onUpdate` → save), so the count moves for free once the projection derives.
-- [ ] Nested task items (46-B `TaskItem.configure({ nested: true })`) — decide and spec: nested children count as topics or not. Recommend **yes, flat** (a topic is a topic).
-- [ ] Round-trip test in `EventStore.Integration`: content with task lines → `UpsertAsync` → `GetAsync` → `Agenda` survives.
+- [x] BDD spec first. Fold task-list items out of the content in `NoteDetailProjection` into `NoteDetailView.Agenda`; **union with** the legacy `AgendaItem*` fold (dedup by trimmed + unescaped text; **the body wins** on a matched pair) so no shipped note regresses. Body-wins is deliberate: legacy-wins would make a migrated topic permanently un-untickable, since 43-H writes `- [x] Foo` into the body and a later untick there would be overridden forever by the old `AgendaItemDiscussedSet(true)`.
+- [x] Ordering is document order; `position` = index of the task item in the doc.
+- [x] Frontend: `AgendaSection` reads the same `agenda` array as today — **no change to its read path**. Ticking in the body is already a content edit (46-B `TaskItem` toggles the doc → `onUpdate` → save), so the count moves for free once the projection derives.
+- [x] Nested task items (46-B `TaskItem.configure({ nested: true })`) — decide and spec: nested children count as topics or not. Recommend **yes, flat** (a topic is a topic).
+- [x] Round-trip test in `EventStore.Integration`: content with task lines → `UpsertAsync` → `GetAsync` → `Agenda` survives.
 - [x] ~~E2E: type a task line, assert the coverage pill moves.~~ **Deferred into 43-G's journey** (decided at review, PR #428): one gated journey asserts both — type a task line → pill moves → add from the header → the line lands in the first checklist with the caret unmoved. One journey instead of two is strictly less flake surface in the deploy gate, which is the project's bottleneck (BUG-38/61/62, the 44-min hang and the CHANGE-23 re-cut were all gate journeys). The `Api.Integration` tests cover the composed agenda through the real API boundary in the meantime.
-- [ ] **Deploy-time: neutral**, but a **projection rebuild is MANDATORY after the deploy** — this changes the *fold* of an already-populated projection, so every note written before the deploy keeps its stale (empty) `Agenda` until its next `ContentEdited`. The read path serves `NoteDetailView.Agenda` straight from the store and never re-parses content, so without the rebuild the feature is a silent no-op on every existing note — including the ones that already have task lists from 46-B. Invoke `POST /admin/projections/rebuild` (authenticated) and verify a known note's `agenda` is non-empty. Same class as the "a new projection ships empty" guardrail, which is written for *new* projections and should be widened to cover a fold change on an existing one.
+- [x] **Deploy-time: neutral**, but a **projection rebuild is MANDATORY after the deploy** — this changes the *fold* of an already-populated projection, so every note written before the deploy keeps its stale (empty) `Agenda` until its next `ContentEdited`. The read path serves `NoteDetailView.Agenda` straight from the store and never re-parses content, so without the rebuild the feature is a silent no-op on every existing note — including the ones that already have task lists from 46-B. Invoke `POST /admin/projections/rebuild` (authenticated) and verify a known note's `agenda` is non-empty. Same class as the "a new projection ships empty" guardrail, which is written for *new* projections and should be widened to cover a fold change on an existing one.
+
+_(43-F done — PR #428, deploy #724, `deploy-production` confirmed. Nested items DO count (flat). Two things the build added beyond the plan: `AgendaItemView.Derived` (a derived topic has no event stream, so the header shows it read-only until 43-G), and body-wins on a matched pair. **Outstanding: the post-deploy projection rebuild** — measured 2026-08-07, 1 of 183 prod notes has task lines with no agenda.)_
 
 ### Slice 43-G — The header writes back into the body
 
