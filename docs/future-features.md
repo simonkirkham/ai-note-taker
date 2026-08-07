@@ -68,11 +68,15 @@ Each entry records what it is, why it isn't scheduled yet, and where it was rais
 
 ## Desktop app auto-update (Chrome-style)
 
-**What:** Make the installed desktop app update itself instead of requiring a manual `npm run package` + reinstall. Phase 31 shipped the installer with **no auto-update** by design (a single-user personal build). This adds the standard Electron update path: publish each release to a feed (GitHub Releases / S3 — `electron-builder` already generates the `latest.yml` manifest + `.blockmap` delta), have the app `autoUpdater.checkForUpdates()` on launch, download in the background, and `quitAndInstall()` on next restart (install-alongside, swap-on-restart — you cannot overwrite a running binary). Reuses `electron-updater`, which ships with the `electron-builder` already in `desktop/`. Note this only matters for **frontend/desktop-shell** changes — backend/API changes already reach the app live via the `/api` proxy with no rebuild.
+**What:** make the installed desktop app update **itself**, with no command to run. Today's baseline is **one-command**, not zero: [31-D](phases/phase-31.md) shipped a CI-published installer — every successful prod deploy that touched `web/`|`desktop/` builds the `.exe` on a Windows runner and publishes it to the rolling `desktop-latest` GitHub Release, and `npm run update` (`desktop/scripts/update.ps1`) downloads it, closes the app, installs silently, and relaunches. So updating no longer needs a local rebuild — it needs the owner to remember to run one command.
 
-**Why it isn't scheduled yet:** Not worth it for a single user who has the repo and can `npm run package`. Auto-update's machinery exists to distribute to **many untrusted machines**, which doesn't apply today. The real cost is **code signing** — on Windows an unsigned auto-update triggers SmartScreen friction (or you disable electron-updater's signature check and lose the security property); on macOS an Apple Developer cert is effectively mandatory. Schedule this only if the app is ever shared beyond the author. When picked up it's a self-contained slice: publish feed → check-on-launch → relaunch-to-apply (+ a signing decision).
+This item closes the last gap: `autoUpdater.checkForUpdates()` on launch against a feed (`electron-builder` already emits the `latest.yml` manifest + `.blockmap` delta the `desktop-latest` Release could carry), download in the background, `quitAndInstall()` on next restart — install-alongside, swap-on-restart, because you cannot overwrite a running binary. Reuses `electron-updater`, which ships with the `electron-builder` already in `desktop/`. Note it only matters for **frontend/desktop-shell** changes — backend/API changes already reach the app live through the `/api` proxy with no rebuild.
 
-**Raised in:** User question, 2026-06-23 — "how do other apps like Chrome handle updates?" — after Phase 31 shipped the manual-reinstall installer.
+**Why it isn't scheduled yet:** 31-D removed most of the pain (a single `npm run update` against an artifact CI already builds), so the remaining benefit is "don't have to remember", for one user. The real cost is **code signing** — on Windows an unsigned auto-update triggers SmartScreen friction, or you disable electron-updater's signature check and lose the security property; on macOS an Apple Developer cert is effectively mandatory. Auto-update's machinery exists to distribute to **many untrusted machines**, which still doesn't apply. Schedule it if the app is ever shared beyond the author. When picked up it is a self-contained slice: point the feed at the existing Release → check-on-launch → relaunch-to-apply (+ a signing decision).
+
+**Raised in:** User question, 2026-06-23 — "how do other apps like Chrome handle updates?" — after Phase 31 shipped the manual-reinstall installer. **Partly addressed** by 31-D (2026-06-23), which replaced manual reinstall with `npm run update`.
+
+---
 
 _(Per-workspace calendars graduated to **[Phase 34](phases/phase-34.md)** on 2026-06-23 — it absorbs TI-47 as its in-app-OAuth foundation.)_
 
@@ -84,30 +88,7 @@ _(Claude Cowork connector — read-only, workspace-scoped MCP server — graduat
 
 ## Local on-device transcription (whisper.cpp in the desktop shell)
 
-> _Graduated to a numbered phase — now **[Phase 48](phases/phase-48.md)** (2026-07-23). Spike go/no-go cleared: quality + final-pass speed + 2-party diarization + N-way diarization (~14% DER, sherpa-onnx + TitaNet-large) all PASS; only live latency + packaging remain, both needing the shell. Decisions locked: models download in the background on first launch (installer stays ~82 MB), keep-audio-on-device is a setting. Full scope + slices in the phase doc._
-
-**What:** Run speech-to-text **locally inside the Windows desktop app** ([Phase 31](phases/phase-31.md)) instead of Amazon Transcribe, driving marginal transcription cost to **$0**. The desktop shell already captures loopback + mic audio; bundle `whisper.cpp` (a self-contained C++ binary + GGUF model file — **not** the torch/pyannote stack [Phase 33](phases/phase-33.md) rejected) and feed the captured audio to it. Two tiers to scope: a small/medium model for the **live** transcript shown during recording, and an optional larger model (large-v3) for a **final-quality** pass on stop. Speaker labels either via **source separation** (mic = me / loopback = them — free at capture, good for 2-party) or a local WhisperX/pyannote pass for multi-party.
-
-**Why now — cost:** measured from the prod bill (2026-07-22), realized marginal rates are ~$0.60/hr live + ~$0.36/hr batch diarization (≈ $0.96/hr diarized); AWS list is ~3× higher and the realized rate may drift toward it at volume. At today's trickle (~$3–9/mo) local wasn't worth the effort. At the user's target of **~3 hours/day**, cloud projects to **~$40–86/mo realized, up to ~$130–260/mo at list** ($500–$3,000/yr). Local is **$0 marginal and does not scale with usage** — it removes the cost worry entirely. This is the *"on-device becomes a requirement"* trigger Phase 33 named when it parked local diarization. Interim cloud guardrail in place: a **$25/mo Amazon Transcribe AWS Budgets alarm** (email alerts at 80%/100%/forecast), created 2026-07-22.
-
-**Spike — findings so far:** Step 1 (quality + final-pass speed) **PASSED** on a real 22-min meeting (2026-07-22) — `whisper-medium.en` runs 1.54× realtime on a GPU-less CPU and agrees ~88% with Amazon Transcribe (divergence is filler/punctuation, not meaning; all proper nouns survive). Full write-up: [docs/spikes/local-whisper-transcription.md](spikes/local-whisper-transcription.md). Remaining unknowns need the Windows/Electron shell — chiefly **diarization** (whisper.cpp gives transcript only, no speaker labels).
-
-**Spike — go/no-go before any build.** Prove on **one real meeting** inside the Electron shell:
-1. **Quality** — local transcript vs. Amazon Transcribe on the same audio: is word accuracy acceptable? (spot-check WER)
-2. **Live latency** — small/medium model streaming: does the partial transcript keep pace with speech on target hardware (no growing lag)?
-3. **Final-pass speed** — large-v3 over a 1-hr recording: faster-than-realtime on CPU, or is a GPU required?
-4. **Diarization** — is source-based (mic/loopback) labelling good enough, or is a local pyannote pass needed (at what cost/complexity)?
-5. **Packaging** — binary + model (~1–3 GB) bundled vs. downloaded on first run; installer-size impact.
-
-Success = acceptable quality **and** live keeps pace **and** final pass ≤ recording length on the author's machine. Any fail → stay on cloud.
-
-**Scope boundaries:** desktop-only — the **web app keeps cloud Transcribe** (no browser-side local model); the cloud path stays as fallback. Reuses Phase 33 findings (its `FINDINGS.md` was deleted with the spike branch; only the summary in `phase-33.md` survives — re-derive during the spike).
-
-**No interim cloud mitigation:** making batch diarization on-demand was ruled out (2026-07-22) — speaker labels are wanted on **every** meeting, so opt-in degrades the product. There is no cheap cloud half-measure; the cost fix is the local path itself. Until it lands, the cloud bill stands (guarded by the $25/mo budget alarm).
-
-**Why it isn't scheduled yet:** Needs the spike above to de-risk quality/latency/packaging before Scout breaks it into a numbered phase. It reopens Phase 33's engine decision, so the go/no-go gate is mandatory.
-
-**Raised in:** User cost concern, 2026-07-22 — planning to scale transcription to ~3 hr/day and worried about AWS cost. Follows the earlier "local model for the desktop app" thread. Related: [[#desktop-app-to-remove-per-meeting-audio-share-consent]], [[#local-on-device-transcription-whisper-cpp-in-the-desktop-shell]].
+> _Graduated to a numbered phase — now **[Phase 48](phases/phase-48.md)** (2026-07-23). Spike go/no-go cleared: quality + final-pass speed + 2-party diarization + N-way diarization (~14% DER, sherpa-onnx + TitaNet-large) all PASS. Decisions locked: models download in the background on first launch (installer stays ~82 MB), keep-audio-on-device is a setting. Full scope, cost rationale, and slices live in the phase doc; the spike write-up is [docs/spikes/local-whisper-transcription.md](spikes/local-whisper-transcription.md)._
 
 ---
 

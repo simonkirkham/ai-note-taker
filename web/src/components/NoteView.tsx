@@ -1,6 +1,7 @@
 import { useQueryClient } from "@tanstack/react-query";
 import clsx from "clsx";
 import { useEffect, useRef, useState } from "react";
+import { ApiError } from "../api/client";
 import { contentHash } from "../api/contentHash";
 import { type CalendarMeeting } from "../api/meetings";
 import { StaleContentError, type NoteDetail } from "../api/notes";
@@ -181,7 +182,14 @@ export default function NoteView({
 
   // A missing note on deep-link is handled by the parent (redirect + toast);
   // without a handler, fall back to the in-place not-found view.
-  const is404 = isError && error instanceof Error && error.message.includes("404");
+  // BUG-62: 400 counts as a dead link, not just 404. `GetNote` binds its route parameter as a
+  // `Guid`, so an id that cannot parse (a truncated or hand-edited link) fails minimal-API
+  // binding and returns 400 without ever reaching the handler's `Results.NotFound()`. Reading
+  // the status off ApiError also drops the old `message.includes("404")` substring test, which
+  // would false-positive on a note id or path containing "404". Both statuses are terminal for
+  // this read — the id in the URL is unusable — so both take the dead-link recovery.
+  const is404 =
+    isError && error instanceof ApiError && (error.status === 404 || error.status === 400);
   const notFound = is404 && !onNotFound;
 
   // 'finalising' (48-B, local mode) is an ACTIVE, in-progress session that runs for the whole
@@ -264,9 +272,35 @@ export default function NoteView({
     }
   }, [detailLoaded, detailDate, noteId, onDateSet, setNoteDateM]);
 
+  // BUG-38: autofocus the title when the note OPENS — at mount, once, and only if nothing else
+  // already holds focus. It must NOT be keyed to the note-detail read completing.
+  //
+  // That read is RYW-gated, so it resolves at an arbitrary wall-clock moment (from ~150 ms to the
+  // server's 8 s gate cap) while the whole screen — CommandBar included — has been interactive the
+  // entire time. Focusing the title on that event yanks the caret out of whatever the user is
+  // typing in, and every blur-dismissed control on this screen is *destroyed* by it: the tag
+  // combobox (TagCombobox's onBlur -> CommandBar's setAddingTag(false) unmounts the input), and the
+  // inline action/agenda editors. That is a real user bug — start typing a tag on a fresh note and
+  // the box can be ripped away with your half-typed text silently submitted — and it was the source
+  // of ~45% of all E2E deploy-gate failures, because the E2E fills then presses Enter as two calls
+  // and the steal lands between them, detaching the element Playwright already resolved.
+  //
+  // Mount is synchronous and strictly precedes any interaction, so it can never land mid-edit. The
+  // title input renders unconditionally (no loading guard), so the ref is populated at mount.
+  //
+  // Deliberately NO activeElement guard. An earlier revision skipped the focus when something else
+  // already held it, on the assumption that an in-app navigation leaves activeElement as body —
+  // which is false: the Sidebar (App.tsx renders it OUTSIDE <Routes>) stays mounted, so after
+  // clicking its "+ New Note" the button is still focused at mount and the guard suppressed the
+  // autofocus on the single most important case, a brand-new untitled note. Nothing on the note
+  // screen can hold focus at mount, so the only possible holder is outside it — exactly when taking
+  // focus is right. The ref latch only guards React StrictMode's double-invoke.
+  const titleAutofocused = useRef(false);
   useEffect(() => {
-    if (!loadingDetail && !notFound) inputRef.current?.focus();
-  }, [loadingDetail, notFound]);
+    if (titleAutofocused.current) return;
+    titleAutofocused.current = true;
+    inputRef.current?.focus();
+  }, []);
 
   // BUG-34: browser back (Alt+←) fires popstate, which the beforeunload warning cannot
   // catch — it silently unmounted the note mid-recording and the transcript was lost.

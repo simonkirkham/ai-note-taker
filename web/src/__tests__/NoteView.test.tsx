@@ -276,6 +276,71 @@ describe('NoteView', () => {
     expect(document.activeElement).toBe(screen.getByLabelText('Note title'))
   })
 
+  // BUG-38 — guards the autofocus against the "something outside the note screen still holds
+  // focus" case. That is the real shape of an in-app navigation here: the Sidebar owning
+  // `new-note-button` is rendered OUTSIDE <Routes> (App.tsx), so it stays mounted and focused while
+  // NoteView mounts. An earlier revision of this fix skipped the autofocus whenever activeElement
+  // wasn't `body`, which silently killed it on the single most important flow — a brand-new
+  // untitled note created from the sidebar. Mounting NoteView from a click on a sibling button
+  // reproduces that exactly, and this fails against that revision.
+  it('focuses the title even when the control that opened the note keeps focus', async () => {
+    function Harness() {
+      const [open, setOpen] = useState(false)
+      return (
+        <ToastProvider>
+          <button data-testid="outside-opener" onClick={() => setOpen(true)}>New note</button>
+          {open && (
+            <NoteView
+              noteId="note-1" initialTitle="" onBack={noop} onDelete={asyncNoop}
+              onDateSet={noop} onOpenNote={noop}
+            />
+          )}
+        </ToastProvider>
+      )
+    }
+    render(<Harness />)
+    const opener = screen.getByTestId('outside-opener')
+    await userEvent.click(opener)
+    // The click leaves focus on the opener, mirroring the still-mounted sidebar button.
+    const title = await screen.findByTestId('note-title-input')
+    await waitFor(() => expect(document.activeElement).toBe(title))
+  })
+
+  // BUG-38 — the regression guard for ~45% of all E2E deploy-gate failures.
+  //
+  // The title autofocus used to be keyed to the note-detail read resolving. That read is RYW-gated,
+  // so it lands at an arbitrary moment while the screen is already interactive — and focusing the
+  // title then blurs the tag combobox, which dismisses itself on blur, unmounting the input
+  // mid-interaction. Hold the detail response open, open the combobox and type into it, then
+  // release it: the combobox must survive and keep focus.
+  //
+  // This fails against the old effect (the input is torn out of the DOM and focus lands on the
+  // title), which is what makes it worth shipping.
+  it('a late note-detail resolution does not steal focus from an open tag combobox', async () => {
+    let release: (() => void) | undefined
+    const gate = new Promise<void>((resolve) => { release = resolve })
+    server.use(
+      http.get('/api/notes/:noteId', async () => {
+        await gate
+        return HttpResponse.json({ noteId: 'note-1', title: 'T', content: 'c', date: null, tags: [] })
+      }),
+    )
+
+    renderNoteView()
+    // The Command Bar is interactive while the detail read is still in flight — that is the whole
+    // point: the user reaches the tag input long before the note has loaded.
+    await userEvent.click(await screen.findByTestId('add-tag-button'))
+    const tagInput = await screen.findByTestId('tag-input')
+    await userEvent.type(tagInput, '1:1s')
+
+    release!()
+    await waitFor(() => expect(screen.getByLabelText('Note content')).toBeInTheDocument())
+
+    expect(tagInput.isConnected).toBe(true)
+    expect(screen.queryByTestId('tag-input')).toBeInTheDocument()
+    expect(document.activeElement).toBe(tagInput)
+  })
+
   it('Tab from title input reaches the tab list (via the agenda, Link to meeting + the Command Bar)', async () => {
     renderNoteView()
     await screen.findByLabelText('Note content')

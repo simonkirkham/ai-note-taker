@@ -2,6 +2,8 @@
 
 Everything you had to do once to reach Phase 0 complete (deployed Lambda, green pipeline, BDD harness, five-role agent workflow). Use this as the checklist when starting a fresh project that follows the same stack and workflow.
 
+> **Versions here track what this repo runs today — .NET 10 (`net10.0`, `dotnet-version: 10.0.x`) and Node 24** — not what Phase 0 originally scaffolded (.NET 8, upgraded in [Phase 6](phases/phase-6.md)). Check `src/Api/Api.csproj` and `.github/workflows/` before copying, and pin CI to the same versions you scaffold with — a lockfile cut on a different npm than CI's is a documented way to break `npm ci` (see the CLAUDE.md guardrail).
+
 ---
 
 ## What to copy verbatim
@@ -42,7 +44,7 @@ Create the repo, push an initial commit, then configure:
 
 ### 2. .NET solution structure
 
-Five projects, all targeting `net8.0`:
+Five projects, all targeting `net10.0`:
 
 ```
 <name>.sln
@@ -57,16 +59,16 @@ Commands to scaffold:
 
 ```bash
 dotnet new sln -n <name>
-dotnet new web -n Api -o src/Api --framework net8.0
-dotnet new classlib -n Domain -o src/Domain --framework net8.0
-dotnet new classlib -n EventStore -o src/EventStore --framework net8.0
-dotnet new console -n Infrastructure -o src/Infrastructure --framework net8.0
-dotnet new xunit -n Specs -o tests/Specs --framework net8.0
+dotnet new web -n Api -o src/Api --framework net10.0
+dotnet new classlib -n Domain -o src/Domain --framework net10.0
+dotnet new classlib -n EventStore -o src/EventStore --framework net10.0
+dotnet new console -n Infrastructure -o src/Infrastructure --framework net10.0
+dotnet new xunit -n Specs -o tests/Specs --framework net10.0
 
 dotnet sln add src/Api src/Domain src/EventStore src/Infrastructure tests/Specs
 ```
 
-**Critical:** verify `net8.0` in every `.csproj` after scaffolding — `dotnet new` defaults to whatever SDK is installed locally.
+**Critical:** verify `net10.0` in every `.csproj` after scaffolding — `dotnet new` defaults to whatever SDK is installed locally.
 
 ### 3. BDD harness
 
@@ -84,7 +86,7 @@ The harness must:
 
 Minimum viable stack for Phase 0:
 
-- **Lambda:** `net8.0`, ASP.NET minimal API with a single `GET /health` endpoint returning `{ "status": "ok" }`
+- **Lambda:** `net10.0`, ASP.NET minimal API with a single `GET /health` endpoint returning `{ "status": "ok" }`
 - **CDK:** `HttpApi` → Lambda integration, no auth, no VPC, single output export `ApiUrl`
 - **`cdk.json`:** `app` field points to `dotnet run --project src/Infrastructure`
 
@@ -173,7 +175,7 @@ Do these in order. Each step has a clear pass/fail signal — don't move forward
 
 ## Common failure points (from Phase 0 experience)
 
-- **`dotnet new` picks the wrong target framework.** Always check `.csproj` after scaffolding. Fix to `net8.0` before committing.
+- **`dotnet new` picks the wrong target framework.** Always check `.csproj` after scaffolding. Fix to `net10.0` before committing.
 - **CDK output key mismatch.** The `jq` key in `deploy.yml` must exactly match the `CfnOutput` logical ID in the CDK stack. Mismatch produces a silent `null` — the acceptance spec skips instead of failing.
 - **`gh` CLI not authenticated.** Run `gh auth status` at the start of any Pip session that will open or merge PRs. On Windows + WSL, `gh` may need to be the Windows binary invoked with `GH_CONFIG_DIR` pointing at the Windows config path.
 - **`cdk bootstrap` not run.** First deploy to a new account/region fails with an asset bucket error. Run `cdk bootstrap` once — it creates the S3 bucket CDK uses for Lambda assets.

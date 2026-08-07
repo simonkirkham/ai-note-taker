@@ -164,11 +164,19 @@ public record NoteDetail(
     long Version);                                // current stream sequence number
 
 // AgendaItem (Phase 43): a topic to discuss, stored on NoteDetail (NOT a separate projection —
-// it is only ever read with the note). `discussed` is toggled by AgendaItemDiscussedSet (43-B).
-public sealed record AgendaItem(Guid ItemId, string Text, bool Discussed, int Position);
+// it is only ever read with the note).
+// 43-F: topics are now DERIVED from the note body — every task-list line in Content is a topic and
+// `discussed` is the `[x]` in that line, so ticking appends ContentEdited, not an agenda event.
+// `Derived` distinguishes those from the pre-43-F items still carried by AgendaItem* events: a
+// derived topic has no event stream behind it, so the /agenda-items endpoints 404 on it and the
+// header strip shows it read-only. Both are folded, union-ed, until 43-H migrates the stragglers —
+// after which every topic is derived and the flag goes.
+// `ItemId` for a derived topic is deterministic: SHA-256 over (noteId, occurrence, lowercased text),
+// so it survives a rebuild and does not change when the topic is ticked.
+public sealed record AgendaItem(Guid ItemId, string Text, bool Discussed, int Position, bool Derived);
 ```
 
-`Version` is returned so the client can include it on the next command for optimistic concurrency (see [`dynamodb-event-append`](../dot-claude/skills/dynamodb-event-append/SKILL.md)).
+`Version` is returned so the client can include it on the next command for optimistic concurrency (see [`dynamodb-event-append`](../.claude/skills/dynamodb-event-append/SKILL.md)).
 
 The **Final notes** fields (`summary`/`discussionPoints`/`decisions`/`summaryModelId`/`summaryPromptVersion`) are the AI's structured artifact, folded from the latest `AnalysisSummaryRecorded` (latest wins). A note that has **never been analysed** has `summary: null` and empty lists — this is a normal "no final notes yet" state, *not* an error, and is distinct from a failed analysis run (which the API surfaces as a 503 and the UI shows as an error). `content` is the user's own Quick notes and is **never** written by analysis from Phase 15-A onward.
 
@@ -190,7 +198,7 @@ The **Final notes** fields (`summary`/`discussionPoints`/`decisions`/`summaryMod
   "decisions": ["Bill sends specs by Friday"],
   "instructionResponses": [],
   "agenda": [
-    { "itemId": "a1b2...", "text": "Budget (Q3)", "discussed": false, "position": 0 }
+    { "itemId": "a1b2...", "text": "Budget (Q3)", "discussed": false, "position": 0, "derived": true }
   ],
   "summaryModelId": "amazon.nova-lite-v1:0",
   "summaryPromptVersion": "analysis@v2",
@@ -503,7 +511,7 @@ Recommendation: start with (1) for simplicity, switch to (2) if a projection gro
 
 ## Rebuild
 
-Every projection implements `Reset()` and a fold over the full event stream (see [`projection`](../dot-claude/skills/projection/SKILL.md) skill). Storage is per-projection so a rebuild touches one table only — zero blast radius.
+Every projection implements `Reset()` and a fold over the full event stream (see [`projection`](../.claude/skills/projection/SKILL.md) skill). Storage is per-projection so a rebuild touches one table only — zero blast radius.
 
 ```csharp
 public interface IProjection
