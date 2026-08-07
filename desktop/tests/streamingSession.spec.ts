@@ -39,7 +39,7 @@ test('a server that never becomes ready reports a terminal error once the deadli
   session.dispose()
 
   expect(errors.length).toBeGreaterThan(0)
-  expect(errors[0].message).toMatch(/ready/i)
+  expect(errors[0].message).toMatch(/did not finish loading/i)
 })
 
 test('the never-ready error is reported only once, not every step', async () => {
@@ -67,15 +67,71 @@ test('a server that becomes ready inside the deadline reports nothing', async ()
     () => {},
     (e) => errors.push(e),
     undefined,
-    { readyTimeoutMs: 200 },
+    { readyTimeoutMs: 500 },
   )
   session.start()
   session.pushPcm(pcm)
   // Model finishes loading well inside the deadline.
   await waitMs(50)
   Object.defineProperty(server, 'ready', { value: true, configurable: true })
+  await waitMs(700)
+  session.stop()
+
+  expect(errors).toEqual([])
+})
+
+test('a server whose process is GONE stays silent — the start-failure channel already reported it', async () => {
+  // ensureServer's catch fires an accurate "failed to start" banner within a second. Reporting
+  // "did not finish loading" over the top of it 75s later would tell the user the wrong thing.
+  const errors: Error[] = []
+  const session = new StreamingSession(
+    stubServer({ running: false, ready: false }),
+    () => {},
+    (e) => errors.push(e),
+    undefined,
+    { readyTimeoutMs: 80 },
+  )
+  session.start()
+  session.pushPcm(pcm)
   await waitMs(400)
-  session.dispose()
+  session.stop()
+
+  expect(errors).toEqual([])
+})
+
+test('a recording shorter than the deadline still reports a never-ready server on stop', async () => {
+  // Otherwise a brief recording ends with an empty live view and no explanation — the original
+  // silent failure, just shorter.
+  const errors: Error[] = []
+  const session = new StreamingSession(
+    stubServer({ running: true, ready: false }),
+    () => {},
+    (e) => errors.push(e),
+    undefined,
+    { readyTimeoutMs: 60_000 },
+  )
+  session.start()
+  session.pushPcm(pcm)
+  await waitMs(50)
+  session.stop()
+
+  expect(errors.length).toBe(1)
+  expect(errors[0].message).toMatch(/did not finish loading/i)
+})
+
+test('a healthy short recording reports nothing on stop', async () => {
+  const errors: Error[] = []
+  const session = new StreamingSession(
+    stubServer({ running: true, ready: true }),
+    () => {},
+    (e) => errors.push(e),
+    undefined,
+    { readyTimeoutMs: 60_000 },
+  )
+  session.start()
+  session.pushPcm(pcm)
+  await waitMs(50)
+  session.stop()
 
   expect(errors).toEqual([])
 })

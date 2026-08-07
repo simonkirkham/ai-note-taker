@@ -49,14 +49,8 @@ export class StreamingSession {
     if (this.timer) return
     this.timer = setInterval(() => void this.step(), STEP_MS)
     // BUG-56: armed on its own one-shot timer rather than checked inside step(), so the deadline is
-    // independent of the step cadence and of whether any step has run yet. Reads server.ready
-    // directly (not sawReady, which only updates on a step) so a server that loaded in time is
-    // never falsely reported.
-    this.readyTimer = setTimeout(() => {
-      if (this.disposed || this.terminalReported || this.server.ready) return
-      this.terminalReported = true
-      this.onError(new Error('whisper-server did not become ready; the live transcript stayed empty'))
-    }, this.opts?.readyTimeoutMs ?? READY_TIMEOUT_MS)
+    // independent of the step cadence and of whether any step has run yet.
+    this.readyTimer = setTimeout(() => this.reportNeverReady(), this.opts?.readyTimeoutMs ?? READY_TIMEOUT_MS)
   }
 
   pushPcm(chunk: Buffer): void {
@@ -126,11 +120,27 @@ export class StreamingSession {
     return Buffer.concat(parts)
   }
 
+  // BUG-56 — the live view never started. Reads server.ready directly (not sawReady, which only
+  // updates on a step) so a server that loaded in time is never falsely reported. Stays silent when
+  // the process is GONE: a failed start() nulls proc, and the start-failure channel (ensureServer's
+  // catch) has already fired an accurate "failed to start" banner — replacing it with "did not
+  // finish loading" 75s later would tell the user the wrong thing. An in-flight start keeps
+  // running === true, which is exactly the case this deadline exists for.
+  private reportNeverReady(): void {
+    if (this.disposed || this.terminalReported) return
+    if (this.server.ready || !this.server.running) return
+    this.terminalReported = true
+    this.onError(new Error('the on-device engine did not finish loading; the live transcript stayed empty'))
+  }
+
   stop(): void {
     if (this.timer) clearInterval(this.timer)
     this.timer = null
     if (this.readyTimer) clearTimeout(this.readyTimer)
     this.readyTimer = null
+    // A recording shorter than the deadline would otherwise end with an empty live view and no
+    // explanation — the original silent failure, just briefer. Check once on the way out.
+    this.reportNeverReady()
   }
 
   dispose(): void {

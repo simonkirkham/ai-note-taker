@@ -48,7 +48,17 @@ export function registerLocalTranscription(deps: Deps): void {
   // Started in the background on record-start so recording begins immediately; the live transcript
   // appears once the model has loaded (a few seconds). Kept warm until app-quit.
   const ensureServer = (binPath: string, liveModelPath: string): WhisperServer => {
-    if (sharedServer?.running) return sharedServer
+    // A warm server is reused as-is, so both arguments are IGNORED on that path. No caller varies
+    // them today, but silently reusing a server built from a different binary is the exact shape
+    // that produced BUG-56 — say so loudly if it ever starts happening.
+    if (sharedServer?.running) {
+      if (!sharedServer.matches(binPath, liveModelPath)) {
+        console.error('[desktop] reusing a warm whisper-server started with a DIFFERENT binary/model', {
+          wanted: { binPath, liveModelPath },
+        })
+      }
+      return sharedServer
+    }
     sharedServer = new WhisperServer(binPath, liveModelPath, pickThreads(cpus().length))
     sharedServer.start().catch((err: Error) => {
       console.error('[desktop] whisper-server failed to start; live transcript unavailable:', err.message)
@@ -94,10 +104,19 @@ export function registerLocalTranscription(deps: Deps): void {
     // so the stop-time final pass runs when present and is skipped (live text kept) when it isn't.
     const finalPath = path.join(dir, finalModelFile())
     const finalModelPath = finalModelFile() && existsSync(finalPath) ? finalPath : undefined
-    // Validate the live engine up front so a missing binary/model rejects here — the renderer then
-    // takes its clean pre-recording cloud fallback instead of failing mid-recording.
+    // Validate the BATCH binary + the live model up front so a missing one rejects here — the
+    // renderer then takes its clean pre-recording cloud fallback instead of failing mid-recording.
     if (!existsSync(binPath)) throw new Error(`whisper binary not found at ${binPath}`)
     if (!existsSync(modelPath)) throw new Error(`whisper model not found at ${modelPath}`)
+    // BUG-56: a missing SERVER binary deliberately does NOT throw. Throwing would make the renderer
+    // fall back to cloud, streaming this meeting's audio to AWS — the opposite of what someone who
+    // chose on-device mode asked for (and at odds with 48-E). Recording continues locally: the live
+    // view is dead but the stop-time pass still produces a transcript. Report it now rather than
+    // waiting on the spawn ENOENT round trip, so the banner is immediate.
+    if (!existsSync(serverBinPath)) {
+      console.error('[desktop] whisper-server binary missing at', serverBinPath)
+      send('local:error', 'On-device live transcription is unavailable (the local engine is missing).')
+    }
     // BUG-53: dispose any prior streaming session and kill in-flight CLI passes (final/diarize) —
     // the resident server stays warm across recordings. Then start a fresh streaming session over it.
     streaming?.dispose()
@@ -108,11 +127,14 @@ export function registerLocalTranscription(deps: Deps): void {
       server,
       (text) => send('local:live', text),
       // Terminal only: StreamingSession calls this after a sustained run of failures against a READY
-      // server (not the transient hiccups it tolerates), so surface it — the live view is dead. Audio
-      // is still captured for the stop-time final pass, so this is a live-view warning, not a hard stop.
+      // server (not the transient hiccups it tolerates), or when the server never became ready at
+      // all — the live view is dead either way. Audio is still captured for the stop-time final
+      // pass, so this is a live-view warning, not a hard stop. BUG-56: forward the session's own
+      // message; it distinguishes "stopped responding" from "never finished loading", and a fixed
+      // string here would have discarded exactly the diagnosis the user needs.
       (err) => {
         console.error('[desktop] live streaming failed:', err.message)
-        send('local:error', 'On-device live transcription stopped responding.')
+        send('local:error', `On-device live transcription failed — ${err.message}.`)
       },
     )
     streaming.start()

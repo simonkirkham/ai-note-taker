@@ -42,6 +42,12 @@ export class WhisperServer {
     return this.proc !== null
   }
 
+  // BUG-56: lets a caller reusing this warm server confirm it was built from the binary and model
+  // it expects, rather than assuming.
+  matches(binPath: string, modelPath: string): boolean {
+    return this.binPath === binPath && this.modelPath === modelPath
+  }
+
   // True once the model has loaded and the HTTP server first answered — before this, /inference just
   // errors, so the streaming session skips its steps rather than spamming failures during model load.
   get ready(): boolean {
@@ -59,11 +65,10 @@ export class WhisperServer {
     // BUG-56: a ChildProcess 'error' (ENOENT — the binary is absent from the bundle) has no default
     // handler, so an unhandled 'error' event would throw *inside the Electron main process* rather
     // than rejecting start(). Capture it so the caller's catch fires the on-device-failed banner.
-    // Held in an object, not a `let`: the assignment happens in a callback the compiler cannot see,
-    // so a plain local narrows to `never` at the check below.
-    const spawn_: { error: Error | null } = { error: null }
+    // Boxed because the assignment happens in a callback: a plain local narrows to `never` below.
+    const spawnFailure: { error: Error | null } = { error: null }
     proc.on('error', (err: Error) => {
-      spawn_.error = err
+      spawnFailure.error = err
       if (this.proc === proc) this.proc = null
       this.isReady = false
     })
@@ -75,7 +80,7 @@ export class WhisperServer {
     // Poll until the model has loaded and the HTTP server accepts connections (or time out).
     const deadline = Date.now() + 60_000
     while (Date.now() < deadline) {
-      if (spawn_.error) throw new Error(`whisper-server could not be started: ${spawn_.error.message}`)
+      if (spawnFailure.error) throw new Error(`whisper-server could not be started: ${spawnFailure.error.message}`)
       if (exited) throw new Error('whisper-server exited during startup')
       if (await this.ping()) {
         this.isReady = true

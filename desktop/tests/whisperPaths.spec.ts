@@ -9,22 +9,36 @@ import { whisperBinPath, whisperServerBinPath } from '../src/modelStore'
 
 const RES = path.join('C:', 'app', 'resources')
 
-test.afterEach(() => {
+// These specs must clear the overrides to see the bundled defaults, but the runner uses a single
+// worker (playwright.config.ts) so every spec file shares this process — forcing a literal would
+// leak. whisperServer.integration.spec.ts reads WHISPER_SERVER_BIN at MODULE scope to decide
+// whether to run at all, so deleting it here would silently turn the only real-binary proof into
+// a permanently-skipped no-op that still reports green. Snapshot and restore instead.
+const saved = { bin: process.env.WHISPER_BIN, server: process.env.WHISPER_SERVER_BIN }
+
+function restore(name: 'WHISPER_BIN' | 'WHISPER_SERVER_BIN', value: string | undefined): void {
+  if (value === undefined) delete process.env[name]
+  else process.env[name] = value
+}
+
+test.beforeEach(() => {
   delete process.env.WHISPER_BIN
   delete process.env.WHISPER_SERVER_BIN
 })
 
+test.afterEach(() => {
+  restore('WHISPER_BIN', saved.bin)
+  restore('WHISPER_SERVER_BIN', saved.server)
+})
+
+const serverExe = process.platform === 'win32' ? 'whisper-server.exe' : 'whisper-server'
+
 test('the server binary is whisper-server, not the CLI', () => {
-  delete process.env.WHISPER_BIN
-  delete process.env.WHISPER_SERVER_BIN
-  const server = whisperServerBinPath(RES)
-  expect(path.basename(server)).toMatch(/^whisper-server(\.exe)?$/)
-  expect(path.basename(server)).not.toMatch(/whisper-cli/)
+  expect(whisperServerBinPath(RES)).toBe(path.join(RES, 'whisper', serverExe))
+  expect(whisperServerBinPath(RES)).not.toBe(whisperBinPath(RES))
 })
 
 test('the server and CLI binaries are siblings in the bundled whisper dir', () => {
-  delete process.env.WHISPER_BIN
-  delete process.env.WHISPER_SERVER_BIN
   expect(path.dirname(whisperServerBinPath(RES))).toBe(path.dirname(whisperBinPath(RES)))
   expect(path.dirname(whisperServerBinPath(RES))).toBe(path.join(RES, 'whisper'))
 })
@@ -36,7 +50,7 @@ test('WHISPER_SERVER_BIN overrides the server path for dev/integration runs', ()
 
 test('WHISPER_BIN does not redirect the server path', () => {
   // The CLI override must not silently become the server override — that is exactly the
-  // conflation that shipped in BUG-53.
+  // conflation that shipped in BUG-53. Assert the positive, so this cannot pass for a wrong value.
   process.env.WHISPER_BIN = '/tmp/custom/whisper-cli'
-  expect(whisperServerBinPath(RES)).not.toBe('/tmp/custom/whisper-cli')
+  expect(whisperServerBinPath(RES)).toBe(path.join(RES, 'whisper', serverExe))
 })
