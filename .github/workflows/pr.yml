@@ -147,6 +147,10 @@ jobs:
   # deliberately not bundled here so this stays cheap enough to gate every PR.
   desktop:
     runs-on: ubuntu-latest
+    # The one job here that launches a GUI process. Bounded in practice by playwright.config.ts's
+    # per-test timeout, but the 44-minute E2E hang (see the CLAUDE.md guardrail) is why a stuck
+    # process must never be able to hold a runner open indefinitely. The job takes ~1 min.
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v6
 
