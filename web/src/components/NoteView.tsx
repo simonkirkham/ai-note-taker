@@ -1,6 +1,7 @@
 import { useQueryClient } from "@tanstack/react-query";
 import clsx from "clsx";
 import { useEffect, useRef, useState } from "react";
+import { ApiError } from "../api/client";
 import { contentHash } from "../api/contentHash";
 import { type CalendarMeeting } from "../api/meetings";
 import { StaleContentError, type NoteDetail } from "../api/notes";
@@ -181,7 +182,14 @@ export default function NoteView({
 
   // A missing note on deep-link is handled by the parent (redirect + toast);
   // without a handler, fall back to the in-place not-found view.
-  const is404 = isError && error instanceof Error && error.message.includes("404");
+  // BUG-62: 400 counts as a dead link, not just 404. `GetNote` binds its route parameter as a
+  // `Guid`, so an id that cannot parse (a truncated or hand-edited link) fails minimal-API
+  // binding and returns 400 without ever reaching the handler's `Results.NotFound()`. Reading
+  // the status off ApiError also drops the old `message.includes("404")` substring test, which
+  // would false-positive on a note id or path containing "404". Both statuses are terminal for
+  // this read — the id in the URL is unusable — so both take the dead-link recovery.
+  const is404 =
+    isError && error instanceof ApiError && (error.status === 404 || error.status === 400);
   const notFound = is404 && !onNotFound;
 
   // 'finalising' (48-B, local mode) is an ACTIVE, in-progress session that runs for the whole

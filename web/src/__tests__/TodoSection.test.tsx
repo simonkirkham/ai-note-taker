@@ -408,13 +408,14 @@ describe('TodoSection — Done section', () => {
   })
 })
 
-describe('TodoSection — reorder (CHANGE-29: drag-only, no keyboard arrows)', () => {
-  const mkTodo = (id: string, description: string, addedAt: string) => ({
-    itemId: id, type: 'todo' as const, noteId: null, noteTitle: null, description, addedAt, completedAt: null,
-  })
-  const alpha = mkTodo('t-a', 'Alpha', '2026-01-01T00:00:00Z')
-  const bravo = mkTodo('t-b', 'Bravo', '2026-01-01T00:00:01Z')
+const mkTodo = (id: string, description: string, addedAt: string) => ({
+  itemId: id, type: 'todo' as const, noteId: null, noteTitle: null, description, addedAt, completedAt: null,
+})
+const alpha = mkTodo('t-a', 'Alpha', '2026-01-01T00:00:00Z')
+const bravo = mkTodo('t-b', 'Bravo', '2026-01-01T00:00:01Z')
+const charlie = mkTodo('t-c', 'Charlie', '2026-01-01T00:00:02Z')
 
+describe('TodoSection — reorder (CHANGE-29: drag-only, no keyboard arrows)', () => {
   it('renders no Move up/down arrow buttons; rows stay draggable for pointer reorder', async () => {
     server.use(http.get('/api/todos', () => HttpResponse.json({ items: [alpha, bravo] })))
     render(<TodoSection />)
@@ -427,5 +428,168 @@ describe('TodoSection — reorder (CHANGE-29: drag-only, no keyboard arrows)', (
 
     const rows = within(screen.getByTestId('todo-list')).getAllByRole('listitem')
     expect(rows[0]).toHaveAttribute('draggable', 'true')
+  })
+})
+
+describe('TodoSection — send to top / bottom (CHANGE-34)', () => {
+  const openOrder = () =>
+    within(screen.getByTestId('todo-list'))
+      .getAllByRole('listitem')
+      .map((row) => row.textContent)
+
+  const sendToTop = (description: string) =>
+    screen.getByRole('button', { name: new RegExp(`send "${description}" to top`, 'i') })
+  const sendToBottom = (description: string) =>
+    screen.getByRole('button', { name: new RegExp(`send "${description}" to bottom`, 'i') })
+
+  // Tab from the document body until `target` holds focus, proving the control sits in the
+  // natural tab order (a div+onClick or tabIndex={-1} control would never be reached).
+  async function tabTo(target: HTMLElement) {
+    for (let i = 0; i < 40; i++) {
+      await userEvent.tab()
+      if (document.activeElement === target) return true
+    }
+    return false
+  }
+
+  function listThenReorder(onBody: (body: unknown) => void) {
+    server.use(
+      http.get('/api/todos', () => HttpResponse.json({ items: [alpha, bravo, charlie] })),
+      http.post('/api/todos/reorder', async ({ request }) => {
+        onBody(await request.json())
+        return HttpResponse.json({ consistencyToken: 'todo#t-b@2' })
+      }),
+    )
+  }
+
+  it('sends a middle row to the top and posts the new order', async () => {
+    let body: unknown
+    listThenReorder((b) => { body = b })
+    render(<TodoSection />)
+    await screen.findByText('Bravo')
+
+    await userEvent.click(sendToTop('Bravo'))
+
+    await waitFor(() => expect(body).toEqual({ orderedItemIds: ['t-b', 't-a', 't-c'] }))
+    expect(openOrder()).toEqual(['Bravo', 'Alpha', 'Charlie'])
+  })
+
+  it('sends a middle row to the bottom and posts the new order', async () => {
+    let body: unknown
+    listThenReorder((b) => { body = b })
+    render(<TodoSection />)
+    await screen.findByText('Bravo')
+
+    await userEvent.click(sendToBottom('Bravo'))
+
+    await waitFor(() => expect(body).toEqual({ orderedItemIds: ['t-a', 't-c', 't-b'] }))
+    expect(openOrder()).toEqual(['Alpha', 'Charlie', 'Bravo'])
+  })
+
+  it('send to top is reachable by Tab and activates on Enter (keyboard reorder path)', async () => {
+    let body: unknown
+    listThenReorder((b) => { body = b })
+    render(<TodoSection />)
+    await screen.findByText('Bravo')
+
+    expect(await tabTo(sendToTop('Bravo'))).toBe(true)
+    await userEvent.keyboard('{Enter}')
+
+    await waitFor(() => expect(body).toEqual({ orderedItemIds: ['t-b', 't-a', 't-c'] }))
+    expect(openOrder()).toEqual(['Bravo', 'Alpha', 'Charlie'])
+  })
+
+  it('send to bottom is reachable by Tab and activates on Space (keyboard reorder path)', async () => {
+    let body: unknown
+    listThenReorder((b) => { body = b })
+    render(<TodoSection />)
+    await screen.findByText('Bravo')
+
+    expect(await tabTo(sendToBottom('Bravo'))).toBe(true)
+    await userEvent.keyboard(' ')
+
+    await waitFor(() => expect(body).toEqual({ orderedItemIds: ['t-a', 't-c', 't-b'] }))
+    expect(openOrder()).toEqual(['Alpha', 'Charlie', 'Bravo'])
+  })
+
+  it('offers the controls on open rows only, never on a completed row', async () => {
+    server.use(
+      http.get('/api/todos', () =>
+        HttpResponse.json({ items: [alpha, bravo, completedTodayAction] })),
+    )
+    render(<TodoSection />)
+    await screen.findByText('Alpha')
+    await userEvent.click(screen.getByRole('button', { name: /done \(1\)/i }))
+    expect(screen.getByText('Send recap')).toBeInTheDocument()
+
+    expect(sendToTop('Bravo')).toBeInTheDocument()
+    expect(sendToBottom('Alpha')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /send "Send recap" to top/i })).toBeNull()
+    expect(screen.queryByRole('button', { name: /send "Send recap" to bottom/i })).toBeNull()
+  })
+
+  it('send to top on the first row is a no-op — no reorder request', async () => {
+    let posts = 0
+    listThenReorder(() => { posts++ })
+    render(<TodoSection />)
+    await screen.findByText('Alpha')
+
+    const control = sendToTop('Alpha')
+    expect(control).toBeDisabled()
+    await userEvent.click(control)
+
+    expect(posts).toBe(0)
+    expect(openOrder()).toEqual(['Alpha', 'Bravo', 'Charlie'])
+  })
+
+  it('send to bottom on the last row is a no-op — no reorder request', async () => {
+    let posts = 0
+    listThenReorder(() => { posts++ })
+    render(<TodoSection />)
+    await screen.findByText('Charlie')
+
+    const control = sendToBottom('Charlie')
+    expect(control).toBeDisabled()
+    await userEvent.click(control)
+
+    expect(posts).toBe(0)
+    expect(openOrder()).toEqual(['Alpha', 'Bravo', 'Charlie'])
+  })
+
+  it('moves the row before the request resolves, and reverts the order when it fails', async () => {
+    let failReorder!: () => void
+    server.use(
+      http.get('/api/todos', () => HttpResponse.json({ items: [alpha, bravo, charlie] })),
+      http.post('/api/todos/reorder', () =>
+        new Promise<Response>((res) => { failReorder = () => res(new HttpResponse(null, { status: 500 })) })),
+    )
+    render(<TodoSection />)
+    await screen.findByText('Charlie')
+
+    await userEvent.click(sendToTop('Charlie'))
+
+    // The request is still pending here — the row has already moved.
+    await waitFor(() => expect(openOrder()).toEqual(['Charlie', 'Alpha', 'Bravo']))
+
+    await act(async () => { failReorder() })
+
+    await waitFor(() => expect(openOrder()).toEqual(['Alpha', 'Bravo', 'Charlie']))
+  })
+
+  it('surfaces a failed reorder instead of silently reverting', async () => {
+    server.use(
+      http.get('/api/todos', () => HttpResponse.json({ items: [alpha, bravo, charlie] })),
+      http.post('/api/todos/reorder', async () => {
+        await delay(10)
+        return new HttpResponse(null, { status: 500 })
+      }),
+    )
+    render(<TodoSection />)
+    await screen.findByText('Charlie')
+
+    await userEvent.click(sendToTop('Charlie'))
+
+    const alert = await screen.findByRole('alert')
+    expect(alert).toHaveTextContent(/failed to reorder/i)
   })
 })

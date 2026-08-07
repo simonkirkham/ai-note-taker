@@ -164,8 +164,16 @@ public record NoteDetail(
     long Version);                                // current stream sequence number
 
 // AgendaItem (Phase 43): a topic to discuss, stored on NoteDetail (NOT a separate projection —
-// it is only ever read with the note). `discussed` is toggled by AgendaItemDiscussedSet (43-B).
-public sealed record AgendaItem(Guid ItemId, string Text, bool Discussed, int Position);
+// it is only ever read with the note).
+// 43-F: topics are now DERIVED from the note body — every task-list line in Content is a topic and
+// `discussed` is the `[x]` in that line, so ticking appends ContentEdited, not an agenda event.
+// `Derived` distinguishes those from the pre-43-F items still carried by AgendaItem* events: a
+// derived topic has no event stream behind it, so the /agenda-items endpoints 404 on it and the
+// header strip shows it read-only. Both are folded, union-ed, until 43-H migrates the stragglers —
+// after which every topic is derived and the flag goes.
+// `ItemId` for a derived topic is deterministic: SHA-256 over (noteId, occurrence, lowercased text),
+// so it survives a rebuild and does not change when the topic is ticked.
+public sealed record AgendaItem(Guid ItemId, string Text, bool Discussed, int Position, bool Derived);
 ```
 
 `Version` is returned so the client can include it on the next command for optimistic concurrency (see [`dynamodb-event-append`](../.claude/skills/dynamodb-event-append/SKILL.md)).
@@ -190,7 +198,7 @@ The **Final notes** fields (`summary`/`discussionPoints`/`decisions`/`summaryMod
   "decisions": ["Bill sends specs by Friday"],
   "instructionResponses": [],
   "agenda": [
-    { "itemId": "a1b2...", "text": "Budget (Q3)", "discussed": false, "position": 0 }
+    { "itemId": "a1b2...", "text": "Budget (Q3)", "discussed": false, "position": 0, "derived": true }
   ],
   "summaryModelId": "amazon.nova-lite-v1:0",
   "summaryPromptVersion": "analysis@v2",

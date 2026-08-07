@@ -64,7 +64,8 @@ public sealed class DynamoDbNoteDetailStore(IAmazonDynamoDB dynamo, string table
                         ["ItemId"] = new() { S = a.ItemId.ToString() },
                         ["Text"] = new() { S = a.Text },
                         ["Discussed"] = new() { BOOL = a.Discussed },
-                        ["Position"] = new() { N = a.Position.ToString() }
+                        ["Position"] = new() { N = a.Position.ToString() },
+                        ["Derived"] = new() { BOOL = a.Derived }
                     }
                 }).ToList()
             };
@@ -175,7 +176,8 @@ public sealed class DynamoDbNoteDetailStore(IAmazonDynamoDB dynamo, string table
                 v.M.TryGetValue("ItemId", out var id) ? Guid.Parse(id.S) : Guid.Empty,
                 v.M.TryGetValue("Text", out var t) ? t.S : "",
                 v.M.TryGetValue("Discussed", out var d) && d.BOOL == true,
-                v.M.TryGetValue("Position", out var p) && int.TryParse(p.N, out var pos) ? pos : 0))
+                v.M.TryGetValue("Position", out var p) && int.TryParse(p.N, out var pos) ? pos : 0,
+                v.M.TryGetValue("Derived", out var dv) && dv.BOOL == true))
                 .ToList().AsReadOnly()
             : null;
 

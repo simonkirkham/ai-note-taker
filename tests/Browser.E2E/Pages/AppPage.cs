@@ -107,9 +107,13 @@ public sealed class AppPage
     public async Task AssertHomeLoadedAsync()
     {
         await page.WaitForURLAsync(u => !u.Contains("/notes/"));
-        // `note-cards` is rendered only by ListView, so unlike `new-note-button` it actually proves
-        // the home list is on screen rather than merely that the app shell is.
-        await Assertions.Expect(page.GetByTestId("note-cards")).ToBeVisibleAsync();
+        // BUG-61: `note-cards` was the first attempt at "the home list is really on screen", but it
+        // renders ONLY when the list is non-empty (`homeCards.length > 0` / `filteredCards.length > 0`
+        // in ListView) — so it is absent on a legitimately empty home and red-gated deploy #720 on
+        // WorkspaceThemeJourney. `home-view` is ListView's root, so it is present whether or not the
+        // workspace has notes, and ListView renders only on the home/folder route — it still proves
+        // the route rather than merely the app shell. A caller that needs CARDS asserts them itself.
+        await Assertions.Expect(page.GetByTestId("home-view")).ToBeVisibleAsync();
     }
 
     public Task AssertNoteScreenLoadedAsync() =>
@@ -187,9 +191,11 @@ public sealed class AppPage
         // queues as a later task, so a caller's next ReloadAsync() hard-loaded the address bar's
         // current URL (still the note) and discarded the pending traversal. Wait for the route to
         // actually change; WaitForURLAsync polls the address bar, so it cannot be satisfied early.
+        // BUG-61: assert `home-view` (ListView's root) rather than the Sidebar's `new-note-button`,
+        // which is visible on every route and so proved nothing on its own. Present on an empty home.
         await page.GetByTestId("save-button").ClickAsync();
         await page.WaitForURLAsync(u => !u.Contains("/notes/"));
-        await Assertions.Expect(page.GetByTestId("new-note-button")).ToBeVisibleAsync();
+        await Assertions.Expect(page.GetByTestId("home-view")).ToBeVisibleAsync();
     }
 
     // The note read-your-writes proof (RYW-2): reload FIRST (drops the optimistic cards cache, so

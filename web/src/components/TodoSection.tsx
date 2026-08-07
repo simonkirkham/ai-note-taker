@@ -5,7 +5,7 @@ import { keys } from "../api/queryKeys";
 import { TodoItem } from "../api/todos";
 import { useCompleteTodo, useReopenTodo, useEditTodo, useDeleteTodo, useReorderTodos } from "../hooks/useTodoMutations";
 import { useTodos } from "../hooks/useTodos";
-import { TrashIcon, GripVerticalIcon } from "./icons";
+import { TrashIcon, GripVerticalIcon, SendToTopIcon, SendToBottomIcon } from "./icons";
 import QuickCaptureTodoInput from "./QuickCaptureTodoInput";
 import styles from "./TodoSection.module.css";
 
@@ -39,6 +39,7 @@ export default function TodoSection() {
   const [draggedId, setDraggedId] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editText, setEditText] = useState("");
+  const [reorderError, setReorderError] = useState<string | null>(null);
   // Tracks the row being edited synchronously, so a native blur fired as the input
   // unmounts on Enter can't re-enter commitEdit and send a duplicate PUT.
   const editingRef = useRef<string | null>(null);
@@ -47,8 +48,16 @@ export default function TodoSection() {
   const doneItems = items.filter((i) => i.completedAt !== null && isToday(i.completedAt));
 
   // Reorder the open items, optimistically and persisted. Pass the full new id order.
-  function reorderTo(orderedIds: string[]) {
-    if (orderedIds.length > 1) reorder.mutate(orderedIds);
+  // The mutation applies the new order to the cache before the request goes out and rolls it
+  // back on failure; the message tells the user the reorder did not stick.
+  async function reorderTo(orderedIds: string[]) {
+    if (orderedIds.length < 2) return;
+    setReorderError(null);
+    try {
+      await reorder.mutateAsync(orderedIds);
+    } catch {
+      setReorderError("Failed to reorder to-dos. Please try again.");
+    }
   }
 
   function handleDrop(targetId: string) {
@@ -57,7 +66,17 @@ export default function TodoSection() {
     const to = ids.indexOf(targetId);
     setDraggedId(null);
     if (from < 0 || to < 0 || from === to) return;
-    reorderTo(arrayMove(ids, from, to));
+    void reorderTo(arrayMove(ids, from, to));
+  }
+
+  // CHANGE-34: jump an item to either end of the open list without a long drag — and the only
+  // keyboard-operable reorder path (CHANGE-29 removed the up/down arrows).
+  function sendTo(item: TodoItem, edge: "top" | "bottom") {
+    const ids = openItems.map((i) => i.itemId);
+    const from = ids.indexOf(item.itemId);
+    const to = edge === "top" ? 0 : ids.length - 1;
+    if (from < 0 || from === to) return;
+    void reorderTo(arrayMove(ids, from, to));
   }
 
   function addBusy(id: string) {
@@ -166,7 +185,7 @@ export default function TodoSection() {
         <>
           {openItems.length > 0 && (
             <ul data-testid="todo-list" className={styles.todoList}>
-              {openItems.map((item) => (
+              {openItems.map((item, index) => (
                 <li
                   key={item.itemId}
                   className={clsx(styles.todoItem, draggedId === item.itemId && styles.todoItemDragging)}
@@ -218,6 +237,28 @@ export default function TodoSection() {
                     )}
                     {item.noteTitle && <span className={styles.todoNoteTitle}>{item.noteTitle}</span>}
                   </div>
+                  <div className={styles.todoSendButtons}>
+                    <button
+                      type="button"
+                      className="icon-btn"
+                      aria-label={`Send "${item.description}" to top`}
+                      title="Send to top"
+                      disabled={index === 0 || busy.has(item.itemId)}
+                      onClick={() => sendTo(item, "top")}
+                    >
+                      <SendToTopIcon />
+                    </button>
+                    <button
+                      type="button"
+                      className="icon-btn"
+                      aria-label={`Send "${item.description}" to bottom`}
+                      title="Send to bottom"
+                      disabled={index === openItems.length - 1 || busy.has(item.itemId)}
+                      onClick={() => sendTo(item, "bottom")}
+                    >
+                      <SendToBottomIcon />
+                    </button>
+                  </div>
                   <button
                     className="icon-btn icon-btn--danger"
                     aria-label={`Delete "${item.description}"`}
@@ -230,6 +271,7 @@ export default function TodoSection() {
               ))}
             </ul>
           )}
+          {reorderError && <p className={styles.todoReorderError} role="alert">{reorderError}</p>}
           {doneItems.length > 0 && (
             <div className={styles.todoDoneSection}>
               <button
