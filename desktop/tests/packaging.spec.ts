@@ -35,6 +35,18 @@ test('packaged app bundles the compiled main + the web bundle, in an asar', () =
   expect(cfg.files).toEqual(expect.arrayContaining(['dist/**/*', 'web-dist/**/*', 'package.json']))
 })
 
+// BUG-56 — the live path (whisper-server.exe) and the batch passes (whisper-cli.exe) are different
+// binaries. Packaging must verify BOTH landed; staging only the CLI ships a silently dead live view.
+test('packaging verifies both the CLI and the server binary were staged', () => {
+  const script = readFileSync(path.join(desktopDir, 'scripts', 'fetch-whisper-bin.mjs'), 'utf8')
+  expect(script).toContain('whisper-cli.exe')
+  expect(script).toContain('whisper-server.exe')
+  // The staged bundle ships as extraResources, so the runtime resolves it under resources/whisper.
+  const cfg = readJson('electron-builder.json') as Record<string, any>
+  const extra = (cfg.extraResources ?? []) as { from: string; to: string }[]
+  expect(extra.some((r) => r.from === 'resources/whisper' && r.to === 'whisper')).toBe(true)
+})
+
 test('the package script builds then runs electron-builder for Windows (not the TODO stub)', () => {
   const pkg = readJson('package.json') as Record<string, any>
   const script = pkg.scripts?.package as string

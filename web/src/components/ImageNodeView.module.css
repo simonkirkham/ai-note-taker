@@ -34,6 +34,30 @@
   line-height: normal;
 }
 
+/* CHANGE-31: shown when a resolved image fails to load — the alt text (or a generic
+   label when there is none) in place of the browser's broken-image glyph. Dashed muted
+   frame reads as "something is missing here", not as note content. All theme tokens,
+   so it follows every light and dark palette. `line-height: normal` undoes the
+   wrapper's `line-height: 0` (which exists to kill the inline-image descender gap). */
+.wrapper .fallback {
+  display: block;
+  max-width: 100%;
+  padding: var(--space-2) var(--space-3);
+  border: 1px dashed var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+  color: var(--color-text-muted);
+  font-size: 0.875rem;
+  font-style: italic;
+  line-height: normal;
+  overflow-wrap: anywhere;
+}
+
+.wrapper.selected .fallback {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
 .removeButton {
   position: absolute;
   top: var(--space-1);

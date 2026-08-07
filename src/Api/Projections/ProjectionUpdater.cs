@@ -242,6 +242,9 @@ public sealed class ProjectionUpdater(
     {
         await noteTitleStore.DeleteAsync(noteId, ct).ConfigureAwait(false);
         await noteDetailStore.DeleteAsync(noteId, ct).ConfigureAwait(false);
+        // Before the cascade removes this note's action items, move any Today line anchored to one
+        // of them — a deleted row leaves the line nothing to resolve from.
+        await RelocateTodayLineForNoteAsync(noteId, ct).ConfigureAwait(false);
         await todoListStore.DeleteByNoteAsync(noteId, ct).ConfigureAwait(false);
         await tagIndexStore.DeleteByNoteAsync(noteId.Value.ToString("N"), ct).ConfigureAwait(false);
         await tagFeedbackStore.DeleteProvenanceByNoteAsync(noteId.Value.ToString("N"), ct).ConfigureAwait(false);
@@ -329,6 +332,7 @@ public sealed class ProjectionUpdater(
                 case ActionItemCompleted e:
                     await noteActionsStore.UpsertAsync(addedEvent.NoteId,
                         new NoteAction(e.ActionId, currentDescription, true, addedEnvelope.OccurredAt, e.CompletedAt), ct).ConfigureAwait(false);
+                    await RelocateTodayLineIfAnchorAsync(e.ActionId.Value.ToString(), ct).ConfigureAwait(false);
                     await todoListStore.UpdateCompletedAtAsync(e.ActionId.Value.ToString(), e.CompletedAt, ct).ConfigureAwait(false);
                     await UpdateCardActionItemsAsync(addedEvent.NoteId,
                         items => items.Select(a => a.ActionId == e.ActionId ? a with { Completed = true } : a).ToList().AsReadOnly(),
@@ -357,6 +361,7 @@ public sealed class ProjectionUpdater(
                     break;
                 case ActionItemDeleted e:
                     await noteActionsStore.DeleteAsync(addedEvent.NoteId, e.ActionId, ct).ConfigureAwait(false);
+                    await RelocateTodayLineIfAnchorAsync(e.ActionId.Value.ToString(), ct).ConfigureAwait(false);
                     await todoListStore.DeleteAsync(e.ActionId.Value.ToString(), ct).ConfigureAwait(false);
                     await UpdateCardActionItemsAsync(addedEvent.NoteId,
                         items => items.Where(a => a.ActionId != e.ActionId).ToList().AsReadOnly(),
@@ -426,6 +431,7 @@ public sealed class ProjectionUpdater(
                             e.Description, envelope.OccurredAt, null, envelope.Metadata.UserId ?? "", envelope.Metadata.WorkspaceId), ct).ConfigureAwait(false);
                     break;
                 case TodoCompleted e:
+                    await RelocateTodayLineIfAnchorAsync(e.TodoId.Value.ToString(), ct).ConfigureAwait(false);
                     await todoListStore.UpdateCompletedAtAsync(e.TodoId.Value.ToString(), e.CompletedAt, ct).ConfigureAwait(false);
                     break;
                 case TodoReopened e:
@@ -435,6 +441,7 @@ public sealed class ProjectionUpdater(
                     await todoListStore.UpdateDescriptionAsync(e.TodoId.Value.ToString(), e.NewDescription, ct).ConfigureAwait(false);
                     break;
                 case TodoDeleted e:
+                    await RelocateTodayLineIfAnchorAsync(e.TodoId.Value.ToString(), ct).ConfigureAwait(false);
                     await todoListStore.DeleteAsync(e.TodoId.Value.ToString(), ct).ConfigureAwait(false);
                     break;
                 default:
@@ -442,15 +449,73 @@ public sealed class ProjectionUpdater(
             }
     }
 
-    public async Task ApplyTodoOrderEventsAsync(IReadOnlyList<IDomainEvent> newEvents, CancellationToken ct)
+    public async Task ApplyTodoOrderEventsAsync(IReadOnlyList<IDomainEvent> newEvents, List<EventEnvelope> newEnvelopes, CancellationToken ct)
     {
-        foreach (var domainEvent in newEvents)
-            if (domainEvent is TodoListReordered e)
+        foreach (var (domainEvent, envelope) in newEvents.Zip(newEnvelopes))
+            switch (domainEvent)
             {
-                logger.LogInformation("Projector: applying TodoListReordered for workspace {WorkspaceId} ({Count} items)",
-                    e.WorkspaceId, e.OrderedItemIds.Count);
-                await todoListStore.UpdatePositionsAsync(e.OrderedItemIds, ct).ConfigureAwait(false);
+                case TodoListReordered e:
+                    logger.LogInformation("Projector: applying TodoListReordered for workspace {WorkspaceId} ({Count} items)",
+                        e.WorkspaceId, e.OrderedItemIds.Count);
+                    await todoListStore.UpdatePositionsAsync(e.OrderedItemIds, ct).ConfigureAwait(false);
+                    break;
+                case TodayLineSet e:
+                    var userId = envelope.Metadata.UserId;
+                    if (string.IsNullOrEmpty(userId))
+                    {
+                        logger.LogWarning("Projector: skipping TodayLineSet for workspace {WorkspaceId} — no user on the envelope", e.WorkspaceId);
+                        break;
+                    }
+                    logger.LogInformation("Projector: applying TodayLineSet for user {UserId} workspace {WorkspaceId} (anchor {AnchorItemId})",
+                        userId, e.WorkspaceId, e.AnchorItemId ?? "(below everything)");
+                    await todoListStore.SetTodayLineAsync(userId, e.WorkspaceId, e.AnchorItemId, ct).ConfigureAwait(false);
+                    break;
+                default:
+                    break;
             }
+    }
+
+    // The Today line is anchored to an ITEM ID, so the moment that item stops being an open row the
+    // line has nothing to hang off. Resolving it on read is not enough: a completed anchor ages out
+    // of the read window after ~2 days and a deleted one is gone at once, and in both cases the read
+    // would silently drop the line to the bottom (everything becomes Today) with no way back.
+    // So relocate at the moment the anchor stops being open — the new anchor is the next still-open
+    // item after it in list order, or null when it was the last one.
+    private async Task RelocateTodayLineIfAnchorAsync(string itemId, CancellationToken ct)
+    {
+        var item = await todoListStore.GetByIdAsync(itemId, ct).ConfigureAwait(false);
+        if (item is null || item.WorkspaceId is null || string.IsNullOrEmpty(item.UserId))
+            return;
+        await RelocateTodayLineIfAnchorAsync(item, null, ct).ConfigureAwait(false);
+    }
+
+    private async Task RelocateTodayLineForNoteAsync(NoteId noteId, CancellationToken ct)
+    {
+        var noteKey = noteId.Value.ToString();
+        var view = await todoListStore.QueryAllAsync(ct).ConfigureAwait(false);
+        foreach (var item in view.Items.Where(i => i.NoteId == noteKey && i.WorkspaceId is not null && !string.IsNullOrEmpty(i.UserId)))
+            await RelocateTodayLineIfAnchorAsync(item, view, ct).ConfigureAwait(false);
+    }
+
+    private async Task RelocateTodayLineIfAnchorAsync(TodoItem item, TodoListView? knownView, CancellationToken ct)
+    {
+        var anchor = await todoListStore.GetTodayLineAnchorAsync(item.UserId, item.WorkspaceId!, ct).ConfigureAwait(false);
+        if (anchor != item.ItemId)
+            return;
+
+        // Only pay for the full-list read once we know this item really is the anchor.
+        var view = knownView ?? await todoListStore.QueryAllAsync(ct).ConfigureAwait(false);
+        var ordered = view.Items
+            .Where(i => i.UserId == item.UserId && i.WorkspaceId == item.WorkspaceId)
+            .ToList();
+        var anchorIndex = ordered.FindIndex(i => i.ItemId == item.ItemId);
+        var next = anchorIndex < 0
+            ? null
+            : ordered.Skip(anchorIndex + 1).FirstOrDefault(i => i.CompletedAt is null);
+
+        logger.LogInformation("Projector: relocating Today line for user {UserId} workspace {WorkspaceId}: {OldAnchor} -> {NewAnchor}",
+            item.UserId, item.WorkspaceId, item.ItemId, next?.ItemId ?? "(below everything)");
+        await todoListStore.SetTodayLineAsync(item.UserId, item.WorkspaceId!, next?.ItemId, ct).ConfigureAwait(false);
     }
 
     public async Task ApplyFolderEventsAsync(List<EventEnvelope> newEnvelopes, CancellationToken ct)

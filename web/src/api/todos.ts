@@ -16,6 +16,14 @@ export type TodoItem =
   | (TodoItemBase & { type: "action"; noteId: string })
   | (TodoItemBase & { type: "todo"; noteId: null });
 
+// The home To Do list read: the items in priority order plus the position of the "Today" line.
+// `todayLineAnchorItemId` is the id of the OPEN item the line sits immediately ABOVE; null means
+// the line is below everything (all Today). The server resolves a completed/gone anchor for us.
+export interface TodoListData {
+  items: TodoItem[];
+  todayLineAnchorItemId: string | null;
+}
+
 // Read-your-writes (RYW-1): if a pending todo write token is present, attach it as
 // `If-Consistent-With` so the server waits until the projector applied that write.
 // If the server gives up (X-Consistency: stale), retry a couple of times — each retry
@@ -28,21 +36,28 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-export async function getTodos(): Promise<TodoItem[]> {
+export async function getTodos(): Promise<TodoListData> {
   const token = getPendingTodoToken();
   const headers: Record<string, string> = token ? { "If-Consistent-With": token } : {};
 
   for (let attempt = 0; ; attempt++) {
-    const { body, response } = await requestWithResponse<{ items: TodoItem[] }>(`/todos`, { headers });
+    const { body, response } = await requestWithResponse<{
+      items: TodoItem[];
+      todayLineAnchorItemId?: string | null;
+    }>(`/todos`, { headers });
+    const data: TodoListData = {
+      items: body.items,
+      todayLineAnchorItemId: body.todayLineAnchorItemId ?? null,
+    };
     const stale = response.headers.get("X-Consistency") === "stale";
     if (!stale) {
       // Read confirmed the projection caught up (or there was no token to wait on).
       clearPendingTodoToken();
-      return body.items;
+      return data;
     }
     if (attempt >= STALE_RETRIES) {
       // Still stale after retries — return what we have; the optimistic temp row stays.
-      return body.items;
+      return data;
     }
     await sleep(STALE_RETRY_DELAY_MS);
   }
@@ -69,6 +84,17 @@ export async function reorderTodos(orderedItemIds: string[]): Promise<void> {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ orderedItemIds }),
+  });
+  setPendingTodoToken(result.consistencyToken);
+}
+
+// Move the "Today" line. `anchorItemId` is the item the line should sit immediately above;
+// null puts it below everything. Captures the write token so the next GET reads-your-writes.
+export async function setTodayLine(anchorItemId: string | null): Promise<void> {
+  const result = await request<{ consistencyToken: string }>(`/todos/today-line`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ anchorItemId }),
   });
   setPendingTodoToken(result.consistencyToken);
 }

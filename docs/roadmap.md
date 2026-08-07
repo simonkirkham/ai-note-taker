@@ -474,6 +474,8 @@ Graduate the *Local on-device transcription* future-feature into a phase now the
 
 **Goal:** record a meeting in the desktop app and get the live transcript, the final transcript, and speaker labels produced entirely on your machine — no per-minute cloud transcription or diarization cost.
 
+**Post-ship reality check (2026-08-07):** the live on-device path had **never actually run** since 48-A/[BUG-53] shipped — the resident server was being spawned as `whisper-cli`, which exits on `--host` ([BUG-56], fixed #426/deploy #729). The headline benefit of the phase was therefore absent from every installer until now, and it fails-visibly rather than silently from here. It is still unproven on real hardware: see MANUAL-VERIFICATION §BUG-56 and [TI-59](technical-improvements.md) for the Windows smoke test that would have caught it.
+
 Slices and acceptance criteria: [docs/phases/phase-48.md](phases/phase-48.md)
 
 ---
@@ -512,9 +514,9 @@ Alongside the numbered phases above, work is tracked in five standing docs. The 
 
 An unnumbered, standing phase capturing defects in the deployed app, tracked to a fix. No learning theme, no fixed sequence.
 
-**Open now (9):** **BUG-38** `TagsJourney` gate flake — root-caused 2026-08-06 to a network-timed title autofocus unmounting the tag combobox mid-interaction (26 of 58 measured gate failures; fix in PR #418, the cold-start theory retired) · **BUG-57** `OpenNoteTabsJourney` — a vacuous home assertion let the test never leave the note screen (fix in PR #418) · **BUG-56** on-device transcription shows nothing live and is slow after stop, silently · **BUG-59** a save into a deleted note says "try again" forever · **BUG-58** analyse hangs to the 29 s Lambda timeout (no Bedrock deadline) · **BUG-55** sign-out during a *local* finalise 401s the transcript commit · **BUG-49**, **BUG-48**, **BUG-46**.
+**Open now (8):** **BUG-38** `TagsJourney` gate flake — root-caused 2026-08-06 to a network-timed title autofocus unmounting the tag combobox mid-interaction (26 of 58 measured gate failures; the cold-start theory retired). Fixed and live 2026-08-07 (#418, deploy #722); open only against the 10-clean-run bar, **7/10** · **BUG-64** `shell.e2e.ts` flakes the new desktop PR gate on a cold Electron launch (fixed in #426; awaiting the 10-clean-run bar) · **BUG-59** a save into a deleted note says "try again" forever · **BUG-58** analyse hangs to the 29 s Lambda timeout (no Bedrock deadline) · **BUG-55** sign-out during a *local* finalise 401s the transcript commit · **BUG-49**, **BUG-48**, **BUG-46**.
 
-48 bugs are fixed. The [Summary table](phases/phase-bugs.md#summary) is the full index (one row per bug, every status); condensed write-ups of the fixed ones live in [phase-bugs-archive.md](phases/phase-bugs-archive.md). This section deliberately does **not** re-list them — the table is the single source.
+49 bugs are fixed. The [Summary table](phases/phase-bugs.md#summary) is the full index (one row per bug, every status); condensed write-ups of the fixed ones live in [phase-bugs-archive.md](phases/phase-bugs-archive.md). This section deliberately does **not** re-list them — the table is the single source.
 
 → [docs/phases/phase-bugs.md](phases/phase-bugs.md)
 

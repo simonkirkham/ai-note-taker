@@ -20,9 +20,15 @@ public sealed class TodoOrderCommandHandler(
     ILogger<TodoOrderCommandHandler> logger) : ITodoOrderCommandHandler
 {
     public Task<long> HandleAsync(ReorderTodos cmd, CancellationToken ct = default) =>
-        CommandInstrumentation.RunAsync(metrics, logger, nameof(ReorderTodos), "TodoOrdering", async () =>
+        AppendAsync(nameof(ReorderTodos), cmd.WorkspaceId, cmd, ct);
+
+    public Task<long> HandleAsync(SetTodayLine cmd, CancellationToken ct = default) =>
+        AppendAsync(nameof(SetTodayLine), cmd.WorkspaceId, cmd, ct);
+
+    private Task<long> AppendAsync(string commandName, string workspaceId, TodoOrderingCommand cmd, CancellationToken ct) =>
+        CommandInstrumentation.RunAsync(metrics, logger, commandName, "TodoOrdering", async () =>
         {
-            var streamId = TodoOrdering.StreamId(cmd.WorkspaceId);
+            var streamId = TodoOrdering.StreamId(workspaceId);
             var history = await store.ReadAsync(streamId, ct).ConfigureAwait(false);
             var newEvents = RebuildAggregate(history).Handle(cmd);
             var envelopes = EventEnvelopeFactory.CreateEnvelopes(streamId, newEvents, currentUser.UserId, currentWorkspace.WorkspaceId);

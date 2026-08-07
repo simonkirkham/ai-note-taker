@@ -15,7 +15,7 @@
 #   TOKEN    (optional) — a Google id token; without it only /health warming happens
 #
 # NOTE: .github/workflows/deploy.yml still carries its own inline copy of this logic.
-# Switching it over is TI-59 — deliberately not done in the same change that introduced
+# Switching it over is TI-62 — deliberately not done in the same change that introduced
 # this script, to keep the deploy path untouched.
 
 set -uo pipefail

@@ -74,7 +74,7 @@ describe('TagFilter — isolated', () => {
   })
 
   it('returns nothing when tag list is empty', () => {
-    const { container } = render(
+    render(
       <TagFilter
         tags={[]}
         selectedTags={[]}
@@ -84,7 +84,10 @@ describe('TagFilter — isolated', () => {
         onClear={() => {}}
       />,
     )
-    expect(container.firstChild).toBeNull()
+    // Assert on the component's own root, not container.firstChild: the shared render wrapper
+    // mounts the ToastProvider, whose aria-live stack is always in the DOM, so the container is
+    // never empty regardless of what TagFilter renders.
+    expect(screen.queryByTestId('tag-filter')).not.toBeInTheDocument()
   })
 })
 

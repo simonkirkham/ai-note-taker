@@ -135,3 +135,47 @@ jobs:
 
       - name: Test (EventStore integration)
         run: dotnet test tests/EventStore.Integration/EventStore.Integration.csproj
+
+  # BUG-56: until now NOTHING ran desktop/tests/ — publish-desktop.yml packages the installer but
+  # runs no tests, and pr.yml had no desktop job at all. So the whole Electron shell shipped on
+  # local runs only, and BUG-52/53/56 all reached a user's machine. The specs that catch them are
+  # pure and headless; there is no reason they were not gated.
+  #
+  # Runs on ubuntu, not windows-latest: every spec here is either pure logic, config assertions, or
+  # Electron-under-xvfb, none of which need Windows. Proving the REAL whisper binaries (Windows-only
+  # by Phase 31 scope) needs a windows-latest job — filed separately in technical-improvements.md,
+  # deliberately not bundled here so this stays cheap enough to gate every PR.
+  desktop:
+    runs-on: ubuntu-latest
+    # The one job here that launches a GUI process. Bounded in practice by playwright.config.ts's
+    # per-test timeout, but the 44-minute E2E hang (see the CLAUDE.md guardrail) is why a stuck
+    # process must never be able to hold a runner open indefinitely. The job takes ~1 min.
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+          cache: "npm"
+          # Both lockfiles: this job installs web/ as well, so caching only desktop's would
+          # leave the larger of the two installs uncached.
+          cache-dependency-path: |
+            desktop/package-lock.json
+            web/package-lock.json
+
+      # web/ is a real dependency: `npm run build` stages the compiled frontend into
+      # desktop/web-dist, which server.spec.ts and shell.e2e.ts serve and assert against.
+      # Verified locally: server.spec.ts fails without this build and passes with it.
+      - name: Install dependencies
+        run: |
+          npm --prefix web ci
+          npm --prefix desktop ci
+
+      - name: Build (frontend bundle + Electron main)
+        run: npm --prefix desktop run build
+
+      # xvfb: shell.e2e.ts launches the real Electron app, which needs a display even headless.
+      # The whisper specs that need real binaries self-skip when their env vars are unset.
+      - name: Test (desktop)
+        run: xvfb-run --auto-servernum npm --prefix desktop run test:e2e
