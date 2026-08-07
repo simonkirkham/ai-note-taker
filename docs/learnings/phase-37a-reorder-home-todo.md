@@ -30,4 +30,4 @@
 - **The merge gate can deadlock when main's red IS the fix's target.** Deploy #654's red was exactly this slice's E2E journey bug; the fix PR (#355) had to be merged onto that "red" main (quiescent, product code sound) to green it. A literal "main must be green" reading would deadlock — the gate's intent is "no in-flight deploy / no real break", which held.
 
 ## TI logged
-- **TI-48** — the whole `TodoList` read model is projector-maintained-only (not in `ProjectionRebuildHandler`), so `Position` (and the rest) can't be rebuilt from the stream. Pre-existing; low urgency.
+- **TI-57** — the whole `TodoList` read model is projector-maintained-only (not in `ProjectionRebuildHandler`), so `Position` (and the rest) can't be rebuilt from the stream. Pre-existing; low urgency.

@@ -80,7 +80,7 @@
 **Acceptance criteria:**
 - Remove every inline `ProjectionUpdater` call from the 5 command handlers; command handlers are append-only (draft-store `PUT`/`DELETE` stays — it is non-event working state).
 - Server-side read-after-write moves to retry/polling with a bounded timeout in `tests/Api.Integration`, `tests/Api.Smoke`, and `tests/Browser.E2E` (an explicit AC of this slice per ADR 0009).
-- `docs/architecture.md` and the [ADR 0001](../adr/0001-event-sourcing.md) "no eventual-consistency delay" note are updated to reflect async projectors; record the cutover in ADR 0009 (status note).
+- `docs/architecture.md` and [ADR 0002](../adr/0002-event-store-dynamodb.md) are updated to reflect async projectors (dropping the old "no eventual-consistency delay" framing); record the cutover in [ADR 0009](../adr/0009-split-lambdas-cqrs-async-projectors.md) (status note).
 - `ProjectionRebuildHandler` continues to work unchanged (direct full-stream fold) — rebuild is **not** broken by the cutover; stream-replay rebuild is out of scope (Constraints).
 - Still a **single** HTTP Lambda — the function split is 27-D, kept separate from the consistency flip.
 - Tests: an integration test that appends, asserts the read is initially absent/stale **and** becomes present within the bound, proving the async path end-to-end.

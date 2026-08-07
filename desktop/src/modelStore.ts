@@ -136,9 +136,21 @@ export async function ensureModels(
   onProgress({ downloading: false, modelReady: allPresent(manifest, present), progress: 1 })
 }
 
-// Resolve the bundled whisper-cli binary. Prod: under resources/whisper/; dev/test: WHISPER_BIN.
+// Resolve the bundled whisper-cli binary — the ONE-SHOT batch passes (48-B final, 48-C diarize).
+// Prod: under resources/whisper/; dev/test: WHISPER_BIN.
 export function whisperBinPath(resourcesPath: string): string {
   if (process.env.WHISPER_BIN) return process.env.WHISPER_BIN
   const exe = process.platform === 'win32' ? 'whisper-cli.exe' : 'whisper-cli'
+  return path.join(resourcesPath, 'whisper', exe)
+}
+
+// BUG-56 — resolve the bundled whisper-server binary, the RESIDENT live path (BUG-53). A separate
+// binary from the CLI, shipped in the same bundle: it takes --host/--port and serves /inference,
+// which whisper-cli rejects outright (it exits on the unknown argument). BUG-53 passed the CLI path
+// here, so the resident server never started and the live transcript was silently empty. Keep the
+// two overrides distinct — WHISPER_BIN must not redirect the server.
+export function whisperServerBinPath(resourcesPath: string): string {
+  if (process.env.WHISPER_SERVER_BIN) return process.env.WHISPER_SERVER_BIN
+  const exe = process.platform === 'win32' ? 'whisper-server.exe' : 'whisper-server'
   return path.join(resourcesPath, 'whisper', exe)
 }

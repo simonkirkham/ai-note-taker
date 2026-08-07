@@ -88,6 +88,27 @@
   margin-bottom: 0.25rem;
 }
 
+/* CHANGE-30: a `>` quote previously only indented, so a quoted passage was
+   indistinguishable from an ordinary paragraph. A left bar plus muted body text
+   marks it. Both colours are theme tokens, never literals, so the bar tracks all
+   12 palettes (light and dark) through the same cascade as the rest of the UI.
+   The explicit margin replaces the UA default (1em 40px) — the indent comes from
+   padding-left so it sits inside the bar. */
+.contentInput blockquote {
+  margin: var(--space-2) 0;
+  padding-left: var(--space-3);
+  border-left: 3px solid var(--color-text-muted);
+  color: var(--color-text-muted);
+}
+
+/* A nested `>>` quote nests as <blockquote><blockquote>, so its padding-left
+   compounds and it steps further right on its own. Recolouring the inner bar to
+   the accent is what makes the depth readable at a glance — two identical grey
+   bars a few pixels apart do not. Specificity (0,1,2) beats the rule above. */
+.contentInput blockquote blockquote {
+  border-left-color: var(--color-primary);
+}
+
 .contentInput img {
   display: block;
   max-width: 100%;

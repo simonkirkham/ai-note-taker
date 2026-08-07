@@ -56,7 +56,7 @@ describe('apiFetch 401 handling', () => {
 
     expect(call).toBe(2)
     expect(secondAuth).toBe('Bearer fresh-token')
-    expect(todos).toEqual([])
+    expect(todos.items).toEqual([])
   })
 
   it('deduplicates concurrent refreshes to a single refresh', async () => {
@@ -118,7 +118,7 @@ describe('apiFetch transient retry (19-H)', () => {
         return call === 1 ? new HttpResponse(null, { status: 503 }) : HttpResponse.json({ items: [] })
       }),
     )
-    expect(await getTodos()).toEqual([])
+    expect((await getTodos()).items).toEqual([])
     expect(call).toBe(2)
   })
 
@@ -132,7 +132,7 @@ describe('apiFetch transient retry (19-H)', () => {
           : HttpResponse.json({ items: [] })
       }),
     )
-    expect(await getTodos()).toEqual([])
+    expect((await getTodos()).items).toEqual([])
     expect(call).toBe(2)
   })
 
@@ -144,7 +144,7 @@ describe('apiFetch transient retry (19-H)', () => {
         return call === 1 ? HttpResponse.error() : HttpResponse.json({ items: [] })
       }),
     )
-    expect(await getTodos()).toEqual([])
+    expect((await getTodos()).items).toEqual([])
     expect(call).toBe(2)
   })
 

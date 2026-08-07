@@ -17,7 +17,7 @@ public interface IProjectionUpdater
 
     Task ApplyTodoEventsAsync(IReadOnlyList<IDomainEvent> newEvents, List<EventEnvelope> newEnvelopes, CancellationToken ct);
 
-    Task ApplyTodoOrderEventsAsync(IReadOnlyList<IDomainEvent> newEvents, CancellationToken ct);
+    Task ApplyTodoOrderEventsAsync(IReadOnlyList<IDomainEvent> newEvents, List<EventEnvelope> newEnvelopes, CancellationToken ct);
 
     Task ApplyFolderEventsAsync(List<EventEnvelope> newEnvelopes, CancellationToken ct);
 

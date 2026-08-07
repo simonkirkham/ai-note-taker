@@ -435,6 +435,11 @@ export function useTranscription(noteId: string): UseTranscriptionResult {
             // would discard exactly the last update we are flushing. committedRef flips only after
             // finish() resolves, so a late live update still lands before the commit.
             if (committedRef.current) return;
+            // BUG-56: live text arriving is proof the engine is working, so any earlier on-device
+            // banner is now false. Without this, a model that loads slowly (past the ready deadline)
+            // or an engine that recovers leaves a failure message sitting above a transcript that is
+            // visibly filling in.
+            setError(undefined);
             finalizedRef.current = resumePrefixRef.current + text;
             setTranscript(finalizedRef.current);
           });
