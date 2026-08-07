@@ -140,6 +140,19 @@ The live transcript must appear within a few seconds and keep pace, on the resid
 | 6 | **Missing binary/model falls back cleanly:** Given the whisper binary/model is missing, When I start a local recording, Then it falls back to cloud before recording (no mid-recording failure). | ☐ |
 | 7 | **Present-but-unstartable server surfaces a banner:** Given the binary/model exist but the server fails to start (e.g. port/OOM/timeout), When I record locally, Then the on-device-failed banner appears (live view is not silently empty) and the audio is still captured for the stop-time final pass. | ☐ |
 
+## BUG-56 — the live path actually runs, and never fails silently
+
+BUG-53's checklist above was never completed, and the live path shipped dead: `WhisperServer` was spawned with `whisper-cli.exe`, which exits on `--host`. **Row 2 below is the one that would have caught it.** Run against a freshly-installed build, not `npm run dev`.
+
+| # | Given / When / Then | Pass? |
+|---|---------------------|-------|
+| 1 | **The server binary ships:** Given the installed app, Then `%LOCALAPPDATA%\Programs\ai-note-taker-desktop\resources\whisper\` contains **both** `whisper-cli.exe` and `whisper-server.exe`. | ☐ |
+| 2 | **The server actually runs:** Given a local recording, Then Task Manager shows a live `whisper-server.exe` **while recording** — absent before the fix, so this is the regression signal. | ☐ |
+| 3 | **Live text appears:** Given a local recording, When I speak, Then text appears in the transcript within ~3-4 s, during the recording — not only after Stop. | ☐ |
+| 4 | **Failure is visible, not silent:** Given the local engine cannot start (rename `whisper-server.exe` to force it), When I record locally, Then the on-device-failed banner appears **while the recording is still running**, and the stop-time pass still produces a transcript. | ☐ |
+| 5 | **No stale banner:** Given a recording that showed the banner, When I start a new local recording that works, Then the banner is gone. | ☐ |
+| 6 | **Stop is unchanged:** Given I stop a local recording, Then the `small.en` final pass still replaces the live text (slower than live — expected cost, not a defect). | ☐ |
+
 ## CHANGE-36 — window title follows the open note
 
 `BrowserWindow` is constructed with no `title` option, so the Electron window (and its taskbar label) follows `document.title`. Making the browser tab title track the note therefore changes the desktop window title too — intended, but verify it reads sensibly.
