@@ -1,0 +1,48 @@
+name: Docs Check
+
+# Validates the tracking docs on every PR that touches them.
+#
+# Why this exists as its own workflow: pr.yml `paths-ignore`s docs/**, **/*.md and
+# scripts/**, so a docs-only PR runs NO checks at all. The tracking-doc id check lived
+# only in .githooks/pre-commit, which each clone has to opt into with
+# `git config core.hooksPath .githooks` — and at least one clone had it pointed
+# elsewhere, so the check had never run there. A guard that depends on per-machine
+# setup protects nobody by default; this runs for every clone and every session.
+#
+# Deliberately narrow: it does not build, test, or deploy anything. Pure grep, ~10s.
+
+on:
+  pull_request:
+    branches: [ main ]
+    paths:
+      - "docs/phases/phase-bugs.md"
+      - "docs/phases/phase-minor-changes.md"
+      - "docs/technical-improvements.md"
+      - "docs/roadmap.md"
+      - "scripts/check-doc-ids.sh"
+      - ".github/workflows/docs-check.yml"
+
+concurrency:
+  group: docs-check-${{ github.head_ref || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  doc-ids:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v6
+
+      # Catches two things:
+      #  - two rows sharing an id, i.e. the one bad outcome of the `merge=union` driver
+      #    on these tables (two branches editing the SAME row keeps both copies)
+      #  - docs/roadmap.md re-growing its own copy of bug status, which is what made it
+      #    both stale and the most-conflicted line in the repo
+      - name: Tracking-doc ids
+        # Invoked via `bash` deliberately: this repo lives on a Windows/WSL mount where the
+        # executable bit does not survive, so most of scripts/ is committed 100644. The bit is
+        # set on this script too, but `bash` means a future script losing it cannot break the gate.
+        run: bash ./scripts/check-doc-ids.sh
