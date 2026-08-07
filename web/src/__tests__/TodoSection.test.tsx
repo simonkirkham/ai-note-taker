@@ -679,7 +679,7 @@ describe('TodoSection — send to top / bottom (CHANGE-34)', () => {
     expect(openOrder()).toEqual(['Bravo', 'Alpha', 'Charlie'])
   })
 
-  // BUG-65: the send buttons were disabled only by POSITION, never by `busy` — so while one row's
+  // BUG-63: the send buttons were disabled only by POSITION, never by `busy` — so while one row's
   // reorder was still in flight a DIFFERENT row stayed clickable. Both mutations snapshot the cache
   // in onMutate, so a rollback restores a snapshot taken before the other applied and the list keeps
   // an order the server never stored (staleTime 30s + refetchOnWindowFocus off = never corrected).

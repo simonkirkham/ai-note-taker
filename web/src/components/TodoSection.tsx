@@ -81,7 +81,7 @@ export default function TodoSection() {
   }
 
   // Reorder the open items, optimistically and persisted. Pass the full new id order.
-  // BUG-65: order is a property of the WHOLE list, so two overlapping reorders are never safe —
+  // BUG-63: order is a property of the WHOLE list, so two overlapping reorders are never safe —
   // each snapshots the cache in onMutate, and a rollback then restores a snapshot taken before the
   // other applied, leaving the UI showing an order the server never stored (staleTime 30s +
   // refetchOnWindowFocus off = never corrected). Guarding here rather than in a caller covers every
@@ -151,7 +151,7 @@ export default function TodoSection() {
   // CHANGE-34: jump an item to either end of the open list without a long drag — and the only
   // keyboard-operable reorder path (CHANGE-29 removed the up/down arrows). "Top" lands it in
   // Today, "bottom" in Later, since the groups are just the list either side of the line.
-  // BUG-65: the send buttons were disabled only by POSITION, so two DIFFERENT rows stayed clickable
+  // BUG-63: the send buttons were disabled only by POSITION, so two DIFFERENT rows stayed clickable
   // back-to-back and fired concurrent reorders. Each mutation snapshots the cache in onMutate, so a
   // rollback restores a snapshot taken before the other applied — and with no reconcile the UI keeps
   // an order the server never stored.
