@@ -7,6 +7,7 @@ using Api.Services;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Logging;
 
 namespace Api.Integration;
 
@@ -70,5 +71,35 @@ public sealed class AnalysisMetricsTests(ApiFactory factory) : IClassFixture<Api
         Assert.Equal(HttpStatusCode.ServiceUnavailable, resp.StatusCode);
         Assert.Equal(1, metrics.AnalysisFailures);
         Assert.Empty(metrics.AnalysisDurations);
+    }
+
+    // BUG-58: a Bedrock call that outlives its deadline used to kill the Lambda mid-flight — no
+    // response, no metric, no log line. It must now land on the same visible failure path as any
+    // other Bedrock error: 503 to the user, AnalysisFailed metric, and an Error log naming the note.
+    [Fact]
+    public async Task AnalysisThatExceedsTheDeadline_Returns503_RecordsFailure_AndLogsAnError()
+    {
+        var metrics = new RecordingDomainMetrics();
+        var logs = new CapturingLoggerProvider();
+        var built = factory.WithWebHostBuilder(b =>
+            b.ConfigureTestServices(services =>
+            {
+                services.RemoveAll<IDomainMetrics>();
+                services.AddSingleton<IDomainMetrics>(metrics);
+                services.RemoveAll<IBedrockAnalysisService>();
+                services.AddSingleton<IBedrockAnalysisService, TimingOutBedrockAnalysisService>();
+                services.AddSingleton<ILoggerProvider>(logs);
+            }));
+        var client = built.CreateClient();
+        client.DefaultRequestHeaders.Add("X-Test-User-Id", FakeCurrentUser.TestUserId);
+
+        var noteId = await CreateNoteWithTranscriptAsync(client);
+        var resp = await client.PostAsync($"/notes/{noteId}/analyse", null);
+
+        Assert.Equal(HttpStatusCode.ServiceUnavailable, resp.StatusCode);
+        Assert.Equal(1, metrics.AnalysisFailures);
+        Assert.Empty(metrics.AnalysisDurations);
+        Assert.Contains(logs.Entries, e =>
+            e.Level == LogLevel.Error && e.Message.Contains("Analysis failed") && e.Message.Contains(noteId));
     }
 }

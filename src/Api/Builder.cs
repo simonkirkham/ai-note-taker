@@ -228,7 +228,18 @@ public static class Builder
                 sp.GetRequiredService<IAmazonBedrockRuntime>(),
                 sp.GetRequiredService<ILogger<BedrockAnalysisService>>(),
                 PromptCatalog.Current,
-                Environment.GetEnvironmentVariable("BEDROCK_MODEL_ID") ?? ""));
+                Environment.GetEnvironmentVariable("BEDROCK_MODEL_ID") ?? "",
+                // BUG-58: sized from 90 days of prod data, not guessed. Command-hosted Converse
+                // calls (n=16): median 2.6s, but 17.9 / 21.5 / 23.6 / 26.4s in the tail. Pairing each
+                // against its invocation gives a POST-Bedrock tail of 3.0-5.9s (the sequential
+                // TagNote-per-tag + AddActionItem-per-action appends). 29s Lambda - 6s worst tail =
+                // 23s. At the originally-proposed 20s the 21.5s and 23.6s calls — which SUCCEEDED at
+                // 24.5s and 27.7s total — would have become 503s, trading 4 silent kills per 14 days
+                // for ~12% visible failures on analyses that work today. 23s still fires before the
+                // 29s kill, which is the whole point. Analyses needing >23s+tail cannot fit a
+                // synchronous 29s Lambda at all; moving analysis off the request path is the real
+                // fix (filed as TI-63), not a bigger number here.
+                TimeSpan.FromSeconds(23)));
         builder.Services.AddAWSService<IAmazonS3>();
         var imageBucketName = Environment.GetEnvironmentVariable("IMAGE_BUCKET_NAME") ?? "";
         builder.Services.AddSingleton<INoteImageStore>(sp =>

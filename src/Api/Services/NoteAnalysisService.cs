@@ -60,7 +60,10 @@ public sealed class NoteAnalysisService(
                 new NoteAnalysisRequest(content, transcript, currentUserName, instructions), ct);
             metrics.AnalysisCompleted(analysisStopwatch.Elapsed.TotalMilliseconds);
         }
-        catch (Exception ex) when (ex is AmazonBedrockRuntimeException or InvalidOperationException)
+        // TimeoutException = the BUG-58 client-side deadline fired. It joins the Bedrock failure path
+        // so an exhausted deadline is a visible 503 + AnalysisFailed metric + Error log rather than a
+        // silent host kill. A cancelled CALLER is deliberately NOT caught — that is not a failure.
+        catch (Exception ex) when (ex is AmazonBedrockRuntimeException or InvalidOperationException or TimeoutException)
         {
             metrics.AnalysisFailed();
             logger.LogError(ex, "Analysis failed for note {NoteId} after {ElapsedMs}ms: {ExceptionType} {Message}",
