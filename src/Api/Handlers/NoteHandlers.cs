@@ -157,7 +157,7 @@ public static class NoteHandlers
             summaryPromptVersion = detail.SummaryPromptVersion,
             agenda = (detail.Agenda ?? [])
                 .OrderBy(a => a.Position)
-                .Select(a => new { itemId = a.ItemId, text = a.Text, discussed = a.Discussed, position = a.Position }),
+                .Select(a => new { itemId = a.ItemId, text = a.Text, discussed = a.Discussed, position = a.Position, derived = a.Derived }),
             recurringSeriesId = calendarLink?.RecurringSeriesId,
             isRecurring = calendarLink?.RecurringSeriesId is not null,
             linkedMeeting

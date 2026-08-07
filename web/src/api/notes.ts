@@ -56,6 +56,10 @@ export interface AgendaItem {
   text: string;
   discussed: boolean;
   position: number;
+  // 43-F: true when the topic was read out of the note body (a task-list line) rather than added
+  // from the header. A derived topic has no event stream behind it, so the agenda-item endpoints
+  // would 404 on it — tick it in the notes instead. 43-G routes header edits through the editor.
+  derived?: boolean;
 }
 
 export interface NoteDetail {
