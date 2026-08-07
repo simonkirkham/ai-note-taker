@@ -238,7 +238,7 @@ public static class Builder
                 // for ~12% visible failures on analyses that work today. 23s still fires before the
                 // 29s kill, which is the whole point. Analyses needing >23s+tail cannot fit a
                 // synchronous 29s Lambda at all; moving analysis off the request path is the real
-                // fix (filed as a technical improvement), not a bigger number here.
+                // fix (filed as TI-63), not a bigger number here.
                 TimeSpan.FromSeconds(23)));
         builder.Services.AddAWSService<IAmazonS3>();
         var imageBucketName = Environment.GetEnvironmentVariable("IMAGE_BUCKET_NAME") ?? "";
