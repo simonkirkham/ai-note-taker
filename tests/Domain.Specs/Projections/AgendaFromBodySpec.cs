@@ -135,6 +135,65 @@ public sealed class AgendaFromBodySpec
         Assert.True(Assert.Single(AgendaOf(p, id)).Derived);
     }
 
+    [Fact]
+    public void Task_lines_inside_a_code_fence_are_not_topics()
+    {
+        var (p, id) = NoteWith("Runbook:\n\n```\n- [ ] npm ci\n- [x] deploy\n```\n\n- [ ] Real topic");
+
+        Assert.Equal("Real topic", Assert.Single(AgendaOf(p, id)).Text);
+    }
+
+    [Fact]
+    public void A_tilde_fence_also_hides_task_lines()
+    {
+        var (p, id) = NoteWith("~~~\n- [ ] not a topic\n~~~\n\n- [ ] Budget (Q3)");
+
+        Assert.Equal("Budget (Q3)", Assert.Single(AgendaOf(p, id)).Text);
+    }
+
+    [Fact]
+    public void An_unclosed_fence_swallows_the_rest_of_the_note()
+    {
+        // Matches how a markdown renderer treats it — better than leaking code as topics.
+        var (p, id) = NoteWith("```\n- [ ] still code");
+
+        Assert.Empty(AgendaOf(p, id));
+    }
+
+    [Fact]
+    public void Two_lines_with_the_same_text_are_two_topics_with_different_ids()
+    {
+        var (p, id) = NoteWith("- [ ] Follow up\n- [x] Follow up");
+
+        var agenda = AgendaOf(p, id);
+        Assert.Equal(2, agenda.Count);
+        Assert.NotEqual(agenda[0].ItemId, agenda[1].ItemId);
+        Assert.False(agenda[0].Discussed);
+        Assert.True(agenda[1].Discussed);
+    }
+
+    [Fact]
+    public void Markdown_escapes_are_not_shown_in_the_topic_text()
+    {
+        // prosemirror-markdown escapes ` * \ ~ [ ] _ when it serialises inline text, so the raw
+        // body of a line the user typed as "Review Q3 [draft]" carries backslashes.
+        var (p, id) = NoteWith("- [ ] Review Q3 \\[draft\\]");
+
+        Assert.Equal("Review Q3 [draft]", Assert.Single(AgendaOf(p, id)).Text);
+    }
+
+    [Fact]
+    public void An_id_is_unchanged_by_a_topic_inserted_above_it()
+    {
+        var (p, id) = NoteWith("- [ ] Budget (Q3)\n- [ ] Hiring plan");
+        var hiringBefore = AgendaOf(p, id).Single(a => a.Text == "Hiring plan").ItemId;
+
+        p.Handle(Envelope($"note#{id.Value}", 3, nameof(ContentEdited),
+            JsonSerializer.Serialize(new ContentEdited(id, "- [ ] Renewals\n- [ ] Budget (Q3)\n- [ ] Hiring plan"))));
+
+        Assert.Equal(hiringBefore, AgendaOf(p, id).Single(a => a.Text == "Hiring plan").ItemId);
+    }
+
     // ── Strangler: legacy agenda events keep working until 43-H migrates them ──
 
     [Fact]
@@ -206,6 +265,23 @@ public sealed class AgendaFromBodySpec
         var agenda = AgendaOf(p, noteId);
         Assert.Equal("Budget (Q3)", Assert.Single(agenda).Text);
         Assert.True(agenda[0].Discussed);
+    }
+
+    [Fact]
+    public void A_legacy_item_matches_its_migrated_body_line_even_once_escaped()
+    {
+        // 43-H writes the topic text into the body unescaped; the editor re-serialises it escaped
+        // on the user's next save. Dedup must survive that or the topic is listed twice.
+        var noteId = new NoteId(Guid.NewGuid());
+        var stream = $"note#{noteId.Value}";
+        var p = new NoteDetailProjection();
+        p.Handle(Envelope(stream, 1, nameof(NoteCreated), JsonSerializer.Serialize(new NoteCreated(noteId))));
+        p.Handle(Envelope(stream, 2, nameof(AgendaItemAdded),
+            JsonSerializer.Serialize(new AgendaItemAdded(noteId, Guid.NewGuid(), "Review Q3 [draft]", 0))));
+        p.Handle(Envelope(stream, 3, nameof(ContentEdited),
+            JsonSerializer.Serialize(new ContentEdited(noteId, "- [ ] Review Q3 \\[draft\\]"))));
+
+        Assert.Equal("Review Q3 [draft]", Assert.Single(AgendaOf(p, noteId)).Text);
     }
 
     [Fact]

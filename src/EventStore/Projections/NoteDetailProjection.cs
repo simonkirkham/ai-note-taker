@@ -13,11 +13,13 @@ public sealed class NoteDetailProjection
     // 43-H migrates the stragglers and this dictionary goes with the legacy fold.
     private readonly Dictionary<NoteId, List<AgendaItemView>> _legacyAgenda = new();
 
-    private void Recompose(NoteId noteId)
+    // Composed at READ time, not on every event: folding a whole stream re-parses the body once
+    // per ContentEdited otherwise, which on the rebuild path is the sum of every content revision
+    // ever written (BUG-23 already saw that rebuild time out). One parse per note instead.
+    private NoteDetailView Composed(NoteDetailView view)
     {
-        if (!_items.TryGetValue(noteId, out var view)) return;
-        var legacy = _legacyAgenda.TryGetValue(noteId, out var l) ? l : [];
-        _items[noteId] = view with { Agenda = AgendaFromContent.Compose(noteId, view.Content, legacy) };
+        var legacy = _legacyAgenda.TryGetValue(view.NoteId, out var l) ? l : [];
+        return view with { Agenda = AgendaFromContent.Compose(view.NoteId, view.Content, legacy) };
     }
 
     public void Handle(EventEnvelope envelope)
@@ -35,17 +37,11 @@ public sealed class NoteDetailProjection
                 break;
             case ContentEdited e:
                 if (_items.TryGetValue(e.NoteId, out var cur))
-                {
                     _items[e.NoteId] = cur with { Content = e.NewContent, LastModifiedAt = envelope.OccurredAt };
-                    Recompose(e.NoteId);
-                }
                 break;
             case ContentEditedV2 e:
                 if (_items.TryGetValue(e.NoteId, out var cur2))
-                {
                     _items[e.NoteId] = cur2 with { Content = e.NewContent, LastModifiedAt = envelope.OccurredAt };
-                    Recompose(e.NoteId);
-                }
                 break;
             case NoteDateSet e:
                 if (_items.TryGetValue(e.NoteId, out var withDate))
@@ -74,7 +70,6 @@ public sealed class NoteDetailProjection
                 {
                     Legacy(e.NoteId).Add(new AgendaItemView(e.ItemId, e.Text, false, e.Position));
                     _items[e.NoteId] = withAgenda with { LastModifiedAt = envelope.OccurredAt };
-                    Recompose(e.NoteId);
                 }
                 break;
             case AgendaItemDiscussedSet e:
@@ -82,7 +77,6 @@ public sealed class NoteDetailProjection
                 {
                     Replace(e.NoteId, e.ItemId, a => a with { Discussed = e.Discussed });
                     _items[e.NoteId] = withTick with { LastModifiedAt = envelope.OccurredAt };
-                    Recompose(e.NoteId);
                 }
                 break;
             case AgendaItemTextEdited e:
@@ -90,7 +84,6 @@ public sealed class NoteDetailProjection
                 {
                     Replace(e.NoteId, e.ItemId, a => a with { Text = e.Text });
                     _items[e.NoteId] = withEdit with { LastModifiedAt = envelope.OccurredAt };
-                    Recompose(e.NoteId);
                 }
                 break;
             case AgendaItemRemoved e:
@@ -98,7 +91,6 @@ public sealed class NoteDetailProjection
                 {
                     Legacy(e.NoteId).RemoveAll(a => a.ItemId == e.ItemId);
                     _items[e.NoteId] = withRemove with { LastModifiedAt = envelope.OccurredAt };
-                    Recompose(e.NoteId);
                 }
                 break;
             case NoteDeleted e:
@@ -163,8 +155,8 @@ public sealed class NoteDetailProjection
     }
 
     public NoteDetailView? GetDetail(NoteId noteId) =>
-        _items.TryGetValue(noteId, out var detail) ? detail : null;
+        _items.TryGetValue(noteId, out var detail) ? Composed(detail) : null;
 
     public IReadOnlyList<NoteDetailView> GetAllDetails() =>
-        new List<NoteDetailView>(_items.Values).AsReadOnly();
+        _items.Values.Select(Composed).ToList().AsReadOnly();
 }

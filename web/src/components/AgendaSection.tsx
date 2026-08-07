@@ -86,7 +86,7 @@ export default function AgendaSection({ noteId }: { noteId: string }) {
                 }
               }}
               onBlur={submit}
-              placeholder="+ add item…"
+              placeholder="+ add item (header-only until 43-G)…"
               className={styles.addInput}
               aria-label="Add agenda item"
               data-testid="agenda-add-input"
@@ -150,9 +150,10 @@ function AgendaItemRow({ noteId, item }: { noteId: string; item: AgendaItem }) {
         // state, so tick it there. The agenda-item endpoints have no event stream for it and would
         // 404. 43-G makes these controls write back through the editor.
         disabled={item.derived}
-        title={item.derived ? "Tick this in the notes" : undefined}
         onChange={(e) => setDiscussed.mutate({ noteId, itemId: item.itemId, discussed: e.target.checked })}
-        aria-label={`Mark "${item.text}" discussed`}
+        aria-label={item.derived
+          ? `Mark "${item.text}" discussed — tick this in the notes`
+          : `Mark "${item.text}" discussed`}
         data-testid="agenda-item-check"
       />
       {editing ? (

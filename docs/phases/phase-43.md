@@ -348,13 +348,13 @@ What changed and why:
 
 ### Slice 43-F — Topics come from the note body
 
-- [ ] BDD spec first. Fold task-list items out of the content in `NoteDetailProjection` into `NoteDetailView.Agenda`; **union with** the legacy `AgendaItem*` fold (dedup by trimmed text, legacy wins on ticked state) so no shipped note regresses.
+- [ ] BDD spec first. Fold task-list items out of the content in `NoteDetailProjection` into `NoteDetailView.Agenda`; **union with** the legacy `AgendaItem*` fold (dedup by trimmed + unescaped text; **the body wins** on a matched pair) so no shipped note regresses. Body-wins is deliberate: legacy-wins would make a migrated topic permanently un-untickable, since 43-H writes `- [x] Foo` into the body and a later untick there would be overridden forever by the old `AgendaItemDiscussedSet(true)`.
 - [ ] Ordering is document order; `position` = index of the task item in the doc.
 - [ ] Frontend: `AgendaSection` reads the same `agenda` array as today — **no change to its read path**. Ticking in the body is already a content edit (46-B `TaskItem` toggles the doc → `onUpdate` → save), so the count moves for free once the projection derives.
 - [ ] Nested task items (46-B `TaskItem.configure({ nested: true })`) — decide and spec: nested children count as topics or not. Recommend **yes, flat** (a topic is a topic).
 - [ ] Round-trip test in `EventStore.Integration`: content with task lines → `UpsertAsync` → `GetAsync` → `Agenda` survives.
 - [ ] E2E: type a task line, assert the coverage pill moves. Reload-tolerant + consistency-gated (guardrail: every projector-backed assertion re-gates).
-- [ ] **Deploy-time: neutral.** No CDK, no new table, no backfill — an extra fold over content already in the view.
+- [ ] **Deploy-time: neutral**, but a **projection rebuild is MANDATORY after the deploy** — this changes the *fold* of an already-populated projection, so every note written before the deploy keeps its stale (empty) `Agenda` until its next `ContentEdited`. The read path serves `NoteDetailView.Agenda` straight from the store and never re-parses content, so without the rebuild the feature is a silent no-op on every existing note — including the ones that already have task lists from 46-B. Invoke `POST /admin/projections/rebuild` (authenticated) and verify a known note's `agenda` is non-empty. Same class as the "a new projection ships empty" guardrail, which is written for *new* projections and should be widened to cover a fold change on an existing one.
 
 ### Slice 43-G — The header writes back into the body
 
@@ -394,7 +394,7 @@ Added for 43-F–H:
 
 ### Deploy-time impact
 
-**Neutral throughout.** 43-A–E: additive events on an existing stream folded into an existing view. 43-F: an extra fold over content already in the view. 43-G: frontend-only. 43-H: an admin-invoked data migration, not a deploy step.
+**Neutral throughout.** 43-A–E: additive events on an existing stream folded into an existing view. 43-F: an extra fold over content already in the view — but it needs a one-off **projection rebuild** after the deploy (see the 43-F build notes), because the fold of an existing projection changed. 43-G: frontend-only. 43-H: an admin-invoked data migration, not a deploy step.
 
 ### Open decisions (settle at Breaker time)
 
