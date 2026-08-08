@@ -28,6 +28,12 @@ const DIARIZATION_POLL_MS = 5000;
 // Compared by value, not reference: React Query's `structuralSharing` runs `replaceEqualDeep`, so
 // from the second read onward the cached object is a NEW object built from the body. A reference
 // compare would always miss and silently degrade back to the pinning bug.
+// NOTE: that degradation is NOT provable by this suite. Under jsdom/msw a fetched body is
+// cross-realm, so React Query's `isPlainObject` is false and `replaceEqualDeep` returns the new
+// object by reference — structural sharing is silently off for exactly these objects, and swapping
+// `sameBody` for `===` leaves all the specs green. The value compare is right for the browser; the
+// tests simply cannot fail on it. (Same class as the repo's "no fetch fires is unprovable in
+// jsdom" learning.) Verified by Hawk, PR #436 round 3.
 //
 // The hold is bounded. `ConsistencyGate` documents a token that is never reachable ("the write
 // didn't land — lastSeq is at head but head < version forever"; BUG-27 was exactly a lost write).
@@ -51,7 +57,8 @@ function sameBody(a: NoteDetail, b: NoteDetail): boolean {
 }
 
 // The map is module state, so a spec seeding one note's staleness would otherwise leak into the
-// next. Exported for tests only; wired into web/src/test/setup.ts alongside resetWorkspaceForTests.
+// next. Exported for tests only; reset globally in web/src/test/setup.ts, the established home for
+// this leak class (alongside resetWorkspaceForTests).
 export function resetStaleDetailTrackingForTests(): void {
   staleReads.clear();
 }
