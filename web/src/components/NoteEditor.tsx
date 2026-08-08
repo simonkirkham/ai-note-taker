@@ -248,16 +248,6 @@ export default function NoteEditor({ noteId, value, onChange, onBlur, onAgendaAp
     [editor, canInsert, insertAndUpload]
   );
 
-  // Resolve-before-parse (BUG-24): the editor mounts with image keys stripped, so the
-  // parser never fetches a bare key. This runs ONCE per note (the editor is keyed by
-  // noteId, so it remounts per note) on the mount-time content: resolveImages → seed the
-  // display→key save map → setContent the *resolved* markdown (presigned URLs, never a
-  // bare key) and re-enable editing. Firing once on the captured initial value — not on
-  // every `value` change — is what keeps a later image upload (which changes the key set)
-  // from re-firing a whole-doc setContent that would reset selection / clobber live edits;
-  // an uploaded image is already shown via the blob→presigned upload flow and needs no
-  // resolve here. No setState in the effect body — the editor calls and the setCanInsert
-  // run inside the async `.then`/`.catch` (the set-state-in-effect lint rule is satisfied).
   // 43-G: publish the agenda command object once the editor exists, and null it on teardown so the
   // header can never act on a destroyed editor. The callback is held in a ref so a caller passing an
   // inline arrow does not re-run this on every render (which would churn NoteView's state).
@@ -280,6 +270,16 @@ export default function NoteEditor({ noteId, value, onChange, onBlur, onAgendaAp
   }, [editor]);
 
   // `ignore`/`isDestroyed` drop a stale or unmounted response.
+  // Resolve-before-parse (BUG-24): the editor mounts with image keys stripped, so the
+  // parser never fetches a bare key. This runs ONCE per note (the editor is keyed by
+  // noteId, so it remounts per note) on the mount-time content: resolveImages → seed the
+  // display→key save map → setContent the *resolved* markdown (presigned URLs, never a
+  // bare key) and re-enable editing. Firing once on the captured initial value — not on
+  // every `value` change — is what keeps a later image upload (which changes the key set)
+  // from re-firing a whole-doc setContent that would reset selection / clobber live edits;
+  // an uploaded image is already shown via the blob→presigned upload flow and needs no
+  // resolve here. No setState in the effect body — the editor calls and the setCanInsert
+  // run inside the async `.then`/`.catch` (the set-state-in-effect lint rule is satisfied).
   const didResolve = useRef(false);
   const initialValueRef = useRef(value);
   useEffect(() => {
