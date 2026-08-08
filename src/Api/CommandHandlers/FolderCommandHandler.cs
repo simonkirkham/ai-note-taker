@@ -57,10 +57,10 @@ public sealed class FolderCommandHandler(
             return await PersistFolderAsync(streamId, history, newEvents, userId, workspaceId, ct).ConfigureAwait(false);
         });
 
-    public Task<long> HandleAsync(DeleteFolder cmd, CancellationToken ct = default) =>
+    public Task<FolderDeleteResult> HandleAsync(DeleteFolder cmd, CancellationToken ct = default) =>
         HandleAsync(cmd, currentUser.UserId, currentWorkspace.WorkspaceId, ct);
 
-    public Task<long> HandleAsync(DeleteFolder cmd, string userId, string? workspaceId, CancellationToken ct = default) =>
+    public Task<FolderDeleteResult> HandleAsync(DeleteFolder cmd, string userId, string? workspaceId, CancellationToken ct = default) =>
         CommandInstrumentation.RunAsync(metrics, logger, nameof(DeleteFolder), "Folder", async () =>
         {
             var streamId = cmd.FolderId.ToStreamId();
@@ -70,9 +70,13 @@ public sealed class FolderCommandHandler(
             var allFolders = await folderTreeStore.GetAllAsync(ct).ConfigureAwait(false);
             var subtreeIds = GetSubtreeIds(cmd.FolderId, allFolders);
 
-            // Unfile notes in descendants + root folder (order doesn't matter for unfiling)
+            // Unfile notes in descendants + root folder (order doesn't matter for unfiling). Each
+            // unfile is a NOTE-stream write, so the caller needs the last one's token to gate the
+            // cards-list read that follows the delete (BUG-46).
+            string? noteCardsToken = null;
             foreach (var folderId in subtreeIds.Concat([cmd.FolderId]))
-                await UnfileNotesInFolderAsync(folderId, userId, workspaceId, ct).ConfigureAwait(false);
+                noteCardsToken = await UnfileNotesInFolderAsync(folderId, userId, workspaceId, ct).ConfigureAwait(false)
+                    ?? noteCardsToken;
 
             // Delete descendant folders bottom-up (subtreeIds already in bottom-up order)
             foreach (var folderId in subtreeIds)
@@ -82,7 +86,7 @@ public sealed class FolderCommandHandler(
             var newEvents = RebuildFolder(history).Handle(cmd);
             var envelopes = ToEnvelopes(streamId, newEvents, userId, workspaceId);
             await store.AppendAsync(streamId, history.Count, envelopes, ct).ConfigureAwait(false);
-            return (long)(history.Count + envelopes.Count);
+            return new FolderDeleteResult(history.Count + envelopes.Count, noteCardsToken);
         });
 
     public Task<long> HandleAsync(MoveFolder cmd, CancellationToken ct = default) =>
@@ -108,12 +112,18 @@ public sealed class FolderCommandHandler(
             return await PersistFolderAsync(streamId, history, newEvents, userId, workspaceId, ct).ConfigureAwait(false);
         });
 
-    private async Task UnfileNotesInFolderAsync(FolderId folderId, string userId, string? workspaceId, CancellationToken ct)
+    // Returns the LAST unfile write's note-stream token, or null when the folder held no notes.
+    private async Task<string?> UnfileNotesInFolderAsync(FolderId folderId, string userId, string? workspaceId, CancellationToken ct)
     {
         var allCards = await noteCardListStore.QueryAllAsync(ct).ConfigureAwait(false);
         var notesInFolder = allCards.Where(c => c.FolderId == folderId && !c.Deleted && c.UserId == userId).ToList();
+        string? lastToken = null;
         foreach (var card in notesInFolder)
-            await noteCommandHandler.HandleAsync(new UnfileNote(card.NoteId), userId, workspaceId, ct).ConfigureAwait(false);
+        {
+            var version = await noteCommandHandler.HandleAsync(new UnfileNote(card.NoteId), userId, workspaceId, ct).ConfigureAwait(false);
+            lastToken = $"{card.NoteId.ToStreamId()}@{version}";
+        }
+        return lastToken;
     }
 
     private async Task DeleteOneFolderAsync(FolderId folderId, string userId, string? workspaceId, CancellationToken ct)

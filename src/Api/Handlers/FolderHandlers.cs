@@ -65,17 +65,21 @@ public static class FolderHandlers
         var all = await folderTreeStore.GetAllAsync(ct).ConfigureAwait(false);
         if (!all.Any(f => f.FolderId == new FolderId(folderId) && f.UserId == currentUser.UserId))
             return Results.NotFound();
-        long version;
+        FolderDeleteResult result;
         try
         {
-            version = await handler.HandleAsync(new Domain.Folders.DeleteFolder(new FolderId(folderId)), ct);
+            result = await handler.HandleAsync(new Domain.Folders.DeleteFolder(new FolderId(folderId)), ct);
         }
         catch (InvalidOperationException)
         {
             return Results.NotFound();
         }
 
-        SetConsistencyToken(response, new FolderId(folderId), version);
+        SetConsistencyToken(response, new FolderId(folderId), result.Version);
+        // BUG-46: the unfile cascade wrote to note streams too, so the client's cards refetch needs
+        // its own token — the folder-tree token gates only the folder read.
+        if (result.NoteCardsToken is not null)
+            response.Headers["X-Consistency-Token-Notes"] = result.NoteCardsToken;
         return Results.NoContent();
     }
 

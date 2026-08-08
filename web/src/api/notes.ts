@@ -14,7 +14,7 @@ import { gatedRead } from './gatedRead';
 // `If-Consistent-With` so the server waits until the projector applied the write. A single-note
 // read (GET /notes/{id}) waits on that note's own stream; the cards LIST read waits on the most
 // recently written note (the one the user just edited).
-const NOTE_CARDS_SCOPE = 'noteCards';
+export const NOTE_CARDS_SCOPE = 'noteCards';
 
 function noteStream(noteId: string): string {
   return `note#${noteId}`;
