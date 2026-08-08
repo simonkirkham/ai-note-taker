@@ -612,11 +612,14 @@ public sealed class AppPage
         Assertions.Expect(page.GetByTestId("agenda-coverage")).ToContainTextAsync(expected);
 
     /// <summary>
-    /// The pill AFTER a reload — the persistence proof. A reload drops the live document and the
-    /// strip falls back to the projection, so this only passes once the content saved AND the
-    /// projector folded it. Per-attempt timeout is above the 8s server RYW gate cap so a gated read
-    /// is never aborted mid-converge, and the readiness gate is the ENABLED save button rather than
-    /// the title input, which renders before the detail read lands.
+    /// The pill AFTER a reload — proves the note CONTENT round-tripped (saved, re-fetched, and
+    /// re-parsed into topics). It does NOT prove the server-side derive: the remounted editor
+    /// republishes live topics from the reloaded content, and those win over the projection, so
+    /// this would stay green even if AgendaFromContent were deleted. The derive is proven by
+    /// AgendaFromBodySpec and the DynamoDbNoteDetailStore round-trip test, not here.
+    /// Per-attempt timeout is above the 8s server RYW gate cap so a gated read is never aborted
+    /// mid-converge, and the readiness gate is the ENABLED save button rather than the title
+    /// input, which renders before the detail read lands.
     /// </summary>
     public async Task AssertAgendaCoverageAfterReloadAsync(string expected, int timeoutMs = 30000)
     {
@@ -632,7 +635,12 @@ public sealed class AppPage
             }
             catch (PlaywrightException) when (DateTime.UtcNow < deadline)
             {
-                seen = await page.GetByTestId("agenda-coverage").TextContentAsync() ?? "(absent)";
+                // Bounded + existence-gated: the failure this diagnostic exists to explain is
+                // "the pill never rendered", and an auto-waiting read would then block the default
+                // timeout and throw TimeoutException, throwing away the message being built.
+                seen = await page.GetByTestId("agenda-coverage").CountAsync() > 0
+                    ? await page.GetByTestId("agenda-coverage").TextContentAsync(new() { Timeout = 1000 }) ?? "(empty)"
+                    : "(absent)";
                 await page.ReloadAsync();
                 await Assertions.Expect(page.GetByTestId("save-button"))
                     .ToBeEnabledAsync(new() { Timeout = 9000 });

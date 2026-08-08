@@ -11,9 +11,9 @@ namespace Browser.E2E.Journeys;
 // BUG-62, the 44-minute hang, the CHANGE-23 re-cut) cost more than the bug it caught, so halving
 // the flake surface is worth more than two narrower tests. Do not add a second agenda journey.
 //
-// Both assertions are projector-backed: the agenda is derived from the note CONTENT, so the pill
-// only moves after the content saves, the projector folds it, and the note-detail read returns.
-// Hence the reload-tolerant helper rather than a bare ToBeVisible.
+// Since 43-G the strip renders from the LIVE editor document, so the pill moves synchronously on a
+// body or header edit — the reload-tolerant helper is for the PERSISTENCE step only, where the
+// content has to round-trip through the server before it can reappear.
 [Collection("E2E Journeys")]
 public sealed class AgendaJourney(BrowserFixture browser) : IAsyncLifetime
 {
@@ -60,8 +60,10 @@ public sealed class AgendaJourney(BrowserFixture browser) : IAsyncLifetime
         // The strip renders from the live document, so the count moves without a round trip.
         await _app.AssertAgendaCoverageAsync("0 / 2");
 
-        // And it really persisted: after a reload the live document is gone and the strip falls
-        // back to the projection, so this passes only if the content saved and the projector folded.
+        // And it really persisted: after a reload the topic can only come back from the server's
+        // copy of the note content. This proves the content round-trip, NOT the server-side derive
+        // (the remounted editor republishes live topics from the reloaded content, which win over
+        // the projection) — AgendaFromBodySpec covers the derive.
         await _app.AssertAgendaCoverageAfterReloadAsync("0 / 2");
     }
 }

@@ -1,3 +1,4 @@
+import type { Node as ProseMirrorNode } from '@tiptap/pm/model';
 import type { Editor } from '@tiptap/react';
 
 // Phase 43-G — the header agenda strip writes back into the note body.
@@ -33,22 +34,43 @@ export interface AgendaEditorApi {
   removeTopic(position: number): void;
 }
 
-// Only TOP-LEVEL checklists count as the agenda, matching AgendaFromContent on the server, which
-// deliberately skips blockquoted task lines (a quoted checklist is someone else's, not your agenda).
-// Walking the whole doc instead would let a header action target a line the projection never counted
-// — the index the header holds and the index the command resolves would be over different sets.
+// What counts as a topic must match AgendaFromContent on the server EXACTLY, or the index the
+// header renders and the index a command resolves are over different sets again.
+//
+// The server's rule (AgendaFromContent.cs) is a per-line regex opening with `^[ \t]*`, so:
+//   • NESTED items DO count, flattened into document order — AgendaFromBodySpec pins this, and
+//     phase-43.md records the decision. Hence the recursion below: a top-level-only walk silently
+//     dropped nested topics the user can see, which is a regression against shipped 43-F.
+//   • BLOCKQUOTED lines do NOT count (a quoted checklist is someone else's agenda), so the walk
+//     starts from top-level taskLists rather than every taskList in the document.
+//   • EMPTY items do NOT count — the regex needs text after the bracket — so a freshly-pressed
+//     item is skipped until it has content, keeping the indices aligned as the user types.
+// Pre-order recursion is markdown line order, which is the order the server produces.
+function collectTaskItems(
+  node: ProseMirrorNode,
+  base: number,
+  out: { pos: number; text: string; checked: boolean }[],
+): void {
+  node.forEach((child, offset) => {
+    if (child.type.name !== 'taskItem') return;
+    const pos = base + offset;
+    // textContent on the item would swallow its nested children's text too, so read the item's
+    // own first paragraph.
+    const text = (child.firstChild?.textContent ?? '').trim();
+    if (text.length > 0) out.push({ pos, text, checked: child.attrs.checked === true });
+    // Recurse into any nested taskList so its items land immediately after their parent.
+    child.forEach((grandchild, childOffset) => {
+      if (grandchild.type.name === 'taskList') {
+        collectTaskItems(grandchild, pos + 1 + childOffset + 1, out);
+      }
+    });
+  });
+}
+
 function topLevelTaskItems(editor: Editor): { pos: number; text: string; checked: boolean }[] {
   const items: { pos: number; text: string; checked: boolean }[] = [];
   editor.state.doc.forEach((node, offset) => {
-    if (node.type.name !== 'taskList') return;
-    node.forEach((child, childOffset) => {
-      if (child.type.name !== 'taskItem') return;
-      const text = child.textContent.trim();
-      // The server needs text after the bracket to call it a topic, so a freshly-pressed empty
-      // item is not one. Skipping it here keeps the two indices aligned as the user types.
-      if (text.length === 0) return;
-      items.push({ pos: offset + 1 + childOffset, text, checked: child.attrs.checked === true });
-    });
+    if (node.type.name === 'taskList') collectTaskItems(node, offset + 1, items);
   });
   return items;
 }

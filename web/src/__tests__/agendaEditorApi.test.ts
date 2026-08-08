@@ -26,6 +26,46 @@ function makeEditor(markdown: string) {
 const md = (e: Editor) => (e.storage.markdown).getMarkdown()
 
 describe('agendaEditorApi', () => {
+  // What counts as a topic must match AgendaFromContent on the server, which
+  // AgendaFromBodySpec pins. A divergence here does not corrupt anything (both the header and the
+  // commands use this same walk) but it silently drops or adds topics the user can see.
+  describe('what counts as a topic', () => {
+    it('counts nested items, flattened into document order', () => {
+      const e = makeEditor('- [ ] Budget (Q3)\n  - [ ] Cloud spend\n- [ ] Hiring plan')
+      expect(createAgendaEditorApi(e).readTopics().map((t) => t.text)).toEqual([
+        'Budget (Q3)',
+        'Cloud spend',
+        'Hiring plan',
+      ])
+    })
+
+    it('addresses a nested topic by its flattened index', () => {
+      const e = makeEditor('- [ ] Budget (Q3)\n  - [ ] Cloud spend\n- [ ] Hiring plan')
+      createAgendaEditorApi(e).setTopicChecked(1, true)
+
+      const topics = createAgendaEditorApi(e).readTopics()
+      expect(topics[1]).toEqual({ text: 'Cloud spend', checked: true })
+      expect(topics[0].checked).toBe(false)
+      expect(topics[2].checked).toBe(false)
+    })
+
+    it('skips an empty item, so a freshly-pressed line does not shift the indices', () => {
+      const e = makeEditor('- [ ] Budget (Q3)\n- [ ] \n- [ ] Hiring plan')
+      expect(createAgendaEditorApi(e).readTopics().map((t) => t.text)).toEqual([
+        'Budget (Q3)',
+        'Hiring plan',
+      ])
+    })
+
+    it('reads the ticked state per item', () => {
+      const e = makeEditor('- [x] Budget (Q3)\n- [ ] Hiring plan')
+      expect(createAgendaEditorApi(e).readTopics()).toEqual([
+        { text: 'Budget (Q3)', checked: true },
+        { text: 'Hiring plan', checked: false },
+      ])
+    })
+  })
+
   describe('addTopic', () => {
     it('appends to the first checklist in the note', () => {
       const e = makeEditor('- [ ] Budget (Q3)\n\nRunning prose here.\n\n- [ ] A later list')
