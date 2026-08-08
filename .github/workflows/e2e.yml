@@ -314,5 +314,5 @@ jobs:
           name: playwright-traces
           path: |
             trace-run-*.zip
-            **/trace.zip
+            **/trace*.zip
           if-no-files-found: ignore

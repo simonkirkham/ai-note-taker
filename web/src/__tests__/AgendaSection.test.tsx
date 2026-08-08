@@ -51,36 +51,22 @@ describe('AgendaSection', () => {
     expect(screen.getByTestId('agenda-add-input')).toBeInTheDocument()
   })
 
-  it('adds an item optimistically on Enter, before the server responds', async () => {
-    // Block the POST resolving until released, proving the item appears optimistically (not after
-    // the server reply). The onSettled refetch then reconciles to the server item id.
-    let release: () => void = () => {}
-    const gate = new Promise<void>((r) => { release = r })
+  // 43-G: adding no longer posts to the API — it writes a line into the note document, and the
+  // strip re-renders from that document. The optimistic criterion is now structural: there is no
+  // request to be ahead of. Covered end-to-end in the "derived from the note body" block below.
+  it('adding requires a live editor and never posts to the agenda API', async () => {
     let posted = false
     server.use(
-      http.post(`/api/notes/${NOTE_ID}/agenda-items`, async () => {
+      http.post(`/api/notes/${NOTE_ID}/agenda-items`, () => {
         posted = true
-        await gate
         return HttpResponse.json({ itemId: 'real-1' }, { status: 201 })
       }),
-      http.get(`/api/notes/${NOTE_ID}`, () =>
-        HttpResponse.json(noteWith(posted
-          ? [{ itemId: 'real-1', text: 'Budget (Q3)', discussed: false, position: 0 }]
-          : []))),
     )
     renderAgenda([])
 
-    const input = screen.getByTestId('agenda-add-input')
-    await userEvent.type(input, 'Budget (Q3){Enter}')
-
-    // Optimistic: the item is visible and the input cleared while the POST is still pending.
-    expect(await screen.findByText('Budget (Q3)')).toBeInTheDocument()
-    expect((input as HTMLInputElement).value).toBe('')
-    await waitFor(() => expect(posted).toBe(true))
-
-    release()
-    // After settle, the item remains (reconciled to the server copy).
-    await waitFor(() => expect(screen.getByText('Budget (Q3)')).toBeInTheDocument())
+    // With no editor the input is disabled, so the user cannot mint a legacy topic by accident.
+    expect(screen.getByTestId('agenda-add-input')).toHaveAttribute('readonly')
+    expect(posted).toBe(false)
   })
 
   it('rolls the optimistic item back when the add fails', async () => {
@@ -273,38 +259,145 @@ describe('AgendaSection', () => {
   })
 })
 
-// 43-F: a topic read out of the note body has no event stream behind it, so the agenda-item
-// endpoints would 404 on it. The header shows it and counts it, but routes editing to the notes.
+// 43-G: a derived topic is a task-list line in the note, so the header now edits that line through
+// the editor rather than the API. 43-F made these controls read-only as a stopgap because the
+// agenda-item endpoints would 404 on a topic with no event stream; this slice replaces that with a
+// real write path, so the assertions it added are deliberately inverted here.
 describe('AgendaSection — topics derived from the note body', () => {
+  function editorStub() {
+    return {
+      readTopics: vi.fn(() => []),
+      addTopic: vi.fn(),
+      setTopicChecked: vi.fn(),
+      setTopicText: vi.fn(),
+      removeTopic: vi.fn(),
+    }
+  }
+
+  function renderWithEditor(
+    agenda: NoteDetail['agenda'],
+    editor: ReturnType<typeof editorStub> | null,
+    liveTopics: { text: string; checked: boolean }[] | null = null,
+  ) {
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity }, mutations: { retry: false } } })
+    qc.setQueryData(keys.note(NOTE_ID), noteWith(agenda))
+    const Wrapper = ({ children }: { children: ReactNode }) => (
+      <QueryClientProvider client={qc}>{children}</QueryClientProvider>
+    )
+    return rtlRender(<AgendaSection noteId={NOTE_ID} editor={editor} liveTopics={liveTopics} />, { wrapper: Wrapper })
+  }
+
+  const derived = (over: Partial<NonNullable<NoteDetail['agenda']>[number]> = {}) => ({
+    itemId: 'd-1', text: 'Budget (Q3)', discussed: false, position: 0, derived: true, ...over,
+  })
+
   it('counts a derived topic in the coverage pill', () => {
-    renderAgenda([
-      { itemId: 'd-1', text: 'Budget (Q3)', discussed: true, position: 0, derived: true },
-      { itemId: 'd-2', text: 'Hiring plan', discussed: false, position: 1, derived: true },
-    ])
+    renderWithEditor([
+      derived({ itemId: 'd-1', discussed: true }),
+      derived({ itemId: 'd-2', text: 'Hiring plan', position: 1 }),
+    ], editorStub())
     expect(screen.getByTestId('agenda-coverage').textContent).toContain('1')
     expect(screen.getByTestId('agenda-coverage').textContent).toContain('2')
   })
 
-  it('disables the checkbox on a derived topic', () => {
-    renderAgenda([{ itemId: 'd-1', text: 'Budget (Q3)', discussed: false, position: 0, derived: true }])
-    expect(screen.getByTestId('agenda-item-check')).toBeDisabled()
+  it('ticking a derived topic edits its line in the note, not the API', async () => {
+    const user = userEvent.setup()
+    const editor = editorStub()
+    renderWithEditor([derived()], editor)
+
+    await user.click(screen.getByTestId('agenda-item-check'))
+
+    expect(editor.setTopicChecked).toHaveBeenCalledWith(0, true)
   })
 
-  it('does not offer remove on a derived topic', () => {
-    renderAgenda([{ itemId: 'd-1', text: 'Budget (Q3)', discussed: false, position: 0, derived: true }])
+  it('removing a derived topic deletes its line from the note', async () => {
+    const user = userEvent.setup()
+    const editor = editorStub()
+    renderWithEditor([derived({ position: 2 })], editor)
+
+    await user.click(screen.getByTestId('agenda-item-remove'))
+
+    expect(editor.removeTopic).toHaveBeenCalledWith(2)
+  })
+
+  it('rewording a derived topic rewrites its line in the note', async () => {
+    const user = userEvent.setup()
+    const editor = editorStub()
+    renderWithEditor([derived()], editor)
+
+    await user.click(screen.getByTestId('agenda-item-text'))
+    const input = screen.getByTestId('agenda-item-edit-input')
+    await user.clear(input)
+    await user.type(input, 'Q3 budget review{Enter}')
+
+    expect(editor.setTopicText).toHaveBeenCalledWith(0, 'Q3 budget review')
+  })
+
+  it('adding a topic writes a line into the note', async () => {
+    const user = userEvent.setup()
+    const editor = editorStub()
+    renderWithEditor([], editor)
+
+    await user.type(screen.getByTestId('agenda-add-input'), 'On-call rotation{Enter}')
+
+    expect(editor.addTopic).toHaveBeenCalledWith('On-call rotation')
+  })
+
+  // The editor is lazy-loaded, so there is a window where the strip is on screen and there is
+  // nothing to write to. Controls disable rather than silently no-op or 404.
+  it('disables derived controls while the editor has not loaded', () => {
+    renderWithEditor([derived()], null)
+    expect(screen.getByTestId('agenda-item-check')).toBeDisabled()
+    expect(screen.getByTestId('agenda-item-text')).toBeDisabled()
     expect(screen.queryByTestId('agenda-item-remove')).toBeNull()
   })
 
-  it('does not open an inline editor on a derived topic', async () => {
-    const user = userEvent.setup()
-    renderAgenda([{ itemId: 'd-1', text: 'Budget (Q3)', discussed: false, position: 0, derived: true }])
-    await user.click(screen.getByTestId('agenda-item-text'))
-    expect(screen.queryByTestId('agenda-item-edit-input')).toBeNull()
+  // The C1 fix: the strip must render from the LIVE document, never from the projection, whenever
+  // the editor is mounted. Rendering from the projection while resolving indices against the
+  // document is what let a header action target the wrong line.
+  it('renders topics from the live document, not the stale projection', () => {
+    renderWithEditor(
+      [derived({ text: 'Stale from the server', position: 0 })],
+      editorStub(),
+      [{ text: 'Typed just now', checked: false }, { text: 'And another', checked: true }],
+    )
+
+    const texts = screen.getAllByTestId('agenda-item-text').map((t) => t.textContent)
+    expect(texts).toEqual(['Typed just now', 'And another'])
+    expect(screen.getByTestId('agenda-coverage').textContent).toContain('1')
+    expect(screen.getByTestId('agenda-coverage').textContent).toContain('2')
   })
 
-  it('still allows editing a legacy (non-derived) topic', async () => {
+  it('addresses a command by the live index, so an unprojected line cannot mis-target it', async () => {
     const user = userEvent.setup()
-    renderAgenda([{ itemId: 'i-1', text: 'Budget (Q3)', discussed: false, position: 0 }])
+    const editor = editorStub()
+    // The projection still shows one topic; the document already has a new line ABOVE it.
+    renderWithEditor(
+      [derived({ text: 'Budget (Q3)', position: 0 })],
+      editor,
+      [{ text: 'Typed above', checked: false }, { text: 'Budget (Q3)', checked: false }],
+    )
+
+    const rows = screen.getAllByTestId('agenda-item-check')
+    await user.click(rows[1])
+
+    // Index 1 in the LIVE document is "Budget (Q3)" — the row the user actually clicked.
+    expect(editor.setTopicChecked).toHaveBeenCalledWith(1, true)
+  })
+
+  it('legacy topics are listed after the live ones and keep the API path', () => {
+    renderWithEditor(
+      [{ itemId: 'i-1', text: 'Legacy topic', discussed: false, position: 0 }],
+      editorStub(),
+      [{ text: 'From the note', checked: false }],
+    )
+    const texts = screen.getAllByTestId('agenda-item-text').map((t) => t.textContent)
+    expect(texts).toEqual(['From the note', 'Legacy topic'])
+  })
+
+  it('still allows editing a legacy (non-derived) topic through the API', async () => {
+    const user = userEvent.setup()
+    renderWithEditor([{ itemId: 'i-1', text: 'Budget (Q3)', discussed: false, position: 0 }], editorStub())
     expect(screen.getByTestId('agenda-item-check')).not.toBeDisabled()
     await user.click(screen.getByTestId('agenda-item-text'))
     expect(screen.getByTestId('agenda-item-edit-input')).toBeInTheDocument()
