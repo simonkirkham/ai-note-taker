@@ -15,16 +15,22 @@ export const MAX_LOG_BYTES = 512 * 1024
 
 export type LiveStep = {
   windowMs: number // audio re-transcribed this step
-  inferenceMs: number // how long whisper took
+  inferenceMs: number // how long whisper took; -1 when the step failed
   committedChars: number // size of the settled transcript so far
   dropped: number // steps skipped by the busy-guard since the last log line
+  clampedMs?: number // audio withheld by the send cap (0 normally; >0 means we are behind)
+  error?: string // present when the step failed — a run of these IS the diagnosis
 }
 
 export function formatStep(s: LiveStep): string {
+  if (s.error) {
+    return `step FAILED dropped=${s.dropped} committed=${s.committedChars} err=${s.error}`
+  }
   // realtime factor: <1 means inference is faster than the audio it covers — the number that
   // decides whether the live view can keep pace at all.
   const rtf = s.windowMs > 0 ? (s.inferenceMs / s.windowMs).toFixed(2) : 'n/a'
-  return `step window=${s.windowMs}ms infer=${s.inferenceMs}ms rtf=${rtf} committed=${s.committedChars} dropped=${s.dropped}`
+  const clamped = s.clampedMs ? ` clamped=${s.clampedMs}ms` : ''
+  return `step window=${s.windowMs}ms infer=${s.inferenceMs}ms rtf=${rtf} committed=${s.committedChars} dropped=${s.dropped}${clamped}`
 }
 
 export function formatSessionStart(o: {

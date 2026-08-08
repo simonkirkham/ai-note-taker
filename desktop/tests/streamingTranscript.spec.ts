@@ -1,10 +1,13 @@
 import { test, expect } from '@playwright/test'
-import { reduceStream as reduce, initStreamState as init } from '../src/streamingTranscript'
+import { reduceStream as reduce, initStreamState as init, DEFAULT_STREAM_CONFIG } from '../src/streamingTranscript'
 import { parseServerSegments } from '../src/whisperServer'
 import type { WhisperSegment } from '../src/whisperParse'
 
 // BUG-53 — pure streaming reducer + server-JSON parse. Headless.
 const seg = (startMs: number, endMs: number, text: string): WhisperSegment => ({ startMs, endMs, text })
+// A fixed config so the behavioural cases read clearly. The SHIPPED constants are exercised
+// separately below — BUG-65 halved them, and every case here would otherwise test a config
+// that ships nowhere.
 const cfg = { stabilityMs: 1500, maxWindowMs: 8000, hardWindowMs: 16000 }
 
 test('below the window threshold, nothing commits — the whole window is the live tail', () => {
@@ -75,4 +78,17 @@ test('parseServerSegments: seconds → ms, baseMs offset, drops non-speech', () 
   expect(out.map((s) => s.text)).toEqual(['Hello there.', 'Next.'])
   expect(out[0].startMs).toBe(6000)
   expect(out[1].startMs).toBe(9000)
+})
+
+// BUG-65 — every case above pins a fixed config so the behaviour reads clearly, which means none of
+// them exercise the constants that actually ship. This one does: the halved window must still
+// commit, or the live transcript would never settle on a real machine.
+test('the SHIPPED config commits settled segments once the window passes its threshold', () => {
+  const now = DEFAULT_STREAM_CONFIG.maxWindowMs + 1000
+  const settledEnd = now - DEFAULT_STREAM_CONFIG.stabilityMs - 500
+  const { state, display } = reduce(init(), [seg(0, settledEnd, 'settled'), seg(settledEnd, now, 'tail')], now)
+
+  expect(state.committed).toBe('settled')
+  expect(state.finalizedMs).toBe(settledEnd)
+  expect(display).toBe('settled tail')
 })

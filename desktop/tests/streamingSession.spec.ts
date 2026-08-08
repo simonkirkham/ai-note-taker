@@ -229,3 +229,71 @@ test('a disposed session never reports a ready timeout', async () => {
 
   expect(errors).toEqual([])
 })
+
+// BUG-65 — the diagnostic must cover the failure shape it exists to diagnose, and the send cap
+// must actually hold on the slow machine that has the bug.
+
+test('a failed step still writes a diagnostic line — a run of timeouts must not be silent', async () => {
+  const stats: { inferenceMs: number; error?: string }[] = []
+  const server = stubServer({ running: true, ready: true })
+  ;(server as unknown as { transcribe: () => Promise<never> }).transcribe = () =>
+    Promise.reject(new Error('The operation was aborted due to timeout'))
+  const session = new StreamingSession(server, () => {}, () => {}, undefined, {
+    readyTimeoutMs: 60_000,
+    onStep: (s) => stats.push({ inferenceMs: s.inferenceMs, error: s.error }),
+  })
+  session.start()
+  session.pushPcm(pcm)
+  await waitMs(1700)
+  session.dispose()
+
+  expect(stats.length).toBeGreaterThan(0)
+  expect(stats[0].error).toMatch(/aborted due to timeout/i)
+  expect(stats[0].inferenceMs).toBe(-1)
+})
+
+test('the window sent to the engine is capped, and the withheld audio is reported', async () => {
+  const sent: number[] = []
+  const server = stubServer({ running: true, ready: true })
+  ;(server as unknown as { transcribe: (p: Buffer) => Promise<never[]> }).transcribe = (p: Buffer) => {
+    sent.push(p.length)
+    return Promise.resolve([])
+  }
+  const stats: { clampedMs: number }[] = []
+  const session = new StreamingSession(server, () => {}, () => {}, undefined, {
+    readyTimeoutMs: 60_000,
+    maxSendWindowMs: 1000, // 1s cap
+    onStep: (s) => stats.push({ clampedMs: s.clampedMs }),
+  })
+  session.start()
+  session.pushPcm(Buffer.alloc(32 * 5000)) // 5s of audio against a 1s cap
+  await waitMs(1700)
+  session.dispose()
+
+  expect(sent.length).toBeGreaterThan(0)
+  expect(sent[0]).toBe(32 * 1000) // exactly the cap, not the whole 5s
+  expect(stats[0].clampedMs).toBe(4000) // and the 4s withheld is visible in the log
+})
+
+test('a throwing diagnostic cannot break the recording', async () => {
+  const errors: Error[] = []
+  const session = new StreamingSession(
+    stubServer({ running: true, ready: true }),
+    () => {},
+    (e) => errors.push(e),
+    undefined,
+    {
+      readyTimeoutMs: 60_000,
+      onStep: () => {
+        throw new Error('log volume full')
+      },
+    },
+  )
+  session.start()
+  session.pushPcm(pcm)
+  await waitMs(5000) // well past FAIL_THRESHOLD steps
+
+  session.dispose()
+  // A throwing onStep must not count as an inference failure, or it raises a false banner.
+  expect(errors).toEqual([])
+})

@@ -1,17 +1,23 @@
 import { test, expect } from '@playwright/test'
-import { buildServerArgs, LIVE_AUDIO_CTX, AUDIO_CTX_FULL, AUDIO_CTX_SECONDS } from '../src/whisperServer'
-import { DEFAULT_STREAM_CONFIG } from '../src/streamingTranscript'
+import { buildServerArgs, LIVE_AUDIO_CTX, AUDIO_CTX_FULL, audioCtxSeconds } from '../src/whisperServer'
+import { MAX_SEND_WINDOW_MS } from '../src/streamingSession'
 
-// BUG-65 — the live server was spawned with NO streaming flags, so every /inference paid the full
-// 30s padded encoder cost and let temperature fallback retry a clipped-boundary segment up to ~6x.
-// These lock the flags in, and lock the one invariant that can silently corrupt the live transcript.
+// BUG-65 — the live server was spawned with no --audio-ctx, so every /inference paid the full 30s
+// padded encoder cost regardless of how little audio it was given.
 
-test('the live server asks for a reduced encoder context and disables temperature fallback', () => {
+test('the live server asks for a reduced encoder context', () => {
   const args = buildServerArgs({ modelPath: '/m/base.en.bin', port: 1234, threads: 2 })
 
   expect(args).toContain('--audio-ctx')
   expect(args[args.indexOf('--audio-ctx') + 1]).toBe(String(LIVE_AUDIO_CTX))
-  expect(args).toContain('--no-fallback')
+})
+
+// --no-fallback is NOT passed: server.cpp parses it and never reads it (cli.cpp and stream.cpp do
+// `no_fallback ? 0.0f : …`; the server assigns temperature_inc unconditionally), so it is dead in
+// every release through v1.9.1. Passing it would be a no-op that reads as a fix — which is worse
+// than not passing it, because a test asserting it would then certify nothing.
+test('the dead --no-fallback flag is not passed', () => {
+  expect(buildServerArgs({ modelPath: '/m/base.en.bin', port: 1234, threads: 2 })).not.toContain('--no-fallback')
 })
 
 test('the model, host, port and thread arguments are still passed correctly', () => {
@@ -24,27 +30,27 @@ test('the model, host, port and thread arguments are still passed correctly', ()
 })
 
 // --flash-attn is NOT passed: the pinned v1.9.1 server already defaults flash_attn to true, so
-// passing it is a no-op — and every extra argument is a chance to hit the parser's exit-on-unknown
-// path, which is exactly how BUG-56 killed the live transcript.
+// passing it is a no-op — and every extra argument is a chance to hit the parser's unknown-argument
+// path, which calls exit(0), so a mistyped flag looks like a clean shutdown. That is exactly how
+// BUG-56 killed the live transcript.
 test('no unnecessary flags are passed', () => {
-  const args = buildServerArgs({ modelPath: '/m/base.en.bin', port: 1234, threads: 2 })
-
-  expect(args).not.toContain('--flash-attn')
-  expect(args).not.toContain('--beam-size') // already greedy by default (beam_size = -1)
+  expect(buildServerArgs({ modelPath: '/m/base.en.bin', port: 1234, threads: 2 })).not.toContain('--flash-attn')
 })
 
-// The invariant that can bite silently: --audio-ctx caps how much audio the encoder can see. If the
-// sliding window is ever allowed to grow past that, the tail is truncated inside whisper and the
-// live transcript quietly loses its most recent words — no error anywhere. Same class as the ready
-// deadline that sat above the start timeout: two constants in different modules that must be ordered.
-test('the hard window fits inside the encoder context we ask for', () => {
-  const encoderCapacityMs = AUDIO_CTX_SECONDS(LIVE_AUDIO_CTX) * 1000
-
-  expect(DEFAULT_STREAM_CONFIG.hardWindowMs).toBeLessThan(encoderCapacityMs)
-  expect(DEFAULT_STREAM_CONFIG.maxWindowMs).toBeLessThan(DEFAULT_STREAM_CONFIG.hardWindowMs)
+// The invariant that bites silently. --audio-ctx caps what the encoder can see, and overshooting is
+// worse than "sees less": whisper truncates the mel copy at the context but the seek loop still
+// advances a full 30s on a missed timestamp, so audio gets skipped outright.
+//
+// NOTE this asserts the SEND cap, not hardWindowMs. hardWindowMs does not bound the runtime window
+// — finalizedMs advances only after an inference completes while the busy-guard drops ticks, so the
+// real window is roughly inferenceMs + stabilityMs + STEP_MS and can exceed 15s on a slow machine
+// (/inference alone tolerates 20s). An earlier version of this test asserted hardWindowMs and so
+// certified an invariant it did not actually enforce.
+test('the send cap fits inside the encoder context we ask for', () => {
+  expect(MAX_SEND_WINDOW_MS).toBeLessThan(audioCtxSeconds(LIVE_AUDIO_CTX) * 1000)
 })
 
-test('AUDIO_CTX_SECONDS maps the encoder context onto whisper\'s 30s frame', () => {
-  expect(AUDIO_CTX_SECONDS(AUDIO_CTX_FULL)).toBe(30)
-  expect(AUDIO_CTX_SECONDS(AUDIO_CTX_FULL / 2)).toBe(15)
+test('audioCtxSeconds maps the encoder context onto whisper\'s 30s frame', () => {
+  expect(audioCtxSeconds(AUDIO_CTX_FULL)).toBe(30)
+  expect(audioCtxSeconds(AUDIO_CTX_FULL / 2)).toBe(15)
 })
