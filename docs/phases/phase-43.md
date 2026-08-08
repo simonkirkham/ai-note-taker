@@ -1,4 +1,4 @@
-# Phase 43 — Meeting agenda (topics to discuss) _(In Progress — 43-A–F done; 43-G/H remain)_
+# Phase 43 — Meeting agenda (topics to discuss) _(In Progress — 43-A–G done; only 43-H remains)_
 
 **Goal:** give each note a short checklist of things you need to discuss, which you tick off as you cover them — from the note itself or from the header, wherever your hands already are.
 
@@ -12,7 +12,7 @@
 | 43-D | Fold the agenda away to a single line when you want the note to be the focus | Done _(#375)_ | 43-A, 43-B |
 | 43-E | One clear way to track topics — the old, ambiguous per-heading ✓ is gone | Done _(#376)_ | 43-D |
 | 43-F | Tick a topic off in the notes as you type, and watch the count move | Done _(#428)_ | 43-D |
-| 43-G | Add, reword or drop a topic from the header and have the notes follow | Not Started | 43-F |
+| 43-G | Add, reword or drop a topic from the header and have the notes follow | Done _(#438)_ | 43-F |
 | 43-H | Topics on older notes appear in the notes themselves, like everywhere else | Not Started | 43-F |
 
 43-A is the thin vertical that proves the whole pipe; 43-B/C extend it; 43-D is polish; 43-E removes the superseded mechanism. 43-F–H then move the agenda **into** the note: 43-F reads it from the notes, 43-G makes the header write back, 43-H moves the stragglers over. **Reorder (drag) is deferred** — order is capture order for now.
@@ -377,6 +377,7 @@ _(43-F done — PR #428, deploy #724, `deploy-production` confirmed. Nested item
 - [ ] Idempotent: skip a note whose content already contains a task line matching the topic text. Safe to re-run. **Normalise emphasis before that comparison** — a body line `- [ ] **Budget**` will not match a legacy item `Budget`, and the topic double-lists. 43-F closed the same trap for backslash escapes (`Unescape` in `AgendaFromContent`); emphasis is the other half and is still open.
 - [ ] Verify per note that the pre-migration paragraph count equals the post-migration paragraph count before dropping the legacy fold.
 - [ ] Only **after** verification: remove the legacy `AgendaItem*` fold from `NoteDetailProjection`, remove the agenda write endpoints (`POST /notes/{id}/agenda-items` and siblings), and remove the command-handler arms. The events stay in the stream, unread — reversible.
+- [ ] **Carried from 43-G's review — this slice touches the same rule, so fix them here.** (a) The BUG-24 image-resolve calls `setContent` with `emitUpdate: false`, so the editor's live topic list is not republished for it; one extra `publish()` in that `.then` makes the live list unconditionally authoritative. (b) `collectTaskItems` recurses only into `taskList` children, so a task item reachable through a **non-checklist** list — `- Shopping` / `  - [ ] Milk`, or a bulleted child under a task item — is counted server-side but invisible in the header. Widening the recursion to a list-type set closes it and cannot reintroduce the blockquote exclusion (a blockquote is not a list). (c) A paragraph holding only a non-text inline node (`- [ ] ![shot](key)`) reads as empty client-side and is skipped, while the server counts it.
 - [ ] `EventDeserializer` keeps its `AgendaItem*` arms; a rebuild must still parse historical events without throwing (guardrail).
 - [ ] **Deploy-time: neutral**, but this is a **data migration** — run it as an authenticated admin action after the deploy, like the projection rebuild, not as a deploy step.
 
