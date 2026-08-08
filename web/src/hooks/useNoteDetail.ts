@@ -1,5 +1,5 @@
-import { useQuery } from "@tanstack/react-query";
-import { getNoteDetail } from "../api/notes";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { getNoteDetail, type NoteDetail } from "../api/notes";
 import { keys } from "../api/queryKeys";
 
 // While a batch diarization job is running (33-B1), poll the note this often so the diarized
@@ -13,9 +13,19 @@ const DIARIZATION_POLL_MS = 5000;
 // getNoteDetail-refetch + ref-guard machinery. When pollForDiarization is set, the query
 // refetches on an interval until transcriptIsDiarized flips true, then stops (33-B1).
 export function useNoteDetail(noteId: string, pollForDiarization = false) {
+  const queryClient = useQueryClient();
   return useQuery({
     queryKey: keys.note(noteId),
-    queryFn: () => getNoteDetail(noteId),
+    queryFn: async () => {
+      const { body, stale } = await getNoteDetail(noteId);
+      // BUG-48: the gate gave up with the projector still behind, so `body` is this note's OLDER
+      // state — commonly an empty title/content while the fold catches up. Storing it would
+      // overwrite good cached detail and flash the note blank (and flip the header Save→Cancel on
+      // `hasContent`). Keep what we have; the token is still held, so the next read re-gates.
+      const cached = queryClient.getQueryData<NoteDetail>(keys.note(noteId));
+      if (stale && cached) return cached;
+      return body;
+    },
     refetchInterval: pollForDiarization
       ? (query) => (query.state.data?.transcriptIsDiarized ? false : DIARIZATION_POLL_MS)
       : false,

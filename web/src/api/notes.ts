@@ -7,7 +7,7 @@ import {
   setLatestToken,
   setStreamToken,
 } from './consistencyTokens';
-import { gatedRead } from './gatedRead';
+import { gatedRead, gatedReadResult, type GatedResult } from './gatedRead';
 
 // Read-your-writes (RYW-2): the note flows are async (the projector builds the read models). A
 // note write returns its write token in `X-Consistency-Token`; the next note read echoes it in
@@ -125,9 +125,11 @@ export async function searchNotes(q: string): Promise<SearchResult[]> {
   return body.items;
 }
 
-export function getNoteDetail(noteId: string): Promise<NoteDetail> {
+// Returns the gate's verdict alongside the note: a `stale` read is the projector's older state of
+// this note, which the caller must not store over fresher data it already holds (BUG-48).
+export function getNoteDetail(noteId: string): Promise<GatedResult<NoteDetail>> {
   const stream = noteStream(noteId);
-  return gatedRead<NoteDetail>(`/notes/${noteId}`, getStreamToken(stream), () => clearStreamToken(stream));
+  return gatedReadResult<NoteDetail>(`/notes/${noteId}`, getStreamToken(stream), () => clearStreamToken(stream));
 }
 
 export async function createNote(): Promise<{ noteId: string }> {
