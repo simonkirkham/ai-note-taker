@@ -13,7 +13,8 @@
 | 43-E | One clear way to track topics — the old, ambiguous per-heading ✓ is gone | Done _(#376)_ | 43-D |
 | 43-F | Tick a topic off in the notes as you type, and watch the count move | Done _(#428)_ | 43-D |
 | 43-G | Add, reword or drop a topic from the header and have the notes follow | Done _(#438)_ | 43-F |
-| 43-H | Topics on older notes appear in the notes themselves, like everywhere else | Not Started | 43-F |
+| 43-H1 | Topics on older notes appear in the notes themselves | In Progress _(PR #441 — changes requested, DO NOT RUN)_ | 43-F |
+| 43-H2 | One way everywhere — the old parallel record is gone | Not Started | 43-H1 |
 
 43-A is the thin vertical that proves the whole pipe; 43-B/C extend it; 43-D is polish; 43-E removes the superseded mechanism. 43-F–H then move the agenda **into** the note: 43-F reads it from the notes, 43-G makes the header write back, 43-H moves the stragglers over. **Reorder (drag) is deferred** — order is capture order for now.
 
@@ -370,7 +371,20 @@ _(43-F done — PR #428, deploy #724, `deploy-production` confirmed. Nested item
 - [x] **Deploy-time: neutral** for build/CDK (frontend-only), but the new journey adds recurring wall-clock to the **E2E gate on every deploy** — accepted, and offset by it covering 43-F as well so there is one agenda journey rather than two.
 - [x] **Topics are addressed by index, so both indices must come from ONE document.** Review found the header rendering from the server projection while commands resolved against the local document: a blockquoted checklist (skipped by `AgendaFromContent`, but a real `taskItem` to Tiptap), an empty task line, or any unsaved typing desynchronises them — and `×` then deletes the wrong line. The strip renders from the live document, and `agendaEditorApi` reproduces the server's rule exactly — **nested items count** (flattened into document order, as `AgendaFromBodySpec` pins), blockquoted lines do not, empty items do not. A first attempt at this walked only top-level items and silently dropped nested topics: matching the rule *approximately* is its own regression.
 
-### Slice 43-H — Migrate the stragglers, then drop the old path
+### Slice 43-H1 / 43-H2 — Migrate the stragglers, THEN drop the old path
+
+**Split from one slice into two on 2026-08-08.** Migrating and removing in the same deploy would leave the affected notes with no agenda between the deploy landing and the migration being run — against the strangler ordering this phase mandates. 43-H1 migrates and is verified; only then does 43-H2 remove.
+
+**43-H1 status: PR #441 is open with changes requested. It must NOT be merged or run as written** — it would silently clobber recent typing. Nothing has been run against prod; no dry run, no writes. The full findings are on the PR as a GitHub review. The three that block:
+1. It reads the **async** projection and writes the whole body back with **no `ExpectedBaseContentHash`**, so a lagging projector means the user's recent save is overwritten. Worse, `NoteCommandHandler` retries `ConcurrencyException` and re-appends the *same stale content*, so the retry re-applies the clobber.
+2. It scans and mutates **every user's** notes (no `UserId` filter), disclosing other users' note titles in the dry-run output and aborting mid-batch on a foreign note.
+3. No per-note error isolation — a mid-batch failure loses the record of which notes were already written.
+
+Plus: emphasis normalisation (an explicit criterion below) is unimplemented; prepending above an existing list **merges into it** and reformats content; and the dry run does not show the resulting content, so none of this is visible before applying.
+
+**Worth re-examining the design, not just clearing the findings** — reading the async projection may be wrong in principle here; the event stream is the strongly-consistent source, per the guardrail about never deciding from an async projection.
+
+**Measured scope (prod, 2026-08-08): 8 notes, 36 topics.** 39 `AgendaItemAdded` events across 9 notes; the difference is removals.
 
 - [ ] **Scope, measured in prod 2026-08-06:** `notetaker-events` holds **39 `AgendaItemAdded` events across 9 notes**. Re-measure before running — a note edited between now and then may already carry its topics.
 - [ ] One-off migration appends a `taskList` at the top of each affected note's content, preserving ticked state, via a normal `EditContent` command (never a direct DynamoDB write — guardrail).
