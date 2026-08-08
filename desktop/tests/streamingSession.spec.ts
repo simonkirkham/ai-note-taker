@@ -234,13 +234,13 @@ test('a disposed session never reports a ready timeout', async () => {
 // must actually hold on the slow machine that has the bug.
 
 test('a failed step still writes a diagnostic line — a run of timeouts must not be silent', async () => {
-  const stats: { inferenceMs: number; error?: string }[] = []
+  const stats: { inferenceMs: number; windowMs: number; error?: string }[] = []
   const server = stubServer({ running: true, ready: true })
   ;(server as unknown as { transcribe: () => Promise<never> }).transcribe = () =>
     Promise.reject(new Error('The operation was aborted due to timeout'))
   const session = new StreamingSession(server, () => {}, () => {}, undefined, {
     readyTimeoutMs: 60_000,
-    onStep: (s) => stats.push({ inferenceMs: s.inferenceMs, error: s.error }),
+    onStep: (s) => stats.push({ inferenceMs: s.inferenceMs, windowMs: s.windowMs, error: s.error }),
   })
   session.start()
   session.pushPcm(pcm)
@@ -249,7 +249,11 @@ test('a failed step still writes a diagnostic line — a run of timeouts must no
 
   expect(stats.length).toBeGreaterThan(0)
   expect(stats[0].error).toMatch(/aborted due to timeout/i)
-  expect(stats[0].inferenceMs).toBe(-1)
+  // Real numbers, not sentinels: how long the step ran before failing and how much audio it was
+  // carrying are both part of the diagnosis — a 20s /inference abort looks nothing like an
+  // instant 500, and the window size says whether the send clamp was engaged when it died.
+  expect(stats[0].inferenceMs).toBeGreaterThanOrEqual(0)
+  expect(stats[0].windowMs).toBeGreaterThan(0)
 })
 
 test('the window sent to the engine is capped, and the withheld audio is reported', async () => {

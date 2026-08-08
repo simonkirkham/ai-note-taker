@@ -1,6 +1,7 @@
 import { test, expect } from '@playwright/test'
 import { buildServerArgs, LIVE_AUDIO_CTX, AUDIO_CTX_FULL, audioCtxSeconds } from '../src/whisperServer'
 import { MAX_SEND_WINDOW_MS } from '../src/streamingSession'
+import { DEFAULT_STREAM_CONFIG } from '../src/streamingTranscript'
 
 // BUG-65 — the live server was spawned with no --audio-ctx, so every /inference paid the full 30s
 // padded encoder cost regardless of how little audio it was given.
@@ -47,7 +48,28 @@ test('no unnecessary flags are passed', () => {
 // (/inference alone tolerates 20s). An earlier version of this test asserted hardWindowMs and so
 // certified an invariant it did not actually enforce.
 test('the send cap fits inside the encoder context we ask for', () => {
+  // Tautological today (MAX_SEND_WINDOW_MS is derived as 90% of this), kept as executable
+  // documentation of *why* the constant is derived rather than written as a literal.
   expect(MAX_SEND_WINDOW_MS).toBeLessThan(audioCtxSeconds(LIVE_AUDIO_CTX) * 1000)
+})
+
+// The ordering that is NOT tautological, and that would fail silently and totally.
+//
+// The runaway guard fires on `windowMs >= hardWindowMs`. But windowMs is now clamped to
+// MAX_SEND_WINDOW_MS — so if hardWindowMs ever rose above the cap, windowMs could never reach it,
+// `forced` would never be true, finalizedMs would stall on continuous speech, and the live view
+// would freeze for the rest of the recording while clampedMs grew without bound. No error anywhere.
+//
+// This is reachable by the change the phase doc itself contemplates next: lowering LIVE_AUDIO_CTX
+// lowers MAX_SEND_WINDOW_MS toward hardWindowMs. (Third time this slice: a guard that cannot fire —
+// same shape as the ready deadline above the start timeout, and the hardWindow "invariant" that
+// bounded nothing.)
+test('the runaway guard can actually fire — hard window below the send cap', () => {
+  expect(DEFAULT_STREAM_CONFIG.hardWindowMs).toBeLessThan(MAX_SEND_WINDOW_MS)
+})
+
+test('the commit threshold sits below the runaway guard', () => {
+  expect(DEFAULT_STREAM_CONFIG.maxWindowMs).toBeLessThan(DEFAULT_STREAM_CONFIG.hardWindowMs)
 })
 
 test('audioCtxSeconds maps the encoder context onto whisper\'s 30s frame', () => {

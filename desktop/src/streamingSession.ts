@@ -126,21 +126,24 @@ export class StreamingSession {
     const startByte = this.state.finalizedMs * BYTES_PER_MS
     if (this.byteLen - startByte < MIN_NEW_MS * BYTES_PER_MS) return
     this.busy = true
+    // Declared OUTSIDE the try so the catch can report them too: the window size at the moment of
+    // failure is the number that says whether the clamp was engaged when it died, and it is
+    // unrecoverable if it goes out of scope.
+    const rawNowMs = Math.floor(this.byteLen / BYTES_PER_MS)
+    const cap = this.opts?.maxSendWindowMs ?? MAX_SEND_WINDOW_MS
+    const nowMs = Math.min(rawNowMs, this.state.finalizedMs + cap)
+    const clampedMs = rawNowMs - nowMs
+    const windowMs = nowMs - this.state.finalizedMs
+    const startedAt = Date.now()
     try {
-      // BUG-65: hardWindowMs does NOT bound the runtime window. finalizedMs only advances after an
-      // inference completes, and the busy-guard drops ticks meanwhile, so steady state is roughly
-      // inferenceMs + stabilityMs + STEP_MS — which on a slow machine (and /inference tolerates up
-      // to 20s) exceeds the ~15.4s the encoder can hold at LIVE_AUDIO_CTX. Overshooting is not
-      // merely "sees less": whisper truncates the mel copy at the context, but the seek loop still
-      // advances a full 30s on a missed timestamp, so ~15s of audio would never be transcribed at
-      // all. Clamp what we SEND, so the newest tail simply waits for the next step instead.
-      const rawNowMs = Math.floor(this.byteLen / BYTES_PER_MS)
-      const cap = this.opts?.maxSendWindowMs ?? MAX_SEND_WINDOW_MS
-      const nowMs = Math.min(rawNowMs, this.state.finalizedMs + cap)
-      const clampedMs = rawNowMs - nowMs
+      // BUG-65: hardWindowMs does NOT bound the runtime window (see the clamp computed above).
+      // finalizedMs only advances after an inference completes, and the busy-guard drops ticks
+      // meanwhile, so steady state is roughly inferenceMs + stabilityMs + STEP_MS — which on a slow
+      // machine (/inference alone tolerates 20s) exceeds the ~15.4s the encoder holds at
+      // LIVE_AUDIO_CTX. Overshooting is not merely "sees less": whisper truncates the mel copy at
+      // the context, but the seek loop still advances a full 30s on a missed timestamp, so audio
+      // would be skipped outright. Clamping what we SEND makes the newest tail wait a step instead.
       const window = this.windowSlice(startByte, nowMs * BYTES_PER_MS)
-      const windowMs = nowMs - this.state.finalizedMs
-      const startedAt = Date.now()
       const segs = await this.server.transcribe(window, this.state.finalizedMs)
       if (this.disposed) return
       this.failures = 0
@@ -166,11 +169,11 @@ export class StreamingSession {
       // likely shape of "very slow", and reporting only on success would leave the diagnostic log
       // silent for exactly that case — the hole this instrumentation exists to close.
       this.report({
-        windowMs: 0,
-        inferenceMs: -1,
+        windowMs,
+        inferenceMs: Date.now() - startedAt,
         committedChars: this.state.committed.length,
         dropped: this.droppedSinceLog,
-        clampedMs: 0,
+        clampedMs,
         error: (err as Error).message,
       })
       this.droppedSinceLog = 0

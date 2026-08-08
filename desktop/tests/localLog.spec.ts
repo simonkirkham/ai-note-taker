@@ -64,3 +64,30 @@ test('a diagnostic can never break a recording', () => {
   // An unwritable directory must not throw into the streaming session.
   expect(() => appendLog('/nonexistent/definitely/not/here', 'x')).not.toThrow()
 })
+
+// BUG-65 — the two branches added for failures and for the send clamp had no format-level test:
+// the session specs assert the stat OBJECT, not the line that actually reaches the log. This file's
+// premise is that the format is asserted rather than assumed, so assert it.
+
+test('a failed step renders as FAILED, carrying the window and the error', () => {
+  const line = formatStep({
+    windowMs: 13824,
+    inferenceMs: 20001,
+    committedChars: 42,
+    dropped: 4,
+    error: 'The operation was aborted due to timeout',
+  })
+
+  expect(line).toContain('step FAILED')
+  expect(line).toContain('window=13824ms')
+  expect(line).toContain('elapsed=20001ms')
+  expect(line).toContain('err=The operation was aborted due to timeout')
+})
+
+test('a clamped step reports the withheld audio, and an unclamped one stays quiet', () => {
+  const clamped = formatStep({ windowMs: 13824, inferenceMs: 9000, committedChars: 10, dropped: 0, clampedMs: 4200 })
+  expect(clamped).toContain('clamped=4200ms')
+
+  const normal = formatStep({ windowMs: 4000, inferenceMs: 1000, committedChars: 10, dropped: 0, clampedMs: 0 })
+  expect(normal).not.toContain('clamped')
+})

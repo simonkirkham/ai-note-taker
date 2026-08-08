@@ -24,7 +24,10 @@ export type LiveStep = {
 
 export function formatStep(s: LiveStep): string {
   if (s.error) {
-    return `step FAILED dropped=${s.dropped} committed=${s.committedChars} err=${s.error}`
+    // Carries window and elapsed too: on a slow machine the window size at the moment of failure is
+    // what says whether the send clamp was engaged when it died.
+    const clamped = s.clampedMs ? ` clamped=${s.clampedMs}ms` : ''
+    return `step FAILED window=${s.windowMs}ms elapsed=${s.inferenceMs}ms dropped=${s.dropped} committed=${s.committedChars}${clamped} err=${s.error}`
   }
   // realtime factor: <1 means inference is faster than the audio it covers — the number that
   // decides whether the live view can keep pace at all.
