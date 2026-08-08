@@ -273,38 +273,97 @@ describe('AgendaSection', () => {
   })
 })
 
-// 43-F: a topic read out of the note body has no event stream behind it, so the agenda-item
-// endpoints would 404 on it. The header shows it and counts it, but routes editing to the notes.
+// 43-G: a derived topic is a task-list line in the note, so the header now edits that line through
+// the editor rather than the API. 43-F made these controls read-only as a stopgap because the
+// agenda-item endpoints would 404 on a topic with no event stream; this slice replaces that with a
+// real write path, so the assertions it added are deliberately inverted here.
 describe('AgendaSection — topics derived from the note body', () => {
+  function editorStub() {
+    return {
+      addTopic: vi.fn(),
+      setTopicChecked: vi.fn(),
+      setTopicText: vi.fn(),
+      removeTopic: vi.fn(),
+    }
+  }
+
+  function renderWithEditor(agenda: NoteDetail['agenda'], editor: ReturnType<typeof editorStub> | null) {
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity }, mutations: { retry: false } } })
+    qc.setQueryData(keys.note(NOTE_ID), noteWith(agenda))
+    const Wrapper = ({ children }: { children: ReactNode }) => (
+      <QueryClientProvider client={qc}>{children}</QueryClientProvider>
+    )
+    return rtlRender(<AgendaSection noteId={NOTE_ID} editor={editor} />, { wrapper: Wrapper })
+  }
+
+  const derived = (over: Partial<NonNullable<NoteDetail['agenda']>[number]> = {}) => ({
+    itemId: 'd-1', text: 'Budget (Q3)', discussed: false, position: 0, derived: true, ...over,
+  })
+
   it('counts a derived topic in the coverage pill', () => {
-    renderAgenda([
-      { itemId: 'd-1', text: 'Budget (Q3)', discussed: true, position: 0, derived: true },
-      { itemId: 'd-2', text: 'Hiring plan', discussed: false, position: 1, derived: true },
-    ])
+    renderWithEditor([
+      derived({ itemId: 'd-1', discussed: true }),
+      derived({ itemId: 'd-2', text: 'Hiring plan', position: 1 }),
+    ], editorStub())
     expect(screen.getByTestId('agenda-coverage').textContent).toContain('1')
     expect(screen.getByTestId('agenda-coverage').textContent).toContain('2')
   })
 
-  it('disables the checkbox on a derived topic', () => {
-    renderAgenda([{ itemId: 'd-1', text: 'Budget (Q3)', discussed: false, position: 0, derived: true }])
-    expect(screen.getByTestId('agenda-item-check')).toBeDisabled()
+  it('ticking a derived topic edits its line in the note, not the API', async () => {
+    const user = userEvent.setup()
+    const editor = editorStub()
+    renderWithEditor([derived()], editor)
+
+    await user.click(screen.getByTestId('agenda-item-check'))
+
+    expect(editor.setTopicChecked).toHaveBeenCalledWith(0, true)
   })
 
-  it('does not offer remove on a derived topic', () => {
-    renderAgenda([{ itemId: 'd-1', text: 'Budget (Q3)', discussed: false, position: 0, derived: true }])
+  it('removing a derived topic deletes its line from the note', async () => {
+    const user = userEvent.setup()
+    const editor = editorStub()
+    renderWithEditor([derived({ position: 2 })], editor)
+
+    await user.click(screen.getByTestId('agenda-item-remove'))
+
+    expect(editor.removeTopic).toHaveBeenCalledWith(2)
+  })
+
+  it('rewording a derived topic rewrites its line in the note', async () => {
+    const user = userEvent.setup()
+    const editor = editorStub()
+    renderWithEditor([derived()], editor)
+
+    await user.click(screen.getByTestId('agenda-item-text'))
+    const input = screen.getByTestId('agenda-item-edit-input')
+    await user.clear(input)
+    await user.type(input, 'Q3 budget review{Enter}')
+
+    expect(editor.setTopicText).toHaveBeenCalledWith(0, 'Q3 budget review')
+  })
+
+  it('adding a topic writes a line into the note', async () => {
+    const user = userEvent.setup()
+    const editor = editorStub()
+    renderWithEditor([], editor)
+
+    await user.type(screen.getByTestId('agenda-add-input'), 'On-call rotation{Enter}')
+
+    expect(editor.addTopic).toHaveBeenCalledWith('On-call rotation')
+  })
+
+  // The editor is lazy-loaded, so there is a window where the strip is on screen and there is
+  // nothing to write to. Controls disable rather than silently no-op or 404.
+  it('disables derived controls while the editor has not loaded', () => {
+    renderWithEditor([derived()], null)
+    expect(screen.getByTestId('agenda-item-check')).toBeDisabled()
+    expect(screen.getByTestId('agenda-item-text')).toBeDisabled()
     expect(screen.queryByTestId('agenda-item-remove')).toBeNull()
   })
 
-  it('does not open an inline editor on a derived topic', async () => {
+  it('still allows editing a legacy (non-derived) topic through the API', async () => {
     const user = userEvent.setup()
-    renderAgenda([{ itemId: 'd-1', text: 'Budget (Q3)', discussed: false, position: 0, derived: true }])
-    await user.click(screen.getByTestId('agenda-item-text'))
-    expect(screen.queryByTestId('agenda-item-edit-input')).toBeNull()
-  })
-
-  it('still allows editing a legacy (non-derived) topic', async () => {
-    const user = userEvent.setup()
-    renderAgenda([{ itemId: 'i-1', text: 'Budget (Q3)', discussed: false, position: 0 }])
+    renderWithEditor([{ itemId: 'i-1', text: 'Budget (Q3)', discussed: false, position: 0 }], editorStub())
     expect(screen.getByTestId('agenda-item-check')).not.toBeDisabled()
     await user.click(screen.getByTestId('agenda-item-text'))
     expect(screen.getByTestId('agenda-item-edit-input')).toBeInTheDocument()

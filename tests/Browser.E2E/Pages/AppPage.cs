@@ -600,6 +600,52 @@ public sealed class AppPage
         }
     }
 
+    // Phase 43-F/G: the agenda is DERIVED from the note body, so the coverage pill only moves once
+    // the content has saved, the projector has folded it, and the note-detail read has come back.
+    // Reload-tolerant + re-asserting, per the guardrail that every projector-backed assertion must
+    // re-gate rather than race the async projector.
+    public async Task AssertAgendaCoverageAfterReloadAsync(string expected, int timeoutMs = 30000)
+    {
+        var deadline = DateTime.UtcNow.AddMilliseconds(timeoutMs);
+        while (true)
+        {
+            try
+            {
+                await Assertions.Expect(page.GetByTestId("agenda-coverage"))
+                    .ToContainTextAsync(expected, new() { Timeout = 2500 });
+                return;
+            }
+            catch (PlaywrightException) when (DateTime.UtcNow < deadline)
+            {
+                await page.ReloadAsync();
+                await Assertions.Expect(page.GetByTestId("note-title-input"))
+                    .ToBeVisibleAsync(new() { Timeout = 9000 });
+            }
+        }
+    }
+
+    /// <summary>Type into the open note's body and save it, awaiting the content PUT.</summary>
+    public async Task TypeIntoNoteBodyAndSaveAsync(string text)
+    {
+        var body = page.GetByTestId("note-content");
+        await body.ClickAsync();
+        await body.PressSequentiallyAsync(text);
+        var saved = page.WaitForResponseAsync(r => r.Url.Contains("/content") && r.Request.Method == "PUT");
+        await body.BlurAsync();
+        await saved;
+    }
+
+    /// <summary>Add a topic from the HEADER agenda strip (43-G writes it into the note body).</summary>
+    public async Task AddAgendaTopicFromHeaderAsync(string text)
+    {
+        var input = page.GetByTestId("agenda-add-input");
+        await input.FillAsync(text);
+        await input.PressAsync("Enter");
+    }
+
+    public Task AssertNoteBodyContainsAsync(string text) =>
+        Assertions.Expect(page.GetByTestId("note-content")).ToContainTextAsync(text);
+
     public async Task AddTagAsync(string tagInput)
     {
         var tagCount = tagInput.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries).Length;

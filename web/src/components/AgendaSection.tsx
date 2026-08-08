@@ -7,6 +7,7 @@ import {
   useSetAgendaItemDiscussed,
 } from "../hooks/useAgendaMutations";
 import { useNoteDetail } from "../hooks/useNoteDetail";
+import type { AgendaEditorApi } from "../lib/agendaEditorApi";
 import styles from "./AgendaSection.module.css";
 
 // Phase 43-A/B/C/D: the meeting agenda lives in the note header (with the title), expanded by
@@ -16,7 +17,18 @@ import styles from "./AgendaSection.module.css";
 // (the note body stays full-width below). The
 // collapse toggle only appears once there are items (nothing to fold on an empty agenda). Every
 // mutation is optimistic; the agenda is read from the shared note-detail cache.
-export default function AgendaSection({ noteId }: { noteId: string }) {
+export default function AgendaSection({
+  noteId,
+  editor,
+}: {
+  noteId: string;
+  // 43-G: the live editor's command object, or null while the lazy editor chunk is still loading.
+  // A topic derived from the note body is a task-list line, so adding/ticking/rewording/removing it
+  // is a document edit — undoable with Ctrl+Z, and applied to the document that holds unsaved
+  // typing. Legacy topics (pre-43-F, carried by AgendaItem* events) still go through the API until
+  // 43-H migrates them into their notes; that is why both paths exist here.
+  editor?: AgendaEditorApi | null;
+}) {
   const { data: detail } = useNoteDetail(noteId);
   const agenda = detail?.agenda ?? [];
   const addItem = useAddAgendaItem();
@@ -30,8 +42,16 @@ export default function AgendaSection({ noteId }: { noteId: string }) {
   function submit() {
     const trimmed = text.trim();
     if (!trimmed) return;
-    addItem.mutate({ noteId, text: trimmed, tempId: `temp-${crypto.randomUUID()}` });
     setText("");
+    // 43-G: a new topic is always a line in the note now (Q7 — it joins the first checklist, or
+    // starts one at the top). No API call: the editor edit rides the existing content-save path.
+    if (editor) {
+      editor.addTopic(trimmed);
+      return;
+    }
+    // Editor not mounted yet (lazy chunk still loading) — fall back to the legacy path rather than
+    // dropping the user's typing on the floor.
+    addItem.mutate({ noteId, text: trimmed, tempId: `temp-${crypto.randomUUID()}` });
   }
 
   return (
@@ -72,7 +92,7 @@ export default function AgendaSection({ noteId }: { noteId: string }) {
       {!collapsed && (
         <ul className={styles.items} id={`agenda-body-${noteId}`} data-testid="agenda-body">
           {agenda.map((item) => (
-            <AgendaItemRow key={item.itemId} noteId={noteId} item={item} />
+            <AgendaItemRow key={item.itemId} noteId={noteId} item={item} editor={editor} />
           ))}
           <li className={styles.addRow}>
             <input
@@ -86,7 +106,7 @@ export default function AgendaSection({ noteId }: { noteId: string }) {
                 }
               }}
               onBlur={submit}
-              placeholder="+ add item (won't appear in your notes yet)…"
+              placeholder="+ add item…"
               className={styles.addInput}
               aria-label="Add agenda item"
               data-testid="agenda-add-input"
@@ -98,7 +118,19 @@ export default function AgendaSection({ noteId }: { noteId: string }) {
   );
 }
 
-function AgendaItemRow({ noteId, item }: { noteId: string; item: AgendaItem }) {
+function AgendaItemRow({
+  noteId,
+  item,
+  editor,
+}: {
+  noteId: string;
+  item: AgendaItem;
+  editor?: AgendaEditorApi | null;
+}) {
+  // A derived topic is editable only while the editor is live; a legacy one always uses the API.
+  // Held as a narrowed value rather than a boolean so TypeScript proves it non-null at each call
+  // site (lint forbids non-null assertions, and rightly — the null case is real here).
+  const api = item.derived === true ? (editor ?? null) : null;
   const setDiscussed = useSetAgendaItemDiscussed();
   const editText = useEditAgendaItemText();
   const removeItem = useRemoveAgendaItem();
@@ -132,7 +164,8 @@ function AgendaItemRow({ noteId, item }: { noteId: string; item: AgendaItem }) {
     // Empty or unchanged → don't send a write (the backend rejects blank with 400, and an
     // unchanged edit is a pointless event); just reconcile the field back to the current text.
     if (!trimmed || trimmed === item.text) return;
-    editText.mutate({ noteId, itemId: item.itemId, text: trimmed });
+    if (api) api.setTopicText(item.position, trimmed);
+    else editText.mutate({ noteId, itemId: item.itemId, text: trimmed });
   }
 
   function cancel() {
@@ -149,11 +182,14 @@ function AgendaItemRow({ noteId, item }: { noteId: string; item: AgendaItem }) {
         // 43-F: a derived topic is a task-list line in the note body — the body owns its ticked
         // state, so tick it there. The agenda-item endpoints have no event stream for it and would
         // 404. 43-G makes these controls write back through the editor.
-        disabled={item.derived}
-        onChange={(e) => setDiscussed.mutate({ noteId, itemId: item.itemId, discussed: e.target.checked })}
-        aria-label={item.derived
-          ? `Mark "${item.text}" discussed — tick this in the notes`
-          : `Mark "${item.text}" discussed`}
+        // 43-G: a derived topic is now tickable from here — the change is applied to its line in
+        // the note. Disabled only while the editor has not loaded, since there is nothing to write to.
+        disabled={item.derived === true && editor == null}
+        onChange={(e) => {
+          if (api) api.setTopicChecked(item.position, e.target.checked);
+          else setDiscussed.mutate({ noteId, itemId: item.itemId, discussed: e.target.checked });
+        }}
+        aria-label={`Mark "${item.text}" discussed`}
         data-testid="agenda-item-check"
       />
       {editing ? (
@@ -177,31 +213,25 @@ function AgendaItemRow({ noteId, item }: { noteId: string; item: AgendaItem }) {
           data-testid="agenda-item-edit-input"
         />
       ) : (
-        item.derived ? (
-          <span
-            className={item.discussed ? styles.itemTextDone : styles.itemText}
-            title="Edit this in the notes"
-            data-testid="agenda-item-text"
-          >
-            {item.text}
-          </span>
-        ) : (
-          <button
-            type="button"
-            className={item.discussed ? styles.itemTextDone : styles.itemText}
-            onClick={startEditing}
-            aria-label={`Edit "${item.text}"`}
-            data-testid="agenda-item-text"
-          >
-            {item.text}
-          </button>
-        )
+        <button
+          type="button"
+          className={item.discussed ? styles.itemTextDone : styles.itemText}
+          onClick={startEditing}
+          disabled={item.derived === true && editor == null}
+          aria-label={`Edit "${item.text}"`}
+          data-testid="agenda-item-text"
+        >
+          {item.text}
+        </button>
       )}
-      {!item.derived && (
+      {(item.derived !== true || editor != null) && (
         <button
           type="button"
           className={styles.remove}
-          onClick={() => removeItem.mutate({ noteId, itemId: item.itemId })}
+          onClick={() => {
+            if (api) api.removeTopic(item.position);
+            else removeItem.mutate({ noteId, itemId: item.itemId });
+          }}
           aria-label={`Remove "${item.text}"`}
           data-testid="agenda-item-remove"
         >
