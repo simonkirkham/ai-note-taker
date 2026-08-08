@@ -72,10 +72,17 @@ public sealed class FolderCommandHandler(
 
             // Unfile notes in descendants + root folder (order doesn't matter for unfiling). Each
             // unfile is a NOTE-stream write, so the caller needs the last one's token to gate the
-            // cards-list read that follows the delete (BUG-46).
+            // cards-list read that follows the delete (BUG-46). The cards gate holds ONE token
+            // (design decision #7), so with N notes this gates 1 of N — a strict improvement, fully
+            // correct for N=1, and never worse than not gating at all. Which one is arbitrary: the
+            // notes are iterated in the cards projection's SCAN order, so "last" means last appended
+            // in an order we do not control, and it says nothing about the other N-1 streams.
+            // The cards projection is read ONCE for the whole cascade: QueryAllAsync is a full scan,
+            // so doing it per folder made a 10-folder subtree cost 10 scans.
+            var allCards = await noteCardListStore.QueryAllAsync(ct).ConfigureAwait(false);
             string? noteCardsToken = null;
             foreach (var folderId in subtreeIds.Concat([cmd.FolderId]))
-                noteCardsToken = await UnfileNotesInFolderAsync(folderId, userId, workspaceId, ct).ConfigureAwait(false)
+                noteCardsToken = await UnfileNotesInFolderAsync(allCards, folderId, userId, workspaceId, ct).ConfigureAwait(false)
                     ?? noteCardsToken;
 
             // Delete descendant folders bottom-up (subtreeIds already in bottom-up order)
@@ -112,10 +119,11 @@ public sealed class FolderCommandHandler(
             return await PersistFolderAsync(streamId, history, newEvents, userId, workspaceId, ct).ConfigureAwait(false);
         });
 
-    // Returns the LAST unfile write's note-stream token, or null when the folder held no notes.
-    private async Task<string?> UnfileNotesInFolderAsync(FolderId folderId, string userId, string? workspaceId, CancellationToken ct)
+    // Returns the last-appended unfile write's note-stream token (scan order — see DeleteFolder),
+    // or null when the folder held no notes.
+    // Takes the already-read cards snapshot — see the single QueryAllAsync in DeleteFolder.
+    private async Task<string?> UnfileNotesInFolderAsync(IReadOnlyList<NoteCardView> allCards, FolderId folderId, string userId, string? workspaceId, CancellationToken ct)
     {
-        var allCards = await noteCardListStore.QueryAllAsync(ct).ConfigureAwait(false);
         var notesInFolder = allCards.Where(c => c.FolderId == folderId && !c.Deleted && c.UserId == userId).ToList();
         string? lastToken = null;
         foreach (var card in notesInFolder)

@@ -79,7 +79,7 @@ public static class FolderHandlers
         // BUG-46: the unfile cascade wrote to note streams too, so the client's cards refetch needs
         // its own token — the folder-tree token gates only the folder read.
         if (result.NoteCardsToken is not null)
-            response.Headers["X-Consistency-Token-Notes"] = result.NoteCardsToken;
+            response.Headers["X-Consistency-Token-NoteCards"] = result.NoteCardsToken;
         return Results.NoContent();
     }
 

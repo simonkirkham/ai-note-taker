@@ -56,7 +56,7 @@ export async function deleteFolder(folderId: string): Promise<void> {
   // `useDeleteFolder` refetches the cards list afterwards. Without this the cards read is ungated
   // w.r.t. those writes and can still show the notes under the folder that just went away. The
   // cards gate holds one stream token (design #7), so the server returns the LAST unfile write's.
-  const notesToken = response.headers.get('X-Consistency-Token-Notes')
+  const notesToken = response.headers.get('X-Consistency-Token-NoteCards')
   if (notesToken) setLatestToken(NOTE_CARDS_SCOPE, notesToken)
 }
 

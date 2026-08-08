@@ -90,7 +90,7 @@ describe('folder delete cascade gates the cards list (BUG-46)', () => {
           status: 204,
           headers: {
             'X-Consistency-Token': `folder-${FOLDER_ID}@2`,
-            'X-Consistency-Token-Notes': `note#${NOTE_ID}@6`,
+            'X-Consistency-Token-NoteCards': `note#${NOTE_ID}@6`,
           },
         })),
       http.get('/api/notes/cards', ({ request }) => {
