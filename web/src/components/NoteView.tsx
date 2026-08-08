@@ -130,6 +130,9 @@ export default function NoteView({
   // content than the editor loaded. Non-null shows the conflict banner offering to load the latest
   // content while keeping the typed text copyable, so neither version is silently lost.
   const [staleConflict, setStaleConflict] = useState<string | null>(null);
+  // BUG-59: the note was deleted while this editor was open, so every write 404s. Terminal, not
+  // transient — holds the text the failed save was carrying so the user can recover it.
+  const [deletedNote, setDeletedNote] = useState<string | null>(null);
   // Bumped to remount the (uncontrolled) editor onto freshly-refetched content after a stale conflict.
   const [editorReseedKey, setEditorReseedKey] = useState(0);
   const { showError } = useToast();
@@ -409,6 +412,12 @@ export default function NoteView({
         // Surface the conflict banner (keep the typed text, offer to load the newer content) instead
         // of the generic "try again" toast, which would just re-conflict.
         if (err instanceof StaleContentError) setStaleConflict(draft);
+        // BUG-59: a 404 means the note was deleted — also terminal. The old code routed it to the
+        // retriable toast, so the user retried for 31 minutes against a stream that no longer
+        // existed (prod: note b721c995…, six rejected writes). Deliberately does NOT invalidate
+        // keys.note here: a 404 refetch flips the view to the bare "Note not found." screen, which
+        // would discard the very text this state exists to hand back.
+        else if (err instanceof ApiError && err.status === 404) setDeletedNote(draft);
         else showError("Couldn't save your note. We kept your text — try again.");
       })
       // Clear once settled so the ref never reports a stale "save in flight".
@@ -864,6 +873,33 @@ export default function NoteView({
                 </span>
                 <ShortcutsPanel />
               </div>
+              {deletedNote !== null && (
+                <div
+                  data-testid="deleted-note-banner"
+                  role="alertdialog"
+                  aria-label="This note was deleted"
+                  className={styles.recoveryBanner}
+                >
+                  <div className={styles.recoveryText}>
+                    <strong>This note was deleted.</strong> It can’t be saved to any more. Copy
+                    anything you need below before you leave this tab.
+                    <textarea
+                      data-testid="deleted-note-text"
+                      className={styles.staleConflictText}
+                      readOnly
+                      value={deletedNote}
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    data-testid="deleted-note-back-button"
+                    onClick={onBack}
+                    className={styles.backButton}
+                  >
+                    Back to notes
+                  </button>
+                </div>
+              )}
               {staleConflict !== null && (
                 <div
                   data-testid="stale-conflict-banner"
