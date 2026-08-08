@@ -18,7 +18,12 @@ export type StreamConfig = {
   hardWindowMs: number // runaway guard: past this, force-advance even without a settled boundary
 }
 
-export const DEFAULT_STREAM_CONFIG: StreamConfig = { stabilityMs: 1500, maxWindowMs: 8000, hardWindowMs: 16000 }
+// BUG-65 — these were 8000/16000, which made the steady-state re-transcribed window 8-16s rather
+// than the ~3s whisperServer.ts's header comment assumed: nothing commits until the window EXCEEDS
+// maxWindowMs, so maxWindowMs is the window's FLOOR, not its cap. Halved, so each 1.5s step
+// re-transcribes 4-8s. hardWindowMs must stay below the encoder capacity implied by LIVE_AUDIO_CTX
+// (~15s) or whisper silently truncates the newest audio — locked by serverArgs.spec.ts.
+export const DEFAULT_STREAM_CONFIG: StreamConfig = { stabilityMs: 1500, maxWindowMs: 4000, hardWindowMs: 8000 }
 
 export function initStreamState(): StreamState {
   return { committed: '', finalizedMs: 0 }
