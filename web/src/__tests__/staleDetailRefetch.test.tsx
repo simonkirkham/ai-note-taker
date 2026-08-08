@@ -174,7 +174,11 @@ describe('the stale guard does not wedge or pin the cache (BUG-48)', () => {
     expect(qc.getQueryData<NoteDetail>(keys.note(NOTE_ID))?.title).toBe('v2-closer-to-truth')
   })
 
-  it('diarization polling still terminates after a stale give-up', async () => {
+  // NOTE: this covers only that a stale give-up cannot HIDE a later diarization flip. It does not
+  // assert that `refetchInterval` stops — a mutation probe that made the interval never terminate
+  // left it green (Hawk, PR #436). Naming it "still terminates" would be a test that cannot fail on
+  // the property it claims. Interval termination is unasserted; see the PR body.
+  it('a stale give-up cannot hide a diarization flip the server already had', async () => {
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
     qc.setQueryData(keys.note(NOTE_ID), noteDetail({ title: 'Recorded', transcriptIsDiarized: false }))
     setStreamToken(`note#${NOTE_ID}`, `note#${NOTE_ID}@9`)
@@ -201,9 +205,90 @@ describe('the stale guard does not wedge or pin the cache (BUG-48)', () => {
     await waitFor(() =>
       expect(qc.getQueryData<NoteDetail>(keys.note(NOTE_ID))?.transcriptIsDiarized).toBe(true))
   })
-})
 
 function PollingProbe() {
   const { data } = useNoteDetail(NOTE_ID, true)
   return <div data-testid="polling-title">{data?.title ?? ''}</div>
 }
+
+  it('a fresh read re-arms the HOLD BUDGET, not just the remembered body', async () => {
+    // What the fresh-path `staleReads.delete(noteId)` is actually load-bearing for. The structural
+    // compare already handles "is the cache still my stale body", so a naive re-arm test passes
+    // even with the clear deleted (verified by mutation probe). The property that genuinely needs
+    // it is the BUDGET: after the projection catches up, the guard must get its full MAX_HOLDS
+    // back, or a note that was briefly lagging earlier is protected for fewer reads later.
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    qc.setQueryData(keys.note(NOTE_ID), noteDetail({ title: 'Good' }))
+    setStreamToken(`note#${NOTE_ID}`, `note#${NOTE_ID}@9999`)
+
+    let mode: 'stale' | 'fresh' = 'stale'
+    server.use(
+      http.get(`/api/notes/${NOTE_ID}`, () =>
+        mode === 'fresh'
+          ? HttpResponse.json(noteDetail({ title: 'Fresh' }))
+          : HttpResponse.json(noteDetail({ title: 'Lagging' }), { headers: { 'X-Consistency': 'stale' } })),
+    )
+
+    renderProbe(qc)
+    // Spend most of the budget while the projector is behind.
+    await waitFor(() => expect(qc.getQueryData<NoteDetail>(keys.note(NOTE_ID))?.title).toBe('Good'))
+    await qc.refetchQueries({ queryKey: keys.note(NOTE_ID) })
+
+    // The projection catches up — the budget must reset here.
+    mode = 'fresh'
+    await qc.refetchQueries({ queryKey: keys.note(NOTE_ID) })
+    expect(qc.getQueryData<NoteDetail>(keys.note(NOTE_ID))?.title).toBe('Fresh')
+
+    // It lags again. With a re-armed budget the fresh value survives these; without it the earlier
+    // holds are still counted and the stale body wins partway through.
+    mode = 'stale'
+    for (let i = 0; i < 3; i++) await qc.refetchQueries({ queryKey: keys.note(NOTE_ID) })
+    expect(qc.getQueryData<NoteDetail>(keys.note(NOTE_ID))?.title).toBe('Fresh')
+  })
+
+  it('a mutation-patched cache survives a later stale read', async () => {
+    // Hawk I1, PR #436: the previous guard tracked "was MY last write stale", not what the cache
+    // actually holds. After a cold-path stale read set that flag, any mutation that patched
+    // keys.note (12 call sites — content/tags/agenda/meeting) was left unprotected, and the next
+    // stale read clobbered the user's own change — BUG-48's exact symptom.
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    setStreamToken(`note#${NOTE_ID}`, `note#${NOTE_ID}@9`)
+
+    server.use(
+      http.get(`/api/notes/${NOTE_ID}`, () =>
+        HttpResponse.json(noteDetail({ title: '' }), { headers: { 'X-Consistency': 'stale' } })),
+    )
+
+    renderProbe(qc)
+    // Step 1 — cold path: nothing cached, so the stale body is accepted.
+    await waitFor(() => expect(qc.getQueryData<NoteDetail>(keys.note(NOTE_ID))?.title).toBe(''))
+
+    // Step 2 — the user edits; a mutation patches the cache directly (useNoteDetailMutations et al).
+    qc.setQueryData(keys.note(NOTE_ID), noteDetail({ title: 'User just typed this' }))
+
+    // Step 3 — any later refetch while the projector is still behind must NOT lose that edit.
+    await qc.refetchQueries({ queryKey: keys.note(NOTE_ID) })
+    expect(qc.getQueryData<NoteDetail>(keys.note(NOTE_ID))?.title).toBe('User just typed this')
+  })
+
+  it('stops holding after repeated stale reads, so an unreachable token cannot freeze the note', async () => {
+    // ConsistencyGate documents a token that never becomes reachable ("the write didn't land —
+    // lastSeq is at head but head < version forever"; BUG-27 was a lost write). Holding forever
+    // would pin the note for the whole session, hiding every out-of-band update.
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    qc.setQueryData(keys.note(NOTE_ID), noteDetail({ title: 'Held value' }))
+    setStreamToken(`note#${NOTE_ID}`, `note#${NOTE_ID}@9999`)
+
+    server.use(
+      http.get(`/api/notes/${NOTE_ID}`, () =>
+        HttpResponse.json(noteDetail({ title: 'Server state' }), { headers: { 'X-Consistency': 'stale' } })),
+    )
+
+    renderProbe(qc)
+    await waitFor(() => expect(qc.getQueryData<NoteDetail>(keys.note(NOTE_ID))?.title).toBe('Held value'))
+
+    for (let i = 0; i < 4; i++) await qc.refetchQueries({ queryKey: keys.note(NOTE_ID) })
+
+    expect(qc.getQueryData<NoteDetail>(keys.note(NOTE_ID))?.title).toBe('Server state')
+  })
+})
