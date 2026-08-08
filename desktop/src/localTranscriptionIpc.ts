@@ -9,7 +9,9 @@ import path from 'node:path'
 import { transcribeWindow, diarizeStreams, killActiveWhisper } from './localTranscription'
 import { pickThreads } from './localEngine'
 import { StreamingSession } from './streamingSession'
-import { WhisperServer } from './whisperServer'
+import { WhisperServer, LIVE_AUDIO_CTX } from './whisperServer'
+import { DEFAULT_STREAM_CONFIG } from './streamingTranscript'
+import { appendLog, formatStep, formatSessionStart } from './localLog'
 import {
   ensureModels,
   modelsDir,
@@ -175,9 +177,25 @@ export function registerLocalTranscription(deps: Deps): void {
       (err) => {
         // The raw transport error rides along as `cause` — kept out of the banner, kept in the log.
         console.error('[desktop] live streaming failed:', err.message, err.cause ?? '')
+        appendLog(deps.userDataDir, `live streaming failed: ${err.message} ${String(err.cause ?? '')}`)
         sessionReported = true
         send('local:error', err.message)
       },
+      undefined,
+      { onStep: (s) => appendLog(deps.userDataDir, formatStep(s)) },
+    )
+    // BUG-65: one header line per recording, so a log handed over by a user carries the machine's
+    // core count and the tuning constants in force — the context needed to read the step lines.
+    appendLog(
+      deps.userDataDir,
+      formatSessionStart({
+        cores: cpus().length,
+        threads: pickThreads(cpus().length),
+        audioCtx: LIVE_AUDIO_CTX,
+        maxWindowMs: DEFAULT_STREAM_CONFIG.maxWindowMs,
+        hardWindowMs: DEFAULT_STREAM_CONFIG.hardWindowMs,
+        model: modelPath,
+      }),
     )
     streaming.start()
   })

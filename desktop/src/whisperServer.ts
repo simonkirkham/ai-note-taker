@@ -33,6 +33,43 @@ const INFERENCE_TIMEOUT_MS = 20_000
 // process — which is exactly how the first attempt at that deadline shipped as dead code.
 export const SERVER_START_TIMEOUT_MS = 60_000
 
+// BUG-65 — whisper always encodes a PADDED 30-SECOND mel, so a 3s window costs almost what 30s
+// does. `--audio-ctx` shortens that encoder context and is the single biggest lever on live
+// latency (whisper.cpp's own `stream` example exists for this workload). 768 ≈ 15s of capacity,
+// comfortably above the sliding window's hard cap — audio beyond the context is silently TRUNCATED
+// inside whisper with no error anywhere, so serverArgs.spec.ts locks that ordering.
+export const AUDIO_CTX_FULL = 1500 // whisper's full context = 30s
+export const LIVE_AUDIO_CTX = 768
+
+// Encoder context → seconds of audio it can hold.
+export function AUDIO_CTX_SECONDS(ctx: number): number {
+  return (ctx / AUDIO_CTX_FULL) * 30
+}
+
+// Pure, so the flags are asserted headlessly. Every argument is a chance to hit the server's
+// exit-on-unknown-argument path — precisely how BUG-56 killed the live transcript — so the set is
+// deliberately minimal and each entry was verified against the pinned v1.9.1 parser.
+// Deliberately NOT passed: `--flash-attn` (already defaults to true) and any beam/best-of flags
+// (beam_size = -1 already selects greedy).
+export function buildServerArgs(opts: { modelPath: string; port: number; threads: number }): string[] {
+  return [
+    '-m',
+    opts.modelPath,
+    '--host',
+    '127.0.0.1',
+    '--port',
+    String(opts.port),
+    '-t',
+    String(opts.threads),
+    '--audio-ctx',
+    String(LIVE_AUDIO_CTX),
+    // Temperature fallback re-decodes a segment at 0.2, 0.4 … 1.0 when it trips the logprob or
+    // compression heuristics. A sliding window's clipped boundary words trip them constantly, so
+    // this fires far more often live than in batch — up to ~6 decodes for a single segment.
+    '--no-fallback',
+  ]
+}
+
 export class WhisperServer {
   private proc: ChildProcess | null = null
   private port = 0
@@ -68,7 +105,7 @@ export class WhisperServer {
   async start(): Promise<void> {
     if (this.proc) return
     this.port = await freePort()
-    const args = ['-m', this.modelPath, '--host', '127.0.0.1', '--port', String(this.port), '-t', String(this.threads)]
+    const args = buildServerArgs({ modelPath: this.modelPath, port: this.port, threads: this.threads })
     const proc = spawn(this.binPath, args)
     this.proc = proc
     let exited = false

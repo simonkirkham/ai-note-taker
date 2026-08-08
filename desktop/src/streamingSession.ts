@@ -32,7 +32,12 @@ const LIVE_ENGINE_STOPPED = 'the on-device engine stopped during the recording'
 const LIVE_ENGINE_UNRESPONSIVE = 'the on-device engine stopped responding'
 const LIVE_ENGINE_NEVER_LOADED = 'the on-device engine did not finish loading; the live transcript stayed empty'
 
-export type StreamingSessionOptions = { readyTimeoutMs?: number; minSessionForStopReportMs?: number }
+export type StreamingSessionOptions = {
+  readyTimeoutMs?: number
+  minSessionForStopReportMs?: number
+  // BUG-65: per-step cost, for the on-device diagnostic log.
+  onStep?: (s: { windowMs: number; inferenceMs: number; committedChars: number; dropped: number }) => void
+}
 
 export class StreamingSession {
   private readonly chunks: Buffer[] = []
@@ -45,6 +50,7 @@ export class StreamingSession {
   private terminalReported = false // onError fired once — don't spam the banner every step
   private sawReady = false // the server became ready at least once (so a later !running == a crash)
   private readyTimer: ReturnType<typeof setTimeout> | null = null
+  private droppedSinceLog = 0 // steps the busy-guard skipped since the last reported step
   private startedAt = 0 // when start() armed the timers — the stop-path grace period runs from here
   // windowSlice cursor: chunks before scanIdx are fully committed (never in a future window). startByte
   // only grows, so advancing this makes each slice O(window) instead of O(whole recording so far).
@@ -75,7 +81,13 @@ export class StreamingSession {
   }
 
   private async step(): Promise<void> {
-    if (this.busy || this.disposed) return
+    // BUG-65: a step skipped because the previous inference is still running is the signal that the
+    // engine cannot keep pace — count it, so the log distinguishes "slow" from "falling behind".
+    if (this.busy) {
+      this.droppedSinceLog++
+      return
+    }
+    if (this.disposed) return
     if (!this.server.running) {
       // A server that had become ready and is now gone crashed mid-recording — report it once so the
       // renderer's banner fires (a start-time failure is surfaced by the IPC layer instead). If it was
@@ -100,12 +112,23 @@ export class StreamingSession {
     try {
       const nowMs = Math.floor(this.byteLen / BYTES_PER_MS)
       const window = this.windowSlice(startByte)
+      const windowMs = nowMs - this.state.finalizedMs
+      const startedAt = Date.now()
       const segs = await this.server.transcribe(window, this.state.finalizedMs)
       if (this.disposed) return
       this.failures = 0
       const { state, display } = reduceStream(this.state, segs, nowMs, this.cfg)
       this.state = state
       this.onLive(display)
+      // BUG-65: report what the step actually cost. Without this there is no way to tell which of
+      // the four suspected causes dominates, or to prove a tuning change helped.
+      this.opts?.onStep?.({
+        windowMs,
+        inferenceMs: Date.now() - startedAt,
+        committedChars: state.committed.length,
+        dropped: this.droppedSinceLog,
+      })
+      this.droppedSinceLog = 0
     } catch (err) {
       // A single hiccup (an aborted slow window, a transient error) is tolerated; only a sustained run
       // of failures against a ready server is terminal — report it once so the renderer's banner fires.
