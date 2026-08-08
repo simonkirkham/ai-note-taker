@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { connectGoogleCalendar, connectMicrosoftCalendar } from '../api/calendarAuth'
+import { safeSession } from '../lib/safeStorage'
 import { setWorkspaceId } from '../workspace/workspaceStore'
 import { AuthContext, type AuthState } from './context'
 import { buildAuthUrl, exchangeCode, generateCodeChallenge, generateCodeVerifier } from './pkce'
@@ -39,7 +40,7 @@ export function AuthProvider({
   // gate in a loading state while we restore the session and POST the connect, so the sign-in
   // screen never flashes mid-connect.
   const isCalendarConnectReturn = hasOAuthCode && typeof window !== 'undefined'
-    && sessionStorage.getItem('calendar_state') != null
+    && safeSession.get('calendar_state') != null
   const [authLoading, setAuthLoading] = useState(shouldBootstrapRefresh || isCalendarConnectReturn)
   const [forbidden, setForbidden] = useState(false)
   const [sessionExpired, setSessionExpired] = useState(false)
@@ -145,19 +146,19 @@ export function AuthProvider({
     // (the redirect dropped the in-memory token) so the connect call is authenticated, POST the
     // code to the connect endpoint, THEN reveal the app — setting the token store before setIdToken
     // means the connection query doesn't fire (and read needs_auth) until the connect persisted.
-    const calState = sessionStorage.getItem('calendar_state')
-    const calVerifier = sessionStorage.getItem('calendar_verifier')
+    const calState = safeSession.get('calendar_state')
+    const calVerifier = safeSession.get('calendar_verifier')
     if (code && returnedState && calState && returnedState === calState && calVerifier) {
-      sessionStorage.removeItem('calendar_state')
-      sessionStorage.removeItem('calendar_verifier')
+      safeSession.remove('calendar_state')
+      safeSession.remove('calendar_verifier')
       // 34-B: restore the workspace the connect was started from (the OAuth redirect dropped the
       // `/w/:wsId` path). Set the store BEFORE the connect POST so the api client scopes it to the
       // right workspace, and restore the URL so the app lands back in that workspace.
-      const calWorkspace = sessionStorage.getItem('calendar_workspace')
-      sessionStorage.removeItem('calendar_workspace')
+      const calWorkspace = safeSession.get('calendar_workspace')
+      safeSession.remove('calendar_workspace')
       // 34-C: POST the code to the provider the connect was started for (Google or Outlook).
-      const calProvider = sessionStorage.getItem('calendar_provider')
-      sessionStorage.removeItem('calendar_provider')
+      const calProvider = safeSession.get('calendar_provider')
+      safeSession.remove('calendar_provider')
       if (calWorkspace) setWorkspaceId(calWorkspace)
       window.history.replaceState({}, '', calWorkspace ? `/w/${calWorkspace}` : window.location.pathname)
       void (async () => {
@@ -173,13 +174,13 @@ export function AuthProvider({
       return
     }
 
-    const verifier = sessionStorage.getItem('pkce_code_verifier')
-    const storedState = sessionStorage.getItem('pkce_state')
+    const verifier = safeSession.get('pkce_code_verifier')
+    const storedState = safeSession.get('pkce_state')
 
     if (!code || !verifier || !returnedState || returnedState !== storedState) return
 
-    sessionStorage.removeItem('pkce_code_verifier')
-    sessionStorage.removeItem('pkce_state')
+    safeSession.remove('pkce_code_verifier')
+    safeSession.remove('pkce_state')
     window.history.replaceState({}, '', window.location.pathname)
 
     exchangeCode(window.location.origin, code, verifier)
@@ -220,12 +221,12 @@ export function AuthProvider({
     const verifier = generateCodeVerifier()
     const challenge = await generateCodeChallenge(verifier)
     const state = generateCodeVerifier()
-    sessionStorage.setItem('pkce_code_verifier', verifier)
-    sessionStorage.setItem('pkce_state', state)
+    safeSession.set('pkce_code_verifier', verifier)
+    safeSession.set('pkce_state', state)
     // OAuth redirects back to the origin root, so stash the requested deep-link
     // and let the gate restore it once authed (21-C).
     const dest = window.location.pathname + window.location.search
-    if (dest !== '/') sessionStorage.setItem('postLoginRedirect', dest)
+    if (dest !== '/') safeSession.set('postLoginRedirect', dest)
     // Never force consent: the first-ever authorization consents once (Google forces it on a
     // not-yet-granted scope), and every later sign-in re-authenticates silently. Lost tokens are
     // restored from the server-side store (30-A), not by re-consenting (30-B).

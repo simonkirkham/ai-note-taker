@@ -1,3 +1,5 @@
+import { safeSession } from "../lib/safeStorage";
+
 // Session store for read-your-writes consistency tokens (RYW-1 todos, RYW-2 notes).
 //
 // Read-your-writes is a SERVER guarantee: a write returns a per-stream consistency token
@@ -19,29 +21,12 @@
 const STREAM_PREFIX = "ryw.stream.";
 const LATEST_PREFIX = "ryw.latest.";
 
-function safeSet(key: string, value: string): void {
-  try {
-    sessionStorage.setItem(key, value);
-  } catch {
-    // sessionStorage unavailable (e.g. private-mode quota) — RYW degrades to no token (read may be stale).
-  }
-}
-
-function safeGet(key: string): string | null {
-  try {
-    return sessionStorage.getItem(key);
-  } catch {
-    return null;
-  }
-}
-
-function safeRemove(key: string): void {
-  try {
-    sessionStorage.removeItem(key);
-  } catch {
-    // ignore
-  }
-}
+// sessionStorage may be unavailable (private-mode quota, a blocked context) and THROWS rather than
+// returning null. RYW then degrades to no token — a read may come back stale — instead of taking
+// the app down. This module's guards are now the shared ones (lib/safeStorage, BUG-60).
+const safeSet = safeSession.set;
+const safeGet = safeSession.get;
+const safeRemove = safeSession.remove;
 
 // A write token is `<stream>@<version>`; stream versions are monotonic. Parse the two parts so a
 // later capture can't regress the gate to an older version (BUG-22).
