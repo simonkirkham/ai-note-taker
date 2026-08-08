@@ -408,4 +408,17 @@ The two identical note-detail reads are the signature of `POST /w/{ws}/notes/{no
 
 **Fix direction:** treat a 404 from a note write as terminal. Invalidate `keys.note(noteId)` so the existing not-found path takes over, and replace the toast with a "this note was deleted" state that surfaces the kept text for recovery (copy out / recreate) rather than inviting a retry that cannot succeed.
 
+**Attempt 1 (PR #439) — NOT merged, converted to draft 2026-08-08.** A 404 on a content save set a terminal `deleted-note-banner` holding the failed save's text. Hawk found it introduces a **regression** plus an unclosed hole; do not merge that shape.
+
+| # | Finding | Why it matters |
+|---|---|---|
+| C1 | **Leaving the note on a doomed save is now silent.** `handleBack` fires the save then `onBack()` immediately, so the 404 lands after unmount and `setDeletedNote` is a no-op on a dead component. Before the change the user got the (misleading) retry toast; now they get **nothing** and walk away believing it saved. | A regression — worse than the bug being fixed, on the commonest exit. |
+| C2 | The banner is component state, so **any** `keys.note` invalidation evicts it and bounces home, destroying the text. Reachable after the banner shows via `useAnalyseNote.onSettled`, `refreshNote()`, and `useTagMutations`. The deviation's premise ("we never invalidate") only held inside `handleSaveContent`. | The rescued text is lost on exactly the paths a stuck user tries. |
+| I1 | Banner sits inside the `hidden` quick-notes tabpanel → invisible from Transcript/Final. `handleGenerateFinalNotes` is a Final-tab button that saves. | Fix renders where the user can't see it. |
+| I2 | The doomed writes never stop: the 404 branch still restores `contentDraftRef`, so a further blur re-fires the PUT, and "Back to notes" fires one more via the unmount flush. | The 31-minute repeat-write signature is unchanged; only the toast is gone. |
+| I3 | **`status === 404` is not sufficient evidence of deletion.** Also produced by not-yours (`NoteHandlers.cs:77`), never-existed (`Note.cs:138`), and — already shipped once in 34-B — an API Gateway route miss falling through to `/{proxy+}`. Under a deploy skew every user would be told their note was deleted. | Discriminate on a `{ error = "note_not_found" }` body, mirroring the existing `stale_content` 409 convention — not the bare status. |
+| I5 | Five mutations left the spec green, incl. deleting the "Back to notes" button and removing the draft-ref restore. The GET stub returns 200 forever, so the spec cannot reach C2 at all. | The tests did not cover the fix's own failure modes. |
+
+**The deviation itself was judged correct** — invalidating `keys.note` bounces the user home via `App.tsx:570-574` and destroys the text, which is the harm the bug is about. The direction stands; the implementation has to survive unmount, live outside the tab panels, stop the retries, and discriminate the 404.
+
 **Deploy-time:** frontend-only → neutral.
