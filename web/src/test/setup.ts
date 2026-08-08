@@ -2,6 +2,7 @@ import '@testing-library/jest-dom'
 import { webcrypto } from 'node:crypto'
 import { setupServer } from 'msw/node'
 import { retryConfig } from '../api/client'
+import { resetStaleDetailTrackingForTests } from '../hooks/useNoteDetail'
 import { resetWorkspaceForTests } from '../workspace/workspaceStore'
 import { handlers } from './handlers'
 
@@ -29,6 +30,8 @@ afterEach(() => {
   // The active workspace is module-global state; clear it so a `/w/:wsId` set by a
   // full-App render in one test never leaks the path prefix into the next.
   resetWorkspaceForTests()
+  // BUG-48: the note-detail stale-read tracker is module state too — same leak class.
+  resetStaleDetailTrackingForTests()
   // Same class again for browser storage — 49-B persists the open-note tabs there, so
   // without this a tab opened in one test is restored in the next and every count
   // assertion drifts. Covers the theme and keep-audio-local preferences too.
