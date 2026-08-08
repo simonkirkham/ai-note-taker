@@ -57,8 +57,11 @@ public sealed class AgendaJourney(BrowserFixture browser) : IAsyncLifetime
         await _app.AddAgendaTopicFromHeaderAsync("Hiring plan");
         await _app.AssertNoteBodyContainsAsync("Hiring plan");
 
-        // And it is a real topic, not just text: the count reflects it once the edit has saved and
-        // the projector has folded it.
+        // The strip renders from the live document, so the count moves without a round trip.
+        await _app.AssertAgendaCoverageAsync("0 / 2");
+
+        // And it really persisted: after a reload the live document is gone and the strip falls
+        // back to the projection, so this passes only if the content saved and the projector folded.
         await _app.AssertAgendaCoverageAfterReloadAsync("0 / 2");
     }
 }

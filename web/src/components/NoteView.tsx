@@ -16,7 +16,7 @@ import { useAnalyseNote, useEditContent, useRenameNoteDetail, useSetNoteDate } f
 import { useTagNote, useUntagNote } from "../hooks/useTagMutations";
 import { useTags } from "../hooks/useTags";
 import { useTranscription } from "../hooks/useTranscription";
-import type { AgendaEditorApi } from "../lib/agendaEditorApi";
+import type { AgendaEditorApi, LiveTopic } from "../lib/agendaEditorApi";
 import AgendaSection from "./AgendaSection";
 import CommandBar from "./CommandBar";
 import FinalNotesView from "./FinalNotesView";
@@ -115,6 +115,7 @@ export default function NoteView({
   // Held here rather than inside AgendaSection so the strip stays free of Tiptap, and in state
   // (not a ref) so the controls enable the moment the lazy editor chunk finishes loading.
   const [agendaApi, setAgendaApi] = useState<AgendaEditorApi | null>(null);
+  const [liveTopics, setLiveTopics] = useState<LiveTopic[] | null>(null);
   const [dateDraft, setDateDraft] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<NoteTab>("quick");
   const [pickerOpen, setPickerOpen] = useState(false);
@@ -735,7 +736,7 @@ export default function NoteView({
         className={styles.titleInput}
         aria-label="Note title"
       />
-      <AgendaSection noteId={noteId} editor={agendaApi} />
+      <AgendaSection noteId={noteId} editor={agendaApi} liveTopics={liveTopics} />
       {transcriptDraft && (
         <div
           data-testid="transcript-recovery-banner"
@@ -915,6 +916,7 @@ export default function NoteView({
                   onChange={(md) => setContentDraft(md)}
                   onBlur={handleSaveContent}
                   onAgendaApiChange={setAgendaApi}
+                  onAgendaTopicsChange={setLiveTopics}
                 />
               )}
               <p className={styles.aiHint} data-testid="ai-instruction-hint">

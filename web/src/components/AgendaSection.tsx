@@ -1,13 +1,12 @@
 import { useEffect, useRef, useState } from "react";
 import type { AgendaItem } from "../api/notes";
 import {
-  useAddAgendaItem,
   useEditAgendaItemText,
   useRemoveAgendaItem,
   useSetAgendaItemDiscussed,
 } from "../hooks/useAgendaMutations";
 import { useNoteDetail } from "../hooks/useNoteDetail";
-import type { AgendaEditorApi } from "../lib/agendaEditorApi";
+import type { AgendaEditorApi, LiveTopic } from "../lib/agendaEditorApi";
 import styles from "./AgendaSection.module.css";
 
 // Phase 43-A/B/C/D: the meeting agenda lives in the note header (with the title), expanded by
@@ -20,6 +19,7 @@ import styles from "./AgendaSection.module.css";
 export default function AgendaSection({
   noteId,
   editor,
+  liveTopics,
 }: {
   noteId: string;
   // 43-G: the live editor's command object, or null while the lazy editor chunk is still loading.
@@ -28,10 +28,32 @@ export default function AgendaSection({
   // typing. Legacy topics (pre-43-F, carried by AgendaItem* events) still go through the API until
   // 43-H migrates them into their notes; that is why both paths exist here.
   editor?: AgendaEditorApi | null;
+  // The topics as they exist in the live document, re-published on every keystroke. When present
+  // these WIN over the server projection: rendering from the same document the commands act on is
+  // the only way the index the header holds and the index a command resolves can agree (they are
+  // otherwise two orderings of two documents — a blockquoted checklist, an empty `- [ ] ` line, or
+  // any unsaved typing desynchronises them, and a remove then deletes the wrong line). It is also
+  // what makes a header action move the UI immediately.
+  liveTopics?: LiveTopic[] | null;
 }) {
   const { data: detail } = useNoteDetail(noteId);
-  const agenda = detail?.agenda ?? [];
-  const addItem = useAddAgendaItem();
+  const projected = detail?.agenda ?? [];
+  // Legacy (pre-43-F) topics have no line in the note, so they always come from the projection and
+  // keep the API path until 43-H migrates them. Derived topics come from the live document when the
+  // editor is mounted, and fall back to the projection only while the lazy chunk is loading.
+  const legacy = projected.filter((a) => a.derived !== true);
+  const derivedFromDoc: AgendaItem[] =
+    liveTopics?.map((t, i) => ({
+      itemId: `live-${i}`,
+      text: t.text,
+      discussed: t.checked,
+      position: i,
+      derived: true,
+    })) ?? projected.filter((a) => a.derived === true);
+  const agenda: AgendaItem[] = [
+    ...derivedFromDoc,
+    ...legacy.map((a, i) => ({ ...a, position: derivedFromDoc.length + i })),
+  ];
   const [text, setText] = useState("");
   const [collapsed, setCollapsed] = useState(false);
 
@@ -49,9 +71,9 @@ export default function AgendaSection({
       editor.addTopic(trimmed);
       return;
     }
-    // Editor not mounted yet (lazy chunk still loading) — fall back to the legacy path rather than
-    // dropping the user's typing on the floor.
-    addItem.mutate({ noteId, text: trimmed, tempId: `temp-${crypto.randomUUID()}` });
+    // Editor not mounted yet. Deliberately NOT falling back to the API: that would mint exactly the
+    // legacy AgendaItemAdded data 43-H is migrating away, and would 404 once 43-H drops the write
+    // endpoints. The input is disabled in this window instead, so this is unreachable in practice.
   }
 
   return (
@@ -106,7 +128,13 @@ export default function AgendaSection({
                 }
               }}
               onBlur={submit}
-              placeholder="+ add item…"
+              // readOnly, not disabled: a disabled input leaves the tab order, which breaks the
+              // keyboard path from the title through the header into the tab list. readOnly keeps
+              // it focusable and announced while still refusing input during the brief window
+              // before the lazy editor chunk resolves.
+              readOnly={editor == null}
+              aria-disabled={editor == null}
+              placeholder={editor == null ? "loading…" : "+ add item…"}
               className={styles.addInput}
               aria-label="Add agenda item"
               data-testid="agenda-add-input"

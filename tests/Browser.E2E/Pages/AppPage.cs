@@ -604,22 +604,45 @@ public sealed class AppPage
     // the content has saved, the projector has folded it, and the note-detail read has come back.
     // Reload-tolerant + re-asserting, per the guardrail that every projector-backed assertion must
     // re-gate rather than race the async projector.
+    /// <summary>
+    /// The coverage pill, without reloading: since 43-G the strip renders from the LIVE editor
+    /// document, so a body or header edit moves it synchronously.
+    /// </summary>
+    public Task AssertAgendaCoverageAsync(string expected) =>
+        Assertions.Expect(page.GetByTestId("agenda-coverage")).ToContainTextAsync(expected);
+
+    /// <summary>
+    /// The pill AFTER a reload — the persistence proof. A reload drops the live document and the
+    /// strip falls back to the projection, so this only passes once the content saved AND the
+    /// projector folded it. Per-attempt timeout is above the 8s server RYW gate cap so a gated read
+    /// is never aborted mid-converge, and the readiness gate is the ENABLED save button rather than
+    /// the title input, which renders before the detail read lands.
+    /// </summary>
     public async Task AssertAgendaCoverageAfterReloadAsync(string expected, int timeoutMs = 30000)
     {
         var deadline = DateTime.UtcNow.AddMilliseconds(timeoutMs);
+        var seen = "(never rendered)";
         while (true)
         {
             try
             {
                 await Assertions.Expect(page.GetByTestId("agenda-coverage"))
-                    .ToContainTextAsync(expected, new() { Timeout = 2500 });
+                    .ToContainTextAsync(expected, new() { Timeout = 9000 });
                 return;
             }
             catch (PlaywrightException) when (DateTime.UtcNow < deadline)
             {
+                seen = await page.GetByTestId("agenda-coverage").TextContentAsync() ?? "(absent)";
                 await page.ReloadAsync();
-                await Assertions.Expect(page.GetByTestId("note-title-input"))
-                    .ToBeVisibleAsync(new() { Timeout = 9000 });
+                await Assertions.Expect(page.GetByTestId("save-button"))
+                    .ToBeEnabledAsync(new() { Timeout = 9000 });
+            }
+            catch (PlaywrightException)
+            {
+                // Evidence through the THROWN message — xUnit swallows Console output on a pass and
+                // never flushes a hung test, so an opaque locator timeout here is undebuggable.
+                throw new Exception(
+                    $"Agenda coverage never reached '{expected}'. Last seen: '{seen}'. page.Url={page.Url}");
             }
         }
     }
@@ -635,12 +658,22 @@ public sealed class AppPage
         await saved;
     }
 
-    /// <summary>Add a topic from the HEADER agenda strip (43-G writes it into the note body).</summary>
+    /// <summary>
+    /// Add a topic from the HEADER agenda strip. 43-G writes it into the note body as an editor
+    /// transaction, which dirties the draft but does NOT itself save — content persists on editor
+    /// blur / unmount / Save. So blur the body and await the PUT, or the next reload (which runs no
+    /// React cleanup) discards the topic and the assertion after it can never pass.
+    /// </summary>
     public async Task AddAgendaTopicFromHeaderAsync(string text)
     {
         var input = page.GetByTestId("agenda-add-input");
         await input.FillAsync(text);
         await input.PressAsync("Enter");
+
+        var saved = page.WaitForResponseAsync(r => r.Url.Contains("/content") && r.Request.Method == "PUT");
+        await page.GetByTestId("note-content").ClickAsync();
+        await page.GetByTestId("note-content").BlurAsync();
+        await saved;
     }
 
     public Task AssertNoteBodyContainsAsync(string text) =>

@@ -14,7 +14,15 @@ import type { Editor } from '@tiptap/react';
 // Topics are addressed by POSITION — the index of the task item in document order, which is exactly
 // what NoteDetailView.Agenda's Position carries for a derived topic. That keeps this seam free of
 // Tiptap types at the call site: AgendaSection passes a number, never a node or an editor.
+/** A topic as it exists in the note RIGHT NOW, read straight from the editor document. */
+export interface LiveTopic {
+  text: string;
+  checked: boolean;
+}
+
 export interface AgendaEditorApi {
+  /** Topics in the live document, in document order. Index === the position commands take. */
+  readTopics(): LiveTopic[];
   /** Append a topic to the note's first checklist, or start one at the top if there is none. */
   addTopic(text: string): void;
   /** Tick or untick the topic at `position` (document order). */
@@ -25,13 +33,29 @@ export interface AgendaEditorApi {
   removeTopic(position: number): void;
 }
 
-/** Document positions of every task item, in document order. */
-function taskItemPositions(editor: Editor): number[] {
-  const positions: number[] = [];
-  editor.state.doc.descendants((node, pos) => {
-    if (node.type.name === 'taskItem') positions.push(pos);
+// Only TOP-LEVEL checklists count as the agenda, matching AgendaFromContent on the server, which
+// deliberately skips blockquoted task lines (a quoted checklist is someone else's, not your agenda).
+// Walking the whole doc instead would let a header action target a line the projection never counted
+// — the index the header holds and the index the command resolves would be over different sets.
+function topLevelTaskItems(editor: Editor): { pos: number; text: string; checked: boolean }[] {
+  const items: { pos: number; text: string; checked: boolean }[] = [];
+  editor.state.doc.forEach((node, offset) => {
+    if (node.type.name !== 'taskList') return;
+    node.forEach((child, childOffset) => {
+      if (child.type.name !== 'taskItem') return;
+      const text = child.textContent.trim();
+      // The server needs text after the bracket to call it a topic, so a freshly-pressed empty
+      // item is not one. Skipping it here keeps the two indices aligned as the user types.
+      if (text.length === 0) return;
+      items.push({ pos: offset + 1 + childOffset, text, checked: child.attrs.checked === true });
+    });
   });
-  return positions;
+  return items;
+}
+
+/** Document positions of every countable task item, in document order. */
+function taskItemPositions(editor: Editor): number[] {
+  return topLevelTaskItems(editor).map((i) => i.pos);
 }
 
 function nodePosAt(editor: Editor, position: number): number | null {
@@ -45,16 +69,23 @@ const quietFocus = { scrollIntoView: false } as const;
 
 export function createAgendaEditorApi(editor: Editor): AgendaEditorApi {
   return {
+    readTopics(): LiveTopic[] {
+      return topLevelTaskItems(editor).map(({ text, checked }) => ({ text, checked }));
+    },
+
     addTopic(text: string) {
       const trimmed = text.trim();
       if (!trimmed) return;
 
       // Q7: the topic joins whichever checklist appears EARLIEST in the note, so a topic added
       // mid-meeting lands with the others rather than interrupting the sentence being written.
+      // Top-level only: appending into a blockquoted checklist would put the topic somewhere the
+      // agenda never reads, so it would silently never appear.
       let firstList: { pos: number; size: number } | null = null;
-      editor.state.doc.descendants((node, pos) => {
-        if (!firstList && node.type.name === 'taskList') firstList = { pos, size: node.nodeSize };
-        return firstList === null;
+      editor.state.doc.forEach((node, offset) => {
+        if (firstList === null && node.type.name === 'taskList') {
+          firstList = { pos: offset, size: node.nodeSize };
+        }
       });
 
       const item = {
@@ -93,11 +124,19 @@ export function createAgendaEditorApi(editor: Editor): AgendaEditorApi {
       if (pos === null || !trimmed) return;
       const node = editor.state.doc.nodeAt(pos);
       if (!node) return;
-      // Replace the item's inline content, leaving the checkbox state untouched.
+      // Replace ONLY the item's first paragraph: with nested task items the node also contains a
+      // child taskList, and those children are topics in their own right. Insert a text NODE, not a
+      // string — a string is parsed as HTML, so "Q3 <projects> review" would silently lose the tag.
+      const paragraph = node.firstChild;
+      if (!paragraph) return;
+      const from = pos + 1;
       editor
         .chain()
         .focus(undefined, quietFocus)
-        .insertContentAt({ from: pos + 1, to: pos + node.nodeSize - 1 }, trimmed)
+        .insertContentAt(
+          { from: from + 1, to: from + paragraph.nodeSize - 1 },
+          { type: 'text', text: trimmed },
+        )
         .run();
     },
 

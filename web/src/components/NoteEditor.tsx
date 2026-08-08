@@ -7,7 +7,7 @@ import StarterKit from '@tiptap/starter-kit';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Markdown } from 'tiptap-markdown';
 import { presignUpload, resolveImages } from '../api/notes';
-import { createAgendaEditorApi, type AgendaEditorApi } from '../lib/agendaEditorApi';
+import { createAgendaEditorApi, type AgendaEditorApi, type LiveTopic } from '../lib/agendaEditorApi';
 import { BlankLineParagraph } from '../lib/blankLineParagraph';
 import { emojifyMarkdown } from '../lib/emoji';
 import { EmojiShortcode } from '../lib/emojiExtension';
@@ -36,6 +36,12 @@ export interface NoteEditorProps {
   // NoteView never holds a command object pointing at a destroyed editor. Deliberately narrow —
   // AgendaSection addresses topics by position and never sees a Tiptap type.
   onAgendaApiChange?: (api: AgendaEditorApi | null) => void;
+  // 43-G: the live topic list, re-published on every document change. The header renders from THIS
+  // rather than from the server projection whenever the editor is mounted, which is what makes a
+  // header action move the UI immediately (the mandatory optimistic-UI criterion) and what keeps
+  // the index the header holds identical to the index the commands resolve against. Two indices
+  // over two different documents cannot be made safe.
+  onAgendaTopicsChange?: (topics: LiveTopic[] | null) => void;
 }
 
 const ALLOWED_IMAGE_TYPES = new Set(['image/png', 'image/jpeg', 'image/gif', 'image/webp']);
@@ -48,7 +54,7 @@ const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
 // rely on StarterKit's bundled Link default, which a Tiptap upgrade could loosen.
 const ALLOWED_LINK_PROTOCOLS = ['http', 'https', 'mailto'];
 
-export default function NoteEditor({ noteId, value, onChange, onBlur, onAgendaApiChange }: NoteEditorProps) {
+export default function NoteEditor({ noteId, value, onChange, onBlur, onAgendaApiChange, onAgendaTopicsChange }: NoteEditorProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { showError } = useToast();
 
@@ -257,10 +263,20 @@ export default function NoteEditor({ noteId, value, onChange, onBlur, onAgendaAp
   // inline arrow does not re-run this on every render (which would churn NoteView's state).
   const agendaApiCb = useRef(onAgendaApiChange);
   useEffect(() => { agendaApiCb.current = onAgendaApiChange; }, [onAgendaApiChange]);
+  const agendaTopicsCb = useRef(onAgendaTopicsChange);
+  useEffect(() => { agendaTopicsCb.current = onAgendaTopicsChange; }, [onAgendaTopicsChange]);
   useEffect(() => {
     if (!editor) return;
-    agendaApiCb.current?.(createAgendaEditorApi(editor));
-    return () => agendaApiCb.current?.(null);
+    const api = createAgendaEditorApi(editor);
+    const publish = () => agendaTopicsCb.current?.(api.readTopics());
+    agendaApiCb.current?.(api);
+    publish();
+    editor.on('update', publish);
+    return () => {
+      editor.off('update', publish);
+      agendaApiCb.current?.(null);
+      agendaTopicsCb.current?.(null);
+    };
   }, [editor]);
 
   // `ignore`/`isDestroyed` drop a stale or unmounted response.
