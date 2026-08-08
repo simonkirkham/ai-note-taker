@@ -191,6 +191,19 @@ Lag is the trigger's **timing source**, never the fault — which is why every c
 
 **Fix direction:** gate the sign-out continuation on the transcript commit landing (or on `status !== 'finalising'`), not only on the content flush.
 
+**Worked design (2026-08-08, from reading the code — not yet implemented).** The awkward part is that awaiting unconditionally is wrong: in local mode `stopRecording` runs the `medium.en` final pass (plus 1:1 diarization) before it ever calls `commitTranscript`, which is minutes on a long meeting — so awaiting on *every* destination would hang ordinary navigation. Only sign-out needs it, because only sign-out clears the token. Four steps:
+
+| # | File | Change |
+|---|---|---|
+| 1 | `web/src/hooks/useTranscription.ts` | `stopRecording` currently fires `void (async () => {…})()` (`:605`) and `commitTranscript` fires `void completeTranscription(…)` (`:203`). Capture both promises in refs and expose `awaitCommit(): Promise<void>` on `UseTranscriptionResult` that awaits the stop sequence **then** the commit POST. Cloud mode resolves almost immediately; local mode resolves after the final pass. |
+| 2 | `web/src/components/leaveGuardContext.tsx` | Widen to `requestLeave(proceed, opts?: { awaitTranscript?: boolean })` and pass `opts` through to the registered guard. |
+| 3 | `web/src/App.tsx:494` | `onSignOut={() => requestLeave(signOut, { awaitTranscript: true })}` — the only caller that sets it. |
+| 4 | `web/src/components/NoteView.tsx` (`handleConfirmedLeave`, `:580`) | It already awaits `pendingContentSaveRef`; also `await transcription.awaitCommit()` when the flag is set, before calling `proceed()`. |
+
+**Not E2E-provable** (needs real local audio capture on Windows) — guard with a unit test over the continuation's await set: a fake `awaitCommit` that resolves only after a tick, asserting `signOut` is not called until it has. Mutation-check it by removing the await; the test must go red.
+
+**Key files:** `web/src/hooks/useTranscription.ts` (`stopRecording`, `commitTranscript`), `web/src/components/leaveGuardContext.tsx`, `web/src/App.tsx`, the [BUG-54] leave-confirm continuation in `NoteView.tsx`.
+
 **Not E2E-provable** — reproducing it needs real local audio capture on Windows. Guard with a unit test over the sign-out continuation's await set.
 
 **Key files:** `web/src/hooks/useTranscription.ts` (`stopRecording`, `commitTranscript`), the [BUG-54] leave-confirm continuation in `NoteView.tsx`.
