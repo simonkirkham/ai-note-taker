@@ -130,10 +130,14 @@ export class StreamingSession {
     // PCM stopped the session spun forever. It mattered because the renderer awaits diarize (two
     // whisper-cli passes) after Stop before anything halts this session, so the spin competed for
     // cores with the pass the user was waiting for.
+    //
+    // A step that FAILS is deliberately not retried once audio has stopped: resetting this in the
+    // catch would re-open an infinite retry loop against a stale window, which is the CPU burn this
+    // guard exists to stop. Cost is that the live tail can be one window short after a failed final
+    // step; the stop-time pass is what recovers it.
     if (this.byteLen === this.lastStepByteLen) return
     const startByte = this.state.finalizedMs * BYTES_PER_MS
     if (this.byteLen - startByte < MIN_NEW_MS * BYTES_PER_MS) return
-    this.lastStepByteLen = this.byteLen
     this.busy = true
     // Declared OUTSIDE the try so the catch can report them too: the window size at the moment of
     // failure is the number that says whether the clamp was engaged when it died, and it is
@@ -144,6 +148,14 @@ export class StreamingSession {
     const clampedMs = rawNowMs - nowMs
     const windowMs = nowMs - this.state.finalizedMs
     const startedAt = Date.now()
+    // BUG-67: record what this step actually CONSUMED, not what happened to be buffered. When the
+    // BUG-65 clamp engages, the withheld tail is meant to "wait a step" — marking it consumed would
+    // mean it is never transcribed live once audio stops, silently cancelling the two fixes against
+    // each other at exactly the end-of-audio case the clamp exists for.
+    // The conditional matters: nowMs * BYTES_PER_MS truncates the sub-millisecond remainder, so
+    // using it unconditionally would leave lastStepByteLen permanently below byteLen and the idle
+    // guard would never fire — restoring the original spin.
+    this.lastStepByteLen = clampedMs > 0 ? nowMs * BYTES_PER_MS : this.byteLen
     try {
       // BUG-65: hardWindowMs does NOT bound the runtime window (see the clamp computed above).
       // finalizedMs only advances after an inference completes, and the busy-guard drops ticks

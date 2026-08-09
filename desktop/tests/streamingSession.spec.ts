@@ -332,7 +332,7 @@ test('a session receiving no new audio stops re-transcribing the same window', a
   expect(calls()).toBe(afterFirst) // and then stopped, rather than spinning on it
 })
 
-test('new audio resumes stepping — the guard is idle-detection, not a latch', async () => {
+test('new audio resumes stepping, and the guard then re-arms', async () => {
   const { server, calls } = countingServer()
   const session = new StreamingSession(server, () => {}, () => {}, undefined, { readyTimeoutMs: 60_000 })
   session.start()
@@ -342,7 +342,37 @@ test('new audio resumes stepping — the guard is idle-detection, not a latch', 
 
   session.pushPcm(Buffer.alloc(32 * 2000)) // the user starts speaking again
   await waitMs(1700)
+  const afterResume = calls()
+
+  // The resume assertion ALONE passes with the guard removed entirely — it is a latch-regression
+  // check, not proof of the fix. Going flat again at the new byteLen is what proves it re-arms.
+  await waitMs(3400)
 
   session.dispose()
-  expect(calls()).toBeGreaterThan(afterFirst)
+  expect(afterResume).toBeGreaterThan(afterFirst)
+  expect(calls()).toBe(afterResume)
+})
+
+// BUG-67 regression guard for BUG-65's clamp. A step consumes up to the SEND CAP, not everything
+// buffered — the clamp deliberately makes the withheld tail "wait a step". If the idle guard marks
+// all buffered bytes as consumed, that tail is never transcribed live once audio stops: the two
+// fixes cancel out, silently, at exactly the end-of-audio case the clamp exists for.
+test('a clamped step does not mark the withheld tail as consumed', async () => {
+  const sent: number[] = []
+  const server = stubServer({ running: true, ready: true })
+  ;(server as unknown as { transcribe: (p: Buffer) => Promise<never[]> }).transcribe = (p: Buffer) => {
+    sent.push(p.length)
+    return Promise.resolve([])
+  }
+  const session = new StreamingSession(server, () => {}, () => {}, undefined, {
+    readyTimeoutMs: 60_000,
+    maxSendWindowMs: 5000, // 12s buffered against a 5s cap → 7s withheld on the first step
+  })
+  session.start()
+  session.pushPcm(Buffer.alloc(32 * 12000))
+  await waitMs(5200) // three ticks, no further PCM
+
+  session.dispose()
+  // It must keep working through the backlog rather than stopping after the first clamped step.
+  expect(sent.length).toBeGreaterThan(1)
 })
