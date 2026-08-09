@@ -1,116 +1,128 @@
-using Api.CommandHandlers;
-using Domain.Notes;
-using EventStore.Projections;
+using System.Net;
+using System.Net.Http.Json;
+using System.Text.Json;
 
 namespace Api.Integration;
 
-// Phase 43-H1 — the migration writes into the user's REAL note content, so these pin the three
-// properties that make that safe: nothing else in the note changes, a re-run cannot double-list,
-// and ticked state survives. Measured scope at build time: 8 notes, 36 topics.
-public sealed class AgendaMigrationTests
+// Phase 43-H1 — the migration writes into the user's REAL note content, so every test here drives
+// the live endpoint: real auth, real ?apply binding, the real NoteCommandHandler (ownership check,
+// hash guard, append-retry) and the real event store. The previous version of these tests
+// instantiated the handler with fakes and so proved none of that.
+//
+// Measured scope at build time (prod, 2026-08-08): 8 notes, 36 topics.
+[Collection("AgendaMigration")]
+public sealed class AgendaMigrationTests(ApiFactory factory) : IClassFixture<ApiFactory>
 {
-    private static (AgendaMigrationHandler Handler, InMemoryNoteDetailStore Store, RecordingCommandHandler Commands)
-        Subject(params NoteDetailView[] notes)
+    private readonly HttpClient _client = factory.CreateClient();
+
+    private async Task<string> CreateNoteAsync(string content, params string[] legacyTopics)
     {
-        var store = new InMemoryNoteDetailStore();
-        foreach (var n in notes) store.UpsertAsync(n).GetAwaiter().GetResult();
-        var commands = new RecordingCommandHandler();
-        return (new AgendaMigrationHandler(store, commands), store, commands);
+        var create = await _client.PostAsync("/notes", null);
+        var noteId = (await create.Content.ReadFromJsonAsync<JsonElement>())
+            .GetProperty("noteId").GetString()!;
+        if (content.Length > 0)
+            await _client.PutAsync($"/notes/{noteId}/content", JsonContent.Create(new { content }));
+        foreach (var text in legacyTopics)
+            await _client.PostAsync($"/notes/{noteId}/agenda-items", JsonContent.Create(new { text }));
+        return noteId;
     }
 
-    private static NoteDetailView Note(string content, params AgendaItemView[] agenda) =>
-        new(new NoteId(Guid.NewGuid()), "Catch up", content, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow,
-            UserId: "user-1", Agenda: agenda);
+    private async Task TickAsync(string noteId, string text)
+    {
+        var detail = await _client.GetFromJsonAsync<JsonElement>($"/notes/{noteId}");
+        var itemId = detail.GetProperty("agenda").EnumerateArray()
+            .First(a => a.GetProperty("text").GetString() == text)
+            .GetProperty("itemId").GetString();
+        await _client.PutAsync($"/notes/{noteId}/agenda-items/{itemId}/discussed",
+            JsonContent.Create(new { discussed = true }));
+    }
 
-    private static AgendaItemView Legacy(string text, bool discussed = false, int position = 0) =>
-        new(Guid.NewGuid(), text, discussed, position, Derived: false);
+    private async Task<JsonElement> MigrateAsync(bool apply) =>
+        await (await _client.PostAsync($"/admin/agenda/migrate?apply={apply}", null))
+            .Content.ReadFromJsonAsync<JsonElement>();
 
-    private static AgendaItemView Derived(string text, bool discussed = false, int position = 0) =>
-        new(Guid.NewGuid(), text, discussed, position, Derived: true);
+    private static JsonElement NoteIn(JsonElement result, string noteId) =>
+        result.GetProperty("notes").EnumerateArray()
+            .Single(n => n.GetProperty("noteId").GetString() == noteId.Replace("-", ""));
+
+    private static bool Mentions(JsonElement result, string noteId) =>
+        result.GetProperty("notes").EnumerateArray()
+            .Any(n => n.GetProperty("noteId").GetString() == noteId.Replace("-", ""));
+
+    private async Task<string> ContentOfAsync(string noteId) =>
+        (await _client.GetFromJsonAsync<JsonElement>($"/notes/{noteId}"))
+            .GetProperty("content").GetString()!;
 
     [Fact]
-    public async Task Writes_legacy_topics_into_the_body_as_a_checklist()
+    public async Task Writes_legacy_topics_into_the_body_as_a_checklist_preserving_ticked_state()
     {
-        var (handler, _, commands) = Subject(Note("Rob says cloud spend is 8% over.",
-            Legacy("Travel", position: 0), Legacy("Timesheet", discussed: true, position: 1)));
+        var noteId = await CreateNoteAsync("Rob says cloud spend is 8% over.", "Travel", "Timesheet");
+        await TickAsync(noteId, "Timesheet");
 
-        var result = await handler.MigrateAsync(dryRun: false);
+        await MigrateAsync(apply: true);
 
-        Assert.Equal(1, result.NotesMigrated);
-        Assert.Equal(2, result.TopicsMigrated);
-        var written = Assert.Single(commands.Edits).Content;
-        Assert.Contains("- [ ] Travel", written);
-        Assert.Contains("- [x] Timesheet", written);
+        var content = await ContentOfAsync(noteId);
+        Assert.Contains("- [ ] Travel", content);
+        Assert.Contains("- [x] Timesheet", content);
     }
 
     [Fact]
-    public async Task Preserves_every_word_of_the_existing_note()
+    public async Task Preserves_every_word_of_the_existing_note_below_the_checklist()
     {
         const string body = "Rob says cloud spend is 8% over.\n\nMoved on to hiring — two open reqs.";
-        var (handler, _, commands) = Subject(Note(body, Legacy("Travel")));
+        var noteId = await CreateNoteAsync(body, "Travel");
 
-        await handler.MigrateAsync(dryRun: false);
+        await MigrateAsync(apply: true);
 
-        var written = Assert.Single(commands.Edits).Content;
-        Assert.EndsWith(body, written);
-        Assert.Contains("- [ ] Travel\n\n", written);
+        Assert.EndsWith(body, await ContentOfAsync(noteId));
     }
 
     [Fact]
     public async Task Keeps_capture_order()
     {
-        var (handler, _, commands) = Subject(Note("Notes.",
-            Legacy("Third", position: 2), Legacy("First", position: 0), Legacy("Second", position: 1)));
+        var noteId = await CreateNoteAsync("Notes.", "First", "Second", "Third");
 
-        await handler.MigrateAsync(dryRun: false);
+        await MigrateAsync(apply: true);
 
-        var written = Assert.Single(commands.Edits).Content;
-        Assert.True(written.IndexOf("First", StringComparison.Ordinal) < written.IndexOf("Second", StringComparison.Ordinal));
-        Assert.True(written.IndexOf("Second", StringComparison.Ordinal) < written.IndexOf("Third", StringComparison.Ordinal));
+        var content = await ContentOfAsync(noteId);
+        Assert.True(content.IndexOf("First", StringComparison.Ordinal) < content.IndexOf("Second", StringComparison.Ordinal));
+        Assert.True(content.IndexOf("Second", StringComparison.Ordinal) < content.IndexOf("Third", StringComparison.Ordinal));
     }
 
     [Fact]
     public async Task Handles_a_note_whose_body_is_empty()
     {
-        var (handler, _, commands) = Subject(Note("", Legacy("How are the teams doing?")));
+        var noteId = await CreateNoteAsync("", "How are the teams doing?");
 
-        await handler.MigrateAsync(dryRun: false);
+        await MigrateAsync(apply: true);
 
-        Assert.Equal("- [ ] How are the teams doing?", Assert.Single(commands.Edits).Content.TrimEnd());
+        Assert.Equal("- [ ] How are the teams doing?", (await ContentOfAsync(noteId)).Trim());
     }
 
     // The property that makes a re-run after a partial failure safe.
     [Fact]
-    public async Task Is_idempotent_a_second_run_writes_nothing()
+    public async Task Is_idempotent_a_second_run_leaves_the_note_untouched()
     {
-        var note = Note("Prose.", Legacy("Travel"));
-        var (handler, store, commands) = Subject(note);
+        var noteId = await CreateNoteAsync("Prose.", "Travel");
+        await MigrateAsync(apply: true);
+        var afterFirst = await ContentOfAsync(noteId);
 
-        await handler.MigrateAsync(dryRun: false);
-        var afterFirst = commands.Edits.Count;
-        // Reflect the migration in the store, as the projector would.
-        await store.UpsertAsync(note with { Content = commands.Edits[^1].Content });
+        var second = await MigrateAsync(apply: true);
 
-        var second = await handler.MigrateAsync(dryRun: false);
-
-        Assert.Equal(afterFirst, commands.Edits.Count);
-        Assert.Equal(0, second.NotesMigrated);
-        Assert.Equal(1, second.NotesSkipped);
+        Assert.Equal(afterFirst, await ContentOfAsync(noteId));
+        Assert.False(Mentions(second, noteId));
     }
 
     [Fact]
     public async Task Skips_a_topic_already_in_the_body_but_migrates_its_siblings()
     {
-        var (handler, _, commands) = Subject(Note("- [ ] Travel\n\nProse.",
-            Legacy("Travel", position: 0), Legacy("Timesheet", position: 1)));
+        var noteId = await CreateNoteAsync("- [ ] Travel\n\nProse.", "Travel", "Timesheet");
 
-        var result = await handler.MigrateAsync(dryRun: false);
+        await MigrateAsync(apply: true);
 
-        Assert.Equal(1, result.TopicsMigrated);
-        var written = Assert.Single(commands.Edits).Content;
-        Assert.Contains("- [ ] Timesheet", written);
-        // "Travel" appears once — the body's original line, not a duplicate.
-        Assert.Equal(1, written.Split("Travel").Length - 1);
+        var content = await ContentOfAsync(noteId);
+        Assert.Contains("- [ ] Timesheet", content);
+        Assert.Equal(1, content.Split("Travel").Length - 1);
     }
 
     // The editor re-serialises text with backslash escapes on the next save, so a literal comparison
@@ -118,55 +130,127 @@ public sealed class AgendaMigrationTests
     [Fact]
     public async Task Matches_an_already_migrated_topic_through_markdown_escapes()
     {
-        var (handler, _, _) = Subject(Note(@"- [ ] Review Q3 \[draft\]", Legacy("Review Q3 [draft]")));
+        var noteId = await CreateNoteAsync(@"- [ ] Review Q3 \[draft\]", "Review Q3 [draft]");
 
-        var result = await handler.MigrateAsync(dryRun: false);
+        var result = await MigrateAsync(apply: true);
 
-        Assert.Equal(0, result.NotesMigrated);
-        Assert.Equal(1, result.NotesSkipped);
+        Assert.False(Mentions(result, noteId));
+    }
+
+    // Explicit 43-H acceptance criterion: a body line the user has emphasised is the SAME topic.
+    [Fact]
+    public async Task Matches_an_already_migrated_topic_through_emphasis()
+    {
+        var noteId = await CreateNoteAsync("- [ ] **Budget**", "Budget");
+
+        var result = await MigrateAsync(apply: true);
+
+        Assert.False(Mentions(result, noteId));
+        Assert.Equal("- [ ] **Budget**", (await ContentOfAsync(noteId)).Trim());
+    }
+
+    // AddAgendaItem only trimmed, so a legacy topic can hold a newline. Written raw it would break
+    // the checklist into a line Parse cannot match, and every re-run would list it again.
+    [Fact]
+    public async Task Flattens_a_topic_that_contains_a_newline_and_stays_idempotent()
+    {
+        var noteId = await CreateNoteAsync("Prose.", "Budget\nand headcount");
+
+        await MigrateAsync(apply: true);
+        var afterFirst = await ContentOfAsync(noteId);
+        await MigrateAsync(apply: true);
+
+        Assert.Contains("- [ ] Budget and headcount", afterFirst);
+        Assert.Equal(afterFirst, await ContentOfAsync(noteId));
     }
 
     [Fact]
-    public async Task Leaves_notes_with_no_legacy_topics_alone()
+    public async Task Leaves_a_note_with_no_legacy_topics_alone()
     {
-        var (handler, _, commands) = Subject(
-            Note("Prose only."),
-            Note("- [ ] Budget", Derived("Budget")));
+        var noteId = await CreateNoteAsync("- [ ] Budget\n\nProse only.");
 
-        var result = await handler.MigrateAsync(dryRun: false);
+        var result = await MigrateAsync(apply: true);
 
-        Assert.Empty(commands.Edits);
-        Assert.Equal(0, result.NotesMigrated);
-        Assert.Equal(2, result.NotesScanned);
+        Assert.False(Mentions(result, noteId));
+        Assert.Equal("- [ ] Budget\n\nProse only.", await ContentOfAsync(noteId));
     }
 
     [Fact]
-    public async Task Dry_run_reports_what_it_would_do_and_writes_nothing()
+    public async Task Dry_run_writes_nothing_and_reports_the_content_it_would_write()
     {
-        var (handler, _, commands) = Subject(Note("Prose.", Legacy("Travel"), Legacy("Timesheet")));
+        var noteId = await CreateNoteAsync("Prose.", "Travel", "Timesheet");
 
-        var result = await handler.MigrateAsync(dryRun: true);
+        var result = await MigrateAsync(apply: false);
 
-        Assert.Empty(commands.Edits);
-        Assert.Equal(1, result.NotesMigrated);
-        Assert.Equal(2, result.TopicsMigrated);
-        Assert.Contains(result.Details, d => d.Contains("would migrate"));
+        Assert.True(result.GetProperty("dryRun").GetBoolean());
+        Assert.Equal("Prose.", await ContentOfAsync(noteId));
+        var line = NoteIn(result, noteId);
+        Assert.Equal("would migrate", line.GetProperty("outcome").GetString());
+        Assert.Equal(2, line.GetProperty("topics").GetInt32());
+        // The whole resulting body, so it can be read before ?apply=true — not just a byte delta.
+        Assert.Equal("- [ ] Travel\n- [ ] Timesheet\n\nProse.", line.GetProperty("resultingContent").GetString());
     }
 
-    private sealed class RecordingCommandHandler : INoteCommandHandler
+    [Fact]
+    public async Task Missing_apply_parameter_is_a_dry_run()
     {
-        public List<EditContent> Edits { get; } = [];
+        var noteId = await CreateNoteAsync("Prose.", "Travel");
 
-        public Task<long> HandleAsync(NoteCommand cmd, CancellationToken ct = default)
-        {
-            if (cmd is EditContent edit) Edits.Add(edit);
-            return Task.FromResult(1L);
-        }
+        var result = await (await _client.PostAsync("/admin/agenda/migrate", null))
+            .Content.ReadFromJsonAsync<JsonElement>();
 
-        public Task<long> HandleAsync(NoteCommand cmd, string userId, string? workspaceId, CancellationToken ct = default) =>
-            HandleAsync(cmd, ct);
+        Assert.True(result.GetProperty("dryRun").GetBoolean());
+        Assert.Equal("Prose.", await ContentOfAsync(noteId));
+    }
 
-        public Task<long> GetCurrentVersionAsync(NoteId noteId, CancellationToken ct = default) =>
-            Task.FromResult(1L);
+    [Fact]
+    public async Task Requires_authentication()
+    {
+        var anonymous = factory.CreateUnauthenticatedClient();
+
+        var resp = await anonymous.PostAsync("/admin/agenda/migrate", null);
+
+        Assert.Equal(HttpStatusCode.Unauthorized, resp.StatusCode);
+    }
+
+    // C2: the scan must never reach another user's notes — not to migrate them, and not to disclose
+    // their ids and titles in the report.
+    [Fact]
+    public async Task Never_touches_or_reports_another_users_note()
+    {
+        var mine = await CreateNoteAsync("Mine.", "Travel");
+        var theirs = await CreateNoteAsAsync(ApiFactory.OtherTestUserId, "Theirs.", "Their topic");
+
+        var result = await MigrateAsync(apply: true);
+
+        Assert.True(Mentions(result, mine));
+        Assert.False(Mentions(result, theirs));
+        Assert.DoesNotContain("Their topic", result.ToString());
+    }
+
+    private async Task<string> CreateNoteAsAsync(string userId, string content, string topic)
+    {
+        var other = factory.CreateClient();
+        other.DefaultRequestHeaders.Remove("X-Test-User-Id");
+        other.DefaultRequestHeaders.Add("X-Test-User-Id", userId);
+        var create = await other.PostAsync("/notes", null);
+        var noteId = (await create.Content.ReadFromJsonAsync<JsonElement>())
+            .GetProperty("noteId").GetString()!;
+        await other.PutAsync($"/notes/{noteId}/content", JsonContent.Create(new { content }));
+        await other.PostAsync($"/notes/{noteId}/agenda-items", JsonContent.Create(new { text = topic }));
+        return noteId;
+    }
+
+    // A deleted note is dropped by the fold, so its topics are never resurrected — and an
+    // EditContent against it would 404 mid-batch.
+    [Fact]
+    public async Task Never_resurrects_a_deleted_note()
+    {
+        var noteId = await CreateNoteAsync("Gone.", "Topic 1");
+        await _client.DeleteAsync($"/notes/{noteId}");
+
+        var result = await MigrateAsync(apply: true);
+
+        Assert.False(Mentions(result, noteId));
     }
 }

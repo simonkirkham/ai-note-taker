@@ -1,10 +1,18 @@
+using Api.Auth;
+using Api.Exceptions;
 using Domain.Notes;
+using EventStore;
 using EventStore.Projections;
 
 namespace Api.CommandHandlers;
 
+public sealed record AgendaMigrationNote(
+    string NoteId, string Title, int Topics, string Outcome, int ContentBefore, int ContentAfter,
+    string? ResultingContent);
+
 public sealed record AgendaMigrationResult(
-    int NotesScanned, int NotesMigrated, int TopicsMigrated, int NotesSkipped, IReadOnlyList<string> Details);
+    int NotesScanned, int NotesWithLegacyTopics, int NotesMigrated, int TopicsMigrated,
+    int NotesStale, int NotesFailed, IReadOnlyList<AgendaMigrationNote> Notes);
 
 public interface IAgendaMigrationHandler
 {
@@ -19,72 +27,160 @@ public interface IAgendaMigrationHandler
 /// the top, preserving ticked state. Only after this has run and been verified is it safe to remove
 /// the legacy path — the strangler ordering the phase mandates.
 ///
+/// This is a read-modify-write of the user's real note content, so BOTH sides come from the event
+/// stream, never from the async NoteDetail projection:
+///
+///   * WHAT TO MIGRATE — the full event log is folded in memory through the very same
+///     NoteDetailProjection the projector and ProjectionRebuildHandler use. So "which topics are
+///     still legacy" has exactly one definition (AgendaFromContent.Compose leaves a legacy topic in
+///     the view only when no body line matches it), the run needs no prior projection rebuild to be
+///     correct, and a deleted note — which the fold drops — can never be resurrected.
+///   * WHAT TO WRITE ONTO — every EditContent carries ExpectedBaseContentHash of the content this
+///     scan actually built from. Reading a lagging projection and replacing the whole body would
+///     silently drop a save made in the meantime; worse, NoteCommandHandler retries a
+///     ConcurrencyException by re-running the command, which would re-apply the same stale body.
+///     With the hash, each retry re-checks against the freshly-read stream and a moved note is
+///     REJECTED (StaleContentEditException) rather than overwritten — reported as "stale", to be
+///     picked up by a re-run.
+///
 /// Writes go through the normal EditContent command (never a direct projection write), so the change
-/// is an ordinary event on the note's stream: auditable, and revertible like any other edit.
+/// is an ordinary event on the note's stream: auditable, and revertible like any other edit. The
+/// scoped ICurrentUser identity is used deliberately — the command handler then applies its own
+/// event-stream ownership check, a second gate behind the owner filter below.
 /// </summary>
 public sealed class AgendaMigrationHandler(
-    INoteDetailStore noteDetailStore,
-    INoteCommandHandler noteCommandHandler) : IAgendaMigrationHandler
+    IEventStore store,
+    INoteCommandHandler noteCommandHandler,
+    ICurrentUser currentUser,
+    ILogger<AgendaMigrationHandler> logger) : IAgendaMigrationHandler
 {
+    // Single-flight, as the rebuild is: two concurrent runs would each read the same pre-migration
+    // content and the second would lose its hash check, turning a clean re-run into noise. Static so
+    // it gates across requests on a warm Lambda (WaitAsync(0) -> reject rather than queue).
+    private static readonly SemaphoreSlim MigrationLock = new(1, 1);
+
     public async Task<AgendaMigrationResult> MigrateAsync(bool dryRun, CancellationToken ct = default)
     {
-        var notes = await noteDetailStore.QueryAllAsync(ct).ConfigureAwait(false);
-        var details = new List<string>();
-        int migrated = 0, topics = 0, skipped = 0;
+        if (!await MigrationLock.WaitAsync(0, ct).ConfigureAwait(false))
+            throw new MigrationInProgressException();
+        try
+        {
+            return await MigrateCoreAsync(dryRun, ct).ConfigureAwait(false);
+        }
+        finally
+        {
+            MigrationLock.Release();
+        }
+    }
 
-        foreach (var note in notes)
+    private async Task<AgendaMigrationResult> MigrateCoreAsync(bool dryRun, CancellationToken ct)
+    {
+        // Same bounded retry the rebuild wraps this scan in (BUG-23): it is the heaviest read here
+        // and the one prod has already seen time out.
+        var events = await BoundedWrites
+            .WithRetryAsync(store.ReadAllStreamsAsync, ct: ct).ConfigureAwait(false);
+
+        var projection = new NoteDetailProjection();
+        foreach (var e in events)
+            projection.Handle(e);
+
+        var owned = projection.GetAllDetails().Where(n => n.UserId == currentUser.UserId).ToList();
+        // A legacy topic is one Compose could not match to a body line. A note whose topics are all
+        // already in the body therefore never reaches this list — there is nothing to write.
+        var candidates = owned
+            .Where(n => (n.Agenda ?? []).Any(a => !a.Derived))
+            .OrderBy(n => n.NoteId.Value)
+            .ToList();
+
+        var report = new List<AgendaMigrationNote>();
+        int migrated = 0, topics = 0, stale = 0, failed = 0;
+
+        foreach (var note in candidates)
         {
             ct.ThrowIfCancellationRequested();
 
-            var legacy = (note.Agenda ?? []).Where(a => !a.Derived).OrderBy(a => a.Position).ToList();
-            if (legacy.Count == 0) continue;
+            var missing = (note.Agenda ?? [])
+                .Where(a => !a.Derived)
+                .OrderBy(a => a.Position)
+                .Select(a => a with { Text = SingleLine(a.Text) })
+                .Where(a => a.Text.Length > 0)
+                .ToList();
+            if (missing.Count == 0) continue;
 
-            // Idempotent: a topic already present as a task line in the body is not written again, so
-            // a re-run after a partial failure cannot double-list anything. Matching is on the same
-            // normalisation the server's own dedup uses, and unescapes both sides — the editor
-            // re-serialises text with backslash escapes on the user's next save, so a literal
-            // comparison would miss an already-migrated topic and duplicate it.
-            var alreadyInBody = AgendaFromContent.Parse(note.NoteId, note.Content)
-                .Select(t => Normalise(t.Text))
-                .ToHashSet();
-
-            var missing = legacy.Where(a => !alreadyInBody.Contains(Normalise(a.Text))).ToList();
-            if (missing.Count == 0)
-            {
-                skipped++;
-                details.Add($"{note.NoteId.Value:N} \"{Trim(note.Title)}\": all {legacy.Count} topic(s) already in the body");
-                continue;
-            }
-
-            var checklist = string.Join("\n", missing.Select(a => $"- [{(a.Discussed ? 'x' : ' ')}] {a.Text}"));
-            // Prepended, with a blank line, so the existing note reads exactly as before underneath.
-            var newContent = string.IsNullOrWhiteSpace(note.Content)
+            var checklist = string.Join("\n",
+                missing.Select(a => $"- [{(a.Discussed ? 'x' : ' ')}] {a.Text}"));
+            // Prepended with a blank line, the original body following byte-for-byte. Verified
+            // against the real notes: the checklist stays its own task list and does not merge into
+            // a body that itself opens with a bullet list.
+            // IsNullOrEmpty, deliberately NOT IsNullOrWhiteSpace: a line holding a single space is a
+            // BUG-40 blank-line paragraph, real content the user typed, and discarding it would be
+            // exactly the silent loss this slice exists to avoid.
+            var newContent = string.IsNullOrEmpty(note.Content)
                 ? checklist
                 : $"{checklist}\n\n{note.Content}";
 
-            details.Add(
-                $"{note.NoteId.Value:N} \"{Trim(note.Title)}\": {(dryRun ? "would migrate" : "migrated")} " +
-                $"{missing.Count} topic(s) ({missing.Count(a => a.Discussed)} ticked), " +
-                $"content {note.Content?.Length ?? 0}b -> {newContent.Length}b");
+            AgendaMigrationNote Line(string outcome, bool withContent = true) => new(
+                note.NoteId.Value.ToString("N"), Title(note.Title), missing.Count, outcome,
+                note.Content?.Length ?? 0, newContent.Length, withContent ? newContent : null);
 
-            if (!dryRun)
+            if (dryRun)
             {
-                // No ExpectedBaseContentHash: this is an admin batch, not a user editing a loaded
-                // view, and the content read and the write are adjacent. A concurrent user edit
-                // would be caught by the append's own optimistic concurrency.
-                await noteCommandHandler.HandleAsync(new EditContent(note.NoteId, newContent))
-                    .ConfigureAwait(false);
+                migrated++;
+                topics += missing.Count;
+                report.Add(Line("would migrate"));
+                continue;
             }
 
-            migrated++;
-            topics += missing.Count;
+            // Per-note isolation: one bad note must not cost the record of which notes were already
+            // written. Every outcome lands in the report AND in the log, at the moment it happens —
+            // an API-Gateway timeout can still take the response away.
+            try
+            {
+                await noteCommandHandler.HandleAsync(
+                    new EditContent(note.NoteId, newContent, NoteContentHash.Compute(note.Content)),
+                    ct).ConfigureAwait(false);
+                migrated++;
+                topics += missing.Count;
+                logger.LogInformation(
+                    "Agenda migration wrote NoteId={NoteId} Topics={Topics} Before={Before} After={After}",
+                    note.NoteId.Value, missing.Count, note.Content?.Length ?? 0, newContent.Length);
+                report.Add(Line("migrated"));
+            }
+            catch (StaleContentEditException)
+            {
+                // The note changed between the scan and the write, so the body this run built on is
+                // no longer current. Rejected, not overwritten — a re-run picks it up from the note
+                // as it now stands.
+                stale++;
+                logger.LogWarning(
+                    "Agenda migration skipped NoteId={NoteId} — content changed after the scan",
+                    note.NoteId.Value);
+                report.Add(Line("stale — the note changed after the scan; re-run", withContent: false));
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                failed++;
+                logger.LogError(ex, "Agenda migration FAILED NoteId={NoteId}", note.NoteId.Value);
+                report.Add(Line($"FAILED: {ex.GetType().Name}: {ex.Message}", withContent: false));
+            }
         }
 
-        return new AgendaMigrationResult(notes.Count, migrated, topics, skipped, details);
+        logger.LogInformation(
+            "Agenda migration {Mode} Scanned={Scanned} WithLegacy={WithLegacy} Migrated={Migrated} " +
+            "Topics={Topics} Stale={Stale} Failed={Failed}",
+            dryRun ? "DRY RUN" : "APPLIED", owned.Count, candidates.Count, migrated, topics, stale, failed);
+
+        return new AgendaMigrationResult(
+            owned.Count, candidates.Count, migrated, topics, stale, failed, report);
     }
 
-    private static string Normalise(string text) => text.Trim().Replace("\\", "").ToLowerInvariant();
+    // AddAgendaItem only trimmed the topic, so a legacy topic may hold a newline or tab. Written
+    // raw it would break the checklist into a line Parse cannot match, and every re-run would list
+    // it again and re-inject the stray markup.
+    private static string SingleLine(string text) =>
+        string.Join(' ', text.Split(['\r', '\n', '\t'], StringSplitOptions.RemoveEmptyEntries
+            | StringSplitOptions.TrimEntries));
 
-    private static string Trim(string? title) =>
-        string.IsNullOrWhiteSpace(title) ? "(untitled)" : title.Length > 40 ? title[..40] : title;
+    private static string Title(string? title) =>
+        string.IsNullOrWhiteSpace(title) ? "(untitled)" : title.Length > 60 ? title[..60] : title;
 }

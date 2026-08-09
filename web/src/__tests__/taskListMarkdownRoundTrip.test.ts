@@ -67,4 +67,19 @@ describe('GFM task-list markdown round-trip', () => {
     const once = roundTrip(md);
     expect(roundTrip(once)).toBe(once);
   });
+
+  // 43-H1 writes `checklist + "\n\n" + existing body` into real notes. The review's worry was that
+  // a body opening with its OWN bullet list would absorb the checklist into one list (CommonMark
+  // merges same-marker lists across a blank line), reformatting the user's content. It does not:
+  // the task items parse as a taskList node and the plain items as a separate bulletList, so both
+  // survive as themselves. One of the 8 migrated notes has exactly this shape.
+  it('keeps a prepended checklist separate from a body that opens with a bullet list', () => {
+    const md = '- [ ] How are the teams settling?\n- [x] Any blockers?\n\n- Team settling\n- Backlog in place';
+
+    expect(roundTrip(md)).toBe(md);
+    const html = renderHtml(md);
+    expect(html).toContain('data-type="taskList"');
+    // The body's own bullets stay plain bullets — only the two topics are checkboxes.
+    expect((html.match(/type="checkbox"/g) ?? []).length).toBe(2);
+  });
 });

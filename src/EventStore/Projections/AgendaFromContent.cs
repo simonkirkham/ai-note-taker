@@ -98,19 +98,69 @@ public static partial class AgendaFromContent
         var fromBody = Parse(noteId, content);
         if (legacy.Count == 0) return fromBody.AsReadOnly();
 
-        var bodyText = fromBody.Select(i => Key(i.Text)).ToHashSet();
+        var bodyText = fromBody.Select(i => MatchKey(i.Text)).ToHashSet();
         var position = fromBody.Count;
         foreach (var item in legacy)
         {
-            // Unescape the legacy text too, so a topic migrated into the body in 43-H still matches
-            // after the editor re-serialises it with escapes.
-            if (bodyText.Contains(Key(Unescape(item.Text)))) continue;
+            if (bodyText.Contains(MatchKey(item.Text))) continue;
             fromBody.Add(item with { Position = position++ });
         }
         return fromBody.AsReadOnly();
     }
 
+    /// <summary>
+    /// The one definition of "these two are the same topic", used by the 43-F/H union above — and
+    /// therefore by the 43-H1 migration, which writes exactly the topics <see cref="Compose"/> left
+    /// unmatched. A second, divergent normaliser is how a topic gets silently skipped and then
+    /// deleted for good by 43-H2, so there is only this one.
+    ///
+    /// Unescapes (the editor re-serialises text with backslash escapes on the user's next save, so a
+    /// literal comparison would miss an already-migrated topic and duplicate it) and strips paired
+    /// inline markers via <see cref="StripInlineMarks"/>, so a body line `- [ ] **Budget**` matches
+    /// the legacy item `Budget`. Only PAIRED delimiters go: a looser rule risks the opposite, worse
+    /// error of matching two topics that genuinely differ — which 43-H2 would then delete for good.
+    ///
+    /// Internal whitespace collapses to a single space because a legacy topic may hold a newline
+    /// (AddAgendaItem only trimmed) and the migration must flatten it to write one task line — so
+    /// the two must compare equal, or every re-run would list the topic again.
+    /// </summary>
+    public static string MatchKey(string text) =>
+        Whitespace().Replace(StripInlineMarks(Unescape(text)), " ").Trim().ToLowerInvariant();
+
+    /// <summary>
+    /// Drops paired inline markdown delimiters and keeps what they wrapped: `**Budget**` → `Budget`.
+    /// The three passes are ordered — code spans first, so their contents are never re-read as
+    /// emphasis.
+    ///
+    /// `*` and `_` are deliberately NOT one pattern. CommonMark lets `*` open intraword but not `_`,
+    /// so a single rule either mangles `snake_case_name` (stripping the middle run) or misses
+    /// `a**b**c`. The `\S` lookarounds are what stop `2 * 3` and `a _ b` pairing across whitespace —
+    /// a delimiter run followed by a space opens nothing.
+    /// </summary>
+    public static string StripInlineMarks(string text)
+    {
+        var stripped = CodeSpan().Replace(text, "$2");
+        stripped = StarEmphasis().Replace(stripped, "$2");
+        return UnderscoreEmphasis().Replace(stripped, "$2");
+    }
+
     private static string Unescape(string text) => Escaped().Replace(text, "$1");
+
+    // The backreference is what makes each of these PAIRED — the closing run must match the opening.
+    [GeneratedRegex(@"(`+)([^`]+?)\1", RegexOptions.None, matchTimeoutMilliseconds: 1000)]
+    private static partial Regex CodeSpan();
+
+    [GeneratedRegex(@"(\*{1,3}|~{2})(?=\S)(.+?)(?<=\S)\1", RegexOptions.None,
+        matchTimeoutMilliseconds: 1000)]
+    private static partial Regex StarEmphasis();
+
+    // `(?<!\w)` / `(?!\w)`: intraword underscores are literal, so `snake_case_name` survives whole.
+    [GeneratedRegex(@"(?<!\w)(_{1,3})(?=\S)(.+?)(?<=\S)\1(?!\w)", RegexOptions.None,
+        matchTimeoutMilliseconds: 1000)]
+    private static partial Regex UnderscoreEmphasis();
+
+    [GeneratedRegex(@"\s+", RegexOptions.None, matchTimeoutMilliseconds: 1000)]
+    private static partial Regex Whitespace();
 
     private static string Key(string text) => text.Trim().ToLowerInvariant();
 

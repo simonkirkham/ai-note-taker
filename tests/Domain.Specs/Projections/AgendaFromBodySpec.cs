@@ -285,6 +285,64 @@ public sealed class AgendaFromBodySpec
     }
 
     [Fact]
+    public void A_legacy_item_matches_its_migrated_body_line_once_the_user_emphasises_it()
+    {
+        // 43-H's explicit criterion. The user bolds the migrated line; it is still the same topic,
+        // so it must not double-list. MatchKey is the single definition both the union and the
+        // migration use.
+        var noteId = new NoteId(Guid.NewGuid());
+        var stream = $"note#{noteId.Value}";
+        var p = new NoteDetailProjection();
+        p.Handle(Envelope(stream, 1, nameof(NoteCreated), JsonSerializer.Serialize(new NoteCreated(noteId))));
+        p.Handle(Envelope(stream, 2, nameof(AgendaItemAdded),
+            JsonSerializer.Serialize(new AgendaItemAdded(noteId, Guid.NewGuid(), "Budget", 0))));
+        p.Handle(Envelope(stream, 3, nameof(ContentEdited),
+            JsonSerializer.Serialize(new ContentEdited(noteId, "- [ ] **Budget**"))));
+
+        Assert.Single(AgendaOf(p, noteId));
+    }
+
+    [Fact]
+    public void A_legacy_item_matches_a_body_line_that_gained_a_newline_when_flattened()
+    {
+        // AddAgendaItem only trimmed, so a legacy topic can hold a newline; the migration flattens
+        // it onto one task line. If the comparison did not collapse whitespace too, every re-run
+        // would list the topic again.
+        var noteId = new NoteId(Guid.NewGuid());
+        var stream = $"note#{noteId.Value}";
+        var p = new NoteDetailProjection();
+        p.Handle(Envelope(stream, 1, nameof(NoteCreated), JsonSerializer.Serialize(new NoteCreated(noteId))));
+        p.Handle(Envelope(stream, 2, nameof(AgendaItemAdded),
+            JsonSerializer.Serialize(new AgendaItemAdded(noteId, Guid.NewGuid(), "Budget\nand headcount", 0))));
+        p.Handle(Envelope(stream, 3, nameof(ContentEdited),
+            JsonSerializer.Serialize(new ContentEdited(noteId, "- [ ] Budget and headcount"))));
+
+        Assert.Single(AgendaOf(p, noteId));
+    }
+
+    [Theory]
+    // Paired delimiters go, and what they wrapped stays.
+    [InlineData("**Budget**", "Budget")]
+    [InlineData("*Budget*", "Budget")]
+    [InlineData("***Budget***", "Budget")]
+    [InlineData("~~Budget~~", "Budget")]
+    [InlineData("`Budget`", "Budget")]
+    [InlineData("_Budget_", "Budget")]
+    [InlineData("a**b**c", "abc")]
+    [InlineData("**bold _and_ italic**", "bold and italic")]
+    // ...and these are NOT emphasis, so they must survive whole. A rule loose enough to strip them
+    // would silently merge two topics that differ — which 43-H2 then deletes for good.
+    [InlineData("snake_case_name", "snake_case_name")]
+    [InlineData("2 * 3", "2 * 3")]
+    [InlineData("a _ b", "a _ b")]
+    [InlineData("50% * 2 things", "50% * 2 things")]
+    [InlineData("`a * b`", "a * b")]
+    public void Strips_only_paired_inline_markers(string input, string expected)
+    {
+        Assert.Equal(expected, AgendaFromContent.StripInlineMarks(input));
+    }
+
+    [Fact]
     public void A_removed_legacy_item_stays_gone()
     {
         var noteId = new NoteId(Guid.NewGuid());

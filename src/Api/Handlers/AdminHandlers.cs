@@ -18,18 +18,19 @@ public static class AdminHandlers
     {
         var dryRun = apply != true;
         var result = await handler.MigrateAsync(dryRun, ct).ConfigureAwait(false);
-        Logger.LogInformation(
-            "Agenda migration {Mode} Scanned={Scanned} Migrated={Migrated} Topics={Topics} Skipped={Skipped}",
-            dryRun ? "DRY RUN" : "APPLIED", result.NotesScanned, result.NotesMigrated,
-            result.TopicsMigrated, result.NotesSkipped);
+        // The dry run returns each note's RESULTING CONTENT in full, not just counts and byte
+        // deltas: this writes into real note content, so what it would write has to be readable
+        // before ?apply=true, not inferred from a size difference.
         return Results.Ok(new
         {
             dryRun,
             notesScanned = result.NotesScanned,
+            notesWithLegacyTopics = result.NotesWithLegacyTopics,
             notesMigrated = result.NotesMigrated,
             topicsMigrated = result.TopicsMigrated,
-            notesSkipped = result.NotesSkipped,
-            details = result.Details,
+            notesStale = result.NotesStale,
+            notesFailed = result.NotesFailed,
+            notes = result.Notes,
         });
     }
 
