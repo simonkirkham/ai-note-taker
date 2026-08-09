@@ -83,7 +83,7 @@ public sealed class NoteCommandHandler(
             // existence). A null owner is a legacy pre-Phase-8 single-user note → not enforced.
             if (mustExist && history.Count > 0 && history[0].Metadata.UserId is { } ownerId
                 && ownerId != userId)
-                throw new NoteNotFoundException(noteId);
+                throw new NoteNotOwnedException(noteId);
             var newEvents = handle(note);
             // No-op command (e.g. a re-tag the aggregate ignored): nothing appended, so the write
             // token is the current version — a read carrying it waits on an already-applied mark.

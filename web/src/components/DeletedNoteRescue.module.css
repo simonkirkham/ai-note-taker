@@ -57,6 +57,11 @@
   transition: border-color var(--transition), color var(--transition), background var(--transition);
 }
 
+.action:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
 .action:hover {
   border-color: var(--color-primary);
   color: var(--color-primary);

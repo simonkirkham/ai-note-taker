@@ -18,6 +18,7 @@ import { useTags } from "../hooks/useTags";
 import { useTranscription } from "../hooks/useTranscription";
 import type { AgendaEditorApi, LiveTopic } from "../lib/agendaEditorApi";
 import { reportDeletedNote } from "../lib/deletedNoteRescue";
+import { recordRumEvent } from "../rum";
 import AgendaSection from "./AgendaSection";
 import CommandBar from "./CommandBar";
 import FinalNotesView from "./FinalNotesView";
@@ -428,7 +429,13 @@ export default function NoteView({
         // is404 path take the user home instead of leaving them on a note that no longer exists.
         if (err instanceof NoteDeletedError) {
           noteDeletedRef.current = true;
-          reportDeletedNote({ noteId, title, text: draft });
+          // A DELIBERATE delete blurs the editor first, which fires a content save; if the DELETE
+          // wins that race the 404 is expected and the user does not need their own deletion
+          // reported back to them as a rescue.
+          if (!deletingRef.current) {
+            recordRumEvent("deletedNoteRescue", { noteId });
+            reportDeletedNote({ noteId, title, text: draft });
+          }
           void qc.invalidateQueries({ queryKey: keys.note(noteId) });
           return;
         }

@@ -146,18 +146,27 @@ public sealed class EditContentTests(ApiFactory factory) : IClassFixture<ApiFact
         Assert.Equal("note_not_found", error);
     }
 
-    // The discriminator must mean "this note is gone from the event stream" and nothing else. An API
-    // Gateway route miss falls through to `/{proxy+}` and returns a BODY-LESS 404 (shipped once in
-    // 34-B); if the client keyed off the bare status, a deploy skew would tell every user their note
-    // had been deleted. Pinned here so the two 404s can never converge.
+    // The discriminator must mean "gone from the event stream" and NOTHING else. A note that exists
+    // but belongs to someone else is deliberately answered 404 to avoid leaking existence — telling
+    // that caller "this note was deleted" would be false, and would make {bare 404, note_not_found}
+    // an oracle for "exists but isn't yours". Review of the first attempt found exactly this,
+    // because the event-stream owner check threw the same exception as a missing note.
     [Fact]
-    public async Task PutContent_UnknownRoute_Returns404WithoutTheNoteNotFoundCode()
+    public async Task PutContent_NoteOwnedByAnotherUser_Returns404WithoutTheNoteNotFoundCode()
     {
-        var resp = await _client.PutAsync($"/notes/{Guid.NewGuid()}/content/not-a-real-segment",
-            new StringContent("{\"content\":\"x\"}", Encoding.UTF8, "application/json"));
+        var noteId = await CreateNoteAsync();
+        await PutContentAsync(noteId, "The owner's meeting note.");
+
+        var intruder = factory.CreateClientAsOtherUser();
+        var resp = await intruder.PutAsync($"/notes/{noteId}/content",
+            JsonContent.Create(new { content = "written by someone else" }));
 
         Assert.Equal(HttpStatusCode.NotFound, resp.StatusCode);
         Assert.DoesNotContain("note_not_found", await resp.Content.ReadAsStringAsync());
+
+        // ...and the owner's content is untouched.
+        var body = await (await _client.GetAsync($"/notes/{noteId}")).Content.ReadFromJsonAsync<JsonElement>();
+        Assert.Equal("The owner's meeting note.", body.GetProperty("content").GetString());
     }
 
     private Task<HttpResponseMessage> PutContentAsync(string noteId, string content, string? expectedBaseContentHash = null) =>

@@ -77,12 +77,17 @@ public static class NoteHandlers
         if (detail is not null && detail.UserId != currentUser.UserId) return Results.NotFound();
         long version;
         try { version = await handler.HandleAsync(new EditContentCmd(new NoteId(noteId), req.Content, req.ExpectedBaseContentHash)); }
-        // BUG-59: the note is gone from the event stream — the editor is open on a note deleted
-        // elsewhere, so every retry 404s (prod: six rejected writes over 31 minutes). Terminal, not
-        // transient, and the client must be able to tell it apart from the OTHER bare 404s on this
-        // path: the ownership pre-check above, and an API Gateway route miss falling through to
-        // `/{proxy+}` (shipped once in 34-B). Both of those stay bare, so a deploy skew can never
-        // tell a user their note was deleted. Same discriminated-body convention as the 409 below.
+        // BUG-59: `note_not_found` must mean exactly "this note is gone from the event stream", so
+        // the not-yours 404 is caught FIRST and stays bare. Otherwise a cross-user write would be
+        // answered "this note was deleted" for a note that exists — false whenever the NoteDetail
+        // pre-check above saw no row (projector lag, per BUG-30) — and the pair {bare, coded} would
+        // become an oracle for "exists but isn't yours".
+        catch (NoteNotOwnedException) { return Results.NotFound(); }
+        // The editor is open on a note deleted elsewhere, so every retry 404s (prod: six rejected
+        // writes over 31 minutes). Terminal, not transient. The other bare 404 on this path is an
+        // API Gateway route miss falling through to `/{proxy+}` (shipped once in 34-B), which has no
+        // body — so a deploy skew can never tell a user their note was deleted. Same discriminated-
+        // body convention as the 409 below.
         catch (NoteNotFoundException) { return Results.NotFound(new { error = "note_not_found" }); }
         // BUG-47: the client edited a stale/empty view whose base hash no longer matches the current
         // content. A terminal conflict — return 409 with a distinct code so the client keeps the typed

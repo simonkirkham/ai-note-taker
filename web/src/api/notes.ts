@@ -207,7 +207,6 @@ export async function editContent(
   if (response.status === 404) {
     // A body-less or non-JSON 404 is not evidence of deletion; fall through to the generic error.
     const code = await response
-      .clone()
       .json()
       .then((body: unknown) => (body as { error?: string } | null)?.error)
       .catch(() => undefined);

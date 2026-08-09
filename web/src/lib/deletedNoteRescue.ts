@@ -15,8 +15,10 @@ import { useSyncExternalStore } from 'react';
 // gone — no longer destroys it. It is deliberately not in the query cache either: everything in
 // there is invalidatable by design, and this must not be.
 //
-// One slot, not a queue: two notes cannot be open in the same tab, and a second deletion replacing
-// the first would be a worse failure than showing them one at a time.
+// A LIST, not one slot. One slot looks safe because only one NoteView is mounted at a time, but the
+// banner deliberately outlives the note: rescue A, don't dismiss it, open note B, have B deleted too
+// — and a single slot destroys A's text without a word, inside the mechanism whose entire job is to
+// stop text being destroyed without a word. Appending costs one `map` in the banner.
 
 export type DeletedNoteRescue = {
   noteId: string;
@@ -24,7 +26,7 @@ export type DeletedNoteRescue = {
   text: string;
 };
 
-let current: DeletedNoteRescue | null = null;
+let current: readonly DeletedNoteRescue[] = [];
 const listeners = new Set<() => void>();
 
 function emit() {
@@ -32,13 +34,23 @@ function emit() {
 }
 
 export function reportDeletedNote(rescue: DeletedNoteRescue): void {
-  current = rescue;
+  // Re-reporting the same note (a second doomed write that raced the latch) must not stack a
+  // duplicate banner; keep the first, which carries the earlier text.
+  if (current.some((r) => r.noteId === rescue.noteId)) return;
+  current = [...current, rescue];
+  emit();
+}
+
+export function dismissDeletedNote(noteId: string): void {
+  const next = current.filter((r) => r.noteId !== noteId);
+  if (next.length === current.length) return;
+  current = next;
   emit();
 }
 
 export function clearDeletedNote(): void {
-  if (current === null) return;
-  current = null;
+  if (current.length === 0) return;
+  current = [];
   emit();
 }
 
@@ -47,11 +59,13 @@ function subscribe(listener: () => void): () => void {
   return () => listeners.delete(listener);
 }
 
-function snapshot(): DeletedNoteRescue | null {
+// Returns the same array identity until something actually changes, which useSyncExternalStore
+// requires — returning a fresh array each call would loop.
+function snapshot(): readonly DeletedNoteRescue[] {
   return current;
 }
 
-export function useDeletedNoteRescue(): DeletedNoteRescue | null {
+export function useDeletedNoteRescues(): readonly DeletedNoteRescue[] {
   return useSyncExternalStore(subscribe, snapshot, snapshot);
 }
 

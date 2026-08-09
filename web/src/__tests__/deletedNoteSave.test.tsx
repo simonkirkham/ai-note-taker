@@ -2,9 +2,12 @@ import userEvent from '@testing-library/user-event'
 import { http, HttpResponse } from 'msw'
 import { useState } from 'react'
 import { keys } from '../api/queryKeys'
+import App from '../App'
+import { AuthProvider } from '../auth/AuthContext'
 import DeletedNoteRescue from '../components/DeletedNoteRescue'
 import NoteView from '../components/NoteView'
 import { ToastProvider } from '../components/ToastProvider'
+import { reportDeletedNote } from '../lib/deletedNoteRescue'
 import { render, screen, waitFor } from '../test/render'
 import { server } from '../test/setup'
 
@@ -52,7 +55,7 @@ function deletedResponse() {
 // Mirrors App.tsx: the rescue banner is a SIBLING of the note screen, not a child of it, so
 // unmounting the note cannot take it away. `onBack` unmounts NoteView exactly as navigating home
 // does — the path attempt 1 went silent on.
-function Harness() {
+function Harness({ onNotFound }: { onNotFound?: () => void } = {}) {
   const [open, setOpen] = useState(true)
   return (
     <ToastProvider>
@@ -65,6 +68,7 @@ function Harness() {
           onDelete={asyncNoop}
           onDateSet={noop}
           onOpenNote={noop}
+          onNotFound={onNotFound}
         />
       )}
     </ToastProvider>
@@ -204,5 +208,93 @@ describe('saving into a deleted note (BUG-59)', () => {
     await userEvent.click(screen.getByTestId('dismiss-deleted-note'))
 
     expect(screen.queryByTestId('deleted-note-banner')).toBeNull()
+  })
+
+  // Review of this redesign: deleting the `invalidateQueries` call left all seven tests green, even
+  // though "invalidate, so the existing is404 path takes the user home" is half the stated design.
+  // The old harness stubbed GET as 200-forever, so no test could ever observe the refetch. This one
+  // flips the GET to 404 the moment the note is deleted, which is what the server actually does.
+  it('takes the user off the dead note, and the rescued text outlives that', async () => {
+    let deleted = false
+    const onNotFound = vi.fn()
+    server.use(
+      http.get('/api/notes/:noteId', () =>
+        deleted
+          ? HttpResponse.json({ error: 'note_not_found' }, { status: 404 })
+          : HttpResponse.json(detail)),
+      http.put('/api/notes/:noteId/content', () => {
+        deleted = true
+        return deletedResponse()
+      }),
+    )
+
+    render(<Harness onNotFound={onNotFound} />)
+    await typeInto(' text the user must get back')
+    await userEvent.tab()
+
+    // The refetch the invalidation triggers is what reaches the not-found path.
+    await waitFor(() => expect(onNotFound).toHaveBeenCalled())
+    // ...and the banner is still standing after it.
+    expect(screen.getByTestId('deleted-note-banner')).toBeInTheDocument()
+    expect(screen.getByTestId('deleted-note-text')).toHaveDisplayValue(/text the user must get back/)
+  })
+
+  // A second note deleted while an earlier rescue is still on screen must not silently replace it.
+  it('keeps an earlier rescue when a second note is deleted', async () => {
+    server.use(
+      http.get('/api/notes/:noteId', () => HttpResponse.json(detail)),
+      http.put('/api/notes/:noteId/content', () => deletedResponse()),
+    )
+
+    render(<Harness />)
+    await typeInto(' first note text')
+    await userEvent.tab()
+    await screen.findByTestId('deleted-note-banner')
+
+    reportDeletedNote({ noteId: 'note-2', title: 'Second note', text: 'second note text' })
+
+    // findAllBy* resolves on the FIRST match, so it would return the single existing banner
+    // immediately; wait for the count itself.
+    await waitFor(() => expect(screen.getAllByTestId('deleted-note-banner')).toHaveLength(2))
+    expect(screen.getAllByTestId('deleted-note-text').map((el) => (el as HTMLTextAreaElement).value))
+      .toEqual([expect.stringContaining('first note text'), 'second note text'])
+  })
+})
+
+// Review of this redesign: C1 ("survives unmount") and I1 ("outside every tabpanel") are claims
+// about WHERE App renders the banner, and every test above proves them against `Harness`, a
+// hand-written mirror of App.tsx. Mirrors drift — deleting `<DeletedNoteRescue />` from App.tsx left
+// the whole suite green. This drives the real App so the wiring itself is pinned.
+describe('the deleted-note rescue is wired into the real App (BUG-59)', () => {
+  it('survives the navigation home that the deleted note triggers', async () => {
+    let deleted = false
+    server.use(
+      http.get('/api/w/:wsId/notes/:noteId', () =>
+        deleted
+          ? HttpResponse.json({ error: 'note_not_found' }, { status: 404 })
+          : HttpResponse.json(detail)),
+      http.put('/api/w/:wsId/notes/:noteId/content', () => {
+        deleted = true
+        return deletedResponse()
+      }),
+    )
+    window.history.replaceState({}, '', '/w/__default__/notes/note-1')
+
+    render(
+      <ToastProvider>
+        <AuthProvider initialToken="test-token">
+          <App />
+        </AuthProvider>
+      </ToastProvider>,
+    )
+
+    await typeInto(' text typed into the real app')
+    await userEvent.tab()
+
+    // App bounces home on the not-found refetch...
+    await waitFor(() => expect(window.location.pathname).toBe('/w/__default__'))
+    // ...and the rescued text is still on screen afterwards, which is the whole point.
+    expect(await screen.findByTestId('deleted-note-banner')).toBeInTheDocument()
+    expect(screen.getByTestId('deleted-note-text')).toHaveDisplayValue(/text typed into the real app/)
   })
 })
