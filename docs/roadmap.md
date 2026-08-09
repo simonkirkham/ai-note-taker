@@ -521,7 +521,7 @@ An unnumbered, standing phase capturing defects in the deployed app, tracked to 
 
 ### Minor Changes _(Ongoing)_
 
-An unnumbered, standing phase for small tweaks and changes to existing behaviour that don't warrant a numbered phase and aren't defects. **Outstanding (5).** Four are **implemented with PRs open**, blocked on the 2026-08-06 GitHub Actions outage: **CHANGE-30** blockquote visual polish (#420) · **CHANGE-31** show image alt text when a note image fails to load (#421) · **CHANGE-32** pin the desktop microphone grant (#419) · **CHANGE-34** send a to-do to the top or bottom of the home To Do list (#422). Still open: **CHANGE-33** name the destination in the "Still recording —" leave confirm. 32 changes have shipped; the [Summary table](phases/phase-minor-changes.md#summary) is the full index — this section does not re-list them.
+An unnumbered, standing phase for small tweaks and changes to existing behaviour that don't warrant a numbered phase and aren't defects. **Outstanding (1):** **CHANGE-38** (agenda topics showing markdown markers). **CHANGE-33** — the "Still recording —" leave confirm now names where "Leave & save" will take you — shipped 2026-08-09 on deploy #745, closing the [BUG-54] guarded-exit work. 37 changes have shipped; the [Summary table](phases/phase-minor-changes.md#summary) is the full index and the authority on status — this section does not re-list them.
 
 → [docs/phases/phase-minor-changes.md](phases/phase-minor-changes.md)
 
