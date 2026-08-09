@@ -10,8 +10,28 @@ import { MarkdownTaskList } from '../lib/markdownTaskList'
 // with the same extension set NoteEditor builds, because the whole point of the slice is that a
 // header action is an editor transaction — asserting against a stub would prove nothing about
 // undo, cursor position, or how the change reaches the markdown.
+// BUG-66: an editor left alive when its test ends keeps ProseMirror's DOMObserver running, and
+// every transaction here runs `DOMObserver.stop()`, which — when mutation records are pending —
+// schedules `window.setTimeout(() => this.flush(), 20)` (prosemirror-view, `stop()`). Vitest tears
+// the jsdom environment down well inside those 20 ms at the end of a file, so the timer fires with
+// no `document` global and `flush()` throws `ReferenceError: document is not defined` out of
+// `EditorView.get root`. It lands as a vitest *unhandled error*: the frontend job fails while every
+// test reports green, red-gating whichever PR happened to be running. `destroy()` nulls `docView`,
+// and `!view.docView` is the first line of `flush()`, so a destroyed editor's stale timer is a
+// no-op. Every other editor suite in this directory already destroys; this one was the sole leaker.
+const createdEditors: Editor[] = []
+
+afterEach(() => {
+  for (const editor of createdEditors) editor.destroy()
+})
+
+afterAll(() => {
+  // Guards the cleanup itself, not the path through it: remove the afterEach and this goes red.
+  expect(createdEditors.filter((e) => !e.isDestroyed)).toEqual([])
+})
+
 function makeEditor(markdown: string) {
-  return new Editor({
+  const editor = new Editor({
     extensions: [
       StarterKit.configure({ link: false, paragraph: false }),
       BlankLineParagraph,
@@ -21,6 +41,8 @@ function makeEditor(markdown: string) {
     ],
     content: markdown,
   })
+  createdEditors.push(editor)
+  return editor
 }
 
 const md = (e: Editor) => (e.storage.markdown).getMarkdown()
