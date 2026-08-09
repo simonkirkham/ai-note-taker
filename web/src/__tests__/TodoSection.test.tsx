@@ -790,6 +790,9 @@ describe('TodoSection — send to top / bottom (CHANGE-34, via the 50-B actions 
     const control = sendToTop()
     expect(control).toBeDisabled()
     await userEvent.click(control)
+    // Close first: an open menu's labels are part of its row's textContent. Clicking a
+    // DISABLED item leaves focus on <body>, so Escape would never reach the menu.
+    await userEvent.click(menuTrigger('Alpha'))
 
     expect(posts).toBe(0)
     expect(openOrder()).toEqual(['Alpha', 'Bravo', 'Charlie'])
@@ -805,6 +808,9 @@ describe('TodoSection — send to top / bottom (CHANGE-34, via the 50-B actions 
     const control = sendToBottom()
     expect(control).toBeDisabled()
     await userEvent.click(control)
+    // Close first: an open menu's labels are part of its row's textContent. Clicking a
+    // DISABLED item leaves focus on <body>, so Escape would never reach the menu.
+    await userEvent.click(menuTrigger('Charlie'))
 
     expect(posts).toBe(0)
     expect(openOrder()).toEqual(['Alpha', 'Bravo', 'Charlie'])

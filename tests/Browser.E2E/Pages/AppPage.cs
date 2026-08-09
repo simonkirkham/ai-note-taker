@@ -811,6 +811,47 @@ public sealed class AppPage
         }
     }
 
+    // 50-B: cross the Today line from the row's actions menu — no drag, no pointer precision.
+    // Waits on the today-line POST specifically: a demote ALWAYS writes the anchor, whereas the
+    // paired reorder is a no-op when the row is already adjacent to the line, so waiting on the
+    // reorder would hang on exactly the boundary case.
+    public async Task MoveTodoToLaterAsync(string description)
+    {
+        await page.GetByRole(AriaRole.Button, new() { Name = $"Actions for \"{description}\"" }).ClickAsync();
+        var lineWritten = page.WaitForResponseAsync(
+            r => r.Url.Contains("/todos/today-line") && r.Request.Method == "POST");
+        await page.GetByRole(AriaRole.Menuitem, new() { Name = "Move to Later" }).ClickAsync();
+        await lineWritten;
+    }
+
+    public Task AssertTodoInLaterAsync(string description) =>
+        Assertions.Expect(
+            page.GetByTestId("todo-later-list").GetByText(description)
+        ).ToBeVisibleAsync(new() { Timeout = 15000 });
+
+    // 50-A's "the line's position survives a reload" criterion, which until now had no executed
+    // proof — the unit spec covers the write, but only a reload shows the anchor coming back from
+    // the server rather than the optimistic cache. Same reload-loop shape as the todo RYW proof.
+    public async Task AssertTodoInLaterAfterReloadAsync(string description, int timeoutMs = 30000)
+    {
+        var deadline = DateTime.UtcNow.AddMilliseconds(timeoutMs);
+        while (true)
+        {
+            await page.ReloadAsync();
+            try
+            {
+                await Assertions.Expect(
+                    page.GetByTestId("todo-later-list").GetByText(description)
+                ).ToBeVisibleAsync(new() { Timeout = 2500 });
+                return;
+            }
+            catch (PlaywrightException) when (DateTime.UtcNow < deadline)
+            {
+                // re-loop: the anchor read is projector-backed, so a cold projector needs re-polling
+            }
+        }
+    }
+
     // CHANGE-23 + 40-A: home filters live in the URL (?q/?tag/?range), so they survive a Back
     // navigation. The E2E proves this with the "All" date-range preset — it filters the GATED
     // home-card list client-side, so the proof needs no ungated async-search projection (which can

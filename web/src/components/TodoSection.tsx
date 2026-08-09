@@ -1,12 +1,13 @@
 import { useQueryClient } from "@tanstack/react-query";
 import clsx from "clsx";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { keys } from "../api/queryKeys";
 import { TodoItem, TodoListData } from "../api/todos";
 import { useCompleteTodo, useReopenTodo, useEditTodo, useDeleteTodo, useReorderTodos, useSetTodayLine } from "../hooks/useTodoMutations";
 import { useTodos } from "../hooks/useTodos";
-import { TrashIcon, GripVerticalIcon, SendToTopIcon, SendToBottomIcon } from "./icons";
+import { TrashIcon, GripVerticalIcon } from "./icons";
 import QuickCaptureTodoInput from "./QuickCaptureTodoInput";
+import RowMenu from "./RowMenu";
 import { useToast } from "./toastContext";
 import styles from "./TodoSection.module.css";
 
@@ -49,6 +50,12 @@ export default function TodoSection() {
   const [reorderError, setReorderError] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editText, setEditText] = useState("");
+  // 50-B: only one row's actions menu is open at a time, so the open row is list state.
+  const [openMenuId, setOpenMenuId] = useState<string | null>(null);
+  // Crossing the line moves the row between two DIFFERENT <ul>s, so React unmounts and
+  // remounts it — RowMenu's own focus-restore points at a detached node. Re-find the new
+  // trigger after the re-render instead, or a keyboard user is dumped back to the body.
+  const refocusMenuRef = useRef<string | null>(null);
   // Tracks the row being edited synchronously, so a native blur fired as the input
   // unmounts on Enter can't re-enter commitEdit and send a duplicate PUT.
   const editingRef = useRef<string | null>(null);
@@ -64,6 +71,19 @@ export default function TodoSection() {
   const todayItems = openItems.slice(0, splitAt);
   const laterItems = openItems.slice(splitAt);
   const draggingLine = draggedId === TODAY_LINE_DRAG_ID;
+
+  // Keyed on the rendered order, NOT left dep-less: react-query applies the optimistic cache
+  // write in a microtask, so the first render after the click is the busy-flag one and still
+  // shows the row in its old group. A dep-less effect would focus that about-to-be-discarded
+  // node and clear the ref, and the real remount would then drop focus to <body>.
+  // Only ever calls .focus() — no setState, which would trip react-hooks/set-state-in-effect.
+  const renderedOrderKey = `${openItems.map((i) => i.itemId).join(",")}|${anchorItemId ?? ""}`;
+  useEffect(() => {
+    const id = refocusMenuRef.current;
+    if (id === null) return;
+    refocusMenuRef.current = null;
+    document.querySelector<HTMLButtonElement>(`[data-menu-trigger="${id}"]`)?.focus();
+  }, [renderedOrderKey]);
 
   // Every Today-line move goes through here. The optimistic update means a failed save would
   // otherwise just snap the line back with no explanation — say so instead.
@@ -86,14 +106,18 @@ export default function TodoSection() {
   // other applied, leaving the UI showing an order the server never stored (staleTime 30s +
   // refetchOnWindowFocus off = never corrected). Guarding here rather than in a caller covers every
   // entry point at once: send-to-top/bottom, drag-drop onto a row, and drop onto the Today line.
-  async function reorderTo(orderedIds: string[]) {
-    if (reorder.isPending) return;
-    if (orderedIds.length < 2) return;
+  // Returns whether the new order actually persisted — 50-B's cross-the-line move pairs a
+  // reorder with a line write, and must put the line back if the reorder rolled back.
+  async function reorderTo(orderedIds: string[]): Promise<boolean> {
+    if (reorder.isPending) return false;
+    if (orderedIds.length < 2) return false;
     setReorderError(null);
     try {
       await reorder.mutateAsync(orderedIds);
+      return true;
     } catch {
       setReorderError("Failed to reorder to-dos. Please try again.");
+      return false;
     }
   }
 
@@ -174,6 +198,45 @@ export default function TodoSection() {
       // Today, to the bottom promotes everything. Re-anchor so the line stays where the user put it.
       reanchorIfLineWouldFollow(item.itemId, nextIds);
       await saved;
+    } finally {
+      removeBusy(item.itemId);
+    }
+  }
+
+  // Where the line ends up after a cross-the-line move.
+  //   Demoting re-anchors the line ONTO the moved row — that is what makes it the first Later item.
+  //   Promoting the ANCHOR itself would otherwise drag the line along and swallow everything below
+  //   it, so the line steps down to the next Later row (null once nothing is left below).
+  //   Promoting any other row leaves the line alone.
+  function anchorAfterMove(item: TodoItem, goingToLater: boolean): string | null {
+    if (goingToLater) return item.itemId;
+    if (item.itemId !== anchorItemId) return anchorItemId;
+    return laterItems[1]?.itemId ?? null;
+  }
+
+  // 50-B: cross the line in one action, no drag. Promoting lands the row LAST in Today
+  // (directly above the line) so it never jumps ahead of what the user already prioritised;
+  // demoting lands it FIRST in Later.
+  async function moveAcrossLine(item: TodoItem) {
+    if (reorder.isPending || busy.has(item.itemId)) return;
+    const ids = openItems.map((i) => i.itemId);
+    const from = ids.indexOf(item.itemId);
+    if (from < 0) return;
+
+    const goingToLater = from < splitAt;
+    const to = goingToLater ? splitAt - 1 : splitAt;
+    const nextIds = from === to ? ids : arrayMove(ids, from, to);
+    const nextAnchor = anchorAfterMove(item, goingToLater);
+
+    refocusMenuRef.current = item.itemId;
+    addBusy(item.itemId);
+    try {
+      // Same ordering as sendTo: start the save, move the line in the SAME tick before
+      // awaiting, so the row and the line move together optimistically.
+      const saved = nextIds === ids ? Promise.resolve(true) : reorderTo(nextIds);
+      if (nextAnchor !== anchorItemId) moveLine(nextAnchor);
+      const persisted = await saved;
+      if (!persisted && nextAnchor !== anchorItemId) moveLine(anchorItemId);
     } finally {
       removeBusy(item.itemId);
     }
@@ -313,6 +376,9 @@ export default function TodoSection() {
     // separately, so the map's own index would be group-relative and would mis-disable the
     // send buttons for every Later row.
     const openIndex = openItems.findIndex((i) => i.itemId === item.itemId);
+    // Order is a property of the WHOLE list, so an in-flight reorder locks every row's
+    // reorder actions, not just the one being saved (BUG-63).
+    const rowLocked = busy.has(item.itemId) || reorder.isPending;
     return (
       <li
         key={item.itemId}
@@ -365,28 +431,31 @@ export default function TodoSection() {
           )}
           {item.noteTitle && <span className={styles.todoNoteTitle}>{item.noteTitle}</span>}
         </div>
-        <div className={styles.todoSendButtons}>
-          <button
-            type="button"
-            className="icon-btn"
-            aria-label={`Send "${item.description}" to top`}
-            title="Send to top"
-            disabled={openIndex === 0 || busy.has(item.itemId) || reorder.isPending}
-            onClick={() => void sendTo(item, "top")}
-          >
-            <SendToTopIcon />
-          </button>
-          <button
-            type="button"
-            className="icon-btn"
-            aria-label={`Send "${item.description}" to bottom`}
-            title="Send to bottom"
-            disabled={openIndex === openItems.length - 1 || busy.has(item.itemId) || reorder.isPending}
-            onClick={() => void sendTo(item, "bottom")}
-          >
-            <SendToBottomIcon />
-          </button>
-        </div>
+        {/* 50-B: the reorder actions live in one menu so the row stays legible. Delete does
+            NOT — it is destructive and unconfirmed, so it stays visible and one click away. */}
+        <RowMenu
+          label={`Actions for "${item.description}"`}
+          triggerId={item.itemId}
+          open={openMenuId === item.itemId}
+          onOpenChange={(next) => setOpenMenuId(next ? item.itemId : null)}
+          actions={[
+            {
+              label: openIndex < splitAt ? "Move to Later" : "Move to Today",
+              run: () => void moveAcrossLine(item),
+              disabled: rowLocked,
+            },
+            {
+              label: "Send to top",
+              run: () => void sendTo(item, "top"),
+              disabled: openIndex === 0 || rowLocked,
+            },
+            {
+              label: "Send to bottom",
+              run: () => void sendTo(item, "bottom"),
+              disabled: openIndex === openItems.length - 1 || rowLocked,
+            },
+          ]}
+        />
         <button
           className="icon-btn icon-btn--danger"
           aria-label={`Delete "${item.description}"`}
