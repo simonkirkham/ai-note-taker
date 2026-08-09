@@ -133,6 +133,38 @@
 
 .menu button:hover { background: var(--color-border); }
 
+.menu button:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: -2px;
+}
+
+.menuItemDanger {
+  color: var(--color-error, #c0392b);
+  border-top: 1px solid var(--color-border);
+  margin-top: 0.2rem;
+  padding-top: 0.45rem;
+}
+
+.subToggle {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin: -0.4rem 0 1rem;
+}
+
+.subToggleLabel {
+  font-size: 0.8125rem;
+  color: var(--color-text-muted);
+}
+
+.subToggleHint {
+  flex-basis: 100%;
+  font-size: 0.75rem;
+  color: var(--color-text-muted);
+  font-style: italic;
+}
+
 .flashSlot { min-height: 1.5rem; margin-top: 0.75rem; }
 
 .flash {

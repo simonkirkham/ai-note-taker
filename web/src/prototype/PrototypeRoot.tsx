@@ -63,6 +63,7 @@ export function PrototypeRoot() {
   const [variant, setVariant] = usePersisted<Variant>("proto50b.variant", "icon");
   const [items, setItems] = usePersisted<Item[]>("proto50b.items", SEED);
   const [anchorId, setAnchorId] = usePersisted<string | null>("proto50b.anchor", "4");
+  const [deleteInMenu, setDeleteInMenu] = usePersisted<boolean>("proto50b.deleteInMenu", false);
   const [flash, setFlash] = useState<string | null>(null);
   const [openMenu, setOpenMenu] = useState<string | null>(null);
 
@@ -191,35 +192,26 @@ export function PrototypeRoot() {
         )}
 
         {variant === "menu" && (
-          <div className={p.menuWrap}>
-            <button
-              type="button"
-              className="icon-btn"
-              aria-label={`Actions for "${item.description}"`}
-              aria-expanded={openMenu === item.id}
-              onClick={() => setOpenMenu(openMenu === item.id ? null : item.id)}
-            >
-              <span className={p.ellipsis}>⋯</span>
-            </button>
-            {openMenu === item.id && (
-              <div className={p.menu} role="menu">
-                <button type="button" role="menuitem" onClick={() => { moveAcross(item); setOpenMenu(null); }}>
-                  {crossLabel}
-                </button>
-                <button type="button" role="menuitem" onClick={() => { sendTo(item, "top"); setOpenMenu(null); }}>
-                  Send to top
-                </button>
-                <button type="button" role="menuitem" onClick={() => { sendTo(item, "bottom"); setOpenMenu(null); }}>
-                  Send to bottom
-                </button>
-              </div>
-            )}
-          </div>
+          <RowMenu
+            label={`Actions for "${item.description}"`}
+            open={openMenu === item.id}
+            onOpenChange={(o) => setOpenMenu(o ? item.id : null)}
+            actions={[
+              { label: crossLabel, run: () => moveAcross(item) },
+              { label: "Send to top", run: () => sendTo(item, "top") },
+              { label: "Send to bottom", run: () => sendTo(item, "bottom") },
+              ...(deleteInMenu
+                ? [{ label: "Delete", run: () => announce("Delete (stubbed)"), danger: true }]
+                : []),
+            ]}
+          />
         )}
 
-        <button className="icon-btn icon-btn--danger" aria-label={`Delete "${item.description}"`}>
-          <TrashIcon />
-        </button>
+        {!(variant === "menu" && deleteInMenu) && (
+          <button className="icon-btn icon-btn--danger" aria-label={`Delete "${item.description}"`}>
+            <TrashIcon />
+          </button>
+        )}
       </li>
     );
   }
@@ -250,6 +242,30 @@ export function PrototypeRoot() {
 
       <p className={p.blurb}>{VARIANTS.find((v) => v.key === variant)?.blurb}</p>
 
+      {variant === "menu" && (
+        <div className={p.subToggle}>
+          <span className={p.subToggleLabel}>Delete lives:</span>
+          <button
+            type="button"
+            className={clsx(p.tab, !deleteInMenu && p.tabActive)}
+            onClick={() => setDeleteInMenu(false)}
+          >
+            on the row
+          </button>
+          <button
+            type="button"
+            className={clsx(p.tab, deleteInMenu && p.tabActive)}
+            onClick={() => setDeleteInMenu(true)}
+          >
+            in the menu
+          </button>
+          <span className={p.subToggleHint}>
+            In the menu = row is description + ⋯ only. On the row = destructive action stays one
+            click and visible.
+          </span>
+        </div>
+      )}
+
       <div className={p.panel}>
         <section className={styles.todoSection}>
           <h2 className={styles.todoHeading}>To do</h2>
@@ -278,6 +294,108 @@ export function PrototypeRoot() {
       </div>
 
       <div className={p.flashSlot}>{flash && <span className={p.flash}>{flash}</span>}</div>
+    </div>
+  );
+}
+
+type MenuAction = { label: string; run: () => void; danger?: boolean };
+
+// Menu behaviour is the whole question for variant D — a stub with no dismissal or
+// keyboard path would flatter it. Escape + click-outside close and restore focus to
+// the trigger; Up/Down roves; Enter/Space activates.
+function RowMenu({
+  label,
+  open,
+  onOpenChange,
+  actions,
+}: {
+  label: string;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  actions: MenuAction[];
+}) {
+  const wrapRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const itemRefs = useRef<(HTMLButtonElement | null)[]>([]);
+  const [active, setActive] = useState(0);
+
+  useEffect(() => {
+    if (!open) return;
+    setActive(0);
+    const onDocDown = (e: MouseEvent) => {
+      if (!wrapRef.current?.contains(e.target as Node)) onOpenChange(false);
+    };
+    document.addEventListener("mousedown", onDocDown);
+    return () => document.removeEventListener("mousedown", onDocDown);
+  }, [open, onOpenChange]);
+
+  useEffect(() => {
+    if (open) itemRefs.current[active]?.focus();
+  }, [open, active]);
+
+  function close(refocus: boolean) {
+    onOpenChange(false);
+    if (refocus) triggerRef.current?.focus();
+  }
+
+  return (
+    <div className={p.menuWrap} ref={wrapRef}>
+      <button
+        type="button"
+        ref={triggerRef}
+        className="icon-btn"
+        aria-label={label}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        onClick={() => onOpenChange(!open)}
+        onKeyDown={(e) => {
+          if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+            e.preventDefault();
+            onOpenChange(true);
+          }
+        }}
+      >
+        <span className={p.ellipsis}>⋯</span>
+      </button>
+      {open && (
+        <div
+          className={p.menu}
+          role="menu"
+          onKeyDown={(e) => {
+            if (e.key === "Escape") {
+              e.preventDefault();
+              close(true);
+            } else if (e.key === "ArrowDown") {
+              e.preventDefault();
+              setActive((i) => (i + 1) % actions.length);
+            } else if (e.key === "ArrowUp") {
+              e.preventDefault();
+              setActive((i) => (i - 1 + actions.length) % actions.length);
+            } else if (e.key === "Tab") {
+              close(false);
+            }
+          }}
+        >
+          {actions.map((a, i) => (
+            <button
+              key={a.label}
+              type="button"
+              role="menuitem"
+              tabIndex={i === active ? 0 : -1}
+              ref={(el) => {
+                itemRefs.current[i] = el;
+              }}
+              className={clsx(a.danger && p.menuItemDanger)}
+              onClick={() => {
+                a.run();
+                close(true);
+              }}
+            >
+              {a.label}
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
