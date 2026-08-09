@@ -15,6 +15,7 @@ import { setNoteDate } from "./api/notes";
 import { keys } from "./api/queryKeys";
 import { useAuth } from "./auth/context";
 import styles from "./components/App.module.css";
+import DeletedNoteRescue from "./components/DeletedNoteRescue";
 import FolderPreviewPanel from "./components/FolderPreviewPanel";
 import { LeaveGuardContext, useRequestLeave } from "./components/leaveGuardContext";
 import ListView from "./components/ListView";
@@ -504,6 +505,10 @@ function AppContent({ signOut }: { signOut: () => void }) {
           onDropNote={(noteId) => handleMoveNoteToFolder(noteId, previewFolderId === UNFILED_ID ? null : previewFolderId)}
         />
         <div className={styles.appMain}>
+          {/* BUG-59: above the router on purpose. A note deleted under an open editor now bounces
+              the user home, so a banner rendered inside NoteView would be unmounted along with the
+              only copy of the text it exists to hand back. */}
+          <DeletedNoteRescue />
           {activeNoteId && (
             <OpenNoteTabs
               tabs={openNoteTabs}

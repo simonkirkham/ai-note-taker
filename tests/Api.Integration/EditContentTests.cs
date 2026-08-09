@@ -128,6 +128,38 @@ public sealed class EditContentTests(ApiFactory factory) : IClassFixture<ApiFact
         Assert.Equal("fragment", body.GetProperty("content").GetString());
     }
 
+    // BUG-59: a note deleted while its editor is open makes every further write 404, and the client
+    // routed that to a retriable "try again" toast — prod shows six rejected writes over 31 minutes.
+    // The 404 now carries a discriminating body so the client can tell deletion apart from the OTHER
+    // bare 404s on this path, and stop inviting a retry that cannot succeed.
+    [Fact]
+    public async Task PutContent_DeletedNote_Returns404NoteNotFound()
+    {
+        var noteId = await CreateNoteAsync();
+        await PutContentAsync(noteId, "Text written before the note was deleted.");
+        await _client.DeleteAsync($"/notes/{noteId}");
+
+        var resp = await PutContentAsync(noteId, "Text typed after the delete landed.");
+
+        Assert.Equal(HttpStatusCode.NotFound, resp.StatusCode);
+        var error = (await resp.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("error").GetString();
+        Assert.Equal("note_not_found", error);
+    }
+
+    // The discriminator must mean "this note is gone from the event stream" and nothing else. An API
+    // Gateway route miss falls through to `/{proxy+}` and returns a BODY-LESS 404 (shipped once in
+    // 34-B); if the client keyed off the bare status, a deploy skew would tell every user their note
+    // had been deleted. Pinned here so the two 404s can never converge.
+    [Fact]
+    public async Task PutContent_UnknownRoute_Returns404WithoutTheNoteNotFoundCode()
+    {
+        var resp = await _client.PutAsync($"/notes/{Guid.NewGuid()}/content/not-a-real-segment",
+            new StringContent("{\"content\":\"x\"}", Encoding.UTF8, "application/json"));
+
+        Assert.Equal(HttpStatusCode.NotFound, resp.StatusCode);
+        Assert.DoesNotContain("note_not_found", await resp.Content.ReadAsStringAsync());
+    }
+
     private Task<HttpResponseMessage> PutContentAsync(string noteId, string content, string? expectedBaseContentHash = null) =>
         _client.PutAsync($"/notes/{noteId}/content",
             JsonContent.Create(new { content, expectedBaseContentHash }));

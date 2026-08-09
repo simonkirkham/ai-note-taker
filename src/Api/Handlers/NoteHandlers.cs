@@ -77,7 +77,13 @@ public static class NoteHandlers
         if (detail is not null && detail.UserId != currentUser.UserId) return Results.NotFound();
         long version;
         try { version = await handler.HandleAsync(new EditContentCmd(new NoteId(noteId), req.Content, req.ExpectedBaseContentHash)); }
-        catch (NoteNotFoundException) { return Results.NotFound(); }
+        // BUG-59: the note is gone from the event stream — the editor is open on a note deleted
+        // elsewhere, so every retry 404s (prod: six rejected writes over 31 minutes). Terminal, not
+        // transient, and the client must be able to tell it apart from the OTHER bare 404s on this
+        // path: the ownership pre-check above, and an API Gateway route miss falling through to
+        // `/{proxy+}` (shipped once in 34-B). Both of those stay bare, so a deploy skew can never
+        // tell a user their note was deleted. Same discriminated-body convention as the 409 below.
+        catch (NoteNotFoundException) { return Results.NotFound(new { error = "note_not_found" }); }
         // BUG-47: the client edited a stale/empty view whose base hash no longer matches the current
         // content. A terminal conflict — return 409 with a distinct code so the client keeps the typed
         // text, reloads the real content, and offers the typed text back (never a silent overwrite).

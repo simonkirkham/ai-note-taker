@@ -1,4 +1,4 @@
-import { request, requestVoid, requestVoidWithResponse, requestWithResponse } from './client';
+import { ApiError, request, requestVoid, requestVoidWithResponse, requestWithResponse } from './client';
 import {
   clearLatestToken,
   clearStreamToken,
@@ -174,12 +174,26 @@ export class StaleContentError extends Error {
   }
 }
 
+// BUG-59: the note was deleted (elsewhere, or in another tab) while this editor was open, so the
+// write hit a stream that no longer exists. Terminal like StaleContentError, not the retriable
+// failure the generic path assumes — a retry can never succeed.
+export class NoteDeletedError extends Error {
+  constructor() {
+    super('note_not_found');
+    this.name = 'NoteDeletedError';
+  }
+}
+
 export async function editContent(
   noteId: string,
   content: string,
   expectedBaseContentHash?: string,
 ): Promise<void> {
   // 409 is expected (a stale-base conflict), so it must not throw as a generic failure — handle it.
+  // 404 is allowed through for the same reason, but ONLY the discriminated `note_not_found` body is
+  // treated as deletion: a bare 404 is also what the ownership pre-check and an API Gateway route
+  // miss return (34-B shipped one), and telling those users their note was deleted would be a lie.
+  // Anything else re-throws as the ApiError the caller already handles.
   const response = await requestVoidWithResponse(
     `/notes/${noteId}/content`,
     {
@@ -187,9 +201,19 @@ export async function editContent(
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ content, expectedBaseContentHash }),
     },
-    [409],
+    [409, 404],
   );
   if (response.status === 409) throw new StaleContentError();
+  if (response.status === 404) {
+    // A body-less or non-JSON 404 is not evidence of deletion; fall through to the generic error.
+    const code = await response
+      .clone()
+      .json()
+      .then((body: unknown) => (body as { error?: string } | null)?.error)
+      .catch(() => undefined);
+    if (code === 'note_not_found') throw new NoteDeletedError();
+    throw new ApiError(404, `PUT /notes/${noteId}/content failed: 404`);
+  }
   captureNoteToken(noteId, response);
 }
 
