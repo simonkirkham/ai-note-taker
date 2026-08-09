@@ -86,35 +86,79 @@ Scenario: Completing the item just above the line does not move the line
 
 - **User value:** Promoting something into today (or pushing it out) is the most common reason to touch this list; a drag across a long list is slow and, since the reorder arrows were removed, there is no keyboard path at all.
 - **How it works:**
-  - Each open to-do row offers a single action whose label reflects which side it is on: **Move to Today** for an item under "Later", **Move to Later** for an item under "Today".
+  - Each open to-do row carries a single **⋯ actions menu**. It holds the move-across-the-line action plus the existing "Send to top" / "Send to bottom", which move off the row and into the menu.
+  - The move action's label reflects which side the item is on: **Move to Today** for an item under "Later", **Move to Later** for an item under "Today".
   - Moving to Today places the item at the **bottom of the Today group** (directly above the line), not the top — it does not jump ahead of what the user already prioritised.
   - Moving to Later places the item at the **top of the Later group** (directly below the line).
-  - The action is keyboard-reachable, restoring a keyboard reorder path.
-  - The move is optimistic and the list re-renders immediately.
+  - **Delete stays on the row** as its own button — it is destructive and unconfirmed, so it is not hidden behind the same menu as three reversible reorders.
+  - The menu is fully keyboard-operable — open it, move between actions, and choose one without a pointer — restoring the keyboard reorder path CHANGE-29 gave up.
+  - Escape closes the menu and puts focus back where it started; clicking elsewhere closes it too.
+  - Only one row's menu is open at a time.
+  - The move is optimistic and the list re-renders immediately, before the save confirms.
 - **Scenarios (GWT):**
 
 ```
 Scenario: Promote an item into today
   Given an item sits under "Later"
-  When  the user chooses "Move to Today" on that item
+  When  the user chooses "Move to Today" from that item's actions menu
   Then  it appears as the last item under "Today"
   And   the Today line has not moved relative to the other items
 
 Scenario: Push an item out of today
   Given an item sits under "Today"
-  When  the user chooses "Move to Later" on that item
+  When  the user chooses "Move to Later" from that item's actions menu
   Then  it appears as the first item under "Later"
 
 Scenario: The action reflects which side the item is on
   Given one item under "Today" and one under "Later"
-  When  the user inspects each row's action
+  When  the user opens each row's actions menu
   Then  the Today item offers "Move to Later"
   And   the Later item offers "Move to Today"
 
-Scenario: The move is reachable by keyboard
-  Given an item under "Later" is focused
-  When  the user activates its move action with the keyboard
+Scenario: The list re-renders before the save completes
+  Given an item sits under "Later"
+  When  the user chooses "Move to Today" and the save has not yet resolved
+  Then  the item already appears under "Today"
+
+Scenario: The whole move is reachable by keyboard
+  Given an item under "Later" has its actions menu button focused
+  When  the user opens the menu, moves to "Move to Today", and activates it
   Then  the item moves under "Today" without a pointer being used
+  And   focus returns to that row's actions menu button
+
+Scenario: Escape abandons the menu
+  Given a row's actions menu is open
+  When  the user presses Escape
+  Then  the menu closes with the list unchanged
+  And   focus returns to that row's actions menu button
+
+Scenario: Opening one menu closes another
+  Given one row's actions menu is open
+  When  the user opens a different row's actions menu
+  Then  only the second menu is open
+
+Scenario: Moving the item the line is anchored to
+  Given the first item under "Later" is moved to Today
+  When  the move completes
+  Then  it appears as the last item under "Today"
+  And   the remaining Later items are still under "Later"
+
+Scenario: Promoting the only Later item empties the group
+  Given exactly one item sits under "Later"
+  When  the user moves it to Today
+  Then  every item appears under "Today"
+  And   no empty "Later" group is shown
+
+Scenario: A failed move is not silent
+  Given an item sits under "Later"
+  When  the user moves it to Today and the save fails
+  Then  the list returns to its previous order
+  And   the user is told the move did not save
+
+Scenario: Delete is still one click on the row
+  Given an open to-do row
+  When  the user looks at the row
+  Then  the delete action is on the row itself, not inside the actions menu
 ```
 
 ---
@@ -146,15 +190,33 @@ Scenario: The move is reachable by keyboard
 - **Decisions:** no dates of any kind — no due date, no created date, no derived "today". The line is purely a user-positioned marker in the existing priority order. This **supersedes the due-date design** previously sketched in `docs/future-features.md` under *Expand the to-do functionality for today and the future* (2026-06-02), which assumed `ActionItemDueDateSet`/`TodoScheduled` events and Today/Upcoming/Overdue grouping.
 
 ### 50-B
-- **Surface:** same rows as [CHANGE-34]'s "Send to top / Send to bottom"; both compute a new full id order and call the same `reorderTo` path. Build after CHANGE-34 lands, or expect a trivial merge in `TodoSection`.
-- **Events/commands:** none new — reuses `ReorderTodos` plus 50-A's line anchor. A "Move to Today" is a reorder that places the item immediately above the anchor; "Move to Later" places it immediately below.
-- **Tests:** `TodoSection` vitest for placement at the bottom-of-Today / top-of-Later, the label flipping by side, and keyboard activation.
+- **Prototyped 2026-08-09** on `prototype/50-b-move-across-line` (4 control shapes compared live). Approved: **variant D, the overflow menu**. Full brief in that branch's `web/src/prototype/REFERENCE.md`.
+- **Surface:** `web/src/components/TodoSection.tsx`. CHANGE-34's "Send to top / Send to bottom" icon buttons **move off the row into the menu**; the delete button stays on the row.
+- **Events/commands:** none new — reuses `ReorderTodos` plus 50-A's line anchor (`useReorderTodos` + `useSetTodayLine`). Frontend-only slice; no backend, no CDK, no projection change.
+- **Control shape — DECIDED: overflow menu, delete excluded.** Rejected: a fourth icon in the cluster (five controls per row incl. the grip — too dense); a text button naming the destination (costs row width, wraps the longer descriptions); making CHANGE-34's arrows line-aware (silently redefines shipped behaviour and removes one-click send-to-top from a Later item). Delete stays on the row because it is destructive and has no confirm step — burying it one arrow-key from "Send to bottom" is the only way this slice could regress on what ships today.
+- **Placement maths (mirrors 50-A's anchor model; `splitAt = anchorIndex >= 0 ? anchorIndex : openItems.length`):**
+  - Demote (Today → Later): `arrayMove(ids, from, splitAt - 1)`, **then re-anchor the line to the moved item** so it becomes the first Later row.
+  - Promote (Later → Today): `arrayMove(ids, from, splitAt)`, anchor unchanged — the anchor shifts down one index and the item lands last in Today.
+  - **Promoting the anchor item itself must re-anchor first** to `laterItems[1]?.id ?? null`, or the line travels with the row and Today swallows everything below it. Same hazard `reanchorIfLineWouldFollow` already guards on the drag path (`TodoSection.tsx:122-128`).
+  - Sequencing: start the reorder, then re-anchor in the **same tick before awaiting**, matching the existing `sendTo` comment at `TodoSection.tsx:170-175`.
+- **`RowMenu` extraction:** trigger + popup + keyboard is ~60 lines and does not belong inline in `TodoSection`. Presentational: takes `label`, `open`, `onOpenChange`, `actions: {label, run}[]`. `openMenuId` lives in `TodoSection` so only one menu is open at once.
+- **Keyboard/ARIA contract (all confirmed in the prototype):** `aria-haspopup="menu"` + `aria-expanded` on the trigger, `role="menu"` / `role="menuitem"`, roving `tabIndex` (active `0`, rest `-1`); ArrowDown/Up on the trigger opens; ArrowDown/Up rove with wraparound; Enter/Space activate then close **and refocus the trigger**; Escape closes and refocuses; Tab closes without refocus; mousedown outside closes.
+- **Menu items must respect `busy.has(item.itemId)` and `reorder.isPending`** — the prototype had no disabled handling.
+- **Failure path:** a rejected reorder surfaces through the existing `reorderError` state (CHANGE-34 pattern), never silently snapping back.
+- **Tests:** `TodoSection` vitest for bottom-of-Today / top-of-Later placement, the label flipping by side, the anchor-item promote case, optimistic re-render, the failure toast, single-menu-open, and the full keyboard path (open → rove → activate → focus returns). No backend test surface.
 - **Acceptance criteria:**
   - [ ] "Move to Today" lands the item last in Today, not first.
   - [ ] "Move to Later" lands the item first in Later.
   - [ ] The label reflects the item's current side.
-  - [ ] The action is operable by keyboard alone.
+  - [ ] The whole move is operable by keyboard alone, and focus returns to the trigger.
+  - [ ] Escape and click-outside close the menu; only one menu is open at a time.
+  - [ ] Promoting the anchor item leaves the remaining Later items under "Later".
+  - [ ] A failed move reverts the list and tells the user.
+  - [ ] Delete remains a one-click action on the row.
 - **Decisions:** bottom-of-Today (not top) so promoting never jumps the user's existing priority order.
+
+### 50-A residual (carried into 50-B)
+- 50-A's "the line's position survives a reload" criterion is checked against `SetTodayLine_PersistsTheAnchor`, but the **reload half is E2E-only and has never run** — 50-A merged during the 2026-08-06 GitHub Actions outage. Add the reload assertion to the to-do E2E journey in this slice rather than filing it separately.
 
 ### Observability
 - **50-A silent failure:** the line save fails and the UI keeps showing the optimistic position — the user believes it stuck and finds it moved on the next device/reload. Surface the failed mutation to the user rather than only reconciling silently.

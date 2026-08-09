@@ -1,7 +1,9 @@
 // BUG-53 (Step 2) — a persistent whisper-server child that loads the model ONCE and answers
 // /inference over HTTP. Replaces the spawn-per-window live path (which reloaded the model every
 // window → 5-7s latency + resource churn). The model stays resident, so re-inference on a short
-// sliding window is fast (~1.4s for a 3s window on a fast CPU), giving a ~3-4s live transcript.
+// sliding window avoids reloading the model each time. (The original "~1.4s for a 3s window →
+// ~3-4s live transcript" claim did not survive contact with a real machine — see BUG-65: whisper
+// encodes a padded 30s mel regardless of window length, and the window was never really 3s.)
 // It's a child process, so BUG-52's kill-on-quit lifecycle covers it (killActiveWhisper).
 
 import { spawn, type ChildProcess } from 'node:child_process'
@@ -32,6 +34,61 @@ const INFERENCE_TIMEOUT_MS = 20_000
 // start() gives up it nulls the process, and a deadline above this can only ever observe a dead
 // process — which is exactly how the first attempt at that deadline shipped as dead code.
 export const SERVER_START_TIMEOUT_MS = 60_000
+
+// BUG-65 — whisper always encodes a PADDED 30-SECOND mel, so a 3s window costs almost what 30s
+// does. `--audio-ctx` shortens that encoder context and is the biggest available lever on live
+// latency. 768 ≈ 15s of capacity.
+//
+// It is an EXPERIMENTAL upstream option — whisper.h labels it "can significantly reduce the quality
+// of the output", and the maintainer advises against it for audio beyond ~10-15s. Taken anyway
+// because the live transcript is *mostly* disposable (48-B re-transcribes with small.en at stop);
+// "mostly" is load-bearing, since `local:finish` has three paths where the LIVE text becomes the
+// saved note (no small.en yet, final pass throws, final pass empty).
+//
+// 768 rather than any other reduction: GGML_PAD(n_ctx, 256) makes 768 = 3×256 exactly, giving zero
+// unmasked pad rows versus 36 at the 1500 default — which matters while the upstream pad-row
+// attention bug (whisper.cpp PR #3941) is open.
+//
+// NOT true, though an earlier version of this comment said so: whisper.cpp's `stream` example does
+// NOT use 768 — `stream.cpp` defaults audio_ctx to 0 (full context). The 768 figure comes from the
+// `command` example, a short-utterance workload.
+export const AUDIO_CTX_FULL = 1500 // whisper's full context = 30s
+export const LIVE_AUDIO_CTX = 768
+
+// Encoder context → seconds of audio it can hold.
+export function audioCtxSeconds(ctx: number): number {
+  return (ctx / AUDIO_CTX_FULL) * 30
+}
+
+// Pure, so the flags are asserted headlessly. Every argument is a chance to hit the server's
+// unknown-argument path — which calls `exit(0)`, so a mistyped flag looks like a CLEAN SHUTDOWN
+// rather than a failure. That is exactly how BUG-56 killed the live transcript, so the set is
+// deliberately minimal and every entry was verified against the pinned v1.9.1 parser.
+//
+// Deliberately NOT passed:
+//  - `--flash-attn` — already defaults to true, so passing it is a no-op.
+//  - beam/best-of flags — `beam_size = -1` already selects greedy.
+//  - `--no-fallback` — **the server parses it and never reads it.** cli.cpp and stream.cpp both do
+//    `no_fallback ? 0.0f : …`; server.cpp assigns `wparams.temperature_inc` unconditionally, so the
+//    flag is dead in every release through v1.9.1. Passing it would be a no-op that LOOKS like a
+//    fix. The only working lever is a per-request `temperature_inc`, deliberately not used yet:
+//    collapsing the temperature ladder also disables whisper's repetition guard, and a reduced
+//    audio_ctx is documented to *induce* repetition loops — so it would trade latency for a
+//    hallucination risk that this very change creates. Measure first.
+export function buildServerArgs(opts: { modelPath: string; port: number; threads: number }): string[] {
+  return [
+    '-m',
+    opts.modelPath,
+    '--host',
+    '127.0.0.1',
+    '--port',
+    String(opts.port),
+    '-t',
+    String(opts.threads),
+    '--audio-ctx',
+    String(LIVE_AUDIO_CTX),
+  ]
+}
 
 export class WhisperServer {
   private proc: ChildProcess | null = null
@@ -68,7 +125,7 @@ export class WhisperServer {
   async start(): Promise<void> {
     if (this.proc) return
     this.port = await freePort()
-    const args = ['-m', this.modelPath, '--host', '127.0.0.1', '--port', String(this.port), '-t', String(this.threads)]
+    const args = buildServerArgs({ modelPath: this.modelPath, port: this.port, threads: this.threads })
     const proc = spawn(this.binPath, args)
     this.proc = proc
     let exited = false

@@ -1,7 +1,7 @@
 import { requestVoidWithResponse, requestWithResponse } from './client'
 import { clearLatestToken, getLatestToken, setLatestToken } from './consistencyTokens'
 import { gatedRead } from './gatedRead'
-import { captureNoteToken } from './notes'
+import { captureNoteToken, NOTE_CARDS_SCOPE } from './notes'
 
 // Read-your-writes (RYW-3b): the folder flows are async (the projector builds the folder tree). A
 // folder write returns its write token in `X-Consistency-Token`; the next `GET /folders` echoes it
@@ -52,6 +52,12 @@ export async function renameFolder(folderId: string, name: string): Promise<void
 export async function deleteFolder(folderId: string): Promise<void> {
   const response = await requestVoidWithResponse(`/folders/${folderId}`, { method: "DELETE" })
   captureFolderToken(response)
+  // BUG-46: the delete also cascades an `UnfileNote` NOTE-stream write per contained note, and
+  // `useDeleteFolder` refetches the cards list afterwards. Without this the cards read is ungated
+  // w.r.t. those writes and can still show the notes under the folder that just went away. The
+  // cards gate holds one stream token (design #7), so the server returns the LAST unfile write's.
+  const notesToken = response.headers.get('X-Consistency-Token-NoteCards')
+  if (notesToken) setLatestToken(NOTE_CARDS_SCOPE, notesToken)
 }
 
 export async function moveFolder(folderId: string, parentFolderId: string | null): Promise<void> {

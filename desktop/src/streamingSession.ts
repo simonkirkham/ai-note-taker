@@ -7,7 +7,7 @@
 // audio for the stop-time final pass (small.en, via the CLI — unchanged from BUG-52).
 
 import { reduceStream, initStreamState, type StreamState, type StreamConfig } from './streamingTranscript'
-import type { WhisperServer } from './whisperServer'
+import { audioCtxSeconds, LIVE_AUDIO_CTX, type WhisperServer } from './whisperServer'
 
 const STEP_MS = 1500
 const BYTES_PER_MS = 32 // 16 kHz * 16-bit mono → 32 bytes/ms
@@ -32,7 +32,29 @@ const LIVE_ENGINE_STOPPED = 'the on-device engine stopped during the recording'
 const LIVE_ENGINE_UNRESPONSIVE = 'the on-device engine stopped responding'
 const LIVE_ENGINE_NEVER_LOADED = 'the on-device engine did not finish loading; the live transcript stayed empty'
 
-export type StreamingSessionOptions = { readyTimeoutMs?: number; minSessionForStopReportMs?: number }
+// BUG-65 — the most audio we will ever send in one /inference. Sits below the ~15.4s the encoder
+// can hold at LIVE_AUDIO_CTX, with margin: past the context whisper truncates the mel but still
+// seeks a full 30s on a missed timestamp, so audio would be skipped entirely rather than merely
+// degraded. Derived from the encoder constant rather than written as a literal, so lowering
+// LIVE_AUDIO_CTX cannot silently leave this stranded above it.
+export const MAX_SEND_WINDOW_MS = Math.floor(audioCtxSeconds(LIVE_AUDIO_CTX) * 1000 * 0.9)
+
+export type LiveStepStat = {
+  windowMs: number
+  inferenceMs: number // -1 when the step failed
+  committedChars: number
+  dropped: number
+  clampedMs: number // audio withheld this step by MAX_SEND_WINDOW_MS (0 normally)
+  error?: string
+}
+
+export type StreamingSessionOptions = {
+  readyTimeoutMs?: number
+  minSessionForStopReportMs?: number
+  maxSendWindowMs?: number
+  // BUG-65: per-step cost, for the on-device diagnostic log.
+  onStep?: (s: LiveStepStat) => void
+}
 
 export class StreamingSession {
   private readonly chunks: Buffer[] = []
@@ -45,6 +67,8 @@ export class StreamingSession {
   private terminalReported = false // onError fired once — don't spam the banner every step
   private sawReady = false // the server became ready at least once (so a later !running == a crash)
   private readyTimer: ReturnType<typeof setTimeout> | null = null
+  private droppedSinceLog = 0 // steps the busy-guard skipped since the last reported step
+  private lastStepByteLen = -1 // byteLen at the last step actually run (BUG-67 idle detection)
   private startedAt = 0 // when start() armed the timers — the stop-path grace period runs from here
   // windowSlice cursor: chunks before scanIdx are fully committed (never in a future window). startByte
   // only grows, so advancing this makes each slice O(window) instead of O(whole recording so far).
@@ -75,7 +99,13 @@ export class StreamingSession {
   }
 
   private async step(): Promise<void> {
-    if (this.busy || this.disposed) return
+    // BUG-65: a step skipped because the previous inference is still running is the signal that the
+    // engine cannot keep pace — count it, so the log distinguishes "slow" from "falling behind".
+    if (this.busy) {
+      this.droppedSinceLog++
+      return
+    }
+    if (this.disposed) return
     if (!this.server.running) {
       // A server that had become ready and is now gone crashed mid-recording — report it once so the
       // renderer's banner fires (a start-time failure is surfaced by the IPC layer instead). If it was
@@ -94,23 +124,80 @@ export class StreamingSession {
     // is caught by the ready deadline armed in start() (BUG-56), not here.
     if (!this.server.ready) return
     this.sawReady = true
+    // BUG-67: nothing has ARRIVED since the last step, so re-running would re-transcribe byte-for-
+    // byte identical audio for an identical result. MIN_NEW_MS below does not cover this — it gates
+    // on the window SIZE (byteLen - startByte), which stays large while the window is stale, so once
+    // PCM stopped the session spun forever. It mattered because the renderer awaits diarize (two
+    // whisper-cli passes) after Stop before anything halts this session, so the spin competed for
+    // cores with the pass the user was waiting for.
+    //
+    // A step that FAILS is deliberately not retried once audio has stopped: resetting this in the
+    // catch would re-open an infinite retry loop against a stale window, which is the CPU burn this
+    // guard exists to stop. Cost is that the live tail can be one window short after a failed final
+    // step; the stop-time pass is what recovers it.
+    if (this.byteLen === this.lastStepByteLen) return
     const startByte = this.state.finalizedMs * BYTES_PER_MS
     if (this.byteLen - startByte < MIN_NEW_MS * BYTES_PER_MS) return
     this.busy = true
+    // Declared OUTSIDE the try so the catch can report them too: the window size at the moment of
+    // failure is the number that says whether the clamp was engaged when it died, and it is
+    // unrecoverable if it goes out of scope.
+    const rawNowMs = Math.floor(this.byteLen / BYTES_PER_MS)
+    const cap = this.opts?.maxSendWindowMs ?? MAX_SEND_WINDOW_MS
+    const nowMs = Math.min(rawNowMs, this.state.finalizedMs + cap)
+    const clampedMs = rawNowMs - nowMs
+    const windowMs = nowMs - this.state.finalizedMs
+    const startedAt = Date.now()
+    // BUG-67: record what this step actually CONSUMED, not what happened to be buffered. When the
+    // BUG-65 clamp engages, the withheld tail is meant to "wait a step" — marking it consumed would
+    // mean it is never transcribed live once audio stops, silently cancelling the two fixes against
+    // each other at exactly the end-of-audio case the clamp exists for.
+    // The conditional matters: nowMs * BYTES_PER_MS truncates the sub-millisecond remainder, so
+    // using it unconditionally would leave lastStepByteLen permanently below byteLen and the idle
+    // guard would never fire — restoring the original spin.
+    this.lastStepByteLen = clampedMs > 0 ? nowMs * BYTES_PER_MS : this.byteLen
     try {
-      const nowMs = Math.floor(this.byteLen / BYTES_PER_MS)
-      const window = this.windowSlice(startByte)
+      // BUG-65: hardWindowMs does NOT bound the runtime window (see the clamp computed above).
+      // finalizedMs only advances after an inference completes, and the busy-guard drops ticks
+      // meanwhile, so steady state is roughly inferenceMs + stabilityMs + STEP_MS — which on a slow
+      // machine (/inference alone tolerates 20s) exceeds the ~15.4s the encoder holds at
+      // LIVE_AUDIO_CTX. Overshooting is not merely "sees less": whisper truncates the mel copy at
+      // the context, but the seek loop still advances a full 30s on a missed timestamp, so audio
+      // would be skipped outright. Clamping what we SEND makes the newest tail wait a step instead.
+      const window = this.windowSlice(startByte, nowMs * BYTES_PER_MS)
       const segs = await this.server.transcribe(window, this.state.finalizedMs)
       if (this.disposed) return
       this.failures = 0
       const { state, display } = reduceStream(this.state, segs, nowMs, this.cfg)
       this.state = state
       this.onLive(display)
+      // BUG-65: report what the step actually cost. Without this there is no way to tell which of
+      // the four suspected causes dominates, or to prove a tuning change helped.
+      this.report({
+        windowMs,
+        inferenceMs: Date.now() - startedAt,
+        committedChars: state.committed.length,
+        dropped: this.droppedSinceLog,
+        clampedMs,
+      })
+      this.droppedSinceLog = 0
     } catch (err) {
       // A single hiccup (an aborted slow window, a transient error) is tolerated; only a sustained run
       // of failures against a ready server is terminal — report it once so the renderer's banner fires.
       if (this.disposed) return
       this.failures++
+      // BUG-65: a FAILED step must still leave a trace. A run of 20s /inference timeouts is the most
+      // likely shape of "very slow", and reporting only on success would leave the diagnostic log
+      // silent for exactly that case — the hole this instrumentation exists to close.
+      this.report({
+        windowMs,
+        inferenceMs: Date.now() - startedAt,
+        committedChars: this.state.committed.length,
+        dropped: this.droppedSinceLog,
+        clampedMs,
+        error: (err as Error).message,
+      })
+      this.droppedSinceLog = 0
       if (this.failures >= FAIL_THRESHOLD && !this.terminalReported) {
         this.terminalReported = true
         // Never forward the raw transport error: it reaches the banner verbatim, where "The
@@ -123,19 +210,33 @@ export class StreamingSession {
     }
   }
 
-  // Concat only the chunks overlapping [startByte, end]. startByte is monotonic, so we advance a cursor
-  // past chunks entirely before it (kept intact for fullAudio) — each slice is O(window), not O(whole
-  // recording). The whole audio is never re-concatenated here.
-  private windowSlice(startByte: number): Buffer {
+  // A step's stats never reach the caller raw: onStep is supplied by the IPC layer and runs inside
+  // step()'s try, so a throw in the diagnostic would increment `failures` and could raise a false
+  // "engine stopped responding" banner. A diagnostic must not be able to break a recording.
+  private report(s: LiveStepStat): void {
+    try {
+      this.opts?.onStep?.(s)
+    } catch {
+      /* diagnostics are best-effort */
+    }
+  }
+
+  // Concat only the chunks overlapping [startByte, endByte). startByte is monotonic, so we advance a
+  // cursor past chunks entirely before it (kept intact for fullAudio) — each slice is O(window), not
+  // O(whole recording). The whole audio is never re-concatenated here.
+  private windowSlice(startByte: number, endByte: number): Buffer {
     while (this.scanIdx < this.chunks.length && this.scanIdxByte + this.chunks[this.scanIdx].length <= startByte) {
       this.scanIdxByte += this.chunks[this.scanIdx].length
       this.scanIdx++
     }
     const parts: Buffer[] = []
     let pos = this.scanIdxByte
-    for (let i = this.scanIdx; i < this.chunks.length; i++) {
+    for (let i = this.scanIdx; i < this.chunks.length && pos < endByte; i++) {
       const c = this.chunks[i]
-      parts.push(pos >= startByte ? c : c.subarray(startByte - pos))
+      const from = pos >= startByte ? 0 : startByte - pos
+      // Trim the tail too (BUG-65's clamp): a chunk straddling endByte contributes only its head.
+      const to = pos + c.length <= endByte ? c.length : endByte - pos
+      if (to > from) parts.push(c.subarray(from, to))
       pos += c.length
     }
     return Buffer.concat(parts)

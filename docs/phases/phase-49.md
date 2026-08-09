@@ -1,4 +1,4 @@
-# Phase 49 — Open multiple notes at once _(In Progress — 49-A done 2026-07-28; 49-B done 2026-08-07 (#414, deploy #733); 49-C not started)_
+# Phase 49 — Open multiple notes at once _(Done — 49-A 2026-07-28; 49-B 2026-08-07 (#414, deploy #733); 49-C moved to [51-C](phase-51.md) 2026-08-09)_
 
 **Goal:** you can keep several notes open at the same time and switch between them from a tab bar, instead of losing the note you were on every time you open another.
 
@@ -8,9 +8,10 @@
 |-------|--------------------|--------|------------|
 | 49-A  | I can have several notes open at once and click between them in a tab bar | Done | — |
 | 49-B  | My open notes are still there after I reload or come back later | Done | 49-A |
-| 49-C  | A recording keeps running while I read another note | Not Started | 49-A |
 
-49-A proves the whole flow (open, switch, close) and is shippable alone. 49-B and 49-C are independent of each other and can run in either order — 49-B is much the cheaper of the two.
+49-A proves the whole flow (open, switch, close) and is shippable alone; 49-B followed as the cheaper of the two remaining slices.
+
+**49-C moved to [51-C](phase-51.md) on 2026-08-09.** *A recording keeps running while I read another note* adds a recording marker to the same open-note bar that [Phase 51](phase-51.md) redesigns, and both change `NoteView`'s tab row — so one phase now owns that surface rather than two slices editing it from different phases. Its slice content and build notes moved with it; nothing was dropped.
 
 ## Slices
 
@@ -125,39 +126,7 @@ Scenario: Storage being unavailable does not break the app
 
 ### Slice 49-C — A recording keeps running in a background tab
 
-- **User value:** I can look something up in another note while a meeting is still being recorded, without stopping the recording or losing what's been captured.
-- **How it works:**
-  - Switching away from a note that is recording no longer asks anything — the recording carries on in the background.
-  - The recording tab is marked in the bar (a recording dot) so it's obvious which note is live, and clicking it takes you straight back.
-  - Returning to the recording tab shows the whole live transcript, including everything captured while you were elsewhere.
-  - Closing a recording tab still asks to confirm, and stops the recording cleanly if you go ahead.
-  - Only one recording can run at a time, as today: starting a recording in another tab is not offered while one is live.
-
-- **Scenarios (GWT):**
-
-```
-Scenario: Recording continues while I read another note
-  Given I am recording in "Standup" and also have "Client call" open
-  When  I click the "Client call" tab
-  Then  I am not asked to confirm
-  And   the "Standup" tab shows that it is still recording
-
-Scenario: The live transcript is complete when I come back
-  Given I am recording in "Standup" and I switch to "Client call" while people keep talking
-  When  I click back to the "Standup" tab
-  Then  the live transcript includes what was said while I was away
-
-Scenario: Closing a recording tab asks first
-  Given I am recording in "Standup"
-  When  I close the "Standup" tab
-  Then  I am asked to confirm
-  And   confirming stops the recording and keeps what was captured
-
-Scenario: Only one note records at a time
-  Given I am recording in "Standup" and I switch to "Client call"
-  When  I look at the recording control in "Client call"
-  Then  I cannot start a second recording
-```
+> **Moved to [51-C](phase-51.md#slice-51-c--a-recording-keeps-running-in-a-background-tab) on 2026-08-09.** Scenarios and build notes live there. Not re-stated here.
 
 ---
 
@@ -225,21 +194,8 @@ Frontend-only phase. **No new commands, events, projections, endpoints or CDK ch
 - **Test-isolation fix:** persisting to `localStorage` made it leak between vitest tests (a tab opened in one restored in the next), which red-flagged a 49-A spec. Cleared globally in `web/src/test/setup.ts` alongside the existing URL and workspace resets — the third instance of that same class.
 
 ### 49-C — Recording survives a tab switch
-- **The crux.** This slice changes the mounting model: the recording note's `NoteView` must stay mounted while another tab is active. `useTranscription` (`web/src/hooks/useTranscription.ts:99`) owns the mic stream, the socket and the transcript buffer, and unmounting it is exactly the transcript-loss failure BUG-34 was filed for.
-- **Two candidate designs — pick one in a spike/design step before writing code:**
-  1. **Keep-mounted:** render the recording note's `NoteView` alongside the active one, hidden (`hidden` attribute / `display:none`), so its hook keeps running. Cheapest diff; risks: duplicate global effects (`beforeunload`, the `popstate` trap, autofocus at `NoteView.tsx:251`) firing from a hidden note, and a hidden Tiptap editor holding state.
-  2. **Hoist the session:** move `useTranscription` above the route into a provider keyed by `noteId`, so `NoteView` consumes a session it does not own. Cleaner long-term, larger blast radius in the app's most failure-sensitive component.
-  - Either way, every effect in `NoteView` that assumes "mounted ⇒ visible/active" must be audited and gated on active-ness.
-- **Remove** the 49-A tab-switch confirm; **keep** the close-tab confirm and the `beforeunload`/`popstate` guards.
-- **Bar affordance:** recording dot on the tab (`aria-label` includes "recording"), driven by the same status the record control uses.
-- **Single-recorder rule:** the record control in a non-recording tab is disabled with a reason while another tab is live (today this is implicit — one note is mounted; it becomes explicit here).
-- **Tests:** vitest cannot prove "audio kept flowing" — assert the *hook is not torn down* (transcript state survives a tab switch, cleanup not called) and that the control is disabled elsewhere. E2E covers the tab indicator + no-confirm-on-switch; a real audio assertion is out of scope for the gate.
-- **Acceptance criteria:**
-  - [ ] Switching tabs while recording no longer prompts and does not stop the recording
-  - [ ] Returning to the recording tab shows the transcript captured while away
-  - [ ] The recording tab is marked as recording in the bar
-  - [ ] Closing a recording tab confirms first and stops the recording cleanly
-  - [ ] A second recording cannot be started from another tab while one is live
+
+> **Moved to [51-C](phase-51.md). Build notes live there.**
 
 ### Observability
 
@@ -250,8 +206,9 @@ Frontend-only, so signals go through `recordRumEvent` (`web/src/rum.ts:10`) — 
 | Tab restore silently yields nothing (storage blocked/quota/corrupt) — user thinks the app "forgot" | 49-B | `recordRumEvent("tabRestoreFailed", { reason })` in the storage `catch` and on a parse failure |
 | Tabs silently dropped by reconcile (mass-drop = cards loaded empty, i.e. a bug, not deletions) | 49-B | `recordRumEvent("tabsDropped", { dropped, remaining })` when reconcile removes any tab |
 | A tab points at a note that 404s — the existing dead-link path, now reachable from a stale stored tab | 49-A/B | already covered: `deadNoteLink` (`App.tsx:382`); confirm it still fires from a tab-driven open |
-| **Recording torn down by a tab switch** — the whole point of 49-C, and invisible until the user finds an empty transcript | 49-C | `recordRumEvent("recordingUnmountedWhileActive", { noteId })` in the transcription cleanup path when status is still recording; this alarm-in-a-log-line is the slice's regression detector |
 | Tab count growing without bound (a dedupe bug looks like normal use) | 49-A | include `tabCount` on the tab-open event |
+
+The recording-teardown signal moved to [51-C](phase-51.md) with the slice.
 
 ### Deploy-time
 

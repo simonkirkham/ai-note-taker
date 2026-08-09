@@ -16,6 +16,7 @@ import { useAnalyseNote, useEditContent, useRenameNoteDetail, useSetNoteDate } f
 import { useTagNote, useUntagNote } from "../hooks/useTagMutations";
 import { useTags } from "../hooks/useTags";
 import { useTranscription } from "../hooks/useTranscription";
+import type { AgendaEditorApi, LiveTopic } from "../lib/agendaEditorApi";
 import AgendaSection from "./AgendaSection";
 import CommandBar from "./CommandBar";
 import FinalNotesView from "./FinalNotesView";
@@ -38,6 +39,11 @@ const TABS: { id: NoteTab; label: string }[] = [
   { id: "transcript", label: "Transcript" },
   { id: "final", label: "Final notes" },
 ];
+
+// CHANGE-33: what the leave confirm names for a leave the note requests ITSELF (its Save
+// button, or the browser-back trap). Those exit via onExit, the deterministic workspace
+// home (BUG-34) — every other destination is named by whoever called the guard.
+const SELF_LEAVE_DESTINATION = "go to Home";
 
 export default function NoteView({
   noteId,
@@ -67,7 +73,9 @@ export default function NoteView({
   // 49-A: lets the parent ask before it navigates somewhere that would unmount this note
   // (switching or closing an open-note tab). Registered only while recording — an in-app
   // navigate never fires the popstate trap below, so without this the capture dies silently.
-  onRegisterLeaveGuard?: (guard: ((proceed: () => void) => void) | null) => void;
+  onRegisterLeaveGuard?: (
+    guard: ((proceed: () => void, destination: string) => void) | null,
+  ) => void;
   onNotFound?: () => void;
   isNew?: boolean;
   // Move targets = the caller's workspaces minus the current one. When empty/absent
@@ -110,13 +118,22 @@ export default function NoteView({
   // a blur then overwrote the real title with that empty value.
   const [titleDraft, setTitleDraft] = useState<string | null>(null);
   const [contentDraft, setContentDraft] = useState<string | null>(null);
+  // 43-G: the header agenda edits the note BODY, so it needs the live editor's command object.
+  // Held here rather than inside AgendaSection so the strip stays free of Tiptap, and in state
+  // (not a ref) so the controls enable the moment the lazy editor chunk finishes loading.
+  const [agendaApi, setAgendaApi] = useState<AgendaEditorApi | null>(null);
+  const [liveTopics, setLiveTopics] = useState<LiveTopic[] | null>(null);
   const [dateDraft, setDateDraft] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<NoteTab>("quick");
   const [pickerOpen, setPickerOpen] = useState(false);
   const [linkingEventId, setLinkingEventId] = useState<string | null>(null);
   const [openingNext, setOpeningNext] = useState(false);
   const [noNextOccurrence, setNoNextOccurrence] = useState(false);
-  const [confirmingLeave, setConfirmingLeave] = useState(false);
+  // CHANGE-33: the pending leave's destination phrase ("go to Home", "sign out"), or null
+  // when no leave is pending — so the state that raises the confirm is the same state that
+  // names it. A separate boolean + label could disagree, which is exactly the bug: a second
+  // guarded click replaces the destination, and the banner must move with it.
+  const [leaveDestination, setLeaveDestination] = useState<string | null>(null);
   // 49-A: where to go once a mid-recording leave is confirmed, when the leave was requested
   // by the parent (a tab switch/close) rather than by this note's own Save/back.
   const pendingLeaveRef = useRef<(() => void) | null>(null);
@@ -323,7 +340,7 @@ export default function NoteView({
   const [prevIsRecording, setPrevIsRecording] = useState(isRecording);
   if (prevIsRecording !== isRecording) {
     setPrevIsRecording(isRecording);
-    if (!isRecording && confirmingLeave) setConfirmingLeave(false);
+    if (!isRecording && leaveDestination !== null) setLeaveDestination(null);
   }
   // Second half of the same transition as the render-adjust above — the banner is dropped
   // there, the pending navigation runs here (after commit, since it is a side effect).
@@ -341,9 +358,9 @@ export default function NoteView({
       onRegisterLeaveGuard(null);
       return;
     }
-    onRegisterLeaveGuard((proceed) => {
+    onRegisterLeaveGuard((proceed, destination) => {
       pendingLeaveRef.current = proceed;
-      setConfirmingLeave(true);
+      setLeaveDestination(destination);
     });
     return () => onRegisterLeaveGuard(null);
   }, [isRecording, onRegisterLeaveGuard]);
@@ -356,7 +373,7 @@ export default function NoteView({
       // A browser-back while a tab-switch confirm is showing supersedes it: this leave is
       // self-requested, so it must exit via onExit, not resume the tab that was clicked.
       pendingLeaveRef.current = null;
-      setConfirmingLeave(true);
+      setLeaveDestination(SELF_LEAVE_DESTINATION);
     };
     window.addEventListener("popstate", onPopState);
     return () => window.removeEventListener("popstate", onPopState);
@@ -566,7 +583,7 @@ export default function NoteView({
   // either way (autosave + flush on unmount).
   function handleBack() {
     if (isRecording) {
-      setConfirmingLeave(true);
+      setLeaveDestination(SELF_LEAVE_DESTINATION);
       return;
     }
     handleSaveContent();
@@ -582,7 +599,7 @@ export default function NoteView({
     // user could click Save and navigate a second time when the save resolves.
     if (leavingRef.current) return;
     leavingRef.current = true;
-    setConfirmingLeave(false);
+    setLeaveDestination(null);
     transcription.stopRecording();
     handleSaveContent();
     const proceed = pendingLeaveRef.current;
@@ -630,13 +647,24 @@ export default function NoteView({
             >
               Cancel
             </button>
-          ) : confirmingLeave ? (
+          ) : leaveDestination !== null ? (
             <span
               className={styles.leaveConfirm}
               role="alertdialog"
-              aria-label="Recording in progress"
+              aria-label={`Recording in progress — ${leaveDestination}?`}
+              aria-live="assertive"
+              aria-atomic="true"
             >
-              <span className={styles.leaveConfirmText}>Still recording —</span>
+              {/* CHANGE-33: the accessible name carries the destination, and the live region
+                  sits on the dialog itself rather than on the text inside it. A second
+                  guarded click replaces the destination while the dialog is already open,
+                  and nothing focuses the dialog, so without an explicit live region the swap
+                  is silent; a nested one (alertdialog inherits alert's implicit live
+                  semantics) is announced twice or dropped depending on the screen reader.
+                  aria-atomic so the whole phrase is re-read, not the changed words alone. */}
+              <span className={styles.leaveConfirmText} data-testid="leave-confirm-text">
+                Still recording — {leaveDestination}?
+              </span>
               <button
                 data-testid="confirm-leave-button"
                 onClick={() => void handleConfirmedLeave()}
@@ -648,7 +676,7 @@ export default function NoteView({
                 data-testid="cancel-leave-button"
                 onClick={() => {
                   pendingLeaveRef.current = null;
-                  setConfirmingLeave(false);
+                  setLeaveDestination(null);
                 }}
                 className={styles.backButton}
               >
@@ -730,7 +758,7 @@ export default function NoteView({
         className={styles.titleInput}
         aria-label="Note title"
       />
-      <AgendaSection noteId={noteId} />
+      <AgendaSection noteId={noteId} editor={agendaApi} liveTopics={liveTopics} />
       {transcriptDraft && (
         <div
           data-testid="transcript-recovery-banner"
@@ -909,6 +937,8 @@ export default function NoteView({
                   value={content}
                   onChange={(md) => setContentDraft(md)}
                   onBlur={handleSaveContent}
+                  onAgendaApiChange={setAgendaApi}
+                  onAgendaTopicsChange={setLiveTopics}
                 />
               )}
               <p className={styles.aiHint} data-testid="ai-instruction-hint">

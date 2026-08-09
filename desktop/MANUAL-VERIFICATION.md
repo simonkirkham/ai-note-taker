@@ -153,6 +153,34 @@ BUG-53's checklist above was never completed, and the live path shipped dead: `W
 | 5 | **No stale banner:** Given a recording that showed the banner, When I start a new local recording that works, Then the banner is gone. | ☐ |
 | 6 | **Stop is unchanged:** Given I stop a local recording, Then the `small.en` final pass still replaces the live text (slower than live — expected cost, not a defect). | ☐ |
 
+## BUG-65 — live transcription speed, and the diagnostic log
+
+The whole point of this slice is the log: an installed build is otherwise unobservable (whisper-server's stdout is not captured, the console needs DevTools), which is why BUG-56 and BUG-65 both had to be diagnosed by reading code instead of evidence.
+
+**The log lives at `%APPDATA%\AI Note Taker\local-transcription.log`** (one rotation, `.log.1`, capped at 512 KB). It contains counts and timings only — no transcript text, no file paths beyond the model's basename.
+
+**`rtf` is the column that matters:** inference time ÷ audio duration. Below 1.0 the engine is faster than real time and the live view can keep pace; above 1.0 it is falling behind by definition.
+
+| # | Given / When / Then | Pass? |
+|---|---------------------|-------|
+| 1 | **Live text keeps pace:** Given a local recording, When I speak continuously for ~30 s, Then words appear within a few seconds and do not fall further behind as the recording goes on. | ☐ |
+| 2 | **The log exists and is readable:** Given a finished local recording, Then `local-transcription.log` holds a `session start` line followed by `step` lines. | ☐ |
+| 3 | **rtf is below 1.0:** Given the step lines, Then `rtf` is consistently < 1.0. If it is not, the tuning is insufficient and threads are the next lever — send the log. | ☐ |
+| 4 | **Not falling behind:** Given the step lines, Then `dropped` stays low and `clamped` is absent or rare. A rising `dropped` means inference is slower than the 1.5 s tick; any `clamped` means the window hit the encoder send cap. | ☐ |
+| 5 | **Failures are visible:** Given the engine fails (rename `whisper-server.exe`), Then the log records `step FAILED … err=…` rather than going silent. | ☐ |
+| 6 | **The saved transcript is unaffected:** Given I stop, Then the note's transcript is the higher-quality `small.en` pass, not the live text — the live view's reduced accuracy must not reach the note. | ☐ |
+
+## BUG-67 — the live engine stops when the audio does
+
+Closable only from the log, like [BUG-65]: the symptom is CPU burn, not anything on screen.
+
+| # | Given / When / Then | Pass? |
+|---|---------------------|-------|
+| 1 | **No spin after Stop:** Given a local recording, When I press Stop, Then `local-transcription.log` shows **no further `step` lines** with `window` and `committed` both unchanged. Before the fix there were ~12 such lines over 30 s. | ☐ |
+| 2 | **The wait after Stop is shorter:** Given a recording of the same length as before, Then the "Finalising transcript…" wait is shorter than it was on build `182` — the spin was competing with that pass for cores. | ☐ |
+| 3 | **Live text still works:** Given I speak, pause for ~10 s, then speak again, Then the transcript keeps updating after the pause — the guard detects idleness, it must not latch off. | ☐ |
+| 4 | **The saved transcript is unaffected:** Given I stop, Then the note holds the full `small.en` transcript including the final words spoken. | ☐ |
+
 ## CHANGE-36 — window title follows the open note
 
 `BrowserWindow` is constructed with no `title` option, so the Electron window (and its taskbar label) follows `document.title`. Making the browser tab title track the note therefore changes the desktop window title too — intended, but verify it reads sensibly.
@@ -192,6 +220,19 @@ The app now answers Electron's permission requests itself instead of riding the 
 | 7 | **The CHECK handler grants, not just the request handler:** Given the app has been open a moment, When I check the console, Then a line reads `[desktop] permission check media: granted — …` and **no** `permission check … denied` line names `media` or `notifications`. | ☐ |
 
 > **Why row 7 exists.** The unit specs assert against the shapes we *believe* Electron passes; they cannot prove the wire format. Review caught the first implementation comparing the check handler's origin raw — Electron hands it a GURL serialised with a **trailing slash** (`http://localhost:5180/`), which never matched the bundle origin, so **every check was denied while all 17 specs passed**. Symptoms if it regresses: meeting reminders fall back to a plain `alert()`, microphone device names show blank in any picker, and Chromium's pre-flight can fail `getUserMedia` before the request handler is ever consulted. Row 7 is the only check that would catch it.
+
+## CHANGE-33 — the leave confirm announces its destination (screen reader)
+
+The mid-recording "Still recording — …?" confirm now names where "Leave & save" will take you, and a second guarded click **replaces** that destination while the dialog is already open. The visible half is covered by tests; the **announced** half is not, and cannot be — jsdom has no accessibility tree and no screen reader. The markup is `role="alertdialog"` + `aria-live="assertive"` + `aria-atomic="true"` + a dynamic `aria-label`; behaviour for a *labelled atomic live region* varies between implementations, so this is reasoned, not verified. Applies to the **web app equally** — the desktop app renders the same bundle, so either surface is a valid place to check. Use NVDA or Narrator.
+
+| # | Given / When / Then | Pass? |
+|---|---------------------|-------|
+| 1 | **The confirm is announced at all:** Given a recording is running, When I click Home in the sidebar, Then the screen reader announces the confirm including the destination ("go to Home"). | ☐ |
+| 2 | **A replaced destination is re-announced:** Given that confirm is showing, When I then click a folder in the sidebar, Then the screen reader announces the **new** destination ("go to <folder>") — silence here is the failure this markup exists to prevent. | ☐ |
+| 3 | **It is announced once, not twice:** Given either of the above, Then the phrase is read **once** — a double reading means the label and the content are both being announced and the label should be dropped. | ☐ |
+| 4 | **The whole phrase is read, not the changed words:** Given a replaced destination, Then the announcement is the full "Still recording — …?" phrase, not a bare fragment like "Clients?" (this is what `aria-atomic` buys). | ☐ |
+
+> **Why this is a manual check.** Every automated gate is structurally blind to it: vitest/jsdom applies no CSS and builds no accessibility tree, and no E2E journey asserts the banner. The tests can prove the attributes are *present* — they cannot prove a screen reader does anything useful with them. If rows 1–2 fail, the fallback is to move `aria-live` back onto the text span; if row 3 fails, drop the `aria-label` and let the content name the dialog.
 
 ## Troubleshooting
 

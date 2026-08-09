@@ -211,6 +211,7 @@ public static class Builder
         builder.Services.AddScoped<IFolderCommandHandler, FolderCommandHandler>();
         builder.Services.AddScoped<IWorkspaceCommandHandler, WorkspaceCommandHandler>();
         builder.Services.AddScoped<IProjectionRebuildHandler, ProjectionRebuildHandler>();
+        builder.Services.AddScoped<IAgendaMigrationHandler, AgendaMigrationHandler>();
         builder.Services.AddSingleton<IDynamoHealthCheck>(sp =>
             new DynamoDbHealthCheck(sp.GetRequiredService<IAmazonDynamoDB>(), eventTableName));
         Api.Services.CalendarClientRegistration.Register(builder.Services);

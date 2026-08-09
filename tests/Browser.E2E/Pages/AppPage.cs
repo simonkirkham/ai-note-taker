@@ -600,6 +600,93 @@ public sealed class AppPage
         }
     }
 
+    // Phase 43-F/G: the agenda is DERIVED from the note body, so the coverage pill only moves once
+    // the content has saved, the projector has folded it, and the note-detail read has come back.
+    // Reload-tolerant + re-asserting, per the guardrail that every projector-backed assertion must
+    // re-gate rather than race the async projector.
+    /// <summary>
+    /// The coverage pill, without reloading: since 43-G the strip renders from the LIVE editor
+    /// document, so a body or header edit moves it synchronously.
+    /// </summary>
+    public Task AssertAgendaCoverageAsync(string expected) =>
+        Assertions.Expect(page.GetByTestId("agenda-coverage")).ToContainTextAsync(expected);
+
+    /// <summary>
+    /// The pill AFTER a reload — proves the note CONTENT round-tripped (saved, re-fetched, and
+    /// re-parsed into topics). It does NOT prove the server-side derive: the remounted editor
+    /// republishes live topics from the reloaded content, and those win over the projection, so
+    /// this would stay green even if AgendaFromContent were deleted. The derive is proven by
+    /// AgendaFromBodySpec and the DynamoDbNoteDetailStore round-trip test, not here.
+    /// Per-attempt timeout is above the 8s server RYW gate cap so a gated read is never aborted
+    /// mid-converge, and the readiness gate is the ENABLED save button rather than the title
+    /// input, which renders before the detail read lands.
+    /// </summary>
+    public async Task AssertAgendaCoverageAfterReloadAsync(string expected, int timeoutMs = 30000)
+    {
+        var deadline = DateTime.UtcNow.AddMilliseconds(timeoutMs);
+        var seen = "(never rendered)";
+        while (true)
+        {
+            try
+            {
+                await Assertions.Expect(page.GetByTestId("agenda-coverage"))
+                    .ToContainTextAsync(expected, new() { Timeout = 9000 });
+                return;
+            }
+            catch (PlaywrightException) when (DateTime.UtcNow < deadline)
+            {
+                // Bounded + existence-gated: the failure this diagnostic exists to explain is
+                // "the pill never rendered", and an auto-waiting read would then block the default
+                // timeout and throw TimeoutException, throwing away the message being built.
+                seen = await page.GetByTestId("agenda-coverage").CountAsync() > 0
+                    ? await page.GetByTestId("agenda-coverage").TextContentAsync(new() { Timeout = 1000 }) ?? "(empty)"
+                    : "(absent)";
+                await page.ReloadAsync();
+                await Assertions.Expect(page.GetByTestId("save-button"))
+                    .ToBeEnabledAsync(new() { Timeout = 9000 });
+            }
+            catch (PlaywrightException)
+            {
+                // Evidence through the THROWN message — xUnit swallows Console output on a pass and
+                // never flushes a hung test, so an opaque locator timeout here is undebuggable.
+                throw new Exception(
+                    $"Agenda coverage never reached '{expected}'. Last seen: '{seen}'. page.Url={page.Url}");
+            }
+        }
+    }
+
+    /// <summary>Type into the open note's body and save it, awaiting the content PUT.</summary>
+    public async Task TypeIntoNoteBodyAndSaveAsync(string text)
+    {
+        var body = page.GetByTestId("note-content");
+        await body.ClickAsync();
+        await body.PressSequentiallyAsync(text);
+        var saved = page.WaitForResponseAsync(r => r.Url.Contains("/content") && r.Request.Method == "PUT");
+        await body.BlurAsync();
+        await saved;
+    }
+
+    /// <summary>
+    /// Add a topic from the HEADER agenda strip. 43-G writes it into the note body as an editor
+    /// transaction, which dirties the draft but does NOT itself save — content persists on editor
+    /// blur / unmount / Save. So blur the body and await the PUT, or the next reload (which runs no
+    /// React cleanup) discards the topic and the assertion after it can never pass.
+    /// </summary>
+    public async Task AddAgendaTopicFromHeaderAsync(string text)
+    {
+        var input = page.GetByTestId("agenda-add-input");
+        await input.FillAsync(text);
+        await input.PressAsync("Enter");
+
+        var saved = page.WaitForResponseAsync(r => r.Url.Contains("/content") && r.Request.Method == "PUT");
+        await page.GetByTestId("note-content").ClickAsync();
+        await page.GetByTestId("note-content").BlurAsync();
+        await saved;
+    }
+
+    public Task AssertNoteBodyContainsAsync(string text) =>
+        Assertions.Expect(page.GetByTestId("note-content")).ToContainTextAsync(text);
+
     public async Task AddTagAsync(string tagInput)
     {
         var tagCount = tagInput.Trim().Split(' ', StringSplitOptions.RemoveEmptyEntries).Length;

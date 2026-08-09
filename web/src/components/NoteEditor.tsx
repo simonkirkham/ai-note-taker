@@ -7,6 +7,7 @@ import StarterKit from '@tiptap/starter-kit';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Markdown } from 'tiptap-markdown';
 import { presignUpload, resolveImages } from '../api/notes';
+import { createAgendaEditorApi, type AgendaEditorApi, type LiveTopic } from '../lib/agendaEditorApi';
 import { BlankLineParagraph } from '../lib/blankLineParagraph';
 import { emojifyMarkdown } from '../lib/emoji';
 import { EmojiShortcode } from '../lib/emojiExtension';
@@ -29,6 +30,18 @@ export interface NoteEditorProps {
   value: string;
   onChange: (md: string) => void;
   onBlur: () => void;
+  // 43-G: hands the header agenda strip a small command object so it can add/tick/reword/remove a
+  // topic as an EDITOR TRANSACTION (undoable, applied to the document that holds unsaved typing)
+  // rather than an API call. Called with the api once the editor exists and null on teardown, so
+  // NoteView never holds a command object pointing at a destroyed editor. Deliberately narrow —
+  // AgendaSection addresses topics by position and never sees a Tiptap type.
+  onAgendaApiChange?: (api: AgendaEditorApi | null) => void;
+  // 43-G: the live topic list, re-published on every document change. The header renders from THIS
+  // rather than from the server projection whenever the editor is mounted, which is what makes a
+  // header action move the UI immediately (the mandatory optimistic-UI criterion) and what keeps
+  // the index the header holds identical to the index the commands resolve against. Two indices
+  // over two different documents cannot be made safe.
+  onAgendaTopicsChange?: (topics: LiveTopic[] | null) => void;
 }
 
 const ALLOWED_IMAGE_TYPES = new Set(['image/png', 'image/jpeg', 'image/gif', 'image/webp']);
@@ -41,7 +54,7 @@ const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
 // rely on StarterKit's bundled Link default, which a Tiptap upgrade could loosen.
 const ALLOWED_LINK_PROTOCOLS = ['http', 'https', 'mailto'];
 
-export default function NoteEditor({ noteId, value, onChange, onBlur }: NoteEditorProps) {
+export default function NoteEditor({ noteId, value, onChange, onBlur, onAgendaApiChange, onAgendaTopicsChange }: NoteEditorProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { showError } = useToast();
 
@@ -235,6 +248,28 @@ export default function NoteEditor({ noteId, value, onChange, onBlur }: NoteEdit
     [editor, canInsert, insertAndUpload]
   );
 
+  // 43-G: publish the agenda command object once the editor exists, and null it on teardown so the
+  // header can never act on a destroyed editor. The callback is held in a ref so a caller passing an
+  // inline arrow does not re-run this on every render (which would churn NoteView's state).
+  const agendaApiCb = useRef(onAgendaApiChange);
+  useEffect(() => { agendaApiCb.current = onAgendaApiChange; }, [onAgendaApiChange]);
+  const agendaTopicsCb = useRef(onAgendaTopicsChange);
+  useEffect(() => { agendaTopicsCb.current = onAgendaTopicsChange; }, [onAgendaTopicsChange]);
+  useEffect(() => {
+    if (!editor) return;
+    const api = createAgendaEditorApi(editor);
+    const publish = () => agendaTopicsCb.current?.(api.readTopics());
+    agendaApiCb.current?.(api);
+    publish();
+    editor.on('update', publish);
+    return () => {
+      editor.off('update', publish);
+      agendaApiCb.current?.(null);
+      agendaTopicsCb.current?.(null);
+    };
+  }, [editor]);
+
+  // `ignore`/`isDestroyed` drop a stale or unmounted response.
   // Resolve-before-parse (BUG-24): the editor mounts with image keys stripped, so the
   // parser never fetches a bare key. This runs ONCE per note (the editor is keyed by
   // noteId, so it remounts per note) on the mount-time content: resolveImages → seed the
@@ -245,7 +280,6 @@ export default function NoteEditor({ noteId, value, onChange, onBlur }: NoteEdit
   // an uploaded image is already shown via the blob→presigned upload flow and needs no
   // resolve here. No setState in the effect body — the editor calls and the setCanInsert
   // run inside the async `.then`/`.catch` (the set-state-in-effect lint rule is satisfied).
-  // `ignore`/`isDestroyed` drop a stale or unmounted response.
   const didResolve = useRef(false);
   const initialValueRef = useRef(value);
   useEffect(() => {
