@@ -23,6 +23,9 @@ installResourceErrorHandler()
 
 const e2eToken = (window as unknown as Record<string, unknown>).__E2E_AUTH_TOKEN as string | undefined
 
+// Temporary — prototype/tabs-redesign branch only, never reaches main.
+const isPrototype = window.location.pathname.startsWith('/prototype')
+
 // apiFetch already handles 401/token refresh, so keep retry low. Modest staleTime
 // + no refetch-on-focus avoids invalidation/refetch storms (see phase-20 observability).
 const queryClient = new QueryClient({
@@ -35,7 +38,16 @@ const queryClient = new QueryClient({
 // The #root element is guaranteed present in index.html; a missing root is an
 // unrecoverable boot failure, so asserting non-null here is correct.
 // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
-createRoot(document.getElementById('root')!).render(
+const root = createRoot(document.getElementById('root')!)
+
+// Prototype branch only: render the 51-A harness instead of the app, bypassing
+// auth/router/providers entirely so it needs no backend and no sign-in.
+if (isPrototype) {
+  void import('./prototype/PrototypeRoot').then(({ default: PrototypeRoot }) => {
+    root.render(<PrototypeRoot />)
+  })
+} else {
+root.render(
   <StrictMode>
     <ErrorBoundary>
       {/* QueryClientProvider sits outside AuthProvider deliberately: query fns read
@@ -52,6 +64,7 @@ createRoot(document.getElementById('root')!).render(
     </ErrorBoundary>
   </StrictMode>,
 )
+}
 
 // The entry chunk evaluated, so a prior entry-chunk reload (if any) succeeded —
 // reset the guard so the next deploy's incident can self-heal once more. 19-I1
