@@ -372,6 +372,124 @@ public sealed class AgendaFromBodySpec
         Assert.Equal("**x**", AgendaFromContent.StripInlineMarks("`**x**`"));
     }
 
+    [Theory]
+    // CHANGE-38: the header, the peek and the note card show the text the user SEES. Before this,
+    // a topic typed with emphasis read as its raw markdown source.
+    [InlineData("- [ ] **Budget**", "Budget")]
+    [InlineData("- [ ] *Budget*", "Budget")]
+    [InlineData("- [ ] ~~Budget~~", "Budget")]
+    [InlineData("- [ ] Review `deploy.yml`", "Review deploy.yml")]
+    [InlineData("- [ ] **Budget** and _headcount_", "Budget and headcount")]
+    // ...and text that only LOOKS like markup is left exactly as typed.
+    [InlineData("- [ ] Rename snake_case_name", "Rename snake_case_name")]
+    [InlineData("- [ ] Budget is 2 * 3 headcount", "Budget is 2 * 3 headcount")]
+    public void A_topic_reads_as_the_user_sees_it_not_as_markdown_source(string body, string expected)
+    {
+        var (p, noteId) = NoteWith(body);
+        Assert.Equal(expected, Assert.Single(AgendaOf(p, noteId)).Text);
+    }
+
+    [Fact]
+    public void Two_topics_that_read_alike_stay_distinct_even_when_only_one_is_emphasised()
+    {
+        // Stripping happens BEFORE the ordinal is taken, so `**Budget**` and `Budget` now read the
+        // same — and the ordinal is what keeps them two topics with two ids rather than one topic
+        // the UI reconciles into itself, swapping their ticked state (the trap Hawk caught in #428).
+        var (p, noteId) = NoteWith("- [ ] **Budget**\n- [x] Budget");
+        var agenda = AgendaOf(p, noteId);
+
+        Assert.Equal(2, agenda.Count);
+        Assert.All(agenda, a => Assert.Equal("Budget", a.Text));
+        Assert.NotEqual(agenda[0].ItemId, agenda[1].ItemId);
+        Assert.False(agenda[0].Discussed);
+        Assert.True(agenda[1].Discussed);
+    }
+
+    [Theory]
+    // Emphasis WRAPPING a code span is still emphasis — CommonMark renders ``**`x`**`` as bold code,
+    // so the topic reads as the code, not as half its markers.
+    [InlineData("**`deploy.yml`**", "deploy.yml")]
+    // ...but a code span's CONTENTS are code, never emphasis.
+    [InlineData("`**x**`", "**x**")]
+    // A backslash-escaped run is a LITERAL delimiter the note displays. prosemirror-markdown writes
+    // `\*Budget\*` for asterisks the user typed as plain text.
+    [InlineData("\\*Budget\\* and 2 \\* 3", "*Budget* and 2 * 3")]
+    public void Keeps_markers_that_are_not_emphasis(string input, string expected)
+    {
+        Assert.Equal(expected, Unescape38(AgendaFromContent.StripInlineMarks(input)));
+    }
+
+    // Mirrors Parse's strip-then-unescape order.
+    private static string Unescape38(string t) =>
+        System.Text.RegularExpressions.Regex.Replace(t, @"\\([\p{P}\p{S}])", "$1");
+
+    [Fact]
+    public void Emphasis_wrapping_a_code_span_reads_as_the_code_and_matches_its_legacy_twin()
+    {
+        // Positive behaviour, NOT a regression guard: mutation-testing showed this stays green even
+        // with the double-strip bug restored, because `**`deploy.yml`**` happens to strip
+        // idempotently. The spec that actually red-gates that bug is the code-span one below.
+        var noteId = new NoteId(Guid.NewGuid());
+        var stream = $"note#{noteId.Value}";
+        var p = new NoteDetailProjection();
+        p.Handle(Envelope(stream, 1, nameof(NoteCreated), JsonSerializer.Serialize(new NoteCreated(noteId))));
+        p.Handle(Envelope(stream, 2, nameof(AgendaItemAdded),
+            JsonSerializer.Serialize(new AgendaItemAdded(noteId, Guid.NewGuid(), "**`deploy.yml`**", 0))));
+        p.Handle(Envelope(stream, 3, nameof(ContentEdited),
+            JsonSerializer.Serialize(new ContentEdited(noteId, "- [ ] **`deploy.yml`**"))));
+
+        Assert.Single(AgendaOf(p, noteId));
+    }
+
+    [Fact]
+    public void A_code_span_body_line_does_not_absorb_a_genuinely_different_legacy_topic()
+    {
+        // The other half of the double-strip regression, and the worse one: `` `**x**` `` read as
+        // `x` on the second strip and swallowed the unrelated legacy topic `x`, which was then never
+        // migrated and would be deleted for good by 43-H2, with nothing left to show it was lost.
+        var noteId = new NoteId(Guid.NewGuid());
+        var stream = $"note#{noteId.Value}";
+        var p = new NoteDetailProjection();
+        p.Handle(Envelope(stream, 1, nameof(NoteCreated), JsonSerializer.Serialize(new NoteCreated(noteId))));
+        p.Handle(Envelope(stream, 2, nameof(AgendaItemAdded),
+            JsonSerializer.Serialize(new AgendaItemAdded(noteId, Guid.NewGuid(), "x", 0))));
+        p.Handle(Envelope(stream, 3, nameof(ContentEdited),
+            JsonSerializer.Serialize(new ContentEdited(noteId, "- [ ] `**x**`"))));
+
+        Assert.Equal(2, AgendaOf(p, noteId).Count);
+    }
+
+    [Fact]
+    public void A_topic_the_user_typed_with_literal_asterisks_keeps_them()
+    {
+        // Unescaping before stripping deleted exactly the characters the note displays.
+        var (p, noteId) = NoteWith(@"- [ ] \*Budget\* and 2 \* 3");
+        Assert.Equal("*Budget* and 2 * 3", Assert.Single(AgendaOf(p, noteId)).Text);
+    }
+
+    [Fact]
+    public void A_pasted_sentinel_character_cannot_throw_out_of_the_fold()
+    {
+        // The masking placeholder is a private-use character — meaningless in markdown, but NOT
+        // impossible in pasted text. Left in place it would be restored as a span index, and on a
+        // note with fewer spans that is an IndexOutOfRangeException thrown straight out of the
+        // projection fold, DLQ-ing the record and stalling that note.
+        var hostile = "\uE00099\uE001 Budget";
+
+        var result = AgendaFromContent.StripInlineMarks(hostile);
+
+        Assert.Equal(" Budget", result);
+    }
+
+    [Fact]
+    public void A_pathological_line_is_left_alone_rather_than_timing_out_the_fold()
+    {
+        // A regex timeout would throw out of the projection fold and DLQ the record, stalling that
+        // note's projection. Bail on absurd input instead.
+        var long_ = new string('`', 3000);
+        Assert.Equal(long_, AgendaFromContent.StripInlineMarks(long_));
+    }
+
     [Fact]
     public void A_removed_legacy_item_stays_gone()
     {

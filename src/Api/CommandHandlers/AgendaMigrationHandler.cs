@@ -185,9 +185,15 @@ public sealed class AgendaMigrationHandler(
     // AddAgendaItem only trimmed the topic, so a legacy topic may hold a newline or tab. Written
     // raw it would break the checklist into a line Parse cannot match, and every re-run would list
     // it again and re-inject the stray markup.
+    // It also drops the private-use characters AgendaFromContent masks code spans with. A legacy
+    // topic made only of those would be written out as a task line and then read back EMPTY (Parse
+    // pre-strips them, and skips a zero-length topic), so it would never match — and every re-run
+    // would append another invisible `- [ ] ` line, growing a real note without bound. Dropping
+    // them here means the Length check filters such a topic out instead.
     private static string SingleLine(string text) =>
-        string.Join(' ', text.Split(['\r', '\n', '\t'], StringSplitOptions.RemoveEmptyEntries
-            | StringSplitOptions.TrimEntries));
+        string.Join(' ', AgendaFromContent.StripMaskCharacters(text)
+            .Split(['\r', '\n', '\t'], StringSplitOptions.RemoveEmptyEntries
+                | StringSplitOptions.TrimEntries));
 
     private static string Title(string? title) =>
         string.IsNullOrWhiteSpace(title) ? "(untitled)" : title.Length > 60 ? title[..60] : title;
