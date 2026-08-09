@@ -22,6 +22,21 @@ export type RequestLeave = (proceed: () => void, destination: string) => void;
 
 export const LeaveGuardContext = createContext<RequestLeave | null>(null);
 
+// CHANGE-33: a destination phrase can carry a user-supplied name — a note title, a folder,
+// a workspace — and none of those are length-capped anywhere (no maxLength on the title
+// input, no server-side cap). The confirm sits in the note header next to its two buttons,
+// so an unbounded name would crowd them out; clip it here, once, rather than at each of the
+// five call sites. Long enough to stay recognisable, short enough to leave the buttons room.
+const MAX_DESTINATION_NAME = 40;
+
+export function destinationName(name: string, fallback: string): string {
+  const trimmed = name.trim();
+  if (!trimmed) return fallback;
+  return trimmed.length > MAX_DESTINATION_NAME
+    ? `${trimmed.slice(0, MAX_DESTINATION_NAME - 1).trimEnd()}…`
+    : trimmed;
+}
+
 // Stable identity so a consumer can safely put it in a dep array.
 const PROCEED: RequestLeave = (proceed) => proceed();
 

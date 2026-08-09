@@ -9,7 +9,7 @@ import {
 import { useWorkspaces } from "../hooks/useWorkspaces";
 import { useCurrentWorkspace } from "../workspace/context";
 import { DEFAULT_WORKSPACE_ID } from "../workspace/workspaceStore";
-import { useRequestLeave } from "./leaveGuardContext";
+import { destinationName, useRequestLeave } from "./leaveGuardContext";
 import styles from "./WorkspaceSwitcher.module.css";
 
 // 23-E — sidebar workspace switcher (Variant A dropdown, inline CRUD). Self-contained:
@@ -63,10 +63,11 @@ export default function WorkspaceSwitcher() {
       close();
       return;
     }
+    const target = workspaces.find((w) => w.workspaceId === id)?.name ?? "";
     requestLeave(() => {
       void navigate(`/w/${id}`);
       close();
-    }, `switch to ${workspaces.find((w) => w.workspaceId === id)?.name ?? "another workspace"}`);
+    }, `switch to ${destinationName(target, "another workspace")}`);
   }
 
   async function submitCreate() {
@@ -83,7 +84,7 @@ export default function WorkspaceSwitcher() {
       requestLeave(() => {
         void navigate(`/w/${workspaceId}`);
         close();
-      }, `switch to ${name}`);
+      }, `switch to ${destinationName(name, "the new workspace")}`);
     } catch {
       // rolled back in the mutation's onError; surface a generic error inline
       setError("Couldn't create the workspace. Try again.");
@@ -104,6 +105,11 @@ export default function WorkspaceSwitcher() {
       {
         // Deleting the workspace you're viewing would strand you on a now-dead
         // route — fall back to the default workspace.
+        // CHANGE-33 (enumerating every guarded exit): this navigate is deliberately NOT
+        // routed through requestLeave. It runs only onSuccess, and a workspace holding the
+        // note you are recording into is non-empty — the server 409s
+        // (WorkspaceNotEmptyException) and onError runs instead, so it is unreachable while
+        // a recording is live. Guard it if the delete ever becomes cascading.
         onSuccess: () => {
           if (wasActive) void navigate(`/w/${DEFAULT_WORKSPACE_ID}`);
           close();

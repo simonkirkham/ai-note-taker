@@ -16,7 +16,7 @@ import { keys } from "./api/queryKeys";
 import { useAuth } from "./auth/context";
 import styles from "./components/App.module.css";
 import FolderPreviewPanel from "./components/FolderPreviewPanel";
-import { LeaveGuardContext, useRequestLeave } from "./components/leaveGuardContext";
+import { destinationName, LeaveGuardContext, useRequestLeave } from "./components/leaveGuardContext";
 import ListView from "./components/ListView";
 import NoteView from "./components/NoteView";
 import OpenNoteTabs from "./components/OpenNoteTabs";
@@ -283,12 +283,13 @@ function AppContent({ signOut }: { signOut: () => void }) {
   }
 
   // CHANGE-33. Most openNote callers pass no title (the preview panel, "+ New Note"), so
-  // fall back to the card list before giving up on a generic phrase — a named note is the
-  // whole point of the banner.
+  // fall back to the card list before giving up on a generic name — a named note is the
+  // whole point of the banner. "Untitled note" matches what the tab bar calls a blank
+  // title (openNoteTabs above), so the same note reads the same either way you reach it.
   function openNoteDestination(noteId: string, title?: string, isNew?: boolean) {
     if (isNew) return "open the new note";
-    const known = title || cards.find((c) => c.noteId === noteId)?.title;
-    return known ? `open ${known}` : "open that note";
+    const known = title || cards.find((c) => c.noteId === noteId)?.title || "";
+    return `open ${destinationName(known, "Untitled note")}`;
   }
 
   // 49-A: switching or closing a tab is an in-app navigate, which does NOT fire the popstate
@@ -304,9 +305,13 @@ function AppContent({ signOut }: { signOut: () => void }) {
 
   function handleSelectTab(noteId: string) {
     if (noteId === activeNoteId) return;
-    // CHANGE-33: openNoteTabs already resolves a blank title to "Untitled note".
-    const title = openNoteTabs.find((t) => t.noteId === noteId)?.title;
-    requestLeave(() => void navigate(w(`/notes/${noteId}`)), `open ${title ?? "that note"}`);
+    // CHANGE-33: openNoteTabs already resolves a blank title to "Untitled note"; the
+    // fallback covers only a click on a tab that is no longer in the set.
+    const title = openNoteTabs.find((t) => t.noteId === noteId)?.title ?? "";
+    requestLeave(
+      () => void navigate(w(`/notes/${noteId}`)),
+      `open ${destinationName(title, "Untitled note")}`,
+    );
   }
 
   function handleCloseTab(noteId: string) {
@@ -400,7 +405,7 @@ function AppContent({ signOut }: { signOut: () => void }) {
       void navigate(w(`/folders/${folderId}`));
       setPreviewFolderId(folderId);
       setPreviewFolderName(folderName);
-    }, `go to ${folderName || "that folder"}`);
+    }, `go to ${destinationName(folderName, "that folder")}`);
   }
 
   function handleHome() {
@@ -607,12 +612,13 @@ function NoteRoute({
       // so it no longer belongs on this page (mirrors the card's optimistic removal).
       // BUG-54: unlike delete, the note SURVIVES the move — so losing the in-flight
       // transcript to it is pure loss, and the move waits for the leave confirmation.
-      onMoveToWorkspace={(workspaceId) =>
+      onMoveToWorkspace={(workspaceId) => {
+        const target = otherWorkspaces.find((ws) => ws.workspaceId === workspaceId)?.name ?? "";
         requestLeave(() => {
           onMoveNoteToWorkspace(noteId, workspaceId);
           void navigate(`/w/${wsId}`);
-        }, `move this note to ${otherWorkspaces.find((ws) => ws.workspaceId === workspaceId)?.name ?? "another workspace"}`)
-      }
+        }, `move this note to ${destinationName(target, "another workspace")}`);
+      }}
     />
   );
 }

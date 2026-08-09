@@ -652,15 +652,17 @@ export default function NoteView({
               className={styles.leaveConfirm}
               role="alertdialog"
               aria-label={`Recording in progress — ${leaveDestination}?`}
+              aria-live="assertive"
+              aria-atomic="true"
             >
-              {/* CHANGE-33: names the destination "Leave & save" will run. aria-live because
-                  a second guarded click REPLACES it while this dialog is already open — the
-                  alertdialog role only announces on open, so the swap would be silent. */}
-              <span
-                className={styles.leaveConfirmText}
-                data-testid="leave-confirm-text"
-                aria-live="polite"
-              >
+              {/* CHANGE-33: the accessible name carries the destination, and the live region
+                  sits on the dialog itself rather than on the text inside it. A second
+                  guarded click replaces the destination while the dialog is already open,
+                  and nothing focuses the dialog, so without an explicit live region the swap
+                  is silent; a nested one (alertdialog inherits alert's implicit live
+                  semantics) is announced twice or dropped depending on the screen reader.
+                  aria-atomic so the whole phrase is re-read, not the changed words alone. */}
+              <span className={styles.leaveConfirmText} data-testid="leave-confirm-text">
                 Still recording — {leaveDestination}?
               </span>
               <button

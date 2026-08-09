@@ -40,15 +40,21 @@
   display: flex;
   align-items: center;
   gap: 0.5rem;
+  /* CHANGE-33: a flex item defaults to min-width:auto and so refuses to shrink below its
+     content — which would make the wrapping below unreachable, the confirm simply pushing
+     the header's right-hand controls off-screen instead. */
+  min-width: 0;
 }
 
-/* CHANGE-33: the text now carries a destination — including a note title of any length —
-   so it wraps and the buttons drop to a second line rather than being pushed off-screen. */
+/* CHANGE-33: the text now carries a destination — a note/folder/workspace name, clipped to
+   40 chars by destinationName() but still far longer than the old bare "Still recording —".
+   Wrap so the buttons drop to a second line rather than being pushed out of reach. */
 .leaveConfirm {
   display: inline-flex;
   align-items: center;
   flex-wrap: wrap;
   gap: 0.5rem;
+  min-width: 0;
   max-width: 100%;
 }
 
