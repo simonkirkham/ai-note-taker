@@ -66,7 +66,7 @@ export default function WorkspaceSwitcher() {
     requestLeave(() => {
       void navigate(`/w/${id}`);
       close();
-    });
+    }, `switch to ${workspaces.find((w) => w.workspaceId === id)?.name ?? "another workspace"}`);
   }
 
   async function submitCreate() {
@@ -83,7 +83,7 @@ export default function WorkspaceSwitcher() {
       requestLeave(() => {
         void navigate(`/w/${workspaceId}`);
         close();
-      });
+      }, `switch to ${name}`);
     } catch {
       // rolled back in the mutation's onError; surface a generic error inline
       setError("Couldn't create the workspace. Try again.");

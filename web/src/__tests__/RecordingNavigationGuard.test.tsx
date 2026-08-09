@@ -348,3 +348,103 @@ describe('BUG-54 — navigating away from a recording note asks first', () => {
     expect(screen.queryByTestId('confirm-leave-button')).toBeNull()
   })
 })
+
+// CHANGE-33. BUG-54 took the guarded exits from 2 to 8, but the banner said only
+// "Still recording —" — so "Leave & save" could land you anywhere and you could not tell
+// which of your clicks it was answering. Copy only: every guarded exit names itself.
+describe('CHANGE-33 — the leave confirm names where it is about to take you', () => {
+  const banner = async () => (await screen.findByTestId('leave-confirm-text')).textContent
+
+  const TWO_WORKSPACES = http.get('/api/workspaces', () =>
+    HttpResponse.json({
+      workspaces: [
+        { workspaceId: '__default__', name: 'Personal', isDefault: true },
+        { workspaceId: 'ws-2', name: 'Work', isDefault: false },
+      ],
+    }),
+  )
+
+  it('names Home when I click Home', async () => {
+    renderApp()
+    await openNoteAndRecord()
+
+    await userEvent.click(within(screen.getByTestId('sidebar')).getByTestId('home-button'))
+
+    expect(await banner()).toBe('Still recording — go to Home?')
+  })
+
+  it('names the folder when I click a folder', async () => {
+    renderApp()
+    await openNoteAndRecord()
+
+    await userEvent.click(await screen.findByText('Clients'))
+
+    expect(await banner()).toBe('Still recording — go to Clients?')
+  })
+
+  it('names Unfiled when I click Unfiled', async () => {
+    renderApp()
+    await openNoteAndRecord()
+
+    await userEvent.click(screen.getByTestId('unfiled-notes-button'))
+
+    expect(await banner()).toBe('Still recording — go to Unfiled?')
+  })
+
+  it('names the workspace when I switch workspace', async () => {
+    server.use(TWO_WORKSPACES)
+    renderApp()
+    await openNoteAndRecord()
+
+    await userEvent.click(screen.getByTestId('workspace-switcher-trigger'))
+    await userEvent.click(await screen.findByTestId('workspace-option-ws-2'))
+
+    expect(await banner()).toBe('Still recording — switch to Work?')
+  })
+
+  it('says sign out when I sign out', async () => {
+    renderApp()
+    await openNoteAndRecord()
+
+    await userEvent.click(screen.getByTestId('sign-out-button'))
+
+    expect(await banner()).toBe('Still recording — sign out?')
+  })
+
+  it('names the workspace when I move the note to another workspace', async () => {
+    server.use(TWO_WORKSPACES)
+    renderApp()
+    await openNoteAndRecord()
+
+    await userEvent.click(await screen.findByRole('button', { name: /^Move "Standup" to another workspace$/ }))
+    await userEvent.click(await screen.findByTestId('move-workspace-option-ws-2'))
+
+    expect(await banner()).toBe('Still recording — move this note to Work?')
+  })
+
+  // The note's own Save/back is not routed through the guard — it confirms locally, and
+  // "Leave & save" exits to the deterministic workspace home (BUG-34), so it says so.
+  it('names Home for the note’s own Save button', async () => {
+    renderApp()
+    await openNoteAndRecord()
+
+    await userEvent.click(screen.getByTestId('save-button'))
+
+    expect(await banner()).toBe('Still recording — go to Home?')
+  })
+
+  // The invisible half of CHANGE-33: a second guarded click replaces the pending
+  // destination (last intent wins, which is right) — the banner has to show that it did.
+  it('re-names itself when a second guarded click replaces the destination', async () => {
+    renderApp()
+    await openNoteAndRecord()
+    await userEvent.click(within(screen.getByTestId('sidebar')).getByTestId('home-button'))
+    expect(await banner()).toBe('Still recording — go to Home?')
+
+    await userEvent.click(await screen.findByText('Clients'))
+
+    expect(await banner()).toBe('Still recording — go to Clients?')
+    await userEvent.click(screen.getByTestId('confirm-leave-button'))
+    await waitFor(() => expect(window.location.pathname).toBe('/w/__default__/folders/folder-1'))
+  })
+})

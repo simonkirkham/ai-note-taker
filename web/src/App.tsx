@@ -242,9 +242,9 @@ function AppContent({ signOut }: { signOut: () => void }) {
   }, [cardsLoaded, tabs, cards, activeNoteId]);
 
   // Set by the mounted NoteView while it is recording; see requestLeave below.
-  const leaveGuardRef = useRef<((proceed: () => void) => void) | null>(null);
+  const leaveGuardRef = useRef<((proceed: () => void, destination: string) => void) | null>(null);
   const registerLeaveGuard = useCallback(
-    (guard: ((proceed: () => void) => void) | null) => {
+    (guard: ((proceed: () => void, destination: string) => void) | null) => {
       leaveGuardRef.current = guard;
     },
     [],
@@ -279,7 +279,16 @@ function AppContent({ signOut }: { signOut: () => void }) {
       openTab(noteId, title);
       void navigate(w(`/notes/${noteId}`), { state });
       onProceed?.();
-    });
+    }, openNoteDestination(noteId, title, isNew));
+  }
+
+  // CHANGE-33. Most openNote callers pass no title (the preview panel, "+ New Note"), so
+  // fall back to the card list before giving up on a generic phrase — a named note is the
+  // whole point of the banner.
+  function openNoteDestination(noteId: string, title?: string, isNew?: boolean) {
+    if (isNew) return "open the new note";
+    const known = title || cards.find((c) => c.noteId === noteId)?.title;
+    return known ? `open ${known}` : "open that note";
   }
 
   // 49-A: switching or closing a tab is an in-app navigate, which does NOT fire the popstate
@@ -287,15 +296,17 @@ function AppContent({ signOut }: { signOut: () => void }) {
   // first. The guard takes ownership of `proceed` and runs it once the user confirms.
   // Stable identity: it reads a ref, so it never needs to change — and it is a context
   // value, so a new one each render would re-render every consumer.
-  const requestLeave = useCallback((proceed: () => void) => {
+  const requestLeave = useCallback((proceed: () => void, destination: string) => {
     const guard = leaveGuardRef.current;
-    if (guard) guard(proceed);
+    if (guard) guard(proceed, destination);
     else proceed();
   }, []);
 
   function handleSelectTab(noteId: string) {
     if (noteId === activeNoteId) return;
-    requestLeave(() => void navigate(w(`/notes/${noteId}`)));
+    // CHANGE-33: openNoteTabs already resolves a blank title to "Untitled note".
+    const title = openNoteTabs.find((t) => t.noteId === noteId)?.title;
+    requestLeave(() => void navigate(w(`/notes/${noteId}`)), `open ${title ?? "that note"}`);
   }
 
   function handleCloseTab(noteId: string) {
@@ -307,7 +318,9 @@ function AppContent({ signOut }: { signOut: () => void }) {
       void navigate(next ? w(`/notes/${next}`) : w(""));
     };
     // Closing the note being recorded into unmounts it — same protection as switching away.
-    if (noteId === activeNoteId) requestLeave(doClose);
+    // Named "close this tab", not by the note it lands on: closing is what the user asked
+    // for, and where it lands (the neighbour, or home) is a consequence they did not pick.
+    if (noteId === activeNoteId) requestLeave(doClose, "close this tab");
     else doClose();
   }
 
@@ -377,20 +390,21 @@ function AppContent({ signOut }: { signOut: () => void }) {
   // Anything belonging to where you are GOING (the folder preview) waits for the leave.
   function handleUnfiledSelect() {
     setSidebarOpen(false);
-    requestLeave(() => void navigate(w("/folders/unfiled")));
+    requestLeave(() => void navigate(w("/folders/unfiled")), "go to Unfiled");
   }
 
   function handleFolderSelect(folderId: string, folderPath: string[]) {
     setSidebarOpen(false);
+    const folderName = folderPath[folderPath.length - 1] ?? "";
     requestLeave(() => {
       void navigate(w(`/folders/${folderId}`));
       setPreviewFolderId(folderId);
-      setPreviewFolderName(folderPath[folderPath.length - 1] ?? "");
-    });
+      setPreviewFolderName(folderName);
+    }, `go to ${folderName || "that folder"}`);
   }
 
   function handleHome() {
-    requestLeave(() => void navigate(w("")));
+    requestLeave(() => void navigate(w("")), "go to Home");
   }
 
   function handleCreateFolder(name: string, parentFolderId?: string) {
@@ -491,7 +505,7 @@ function AppContent({ signOut }: { signOut: () => void }) {
           // BUG-54: signing out unmounts everything, recording included. The confirm's
           // content flush is awaited before this runs, so the save lands before the token
           // is cleared.
-          onSignOut={() => requestLeave(signOut)}
+          onSignOut={() => requestLeave(signOut, "sign out")}
         />
         <FolderPreviewPanel
           folderId={previewFolderId}
@@ -554,7 +568,9 @@ function NoteRoute({
   onDelete: (noteId: string) => Promise<void>;
   onDateSet: (noteId: string, date: string) => void;
   onOpenNote: (noteId: string, title?: string, isNew?: boolean) => void;
-  onRegisterLeaveGuard: (guard: ((proceed: () => void) => void) | null) => void;
+  onRegisterLeaveGuard: (
+    guard: ((proceed: () => void, destination: string) => void) | null,
+  ) => void;
   otherWorkspaces: { workspaceId: string; name: string }[];
   onMoveNoteToWorkspace: (noteId: string, workspaceId: string) => void;
 }) {
@@ -595,7 +611,7 @@ function NoteRoute({
         requestLeave(() => {
           onMoveNoteToWorkspace(noteId, workspaceId);
           void navigate(`/w/${wsId}`);
-        })
+        }, `move this note to ${otherWorkspaces.find((ws) => ws.workspaceId === workspaceId)?.name ?? "another workspace"}`)
       }
     />
   );

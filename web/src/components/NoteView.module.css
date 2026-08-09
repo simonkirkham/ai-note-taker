@@ -42,16 +42,21 @@
   gap: 0.5rem;
 }
 
+/* CHANGE-33: the text now carries a destination — including a note title of any length —
+   so it wraps and the buttons drop to a second line rather than being pushed off-screen. */
 .leaveConfirm {
   display: inline-flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 0.5rem;
+  max-width: 100%;
 }
 
 .leaveConfirmText {
   font-size: 0.85rem;
   font-weight: 600;
   color: var(--color-error);
+  overflow-wrap: anywhere;
 }
 
 .recoveryBanner {

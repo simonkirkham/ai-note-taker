@@ -12,8 +12,13 @@ import { createContext, useContext } from "react";
  *
  * Default (no provider) is to proceed — a component rendered outside the app shell, as in
  * its own unit tests, has no note to protect.
+ *
+ * CHANGE-33: `destination` is the caller's own name for what `proceed` will do, phrased to
+ * complete "Still recording — …?" ("go to Home", "switch to Work", "sign out"). Required,
+ * not optional: only the caller knows where it is going, and an optional one would let a
+ * new guarded exit silently reinstate the anonymous banner this exists to remove.
  */
-export type RequestLeave = (proceed: () => void) => void;
+export type RequestLeave = (proceed: () => void, destination: string) => void;
 
 export const LeaveGuardContext = createContext<RequestLeave | null>(null);
 
