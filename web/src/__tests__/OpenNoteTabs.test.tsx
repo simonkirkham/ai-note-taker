@@ -320,6 +320,38 @@ describe('Open-note tabs (49-A)', () => {
     expect(window.location.pathname).toBe('/w/__default__/notes/note-2')
   })
 
+  // CHANGE-33: the confirm names its destination, so a tab click and a tab close — which
+  // look identical behind a bare "Still recording —" — are told apart before confirming.
+  it('the confirm names the tab I clicked', async () => {
+    renderApp()
+    await openFromList('Standup')
+    await goHome()
+    await openFromList('Client call')
+    await waitFor(() => expect(tabs()).toHaveLength(2))
+    await userEvent.click(screen.getByTestId('mock-start-recording'))
+
+    await userEvent.click(tabNamed('Standup'))
+
+    expect((await screen.findByTestId('leave-confirm-text')).textContent).toBe(
+      'Still recording — open Standup?',
+    )
+  })
+
+  it('the confirm says close this tab when I close the recording tab', async () => {
+    renderApp()
+    await openFromList('Standup')
+    await goHome()
+    await openFromList('Client call')
+    await waitFor(() => expect(tabs()).toHaveLength(2))
+    await userEvent.click(screen.getByTestId('mock-start-recording'))
+
+    await userEvent.click(screen.getByRole('button', { name: 'Close Client call' }))
+
+    expect((await screen.findByTestId('leave-confirm-text')).textContent).toBe(
+      'Still recording — close this tab?',
+    )
+  })
+
   it('confirming the leave switches to the tab that was clicked', async () => {
     renderApp()
     await openFromList('Standup')
