@@ -16,14 +16,17 @@ Across BUG-56 and BUG-65 — one bug and its follow-up — **six** defects share
 | 4 | A start failure after a short recording (BUG-56 fix) | sent to a renderer that had already detached its listener |
 | 5 | `--no-fallback` (BUG-65 fix) | parsed by `server.cpp` and **never read** — dead upstream since v1.6.0 |
 | 6 | The runaway guard vs the new clamp (BUG-65 fix) | `windowMs` pinned at the send cap could never reach `hardWindowMs` if that rose above it |
+| 7 | The idle guard vs the send clamp (BUG-67 fix) | marked *buffered* bytes as *consumed*, so a clamped step's withheld tail was never transcribed once audio stopped — the two fixes cancelling |
+| 8 | The **spec** for #7 (BUG-67 fix) | its cap sat below `hardWindowMs`, so the runaway guard could not fire and the session genuinely spun — the assertion was satisfied *by* the spin it forbade |
 
-**None were caught by tests. All were caught by review.** Worse, in two cases a *passing test asserted the dead mechanism as working* — the `--no-fallback` assertion, and an "invariant" test that compared two constants which did not bound the runtime value at all.
+**None were caught by tests. All were caught by review** — and #8 was a test that not only missed the defect but passed *because of* it. Worse, in two cases a *passing test asserted the dead mechanism as working* — the `--no-fallback` assertion, and an "invariant" test that compared two constants which did not bound the runtime value at all.
 
 ### What to do about it
 
 1. **Budget more review rounds for this bug class.** "A path nobody verified" invites a patch that adds another one. BUG-56 took three rounds, BUG-65 took two; every round found something real.
 2. **A test that asserts a mechanism is *configured* is not evidence it *works*.** `expect(args).toContain('--no-fallback')` passed happily against a flag the server ignores. Prefer asserting the observable effect; where that is impossible (as here), assert the *absence* of the thing you deliberately did not do, and say why in the test.
-3. **Verify a guard is non-vacuous by breaking it.** Inverting `READY_TIMEOUT_MS` above the start timeout made its test fail — that check is what turned "I think this is locked" into "this is locked". Do it once per guard.
+3. **Verify a guard is non-vacuous by breaking it.** Inverting `READY_TIMEOUT_MS` above the start timeout made its test fail — that check is what turned "I think this is locked" into "this is locked". Do it once per guard. **#8 is what skipping it costs:** a spec written to forbid a spin was green *because* the session was spinning, and reverting the production fix (which then still failed) is what proved the corrected version. Mutate the fix, watch the test die — every time, not just when convenient.
+4. **A test's fixture values are part of the invariant.** #8 chose a cap below `hardWindowMs` — legal-looking, but it put the system in a regime production never reaches, where the mechanism under test is disabled. When a spec configures a threshold, check the configured value against the *other* thresholds it interacts with, exactly as production code must.
 4. **Two constants in different modules that must be ordered are an invariant, and comments do not hold it.** Three of the six were ordering failures. Export both and assert the relationship; derive one from the other where possible so the ordering cannot silently invert.
 
 ## Non-obvious technical lessons
