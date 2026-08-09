@@ -1,3 +1,6 @@
+import { hardRedirect } from '../lib/hardRedirect'
+import { safeSession } from '../lib/safeStorage'
+import { recordRumEvent } from '../rum'
 import { getWorkspaceId } from '../workspace/workspaceStore'
 
 export function generateCodeVerifier(): string {
@@ -101,22 +104,35 @@ export function buildMicrosoftAuthUrl(
 // sign-in, plus the active workspace (34-B — the redirect drops the `/w/:wsId` path) and the chosen
 // provider (34-C — the callback POSTs to the matching connect endpoint). No-op when that provider's
 // client id is not configured (dev/E2E).
-export async function startCalendarConnect(provider: 'google' | 'microsoft' = 'google'): Promise<void> {
+export async function startCalendarConnect(provider: 'google' | 'microsoft' = 'google'): Promise<boolean> {
   const clientId = provider === 'microsoft'
     ? (import.meta.env.VITE_MS_CLIENT_ID ?? '')
     : (import.meta.env.VITE_GOOGLE_CLIENT_ID ?? '')
-  if (!clientId) return
+  if (!clientId) return false
   const verifier = generateCodeVerifier()
   const challenge = await generateCodeChallenge(verifier)
   const state = generateCodeVerifier()
-  sessionStorage.setItem('calendar_verifier', verifier)
-  sessionStorage.setItem('calendar_state', state)
-  sessionStorage.setItem('calendar_workspace', getWorkspaceId())
-  sessionStorage.setItem('calendar_provider', provider)
+  // BUG-60: these four writes were unguarded, so a storage-refusing browser threw here and crashed
+  // the calendar panel. Guarding them alone would be worse, not better: the redirect would still
+  // fire and the return would find no verifier. Same rule as sign-in — the verifier and state must
+  // be proven to have landed before the navigation, because a redirect cannot be taken back.
+  const stored = safeSession.verifiedSet('calendar_verifier', verifier)
+    && safeSession.verifiedSet('calendar_state', state)
+  if (!stored) {
+    safeSession.remove('calendar_verifier')
+    safeSession.remove('calendar_state')
+    recordRumEvent('authStorageBlocked', { at: 'calendarConnect', provider })
+    return false
+  }
+  // The workspace and provider markers only affect where the user lands and which endpoint the
+  // callback posts to, both of which have defaults — losing them must not block the connect.
+  safeSession.set('calendar_workspace', getWorkspaceId())
+  safeSession.set('calendar_provider', provider)
   const url = provider === 'microsoft'
     ? buildMicrosoftAuthUrl(clientId, window.location.origin, challenge, state)
     : buildCalendarAuthUrl(clientId, window.location.origin, challenge, state)
-  window.location.href = url
+  hardRedirect(url)
+  return true
 }
 
 // Token exchange goes through our backend so the client_secret never touches the browser.

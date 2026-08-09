@@ -95,3 +95,15 @@
     transition: none;
   }
 }
+
+/* BUG-60: shown in place of nothing when the browser refuses to persist the PKCE verifier, so the
+   sign-in redirect is deliberately not fired. Non-blocking text, not a modal — the button stays
+   available in case the user fixes the setting in another tab and retries. */
+.signInError {
+  margin: 0.875rem 0 0;
+  max-width: 22rem;
+  font-size: 0.8125rem;
+  line-height: 1.45;
+  color: var(--color-danger, #b3261e);
+  text-align: center;
+}

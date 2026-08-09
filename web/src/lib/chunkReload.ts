@@ -11,15 +11,41 @@
 // deploy incident self-heals once rather than locking out one reload forever.
 const RELOAD_FLAG = 'chunk-reload-attempted'
 
+// BUG-60: every access here was unguarded, so a storage-refusing browser threw INSIDE the handler
+// for a failed chunk load — turning a recoverable stale-deploy into an unhandled error.
+//
+// The fallback needs more care than "swallow and carry on", because this flag is the ONLY thing
+// preventing an infinite reload loop. If it cannot be persisted, a reload would hit the same failed
+// chunk, find no flag, and reload again — forever. So an unpersistable flag means DO NOT RELOAD:
+// fall through to the ErrorBoundary's "Reload" fallback, which is one user-initiated reload instead
+// of an endless automatic one. Losing the self-heal is a far smaller harm than a reload loop.
+function readFlag(win: Window): string | null {
+  try {
+    return win.sessionStorage.getItem(RELOAD_FLAG)
+  } catch {
+    return null
+  }
+}
+
+function writeFlag(win: Window): boolean {
+  try {
+    win.sessionStorage.setItem(RELOAD_FLAG, '1')
+  } catch {
+    return false
+  }
+  return readFlag(win) !== null
+}
+
 export function installChunkReloadHandler(win: Window = window): void {
   win.addEventListener('vite:preloadError', (event) => {
-    if (win.sessionStorage.getItem(RELOAD_FLAG) !== null) {
+    if (readFlag(win) !== null) {
       // Already reloaded once and the chunk still fails: stop here and let the
       // failed dynamic import surface through the ErrorBoundary. Do not
       // preventDefault, so Vite's default (re-throw) still propagates.
       return
     }
-    win.sessionStorage.setItem(RELOAD_FLAG, '1')
+    // Storage refused the guard flag — reloading now could never be limited to once.
+    if (!writeFlag(win)) return
     // Suppress Vite's default throw so a reload — not a crash — is what happens.
     event.preventDefault()
     win.location.reload()
@@ -27,7 +53,11 @@ export function installChunkReloadHandler(win: Window = window): void {
 }
 
 export function clearChunkReloadFlag(win: Window = window): void {
-  win.sessionStorage.removeItem(RELOAD_FLAG)
+  try {
+    win.sessionStorage.removeItem(RELOAD_FLAG)
+  } catch {
+    // Nothing was stored, so there is nothing to clear.
+  }
 }
 
 // Default stability window before re-arming the guard. Long enough to outlast the

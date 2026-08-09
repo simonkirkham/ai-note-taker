@@ -11,6 +11,7 @@ function renderWithSignIn(signIn = vi.fn()) {
         forbidden: false,
         sessionExpired: false,
         authLoading: false,
+        storageBlocked: false,
         signIn,
         signOut: () => {},
       }}
