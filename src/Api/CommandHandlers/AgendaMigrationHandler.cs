@@ -12,7 +12,8 @@ public sealed record AgendaMigrationNote(
 
 public sealed record AgendaMigrationResult(
     int NotesScanned, int NotesWithLegacyTopics, int NotesMigrated, int TopicsMigrated,
-    int NotesStale, int NotesFailed, IReadOnlyList<AgendaMigrationNote> Notes);
+    int NotesStale, int NotesFailed, int NotesExcludedNotOwned,
+    IReadOnlyList<AgendaMigrationNote> Notes);
 
 public interface IAgendaMigrationHandler
 {
@@ -84,7 +85,13 @@ public sealed class AgendaMigrationHandler(
         foreach (var e in events)
             projection.Handle(e);
 
-        var owned = projection.GetAllDetails().Where(n => n.UserId == currentUser.UserId).ToList();
+        var all = projection.GetAllDetails();
+        var owned = all.Where(n => n.UserId == currentUser.UserId).ToList();
+        // Counted, not silently dropped: an operator reconciling against the measured scope (8 notes,
+        // 36 topics) needs to see that a note with legacy topics was excluded for ownership rather
+        // than wonder why the totals disagree. A pre-Phase-8 note folds to UserId "" and lands here.
+        var excluded = all.Count(n => n.UserId != currentUser.UserId
+            && (n.Agenda ?? []).Any(a => !a.Derived));
         // A legacy topic is one Compose could not match to a body line. A note whose topics are all
         // already in the body therefore never reaches this list — there is nothing to write.
         var candidates = owned
@@ -167,11 +174,12 @@ public sealed class AgendaMigrationHandler(
 
         logger.LogInformation(
             "Agenda migration {Mode} Scanned={Scanned} WithLegacy={WithLegacy} Migrated={Migrated} " +
-            "Topics={Topics} Stale={Stale} Failed={Failed}",
-            dryRun ? "DRY RUN" : "APPLIED", owned.Count, candidates.Count, migrated, topics, stale, failed);
+            "Topics={Topics} Stale={Stale} Failed={Failed} ExcludedNotOwned={Excluded}",
+            dryRun ? "DRY RUN" : "APPLIED", owned.Count, candidates.Count, migrated, topics, stale,
+            failed, excluded);
 
         return new AgendaMigrationResult(
-            owned.Count, candidates.Count, migrated, topics, stale, failed, report);
+            owned.Count, candidates.Count, migrated, topics, stale, failed, excluded, report);
     }
 
     // AddAgendaItem only trimmed the topic, so a legacy topic may hold a newline or tab. Written

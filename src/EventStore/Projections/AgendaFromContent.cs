@@ -98,11 +98,21 @@ public static partial class AgendaFromContent
         var fromBody = Parse(noteId, content);
         if (legacy.Count == 0) return fromBody.AsReadOnly();
 
-        var bodyText = fromBody.Select(i => MatchKey(i.Text)).ToHashSet();
+        // A COUNT per body key, not a set: N body lines absorb N legacy items, no more. With a set,
+        // two legacy items sharing a key were both dropped for a single matching body line — the
+        // "silently skipped, then deleted for good by 43-H2" shape, since a skipped item is never
+        // migrated and nothing left in the view would show it was lost.
+        var bodyText = fromBody.GroupBy(i => MatchKey(i.Text))
+            .ToDictionary(g => g.Key, g => g.Count());
         var position = fromBody.Count;
         foreach (var item in legacy)
         {
-            if (bodyText.Contains(MatchKey(item.Text))) continue;
+            var key = MatchKey(item.Text);
+            if (bodyText.TryGetValue(key, out var remaining) && remaining > 0)
+            {
+                bodyText[key] = remaining - 1;
+                continue;
+            }
             fromBody.Add(item with { Position = position++ });
         }
         return fromBody.AsReadOnly();
@@ -139,10 +149,23 @@ public static partial class AgendaFromContent
     /// </summary>
     public static string StripInlineMarks(string text)
     {
-        var stripped = CodeSpan().Replace(text, "$2");
-        stripped = StarEmphasis().Replace(stripped, "$2");
-        return UnderscoreEmphasis().Replace(stripped, "$2");
+        // Code spans are walked, not Replace()d away: their CONTENTS must skip the emphasis passes
+        // entirely, so `` `**x**` `` reads as the literal `**x**`. Stripping the backticks first and
+        // running emphasis over the whole string would silently turn that into `x`.
+        var result = new StringBuilder();
+        var cursor = 0;
+        foreach (Match span in CodeSpan().Matches(text))
+        {
+            result.Append(StripEmphasis(text[cursor..span.Index]));
+            result.Append(span.Groups[2].Value);
+            cursor = span.Index + span.Length;
+        }
+        result.Append(StripEmphasis(text[cursor..]));
+        return result.ToString();
     }
+
+    private static string StripEmphasis(string text) =>
+        UnderscoreEmphasis().Replace(StarEmphasis().Replace(text, "$2"), "$2");
 
     private static string Unescape(string text) => Escaped().Replace(text, "$1");
 

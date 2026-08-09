@@ -343,6 +343,36 @@ public sealed class AgendaFromBodySpec
     }
 
     [Fact]
+    public void Two_legacy_items_sharing_a_key_are_not_both_absorbed_by_one_body_line()
+    {
+        // The union matches body lines to legacy items ONE FOR ONE. With a set, both legacy items
+        // vanished behind a single body line — and a legacy topic that silently disappears from the
+        // view is never migrated, so 43-H2 deletes it for good with nothing to show it was lost.
+        var noteId = new NoteId(Guid.NewGuid());
+        var stream = $"note#{noteId.Value}";
+        var p = new NoteDetailProjection();
+        p.Handle(Envelope(stream, 1, nameof(NoteCreated), JsonSerializer.Serialize(new NoteCreated(noteId))));
+        p.Handle(Envelope(stream, 2, nameof(AgendaItemAdded),
+            JsonSerializer.Serialize(new AgendaItemAdded(noteId, Guid.NewGuid(), "Budget", 0))));
+        p.Handle(Envelope(stream, 3, nameof(AgendaItemAdded),
+            JsonSerializer.Serialize(new AgendaItemAdded(noteId, Guid.NewGuid(), "Budget", 1))));
+        p.Handle(Envelope(stream, 4, nameof(ContentEdited),
+            JsonSerializer.Serialize(new ContentEdited(noteId, "- [ ] Budget"))));
+
+        // One body line absorbs one legacy item; the second survives and stays migratable.
+        Assert.Equal(2, AgendaOf(p, noteId).Count);
+    }
+
+    [Fact]
+    public void A_topic_inside_a_code_span_keeps_its_markers()
+    {
+        // Code span contents skip the emphasis passes entirely: `**x**` in backticks is the literal
+        // text `**x**`, not bold. Stripping backticks first and then running emphasis over the whole
+        // string would collapse it to `x` and match a different topic.
+        Assert.Equal("**x**", AgendaFromContent.StripInlineMarks("`**x**`"));
+    }
+
+    [Fact]
     public void A_removed_legacy_item_stays_gone()
     {
         var noteId = new NoteId(Guid.NewGuid());

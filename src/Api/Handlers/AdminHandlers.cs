@@ -30,6 +30,7 @@ public static class AdminHandlers
             topicsMigrated = result.TopicsMigrated,
             notesStale = result.NotesStale,
             notesFailed = result.NotesFailed,
+            notesExcludedNotOwned = result.NotesExcludedNotOwned,
             notes = result.Notes,
         });
     }

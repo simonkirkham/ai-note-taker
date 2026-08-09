@@ -409,7 +409,13 @@ So the run folds the full event log through the **same `NoteDetailProjection`** 
 - [x] `EventDeserializer` keeps its `AgendaItem*` arms; a rebuild must still parse historical events without throwing (guardrail).
 - [x] **Deploy-time: neutral**, but this is a **data migration** — run it as an authenticated admin action after the deploy, like the projection rebuild, not as a deploy step.
 
-**Rollout.** 1. Merge + deploy. 2. `POST /admin/agenda/migrate` (dry run) and read the resulting content of all 8 notes. 3. `?apply=true`. 4. Verify each of the 8 carries its topics as task lines and its paragraphs are intact. 5. Only then 43-H2.
+**Rollout.**
+1. Merge + deploy.
+2. **`POST /admin/projections/rebuild`.** Mandatory, not optional: `Compose` now dedups on `MatchKey` instead of `Key`, which is a **fold change to an already-populated projection**. The deploy does not re-fold history, so every pre-existing `NoteDetail` row keeps the old union until its next event — and a note whose legacy topic now matches an emphasised body line would keep double-listing forever, because the match makes it a non-candidate so no write ever comes to heal it. Rebuilding first also means the dry run below is read off a projection consistent with the new fold.
+3. `POST /admin/agenda/migrate` (dry run) and read the resulting content of all 8 notes. Check `notesExcludedNotOwned` is 0 and the totals reconcile with the measured 8 notes / 36 topics.
+4. `?apply=true`. Note this **re-derives** from the stream rather than replaying step 3's output — a save in between is rebased onto (and rejected as `stale`), not overwritten.
+5. Verify each of the 8 carries its topics as task lines and its paragraph count is unchanged from the pre-migration snapshot.
+6. Only then 43-H2.
 
 ### Observability
 

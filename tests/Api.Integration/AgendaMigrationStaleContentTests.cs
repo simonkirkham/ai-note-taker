@@ -69,8 +69,19 @@ public sealed class AgendaMigrationStaleContentTests(ApiFactory factory) : IClas
         Assert.DoesNotContain("- [ ] Travel", content);
     }
 
-    // Appends a ContentEdited to a stream the first time that stream is read, standing in for a
-    // user's save landing between the migration's scan and its write. Deterministic — no timing.
+    // Lands the user's save on the stream just before the migration's own APPEND — deliberately not
+    // before its read.
+    //
+    // Interposing at the first ReadAsync (the obvious way, and how this double was first written)
+    // proves far less than it appears: the handler's very first read already returns the new
+    // content, so the hash fails on attempt 1, no ConcurrencyException is ever raised, and the
+    // RETRY LOOP IS NEVER ENTERED — which is precisely the path this slice claims to have fixed.
+    // Arming AppendAsync instead makes the migration's append lose the optimistic-concurrency check
+    // for real: it throws ConcurrencyException, NoteCommandHandler re-reads and re-runs the command
+    // (NoteCommandHandler.cs:71-97), and only then does the freshly-recomputed hash reject it. That
+    // is the sequence that used to re-apply the stale body, so that is the sequence under test.
+    // Deterministic — no timing.
+    //
     // The envelope is built exactly as NoteCommandHandler.ToEnvelopes builds one: the logical v1
     // `ContentEdited` type name at EventVersion 2, carrying a ContentEditedV2 payload.
     private sealed class RacingEventStore : IEventStore
@@ -81,7 +92,7 @@ public sealed class AgendaMigrationStaleContentTests(ApiFactory factory) : IClas
         private string? _armedContent;
 
         // The projecting decorator that wraps this store; the interposed save is appended through
-        // it so the read models advance with it.
+        // it so the read models advance with it, as a real save would.
         public IEventStore? Outer { get; set; }
 
         public void InterposeOnce(string streamId, NoteId noteId, string content)
@@ -91,10 +102,8 @@ public sealed class AgendaMigrationStaleContentTests(ApiFactory factory) : IClas
             _armedContent = content;
         }
 
-        public Task AppendAsync(string streamId, long expectedVersion, IReadOnlyList<EventEnvelope> events,
-            CancellationToken ct = default) => _inner.AppendAsync(streamId, expectedVersion, events, ct);
-
-        public async Task<IReadOnlyList<EventEnvelope>> ReadAsync(string streamId, CancellationToken ct = default)
+        public async Task AppendAsync(string streamId, long expectedVersion,
+            IReadOnlyList<EventEnvelope> events, CancellationToken ct = default)
         {
             if (streamId == _armedStream && _armedContent is { } content)
             {
@@ -109,9 +118,13 @@ public sealed class AgendaMigrationStaleContentTests(ApiFactory factory) : IClas
                     Metadata: new EventMetadata(Guid.NewGuid(), FakeCurrentUser.TestUserId, null, null));
                 await (Outer ?? _inner).AppendAsync(streamId, history.Count, [envelope], ct)
                     .ConfigureAwait(false);
+                // The caller's expectedVersion is now behind, so this append conflicts for real.
             }
-            return await _inner.ReadAsync(streamId, ct).ConfigureAwait(false);
+            await _inner.AppendAsync(streamId, expectedVersion, events, ct).ConfigureAwait(false);
         }
+
+        public Task<IReadOnlyList<EventEnvelope>> ReadAsync(string streamId, CancellationToken ct = default) =>
+            _inner.ReadAsync(streamId, ct);
 
         public Task<IReadOnlyList<EventEnvelope>> ReadAllStreamsAsync(CancellationToken ct = default) =>
             _inner.ReadAllStreamsAsync(ct);
