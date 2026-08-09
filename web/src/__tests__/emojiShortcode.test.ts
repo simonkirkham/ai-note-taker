@@ -96,6 +96,9 @@ describe('EmojiShortcode input rule (live typing)', () => {
   });
 
   afterAll(() => {
+    // Two assertions on purpose: the destroyed-check alone stays green if the `push` below is ever
+    // dropped, because `[].filter(...)` is `[]`. See phase-bug65-guards-that-cannot-fire.md, and
+    // note that an editor built outside makeEditor is invisible to both.
     expect(createdEditors).not.toHaveLength(0);
     expect(createdEditors.flatMap((e, i) => (e.isDestroyed ? [] : [i]))).toEqual([]);
   });

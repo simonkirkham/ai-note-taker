@@ -40,9 +40,11 @@ afterEach(() => {
 afterAll(() => {
   // Guards the cleanup itself, not the path through it. Two assertions, because either half can
   // fail on its own: deleting the `afterEach` leaves editors alive, and deleting the `push` in
-  // makeEditor (or writing `new Editor(...)` inline in a future test) empties the registry, which
-  // would make a lone `filter(...)` check vacuously green — the exact shape of
-  // docs/learnings/phase-bug65-guards-that-cannot-fire.md.
+  // makeEditor empties the registry, which would make a lone `filter(...)` check vacuously green —
+  // the exact shape of docs/learnings/phase-bug65-guards-that-cannot-fire.md.
+  // What this canNOT see: an editor built with `new Editor(...)` inline instead of through
+  // makeEditor. It is never registered, so both assertions are blind to it and it leaks exactly as
+  // before. Route every editor through makeEditor; only a lint rule could enforce that.
   expect(createdEditors).not.toHaveLength(0)
   // Report indices, not Editors: deep-printing 19 cyclic ProseMirror graphs buries the answer.
   expect(createdEditors.flatMap((e, i) => (e.isDestroyed ? [] : [i]))).toEqual([])
