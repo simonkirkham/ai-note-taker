@@ -177,6 +177,11 @@ public static partial class AgendaFromContent
     /// `a**b**c`. The `\S` lookarounds are what stop `2 * 3` and `a _ b` pairing across whitespace —
     /// a delimiter run followed by a space opens nothing.
     /// </summary>
+    /// <summary>Drops the private-use characters used to mask code spans. Public so the 43-H1
+    /// migration can filter a legacy topic made only of them, which would otherwise be written
+    /// out and read back empty, and re-appended on every run.</summary>
+    public static string StripMaskCharacters(string text) => Sentinel().Replace(text, "");
+
     public static string StripInlineMarks(string text)
     {
         // A pathological line (thousands of backticks) makes CodeSpan's backreference quadratic and
@@ -198,7 +203,7 @@ public static partial class AgendaFromContent
         // The restore is bounds-checked as well: a malformed placeholder leaves the text as-is
         // rather than throwing.
         var spans = new List<string>();
-        var masked = CodeSpan().Replace(Sentinel().Replace(text, ""), m =>
+        var masked = CodeSpan().Replace(StripMaskCharacters(text), m =>
         {
             spans.Add(m.Groups[2].Value);
             return $"{spans.Count - 1}";
@@ -229,6 +234,10 @@ public static partial class AgendaFromContent
 
     // `(?<!\w)` / `(?!\w)`: intraword underscores are literal, so `snake_case_name` survives whole.
     // `\\` in the lookbehind: a backslash-escaped run is a LITERAL delimiter the note displays.
+    // KNOWN LIMIT: that lookbehind is one character, so it also blocks emphasis after an ESCAPED
+    // backslash — `\\**Budget**` half-strips. Correct would be an odd/even backslash-run count;
+    // left alone deliberately, because it needs a literal backslash abutting a delimiter in a
+    // meeting-note topic, and a mis-written parity lookbehind is likelier than the input.
     [GeneratedRegex(@"(?<![\w\\])(_{1,3})(?=\S)(.+?)(?<=\S)\1(?!\w)", RegexOptions.None,
         matchTimeoutMilliseconds: 1000)]
     private static partial Regex UnderscoreEmphasis();

@@ -424,12 +424,11 @@ public sealed class AgendaFromBodySpec
         System.Text.RegularExpressions.Regex.Replace(t, @"\\([\p{P}\p{S}])", "$1");
 
     [Fact]
-    public void A_body_line_still_matches_its_legacy_twin_when_emphasis_wraps_a_code_span()
+    public void Emphasis_wrapping_a_code_span_reads_as_the_code_and_matches_its_legacy_twin()
     {
-        // The double-strip regression: Parse returns stripped text and MatchKey stripped it AGAIN,
-        // so the body key drifted off its legacy twin. It double-listed, and 43-H1's migration
-        // treated the legacy item as still-to-migrate and re-prepended it on EVERY run — the note
-        // body growing each time.
+        // Positive behaviour, NOT a regression guard: mutation-testing showed this stays green even
+        // with the double-strip bug restored, because `**`deploy.yml`**` happens to strip
+        // idempotently. The spec that actually red-gates that bug is the code-span one below.
         var noteId = new NoteId(Guid.NewGuid());
         var stream = $"note#{noteId.Value}";
         var p = new NoteDetailProjection();
