@@ -42,6 +42,7 @@ import {
 } from "./hooks/useNoteMutations";
 import { neighbourOf, useOpenNoteTabs } from "./hooks/useOpenNoteTabs";
 import { useWorkspaces } from "./hooks/useWorkspaces";
+import { PrototypeRoot } from "./prototype/PrototypeRoot";
 import { recordRumEvent } from "./rum";
 import { useCurrentWorkspace } from "./workspace/context";
 import { WorkspaceProvider } from "./workspace/WorkspaceContext";
@@ -52,7 +53,11 @@ type NoteNavState = { isNew?: boolean; initialTitle?: string };
 export default function App() {
   return (
     <BrowserRouter>
-      <AppGate />
+      <Routes>
+        {/* PROTOTYPE ONLY — outside the auth gate so it opens with no sign-in. Never reaches main. */}
+        <Route path="/prototype" element={<PrototypeRoot />} />
+        <Route path="*" element={<AppGate />} />
+      </Routes>
     </BrowserRouter>
   );
 }

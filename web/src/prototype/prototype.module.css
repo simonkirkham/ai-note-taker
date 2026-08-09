@@ -1,0 +1,141 @@
+/* PROTOTYPE ONLY — chrome around the mock list. Never reaches main. */
+
+.page {
+  max-width: 46rem;
+  margin: 0 auto;
+  padding: 2rem 1.5rem 4rem;
+  color: var(--color-text);
+}
+
+.header { margin-bottom: 1.25rem; }
+
+.title {
+  margin: 0 0 0.35rem;
+  font-size: 1.25rem;
+  font-weight: 650;
+}
+
+.sub {
+  margin: 0;
+  font-size: 0.875rem;
+  color: var(--color-text-muted);
+  line-height: 1.5;
+}
+
+.tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin: 1.25rem 0 0.5rem;
+}
+
+.tab {
+  font: inherit;
+  font-size: 0.8125rem;
+  padding: 0.375rem 0.7rem;
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--color-text-muted);
+  cursor: pointer;
+}
+
+.tab:hover { border-color: var(--color-primary); color: var(--color-primary); }
+
+.tabActive {
+  background: var(--color-primary);
+  border-color: var(--color-primary);
+  color: #fff;
+}
+
+.reset {
+  margin-left: auto;
+  font: inherit;
+  font-size: 0.8125rem;
+  padding: 0.375rem 0.7rem;
+  border: 1px dashed var(--color-border);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--color-text-muted);
+  cursor: pointer;
+}
+
+.blurb {
+  margin: 0 0 1rem;
+  font-size: 0.8125rem;
+  color: var(--color-text-muted);
+  font-style: italic;
+}
+
+.panel {
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  padding: 1.25rem;
+}
+
+.groupLabel {
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--color-text-muted);
+  margin: 0.75rem 0 0.15rem;
+}
+
+/* Variant B — text button naming the destination. */
+.crossTextBtn {
+  flex-shrink: 0;
+  align-self: center;
+  font: inherit;
+  font-size: 0.75rem;
+  white-space: nowrap;
+  padding: 0.2rem 0.55rem;
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--color-text-muted);
+  cursor: pointer;
+}
+
+.crossTextBtn:hover { border-color: var(--color-primary); color: var(--color-primary); }
+
+/* Variant D — overflow menu. */
+.menuWrap { position: relative; flex-shrink: 0; align-self: center; }
+
+.ellipsis { font-size: 1rem; line-height: 1; letter-spacing: 0.05em; }
+
+.menu {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 4px);
+  z-index: 20;
+  min-width: 10.5rem;
+  display: flex;
+  flex-direction: column;
+  padding: 0.25rem;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  background: var(--color-surface, #fff);
+  box-shadow: 0 6px 20px rgb(0 0 0 / 0.14);
+}
+
+.menu button {
+  font: inherit;
+  font-size: 0.8125rem;
+  text-align: left;
+  padding: 0.4rem 0.55rem;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--color-text);
+  cursor: pointer;
+}
+
+.menu button:hover { background: var(--color-border); }
+
+.flashSlot { min-height: 1.5rem; margin-top: 0.75rem; }
+
+.flash {
+  font-size: 0.8125rem;
+  color: var(--color-primary);
+}
