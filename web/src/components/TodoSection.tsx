@@ -82,15 +82,26 @@ export default function TodoSection() {
     const id = refocusMenuRef.current;
     if (id === null) return;
     refocusMenuRef.current = null;
-    document.querySelector<HTMLButtonElement>(`[data-menu-trigger="${id}"]`)?.focus();
+    // CSS.escape: item ids are server-supplied, and a quote in one would make this selector
+    // throw rather than simply miss.
+    document.querySelector<HTMLButtonElement>(`[data-menu-trigger="${CSS.escape(id)}"]`)?.focus();
   }, [renderedOrderKey]);
 
   // Every Today-line move goes through here. The optimistic update means a failed save would
   // otherwise just snap the line back with no explanation — say so instead.
-  async function moveLineAsync(anchor: string | null) {
+  // Reports failure instead of announcing it, so a caller that pairs this write with another
+  // can roll BOTH back and speak once rather than emitting two half-truths.
+  async function setLineAsync(anchor: string | null): Promise<boolean> {
     try {
       await setLine.mutateAsync(anchor);
+      return true;
     } catch {
+      return false;
+    }
+  }
+
+  async function moveLineAsync(anchor: string | null) {
+    if (!(await setLineAsync(anchor))) {
       showError("Couldn't move the Today line. It's back where it was.");
     }
   }
@@ -189,6 +200,9 @@ export default function TodoSection() {
     const to = edge === "top" ? 0 : ids.length - 1;
     if (from < 0 || from === to) return;
     const nextIds = arrayMove(ids, from, to);
+    // Sending a Later row to the top remounts it into the Today <ul>, so the menu's own
+    // focus-restore would land on a detached node — same hazard as moveAcrossLine.
+    refocusMenuRef.current = item.itemId;
     addBusy(item.itemId);
     try {
       // Kick off the save, then re-anchor in the SAME tick before awaiting, preserving the
@@ -227,16 +241,28 @@ export default function TodoSection() {
     const to = goingToLater ? splitAt - 1 : splitAt;
     const nextIds = from === to ? ids : arrayMove(ids, from, to);
     const nextAnchor = anchorAfterMove(item, goingToLater);
+    const needsReorder = nextIds !== ids;
+    const needsLineMove = nextAnchor !== anchorItemId;
+
+    // One user action, but up to TWO appends. Each mutation rolls back only ITS OWN half, so a
+    // half-failure would leave the row persisted somewhere the user never put it while the
+    // message claimed nothing moved. Snapshot the whole list up front and restore it as a unit.
+    const before = qc.getQueryData<TodoListData>(keys.todos);
 
     refocusMenuRef.current = item.itemId;
     addBusy(item.itemId);
     try {
-      // Same ordering as sendTo: start the save, move the line in the SAME tick before
-      // awaiting, so the row and the line move together optimistically.
-      const saved = nextIds === ids ? Promise.resolve(true) : reorderTo(nextIds);
-      if (nextAnchor !== anchorItemId) moveLine(nextAnchor);
-      const persisted = await saved;
-      if (!persisted && nextAnchor !== anchorItemId) moveLine(anchorItemId);
+      setReorderError(null);
+      // Both writes start in the same tick, so the row and the line move together optimistically
+      // rather than the line lagging a round trip behind the row.
+      const [orderOk, lineOk] = await Promise.all([
+        needsReorder ? reorderTo(nextIds) : Promise.resolve(true),
+        needsLineMove ? setLineAsync(nextAnchor) : Promise.resolve(true),
+      ]);
+      if (orderOk && lineOk) return;
+      refocusMenuRef.current = item.itemId;
+      if (before) qc.setQueryData(keys.todos, before);
+      setReorderError("Couldn't move that to-do. It's back where it was.");
     } finally {
       removeBusy(item.itemId);
     }

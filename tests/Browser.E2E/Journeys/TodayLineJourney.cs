@@ -27,6 +27,9 @@ public sealed class TodayLineJourney(BrowserFixture browser) : IAsyncLifetime
 
     public async Task DisposeAsync()
     {
+        // The line is durable per-user state — leaving it anchored to this run's to-do would
+        // change the starting conditions for every later run and every other journey.
+        await _app.ClearTodayLineAsync();
         await _context.Tracing.StopAsync(new() { Path = "trace.zip" });
         await _context.DisposeAsync();
     }

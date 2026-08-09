@@ -821,7 +821,40 @@ public sealed class AppPage
         var lineWritten = page.WaitForResponseAsync(
             r => r.Url.Contains("/todos/today-line") && r.Request.Method == "POST");
         await page.GetByRole(AriaRole.Menuitem, new() { Name = "Move to Later" }).ClickAsync();
-        await lineWritten;
+        var response = await lineWritten;
+        // Assert the STATUS, not just that a response arrived: a 409/503 from stream contention
+        // would otherwise be indistinguishable from success here and surface later as an opaque
+        // visibility timeout with nothing in the log to explain it.
+        if (response.Status >= 400)
+        {
+            throw new Exception(
+                $"Move to Later failed: POST /todos/today-line returned {response.Status}. url={page.Url}");
+        }
+    }
+
+    // The Today line is per-user durable state, so a run that leaves it anchored to its own
+    // to-do silently changes the starting conditions for every later run. Reset it from the page
+    // context, reusing the token the app itself authenticates with. Best-effort: a failed
+    // cleanup must never fail the journey that already passed.
+    public async Task ClearTodayLineAsync()
+    {
+        try
+        {
+            await page.EvaluateAsync(
+                "() => fetch('/api/todos/today-line', {" +
+                "  method: 'POST'," +
+                "  headers: {" +
+                "    'Content-Type': 'application/json'," +
+                "    ...(window.__E2E_AUTH_TOKEN ? { Authorization: 'Bearer ' + window.__E2E_AUTH_TOKEN } : {})," +
+                "  }," +
+                "  credentials: 'include'," +
+                "  body: JSON.stringify({ anchorItemId: null })," +
+                "}).then(() => undefined).catch(() => undefined)");
+        }
+        catch (PlaywrightException)
+        {
+            // Page already gone — nothing to clean up from.
+        }
     }
 
     public Task AssertTodoInLaterAsync(string description) =>

@@ -788,7 +788,7 @@ describe('TodoSection — send to top / bottom (CHANGE-34, via the 50-B actions 
 
     await openMenu('Alpha')
     const control = sendToTop()
-    expect(control).toBeDisabled()
+    expect(control).toHaveAttribute('aria-disabled', 'true')
     await userEvent.click(control)
     // Close first: an open menu's labels are part of its row's textContent. Clicking a
     // DISABLED item leaves focus on <body>, so Escape would never reach the menu.
@@ -806,7 +806,7 @@ describe('TodoSection — send to top / bottom (CHANGE-34, via the 50-B actions 
 
     await openMenu('Charlie')
     const control = sendToBottom()
-    expect(control).toBeDisabled()
+    expect(control).toHaveAttribute('aria-disabled', 'true')
     await userEvent.click(control)
     // Close first: an open menu's labels are part of its row's textContent. Clicking a
     // DISABLED item leaves focus on <body>, so Escape would never reach the menu.
@@ -908,13 +908,22 @@ describe('TodoSection — move a to-do across the Today line (50-B)', () => {
     await waitFor(() => expect(order).toEqual({ orderedItemIds: ['t-1', 't-2', 't-3', 't-5', 't-4'] }))
   })
 
-  it('moving a Today item to Later lands it FIRST in Later', async () => {
+  // Three is the LAST Today item, so from === to and no reorder is posted — this is the
+  // line-write-only boundary case.
+  it('moving the last Today item to Later re-anchors the line without reordering', async () => {
     let anchorBody: unknown
+    let reorders = 0
     serve('t-4')
-    server.use(http.post('/api/todos/today-line', async ({ request }) => {
-      anchorBody = await request.json()
-      return HttpResponse.json({ consistencyToken: 'todo-order#__default__@3' })
-    }))
+    server.use(
+      http.post('/api/todos/reorder', () => {
+        reorders++
+        return HttpResponse.json({ consistencyToken: 'x' })
+      }),
+      http.post('/api/todos/today-line', async ({ request }) => {
+        anchorBody = await request.json()
+        return HttpResponse.json({ consistencyToken: 'todo-order#__default__@3' })
+      }),
+    )
     render(<TodoSection />)
     await screen.findByText('One')
 
@@ -926,6 +935,63 @@ describe('TodoSection — move a to-do across the Today line (50-B)', () => {
     expect(laterTexts()).toHaveLength(3)
     // The line re-anchors to the moved row, which is what makes it the first Later item.
     await waitFor(() => expect(anchorBody).toEqual({ anchorItemId: 't-3' }))
+    expect(reorders).toBe(0)
+  })
+
+  // One is NOT adjacent to the line, so the demote genuinely reorders — the arrayMove(from,
+  // splitAt - 1) branch, which the boundary case above never reaches.
+  it('moving a non-adjacent Today item to Later reorders AND re-anchors', async () => {
+    let order: unknown
+    let anchorBody: unknown
+    serve('t-4')
+    server.use(
+      http.post('/api/todos/reorder', async ({ request }) => {
+        order = await request.json()
+        return HttpResponse.json({ consistencyToken: 'x' })
+      }),
+      http.post('/api/todos/today-line', async ({ request }) => {
+        anchorBody = await request.json()
+        return HttpResponse.json({ consistencyToken: 'y' })
+      }),
+    )
+    render(<TodoSection />)
+    await screen.findByText('One')
+
+    await openMenu('One')
+    await userEvent.click(moveItem())
+
+    await waitFor(() => expect(laterTexts()[0]).toContain('One'))
+    expect(todayTexts()).toHaveLength(2)
+    expect(todayTexts().join(' ')).toContain('Two')
+    expect(todayTexts().join(' ')).toContain('Three')
+    await waitFor(() => expect(order).toEqual({ orderedItemIds: ['t-2', 't-3', 't-1', 't-4', 't-5'] }))
+    await waitFor(() => expect(anchorBody).toEqual({ anchorItemId: 't-1' }))
+  })
+
+  // The half-failure that used to persist the row in a position the user never chose while
+  // the message claimed nothing had moved.
+  it('a failed line write reverts the reorder too, and says so once', async () => {
+    serve('t-4')
+    server.use(
+      http.post('/api/todos/reorder', () => HttpResponse.json({ consistencyToken: 'x' })),
+      http.post('/api/todos/today-line', async () => {
+        await delay(10)
+        return new HttpResponse(null, { status: 500 })
+      }),
+    )
+    render(<TodoSection />)
+    await screen.findByText('One')
+
+    await openMenu('One')
+    await userEvent.click(moveItem())
+
+    const alert = await screen.findByRole('alert')
+    expect(alert).toHaveTextContent(/back where it was/i)
+    // The row must be back in Today, in its ORIGINAL position — not left reordered.
+    await waitFor(() => expect(todayTexts()).toHaveLength(3))
+    expect(todayTexts()[0]).toContain('One')
+    expect(laterTexts()).toHaveLength(2)
+    expect(screen.getAllByRole('alert')).toHaveLength(1)
   })
 
   it('the action names the side the item is going to', async () => {
@@ -998,9 +1064,61 @@ describe('TodoSection — move a to-do across the Today line (50-B)', () => {
     await userEvent.click(moveItem())
 
     const alert = await screen.findByRole('alert')
-    expect(alert).toHaveTextContent(/failed to reorder/i)
+    expect(alert).toHaveTextContent(/back where it was/i)
     await waitFor(() => expect(todayTexts()).toHaveLength(3))
     expect(laterTexts()).toHaveLength(2)
+  })
+
+  it('click-outside closes the menu', async () => {
+    serve('t-4')
+    render(<TodoSection />)
+    await screen.findByText('One')
+
+    await openMenu('Five')
+    expect(screen.queryAllByRole('menuitem')).toHaveLength(3)
+
+    await userEvent.click(screen.getByRole('heading', { name: 'Today' }))
+
+    expect(screen.queryByRole('menuitem')).toBeNull()
+    expect(menuTrigger('Five')).toHaveAttribute('aria-expanded', 'false')
+  })
+
+  // Every action is unavailable while a save is in flight. The menu must still be enterable and
+  // escapable by keyboard — a `disabled` attribute would make it focus-proof and Escape-proof.
+  it('the menu is still keyboard-escapable when every action is unavailable', async () => {
+    serve('t-4')
+    server.use(http.post('/api/todos/reorder', async () => {
+      await delay('infinite')
+      return HttpResponse.json({ consistencyToken: 'x' })
+    }))
+    render(<TodoSection />)
+    await screen.findByText('One')
+
+    await openMenu('Five')
+    await userEvent.click(moveItem())
+
+    await openMenu('Four')
+    expect(moveItem()).toHaveAttribute('aria-disabled', 'true')
+    await userEvent.keyboard('{Escape}')
+
+    expect(screen.queryByRole('menuitem')).toBeNull()
+    expect(menuTrigger('Four')).toHaveAttribute('aria-expanded', 'false')
+  })
+
+  it('reopening a menu starts back at the first action', async () => {
+    serve('t-4')
+    render(<TodoSection />)
+    await screen.findByText('One')
+
+    // One is the first row, so "Send to top" is unavailable and the roving skips it —
+    // a single ArrowDown lands on "Send to bottom", not on the unavailable item.
+    await openMenu('One')
+    await userEvent.keyboard('{ArrowDown}')
+    expect(document.activeElement).toHaveTextContent(/send to bottom/i)
+    await userEvent.keyboard('{Escape}')
+
+    await openMenu('One')
+    expect(document.activeElement).toHaveTextContent(/move to later/i)
   })
 
   it('Escape closes the menu, changes nothing, and returns focus to the trigger', async () => {
@@ -1074,6 +1192,6 @@ describe('TodoSection — move a to-do across the Today line (50-B)', () => {
 
     // A second move while the first is in flight must not fire another reorder.
     await openMenu('Four')
-    expect(moveItem()).toBeDisabled()
+    expect(moveItem()).toHaveAttribute('aria-disabled', 'true')
   })
 })
