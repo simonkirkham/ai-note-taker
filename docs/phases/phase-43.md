@@ -13,7 +13,7 @@
 | 43-E | One clear way to track topics — the old, ambiguous per-heading ✓ is gone | Done _(#376)_ | 43-D |
 | 43-F | Tick a topic off in the notes as you type, and watch the count move | Done _(#428)_ | 43-D |
 | 43-G | Add, reword or drop a topic from the header and have the notes follow | Done _(#438)_ | 43-F |
-| 43-H1 | Topics on older notes appear in the notes themselves | In Progress _(PR #441 — changes requested, DO NOT RUN)_ | 43-F |
+| 43-H1 | Topics on older notes appear in the notes themselves | In Progress _(PR #441 — reworked 2026-08-09, in review; not yet run)_ | 43-F |
 | 43-H2 | One way everywhere — the old parallel record is gone | Not Started | 43-H1 |
 
 43-A is the thin vertical that proves the whole pipe; 43-B/C extend it; 43-D is polish; 43-E removes the superseded mechanism. 43-F–H then move the agenda **into** the note: 43-F reads it from the notes, 43-G makes the header write back, 43-H moves the stragglers over. **Reorder (drag) is deferred** — order is capture order for now.
@@ -375,25 +375,47 @@ _(43-F done — PR #428, deploy #724, `deploy-production` confirmed. Nested item
 
 **Split from one slice into two on 2026-08-08.** Migrating and removing in the same deploy would leave the affected notes with no agenda between the deploy landing and the migration being run — against the strangler ordering this phase mandates. 43-H1 migrates and is verified; only then does 43-H2 remove.
 
-**43-H1 status: PR #441 is open with changes requested. It must NOT be merged or run as written** — it would silently clobber recent typing. Nothing has been run against prod; no dry run, no writes. The full findings are on the PR as a GitHub review. The three that block:
-1. It reads the **async** projection and writes the whole body back with **no `ExpectedBaseContentHash`**, so a lagging projector means the user's recent save is overwritten. Worse, `NoteCommandHandler` retries `ConcurrencyException` and re-appends the *same stale content*, so the retry re-applies the clobber.
-2. It scans and mutates **every user's** notes (no `UserId` filter), disclosing other users' note titles in the dry-run output and aborting mid-batch on a foreign note.
-3. No per-note error isolation — a mid-batch failure loses the record of which notes were already written.
+**43-H1 status: reworked on 2026-08-09 after the PR #441 review.** The review asked whether reading the async projection was right at all. It was not, and the slice was re-cut around that: **both** sides of the read-modify-write now come from the event stream. Nothing has been run against prod beyond a read-only scan of `notetaker-events`; no dry run, no writes.
 
-Plus: emphasis normalisation (an explicit criterion below) is unimplemented; prepending above an existing list **merges into it** and reformats content; and the dry run does not show the resulting content, so none of this is visible before applying.
+**Design — why the event stream, not the projection.** The migration is a read-modify-write of the one field the projection lags on, and it needed three things the projection could not give:
 
-**Worth re-examining the design, not just clearing the findings** — reading the async projection may be wrong in principle here; the event stream is the strongly-consistent source, per the guardrail about never deciding from an async projection.
+| Need | Async `NoteDetail` projection | Event stream |
+|------|------|------|
+| The body to append to | Lags the projector → the scanned body may already be stale, and replacing it whole silently drops the user's save | Read at head, per stream, by the command handler |
+| Legacy topics (text, tick, order) | Correct only if a rebuild has run since 43-F | Source of truth |
+| Ownership, and whether the note is deleted | `UserId` present but unfiltered; a deleted note is hard-deleted, so it is invisible rather than excluded | Authoritative — and the command handler already authorises from it |
 
-**Measured scope (prod, 2026-08-08): 8 notes, 36 topics.** 39 `AgendaItemAdded` events across 9 notes; the difference is removals.
+So the run folds the full event log through the **same `NoteDetailProjection`** the projector and `ProjectionRebuildHandler` use, in memory. That gives one definition of "still legacy" (`AgendaFromContent.Compose` leaves a legacy topic in the view only when no body line matches it), needs no prior rebuild to be correct, and drops deleted notes by construction.
 
-- [ ] **Scope, measured in prod 2026-08-06:** `notetaker-events` holds **39 `AgendaItemAdded` events across 9 notes**. Re-measure before running — a note edited between now and then may already carry its topics.
-- [ ] One-off migration appends a `taskList` at the top of each affected note's content, preserving ticked state, via a normal `EditContent` command (never a direct DynamoDB write — guardrail).
-- [ ] Idempotent: skip a note whose content already contains a task line matching the topic text. Safe to re-run. **Normalise emphasis before that comparison** — a body line `- [ ] **Budget**` will not match a legacy item `Budget`, and the topic double-lists. 43-F closed the same trap for backslash escapes (`Unescape` in `AgendaFromContent`); emphasis is the other half and is still open.
-- [ ] Verify per note that the pre-migration paragraph count equals the post-migration paragraph count before dropping the legacy fold.
+**The scan being at head is not the safety property — the hash is.** Every `EditContent` carries `ExpectedBaseContentHash` of the content the scan built from, so a note that moved during the run is **rejected** (`StaleContentEditException`), reported `stale`, and left for a re-run. This also closes the retry hole: `NoteCommandHandler` retries a `ConcurrencyException` by re-running the command, which without the hash re-applied the same stale body. Be precise about which read is which: discovery is a `Scan` (`ReadAllStreamsAsync`), which is eventually consistent, so the scan itself is not a guarantee. What the write is validated against is `NoteCommandHandler`'s per-stream `ReadAsync` — a `Query` with `ConsistentRead = true`, re-issued on every retry attempt. So reading the stream shrinks the stale window from *projector lag* to *scan lag plus the duration of the run*, and the hash makes whatever is left non-destructive rather than silent.
+
+**Findings the rework did NOT simply accept:**
+- The review suggested the identity-explicit `HandleAsync(cmd, note.UserId, …)` overload. That is **weaker** — it disables the handler's own event-stream ownership check. The scoped `ICurrentUser` overload is used instead, so the owner filter and the handler's check are two independent gates.
+- "Prepending above an existing list merges into it and reformats content" is **not what happens.** Round-tripped through the real `NoteEditor` extension set, `- [ ] topic` + blank line + `- body item` parses as a `taskList` followed by a separate `bulletList` and re-serialises byte-identical. Pinned by a case in `taskListMarkdownRoundTrip.test.ts`. The probe did surface a genuine, **pre-existing** defect on the same note — blank-line paragraphs between two bullet lists are lost on open-and-save — filed as [BUG-68](phase-bugs.md); it is not caused by this slice.
+
+**Measured scope (prod `notetaker-events`, re-measured 2026-08-09): 8 notes, 36 topics, one owner.** 39 `AgendaItemAdded` across 9 streams; the 9th is a **deleted** note carrying 3 throwaway topics, which the fold drops. Not one of the 8 bodies contains a task line today, so the idempotency, escape and emphasis paths are belt-and-braces on this data rather than load-bearing — they matter for a re-run after a partial apply. No topic contains a newline or markdown markup. One note (`d591ed55`) opens with a bullet list.
+
+- [x] **Scope re-measured 2026-08-09** — see above. Re-measure again before running; a note edited in between may already carry its topics.
+- [x] One-off migration prepends a checklist to each affected note's content, preserving ticked state and capture order, via a normal `EditContent` command (never a direct DynamoDB write — guardrail).
+- [x] Reads the **event stream** for both the candidate set and the base content; `ExpectedBaseContentHash` on every write.
+- [x] Scoped to the calling user; a deleted note is never resurrected; per-note try/catch so one failure cannot cost the record of what was already written; every outcome logged at the moment it happens as well as returned.
+- [x] Idempotent: a topic already present as a task line is not written again. **One comparison key** — `AgendaFromContent.MatchKey`, used by the 43-F/H union *and* the migration — unescapes, strips paired emphasis (`- [ ] **Budget**` matches `Budget`), and collapses whitespace (a legacy topic may hold a newline, which the writer flattens onto one task line). Two divergent normalisers is how a topic gets silently skipped and then deleted for good by 43-H2.
+- [x] Single-flight, like `ProjectionRebuildHandler`; a concurrent run is a 409.
+- [x] Dry run is the default and returns **each note's full resulting content**, not counts and byte deltas — this writes into real notes, so what it would write has to be readable before `?apply=true`.
+- [x] Tests drive the live endpoint (real auth, `?apply` binding, real `NoteCommandHandler`, real event store), including the stale-write rejection via an event-store double that interposes a save between the scan and the write.
+- [ ] After applying: verify per note that the pre-migration paragraph count equals the post-migration count before 43-H2 drops the legacy fold.
 - [ ] Only **after** verification: remove the legacy `AgendaItem*` fold from `NoteDetailProjection`, remove the agenda write endpoints (`POST /notes/{id}/agenda-items` and siblings), and remove the command-handler arms. The events stay in the stream, unread — reversible.
-- [ ] **Carried from 43-G's review — this slice touches the same rule, so fix them here.** (a) The BUG-24 image-resolve calls `setContent` with `emitUpdate: false`, so the editor's live topic list is not republished for it; one extra `publish()` in that `.then` makes the live list unconditionally authoritative. (b) `collectTaskItems` recurses only into `taskList` children, so a task item reachable through a **non-checklist** list — `- Shopping` / `  - [ ] Milk`, or a bulleted child under a task item — is counted server-side but invisible in the header. Widening the recursion to a list-type set closes it and cannot reintroduce the blockquote exclusion (a blockquote is not a list). (c) A paragraph holding only a non-text inline node (`- [ ] ![shot](key)`) reads as empty client-side and is skipped, while the server counts it.
-- [ ] `EventDeserializer` keeps its `AgendaItem*` arms; a rebuild must still parse historical events without throwing (guardrail).
-- [ ] **Deploy-time: neutral**, but this is a **data migration** — run it as an authenticated admin action after the deploy, like the projection rebuild, not as a deploy step.
+- [ ] **Carried from 43-G's review — 43-H2 touches the same rule, so fix them there.** (a) The BUG-24 image-resolve calls `setContent` with `emitUpdate: false`, so the editor's live topic list is not republished for it; one extra `publish()` in that `.then` makes the live list unconditionally authoritative. (b) `collectTaskItems` recurses only into `taskList` children, so a task item reachable through a **non-checklist** list — `- Shopping` / `  - [ ] Milk`, or a bulleted child under a task item — is counted server-side but invisible in the header. Widening the recursion to a list-type set closes it and cannot reintroduce the blockquote exclusion (a blockquote is not a list). (c) A paragraph holding only a non-text inline node (`- [ ] ![shot](key)`) reads as empty client-side and is skipped, while the server counts it.
+- [x] `EventDeserializer` keeps its `AgendaItem*` arms; a rebuild must still parse historical events without throwing (guardrail).
+- [x] **Deploy-time: neutral**, but this is a **data migration** — run it as an authenticated admin action after the deploy, like the projection rebuild, not as a deploy step.
+
+**Rollout.**
+1. Merge + deploy.
+2. **`POST /admin/projections/rebuild`.** Mandatory, not optional: `Compose` now dedups on `MatchKey` instead of `Key`, which is a **fold change to an already-populated projection**. The deploy does not re-fold history, so every pre-existing `NoteDetail` row keeps the old union until its next event — and a note whose legacy topic now matches an emphasised body line would keep double-listing forever, because the match makes it a non-candidate so no write ever comes to heal it. Rebuilding first also means the dry run below is read off a projection consistent with the new fold.
+3. `POST /admin/agenda/migrate` (dry run) and read the resulting content of all 8 notes. Check `notesExcludedNotOwned` is 0 and the totals reconcile with the measured 8 notes / 36 topics.
+4. `?apply=true`. Note this **re-derives** from the stream rather than replaying step 3's output — a save in between is rebased onto (and rejected as `stale`), not overwritten.
+5. Verify each of the 8 carries its topics as task lines and its paragraph count is unchanged from the pre-migration snapshot.
+6. Only then 43-H2.
 
 ### Observability
 
