@@ -11,6 +11,8 @@ public static class NoteEndpoints
         app.MapGet("/health", NoteHandlers.Health);
         app.MapGet("/secret", NoteHandlers.Secret).RequireAuthorization();
         app.MapPost("/admin/projections/rebuild", AdminHandlers.RebuildProjections).RequireAuthorization();
+        // 43-H1: dry run unless ?apply=true — see AdminHandlers.MigrateAgenda.
+        app.MapPost("/admin/agenda/migrate", AdminHandlers.MigrateAgenda).RequireAuthorization();
 
         // Workspace-scoped content routes live only under `/w/{workspaceId}`: a validation
         // filter rejects another user's workspace (404) before the handler runs, and

@@ -285,6 +285,94 @@ public sealed class AgendaFromBodySpec
     }
 
     [Fact]
+    public void A_legacy_item_matches_its_migrated_body_line_once_the_user_emphasises_it()
+    {
+        // 43-H's explicit criterion. The user bolds the migrated line; it is still the same topic,
+        // so it must not double-list. MatchKey is the single definition both the union and the
+        // migration use.
+        var noteId = new NoteId(Guid.NewGuid());
+        var stream = $"note#{noteId.Value}";
+        var p = new NoteDetailProjection();
+        p.Handle(Envelope(stream, 1, nameof(NoteCreated), JsonSerializer.Serialize(new NoteCreated(noteId))));
+        p.Handle(Envelope(stream, 2, nameof(AgendaItemAdded),
+            JsonSerializer.Serialize(new AgendaItemAdded(noteId, Guid.NewGuid(), "Budget", 0))));
+        p.Handle(Envelope(stream, 3, nameof(ContentEdited),
+            JsonSerializer.Serialize(new ContentEdited(noteId, "- [ ] **Budget**"))));
+
+        Assert.Single(AgendaOf(p, noteId));
+    }
+
+    [Fact]
+    public void A_legacy_item_matches_a_body_line_that_gained_a_newline_when_flattened()
+    {
+        // AddAgendaItem only trimmed, so a legacy topic can hold a newline; the migration flattens
+        // it onto one task line. If the comparison did not collapse whitespace too, every re-run
+        // would list the topic again.
+        var noteId = new NoteId(Guid.NewGuid());
+        var stream = $"note#{noteId.Value}";
+        var p = new NoteDetailProjection();
+        p.Handle(Envelope(stream, 1, nameof(NoteCreated), JsonSerializer.Serialize(new NoteCreated(noteId))));
+        p.Handle(Envelope(stream, 2, nameof(AgendaItemAdded),
+            JsonSerializer.Serialize(new AgendaItemAdded(noteId, Guid.NewGuid(), "Budget\nand headcount", 0))));
+        p.Handle(Envelope(stream, 3, nameof(ContentEdited),
+            JsonSerializer.Serialize(new ContentEdited(noteId, "- [ ] Budget and headcount"))));
+
+        Assert.Single(AgendaOf(p, noteId));
+    }
+
+    [Theory]
+    // Paired delimiters go, and what they wrapped stays.
+    [InlineData("**Budget**", "Budget")]
+    [InlineData("*Budget*", "Budget")]
+    [InlineData("***Budget***", "Budget")]
+    [InlineData("~~Budget~~", "Budget")]
+    [InlineData("`Budget`", "Budget")]
+    [InlineData("_Budget_", "Budget")]
+    [InlineData("a**b**c", "abc")]
+    [InlineData("**bold _and_ italic**", "bold and italic")]
+    // ...and these are NOT emphasis, so they must survive whole. A rule loose enough to strip them
+    // would silently merge two topics that differ — which 43-H2 then deletes for good.
+    [InlineData("snake_case_name", "snake_case_name")]
+    [InlineData("2 * 3", "2 * 3")]
+    [InlineData("a _ b", "a _ b")]
+    [InlineData("50% * 2 things", "50% * 2 things")]
+    [InlineData("`a * b`", "a * b")]
+    public void Strips_only_paired_inline_markers(string input, string expected)
+    {
+        Assert.Equal(expected, AgendaFromContent.StripInlineMarks(input));
+    }
+
+    [Fact]
+    public void Two_legacy_items_sharing_a_key_are_not_both_absorbed_by_one_body_line()
+    {
+        // The union matches body lines to legacy items ONE FOR ONE. With a set, both legacy items
+        // vanished behind a single body line — and a legacy topic that silently disappears from the
+        // view is never migrated, so 43-H2 deletes it for good with nothing to show it was lost.
+        var noteId = new NoteId(Guid.NewGuid());
+        var stream = $"note#{noteId.Value}";
+        var p = new NoteDetailProjection();
+        p.Handle(Envelope(stream, 1, nameof(NoteCreated), JsonSerializer.Serialize(new NoteCreated(noteId))));
+        p.Handle(Envelope(stream, 2, nameof(AgendaItemAdded),
+            JsonSerializer.Serialize(new AgendaItemAdded(noteId, Guid.NewGuid(), "Budget", 0))));
+        p.Handle(Envelope(stream, 3, nameof(AgendaItemAdded),
+            JsonSerializer.Serialize(new AgendaItemAdded(noteId, Guid.NewGuid(), "Budget", 1))));
+        p.Handle(Envelope(stream, 4, nameof(ContentEdited),
+            JsonSerializer.Serialize(new ContentEdited(noteId, "- [ ] Budget"))));
+
+        // One body line absorbs one legacy item; the second survives and stays migratable.
+        Assert.Equal(2, AgendaOf(p, noteId).Count);
+    }
+
+    [Fact]
+    public void A_topic_inside_a_code_span_keeps_its_markers()
+    {
+        // Code span contents skip the emphasis passes entirely: `**x**` in backticks is the literal
+        // text `**x**`, not bold. Stripping backticks first and then running emphasis over the whole
+        // string would collapse it to `x` and match a different topic.
+        Assert.Equal("**x**", AgendaFromContent.StripInlineMarks("`**x**`"));
+    }
+
+    [Fact]
     public void A_removed_legacy_item_stays_gone()
     {
         var noteId = new NoteId(Guid.NewGuid());

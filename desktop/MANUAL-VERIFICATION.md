@@ -170,6 +170,17 @@ The whole point of this slice is the log: an installed build is otherwise unobse
 | 5 | **Failures are visible:** Given the engine fails (rename `whisper-server.exe`), Then the log records `step FAILED … err=…` rather than going silent. | ☐ |
 | 6 | **The saved transcript is unaffected:** Given I stop, Then the note's transcript is the higher-quality `small.en` pass, not the live text — the live view's reduced accuracy must not reach the note. | ☐ |
 
+## BUG-67 — the live engine stops when the audio does
+
+Closable only from the log, like [BUG-65]: the symptom is CPU burn, not anything on screen.
+
+| # | Given / When / Then | Pass? |
+|---|---------------------|-------|
+| 1 | **No spin after Stop:** Given a local recording, When I press Stop, Then `local-transcription.log` shows **no further `step` lines** with `window` and `committed` both unchanged. Before the fix there were ~12 such lines over 30 s. | ☐ |
+| 2 | **The wait after Stop is shorter:** Given a recording of the same length as before, Then the "Finalising transcript…" wait is shorter than it was on build `182` — the spin was competing with that pass for cores. | ☐ |
+| 3 | **Live text still works:** Given I speak, pause for ~10 s, then speak again, Then the transcript keeps updating after the pause — the guard detects idleness, it must not latch off. | ☐ |
+| 4 | **The saved transcript is unaffected:** Given I stop, Then the note holds the full `small.en` transcript including the final words spoken. | ☐ |
+
 ## CHANGE-36 — window title follows the open note
 
 `BrowserWindow` is constructed with no `title` option, so the Electron window (and its taskbar label) follows `document.title`. Making the browser tab title track the note therefore changes the desktop window title too — intended, but verify it reads sensibly.

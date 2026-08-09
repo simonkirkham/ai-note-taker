@@ -163,6 +163,7 @@ public static class LoggingConfig
         WriteContentionException => (StatusCodes.Status503ServiceUnavailable, "write contention, retry"),
         ConcurrencyException => (StatusCodes.Status409Conflict, "conflict"),
         RebuildInProgressException => (StatusCodes.Status409Conflict, "rebuild in progress"),
+        MigrationInProgressException => (StatusCodes.Status409Conflict, "migration in progress"),
         DefaultWorkspaceUndeletableException => (StatusCodes.Status409Conflict, "default workspace cannot be deleted"),
         WorkspaceNotEmptyException => (StatusCodes.Status409Conflict, "workspace not empty"),
         NoteNotFoundException or ActionItemNotFoundException or FolderNotFoundException or WorkspaceNotFoundException
