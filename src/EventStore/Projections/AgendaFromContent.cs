@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.RegularExpressions;
@@ -189,10 +190,15 @@ public static partial class AgendaFromContent
         //     code, so the topic reads `deploy.yml`, not `**deploy.yml**`;
         //   * a code span's CONTENTS never reach the emphasis passes, so `` `**x**` `` stays the
         //     literal `**x**` — it is code, not bold.
-        // The sentinel is a private-use character, which cannot occur in note text and carries no
-        // markdown meaning, so it can neither open nor close a delimiter run.
+        // The sentinel is a private-use character: it carries no markdown meaning, so it can neither
+        // open nor close a delimiter run. It is not, however, IMPOSSIBLE in note text — a paste can
+        // carry anything — so any pre-existing occurrence is dropped first. Otherwise a pasted
+        // \uE000 12 \uE001 would be restored as span 12, and on a note with fewer spans that is an
+        // IndexOutOfRangeException thrown straight out of the projection fold, DLQ-ing the record.
+        // The restore is bounds-checked as well: a malformed placeholder leaves the text as-is
+        // rather than throwing.
         var spans = new List<string>();
-        var masked = CodeSpan().Replace(text, m =>
+        var masked = CodeSpan().Replace(Sentinel().Replace(text, ""), m =>
         {
             spans.Add(m.Groups[2].Value);
             return $"{spans.Count - 1}";
@@ -200,7 +206,11 @@ public static partial class AgendaFromContent
 
         var stripped = UnderscoreEmphasis().Replace(StarEmphasis().Replace(masked, "$2"), "$2");
 
-        return Sentinel().Replace(stripped, m => spans[int.Parse(m.Groups[1].Value)]);
+        return Sentinel().Replace(stripped, m =>
+            int.TryParse(m.Groups[1].Value, NumberStyles.None, CultureInfo.InvariantCulture, out var i)
+            && i < spans.Count
+                ? spans[i]
+                : m.Value);
     }
 
     private static string Unescape(string text) => Escaped().Replace(text, "$1");

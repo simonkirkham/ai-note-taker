@@ -469,6 +469,20 @@ public sealed class AgendaFromBodySpec
     }
 
     [Fact]
+    public void A_pasted_sentinel_character_cannot_throw_out_of_the_fold()
+    {
+        // The masking placeholder is a private-use character — meaningless in markdown, but NOT
+        // impossible in pasted text. Left in place it would be restored as a span index, and on a
+        // note with fewer spans that is an IndexOutOfRangeException thrown straight out of the
+        // projection fold, DLQ-ing the record and stalling that note.
+        var hostile = "\uE00099\uE001 Budget";
+
+        var result = AgendaFromContent.StripInlineMarks(hostile);
+
+        Assert.Equal(" Budget", result);
+    }
+
+    [Fact]
     public void A_pathological_line_is_left_alone_rather_than_timing_out_the_fold()
     {
         // A regex timeout would throw out of the projection fold and DLQ the record, stalling that
