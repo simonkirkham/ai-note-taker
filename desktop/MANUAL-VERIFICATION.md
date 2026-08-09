@@ -221,6 +221,19 @@ The app now answers Electron's permission requests itself instead of riding the 
 
 > **Why row 7 exists.** The unit specs assert against the shapes we *believe* Electron passes; they cannot prove the wire format. Review caught the first implementation comparing the check handler's origin raw — Electron hands it a GURL serialised with a **trailing slash** (`http://localhost:5180/`), which never matched the bundle origin, so **every check was denied while all 17 specs passed**. Symptoms if it regresses: meeting reminders fall back to a plain `alert()`, microphone device names show blank in any picker, and Chromium's pre-flight can fail `getUserMedia` before the request handler is ever consulted. Row 7 is the only check that would catch it.
 
+## CHANGE-33 — the leave confirm announces its destination (screen reader)
+
+The mid-recording "Still recording — …?" confirm now names where "Leave & save" will take you, and a second guarded click **replaces** that destination while the dialog is already open. The visible half is covered by tests; the **announced** half is not, and cannot be — jsdom has no accessibility tree and no screen reader. The markup is `role="alertdialog"` + `aria-live="assertive"` + `aria-atomic="true"` + a dynamic `aria-label`; behaviour for a *labelled atomic live region* varies between implementations, so this is reasoned, not verified. Applies to the **web app equally** — the desktop app renders the same bundle, so either surface is a valid place to check. Use NVDA or Narrator.
+
+| # | Given / When / Then | Pass? |
+|---|---------------------|-------|
+| 1 | **The confirm is announced at all:** Given a recording is running, When I click Home in the sidebar, Then the screen reader announces the confirm including the destination ("go to Home"). | ☐ |
+| 2 | **A replaced destination is re-announced:** Given that confirm is showing, When I then click a folder in the sidebar, Then the screen reader announces the **new** destination ("go to <folder>") — silence here is the failure this markup exists to prevent. | ☐ |
+| 3 | **It is announced once, not twice:** Given either of the above, Then the phrase is read **once** — a double reading means the label and the content are both being announced and the label should be dropped. | ☐ |
+| 4 | **The whole phrase is read, not the changed words:** Given a replaced destination, Then the announcement is the full "Still recording — …?" phrase, not a bare fragment like "Clients?" (this is what `aria-atomic` buys). | ☐ |
+
+> **Why this is a manual check.** Every automated gate is structurally blind to it: vitest/jsdom applies no CSS and builds no accessibility tree, and no E2E journey asserts the banner. The tests can prove the attributes are *present* — they cannot prove a screen reader does anything useful with them. If rows 1–2 fail, the fallback is to move `aria-live` back onto the text span; if row 3 fails, drop the `aria-label` and let the content name the dialog.
+
 ## Troubleshooting
 
 - **`Error 400: redirect_uri_mismatch` immediately after adding `http://localhost:5180`** — the value is correct (`redirect_uri = window.location.origin = http://localhost:5180`: no trailing slash, `localhost` not `127.0.0.1`, port `5180`, `http` not `https`). The cause is **Google propagation lag** — a freshly added+saved redirect URI is not live immediately; it can take **~5 min to a few hours**. Confirm the running app's `window.location.origin` (DevTools console) reads exactly `http://localhost:5180`, then wait and retry. **No code change.** Hit and confirmed 2026-06-22: config was right on the first attempt; the URI simply had not propagated.
