@@ -79,7 +79,10 @@ public static partial class AgendaFromContent
             // Safe because nothing writes this text back into a body: header edits go through the
             // editor's own doc (agendaEditorApi reads ProseMirror textContent, already marker-free),
             // and 43-H1's migration writes LEGACY event text, never this.
-            var text = StripInlineMarks(Unescape(m.Groups[2].Value.Trim()));
+            // Strip BEFORE unescaping. prosemirror-markdown writes literal asterisks the user typed
+            // as `\*Budget\*`; unescaping first hands the emphasis passes a live `*Budget*` and
+            // deletes the very characters the note displays — the inverse of what this is for.
+            var text = Unescape(StripInlineMarks(m.Groups[2].Value.Trim()));
             if (text.Length == 0) continue;
 
             var key = Key(text);
@@ -111,7 +114,16 @@ public static partial class AgendaFromContent
         // two legacy items sharing a key were both dropped for a single matching body line — the
         // "silently skipped, then deleted for good by 43-H2" shape, since a skipped item is never
         // migrated and nothing left in the view would show it was lost.
-        var bodyText = fromBody.GroupBy(i => MatchKey(i.Text))
+        //
+        // Body items are keyed WITHOUT re-stripping. Since CHANGE-38, Parse already returns stripped
+        // display text, and StripInlineMarks is NOT idempotent — `` `**x**` `` legitimately outputs
+        // the literal `**x**`, which a second pass would then strip to `x`. Running MatchKey over
+        // already-parsed text therefore moved the dedup in BOTH bad directions: a body line
+        // ``**`deploy.yml`**`` stopped matching its legacy twin (double-listed, and the migration
+        // re-injected it on every run), while `` `**x**` `` started matching a genuinely different
+        // legacy topic `x` (silently skipped, then deleted for good by 43-H2). Legacy text comes
+        // from events and has never been stripped, so it still needs the full MatchKey.
+        var bodyText = fromBody.GroupBy(i => CollapseKey(i.Text))
             .ToDictionary(g => g.Key, g => g.Count());
         var position = fromBody.Count;
         foreach (var item in legacy)
@@ -143,8 +155,16 @@ public static partial class AgendaFromContent
     /// (AddAgendaItem only trimmed) and the migration must flatten it to write one task line — so
     /// the two must compare equal, or every re-run would list the topic again.
     /// </summary>
-    public static string MatchKey(string text) =>
-        Whitespace().Replace(StripInlineMarks(Unescape(text)), " ").Trim().ToLowerInvariant();
+    ///
+    /// Strips BEFORE unescaping, and the emphasis patterns refuse a backslash-escaped opening run.
+    /// prosemirror-markdown writes literal asterisks the user typed as `\*Budget\*`; unescaping
+    /// first would hand the emphasis passes a live `*Budget*` and delete the very characters the
+    /// note displays — the exact inverse of what CHANGE-38 is for.
+    public static string MatchKey(string text) => CollapseKey(Unescape(StripInlineMarks(text)));
+
+    /// <summary>Whitespace/case normalisation only — for text that is ALREADY stripped.</summary>
+    private static string CollapseKey(string text) =>
+        Whitespace().Replace(text, " ").Trim().ToLowerInvariant();
 
     /// <summary>
     /// Drops paired inline markdown delimiters and keeps what they wrapped: `**Budget**` → `Budget`.
@@ -158,23 +178,30 @@ public static partial class AgendaFromContent
     /// </summary>
     public static string StripInlineMarks(string text)
     {
-        // Code spans are walked, not Replace()d away: their CONTENTS must skip the emphasis passes
-        // entirely, so `` `**x**` `` reads as the literal `**x**`. Stripping the backticks first and
-        // running emphasis over the whole string would silently turn that into `x`.
-        var result = new StringBuilder();
-        var cursor = 0;
-        foreach (Match span in CodeSpan().Matches(text))
-        {
-            result.Append(StripEmphasis(text[cursor..span.Index]));
-            result.Append(span.Groups[2].Value);
-            cursor = span.Index + span.Length;
-        }
-        result.Append(StripEmphasis(text[cursor..]));
-        return result.ToString();
-    }
+        // A pathological line (thousands of backticks) makes CodeSpan's backreference quadratic and
+        // would throw RegexMatchTimeoutException straight out of the projection fold, DLQ-ing the
+        // record and stalling that note. No real topic is this long; bail rather than risk it.
+        if (text.Length > 2000) return text;
 
-    private static string StripEmphasis(string text) =>
-        UnderscoreEmphasis().Replace(StarEmphasis().Replace(text, "$2"), "$2");
+        // Each code span is swapped for a delimiter-free sentinel BEFORE the emphasis passes, then
+        // restored. Two properties fall out that a straight walk does not give:
+        //   * emphasis WRAPPING a code span is still emphasis — ``**`deploy.yml`**`` renders as bold
+        //     code, so the topic reads `deploy.yml`, not `**deploy.yml**`;
+        //   * a code span's CONTENTS never reach the emphasis passes, so `` `**x**` `` stays the
+        //     literal `**x**` — it is code, not bold.
+        // The sentinel is a private-use character, which cannot occur in note text and carries no
+        // markdown meaning, so it can neither open nor close a delimiter run.
+        var spans = new List<string>();
+        var masked = CodeSpan().Replace(text, m =>
+        {
+            spans.Add(m.Groups[2].Value);
+            return $"{spans.Count - 1}";
+        });
+
+        var stripped = UnderscoreEmphasis().Replace(StarEmphasis().Replace(masked, "$2"), "$2");
+
+        return Sentinel().Replace(stripped, m => spans[int.Parse(m.Groups[1].Value)]);
+    }
 
     private static string Unescape(string text) => Escaped().Replace(text, "$1");
 
@@ -182,12 +209,17 @@ public static partial class AgendaFromContent
     [GeneratedRegex(@"(`+)([^`]+?)\1", RegexOptions.None, matchTimeoutMilliseconds: 1000)]
     private static partial Regex CodeSpan();
 
-    [GeneratedRegex(@"(\*{1,3}|~{2})(?=\S)(.+?)(?<=\S)\1", RegexOptions.None,
+    // Matches the private-use placeholder StripInlineMarks swaps each code span for.
+    [GeneratedRegex("\uE000([0-9]+)\uE001", RegexOptions.None, matchTimeoutMilliseconds: 1000)]
+    private static partial Regex Sentinel();
+
+    [GeneratedRegex(@"(?<!\\)(\*{1,3}|~{2})(?=\S)(.+?)(?<=\S)\1", RegexOptions.None,
         matchTimeoutMilliseconds: 1000)]
     private static partial Regex StarEmphasis();
 
     // `(?<!\w)` / `(?!\w)`: intraword underscores are literal, so `snake_case_name` survives whole.
-    [GeneratedRegex(@"(?<!\w)(_{1,3})(?=\S)(.+?)(?<=\S)\1(?!\w)", RegexOptions.None,
+    // `\\` in the lookbehind: a backslash-escaped run is a LITERAL delimiter the note displays.
+    [GeneratedRegex(@"(?<![\w\\])(_{1,3})(?=\S)(.+?)(?<=\S)\1(?!\w)", RegexOptions.None,
         matchTimeoutMilliseconds: 1000)]
     private static partial Regex UnderscoreEmphasis();
 

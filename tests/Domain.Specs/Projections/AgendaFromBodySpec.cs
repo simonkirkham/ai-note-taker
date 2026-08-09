@@ -405,6 +405,78 @@ public sealed class AgendaFromBodySpec
         Assert.True(agenda[1].Discussed);
     }
 
+    [Theory]
+    // Emphasis WRAPPING a code span is still emphasis — CommonMark renders ``**`x`**`` as bold code,
+    // so the topic reads as the code, not as half its markers.
+    [InlineData("**`deploy.yml`**", "deploy.yml")]
+    // ...but a code span's CONTENTS are code, never emphasis.
+    [InlineData("`**x**`", "**x**")]
+    // A backslash-escaped run is a LITERAL delimiter the note displays. prosemirror-markdown writes
+    // `\*Budget\*` for asterisks the user typed as plain text.
+    [InlineData("\\*Budget\\* and 2 \\* 3", "*Budget* and 2 * 3")]
+    public void Keeps_markers_that_are_not_emphasis(string input, string expected)
+    {
+        Assert.Equal(expected, Unescape38(AgendaFromContent.StripInlineMarks(input)));
+    }
+
+    // Mirrors Parse's strip-then-unescape order.
+    private static string Unescape38(string t) =>
+        System.Text.RegularExpressions.Regex.Replace(t, @"\\([\p{P}\p{S}])", "$1");
+
+    [Fact]
+    public void A_body_line_still_matches_its_legacy_twin_when_emphasis_wraps_a_code_span()
+    {
+        // The double-strip regression: Parse returns stripped text and MatchKey stripped it AGAIN,
+        // so the body key drifted off its legacy twin. It double-listed, and 43-H1's migration
+        // treated the legacy item as still-to-migrate and re-prepended it on EVERY run — the note
+        // body growing each time.
+        var noteId = new NoteId(Guid.NewGuid());
+        var stream = $"note#{noteId.Value}";
+        var p = new NoteDetailProjection();
+        p.Handle(Envelope(stream, 1, nameof(NoteCreated), JsonSerializer.Serialize(new NoteCreated(noteId))));
+        p.Handle(Envelope(stream, 2, nameof(AgendaItemAdded),
+            JsonSerializer.Serialize(new AgendaItemAdded(noteId, Guid.NewGuid(), "**`deploy.yml`**", 0))));
+        p.Handle(Envelope(stream, 3, nameof(ContentEdited),
+            JsonSerializer.Serialize(new ContentEdited(noteId, "- [ ] **`deploy.yml`**"))));
+
+        Assert.Single(AgendaOf(p, noteId));
+    }
+
+    [Fact]
+    public void A_code_span_body_line_does_not_absorb_a_genuinely_different_legacy_topic()
+    {
+        // The other half of the double-strip regression, and the worse one: `` `**x**` `` read as
+        // `x` on the second strip and swallowed the unrelated legacy topic `x`, which was then never
+        // migrated and would be deleted for good by 43-H2, with nothing left to show it was lost.
+        var noteId = new NoteId(Guid.NewGuid());
+        var stream = $"note#{noteId.Value}";
+        var p = new NoteDetailProjection();
+        p.Handle(Envelope(stream, 1, nameof(NoteCreated), JsonSerializer.Serialize(new NoteCreated(noteId))));
+        p.Handle(Envelope(stream, 2, nameof(AgendaItemAdded),
+            JsonSerializer.Serialize(new AgendaItemAdded(noteId, Guid.NewGuid(), "x", 0))));
+        p.Handle(Envelope(stream, 3, nameof(ContentEdited),
+            JsonSerializer.Serialize(new ContentEdited(noteId, "- [ ] `**x**`"))));
+
+        Assert.Equal(2, AgendaOf(p, noteId).Count);
+    }
+
+    [Fact]
+    public void A_topic_the_user_typed_with_literal_asterisks_keeps_them()
+    {
+        // Unescaping before stripping deleted exactly the characters the note displays.
+        var (p, noteId) = NoteWith(@"- [ ] \*Budget\* and 2 \* 3");
+        Assert.Equal("*Budget* and 2 * 3", Assert.Single(AgendaOf(p, noteId)).Text);
+    }
+
+    [Fact]
+    public void A_pathological_line_is_left_alone_rather_than_timing_out_the_fold()
+    {
+        // A regex timeout would throw out of the projection fold and DLQ the record, stalling that
+        // note's projection. Bail on absurd input instead.
+        var long_ = new string('`', 3000);
+        Assert.Equal(long_, AgendaFromContent.StripInlineMarks(long_));
+    }
+
     [Fact]
     public void A_removed_legacy_item_stays_gone()
     {
