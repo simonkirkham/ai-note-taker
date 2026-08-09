@@ -13,7 +13,7 @@
 | 43-E | One clear way to track topics — the old, ambiguous per-heading ✓ is gone | Done _(#376)_ | 43-D |
 | 43-F | Tick a topic off in the notes as you type, and watch the count move | Done _(#428)_ | 43-D |
 | 43-G | Add, reword or drop a topic from the header and have the notes follow | Done _(#438)_ | 43-F |
-| 43-H1 | Topics on older notes appear in the notes themselves | In Progress _(PR #441 — reworked 2026-08-09, in review; not yet run)_ | 43-F |
+| 43-H1 | Topics on older notes appear in the notes themselves | In Progress _(merged #441, live in prod deploy #742 — **migration not yet run**: needs a Google bearer token)_ | 43-F |
 | 43-H2 | One way everywhere — the old parallel record is gone | Not Started | 43-H1 |
 
 43-A is the thin vertical that proves the whole pipe; 43-B/C extend it; 43-D is polish; 43-E removes the superseded mechanism. 43-F–H then move the agenda **into** the note: 43-F reads it from the notes, 43-G makes the header write back, 43-H moves the stragglers over. **Reorder (drag) is deferred** — order is capture order for now.
