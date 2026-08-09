@@ -1,7 +1,7 @@
 import { Editor } from '@tiptap/core';
 import StarterKit from '@tiptap/starter-kit';
 import { Markdown } from 'tiptap-markdown';
-import { describe, expect, it } from 'vitest';
+import { afterAll, afterEach, describe, expect, it } from 'vitest';
 import { emojiFor, emojifyMarkdown } from '../lib/emoji';
 import { EmojiShortcode } from '../lib/emojiExtension';
 
@@ -83,8 +83,27 @@ function typeText(editor: Editor, text: string): void {
 }
 
 describe('EmojiShortcode input rule (live typing)', () => {
+  // BUG-66: these editors dispatch transactions after construction, so each leaves a
+  // prosemirror-view DOMObserver flush timer armed for 20ms. Destroying at the END of the `it`
+  // body is skipped when an assertion throws, and the leaked timer then fires after vitest has
+  // torn the jsdom environment down — adding a spurious `ReferenceError: document is not defined`
+  // unhandled error on top of the real failure. Destroy in an afterEach so a red test stays
+  // legible. (See agendaEditorApi.test.ts for the full mechanism.)
+  const createdEditors: Editor[] = [];
+
+  afterEach(() => {
+    for (const editor of createdEditors) if (!editor.isDestroyed) editor.destroy();
+  });
+
+  afterAll(() => {
+    expect(createdEditors).not.toHaveLength(0);
+    expect(createdEditors.flatMap((e, i) => (e.isDestroyed ? [] : [i]))).toEqual([]);
+  });
+
   function makeEditor(content = '<p></p>') {
-    return new Editor({ extensions: [StarterKit, Markdown, EmojiShortcode], content });
+    const editor = new Editor({ extensions: [StarterKit, Markdown, EmojiShortcode], content });
+    createdEditors.push(editor);
+    return editor;
   }
 
   it('converts a shortcode to its emoji as it is typed', () => {
@@ -92,7 +111,6 @@ describe('EmojiShortcode input rule (live typing)', () => {
     editor.commands.focus();
     typeText(editor, 'go :rocket:');
     expect(editor.getText()).toBe('go 🚀');
-    editor.destroy();
   });
 
   it('leaves an unknown shortcode as typed', () => {
@@ -100,7 +118,6 @@ describe('EmojiShortcode input rule (live typing)', () => {
     editor.commands.focus();
     typeText(editor, ':definitely_not_real:');
     expect(editor.getText()).toBe(':definitely_not_real:');
-    editor.destroy();
   });
 
   it('does not convert a shortcode typed inside inline code', () => {
@@ -108,6 +125,5 @@ describe('EmojiShortcode input rule (live typing)', () => {
     editor.chain().focus().toggleCode().run();
     typeText(editor, ':fire:');
     expect(editor.getText()).toBe(':fire:');
-    editor.destroy();
   });
 });

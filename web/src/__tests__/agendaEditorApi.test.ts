@@ -10,24 +10,42 @@ import { MarkdownTaskList } from '../lib/markdownTaskList'
 // with the same extension set NoteEditor builds, because the whole point of the slice is that a
 // header action is an editor transaction — asserting against a stub would prove nothing about
 // undo, cursor position, or how the change reaches the markdown.
-// BUG-66: an editor left alive when its test ends keeps ProseMirror's DOMObserver running, and
-// every transaction here runs `DOMObserver.stop()`, which — when mutation records are pending —
-// schedules `window.setTimeout(() => this.flush(), 20)` (prosemirror-view, `stop()`). Vitest tears
-// the jsdom environment down well inside those 20 ms at the end of a file, so the timer fires with
-// no `document` global and `flush()` throws `ReferenceError: document is not defined` out of
-// `EditorView.get root`. It lands as a vitest *unhandled error*: the frontend job fails while every
-// test reports green, red-gating whichever PR happened to be running. `destroy()` nulls `docView`,
-// and `!view.docView` is the first line of `flush()`, so a destroyed editor's stale timer is a
-// no-op. Every other editor suite in this directory already destroys; this one was the sole leaker.
+// BUG-66: an editor left alive when its test ends keeps ProseMirror's DOMObserver running. Any
+// transaction applied AFTER construction runs `DOMObserver.stop()`, which — when mutation records
+// are pending — arms `window.setTimeout(() => this.flush(), 20)` (prosemirror-view, `stop()`).
+// That timer bypasses `flushSoon()`, so `flushingSoon` stays -1 and `!view.docView` is the ONLY
+// guard between it and the crash. Vitest tears the jsdom environment down well inside those 20 ms
+// at the end of a file, so the timer fires with no `document` global and `flush()` throws
+// `ReferenceError: document is not defined` out of `EditorView.get root`. It lands as a vitest
+// *unhandled error*: the frontend job fails while every test reports green, red-gating whichever
+// PR happened to be running. `destroy()` nulls `docView`, so a destroyed editor's stale timer is a
+// no-op.
+//
+// Two things decide whether a suite is exposed, and this one is the only place both are true:
+//   - Content applied after construction (here, via createAgendaEditorApi's transactions) queues
+//     records; the round-trip suites pass `content` to the constructor, before `start()`, so they
+//     never queue any. `blankLinePreservation` and `emojiShortcode` DO queue records — they both
+//     destroy.
+//   - These editors are DETACHED (no `element`), so `root`'s ancestor walk finds no document node
+//     and falls through to the bare global. A mounted editor caches the real `document` object and
+//     structurally cannot throw this ReferenceError — which is why the app never sees it.
 const createdEditors: Editor[] = []
 
 afterEach(() => {
-  for (const editor of createdEditors) editor.destroy()
+  // Skip the already-destroyed: the registry is deliberately never drained (see afterAll), so
+  // without this every test would re-destroy all its predecessors.
+  for (const editor of createdEditors) if (!editor.isDestroyed) editor.destroy()
 })
 
 afterAll(() => {
-  // Guards the cleanup itself, not the path through it: remove the afterEach and this goes red.
-  expect(createdEditors.filter((e) => !e.isDestroyed)).toEqual([])
+  // Guards the cleanup itself, not the path through it. Two assertions, because either half can
+  // fail on its own: deleting the `afterEach` leaves editors alive, and deleting the `push` in
+  // makeEditor (or writing `new Editor(...)` inline in a future test) empties the registry, which
+  // would make a lone `filter(...)` check vacuously green — the exact shape of
+  // docs/learnings/phase-bug65-guards-that-cannot-fire.md.
+  expect(createdEditors).not.toHaveLength(0)
+  // Report indices, not Editors: deep-printing 19 cyclic ProseMirror graphs buries the answer.
+  expect(createdEditors.flatMap((e, i) => (e.isDestroyed ? [] : [i]))).toEqual([])
 })
 
 function makeEditor(markdown: string) {
