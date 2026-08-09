@@ -15,7 +15,7 @@ Each entry records what it is, why it isn't scheduled yet, and where it was rais
 
 ## Open multiple notes at once (open-note tab bar)
 
-> _Graduated to a numbered phase — now **[Phase 49](phases/phase-49.md)** (2026-07-28). Locked: tab bar (not split panes), per-device local persistence, frontend-only. Three slices; the recording-lifecycle question is isolated in 49-C._
+> _Graduated to a numbered phase — now **[Phase 49](phases/phase-49.md)** (2026-07-28). Locked: tab bar (not split panes), per-device local persistence, frontend-only. Shipped as two slices; the recording-lifecycle question (was 49-C) moved to **[Phase 51](phases/phase-51.md)** as 51-C on 2026-08-09, where the tabs redesign owns the same surface._
 
 ---
 

@@ -301,3 +301,87 @@ test('a throwing diagnostic cannot break the recording', async () => {
   // A throwing onStep must not count as an inference failure, or it raises a false banner.
   expect(errors).toEqual([])
 })
+
+// BUG-67 — once PCM stops arriving the session re-transcribed the SAME window every tick, forever.
+// MIN_NEW_MS did not catch it: it gates on `byteLen - startByte`, which is the WINDOW SIZE, not what
+// has arrived since the last step. Real-world cost: after Stop, the renderer awaits diarize (two
+// whisper-cli passes) before anything halts the live session, so the spin competed for cores with
+// the pass the user was waiting for — 12 frozen steps and inference climbing 1.1s → 3.0s in the log.
+
+function countingServer(): { server: WhisperServer; calls: () => number } {
+  let calls = 0
+  const server = stubServer({ running: true, ready: true })
+  ;(server as unknown as { transcribe: () => Promise<never[]> }).transcribe = () => {
+    calls++
+    return Promise.resolve([])
+  }
+  return { server, calls: () => calls }
+}
+
+test('a session receiving no new audio stops re-transcribing the same window', async () => {
+  const { server, calls } = countingServer()
+  const session = new StreamingSession(server, () => {}, () => {}, undefined, { readyTimeoutMs: 60_000 })
+  session.start()
+  session.pushPcm(Buffer.alloc(32 * 4000)) // 4s, then the audio stops (Stop pressed)
+  await waitMs(1700)
+  const afterFirst = calls()
+  await waitMs(5000) // three more ticks with nothing new arriving
+
+  session.dispose()
+  expect(afterFirst).toBeGreaterThan(0) // it did transcribe the audio it had
+  expect(calls()).toBe(afterFirst) // and then stopped, rather than spinning on it
+})
+
+test('new audio resumes stepping, and the guard then re-arms', async () => {
+  const { server, calls } = countingServer()
+  const session = new StreamingSession(server, () => {}, () => {}, undefined, { readyTimeoutMs: 60_000 })
+  session.start()
+  session.pushPcm(Buffer.alloc(32 * 4000))
+  await waitMs(1700)
+  const afterFirst = calls()
+
+  session.pushPcm(Buffer.alloc(32 * 2000)) // the user starts speaking again
+  await waitMs(1700)
+  const afterResume = calls()
+
+  // The resume assertion ALONE passes with the guard removed entirely — it is a latch-regression
+  // check, not proof of the fix. Going flat again at the new byteLen is what proves it re-arms.
+  await waitMs(3400)
+
+  session.dispose()
+  expect(afterResume).toBeGreaterThan(afterFirst)
+  expect(calls()).toBe(afterResume)
+})
+
+// BUG-67 regression guard for BUG-65's clamp. A step consumes up to the SEND CAP, not everything
+// buffered — the clamp deliberately makes the withheld tail "wait a step". If the idle guard marks
+// all buffered bytes as consumed, that tail is never transcribed live once audio stops: the two
+// fixes cancel out, silently, at exactly the end-of-audio case the clamp exists for.
+test('a clamped step does not mark the withheld tail as consumed', async () => {
+  const sent: number[] = []
+  const server = stubServer({ running: true, ready: true })
+  ;(server as unknown as { transcribe: (p: Buffer) => Promise<never[]> }).transcribe = (p: Buffer) => {
+    sent.push(p.length)
+    return Promise.resolve([])
+  }
+  const session = new StreamingSession(server, () => {}, () => {}, undefined, {
+    readyTimeoutMs: 60_000,
+    // ABOVE hardWindowMs (8000), matching production, where MAX_SEND_WINDOW_MS is 13824. A cap
+    // BELOW it would mean a clamped window never reaches `forced`, so finalizedMs never advances,
+    // clampedMs stays > 0 and lastStepByteLen stays pinned — the session spins and this spec passes
+    // ON that spin, asserting the absence of the symptom while demonstrating it. The ordering is
+    // locked by serverArgs.spec.ts ("the runaway guard can actually fire").
+    maxSendWindowMs: 9000, // 12s buffered → 3s withheld on the first step
+  })
+  session.start()
+  session.pushPcm(Buffer.alloc(32 * 12000))
+  await waitMs(3400) // two ticks: the clamped window, then the withheld tail
+  const drained = sent.length
+  await waitMs(3400) // two more with nothing new arriving
+
+  session.dispose()
+  // It works through the backlog rather than stopping after the first clamped step...
+  expect(drained).toBeGreaterThan(1)
+  // ...and then goes idle, rather than spinning on the tail forever.
+  expect(sent.length).toBe(drained)
+})
