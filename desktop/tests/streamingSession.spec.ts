@@ -366,13 +366,22 @@ test('a clamped step does not mark the withheld tail as consumed', async () => {
   }
   const session = new StreamingSession(server, () => {}, () => {}, undefined, {
     readyTimeoutMs: 60_000,
-    maxSendWindowMs: 5000, // 12s buffered against a 5s cap → 7s withheld on the first step
+    // ABOVE hardWindowMs (8000), matching production, where MAX_SEND_WINDOW_MS is 13824. A cap
+    // BELOW it would mean a clamped window never reaches `forced`, so finalizedMs never advances,
+    // clampedMs stays > 0 and lastStepByteLen stays pinned — the session spins and this spec passes
+    // ON that spin, asserting the absence of the symptom while demonstrating it. The ordering is
+    // locked by serverArgs.spec.ts ("the runaway guard can actually fire").
+    maxSendWindowMs: 9000, // 12s buffered → 3s withheld on the first step
   })
   session.start()
   session.pushPcm(Buffer.alloc(32 * 12000))
-  await waitMs(5200) // three ticks, no further PCM
+  await waitMs(3400) // two ticks: the clamped window, then the withheld tail
+  const drained = sent.length
+  await waitMs(3400) // two more with nothing new arriving
 
   session.dispose()
-  // It must keep working through the backlog rather than stopping after the first clamped step.
-  expect(sent.length).toBeGreaterThan(1)
+  // It works through the backlog rather than stopping after the first clamped step...
+  expect(drained).toBeGreaterThan(1)
+  // ...and then goes idle, rather than spinning on the tail forever.
+  expect(sent.length).toBe(drained)
 })
