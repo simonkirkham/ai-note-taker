@@ -372,6 +372,39 @@ public sealed class AgendaFromBodySpec
         Assert.Equal("**x**", AgendaFromContent.StripInlineMarks("`**x**`"));
     }
 
+    [Theory]
+    // CHANGE-38: the header, the peek and the note card show the text the user SEES. Before this,
+    // a topic typed with emphasis read as its raw markdown source.
+    [InlineData("- [ ] **Budget**", "Budget")]
+    [InlineData("- [ ] *Budget*", "Budget")]
+    [InlineData("- [ ] ~~Budget~~", "Budget")]
+    [InlineData("- [ ] Review `deploy.yml`", "Review deploy.yml")]
+    [InlineData("- [ ] **Budget** and _headcount_", "Budget and headcount")]
+    // ...and text that only LOOKS like markup is left exactly as typed.
+    [InlineData("- [ ] Rename snake_case_name", "Rename snake_case_name")]
+    [InlineData("- [ ] Budget is 2 * 3 headcount", "Budget is 2 * 3 headcount")]
+    public void A_topic_reads_as_the_user_sees_it_not_as_markdown_source(string body, string expected)
+    {
+        var (p, noteId) = NoteWith(body);
+        Assert.Equal(expected, Assert.Single(AgendaOf(p, noteId)).Text);
+    }
+
+    [Fact]
+    public void Two_topics_that_read_alike_stay_distinct_even_when_only_one_is_emphasised()
+    {
+        // Stripping happens BEFORE the ordinal is taken, so `**Budget**` and `Budget` now read the
+        // same — and the ordinal is what keeps them two topics with two ids rather than one topic
+        // the UI reconciles into itself, swapping their ticked state (the trap Hawk caught in #428).
+        var (p, noteId) = NoteWith("- [ ] **Budget**\n- [x] Budget");
+        var agenda = AgendaOf(p, noteId);
+
+        Assert.Equal(2, agenda.Count);
+        Assert.All(agenda, a => Assert.Equal("Budget", a.Text));
+        Assert.NotEqual(agenda[0].ItemId, agenda[1].ItemId);
+        Assert.False(agenda[0].Discussed);
+        Assert.True(agenda[1].Discussed);
+    }
+
     [Fact]
     public void A_removed_legacy_item_stays_gone()
     {

@@ -70,7 +70,16 @@ public static partial class AgendaFromContent
             var m = TaskLine().Match(line);
             if (!m.Success) continue;
 
-            var text = Unescape(m.Groups[2].Value.Trim());
+            // CHANGE-38: a topic is the text the user SEES, not the markdown that produces it. A line
+            // typed as `**Budget**` renders bold in the note but read raw it says `**Budget**` in the
+            // note card and anywhere else the server-derived agenda is shown. Stripping HERE rather
+            // than at each display site keeps one definition, and makes the id, the ordinal and the
+            // match key all agree — two topics are the same iff they read the same.
+            //
+            // Safe because nothing writes this text back into a body: header edits go through the
+            // editor's own doc (agendaEditorApi reads ProseMirror textContent, already marker-free),
+            // and 43-H1's migration writes LEGACY event text, never this.
+            var text = StripInlineMarks(Unescape(m.Groups[2].Value.Trim()));
             if (text.Length == 0) continue;
 
             var key = Key(text);
