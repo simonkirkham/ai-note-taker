@@ -1,55 +1,44 @@
 // Prototype only — throwaway fixtures. No types worth sharing, no tests.
 
-export type DirectionId = "a" | "b" | "c";
-export type StateId = "blank" | "typed" | "recording" | "captured" | "analysed";
-export type BarScope = "note-only" | "always";
-export type ViewId = "list" | "note";
+export type DirectionId = "today" | "a" | "b" | "c";
+export type ViewId = "list" | "folder" | "search" | "note";
 
 export const DIRECTIONS: { id: DirectionId; name: string; pitch: string }[] = [
   {
-    id: "a",
-    name: "A · Earned tabs",
+    id: "today",
+    name: "Today (baseline)",
     pitch:
-      "A view tab exists only once it holds something. Most notes show one or two, so the lower strip stops mirroring the upper one and the collision largely dissolves.",
+      "What ships now. The bar exists only on a note screen. Click My notes and every open note vanishes; open any note and the whole set slams back. Click between My notes and a note a few times — that flicker is the thing being fixed.",
+  },
+  {
+    id: "a",
+    name: "A · My notes is a tab",
+    pitch:
+      "The notes list becomes the permanent leftmost tab — pinned, no close button. The bar is then always present and something is always active, so nothing ever appears or disappears. Going Home is just clicking the first tab.",
   },
   {
     id: "b",
-    name: "B · Honest tabs",
+    name: "B · Bar is always there",
     pitch:
-      "All three view tabs, always, with their state on the face: empty is dimmed with a dash, populated carries a count. Nothing ever moves. The lower strip becomes a segmented control so the two strips are different shapes.",
+      "The same bar, kept on every screen. My notes stays in the sidebar where it is. Simpler than A and no new concept, but on the list screen no tab is active — the bar sits there representing notes you are not looking at.",
   },
   {
     id: "c",
-    name: "C · One hierarchy",
+    name: "C · Open notes move to the sidebar",
     pitch:
-      "Only one thing on screen looks like tabs. Open notes become full-bleed document tabs at the top of the frame; the note's own views drop into the toolbar as a segmented control beside Record and Paste.",
+      "No horizontal strip at all. Open notes become a section of the left sidebar, listed vertically under the navigation. Always visible because the sidebar always is — and the note screen is left with only one tab strip, its own.",
   },
 ];
 
-export const STATES: {
-  id: StateId;
-  label: string;
-  hasQuick: boolean;
-  hasTranscript: boolean;
-  hasFinal: boolean;
-  recording: boolean;
-}[] = [
-  { id: "blank", label: "Nothing captured yet", hasQuick: false, hasTranscript: false, hasFinal: false, recording: false },
-  { id: "typed", label: "Typed notes only", hasQuick: true, hasTranscript: false, hasFinal: false, recording: false },
-  { id: "recording", label: "Recording in progress", hasQuick: true, hasTranscript: true, hasFinal: false, recording: true },
-  { id: "captured", label: "Transcript, not analysed", hasQuick: true, hasTranscript: true, hasFinal: false, recording: false },
-  { id: "analysed", label: "Fully analysed", hasQuick: true, hasTranscript: true, hasFinal: true, recording: false },
-];
-
 export const NOTES = [
-  { id: "n1", title: "Standup" },
-  { id: "n2", title: "Client call — Northwind" },
-  { id: "n3", title: "Roadmap review" },
-  { id: "n4", title: "1:1 with Priya" },
-  { id: "n5", title: "Incident postmortem — projector lag" },
-  { id: "n6", title: "Hiring loop debrief" },
-  { id: "n7", title: "Q3 planning" },
-  { id: "n8", title: "Vendor security review" },
+  { id: "n1", title: "Standup", meta: "Today, 09:30 · 2 to-dos" },
+  { id: "n2", title: "Client call — Northwind", meta: "Today, 10:00 · 3 to-dos" },
+  { id: "n3", title: "Roadmap review", meta: "Yesterday · 1 to-do" },
+  { id: "n4", title: "1:1 with Priya", meta: "Yesterday · no to-dos" },
+  { id: "n5", title: "Incident postmortem — projector lag", meta: "Mon · 5 to-dos" },
+  { id: "n6", title: "Hiring loop debrief", meta: "Mon · 2 to-dos" },
+  { id: "n7", title: "Q3 planning", meta: "Last week · 4 to-dos" },
+  { id: "n8", title: "Vendor security review", meta: "Last week · no to-dos" },
 ];
 
 export const QUICK_LINES = [
@@ -57,19 +46,3 @@ export const QUICK_LINES = [
   "Blocker: their SSO tenant isn't provisioned yet",
   "Ask Priya for the revised timeline before Thursday",
 ];
-
-export const TRANSCRIPT_LINES = [
-  ["Speaker 1", "So where did we land on the pilot scope?"],
-  ["Speaker 2", "Two more teams, but we need the SSO tenant first."],
-  ["Speaker 1", "That's on Northwind's side — I'll chase it today."],
-  ["Speaker 2", "If it slips past Thursday the timeline moves."],
-];
-
-export const FINAL_POINTS = [
-  "Pilot extends to two additional teams",
-  "SSO tenant provisioning is the critical path",
-  "Timeline slips if the tenant isn't ready by Thursday",
-];
-
-export const FINAL_DECISIONS = ["Extend the pilot", "Hold the launch date pending SSO"];
-export const FINAL_ACTIONS = ["Chase Northwind on the SSO tenant — today", "Priya to reissue the timeline"];
