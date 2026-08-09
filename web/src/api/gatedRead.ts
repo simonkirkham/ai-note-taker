@@ -13,16 +13,33 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-export async function gatedRead<T>(path: string, token: string | null, onFresh: () => void): Promise<T> {
+// The read, plus whether the gate gave up on a still-lagging projection. A caller that already
+// holds good data needs that flag: a `stale` body is the projector's OLDER state, so storing it
+// regresses what the caller has (BUG-48).
+export interface GatedResult<T> {
+  body: T;
+  stale: boolean;
+}
+
+export async function gatedReadResult<T>(
+  path: string,
+  token: string | null,
+  onFresh: () => void,
+): Promise<GatedResult<T>> {
   const headers: Record<string, string> = token ? { 'If-Consistent-With': token } : {};
   for (let attempt = 0; ; attempt++) {
     const { body, response } = await requestWithResponse<T>(path, { headers });
     const stale = response.headers.get('X-Consistency') === 'stale';
     if (!stale) {
       onFresh();
-      return body;
+      return { body, stale: false };
     }
-    if (attempt >= STALE_RETRIES) return body;
+    if (attempt >= STALE_RETRIES) return { body, stale: true };
     await sleep(STALE_RETRY_DELAY_MS);
   }
+}
+
+export async function gatedRead<T>(path: string, token: string | null, onFresh: () => void): Promise<T> {
+  const { body } = await gatedReadResult<T>(path, token, onFresh);
+  return body;
 }

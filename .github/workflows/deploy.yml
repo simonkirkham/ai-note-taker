@@ -466,7 +466,7 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: playwright-trace
-          path: "**/trace.zip"
+          path: "**/trace*.zip"
           if-no-files-found: ignore
 
   deploy-production:

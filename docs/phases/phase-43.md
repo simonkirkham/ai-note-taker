@@ -1,4 +1,4 @@
-# Phase 43 — Meeting agenda (topics to discuss) _(In Progress — 43-A–F done; 43-G/H remain)_
+# Phase 43 — Meeting agenda (topics to discuss) _(In Progress — 43-A–G done; only 43-H remains)_
 
 **Goal:** give each note a short checklist of things you need to discuss, which you tick off as you cover them — from the note itself or from the header, wherever your hands already are.
 
@@ -12,8 +12,9 @@
 | 43-D | Fold the agenda away to a single line when you want the note to be the focus | Done _(#375)_ | 43-A, 43-B |
 | 43-E | One clear way to track topics — the old, ambiguous per-heading ✓ is gone | Done _(#376)_ | 43-D |
 | 43-F | Tick a topic off in the notes as you type, and watch the count move | Done _(#428)_ | 43-D |
-| 43-G | Add, reword or drop a topic from the header and have the notes follow | Not Started | 43-F |
-| 43-H | Topics on older notes appear in the notes themselves, like everywhere else | Not Started | 43-F |
+| 43-G | Add, reword or drop a topic from the header and have the notes follow | Done _(#438)_ | 43-F |
+| 43-H1 | Topics on older notes appear in the notes themselves | In Progress _(PR #441 — changes requested, DO NOT RUN)_ | 43-F |
+| 43-H2 | One way everywhere — the old parallel record is gone | Not Started | 43-H1 |
 
 43-A is the thin vertical that proves the whole pipe; 43-B/C extend it; 43-D is polish; 43-E removes the superseded mechanism. 43-F–H then move the agenda **into** the note: 43-F reads it from the notes, 43-G makes the header write back, 43-H moves the stragglers over. **Reorder (drag) is deferred** — order is capture order for now.
 
@@ -360,22 +361,37 @@ _(43-F done — PR #428, deploy #724, `deploy-production` confirmed. Nested item
 
 ### Slice 43-G — The header writes back into the body
 
-- [ ] Every header mutation is applied as an **editor transaction** on the live `NoteEditor` document, not as an API call — so Ctrl+Z undoes it and the change rides the existing content-save path.
-- [ ] **Insert rule (Q7):** append to the note's *first* `taskList` node; if none exists, insert a new `taskList` at position 0. Cursor position is preserved (`focus(undefined, { scrollIntoView: false })`).
-- [ ] **The draft merge is the risky part.** `NoteView.tsx:160` reads `content = contentDraft ?? detail?.content ?? ""`; a header mutation must apply to the *editor's current document* (which reflects unsaved typing) and let the normal autosave flush it — never write `detail.content` back, or unsaved typing is lost.
-- [ ] `AgendaSection` needs access to the editor instance (it currently only reads the note-detail cache). Decide the seam: lift the editor ref into `NoteView` and pass a small command object down, rather than coupling `AgendaSection` to Tiptap.
-- [ ] Retire `useAddAgendaItem` / `useSetAgendaItemDiscussed` / `useEditAgendaItemText` / `useRemoveAgendaItem` — the header no longer calls the API at all.
-- [ ] Optimistic UI is inherent (the editor updates synchronously); the acceptance criterion is that no header action round-trips before the UI moves.
-- [ ] E2E: **one** journey covering 43-F *and* 43-G — type a task line → coverage pill moves → add from the header mid-paragraph → the line lands in the first checklist and the caret has not moved. Reload-tolerant + consistency-gated (guardrail: every projector-backed assertion re-gates). This is the 43-F criterion folded in; do not write a second agenda journey.
-- [ ] **Deploy-time: neutral.** Frontend-only.
+- [x] Every header mutation is applied as an **editor transaction** on the live `NoteEditor` document, not as an API call — so Ctrl+Z undoes it and the change rides the existing content-save path.
+- [x] **Insert rule (Q7):** append to the note's *first* `taskList` node; if none exists, insert a new `taskList` at position 0. Cursor position is preserved (`focus(undefined, { scrollIntoView: false })`).
+- [x] **The draft merge is the risky part.** `NoteView.tsx:160` reads `content = contentDraft ?? detail?.content ?? ""`; a header mutation must apply to the *editor's current document* (which reflects unsaved typing) and let the normal autosave flush it — never write `detail.content` back, or unsaved typing is lost.
+- [x] `AgendaSection` needs access to the editor instance (it currently only reads the note-detail cache). Decide the seam: lift the editor ref into `NoteView` and pass a small command object down, rather than coupling `AgendaSection` to Tiptap.
+- [x] ~~Retire `useAddAgendaItem` / `useSetAgendaItemDiscussed` / `useEditAgendaItemText` / `useRemoveAgendaItem`~~ — **deliberately NOT done in 43-G.** Legacy (pre-43-F) topics still exist on real notes until 43-H migrates them; retiring the hooks now would make those read-only in the header, a live regression, and it inverts the strangler ordering this doc mandates. `useAddAgendaItem` IS gone (adding always writes a body line); the other three stay for legacy topics only. **43-H retires them** along with the write endpoints.
+- [x] Optimistic UI. **Not inherent as originally written** — review found the strip read only the server projection, which nothing refetched, so a tick visibly bounced back and an added topic never appeared. Met properly by rendering the strip from the **live editor document** whenever the editor is mounted: every header action moves the UI synchronously because there is no request to be ahead of. That same change is what makes the addressing safe (below).
+- [x] E2E: **one** journey covering 43-F *and* 43-G — type a task line → coverage pill moves → add from the header mid-paragraph → the line lands in the first checklist and the caret has not moved. Reload-tolerant + consistency-gated (guardrail: every projector-backed assertion re-gates). This is the 43-F criterion folded in; do not write a second agenda journey.
+- [x] **Deploy-time: neutral** for build/CDK (frontend-only), but the new journey adds recurring wall-clock to the **E2E gate on every deploy** — accepted, and offset by it covering 43-F as well so there is one agenda journey rather than two.
+- [x] **Topics are addressed by index, so both indices must come from ONE document.** Review found the header rendering from the server projection while commands resolved against the local document: a blockquoted checklist (skipped by `AgendaFromContent`, but a real `taskItem` to Tiptap), an empty task line, or any unsaved typing desynchronises them — and `×` then deletes the wrong line. The strip renders from the live document, and `agendaEditorApi` reproduces the server's rule exactly — **nested items count** (flattened into document order, as `AgendaFromBodySpec` pins), blockquoted lines do not, empty items do not. A first attempt at this walked only top-level items and silently dropped nested topics: matching the rule *approximately* is its own regression.
 
-### Slice 43-H — Migrate the stragglers, then drop the old path
+### Slice 43-H1 / 43-H2 — Migrate the stragglers, THEN drop the old path
+
+**Split from one slice into two on 2026-08-08.** Migrating and removing in the same deploy would leave the affected notes with no agenda between the deploy landing and the migration being run — against the strangler ordering this phase mandates. 43-H1 migrates and is verified; only then does 43-H2 remove.
+
+**43-H1 status: PR #441 is open with changes requested. It must NOT be merged or run as written** — it would silently clobber recent typing. Nothing has been run against prod; no dry run, no writes. The full findings are on the PR as a GitHub review. The three that block:
+1. It reads the **async** projection and writes the whole body back with **no `ExpectedBaseContentHash`**, so a lagging projector means the user's recent save is overwritten. Worse, `NoteCommandHandler` retries `ConcurrencyException` and re-appends the *same stale content*, so the retry re-applies the clobber.
+2. It scans and mutates **every user's** notes (no `UserId` filter), disclosing other users' note titles in the dry-run output and aborting mid-batch on a foreign note.
+3. No per-note error isolation — a mid-batch failure loses the record of which notes were already written.
+
+Plus: emphasis normalisation (an explicit criterion below) is unimplemented; prepending above an existing list **merges into it** and reformats content; and the dry run does not show the resulting content, so none of this is visible before applying.
+
+**Worth re-examining the design, not just clearing the findings** — reading the async projection may be wrong in principle here; the event stream is the strongly-consistent source, per the guardrail about never deciding from an async projection.
+
+**Measured scope (prod, 2026-08-08): 8 notes, 36 topics.** 39 `AgendaItemAdded` events across 9 notes; the difference is removals.
 
 - [ ] **Scope, measured in prod 2026-08-06:** `notetaker-events` holds **39 `AgendaItemAdded` events across 9 notes**. Re-measure before running — a note edited between now and then may already carry its topics.
 - [ ] One-off migration appends a `taskList` at the top of each affected note's content, preserving ticked state, via a normal `EditContent` command (never a direct DynamoDB write — guardrail).
 - [ ] Idempotent: skip a note whose content already contains a task line matching the topic text. Safe to re-run. **Normalise emphasis before that comparison** — a body line `- [ ] **Budget**` will not match a legacy item `Budget`, and the topic double-lists. 43-F closed the same trap for backslash escapes (`Unescape` in `AgendaFromContent`); emphasis is the other half and is still open.
 - [ ] Verify per note that the pre-migration paragraph count equals the post-migration paragraph count before dropping the legacy fold.
 - [ ] Only **after** verification: remove the legacy `AgendaItem*` fold from `NoteDetailProjection`, remove the agenda write endpoints (`POST /notes/{id}/agenda-items` and siblings), and remove the command-handler arms. The events stay in the stream, unread — reversible.
+- [ ] **Carried from 43-G's review — this slice touches the same rule, so fix them here.** (a) The BUG-24 image-resolve calls `setContent` with `emitUpdate: false`, so the editor's live topic list is not republished for it; one extra `publish()` in that `.then` makes the live list unconditionally authoritative. (b) `collectTaskItems` recurses only into `taskList` children, so a task item reachable through a **non-checklist** list — `- Shopping` / `  - [ ] Milk`, or a bulleted child under a task item — is counted server-side but invisible in the header. Widening the recursion to a list-type set closes it and cannot reintroduce the blockquote exclusion (a blockquote is not a list). (c) A paragraph holding only a non-text inline node (`- [ ] ![shot](key)`) reads as empty client-side and is skipped, while the server counts it.
 - [ ] `EventDeserializer` keeps its `AgendaItem*` arms; a rebuild must still parse historical events without throwing (guardrail).
 - [ ] **Deploy-time: neutral**, but this is a **data migration** — run it as an authenticated admin action after the deploy, like the projection rebuild, not as a deploy step.
 

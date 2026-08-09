@@ -15,7 +15,7 @@ Each entry records what it is, why it isn't scheduled yet, and where it was rais
 
 ## Open multiple notes at once (open-note tab bar)
 
-> _Graduated to a numbered phase — now **[Phase 49](phases/phase-49.md)** (2026-07-28). Locked: tab bar (not split panes), per-device local persistence, frontend-only. Three slices; the recording-lifecycle question is isolated in 49-C._
+> _Graduated to a numbered phase — now **[Phase 49](phases/phase-49.md)** (2026-07-28). Locked: tab bar (not split panes), per-device local persistence, frontend-only. Shipped as two slices; the recording-lifecycle question (was 49-C) moved to **[Phase 51](phases/phase-51.md)** as 51-C on 2026-08-09, where the tabs redesign owns the same surface._
 
 ---
 
@@ -208,3 +208,13 @@ _(Folder administration via the MCP graduated to **[Phase 47](phases/phase-47.md
 **Why it isn't scheduled yet:** genuine feature (schema/event + projection + UI + eval), not a prompt tweak — needs Scout to design the output shape and UI coexistence. Highest-leverage remaining lever for "notes that read like mine."
 
 **Raised in:** MPI-12 (2026-07-26) — the prompt lever hit its structural ceiling.
+
+## Gate live-transcript-as-saved-note on the higher-quality pass being available
+
+**The problem:** the on-device *live* transcript is treated as disposable — 48-B re-transcribes the whole recording with `small.en` at stop and replaces it — and [BUG-65] leaned on that to trade live accuracy for latency (a reduced `audio_ctx`, which `whisper.h` labels quality-reducing). But `local:finish` has **three paths where the live text becomes the permanent note**: `small.en` has not finished downloading, the final pass throws, or it returns empty. On those paths the deliberately-degraded text is what the user keeps.
+
+**Why it isn't scheduled yet:** it is a product decision, not a defect. The options — refuse to save until the final pass is available, save the live text with a visible "draft quality" marker, or re-run the final pass later in the background — differ in what the user sees, so it needs a shape decision rather than a fix. Today the exception is recorded only in a code comment on `LIVE_AUDIO_CTX`.
+
+**Natural trigger:** once BUG-65's `rtf` measurement lands. If the live path is comfortably fast the tuning could simply be relaxed, which shrinks the problem; if threads become the next lever, the accuracy trade stays and this matters more.
+
+**Raised in:** BUG-65 review (2026-08-08).

@@ -35,7 +35,7 @@ describe('notes read-your-writes (RYW-2)', () => {
     )
 
     await renameNote(NOTE_ID, 'Renamed')
-    const detail = await getNoteDetail(NOTE_ID)
+    const { body: detail } = await getNoteDetail(NOTE_ID)
 
     expect(sentToken).toBe(`note#${NOTE_ID}@5`)
     expect(detail.title).toBe('Renamed')
@@ -117,10 +117,11 @@ describe('notes read-your-writes (RYW-2)', () => {
     )
 
     await renameNote(NOTE_ID, 'Renamed')
-    const detail = await getNoteDetail(NOTE_ID)
+    const { body: detail, stale } = await getNoteDetail(NOTE_ID)
 
-    // Initial + 2 bounded retries, all stale → returns what it has without throwing.
+    // Initial + 2 bounded retries, all stale → returns what it has, flagged stale, without throwing.
     expect(gets).toBe(3)
+    expect(stale).toBe(true)
     expect(detail.title).toBe('Renamed')
   })
 })

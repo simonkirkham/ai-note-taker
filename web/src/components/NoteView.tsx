@@ -16,6 +16,7 @@ import { useAnalyseNote, useEditContent, useRenameNoteDetail, useSetNoteDate } f
 import { useTagNote, useUntagNote } from "../hooks/useTagMutations";
 import { useTags } from "../hooks/useTags";
 import { useTranscription } from "../hooks/useTranscription";
+import type { AgendaEditorApi, LiveTopic } from "../lib/agendaEditorApi";
 import AgendaSection from "./AgendaSection";
 import CommandBar from "./CommandBar";
 import FinalNotesView from "./FinalNotesView";
@@ -110,6 +111,11 @@ export default function NoteView({
   // a blur then overwrote the real title with that empty value.
   const [titleDraft, setTitleDraft] = useState<string | null>(null);
   const [contentDraft, setContentDraft] = useState<string | null>(null);
+  // 43-G: the header agenda edits the note BODY, so it needs the live editor's command object.
+  // Held here rather than inside AgendaSection so the strip stays free of Tiptap, and in state
+  // (not a ref) so the controls enable the moment the lazy editor chunk finishes loading.
+  const [agendaApi, setAgendaApi] = useState<AgendaEditorApi | null>(null);
+  const [liveTopics, setLiveTopics] = useState<LiveTopic[] | null>(null);
   const [dateDraft, setDateDraft] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<NoteTab>("quick");
   const [pickerOpen, setPickerOpen] = useState(false);
@@ -739,7 +745,7 @@ export default function NoteView({
         className={styles.titleInput}
         aria-label="Note title"
       />
-      <AgendaSection noteId={noteId} />
+      <AgendaSection noteId={noteId} editor={agendaApi} liveTopics={liveTopics} />
       {transcriptDraft && (
         <div
           data-testid="transcript-recovery-banner"
@@ -945,6 +951,8 @@ export default function NoteView({
                   value={content}
                   onChange={(md) => setContentDraft(md)}
                   onBlur={handleSaveContent}
+                  onAgendaApiChange={setAgendaApi}
+                  onAgendaTopicsChange={setLiveTopics}
                 />
               )}
               <p className={styles.aiHint} data-testid="ai-instruction-hint">

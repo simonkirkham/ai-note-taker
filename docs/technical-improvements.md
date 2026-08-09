@@ -79,6 +79,8 @@ Status key: 🔲 **Open** · 🟡 **Partly done / mitigated** · ✅ **Done** (g
 | TI-61 | `Routing.test.tsx > Forward reopens the note` fails under CPU contention during a local full-suite run | 🔲 **Open** — raised 2026-08-06 (49-B verification). **Second observation of the same failure with the same cause**, previously seen on 34-C (`docs/token-log.md:166`) and never filed. Both times a `dotnet build` ran concurrently with `vitest run`; the test passes in isolation and on a clean full-suite run, so it is load-induced, not a regression. Mechanism: the assertion after `window.history.forward()` is `findByTestId('note-title-input')`, whose default 1000 ms timeout is short relative to this file's ~1.8 s under contention — the `waitFor` on `window.location.pathname` before it already succeeded, so it is the *render* that misses the window, not the navigation. It is **not** a deploy-gate flake (CI runs the frontend job alone), so it costs only local verification time — but it costs it every time, and re-deriving "not a regression" from scratch is the expensive part. Fix options: raise this file's async timeout explicitly, or await the route transition rather than racing the default. Low urgency; the cheap win is that this row exists so the next person does not re-investigate. |
 | TI-62 | `deploy.yml` still carries its own inline copy of the projector warm/drain bash | 🔲 **Open** — raised 2026-08-07 (alongside the on-demand E2E workflow). The warm-and-drain logic now lives in `scripts/warm-projector.sh`, used by `.github/workflows/e2e.yml`; `deploy.yml`'s `Warm the API + projector before E2E` step is a byte-for-byte duplicate of it. Deliberately NOT switched over in the same change: the merge queue was mid-flight through that exact workflow and a broken `deploy.yml` reds the shared gate for every slice and session. Two copies of a guardrail-critical step will drift — the drain is precisely what stops a cold projector red-gating the suite. Fix: replace the inline step with `bash scripts/warm-projector.sh` (same `API_URL`/`TOKEN` env), and verify on the next deploy that the step still logs `projector caught up to head`. Low risk, but do it on a quiet gate. |
 | TI-63 | Move note analysis off the synchronous request path | 🔲 **Open** — raised 2026-08-07 (BUG-58). Analysis runs inside the **29s** Command Lambda: 90d of prod data shows command-hosted Converse calls at median 2.6s but 17.9 / 21.5 / 23.6 / 26.4s in the tail, with a further **3.0-5.9s** of sequential post-Bedrock appends (`TagNote` per tag, `AddActionItem` per action, each re-reading an 89KB stream). Four invocations hit exactly 29.0s in 14 days — killed. BUG-58's 23s client deadline converts those kills into a visible 503, but it cannot create budget that isn't there: **any analysis needing >23s+tail simply cannot complete synchronously**, and a kill part-way through the appends leaves a note with a new summary and tags but no action items, with no event marking it incomplete. Fix: run analysis asynchronously (job + poll, or a dedicated Lambda off a queue with a longer timeout, mirroring the TranscribeCompletion path that already has 60s), so duration stops being bounded by the API request. Medium urgency — the deadline makes the failure visible and retriable, so this is about the ~12-19% of analyses that are near or over budget, not about data loss. |
+| TI-64 | Pre-commit `cdk synth` fails in every fresh worktree — only `src/Api` is published | 🔲 **Open** — raised 2026-08-08 (BUG-46 slice). `.githooks/pre-commit` publishes **only** `src/Api` before `cdk synth`, but `NoteTakerStack` also reads `src/Projector/bin/Release/net10.0/publish` and `src/TranscribeCompletion/bin/Release/net10.0/publish` (added by 27-B and 33-B1). In a **fresh worktree** neither exists, so the first commit of every new slice dies with `Cannot find asset at …/src/Projector/…/publish` **after** running the full test suite — several wasted minutes per slice, and the failure looks like the slice broke CDK. Fix: publish all three in the hook (or have the hook skip synth when the artefacts are absent and say so). |
+| TI-65 | The other three `gatedRead` callers can still store a stale body over good data | 🔲 **Open** — raised 2026-08-08 (Hawk, PR #436 / [BUG-46]… BUG-48). [BUG-48] fixed **note detail** only: `gatedReadResult` exposes the gate's `stale` verdict and `useNoteDetail` refuses to overwrite fresher cached detail with an older projector body. The same exposure remains on `getNoteCards` (`web/src/api/notes.ts`), `getActions`, `getFolders` and `getWorkspaces`. **`getNoteCards` is the sharp one** — a projector-backed LIST with optimistic mutations (`useNoteMutations` rolls `keys.noteCards` back), so a stale list read can overwrite the optimistic one; that is [BUG-44]'s symptom, whose fix addressed token *capture* but not the gate *giving up*. Not a copy-paste of the BUG-48 guard: "hold the cached list" is a worse remedy for a list than for an entity (it can pin a deletion or an addition out of view), so each caller needs its own decision. |
 
 **Outstanding — TI-46 added 2026-06-22 (pre-tokenize search fields, premature until measured); TI-45 added 2026-06-18 (lazy-chunk error not alarmable); TI-42/43/44 added 2026-06-17:** TI-17 Auto-backfill projection on deploy (P24 dependency cleared; still no deploy step); TI-20 `WorkspaceList` GSI (re-home — P23 shipped without it); TI-23 Generalise append-retry (deliberately deferred; store-level conflict handling already in via BUG-28); TI-25 `NoteEditor` ordering test (file exists but covers 19-J/BUG-24, not the 25-B invariant); **TI-33 `NoteCardList` Scan→GSI** (re-home with TI-20); **TI-34 Lambda naming audit** (premise inverted — 27-D shipped, three live Lambdas); **TI-40 read-only creds for automated cloud observability-review**; **TI-42 residual cards-list E2E flake (workspace-context-on-reload)**; _(partly)_ TI-7 ESLint `import-x/no-unresolved`/`no-cycle` only (jsx-a11y + typed-lint now done via 19-F3/19-B); TI-3 state-mgmt colocation; TI-24 deploy-credentials root cause. **TI-41 (`GetActions` cross-stream presence wait) is done — #289, deploy #589, 2026-06-15. TI-39 (chronic E2E deploy-gate flakiness) is done — 2026-06-13, four stacked causes incl. [BUG-27]/[BUG-29]; residual [BUG-28] carved out. A **5th** cause (action-add existence check on the async `NoteDetail` projection) surfaced later under green-streak reruns and was fixed `fab63aa` (2026-06-16); the remaining `NoteReadYourWrites` cards-list flake is tracked as **TI-42**. The 2026-06 cold-start trio (TI-32 priming + TI-35 ReadyToRun + TI-36 512 MB) is done — #260/#270, deploys #552/#562 — cold p50 7.92→2.24 s (−72%). The 2026-06 observability triad (TI-37 RUM resource-error capture, TI-38 error-log-level, BUG-23 rebuild-timeout 503) is done — #267/#268/#269, deploys #556/#557/#558; the 2026-06 dependency upgrade audit (T1/T7/T2/T3/T4 = TI-27/28/29/30/31) is fully cleared.**
 
@@ -406,3 +408,47 @@ The tier that catches what [TI-59] cannot: latency and the whole capture→engin
 **Deploy-time delta:** none — nightly or on-demand, never in the deploy gate.
 **Raised in:** [BUG-56], 2026-08-07.
 **Depends on:** TI-59.
+
+## TI-64. Pre-commit `cdk synth` fails in every fresh worktree — only `src/Api` is published
+
+`.githooks/pre-commit` runs `dotnet publish src/Api/…` then `cdk synth`. But the stack has referenced two more publish directories since 27-B (Projector) and 33-B1 (TranscribeCompletion):
+
+| Path | Read at | Published by the hook? |
+| --- | --- | --- |
+| `src/Api/bin/Release/net10.0/publish` | `NoteTakerStack.cs:342` | ✅ yes |
+| `src/Projector/bin/Release/net10.0/publish` | `NoteTakerStack.cs:349` | ❌ no |
+| `src/TranscribeCompletion/bin/Release/net10.0/publish` | `NoteTakerStack.cs:354` | ❌ no |
+
+In the **main checkout** the missing two are usually left over from an earlier build, so the gap is invisible. In a **fresh worktree** — which every slice now starts in, per the Worktrees convention — they do not exist, so the first commit fails:
+
+```
+Unhandled exception. System.Exception: Cannot find asset at …/src/Projector/bin/Release/net10.0/publish
+dotnet run --project src/Infrastructure: Subprocess exited with error 134
+```
+
+**Why it costs more than it looks:** `cdk synth` is the **last** hook step, so the failure arrives *after* the full backend build, Domain.Specs, Api.Integration and Infrastructure.Assertions have run — several minutes per new slice — and it reads as "my change broke CDK" rather than "the worktree was never fully published". Hit on the BUG-46 slice, 2026-08-08.
+
+**Fix:** publish all three projects in the hook before `cdk synth`. If the added publish time is unwelcome, the alternative is to detect the absent artefacts and skip synth with an explicit message — but silently skipping the infra gate is the worse default.
+
+**Deploy-time delta:** none — pre-commit only.
+**Raised in:** [BUG-46] slice, 2026-08-08.
+**Depends on:** —
+
+## TI-65. The other three `gatedRead` callers can still store a stale body over good data
+
+[BUG-48] proved the class: a RYW-gated read that exhausts its retries returns `X-Consistency: stale` — the projector's **older** state — and React Query stores it, overwriting fresher cached data. That fix covered **note detail only**.
+
+| Caller | File | Exposure |
+| --- | --- | --- |
+| `getNoteCards` | `web/src/api/notes.ts` | **Highest.** Projector-backed list *with optimistic mutations* — `useNoteMutations` optimistically patches and rolls back `keys.noteCards`. A stale list read can overwrite the optimistic list. This is exactly [BUG-44]'s symptom ("the deleted card reappears… and stays openable"); BUG-44 fixed the token **capture**, not the gate **giving up**. |
+| `getActions` | `web/src/api/actions.ts` | Same class, per-note scope. |
+| `getFolders` | `web/src/api/folders.ts` | Same class; folder tree. |
+| `getWorkspaces` | `web/src/api/workspaces.ts` | Same class; lowest blast radius. |
+
+**Why this is not a copy-paste of the BUG-48 guard.** For a single entity, "keep what is cached" is strictly safer — the stale body is older on that one stream. For a **list**, holding the cache can pin a just-deleted row into view or hide a just-added one, and the list gate only ever waits on the *single* most-recently-written stream (design decision #7), so "stale" says much less about the rest of the list. Each caller needs its own decision, and `getNoteCards` may want the monotonic-position route instead.
+
+**The durable fix** (also the cleanest for BUG-48's residual): `ConsistencyGate` already holds `lastSeq` (`src/Api/Consistency/ConsistencyGate.cs`). Carry it on `ConsistencyResult`, emit an `X-Consistency-Position` header, and have the client keep the higher position — the same monotonic shape `setStreamToken` already uses for tokens. That replaces every per-caller heuristic with one rule.
+
+**Deploy-time delta:** none for the client-side guards; the header route is a backend change with no deploy-path impact.
+**Raised in:** Hawk review of PR #436 (BUG-48), 2026-08-08.
+**Depends on:** —

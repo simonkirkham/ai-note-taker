@@ -153,6 +153,23 @@ BUG-53's checklist above was never completed, and the live path shipped dead: `W
 | 5 | **No stale banner:** Given a recording that showed the banner, When I start a new local recording that works, Then the banner is gone. | ☐ |
 | 6 | **Stop is unchanged:** Given I stop a local recording, Then the `small.en` final pass still replaces the live text (slower than live — expected cost, not a defect). | ☐ |
 
+## BUG-65 — live transcription speed, and the diagnostic log
+
+The whole point of this slice is the log: an installed build is otherwise unobservable (whisper-server's stdout is not captured, the console needs DevTools), which is why BUG-56 and BUG-65 both had to be diagnosed by reading code instead of evidence.
+
+**The log lives at `%APPDATA%\AI Note Taker\local-transcription.log`** (one rotation, `.log.1`, capped at 512 KB). It contains counts and timings only — no transcript text, no file paths beyond the model's basename.
+
+**`rtf` is the column that matters:** inference time ÷ audio duration. Below 1.0 the engine is faster than real time and the live view can keep pace; above 1.0 it is falling behind by definition.
+
+| # | Given / When / Then | Pass? |
+|---|---------------------|-------|
+| 1 | **Live text keeps pace:** Given a local recording, When I speak continuously for ~30 s, Then words appear within a few seconds and do not fall further behind as the recording goes on. | ☐ |
+| 2 | **The log exists and is readable:** Given a finished local recording, Then `local-transcription.log` holds a `session start` line followed by `step` lines. | ☐ |
+| 3 | **rtf is below 1.0:** Given the step lines, Then `rtf` is consistently < 1.0. If it is not, the tuning is insufficient and threads are the next lever — send the log. | ☐ |
+| 4 | **Not falling behind:** Given the step lines, Then `dropped` stays low and `clamped` is absent or rare. A rising `dropped` means inference is slower than the 1.5 s tick; any `clamped` means the window hit the encoder send cap. | ☐ |
+| 5 | **Failures are visible:** Given the engine fails (rename `whisper-server.exe`), Then the log records `step FAILED … err=…` rather than going silent. | ☐ |
+| 6 | **The saved transcript is unaffected:** Given I stop, Then the note's transcript is the higher-quality `small.en` pass, not the live text — the live view's reduced accuracy must not reach the note. | ☐ |
+
 ## CHANGE-36 — window title follows the open note
 
 `BrowserWindow` is constructed with no `title` option, so the Electron window (and its taskbar label) follows `document.title`. Making the browser tab title track the note therefore changes the desktop window title too — intended, but verify it reads sensibly.
