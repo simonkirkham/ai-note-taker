@@ -68,6 +68,7 @@ export class StreamingSession {
   private sawReady = false // the server became ready at least once (so a later !running == a crash)
   private readyTimer: ReturnType<typeof setTimeout> | null = null
   private droppedSinceLog = 0 // steps the busy-guard skipped since the last reported step
+  private lastStepByteLen = -1 // byteLen at the last step actually run (BUG-67 idle detection)
   private startedAt = 0 // when start() armed the timers — the stop-path grace period runs from here
   // windowSlice cursor: chunks before scanIdx are fully committed (never in a future window). startByte
   // only grows, so advancing this makes each slice O(window) instead of O(whole recording so far).
@@ -123,8 +124,16 @@ export class StreamingSession {
     // is caught by the ready deadline armed in start() (BUG-56), not here.
     if (!this.server.ready) return
     this.sawReady = true
+    // BUG-67: nothing has ARRIVED since the last step, so re-running would re-transcribe byte-for-
+    // byte identical audio for an identical result. MIN_NEW_MS below does not cover this — it gates
+    // on the window SIZE (byteLen - startByte), which stays large while the window is stale, so once
+    // PCM stopped the session spun forever. It mattered because the renderer awaits diarize (two
+    // whisper-cli passes) after Stop before anything halts this session, so the spin competed for
+    // cores with the pass the user was waiting for.
+    if (this.byteLen === this.lastStepByteLen) return
     const startByte = this.state.finalizedMs * BYTES_PER_MS
     if (this.byteLen - startByte < MIN_NEW_MS * BYTES_PER_MS) return
+    this.lastStepByteLen = this.byteLen
     this.busy = true
     // Declared OUTSIDE the try so the catch can report them too: the window size at the moment of
     // failure is the number that says whether the clamp was engaged when it died, and it is

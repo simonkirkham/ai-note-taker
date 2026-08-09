@@ -241,6 +241,13 @@ export function registerLocalTranscription(deps: Deps): void {
   // Stateless (independent of the live session). Returns null when VAD/models are missing or there
   // is no speech → the renderer keeps the single-stream transcript.
   ipcMain.handle('local:diarize', async (_e, me: ArrayBuffer, them: ArrayBuffer): Promise<string | null> => {
+    // BUG-67: diarize is the FIRST thing the renderer awaits after Stop, and it runs two whisper-cli
+    // passes at ~2.3x realtime. Until now nothing halted the live session before then — only
+    // local:finish called stop(), and the 48-C path may reach discard() instead — so the live engine
+    // kept ticking on stale audio for the whole diarize pass, competing for the same cores as the
+    // pass the user is waiting for. Stop the timers here; the session object stays intact so a
+    // subsequent finish() can still take fullAudio().
+    streaming?.stop()
     const dir = modelsDir(deps.userDataDir)
     const binPath = whisperBinPath(deps.resourcesPath)
     const liveSpec = MANIFEST.models.find(isLive)
