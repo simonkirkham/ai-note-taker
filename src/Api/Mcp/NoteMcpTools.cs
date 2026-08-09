@@ -462,10 +462,10 @@ public sealed class NoteMcpTools(
     {
         var userId = await AuthorizeWriteAsync("delete_folder", workspaceId, ct).ConfigureAwait(false);
         var folder = await AuthorizeFolderAsync("delete_folder", folderId, userId, ct).ConfigureAwait(false);
-        var version = await RunFolderWriteAsync(
+        var result = await RunFolderWriteAsync(
             () => folderCommands.HandleAsync(new Domain.Folders.DeleteFolder(folder), userId, workspaceId, ct)).ConfigureAwait(false);
         logger.LogInformation("mcp_write tool=delete_folder sub={Sub} workspaceId={WorkspaceId} folderId={FolderId}", userId, workspaceId, folder.Value);
-        return JsonSerializer.Serialize(new { version });
+        return JsonSerializer.Serialize(new { version = result.Version });
     }
 
     [McpServerTool(Name = "move_folder")]
@@ -638,7 +638,7 @@ public sealed class NoteMcpTools(
     // retriable-contention shapes to a retry signal — the folder handler appends unwrapped (raw
     // EventStore.ConcurrencyException) and its delete cascade calls the note handler (WriteContentionException).
     // Leaving contention as a generic invocation error is the BUG-27 anti-pattern.
-    private static async Task<long> RunFolderWriteAsync(Func<Task<long>> write)
+    private static async Task<T> RunFolderWriteAsync<T>(Func<Task<T>> write)
     {
         try { return await write().ConfigureAwait(false); }
         catch (InvalidOperationException ex) { throw new McpException(ex.Message); }
