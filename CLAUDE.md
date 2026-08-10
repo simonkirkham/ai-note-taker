@@ -22,6 +22,19 @@ Applies to every generated doc **and** to conversational output.
 
 Every hand-back ends with **one block**, and nothing follows it. It is the only thing the human has to read. Applies at session end **and** every time work is handed back mid-flight.
 
+**The block is for handing back WORK — not for every message.** Print it when any of these is true:
+
+- A unit of work finished or paused — a slice, a bug, an investigation, a set of doc changes.
+- There is a decision or an action for the human.
+- Going idle, or the session could now be closed.
+- Something is running in the background they need to know about.
+
+**Do not print it** when the human is driving a back-and-forth and no work state changed: answering a question, iterating on wording, reporting the result of one command they asked for, or working through an error they just reported. Answer the thing, plainly, and stop. **If every section but `DONE` would say "Nothing", the block is not earned** — a status report on a conversational turn is exactly the noise this section exists to remove.
+
+**The repair loop is the sharpest case.** When the human is part-way through an `ACTIONS FOR YOU` list and reports a failure (`curl: (43) Failed sending HTTP request`), they are executing, not receiving a hand-off. Reply with the corrected step and nothing else — the diagnosis in one line, the fixed command, and what they should see. Re-printing `DONE`, `IN PROGRESS`, `YOU SHOULD KNOW` and `NOT STARTED` at someone mid-task is the exact noise they are trying to read past.
+
+**Never reprint an unchanged section.** When a block genuinely is warranted a second time, print the verdict line plus only what changed since the last one. Reissuing an identical block trains the human to skip all of them, which costs the mechanism its only job.
+
 ```
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
   <verdict>
