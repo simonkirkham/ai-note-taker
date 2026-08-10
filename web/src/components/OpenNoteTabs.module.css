@@ -12,7 +12,9 @@
   overflow-x: auto;
   overflow-y: hidden;
   scrollbar-width: thin;
-  padding: var(--space-2) var(--space-3) 0;
+  /* No padding-left here on purpose — the left offset is set per breakpoint below, and a
+     base declaration would override it whenever the media block were moved above this rule. */
+  padding: var(--space-2) var(--space-3) 0 0;
   gap: var(--space-1);
   /* Keeps a keyboard-focused tab clear of the sticky pinned tab (WCAG 2.4.11). Sized to what
      the pinned tab ACTUALLY occupies — "My notes" is fixed text, ~114px, plus its divider
@@ -71,6 +73,12 @@
    never scrolled to rest beneath it. */
 .tabHome {
   position: sticky;
+  /* Declared once, for every breakpoint. A sticky element is clamped to its containing block,
+     which here is the list inside `.bar`'s padding — so `left: 0` pins it to the padding edge,
+     not the scrollport edge, and the per-breakpoint padding-left below is the only thing that
+     needs to change. Measured: desktop rests and sticks at 12px, narrow at 52px.
+     Setting `left` per breakpoint AS WELL stacks the two offsets (52 + 52 = 104px on a phone);
+     removing `left` altogether stops it sticking at all and the tab scrolls off-screen. */
   left: 0;
   z-index: 1;
   margin-right: var(--space-2);
@@ -79,30 +87,30 @@
   background: var(--color-bg);
 }
 
-/* (0,2,0) — must out-specify BOTH `.tabHome` (which is declared later than `.tabActive`
-   and would otherwise win the background at equal specificity) and `.tabActive:hover`.
-   Without this the pinned tab was the one tab that never merged into the page, and it
-   flipped background on hover. */
-.tabHome.tabActive,
-.tabHome.tabActive:hover {
+/* Active: the page surface, so the tab reads as the front edge of its own sheet.
+   (0,2,0) to out-specify `.tabHome`, which is declared later and would otherwise take the
+   background at equal weight. */
+.tabHome.tabActive {
   background: var(--color-surface);
 }
 
-/* (0,2,0) to beat `.tab:hover`, whose --color-primary-bg is rgba at 0.06-0.12 alpha.
-   The pinned tab is scrolled UNDER by the document tabs, so any translucency lets them
-   show straight through it. Hover is signalled on the label instead. */
-.tab.tabHome:hover {
-  background: var(--color-bg);
+/* Hover, and only while this is NOT the current page. `:not(.tabActive)` makes this rule and
+   the one above mutually exclusive by construction, so neither can take the other's
+   background by source order — an earlier pair were both (0,3,0) and the later one stripped
+   the active tab's surface on hover, lifting it off its own page in all 17 themes.
+   The tint is mixed INTO --color-bg, not laid over it as an alpha: the document tabs scroll
+   UNDERNEATH this tab, so any translucency shows them straight through it. That is why the
+   plain `.tab:hover` rgba cannot be reused here. */
+.tab.tabHome:not(.tabActive):hover {
+  background: color-mix(in srgb, var(--color-primary) 8%, var(--color-bg));
 }
 
-.tab.tabHome:hover .label {
-  color: var(--color-primary);
-}
-
-/* --color-primary on --color-bg is below 4.5:1 in 5 of the 8 light themes at this size
-   (amber 3.10, emerald 3.57, teal 3.59, sky 3.84, rose 4.28) — worse than the muted grey
-   the rest of the bar was tuned to. The label carries --color-text; --color-primary is
-   kept for the icon and the active top edge, which are non-text. */
+/* The label keeps --color-text in EVERY state, hover included. --color-primary on
+   --color-bg is below 4.5:1 in 5 of the 8 light themes at this size (amber 3.07, emerald
+   3.58, teal 3.59, sky 3.84, rose 4.28 — measured, not estimated), so using it as the hover
+   cue made the label unreadable in exactly the themes where it already had least contrast.
+   Hover is carried by the background tint above instead. --color-primary stays on the icon
+   and the active top edge, which are non-text and need only 3:1. */
 .tabHome .label {
   display: flex;
   align-items: center;
@@ -195,24 +203,26 @@
   }
 }
 
-/* Under 640px the fixed sidebar toggle (App.module.css, z-index 40) occupies x 12-48px —
-   exactly where the pinned tab starts. Two offsets are needed and they do different jobs:
-     padding-left  moves the tab's NATURAL position clear of the toggle, and reflows the
-                   document tabs with it. Without it, `left` alone is clamped to zero when
-                   the bar holds only the pinned tab (the permanent bar's commonest state)
-                   and shifts the tab OVER the first document tab when it does not.
-     left          keeps it clear once STUCK, because a sticky element's constraint
-                   rectangle is the scrollport — the container's padding box — so the
-                   padding scrolls away and cannot hold the offset on its own.
-   This block must stay LAST in the file: it is (0,1,0) like the base rules it overrides,
-   so it wins on source order alone. Moving it up silently disables it. */
+/* The bar's left inset, and the only place it is set. The two blocks are mutually exclusive
+   and no base rule declares `padding-left`, so neither can be disabled by being moved — an
+   earlier version relied on sitting last in the file and was dead code the moment it was
+   placed above the base rules.
+
+   This padding does double duty: it positions the pinned tab AND, because a sticky element is
+   clamped to its containing block, it is what the tab sticks to once the strip is scrolled.
+   `.tabHome` therefore needs only `left: 0`, declared once above.
+
+   Under 640px the fixed sidebar toggle (App.module.css, z-index 40) occupies x 12-48px,
+   exactly where the pinned tab would otherwise start; 3.25rem clears it. */
+@media (min-width: 640px) {
+  .bar {
+    padding-left: var(--space-3);
+  }
+}
+
 @media (max-width: 639px) {
   .bar {
     padding-left: 3.25rem;
     scroll-padding-left: 11.5rem;
-  }
-
-  .tabHome {
-    left: 3.25rem;
   }
 }

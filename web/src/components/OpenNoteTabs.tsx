@@ -27,9 +27,14 @@ export default function OpenNoteTabs({
 }: {
   tabs: OpenNoteTab[];
   activeNoteId?: string;
-  // `aria-current="page"` only when the pinned tab really IS the current page. On a folder
-  // or search screen the notes list is the current ITEM in the bar but not the page you are
-  // on — and clicking it navigates away — so that case gets `aria-current="true"`.
+  // `aria-current="page"` only when the pinned tab really IS the current page. On a FOLDER
+  // screen the notes list is the current item in the bar but not the page you are on — and
+  // clicking it navigates away — so that case gets `aria-current="true"` instead.
+  //
+  // Searching is NOT one of those cases: a search is `?q=` on the notes-list path (see
+  // ListView's writeFilters), so you are still on the notes list and this stays "page".
+  // That is deliberate — flipping aria-current on every keystroke would be worse for a
+  // screen reader than leaving it alone.
   homeIsCurrentPage: boolean;
   // 49-B: false until a note-cards read has succeeded. Restored tabs render straight from
   // storage before that, so the set on screen is provisional and one may still drop when the
