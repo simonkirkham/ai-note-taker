@@ -99,6 +99,11 @@ function concatPcm(chunks: Uint8Array[]): ArrayBuffer {
   return out.buffer;
 }
 
+// BUG-55: how long a confirmed sign-out will wait for the local finalise before going ahead
+// anyway. Generous — the medium.en pass plus 1:1 diarization is minutes on a long meeting — but
+// bounded, because an unbounded wait on a wedged local engine strands the user entirely.
+const AWAIT_COMMIT_DEADLINE_MS = 5 * 60_000;
+
 export function useTranscription(noteId: string): UseTranscriptionResult {
   const [status, setStatus] = useState<TranscriptionStatus>('idle');
   const [transcript, setTranscript] = useState('');
@@ -608,6 +613,14 @@ export function useTranscription(noteId: string): UseTranscriptionResult {
   }, [cleanup, saveCheckpoint, commitTranscript, uploadRecording]);
 
   const stopRecording = useCallback(() => {
+    // BUG-55: idempotent. `handleConfirmedLeave` calls this unconditionally and `isRecording`
+    // includes 'finalising', so pressing Stop and THEN signing out called it twice. The second call
+    // reassigned stopSequenceRef to a fresh IIFE which — with localActiveRef already false — took
+    // the CLOUD branch and resolved immediately. awaitCommit() then awaited the wrong promise and
+    // signed out mid-finalise: the exact failure this bug is about, on the exact path it targets.
+    // Re-entering is a no-op elsewhere too (commitTranscript and uploadRecording are one-shot,
+    // cleanup is idempotent), so returning early is behaviour-preserving.
+    if (stoppedRef.current && stopSequenceRef.current) return;
     stoppedRef.current = true;
     // 48-A: in local mode, flush the on-device engine's final window before committing so the
     // last few seconds aren't lost. 48-B: finish() also runs the higher-quality medium.en pass over
@@ -667,11 +680,31 @@ export function useTranscription(noteId: string): UseTranscriptionResult {
   // BUG-55: resolves once the stop sequence AND the commit POST it fires have finished. In cloud
   // mode both are effectively immediate; in local mode the stop sequence runs the medium.en final
   // pass (plus 1:1 diarization) first — minutes on a long meeting, which is exactly why this is
-  // opt-in per destination rather than awaited on every navigation. Never rejects: the stop
-  // sequence swallows its own errors and the commit's catch is already attached.
+  // opt-in per destination rather than awaited on every navigation.
+  //
+  // Two things it must never do, because the caller is a sign-out the user has already confirmed:
+  //
+  //  - REJECT. Only the local IPC calls sit inside the stop sequence's try/catch; the surrounding
+  //    `readStoredKeepAudioLocal()`, `cleanup()` and `setStatus()` do not. A throw there would
+  //    propagate into the continuation and sign-out would never run. Caught here so the comment is
+  //    true by construction rather than by inspection of code that may change.
+  //  - HANG. `window.desktop.local.finish()/diarize()` have no timeout on this side, and BUG-56's
+  //    observed failure shape is precisely "process alive, never ready, silent". Without a deadline
+  //    the continuation never runs, `leavingRef` stays latched, and the app is stuck until restart.
+  //    Past the deadline we proceed with the sign-out: no worse than the behaviour before this fix.
   const awaitCommit = useCallback(async () => {
-    await stopSequenceRef.current;
-    await commitPostRef.current;
+    const settled = (async () => {
+      try {
+        await stopSequenceRef.current;
+        await commitPostRef.current;
+      } catch {
+        // Already surfaced by the stop sequence / the commit's own catch; never block the leave.
+      }
+    })();
+    await Promise.race([
+      settled,
+      new Promise<void>((resolve) => setTimeout(resolve, AWAIT_COMMIT_DEADLINE_MS)),
+    ]);
   }, []);
 
   const reset = useCallback(() => {

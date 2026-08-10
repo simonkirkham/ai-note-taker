@@ -137,6 +137,11 @@ export default function NoteView({
   // names it. A separate boolean + label could disagree, which is exactly the bug: a second
   // guarded click replaces the destination, and the banner must move with it.
   const [leaveDestination, setLeaveDestination] = useState<string | null>(null);
+  // BUG-55: the confirmed leave is parked on the transcript commit, which in local mode is minutes.
+  // Without a visible state the app looks like it ignored the click, and — because `isRecording` is
+  // still true during 'finalising' — the guard is still registered, so clicking again just re-raises
+  // a confirm whose button now returns immediately and leaves a dead banner on screen.
+  const [finishingTranscript, setFinishingTranscript] = useState(false);
   // 49-A: where to go once a mid-recording leave is confirmed, when the leave was requested
   // by the parent (a tab switch/close) rather than by this note's own Save/back.
   const pendingLeaveRef = useRef<(() => void) | null>(null);
@@ -631,7 +636,12 @@ export default function NoteView({
   async function handleConfirmedLeave() {
     // The await below restores the Save button (recording has stopped), so without this the
     // user could click Save and navigate a second time when the save resolves.
-    if (leavingRef.current) return;
+    // Already leaving — clear any confirm this second click raised, or it stays on screen for the
+    // whole finalise with a button that does nothing.
+    if (leavingRef.current) {
+      setLeaveDestination(null);
+      return;
+    }
     leavingRef.current = true;
     setLeaveDestination(null);
     transcription.stopRecording();
@@ -651,7 +661,10 @@ export default function NoteView({
     // Sign-out clears the token long before that, so the POST 401s, committedRef is released and
     // nothing retries. Awaited ONLY for the destination that clears auth: doing it on every
     // navigation would hang ordinary tab switches for those same minutes.
-    if (awaitTranscript) await transcription.awaitCommit();
+    if (awaitTranscript) {
+      setFinishingTranscript(true);
+      await transcription.awaitCommit();
+    }
     // A parent-requested leave resumes at the destination the user actually clicked (the
     // tab); a self-requested one exits to the deterministic onExit route (BUG-34).
     if (proceed) proceed();
@@ -691,6 +704,19 @@ export default function NoteView({
             >
               Cancel
             </button>
+          ) : finishingTranscript ? (
+            // BUG-55: the sign-out is confirmed and waiting on the on-device finalise. Says so,
+            // rather than looking like the click was ignored for minutes.
+            <span
+              className={styles.leaveConfirm}
+              role="status"
+              aria-live="polite"
+              data-testid="finishing-transcript"
+            >
+              <span className={styles.leaveConfirmText}>
+                Finishing the transcript — you&rsquo;ll be signed out when it&rsquo;s saved…
+              </span>
+            </span>
           ) : leaveDestination !== null ? (
             <span
               className={styles.leaveConfirm}
