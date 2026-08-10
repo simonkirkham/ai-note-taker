@@ -12,6 +12,7 @@ import { BlankLineParagraph } from '../lib/blankLineParagraph';
 import { emojifyMarkdown } from '../lib/emoji';
 import { EmojiShortcode } from '../lib/emojiExtension';
 import { hasDisallowedScheme } from '../lib/linkScheme';
+import { ListBlankLineSeparator } from '../lib/listBlankLineSeparator';
 import { MarkdownTable } from '../lib/markdownTable';
 import { MarkdownTaskList } from '../lib/markdownTaskList';
 import {
@@ -94,6 +95,11 @@ export default function NoteEditor({ noteId, value, onChange, onBlur, onAgendaAp
       StarterKit.configure({ link: false, paragraph: false }),
       BlankLineParagraph,
       Markdown,
+      // BUG-68: CommonMark reads a blank line between two bullet lists as one loose list, so
+      // the two lists merged and the whole list came back double-spaced on the first save.
+      // This turns that blank line into BlankLineParagraph's separator before markdown-it
+      // parses, so the two lists stay two lists.
+      ListBlankLineSeparator,
       // 46-A: GFM tables. MarkdownTable overrides tiptap-markdown's default table
       // serializer to preserve column alignment on save (resizable off — notes don't
       // need column-drag handles). Row/header/cell are the standard schema nodes.
