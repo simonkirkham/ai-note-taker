@@ -307,13 +307,27 @@ export function useTranscription(noteId: string): UseTranscriptionResult {
 
   useEffect(
     () => () => {
-      // BUG-72: do NOT commit while the stop sequence is still running. In local mode it is the
-      // small.en pass (plus diarization) that produces the transcript worth keeping, and committing
-      // here would send the interim LIVE base.en text and latch `committedRef` — so when the better
-      // result lands minutes later its own commitTranscript() early-returns and it is discarded
-      // silently. The sequence commits for us when it finishes, and that POST outlives the route
-      // change (the one destination that does not is sign-out, which BUG-55 handles by waiting).
-      if (!stopInFlightRef.current) commitTranscript();
+      // BUG-72: do not commit the INTERIM text while the stop sequence is still running. In local
+      // mode it is the small.en pass (plus diarization) that produces the transcript worth keeping,
+      // and committing here would send the live base.en text and latch `committedRef` — so when the
+      // better result lands minutes later its own commitTranscript() early-returns and it is
+      // discarded silently. The sequence's own POST outlives the route change (the one destination
+      // that does not is sign-out, which BUG-55 handles by waiting).
+      //
+      // CHAIN, do not skip. Skipping would make the sequence the SOLE owner of the commit, and it
+      // has two ways to never reach one: a throw outside its inner try (`localCleanupRef`, or
+      // `discard()` from the finally), and the BUG-56 hang. Either would lose the transcript
+      // outright — worse than the bug being fixed. Chaining commits the live text only on those
+      // paths, i.e. exactly the pre-BUG-72 behaviour, and is a no-op on the happy path because
+      // `commitTranscript` is one-shot. `noteId` is closed over, so a late call still targets the
+      // right note. (A hung sequence never settles, so it is still uncovered — see BUG-73.)
+      if (stopInFlightRef.current) {
+        void Promise.resolve(stopSequenceRef.current)
+          .catch(() => {})
+          .then(() => commitTranscript());
+      } else {
+        commitTranscript();
+      }
       cleanup();
       if (diarizationTimerRef.current) clearTimeout(diarizationTimerRef.current);
     },
@@ -359,6 +373,9 @@ export function useTranscription(noteId: string): UseTranscriptionResult {
 
   const startRecording = useCallback((includeCallAudio: boolean, autoAnalyse: boolean, resumeFrom?: string) => {
     stoppedRef.current = false;
+    // BUG-72: reset alongside the other latches, so a new recording can never inherit a previous
+    // sequence's in-flight flag.
+    stopInFlightRef.current = false;
     analyseOnCompletionRef.current = autoAnalyse;
     const resumePrefix = resumeFrom ? `${resumeFrom}\n${RESUME_SEPARATOR}\n` : '';
     resumePrefixRef.current = resumePrefix;
@@ -771,6 +788,7 @@ export function useTranscription(noteId: string): UseTranscriptionResult {
     resumePrefixRef.current = '';
     lastDraftRef.current = null;
     committedRef.current = false;
+    stopInFlightRef.current = false;
     recordedChunksRef.current = [];
     recordingUploadedRef.current = false;
     if (diarizationTimerRef.current) {

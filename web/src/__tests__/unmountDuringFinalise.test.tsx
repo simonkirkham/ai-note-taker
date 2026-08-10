@@ -17,6 +17,8 @@ import { server } from '../test/setup'
 
 let resolveFinish: ((text: string | null) => void) | undefined
 let emitLive: ((text: string) => void) | undefined
+// When set, `discard()` throws — the shape where the stop sequence never reaches its own commit.
+let throwOnDiscard = false
 const committed: string[] = []
 
 function stubBrowserApis() {
@@ -53,7 +55,12 @@ function stubDesktopLocal() {
       },
       onError: () => () => {},
       finish: () => new Promise<string | null>((resolve) => { resolveFinish = resolve }),
-      discard: () => {},
+      // `discard()` is called from the local branch's `finally`. A throw there REPLACES the
+      // completion and rejects the whole stop sequence before it reaches commitTranscript() —
+      // unlike a finish() rejection, which the inner try/catch swallows and then commits anyway.
+      discard: () => {
+        if (throwOnDiscard) throw new Error('the local engine blew up on discard')
+      },
     },
   }
 }
@@ -77,6 +84,7 @@ function Harness({ mounted }: { mounted: boolean }) {
 beforeEach(() => {
   resolveFinish = undefined
   emitLive = undefined
+  throwOnDiscard = false
   committed.length = 0
   localStorage.setItem('note-taker-transcription-mode', 'local')
   stubBrowserApis()
@@ -86,12 +94,12 @@ beforeEach(() => {
     committed.push(body.transcriptText)
     return new HttpResponse(null, { status: 204 })
   }
-  // Both shapes: `scoped()` registers the un-prefixed and the `/w/:wsId` path, and matching only
-  // one leaves the recorder empty while the request quietly succeeds.
-  server.use(
-    http.post('/api/notes/:noteId/transcription', record),
-    http.post('/api/w/:wsId/notes/:noteId/transcription', record),
-  )
+  // Un-prefixed only. This spec renders a bare subtree with no WorkspaceProvider, so
+  // `getWorkspaceId()` is "" and `scopedPath` leaves the path alone — a `/w/:wsId` handler would be
+  // dead here. Review disproved an earlier comment claiming otherwise. It does mean this spec never
+  // exercises the prefixed shape production uses; the cross-workspace case is pinned server-side in
+  // `TranscriptionCrossWorkspaceTests`.
+  server.use(http.post('/api/notes/:noteId/transcription', record))
 })
 
 afterEach(() => {
@@ -140,5 +148,58 @@ describe('leaving the note during a local finalise (BUG-72)', () => {
 
     await waitFor(() => expect(committed).toHaveLength(1))
     expect(committed[0]).toContain('text captured before leaving')
+  })
+
+  // Review: the test above unmounts from 'recording', so the flag was never set and a STRANDED
+  // flag would not fail it. This one completes a whole stop sequence first, so the unmount depends
+  // on the flag having been cleared.
+  it('commits on unmount after a completed finalise, so the flag does not strand', async () => {
+    const { rerender } = render(<Harness mounted />)
+
+    await userEvent.click(screen.getByTestId('start'))
+    await waitFor(() => expect(screen.getByTestId('status')).toHaveTextContent('recording'))
+    await waitFor(() => expect(emitLive).toBeDefined())
+    emitLive?.('first recording text')
+
+    await userEvent.click(screen.getByTestId('stop'))
+    await waitFor(() => expect(screen.getByTestId('status')).toHaveTextContent('finalising'))
+    resolveFinish?.('first finalised text')
+    await waitFor(() => expect(screen.getByTestId('status')).toHaveTextContent('stopped'))
+    await waitFor(() => expect(committed).toHaveLength(1))
+
+    // A second recording in the same mount, left without stopping.
+    await userEvent.click(screen.getByTestId('start'))
+    await waitFor(() => expect(screen.getByTestId('status')).toHaveTextContent('recording'))
+    await waitFor(() => expect(emitLive).toBeDefined())
+    emitLive?.('second recording text')
+
+    rerender(<Harness mounted={false} />)
+    await screen.findByTestId('gone')
+
+    await waitFor(() => expect(committed).toHaveLength(2))
+    expect(committed[1]).toContain('second recording text')
+  })
+
+  // Review: skipping the commit made the stop sequence the SOLE owner of it, and the sequence has
+  // ways to never reach one — a throw outside its inner try, or the BUG-56 hang. Losing the
+  // transcript outright is worse than the bug being fixed, so the unmount CHAINS: it waits for the
+  // sequence and then commits, which is a no-op on the happy path (commitTranscript is one-shot)
+  // and the pre-BUG-72 fallback on the failing one.
+  it('falls back to the live text when the finalise fails outright', async () => {
+    throwOnDiscard = true
+    const { rerender } = render(<Harness mounted />)
+
+    await userEvent.click(screen.getByTestId('start'))
+    await waitFor(() => expect(screen.getByTestId('status')).toHaveTextContent('recording'))
+    await waitFor(() => expect(emitLive).toBeDefined())
+    emitLive?.('the only text there will ever be')
+
+    await userEvent.click(screen.getByTestId('stop'))
+    rerender(<Harness mounted={false} />)
+    await screen.findByTestId('gone')
+    resolveFinish?.(null)
+
+    await waitFor(() => expect(committed).toHaveLength(1))
+    expect(committed[0]).toContain('the only text there will ever be')
   })
 })
