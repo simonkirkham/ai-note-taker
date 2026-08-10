@@ -996,6 +996,19 @@ public class InfraAssertionsTests
     }
 
     [Fact]
+    public void Rum_CustomEventsAreEnabled_OnTheDomainScopedMonitor()
+    {
+        // Prod is the domain-scoped stack, so that is the template that has to carry it.
+        _domainTemplate.HasResourceProperties("AWS::RUM::AppMonitor", Match.ObjectLike(new Dictionary<string, object>
+        {
+            ["CustomEvents"] = Match.ObjectLike(new Dictionary<string, object>
+            {
+                ["Status"] = "ENABLED"
+            })
+        }));
+    }
+
+    [Fact]
     public void Rum_MonitorIdOutputExists()
     {
         _template.HasOutput("RumMonitorId", Match.AnyValue());
