@@ -236,15 +236,44 @@
   background: var(--color-bg);
 }
 
-/* Seam under the bar — the line the user called out. Three treatments:
-   .barLine   today's full-width rule
-   (default)  no rule at all
-   .barMerged no rule, and the surface below runs up to meet the active tab */
+/* Seam under the bar — the line the user called out. Treatments:
+   .barLine     today's full-width rule
+   (default)    no rule at all
+   merge-surface  no rule; the CONTENT AREA is repainted to --color-surface and
+                  the active tab is surface too, so they are one sheet
+   merge-bg       no rule; the content area keeps --color-bg and the ACTIVE TAB
+                  is repainted to bg; the bar band becomes surface instead */
 .barLine { border-bottom: 1px solid var(--color-border); }
 
 .barMerged { padding-bottom: 0; }
 
+/* merge-surface: repaints the whole main area. */
 .contentMerged { background: var(--color-surface); }
+
+/* merge-bg: repaints only the bar. Content is untouched. */
+.barMergedBg {
+  padding-bottom: 0;
+  background: var(--color-surface);
+  border-bottom: none;
+}
+
+.tabOnBg,
+.tabOnBg:hover {
+  background: var(--color-bg);
+  border-color: transparent;
+  color: var(--color-text);
+  font-weight: 600;
+  box-shadow: inset 0 2px 0 0 var(--color-primary);
+  margin-bottom: -1px;
+  padding-bottom: 8px;
+}
+
+/* The pinned tab stays put while the document tabs scroll past it. */
+.tabSticky {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+}
 
 /* Reserves the bar's height even when it has nothing to show, so the content
    below never jumps. Used by the always-present directions. */

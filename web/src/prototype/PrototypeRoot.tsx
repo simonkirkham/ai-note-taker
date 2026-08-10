@@ -8,7 +8,7 @@ import { DIRECTIONS, NOTES, type DirectionId, type ViewId } from "./data";
 import NoteScreen from "./NoteScreen";
 import s from "./prototype.module.css";
 
-type Seam = "line" | "none" | "merged";
+type Seam = "line" | "none" | "merge-surface" | "merge-bg";
 
 function stored<T>(key: string, fallback: T): T {
   try {
@@ -26,7 +26,7 @@ const NAV: { id: ViewId; label: string }[] = [
 
 export default function PrototypeRoot() {
   const [direction, setDirection] = useState<DirectionId>(() => stored("proto51-direction", "a" as DirectionId));
-  const [seam, setSeam] = useState<Seam>(() => stored("proto51-seam", "none" as Seam));
+  const [seam, setSeam] = useState<Seam>(() => stored("proto51-seam", "merge-surface" as Seam));
   const [openIds, setOpenIds] = useState<string[]>(() => stored("proto51-open", ["n1", "n2", "n3"]));
   const [view, setView] = useState<ViewId>("list");
   const [activeId, setActiveId] = useState<string | null>(null);
@@ -68,11 +68,13 @@ export default function PrototypeRoot() {
 
   const titleOf = (id: string) => NOTES.find((n) => n.id === id)?.title ?? "Untitled";
 
+  const onCls = seam === "merge-bg" ? s.tabOnBg : s.tabOn;
+
   const bar = !showBar ? null : (
-    <div className={clsx(s.bar, seam === "line" && s.barLine, seam === "merged" && s.barMerged)}>
+    <div className={clsx(s.bar, seam === "line" && s.barLine, seam === "merge-surface" && s.barMerged, seam === "merge-bg" && s.barMergedBg)}>
       {direction === "a" && (
         <div
-          className={clsx(s.tab, s.tabHome, !onNote && s.tabOn)}
+          className={clsx(s.tab, s.tabHome, s.tabSticky, !onNote && onCls)}
           onClick={() => goto("list")}
         >
           <span aria-hidden="true">🏠</span>
@@ -82,7 +84,7 @@ export default function PrototypeRoot() {
       {openIds.map((id) => (
         <div
           key={id}
-          className={clsx(s.tab, onNote && id === activeId && s.tabOn)}
+          className={clsx(s.tab, onNote && id === activeId && onCls)}
           onClick={() => openNote(id)}
         >
           {recordingId === id && <span className={s.recDot} />}
@@ -127,7 +129,8 @@ export default function PrototypeRoot() {
         <Group label="Line under the bar">
           <Seg on={seam === "line"} onClick={() => setSeam("line")}>Line (today)</Seg>
           <Seg on={seam === "none"} onClick={() => setSeam("none")}>No line</Seg>
-          <Seg on={seam === "merged"} onClick={() => setSeam("merged")}>Merge into page</Seg>
+          <Seg on={seam === "merge-surface"} onClick={() => setSeam("merge-surface")}>Merge · repaint page</Seg>
+          <Seg on={seam === "merge-bg"} onClick={() => setSeam("merge-bg")}>Merge · repaint bar</Seg>
         </Group>
         <Group label="Notes open">
           <Seg on={openIds.length === 1} onClick={() => setOpenIds(["n1"])}>1</Seg>
@@ -188,7 +191,7 @@ export default function PrototypeRoot() {
 
           <div className={s.appMain}>
             {bar}
-            <div className={clsx(s.appMain, seam === "merged" && showBar && s.contentMerged)}>
+            <div className={clsx(s.appMain, seam === "merge-surface" && showBar && s.contentMerged)}>
               {onNote ? <NoteScreen noteId={activeId} /> : listScreen}
             </div>
           </div>
