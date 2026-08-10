@@ -211,6 +211,14 @@ dotnet restore ai-note-taker.sln
 npm --prefix web install
 ```
 
+> **The pre-commit hook's `cdk synth` needs all three Lambda publishes, not just the API.** A fresh worktree has none, and the hook fails at the very end — after the full test suite has already run — with `Cannot find asset at src/Projector/bin/Release/net10.0/publish`. Publish them once per worktree so the first real commit doesn't burn a full suite run to discover it (50-B):
+> ```bash
+> for p in Api Projector TranscribeCompletion; do
+>   dotnet publish src/$p/$p.csproj -c Release -o src/$p/bin/Release/net10.0/publish
+> done
+> ```
+> **Never `--no-verify` past this** — the hook is the gate; a missing build artefact is a setup gap to fix, not a check to skip.
+
 Prototype branches follow the same pattern: `git worktree add ../ai-note-taker-slices/prototype-<name> -b prototype/<name>`.
 
 ## Workflow
