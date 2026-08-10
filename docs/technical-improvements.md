@@ -440,11 +440,18 @@ This is [BUG-69] recurring above the level TI-68 fixed. BUG-69 is closed correct
    awk -v c=$(nproc) '{ printf "%.2f\n", $1/c }' /proc/loadavg   # ratio ≳ 1.0 = saturated
    ```
 
-   **Two process-count probes were tried on the way here and BOTH were broken** — worth recording, because each looked obviously correct:
-   - `pgrep -fc 'vitest run'` is **blind to the backend**. The hook runs xUnit too; the measurement above found 7 vitest processes beside 3 `dotnet test` and 28 MSBuild, so a session polling only vitest sees a quiet box while 31 backend processes fill it.
-   - **`pgrep -fc` self-matches, so it is never zero.** `pgrep -fc 'qqq-isolated-nonsense-qqq'` returns **1** on an idle machine — the invoking shell's own command line contains the pattern — and still 1 from inside a script file. Every count is inflated by exactly one, so `count > 0 → wait` can never be satisfied and `count > 2` silently means 1. Widening the pattern fixes the first defect and not this one. The `[v]itest` bracket trick cannot be A/B-tested against the naive form on one command line either: the shell's cmdline then contains both literals and both match.
+   **Load average is preferred for one reason only: it sees every kind of competing work without anyone having to enumerate it.** That is the failure that started this — a `vitest run` count is blind to the backend, and the hook runs xUnit too; the measurement above found 7 vitest processes beside 3 `dotnet test` and 28 MSBuild, so a session polling only vitest sees a quiet box while 31 backend processes fill it. **A `pgrep -f` count in the hook is a legitimate alternative**, not a ruled-out one — see the correction below before discarding it.
 
-   Load average has neither flaw — no self-match, and it sees every kind of competing work rather than the kinds someone remembered to name.
+   **Correction — `pgrep -f` is sound in the hook; it is the agent-side ad-hoc check that is not.** An earlier version of this row claimed `pgrep -fc` self-matches and is therefore never zero. **That was wrong.** The real mechanism: the Claude Code wrapper shell runs as `/bin/bash -c source …snapshot… && eval '<the entire command text the agent typed>'`, so its cmdline contains every pattern in that command and `pgrep -f` legitimately matches *it*. Measured on an idle box:
+
+   | How the pattern reaches pgrep | Result |
+   | --- | --- |
+   | Typed on an agent's tool command line | `count=1`, exit 0 — the wrapper |
+   | Confined to a script, run as a bare path | **`count=0`, exit 1** — correct |
+
+   `.githooks/pre-commit` is invoked by git as a bare path, so nothing carries the pattern on a command line and the count is honest. The inflation is an artefact of *invocation*, not of pgrep — and it is not a constant: on the real pattern the count was 31, of which **3** were wrapper shells (one per concurrent agent shell), so a naive "subtract one" would also have been wrong.
+
+   **This cannot be A/B-tested on a single command line** — put the bracketed and naive forms in one command and the wrapper's cmdline contains both literals, so both match. The same confounder invalidated the first script-based test here: the script was clean, but a control `pgrep` left in the *same* command block put the needle back on the wrapper's cmdline and returned 1 again. Only running the script alone, with the pattern appearing nowhere else, gives the true answer.
 2. **Or take a lock** around the heavy gate (`flock` on a file under the repo root), so the suites serialise across worktrees by construction rather than by politeness.
 3. **Not "raise the timeout"** — that hides the contention and slows the honest failure case.
 
