@@ -19,7 +19,7 @@ Ordered by severity, then by id.
 | BUG-77 | You finish a recording, the note is never analysed, and the only thing you are told is "Analysis failed. Please try again." The message is often wrong about what actually went wrong. | Open | TI-67, BUG-33 |
 | BUG-79 | Something you just created — an action item, or a note — can be missing after you reload, and stay missing. Rare, but this is the one guarantee the app is built to make. | Open | — |
 | BUG-68 | Opening and saving a note merges bullet lists that you had separated with blank lines, and the separation is gone for good. | Open | — |
-| BUG-70 | Clicking "+ New Note" while recording and then choosing to keep recording still leaves a blank, untitled note behind on your home list. | Open | BUG-54 |
+| BUG-70 | Clicking "+ New Note" while recording and then choosing to keep recording still leaves a blank, untitled note behind on your home list. | Open — held behind 51-C | BUG-54, 51-C |
 | BUG-73 | Signing out while an on-device transcript is still finishing can park you for up to an hour with no way to leave — a real problem on a shared machine. | Open | BUG-55 |
 | BUG-75 | Reopening a note while its on-device transcript is still finishing shows no transcript, and nothing appears until you navigate again or reload. | Open | BUG-72 |
 | BUG-76 | The "X / Y" agenda count on a note can disagree with the ticks you can actually see, and a topic that is counted but not shown cannot be ticked. | Open | 43-G, 43-H2 |
@@ -118,6 +118,8 @@ It surfaced on the first run outside the deploy gate, which is also the first ti
 **Cause:** `handleNewNote` (`web/src/App.tsx`) creates the note **server-side first** — `createNote` → `setNoteDate` → optional `moveNote` — and only then calls `openNote`, which is where the [BUG-54] recording guard runs. CHANGE-33's new "Still recording — open the new note?" copy makes the promise explicit, and it correctly names a note that does exist.
 
 **Fix direction:** ask before creating, not after — route the guard around the whole of `handleNewNote` (`requestLeave(() => void handleNewNote(), "open the new note")`) so a declined leave never reaches the create. Check `handleOpenNextOccurrence` and the `/ai` create-note path in `NoteView` for the same create-then-guard ordering. Frontend-only; no event, projection or endpoint change.
+
+**Deliberately held until 51-C merges (2026-08-10).** 51-C removes the leave-prompt from `openNote`, and `handleNewNote` calls `openNote`. This bug's orphan exists **only** when the user declines that prompt — so if the prompt goes, the described mechanism may not survive, and wrapping `handleNewNote` in `requestLeave` would be either a no-op or something 51-C then has to neutralise. **This is a reason to sequence, not a diagnosis — nobody has verified it.** When 51-C lands, re-run the repro: if the orphan still appears it is a small fix on settled code; if it does not, close this row naming 51-C as what fixed it. Raised by the 51-C session, which carries the same interaction note from its side.
 
 ---
 
