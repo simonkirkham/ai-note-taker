@@ -1,53 +1,99 @@
-# Phase 51 — Tabs redesign _(Not Started)_
+# Phase 51 — Open-note bar redesign _(In Progress — 51-A done 2026-08-10)_
 
-**Goal:** the tabs on a note screen tell you at a glance what each note actually holds and which one is recording, instead of showing the same three tabs whether or not there is anything behind them.
+**Goal:** the notes you have open stay in front of you wherever you are in the app, instead of vanishing the moment you go back to your notes list and reappearing all at once when you open something.
 
 ## Summary
 
 | Slice | What the user gets | Status | Depends on |
 |-------|--------------------|--------|------------|
-| 51-A | A design, validated in a clickable prototype, for how the two tab strips on a note screen should look and behave | Not Started | — |
-| 51-B | The agreed design shipped in the real app | Not Started | 51-A |
-| 51-C | A recording keeps running while I read another note | Not Started | 51-A, 51-B |
+| 51-A | A design, validated in a clickable prototype, for how the open-note bar should behave | Done | — |
+| 51-B | My open notes stay visible on every screen, with my notes list as the first tab | Not Started | 51-A |
+| 51-C | A recording keeps running while I read another note | Not Started | 51-B |
 
-51-A is a **prototype spike** — its output is a locked design and rewritten scenarios for 51-B, not shipped code. 51-B cannot be specified until 51-A closes, so its scenarios below are placeholders.
+51-A was a **prototype spike**; it closed on 2026-08-10 with direction A locked. 51-B's scenarios below are the confirmed ones it produced.
 
-**51-C arrived from Phase 49 (was 49-C) on 2026-08-09.** It marks the recording note in the open-note bar and changes which notes stay mounted — the same bar 51-B redesigns and the same `NoteView` tab row. Splitting them across two phases meant two slices restructuring one surface, and the recording marker being designed twice. **51-C runs after 51-B** so it decorates a settled strip; 51-A must still prototype the recording states (below), or 51-B locks a design that 51-C invalidates.
+**Re-scoped during 51-A.** The phase opened as a redesign of the note's own *Quick notes / Transcript / Final notes* tabs. The human corrected it: that strip is fine and is **not changing**. The original problems about empty Transcript / Final notes tabs are **dropped, not deferred** — they described that strip. Do not re-file them.
+
+**51-C arrived from Phase 49 (was 49-C) on 2026-08-09.** It marks the recording note in the same bar 51-B rebuilds. It runs after 51-B so it decorates a settled design; 51-A confirmed the marker's treatment so 51-B does not lock something 51-C invalidates.
 
 ## Slices
 
 <!-- REVIEW SURFACE — the human reads this and stops. No technical artefact named below. -->
 
-### Slice 51-A — Prototype the tab design
+### Slice 51-A — Prototype the open-note bar _(Done 2026-08-10)_
 
-- **User value:** The note screen currently stacks **two unrelated tab strips** on top of each other and the lower one lies about what the note contains. Getting this right is a design question, not a coding one, so it gets proved in a throwaway prototype before any real work.
-- **The problems to solve** (what the prototype must answer):
-  1. **Two tab strips, one screen.** The open-note bar across the top (one tab per note you have open) sits directly above the note's own view tabs. They look similar, mean completely different things, and reading them together is confusing.
-  2. **Tabs that are always there whether or not they hold anything.** *Transcript* and *Final notes* are shown on **every** note — a note you have only typed in offers a Transcript tab with nothing in it and a Final notes tab you have to click to discover is empty. The tab strip should signal what the note has.
-  3. **Tabs that appear and disappear unpredictably.** Whatever the rule for showing a tab is, it must be legible to the user — a tab that vanishes mid-task is worse than one that is always present but visibly empty.
-  4. **They are ugly.** Visual treatment: hierarchy between the two strips, active/inactive states, spacing, and how the recording and paste-transcript controls sitting on the same row relate to them.
-- **Two further questions the prototype must settle** (added 2026-08-09):
-  5. **Where the open-note bar lives.** Today it shows only while a note is open, so going back to your notes list hides the notes you had lined up. Phase 49 deferred deciding whether it should stay visible on the notes list and folder views as a way back — that is the same hierarchy question as problem 1, so it is answered here rather than parked again. Prototype each direction both ways.
-  6. **How a recording note looks in the bar.** 51-C marks the note that is recording so you can see which one is live from any tab. Every direction must show that marker in its own visual language, and must still read correctly when the recording note is *not* the one on screen.
+- **User value:** how the bar should behave across Home is a design question, not a coding one, so it was proved in a throwaway prototype before any real work.
+- **Outcome:** four directions built and compared against the current behaviour — a pinned "My notes" tab, an always-present bar with no pinned tab, moving open notes into the sidebar, and today's behaviour as the baseline. **Direction A (pinned "My notes" tab) was chosen**, with the line under the bar removed and the bar merged into the page. Full record, including what was rejected and why: [`web/src/prototype/REFERENCE.md`](https://github.com/simonkirkham/ai-note-taker/blob/prototype/tabs-redesign/web/src/prototype/REFERENCE.md) on the `prototype/tabs-redesign` branch.
+- **Scenarios (GWT):** none — a spike has no acceptance scenarios.
+
+### Slice 51-B — My open notes stay visible everywhere
+
+- **User value:** going back to my notes list no longer hides everything I had open, and opening a note no longer makes a row of tabs appear from nowhere. What I have open is always in the same place.
 - **How it works:**
-  - Run as a throwaway frontend-only prototype on a `prototype/` branch — no backend, no specs, never merged.
-  - Present at least three genuinely different directions, not three shades of the current design. Candidate directions to cover: hide-until-populated, always-present-but-visibly-empty (badge/count/dimmed), and collapsing the two strips into a single hierarchy.
-  - Each direction is viewable across the note states that change the answer: nothing captured yet, typed notes only, recording in progress, transcript captured but not analysed, and fully analysed.
-  - The user picks one; the exit procedure rewrites **this doc's 51-B section** with the confirmed scenarios and UX patterns.
-- **Scenarios (GWT):** none — a spike has no acceptance scenarios. Its exit criterion is a design the user has approved and 51-B scenarios written into this doc.
+  - The tab bar is on **every** screen — notes list, folders, search and notes alike. It never appears or disappears.
+  - The first tab is **My notes**, pinned to the left with a home icon. It has no close button and cannot be closed.
+  - **My notes** is the highlighted tab whenever you are not reading a note — on the notes list, inside a folder, and on search results. Clicking it takes you to your notes list.
+  - Opening a note highlights that note's tab instead. Everything else in the bar stays exactly where it was.
+  - With nothing open, the bar is still there holding just **My notes** — so it is never a surprise when it fills up.
+  - With many notes open the strip scrolls sideways, and **My notes** stays pinned in view rather than scrolling away.
+  - The line under the bar is gone. The tab you are on and the page below it are one continuous surface, so the tab reads as the sheet in front.
 
-### Slice 51-B — Ship the agreed design
+- **Scenarios (GWT):**
 
-- **User value:** _To be written by the 51-A exit procedure._
-- **How it works:** _To be written by the 51-A exit procedure._
-- **Scenarios (GWT):** _To be written by the 51-A exit procedure — do not implement from this doc until they exist._
+```
+Scenario: Going back to my notes keeps my open notes in view
+  Given I am reading "Standup" and also have "Client call" open
+  When  I click the "My notes" tab
+  Then  I am on my notes list
+  And   "Standup" and "Client call" are both still shown as tabs
+  And   "My notes" is the highlighted tab
+
+Scenario: Opening a note changes nothing but the highlight
+  Given I am on my notes list with "Standup" and "Client call" open
+  When  I open "Standup"
+  Then  the same tabs are shown in the same order
+  And   "Standup" is the highlighted tab instead of "My notes"
+
+Scenario: The bar is there before I have opened anything
+  Given I have no notes open
+  When  I go to my notes list
+  Then  I see the tab bar holding only the "My notes" tab
+  And   "My notes" is the highlighted tab
+
+Scenario: Browsing a folder keeps my notes list highlighted
+  Given I have "Standup" open
+  When  I open a folder from the sidebar
+  Then  "My notes" is the highlighted tab
+  And   "Standup" is still shown as a tab
+
+Scenario: Searching keeps my open notes in view
+  Given I have "Standup" open
+  When  I search for something
+  Then  "My notes" is the highlighted tab
+  And   "Standup" is still shown as a tab
+
+Scenario: My notes cannot be closed
+  Given I have "Standup" open
+  Then  the "My notes" tab offers no way to close it
+
+Scenario: Closing my last note leaves the bar in place
+  Given I am reading "Standup" and it is the only note I have open
+  When  I close the "Standup" tab
+  Then  I am on my notes list
+  And   the bar is still shown, holding only the "My notes" tab
+
+Scenario: My notes stays reachable with many notes open
+  Given I have eight notes open and the tab strip scrolls sideways
+  When  I scroll the strip to its far end
+  Then  the "My notes" tab is still visible
+```
 
 ### Slice 51-C — A recording keeps running in a background tab
 
 - **User value:** I can look something up in another note while a meeting is still being recorded, without stopping the recording or losing what's been captured.
 - **How it works:**
   - Switching away from a note that is recording no longer asks anything — the recording carries on in the background.
-  - The recording tab is marked in the bar so it's obvious which note is live, and clicking it takes you straight back. The marker's visual treatment is whatever 51-A confirmed.
+  - The recording tab is marked with a red dot beside its title so it's obvious which note is live, and clicking it takes you straight back.
   - Returning to the recording tab shows the whole live transcript, including everything captured while you were elsewhere.
   - Closing a recording tab still asks to confirm, and stops the recording cleanly if you go ahead.
   - Only one recording can run at a time, as today: starting a recording in another tab is not offered while one is live.
@@ -82,37 +128,36 @@ Scenario: Only one note records at a time
 
 ## Build notes _(implementation — skip when reviewing)_
 
-### 51-A
-- **Run the `prototype` skill** ([`.claude/skills/prototype/SKILL.md`](../../.claude/skills/prototype/SKILL.md)). Worktree + branch per the CLAUDE.md prototype convention: `git worktree add ../ai-note-taker-slices/prototype-tabs-redesign -b prototype/tabs-redesign` (absolute path).
-- **Current state to prototype against:**
-  - *Open-note tab bar* — `web/src/components/OpenNoteTabs.tsx`, driven by `useOpenNoteTabs` (Phase 49-A). Deliberately **not** ARIA tabs (`role="tab"` obliges a matching `role="tabpanel"`; the panel here is the whole note screen) — see the comment at `OpenNoteTabs.tsx:7`. Returns `null` when no notes are open.
-  - *Note view tabs* — `NoteView.tsx:32-38` (`NoteTab = "quick" | "transcript" | "final"`), rendered at `:746` as a real ARIA `role="tablist"` with three `role="tabpanel"`s at `:785` / `:854` / `:871`.
-  - **Confirmed root of problem 2:** `TABS.map(...)` at `NoteView.tsx:747` has **no filter** — all three tabs render unconditionally, regardless of `transcriptText` / `transcriptDraft` / `summary`. The data needed to drive a conditional or badged tab strip is already in scope in the component (`transcriptText`, `transcriptDraft`, `summary`, `discussionPoints`, `decisions`, `isRecording`).
-  - Styling lives in the `tabStyles` CSS module shared by the tab row, panels and `tabRowControls` (which hosts `PasteTranscript` + `RecordControl` on the same row as the tabs).
-- **This is the second attempt at problem 1, not the first.** 49-A's build notes already instructed Stylist to "give the open-note bar a visually distinct treatment so they don't read as one control", and that shipped — raised chips against underlined text, with the reasoning written into `OpenNoteTabs.module.css:1-4`. It did not work. So a direction that only re-skins the two strips has already been tried; the prototype must change the **hierarchy**, not the palette.
-- **Constraint the prototype must respect:** a tab cannot simply disappear while recording — `activeTab` is force-set to `"transcript"` at `NoteView.tsx:474` when a recording starts. Any hide rule has to keep the active tab valid, and must not fight the BUG-34 / BUG-54 recording-leave guards.
-- **That constraint gets harder under 51-C, and the prototype must assume the harder version.** Today only the note on screen can record, so "recording ⇒ the Transcript tab is active" holds trivially. 51-C makes a **background** note able to record, so a hide rule has to be correct for a note the user is not looking at, and the open-note bar has to carry per-note recording state. Designing against today's single-mounted-note model would lock a design 51-C then invalidates — which is the whole reason 49-C was folded into this phase.
-- **Accessibility:** the note-view strip is a genuine ARIA tablist and must stay one. If a direction merges the two strips, re-check the `role="tab"`/`role="tabpanel"` pairing constraint that drove `OpenNoteTabs`' current markup.
-- **Exit procedure:** on approval, cherry-pick **only** the rewritten phase-doc commit to `main`. Never merge `prototype/` into `main` or into a slice branch. Real implementation starts fresh from this doc, not from prototype code.
+### 51-A _(Done)_
+- Ran the `prototype` skill on `prototype/tabs-redesign`. Confirmed design, rejected directions and rationale: `web/src/prototype/REFERENCE.md` on that branch. **Never merge it** — 51-B rebuilds from scratch off the GWTs above.
+- Re-scope is recorded above. The note-view strip (`NoteView.tsx:32-38`, the `role="tablist"` at `:746`) is **out of scope for the whole phase** and must not be touched.
 
 ### 51-B
-- _Not specified. Populated by the 51-A exit procedure._
-- Expect it to be **frontend-only** (the data driving any conditional/badged tab is already loaded), but confirm at exit — if a direction needs a "has a transcript" or "has final notes" signal the client doesn't already hold, that changes the shape.
-- **Two E2E contracts break silently under the likely directions. Both cost a red deploy gate, not a red PR — E2E runs only in the deploy gate.**
-  1. **Hide-until-populated kills `NoteTabsJourney`.** `tests/Browser.E2E/Journeys/NoteTabsJourney.cs:33-48` opens a **brand-new empty note** and clicks `note-tab-transcript` to assert the panel swaps rather than stacks. Under that direction the tab does not exist on an empty note, so the journey hunts a missing element to its timeout. The same click is inside `AppPage.AssertImportedTranscriptVisibleAfterReloadAsync` (`AppPage.cs:157`), which re-clicks the tab on every reload attempt — there the transcript *has* been imported, so it survives a populated-only rule, but not a rule keyed on anything narrower. Rewrite both in the same slice as the hide rule.
-  2. **Merging the strips breaks the 49-B reload contract.** Nine call sites depend on the open-note bar's markup — `AppPage.cs:330, 342, 347, 353, 360, 372, 873, 890` plus `OpenNoteTabsJourney` — and `data-tabs-reconciled` is load-bearing, not decorative: 49-B's notes record that restored tabs render from storage before the cards read lands, so a bare count assertion can pass on the pre-reconcile DOM and go red a tick later. Any merged markup must still expose a reconciled-set signal, or `AssertOpenTabCountAfterReloadAsync` becomes a coin toss. This is the failure mode BUG-57 already cost one deploy gate for.
-- **Vitest coverage to update alongside:** `web/src/__tests__/NoteView.test.tsx` asserts the three-tab strip directly at `:361, 368-370, 384-388, 401, 408, 422, 426, 568, 572, 601, 638, 1213`; `OpenNoteTabsPersistence.test.tsx:243` reads `open-note-tab-label`.
-- **Settles 49-A's orphaned deferral.** "Keeping the bar visible on home/folder views as a way back to open notes — revisit after 49-A ships; route to `phase-minor-changes.md` if wanted" was never routed anywhere. 51-A answers it (problem 5); 51-B ships the answer. Do not re-file it.
+- **Frontend-only.** No commands, events, projections, endpoints or CDK. The bar's state already exists (`useOpenNoteTabs`, Phase 49-A/B).
+- **The two changes that make the bar permanent:**
+  1. `web/src/App.tsx:507` gates the bar on `activeNoteId` — remove the gate; render it inside `styles.appMain` on every route.
+  2. `OpenNoteTabs.tsx:29` returns `null` when `tabs.length === 0` — remove it; the pinned tab means the bar is never empty.
+- **The pinned tab must NOT carry `data-testid="open-note-tab"`.** Give it its own testid. Two failures otherwise, one of them a suite hang:
+  1. Every count assertion shifts by one.
+  2. `AppPage.CloseAllTabsExceptAsync` (`AppPage.cs:367`) loops `while OpenNoteTabs.Count > 1` clicking `open-note-tab-close`. The pinned tab has no close button, so the loop never terminates — an E2E **hang**, the failure class that already cost a 44-minute gate ([`docs/learnings/e2e-gate-hang-and-the-diagnostic-that-caused-it.md`](../learnings/e2e-gate-hang-and-the-diagnostic-that-caused-it.md)).
+- **`AssertNoOpenTabBarAsync` inverts and must be rewritten in this slice.** `OpenNoteTabsJourney.cs:102` asserts the bar is *gone* after closing the last tab ("with no bar left behind"); under this design it is always present. Replace with "the bar remains, holding only the pinned tab". `AppPage.cs:341` is its only caller.
+- **`data-tabs-reconciled` now matters on the list screen.** Restored tabs render from storage before the cards read lands regardless of route, so the provisional-set problem 49-B solved on the note route now exists on every route. Keep the attribute on the bar and keep `AssertOpenTabCountAfterReloadAsync` (`AppPage.cs:861`) as the only cross-reload count path.
+- **A11y — keep 49-A's model unchanged:** a labelled `<nav aria-label="Open notes">` of real buttons with `aria-current="page"` on the active one. The pinned tab is another button in the same nav. **No ARIA tablist** — merging the two strips was direction C and was rejected, so the `role="tab"`/`role="tabpanel"` pairing constraint never arises.
+- **Sticky pinned tab:** `position: sticky; left: 0` inside the existing `overflow-x: auto` strip, with a z-index above the scrolling tabs.
+- **⚠ The merge treatment is an app-wide visual change, not a bar change.** Confirmed treatment: the main content area repaints from `--color-bg` to `--color-surface`, the active tab is surface so tab and page are one sheet, inactive tabs sit on `--color-bg`, and the `border-bottom` on `.bar` (`OpenNoteTabs.module.css`) is removed. That repaint touches **every screen** — note, list, folder, search — across **12 themes in light and dark**, and cards lose contrast where surface now sits on surface. Chosen with that blast radius stated. **Budget a Stylist pass and a full theme sweep**; do not treat this as a one-component change.
+- **Vitest to update:** `OpenNoteTabsPersistence.test.tsx:243` reads `open-note-tab-label`; `OpenNoteTabs` component specs assert the empty-state `null` return that this slice removes.
+- **Settles 49-A's orphaned deferral.** "Keeping the bar visible on home/folder views — route to `phase-minor-changes.md` if wanted" was never filed anywhere; this slice is the answer. Do not re-file it.
+- **Carried out of 51-A undecided — NOT in this slice.** The prototype flagged already-open notes in the notes list (an "Open" pill and a left edge on the card). Never discussed. Route to `phase-minor-changes.md` only if the human asks.
 
 ### 51-C
-- **Arrived from 49-C on 2026-08-09.** Build notes below are that slice's, unchanged except where 51-B now owns the visual design.
+- **Arrived from 49-C on 2026-08-09.** Notes below are that slice's, unchanged except that 51-B now owns the marker's visual design.
 - **The crux.** This slice changes the mounting model: the recording note's `NoteView` must stay mounted while another tab is active. `useTranscription` (`web/src/hooks/useTranscription.ts:99`) owns the mic stream, the socket and the transcript buffer, and unmounting it is exactly the transcript-loss failure BUG-34 was filed for.
 - **Two candidate designs — pick one in a spike/design step before writing code:**
   1. **Keep-mounted:** render the recording note's `NoteView` alongside the active one, hidden (`hidden` attribute / `display:none`), so its hook keeps running. Cheapest diff; risks: duplicate global effects (`beforeunload`, the `popstate` trap, autofocus at `NoteView.tsx:251`) firing from a hidden note, and a hidden Tiptap editor holding state.
   2. **Hoist the session:** move `useTranscription` above the route into a provider keyed by `noteId`, so `NoteView` consumes a session it does not own. Cleaner long-term, larger blast radius in the app's most failure-sensitive component.
   - Either way, every effect in `NoteView` that assumes "mounted ⇒ visible/active" must be audited and gated on active-ness.
 - **Remove** the 49-A tab-switch confirm; **keep** the close-tab confirm and the `beforeunload`/`popstate` guards. This drops [CHANGE-33]'s guarded-exit count from 7 to 6 — check that item's copy still reads correctly if it is still open.
-- **Bar affordance:** the recording marker on the tab (`aria-label` includes "recording"), driven by the same status the record control uses. **Visual design comes from 51-A and ships in 51-B's strip** — 51-C wires it to real recording state rather than inventing a treatment.
+- **Bar affordance:** a pulsing red dot left of the tab title, `aria-label` including "recording", driven by the same status the record control uses. Treatment confirmed in 51-A and shipped in 51-B's bar; this slice wires it to real recording state.
 - **Single-recorder rule:** the record control in a non-recording tab is disabled with a reason while another tab is live (today this is implicit — one note is mounted; it becomes explicit here).
 - **Tests:** vitest cannot prove "audio kept flowing" — assert the *hook is not torn down* (transcript state survives a tab switch, cleanup not called) and that the control is disabled elsewhere. E2E covers the tab indicator + no-confirm-on-switch; a real audio assertion is out of scope for the gate.
 - **Acceptance criteria:**
@@ -128,11 +173,11 @@ Frontend-only, so signals go through `recordRumEvent` (`web/src/rum.ts:10`) — 
 
 | Silent failure mode | Slice | Signal |
 |---|---|---|
-| A hide rule mis-fires and leaves the user unable to reach their transcript — no error, silent by construction | 51-B | `recordRumEvent("noteTabHidden", { tab, reason })` when a tab is withheld, so a wrongly-hidden populated tab is visible in RUM |
+| The bar renders on every route now, so a reconcile mass-drop is visible on screens 49-B never covered — and a user on the list screen has no note context to notice it | 51-B | already covered: `tabsDropped` (`{ dropped, remaining }`, 49-B). Confirm it still fires from the list route, not only the note route |
 | **Recording torn down by a tab switch** — the whole point of 51-C, and invisible until the user finds an empty transcript | 51-C | `recordRumEvent("recordingUnmountedWhileActive", { noteId })` in the transcription cleanup path when status is still recording; this alarm-in-a-log-line is the slice's regression detector |
 
-Run the `observability-brief` skill against 51-B's confirmed scenarios once the 51-A exit writes them — the row above is the one failure mode already visible without them.
+Run the `observability-brief` skill against 51-B's scenarios before implementation.
 
 ### Deploy-time
 - 51-A: **zero** — prototype branch, never deployed.
-- 51-B and 51-C: expected frontend-only → web deploy, **neutral**. Confirm at 51-A exit; if a direction turns out to need a backend field, the route-contract guardrail applies (a frontend-only deploy against an old backend 404s).
+- 51-B and 51-C: **neutral.** Web-only — `detect-changes` reports `backend=false` and `cdk deploy` is skipped. **No API route is added, moved or renamed**, so the frontend-only-deploy route-contract hazard (Phase 34-B) does not apply.

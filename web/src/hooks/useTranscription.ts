@@ -150,6 +150,9 @@ export function useTranscription(noteId: string): UseTranscriptionResult {
   // BUG-55: the in-flight stop sequence and the commit POST it fires, so a caller that is about to
   // destroy the session's auth can wait for them. Null until Stop runs.
   const stopSequenceRef = useRef<Promise<void> | null>(null);
+  // BUG-72: true while the stop sequence is still running. In local mode that is the small.en pass
+  // (plus 1:1 diarization) — minutes — and the BETTER transcript only exists once it resolves.
+  const stopInFlightRef = useRef(false);
   const commitPostRef = useRef<Promise<void> | null>(null);
   const checkpointTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   // The committed transcript a resumed recording is continuing (plus separator),
@@ -304,7 +307,27 @@ export function useTranscription(noteId: string): UseTranscriptionResult {
 
   useEffect(
     () => () => {
-      commitTranscript();
+      // BUG-72: do not commit the INTERIM text while the stop sequence is still running. In local
+      // mode it is the small.en pass (plus diarization) that produces the transcript worth keeping,
+      // and committing here would send the live base.en text and latch `committedRef` — so when the
+      // better result lands minutes later its own commitTranscript() early-returns and it is
+      // discarded silently. The sequence's own POST outlives the route change (the one destination
+      // that does not is sign-out, which BUG-55 handles by waiting).
+      //
+      // CHAIN, do not skip. Skipping would make the sequence the SOLE owner of the commit, and it
+      // has two ways to never reach one: a throw outside its inner try (`localCleanupRef`, or
+      // `discard()` from the finally), and the BUG-56 hang. Either would lose the transcript
+      // outright — worse than the bug being fixed. Chaining commits the live text only on those
+      // paths, i.e. exactly the pre-BUG-72 behaviour, and is a no-op on the happy path because
+      // `commitTranscript` is one-shot. `noteId` is closed over, so a late call still targets the
+      // right note. (A hung sequence never settles, so it is still uncovered — see BUG-73.)
+      if (stopInFlightRef.current) {
+        void Promise.resolve(stopSequenceRef.current)
+          .catch(() => {})
+          .then(() => commitTranscript());
+      } else {
+        commitTranscript();
+      }
       cleanup();
       if (diarizationTimerRef.current) clearTimeout(diarizationTimerRef.current);
     },
@@ -350,6 +373,9 @@ export function useTranscription(noteId: string): UseTranscriptionResult {
 
   const startRecording = useCallback((includeCallAudio: boolean, autoAnalyse: boolean, resumeFrom?: string) => {
     stoppedRef.current = false;
+    // BUG-72: reset alongside the other latches, so a new recording can never inherit a previous
+    // sequence's in-flight flag.
+    stopInFlightRef.current = false;
     analyseOnCompletionRef.current = autoAnalyse;
     const resumePrefix = resumeFrom ? `${resumeFrom}\n${RESUME_SEPARATOR}\n` : '';
     resumePrefixRef.current = resumePrefix;
@@ -645,6 +671,7 @@ export function useTranscription(noteId: string): UseTranscriptionResult {
     // 48-A: in local mode, flush the on-device engine's final window before committing so the
     // last few seconds aren't lost. 48-B: finish() also runs the higher-quality medium.en pass over
     // the whole recording and resolves with that transcript (or null → keep the live base.en text).
+    stopInFlightRef.current = true;
     stopSequenceRef.current = (async () => {
       if (localActiveRef.current) {
         localActiveRef.current = false;
@@ -694,7 +721,9 @@ export function useTranscription(noteId: string): UseTranscriptionResult {
       uploadRecording();
       cleanup();
       setStatus('stopped');
-    })();
+    })().finally(() => {
+      stopInFlightRef.current = false;
+    });
   }, [cleanup, commitTranscript, uploadRecording]);
 
   // BUG-55: resolves once the stop sequence AND the commit POST it fires have finished. In cloud
@@ -759,6 +788,7 @@ export function useTranscription(noteId: string): UseTranscriptionResult {
     resumePrefixRef.current = '';
     lastDraftRef.current = null;
     committedRef.current = false;
+    stopInFlightRef.current = false;
     recordedChunksRef.current = [];
     recordingUploadedRef.current = false;
     if (diarizationTimerRef.current) {

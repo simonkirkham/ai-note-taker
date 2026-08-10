@@ -73,7 +73,7 @@ The desktop app can transcribe locally via a bundled `whisper-cli.exe` (fetched 
 | # | Given / When / Then | Pass? |
 |---|---------------------|-------|
 | 1 | **Binary bundled:** Given a packaged install, Then `resources/whisper/whisper-cli.exe` + its `*.dll` are present next to the app. | ☐ |
-| 2 | **Model downloads on first launch:** Given a fresh install with the setting on, When I first open the app, Then the toggle shows "Preparing… downloading models" and later flips to ready (model cached under `%APPDATA%/AI Note Taker/models/ggml-base.en.bin`). | ☐ |
+| 2 | **Model downloads on first launch:** Given a fresh install with the setting on, When I first open the app, Then the toggle shows "Preparing… downloading models" and later flips to ready (model cached under `%APPDATA%/ai-note-taker-desktop/models/ggml-base.en.bin`). | ☐ |
 | 3 | **Live transcript is produced on-device:** Given the model is ready and Transcription = On device, When I record and speak, Then a live transcript appears and **no** `/transcription/credentials` request is made (check DevTools Network — cloud STT is not used). | ☐ |
 | 4 | **Live keeps pace (step 2):** Given a several-minute meeting, When I record locally, Then the live transcript keeps up with speech without unbounded growing lag on this machine. | ☐ |
 | 5 | **Saved transcript is complete:** Given I stop, Then the last few seconds appear (the tail window flushed) and the note saves + analyses as normal. | ☐ |
@@ -86,7 +86,7 @@ With local transcription on, the live transcript uses the fast `base.en`; on sto
 
 | # | Given / When / Then | Pass? |
 |---|---------------------|-------|
-| 1 | **Final model downloads after live:** Given local mode selected, Then `base.en` lands first (recording becomes available) and `medium.en` continues downloading in the background (`%APPDATA%/…/models/ggml-medium.en.bin`, ~1.5 GB). | ☐ |
+| 1 | **Final model downloads after live:** Given local mode selected, Then `base.en` lands first (recording becomes available) and `medium.en` continues downloading in the background (`%APPDATA%/ai-note-taker-desktop/models/ggml-medium.en.bin`, ~1.5 GB). | ☐ |
 | 2 | **Final pass upgrades the transcript:** Given `medium.en` is present, When I record locally and stop, Then a brief "Finalising transcript…" shows and the saved note settles on the higher-quality text (proper nouns/terms more accurate than the live view). | ☐ |
 | 3 | **Final pass keeps up:** Given a recording of length N, When the final pass runs, Then it finishes in less than N and the note is not stuck "Finalising". | ☐ |
 | 4 | **Graceful degrade:** Given `medium.en` has not finished downloading, When I stop a local recording, Then the live `base.en` text is committed (no error, no indefinite wait). | ☐ |
@@ -157,7 +157,7 @@ BUG-53's checklist above was never completed, and the live path shipped dead: `W
 
 The whole point of this slice is the log: an installed build is otherwise unobservable (whisper-server's stdout is not captured, the console needs DevTools), which is why BUG-56 and BUG-65 both had to be diagnosed by reading code instead of evidence.
 
-**The log lives at `%APPDATA%\AI Note Taker\local-transcription.log`** (one rotation, `.log.1`, capped at 512 KB). It contains counts and timings only — no transcript text, no file paths beyond the model's basename.
+**The log lives at `%APPDATA%\ai-note-taker-desktop\local-transcription.log`** (one rotation, `.log.1`, capped at 512 KB). It contains counts and timings only — no transcript text, no file paths beyond the model's basename.
 
 **`rtf` is the column that matters:** inference time ÷ audio duration. Below 1.0 the engine is faster than real time and the live view can keep pace; above 1.0 it is falling behind by definition.
 
@@ -221,18 +221,13 @@ The app now answers Electron's permission requests itself instead of riding the 
 
 > **Why row 7 exists.** The unit specs assert against the shapes we *believe* Electron passes; they cannot prove the wire format. Review caught the first implementation comparing the check handler's origin raw — Electron hands it a GURL serialised with a **trailing slash** (`http://localhost:5180/`), which never matched the bundle origin, so **every check was denied while all 17 specs passed**. Symptoms if it regresses: meeting reminders fall back to a plain `alert()`, microphone device names show blank in any picker, and Chromium's pre-flight can fail `getUserMedia` before the request handler is ever consulted. Row 7 is the only check that would catch it.
 
-## CHANGE-33 — the leave confirm announces its destination (screen reader)
+## CHANGE-33 — the leave confirm's screen-reader announcement _(not verified, by decision)_
 
-The mid-recording "Still recording — …?" confirm now names where "Leave & save" will take you, and a second guarded click **replaces** that destination while the dialog is already open. The visible half is covered by tests; the **announced** half is not, and cannot be — jsdom has no accessibility tree and no screen reader. The markup is `role="alertdialog"` + `aria-live="assertive"` + `aria-atomic="true"` + a dynamic `aria-label`; behaviour for a *labelled atomic live region* varies between implementations, so this is reasoned, not verified. Applies to the **web app equally** — the desktop app renders the same bundle, so either surface is a valid place to check. Use NVDA or Narrator.
+The mid-recording "Still recording — …?" confirm names its destination, and a second guarded click replaces that destination while the dialog is already open. The **visible** half is covered by tests. The **announced** half is not, and cannot be — jsdom has no accessibility tree and no screen reader, so `role="alertdialog"` + `aria-live="assertive"` + `aria-atomic="true"` + a dynamic `aria-label` is reasoned from the ARIA spec rather than observed.
 
-| # | Given / When / Then | Pass? |
-|---|---------------------|-------|
-| 1 | **The confirm is announced at all:** Given a recording is running, When I click Home in the sidebar, Then the screen reader announces the confirm including the destination ("go to Home"). | ☐ |
-| 2 | **A replaced destination is re-announced:** Given that confirm is showing, When I then click a folder in the sidebar, Then the screen reader announces the **new** destination ("go to <folder>") — silence here is the failure this markup exists to prevent. | ☐ |
-| 3 | **It is announced once, not twice:** Given either of the above, Then the phrase is read **once** — a double reading means the label and the content are both being announced and the label should be dropped. | ☐ |
-| 4 | **The whole phrase is read, not the changed words:** Given a replaced destination, Then the announcement is the full "Still recording — …?" phrase, not a bare fragment like "Clients?" (this is what `aria-atomic` buys). | ☐ |
+**Decision (2026-08-10): the user does not require this verified — do not re-raise it.** Screen-reader support is not a priority for this single-user app. The markup stays because it is free and strictly better than the bare banner it replaced; nobody needs to confirm what it does.
 
-> **Why this is a manual check.** Every automated gate is structurally blind to it: vitest/jsdom applies no CSS and builds no accessibility tree, and no E2E journey asserts the banner. The tests can prove the attributes are *present* — they cannot prove a screen reader does anything useful with them. If rows 1–2 fail, the fallback is to move `aria-live` back onto the text span; if row 3 fails, drop the `aria-label` and let the content name the dialog.
+If it is ever raised: start a recording, click Home, then click a folder, and listen. Silence on the second click means the swap is not announced — move `aria-live` back onto the text span. A double reading means the label and content are both announced — drop the `aria-label`.
 
 ## Troubleshooting
 

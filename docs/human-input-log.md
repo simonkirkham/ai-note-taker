@@ -13,6 +13,7 @@ Recorded by the [`human-input-log`](../.claude/skills/human-input-log/SKILL.md) 
 | **Clarification** | A question raised because the spec/context left a gap | Often | Better default, doc, or a spec-template field |
 | **Decision** | "Which of these approaches?" — a choice handed to the human | Sometimes | Codify the heuristic in `CLAUDE.md` |
 | **Unblock** | The human had to sort something out (red build, env, token, account) | Often | Guardrail or automation |
+| **Stall** | The human had to poke a session that had stopped ("still going?", "carry on") | Nearly always | `CLAUDE.md` → `### When NOT to hand back`. Captured by `scripts/stall-scan.sh`, not by the transcript scan |
 
 The signal is the **avoidable** rows and their root cause. Gate counts are noise unless a gate repeats.
 
@@ -62,3 +63,22 @@ One row per interruption. Newest slices at the top.
 ## Analysis
 
 Run by the `human-input-log` skill in **analyse** mode (on a cadence or on demand). Tallies avoidable rows by Type and root cause across the whole log, names the top recurring cost, and graduates a concrete fix. Recurring causes and their pre-emptions are codified directly in `CLAUDE.md` guardrails / skill rules — not restated here.
+
+### Run 1 — 2026-08-10 (first analyse pass)
+
+35 logged rows, **7 avoidable**: 3 Permission (tooling gaps), 3 Clarification, 1 repeated Gate. Each already had its fix applied at the time. Two root causes recurred and are now codified:
+
+| Recurring cause | Rows | Codified in |
+|---|---|---|
+| A tool or command outside the allow-list / sandbox, prompting mid-run | 42-A, 43-A, 44-A | `CLAUDE.md` guardrail (never `Monitor` for CI waits) + `settings.local.json` sandbox config |
+| Asking a question the human cannot usefully answer *yet* — before the data is in, or in a medium that cannot convey the answer | 50-B, MPI-11/9, BUG-67 | `CLAUDE.md` → `### When NOT to hand back` rule 1, and the prototype rule |
+
+**The finding that mattered: the log was measuring the wrong thing.** It records interruptions where the *agent asked* — but not where the *human had to poke a stopped session*. A nudge does not look like a question, so the transcript scan never saw it. Across the same history the log holds **1** such row; the real count is **22** — 3.4% of everything the human typed, median 28 minutes' wait each. That single category outweighs every logged cause combined.
+
+Fixes applied this run:
+
+1. New **Stall** type in the taxonomy above.
+2. `scripts/stall-scan.sh` — mechanical capture, the counterpart to the permission hook. Capture mode now runs it per slice.
+3. `CLAUDE.md` → `### When NOT to hand back` — three rules targeting the measured causes: never ask permission to continue agreed work (4 occurrences, every one answered yes); never end a turn describing what you are about to do (6); `⏳ STILL RUNNING` must be backed by a real background job.
+
+Remaining uncovered: 4 of 22 were the connection dying mid-reply — not fixable by a rule; mitigated by running long work as background jobs.

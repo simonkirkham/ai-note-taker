@@ -49,6 +49,8 @@ Hawk was ~46% of the slice's spend and every round was load-bearing. A "copy onl
 
 ## Residual
 
-The screen-reader announcement (assertive + atomic + a label that duplicates the visible text) is reasoned from the ARIA spec, not verified against a real screen reader. Behaviour for a *labelled atomic live region* genuinely varies between implementations. Filed as a manual check in [`desktop/MANUAL-VERIFICATION.md`](../../desktop/MANUAL-VERIFICATION.md). It is strictly better than the bare banner either way.
+The screen-reader announcement is reasoned from the ARIA spec, not verified against a real screen reader. **Closed by decision, 2026-08-10: the user does not require it verified** — screen-reader support is not a priority for this single-user app, and the markup is free and strictly better than the bare banner either way. Recorded in [`desktop/MANUAL-VERIFICATION.md`](../../desktop/MANUAL-VERIFICATION.md) so it is not re-raised.
+
+Worth separating the two things review flagged here: the *inert layout fix* was a *defect* — the change genuinely did not work. The *unverified announcement* is a *risk the owner is entitled to accept*. Review is right to surface both; only the first is automatically the agent's to close.
 
 Related: [BUG-54 — guarding every exit](bug54-guarding-every-exit.md).

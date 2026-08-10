@@ -60,10 +60,10 @@ public record ContentEdited(NoteId NoteId, string Content)     : NoteEvent;  // 
 public record NoteTagged(NoteId NoteId, string Tag)            : NoteEvent;
 public record NoteUntagged(NoteId NoteId, string Tag)          : NoteEvent;
 public record NoteDateSet(NoteId NoteId, DateOnly? Date)       : NoteEvent;  // null = cleared
-public record AgendaItemAdded(NoteId NoteId, Guid ItemId, string Text, int Position) : NoteEvent;  // meeting agenda (Phase 43); Position = capture order
-public record AgendaItemDiscussedSet(NoteId NoteId, Guid ItemId, bool Discussed) : NoteEvent;  // tick / untick an agenda item (43-B)
-public record AgendaItemTextEdited(NoteId NoteId, Guid ItemId, string Text) : NoteEvent;  // edit an agenda item's text (43-C)
-public record AgendaItemRemoved(NoteId NoteId, Guid ItemId) : NoteEvent;  // remove an agenda item (43-C)
+public record AgendaItemAdded(NoteId NoteId, Guid ItemId, string Text, int Position) : NoteEvent;  // meeting agenda (Phase 43); Position = capture order. 43-H2: NO LONGER WRITTEN or folded — retained so history still parses
+public record AgendaItemDiscussedSet(NoteId NoteId, Guid ItemId, bool Discussed) : NoteEvent;  // tick / untick (43-B). 43-H2: no longer written or folded — retained so history still parses
+public record AgendaItemTextEdited(NoteId NoteId, Guid ItemId, string Text) : NoteEvent;  // edit text (43-C). 43-H2: no longer written or folded — retained so history still parses
+public record AgendaItemRemoved(NoteId NoteId, Guid ItemId) : NoteEvent;  // remove (43-C). 43-H2: no longer written or folded — retained so history still parses
 public record TagsSuggested(NoteId NoteId, IReadOnlyList<string> Tags) : NoteEvent;  // AI provenance (v1)
 public record TagsSuggestedV2(NoteId NoteId, IReadOnlyList<string> Tags, string ModelId, string PromptVersion) : NoteEvent;  // AI provenance (v2, 10-M)
 public record ActionItemsSuggested(NoteId NoteId, IReadOnlyList<Guid> ActionItemIds) : NoteEvent;  // AI provenance (v1)
