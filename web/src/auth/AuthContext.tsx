@@ -47,8 +47,8 @@ export function AuthProvider({
   // suppresses the cold-start silent refresh (the BUG-15 regression it exists to prevent), and
   // BUG-60's storageBlocked seed renders its message while the arm that strips `?code=` and emits
   // the signal declines to run. Both reproduced by review, both pre-existing, neither regressed
-  // here. Filed as BUG-77 rather than certified as intended (BUG-76 was claimed by another
-  // session between running next-doc-id.sh and writing this line).
+  // here. Filed as BUG-78 rather than certified as intended (BUG-76 and BUG-77 were each claimed by another
+  // session between running next-doc-id.sh and writing the line — twice).
   const hasOAuthCode = clientId !== '' && searchParams.has('code')
   const shouldBootstrapRefresh = clientId !== '' && !initialToken && !persisted && !hasOAuthCode
   // Returning from the in-app calendar consent (a `code` plus our calendar_state marker). Keep the

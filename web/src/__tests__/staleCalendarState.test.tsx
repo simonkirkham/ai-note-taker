@@ -191,7 +191,7 @@ describe('a stale calendar_state does not strand the gate (BUG-71)', () => {
     )
 
     await waitFor(() => expect(screen.getByTestId('loading')).toHaveTextContent('ready'))
-    // Characterisation, not specification: this asserts TODAY's behaviour. BUG-77 owns flipping
+    // Characterisation, not specification: this asserts TODAY's behaviour. BUG-78 owns flipping
     // it — deriving from a truthy `code` makes storageBlocked false here — and that fix should
     // expect this line to change.
     expect(screen.getByTestId('blocked')).toHaveTextContent('blocked')
