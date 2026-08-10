@@ -42,8 +42,17 @@ export function AuthProvider({
   // Returning from the in-app calendar consent (a `code` plus our calendar_state marker). Keep the
   // gate in a loading state while we restore the session and POST the connect, so the sign-in
   // screen never flashes mid-connect.
+  // BUG-71: match the returned `state` against the stored marker, not merely "a marker exists".
+  // An ABANDONED calendar connect (started, never completed) leaves `calendar_state` in
+  // sessionStorage indefinitely. A later ORDINARY sign-in return then satisfied this, seeded
+  // `authLoading = true`, and took the sign-in exchange path — which never clears authLoading. The
+  // gate sat on its loading state forever, recoverable only by clearing site data, which is exactly
+  // what the affected user is least likely to try. The effect below already performs this same
+  // comparison before acting on the branch; the derivation was simply weaker than the branch it
+  // predicts, and predicting the wrong branch is what stranded the user.
   const isCalendarConnectReturn = hasOAuthCode && typeof window !== 'undefined'
     && safeSession.get('calendar_state') != null
+    && new URLSearchParams(window.location.search).get('state') === safeSession.get('calendar_state')
   const [authLoading, setAuthLoading] = useState(shouldBootstrapRefresh || isCalendarConnectReturn)
   const [forbidden, setForbidden] = useState(false)
   const [sessionExpired, setSessionExpired] = useState(false)
@@ -206,6 +215,14 @@ export function AuthProvider({
 
     safeSession.remove('pkce_code_verifier')
     safeSession.remove('pkce_state')
+    // BUG-71: a sign-in return means any calendar-connect markers are from an ABANDONED attempt —
+    // the user went to Google for a sign-in, not for the connect. Left behind they accumulate for
+    // the life of the tab; the state-match above stops them stranding the gate, and clearing them
+    // here stops them lingering at all.
+    safeSession.remove('calendar_state')
+    safeSession.remove('calendar_verifier')
+    safeSession.remove('calendar_workspace')
+    safeSession.remove('calendar_provider')
     window.history.replaceState({}, '', window.location.pathname)
 
     exchangeCode(window.location.origin, code, verifier)
