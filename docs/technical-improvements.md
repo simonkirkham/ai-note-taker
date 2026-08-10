@@ -434,7 +434,17 @@ This is [BUG-69] recurring above the level TI-68 fixed. BUG-69 is closed correct
 
 **Fix direction, cheapest first:**
 
-1. **Make the hook wait rather than fail.** At the top of `.githooks/pre-commit`, detect a competing gate and sleep-and-recheck with a bounded deadline and a clear message, instead of running straight into contention. Waiting is strictly better than a false red — the commit was going to take minutes anyway. **Detect on more than vitest:** the 28-MSBuild measurement above is the point — the hook runs the backend suite too, so `pgrep -fc 'vitest run'` alone under-counts the load it is about to add to. Match `dotnet test`/MSBuild as well, or gate on load average, which catches both without enumerating process names.
+1. **Make the hook wait rather than fail — and gate on LOAD AVERAGE, not a process count.** At the top of `.githooks/pre-commit`, sleep-and-recheck against a bounded deadline with a clear message, instead of running straight into contention. Waiting is strictly better than a false red — the commit was going to take minutes anyway. **Bound the wait** (~10 min, then proceed anyway): an unbounded wait stalls a session rather than saving one. Use:
+
+   ```bash
+   awk -v c=$(nproc) '{ printf "%.2f\n", $1/c }' /proc/loadavg   # ratio ≳ 1.0 = saturated
+   ```
+
+   **Two process-count probes were tried on the way here and BOTH were broken** — worth recording, because each looked obviously correct:
+   - `pgrep -fc 'vitest run'` is **blind to the backend**. The hook runs xUnit too; the measurement above found 7 vitest processes beside 3 `dotnet test` and 28 MSBuild, so a session polling only vitest sees a quiet box while 31 backend processes fill it.
+   - **`pgrep -fc` self-matches, so it is never zero.** `pgrep -fc 'qqq-isolated-nonsense-qqq'` returns **1** on an idle machine — the invoking shell's own command line contains the pattern — and still 1 from inside a script file. Every count is inflated by exactly one, so `count > 0 → wait` can never be satisfied and `count > 2` silently means 1. Widening the pattern fixes the first defect and not this one. The `[v]itest` bracket trick cannot be A/B-tested against the naive form on one command line either: the shell's cmdline then contains both literals and both match.
+
+   Load average has neither flaw — no self-match, and it sees every kind of competing work rather than the kinds someone remembered to name.
 2. **Or take a lock** around the heavy gate (`flock` on a file under the repo root), so the suites serialise across worktrees by construction rather than by politeness.
 3. **Not "raise the timeout"** — that hides the contention and slows the honest failure case.
 
