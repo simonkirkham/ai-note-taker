@@ -207,7 +207,8 @@ for p in Api Projector TranscribeCompletion; do
 done
 cdk synth
 
-# Deploy to AWS
+# Deploy to AWS — re-run the publish loop above first; cdk packages whatever is on
+# disk, and a worktree's artefacts are only rebuilt by the hook when absent
 cdk deploy
 ```
 
