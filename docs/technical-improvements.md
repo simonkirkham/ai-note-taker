@@ -419,13 +419,22 @@ The tier that catches what [TI-59] cannot: latency and the whole capture→engin
 | Touched by the committing slice? | **No** — neither file was in its diff |
 | Result in isolation, minutes later | **13/13 pass** |
 
+Measured again ~90 min later, independently, by the other session — the fuller picture, and the reason a vitest-only count understates it:
+
+| Processes | Count |
+| --- | --- |
+| `vitest run` | 7 |
+| `dotnet test` | 3 |
+| MSBuild | **28** |
+| Load | 11.3 instant, **18** on the 15-min average, 16 cores |
+
 **Why [TI-68] does not cover this.** TI-68 capped `web/vite.config.ts` to `maxWorkers: 2` and fixed the single-suite case decisively (uncapped+contended failed in 3 independent runs; capped has never failed in 13+). But the cap bounds **one suite**, not the machine. N sessions × (2 vitest workers + a node process + `tsc` + `eslint`) is unbounded by design, and the backend half is worse: only `Analysis.Eval` and `Infrastructure.Assertions` disable xUnit parallelism, so a frontend-only slice still triggers an uncapped backend run through the hook. TI-68's own row makes the matching point from the other side — *"two capped runs are 4 workers on 16 cores, which is not a contended condition"* — which is true, and is precisely why four of them is.
 
 This is [BUG-69] recurring above the level TI-68 fixed. BUG-69 is closed correctly; its fix was right for one machine, one session.
 
 **Fix direction, cheapest first:**
 
-1. **Make the hook wait rather than fail.** Poll `pgrep -fc 'vitest run'` (and load) at the top of `.githooks/pre-commit`; if another full suite is live, sleep and re-check with a bounded deadline and a clear message, instead of running straight into contention. Waiting is strictly better than a false red — the commit was going to take minutes anyway.
+1. **Make the hook wait rather than fail.** At the top of `.githooks/pre-commit`, detect a competing gate and sleep-and-recheck with a bounded deadline and a clear message, instead of running straight into contention. Waiting is strictly better than a false red — the commit was going to take minutes anyway. **Detect on more than vitest:** the 28-MSBuild measurement above is the point — the hook runs the backend suite too, so `pgrep -fc 'vitest run'` alone under-counts the load it is about to add to. Match `dotnet test`/MSBuild as well, or gate on load average, which catches both without enumerating process names.
 2. **Or take a lock** around the heavy gate (`flock` on a file under the repo root), so the suites serialise across worktrees by construction rather than by politeness.
 3. **Not "raise the timeout"** — that hides the contention and slows the honest failure case.
 
