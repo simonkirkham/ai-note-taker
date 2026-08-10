@@ -13,7 +13,7 @@ function GoogleMark() {
 }
 
 export default function SignInPage() {
-  const { signIn } = useAuth()
+  const { signIn, storageBlocked } = useAuth()
 
   return (
     <div className={styles.signInPage}>
@@ -25,6 +25,15 @@ export default function SignInPage() {
           <GoogleMark />
           Sign in with Google
         </button>
+        {/* BUG-60: shown when the browser refused to store the PKCE verifier. Before this, the
+            redirect fired anyway and the user bounced back here with nothing said, forever. */}
+        {storageBlocked && (
+          <p role="alert" data-testid="storage-blocked-message" className={styles.signInError}>
+            Sign-in couldn’t be completed — your browser didn’t keep the data it needs. This
+            usually means site data is blocked; allow cookies and site data for this site, or leave
+            private browsing, then try again.
+          </p>
+        )}
       </div>
     </div>
   )
