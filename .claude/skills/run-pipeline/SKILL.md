@@ -7,7 +7,9 @@ description: Drive a slice (or a whole phase) through the project pipeline end t
 
 Orchestrates the slice/phase delivery workflow. It **sequences** the roles and skills; it does not redefine them.
 
-> **CLAUDE.md is the single source of truth.** The `## Workflow`, `## Guardrails`, `## Worktrees`, and `## Human gates` sections in CLAUDE.md are canonical. This skill never overrides them — if anything here ever conflicts with CLAUDE.md, CLAUDE.md wins. Re-read those sections before each run; they change.
+> **CLAUDE.md is the single source of truth.** The `## Workflow`, `## Guardrails`, `## Worktrees`, `## Handing back to the human`, and `## Human gates` sections in CLAUDE.md are canonical. This skill never overrides them — if anything here ever conflicts with CLAUDE.md, CLAUDE.md wins. Re-read those sections before each run; they change.
+
+**Every hand-back to the human — at any point in the run, not just the end — is the block in CLAUDE.md `## Handing back to the human`, and nothing follows it.** A pause for a blocker, a merge gate you cannot clear, a manual `cdk deploy`, or the finish all end the same way. Anything you would ask for must survive being written as a `DECISIONS FOR YOU` or `ACTIONS FOR YOU` entry with a convincing `Why it needs you:` line; if it does not, decide it, note the assumption under `YOU SHOULD KNOW`, and keep driving.
 
 ## Autonomy: a specced slice runs end to end
 

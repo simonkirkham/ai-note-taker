@@ -18,6 +18,60 @@ Applies to every generated doc **and** to conversational output.
 - Lead with the conclusion. Cut windup phrases ("In order to", "It's worth noting", "This document describes").
 - No preamble, no restating the request, no summary of what you just did.
 
+## Handing back to the human
+
+Every hand-back ends with **one block**, and nothing follows it. It is the only thing the human has to read. Applies at session end **and** every time work is handed back mid-flight.
+
+```
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  <verdict>
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+  DONE
+  · <what the user can now do, plain terms> (<work item id>)
+
+  IN PROGRESS
+  · <what it is, where it is, when it lands> (<id>)
+
+  DECISIONS FOR YOU
+  · <the question> (<id>)
+    Why it needs you: <why it cannot be decided without them>
+
+  ACTIONS FOR YOU
+  · <what to do, with the exact command> (<id>)
+    Why it needs you: <why it cannot be done without them>
+
+  YOU SHOULD KNOW
+  · <rule broken, risk taken, surprise worth flagging>
+
+  NOT STARTED, ON PURPOSE
+  · <thing> — <until what> (<id>)
+
+  ────────────────────────────────────────────────────────
+  <verdict>
+  PRs #<n>  ·  deploys #<n>
+```
+
+**Verdict** — one of three, repeated top and bottom (top to scan, bottom because it is the last thing on screen):
+
+| Verdict | Means |
+| --- | --- |
+| `✅ READY TO CLOSE` | Nothing running, nothing half-done, nothing needed. Close the window |
+| `⏳ STILL RUNNING — nothing needed from you` | Work in flight and being driven. Walk away, leave the session open |
+| `⛔ NEEDS YOU — N decisions, N actions` | Stopped until the human acts |
+
+**Sections.** `DONE`, `IN PROGRESS`, `DECISIONS FOR YOU`, `ACTIONS FOR YOU` always appear — say `Nothing` when empty, because an absent heading is ambiguous. `YOU SHOULD KNOW` and `NOT STARTED, ON PURPOSE` appear only when they have content.
+
+**Rules.**
+
+1. **Every line item names its work item id AND explains it in plain terms** — `Agenda points now live in their own field (43-C)`. Never an id alone, never an explanation alone.
+2. **Every decision/action carries `Why it needs you:`.** If that line cannot be written convincingly, do not ask — decide it, state the assumption under `YOU SHOULD KNOW`, and keep going.
+3. **Report the outcome, not the deployment.** "Live in prod" is not news if nothing changed for the user. A change that shipped but is inert — that is the headline.
+4. **Commands go in the block**, never "the commands are in the handover file".
+5. **No system vocabulary above the footer** — no aggregates, events, projections, handlers, endpoints, status codes, commit hashes. PR and deploy numbers are the footer's job.
+6. **Say it once.** No summary paragraph before the block, no recap after it. If anything happens afterwards (a background job finishing, a peer message), **reissue the block** so the last thing on screen is always current.
+7. **`✅ READY TO CLOSE` is earned by a check, never asserted.** All of: nothing uncommitted of mine; my branches pushed and merged or explicitly parked; no PR of mine open; no CI or deploy in flight; no background job running; no worktree of mine left on disk; docs updated for what shipped; nothing waiting on the human. Any failure names the specific item rather than a bare "not ready".
+
 ## Stack
 
 - Backend: .NET 10 on AWS Lambda (ASP.NET minimal API behind a single Lambda)
