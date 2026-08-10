@@ -36,14 +36,41 @@ export function AuthProvider({
   // sign-in, so the session lasts the cookie's lifetime (~30 days), not ~1 hour (BUG-15).
   // Skipped when returning from an OAuth redirect (a `code` is present — the exchange effect
   // below handles that) and in no-auth/dev mode (no clientId).
-  const hasOAuthCode = clientId !== '' && typeof window !== 'undefined'
-    && new URLSearchParams(window.location.search).has('code')
+  const searchParams = typeof window !== 'undefined'
+    ? new URLSearchParams(window.location.search)
+    : new URLSearchParams()
+  const returnedState = searchParams.get('state')
+  const oauthCode = searchParams.get('code')
+  // Left as `has('code')`, which is NOT a considered choice — it is the pre-existing shape, kept
+  // here so this fix does not quietly change two unrelated behaviours. Both consumers diverge from
+  // the effect, which treats an empty `?code=` as no callback at all: `shouldBootstrapRefresh`
+  // suppresses the cold-start silent refresh (the BUG-15 regression it exists to prevent), and
+  // BUG-60's storageBlocked seed renders its message while the arm that strips `?code=` and emits
+  // the signal declines to run. Both reproduced by review, both pre-existing, neither regressed
+  // here. Filed as BUG-78 rather than certified as intended (BUG-76 and BUG-77 were each claimed by another
+  // session between running next-doc-id.sh and writing the line — twice).
+  const hasOAuthCode = clientId !== '' && searchParams.has('code')
   const shouldBootstrapRefresh = clientId !== '' && !initialToken && !persisted && !hasOAuthCode
   // Returning from the in-app calendar consent (a `code` plus our calendar_state marker). Keep the
   // gate in a loading state while we restore the session and POST the connect, so the sign-in
   // screen never flashes mid-connect.
-  const isCalendarConnectReturn = hasOAuthCode && typeof window !== 'undefined'
-    && safeSession.get('calendar_state') != null
+  // BUG-71: this derivation must be EXACTLY the branch it predicts (the effect's calendar arm),
+  // because `authLoading` is seeded from it and only that arm ever clears it. Predicting an arm
+  // that then declines to run strands the gate on its loading state, recoverable only by clearing
+  // site data. It previously checked only that a marker existed, so an abandoned connect's leftover
+  // `calendar_state` made every later sign-in return strand.
+  const calState = typeof window !== 'undefined' ? safeSession.get('calendar_state') : null
+  const calVerifier = typeof window !== 'undefined' ? safeSession.get('calendar_verifier') : null
+  // The branch's FULL precondition set, including its two early returns — `initialToken` and an
+  // unset `clientId`. Review disproved two earlier versions of this by probe: `hasOAuthCode` uses
+  // `has('code')` where the branch needs `code` truthy, and the `initialToken` guard was ignored
+  // entirely. Both stranded the gate the same way the reported bug did. Any clause here that is
+  // weaker than the branch predicts an arm that then declines to run, and only that arm clears
+  // `authLoading`.
+  const isCalendarConnectReturn = Boolean(
+    !initialToken && clientId !== '' && oauthCode && calState && calVerifier
+      && returnedState === calState,
+  )
   const [authLoading, setAuthLoading] = useState(shouldBootstrapRefresh || isCalendarConnectReturn)
   const [forbidden, setForbidden] = useState(false)
   const [sessionExpired, setSessionExpired] = useState(false)
@@ -206,6 +233,14 @@ export function AuthProvider({
 
     safeSession.remove('pkce_code_verifier')
     safeSession.remove('pkce_state')
+    // BUG-71: a sign-in return means any calendar-connect markers are from an ABANDONED attempt —
+    // the user went to Google for a sign-in, not for the connect. Left behind they accumulate for
+    // the life of the tab; the state-match above stops them stranding the gate, and clearing them
+    // here stops them lingering at all.
+    safeSession.remove('calendar_state')
+    safeSession.remove('calendar_verifier')
+    safeSession.remove('calendar_workspace')
+    safeSession.remove('calendar_provider')
     window.history.replaceState({}, '', window.location.pathname)
 
     exchangeCode(window.location.origin, code, verifier)
