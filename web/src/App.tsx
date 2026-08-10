@@ -43,6 +43,7 @@ import {
 } from "./hooks/useNoteMutations";
 import { neighbourOf, useOpenNoteTabs } from "./hooks/useOpenNoteTabs";
 import { useWorkspaces } from "./hooks/useWorkspaces";
+import { safeSession } from "./lib/safeStorage";
 import { recordRumEvent } from "./rum";
 import { useCurrentWorkspace } from "./workspace/context";
 import { WorkspaceProvider } from "./workspace/WorkspaceContext";
@@ -68,14 +69,9 @@ function AppGate() {
     // A browser that refuses storage (private mode, quota) THROWS here rather than
     // returning null — unguarded, that took the whole app down on mount. Losing the
     // deep-link restore is the correct degradation; crashing is not.
-    let dest: string | null;
-    try {
-      dest = sessionStorage.getItem("postLoginRedirect");
-      if (dest) sessionStorage.removeItem("postLoginRedirect");
-    } catch {
-      return;
-    }
+    const dest = safeSession.get("postLoginRedirect");
     if (!dest) return;
+    safeSession.remove("postLoginRedirect");
     if (dest !== window.location.pathname + window.location.search) {
       void navigate(dest, { replace: true });
     }

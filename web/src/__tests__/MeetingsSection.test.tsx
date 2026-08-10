@@ -486,6 +486,33 @@ describe('MeetingsSection — next occurrence Create Note button', () => {
 describe('MeetingsSection — calendar connection (34-A)', () => {
   beforeEach(() => stubNotificationPermission('granted'))
 
+  // BUG-60: the connect refuses to redirect when the browser will not keep the PKCE verifier.
+  // Without this test the whole `showError` branch could be deleted with the suite green — every
+  // other test here runs with VITE_GOOGLE_CLIENT_ID unset, so they all take the 'not-configured'
+  // path and never reach it. That is the same gap that left the sign-in message untested.
+  it('says why the calendar connect could not start when the browser refuses storage', async () => {
+    vi.stubEnv('VITE_GOOGLE_CLIENT_ID', 'test-client-id')
+    const setItem = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+      throw new DOMException('QuotaExceededError')
+    })
+    server.use(
+      http.get('/api/calendar/connection', () =>
+        HttpResponse.json({ status: 'needs_auth', provider: null, email: null }),
+      ),
+      http.get('/api/calendar/:date', () => HttpResponse.json({ error: 'calendar_unavailable' })),
+    )
+    try {
+      renderSection()
+
+      await userEvent.click(await screen.findByTestId('connect-calendar'))
+
+      expect(await screen.findByText(/didn’t keep the data it needs/i)).toBeInTheDocument()
+    } finally {
+      setItem.mockRestore()
+      vi.unstubAllEnvs()
+    }
+  })
+
   it('offers a Google AND an Outlook connect choice when the calendar needs auth (34-C)', async () => {
     server.use(
       http.get('/api/calendar/connection', () =>
