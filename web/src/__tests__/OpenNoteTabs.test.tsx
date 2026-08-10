@@ -474,6 +474,36 @@ describe('Open-note tabs (49-A)', () => {
       expect(homeTab()).toHaveAttribute('aria-current', 'true')
     })
 
+    // handleHome replaces the history entry only when it is already on an UNFILTERED home.
+    // Both branches matter and neither was covered: replacing a filtered entry would destroy
+    // it, so Back could never return to the filtered list (the CHANGE-23 trap).
+    it('going to My notes from a note leaves Back pointing at that note', async () => {
+      renderApp()
+      await openFromList('Standup')
+      const notePath = window.location.pathname
+
+      await userEvent.click(homeTab())
+      await waitFor(() => expect(window.location.pathname).toBe('/w/__default__'))
+
+      window.history.back()
+      await waitFor(() => expect(window.location.pathname).toBe(notePath))
+    })
+
+    it('clicking My notes while already on a filtered list keeps the filter reachable', async () => {
+      // `sort` rather than a tag: it puts the list in a non-default state without filtering
+      // any fixture note away, so the assertion is about history, not about what renders.
+      window.history.replaceState({}, '', '/w/__default__?sort=title-asc')
+      renderApp()
+      await screen.findAllByTestId('note-card')
+
+      // Already on the home PATH, but with a filter — so this must push, not replace.
+      await userEvent.click(homeTab())
+      await waitFor(() => expect(window.location.search).toBe(''))
+
+      window.history.back()
+      await waitFor(() => expect(window.location.search).toBe('?sort=title-asc'))
+    })
+
     it('the My notes tab offers no way to close it', async () => {
       renderApp()
       await openFromList('Standup')

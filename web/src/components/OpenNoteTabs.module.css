@@ -19,8 +19,9 @@
   /* Keeps a keyboard-focused tab clear of the sticky pinned tab (WCAG 2.4.11). Sized to what
      the pinned tab ACTUALLY occupies — "My notes" is fixed text, ~114px, plus its divider
      (1px), padding-right (8px) and margin-right (8px) ≈ 123px, rounded up. The bar's own
-     padding-left is NOT additive: when stuck, the tab's left edge sits at the scrollport
-     edge, inside that padding. Over-reserving is not harmless — it shrinks the optimal
+     padding-left IS additive: a sticky element is clamped to its containing block, so the
+     tab rests and sticks at the padding edge, not the scrollport edge (measured: 12px on
+     desktop, 52px under 640px). Over-reserving is not harmless — it shrinks the optimal
      region below one tab's width and start-aligns the focused tab off the right edge. */
   scroll-padding-left: 9rem;
 }
@@ -50,7 +51,16 @@
   transition: background var(--transition), border-color var(--transition);
 }
 
-.tab:hover {
+/* Document tabs only. --color-primary-bg is rgba at 0.06-0.12 alpha, which is fine for a tab
+   that nothing scrolls behind — but the pinned tab is scrolled UNDER by these, so it must
+   never take a translucent background. Excluding it here matters most when the tint below
+   is unavailable: on a browser without color-mix that declaration is dropped at parse time
+   and the cascade falls through, and this rule (0,2,0) would otherwise beat `.tabHome`
+   (0,1,0) and paint the pinned tab 94% transparent. Vite's default target is
+   baseline-widely-available (Chrome 107 / Firefox 104 / Safari 16.0) and color-mix needs
+   Chrome 111 / Firefox 113 / Safari 16.2, so that fallback is a supported configuration,
+   not a hypothetical. */
+.tab:not(.tabHome):hover {
   background: var(--color-primary-bg);
 }
 
@@ -83,7 +93,6 @@
   z-index: 1;
   margin-right: var(--space-2);
   padding-right: var(--space-2);
-  border-right: 1px solid var(--color-border);
   background: var(--color-bg);
 }
 
@@ -93,6 +102,10 @@
 .tabHome.tabActive {
   background: var(--color-surface);
 }
+
+/* Deliberately NO `:last-child` rule stripping the right border when no notes are open.
+   That border is not a divider — `.tab`'s `border` shorthand makes it the chip's own right
+   edge — so removing it leaves an open-sided tab on the bar's commonest state. */
 
 /* Hover, and only while this is NOT the current page. `:not(.tabActive)` makes this rule and
    the one above mutually exclusive by construction, so neither can take the other's
@@ -177,9 +190,13 @@
   color: var(--color-text);
 }
 
+/* --color-primary-dark, not --color-primary: the focus ring has to clear 3:1 (WCAG 1.4.11)
+   against every background this tab can take — --color-bg, --color-surface when active, AND
+   the hover tint. On the tint, --color-primary falls to 2.83 in amber, because the tint moves
+   the backdrop toward the ring's own colour. Measured across all 17 themes on all three. */
 .label:focus-visible,
 .close:focus-visible {
-  outline: 2px solid var(--color-primary);
+  outline: 2px solid var(--color-primary-dark);
   outline-offset: -2px;
 }
 
@@ -220,9 +237,17 @@
   }
 }
 
-@media (max-width: 639px) {
+@media (max-width: 639.98px) {
   .bar {
     padding-left: 3.25rem;
     scroll-padding-left: 11.5rem;
+  }
+
+  /* A 14rem tab plus the 11.5rem reserved for the pinned tab exceeds a phone scrollport, so
+     scroll-into-view cannot satisfy the inset and end-aligns instead — leaving a
+     keyboard-focused tab partly under the pinned one (measured: 23px at 380px, 83px at
+     320px). Capping the tab keeps the pair inside the viewport at any width. */
+  .tab {
+    max-width: calc(100vw - 13rem);
   }
 }
