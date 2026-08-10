@@ -88,13 +88,10 @@ describe('a stale calendar_state does not strand the gate (BUG-71)', () => {
     window.history.replaceState({}, '', '/?code=calendar-code&state=calendar-state')
     let connectPosts = 0
     server.use(
-      // Both shapes — `scoped()` in test/handlers.ts registers the un-prefixed and the `/w/:wsId`
-      // path, and matching only one leaves the counter at 0 while the request quietly succeeds.
+      // Un-prefixed only: this test sets no `calendar_workspace`, so `setWorkspaceId` never runs
+      // and the client emits the bare path. A `/w/:wsId` handler here would be dead — review
+      // proved it by deleting it and watching the test still pass.
       http.post('/api/calendar/connect/google', () => {
-        connectPosts += 1
-        return HttpResponse.json({ connected: true, provider: 'google', email: null })
-      }),
-      http.post('/api/w/:wsId/calendar/connect/google', () => {
         connectPosts += 1
         return HttpResponse.json({ connected: true, provider: 'google', email: null })
       }),
@@ -106,8 +103,33 @@ describe('a stale calendar_state does not strand the gate (BUG-71)', () => {
       </AuthProvider>,
     )
 
+    // The DERIVATION is what this pins: `authLoading` is seeded from it, and it exists so the
+    // sign-in screen never flashes mid-connect. Asserting only the connect POST would leave the
+    // derivation untested — review proved that by replacing it with `false` and watching this test,
+    // plus 28 other auth tests, stay green.
+    expect(screen.getByTestId('loading')).toHaveTextContent('loading')
+
     await waitFor(() => expect(connectPosts).toBe(1))
+    await waitFor(() => expect(screen.getByTestId('loading')).toHaveTextContent('ready'))
     // The connect path consumes its own markers.
     expect(sessionStorage.getItem('calendar_state')).toBeNull()
+  })
+
+  // The derivation must equal the branch it predicts. It previously omitted `calendar_verifier`,
+  // so a matching state with a missing verifier seeded authLoading = true, the calendar arm then
+  // declined to run, and nothing cleared it — the same strand as the reported bug, through a
+  // different gap, and with BUG-60's storage-blocked message suppressed by the same true value.
+  it('does not strand when the state matches but the verifier is gone', async () => {
+    sessionStorage.setItem('calendar_state', 'calendar-state')
+    // no calendar_verifier
+    window.history.replaceState({}, '', '/?code=calendar-code&state=calendar-state')
+
+    render(
+      <AuthProvider>
+        <Probe />
+      </AuthProvider>,
+    )
+
+    await waitFor(() => expect(screen.getByTestId('loading')).toHaveTextContent('ready'))
   })
 })
