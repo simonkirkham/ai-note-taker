@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { render as rtlRender, screen, waitFor } from '@testing-library/react'
+import { render as rtlRender, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { http, HttpResponse } from 'msw'
 import type { ReactNode } from 'react'
@@ -69,19 +69,6 @@ describe('AgendaSection', () => {
     expect(posted).toBe(false)
   })
 
-  it('rolls the optimistic item back when the add fails', async () => {
-    server.use(
-      http.post(`/api/notes/${NOTE_ID}/agenda-items`, () => new HttpResponse(null, { status: 500 })),
-      http.get(`/api/notes/${NOTE_ID}`, () => HttpResponse.json(noteWith([]))),
-    )
-    renderAgenda([])
-
-    const input = screen.getByTestId('agenda-add-input')
-    await userEvent.type(input, 'Budget (Q3){Enter}')
-
-    await waitFor(() => expect(screen.queryByText('Budget (Q3)')).not.toBeInTheDocument())
-  })
-
   it('ignores a blank item (no request, input retains nothing)', async () => {
     let posted = false
     server.use(
@@ -97,123 +84,6 @@ describe('AgendaSection', () => {
 
     expect(posted).toBe(false)
     expect(screen.queryByTestId('agenda-item')).toBeNull()
-  })
-
-  it('shows the coverage count and updates it as items are ticked optimistically', async () => {
-    server.use(
-      http.put(`/api/notes/${NOTE_ID}/agenda-items/:itemId/discussed`, () => new HttpResponse(null, { status: 204 })),
-      http.get(`/api/notes/${NOTE_ID}`, () =>
-        HttpResponse.json(noteWith([
-          { itemId: 'i-1', text: 'Budget (Q3)', discussed: true, position: 0 },
-          { itemId: 'i-2', text: 'Hiring backfill', discussed: false, position: 1 },
-        ]))),
-    )
-    renderAgenda([
-      { itemId: 'i-1', text: 'Budget (Q3)', discussed: false, position: 0 },
-      { itemId: 'i-2', text: 'Hiring backfill', discussed: false, position: 1 },
-    ])
-    expect(screen.getByTestId('agenda-coverage')).toHaveTextContent('0 / 2')
-
-    const firstCheck = screen.getAllByTestId('agenda-item-check')[0]
-    await userEvent.click(firstCheck)
-
-    // Optimistic: coverage and the checkbox reflect the tick immediately.
-    await waitFor(() => expect(screen.getByTestId('agenda-coverage')).toHaveTextContent('1 / 2'))
-    expect(screen.getAllByTestId('agenda-item-check')[0]).toBeChecked()
-  })
-
-  it('rolls a tick back when the server rejects it', async () => {
-    server.use(
-      http.put(`/api/notes/${NOTE_ID}/agenda-items/:itemId/discussed`, () => new HttpResponse(null, { status: 500 })),
-      http.get(`/api/notes/${NOTE_ID}`, () =>
-        HttpResponse.json(noteWith([{ itemId: 'i-1', text: 'Budget (Q3)', discussed: false, position: 0 }]))),
-    )
-    renderAgenda([{ itemId: 'i-1', text: 'Budget (Q3)', discussed: false, position: 0 }])
-
-    await userEvent.click(screen.getByTestId('agenda-item-check'))
-
-    await waitFor(() => expect(screen.getByTestId('agenda-item-check')).not.toBeChecked())
-    expect(screen.getByTestId('agenda-coverage')).toHaveTextContent('0 / 1')
-  })
-
-  it('edits an item text inline and patches optimistically', async () => {
-    let put: { itemId?: string; text?: string } = {}
-    server.use(
-      http.put(`/api/notes/${NOTE_ID}/agenda-items/:itemId`, async ({ params, request }) => {
-        put = { itemId: params.itemId as string, text: ((await request.json()) as { text: string }).text }
-        return new HttpResponse(null, { status: 204 })
-      }),
-      http.get(`/api/notes/${NOTE_ID}`, () =>
-        HttpResponse.json(noteWith([{ itemId: 'i-1', text: 'Budget (Q3)', discussed: false, position: 0 }]))),
-    )
-    renderAgenda([{ itemId: 'i-1', text: 'Budget', discussed: false, position: 0 }])
-
-    await userEvent.click(screen.getByTestId('agenda-item-text'))
-    const input = screen.getByTestId('agenda-item-edit-input')
-    await userEvent.clear(input)
-    await userEvent.type(input, 'Budget (Q3){Enter}')
-
-    // Optimistic: the new text shows immediately; the PUT carried the trimmed text.
-    expect(await screen.findByText('Budget (Q3)')).toBeInTheDocument()
-    await waitFor(() => expect(put).toEqual({ itemId: 'i-1', text: 'Budget (Q3)' }))
-  })
-
-  it('does not send an edit when the text is unchanged', async () => {
-    let putCalled = false
-    server.use(
-      http.put(`/api/notes/${NOTE_ID}/agenda-items/:itemId`, () => {
-        putCalled = true
-        return new HttpResponse(null, { status: 204 })
-      }),
-    )
-    renderAgenda([{ itemId: 'i-1', text: 'Budget', discussed: false, position: 0 }])
-
-    await userEvent.click(screen.getByTestId('agenda-item-text'))
-    const input = screen.getByTestId('agenda-item-edit-input')
-    await userEvent.type(input, '{Enter}') // commit unchanged
-
-    expect(putCalled).toBe(false)
-    expect(screen.getByTestId('agenda-item-text')).toHaveTextContent('Budget')
-  })
-
-  it('removes an item optimistically', async () => {
-    let deleted = false
-    server.use(
-      http.delete(`/api/notes/${NOTE_ID}/agenda-items/:itemId`, () => {
-        deleted = true
-        return new HttpResponse(null, { status: 204 })
-      }),
-      http.get(`/api/notes/${NOTE_ID}`, () =>
-        HttpResponse.json(noteWith([{ itemId: 'i-2', text: 'Keep', discussed: false, position: 1 }]))),
-    )
-    renderAgenda([
-      { itemId: 'i-1', text: 'Drop', discussed: false, position: 0 },
-      { itemId: 'i-2', text: 'Keep', discussed: false, position: 1 },
-    ])
-
-    await userEvent.click(screen.getByRole('button', { name: 'Remove "Drop"' }))
-
-    // Optimistic: the dropped item disappears immediately, the kept one stays.
-    await waitFor(() => expect(screen.queryByText('Drop')).not.toBeInTheDocument())
-    expect(screen.getByText('Keep')).toBeInTheDocument()
-    await waitFor(() => expect(deleted).toBe(true))
-  })
-
-  it('removing a ticked item drops the covered count', async () => {
-    server.use(
-      http.delete(`/api/notes/${NOTE_ID}/agenda-items/:itemId`, () => new HttpResponse(null, { status: 204 })),
-      http.get(`/api/notes/${NOTE_ID}`, () =>
-        HttpResponse.json(noteWith([{ itemId: 'i-2', text: 'B', discussed: false, position: 1 }]))),
-    )
-    renderAgenda([
-      { itemId: 'i-1', text: 'A', discussed: true, position: 0 },
-      { itemId: 'i-2', text: 'B', discussed: false, position: 1 },
-    ])
-    expect(screen.getByTestId('agenda-coverage')).toHaveTextContent('1 / 2')
-
-    await userEvent.click(screen.getByRole('button', { name: 'Remove "A"' }))
-
-    await waitFor(() => expect(screen.getByTestId('agenda-coverage')).toHaveTextContent('0 / 1'))
   })
 
   it('is expanded by default — items and the add field are visible, no peek', () => {
@@ -385,21 +255,37 @@ describe('AgendaSection — topics derived from the note body', () => {
     expect(editor.setTopicChecked).toHaveBeenCalledWith(1, true)
   })
 
-  it('legacy topics are listed after the live ones and keep the API path', () => {
+  // 43-H2: the live document is the ONLY source. A projection row that is not in the document is
+  // stale by definition now — the old parallel record it came from is gone — so the live list wins
+  // outright rather than being appended to.
+  it('does not touch the note when a topic is committed unchanged', async () => {
+    // The guard in commit(). A no-op setTopicText still dirties the document — pushing an undo-stack
+    // entry and triggering a content save for a change the user did not make. This was pinned by an
+    // API-path test that 43-H2 deleted along with the endpoint, so it needs its own cover here.
+    const user = userEvent.setup()
+    const editor = editorStub()
+    renderWithEditor([], editor, [{ text: 'Budget (Q3)', checked: false }])
+
+    await user.click(screen.getByTestId('agenda-item-text'))
+    await user.type(screen.getByTestId('agenda-item-edit-input'), '{Enter}')
+
+    expect(editor.setTopicText).not.toHaveBeenCalled()
+  })
+
+  it('shows only what is in the note, ignoring a stale projection row', () => {
     renderWithEditor(
-      [{ itemId: 'i-1', text: 'Legacy topic', discussed: false, position: 0 }],
+      [{ itemId: 'i-1', text: 'Not in the note', discussed: false, position: 0 }],
       editorStub(),
       [{ text: 'From the note', checked: false }],
     )
     const texts = screen.getAllByTestId('agenda-item-text').map((t) => t.textContent)
-    expect(texts).toEqual(['From the note', 'Legacy topic'])
+    expect(texts).toEqual(['From the note'])
   })
 
-  it('still allows editing a legacy (non-derived) topic through the API', async () => {
-    const user = userEvent.setup()
-    renderWithEditor([{ itemId: 'i-1', text: 'Budget (Q3)', discussed: false, position: 0 }], editorStub())
-    expect(screen.getByTestId('agenda-item-check')).not.toBeDisabled()
-    await user.click(screen.getByTestId('agenda-item-text'))
-    expect(screen.getByTestId('agenda-item-edit-input')).toBeInTheDocument()
+  it('falls back to the projection while the editor chunk is still loading', () => {
+    renderWithEditor([{ itemId: 'i-1', text: 'Budget (Q3)', discussed: false, position: 0 }], null)
+    expect(screen.getByTestId('agenda-item-text').textContent).toBe('Budget (Q3)')
+    // Nothing to write to yet, so the controls are inert rather than silently dropping the edit.
+    expect(screen.getByTestId('agenda-item-check')).toBeDisabled()
   })
 })
