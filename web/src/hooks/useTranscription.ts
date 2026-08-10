@@ -706,11 +706,26 @@ export function useTranscription(noteId: string): UseTranscriptionResult {
         } catch (err) {
           console.warn('Local transcription finish/diarization failed on stop.', err);
         } finally {
-          // Guarantee the main-process live session is released even if an IPC call threw before
-          // finish()/discard() ran (no-op when already discarded/finished).
-          window.desktop?.local.discard();
+          // BUG-74: a throw in a `finally` REPLACES the completion, so `discard()` throwing here
+          // used to reject the whole stop sequence — skipping the commit AND `setStatus('stopped')`
+          // below, wedging the note on 'Finalising…' permanently with an unhandled rejection and no
+          // transcript. The point of this block is to release the main-process session on a
+          // best-effort basis; failing to do so must not cost the recording.
+          try {
+            // Guarantee the main-process live session is released even if an IPC call threw before
+            // finish()/discard() ran (no-op when already discarded/finished).
+            window.desktop?.local.discard();
+          } catch (err) {
+            console.warn('Releasing the on-device session failed on stop.', err);
+          }
         }
-        localCleanupRef.current?.();
+        // Same reasoning: detaching the IPC listeners is cleanup, not a precondition for keeping
+        // what was recorded. Neither of these may pre-empt the commit.
+        try {
+          localCleanupRef.current?.();
+        } catch (err) {
+          console.warn('Detaching the on-device listeners failed on stop.', err);
+        }
         localCleanupRef.current = null;
         commitTranscript();
         cleanup();
