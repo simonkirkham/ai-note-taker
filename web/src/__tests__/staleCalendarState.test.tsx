@@ -142,6 +142,26 @@ describe('a stale calendar_state does not strand the gate (BUG-71)', () => {
   // TRUTHY (the derivation used `has('code')`) and returns early on `initialToken`; each gap
   // stranded the gate by the same mechanism — predict an arm, the arm declines, nothing clears
   // authLoading.
+  // The clause added last round that was NOT probed — review found it unpinned, and it is
+  // load-bearing: with no client id the effect returns before the calendar arm, nothing clears
+  // authLoading, and the gate checks authLoading BEFORE it checks for a token, so a strand blanks
+  // the whole app even in no-auth mode.
+  it('does not strand in no-auth mode when a calendar return matches', async () => {
+    vi.unstubAllEnvs() // the beforeEach stubs a client id; clear it inside the test
+    sessionStorage.setItem('calendar_state', 'calendar-state')
+    sessionStorage.setItem('calendar_verifier', 'calendar-verifier')
+    window.history.replaceState({}, '', '/?code=calendar-code&state=calendar-state')
+
+    render(
+      <AuthProvider>
+        <Probe />
+      </AuthProvider>,
+    )
+
+    await waitFor(() => expect(screen.getByTestId('loading')).toHaveTextContent('ready'))
+    expect(screen.getByTestId('token')).toHaveTextContent('no-auth')
+  })
+
   it('does not strand on an empty code param', async () => {
     sessionStorage.setItem('calendar_state', 'calendar-state')
     sessionStorage.setItem('calendar_verifier', 'calendar-verifier')
@@ -154,6 +174,9 @@ describe('a stale calendar_state does not strand the gate (BUG-71)', () => {
     )
 
     await waitFor(() => expect(screen.getByTestId('loading')).toHaveTextContent('ready'))
+    // The strand and the suppressed message were one value, so assert the observable outcome
+    // rather than only the absence of the strand.
+    expect(screen.getByTestId('blocked')).toHaveTextContent('blocked')
   })
 
   it('does not strand when an initialToken short-circuits the exchange effect', async () => {

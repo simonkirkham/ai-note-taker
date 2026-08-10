@@ -41,8 +41,13 @@ export function AuthProvider({
     : new URLSearchParams()
   const returnedState = searchParams.get('state')
   const oauthCode = searchParams.get('code')
-  // Left as `has('code')` deliberately: `shouldBootstrapRefresh` and BUG-60's storageBlocked seed
-  // both key off "a callback is in progress at all", which an empty `?code=` still is.
+  // Left as `has('code')`, which is NOT a considered choice — it is the pre-existing shape, kept
+  // here so this fix does not quietly change two unrelated behaviours. Both consumers diverge from
+  // the effect, which treats an empty `?code=` as no callback at all: `shouldBootstrapRefresh`
+  // suppresses the cold-start silent refresh (the BUG-15 regression it exists to prevent), and
+  // BUG-60's storageBlocked seed renders its message while the arm that strips `?code=` and emits
+  // the signal declines to run. Both reproduced by review, both pre-existing, neither regressed
+  // here. Filed as BUG-76 rather than certified as intended.
   const hasOAuthCode = clientId !== '' && searchParams.has('code')
   const shouldBootstrapRefresh = clientId !== '' && !initialToken && !persisted && !hasOAuthCode
   // Returning from the in-app calendar consent (a `code` plus our calendar_state marker). Keep the
