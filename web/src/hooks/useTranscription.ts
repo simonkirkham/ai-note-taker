@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { presignRecordingUpload, saveRecording } from '../api/recordings';
 import { completeTranscription, getTranscriptionCredentials, saveTranscriptionDraft, startDiarization } from '../api/transcription';
+import { recordRumEvent } from '../rum';
 import { PcmChunker } from './pcm';
 import { SpeakerTranscript } from './speakerSegments';
 import { readStoredKeepAudioLocal } from './useKeepAudioLocal';
@@ -81,6 +82,9 @@ export interface UseTranscriptionResult {
   // separator); omitted → start fresh and replace. See Phase 18-C.
   startRecording: (includeCallAudio: boolean, autoAnalyse: boolean, resumeFrom?: string) => void;
   stopRecording: () => void;
+  // BUG-55: await the stop sequence and the transcript commit POST. Only sign-out needs it — it
+  // clears the token, so an un-awaited commit 401s and the transcript is lost.
+  awaitCommit: () => Promise<void>;
   reset: () => void;
 }
 
@@ -95,6 +99,30 @@ function concatPcm(chunks: Uint8Array[]): ArrayBuffer {
   }
   return out.buffer;
 }
+
+// BUG-55: how long a confirmed sign-out waits for the local finalise before going ahead anyway.
+//
+// It has to be DERIVED, not a flat constant. Review caught a flat 5 minutes being smaller than the
+// thing it waits for, which makes the guard a no-op on exactly the case it exists for. The measured
+// numbers (BUG-52): the stop-time pass is `small.en` at ~2.3x realtime, and 1:1 diarization runs it
+// TWICE. So processing ≈ audio × 2 / 2.3 ≈ audio × 0.87 — a 30-minute 1:1 needs ~26 minutes, five
+// times the old budget. Anything under that expires mid-pass, the token is cleared, the POST 401s,
+// and BUG-55 reproduces.
+//
+// The worst case is NOT the diarize path. `finish()` runs when `diarize()` resolves null, so that
+// route pays BOTH: 0.87 (two diarize passes) + 0.435 (single-stream fallback) ≈ 1.31 × audio. A
+// 1.3 multiplier — which an earlier revision used, calling it "50% slack" — lands exactly on it
+// with none. 1.95 is 50% over the real worst case.
+//
+// The floor covers short recordings, where engine startup dominates the arithmetic. The ceiling is
+// the actual purpose of having a deadline at all: a wedged engine (BUG-56's "process alive, never
+// ready, silent") must not strand the user forever. It is deliberately generous, because the user
+// has already confirmed the sign-out and waiting is the safer failure — losing the transcript is
+// the bug. **Residual:** above ~31 minutes of audio the ceiling binds before the derived deadline,
+// so a very long local 1:1 can still expire mid-pass. Recorded on the BUG-55 row.
+const AWAIT_COMMIT_SLACK = 1.95;
+const AWAIT_COMMIT_MIN_MS = 2 * 60_000;
+const AWAIT_COMMIT_MAX_MS = 60 * 60_000;
 
 export function useTranscription(noteId: string): UseTranscriptionResult {
   const [status, setStatus] = useState<TranscriptionStatus>('idle');
@@ -119,6 +147,10 @@ export function useTranscription(noteId: string): UseTranscriptionResult {
   const lastPartialAtRef = useRef(0);
   const lastDraftRef = useRef<string | null>(null);
   const committedRef = useRef(false);
+  // BUG-55: the in-flight stop sequence and the commit POST it fires, so a caller that is about to
+  // destroy the session's auth can wait for them. Null until Stop runs.
+  const stopSequenceRef = useRef<Promise<void> | null>(null);
+  const commitPostRef = useRef<Promise<void> | null>(null);
   const checkpointTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   // The committed transcript a resumed recording is continuing (plus separator),
   // prepended to every finalised result so the new turns append rather than
@@ -200,7 +232,10 @@ export function useTranscription(noteId: string): UseTranscriptionResult {
     if (!text) return;
     committedRef.current = true;
     const elapsed = Math.floor((Date.now() - startTimeRef.current) / 1000);
-    void completeTranscription(noteId, text, elapsed).catch(() => {
+    // BUG-55: keep the POST's promise. Fire-and-forget is right for every destination except
+    // sign-out, which CLEARS THE TOKEN — an un-awaited commit then 401s, committedRef is released,
+    // and nothing retries. awaitCommit() below lets that one caller wait; everyone else is unchanged.
+    commitPostRef.current = completeTranscription(noteId, text, elapsed).catch(() => {
       committedRef.current = false;
     });
   }, [noteId]);
@@ -598,11 +633,19 @@ export function useTranscription(noteId: string): UseTranscriptionResult {
   }, [cleanup, saveCheckpoint, commitTranscript, uploadRecording]);
 
   const stopRecording = useCallback(() => {
+    // BUG-55: idempotent. `handleConfirmedLeave` calls this unconditionally and `isRecording`
+    // includes 'finalising', so pressing Stop and THEN signing out called it twice. The second call
+    // reassigned stopSequenceRef to a fresh IIFE which — with localActiveRef already false — took
+    // the CLOUD branch and resolved immediately. awaitCommit() then awaited the wrong promise and
+    // signed out mid-finalise: the exact failure this bug is about, on the exact path it targets.
+    // Re-entering is a no-op elsewhere too (commitTranscript and uploadRecording are one-shot,
+    // cleanup is idempotent), so returning early is behaviour-preserving.
+    if (stoppedRef.current && stopSequenceRef.current) return;
     stoppedRef.current = true;
     // 48-A: in local mode, flush the on-device engine's final window before committing so the
     // last few seconds aren't lost. 48-B: finish() also runs the higher-quality medium.en pass over
     // the whole recording and resolves with that transcript (or null → keep the live base.en text).
-    void (async () => {
+    stopSequenceRef.current = (async () => {
       if (localActiveRef.current) {
         localActiveRef.current = false;
         // 48-C: local mode archives the WAV but diarizes on-device — no cloud batch job (pass false).
@@ -654,6 +697,62 @@ export function useTranscription(noteId: string): UseTranscriptionResult {
     })();
   }, [cleanup, commitTranscript, uploadRecording]);
 
+  // BUG-55: resolves once the stop sequence AND the commit POST it fires have finished. In cloud
+  // mode both are effectively immediate; in local mode the stop sequence runs the small.en final
+  // pass (plus 1:1 diarization) first — minutes on a long meeting, which is exactly why this is
+  // opt-in per destination rather than awaited on every navigation.
+  //
+  // Two things it must never do, because the caller is a sign-out the user has already confirmed:
+  //
+  //  - REJECT. Only the local IPC calls sit inside the stop sequence's try/catch; the surrounding
+  //    `readStoredKeepAudioLocal()`, `cleanup()` and `setStatus()` do not. A throw there would
+  //    propagate into the continuation and sign-out would never run. Caught here so the comment is
+  //    true by construction rather than by inspection of code that may change.
+  //  - HANG. `window.desktop.local.finish()/diarize()` have no timeout on this side, and BUG-56's
+  //    observed failure shape is precisely "process alive, never ready, silent". Without a deadline
+  //    the continuation never runs, `leavingRef` stays latched, and the app is stuck until restart.
+  //    Past the deadline we proceed with the sign-out: no worse than the behaviour before this fix.
+  const awaitCommit = useCallback(async () => {
+    const settled = (async () => {
+      try {
+        await stopSequenceRef.current;
+        await commitPostRef.current;
+      } catch {
+        // Already surfaced by the stop sequence / the commit's own catch; never block the leave.
+      }
+    })();
+    const recordedMs = startTimeRef.current ? Date.now() - startTimeRef.current : 0;
+    const deadlineMs = Math.min(
+      AWAIT_COMMIT_MAX_MS,
+      Math.max(AWAIT_COMMIT_MIN_MS, recordedMs * AWAIT_COMMIT_SLACK),
+    );
+    // The timer is cleared once the race is decided — a stray one has no purpose left, and this is
+    // the same "a timer outlived what it was for" shape as BUG-66.
+    let deadlineTimer: ReturnType<typeof setTimeout> | undefined;
+    let expired = false;
+    try {
+      await Promise.race([
+        settled,
+        new Promise<void>((resolve) => {
+          deadlineTimer = setTimeout(() => {
+            expired = true;
+            resolve();
+          }, deadlineMs);
+        }),
+      ]);
+    } finally {
+      if (deadlineTimer !== undefined) clearTimeout(deadlineTimer);
+    }
+    if (expired) {
+      // The caller is about to destroy the session's auth, so the transcript is probably lost.
+      // Say so somewhere: BUG-56 and BUG-65 were both diagnosed by reading code because the local
+      // path had no observable channel at all. (recordRumEvent is inert until TI-67 enables custom
+      // events, hence the console.warn too.)
+      console.warn(`Transcript commit did not finish within ${Math.round(deadlineMs / 1000)}s; leaving anyway.`);
+      recordRumEvent('transcriptCommitDeadlineExpired', { deadlineMs, recordedMs });
+    }
+  }, []);
+
   const reset = useCallback(() => {
     cleanup();
     finalizedRef.current = '';
@@ -675,5 +774,5 @@ export function useTranscription(noteId: string): UseTranscriptionResult {
     stoppedRef.current = false;
   }, [cleanup]);
 
-  return { status, transcript, elapsedSeconds, error, recordingUpload, diarization, startRecording, stopRecording, reset };
+  return { status, transcript, elapsedSeconds, error, recordingUpload, diarization, startRecording, stopRecording, awaitCommit, reset };
 }

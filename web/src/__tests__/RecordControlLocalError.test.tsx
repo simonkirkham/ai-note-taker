@@ -17,6 +17,7 @@ function transcription(over: Partial<UseTranscriptionResult> = {}): UseTranscrip
     diarization: 'idle',
     startRecording: () => {},
     stopRecording: () => {},
+    awaitCommit: async () => {},
     reset: () => {},
     ...over,
   }

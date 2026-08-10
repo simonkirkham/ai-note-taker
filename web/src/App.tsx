@@ -17,7 +17,7 @@ import { useAuth } from "./auth/context";
 import styles from "./components/App.module.css";
 import DeletedNoteRescue from "./components/DeletedNoteRescue";
 import FolderPreviewPanel from "./components/FolderPreviewPanel";
-import { destinationName, LeaveGuardContext, useRequestLeave } from "./components/leaveGuardContext";
+import { destinationName, LeaveGuardContext, useRequestLeave, type LeaveOptions } from "./components/leaveGuardContext";
 import ListView from "./components/ListView";
 import NoteView from "./components/NoteView";
 import OpenNoteTabs from "./components/OpenNoteTabs";
@@ -239,9 +239,9 @@ function AppContent({ signOut }: { signOut: () => void }) {
   }, [cardsLoaded, tabs, cards, activeNoteId]);
 
   // Set by the mounted NoteView while it is recording; see requestLeave below.
-  const leaveGuardRef = useRef<((proceed: () => void, destination: string) => void) | null>(null);
+  const leaveGuardRef = useRef<((proceed: () => void, destination: string, opts?: LeaveOptions) => void) | null>(null);
   const registerLeaveGuard = useCallback(
-    (guard: ((proceed: () => void, destination: string) => void) | null) => {
+    (guard: ((proceed: () => void, destination: string, opts?: LeaveOptions) => void) | null) => {
       leaveGuardRef.current = guard;
     },
     [],
@@ -294,9 +294,9 @@ function AppContent({ signOut }: { signOut: () => void }) {
   // first. The guard takes ownership of `proceed` and runs it once the user confirms.
   // Stable identity: it reads a ref, so it never needs to change — and it is a context
   // value, so a new one each render would re-render every consumer.
-  const requestLeave = useCallback((proceed: () => void, destination: string) => {
+  const requestLeave = useCallback((proceed: () => void, destination: string, opts?: LeaveOptions) => {
     const guard = leaveGuardRef.current;
-    if (guard) guard(proceed, destination);
+    if (guard) guard(proceed, destination, opts);
     else proceed();
   }, []);
 
@@ -507,7 +507,9 @@ function AppContent({ signOut }: { signOut: () => void }) {
           // BUG-54: signing out unmounts everything, recording included. The confirm's
           // content flush is awaited before this runs, so the save lands before the token
           // is cleared.
-          onSignOut={() => requestLeave(signOut, "sign out")}
+          // BUG-55: the ONLY destination that clears the token, so the only one that must wait
+          // for the transcript commit — an un-awaited POST 401s after sign-out and is lost.
+          onSignOut={() => requestLeave(signOut, "sign out", { awaitTranscript: true })}
         />
         <FolderPreviewPanel
           folderId={previewFolderId}
@@ -575,7 +577,7 @@ function NoteRoute({
   onDateSet: (noteId: string, date: string) => void;
   onOpenNote: (noteId: string, title?: string, isNew?: boolean) => void;
   onRegisterLeaveGuard: (
-    guard: ((proceed: () => void, destination: string) => void) | null,
+    guard: ((proceed: () => void, destination: string, opts?: LeaveOptions) => void) | null,
   ) => void;
   otherWorkspaces: { workspaceId: string; name: string }[];
   onMoveNoteToWorkspace: (noteId: string, workspaceId: string) => void;

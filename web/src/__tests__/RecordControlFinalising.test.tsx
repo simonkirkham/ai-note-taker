@@ -16,6 +16,7 @@ function fakeTranscription(status: TranscriptionStatus): UseTranscriptionResult 
     diarization: 'idle',
     startRecording: () => {},
     stopRecording: () => {},
+    awaitCommit: async () => {},
     reset: () => {},
   }
 }
