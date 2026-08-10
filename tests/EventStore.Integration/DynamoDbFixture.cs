@@ -41,7 +41,10 @@ public sealed class DynamoDbFixture : IAsyncLifetime
 
     public async Task DisposeAsync()
     {
-        DynamoDb.Dispose();
+        // Null when InitializeAsync threw before assigning it — a failed container start,
+        // which is the case this whole item is about. Disposing unconditionally raises a
+        // NullReferenceException that xUnit reports above the real error and hides it.
+        DynamoDb?.Dispose();
         await _container.DisposeAsync();
     }
 }

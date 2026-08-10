@@ -30,7 +30,8 @@ public sealed class DynamoDbTranscriptionDraftStoreTests : IAsyncLifetime
 
     public async Task DisposeAsync()
     {
-        _dynamo.Dispose();
+        // Null when InitializeAsync threw before assigning it — see DynamoDbFixture.
+        _dynamo?.Dispose();
         await _container.DisposeAsync();
     }
 
