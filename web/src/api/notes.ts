@@ -191,9 +191,12 @@ export async function editContent(
 ): Promise<void> {
   // 409 is expected (a stale-base conflict), so it must not throw as a generic failure — handle it.
   // 404 is allowed through for the same reason, but ONLY the discriminated `note_not_found` body is
-  // treated as deletion: a bare 404 is also what the ownership pre-check and an API Gateway route
-  // miss return (34-B shipped one), and telling those users their note was deleted would be a lie.
-  // Anything else re-throws as the ApiError the caller already handles.
+  // treated as deletion. The sole remaining producer of a BARE 404 on this path is an API Gateway
+  // route miss falling through to `/{proxy+}` (34-B shipped one), which never reaches the handler —
+  // so a deploy skew cannot trip the deleted-note state. The server's ownership pre-check
+  // deliberately shares the `note_not_found` body rather than staying bare (see NoteGone() in
+  // NoteHandlers.cs): distinguishing them would hand back an existence oracle. Anything else
+  // re-throws as the ApiError the caller already handles.
   const response = await requestVoidWithResponse(
     `/notes/${noteId}/content`,
     {

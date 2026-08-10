@@ -150,7 +150,11 @@ public sealed class EditContentTests(ApiFactory factory) : IClassFixture<ApiFact
     // that exists but belongs to someone else must be indistinguishable from one that is gone. Split
     // them — the earlier revision of this fix did, to keep the message strictly true — and `bare 404`
     // becomes a reliable oracle for "a live note with this id exists and is not yours". This test
-    // fails the moment the two responses diverge, which the previous shape could not.
+    // fails the moment the two responses diverge, which the previous shape could not. It is only
+    // half a pin on its own — both legs call the same NoteGone() helper, so a change to the helper
+    // keeps them equal; PutContent_DeletedNote_Returns404NoteNotFound pins the body itself. Keep
+    // both. The never-existed case is folded in here too, so all three note-level 404s are asserted
+    // to be one response.
     [Fact]
     public async Task PutContent_NoteOwnedByAnotherUser_IsIndistinguishableFromADeletedNote()
     {
@@ -165,10 +169,15 @@ public sealed class EditContentTests(ApiFactory factory) : IClassFixture<ApiFact
             JsonContent.Create(new { content = "written by someone else" }));
         var gone = await intruder.PutAsync($"/notes/{deletedNote}/content",
             JsonContent.Create(new { content = "written by someone else" }));
+        var neverExisted = await intruder.PutAsync($"/notes/{Guid.NewGuid()}/content",
+            JsonContent.Create(new { content = "written by someone else" }));
 
         Assert.Equal(HttpStatusCode.NotFound, notYours.StatusCode);
         Assert.Equal(gone.StatusCode, notYours.StatusCode);
-        Assert.Equal(await gone.Content.ReadAsStringAsync(), await notYours.Content.ReadAsStringAsync());
+        Assert.Equal(neverExisted.StatusCode, notYours.StatusCode);
+        var goneBody = await gone.Content.ReadAsStringAsync();
+        Assert.Equal(goneBody, await notYours.Content.ReadAsStringAsync());
+        Assert.Equal(goneBody, await neverExisted.Content.ReadAsStringAsync());
 
         // ...and the owner's content is untouched.
         var body = await (await _client.GetAsync($"/notes/{someoneElsesNote}")).Content.ReadFromJsonAsync<JsonElement>();

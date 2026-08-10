@@ -1,5 +1,9 @@
 import { useState } from 'react';
-import { dismissDeletedNote, useDeletedNoteRescues, type DeletedNoteRescue as Rescue } from '../lib/deletedNoteRescue';
+import {
+  dismissDeletedNote,
+  useDeletedNoteRescues,
+  type DeletedNoteRescue as Rescue,
+} from '../lib/deletedNoteRescue';
 import styles from './DeletedNoteRescue.module.css';
 import { useToast } from './toastContext';
 
@@ -38,9 +42,10 @@ function RescueBanner({ rescue }: { rescue: Rescue }) {
     <div data-testid="deleted-note-banner" className={styles.banner}>
       <div className={styles.text}>
         <span role="alert">
-        <strong>“{rescue.title || 'Untitled note'}” was deleted, so your last change couldn’t be
-        saved.</strong>{' '}
-        Here is the text it was carrying — copy anything you need before you close this tab.
+          <strong>
+            “{rescue.title || 'Untitled note'}” was deleted, so your last change couldn’t be saved.
+          </strong>{' '}
+          Here is the text it was carrying — copy anything you need before you close this tab.
         </span>
         <textarea
           data-testid="deleted-note-text"

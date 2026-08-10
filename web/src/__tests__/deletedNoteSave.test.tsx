@@ -164,9 +164,10 @@ describe('saving into a deleted note (BUG-59)', () => {
     expect(writes).toBe(1)
   })
 
-  // I3 — a bare 404 is also what the ownership pre-check returns and what an API Gateway route miss
-  // returns (34-B shipped one). Under a deploy skew, treating those as deletion would tell every
-  // user their note had been deleted.
+  // I3 — an API Gateway route miss falling through to `/{proxy+}` returns a bare, body-less 404
+  // (34-B shipped one), so under a deploy skew keying off the bare status would tell every user
+  // their note had been deleted. (The server's ownership pre-check deliberately does NOT stay bare
+  // — it shares the note_not_found body, because distinguishing it is an existence oracle.)
   it('does not claim deletion on a bare 404 with no discriminating body', async () => {
     server.use(
       http.get('/api/notes/:noteId', () => HttpResponse.json(detail)),
@@ -304,6 +305,11 @@ describe('the deleted-note rescue is wired into the real App (BUG-59)', () => {
 // failure branch is the one that matters: a button that silently does nothing invites the user to
 // close the tab believing their text was copied.
 describe('copying the rescued text (BUG-59)', () => {
+  // jsdom exposes navigator's members as prototype accessors, so `{ ...navigator }` copies no own
+  // enumerable properties — leaving the stub in place would make the global navigator effectively
+  // `{ clipboard }` for every later test in this file.
+  afterEach(() => vi.unstubAllGlobals())
+
   function seedRescue() {
     reportDeletedNote({ noteId: 'note-9', title: 'Gone note', text: 'text worth keeping' })
     return render(

@@ -86,7 +86,14 @@ public static class NoteHandlers
         // not-yours case gets the identical response instead. The cost is telling an unauthorized
         // caller "deleted" about a note that exists — which is the same thing "not found" has always
         // told them, and they can have no legitimate copy of it open.
-        if (detail is not null && detail.UserId != currentUser.UserId) return NoteGone();
+        // A legacy pre-Phase-8 note has no owner stamped, which NoteDetailProjection stores as "".
+        // The command handler deliberately does NOT enforce ownership in that case, so neither can
+        // this pre-check: `"" != currentUser.UserId` is true for EVERY caller, including the
+        // rightful one. That mismatch predates BUG-59, but its blast radius did not — a bare 404
+        // used to mean "try again", whereas note_not_found now latches the editor closed and
+        // evicts the user home. Match the handler's escape hatch rather than inherit it.
+        if (detail is not null && !string.IsNullOrEmpty(detail.UserId)
+            && detail.UserId != currentUser.UserId) return NoteGone();
         long version;
         try { version = await handler.HandleAsync(new EditContentCmd(new NoteId(noteId), req.Content, req.ExpectedBaseContentHash)); }
         // The editor is open on a note deleted elsewhere, so every retry 404s (prod: six rejected
