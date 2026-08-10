@@ -109,12 +109,20 @@ function concatPcm(chunks: Uint8Array[]): ArrayBuffer {
 // times the old budget. Anything under that expires mid-pass, the token is cleared, the POST 401s,
 // and BUG-55 reproduces.
 //
-// audio × 1.3 gives ~50% slack over that worst case. The floor covers short recordings (engine
-// startup dominates); the ceiling is the actual purpose of having a deadline at all — a wedged
-// engine (BUG-56's "process alive, never ready, silent") must not strand the user forever.
-const AWAIT_COMMIT_SLACK = 1.3;
+// The worst case is NOT the diarize path. `finish()` runs when `diarize()` resolves null, so that
+// route pays BOTH: 0.87 (two diarize passes) + 0.435 (single-stream fallback) ≈ 1.31 × audio. A
+// 1.3 multiplier — which an earlier revision used, calling it "50% slack" — lands exactly on it
+// with none. 1.95 is 50% over the real worst case.
+//
+// The floor covers short recordings, where engine startup dominates the arithmetic. The ceiling is
+// the actual purpose of having a deadline at all: a wedged engine (BUG-56's "process alive, never
+// ready, silent") must not strand the user forever. It is deliberately generous, because the user
+// has already confirmed the sign-out and waiting is the safer failure — losing the transcript is
+// the bug. **Residual:** above ~31 minutes of audio the ceiling binds before the derived deadline,
+// so a very long local 1:1 can still expire mid-pass. Recorded on the BUG-55 row.
+const AWAIT_COMMIT_SLACK = 1.95;
 const AWAIT_COMMIT_MIN_MS = 2 * 60_000;
-const AWAIT_COMMIT_MAX_MS = 30 * 60_000;
+const AWAIT_COMMIT_MAX_MS = 60 * 60_000;
 
 export function useTranscription(noteId: string): UseTranscriptionResult {
   const [status, setStatus] = useState<TranscriptionStatus>('idle');

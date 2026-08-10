@@ -10,7 +10,7 @@ import { server } from '../test/setup'
 
 // BUG-55: [BUG-54]'s leave-confirm awaits the CONTENT save before proceeding, but the TRANSCRIPT
 // commit is fired asynchronously by stopRecording(). In cloud mode it dispatches immediately, so it
-// outlives a route change. In LOCAL mode it first runs the stop-time medium.en pass plus 1:1
+// outlives a route change. In LOCAL mode it first runs the stop-time small.en pass plus 1:1
 // diarization — minutes on a long meeting — and only then issues an authenticated POST. Sign-out
 // clears the token long before that, so the POST 401s, `committedRef` is released, and nothing
 // retries: the transcript is silently lost.
@@ -18,12 +18,25 @@ import { server } from '../test/setup'
 // Sign-out is the only continuation that clears auth, which is why it is the only one that waits.
 // Awaiting on every destination would hang ordinary navigation for those same minutes — so the test
 // pins BOTH halves: sign-out waits, and a plain navigation does not.
+//
+// Known gap: the mock never leaves 'finalising', so nothing here covers the isRecording -> false
+// transition, which is where a queued continuation would fire. The registration guard makes that
+// unreachable by refusing to queue one; the transition itself is untested at App level.
 
 let resolveCommit: (() => void) | undefined
+let releaseContentSave: (() => void) | undefined
 let commitAwaited = 0
 
 vi.mock('../components/LazyNoteEditor', () => ({
-  default: () => <textarea aria-label="Note content" data-testid="note-content" />,
+  default: ({ value, onChange, onBlur }: { value: string; onChange: (md: string) => void; onBlur: () => void }) => (
+    <textarea
+      aria-label="Note content"
+      data-testid="note-content"
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      onBlur={onBlur}
+    />
+  ),
 }))
 
 vi.mock('../hooks/useTranscription', () => ({
@@ -104,6 +117,7 @@ beforeEach(() => {
   // and the gate never returns to the sign-in screen — leaving the test with nothing to observe.
   vi.stubEnv('VITE_GOOGLE_CLIENT_ID', 'test-client-id')
   resolveCommit = undefined
+  releaseContentSave = undefined
   commitAwaited = 0
   window.history.replaceState({}, '', '/')
   server.use(
@@ -182,15 +196,46 @@ describe('signing out mid-recording (BUG-55)', () => {
     await userEvent.click(await screen.findByTestId('confirm-leave-button'))
     await waitFor(() => expect(commitAwaited).toBe(1))
 
-    // Click sign out again while parked, then confirm again.
+    // Click sign out again while parked. No confirm may be raised at all — the guard refuses to
+    // re-arm once a leave is committed. Asserted directly rather than conditionally on finding it.
     await userEvent.click(screen.getByTestId('sign-out-button'))
-    const secondConfirm = screen.queryByTestId('confirm-leave-button')
-    if (secondConfirm) await userEvent.click(secondConfirm)
-
-    await waitFor(() => expect(screen.queryByTestId('confirm-leave-button')).toBeNull())
+    expect(screen.queryByTestId('confirm-leave-button')).toBeNull()
     expect(screen.getByTestId('finishing-transcript')).toBeInTheDocument()
 
     resolveCommit?.()
     expect(await screen.findByRole('button', { name: /sign in with google/i })).toBeInTheDocument()
+  })
+})
+
+// Review of the previous round: the parked SIGN-OUT is not where a dead banner is observable —
+// `finishingTranscript` renders ahead of the confirm there. It is observable on the plain
+// CONTENT-SAVE await, which every destination goes through: `leavingRef` is latched, and in local
+// mode `status` is still 'finalising' so `isRecording` keeps the guard registered. A second click
+// used to render a live "Leave & save" whose handler returned immediately.
+describe('a leave already committed does not re-arm the guard (BUG-55)', () => {
+  it('raises no second confirm while the content save is still in flight', async () => {
+    server.use(
+      http.put('/api/w/:wsId/notes/:noteId/content', async () => {
+        await new Promise<void>((resolve) => { releaseContentSave = resolve })
+        return new HttpResponse(null, { status: 204 })
+      }),
+    )
+    renderApp()
+    await openNoteAndRecord()
+
+    // Create an unsaved draft so the leave actually has a content save to await.
+    await userEvent.click(screen.getByTestId('note-content'))
+    await userEvent.keyboard('some typing')
+
+    await userEvent.click(within(screen.getByTestId('sidebar')).getByTestId('home-button'))
+    await userEvent.click(await screen.findByTestId('confirm-leave-button'))
+    await waitFor(() => expect(releaseContentSave).toBeDefined())
+
+    // Parked on the content PUT. A second navigation must not raise a confirm.
+    await userEvent.click(within(screen.getByTestId('sidebar')).getByTestId('home-button'))
+    expect(screen.queryByTestId('confirm-leave-button')).toBeNull()
+
+    releaseContentSave?.()
+    await waitFor(() => expect(screen.queryByTestId('note-title-input')).toBeNull())
   })
 })

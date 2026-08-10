@@ -374,6 +374,13 @@ export default function NoteView({
       return;
     }
     onRegisterLeaveGuard((proceed, destination, opts) => {
+      // A leave is already committed and awaiting its flush — don't re-arm. Review found the
+      // earlier shape leaves a DEAD banner on the plain content-save await: `leavingRef` is latched
+      // there too, and in local mode `status` is still 'finalising' so `isRecording` keeps this
+      // guard registered. A second click then rendered a live "Leave & save" whose handler returns
+      // immediately. Refusing here also stops a stale continuation being queued into
+      // pendingLeaveRef and fired by the isRecording effect when the finalise ends.
+      if (leavingRef.current) return;
       pendingLeaveRef.current = proceed;
       pendingAwaitTranscriptRef.current = opts?.awaitTranscript ?? false;
       setLeaveDestination(destination);
@@ -636,11 +643,8 @@ export default function NoteView({
   async function handleConfirmedLeave() {
     // The await below restores the Save button (recording has stopped), so without this the
     // user could click Save and navigate a second time when the save resolves.
-    // Already leaving. Nothing to clear: the `finishingTranscript` branch takes render precedence
-    // over `leaveDestination`, so a confirm raised by a second click during the park is never shown
-    // in the first place. An explicit clear here looked prudent but could not be observed by any
-    // test — an unfalsifiable guard, so it is not kept (cf. docs/learnings/phase-bug65-guards-that-
-    // cannot-fire.md).
+    // Belt and braces: the registration guard above already refuses to re-arm once a leave is
+    // committed, so this is only reachable via a double-click on a confirm that is still mounted.
     if (leavingRef.current) return;
     leavingRef.current = true;
     setLeaveDestination(null);
