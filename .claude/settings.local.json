@@ -93,7 +93,9 @@
       "WebFetch(domain:www.recall.ai)",
       "mcp__claude_ai_AI_Note_Taker__list_workspaces",
       "mcp__claude_ai_AI_Note_Taker__list_notes",
-      "mcp__claude_ai_AI_Note_Taker__search_notes"
+      "mcp__claude_ai_AI_Note_Taker__search_notes",
+      "WebFetch(domain:www.electronjs.org)",
+      "WebFetch(domain:api.github.com)"
     ]
   },
   "sandbox": {
