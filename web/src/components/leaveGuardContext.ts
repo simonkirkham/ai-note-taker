@@ -18,7 +18,17 @@ import { createContext, useContext } from "react";
  * not optional: only the caller knows where it is going, and an optional one would let a
  * new guarded exit silently reinstate the anonymous banner this exists to remove.
  */
-export type RequestLeave = (proceed: () => void, destination: string) => void;
+/**
+ * BUG-55: `awaitTranscript` says this destination destroys the session's auth, so the continuation
+ * must wait for the transcript commit POST to land before running. Only sign-out sets it. It is
+ * opt-in rather than always-on because in LOCAL transcription mode the stop sequence runs the
+ * medium.en final pass (plus 1:1 diarization) before it commits — minutes on a long meeting — so
+ * awaiting on every destination would hang ordinary navigation for no benefit. Every other
+ * destination is safe already: the request outlives a route change.
+ */
+export type LeaveOptions = { awaitTranscript?: boolean };
+
+export type RequestLeave = (proceed: () => void, destination: string, opts?: LeaveOptions) => void;
 
 export const LeaveGuardContext = createContext<RequestLeave | null>(null);
 

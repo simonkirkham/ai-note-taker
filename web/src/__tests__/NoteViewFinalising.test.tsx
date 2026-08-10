@@ -28,6 +28,7 @@ vi.mock('../hooks/useTranscription', () => ({
     diarization: 'idle',
     startRecording: () => {},
     stopRecording: () => {},
+    awaitCommit: async () => {},
     reset: () => {},
   }),
 }))

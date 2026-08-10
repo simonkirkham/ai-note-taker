@@ -25,6 +25,7 @@ function txn(overrides: Partial<UseTranscriptionResult> = {}): UseTranscriptionR
     diarization: 'idle',
     startRecording: vi.fn(),
     stopRecording: vi.fn(),
+    awaitCommit: async () => {},
     reset: vi.fn(),
     ...overrides,
   }

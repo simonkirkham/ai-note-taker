@@ -41,6 +41,7 @@ vi.mock('../hooks/useTranscription', () => ({
       diarization: 'idle',
       startRecording: () => { setStatus('recording'); setTranscript('live words') },
       stopRecording: () => setStatus('stopped'),
+      awaitCommit: async () => {},
       reset: () => { setStatus('idle'); setTranscript('') },
     }
   },

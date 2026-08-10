@@ -81,6 +81,9 @@ export interface UseTranscriptionResult {
   // separator); omitted → start fresh and replace. See Phase 18-C.
   startRecording: (includeCallAudio: boolean, autoAnalyse: boolean, resumeFrom?: string) => void;
   stopRecording: () => void;
+  // BUG-55: await the stop sequence and the transcript commit POST. Only sign-out needs it — it
+  // clears the token, so an un-awaited commit 401s and the transcript is lost.
+  awaitCommit: () => Promise<void>;
   reset: () => void;
 }
 
@@ -119,6 +122,10 @@ export function useTranscription(noteId: string): UseTranscriptionResult {
   const lastPartialAtRef = useRef(0);
   const lastDraftRef = useRef<string | null>(null);
   const committedRef = useRef(false);
+  // BUG-55: the in-flight stop sequence and the commit POST it fires, so a caller that is about to
+  // destroy the session's auth can wait for them. Null until Stop runs.
+  const stopSequenceRef = useRef<Promise<void> | null>(null);
+  const commitPostRef = useRef<Promise<void> | null>(null);
   const checkpointTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   // The committed transcript a resumed recording is continuing (plus separator),
   // prepended to every finalised result so the new turns append rather than
@@ -200,7 +207,10 @@ export function useTranscription(noteId: string): UseTranscriptionResult {
     if (!text) return;
     committedRef.current = true;
     const elapsed = Math.floor((Date.now() - startTimeRef.current) / 1000);
-    void completeTranscription(noteId, text, elapsed).catch(() => {
+    // BUG-55: keep the POST's promise. Fire-and-forget is right for every destination except
+    // sign-out, which CLEARS THE TOKEN — an un-awaited commit then 401s, committedRef is released,
+    // and nothing retries. awaitCommit() below lets that one caller wait; everyone else is unchanged.
+    commitPostRef.current = completeTranscription(noteId, text, elapsed).catch(() => {
       committedRef.current = false;
     });
   }, [noteId]);
@@ -602,7 +612,7 @@ export function useTranscription(noteId: string): UseTranscriptionResult {
     // 48-A: in local mode, flush the on-device engine's final window before committing so the
     // last few seconds aren't lost. 48-B: finish() also runs the higher-quality medium.en pass over
     // the whole recording and resolves with that transcript (or null → keep the live base.en text).
-    void (async () => {
+    stopSequenceRef.current = (async () => {
       if (localActiveRef.current) {
         localActiveRef.current = false;
         // 48-C: local mode archives the WAV but diarizes on-device — no cloud batch job (pass false).
@@ -654,6 +664,16 @@ export function useTranscription(noteId: string): UseTranscriptionResult {
     })();
   }, [cleanup, commitTranscript, uploadRecording]);
 
+  // BUG-55: resolves once the stop sequence AND the commit POST it fires have finished. In cloud
+  // mode both are effectively immediate; in local mode the stop sequence runs the medium.en final
+  // pass (plus 1:1 diarization) first — minutes on a long meeting, which is exactly why this is
+  // opt-in per destination rather than awaited on every navigation. Never rejects: the stop
+  // sequence swallows its own errors and the commit's catch is already attached.
+  const awaitCommit = useCallback(async () => {
+    await stopSequenceRef.current;
+    await commitPostRef.current;
+  }, []);
+
   const reset = useCallback(() => {
     cleanup();
     finalizedRef.current = '';
@@ -675,5 +695,5 @@ export function useTranscription(noteId: string): UseTranscriptionResult {
     stoppedRef.current = false;
   }, [cleanup]);
 
-  return { status, transcript, elapsedSeconds, error, recordingUpload, diarization, startRecording, stopRecording, reset };
+  return { status, transcript, elapsedSeconds, error, recordingUpload, diarization, startRecording, stopRecording, awaitCommit, reset };
 }

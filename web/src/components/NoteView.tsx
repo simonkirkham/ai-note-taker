@@ -21,6 +21,7 @@ import AgendaSection from "./AgendaSection";
 import CommandBar from "./CommandBar";
 import FinalNotesView from "./FinalNotesView";
 import LazyNoteEditor from "./LazyNoteEditor";
+import type { LeaveOptions } from "./leaveGuardContext";
 import { dayInTz } from "./meetingDay";
 import MeetingPicker from "./MeetingPicker";
 import MoveToWorkspaceMenu from "./MoveToWorkspaceMenu";
@@ -74,7 +75,7 @@ export default function NoteView({
   // (switching or closing an open-note tab). Registered only while recording — an in-app
   // navigate never fires the popstate trap below, so without this the capture dies silently.
   onRegisterLeaveGuard?: (
-    guard: ((proceed: () => void, destination: string) => void) | null,
+    guard: ((proceed: () => void, destination: string, opts?: LeaveOptions) => void) | null,
   ) => void;
   onNotFound?: () => void;
   isNew?: boolean;
@@ -137,6 +138,9 @@ export default function NoteView({
   // 49-A: where to go once a mid-recording leave is confirmed, when the leave was requested
   // by the parent (a tab switch/close) rather than by this note's own Save/back.
   const pendingLeaveRef = useRef<(() => void) | null>(null);
+  // BUG-55: set when the pending destination will destroy the session's auth (sign-out), so the
+  // continuation must wait for the transcript commit POST rather than only the content save.
+  const pendingAwaitTranscriptRef = useRef(false);
   // Latched once a confirmed leave starts, so the in-flight save can't be raced by a
   // second exit (Save/back, or a double-click on "Leave & save") while it settles.
   // Never reset: every continuation unmounts this NoteView, so the latch dies with it. A
@@ -358,8 +362,9 @@ export default function NoteView({
       onRegisterLeaveGuard(null);
       return;
     }
-    onRegisterLeaveGuard((proceed, destination) => {
+    onRegisterLeaveGuard((proceed, destination, opts) => {
       pendingLeaveRef.current = proceed;
+      pendingAwaitTranscriptRef.current = opts?.awaitTranscript ?? false;
       setLeaveDestination(destination);
     });
     return () => onRegisterLeaveGuard(null);
@@ -604,10 +609,20 @@ export default function NoteView({
     handleSaveContent();
     const proceed = pendingLeaveRef.current;
     pendingLeaveRef.current = null;
+    const awaitTranscript = pendingAwaitTranscriptRef.current;
+    pendingAwaitTranscriptRef.current = false;
     // BUG-54: await the content flush before handing control over. Most destinations don't
     // care (the save outlives a route change), but signing out clears the token — an
     // un-awaited save would then 401 and lose the text.
     if (pendingContentSaveRef.current) await pendingContentSaveRef.current;
+    // BUG-55: the TRANSCRIPT commit needs the same treatment, and BUG-54 only covered the content
+    // save. stopRecording() above fires the commit asynchronously: in cloud mode it dispatches
+    // immediately (safe — the request outlives a route change), but in local mode it first runs the
+    // stop-time medium.en pass plus 1:1 diarization, minutes on a long meeting, and only then POSTs.
+    // Sign-out clears the token long before that, so the POST 401s, committedRef is released and
+    // nothing retries. Awaited ONLY for the destination that clears auth: doing it on every
+    // navigation would hang ordinary tab switches for those same minutes.
+    if (awaitTranscript) await transcription.awaitCommit();
     // A parent-requested leave resumes at the destination the user actually clicked (the
     // tab); a self-requested one exits to the deterministic onExit route (BUG-34).
     if (proceed) proceed();
