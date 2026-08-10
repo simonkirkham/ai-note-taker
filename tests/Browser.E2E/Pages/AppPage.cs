@@ -398,29 +398,60 @@ public sealed class AppPage
 
     // Nothing may be painted over the pinned tab's leading edge — a covered tab still passes
     // every geometric check while swallowing the click that is meant to go home.
+    //
+    // The probe runs ENTIRELY in the page, against the element's own rect. An earlier version
+    // read the box in C# and passed the coordinates back in, which crashed the deploy gate on
+    // this helper's first ever execution: a non-finite rect component serialises to null,
+    // arrives as undefined, and elementFromPoint rejects it with "The provided double value is
+    // non-finite" — an error naming neither the tab nor the value. Keeping the coordinates
+    // inside the page removes that boundary entirely, and every outcome now leaves through the
+    // thrown message, which is the only channel xUnit preserves for a failing test.
     private async Task AssertPinnedTabIsOnTopAsync(string when)
     {
-        var box = await page.GetByTestId("open-note-tab-home").BoundingBoxAsync()
-                  ?? throw new Exception($"the pinned tab has no box {when}");
-        var probeX = box.X + 4;
-        var probeY = box.Y + (box.Height / 2);
-        var onTop = await page.EvaluateAsync<bool>(
-            @"([x, y]) => {
-                const el = document.elementFromPoint(x, y);
-                return !!el && !!el.closest('[data-testid=""open-note-tab-home""]');
-            }",
-            new[] { probeX, probeY });
-        if (!onTop)
+        var pinned = page.GetByTestId("open-note-tab-home");
+        // The bar is asserted immediately after a scroll, so wait for it to be laid out rather
+        // than reading a rect mid-frame. Visibility already implies a non-empty box, which is
+        // why the guards below should never fire — they exist so that if one ever does, the
+        // message says which, instead of surfacing as an opaque Playwright TypeError.
+        await pinned.WaitForAsync(new() { State = WaitForSelectorState.Visible, Timeout = 10_000 });
+
+        // Poll to a deadline, because a cover can be TRANSIENT. Dropping to a narrow viewport
+        // switches the sidebar to fixed + translateX(-100%) with a 200ms transition, so for
+        // those 200ms it is sliding left across the bar and genuinely is the topmost element at
+        // the tab's leading edge. Sampling once caught it 4 runs in 5.
+        // This still fails a REAL cover: something painted over the tab stays there, so the
+        // verdict never turns OK and the last one is what gets thrown.
+        var verdict = "not evaluated";
+        var settleBy = DateTime.UtcNow.AddSeconds(3);
+        while (DateTime.UtcNow < settleBy)
         {
-            var covering = await page.EvaluateAsync<string>(
-                @"([x, y]) => {
-                    const el = document.elementFromPoint(x, y);
-                    if (!el) return 'nothing';
-                    return el.tagName + ' ' + (el.getAttribute('data-testid') ?? el.className ?? '');
-                }",
-                new[] { probeX, probeY });
-            throw new Exception($"the pinned My-notes tab is covered {when} at ({probeX},{probeY}) by: {covering}");
+            verdict = await ProbePinnedTabAsync(pinned);
+            if (verdict == "OK") break;
+            await page.WaitForTimeoutAsync(100);
         }
+
+        if (verdict != "OK")
+        {
+            throw new Exception($"the pinned My-notes tab is not the topmost element {when} — {verdict}");
+        }
+    }
+
+    private static async Task<string> ProbePinnedTabAsync(ILocator pinned)
+    {
+        return await pinned.EvaluateAsync<string>(
+            @"el => {
+                const r = el.getBoundingClientRect();
+                if (![r.x, r.y, r.width, r.height].every(Number.isFinite))
+                    return 'NO BOX — rect=' + JSON.stringify(r);
+                if (r.width === 0 || r.height === 0)
+                    return 'ZERO SIZE — ' + r.width + 'x' + r.height + ' at ' + r.x + ',' + r.y;
+                const x = r.x + 4, y = r.y + (r.height / 2);
+                const hit = document.elementFromPoint(x, y);
+                if (!hit) return 'NOTHING HIT at ' + Math.round(x) + ',' + Math.round(y);
+                if (hit.closest('[data-testid=""open-note-tab-home""]')) return 'OK';
+                return 'COVERED at ' + Math.round(x) + ',' + Math.round(y) + ' by ' +
+                       hit.tagName + ' ' + (hit.getAttribute('data-testid') ?? hit.className ?? '');
+            }");
     }
 
     // `aria-current` sits on the tab's label button (the nav's "you are here"), not the wrapper.
