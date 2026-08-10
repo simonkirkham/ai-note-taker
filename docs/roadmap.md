@@ -515,13 +515,13 @@ Alongside the numbered phases above, work is tracked in five standing docs. The 
 An unnumbered, standing phase capturing defects in the deployed app, tracked to a fix. No learning theme, no fixed sequence.
 
 **Open bugs live in [phase-bugs.md](phases/phase-bugs.md#summary), not here.** That table is the single source for bug status — this section deliberately does not restate it. A hand-maintained copy went stale within hours of every status change and made the roadmap a conflict magnet for parallel sessions (PR #414 re-conflicted three times on this one line). `scripts/check-doc-ids.sh` fails the commit if an `Open now (N)` list reappears.
-49 bugs are fixed. The [Summary table](phases/phase-bugs.md#summary) is the full index (one row per bug, every status); condensed write-ups of the fixed ones live in [phase-bugs-archive.md](phases/phase-bugs-archive.md). This section deliberately does **not** re-list them — the table is the single source.
+The [Summary table](phases/phase-bugs.md#summary) is the full index (one row per bug, every status); condensed write-ups of the fixed ones live in [phase-bugs-archive.md](phases/phase-bugs-archive.md). This section deliberately does **not** re-list them, **and carries no fixed/open count** — the table is the single source. A hand-maintained total drifts exactly like the hand-maintained list did: this line read "49 bugs are fixed" on 2026-08-10 when the table held 67, having gone stale unnoticed across dozens of fixes. Count from the table when a number is needed; never cache one here.
 
 → [docs/phases/phase-bugs.md](phases/phase-bugs.md)
 
 ### Minor Changes _(Ongoing)_
 
-An unnumbered, standing phase for small tweaks and changes to existing behaviour that don't warrant a numbered phase and aren't defects. **Outstanding (1):** **CHANGE-38** (agenda topics showing markdown markers). **CHANGE-33** — the "Still recording —" leave confirm now names where "Leave & save" will take you — shipped 2026-08-09 on deploy #745, closing the [BUG-54] guarded-exit work. 37 changes have shipped; the [Summary table](phases/phase-minor-changes.md#summary) is the full index and the authority on status — this section does not re-list them.
+An unnumbered, standing phase for small tweaks and changes to existing behaviour that don't warrant a numbered phase and aren't defects. The [Summary table](phases/phase-minor-changes.md#summary) is the full index and the sole authority on status — this section does not re-list items, name what is outstanding, or carry a shipped count. All three drift: this line claimed "Outstanding (1): CHANGE-38" on 2026-08-10 when CHANGE-38 had already shipped, and "37 changes have shipped" when the table held 38. Read the table.
 
 → [docs/phases/phase-minor-changes.md](phases/phase-minor-changes.md)
 
