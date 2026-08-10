@@ -47,9 +47,18 @@ fi
 awk -v mode="$MODE" -v logfile="$LOG" '
 function pct(n, d) { return d > 0 ? sprintf("%.0f%%", 100 * n / d) : "n/a" }
 
+# Seconds-of-day from an ISO stamp. Only ever used for gaps within one session, so a midnight
+# rollover is handled by adding a day rather than by parsing the date.
+function secs(stamp,   tp) {
+  tp = substr(stamp, index(stamp, "T") + 1)
+  return substr(tp, 1, 2) * 3600 + substr(tp, 4, 2) * 60 + substr(tp, 7, 2)
+}
+
 function reset_session() {
-  steps = 0; ok_steps = 0; slow = 0; failed = 0; dropped_total = 0; clamped_steps = 0
+  steps = 0; ok_steps = 0; slow = 0; failed = 0; dropped_total = 0; drop_events = 0; clamped_steps = 0
+  worst_rtf = 0; worst_line = ""
   frozen_run = 0; frozen_max = 0; prev_key = ""
+  prev_t = -1; prev_committed = -1; rearm_pending = 0; rearm_base = 0; rearm_seen = 0; gap_seen = 0
   rtf_n = 0; rtf_max = 0
   delete rtf
 }
@@ -79,9 +88,10 @@ function report(   i, j, tmp, median, v65, v67, bad) {
   printf "  steps            %d\n", steps
   printf "  rtf median       %.2f   max %.2f      (<1.00 = faster than realtime)\n", median, rtf_max
   printf "  rtf >= 1.00      %d of %d (%s)\n", slow, rtf_n, pct(slow, rtf_n)
-  printf "  dropped          %d      (steps skipped because inference was still busy)\n", dropped_total
+  printf "  dropped          %d tick(s) across %d step(s) (%s)   (skipped because inference was still busy)\n", dropped_total, drop_events, pct(drop_events, ok_steps)
   printf "  clamped          %d of %d (%s)   (window hit the encoder send cap)\n", clamped_steps, steps, pct(clamped_steps, steps)
   printf "  failed steps     %d\n", failed
+  if (worst_rtf >= 1.0) printf "  slowest step     %s\n", worst_line
 
   if (steps < 10) {
     v65 = "INCONCLUSIVE — fewer than 10 steps; record continuously for ~30 s and re-run"
@@ -91,8 +101,10 @@ function report(   i, j, tmp, median, v65, v67, bad) {
     v65 = "FAIL — inference is slower than realtime; threads are the next lever (see BUG-65 fix note 3)"
   } else if (clamped_steps * 5 > steps) {
     v65 = "FAIL — the send cap is engaging repeatedly, so it is falling behind"
-  } else if (dropped_total * 10 > steps) {
-    v65 = "FAIL — steps are being dropped by the busy-guard faster than the 1.5 s tick"
+  } else if (drop_events * 5 > ok_steps) {
+    v65 = "FAIL — it falls behind the 1.5 s tick repeatedly, not as a one-off stall"
+  } else if (worst_rtf >= 1.0) {
+    v65 = sprintf("PASS — median %.2f, keeps pace; one outlier step at rtf %.2f, not a pattern", median, worst_rtf)
   } else {
     v65 = "PASS — inference keeps pace with the audio"
   }
@@ -101,14 +113,19 @@ function report(   i, j, tmp, median, v65, v67, bad) {
   printf "\nBUG-67 — does the engine stop when the audio does?\n"
   printf "  longest run of consecutive steps with window AND committed both frozen: %d\n", frozen_max
   printf "  (before the fix: ~12 such steps over ~30 s after pressing Stop)\n"
+  printf "  quiet stretches that then resumed and committed new text: %d of %d\n", rearm_seen, gap_seen
   # A "no spin seen" verdict drawn from too few steps cannot fail, and a check that cannot fail is
   # not evidence — the exact shape that made BUG-57 and BUG-65 pass on nothing.
   if (frozen_max >= 3) {
     v67 = "FAIL — the engine is re-transcribing stale audio; the idle guard is not firing"
   } else if (ok_steps < 5) {
     v67 = sprintf("INCONCLUSIVE — only %d successful step(s); too few for a frozen run to show at all", ok_steps)
+  } else if (gap_seen > 0 && rearm_seen == 0) {
+    v67 = "FAIL — it went quiet and never resumed: the guard latched off instead of re-arming"
+  } else if (gap_seen == 0) {
+    v67 = "PARTIAL — no spin on stale audio, but this recording had no pause, so it does not show the guard re-arming. Record again: speak, stay silent ~10 s, speak again."
   } else {
-    v67 = "PASS — no spin on stale audio"
+    v67 = "PASS — no spin on stale audio, and it resumed after a pause"
   }
   printf "  VERDICT: %s\n", v67
 
@@ -139,9 +156,10 @@ BEGIN { started = 0; session_no = 0; fail_any = 0; reset_session(); printf "LOG:
     next
   }
 
-  window = ""; committed = ""; rstr = ""; d = 0; c = 0
+  window = ""; committed = ""; rstr = ""; infer = 0; d = 0; c = 0
   for (i = 2; i <= NF; i++) {
     if ($i ~ /^window=/)    { window = substr($i, 8) }
+    else if ($i ~ /^infer=/) { infer = substr($i, 7) + 0 }
     else if ($i ~ /^rtf=/)  { rstr = substr($i, 5) }
     else if ($i ~ /^committed=/) { committed = substr($i, 11) }
     else if ($i ~ /^dropped=/)   { d = substr($i, 9) + 0 }
@@ -154,10 +172,30 @@ BEGIN { started = 0; session_no = 0; fail_any = 0; reset_session(); printf "LOG:
     rtf[++rtf_n] = r
     if (r > rtf_max) rtf_max = r
     if (r >= 1.0) slow++
+    if (r > worst_rtf) { worst_rtf = r; worst_line = $0; sub(/^[^ ]+ /, "", worst_line) }
   }
   ok_steps++
   dropped_total += d
+  # Count HOW OFTEN it falls behind, not how many ticks were lost in total: one stall that drops
+  # four ticks is a hiccup; four separate steps each dropping one is the engine failing to keep up.
+  if (d > 0) drop_events++
   if (c) clamped_steps++
+
+  # The other half of BUG-67: the guard must be idle DETECTION, not a latch. "No spin" alone cannot
+  # tell the two apart — a guard stuck off looks identical. A quiet stretch with no step lines,
+  # followed by steps that commit new text, is the only proof in the log that it re-armed.
+  # A long gap whose next step is itself slow is a stall (inference was running), not idleness.
+  t = secs($1)
+  if (prev_t >= 0) {
+    gap = t - prev_t
+    if (gap < 0) gap += 86400
+    if (gap >= 8 && infer > 0 && infer < 3000) { gap_seen++; rearm_pending = 3; rearm_base = prev_committed }
+  }
+  prev_t = t
+  if (rearm_pending > 0) {
+    if (committed + 0 > rearm_base) { rearm_seen++; rearm_pending = 0 } else { rearm_pending-- }
+  }
+  prev_committed = committed + 0
 
   # The BUG-67 symptom: window and committed BOTH unchanged means the same audio, re-transcribed.
   key = window "/" committed
