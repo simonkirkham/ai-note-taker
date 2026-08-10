@@ -1,4 +1,4 @@
-# Phase 43 — Meeting agenda (topics to discuss) _(In Progress — 43-A–G done; only 43-H remains)_
+# Phase 43 — Meeting agenda (topics to discuss) _(Done — 2026-08-10)_
 
 **Goal:** give each note a short checklist of things you need to discuss, which you tick off as you cover them — from the note itself or from the header, wherever your hands already are.
 
@@ -14,7 +14,7 @@
 | 43-F | Tick a topic off in the notes as you type, and watch the count move | Done _(#428)_ | 43-D |
 | 43-G | Add, reword or drop a topic from the header and have the notes follow | Done _(#438)_ | 43-F |
 | 43-H1 | Topics on older notes appear in the notes themselves | Done _(#441, deploy #742; migration applied 2026-08-10 — 8 notes, 36 topics, verified in the event stream)_ | 43-F |
-| 43-H2 | One way everywhere — the old parallel record is gone | In Progress _(PR pending)_ | 43-H1 |
+| 43-H2 | One way everywhere — the old parallel record is gone | Done _(#451, deploy #751, `deploy-production` + Command/Query Lambdas confirmed updated)_ | 43-H1 |
 
 43-A is the thin vertical that proves the whole pipe; 43-B/C extend it; 43-D is polish; 43-E removes the superseded mechanism. 43-F–H then move the agenda **into** the note: 43-F reads it from the notes, 43-G makes the header write back, 43-H moves the stragglers over. **Reorder (drag) is deferred** — order is capture order for now.
 
