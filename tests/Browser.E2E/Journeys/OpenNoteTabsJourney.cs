@@ -96,9 +96,33 @@ public sealed class OpenNoteTabsJourney(BrowserFixture browser) : IAsyncLifetime
         await _app.AssertActiveTabAsync(first);
         await _app.AssertNoteScreenLoadedAsync();
 
-        // Closing the last tab returns to the notes list, with no bar left behind.
+        // Closing the last tab returns to the notes list. 51-B: the bar STAYS, holding only
+        // the pinned "My notes" tab — it no longer vanishes and then reappears on the next open.
         await _app.CloseOpenNoteTabAsync(first);
         await _app.AssertHomeLoadedAsync();
-        await _app.AssertNoOpenTabBarAsync();
+        await _app.AssertOnlyPinnedTabAsync();
+
+        // 51-B's actual fix: open a note, go back via the PINNED tab, and the note's tab is
+        // still on screen. Before this slice the bar vanished on the list and the whole row
+        // reappeared on the next open.
+        await _app.ClickNoteInListAsync(first);
+        await _app.AssertNoteScreenLoadedAsync();
+        await _app.AssertOpenTabCountAsync(1);
+
+        await _app.ClickPinnedTabAsync();
+        await _app.AssertOpenTabVisibleAsync(first);
+        await _app.AssertOpenTabCountAsync(1);
+
+        // Sticky pinned tab. Needs BOTH tabs open and a narrow viewport, or the strip does not
+        // overflow and the assertion is vacuous — the helper refuses to run in that case. This
+        // also exercises the <640px branch, where the pinned tab has to clear the fixed sidebar
+        // toggle. jsdom has no layout, so the deploy gate is the only place this can be proved.
+        await _app.ClickNoteInListAsync(second);
+        await _app.AssertNoteScreenLoadedAsync();
+        await _app.AssertOpenTabCountAsync(2);
+
+        await _page.SetViewportSizeAsync(380, 720);
+        await _app.AssertPinnedTabStaysVisibleWhenStripScrolledAsync();
+        await _page.SetViewportSizeAsync(1280, 720);
     }
 }

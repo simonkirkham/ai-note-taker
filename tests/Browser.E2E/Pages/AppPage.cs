@@ -1,3 +1,4 @@
+using Xunit;
 using Microsoft.Playwright;
 
 namespace Browser.E2E.Pages;
@@ -338,8 +339,89 @@ public sealed class AppPage
     public Task AssertOpenTabAbsentAsync(string title) =>
         Assertions.Expect(OpenNoteTabs.Filter(new LocatorFilterOptions { HasText = title })).ToHaveCountAsync(0);
 
-    public Task AssertNoOpenTabBarAsync() =>
-        Assertions.Expect(page.GetByTestId("open-note-tabs")).ToHaveCountAsync(0);
+    // 51-B inverted 49-A's "the bar disappears" contract: the bar is now PERMANENT, so
+    // what "nothing open" looks like is the bar still there holding only the pinned
+    // "My notes" tab. The pinned tab is not `open-note-tab`, so the document-tab count
+    // is still 0 — asserting both is what distinguishes "empty bar" from "bar gone".
+    // 51-B: the pinned "My notes" tab is how you get back to the list without losing the bar.
+    public async Task ClickPinnedTabAsync()
+    {
+        await page.GetByTestId("open-note-tab-home").ClickAsync();
+        await AssertHomeLoadedAsync();
+    }
+
+    public async Task AssertOnlyPinnedTabAsync()
+    {
+        // Gate on the RECONCILED set first. "Zero document tabs" is vacuously true during the
+        // window before restored tabs render, so an ungated count here would pass on an empty
+        // pre-reconcile DOM and hide a real regression.
+        await Assertions.Expect(page.Locator("[data-testid='open-note-tabs'][data-tabs-reconciled='true']"))
+            .ToBeVisibleAsync();
+        await Assertions.Expect(page.GetByTestId("open-note-tab-home")).ToBeVisibleAsync();
+        await Assertions.Expect(OpenNoteTabs).ToHaveCountAsync(0);
+    }
+
+    // 51-B: the pinned tab must survive a strip scrolled to its far end — with several notes
+    // open it is the only way back, so scrolling it out of reach would strand the user.
+    //
+    // The preconditions and the hit-test are the point. Without them this cannot fail: a
+    // sticky element is in the viewport by construction, and `ToBeInViewportAsync` is pure
+    // geometry — indifferent to something painted ON TOP. The real <640px failure is exactly
+    // that: the fixed sidebar toggle (z-index 40) covering a tab that is still perfectly
+    // "in the viewport". So hit-test the tab's own left edge, at BOTH scroll origin and
+    // scroll end, since the natural and stuck offsets are held by different properties.
+    public async Task AssertPinnedTabStaysVisibleWhenStripScrolledAsync()
+    {
+        var bar = page.GetByTestId("open-note-tabs");
+
+        var overflows = false;
+        var deadline = DateTime.UtcNow.AddSeconds(5);
+        while (DateTime.UtcNow < deadline)
+        {
+            overflows = await bar.EvaluateAsync<bool>("el => el.scrollWidth > el.clientWidth");
+            if (overflows) break;
+            await page.WaitForTimeoutAsync(200);
+        }
+        Assert.True(overflows, "the tab strip does not overflow, so scrolling it proves nothing — " +
+                               "open more tabs or narrow the viewport before calling this");
+
+        await AssertPinnedTabIsOnTopAsync("at scroll origin");
+
+        await bar.EvaluateAsync("el => el.scrollLeft = el.scrollWidth");
+        var scrolled = await bar.EvaluateAsync<double>("el => el.scrollLeft");
+        Assert.True(scrolled > 0, $"the strip did not scroll (scrollLeft={scrolled})");
+
+        await Assertions.Expect(page.GetByTestId("open-note-tab-home"))
+            .ToBeInViewportAsync(new() { Ratio = 1 });
+        await AssertPinnedTabIsOnTopAsync("after scrolling to the end");
+    }
+
+    // Nothing may be painted over the pinned tab's leading edge — a covered tab still passes
+    // every geometric check while swallowing the click that is meant to go home.
+    private async Task AssertPinnedTabIsOnTopAsync(string when)
+    {
+        var box = await page.GetByTestId("open-note-tab-home").BoundingBoxAsync()
+                  ?? throw new Exception($"the pinned tab has no box {when}");
+        var probeX = box.X + 4;
+        var probeY = box.Y + (box.Height / 2);
+        var onTop = await page.EvaluateAsync<bool>(
+            @"([x, y]) => {
+                const el = document.elementFromPoint(x, y);
+                return !!el && !!el.closest('[data-testid=""open-note-tab-home""]');
+            }",
+            new[] { probeX, probeY });
+        if (!onTop)
+        {
+            var covering = await page.EvaluateAsync<string>(
+                @"([x, y]) => {
+                    const el = document.elementFromPoint(x, y);
+                    if (!el) return 'nothing';
+                    return el.tagName + ' ' + (el.getAttribute('data-testid') ?? el.className ?? '');
+                }",
+                new[] { probeX, probeY });
+            throw new Exception($"the pinned My-notes tab is covered {when} at ({probeX},{probeY}) by: {covering}");
+        }
+    }
 
     // `aria-current` sits on the tab's label button (the nav's "you are here"), not the wrapper.
     public Task AssertActiveTabAsync(string title) =>
@@ -364,6 +446,9 @@ public sealed class AppPage
     // in-memory tab set is wiped by the reload inside AssertNoteVisibleInListAfterReloadAsync;
     // once 49-B persists tabs that stops being true, and any exact-count assertion silently
     // becomes wrong. Normalise to a known state instead of depending on either behaviour.
+    // 51-B: `OpenNoteTabs` deliberately excludes the pinned "My notes" tab. If the pinned
+    // tab ever gained `data-testid="open-note-tab"` this loop would never terminate — it
+    // has no close button — and the suite would HANG rather than fail.
     public async Task CloseAllTabsExceptAsync(string keepTitle)
     {
         while (await OpenNoteTabs.CountAsync() > 1)

@@ -2,7 +2,7 @@
   margin-top: 1.5rem;
   padding: 0.875rem 1rem;
   background: var(--color-surface);
-  border: 1.5px solid var(--color-border);
+  border: 1.5px solid var(--color-border-strong);
   border-radius: 8px;
   display: flex;
   flex-wrap: wrap;
@@ -19,7 +19,7 @@
   font-size: 0.8125rem;
   color: var(--color-text);
   background: var(--color-surface);
-  border: 1.5px solid var(--color-border);
+  border: 1.5px solid var(--color-border-strong);
   border-radius: var(--radius);
   transition: border-color var(--transition);
 }

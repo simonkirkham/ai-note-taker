@@ -8,25 +8,47 @@ import styles from "./OpenNoteTabs.module.css";
 // the note screen's own <main> landmark — relabelling that would be worse for a screen
 // reader than plain navigation. A labelled <nav> of buttons with `aria-current="page"` on
 // the active one says the same thing, and native buttons give keyboard order for free.
+//
+// 51-B: the bar is PERMANENT. It renders on every screen and never returns null. The notes
+// list is a pinned leftmost tab, current whenever no note is open, so nothing in the bar
+// ever appears or disappears — the flicker of going Home and coming back was the whole
+// reason for the redesign. The pinned tab is deliberately NOT `data-testid="open-note-tab"`:
+// counting it would shift every count assertion by one, and the E2E helper that closes
+// stray tabs loops on that testid clicking a close button the pinned tab does not have,
+// which would hang the suite rather than fail it.
 export default function OpenNoteTabs({
   tabs,
   activeNoteId,
+  homeIsCurrentPage,
   reconciled,
   onSelect,
+  onSelectHome,
   onClose,
 }: {
   tabs: OpenNoteTab[];
   activeNoteId?: string;
+  // `aria-current="page"` only when the pinned tab really IS the current page. On a FOLDER
+  // screen the notes list is the current item in the bar but not the page you are on — and
+  // clicking it navigates away — so that case gets `aria-current="true"` instead.
+  //
+  // Searching is NOT one of those cases: a search is `?q=` on the notes-list path (see
+  // ListView's writeFilters), so you are still on the notes list and this stays "page".
+  // That is deliberate — flipping aria-current on every keystroke would be worse for a
+  // screen reader than leaving it alone.
+  homeIsCurrentPage: boolean;
   // 49-B: false until a note-cards read has succeeded. Restored tabs render straight from
   // storage before that, so the set on screen is provisional and one may still drop when the
   // list lands. Surfaced as an attribute because that transition is otherwise unobservable:
   // an E2E count assertion is a coin toss without something to wait on, and "the response
   // arrived" is not the same as "the reconciled set rendered".
+  //
+  // 51-B: this now matters on every route, not just the note route — the set is provisional
+  // on the notes list for exactly the same reason.
   reconciled: boolean;
   onSelect: (noteId: string) => void;
+  onSelectHome: () => void;
   onClose: (noteId: string) => void;
 }) {
-  if (tabs.length === 0) return null;
   return (
     <nav
       data-testid="open-note-tabs"
@@ -35,6 +57,18 @@ export default function OpenNoteTabs({
       className={styles.bar}
     >
       <ul className={styles.list}>
+        <li className={clsx(styles.tab, styles.tabHome, !activeNoteId && styles.tabActive)}>
+          <button
+            type="button"
+            data-testid="open-note-tab-home"
+            className={styles.label}
+            aria-current={activeNoteId ? undefined : homeIsCurrentPage ? "page" : "true"}
+            onClick={onSelectHome}
+          >
+            <HomeIcon />
+            My notes
+          </button>
+        </li>
         {tabs.map((tab) => {
           const isActive = tab.noteId === activeNoteId;
           return (
@@ -68,5 +102,24 @@ export default function OpenNoteTabs({
         })}
       </ul>
     </nav>
+  );
+}
+
+function HomeIcon() {
+  return (
+    <svg
+      className={styles.homeIcon}
+      viewBox="0 0 16 16"
+      width="14"
+      height="14"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.6"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M2 6.5 8 2l6 4.5V13a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V6.5Z" />
+    </svg>
   );
 }

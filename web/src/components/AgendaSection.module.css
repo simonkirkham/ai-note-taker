@@ -166,7 +166,7 @@
 .addInput {
   flex: 1;
   min-width: 8rem;
-  border: 1px dashed var(--color-border);
+  border: 1px dashed var(--color-border-strong);
   border-radius: 9999px;
   padding: 0.15rem 0.65rem;
   font-family: inherit;

@@ -7,6 +7,18 @@
 
 .appMain {
   min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+/* 51-B: the page below the bar is the same surface as the active tab, so the two read as
+   one sheet and the bar needs no rule under it. This repaints the main column on EVERY
+   screen — note, list, folder, search — in all 17 themes, light and dark; it is a
+   deliberate app-wide change, not a bar-only one. */
+.appContent {
+  flex: 1;
+  min-width: 0;
+  background: var(--color-surface);
 }
 
 .sidebarToggle {
@@ -45,7 +57,7 @@
     left: 0.75rem;
     z-index: 40;
     background: var(--color-surface);
-    border: 1px solid var(--color-border);
+    border: 1px solid var(--color-border-strong);
     border-radius: var(--radius);
     padding: 0.25rem 0.5rem;
     font-size: 1.1rem;
