@@ -124,6 +124,27 @@ const AWAIT_COMMIT_SLACK = 1.95;
 const AWAIT_COMMIT_MIN_MS = 2 * 60_000;
 const AWAIT_COMMIT_MAX_MS = 60 * 60_000;
 
+// BUG-74: stopping a capture track can throw (a revoked or already-ended device track). Releasing
+// hardware is best-effort — a failure must not abort the rest of the teardown. Each track is
+// stopped independently, which also fixes the pre-existing case of one bad track stranding the
+// rest of the stream's tracks, not only the throw-out-of-unmount this bug is about.
+function stopTracks(stream: MediaStream | null): void {
+  if (!stream) return;
+  try {
+    for (const track of stream.getTracks()) {
+      try {
+        track.stop();
+      } catch (err) {
+        console.warn('Stopping a capture track failed.', err);
+      }
+    }
+  } catch (err) {
+    // `getTracks()` itself sits outside the per-track guard otherwise, which left a reachable
+    // throw in the one function whose whole job is to be unable to throw.
+    console.warn('Enumerating capture tracks failed.', err);
+  }
+}
+
 export function useTranscription(noteId: string): UseTranscriptionResult {
   const [status, setStatus] = useState<TranscriptionStatus>('idle');
   const [transcript, setTranscript] = useState('');
@@ -200,14 +221,16 @@ export function useTranscription(noteId: string): UseTranscriptionResult {
       audioContextRef.current.close().catch(() => {});
       audioContextRef.current = null;
     }
-    if (mediaStreamRef.current) {
-      mediaStreamRef.current.getTracks().forEach((t) => t.stop());
-      mediaStreamRef.current = null;
-    }
-    if (displayStreamRef.current) {
-      displayStreamRef.current.getTracks().forEach((t) => t.stop());
-      displayStreamRef.current = null;
-    }
+    // BUG-74: `cleanup()` runs inside React's effect teardown, so a throw here escapes the unmount
+    // itself — everything after the throwing line is skipped (refs left set, timers left running,
+    // the AudioContext never closed) and React surfaces it as a crash. `stop()` on a revoked or
+    // already-ended device track is the realistic source. Releasing hardware is best-effort; it
+    // must never be able to take the teardown with it. Found by this bug's own test throwing out of
+    // `view.unmount()` — the same shape as the two sites above, one frame further on.
+    stopTracks(mediaStreamRef.current);
+    mediaStreamRef.current = null;
+    stopTracks(displayStreamRef.current);
+    displayStreamRef.current = null;
   }, []);
 
   // Autosave the finalised transcript so far to the DRAFT store (PUT, no event),
@@ -314,9 +337,10 @@ export function useTranscription(noteId: string): UseTranscriptionResult {
       // discarded silently. The sequence's own POST outlives the route change (the one destination
       // that does not is sign-out, which BUG-55 handles by waiting).
       //
-      // CHAIN, do not skip. Skipping would make the sequence the SOLE owner of the commit, and it
-      // has two ways to never reach one: a throw outside its inner try (`localCleanupRef`, or
-      // `discard()` from the finally), and the BUG-56 hang. Either would lose the transcript
+      // CHAIN, do not skip. Skipping would make the sequence the SOLE owner of the commit. BUG-74
+      // guarded both throw sites that used to defeat it, so the live route now is the sequence's
+      // terminal `.catch` — which settles without having committed if an UNNAMED throw beats the
+      // commit — plus the BUG-56 hang, which no chain can cover because it never settles (BUG-73). Either would lose the transcript
       // outright — worse than the bug being fixed. Chaining commits the live text only on those
       // paths, i.e. exactly the pre-BUG-72 behaviour, and is a no-op on the happy path because
       // `commitTranscript` is one-shot. `noteId` is closed over, so a late call still targets the
@@ -511,9 +535,24 @@ export function useTranscription(noteId: string): UseTranscriptionResult {
             console.error('[local transcription]', message);
             setError(`On-device transcription failed: ${message}`);
           });
+          // BUG-74: guarded HERE, not at each call site. This closure is invoked from the stop
+          // sequence, from `cleanup()` (where a throw skips everything after it — the listeners
+          // stay attached, the timers keep running and the AudioContext is never closed) and from
+          // the cloud-fallback path below. Guarding one site leaves the others. Detaching each
+          // listener separately also stops a failing `offLive()` from leaving `offError()` attached.
           localCleanupRef.current = () => {
-            offLive();
-            offError();
+            try {
+              offLive();
+            } catch (err) {
+              console.warn('Detaching the on-device live listener failed.', err);
+              recordRumEvent('localTeardownFailed', { at: 'offLive' });
+            }
+            try {
+              offError();
+            } catch (err) {
+              console.warn('Detaching the on-device error listener failed.', err);
+              recordRumEvent('localTeardownFailed', { at: 'offError' });
+            }
           };
           try {
             await desktopLocal.start();
@@ -706,9 +745,22 @@ export function useTranscription(noteId: string): UseTranscriptionResult {
         } catch (err) {
           console.warn('Local transcription finish/diarization failed on stop.', err);
         } finally {
-          // Guarantee the main-process live session is released even if an IPC call threw before
-          // finish()/discard() ran (no-op when already discarded/finished).
-          window.desktop?.local.discard();
+          // BUG-74: a throw in a `finally` REPLACES the completion, so `discard()` throwing here
+          // used to reject the whole stop sequence — skipping the commit AND `setStatus('stopped')`
+          // below, wedging the note on 'Finalising…' permanently with an unhandled rejection and no
+          // transcript. The point of this block is to release the main-process session on a
+          // best-effort basis; failing to do so must not cost the recording.
+          try {
+            // Guarantee the main-process live session is released even if an IPC call threw before
+            // finish()/discard() ran (no-op when already discarded/finished).
+            window.desktop?.local.discard();
+          } catch (err) {
+            // `discard` is `ipcRenderer.send` — fire-and-forget and synchronous, which is why a
+            // sync try/catch is the right shape here. If it ever becomes `invoke` it will reject
+            // rather than throw and this guard silently stops catching.
+            console.warn('Releasing the on-device session failed on stop.', err);
+            recordRumEvent('localTeardownFailed', { at: 'discard' });
+          }
         }
         localCleanupRef.current?.();
         localCleanupRef.current = null;
@@ -721,9 +773,38 @@ export function useTranscription(noteId: string): UseTranscriptionResult {
       uploadRecording();
       cleanup();
       setStatus('stopped');
-    })().finally(() => {
-      stopInFlightRef.current = false;
-    });
+    })()
+      // BUG-74: a terminal handler on the sequence itself. The guards above close the two known
+      // throw sites; this closes the class — the stay-mounted path has no other handler, so before
+      // it any unnamed throw left the status stuck and surfaced only as an unhandled rejection.
+      .catch((err) => {
+        // Commit and settle BEFORE any diagnostic. The previous order put `console.warn` and
+        // `recordRumEvent` ahead of the commit, which was safe only because rum.ts is now guarded —
+        // two guards in series, and this bug is precisely about a diagnostic sitting in front of
+        // the commit. Both calls are one-shot/idempotent, so this is a no-op wherever they already
+        // ran. `cleanup()` stays last: it is the only line here that can still throw (getTracks and
+        // AudioContext.close are outside stopTracks' try), and if the sequence rejected BECAUSE
+        // cleanup threw, it throws again here — costing only an unhandled rejection now that the
+        // commit and status are already done.
+        //
+        // `uploadRecording()` is deliberately absent: a blanket call would default to triggering
+        // cloud diarization and would ignore 48-E keep-audio-local, uploading audio the user asked
+        // never to leave the machine.
+        //
+        // UNPINNED, deliberately: with every named site guarded there is no reachable throw that
+        // gets here, so removing these lines reddens nothing. That is what a terminal handler is
+        // for, but it means this block is defence-in-depth rather than something the suite
+        // protects. Stated rather than implied, per
+        // docs/learnings/phase-bug65-guards-that-cannot-fire.md.
+        commitTranscript();
+        setStatus('stopped');
+        console.warn('The stop sequence failed.', err);
+        recordRumEvent('stopSequenceFailed', {});
+        cleanup();
+      })
+      .finally(() => {
+        stopInFlightRef.current = false;
+      });
   }, [cleanup, commitTranscript, uploadRecording]);
 
   // BUG-55: resolves once the stop sequence AND the commit POST it fires have finished. In cloud
@@ -733,10 +814,9 @@ export function useTranscription(noteId: string): UseTranscriptionResult {
   //
   // Two things it must never do, because the caller is a sign-out the user has already confirmed:
   //
-  //  - REJECT. Only the local IPC calls sit inside the stop sequence's try/catch; the surrounding
-  //    `readStoredKeepAudioLocal()`, `cleanup()` and `setStatus()` do not. A throw there would
-  //    propagate into the continuation and sign-out would never run. Caught here so the comment is
-  //    true by construction rather than by inspection of code that may change.
+  //  - REJECT. Still load-bearing, not merely defensive: BUG-74's terminal `.catch` makes a
+  //    rejection rare, but its own body calls `cleanup()`, which can throw — so the sequence can
+  //    still reject and sign-out would never run without this.
   //  - HANG. `window.desktop.local.finish()/diarize()` have no timeout on this side, and BUG-56's
   //    observed failure shape is precisely "process alive, never ready, silent". Without a deadline
   //    the continuation never runs, `leavingRef` stays latched, and the app is stuck until restart.

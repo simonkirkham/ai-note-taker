@@ -18,7 +18,6 @@ import { server } from '../test/setup'
 let resolveFinish: ((text: string | null) => void) | undefined
 let emitLive: ((text: string) => void) | undefined
 // When set, `discard()` throws — the shape where the stop sequence never reaches its own commit.
-let throwOnDiscard = false
 const committed: string[] = []
 
 function stubBrowserApis() {
@@ -55,12 +54,7 @@ function stubDesktopLocal() {
       },
       onError: () => () => {},
       finish: () => new Promise<string | null>((resolve) => { resolveFinish = resolve }),
-      // `discard()` is called from the local branch's `finally`. A throw there REPLACES the
-      // completion and rejects the whole stop sequence before it reaches commitTranscript() —
-      // unlike a finish() rejection, which the inner try/catch swallows and then commits anyway.
-      discard: () => {
-        if (throwOnDiscard) throw new Error('the local engine blew up on discard')
-      },
+      discard: () => {},
     },
   }
 }
@@ -84,7 +78,6 @@ function Harness({ mounted }: { mounted: boolean }) {
 beforeEach(() => {
   resolveFinish = undefined
   emitLive = undefined
-  throwOnDiscard = false
   committed.length = 0
   localStorage.setItem('note-taker-transcription-mode', 'local')
   stubBrowserApis()
@@ -188,21 +181,17 @@ describe('leaving the note during a local finalise (BUG-72)', () => {
   // transcript outright is worse than the bug being fixed, so the unmount CHAINS: it waits for the
   // sequence and then commits, which is a no-op on the happy path (commitTranscript is one-shot)
   // and the pre-BUG-72 fallback on the failing one.
-  it('falls back to the live text when the finalise fails outright', async () => {
-    throwOnDiscard = true
-    const { rerender } = render(<Harness mounted />)
-
-    await userEvent.click(screen.getByTestId('start'))
-    await waitFor(() => expect(screen.getByTestId('status')).toHaveTextContent('recording'))
-    await waitFor(() => expect(emitLive).toBeDefined())
-    emitLive?.('the only text there will ever be')
-
-    await userEvent.click(screen.getByTestId('stop'))
-    rerender(<Harness mounted={false} />)
-    await screen.findByTestId('gone')
-    resolveFinish?.(null)
-
-    await waitFor(() => expect(committed).toHaveLength(1))
-    expect(committed[0]).toContain('the only text there will ever be')
-  })
+  // The fallback test that used to sit here is GONE, deliberately. It modelled "the stop sequence
+  // never reaches its own commit" with a throwing `discard()` — and BUG-74 now catches that, so the
+  // sequence commits by itself and the test could no longer fail. Review proved it by deleting the
+  // chain outright and watching all seven tests stay green.
+  //
+  // After BUG-74 there is no reachable pre-commit throw left: `commitTranscript()` runs before
+  // `cleanup()`, and both earlier throw sites are guarded at source. The chain in the unmount
+  // effect is therefore defence-in-depth against a throw someone introduces later, paired with the
+  // terminal `.catch` on the sequence that converts a rejection into a settle so the chain can fire
+  // at all. That pairing is pinned in `finaliseTailThrows.test.tsx`; a contrived test here would
+  // only have restated it. Recorded in the BUG-74 row (not BUG-72's — that table is
+  // merge=union, whose one bad case is two branches editing the same row) rather than left as a
+  // spec that reads as protection and is not.
 })
