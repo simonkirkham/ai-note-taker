@@ -3,6 +3,7 @@ import { webcrypto } from 'node:crypto'
 import { setupServer } from 'msw/node'
 import { retryConfig } from '../api/client'
 import { resetStaleDetailTrackingForTests } from '../hooks/useNoteDetail'
+import { resetDeletedNoteRescueForTests } from '../lib/deletedNoteRescue'
 import { resetWorkspaceForTests } from '../workspace/workspaceStore'
 import { handlers } from './handlers'
 
@@ -32,6 +33,9 @@ afterEach(() => {
   resetWorkspaceForTests()
   // BUG-48: the note-detail stale-read tracker is module state too — same leak class.
   resetStaleDetailTrackingForTests()
+  // BUG-59: the deleted-note rescue store is module state by design (it must survive unmount and
+  // query invalidation), so it survives a test too — clear it or one test's banner shows in the next.
+  resetDeletedNoteRescueForTests()
   // Same class again for browser storage — 49-B persists the open-note tabs there, so
   // without this a tab opened in one test is restored in the next and every count
   // assertion drifts. Covers the theme and keep-audio-local preferences too.
