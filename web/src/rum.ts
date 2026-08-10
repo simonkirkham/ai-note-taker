@@ -41,10 +41,17 @@ export function reportResourceError(event: Event): void {
   if (!url) return;
   const tagName = (event.target as Element).tagName;
   const route = window.location.pathname;
-  cwr()?.(
-    "recordError",
-    new Error(`Resource load failed: ${tagName} ${url} (route: ${route})`),
-  );
+  // BUG-74: same rule as recordEvent — a failed diagnostic must not break its caller. This one runs
+  // from a capture-phase window listener, so a throw would surface as an unrelated uncaught error
+  // on a page that merely failed to load an image.
+  try {
+    cwr()?.(
+      "recordError",
+      new Error(`Resource load failed: ${tagName} ${url} (route: ${route})`),
+    );
+  } catch {
+    /* nothing to report the reporting failure to */
+  }
 }
 
 // Register once at app startup. The capture phase (3rd arg `true`) is REQUIRED:

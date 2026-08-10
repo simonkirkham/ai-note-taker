@@ -130,12 +130,18 @@ const AWAIT_COMMIT_MAX_MS = 60 * 60_000;
 // rest of the stream's tracks, not only the throw-out-of-unmount this bug is about.
 function stopTracks(stream: MediaStream | null): void {
   if (!stream) return;
-  for (const track of stream.getTracks()) {
-    try {
-      track.stop();
-    } catch (err) {
-      console.warn('Stopping a capture track failed.', err);
+  try {
+    for (const track of stream.getTracks()) {
+      try {
+        track.stop();
+      } catch (err) {
+        console.warn('Stopping a capture track failed.', err);
+      }
     }
+  } catch (err) {
+    // `getTracks()` itself sits outside the per-track guard otherwise, which left a reachable
+    // throw in the one function whose whole job is to be unable to throw.
+    console.warn('Enumerating capture tracks failed.', err);
   }
 }
 
@@ -772,21 +778,28 @@ export function useTranscription(noteId: string): UseTranscriptionResult {
       // throw sites; this closes the class — the stay-mounted path has no other handler, so before
       // it any unnamed throw left the status stuck and surfaced only as an unhandled rejection.
       .catch((err) => {
-        // Restoring the STATUS is not enough. Review: an unnamed pre-commit throw left the user on
-        // 'stopped' with the transcript uncommitted and the capture still live — microphone
-        // indicator lit, checkpoint PUTs every 15s forever, and the idempotency guard preventing a
-        // retry. Commit first so nothing can pre-empt it; both calls are one-shot/idempotent, so
-        // this is a no-op on every path that already ran them.
+        // Commit and settle BEFORE any diagnostic. The previous order put `console.warn` and
+        // `recordRumEvent` ahead of the commit, which was safe only because rum.ts is now guarded —
+        // two guards in series, and this bug is precisely about a diagnostic sitting in front of
+        // the commit. Both calls are one-shot/idempotent, so this is a no-op wherever they already
+        // ran. `cleanup()` stays last: it is the only line here that can still throw (getTracks and
+        // AudioContext.close are outside stopTracks' try), and if the sequence rejected BECAUSE
+        // cleanup threw, it throws again here — costing only an unhandled rejection now that the
+        // commit and status are already done.
         //
-        // UNPINNED, deliberately: with every named site guarded there is no longer a reachable
-        // throw that gets here, so removing these two lines reddens nothing. That is the point of a
-        // terminal handler — it exists for the site nobody has named yet — but it means this block
-        // is defence-in-depth, not something the suite protects. Stated rather than implied, per
+        // `uploadRecording()` is deliberately absent: a blanket call would default to triggering
+        // cloud diarization and would ignore 48-E keep-audio-local, uploading audio the user asked
+        // never to leave the machine.
+        //
+        // UNPINNED, deliberately: with every named site guarded there is no reachable throw that
+        // gets here, so removing these lines reddens nothing. That is what a terminal handler is
+        // for, but it means this block is defence-in-depth rather than something the suite
+        // protects. Stated rather than implied, per
         // docs/learnings/phase-bug65-guards-that-cannot-fire.md.
-        console.warn('The stop sequence failed.', err);
-        recordRumEvent('stopSequenceFailed', {});
         commitTranscript();
         setStatus('stopped');
+        console.warn('The stop sequence failed.', err);
+        recordRumEvent('stopSequenceFailed', {});
         cleanup();
       })
       .finally(() => {
@@ -801,9 +814,9 @@ export function useTranscription(noteId: string): UseTranscriptionResult {
   //
   // Two things it must never do, because the caller is a sign-out the user has already confirmed:
   //
-  //  - REJECT. Since BUG-74's terminal `.catch` the sequence cannot reject at all, so this is now
-  //    defensive rather than load-bearing — kept because it costs nothing and the day someone
-  //    removes that terminal handler is the day sign-out silently stops running.
+  //  - REJECT. Still load-bearing, not merely defensive: BUG-74's terminal `.catch` makes a
+  //    rejection rare, but its own body calls `cleanup()`, which can throw — so the sequence can
+  //    still reject and sign-out would never run without this.
   //  - HANG. `window.desktop.local.finish()/diarize()` have no timeout on this side, and BUG-56's
   //    observed failure shape is precisely "process alive, never ready, silent". Without a deadline
   //    the continuation never runs, `leavingRef` stays latched, and the app is stuck until restart.

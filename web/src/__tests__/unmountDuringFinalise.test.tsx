@@ -54,11 +54,7 @@ function stubDesktopLocal() {
       },
       onError: () => () => {},
       finish: () => new Promise<string | null>((resolve) => { resolveFinish = resolve }),
-      // `discard()` is called from the local branch's `finally`. A throw there REPLACES the
-      // completion and rejects the whole stop sequence before it reaches commitTranscript() —
-      // unlike a finish() rejection, which the inner try/catch swallows and then commits anyway.
-      discard: () => {
-      },
+      discard: () => {},
     },
   }
 }
@@ -195,6 +191,7 @@ describe('leaving the note during a local finalise (BUG-72)', () => {
   // effect is therefore defence-in-depth against a throw someone introduces later, paired with the
   // terminal `.catch` on the sequence that converts a rejection into a settle so the chain can fire
   // at all. That pairing is pinned in `finaliseTailThrows.test.tsx`; a contrived test here would
-  // only have restated it. Recorded in the BUG-72 row rather than left as a spec that reads as
-  // protection and is not.
+  // only have restated it. Recorded in the BUG-74 row (not BUG-72's — that table is
+  // merge=union, whose one bad case is two branches editing the same row) rather than left as a
+  // spec that reads as protection and is not.
 })
