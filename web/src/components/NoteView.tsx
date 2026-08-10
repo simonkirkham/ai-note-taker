@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { ApiError } from "../api/client";
 import { contentHash } from "../api/contentHash";
 import { type CalendarMeeting } from "../api/meetings";
-import { StaleContentError, type NoteDetail } from "../api/notes";
+import { NoteDeletedError, StaleContentError, type NoteDetail } from "../api/notes";
 import { keys } from "../api/queryKeys";
 import { presignRecordingDownload } from "../api/recordings";
 import { completeTranscription, discardTranscriptionDraft } from "../api/transcription";
@@ -17,6 +17,8 @@ import { useTagNote, useUntagNote } from "../hooks/useTagMutations";
 import { useTags } from "../hooks/useTags";
 import { useTranscription } from "../hooks/useTranscription";
 import type { AgendaEditorApi, LiveTopic } from "../lib/agendaEditorApi";
+import { reportDeletedNote } from "../lib/deletedNoteRescue";
+import { recordRumEvent } from "../rum";
 import AgendaSection from "./AgendaSection";
 import CommandBar from "./CommandBar";
 import FinalNotesView from "./FinalNotesView";
@@ -168,6 +170,10 @@ export default function NoteView({
   // blur/unmount (and to leak a still-pending write past a test boundary).
   const baseContentHashRef = useRef<string | null>(null);
   const deletingRef = useRef(false);
+  // BUG-59: latched once a write has come back "this note no longer exists". A ref, not state,
+  // because the unmount flush reads it after the last render — and because it must gate the very
+  // next synchronous save, not the one after the re-render.
+  const noteDeletedRef = useRef(false);
   // BUG-32: the content save fired on editor blur is fire-and-forget, so clicking
   // Generate/Re-process raced it — analysis read the previously-saved content and a
   // just-typed `/ai` instruction was missed. Track the in-flight save so Generate can
@@ -412,6 +418,11 @@ export default function NoteView({
   function handleSaveContent() {
     const draft = contentDraftRef.current;
     if (draft == null) return;
+    // BUG-59: once the note is known deleted, every further write 404s. The prod signature was six
+    // rejected writes over 31 minutes, and attempt 1 left that unchanged — it silenced the toast but
+    // still restored the draft ref, so each blur and the unmount flush re-fired the doomed PUT.
+    // Refusing here is what actually stops them; the text is already in the rescue store.
+    if (noteDeletedRef.current) return;
     contentDraftRef.current = null;
     // BUG-47: send the precomputed hash of the content this edit was based on (the server copy the
     // editor loaded). The server rejects the write (409 → StaleContentError) if it no longer matches
@@ -426,6 +437,24 @@ export default function NoteView({
       // Restore the ref on failure so a later leave/unmount retries the kept text
       // rather than silently dropping it (the text stays in contentDraft state too).
       .catch((err) => {
+        // BUG-59: a deleted note is terminal — do NOT restore the draft ref, or the next blur and
+        // the unmount flush fire the same doomed write again. Hand the text to the module-level
+        // rescue store, which App renders above the router: this component is about to unmount
+        // (either the invalidation below bounces it home, or the user already navigated away), and
+        // anything held in component state dies with it. Then invalidate, which lets the existing
+        // is404 path take the user home instead of leaving them on a note that no longer exists.
+        if (err instanceof NoteDeletedError) {
+          noteDeletedRef.current = true;
+          // A DELIBERATE delete blurs the editor first, which fires a content save; if the DELETE
+          // wins that race the 404 is expected and the user does not need their own deletion
+          // reported back to them as a rescue.
+          if (!deletingRef.current) {
+            recordRumEvent("deletedNoteRescue", { noteId });
+            reportDeletedNote({ noteId, title, text: draft });
+          }
+          void qc.invalidateQueries({ queryKey: keys.note(noteId) });
+          return;
+        }
         contentDraftRef.current = draft;
         // A stale conflict is not a transient failure — retrying the same stale write cannot succeed.
         // Surface the conflict banner (keep the typed text, offer to load the newer content) instead

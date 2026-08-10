@@ -71,13 +71,37 @@ public static class NoteHandlers
         return Results.Ok(new { items });
     }
 
+    // One helper, so the two 404 paths in EditContent are byte-identical by construction rather
+    // than by two literals staying in step. Any divergence between them is an existence oracle.
+    private static IResult NoteGone() => Results.NotFound(new { error = "note_not_found" });
+
     public static async Task<IResult> EditContent(Guid noteId, EditContentRequest req, HttpResponse response, INoteCommandHandler handler, INoteDetailStore noteDetailStore, ICurrentUser currentUser)
     {
         var detail = await noteDetailStore.GetAsync(new NoteId(noteId));
-        if (detail is not null && detail.UserId != currentUser.UserId) return Results.NotFound();
+        // BUG-59: EVERY note-level 404 from this endpoint carries the same body, deliberately.
+        // An earlier revision split "gone from the stream" (coded) from "not yours" (bare) so the
+        // message would never be false. Review showed that hands back a reliable existence oracle:
+        // `bare 404` would mean exactly "a live note with this id exists and is not yours". Not
+        // leaking existence is the stronger property and is this path's stated intent, so the
+        // not-yours case gets the identical response instead. The cost is telling an unauthorized
+        // caller "deleted" about a note that exists — which is the same thing "not found" has always
+        // told them, and they can have no legitimate copy of it open.
+        // A legacy pre-Phase-8 note has no owner stamped, which NoteDetailProjection stores as "".
+        // The command handler deliberately does NOT enforce ownership in that case, so neither can
+        // this pre-check: `"" != currentUser.UserId` is true for EVERY caller, including the
+        // rightful one. That mismatch predates BUG-59, but its blast radius did not — a bare 404
+        // used to mean "try again", whereas note_not_found now latches the editor closed and
+        // evicts the user home. Match the handler's escape hatch rather than inherit it.
+        if (detail is not null && !string.IsNullOrEmpty(detail.UserId)
+            && detail.UserId != currentUser.UserId) return NoteGone();
         long version;
         try { version = await handler.HandleAsync(new EditContentCmd(new NoteId(noteId), req.Content, req.ExpectedBaseContentHash)); }
-        catch (NoteNotFoundException) { return Results.NotFound(); }
+        // The editor is open on a note deleted elsewhere, so every retry 404s (prod: six rejected
+        // writes over 31 minutes). Terminal, not transient. The one 404 that stays BARE is an API
+        // Gateway route miss falling through to `/{proxy+}` (shipped once in 34-B) — it never
+        // reaches this handler and has no body — so a deploy skew can never tell a user their note
+        // was deleted. Same discriminated-body convention as the 409 below.
+        catch (NoteNotFoundException) { return NoteGone(); }
         // BUG-47: the client edited a stale/empty view whose base hash no longer matches the current
         // content. A terminal conflict — return 409 with a distinct code so the client keeps the typed
         // text, reloads the real content, and offers the typed text back (never a silent overwrite).

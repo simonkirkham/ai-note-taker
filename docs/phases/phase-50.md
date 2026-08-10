@@ -1,4 +1,4 @@
-# Phase 50 — The Today line in the To Do list _(In Progress — 50-A done 2026-08-07 (#423, deploy #730); 50-B not started)_
+# Phase 50 — The Today line in the To Do list _(Done — 50-A 2026-08-07 (#423, deploy #730); 50-B 2026-08-10 (#446, deploy #747))_
 
 **Goal:** Draw a line anywhere in your To Do list to mark where "today" ends, so the top of the list is what you're actually doing now and everything below it waits its turn.
 
@@ -7,7 +7,7 @@
 | Slice | What the user gets | Status | Depends on |
 |-------|--------------------|--------|------------|
 | 50-A | A movable "Today" line in the To Do list that splits it into what's for today and what's for later, and stays where you put it | Done | — |
-| 50-B | One-click "Move to Today" / "Move to Later" on a to-do, so an item crosses the line without dragging | Not Started | 50-A |
+| 50-B | One-click "Move to Today" / "Move to Later" on a to-do, so an item crosses the line without dragging | Done | 50-A |
 
 50-A proves the whole flow — draw the line, it persists, the list reads as two groups. 50-B is the convenience layer on top and is worthless without it.
 
@@ -152,8 +152,8 @@ Scenario: Promoting the only Later item empties the group
 Scenario: A failed move is not silent
   Given an item sits under "Later"
   When  the user moves it to Today and the save fails
-  Then  the list returns to its previous order
-  And   the user is told the move did not save
+  Then  the list shows what actually saved
+  And   the user is told the move did not finish
 
 Scenario: Delete is still one click on the row
   Given an open to-do row
@@ -187,7 +187,7 @@ Scenario: Delete is still one click on the row
   - [x] All-Today hides the empty "Later" group; all-Later shows a Today empty state. — `an unset line puts everything in today and shows no Later group` + `dragging the line onto the first item leaves nothing in today, with an empty state`
   - [x] The new field round-trips through `DynamoDbTodoListStore` (integration test). — **executed against DynamoDB Local 2026-08-06, all 6 green:** `TodayLine_SurvivesTheRoundTrip`, `TodayLine_IsUnsetWhenNeverWritten`, `TodayLine_IsScopedPerWorkspace`, `TodayLine_IsScopedPerUserNotJustPerWorkspace` (proves the per-user keying decision at the DynamoDB boundary), `TodayLine_ANullAnchorClearsTheStoredValue` (proves the delete-the-row-not-`REMOVE`-the-attribute decision), `TodayLine_MarkerRowIsNotReturnedAsAnItem` (proves the sentinel row does not leak into the item list). Per the `*View` guardrail this is the only suite that can catch a `DynamoDb*Store` mapping gap — the in-memory double keeps the value by reference and would pass regardless.
 - **Verification status (2026-08-06, pre-merge):** build clean, 0 warnings; `Domain.Specs` 319/319; `Api.Integration` 701/701; `EventStore.Integration` 36/36 against DynamoDB Local; frontend 860/860 across 86 files; `eslint` clean; `tsc` clean against **both** `tsconfig.json` and `tsconfig.test.json`. Every acceptance criterion now has a named passing test behind it. **Not run:** the deploy-gate E2E only. PR #423 is `MERGEABLE`/`CLEAN` but **no CI run exists for its head sha** — a GitHub Actions `major_outage` on 2026-08-06 meant the push event never created a run, and `pr.yml` has no `workflow_dispatch`, so it needs a fresh `pull_request` event (close/reopen) once runners return.
-- **Decisions:** no dates of any kind — no due date, no created date, no derived "today". The line is purely a user-positioned marker in the existing priority order. This **supersedes the due-date design** previously sketched in `docs/future-features.md` under *Expand the to-do functionality for today and the future* (2026-06-02), which assumed `ActionItemDueDateSet`/`TodoScheduled` events and Today/Upcoming/Overdue grouping.
+- **Decisions:** no dates of any kind — no due date, no created date, no derived "today". The line is purely a user-positioned marker in the existing priority order. This **superseded the due-date design** the feature was originally raised as (`ActionItemDueDateSet`/`TodoScheduled` events, calendar-derived Today/Upcoming/Overdue grouping); see the graduated entry in [future-features.md](../future-features.md#expand-the-to-do-functionality-for-today-and-the-future) for the rejection and why.
 
 ### 50-B
 - **Prototyped 2026-08-09** on `prototype/50-b-move-across-line` (4 control shapes compared live). Approved: **variant D, the overflow menu**. Full brief in that branch's `web/src/prototype/REFERENCE.md`.
@@ -206,18 +206,18 @@ Scenario: Delete is still one click on the row
 - **Failure path:** a rejected reorder surfaces through the existing `reorderError` state (CHANGE-34 pattern), never silently snapping back.
 - **Tests:** `TodoSection` vitest for bottom-of-Today / top-of-Later placement, the label flipping by side, the anchor-item promote case, optimistic re-render, the failure toast, single-menu-open, and the full keyboard path (open → rove → activate → focus returns). No backend test surface.
 - **Acceptance criteria:**
-  - [ ] "Move to Today" lands the item last in Today, not first.
-  - [ ] "Move to Later" lands the item first in Later.
-  - [ ] The label reflects the item's current side.
-  - [ ] The whole move is operable by keyboard alone, and focus returns to the trigger.
-  - [ ] Escape and click-outside close the menu; only one menu is open at a time.
-  - [ ] Promoting the anchor item leaves the remaining Later items under "Later".
-  - [ ] A failed move reverts the list and tells the user.
-  - [ ] Delete remains a one-click action on the row.
+  - [x] "Move to Today" lands the item last in Today, not first. — `moving a Later item to Today lands it LAST in Today, not first`
+  - [x] "Move to Later" lands the item first in Later. — `moving the last Today item to Later re-anchors the line without reordering` + `moving a non-adjacent Today item to Later reorders AND re-anchors` (the second covers the branch that actually reorders)
+  - [x] The label reflects the item's current side. — `the action names the side the item is going to`
+  - [x] The whole move is operable by keyboard alone, and focus returns to the trigger. — `the whole move is operable by keyboard, and focus returns to the trigger`
+  - [x] Escape and click-outside close the menu; only one menu is open at a time. — `Escape closes the menu…`, `click-outside closes the menu`, `opening one row menu closes another`, `the menu is still keyboard-escapable when every action is unavailable`
+  - [x] Promoting the anchor item leaves the remaining Later items under "Later". — `moving the item the line is anchored to leaves the rest of Later alone`
+  - [x] A failed move refetches and shows what actually saved, and tells the user it did not finish. — `a failed move reverts the list and tells the user` + `a failed line write reverts the reorder too, and says so once` (both assert focus returns to the trigger). **Not "reverts the list":** the move is one user action but up to two appends, so a half-failure can leave one of them persisted — a client-side revert would both misreport the outcome and clobber anything else written during the round trip (a completion, a quick-add; neither is gated on this row's busy flag).
+  - [x] Delete remains a one-click action on the row. — `delete stays on the row, not in the actions menu`
 - **Decisions:** bottom-of-Today (not top) so promoting never jumps the user's existing priority order.
 
-### 50-A residual (carried into 50-B)
-- 50-A's "the line's position survives a reload" criterion is checked against `SetTodayLine_PersistsTheAnchor`, but the **reload half is E2E-only and has never run** — 50-A merged during the 2026-08-06 GitHub Actions outage. Add the reload assertion to the to-do E2E journey in this slice rather than filing it separately.
+### 50-A residual — CLOSED by 50-B
+- 50-A's "the line's position survives a reload" criterion had a passing unit spec for the write but **no executed proof of the reload** (50-A merged during the 2026-08-06 GitHub Actions outage, so its E2E never ran). `tests/Browser.E2E/Journeys/TodayLineJourney.cs` now proves it end to end — E2E went 29 → 30 journeys, all green on deploy #747. Phase 50 closes with every acceptance criterion backed by a **run** test.
 
 ### Observability
 - **50-A silent failure:** the line save fails and the UI keeps showing the optimistic position — the user believes it stuck and finds it moved on the next device/reload. Surface the failed mutation to the user rather than only reconciling silently.
