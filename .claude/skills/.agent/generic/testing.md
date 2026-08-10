@@ -1,8 +1,8 @@
 # Testing — Principles
 
-## Co-location
+## Where tests live
 
-Place test files next to the source file they test (e.g. `index.test.ts` alongside `index.ts`). Do not create a separate `tests/` directory unless the project already uses one.
+This repo uses a separate `tests/` directory, one project per layer — see `CLAUDE.md` → `## Layout` for the list and `agent-roles.md` → Breaker for which layer a slice needs. Frontend tests co-locate with their source under `web/src/`.
 
 ## What to Unit Test
 

@@ -15,35 +15,37 @@ Orchestrates the slice/phase delivery workflow. It **sequences** the roles and s
 
 **Read `### When NOT to hand back` in the same CLAUDE.md section before every run — it binds this skill hardest.** A pipeline run is exactly where the three failures live: asking whether to continue work the human already approved; ending a turn on "I'll check the gates and merge" instead of checking the gates and merging; and claiming to be waiting on CI or Hawk with nothing actually polling. Before ending any turn mid-run, confirm the background job you are waiting on is genuinely started.
 
-## Autonomy: a specced slice runs end to end
+## Autonomy: written-up work runs end to end
 
-A slice is **specced** when its phase doc already holds that slice's **scenarios and acceptance criteria** — whether a numbered `phase-N.md` or a standing doc (`phase-minor-changes.md`, `phase-bugs.md`, `phase-model-prompt-improvements.md`). The human's approval of that phase doc **is** the authorization for the slice's spec and implementation. So a specced slice runs **end to end without pausing** — Breaker → Pip → Refactor → Stylist → PR → Hawk → merge → Scribe, all autonomous.
+**Authorisation is per approach, not per step** (`CLAUDE.md` → `## Guardrails`, `## Human gates`). Work is **written up** — and therefore already authorised — when it has a slice in a phase doc, or a row in `phase-bugs.md` / `phase-minor-changes.md` / `phase-model-prompt-improvements.md` / `technical-improvements.md`. The write-up **is** the spec, however short the row. Once the human has asked for that backlog driven down, starting any row in it is agreed work. So written-up work runs **end to end without pausing** — Breaker → Pip → Refactor → Stylist → PR → Hawk → merge → Scribe, all autonomous. Never re-ask per item.
 
-For a specced slice, stop only for:
+A thin row still authorises the work; it does not excuse skipping Breaker. Where a row names a symptom but no scenarios, Breaker writes the GWT from the row and proceeds — that is Breaker's job, not a reason to stop.
+
+For written-up work, stop only for:
 
 - **Manual `cdk deploy`** — when deploying by hand (the merge-triggered deploy needs no gate).
-- **A genuine blocker** — an ambiguity the doc doesn't resolve, a merge/CI gate you can't make green, or a destructive/irreversible action.
+- **A genuine blocker** — an ambiguity no peer can resolve, a merge/CI gate you can't make green, or a destructive/irreversible action you would recommend.
 
-### When the slice is NOT yet specced
+### When the work is NOT yet written up
 
-If the target has no phase doc — or only a title row in a `## Summary` table with no scenarios/acceptance criteria — the upstream human gates still apply. Pause and wait for explicit go-ahead at:
+If the target appears in no phase doc and no tracking table, the upstream human gates still apply. Pause and wait for explicit go-ahead at:
 
 1. **Scout brief** — before drafting/altering a phase doc.
-2. **Breaker spec writing** — before writing specs for the unspecced slice.
-3. **Pip implementation start** — before implementing the unspecced slice.
+2. **Breaker spec writing** — before writing specs for the un-written-up slice.
+3. **Pip implementation start** — before implementing it.
 
-Once the human approves the drafted phase doc, the slice is now specced and continues autonomously under the rule above — no further prompting.
+Once the human approves the drafted phase doc, the approach is agreed and everything downstream runs autonomously — no further prompting. Past that point the human is the **last resort**: peers answer ownership, claims, red gates and unfamiliar failures (`CLAUDE.md` → `### When NOT to hand back`, rule 5).
 
-Everything between/after gates — refactor, stylist, PR, Hawk fixes, gate checks, merge, worktree cleanup, deploy monitoring, Scribe — always runs without asking. If you catch yourself asking for approval and the slice is specced, don't: proceed.
+Everything between/after gates — refactor, stylist, PR, Hawk fixes, gate checks, merge, worktree cleanup, deploy monitoring, Scribe — always runs without asking. If you catch yourself asking for approval and the work is already written up, don't: proceed.
 
 ## Per-slice sequence
 
-For each slice, follow CLAUDE.md `## Workflow` steps 1–15. Steps 1–3 are gates **only when the slice is unspecced** (see Autonomy above); for a specced slice they run straight through. In brief:
+For each slice, follow CLAUDE.md `## Workflow` steps 1–15. Steps 1–3 are gates **only when the work is not yet written up** (see Autonomy above); for a written-up slice or tracking-doc row they run straight through. In brief:
 
 0. **Sync first — `git fetch` and read `origin/main`'s phase doc before reading the plan or starting any slice.** The local working tree is **not** "current" when another session may be driving the same phase: it can hold a stale phase doc whose stubs were already filled in (or whose slice was already merged) upstream. Building against the stale copy means re-doing the slice (20-E was built twice — PR #198 thrown away — for exactly this). Check the `## Summary` table's `Status` column on `origin/main`, not local, before deciding what to scout/build.
-1. *(gate if unspecced)* Plan; Scout drafts the phase doc with the `## Summary` table. Skip when the slice is already specced. **Slice thin and vertical** (CLAUDE.md `## Conventions`): each slice is an independently-shippable vertical through the layers it needs, delivering/proving one user-meaningful capability — never a horizontal layer. For a big or uncertain capability, the first slice is the **smallest one that proves the whole flow end-to-end on one real call**; later slices scale the proven pattern. **Never spec a big-bang cross-cutting cutover** (consistency model, storage/transport swap, framework migration) — prove it on one vertical slice, then strangle the rest flow-by-flow (CLAUDE.md guardrail; the Phase 27-C revert is why). If a slice can't ship alone, re-cut it.
-2. *(gate if unspecced)* **Breaker** creates the worktree + branch (`slice/<phase>-<id>-<desc>`), `dotnet restore` + `npm --prefix web install`, `/rename` the session, writes the failing BDD spec. **Layer-split any large slice** (≥4 of: new aggregate, new projection, new CDK table, new component, E2E journey): Breaker writes domain/API tests first → Pip implements → Breaker writes E2E/frontend tests → Pip implements. Two smaller Pip passes keep each under ~65k and avoid the mid-slice context compaction that every >100k single Pip session has hit. (This "layer-split" is only about sequencing **implementation passes within one vertical slice** for context size — it is NOT slicing by layer; the slice itself stays a thin vertical per step 1.)
-3. *(gate if unspecced)* **Pip** implements until specs are green. Optimistic-UI acceptance criterion is mandatory for any frontend change.
+1. *(gate if not yet written up)* Plan; Scout drafts the phase doc with the `## Summary` table. Skip when the slice or row already exists. **Slice thin and vertical** (CLAUDE.md `## Conventions`): each slice is an independently-shippable vertical through the layers it needs, delivering/proving one user-meaningful capability — never a horizontal layer. For a big or uncertain capability, the first slice is the **smallest one that proves the whole flow end-to-end on one real call**; later slices scale the proven pattern. **Never spec a big-bang cross-cutting cutover** (consistency model, storage/transport swap, framework migration) — prove it on one vertical slice, then strangle the rest flow-by-flow (CLAUDE.md guardrail; the Phase 27-C revert is why). If a slice can't ship alone, re-cut it.
+2. *(gate if not yet written up)* **Breaker** creates the worktree + branch (`slice/<phase>-<id>-<desc>`), `dotnet restore` + `npm --prefix web install`, `/rename` the session, writes the failing BDD spec. **Layer-split any large slice** (≥4 of: new aggregate, new projection, new CDK table, new component, E2E journey): Breaker writes domain/API tests first → Pip implements → Breaker writes E2E/frontend tests → Pip implements. Two smaller Pip passes keep each under ~65k and avoid the mid-slice context compaction that every >100k single Pip session has hit. (This "layer-split" is only about sequencing **implementation passes within one vertical slice** for context size — it is NOT slicing by layer; the slice itself stays a thin vertical per step 1.)
+3. *(gate if not yet written up)* **Pip** implements until specs are green. Optimistic-UI acceptance criterion is mandatory for any frontend change.
 4. **Refactor** skill over all changed files; re-run specs.
 5. **Stylist** (`ui-ux-pro-max`) for user-facing slices; re-run tests.
 6. Open the PR (`gh pr create --body-file .pr-body.md`). Keep the body terse — three bullet sections, no narrative paragraphs:

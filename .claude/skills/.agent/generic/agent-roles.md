@@ -90,10 +90,10 @@ One scenario per distinct behaviour (happy path + each meaningful error/edge cas
 
 For a user-facing slice, produce tests at every relevant layer, with E2E tests as the primary spec:
 
-1. **E2E (Playwright)** — the primary acceptance test. Describes what a user does and sees in the browser. One journey per acceptance criterion: open the note, type content, blur, navigate away, return — content is visible. These run against the deployed app and are the ground truth for "is the slice done?"
-2. **Domain BDD specs** (`tests/Specs/`) — cover aggregate behaviour: happy path, guard conditions, no-op. Use `[Fact(Skip = "Pip <slice-id>")]` so the pre-commit hook stays green until Pip implements.
-3. **API integration tests** (`tests/ApiIntegration/`) — cover HTTP contract: status codes, response shapes.
-4. **Acceptance tests** (`tests/Acceptance/`) — cover the deployed API contract end-to-end.
+1. **E2E (Playwright)** (`tests/Browser.E2E/`) — the primary acceptance test. Describes what a user does and sees in the browser. One journey per acceptance criterion: open the note, type content, blur, navigate away, return — content is visible. These run against the deployed app and are the ground truth for "is the slice done?"
+2. **Domain BDD specs** (`tests/Domain.Specs/`) — cover aggregate behaviour: happy path, guard conditions, no-op. Use `[Fact(Skip = "Pip <slice-id>")]` so the pre-commit hook stays green until Pip implements.
+3. **API integration tests** (`tests/Api.Integration/`) — cover HTTP contract: status codes, response shapes.
+4. **Smoke tests** (`tests/Api.Smoke/`) — cover the deployed API contract end-to-end.
 
 For a backend-only slice (explicitly justified in the brief), omit E2E and write domain + API + acceptance tests only.
 
@@ -212,9 +212,11 @@ Hawk round-trips are expensive (~8–35k tokens each). Catch the common findings
 
 **Step 4 — Merge and monitor:**
 
-- Merge the PR (squash merge to keep main history clean)
-- Delete the remote branch (`git push origin --delete slice/...`)
-- Delete the local branch (`git branch -d slice/...`)
+- Check both merge gates first — `scripts/merge-gate.sh <pr>` (exit 0 = safe): the PR's own CI all `pass`, and main's latest deploy `completed` + `success` with none in progress. Never merge during a running deploy
+- Tell peers: `merging <PR> now, deploy will run`
+- Merge with `gh pr merge --squash --delete-branch` (squash keeps main history clean; the flag deletes the *remote* branch)
+- Delete the local branch (`git branch -D slice/...`) — its automatic cleanup fails with `'main' is already used by worktree`, which is harmless
+- Remove the worktree (`git worktree remove ../ai-note-taker-slices/<slice-name>`)
 - Monitor the main pipeline until it reaches a terminal state
 - If the main pipeline fails and your merge caused it, fix it immediately
 - If the main pipeline passes, the slice is complete
@@ -305,7 +307,7 @@ Commit style changes separately from functional changes with a message like `Sty
 - For user-facing slices: UI polish has been applied (Stylist ran) — check for `cursor-pointer`, visible focus states, loading/error states, and no emoji icons
 - For slices touching `web/src/`: component filenames match exported names (PascalCase), no `useEffect` dependency suppressions, icon buttons have `aria-label`, `npm --prefix web run lint` passes
 
-**Output:** Inline PR comments where relevant. A single summary verdict as a PR comment: `Approved`, `Approved with minor comments`, or `Changes requested`. A structured review findings block appended to `docs/learnings/<slice-name>.md` (create the file if it does not yet exist):
+**Output:** Inline PR comments where relevant. A single summary verdict as a PR comment: `Approved`, `Approved with minor comments`, or `Changes requested`. The PR verdict is the record — **do not create a learnings file.** Whether this slice earns one is Scribe's call under the `process-improvements` tiering (Tier 0 = no file), and the name is `phase-<phase><id>-<short-description>.md`, never `<slice-name>.md`. If a learnings doc already exists for the slice, append this block to it:
 
 ```markdown
 ## Hawk review findings
@@ -317,7 +319,7 @@ Commit style changes separately from functional changes with a message like `Sty
 
 **Rules:**
 
-- Do not review a PR whose pipeline has not passed — send it back to Pip
+- Review the moment the PR opens, in parallel with CI — never wait for CI to go green first (`CLAUDE.md` → `## Workflow` step 10). CI is Pip's gate to *merge*, not yours to *review*
 - Do not comment on style issues already enforced by `dotnet format` — trust the tooling
 - If changes are requested, list them clearly and return to Pip — do not implement them yourself
 - Flag anything that looks like a scope change rather than approving or rejecting it yourself — to the slice's driver first (a peer message), and to the human only when it is genuinely a change to what was agreed
@@ -327,11 +329,11 @@ Commit style changes separately from functional changes with a message like `Sty
 
 ---
 
-## Scribe (Angent 4 — Documentation)
+## Scribe (Agent 4 — Documentation)
 
 **Remit:** After the slice lands on main, update all developer-facing documentation and write the workflow learnings. Does not touch code, specs, or the event model.
 
-**Inputs:** The merged slice and any changed files. The `docs/learnings/<slice-name>.md` file started by Hawk (Hawk writes the review findings block; Scribe adds the workflow observations above it).
+**Inputs:** The merged slice and any changed files, plus Hawk's PR verdict and findings block (Scribe decides the learnings tier and, if a doc is warranted, writes the workflow observations and carries Hawk's findings into it).
 
 **Skills to load:**
 
