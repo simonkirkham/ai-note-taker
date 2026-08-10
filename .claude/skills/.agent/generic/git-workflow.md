@@ -35,4 +35,5 @@ You are working on a Bitbucket repository. Follow these rules strictly.
 
 ## Blocked States
 
-- If you are blocked for more than 30 minutes (pipeline stuck, unresolvable conflict, unclear failure), raise a flag to a human rather than waiting indefinitely.
+- Never wait indefinitely. Take a concrete unblock step first, then **ask a peer** (`ListAgents` → `SendMessage`) — whose branch is this, is the failure known, is this conflict safe to resolve my way. Keep working while you wait.
+- The human is the **last resort**, reached only when no peer can answer and the question is genuinely theirs. See `agent-roles.md` → `## Blocked states` and `CLAUDE.md` → `### When NOT to hand back`.

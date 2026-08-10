@@ -138,6 +138,12 @@ write learnings/phase-NX.md"]:::agent
 - **Prototype is a conditional side-loop** taken only for novel/uncertain UX. Its code is
   thrown away; only the updated phase doc survives.
 - Everything not gated runs **autonomously** end to end.
+- **The gates are where the approach gets agreed — after that the human is the last resort.**
+  Downstream of the pink diamonds, questions go to a *peer session* (`ListAgents` →
+  `SendMessage`), not to the human: whose branch is this, is this red gate mine, is that bug id
+  already claimed. An item already written up in a phase doc or tracking table has *already*
+  cleared its gate — starting it needs no further approval. See `CLAUDE.md` →
+  `### When NOT to hand back`.
 
 ---
 
@@ -278,6 +284,13 @@ sequenceDiagram
 
 **Human gates (the only stops):** approve the idea · approve Scout's phase doc · approve a
 prototype's UX · manual `cdk deploy`. Everything else is autonomous.
+
+**Each gate agrees an *approach*, not a step.** Once the approach is written up — a phase-doc
+slice, or a row in `phase-bugs.md` / `phase-minor-changes.md` /
+`phase-model-prompt-improvements.md` / `technical-improvements.md` — that gate is cleared for
+good and the work runs without further asking. Past the gate the human is the **last resort**:
+peers answer ownership, claims, red gates and unfamiliar failures; escalate only for the
+human's taste, priorities, money, or an irreversible act you would recommend.
 
 **Branching model:** each slice runs in its own `git worktree` on a `slice/<phase>-<id>-<desc>`
 branch, so independent slices can run this whole pipeline in parallel. `main` is never touched

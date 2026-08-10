@@ -24,7 +24,7 @@ Each repo should provide a command to check pipeline status — check the repo-s
 1. Check the pipeline to identify the failing step
 2. Do not open new PRs or merge until `main` is green
 3. If your recent merge caused the failure, fixing it is your current task
-4. If `main` was already red before your work, flag to a human before proceeding
+4. If `main` was already red before your work, **it is still yours to drive green** — a red shared gate blocks every slice and every session. Diagnose and fix it, or take a concrete unblock step (re-run a *proven* flake; quarantine with a filed bug as a last resort). Tell peers (`deploy #N red on <journey> — mine/not mine, diagnosing`). Never park and wait for the owner, and never flag it to the human as the first move
 
 ## PR vs Main Pipelines
 

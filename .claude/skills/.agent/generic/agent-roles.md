@@ -2,6 +2,16 @@
 
 Each piece of work is handled by agents in sequence. No agent does another's job.
 
+## Asking the human is the last resort — this binds every role below
+
+Every "flag to a human" and "hand-off" in this file is subject to `CLAUDE.md` → `## Handing back to the human` → `### When NOT to hand back`. `CLAUDE.md` wins on any conflict.
+
+1. **Ask a peer first.** `ListAgents` then `SendMessage`. Ownership ("whose branch/row/red gate is this?"), whether something is already claimed, and unfamiliar failures are peer questions, never human ones. Escalating without having asked a peer is itself the defect.
+2. **Never ask permission to continue work already agreed.** An item already written up in a phase doc or a tracking table is specced work — start it. Seven such asks in the history; all seven answered yes.
+3. **A choice between a reversible and an irreversible option is not a decision.** Take the reversible one and record it under `YOU SHOULD KNOW`.
+4. **The test for escalating:** a true `Why it needs you:` line — the human's taste, their priorities, their money, or an irreversible act you would recommend. "I would like a rubber stamp" is not one.
+5. **A peer being idle or slow is not a reason to escalate.** State the assumption, take the reversible option, carry on. `scripts/sessions.sh` reconstructs who is on what when peers are unreachable.
+
 ---
 
 ## Scout (Agent 0 — Product Research & Design)
@@ -59,6 +69,8 @@ One scenario per distinct behaviour (happy path + each meaningful error/edge cas
 - **Flag REST structural conventions in the brief** — if a route includes a param that is required by REST convention but unused by the domain command (e.g. `noteId` in `PATCH /notes/{noteId}/actions/{actionId}/complete`), say so explicitly. This prevents Hawk from raising it as a finding and saves a round-trip.
 
 **Hand-off:** Post the path to the phase breakdown file and confirm the event model is updated. Human reviews before Breaker begins. Scout must not proceed to Breaker until the human explicitly approves the breakdown.
+
+**This gate applies only to work not yet written up.** An item that already has a slice in a phase doc, or a row in `phase-bugs.md` / `phase-minor-changes.md` / `phase-model-prompt-improvements.md` / `technical-improvements.md`, has already cleared it — the write-up **is** the spec. Once the human has asked for that backlog driven down, starting any row in it is agreed work. Never re-ask per item (`CLAUDE.md` → `### Human gates`).
 
 **Exception — confirmed phase doc:** If the phase doc already contains confirmed GWT scenarios (written after prototype approval or explicit human sign-off), the human checkpoint may be skipped and Breaker may start immediately. The signal is a phase doc with fully written `Scenarios:` blocks and populated `Acceptance criteria:` checklists. Scout is still expected to flag any open questions or risks before Breaker begins.
 
@@ -148,7 +160,7 @@ After the PR merges, remove the worktree: `git worktree remove ../ai-note-taker-
 
 - Check out the branch Breaker created (`git checkout slice/...`) — do not create a new branch; do not commit to main
 - Confirm specs fail before writing any code
-- Do not modify spec files — if a spec seems wrong, flag to a human rather than changing it
+- Do not modify spec files — if a spec seems wrong, ask a peer whether it is theirs and whether it is already known; escalate to the human only if no peer can answer. Never silently change it
 - Write only what is needed to make the specs pass — no extra features, no speculative code
 - **Commit in small, working increments** — each commit should represent a working unit of software:
   - Commit backend changes (domain, API, infra) before touching the frontend
@@ -308,7 +320,7 @@ Commit style changes separately from functional changes with a message like `Sty
 - Do not review a PR whose pipeline has not passed — send it back to Pip
 - Do not comment on style issues already enforced by `dotnet format` — trust the tooling
 - If changes are requested, list them clearly and return to Pip — do not implement them yourself
-- Flag anything that looks like a scope change to a human rather than approving or rejecting it yourself
+- Flag anything that looks like a scope change rather than approving or rejecting it yourself — to the slice's driver first (a peer message), and to the human only when it is genuinely a change to what was agreed
 - Every finding in the review must appear in the findings block — no finding goes unrecorded
 
 **Done when:** Verdict is posted, approximate token count included in the verdict summary, and returned to Pip.
@@ -345,9 +357,9 @@ See `.claude/skills/scribe/SKILL.md` for the step-by-step process, templates, an
 - README changes must be accurate: verify env var names and table names against the actual source (launchSettings.json, docker-compose.yml, CDK stack)
 - Do not make suggestions that contradict a guardrail in `CLAUDE.md` without flagging the conflict explicitly
 
-**Hand-off:** Post the path to the learnings file. Human reviews any TODO items and decides whether any warrant updating this file or `CLAUDE.md`.
+**Hand-off:** Use the block in `CLAUDE.md` → `## Handing back to the human`, and nothing follows it. **Apply every actionable learning yourself** — a TODO left for the human is an `ACTIONS FOR YOU` entry with its `Why it needs you:` line, not a passing mention, and only what survives "no peer can answer this" reaches them. A learning that can be executed (config, permission, guardrail, doc rule) is executed, never handed over. See `.claude/skills/scribe/SKILL.md` step 8b.
 
-**Done when:** All updated docs are committed, all Done actions are applied, and the human has been notified.
+**Done when:** All updated docs are committed, all Done actions are applied, and the hand-back block has been printed.
 
 ---
 
@@ -440,4 +452,11 @@ The project runs on Windows with a Linux Bash shell available via the Bash tool.
 
 ## Blocked states
 
-If any role is blocked for more than 30 minutes (CI stuck, unclear failure, ambiguous requirement), raise a flag to the human rather than waiting or guessing. Never bypass a failing pre-push hook or CI gate.
+Being blocked is a call to **action**, not to escalate. In order:
+
+1. **Take a concrete unblock step.** A red shared gate is yours to drive green whoever caused it (`CLAUDE.md` → `## Conventions`). Re-run a *proven* flake; quarantine-with-a-filed-bug as a last resort. Never wait for the owner.
+2. **Ask a peer** — `ListAgents` then `SendMessage` — and keep working while you wait. Whose is this, is it already known, is that branch safe to touch: all peer questions.
+3. **Take the reversible option and state the assumption** under `YOU SHOULD KNOW` when a peer is idle or slow.
+4. **Escalate to the human only** when no peer can answer and the question is genuinely theirs — their taste, their priorities, their money, or an irreversible act you would recommend. A block that ends the turn ends with the hand-back block saying it stopped and why, never with silence.
+
+Never bypass a failing pre-push hook or CI gate.
