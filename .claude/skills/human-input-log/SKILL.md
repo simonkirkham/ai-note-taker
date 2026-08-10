@@ -26,6 +26,12 @@ See the type taxonomy in [`docs/human-input-log.md`](../../../docs/human-input-l
    ```
    Each drained line is one **Permission** row. (Omit the branch arg to drain all pending rows when not in a worktree.)
 
+1b. **Drain the stalls** — the interruptions the transcript scan structurally cannot see:
+   ```bash
+   scripts/stall-scan.sh 24
+   ```
+   Each line is one **Stall** row: the human restarting a session that had stopped. These do not look like questions, so step 2 misses every one of them — the log held 1 where the real count was 22. Nearly always `Avoidable? = Yes`; the fix is `CLAUDE.md` → `### When NOT to hand back`, unless the cause is `connection died mid-reply`, which is `No`.
+
 2. **Reconstruct the rest from the session.** Scan this slice's conversation for every point the human was asked for input that the hook does not see:
    - **Gate** — Scout brief / Breaker spec / Pip start / manual `cdk deploy` approval. Record one row; mark `Avoidable? = No`. If the *same* gate fired twice (a decision was re-litigated), that repeat is `Avoidable? = Yes`.
    - **Clarification** — a question raised because the spec or context left a gap.
