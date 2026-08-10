@@ -58,7 +58,6 @@ export default function OpenNoteTabs({
             data-testid="open-note-tab-home"
             className={styles.label}
             aria-current={activeNoteId ? undefined : homeIsCurrentPage ? "page" : "true"}
-            title="My notes"
             onClick={onSelectHome}
           >
             <HomeIcon />

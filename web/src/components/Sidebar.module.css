@@ -81,7 +81,7 @@
 /* Sidebar folders section */
 .sidebarFolders {
   margin-top: 1.25rem;
-  border-top: 1px solid var(--color-border);
+  border-top: 1px solid var(--color-border-strong);
   padding-top: 0.75rem;
   /* Take the remaining sidebar height and scroll internally so a long folder
      tree never pushes the footer below the fold. min-height: 0 lets this flex

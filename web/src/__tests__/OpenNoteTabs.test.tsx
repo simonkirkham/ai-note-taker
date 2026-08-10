@@ -453,6 +453,10 @@ describe('Open-note tabs (49-A)', () => {
 
       await userEvent.type(screen.getByLabelText('Search notes'), 'client')
 
+      // Search is gated on useDeferredValue, so assert the deferred pass actually flushed
+      // before checking the bar — the sort control only renders while NOT searching. Without
+      // this the test would assert on the pre-search list and prove nothing.
+      await waitFor(() => expect(screen.queryByTestId('sort-select')).toBeNull())
       expect(tabs()).toHaveLength(1)
       expect(screen.getByTestId('open-note-tabs')).toBeInTheDocument()
     })

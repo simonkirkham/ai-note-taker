@@ -1,3 +1,4 @@
+using Xunit;
 using Microsoft.Playwright;
 
 namespace Browser.E2E.Pages;
@@ -360,13 +361,28 @@ public sealed class AppPage
         await Assertions.Expect(OpenNoteTabs).ToHaveCountAsync(0);
     }
 
-    // 51-B: the pinned tab must survive a strip scrolled to its far end — with many notes
+    // 51-B: the pinned tab must survive a strip scrolled to its far end — with several notes
     // open it is the only way back, so scrolling it out of reach would strand the user.
+    //
+    // The preconditions are the point. Without them this assertion cannot fail: a sticky
+    // element is in the viewport by construction, and if the strip does not actually overflow
+    // then scrollLeft clamps to 0 and nothing was ever tested. Ratio=1 likewise — the default
+    // Ratio=0 passes on a single visible pixel, which is exactly the failure mode where the
+    // tab is mostly hidden under the fixed sidebar toggle.
     public async Task AssertPinnedTabStaysVisibleWhenStripScrolledAsync()
     {
         var bar = page.GetByTestId("open-note-tabs");
+
+        var overflows = await bar.EvaluateAsync<bool>("el => el.scrollWidth > el.clientWidth");
+        Assert.True(overflows, "the tab strip does not overflow, so scrolling it proves nothing — " +
+                               "open more tabs or narrow the viewport before calling this");
+
         await bar.EvaluateAsync("el => el.scrollLeft = el.scrollWidth");
-        await Assertions.Expect(page.GetByTestId("open-note-tab-home")).ToBeInViewportAsync();
+        var scrolled = await bar.EvaluateAsync<double>("el => el.scrollLeft");
+        Assert.True(scrolled > 0, $"the strip did not scroll (scrollLeft={scrolled})");
+
+        await Assertions.Expect(page.GetByTestId("open-note-tab-home"))
+            .ToBeInViewportAsync(new() { Ratio = 1 });
     }
 
     // `aria-current` sits on the tab's label button (the nav's "you are here"), not the wrapper.

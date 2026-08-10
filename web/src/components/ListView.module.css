@@ -1,7 +1,7 @@
 /* ── Note summary cards ─────────────────────────────────────────── */
 .noteCardsSection {
   margin-top: 2.5rem;
-  border-top: 2px solid var(--color-border);
+  border-top: 2px solid var(--color-border-strong);
   padding-top: 1.5rem;
 }
 

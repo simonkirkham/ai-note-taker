@@ -408,7 +408,9 @@ function AppContent({ signOut }: { signOut: () => void }) {
   function handleHome() {
     // `replace` when already home: the pinned tab (51-B) is on every screen and clicking it
     // repeatedly would otherwise stack identical history entries, so Back would need N presses.
-    const alreadyHome = location.pathname === w("");
+    // Filters live in the query string (CHANGE-23), so pathname alone is not "already here":
+    // replacing a FILTERED home entry would destroy it and Back could never return to it.
+    const alreadyHome = location.pathname === w("") && location.search === "";
     requestLeave(() => void navigate(w(""), alreadyHome ? { replace: true } : undefined), "go to Home");
   }
 
