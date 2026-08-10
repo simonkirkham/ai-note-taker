@@ -116,10 +116,22 @@ jobs:
         working-directory: web
         run: npm run size
 
+  # TI-71: this is the only job that pulls container images, and an anonymous Docker Hub
+  # pull from a GitHub runner (shared egress IPs) can hit the unauthenticated rate limit.
+  # Testcontainers reports the pull that never landed as "No such image", so one throttled
+  # pull fails all 26 fixture-backed tests on a diff that touched no C# at all. Two images
+  # were involved: DynamoDB Local, now pulled from AWS's ECR Public copy (see
+  # DynamoDbLocalImage.cs), and Testcontainers' Ryuk reaper, disabled below. Neither leaves
+  # a Docker Hub pull in this job.
   eventstore:
     runs-on: ubuntu-latest
     env:
       DYNAMO_TIMEOUT_SECONDS: "3"
+      # Ryuk is testcontainers/ryuk on Docker Hub, started automatically to reap containers
+      # a crashed test run leaks. It has no ECR Public mirror, and it earns nothing on an
+      # ephemeral runner that is destroyed after the job — the fixtures dispose their own
+      # containers. Left enabled locally, where leaked containers do outlive the run.
+      TESTCONTAINERS_RYUK_DISABLED: "true"
     steps:
       - uses: actions/checkout@v6
 

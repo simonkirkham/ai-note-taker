@@ -31,7 +31,7 @@ Adopt a seven-layer testing strategy. Each layer has a single responsibility and
 Pure in-process tests. Given prior events → When command → Then emitted events or exception. 100 % of aggregate commands and boundary conditions must have a spec. No change to the existing approach.
 
 **Layer 2 — Event store integration**
-Spin up `amazon/dynamodb-local` via Testcontainers; create the events table; run `DynamoDbEventStore` against it. Covers: append + read round-trip, OCC conflict (two writers, same `expectedVersion`), empty stream reads, multi-event batches, and table schema correctness. Teardown is automatic. Requires Docker in CI.
+Spin up DynamoDB Local via Testcontainers — from AWS's ECR Public copy (`public.ecr.aws/aws-dynamodb-local/aws-dynamodb-local`), not Docker Hub: identical image, no anonymous-pull rate limit (TI-71). Create the events table; run `DynamoDbEventStore` against it. Covers: append + read round-trip, OCC conflict (two writers, same `expectedVersion`), empty stream reads, multi-event batches, and table schema correctness. Teardown is automatic. Requires Docker in CI.
 
 **Layer 3 — API HTTP integration**
 Use `WebApplicationFactory<Program>` to host the ASP.NET app in-process. Override DI registrations to substitute `InMemoryEventStore` (and an in-memory projection store). Covers: route matching, HTTP verbs, path parameter binding, status codes (201/409/200/404), response body shape, and error-to-status-code mapping. No Docker, no AWS credentials.

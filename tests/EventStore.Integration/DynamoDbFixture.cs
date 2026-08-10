@@ -6,7 +6,7 @@ namespace EventStore.Integration;
 
 public sealed class DynamoDbFixture : IAsyncLifetime
 {
-    private readonly DynamoDbContainer _container = new DynamoDbBuilder("amazon/dynamodb-local:1.21.0").Build();
+    private readonly DynamoDbContainer _container = new DynamoDbBuilder(DynamoDbLocalImage.Reference).Build();
 
     public IAmazonDynamoDB DynamoDb { get; private set; } = null!;
     public string TableName { get; } = "test-events";
