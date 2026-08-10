@@ -57,3 +57,15 @@ The obvious repair for the dead `--no-fallback` is a per-request `temperature_in
 - **`gh pr checks` reporting a single green line is not green.** On a `CONFLICTING` branch the merge-result checks never start, so the list is near-empty and reads as passing. Confirm `mergeable`/`mergeStateStatus` **and** that the expected jobs are present. Hit once here; `merge-gate.sh` catches it, a bare `gh pr checks` does not.
 - **The user's manual test cycle is the real cost constraint.** Each iteration costs them a build → install → record → report loop, which is why instrumentation and tuning shipped together rather than instrument-first. That trade should be made explicitly whenever a human is in the verification loop.
 - **Still unmeasured.** Nothing here is confirmed on hardware. `MANUAL-VERIFICATION.md` §BUG-65 defines the evidence: `rtf` < 1.0 means the engine keeps pace. Threads were deliberately left alone (raising them re-opens [BUG-52]'s CPU peg) and are the next lever *if the data says so*.
+
+## Closed 2026-08-10 — and the checker was wrong in the same family
+
+`rtf` median **0.13** over 48 steps with a deliberate mid-recording silence; the spin is gone (14 frozen steps pre-fix → 1) and the idle guard re-arms. Both bugs Done. Three sessions ran 0.30 → 0.26 → 0.13.
+
+**The verifier was built on the wrong physical model, and produced a false negative.** The first version looked for a *gap between log lines* as proof the idle guard re-armed. But a person falling silent does not stop the log: the microphone keeps delivering audio, so the engine keeps stepping and simply transcribes nothing. The real signature is the opposite shape — **the transcript standing still while the window keeps moving**, then growing again. On a recording that *had* demonstrated the behaviour, the checker said "no pause detected, record again". Only reading the raw lines caught it.
+
+The whole doc above is about guards that cannot fire. This is the mirror image: **a guard that fires on the wrong signal is equally worthless, and costs more** — a green one licenses a bad refactor, a red one sends a human to repeat a manual test they already passed. Both come from the same root: writing the check from a mental model of the mechanism instead of from a sample of its real output. The fixture that "passed" was one I invented; the log that disproved it was real.
+
+Two more from the same run:
+- **A first draft reported `PASS` for BUG-67 having observed zero steps.** Caught before hand-off, but it is the third instance in this bug's history of an assertion satisfied by absence. Verdicts now go `INCONCLUSIVE` when the evidence is too thin for the check to have been able to fail.
+- **"No Lambda log" does not mean "the request was never sent."** A request refused before the handler leaves no handler log and no entity id in any line, so a grep for the expected invocation finds nothing either way. Distinguish with gateway-level request counts, not by the absence of the log you were looking for. (Passed to BUG-77, which had drawn the stronger conclusion.)
