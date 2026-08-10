@@ -415,7 +415,30 @@ public sealed class AppPage
         // message says which, instead of surfacing as an opaque Playwright TypeError.
         await pinned.WaitForAsync(new() { State = WaitForSelectorState.Visible, Timeout = 10_000 });
 
-        var verdict = await pinned.EvaluateAsync<string>(
+        // Poll to a deadline, because a cover can be TRANSIENT. Dropping to a narrow viewport
+        // switches the sidebar to fixed + translateX(-100%) with a 200ms transition, so for
+        // those 200ms it is sliding left across the bar and genuinely is the topmost element at
+        // the tab's leading edge. Sampling once caught it 4 runs in 5.
+        // This still fails a REAL cover: something painted over the tab stays there, so the
+        // verdict never turns OK and the last one is what gets thrown.
+        var verdict = "not evaluated";
+        var settleBy = DateTime.UtcNow.AddSeconds(3);
+        while (DateTime.UtcNow < settleBy)
+        {
+            verdict = await ProbePinnedTabAsync(pinned);
+            if (verdict == "OK") break;
+            await page.WaitForTimeoutAsync(100);
+        }
+
+        if (verdict != "OK")
+        {
+            throw new Exception($"the pinned My-notes tab is not the topmost element {when} — {verdict}");
+        }
+    }
+
+    private static async Task<string> ProbePinnedTabAsync(ILocator pinned)
+    {
+        return await pinned.EvaluateAsync<string>(
             @"el => {
                 const r = el.getBoundingClientRect();
                 if (![r.x, r.y, r.width, r.height].every(Number.isFinite))
@@ -429,11 +452,6 @@ public sealed class AppPage
                 return 'COVERED at ' + Math.round(x) + ',' + Math.round(y) + ' by ' +
                        hit.tagName + ' ' + (hit.getAttribute('data-testid') ?? hit.className ?? '');
             }");
-
-        if (verdict != "OK")
-        {
-            throw new Exception($"the pinned My-notes tab is not the topmost element {when} — {verdict}");
-        }
     }
 
     // `aria-current` sits on the tab's label button (the nav's "you are here"), not the wrapper.
