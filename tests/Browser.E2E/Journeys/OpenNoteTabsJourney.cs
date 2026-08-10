@@ -110,8 +110,14 @@ public sealed class OpenNoteTabsJourney(BrowserFixture browser) : IAsyncLifetime
         await _app.AssertOpenTabCountAsync(1);
 
         await _app.ClickPinnedTabAsync();
-        await _app.AssertHomeLoadedAsync();
         await _app.AssertOpenTabVisibleAsync(first);
         await _app.AssertOpenTabCountAsync(1);
+
+        // Sticky pinned tab: narrow the viewport so the strip genuinely overflows, scroll it
+        // to the far end, and the way back must still be on screen. jsdom cannot express this
+        // (no layout), so the deploy gate is the only place it can be proved.
+        await _page.SetViewportSizeAsync(420, 720);
+        await _app.AssertPinnedTabStaysVisibleWhenStripScrolledAsync();
+        await _page.SetViewportSizeAsync(1280, 720);
     }
 }

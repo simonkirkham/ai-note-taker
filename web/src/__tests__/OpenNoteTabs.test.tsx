@@ -429,12 +429,45 @@ describe('Open-note tabs (49-A)', () => {
       expect(homeTab()).toHaveAttribute('aria-current', 'page')
     })
 
-    it('opening a note moves the highlight off My notes', async () => {
+    it('opening a note moves the highlight off My notes and disturbs nothing else', async () => {
       renderApp()
       await openFromList('Standup')
+      await goHome()
+      await openFromList('Client call')
+      await waitFor(() => expect(tabs()).toHaveLength(2))
+      const before = tabs().map((el) => el.getAttribute('data-note-id'))
 
+      await userEvent.click(tabNamed('Standup'))
+
+      await waitFor(() => expect(tabNamed('Standup')).toHaveAttribute('aria-current', 'page'))
       expect(homeTab()).not.toHaveAttribute('aria-current')
-      expect(tabNamed('Standup')).toHaveAttribute('aria-current', 'page')
+      // Same tabs, same order — the highlight is the ONLY thing that moved.
+      expect(tabs().map((el) => el.getAttribute('data-note-id'))).toEqual(before)
+    })
+
+    it('searching keeps my open notes in view', async () => {
+      renderApp()
+      await openFromList('Standup')
+      await goHome()
+      await waitFor(() => expect(tabs()).toHaveLength(1))
+
+      await userEvent.type(screen.getByLabelText('Search notes'), 'client')
+
+      expect(tabs()).toHaveLength(1)
+      expect(screen.getByTestId('open-note-tabs')).toBeInTheDocument()
+    })
+
+    // On a folder screen the notes list is the current ITEM in the bar, but not the page
+    // you are on — announcing it as "current page" there would be a lie.
+    it('marks My notes as the current page only on the notes list itself', async () => {
+      renderApp()
+      await screen.findAllByTestId('note-card')
+      expect(homeTab()).toHaveAttribute('aria-current', 'page')
+
+      await userEvent.click(screen.getByTestId('unfiled-notes-button'))
+
+      await waitFor(() => expect(window.location.pathname).toBe('/w/__default__/folders/unfiled'))
+      expect(homeTab()).toHaveAttribute('aria-current', 'true')
     })
 
     it('the My notes tab offers no way to close it', async () => {
@@ -466,7 +499,8 @@ describe('Open-note tabs (49-A)', () => {
 
       await waitFor(() => expect(window.location.pathname).toBe('/w/__default__/folders/unfiled'))
       expect(tabs()).toHaveLength(1)
-      expect(homeTab()).toHaveAttribute('aria-current', 'page')
+      // "true", not "page" — see the aria-current test below.
+      expect(homeTab()).toHaveAttribute('aria-current', 'true')
     })
   })
 

@@ -71,7 +71,7 @@
   font-weight: 600;
   padding: var(--space-2) var(--space-4);
   border-radius: var(--radius);
-  border: 1.5px solid var(--color-border);
+  border: 1.5px solid var(--color-border-strong);
   background: var(--color-surface);
   color: var(--color-text);
   cursor: pointer;

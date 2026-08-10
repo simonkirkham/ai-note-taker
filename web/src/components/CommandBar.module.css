@@ -5,7 +5,7 @@
   gap: var(--space-3);
   margin-top: var(--space-4);
   padding: var(--space-2) var(--space-3);
-  border: 1px solid var(--color-border);
+  border: 1px solid var(--color-border-strong);
   border-radius: var(--radius);
   background: var(--color-surface);
   min-height: 44px;
@@ -112,7 +112,7 @@
   align-items: center;
   gap: var(--space-2);
   background: var(--color-surface);
-  border: 1px solid var(--color-border);
+  border: 1px solid var(--color-border-strong);
   border-radius: 9999px;
   padding: 0.2rem 0.6rem;
   font-family: inherit;
@@ -158,7 +158,7 @@
   display: flex;
   flex-direction: column;
   background: var(--color-surface);
-  border: 1px solid var(--color-border);
+  border: 1px solid var(--color-border-strong);
   border-radius: var(--radius);
   box-shadow: 0 10px 28px rgba(0, 0, 0, 0.14);
   overflow: hidden;
@@ -171,7 +171,7 @@
   align-items: center;
   justify-content: space-between;
   padding: var(--space-3) var(--space-4);
-  border-bottom: 1px solid var(--color-border);
+  border-bottom: 1px solid var(--color-border-strong);
   background: var(--color-surface);
 }
 

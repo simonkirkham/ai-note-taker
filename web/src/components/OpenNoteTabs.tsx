@@ -19,6 +19,7 @@ import styles from "./OpenNoteTabs.module.css";
 export default function OpenNoteTabs({
   tabs,
   activeNoteId,
+  homeIsCurrentPage,
   reconciled,
   onSelect,
   onSelectHome,
@@ -26,6 +27,10 @@ export default function OpenNoteTabs({
 }: {
   tabs: OpenNoteTab[];
   activeNoteId?: string;
+  // `aria-current="page"` only when the pinned tab really IS the current page. On a folder
+  // or search screen the notes list is the current ITEM in the bar but not the page you are
+  // on — and clicking it navigates away — so that case gets `aria-current="true"`.
+  homeIsCurrentPage: boolean;
   // 49-B: false until a note-cards read has succeeded. Restored tabs render straight from
   // storage before that, so the set on screen is provisional and one may still drop when the
   // list lands. Surfaced as an attribute because that transition is otherwise unobservable:
@@ -52,7 +57,8 @@ export default function OpenNoteTabs({
             type="button"
             data-testid="open-note-tab-home"
             className={styles.label}
-            aria-current={!activeNoteId ? "page" : undefined}
+            aria-current={activeNoteId ? undefined : homeIsCurrentPage ? "page" : "true"}
+            title="My notes"
             onClick={onSelectHome}
           >
             <HomeIcon />

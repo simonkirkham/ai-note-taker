@@ -351,9 +351,22 @@ public sealed class AppPage
 
     public async Task AssertOnlyPinnedTabAsync()
     {
-        await Assertions.Expect(page.GetByTestId("open-note-tabs")).ToBeVisibleAsync();
+        // Gate on the RECONCILED set first. "Zero document tabs" is vacuously true during the
+        // window before restored tabs render, so an ungated count here would pass on an empty
+        // pre-reconcile DOM and hide a real regression.
+        await Assertions.Expect(page.Locator("[data-testid='open-note-tabs'][data-tabs-reconciled='true']"))
+            .ToBeVisibleAsync();
         await Assertions.Expect(page.GetByTestId("open-note-tab-home")).ToBeVisibleAsync();
         await Assertions.Expect(OpenNoteTabs).ToHaveCountAsync(0);
+    }
+
+    // 51-B: the pinned tab must survive a strip scrolled to its far end — with many notes
+    // open it is the only way back, so scrolling it out of reach would strand the user.
+    public async Task AssertPinnedTabStaysVisibleWhenStripScrolledAsync()
+    {
+        var bar = page.GetByTestId("open-note-tabs");
+        await bar.EvaluateAsync("el => el.scrollLeft = el.scrollWidth");
+        await Assertions.Expect(page.GetByTestId("open-note-tab-home")).ToBeInViewportAsync();
     }
 
     // `aria-current` sits on the tab's label button (the nav's "you are here"), not the wrapper.

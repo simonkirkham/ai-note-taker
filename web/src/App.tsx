@@ -406,7 +406,10 @@ function AppContent({ signOut }: { signOut: () => void }) {
   }
 
   function handleHome() {
-    requestLeave(() => void navigate(w("")), "go to Home");
+    // `replace` when already home: the pinned tab (51-B) is on every screen and clicking it
+    // repeatedly would otherwise stack identical history entries, so Back would need N presses.
+    const alreadyHome = location.pathname === w("");
+    requestLeave(() => void navigate(w(""), alreadyHome ? { replace: true } : undefined), "go to Home");
   }
 
   function handleCreateFolder(name: string, parentFolderId?: string) {
@@ -532,6 +535,7 @@ function AppContent({ signOut }: { signOut: () => void }) {
           <OpenNoteTabs
             tabs={openNoteTabs}
             activeNoteId={activeNoteId}
+            homeIsCurrentPage={!activeNoteId && !activeFolderId}
             reconciled={cardsLoaded}
             onSelect={handleSelectTab}
             onSelectHome={handleHome}
