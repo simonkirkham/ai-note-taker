@@ -37,7 +37,9 @@
   transition: var(--transition);
 }
 
-.rowMenuPopup button:hover:not([disabled]) {
+/* Unavailable items carry aria-disabled, NOT the `disabled` attribute (see RowMenu.tsx) — so
+   these must key off aria-disabled or an unavailable action renders as fully enabled. */
+.rowMenuPopup button:hover:not([aria-disabled="true"]) {
   background: var(--color-primary-bg);
 }
 
@@ -46,7 +48,7 @@
   outline-offset: -2px;
 }
 
-.rowMenuPopup button[disabled] {
+.rowMenuPopup button[aria-disabled="true"] {
   opacity: 0.45;
   cursor: not-allowed;
 }

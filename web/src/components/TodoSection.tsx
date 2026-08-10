@@ -24,6 +24,14 @@ function isToday(isoString: string): boolean {
   );
 }
 
+// CSS.escape: item ids are server-supplied, and a quote in one would make this selector throw
+// rather than simply miss.
+function focusRowMenu(itemId: string) {
+  document
+    .querySelector<HTMLButtonElement>(`[data-menu-trigger="${CSS.escape(itemId)}"]`)
+    ?.focus();
+}
+
 function arrayMove<T>(arr: T[], from: number, to: number): T[] {
   const next = [...arr];
   const [moved] = next.splice(from, 1);
@@ -82,9 +90,7 @@ export default function TodoSection() {
     const id = refocusMenuRef.current;
     if (id === null) return;
     refocusMenuRef.current = null;
-    // CSS.escape: item ids are server-supplied, and a quote in one would make this selector
-    // throw rather than simply miss.
-    document.querySelector<HTMLButtonElement>(`[data-menu-trigger="${CSS.escape(id)}"]`)?.focus();
+    focusRowMenu(id);
   }, [renderedOrderKey]);
 
   // Every Today-line move goes through here. The optimistic update means a failed save would
@@ -244,11 +250,6 @@ export default function TodoSection() {
     const needsReorder = nextIds !== ids;
     const needsLineMove = nextAnchor !== anchorItemId;
 
-    // One user action, but up to TWO appends. Each mutation rolls back only ITS OWN half, so a
-    // half-failure would leave the row persisted somewhere the user never put it while the
-    // message claimed nothing moved. Snapshot the whole list up front and restore it as a unit.
-    const before = qc.getQueryData<TodoListData>(keys.todos);
-
     refocusMenuRef.current = item.itemId;
     addBusy(item.itemId);
     try {
@@ -260,9 +261,17 @@ export default function TodoSection() {
         needsLineMove ? setLineAsync(nextAnchor) : Promise.resolve(true),
       ]);
       if (orderOk && lineOk) return;
+      // One user action, up to TWO appends — so a half-failure can leave one of them PERSISTED.
+      // Restoring a client snapshot here would be two lies at once: it would claim the move was
+      // undone when the server disagrees, and it would clobber anything else written during the
+      // round trip (a completion, a quick-add — neither is gated on this row's busy flag).
+      // Refetch instead and show whatever actually landed.
       refocusMenuRef.current = item.itemId;
-      if (before) qc.setQueryData(keys.todos, before);
-      setReorderError("Couldn't move that to-do. It's back where it was.");
+      setReorderError("Couldn't finish moving that to-do. The list has been refreshed.");
+      await qc.invalidateQueries({ queryKey: keys.todos });
+      // The refetch may land on the same order the effect already reacted to, in which case
+      // renderedOrderKey never changes and the effect never fires — restore focus directly.
+      focusRowMenu(item.itemId);
     } finally {
       removeBusy(item.itemId);
     }

@@ -882,6 +882,28 @@ public sealed class AppPage
             {
                 // re-loop: the anchor read is projector-backed, so a cold projector needs re-polling
             }
+            catch (PlaywrightException ex)
+            {
+                // xUnit swallows Console output on a hung/failed test, so the evidence has to ride
+                // the THROWN message to be visible in --log-failed. Synchronous properties only.
+                var later = await SafeTextAsync(page.GetByTestId("todo-later-list"));
+                var today = await SafeTextAsync(page.GetByTestId("todo-list"));
+                throw new Exception(
+                    $"'{description}' never appeared under Later after reload. url={page.Url} " +
+                    $"later=[{later}] today=[{today}]", ex);
+            }
+        }
+    }
+
+    private static async Task<string> SafeTextAsync(ILocator locator)
+    {
+        try
+        {
+            return (await locator.InnerTextAsync(new() { Timeout = 1500 })).ReplaceLineEndings(" | ");
+        }
+        catch (PlaywrightException)
+        {
+            return "<not rendered>";
         }
     }
 

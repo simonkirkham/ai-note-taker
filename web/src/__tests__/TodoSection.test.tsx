@@ -986,12 +986,14 @@ describe('TodoSection — move a to-do across the Today line (50-B)', () => {
     await userEvent.click(moveItem())
 
     const alert = await screen.findByRole('alert')
-    expect(alert).toHaveTextContent(/back where it was/i)
-    // The row must be back in Today, in its ORIGINAL position — not left reordered.
+    expect(alert).toHaveTextContent(/couldn't finish moving/i)
+    // Server truth after the refetch: the reorder never landed, so One is back in Today.
     await waitFor(() => expect(todayTexts()).toHaveLength(3))
     expect(todayTexts()[0]).toContain('One')
     expect(laterTexts()).toHaveLength(2)
     expect(screen.getAllByRole('alert')).toHaveLength(1)
+    // A failed move must not strand focus on <body>.
+    await waitFor(() => expect(document.activeElement).toBe(menuTrigger('One')))
   })
 
   it('the action names the side the item is going to', async () => {
@@ -1064,9 +1066,10 @@ describe('TodoSection — move a to-do across the Today line (50-B)', () => {
     await userEvent.click(moveItem())
 
     const alert = await screen.findByRole('alert')
-    expect(alert).toHaveTextContent(/back where it was/i)
+    expect(alert).toHaveTextContent(/couldn't finish moving/i)
     await waitFor(() => expect(todayTexts()).toHaveLength(3))
     expect(laterTexts()).toHaveLength(2)
+    await waitFor(() => expect(document.activeElement).toBe(menuTrigger('Five')))
   })
 
   it('click-outside closes the menu', async () => {

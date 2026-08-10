@@ -106,6 +106,11 @@ export default function RowMenu({
           className={styles.rowMenuPopup}
           role="menu"
           aria-label={label}
+          // The whole section is aria-live="polite", so without this a screen reader would
+          // announce all three action labels as a live update every time the menu opens, on top
+          // of the menu's own semantics. The pre-50-B row controls were always mounted, so this
+          // is a regression the popup introduces rather than a pre-existing quirk.
+          aria-live="off"
           // Keydown is handled on the container so every item shares one roving handler; that
           // makes the container interactive, so it must be focusable (-1: programmatic only —
           // focus belongs on the active item, never on the menu box itself).
