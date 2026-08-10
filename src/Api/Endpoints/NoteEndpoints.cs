@@ -11,8 +11,6 @@ public static class NoteEndpoints
         app.MapGet("/health", NoteHandlers.Health);
         app.MapGet("/secret", NoteHandlers.Secret).RequireAuthorization();
         app.MapPost("/admin/projections/rebuild", AdminHandlers.RebuildProjections).RequireAuthorization();
-        // 43-H1: dry run unless ?apply=true — see AdminHandlers.MigrateAgenda.
-        app.MapPost("/admin/agenda/migrate", AdminHandlers.MigrateAgenda).RequireAuthorization();
 
         // Workspace-scoped content routes live only under `/w/{workspaceId}`: a validation
         // filter rejects another user's workspace (404) before the handler runs, and
@@ -36,10 +34,6 @@ public static class NoteEndpoints
         routes.MapPatch("/notes/{noteId}/date", NoteHandlers.SetNoteDate).RequireAuthorization();
         routes.MapPost("/notes/{noteId}/tags", NoteHandlers.PostTag).RequireAuthorization();
         routes.MapDelete("/notes/{noteId}/tags/{tag}", NoteHandlers.DeleteTag).RequireAuthorization();
-        routes.MapPost("/notes/{noteId}/agenda-items", NoteHandlers.PostAgendaItem).RequireAuthorization();
-        routes.MapPut("/notes/{noteId}/agenda-items/{itemId}/discussed", NoteHandlers.PutAgendaItemDiscussed).RequireAuthorization();
-        routes.MapPut("/notes/{noteId}/agenda-items/{itemId}", NoteHandlers.PutAgendaItemText).RequireAuthorization();
-        routes.MapDelete("/notes/{noteId}/agenda-items/{itemId}", NoteHandlers.DeleteAgendaItem).RequireAuthorization();
         routes.MapPut("/notes/{noteId}/folder", NoteHandlers.MoveNoteToFolder).RequireAuthorization();
         routes.MapDelete("/notes/{noteId}/folder", NoteHandlers.UnfileNote).RequireAuthorization();
         routes.MapPut("/notes/{noteId}/workspace", NoteHandlers.MoveNoteToWorkspace).RequireAuthorization();

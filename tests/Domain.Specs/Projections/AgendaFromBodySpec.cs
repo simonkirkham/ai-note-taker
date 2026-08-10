@@ -10,9 +10,10 @@ namespace Domain.Specs.Projections;
 // agenda event. This reverses 43-A's "agenda is separate data" decision (notes are running prose,
 // not a section per topic, so a heading-anchored tick could never fire).
 //
-// STRANGLER: 43-F derives from content AND keeps folding the legacy AgendaItem* events, union-ed,
-// so the 9 notes that already carry agenda events do not regress. 43-H migrates them and only then
-// drops the legacy fold. Do not collapse these two paths early.
+// 43-H2 ended the strangler: the 8 straggler notes were migrated on 2026-08-10 (36 topics written
+// into their bodies, verified against the event stream), so the legacy AgendaItem* fold is gone and
+// the body is the ONLY source. Those events remain in the streams, unread — which is what makes the
+// removal reversible, and why the deserializer still parses them.
 public sealed class AgendaFromBodySpec
 {
     private static EventEnvelope Envelope(string streamId, long seq, string type, string payload) =>
@@ -194,132 +195,6 @@ public sealed class AgendaFromBodySpec
         Assert.Equal(hiringBefore, AgendaOf(p, id).Single(a => a.Text == "Hiring plan").ItemId);
     }
 
-    // ── Strangler: legacy agenda events keep working until 43-H migrates them ──
-
-    [Fact]
-    public void A_legacy_topic_is_not_marked_derived()
-    {
-        var noteId = new NoteId(Guid.NewGuid());
-        var stream = $"note#{noteId.Value}";
-        var p = new NoteDetailProjection();
-        p.Handle(Envelope(stream, 1, nameof(NoteCreated), JsonSerializer.Serialize(new NoteCreated(noteId))));
-        p.Handle(Envelope(stream, 2, nameof(AgendaItemAdded),
-            JsonSerializer.Serialize(new AgendaItemAdded(noteId, Guid.NewGuid(), "Budget (Q3)", 0))));
-
-        // The header keeps its add/tick/edit/remove controls for these until 43-H migrates them.
-        Assert.False(Assert.Single(AgendaOf(p, noteId)).Derived);
-    }
-
-    [Fact]
-    public void Legacy_agenda_items_still_appear_when_the_body_has_no_checklist()
-    {
-        var noteId = new NoteId(Guid.NewGuid());
-        var stream = $"note#{noteId.Value}";
-        var itemId = Guid.NewGuid();
-        var p = new NoteDetailProjection();
-        p.Handle(Envelope(stream, 1, nameof(NoteCreated), JsonSerializer.Serialize(new NoteCreated(noteId))));
-        p.Handle(Envelope(stream, 2, nameof(AgendaItemAdded),
-            JsonSerializer.Serialize(new AgendaItemAdded(noteId, itemId, "Budget (Q3)", 0))));
-        p.Handle(Envelope(stream, 3, nameof(ContentEdited),
-            JsonSerializer.Serialize(new ContentEdited(noteId, "Just running prose, no checklist."))));
-
-        var agenda = AgendaOf(p, noteId);
-        Assert.Equal("Budget (Q3)", Assert.Single(agenda).Text);
-        Assert.Equal(itemId, agenda[0].ItemId);
-    }
-
-    [Fact]
-    public void Legacy_ticked_state_survives_a_body_edit()
-    {
-        var noteId = new NoteId(Guid.NewGuid());
-        var stream = $"note#{noteId.Value}";
-        var itemId = Guid.NewGuid();
-        var p = new NoteDetailProjection();
-        p.Handle(Envelope(stream, 1, nameof(NoteCreated), JsonSerializer.Serialize(new NoteCreated(noteId))));
-        p.Handle(Envelope(stream, 2, nameof(AgendaItemAdded),
-            JsonSerializer.Serialize(new AgendaItemAdded(noteId, itemId, "Budget (Q3)", 0))));
-        p.Handle(Envelope(stream, 3, nameof(AgendaItemDiscussedSet),
-            JsonSerializer.Serialize(new AgendaItemDiscussedSet(noteId, itemId, true))));
-        p.Handle(Envelope(stream, 4, nameof(ContentEdited),
-            JsonSerializer.Serialize(new ContentEdited(noteId, "Some notes typed afterwards."))));
-
-        Assert.True(Assert.Single(AgendaOf(p, noteId)).Discussed);
-    }
-
-    [Fact]
-    public void A_body_line_matching_a_legacy_item_is_not_listed_twice()
-    {
-        var noteId = new NoteId(Guid.NewGuid());
-        var stream = $"note#{noteId.Value}";
-        var itemId = Guid.NewGuid();
-        var p = new NoteDetailProjection();
-        p.Handle(Envelope(stream, 1, nameof(NoteCreated), JsonSerializer.Serialize(new NoteCreated(noteId))));
-        p.Handle(Envelope(stream, 2, nameof(AgendaItemAdded),
-            JsonSerializer.Serialize(new AgendaItemAdded(noteId, itemId, "Budget (Q3)", 0))));
-        p.Handle(Envelope(stream, 3, nameof(AgendaItemDiscussedSet),
-            JsonSerializer.Serialize(new AgendaItemDiscussedSet(noteId, itemId, true))));
-        // 43-H will write exactly this line into the body for the migrated notes.
-        p.Handle(Envelope(stream, 4, nameof(ContentEdited),
-            JsonSerializer.Serialize(new ContentEdited(noteId, "- [x] Budget (Q3)"))));
-
-        var agenda = AgendaOf(p, noteId);
-        Assert.Equal("Budget (Q3)", Assert.Single(agenda).Text);
-        Assert.True(agenda[0].Discussed);
-    }
-
-    [Fact]
-    public void A_legacy_item_matches_its_migrated_body_line_even_once_escaped()
-    {
-        // 43-H writes the topic text into the body unescaped; the editor re-serialises it escaped
-        // on the user's next save. Dedup must survive that or the topic is listed twice.
-        var noteId = new NoteId(Guid.NewGuid());
-        var stream = $"note#{noteId.Value}";
-        var p = new NoteDetailProjection();
-        p.Handle(Envelope(stream, 1, nameof(NoteCreated), JsonSerializer.Serialize(new NoteCreated(noteId))));
-        p.Handle(Envelope(stream, 2, nameof(AgendaItemAdded),
-            JsonSerializer.Serialize(new AgendaItemAdded(noteId, Guid.NewGuid(), "Review Q3 [draft]", 0))));
-        p.Handle(Envelope(stream, 3, nameof(ContentEdited),
-            JsonSerializer.Serialize(new ContentEdited(noteId, "- [ ] Review Q3 \\[draft\\]"))));
-
-        Assert.Equal("Review Q3 [draft]", Assert.Single(AgendaOf(p, noteId)).Text);
-    }
-
-    [Fact]
-    public void A_legacy_item_matches_its_migrated_body_line_once_the_user_emphasises_it()
-    {
-        // 43-H's explicit criterion. The user bolds the migrated line; it is still the same topic,
-        // so it must not double-list. MatchKey is the single definition both the union and the
-        // migration use.
-        var noteId = new NoteId(Guid.NewGuid());
-        var stream = $"note#{noteId.Value}";
-        var p = new NoteDetailProjection();
-        p.Handle(Envelope(stream, 1, nameof(NoteCreated), JsonSerializer.Serialize(new NoteCreated(noteId))));
-        p.Handle(Envelope(stream, 2, nameof(AgendaItemAdded),
-            JsonSerializer.Serialize(new AgendaItemAdded(noteId, Guid.NewGuid(), "Budget", 0))));
-        p.Handle(Envelope(stream, 3, nameof(ContentEdited),
-            JsonSerializer.Serialize(new ContentEdited(noteId, "- [ ] **Budget**"))));
-
-        Assert.Single(AgendaOf(p, noteId));
-    }
-
-    [Fact]
-    public void A_legacy_item_matches_a_body_line_that_gained_a_newline_when_flattened()
-    {
-        // AddAgendaItem only trimmed, so a legacy topic can hold a newline; the migration flattens
-        // it onto one task line. If the comparison did not collapse whitespace too, every re-run
-        // would list the topic again.
-        var noteId = new NoteId(Guid.NewGuid());
-        var stream = $"note#{noteId.Value}";
-        var p = new NoteDetailProjection();
-        p.Handle(Envelope(stream, 1, nameof(NoteCreated), JsonSerializer.Serialize(new NoteCreated(noteId))));
-        p.Handle(Envelope(stream, 2, nameof(AgendaItemAdded),
-            JsonSerializer.Serialize(new AgendaItemAdded(noteId, Guid.NewGuid(), "Budget\nand headcount", 0))));
-        p.Handle(Envelope(stream, 3, nameof(ContentEdited),
-            JsonSerializer.Serialize(new ContentEdited(noteId, "- [ ] Budget and headcount"))));
-
-        Assert.Single(AgendaOf(p, noteId));
-    }
-
     [Theory]
     // Paired delimiters go, and what they wrapped stays.
     [InlineData("**Budget**", "Budget")]
@@ -340,27 +215,6 @@ public sealed class AgendaFromBodySpec
     public void Strips_only_paired_inline_markers(string input, string expected)
     {
         Assert.Equal(expected, AgendaFromContent.StripInlineMarks(input));
-    }
-
-    [Fact]
-    public void Two_legacy_items_sharing_a_key_are_not_both_absorbed_by_one_body_line()
-    {
-        // The union matches body lines to legacy items ONE FOR ONE. With a set, both legacy items
-        // vanished behind a single body line — and a legacy topic that silently disappears from the
-        // view is never migrated, so 43-H2 deletes it for good with nothing to show it was lost.
-        var noteId = new NoteId(Guid.NewGuid());
-        var stream = $"note#{noteId.Value}";
-        var p = new NoteDetailProjection();
-        p.Handle(Envelope(stream, 1, nameof(NoteCreated), JsonSerializer.Serialize(new NoteCreated(noteId))));
-        p.Handle(Envelope(stream, 2, nameof(AgendaItemAdded),
-            JsonSerializer.Serialize(new AgendaItemAdded(noteId, Guid.NewGuid(), "Budget", 0))));
-        p.Handle(Envelope(stream, 3, nameof(AgendaItemAdded),
-            JsonSerializer.Serialize(new AgendaItemAdded(noteId, Guid.NewGuid(), "Budget", 1))));
-        p.Handle(Envelope(stream, 4, nameof(ContentEdited),
-            JsonSerializer.Serialize(new ContentEdited(noteId, "- [ ] Budget"))));
-
-        // One body line absorbs one legacy item; the second survives and stays migratable.
-        Assert.Equal(2, AgendaOf(p, noteId).Count);
     }
 
     [Fact]
@@ -424,42 +278,6 @@ public sealed class AgendaFromBodySpec
         System.Text.RegularExpressions.Regex.Replace(t, @"\\([\p{P}\p{S}])", "$1");
 
     [Fact]
-    public void Emphasis_wrapping_a_code_span_reads_as_the_code_and_matches_its_legacy_twin()
-    {
-        // Positive behaviour, NOT a regression guard: mutation-testing showed this stays green even
-        // with the double-strip bug restored, because `**`deploy.yml`**` happens to strip
-        // idempotently. The spec that actually red-gates that bug is the code-span one below.
-        var noteId = new NoteId(Guid.NewGuid());
-        var stream = $"note#{noteId.Value}";
-        var p = new NoteDetailProjection();
-        p.Handle(Envelope(stream, 1, nameof(NoteCreated), JsonSerializer.Serialize(new NoteCreated(noteId))));
-        p.Handle(Envelope(stream, 2, nameof(AgendaItemAdded),
-            JsonSerializer.Serialize(new AgendaItemAdded(noteId, Guid.NewGuid(), "**`deploy.yml`**", 0))));
-        p.Handle(Envelope(stream, 3, nameof(ContentEdited),
-            JsonSerializer.Serialize(new ContentEdited(noteId, "- [ ] **`deploy.yml`**"))));
-
-        Assert.Single(AgendaOf(p, noteId));
-    }
-
-    [Fact]
-    public void A_code_span_body_line_does_not_absorb_a_genuinely_different_legacy_topic()
-    {
-        // The other half of the double-strip regression, and the worse one: `` `**x**` `` read as
-        // `x` on the second strip and swallowed the unrelated legacy topic `x`, which was then never
-        // migrated and would be deleted for good by 43-H2, with nothing left to show it was lost.
-        var noteId = new NoteId(Guid.NewGuid());
-        var stream = $"note#{noteId.Value}";
-        var p = new NoteDetailProjection();
-        p.Handle(Envelope(stream, 1, nameof(NoteCreated), JsonSerializer.Serialize(new NoteCreated(noteId))));
-        p.Handle(Envelope(stream, 2, nameof(AgendaItemAdded),
-            JsonSerializer.Serialize(new AgendaItemAdded(noteId, Guid.NewGuid(), "x", 0))));
-        p.Handle(Envelope(stream, 3, nameof(ContentEdited),
-            JsonSerializer.Serialize(new ContentEdited(noteId, "- [ ] `**x**`"))));
-
-        Assert.Equal(2, AgendaOf(p, noteId).Count);
-    }
-
-    [Fact]
     public void A_topic_the_user_typed_with_literal_asterisks_keeps_them()
     {
         // Unescaping before stripping deleted exactly the characters the note displays.
@@ -491,21 +309,31 @@ public sealed class AgendaFromBodySpec
     }
 
     [Fact]
-    public void A_removed_legacy_item_stays_gone()
+    public void A_stream_still_carrying_legacy_agenda_events_replays_and_ignores_them()
     {
+        // The safety property of 43-H2. Those events are still in real streams and every rebuild
+        // replays them, so they must remain READABLE — not merely un-thrown-on. The agenda now
+        // comes from the body alone: the legacy item contributes nothing, even though its text
+        // differs from anything in the note.
         var noteId = new NoteId(Guid.NewGuid());
         var stream = $"note#{noteId.Value}";
-        var itemId = Guid.NewGuid();
         var p = new NoteDetailProjection();
         p.Handle(Envelope(stream, 1, nameof(NoteCreated), JsonSerializer.Serialize(new NoteCreated(noteId))));
         p.Handle(Envelope(stream, 2, nameof(AgendaItemAdded),
-            JsonSerializer.Serialize(new AgendaItemAdded(noteId, itemId, "Budget (Q3)", 0))));
-        p.Handle(Envelope(stream, 3, nameof(AgendaItemRemoved),
-            JsonSerializer.Serialize(new AgendaItemRemoved(noteId, itemId))));
-        p.Handle(Envelope(stream, 4, nameof(ContentEdited),
-            JsonSerializer.Serialize(new ContentEdited(noteId, "Prose only."))));
+            JsonSerializer.Serialize(new AgendaItemAdded(noteId, Guid.NewGuid(), "Only in the old record", 0))));
+        p.Handle(Envelope(stream, 3, nameof(AgendaItemDiscussedSet),
+            JsonSerializer.Serialize(new AgendaItemDiscussedSet(noteId, Guid.NewGuid(), true))));
+        p.Handle(Envelope(stream, 4, nameof(AgendaItemTextEdited),
+            JsonSerializer.Serialize(new AgendaItemTextEdited(noteId, Guid.NewGuid(), "Renamed"))));
+        p.Handle(Envelope(stream, 5, nameof(AgendaItemRemoved),
+            JsonSerializer.Serialize(new AgendaItemRemoved(noteId, Guid.NewGuid()))));
+        p.Handle(Envelope(stream, 6, nameof(ContentEdited),
+            JsonSerializer.Serialize(new ContentEdited(noteId, "- [x] Budget\n- [ ] Hiring"))));
 
-        Assert.Empty(AgendaOf(p, noteId));
+        var agenda = AgendaOf(p, noteId);
+
+        Assert.Equal(["Budget", "Hiring"], agenda.Select(a => a.Text));
+        Assert.All(agenda, a => Assert.True(a.Derived));
     }
 
     [Fact]

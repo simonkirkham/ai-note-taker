@@ -98,90 +98,13 @@ public static partial class AgendaFromContent
     }
 
     /// <summary>
-    /// The union folded into <see cref="NoteDetailView.Agenda"/> during the 43-F/43-H strangler
-    /// window: topics read from the body, then any legacy <c>AgendaItem*</c> topic that has no
-    /// matching body line. A matched pair is listed ONCE and the BODY wins — not just because it is
-    /// the surface the user just edited, but because legacy-wins would make a migrated topic
-    /// permanently un-untickable: 43-H writes `- [x] Foo` into the body, and a later untick there
-    /// would be overridden forever by the old AgendaItemDiscussedSet(true).
-    /// </summary>
-    public static IReadOnlyList<AgendaItemView> Compose(
-        NoteId noteId, string? content, IReadOnlyList<AgendaItemView> legacy)
-    {
-        var fromBody = Parse(noteId, content);
-        if (legacy.Count == 0) return fromBody.AsReadOnly();
-
-        // A COUNT per body key, not a set: N body lines absorb N legacy items, no more. With a set,
-        // two legacy items sharing a key were both dropped for a single matching body line — the
-        // "silently skipped, then deleted for good by 43-H2" shape, since a skipped item is never
-        // migrated and nothing left in the view would show it was lost.
-        //
-        // Body items are keyed WITHOUT re-stripping. Since CHANGE-38, Parse already returns stripped
-        // display text, and StripInlineMarks is NOT idempotent — `` `**x**` `` legitimately outputs
-        // the literal `**x**`, which a second pass would then strip to `x`. Running MatchKey over
-        // already-parsed text therefore moved the dedup in BOTH bad directions: a body line
-        // ``**`deploy.yml`**`` stopped matching its legacy twin (double-listed, and the migration
-        // re-injected it on every run), while `` `**x**` `` started matching a genuinely different
-        // legacy topic `x` (silently skipped, then deleted for good by 43-H2). Legacy text comes
-        // from events and has never been stripped, so it still needs the full MatchKey.
-        var bodyText = fromBody.GroupBy(i => CollapseKey(i.Text))
-            .ToDictionary(g => g.Key, g => g.Count());
-        var position = fromBody.Count;
-        foreach (var item in legacy)
-        {
-            var key = MatchKey(item.Text);
-            if (bodyText.TryGetValue(key, out var remaining) && remaining > 0)
-            {
-                bodyText[key] = remaining - 1;
-                continue;
-            }
-            fromBody.Add(item with { Position = position++ });
-        }
-        return fromBody.AsReadOnly();
-    }
-
-    /// <summary>
-    /// The one definition of "these two are the same topic", used by the 43-F/H union above — and
-    /// therefore by the 43-H1 migration, which writes exactly the topics <see cref="Compose"/> left
-    /// unmatched. A second, divergent normaliser is how a topic gets silently skipped and then
-    /// deleted for good by 43-H2, so there is only this one.
-    ///
-    /// Unescapes (the editor re-serialises text with backslash escapes on the user's next save, so a
-    /// literal comparison would miss an already-migrated topic and duplicate it) and strips paired
-    /// inline markers via <see cref="StripInlineMarks"/>, so a body line `- [ ] **Budget**` matches
-    /// the legacy item `Budget`. Only PAIRED delimiters go: a looser rule risks the opposite, worse
-    /// error of matching two topics that genuinely differ — which 43-H2 would then delete for good.
-    ///
-    /// Internal whitespace collapses to a single space because a legacy topic may hold a newline
-    /// (AddAgendaItem only trimmed) and the migration must flatten it to write one task line — so
-    /// the two must compare equal, or every re-run would list the topic again.
-    /// </summary>
-    ///
-    /// Strips BEFORE unescaping, and the emphasis patterns refuse a backslash-escaped opening run.
-    /// prosemirror-markdown writes literal asterisks the user typed as `\*Budget\*`; unescaping
-    /// first would hand the emphasis passes a live `*Budget*` and delete the very characters the
-    /// note displays — the exact inverse of what CHANGE-38 is for.
-    public static string MatchKey(string text) => CollapseKey(Unescape(StripInlineMarks(text)));
-
-    /// <summary>Whitespace/case normalisation only — for text that is ALREADY stripped.</summary>
-    private static string CollapseKey(string text) =>
-        Whitespace().Replace(text, " ").Trim().ToLowerInvariant();
-
-    /// <summary>
-    /// Drops paired inline markdown delimiters and keeps what they wrapped: `**Budget**` → `Budget`.
-    /// The three passes are ordered — code spans first, so their contents are never re-read as
-    /// emphasis.
+    /// Drops paired inline markdown delimiters and keeps what they wrapped: `**Budget**` → `Budget`
+    /// (CHANGE-38 — a topic is the text the user SEES).
     ///
     /// `*` and `_` are deliberately NOT one pattern. CommonMark lets `*` open intraword but not `_`,
-    /// so a single rule either mangles `snake_case_name` (stripping the middle run) or misses
-    /// `a**b**c`. The `\S` lookarounds are what stop `2 * 3` and `a _ b` pairing across whitespace —
-    /// a delimiter run followed by a space opens nothing.
+    /// so a single rule either mangles `snake_case_name` or misses `a**b**c`. The `\S` lookarounds
+    /// stop `2 * 3` and `a _ b` pairing across whitespace.
     /// </summary>
-    /// <summary>Drops the private-use characters used to mask code spans. Public so the 43-H1
-    /// migration can filter a legacy topic made only of them, which would otherwise be written
-    /// out and read back empty, and re-appended on every run.</summary>
-    public static string StripMaskCharacters(string text) => Sentinel().Replace(text, "");
-
     public static string StripInlineMarks(string text)
     {
         // A pathological line (thousands of backticks) makes CodeSpan's backreference quadratic and
@@ -190,33 +113,34 @@ public static partial class AgendaFromContent
         if (text.Length > 2000) return text;
 
         // Each code span is swapped for a delimiter-free sentinel BEFORE the emphasis passes, then
-        // restored. Two properties fall out that a straight walk does not give:
-        //   * emphasis WRAPPING a code span is still emphasis — ``**`deploy.yml`**`` renders as bold
-        //     code, so the topic reads `deploy.yml`, not `**deploy.yml**`;
-        //   * a code span's CONTENTS never reach the emphasis passes, so `` `**x**` `` stays the
-        //     literal `**x**` — it is code, not bold.
-        // The sentinel is a private-use character: it carries no markdown meaning, so it can neither
-        // open nor close a delimiter run. It is not, however, IMPOSSIBLE in note text — a paste can
-        // carry anything — so any pre-existing occurrence is dropped first. Otherwise a pasted
-        // \uE000 12 \uE001 would be restored as span 12, and on a note with fewer spans that is an
-        // IndexOutOfRangeException thrown straight out of the projection fold, DLQ-ing the record.
-        // The restore is bounds-checked as well: a malformed placeholder leaves the text as-is
-        // rather than throwing.
+        // restored, so emphasis WRAPPING a span is still emphasis (``**`x`**`` reads as the code)
+        // while a span's CONTENTS never reach those passes (`` `**x**` `` stays literal).
+        //
+        // The sentinel is a private-use character: meaningless in markdown, but NOT impossible in
+        // pasted text, so any pre-existing occurrence is dropped first. Otherwise a pasted
+        // placeholder would be restored as a span index — an IndexOutOfRangeException thrown out of
+        // the fold. The restore is bounds-checked for the same reason.
         var spans = new List<string>();
         var masked = CodeSpan().Replace(StripMaskCharacters(text), m =>
         {
             spans.Add(m.Groups[2].Value);
-            return $"{spans.Count - 1}";
+            return $"\uE000{spans.Count - 1}\uE001";
         });
 
         var stripped = UnderscoreEmphasis().Replace(StarEmphasis().Replace(masked, "$2"), "$2");
 
-        return Sentinel().Replace(stripped, m =>
-            int.TryParse(m.Groups[1].Value, NumberStyles.None, CultureInfo.InvariantCulture, out var i)
-            && i < spans.Count
-                ? spans[i]
-                : m.Value);
+        return spans.Count == 0
+            ? stripped
+            : Sentinel().Replace(stripped, m =>
+                int.TryParse(m.Groups[1].Value, NumberStyles.None, CultureInfo.InvariantCulture, out var i)
+                && i < spans.Count
+                    ? spans[i]
+                    : m.Value);
     }
+
+    // Drops the private-use characters used to mask code spans. Was public for 43-H1's migration,
+    // which needed to filter a legacy topic made only of them; that handler is gone with 43-H2.
+    private static string StripMaskCharacters(string text) => Sentinel().Replace(text, "");
 
     private static string Unescape(string text) => Escaped().Replace(text, "$1");
 

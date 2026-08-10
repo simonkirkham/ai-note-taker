@@ -79,7 +79,7 @@ public sealed class DynamoDbNoteDetailStoreTests(DynamoDbFixture fixture) : ICla
         var store = await NewStoreAsync();
         var noteId = new NoteId(Guid.NewGuid());
         const string content = "- [x] Budget (Q3)\n- [ ] Hiring plan\n\nRob says cloud spend is 8% over.";
-        var composed = AgendaFromContent.Compose(noteId, content, []);
+        var composed = AgendaFromContent.Parse(noteId, content);
 
         await store.UpsertAsync(new NoteDetailView(noteId, "Ops weekly", content,
             DateTimeOffset.UtcNow, DateTimeOffset.UtcNow, UserId: "user-1", Agenda: composed));

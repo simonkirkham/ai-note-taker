@@ -167,10 +167,10 @@ public record NoteDetail(
 // it is only ever read with the note).
 // 43-F: topics are now DERIVED from the note body — every task-list line in Content is a topic and
 // `discussed` is the `[x]` in that line, so ticking appends ContentEdited, not an agenda event.
-// `Derived` distinguishes those from the pre-43-F items still carried by AgendaItem* events: a
-// derived topic has no event stream behind it, so the /agenda-items endpoints 404 on it and the
-// header strip shows it read-only. Both are folded, union-ed, until 43-H migrates the stragglers —
-// after which every topic is derived and the flag goes.
+// 43-H2: the stragglers were migrated and the legacy fold removed, so EVERY topic is derived and
+// `Derived` is always true. The field is retained rather than dropped — it is a mapped DynamoDB
+// attribute on a populated projection and a wire field the frontend reads, so removing it is a
+// separate breaking change, not a tidy-up.
 // `ItemId` for a derived topic is deterministic: SHA-256 over (noteId, occurrence, lowercased text),
 // so it survives a rebuild and does not change when the topic is ticked.
 public sealed record AgendaItem(Guid ItemId, string Text, bool Discussed, int Position, bool Derived);
@@ -206,7 +206,7 @@ The **Final notes** fields (`summary`/`discussionPoints`/`decisions`/`summaryMod
 }
 ```
 
-The `agenda` array is folded from `AgendaItemAdded` events (Phase 43) — stored as part of `NoteDetail` (a DynamoDB `L`-of-`M` attribute), not a separate projection, since it is only ever read with the note. `[]` when the note has no agenda.
+The `agenda` array is parsed from the note's own `Content` (43-F/43-H2; it was folded from `AgendaItemAdded` events until 43-H2) — stored as part of `NoteDetail` (a DynamoDB `L`-of-`M` attribute), not a separate projection, since it is only ever read with the note. `[]` when the note has no agenda.
 
 **Storage row** (table `notetaker-proj-notedetail`, one row per note):
 
