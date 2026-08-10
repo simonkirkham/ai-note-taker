@@ -29,9 +29,9 @@ export default function SignInPage() {
             redirect fired anyway and the user bounced back here with nothing said, forever. */}
         {storageBlocked && (
           <p role="alert" data-testid="storage-blocked-message" className={styles.signInError}>
-            Your browser is blocking this site from storing data, which sign-in needs in order to
-            finish. Allow cookies and site data for this site — or leave private browsing — then try
-            again.
+            Sign-in couldn’t be completed — your browser didn’t keep the data it needs. This
+            usually means site data is blocked; allow cookies and site data for this site, or leave
+            private browsing, then try again.
           </p>
         )}
       </div>

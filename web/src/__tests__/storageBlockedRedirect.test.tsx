@@ -139,7 +139,9 @@ describe('calendar connect against a storage-refusing browser (BUG-60)', () => {
     try {
       const started = await startCalendarConnect('google')
 
-      expect(started).toBe(false)
+      // Not a bare false: the caller must be able to tell a refused write apart from the dev/E2E
+      // "no client id configured" no-op, because only one of them is worth telling the user about.
+      expect(started).toBe('storage-blocked')
       expect(redirected).not.toHaveBeenCalled()
     } finally {
       restore()
@@ -151,7 +153,7 @@ describe('calendar connect against a storage-refusing browser (BUG-60)', () => {
 
     const started = await startCalendarConnect('google')
 
-    expect(started).toBe(true)
+    expect(started).toBe('redirecting')
     expect(redirected).toHaveBeenCalledTimes(1)
   })
 })

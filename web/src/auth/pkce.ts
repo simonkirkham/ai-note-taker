@@ -104,11 +104,15 @@ export function buildMicrosoftAuthUrl(
 // sign-in, plus the active workspace (34-B — the redirect drops the `/w/:wsId` path) and the chosen
 // provider (34-C — the callback POSTs to the matching connect endpoint). No-op when that provider's
 // client id is not configured (dev/E2E).
-export async function startCalendarConnect(provider: 'google' | 'microsoft' = 'google'): Promise<boolean> {
+// Returns why it did not start, so a caller can tell a dev/E2E no-op ('not-configured') apart from
+// a browser that refused to keep the verifier ('storage-blocked') — the latter needs telling.
+export type CalendarConnectResult = 'redirecting' | 'not-configured' | 'storage-blocked'
+
+export async function startCalendarConnect(provider: 'google' | 'microsoft' = 'google'): Promise<CalendarConnectResult> {
   const clientId = provider === 'microsoft'
     ? (import.meta.env.VITE_MS_CLIENT_ID ?? '')
     : (import.meta.env.VITE_GOOGLE_CLIENT_ID ?? '')
-  if (!clientId) return false
+  if (!clientId) return 'not-configured'
   const verifier = generateCodeVerifier()
   const challenge = await generateCodeChallenge(verifier)
   const state = generateCodeVerifier()
@@ -122,7 +126,7 @@ export async function startCalendarConnect(provider: 'google' | 'microsoft' = 'g
     safeSession.remove('calendar_verifier')
     safeSession.remove('calendar_state')
     recordRumEvent('authStorageBlocked', { at: 'calendarConnect', provider })
-    return false
+    return 'storage-blocked'
   }
   // The workspace and provider markers only affect where the user lands and which endpoint the
   // callback posts to, both of which have defaults — losing them must not block the connect.
@@ -132,7 +136,7 @@ export async function startCalendarConnect(provider: 'google' | 'microsoft' = 'g
     ? buildMicrosoftAuthUrl(clientId, window.location.origin, challenge, state)
     : buildCalendarAuthUrl(clientId, window.location.origin, challenge, state)
   hardRedirect(url)
-  return true
+  return 'redirecting'
 }
 
 // Token exchange goes through our backend so the client_secret never touches the browser.

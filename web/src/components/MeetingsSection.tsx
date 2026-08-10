@@ -10,6 +10,7 @@ import { MeetingReminder, useMeetingReminders } from "../hooks/useMeetingReminde
 import { useMeetings } from "../hooks/useMeetings";
 import { addDays, dayDelta, formatMeetingTime, todayInTz } from "./meetingDay";
 import styles from "./MeetingsSection.module.css";
+import { useToast } from "./toastContext";
 
 const NO_MEETINGS: MeetingReminder[] = [];
 
@@ -72,6 +73,17 @@ function toState(query: UseQueryResult<MeetingsResult>): State {
 export function MeetingsSection({ onOpenNote }: { onOpenNote: (noteId: string, title?: string, isNew?: boolean) => void }) {
   const tz = useMemo(() => Intl.DateTimeFormat().resolvedOptions().timeZone, []);
   const qc = useQueryClient();
+  const { showError } = useToast();
+  // BUG-60: the connect refuses to redirect when the browser will not keep the PKCE verifier.
+  // Without this the button would simply do nothing — the same silent dead end the sign-in half of
+  // this fix exists to remove. 'not-configured' is the dev/E2E no-op and stays silent.
+  const connectCalendar = async (provider: "google" | "microsoft") => {
+    if ((await startCalendarConnect(provider)) === "storage-blocked") {
+      showError(
+        "Couldn't start the calendar connection — your browser didn't keep the data it needs. Allow cookies and site data for this site, then try again.",
+      );
+    }
+  };
   const [today] = useState(() => todayInTz(tz));
   const [selectedDate, setSelectedDate] = useState(today);
   const [pickerOpen, setPickerOpen] = useState(false);
@@ -326,14 +338,14 @@ export function MeetingsSection({ onOpenNote }: { onOpenNote: (noteId: string, t
             <button
               data-testid="menu-connect-google"
               className={styles.meetingsRetryLink}
-              onClick={() => void startCalendarConnect("google")}
+              onClick={() => void connectCalendar("google")}
             >
               Connect Google Calendar
             </button>
             <button
               data-testid="menu-connect-outlook"
               className={styles.meetingsRetryLink}
-              onClick={() => void startCalendarConnect("microsoft")}
+              onClick={() => void connectCalendar("microsoft")}
             >
               Connect Outlook
             </button>
@@ -408,14 +420,14 @@ export function MeetingsSection({ onOpenNote }: { onOpenNote: (noteId: string, t
             <button
               data-testid="connect-calendar"
               className={styles.meetingsRetryLink}
-              onClick={() => void startCalendarConnect("google")}
+              onClick={() => void connectCalendar("google")}
             >
               {needsAuth ? "Connect Google Calendar" : "Reconnect Google"}
             </button>
             <button
               data-testid="connect-outlook"
               className={styles.meetingsRetryLink}
-              onClick={() => void startCalendarConnect("microsoft")}
+              onClick={() => void connectCalendar("microsoft")}
             >
               {needsAuth ? "Connect Outlook" : "Reconnect Outlook"}
             </button>

@@ -47,15 +47,19 @@ export function AuthProvider({
   const [forbidden, setForbidden] = useState(false)
   const [sessionExpired, setSessionExpired] = useState(false)
   // BUG-60: an OAuth `code` came back but no verifier is stored, so the exchange is impossible and
-  // the code is already spent. DERIVED during render, not set from the effect: a setState in an
-  // effect body trips `react-hooks/set-state-in-effect`, which lint gates on (and tsc/vitest do
-  // not). The read is safe during render precisely because safeSession swallows the throw — that is
-  // what this whole fix is for. Not a calendar return, which carries its own verifier and state.
-  const verifierMissingOnReturn = hasOAuthCode && !isCalendarConnectReturn
-    && safeSession.get('pkce_code_verifier') == null
-  // The browser refused to persist the PKCE verifier, so sign-in cannot complete. Surfaced to the
-  // user rather than retried — no amount of retrying fixes a browser that will not store.
-  const [storageBlocked, setStorageBlocked] = useState(verifierMissingOnReturn)
+  // the code is already spent. SEEDED ONCE at mount from a render-time probe — deliberately NOT
+  // re-derived on every render. That distinction is load-bearing: the effect below strips `?code=`
+  // from the URL, so a re-derived value would flip back to false on the next render and the message
+  // would vanish. It is a probe rather than a setState in the effect because that trips
+  // `react-hooks/set-state-in-effect`, which lint gates on (and tsc/vitest do not). The read is safe
+  // during render precisely because safeSession swallows the throw — which is what this fix is for.
+  // Not a calendar return, which carries its own verifier and state.
+  const [storageBlocked, setStorageBlocked] = useState(() =>
+    clientId !== ''
+    && typeof window !== 'undefined'
+    && new URLSearchParams(window.location.search).has('code')
+    && safeSession.get('calendar_state') == null
+    && safeSession.get('pkce_code_verifier') == null)
   const mounted = useRef(false)
   // Forward ref so handleRefreshFailure can call cancelRefresh without a circular dep:
   // handleRefreshFailure is declared before useGoogleAuth returns cancelRefresh.

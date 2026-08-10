@@ -57,6 +57,11 @@ export function safeStorageRemove(kind: 'session' | 'local', key: string): void 
 // threw on access, or (Safari private mode, historically) accepted `setItem` and stored nothing.
 // A read-back is the only check that covers all three; `setItem` not throwing does not prove the
 // value is there. Use this wherever the next step cannot be undone.
+//
+// What it CANNOT prove: that the value survives the redirect. Safari ITP / storage partitioning can
+// clear sessionStorage on the cross-site return, which passes verifiedSet here and still loses the
+// verifier there. That residual is why the callback-side handling is not optional — it strips the
+// spent `?code=` and states the reason, so the worst case is one bounded failure, not a loop.
 export function verifiedSet(kind: 'session' | 'local', key: string, value: string): boolean {
   safeStorageSet(kind, key, value);
   return safeStorageGet(kind, key) === value;

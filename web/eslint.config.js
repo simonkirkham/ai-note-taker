@@ -51,6 +51,14 @@ export default tseslint.config(
       // 19-B: surface every remaining non-null `!`; the two justified ones carry a
       // scoped disable. Not in recommended(-type-checked), so enable it explicitly.
       '@typescript-eslint/no-non-null-assertion': 'error',
+      // BUG-60: leaving the SPA must go through lib/hardRedirect, which exists so a test can prove a
+      // redirect did NOT happen (jsdom refuses to let window.location be stubbed). Without this rule
+      // the guarantee is convention-only: a future inline assignment would silently make the
+      // storage-refusal guard untested while every test still passed.
+      'no-restricted-syntax': ['error', {
+        selector: "AssignmentExpression > MemberExpression[property.name='href'][object.property.name='location']",
+        message: 'Use hardRedirect() from lib/hardRedirect — an inline location.href assignment cannot be asserted against in jsdom (BUG-60).',
+      }],
       // Import ordering (14-R). Side-effect imports (e.g. global CSS in main.tsx)
       // are NOT reordered by this rule, preserving the stylesheet cascade.
       'import-x/order': ['error', {
@@ -71,6 +79,11 @@ export default tseslint.config(
       ecmaVersion: 2020,
       globals: globals.node,
     },
+  },
+  {
+    // BUG-60: the one place allowed to assign location.href — that is this module's entire purpose.
+    files: ['src/lib/hardRedirect.ts'],
+    rules: { 'no-restricted-syntax': 'off' },
   },
   // 19-B: test sources keep type-checked linting on, but a handful of typed rules
   // fire on idiomatic test code rather than real defects and are relaxed here (test
