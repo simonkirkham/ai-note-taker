@@ -156,6 +156,20 @@ Scenario: Only one note records at a time
   1. **Keep-mounted:** render the recording note's `NoteView` alongside the active one, hidden (`hidden` attribute / `display:none`), so its hook keeps running. Cheapest diff; risks: duplicate global effects (`beforeunload`, the `popstate` trap, autofocus at `NoteView.tsx:251`) firing from a hidden note, and a hidden Tiptap editor holding state.
   2. **Hoist the session:** move `useTranscription` above the route into a provider keyed by `noteId`, so `NoteView` consumes a session it does not own. Cleaner long-term, larger blast radius in the app's most failure-sensitive component.
   - Either way, every effect in `NoteView` that assumes "mounted ⇒ visible/active" must be audited and gated on active-ness.
+- **Classify every leave-guard site before removing any of them — this is where 51-C can silently re-open [BUG-54].** BUG-54 exists because leaving a recording note destroyed the transcript, and it wrapped ten `requestLeave` sites to prevent that. Keeping the recording mounted removes the *reason* for some of those prompts but not others, and the difference is whether the destination unmounts the recording:
+
+  | Site (`App.tsx` unless noted) | Under keep-mounted | Why |
+  |---|---|---|
+  | Tab switch, `openNote` | **drop the prompt** | the whole point of the slice — recording stays mounted |
+  | Home / folder / Unfiled navigation | **drop the prompt**, IF the recording note stays mounted off-route | otherwise this is BUG-54 again; verify by test, not by reading |
+  | Close the recording tab | **keep** | unmounts the recording |
+  | Sign out (`awaitTranscript: true`) | **keep** | clears the token, unmounts everything |
+  | Workspace switch / create-and-switch (`WorkspaceSwitcher.tsx`, 2 sites) | **keep** | leaves the workspace the note lives in |
+  | Move note to another workspace | **keep** | the note survives the move, the transcript does not |
+  | `beforeunload` / `popstate` | **keep** | the browser is leaving regardless of mounting |
+
+  Do not drop a prompt on the argument that the recording "should" survive — assert it survives first. The 49-A tab-switch confirm is the only one 51-C is *certain* to remove.
+- **[BUG-70] is open and overlaps.** "+ New Note" creates the note server-side *before* the guard runs, so a declined leave leaves an orphan. If 51-C drops the prompt on that path without fixing the ordering, the orphan stops being visible rather than stops happening. Read it before touching `handleNewNote`.
 - **Remove** the 49-A tab-switch confirm; **keep** the close-tab confirm and the `beforeunload`/`popstate` guards. This drops [CHANGE-33]'s guarded-exit count from 7 to 6 — check that item's copy still reads correctly if it is still open.
 - **Bar affordance:** a pulsing red dot left of the tab title, `aria-label` including "recording", driven by the same status the record control uses. Treatment confirmed in 51-A and shipped in 51-B's bar; this slice wires it to real recording state.
 - **Single-recorder rule:** the record control in a non-recording tab is disabled with a reason while another tab is live (today this is implicit — one note is mounted; it becomes explicit here).
