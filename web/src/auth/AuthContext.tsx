@@ -56,11 +56,7 @@ export function AuthProvider({
   // during render precisely because safeSession swallows the throw — which is what this fix is for.
   // Not a calendar return, which carries its own verifier and state.
   const [storageBlocked, setStorageBlocked] = useState(() =>
-    clientId !== ''
-    && typeof window !== 'undefined'
-    && new URLSearchParams(window.location.search).has('code')
-    && safeSession.get('calendar_state') == null
-    && safeSession.get('pkce_code_verifier') == null)
+    hasOAuthCode && !isCalendarConnectReturn && safeSession.get('pkce_code_verifier') == null)
   const mounted = useRef(false)
   // Forward ref so handleRefreshFailure can call cancelRefresh without a circular dep:
   // handleRefreshFailure is declared before useGoogleAuth returns cancelRefresh.

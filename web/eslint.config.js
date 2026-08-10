@@ -55,10 +55,32 @@ export default tseslint.config(
       // redirect did NOT happen (jsdom refuses to let window.location be stubbed). Without this rule
       // the guarantee is convention-only: a future inline assignment would silently make the
       // storage-refusal guard untested while every test still passed.
-      'no-restricted-syntax': ['error', {
-        selector: "AssignmentExpression > MemberExpression[property.name='href'][object.property.name='location']",
-        message: 'Use hardRedirect() from lib/hardRedirect — an inline location.href assignment cannot be asserted against in jsdom (BUG-60).',
-      }],
+      'no-restricted-syntax': ['error',
+        {
+          // Anchored on `location`, not on `.href` — `link.href = …` on an anchor/link element is
+          // legitimate and must not be flagged. `.left` is pinned so a READ
+          // (`const u = window.location.href`) is not flagged either.
+          selector: "AssignmentExpression > MemberExpression.left[property.name='href'][object.name='location']",
+          message: 'Use hardRedirect() from lib/hardRedirect — an inline location assignment cannot be asserted against in jsdom (BUG-60).',
+        },
+        {
+          selector: "AssignmentExpression > MemberExpression.left[property.name='href'][object.property.name='location']",
+          message: 'Use hardRedirect() from lib/hardRedirect — an inline location assignment cannot be asserted against in jsdom (BUG-60).',
+        },
+        {
+          // `window.location = url` navigates too.
+          selector: "AssignmentExpression > MemberExpression.left[property.name='location']",
+          message: 'Use hardRedirect() from lib/hardRedirect (BUG-60).',
+        },
+        {
+          selector: "CallExpression[callee.property.name=/^(assign|replace)$/][callee.object.property.name='location']",
+          message: 'Use hardRedirect() from lib/hardRedirect (BUG-60).',
+        },
+        {
+          selector: "CallExpression[callee.property.name=/^(assign|replace)$/][callee.object.name='location']",
+          message: 'Use hardRedirect() from lib/hardRedirect (BUG-60).',
+        },
+      ],
       // Import ordering (14-R). Side-effect imports (e.g. global CSS in main.tsx)
       // are NOT reordered by this rule, preserving the stylesheet cascade.
       'import-x/order': ['error', {

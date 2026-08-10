@@ -80,7 +80,7 @@ export function MeetingsSection({ onOpenNote }: { onOpenNote: (noteId: string, t
   const connectCalendar = async (provider: "google" | "microsoft") => {
     if ((await startCalendarConnect(provider)) === "storage-blocked") {
       showError(
-        "Couldn't start the calendar connection — your browser didn't keep the data it needs. Allow cookies and site data for this site, then try again.",
+        "Couldn’t start the calendar connection — your browser didn’t keep the data it needs. Allow cookies and site data for this site, then try again.",
       );
     }
   };
