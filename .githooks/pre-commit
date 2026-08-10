@@ -47,6 +47,22 @@ if [ "$infra" = 1 ]; then
   echo "→ publish API for cdk synth..."
   dotnet publish src/Api/Api.csproj -c Release -o src/Api/bin/Release/net10.0/publish --nologo -v quiet
 
+  # The stack also packages the Projector (27-B) and TranscribeCompletion (33-B1)
+  # Lambdas, and synth aborts with "Cannot find asset at ..." when either publish
+  # directory is missing — which is every fresh worktree (TI-64). Publish them only
+  # when absent: synth fingerprints each asset directory but never validates what is in
+  # it, so a stale artefact gates exactly as well as a freshly built one. A fresh
+  # worktree pays ~50s once; every later commit pays two file tests. synth itself always
+  # runs, so a genuinely broken stack still fails the commit.
+  # If a publish is ever interrupted, rm -rf the publish dir to force a rebuild.
+  for proj in Projector TranscribeCompletion; do
+    out="src/$proj/bin/Release/net10.0/publish"
+    if [ ! -f "$out/$proj.dll" ]; then
+      echo "→ publish $proj for cdk synth (absent in this worktree)..."
+      dotnet publish "src/$proj/$proj.csproj" -c Release -o "$out" --nologo -v quiet
+    fi
+  done
+
   echo "→ cdk synth..."
   cdk synth --quiet
 fi
