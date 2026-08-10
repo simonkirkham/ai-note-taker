@@ -27,6 +27,7 @@ import SignInPage from "./components/SignInPage";
 import { useToast } from "./components/toastContext";
 import { UNFILED_ID } from "./constants";
 import { findNode, findPath } from "./folderTree";
+import { RecordingSessionProvider } from "./hooks/recordingSession";
 import {
   useCreateFolder,
   useRenameFolder,
@@ -98,7 +99,12 @@ function AppGate() {
         path="/w/:wsId/*"
         element={
           <WorkspaceProvider>
-            <AppContent signOut={signOut} />
+            {/* 51-C: the recording outlives the note screen, so it is mounted here — above
+                every in-workspace navigation, below the workspace itself. Switching
+                workspace still tears it down, which is why that leave-prompt is kept. */}
+            <RecordingSessionProvider>
+              <AppContent signOut={signOut} />
+            </RecordingSessionProvider>
           </WorkspaceProvider>
         }
       />
@@ -260,33 +266,22 @@ function AppContent({ signOut }: { signOut: () => void }) {
     const state: NoteNavState = {};
     if (isNew) state.isNew = true;
     if (title) state.initialTitle = title;
-    // 49-A: opening a note adds it to the open set (a no-op if it is already there, so
-    // re-opening focuses the existing tab rather than duplicating it) and navigates. Guarded
-    // like a tab switch: `onOpenNote` is reachable from INSIDE a recording note (the `/ai`
-    // create-note and next-occurrence paths), and it unmounts that note just the same.
-    requestLeave(() => {
-      // The count rides the event so an unbounded bar — which would mean the dedupe above
-      // has regressed — is visible without a user reporting it. Count the RECONCILED set,
-      // not the raw one: since 49-B the stored set retains dead ids until the next write, so
-      // `tabs.length` over-reports by exactly the tabs the user cannot see — inflating the
-      // one signal that exists to detect an unbounded bar.
-      if (!tabs.some((t) => t.noteId === noteId)) {
-        recordRumEvent("noteTabOpened", { tabCount: openNoteTabs.length + 1 });
-      }
-      openTab(noteId, title);
-      void navigate(w(`/notes/${noteId}`), { state });
-      onProceed?.();
-    }, openNoteDestination(noteId, title, isNew));
-  }
-
-  // CHANGE-33. Most openNote callers pass no title (the preview panel, "+ New Note"), so
-  // fall back to the card list before giving up on a generic name — a named note is the
-  // whole point of the banner. "Untitled note" matches what the tab bar calls a blank
-  // title (openNoteTabs above), so the same note reads the same either way you reach it.
-  function openNoteDestination(noteId: string, title?: string, isNew?: boolean) {
-    if (isNew) return "open the new note";
-    const known = title || cards.find((c) => c.noteId === noteId)?.title || "";
-    return `open ${destinationName(known, "Untitled note")}`;
+    // 49-A opened a note behind the recording guard, because doing so unmounted the note that
+    // was capturing. 51-C hoists the session above the route, so it no longer does: the
+    // recording keeps running and there is nothing left to protect or to ask about. This is
+    // the one confirm the slice is certain to remove — the rest (closing this tab, sign-out,
+    // workspace switch, moving the note, browser-back) all still destroy the capture.
+    //
+    // The count rides the event so an unbounded bar — which would mean the dedupe above has
+    // regressed — is visible without a user reporting it. Count the RECONCILED set, not the
+    // raw one: since 49-B the stored set retains dead ids until the next write, so
+    // `tabs.length` over-reports by exactly the tabs the user cannot see.
+    if (!tabs.some((t) => t.noteId === noteId)) {
+      recordRumEvent("noteTabOpened", { tabCount: openNoteTabs.length + 1 });
+    }
+    openTab(noteId, title);
+    void navigate(w(`/notes/${noteId}`), { state });
+    onProceed?.();
   }
 
   // 49-A: switching or closing a tab is an in-app navigate, which does NOT fire the popstate
@@ -302,13 +297,9 @@ function AppContent({ signOut }: { signOut: () => void }) {
 
   function handleSelectTab(noteId: string) {
     if (noteId === activeNoteId) return;
-    // CHANGE-33: openNoteTabs already resolves a blank title to "Untitled note"; the
-    // fallback covers only a click on a tab that is no longer in the set.
-    const title = openNoteTabs.find((t) => t.noteId === noteId)?.title ?? "";
-    requestLeave(
-      () => void navigate(w(`/notes/${noteId}`)),
-      `open ${destinationName(title, "Untitled note")}`,
-    );
+    // 51-C: unguarded, for the same reason as openNote above — switching tabs no longer
+    // unmounts a recording, so it no longer asks. This is the whole point of the slice.
+    void navigate(w(`/notes/${noteId}`));
   }
 
   function handleCloseTab(noteId: string) {

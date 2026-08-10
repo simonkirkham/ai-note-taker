@@ -151,12 +151,7 @@ async function openBothAndRecordInStandup() {
 }
 
 describe('51-C — a recording keeps running while I read another note', () => {
-  // Skipped for Pip 51-C, mirroring Breaker's `[Fact(Skip = "Pip <slice-id>")]` on the domain
-  // side: the pre-commit hook runs the WHOLE suite, so a spec left red cannot be committed at
-  // all. Both have been run unskipped and fail for the right reason — the confirm button is
-  // rendered today ("expected <button> to be null") and the navigation is blocked at the note.
-  // Pip un-skips these two; the third stays live because it must pass before AND after.
-  it.skip('switching to another tab does not ask me to confirm', async () => {
+  it('switching to another tab does not ask me to confirm', async () => {
     renderApp()
     await openBothAndRecordInStandup()
 
@@ -166,7 +161,7 @@ describe('51-C — a recording keeps running while I read another note', () => {
     await waitFor(() => expect(window.location.pathname).toBe('/w/__default__/notes/note-2'))
   })
 
-  it.skip('the live transcript is still there when I come back', async () => {
+  it('the live transcript is still there when I come back', async () => {
     renderApp()
     await openBothAndRecordInStandup()
 

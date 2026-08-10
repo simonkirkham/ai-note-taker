@@ -180,7 +180,7 @@ describe('BUG-54 — navigating away from a recording note asks first', () => {
   // the app exactly as it was, not half-navigated. This drives the PREVIEW PANEL's own
   // open-note path (FolderPreviewPanel.onEditNote), which closes the panel as a side
   // effect: the panel must still be open, showing its folder, after declining.
-  it('declining a note click in the folder preview leaves the panel open', async () => {
+  it('a note click in the folder preview opens it without asking', async () => {
     // The panel lists notes in the folder. Put a SECOND note there and click that one —
     // clicking the note you are already on is a no-op navigation that unmounts nothing,
     // so it would not be a genuine leave.
@@ -198,16 +198,13 @@ describe('BUG-54 — navigating away from a recording note asks first', () => {
     const panel = screen.getByTestId('folder-preview-panel')
     expect(within(panel).getByText('Retro')).toBeInTheDocument()
 
-    // Clicking a note in the panel opens it AND closes the panel — both must wait.
+    // 51-C: opening a note no longer unmounts the recording, so this no longer asks — it
+    // just opens. There is no decline left to protect the panel from, which is why this
+    // case now asserts the opposite of what it did under 49-A.
     await userEvent.click(within(panel).getByText('Retro'))
-    expect(await screen.findByTestId('confirm-leave-button')).toBeInTheDocument()
 
-    await userEvent.click(screen.getByTestId('cancel-leave-button'))
-
-    // Assert on the note LIST, not the header: the header keeps the last folder name even
-    // when closed, so it stays "Clients" either way and would hide the regression.
-    expect(within(screen.getByTestId('folder-preview-panel')).getByText('Retro')).toBeInTheDocument()
-    expect(window.location.pathname).toBe(NOTE_PATH)
+    expect(screen.queryByTestId('confirm-leave-button')).toBeNull()
+    await waitFor(() => expect(window.location.pathname).toBe('/w/__default__/notes/note-2'))
   })
 
   // Re-opening the note you are already on changes no route, so nothing unmounts — asking
@@ -498,36 +495,15 @@ describe('CHANGE-33 — the leave confirm names where it is about to take you', 
 
   // openNote's own naming: the preview panel passes no title, so the name has to come from
   // the card list or the banner falls back to something anonymous.
-  it('names a note opened from the folder preview, using the card list', async () => {
-    const other = { ...CARD, noteId: 'note-2', title: 'Retro', folderId: 'folder-1' }
-    server.use(
-      http.get('/api/w/:wsId/notes/cards', () =>
-        HttpResponse.json({ cards: [{ ...CARD, folderId: 'folder-1' }, other] }),
-      ),
-    )
-    renderApp()
-    await openNoteAndRecord()
-    await userEvent.click(await screen.findByRole('button', { name: 'Preview folder notes' }))
-
-    await userEvent.click(within(screen.getByTestId('folder-preview-panel')).getByText('Retro'))
-
-    await banner('open Retro')
-  })
-
   // "+ New Note" has no title to name — the note is created blank — so it says what it is.
-  it('names the new note when I create one while recording', async () => {
-    server.use(
-      http.post('/api/w/:wsId/notes', () =>
-        HttpResponse.json({ noteId: 'note-new' }, { status: 201 }),
-      ),
-    )
-    renderApp()
-    await openNoteAndRecord()
-
-    await userEvent.click(screen.getByTestId('new-note-button'))
-
-    await banner('open the new note')
-  })
+  // 51-C removed the two openNote naming cases that used to live here ("open Retro" from the
+  // folder preview, "open the new note" from + New Note). Neither path confirms any more, so
+  // there is no banner to name. The destinations that DO still confirm — Home, a folder,
+  // Unfiled, moving the note — keep their naming coverage above.
+  //
+  // Worth recording for [BUG-70]: its orphan note only appeared when the user DECLINED the
+  // + New Note confirm. With no confirm on that path there is no decline, so the mechanism
+  // that row describes does not survive this slice. Re-run its repro before fixing it.
 
   it('names the new workspace when creating one switches into it', async () => {
     renderApp()

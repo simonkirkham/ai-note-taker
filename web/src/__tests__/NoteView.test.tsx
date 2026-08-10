@@ -3,6 +3,7 @@ import { delay, http, HttpResponse } from 'msw'
 import { useState } from 'react'
 import NoteView from '../components/NoteView'
 import { ToastProvider } from '../components/ToastProvider'
+import { RecordingSessionProvider } from '../hooks/recordingSession'
 import { APP_TITLE } from '../hooks/useDocumentTitle'
 import type { TranscriptionStatus, UseTranscriptionResult } from '../hooks/useTranscription'
 import { render, screen, waitFor, fireEvent } from '../test/render'
@@ -82,7 +83,7 @@ afterEach(() => {
 function renderNoteView(props: { noteId?: string; initialTitle?: string; onBack?: () => void; onDelete?: (noteId: string) => Promise<void>; onOpenNote?: (noteId: string, title?: string, isNew?: boolean) => void; isNew?: boolean; otherWorkspaces?: { workspaceId: string; name: string }[]; onMoveToWorkspace?: (workspaceId: string) => void } = {}) {
   const { noteId = 'note-1', initialTitle = 'Test Note', onBack = noop, onDelete = asyncNoop, onOpenNote = noop, isNew, otherWorkspaces, onMoveToWorkspace } = props
   return render(
-    <ToastProvider>
+    <ToastProvider><RecordingSessionProvider>
       <NoteView
         noteId={noteId}
         initialTitle={initialTitle}
@@ -94,7 +95,7 @@ function renderNoteView(props: { noteId?: string; initialTitle?: string; onBack?
         otherWorkspaces={otherWorkspaces}
         onMoveToWorkspace={onMoveToWorkspace}
       />
-    </ToastProvider>,
+    </RecordingSessionProvider></ToastProvider>,
   )
 }
 
@@ -288,7 +289,7 @@ describe('NoteView', () => {
     function Harness() {
       const [open, setOpen] = useState(false)
       return (
-        <ToastProvider>
+        <ToastProvider><RecordingSessionProvider>
           <button data-testid="outside-opener" onClick={() => setOpen(true)}>New note</button>
           {open && (
             <NoteView
@@ -296,7 +297,7 @@ describe('NoteView', () => {
               onDateSet={noop} onOpenNote={noop}
             />
           )}
-        </ToastProvider>
+        </RecordingSessionProvider></ToastProvider>
       )
     }
     render(<Harness />)
