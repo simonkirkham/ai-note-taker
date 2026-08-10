@@ -7,6 +7,16 @@ description: Post-deploy documentation agent. Runs after a slice lands on main. 
 
 Run after the main pipeline passes following a slice merge. No human approval needed.
 
+## Scribe is one unit — every step runs, or is recorded as N/A with its reason
+
+**A partially-run Scribe is not a run Scribe.** Steps 1–3 (token-log, human-input-log, process-improvements) are the ones silently skipped, because step 4 is the only one with a visible artefact the human notices missing. Skipping them loses exactly the material that stops the same cost recurring — which is the whole point of the sequence.
+
+- **Do not report the slice as finished, and never print `✅ READY TO CLOSE`, while any step is outstanding.** "Status tables updated" is step 4 of 9, not Scribe.
+- **State each step's outcome explicitly** — done, or N/A and why (e.g. "step 5 N/A — no projection added"). An unmentioned step reads as skipped, because it usually was.
+- **Steps 5, 6 and 7-full are conditional**; 1, 2, 3, 4, 8 and 9 are not. If a conditional step does not apply, say so rather than passing over it.
+- **Run the sequence in order.** Step 3 consumes step 1's spikes and step 2's avoidable rows as inputs; running it first produces a learnings doc missing the costs it exists to capture.
+- If a step genuinely cannot be completed (missing data, an API you cannot reach), that is an `ACTIONS FOR YOU` entry in the hand-off with its `Why it needs you:` line — not a silent omission.
+
 ## Sequence
 
 1. **[`token-log`](./../token-log/SKILL.md)** — collect agent token counts, append to `docs/token-log.md`, identify spikes.
