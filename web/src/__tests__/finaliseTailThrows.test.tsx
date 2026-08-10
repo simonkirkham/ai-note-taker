@@ -172,4 +172,23 @@ describe('the on-device tail throwing on stop (BUG-74)', () => {
     expect(committed[0]).toContain('the finalised text')
     await waitFor(() => expect(screen.getByTestId('status')).toHaveTextContent('stopped'))
   })
+
+  // Review's own suggestion, and the sharpest test here: the fix's DIAGNOSTIC was the last
+  // unguarded pre-commit throw. `recordRumEvent` calls a third-party global, and this bug put it
+  // inside every catch it added — so a failing telemetry call re-created the exact fault being
+  // reported. Guarded at source in `rum.ts`; this pins that, and the terminal handler behind it.
+  it('survives a telemetry call that throws from inside a teardown guard', async () => {
+    vi.stubGlobal('cwr', () => {
+      throw new Error('the RUM client blew up')
+    })
+    throwOnDiscard = true // forces the guard, whose catch emits the telemetry
+    render(<Recorder />)
+    await recordAndStop('the text the user actually recorded')
+
+    resolveFinish?.('the finalised text')
+
+    await waitFor(() => expect(committed).toHaveLength(1))
+    expect(committed[0]).toContain('the finalised text')
+    await waitFor(() => expect(screen.getByTestId('status')).toHaveTextContent('stopped'))
+  })
 })

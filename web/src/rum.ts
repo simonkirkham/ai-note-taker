@@ -8,7 +8,17 @@ function cwr(): CwrFn | undefined {
 }
 
 export function recordRumEvent(type: string, data: Record<string, unknown>): void {
-  cwr()?.("recordEvent", type, data);
+  // BUG-74: `cwr` is a global installed by a third-party snippet, so this call can throw. Telemetry
+  // must never break its caller — and the callers that matter most are catch blocks in teardown and
+  // corrupt-storage paths, where a throw from the diagnostic re-creates the very fault being
+  // reported. This bug is exactly that: guarding the on-device teardown, then emitting the failure
+  // from inside the guard, put a fresh unguarded throw on the pre-commit path. Guarded once here
+  // rather than at each of the ~14 call sites.
+  try {
+    cwr()?.("recordEvent", type, data);
+  } catch {
+    /* a failed diagnostic is not worth a failed operation */
+  }
 }
 
 // The resource URL lives on `src` (img/script/media) or `href` (link).

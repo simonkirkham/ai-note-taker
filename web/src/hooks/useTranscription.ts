@@ -125,8 +125,9 @@ const AWAIT_COMMIT_MIN_MS = 2 * 60_000;
 const AWAIT_COMMIT_MAX_MS = 60 * 60_000;
 
 // BUG-74: stopping a capture track can throw (a revoked or already-ended device track). Releasing
-// hardware is best-effort — a failure must not abort the rest of the teardown, and each track is
-// stopped independently so one bad track cannot strand the others.
+// hardware is best-effort — a failure must not abort the rest of the teardown. Each track is
+// stopped independently, which also fixes the pre-existing case of one bad track stranding the
+// rest of the stream's tracks, not only the throw-out-of-unmount this bug is about.
 function stopTracks(stream: MediaStream | null): void {
   if (!stream) return;
   for (const track of stream.getTracks()) {
@@ -330,9 +331,10 @@ export function useTranscription(noteId: string): UseTranscriptionResult {
       // discarded silently. The sequence's own POST outlives the route change (the one destination
       // that does not is sign-out, which BUG-55 handles by waiting).
       //
-      // CHAIN, do not skip. Skipping would make the sequence the SOLE owner of the commit, and it
-      // has two ways to never reach one: a throw outside its inner try (`localCleanupRef`, or
-      // `discard()` from the finally), and the BUG-56 hang. Either would lose the transcript
+      // CHAIN, do not skip. Skipping would make the sequence the SOLE owner of the commit. BUG-74
+      // guarded both throw sites that used to defeat it, so the live route now is the sequence's
+      // terminal `.catch` — which settles without having committed if an UNNAMED throw beats the
+      // commit — plus the BUG-56 hang, which no chain can cover because it never settles (BUG-73). Either would lose the transcript
       // outright — worse than the bug being fixed. Chaining commits the live text only on those
       // paths, i.e. exactly the pre-BUG-72 behaviour, and is a no-op on the happy path because
       // `commitTranscript` is one-shot. `noteId` is closed over, so a late call still targets the
@@ -770,9 +772,22 @@ export function useTranscription(noteId: string): UseTranscriptionResult {
       // throw sites; this closes the class — the stay-mounted path has no other handler, so before
       // it any unnamed throw left the status stuck and surfaced only as an unhandled rejection.
       .catch((err) => {
+        // Restoring the STATUS is not enough. Review: an unnamed pre-commit throw left the user on
+        // 'stopped' with the transcript uncommitted and the capture still live — microphone
+        // indicator lit, checkpoint PUTs every 15s forever, and the idempotency guard preventing a
+        // retry. Commit first so nothing can pre-empt it; both calls are one-shot/idempotent, so
+        // this is a no-op on every path that already ran them.
+        //
+        // UNPINNED, deliberately: with every named site guarded there is no longer a reachable
+        // throw that gets here, so removing these two lines reddens nothing. That is the point of a
+        // terminal handler — it exists for the site nobody has named yet — but it means this block
+        // is defence-in-depth, not something the suite protects. Stated rather than implied, per
+        // docs/learnings/phase-bug65-guards-that-cannot-fire.md.
         console.warn('The stop sequence failed.', err);
         recordRumEvent('stopSequenceFailed', {});
+        commitTranscript();
         setStatus('stopped');
+        cleanup();
       })
       .finally(() => {
         stopInFlightRef.current = false;
@@ -786,10 +801,9 @@ export function useTranscription(noteId: string): UseTranscriptionResult {
   //
   // Two things it must never do, because the caller is a sign-out the user has already confirmed:
   //
-  //  - REJECT. Only the local IPC calls sit inside the stop sequence's try/catch; the surrounding
-  //    `readStoredKeepAudioLocal()`, `cleanup()` and `setStatus()` do not. A throw there would
-  //    propagate into the continuation and sign-out would never run. Caught here so the comment is
-  //    true by construction rather than by inspection of code that may change.
+  //  - REJECT. Since BUG-74's terminal `.catch` the sequence cannot reject at all, so this is now
+  //    defensive rather than load-bearing — kept because it costs nothing and the day someone
+  //    removes that terminal handler is the day sign-out silently stops running.
   //  - HANG. `window.desktop.local.finish()/diarize()` have no timeout on this side, and BUG-56's
   //    observed failure shape is precisely "process alive, never ready, silent". Without a deadline
   //    the continuation never runs, `leavingRef` stays latched, and the app is stuck until restart.
