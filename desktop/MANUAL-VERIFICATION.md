@@ -73,7 +73,7 @@ The desktop app can transcribe locally via a bundled `whisper-cli.exe` (fetched 
 | # | Given / When / Then | Pass? |
 |---|---------------------|-------|
 | 1 | **Binary bundled:** Given a packaged install, Then `resources/whisper/whisper-cli.exe` + its `*.dll` are present next to the app. | ☐ |
-| 2 | **Model downloads on first launch:** Given a fresh install with the setting on, When I first open the app, Then the toggle shows "Preparing… downloading models" and later flips to ready (model cached under `%APPDATA%/AI Note Taker/models/ggml-base.en.bin`). | ☐ |
+| 2 | **Model downloads on first launch:** Given a fresh install with the setting on, When I first open the app, Then the toggle shows "Preparing… downloading models" and later flips to ready (model cached under `%APPDATA%/ai-note-taker-desktop/models/ggml-base.en.bin`). | ☐ |
 | 3 | **Live transcript is produced on-device:** Given the model is ready and Transcription = On device, When I record and speak, Then a live transcript appears and **no** `/transcription/credentials` request is made (check DevTools Network — cloud STT is not used). | ☐ |
 | 4 | **Live keeps pace (step 2):** Given a several-minute meeting, When I record locally, Then the live transcript keeps up with speech without unbounded growing lag on this machine. | ☐ |
 | 5 | **Saved transcript is complete:** Given I stop, Then the last few seconds appear (the tail window flushed) and the note saves + analyses as normal. | ☐ |
@@ -86,7 +86,7 @@ With local transcription on, the live transcript uses the fast `base.en`; on sto
 
 | # | Given / When / Then | Pass? |
 |---|---------------------|-------|
-| 1 | **Final model downloads after live:** Given local mode selected, Then `base.en` lands first (recording becomes available) and `medium.en` continues downloading in the background (`%APPDATA%/…/models/ggml-medium.en.bin`, ~1.5 GB). | ☐ |
+| 1 | **Final model downloads after live:** Given local mode selected, Then `base.en` lands first (recording becomes available) and `medium.en` continues downloading in the background (`%APPDATA%/ai-note-taker-desktop/models/ggml-medium.en.bin`, ~1.5 GB). | ☐ |
 | 2 | **Final pass upgrades the transcript:** Given `medium.en` is present, When I record locally and stop, Then a brief "Finalising transcript…" shows and the saved note settles on the higher-quality text (proper nouns/terms more accurate than the live view). | ☐ |
 | 3 | **Final pass keeps up:** Given a recording of length N, When the final pass runs, Then it finishes in less than N and the note is not stuck "Finalising". | ☐ |
 | 4 | **Graceful degrade:** Given `medium.en` has not finished downloading, When I stop a local recording, Then the live `base.en` text is committed (no error, no indefinite wait). | ☐ |
@@ -157,7 +157,7 @@ BUG-53's checklist above was never completed, and the live path shipped dead: `W
 
 The whole point of this slice is the log: an installed build is otherwise unobservable (whisper-server's stdout is not captured, the console needs DevTools), which is why BUG-56 and BUG-65 both had to be diagnosed by reading code instead of evidence.
 
-**The log lives at `%APPDATA%\AI Note Taker\local-transcription.log`** (one rotation, `.log.1`, capped at 512 KB). It contains counts and timings only — no transcript text, no file paths beyond the model's basename.
+**The log lives at `%APPDATA%\ai-note-taker-desktop\local-transcription.log`** (one rotation, `.log.1`, capped at 512 KB). It contains counts and timings only — no transcript text, no file paths beyond the model's basename.
 
 **`rtf` is the column that matters:** inference time ÷ audio duration. Below 1.0 the engine is faster than real time and the live view can keep pace; above 1.0 it is falling behind by definition.
 
