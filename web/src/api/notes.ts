@@ -26,7 +26,7 @@ function noteStream(noteId: string): string {
 // The note a `<stream>@<version>` token names, or null if the token is absent or names some other
 // aggregate. Only note writes ever reach the cards scope, but the cards guard acts on this id, so a
 // foreign stream must degrade to "protect nothing" rather than to a bogus note id.
-function noteIdFromToken(token: string | null): string | null {
+export function noteIdFromToken(token: string | null): string | null {
   if (!token) return null;
   const stream = tokenStream(token);
   return stream.startsWith(NOTE_STREAM_PREFIX) ? stream.slice(NOTE_STREAM_PREFIX.length) : null;
