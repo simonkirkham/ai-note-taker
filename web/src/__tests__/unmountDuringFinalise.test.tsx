@@ -150,10 +150,13 @@ describe('leaving the note during a local finalise (BUG-72)', () => {
     expect(committed[0]).toContain('text captured before leaving')
   })
 
-  // Review: the test above unmounts from 'recording', so the flag was never set and a STRANDED
-  // flag would not fail it. This one completes a whole stop sequence first, so the unmount depends
-  // on the flag having been cleared.
-  it('commits on unmount after a completed finalise, so the flag does not strand', async () => {
+  // The test above unmounts from 'recording', so the flag was never set. This one completes a whole
+  // stop sequence first and then records again in the same mount. Note what it does NOT pin:
+  // review deleted `stopInFlightRef.current = false` from startRecording and all tests stayed
+  // green, because the sequence's own `.finally` already clears the flag on both settle paths, and
+  // under the chain a stranded flag is harmless anyway (it resolves against the settled sequence
+  // and commits). That reset is defensive, not load-bearing.
+  it('commits on unmount after a completed finalise and a second recording', async () => {
     const { rerender } = render(<Harness mounted />)
 
     await userEvent.click(screen.getByTestId('start'))
