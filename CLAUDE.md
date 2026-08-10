@@ -38,8 +38,12 @@ Every hand-back ends with **one block**, and nothing follows it. It is the only 
     Why it needs you: <why it cannot be decided without them>
 
   ACTIONS FOR YOU
-  · <what to do, with the exact command> (<id>)
+  · <what to do, in one line> (<id>)
     Why it needs you: <why it cannot be done without them>
+        1. <exact command, ready to paste>
+        2. <exact command, ready to paste>
+    Worked if: <what they should see>
+    If it fails: <the one thing to do next>
 
   YOU SHOULD KNOW
   · <rule broken, risk taken, surprise worth flagging>
@@ -67,7 +71,12 @@ Every hand-back ends with **one block**, and nothing follows it. It is the only 
 1. **Every line item names its work item id AND explains it in plain terms** — `Agenda points now live in their own field (43-C)`. Never an id alone, never an explanation alone.
 2. **Every decision/action carries `Why it needs you:`.** If that line cannot be written convincingly, do not ask — decide it, state the assumption under `YOU SHOULD KNOW`, and keep going.
 3. **Report the outcome, not the deployment.** "Live in prod" is not news if nothing changed for the user. A change that shipped but is inert — that is the headline.
-4. **Commands go in the block**, never "the commands are in the handover file".
+4. **Every action is a set of instructions the human can follow without thinking** — numbered steps, in the block, never "the commands are in the handover file". Specifically:
+   - **Give the command, ready to paste.** Fully formed with real paths, real ids, real flags. Never a placeholder they must fill in; if a value is genuinely unknowable (a token they hold), give the command that obtains it as step 1.
+   - **Script it wherever it is scriptable.** More than two steps, or any step with a conditional, means writing a script in `scripts/` first and handing over a single command. The human's job is to run one thing, not to orchestrate.
+   - **Say what success looks like** — a `Worked if:` line naming the output, count, or screen state they should see. An instruction with no success criterion leaves them unable to tell whether they are done.
+   - **Say what to do if it fails** — one line, one next step. Never a list of possibilities.
+   - **When it truly cannot be a command** (a screen-reader check, a phone test), the same shape still applies: numbered manual steps, and what a pass looks like at each.
 5. **No system vocabulary above the footer** — no aggregates, events, projections, handlers, endpoints, status codes, commit hashes. PR and deploy numbers are the footer's job.
 6. **Say it once.** No summary paragraph before the block, no recap after it. If anything happens afterwards (a background job finishing, a peer message), **reissue the block** so the last thing on screen is always current.
 7. **`✅ READY TO CLOSE` is earned by a check, never asserted.** All of: nothing uncommitted of mine; my branches pushed and merged or explicitly parked; no PR of mine open; no CI or deploy in flight; no background job running; no worktree of mine left on disk; docs updated for what shipped; nothing waiting on the human. Any failure names the specific item rather than a bare "not ready".
