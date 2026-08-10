@@ -200,8 +200,11 @@ FRONTEND_URL=<cloudfront-url> dotnet test tests/Browser.E2E/Browser.E2E.csproj
 # Run the API locally (Kestrel, not Lambda)
 dotnet run --project src/Api/Api.csproj
 
-# Validate infrastructure (requires dotnet publish first)
-dotnet publish src/Api/Api.csproj -c Release -o src/Api/bin/Release/net10.0/publish
+# Validate infrastructure — the stack packages three Lambdas and checks every asset
+# path at synth time, so publish all three or synth aborts with "Cannot find asset at ..."
+for p in Api Projector TranscribeCompletion; do
+  dotnet publish src/$p/$p.csproj -c Release -o src/$p/bin/Release/net10.0/publish
+done
 cdk synth
 
 # Deploy to AWS
@@ -348,13 +351,8 @@ dotnet restore ai-note-taker.sln
 npm --prefix web install
 ```
 
-> **The pre-commit hook's `cdk synth` needs all three Lambda publishes, not just the API.** A fresh worktree has none, and the hook fails at the very end — after the full test suite has already run — with `Cannot find asset at src/Projector/bin/Release/net10.0/publish`. Publish them once per worktree so the first real commit doesn't burn a full suite run to discover it (50-B):
-> ```bash
-> for p in Api Projector TranscribeCompletion; do
->   dotnet publish src/$p/$p.csproj -c Release -o src/$p/bin/Release/net10.0/publish
-> done
-> ```
-> **Never `--no-verify` past this** — the hook is the gate; a missing build artefact is a setup gap to fix, not a check to skip.
+> **No manual publish step is needed — the hook does it.** `cdk synth` packages three Lambdas (Api, Projector, TranscribeCompletion) and a fresh worktree has none of them, which used to fail the first commit at the very end, after the full test suite had run, with `Cannot find asset at src/Projector/bin/Release/net10.0/publish` (50-B). Since [TI-64] `.githooks/pre-commit` publishes any that are absent, costing ~50s on the first infra-touching commit in a worktree and nothing thereafter. Publish by hand only when running `cdk synth`/`cdk deploy` yourself — see `## How to run`.
+> **Never `--no-verify` past a hook failure** — the hook is the gate; a missing build artefact is a setup gap to fix, not a check to skip.
 
 Prototype branches follow the same pattern: `git worktree add ../ai-note-taker-slices/prototype-<name> -b prototype/<name>`.
 
