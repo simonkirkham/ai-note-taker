@@ -104,6 +104,27 @@ Measured across 40 sessions: **22 of 650** human messages were the human restart
 
 **Safety net for rule 1.** Every decision taken on the human's behalf appears under `YOU SHOULD KNOW` with the assumption named. Bias to the reversible option and say how to undo it; a choice that cannot be reversed cheaply is asked, not assumed.
 
+**Coordinate with peer sessions directly — but never make the human read the coordination.** Cross-session messaging is on by default: `ListAgents` reports every local session plus every Remote Control session on the human's other machines (14 on 2026-08-10). Use it. Sessions collide constantly here — four duplicate doc ids claimed in one day, merge gates stacked on each other's in-flight deploys, two sessions circling the same bug — and every one of those is cheaper to prevent with one peer message than to unpick afterwards.
+
+**Message a peer when:**
+
+| Situation | Send |
+|---|---|
+| About to start a bug/slice/phase | `taking <id> — <one line>. Anyone on it?` before the first commit |
+| About to merge | `merging <PR> now, deploy will run` — stops a peer merging into your in-flight deploy |
+| The shared gate goes red | `deploy #N red on <journey> — mine/not mine, diagnosing` — a red gate blocks every session |
+| You claimed a BUG/TI/CHANGE id | `claimed <id>` — complements `scripts/next-doc-id.sh`, which only sees *pushed* branches |
+| Editing a shared tracking table row | `editing <doc> row <id>` — `merge=union` resolves appends, not same-row edits |
+| A peer asks you anything | Always answer, with what you are on and whether you are blocked |
+
+**Keep it to one line.** A peer message is a telegram, not a report — id, action, state. No prose, no status tables.
+
+**The human sees the outcome, never the negotiation.** "I should pick this up… actually another session has it" is exactly the chatter they do not want. Resolve it with the peer, then act. Mention it to the human only when it *changed what you are doing* — one line, in the block, under `YOU SHOULD KNOW`.
+
+**Durable fallback:** messaging is live-only, so a session starting later cannot see what was said before it. `scripts/sessions.sh` reconstructs who is on what from transcripts on disk — use it when peers are idle, unreachable, or after a crash.
+
+**Known cost:** an inbound peer message renders over the main output column and can corrupt the reply the human is reading (seen twice on 2026-08-10). More coordination means more of this until the display bug is fixed upstream. If a reply looks truncated or garbled, reissue it.
+
 **Not fixable by these rules:** 4 of the 22 nudges were the connection dying mid-reply. Mitigate by running long work as background jobs, so a dead stream does not take the work with it.
 
 ## Stack
@@ -181,6 +202,7 @@ Prefer these read-only wrappers over hand-rolling the underlying `gh`/`aws` comm
 | `scripts/next-doc-id.sh <bug\|ti\|change>` | hand-picking the next BUG/TI/CHANGE number from your local file — which cannot see ids claimed on another session's unmerged branch | the next free id + where the current highest lives |
 | `scripts/check-doc-ids.sh` | eyeballing the tracking tables for duplicate ids after a merge (the `merge=union` failure mode) | `doc ids OK`, or the offending ids; runs in the pre-commit hook |
 | `scripts/sessions.sh [hours]` | guessing which sessions are live and what they are on — and hunting for a session lost to a WSL crash | live sessions with what each is working on + its `claude --resume` line, and worktrees flagged when nothing is working on them |
+| `scripts/stall-scan.sh [hours\|all]` | reconstructing "where did the human have to nudge me?" by hand — the transcript scan structurally cannot see it | every point the human restarted a stopped session, grouped by cause, with the wait time; feeds the `Stall` rows in `human-input-log` capture mode |
 | `gh workflow run e2e.yml -f runs=10 [-f filter=TagsJourney]` | needing gate runs **without a deploy** — runs the E2E suite N times against the already-deployed test env (no build, no CDK, no commit) | per-run PASS/FAIL lines + a job-summary table; the job is red if any run failed |
 
 **Proving a flake fix — use `e2e.yml`, not repeated deploys.** The 10-clean-run bar used to need 10 deploys (~15 min each, push-only, so it tempted no-op commits). `gh workflow run e2e.yml -f runs=10` gives the same signal in ~25 min with no deploy and no commits, and each run reports its own PASS/FAIL so the count is a fact you read off one log rather than infer from run conclusions. It shares the `deploy` **concurrency group** — it CANCELS any pending deploy rather than queueing behind it (GitHub keeps only one pending slot per concurrency group), so a deploy caught mid-hold never reaches deploy-production (the job refuses to start if a deploy is already in flight, but a merge landing MID-hold is still at risk) — run long counts when the merge queue is quiet. Deploy-gate runs still count too; this supplements them, and a fix should still be seen surviving real deploys.
