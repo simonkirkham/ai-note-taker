@@ -22,7 +22,7 @@ import { createContext, useContext } from "react";
  * BUG-55: `awaitTranscript` says this destination destroys the session's auth, so the continuation
  * must wait for the transcript commit POST to land before running. Only sign-out sets it. It is
  * opt-in rather than always-on because in LOCAL transcription mode the stop sequence runs the
- * medium.en final pass (plus 1:1 diarization) before it commits — minutes on a long meeting — so
+ * small.en final pass (plus 1:1 diarization) before it commits — minutes on a long meeting — so
  * awaiting on every destination would hang ordinary navigation for no benefit. Every other
  * destination is safe already: the request outlives a route change.
  */

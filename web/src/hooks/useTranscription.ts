@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { presignRecordingUpload, saveRecording } from '../api/recordings';
 import { completeTranscription, getTranscriptionCredentials, saveTranscriptionDraft, startDiarization } from '../api/transcription';
+import { recordRumEvent } from '../rum';
 import { PcmChunker } from './pcm';
 import { SpeakerTranscript } from './speakerSegments';
 import { readStoredKeepAudioLocal } from './useKeepAudioLocal';
@@ -99,10 +100,21 @@ function concatPcm(chunks: Uint8Array[]): ArrayBuffer {
   return out.buffer;
 }
 
-// BUG-55: how long a confirmed sign-out will wait for the local finalise before going ahead
-// anyway. Generous — the medium.en pass plus 1:1 diarization is minutes on a long meeting — but
-// bounded, because an unbounded wait on a wedged local engine strands the user entirely.
-const AWAIT_COMMIT_DEADLINE_MS = 5 * 60_000;
+// BUG-55: how long a confirmed sign-out waits for the local finalise before going ahead anyway.
+//
+// It has to be DERIVED, not a flat constant. Review caught a flat 5 minutes being smaller than the
+// thing it waits for, which makes the guard a no-op on exactly the case it exists for. The measured
+// numbers (BUG-52): the stop-time pass is `small.en` at ~2.3x realtime, and 1:1 diarization runs it
+// TWICE. So processing ≈ audio × 2 / 2.3 ≈ audio × 0.87 — a 30-minute 1:1 needs ~26 minutes, five
+// times the old budget. Anything under that expires mid-pass, the token is cleared, the POST 401s,
+// and BUG-55 reproduces.
+//
+// audio × 1.3 gives ~50% slack over that worst case. The floor covers short recordings (engine
+// startup dominates); the ceiling is the actual purpose of having a deadline at all — a wedged
+// engine (BUG-56's "process alive, never ready, silent") must not strand the user forever.
+const AWAIT_COMMIT_SLACK = 1.3;
+const AWAIT_COMMIT_MIN_MS = 2 * 60_000;
+const AWAIT_COMMIT_MAX_MS = 30 * 60_000;
 
 export function useTranscription(noteId: string): UseTranscriptionResult {
   const [status, setStatus] = useState<TranscriptionStatus>('idle');
@@ -678,7 +690,7 @@ export function useTranscription(noteId: string): UseTranscriptionResult {
   }, [cleanup, commitTranscript, uploadRecording]);
 
   // BUG-55: resolves once the stop sequence AND the commit POST it fires have finished. In cloud
-  // mode both are effectively immediate; in local mode the stop sequence runs the medium.en final
+  // mode both are effectively immediate; in local mode the stop sequence runs the small.en final
   // pass (plus 1:1 diarization) first — minutes on a long meeting, which is exactly why this is
   // opt-in per destination rather than awaited on every navigation.
   //
@@ -701,10 +713,36 @@ export function useTranscription(noteId: string): UseTranscriptionResult {
         // Already surfaced by the stop sequence / the commit's own catch; never block the leave.
       }
     })();
-    await Promise.race([
-      settled,
-      new Promise<void>((resolve) => setTimeout(resolve, AWAIT_COMMIT_DEADLINE_MS)),
-    ]);
+    const recordedMs = startTimeRef.current ? Date.now() - startTimeRef.current : 0;
+    const deadlineMs = Math.min(
+      AWAIT_COMMIT_MAX_MS,
+      Math.max(AWAIT_COMMIT_MIN_MS, recordedMs * AWAIT_COMMIT_SLACK),
+    );
+    // The timer is cleared once the race is decided — a stray one has no purpose left, and this is
+    // the same "a timer outlived what it was for" shape as BUG-66.
+    let deadlineTimer: ReturnType<typeof setTimeout> | undefined;
+    let expired = false;
+    try {
+      await Promise.race([
+        settled,
+        new Promise<void>((resolve) => {
+          deadlineTimer = setTimeout(() => {
+            expired = true;
+            resolve();
+          }, deadlineMs);
+        }),
+      ]);
+    } finally {
+      if (deadlineTimer !== undefined) clearTimeout(deadlineTimer);
+    }
+    if (expired) {
+      // The caller is about to destroy the session's auth, so the transcript is probably lost.
+      // Say so somewhere: BUG-56 and BUG-65 were both diagnosed by reading code because the local
+      // path had no observable channel at all. (recordRumEvent is inert until TI-67 enables custom
+      // events, hence the console.warn too.)
+      console.warn(`Transcript commit did not finish within ${Math.round(deadlineMs / 1000)}s; leaving anyway.`);
+      recordRumEvent('transcriptCommitDeadlineExpired', { deadlineMs, recordedMs });
+    }
   }, []);
 
   const reset = useCallback(() => {

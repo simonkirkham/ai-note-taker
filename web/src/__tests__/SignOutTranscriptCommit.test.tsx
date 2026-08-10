@@ -41,7 +41,11 @@ vi.mock('../hooks/useTranscription', () => ({
         setStatus('recording')
         setTranscript('live words')
       },
-      stopRecording: () => setStatus('stopped'),
+      // 'finalising', not 'stopped' — that is what LOCAL mode does, and it is load-bearing here:
+      // `isRecording` includes 'finalising', so the leave guard stays registered during the park.
+      // With 'stopped' the guard unregisters and a second sign-out click bypasses it entirely,
+      // which would make the dead-banner test pass for the wrong reason.
+      stopRecording: () => setStatus('finalising'),
       // Stands in for the local-mode finalise: resolves only when the test says so, which is what
       // makes "did the continuation wait?" observable rather than a matter of timing.
       awaitCommit: () => {
@@ -142,6 +146,9 @@ describe('signing out mid-recording (BUG-55)', () => {
     // still mounted and the sign-in page has not replaced it.
     await waitFor(() => expect(commitAwaited).toBe(1))
     expect(screen.queryByRole('button', { name: /sign in with google/i })).toBeNull()
+    expect(screen.getByTestId('note-title-input')).toBeInTheDocument()
+    // ...and the wait is VISIBLE. Without this the click looks ignored for minutes.
+    expect(screen.getByTestId('finishing-transcript')).toBeInTheDocument()
 
     resolveCommit?.()
 
@@ -161,5 +168,29 @@ describe('signing out mid-recording (BUG-55)', () => {
     // Left the note without the commit ever being awaited — no hang.
     await waitFor(() => expect(screen.queryByTestId('note-title-input')).toBeNull())
     expect(commitAwaited).toBe(0)
+  })
+
+  // Review of the previous round: the parked-state UI was added in response to a finding and then
+  // had no test — the same defect class, in the fix for it. During the park `isRecording` is still
+  // true, so the guard stays registered and a second click re-raised a confirm whose button now
+  // returns immediately, leaving a dead banner on screen for the whole finalise.
+  it('does not leave a dead confirm banner when the leave is clicked again mid-wait', async () => {
+    renderApp()
+    await openNoteAndRecord()
+
+    await userEvent.click(screen.getByTestId('sign-out-button'))
+    await userEvent.click(await screen.findByTestId('confirm-leave-button'))
+    await waitFor(() => expect(commitAwaited).toBe(1))
+
+    // Click sign out again while parked, then confirm again.
+    await userEvent.click(screen.getByTestId('sign-out-button'))
+    const secondConfirm = screen.queryByTestId('confirm-leave-button')
+    if (secondConfirm) await userEvent.click(secondConfirm)
+
+    await waitFor(() => expect(screen.queryByTestId('confirm-leave-button')).toBeNull())
+    expect(screen.getByTestId('finishing-transcript')).toBeInTheDocument()
+
+    resolveCommit?.()
+    expect(await screen.findByRole('button', { name: /sign in with google/i })).toBeInTheDocument()
   })
 })

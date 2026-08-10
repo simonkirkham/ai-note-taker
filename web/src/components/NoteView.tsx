@@ -225,7 +225,7 @@ export default function NoteView({
   const notFound = is404 && !onNotFound;
 
   // 'finalising' (48-B, local mode) is an ACTIVE, in-progress session that runs for the whole
-  // medium.en final pass — minutes, not the sub-second tail flush 48-A had. It must count as
+  // small.en final pass — minutes, not the sub-second tail flush 48-A had. It must count as
   // "recording-like" everywhere, or the note is unprotected during it: hasContent would drop to
   // false (Cancel deletes a fresh note), the back-trap would disarm (orphaning the final text),
   // and the live transcript would blank until commit.
@@ -636,12 +636,12 @@ export default function NoteView({
   async function handleConfirmedLeave() {
     // The await below restores the Save button (recording has stopped), so without this the
     // user could click Save and navigate a second time when the save resolves.
-    // Already leaving — clear any confirm this second click raised, or it stays on screen for the
-    // whole finalise with a button that does nothing.
-    if (leavingRef.current) {
-      setLeaveDestination(null);
-      return;
-    }
+    // Already leaving. Nothing to clear: the `finishingTranscript` branch takes render precedence
+    // over `leaveDestination`, so a confirm raised by a second click during the park is never shown
+    // in the first place. An explicit clear here looked prudent but could not be observed by any
+    // test — an unfalsifiable guard, so it is not kept (cf. docs/learnings/phase-bug65-guards-that-
+    // cannot-fire.md).
+    if (leavingRef.current) return;
     leavingRef.current = true;
     setLeaveDestination(null);
     transcription.stopRecording();
@@ -657,13 +657,20 @@ export default function NoteView({
     // BUG-55: the TRANSCRIPT commit needs the same treatment, and BUG-54 only covered the content
     // save. stopRecording() above fires the commit asynchronously: in cloud mode it dispatches
     // immediately (safe — the request outlives a route change), but in local mode it first runs the
-    // stop-time medium.en pass plus 1:1 diarization, minutes on a long meeting, and only then POSTs.
+    // stop-time small.en pass plus 1:1 diarization, minutes on a long meeting, and only then POSTs.
     // Sign-out clears the token long before that, so the POST 401s, committedRef is released and
     // nothing retries. Awaited ONLY for the destination that clears auth: doing it on every
     // navigation would hang ordinary tab switches for those same minutes.
     if (awaitTranscript) {
       setFinishingTranscript(true);
-      await transcription.awaitCommit();
+      // finally, not a plain reset: `handleConfirmedLeave` is called as `void handleConfirmedLeave()`,
+      // so a throw here would be an unhandled rejection that leaves the header stuck on the status
+      // span — no Save button, no way out of the note.
+      try {
+        await transcription.awaitCommit();
+      } finally {
+        setFinishingTranscript(false);
+      }
     }
     // A parent-requested leave resumes at the destination the user actually clicked (the
     // tab); a self-requested one exits to the deterministic onExit route (BUG-34).
@@ -706,7 +713,9 @@ export default function NoteView({
             </button>
           ) : finishingTranscript ? (
             // BUG-55: the sign-out is confirmed and waiting on the on-device finalise. Says so,
-            // rather than looking like the click was ignored for minutes.
+            // rather than looking like the click was ignored for minutes. This branch deliberately
+            // precedes the leaveDestination one: a further guarded request raised during the park
+            // is swallowed (no confirm shown), which is intended — the leave is already decided.
             <span
               className={styles.leaveConfirm}
               role="status"

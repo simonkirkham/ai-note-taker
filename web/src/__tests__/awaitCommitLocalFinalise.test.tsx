@@ -15,7 +15,7 @@ import { server } from '../test/setup'
 //     sequence resolves, because the POST is fired from inside it)
 //
 // So this drives the REAL hook through a real local-mode stop, with `finish()` deferred the way the
-// on-device medium.en pass is in production.
+// on-device small.en pass is in production.
 
 let resolveFinish: ((text: string | null) => void) | undefined
 let completePosts = 0
@@ -59,7 +59,7 @@ function stubDesktopLocal() {
         return () => {}
       },
       onError: () => () => {},
-      // Deferred exactly like the real medium.en pass: minutes in production.
+      // Deferred exactly like the real small.en pass: minutes in production.
       finish: () => new Promise<string | null>((resolve) => { resolveFinish = resolve }),
       discard: () => {},
     },
@@ -143,7 +143,7 @@ describe('awaitCommit against a real local finalise (BUG-55)', () => {
     expect(screen.getByTestId('awaited')).toHaveTextContent('pending')
     expect(completePosts).toBe(0)
 
-    resolveFinish?.('the higher quality medium.en transcript')
+    resolveFinish?.('the higher quality small.en transcript')
 
     await waitFor(() => expect(screen.getByTestId('awaited')).toHaveTextContent('resolved'))
     expect(completePosts).toBe(1)
@@ -154,6 +154,7 @@ describe('awaitCommit against a real local finalise (BUG-55)', () => {
   // The second call used to reassign stopSequenceRef to a fresh cloud-branch IIFE that resolved
   // immediately — so awaitCommit awaited the wrong promise and signed out mid-finalise.
   it('a second stopRecording does not replace the in-flight finalise', async () => {
+    holdCompletePost = () => {}
     render(<Harness />)
 
     await userEvent.click(screen.getByTestId('start'))
@@ -168,12 +169,18 @@ describe('awaitCommit against a real local finalise (BUG-55)', () => {
     await userEvent.click(screen.getByTestId('stop'))
     await userEvent.click(screen.getByTestId('await'))
 
+    // Assert the DIRECT observation, not a race: while the finalise is still parked nothing can
+    // have committed. Without the idempotency guard the second stop takes the cloud branch and
+    // fires one immediately. (Relying on `awaited` staying 'pending' would only be red because msw
+    // happens to answer inside userEvent's macrotask yield — the fragility test 3 exists for.)
+    expect(completePosts).toBe(0)
     expect(screen.getByTestId('awaited')).toHaveTextContent('pending')
 
-    resolveFinish?.('the higher quality medium.en transcript')
+    resolveFinish?.('the higher quality small.en transcript')
+    await waitFor(() => expect(completePosts).toBe(1))
+    holdCompletePost?.()
 
     await waitFor(() => expect(screen.getByTestId('awaited')).toHaveTextContent('resolved'))
-    expect(completePosts).toBe(1)
   })
 
   // Probe of the fix's other half: with `commitPostRef` reverted to fire-and-forget, the two tests
@@ -194,7 +201,7 @@ describe('awaitCommit against a real local finalise (BUG-55)', () => {
     await userEvent.click(screen.getByTestId('await'))
 
     // The on-device pass is done, so the first await is satisfied...
-    resolveFinish?.('the higher quality medium.en transcript')
+    resolveFinish?.('the higher quality small.en transcript')
     await waitFor(() => expect(completePosts).toBe(1))
 
     // ...but the POST is still in flight, and signing out now would 401 it. Must still be parked.
