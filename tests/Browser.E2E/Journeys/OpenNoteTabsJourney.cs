@@ -117,7 +117,6 @@ public sealed class OpenNoteTabsJourney(BrowserFixture browser) : IAsyncLifetime
         // overflow and the assertion is vacuous — the helper refuses to run in that case. This
         // also exercises the <640px branch, where the pinned tab has to clear the fixed sidebar
         // toggle. jsdom has no layout, so the deploy gate is the only place this can be proved.
-        await _app.ClickPinnedTabAsync();
         await _app.ClickNoteInListAsync(second);
         await _app.AssertNoteScreenLoadedAsync();
         await _app.AssertOpenTabCountAsync(2);

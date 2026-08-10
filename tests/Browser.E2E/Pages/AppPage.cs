@@ -364,18 +364,28 @@ public sealed class AppPage
     // 51-B: the pinned tab must survive a strip scrolled to its far end — with several notes
     // open it is the only way back, so scrolling it out of reach would strand the user.
     //
-    // The preconditions are the point. Without them this assertion cannot fail: a sticky
-    // element is in the viewport by construction, and if the strip does not actually overflow
-    // then scrollLeft clamps to 0 and nothing was ever tested. Ratio=1 likewise — the default
-    // Ratio=0 passes on a single visible pixel, which is exactly the failure mode where the
-    // tab is mostly hidden under the fixed sidebar toggle.
+    // The preconditions and the hit-test are the point. Without them this cannot fail: a
+    // sticky element is in the viewport by construction, and `ToBeInViewportAsync` is pure
+    // geometry — indifferent to something painted ON TOP. The real <640px failure is exactly
+    // that: the fixed sidebar toggle (z-index 40) covering a tab that is still perfectly
+    // "in the viewport". So hit-test the tab's own left edge, at BOTH scroll origin and
+    // scroll end, since the natural and stuck offsets are held by different properties.
     public async Task AssertPinnedTabStaysVisibleWhenStripScrolledAsync()
     {
         var bar = page.GetByTestId("open-note-tabs");
 
-        var overflows = await bar.EvaluateAsync<bool>("el => el.scrollWidth > el.clientWidth");
+        var overflows = false;
+        var deadline = DateTime.UtcNow.AddSeconds(5);
+        while (DateTime.UtcNow < deadline)
+        {
+            overflows = await bar.EvaluateAsync<bool>("el => el.scrollWidth > el.clientWidth");
+            if (overflows) break;
+            await page.WaitForTimeoutAsync(200);
+        }
         Assert.True(overflows, "the tab strip does not overflow, so scrolling it proves nothing — " +
                                "open more tabs or narrow the viewport before calling this");
+
+        await AssertPinnedTabIsOnTopAsync("at scroll origin");
 
         await bar.EvaluateAsync("el => el.scrollLeft = el.scrollWidth");
         var scrolled = await bar.EvaluateAsync<double>("el => el.scrollLeft");
@@ -383,6 +393,34 @@ public sealed class AppPage
 
         await Assertions.Expect(page.GetByTestId("open-note-tab-home"))
             .ToBeInViewportAsync(new() { Ratio = 1 });
+        await AssertPinnedTabIsOnTopAsync("after scrolling to the end");
+    }
+
+    // Nothing may be painted over the pinned tab's leading edge — a covered tab still passes
+    // every geometric check while swallowing the click that is meant to go home.
+    private async Task AssertPinnedTabIsOnTopAsync(string when)
+    {
+        var box = await page.GetByTestId("open-note-tab-home").BoundingBoxAsync()
+                  ?? throw new Exception($"the pinned tab has no box {when}");
+        var probeX = box.X + 4;
+        var probeY = box.Y + (box.Height / 2);
+        var onTop = await page.EvaluateAsync<bool>(
+            @"([x, y]) => {
+                const el = document.elementFromPoint(x, y);
+                return !!el && !!el.closest('[data-testid=""open-note-tab-home""]');
+            }",
+            new[] { probeX, probeY });
+        if (!onTop)
+        {
+            var covering = await page.EvaluateAsync<string>(
+                @"([x, y]) => {
+                    const el = document.elementFromPoint(x, y);
+                    if (!el) return 'nothing';
+                    return el.tagName + ' ' + (el.getAttribute('data-testid') ?? el.className ?? '');
+                }",
+                new[] { probeX, probeY });
+            throw new Exception($"the pinned My-notes tab is covered {when} at ({probeX},{probeY}) by: {covering}");
+        }
     }
 
     // `aria-current` sits on the tab's label button (the nav's "you are here"), not the wrapper.

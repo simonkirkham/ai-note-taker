@@ -16,26 +16,13 @@
   gap: var(--space-1);
   /* Keeps a keyboard-focused tab clear of the sticky pinned tab (WCAG 2.4.11). Sized to what
      the pinned tab ACTUALLY occupies — "My notes" is fixed text, ~114px, plus its divider
-     (1px), padding-right (8px), margin-right (8px) and the bar's own padding-left (12px)
-     ≈ 143px. Over-reserving is not harmless: it shrinks the optimal region below one tab's
-     width and start-aligns the focused tab off the right edge instead. */
+     (1px), padding-right (8px) and margin-right (8px) ≈ 123px, rounded up. The bar's own
+     padding-left is NOT additive: when stuck, the tab's left edge sits at the scrollport
+     edge, inside that padding. Over-reserving is not harmless — it shrinks the optimal
+     region below one tab's width and start-aligns the focused tab off the right edge. */
   scroll-padding-left: 9rem;
 }
 
-/* Under 640px the fixed sidebar toggle (App.module.css, z-index 40) sits exactly where the
-   pinned tab starts. Padding on the scroll CONTAINER does not fix this: a sticky element's
-   constraint rectangle is the scrollport — the container's padding box — so once the strip
-   scrolls, `left: 0` puts the tab back under the toggle, where the toggle wins the paint and
-   swallows the clicks. The offset has to be on the sticky element itself. */
-@media (max-width: 639px) {
-  .bar {
-    scroll-padding-left: 11.5rem;
-  }
-
-  .tabHome {
-    left: 3.25rem;
-  }
-}
 
 .list {
   display: flex;
@@ -99,6 +86,17 @@
 .tabHome.tabActive,
 .tabHome.tabActive:hover {
   background: var(--color-surface);
+}
+
+/* (0,2,0) to beat `.tab:hover`, whose --color-primary-bg is rgba at 0.06-0.12 alpha.
+   The pinned tab is scrolled UNDER by the document tabs, so any translucency lets them
+   show straight through it. Hover is signalled on the label instead. */
+.tab.tabHome:hover {
+  background: var(--color-bg);
+}
+
+.tab.tabHome:hover .label {
+  color: var(--color-primary);
 }
 
 /* --color-primary on --color-bg is below 4.5:1 in 5 of the 8 light themes at this size
@@ -194,5 +192,27 @@
   .label,
   .close {
     transition: none;
+  }
+}
+
+/* Under 640px the fixed sidebar toggle (App.module.css, z-index 40) occupies x 12-48px —
+   exactly where the pinned tab starts. Two offsets are needed and they do different jobs:
+     padding-left  moves the tab's NATURAL position clear of the toggle, and reflows the
+                   document tabs with it. Without it, `left` alone is clamped to zero when
+                   the bar holds only the pinned tab (the permanent bar's commonest state)
+                   and shifts the tab OVER the first document tab when it does not.
+     left          keeps it clear once STUCK, because a sticky element's constraint
+                   rectangle is the scrollport — the container's padding box — so the
+                   padding scrolls away and cannot hold the offset on its own.
+   This block must stay LAST in the file: it is (0,1,0) like the base rules it overrides,
+   so it wins on source order alone. Moving it up silently disables it. */
+@media (max-width: 639px) {
+  .bar {
+    padding-left: 3.25rem;
+    scroll-padding-left: 11.5rem;
+  }
+
+  .tabHome {
+    left: 3.25rem;
   }
 }
