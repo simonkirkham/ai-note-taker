@@ -1,0 +1,98 @@
+{
+  "_comment": [
+    "BUG-76 — the shared contract between the server's reading of a note body and the editor's.",
+    "Since 43-H2 the body is the ONLY source of the agenda, so a line the server counts and the",
+    "header does not show is a topic the user can neither see nor tick, while the 'X / Y' pill goes",
+    "on counting it.",
+    "",
+    "Both sides assert this file, so neither reading can drift alone:",
+    "  server — tests/Domain.Specs/Projections/AgendaParityFixtureSpec.cs (AgendaFromContent.Parse)",
+    "  client — web/src/__tests__/agendaParity.test.ts (agendaEditorApi.readTopics)",
+    "",
+    "Fields per case:",
+    "  markdown     the stored note body, exactly as both sides receive it",
+    "  topics       what the SERVER reads: text + ticked state, in document order",
+    "  header       what the HEADER reads, present ONLY where it differs from `topics`",
+    "  divergence   why they differ and why it is not closed here; required whenever `header` is",
+    "               present, so a real gap can never be hidden by quietly adding an override"
+  ],
+  "cases": [
+    {
+      "name": "a flat checklist",
+      "markdown": "- [ ] Budget (Q3)\n- [x] Hiring plan",
+      "topics": [
+        { "text": "Budget (Q3)", "checked": false },
+        { "text": "Hiring plan", "checked": true }
+      ]
+    },
+    {
+      "name": "a checklist nested under another task item",
+      "markdown": "- [ ] Budget (Q3)\n  - [ ] Cloud spend\n- [ ] Hiring plan",
+      "topics": [
+        { "text": "Budget (Q3)", "checked": false },
+        { "text": "Cloud spend", "checked": false },
+        { "text": "Hiring plan", "checked": false }
+      ]
+    },
+    {
+      "name": "a checklist nested under a plain bullet",
+      "markdown": "- Shopping\n  - [ ] Milk\n  - [x] Bread",
+      "topics": [
+        { "text": "Milk", "checked": false },
+        { "text": "Bread", "checked": true }
+      ]
+    },
+    {
+      "name": "a checklist nested under a numbered item",
+      "markdown": "1. Shopping\n   - [ ] Milk",
+      "topics": [{ "text": "Milk", "checked": false }]
+    },
+    {
+      "name": "a checklist two levels down, under a bullet under a task item",
+      "markdown": "- [ ] Budget (Q3)\n  - Cloud spend\n    - [ ] Storage tier\n- [ ] Hiring plan",
+      "topics": [
+        { "text": "Budget (Q3)", "checked": false },
+        { "text": "Storage tier", "checked": false },
+        { "text": "Hiring plan", "checked": false }
+      ]
+    },
+    {
+      "name": "an item with no text yet",
+      "markdown": "- [ ] Budget (Q3)\n- [ ] \n- [ ] Hiring plan",
+      "topics": [
+        { "text": "Budget (Q3)", "checked": false },
+        { "text": "Hiring plan", "checked": false }
+      ]
+    },
+    {
+      "name": "a blockquoted checklist is someone else's agenda",
+      "markdown": "> - [ ] Quoted topic\n\n- [ ] Budget (Q3)",
+      "topics": [{ "text": "Budget (Q3)", "checked": false }]
+    },
+    {
+      "name": "a checklist inside a fenced code block is code",
+      "markdown": "```\n- [ ] Not a topic\n```\n\n- [ ] Budget (Q3)",
+      "topics": [{ "text": "Budget (Q3)", "checked": false }]
+    },
+    {
+      "name": "inline emphasis is not part of the topic text",
+      "markdown": "- [ ] **Budget** (Q3)",
+      "topics": [{ "text": "Budget (Q3)", "checked": false }]
+    },
+    {
+      "name": "escaped brackets read as the characters the note shows",
+      "markdown": "- [ ] Review Q3 \\[draft\\]",
+      "topics": [{ "text": "Review Q3 [draft]", "checked": false }]
+    },
+    {
+      "name": "a checklist line holding only an image (KNOWN DIVERGENCE, open)",
+      "markdown": "- [ ] ![Burn-up chart](notes/n1/burnup.png)\n- [ ] Hiring plan",
+      "topics": [
+        { "text": "![Burn-up chart](notes/n1/burnup.png)", "checked": false },
+        { "text": "Hiring plan", "checked": false }
+      ],
+      "header": [{ "text": "Hiring plan", "checked": false }],
+      "divergence": "The editor's markdown parser cannot put an image inside a checklist line: a note image is a BLOCK node, so the parser hoists it out of the task item and leaves the item genuinely empty (`taskList > taskItem > paragraph(empty)`, then a sibling `image`). Nothing in the item is skipped, because nothing is there — so no change to the topic walk can close this. Closing it means making note images inline in the editor schema, which must also fix the same shape's destructive round-trip: re-serialising this body yields `- [ ] \\n\\n![Burn-up chart](notes/n1/burnup.png)- [ ] Hiring plan`, which glues the next checklist line onto the image and loses it as a topic on the next save."
+    }
+  ]
+}

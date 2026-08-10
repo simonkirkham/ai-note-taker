@@ -35,49 +35,91 @@ export interface AgendaEditorApi {
 }
 
 // What counts as a topic must match AgendaFromContent on the server EXACTLY, or the index the
-// header renders and the index a command resolves are over different sets again.
+// header renders and the index a command resolves are over different sets again — and since 43-H2
+// made the body the only source, a line the server counts and this walk misses is a topic the user
+// can neither see in the header nor tick from it, while the "X / Y" pill still counts it.
+//
+// That equivalence is pinned as a SHARED fixture rather than as assertions on one side:
+// web/src/__tests__/fixtures/agenda-parity.json is asserted by this walk (agendaParity.test.ts)
+// AND by AgendaFromContent.Parse (AgendaParityFixtureSpec), so changing either reading alone turns
+// the other side red.
 //
 // The server's rule (AgendaFromContent.cs) is a per-line regex opening with `^[ \t]*`, so:
 //   • NESTED items DO count, flattened into document order — AgendaFromBodySpec pins this, and
-//     phase-43.md records the decision. Hence the recursion below: a top-level-only walk silently
-//     dropped nested topics the user can see, which is a regression against shipped 43-F.
-//   • BLOCKQUOTED lines do NOT count (a quoted checklist is someone else's agenda), so the walk
-//     starts from top-level taskLists rather than every taskList in the document.
+//     phase-43.md records the decision. Hence the recursion below.
+//   • It does not care what the line is nested UNDER. Indenting a checklist beneath a plain bullet
+//     or a numbered item is ordinary note-taking, and the server counts every one of those lines,
+//     so the descent covers every LIST type — not taskList alone (BUG-76). A taskList-only walk
+//     returned nothing at all for `- Shopping` / `  - [ ] Milk`: the entire agenda disappeared
+//     from the header while the pill went on counting it.
+//   • BLOCKQUOTED lines do NOT count (a quoted checklist is someone else's agenda). A blockquote is
+//     not a list and is not in the descent set, so widening to list types cannot reintroduce them.
 //   • EMPTY items do NOT count — the regex needs text after the bracket — so a freshly-pressed
 //     item is skipped until it has content, keeping the indices aligned as the user types.
 // Pre-order recursion is markdown line order, which is the order the server produces.
-function collectTaskItems(
-  node: ProseMirrorNode,
-  base: number,
-  out: { pos: number; text: string; checked: boolean }[],
-): void {
+const LIST_NODES = new Set(['taskList', 'bulletList', 'orderedList']);
+const LIST_ITEM_NODES = new Set(['taskItem', 'listItem']);
+
+/** A countable topic plus the document position its commands address. */
+interface CountedTopic {
+  pos: number;
+  text: string;
+  checked: boolean;
+}
+
+// A list container or a list item — the only nodes whose children can hold a countable line.
+// Paragraphs, blockquotes, tables and code blocks all stop the descent.
+function isListStructure(node: ProseMirrorNode): boolean {
+  return LIST_NODES.has(node.type.name) || LIST_ITEM_NODES.has(node.type.name);
+}
+
+function collectTaskItems(node: ProseMirrorNode, base: number, out: CountedTopic[]): void {
   node.forEach((child, offset) => {
-    if (child.type.name !== 'taskItem') return;
     const pos = base + offset;
-    // textContent on the item would swallow its nested children's text too, so read the item's
-    // own first paragraph.
-    const text = (child.firstChild?.textContent ?? '').trim();
-    if (text.length > 0) out.push({ pos, text, checked: child.attrs.checked === true });
-    // Recurse into any nested taskList so its items land immediately after their parent.
-    child.forEach((grandchild, childOffset) => {
-      if (grandchild.type.name === 'taskList') {
-        collectTaskItems(grandchild, pos + 1 + childOffset + 1, out);
-      }
-    });
+    if (child.type.name === 'taskItem') {
+      // textContent on the item would swallow its nested children's text too, so read the item's
+      // own first paragraph.
+      const text = (child.firstChild?.textContent ?? '').trim();
+      if (text.length > 0) out.push({ pos, text, checked: child.attrs.checked === true });
+    }
+    // Descend through every list container AND list item, so a checklist reachable through a list
+    // of any kind lands immediately after its parent — the order the server's line scan produces.
+    if (isListStructure(child)) collectTaskItems(child, pos + 1, out);
   });
 }
 
-function topLevelTaskItems(editor: Editor): { pos: number; text: string; checked: boolean }[] {
-  const items: { pos: number; text: string; checked: boolean }[] = [];
+function countableTaskItems(editor: Editor): CountedTopic[] {
+  const items: CountedTopic[] = [];
   editor.state.doc.forEach((node, offset) => {
-    if (node.type.name === 'taskList') collectTaskItems(node, offset + 1, items);
+    if (LIST_NODES.has(node.type.name)) collectTaskItems(node, offset + 1, items);
   });
   return items;
 }
 
+// The first checklist the walk above actually reads, in document order — which since BUG-76 may be
+// one nested inside another list. A blockquoted checklist is still never returned: the walk does
+// not enter a blockquote, so a topic added there would land somewhere the agenda never reads and
+// would silently never appear.
+function firstReadableTaskList(editor: Editor): { pos: number; size: number } | null {
+  const found: { pos: number; size: number }[] = [];
+  const visit = (node: ProseMirrorNode, base: number): void => {
+    node.forEach((child, offset) => {
+      if (found.length > 0) return;
+      const pos = base + offset;
+      if (child.type.name === 'taskList') {
+        found.push({ pos, size: child.nodeSize });
+        return;
+      }
+      if (isListStructure(child)) visit(child, pos + 1);
+    });
+  };
+  visit(editor.state.doc, 0);
+  return found[0] ?? null;
+}
+
 /** Document positions of every countable task item, in document order. */
 function taskItemPositions(editor: Editor): number[] {
-  return topLevelTaskItems(editor).map((i) => i.pos);
+  return countableTaskItems(editor).map((i) => i.pos);
 }
 
 function nodePosAt(editor: Editor, position: number): number | null {
@@ -92,7 +134,7 @@ const quietFocus = { scrollIntoView: false } as const;
 export function createAgendaEditorApi(editor: Editor): AgendaEditorApi {
   return {
     readTopics(): LiveTopic[] {
-      return topLevelTaskItems(editor).map(({ text, checked }) => ({ text, checked }));
+      return countableTaskItems(editor).map(({ text, checked }) => ({ text, checked }));
     },
 
     addTopic(text: string) {
@@ -101,14 +143,10 @@ export function createAgendaEditorApi(editor: Editor): AgendaEditorApi {
 
       // Q7: the topic joins whichever checklist appears EARLIEST in the note, so a topic added
       // mid-meeting lands with the others rather than interrupting the sentence being written.
-      // Top-level only: appending into a blockquoted checklist would put the topic somewhere the
-      // agenda never reads, so it would silently never appear.
-      let firstList: { pos: number; size: number } | null = null;
-      editor.state.doc.forEach((node, offset) => {
-        if (firstList === null && node.type.name === 'taskList') {
-          firstList = { pos: offset, size: node.nodeSize };
-        }
-      });
+      // BUG-76: "earliest" means the first checklist the READ walk reaches, so a note whose only
+      // checklist is indented under a bullet gets the new topic in that list — the one the header
+      // is showing — instead of a second list above it.
+      const firstList = firstReadableTaskList(editor);
 
       const item = {
         type: 'taskItem',
@@ -118,8 +156,7 @@ export function createAgendaEditorApi(editor: Editor): AgendaEditorApi {
 
       const chain = editor.chain().focus(undefined, quietFocus);
       if (firstList) {
-        const list: { pos: number; size: number } = firstList;
-        chain.insertContentAt(list.pos + list.size - 1, item).run();
+        chain.insertContentAt(firstList.pos + firstList.size - 1, item).run();
       } else {
         chain.insertContentAt(0, { type: 'taskList', content: [item] }).run();
       }
