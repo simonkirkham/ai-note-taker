@@ -5,49 +5,12 @@ using System.Text.Json;
 
 namespace Api.Integration;
 
+// 43-H2: the agenda is read from the note body and nowhere else. The write-endpoint tests that
+// lived here went with those endpoints; what remains is the body-derived behaviour, which is now
+// the whole feature.
 public sealed class NoteAgendaIntegrationTests(ApiFactory factory) : IClassFixture<ApiFactory>
 {
     private readonly HttpClient _client = factory.CreateClient();
-
-    [Fact]
-    public async Task PostAgendaItem_ReturnsCreatedWithItemId()
-    {
-        var noteId = await CreateNoteAsync();
-
-        var resp = await PostAgendaItemAsync(noteId, "Budget (Q3)");
-
-        Assert.Equal(HttpStatusCode.Created, resp.StatusCode);
-        var body = await resp.Content.ReadFromJsonAsync<JsonElement>();
-        Assert.NotEqual(Guid.Empty, body.GetProperty("itemId").GetGuid());
-    }
-
-    [Fact]
-    public async Task PostAgendaItem_AppearsInGetNote()
-    {
-        var noteId = await CreateNoteAsync();
-        await PostAgendaItemAsync(noteId, "Budget (Q3)");
-
-        var agenda = await GetAgendaAsync(noteId);
-
-        var item = Assert.Single(agenda);
-        Assert.Equal("Budget (Q3)", item.GetProperty("text").GetString());
-        Assert.False(item.GetProperty("discussed").GetBoolean());
-        Assert.Equal(0, item.GetProperty("position").GetInt32());
-    }
-
-    [Fact]
-    public async Task PostAgendaItem_KeepsCaptureOrder()
-    {
-        var noteId = await CreateNoteAsync();
-        await PostAgendaItemAsync(noteId, "Budget (Q3)");
-        await PostAgendaItemAsync(noteId, "Hiring backfill");
-
-        var agenda = await GetAgendaAsync(noteId);
-
-        Assert.Equal(["Budget (Q3)", "Hiring backfill"],
-            agenda.Select(a => a.GetProperty("text").GetString()!).ToArray());
-        Assert.Equal([0, 1], agenda.Select(a => a.GetProperty("position").GetInt32()).ToArray());
-    }
 
     [Fact]
     public async Task GetNote_NewNoteHasEmptyAgenda()
@@ -57,136 +20,6 @@ public sealed class NoteAgendaIntegrationTests(ApiFactory factory) : IClassFixtu
         var agenda = await GetAgendaAsync(noteId);
 
         Assert.Empty(agenda);
-    }
-
-    [Fact]
-    public async Task PostAgendaItem_BlankTextReturns400()
-    {
-        var noteId = await CreateNoteAsync();
-
-        var resp = await PostAgendaItemAsync(noteId, "   ");
-
-        Assert.Equal(HttpStatusCode.BadRequest, resp.StatusCode);
-    }
-
-    [Fact]
-    public async Task PostAgendaItem_NonExistentNoteReturns404()
-    {
-        var resp = await PostAgendaItemAsync(Guid.NewGuid().ToString(), "Budget (Q3)");
-
-        Assert.Equal(HttpStatusCode.NotFound, resp.StatusCode);
-    }
-
-    [Fact]
-    public async Task PutDiscussed_TicksAndUnticksAnItem()
-    {
-        var noteId = await CreateNoteAsync();
-        var itemId = await AddAndGetItemIdAsync(noteId, "Budget (Q3)");
-
-        var tick = await PutDiscussedAsync(noteId, itemId, true);
-        Assert.Equal(HttpStatusCode.NoContent, tick.StatusCode);
-        Assert.True((await GetAgendaAsync(noteId)).Single().GetProperty("discussed").GetBoolean());
-
-        var untick = await PutDiscussedAsync(noteId, itemId, false);
-        Assert.Equal(HttpStatusCode.NoContent, untick.StatusCode);
-        Assert.False((await GetAgendaAsync(noteId)).Single().GetProperty("discussed").GetBoolean());
-    }
-
-    [Fact]
-    public async Task PutDiscussed_UnknownItemReturns404()
-    {
-        var noteId = await CreateNoteAsync();
-
-        var resp = await PutDiscussedAsync(noteId, Guid.NewGuid().ToString(), true);
-
-        Assert.Equal(HttpStatusCode.NotFound, resp.StatusCode);
-    }
-
-    [Fact]
-    public async Task PutDiscussed_NonExistentNoteReturns404()
-    {
-        var resp = await PutDiscussedAsync(Guid.NewGuid().ToString(), Guid.NewGuid().ToString(), true);
-
-        Assert.Equal(HttpStatusCode.NotFound, resp.StatusCode);
-    }
-
-    [Fact]
-    public async Task PutText_EditsItemTextAndPersists()
-    {
-        var noteId = await CreateNoteAsync();
-        var itemId = await AddAndGetItemIdAsync(noteId, "Budget");
-
-        var resp = await PutTextAsync(noteId, itemId, "Budget (Q3)");
-        Assert.Equal(HttpStatusCode.NoContent, resp.StatusCode);
-
-        Assert.Equal("Budget (Q3)", (await GetAgendaAsync(noteId)).Single().GetProperty("text").GetString());
-    }
-
-    [Fact]
-    public async Task PutText_BlankReturns400()
-    {
-        var noteId = await CreateNoteAsync();
-        var itemId = await AddAndGetItemIdAsync(noteId, "Budget");
-
-        var resp = await PutTextAsync(noteId, itemId, "   ");
-
-        Assert.Equal(HttpStatusCode.BadRequest, resp.StatusCode);
-    }
-
-    [Fact]
-    public async Task Delete_RemovesItemAndItStaysGone()
-    {
-        var noteId = await CreateNoteAsync();
-        var keep = await AddAndGetItemIdAsync(noteId, "Keep");
-        var drop = await AddAndGetItemIdAsync(noteId, "Drop");
-
-        var resp = await _client.DeleteAsync($"/notes/{noteId}/agenda-items/{drop}");
-        Assert.Equal(HttpStatusCode.NoContent, resp.StatusCode);
-
-        var agenda = await GetAgendaAsync(noteId);
-        Assert.Equal(["Keep"], agenda.Select(a => a.GetProperty("text").GetString()!).ToArray());
-        Assert.Contains(keep, agenda.Select(a => a.GetProperty("itemId").GetString()));
-    }
-
-    [Fact]
-    public async Task Delete_TickedItem_UpdatesCoverage()
-    {
-        var noteId = await CreateNoteAsync();
-        var a = await AddAndGetItemIdAsync(noteId, "A");
-        var b = await AddAndGetItemIdAsync(noteId, "B");
-        await PutDiscussedAsync(noteId, a, true);
-        await PutDiscussedAsync(noteId, b, true); // 2 / 2 covered
-
-        await _client.DeleteAsync($"/notes/{noteId}/agenda-items/{a}");
-
-        var agenda = await GetAgendaAsync(noteId);
-        Assert.Single(agenda);
-        Assert.True(agenda[0].GetProperty("discussed").GetBoolean()); // surviving ticked item → 1 / 1
-    }
-
-    [Fact]
-    public async Task AddAfterRemove_DoesNotCollidePosition()
-    {
-        var noteId = await CreateNoteAsync();
-        var a = await AddAndGetItemIdAsync(noteId, "A");
-        await AddAndGetItemIdAsync(noteId, "B");
-        await _client.DeleteAsync($"/notes/{noteId}/agenda-items/{a}"); // remove A (pos 0)
-        await AddAndGetItemIdAsync(noteId, "C"); // must get a position after B, not collide
-
-        var agenda = await GetAgendaAsync(noteId);
-        var positions = agenda.Select(x => x.GetProperty("position").GetInt32()).ToArray();
-        Assert.Equal(positions.Length, positions.Distinct().Count()); // no duplicate positions
-        Assert.Equal(["B", "C"], agenda.Select(x => x.GetProperty("text").GetString()!).ToArray());
-    }
-
-    [Fact]
-    public async Task Delete_UnknownItemReturns404()
-    {
-        var noteId = await CreateNoteAsync();
-
-        var resp = await _client.DeleteAsync($"/notes/{noteId}/agenda-items/{Guid.NewGuid()}");
-
-        Assert.Equal(HttpStatusCode.NotFound, resp.StatusCode);
     }
 
     // ── 43-F: topics derived from the note body, through the real API serialization boundary.
@@ -218,16 +51,6 @@ public sealed class NoteAgendaIntegrationTests(ApiFactory factory) : IClassFixtu
         await PutContentAsync(noteId, "- [x] Budget (Q3)\n- [ ] Hiring plan");
 
         Assert.Equal(1, (await GetAgendaAsync(noteId)).Count(a => a.GetProperty("discussed").GetBoolean()));
-    }
-
-    [Fact]
-    public async Task AnItemAddedFromTheHeader_IsNotMarkedDerived()
-    {
-        var noteId = await CreateNoteAsync();
-        await PostAgendaItemAsync(noteId, "Budget (Q3)");
-
-        var item = Assert.Single(await GetAgendaAsync(noteId));
-        Assert.False(item.GetProperty("derived").GetBoolean());
     }
 
     private Task<HttpResponseMessage> PutContentAsync(string noteId, string content) =>

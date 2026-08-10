@@ -6,21 +6,11 @@ public sealed class NoteDetailProjection
 {
     private readonly Dictionary<NoteId, NoteDetailView> _items = new();
 
-    // 43-F: topics now come from the note body, but pre-43-F notes still carry AgendaItem* events.
-    // Those fold here, apart from the view, so the composed Agenda can be recomputed whenever
-    // EITHER input changes. Per-instance state is safe: every consumer (the live ProjectionUpdater
-    // and ProjectionRebuildHandler alike) replays a whole stream through a fresh projection.
-    // 43-H migrates the stragglers and this dictionary goes with the legacy fold.
-    private readonly Dictionary<NoteId, List<AgendaItemView>> _legacyAgenda = new();
-
     // Composed at READ time, not on every event: folding a whole stream re-parses the body once
     // per ContentEdited otherwise, which on the rebuild path is the sum of every content revision
     // ever written (BUG-23 already saw that rebuild time out). One parse per note instead.
-    private NoteDetailView Composed(NoteDetailView view)
-    {
-        var legacy = _legacyAgenda.TryGetValue(view.NoteId, out var l) ? l : [];
-        return view with { Agenda = AgendaFromContent.Compose(view.NoteId, view.Content, legacy) };
-    }
+    private static NoteDetailView Composed(NoteDetailView view) =>
+        view with { Agenda = AgendaFromContent.Parse(view.NoteId, view.Content) };
 
     public void Handle(EventEnvelope envelope)
     {
@@ -63,39 +53,8 @@ public sealed class NoteDetailProjection
                     _items[e.NoteId] = untagged with { Tags = (untagged.Tags ?? []).Where(t => t != removeTag).ToList().AsReadOnly(), LastModifiedAt = envelope.OccurredAt };
                 }
                 break;
-            // ── Legacy agenda events (pre-43-F). Folded into _legacyAgenda, never straight into the
-            // view — the view's Agenda is always the composed union. Removed wholesale by 43-H.
-            case AgendaItemAdded e:
-                if (_items.TryGetValue(e.NoteId, out var withAgenda))
-                {
-                    Legacy(e.NoteId).Add(new AgendaItemView(e.ItemId, e.Text, false, e.Position));
-                    _items[e.NoteId] = withAgenda with { LastModifiedAt = envelope.OccurredAt };
-                }
-                break;
-            case AgendaItemDiscussedSet e:
-                if (_items.TryGetValue(e.NoteId, out var withTick))
-                {
-                    Replace(e.NoteId, e.ItemId, a => a with { Discussed = e.Discussed });
-                    _items[e.NoteId] = withTick with { LastModifiedAt = envelope.OccurredAt };
-                }
-                break;
-            case AgendaItemTextEdited e:
-                if (_items.TryGetValue(e.NoteId, out var withEdit))
-                {
-                    Replace(e.NoteId, e.ItemId, a => a with { Text = e.Text });
-                    _items[e.NoteId] = withEdit with { LastModifiedAt = envelope.OccurredAt };
-                }
-                break;
-            case AgendaItemRemoved e:
-                if (_items.TryGetValue(e.NoteId, out var withRemove))
-                {
-                    Legacy(e.NoteId).RemoveAll(a => a.ItemId == e.ItemId);
-                    _items[e.NoteId] = withRemove with { LastModifiedAt = envelope.OccurredAt };
-                }
-                break;
             case NoteDeleted e:
                 _items.Remove(e.NoteId);
-                _legacyAgenda.Remove(e.NoteId);
                 break;
             case NoteAssignedToWorkspace e:
                 if (_items.TryGetValue(e.NoteId, out var assigned))
@@ -143,16 +102,6 @@ public sealed class NoteDetailProjection
         }
     }
 
-    private List<AgendaItemView> Legacy(NoteId noteId) =>
-        _legacyAgenda.TryGetValue(noteId, out var l) ? l : _legacyAgenda[noteId] = [];
-
-    private void Replace(NoteId noteId, Guid itemId, Func<AgendaItemView, AgendaItemView> update)
-    {
-        var legacy = Legacy(noteId);
-        for (var i = 0; i < legacy.Count; i++)
-            if (legacy[i].ItemId == itemId)
-                legacy[i] = update(legacy[i]);
-    }
 
     public NoteDetailView? GetDetail(NoteId noteId) =>
         _items.TryGetValue(noteId, out var detail) ? Composed(detail) : null;
