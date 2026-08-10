@@ -40,6 +40,9 @@ export function AuthProvider({
     ? new URLSearchParams(window.location.search)
     : new URLSearchParams()
   const returnedState = searchParams.get('state')
+  const oauthCode = searchParams.get('code')
+  // Left as `has('code')` deliberately: `shouldBootstrapRefresh` and BUG-60's storageBlocked seed
+  // both key off "a callback is in progress at all", which an empty `?code=` still is.
   const hasOAuthCode = clientId !== '' && searchParams.has('code')
   const shouldBootstrapRefresh = clientId !== '' && !initialToken && !persisted && !hasOAuthCode
   // Returning from the in-app calendar consent (a `code` plus our calendar_state marker). Keep the
@@ -52,8 +55,15 @@ export function AuthProvider({
   // `calendar_state` made every later sign-in return strand.
   const calState = typeof window !== 'undefined' ? safeSession.get('calendar_state') : null
   const calVerifier = typeof window !== 'undefined' ? safeSession.get('calendar_verifier') : null
+  // The branch's FULL precondition set, including its two early returns — `initialToken` and an
+  // unset `clientId`. Review disproved two earlier versions of this by probe: `hasOAuthCode` uses
+  // `has('code')` where the branch needs `code` truthy, and the `initialToken` guard was ignored
+  // entirely. Both stranded the gate the same way the reported bug did. Any clause here that is
+  // weaker than the branch predicts an arm that then declines to run, and only that arm clears
+  // `authLoading`.
   const isCalendarConnectReturn = Boolean(
-    hasOAuthCode && calState && calVerifier && returnedState === calState,
+    !initialToken && clientId !== '' && oauthCode && calState && calVerifier
+      && returnedState === calState,
   )
   const [authLoading, setAuthLoading] = useState(shouldBootstrapRefresh || isCalendarConnectReturn)
   const [forbidden, setForbidden] = useState(false)

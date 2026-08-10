@@ -16,11 +16,12 @@ import { server } from '../test/setup'
 // that predicts which branch will run was weaker. Predicting the wrong branch is the whole bug.
 
 function Probe() {
-  const { idToken, authLoading } = useAuth()
+  const { idToken, authLoading, storageBlocked } = useAuth()
   return (
     <div>
       <span data-testid="loading">{authLoading ? 'loading' : 'ready'}</span>
       <span data-testid="token">{idToken ?? 'none'}</span>
+      <span data-testid="blocked">{storageBlocked ? 'blocked' : 'not-blocked'}</span>
     </div>
   )
 }
@@ -126,6 +127,42 @@ describe('a stale calendar_state does not strand the gate (BUG-71)', () => {
 
     render(
       <AuthProvider>
+        <Probe />
+      </AuthProvider>,
+    )
+
+    await waitFor(() => expect(screen.getByTestId('loading')).toHaveTextContent('ready'))
+    // ...and BUG-60's message is no longer suppressed. The old derivation returned true here, and
+    // the storageBlocked seed reads `!isCalendarConnectReturn` — so the user got an indefinite
+    // spinner with nothing said. Asserted directly rather than left implied by the strand.
+    expect(screen.getByTestId('blocked')).toHaveTextContent('blocked')
+  })
+
+  // Review probed two further clauses the derivation still omitted. The branch requires `code`
+  // TRUTHY (the derivation used `has('code')`) and returns early on `initialToken`; each gap
+  // stranded the gate by the same mechanism — predict an arm, the arm declines, nothing clears
+  // authLoading.
+  it('does not strand on an empty code param', async () => {
+    sessionStorage.setItem('calendar_state', 'calendar-state')
+    sessionStorage.setItem('calendar_verifier', 'calendar-verifier')
+    window.history.replaceState({}, '', '/?code=&state=calendar-state')
+
+    render(
+      <AuthProvider>
+        <Probe />
+      </AuthProvider>,
+    )
+
+    await waitFor(() => expect(screen.getByTestId('loading')).toHaveTextContent('ready'))
+  })
+
+  it('does not strand when an initialToken short-circuits the exchange effect', async () => {
+    sessionStorage.setItem('calendar_state', 'calendar-state')
+    sessionStorage.setItem('calendar_verifier', 'calendar-verifier')
+    window.history.replaceState({}, '', '/?code=calendar-code&state=calendar-state')
+
+    render(
+      <AuthProvider initialToken="seeded-token">
         <Probe />
       </AuthProvider>,
     )
