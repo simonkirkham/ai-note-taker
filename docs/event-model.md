@@ -147,10 +147,10 @@ A named partition of a user's content (e.g. *Work* / *Personal*). A second isola
 - `NoteTagged { NoteId, Tag }`
 - `NoteUntagged { NoteId, Tag }`
 - `NoteDateSet { NoteId, Date }` — user-specified `DateOnly`; can be set or changed at any time while the note is active
-- `AgendaItemAdded { NoteId, ItemId, Text, Position }` — a meeting-agenda item (Phase 43); `Position` = capture order; folded onto `NoteDetail.Agenda` (no separate projection)
-- `AgendaItemDiscussedSet { NoteId, ItemId, Discussed }` — tick / untick (43-B); folded onto the matching `NoteDetail.Agenda` item; idempotent
-- `AgendaItemTextEdited { NoteId, ItemId, Text }` — edit an item's text (43-C)
-- `AgendaItemRemoved { NoteId, ItemId }` — remove an item (43-C); `AgendaItemAdded.Position` derives from a monotonic add-counter so a post-removal add never reuses a surviving item's position
+- `AgendaItemAdded { NoteId, ItemId, Text, Position }` — a meeting-agenda item (Phase 43); `Position` = capture order. **43-H2: no longer written or folded — retained so history still parses.**
+- `AgendaItemDiscussedSet { NoteId, ItemId, Discussed }` — tick / untick (43-B). **43-H2: no longer written or folded — retained so history still parses.**
+- `AgendaItemTextEdited { NoteId, ItemId, Text }` — edit an item's text (43-C). **43-H2: no longer written or folded — retained so history still parses.**
+- `AgendaItemRemoved { NoteId, ItemId }` — remove an item (43-C). **43-H2: no longer written or folded — retained so history still parses.** The monotonic add-counter that kept `Position` unique after a removal went with the commands.
 - `TagsSuggested { NoteId, Tags[] }` (v1) / `TagsSuggestedV2 { NoteId, Tags[], ModelId, PromptVersion }` (v2, 10-M) — AI provenance; records the tags an analysis run contributed (the post-dedup applied set), so a later `NoteUntagged` of one can be classified as a rejected AI suggestion. v2 stamps `ModelId`/`PromptVersion` so the correction ties to the exact prompt/model. The aggregate emits **v2**; v1 remains for streams written before 10-M. No aggregate state change
 - `ActionItemsSuggested { NoteId, ActionItemIds[] }` (v1) / `ActionItemsSuggestedV2 { NoteId, ActionItemIds[], ModelId, PromptVersion }` (v2, 10-M) — AI provenance; records (by id) the action items an analysis run created, so a later `ActionItemDeleted`/`ActionItemCompleted` can be attributed to the AI. v2 stamps `ModelId`/`PromptVersion`. The aggregate emits **v2**; v1 remains for pre-10-M streams. No aggregate state change
 - `AnalysisSummaryRecorded { NoteId, Summary, DiscussionPoints[], Decisions[], ModelId, PromptVersion }` — the AI's Final notes artifact; full snapshot, latest wins (like `ContentEdited`). `ModelId`/`PromptVersion` attribute who/what generated it. Folds into `NoteDetail.summary`/`discussionPoints`/`decisions`/`summaryModelId`/`summaryPromptVersion`

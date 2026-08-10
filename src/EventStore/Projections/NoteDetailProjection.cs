@@ -102,7 +102,6 @@ public sealed class NoteDetailProjection
         }
     }
 
-
     public NoteDetailView? GetDetail(NoteId noteId) =>
         _items.TryGetValue(noteId, out var detail) ? Composed(detail) : null;
 

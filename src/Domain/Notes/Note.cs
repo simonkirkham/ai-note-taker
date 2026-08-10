@@ -43,9 +43,11 @@ public sealed class Note : IAggregate
             case NoteUntagged e:
                 _tags.Remove(TagNormalization.Normalize(e.Tag));
                 break;
-            // 43-H2: the agenda lives in the note body now, so these carry no state. The arms
-            // stay because history replays through Apply and an unmatched event would fall to
-            // default — they must remain readable, not merely un-thrown-on.
+            // 43-H2: the agenda lives in the note body now, so these carry no state. Apply's
+            // default is already a no-op, so the arms change nothing behaviourally — they are here
+            // to say "deliberately ignored", not "not yet handled", mirroring the suggestion events
+            // below. What actually keeps history READABLE is EventDeserializer, whose default
+            // THROWS on an unknown type; its AgendaItem* arms are the load-bearing ones.
             case AgendaItemAdded:
             case AgendaItemDiscussedSet:
             case AgendaItemRemoved:
