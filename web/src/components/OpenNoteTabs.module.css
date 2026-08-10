@@ -51,16 +51,21 @@
   transition: background var(--transition), border-color var(--transition);
 }
 
-/* Document tabs only. --color-primary-bg is rgba at 0.06-0.12 alpha, which is fine for a tab
-   that nothing scrolls behind — but the pinned tab is scrolled UNDER by these, so it must
-   never take a translucent background. Excluding it here matters most when the tint below
-   is unavailable: on a browser without color-mix that declaration is dropped at parse time
-   and the cascade falls through, and this rule (0,2,0) would otherwise beat `.tabHome`
-   (0,1,0) and paint the pinned tab 94% transparent. Vite's default target is
-   baseline-widely-available (Chrome 107 / Firefox 104 / Safari 16.0) and color-mix needs
-   Chrome 111 / Firefox 113 / Safari 16.2, so that fallback is a supported configuration,
-   not a hypothetical. */
-.tab:not(.tabHome):hover {
+/* Inactive document tabs only, and BOTH exclusions are load-bearing:
+   :not(.tabHome)   --color-primary-bg is rgba at 0.06-0.12 alpha, fine for a tab nothing
+                    scrolls behind, but the pinned tab is scrolled UNDER by these and must
+                    never be translucent. This matters most when the tint below is
+                    unavailable: without color-mix that declaration is dropped at parse time
+                    and the cascade falls through to here. Vite's default target is
+                    baseline-widely-available (Chrome 107 / Firefox 104 / Safari 16.0) and
+                    color-mix needs Chrome 111 / Firefox 113 / Safari 16.2, so that is a
+                    supported configuration, not a hypothetical.
+   :not(.tabActive) `:not()` takes its argument's weight, so without this the selector is
+                    (0,3,0) and out-specifies `.tabActive:hover` (0,2,0) — which stripped the
+                    page surface from the note you are READING as soon as you hovered its
+                    tab, in all 17 themes. Same defect the pinned tab had, on its sibling.
+   Mutually exclusive by construction, so source order cannot flip either one. */
+.tab:not(.tabHome):not(.tabActive):hover {
   background: var(--color-primary-bg);
 }
 
@@ -231,23 +236,28 @@
 
    Under 640px the fixed sidebar toggle (App.module.css, z-index 40) occupies x 12-48px,
    exactly where the pinned tab would otherwise start; 3.25rem clears it. */
-@media (min-width: 640px) {
+@media not all and (max-width: 639px) {
   .bar {
     padding-left: var(--space-3);
   }
 }
 
-@media (max-width: 639.98px) {
+@media (max-width: 639px) {
   .bar {
     padding-left: 3.25rem;
     scroll-padding-left: 11.5rem;
   }
 
   /* A 14rem tab plus the 11.5rem reserved for the pinned tab exceeds a phone scrollport, so
-     scroll-into-view cannot satisfy the inset and end-aligns instead — leaving a
-     keyboard-focused tab partly under the pinned one (measured: 23px at 380px, 83px at
-     320px). Capping the tab keeps the pair inside the viewport at any width. */
-  .tab {
-    max-width: calc(100vw - 13rem);
+     scroll-into-view cannot satisfy the inset; Chrome start-aligns and pushes the focused
+     tab's END off the right edge instead (measured: 88px at 320px, 28px at 380px — the tab
+     is never hidden BEHIND the pinned one).
+     `min()` tightens the base cap rather than replacing it: this rule is (0,1,0) and later,
+     so a bare `max-width` would let tabs grow PAST 14rem between ~432px and 640px.
+     `:not(.tabHome)` because the pinned tab is a `.tab` too, and the cap truncated
+     "My notes" to an ellipsis at 322px and below — the width WCAG 1.4.10 names, and what a
+     1280px desktop produces at 400% zoom. */
+  .tab:not(.tabHome) {
+    max-width: min(14rem, calc(100vw - 13rem));
   }
 }

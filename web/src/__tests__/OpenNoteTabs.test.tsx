@@ -504,6 +504,27 @@ describe('Open-note tabs (49-A)', () => {
       await waitFor(() => expect(window.location.search).toBe('?sort=title-asc'))
     })
 
+    // The reason the replace branch exists: without it, clicking the pinned tab while already
+    // on an unfiltered home stacks identical entries and Back appears to do nothing. Mutation
+    // testing showed the two tests above both survive deleting the branch entirely; this one
+    // is what fails when it goes.
+    it('clicking My notes while already there does not stack a dead history entry', async () => {
+      renderApp()
+      await openFromList('Standup')
+      const notePath = window.location.pathname
+
+      await userEvent.click(homeTab())
+      await waitFor(() => expect(window.location.pathname).toBe('/w/__default__'))
+      // Already on an unfiltered home — this one must replace, not push.
+      await userEvent.click(homeTab())
+      await waitFor(() => expect(window.location.pathname).toBe('/w/__default__'))
+
+      window.history.back()
+
+      // One Back leaves home entirely. If the second click had pushed, it would land on home.
+      await waitFor(() => expect(window.location.pathname).toBe(notePath))
+    })
+
     it('the My notes tab offers no way to close it', async () => {
       renderApp()
       await openFromList('Standup')
