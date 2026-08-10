@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { keys } from '../api/queryKeys'
 import App from '../App'
 import { AuthProvider } from '../auth/AuthContext'
+import { useAuth } from '../auth/context'
 import DeletedNoteRescue from '../components/DeletedNoteRescue'
 import NoteView from '../components/NoteView'
 import { ToastProvider } from '../components/ToastProvider'
@@ -296,5 +297,70 @@ describe('the deleted-note rescue is wired into the real App (BUG-59)', () => {
     // ...and the rescued text is still on screen afterwards, which is the whole point.
     expect(await screen.findByTestId('deleted-note-banner')).toBeInTheDocument()
     expect(screen.getByTestId('deleted-note-text')).toHaveDisplayValue(/text typed into the real app/)
+  })
+})
+
+// Review: the copy button had no coverage at all — neither the label nor the failure branch. The
+// failure branch is the one that matters: a button that silently does nothing invites the user to
+// close the tab believing their text was copied.
+describe('copying the rescued text (BUG-59)', () => {
+  function seedRescue() {
+    reportDeletedNote({ noteId: 'note-9', title: 'Gone note', text: 'text worth keeping' })
+    return render(
+      <ToastProvider>
+        <DeletedNoteRescue />
+      </ToastProvider>,
+    )
+  }
+
+  it('confirms the copy when the clipboard accepts it', async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined)
+    vi.stubGlobal('navigator', { ...navigator, clipboard: { writeText } })
+
+    seedRescue()
+    await userEvent.click(screen.getByTestId('copy-deleted-note-text'))
+
+    expect(writeText).toHaveBeenCalledWith('text worth keeping')
+    expect(await screen.findByText('Copied')).toBeInTheDocument()
+  })
+
+  it('says so when the clipboard refuses, instead of doing nothing visible', async () => {
+    vi.stubGlobal('navigator', {
+      ...navigator,
+      clipboard: { writeText: vi.fn().mockRejectedValue(new Error('denied')) },
+    })
+
+    seedRescue()
+    await userEvent.click(screen.getByTestId('copy-deleted-note-text'))
+
+    expect(await screen.findByText(/select the text below/i)).toBeInTheDocument()
+    expect(screen.queryByText('Copied')).toBeNull()
+  })
+})
+
+// The rescue outlives the note deliberately — which means it also outlives SIGN-OUT, since that
+// clears the token without reloading. A second user on the same tab must not find the first user's
+// meeting notes waiting in a banner.
+describe('the rescued text does not survive sign-out (BUG-59)', () => {
+  it('is cleared when the user signs out', async () => {
+    function SignOutProbe() {
+      const { signOut } = useAuth()
+      return <button type="button" onClick={signOut}>Sign out</button>
+    }
+
+    reportDeletedNote({ noteId: 'note-8', title: 'Private note', text: 'confidential meeting text' })
+    render(
+      <ToastProvider>
+        <AuthProvider initialToken="test-token">
+          <DeletedNoteRescue />
+          <SignOutProbe />
+        </AuthProvider>
+      </ToastProvider>,
+    )
+    expect(screen.getByTestId('deleted-note-banner')).toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Sign out' }))
+
+    await waitFor(() => expect(screen.queryByTestId('deleted-note-banner')).toBeNull())
   })
 })

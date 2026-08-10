@@ -13,6 +13,9 @@ import { useToast } from './toastContext';
 // there is no focus trap and no `aria-modal`, and a dialog role is not a live region — so a screen
 // reader would announce nothing at all. This banner arrives unbidden AFTER the user has been
 // navigated home, and it is the only route to their unsaved text, so it must announce itself.
+//
+// The role sits on the MESSAGE, not the wrapper: a live region containing the textarea would read
+// the entire rescued note body aloud on arrival.
 function RescueBanner({ rescue }: { rescue: Rescue }) {
   const [copied, setCopied] = useState(false);
   const { showError } = useToast();
@@ -32,15 +35,13 @@ function RescueBanner({ rescue }: { rescue: Rescue }) {
   }
 
   return (
-    <div
-      data-testid="deleted-note-banner"
-      role="alert"
-      className={styles.banner}
-    >
+    <div data-testid="deleted-note-banner" className={styles.banner}>
       <div className={styles.text}>
+        <span role="alert">
         <strong>“{rescue.title || 'Untitled note'}” was deleted, so your last change couldn’t be
         saved.</strong>{' '}
         Here is the text it was carrying — copy anything you need before you close this tab.
+        </span>
         <textarea
           data-testid="deleted-note-text"
           aria-label={`Text from the deleted note ${rescue.title || 'Untitled note'}`}

@@ -71,24 +71,30 @@ public static class NoteHandlers
         return Results.Ok(new { items });
     }
 
+    // One helper, so the two 404 paths in EditContent are byte-identical by construction rather
+    // than by two literals staying in step. Any divergence between them is an existence oracle.
+    private static IResult NoteGone() => Results.NotFound(new { error = "note_not_found" });
+
     public static async Task<IResult> EditContent(Guid noteId, EditContentRequest req, HttpResponse response, INoteCommandHandler handler, INoteDetailStore noteDetailStore, ICurrentUser currentUser)
     {
         var detail = await noteDetailStore.GetAsync(new NoteId(noteId));
-        if (detail is not null && detail.UserId != currentUser.UserId) return Results.NotFound();
+        // BUG-59: EVERY note-level 404 from this endpoint carries the same body, deliberately.
+        // An earlier revision split "gone from the stream" (coded) from "not yours" (bare) so the
+        // message would never be false. Review showed that hands back a reliable existence oracle:
+        // `bare 404` would mean exactly "a live note with this id exists and is not yours". Not
+        // leaking existence is the stronger property and is this path's stated intent, so the
+        // not-yours case gets the identical response instead. The cost is telling an unauthorized
+        // caller "deleted" about a note that exists — which is the same thing "not found" has always
+        // told them, and they can have no legitimate copy of it open.
+        if (detail is not null && detail.UserId != currentUser.UserId) return NoteGone();
         long version;
         try { version = await handler.HandleAsync(new EditContentCmd(new NoteId(noteId), req.Content, req.ExpectedBaseContentHash)); }
-        // BUG-59: `note_not_found` must mean exactly "this note is gone from the event stream", so
-        // the not-yours 404 is caught FIRST and stays bare. Otherwise a cross-user write would be
-        // answered "this note was deleted" for a note that exists — false whenever the NoteDetail
-        // pre-check above saw no row (projector lag, per BUG-30) — and the pair {bare, coded} would
-        // become an oracle for "exists but isn't yours".
-        catch (NoteNotOwnedException) { return Results.NotFound(); }
         // The editor is open on a note deleted elsewhere, so every retry 404s (prod: six rejected
-        // writes over 31 minutes). Terminal, not transient. The other bare 404 on this path is an
-        // API Gateway route miss falling through to `/{proxy+}` (shipped once in 34-B), which has no
-        // body — so a deploy skew can never tell a user their note was deleted. Same discriminated-
-        // body convention as the 409 below.
-        catch (NoteNotFoundException) { return Results.NotFound(new { error = "note_not_found" }); }
+        // writes over 31 minutes). Terminal, not transient. The one 404 that stays BARE is an API
+        // Gateway route miss falling through to `/{proxy+}` (shipped once in 34-B) — it never
+        // reaches this handler and has no body — so a deploy skew can never tell a user their note
+        // was deleted. Same discriminated-body convention as the 409 below.
+        catch (NoteNotFoundException) { return NoteGone(); }
         // BUG-47: the client edited a stale/empty view whose base hash no longer matches the current
         // content. A terminal conflict — return 409 with a distinct code so the client keeps the typed
         // text, reloads the real content, and offers the typed text back (never a silent overwrite).

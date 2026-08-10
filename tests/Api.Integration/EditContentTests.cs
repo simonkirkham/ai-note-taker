@@ -146,26 +146,32 @@ public sealed class EditContentTests(ApiFactory factory) : IClassFixture<ApiFact
         Assert.Equal("note_not_found", error);
     }
 
-    // The discriminator must mean "gone from the event stream" and NOTHING else. A note that exists
-    // but belongs to someone else is deliberately answered 404 to avoid leaking existence — telling
-    // that caller "this note was deleted" would be false, and would make {bare 404, note_not_found}
-    // an oracle for "exists but isn't yours". Review of the first attempt found exactly this,
-    // because the event-stream owner check threw the same exception as a missing note.
+    // The security property, pinned as an EQUALITY rather than as two separate assertions: a note
+    // that exists but belongs to someone else must be indistinguishable from one that is gone. Split
+    // them — the earlier revision of this fix did, to keep the message strictly true — and `bare 404`
+    // becomes a reliable oracle for "a live note with this id exists and is not yours". This test
+    // fails the moment the two responses diverge, which the previous shape could not.
     [Fact]
-    public async Task PutContent_NoteOwnedByAnotherUser_Returns404WithoutTheNoteNotFoundCode()
+    public async Task PutContent_NoteOwnedByAnotherUser_IsIndistinguishableFromADeletedNote()
     {
-        var noteId = await CreateNoteAsync();
-        await PutContentAsync(noteId, "The owner's meeting note.");
+        var someoneElsesNote = await CreateNoteAsync();
+        await PutContentAsync(someoneElsesNote, "The owner's meeting note.");
+
+        var deletedNote = await CreateNoteAsync();
+        await _client.DeleteAsync($"/notes/{deletedNote}");
 
         var intruder = factory.CreateClientAsOtherUser();
-        var resp = await intruder.PutAsync($"/notes/{noteId}/content",
+        var notYours = await intruder.PutAsync($"/notes/{someoneElsesNote}/content",
+            JsonContent.Create(new { content = "written by someone else" }));
+        var gone = await intruder.PutAsync($"/notes/{deletedNote}/content",
             JsonContent.Create(new { content = "written by someone else" }));
 
-        Assert.Equal(HttpStatusCode.NotFound, resp.StatusCode);
-        Assert.DoesNotContain("note_not_found", await resp.Content.ReadAsStringAsync());
+        Assert.Equal(HttpStatusCode.NotFound, notYours.StatusCode);
+        Assert.Equal(gone.StatusCode, notYours.StatusCode);
+        Assert.Equal(await gone.Content.ReadAsStringAsync(), await notYours.Content.ReadAsStringAsync());
 
         // ...and the owner's content is untouched.
-        var body = await (await _client.GetAsync($"/notes/{noteId}")).Content.ReadFromJsonAsync<JsonElement>();
+        var body = await (await _client.GetAsync($"/notes/{someoneElsesNote}")).Content.ReadFromJsonAsync<JsonElement>();
         Assert.Equal("The owner's meeting note.", body.GetProperty("content").GetString());
     }
 
