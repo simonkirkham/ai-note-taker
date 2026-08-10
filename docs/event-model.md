@@ -70,10 +70,7 @@ A named partition of a user's content (e.g. *Work* / *Personal*). A second isola
 | `TagNote(noteId, tag, taggedAt)` | Note exists, tag not already present (one command per token) | `NoteTagged` |
 | `UntagNote(noteId, tag, untaggedAt)` | Note exists, tag present | `NoteUntagged` |
 | `SetNoteDate(noteId, date, setAt)` | Note exists, not deleted | `NoteDateSet` |
-| `AddAgendaItem(noteId, itemId, text)` | Note exists, not deleted; blank text rejected (API 400 + aggregate guard) | `AgendaItemAdded` |
-| `SetAgendaItemDiscussed(noteId, itemId, discussed)` | Note exists, not deleted; item exists (else 404); idempotent — no event when already in that state | `AgendaItemDiscussedSet` |
-| `EditAgendaItemText(noteId, itemId, text)` | Note exists, not deleted; item exists (else 404); blank text rejected (API 400 + aggregate guard) | `AgendaItemTextEdited` |
-| `RemoveAgendaItem(noteId, itemId)` | Note exists, not deleted; item exists (else 404, accepted as no-op by clients) | `AgendaItemRemoved` |
+| ~~`AddAgendaItem` / `SetAgendaItemDiscussed` / `EditAgendaItemText` / `RemoveAgendaItem`~~ | **Removed in 43-H2.** A topic is a task-list line in the note body, so adding, ticking, rewording and removing one is an `EditContent`. The four `AgendaItem*` **events remain in the streams, unread** — `EventDeserializer` still parses them and `Note.Apply` still accepts them, which is what keeps the removal reversible. | — |
 | `RecordTagSuggestions(noteId, tags, modelId, promptVersion)` | Note exists, not deleted; empty tag list emits nothing | `TagsSuggestedV2` |
 | `RecordActionItemSuggestions(noteId, actionItemIds, modelId, promptVersion)` | Note exists, not deleted; empty list emits nothing | `ActionItemsSuggestedV2` |
 | `RecordAnalysisSummary(noteId, summary, discussionPoints, decisions, modelId, promptVersion)` | Note exists, not deleted | `AnalysisSummaryRecorded` |

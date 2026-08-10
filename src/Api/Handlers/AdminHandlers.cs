@@ -8,7 +8,6 @@ namespace Api.Handlers;
 
 public static class AdminHandlers
 {
-
     public static async Task<IResult> RebuildProjections(
         IProjectionRebuildHandler handler, IDomainMetrics metrics, CancellationToken ct)
     {

@@ -9,8 +9,11 @@ import styles from "./AgendaSection.module.css";
 // makes the strip collapsible — collapsed it shows one line (the "Agenda" label, the "X / Y"
 // coverage pill, and a peek of the remaining open items) and costs no side space in either state
 // (the note body stays full-width below). The
-// collapse toggle only appears once there are items (nothing to fold on an empty agenda). Every
-// mutation is optimistic; the agenda is read from the shared note-detail cache.
+// collapse toggle only appears once there are items (nothing to fold on an empty agenda).
+//
+// 43-H2: there is one source. A topic IS a task-list line in the note body, so every add, tick,
+// reword and remove is a document edit through the editor — not a request. The projection is read
+// only as a load-time fallback, while the lazy editor chunk is still arriving.
 export default function AgendaSection({
   noteId,
   editor,
@@ -20,8 +23,8 @@ export default function AgendaSection({
   // 43-G: the live editor's command object, or null while the lazy editor chunk is still loading.
   // A topic derived from the note body is a task-list line, so adding/ticking/rewording/removing it
   // is a document edit — undoable with Ctrl+Z, and applied to the document that holds unsaved
-  // typing. Legacy topics (pre-43-F, carried by AgendaItem* events) still go through the API until
-  // 43-H migrates them into their notes; that is why both paths exist here.
+  // typing. Since 43-H2 this is the only path: with no editor there is nothing to write to, so the
+  // controls are inert rather than silently dropping the change.
   editor?: AgendaEditorApi | null;
   // The topics as they exist in the live document, re-published on every keystroke. When present
   // these WIN over the server projection: rendering from the same document the commands act on is
@@ -61,9 +64,8 @@ export default function AgendaSection({
       editor.addTopic(trimmed);
       return;
     }
-    // Editor not mounted yet. Deliberately NOT falling back to the API: that would mint exactly the
-    // legacy AgendaItemAdded data 43-H is migrating away, and would 404 once 43-H drops the write
-    // endpoints. The input is disabled in this window instead, so this is unreachable in practice.
+    // Editor not mounted yet. There is no API to fall back to since 43-H2 removed those routes —
+    // the input is disabled in this window, so this is unreachable in practice.
   }
 
   return (
@@ -174,8 +176,8 @@ function AgendaItemRow({
     editingRef.current = false;
     setEditing(false);
     const trimmed = draft.trim();
-    // Empty or unchanged → don't send a write (the backend rejects blank with 400, and an
-    // unchanged edit is a pointless event); just reconcile the field back to the current text.
+    // Empty or unchanged → don't touch the document. A no-op setTopicText would still dirty it,
+    // pushing an undo-stack entry and triggering a content save for a change the user did not make.
     if (!trimmed || trimmed === item.text) return;
     api?.setTopicText(item.position, trimmed);
   }
@@ -234,10 +236,7 @@ function AgendaItemRow({
         <button
           type="button"
           className={styles.remove}
-          onClick={() => {
-            if (api) api.removeTopic(item.position);
-
-          }}
+          onClick={() => api?.removeTopic(item.position)}
           aria-label={`Remove "${item.text}"`}
           data-testid="agenda-item-remove"
         >

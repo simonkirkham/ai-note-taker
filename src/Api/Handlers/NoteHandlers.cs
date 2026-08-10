@@ -243,9 +243,6 @@ public static class NoteHandlers
     }
 
 
-
-
-
     public static async Task<IResult> MoveNoteToFolder(Guid noteId, MoveNoteToFolderRequest req, HttpResponse response, INoteCommandHandler handler, INoteDetailStore noteDetailStore, IFolderTreeStore folderTreeStore, ICurrentUser currentUser, CancellationToken ct)
     {
         var detail = await noteDetailStore.GetAsync(new NoteId(noteId));

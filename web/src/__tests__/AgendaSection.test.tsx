@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { render as rtlRender, screen, waitFor } from '@testing-library/react'
+import { render as rtlRender, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { http, HttpResponse } from 'msw'
 import type { ReactNode } from 'react'
@@ -258,6 +258,20 @@ describe('AgendaSection — topics derived from the note body', () => {
   // 43-H2: the live document is the ONLY source. A projection row that is not in the document is
   // stale by definition now — the old parallel record it came from is gone — so the live list wins
   // outright rather than being appended to.
+  it('does not touch the note when a topic is committed unchanged', async () => {
+    // The guard in commit(). A no-op setTopicText still dirties the document — pushing an undo-stack
+    // entry and triggering a content save for a change the user did not make. This was pinned by an
+    // API-path test that 43-H2 deleted along with the endpoint, so it needs its own cover here.
+    const user = userEvent.setup()
+    const editor = editorStub()
+    renderWithEditor([], editor, [{ text: 'Budget (Q3)', checked: false }])
+
+    await user.click(screen.getByTestId('agenda-item-text'))
+    await user.type(screen.getByTestId('agenda-item-edit-input'), '{Enter}')
+
+    expect(editor.setTopicText).not.toHaveBeenCalled()
+  })
+
   it('shows only what is in the note, ignoring a stale projection row', () => {
     renderWithEditor(
       [{ itemId: 'i-1', text: 'Not in the note', discussed: false, position: 0 }],

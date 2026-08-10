@@ -138,8 +138,9 @@ public static partial class AgendaFromContent
                     : m.Value);
     }
 
-    /// <summary>Drops the private-use characters used to mask code spans.</summary>
-    public static string StripMaskCharacters(string text) => Sentinel().Replace(text, "");
+    // Drops the private-use characters used to mask code spans. Was public for 43-H1's migration,
+    // which needed to filter a legacy topic made only of them; that handler is gone with 43-H2.
+    private static string StripMaskCharacters(string text) => Sentinel().Replace(text, "");
 
     private static string Unescape(string text) => Escaped().Replace(text, "$1");
 

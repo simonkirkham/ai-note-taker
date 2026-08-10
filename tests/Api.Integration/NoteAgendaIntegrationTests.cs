@@ -65,28 +65,6 @@ public sealed class NoteAgendaIntegrationTests(ApiFactory factory) : IClassFixtu
         return body.GetProperty("noteId").GetString()!;
     }
 
-    private Task<HttpResponseMessage> PutTextAsync(string noteId, string itemId, string text) =>
-        _client.PutAsync(
-            $"/notes/{noteId}/agenda-items/{itemId}",
-            new StringContent(JsonSerializer.Serialize(new { text }), Encoding.UTF8, "application/json"));
-
-    private async Task<string> AddAndGetItemIdAsync(string noteId, string text)
-    {
-        var resp = await PostAgendaItemAsync(noteId, text);
-        var body = await resp.Content.ReadFromJsonAsync<JsonElement>();
-        return body.GetProperty("itemId").GetString()!;
-    }
-
-    private Task<HttpResponseMessage> PutDiscussedAsync(string noteId, string itemId, bool discussed) =>
-        _client.PutAsync(
-            $"/notes/{noteId}/agenda-items/{itemId}/discussed",
-            new StringContent(JsonSerializer.Serialize(new { discussed }), Encoding.UTF8, "application/json"));
-
-    private Task<HttpResponseMessage> PostAgendaItemAsync(string noteId, string text) =>
-        _client.PostAsync(
-            $"/notes/{noteId}/agenda-items",
-            new StringContent(JsonSerializer.Serialize(new { text }), Encoding.UTF8, "application/json"));
-
     private async Task<List<JsonElement>> GetAgendaAsync(string noteId)
     {
         var get = await _client.GetAsync($"/notes/{noteId}");
