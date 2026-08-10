@@ -17,10 +17,20 @@ let resolveFinish: ((text: string | null) => void) | undefined
 let emitLive: ((text: string) => void) | undefined
 let throwOnDiscard = false
 let throwOnDetach = false
+let throwOnStopTrack = false
 const committed: string[] = []
 
 function stubBrowserApis() {
-  const mockStream = { getTracks: () => [{ stop: vi.fn() }] } as unknown as MediaStream
+  // `cleanup()` stops the captured tracks, AFTER commitTranscript(). A throw there cannot cost the
+  // transcript, but without a terminal handler on the sequence it left the status stuck on
+  // 'finalising' and surfaced only as an unhandled rejection — the same wedge, later in the tail.
+  const mockStream = {
+    getTracks: () => [{
+      stop: () => {
+        if (throwOnStopTrack) throw new Error('stopping the capture track blew up')
+      },
+    }],
+  } as unknown as MediaStream
   Object.defineProperty(global.navigator, 'mediaDevices', {
     value: { getUserMedia: vi.fn().mockResolvedValue(mockStream), getDisplayMedia: vi.fn() },
     configurable: true,
@@ -79,6 +89,7 @@ beforeEach(() => {
   emitLive = undefined
   throwOnDiscard = false
   throwOnDetach = false
+  throwOnStopTrack = false
   committed.length = 0
   localStorage.setItem('note-taker-transcription-mode', 'local')
   stubBrowserApis()
@@ -116,6 +127,7 @@ describe('the on-device tail throwing on stop (BUG-74)', () => {
 
     // Neither may be pre-empted by the throw: the transcript is kept, and the UI is not wedged.
     await waitFor(() => expect(committed).toHaveLength(1))
+    expect(committed[0]).toContain('the finalised text')
     await waitFor(() => expect(screen.getByTestId('status')).toHaveTextContent('stopped'))
   })
 
@@ -128,6 +140,7 @@ describe('the on-device tail throwing on stop (BUG-74)', () => {
     resolveFinish?.('the finalised text')
 
     await waitFor(() => expect(committed).toHaveLength(1))
+    expect(committed[0]).toContain('the finalised text')
     await waitFor(() => expect(screen.getByTestId('status')).toHaveTextContent('stopped'))
   })
 
@@ -141,6 +154,22 @@ describe('the on-device tail throwing on stop (BUG-74)', () => {
     await waitFor(() => expect(committed).toHaveLength(1))
     expect(committed[0]).toContain('the finalised text')
     expect(committed[0]).not.toContain('rough live text')
+    await waitFor(() => expect(screen.getByTestId('status')).toHaveTextContent('stopped'))
+  })
+
+  // A third site, found by this file's own test throwing out of `view.unmount()`: `cleanup()` runs
+  // inside React's effect teardown, so a throwing `track.stop()` escapes the unmount itself and
+  // takes the rest of the teardown with it. Without the guard this test fails on the UNMOUNT, not
+  // on an assertion — which is what makes it worth having.
+  it('survives a throwing capture teardown, and still commits and stops', async () => {
+    throwOnStopTrack = true
+    render(<Recorder />)
+    await recordAndStop('the text the user actually recorded')
+
+    resolveFinish?.('the finalised text')
+
+    await waitFor(() => expect(committed).toHaveLength(1))
+    expect(committed[0]).toContain('the finalised text')
     await waitFor(() => expect(screen.getByTestId('status')).toHaveTextContent('stopped'))
   })
 })

@@ -124,6 +124,20 @@ const AWAIT_COMMIT_SLACK = 1.95;
 const AWAIT_COMMIT_MIN_MS = 2 * 60_000;
 const AWAIT_COMMIT_MAX_MS = 60 * 60_000;
 
+// BUG-74: stopping a capture track can throw (a revoked or already-ended device track). Releasing
+// hardware is best-effort — a failure must not abort the rest of the teardown, and each track is
+// stopped independently so one bad track cannot strand the others.
+function stopTracks(stream: MediaStream | null): void {
+  if (!stream) return;
+  for (const track of stream.getTracks()) {
+    try {
+      track.stop();
+    } catch (err) {
+      console.warn('Stopping a capture track failed.', err);
+    }
+  }
+}
+
 export function useTranscription(noteId: string): UseTranscriptionResult {
   const [status, setStatus] = useState<TranscriptionStatus>('idle');
   const [transcript, setTranscript] = useState('');
@@ -200,14 +214,16 @@ export function useTranscription(noteId: string): UseTranscriptionResult {
       audioContextRef.current.close().catch(() => {});
       audioContextRef.current = null;
     }
-    if (mediaStreamRef.current) {
-      mediaStreamRef.current.getTracks().forEach((t) => t.stop());
-      mediaStreamRef.current = null;
-    }
-    if (displayStreamRef.current) {
-      displayStreamRef.current.getTracks().forEach((t) => t.stop());
-      displayStreamRef.current = null;
-    }
+    // BUG-74: `cleanup()` runs inside React's effect teardown, so a throw here escapes the unmount
+    // itself — everything after the throwing line is skipped (refs left set, timers left running,
+    // the AudioContext never closed) and React surfaces it as a crash. `stop()` on a revoked or
+    // already-ended device track is the realistic source. Releasing hardware is best-effort; it
+    // must never be able to take the teardown with it. Found by this bug's own test throwing out of
+    // `view.unmount()` — the same shape as the two sites above, one frame further on.
+    stopTracks(mediaStreamRef.current);
+    mediaStreamRef.current = null;
+    stopTracks(displayStreamRef.current);
+    displayStreamRef.current = null;
   }, []);
 
   // Autosave the finalised transcript so far to the DRAFT store (PUT, no event),
@@ -511,9 +527,24 @@ export function useTranscription(noteId: string): UseTranscriptionResult {
             console.error('[local transcription]', message);
             setError(`On-device transcription failed: ${message}`);
           });
+          // BUG-74: guarded HERE, not at each call site. This closure is invoked from the stop
+          // sequence, from `cleanup()` (where a throw skips everything after it — the listeners
+          // stay attached, the timers keep running and the AudioContext is never closed) and from
+          // the cloud-fallback path below. Guarding one site leaves the others. Detaching each
+          // listener separately also stops a failing `offLive()` from leaving `offError()` attached.
           localCleanupRef.current = () => {
-            offLive();
-            offError();
+            try {
+              offLive();
+            } catch (err) {
+              console.warn('Detaching the on-device live listener failed.', err);
+              recordRumEvent('localTeardownFailed', { at: 'offLive' });
+            }
+            try {
+              offError();
+            } catch (err) {
+              console.warn('Detaching the on-device error listener failed.', err);
+              recordRumEvent('localTeardownFailed', { at: 'offError' });
+            }
           };
           try {
             await desktopLocal.start();
@@ -716,16 +747,14 @@ export function useTranscription(noteId: string): UseTranscriptionResult {
             // finish()/discard() ran (no-op when already discarded/finished).
             window.desktop?.local.discard();
           } catch (err) {
+            // `discard` is `ipcRenderer.send` — fire-and-forget and synchronous, which is why a
+            // sync try/catch is the right shape here. If it ever becomes `invoke` it will reject
+            // rather than throw and this guard silently stops catching.
             console.warn('Releasing the on-device session failed on stop.', err);
+            recordRumEvent('localTeardownFailed', { at: 'discard' });
           }
         }
-        // Same reasoning: detaching the IPC listeners is cleanup, not a precondition for keeping
-        // what was recorded. Neither of these may pre-empt the commit.
-        try {
-          localCleanupRef.current?.();
-        } catch (err) {
-          console.warn('Detaching the on-device listeners failed on stop.', err);
-        }
+        localCleanupRef.current?.();
         localCleanupRef.current = null;
         commitTranscript();
         cleanup();
@@ -736,9 +765,18 @@ export function useTranscription(noteId: string): UseTranscriptionResult {
       uploadRecording();
       cleanup();
       setStatus('stopped');
-    })().finally(() => {
-      stopInFlightRef.current = false;
-    });
+    })()
+      // BUG-74: a terminal handler on the sequence itself. The guards above close the two known
+      // throw sites; this closes the class — the stay-mounted path has no other handler, so before
+      // it any unnamed throw left the status stuck and surfaced only as an unhandled rejection.
+      .catch((err) => {
+        console.warn('The stop sequence failed.', err);
+        recordRumEvent('stopSequenceFailed', {});
+        setStatus('stopped');
+      })
+      .finally(() => {
+        stopInFlightRef.current = false;
+      });
   }, [cleanup, commitTranscript, uploadRecording]);
 
   // BUG-55: resolves once the stop sequence AND the commit POST it fires have finished. In cloud
