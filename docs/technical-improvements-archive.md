@@ -40,7 +40,7 @@ Live doc (open items + the index): [technical-improvements.md](technical-improve
 
 ## TI-11. Add `cdk synth` to the pre-commit hook
 
-✅ 2026-06-10. `.githooks/pre-commit` runs `dotnet publish src/Api` + `cdk synth --quiet`, but **only when infra-affecting files are staged** (`src/Infrastructure/`, `src/Api/`, `*.sln`/`*.csproj`/`*.props`/`*.targets`, `cdk.json`) — docs/web/tests-only commits skip it. Uses the global `cdk` CLI, matching CI; no AWS creds needed.
+✅ 2026-06-10. `.githooks/pre-commit` runs `dotnet publish src/Api` + `cdk synth --quiet` — extended by TI-64 (below) to publish the Projector and TranscribeCompletion assets too — but **only when infra-affecting files are staged** (`src/Infrastructure/`, `src/Api/`, `*.sln`/`*.csproj`/`*.props`/`*.targets`, `cdk.json`) — docs/web/tests-only commits skip it. Uses the global `cdk` CLI, matching CI; no AWS creds needed.
 
 ## TI-12. Split the single API Lambda into individual Lambdas (CQRS + async projectors)
 
@@ -149,3 +149,7 @@ Live doc (open items + the index): [technical-improvements.md](technical-improve
 ## TI-43. Hard per-test E2E timeout so no single test can hang the deploy gate
 
 ✅ PR #293, deploy #595, 2026-06-17. `E2EFactAttribute : FactAttribute { Timeout = 120_000 }` across all journeys — caps the 44-min-hang class (PR #291's body-reading diagnostic). **120 s** chosen: reload-tolerant helpers allow 30 s each and Tags journeys chain 2–3 → ~90 s legit worst case. **Verified it fires** — xUnit's `Timeout` is silently ignored when parallelization is disabled; confirmed with a throwaway probe (load-bearing precondition: no `xunit.runner.json`, no `DisableTestParallelization`).
+
+## TI-64. Pre-commit `cdk synth` fails in every fresh worktree — only `src/Api` is published
+
+✅ PR #457, 2026-08-10. The first commit in every new slice died several minutes in — **after** the whole test suite had already run — with `Cannot find asset at …/src/Projector/…/publish`, and read as "my change broke CDK" rather than "this worktree was never fully published". The hook published only `src/Api`; the stack has packaged three Lambda assets since 27-B (Projector) and 33-B1 (TranscribeCompletion). `.githooks/pre-commit` now publishes the other two **when their artefact is absent** — `cdk synth` fingerprints an asset directory but never validates its contents, so a fresh worktree pays ~48 s once and every later commit pays two `test -f` calls. `cdk synth` still always runs; nothing is skipped. `CLAUDE.md` (`## How to run`, `## Worktrees`) and `README.md` shipped in the same merge, because all three still prescribed publishing only `src/Api` — a manual `cdk synth`/`cdk deploy` from a clone hit the identical error with no hook involved. **Verified by running the hook, not by reading it:** red before the change, green after in a second zero-artefact worktree, and still red with a defect injected into the stack's asset path. `pr.yml` paths-ignores `.githooks/**`, so that demonstration is the only evidence — CI covered none of it. Learnings: [ti-64-the-workaround-that-outlived-its-bug](learnings/ti-64-the-workaround-that-outlived-its-bug.md).
